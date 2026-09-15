@@ -21,6 +21,7 @@ Updated: 2026-09-15
 - `/api/status` 통합 테스트가 추가되어 HTTP 200과 기본 JSON 필드를 검증한다.
 - `SupabaseOptions`와 named `HttpClient` 등록 경계가 추가됐으며 실제 Supabase 호출은 아직 하지 않는다.
 - 04-A Supabase 설정/클라이언트 경계 구현과 빌드·테스트 검증이 완료됐다.
+- `supabase/workstations.sql`로 04-B 최소 스키마 정의를 완료했다. 실제 Supabase 적용은 사용자 확인이 필요하다.
 
 ## 목표 구조
 
@@ -45,4 +46,4 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 다음 작업
 
-04 Supabase 스키마와 저장소의 B. workstations 최소 스키마
+04 Supabase 스키마와 저장소의 C. IWorkstationRepository와 Supabase 구현

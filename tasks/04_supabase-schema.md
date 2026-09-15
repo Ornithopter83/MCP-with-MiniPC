@@ -16,9 +16,9 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 - Infrastructure가 named `HttpClient`를 등록하며 REST base address와 인증 헤더를 구성한다.
 - 환경 변수가 없을 때도 서버가 기동되며 실제 비밀값은 저장소에 기록하지 않는다.
 
-### B. workstations 최소 스키마
+### B. workstations 최소 스키마 (완료: 2026-09-15)
 
-- `workstation_id` unique와 display name, hostname, last_seen, created/updated 시각을 정의한다.
+- `supabase/workstations.sql`에 `workstation_id` unique, display name, hostname, last_seen, created/updated 시각, updated_at trigger, RLS 활성화를 정의했다. 사용자가 Supabase SQL Editor에서 실행해야 한다.
 
 ### C. IWorkstationRepository와 Supabase 구현
 
@@ -42,7 +42,7 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 
 ## 진행
 
-잔여 작업 6개 (B, C, D, E, F, G)
+잔여 작업 5개 (C, D, E, F, G)
 
 ## 변경 금지
 
@@ -63,9 +63,10 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 ## 결과
 
 - A 완료: 환경 변수 기반 `SupabaseOptions`와 Supabase REST named `HttpClient` 경계를 추가했다. 환경 변수가 없어도 서버가 기동되며 비밀값은 저장소에 기록하지 않는다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
+- B 완료: `supabase/workstations.sql`을 추가했다. 실제 Supabase 적용은 아직 하지 않았다.
 
 ## 사용자 수행 필요
 
 - Supabase 프로젝트를 생성하고 URL과 Service Role Key를 Mini PC Server 실행 환경에 `PROJECTHUB_SUPABASE_URL`, `PROJECTHUB_SUPABASE_SERVICE_ROLE_KEY`로 등록한다.
 - 실제 키는 이 저장소나 문서에 기록하지 않는다.
-- 다음 04-B에서 제공할 `workstations` SQL을 Supabase SQL Editor에서 실행한다.
+- `supabase/workstations.sql`을 Supabase SQL Editor에서 실행하고 테이블 생성 여부를 확인한다.
