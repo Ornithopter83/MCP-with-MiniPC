@@ -23,6 +23,7 @@ Updated: 2026-09-15
 - 04-A Supabase 설정/클라이언트 경계 구현과 빌드·테스트 검증이 완료됐다.
 - `supabase/workstations.sql`로 04-B 최소 스키마 정의를 완료했다. 실제 Supabase 적용은 사용자 확인이 필요하다.
 - `IWorkstationRepository`, `SupabaseWorkstationRepository`, heartbeat upsert와 workstation 조회 API를 구현했다. 실제 Mini PC→Supabase E2E는 아직 검증하지 않았다.
+- heartbeat upsert payload에서 null 메타데이터 필드를 제외하고, Supabase 오류 응답 본문을 읽어 502로 반환하도록 보완했다.
 
 ## 목표 구조
 

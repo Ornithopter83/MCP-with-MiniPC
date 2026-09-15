@@ -66,6 +66,7 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 - B 완료: `supabase/workstations.sql`을 추가했다. 실제 Supabase 적용은 아직 하지 않았다.
 - C 완료: workstation 저장소 계약과 PostgREST 구현을 추가했다.
 - D 완료: heartbeat upsert API를 추가했다.
+- D 보완: upsert 요청에서 null 메타데이터 필드를 제외하고 Supabase 오류 본문을 읽어 502 응답에 포함하도록 수정했다.
 - E 완료: workstation 목록 조회 API를 추가했다.
 
 실제 Supabase E2E는 Mini PC 실행 환경에서만 검증할 수 있으므로 F에 남겨두었다.

@@ -45,6 +45,12 @@ app.MapPost("/api/agent/heartbeat", async (
             detail: exception.Message,
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
+    catch (HttpRequestException exception)
+    {
+        return Results.Problem(
+            detail: exception.Message,
+            statusCode: StatusCodes.Status502BadGateway);
+    }
 });
 
 app.MapGet("/api/workstations", async (
@@ -60,6 +66,12 @@ app.MapGet("/api/workstations", async (
         return Results.Problem(
             detail: exception.Message,
             statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (HttpRequestException exception)
+    {
+        return Results.Problem(
+            detail: exception.Message,
+            statusCode: StatusCodes.Status502BadGateway);
     }
 });
 

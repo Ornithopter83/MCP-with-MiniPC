@@ -21,7 +21,17 @@ public sealed class SupabaseWorkstationRepository(
         request.Content = JsonContent.Create(workstation);
 
         using var response = await client.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (errorBody.Length > 2000)
+            {
+                errorBody = errorBody[..2000];
+            }
+
+            throw new HttpRequestException(
+                $"Supabase returned {(int)response.StatusCode} {response.ReasonPhrase}: {errorBody}");
+        }
 
         var rows = await response.Content.ReadFromJsonAsync<List<Workstation>>(cancellationToken);
         return rows is { Count: > 0 } ? rows[0] : workstation;
