@@ -1,4 +1,7 @@
+using ProjectHub.Infrastructure;
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddProjectHubInfrastructure();
 var app = builder.Build();
 
 app.MapGet("/api/status", () => Results.Ok(new

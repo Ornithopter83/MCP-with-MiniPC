@@ -14,9 +14,9 @@ Server는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성�
 
 - 서버명, ok 상태, Supabase 표기, 현재 시각을 반환한다.
 
-### B. ProjectHub 서비스 등록
+### B. ProjectHub 서비스 등록 (완료: 2026-09-15)
 
-- Core 서비스와 Infrastructure 저장소의 DI 등록 경계를 마련한다.
+- Core에 `IProjectStateRepository`, `IProjectService`, `ProjectService`를 추가하고 Infrastructure에 `AddProjectHubInfrastructure` 등록 경계를 마련했다. 실제 Supabase 호출 대신 교체 가능한 NoOp 저장소를 등록한다.
 
 ### C. Server 테스트 추가
 
@@ -24,7 +24,7 @@ Server는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성�
 
 ## 진행
 
-잔여 작업 2개 (B, C)
+잔여 작업 1개 (C)
 
 ## 변경 금지
 
@@ -41,4 +41,5 @@ Server는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성�
 
 ## 결과
 
-- A 완료: `/api/status` Minimal API 스켈레톤을 생성했다. B/C는 후속이다.
+- A 완료: `/api/status` Minimal API 스켈레톤을 생성했다.
+- B 완료: Core/Infrastructure/Server DI 경계를 연결했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).

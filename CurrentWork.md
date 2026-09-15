@@ -5,7 +5,7 @@ Updated: 2026-09-15
 ## Baseline
 
 - 저장소: `C:\Projects\AI-AGENTS\MCP\Server`
-- 브랜치: 아직 Git 초기화 전
+- 브랜치: `main` (원격 `origin/main` 추적)
 - 도구체인: .NET SDK 9.0.312 확인
 - 솔루션: `ProjectHub.sln`
 - 활성 작업: `tasks/03_server-skeleton.md`
@@ -16,6 +16,8 @@ Updated: 2026-09-15
 - `tests/ProjectHub.Core.Tests`, `Server.Tests` 프로젝트가 생성됐다.
 - 프로젝트 참조가 Core 중심 계층으로 연결됐다.
 - ASP.NET Core Server는 `/api/status` 스켈레톤을 제공하며 Supabase 연결·정책 옵션 바인딩은 아직 구성하지 않았다.
+- `GPT-Web-Feedback.md`가 원격에서 추가됐으며, pull 전 확인 규칙을 `AGENTS.md`에 반영했다.
+- Core 서비스 계약과 Infrastructure의 교체 가능한 NoOp 저장소 DI 등록 경계를 추가했다.
 
 ## 목표 구조
 
@@ -40,4 +42,4 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 다음 작업
 
-03 Server 스켈레톤의 B. ProjectHub 서비스 등록
+03 Server 스켈레톤의 C. Server 테스트 추가
