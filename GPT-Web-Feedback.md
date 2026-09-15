@@ -21,22 +21,46 @@ Updated: 2026-09-15
 ## 현재 확인한 상태
 
 - `03 Server 스켈레톤`은 완료됐다.
-- `/api/status` 통합 테스트가 추가되어 HTTP 200과 기본 JSON 필드를 검증한다.
-- Core에 `IProjectStateRepository`, `IProjectService`, `ProjectService`가 존재한다.
-- Infrastructure에는 교체 가능한 `NoOpProjectStateRepository`와 DI 등록 경계가 있다.
-- build/test 기록상 현재까지 오류 없이 통과했다.
-- `CurrentWork.md` 기준 다음 작업은 `04 Supabase 스키마와 저장소의 A. Supabase 연결`이다.
-- `ProjectHub_IMPLEMENTATION_PLAN.md`도 현재 작업을 `04 Supabase 스키마와 저장소`로 표시한다.
+- `/api/status` 통합 테스트가 존재하고 HTTP 200 및 기본 JSON 필드를 검증한다.
+- `04 Supabase 스키마와 저장소`가 현재 활성 작업이다.
+- `04-A Supabase 연결 설정/클라이언트 경계`는 완료됐다.
+- `SupabaseOptions`가 환경 변수에서 URL과 서버용 비밀키를 읽는다.
+- Infrastructure에 named `HttpClient("Supabase")`가 등록되어 `/rest/v1/` BaseAddress와 인증 헤더를 구성한다.
+- 환경 변수가 없어도 서버 기동은 가능하도록 되어 있다.
+- 실제 Supabase 네트워크 호출과 `workstations` 테이블은 아직 구현/검증 전이다.
+- 현재 `CurrentWork.md` 기준 다음 작업은 `04-B workstations 최소 스키마`다.
 
-현재 프로젝트는 설계 골격 단계에서 실제 외부 저장소 연동 단계로 넘어갈 준비가 됐다.
+현재까지의 방향은 적절하다.
 
 ---
 
-## 가장 중요한 피드백
+## 사용자 측 서버 준비 상태
 
-이제부터는 구조를 더 넓히기보다 **실제 E2E 한 줄을 먼저 성공시키는 것**을 최우선으로 한다.
+사용자가 Mini PC 서버 측 Supabase 준비를 완료했다.
 
-목표:
+확인된 사항:
+
+```text
+Supabase 프로젝트 생성 완료
+PROJECTHUB_SUPABASE_URL 등록 완료
+PROJECTHUB_SUPABASE_SERVICE_ROLE_KEY 등록 완료
+```
+
+Project URL도 확보되어 있으며 실제 비밀키 값은 저장소/문서에 기록하지 않는다.
+
+중요:
+- 위 환경 변수는 **Mini PC 서버 실행 환경에 설정된 값**으로 간주한다.
+- Codex가 실행되는 개발 PC에 동일한 환경 변수가 있다고 가정하지 않는다.
+- 로컬 테스트에서 환경 변수가 없다는 이유로 서버 PC 설정이 실패했다고 판단하지 않는다.
+- 실제 비밀값을 출력하거나 문서화하지 않는다.
+
+---
+
+## 지금부터 가장 중요한 목표
+
+이제 설계 확대보다 첫 실제 E2E를 최대한 빨리 완성한다.
+
+목표 경로:
 
 ```text
 DEV PC
@@ -47,158 +71,128 @@ DEV PC
   -> 동일 workstation 조회
 ```
 
-이 흐름이 성공하면 ProjectHub의 첫 실사용 경로가 검증된 것으로 본다.
+이 흐름이 성공하면 ProjectHub의 첫 실사용 데이터 경로가 검증된 것으로 본다.
 
 ---
 
-## 즉시 확인해야 할 문서 불일치
+## 다음 작업: 04-B workstations 최소 스키마
 
-현재 `CurrentWork.md`는 다음 작업을:
+다음 세부 작업은 `04-B`다.
+
+최소 컬럼은 다음 수준을 권장한다.
 
 ```text
-04-A Supabase 연결
+id
+workstation_id
+display_name
+hostname
+last_seen
+created_at
+updated_at
 ```
 
-로 표현하고 있다.
-
-하지만 현재 `tasks/04_supabase-schema.md`의 A는:
+필수 조건:
 
 ```text
-A. SQL 스키마와 인덱스 확정
+workstation_id UNIQUE NOT NULL
+last_seen timestamptz
+created_at timestamptz default now()
+updated_at timestamptz default now()
 ```
 
-으로 되어 있다.
+과도한 컬럼, trigger, 정책, migration framework를 먼저 추가하지 않는다.
 
-즉, **04-A의 의미가 문서 사이에서 서로 다르다.**
+### SQL 전달 방식
 
-Codex는 다음 작업 시작 전에 이 불일치를 정리해야 한다.
+사용자가 Supabase SQL Editor에서 직접 실행할 수 있도록 **정확한 SQL을 저장소에 별도 파일로 남기는 것을 권장**한다.
 
-권장 방향은 기존 task를 크게 뒤엎는 것이 아니라, 실제 구현 순서를 E2E 중심으로 다시 세분화해 문서에 반영하는 것이다.
-
-권장 순서:
+예시 위치:
 
 ```text
-04-A Supabase 연결 설정/클라이언트 경계
-04-B workstations 최소 스키마
-04-C IWorkstationRepository + Supabase 구현
-04-D heartbeat upsert
+sql/001_create_workstations.sql
+```
+
+또는 현재 프로젝트 구조에 더 자연스러운 별도 경로가 있다면 그 경로를 사용한다.
+
+이 SQL 파일은 다음 목적을 가진다.
+
+- 사용자가 그대로 복사해 Supabase SQL Editor에서 실행 가능
+- 이후 환경 재구축 시 재사용 가능
+- 어떤 스키마가 실제 서버에 적용됐는지 추적 가능
+
+단, SQL 파일을 작성했다고 해서 실제 Supabase에 적용됐다고 표시하지 않는다.
+
+Codex는 외부 Supabase 상태를 임의로 성공 처리하지 말고 다음처럼 구분한다.
+
+```text
+SQL 작성 완료
+!=
+사용자 Supabase 적용 완료
+```
+
+사용자가 적용 완료를 알려준 뒤 실제 E2E 검증으로 넘어간다.
+
+---
+
+## 04-C 이후 권장 구현 순서
+
+04-B 후에는 다음 순서가 적절하다.
+
+```text
+04-C IWorkstationRepository + SupabaseWorkstationRepository
+04-D POST /api/agent/heartbeat
 04-E GET /api/workstations
-04-F 실제 PowerShell/curl E2E 검증
-04-G 이후 project_states / events / leases 확장
+04-F Mini PC에서 실제 E2E 검증
+04-G Project 상태 저장 확장
 ```
 
-기존 `04`의 최종 목표는 유지하되, 처음부터 모든 테이블과 저장소를 한 번에 구현하지 않는다.
+### Repository 경계
 
----
-
-## 추가 문서 정합성 확인
-
-`ProjectHub_IMPLEMENTATION_PLAN.md`의 일부 task 링크 표기가 실제 파일명과 다를 가능성이 있다.
-
-예를 들어 계획 문서에는:
-
-```text
-tasks/03-server-skeleton.md
-tasks/04-supabase-schema.md
-```
-
-형태가 보이지만 실제 확인된 파일은:
-
-```text
-tasks/03_server-skeleton.md
-tasks/04_supabase-schema.md
-```
-
-이다.
-
-Codex는 문서 작업 시 실제 존재하는 경로 기준으로 링크를 정리한다.
-
-이 문제는 기능 구현을 막지는 않지만, 향후 자동화/탐색에서 혼선을 만들 수 있으므로 04 작업 문서 갱신 시 함께 바로잡는 것을 권장한다.
-
----
-
-## 04에서 권장하는 최소 구현 범위
-
-### 1. Supabase 연결 경계
-
-Server가 Supabase 구현을 직접 알지 않도록 한다.
+`IProjectStateRepository`에 heartbeat 기능을 넣지 않는다.
 
 권장:
 
 ```text
 ProjectHub.Core
   IWorkstationRepository
+  Workstation
 
 ProjectHub.Infrastructure
   SupabaseWorkstationRepository
-  SupabaseOptions
-  AddProjectHubInfrastructure(...)
-
-ProjectHub.Server
-  환경 변수/설정 바인딩
-  API endpoint 등록
 ```
 
-`IProjectStateRepository`에 workstation/heartbeat 기능을 계속 추가하지 않는 것을 권장한다.
-
-이유:
-- Project 상태와 Workstation 상태는 수명주기와 조회 패턴이 다르다.
-- 향후 Agent heartbeat가 자주 갱신되면 책임 분리가 유리하다.
-- MCP/REST 양쪽에서 재사용하기 쉽다.
-
-단, 과한 계층이나 generic repository는 만들지 않는다.
-
----
-
-### 2. 첫 테이블은 workstations만
-
-초기 최소 컬럼 예:
+필요한 기능은 최소 두 개면 충분하다.
 
 ```text
-id
-workstation_id
- display_name
- hostname
- last_seen
- created_at
- updated_at
+UpsertAsync(...)
+ListAsync(...)
 ```
 
-필수 조건:
-- `workstation_id` unique
-- 같은 heartbeat가 반복되어도 row 중복 생성 금지
-- `last_seen` 갱신 가능
-
-처음부터 `projects`, `project_states`, `active_leases`, `project_events`를 전부 구현하지 않는다.
+필요 이상으로 generic repository나 추상 계층을 추가하지 않는다.
 
 ---
 
-### 3. Supabase 비밀값 처리
+## Supabase REST 구현 주의점
 
-Service Role Key는 Mini PC Server에만 둔다.
+현재 프로젝트는 Supabase .NET SDK보다 PostgREST HTTP 경계를 이미 마련했으므로, 첫 E2E에서는 그 방향을 유지하는 편이 단순하다.
 
-권장 환경 변수:
+heartbeat upsert에서는 반드시 `workstation_id` 충돌 시 update가 되도록 구현한다.
+
+검증해야 할 동작:
 
 ```text
-PROJECTHUB_SUPABASE_URL
-PROJECTHUB_SUPABASE_SERVICE_ROLE_KEY
+첫 heartbeat -> row 1개 생성
+같은 workstation_id heartbeat 재전송 -> row 수 유지
+last_seen -> 새로운 시각으로 갱신
 ```
 
-금지:
-- 실제 Key를 `appsettings.json`에 기록
-- 실제 Key를 MD에 기록
-- 실제 Key를 로그 출력
-- Agent에 Service Role Key 배포
-
-Agent는 항상 ProjectHub.Server를 통해서만 접근한다.
+API/헤더 세부 구현은 현재 named HttpClient 경계를 재사용한다.
 
 ---
 
-## 첫 API 범위
+## POST /api/agent/heartbeat
 
-### POST /api/agent/heartbeat
-
-예시:
+최소 요청 예:
 
 ```json
 {
@@ -208,48 +202,76 @@ Agent는 항상 ProjectHub.Server를 통해서만 접근한다.
 }
 ```
 
-서버 처리:
+최소 처리:
 
 ```text
-validate
-  -> workstation_id upsert
-  -> last_seen 갱신
-  -> Supabase 저장
-  -> 성공 응답
+1. 필수 값 검증
+2. 서버에서 last_seen 현재 시각 생성
+3. workstation_id 기준 Supabase upsert
+4. 성공/실패를 명확한 HTTP 상태로 반환
 ```
 
-초기 PoC에서는 인증 체계를 복잡하게 만들지 않는다.
-LAN 내부 E2E 성공이 우선이다.
-
-### GET /api/workstations
-
-Supabase 저장 결과를 그대로 확인할 수 있는 최소 조회 API를 만든다.
+클라이언트가 보낸 시각을 신뢰하기보다 첫 버전에서는 서버 시각을 사용하는 것을 권장한다.
 
 ---
 
-## E2E 완료 조건
+## GET /api/workstations
 
-다음 조건을 모두 만족하면 첫 연동 성공으로 본다.
+Supabase의 `workstations` 목록을 반환한다.
+
+첫 버전에서는 복잡한 paging/filtering/sorting이 필요 없다.
+
+목적은 저장 결과를 사람이 즉시 확인하는 것이다.
+
+---
+
+## Mini PC에서 실제로 검증해야 할 순서
+
+코드 준비 및 SQL 적용 후 사용자가 Mini PC에서 수행할 수 있도록 정확한 명령을 문서에 남긴다.
+
+권장 검증 순서:
 
 ```text
-[ ] Mini PC Server가 Supabase에 실제 연결됨
-[ ] 개발 PC에서 heartbeat POST 성공
+1. 새 PowerShell에서 환경 변수 존재 확인
+2. ProjectHub.Server 실행
+3. /api/status 확인
+4. 개발 PC 또는 Mini PC에서 heartbeat POST
+5. GET /api/workstations 확인
+6. heartbeat 재전송
+7. row 중복 없음 + last_seen 변경 확인
+8. 서버 재시작
+9. GET /api/workstations에서 데이터 유지 확인
+```
+
+비밀키는 검증 명령 출력에 노출하지 않는다.
+
+---
+
+## E2E 성공 기준
+
+다음이 모두 실제 확인되기 전에는 04-F를 완료 처리하지 않는다.
+
+```text
+[ ] workstations SQL이 실제 Supabase에 적용됨
+[ ] Mini PC Server가 환경 변수를 읽고 실행됨
+[ ] Supabase REST 호출 성공
+[ ] heartbeat POST 성공
 [ ] workstations row 생성
-[ ] 동일 heartbeat 재전송 시 중복 row 생성 안 됨
-[ ] last_seen 갱신됨
-[ ] GET /api/workstations에서 동일 PC 조회됨
-[ ] Server 재시작 후에도 동일 데이터 조회됨
+[ ] 동일 workstation 재전송 시 중복 없음
+[ ] last_seen 갱신
+[ ] GET /api/workstations 조회 성공
+[ ] Server 재시작 후 데이터 유지
 ```
-
-가능하면 실제 검증 명령과 결과를 task 문서에 기록한다.
 
 ---
 
-## `/api/status`에 대한 다음 피드백
+## `/api/status` 관련
 
-현재 `/api/status`가 `database = "supabase"`를 고정 반환한다면, 실제 Supabase 연결이 들어가는 시점부터는 설정 대상과 연결 상태를 구분하는 편이 좋다.
+현재 `database = "supabase"` 고정 표시는 당장 막는 요소가 아니다.
 
-예:
+첫 E2E 성공이 우선이다.
+
+그 이후 필요하면 다음처럼 바꿀 수 있다.
 
 ```json
 {
@@ -260,16 +282,7 @@ Supabase 저장 결과를 그대로 확인할 수 있는 최소 조회 API를 �
 }
 ```
 
-연결되지 않았을 때는:
-
-```text
-not-configured
-unavailable
-```
-
-등으로 구분할 수 있다.
-
-단, heartbeat E2E보다 이 상태 API 정교화가 우선되어서는 안 된다.
+그러나 `/api/status`에서 매 요청마다 Supabase에 불필요한 네트워크 체크를 넣지는 않는다.
 
 ---
 
@@ -278,6 +291,7 @@ unavailable
 첫 heartbeat E2E 성공 전에는 아래를 미룬다.
 
 ```text
+- projects 전체 구현
 - project_states 전체 구현
 - active_leases
 - project_events 확장
@@ -294,41 +308,42 @@ unavailable
 - Docker/Redis/자체 PostgreSQL
 ```
 
-지금 목표는 기능 수가 아니라 **Mini PC가 실제 중앙 서버 역할을 하기 시작하는 것**이다.
+지금 목표는 Mini PC가 실제로 **한 건의 workstation 상태를 Supabase에 기록하고 다시 읽어오는 것**이다.
 
 ---
 
-## Codex 수행 권장 방식
+## Codex 수행 지침
 
-1. 작업 시작 전에 정책/상태/task/이 파일을 읽는다.
-2. 먼저 04 task와 CurrentWork의 A 단계 의미 불일치를 정리한다.
-3. 실제 구현은 Supabase 연결 + workstation 최소 경로부터 시작한다.
-4. 한 번에 하나의 세부 작업만 수행한다.
-5. build/test 결과는 실제 실행 결과만 기록한다.
-6. 외부 Supabase 변경이 필요한 경우 어떤 SQL/설정이 필요한지 명확히 기록한다.
-7. 실제 E2E 검증 전에는 성공으로 표시하지 않는다.
-8. 사용자 승인 없이 commit/push하지 않는다.
+1. 기존 정책/현재 상태/04 task/이 파일을 먼저 읽는다.
+2. 현재 사용자 측 Supabase 프로젝트와 Mini PC 환경 변수 준비는 완료된 상태로 취급한다.
+3. 다음 세부 작업은 `04-B workstations 최소 스키마`다.
+4. SQL을 재사용 가능한 파일로 저장하고, 사용자가 Supabase SQL Editor에서 실행해야 할 내용을 명확히 남긴다.
+5. 외부 DB에 실제 적용됐다고 임의로 기록하지 않는다.
+6. 이후 04-C~E는 첫 heartbeat E2E에 필요한 최소 코드만 구현한다.
+7. build/test 결과와 실제 E2E 결과를 구분해서 문서화한다.
+8. 비밀키/토큰은 코드, 문서, 로그, 테스트 출력에 남기지 않는다.
+9. 사용자 승인 없이 commit/push하지 않는다.
 
 ---
 
 ## 현재 권장 다음 행동
 
-가장 먼저:
+즉시 진행할 작업:
 
 ```text
-04 작업 문서의 세부 순서를 E2E 중심으로 정합화
+04-B workstations 최소 스키마 작성
+  -> SQL 파일 제공
 ```
 
-그 직후:
+그 후 사용자가 SQL을 실제 Supabase에 적용하면:
 
 ```text
-Supabase 연결
-  -> workstations 최소 스키마
-  -> heartbeat upsert
-  -> workstations 조회
-  -> DEV PC -> Mini PC -> Supabase 실제 검증
+04-C Workstation Repository
+  -> 04-D heartbeat POST
+  -> 04-E workstations GET
+  -> 04-F 실제 Mini PC E2E
 ```
 
-으로 진행한다.
+로 진행한다.
 
-현재까지의 구조는 적절하다. 이제는 설계 확장보다 **첫 실제 데이터 왕복 성공**을 우선한다.
+현재 단계에서는 추가 설계보다 **첫 실제 Supabase 데이터 왕복 성공**을 가장 우선한다.
