@@ -18,248 +18,209 @@ Updated: 2026-09-15
 
 ---
 
-## 최신 GitHub 구현 상태 확인
+## 최신 상태 요약
 
-커밋 `6fb8dca4e1613e396d013f93b58c11a625c9365a` (`04-E`)를 확인했다.
+04-C~E 구현 후 실제 Mini PC + Supabase 환경에서 04-F E2E 검증까지 완료됐다.
 
-이 커밋에서 다음이 실제 구현 완료됐다.
-
-```text
-04-C IWorkstationRepository + SupabaseWorkstationRepository
-04-D POST /api/agent/heartbeat
-04-E GET /api/workstations
-```
-
-구체적으로 확인된 변경:
+현재 상태:
 
 ```text
-- ProjectHub.Core/IWorkstationRepository.cs 추가
-- Workstation 모델 추가
-- SupabaseWorkstationRepository 추가
-- workstation_id 기준 PostgREST upsert 구현
-- POST /api/agent/heartbeat 구현
-- 서버 시각 기반 last_seen 생성
-- GET /api/workstations 구현
-- DI에 IWorkstationRepository 등록
-- CurrentWork.md의 다음 작업을 04-F로 변경
-- tasks/04_supabase-schema.md에서 C/D/E 완료 처리
+04-A Supabase 설정/클라이언트 경계        완료
+04-B workstations 최소 스키마            완료
+04-C IWorkstationRepository              완료
+04-D POST /api/agent/heartbeat           완료
+04-E GET /api/workstations               완료
+04-F 실제 Supabase E2E 검증              완료
 ```
 
-따라서 이전 피드백에 있었던 "다음 작업은 04-C"라는 지시는 폐기한다.
-
-현재 정확한 다음 단계는 **04-F 실제 E2E 검증**이다.
+따라서 다음 작업은 **04-G Project 상태 확장**이다.
 
 ---
 
-## 사용자 측 실제 준비/검증 완료 상태
+## 04-F 실제 E2E 검증 완료 결과
 
-### Supabase
+사용자가 원격 Mini PC에서 최신 코드를 반영하고 ProjectHub.Server를 실행한 뒤 실제 Supabase 연결을 검증했다.
 
-사용자가 다음을 실제 완료했다.
-
-```text
-Supabase 프로젝트 생성 완료
-PROJECTHUB_SUPABASE_URL 등록 완료
-PROJECTHUB_SUPABASE_SERVICE_ROLE_KEY 등록 완료
-supabase/workstations.sql 실행 완료
-public.workstations 테이블 생성 확인 완료
-```
-
-실제 비밀키 값은 저장소/문서/로그에 기록하지 않는다.
-
-### Mini PC ProjectHub.Server
-
-원격 Mini PC에 저장소를 새로 복제했고 다음을 실제 확인했다.
+확인된 결과:
 
 ```text
-git clone 완료
-dotnet restore 완료
-전체 solution build 성공
-ProjectHub.Server 실행 성공
-Mini PC 내부 GET /api/status 성공
+[x] Mini PC ProjectHub.Server 실행
+[x] localhost:5240 heartbeat POST 성공
+[x] Supabase REST POST 응답 201 확인
+[x] workstations row 생성 확인
+[x] 동일 workstation_id로 heartbeat 2회 전송
+[x] row가 1개로 유지됨
+[x] last_seen 갱신 확인
+[x] created_at은 최초 생성 시각 유지
+[x] GET /api/workstations 조회 성공
+[x] Supabase Table Editor에서 실제 데이터 확인
+[x] 사용자 최종 E2E 검증 완료 확인
 ```
 
-실제 응답 의미:
+실제 검증에 사용된 workstation 예:
 
 ```text
-server   = ProjectHub
-status   = ok
-database = supabase
+workstation_id = SERVER-PC-01
+display_name   = SERVER-PC-01
+hostname       = DESKTOP-GGV0EFL
 ```
 
-`Invoke-RestMethod`가 JSON을 PowerShell 객체로 변환해 표 형태로 출력한 것은 정상 동작이다.
+같은 `workstation_id`를 두 번 전송한 뒤 Supabase에는 row가 1개만 존재했고 `last_seen`이 더 최신 시각으로 변경됐다.
 
-### 원격 DEV PC -> Mini PC 네트워크
+따라서 `workstation_id` 기준 PostgREST upsert가 정상 동작하는 것으로 확인한다.
+
+---
+
+## 04-F 중 발생했던 오류와 해결 상태
+
+초기 heartbeat E2E에서 Supabase POST가 HTTP 400으로 실패했다.
+
+원인은 신규 Workstation 객체의 `created_at`, `updated_at` null 값이 JSON payload에 포함되어 DB의 NOT NULL/default 정책과 충돌하는 구조였다.
+
+보완 후:
+
+```text
+- upsert 요청 payload에서 null 메타데이터 필드 제외
+- created_at / updated_at은 DB default/trigger에 맡김
+- Supabase 오류 응답 본문을 읽어 진단 가능하도록 개선
+```
+
+수정된 코드로 실제 POST 201과 데이터 저장 성공을 확인했으므로 이 문제는 현재 해결된 상태로 본다.
+
+---
+
+## 네트워크/운영 확인 상태
 
 Mini PC와 개발 PC는 서로 다른 원격지에 있다.
 
-Tailscale은 해당 Windows PC의 MSI 2502/2503 문제로 설치하지 못했으며, 이는 ProjectHub 코드 문제로 취급하지 않는다.
+Tailscale은 해당 Windows PC의 MSI 2502/2503 문제 때문에 사용하지 못했으나, ProjectHub 기능 검증에는 영향이 없다.
 
-대신 Cloudflare Quick Tunnel을 사용했고 다음 실제 호출에 성공했다.
+원격 접근은 Cloudflare Quick Tunnel로 다음 경로를 이미 검증했다.
 
 ```text
 DEV PC
   -> HTTPS
   -> Cloudflare Quick Tunnel
-  -> 원격 Mini PC
-  -> ProjectHub.Server
-  -> GET /api/status
-```
-
-개발 PC에서 Quick Tunnel URL을 통해 `/api/status`가 실제 성공했다.
-
-따라서 현재 다음은 검증 완료다.
-
-```text
-[x] Mini PC 서버 기동
-[x] Mini PC 내부 /api/status
-[x] 원격 DEV PC -> Mini PC 접근
-[x] Cloudflare Quick Tunnel 경유 HTTP 왕복
-```
-
-Cloudflare Quick Tunnel은 임시 테스트 경로다. 운영 구성으로 간주하지 않는다.
-
----
-
-## 현재 정확한 목표: 04-F 실제 E2E 검증
-
-이제 새 코드를 추가하기보다, 이미 구현된 04-C~E가 실제 Mini PC와 Supabase에서 정상 동작하는지 검증한다.
-
-목표 경로:
-
-```text
-DEV PC
-  -> POST /api/agent/heartbeat
-  -> Cloudflare Quick Tunnel
   -> Mini PC ProjectHub.Server
-  -> Supabase workstations upsert
-  -> GET /api/workstations
-  -> 동일 workstation 조회
 ```
+
+현재 Quick Tunnel은 테스트용 임시 경로로만 취급한다.
+
+Mini PC 로컬 테스트에서는 현재 ProjectHub.Server가 `http://localhost:5240`에서 정상 실행되는 것도 확인됐다.
 
 ---
 
-## 사용자 실제 검증 순서
+## 다음 작업: 04-G Project 상태 확장
 
-Mini PC에서 먼저 GitHub 최신 내용을 반영한다.
+이제 heartbeat로 workstation 생존 상태를 저장하는 단계에서, 실제 프로젝트의 Git/작업 상태를 중앙 서버가 보관하는 단계로 넘어간다.
 
-```text
-1. git pull
-2. dotnet restore (필요 시)
-3. dotnet build
-4. ProjectHub.Server 실행
-5. Cloudflare Quick Tunnel 실행
-```
+다만 04-G 전체를 한 번에 구현하지 않는다.
 
-그 후 DEV PC에서 실제 API를 호출한다.
+### 04-G 첫 단계 목표
 
-### 1. heartbeat 최초 전송
+먼저 **projects + project_states 최소 저장 경로**만 만든다.
 
-예시 요청 본문:
-
-```json
-{
-  "workstationId": "DEV-PC-01",
-  "displayName": "DEV-PC-01",
-  "hostname": "SUHO_DEV_PC"
-}
-```
-
-검증 목표:
+목표 흐름:
 
 ```text
-HTTP 성공
-Supabase workstations에 row 1개 생성
-last_seen 기록
+수동 API 요청
+  -> Mini PC ProjectHub.Server
+  -> Supabase projects / project_states
+  -> 조회 API
+  -> 저장된 project state 확인
 ```
 
-### 2. workstation 목록 조회
-
-`GET /api/workstations` 호출 후 방금 보낸 `DEV-PC-01`이 반환되는지 확인한다.
-
-### 3. 동일 heartbeat 재전송
-
-같은 `workstationId`로 다시 POST한다.
-
-검증 목표:
-
-```text
-row 수 증가하지 않음
-기존 row가 update 됨
-last_seen이 더 새로운 시각으로 갱신됨
-```
-
-### 4. 서버 재시작 후 persistence 확인
-
-ProjectHub.Server를 재시작한 뒤 다시 `GET /api/workstations`를 호출한다.
-
-검증 목표:
-
-```text
-Supabase에 저장된 workstation 데이터 유지
-```
+첫 단계에서는 Agent 자동 수집이 아니라 **수동 POST/GET으로 저장 경로 자체를 검증**한다.
 
 ---
 
-## 04-F 완료 기준
+## 권장 최소 상태 모델
 
-다음이 모두 실제 확인되기 전에는 04-F를 완료 처리하지 않는다.
+첫 `project_states` 경로에서 다음 정보를 우선 고려한다.
 
 ```text
-[x] workstations SQL 실제 Supabase 적용
-[x] public.workstations 테이블 생성 확인
-[x] Mini PC 저장소 clone
-[x] Mini PC restore/build 성공
-[x] Mini PC Server 기동
-[x] Mini PC /api/status 성공
-[x] 원격 DEV PC -> Mini PC /api/status 성공
-[x] 04-C repository 구현 코드 존재
-[x] 04-D heartbeat API 구현 코드 존재
-[x] 04-E workstation GET 구현 코드 존재
-[ ] Mini PC 최신 04-E 코드 pull/build/run
-[ ] Supabase REST workstation upsert 성공
-[ ] DEV PC -> POST /api/agent/heartbeat 성공
-[ ] workstations row 생성
-[ ] 동일 workstation 재전송 시 중복 없음
-[ ] last_seen 갱신
-[ ] DEV PC -> GET /api/workstations 성공
-[ ] Server 재시작 후 데이터 유지
+projectId
+workstationId
+branch
+headSha
+dirty
+changedCount
+untrackedCount
+deletedCount
+diffFingerprint
+lastFileActivity
+lastSeen
 ```
 
-build/test 성공과 실제 외부 Supabase E2E 성공은 반드시 구분해서 기록한다.
+기존 설계 방향을 유지하되, 첫 구현에서는 E2E에 필요한 필드만 사용하고 불필요한 구조 확대를 피한다.
+
+### projects 최소 정보
+
+초기 `projects`에는 다음 정도면 충분하다.
+
+```text
+project_id
+display_name
+repo_url
+created_at
+updated_at
+```
+
+### project_states 핵심 제약
+
+한 프로젝트/한 workstation의 최신 상태는 중복 row를 계속 쌓기보다 우선 upsert 가능한 구조를 권장한다.
+
+예:
+
+```text
+UNIQUE(project_id, workstation_id)
+```
+
+Git 이력/감사 로그는 이후 `project_events`에서 다룰 수 있으므로 첫 단계에서는 최신 상태 저장에 집중한다.
 
 ---
 
-## `/api/status` 해석 주의
+## 04-G 첫 E2E 목표
 
-현재 `/api/status`의 `database = "supabase"` 표시는 실제 DB 쿼리 성공 증명이 아니다.
-
-지금까지 `/api/status` 성공으로 확인된 것은 다음뿐이다.
+첫 검증은 다음 정도로 제한한다.
 
 ```text
-ProjectHub.Server 정상 기동
-Mini PC 내부 HTTP 접근 가능
-원격 DEV PC -> Mini PC 네트워크 접근 가능
+1. projects / project_states 최소 SQL 정의
+2. Supabase SQL 적용은 사용자 확인 후 진행 상태 반영
+3. ProjectState 저장 Repository 경계 구현
+4. 수동 POST API 구현
+5. GET 조회 API 구현
+6. Mini PC에서 실제 Supabase E2E 검증
+7. 동일 projectId + workstationId 재전송 시 update 확인
 ```
 
-Supabase 실제 읽기/쓰기 성공은 반드시 heartbeat와 `/api/workstations`로 별도 검증한다.
+예상 테스트 데이터 예:
+
+```text
+projectId      = MCP-with-MiniPC
+workstationId  = SERVER-PC-01
+branch         = main
+headSha        = <현재 commit SHA>
+dirty          = false
+```
+
+실제 필드/엔드포인트 명은 기존 코드 구조와 정책에 맞춰 Codex가 정리한다.
 
 ---
 
 ## 아직 하지 말 것
 
-04-F 성공 전에는 아래 확장을 미룬다.
+04-G 첫 project_state 수동 E2E 성공 전에는 아래를 미룬다.
 
 ```text
-- 04-G Project 상태 저장 확장
-- projects 전체 구현 확대
-- project_states 전체 구현 확대
-- active_leases
-- project_events 확장
 - FileSystemWatcher
-- Git HEAD / dirty / changed files 수집
-- Agent 전체 자동화
+- 자동 Git status 수집
+- 자동 git diff 계산
+- Agent 주기 전송 자동화
+- active_leases 판정
+- project_events 확장
 - 멀티 PC 충돌 판정
+- 최신 workstation 자동 선택 로직
 - MCP
 - GitHub Bridge
 - NAS Gateway
@@ -269,38 +230,47 @@ Supabase 실제 읽기/쓰기 성공은 반드시 heartbeat와 `/api/workstation
 - Docker/Redis/자체 PostgreSQL
 ```
 
-현재 목표는 오직 **원격 DEV PC -> Mini PC -> Supabase -> Mini PC -> DEV PC 데이터 왕복 성공**이다.
+지금 우선순위는 **project state 한 건을 Supabase에 저장하고 다시 읽는 것**이다.
 
 ---
 
 ## Codex 수행 지침
 
-1. `AGENTS.md`, 구현 계획, `CurrentWork.md`, 활성 04 task, 이 파일 순으로 확인한다.
-2. 커밋 `04-E` 기준 04-C/D/E는 이미 구현 완료 상태로 취급한다.
-3. 이전 피드백의 "04-C부터 구현" 지시는 무시한다.
-4. 현재 다음 작업은 04-F 실제 E2E 검증이다.
-5. 사용자 Supabase 환경 변수와 workstations SQL 적용은 완료된 상태다.
-6. Mini PC clone/build/server 실행과 원격 `/api/status` 접근도 이미 실제 성공했다.
-7. 실제 heartbeat/GET 결과가 확인되기 전에는 04-F 완료 처리하지 않는다.
-8. 비밀키/토큰/Quick Tunnel URL은 저장소에 고정 기록하지 않는다.
-9. E2E 중 문제가 나오면 먼저 현재 구현의 오류를 최소 수정하고, 구조 확대는 하지 않는다.
-10. 사용자 승인 없이 자동 deploy 또는 외부 시스템 파괴적 변경을 수행하지 않는다.
+1. `AGENTS.md`, 구현 계획, `CurrentWork.md`, 활성 task, 이 파일 순으로 확인한다.
+2. 04-F E2E는 사용자 실제 환경에서 완료된 것으로 취급한다.
+3. `CurrentWork.md`와 `tasks/04_supabase-schema.md`의 04-F 상태를 완료로 갱신한다.
+4. 다음 작업을 04-G Project 상태 확장으로 전환한다.
+5. 04-G 전체를 한 번에 구현하지 말고 첫 세부 단계만 수행한다.
+6. 첫 세부 단계는 `projects + project_states` 최소 스키마/저장 경로다.
+7. 먼저 수동 POST/GET으로 Supabase E2E가 가능한 최소 구조를 만든다.
+8. FileSystemWatcher나 자동 Git 상태 수집은 아직 구현하지 않는다.
+9. Supabase Secret/Service Role Key를 코드, 문서, 로그에 기록하지 않는다.
+10. build/test 성공과 실제 Supabase E2E 성공을 계속 구분해서 기록한다.
+11. 사용자 승인 없이 자동 deploy, Git mutation, 외부 시스템 파괴적 변경을 수행하지 않는다.
 
 ---
 
 ## 현재 권장 다음 행동
 
-새 구현이 아니라 사용자 측 실제 실행 검증으로 진행한다.
+Codex가 수행할 다음 작업:
 
 ```text
-Mini PC: git pull -> build -> ProjectHub.Server 실행
-  -> Cloudflare Quick Tunnel 실행
-DEV PC: POST /api/agent/heartbeat
-  -> Supabase row 확인
-  -> GET /api/workstations
-  -> 동일 heartbeat 재전송
-  -> 중복 없음 + last_seen 갱신 확인
-  -> Server 재시작 후 persistence 확인
+04-F 완료 기록
+  -> 04-G 시작
+  -> projects + project_states 최소 스키마/계약 설계
+  -> 첫 수동 저장/조회 API 구현
 ```
 
-이 검증이 성공한 뒤에만 04-G로 넘어간다.
+사용자 측 다음 실제 검증은 해당 구현이 GitHub에 반영된 뒤 진행한다.
+
+```text
+Mini PC git pull
+  -> restore/build
+  -> ProjectHub.Server 실행
+  -> 수동 project_state POST
+  -> Supabase row 확인
+  -> GET 조회
+  -> 동일 project/workstation 재전송 시 update 확인
+```
+
+이 첫 project_state E2E가 성공한 뒤 `project_events`, `active_leases`, 자동 Agent 수집으로 확장한다.
