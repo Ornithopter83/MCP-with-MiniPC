@@ -14,9 +14,9 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 | --- | --- | --- | --- |
 | 01 | [목표와 개발 기준](tasks/01_goal-and-standards.md) | 요구사항·보안·수용 기준 확정 | 대기 |
 | 02 | [개발환경 기반구축](tasks/02_environment-foundation.md) | 솔루션과 프로젝트 골격 구성 | 완료 |
-| 03 | [Server 스켈레톤](tasks/03_server-skeleton.md) | `/api/status`와 설정 기반 마련 | 진행 |
-| 04 | [Supabase 스키마와 저장소](tasks/04_supabase-schema.md) | 중앙 상태 저장 계층 구현 | 대기 |
-| 05 | [Agent heartbeat와 상태수집](tasks/05_agent-state.md) | PC·Git 상태 수집 | 대기 |
+| 03 | [Server 스켈레톤](tasks/03-server-skeleton.md) | `/api/status`와 설정 기반 마련 | 완료 |
+| 04 | [Supabase 스키마와 저장소](tasks/04-supabase-schema.md) | 중앙 상태 저장 계층 구현 | 진행 |
+| 05 | [Agent heartbeat와 상태수집](tasks/05-agent-state.md) | PC·Git 상태 수집 | 대기 |
 | 06 | [Project 상태 API](tasks/06_project-status-api.md) | 프로젝트 상태 조회 API | 대기 |
 | 07 | [멀티 PC와 동시작업 판정](tasks/07-multi-pc-concurrency.md) | lease·충돌 상태 검증 | 대기 |
 | 08 | [검증·운영·확장](tasks/08-validation-operations.md) | 배포 검증과 후속 경계 확정 | 대기 |
@@ -38,6 +38,6 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: 03 Server 스켈레톤
+현재 작업: 04 Supabase 스키마와 저장소
 
-잔여 작업 6개 (03, 04, 05, 06, 07, 08)
+잔여 작업 5개 (04, 05, 06, 07, 08)

@@ -18,6 +18,7 @@ Updated: 2026-09-15
 - ASP.NET Core Server는 `/api/status` 스켈레톤을 제공하며 Supabase 연결·정책 옵션 바인딩은 아직 구성하지 않았다.
 - `GPT-Web-Feedback.md`가 원격에서 추가됐으며, pull 전 확인 규칙을 `AGENTS.md`에 반영했다.
 - Core 서비스 계약과 Infrastructure의 교체 가능한 NoOp 저장소 DI 등록 경계를 추가했다.
+- `/api/status` 통합 테스트가 추가되어 HTTP 200과 기본 JSON 필드를 검증한다.
 
 ## 목표 구조
 
@@ -25,7 +26,7 @@ Updated: 2026-09-15
 
 ## 진행
 
-잔여 작업 6개 (03, 04, 05, 06, 07, 08)
+잔여 작업 5개 (04, 05, 06, 07, 08)
 
 ## 작업 정책
 
@@ -42,4 +43,4 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 다음 작업
 
-03 Server 스켈레톤의 C. Server 테스트 추가
+04 Supabase 스키마와 저장소의 A. Supabase 연결
