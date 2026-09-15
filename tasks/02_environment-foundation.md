@@ -36,8 +36,8 @@ ProjectHub의 계층형 .NET 솔루션과 테스트 프로젝트를 준비한다
 
 ## 검증 방법
 
-- `dotnet build ProjectHub.slnx`
+- `dotnet build ProjectHub.sln`
 
 ## 결과
 
-- A/B/C 완료. `dotnet build ProjectHub.slnx` 성공(경고 0, 오류 0), `dotnet test ProjectHub.slnx --no-restore` 성공(2개 통과).
+- A/B/C 완료. `dotnet build ProjectHub.sln` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).

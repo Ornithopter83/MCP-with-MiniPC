@@ -36,8 +36,8 @@ Server는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성�
 
 ## 검증 방법
 
-- `dotnet build ProjectHub.slnx`
-- `dotnet test ProjectHub.slnx`
+- `dotnet build ProjectHub.sln`
+- `dotnet test ProjectHub.sln`
 
 ## 결과
 

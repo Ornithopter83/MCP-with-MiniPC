@@ -7,7 +7,7 @@ Updated: 2026-09-15
 - 저장소: `C:\Projects\AI-AGENTS\MCP\Server`
 - 브랜치: 아직 Git 초기화 전
 - 도구체인: .NET SDK 9.0.312 확인
-- 솔루션: `ProjectHub.slnx`
+- 솔루션: `ProjectHub.sln`
 - 활성 작업: `tasks/03_server-skeleton.md`
 
 ## 확인된 현재 구현
@@ -34,8 +34,8 @@ Updated: 2026-09-15
 ## 표준 검증
 
 ```powershell
-dotnet build ProjectHub.slnx --no-restore
-dotnet test ProjectHub.slnx --no-restore
+dotnet build ProjectHub.sln --no-restore
+dotnet test ProjectHub.sln --no-restore
 ```
 
 ## 다음 작업
