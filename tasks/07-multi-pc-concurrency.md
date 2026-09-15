@@ -1,0 +1,31 @@
+# 멀티 PC와 동시작업 판정
+
+## 목표
+
+여러 workstation의 상태를 독립 보존하고 실제 활동 기반 lease와 동시작업을 판정한다.
+
+## 세부 작업
+
+### A. 활동 우선순위와 lease 갱신
+### B. HEAD_MISMATCH·CONCURRENT_WORK 판정
+### C. 두 Agent 통합 검증
+
+## 진행
+
+잔여 작업 3개 (A, B, C)
+
+## 변경 금지
+
+- heartbeat만으로 active lease를 빼앗지 않는다.
+
+## 완료 기준
+
+- 두 PC의 상태가 충돌 없이 저장되고 동시 변경이 명시적으로 표시된다.
+
+## 검증 방법
+
+- 두 workstation payload 시나리오 테스트
+
+## 결과
+
+- 아직 수행하지 않음
