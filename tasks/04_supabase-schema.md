@@ -20,17 +20,17 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 
 - `supabase/workstations.sql`에 `workstation_id` unique, display name, hostname, last_seen, created/updated 시각, updated_at trigger, RLS 활성화를 정의했다. 사용자가 Supabase SQL Editor에서 실행해야 한다.
 
-### C. IWorkstationRepository와 Supabase 구현
+### C. IWorkstationRepository와 Supabase 구현 (완료: 2026-09-15)
 
-- workstation 전용 저장소 계약과 PostgREST upsert/list 구현을 추가한다.
+- `IWorkstationRepository`와 `SupabaseWorkstationRepository`를 추가했다. 기존 named `HttpClient("Supabase")`를 통해 PostgREST upsert/list를 수행한다.
 
-### D. heartbeat upsert
+### D. heartbeat upsert (완료: 2026-09-15)
 
-- `POST /api/agent/heartbeat` 요청 검증, upsert, last_seen 갱신을 구현한다.
+- `POST /api/agent/heartbeat` 요청 검증, 서버 시각 기반 `last_seen` 생성, `workstation_id` 충돌 병합 upsert와 503 오류 응답을 구현했다.
 
-### E. workstation 조회
+### E. workstation 조회 (완료: 2026-09-15)
 
-- `GET /api/workstations`로 저장된 workstation 목록을 반환한다.
+- `GET /api/workstations`로 Supabase `workstations` 목록을 반환한다.
 
 ### F. 실제 E2E 검증
 
@@ -42,7 +42,7 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 
 ## 진행
 
-잔여 작업 5개 (C, D, E, F, G)
+잔여 작업 2개 (F, G)
 
 ## 변경 금지
 
@@ -64,9 +64,15 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 
 - A 완료: 환경 변수 기반 `SupabaseOptions`와 Supabase REST named `HttpClient` 경계를 추가했다. 환경 변수가 없어도 서버가 기동되며 비밀값은 저장소에 기록하지 않는다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
 - B 완료: `supabase/workstations.sql`을 추가했다. 실제 Supabase 적용은 아직 하지 않았다.
+- C 완료: workstation 저장소 계약과 PostgREST 구현을 추가했다.
+- D 완료: heartbeat upsert API를 추가했다.
+- E 완료: workstation 목록 조회 API를 추가했다.
+
+실제 Supabase E2E는 Mini PC 실행 환경에서만 검증할 수 있으므로 F에 남겨두었다.
 
 ## 사용자 수행 필요
 
 - Supabase 프로젝트를 생성하고 URL과 Service Role Key를 Mini PC Server 실행 환경에 `PROJECTHUB_SUPABASE_URL`, `PROJECTHUB_SUPABASE_SERVICE_ROLE_KEY`로 등록한다.
 - 실제 키는 이 저장소나 문서에 기록하지 않는다.
 - `supabase/workstations.sql`을 Supabase SQL Editor에서 실행하고 테이블 생성 여부를 확인한다.
+- Mini PC에서 Server를 재시작한 뒤 `/api/status`, heartbeat POST, `/api/workstations`를 순서대로 호출한다.

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using ProjectHub.Core;
 
 namespace ProjectHub.Infrastructure;
@@ -28,6 +27,7 @@ public static class ServiceCollectionExtensions
         });
         services.AddSingleton<IProjectStateRepository, NoOpProjectStateRepository>();
         services.AddSingleton<IProjectService, ProjectService>();
+        services.AddSingleton<IWorkstationRepository, SupabaseWorkstationRepository>();
         return services;
     }
 }
