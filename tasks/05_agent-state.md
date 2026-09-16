@@ -12,7 +12,7 @@ Agent가 heartbeat와 branch, HEAD, dirty, 파일 목록을 Server로 전송한�
 
 ## 진행
 
-잔여 작업 1개 (C-E2E)
+잔여 작업 없음
 
 ## 변경 금지
 
@@ -55,3 +55,6 @@ Agent가 heartbeat와 branch, HEAD, dirty, 파일 목록을 Server로 전송한�
 - C 검증: 전체 솔루션 빌드 성공(경고 0, 오류 0), 전체 테스트 5개 통과. 실제 DEV PC 파일 변경부터 Supabase 자동 갱신까지의 E2E는 사용자 확인 대기다.
 - C 격리 E2E: 임시 Git 저장소에서 파일 생성 및 tracked 파일 수정을 수행해 Agent 로그의 `Project state sent`와 Server 조회 결과(`dirty=true`, `changed_count=1`, `untracked_count` 갱신)를 확인했다. 실제 사용자 프로젝트 E2E는 아직 대기다.
 - C 보완: 파일 이벤트 후 `last_file_activity`가 자동 저장되도록 수정했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(5개 통과).
+
+- C 실제 DEV PC E2E 완료: 개발 PC 저장소 루트에서 임시 파일 생성 → FileSystemWatcher debounce → Agent → 공식 HTTPS 터널 → Server → Supabase 조회를 확인했다. 결과는 `dirty=true`, `untracked_count=1`, `last_file_activity` 갱신이었다. 테스트 프로세스와 임시 파일·설정은 복구했다.
+- C 최종 검증: `dotnet test ProjectHub.sln --no-restore` 성공(5개 통과).
