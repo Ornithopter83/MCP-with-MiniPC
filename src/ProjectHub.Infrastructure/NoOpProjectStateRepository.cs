@@ -4,6 +4,9 @@ namespace ProjectHub.Infrastructure;
 
 internal sealed class NoOpProjectStateRepository : IProjectStateRepository
 {
+    public Task UpsertProjectAsync(Project project, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
     public Task UpsertProjectStateAsync(ProjectState state, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
 

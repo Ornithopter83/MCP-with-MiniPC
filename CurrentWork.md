@@ -24,6 +24,9 @@ Updated: 2026-09-15
 - `supabase/workstations.sql`로 04-B 최소 스키마 정의를 완료했다. 실제 Supabase 적용은 사용자 확인이 필요하다.
 - `IWorkstationRepository`, `SupabaseWorkstationRepository`, heartbeat upsert와 workstation 조회 API를 구현했다. 실제 Mini PC→Supabase E2E는 아직 검증하지 않았다.
 - heartbeat upsert payload에서 null 메타데이터 필드를 제외하고, Supabase 오류 응답 본문을 읽어 502로 반환하도록 보완했다.
+- 사용자가 Mini PC와 Supabase에서 04-F 실제 E2E를 완료했다. heartbeat upsert, 중복 방지, `last_seen` 갱신, workstation 조회, 서버 재시작 후 persistence를 확인했다.
+- `supabase/project-state.sql`에 04-G 첫 단계의 `projects`와 `project_states` 최소 스키마를 정의하고 사용자가 Supabase에서 실행했다.
+- `SupabaseProjectStateRepository`와 수동 project state POST/GET API를 구현했다. 실제 Supabase E2E는 사용자 검증 대기다.
 
 ## 목표 구조
 
@@ -48,4 +51,4 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 다음 작업
 
-04 Supabase 스키마와 저장소의 F. 실제 E2E 검증
+04 Supabase 스키마와 저장소의 G-C. project state 실제 E2E 검증

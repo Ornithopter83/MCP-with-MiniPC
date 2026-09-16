@@ -14,7 +14,17 @@ public sealed class ProjectService(IProjectStateRepository repository) : IProjec
         repository.GetProjectStatesAsync(projectId, cancellationToken);
 
     public Task UpdateProjectStateAsync(
+        Project project,
         ProjectState state,
         CancellationToken cancellationToken = default) =>
-        repository.UpsertProjectStateAsync(state, cancellationToken);
+        UpdateProjectAndStateAsync(project, state, cancellationToken);
+
+    private async Task UpdateProjectAndStateAsync(
+        Project project,
+        ProjectState state,
+        CancellationToken cancellationToken)
+    {
+        await repository.UpsertProjectAsync(project, cancellationToken);
+        await repository.UpsertProjectStateAsync(state, cancellationToken);
+    }
 }

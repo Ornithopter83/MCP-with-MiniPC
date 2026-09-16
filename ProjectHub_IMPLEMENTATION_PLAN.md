@@ -38,6 +38,6 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: 04 Supabase 스키마와 저장소
+현재 작업: 04 Supabase 스키마와 저장소 G-C
 
 잔여 작업 5개 (04, 05, 06, 07, 08)

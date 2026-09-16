@@ -12,6 +12,7 @@ public interface IProjectService
         CancellationToken cancellationToken = default);
 
     Task UpdateProjectStateAsync(
+        Project project,
         ProjectState state,
         CancellationToken cancellationToken = default);
 }

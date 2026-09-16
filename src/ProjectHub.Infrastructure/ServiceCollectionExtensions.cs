@@ -25,7 +25,7 @@ public static class ServiceCollectionExtensions
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ServiceRoleKey}");
             }
         });
-        services.AddSingleton<IProjectStateRepository, NoOpProjectStateRepository>();
+        services.AddSingleton<IProjectStateRepository, SupabaseProjectStateRepository>();
         services.AddSingleton<IProjectService, ProjectService>();
         services.AddSingleton<IWorkstationRepository, SupabaseWorkstationRepository>();
         return services;

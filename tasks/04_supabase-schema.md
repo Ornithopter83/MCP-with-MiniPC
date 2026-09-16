@@ -32,17 +32,29 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 
 - `GET /api/workstations`로 Supabase `workstations` 목록을 반환한다.
 
-### F. 실제 E2E 검증
+### F. 실제 E2E 검증 (완료: 2026-09-15)
 
-- PowerShell/curl로 heartbeat POST 후 목록 GET, 중복 방지, last_seen 갱신, 서버 재시작 후 조회를 확인한다.
+- 사용자가 Mini PC와 Supabase에서 heartbeat POST, row 생성, 동일 workstation upsert, `last_seen` 갱신, 목록 GET, 서버 재시작 후 persistence를 확인했다.
 
-### G. Project 상태 확장
+### G. Project 상태 확장 (진행)
 
-- 첫 heartbeat E2E 성공 후 projects, project_states, project_events, active_leases를 단계적으로 추가한다.
+- 첫 heartbeat E2E 성공 후 projects와 project_states 최소 저장 경로부터 단계적으로 추가한다.
+
+#### G-A. projects/project_states 최소 스키마 설계 (완료: 2026-09-15)
+
+- `supabase/project-state.sql`에 프로젝트 식별자와 workstation별 최신 상태의 unique 제약을 정의했다.
+- 사용자가 Supabase SQL Editor에서 실행하고 테이블 생성을 확인했다.
+
+#### G-B. project state 저장소와 수동 API (완료: 2026-09-15)
+
+- `SupabaseProjectStateRepository`가 `projects`와 `project_states`를 순서대로 upsert한다.
+- `POST /api/projects/{projectId}/state`로 수동 상태를 저장한다.
+- `GET /api/projects/{projectId}/states`와 `/states/{workstationId}`로 상태를 조회한다.
+- 자동 Git 수집과 FileSystemWatcher는 구현하지 않는다.
 
 ## 진행
 
-잔여 작업 2개 (F, G)
+잔여 작업 1개 (G-C)
 
 ## 변경 금지
 
@@ -69,7 +81,9 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 - D 보완: upsert 요청에서 null 메타데이터 필드를 제외하고 Supabase 오류 본문을 읽어 502 응답에 포함하도록 수정했다.
 - E 완료: workstation 목록 조회 API를 추가했다.
 
-실제 Supabase E2E는 Mini PC 실행 환경에서만 검증할 수 있으므로 F에 남겨두었다.
+F 완료: 사용자가 실제 Mini PC→Supabase E2E를 검증했다.
+G-A 완료: `supabase/project-state.sql`을 작성했고 사용자가 Supabase 적용 및 테이블 생성을 확인했다.
+G-B 완료: project state 저장소와 수동 POST/GET API를 구현했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
 
 ## 사용자 수행 필요
 
@@ -77,3 +91,6 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 - 실제 키는 이 저장소나 문서에 기록하지 않는다.
 - `supabase/workstations.sql`을 Supabase SQL Editor에서 실행하고 테이블 생성 여부를 확인한다.
 - Mini PC에서 Server를 재시작한 뒤 `/api/status`, heartbeat POST, `/api/workstations`를 순서대로 호출한다.
+- Mini PC에서 최신 코드를 반영하고 Server를 재시작한다.
+- 수동 project state POST 후 `projects`, `project_states` row 생성을 확인한다.
+- GET 두 API와 동일 project/workstation 재전송 시 update를 확인한다.

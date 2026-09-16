@@ -2,6 +2,8 @@ namespace ProjectHub.Core;
 
 public interface IProjectStateRepository
 {
+    Task UpsertProjectAsync(Project project, CancellationToken cancellationToken = default);
+
     Task UpsertProjectStateAsync(ProjectState state, CancellationToken cancellationToken = default);
 
     Task<ProjectState?> GetProjectStateAsync(
