@@ -28,4 +28,7 @@ Agent가 heartbeat와 branch, HEAD, dirty, 파일 목록을 Server로 전송한�
 
 ## 결과
 
-- 아직 수행하지 않음
+- A 구현 완료: 설정 기반 Server heartbeat sender/runner를 추가했다. `ServerBaseUrl`, `WorkstationId`, `DisplayName`, `HeartbeatIntervalSeconds`를 JSON·환경 변수·명령줄로 설정할 수 있고 hostname은 `Environment.MachineName`으로 전송한다.
+- A 구현 완료: HTTP 실패 시 프로세스를 종료하지 않고 다음 주기에 재시도하며 Ctrl+C 취소를 처리한다. Agent는 Supabase에 직접 접근하지 않는다.
+- A 실환경 E2E 대기: DEV PC에서 Agent 실행 후 Mini PC Server와 Supabase의 반복 `last_seen` 갱신, Server 중단/복구 재전송을 확인해야 한다.
+- 검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
