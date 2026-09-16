@@ -4,7 +4,8 @@
 - 먼저 읽을 파일: `AGENTS.md`, `ProjectHub_IMPLEMENTATION_PLAN.md`, `CurrentWork.md`, 활성 task 파일
 - 현재 구조: `src/ProjectHub.Core`, `Infrastructure`, `Server`, `Agent`; `tests/ProjectHub.Core.Tests`, `Server.Tests`
 - 완료 상태: 기존 루트 초기화, .NET 솔루션 및 6개 프로젝트 생성, 프로젝트 참조 연결, `/api/status` 스켈레톤 생성, Core/Infrastructure/Server DI 경계 연결, heartbeat null 필드 제외·Supabase 오류 본문 처리, 빌드·테스트 통과
-- 현재 작업: 04 Supabase 스키마와 저장소, 다음 세부 작업 G-C
+- 현재 작업: 05 Agent heartbeat와 상태수집, 다음 세부 작업 A
 - 표준 검증: `dotnet build ProjectHub.sln --no-restore`, `dotnet test ProjectHub.sln --no-restore`
 - 보안 경계: Supabase Service Role Key와 Agent API Key는 환경 변수·보안 저장소 외에 기록하지 않는다.
-- 보류: Mini PC에서 project state POST/GET 실제 E2E, LAN Agent 등록, Mini PC 운영 배포, 외부 계정 승인
+- 완료: 서버 PC에서 project state POST/GET, Supabase 저장, 동일 project/workstation update, 실제 `head_sha` 저장 확인
+- 보류: Agent 자동 heartbeat/상태수집, LAN Agent 등록, Mini PC 운영 배포, 외부 계정 승인

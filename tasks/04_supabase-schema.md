@@ -6,7 +6,7 @@ Supabase `workstations` 최소 경로를 먼저 실제 E2E로 연결하고, 이�
 
 ## 현재 기준
 
-Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기반 Supabase 설정과 HTTP 클라이언트 경계를 추가했으며, 실제 Supabase 계정·키·스키마는 아직 연결하지 않았다.
+Server와 Infrastructure DI 경계가 존재한다. 환경 변수 기반 Supabase REST 연결과 project state 수동 저장·조회 경로가 실제 서버 PC에서 검증됐다.
 
 ## 세부 작업
 
@@ -52,9 +52,16 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 - `GET /api/projects/{projectId}/states`와 `/states/{workstationId}`로 상태를 조회한다.
 - 자동 Git 수집과 FileSystemWatcher는 구현하지 않는다.
 
+#### G-C. project state 실제 E2E 검증 (완료: 2026-09-16)
+
+- 사용자가 서버 PC에서 project state 수동 POST/GET를 성공시켰다.
+- Supabase `project_states`에 `SERVER-PC-01`, `main`, `dirty=true`, `changed_count=1`, `untracked_count=0` row를 확인했다.
+- `head_sha`에 실제 전체 커밋 SHA `cebda36a4937056e9abd11254131ee42ad7afc83`가 저장됐다.
+- 동일 `project_id` + `workstation_id` 재전송에 따른 update를 확인했다.
+
 ## 진행
 
-잔여 작업 1개 (G-C)
+잔여 작업 없음
 
 ## 변경 금지
 
@@ -84,6 +91,7 @@ Server와 Infrastructure DI 경계가 존재한다. 04-A에서 환경 변수 기
 F 완료: 사용자가 실제 Mini PC→Supabase E2E를 검증했다.
 G-A 완료: `supabase/project-state.sql`을 작성했고 사용자가 Supabase 적용 및 테이블 생성을 확인했다.
 G-B 완료: project state 저장소와 수동 POST/GET API를 구현했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
+G-C 완료: 사용자가 서버 PC에서 project state POST/GET, Supabase 저장, 동일 project/workstation update, 실제 `head_sha` 저장을 검증했다.
 
 ## 사용자 수행 필요
 
@@ -91,6 +99,4 @@ G-B 완료: project state 저장소와 수동 POST/GET API를 구현했다. `dot
 - 실제 키는 이 저장소나 문서에 기록하지 않는다.
 - `supabase/workstations.sql`을 Supabase SQL Editor에서 실행하고 테이블 생성 여부를 확인한다.
 - Mini PC에서 Server를 재시작한 뒤 `/api/status`, heartbeat POST, `/api/workstations`를 순서대로 호출한다.
-- Mini PC에서 최신 코드를 반영하고 Server를 재시작한다.
-- 수동 project state POST 후 `projects`, `project_states` row 생성을 확인한다.
-- GET 두 API와 동일 project/workstation 재전송 시 update를 확인한다.
+- 04-G 검증 완료. 다음 활성 작업은 `tasks/05-agent-state.md`의 05-A다.
