@@ -7,7 +7,8 @@ public sealed record AgentOptions(
     string WorkstationId,
     string DisplayName,
     TimeSpan HeartbeatInterval,
-    IReadOnlyList<ProjectRegistration> RegisteredProjects)
+    IReadOnlyList<ProjectRegistration> RegisteredProjects,
+    long LargeFileThresholdBytes)
 {
     public static AgentOptions Load(string[] args)
     {
@@ -30,6 +31,7 @@ public sealed record AgentOptions(
         SetFromEnvironment(values, "WorkstationId", "PROJECTHUB_AGENT_WORKSTATION_ID");
         SetFromEnvironment(values, "DisplayName", "PROJECTHUB_AGENT_DISPLAY_NAME");
         SetFromEnvironment(values, "HeartbeatIntervalSeconds", "PROJECTHUB_AGENT_HEARTBEAT_INTERVAL_SECONDS");
+        SetFromEnvironment(values, "LargeFileThresholdBytes", "PROJECTHUB_AGENT_LARGE_FILE_THRESHOLD_BYTES");
 
         foreach (var argument in args)
         {
@@ -51,12 +53,14 @@ public sealed record AgentOptions(
             throw new InvalidOperationException("Agent HeartbeatIntervalSeconds must be at least 1.");
         }
 
+        var threshold = long.TryParse(values["LargeFileThresholdBytes"], out var configuredThreshold) && configuredThreshold > 0 ? configuredThreshold : 1L << 30;
+
         return new AgentOptions(
             new Uri(serverBaseUrl.ToString().TrimEnd('/') + "/"),
             workstationId,
             displayName,
             TimeSpan.FromSeconds(intervalSeconds),
-            ReadProjects(configPath));
+            ReadProjects(configPath), threshold);
     }
 
     private static void ReadString(JsonElement agent, string name, IDictionary<string, string?> values)

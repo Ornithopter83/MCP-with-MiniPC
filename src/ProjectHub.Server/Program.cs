@@ -13,6 +13,57 @@ app.MapGet("/api/status", () => Results.Ok(new
     time = DateTimeOffset.UtcNow
 }));
 
+app.MapPost("/api/large-data/assertions", async (
+    LargeDataAssertionRequest request,
+    ILargeDataAssertionIssuer issuer,
+    LargeDataOptions options,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ProjectId) || string.IsNullOrWhiteSpace(request.WorkstationId) ||
+        string.IsNullOrWhiteSpace(request.ObjectHash) || request.ObjectHash.Length != 64 || request.SizeBytes < 0)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["projectId, workstationId, a 64-character objectHash, and non-negative sizeBytes are required."] });
+    var now = DateTimeOffset.UtcNow;
+    var scope = new LargeDataAssertionScope(options.Issuer, options.Audience, request.WorkstationId, request.ProjectId, request.WorkstationId, request.Operation, request.UploadSessionId ?? Guid.NewGuid().ToString("N"), new LargeObjectIdentity(request.ObjectHash.ToLowerInvariant(), request.SizeBytes), request.StorageScope ?? "default", now, now.AddMinutes(5), Guid.NewGuid().ToString("N"));
+    try { return Results.Ok(new { assertion = await issuer.IssueAsync(scope, cancellationToken), expiresAt = scope.ExpiresAt }); }
+    catch (InvalidOperationException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status503ServiceUnavailable); }
+});
+
+app.MapPost("/api/large-data/provision", async (
+    LargeDataProvisionRequest request,
+    LargeDataAssertionVerifier verifier,
+    INasGatewayProvisioner provisioner,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var scope = verifier.Verify(request.Assertion, LargeDataOperation.Provision);
+        return Results.Ok(await provisioner.ProvisionAsync(scope, cancellationToken));
+    }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+    catch (InvalidOperationException exception) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["assertion"] = [exception.Message] }); }
+});
+
+app.MapGet("/api/large-data/uploads/{sessionId}", async (string sessionId, string assertion, LargeDataAssertionVerifier verifier, IResumableUploadService uploads, CancellationToken cancellationToken) =>
+{
+    try { return Results.Ok(await uploads.GetStatusAsync(verifier.Verify(assertion, LargeDataOperation.Upload), cancellationToken)); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+    catch (InvalidOperationException exception) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["upload"] = [exception.Message] }); }
+});
+
+app.MapPut("/api/large-data/uploads/{sessionId}/chunks/{chunkIndex:int}", async (string sessionId, int chunkIndex, string assertion, HttpRequest httpRequest, LargeDataAssertionVerifier verifier, IResumableUploadService uploads, CancellationToken cancellationToken) =>
+{
+    try { return Results.Ok(await uploads.WriteChunkAsync(verifier.Verify(assertion, LargeDataOperation.Upload), chunkIndex, httpRequest.Body, cancellationToken)); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+    catch (InvalidOperationException exception) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["upload"] = [exception.Message] }); }
+});
+
+app.MapPost("/api/large-data/uploads/{sessionId}/finalize", async (string sessionId, string assertion, LargeDataAssertionVerifier verifier, IResumableUploadService uploads, CancellationToken cancellationToken) =>
+{
+    try { return Results.Ok(new { lifecycle = await uploads.FinalizeAsync(verifier.Verify(assertion, LargeDataOperation.Upload), cancellationToken) }); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+    catch (InvalidOperationException exception) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["upload"] = [exception.Message] }); }
+});
+
 app.MapPost("/api/agent/heartbeat", async (
     HeartbeatRequest request,
     IWorkstationRepository repository,
@@ -172,3 +223,14 @@ public sealed record ProjectStateRequest(
     int DeletedCount,
     string? DiffFingerprint,
     DateTimeOffset? LastFileActivity);
+
+public sealed record LargeDataAssertionRequest(
+    string ProjectId,
+    string WorkstationId,
+    string ObjectHash,
+    long SizeBytes,
+    LargeDataOperation Operation,
+    string? UploadSessionId,
+    string? StorageScope);
+
+public sealed record LargeDataProvisionRequest(string Assertion);

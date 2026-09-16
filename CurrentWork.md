@@ -60,4 +60,4 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 다음 작업
 
-06 Large Data/NAS: ProjectHub-native assertion issuer와 NAS Gateway 계약
+06 Large Data/NAS 최종 통합 검증

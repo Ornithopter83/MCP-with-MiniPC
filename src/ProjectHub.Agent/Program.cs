@@ -40,6 +40,20 @@ var projectMonitor = new ProjectActivityMonitor(
     message => Console.Error.WriteLine($"[{DateTimeOffset.Now:O}] {message}"));
 var projectTask = projectMonitor.RunAsync(cancellationTokenSource.Token);
 
+var scanner = new LargeDataScanner(options.LargeFileThresholdBytes);
+foreach (var project in options.RegisteredProjects)
+{
+    try
+    {
+        var largeFiles = await scanner.ScanAsync(project, cancellationTokenSource.Token);
+        Console.WriteLine($"[{DateTimeOffset.Now:O}] Large data inventory scanned: {project.ProjectId} ({largeFiles.Count} files)");
+    }
+    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"[{DateTimeOffset.Now:O}] Large data inventory failed: {project.ProjectId}: {exception.Message}");
+    }
+}
+
 try
 {
     await Task.WhenAll(heartbeatTask, projectTask);

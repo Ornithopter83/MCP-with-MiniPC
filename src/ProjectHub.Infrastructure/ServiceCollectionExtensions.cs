@@ -11,6 +11,12 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddSingleton(SupabaseOptions.FromConfiguration(configuration));
+        services.AddSingleton(LargeDataOptions.FromConfiguration(configuration));
+        services.AddSingleton<ILargeDataAssertionIssuer, LargeDataAssertionIssuer>();
+        services.AddSingleton<LargeDataAssertionVerifier>();
+        services.AddSingleton<INasGatewayProvisioner, LocalNasGatewayProvisioner>();
+        services.AddSingleton<IResumableUploadService, LocalResumableUploadService>();
+        services.AddSingleton<ILargeDataMetadataRepository, SupabaseLargeDataMetadataRepository>();
         services.AddHttpClient("Supabase", (serviceProvider, client) =>
         {
             var options = serviceProvider.GetRequiredService<SupabaseOptions>();
