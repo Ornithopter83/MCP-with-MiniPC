@@ -30,6 +30,8 @@ Updated: 2026-09-16
 - 사용자가 서버 PC에서 project state POST/GET, Supabase row 저장, 동일 project/workstation 재전송 update를 검증했다.
 - `head_sha`에 실제 커밋 SHA `cebda36a4937056e9abd11254131ee42ad7afc83`가 저장된 것을 확인했다.
 - `ProjectHub.Agent`가 설정 기반 heartbeat sender/runner로 구현됐으며 장애 시 주기 재시도와 CancellationToken 종료를 지원한다. 실제 Agent E2E는 아직 검증하지 않았다.
+- Server 기본 origin을 표준 `Urls` 설정으로 `http://127.0.0.1:5240`에 고정하고, `ASPNETCORE_URLS` 또는 실행 인자로 재정의할 수 있게 했다.
+- 사용자가 Cloudflare Named Tunnel `projecthub`와 `projecthub.ornithopter.bid`를 구성하고 외부 `/api/status` 성공을 확인했다. Agent 외부 E2E는 아직 검증하지 않았다.
 
 ## 목표 구조
 

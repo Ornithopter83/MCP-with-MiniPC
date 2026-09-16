@@ -31,4 +31,6 @@ Agent가 heartbeat와 branch, HEAD, dirty, 파일 목록을 Server로 전송한�
 - A 구현 완료: 설정 기반 Server heartbeat sender/runner를 추가했다. `ServerBaseUrl`, `WorkstationId`, `DisplayName`, `HeartbeatIntervalSeconds`를 JSON·환경 변수·명령줄로 설정할 수 있고 hostname은 `Environment.MachineName`으로 전송한다.
 - A 구현 완료: HTTP 실패 시 프로세스를 종료하지 않고 다음 주기에 재시도하며 Ctrl+C 취소를 처리한다. Agent는 Supabase에 직접 접근하지 않는다.
 - A 실환경 E2E 대기: DEV PC에서 Agent 실행 후 Mini PC Server와 Supabase의 반복 `last_seen` 갱신, Server 중단/복구 재전송을 확인해야 한다.
+- A 서버 실행 경계 보완: `src/ProjectHub.Server/appsettings.json`의 표준 `Urls`를 `http://127.0.0.1:5240`으로 지정했다. `ASPNETCORE_URLS` 또는 실행 인자로 재정의할 수 있으며 Cloudflare 종속 코드는 추가하지 않았다.
+- 고정 외부접속 기반: 사용자가 Cloudflare Named Tunnel `projecthub`와 `projecthub.ornithopter.bid`를 구성하고 외부 `/api/status` 성공을 확인했다. 이는 Agent heartbeat E2E와 별도 검증이다.
 - 검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
