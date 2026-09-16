@@ -38,6 +38,6 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: 05 Agent heartbeat와 상태수집 A
+현재 작업: 05 Agent heartbeat와 상태수집 C
 
 잔여 작업 4개 (05, 06, 07, 08)
