@@ -89,3 +89,5 @@ Server 실행 스크립트 `ProjectHub_Server_Test.ps1`를 추가했다. `C:\AI-
 NAS upload 최종 재검증: 운영 Server assertion 발급 성공 후 NAS `upload-start.php` → `upload-chunk.php` → `upload-status.php` → `upload-finalize.php`를 실제 실행했다. 11바이트 테스트 객체에서 chunk 수신 `11`, status `completed_chunks=[0]`, finalize `complete`, SHA-256 object 생성과 동일 hash 재업로드 `already_present=true` dedup을 확인했다.
 
 새 Server 세션 재검증: `/api/status=ok`, 운영 assertion 발급 성공, 17바이트 객체에 대해 upload-start → chunk(`17`) → status(`bytes_received=17`) → finalize(`complete`)와 SHA-256/size 일치를 확인했다.
+
+500MiB 실제 파일 `forUpload.z01` 검증: SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267`, 16MiB chunk 32개가 NAS staging에 정확히 수신되어 `bytes_received=524288000`을 확인했다. NAS finalize는 `size_mismatch`를 반환해 object 확정이 보류됐고, finalize 직후 `clearstatcache`를 추가해 보정했다. 보정 파일 재배포 후 동일 세션 finalize를 재시도한다.

@@ -25,6 +25,7 @@ foreach ($parts as $part) {
 }
 fflush($output);
 fclose($output);
+clearstatcache(true, $assembled);
 $size = filesize($assembled);
 $hash = strtolower(hash_file('sha256', $assembled));
 if ($size !== intval($claims['size_bytes'])) { @unlink($assembled); projecthub_json_error(409, 'size_mismatch'); }
