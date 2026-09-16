@@ -81,3 +81,11 @@ Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/`
 NAS upload 구현: `nas-gateway/upload-start.php`, `upload-chunk.php`, `upload-status.php`, `upload-finalize.php`를 추가했다. 로컬 PHP 파일은 실제 NAS 배포 후 운영 assertion으로 검증해야 하며, 현재 원격 upload 경로는 아직 배포되지 않아 HTML 응답을 반환한다.
 
 NAS 배포 후 재검증: health `200`, 기존 `provision.php` GET `405`, upload-start GET `405`, upload-status GET 및 upload-start POST(Authorization 없음) `401 upload_session_required`를 확인했다. 운영 Server `https://projecthub.ornithopter.bid`는 같은 시각 `/api/status`와 assertion 발급 모두 Cloudflare `502`였으므로 운영 assertion 기반 upload E2E는 Server 복구 후 재개한다.
+
+Server 재기동 후 재검증: `/api/status`는 `200`으로 복구됐으나 운영 assertion 발급은 `503 PROJECTHUB_ASSERTION_PRIVATE_KEY_PEM is not configured`로 실패했다. NAS Gateway까지의 인증 upload E2E는 Server PC에 private key 환경 변수를 설정하고 재기동한 뒤 재개한다.
+
+Server 실행 스크립트 `ProjectHub_Server_Test.ps1`를 추가했다. `C:\AI-Server\ProjectHub\src\ProjectHub.Server\projecthub-private.pem`을 `GetContent -Raw`와 동일한 `[IO.File]::ReadAllText()` 방식으로 읽어 PEM 개행을 보존하고, `PROJECTHUB_ASSERTION_PRIVATE_KEY_PEM` process 환경 변수로만 주입한다.
+
+NAS upload 최종 재검증: 운영 Server assertion 발급 성공 후 NAS `upload-start.php` → `upload-chunk.php` → `upload-status.php` → `upload-finalize.php`를 실제 실행했다. 11바이트 테스트 객체에서 chunk 수신 `11`, status `completed_chunks=[0]`, finalize `complete`, SHA-256 object 생성과 동일 hash 재업로드 `already_present=true` dedup을 확인했다.
+
+새 Server 세션 재검증: `/api/status=ok`, 운영 assertion 발급 성공, 17바이트 객체에 대해 upload-start → chunk(`17`) → status(`bytes_received=17`) → finalize(`complete`)와 SHA-256/size 일치를 확인했다.

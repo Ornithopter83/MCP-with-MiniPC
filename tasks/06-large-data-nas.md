@@ -26,7 +26,9 @@ RS256 계열 서명, 짧은 만료, project/workstation/session/operation/object
 
 현재까지 구현: 환경 변수 기반 RS256 assertion 발급·검증, operation/claim 검증, safe relative scope 및 content-addressed provision, chunk write/status/finalize와 최종 SHA-256·size 검증, Supabase metadata repository, Agent 대용량 파일 안정성·SHA-256 스캔을 추가했다. `supabase/large-data.sql`에 대용량 객체·업로드 세션·프로젝트 파일·dataset 메타데이터 스키마를 추가했다.
 
-남은 검증: 실제 NAS1DUAL에 배포한 upload endpoint를 운영 assertion으로 upload-start/upload-chunk/upload-status/upload-finalize와 resume, STAGED, checkpoint까지 확인한다. NAS endpoint method/auth 경계는 배포 후 확인했으나 운영 Server가 Cloudflare `502`를 반환해 assertion 발급 연계는 보류됐다.
+남은 검증: 중단 후 resume, Supabase STAGED metadata, 실제 Git commit과 LargeDataSet/CHECKPOINTED item, Agent 재시작 reconciliation을 확인한다. 운영 assertion으로 upload-start → chunk → status → finalize, 최종 SHA-256 object 생성과 동일 hash dedup은 실제 NAS1DUAL에서 완료했다.
+
+새 Server 세션에서도 운영 assertion 발급과 17바이트 upload 전체 경로를 재검증했다. upload-start, chunk 수신, status bytes/chunk 확인, finalize complete 및 SHA-256/size 일치가 성공했다.
 
 실제 환경 반영: PHP-visible root는 `/mnt/HDD1/ProjectHub`이며 `/HDD1/ProjectHub`를 사용하지 않는다. Gateway는 운영자가 준비한 root 내부만 사용한다. Gateway URL은 `https://dfblackbox-nas.duckdns.org:8443/projecthub/`로 설정한다. Authorization fallback과 NAS PHP 런타임 호환성을 유지하고, 운영 코드에서 TLS 인증서 검증을 우회하지 않는다. Provision/RS256/NAS write E2E는 완료로 기록한다.
 
