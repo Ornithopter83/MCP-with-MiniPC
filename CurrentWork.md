@@ -31,6 +31,7 @@ Updated: 2026-09-16
 - `head_sha`에 실제 커밋 SHA `cebda36a4937056e9abd11254131ee42ad7afc83`가 저장된 것을 확인했다.
 - `ProjectHub.Agent`가 설정 기반 heartbeat sender/runner로 구현됐으며 실제 외부 DEV PC E2E까지 완료됐다.
 - `GitStateCollector`가 등록된 localPath에서 branch, HEAD full SHA, dirty, changed/untracked/deleted 수를 읽기 전용으로 수집한다. 05-B 관련 테스트가 통과했다.
+- `ProjectActivityMonitor`가 등록 프로젝트를 감시하고 1초 debounce 후 Git 상태를 기존 project-state API로 전송한다. 실제 05-C 외부 E2E는 아직 검증하지 않았다.
 - Server 기본 origin을 표준 `Urls` 설정으로 `http://127.0.0.1:5240`에 고정하고, `ASPNETCORE_URLS` 또는 실행 인자로 재정의할 수 있게 했다.
 - 사용자가 Cloudflare Named Tunnel `projecthub`와 `projecthub.ornithopter.bid`를 구성하고 외부 `/api/status` 성공을 확인했다. Agent 외부 E2E는 아직 검증하지 않았다.
 
@@ -57,4 +58,4 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 다음 작업
 
-05 Agent heartbeat와 상태수집의 C. FileSystemWatcher debounce와 상태 전송
+05 Agent heartbeat와 상태수집의 C-E2E. FileSystemWatcher debounce와 상태 전송 실제 검증

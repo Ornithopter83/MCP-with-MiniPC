@@ -6,7 +6,8 @@ public sealed record AgentOptions(
     Uri ServerBaseUrl,
     string WorkstationId,
     string DisplayName,
-    TimeSpan HeartbeatInterval)
+    TimeSpan HeartbeatInterval,
+    IReadOnlyList<ProjectRegistration> RegisteredProjects)
 {
     public static AgentOptions Load(string[] args)
     {
@@ -54,7 +55,8 @@ public sealed record AgentOptions(
             new Uri(serverBaseUrl.ToString().TrimEnd('/') + "/"),
             workstationId,
             displayName,
-            TimeSpan.FromSeconds(intervalSeconds));
+            TimeSpan.FromSeconds(intervalSeconds),
+            ReadProjects(configPath));
     }
 
     private static void ReadString(JsonElement agent, string name, IDictionary<string, string?> values)
@@ -78,4 +80,31 @@ public sealed record AgentOptions(
         string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"Agent {name} is required.")
             : value.Trim();
+
+    private static IReadOnlyList<ProjectRegistration> ReadProjects(string configPath)
+    {
+        if (!File.Exists(configPath)) return [];
+        using var document = JsonDocument.Parse(File.ReadAllText(configPath));
+        if (!document.RootElement.TryGetProperty("Agent", out var agent) ||
+            !agent.TryGetProperty("RegisteredProjects", out var projects) ||
+            projects.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return projects.EnumerateArray()
+            .Select(project => new ProjectRegistration(
+                project.GetProperty("ProjectId").GetString() ?? string.Empty,
+                project.GetProperty("DisplayName").GetString() ?? string.Empty,
+                project.GetProperty("LocalPath").GetString() ?? string.Empty,
+                project.TryGetProperty("RepositoryUrl", out var url) ? url.GetString() : null))
+            .Where(project => !string.IsNullOrWhiteSpace(project.ProjectId) && !string.IsNullOrWhiteSpace(project.LocalPath))
+            .ToArray();
+    }
 }
+
+public sealed record ProjectRegistration(
+    string ProjectId,
+    string DisplayName,
+    string LocalPath,
+    string? RepositoryUrl);

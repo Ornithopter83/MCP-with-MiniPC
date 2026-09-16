@@ -30,5 +30,21 @@ var runner = new HeartbeatRunner(
     message => Console.WriteLine($"[{DateTimeOffset.Now:O}] {message}"),
     message => Console.Error.WriteLine($"[{DateTimeOffset.Now:O}] {message}"));
 
-await runner.RunAsync(cancellationTokenSource.Token);
+var heartbeatTask = runner.RunAsync(cancellationTokenSource.Token);
+var projectMonitor = new ProjectActivityMonitor(
+    options.RegisteredProjects,
+    options.WorkstationId,
+    new GitStateCollector(),
+    new ProjectStateSender(httpClient),
+    message => Console.WriteLine($"[{DateTimeOffset.Now:O}] {message}"),
+    message => Console.Error.WriteLine($"[{DateTimeOffset.Now:O}] {message}"));
+var projectTask = projectMonitor.RunAsync(cancellationTokenSource.Token);
+
+try
+{
+    await Task.WhenAll(heartbeatTask, projectTask);
+}
+catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
+{
+}
 return 0;
