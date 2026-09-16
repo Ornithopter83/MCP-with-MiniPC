@@ -6,10 +6,10 @@ namespace ProjectHub.Infrastructure;
 public sealed class SupabaseLargeDataMetadataRepository(IHttpClientFactory clientFactory) : ILargeDataMetadataRepository
 {
     public Task UpsertObjectAsync(LargeObjectIdentity objectIdentity, LargeDataLifecycle lifecycle, CancellationToken cancellationToken) =>
-        SendAsync("large_objects", new { sha256 = objectIdentity.Sha256, size_bytes = objectIdentity.SizeBytes, lifecycle = lifecycle.ToString().ToUpperInvariant() }, "sha256=eq." + objectIdentity.Sha256, cancellationToken);
+        SendAsync("large_objects", new { sha256 = objectIdentity.Sha256, size_bytes = objectIdentity.SizeBytes, lifecycle = lifecycle.ToString().ToUpperInvariant() }, "sha256", cancellationToken);
 
     public Task UpsertProjectFileAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken) =>
-        SendAsync("project_large_files", new { project_id = projectFile.ProjectId, relative_path = projectFile.RelativePath, sha256 = projectFile.Object.Sha256, size_bytes = projectFile.Object.SizeBytes, lifecycle = projectFile.Lifecycle.ToString().ToUpperInvariant(), checkpoint_commit_sha = projectFile.CheckpointCommitSha }, "project_id=eq." + Uri.EscapeDataString(projectFile.ProjectId) + "&relative_path=eq." + Uri.EscapeDataString(projectFile.RelativePath), cancellationToken);
+        SendAsync("project_large_files", new { project_id = projectFile.ProjectId, relative_path = projectFile.RelativePath, sha256 = projectFile.Object.Sha256, size_bytes = projectFile.Object.SizeBytes, lifecycle = projectFile.Lifecycle.ToString().ToUpperInvariant(), checkpoint_commit_sha = projectFile.CheckpointCommitSha }, "project_id,relative_path", cancellationToken);
 
     public async Task CreateDataSetAsync(LargeDataSet dataSet, CancellationToken cancellationToken)
     {

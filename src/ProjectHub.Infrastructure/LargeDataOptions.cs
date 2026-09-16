@@ -5,6 +5,7 @@ namespace ProjectHub.Infrastructure;
 public sealed record LargeDataOptions(
     string Issuer,
     string Audience,
+    string GatewayUrl,
     string? PrivateKeyPem,
     string? GatewayPublicKeyPem,
     string StorageRoot,
@@ -17,6 +18,7 @@ public sealed record LargeDataOptions(
         return new(
             section["Issuer"] ?? "projecthub",
             section["Audience"] ?? "projecthub-gateway",
+            section["GatewayUrl"] ?? throw new InvalidOperationException("LargeData:GatewayUrl is not configured."),
             Environment.GetEnvironmentVariable("PROJECTHUB_ASSERTION_PRIVATE_KEY_PEM"),
             Environment.GetEnvironmentVariable("PROJECTHUB_GATEWAY_PUBLIC_KEY_PEM"),
             section["StorageRoot"] ?? Path.Combine(AppContext.BaseDirectory, "objects"),

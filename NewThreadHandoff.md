@@ -14,3 +14,4 @@
 - 잔여: chunk upload/status/resume/finalize, STAGED·CHECKPOINTED metadata, Agent startup reconciliation
 - 고정 외부접속: Cloudflare Named Tunnel `projecthub`가 `projecthub.ornithopter.bid`에서 Server의 `http://localhost:5240` origin으로 연결되며 외부 `/api/status`를 확인했다.
 - NAS Gateway PHP-visible root는 `/mnt/HDD1/ProjectHub`, HTTPS port는 `8443`이다.
+- NAS Gateway URL은 `https://dfblackbox-nas.duckdns.org:8443/projecthub/`이다.
