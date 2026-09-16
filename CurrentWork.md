@@ -58,6 +58,19 @@ dotnet build ProjectHub.sln --no-restore
 dotnet test ProjectHub.sln --no-restore
 ```
 
-## 다음 작업
+## 현재 작업
 
 06 Large Data/NAS 최종 통합 검증
+
+실제 NAS1DUAL 기준:
+
+- PHP-visible storage root: `/mnt/HDD1/ProjectHub`
+- 운영자가 `objects/sha256`와 `staging`을 미리 생성하고 Gateway는 root 내부만 사용
+- Gateway HTTPS port: `8443`
+- Agent는 Supabase·SMB·NAS filesystem에 직접 접근하지 않고 NAS Gateway HTTPS만 사용
+
+완료: 05 실제 DEV PC root E2E, 06 RS256 assertion 및 NAS provision/authentication E2E
+
+잔여: chunk upload → status/resume → finalize → SHA-256/size → STAGED → Git checkpoint → CHECKPOINTED → Agent 재시작 reconciliation
+
+최종 검증 선행 결과: `https://suhonas.ipdisk.co.kr:8443/projecthub/`는 인증서 검증 실패(`SEC_E_WRONG_PRINCIPAL`, SNI/certificate hostname 불일치)로 정상 TLS health check가 되지 않았다. 운영 Agent에 TLS 우회는 적용하지 않으며, NAS 인증서/hostname 정리 후 upload E2E를 재개한다.

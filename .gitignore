@@ -5,3 +5,6 @@
 *.user
 *.suo
 appsettings.*.local.json
+*.pem
+*.key
+projecthub-private.pem
