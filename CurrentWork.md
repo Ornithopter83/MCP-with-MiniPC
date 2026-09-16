@@ -77,3 +77,7 @@ dotnet test ProjectHub.sln --no-restore
 최종 검증 선행 결과: `https://suhonas.ipdisk.co.kr:8443/projecthub/`는 인증서 검증 실패(`SEC_E_WRONG_PRINCIPAL`, SNI/certificate hostname 불일치)로 정상 TLS health check가 되지 않았다. 운영 Agent에 TLS 우회는 적용하지 않으며, NAS 인증서/hostname 정리 후 upload E2E를 재개한다.
 
 Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/` health `200` 및 JSON 응답 성공, `provision.php` GET은 `405`로 method 경계가 정상이다. 인증 없는 POST 응답 본문 확인은 PowerShell의 예외 응답 형식 차이로 별도 Gateway 클라이언트 검증에서 수행한다.
+
+NAS upload 구현: `nas-gateway/upload-start.php`, `upload-chunk.php`, `upload-status.php`, `upload-finalize.php`를 추가했다. 로컬 PHP 파일은 실제 NAS 배포 후 운영 assertion으로 검증해야 하며, 현재 원격 upload 경로는 아직 배포되지 않아 HTML 응답을 반환한다.
+
+NAS 배포 후 재검증: health `200`, 기존 `provision.php` GET `405`, upload-start GET `405`, upload-status GET 및 upload-start POST(Authorization 없음) `401 upload_session_required`를 확인했다. 운영 Server `https://projecthub.ornithopter.bid`는 같은 시각 `/api/status`와 assertion 발급 모두 Cloudflare `502`였으므로 운영 assertion 기반 upload E2E는 Server 복구 후 재개한다.

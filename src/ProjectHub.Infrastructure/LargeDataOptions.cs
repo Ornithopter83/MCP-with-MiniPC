@@ -16,8 +16,8 @@ public sealed record LargeDataOptions(
     {
         var section = configuration.GetSection("LargeData");
         return new(
-            section["Issuer"] ?? "projecthub",
-            section["Audience"] ?? "projecthub-gateway",
+            section["Issuer"] ?? "projecthub-server",
+            section["Audience"] ?? "projecthub-nas-gateway",
             section["GatewayUrl"] ?? throw new InvalidOperationException("LargeData:GatewayUrl is not configured."),
             Environment.GetEnvironmentVariable("PROJECTHUB_ASSERTION_PRIVATE_KEY_PEM"),
             Environment.GetEnvironmentVariable("PROJECTHUB_GATEWAY_PUBLIC_KEY_PEM"),

@@ -20,7 +20,7 @@ public sealed class LargeDataAssertionIssuer(LargeDataOptions options) : ILargeD
         {
             v = 1, iss = scope.Issuer, aud = scope.Audience, sub = scope.Subject,
             project_id = scope.ProjectId, workstation_id = scope.WorkstationId,
-            operation = scope.Operation.ToString().ToUpperInvariant(),
+            operation = scope.Operation.ToString().ToLowerInvariant(),
             upload_session_id = scope.UploadSessionId, object_hash = scope.Object.Sha256,
             size_bytes = scope.Object.SizeBytes, storage_scope = scope.StorageScope,
             iat = scope.IssuedAt.ToUnixTimeSeconds(), exp = scope.ExpiresAt.ToUnixTimeSeconds(),

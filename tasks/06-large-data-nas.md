@@ -26,11 +26,11 @@ RS256 계열 서명, 짧은 만료, project/workstation/session/operation/object
 
 현재까지 구현: 환경 변수 기반 RS256 assertion 발급·검증, operation/claim 검증, safe relative scope 및 content-addressed provision, chunk write/status/finalize와 최종 SHA-256·size 검증, Supabase metadata repository, Agent 대용량 파일 안정성·SHA-256 스캔을 추가했다. `supabase/large-data.sql`에 대용량 객체·업로드 세션·프로젝트 파일·dataset 메타데이터 스키마를 추가했다.
 
-남은 구현/검증: 실제 NAS1DUAL 환경의 키 주입·Gateway 실행·NAS root를 이용한 provision/upload/finalize 통합 검증, 실제 checkpoint commit과 dataset item 반영 검증.
+남은 검증: 실제 NAS1DUAL에 배포한 upload endpoint를 운영 assertion으로 upload-start/upload-chunk/upload-status/upload-finalize와 resume, STAGED, checkpoint까지 확인한다. NAS endpoint method/auth 경계는 배포 후 확인했으나 운영 Server가 Cloudflare `502`를 반환해 assertion 발급 연계는 보류됐다.
 
 실제 환경 반영: PHP-visible root는 `/mnt/HDD1/ProjectHub`이며 `/HDD1/ProjectHub`를 사용하지 않는다. Gateway는 운영자가 준비한 root 내부만 사용한다. Gateway URL은 `https://dfblackbox-nas.duckdns.org:8443/projecthub/`로 설정한다. Authorization fallback과 NAS PHP 런타임 호환성을 유지하고, 운영 코드에서 TLS 인증서 검증을 우회하지 않는다. Provision/RS256/NAS write E2E는 완료로 기록한다.
 
-검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(5개 통과).
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(5개 통과). 로컬 PHP CLI는 없어 PHP lint는 미실행이다. 운영 Gateway에서는 기존 health `200`, 기존 `provision.php` GET `405`를 확인했으며, 새 upload PHP 파일은 아직 NAS에 배포되지 않아 원격 경로가 Blazor HTML을 반환했다.
 
 ## 변경 금지
 
