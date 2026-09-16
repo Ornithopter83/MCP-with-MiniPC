@@ -66,6 +66,7 @@ public sealed class ProjectActivityMonitor(
                 {
                     var state = await collector.CollectAsync(
                         project.ProjectId, workstationId, project.LocalPath, cancellationToken);
+                    state = state with { LastFileActivity = DateTimeOffset.UtcNow };
                     await sender.SendAsync(project, state, cancellationToken);
                     log($"Project state sent: {project.ProjectId}");
                 }

@@ -11,4 +11,5 @@
 - 완료: 05-A 외부 E2E 및 05-B 읽기 전용 Git 상태 수집기 구현/테스트
 - 완료: 05-C FileSystemWatcher/debounce와 project state 자동 전송 구현 및 테스트
 - 보류: 05-C 외부 E2E, LAN Agent 등록, Mini PC 운영 배포, 외부 계정 승인
+- 확인: 격리된 임시 Git 저장소에서 05-C 자동 project state 전송과 tracked/untracked 상태 갱신을 직접 검증했으며, 실제 사용자 프로젝트 검증은 남아 있다.
 - 고정 외부접속: Cloudflare Named Tunnel `projecthub`가 `projecthub.ornithopter.bid`에서 Server의 `http://localhost:5240` origin으로 연결되며 외부 `/api/status`를 확인했다.
