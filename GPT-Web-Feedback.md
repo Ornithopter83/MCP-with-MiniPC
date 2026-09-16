@@ -29,7 +29,7 @@ MCP/Connector는 이 목표를 위한 연결 수단이며 ProjectHub 자체의 �
 
 ---
 
-## 최신 확인 상태
+## 최신 구현 상태
 
 최신 구현 커밋:
 
@@ -45,165 +45,194 @@ f57504b0a75b75853088b7cfa4037c4a955f1ad1
 [x] workstation heartbeat 저장/조회/upsert 검증
 [x] projects + project_states 저장/조회 검증
 [x] 실제 head_sha 저장 검증
-[x] 05-A Agent 구현 완료
-[x] Agent 설정 로드 구현
+[x] 05-A Agent 코드 구현 완료
+[x] 설정 기반 ServerBaseUrl / WorkstationId / DisplayName / heartbeat interval 구현
 [x] 주기 heartbeat sender/runner 구현
 [x] HTTP 장애 시 프로세스 유지 및 다음 주기 재시도 구현
 [x] Ctrl+C CancellationToken 종료 처리
 [x] build/test 성공 기록
-[ ] 05-A 실제 원격 DEV PC -> Mini PC E2E 검증
+[ ] 05-A 실제 외부 DEV PC Agent E2E 검증
 ```
 
 `tasks/05-agent-state.md`에도 05-A는 구현 완료, 실환경 E2E 대기로 기록되어 있다.
 
 ---
 
-## 판단: 05-A 전체 E2E보다 고정 외부접속 기반을 먼저 구축
+## 사용자 측 고정 외부접속 구축 및 실제 검증 완료
 
-현재 05-A 구현 자체는 완료됐고 build/test도 통과했다. 남은 검증은 실제 다른 네트워크의 DEV PC가 Mini PC ProjectHub.Server에 반복 heartbeat를 보내는 실환경 E2E다.
+기존 Quick Tunnel은 더 이상 운영 기준으로 사용하지 않는다.
 
-이 시점에서는 임시 Quick Tunnel로 05-A를 먼저 최종 검증하고 다시 고정 네트워크를 만드는 것보다, **서버의 고정 외부접속 기반을 먼저 구축한 뒤 그 경로로 05-A 실환경 E2E를 수행하는 것이 더 적절하다.**
+사용자가 Cloudflare에서 독립 도메인 `ornithopter.bid`를 구매했고, Cloudflare DNS가 활성 상태임을 확인했다.
 
-이유:
+이후 다음 고정 경로를 실제 구성했다.
 
 ```text
-- 05-A의 실제 사용 환경 자체가 서로 다른 네트워크의 DEV PC -> Mini PC 구조다.
-- Quick Tunnel은 URL이 바뀌므로 Agent의 지속 설정값으로 부적합하다.
-- 고정 접근 경로를 먼저 만들면 05-A 검증 결과를 이후 05-B/05-C에서도 그대로 재사용할 수 있다.
-- 네트워크 경로를 먼저 고정하면 Agent 코드 문제와 임시 터널 문제를 분리할 수 있다.
-- 05-A는 이미 build/test가 통과했으므로 네트워크 구축 전에 동일 기능을 다시 임시 경로에서 완전 검증할 실익이 작다.
+Cloudflare Named Tunnel: projecthub
+Published application: projecthub.ornithopter.bid
+Origin service: http://localhost:5240
 ```
 
-단, 네트워크 구축 전에도 현재 코드의 build/test 결과는 유지하며, 05-A를 완전 완료로 처리하지는 않는다.
-
----
-
-## 다음 우선 작업: 상시 외부접속 기반 구축
-
-목표는 다음 상태다.
+그리고 다른 네트워크의 브라우저에서 다음 고정 주소를 실제 호출했다.
 
 ```text
-다른 네트워크의 DEV PC
-  -> 고정 HTTPS 주소
-  -> 인증/접근 제어
+https://projecthub.ornithopter.bid/api/status
+```
+
+실제 응답에서 다음을 확인했다.
+
+```text
+server   = ProjectHub
+status   = ok
+database = supabase
+```
+
+따라서 아래 경로는 실제 검증 완료로 취급한다.
+
+```text
+외부 네트워크
+  -> HTTPS
+  -> projecthub.ornithopter.bid
+  -> Cloudflare Named Tunnel
   -> Mini PC
-  -> ProjectHub.Server
-```
-
-서버 PC가 재부팅되더라도 수동으로 임시 URL을 다시 발급하지 않아야 한다.
-
-### 권장 방식
-
-현재 Quick Tunnel 검증 경험을 이어서 **Cloudflare Named Tunnel + 고정 hostname**을 우선 검토한다.
-
-예상 구조:
-
-```text
-DEV PC
-  -> https://<fixed-hostname>
-  -> Cloudflare Access 또는 동등한 보호
-  -> Named Tunnel
-  -> Mini PC cloudflared service
   -> http://localhost:5240
   -> ProjectHub.Server
 ```
 
-중요: Agent 코드는 Cloudflare에 종속되지 않는다. Agent는 오직 설정된 `ServerBaseUrl`만 사용한다.
-
-```text
-Agent -> configured ServerBaseUrl
-```
-
-네트워크 구현은 운영 계층으로 분리한다.
+즉 고정 hostname 기반 외부 GET 접근 자체는 더 이상 미검증 항목이 아니다.
 
 ---
 
-## 상시 외부접속 완료 기준
+## 이번 작업에서 서버 실행 설정까지 안정화할 것
 
-다음이 실제 확인되면 네트워크 기반 구축 완료로 본다.
+05-A Agent 실환경 E2E를 수행하기 전에, 이후 05-B/05-C 및 장기 운영에서 서버 포트/바인딩을 다시 손볼 필요가 없도록 **현재 05-A 마무리 범위에서 서버 실행 설정을 한 번 정리한다.**
+
+단, Cloudflare 종속 코드를 Server에 넣는다는 의미가 아니다.
+
+목표는 아래와 같다.
 
 ```text
-[ ] 고정 hostname 또는 고정 외부 endpoint 확보
-[ ] Mini PC에서 tunnel/relay 자동 시작
-[ ] ProjectHub.Server 자동 또는 명확한 재기동 절차 확보
-[ ] 외부 DEV PC에서 GET /api/status 성공
-[ ] 외부 DEV PC에서 POST /api/agent/heartbeat 성공
-[ ] 서버 PC 재부팅 후 동일 hostname 유지
-[ ] 서버 PC 재부팅 후 외부 접근 자동 복구
-[ ] 공개 쓰기 API가 무인증으로 장시간 노출되지 않도록 접근 제어 적용
+외부 주소: https://projecthub.ornithopter.bid
+Cloudflare origin: http://localhost:5240
+ProjectHub.Server local endpoint: localhost/127.0.0.1:5240
 ```
 
-가능하면 machine-to-machine 인증을 사용하고, 이후 ProjectHub 자체 Agent API Key를 별도 계층으로 추가할 수 있게 한다.
+### Codex가 확인/보완할 서버 설정
 
-비밀값, tunnel token, service token, API key는 저장소에 기록하지 않는다.
+1. ProjectHub.Server가 개발용 `launchSettings.json`에만 의존해서 5240을 얻는 구조인지 확인한다.
+2. 실제 Mini PC 실행에서도 `localhost:5240`을 안정적으로 유지할 수 있도록 운영 설정 경계를 명확히 한다.
+3. 포트/바인딩 변경이 필요할 경우 코드 수정이 아니라 표준 ASP.NET Core 설정/환경 변수로 바꿀 수 있게 한다.
+4. Cloudflare Tunnel이 같은 origin을 계속 바라볼 수 있도록 기본 운영 endpoint를 `http://127.0.0.1:5240` 또는 동등한 localhost 바인딩으로 유지한다.
+5. 외부 공개를 위해 Kestrel을 `0.0.0.0`에 직접 노출하거나 공유기 포트포워딩을 추가하지 않는다.
+6. 외부 TLS는 Cloudflare가 담당하므로 현재 구조에서 Mini PC origin에 별도 공인 HTTPS 인증서를 강제하지 않는다.
+7. `/api/status`, `/api/agent/heartbeat`, project-state API 계약은 변경하지 않는다.
+8. 서버 실행 방식이 달라져도 Cloudflare origin URL을 다시 수정할 필요가 없도록 한다.
+
+가능하면 운영 설정은 기존 ASP.NET Core 표준인 `ASPNETCORE_URLS` 또는 동등한 설정 경계를 활용하고, 소스에 도메인/서버 PC 전용 값을 하드코딩하지 않는다.
+
+### 불필요한 변경 금지
+
+```text
+- Cloudflare SDK/라이브러리를 Server 코드에 추가하지 않는다.
+- projecthub.ornithopter.bid를 Server 코드에 하드코딩하지 않는다.
+- CORS를 이유 없이 추가하지 않는다. 현재 Agent는 브라우저가 아닌 HTTP client다.
+- 외부 접속 때문에 Server를 인터넷에 직접 bind하지 않는다.
+- Quick Tunnel 지원 코드를 추가하지 않는다.
+```
+
+Cloudflare는 운영 계층이고 ProjectHub.Server는 로컬 HTTP origin 역할만 유지한다.
 
 ---
 
-## 05-A 최종 E2E는 네트워크 구축 직후 수행
+## 문서 상태도 이번 작업에서 실제 검증 결과로 갱신
 
-고정 외부접속이 준비되면 별도 새 기능을 더 구현하기 전에 05-A를 실제 검증한다.
+Codex는 코드 확인/보완과 함께 관리 문서에 다음 실제 상태를 반영한다.
+
+```text
+[x] 독립 도메인 ornithopter.bid 확보
+[x] Cloudflare Named Tunnel `projecthub` 구성
+[x] 고정 Published Application 구성
+[x] projecthub.ornithopter.bid -> http://localhost:5240 연결
+[x] 외부 네트워크에서 /api/status 실제 성공
+[x] 고정 hostname 사용 가능 확인
+[ ] 외부 DEV PC에서 ProjectHub.Agent heartbeat E2E
+[ ] 반복 last_seen 갱신 확인
+[ ] Server 중단 중 Agent 생존 확인
+[ ] Server 복구 후 Agent 자동 heartbeat 재개 확인
+[ ] 서버 PC 재부팅 후 tunnel/Server 자동 복구 확인
+```
+
+`CurrentWork.md`, `tasks/05-agent-state.md`, 필요 시 `NewThreadHandoff.md`에는 위 상태를 실제 사실대로 갱신한다.
+
+중요: `GET /api/status` 외부 성공과 05-A Agent E2E 성공은 구분해서 기록한다. 아직 Agent E2E를 완료로 표시하지 않는다.
+
+---
+
+## 다음 검증: 05-A 실제 외부 Agent E2E
+
+서버 설정 경계를 확인/안정화한 뒤 새 기능을 더 구현하지 말고 바로 05-A 실제 E2E를 수행한다.
+
+외부 DEV PC의 Agent 설정은 다음 고정 주소를 사용한다.
+
+```text
+ServerBaseUrl = https://projecthub.ornithopter.bid
+```
 
 검증 순서:
 
 ```text
-1. 외부 DEV PC에 ProjectHub.Agent 설정
-2. ServerBaseUrl = 고정 외부 주소
-3. Agent 실행
-4. 반복 heartbeat 2xx 확인
-5. Supabase workstations.last_seen 반복 갱신 확인
-6. ProjectHub.Server 일시 중단
-7. Agent가 종료되지 않고 실패 로그 후 계속 대기하는지 확인
-8. Server 재기동
-9. Agent가 별도 재시작 없이 heartbeat를 자동 재개하는지 확인
+1. DEV PC에서 ProjectHub.Agent 실행
+2. heartbeat 2xx 반복 성공 확인
+3. Supabase workstations.last_seen이 주기적으로 갱신되는지 확인
+4. Mini PC ProjectHub.Server 일시 중단
+5. Agent가 종료되지 않고 실패 로그 후 계속 살아 있는지 확인
+6. ProjectHub.Server 재기동
+7. Agent를 재시작하지 않고 heartbeat가 자동 재개되는지 확인
 ```
 
-이 검증이 끝난 뒤에만 05-A를 완료 처리하고 05-B Git 상태 수집기로 넘어간다.
-
-즉 현재 순서는 다음과 같다.
-
-```text
-05-A 코드 구현 완료
-  -> 고정 외부접속 기반 구축
-  -> 05-A 실환경 E2E
-  -> 05-A 완료
-  -> 05-B Git 상태 수집
-```
-
-05-B를 먼저 구현해서 검증을 한꺼번에 몰아서 하지 않는다. heartbeat 통신 기반이 안정적이라는 사실을 먼저 확정해야 이후 Git 상태 전송 문제를 분리해서 진단할 수 있다.
+여기까지 성공하면 05-A를 실환경 완료 처리하고 05-B로 이동한다.
 
 ---
 
-## 서버 PC 작업과 Codex 작업을 구분
+## 재부팅 자동복구는 별도 확인하되 네트워크 주소는 더 이상 변경하지 않는다
 
-### 사용자/서버 PC 측
+고정 hostname과 Named Tunnel 경로는 이미 확정되었으므로 이후 개발 과정에서 임시 URL로 되돌아가지 않는다.
 
-```text
-- 고정 외부 endpoint/tunnel 구성
-- tunnel/relay 자동 시작 설정
-- 외부 DEV PC 접근 확인
-- 필요 시 Cloudflare Access 등 접근 제어 설정
-- Mini PC 재부팅 후 자동 복구 확인
-```
-
-이 작업은 외부 서비스 설정을 포함할 수 있으므로 사용자 승인 없이 Codex가 자동 수행하지 않는다.
-
-### Codex 측
-
-현재는 새 기능 구현보다 아래만 준비/정리한다.
+남은 운영 확인은 다음이다.
 
 ```text
-- 05-A 구현 상태 유지
-- 문서에서 05-A = 구현 완료 / 실환경 E2E 대기로 명확히 기록
-- ServerBaseUrl이 고정 URL로 교체 가능하도록 현재 설정 구조 유지
-- 네트워크 제공자 종속 코드 추가 금지
-- 필요 시 Agent 인증 헤더를 향후 추가할 수 있는 구조만 방해하지 않도록 유지
+- cloudflared가 서버 PC 부팅 후 자동 연결되는지
+- ProjectHub.Server를 어떤 방식으로 기동할지
+- 서버 PC 재부팅 후 동일 hostname으로 /api/status가 복구되는지
 ```
 
-고정 외부접속이 검증되기 전에는 05-B 구현을 시작하지 않는다.
+이 검증에서 문제가 발생하더라도 `projecthub.ornithopter.bid`나 Tunnel route를 다시 설계하는 방향보다, 로컬 프로세스 자동시작/서비스 실행 문제로 분리해서 해결한다.
+
+---
+
+## 보안 경계
+
+현재 고정 hostname은 인터넷에서 접근 가능한 경로이므로 장시간 무인증 write API 노출은 최종 운영 상태로 간주하지 않는다.
+
+다만 이번 05-A E2E에서는 네트워크와 Agent 기능을 먼저 검증한다.
+
+인증 보완 시 원칙:
+
+```text
+외부 접근 보호 = Cloudflare Access/Service Token 등 운영 계층
+ProjectHub Agent 인증 = 향후 ProjectHub 자체 API Key/JWT 계층
+```
+
+두 계층을 구분한다.
+
+인증 도입 때문에 ServerBaseUrl, hostname, origin port를 다시 바꾸는 설계를 피한다.
+
+비밀값, tunnel token, service token, API key는 저장소·문서·로그에 기록하지 않는다.
 
 ---
 
 ## 아직 하지 말 것
+
+05-A 실제 E2E가 끝나기 전에는 다음을 시작하지 않는다.
 
 ```text
 - 05-B Git 상태 수집
@@ -217,19 +246,18 @@ Agent -> configured ServerBaseUrl
 - 원격 shell
 ```
 
-현재 최우선은 **서버가 켜져 있으면 다른 네트워크의 개발 PC가 항상 같은 주소로 안전하게 접근할 수 있는 기반을 만드는 것**이다.
-
 ---
 
 ## Codex 수행 지침
 
 1. `AGENTS.md` → 구현 계획 → `CurrentWork.md` → `tasks/05-agent-state.md` → 이 파일 순으로 읽는다.
-2. 최신 커밋 `f57504b...`의 05-A 구현을 이미 완료된 코드로 취급한다.
-3. 05-A는 build/test 성공이지만 실환경 E2E는 아직 미완료다.
-4. 05-B를 시작하지 않는다.
-5. 우선 고정 외부접속 기반 구축이 필요하다는 상태를 관리 문서에 반영한다.
-6. 네트워크 제공자 종속 로직을 Agent 코드에 넣지 않는다.
-7. 사용자가 고정 외부접속을 구성한 뒤 같은 경로로 05-A E2E를 검증한다.
-8. 05-A E2E 성공 후에만 05-B로 진행한다.
-9. 비밀키/토큰/민감 URL을 저장소·문서·로그에 기록하지 않는다.
-10. 사용자 승인 없이 외부 서비스 설정, 배포, commit/push 등 파괴적/외부 변경을 수행하지 않는다.
+2. 최신 `f57504b...`의 05-A 구현은 코드 구현 완료 상태로 취급한다.
+3. 사용자가 `ornithopter.bid`와 Cloudflare Named Tunnel을 실제 구성했고 외부 `/api/status` 성공까지 확인한 사실을 관리 문서에 갱신한다.
+4. 이번 작업에서 ProjectHub.Server의 로컬 endpoint가 `localhost:5240`으로 안정적으로 유지되는지 확인하고, 개발용 launch profile에만 의존한다면 운영 설정 경계를 보완한다.
+5. 포트/바인딩은 표준 설정/환경 변수로 교체 가능해야 하며 도메인이나 Cloudflare 구현을 Server 코드에 하드코딩하지 않는다.
+6. 외부 접속을 위해 직접 public bind/포트포워딩/별도 public TLS 구성을 추가하지 않는다.
+7. Server API 계약은 그대로 유지한다.
+8. 필요한 최소 보완 후 build/test를 수행하고 실제 결과만 기록한다.
+9. 그 다음 사용자가 외부 DEV PC에서 05-A Agent E2E를 수행할 수 있도록 정확한 실행 설정 예를 문서에 남긴다. 비밀값은 넣지 않는다.
+10. 05-A E2E가 성공하기 전에는 05-B를 시작하지 않는다.
+11. 사용자 승인 없이 외부 서비스 설정, 배포, commit/push 등 파괴적/외부 변경을 수행하지 않는다.
