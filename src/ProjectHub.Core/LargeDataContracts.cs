@@ -27,6 +27,9 @@ public sealed record LargeDataSet(string ProjectId, string CommitSha, LargeDataL
 
 public interface ILargeDataMetadataRepository
 {
+    Task<LargeUploadSession?> FindResumableSessionAsync(string projectId, string workstationId, LargeObjectIdentity objectIdentity, CancellationToken cancellationToken);
+    Task UpsertUploadSessionAsync(LargeUploadSession session, CancellationToken cancellationToken);
+    Task MarkUploadSessionCompletedAsync(string sessionId, CancellationToken cancellationToken);
     Task UpsertObjectAsync(LargeObjectIdentity objectIdentity, LargeDataLifecycle lifecycle, CancellationToken cancellationToken);
     Task UpsertProjectFileAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
     Task MarkStagedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);

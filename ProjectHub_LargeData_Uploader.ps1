@@ -16,9 +16,10 @@ try {
     foreach ($item in $m.Items) {
         $before = Get-Item -LiteralPath $item.FullPath -Force
         $hash = (Get-FileHash -LiteralPath $item.FullPath -Algorithm SHA256).Hash.ToLowerInvariant()
-        $safeName = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($item.RelativePath)) -replace '[^A-Za-z0-9_-]',''
-        $sessionCandidate = 'batch-' + $m.BatchId + '-' + $safeName
-        $session = $sessionCandidate.Substring(0, [Math]::Min(96, $sessionCandidate.Length))
+        $identityQuery = '?projectId=' + [Uri]::EscapeDataString($m.ProjectId) + '&workstationId=' + [Uri]::EscapeDataString($m.WorkstationId) + '&objectHash=' + $hash + '&sizeBytes=' + $item.SizeBytes
+        $resume = $null
+        try { $resume = Invoke-RestMethod ($m.ServerBaseUrl + '/api/large-data/resumable-session' + $identityQuery) -Method Get -TimeoutSec 30 } catch { if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -ne 404) { throw } }
+        $session = if ($resume) { [string]$resume.sessionId } else { [guid]::NewGuid().ToString('N') }
         $token = Get-Assertion $item $session $hash
         $headers = @{ Authorization="Bearer $token" }
         $start = Invoke-RestMethod ($m.GatewayUrl + 'upload-start.php') -Method Post -Headers $headers -TimeoutSec 30
@@ -49,6 +50,7 @@ try {
             $final = Invoke-RestMethod ($m.GatewayUrl + 'upload-finalize.php') -Method Post -Headers @{Authorization="Bearer $token"} -TimeoutSec 600
             if ($final.state -ne 'complete') { throw "finalize failed: $($item.RelativePath)" }
         }
+        Invoke-RestMethod ($m.ServerBaseUrl + '/api/large-data/resumable-session/' + [Uri]::EscapeDataString($session) + '/complete') -Method Post -TimeoutSec 30 | Out-Null
         $after = Get-Item -LiteralPath $item.FullPath -Force
         if ($after.Length -ne [int64]$item.SizeBytes -or $after.LastWriteTimeUtc.Ticks -ne [int64]$item.LastWriteTimeUtcTicks) { Write-Warning "CHANGED_DURING_UPLOAD: $($item.RelativePath)"; continue }
         $staged += [pscustomobject]@{ projectId=$m.ProjectId; relativePath=$item.RelativePath; object=@{ sha256=$hash; sizeBytes=[int64]$item.SizeBytes }; lifecycle=3; checkpointCommitSha=$null }

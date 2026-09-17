@@ -17,6 +17,7 @@ app.MapPost("/api/large-data/assertions", async (
     LargeDataAssertionRequest request,
     ILargeDataAssertionIssuer issuer,
     LargeDataOptions options,
+    ILargeDataMetadataRepository metadata,
     CancellationToken cancellationToken) =>
 {
     if (string.IsNullOrWhiteSpace(request.ProjectId) || string.IsNullOrWhiteSpace(request.WorkstationId) ||
@@ -24,8 +25,45 @@ app.MapPost("/api/large-data/assertions", async (
         return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["projectId, workstationId, a 64-character objectHash, and non-negative sizeBytes are required."] });
     var now = DateTimeOffset.UtcNow;
     var scope = new LargeDataAssertionScope(options.Issuer, options.Audience, request.WorkstationId, request.ProjectId, request.WorkstationId, request.Operation, request.UploadSessionId ?? Guid.NewGuid().ToString("N"), new LargeObjectIdentity(request.ObjectHash.ToLowerInvariant(), request.SizeBytes), request.StorageScope ?? "default", now, now.AddMinutes(5), Guid.NewGuid().ToString("N"));
-    try { return Results.Ok(new { assertion = await issuer.IssueAsync(scope, cancellationToken), expiresAt = scope.ExpiresAt }); }
+    try
+    {
+        if (request.Operation == LargeDataOperation.Upload)
+        {
+            await metadata.UpsertObjectAsync(scope.Object, LargeDataLifecycle.Uploading, cancellationToken);
+            await metadata.UpsertUploadSessionAsync(new LargeUploadSession(scope.UploadSessionId, scope.ProjectId, scope.WorkstationId, scope.Object, scope.StorageScope, 16 * 1024 * 1024, LargeDataLifecycle.Uploading), cancellationToken);
+        }
+        return Results.Ok(new { assertion = await issuer.IssueAsync(scope, cancellationToken), expiresAt = scope.ExpiresAt });
+    }
     catch (InvalidOperationException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status503ServiceUnavailable); }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
+app.MapGet("/api/large-data/resumable-session", async (
+    string projectId,
+    string workstationId,
+    string objectHash,
+    long sizeBytes,
+    ILargeDataMetadataRepository metadata,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(workstationId) || objectHash.Length != 64 || sizeBytes < 0)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["projectId, workstationId, objectHash, and non-negative sizeBytes are required."] });
+    try
+    {
+        var session = await metadata.FindResumableSessionAsync(projectId, workstationId, new LargeObjectIdentity(objectHash.ToLowerInvariant(), sizeBytes), cancellationToken);
+        return session is null ? Results.NotFound() : Results.Ok(session);
+    }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
+app.MapPost("/api/large-data/resumable-session/{sessionId}/complete", async (
+    string sessionId,
+    ILargeDataMetadataRepository metadata,
+    CancellationToken cancellationToken) =>
+{
+    if (!Guid.TryParse(sessionId, out _)) return Results.BadRequest(new { error = "session_id_must_be_guid" });
+    try { await metadata.MarkUploadSessionCompletedAsync(sessionId, cancellationToken); return Results.Ok(new { sessionId, lifecycle = LargeDataLifecycle.Staged }); }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
 });
 
 app.MapPost("/api/large-data/provision", async (
