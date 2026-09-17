@@ -116,11 +116,12 @@ try {
         }
     }
     foreach ($item in $staged) { Invoke-RestMethod ($m.ServerBaseUrl + '/api/large-data/staged') -Method Post -ContentType 'application/json' -Body ($item | ConvertTo-Json -Depth 5) -TimeoutSec 30 | Out-Null }
-    if ($failed.Count -eq 0 -and $staged.Count -eq $m.Items.Count -and $staged.Count -gt 0) {
+if ($failed.Count -eq 0 -and $staged.Count -eq $m.Items.Count -and $staged.Count -gt 0 -and $m.CapturedHeadSha -match '^[0-9a-fA-F]{40}$') {
         $checkpoint = @{projectId=$m.ProjectId;commitSha=$m.CapturedHeadSha;items=$staged} | ConvertTo-Json -Depth 8
         Invoke-RestMethod ($m.ServerBaseUrl + '/api/large-data/checkpoint') -Method Post -ContentType 'application/json' -Body $checkpoint -TimeoutSec 30 | Out-Null; Write-Host "CHECKPOINTED: $($m.CapturedHeadSha)" -ForegroundColor Green
-    } else { Write-Warning ("Checkpoint skipped: {0} failed/changed file(s)." -f $failed.Count) }
-    $checkpointed = $failed.Count -eq 0 -and $staged.Count -eq $m.Items.Count -and $staged.Count -gt 0
+} elseif ($m.CapturedHeadSha -notmatch '^[0-9a-fA-F]{40}$') { Write-Warning 'Checkpoint skipped: a valid Git commit SHA is required.' }
+else { Write-Warning ("Checkpoint skipped: {0} failed/changed file(s)." -f $failed.Count) }
+$checkpointed = $failed.Count -eq 0 -and $staged.Count -eq $m.Items.Count -and $staged.Count -gt 0 -and $m.CapturedHeadSha -match '^[0-9a-fA-F]{40}$'
     $result = @{batchId=$m.BatchId;projectId=$m.ProjectId;staged=$staged;failed=$failed;checkpointed=$checkpointed;assertionsIssued=$script:assertionIssuanceCount;assertionsRefreshed=$script:assertionRefreshCount} | ConvertTo-Json -Depth 8
     $result | Set-Content -LiteralPath $resultPath -Encoding UTF8
     Write-Host ("ASSERTIONS: issued={0}, refreshed={1}; RESULT: {2}" -f $script:assertionIssuanceCount,$script:assertionRefreshCount,$resultPath) -ForegroundColor Cyan

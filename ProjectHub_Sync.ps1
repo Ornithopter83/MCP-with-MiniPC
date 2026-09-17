@@ -35,7 +35,8 @@ $ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
 $manifestPath = Join-Path ([IO.Path]::GetTempPath()) ("projecthub-batch-{0}.json" -f [guid]::NewGuid().ToString('N'))
 $batchId = [guid]::NewGuid().ToString('N')
 $branch = (git -C $ProjectPath branch --show-current).Trim()
-$head = (git -C $ProjectPath rev-parse HEAD).Trim()
+$head = $null
+try { $headOutput = & git -C $ProjectPath rev-parse --verify HEAD 2>$null; if ($LASTEXITCODE -eq 0) { $head = ([string]$headOutput).Trim() } } catch { $head = $null }
 $statusLines = @(git -C $ProjectPath status --porcelain=v1 --untracked-files=all)
 $dirty = $statusLines.Count -gt 0
 $changedCount = @($statusLines | Where-Object { $_ -and $_.Substring(0, 2) -ne '??' }).Count
