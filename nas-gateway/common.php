@@ -329,10 +329,14 @@ function projecthub_named_object_path($claims, $objectHash)
 
 function projecthub_cleanup_session($sessionDir, $parts = array())
 {
+    if (!is_dir($sessionDir) || is_link($sessionDir)) { return true; }
     foreach ($parts as $part) { if (is_file($part) && !is_link($part)) { @unlink($part); } }
     @unlink($sessionDir . '/assembled.tmp');
     @unlink($sessionDir . '/session.json');
-    return @rmdir($sessionDir);
+    $remaining = @scandir($sessionDir);
+    if ($remaining === false) { return false; }
+    foreach ($remaining as $entry) { if ($entry !== '.' && $entry !== '..') { return false; } }
+    return @rmdir($sessionDir) && !is_dir($sessionDir);
 }
 
 function projecthub_create_named_alias($claims, $objectPath, $objectHash)
