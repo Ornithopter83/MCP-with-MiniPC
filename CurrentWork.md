@@ -65,6 +65,8 @@ dotnet test ProjectHub.sln --no-restore
 
 2026-09-17 재검증: Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. 500MiB `forUpload.z01`은 .NET SHA-256 fallback으로 해시 계산 후 기존 session 재사용, NAS `already_present`, 원본과 동일한 size/hash, `STAGED`, `CHECKPOINTED`까지 성공했다. Server session은 `COMPLETED`로 확인됐다.
 
+추가 GC 검증: PowerShell 배열 응답 호환성 문제를 수정한 뒤 완료 session 2개를 개별 인식했고, dry-run은 SAFE 2개(각 524,288,000 bytes), KEEP 0, REVIEW 0으로 정상 집계됐다. `-Apply`는 실행하지 않았다.
+
 2026-09-17 재검증: NAS Gateway health 및 `provision.php=405`, `upload-start.php=405`는 응답했으나 운영 Server `https://projecthub.ornithopter.bid/api/status`는 `502`를 반환했다. Server 복구 전에는 GC dry-run/-Apply와 Server assertion 기반 업로드를 실행하지 않는다.
 
 실제 NAS1DUAL 기준:
