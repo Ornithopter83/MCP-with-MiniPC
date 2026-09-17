@@ -22,13 +22,13 @@ RS256 계열 서명, 짧은 만료, project/workstation/session/operation/object
 
 ## 진행
 
-현재 최종 통합 검증 진행. 외부 NAS 계정·절대 경로·비밀키는 저장소에 기록하지 않는다.
+기능 검증 완료. NAS 물리 용량·hard-link 운영 측정은 보류 중이며, 외부 NAS 계정·절대 경로·비밀키는 저장소에 기록하지 않는다.
 
 최신 재검증(2026-09-17): 운영 Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. `forUpload.z01` 500MiB는 기존 resumable session을 재사용해 NAS `already_present` 경로로 완료됐고, 원본 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267` 및 `524288000` bytes가 일치했다. `STAGED`와 `CHECKPOINTED`를 확인했으며 Server session lifecycle은 `COMPLETED`다. 백그라운드 uploader의 PowerShell 환경 차이를 제거하기 위해 uploader 해시 계산을 .NET SHA-256/FileStream 방식으로 고정했다.
 
 GC 추가 검증: PowerShell에서 JSON 배열 응답이 단일 객체처럼 처리되던 문제를 수정했다. 운영 dry-run 결과 완료 session 2개를 개별 인식해 SAFE 2개(각 524,288,000 bytes), KEEP 0, REVIEW 0, reclaimable 1,048,576,000 bytes로 집계했다. 이는 staging cleanup 후보 집계이며 object 삭제를 의미하지 않는다. `-Apply`는 실제 NAS 대상 확인 전 실행하지 않았다.
 
-GC 적용 결과: 승인된 두 SAFE session에 `-Apply`를 실행해 cleanup 요청이 완료됐고, 동일 명령 재실행 결과 두 session 모두 `ALREADY_CLEAN`으로 반환되어 idempotency를 확인했다. 활성 UPLOADING 보호는 코드상 TTL 이내이면 KEEP 처리되지만, 운영 Server에는 테스트 session 생성 공개 API가 없어 실제 보호 E2E는 별도 fixture 또는 관리 DB 준비 후 수행해야 한다.
+GC 적용 결과: 승인된 두 SAFE session에 `-Apply`를 실행해 cleanup 요청이 완료됐고, 동일 명령 재실행 결과 두 session 모두 `ALREADY_CLEAN`으로 반환되어 idempotency를 확인했다. 테스트 `UPLOADING` session은 dry-run에서 `KEEP`으로 보호됐고, fixture 삭제 후 session count 0 및 SAFE/KEEP/REVIEW 0을 확인했다.
 
 운영 정리 보완: `ProjectHub_GC.ps1`와 `cleanup-session.php`는 구현됐고, `ProjectHub_GC.cmd`는 ExecutionPolicy를 영구 변경하지 않고 GC를 실행하는 런처다. 기본 동작은 dry-run이며 `-Apply`는 TTL과 lifecycle로 SAFE 판정된 session에만 사용한다. `-GatewayUrl`로 운영 Gateway를 명시할 수 있다.
 

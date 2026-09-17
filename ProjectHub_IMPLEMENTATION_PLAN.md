@@ -39,9 +39,9 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: 06 Large Data/NAS 최종 운영 검증
+현재 작업: 06 Large Data/NAS 기능 검증 완료 / NAS 물리 용량 측정 보류
 
-잔여 작업 3개 (07, 08, 09)
+잔여 작업: NAS 물리 용량·hard-link 운영 측정(보류), 이후 07·08·09
 
 대용량 data plane은 `Agent → NAS Gateway → NAS1DUAL`, control plane은 `Agent → ProjectHub.Server → Supabase`로 분리하며 Server는 대용량 binary를 relay하지 않는다.
 
