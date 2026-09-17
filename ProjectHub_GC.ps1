@@ -14,6 +14,7 @@ $now = [DateTimeOffset]::UtcNow
 Write-Host 'ProjectHub Large Data GC'
 $safe = @(); $keep = 0; $review = 0; $reclaim = 0L
 foreach ($session in $sessions) {
+    if (-not $session.lastActivityAt) { Write-Host ("[REVIEW] {0} missing last activity metadata" -f $session.sessionId); $review++; continue }
     $age = $now - [DateTimeOffset]$session.lastActivityAt
     $lifecycle = [int]$session.lifecycle
     $active = $lifecycle -eq 2 -and $age.TotalHours -lt $TtlHours
