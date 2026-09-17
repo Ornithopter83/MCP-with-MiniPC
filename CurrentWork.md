@@ -1,6 +1,6 @@
 # ProjectHub 현재 작업 상태
 
-Updated: 2026-09-16
+Updated: 2026-09-17
 
 ## Baseline
 
@@ -8,7 +8,7 @@ Updated: 2026-09-16
 - 브랜치: `main` (원격 `origin/main` 추적)
 - 도구체인: .NET SDK 9.0.312 확인
 - 솔루션: `ProjectHub.sln`
-- 활성 작업: `tasks/05_agent-state.md`
+- 활성 작업: `tasks/06-large-data-nas.md`
 
 ## 확인된 현재 구현
 
@@ -30,6 +30,7 @@ Updated: 2026-09-16
 - 사용자가 서버 PC에서 project state POST/GET, Supabase row 저장, 동일 project/workstation 재전송 update를 검증했다.
 - `head_sha`에 실제 커밋 SHA `cebda36a4937056e9abd11254131ee42ad7afc83`가 저장된 것을 확인했다.
 - `ProjectHub.Agent`가 설정 기반 heartbeat sender/runner로 구현됐으며 실제 외부 DEV PC E2E까지 완료됐다.
+- 평상시 Agent에서는 대용량 hash/upload/staging/reconciliation을 수행하지 않도록 분리했다. 명시적 `ProjectHub_Sync.ps1`이 시작 시점의 size/mtime 고정 manifest를 만들고 별도 `ProjectHub_LargeData_Uploader.ps1`가 실제 upload/resume/finalize와 metadata checkpoint를 수행한다.
 - `GitStateCollector`가 등록된 localPath에서 branch, HEAD full SHA, dirty, changed/untracked/deleted 수를 읽기 전용으로 수집한다. 05-B 관련 테스트가 통과했다.
 - `ProjectActivityMonitor`가 등록 프로젝트를 감시하고 1초 debounce 후 Git 상태를 기존 project-state API로 전송한다. 실제 DEV PC 루트 프로젝트 외부 E2E까지 검증했다.
 - 실제 DEV PC 저장소 루트에서 임시 파일 생성 후 공식 HTTPS 터널 경유 Agent → Server → Supabase 상태 갱신을 확인했다. `dirty=true`, `untracked_count=1`, `last_file_activity` 갱신을 확인하고 임시 파일·설정을 복구했다.
@@ -43,7 +44,7 @@ Updated: 2026-09-16
 
 ## 진행
 
-잔여 작업 4개 (06, 07, 08, 09)
+잔여 작업 3개 (07, 08, 09)
 
 ## 작업 정책
 
@@ -60,7 +61,7 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 현재 작업
 
-06 Large Data/NAS 최종 통합 검증
+06 Large Data/NAS 완료; 07 Project 상태 API 준비
 
 실제 NAS1DUAL 기준:
 
@@ -72,7 +73,7 @@ dotnet test ProjectHub.sln --no-restore
 
 완료: 05 실제 DEV PC root E2E, 06 RS256 assertion 및 NAS provision/authentication E2E
 
-잔여: chunk upload → status/resume → finalize → SHA-256/size → STAGED → Git checkpoint → CHECKPOINTED → Agent 재시작 reconciliation
+완료: 명시적 Batch Sync manifest와 별도 uploader 분리, chunk/status/resume/finalize → STAGED → Git checkpoint/CHECKPOINTED 경로 구현. Agent 재시작·watcher는 자동 upload/staging을 시작하지 않는다. 업로드 중 source 변경은 `CHANGED_DURING_UPLOAD`으로 checkpoint 대상에서 제외한다.
 
 최종 검증 선행 결과: `https://suhonas.ipdisk.co.kr:8443/projecthub/`는 인증서 검증 실패(`SEC_E_WRONG_PRINCIPAL`, SNI/certificate hostname 불일치)로 정상 TLS health check가 되지 않았다. 운영 Agent에 TLS 우회는 적용하지 않으며, NAS 인증서/hostname 정리 후 upload E2E를 재개한다.
 

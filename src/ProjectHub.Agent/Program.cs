@@ -11,6 +11,18 @@ catch (InvalidOperationException exception)
     return 2;
 }
 
+if (args.Any(argument => string.Equals(argument, "--mode=batch-sync", StringComparison.OrdinalIgnoreCase)))
+{
+    var scanner = new LargeDataScanner(options.LargeFileThresholdBytes);
+    foreach (var project in options.RegisteredProjects)
+    {
+        var inventory = await scanner.ScanInventoryAsync(project, CancellationToken.None);
+        Console.WriteLine($"Batch snapshot: {project.ProjectId} ({inventory.Count} large files; size/mtime only)");
+        foreach (var item in inventory) Console.WriteLine($"{item.RelativePath}\t{item.SizeBytes}\t{item.LastWriteTimeUtc:O}");
+    }
+    return 0;
+}
+
 using var cancellationTokenSource = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>
 {
@@ -39,23 +51,6 @@ var projectMonitor = new ProjectActivityMonitor(
     message => Console.WriteLine($"[{DateTimeOffset.Now:O}] {message}"),
     message => Console.Error.WriteLine($"[{DateTimeOffset.Now:O}] {message}"));
 var projectTask = projectMonitor.RunAsync(cancellationTokenSource.Token);
-
-var scanner = new LargeDataScanner(options.LargeFileThresholdBytes);
-var metadataSender = new LargeDataMetadataSender(httpClient, options.WorkstationId);
-foreach (var project in options.RegisteredProjects)
-{
-    try
-    {
-        var largeFiles = await scanner.ScanAsync(project, cancellationTokenSource.Token);
-        Console.WriteLine($"[{DateTimeOffset.Now:O}] Large data inventory scanned: {project.ProjectId} ({largeFiles.Count} files)");
-        await metadataSender.SendInventoryAsync(project, largeFiles, cancellationTokenSource.Token);
-        Console.WriteLine($"[{DateTimeOffset.Now:O}] Large data inventory reconciled: {project.ProjectId}");
-    }
-    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-    {
-        Console.Error.WriteLine($"[{DateTimeOffset.Now:O}] Large data inventory failed: {project.ProjectId}: {exception.Message}");
-    }
-}
 
 try
 {
