@@ -108,3 +108,5 @@ NAS upload 최종 재검증: 운영 Server assertion 발급 성공 후 NAS `uplo
 500MiB 최종 재검증: 기존 session에 새 assertion으로 finalize를 재시도한 뒤 session은 정리됐고, 동일 hash `upload-start`에서 `already_present=true`, `size_bytes=524288000`을 확인했다. object 확정 및 실제 파일 크기 검증이 완료됐으며, hash는 finalize 대상 경로와 원본 SHA-256이 일치한다.
 
 06 후속 연결 구현: Agent startup 대용량 inventory를 Server reconciliation API로 전송하고, Server에 STAGED metadata 및 명시적 commit SHA 기반 CHECKPOINTED dataset API를 추가했다. Git 자동 변경은 수행하지 않는다.
+
+06 한계 기록(2026-09-17): `Sync`는 현재 존재하는 대용량 파일만 manifest로 수집하며 이전 manifest와 비교해 로컬에서 삭제된 파일을 NAS/Supabase 삭제 대상으로 추적하지 않는다. `ProjectHub_GC.ps1`는 TTL/lifecycle 기준의 upload session staging 정리만 담당하고 canonical NAS object 및 `large_objects`·`project_large_files`·`large_data_sets` metadata를 자동 삭제하지 않는다. NAS-only orphan은 Server API로 열거하지 못하므로 관리페이지/별도 관리 절차가 필요하다.

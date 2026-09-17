@@ -58,6 +58,21 @@ GC 적용 결과: 승인된 두 SAFE session에 `-Apply`를 실행해 cleanup �
 - Agent는 Supabase·SMB·NAS filesystem에 직접 접근하지 않으며 NAS Gateway HTTPS만 사용한다.
 - 자동 Git commit/push/pull/reset/merge/delete는 수행하지 않는다.
 
+## 현재 한계: 로컬 대용량 파일 삭제 추적
+
+현재 `ProjectHub_Sync.cmd`는 실행 시점에 로컬에 존재하는 대용량 파일만 새 manifest로 수집한다. 이전 manifest 또는 checkpoint와 현재 manifest를 비교해 사라진 파일을 삭제 후보로 만드는 기능은 아직 없다.
+
+따라서 Git에 추가하지 않은 대용량 파일을 로컬에서 삭제한 뒤 Sync를 실행해도 다음 동작은 자동으로 수행되지 않는다.
+
+- 삭제된 파일의 과거 SHA-256 object 식별
+- NAS `objects/sha256` canonical object 삭제
+- Supabase `large_objects`, `project_large_files`, `large_data_sets` metadata 삭제
+- 삭제 결과 및 NAS 휴지통/실제 디스크 공간 회수 확인
+
+현재 `ProjectHub_GC.ps1`와 `cleanup-session.php`는 TTL과 lifecycle이 안전하다고 판정된 업로드 session의 staging 정리용이다. 이는 canonical object나 checkpoint metadata를 삭제하는 기능이 아니며, 기본 동작도 dry-run이다. NAS에만 남은 orphan staging/object는 현재 Server API로 열거하지 못하므로 NAS 관리페이지 또는 관리용 별도 절차의 확인이 필요하다.
+
+`hw` 테스트에서 `forUpload.z01`을 로컬에서 삭제한 상태를 commit한 것은 Git 원격에서 파일을 제거하는 것일 뿐 NAS와 Supabase 자산 삭제를 의미하지 않는다. 이 한계를 해소하려면 이전·현재 manifest 비교, 명시적 삭제 승인, object/metadata 연쇄 삭제, idempotent 결과 검증을 별도 작업으로 설계해야 한다.
+
 ## 최종 검증
 
 local/temp filesystem adapter 통합 테스트 후 실제 NAS1DUAL 환경에서만 NAS root, Gateway 실행 방식과 URL을 주입해 검증한다.
