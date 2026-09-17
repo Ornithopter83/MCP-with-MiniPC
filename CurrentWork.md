@@ -44,7 +44,7 @@ Updated: 2026-09-17
 
 ## 진행
 
-잔여 작업: NAS 최신 `download.php` 배포 후 07 Restore 운영 E2E, 이후 08 Server 설치·이전
+잔여 작업: 새 Server 삭제/tombstone API 운영 배포 후 `hw` 탐색기 더블클릭 Sync·Restore E2E, 이후 08 Server 설치·이전
 
 ## 작업 정책
 
@@ -63,7 +63,7 @@ dotnet test ProjectHub.sln --no-restore
 
 06 Large Data/NAS 기능 검증 완료 / 07 프로젝트 배포 패키지 검증 중
 
-07 구현: `ProjectHub_Setup.cmd` 단일 진입점, workstation heartbeat 선등록, `.projecthub/project.json`, 조건부 관리 문서 생성, `bin` 배포 파일, 프로젝트별 Sync/Restore 런처, checkpoint 조회 API, NAS download endpoint를 추가했다. 빈 `hw.git` clone에서 Setup→Server 등록→`bin` 배포→초기 commit→Sync manifest 생성을 확인했다. Restore는 별도 디렉터리에 복원하고 크기/SHA-256을 검증한다. NAS 최신 `download.php` 배포와 checkpoint 기반 운영 Restore E2E가 남아 있다.
+07 구현: Setup/Sync/Restore 배포 패키지에 이전·현재 manifest diff, REMOVED 승인 GUI, Server tombstone API, current-folder Restore의 LOCAL_ONLY 보호와 REMOVED 삭제 승인을 추가했다. `hw`에는 최신 `bin` 실행본을 반영했다. Server 새 바이너리 운영 배포 후 탐색기 더블클릭 기준 삭제 Sync와 Restore E2E가 남아 있다.
 
 2026-09-17 재검증: Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. 500MiB `forUpload.z01`은 .NET SHA-256 fallback으로 해시 계산 후 기존 session 재사용, NAS `already_present`, 원본과 동일한 size/hash, `STAGED`, `CHECKPOINTED`까지 성공했다. Server session은 `COMPLETED`로 확인됐다.
 

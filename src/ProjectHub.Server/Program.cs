@@ -161,6 +161,42 @@ app.MapGet("/api/large-data/checkpoints/{projectId}", async (string projectId, I
     catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
 });
 
+app.MapGet("/api/large-data/files/{projectId}", async (string projectId, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(projectId)) return Results.BadRequest(new { error = "project_id_required" });
+    try { return Results.Ok(await metadata.ListProjectFilesAsync(projectId, cancellationToken)); }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
+app.MapPost("/api/large-data/removals/{projectId}", async (
+    string projectId,
+    LargeDataRemovalRequest request,
+    ILargeDataMetadataRepository metadata,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(request.WorkstationId) ||
+        string.IsNullOrWhiteSpace(request.LocalHeadSha) || string.IsNullOrWhiteSpace(request.BaseCheckpointSha) || request.Files.Count == 0)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["projectId, workstationId, localHeadSha, baseCheckpointSha and files are required."] });
+    try
+    {
+        var latest = (await metadata.ListDataSetsAsync(projectId, cancellationToken)).FirstOrDefault();
+        if (latest is null || !string.Equals(latest.CommitSha, request.LocalHeadSha, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(latest.CommitSha, request.BaseCheckpointSha, StringComparison.OrdinalIgnoreCase))
+            return Results.Conflict(new { error = "stale_checkpoint", latestCheckpoint = latest?.CommitSha, localHead = request.LocalHeadSha, baseCheckpoint = request.BaseCheckpointSha });
+
+        var managed = await metadata.ListProjectFilesAsync(projectId, cancellationToken);
+        foreach (var file in request.Files)
+        {
+            var previous = managed.FirstOrDefault(item => string.Equals(item.RelativePath, file.RelativePath, StringComparison.Ordinal));
+            if (previous is null || previous.Lifecycle == LargeDataLifecycle.Removed)
+                return Results.Conflict(new { error = "managed_file_not_found", relativePath = file.RelativePath });
+            await metadata.MarkProjectFileRemovedAsync(previous with { Lifecycle = LargeDataLifecycle.Removed, CheckpointCommitSha = latest.CommitSha }, cancellationToken);
+        }
+        return Results.Ok(new { projectId, workstationId = request.WorkstationId, removed = request.Files.Select(file => file.RelativePath).ToArray(), tombstoneCheckpoint = latest.CommitSha });
+    }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
 app.MapPost("/api/agent/heartbeat", async (
     HeartbeatRequest request,
     IWorkstationRepository repository,
@@ -336,3 +372,5 @@ public sealed record LargeDataProvisionRequest(string Assertion);
 public sealed record LargeDataReconciliationRequest(string WorkstationId, IReadOnlyList<ProjectLargeFile> Files);
 
 public sealed record LargeDataCheckpointRequest(string ProjectId, string CommitSha, IReadOnlyList<ProjectLargeFile> Items);
+public sealed record LargeDataRemovalRequest(string WorkstationId, string LocalHeadSha, string BaseCheckpointSha, IReadOnlyList<LargeDataRemovalFile> Files);
+public sealed record LargeDataRemovalFile(string RelativePath);

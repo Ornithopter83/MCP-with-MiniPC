@@ -74,9 +74,37 @@ public sealed class SupabaseLargeDataMetadataRepository(IHttpClientFactory clien
         return result;
     }
 
+    public async Task<IReadOnlyList<ProjectLargeFile>> ListProjectFilesAsync(string projectId, CancellationToken cancellationToken)
+    {
+        var client = clientFactory.CreateClient("Supabase");
+        var rows = await client.GetFromJsonAsync<List<ProjectFileRow>>(
+            "project_large_files?select=project_id,relative_path,sha256,size_bytes,lifecycle,checkpoint_commit_sha&project_id=eq." + Uri.EscapeDataString(projectId) + "&order=relative_path.asc",
+            cancellationToken) ?? [];
+        return rows.Select(row => new ProjectLargeFile(row.ProjectId, row.RelativePath,
+            new LargeObjectIdentity(row.Sha256, row.SizeBytes), ParseLifecycle(row.Lifecycle), row.CheckpointCommitSha)).ToArray();
+    }
+
+    public Task MarkProjectFileRemovedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken) =>
+        SendAsync("project_large_files", new
+        {
+            project_id = projectFile.ProjectId,
+            relative_path = projectFile.RelativePath,
+            sha256 = projectFile.Object.Sha256,
+            size_bytes = projectFile.Object.SizeBytes,
+            lifecycle = LargeDataLifecycle.Removed.ToString().ToUpperInvariant(),
+            checkpoint_commit_sha = projectFile.CheckpointCommitSha
+        }, "project_id,relative_path", cancellationToken);
+
     private sealed record DataSetRow(Guid Id);
     private sealed record DataSetSummaryRow([property: JsonPropertyName("id")] Guid Id, [property: JsonPropertyName("project_id")] string ProjectId, [property: JsonPropertyName("commit_sha")] string CommitSha, [property: JsonPropertyName("status")] string Status, [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
     private sealed record DataSetItemRow([property: JsonPropertyName("sha256")] string Sha256, [property: JsonPropertyName("relative_path")] string RelativePath, [property: JsonPropertyName("size_bytes")] long SizeBytes);
+    private sealed record ProjectFileRow(
+        [property: JsonPropertyName("project_id")] string ProjectId,
+        [property: JsonPropertyName("relative_path")] string RelativePath,
+        [property: JsonPropertyName("sha256")] string Sha256,
+        [property: JsonPropertyName("size_bytes")] long SizeBytes,
+        [property: JsonPropertyName("lifecycle")] string Lifecycle,
+        [property: JsonPropertyName("checkpoint_commit_sha")] string? CheckpointCommitSha);
 
     private sealed record UploadSessionRow(
         [property: JsonPropertyName("id")] string Id,

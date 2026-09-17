@@ -17,6 +17,7 @@ public enum LargeDataLifecycle
     Checkpointed,
     Orphaned,
     Missing,
+    Removed,
     MigrationRequired,
     Completed,
     Cancelled,
@@ -41,6 +42,8 @@ public interface ILargeDataMetadataRepository
     Task MarkStagedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
     Task CreateDataSetAsync(LargeDataSet dataSet, CancellationToken cancellationToken);
     Task<IReadOnlyList<LargeDataSet>> ListDataSetsAsync(string projectId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ProjectLargeFile>> ListProjectFilesAsync(string projectId, CancellationToken cancellationToken);
+    Task MarkProjectFileRemovedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
 }
 
 public sealed record LargeDataAssertionScope(
