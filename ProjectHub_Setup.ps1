@@ -21,7 +21,7 @@ Invoke-RestMethod ($ServerBaseUrl.TrimEnd('/')+'/api/projects/'+[Uri]::EscapeDat
 foreach ($name in 'ProjectHub_Sync.ps1','ProjectHub_LargeData_Uploader.ps1','ProjectHub_Restore.ps1') { $source=Join-Path $ProjectHubSource $name; $target=Join-Path $binDir $name; if (-not (Test-Path $target)) { if (Test-Path $source) { Copy-Item -LiteralPath $source -Destination $target } else { Invoke-WebRequest ($TemplateBaseUrl.TrimEnd('/')+'/'+$name) -OutFile $target -TimeoutSec 60 } } }
 if (-not (Test-Path (Join-Path $gitRoot 'ProjectHub_Sync.cmd'))) { "@echo off`r`nsetlocal`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0bin\ProjectHub_Sync.ps1`" -ProjectPath `"%~dp0.`" %*`r`nendlocal" | Set-Content (Join-Path $gitRoot 'ProjectHub_Sync.cmd') -Encoding ASCII }
 if (-not (Test-Path (Join-Path $gitRoot 'ProjectHub_Restore.cmd'))) { "@echo off`r`nsetlocal`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0bin\ProjectHub_Restore.ps1`" -ProjectRoot `"%~dp0.`" %*`r`nendlocal" | Set-Content (Join-Path $gitRoot 'ProjectHub_Restore.cmd') -Encoding ASCII }
-foreach ($file in @('AGENTS.md','CurrentWork.md')) { $target=Join-Path $gitRoot $file; if (-not (Test-Path $target)) { "# $projectId`r`n`r`nProjectHub 관리 프로젝트입니다.`r`n" | Set-Content $target -Encoding UTF8 } }
+foreach ($file in @('AGENTS.md','CurrentWork.md')) { $target=Join-Path $gitRoot $file; if (-not (Test-Path $target)) { "# $projectId`r`n`r`nProjectHub-managed project.`r`n" | Set-Content $target -Encoding UTF8 } }
 if (-not (Test-Path (Join-Path $gitRoot 'tasks'))) { New-Item -ItemType Directory (Join-Path $gitRoot 'tasks') | Out-Null }
 Write-Host "SETUP_COMPLETE: $projectId ($branch/$head)"
 Write-Host "Config: $configPath"

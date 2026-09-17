@@ -4,7 +4,7 @@ param(
     [string]$WorkstationId,
     [string]$ServerBaseUrl = "https://projecthub.ornithopter.bid",
     [string]$GatewayUrl = "https://dfblackbox-nas.duckdns.org:8443/projecthub/",
-    [string]$ThresholdBytes = '1GB'
+    [string]$ThresholdBytes = '100MB'
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,4 +50,4 @@ Write-Host "Manifest: $manifestPath"
 $state = @{ workstationId=$WorkstationId; displayName=$ProjectId; repositoryUrl=$null; branch=$branch; headSha=$head; dirty=$dirty; changedCount=$changedCount; untrackedCount=$untrackedCount; deletedCount=$deletedCount; diffFingerprint=("batch:{0};large_files:{1}" -f $batchId, $items.Count); lastFileActivity=$null } | ConvertTo-Json
 Invoke-RestMethod ($ServerBaseUrl.TrimEnd('/') + '/api/projects/' + [Uri]::EscapeDataString($ProjectId) + '/state') -Method Post -ContentType 'application/json' -Body $state -TimeoutSec 30 | Out-Null
 Write-Host "Control-plane metadata synced. Starting separate uploader process; Git is not modified."
-Start-Process powershell.exe -WindowStyle Normal -ArgumentList @('-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'ProjectHub_LargeData_Uploader.ps1'),'-ManifestPath',$manifestPath)
+Start-Process powershell.exe -WindowStyle Normal -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'ProjectHub_LargeData_Uploader.ps1'),'-ManifestPath',$manifestPath)
