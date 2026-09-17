@@ -56,6 +56,24 @@ app.MapGet("/api/large-data/resumable-session", async (
     catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
 });
 
+app.MapGet("/api/large-data/sessions", async (string? projectId, string? workstationId, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
+{
+    try { return Results.Ok(await metadata.ListUploadSessionsAsync(projectId, workstationId, cancellationToken)); }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
+app.MapPost("/api/large-data/sessions/{sessionId}/cancel", async (string sessionId, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
+{
+    try { await metadata.UpdateUploadSessionLifecycleAsync(sessionId, LargeDataLifecycle.Cancelled, cancellationToken); return Results.Ok(); }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
+app.MapPost("/api/large-data/sessions/{sessionId}/abandon", async (string sessionId, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
+{
+    try { await metadata.UpdateUploadSessionLifecycleAsync(sessionId, LargeDataLifecycle.Abandoned, cancellationToken); return Results.Ok(); }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
 app.MapPost("/api/large-data/resumable-session/{sessionId}/complete", async (
     string sessionId,
     ILargeDataMetadataRepository metadata,

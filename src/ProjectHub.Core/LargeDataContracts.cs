@@ -4,7 +4,8 @@ public enum LargeDataOperation
 {
     Provision,
     Upload,
-    Download
+    Download,
+    Cleanup
 }
 
 public enum LargeDataLifecycle
@@ -16,7 +17,10 @@ public enum LargeDataLifecycle
     Checkpointed,
     Orphaned,
     Missing,
-    MigrationRequired
+    MigrationRequired,
+    Completed,
+    Cancelled,
+    Abandoned
 }
 
 public sealed record LargeObjectIdentity(string Sha256, long SizeBytes);
@@ -30,6 +34,8 @@ public interface ILargeDataMetadataRepository
     Task<LargeUploadSession?> FindResumableSessionAsync(string projectId, string workstationId, LargeObjectIdentity objectIdentity, CancellationToken cancellationToken);
     Task UpsertUploadSessionAsync(LargeUploadSession session, CancellationToken cancellationToken);
     Task MarkUploadSessionCompletedAsync(string sessionId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<LargeUploadSession>> ListUploadSessionsAsync(string? projectId, string? workstationId, CancellationToken cancellationToken);
+    Task UpdateUploadSessionLifecycleAsync(string sessionId, LargeDataLifecycle lifecycle, CancellationToken cancellationToken);
     Task UpsertObjectAsync(LargeObjectIdentity objectIdentity, LargeDataLifecycle lifecycle, CancellationToken cancellationToken);
     Task UpsertProjectFileAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
     Task MarkStagedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
@@ -61,7 +67,8 @@ public sealed record LargeUploadSession(
     LargeObjectIdentity Object,
     string StorageScope,
     long ChunkSizeBytes,
-    LargeDataLifecycle Lifecycle);
+    LargeDataLifecycle Lifecycle,
+    DateTimeOffset? LastActivityAt = null);
 
 public sealed record ProvisionResult(
     string SessionId,

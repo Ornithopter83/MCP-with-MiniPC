@@ -9,21 +9,34 @@ public sealed class SupabaseLargeDataMetadataRepository(IHttpClientFactory clien
     public async Task<LargeUploadSession?> FindResumableSessionAsync(string projectId, string workstationId, LargeObjectIdentity objectIdentity, CancellationToken cancellationToken)
     {
         var client = clientFactory.CreateClient("Supabase");
-        var url = "large_upload_sessions?project_id=eq." + Uri.EscapeDataString(projectId) +
+        var url = "large_upload_sessions?select=id,project_id,workstation_id,sha256,size_bytes,chunk_size_bytes,storage_scope,lifecycle,updated_at&project_id=eq." + Uri.EscapeDataString(projectId) +
                   "&workstation_id=eq." + Uri.EscapeDataString(workstationId) +
                   "&sha256=eq." + Uri.EscapeDataString(objectIdentity.Sha256) +
                   "&size_bytes=eq." + objectIdentity.SizeBytes +
                   "&lifecycle=eq.UPLOADING&order=updated_at.desc&limit=1";
         var rows = await client.GetFromJsonAsync<List<UploadSessionRow>>(url, cancellationToken);
         var row = rows?.FirstOrDefault();
-        return row is null ? null : new LargeUploadSession(row.Id, row.ProjectId, row.WorkstationId, new LargeObjectIdentity(row.Sha256, row.SizeBytes), row.StorageScope, row.ChunkSizeBytes, ParseLifecycle(row.Lifecycle));
+        return row is null ? null : ToSession(row);
     }
 
     public Task UpsertUploadSessionAsync(LargeUploadSession session, CancellationToken cancellationToken) =>
         SendAsync("large_upload_sessions", new { id = session.SessionId, project_id = session.ProjectId, workstation_id = session.WorkstationId, sha256 = session.Object.Sha256, size_bytes = session.Object.SizeBytes, chunk_size_bytes = session.ChunkSizeBytes, storage_scope = session.StorageScope, lifecycle = session.Lifecycle.ToString().ToUpperInvariant() }, "id", cancellationToken);
 
     public Task MarkUploadSessionCompletedAsync(string sessionId, CancellationToken cancellationToken) =>
-        PatchAsync("large_upload_sessions?id=eq." + Uri.EscapeDataString(sessionId), new { lifecycle = LargeDataLifecycle.Staged.ToString().ToUpperInvariant() }, cancellationToken);
+        UpdateUploadSessionLifecycleAsync(sessionId, LargeDataLifecycle.Completed, cancellationToken);
+
+    public async Task<IReadOnlyList<LargeUploadSession>> ListUploadSessionsAsync(string? projectId, string? workstationId, CancellationToken cancellationToken)
+    {
+        var client = clientFactory.CreateClient("Supabase");
+        var url = "large_upload_sessions?select=id,project_id,workstation_id,sha256,size_bytes,chunk_size_bytes,storage_scope,lifecycle,updated_at&order=updated_at.desc&limit=1000";
+        if (!string.IsNullOrWhiteSpace(projectId)) url += "&project_id=eq." + Uri.EscapeDataString(projectId);
+        if (!string.IsNullOrWhiteSpace(workstationId)) url += "&workstation_id=eq." + Uri.EscapeDataString(workstationId);
+        var rows = await client.GetFromJsonAsync<List<UploadSessionRow>>(url, cancellationToken) ?? [];
+        return rows.Select(ToSession).ToArray();
+    }
+
+    public Task UpdateUploadSessionLifecycleAsync(string sessionId, LargeDataLifecycle lifecycle, CancellationToken cancellationToken) =>
+        PatchAsync("large_upload_sessions?id=eq." + Uri.EscapeDataString(sessionId), new { lifecycle = lifecycle.ToString().ToUpperInvariant() }, cancellationToken);
 
     public Task UpsertObjectAsync(LargeObjectIdentity objectIdentity, LargeDataLifecycle lifecycle, CancellationToken cancellationToken) =>
         SendAsync("large_objects", new { sha256 = objectIdentity.Sha256, size_bytes = objectIdentity.SizeBytes, lifecycle = lifecycle.ToString().ToUpperInvariant() }, "sha256", cancellationToken);
@@ -58,7 +71,11 @@ public sealed class SupabaseLargeDataMetadataRepository(IHttpClientFactory clien
         [property: JsonPropertyName("size_bytes")] long SizeBytes,
         [property: JsonPropertyName("chunk_size_bytes")] long ChunkSizeBytes,
         [property: JsonPropertyName("storage_scope")] string StorageScope,
-        [property: JsonPropertyName("lifecycle")] string Lifecycle);
+        [property: JsonPropertyName("lifecycle")] string Lifecycle,
+        [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
+    private static LargeUploadSession ToSession(UploadSessionRow row) =>
+        new(row.Id, row.ProjectId, row.WorkstationId, new LargeObjectIdentity(row.Sha256, row.SizeBytes), row.StorageScope, row.ChunkSizeBytes, ParseLifecycle(row.Lifecycle), row.UpdatedAt);
 
     private static LargeDataLifecycle ParseLifecycle(string value) =>
         Enum.TryParse<LargeDataLifecycle>(value, true, out var lifecycle) ? lifecycle : LargeDataLifecycle.Orphaned;
