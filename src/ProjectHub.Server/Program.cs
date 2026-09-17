@@ -24,7 +24,7 @@ app.MapPost("/api/large-data/assertions", async (
         string.IsNullOrWhiteSpace(request.ObjectHash) || request.ObjectHash.Length != 64 || request.SizeBytes < 0)
         return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["projectId, workstationId, a 64-character objectHash, and non-negative sizeBytes are required."] });
     var now = DateTimeOffset.UtcNow;
-    var scope = new LargeDataAssertionScope(options.Issuer, options.Audience, request.WorkstationId, request.ProjectId, request.WorkstationId, request.Operation, request.UploadSessionId ?? Guid.NewGuid().ToString("N"), new LargeObjectIdentity(request.ObjectHash.ToLowerInvariant(), request.SizeBytes), request.StorageScope ?? "default", now, now.AddMinutes(5), Guid.NewGuid().ToString("N"));
+    var scope = new LargeDataAssertionScope(options.Issuer, options.Audience, request.WorkstationId, request.ProjectId, request.WorkstationId, request.Operation, request.UploadSessionId ?? Guid.NewGuid().ToString("N"), new LargeObjectIdentity(request.ObjectHash.ToLowerInvariant(), request.SizeBytes), request.StorageScope ?? "default", now, now.AddMinutes(5), Guid.NewGuid().ToString("N"), RelativePath: request.RelativePath);
     try
     {
         if (request.Operation == LargeDataOperation.Upload)
@@ -303,7 +303,8 @@ public sealed record LargeDataAssertionRequest(
     long SizeBytes,
     LargeDataOperation Operation,
     string? UploadSessionId,
-    string? StorageScope);
+    string? StorageScope,
+    string? RelativePath);
 
 public sealed record LargeDataProvisionRequest(string Assertion);
 

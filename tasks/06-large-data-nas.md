@@ -34,11 +34,11 @@ RS256 계열 서명, 짧은 만료, project/workstation/session/operation/object
 
 500MiB 최종 확인: 기존 session에 새 assertion으로 finalize를 재시도했고, 동일 hash upload-start에서 `already_present=true`, `size_bytes=524288000`을 확인했다. NAS object 확정과 원본 SHA-256/size 일치가 완료됐다.
 
-최종 정책: 평상시 Agent는 관찰 전용이다. 대용량 전송은 사용자가 명시적으로 Batch Sync를 시작했을 때만 별도 uploader에서 수행한다. 실패 session 정리 또는 재시도도 다음 명시적 Batch에서만 수행한다. finalize 성공 시 Server session을 `STAGED`로 갱신하며 NAS staging 정리는 Gateway finalize 응답으로 확인한다.
+최종 정책: 평상시 Agent는 관찰 전용이다. 대용량 전송은 사용자가 명시적으로 Batch Sync를 시작했을 때만 별도 uploader에서 수행한다. 실패 session 정리 또는 재시도도 다음 명시적 Batch에서만 수행한다. finalize 성공 시 Server session을 `STAGED`로 갱신하며 NAS staging 정리는 Gateway finalize 응답으로 확인한다. `already_present` 경로도 `.part`, `session.json`, `assembled.tmp`를 모두 정리하도록 보완했고, 원본 파일명/확장자는 canonical hash object를 중복 복사하지 않는 hard-link alias로 노출한다.
 
 실제 환경 반영: PHP-visible root는 `/mnt/HDD1/ProjectHub`이며 `/HDD1/ProjectHub`를 사용하지 않는다. Gateway는 운영자가 준비한 root 내부만 사용한다. Gateway URL은 `https://dfblackbox-nas.duckdns.org:8443/projecthub/`로 설정한다. Authorization fallback과 NAS PHP 런타임 호환성을 유지하고, 운영 코드에서 TLS 인증서 검증을 우회하지 않는다. Provision/RS256/NAS write E2E는 완료로 기록한다.
 
-검증: 2026-09-17 `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(5개 통과), PowerShell parser로 Batch Sync/uploader/Test 스크립트 문법 검증 PASS. session 조회/등록/완료 API와 main metadata 전송 코드를 추가했다. 실제 새 500MiB Batch 중단-resume/STAGED/CHECKPOINTED E2E 및 Agent 재시작 관찰 검증은 Server private key·Supabase 운영 상태와 사용자 실행 세션이 필요하다. 로컬 PHP CLI는 없어 PHP lint는 미실행이다.
+검증: 2026-09-17 `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(5개 통과), PowerShell parser로 Batch Sync/uploader/Test 스크립트 문법 검증 PASS. 운영 Server `/api/status=200`, NAS health `200`을 확인했다. 실제 `ProjectHub_Sync.ps1` 500MiB Batch에서 main metadata 선반영과 별도 uploader를 실행했고, uploader 전면 재실행 결과 `ALREADY_PRESENT`(hash/size 일치), `STAGED`, `CHECKPOINTED`(captured HEAD `6481d1439a75233dc0f8504bbfeb74e7856f5f15`)를 확인했다. canonical object는 기존 hash 경로이므로 원본 파일명 alias와 staging cleanup 수정은 NAS Gateway PHP 재배포 후 확인해야 하며, 기존 orphan staging은 NAS에서 일회성 명시 cleanup이 필요하다. 로컬 PHP CLI는 없어 PHP lint는 미실행이다.
 
 ## 변경 금지
 

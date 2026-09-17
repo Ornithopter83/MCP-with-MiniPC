@@ -306,3 +306,51 @@ function projecthub_upload_session_dir($sessionId)
 {
     return projecthub_safe_path(projecthub_storage_root(), 'staging/' . $sessionId);
 }
+
+function projecthub_validate_relative_path($value)
+{
+    if (!is_string($value) || $value === '' || strpos($value, '\\') !== false || strpos($value, "\0") !== false || substr($value, 0, 1) === '/') {
+        return false;
+    }
+    foreach (explode('/', $value) as $part) {
+        if ($part === '' || $part === '.' || $part === '..') { return false; }
+    }
+    return true;
+}
+
+function projecthub_named_object_path($claims, $objectHash)
+{
+    if (!isset($claims['relative_path']) || !projecthub_validate_relative_path($claims['relative_path'])) {
+        return null;
+    }
+    $relative = 'files/' . $claims['project_id'] . '/' . $claims['relative_path'];
+    return projecthub_safe_path(projecthub_storage_root(), $relative);
+}
+
+function projecthub_cleanup_session($sessionDir, $parts = array())
+{
+    foreach ($parts as $part) { if (is_file($part) && !is_link($part)) { @unlink($part); } }
+    @unlink($sessionDir . '/assembled.tmp');
+    @unlink($sessionDir . '/session.json');
+    return @rmdir($sessionDir);
+}
+
+function projecthub_create_named_alias($claims, $objectPath, $objectHash)
+{
+    $namedPath = projecthub_named_object_path($claims, $objectHash);
+    if ($namedPath === null) { return null; }
+    $parent = dirname($namedPath);
+    if (!is_dir($parent) && !@mkdir($parent, 0750, true)) { projecthub_json_error(500, 'named_directory_create_failed'); }
+    $cursor = $parent;
+    $root = rtrim(projecthub_storage_root(), '/');
+    while ($cursor !== $root) {
+        if (is_link($cursor)) { projecthub_json_error(500, 'named_path_symlink_not_allowed'); }
+        $cursor = dirname($cursor);
+    }
+    if (file_exists($namedPath)) {
+        if (is_link($namedPath) || !is_file($namedPath) || strtolower(hash_file('sha256', $namedPath)) !== strtolower($objectHash)) { projecthub_json_error(409, 'named_path_conflict'); }
+        return 'files/' . $claims['project_id'] . '/' . $claims['relative_path'];
+    }
+    if (!@link($objectPath, $namedPath)) { projecthub_json_error(500, 'named_alias_create_failed'); }
+    return 'files/' . $claims['project_id'] . '/' . $claims['relative_path'];
+}

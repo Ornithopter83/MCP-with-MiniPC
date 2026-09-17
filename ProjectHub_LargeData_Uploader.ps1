@@ -6,9 +6,10 @@ $chunkSize = 16MB
 $chunkRoot = Join-Path ([IO.Path]::GetTempPath()) ("projecthub-upload-{0}" -f $m.BatchId)
 New-Item -ItemType Directory -Path $chunkRoot -Force | Out-Null
 $staged = @()
+$completedNormally = $false
 
 function Get-Assertion([object]$item, [string]$session, [string]$hash) {
-    $body = @{ projectId=$m.ProjectId; workstationId=$m.WorkstationId; objectHash=$hash; sizeBytes=[int64]$item.SizeBytes; operation=1; uploadSessionId=$session; storageScope='projecthub' } | ConvertTo-Json
+    $body = @{ projectId=$m.ProjectId; workstationId=$m.WorkstationId; objectHash=$hash; sizeBytes=[int64]$item.SizeBytes; operation=1; uploadSessionId=$session; storageScope='projecthub'; relativePath=$item.RelativePath } | ConvertTo-Json
     (Invoke-RestMethod ($m.ServerBaseUrl + '/api/large-data/assertions') -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 30).assertion
 }
 
@@ -25,10 +26,17 @@ try {
         $start = Invoke-RestMethod ($m.GatewayUrl + 'upload-start.php') -Method Post -Headers $headers -TimeoutSec 30
         if ($start.state -eq 'complete') {
             if ([int64]$start.size_bytes -ne [int64]$item.SizeBytes -or $start.object_hash.ToLowerInvariant() -ne $hash) { throw "existing NAS object identity mismatch: $($item.RelativePath)" }
-            Write-Host "ALREADY_PRESENT: $($item.RelativePath)" -ForegroundColor DarkGreen
+            Write-Host ("ALREADY_PRESENT: {0} ({1} bytes, SHA-256 {2})" -f $item.RelativePath, $start.size_bytes, $start.object_hash) -ForegroundColor DarkGreen
         } else {
             $done = @()
             try { $done = @((Invoke-RestMethod ($m.GatewayUrl + 'upload-status.php') -Headers $headers -TimeoutSec 30).completed_chunks) } catch { }
+            $totalChunks = [Math]::Ceiling([double]$item.SizeBytes / $chunkSize)
+            $completedBytes = 0L
+            foreach ($completedIndex in $done) {
+                $remaining = [int64]$item.SizeBytes - ([int64]$completedIndex * $chunkSize)
+                $completedBytes += [Math]::Min([int64]$chunkSize, [Math]::Max(0L, $remaining))
+            }
+            Write-Host ("UPLOAD: {0} ({1}/{2} chunks, {3:N0}/{4:N0} bytes)" -f $item.RelativePath, $done.Count, $totalChunks, $completedBytes, $item.SizeBytes) -ForegroundColor Cyan
             $stream = [IO.File]::OpenRead($item.FullPath)
             try {
                 $buffer = New-Object byte[] $chunkSize
@@ -42,10 +50,15 @@ try {
                         curl.exe -sS --fail --max-time 300 -X PUT -H "Authorization: Bearer $token" -H 'Content-Type: application/octet-stream' --data-binary "@$chunkPath" ($m.GatewayUrl + "upload-chunk.php?chunk_index=$index") | Out-Null
                         if ($LASTEXITCODE -ne 0) { throw "chunk upload failed: $index" }
                         Remove-Item -LiteralPath $chunkPath -Force
+                        $completedBytes += $read
+                        $percent = [int](($completedBytes * 100) / $item.SizeBytes)
+                        Write-Progress -Activity "ProjectHub NAS upload" -Status ("{0} {1}% ({2:N0}/{3:N0} bytes)" -f $item.RelativePath, $percent, $completedBytes, $item.SizeBytes) -PercentComplete $percent
+                        Write-Host ("  chunk {0}/{1} complete - {2:N0}/{3:N0} bytes" -f ($index + 1), $totalChunks, $completedBytes, $item.SizeBytes)
                     }
                     $index++
                 }
             } finally { $stream.Dispose() }
+            Write-Progress -Activity "ProjectHub NAS upload" -Completed
             $token = Get-Assertion $item $session $hash
             $final = Invoke-RestMethod ($m.GatewayUrl + 'upload-finalize.php') -Method Post -Headers @{Authorization="Bearer $token"} -TimeoutSec 600
             if ($final.state -ne 'complete') { throw "finalize failed: $($item.RelativePath)" }
@@ -62,6 +75,12 @@ try {
         Invoke-RestMethod ($m.ServerBaseUrl + '/api/large-data/checkpoint') -Method Post -ContentType 'application/json' -Body $checkpoint -TimeoutSec 30 | Out-Null
         Write-Host "CHECKPOINTED: $($m.CapturedHeadSha)" -ForegroundColor Green
     } else { Write-Warning "Checkpoint skipped: files changed or no large files were staged." }
+    $completedNormally = $true
+} catch {
+    Write-Host ("UPLOAD FAILED: " + $_.Exception.Message) -ForegroundColor Red
+    Read-Host "오류를 확인했으면 Enter 키를 눌러 uploader를 종료하세요"
+    exit 1
 } finally {
     Remove-Item -LiteralPath $chunkRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+if ($completedNormally) { Read-Host "Batch uploader가 완료되었습니다. Enter 키를 눌러 종료하세요" }

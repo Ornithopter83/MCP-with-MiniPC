@@ -51,7 +51,8 @@ public sealed record LargeDataAssertionScope(
     string Jti,
     string? KeyId = null,
     string? GatewayId = null,
-    string? LocationId = null);
+    string? LocationId = null,
+    string? RelativePath = null);
 
 public sealed record LargeUploadSession(
     string SessionId,

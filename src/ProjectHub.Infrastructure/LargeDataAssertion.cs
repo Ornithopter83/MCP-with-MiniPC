@@ -23,6 +23,7 @@ public sealed class LargeDataAssertionIssuer(LargeDataOptions options) : ILargeD
             operation = scope.Operation.ToString().ToLowerInvariant(),
             upload_session_id = scope.UploadSessionId, object_hash = scope.Object.Sha256,
             size_bytes = scope.Object.SizeBytes, storage_scope = scope.StorageScope,
+            relative_path = scope.RelativePath,
             iat = scope.IssuedAt.ToUnixTimeSeconds(), exp = scope.ExpiresAt.ToUnixTimeSeconds(),
             jti = scope.Jti, gateway_id = scope.GatewayId, location_id = scope.LocationId
         });
@@ -50,7 +51,8 @@ public sealed class LargeDataAssertionVerifier(LargeDataOptions options)
         if (root.GetProperty("v").GetInt32() != 1 || root.GetProperty("iss").GetString() != options.Issuer || root.GetProperty("aud").GetString() != options.Audience || root.GetProperty("exp").GetInt64() <= now || root.GetProperty("iat").GetInt64() > now + 60) throw new UnauthorizedAccessException("Invalid assertion claims.");
         var operation = Enum.Parse<LargeDataOperation>(root.GetProperty("operation").GetString()!, true);
         if (operation != expectedOperation) throw new UnauthorizedAccessException("Assertion operation is not allowed.");
-        return new(root.GetProperty("iss").GetString()!, root.GetProperty("aud").GetString()!, root.GetProperty("sub").GetString()!, root.GetProperty("project_id").GetString()!, root.GetProperty("workstation_id").GetString()!, operation, root.GetProperty("upload_session_id").GetString()!, new(root.GetProperty("object_hash").GetString()!, root.GetProperty("size_bytes").GetInt64()), root.GetProperty("storage_scope").GetString()!, DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("iat").GetInt64()), DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("exp").GetInt64()), root.GetProperty("jti").GetString()!);
+        var relativePath = root.TryGetProperty("relative_path", out var relativePathElement) && relativePathElement.ValueKind == JsonValueKind.String ? relativePathElement.GetString() : null;
+        return new(root.GetProperty("iss").GetString()!, root.GetProperty("aud").GetString()!, root.GetProperty("sub").GetString()!, root.GetProperty("project_id").GetString()!, root.GetProperty("workstation_id").GetString()!, operation, root.GetProperty("upload_session_id").GetString()!, new(root.GetProperty("object_hash").GetString()!, root.GetProperty("size_bytes").GetInt64()), root.GetProperty("storage_scope").GetString()!, DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("iat").GetInt64()), DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("exp").GetInt64()), root.GetProperty("jti").GetString()!, RelativePath: relativePath);
     }
 
     private static byte[] Decode(string value) => Convert.FromBase64String(value.Replace('-', '+').Replace('_', '/') + new string('=', (4 - value.Length % 4) % 4));

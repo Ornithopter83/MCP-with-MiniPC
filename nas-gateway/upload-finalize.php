@@ -31,11 +31,10 @@ $hash = strtolower(hash_file('sha256', $assembled));
 if ($size !== intval($claims['size_bytes'])) { @unlink($assembled); projecthub_json_error(409, 'size_mismatch'); }
 if ($hash !== strtolower($claims['object_hash'])) { @unlink($assembled); projecthub_json_error(409, 'hash_mismatch'); }
 $objectPath = projecthub_safe_path(projecthub_storage_root(), 'objects/sha256/' . substr($hash, 0, 2) . '/' . $hash);
-if (file_exists($objectPath)) { @unlink($assembled); @rmdir($sessionDir); echo json_encode(array('state' => 'complete', 'already_present' => true, 'object_hash' => $hash, 'size_bytes' => $size)); exit; }
+if (file_exists($objectPath)) { $namedPath = projecthub_create_named_alias($claims, $objectPath, $hash); projecthub_cleanup_session($sessionDir, $parts); echo json_encode(array('state' => 'complete', 'already_present' => true, 'object_hash' => $hash, 'size_bytes' => $size, 'named_path' => $namedPath)); exit; }
 $parent = dirname($objectPath);
 if (!is_dir($parent) && !@mkdir($parent, 0750, true)) { @unlink($assembled); projecthub_json_error(500, 'object_directory_create_failed'); }
 if (!@rename($assembled, $objectPath)) { @unlink($assembled); projecthub_json_error(500, 'object_commit_failed'); }
-foreach ($parts as $part) { @unlink($part); }
-@unlink($sessionDir . '/session.json');
-@rmdir($sessionDir);
-echo json_encode(array('state' => 'complete', 'already_present' => false, 'object_hash' => $hash, 'size_bytes' => $size));
+$namedPath = projecthub_create_named_alias($claims, $objectPath, $hash);
+projecthub_cleanup_session($sessionDir, $parts);
+echo json_encode(array('state' => 'complete', 'already_present' => false, 'object_hash' => $hash, 'size_bytes' => $size, 'named_path' => $namedPath));
