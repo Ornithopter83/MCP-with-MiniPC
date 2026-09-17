@@ -41,12 +41,15 @@ var projectMonitor = new ProjectActivityMonitor(
 var projectTask = projectMonitor.RunAsync(cancellationTokenSource.Token);
 
 var scanner = new LargeDataScanner(options.LargeFileThresholdBytes);
+var metadataSender = new LargeDataMetadataSender(httpClient, options.WorkstationId);
 foreach (var project in options.RegisteredProjects)
 {
     try
     {
         var largeFiles = await scanner.ScanAsync(project, cancellationTokenSource.Token);
         Console.WriteLine($"[{DateTimeOffset.Now:O}] Large data inventory scanned: {project.ProjectId} ({largeFiles.Count} files)");
+        await metadataSender.SendInventoryAsync(project, largeFiles, cancellationTokenSource.Token);
+        Console.WriteLine($"[{DateTimeOffset.Now:O}] Large data inventory reconciled: {project.ProjectId}");
     }
     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
     {

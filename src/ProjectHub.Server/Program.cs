@@ -64,6 +64,40 @@ app.MapPost("/api/large-data/uploads/{sessionId}/finalize", async (string sessio
     catch (InvalidOperationException exception) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["upload"] = [exception.Message] }); }
 });
 
+app.MapPost("/api/large-data/reconciliation/{projectId}", async (string projectId, LargeDataReconciliationRequest request, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(request.WorkstationId)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["projectId and workstationId are required."] });
+    try
+    {
+        foreach (var file in request.Files)
+        {
+            var normalized = file with { ProjectId = projectId, Lifecycle = LargeDataLifecycle.LocalOnly };
+            await metadata.UpsertObjectAsync(normalized.Object, normalized.Lifecycle, cancellationToken);
+            await metadata.UpsertProjectFileAsync(normalized, cancellationToken);
+        }
+        return Results.Ok(new { projectId, workstationId = request.WorkstationId, count = request.Files.Count });
+    }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
+app.MapPost("/api/large-data/staged", async (ProjectLargeFile file, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
+{
+    try { await metadata.MarkStagedAsync(file with { Lifecycle = LargeDataLifecycle.Staged }, cancellationToken); return Results.Ok(file with { Lifecycle = LargeDataLifecycle.Staged }); }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
+app.MapPost("/api/large-data/checkpoint", async (LargeDataCheckpointRequest request, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ProjectId) || string.IsNullOrWhiteSpace(request.CommitSha)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["projectId and commitSha are required."] });
+    try
+    {
+        var dataSet = new LargeDataSet(request.ProjectId, request.CommitSha, LargeDataLifecycle.Checkpointed, request.Items.Select(item => item with { Lifecycle = LargeDataLifecycle.Checkpointed, CheckpointCommitSha = request.CommitSha }).ToArray());
+        await metadata.CreateDataSetAsync(dataSet, cancellationToken);
+        return Results.Ok(dataSet);
+    }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
 app.MapPost("/api/agent/heartbeat", async (
     HeartbeatRequest request,
     IWorkstationRepository repository,
@@ -234,3 +268,7 @@ public sealed record LargeDataAssertionRequest(
     string? StorageScope);
 
 public sealed record LargeDataProvisionRequest(string Assertion);
+
+public sealed record LargeDataReconciliationRequest(string WorkstationId, IReadOnlyList<ProjectLargeFile> Files);
+
+public sealed record LargeDataCheckpointRequest(string ProjectId, string CommitSha, IReadOnlyList<ProjectLargeFile> Items);

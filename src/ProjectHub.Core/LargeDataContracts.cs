@@ -29,6 +29,7 @@ public interface ILargeDataMetadataRepository
 {
     Task UpsertObjectAsync(LargeObjectIdentity objectIdentity, LargeDataLifecycle lifecycle, CancellationToken cancellationToken);
     Task UpsertProjectFileAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
+    Task MarkStagedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
     Task CreateDataSetAsync(LargeDataSet dataSet, CancellationToken cancellationToken);
 }
 
