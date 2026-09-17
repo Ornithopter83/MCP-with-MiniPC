@@ -61,7 +61,9 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 현재 작업
 
-06 Large Data/NAS 완료; 07 Project 상태 API 준비
+06 Large Data/NAS 기능 구현 완료 / 최종 운영 검증 중
+
+2026-09-17 재검증: NAS Gateway health 및 `provision.php=405`, `upload-start.php=405`는 응답했으나 운영 Server `https://projecthub.ornithopter.bid/api/status`는 `502`를 반환했다. Server 복구 전에는 GC dry-run/-Apply와 Server assertion 기반 업로드를 실행하지 않는다.
 
 실제 NAS1DUAL 기준:
 

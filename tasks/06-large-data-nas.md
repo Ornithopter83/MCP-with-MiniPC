@@ -24,6 +24,10 @@ RS256 계열 서명, 짧은 만료, project/workstation/session/operation/object
 
 현재 최종 통합 검증 진행. 외부 NAS 계정·절대 경로·비밀키는 저장소에 기록하지 않는다.
 
+운영 정리 보완: `ProjectHub_GC.ps1`와 `cleanup-session.php`는 구현됐고, `ProjectHub_GC.cmd`는 ExecutionPolicy를 영구 변경하지 않고 GC를 실행하는 런처다. 기본 동작은 dry-run이며 `-Apply`는 TTL과 lifecycle로 SAFE 판정된 session에만 사용한다. `-GatewayUrl`로 운영 Gateway를 명시할 수 있다.
+
+삭제 검증 기준: ipDISK Drive 화면만으로 실제 삭제를 판정하지 않는다. NAS1DUAL 관리페이지와 실제 filesystem 상태를 기준으로 확인하며, Network Trashes Folder가 활성화된 경우 휴지통 잔존과 실제 용량 회수를 함께 확인한다. NAS 관리페이지 직접 삭제와 Network Trashes Folder 비우기로 테스트 데이터를 초기화한 것은 확인했지만, 이는 ProjectHub GC 성공 증거가 아니다.
+
 현재까지 구현: 환경 변수 기반 RS256 assertion 발급·검증, operation/claim 검증, safe relative scope 및 content-addressed provision, chunk write/status/finalize와 최종 SHA-256·size 검증, Supabase metadata repository, Agent 대용량 파일 안정성·SHA-256 스캔을 추가했다. `supabase/large-data.sql`에 대용량 객체·업로드 세션·프로젝트 파일·dataset 메타데이터 스키마를 추가했다.
 
 완료: 명시적 `ProjectHub_Sync.ps1`가 Batch 시작 시 branch/HEAD/dirty와 대용량 파일의 상대경로·size·mtime을 고정 manifest로 저장하고, Git/file 요약을 Server에 먼저 반영한다. 별도 `ProjectHub_LargeData_Uploader.ps1`는 project/workstation/object hash/size 기준으로 Supabase `UPLOADING` session을 조회해 기존 session ID를 재사용하고, 없을 때만 GUID session을 만든다. 이후 assertion 갱신, upload-start, chunk, status 기반 resume, finalize, NAS object identity 확인, Supabase STAGED 및 commit SHA 기반 CHECKPOINTED dataset 기록을 수행한다. 업로드 중 size/mtime이 바뀐 항목은 `CHANGED_DURING_UPLOAD`으로 제외한다. 정상 Agent startup/watcher는 대용량 hash/upload/staging/reconciliation을 수행하지 않으며 Git 자동 변경도 없다. 운영 assertion으로 upload-start → chunk → status → finalize, 최종 SHA-256 object 생성과 동일 hash dedup은 실제 NAS1DUAL에서 완료했다.
@@ -38,7 +42,7 @@ RS256 계열 서명, 짧은 만료, project/workstation/session/operation/object
 
 실제 환경 반영: PHP-visible root는 `/mnt/HDD1/ProjectHub`이며 `/HDD1/ProjectHub`를 사용하지 않는다. Gateway는 운영자가 준비한 root 내부만 사용한다. Gateway URL은 `https://dfblackbox-nas.duckdns.org:8443/projecthub/`로 설정한다. Authorization fallback과 NAS PHP 런타임 호환성을 유지하고, 운영 코드에서 TLS 인증서 검증을 우회하지 않는다. Provision/RS256/NAS write E2E는 완료로 기록한다.
 
-검증: 2026-09-17 `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(5개 통과), PowerShell parser로 Batch Sync/uploader/Test 스크립트 문법 검증 PASS. 운영 Server `/api/status=200`, NAS health `200`을 확인했다. 실제 `ProjectHub_Sync.ps1` 500MiB Batch에서 main metadata 선반영과 별도 uploader를 실행했고, uploader 전면 재실행 결과 `ALREADY_PRESENT`(hash/size 일치), `STAGED`, `CHECKPOINTED`(captured HEAD `6481d1439a75233dc0f8504bbfeb74e7856f5f15`)를 확인했다. canonical object는 기존 hash 경로이므로 원본 파일명 alias와 staging cleanup 수정은 NAS Gateway PHP 재배포 후 확인해야 하며, 기존 orphan staging은 NAS에서 일회성 명시 cleanup이 필요하다. 로컬 PHP CLI는 없어 PHP lint는 미실행이다.
+검증: 2026-09-17 `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(5개 통과), PowerShell parser로 Batch Sync/uploader/Test/GC 스크립트 문법 검증 PASS. 과거 운영 E2E에서 Server `/api/status=200`, NAS health `200`과 500MiB object hash/size 일치를 확인했다. 같은 날 재검증 시 NAS Gateway는 health 및 `provision.php=405`, `upload-start.php=405`로 응답했으나 운영 Server `/api/status`는 `502`를 반환해 이번에는 GC dry-run과 Server assertion 기반 재업로드를 실행하지 못했다. GC dry-run은 DB session 목록 기준 SAFE/KEEP/REVIEW 후보를 표시하며, NAS-only orphan staging은 현재 API가 열거하지 않으므로 별도 NAS 관리페이지 확인 없이는 비어 있다고 단정하지 않는다. 실제 `-Apply`, Network Trashes Folder, hard-link/inode 검증은 NAS 운영 PC에서 수행해야 한다. 로컬 PHP CLI는 없어 PHP lint는 미실행이다.
 
 ## 변경 금지
 
