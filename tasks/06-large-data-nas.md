@@ -24,6 +24,8 @@ RS256 계열 서명, 짧은 만료, project/workstation/session/operation/object
 
 현재 최종 통합 검증 진행. 외부 NAS 계정·절대 경로·비밀키는 저장소에 기록하지 않는다.
 
+최신 재검증(2026-09-17): 운영 Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. `forUpload.z01` 500MiB는 기존 resumable session을 재사용해 NAS `already_present` 경로로 완료됐고, 원본 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267` 및 `524288000` bytes가 일치했다. `STAGED`와 `CHECKPOINTED`를 확인했으며 Server session lifecycle은 `COMPLETED`다. 백그라운드 uploader의 PowerShell 환경 차이를 제거하기 위해 uploader 해시 계산을 .NET SHA-256/FileStream 방식으로 고정했다.
+
 운영 정리 보완: `ProjectHub_GC.ps1`와 `cleanup-session.php`는 구현됐고, `ProjectHub_GC.cmd`는 ExecutionPolicy를 영구 변경하지 않고 GC를 실행하는 런처다. 기본 동작은 dry-run이며 `-Apply`는 TTL과 lifecycle로 SAFE 판정된 session에만 사용한다. `-GatewayUrl`로 운영 Gateway를 명시할 수 있다.
 
 삭제 검증 기준: ipDISK Drive 화면만으로 실제 삭제를 판정하지 않는다. NAS1DUAL 관리페이지와 실제 filesystem 상태를 기준으로 확인하며, Network Trashes Folder가 활성화된 경우 휴지통 잔존과 실제 용량 회수를 함께 확인한다. NAS 관리페이지 직접 삭제와 Network Trashes Folder 비우기로 테스트 데이터를 초기화한 것은 확인했지만, 이는 ProjectHub GC 성공 증거가 아니다.

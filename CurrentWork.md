@@ -63,6 +63,8 @@ dotnet test ProjectHub.sln --no-restore
 
 06 Large Data/NAS 기능 구현 완료 / 최종 운영 검증 중
 
+2026-09-17 재검증: Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. 500MiB `forUpload.z01`은 .NET SHA-256 fallback으로 해시 계산 후 기존 session 재사용, NAS `already_present`, 원본과 동일한 size/hash, `STAGED`, `CHECKPOINTED`까지 성공했다. Server session은 `COMPLETED`로 확인됐다.
+
 2026-09-17 재검증: NAS Gateway health 및 `provision.php=405`, `upload-start.php=405`는 응답했으나 운영 Server `https://projecthub.ornithopter.bid/api/status`는 `502`를 반환했다. Server 복구 전에는 GC dry-run/-Apply와 Server assertion 기반 업로드를 실행하지 않는다.
 
 실제 NAS1DUAL 기준:

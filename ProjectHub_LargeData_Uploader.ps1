@@ -15,12 +15,25 @@ function Get-Assertion([object]$item, [string]$session, [string]$hash) {
     (Invoke-RestMethod ($m.ServerBaseUrl + '/api/large-data/assertions') -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 30).assertion
 }
 
+function Get-Sha256Hex([string]$path) {
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::OpenRead($path)
+        return (($algorithm.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) -join '')
+    }
+    finally {
+        if ($stream) { $stream.Dispose() }
+        $algorithm.Dispose()
+    }
+}
+
 try {
     foreach ($item in $m.Items) {
         $fileIndex++
         $before = Get-Item -LiteralPath $item.FullPath -Force
         Write-Host "[$fileIndex/$totalFiles] HASHING: $($item.RelativePath) ($($item.SizeBytes) bytes)" -ForegroundColor Cyan
-        $hash = (Get-FileHash -LiteralPath $item.FullPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $hash = Get-Sha256Hex $item.FullPath
         $identityQuery = '?projectId=' + [Uri]::EscapeDataString($m.ProjectId) + '&workstationId=' + [Uri]::EscapeDataString($m.WorkstationId) + '&objectHash=' + $hash + '&sizeBytes=' + $item.SizeBytes
         $resume = $null
         Write-Host "Checking resumable session: $($item.RelativePath)"
