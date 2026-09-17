@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 $sessionsUrl = $ServerBaseUrl.TrimEnd('/') + '/api/large-data/sessions'
 if ($ProjectId) { $sessionsUrl += '?projectId=' + [Uri]::EscapeDataString($ProjectId); if ($WorkstationId) { $sessionsUrl += '&workstationId=' + [Uri]::EscapeDataString($WorkstationId) } }
 elseif ($WorkstationId) { $sessionsUrl += '?workstationId=' + [Uri]::EscapeDataString($WorkstationId) }
-$sessions = @(Invoke-RestMethod $sessionsUrl -TimeoutSec 30)
+$sessions = @(Invoke-RestMethod $sessionsUrl -TimeoutSec 30 | Where-Object { $_ -ne $null })
 $now = [DateTimeOffset]::UtcNow
 Write-Host 'ProjectHub Large Data GC'
 $safe = @(); $keep = 0; $review = 0; $reclaim = 0L
