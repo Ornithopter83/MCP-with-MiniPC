@@ -63,7 +63,7 @@ dotnet test ProjectHub.sln --no-restore
 
 06 Large Data/NAS 기능 검증 완료 / 07 프로젝트 배포 패키지 검증 중
 
-07 구현: `ProjectHub_Setup.cmd` 단일 진입점, `.projecthub/project.json`, 조건부 관리 문서 생성, `bin` 배포 파일, 프로젝트별 Sync/Restore 런처, checkpoint 조회 API, NAS download endpoint를 추가했다. 빈 `hw.git` clone에서 Setup→Server 등록→`bin` 배포→초기 commit→Sync manifest 생성을 확인했다. Restore는 별도 디렉터리에 복원하고 크기/SHA-256을 검증한다. NAS 최신 `download.php` 배포와 checkpoint 기반 운영 Restore E2E가 남아 있다.
+07 구현: `ProjectHub_Setup.cmd` 단일 진입점, workstation heartbeat 선등록, `.projecthub/project.json`, 조건부 관리 문서 생성, `bin` 배포 파일, 프로젝트별 Sync/Restore 런처, checkpoint 조회 API, NAS download endpoint를 추가했다. 빈 `hw.git` clone에서 Setup→Server 등록→`bin` 배포→초기 commit→Sync manifest 생성을 확인했다. Restore는 별도 디렉터리에 복원하고 크기/SHA-256을 검증한다. NAS 최신 `download.php` 배포와 checkpoint 기반 운영 Restore E2E가 남아 있다.
 
 2026-09-17 재검증: Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. 500MiB `forUpload.z01`은 .NET SHA-256 fallback으로 해시 계산 후 기존 session 재사용, NAS `already_present`, 원본과 동일한 size/hash, `STAGED`, `CHECKPOINTED`까지 성공했다. Server session은 `COMPLETED`로 확인됐다.
 
