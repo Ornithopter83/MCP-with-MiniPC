@@ -67,6 +67,8 @@ dotnet test ProjectHub.sln --no-restore
 
 추가 GC 검증: PowerShell 배열 응답 호환성 문제를 수정한 뒤 완료 session 2개를 개별 인식했고, dry-run은 SAFE 2개(각 524,288,000 bytes), KEEP 0, REVIEW 0으로 정상 집계됐다. `-Apply`는 실행하지 않았다.
 
+GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Apply`를 실행해 Gateway cleanup을 완료했고, 같은 명령을 다시 실행했을 때 두 session 모두 `ALREADY_CLEAN`으로 반환됐다. 활성 UPLOADING 보호는 코드상 TTL 이내 session을 KEEP하는 경로를 확인했으나, 운영 DB에 테스트 session을 생성하는 공개 API가 없어 실제 생성 E2E는 미수행이다.
+
 2026-09-17 재검증: NAS Gateway health 및 `provision.php=405`, `upload-start.php=405`는 응답했으나 운영 Server `https://projecthub.ornithopter.bid/api/status`는 `502`를 반환했다. Server 복구 전에는 GC dry-run/-Apply와 Server assertion 기반 업로드를 실행하지 않는다.
 
 실제 NAS1DUAL 기준:
