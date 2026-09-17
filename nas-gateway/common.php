@@ -348,7 +348,9 @@ function projecthub_create_named_alias($claims, $objectPath, $objectHash)
         $cursor = dirname($cursor);
     }
     if (file_exists($namedPath)) {
-        if (is_link($namedPath) || !is_file($namedPath) || strtolower(hash_file('sha256', $namedPath)) !== strtolower($objectHash)) { projecthub_json_error(409, 'named_path_conflict'); }
+        $objectStat = @stat($objectPath);
+        $namedStat = @stat($namedPath);
+        if (is_link($namedPath) || !is_file($namedPath) || !$objectStat || !$namedStat || $objectStat['dev'] !== $namedStat['dev'] || $objectStat['ino'] !== $namedStat['ino']) { projecthub_json_error(409, 'named_path_conflict'); }
         return 'files/' . $claims['project_id'] . '/' . $claims['relative_path'];
     }
     if (!@link($objectPath, $namedPath)) { projecthub_json_error(500, 'named_alias_create_failed'); }

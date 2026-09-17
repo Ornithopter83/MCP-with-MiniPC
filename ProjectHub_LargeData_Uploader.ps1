@@ -19,16 +19,21 @@ try {
         $hash = (Get-FileHash -LiteralPath $item.FullPath -Algorithm SHA256).Hash.ToLowerInvariant()
         $identityQuery = '?projectId=' + [Uri]::EscapeDataString($m.ProjectId) + '&workstationId=' + [Uri]::EscapeDataString($m.WorkstationId) + '&objectHash=' + $hash + '&sizeBytes=' + $item.SizeBytes
         $resume = $null
+        Write-Host "Checking resumable session: $($item.RelativePath)"
         try { $resume = Invoke-RestMethod ($m.ServerBaseUrl + '/api/large-data/resumable-session' + $identityQuery) -Method Get -TimeoutSec 30 } catch { if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -ne 404) { throw } }
         $session = if ($resume) { [string]$resume.sessionId } else { [guid]::NewGuid().ToString('N') }
+        Write-Host "Using upload session: $session"
         $token = Get-Assertion $item $session $hash
+        Write-Host "Assertion issued"
         $headers = @{ Authorization="Bearer $token" }
+        Write-Host "Starting NAS upload session"
         $start = Invoke-RestMethod ($m.GatewayUrl + 'upload-start.php') -Method Post -Headers $headers -TimeoutSec 30
         if ($start.state -eq 'complete') {
             if ([int64]$start.size_bytes -ne [int64]$item.SizeBytes -or $start.object_hash.ToLowerInvariant() -ne $hash) { throw "existing NAS object identity mismatch: $($item.RelativePath)" }
             Write-Host ("ALREADY_PRESENT: {0} ({1} bytes, SHA-256 {2})" -f $item.RelativePath, $start.size_bytes, $start.object_hash) -ForegroundColor DarkGreen
         } else {
             $done = @()
+            Write-Host "Reading NAS upload status"
             try { $done = @((Invoke-RestMethod ($m.GatewayUrl + 'upload-status.php') -Headers $headers -TimeoutSec 30).completed_chunks) } catch { }
             $totalChunks = [Math]::Ceiling([double]$item.SizeBytes / $chunkSize)
             $completedBytes = 0L
