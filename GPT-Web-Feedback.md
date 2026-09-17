@@ -10,609 +10,271 @@ Updated: 2026-09-17
 4. 현재 활성 `tasks/*.md`
 5. `GPT-Web-Feedback.md`
 
-충돌 시 앞선 관리 문서와 활성 task를 우선한다. 단, 아래 Large Data/NAS 정책은 사용자가 2026-09-17 명시적으로 요청한 최신 운영 요구이므로 관련 문서와 구현을 이 기준에 맞게 갱신한다.
+충돌 시 앞선 관리 문서와 활성 task를 우선한다. 단, 아래 내용은 2026-09-17 사용자가 실제 NAS1DUAL에서 수행한 최신 운영 테스트 결과와 그에 따른 06 수용 기준 보완이다.
 
 ---
 
-# 1. 최신 검토 기준
+# 1. 최신 저장소 상태 확인
 
 최신 확인 커밋:
 
 ```text
-755ce0de0cfeddb0c3dcb31d407e2a98cb57b742
-Harden NAS staging cleanup and upload progress
+1dfb7304577077bb5455f064778df8e4aa8f9525
+Filter null sessions during large data GC
 ```
 
-현재 확인된 방향:
+최근 06 관련 구현은 다음까지 진행됐다.
 
 ```text
-[x] 평상시 Agent 자동 대용량 업로드 폐기
+[x] 평상시 Agent의 자동 대용량 hash/upload/staging/reconciliation 제거
 [x] 명시적 ProjectHub_Sync.ps1 기반 Batch Sync
-[x] 별도 ProjectHub_LargeData_Uploader.ps1 프로세스
-[x] 파일별 [i/n], HASHING, FINALIZING, DONE 표시
-[x] chunk/byte/percent 진행 표시
+[x] control-plane Git/file summary 선반영
+[x] 별도 ProjectHub_LargeData_Uploader.ps1
 [x] resumable session 재사용
-[x] NAS finalize 후 staging cleanup 결과를 강제 확인
-[x] files/<project>/<relative-path> named path 생성
-[x] objects/sha256/<hash> content-addressed object 유지
+[x] 파일별 [i/n], HASHING, UPLOADING, FINALIZING, DONE 진행 표시
+[x] finalize 성공 시 staging cleanup 강제 확인
+[x] already_present 경로의 동일 session stale staging cleanup
+[x] files/<project>/<relative-path> named alias
+[x] objects/sha256/<hash> content-addressed object
+[x] explicit ProjectHub_GC.ps1 dry-run/-Apply 구조
+[x] cleanup-session.php scoped Gateway cleanup endpoint
+[x] large upload session lifecycle/last activity 기반 GC 판단
+[x] GC 세션 목록의 null row 필터링 보완
 ```
 
-그러나 실제 NAS 운영에서 사용자는 `files/<project>/<relative-path>`에 최종 파일이 정상 생성된 뒤에도 과거 chunk/staging 데이터가 남아 동일한 수준의 용량을 차지하는 현상을 확인했다.
-
-따라서 **정상 finalize 시 즉시 cleanup**만으로는 충분하지 않다. 이미 남은 실패/중단/구버전 session을 안전하게 정리하는 **Garbage Collection(GC)** 기능을 정식으로 추가한다.
+로드맵은 06을 아직 `검증 중`으로 두고 있으며, 현재 상태도 실제로 그 표현이 맞다. `CurrentWork.md` 본문에는 `06 Large Data/NAS 완료; 07 Project 상태 API 준비`라는 문장이 남아 있어 상태 표현이 서로 어긋난다. 06은 구현 완료에 가깝지만 실제 NAS 운영 cleanup/GC 수용 검증이 남아 있으므로 당분간 `06 기능 구현 완료 / 최종 운영 검증 중`으로 통일한다.
 
 ---
 
-# 2. 먼저 구분해야 할 NAS 데이터 영역
+# 2. 이번 실제 NAS 테스트 결과 — 중요한 운영 사실
 
-NAS ProjectHub root의 역할을 명확히 구분한다.
-
-```text
-/mnt/HDD1/ProjectHub/
-├─ files/                 사용자 관점의 프로젝트/파일 경로
-│  └─ <project>/<relative-path>
-├─ objects/sha256/        content-addressed object 저장소
-│  └─ <prefix>/<hash>
-└─ staging/               업로드 중 임시 chunk/session 영역
-   └─ <session-id>/
-```
-
-중요:
-
-`files/...`와 `objects/sha256/...`는 현재 hard link 방식일 수 있다. 이 경우 두 경로에서 같은 파일 크기로 보이더라도 실제 디스크 블록을 두 번 사용하는 것이 아닐 수 있다.
-
-따라서 GC 구현 전에 실제 NAS에서 다음을 확인해 기록한다.
+사용자가 NAS의 `files`, `objects`, `staging` 영역에서 기존 테스트 데이터를 수동 삭제하는 과정에서 다음 현상을 확인했다.
 
 ```text
-- files 경로와 objects 경로가 동일 inode인지
-- link count가 2 이상인지
-- NAS 실제 사용량이 두 경로 때문에 이중 증가하는지
+- Windows ipDISK Drive 서비스를 통해 삭제했을 때는 삭제한 파일/폴더가 다시 나타나는 것처럼 보였다.
+- 특히 staging 내부 파일을 ipDISK Drive 쪽에서 삭제한 뒤 해당 경로 접근이 비정상적으로 막히는 현상도 있었다.
+- 동일 데이터를 NAS1DUAL 관리페이지에서 직접 삭제한 경우 정상 삭제됐다.
+- NAS의 `Network Trashes Folder` 내용도 함께 비운 뒤 기존 데이터가 정상적으로 제거된 상태를 확인했다.
 ```
 
-`files`와 `objects`가 hard link라면 **둘 중 하나를 중복 데이터라고 보고 임의 삭제하면 안 된다.**
+현재 증거만으로 ipDISK Drive 자체가 반드시 파일을 “복원했다”고 단정하지 않는다. 다만 실제 운영 결과상 **ProjectHub NAS 관리영역의 삭제 검증 기준으로 ipDISK Drive를 사용하면 안 된다.** NAS 관리페이지/실제 filesystem 상태를 기준으로 판단해야 한다.
 
-반면 `staging/<session-id>/*.part`는 실제 임시 chunk이므로 finalize 후 남아 있으면 실제 추가 용량을 점유한다. 이번 GC의 1차 대상은 staging이다.
+또한 `Network Trashes Folder`가 활성화된 공유폴더에서는 파일 삭제가 곧바로 물리 블록 해제로 이어지지 않을 수 있으므로, 용량 회수 확인 시 NAS 휴지통 영역까지 고려한다.
 
 ---
 
-# 3. GC를 두 단계로 분리
+# 3. 운영 정책 보완 — 수동 삭제 검증 기준
 
-Garbage Collection은 반드시 다음 두 종류로 분리한다.
-
-## A. Staging GC — 이번에 우선 구현
-
-대상:
+ProjectHub 관리영역:
 
 ```text
-staging/<session-id>/
-*.part
-assembled.tmp
-session.json
+/mnt/HDD1/ProjectHub/files
+/mnt/HDD1/ProjectHub/objects
+/mnt/HDD1/ProjectHub/staging
 ```
 
-목표:
+에 대해 다음 원칙을 문서화한다.
 
 ```text
-- 정상 완료됐는데 남은 session 정리
-- 취소된 session 정리
-- 오래 전에 실패하고 더 이상 resume 대상이 아닌 session 정리
-- DB에 대응 session이 없는 orphan staging 정리
+1. ipDISK Drive 화면상의 삭제 여부만으로 실제 NAS 삭제 성공을 판정하지 않는다.
+2. 운영 진단/복구가 필요할 때는 NAS1DUAL 관리페이지 또는 Gateway가 보는 실제 filesystem 상태를 기준으로 확인한다.
+3. 공유폴더의 Network Trashes Folder가 활성화돼 있다면 용량 회수/잔존 여부 확인 시 반드시 함께 확인한다.
+4. 정상 운영에서는 files/objects/staging을 사용자가 직접 정리하지 않고 ProjectHub finalize/GC/purge 기능으로 관리한다.
+5. 수동 삭제는 테스트/복구 목적의 예외 절차로 취급한다.
 ```
 
-## B. Object GC — 별도 후속 단계
-
-대상:
-
-```text
-objects/sha256/<hash>
-files/<project>/<relative-path>
-```
-
-Object GC는 훨씬 보수적으로 처리한다.
-
-다음 reference를 모두 확인하기 전에는 object를 삭제하지 않는다.
-
-```text
-- project_large_files
-- large_data_sets
-- large_data_set_items
-- 현재 named files alias
-- 다른 project에서 동일 SHA-256을 참조하는지
-```
-
-**reference count가 0인 object만 삭제 가능**하다.
-
-이번 작업에서는 Object GC를 자동 실행하지 않아도 된다. 우선 Staging GC를 완성한다.
+가능하면 NAS 운영 문서에 `Network Trashes Folder`의 적용 대상 공유폴더와 실제 물리 용량 회수 시점을 명시한다.
 
 ---
 
-# 4. Staging GC의 안전 기준
+# 4. 현재 GC 구현에서 실제로 검증해야 할 것
 
-GC는 단순히 오래된 디렉터리를 `rm -rf` 하는 기능이어서는 안 된다.
-
-각 `staging/<session-id>`에 대해 최소 다음을 대조한다.
+`ProjectHub_GC.ps1` 코드가 존재하는 것과 실제 NAS 공간이 정리되는 것은 별개다. 다음 E2E를 실제로 수행해 기록한다.
 
 ```text
-session_id
-project_id
-workstation_id
-object_hash
-size_bytes
-session lifecycle
-last_activity_at
-NAS session.json 내용
+A. Dry-run
+- ProjectHub_GC.ps1 실행
+- SAFE / KEEP / REVIEW 판정 확인
+- session id, lifecycle, lastActivityAt, reclaimable bytes 확인
+
+B. Apply
+- 안전한 과거 테스트 session 하나를 SAFE 대상으로 준비
+- ProjectHub_GC.ps1 -Apply 실행
+- cleanup-session.php 응답 확인
+- NAS1DUAL 관리페이지에서 staging/<session-id> 실제 소멸 확인
+- Network Trashes Folder에 동일 chunk가 남는지 확인
+- 실제 NAS 사용량이 기대만큼 줄었는지 확인
+
+C. Idempotency
+- 동일 GC를 다시 실행
+- already_clean 또는 후보 0개로 안전하게 끝나는지 확인
+
+D. Active protection
+- 실제 UPLOADING session은 KEEP 처리되고 절대 삭제되지 않는지 확인
 ```
 
-삭제 가능한 상태 예:
-
-```text
-COMPLETED  -> 즉시 cleanup 가능
-CANCELLED  -> cleanup 가능
-ABANDONED  -> TTL 경과 후 cleanup 가능
-DB에 session 없음 + 충분한 TTL 경과 -> ORPHAN 후보
-```
-
-삭제 금지:
-
-```text
-UPLOADING
-최근 activity가 있는 session
-현재 실행 중인 uploader가 보유한 session
-metadata가 서로 불일치하는 session
-```
-
-metadata 불일치 시 자동 삭제하지 말고 `REVIEW_REQUIRED` 또는 동등한 경고 후보로 남긴다.
-
----
-
-# 5. upload session lifecycle 보강
-
-현재 `UPLOADING`/`COMPLETED`만으로는 운영 정리에 부족하다.
-
-가능하면 다음 상태를 명확히 지원한다.
-
-```text
-UPLOADING
-COMPLETED
-CANCELLED
-ABANDONED
-```
-
-최소한 `CANCELLED`를 추가한다.
-
-사용자가 해당 업로드를 버리기로 결정하면:
-
-```text
-UPLOADING
--> CANCELLED
--> 해당 session은 다음 Batch에서 resume하지 않음
--> Staging GC 정리 대상이 됨
-```
-
-이 기능이 없으면 오래된 `UPLOADING` session을 다음 Batch가 계속 resume 대상으로 볼 수 있다.
-
----
-
-# 6. last_activity_at 또는 동등 정보 필요
-
-단순 생성 시각만으로 stale 여부를 판단하지 않는다.
-
-chunk 수신, status/resume, assertion 갱신 또는 uploader 진행 시점 중 적절한 경로에서 session의 `last_activity_at`을 갱신한다.
-
-예:
-
-```text
-created_at       = 09:00
-last_activity_at = 10:21
-lifecycle        = UPLOADING
-```
-
-이 session은 생성된 지 오래됐더라도 활성 session이므로 GC 금지다.
-
-권장 기본 TTL은 코드 상수로 박지 말고 설정 가능하게 한다.
-
-예:
-
-```text
-PROJECTHUB_STAGING_GC_TTL_HOURS=24
-```
-
-실제 기본값은 구현자가 현재 운영 패턴을 보고 보수적으로 선택한다.
-
----
-
-# 7. GC는 평상시 Agent가 자동 수행하지 않는다
-
-기존 최신 정책을 유지한다.
-
-```text
-Agent startup
-FileSystemWatcher
-heartbeat
-Git 상태 변경
-```
-
-만으로 GC를 자동 수행하지 않는다.
-
-GC 실행은 다음 중 하나로 제한한다.
-
-```text
-1. 사용자가 명시적으로 ProjectHub_GC.ps1 실행
-2. Batch Sync가 정상 끝난 뒤 안전 후보만 정리하는 명시적 cleanup 단계
-3. 향후 Server 운영 스케줄에 넣더라도 dry-run/보수적 조건을 만족하는 경우
-```
-
-지금 단계의 기본 UX는 **명시적 GC 실행 + dry-run 기본값**으로 한다.
-
----
-
-# 8. 권장 GC 사용자 경험
-
-새 entrypoint 예:
-
-```text
-ProjectHub_GC.ps1
-```
-
-기본 실행은 실제 삭제가 아닌 dry-run이다.
-
-예:
-
-```text
-ProjectHub Large Data GC
-
-Scanning staging sessions...
-
-[SAFE]   a1b2...  COMPLETED   500.0 MB   age 2h
-[SAFE]   c3d4...  CANCELLED   1.2 GB     age 4h
-[KEEP]   e5f6...  UPLOADING   3.8 GB     last activity 3m ago
-[ORPHAN] 7788...  no DB row    700 MB     age 9d
-[REVIEW] 99aa...  metadata mismatch
-
-Reclaimable staging space: 2.4 GB
-No files deleted. Use -Apply to execute safe cleanup.
-```
-
-실제 삭제:
+PowerShell ExecutionPolicy 때문에 `.\ProjectHub_GC.ps1` 실행이 차단될 수 있음이 실제 테스트에서 확인됐다. 개발/운영 스크립트는 사용자가 시스템 정책을 영구 변경하지 않아도 다음처럼 실행 가능하도록 문서화한다.
 
 ```powershell
-.\ProjectHub_GC.ps1 -Apply
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ProjectHub_GC.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ProjectHub_GC.ps1 -Apply
 ```
 
-실행 후:
-
-```text
-Deleted sessions : 3
-Freed space      : 2.4 GB
-Skipped active   : 1
-Review required  : 1
-```
-
-`-Force`로 위험 후보까지 지우는 기능은 이번 단계에서는 만들지 않는 것을 권장한다.
+가능하면 `ProjectHub_GC.cmd` launcher를 추가해 이 실행 방식을 감추고 사용자 조작을 줄인다.
 
 ---
 
-# 9. GC control plane / data plane 경계
+# 5. finalize cleanup과 GC를 구분
 
-기존 아키텍처를 유지한다.
-
-```text
-DEV PC / Admin Script
-    -> ProjectHub.Server
-    -> metadata 확인
-
-ProjectHub.Server
-    -> scoped cleanup assertion 발급
-
-Admin Script 또는 Server-orchestrated client
-    -> NAS Gateway HTTPS cleanup endpoint
-    -> NAS staging session만 삭제
-```
-
-금지:
+정상 업로드에서는 GC가 필요하지 않아야 한다.
 
 ```text
-- DEV PC가 SMB/NAS filesystem credential로 직접 staging 삭제
-- Agent가 Supabase에 직접 접근해 GC 판단
-- Server가 대용량 binary를 relay
-```
-
-현재 assertion operation이 upload만 있다면 GC용으로 명시적 scoped operation을 추가한다.
-
-예:
-
-```text
-operation = cleanup
-scope = project/workstation/session
-```
-
-cleanup assertion은 지정된 `upload_session_id` 외 다른 session이나 objects/files에 접근할 수 없어야 한다.
-
----
-
-# 10. Gateway cleanup endpoint 요구
-
-예:
-
-```text
-POST /cleanup-session.php
-```
-
-또는 동등 API.
-
-입력 권한은 short-lived RS256 assertion으로 제한한다.
-
-Gateway에서 반드시 확인:
-
-```text
-- operation == cleanup
-- upload_session_id 일치
-- project_id/workstation_id 일치
-- session.json metadata 일치
-- path escape 금지
-- symlink 금지
-```
-
-삭제 대상은 해당 staging session 내부로 제한한다.
-
-```text
-*.part
-assembled.tmp
-session.json
-session directory
-```
-
-`objects/`와 `files/`는 이 endpoint에서 절대 삭제하지 않는다.
-
-cleanup 결과 예:
-
-```json
-{
-  "state": "cleaned",
-  "upload_session_id": "...",
-  "deleted_files": 33,
-  "freed_bytes": 524288000
-}
-```
-
-이미 directory가 없는 경우도 idempotent하게 성공 처리 가능하다.
-
-```json
-{
-  "state": "already_clean",
-  "freed_bytes": 0
-}
-```
-
----
-
-# 11. 정상 finalize cleanup + GC는 둘 다 필요
-
-GC를 추가한다고 해서 finalize cleanup을 느슨하게 하면 안 된다.
-
-정상 흐름:
-
-```text
-upload chunks
+chunk upload
 -> finalize
--> hash/size 확인
+-> hash/size 검증
 -> object commit
--> files named alias 확인
--> staging 즉시 cleanup
+-> named files alias 확인
+-> staging session 즉시 삭제
 -> staging_cleaned=true
--> Server session COMPLETED
+-> Server metadata 완료 처리
 ```
 
-이 경로가 기본이다.
+이것이 1차 정상 경로다.
 
-GC는 예외 복구용이다.
+GC는 다음 예외만 처리한다.
 
 ```text
-프로세스 강제종료
-네트워크 단절
-구버전 코드가 남긴 session
-cleanup 실패
-사용자 취소
+- 구버전 코드가 남긴 staging
+- 네트워크/프로세스 중단
+- 사용자 취소
+- finalize cleanup 실패
+- metadata lifecycle이 완료/취소/abandoned인데 실제 staging이 남은 경우
 ```
 
-같은 경우를 처리한다.
-
-즉:
-
-```text
-정상 cleanup = 1차 방어
-Staging GC    = 2차 방어
-```
-
-이다.
+따라서 향후 테스트에서 정상 finalize 후 매번 GC가 필요하다면 실패로 본다. 정상 finalize 자체가 staging을 완전히 제거해야 한다.
 
 ---
 
-# 12. 현재 남아 있는 staging을 실제로 정리하는 절차
+# 6. Network Trashes Folder와 Gateway cleanup의 관계 확인
 
-새 GC 기능이 완성되면 실제 NAS의 기존 잔여 staging을 바로 삭제하지 말고 먼저 dry-run 보고서를 만든다.
+이번 사용자 테스트 때문에 반드시 확인할 항목이다.
 
-반드시 다음을 사용자에게 보고한다.
+Gateway의 PHP `unlink()`/`rmdir()`가 `/mnt/HDD1/ProjectHub/staging`에서 파일을 삭제할 때:
 
 ```text
-- session 수
-- 각 session 상태
-- 각 session 용량
-- DB/Supabase 대응 row 존재 여부
-- 마지막 activity
-- 삭제 가능/유지/검토 필요 판정
-- 총 회수 가능 용량
+- Network Trashes Folder를 우회해 즉시 unlink되는지
+- NAS 휴지통으로 이동되는지
+- 파일 관리 UI에서만 사라지고 실제 블록은 휴지통에 남는지
 ```
 
-사용자가 결과를 확인한 뒤 `-Apply`로 정리한다.
+실제 NAS1DUAL에서 작은 테스트 session으로 확인한다.
 
-과거 테스트 session이라 하더라도 active metadata와 충돌하면 자동 삭제하지 않는다.
+ProjectHub GC 성공의 정의는 단순히 staging path가 안 보이는 것이 아니라:
+
+```text
+1. staging/<session-id> 없음
+2. Network Trashes Folder에 동일 chunk가 불필요하게 누적되지 않음
+3. 실제 filesystem 사용량/가용 공간이 회수됨
+```
+
+까지 보는 것이 바람직하다.
+
+만약 Gateway 삭제가 NAS 휴지통으로 들어간다면, ProjectHub 전용 저장영역에는 휴지통 기능을 적용하지 않거나 ProjectHub GC가 안전하게 영구 삭제되는 NAS 설정을 사용하는 방안을 검토한다. 단, NAS 설정 변경은 사용자 승인/수동 운영 작업으로 분리한다.
 
 ---
 
-# 13. hard link / 실제 디스크 사용량 검증
+# 7. files / objects는 staging과 다르게 취급
 
-현재 `files/<project>/<relative-path>`와 `objects/sha256/<hash>`가 hard link라면 파일 관리 UI에서 각각 전체 크기로 보여도 실제 NAS 사용량은 한 파일 분량일 수 있다.
+현재 `files/<project>/<relative-path>`와 `objects/sha256/<hash>`는 hard-link alias 구조이므로 UI에서 양쪽 모두 원본 전체 크기로 보여도 실제 데이터 블록은 하나일 수 있다.
 
-Codex는 이 점을 실제 NAS에서 검증할 수 있는 운영 명령 또는 작은 PHP 진단을 준비한다.
-
-확인 대상:
+따라서:
 
 ```text
-inode 동일 여부
-link count
-실제 filesystem 사용량
+staging GC -> 현재 06에서 실제 검증해야 함
+object GC  -> 별도 후속 작업, 자동 삭제 금지
+files purge -> object reference와 함께 정식 purge 계약으로만 처리
 ```
 
-이 확인 없이 `objects`를 중복 파일로 판단해 GC 대상으로 삼지 않는다.
+을 유지한다.
+
+이번 수동 삭제 테스트에서 `files`, `objects`, `staging`을 모두 지운 것은 테스트 초기화 목적이었다. 이를 정상 운영 절차로 문서화하면 안 된다.
 
 ---
 
-# 14. Object GC는 별도 승인 후 구현
+# 8. 문서 정합성 수정 요청
 
-향후 Object GC를 구현할 때 원칙:
-
-```text
-1. DB reference graph 생성
-2. files alias reference 확인
-3. dataset/checkpoint reference 확인
-4. 다른 project의 동일 hash reference 확인
-5. reference count == 0만 후보
-6. dry-run
-7. 사용자 승인 또는 안전한 운영 정책 후 삭제
-```
-
-content-addressed object는 프로젝트 버전 복원에 필요한 핵심 데이터이므로 staging과 같은 TTL 삭제 정책을 적용하면 안 된다.
-
----
-
-# 15. 현재 업로드 진행 UX 요구 유지
-
-GC 작업과 별도로 uploader 진행 표시 요구는 유지한다.
-
-최소:
+`CurrentWork.md`에는 현재 서로 충돌하는 표현이 있다.
 
 ```text
-[i/n] 파일명
-HASHING / RESUMING / UPLOADING / FINALIZING / DONE / FAILED
-percent
-bytes / total bytes
-completed chunks / total chunks
-resume 여부
+진행: 잔여 작업 = 06 최종 운영 검증, 이후 07·08·09
+현재 작업: 06 Large Data/NAS 완료; 07 Project 상태 API 준비
 ```
 
-파일 완료 시 콘솔에 완료 로그를 남긴다.
-
-가능하면 batch 전체 진행률, 속도, ETA도 추가한다.
-
----
-
-# 16. 오류 하나가 전체 batch를 중단하지 않도록 검토
-
-현재 구조가 한 파일 실패 시 전체 `foreach`를 빠져나온다면 파일 단위 실패 격리를 검토한다.
-
-권장:
-
-```text
-file-A DONE
-file-B FAILED
-file-C 계속 진행
-```
-
-다만 captured manifest 전체가 하나의 checkpoint 단위라면 하나라도 실패했을 때 전체 CHECKPOINTED 처리는 하지 않는다. 성공 파일은 STAGED로 유지하고 다음 Batch에서 실패 파일을 재처리한다.
-
----
-
-# 17. 06 완료 상태를 보수적으로 유지
-
-다음 검증이 끝날 때까지 문서는:
+후자를 다음과 같이 수정한다.
 
 ```text
 06 Large Data/NAS 기능 구현 완료 / 최종 운영 검증 중
 ```
 
-정도로 표현한다.
-
-완료 전 필수 검증:
+그리고 `tasks/06-large-data-nas.md`의 최신 운영 결과에 아래를 추가한다.
 
 ```text
-[ ] multi-file uploader progress 실제 확인
-[ ] 정상 finalize 후 staging session 완전 제거
-[ ] interrupted resume 후 finalize/cleanup 성공
-[ ] already_present 경로 stale staging cleanup
-[ ] Staging GC dry-run 후보 판정
-[ ] COMPLETED/CANCELLED/orphan session 실제 cleanup
-[ ] UPLOADING active session 보호 확인
-[ ] GC 후 회수 용량 확인
-[ ] files/object hard-link 및 실제 사용량 확인
-[ ] build/test PASS
+- ProjectHub_GC.ps1/cleanup-session.php 구현 완료
+- ExecutionPolicy 우회 launcher/명령 운영 절차
+- ipDISK Drive를 삭제 검증 기준으로 사용하지 않음
+- NAS1DUAL 관리페이지 직접 삭제 + Network Trashes Folder 비움에서 수동 초기화 성공
+- 이 결과는 GC 성공 증거가 아니라 수동 NAS 초기화 성공 증거임
+- 실제 GC -Apply E2E는 별도로 검증해야 함
 ```
+
+로드맵의 `06 = 검증 중` 상태는 실제 GC E2E가 끝날 때까지 유지한다.
 
 ---
 
-# 18. Codex 수행 순서
+# 9. 06 최종 완료를 위한 남은 수용 테스트
+
+다음 항목이 모두 통과해야 06을 완전히 완료 처리한다.
 
 ```text
-1. 최신 저장소와 CurrentWork/tasks/06-large-data-nas.md 확인
-2. 최신 finalize cleanup 구현을 유지하고 실제 NAS E2E 재검증
-3. large_upload_sessions에 CANCELLED/ABANDONED 및 last_activity_at 필요성 검토·최소 구현
-4. Staging GC 후보 조회 API/서비스 구현
-5. cleanup 전용 scoped assertion/operation 구현
-6. NAS Gateway cleanup-session endpoint 구현
-7. ProjectHub_GC.ps1 dry-run 구현
-8. -Apply 안전 후보 삭제 구현
-9. active UPLOADING session 보호 테스트
-10. orphan/COMPLETED/CANCELLED cleanup 테스트
-11. freed_bytes 및 결과 summary 출력
-12. hard-link inode/link-count/실제 disk 사용량 검증
-13. 기존 staging 잔여 데이터를 dry-run으로 분석하고 사용자에게 보고
-14. 사용자 확인 후 실제 GC E2E
-15. 관련 관리 문서 갱신
-16. build/test/PowerShell parser 검증
+[ ] 최신 Gateway PHP가 실제 NAS에 배포돼 있음
+[ ] 새 대용량 파일 Batch 업로드 실제 E2E
+[ ] uploader 파일별 진행률/상태 표시 실제 확인
+[ ] finalize 직후 해당 staging session이 자동으로 사라짐
+[ ] finalize cleanup 후 Network Trashes Folder에 chunk가 누적되지 않는지 확인
+[ ] 중단된 upload -> 동일 session resume -> finalize -> staging 완전 정리
+[ ] ProjectHub_GC.ps1 dry-run 실제 결과 확인
+[ ] ProjectHub_GC.ps1 -Apply로 과거 SAFE session 실제 삭제
+[ ] GC 재실행 idempotency 확인
+[ ] 활성 UPLOADING session이 GC에서 보호됨
+[ ] files/objects hard-link 실제 NAS 특성 확인
+[ ] build/test/PowerShell parser PASS
 ```
+
+GC 테스트와 정상 upload cleanup 테스트는 별개의 수용 항목으로 기록한다.
 
 ---
 
-# 19. 변경 금지
+# 10. Codex 다음 작업 지시
+
+한 번에 하나의 세부 작업 원칙을 유지한다. 다음 작업은 **새 기능 확장보다 06 cleanup/GC 실제 NAS 검증을 우선**한다.
+
+권장 순서:
 
 ```text
-- 평상시 Agent 자동 upload/GC 금지
-- FileSystemWatcher를 upload 또는 GC trigger로 사용 금지
-- Agent restart만으로 staging 생성/resume/GC 금지
-- DEV PC에 SMB/NAS filesystem credential 배포 금지
-- Agent의 Supabase 직접 접근 금지
-- Server의 대용량 binary relay 금지
-- 운영 TLS 검증 우회 금지
-- private key 저장소 기록 금지
-- 자동 git add/commit/push/pull/reset/merge/rebase/clean 금지
-- active UPLOADING session 강제 삭제 금지
-- Object GC를 Staging GC와 함께 무조건 실행 금지
+1. CurrentWork/task 문서의 완료/검증중 상태 정합성 수정
+2. ProjectHub_GC.cmd 또는 동등 launcher 추가해 ExecutionPolicy UX 보완
+3. NAS Gateway 배포 버전과 Git 최신 PHP 일치 확인 절차 작성
+4. 작은 disposable staging session으로 GC dry-run -> -Apply E2E
+5. NAS 관리페이지에서 staging 삭제 확인
+6. Network Trashes Folder 영향 확인
+7. 정상 Batch upload 하나를 새로 수행해 finalize 자동 cleanup 검증
+8. interrupted resume -> cleanup 검증
+9. 결과를 CurrentWork/tasks/06에 실제 로그 수준으로 기록
+10. 모두 통과한 뒤에만 06 완료 및 07 진입
 ```
 
----
+이번 최신 테스트의 핵심 결론은 다음이다.
 
-# 20. 다음 보고에 반드시 포함
+> **ipDISK Drive에서 보이는 삭제 결과를 ProjectHub NAS 데이터의 실제 삭제 성공으로 간주하지 않는다. NAS1DUAL 관리페이지와 실제 filesystem/휴지통 상태를 기준으로 검증한다.**
 
-```text
-- latest commit SHA
-- GC 설계/구현 파일 목록
-- session lifecycle 변경점
-- last_activity 갱신 방식
-- dry-run 실제 출력
-- SAFE / KEEP / ORPHAN / REVIEW 판정 예시
-- 삭제 전 staging 총 용량
-- 삭제 후 staging 총 용량
-- 회수된 bytes
-- active session이 보존된 증거
-- cleanup assertion scope 검증
-- files/object inode 또는 hard-link 검증 결과
-- uploader progress 실제 출력
-- multi-file upload 및 cleanup 결과
-- build/test 결과
-```
-
-이번 보완의 핵심 성공 기준은 다음과 같다.
-
-> **정상 업로드가 끝난 session은 즉시 staging이 제거되고, 비정상 종료로 남은 staging은 metadata와 activity를 기준으로 안전하게 식별·정리할 수 있어야 한다.**
-
-> **`files`와 `objects`는 hard-link/reference 구조를 먼저 확인하고, staging과 같은 단순 TTL GC 대상으로 취급하지 않는다.**
+> **사용자가 NAS 관리페이지에서 직접 삭제하고 Network Trashes Folder를 비운 뒤 기존 테스트 데이터가 정상 제거된 것은 확인됐지만, 이는 ProjectHub GC 기능의 성공 검증이 아니다. GC dry-run/-Apply와 정상 finalize cleanup은 별도로 실제 NAS E2E를 통과해야 한다.**
