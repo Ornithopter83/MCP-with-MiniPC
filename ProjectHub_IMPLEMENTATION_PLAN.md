@@ -18,9 +18,8 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 | 04 | [Supabase 스키마와 저장소](tasks/04_supabase-schema.md) | 중앙 상태 저장 계층 구현 | 완료 |
 | 05 | [Agent heartbeat와 상태수집](tasks/05-agent-state.md) | PC·Git 상태 수집 | 완료 |
 | 06 | [Large Data/NAS](tasks/06-large-data-nas.md) | 대용량 데이터 계약·Gateway·업로드 | 완료 |
-| 07 | [Project 상태 API](tasks/06_project-status-api.md) | 프로젝트 상태 조회 API | 대기 |
-| 08 | [멀티 PC와 동시작업 판정](tasks/07-multi-pc-concurrency.md) | lease·충돌 상태 검증 | 대기 |
-| 09 | [검증·운영·확장](tasks/08-validation-operations.md) | 배포 검증과 후속 경계 확정 | 대기 |
+| 07 | [프로젝트 배포 패키지](tasks/07-project-deployment-package.md) | Setup·Sync·Restore | 검증 중 |
+| 08 | [Server 설치·이전](tasks/08-server-installation-migration.md) | Windows 11+ 재설치·연결 가이드 | 대기 |
 
 ## 순서
 
@@ -39,9 +38,9 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: 06 후속 개선 — assertion cache/refresh 및 uploader 실패 격리
+현재 작업: 07 프로젝트 배포 패키지 — Restore 운영 E2E 대기
 
-잔여 작업: 06 후속 개선 검증 완료 후 07·08·09
+잔여 작업: Restore E2E, 이후 08 Server 설치·이전
 
 대용량 data plane은 `Agent → NAS Gateway → NAS1DUAL`, control plane은 `Agent → ProjectHub.Server → Supabase`로 분리하며 Server는 대용량 binary를 relay하지 않는다.
 

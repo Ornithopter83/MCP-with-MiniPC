@@ -1,13 +1,26 @@
 param(
-    [Parameter(Mandatory=$true)][string]$ProjectPath,
-    [Parameter(Mandatory=$true)][string]$ProjectId,
-    [Parameter(Mandatory=$true)][string]$WorkstationId,
+    [string]$ProjectPath,
+    [string]$ProjectId,
+    [string]$WorkstationId,
     [string]$ServerBaseUrl = "https://projecthub.ornithopter.bid",
     [string]$GatewayUrl = "https://dfblackbox-nas.duckdns.org:8443/projecthub/",
     [string]$ThresholdBytes = '1GB'
 )
 
 $ErrorActionPreference = "Stop"
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $ProjectPath) { $ProjectPath = $scriptRoot }
+$ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
+$projectConfigPath = Join-Path $ProjectPath '.projecthub\project.json'
+if (Test-Path -LiteralPath $projectConfigPath) {
+    $projectConfig = Get-Content -Raw -LiteralPath $projectConfigPath | ConvertFrom-Json
+    if (-not $ProjectId) { $ProjectId = [string]$projectConfig.projectId }
+    if (-not $WorkstationId) { $WorkstationId = [string]$projectConfig.workstationId }
+    if ($ServerBaseUrl -eq 'https://projecthub.ornithopter.bid' -and $projectConfig.serverBaseUrl) { $ServerBaseUrl = [string]$projectConfig.serverBaseUrl }
+    if ($GatewayUrl -eq 'https://dfblackbox-nas.duckdns.org:8443/projecthub/' -and $projectConfig.gatewayUrl) { $GatewayUrl = [string]$projectConfig.gatewayUrl }
+}
+if (-not $ProjectId -or -not $WorkstationId) { throw 'ProjectId and WorkstationId are required or must be present in .projecthub/project.json.' }
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $thresholdMatch = [regex]::Match($ThresholdBytes.Trim(), '^(\d+)(B|KB|MB|GB|TB)?$', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
 if (-not $thresholdMatch.Success) { throw "ThresholdBytes must be bytes or a value such as 500MB or 1GB." }
 $threshold = [decimal]$thresholdMatch.Groups[1].Value
@@ -19,7 +32,6 @@ switch ($thresholdMatch.Groups[2].Value.ToUpperInvariant()) {
 }
 $threshold = [int64]$threshold
 $ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $manifestPath = Join-Path ([IO.Path]::GetTempPath()) ("projecthub-batch-{0}.json" -f [guid]::NewGuid().ToString('N'))
 $batchId = [guid]::NewGuid().ToString('N')
 $branch = (git -C $ProjectPath branch --show-current).Trim()

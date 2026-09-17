@@ -154,6 +154,13 @@ app.MapPost("/api/large-data/checkpoint", async (LargeDataCheckpointRequest requ
     catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
 });
 
+app.MapGet("/api/large-data/checkpoints/{projectId}", async (string projectId, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(projectId)) return Results.BadRequest(new { error = "project_id_required" });
+    try { return Results.Ok(await metadata.ListDataSetsAsync(projectId, cancellationToken)); }
+    catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
+});
+
 app.MapPost("/api/agent/heartbeat", async (
     HeartbeatRequest request,
     IWorkstationRepository repository,

@@ -61,7 +61,22 @@ public sealed class SupabaseLargeDataMetadataRepository(IHttpClientFactory clien
             await client.PostAsJsonAsync("large_data_set_items", new { data_set_id = rows[0].Id, sha256 = item.Object.Sha256, relative_path = item.RelativePath, size_bytes = item.Object.SizeBytes }, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<LargeDataSet>> ListDataSetsAsync(string projectId, CancellationToken cancellationToken)
+    {
+        var client = clientFactory.CreateClient("Supabase");
+        var sets = await client.GetFromJsonAsync<List<DataSetSummaryRow>>("large_data_sets?select=id,project_id,commit_sha,status,created_at&project_id=eq." + Uri.EscapeDataString(projectId) + "&order=created_at.desc&limit=100", cancellationToken) ?? [];
+        var result = new List<LargeDataSet>();
+        foreach (var set in sets)
+        {
+            var items = await client.GetFromJsonAsync<List<DataSetItemRow>>("large_data_set_items?select=sha256,relative_path,size_bytes&data_set_id=eq." + set.Id, cancellationToken) ?? [];
+            result.Add(new LargeDataSet(set.ProjectId, set.CommitSha, ParseLifecycle(set.Status), items.Select(item => new ProjectLargeFile(set.ProjectId, item.RelativePath, new LargeObjectIdentity(item.Sha256, item.SizeBytes), LargeDataLifecycle.Checkpointed, set.CommitSha)).ToArray()));
+        }
+        return result;
+    }
+
     private sealed record DataSetRow(Guid Id);
+    private sealed record DataSetSummaryRow([property: JsonPropertyName("id")] Guid Id, [property: JsonPropertyName("project_id")] string ProjectId, [property: JsonPropertyName("commit_sha")] string CommitSha, [property: JsonPropertyName("status")] string Status, [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt);
+    private sealed record DataSetItemRow([property: JsonPropertyName("sha256")] string Sha256, [property: JsonPropertyName("relative_path")] string RelativePath, [property: JsonPropertyName("size_bytes")] long SizeBytes);
 
     private sealed record UploadSessionRow(
         [property: JsonPropertyName("id")] string Id,

@@ -40,6 +40,7 @@ public interface ILargeDataMetadataRepository
     Task UpsertProjectFileAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
     Task MarkStagedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
     Task CreateDataSetAsync(LargeDataSet dataSet, CancellationToken cancellationToken);
+    Task<IReadOnlyList<LargeDataSet>> ListDataSetsAsync(string projectId, CancellationToken cancellationToken);
 }
 
 public sealed record LargeDataAssertionScope(
