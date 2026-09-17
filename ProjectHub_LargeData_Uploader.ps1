@@ -127,4 +127,4 @@ try {
     if ($failed.Count -gt 0) { Write-Host ("BATCH RESULT: {0} staged, {1} failed" -f $staged.Count,$failed.Count) -ForegroundColor Yellow; exit 1 }
 } catch { Write-Host ("UPLOAD FAILED: " + $_.Exception.Message) -ForegroundColor Red; exit 1 }
 finally { Remove-Item -LiteralPath $chunkRoot -Recurse -Force -ErrorAction SilentlyContinue }
-Read-Host 'Batch uploader가 완료되었습니다. Enter 키를 눌러 종료하세요'
+Read-Host 'Batch uploader complete. Press Enter to close'

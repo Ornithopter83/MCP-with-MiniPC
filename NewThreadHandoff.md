@@ -4,7 +4,8 @@
 - 먼저 읽을 파일: `AGENTS.md`, `ProjectHub_IMPLEMENTATION_PLAN.md`, `CurrentWork.md`, 활성 task 파일
 - 현재 구조: `src/ProjectHub.Core`, `Infrastructure`, `Server`, `Agent`; `tests/ProjectHub.Core.Tests`, `Server.Tests`
 - 완료 상태: 기존 루트 초기화, .NET 솔루션 및 6개 프로젝트 생성, 04 Supabase 저장/E2E, 05-A Agent heartbeat 구현, 빌드·테스트 통과
-- 현재 작업: 07 프로젝트 배포 패키지 — Restore 운영 E2E 대기, 이후 08 Server 설치·이전
+- 현재 작업: 07 프로젝트 배포 패키지 — NAS 최신 `download.php` 배포 후 Restore 운영 E2E 대기, 이후 08 Server 설치·이전
+- 07 검증: Setup이 프로젝트 실행 파일을 `bin`에 배포하며 Sync/Restore 래퍼가 해당 경로를 사용한다. Restore는 별도 디렉터리와 크기/SHA-256 검증을 사용한다.
 - 표준 검증: `dotnet build ProjectHub.sln --no-restore`, `dotnet test ProjectHub.sln --no-restore`
 - 보안 경계: Supabase Service Role Key와 Agent API Key는 환경 변수·보안 저장소 외에 기록하지 않는다.
 - 완료: 서버 PC에서 project state POST/GET, Supabase 저장, 동일 project/workstation update, 실제 `head_sha` 저장 확인

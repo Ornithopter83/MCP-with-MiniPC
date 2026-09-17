@@ -38,9 +38,9 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: 07 프로젝트 배포 패키지 — Restore 운영 E2E 대기
+현재 작업: 07 프로젝트 배포 패키지 — NAS download.php 배포 후 Restore 운영 E2E 대기
 
-잔여 작업: Restore E2E, 이후 08 Server 설치·이전
+잔여 작업: NAS download.php 배포 및 checkpoint 기반 Restore E2E, 이후 08 Server 설치·이전
 
 대용량 data plane은 `Agent → NAS Gateway → NAS1DUAL`, control plane은 `Agent → ProjectHub.Server → Supabase`로 분리하며 Server는 대용량 binary를 relay하지 않는다.
 
