@@ -10,7 +10,7 @@ Updated: 2026-09-17
 4. 현재 활성 `tasks/*.md`
 5. `GPT-Web-Feedback.md`
 
-충돌 시 앞선 관리 문서와 활성 task를 우선한다. 단, 아래 Large Data/NAS 정책과 완료 기준은 사용자가 2026-09-17 명시적으로 요청한 최신 요구이므로 관련 계획·task·구현을 이 기준에 맞게 정리한다.
+충돌 시 앞선 관리 문서와 활성 task를 우선한다. 단, 아래 Large Data/NAS 정책은 사용자가 2026-09-17 명시적으로 요청한 최신 운영 요구이므로 관련 문서와 구현을 이 기준에 맞게 갱신한다.
 
 ---
 
@@ -19,539 +19,600 @@ Updated: 2026-09-17
 최신 확인 커밋:
 
 ```text
-775910714203257b7afeb4d0cb940ddb475f7282
-Add named NAS aliases and improve large-file upload feedback
+755ce0de0cfeddb0c3dcb31d407e2a98cb57b742
+Harden NAS staging cleanup and upload progress
 ```
 
-확인된 현재 구현:
+현재 확인된 방향:
 
 ```text
-[x] 평상시 Agent의 자동 대용량 hash/upload/staging/reconciliation 제거
+[x] 평상시 Agent 자동 대용량 업로드 폐기
 [x] 명시적 ProjectHub_Sync.ps1 기반 Batch Sync
-[x] control-plane Git/file summary를 Server에 먼저 반영
-[x] 별도 ProjectHub_LargeData_Uploader.ps1 프로세스 실행
-[x] project/workstation/object hash/size 기준 기존 resumable session 재사용
-[x] chunk status 기반 resume
-[x] 짧은 assertion 재발급
-[x] NAS finalize / hash / size 검증
-[x] STAGED / CHECKPOINTED 연결 경로
-[x] 업로드 중 source size/mtime 변경 시 CHANGED_DURING_UPLOAD 제외
-[x] uploader 콘솔 유지 및 오류 표시
-[x] chunk 단위 Write-Progress 및 byte/chunk 출력 추가
-[x] finalize 시 projecthub_cleanup_session() 추가
-[x] named alias files/<project>/<relative-path> 지원 추가
+[x] 별도 ProjectHub_LargeData_Uploader.ps1 프로세스
+[x] 파일별 [i/n], HASHING, FINALIZING, DONE 표시
+[x] chunk/byte/percent 진행 표시
+[x] resumable session 재사용
+[x] NAS finalize 후 staging cleanup 결과를 강제 확인
+[x] files/<project>/<relative-path> named path 생성
+[x] objects/sha256/<hash> content-addressed object 유지
 ```
 
-정책 방향은 맞다. 다만 현재 상태에서 06을 완전히 닫기 전에 **업로드 진행 표시, staging cleanup의 강제 검증, dedup/existing-object cleanup, named alias 삭제 의미, 실제 다중 파일 E2E**를 보완한다.
+그러나 실제 NAS 운영에서 사용자는 `files/<project>/<relative-path>`에 최종 파일이 정상 생성된 뒤에도 과거 chunk/staging 데이터가 남아 동일한 수준의 용량을 차지하는 현상을 확인했다.
+
+따라서 **정상 finalize 시 즉시 cleanup**만으로는 충분하지 않다. 이미 남은 실패/중단/구버전 session을 안전하게 정리하는 **Garbage Collection(GC)** 기능을 정식으로 추가한다.
 
 ---
 
-# 2. 대용량 업로드 창: 각 파일별 진행상황을 명확히 표시
+# 2. 먼저 구분해야 할 NAS 데이터 영역
 
-현재 uploader는 현재 파일에 대해 다음을 이미 표시한다.
-
-```text
-UPLOAD: <relative path> (<done>/<total> chunks, <bytes>/<total bytes>)
-Write-Progress: 파일명 + percent + bytes
-chunk N/M complete
-```
-
-하지만 여러 파일을 한 번에 올릴 때 사용자가 확인하기에는 부족하다. 현재 `Write-Progress -Activity "ProjectHub NAS upload"`가 단일 activity이고, 현재 batch의 몇 번째 파일인지와 전체 batch 상태가 명확하지 않다.
-
-다음 UX를 목표로 수정한다.
-
-예:
+NAS ProjectHub root의 역할을 명확히 구분한다.
 
 ```text
-ProjectHub Large Data Upload
-Batch: 3 files / 12.4 GB
-
-[1/3] assets/model.zip
-  Status   : UPLOADING
-  Progress : 42%
-  Bytes    : 2.1 GB / 5.0 GB
-  Chunks   : 68 / 160
-  Session  : <short session id>
-
-[2/3] video/raw.bin
-  Status   : WAITING
-  Size     : 6.8 GB
-
-[3/3] archive.dat
-  Status   : WAITING
-  Size     : 0.6 GB
+/mnt/HDD1/ProjectHub/
+├─ files/                 사용자 관점의 프로젝트/파일 경로
+│  └─ <project>/<relative-path>
+├─ objects/sha256/        content-addressed object 저장소
+│  └─ <prefix>/<hash>
+└─ staging/               업로드 중 임시 chunk/session 영역
+   └─ <session-id>/
 ```
 
-최소 요구:
+중요:
+
+`files/...`와 `objects/sha256/...`는 현재 hard link 방식일 수 있다. 이 경우 두 경로에서 같은 파일 크기로 보이더라도 실제 디스크 블록을 두 번 사용하는 것이 아닐 수 있다.
+
+따라서 GC 구현 전에 실제 NAS에서 다음을 확인해 기록한다.
 
 ```text
-- 현재 파일 index / 전체 파일 수: [2/5]
-- relative path
-- 파일 크기
-- 전송 byte / 전체 byte
-- percent
-- 완료 chunk / 전체 chunk
-- 상태: WAITING / HASHING / RESUMING / UPLOADING / FINALIZING / STAGED / CHECKPOINTED / FAILED / CHANGED_DURING_UPLOAD
-- resume이면 기존 완료 chunk/bytes에서 시작했다는 표시
-- 파일 완료 시 100%와 완료 상태를 한 줄로 남김
+- files 경로와 objects 경로가 동일 inode인지
+- link count가 2 이상인지
+- NAS 실제 사용량이 두 경로 때문에 이중 증가하는지
 ```
 
-가능하면 추가:
+`files`와 `objects`가 hard link라면 **둘 중 하나를 중복 데이터라고 보고 임의 삭제하면 안 된다.**
 
-```text
-- 현재 파일 전송 속도 MB/s
-- ETA
-- batch 전체 완료 파일 수
-- batch 전체 byte 기준 진행률
-```
-
-구현은 PowerShell `Write-Progress`를 계속 사용해도 된다. 단, 하나의 progress bar가 파일 전환 시 덮어써져 과거 상태를 잃지 않도록 `Write-Host` 완료 로그를 함께 남긴다.
-
-권장 출력:
-
-```text
-[1/3] START  assets/model.zip  5.0 GB
-[1/3] 42%    2.1/5.0 GB       chunk 68/160
-[1/3] 100%   FINALIZING
-[1/3] DONE   STAGED            SHA-256 verified
-
-[2/3] START  video/raw.bin ...
-```
+반면 `staging/<session-id>/*.part`는 실제 임시 chunk이므로 finalize 후 남아 있으면 실제 추가 용량을 점유한다. 이번 GC의 1차 대상은 staging이다.
 
 ---
 
-# 3. HASHING 단계도 진행 상태로 구분
+# 3. GC를 두 단계로 분리
 
-현재 uploader는 `Get-FileHash`가 끝날 때까지 큰 파일에서 콘솔이 멈춘 것처럼 보일 수 있다.
+Garbage Collection은 반드시 다음 두 종류로 분리한다.
 
-8GB~수십 GB 파일에서는 hash 계산도 상당한 시간이 걸릴 수 있으므로 최소한:
+## A. Staging GC — 이번에 우선 구현
 
-```text
-[1/3] HASHING: assets/model.zip (5.0 GB)
-```
-
-을 먼저 출력한다.
-
-가능하면 향후 streaming hash progress를 넣을 수 있지만, 이번 단계에서는 과도한 구현을 하지 않아도 된다. 핵심은 사용자가 uploader가 멈춘 것이 아니라 hashing 중임을 알 수 있게 하는 것이다.
-
----
-
-# 4. finalize 성공 시 NAS staging chunk는 반드시 제거되어야 함
-
-현재 `upload-finalize.php`는 성공 시 `projecthub_cleanup_session($sessionDir, $parts)`를 호출한다. 방향은 맞다.
-
-현재 cleanup helper:
+대상:
 
 ```text
-- *.part 삭제
-- assembled.tmp 삭제
-- session.json 삭제
-- session directory rmdir
+staging/<session-id>/
+*.part
+assembled.tmp
+session.json
 ```
 
-그러나 현재 반환값을 무시하고 있다. 따라서 chunk 삭제 실패나 directory 잔존이 있어도 finalize 응답이 `complete`로 나갈 수 있다.
-
-이 상태는 허용하지 않는다.
-
-finalize 완료 조건을 다음처럼 강화한다.
+목표:
 
 ```text
-object hash/size 검증 성공
--> object commit 또는 existing object 확인
--> named alias 처리
--> staging chunk/session cleanup
--> cleanup 결과 확인
--> session directory가 실제로 없어졌음을 확인
--> 그 뒤 complete 응답
+- 정상 완료됐는데 남은 session 정리
+- 취소된 session 정리
+- 오래 전에 실패하고 더 이상 resume 대상이 아닌 session 정리
+- DB에 대응 session이 없는 orphan staging 정리
 ```
 
-즉:
+## B. Object GC — 별도 후속 단계
 
-```text
-finalize complete == object 저장 성공 + staging cleanup 성공
-```
-
-으로 본다.
-
-`projecthub_cleanup_session()` 반환값이 false이면 무시하지 않는다.
-
-예:
-
-```php
-if (!projecthub_cleanup_session($sessionDir, $parts)) {
-    projecthub_json_error(500, 'staging_cleanup_failed');
-}
-```
-
-단, object가 이미 commit된 이후 cleanup만 실패한 경우 재시도 시 binary를 다시 올리지 않도록 idempotent하게 처리한다. 다음 finalize/upload-start에서 object가 이미 존재하면 object identity를 확인하고 같은 session directory의 cleanup만 재시도할 수 있어야 한다.
-
----
-
-# 5. cleanup helper는 예상치 못한 잔여 파일을 숨기지 않는다
-
-현재 `projecthub_cleanup_session()`은 알려진 파일만 unlink한 뒤 `rmdir()` 한다.
-
-세션 디렉터리에 예상치 못한 파일이 하나라도 남으면 `rmdir()`이 실패하지만 현재는 원인을 알기 어렵다.
-
-보완:
-
-```text
-- 삭제 전/후 session directory 내용을 검사
-- *.part, assembled.tmp, session.json 외 예상치 못한 파일이 있으면 로그/오류
-- cleanup 실패 시 남은 파일 이름을 서버 로그에 남김
-- symlink는 절대 따라가거나 삭제하지 않음
-```
-
-운영 응답에 전체 NAS absolute path를 노출할 필요는 없지만 최소 오류명은 명확히 한다.
-
-```text
-staging_cleanup_failed
-staging_not_empty
-```
-
-등.
-
----
-
-# 6. already_present / dedup 경로에서도 stale staging을 정리
-
-현재 `upload-start.php`는 object가 이미 `objects/sha256/...`에 있으면 즉시 `state=complete, already_present=true`로 반환한다.
-
-이 경로에서는 동일 `upload_session_id`의 staging directory가 과거 실패로 남아 있어도 정리하지 않는다.
-
-따라서 다음 상황이 가능하다.
-
-```text
-NAS object는 이미 정상 존재
-+ Supabase resumable session도 남아 있음
-+ staging/<session-id>에 옛 chunk가 남아 있음
-
-다음 Batch Sync
--> existing object 확인
--> complete 반환
--> staging은 그대로 남음
-```
-
-이것을 보완한다.
-
-object가 이미 존재하고 hash/size identity가 맞는 경우:
-
-```text
-1. 같은 upload_session_id의 staging directory 존재 여부 확인
-2. session.json의 project/workstation/hash/size가 현재 claim과 일치하는 경우에만
-3. stale chunk/session directory cleanup
-4. cleanup 성공 후 already_present=true 반환
-```
-
-다른 session의 staging을 임의 삭제하면 안 된다.
-
----
-
-# 7. uploader에서 Server session complete 처리 순서 확인
-
-현재 uploader는 NAS finalize 또는 already_present 확인 후:
-
-```text
-/api/large-data/resumable-session/{session}/complete
-```
-
-를 호출한다.
-
-이때 NAS staging cleanup이 실제 성공했다는 보장이 먼저 있어야 한다.
-
-권장 순서:
-
-```text
-NAS finalize response complete
-+ staging_cleaned=true 또는 동등 보장
--> Server resumable session COMPLETED
--> source 변경 재검사
--> STAGED metadata
--> checkpoint 조건 만족 시 CHECKPOINTED
-```
-
-Gateway 응답에 필요하다면 다음을 추가한다.
-
-```json
-{
-  "state": "complete",
-  "staging_cleaned": true,
-  "object_hash": "...",
-  "size_bytes": 123,
-  "named_path": "..."
-}
-```
-
-Uploader는 `staging_cleaned != true`이면 session complete 처리하지 않는다.
-
----
-
-# 8. 실제 NAS에서 cleanup E2E를 반드시 검증
-
-코드상 cleanup 함수가 있다는 것만으로 06 완료로 보지 않는다.
-
-실제 NAS에서 다음을 확인한다.
-
-```text
-A. 새 object upload
-1. Batch Sync 시작
-2. staging/<session>/chunk가 생성되는 것 확인
-3. finalize 완료
-4. objects/sha256/<hash> 존재
-5. files/<project>/<relative-path> 존재
-6. staging/<session> directory 자체가 사라졌는지 확인
-
-B. interrupted resume
-1. 일부 chunk 전송 후 uploader 중단
-2. staging session/chunk 유지 확인
-3. 다음 명시적 Batch Sync 실행
-4. 동일 session id 재사용
-5. 기존 chunk부터 resume
-6. finalize 완료
-7. staging session 완전 삭제 확인
-
-C. already_present
-1. object가 이미 존재하는 파일로 Batch Sync 실행
-2. 새 binary upload 없이 ALREADY_PRESENT
-3. 동일 session의 stale staging이 있다면 cleanup됨
-```
-
-이 세 경우를 모두 기록한다.
-
----
-
-# 9. 다중 파일 실제 E2E가 필요
-
-현재 개선된 progress UX는 코드로는 들어갔지만 실제 사용성은 1개 파일 테스트만으로 충분하지 않다.
-
-최소 2~3개 대용량 파일을 한 batch에 넣고 검증한다.
-
-예:
-
-```text
-file-A 500MB
-file-B 700MB
-file-C 1.2GB
-```
-
-검증 포인트:
-
-```text
-- 각 파일 [i/n] 표시
-- HASHING / UPLOADING / FINALIZING / DONE 전환
-- 한 파일 완료 후 다음 파일로 정상 이동
-- resume 대상과 신규 대상이 섞여도 표시가 맞음
-- 한 파일 실패 시 어느 파일/어느 chunk에서 실패했는지 즉시 식별 가능
-- batch 종료 전에 STAGED/CHECKPOINTED 결과가 명확히 표시됨
-```
-
----
-
-# 10. 오류 하나가 전체 batch를 즉시 중단할지 정책 명확화
-
-현재 uploader는 `foreach` 전체가 하나의 try/catch 안에 있어 한 파일 오류가 발생하면 나머지 파일도 중단된다.
-
-이 정책은 명확히 결정해야 한다.
-
-권장:
-
-```text
-기본은 파일 단위 실패 격리
-```
-
-즉:
-
-```text
-file-A DONE
-file-B FAILED
-file-C 계속 업로드
-```
-
-후 batch summary:
-
-```text
-Completed: 2
-Failed: 1
-Changed during upload: 0
-Checkpoint: skipped 또는 성공 가능한 subset 정책에 따름
-```
-
-단, checkpoint dataset은 불완전한 snapshot을 잘못 완성 처리하면 안 된다. captured manifest 전체가 checkpoint 대상이라는 정책이면 하나라도 실패/변경 시 CHECKPOINTED를 생략하고 STAGED까지만 남기는 현재 보수적 정책을 유지한다.
-
----
-
-# 11. named alias는 hard link이므로 삭제 의미를 문서화
-
-최신 구현은:
+대상:
 
 ```text
 objects/sha256/<hash>
 files/<project>/<relative-path>
 ```
 
-를 hard link로 연결한다.
+Object GC는 훨씬 보수적으로 처리한다.
 
-이 경우 두 경로는 같은 inode/data를 가리킨다.
-
-중요:
+다음 reference를 모두 확인하기 전에는 object를 삭제하지 않는다.
 
 ```text
-objects 쪽 파일만 수동 삭제해도 files 쪽 hard link가 남아 있으면 실제 데이터는 삭제되지 않음
-files 쪽만 삭제해도 objects 쪽이 남아 있으면 실제 데이터는 삭제되지 않음
+- project_large_files
+- large_data_sets
+- large_data_set_items
+- 현재 named files alias
+- 다른 project에서 동일 SHA-256을 참조하는지
 ```
 
-사용자가 NAS에서 수동으로 파일을 지우며 상태를 맞추려는 운영 방식과 충돌할 수 있다.
+**reference count가 0인 object만 삭제 가능**하다.
 
-따라서 문서에 명확히 기록한다.
-
-```text
-NAS objects/files/staging은 ProjectHub 관리 영역이다.
-운영 중 수동 일부 경로 삭제로 상태를 맞추지 않는다.
-```
-
-향후 삭제 기능이 필요하면 Server/Gateway에 **정식 purge/delete 작업**을 만들고:
-
-```text
-- DB reference 확인
-- named alias 제거
-- object reference count 확인
-- 다른 project/file에서 동일 hash 사용 중이면 object 유지
-- 참조가 0일 때만 content object 삭제
-```
-
-순서로 처리한다.
-
-현재 06 범위에서 자동 purge까지 구현할 필요는 없지만 hard-link 의미와 수동 삭제 주의사항은 문서화한다.
+이번 작업에서는 Object GC를 자동 실행하지 않아도 된다. 우선 Staging GC를 완성한다.
 
 ---
 
-# 12. object 생성과 named alias 생성 사이의 실패 보완
+# 4. Staging GC의 안전 기준
 
-현재 새 object finalize 흐름은 대략:
+GC는 단순히 오래된 디렉터리를 `rm -rf` 하는 기능이어서는 안 된다.
+
+각 `staging/<session-id>`에 대해 최소 다음을 대조한다.
 
 ```text
+session_id
+project_id
+workstation_id
+object_hash
+size_bytes
+session lifecycle
+last_activity_at
+NAS session.json 내용
+```
+
+삭제 가능한 상태 예:
+
+```text
+COMPLETED  -> 즉시 cleanup 가능
+CANCELLED  -> cleanup 가능
+ABANDONED  -> TTL 경과 후 cleanup 가능
+DB에 session 없음 + 충분한 TTL 경과 -> ORPHAN 후보
+```
+
+삭제 금지:
+
+```text
+UPLOADING
+최근 activity가 있는 session
+현재 실행 중인 uploader가 보유한 session
+metadata가 서로 불일치하는 session
+```
+
+metadata 불일치 시 자동 삭제하지 말고 `REVIEW_REQUIRED` 또는 동등한 경고 후보로 남긴다.
+
+---
+
+# 5. upload session lifecycle 보강
+
+현재 `UPLOADING`/`COMPLETED`만으로는 운영 정리에 부족하다.
+
+가능하면 다음 상태를 명확히 지원한다.
+
+```text
+UPLOADING
+COMPLETED
+CANCELLED
+ABANDONED
+```
+
+최소한 `CANCELLED`를 추가한다.
+
+사용자가 해당 업로드를 버리기로 결정하면:
+
+```text
+UPLOADING
+-> CANCELLED
+-> 해당 session은 다음 Batch에서 resume하지 않음
+-> Staging GC 정리 대상이 됨
+```
+
+이 기능이 없으면 오래된 `UPLOADING` session을 다음 Batch가 계속 resume 대상으로 볼 수 있다.
+
+---
+
+# 6. last_activity_at 또는 동등 정보 필요
+
+단순 생성 시각만으로 stale 여부를 판단하지 않는다.
+
+chunk 수신, status/resume, assertion 갱신 또는 uploader 진행 시점 중 적절한 경로에서 session의 `last_activity_at`을 갱신한다.
+
+예:
+
+```text
+created_at       = 09:00
+last_activity_at = 10:21
+lifecycle        = UPLOADING
+```
+
+이 session은 생성된 지 오래됐더라도 활성 session이므로 GC 금지다.
+
+권장 기본 TTL은 코드 상수로 박지 말고 설정 가능하게 한다.
+
+예:
+
+```text
+PROJECTHUB_STAGING_GC_TTL_HOURS=24
+```
+
+실제 기본값은 구현자가 현재 운영 패턴을 보고 보수적으로 선택한다.
+
+---
+
+# 7. GC는 평상시 Agent가 자동 수행하지 않는다
+
+기존 최신 정책을 유지한다.
+
+```text
+Agent startup
+FileSystemWatcher
+heartbeat
+Git 상태 변경
+```
+
+만으로 GC를 자동 수행하지 않는다.
+
+GC 실행은 다음 중 하나로 제한한다.
+
+```text
+1. 사용자가 명시적으로 ProjectHub_GC.ps1 실행
+2. Batch Sync가 정상 끝난 뒤 안전 후보만 정리하는 명시적 cleanup 단계
+3. 향후 Server 운영 스케줄에 넣더라도 dry-run/보수적 조건을 만족하는 경우
+```
+
+지금 단계의 기본 UX는 **명시적 GC 실행 + dry-run 기본값**으로 한다.
+
+---
+
+# 8. 권장 GC 사용자 경험
+
+새 entrypoint 예:
+
+```text
+ProjectHub_GC.ps1
+```
+
+기본 실행은 실제 삭제가 아닌 dry-run이다.
+
+예:
+
+```text
+ProjectHub Large Data GC
+
+Scanning staging sessions...
+
+[SAFE]   a1b2...  COMPLETED   500.0 MB   age 2h
+[SAFE]   c3d4...  CANCELLED   1.2 GB     age 4h
+[KEEP]   e5f6...  UPLOADING   3.8 GB     last activity 3m ago
+[ORPHAN] 7788...  no DB row    700 MB     age 9d
+[REVIEW] 99aa...  metadata mismatch
+
+Reclaimable staging space: 2.4 GB
+No files deleted. Use -Apply to execute safe cleanup.
+```
+
+실제 삭제:
+
+```powershell
+.\ProjectHub_GC.ps1 -Apply
+```
+
+실행 후:
+
+```text
+Deleted sessions : 3
+Freed space      : 2.4 GB
+Skipped active   : 1
+Review required  : 1
+```
+
+`-Force`로 위험 후보까지 지우는 기능은 이번 단계에서는 만들지 않는 것을 권장한다.
+
+---
+
+# 9. GC control plane / data plane 경계
+
+기존 아키텍처를 유지한다.
+
+```text
+DEV PC / Admin Script
+    -> ProjectHub.Server
+    -> metadata 확인
+
+ProjectHub.Server
+    -> scoped cleanup assertion 발급
+
+Admin Script 또는 Server-orchestrated client
+    -> NAS Gateway HTTPS cleanup endpoint
+    -> NAS staging session만 삭제
+```
+
+금지:
+
+```text
+- DEV PC가 SMB/NAS filesystem credential로 직접 staging 삭제
+- Agent가 Supabase에 직접 접근해 GC 판단
+- Server가 대용량 binary를 relay
+```
+
+현재 assertion operation이 upload만 있다면 GC용으로 명시적 scoped operation을 추가한다.
+
+예:
+
+```text
+operation = cleanup
+scope = project/workstation/session
+```
+
+cleanup assertion은 지정된 `upload_session_id` 외 다른 session이나 objects/files에 접근할 수 없어야 한다.
+
+---
+
+# 10. Gateway cleanup endpoint 요구
+
+예:
+
+```text
+POST /cleanup-session.php
+```
+
+또는 동등 API.
+
+입력 권한은 short-lived RS256 assertion으로 제한한다.
+
+Gateway에서 반드시 확인:
+
+```text
+- operation == cleanup
+- upload_session_id 일치
+- project_id/workstation_id 일치
+- session.json metadata 일치
+- path escape 금지
+- symlink 금지
+```
+
+삭제 대상은 해당 staging session 내부로 제한한다.
+
+```text
+*.part
 assembled.tmp
--> rename to objects/sha256/<hash>
--> named alias 생성
--> staging cleanup
+session.json
+session directory
 ```
 
-named alias 생성이 실패하면 object는 이미 저장됐지만 staging cleanup 전에 오류가 발생할 수 있다.
+`objects/`와 `files/`는 이 endpoint에서 절대 삭제하지 않는다.
 
-이 경우 다음 실행이 idempotent하게 복구되어야 한다.
+cleanup 결과 예:
 
-다음 Batch:
-
-```text
-upload-start sees existing object
--> object identity 확인
--> named alias 생성 재시도
--> stale same-session staging cleanup
--> complete
+```json
+{
+  "state": "cleaned",
+  "upload_session_id": "...",
+  "deleted_files": 33,
+  "freed_bytes": 524288000
+}
 ```
 
-이 경로를 테스트한다.
+이미 directory가 없는 경우도 idempotent하게 성공 처리 가능하다.
+
+```json
+{
+  "state": "already_clean",
+  "freed_bytes": 0
+}
+```
 
 ---
 
-# 13. 06 완료 상태 문서 표현을 보수적으로 수정
+# 11. 정상 finalize cleanup + GC는 둘 다 필요
 
-현재 `CurrentWork.md`는 `06 Large Data/NAS 완료; 07 Project 상태 API 준비`로 적혀 있다.
+GC를 추가한다고 해서 finalize cleanup을 느슨하게 하면 안 된다.
 
-그러나 이번 최신 progress/alias/cleanup 변경은 아직 실제 NAS 다중 파일 E2E와 cleanup 강제 검증이 남아 있다.
-
-따라서 검증이 끝날 때까지 권장 표현:
+정상 흐름:
 
 ```text
-06 Large Data/NAS 구현 완료, 최종 운영 E2E 검증 중
+upload chunks
+-> finalize
+-> hash/size 확인
+-> object commit
+-> files named alias 확인
+-> staging 즉시 cleanup
+-> staging_cleaned=true
+-> Server session COMPLETED
 ```
 
-또는:
+이 경로가 기본이다.
+
+GC는 예외 복구용이다.
 
 ```text
-06 기능 구현 완료 / 최종 수용 검증 남음
+프로세스 강제종료
+네트워크 단절
+구버전 코드가 남긴 session
+cleanup 실패
+사용자 취소
 ```
 
-으로 둔다.
+같은 경우를 처리한다.
 
-아래 검증까지 끝난 뒤 완전 완료 처리한다.
+즉:
 
 ```text
-[ ] 각 파일별 progress UX 실제 확인
-[ ] multi-file batch 실제 E2E
-[ ] 새 upload finalize 후 staging session 완전 삭제
-[ ] interrupted resume 후 staging 완전 삭제
+정상 cleanup = 1차 방어
+Staging GC    = 2차 방어
+```
+
+이다.
+
+---
+
+# 12. 현재 남아 있는 staging을 실제로 정리하는 절차
+
+새 GC 기능이 완성되면 실제 NAS의 기존 잔여 staging을 바로 삭제하지 말고 먼저 dry-run 보고서를 만든다.
+
+반드시 다음을 사용자에게 보고한다.
+
+```text
+- session 수
+- 각 session 상태
+- 각 session 용량
+- DB/Supabase 대응 row 존재 여부
+- 마지막 activity
+- 삭제 가능/유지/검토 필요 판정
+- 총 회수 가능 용량
+```
+
+사용자가 결과를 확인한 뒤 `-Apply`로 정리한다.
+
+과거 테스트 session이라 하더라도 active metadata와 충돌하면 자동 삭제하지 않는다.
+
+---
+
+# 13. hard link / 실제 디스크 사용량 검증
+
+현재 `files/<project>/<relative-path>`와 `objects/sha256/<hash>`가 hard link라면 파일 관리 UI에서 각각 전체 크기로 보여도 실제 NAS 사용량은 한 파일 분량일 수 있다.
+
+Codex는 이 점을 실제 NAS에서 검증할 수 있는 운영 명령 또는 작은 PHP 진단을 준비한다.
+
+확인 대상:
+
+```text
+inode 동일 여부
+link count
+실제 filesystem 사용량
+```
+
+이 확인 없이 `objects`를 중복 파일로 판단해 GC 대상으로 삼지 않는다.
+
+---
+
+# 14. Object GC는 별도 승인 후 구현
+
+향후 Object GC를 구현할 때 원칙:
+
+```text
+1. DB reference graph 생성
+2. files alias reference 확인
+3. dataset/checkpoint reference 확인
+4. 다른 project의 동일 hash reference 확인
+5. reference count == 0만 후보
+6. dry-run
+7. 사용자 승인 또는 안전한 운영 정책 후 삭제
+```
+
+content-addressed object는 프로젝트 버전 복원에 필요한 핵심 데이터이므로 staging과 같은 TTL 삭제 정책을 적용하면 안 된다.
+
+---
+
+# 15. 현재 업로드 진행 UX 요구 유지
+
+GC 작업과 별도로 uploader 진행 표시 요구는 유지한다.
+
+최소:
+
+```text
+[i/n] 파일명
+HASHING / RESUMING / UPLOADING / FINALIZING / DONE / FAILED
+percent
+bytes / total bytes
+completed chunks / total chunks
+resume 여부
+```
+
+파일 완료 시 콘솔에 완료 로그를 남긴다.
+
+가능하면 batch 전체 진행률, 속도, ETA도 추가한다.
+
+---
+
+# 16. 오류 하나가 전체 batch를 중단하지 않도록 검토
+
+현재 구조가 한 파일 실패 시 전체 `foreach`를 빠져나온다면 파일 단위 실패 격리를 검토한다.
+
+권장:
+
+```text
+file-A DONE
+file-B FAILED
+file-C 계속 진행
+```
+
+다만 captured manifest 전체가 하나의 checkpoint 단위라면 하나라도 실패했을 때 전체 CHECKPOINTED 처리는 하지 않는다. 성공 파일은 STAGED로 유지하고 다음 Batch에서 실패 파일을 재처리한다.
+
+---
+
+# 17. 06 완료 상태를 보수적으로 유지
+
+다음 검증이 끝날 때까지 문서는:
+
+```text
+06 Large Data/NAS 기능 구현 완료 / 최종 운영 검증 중
+```
+
+정도로 표현한다.
+
+완료 전 필수 검증:
+
+```text
+[ ] multi-file uploader progress 실제 확인
+[ ] 정상 finalize 후 staging session 완전 제거
+[ ] interrupted resume 후 finalize/cleanup 성공
 [ ] already_present 경로 stale staging cleanup
-[ ] object/alias 생성 실패 후 idempotent recovery
+[ ] Staging GC dry-run 후보 판정
+[ ] COMPLETED/CANCELLED/orphan session 실제 cleanup
+[ ] UPLOADING active session 보호 확인
+[ ] GC 후 회수 용량 확인
+[ ] files/object hard-link 및 실제 사용량 확인
 [ ] build/test PASS
-[ ] NAS 실제 경로 확인
 ```
 
 ---
 
-# 14. 이번 수정에서 건드리지 말아야 할 경계
-
-기존 정책을 유지한다.
+# 18. Codex 수행 순서
 
 ```text
-- 평상시 Agent 자동 대용량 upload 금지
-- FileSystemWatcher upload trigger 금지
-- Agent restart 자동 resume/staging 생성 금지
-- 사용자가 명시적 Batch Sync를 실행했을 때만 upload 시작
-- Server binary relay 금지
-- Agent Supabase 직접 접근 금지
-- SMB/NAS filesystem 직접 접근 금지
+1. 최신 저장소와 CurrentWork/tasks/06-large-data-nas.md 확인
+2. 최신 finalize cleanup 구현을 유지하고 실제 NAS E2E 재검증
+3. large_upload_sessions에 CANCELLED/ABANDONED 및 last_activity_at 필요성 검토·최소 구현
+4. Staging GC 후보 조회 API/서비스 구현
+5. cleanup 전용 scoped assertion/operation 구현
+6. NAS Gateway cleanup-session endpoint 구현
+7. ProjectHub_GC.ps1 dry-run 구현
+8. -Apply 안전 후보 삭제 구현
+9. active UPLOADING session 보호 테스트
+10. orphan/COMPLETED/CANCELLED cleanup 테스트
+11. freed_bytes 및 결과 summary 출력
+12. hard-link inode/link-count/실제 disk 사용량 검증
+13. 기존 staging 잔여 데이터를 dry-run으로 분석하고 사용자에게 보고
+14. 사용자 확인 후 실제 GC E2E
+15. 관련 관리 문서 갱신
+16. build/test/PowerShell parser 검증
+```
+
+---
+
+# 19. 변경 금지
+
+```text
+- 평상시 Agent 자동 upload/GC 금지
+- FileSystemWatcher를 upload 또는 GC trigger로 사용 금지
+- Agent restart만으로 staging 생성/resume/GC 금지
+- DEV PC에 SMB/NAS filesystem credential 배포 금지
+- Agent의 Supabase 직접 접근 금지
+- Server의 대용량 binary relay 금지
+- 운영 TLS 검증 우회 금지
 - private key 저장소 기록 금지
-- TLS 검증 우회 금지
 - 자동 git add/commit/push/pull/reset/merge/rebase/clean 금지
+- active UPLOADING session 강제 삭제 금지
+- Object GC를 Staging GC와 함께 무조건 실행 금지
 ```
 
 ---
 
-# 15. Codex 수행 순서
-
-다음 순서로 진행한다.
-
-```text
-1. 최신 775910714... 코드 기준으로 시작
-2. uploader에 [i/n] 파일 index + 상태 + bytes/chunks/percent 표시 보강
-3. HASHING / FINALIZING / DONE 상태 명확히 출력
-4. 가능하면 batch 전체 progress 추가
-5. projecthub_cleanup_session() 실패를 무시하지 않도록 변경
-6. finalize success 전에 staging directory 실제 제거 확인
-7. upload-start already_present 경로에서 동일 session stale staging cleanup 추가
-8. Gateway response에 staging cleanup 성공 여부 명시 검토
-9. uploader가 cleanup 성공 후에만 Server session COMPLETE 처리
-10. 2~3개 파일 multi-file E2E
-11. 강제 중단 -> 다음 Batch resume E2E
-12. finalize 후 NAS staging directory 0개 또는 해당 session 완전 제거 확인
-13. already_present + stale staging cleanup E2E
-14. hard-link named alias 삭제 의미 문서화
-15. CurrentWork/task를 검증 수준에 맞게 갱신
-16. build/test 및 PowerShell parser 검증
-```
-
----
-
-# 16. 다음 보고에 반드시 포함할 내용
+# 20. 다음 보고에 반드시 포함
 
 ```text
 - latest commit SHA
-- uploader 화면 예시 또는 실제 출력
-- 각 파일별 [i/n], percent, bytes, chunks 표시 결과
-- multi-file batch 결과
-- finalize 전 staging 경로
-- finalize 후 해당 session directory 존재 여부
-- interrupted resume 시 동일 session 재사용 증거
-- already_present 시 stale staging cleanup 결과
-- NAS object hash/size 확인
-- named alias 경로 확인
-- STAGED/CHECKPOINTED metadata 결과
+- GC 설계/구현 파일 목록
+- session lifecycle 변경점
+- last_activity 갱신 방식
+- dry-run 실제 출력
+- SAFE / KEEP / ORPHAN / REVIEW 판정 예시
+- 삭제 전 staging 총 용량
+- 삭제 후 staging 총 용량
+- 회수된 bytes
+- active session이 보존된 증거
+- cleanup assertion scope 검증
+- files/object inode 또는 hard-link 검증 결과
+- uploader progress 실제 출력
+- multi-file upload 및 cleanup 결과
 - build/test 결과
 ```
 
-이번 수정의 핵심 성공 기준은 다음 두 가지다.
+이번 보완의 핵심 성공 기준은 다음과 같다.
 
-> **사용자가 대용량 업로드 창만 보고 각 파일의 현재 상태와 진행률을 즉시 이해할 수 있어야 한다.**
+> **정상 업로드가 끝난 session은 즉시 staging이 제거되고, 비정상 종료로 남은 staging은 metadata와 activity를 기준으로 안전하게 식별·정리할 수 있어야 한다.**
 
-> **파일 업로드가 정상 완료된 뒤 해당 upload session의 NAS staging chunk/session 파일은 반드시 남지 않아야 한다.**
+> **`files`와 `objects`는 hard-link/reference 구조를 먼저 확인하고, staging과 같은 단순 TTL GC 대상으로 취급하지 않는다.**
