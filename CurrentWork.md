@@ -61,7 +61,7 @@ dotnet test ProjectHub.sln --no-restore
 
 ## 현재 작업
 
-06 Large Data/NAS 기능 검증 완료 / NAS 물리 용량·hard-link 운영 측정 보류
+06 Large Data/NAS 기능 검증 완료 / 후속 개선 진행
 
 2026-09-17 재검증: Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. 500MiB `forUpload.z01`은 .NET SHA-256 fallback으로 해시 계산 후 기존 session 재사용, NAS `already_present`, 원본과 동일한 size/hash, `STAGED`, `CHECKPOINTED`까지 성공했다. Server session은 `COMPLETED`로 확인됐다.
 
@@ -70,6 +70,8 @@ dotnet test ProjectHub.sln --no-restore
 GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Apply`를 실행해 Gateway cleanup을 완료했고, 같은 명령을 다시 실행했을 때 두 session 모두 `ALREADY_CLEAN`으로 반환됐다. 테스트 `UPLOADING` session은 GC dry-run에서 `KEEP`으로 보호됐고, fixture 삭제 후 session count 0 및 SAFE/KEEP/REVIEW 0을 확인했다.
 
 2026-09-17 재검증: NAS Gateway health 및 `provision.php=405`, `upload-start.php=405`는 응답했고, 일시적인 운영 Server `502` 복구 후 `/api/status=200`, GC, assertion 기반 업로드를 완료했다.
+
+후속 개선 구현: uploader assertion을 파일/session 범위에서 캐시하고 JWT 만료 임박 또는 Gateway 401에서만 1회 refresh한다. 파일별 실패 격리, mixed batch checkpoint 보수 정책, `STAGING_CLEANED; OBJECT_RETAINED` 출력, manifest `.result.json` 결과 기록을 추가했다.
 
 실제 NAS1DUAL 기준:
 

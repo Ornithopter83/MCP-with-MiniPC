@@ -22,7 +22,9 @@ RS256 계열 서명, 짧은 만료, project/workstation/session/operation/object
 
 ## 진행
 
-기능 검증 완료. NAS 물리 용량·hard-link 운영 측정은 보류 중이며, 외부 NAS 계정·절대 경로·비밀키는 저장소에 기록하지 않는다.
+기능 검증 완료. 후속 개선을 진행하며, 외부 NAS 계정·절대 경로·비밀키는 저장소에 기록하지 않는다.
+
+후속 개선 구현: uploader는 파일/session 범위에서 assertion을 캐시하고 JWT 만료 임박 또는 Gateway 401일 때만 새 assertion을 발급해 해당 요청을 1회 재시도한다. 파일별 try/catch로 실패를 격리하고 성공/실패 결과를 manifest 옆 `.result.json`에 저장한다. 하나라도 실패하거나 변경되면 전체 CHECKPOINTED 기록을 생략한다. 정상 완료 출력은 `STAGING_CLEANED; OBJECT_RETAINED`, `STAGED`, `CHECKPOINTED`로 구분한다.
 
 최신 재검증(2026-09-17): 운영 Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. `forUpload.z01` 500MiB는 기존 resumable session을 재사용해 NAS `already_present` 경로로 완료됐고, 원본 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267` 및 `524288000` bytes가 일치했다. `STAGED`와 `CHECKPOINTED`를 확인했으며 Server session lifecycle은 `COMPLETED`다. 백그라운드 uploader의 PowerShell 환경 차이를 제거하기 위해 uploader 해시 계산을 .NET SHA-256/FileStream 방식으로 고정했다.
 
