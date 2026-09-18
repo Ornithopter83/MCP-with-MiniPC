@@ -12,4 +12,6 @@
 
 2026-09-18 operation logging: Server에 `ProjectHub.Server` category를 추가해 startup, project state, assertion, upload session 완료, STAGED, CHECKPOINT, removal/tombstone 주요 단계만 Information으로 기록한다. `Microsoft`, ASP.NET Core, Supabase HttpClient 반복 로그는 Warning으로 제한하고 Console을 single-line/timestamp 형식으로 설정했다. 로컬 `http://127.0.0.1:5280/api/status`가 200으로 응답하고 `SERVER_STARTED` 한 줄 로그를 출력하는 것을 확인했다.
 
+2026-09-18 삭제 반복 표시 수정: Server enum의 `Removed` 값이 숫자 `7`로 JSON 반환되는 점을 반영하고, checkpoint API의 여러 결과에서 최신 단일 객체·문자열 commit SHA를 선택하도록 `Sync`를 보완했다. 삭제 API가 `forUpload.z01` tombstone 처리를 성공적으로 반환했으며, `hw`에서 후속 Sync 결과가 `0 large files`, `Removed=0`, `Failed=0`으로 확인되어 삭제 확인 창이 재표시되지 않았다.
+
 정책: 기존 관리 문서와 사용자 파일을 덮어쓰지 않으며 Git 변경과 대용량 업로드는 사용자가 명시적으로 실행할 때만 수행한다.

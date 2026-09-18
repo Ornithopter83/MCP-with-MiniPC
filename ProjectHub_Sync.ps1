@@ -44,7 +44,7 @@ function Get-ApiArray($value) {
 }
 function Test-RemovedLifecycle($lifecycle) {
     $value = [string]$lifecycle
-    return $value -eq 'Removed' -or $value -eq 'REMOVED' -or $value -eq '9'
+    return $value -eq 'Removed' -or $value -eq 'REMOVED' -or $value -eq '7'
 }
 function Confirm-RemovalCandidates($candidates) {
     Add-Type -AssemblyName System.Windows.Forms
@@ -95,13 +95,15 @@ foreach ($old in $managed | Where-Object { -not (Test-RemovedLifecycle $_.lifecy
 }
 $approvedRemovals = @()
 if ($removedCandidates.Count -gt 0) {
-    $latestSet = Get-ApiArray (Invoke-RestMethod ($ServerBaseUrl.TrimEnd('/') + '/api/large-data/checkpoints/' + [Uri]::EscapeDataString($ProjectId)) -TimeoutSec 30) | Select-Object -First 1
-    if (-not $head -or -not $latestSet -or [string]$latestSet.commitSha -ne [string]$head) {
+    $latestResponse = Invoke-RestMethod ($ServerBaseUrl.TrimEnd('/') + '/api/large-data/checkpoints/' + [Uri]::EscapeDataString($ProjectId)) -TimeoutSec 30
+    $latestSet = @(Get-ApiArray $latestResponse)[0]
+    $checkpointSha = if ($latestSet) { [string]$latestSet.commitSha } else { '' }
+    if (-not $head -or -not $latestSet -or $checkpointSha -ne [string]$head) {
         foreach ($candidate in $removedCandidates) { Write-Warning ("Deletion blocked by stale checkpoint: {0}" -f $candidate.RelativePath); $diff.Add([pscustomobject]@{RelativePath=$candidate.RelativePath;Status='FAILED';Reason='STALE_CHECKPOINT';SizeBytes=$candidate.SizeBytes}) }
     } else {
         $approvedRemovals = Confirm-RemovalCandidates @($removedCandidates)
         if ($approvedRemovals.Count -gt 0) {
-            $removalBody = @{workstationId=$WorkstationId;localHeadSha=$head;baseCheckpointSha=$latestSet.commitSha;files=@($approvedRemovals | ForEach-Object { @{relativePath=$_.RelativePath} })} | ConvertTo-Json -Depth 6
+            $removalBody = @{workstationId=$WorkstationId;localHeadSha=[string]$head;baseCheckpointSha=$checkpointSha;files=@($approvedRemovals | ForEach-Object { @{relativePath=$_.RelativePath} })} | ConvertTo-Json -Depth 6
             Invoke-RestMethod ($ServerBaseUrl.TrimEnd('/') + '/api/large-data/removals/' + [Uri]::EscapeDataString($ProjectId)) -Method Post -ContentType 'application/json' -Body $removalBody -TimeoutSec 30 | Out-Null
         }
     }
