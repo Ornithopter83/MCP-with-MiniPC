@@ -1,6 +1,6 @@
 # ProjectHub
 
-Mini PC를 중앙 프로젝트 상태 서버로 사용하는 ProjectHub v0.1 초기 골격이다.
+Mini PC를 중앙 프로젝트 상태 서버로 사용하는 ProjectHub v0.2 초기 골격이다.
 
 ## 구성
 

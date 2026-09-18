@@ -4,7 +4,7 @@ Updated: 2026-09-17
 
 ## 목표
 
-Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 수집하고 Supabase에 영속화하는 ProjectHub v0.1을 구축한다.
+Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 수집하고 Supabase에 영속화하는 ProjectHub v0.2를 구축한다.
 
 흐름: `Agent → ProjectHub.Server → ProjectService/Infrastructure → Supabase`
 
@@ -33,7 +33,7 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 변경 금지 경계
 
-- v0.1에서 자동 Git commit/push/reset/checkout/merge, 파일 삭제·수정, 원격 shell, 자동 빌드, MCP, 자체 PostgreSQL·Redis·Docker는 구현하지 않는다. Large Data/NAS는 명시적 assertion·scope·Gateway 계약 안에서만 구현한다.
+- v0.2의 사용자 명시적 `ProjectHub_Commit_Push.cmd`는 add/commit/fetch/pull --rebase/push 후 기존 Sync/checkpoint를 실행하고, `ProjectHub_Fetch_Pull.cmd`는 dirty·detached·충돌 상태를 자동 해결하지 않고 중단한다. reset/checkout/원격 shell/자동 빌드/MCP/자체 PostgreSQL·Redis·Docker는 구현하지 않는다. Large Data/NAS는 명시적 assertion·scope·Gateway 계약 안에서만 구현한다.
 - Service Role Key와 Agent API Key는 저장소에 기록하지 않는다.
 
 ## 현재 상태

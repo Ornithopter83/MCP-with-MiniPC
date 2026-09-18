@@ -49,7 +49,7 @@ Updated: 2026-09-17
 ## 작업 정책
 
 - 한 번에 하나의 세부 작업만 수행한다.
-- 자동 Git 변경·원격 명령·파일 삭제는 금지한다.
+- v0.2에서 Explorer 사용자가 명시적으로 실행한 Commit_Push/Fetch_Pull CMD에 한해 Git 변경을 수행한다. Agent 자동 실행·원격 shell·reset/checkout은 금지한다.
 - 비밀값은 환경 변수로만 읽고 저장소에 기록하지 않는다.
 
 ## 표준 검증
@@ -104,6 +104,8 @@ GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Appl
 최종 검증 선행 결과: `https://suhonas.ipdisk.co.kr:8443/projecthub/`는 인증서 검증 실패(`SEC_E_WRONG_PRINCIPAL`, SNI/certificate hostname 불일치)로 정상 TLS health check가 되지 않았다. 운영 Agent에 TLS 우회는 적용하지 않으며, NAS 인증서/hostname 정리 후 upload E2E를 재개한다.
 
 2026-09-18 사용자 진입점 UX 보완: `ProjectHub_Setup.cmd`, `ProjectHub_Sync.cmd`, `ProjectHub_Restore.cmd`, `ProjectHub_GC.cmd`, `ProjectHub_update.cmd`, `ProjectHub_Agent_Test.cmd`가 성공·실패와 무관하게 종료 코드를 출력하고 `pause` 후 동일 종료 코드를 반환하도록 통일했다. `ProjectHub_update.cmd`는 콘솔을 `220x50`으로 설정해 진행 로그가 잘리지 않도록 했다. 누락된 Agent 스크립트 오류 경로도 동일한 종료 코드/일시정지 형식을 사용한다. `git diff --check` 통과; 실제 배포 PC 반영 및 Explorer 더블클릭 E2E가 후속 검증 대상이다.
+
+2026-09-18 v0.2 정책 전환: 사용자가 Explorer에서 명시적으로 실행하는 `ProjectHub_Commit_Push.cmd`는 add/commit/fetch/pull --rebase/push 후 Sync 및 large-data checkpoint를 실행하고, `ProjectHub_Fetch_Pull.cmd`는 clean 상태 확인 후 fetch/pull --rebase와 Restore를 실행한다. detached HEAD, dirty pull 대상, merge/rebase 진행, 충돌, push reject는 자동 해결하지 않고 중단한다. 기존 Sync/Restore CMD는 호환성을 위해 유지한다.
 
 Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/` health `200` 및 JSON 응답 성공, `provision.php` GET은 `405`로 method 경계가 정상이다. 인증 없는 POST 응답 본문 확인은 PowerShell의 예외 응답 형식 차이로 별도 Gateway 클라이언트 검증에서 수행한다.
 

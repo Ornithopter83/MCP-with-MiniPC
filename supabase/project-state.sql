@@ -1,4 +1,4 @@
--- ProjectHub v0.1: minimum project and project-state storage.
+-- ProjectHub v0.2: minimum project and project-state storage.
 -- Run this script in the Supabase SQL Editor after workstations.sql.
 
 create table if not exists public.projects (

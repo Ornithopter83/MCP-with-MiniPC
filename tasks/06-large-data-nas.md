@@ -56,7 +56,7 @@ GC 적용 결과: 승인된 두 SAFE session에 `-Apply`를 실행해 cleanup �
 
 - ProjectHub.Server가 대용량 바이너리를 relay하지 않는다.
 - Agent는 Supabase·SMB·NAS filesystem에 직접 접근하지 않으며 NAS Gateway HTTPS만 사용한다.
-- 자동 Git commit/push/pull/reset/merge/delete는 수행하지 않는다.
+- Agent는 자동 Git commit/push/pull/reset/merge/delete를 수행하지 않는다. v0.2의 사용자 명시적 Commit_Push CMD만 Git checkpoint 흐름을 실행한다.
 
 ## 현재 한계: 로컬 대용량 파일 삭제 추적
 

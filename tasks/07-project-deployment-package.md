@@ -25,3 +25,5 @@
 정책: 기존 관리 문서와 사용자 파일을 덮어쓰지 않으며 Git 변경과 대용량 업로드는 사용자가 명시적으로 실행할 때만 수행한다.
 
 2026-09-18 CMD 진입점 보완: Setup/Sync/Restore/GC/Update/Agent Test 모든 사용자용 CMD가 PowerShell 종료 코드를 출력하고 항상 `pause`한 뒤 원래 종료 코드를 반환한다. Update는 `mode con: cols=220 lines=50`을 적용했다. Agent Test의 스크립트 누락 오류 경로도 같은 종료 처리를 사용한다. `git diff --check` 통과; 서버/게이트웨이 배포 후 Explorer 더블클릭 E2E만 남았다.
+
+2026-09-18 v0.2 Git 진입점 구현: `ProjectHub_Commit_Push.cmd`는 `git add -A` → commit → fetch → pull --rebase → push → 기존 Sync/checkpoint 순서로 실행한다. `ProjectHub_Fetch_Pull.cmd`는 local dirty를 먼저 검사한 뒤 fetch → pull --rebase → Restore를 실행한다. detached HEAD, merge/rebase 진행, 충돌, push reject는 자동 해결하지 않고 중단한다. 두 PS1 엔진은 Setup에서 `bin`으로 배포되며 모든 CMD는 pause/exit-code를 유지한다.

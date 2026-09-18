@@ -1,4 +1,4 @@
--- ProjectHub v0.1: minimum workstation state.
+-- ProjectHub v0.2: minimum workstation state.
 -- Run this script in the Supabase SQL Editor.
 
 create table if not exists public.workstations (
