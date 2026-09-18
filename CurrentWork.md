@@ -103,6 +103,8 @@ GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Appl
 
 최종 검증 선행 결과: `https://suhonas.ipdisk.co.kr:8443/projecthub/`는 인증서 검증 실패(`SEC_E_WRONG_PRINCIPAL`, SNI/certificate hostname 불일치)로 정상 TLS health check가 되지 않았다. 운영 Agent에 TLS 우회는 적용하지 않으며, NAS 인증서/hostname 정리 후 upload E2E를 재개한다.
 
+2026-09-18 사용자 진입점 UX 보완: `ProjectHub_Setup.cmd`, `ProjectHub_Sync.cmd`, `ProjectHub_Restore.cmd`, `ProjectHub_GC.cmd`, `ProjectHub_update.cmd`, `ProjectHub_Agent_Test.cmd`가 성공·실패와 무관하게 종료 코드를 출력하고 `pause` 후 동일 종료 코드를 반환하도록 통일했다. `ProjectHub_update.cmd`는 콘솔을 `220x50`으로 설정해 진행 로그가 잘리지 않도록 했다. 누락된 Agent 스크립트 오류 경로도 동일한 종료 코드/일시정지 형식을 사용한다. `git diff --check` 통과; 실제 배포 PC 반영 및 Explorer 더블클릭 E2E가 후속 검증 대상이다.
+
 Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/` health `200` 및 JSON 응답 성공, `provision.php` GET은 `405`로 method 경계가 정상이다. 인증 없는 POST 응답 본문 확인은 PowerShell의 예외 응답 형식 차이로 별도 Gateway 클라이언트 검증에서 수행한다.
 
 NAS upload 구현: `nas-gateway/upload-start.php`, `upload-chunk.php`, `upload-status.php`, `upload-finalize.php`를 추가했다. 로컬 PHP 파일은 실제 NAS 배포 후 운영 assertion으로 검증해야 하며, 현재 원격 upload 경로는 아직 배포되지 않아 HTML 응답을 반환한다.

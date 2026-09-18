@@ -23,3 +23,5 @@
 2026-09-18 enum 입력 호환성 보완: 운영 로그에서 문자열 `operation=delete` 요청이 ASP.NET JSON enum 역직렬화 400을 남긴 것을 확인했다. `LargeDataOperation`에 `JsonStringEnumConverter`를 적용해 문자열/기존 숫자 입력을 모두 허용하도록 수정했으며 build/test를 재통과했다. 운영 Server 재배포 후 문자열 입력 400이 재발하지 않는지 확인한다.
 
 정책: 기존 관리 문서와 사용자 파일을 덮어쓰지 않으며 Git 변경과 대용량 업로드는 사용자가 명시적으로 실행할 때만 수행한다.
+
+2026-09-18 CMD 진입점 보완: Setup/Sync/Restore/GC/Update/Agent Test 모든 사용자용 CMD가 PowerShell 종료 코드를 출력하고 항상 `pause`한 뒤 원래 종료 코드를 반환한다. Update는 `mode con: cols=220 lines=50`을 적용했다. Agent Test의 스크립트 누락 오류 경로도 같은 종료 처리를 사용한다. `git diff --check` 통과; 서버/게이트웨이 배포 후 Explorer 더블클릭 E2E만 남았다.
