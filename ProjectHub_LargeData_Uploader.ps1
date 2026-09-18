@@ -4,6 +4,7 @@ $ErrorActionPreference = "Stop"
 $exitCode = 0
 $m = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
 $chunkSize = 16MB
+$chunkTransport = 'curl'
 $chunkRoot = Join-Path ([IO.Path]::GetTempPath()) ("projecthub-upload-{0}" -f $m.BatchId)
 New-Item -ItemType Directory -Path $chunkRoot -Force | Out-Null
 $staged = @(); $failed = @(); $fileIndex = 0; $totalFiles = @($m.Items).Count
@@ -46,13 +47,40 @@ function Invoke-GatewayJson([string]$uri, [string]$method, [object]$item, [strin
     }
 }
 
-function Send-Chunk([string]$uri, [string]$chunkPath, [object]$item, [string]$session, [string]$hash) {
+function Get-ExceptionDetail([object]$errorRecord) {
+    $exception = $errorRecord.Exception
+    $inner = if ($exception.InnerException) { $exception.InnerException.GetType().FullName + ': ' + $exception.InnerException.Message } else { '' }
+    return [pscustomobject]@{ exceptionType=$exception.GetType().FullName; innerException=$inner; httpStatus=(Get-HttpStatus $errorRecord) }
+}
+
+function Send-Chunk([string]$uri, [string]$chunkPath, [object]$item, [string]$session, [string]$hash, [int]$chunkIndex, [int64]$chunkBytes) {
+    $refreshed = $false
     for ($attempt = 0; $attempt -lt 2; $attempt++) {
         $token = Get-CachedAssertion $item $session $hash -ForceRefresh:($attempt -gt 0)
         try {
+            if ($chunkTransport -eq 'curl') {
+                $output = @(& curl.exe -sS --fail --max-time 600 -X PUT -H "Authorization: Bearer $token" -H 'Content-Type: application/octet-stream' --data-binary "@$chunkPath" -w "`nHTTP_STATUS:%{http_code}" $uri 2>&1)
+                $curlExit = $LASTEXITCODE
+                $joined = ($output -join "`n")
+                $statusMatch = [regex]::Match($joined, 'HTTP_STATUS:(\d{3})\s*$')
+                $httpStatus = if ($statusMatch.Success) { [int]$statusMatch.Groups[1].Value } else { 0 }
+                $body = if ($statusMatch.Success) { $joined.Substring(0, $statusMatch.Index).Trim() } else { $joined.Trim() }
+                if ($curlExit -ne 0 -or $httpStatus -lt 200 -or $httpStatus -ge 300) {
+                    if ($attempt -eq 0 -and $httpStatus -eq 401) { $refreshed = $true; continue }
+                    throw ("chunk transport failed: curl_exit={0}; http_status={1}; body={2}" -f $curlExit,$httpStatus,$body)
+                }
+                return ($body | ConvertFrom-Json)
+            }
             $response = Invoke-WebRequest $uri -Method Put -InFile $chunkPath -ContentType 'application/octet-stream' -Headers @{ Authorization="Bearer $token" } -TimeoutSec 600 -UseBasicParsing
             return ($response.Content | ConvertFrom-Json)
-        } catch { if ($attempt -eq 0 -and (Get-HttpStatus $_) -eq 401) { continue }; throw }
+        } catch {
+            $detail = Get-ExceptionDetail $_
+            $status = if ($chunkTransport -eq 'curl') { if ($_.Exception.Message -match 'http_status=(\d{3})') { [int]$Matches[1] } else { 0 } } else { $detail.httpStatus }
+            if ($attempt -eq 0 -and $status -eq 401) { $refreshed = $true; continue }
+            $diagnostic = "CHUNK_UPLOAD_FAILED file=$($item.RelativePath); session=$session; chunk_index=$chunkIndex; chunk_bytes=$chunkBytes; uri=$uri; http_status=$status; exception_type=$($detail.exceptionType); inner_exception=$($detail.innerException); assertion_refreshed=$refreshed"
+            Write-Host $diagnostic -ForegroundColor Red
+            throw $diagnostic
+        }
     }
 }
 
@@ -81,6 +109,7 @@ try {
                 Write-Host ("ALREADY_PRESENT: {0} ({1} bytes, SHA-256 {2})" -f $item.RelativePath,$start.size_bytes,$start.object_hash) -ForegroundColor DarkGreen
                 Write-Host 'STAGING_CLEANED; OBJECT_RETAINED' -ForegroundColor DarkGreen
             } else {
+                if ($resume -and $resume.chunkSizeBytes) { $chunkSize = [int64]$resume.chunkSizeBytes }
                 $done = @(); try { $done = @((Invoke-GatewayJson ($m.GatewayUrl + 'upload-status.php') 'Get' $item $session $hash).completed_chunks) } catch { $done = @() }
                 $totalChunks = [Math]::Ceiling([double]$item.SizeBytes / $chunkSize); $completedBytes = 0L
                 foreach ($completedIndex in $done) { $remaining = [int64]$item.SizeBytes - ([int64]$completedIndex * $chunkSize); $completedBytes += [Math]::Min([int64]$chunkSize,[Math]::Max(0L,$remaining)) }
@@ -92,7 +121,7 @@ try {
                         if ($done -notcontains $index) {
                             $chunkPath = Join-Path $chunkRoot ("{0:D8}.part" -f $index); $chunkFile = [IO.File]::Create($chunkPath)
                             try { $chunkFile.Write($buffer,0,$read) } finally { $chunkFile.Dispose() }
-                            [void](Send-Chunk ($m.GatewayUrl + "upload-chunk.php?chunk_index=$index") $chunkPath $item $session $hash)
+                            [void](Send-Chunk ($m.GatewayUrl + "upload-chunk.php?chunk_index=$index") $chunkPath $item $session $hash $index $read)
                             Remove-Item -LiteralPath $chunkPath -Force; $completedBytes += $read
                             $percent = [int](($completedBytes * 100) / $item.SizeBytes)
                             Write-Progress -Activity 'ProjectHub NAS upload' -Status ("{0} {1}% ({2:N0}/{3:N0} bytes)" -f $item.RelativePath,$percent,$completedBytes,$item.SizeBytes) -PercentComplete $percent
