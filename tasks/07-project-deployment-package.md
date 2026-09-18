@@ -35,3 +35,5 @@
 2026-09-18 최신 피드백 구현: Gateway `download.php`의 canonical path/readability/size/readfile 진단을 보강했고, Restore/Force Restore를 PREPARE→APPLY→최종 0 mismatch/0 missing 검증 구조로 변경했다. Setup은 `ProjectHub\bin`, `ProjectHub\config`, `ProjectHub\state`, `ProjectHub\log`를 생성하고 루트 최종 진입점 3개를 연결한다. PowerShell parser, build, test는 통과했다. NAS에 수정 PHP를 배포한 뒤 `download.php` 단독 호출과 Fetch_Pull/Force Restore E2E를 재검증해야 한다.
 
 2026-09-18 download/restore E2E 완료: NAS 웹 루트의 구버전 `download.php`를 수정본으로 교체했다. canonical object 실제 크기 524,288,000 bytes 확인, assertion 단독 download HTTP 200/Content-Length 일치, `hw` Restore 실행에서 matched=1/mismatched=0/missing=0, 로컬 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267` 일치를 확인했다. 이후 `expected` 집계 표시도 배열 안전성을 보완했다.
+2026-09-18 Restore 다운로드 UX 보완: `ProjectHub_Restore.ps1`의 NAS 다운로드를 HttpClient 스트림 수신으로 변경해 `DOWNLOAD`/퍼센트/바이트 진행과 완료 로그를 표시한다. 기존 PREPARE/APPLY 검증 및 완료 후 `pause`는 유지한다.
+2026-09-18 Force Restore UX 보완: 파괴적 실행 전 콘솔에서 `FORCE`를 직접 입력하던 방식을 Windows 확인 대화상자로 변경했다. 경고 아이콘·대상 경로·삭제 범위를 표시하고 `계속`/`취소` 선택으로 승인하며, 새 `ProjectHub\bin` 엔진을 우선 사용하고 구형 `bin`은 호환한다.

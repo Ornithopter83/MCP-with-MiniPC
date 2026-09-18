@@ -7,6 +7,8 @@ $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 $configPath = Join-Path $ProjectRoot 'ProjectHub\config\project.json'; if (-not (Test-Path -LiteralPath $configPath)) { $configPath = Join-Path $ProjectRoot '.projecthub\project.json' }
 $config = Get-Content -Raw $configPath | ConvertFrom-Json
+$stateDir = if ($configPath -match '\\ProjectHub\\config\\') { Join-Path $ProjectRoot 'ProjectHub\state' } else { Join-Path $ProjectRoot '.projecthub' }
+New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
 $sha256 = [Security.Cryptography.SHA256]::Create()
 
 function Get-ApiArray($value) {
@@ -17,6 +19,38 @@ function Get-ApiArray($value) {
 function Get-Sha256([string]$path) {
     $stream = [IO.File]::OpenRead($path)
     try { return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-','').ToLowerInvariant() } finally { $stream.Dispose() }
+}
+function Download-WithProgress([string]$uri, [string]$token, [string]$target, [string]$relativePath, [int64]$expectedBytes) {
+    $client = [System.Net.Http.HttpClient]::new()
+    $response = $null; $input = $null; $output = $null
+    try {
+        $client.Timeout = [TimeSpan]::FromMinutes(10)
+        $client.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $token)
+        $response = $client.GetAsync($uri, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            throw "Download failed: HTTP $([int]$response.StatusCode) $body"
+        }
+        $contentLength = $response.Content.Headers.ContentLength
+        $totalBytes = if ($contentLength) { [int64]$contentLength } else { $expectedBytes }
+        $input = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $output = [IO.File]::Create($target)
+        $buffer = New-Object byte[] (1MB); $received = 0L; $lastReport = [DateTime]::UtcNow
+        while (($read = $input.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $output.Write($buffer, 0, $read); $received += $read
+            $now = [DateTime]::UtcNow
+            if (($now - $lastReport).TotalMilliseconds -ge 150 -or ($totalBytes -gt 0 -and $received -ge $totalBytes)) {
+                $percent = if ($totalBytes -gt 0) { [Math]::Min(100, [int](($received * 100) / $totalBytes)) } else { 0 }
+                Write-Progress -Activity 'ProjectHub NAS download' -Status ("{0} {1}% ({2:N0}/{3:N0} bytes)" -f $relativePath,$percent,$received,$totalBytes) -PercentComplete $percent
+                Write-Host ("  download {0}% - {1:N0}/{2:N0} bytes" -f $percent,$received,$totalBytes)
+                $lastReport = $now
+            }
+        }
+        Write-Progress -Activity 'ProjectHub NAS download' -Completed
+        Write-Host ("  download complete - {0:N0} bytes" -f $received) -ForegroundColor Green
+    } finally {
+        if ($output) { $output.Dispose() }; if ($input) { $input.Dispose() }; if ($response) { $response.Dispose() }; $client.Dispose()
+    }
 }
 function Confirm-DeleteCandidates($candidates) {
     Add-Type -AssemblyName System.Windows.Forms
@@ -56,7 +90,8 @@ try {
         $target=Join-Path $downloadRoot $item.relativePath; New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
         $body=@{projectId=$config.projectId;workstationId=$config.workstationId;objectHash=$item.object.sha256;sizeBytes=$item.object.sizeBytes;operation=2;uploadSessionId=([guid]::NewGuid().ToString('N'));storageScope='projecthub';relativePath=$item.relativePath}|ConvertTo-Json
         $token=(Invoke-RestMethod ($config.serverBaseUrl.TrimEnd('/')+'/api/large-data/assertions') -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 30).assertion
-        Invoke-WebRequest ($config.gatewayUrl.TrimEnd('/')+'/download.php') -Headers @{Authorization='Bearer '+$token} -OutFile $target -TimeoutSec 600 -UseBasicParsing
+        Write-Host ("DOWNLOAD: {0} ({1:N0} bytes)" -f $item.relativePath,[int64]$item.object.sizeBytes) -ForegroundColor Cyan
+        Download-WithProgress ($config.gatewayUrl.TrimEnd('/')+'/download.php') $token $target $item.relativePath ([int64]$item.object.sizeBytes)
         $restored=Get-Item -LiteralPath $target
         if([int64]$restored.Length -ne [int64]$item.object.sizeBytes){throw "RESTORE_SIZE_MISMATCH: $($item.relativePath)"}
         if((Get-Sha256 $target) -ne ([string]$item.object.sha256).ToLowerInvariant()){throw "RESTORE_HASH_MISMATCH: $($item.relativePath)"}
@@ -70,6 +105,6 @@ try {
     $expectedCount=@($downloadItems).Count
     Write-Host ("expected   : {0}`nmatched    : {1}`nmismatched : {2}`nmissing    : {3}" -f $expectedCount,$matched,$mismatched,$missing)
     if($mismatched -gt 0 -or $missing -gt 0){throw 'RESTORE_VERIFY_FAILED'}
-    $deletedPaths=@($approvedDeletes | ForEach-Object { $_.RelativePath }); $result=[pscustomobject]@{checkpoint=$set.commitSha;downloaded=$downloaded;updated=$updated;deleted=@($approvedDeletes).Count;skipped=$skipped;localOnly=0;failed=$failed;expected=$expectedCount;matched=$matched;mismatched=$mismatched;missing=$missing;deletedPaths=$deletedPaths}; $result|ConvertTo-Json -Depth 8|Set-Content (Join-Path $ProjectRoot '.projecthub\restore-result.json') -Encoding UTF8
+    $deletedPaths=@($approvedDeletes | ForEach-Object { $_.RelativePath }); $result=[pscustomobject]@{checkpoint=$set.commitSha;downloaded=$downloaded;updated=$updated;deleted=@($approvedDeletes).Count;skipped=$skipped;localOnly=0;failed=$failed;expected=$expectedCount;matched=$matched;mismatched=$mismatched;missing=$missing;deletedPaths=$deletedPaths}; $result|ConvertTo-Json -Depth 8|Set-Content (Join-Path $stateDir 'restore-result.json') -Encoding UTF8
     Write-Host 'RESTORE COMPLETE' -ForegroundColor Green; Write-Host ("Downloaded : {0}`nUpdated    : {1}`nDeleted    : {2}`nSkipped    : {3}`nLocal-only : {4}`nFailed     : {5}" -f $downloaded,$updated,$approvedDeletes.Count,$skipped,0,$failed)
 } finally { $sha256.Dispose(); Remove-Item -LiteralPath $downloadRoot -Recurse -Force -ErrorAction SilentlyContinue }

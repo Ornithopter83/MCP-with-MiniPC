@@ -114,6 +114,8 @@ GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Appl
 2026-09-18 최신 피드백 구현: `download.php`가 공통 canonical object 경로를 사용하고 `object_not_found`, `object_size_mismatch`, `object_not_readable`, `object_read_failed`를 구분해 로그/응답하도록 보강했다. Restore는 전체 파일 PREPARE(임시 다운로드·size/SHA 검증) 후 APPLY하며, 완료 전에 `RESTORE_VERIFY expected/matched/mismatched/missing`을 출력하고 불일치 시 실패한다. Force Restore도 Restore 결과의 mismatch/missing 0을 확인한다. Setup은 새 프로젝트의 ProjectHub 전용 폴더 구조를 생성하고 루트 3개 진입점을 ProjectHub\bin 엔진으로 연결한다. PHP lint는 개발 PC에 PHP가 없어 실행하지 못했으며, 수정 download.php의 NAS 배포 후 단독 API와 Restore E2E가 남았다.
 
 2026-09-18 download/restore 재검증 완료: NAS 실제 canonical object `S:\HDD1\ProjectHub\objects\sha256\e9\e93ac6ff...e8267`는 524,288,000 bytes였다. 수정 `download.php`를 `S:\HDD1\DocRoot\projecthub`에 배포한 뒤 assertion 단독 호출이 HTTP 200, Content-Length 524,288,000, fopen preflight `open-ok`로 응답했다. `hw\ProjectHub_Restore.cmd`는 500MiB를 다운로드하고 `RESTORE_VERIFY matched=1, mismatched=0, missing=0`으로 완료했으며, 로컬 파일 크기·SHA-256도 원본과 일치했다. 이전 HTTP 500은 NAS 웹 루트의 구버전 download.php와 readfile 처리 문제였다.
+2026-09-18 Restore 다운로드 UX 보완: `ProjectHub_Restore.ps1`을 HttpClient 스트림 수신 방식으로 변경해 업로드와 같은 콘솔에서 `DOWNLOAD`, 퍼센트, 수신/전체 바이트, 완료 로그를 표시한다. PREPARE/APPLY 검증과 완료 후 `pause`는 유지한다.
+2026-09-18 Force Restore UX/배포 구조 보완: `ProjectHub_Force_Restore.ps1`의 파괴적 실행 승인을 콘솔 `FORCE` 문자열 입력에서 Windows 확인 대화상자의 `계속`/`취소` 선택으로 변경했다. 새 `ProjectHub\bin` 구조를 우선 사용하고 구형 루트 `bin`은 호환 fallback으로 유지한다.
 
 Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/` health `200` 및 JSON 응답 성공, `provision.php` GET은 `405`로 method 경계가 정상이다. 인증 없는 POST 응답 본문 확인은 PowerShell의 예외 응답 형식 차이로 별도 Gateway 클라이언트 검증에서 수행한다.
 
