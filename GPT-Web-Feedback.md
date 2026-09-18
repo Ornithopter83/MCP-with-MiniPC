@@ -1,6 +1,6 @@
 # GPT Web Feedback
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 ## 우선순위
 
@@ -10,393 +10,357 @@ Updated: 2026-09-17
 4. 현재 활성 `tasks/*.md`
 5. `GPT-Web-Feedback.md`
 
-충돌 시 앞선 관리 문서와 활성 task를 우선한다. 아래 내용은 07 프로젝트 배포 패키지를 실제 사용 가능한 수준으로 다듬기 위한 최신 지시다.
+충돌 시 앞선 관리 문서와 활성 task를 우선한다.
 
 ---
 
-# 1. 현재 상태
+# 1. 최신 상태
 
 최신 확인 커밋:
 
 ```text
-78103b24c1f75f90702f756bf4b5f6f131ad94fb
-Document large data deletion tracking limits
+1475e18dafec300702906b9076d9d26d9b856e5c
+Improve PowerShell confirmations and uploader exit handling
 ```
 
-06 Large Data/NAS는 **검증 완료 상태로 유지**한다.
+06 Large Data/NAS는 **검증 완료 상태를 유지**한다.
 
-06을 다시 열어 기능을 확장하지 않는다. 다만 06에서 확인된 현재 한계인 "로컬 대용량 파일 삭제 추적 부재"는 07의 실제 사용자 흐름 보완 항목으로 해결한다.
+현재 활성 작업은 07 프로젝트 배포 패키지이며, Setup/Sync/Restore와 삭제/tombstone 흐름을 실제 사용 가능한 수준으로 마무리하는 단계다.
 
-현재 활성 작업은 07 프로젝트 배포 패키지다.
-
-핵심 방향:
-
-```text
-Setup을 쉽게
-Sync를 명확하게
-삭제를 안전하게
-Restore를 탐색기 기준으로 완결
-```
-
-실시간 관리, lease, dashboard, background reconcile 확대는 추가하지 않는다.
+이번 피드백의 최우선 목적은 `hw` 테스트 프로젝트에서 발생한 **대용량 chunk upload 실패 원인 확정 및 최소 수정**이다.
 
 ---
 
-# 2. ProjectHub의 사용자 관점 정의
+# 2. 현재 장애 증상
 
-ProjectHub는 Git revision 탐색 자체가 주 목적이 아니다.
-
-탐색기 기준으로 다음 의미를 사용한다.
+현재 확인된 흐름:
 
 ```text
-Sync
-= 현재 로컬 탐색기 상태를 ProjectHub 기준 상태로 올린다.
-
-Restore
-= ProjectHub 기준 상태를 현재 로컬 탐색기에 적용한다.
+hw
+→ ProjectHub.Server
+→ assertion 발급 성공
+→ Supabase upload session 생성 성공
+→ NAS upload-start.php 성공
+→ NAS upload-chunk.php 전송 중 연결 종료
 ```
 
-통합 checkpoint 정의는 유지한다.
+실패 session은 Supabase에 `UPLOADING` 상태로 남고 `project_large_files`까지는 생성되지 않는다.
+
+따라서 우선 조사 범위는 Server/Supabase가 아니라:
 
 ```text
-Checkpoint = Git commit SHA + Large Data manifest
+DEV uploader → NAS Gateway upload-chunk.php
 ```
 
-다만 사용자 UX는 revision 조작보다 현재 프로젝트 폴더 상태의 일치에 초점을 둔다.
+의 실제 chunk body 전송 구간이다.
 
 ---
 
-# 3. Sync에서 삭제 후보 판정
+# 3. 최우선 회귀 가능성
 
-Sync는 이전 ProjectHub 관리 상태와 현재 로컬 manifest를 비교한다.
+500MiB 실제 업로드가 성공했던 과거 구현에서는 chunk PUT에 다음 방식을 사용했다.
+
+```powershell
+curl.exe -sS --fail --max-time 300 `
+  -X PUT `
+  -H "Authorization: Bearer $token" `
+  -H "Content-Type: application/octet-stream" `
+  --data-binary "@$chunkPath" `
+  $uploadChunkUrl
+```
+
+이후 assertion cache/refresh 개선 과정에서 chunk 전송이 다음 방식으로 변경됐다.
+
+```powershell
+Invoke-WebRequest `
+  $uri `
+  -Method Put `
+  -InFile $chunkPath `
+  -ContentType 'application/octet-stream' `
+  -Headers @{ Authorization="Bearer $token" } `
+  -TimeoutSec 600 `
+  -UseBasicParsing
+```
+
+현재 장애가 이 변경 이후 발생했으므로 **`curl.exe --data-binary` → `Invoke-WebRequest -InFile` 변경에 의한 transport 회귀를 최우선으로 검증한다.**
+
+원인으로 미리 확정하지 말고 A/B 테스트로 확인한다.
+
+---
+
+# 4. 최소 A/B 테스트
+
+다른 로직은 바꾸지 않는다.
+
+동일 조건에서 아래 두 방식만 비교한다.
+
+```text
+A. 현재 Invoke-WebRequest -InFile
+B. 기존 curl.exe --data-binary
+```
+
+동일 조건:
+
+```text
+- 같은 ProjectHub.Server
+- 같은 NAS Gateway
+- 같은 파일
+- 같은 chunk size
+- 같은 assertion/session 계약
+```
+
+반드시 확인할 항목:
+
+```text
+1. upload-start 성공 여부
+2. 첫 chunk PUT 성공 여부
+3. 실패 시 HTTP status
+4. TCP connection reset/closed 여부
+5. NAS staging의 .tmp/.part 생성 여부
+6. 생성된 파일의 실제 byte size
+7. upload-status.php의 completed_chunks / bytes_received
+```
+
+판정:
+
+```text
+Invoke-WebRequest → connection closed/reset
+curl.exe          → 정상
+```
+
+이면 chunk transport 회귀로 확정한다.
+
+---
+
+# 5. 최종 transport 방향
+
+A/B 테스트에서 curl이 정상이라면 전체 HTTP 스택을 되돌리지 않는다.
+
+권장 경계:
+
+```text
+upload-start
+upload-status
+upload-finalize
+ProjectHub.Server API
+→ 기존 Invoke-RestMethod / Invoke-WebRequest 유지
+
+대용량 chunk PUT
+→ curl.exe --data-binary 사용
+```
+
+즉 **binary data plane만 검증된 curl 경로로 복원**한다.
+
+현재 구현된 assertion cache/refresh는 그대로 유지한다.
+
+---
+
+# 6. curl 사용 시 assertion refresh 유지
+
+과거 curl 구현으로 단순 회귀하면서 현재의 401 refresh 기능을 잃으면 안 된다.
+
+chunk PUT 동작:
+
+```text
+1. cached assertion 사용
+2. curl PUT 실행
+3. HTTP status 확인
+4. 401이면 assertion 새로 발급
+5. 같은 chunk 1회만 재시도
+6. 재실패하면 FAILED
+```
+
+무한 retry 금지.
+
+`$LASTEXITCODE`만 확인하지 말고 HTTP status를 별도로 확보한다.
 
 예:
 
 ```text
-이전 ProjectHub 상태
-A.bin
-B.bin
-C.bin
-
-현재 로컬
-B.bin
-C.bin
-
-결과
-A.bin = REMOVED 후보
+2xx → 성공
+401 → assertion refresh 후 1회 retry
+기타 → 오류 기록 후 실패
 ```
 
-삭제 후보를 발견했다고 즉시 확정하지 않는다.
-
-실제 Server/NAS metadata 변경 전에 전체 diff를 먼저 계산한다.
-
-최소 분류:
-
-```text
-ADDED
-CHANGED
-UNCHANGED
-REMOVED
-FAILED
-```
+assertion/token 원문은 로그에 출력하지 않는다.
 
 ---
 
-# 4. Sync 삭제 확정 GUI
+# 7. chunk 실패 진단 로그 보강
 
-`REMOVED`가 하나 이상 존재하면 실제 삭제 확정 전에 Windows GUI 확인창을 표시한다.
+현재 오류는 네트워크 예외 메시지만 남아 원인 추적이 어렵다.
 
-권장 예:
-
-```text
-ProjectHub - 삭제 확인
-
-다음 파일이 로컬 프로젝트에서 삭제되었습니다.
-
-A.bin
-500 MB
-
-ProjectHub에서도 삭제 상태로 확정하시겠습니까?
-
-[모두(A)] [예(Y)] [아니오(N)] [취소(C)]
-```
-
-버튼 의미:
+실패 시 최소 다음을 기록한다.
 
 ```text
-모두(A)
-- 현재 파일을 포함해 남은 삭제 후보 전체 승인
-
-예(Y)
-- 현재 파일만 승인하고 다음 후보 진행
-
-아니오(N)
-- 현재 파일은 삭제 확정하지 않고 다음 후보 진행
-
-취소(C)
-- Sync 전체 취소
+relative_path
+upload_session_id
+chunk_index
+chunk_size
+request_uri
+HTTP status
+exception type
+inner exception
+assertion refresh 여부
 ```
-
-중요:
-
-삭제 후보를 먼저 전부 계산하고 승인 과정을 끝낸 뒤 실제 변경을 수행한다.
-
-`취소(C)` 선택 시 일부 삭제만 이미 Server/NAS metadata에 반영된 상태가 되지 않도록 한다.
-
-GUI 구현은 PowerShell/WinForms 또는 동등한 Windows native dialog를 사용할 수 있다. 기본 MessageBox로 `모두(A)`를 지원하기 어려우면 작은 custom dialog를 사용한다.
-
----
-
-# 5. 삭제 확정 권한과 뒤처진 workstation 보호
-
-최신 commit/push를 수행한 workstation이 삭제를 확정하는 흐름을 우선한다.
-
-삭제 확정은 최소 다음 상태를 검증한 뒤 허용한다.
-
-```text
-local HEAD == remote 최신 HEAD
-local base checkpoint == ProjectHub 최신 checkpoint
-```
-
-조건이 맞지 않으면 삭제 후보는 감지하되 확정하지 않는다.
 
 예:
 
 ```text
-Deletion cannot be confirmed.
-
-Local checkpoint : #20
-Latest checkpoint: #23
-
-Update or restore before confirming removals.
+CHUNK_UPLOAD_FAILED
+file=data\forUpload.z01
+session=...
+chunk=0
+size=16777216
+http_status=0
+exception=WebException
+inner=The underlying connection was closed...
+refreshed=false
 ```
 
-뒤처진 workstation에 과거 파일이 남아 있어도 일반 Sync에서 삭제된 파일을 신규 파일처럼 되살리면 안 된다.
-
-예:
-
-```text
-LOCAL_EXISTS
-SERVER_REMOVED_AT_CHECKPOINT_23
-
--> 일반 Sync에서 재등록 금지
--> 재업로드 금지
--> tombstone 자동 해제 금지
-```
-
-명시적인 re-add 또는 동등한 사용자 승인 동작에서만 다시 관리 대상으로 등록할 수 있다.
+비밀값과 assertion token 자체는 기록하지 않는다.
 
 ---
 
-# 6. 삭제 상태 기록
+# 8. NAS Gateway 측 확인
 
-삭제 확정은 NAS canonical object의 즉시 삭제를 의미하지 않는다.
+현재 `upload-chunk.php`는 `php://input`을 읽어 `.tmp`에 기록한 뒤 `.part`로 rename한다.
 
-삭제된 경로는 tombstone 또는 동등한 영속 상태로 기록한다.
-
-예:
+실패 직후 NAS에서 다음을 확인한다.
 
 ```text
-path: data\A.bin
-state: REMOVED
-removed_at_checkpoint: 23
-git_head: A91F...
-previous_hash: ABC123...
+staging/<session>/
+session.json
+00000000.part
+00000000.part.tmp
 ```
 
-목적:
+판단 기준:
 
 ```text
-- 뒤처진 workstation의 일반 Sync가 파일을 부활시키지 못하게 함
-- Restore가 어떤 관리 파일을 삭제 대상으로 볼지 판단 가능
-- object 삭제와 project path 삭제를 분리
+아무 파일도 없음
+→ 요청 body가 PHP까지 정상 전달되지 않았을 가능성
+
+.tmp 일부 존재
+→ body 전송 중 연결 종료 가능성
+
+.part 정상 크기 존재
+→ 서버는 수신했지만 client가 응답을 받는 과정에서 연결 종료 가능성
 ```
+
+가능하면 동일 시각 Apache/PHP access/error log도 같이 비교한다.
 
 ---
 
-# 7. Restore의 기본 동작
+# 9. Chunk size source of truth 정리
 
-Restore는 기본적으로 별도 과거 revision 디렉터리를 만드는 기능보다 **현재 로컬 프로젝트 폴더를 ProjectHub 기준 상태에 맞추는 기능**으로 정리한다.
+현재 uploader 코드:
 
-예:
-
-```text
-ProjectHub 최신
-B.bin
-C.bin
-
-로컬 탐색기
-A.bin
-B.bin
-C.bin
-
-Restore 결과 후보
-A.bin = 로컬 삭제 후보
-B.bin = 유지 또는 갱신
-C.bin = 유지 또는 갱신
+```powershell
+$chunkSize = 16MB
 ```
 
-Git 파일과 Large Data 모두 최신 ProjectHub 기준 상태에 맞추는 방향으로 동작한다.
+최근 Server 설정 예:
 
-실제 덮어쓰기/삭제 전에는 변경 목록을 먼저 계산한다.
+```json
+"ChunkSizeBytes": "33554432"
+```
+
+즉 32MiB 값과 실제 uploader 16MiB가 불일치한다.
+
+현재 TCP reset의 직접 원인으로 단정하지는 않는다.
+
+다만 종료 전에 chunk size의 source of truth는 반드시 하나로 통일한다.
+
+권장:
+
+```text
+- manifest/config에서 uploader가 chunk size를 받거나
+- ProjectHub 공통 기본값 하나로 고정
+```
+
+Server 설정과 실제 uploader 값이 서로 다른 상태를 남기지 않는다.
 
 ---
 
-# 8. Restore 삭제 GUI
+# 10. 이번 장애에서 하지 않을 것
 
-Restore 중 로컬 관리 파일 삭제가 발생하면 실제 삭제 전에 Windows GUI 확인창을 표시한다.
-
-예:
+원인 확인 전에 아래와 같은 광범위 변경은 하지 않는다.
 
 ```text
-ProjectHub - 로컬 파일 삭제 확인
-
-ProjectHub 최신 상태에는 없는 관리 파일입니다.
-
-A.bin
-500 MB
-
-로컬에서도 삭제하시겠습니까?
-
-[모두(A)] [예(Y)] [아니오(N)] [취소(C)]
+- NAS Gateway 전체 재작성
+- PHP upload 로직 대규모 변경
+- assertion 계약 변경
+- Supabase schema 변경
+- chunk size 임의 축소로 문제 숨기기
+- TLS 검증 우회
 ```
 
-버튼 의미는 Sync와 동일하게 유지한다.
-
-```text
-모두(A) = 남은 삭제 대상 모두 승인
-예(Y)   = 현재 파일만 삭제
-아니오(N)= 현재 파일 유지
-취소(C) = Restore 전체 취소
-```
-
-실제 파일 삭제 전에 승인 단계를 완료하는 방향을 우선한다.
+먼저 transport A/B 테스트로 범위를 좁힌다.
 
 ---
 
-# 9. LOCAL_ONLY 파일 보호
+# 11. 장애 수정 완료 기준
 
-Restore는 ProjectHub가 관리한 적 없는 로컬 파일을 삭제해서는 안 된다.
-
-분류 원칙:
+다음이 확인되면 이번 업로드 장애를 해결한 것으로 본다.
 
 ```text
-MANAGED + SERVER_REMOVED
--> Restore 삭제 후보
--> GUI 승인 대상
-
-LOCAL_ONLY
--> 항상 보존
--> 자동 삭제 금지
+[ ] Invoke-WebRequest / curl A-B 결과 확보
+[ ] 실제 실패 지점 확정
+[ ] chunk 전송 안정 경로 결정
+[ ] 401 assertion refresh 1회 retry 유지
+[ ] chunk/session/http 진단 로그 추가
+[ ] chunk size 설정 통일
+[ ] hw 실제 대용량 파일 upload 성공
+[ ] upload-status chunk 진행 확인
+[ ] finalize 성공
+[ ] STAGED 생성
+[ ] CHECKPOINTED 생성
+[ ] Supabase session COMPLETED 확인
 ```
 
-예를 들어 다음 파일이 ProjectHub manifest/history에 한 번도 포함되지 않았다면 Restore가 건드리지 않는다.
+핵심:
 
-```text
-memo.txt
-temporary.zip
-개인자료.jpg
-```
+> 기존에 실제 500MiB 업로드가 성공했던 `curl.exe --data-binary`와 현재 `Invoke-WebRequest -InFile`을 먼저 A/B 테스트한다. 원인 확인 전에 NAS/PHP/DB 구조를 넓게 수정하지 않는다.
 
-Restore 삭제 판단은 단순히 "최신 manifest에 없다"만으로 해서는 안 된다.
-
-과거 ProjectHub 관리 이력이 있는 path인지 반드시 확인한다.
+> curl 방식이 정상이라면 assertion cache/refresh는 유지하고, 대용량 chunk PUT만 검증된 curl transport로 복원한다.
 
 ---
 
-# 10. NAS object 삭제 정책
+# 12. 07의 기존 마무리 방향 유지
 
-`REMOVED` 확정과 NAS canonical object 삭제는 분리한다.
+업로드 장애 해결 후 기존 07 마무리 작업으로 돌아간다.
 
-정상 순서:
+유지할 방향:
 
 ```text
-1. 프로젝트 path 제거 확정
-2. project-file 연결 해제 또는 removed 상태 기록
-3. tombstone 기록
-4. object 참조 여부 확인
-5. 다른 checkpoint/project가 참조 중이면 object 유지
-6. 미참조 object만 purge 후보로 분류
+- Setup 실제 프로젝트 E2E
+- Sync 실제 프로젝트 E2E
+- Restore 실제 프로젝트 E2E
+- 이전/current manifest diff
+- ADDED / CHANGED / REMOVED
+- Sync 삭제 확정 GUI
+- Restore 삭제 GUI
+- 모두(A) / 예(Y) / 아니오(N) / 취소(C)
+- LOCAL_ONLY 보호
+- 최신 HEAD/checkpoint에서만 삭제 확정
+- 뒤처진 workstation의 tombstone 재등록 방지
+- REMOVED와 object purge 분리
+- Sync/Restore 결과 요약
 ```
 
-중요:
+삭제 확정은 NAS canonical object 즉시 삭제가 아니다.
 
 ```text
 REMOVED != immediate object deletion
 Staging GC != Object purge
 ```
 
-기존 `ProjectHub_GC.ps1`의 staging cleanup을 canonical object 삭제 기능으로 확장하지 않는다.
-
-Object purge가 필요하면 별도 명시적 작업/승인으로 유지한다.
+06은 다시 열지 않는다.
 
 ---
 
-# 11. Sync / Restore 결과 요약
-
-사용자는 실행 결과만 보고 무엇이 변경됐는지 알 수 있어야 한다.
-
-Sync 예:
-
-```text
-SYNC COMPLETE
-
-Added      : 1
-Changed    : 2
-Removed    : 3
-Skipped    : 1
-Failed     : 0
-
-Checkpoint updated.
-```
-
-Restore 예:
-
-```text
-RESTORE COMPLETE
-
-Downloaded : 2
-Updated    : 1
-Deleted    : 3
-Skipped    : 1
-Local-only : 4
-Failed     : 0
-```
-
-가능하면 파일별 결과는 `.result.json` 또는 동등한 결과 파일에도 남긴다.
-
----
-
-# 12. 07 완료 기준
-
-07은 다음 조건을 만족하면 완료로 본다.
-
-```text
-[x/ ] Setup 실제 프로젝트 E2E
-[x/ ] Sync 실제 프로젝트 E2E
-[ ] Restore 실제 프로젝트 E2E
-[ ] 이전/current manifest 비교
-[ ] ADDED / CHANGED / REMOVED 판정
-[ ] Sync 삭제 확정 GUI
-[ ] Restore 삭제 GUI
-[ ] 모두(A) / 예(Y) / 아니오(N) / 취소(C)
-[ ] LOCAL_ONLY 보호
-[ ] 최신 HEAD/checkpoint에서만 삭제 확정 허용
-[ ] 뒤처진 workstation이 tombstone 파일을 일반 Sync로 재등록하지 못함
-[ ] REMOVED와 object purge 분리
-[ ] Sync/Restore 결과 요약
-[ ] build/test/PowerShell parser 검증
-```
-
-기존에 구현된 Setup/Sync 흐름은 유지하고 불필요하게 다시 작성하지 않는다.
-
-Restore 운영 E2E와 삭제 동기화 보완을 우선한다.
-
----
-
-# 13. 이후 작업
-
-07 완료 후에는 08 Server 설치/이전 가이드만 수행한다.
+# 13. 이후 종료 순서
 
 ```text
 06 Large Data/NAS            완료
@@ -406,6 +370,4 @@ Restore 운영 E2E와 삭제 동기화 보완을 우선한다.
 08 완료 후 ProjectHub v0.1 종료
 ```
 
-추가 실시간 관리 기능, lease, dashboard, 자동 Git 변경, background upload/reconcile 확대는 종료 조건에 포함하지 않는다.
-
-Codex는 이 피드백을 반영할 때 먼저 `CurrentWork.md`, `tasks/07-project-deployment-package.md`의 현재 상태와 충돌 여부를 확인하고, 07의 기존 구현을 최대한 재사용하면서 삭제 diff/승인/Restore 안전성부터 한 세부 작업씩 진행한다.
+실시간 관리, lease, dashboard, 자동 Git 변경, background upload/reconcile 확대는 종료 조건에 포함하지 않는다.
