@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace ProjectHub.Core;
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum LargeDataOperation
 {
     Provision,

@@ -18,4 +18,8 @@
 
 2026-09-18 NAS 삭제 및 Full-log 구현: Sync 승인 후 Server가 현재 활성 SHA-256 참조 수를 계산하고, NAS Gateway `delete-object.php`에 delete assertion을 발급한다. named alias는 삭제하고 활성 참조가 0일 때만 canonical object를 삭제하며, 다른 참조가 있으면 보존한다. Gateway 실패는 `PARTIAL`/ERROR로 반환하고 tombstone을 되돌리지 않는다. `ContentRoot\log\yyyyMMdd.log` 일자별 writer, 날짜 rollover, 정상 종료 `SERVER_STOPPING` 구분선, heartbeat file-only 기록을 추가했다. NAS delete endpoint 운영 배포와 실제 NAS 삭제 E2E는 배포 후 검증 대상으로 남아 있다.
 
+2026-09-18 운영 배포 재검증: Server `/api/status=200`, Gateway health 정상, `delete-object.php` method boundary `405`를 확인했다. `hw` tombstone object에 delete assertion을 발급해 `files/hw/forUpload.z01` alias와 `objects/sha256/e9/e93ac6ff...e8267` canonical object를 실제 삭제했고, 동일 요청 재호출은 `already_deleted=true`로 확인했다.
+
+2026-09-18 enum 입력 호환성 보완: 운영 로그에서 문자열 `operation=delete` 요청이 ASP.NET JSON enum 역직렬화 400을 남긴 것을 확인했다. `LargeDataOperation`에 `JsonStringEnumConverter`를 적용해 문자열/기존 숫자 입력을 모두 허용하도록 수정했으며 build/test를 재통과했다. 운영 Server 재배포 후 문자열 입력 400이 재발하지 않는지 확인한다.
+
 정책: 기존 관리 문서와 사용자 파일을 덮어쓰지 않으며 Git 변경과 대용량 업로드는 사용자가 명시적으로 실행할 때만 수행한다.
