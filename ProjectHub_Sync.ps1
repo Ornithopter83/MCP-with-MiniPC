@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $ProjectPath) { $ProjectPath = $scriptRoot }
 $ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
-$projectConfigPath = Join-Path $ProjectPath '.projecthub\project.json'
+$projectConfigPath = Join-Path $ProjectPath 'ProjectHub\config\project.json'; if (-not (Test-Path -LiteralPath $projectConfigPath)) { $projectConfigPath = Join-Path $ProjectPath '.projecthub\project.json' }
 if (Test-Path -LiteralPath $projectConfigPath) {
     $projectConfig = Get-Content -Raw -LiteralPath $projectConfigPath | ConvertFrom-Json
     if (-not $ProjectId) { $ProjectId = [string]$projectConfig.projectId }

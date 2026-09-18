@@ -111,6 +111,10 @@ GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Appl
 
 2026-09-18 hw 순차 검증: 최신 ProjectHub 파일을 `hw`에 배포하고 일반 Fetch_Pull dirty 보호(exit 2)를 확인했다. 강제 복구는 `FORCE` 승인 후 Git `fetch/reset --hard/clean -fd`와 500MiB 로컬 삭제까지 성공했다. tombstone 재등록 후 500MiB 업로드는 원본 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267`, `ALREADY_PRESENT`, `STAGED`, checkpoint `be3cff250b18ce651f1e50167a9ff8407d395197`로 완료했다. 이후 `.git`, `.projecthub`, ProjectHub 런처·엔진만 남기고 테스트 파일/솔루션/대용량 파일을 삭제했다. 최종 Force Restore의 Git 복구는 성공했지만 NAS Restore는 `RESTORE_SIZE_MISMATCH: forUpload.z01`로 실패해 원상복구 E2E는 미완료다. 업로드 중복 실행 시 임시 chunk 경합이 발생했으나 중복 프로세스 종료 후 단일 uploader 재시도로 성공했다.
 
+2026-09-18 최신 피드백 구현: `download.php`가 공통 canonical object 경로를 사용하고 `object_not_found`, `object_size_mismatch`, `object_not_readable`, `object_read_failed`를 구분해 로그/응답하도록 보강했다. Restore는 전체 파일 PREPARE(임시 다운로드·size/SHA 검증) 후 APPLY하며, 완료 전에 `RESTORE_VERIFY expected/matched/mismatched/missing`을 출력하고 불일치 시 실패한다. Force Restore도 Restore 결과의 mismatch/missing 0을 확인한다. Setup은 새 프로젝트의 ProjectHub 전용 폴더 구조를 생성하고 루트 3개 진입점을 ProjectHub\bin 엔진으로 연결한다. PHP lint는 개발 PC에 PHP가 없어 실행하지 못했으며, 수정 download.php의 NAS 배포 후 단독 API와 Restore E2E가 남았다.
+
+2026-09-18 download/restore 재검증 완료: NAS 실제 canonical object `S:\HDD1\ProjectHub\objects\sha256\e9\e93ac6ff...e8267`는 524,288,000 bytes였다. 수정 `download.php`를 `S:\HDD1\DocRoot\projecthub`에 배포한 뒤 assertion 단독 호출이 HTTP 200, Content-Length 524,288,000, fopen preflight `open-ok`로 응답했다. `hw\ProjectHub_Restore.cmd`는 500MiB를 다운로드하고 `RESTORE_VERIFY matched=1, mismatched=0, missing=0`으로 완료했으며, 로컬 파일 크기·SHA-256도 원본과 일치했다. 이전 HTTP 500은 NAS 웹 루트의 구버전 download.php와 readfile 처리 문제였다.
+
 Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/` health `200` 및 JSON 응답 성공, `provision.php` GET은 `405`로 method 경계가 정상이다. 인증 없는 POST 응답 본문 확인은 PowerShell의 예외 응답 형식 차이로 별도 Gateway 클라이언트 검증에서 수행한다.
 
 NAS upload 구현: `nas-gateway/upload-start.php`, `upload-chunk.php`, `upload-status.php`, `upload-finalize.php`를 추가했다. 로컬 PHP 파일은 실제 NAS 배포 후 운영 assertion으로 검증해야 하며, 현재 원격 upload 경로는 아직 배포되지 않아 HTML 응답을 반환한다.

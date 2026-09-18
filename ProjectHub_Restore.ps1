@@ -5,7 +5,8 @@
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$config = Get-Content -Raw (Join-Path $ProjectRoot '.projecthub\project.json') | ConvertFrom-Json
+$configPath = Join-Path $ProjectRoot 'ProjectHub\config\project.json'; if (-not (Test-Path -LiteralPath $configPath)) { $configPath = Join-Path $ProjectRoot '.projecthub\project.json' }
+$config = Get-Content -Raw $configPath | ConvertFrom-Json
 $sha256 = [Security.Cryptography.SHA256]::Create()
 
 function Get-ApiArray($value) {
@@ -50,6 +51,7 @@ $downloadRoot=Join-Path ([IO.Path]::GetTempPath()) ('projecthub-restore-'+[guid]
 $downloaded=0; $updated=0; $skipped=0; $failed=0
 try {
     $approvedDeletes=if($deleteCandidates.Count -gt 0){Confirm-DeleteCandidates @($deleteCandidates)}else{@()}
+    # PREPARE: download and verify every managed object before changing the project.
     foreach($item in $downloadItems){
         $target=Join-Path $downloadRoot $item.relativePath; New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
         $body=@{projectId=$config.projectId;workstationId=$config.workstationId;objectHash=$item.object.sha256;sizeBytes=$item.object.sizeBytes;operation=2;uploadSessionId=([guid]::NewGuid().ToString('N'));storageScope='projecthub';relativePath=$item.relativePath}|ConvertTo-Json
@@ -59,8 +61,15 @@ try {
         if([int64]$restored.Length -ne [int64]$item.object.sizeBytes){throw "RESTORE_SIZE_MISMATCH: $($item.relativePath)"}
         if((Get-Sha256 $target) -ne ([string]$item.object.sha256).ToLowerInvariant()){throw "RESTORE_HASH_MISMATCH: $($item.relativePath)"}
     }
+    # APPLY: all downloads are already verified, so only now touch project files.
     foreach($item in $downloadItems){$source=Join-Path $downloadRoot $item.relativePath;$target=Join-Path $ProjectRoot $item.relativePath;New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force|Out-Null;$existing=$local[$item.relativePath];if($existing -and [int64](Get-Item $existing).Length -eq [int64]$item.object.sizeBytes -and (Get-Sha256 $existing) -eq ([string]$item.object.sha256).ToLowerInvariant()){$skipped++;continue};Copy-Item -LiteralPath $source -Destination $target -Force;if($existing){$updated++}else{$downloaded++}}
     foreach($item in $approvedDeletes){Remove-Item -LiteralPath (Join-Path $ProjectRoot $item.RelativePath) -Force;$updated++}
-    $result=[pscustomobject]@{checkpoint=$set.commitSha;downloaded=$downloaded;updated=$updated;deleted=$approvedDeletes.Count;skipped=$skipped;localOnly=0;failed=$failed;deletedPaths=@($approvedDeletes.RelativePath)}; $result|ConvertTo-Json -Depth 8|Set-Content (Join-Path $ProjectRoot '.projecthub\restore-result.json') -Encoding UTF8
+    $matched=0; $mismatched=0; $missing=0
+    foreach($item in $downloadItems){$target=Join-Path $ProjectRoot $item.relativePath;if(-not (Test-Path -LiteralPath $target -PathType Leaf)){$missing++;continue};$actual=Get-Item -LiteralPath $target;if([int64]$actual.Length -ne [int64]$item.object.sizeBytes -or (Get-Sha256 $target) -ne ([string]$item.object.sha256).ToLowerInvariant()){$mismatched++}else{$matched++}}
+    Write-Host 'RESTORE_VERIFY' -ForegroundColor Cyan
+    $expectedCount=@($downloadItems).Count
+    Write-Host ("expected   : {0}`nmatched    : {1}`nmismatched : {2}`nmissing    : {3}" -f $expectedCount,$matched,$mismatched,$missing)
+    if($mismatched -gt 0 -or $missing -gt 0){throw 'RESTORE_VERIFY_FAILED'}
+    $deletedPaths=@($approvedDeletes | ForEach-Object { $_.RelativePath }); $result=[pscustomobject]@{checkpoint=$set.commitSha;downloaded=$downloaded;updated=$updated;deleted=@($approvedDeletes).Count;skipped=$skipped;localOnly=0;failed=$failed;expected=$expectedCount;matched=$matched;mismatched=$mismatched;missing=$missing;deletedPaths=$deletedPaths}; $result|ConvertTo-Json -Depth 8|Set-Content (Join-Path $ProjectRoot '.projecthub\restore-result.json') -Encoding UTF8
     Write-Host 'RESTORE COMPLETE' -ForegroundColor Green; Write-Host ("Downloaded : {0}`nUpdated    : {1}`nDeleted    : {2}`nSkipped    : {3}`nLocal-only : {4}`nFailed     : {5}" -f $downloaded,$updated,$approvedDeletes.Count,$skipped,0,$failed)
 } finally { $sha256.Dispose(); Remove-Item -LiteralPath $downloadRoot -Recurse -Force -ErrorAction SilentlyContinue }

@@ -31,3 +31,7 @@
 2026-09-18 강제 복구 구현: `ProjectHub_Force_Restore.cmd`는 `FORCE` 확인 전에는 아무것도 변경하지 않는다. 승인 후 remote branch 확인, `fetch origin`, `reset --hard`, `clean -fd`를 수행하고, `.projecthub/project.json`과 ProjectHub launcher/engine을 보존한 뒤 기존 Restore로 최신 checkpoint/NAS 상태를 복구한다. 실행 결과 HEAD와 최종 working tree를 출력하며, 사용자가 명시적으로 승인한 파괴적 작업으로만 동작한다.
 
 2026-09-18 hw 순차 검증 결과: 최신 파일 배포, 일반 Fetch_Pull dirty 보호, Force Restore의 Git reset/clean, 500MiB 업로드·STAGED·CHECKPOINTED, ProjectHub 외 로컬 파일 삭제를 확인했다. Force Restore 재실행 시 Git 상태와 로컬 삭제는 복구됐지만 NAS 다운로드가 `RESTORE_SIZE_MISMATCH: forUpload.z01`로 실패했다. 따라서 NAS `download.php`가 반환하는 실제 크기/hash와 canonical object를 추가 확인해야 07 최종 E2E를 완료할 수 있다.
+
+2026-09-18 최신 피드백 구현: Gateway `download.php`의 canonical path/readability/size/readfile 진단을 보강했고, Restore/Force Restore를 PREPARE→APPLY→최종 0 mismatch/0 missing 검증 구조로 변경했다. Setup은 `ProjectHub\bin`, `ProjectHub\config`, `ProjectHub\state`, `ProjectHub\log`를 생성하고 루트 최종 진입점 3개를 연결한다. PowerShell parser, build, test는 통과했다. NAS에 수정 PHP를 배포한 뒤 `download.php` 단독 호출과 Fetch_Pull/Force Restore E2E를 재검증해야 한다.
+
+2026-09-18 download/restore E2E 완료: NAS 웹 루트의 구버전 `download.php`를 수정본으로 교체했다. canonical object 실제 크기 524,288,000 bytes 확인, assertion 단독 download HTTP 200/Content-Length 일치, `hw` Restore 실행에서 matched=1/mismatched=0/missing=0, 로컬 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267` 일치를 확인했다. 이후 `expected` 집계 표시도 배열 안전성을 보완했다.
