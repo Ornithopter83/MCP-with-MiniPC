@@ -15,6 +15,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILargeDataAssertionIssuer, LargeDataAssertionIssuer>();
         services.AddSingleton<LargeDataAssertionVerifier>();
         services.AddSingleton<INasGatewayProvisioner, LocalNasGatewayProvisioner>();
+        services.AddSingleton<INasGatewayObjectDeleter, NasGatewayObjectDeleter>();
         services.AddSingleton<IResumableUploadService, LocalResumableUploadService>();
         services.AddSingleton<ILargeDataMetadataRepository, SupabaseLargeDataMetadataRepository>();
         services.AddHttpClient("Supabase", (serviceProvider, client) =>
@@ -31,6 +32,7 @@ public static class ServiceCollectionExtensions
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.ServiceRoleKey}");
             }
         });
+        services.AddHttpClient("NasGateway");
         services.AddSingleton<IProjectStateRepository, SupabaseProjectStateRepository>();
         services.AddSingleton<IProjectService, ProjectService>();
         services.AddSingleton<IWorkstationRepository, SupabaseWorkstationRepository>();

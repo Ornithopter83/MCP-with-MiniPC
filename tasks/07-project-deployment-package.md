@@ -16,4 +16,6 @@
 
 2026-09-18 최종 operation log 형식: 공통 `WriteOperationLog`와 `ProjectHubConsoleFormatter`를 추가해 `yyyy-MM-dd HH:mm:ss [LEVEL] [WORKSTATION] [PROJECT] MESSAGE [STATUS]` 형식을 강제했다. startup·assertion·session·STAGED·checkpoint·removal·tombstone·project state 로그에 동일한 필드 순서와 상태 코드를 적용했다. 로컬 Server 기동에서 `SERVER_STARTED` 형식과 `/api/status=200`을 확인했다.
 
+2026-09-18 NAS 삭제 및 Full-log 구현: Sync 승인 후 Server가 현재 활성 SHA-256 참조 수를 계산하고, NAS Gateway `delete-object.php`에 delete assertion을 발급한다. named alias는 삭제하고 활성 참조가 0일 때만 canonical object를 삭제하며, 다른 참조가 있으면 보존한다. Gateway 실패는 `PARTIAL`/ERROR로 반환하고 tombstone을 되돌리지 않는다. `ContentRoot\log\yyyyMMdd.log` 일자별 writer, 날짜 rollover, 정상 종료 `SERVER_STOPPING` 구분선, heartbeat file-only 기록을 추가했다. NAS delete endpoint 운영 배포와 실제 NAS 삭제 E2E는 배포 후 검증 대상으로 남아 있다.
+
 정책: 기존 관리 문서와 사용자 파일을 덮어쓰지 않으며 Git 변경과 대용량 업로드는 사용자가 명시적으로 실행할 때만 수행한다.

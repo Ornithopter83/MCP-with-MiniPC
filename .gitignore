@@ -9,3 +9,4 @@ appsettings.*.local.json
 *.key
 projecthub-private.pem
 forUpload.z01
+src/ProjectHub.Server/log/

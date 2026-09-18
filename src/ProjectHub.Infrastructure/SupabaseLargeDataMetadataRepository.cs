@@ -84,6 +84,16 @@ public sealed class SupabaseLargeDataMetadataRepository(IHttpClientFactory clien
             new LargeObjectIdentity(row.Sha256, row.SizeBytes), ParseLifecycle(row.Lifecycle), row.CheckpointCommitSha)).ToArray();
     }
 
+    public async Task<IReadOnlyList<ProjectLargeFile>> ListActiveProjectFilesByObjectAsync(LargeObjectIdentity objectIdentity, CancellationToken cancellationToken)
+    {
+        var client = clientFactory.CreateClient("Supabase");
+        var url = "project_large_files?select=project_id,relative_path,sha256,size_bytes,lifecycle,checkpoint_commit_sha&sha256=eq." + Uri.EscapeDataString(objectIdentity.Sha256) +
+                  "&size_bytes=eq." + objectIdentity.SizeBytes + "&lifecycle=not.eq.REMOVED&order=project_id.asc,relative_path.asc";
+        var rows = await client.GetFromJsonAsync<List<ProjectFileRow>>(url, cancellationToken) ?? [];
+        return rows.Select(row => new ProjectLargeFile(row.ProjectId, row.RelativePath,
+            new LargeObjectIdentity(row.Sha256, row.SizeBytes), ParseLifecycle(row.Lifecycle), row.CheckpointCommitSha)).ToArray();
+    }
+
     public Task MarkProjectFileRemovedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken) =>
         SendAsync("project_large_files", new
         {

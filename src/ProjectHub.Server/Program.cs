@@ -1,14 +1,17 @@
 using ProjectHub.Infrastructure;
 using ProjectHub.Core;
+using ProjectHub.Server;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddConsoleFormatter<ProjectHubConsoleFormatter, ConsoleFormatterOptions>();
+builder.Logging.AddProvider(new ProjectHubDailyFileLoggerProvider(builder.Environment.ContentRootPath));
 builder.Services.AddProjectHubInfrastructure(builder.Configuration);
 var app = builder.Build();
 var operationLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ProjectHub.Server");
+var fullLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ProjectHub.Full");
 void WriteOperationLog(LogLevel level, string workstation, string project, string message, string status) =>
     operationLogger.Log(level, new EventId(0), null, "[{Workstation}] [{Project}] {Message} [{Status}]", workstation, project, message, status);
 
@@ -186,6 +189,9 @@ app.MapPost("/api/large-data/removals/{projectId}", async (
     string projectId,
     LargeDataRemovalRequest request,
     ILargeDataMetadataRepository metadata,
+    ILargeDataAssertionIssuer issuer,
+    INasGatewayObjectDeleter deleter,
+    LargeDataOptions options,
     CancellationToken cancellationToken) =>
 {
     if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(request.WorkstationId) ||
@@ -199,16 +205,38 @@ app.MapPost("/api/large-data/removals/{projectId}", async (
             return Results.Conflict(new { error = "stale_checkpoint", latestCheckpoint = latest?.CommitSha, localHead = request.LocalHeadSha, baseCheckpoint = request.BaseCheckpointSha });
 
         var managed = await metadata.ListProjectFilesAsync(projectId, cancellationToken);
+        var deletionResults = new List<object>();
         foreach (var file in request.Files)
         {
             var previous = managed.FirstOrDefault(item => string.Equals(item.RelativePath, file.RelativePath, StringComparison.Ordinal));
             if (previous is null || previous.Lifecycle == LargeDataLifecycle.Removed)
                 return Results.Conflict(new { error = "managed_file_not_found", relativePath = file.RelativePath });
+            var activeReferences = await metadata.ListActiveProjectFilesByObjectAsync(previous.Object, cancellationToken);
+            var deleteCanonical = activeReferences.Count <= 1;
             await metadata.MarkProjectFileRemovedAsync(previous with { Lifecycle = LargeDataLifecycle.Removed, CheckpointCommitSha = latest.CommitSha }, cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            var scope = new LargeDataAssertionScope(
+                options.Issuer, options.Audience, request.WorkstationId, projectId, request.WorkstationId,
+                LargeDataOperation.Delete, Guid.NewGuid().ToString("N"), previous.Object, "projecthub", now, now.AddMinutes(5),
+                Guid.NewGuid().ToString("N"), RelativePath: previous.RelativePath);
+            try
+            {
+                var assertion = await issuer.IssueAsync(scope, cancellationToken);
+                var deleteResult = await deleter.DeleteAsync(assertion, scope, deleteCanonical, cancellationToken);
+                deletionResults.Add(new { relativePath = previous.RelativePath, activeReferences = Math.Max(0, activeReferences.Count - 1), deleteCanonical, result = deleteResult });
+                WriteOperationLog(LogLevel.Information, request.WorkstationId, projectId, $"NAS_ALIAS_DELETED path={previous.RelativePath}", "200");
+                WriteOperationLog(LogLevel.Information, request.WorkstationId, projectId,
+                    deleteCanonical ? $"NAS_OBJECT_DELETED hash={ShortId(previous.Object.Sha256)}" : $"NAS_OBJECT_RETAINED hash={ShortId(previous.Object.Sha256)} active_refs={Math.Max(0, activeReferences.Count - 1)}", "200");
+            }
+            catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException)
+            {
+                WriteOperationLog(LogLevel.Error, request.WorkstationId, projectId, $"NAS_OBJECT_DELETE_FAILED hash={ShortId(previous.Object.Sha256)} reason={exception.Message}", "502");
+                return Results.Json(new { projectId, workstationId = request.WorkstationId, status = "PARTIAL", removed = file.RelativePath, error = exception.Message }, statusCode: StatusCodes.Status502BadGateway);
+            }
         }
         WriteOperationLog(LogLevel.Information, request.WorkstationId, projectId, $"REMOVAL_CONFIRMED count={request.Files.Count} checkpoint={ShortId(latest.CommitSha)}", "200");
         WriteOperationLog(LogLevel.Information, request.WorkstationId, projectId, $"TOMBSTONE_CREATED count={request.Files.Count}", "200");
-        return Results.Ok(new { projectId, workstationId = request.WorkstationId, removed = request.Files.Select(file => file.RelativePath).ToArray(), tombstoneCheckpoint = latest.CommitSha });
+        return Results.Ok(new { projectId, workstationId = request.WorkstationId, status = "COMPLETED", removed = request.Files.Select(file => file.RelativePath).ToArray(), tombstoneCheckpoint = latest.CommitSha, deletionResults });
     }
     catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
 });
@@ -299,6 +327,7 @@ app.MapPost("/api/projects/{projectId}/state", async (
         await service.UpdateProjectStateAsync(
             new Project(projectId.Trim(), request.DisplayName?.Trim() ?? projectId.Trim(), request.RepositoryUrl),
             state, cancellationToken);
+        fullLogger.LogInformation("[{Workstation}] [{Project}] HEARTBEAT_RECEIVED hostname={Hostname} [200]", request.WorkstationId, "-", request.WorkstationId);
         WriteOperationLog(LogLevel.Information, request.WorkstationId, projectId, $"PROJECT_STATE_UPDATED dirty={request.Dirty}", "200");
         return Results.Ok(state);
     }
@@ -365,6 +394,7 @@ public sealed class ProjectHubConsoleFormatter : ConsoleFormatter
 
     public override void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
     {
+        if (string.Equals(logEntry.Category, "ProjectHub.Full", StringComparison.Ordinal)) return;
         var level = logEntry.LogLevel switch
         {
             LogLevel.Trace => "TRACE",

@@ -104,7 +104,11 @@ if ($removedCandidates.Count -gt 0) {
         $approvedRemovals = Confirm-RemovalCandidates @($removedCandidates)
         if ($approvedRemovals.Count -gt 0) {
             $removalBody = @{workstationId=$WorkstationId;localHeadSha=[string]$head;baseCheckpointSha=$checkpointSha;files=@($approvedRemovals | ForEach-Object { @{relativePath=$_.RelativePath} })} | ConvertTo-Json -Depth 6
-            Invoke-RestMethod ($ServerBaseUrl.TrimEnd('/') + '/api/large-data/removals/' + [Uri]::EscapeDataString($ProjectId)) -Method Post -ContentType 'application/json' -Body $removalBody -TimeoutSec 30 | Out-Null
+            try {
+                $removalResponse = Invoke-RestMethod ($ServerBaseUrl.TrimEnd('/') + '/api/large-data/removals/' + [Uri]::EscapeDataString($ProjectId)) -Method Post -ContentType 'application/json' -Body $removalBody -TimeoutSec 30
+                if ([string]$removalResponse.status -eq 'PARTIAL') { Write-Warning 'Removal tombstone succeeded but NAS deletion was partial.' }
+                else { Write-Host 'REMOVAL_CONFIRMED; NAS_ALIAS_AND_OBJECT_RESULT_RECEIVED' -ForegroundColor Green }
+            } catch { Write-Warning ("Removal/NAS deletion failed: {0}" -f $_.Exception.Message) }
         }
     }
 }

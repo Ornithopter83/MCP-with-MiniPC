@@ -75,6 +75,8 @@ dotnet test ProjectHub.sln --no-restore
 
 2026-09-18 최신 feedback 구현 완료: `ProjectHubConsoleFormatter`와 공통 operation log helper로 최종 콘솔 형식 `yyyy-MM-dd HH:mm:ss [LEVEL] [WORKSTATION] [PROJECT] MESSAGE [STATUS]`를 적용했다. `dotnet build ProjectHub.sln --no-restore` 및 `dotnet test ProjectHub.sln --no-restore`가 모두 통과했고, 로컬 Server startup의 `SERVER_STARTED`와 `/api/status=200`을 재확인했다.
 
+2026-09-18 NAS 삭제/Full-log 구현: Sync 승인 후 Server가 활성 object 참조 수를 확인해 NAS named alias를 삭제하고, 참조가 0일 때 canonical object까지 삭제하도록 `delete-object.php`와 delete assertion 흐름을 추가했다. 다른 활성 참조가 있으면 object를 보존한다. NAS 실패는 `PARTIAL`과 ERROR 로그로 남긴다. `ContentRoot\log\yyyyMMdd.log` 일자별 file logger와 heartbeat 포함 file-only 로그, rollover 및 정상 종료 구분선을 추가했다. C# build/test는 통과했고, local startup `/api/status=200` 및 일자별 log 파일 생성을 확인했다. 실제 NAS delete PHP 배포/운영 E2E가 다음 검증 항목이다.
+
 추가 GC 검증: PowerShell 배열 응답 호환성 문제를 수정한 뒤 완료 session 2개를 개별 인식했고, dry-run은 SAFE 2개(각 524,288,000 bytes), KEEP 0, REVIEW 0으로 정상 집계됐다. `-Apply`는 실행하지 않았다.
 
 GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Apply`를 실행해 Gateway cleanup을 완료했고, 같은 명령을 다시 실행했을 때 두 session 모두 `ALREADY_CLEAN`으로 반환됐다. 테스트 `UPLOADING` session은 GC dry-run에서 `KEEP`으로 보호됐고, fixture 삭제 후 session count 0 및 SAFE/KEEP/REVIEW 0을 확인했다.

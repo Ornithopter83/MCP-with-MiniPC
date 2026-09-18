@@ -327,6 +327,18 @@ function projecthub_named_object_path($claims, $objectHash)
     return projecthub_safe_path(projecthub_storage_root(), $relative);
 }
 
+function projecthub_canonical_object_path($objectHash)
+{
+    if (!projecthub_validate_sha256($objectHash)) {
+        projecthub_json_error(400, 'invalid_object_hash');
+    }
+
+    return projecthub_safe_path(
+        projecthub_storage_root(),
+        'objects/sha256/' . strtolower($objectHash[0] . $objectHash[1]) . '/' . strtolower($objectHash)
+    );
+}
+
 function projecthub_cleanup_session($sessionDir, $parts = array())
 {
     if (!is_dir($sessionDir) || is_link($sessionDir)) { return true; }

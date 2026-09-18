@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ProjectHub.Core;
 
 public enum LargeDataOperation
@@ -5,7 +7,8 @@ public enum LargeDataOperation
     Provision,
     Upload,
     Download,
-    Cleanup
+    Cleanup,
+    Delete
 }
 
 public enum LargeDataLifecycle
@@ -43,6 +46,7 @@ public interface ILargeDataMetadataRepository
     Task CreateDataSetAsync(LargeDataSet dataSet, CancellationToken cancellationToken);
     Task<IReadOnlyList<LargeDataSet>> ListDataSetsAsync(string projectId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProjectLargeFile>> ListProjectFilesAsync(string projectId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ProjectLargeFile>> ListActiveProjectFilesByObjectAsync(LargeObjectIdentity objectIdentity, CancellationToken cancellationToken);
     Task MarkProjectFileRemovedAsync(ProjectLargeFile projectFile, CancellationToken cancellationToken);
 }
 
@@ -97,6 +101,18 @@ public interface INasGatewayProvisioner
     Task<ProvisionResult> ProvisionAsync(
         LargeDataAssertionScope scope,
         CancellationToken cancellationToken);
+}
+
+public sealed record NasDeleteResult(
+    [property: JsonPropertyName("alias_deleted")] bool AliasDeleted,
+    [property: JsonPropertyName("canonical_deleted")] bool CanonicalDeleted,
+    [property: JsonPropertyName("already_deleted")] bool AlreadyDeleted,
+    [property: JsonPropertyName("named_path")] string? NamedPath,
+    [property: JsonPropertyName("object_path")] string? ObjectPath);
+
+public interface INasGatewayObjectDeleter
+{
+    Task<NasDeleteResult> DeleteAsync(string assertion, LargeDataAssertionScope scope, bool deleteCanonical, CancellationToken cancellationToken);
 }
 
 public sealed record UploadChunkResult(string SessionId, int ChunkIndex, long BytesReceived);
