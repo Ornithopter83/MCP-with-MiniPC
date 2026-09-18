@@ -1,6 +1,6 @@
 # ProjectHub 현재 작업 상태
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 ## Baseline
 
@@ -44,7 +44,7 @@ Updated: 2026-09-17
 
 ## 진행
 
-잔여 작업: 새 Server 삭제/tombstone API 운영 배포 후 `hw` 탐색기 더블클릭 Sync·Restore E2E, 이후 08 Server 설치·이전
+잔여 작업: `hw`에서 Force Restore GUI의 계속/취소 동작을 실제 탐색기 기준으로 1회 확인한 뒤 08 Server 설치·이전
 
 ## 작업 정책
 
@@ -63,7 +63,7 @@ dotnet test ProjectHub.sln --no-restore
 
 06 Large Data/NAS 기능 검증 완료 / 07 프로젝트 배포 패키지 검증 중
 
-07 구현: Setup/Sync/Restore 배포 패키지에 이전·현재 manifest diff, REMOVED 승인 GUI, Server tombstone API, current-folder Restore의 LOCAL_ONLY 보호와 REMOVED 삭제 승인을 추가했다. `hw`에는 최신 `bin` 실행본을 반영했다. Server 새 바이너리 운영 배포 후 탐색기 더블클릭 기준 삭제 Sync와 Restore E2E가 남아 있다.
+07 구현: Setup/Sync/Restore 배포 패키지에 이전·현재 manifest diff, REMOVED 승인 GUI, Server tombstone API, current-folder Restore의 LOCAL_ONLY 보호와 REMOVED 삭제 승인을 추가했다. `hw`는 `ProjectHub\\bin`, `ProjectHub\\config`, `ProjectHub\\state`, `ProjectHub\\log` 구조로 최신화했고 루트에는 Commit_Push/Fetch_Pull/Force_Restore 3개 진입점만 유지했다. 남은 검증은 Force Restore GUI 승인 동작 1건이다.
 
 2026-09-17 재검증: Server `/api/status=200`, NAS Gateway `200`, GC dry-run `safe=0, keep=0, review=0`을 확인했다. 500MiB `forUpload.z01`은 .NET SHA-256 fallback으로 해시 계산 후 기존 session 재사용, NAS `already_present`, 원본과 동일한 size/hash, `STAGED`, `CHECKPOINTED`까지 성공했다. Server session은 `COMPLETED`로 확인됐다.
 
@@ -116,6 +116,10 @@ GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Appl
 2026-09-18 download/restore 재검증 완료: NAS 실제 canonical object `S:\HDD1\ProjectHub\objects\sha256\e9\e93ac6ff...e8267`는 524,288,000 bytes였다. 수정 `download.php`를 `S:\HDD1\DocRoot\projecthub`에 배포한 뒤 assertion 단독 호출이 HTTP 200, Content-Length 524,288,000, fopen preflight `open-ok`로 응답했다. `hw\ProjectHub_Restore.cmd`는 500MiB를 다운로드하고 `RESTORE_VERIFY matched=1, mismatched=0, missing=0`으로 완료했으며, 로컬 파일 크기·SHA-256도 원본과 일치했다. 이전 HTTP 500은 NAS 웹 루트의 구버전 download.php와 readfile 처리 문제였다.
 2026-09-18 Restore 다운로드 UX 보완: `ProjectHub_Restore.ps1`을 HttpClient 스트림 수신 방식으로 변경해 업로드와 같은 콘솔에서 `DOWNLOAD`, 퍼센트, 수신/전체 바이트, 완료 로그를 표시한다. PREPARE/APPLY 검증과 완료 후 `pause`는 유지한다.
 2026-09-18 Force Restore UX/배포 구조 보완: `ProjectHub_Force_Restore.ps1`의 파괴적 실행 승인을 콘솔 `FORCE` 문자열 입력에서 Windows 확인 대화상자의 `계속`/`취소` 선택으로 변경했다. 새 `ProjectHub\bin` 구조를 우선 사용하고 구형 루트 `bin`은 호환 fallback으로 유지한다.
+
+2026-09-18 문서 정정 및 `hw` 최신화: `hw`에서 구형 `.projecthub\`, 루트 `bin\`, 구형 Setup/Sync/Restore 진입점을 제거하고 `ProjectHub\bin`, `ProjectHub\config`, `ProjectHub\state`, `ProjectHub\log` 구조로 통합했다. 루트 사용자 진입점은 `ProjectHub_Commit_Push.cmd`, `ProjectHub_Fetch_Pull.cmd`, `ProjectHub_Force_Restore.cmd`만 유지했다. 500MiB `forUpload.z01`은 `.gitignore`로 커밋에서 제외하고 로컬 테스트 파일로 보존했다. `ProjectHub_Commit_Push.cmd` 실행 결과 커밋 `8dd5c80081929da8957d32938ea5aa58c064f252`를 `origin/main`에 push했고, 후속 Sync/uploader는 `checkpointed=true`로 완료했다.
+
+문서 불일치 정정: 이전 기록의 `FORCE` 콘솔 입력, `hw\ProjectHub_Restore.cmd` 실행, 구형 `.projecthub/bin` 구조, Restore 미완료 표시는 변경 전 상태를 기록한 이력이다. 현재 Force Restore는 GUI `계속`/`취소` 승인 창을 사용하고 Restore는 `ProjectHub\bin\ProjectHub_Restore.ps1` 엔진을 사용한다. 실제 남은 검증은 Force Restore GUI 승인 창의 계속/취소 동작 확인 1건이다. Commit_Push 루트 CMD는 종료 전 `pause`를 수행하지만, 대용량 uploader는 별도 프로세스로 실행되므로 그 창의 Enter 대기 여부는 별도 개선·검증 항목으로 분리한다.
 
 Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/` health `200` 및 JSON 응답 성공, `provision.php` GET은 `405`로 method 경계가 정상이다. 인증 없는 POST 응답 본문 확인은 PowerShell의 예외 응답 형식 차이로 별도 Gateway 클라이언트 검증에서 수행한다.
 

@@ -37,3 +37,7 @@
 2026-09-18 download/restore E2E 완료: NAS 웹 루트의 구버전 `download.php`를 수정본으로 교체했다. canonical object 실제 크기 524,288,000 bytes 확인, assertion 단독 download HTTP 200/Content-Length 일치, `hw` Restore 실행에서 matched=1/mismatched=0/missing=0, 로컬 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267` 일치를 확인했다. 이후 `expected` 집계 표시도 배열 안전성을 보완했다.
 2026-09-18 Restore 다운로드 UX 보완: `ProjectHub_Restore.ps1`의 NAS 다운로드를 HttpClient 스트림 수신으로 변경해 `DOWNLOAD`/퍼센트/바이트 진행과 완료 로그를 표시한다. 기존 PREPARE/APPLY 검증 및 완료 후 `pause`는 유지한다.
 2026-09-18 Force Restore UX 보완: 파괴적 실행 전 콘솔에서 `FORCE`를 직접 입력하던 방식을 Windows 확인 대화상자로 변경했다. 경고 아이콘·대상 경로·삭제 범위를 표시하고 `계속`/`취소` 선택으로 승인하며, 새 `ProjectHub\bin` 엔진을 우선 사용하고 구형 `bin`은 호환한다.
+
+2026-09-18 문서 정정 및 최신 `hw` 구조 반영: 이전 항목의 `.projecthub`, 루트 `bin`, `ProjectHub_Restore.cmd`, 콘솔 `FORCE` 입력, Restore 미완료 상태는 변경 전 검증 이력이다. 현재 `hw`는 구형 `.projecthub\`와 루트 `bin\`, 구형 Setup/Sync/Restore 진입점을 제거하고 `ProjectHub\bin`, `ProjectHub\config`, `ProjectHub\state`, `ProjectHub\log`를 사용한다. 루트 사용자 진입점은 Commit_Push/Fetch_Pull/Force_Restore 3개이며, 최신 구조 변경은 커밋 `8dd5c80081929da8957d32938ea5aa58c064f252`로 `origin/main`에 push했다. Commit_Push와 후속 Sync/uploader는 성공했으며 `checkpointed=true`를 확인했다. 잔여 검증은 Force Restore GUI의 계속/취소 실제 클릭 확인 1건이다.
+
+운영 UX 주의: Commit_Push 루트 CMD는 종료 전 `pause`로 대기하지만, Sync가 별도 프로세스로 실행하는 대용량 uploader의 표준 입력 연결과 Enter 대기는 별도 항목으로 관리한다.

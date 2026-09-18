@@ -1,6 +1,6 @@
 # ProjectHub 구현 로드맵
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 ## 목표
 
@@ -38,9 +38,9 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: 07 프로젝트 배포 패키지 — 삭제 diff/tombstone 구현 완료, 운영 Server 배포 후 hw 탐색기 E2E 대기
+현재 작업: 07 프로젝트 배포 패키지 — 최신 `hw` 구조 Commit/Push 완료, Force Restore GUI 승인 실제 클릭 검증 대기
 
-잔여 작업: 새 Server 바이너리 배포 후 hw Sync 삭제 승인·tombstone 및 Restore 삭제 GUI E2E, 이후 08 Server 설치·이전
+잔여 작업: `hw`에서 Force Restore GUI의 계속/취소 동작을 실제 탐색기 기준으로 1회 확인한 뒤 08 Server 설치·이전
 
 대용량 data plane은 `Agent → NAS Gateway → NAS1DUAL`, control plane은 `Agent → ProjectHub.Server → Supabase`로 분리하며 Server는 대용량 binary를 relay하지 않는다.
 

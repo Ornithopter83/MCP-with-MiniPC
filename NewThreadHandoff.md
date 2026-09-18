@@ -4,8 +4,8 @@
 - 먼저 읽을 파일: `AGENTS.md`, `ProjectHub_IMPLEMENTATION_PLAN.md`, `CurrentWork.md`, 활성 task 파일
 - 현재 구조: `src/ProjectHub.Core`, `Infrastructure`, `Server`, `Agent`; `tests/ProjectHub.Core.Tests`, `Server.Tests`
 - 완료 상태: 기존 루트 초기화, .NET 솔루션 및 6개 프로젝트 생성, 04 Supabase 저장/E2E, 05-A Agent heartbeat 구현, 빌드·테스트 통과
-- 현재 작업: 07 프로젝트 배포 패키지 — NAS 최신 `download.php` 배포 후 Restore 운영 E2E 대기, 이후 08 Server 설치·이전
-- 07 검증: Setup이 프로젝트 실행 파일을 `bin`에 배포하며 Sync/Restore 래퍼가 해당 경로를 사용한다. Restore는 별도 디렉터리와 크기/SHA-256 검증을 사용한다.
+- 현재 작업: 07 프로젝트 배포 패키지 — 최신 `hw` 구조 Commit/Push 완료, Force Restore GUI 승인 실제 클릭 검증 대기, 이후 08 Server 설치·이전
+- 07 검증: Setup이 `ProjectHub\\bin`, `ProjectHub\\config`, `ProjectHub\\state`, `ProjectHub\\log`를 구성하며 루트에는 Commit_Push/Fetch_Pull/Force_Restore 3개 진입점만 둔다. Restore는 별도 임시 디렉터리와 크기/SHA-256 검증을 사용한다.
 - 표준 검증: `dotnet build ProjectHub.sln --no-restore`, `dotnet test ProjectHub.sln --no-restore`
 - 보안 경계: Supabase Service Role Key와 Agent API Key는 환경 변수·보안 저장소 외에 기록하지 않는다.
 - 완료: 서버 PC에서 project state POST/GET, Supabase 저장, 동일 project/workstation update, 실제 `head_sha` 저장 확인
@@ -17,3 +17,4 @@
 - 고정 외부접속: Cloudflare Named Tunnel `projecthub`가 `projecthub.ornithopter.bid`에서 Server의 `http://localhost:5240` origin으로 연결되며 외부 `/api/status`를 확인했다.
 - NAS Gateway PHP-visible root는 `/mnt/HDD1/ProjectHub`, HTTPS port는 `8443`이다.
 - NAS Gateway URL은 `https://dfblackbox-nas.duckdns.org:8443/projecthub/`이다.
+- 최신 `hw` 반영 커밋: `8dd5c80081929da8957d32938ea5aa58c064f252` (`origin/main`).
