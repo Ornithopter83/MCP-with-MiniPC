@@ -109,6 +109,8 @@ GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Appl
 
 2026-09-18 강제 복구 구현: `ProjectHub_Force_Restore.cmd`와 `ProjectHub_Force_Restore.ps1`를 추가했다. 실행 전 `FORCE` 명시 입력이 없으면 종료하며, 승인 후에만 `fetch origin` → `reset --hard origin/<branch>` → `clean -fd`를 수행한다. `.projecthub/project.json`, ProjectHub CMD, `bin\ProjectHub_*.ps1`는 임시 보관 후 복원하고, 이후 최신 checkpoint 기준 기존 Restore 엔진으로 NAS 대용량 파일과 REMOVED 파일을 처리한다. 파괴적 실행·NAS 복구 E2E가 후속 검증 대상이다.
 
+2026-09-18 hw 순차 검증: 최신 ProjectHub 파일을 `hw`에 배포하고 일반 Fetch_Pull dirty 보호(exit 2)를 확인했다. 강제 복구는 `FORCE` 승인 후 Git `fetch/reset --hard/clean -fd`와 500MiB 로컬 삭제까지 성공했다. tombstone 재등록 후 500MiB 업로드는 원본 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267`, `ALREADY_PRESENT`, `STAGED`, checkpoint `be3cff250b18ce651f1e50167a9ff8407d395197`로 완료했다. 이후 `.git`, `.projecthub`, ProjectHub 런처·엔진만 남기고 테스트 파일/솔루션/대용량 파일을 삭제했다. 최종 Force Restore의 Git 복구는 성공했지만 NAS Restore는 `RESTORE_SIZE_MISMATCH: forUpload.z01`로 실패해 원상복구 E2E는 미완료다. 업로드 중복 실행 시 임시 chunk 경합이 발생했으나 중복 프로세스 종료 후 단일 uploader 재시도로 성공했다.
+
 Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/` health `200` 및 JSON 응답 성공, `provision.php` GET은 `405`로 method 경계가 정상이다. 인증 없는 POST 응답 본문 확인은 PowerShell의 예외 응답 형식 차이로 별도 Gateway 클라이언트 검증에서 수행한다.
 
 NAS upload 구현: `nas-gateway/upload-start.php`, `upload-chunk.php`, `upload-status.php`, `upload-finalize.php`를 추가했다. 로컬 PHP 파일은 실제 NAS 배포 후 운영 assertion으로 검증해야 하며, 현재 원격 upload 경로는 아직 배포되지 않아 HTML 응답을 반환한다.

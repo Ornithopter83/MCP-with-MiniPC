@@ -29,3 +29,5 @@
 2026-09-18 v0.2 Git 진입점 구현: `ProjectHub_Commit_Push.cmd`는 `git add -A` → commit → fetch → pull --rebase → push → 기존 Sync/checkpoint 순서로 실행한다. `ProjectHub_Fetch_Pull.cmd`는 local dirty를 먼저 검사한 뒤 fetch → pull --rebase → Restore를 실행한다. detached HEAD, merge/rebase 진행, 충돌, push reject는 자동 해결하지 않고 중단한다. 두 PS1 엔진은 Setup에서 `bin`으로 배포되며 모든 CMD는 pause/exit-code를 유지한다.
 
 2026-09-18 강제 복구 구현: `ProjectHub_Force_Restore.cmd`는 `FORCE` 확인 전에는 아무것도 변경하지 않는다. 승인 후 remote branch 확인, `fetch origin`, `reset --hard`, `clean -fd`를 수행하고, `.projecthub/project.json`과 ProjectHub launcher/engine을 보존한 뒤 기존 Restore로 최신 checkpoint/NAS 상태를 복구한다. 실행 결과 HEAD와 최종 working tree를 출력하며, 사용자가 명시적으로 승인한 파괴적 작업으로만 동작한다.
+
+2026-09-18 hw 순차 검증 결과: 최신 파일 배포, 일반 Fetch_Pull dirty 보호, Force Restore의 Git reset/clean, 500MiB 업로드·STAGED·CHECKPOINTED, ProjectHub 외 로컬 파일 삭제를 확인했다. Force Restore 재실행 시 Git 상태와 로컬 삭제는 복구됐지만 NAS 다운로드가 `RESTORE_SIZE_MISMATCH: forUpload.z01`로 실패했다. 따라서 NAS `download.php`가 반환하는 실제 크기/hash와 canonical object를 추가 확인해야 07 최종 E2E를 완료할 수 있다.
