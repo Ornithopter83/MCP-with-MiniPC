@@ -10,4 +10,6 @@
 
 2026-09-18 `hw` 실제 검증: Explorer Sync와 동일한 `ProjectHub_Sync.ps1` 경로로 `forUpload.z01` 524,288,000 bytes를 업로드했다. curl 전송은 실패 0건, 원본 및 NAS object SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267`, `STAGED`, `CHECKPOINTED=true`로 완료됐다. Server 조회에서 `project_large_files` lifecycle `STAGED`, session `COMPLETED`, checkpoint commit `be3cff250b18ce651f1e50167a9ff8407d395197`를 확인했다. 수정본은 중앙 uploader와 `hw\bin\ProjectHub_LargeData_Uploader.ps1`에 반영했다.
 
+2026-09-18 operation logging: Server에 `ProjectHub.Server` category를 추가해 startup, project state, assertion, upload session 완료, STAGED, CHECKPOINT, removal/tombstone 주요 단계만 Information으로 기록한다. `Microsoft`, ASP.NET Core, Supabase HttpClient 반복 로그는 Warning으로 제한하고 Console을 single-line/timestamp 형식으로 설정했다. 로컬 `http://127.0.0.1:5280/api/status`가 200으로 응답하고 `SERVER_STARTED` 한 줄 로그를 출력하는 것을 확인했다.
+
 정책: 기존 관리 문서와 사용자 파일을 덮어쓰지 않으며 Git 변경과 대용량 업로드는 사용자가 명시적으로 실행할 때만 수행한다.
