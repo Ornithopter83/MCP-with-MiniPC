@@ -107,6 +107,8 @@ GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Appl
 
 2026-09-18 v0.2 정책 전환: 사용자가 Explorer에서 명시적으로 실행하는 `ProjectHub_Commit_Push.cmd`는 add/commit/fetch/pull --rebase/push 후 Sync 및 large-data checkpoint를 실행하고, `ProjectHub_Fetch_Pull.cmd`는 clean 상태 확인 후 fetch/pull --rebase와 Restore를 실행한다. detached HEAD, dirty pull 대상, merge/rebase 진행, 충돌, push reject는 자동 해결하지 않고 중단한다. 기존 Sync/Restore CMD는 호환성을 위해 유지한다.
 
+2026-09-18 강제 복구 구현: `ProjectHub_Force_Restore.cmd`와 `ProjectHub_Force_Restore.ps1`를 추가했다. 실행 전 `FORCE` 명시 입력이 없으면 종료하며, 승인 후에만 `fetch origin` → `reset --hard origin/<branch>` → `clean -fd`를 수행한다. `.projecthub/project.json`, ProjectHub CMD, `bin\ProjectHub_*.ps1`는 임시 보관 후 복원하고, 이후 최신 checkpoint 기준 기존 Restore 엔진으로 NAS 대용량 파일과 REMOVED 파일을 처리한다. 파괴적 실행·NAS 복구 E2E가 후속 검증 대상이다.
+
 Gateway URL 변경 확인: `https://dfblackbox-nas.duckdns.org:8443/projecthub/` health `200` 및 JSON 응답 성공, `provision.php` GET은 `405`로 method 경계가 정상이다. 인증 없는 POST 응답 본문 확인은 PowerShell의 예외 응답 형식 차이로 별도 Gateway 클라이언트 검증에서 수행한다.
 
 NAS upload 구현: `nas-gateway/upload-start.php`, `upload-chunk.php`, `upload-status.php`, `upload-finalize.php`를 추가했다. 로컬 PHP 파일은 실제 NAS 배포 후 운영 assertion으로 검증해야 하며, 현재 원격 upload 경로는 아직 배포되지 않아 HTML 응답을 반환한다.
