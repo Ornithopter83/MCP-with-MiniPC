@@ -5,8 +5,8 @@ Updated: 2026-09-18
 ## 최신 확인
 
 ```text
-92f6c6d10ff79ffaafddb9eb5eedd23e9fb97831
-Improve CMD entrypoint exit-code handling and pause behavior
+36d40c993bf616bb9d3682ce0d3de044f415991a
+Document v0.2 Git workflow and deployment entry points
 ```
 
 최근 완료:
@@ -59,3 +59,64 @@ mode con: cols=220 lines=50
 ```
 
 5. 07은 재설계하지 말고 Restore / LOCAL_ONLY / stale workstation / Full-log 최종 E2E를 끝낸 뒤 08 Server 이전으로 넘어간다.
+
+
+## 강제 복구 기능 추가
+
+일반 `ProjectHub_Fetch_Pull`과 별도로, 로컬 상태를 신뢰하지 않고 최신 원격 상태로 강제 복구하는 사용자용 명령을 추가한다.
+
+권장 이름:
+
+```text
+ProjectHub_Force_Restore.cmd
+```
+
+의미:
+
+> GitHub의 최신 Git 상태 + ProjectHub/NAS의 최신 대용량 상태를 정답으로 보고 현재 로컬 프로젝트를 강제로 맞춘다.
+
+권장 흐름:
+
+```text
+1. 프로젝트/remote/branch 확인
+2. 강제 복구 경고 및 사용자 승인
+3. git fetch origin
+4. git reset --hard origin/<branch>
+5. git clean -fd
+6. 최신 ProjectHub checkpoint 조회
+7. 관리 대상 대용량 파일을 NAS 기준으로 강제 overwrite/download
+8. REMOVED 파일은 로컬에서도 삭제
+9. Git + Large Data 최종 상태 검증
+10. 결과 표시 + pause
+```
+
+일반 Fetch-Pull과 달리 강제 복구는 의도적으로 다음 보호를 우회한다.
+
+```text
+- dirty working tree 보호
+- 관리 대상 대용량 파일의 로컬 수정 보호
+- LOCAL_ONLY 보호(단, ProjectHub 자체 설정 파일은 예외)
+```
+
+반드시 보호할 항목:
+
+```text
+.projecthub/project.json
+필수 ProjectHub launcher/config
+복구 실행에 필요한 최소 로컬 설정
+```
+
+사용자 UX는 다음 세 가지로 단순화한다.
+
+```text
+ProjectHub_Commit_Push
+= 현재 작업을 원격에 저장
+
+ProjectHub_Fetch_Pull
+= 정상적으로 최신 상태를 받아옴
+
+ProjectHub_Force_Restore
+= 로컬 상태를 버리고 최신 상태로 강제 복구
+```
+
+강제 복구는 파괴적이므로 실행 전 Windows GUI 또는 명확한 콘솔 확인을 반드시 거친다.
