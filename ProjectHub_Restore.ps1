@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ProjectRoot = (Split-Path -Parent $MyInvocation.MyCommand.Path),
     [string]$CheckpointSha
 )
@@ -22,13 +22,13 @@ function Confirm-DeleteCandidates($candidates) {
     $approved = [System.Collections.Generic.List[object]]::new()
     for ($index = 0; $index -lt $candidates.Count; $index++) {
         $candidate = $candidates[$index]
-        $form = New-Object System.Windows.Forms.Form
-        $form.Text = 'ProjectHub - local file deletion'; $form.Width = 560; $form.Height = 220; $form.StartPosition = 'CenterScreen'; $form.TopMost = $true
-        $label = New-Object System.Windows.Forms.Label; $label.Left = 16; $label.Top = 16; $label.Width = 510; $label.Height = 70
-        $label.Text = "This managed file is not in the latest ProjectHub state:`r`n$($candidate.RelativePath)`r`n$([math]::Round($candidate.SizeBytes / 1MB, 2)) MB`r`nDelete it locally?"
-        $form.Controls.Add($label)
-        $buttons = @(@('All','All'),@('Yes','Yes'),@('No','No'),@('Cancel','Cancel')); $left = 16
-        foreach ($buttonInfo in $buttons) { $button = New-Object System.Windows.Forms.Button; $button.Text=$buttonInfo[0]; $button.Tag=$buttonInfo[1]; $button.Left=$left; $button.Top=115; $button.Width=110; $button.Add_Click({ $form.Tag=$this.Tag; $form.Close() }); $form.Controls.Add($button); $left += 125 }
+        $form = New-Object System.Windows.Forms.Form; $form.FormBorderStyle='None'; $form.Width=620; $form.Height=285; $form.StartPosition='CenterScreen'; $form.TopMost=$true; $form.BackColor=[Drawing.Color]::White
+        $titleBar=New-Object System.Windows.Forms.Panel; $titleBar.Left=0; $titleBar.Top=0; $titleBar.Width=620; $titleBar.Height=48; $titleBar.BackColor=[Drawing.Color]::FromArgb(31,78,121)
+        $title=New-Object System.Windows.Forms.Label; $title.Left=18; $title.Top=11; $title.Width=580; $title.Height=30; $title.ForeColor=[Drawing.Color]::White; $title.Font=New-Object Drawing.Font('Malgun Gothic',14,[Drawing.FontStyle]::Bold); $title.Text='ProjectHub - 로컬 파일 삭제 확인'; $titleBar.Controls.Add($title); $form.Controls.Add($titleBar)
+        $icon=New-Object System.Windows.Forms.PictureBox; $icon.Left=22; $icon.Top=70; $icon.Width=44; $icon.Height=44; $icon.SizeMode='StretchImage'; $icon.Image=[Drawing.SystemIcons]::Warning.ToBitmap(); $form.Controls.Add($icon)
+        $label = New-Object System.Windows.Forms.Label; $label.Left=82; $label.Top=68; $label.Width=510; $label.Height=100; $label.Font=New-Object Drawing.Font('Malgun Gothic',11); $label.Text="ProjectHub 최신 상태에는 없는 관리 파일입니다:`r`n$($candidate.RelativePath)`r`n$([math]::Round($candidate.SizeBytes / 1MB, 2)) MB`r`n로컬에서도 삭제하시겠습니까?"; $form.Controls.Add($label)
+        $buttons = @(@('모두(A)','All'),@('예(Y)','Yes'),@('아니오(N)','No'),@('취소(C)','Cancel')); $left = 24
+        foreach ($buttonInfo in $buttons) { $button = New-Object System.Windows.Forms.Button; $button.Text=$buttonInfo[0]; $button.Tag=$buttonInfo[1]; $button.Left=$left; $button.Top=205; $button.Width=130; $button.Height=36; $button.Font=New-Object Drawing.Font('Malgun Gothic',10); $button.Add_Click({ $form.Tag=$this.Tag; $form.Close() }); $form.Controls.Add($button); $left += 145 }
         [void]$form.ShowDialog(); $choice=[string]$form.Tag; $form.Dispose()
         if ($choice -eq 'Cancel' -or [string]::IsNullOrWhiteSpace($choice)) { throw 'Restore cancelled by user.' }
         if ($choice -eq 'All') { for ($remaining=$index; $remaining -lt $candidates.Count; $remaining++) { $approved.Add($candidates[$remaining]) }; break }

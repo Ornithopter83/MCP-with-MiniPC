@@ -1,6 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$ManifestPath)
 
 $ErrorActionPreference = "Stop"
+$exitCode = 0
 $m = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
 $chunkSize = 16MB
 $chunkRoot = Join-Path ([IO.Path]::GetTempPath()) ("projecthub-upload-{0}" -f $m.BatchId)
@@ -125,7 +126,8 @@ $checkpointed = $failed.Count -eq 0 -and $staged.Count -eq $m.Items.Count -and $
     $result = @{batchId=$m.BatchId;projectId=$m.ProjectId;staged=$staged;failed=$failed;checkpointed=$checkpointed;assertionsIssued=$script:assertionIssuanceCount;assertionsRefreshed=$script:assertionRefreshCount} | ConvertTo-Json -Depth 8
     $result | Set-Content -LiteralPath $resultPath -Encoding UTF8
     Write-Host ("ASSERTIONS: issued={0}, refreshed={1}; RESULT: {2}" -f $script:assertionIssuanceCount,$script:assertionRefreshCount,$resultPath) -ForegroundColor Cyan
-    if ($failed.Count -gt 0) { Write-Host ("BATCH RESULT: {0} staged, {1} failed" -f $staged.Count,$failed.Count) -ForegroundColor Yellow; exit 1 }
-} catch { Write-Host ("UPLOAD FAILED: " + $_.Exception.Message) -ForegroundColor Red; exit 1 }
+    if ($failed.Count -gt 0) { Write-Host ("BATCH RESULT: {0} staged, {1} failed" -f $staged.Count,$failed.Count) -ForegroundColor Yellow; $exitCode = 1 }
+} catch { Write-Host ("UPLOAD FAILED: " + $_.Exception.Message) -ForegroundColor Red; $exitCode = 1 }
 finally { Remove-Item -LiteralPath $chunkRoot -Recurse -Force -ErrorAction SilentlyContinue }
 Read-Host 'Batch uploader complete. Press Enter to close'
+if ($exitCode -ne 0) { exit $exitCode }
