@@ -5,118 +5,153 @@ Updated: 2026-09-18
 ## 최신 확인
 
 ```text
-36d40c993bf616bb9d3682ce0d3de044f415991a
-Document v0.2 Git workflow and deployment entry points
+18aacb6fee012af27dcfb0c00926878804ad2618
+Document hw force restore validation results
 ```
 
-최근 완료:
-- NAS object deletion + daily full logging 구현
-- delete assertion 운영 E2E 성공
-- 문자열 LargeDataOperation 호환 수정
-- 사용자 CMD pause / exit-code 처리 보강
+현재 방향은 유지하되, 재검증 전에 아래 3가지를 함께 반영한다.
 
-## 추가 피드백
+## 1. 관리 프로젝트 UX 구조 정리
 
-1. 사용자용 CMD 이름을 실제로 변경한다.
+사용자가 관리 프로젝트 루트에서 보게 될 ProjectHub 진입점은 아래 3개만 둔다.
 
 ```text
-ProjectHub_Sync.cmd
-→ ProjectHub_Commit_Push.cmd
-
-ProjectHub_Restore.cmd
-→ ProjectHub_Fetch_Pull.cmd
-```
-
-기존 `.ps1` 내부 엔진은 당장 이름을 바꾸지 말고 재사용한다.
-
-2. Git 기능을 사용자 진입 CMD에 통합한다.
-
-```text
-ProjectHub_Commit_Push
-→ git add -A
-→ commit
-→ fetch
-→ 필요 시 rebase/pull
-→ push
-→ 기존 ProjectHub_Sync.ps1 실행
-→ large-data checkpoint
-
-ProjectHub_Fetch_Pull
-→ local dirty 확인
-→ fetch
-→ pull
-→ 기존 ProjectHub_Restore.ps1 실행
-```
-
-충돌, detached HEAD, push reject, dirty 상태 등은 자동 해결하지 말고 중지 후 메시지를 남긴다.
-
-3. 모든 사용자 CMD는 현재 적용한 pause / exit-code 처리 방식을 유지한다.
-
-4. `ProjectHub_update.cmd` 넓은 콘솔 설정도 유지한다.
-
-```bat
-mode con: cols=220 lines=50
-```
-
-5. 07은 재설계하지 말고 Restore / LOCAL_ONLY / stale workstation / Full-log 최종 E2E를 끝낸 뒤 08 Server 이전으로 넘어간다.
-
-
-## 강제 복구 기능 추가
-
-일반 `ProjectHub_Fetch_Pull`과 별도로, 로컬 상태를 신뢰하지 않고 최신 원격 상태로 강제 복구하는 사용자용 명령을 추가한다.
-
-권장 이름:
-
-```text
+ProjectHub_Commit_Push.cmd
+ProjectHub_Fetch_Pull.cmd
 ProjectHub_Force_Restore.cmd
 ```
 
-의미:
-
-> GitHub의 최신 Git 상태 + ProjectHub/NAS의 최신 대용량 상태를 정답으로 보고 현재 로컬 프로젝트를 강제로 맞춘다.
-
-권장 흐름:
+나머지 ProjectHub 내부 파일은 모두 프로젝트 내부의 전용 폴더로 이동한다.
 
 ```text
-1. 프로젝트/remote/branch 확인
-2. 강제 복구 경고 및 사용자 승인
-3. git fetch origin
-4. git reset --hard origin/<branch>
-5. git clean -fd
-6. 최신 ProjectHub checkpoint 조회
-7. 관리 대상 대용량 파일을 NAS 기준으로 강제 overwrite/download
-8. REMOVED 파일은 로컬에서도 삭제
-9. Git + Large Data 최종 상태 검증
-10. 결과 표시 + pause
+<ProjectRoot>\
+├─ ProjectHub_Commit_Push.cmd
+├─ ProjectHub_Fetch_Pull.cmd
+├─ ProjectHub_Force_Restore.cmd
+└─ ProjectHub\
+   ├─ bin\
+   │  ├─ ProjectHub_Commit_Push.ps1
+   │  ├─ ProjectHub_Fetch_Pull.ps1
+   │  ├─ ProjectHub_Force_Restore.ps1
+   │  ├─ ProjectHub_Sync.ps1
+   │  ├─ ProjectHub_Restore.ps1
+   │  └─ ProjectHub_LargeData_Uploader.ps1
+   ├─ config\
+   │  └─ project.json
+   ├─ state\
+   └─ log\
 ```
 
-일반 Fetch-Pull과 달리 강제 복구는 의도적으로 다음 보호를 우회한다.
+기존 `.projecthub\`, 루트 `bin\`, `ProjectHub_Sync.cmd`, `ProjectHub_Restore.cmd`를 새 UX의 최종 사용자 진입점으로 남기지 않는다.
+Setup은 관리 프로젝트의 위치를 바꾸거나 별도 경로를 요구하지 않는다. 현재 프로젝트 루트를 그대로 사용한다.
+
+강제 복구는 ProjectHub 자체를 절대 손상시키지 않아야 한다.
 
 ```text
-- dirty working tree 보호
-- 관리 대상 대용량 파일의 로컬 수정 보호
-- LOCAL_ONLY 보호(단, ProjectHub 자체 설정 파일은 예외)
+보호 대상:
+- ProjectHub\ 전체
+- 루트의 위 3개 CMD
 ```
 
-반드시 보호할 항목:
+`git clean -fd`를 그대로 사용하지 말고 위 경로를 명시적으로 exclude한다. 가능하면 임시 백업/복원에 의존하기보다 처음부터 보호한다.
+Force Restore 완료 후에도 위 보호 대상의 존재 및 최소 실행 가능 여부를 검증한다.
+
+## 2. Large Data Restore 불일치/부분 적용 방지
+
+현재 size/SHA-256 검증 방향은 유지한다. 추가로 Restore와 Force Restore를 명확한 2단계 적용으로 만든다.
 
 ```text
-.projecthub/project.json
-필수 ProjectHub launcher/config
-복구 실행에 필요한 최소 로컬 설정
+A. PREPARE
+1. 최신 checkpoint/manifest 확정
+2. 필요한 대용량 파일을 temp에 전부 다운로드
+3. 모든 파일 size + SHA-256 검증
+4. 하나라도 실패하면 실제 프로젝트 파일을 변경하지 않고 실패
+
+B. APPLY
+5. PREPARE가 전부 성공한 경우에만 실제 프로젝트 폴더에 적용
+6. REMOVED 처리 적용
+7. 적용 완료 후 전체 managed large file을 다시 size + SHA-256 검증
+8. missing/mismatch가 1개라도 있으면 성공 처리 금지
 ```
 
-사용자 UX는 다음 세 가지로 단순화한다.
+최종 출력 예:
 
 ```text
-ProjectHub_Commit_Push
-= 현재 작업을 원격에 저장
-
-ProjectHub_Fetch_Pull
-= 정상적으로 최신 상태를 받아옴
-
-ProjectHub_Force_Restore
-= 로컬 상태를 버리고 최신 상태로 강제 복구
+RESTORE_VERIFY
+expected   : N
+matched    : N
+mismatched : 0
+missing    : 0
 ```
 
-강제 복구는 파괴적이므로 실행 전 Windows GUI 또는 명확한 콘솔 확인을 반드시 거친다.
+`ProjectHub_Force_Restore`는 이 최종 검증이 0 mismatch / 0 missing일 때만 성공으로 끝낸다.
+Commit-Push도 대용량 변경 파일 중 하나라도 upload/finalize 검증이 실패하면 해당 상태를 정상 checkpoint로 확정하지 않는다.
+
+## 3. NAS download.php 500 긴급 수정/진단
+
+현재 첨부 및 저장소의 `download.php`는 assertion의 `object_hash`로 canonical object를 직접 찾는다.
+
+```text
+/mnt/HDD1/ProjectHub/objects/sha256/<앞2글자>/<sha256>
+```
+
+현재 관찰된 실패:
+
+```text
+assertion 발급 성공
+download.php 호출
+HTTP 500
+Content-Type: application/octet-stream
+응답 body 0 bytes
+```
+
+현재 코드상 application/octet-stream header는 object 존재/size 검사 이후에 설정된다. 따라서 단순 object_not_found보다는 `readfile()` 단계 또는 NAS 권한/ACL/I/O 문제를 우선 의심한다.
+
+`download.php`를 다음 원칙으로 보강한다.
+
+```text
+1. is_readable($path) 사전 확인
+2. filesize 결과 실패/불일치 명확히 분리
+3. readfile() 반환값 확인
+4. 실패 시 error_log에 operation, object hash, resolved path, size 정도만 기록
+5. secret/JWT/Authorization은 절대 로그 금지
+6. PHP warning이 빈 500으로 끝나지 않게 명확한 오류 코드 또는 서버 로그를 남김
+```
+
+가능하면 진단 오류를 아래처럼 구분한다.
+
+```text
+object_not_found
+object_size_mismatch
+object_not_readable
+object_read_failed
+```
+
+운영 NAS에서 실패 object에 대해 반드시 확인:
+
+```text
+ls -l <canonical object>
+stat <canonical object>
+PHP/web 실행 계정 기준 read 가능 여부
+parent directories execute/read 권한 및 ACL
+```
+
+NAS/DB를 비운 뒤 다시 생성한 환경에서 발생했으므로 새 object/디렉터리의 owner/group/permission이 기존 운영 상태와 달라졌는지도 확인한다.
+
+## 재검증 순서
+
+수정 후에는 아래 순서로 다시 검증한다.
+
+```text
+1. 작은 large-data 파일 Commit-Push
+2. NAS canonical object 실제 존재/size/hash 확인
+3. download.php 단독 download 성공 확인
+4. Fetch-Pull Restore 성공
+5. 로컬 large file을 임의 변경 후 Fetch-Pull → server version으로 복구 확인
+6. local large file 삭제 후 Fetch-Pull → 재다운로드 확인
+7. Force Restore 실행
+8. Git 최신 상태 + Large Data 0 mismatch / 0 missing 확인
+9. ProjectHub\ 및 루트 3개 CMD가 그대로 보호됐는지 확인
+```
+
+이번 수정은 별도 기능 확장보다 위 세 항목의 안정화와 E2E 재검증을 우선한다.
