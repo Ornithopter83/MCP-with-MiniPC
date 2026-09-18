@@ -19,534 +19,196 @@ Updated: 2026-09-18
 최신 확인 커밋:
 
 ```text
-08389d0a55e8a495eb02264fe89a72b80404e6e8
-Standardize Server operation logs with custom console formatting
+5ffd68841206d91cc46f1268e6633e750cf786da
+Support string enum values for large-data operations
 ```
 
-현재 상태:
+최근 완료 상태:
 
 ```text
-06 Large Data/NAS            완료 유지
-07 프로젝트 배포 패키지      마무리 검증 중
-08 Server 설치/이전 가이드   대기
-```
-
-최근 완료:
-
-```text
-- 500MiB 실제 Sync 업로드 성공
-- curl.exe --data-binary 기반 chunk PUT 안정화
-- assertion cache / 401 1회 refresh 유지
-- STAGED / CHECKPOINTED / session COMPLETED 확인
-- REMOVED lifecycle 처리 및 반복 삭제 확인창 문제 수정
-- ProjectHubConsoleFormatter 적용
-- 공통 operation log 형식 적용
+- NAS object deletion + daily full logging 구현
+- delete assertion 운영 E2E 성공
+- 동일 object 재호출 already_deleted=true 확인
+- LargeDataOperation 문자열 enum 호환 수정
 - build/test 통과
 ```
 
-현재 콘솔 형식:
-
-```text
-yyyy-MM-dd HH:mm:ss [LEVEL] [WORKSTATION] [PROJECT] MESSAGE [STATUS]
-```
-
-이 형식은 유지한다.
+현재 07은 마무리 검증 단계다.
 
 ---
 
-# 2. 07 마무리 방향
+# 2. 사용자 실행 CMD 공통 pause
 
-현재 07은 큰 구조를 다시 만들 단계가 아니다.
+더블클릭 실행 시 예외/오류 메시지가 바로 닫히지 않도록
+모든 사용자 실행용 `.cmd` 진입점은 마지막에 `pause`를 둔다.
 
-남은 일은 실제 사용자 흐름을 단순하게 완결하는 것이다.
-
-우선순위:
+대상 최소:
 
 ```text
-1. Sync 승인 삭제가 NAS 실제 데이터 삭제까지 이어지게 한다.
-2. Restore 실제 프로젝트 E2E
-3. LOCAL_ONLY 보호 확인
-4. 뒤처진 workstation의 tombstone 재등록 방지 확인
-5. Server 일자별 Full-log 파일 기록
-6. 최종 build/test/PowerShell parser 검증
+ProjectHub_Setup.cmd
+ProjectHub_Sync.cmd
+ProjectHub_Restore.cmd
+ProjectHub_GC.cmd
+ProjectHub_update.cmd
+ProjectHub_Agent_Test.cmd
 ```
 
-실시간 관리, lease, dashboard, 별도 관리자 purge UI 같은 확장은 이번 단계에 추가하지 않는다.
+권장 형식:
+
+```bat
+@echo off
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "..."
+set EXITCODE=%ERRORLEVEL%
+
+echo.
+echo Exit code: %EXITCODE%
+pause
+exit /b %EXITCODE%
+```
+
+정상/실패 모두 결과를 확인할 수 있어야 한다.
+
+PowerShell 내부에 중복 `Read-Host`를 넣기보다
+사용자 더블클릭 진입점인 CMD에서 일관되게 처리한다.
 
 ---
 
-# 3. 삭제 정책 변경: 별도 Purge를 만들지 않는다
+# 3. ProjectHub_update.cmd 창 가로 크기
 
-이전 정책은:
+현재 `ProjectHub_update.cmd`는:
 
-```text
-사용자 로컬 파일 삭제
-→ Sync
-→ 삭제 승인
-→ DB tombstone / REMOVED
-→ NAS canonical object 유지
+```bat
+@echo off
+title ProjectHub Update & Run
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\AI-Server\ProjectHub\ProjectHub_Update_Run.ps1"
+...
 ```
 
-였다.
-
-현재 사용자 의도는 더 단순하다.
-
-Sync에서 이미 Windows GUI로 삭제 여부를 명시적으로 묻고 있으므로,
-**사용자가 삭제를 승인한 그 동작 자체를 NAS 실제 삭제 승인으로 간주한다.**
-
-새 기본 흐름:
-
-```text
-로컬 대용량 파일 삭제
-→ ProjectHub_Sync 실행
-→ 삭제 확인 GUI
-→ 사용자가 승인
-→ project path를 REMOVED/tombstone 처리
-→ NAS named alias 삭제
-→ 다른 현재 활성 path가 같은 SHA-256 object를 참조하는지 확인
-→ 활성 참조가 0이면 NAS canonical object 삭제
-→ 결과 기록
-```
-
-별도 `ProjectHub_Purge.cmd` 또는 관리자 purge 승인 단계는 만들지 않는다.
-
-현재 단계에서는 지나친 복구/보존 정책보다
-**사용자가 승인한 삭제가 실제 저장공간 삭제까지 자연스럽게 이어지는 것**을 우선한다.
-
----
-
-# 4. 같은 object를 다른 현재 파일이 사용하는 경우
-
-content-addressed object이므로 같은 SHA-256을 여러 path/project가 사용할 수 있다.
-
-따라서 Sync 삭제 승인이 있어도 다음 최소 안전조건은 유지한다.
-
-```text
-현재 활성 project_large_files 참조 > 0
-→ 해당 path의 named alias만 삭제
-→ canonical object 유지
-
-현재 활성 project_large_files 참조 = 0
-→ named alias 삭제
-→ canonical object 삭제
-```
-
-여기서 "활성"은 REMOVED가 아닌 현재 관리 path를 의미한다.
-
-과거 checkpoint의 장기 보존을 이유로 이번 v0.1 삭제를 막지 않는다.
-현재 Restore UX는 historical revision browser가 아니라 최신 ProjectHub 상태를 현재 탐색기에 적용하는 기능이다.
-
-단 DB FK 때문에 `large_objects` row를 바로 삭제할 수 없는 경우
-역사 metadata를 억지로 CASCADE 삭제하지 않는다.
-
-권장 최소 처리:
-
-```text
-NAS physical object 삭제 성공
-→ large_objects row는 FK가 남아 있으면 유지
-→ lifecycle을 MISSING 또는 현재 모델에서 동등한 상태로 갱신
-→ current project path는 REMOVED 유지
-```
-
-향후 historical checkpoint 보존/만료 정책은 별도 확장으로 둔다.
-
----
-
-# 5. NAS Gateway delete 동작
-
-NAS Gateway에 canonical object 삭제용 명시적 endpoint를 추가한다.
-
-예:
-
-```text
-delete-object.php
-```
-
-권한은 upload와 분리해 명확히 한다.
-
-예:
-
-```text
-operation = delete
-```
-
-또는 현재 assertion enum/계약과 자연스럽게 맞는 별도 삭제 operation을 추가한다.
-
-삭제 대상은 Server가 계산하고,
-DEV PC가 NAS filesystem에 직접 접근하지 않는다.
-
-흐름:
-
-```text
-DEV Sync
-→ ProjectHub.Server
-→ 참조 검사
-→ delete assertion
-→ NAS Gateway
-→ named alias 삭제
-→ 필요 시 canonical object 삭제
-→ Server에 결과 반영
-```
-
-TLS 우회나 SMB 직접 삭제는 사용하지 않는다.
-
----
-
-# 6. 삭제 실패 처리
-
-사용자 승인을 받은 뒤 NAS 삭제가 실패할 수 있다.
-
-이 경우 거짓으로 성공 처리하지 않는다.
-
-권장:
-
-```text
-DB path tombstone 성공
-NAS alias/object 삭제 실패
-→ Sync result에 FAILED 또는 PARTIAL 표시
-→ Server log ERROR
-→ 다음 명시적 Sync에서 다시 정리 가능하도록 상태 유지
-```
-
-canonical object 삭제 실패만으로 tombstone을 자동 되돌리지는 않는다.
-
-동작은 idempotent하게 만든다.
-
-이미 alias/object가 없는 상태에서 재호출해도 성공 또는 ALREADY_DELETED로 취급한다.
-
----
-
-# 7. 삭제 관련 로그
-
-현재 공통 console 형식을 그대로 사용한다.
-
-예:
-
-```text
-2026-09-18 11:20:01 [INFO ] [DEV-PC-01 ] [hw      ] REMOVAL_CONFIRMED path=data/A.bin [200]
-2026-09-18 11:20:01 [INFO ] [DEV-PC-01 ] [hw      ] TOMBSTONE_CREATED path=data/A.bin [200]
-2026-09-18 11:20:02 [INFO ] [DEV-PC-01 ] [hw      ] NAS_ALIAS_DELETED path=data/A.bin [200]
-2026-09-18 11:20:02 [INFO ] [DEV-PC-01 ] [hw      ] NAS_OBJECT_DELETED hash=e93ac6ff [200]
-```
-
-같은 object가 다른 현재 path에서 사용 중이면:
-
-```text
-2026-09-18 11:20:02 [INFO ] [DEV-PC-01 ] [hw      ] NAS_OBJECT_RETAINED hash=e93ac6ff active_refs=2 [200]
-```
-
-실패:
-
-```text
-2026-09-18 11:20:02 [ERROR] [DEV-PC-01 ] [hw      ] NAS_OBJECT_DELETE_FAILED hash=e93ac6ff reason=gateway_error [502]
-```
-
----
-
-# 8. 일자별 Server Full-log 파일 추가
-
-콘솔은 지금처럼 사람이 보기 좋은 주요 operation만 간결하게 유지한다.
-
-별도로 Server에는 일자별 Full-log 파일을 남긴다.
-
-고정 경로:
-
-```text
-ProjectHub\src\ProjectHub.Server\log\yyyymmdd.log
-```
-
-실제 구현은 Server content root 기준으로:
-
-```text
-<ContentRoot>\log\yyyyMMdd.log
-```
-
-를 사용한다.
-
-예:
-
-```text
-C:\AI-Server\ProjectHub\src\ProjectHub.Server\log\20260918.log
-```
-
-`log/` 디렉터리가 없으면 자동 생성한다.
-
-로그 파일은 Git 관리 대상이 아니므로 `.gitignore`에 추가한다.
-
----
-
-# 9. Full-log에 기록할 범위
-
-Full-log는 콘솔보다 상세하게 기록한다.
-
-최소 포함:
-
-```text
-- SERVER_STARTED / SERVER_STOPPING
-- CONFIG 상태 요약(비밀값 제외)
-- heartbeat 수신/처리 성공 및 실패
-- project state update
-- assertion 발급/refresh
-- upload session 생성/재사용/완료
-- STAGED / CHECKPOINT
-- Sync removal/tombstone
-- NAS alias/object delete 결과
-- Restore 관련 주요 처리
-- Warning / Error / Exception
-```
-
-특히 **heartbeat도 Full-log에는 포함**한다.
-
-단 heartbeat는 콘솔 Information에는 계속 표시하지 않는다.
-
-예:
-
-```text
-2026-09-18 11:20:00 [INFO ] [DEV-PC-01 ] [-       ] HEARTBEAT_RECEIVED hostname=DEV-PC-01 [200]
-```
-
-Microsoft/ASP.NET Core/Supabase HttpClient의 모든 내부 Information 로그까지 무제한 복제할 필요는 없다.
-
-"Full-log"의 의미는 ProjectHub의 전체 운영 흐름을 재구성할 수 있는 application full log로 잡는다.
-
-framework는 Warning/Error 이상만 파일에 포함하면 충분하다.
-
----
-
-# 10. 로그 파일을 매 이벤트마다 열고 닫지 않는다
-
-매 heartbeat/log event마다:
-
-```text
-File.Open
-→ Write
-→ Close
-```
-
-하는 방식도 현재 부하에서는 동작은 한다.
-
-하지만 권장하지 않는다.
-
-이유:
-
-```text
-- 불필요한 open/close system call 반복
-- heartbeat가 여러 workstation에서 들어오면 파일 경합 증가
-- 향후 로그량 증가 시 확장성이 나쁨
-- 날짜 rollover와 shutdown 처리가 더 복잡해짐
-```
-
-현재 ProjectHub 규모에서는 **하루 동안 StreamWriter/FileStream 하나를 열어 두는 방식**이 가장 단순하고 충분하다.
-
-권장:
-
-```text
-- FileMode.Append
-- FileAccess.Write
-- FileShare.ReadWrite 또는 FileShare.Read
-- StreamWriter 1개 유지
-- lock으로 짧게 동기화
-- AutoFlush=true
-```
-
-heartbeat가 15초마다 발생하는 현재 구조에서는 이 정도로 성능 문제가 없다.
-
-고성능 비동기 queue/Channel 기반 logger는 지금 단계에서는 필요하지 않다.
-나중에 로그량이 크게 늘면 교체할 수 있다.
-
----
-
-# 11. 일자 변경 rollover
-
-현재 writer가 가진 날짜와 현재 날짜를 비교한다.
-
-```text
-현재 날짜 == writer 날짜
-→ 같은 파일에 append
-
-현재 날짜 != writer 날짜
-→ 기존 writer flush/close
-→ log\새날짜.log를 append mode로 open
-```
-
-예:
-
-```text
-2026-09-18 → log\20260918.log
-자정 이후
-2026-09-19 → log\20260919.log
-```
-
-로그 한 건을 쓰기 직전에 날짜를 확인하면 별도 timer는 없어도 된다.
-
----
-
-# 12. Server 중단 / 재시작 파일 처리
+형태이며 창 크기 제어가 없다.
 
 사용자 요구:
 
-```text
-Server 중단 시 개행
-같은 날짜에 재시작하면 기존 파일 뒤에 append
+> ProjectHub_update.cmd 실행 창의 가로 크기를 약 1800px 정도로 넓게 보이게 한다.
+
+Windows CMD/Console의 `mode con`은 픽셀이 아니라 문자 열(cols) 기준이므로
+정확히 1800px을 지정할 수는 없다.
+
+현재 단계에서는 단순하게 약 1800px 체감을 목표로
+`cols=220` 전후를 기본값으로 사용한다.
+
+권장:
+
+```bat
+@echo off
+title ProjectHub Update ^& Run
+mode con: cols=220 lines=50
 ```
 
-구현:
+폰트/DPI에 따라 실제 픽셀 폭은 달라질 수 있다.
 
-Server가 정상 종료될 때:
+중요한 것은 정확한 픽셀 고정보다
+Server operation log가 한 줄에서 잘리지 않고 충분히 보이는 것이다.
 
-```text
-SERVER_STOPPING 로그 기록
-빈 줄 1줄 기록
-Flush
-Dispose
-```
-
-예:
-
-```text
-2026-09-18 12:00:00 [INFO ] [SERVER    ] [-       ] SERVER_STOPPING [OK]
-
-```
-
-같은 날 재시작:
-
-```text
-FileMode.Append
-→ 기존 20260918.log 뒤에서 계속 기록
-```
-
-예:
-
-```text
-2026-09-18 12:00:00 [INFO ] [SERVER    ] [-       ] SERVER_STOPPING [OK]
-
-2026-09-18 12:05:13 [INFO ] [SERVER    ] [-       ] SERVER_STARTED url=http://127.0.0.1:5240 [OK]
-```
-
-필요하면 startup에서도 기존 파일이 비어 있지 않을 때 빈 줄 1개를 보장할 수 있지만,
-정상 shutdown에서 이미 separator를 넣었다면 중복 빈 줄은 만들지 않는다.
-
-강제 종료/crash에서는 shutdown callback이 실행되지 않을 수 있다.
-그 경우 다음 startup은 그냥 append하며,
-`SERVER_STARTED` timestamp 자체가 session 경계를 나타낸다.
+필요하면 실제 Server PC에서 220 columns를 먼저 확인하고
+너무 넓거나 좁으면 200~240 범위에서 한 번만 조정한다.
 
 ---
 
-# 13. Full-log writer 구현 경계
+# 4. ProjectHub_update.cmd 권장 최종 형태
 
-Console formatter와 파일 writer의 책임을 분리한다.
+```bat
+@echo off
+title ProjectHub Update ^& Run
+mode con: cols=220 lines=50
 
-권장 개념:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\AI-Server\ProjectHub\ProjectHub_Update_Run.ps1"
+set EXITCODE=%ERRORLEVEL%
 
-```text
-ProjectHubConsoleFormatter
-→ 현재 콘솔 표시 담당
-
-ProjectHubDailyFileLoggerProvider
-또는 동등한 서비스
-→ 일자별 file append 담당
+echo.
+echo ProjectHub exited with code %EXITCODE%.
+pause
+exit /b %EXITCODE%
 ```
 
-한 operation을 기록하면 console/file 양쪽으로 전달할 수 있게 한다.
+현재처럼 실패일 때만 pause하지 말고
+정상 종료에서도 pause해서 마지막 로그를 확인할 수 있게 한다.
 
-heartbeat처럼 file-only 로그가 필요한 경우:
-
-```text
-console=false
-file=true
-```
-
-또는 logger category/filter로 구분한다.
-
-파일 저장 실패 때문에 Server 전체 요청 처리가 실패하지 않게 한다.
-
-로그 파일 write 실패:
-
-```text
-→ 가능한 경우 Console Warning/Error
-→ 본 요청 자체는 로그 실패만으로 500 처리하지 않음
-```
-
-단 반복 실패가 콘솔을 도배하지 않게 throttle 또는 1회 경고 정도로 제한한다.
+단 Server가 정상적으로 계속 실행 중일 때는
+PowerShell 프로세스가 끝나지 않으므로 pause까지 내려오지 않는다.
+Server 종료/실패 후에만 마지막 상태를 확인하게 된다.
 
 ---
 
-# 14. 보안 / 파일 관리
+# 5. 기존 NAS 삭제 / Full-log 방향 유지
 
-Full-log에도 다음은 기록 금지:
+이미 구현된 다음 방향은 유지한다.
 
 ```text
-- Supabase Service Role Key
-- private key PEM
-- assertion/JWT 원문
-- Authorization header
-- request/response body 전체
+Sync 삭제 승인
+→ REMOVED/tombstone
+→ NAS named alias 삭제
+→ active ref 확인
+→ ref=0이면 canonical object 삭제
+→ 결과 log 기록
 ```
 
-허용:
+별도 Purge UI는 만들지 않는다.
+
+Full-log:
 
 ```text
-- project id
-- workstation id
-- path
-- short SHA/hash/session
-- HTTP status
-- size
-- lifecycle
-- exception message
+ProjectHub\src\ProjectHub.Server\log\yyyyMMdd.log
 ```
 
-초기 v0.1에서는 자동 삭제/압축/retention까지 추가하지 않는다.
-
-일자별 파일 생성만 구현한다.
-
-나중에 필요하면:
+정책도 유지한다.
 
 ```text
-retention days
-zip/archive
-max total size
-```
-
-정책을 별도 확장한다.
-
----
-
-# 15. 완료 기준
-
-## NAS 실제 삭제
-
-```text
-[ ] Sync 삭제 GUI 승인
-[ ] DB tombstone/REMOVED
-[ ] NAS named alias 삭제
-[ ] active current SHA reference count 확인
-[ ] active ref=0이면 canonical object 삭제
-[ ] active ref>0이면 canonical object 유지
-[ ] NAS delete idempotent
-[ ] 삭제 실패 결과가 Sync에 표시
-[ ] Server operation log 출력
-```
-
-## Full-log
-
-```text
-[ ] src/ProjectHub.Server/log 자동 생성
-[ ] yyyyMMdd.log 일자별 생성
-[ ] 동일 날짜 재시작 시 append
-[ ] 정상 종료 시 SERVER_STOPPING + 빈 줄
-[ ] 날짜 변경 시 새 파일 rollover
-[ ] heartbeat 포함
-[ ] Console 주요 로그 필터는 기존대로 유지
-[ ] file writer를 로그마다 open/close하지 않음
-[ ] 파일 write가 요청 처리 실패 원인이 되지 않음
-[ ] secret/token 기록 없음
-[ ] log/ gitignore
+- 같은 날짜 재시작 시 append
+- 정상 종료 시 SERVER_STOPPING + 빈 줄
+- heartbeat 포함
+- Console은 주요 operation만 표시
+- log file writer는 하루 동안 유지
+- secret/token 원문 금지
 ```
 
 ---
 
-# 16. 07 종료 순서
+# 6. 다음 UX 방향: Git + ProjectHub 동작 통합
+
+다음 단계 설계 방향으로만 유지한다.
+아직 기존 Sync/Restore 엔진을 제거하지 않는다.
+
+사용자에게 보이는 이름 후보:
+
+```text
+ProjectHub-Commit-Push
+ProjectHub-Fetch-Pull
+```
+
+의미:
+
+```text
+Commit-Push
+= git add
+→ commit
+→ fetch
+→ 필요 시 rebase/pull
+→ push
+→ ProjectHub large-data Sync/checkpoint
+
+Fetch-Pull
+= local dirty 확인
+→ fetch
+→ pull
+→ ProjectHub large-data Restore
+```
+
+내부 구현은 기존 `ProjectHub_Sync.ps1`,
+`ProjectHub_Restore.ps1`를 재사용하는 wrapper 형태를 우선한다.
+
+---
+
+# 7. 07 남은 확인
 
 ```text
 [x] Setup 실제 프로젝트 E2E
@@ -554,14 +216,20 @@ max total size
 [x] upload transport 안정화
 [x] 반복 삭제 확인창 수정
 [x] 최종 Console formatter
-[ ] Sync 승인 → NAS 실제 삭제 E2E
+[x] NAS delete 구현
+[x] NAS delete 운영 E2E
+[x] daily Full-log 구현
+[ ] 문자열 delete operation 수정본 운영 재확인
+[ ] 모든 사용자 CMD pause 통일
+[ ] ProjectHub_update.cmd 약 1800px 체감 폭 적용
 [ ] Restore 실제 프로젝트 E2E
 [ ] LOCAL_ONLY 보호 확인
 [ ] stale workstation tombstone 보호 확인
-[ ] 일자별 Full-log E2E
+[ ] Full-log 운영 재확인
 [ ] build/test/PowerShell parser 최종 확인
 ```
 
 07 완료 후 08 Server 설치/이전 가이드로 이동한다.
 
-추가 실시간 관리, dashboard, lease, 별도 purge UI, 자동 background upload/reconcile은 v0.1 종료 조건에 넣지 않는다.
+추가 실시간 관리, dashboard, lease, 별도 purge UI,
+자동 background upload/reconcile은 v0.1 종료 조건에 넣지 않는다.
