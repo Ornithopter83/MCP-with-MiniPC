@@ -14,4 +14,6 @@
 
 2026-09-18 삭제 반복 표시 수정: Server enum의 `Removed` 값이 숫자 `7`로 JSON 반환되는 점을 반영하고, checkpoint API의 여러 결과에서 최신 단일 객체·문자열 commit SHA를 선택하도록 `Sync`를 보완했다. 삭제 API가 `forUpload.z01` tombstone 처리를 성공적으로 반환했으며, `hw`에서 후속 Sync 결과가 `0 large files`, `Removed=0`, `Failed=0`으로 확인되어 삭제 확인 창이 재표시되지 않았다.
 
+2026-09-18 최종 operation log 형식: 공통 `WriteOperationLog`와 `ProjectHubConsoleFormatter`를 추가해 `yyyy-MM-dd HH:mm:ss [LEVEL] [WORKSTATION] [PROJECT] MESSAGE [STATUS]` 형식을 강제했다. startup·assertion·session·STAGED·checkpoint·removal·tombstone·project state 로그에 동일한 필드 순서와 상태 코드를 적용했다. 로컬 Server 기동에서 `SERVER_STARTED` 형식과 `/api/status=200`을 확인했다.
+
 정책: 기존 관리 문서와 사용자 파일을 덮어쓰지 않으며 Git 변경과 대용량 업로드는 사용자가 명시적으로 실행할 때만 수행한다.

@@ -73,6 +73,8 @@ dotnet test ProjectHub.sln --no-restore
 
 2026-09-18 삭제 반복 표시 원인 수정: `Removed` enum의 실제 JSON 값 `7`을 인식하도록 `Sync`를 수정하고, checkpoint 응답에서 단일 commit SHA를 명시적으로 선택하도록 보완했다. `hw` 삭제 API가 `forUpload.z01`을 tombstone 처리했고, 최신 `Sync`를 `hw\bin`에 복사해 실행한 결과 `0 large files`, `Removed=0`, `Failed=0`으로 확인했다.
 
+2026-09-18 최신 feedback 구현 완료: `ProjectHubConsoleFormatter`와 공통 operation log helper로 최종 콘솔 형식 `yyyy-MM-dd HH:mm:ss [LEVEL] [WORKSTATION] [PROJECT] MESSAGE [STATUS]`를 적용했다. `dotnet build ProjectHub.sln --no-restore` 및 `dotnet test ProjectHub.sln --no-restore`가 모두 통과했고, 로컬 Server startup의 `SERVER_STARTED`와 `/api/status=200`을 재확인했다.
+
 추가 GC 검증: PowerShell 배열 응답 호환성 문제를 수정한 뒤 완료 session 2개를 개별 인식했고, dry-run은 SAFE 2개(각 524,288,000 bytes), KEEP 0, REVIEW 0으로 정상 집계됐다. `-Apply`는 실행하지 않았다.
 
 GC 적용 검증: 사용자가 승인한 범위에서 두 SAFE session에 `-Apply`를 실행해 Gateway cleanup을 완료했고, 같은 명령을 다시 실행했을 때 두 session 모두 `ALREADY_CLEAN`으로 반환됐다. 테스트 `UPLOADING` session은 GC dry-run에서 `KEEP`으로 보호됐고, fixture 삭제 후 session count 0 및 SAFE/KEEP/REVIEW 0을 확인했다.

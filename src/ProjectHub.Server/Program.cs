@@ -1,14 +1,19 @@
 using ProjectHub.Infrastructure;
 using ProjectHub.Core;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Console;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.AddConsoleFormatter<ProjectHubConsoleFormatter, ConsoleFormatterOptions>();
 builder.Services.AddProjectHubInfrastructure(builder.Configuration);
 var app = builder.Build();
 var operationLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ProjectHub.Server");
-operationLogger.LogInformation("SERVER_STARTED url={Url} supabase=CONFIGURED assertion_key={AssertionKey} gateway={Gateway}",
-    builder.Configuration["Urls"] ?? "configured",
-    string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTHUB_ASSERTION_PRIVATE_KEY_PEM")) ? "UNKNOWN" : "CONFIGURED",
-    string.IsNullOrWhiteSpace(builder.Configuration["LargeData:GatewayUrl"]) ? "NOT_CONFIGURED" : "CONFIGURED");
+void WriteOperationLog(LogLevel level, string workstation, string project, string message, string status) =>
+    operationLogger.Log(level, new EventId(0), null, "[{Workstation}] [{Project}] {Message} [{Status}]", workstation, project, message, status);
+
+WriteOperationLog(LogLevel.Information, "SERVER", "-",
+    $"SERVER_STARTED url={builder.Configuration["Urls"] ?? "configured"} supabase=CONFIGURED assertion_key={(string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTHUB_ASSERTION_PRIVATE_KEY_PEM")) ? "UNKNOWN" : "CONFIGURED")} gateway={(string.IsNullOrWhiteSpace(builder.Configuration["LargeData:GatewayUrl"]) ? "NOT_CONFIGURED" : "CONFIGURED")}", "OK");
 
 app.MapGet("/api/status", () => Results.Ok(new
 {
@@ -36,10 +41,10 @@ app.MapPost("/api/large-data/assertions", async (
         {
             await metadata.UpsertObjectAsync(scope.Object, LargeDataLifecycle.Uploading, cancellationToken);
             await metadata.UpsertUploadSessionAsync(new LargeUploadSession(scope.UploadSessionId, scope.ProjectId, scope.WorkstationId, scope.Object, scope.StorageScope, 16 * 1024 * 1024, LargeDataLifecycle.Uploading), cancellationToken);
-            operationLogger.LogInformation("UPLOAD_SESSION_UPSERTED project={Project} session={Session} size_bytes={SizeBytes}", scope.ProjectId, ShortId(scope.UploadSessionId), scope.Object.SizeBytes);
+            WriteOperationLog(LogLevel.Information, scope.WorkstationId, scope.ProjectId, $"UPLOAD_SESSION_UPSERTED session={ShortId(scope.UploadSessionId)} size_bytes={scope.Object.SizeBytes}", "200");
         }
         var assertion = await issuer.IssueAsync(scope, cancellationToken);
-        operationLogger.LogInformation("ASSERTION_ISSUED project={Project} session={Session} operation={Operation}", scope.ProjectId, ShortId(scope.UploadSessionId), request.Operation);
+        WriteOperationLog(LogLevel.Information, scope.WorkstationId, scope.ProjectId, $"ASSERTION_ISSUED session={ShortId(scope.UploadSessionId)} operation={request.Operation}", "200");
         return Results.Ok(new { assertion, expiresAt = scope.ExpiresAt });
     }
     catch (InvalidOperationException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status503ServiceUnavailable); }
@@ -88,7 +93,7 @@ app.MapPost("/api/large-data/resumable-session/{sessionId}/complete", async (
     CancellationToken cancellationToken) =>
 {
     if (!Guid.TryParse(sessionId, out _)) return Results.BadRequest(new { error = "session_id_must_be_guid" });
-    try { await metadata.MarkUploadSessionCompletedAsync(sessionId, cancellationToken); operationLogger.LogInformation("UPLOAD_SESSION_COMPLETED session={Session}", ShortId(sessionId)); return Results.Ok(new { sessionId, lifecycle = LargeDataLifecycle.Staged }); }
+    try { await metadata.MarkUploadSessionCompletedAsync(sessionId, cancellationToken); WriteOperationLog(LogLevel.Information, "-", "-", $"UPLOAD_SESSION_COMPLETED session={ShortId(sessionId)}", "200"); return Results.Ok(new { sessionId, lifecycle = LargeDataLifecycle.Staged }); }
     catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
 });
 
@@ -146,7 +151,7 @@ app.MapPost("/api/large-data/reconciliation/{projectId}", async (string projectI
 
 app.MapPost("/api/large-data/staged", async (ProjectLargeFile file, ILargeDataMetadataRepository metadata, CancellationToken cancellationToken) =>
 {
-    try { await metadata.MarkStagedAsync(file with { Lifecycle = LargeDataLifecycle.Staged }, cancellationToken); operationLogger.LogInformation("FILE_STAGED project={Project} path={Path}", file.ProjectId, file.RelativePath); return Results.Ok(file with { Lifecycle = LargeDataLifecycle.Staged }); }
+    try { await metadata.MarkStagedAsync(file with { Lifecycle = LargeDataLifecycle.Staged }, cancellationToken); WriteOperationLog(LogLevel.Information, "-", file.ProjectId, $"FILE_STAGED path={file.RelativePath} size={file.Object.SizeBytes}", "200"); return Results.Ok(file with { Lifecycle = LargeDataLifecycle.Staged }); }
     catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
 });
 
@@ -157,7 +162,7 @@ app.MapPost("/api/large-data/checkpoint", async (LargeDataCheckpointRequest requ
     {
         var dataSet = new LargeDataSet(request.ProjectId, request.CommitSha, LargeDataLifecycle.Checkpointed, request.Items.Select(item => item with { Lifecycle = LargeDataLifecycle.Checkpointed, CheckpointCommitSha = request.CommitSha }).ToArray());
         await metadata.CreateDataSetAsync(dataSet, cancellationToken);
-        operationLogger.LogInformation("CHECKPOINT_CREATED project={Project} commit={Commit}", request.ProjectId, ShortId(request.CommitSha));
+        WriteOperationLog(LogLevel.Information, "-", request.ProjectId, $"CHECKPOINT_CREATED commit={ShortId(request.CommitSha)} files={request.Items.Count}", "200");
         return Results.Ok(dataSet);
     }
     catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
@@ -201,8 +206,8 @@ app.MapPost("/api/large-data/removals/{projectId}", async (
                 return Results.Conflict(new { error = "managed_file_not_found", relativePath = file.RelativePath });
             await metadata.MarkProjectFileRemovedAsync(previous with { Lifecycle = LargeDataLifecycle.Removed, CheckpointCommitSha = latest.CommitSha }, cancellationToken);
         }
-        operationLogger.LogInformation("REMOVAL_CONFIRMED project={Project} count={Count} checkpoint={Checkpoint}", projectId, request.Files.Count, ShortId(latest.CommitSha));
-        operationLogger.LogInformation("TOMBSTONE_CREATED project={Project} count={Count}", projectId, request.Files.Count);
+        WriteOperationLog(LogLevel.Information, request.WorkstationId, projectId, $"REMOVAL_CONFIRMED count={request.Files.Count} checkpoint={ShortId(latest.CommitSha)}", "200");
+        WriteOperationLog(LogLevel.Information, request.WorkstationId, projectId, $"TOMBSTONE_CREATED count={request.Files.Count}", "200");
         return Results.Ok(new { projectId, workstationId = request.WorkstationId, removed = request.Files.Select(file => file.RelativePath).ToArray(), tombstoneCheckpoint = latest.CommitSha });
     }
     catch (HttpRequestException exception) { return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway); }
@@ -294,7 +299,7 @@ app.MapPost("/api/projects/{projectId}/state", async (
         await service.UpdateProjectStateAsync(
             new Project(projectId.Trim(), request.DisplayName?.Trim() ?? projectId.Trim(), request.RepositoryUrl),
             state, cancellationToken);
-        operationLogger.LogInformation("PROJECT_STATE_UPDATED project={Project} workstation={Workstation} dirty={Dirty}", projectId, ShortId(request.WorkstationId), request.Dirty);
+        WriteOperationLog(LogLevel.Information, request.WorkstationId, projectId, $"PROJECT_STATE_UPDATED dirty={request.Dirty}", "200");
         return Results.Ok(state);
     }
     catch (InvalidOperationException exception)
@@ -352,6 +357,32 @@ app.Run();
 public partial class Program
 {
     internal static string ShortId(string? value) => string.IsNullOrWhiteSpace(value) ? "-" : value[..Math.Min(8, value.Length)];
+}
+
+public sealed class ProjectHubConsoleFormatter : ConsoleFormatter
+{
+    public ProjectHubConsoleFormatter() : base("projecthub") { }
+
+    public override void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
+    {
+        var level = logEntry.LogLevel switch
+        {
+            LogLevel.Trace => "TRACE",
+            LogLevel.Debug => "DEBUG",
+            LogLevel.Information => "INFO ",
+            LogLevel.Warning => "WARN ",
+            LogLevel.Error => "ERROR",
+            LogLevel.Critical => "CRIT ",
+            _ => "     "
+        };
+        var message = logEntry.Formatter?.Invoke(logEntry.State, logEntry.Exception) ?? string.Empty;
+        textWriter.Write(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        textWriter.Write(" [");
+        textWriter.Write(level);
+        textWriter.Write("] ");
+        textWriter.WriteLine(message);
+        if (logEntry.Exception is not null) textWriter.WriteLine(logEntry.Exception);
+    }
 }
 
 public sealed record HeartbeatRequest(
