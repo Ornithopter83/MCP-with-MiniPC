@@ -14,16 +14,16 @@ Updated: 2026-09-18
 
 ---
 
-# 1. 최신 상태
+# 1. 최신 확인 상태
 
 최신 확인 커밋:
 
 ```text
-36e3cddaa1b71c0c5ee57a9ab9ca9143895efe9b
-Fix repeated deletion prompts in sync
+08389d0a55e8a495eb02264fe89a72b80404e6e8
+Standardize Server operation logs with custom console formatting
 ```
 
-현재 상태 요약:
+현재 상태:
 
 ```text
 06 Large Data/NAS            완료 유지
@@ -31,404 +31,537 @@ Fix repeated deletion prompts in sync
 08 Server 설치/이전 가이드   대기
 ```
 
-최근 완료/확인:
+최근 완료:
 
 ```text
-- 500MiB 실제 대용량 업로드 성공
-- binary chunk PUT은 curl.exe --data-binary 사용
-- assertion cache 유지
-- 401 assertion 1회 refresh 유지
+- 500MiB 실제 Sync 업로드 성공
+- curl.exe --data-binary 기반 chunk PUT 안정화
+- assertion cache / 401 1회 refresh 유지
 - STAGED / CHECKPOINTED / session COMPLETED 확인
-- REMOVED lifecycle 숫자 표현 대응
-- 삭제 tombstone 후 반복 삭제 확인창 문제 수정
-- ProjectHub.Server operation logging 구현
+- REMOVED lifecycle 처리 및 반복 삭제 확인창 문제 수정
+- ProjectHubConsoleFormatter 적용
+- 공통 operation log 형식 적용
+- build/test 통과
 ```
 
-대용량 upload transport 문제는 해결된 것으로 유지한다.
-06을 다시 열어 구조를 재설계하지 않는다.
-
----
-
-# 2. 07 마무리 우선순위
-
-현재 07에서 남은 핵심은 실제 사용자 흐름 검증이다.
-
-```text
-1. Restore 실제 프로젝트 E2E
-2. Sync REMOVED 실제 E2E 재확인
-3. Restore 삭제 승인 E2E
-4. LOCAL_ONLY 보호 확인
-5. 뒤처진 workstation tombstone 재등록 방지 확인
-6. Server operation log 최종 형식 정리
-7. build/test/PowerShell parser 최종 확인
-```
-
-기존 구현을 다시 작성하지 말고 검증과 마무리에 집중한다.
-
----
-
-# 3. Sync / Restore 삭제 정책 유지
-
-현재 구현 방향을 유지한다.
-
-```text
-ADDED
-CHANGED
-UNCHANGED
-REMOVED
-FAILED
-```
-
-삭제 승인:
-
-```text
-[모두(A)] [예(Y)] [아니오(N)] [취소(C)]
-```
-
-정책:
-
-```text
-LOCAL_ONLY → 자동 삭제 금지
-REMOVED != immediate object deletion
-Staging GC != Object purge
-```
-
-project path 삭제/tombstone과 NAS canonical object purge는 계속 분리한다.
-
-뒤처진 workstation의 일반 Sync가 tombstone 파일을 자동 재등록하지 못하게 하는 기존 정책을 유지한다.
-
----
-
-# 4. Server logging 현재 상태
-
-현재 구현은 방향이 맞다.
-
-```text
-ProjectHub.Server category → Information
-Microsoft / ASP.NET Core → Warning
-System.Net.Http.HttpClient → Warning
-Console → SingleLine
-```
-
-주요 operation만 Information으로 남기는 현재 구조를 유지한다.
-
-현재 사용 중인 대표 operation:
-
-```text
-SERVER_STARTED
-PROJECT_STATE_UPDATED
-ASSERTION_ISSUED
-UPLOAD_SESSION_COMPLETED
-FILE_STAGED
-CHECKPOINT_CREATED
-REMOVAL_CONFIRMED
-TOMBSTONE_CREATED
-```
-
-heartbeat 성공, ASP.NET routing, Supabase HttpClient start/end, chunk별 Server 로그는 Information에서 계속 제외한다.
-
----
-
-# 5. 최종 콘솔 로그 형식
-
-사용자가 원하는 최종 표시 순서는 다음으로 고정한다.
-
-```text
-일자 시간 중요도 워크스테이션 프로젝트 내용 응답코드
-```
-
-표준 출력 형식:
+현재 콘솔 형식:
 
 ```text
 yyyy-MM-dd HH:mm:ss [LEVEL] [WORKSTATION] [PROJECT] MESSAGE [STATUS]
 ```
 
-예:
-
-```text
-2026-09-18 10:25:11 [INFO ] [DEV-PC-01 ] [hw      ] FILE_STAGED path=forUpload.z01 size=500MiB [200]
-2026-09-18 10:25:12 [INFO ] [DEV-PC-01 ] [hw      ] CHECKPOINT_CREATED commit=be3cff2 files=1 [200]
-2026-09-18 10:31:04 [INFO ] [DEV-PC-01 ] [hw      ] REMOVAL_CONFIRMED path=forUpload.z01 [200]
-2026-09-18 10:31:04 [INFO ] [DEV-PC-01 ] [hw      ] TOMBSTONE_CREATED path=forUpload.z01 [200]
-2026-09-18 10:34:19 [WARN ] [DEV-PC-02 ] [hw      ] STALE_CHECKPOINT local=81bc712 latest=be3cff2 [409]
-2026-09-18 10:36:07 [ERROR] [DEV-PC-01 ] [hw      ] CHECKPOINT_CREATE_FAILED Supabase request failed [502]
-```
-
-Server 자체 이벤트는:
-
-```text
-2026-09-18 10:20:59 [INFO ] [SERVER    ] [-       ] SERVER_STARTED url=http://127.0.0.1:5240 [OK]
-2026-09-18 10:20:59 [INFO ] [SERVER    ] [-       ] CONFIG supabase=OK assertion_key=OK gateway=OK [OK]
-```
+이 형식은 유지한다.
 
 ---
 
-# 6. 구현 방식
+# 2. 07 마무리 방향
 
-현재처럼 endpoint마다 문자열을 직접 제각각 작성하지 말고
-**공통 operation log helper 또는 custom console formatter**로 최종 형식을 강제한다.
+현재 07은 큰 구조를 다시 만들 단계가 아니다.
 
-권장 입력 필드:
+남은 일은 실제 사용자 흐름을 단순하게 완결하는 것이다.
 
-```text
-Level
-Workstation
-Project
-Operation
-Detail
-StatusCode
-```
-
-예시 개념:
+우선순위:
 
 ```text
-WriteOperationLog(
-  level: Information,
-  workstation: "DEV-PC-01",
-  project: "hw",
-  operation: "FILE_STAGED",
-  detail: "path=forUpload.z01 size=500MiB",
-  statusCode: 200)
+1. Sync 승인 삭제가 NAS 실제 데이터 삭제까지 이어지게 한다.
+2. Restore 실제 프로젝트 E2E
+3. LOCAL_ONLY 보호 확인
+4. 뒤처진 workstation의 tombstone 재등록 방지 확인
+5. Server 일자별 Full-log 파일 기록
+6. 최종 build/test/PowerShell parser 검증
 ```
 
-출력:
-
-```text
-2026-09-18 10:25:11 [INFO ] [DEV-PC-01 ] [hw      ] FILE_STAGED path=forUpload.z01 size=500MiB [200]
-```
-
-목표는 endpoint마다 필드 순서나 표기가 달라지지 않게 하는 것이다.
+실시간 관리, lease, dashboard, 별도 관리자 purge UI 같은 확장은 이번 단계에 추가하지 않는다.
 
 ---
 
-# 7. 필드 규칙
+# 3. 삭제 정책 변경: 별도 Purge를 만들지 않는다
 
-## DateTime
-
-```text
-yyyy-MM-dd HH:mm:ss
-```
-
-로컬 Server 시간 기준으로 표시한다.
-
-## Level
-
-폭을 고정한다.
+이전 정책은:
 
 ```text
-[INFO ]
-[WARN ]
-[ERROR]
+사용자 로컬 파일 삭제
+→ Sync
+→ 삭제 승인
+→ DB tombstone / REMOVED
+→ NAS canonical object 유지
 ```
 
-Debug는 기본 콘솔에 출력하지 않는다.
+였다.
 
-## Workstation
+현재 사용자 의도는 더 단순하다.
 
-가능하면 실제 workstation ID/display name을 사용한다.
+Sync에서 이미 Windows GUI로 삭제 여부를 명시적으로 묻고 있으므로,
+**사용자가 삭제를 승인한 그 동작 자체를 NAS 실제 삭제 승인으로 간주한다.**
 
-없으면:
+새 기본 흐름:
 
 ```text
-[SERVER]
-[-]
+로컬 대용량 파일 삭제
+→ ProjectHub_Sync 실행
+→ 삭제 확인 GUI
+→ 사용자가 승인
+→ project path를 REMOVED/tombstone 처리
+→ NAS named alias 삭제
+→ 다른 현재 활성 path가 같은 SHA-256 object를 참조하는지 확인
+→ 활성 참조가 0이면 NAS canonical object 삭제
+→ 결과 기록
 ```
 
-중 하나를 문맥에 맞게 사용한다.
+별도 `ProjectHub_Purge.cmd` 또는 관리자 purge 승인 단계는 만들지 않는다.
 
-## Project
-
-project가 없는 server-global event는:
-
-```text
-[-]
-```
-
-로 표시한다.
-
-## Message
-
-```text
-OPERATION detail=value detail=value
-```
-
-형식으로 짧게 유지한다.
-
-SHA/session ID는 화면에서는 앞 8자 정도만 표시 가능하다.
-단 structured property에는 전체 값을 유지해도 된다.
-
-## Status
-
-HTTP endpoint 결과는:
-
-```text
-[200]
-[400]
-[401]
-[409]
-[500]
-[502]
-[503]
-```
-
-처럼 맨 끝에 둔다.
-
-HTTP 응답 코드가 없는 내부 startup/config event는:
-
-```text
-[OK]
-```
-
-또는 동등한 고정 표현을 사용한다.
+현재 단계에서는 지나친 복구/보존 정책보다
+**사용자가 승인한 삭제가 실제 저장공간 삭제까지 자연스럽게 이어지는 것**을 우선한다.
 
 ---
 
-# 8. workstation 정보 보완
+# 4. 같은 object를 다른 현재 파일이 사용하는 경우
 
-현재 일부 operation은 project만 있고 workstation 정보가 로그에 빠질 수 있다.
+content-addressed object이므로 같은 SHA-256을 여러 path/project가 사용할 수 있다.
 
-가능한 경우 다음에서 보완한다.
+따라서 Sync 삭제 승인이 있어도 다음 최소 안전조건은 유지한다.
 
 ```text
-- request.WorkstationId
-- upload session metadata
-- project/workstation state
+현재 활성 project_large_files 참조 > 0
+→ 해당 path의 named alias만 삭제
+→ canonical object 유지
+
+현재 활성 project_large_files 참조 = 0
+→ named alias 삭제
+→ canonical object 삭제
 ```
+
+여기서 "활성"은 REMOVED가 아닌 현재 관리 path를 의미한다.
+
+과거 checkpoint의 장기 보존을 이유로 이번 v0.1 삭제를 막지 않는다.
+현재 Restore UX는 historical revision browser가 아니라 최신 ProjectHub 상태를 현재 탐색기에 적용하는 기능이다.
+
+단 DB FK 때문에 `large_objects` row를 바로 삭제할 수 없는 경우
+역사 metadata를 억지로 CASCADE 삭제하지 않는다.
+
+권장 최소 처리:
+
+```text
+NAS physical object 삭제 성공
+→ large_objects row는 FK가 남아 있으면 유지
+→ lifecycle을 MISSING 또는 현재 모델에서 동등한 상태로 갱신
+→ current project path는 REMOVED 유지
+```
+
+향후 historical checkpoint 보존/만료 정책은 별도 확장으로 둔다.
+
+---
+
+# 5. NAS Gateway delete 동작
+
+NAS Gateway에 canonical object 삭제용 명시적 endpoint를 추가한다.
 
 예:
 
 ```text
-REMOVAL_CONFIRMED
-→ request.WorkstationId 사용
-
-ASSERTION_ISSUED
-→ request.WorkstationId 사용
-
-UPLOAD_SESSION_COMPLETED
-→ session metadata에서 workstation 확인
+delete-object.php
 ```
 
-반대로 `FILE_STAGED`, `CHECKPOINT_CREATED`처럼 현재 endpoint payload만으로 workstation을 신뢰성 있게 알 수 없으면 억지로 추정하지 않는다.
+권한은 upload와 분리해 명확히 한다.
 
-그 경우:
+예:
 
 ```text
-[-]
+operation = delete
+```
+
+또는 현재 assertion enum/계약과 자연스럽게 맞는 별도 삭제 operation을 추가한다.
+
+삭제 대상은 Server가 계산하고,
+DEV PC가 NAS filesystem에 직접 접근하지 않는다.
+
+흐름:
+
+```text
+DEV Sync
+→ ProjectHub.Server
+→ 참조 검사
+→ delete assertion
+→ NAS Gateway
+→ named alias 삭제
+→ 필요 시 canonical object 삭제
+→ Server에 결과 반영
+```
+
+TLS 우회나 SMB 직접 삭제는 사용하지 않는다.
+
+---
+
+# 6. 삭제 실패 처리
+
+사용자 승인을 받은 뒤 NAS 삭제가 실패할 수 있다.
+
+이 경우 거짓으로 성공 처리하지 않는다.
+
+권장:
+
+```text
+DB path tombstone 성공
+NAS alias/object 삭제 실패
+→ Sync result에 FAILED 또는 PARTIAL 표시
+→ Server log ERROR
+→ 다음 명시적 Sync에서 다시 정리 가능하도록 상태 유지
+```
+
+canonical object 삭제 실패만으로 tombstone을 자동 되돌리지는 않는다.
+
+동작은 idempotent하게 만든다.
+
+이미 alias/object가 없는 상태에서 재호출해도 성공 또는 ALREADY_DELETED로 취급한다.
+
+---
+
+# 7. 삭제 관련 로그
+
+현재 공통 console 형식을 그대로 사용한다.
+
+예:
+
+```text
+2026-09-18 11:20:01 [INFO ] [DEV-PC-01 ] [hw      ] REMOVAL_CONFIRMED path=data/A.bin [200]
+2026-09-18 11:20:01 [INFO ] [DEV-PC-01 ] [hw      ] TOMBSTONE_CREATED path=data/A.bin [200]
+2026-09-18 11:20:02 [INFO ] [DEV-PC-01 ] [hw      ] NAS_ALIAS_DELETED path=data/A.bin [200]
+2026-09-18 11:20:02 [INFO ] [DEV-PC-01 ] [hw      ] NAS_OBJECT_DELETED hash=e93ac6ff [200]
+```
+
+같은 object가 다른 현재 path에서 사용 중이면:
+
+```text
+2026-09-18 11:20:02 [INFO ] [DEV-PC-01 ] [hw      ] NAS_OBJECT_RETAINED hash=e93ac6ff active_refs=2 [200]
+```
+
+실패:
+
+```text
+2026-09-18 11:20:02 [ERROR] [DEV-PC-01 ] [hw      ] NAS_OBJECT_DELETE_FAILED hash=e93ac6ff reason=gateway_error [502]
+```
+
+---
+
+# 8. 일자별 Server Full-log 파일 추가
+
+콘솔은 지금처럼 사람이 보기 좋은 주요 operation만 간결하게 유지한다.
+
+별도로 Server에는 일자별 Full-log 파일을 남긴다.
+
+고정 경로:
+
+```text
+ProjectHub\src\ProjectHub.Server\log\yyyymmdd.log
+```
+
+실제 구현은 Server content root 기준으로:
+
+```text
+<ContentRoot>\log\yyyyMMdd.log
 ```
 
 를 사용한다.
 
-틀린 workstation을 찍는 것보다 비워 두는 것이 낫다.
+예:
+
+```text
+C:\AI-Server\ProjectHub\src\ProjectHub.Server\log\20260918.log
+```
+
+`log/` 디렉터리가 없으면 자동 생성한다.
+
+로그 파일은 Git 관리 대상이 아니므로 `.gitignore`에 추가한다.
 
 ---
 
-# 9. Warning / Error 표준
+# 9. Full-log에 기록할 범위
 
-Warning 예:
+Full-log는 콘솔보다 상세하게 기록한다.
 
-```text
-STALE_CHECKPOINT
-ASSERTION_REFRESH
-RETRY
-CHECKPOINT_SKIPPED
-GATEWAY_RECOVERABLE_ERROR
-```
-
-Error 예:
+최소 포함:
 
 ```text
-SUPABASE_WRITE_FAILED
-ASSERTION_ISSUE_FAILED
-UPLOAD_SESSION_UPDATE_FAILED
-CHECKPOINT_CREATE_FAILED
-TOMBSTONE_CREATE_FAILED
+- SERVER_STARTED / SERVER_STOPPING
+- CONFIG 상태 요약(비밀값 제외)
+- heartbeat 수신/처리 성공 및 실패
+- project state update
+- assertion 발급/refresh
+- upload session 생성/재사용/완료
+- STAGED / CHECKPOINT
+- Sync removal/tombstone
+- NAS alias/object delete 결과
+- Restore 관련 주요 처리
+- Warning / Error / Exception
 ```
 
-오류 로그에는 가능한 경우:
+특히 **heartbeat도 Full-log에는 포함**한다.
+
+단 heartbeat는 콘솔 Information에는 계속 표시하지 않는다.
+
+예:
 
 ```text
-workstation
-project
-session
-relative_path
-status
-exception message
+2026-09-18 11:20:00 [INFO ] [DEV-PC-01 ] [-       ] HEARTBEAT_RECEIVED hostname=DEV-PC-01 [200]
 ```
 
-를 남긴다.
+Microsoft/ASP.NET Core/Supabase HttpClient의 모든 내부 Information 로그까지 무제한 복제할 필요는 없다.
 
-비밀값, Service Role Key, private key, assertion token 원문은 절대 출력하지 않는다.
+"Full-log"의 의미는 ProjectHub의 전체 운영 흐름을 재구성할 수 있는 application full log로 잡는다.
+
+framework는 Warning/Error 이상만 파일에 포함하면 충분하다.
 
 ---
 
-# 10. Information에서 제외
+# 10. 로그 파일을 매 이벤트마다 열고 닫지 않는다
 
-계속 제외:
+매 heartbeat/log event마다:
 
 ```text
-- heartbeat 성공 반복
-- 모든 ASP.NET routing/endpoint 시작/종료
-- 모든 Supabase HTTP request start/end
-- chunk 하나마다 Server Information
+File.Open
+→ Write
+→ Close
+```
+
+하는 방식도 현재 부하에서는 동작은 한다.
+
+하지만 권장하지 않는다.
+
+이유:
+
+```text
+- 불필요한 open/close system call 반복
+- heartbeat가 여러 workstation에서 들어오면 파일 경합 증가
+- 향후 로그량 증가 시 확장성이 나쁨
+- 날짜 rollover와 shutdown 처리가 더 복잡해짐
+```
+
+현재 ProjectHub 규모에서는 **하루 동안 StreamWriter/FileStream 하나를 열어 두는 방식**이 가장 단순하고 충분하다.
+
+권장:
+
+```text
+- FileMode.Append
+- FileAccess.Write
+- FileShare.ReadWrite 또는 FileShare.Read
+- StreamWriter 1개 유지
+- lock으로 짧게 동기화
+- AutoFlush=true
+```
+
+heartbeat가 15초마다 발생하는 현재 구조에서는 이 정도로 성능 문제가 없다.
+
+고성능 비동기 queue/Channel 기반 logger는 지금 단계에서는 필요하지 않다.
+나중에 로그량이 크게 늘면 교체할 수 있다.
+
+---
+
+# 11. 일자 변경 rollover
+
+현재 writer가 가진 날짜와 현재 날짜를 비교한다.
+
+```text
+현재 날짜 == writer 날짜
+→ 같은 파일에 append
+
+현재 날짜 != writer 날짜
+→ 기존 writer flush/close
+→ log\새날짜.log를 append mode로 open
+```
+
+예:
+
+```text
+2026-09-18 → log\20260918.log
+자정 이후
+2026-09-19 → log\20260919.log
+```
+
+로그 한 건을 쓰기 직전에 날짜를 확인하면 별도 timer는 없어도 된다.
+
+---
+
+# 12. Server 중단 / 재시작 파일 처리
+
+사용자 요구:
+
+```text
+Server 중단 시 개행
+같은 날짜에 재시작하면 기존 파일 뒤에 append
+```
+
+구현:
+
+Server가 정상 종료될 때:
+
+```text
+SERVER_STOPPING 로그 기록
+빈 줄 1줄 기록
+Flush
+Dispose
+```
+
+예:
+
+```text
+2026-09-18 12:00:00 [INFO ] [SERVER    ] [-       ] SERVER_STOPPING [OK]
+
+```
+
+같은 날 재시작:
+
+```text
+FileMode.Append
+→ 기존 20260918.log 뒤에서 계속 기록
+```
+
+예:
+
+```text
+2026-09-18 12:00:00 [INFO ] [SERVER    ] [-       ] SERVER_STOPPING [OK]
+
+2026-09-18 12:05:13 [INFO ] [SERVER    ] [-       ] SERVER_STARTED url=http://127.0.0.1:5240 [OK]
+```
+
+필요하면 startup에서도 기존 파일이 비어 있지 않을 때 빈 줄 1개를 보장할 수 있지만,
+정상 shutdown에서 이미 separator를 넣었다면 중복 빈 줄은 만들지 않는다.
+
+강제 종료/crash에서는 shutdown callback이 실행되지 않을 수 있다.
+그 경우 다음 startup은 그냥 append하며,
+`SERVER_STARTED` timestamp 자체가 session 경계를 나타낸다.
+
+---
+
+# 13. Full-log writer 구현 경계
+
+Console formatter와 파일 writer의 책임을 분리한다.
+
+권장 개념:
+
+```text
+ProjectHubConsoleFormatter
+→ 현재 콘솔 표시 담당
+
+ProjectHubDailyFileLoggerProvider
+또는 동등한 서비스
+→ 일자별 file append 담당
+```
+
+한 operation을 기록하면 console/file 양쪽으로 전달할 수 있게 한다.
+
+heartbeat처럼 file-only 로그가 필요한 경우:
+
+```text
+console=false
+file=true
+```
+
+또는 logger category/filter로 구분한다.
+
+파일 저장 실패 때문에 Server 전체 요청 처리가 실패하지 않게 한다.
+
+로그 파일 write 실패:
+
+```text
+→ 가능한 경우 Console Warning/Error
+→ 본 요청 자체는 로그 실패만으로 500 처리하지 않음
+```
+
+단 반복 실패가 콘솔을 도배하지 않게 throttle 또는 1회 경고 정도로 제한한다.
+
+---
+
+# 14. 보안 / 파일 관리
+
+Full-log에도 다음은 기록 금지:
+
+```text
+- Supabase Service Role Key
+- private key PEM
+- assertion/JWT 원문
+- Authorization header
 - request/response body 전체
-- assertion/token 원문
 ```
 
-대용량 전송 progress는 uploader가 담당한다.
-
-Server log는 control-plane의 주요 상태 전환만 보여준다.
-
----
-
-# 11. logging 완료 기준
+허용:
 
 ```text
-[ ] yyyy-MM-dd HH:mm:ss 표시
-[ ] Level 폭 고정
-[ ] Workstation 위치 고정
-[ ] Project 위치 고정
-[ ] Message/operation 위치 고정
-[ ] Response/Status 맨 끝
-[ ] ProjectHub 주요 operation만 Information
-[ ] framework/HttpClient noise 없음
-[ ] heartbeat 성공 반복 없음
-[ ] chunk별 Server 로그 없음
-[ ] secret/token 원문 없음
-[ ] 실제 hw Sync/삭제/Restore 실행 시 콘솔만 보고 주요 흐름 파악 가능
+- project id
+- workstation id
+- path
+- short SHA/hash/session
+- HTTP status
+- size
+- lifecycle
+- exception message
 ```
 
-최종 목표:
+초기 v0.1에서는 자동 삭제/압축/retention까지 추가하지 않는다.
 
-> 콘솔 한 줄만 봐도 언제, 어떤 중요도로, 어느 workstation이, 어느 project에서, 무슨 작업을 했고, 결과가 무엇이었는지 알 수 있어야 한다.
+일자별 파일 생성만 구현한다.
+
+나중에 필요하면:
+
+```text
+retention days
+zip/archive
+max total size
+```
+
+정책을 별도 확장한다.
 
 ---
 
-# 12. 07 완료 기준
+# 15. 완료 기준
+
+## NAS 실제 삭제
+
+```text
+[ ] Sync 삭제 GUI 승인
+[ ] DB tombstone/REMOVED
+[ ] NAS named alias 삭제
+[ ] active current SHA reference count 확인
+[ ] active ref=0이면 canonical object 삭제
+[ ] active ref>0이면 canonical object 유지
+[ ] NAS delete idempotent
+[ ] 삭제 실패 결과가 Sync에 표시
+[ ] Server operation log 출력
+```
+
+## Full-log
+
+```text
+[ ] src/ProjectHub.Server/log 자동 생성
+[ ] yyyyMMdd.log 일자별 생성
+[ ] 동일 날짜 재시작 시 append
+[ ] 정상 종료 시 SERVER_STOPPING + 빈 줄
+[ ] 날짜 변경 시 새 파일 rollover
+[ ] heartbeat 포함
+[ ] Console 주요 로그 필터는 기존대로 유지
+[ ] file writer를 로그마다 open/close하지 않음
+[ ] 파일 write가 요청 처리 실패 원인이 되지 않음
+[ ] secret/token 기록 없음
+[ ] log/ gitignore
+```
+
+---
+
+# 16. 07 종료 순서
 
 ```text
 [x] Setup 실제 프로젝트 E2E
 [x] Sync 500MiB 실제 업로드 E2E
-[x] 대용량 transport 회귀 수정
-[x] tombstone 후 반복 삭제 확인창 수정
-[x] operation logging 1차 구현
+[x] upload transport 안정화
+[x] 반복 삭제 확인창 수정
+[x] 최종 Console formatter
+[ ] Sync 승인 → NAS 실제 삭제 E2E
 [ ] Restore 실제 프로젝트 E2E
-[ ] Restore 삭제 승인 E2E
-[ ] LOCAL_ONLY 보호 실제 확인
-[ ] 뒤처진 workstation tombstone 재등록 방지 확인
-[ ] 최종 logging format 적용
-[ ] build/test/PowerShell parser 최종 검증
+[ ] LOCAL_ONLY 보호 확인
+[ ] stale workstation tombstone 보호 확인
+[ ] 일자별 Full-log E2E
+[ ] build/test/PowerShell parser 최종 확인
 ```
 
----
+07 완료 후 08 Server 설치/이전 가이드로 이동한다.
 
-# 13. 이후 종료 순서
-
-```text
-06 Large Data/NAS            완료
-07 프로젝트 배포 패키지      진행
-08 Server 설치/이전 가이드   대기
-
-08 완료 후 ProjectHub v0.1 종료
-```
-
-실시간 관리, lease, dashboard, 자동 Git 변경, background upload/reconcile 확대는 종료 조건에 포함하지 않는다.
+추가 실시간 관리, dashboard, lease, 별도 purge UI, 자동 background upload/reconcile은 v0.1 종료 조건에 넣지 않는다.
