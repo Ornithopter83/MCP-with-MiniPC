@@ -5,153 +5,400 @@ Updated: 2026-09-18
 ## 최신 확인
 
 ```text
-18aacb6fee012af27dcfb0c00926878804ad2618
-Document hw force restore validation results
+9f05190dedaee23f13808d04e2bd995eca68ac59
+Add ProjectHub conversation handoff
 ```
 
-현재 방향은 유지하되, 재검증 전에 아래 3가지를 함께 반영한다.
+현재 07 배포 패키지 작업과 기존 ProjectHub 정책은 그대로 유지한다. 아래 내용은 **GPTWeb-Hub 브라우저 확장과 Local Worker 연동을 위한 신규 작업지시**다. 기존 Force Restore / Large Data 안정화 항목을 다시 되돌리지 말고, 확장 기능은 ProjectHub 핵심 로직과 분리된 어댑터 계층으로 구현한다.
 
-## 1. 관리 프로젝트 UX 구조 정리
+# GPTWeb-Hub 목표
 
-사용자가 관리 프로젝트 루트에서 보게 될 ProjectHub 진입점은 아래 3개만 둔다.
+GPTWeb-Hub는 ChatGPT Web을 ProjectHub Worker와 연결하는 최소 브리지다.
+
+확장 프로그램 자체가 작업 이력, 로그, Git 상태, 재시도 정책의 원본이 되어서는 안 된다.
 
 ```text
-ProjectHub_Commit_Push.cmd
-ProjectHub_Fetch_Pull.cmd
-ProjectHub_Force_Restore.cmd
+ProjectHub Worker
+    ↕
+GPTWeb-Hub Extension
+    ↕
+ChatGPT Web conversation
 ```
 
-나머지 ProjectHub 내부 파일은 모두 프로젝트 내부의 전용 폴더로 이동한다.
+책임 분리:
 
 ```text
-<ProjectRoot>\
-├─ ProjectHub_Commit_Push.cmd
-├─ ProjectHub_Fetch_Pull.cmd
-├─ ProjectHub_Force_Restore.cmd
-└─ ProjectHub\
-   ├─ bin\
-   │  ├─ ProjectHub_Commit_Push.ps1
-   │  ├─ ProjectHub_Fetch_Pull.ps1
-   │  ├─ ProjectHub_Force_Restore.ps1
-   │  ├─ ProjectHub_Sync.ps1
-   │  ├─ ProjectHub_Restore.ps1
-   │  └─ ProjectHub_LargeData_Uploader.ps1
-   ├─ config\
-   │  └─ project.json
-   ├─ state\
-   └─ log\
+Worker
+- 작업 큐와 상태의 원본
+- Codex CLI 실행/결과 수집
+- Git commit/push
+- project/conversation binding 영구 저장
+- exclusive lock / lease
+- 재시작 복구
+- 로그/이력
+
+Extension
+- Worker 연결
+- 현재 ChatGPT conversation 식별
+- binding 조회/초기 연결 UI
+- Worker가 지정한 Web 작업만 입력
+- ChatGPT 응답 생성 종료 감지
+- 최종 응답 수집 후 Worker 반환
+- Worker가 제공한 상태를 UI에 표시
 ```
 
-기존 `.projecthub\`, 루트 `bin\`, `ProjectHub_Sync.cmd`, `ProjectHub_Restore.cmd`를 새 UX의 최종 사용자 진입점으로 남기지 않는다.
-Setup은 관리 프로젝트의 위치를 바꾸거나 별도 경로를 요구하지 않는다. 현재 프로젝트 루트를 그대로 사용한다.
+확장 프로그램은 임의 판단으로 다른 작업을 시작하지 않는다.
 
-강제 복구는 ProjectHub 자체를 절대 손상시키지 않아야 한다.
+# 1. 최종 UI
+
+ChatGPT 페이지 우측 빈 공간에 **폭이 작은 고정형 패널**로 배치한다. 별도 로그 뷰, 상세 콘솔, 복잡한 버튼은 두지 않는다.
+
+권장 형태:
 
 ```text
-보호 대상:
-- ProjectHub\ 전체
-- 루트의 위 3개 CMD
+┌─────────────────────────────────┐
+│ GPTWeb-Hub                      │
+│                                 │
+│ Project  MCP-with-MiniPC ● READY│
+│ Worker   ProjectHub       ● READY│
+│ Web      Connected        ● READY│
+│ System   정상                     │
+├─────────────────────────────────┤
+│ CURRENT REQUEST                 │
+│                                 │
+│ ● WORKER → GPT WEB              │
+│ Force Restore 결과 검토 요청     │
+│                                 │
+│ ChatGPT 응답 생성 중             │
+└─────────────────────────────────┘
 ```
 
-`git clean -fd`를 그대로 사용하지 말고 위 경로를 명시적으로 exclude한다. 가능하면 임시 백업/복원에 의존하기보다 처음부터 보호한다.
-Force Restore 완료 후에도 위 보호 대상의 존재 및 최소 실행 가능 여부를 검증한다.
+UI 원칙:
 
-## 2. Large Data Restore 불일치/부분 적용 방지
+- 두께감 있는 외곽 테두리를 사용한다.
+- 전체 패널은 간결하게 유지한다.
+- 상단을 Header로 사용한다.
+- Header에는 Project / Worker / Web 상태를 최대한 위쪽에 몰아서 표시한다.
+- 각 상태는 텍스트와 작은 status dot을 함께 사용한다.
+- System message는 별도 카드/영역을 만들지 않는다.
+- Header 하단에 한 줄만 사용한다.
+- 정상 시 짧게 `정상` 또는 빈 값으로 표현한다.
+- 경고/오류가 있으면 그 한 줄에 원인만 표시한다.
+- 로그는 Extension에 표시하지 않는다. 로그는 Worker 책임이다.
+- CURRENT REQUEST는 Header 바로 아래에 붙인다.
+- Request 상세 메타데이터를 여러 줄로 늘어놓지 않는다.
+- 나머지 공간은 현재 흐름/진행 상태를 짧게 보여주는 데 사용한다.
+- 초기 버전에는 수동 제어 버튼을 최소화하거나 두지 않는다.
 
-현재 size/SHA-256 검증 방향은 유지한다. 추가로 Restore와 Force Restore를 명확한 2단계 적용으로 만든다.
+# 2. Header 상태 의미
+
+Header의 3개 READY는 서로 독립된 조건이다.
+
+## Project
+
+현재 ChatGPT conversation에 ProjectHub project binding이 존재하고 Worker가 해당 project를 정상 인식하면 READY.
+
+## Worker
+
+Extension이 Local Worker와 통신 가능하고 인증/세션이 유효하면 READY.
+
+## Web
+
+현재 페이지가 유효한 ChatGPT conversation이며 저장된 binding과 일치하고, 자동 입출력을 수행할 수 있는 상태이면 READY.
+
+전체 작업 가능 상태는 아래 조건이 모두 만족되어야 한다.
 
 ```text
-A. PREPARE
-1. 최신 checkpoint/manifest 확정
-2. 필요한 대용량 파일을 temp에 전부 다운로드
-3. 모든 파일 size + SHA-256 검증
-4. 하나라도 실패하면 실제 프로젝트 파일을 변경하지 않고 실패
-
-B. APPLY
-5. PREPARE가 전부 성공한 경우에만 실제 프로젝트 폴더에 적용
-6. REMOVED 처리 적용
-7. 적용 완료 후 전체 managed large file을 다시 size + SHA-256 검증
-8. missing/mismatch가 1개라도 있으면 성공 처리 금지
+Project READY
+AND Worker READY
+AND Web READY
+AND exclusive task conflict 없음
+= 작업 가능
 ```
 
-최종 출력 예:
+하나라도 실패하면 자동 입력을 시작하지 않는다.
+
+예:
 
 ```text
-RESTORE_VERIFY
-expected   : N
-matched    : N
-mismatched : 0
-missing    : 0
+System   Worker disconnected
+System   Project mismatch
+System   Conversation not bound
+System   Task already claimed
+System   Response timeout
 ```
 
-`ProjectHub_Force_Restore`는 이 최종 검증이 0 mismatch / 0 missing일 때만 성공으로 끝낸다.
-Commit-Push도 대용량 변경 파일 중 하나라도 upload/finalize 검증이 실패하면 해당 상태를 정상 checkpoint로 확정하지 않는다.
+# 3. Conversation별 binding
 
-## 3. NAS download.php 500 긴급 수정/진단
-
-현재 첨부 및 저장소의 `download.php`는 assertion의 `object_hash`로 canonical object를 직접 찾는다.
+Binding은 **브라우저 탭이 아니라 ChatGPT conversation별**로 관리한다.
 
 ```text
-/mnt/HDD1/ProjectHub/objects/sha256/<앞2글자>/<sha256>
+Chat A ↔ Project A
+Chat B ↔ Project B
+Chat C ↔ unbound
 ```
 
-현재 관찰된 실패:
+초기 연결 흐름은 Web → Worker다.
 
 ```text
-assertion 발급 성공
-download.php 호출
-HTTP 500
-Content-Type: application/octet-stream
-응답 body 0 bytes
+현재 ChatGPT conversation
+→ Extension
+→ Worker의 관리 project 목록 조회
+→ 사용자가 project 선택
+→ 현재 conversation과 project binding 저장
 ```
 
-현재 코드상 application/octet-stream header는 object 존재/size 검사 이후에 설정된다. 따라서 단순 object_not_found보다는 `readfile()` 단계 또는 NAS 권한/ACL/I/O 문제를 우선 의심한다.
+처음 방문한 conversation에서만 사용자가 연결한다.
 
-`download.php`를 다음 원칙으로 보강한다.
+연결 전 Web 행은 다음과 같이 동작할 수 있다.
 
 ```text
-1. is_readable($path) 사전 확인
-2. filesize 결과 실패/불일치 명확히 분리
-3. readfile() 반환값 확인
-4. 실패 시 error_log에 operation, object hash, resolved path, size 정도만 기록
-5. secret/JWT/Authorization은 절대 로그 금지
-6. PHP warning이 빈 500으로 끝나지 않게 명확한 오류 코드 또는 서버 로그를 남김
+Web   [이곳을 프로젝트와 연결합니다]
 ```
 
-가능하면 진단 오류를 아래처럼 구분한다.
+한 번 binding된 conversation은 Worker에 영구 저장한다.
+
+권장 최소 정보:
 
 ```text
-object_not_found
-object_size_mismatch
-object_not_readable
-object_read_failed
+conversation_id
+conversation_url
+project_id
+worker_id
+bound_at
+last_seen
 ```
 
-운영 NAS에서 실패 object에 대해 반드시 확인:
+`tab_id`는 재시작 시 변경될 수 있으므로 영구 binding key로 사용하지 않는다. 현재 열린 탭을 추적하는 임시 값으로만 사용한다.
+
+브라우저/PC 재시작 후 기존 conversation으로 돌아오면:
 
 ```text
-ls -l <canonical object>
-stat <canonical object>
-PHP/web 실행 계정 기준 read 가능 여부
-parent directories execute/read 권한 및 ACL
+conversation_id 식별
+→ Worker binding 조회
+→ 기존 project 자동 복원
+→ 재설정 없이 READY
 ```
 
-NAS/DB를 비운 뒤 다시 생성한 환경에서 발생했으므로 새 object/디렉터리의 owner/group/permission이 기존 운영 상태와 달라졌는지도 확인한다.
+다른 conversation 페이지로 이동하면 그 페이지는 별도 binding을 갖는다. 기존 binding 페이지로 복귀하면 별도 사용자 작업 없이 이어서 사용할 수 있어야 한다.
 
-## 재검증 순서
+# 4. CURRENT REQUEST 4상태
 
-수정 후에는 아래 순서로 다시 검증한다.
+CURRENT REQUEST는 Web 전용 progress가 아니라 **Worker와 Web이 공유하는 하나의 task 흐름**을 표시한다.
+
+UI와 내부 상태를 아래 4개로 통일한다.
 
 ```text
-1. 작은 large-data 파일 Commit-Push
-2. NAS canonical object 실제 존재/size/hash 확인
-3. download.php 단독 download 성공 확인
-4. Fetch-Pull Restore 성공
-5. 로컬 large file을 임의 변경 후 Fetch-Pull → server version으로 복구 확인
-6. local large file 삭제 후 Fetch-Pull → 재다운로드 확인
-7. Force Restore 실행
-8. Git 최신 상태 + Large Data 0 mismatch / 0 missing 확인
-9. ProjectHub\ 및 루트 3개 CMD가 그대로 보호됐는지 확인
+IDLE
+WEB_TO_WORKER
+WORKER_TO_WEB
+FINISHED
 ```
 
-이번 수정은 별도 기능 확장보다 위 세 항목의 안정화와 E2E 재검증을 우선한다.
+표시 의미:
+
+### 1. IDLE
+
+```text
+● 작업 없음
+현재 처리할 요청 없음
+```
+
+### 2. WEB_TO_WORKER
+
+```text
+● GPT WEB → WORKER
+Web 결과를 Worker에 전달/처리 중
+```
+
+Web이 생성한 피드백을 수집해 Worker가 다음 처리(Codex 재작업, Git 처리 등)를 수행하는 방향이다.
+
+### 3. WORKER_TO_WEB
+
+```text
+● WORKER → GPT WEB
+Worker 요청을 GPT Web에서 처리 중
+```
+
+Worker가 지정한 요청만 Extension이 현재 bound conversation에 입력한다.
+
+세부 진행 문구는 한 줄이면 충분하다.
+
+예:
+
+```text
+요청 준비 중
+ChatGPT에 요청 전달 중
+ChatGPT 응답 생성 중
+응답 수집 중
+Worker로 전달 중
+```
+
+### 4. FINISHED
+
+정상 성공, 사용자 승인 필요, 오류를 UI 상태로 세분화하지 않고 모두 FINISHED로 통합한다.
+
+```text
+● 작업 종료
+정상 완료
+```
+
+또는:
+
+```text
+● 작업 종료
+사용자 승인 필요
+```
+
+또는:
+
+```text
+● 작업 종료
+오류 발생 · 사용자 확인 필요
+```
+
+종료 원인은 Worker의 `finish_reason/message`를 한 줄로 표시한다.
+
+# 5. 작업 실행 권한 / 동시 작업 제한
+
+동시 작업 제어의 최종 권한은 Worker가 가진다.
+
+Extension의 DOM 상태만으로 lock을 판단하지 않는다.
+
+Worker task는 최소 다음 개념을 가진다.
+
+```text
+task_id
+project_id
+owner
+lease_id
+status
+request
+response
+conversation_id
+created_at
+started_at
+completed_at
+```
+
+실행 대상이 Web이면 Worker가 명시적으로 owner/lease를 부여한다.
+
+```text
+owner = WEB
+conversation_id = <bound conversation>
+lease_id = <unique>
+```
+
+Extension은 다음 조건을 모두 만족할 때만 ChatGPT 입력창을 조작한다.
+
+```text
+1. Worker connected
+2. project binding matched
+3. conversation_id matched
+4. owner == WEB
+5. valid lease
+6. 다른 active task 없음
+7. ChatGPT Web가 현재 입력 가능한 상태
+```
+
+하나라도 만족하지 않으면 작업하지 않는다.
+
+여러 ChatGPT 탭이 같은 conversation 또는 project를 열고 있어도 하나의 lease만 claim 가능해야 한다. 다른 탭은 읽기/표시만 하고 입력하지 않는다.
+
+# 6. Worker 연결과 복구
+
+연결은 끊기지 않는 것을 전제로 하지 말고 **자동 재연결**을 전제로 한다.
+
+- Worker는 Windows 시작 시 자동 실행 가능하도록 한다.
+- Extension service worker가 중단/재시작되어도 binding/task 상태를 잃지 않는다.
+- 상태의 원본은 Worker의 persistent storage다.
+- Extension은 시작/탭 활성화/페이지 변경 시 Worker에 다시 연결하고 현재 conversation 상태를 조회한다.
+- PC/브라우저 재시작 후 사용자가 binding을 다시 설정하게 하지 않는다.
+- 초기 PoC는 localhost HTTP polling으로 충분하다.
+- 이후 필요하면 WebSocket/SSE로 교체하되 계약은 유지한다.
+
+초기 최소 API 예:
+
+```text
+GET  /bridge/status
+GET  /bridge/bindings/{conversationId}
+POST /bridge/bind
+GET  /bridge/task
+POST /bridge/task/{id}/claim
+POST /bridge/task/{id}/result
+POST /bridge/heartbeat
+```
+
+실제 endpoint 명칭은 기존 Server/Worker 구조와 충돌하지 않게 조정해도 된다.
+
+# 7. ChatGPT Web 입출력
+
+Extension은 content script에서 현재 conversation DOM만 담당한다.
+
+필요 기능:
+
+```text
+- conversation 식별
+- 입력 가능 여부 확인
+- Worker 요청을 composer에 입력
+- send
+- 응답 생성 시작 감지
+- 응답 생성 종료 감지
+- 마지막 assistant 응답 수집
+- task_id/lease와 함께 Worker에 반환
+```
+
+응답 완료 판단은 단순 timeout이나 DOM 무변화만 사용하지 않는다. 가능한 경우 생성 중 UI/Stop 상태와 assistant message 변화를 함께 사용한다.
+
+ChatGPT DOM selector는 Worker나 Server 코드에 넣지 않는다. UI 변경 대응은 Extension 어댑터 내부로 격리한다.
+
+# 8. Codex / Git 연계 원칙
+
+Codex CLI 작업 실행, 결과 수집, Git commit/push는 Extension이 하지 않는다.
+
+```text
+Codex CLI
+→ Worker가 stdout/JSON 결과 수집
+→ 변경/검증 결과 정리
+→ 필요한 Git commit/push
+→ Web 검토가 필요하면 WORKER_TO_WEB task 생성
+→ Extension이 bound conversation에서 처리
+→ Web 결과를 Worker에 반환
+→ 필요 시 다음 Codex task
+```
+
+Git 연동이 없는 테스트 프로젝트에서도 Extension/Worker 연결 자체는 동작할 수 있어야 한다. Git 작업은 해당 프로젝트의 capability가 있을 때만 수행한다.
+
+# 9. 최소 PoC 검증 순서
+
+기존 ProjectHub 07 작업을 방해하지 않는 작은 테스트 프로젝트/격리된 경로에서 먼저 검증한다.
+
+```text
+1. Extension 설치 후 Worker READY 확인
+2. 처음 열린 ChatGPT conversation에서 project 선택/bind
+3. 페이지 새로고침 후 binding 자동 복원
+4. 다른 conversation으로 이동 → unbound 확인
+5. 기존 conversation 복귀 → 자동 READY
+6. Worker가 WORKER_TO_WEB 테스트 요청 1건 생성
+7. Extension이 지정된 conversation에만 요청 입력
+8. ChatGPT 응답 완료 감지
+9. 응답을 Worker에 반환
+10. CURRENT REQUEST가 WEB_TO_WORKER → FINISHED로 전환
+11. 같은 task를 다른 탭에서 동시에 실행하지 못하는지 확인
+12. 브라우저/PC 재시작 후 별도 재설정 없이 binding 복구 확인
+```
+
+PoC 성공 후 Codex CLI 결과와 연결한다.
+
+# 구현 우선순위
+
+첫 구현은 아래 범위만 수행한다.
+
+```text
+A. Worker 연결 + conversation binding 영구 복구
+B. 최종 Header / System 한 줄 / CURRENT REQUEST 4상태 UI
+C. Worker → Web 요청 1건 자동 입력 및 응답 반환
+D. exclusive lease로 중복 실행 차단
+```
+
+로그 뷰, 상세 설정 페이지, 다중 사용자, 복잡한 알림, 자동 conflict 해결, 임의 shell 실행 등은 이번 범위에 넣지 않는다.
