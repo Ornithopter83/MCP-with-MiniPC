@@ -42,6 +42,10 @@ function Get-ApiArray($value) {
     if ($value -is [Array]) { return @($value) }
     return @($value)
 }
+function Test-RemovedLifecycle($lifecycle) {
+    $value = [string]$lifecycle
+    return $value -eq 'Removed' -or $value -eq 'REMOVED' -or $value -eq '9'
+}
 function Confirm-RemovalCandidates($candidates) {
     Add-Type -AssemblyName System.Windows.Forms
     $approved = [System.Collections.Generic.List[object]]::new()
@@ -81,11 +85,11 @@ foreach ($item in $currentItems) {
     $previous = @($managed | Where-Object { $_.relativePath -eq $item.RelativePath } | Select-Object -First 1)
     if ($previous.Count -eq 0) { $diff.Add([pscustomobject]@{RelativePath=$item.RelativePath;Status='ADDED';SizeBytes=$item.SizeBytes}); $uploadItems.Add($item); continue }
     $old = $previous[0]
-    if ([string]$old.lifecycle -eq 'Removed') { $diff.Add([pscustomobject]@{RelativePath=$item.RelativePath;Status='FAILED';Reason='SERVER_REMOVED_REQUIRES_EXPLICIT_READD';SizeBytes=$item.SizeBytes}); continue }
+    if (Test-RemovedLifecycle $old.lifecycle) { $diff.Add([pscustomobject]@{RelativePath=$item.RelativePath;Status='FAILED';Reason='SERVER_REMOVED_REQUIRES_EXPLICIT_READD';SizeBytes=$item.SizeBytes}); continue }
     if ([string]$old.object.sha256 -ne $item.Sha256 -or [int64]$old.object.sizeBytes -ne $item.SizeBytes) { $diff.Add([pscustomobject]@{RelativePath=$item.RelativePath;Status='CHANGED';SizeBytes=$item.SizeBytes}); $uploadItems.Add($item) }
     else { $diff.Add([pscustomobject]@{RelativePath=$item.RelativePath;Status='UNCHANGED';SizeBytes=$item.SizeBytes}); $uploadItems.Add($item) }
 }
-foreach ($old in $managed | Where-Object { [string]$_.lifecycle -ne 'Removed' -and -not $currentByPath.ContainsKey([string]$_.relativePath) }) {
+foreach ($old in $managed | Where-Object { -not (Test-RemovedLifecycle $_.lifecycle) -and -not $currentByPath.ContainsKey([string]$_.relativePath) }) {
     $candidate = [pscustomobject]@{RelativePath=[string]$old.relativePath;SizeBytes=[int64]$old.object.sizeBytes;Sha256=[string]$old.object.sha256}
     $removedCandidates.Add($candidate); $diff.Add([pscustomobject]@{RelativePath=$candidate.RelativePath;Status='REMOVED';SizeBytes=$candidate.SizeBytes})
 }
