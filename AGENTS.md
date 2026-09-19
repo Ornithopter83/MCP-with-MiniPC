@@ -12,6 +12,7 @@
 
 ## 프로젝트 기준
 
-- ProjectHub v0.2는 개발 PC Agent → Mini PC Server → Supabase 흐름을 따르며, 사용자가 Explorer에서 명시적으로 실행한 배포 CMD에 한해 Git commit/push/fetch/pull을 수행할 수 있다.
+- ProjectHub v0.2는 개발 PC Agent → Mini PC Server → Supabase 흐름을 따르며, 사용자의 명시적 승인에 한해 Git commit/push/fetch/pull을 수행할 수 있다.
 - v0.2 Git 동작은 detached HEAD, dirty pull 대상, 진행 중 merge/rebase, 충돌, push reject를 자동 해결하지 않고 중단한다. reset, checkout, 원격 shell 실행은 계속 금지한다.
 - Supabase Service Role Key는 Server에만 환경 변수로 제공하고 Agent에는 배포하지 않는다.
+
