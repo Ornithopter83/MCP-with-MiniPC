@@ -402,3 +402,537 @@ D. exclusive lease로 중복 실행 차단
 ```
 
 로그 뷰, 상세 설정 페이지, 다중 사용자, 복잡한 알림, 자동 conflict 해결, 임의 shell 실행 등은 이번 범위에 넣지 않는다.
+
+
+---
+
+# ProjectHub Worker 신규 프로젝트 작업지시
+
+아래 작업은 GPTWeb-Hub와 연결될 **Windows 데스크톱 Worker 애플리케이션**을 만드는 신규 범위다.
+
+사용자가 별도로 전달하는 Worker UI 이미지를 **시각적 기준(source of truth)** 으로 사용한다. 이 문서에서는 기능/구조/동작만 정의하며, 전달된 UI 이미지가 있으면 레이아웃·간격·색·카드 구성·버튼 배치는 그 이미지를 우선한다.
+
+기존 `ProjectHub.Agent`를 Worker로 개조하지 않는다. Agent는 기존 관찰/ProjectHub 관리 역할을 유지한다.
+
+## 1. 프로젝트 형태
+
+새 프로젝트를 솔루션에 추가한다.
+
+권장:
+
+```text
+src/
+├─ ProjectHub.Core
+├─ ProjectHub.Infrastructure
+├─ ProjectHub.Server
+├─ ProjectHub.Agent
+└─ ProjectHub.Worker
+```
+
+`ProjectHub.Worker`는 Windows 전용 데스크톱 앱으로 만든다.
+
+초기 구현은 **WPF + .NET 9** 를 우선 사용한다.
+
+이유:
+
+```text
+- Windows tray/background 실행 구현이 단순함
+- 1024x768 고정 기준 UI 구현이 쉬움
+- 기존 .NET 9 솔루션과 통합이 쉬움
+- Codex CLI process 제어와 stdout/stderr 수집이 쉬움
+- localhost bridge 및 persistent state 구현이 쉬움
+```
+
+필요하면 `System.Windows.Forms.NotifyIcon`을 WPF에서 사용해 tray 기능을 구현한다.
+
+## 2. Worker의 역할
+
+Worker는 자동화 흐름의 **실제 시작점이자 상태의 원본**이다.
+
+```text
+사용자 Command
+      ↓
+ProjectHub Worker
+      ↓
+Codex CLI
+      ↓
+결과 수집 / Git 처리
+      ↓
+필요 시 GPT Web 검토 요청
+      ↓
+GPTWeb-Hub Extension
+      ↓
+ChatGPT Web
+      ↓
+Web 결과
+      ↓
+Worker
+      ↓
+다음 Codex 작업 또는 종료
+```
+
+Extension은 UI adapter이고, task queue / lock / history / recovery의 원본은 Worker다.
+
+## 3. 메인 UI 기능
+
+메인 윈도우는 **1024 x 768 기준**으로 구성한다.
+
+사용자가 제공한 최신 UI 이미지를 그대로 참고하되 기능적으로 아래 영역을 갖는다.
+
+### Header
+
+표시:
+
+```text
+ProjectHub Worker (WORKSTATION_NAME)     ● READY
+[Codex Model ▼] [Reasoning ▼]            ⚙
+```
+
+필수 동작:
+
+- Worker 전체 READY 상태
+- workstation 이름
+- Codex CLI 현재 모델
+- Codex reasoning effort
+- Model dropdown 변경 가능
+- Reasoning dropdown 변경 가능
+- 설정 아이콘은 존재하되 상세 Settings 요구사항은 별도 지시 전까지 최소 placeholder로 둔다.
+
+모델/추론 선택값은 화면 표시용이 아니라 **다음 Codex CLI 실행에 실제 적용**돼야 한다.
+
+## 4. 연결 상태 카드
+
+메인 상단에 다음 상태를 표시한다.
+
+```text
+Project
+- project name
+- local path
+- READY / NOT READY
+
+GPT Web
+- bound ChatGPT conversation title
+- READY / NOT READY
+
+Server
+- ProjectHub Server
+- READY / NOT READY
+
+System
+- overall runtime health
+- READY / warning/error
+```
+
+GPT Web은 가능하면 URL/ID보다 **conversation title을 우선 표시**한다.
+
+예:
+
+```text
+GPT Web
+MCP 프로젝트 진척도 확인
+● READY
+```
+
+conversation ID / URL은 내부 binding용이며 메인 화면에 노출할 필요 없다.
+
+## 5. CURRENT TASK + TASK FLOW 통합
+
+별도 두 카드로 나누지 않는다.
+
+하나의 넓은 task 카드에서 현재 요청과 흐름을 같이 보여준다.
+
+예:
+
+```text
+CURRENT TASK
+
+● WORKER → GPT WEB
+Force Restore 결과 검토 요청
+
+CODEX       WORKER       GPT WEB
+  ○ ---------- ● ---------- ●
+
+ChatGPT 응답 생성 중
+Round 2 / 3
+00:01:42
+```
+
+내부 구현에는 owner/lease가 있어도 UI에는 `Owner:` 같은 기술 필드를 표시하지 않는다.
+
+사용자에게 보이는 상태는 명확한 방향/행동 중심으로 표시한다.
+
+권장 표시 상태:
+
+```text
+● 작업 없음
+● CODEX 작업 중
+● WORKER → GPT WEB
+● GPT WEB → WORKER
+● 작업 종료
+```
+
+세부 문구 예:
+
+```text
+Codex CLI 실행 중
+Codex 결과 정리 중
+GPT Web에 검토 요청 전달 중
+ChatGPT 응답 생성 중
+Web 결과 수집 중
+Web 결과를 Worker에서 처리 중
+정상 완료
+사용자 승인 필요
+오류 발생 · 확인 필요
+```
+
+## 6. LAST RESULT
+
+Codex와 Web 결과를 동시에 좌우 분할해서 보여주지 않는다.
+
+상단에 선택 버튼/탭만 둔다.
+
+```text
+[ Codex ] [ GPT Web ]
+```
+
+선택된 한 쪽의 결과를 **넓은 단일 영역**에 표시한다.
+
+### Codex 탭 예
+
+```text
+Build PASS · Test PASS · Commit a5177f8
+2026-09-18 14:32
+
+Force Restore 관련 코드 수정 완료.
+빌드/테스트 성공.
+commit/push 완료.
+```
+
+### GPT Web 탭 예
+
+```text
+REVISE
+2026-09-18 14:35
+
+보호영역 검증 필요.
+...
+```
+
+초기 선택은 가장 최근에 갱신된 결과 탭으로 한다.
+
+전체 원본 로그를 이 영역에 넣지 않는다. 결과 summary와 필요한 상세만 표시한다.
+
+## 7. COMMAND
+
+Worker가 실제 작업의 시작점이므로 자연어 입력을 반드시 지원한다.
+
+```text
+COMMAND
+
+┌────────────────────────────────────────────┐
+│ 작업 지시 입력                            │
+│                                            │
+└────────────────────────────────────────────┘
+
+                         [ Clear ] [ Run Task ]
+```
+
+`Run Task`:
+
+```text
+1. 새로운 task 생성
+2. exclusive execution 확보
+3. 현재 선택 Model / Reasoning 값 확정
+4. Codex CLI 실행
+5. stdout/stderr/JSON event 수집
+6. 결과 상태 갱신
+```
+
+Command 영역은 raw shell console이 아니다.
+
+사용자는 자연어 작업 지시를 입력하고 Worker가 Codex CLI invocation으로 변환한다.
+
+임의 PowerShell/cmd 명령을 사용자 입력 그대로 shell에 실행하는 기능은 만들지 않는다.
+
+## 8. Codex CLI 실행
+
+기존 테스트에서 확인한 Desktop bundled CLI 탐색 방식을 사용할 수 있다.
+
+Windows에서 기본 자동 탐색 후보:
+
+```powershell
+Get-ChildItem "$env:LOCALAPPDATA\OpenAI\Codex\bin" -Filter codex.exe -Recurse -File |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+```
+
+hash 디렉터리를 하드코딩하지 않는다.
+
+Worker는 최소 다음 정보를 수집한다.
+
+```text
+codex executable path
+cli version
+model
+reasoning effort
+session/thread id when available
+start/end time
+exit code
+stdout
+stderr
+token usage when available
+result summary
+changed files when available
+```
+
+가능하면 structured output / JSON event mode를 사용한다.
+
+## 9. 모델 / Reasoning
+
+Header dropdown으로 변경 가능해야 한다.
+
+Worker 내부 설정 예:
+
+```text
+CodexModel
+CodexReasoningEffort
+```
+
+실행 직전에 현재 UI 값을 snapshot하여 task에 저장한다.
+
+실행 중인 task의 모델/추론값은 중간 변경하지 않는다.
+
+사용자가 dropdown을 바꾸면 **다음 task부터 적용**한다.
+
+CLI가 해당 model/reasoning 값을 거부하면 task를 시작하지 말고 System 상태에 명확히 표시한다.
+
+지원 모델 목록을 코드에 영구 고정하지 않는다. 가능한 경우 CLI/config에서 확인하거나 설정 가능한 목록으로 격리한다.
+
+## 10. Background / Tray
+
+Worker는 메인 창이 닫혀도 작업을 계속할 수 있어야 한다.
+
+필수:
+
+```text
+- minimize to tray
+- window close → 기본적으로 tray로 숨김
+- tray 상태에서도 active task 계속 수행
+- tray 상태에서도 Extension bridge 응답
+- tray icon에서 Open / Pause / Exit 제공
+- 명시적 Exit에서만 process 종료
+```
+
+PC 재부팅 뒤 자동 실행은 Settings 범위와 연결하되, startup registration 구현은 설정 요구사항 확정 후 마무리해도 된다.
+
+단, 현재 architecture는 재시작 복구를 전제로 작성한다.
+
+## 11. 상태 저장
+
+Worker process memory만 믿지 않는다.
+
+초기 persistent storage는 간단한 JSON 또는 SQLite 중 구현 복잡도가 낮은 쪽을 선택할 수 있다.
+
+최소 저장:
+
+```text
+worker identity
+known projects
+conversation bindings
+selected/default model
+selected/default reasoning
+task queue
+active task state
+lease
+last Codex result
+last Web result
+round
+timestamps
+```
+
+secret/token은 평문 state 파일에 저장하지 않는다.
+
+## 12. 단일 실행 / 동시성
+
+한 Worker 인스턴스에서 동시에 여러 automation task를 실행하지 않는다.
+
+초기 버전 정책:
+
+```text
+Active task = 최대 1개
+```
+
+새 command가 들어왔는데 active task가 있으면:
+
+```text
+- 즉시 병렬 실행 금지
+- queue 또는 busy 거부 중 하나를 명확하게 선택
+- 초기 구현은 queue 1개 이상보다 "현재 작업 종료 후 실행" FIFO가 바람직
+```
+
+Codex/Web 실행 대상은 Worker가 가진 lease가 결정한다.
+
+Worker가 Web 차례라고 지정하지 않으면 Extension은 절대 ChatGPT에 입력하지 않는다.
+
+## 13. Git 처리
+
+Git commit/push는 Worker가 담당할 수 있지만 기존 ProjectHub 안전 규칙을 그대로 따른다.
+
+자동으로 다음 상황을 해결하지 않는다.
+
+```text
+detached HEAD
+merge/rebase in progress
+conflict
+push reject
+dirty 상태의 위험한 pull
+```
+
+해당 상황은 task 종료/개입 필요 상태로 올린다.
+
+Git 저장소가 아닌 프로젝트에서도 Worker와 Codex 실행 자체는 가능해야 한다.
+
+따라서 capability를 구분한다.
+
+```text
+GitAvailable = true/false
+WebBound = true/false
+CodexAvailable = true/false
+ServerAvailable = true/false
+```
+
+## 14. Extension bridge
+
+Worker는 GPTWeb-Hub Extension용 localhost bridge를 제공한다.
+
+Extension용 계약은 기존 GPTWeb-Hub 지시를 따른다.
+
+Worker가 source of truth다.
+
+최소 요구:
+
+```text
+status
+project list
+conversation binding
+pending Web task
+claim/lease
+Web result submit
+heartbeat/reconnect
+```
+
+초기 구현은 localhost HTTP polling으로 충분하다.
+
+bridge는 loopback에만 bind하고 외부 LAN에 열지 않는다.
+
+## 15. 설정 아이콘
+
+메인 UI에는 Settings 아이콘을 배치한다.
+
+이번 단계에서는 설정창 전체 기능을 임의로 설계하지 않는다.
+
+최소 placeholder 또는 기본 설정창 shell만 만든다.
+
+후속 요구사항에서 다음을 별도로 확정한다.
+
+```text
+Windows startup
+tray policy
+ProjectHub Server URL
+Codex CLI path
+default model/reasoning
+automation rounds
+Git behavior
+Extension bridge
+storage/recovery
+```
+
+## 16. 구현 단계
+
+한 번에 전체 자동화 루프를 만들지 않는다.
+
+### Worker-A — 프로젝트/메인 UI skeleton
+
+```text
+- ProjectHub.Worker 프로젝트 생성
+- WPF 1024x768 main window
+- 사용자 제공 UI 이미지 반영
+- header/model/reasoning selectors
+- Project/Web/Server/System cards
+- integrated Current Task/Task Flow
+- Last Result Codex/GPT Web toggle
+- Command input
+- tray/background skeleton
+```
+
+이 단계에서는 mock/demo state 사용 가능.
+
+### Worker-B — Codex CLI
+
+```text
+- codex.exe auto-discovery
+- version/status
+- model/reasoning 적용
+- command → codex exec
+- async process
+- stdout/stderr/JSON result
+- cancel/exit handling
+- Last Result 갱신
+```
+
+### Worker-C — persistent state / exclusive task
+
+```text
+- task state machine
+- one active task
+- persistent state
+- restart recovery
+- queue
+- lease
+```
+
+### Worker-D — GPTWeb-Hub bridge
+
+```text
+- localhost bridge
+- project list
+- conversation binding
+- WORKER_TO_WEB request
+- WEB_TO_WORKER result
+- reconnect
+```
+
+### Worker-E — Git
+
+```text
+- Git capability detect
+- safe commit/push flow
+- failure/approval state
+- Codex result + Git result summary
+```
+
+각 단계가 독립적으로 빌드/실행 가능해야 한다.
+
+## 17. 첫 작업 범위
+
+**지금은 Worker-A부터 시작한다.**
+
+Codex CLI, Extension, Git 자동화를 동시에 구현하지 않는다.
+
+Worker-A 완료 기준:
+
+```text
+1. ProjectHub.sln에 ProjectHub.Worker 포함
+2. dotnet build 성공
+3. 1024x768 UI 실행
+4. 제공 UI 이미지와 주요 구조 일치
+5. Model / Reasoning dropdown 동작
+6. Result Codex / GPT Web 전환 동작
+7. Command 입력 / Clear / Run Task UI 동작
+8. Run Task는 아직 mock task transition이어도 됨
+9. 창 닫기 시 tray 숨김
+10. tray Open / Exit 동작
+11. 기존 Server/Agent/Core 동작 회귀 없음
+```
+
+검증 후 Worker-B로 진행한다.
