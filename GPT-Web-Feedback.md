@@ -1896,3 +1896,602 @@ I. 패널 전체 높이 증가 방지
 11. textarea / 파일 드롭 / 전송 버튼이 제거됐는지 확인
 12. node --check extension/gptweb-hub/content.js 통과
 ```
+
+
+---
+
+# 2026-09-19 GPTWeb-Hub 통합 자동 왕복 구현 지시
+
+이 항목은 직전 TASK UI 통합 피드백과 이전 Web↔Worker 자동화 제안을 **하나의 구현 범위로 합친 최종 지시**다.
+
+이번에는 기능을 잘게 나눠 중간중간 멈추지 말고, 아래 항목을 **한 번에 구현한 뒤 마지막에 통합 검증 1회를 수행**한다.
+
+기존 ProjectHub 정책과 충돌하지 않는 범위에서 이 작업은 하나의 GPTWeb-Hub 통합 기능 작업으로 취급한다.
+
+## 1. 최종 목표
+
+이번 작업의 성공 기준은 단순 UI 변경이 아니다.
+
+반드시 아래 1회 왕복이 실제로 끝까지 동작해야 한다.
+
+```text
+Worker task 생성
+→ 연결된 ChatGPT conversation에서 Extension이 task 수신
+→ Worker Message 표시
+→ ChatGPT 입력창에 자동 입력
+→ 필요한 attachment 자동 첨부
+→ Send
+→ GPT Web 응답 생성 감지
+→ 최종 응답 완료 판정
+→ TASK 영역에 Web Response 표시
+→ POST /bridge/task/{taskId}/result
+→ Worker가 결과 수신
+→ Worker terminal 상태
+→ Extension FINISHED 표시
+```
+
+즉 이번 작업이 끝나면 최소한 **Worker → GPT Web → Worker 1회 완전 왕복 E2E**가 가능해야 한다.
+
+## 2. TASK 단일 영역
+
+기존:
+
+```text
+CURRENT REQUEST
+RESULT MESSAGE
+```
+
+를 제거하고:
+
+```text
+TASK
+```
+
+하나로 통합한다.
+
+TASK 영역은 아래 정보를 한 카드 안에서 표시한다.
+
+```text
+- 현재 상태
+- Worker Message
+- Web Response
+- task id
+- 필요한 최소 메타데이터
+```
+
+수동 입력 테스트용 UI는 삭제한다.
+
+삭제 대상:
+
+```text
+- 작업 지시 textarea
+- 파일 drag/drop 테스트 영역
+- 수동 전송 버튼
+- 테스트 전송 전용 코드
+- Extension 사용자가 직접 prompt를 입력하는 경로
+```
+
+GPTWeb-Hub는 이제 **Worker가 만든 task를 처리하는 자동 bridge UI**다.
+
+## 3. 전송 엔진 단일화
+
+현재까지 구현한 ChatGPT composer 탐색, text 삽입, file attach, Send 클릭 로직을 재사용한다.
+
+Worker 자동 task용 별도 전송 로직을 새로 복제하지 않는다.
+
+내부적으로 하나의 공통 함수 흐름을 사용한다.
+
+예:
+
+```text
+sendToChatGPT(prompt, attachments)
+```
+
+이 공통 경로에서:
+
+```text
+1. composer 탐색
+2. prompt 입력
+3. attachment 첨부
+4. send button 탐색
+5. 실제 click
+6. 성공/실패 반환
+```
+
+을 처리한다.
+
+## 4. Worker PENDING task 자동 처리
+
+현재 conversation ID로 조회한 Worker task가 `PENDING`이고 아래 조건이 모두 맞을 때만 자동 실행한다.
+
+```text
+- bridge connected
+- current conversation id 존재
+- conversation binding 일치
+- task conversation id 일치
+- active Web task 없음
+- task status == PENDING
+- ChatGPT composer 사용 가능
+```
+
+조건이 맞으면:
+
+```text
+PENDING
+→ claim
+→ Worker Message 표시
+→ ChatGPT 자동 전송
+```
+
+순서로 진행한다.
+
+단순히 task를 polling에서 발견했다는 이유만으로 먼저 send하면 안 된다.
+
+claim 성공 이후에만 실제 ChatGPT 입력을 수행한다.
+
+## 5. 한 conversation당 active Web task 1개
+
+반드시 다음 규칙을 적용한다.
+
+```text
+conversation_id 하나당 active Web task 최대 1개
+```
+
+다음 상태 중 하나라도 존재하면 새 task를 자동 전송하지 않는다.
+
+```text
+CLAIMED
+SENT_TO_WEB
+WEB_GENERATING
+WEB_RESULT_READY
+RESULT_SUBMITTING
+```
+
+새로운 PENDING task는 Worker queue에서 대기시킨다.
+
+동일 task를 여러 탭에서 동시에 처리하지 않는다.
+
+Worker의 claim/lease가 실행 권한의 최종 기준이다.
+
+## 6. 페이지 새로고침 / SPA 이동 중복 전송 방지
+
+ChatGPT 페이지 새로고침 또는 conversation 간 SPA 이동이 발생해도 이미 claim된 task를 다시 보내지 않는다.
+
+복구 흐름:
+
+```text
+페이지 로드 / URL 변경
+→ conversation_id 확인
+→ Worker binding 조회
+→ 해당 conversation의 최신 task 조회
+→ task status 확인
+→ UI 상태 복원
+```
+
+중요:
+
+```text
+PENDING
+→ 자동 처리 가능
+
+CLAIMED 이후
+→ 기존 진행 상태 복구
+→ 같은 prompt 재전송 금지
+```
+
+task id를 Extension 내부 현재 task와 비교하고 중복 send 방지 guard를 둔다.
+
+## 7. Worker Message 표시
+
+Worker task의 실제 prompt를 TASK 영역에 표시한다.
+
+예:
+
+```text
+TASK
+
+● WORKER → GPT WEB
+요청 전달 준비
+
+Worker Message
+Force Restore 보호영역 검증 결과를 검토하고 문제점만 정리해줘.
+```
+
+긴 prompt는 내부 scrollbar 사용.
+
+Worker Message는 Extension이 자체 요약하거나 변형하지 않는다.
+
+실제 Worker task prompt를 표시한다.
+
+## 8. 실제 전달 직후 상태 변경
+
+상태 표시는 실제 이벤트와 정확히 맞아야 한다.
+
+### Worker → GPT Web
+
+ChatGPT Send 버튼의 실제 click이 성공한 직후:
+
+```text
+● WORKER → GPT WEB
+메시지 전달 완료 · GPT Web 응답 대기
+```
+
+로 즉시 변경한다.
+
+task를 발견했거나 claim만 했을 때는 `전달 완료`로 표시하지 않는다.
+
+### GPT Web → Worker
+
+Worker result endpoint에 최종 응답 POST가 성공한 직후:
+
+```text
+● GPT WEB → WORKER
+응답 전달 완료 · Worker 처리 대기
+```
+
+로 즉시 변경한다.
+
+## 9. GPT Web streaming 상태 감지
+
+ChatGPT assistant 메시지가 생성되기 시작하면:
+
+```text
+● WORKER → GPT WEB
+GPT Web 응답 생성 중
+```
+
+으로 표시한다.
+
+단순히 MutationObserver 이벤트 1회 발생만으로 완료 처리하지 않는다.
+
+## 10. GPT Web 최종 응답 완료 판정
+
+최종 완료는 가능한 범위에서 아래 조건을 조합한다.
+
+```text
+1. 현재 task send 이후 새 assistant message 존재
+2. Stop/Generating 계열 UI가 더 이상 active하지 않음
+3. assistant message 본문이 안정화 시간 동안 변하지 않음
+```
+
+권장 안정화 시간:
+
+```text
+500~1000ms
+```
+
+완료되면:
+
+```text
+● GPT WEB → WORKER
+GPT Web 응답 완료
+```
+
+로 변경하고 TASK 영역에 최종 Web Response를 출력한다.
+
+중간 streaming text는 Worker 최종 result로 보내지 않는다.
+
+## 11. Web Response 표시
+
+TASK 안에 Worker Message와 Web Response를 함께 표시한다.
+
+예:
+
+```text
+TASK
+
+● GPT WEB → WORKER
+GPT Web 응답 완료
+
+Worker Message
+Force Restore 보호영역 검증 결과를 검토해줘.
+
+────────────────────────
+
+Web Response
+보호영역 제외 규칙은 정상이며 ...
+```
+
+아직 응답이 없을 때 Web Response 영역은 숨길 수 있다.
+
+## 12. Worker result 실제 반환
+
+GPT Web 최종 응답 완료 후 반드시 현재 task id에 대해:
+
+```text
+POST /bridge/task/{taskId}/result
+```
+
+를 호출한다.
+
+최소 result payload에는:
+
+```text
+task_id
+conversation_id
+response_text
+result_type
+completed_at
+```
+
+를 전달한다.
+
+현재 서버 계약과 맞게 실제 schema를 조정하되 의미는 유지한다.
+
+POST 성공 전에는 Worker 전달 완료로 표시하지 않는다.
+
+## 13. Worker terminal 상태 확인
+
+result POST 성공 후 Extension이 임의로 즉시 FINISHED 처리하지 않는다.
+
+Worker가 후속 처리를 끝내고 terminal 상태를 반환할 때까지:
+
+```text
+● GPT WEB → WORKER
+응답 전달 완료 · Worker 처리 대기
+```
+
+를 유지한다.
+
+Worker terminal 상태 예:
+
+```text
+COMPLETED
+FAILED
+WAITING_USER
+CANCELLED
+```
+
+UI에서는 단순화해서:
+
+```text
+● 작업 종료
+정상 완료
+
+● 작업 종료
+사용자 확인 필요
+
+● 작업 종료
+오류 발생 · 확인 필요
+```
+
+로 표시한다.
+
+## 14. attachment 자동 전달
+
+수동 drag/drop UI는 삭제하지만 attachment 기능 자체는 제거하지 않는다.
+
+Worker task에 attachment가 있으면 Extension이 자동으로 ChatGPT에 첨부한다.
+
+권장 구조:
+
+```text
+attachments[]
+- id
+- fileName
+- mimeType
+- size
+- source
+- downloadUrl 또는 bridge asset endpoint
+```
+
+Extension 흐름:
+
+```text
+Worker task
+→ attachment metadata 확인
+→ loopback bridge에서 blob 다운로드
+→ File 객체 생성
+→ 기존 attachFilesToChat() 경로 사용
+→ prompt와 함께 Send
+```
+
+텍스트 전용 task면 attachment 단계는 건너뛴다.
+
+## 15. result type 구분
+
+향후 이미지 생성 등을 고려해 result를 최소 다음 타입으로 확장 가능하게 설계한다.
+
+```text
+TEXT_RESULT
+IMAGE_RESULT
+FILE_RESULT
+```
+
+이번 구현의 필수 완료 범위는 `TEXT_RESULT`다.
+
+다만 schema나 상태 구조가 향후 IMAGE/FILE result를 막지 않게 작성한다.
+
+이미지 생성 결과 asset 수집 자체는 이번 필수 검증에서 제외해도 된다.
+
+## 16. 이미지 작업의 직렬 처리 전제
+
+ChatGPT Web 한 conversation에서는 이미지 생성과 다른 요청을 동시에 실행하지 않는다.
+
+향후 이미지 task가 붙더라도:
+
+```text
+WEB_IMAGE
+→ 생성 완료
+→ asset 회수
+→ 다음 WEB_TEXT 또는 다음 task
+```
+
+순서로 직렬 처리한다.
+
+같은 conversation에 동시에 여러 Web request를 넣지 않는다.
+
+## 17. 긴 메시지 UI
+
+TASK 카드 때문에 GPTWeb-Hub 전체 패널 높이가 늘어나면 안 된다.
+
+필수:
+
+```text
+Worker Message
+- max-height 고정
+- overflow-y: auto
+
+Web Response
+- max-height 고정
+- overflow-y: auto
+
+TASK 전체
+- 전체 최대 높이 제한
+- 패널 전체 높이 유지
+```
+
+예:
+
+```css
+.task-message {
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.task-response {
+  max-height: 220px;
+  overflow-y: auto;
+}
+```
+
+짧은 메시지에는 scrollbar가 보이지 않고 긴 경우에만 표시한다.
+
+## 18. 상태 머신 최종 기준
+
+이번 구현에서 Extension UI 상태는 최소 다음 흐름을 따른다.
+
+```text
+IDLE
+↓
+PENDING
+↓
+CLAIMED
+↓
+SENT_TO_WEB
+↓
+WEB_GENERATING
+↓
+WEB_RESULT_READY
+↓
+RESULT_SUBMITTING
+↓
+WAITING_WORKER
+↓
+FINISHED
+```
+
+사용자 표시 문구는 단순화한다.
+
+```text
+작업 없음
+Worker 요청 대기
+메시지 전달 완료 · GPT Web 응답 대기
+GPT Web 응답 생성 중
+GPT Web 응답 완료
+GPT Web → Worker 전달 중
+응답 전달 완료 · Worker 처리 대기
+작업 종료
+```
+
+내부 enum 명칭은 현재 코드 구조에 맞춰 달라도 되지만 의미와 전환 순서는 유지한다.
+
+## 19. 실패 처리
+
+다음 실패를 각각 terminal 또는 retry 가능 상태로 구분한다.
+
+```text
+- composer 미검출
+- send button 미검출
+- attachment download 실패
+- file attach 실패
+- bridge claim 실패
+- result POST 실패
+- ChatGPT response timeout
+- conversation mismatch
+- bridge disconnected
+```
+
+같은 task를 무조건 다시 send하지 않는다.
+
+특히 send 성공 여부가 불확실한 경우 duplicate prompt 전송 방지가 더 중요하다.
+
+사용자 개입이 필요한 경우 FINISHED/사용자 확인 필요로 표시하거나 Worker가 WAITING_USER 상태를 반환하도록 한다.
+
+## 20. 이번에는 한 번에 구현
+
+이번 지시는 기능별로 하나씩 구현 후 중간 검증하고 멈추는 방식으로 진행하지 않는다.
+
+다음 범위를 한 번에 묶어서 구현한다.
+
+```text
+A. TASK UI 통합
+B. 수동 입력/drag/drop/send UI 제거
+C. Worker Message 표시
+D. Worker PENDING 자동 claim
+E. 공통 ChatGPT 전송 엔진으로 자동 send
+F. Worker attachment 자동 첨부 경로
+G. send 직후 상태 변경
+H. streaming 시작/종료 판정
+I. Web Response 표시
+J. result POST
+K. Worker terminal 상태 반영
+L. conversation별 single active task
+M. 새로고침/SPA 이동 중복 send 방지
+N. 긴 메시지 scrollbar / 고정 패널 높이
+```
+
+중간 단계마다 별도 사용자 확인을 요구하지 않는다.
+
+구현을 모두 끝낸 뒤 한 번에 통합 검증한다.
+
+단, 실제 destructive Git/Force Restore/NAS delete 같은 별도 위험 작업을 자동 실행하라는 의미는 아니다.
+
+## 21. 최종 통합 검증 1회
+
+구현 완료 후 아래 시나리오를 **한 번에 연속으로 검증**한다.
+
+```text
+1. Worker와 Extension 실행
+2. 기존 conversation binding 복원 확인
+3. Worker에서 테스트 task 1건 생성
+4. Extension TASK에 Worker Message 표시
+5. task claim 성공
+6. ChatGPT에 자동 prompt 입력
+7. 필요한 경우 test attachment 자동 첨부
+8. 실제 Send
+9. Send 직후 상태 변경 확인
+10. assistant streaming 시작 상태 확인
+11. assistant 최종 출력 완료 판정
+12. Web Response TASK 영역 표시
+13. POST /bridge/task/{taskId}/result 성공
+14. 응답 전달 완료 · Worker 처리 대기 표시
+15. Worker terminal 상태 수신
+16. FINISHED 표시
+17. Worker UI Last Result에 Web 결과 반영 확인
+18. 페이지 새로고침 후 동일 task 재전송되지 않는지 확인
+19. 다른 conversation으로 이동 시 다른 task가 섞이지 않는지 확인
+20. 긴 Worker Message / Web Response scrollbar 확인
+21. 패널 전체 높이가 늘어나지 않는지 확인
+22. 수동 textarea / drag/drop / send 버튼 제거 확인
+23. node --check extension/gptweb-hub/content.js
+24. dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore
+25. git diff --check
+```
+
+필요하면 테스트 task prompt는 짧은 Hello World 수준으로 사용한다.
+
+attachment 검증은 현재 Worker asset endpoint가 아직 없으면 구현 가능한 최소 bridge asset endpoint를 함께 추가해 실제 1회 첨부까지 확인한다.
+
+최종 보고에는 중간 진행 로그를 길게 나열하지 말고 아래만 요약한다.
+
+```text
+- 구현 완료 항목
+- 실제 E2E 결과
+- 실패/제약이 있으면 정확한 원인
+- 변경 파일
+- build/check 결과
+- 남은 후속 범위
+```
+
+이번 작업의 완료 기준은 **UI만 바뀐 것**이 아니라 **Worker → GPT Web → Worker의 실제 1회 왕복이 끝까지 성공하는 것**이다.
