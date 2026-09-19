@@ -1589,3 +1589,310 @@ H. page reload 없이 Save 즉시 반영
 ```
 
 이 작업 완료 후 다음 기능은 **conversation binding UX 구체화 → ChatGPT DOM 자동입력/응답수집** 순서로 진행한다.
+
+
+---
+
+# 2026-09-19 GPTWeb-Hub TASK 영역 통합 피드백
+
+현재 GPTWeb-Hub UI의 `CURRENT REQUEST`와 `RESULT MESSAGE`를 하나의 작업 영역으로 통합한다.
+
+## 1. 영역 명칭 통합
+
+기존:
+
+```text
+CURRENT REQUEST
+RESULT MESSAGE
+```
+
+변경:
+
+```text
+TASK
+```
+
+TASK 영역은 현재 작업의 상태, Worker가 보낸 요청 내용, GPT Web 응답 내용을 모두 표시하는 단일 영역이다.
+
+## 2. 수동 테스트 입력 UI 제거
+
+이제 자동화 연결 검증이 진행됐으므로 아래 수동 테스트용 UI는 제거한다.
+
+```text
+- 작업 지시 textarea
+- 파일 드래그 영역
+- 전송 버튼
+- 수동 테스트 전송 로직
+```
+
+GPTWeb-Hub는 더 이상 사용자가 직접 프롬프트를 입력하는 도구가 아니다.
+
+작업은 Worker에서 생성하고 Extension은 Worker task를 받아 ChatGPT Web에 전달하는 역할만 수행한다.
+
+## 3. Worker가 보낸 원문 표시
+
+TASK 영역에는 Worker가 전달한 요청 내용을 반드시 표시한다.
+
+예:
+
+```text
+TASK
+
+● WORKER → GPT WEB
+요청 전달 완료
+
+Worker Message
+Force Restore 보호영역 검증 결과를 검토하고 문제점만 정리해줘.
+```
+
+Worker prompt가 길 경우 해당 메시지 영역에도 고정 높이 + 내부 스크롤을 적용한다.
+
+## 4. 전달 직후 상태 변경
+
+Worker 또는 GPT Web로 내용을 전달한 직후 UI 상태를 즉시 변경한다.
+
+### Worker → GPT Web
+
+Worker task를 ChatGPT 입력창에 실제로 넣고 Send를 실행한 직후:
+
+```text
+● WORKER → GPT WEB
+메시지 전달 완료 · GPT Web 응답 대기
+```
+
+으로 바꾼다.
+
+단순히 Worker task를 조회한 시점에는 "전달 완료"로 표시하지 않는다.
+
+### GPT Web → Worker
+
+GPT Web의 최종 응답을 Worker result API로 POST한 직후:
+
+```text
+● GPT WEB → WORKER
+응답 전달 완료 · Worker 처리 대기
+```
+
+으로 바꾼다.
+
+즉 UI 상태는 실제 I/O 이벤트와 정확히 일치해야 한다.
+
+## 5. 메시지 출력 완료 시 상태 변경
+
+각 실행 대상이 메시지를 완전히 출력한 시점에도 상태를 명확히 변경한다.
+
+### GPT Web 응답 생성 완료
+
+최종 assistant 메시지의 스트리밍이 완전히 끝난 뒤:
+
+```text
+● GPT WEB → WORKER
+GPT Web 응답 완료
+```
+
+로 바꾸고, 같은 TASK 영역 안에 최종 응답을 표시한다.
+
+예:
+
+```text
+Web Response
+보호영역 제외 규칙은 정상이나 ...
+```
+
+그 다음 Worker result endpoint로 실제 전송한다.
+
+### Worker 응답 완료
+
+Worker가 Web 결과를 수신해 후속 처리를 완료하고 terminal 상태를 반환하면:
+
+```text
+● 작업 종료
+정상 완료
+```
+
+또는:
+
+```text
+● 작업 종료
+사용자 확인 필요
+```
+
+또는:
+
+```text
+● 작업 종료
+오류 발생 · 확인 필요
+```
+
+로 변경한다.
+
+중요: Worker의 terminal 상태 확인 전에는 임의로 FINISHED를 표시하지 않는다.
+
+## 6. TASK 영역 권장 구조
+
+예:
+
+```text
+TASK
+
+● WORKER → GPT WEB
+GPT Web 응답 생성 중
+
+Worker Message
+Force Restore 보호영역 검증 결과를 검토해줘.
+
+────────────────────────
+
+Web Response
+보호영역 검증 결과 ...
+```
+
+작업 단계에 따라 아직 없는 부분은 숨긴다.
+
+예:
+
+```text
+Worker task 수신 직후
+→ Worker Message만 표시
+
+GPT Web 응답 완료 후
+→ Worker Message + Web Response 표시
+
+Worker terminal 완료 후
+→ 상태를 작업 종료로 변경
+```
+
+## 7. 고정 높이 / 내부 스크롤
+
+TASK 영역 때문에 GPTWeb-Hub 패널 전체 높이가 계속 늘어나면 안 된다.
+
+필수 원칙:
+
+```text
+- TASK 카드 전체 최대 높이 고정
+- Worker Message 영역 max-height 지정
+- Web Response 영역 max-height 지정
+- 긴 메시지는 각 영역 내부 overflow-y: auto
+- 브라우저 전체 패널 높이는 유지
+- 긴 응답 때문에 패널이 아래로 계속 늘어나지 않음
+```
+
+권장:
+
+```css
+.task-message {
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.task-response {
+  max-height: 220px;
+  overflow-y: auto;
+}
+```
+
+실제 수치는 현재 패널 높이에 맞춰 조정 가능하다.
+
+응답이 짧으면 scrollbar는 보이지 않고, 길 때만 자동 생성한다.
+
+## 8. 상태 전환 예시
+
+전체 1회 왕복:
+
+```text
+IDLE
+작업 없음
+
+↓ Worker task 수신
+
+WORKER_TO_WEB
+Worker 요청 대기
+
+↓ ChatGPT 입력 + Send 실제 실행
+
+WORKER_TO_WEB
+메시지 전달 완료 · GPT Web 응답 대기
+
+↓ assistant streaming 시작
+
+WORKER_TO_WEB
+GPT Web 응답 생성 중
+
+↓ assistant streaming 완전 종료
+
+WEB_TO_WORKER
+GPT Web 응답 완료
+
+↓ Worker result POST 성공
+
+WEB_TO_WORKER
+응답 전달 완료 · Worker 처리 대기
+
+↓ Worker terminal 상태 확인
+
+FINISHED
+작업 종료
+```
+
+이 상태 전환은 실제 이벤트 기반으로 구현한다.
+
+## 9. 응답 완료 판정
+
+단순 MutationObserver에서 텍스트가 한 번 바뀌었다고 완료 처리하지 않는다.
+
+최종 응답 완료는 가능한 경우 다음을 함께 확인한다.
+
+```text
+- assistant message 존재
+- 생성 중/Stop UI 종료
+- 일정 시간 동안 assistant message 내용 변화 없음
+```
+
+권장 안정화 시간:
+
+```text
+500~1000ms
+```
+
+이미지 생성처럼 별도 generation UI가 존재하는 경우 후속 범위에서 별도 완료 조건을 추가한다.
+
+## 10. 구현 범위
+
+이번 변경에서 수행:
+
+```text
+A. CURRENT REQUEST + RESULT MESSAGE → TASK 통합
+B. textarea / drag & drop / 전송 버튼 제거
+C. Worker Message 표시
+D. Web Response 표시
+E. 실제 send/result POST 직후 상태 변경
+F. GPT Web streaming 종료 시 상태 변경
+G. Worker terminal 상태 수신 시 FINISHED
+H. 긴 메시지 내부 scrollbar
+I. 패널 전체 높이 증가 방지
+```
+
+이번 변경에서 제외:
+
+```text
+- 이미지 생성 결과 asset 수집
+- 복수 Web task 병렬화
+- 사용자 수동 prompt 입력 복구
+```
+
+## 11. 검증
+
+```text
+1. Worker task 1건 생성
+2. TASK 영역에 Worker Message 표시 확인
+3. ChatGPT send 직후 상태가 응답 대기로 변경되는지 확인
+4. streaming 중 "응답 생성 중" 표시 확인
+5. streaming 종료 후 Web Response가 TASK 영역에 표시되는지 확인
+6. Worker result POST 후 "Worker 처리 대기" 표시 확인
+7. Worker terminal 상태 후 "작업 종료" 표시 확인
+8. 긴 Worker Message에서 내부 scrollbar 확인
+9. 긴 Web Response에서 내부 scrollbar 확인
+10. 긴 응답에도 패널 전체 높이가 증가하지 않는지 확인
+11. textarea / 파일 드롭 / 전송 버튼이 제거됐는지 확인
+12. node --check extension/gptweb-hub/content.js 통과
+```
