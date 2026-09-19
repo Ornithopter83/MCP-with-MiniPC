@@ -142,3 +142,63 @@ NAS upload 최종 재검증: 운영 Server assertion 발급 성공 후 NAS `uplo
 06 후속 연결 구현: Agent startup 대용량 inventory를 Server reconciliation API로 전송하고, Server에 STAGED metadata 및 명시적 commit SHA 기반 CHECKPOINTED dataset API를 추가했다. Git 자동 변경은 수행하지 않는다.
 
 06 한계 기록(2026-09-17): `Sync`는 현재 존재하는 대용량 파일만 manifest로 수집하며 이전 manifest와 비교해 로컬에서 삭제된 파일을 NAS/Supabase 삭제 대상으로 추적하지 않는다. `ProjectHub_GC.ps1`는 TTL/lifecycle 기준의 upload session staging 정리만 담당하고 canonical NAS object 및 `large_objects`·`project_large_files`·`large_data_sets` metadata를 자동 삭제하지 않는다. NAS-only orphan은 Server API로 열거하지 못하므로 관리페이지/별도 관리 절차가 필요하다.
+
+## 2026-09-19 Worker-A UI skeleton
+
+최신 `GPT-Web-Feedback.md`의 Worker-A 지시에 따라 `src/ProjectHub.Worker` WPF 데스크톱 프로젝트를 추가했다. 제공된 Worker 대시보드 이미지를 기준으로 1024x768 메인 화면, Header/model/reasoning selector, Project/GPT Web/Server/System 상태 카드, 통합 Current Task/Task Flow, Codex/GPT Web 결과 탭, 자연어 Command 입력, Clear/Run Task 버튼, Windows tray 숨김/Open/Pause/Exit 기본 동작을 구현했다. Run Task와 결과 전환은 현재 mock 상태이며 Codex CLI, persistent state, Git, GPTWeb-Hub bridge는 후속 Worker-B~E 범위다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+잔여 작업: Worker-B — Codex CLI 자동 탐색·실행·결과 수집.
+
+2026-09-19 Worker-A UI refinement: 메인 창을 세로 980px 기준으로 확장하고 Last Result/Command 영역의 사용 공간을 늘렸다. Header의 Settings/Minimize/Close/READY 배치를 분리해 겹침을 제거했고, Model/Reasoning 선택 컨트롤의 크기·색·여백을 정리했다. Current Task의 방향 문구, 상태 설명, Codex/Worker/GPT Web 단계 아이콘을 확대했다. 샘플 명령/최근 명령 버튼과 하단 설명은 제거했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-A UI refinement 2: CURRENT TASK 행 높이를 줄이고 LAST RESULT 영역을 확장했다. Codex/GPT Web 토글 버튼과 결과 제목·시간·본문의 글자 크기를 키우고 결과 카드 여백을 확대했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0). XAML 변경 범위이므로 기존 전체 테스트 통과 상태를 유지한다.
+
+2026-09-19 Worker-A UI refinement 3: 실제 실행 화면에서 Run/Clear 버튼이 보이도록 창 높이를 1120px, Command/Last Result 행을 각각 300px로 확장했다. Windows 기본 제목 표시줄과 중복되던 사용자 정의 최소화/닫기 버튼을 제거하고 Settings 아이콘과 READY 표시를 별도 열에 배치했다. Model/Reasoning 콤보박스의 화살표 토글을 수직·수평 중앙 정렬했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+잔여 작업: Worker-B — Codex CLI 자동 탐색·실행·결과 수집.
+
+2026-09-19 Worker-A UI refinement 4: 실행 화면에서 Command 하단 Run/Clear 버튼이 완전히 보이도록 창 높이를 1260px, Command 행을 340px로 확장했다. 설정 아이콘 오른쪽의 헤더 READY 표시와 사용하지 않는 FooterStatus 상태 표시·갱신 로직을 제거했고, 연결되지 않은 상태/선택 핸들러도 정리했다. 트레이 Exit에 필요한 종료 상태만 유지했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+잔여 작업: Worker-B — Codex CLI 자동 탐색·실행·결과 수집.
+
+2026-09-19 Worker-A UI refinement 5: 첨부 실행 화면 기준으로 상단 헤더 행을 76px, 연결 상태 카드 행을 122px로 축소해 카드 아래의 남는 공간을 줄였다. 하단 Command 공간은 유지했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-A UI refinement 6: 사용자 의도에 맞춰 헤더 행은 이전 86px로 복구하고 연결 카드 행 축소 122px만 유지했다. 카드 내부 경로·상태 문구가 잘리지 않도록 창 폭을 1200px, 최소 폭을 1100px로 확장했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-A UI refinement 7: Worker 헤더의 PC명을 `SUHO_DEV_PC`로 변경하고 실행 상태 설명 문구를 제거했다. 연결 카드에서 System 카드를 삭제하고 3열로 변경했다. 첫 카드는 Codex / `CODEX - MCP-with-MiniPC`, 두 번째는 GPT Web / `GPT Web - MCP 프로젝트 진척도 확인`, 세 번째 서버 카드는 `MINIPC_SERVER` 닉네임을 표시한다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-A UI refinement 8: 연결 카드의 두 번째 줄에서 제목 중복을 제거하고 본문만 표시하도록 변경했다. Model/Reasoning 선택기를 상단에서 제거해 Command 하단 우측, Clear/Run 버튼 왼쪽에 여백을 두고 배치했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-A UI refinement 9: Command 하단의 Model/Reasoning 선택기와 Clear 버튼 사이 간격만 추가 조정했다. Reasoning 열을 152px로 확보하고 오른쪽 여백을 16px로 설정해 버튼과 시각적으로 분리했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-A icon refinement: 제공된 `worker아이콘.png`를 기반으로 128px 헤더용 PNG와 256px PNG-embedded ICO를 생성했다. WPF 헤더 이미지, Windows 실행 파일 ApplicationIcon, tray NotifyIcon에 연결했으며 원본은 프로젝트 밖에 보존했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-A Current Task icon refinement: 사용자 지정 매핑에 따라 CODEX에는 OpenAI 아이콘, WORKER에는 콘솔 아이콘, GPT WEB에는 웹 아이콘을 96px 투명 PNG로 리사이징해 적용했다. 각 아이콘은 66px 원형 단계 표시 안에 배치했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-A Current Task flow refinement: 단계 사이 진행 표시를 `>>>` 화살표로 교체하고 우측 이동·점멸 애니메이션을 추가했다. CODEX/WORKER/GPT WEB은 컬러·그레이스케일 아이콘을 겹쳐 비활성 단계는 회색으로 표시하고, mock task 실행 시 Codex → Worker → GPT Web 순으로 활성 아이콘이 전환되도록 구현했다.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).

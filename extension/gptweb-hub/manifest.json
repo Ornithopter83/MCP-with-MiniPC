@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "GPTWeb-Hub UI Preview",
+  "version": "0.1.0",
+  "description": "A visual preview of the GPTWeb-Hub Worker bridge panel.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://www.chatgpt.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": []
+}

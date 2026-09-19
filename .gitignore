@@ -10,3 +10,5 @@ appsettings.*.local.json
 projecthub-private.pem
 forUpload.z01
 src/ProjectHub.Server/log/
+
+.worker-dotnet-home*/
