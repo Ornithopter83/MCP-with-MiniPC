@@ -10,6 +10,7 @@ namespace ProjectHub.Worker;
 public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
+    private const string RepositoryName = "MCP-with-MiniPC";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -99,7 +100,7 @@ public sealed class BridgeServer : IDisposable
             else if (method == "GET" && path.StartsWith("/bridge/bindings/", StringComparison.Ordinal))
                 payload = Binding(Uri.UnescapeDataString(path["/bridge/bindings/".Length..]));
             else if (method == "POST" && path == "/bridge/bind") payload = Bind(await ReadJsonAsync<BindRequest>(context.Request));
-            else if (method == "GET" && path == "/bridge/task") payload = PendingTask();
+            else if (method == "GET" && path == "/bridge/task") payload = PendingTask(context.Request.QueryString["conversationId"]);
             else if (method == "POST" && path == "/bridge/task") payload = CreateTask(await ReadJsonAsync<CreateTaskRequest>(context.Request));
             else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/claim", StringComparison.Ordinal))
                 payload = Claim(path["/bridge/task/".Length..^"/claim".Length]);
@@ -137,6 +138,7 @@ public sealed class BridgeServer : IDisposable
             return new BridgeResponse(true, new
             {
                 worker = "ProjectHub Worker",
+                repository = RepositoryName,
                 version = "0.1.0",
                 bridge = "ready",
                 loopback = true,
@@ -147,7 +149,7 @@ public sealed class BridgeServer : IDisposable
 
     private BridgeResponse Projects() => new(true, new[]
     {
-        new { id = "MCP-with-MiniPC", name = "MCP-with-MiniPC", path = Environment.CurrentDirectory }
+        new { id = RepositoryName, name = RepositoryName, path = Environment.CurrentDirectory }
     });
 
     private BridgeResponse Binding(string conversationId)
@@ -164,17 +166,17 @@ public sealed class BridgeServer : IDisposable
         if (string.IsNullOrWhiteSpace(request.ConversationId)) return new(false, new { error = "conversation_id_required" });
         lock (_gate)
         {
-            _state.Bindings[request.ConversationId] = new BindingState(request.ConversationId, request.ProjectId ?? "MCP-with-MiniPC", DateTimeOffset.UtcNow);
+            _state.Bindings[request.ConversationId] = new BindingState(request.ConversationId, request.ProjectId ?? RepositoryName, DateTimeOffset.UtcNow);
             SaveState();
             return new BridgeResponse(true, _state.Bindings[request.ConversationId]);
         }
     }
 
-    private BridgeResponse PendingTask()
+    private BridgeResponse PendingTask(string? conversationId)
     {
         lock (_gate)
         {
-            return new BridgeResponse(true, new { task = _state.Tasks.FirstOrDefault(task => task.Status == "PENDING") });
+            return new BridgeResponse(true, new { task = _state.Tasks.Where(task => string.IsNullOrWhiteSpace(conversationId) || task.ConversationId.Equals(conversationId, StringComparison.OrdinalIgnoreCase)).OrderByDescending(task => task.CompletedAt ?? task.ClaimedAt ?? task.CreatedAt).FirstOrDefault() });
         }
     }
 
@@ -184,7 +186,7 @@ public sealed class BridgeServer : IDisposable
             return new(false, new { error = "conversation_id_and_prompt_required" });
         lock (_gate)
         {
-            var task = new BridgeTask(Guid.NewGuid().ToString("N"), request.ConversationId, request.ProjectId ?? "MCP-with-MiniPC", request.Prompt, "PENDING", null, null, DateTimeOffset.UtcNow, null);
+            var task = new BridgeTask(Guid.NewGuid().ToString("N"), request.ConversationId, request.ProjectId ?? RepositoryName, request.Prompt, "PENDING", null, null, DateTimeOffset.UtcNow, null);
             _state.Tasks.Add(task);
             SaveState();
             return new BridgeResponse(true, task);
@@ -219,7 +221,8 @@ public sealed class BridgeServer : IDisposable
     }
 
     private BridgeResponse Heartbeat(HeartbeatRequest request)
-        => new(true, new { worker = "ProjectHub Worker", client = request.Client ?? "extension", timestamp = DateTimeOffset.UtcNow, status = "ready" });
+        => new(true, new { worker = "ProjectHub Worker",
+                repository = RepositoryName, client = request.Client ?? "extension", timestamp = DateTimeOffset.UtcNow, status = "ready" });
 
     private void ReplaceTask(BridgeTask task)
     {

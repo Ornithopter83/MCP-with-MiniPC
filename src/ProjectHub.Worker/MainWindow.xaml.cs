@@ -28,7 +28,7 @@ public partial class MainWindow : Window
         SetFlowState(codexActive: false, workerActive: true, webActive: true);
         _trayIcon = new Forms.NotifyIcon
         {
-            Text = "ProjectHub Worker",
+            Text = "ProjectHub Worker · MCP-with-MiniPC",
             Icon = new Drawing.Icon(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "worker-icon.ico")),
             Visible = true,
             ContextMenuStrip = new Forms.ContextMenuStrip()
@@ -167,6 +167,7 @@ public partial class MainWindow : Window
         {
             var result = await _codexRunner.RunAsync(prompt, cliModel, reasoning, workingDirectory, cts.Token);
             _lastCodexResult = result;
+            CodexConversationText.Text = result.ConversationTitle;
             SetFlowState(codexActive: false, workerActive: true, webActive: false);
             TaskDirection.Text = "CODEX → WORKER";
             TaskTitle.Text = result.ExitCode == 0 ? "Codex 결과 수신 완료" : "Codex 실행 실패";

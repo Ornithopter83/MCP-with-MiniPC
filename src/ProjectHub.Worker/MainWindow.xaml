@@ -111,7 +111,7 @@
           <Image Source="Assets/worker-icon.png" Width="56" Height="56" Stretch="Uniform" />
         </Border>
         <StackPanel>
-          <TextBlock Text="ProjectHub Worker" FontSize="25" FontWeight="Bold" />
+          <StackPanel Orientation="Horizontal"><TextBlock Text="ProjectHub Worker" FontSize="25" FontWeight="Bold" /><TextBlock x:Name="RepositoryNameText" Text=" · MCP-with-MiniPC" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,3,0,0" /></StackPanel>
           <TextBlock Text="SUHO_DEV_PC" FontSize="16" Foreground="{StaticResource Muted}" Margin="4,5,0,0" />
         </StackPanel>
       </StackPanel>
@@ -121,7 +121,7 @@
         <Grid>
           <Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
           <Border Width="48" Height="48" Background="#F0F6FF" CornerRadius="12"><TextBlock Text="■" FontSize="27" Foreground="{StaticResource Blue}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-          <StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="Codex" FontSize="16" FontWeight="Bold"/><TextBlock Text="MCP-with-MiniPC" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel>
+          <StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="Codex" FontSize="16" FontWeight="Bold"/><TextBlock x:Name="CodexConversationText" Text="Codex 작업 대기 중" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel>
         </Grid>
       </Border>
       <Border Style="{StaticResource CardBorder}" Margin="4,0,4,0">

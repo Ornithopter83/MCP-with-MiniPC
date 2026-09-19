@@ -11,6 +11,7 @@ public sealed record CodexCliResult(
     string ExecutablePath,
     string Model,
     string Reasoning,
+    string ConversationTitle,
     int ExitCode,
     string StandardOutput,
     string StandardError,
@@ -94,7 +95,7 @@ public sealed class CodexCliRunner
             var stderr = await stderrTask;
             var finalMessage = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile) : ExtractFinalMessage(stdout);
             var finishedAt = DateTimeOffset.UtcNow;
-            return new CodexCliResult(executable, model, reasoning, process.ExitCode, stdout, stderr, finalMessage.Trim(), startedAt, finishedAt);
+            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), process.ExitCode, stdout, stderr, finalMessage.Trim(), startedAt, finishedAt);
         }
         finally
         {
@@ -124,7 +125,15 @@ public sealed class CodexCliRunner
             }
         }
         return string.Join(Environment.NewLine, messages);
-    }}
+    }
+
+    private static string CreateConversationTitle(string prompt)
+    {
+        var title = prompt.SplitLines().FirstOrDefault()?.Trim() ?? string.Empty;
+        if (title.Length > 80) title = title[..80].TrimEnd() + "...";
+        return string.IsNullOrWhiteSpace(title) ? "Codex 작업" : title;
+    }
+}
 
 file static class StringExtensions
 {

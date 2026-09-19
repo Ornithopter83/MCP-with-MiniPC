@@ -268,3 +268,45 @@ NAS upload 최종 재검증: 운영 Server assertion 발급 성공 후 NAS `uplo
 2026-09-19 GPTWeb-Hub 상태 색상 의미 정정: Project/Worker는 bridge에서 실제 값이 지정된 경우에만 녹색으로 표시하고, 아직 값이 없을 때만 대기 상태를 표시하도록 변경했다. bridge 연결이 끊겨도 마지막으로 확인된 Project/Worker 값과 녹색 상태는 유지하며, Status 행만 빨간색 Disconnected로 전환한다.
 
 검증: node --check extension/gptweb-hub/content.js 성공.
+
+2026-09-19 최신 GPT-Web-Feedback Settings 기능 구현: 원격 피드백을 fetch/pull --rebase로 동기화한 뒤, 확장 톱니바퀴의 mock 상태 순환을 제거하고 실제 Settings modal을 추가했다. Host/Port/BasePath/선택적 Worker Path 입력, loopback 검증, chrome.storage.local 저장·복원, Test Connection, Save 즉시 polling URL 전환, Cancel을 구현했다. Project/Worker/Status 상태는 저장된 bridge 설정을 사용한다. Worker bridge task endpoint는 최신 task와 terminal 상태를 반환하고 확장 CURRENT REQUEST는 실제 PENDING/CLAIMED/COMPLETED/FAILED 상태에서 파생된다.
+
+검증: node --check extension/gptweb-hub/content.js 성공, dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore 성공(경고 0, 오류 0).
+
+2026-09-19 GPTWeb-Hub SPA navigation refresh 보완: 전체 페이지 새로고침이 아닌 ChatGPT 대화 이동은 content script가 재실행되지 않아 패널과 CURRENT REQUEST가 유지되는 문제를 확인했다. history.pushState/replaceState, popstate, hashchange를 감지해 URL 변경 시 task 상태를 IDLE로 초기화하고 Worker bridge를 즉시 재조회하도록 보완했다. 대화별 binding 식별·복원은 아직 후속 범위다.
+
+검증: node --check extension/gptweb-hub/content.js 성공.
+
+2026-09-19 Conversation binding 구현: ChatGPT URL의 conversation ID를 식별하고 Worker의 binding 조회/저장 API와 연결했다. Project가 연결되지 않은 대화는 Project 행에 연결 버튼을 표시하며, 현재 Worker project를 POST /bridge/bind로 저장한다. 페이지 이동·새로고침 후 binding을 다시 조회해 연결된 Project를 녹색으로 복원한다. task 조회에도 conversationId 필터를 적용해 다른 대화의 task가 섞이지 않도록 했다.
+
+검증: node --check extension/gptweb-hub/content.js 성공, dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore 성공(경고 0, 오류 0), git diff --check 통과.
+
+
+2026-09-19 GPTWeb-Hub 표현·연동 의미 정리: 확장 첫 상태 행을 Project에서 GPT Web으로 변경하고 현재 ChatGPT 대화 제목을 표시하도록 했다. 기존 대화-Worker 프로젝트 바인딩은 GPT Web 행의 연결 동작으로 유지했다. Worker 행은 bridge의 repository 값(저장소명)을 표시하고 Status 행만 bridge 연결 상태를 표시한다. Worker 헤더에는 메인 저장소명 MCP-with-MiniPC을 제목 옆에 표시하고, Codex 카드의 두 번째 줄은 실행 요청 첫 줄을 Codex 대화 제목으로 표시하도록 연결했다.
+
+검증: node --check extension/gptweb-hub/content.js 성공, dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore 성공(경고 0, 오류 0), git diff --check 통과.
+
+
+2026-09-19 GPTWeb-Hub 테스트 전송 버튼: 현재 ChatGPT 대화 ID가 식별된 경우 패널의 테스트 전송 버튼으로 Hello World! 테스트 문구니까 인사만 짧게 해줘를 실제 ChatGPT 입력창에 주입하고 전송하도록 구현했다. 대화방·입력창·전송 버튼 미검출 상태를 사용자에게 표시하며, 대화 이동 시 버튼 활성 상태를 갱신한다.
+
+검증: node --check extension/gptweb-hub/content.js 성공.
+
+
+2026-09-19 GPTWeb-Hub 대화 표시 개행: ChatGPT 페이지 제목이 프로젝트명 - 대화방명 형식이면 GPT Web 상태값을 두 줄로 표시하도록 수정했다.
+
+검증: node --check extension/gptweb-hub/content.js 성공.
+
+
+2026-09-19 GPTWeb-Hub 이미지 테스트 전송: 테스트 버튼 문구를 이미지가 무엇인지 짧게만 대답해줘로 변경하고, 확장 내부 Canvas에서 생성한 gptweb-hub-test.png를 File/DataTransfer로 ChatGPT file input 또는 paste/drop 경로에 첨부한 뒤 기존 전송 버튼으로 함께 전송하도록 구현했다. 별도 로컬 파일 권한은 사용하지 않는다.
+
+검증: node --check extension/gptweb-hub/content.js 성공.
+
+
+2026-09-19 GPTWeb-Hub 요청·수신 연동: 테스트 전송 버튼을 제거하고 CURRENT REQUEST가 IDLE일 때만 텍스트 입력, 전송, 파일 드롭을 활성화했다. 드롭 파일은 최종 파일명만 표시하며 전송 시 ChatGPT 입력창에 첨부한다. ChatGPT DOM의 최신 assistant 메시지를 MutationObserver로 감시해 하단 RESULT MESSAGE에 갱신한다. PENDING/CLAIMED/COMPLETED/FAILED 상태에서는 입력과 드롭을 비활성화한다.
+
+검증: node --check extension/gptweb-hub/content.js 성공, git diff --check 통과.
+
+
+2026-09-19 GPTWeb-Hub 요청·수신 UI 정리: 테스트 전송 버튼과 전용 이미지 생성 코드를 제거했다. CURRENT REQUEST가 IDLE이고 대화가 식별된 경우에만 텍스트 입력·전송·파일 드롭을 활성화하며, 드롭 파일은 파일명만 표시하고 일반 파일 첨부 경로로 ChatGPT에 전달한다. 전송 후 새 assistant 응답이 감지될 때까지 컨트롤을 잠그고, 최신 assistant 메시지를 RESULT MESSAGE에 갱신한다.
+
+검증: node --check extension/gptweb-hub/content.js 성공, git diff --check 통과.
