@@ -2937,3 +2937,239 @@ Extension에는 ACTION 의사결정 로직을 추가하지 않는다.
 
 완료 기준은 단순 파싱 성공이 아니라 **Web이 Controller가 되어 Codex와 여러 round를 실제 반복하고, END/PAUSE/오류/limit에서 안전하게 자동 loop가 종료되는 것**이다.
 
+
+---
+
+# 2026-09-19 GPTWeb-Hub 최우선 과제 — 실제 ChatGPT 메시지 왕복 E2E
+
+최신 main 기준 Worker/Codex 제어 루프와 ACTION 반복 프로토콜은 이미 구현되어 있다. 현재 가장 중요한 미완료 항목은 GPTWeb-Hub Extension이 실제 ChatGPT Web 대화창에 Worker 메시지를 안정적으로 전달하고, 최종 응답을 정확히 회수해 Worker로 되돌리는 브라우저 E2E다.
+
+이번 작업에서는 새로운 기능을 확장하지 말고 Web transport 안정화와 실제 화면 검증을 최우선으로 한다.
+
+## 현재 병목
+
+현재 코드 흐름:
+
+```text
+Worker task
+→ conversation binding
+→ Extension polling
+→ claim
+→ ChatGPT composer 탐색
+→ prompt 주입
+→ attachment
+→ Send
+→ assistant 응답 감시
+→ result POST
+→ Worker 후속 Codex
+→ ACTION 반복
+```
+
+문제는 이 전체 흐름이 실제 Explorer Worker + Chrome Extension + 실제 ChatGPT 대화에서 끝까지 검증되지 않았다는 점이다.
+
+## 이번 완료 기준
+
+최소 2회 실제 Web 왕복을 사용자 키보드 입력 없이 성공시킨다.
+
+```text
+Worker
+→ Extension
+→ 현재 바인딩된 ChatGPT conversation
+→ 자동 prompt 입력
+→ 실제 Send
+→ GPT Web 최종 응답 완료 감지
+→ result POST
+→ Worker
+→ 같은 Codex session 후속 실행
+→ 두 번째 Web task
+→ 같은 conversation 자동 전송
+→ 두 번째 최종 응답 회수
+→ ACTION=END 또는 정상 종료
+```
+
+1회 성공만으로 완료 처리하지 않는다.
+
+## 메시지 전달 검증
+
+1. composer는 실제 ChatGPT 입력창만 선택한다. Extension 자체 input, 숨은 contenteditable, 검색창, modal input을 잡으면 안 된다.
+2. prompt 주입 후 실제 ChatGPT composer에 동일 문자열이 표시됐는지 확인한다.
+3. 실제 Send selector를 우선 사용하고 넓은 fallback selector는 마지막 수단으로 둔다.
+4. sendButton.click()만으로 성공 처리하지 않는다. composer clear, 새 user message 생성, assistant generation 시작 중 가능한 신호를 조합해 실제 전송 성공을 확인한다.
+
+## 비활성 탭
+
+활성 ChatGPT 탭과 비활성 ChatGPT 탭을 각각 실제로 검증한다.
+
+비활성 탭에서 브라우저 정책 때문에 전송이 불안정하면 무리하게 우회하지 말고 WEB_REQUIRES_FOREGROUND 같은 명확한 상태로 표시한다. 사용자가 해당 탭을 활성화하면 이어서 처리할 수 있게 한다.
+
+## 응답 완료 판정
+
+assistant message가 처음 나타났다고 완료 처리하지 않는다.
+
+최종 응답 확정 조건:
+
+```text
+1. 현재 task 전송 이후 새 assistant message 존재
+2. Stop/중지 또는 streaming/busy 신호 종료
+3. assistant 본문이 안정화 시간 동안 변하지 않음
+4. task baselineAssistant와 다른 새 응답임
+```
+
+현재 5초 안정화 대기는 실제 화면에서 충분한지 확인하되, 단순히 시간을 더 늘리는 방식보다 streaming 신호를 정확히 잡는 것을 우선한다.
+
+## 이전 응답 재사용 방지
+
+task별로 최소 다음 값을 관리한다.
+
+```text
+taskId
+conversationId
+baselineAssistant
+sentTaskId
+sentAt
+```
+
+새로고침, Extension reload, SPA 이동 후 CLAIMED task를 복원해도 기존 assistant 응답을 새 결과로 사용하지 않는다.
+
+## 중복 전송 방지
+
+다음 상황에서 동일 prompt를 다시 보내지 않는다.
+
+```text
+Extension refresh
+ChatGPT page refresh
+SPA navigation
+polling 재조회
+heartbeat 재연결
+result POST retry
+```
+
+taskId + sentTaskId + claim 상태 + conversationId를 기준으로 중복 send를 막는다. Send 성공 여부가 불확실하면 자동 재전송보다 사용자 확인 상태를 우선한다.
+
+## conversation 일치 검증
+
+전송 직전에 반드시 다음을 다시 확인한다.
+
+```text
+task.conversationId == currentConversationId
+binding.projectId == task.projectId
+```
+
+불일치 시 다른 방에 보내지 말고 CONVERSATION_MISMATCH로 중단한다.
+
+## Attachment 검증 순서
+
+먼저 TEXT_ONLY 2회 왕복을 완전히 성공시킨 뒤 IMAGE_ATTACHMENT 1회 왕복을 검증한다.
+
+attachment task는 bridge download → File 생성 → ChatGPT 첨부 UI 반영 → upload 완료 → Send 순서를 지킨다.
+
+## 실제 검증 방식
+
+최신 AGENTS.md 기준과 동일하게 가능한 경우 반드시 다음 실환경에서 검증한다.
+
+```text
+빌드된 ProjectHub.Worker.exe
++ Chrome에 실제 로드된 GPTWeb-Hub Extension
++ 실제 ChatGPT conversation
+```
+
+CLI/API 단독 검증은 보조 검증일 뿐 최종 완료 근거로 사용하지 않는다.
+
+화면 자동화 런타임이 실패하면 실제 Worker/Chrome을 실행하고 사용자에게 필요한 최소 클릭만 요청해서라도 실제 E2E를 끝까지 확인한다. '자동화 런타임 문제로 미검증' 상태를 완료로 기록하지 않는다.
+
+## 우선 테스트 시나리오
+
+복잡한 이미지/코드 대신 단순 텍스트로 2회 왕복부터 검증한다.
+
+Round 1:
+
+```text
+Worker → Web
+Codex 결과 검토 요청
+
+Web → Worker
+[ACTION=CONTINUE]
+두 번째 작업 지시
+```
+
+Round 2:
+
+```text
+Worker/Codex → Web
+두 번째 결과 검토 요청
+
+Web → Worker
+[ACTION=END]
+테스트 완료
+```
+
+END가 Codex에 다시 전달되지 않고 FINISH_SUCCESS로 끝나는지 확인한다.
+
+## 실패 단계 기록
+
+실패를 'Web 실패' 하나로 묶지 말고 아래 stage 중 어디서 멈췄는지 기록한다.
+
+```text
+BINDING
+TASK_POLL
+CLAIM
+COMPOSER_FIND
+TEXT_INSERT
+ATTACH
+SEND_BUTTON_FIND
+SEND_CLICK
+SEND_CONFIRM
+RESPONSE_START
+STREAMING
+RESPONSE_STABLE
+RESULT_POST
+WORKER_RECEIVE
+NEXT_ROUND
+```
+
+## 이번 우선순위에서 제외
+
+Web transport 검증을 방해하지 않는 한 다음은 이번 작업에서 확장하지 않는다.
+
+```text
+새 Worker UI 기능
+새 Codex archive 기능
+token usage 추가 확장
+Server/NAS 기능
+Force Restore
+추가 ACTION 종류
+이미지 생성 결과 asset 수집
+다중 conversation 병렬 실행
+```
+
+## 문서 최신화
+
+실제 2회 왕복 E2E가 성공하면 CurrentWork.md와 ProjectHub_IMPLEMENTATION_PLAN.md의 오래된 상태 문구도 함께 최신화한다.
+
+특히 'GPT Web DOM 입출력은 후속 범위', 'Chrome polling UI E2E 1건', 'Worker-B 진행' 같은 오래된 표현을 현재 구현 상태에 맞게 제거한다.
+
+## 최종 체크리스트
+
+```text
+[ ] 실제 Worker EXE에서 task 시작
+[ ] Extension이 실제 현재 conversation에서 claim
+[ ] 사용자 입력 없이 ChatGPT composer에 prompt 입력
+[ ] 실제 Send 성공
+[ ] assistant streaming 시작 확인
+[ ] 잘리지 않은 최종 응답 회수
+[ ] Worker result POST 성공
+[ ] Worker가 Web result 수신
+[ ] 같은 Codex session 후속 처리
+[ ] 두 번째 Web task 자동 생성
+[ ] 같은 conversation으로 두 번째 자동 전송
+[ ] 두 번째 최종 응답 회수
+[ ] ACTION=END 또는 정상 종료
+[ ] duplicate prompt 없음
+[ ] 이전 assistant 응답 재사용 없음
+[ ] conversation mismatch 없음
+[ ] 새로고침/재조회 중복 실행 없음
+[ ] build/test/node check 성공
+[ ] CurrentWork/Implementation Plan 최신화
+```
+
+핵심 완료 기준은 코드상 가능해 보이는 것이 아니라 실제 이 ChatGPT Web 대화에서 Extension이 2회 이상 자동 메시지 왕복을 끝까지 성공하는 것이다.
