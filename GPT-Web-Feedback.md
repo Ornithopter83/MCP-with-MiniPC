@@ -2495,3 +2495,445 @@ attachment 검증은 현재 Worker asset endpoint가 아직 없으면 구현 가
 ```
 
 이번 작업의 완료 기준은 **UI만 바뀐 것**이 아니라 **Worker → GPT Web → Worker의 실제 1회 왕복이 끝까지 성공하는 것**이다.
+
+---
+
+# 2026-09-19 GPTWeb-Hub Web-Controlled Loop Protocol v1
+
+## 목적
+
+현재 구현된 1회 왕복:
+
+```text
+Codex
+→ Worker
+→ GPT Web
+→ Worker
+→ FINISHED
+```
+
+을 Web ChatGPT가 다음 동작을 결정하는 반복 가능한 자동 작업 흐름으로 확장한다.
+
+핵심 원칙:
+
+```text
+GPT Web   = Controller
+Worker    = Orchestrator / Executor
+Extension = Transport
+Codex CLI = Task Executor
+```
+
+ACTION의 원본은 반드시 **GPT Web의 응답**이어야 한다.
+
+Extension은 ACTION을 생성하거나 판단하지 않는다.
+Worker도 Web의 ACTION을 임의로 변경하거나 보정하지 않는다.
+
+## ACTION 계약
+
+### [ACTION=BEGIN]
+
+새 자동 작업의 최초 명령이다.
+
+Web 응답의 첫 번째 유효 제어행이 `[ACTION=BEGIN]`이면 Worker는 그 뒤의 본문을 첫 Codex CLI 명령으로 전달하고 job을 시작한다.
+
+```text
+GPT Web
+[ACTION=BEGIN]
+첫 작업 지시...
+
+→ Worker
+→ Codex CLI 실행
+→ 결과 수집
+→ GPT Web 전달
+```
+
+BEGIN은 job 시작 시 1회만 유효하다.
+이미 진행 중인 job에서 다시 BEGIN이 나오면 protocol error로 처리한다.
+
+### [ACTION=CONTINUE]
+
+Web이 현재 Codex 결과를 검토한 뒤 추가 Codex 작업이 필요하다고 판단한 상태다.
+
+ACTION 이후의 본문을 다음 Codex CLI 명령으로 전달한다.
+
+```text
+GPT Web
+[ACTION=CONTINUE]
+다음 작업 지시...
+
+→ Worker
+→ Codex CLI
+→ 결과 수집
+→ 동일 GPT Web conversation으로 전달
+→ 다음 ACTION 대기
+```
+
+이 흐름을 반복한다.
+
+### [ACTION=PAUSE]
+
+자동화만으로 안전하게 계속할 수 없고 사용자의 입력·판단·승인이 필요함을 의미한다.
+
+PAUSE 응답은 Codex CLI에 전달하지 않는다.
+
+Worker는 자동 loop를 종료하고 사용자 개입이 필요한 종료 상태로 전환한다.
+
+```text
+[ACTION=PAUSE]
+→ Codex 미전달
+→ FINISH_PAUSED
+```
+
+Web 응답 본문은 사용자에게 그대로 표시한다.
+
+### [ACTION=END]
+
+Web이 현재 목표가 완료됐다고 판단한 정상 종료다.
+
+END 응답은 Codex CLI에 전달하지 않는다.
+
+```text
+[ACTION=END]
+→ Codex 미전달
+→ FINISH_SUCCESS
+```
+
+Web 응답 본문은 최종 결과로 표시한다.
+
+## ACTION과 기존 Task Status 분리
+
+현재 bridge의 상태:
+
+```text
+PENDING
+CLAIMED
+COMPLETED
+FAILED
+...
+```
+
+는 그대로 유지한다.
+
+이는 한 번의 Web 요청이 전달·처리되는 **transport lifecycle**이다.
+
+ACTION은 Web 응답이 **다음에 무엇을 해야 하는지**를 나타내는 control protocol이다.
+
+예:
+
+```text
+Bridge Task:
+PENDING
+→ CLAIMED
+→ GPT Web 실행
+→ result POST
+→ COMPLETED
+
+Web Response:
+[ACTION=CONTINUE]
+다음 작업...
+
+Worker:
+→ 다음 Codex round 실행
+```
+
+둘을 하나의 enum으로 합치지 않는다.
+
+## 응답 형식
+
+Web 응답의 첫 번째 유효 제어행으로 아래 중 정확히 하나를 사용한다.
+
+```text
+[ACTION=BEGIN]
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+```
+
+BEGIN/CONTINUE의 경우 ACTION 이후 본문만 Codex 명령 payload로 사용한다.
+
+예:
+
+```text
+[ACTION=CONTINUE]
+현재 결과에서 실패 원인을 확인하고 필요한 수정만 수행해.
+```
+
+PAUSE/END 본문은 사용자에게 표시할 설명/최종 결과이며 Codex에는 전달하지 않는다.
+
+한 Web 응답에는 ACTION이 정확히 하나만 존재해야 한다.
+
+## Protocol Error
+
+다음 상황에서 Worker가 의미를 추측하지 않는다.
+
+```text
+- ACTION 없음
+- ACTION 2개 이상
+- 알 수 없는 ACTION
+- ACTION 형식 손상
+- 진행 중 job에서 BEGIN 재등장
+- BEGIN/CONTINUE인데 전달할 본문이 비어 있음
+```
+
+이 경우:
+
+```text
+FINISH_PROTOCOL_ERROR
+```
+
+로 종료하며 응답을 Codex에 전달하지 않는다.
+
+## ACTION과 실행 예외 분리
+
+다음 오류가 발생했다고 Worker나 Extension이 임의로 `[ACTION=PAUSE]` 또는 `[ACTION=END]`를 생성하면 안 된다.
+
+```text
+- bridge 연결 실패
+- GPT Web timeout
+- GPT Web DOM 처리 실패
+- Codex 실행 실패
+- conversation mismatch
+- Worker 내부 예외
+- Extension 내부 예외
+```
+
+ACTION은 오직 Web 응답에서만 온다.
+
+실행 계층 오류는 별도의 Worker terminal state로 처리한다.
+
+초기 권장 상태:
+
+```text
+FINISH_SUCCESS
+FINISH_PAUSED
+FINISH_PROTOCOL_ERROR
+FINISH_CODEX_ERROR
+FINISH_WEB_ERROR
+FINISH_WORKER_ERROR
+FINISH_LIMIT
+FINISH_CANCELLED
+```
+
+## 반복 안전장치
+
+Web이 계속 CONTINUE를 반환하더라도 무한 실행되지 않도록 Worker가 독립적인 hard limit을 가진다.
+
+초기 기본값 권장:
+
+```text
+MAX_ROUNDS  = 30
+MAX_RUNTIME = 30 minutes
+```
+
+제한을 초과하면 Web ACTION과 무관하게:
+
+```text
+FINISH_LIMIT
+```
+
+로 종료한다.
+
+테스트처럼 정확히 10회 왕복이 필요한 작업은 job 생성 시 `maxRounds=10`으로 지정할 수 있다.
+
+## Job / Round 관리
+
+round 번호를 AI의 출력에 의존하지 않는다.
+
+Worker가 다음 값을 관리한다.
+
+```text
+jobId
+round
+maxRounds
+startedAt
+lastWebTaskId
+lastAction
+actionConsumed
+codexSessionId
+```
+
+Web이나 Codex가 `3/10` 같은 숫자를 출력하더라도 실제 round의 정답은 Worker 상태다.
+
+권장 전이:
+
+```text
+IDLE
+  ↓
+BEGIN
+  ↓
+CODEX_RUNNING
+  ↓
+WORKER_TO_WEB
+  ↓
+WEB_RUNNING
+  ↓
+WEB_TO_WORKER
+  ↓
+ACTION
+
+ACTION=CONTINUE
+  → round + 1
+  → CODEX_RUNNING
+  → ...
+
+ACTION=PAUSE
+  → FINISH_PAUSED
+
+ACTION=END
+  → FINISH_SUCCESS
+```
+
+## 동일 ACTION 중복 소비 방지
+
+각 Web result의 ACTION은 `taskId` 기준으로 정확히 한 번만 소비한다.
+
+같은 taskId의 result가 polling, 새로고침, retry 때문에 다시 보이더라도 다음 Codex round를 두 번 실행하지 않는다.
+
+최소한 다음 값을 저장한다.
+
+```text
+jobId
+round
+webTaskId
+action
+actionConsumed
+```
+
+`actionConsumed=true`인 task는 다시 실행하지 않는다.
+
+Worker 재시작 후에도 가능한 범위에서 이 상태를 복원해 duplicate Codex 실행을 방지한다.
+
+## 통신 Retry와 실행 Retry 분리
+
+Web 전송이나 result POST가 실패했다고 동일 Codex 명령을 다시 실행해서는 안 된다.
+
+올바른 흐름:
+
+```text
+Codex 실행 1회
+→ 결과 로컬 보관
+→ Web 전달 실패
+→ 동일 결과를 Web에 재전송
+```
+
+금지:
+
+```text
+Codex 실행
+→ Web 전달 실패
+→ 동일 Codex 명령 재실행
+```
+
+파일 변경, Git 작업 등 side effect가 있는 명령은 재실행 시 위험할 수 있다.
+
+## PAUSE와 CANCEL 구분
+
+```text
+PAUSE
+= GPT Web이 정상 프로토콜로 사용자 개입 필요를 결정
+
+CANCEL
+= 사용자가 Worker UI에서 현재 job을 명시적으로 취소
+```
+
+둘을 같은 상태로 처리하지 않는다.
+
+사용자 Cancel은:
+
+```text
+FINISH_CANCELLED
+```
+
+로 종료한다.
+
+## Extension 책임
+
+Extension은 다음 역할만 수행한다.
+
+```text
+- Worker task 수신
+- GPT Web에 전달
+- 최종 Web 응답 수집
+- 원문 result를 Worker에 반환
+- 화면에 ACTION/상태를 표시할 수 있음
+```
+
+Extension이 다음을 해서는 안 된다.
+
+```text
+- 응답 내용을 보고 CONTINUE/END를 자체 판단
+- ACTION이 없을 때 자동 보정
+- PAUSE/END를 임의 생성
+- 동일 task 재전송
+```
+
+## Worker 책임
+
+Worker가 수행한다.
+
+```text
+- ACTION parser
+- protocol validation
+- jobId / round / maxRounds 관리
+- BEGIN/CONTINUE의 Codex 전달
+- PAUSE/END의 terminal 처리
+- ACTION idempotency
+- MAX_ROUNDS / MAX_RUNTIME hard limit
+- Codex 결과 보관
+- transport retry와 Codex 실행 retry 분리
+```
+
+## 첫 구현 범위
+
+현재의 Worker → GPT Web → Worker 1회 왕복 코드는 최대한 유지한다.
+
+다음만 추가한다.
+
+```text
+1. Web Response ACTION parser
+2. BEGIN / CONTINUE / PAUSE / END validation
+3. Worker jobId / round / maxRounds
+4. BEGIN → 첫 Codex 실행
+5. CONTINUE → 기존 Codex 실행 경로 재진입
+6. PAUSE → FINISH_PAUSED
+7. END → FINISH_SUCCESS
+8. protocol error → FINISH_PROTOCOL_ERROR
+9. MAX_ROUNDS / MAX_RUNTIME
+10. 동일 webTaskId ACTION 중복 소비 방지
+11. Codex 결과 저장 후 Web transport retry
+12. Worker UI에 현재 Job / Round / terminal 상태 최소 표시
+```
+
+Extension에는 ACTION 의사결정 로직을 추가하지 않는다.
+
+## 우선 검증 시나리오
+
+곱셈 문제를 이용해 10회 왕복을 검증한다.
+
+```text
+1. Web이 [ACTION=BEGIN] + 첫 문제 생성 지시 반환
+2. Worker가 Codex에 전달
+3. Codex 결과를 Web에 전달
+4. Web이 [ACTION=CONTINUE] + 다음 지시 반환
+5. 2~4를 반복
+6. Worker round가 정확히 10에 도달하는지 확인
+7. 마지막 Web 응답이 [ACTION=END]
+8. END가 Codex로 전달되지 않는지 확인
+9. FINISH_SUCCESS 확인
+10. 동일 마지막 task result를 재조회해도 추가 Codex 실행이 없는지 확인
+```
+
+추가 예외 검증:
+
+```text
+- ACTION 누락 → FINISH_PROTOCOL_ERROR
+- ACTION 중복 → FINISH_PROTOCOL_ERROR
+- 진행 중 BEGIN 재등장 → FINISH_PROTOCOL_ERROR
+- maxRounds 초과 시 CONTINUE여도 FINISH_LIMIT
+- PAUSE → Codex 미전달 + FINISH_PAUSED
+- 사용자 Cancel → FINISH_CANCELLED
+- Web 전달 재시도 시 Codex 재실행 없음
+```
+
+완료 기준은 단순 파싱 성공이 아니라 **Web이 Controller가 되어 Codex와 여러 round를 실제 반복하고, END/PAUSE/오류/limit에서 안전하게 자동 loop가 종료되는 것**이다.
+
