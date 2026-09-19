@@ -936,3 +936,160 @@ Worker-A 완료 기준:
 ```
 
 검증 후 Worker-B로 진행한다.
+
+
+---
+
+# 2026-09-19 최신 상태 확인 및 Worker 진행 표시 피드백
+
+## 최신 확인
+
+현재 `main`의 최신 확인 커밋:
+
+```text
+7c9cfbf63db77a42b52c4adfb3e9d48afe8e06ce
+Allow explicitly approved direct Git sync
+```
+
+직전 Worker 구현 커밋:
+
+```text
+624e22585eb16aceb66e2059e91c0dfe97bd473b
+Implement Worker dashboard UI and icon flow
+```
+
+현재 확인된 Worker-A 상태:
+
+```text
+- src/ProjectHub.Worker WPF / net9.0-windows 프로젝트 생성 완료
+- ProjectHub.sln 포함 완료
+- tray 숨김 / Open / Pause / Exit skeleton 구현
+- 메인 UI 및 Command / Result toggle mock 구현
+- Codex / Worker / GPT Web 단계별 아이콘 적용
+- 활성 단계는 컬러, 비활성 단계는 grayscale 처리
+- 단계 사이 진행 표시를 >>> 형태로 변경
+- >>> 우측 이동 + 점멸 애니메이션 구현
+- mock task에서 Codex → Worker → GPT Web 순으로 활성 단계 전환
+- Worker-A build/test 통과
+- Worker-B(Codex CLI 실제 연결)는 아직 후속 범위
+```
+
+따라서 `>>>` 진행 표시는 새로 만드는 작업이 아니라 **현재 구현을 유지·정리하는 요구사항**으로 취급한다.
+
+## Worker Task Flow 진행 표시 최종 원칙
+
+Task Flow는 이미지 파일을 별도 애니메이션 자산으로 만드는 방식보다 WPF 벡터/텍스트 애니메이션으로 유지한다.
+
+기본 표현:
+
+```text
+CODEX   >>>   WORKER   >>>   GPT WEB
+```
+
+현재 실행 방향에 해당하는 구간만 애니메이션한다.
+
+예:
+
+```text
+Codex 작업 결과를 Worker가 받는 중
+CODEX   >>>   WORKER   ---   GPT WEB
+
+Worker가 Web에 요청하는 중
+CODEX   ---   WORKER   >>>   GPT WEB
+
+Web 결과가 Worker로 돌아오는 중
+CODEX   ---   WORKER   <<<   GPT WEB
+```
+
+UI 원칙:
+
+```text
+- 활성 진행 구간: 파란색 계열 + 순차 점등/이동
+- 비활성 구간: 회색 고정
+- 완료된 단계: 컬러 아이콘 유지 가능
+- 아직 실행되지 않은 단계: grayscale
+- 오류/승인 필요는 화살표 애니메이션을 멈추고 종료 상태로 전환
+- 애니메이션은 상태 표현용이며 task state 자체의 원본이 되어서는 안 됨
+```
+
+추천 애니메이션은 세 개의 `>`가 왼쪽에서 오른쪽으로 순차적으로 강조되는 방식이다.
+
+```text
+>..
+>>.
+>>>
+.>>
+..>
+(repeat)
+```
+
+단순 opacity 변화 또는 짧은 translate 효과만 사용하고, CPU를 지속적으로 많이 사용하는 애니메이션은 피한다. Tray/background 상태에서는 메인 창이 숨겨져 있으면 시각 애니메이션을 중단해도 되며 Worker 실제 작업은 계속 진행한다.
+
+## 현재 구현과 맞춰야 할 상태 전환
+
+Worker-A mock의 시각 흐름은 향후 실제 task state와 아래처럼 연결한다.
+
+```text
+IDLE
+  ↓
+CODEX_RUNNING
+  ↓
+CODEX_TO_WORKER
+  ↓
+WORKER_TO_WEB
+  ↓
+WEB_RUNNING
+  ↓
+WEB_TO_WORKER
+  ↓
+FINISHED
+```
+
+메인 UI에는 내부 상태 이름을 그대로 노출할 필요 없다.
+
+사용자 표시 예:
+
+```text
+● CODEX 작업 중
+● CODEX → WORKER
+● WORKER → GPT WEB
+● GPT WEB → WORKER
+● 작업 종료
+```
+
+Task Flow의 아이콘 활성/비활성 상태와 `>>>` 애니메이션은 반드시 동일 task state에서 파생시킨다. XAML 애니메이션 자체가 별도 상태를 만들지 않는다.
+
+## 현재 정책 변경 반영
+
+최신 `AGENTS.md`는 Git 동작을 더 이상 Explorer CMD에만 한정하지 않고 **사용자의 명시적 승인에 한해 Git commit/push/fetch/pull을 허용**하도록 수정됐다.
+
+따라서 향후 Worker-E에서 Git 연동 시:
+
+```text
+- 사용자가 Worker에서 명시적으로 승인한 Git sync는 허용 가능
+- detached HEAD / merge-rebase 진행 / conflict / push reject는 자동 해결 금지
+- reset / checkout / 원격 shell 자동 실행 금지
+```
+
+를 기준으로 한다.
+
+## 다음 구현 범위
+
+Worker-A의 UI/아이콘/flow mock은 현재 단계에서 충분히 구현됐다.
+
+다음은 기존 계획대로 **Worker-B — Codex CLI 실제 연결**을 우선한다.
+
+Worker-B에서 반드시 현재 UI의 mock state를 실제 상태로 치환한다.
+
+```text
+- codex.exe 자동 탐색
+- 선택된 Model / Reasoning 실제 적용
+- async codex exec
+- stdout / stderr / JSON event 수집
+- CLI model / reasoning / token usage / session id 가능 범위 수집
+- Codex 실행 시작 시 CODEX 단계 활성화
+- Codex 완료 결과를 Worker가 받는 동안 CODEX >>> WORKER 표시
+- Last Result의 Codex 탭을 실제 결과로 갱신
+```
+
+GPT Web bridge는 Worker-D 전까지 mock을 유지하며 Worker-B에서 임의로 브라우저 자동화를 함께 구현하지 않는다.
