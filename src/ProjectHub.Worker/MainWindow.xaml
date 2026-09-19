@@ -146,9 +146,9 @@
             </StackPanel>
             <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
               <StackPanel><Grid Width="66" Height="66"><Border Width="66" Height="66" CornerRadius="33" Background="#12244C"/><Image x:Name="CodexInactiveIcon" Source="Assets/current-openai-gray.png" Width="56" Height="56" Stretch="Uniform"/><Image x:Name="CodexActiveIcon" Source="Assets/current-openai.png" Width="56" Height="56" Stretch="Uniform" Visibility="Collapsed"/></Grid><TextBlock Text="CODEX" FontSize="14" FontWeight="Bold" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,24,0,0"/><TextBlock Text="대기 중" FontSize="14" Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/></StackPanel>
-              <TextBlock Style="{StaticResource FlowArrowStyle}" Foreground="#B7C4D6" Margin="15,0"/>
+              <StackPanel x:Name="CodexToWorkerArrow" Orientation="Horizontal" Margin="15,0" VerticalAlignment="Center"><TextBlock x:Name="CodexArrow1" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="#B7C4D6"/><TextBlock x:Name="CodexArrow2" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="#B7C4D6"/><TextBlock x:Name="CodexArrow3" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="#B7C4D6"/></StackPanel>
               <StackPanel><Grid Width="66" Height="66"><Border Width="66" Height="66" CornerRadius="33" Background="#0A9D57"/><Image x:Name="WorkerInactiveIcon" Source="Assets/current-console-gray.png" Width="56" Height="56" Stretch="Uniform" Visibility="Collapsed"/><Image x:Name="WorkerActiveIcon" Source="Assets/current-console.png" Width="56" Height="56" Stretch="Uniform"/></Grid><TextBlock Text="WORKER" FontSize="14" FontWeight="Bold" Foreground="{StaticResource Green}" HorizontalAlignment="Center" Margin="0,24,0,0"/><TextBlock Text="요청 전달 중" FontSize="14" Foreground="{StaticResource Green}" HorizontalAlignment="Center"/></StackPanel>
-              <TextBlock Style="{StaticResource FlowArrowStyle}" Foreground="{StaticResource Blue}" Margin="15,0"/>
+              <StackPanel x:Name="WorkerToWebArrow" Orientation="Horizontal" Margin="15,0" VerticalAlignment="Center"><TextBlock x:Name="WebArrow1" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="{StaticResource Blue}"/><TextBlock x:Name="WebArrow2" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="{StaticResource Blue}"/><TextBlock x:Name="WebArrow3" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="{StaticResource Blue}"/></StackPanel>
               <StackPanel><Grid Width="66" Height="66"><Border Width="66" Height="66" CornerRadius="33" Background="#1477E8"/><Image x:Name="WebInactiveIcon" Source="Assets/current-web-gray.png" Width="56" Height="56" Stretch="Uniform" Visibility="Collapsed"/><Image x:Name="WebActiveIcon" Source="Assets/current-web.png" Width="56" Height="56" Stretch="Uniform"/></Grid><TextBlock Text="GPT WEB" FontSize="14" FontWeight="Bold" Foreground="{StaticResource Blue}" HorizontalAlignment="Center" Margin="0,24,0,0"/><TextBlock Text="응답 생성 중" FontSize="14" Foreground="{StaticResource Blue}" HorizontalAlignment="Center"/></StackPanel>
             </StackPanel>
             <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Bottom"><TextBlock Text="⟳  Round  " FontSize="16"/><TextBlock Text="2 / 3" FontSize="16" FontWeight="Bold"/><TextBlock Text="   ◷  00:01:42" FontSize="16" Margin="16,0,0,0"/><TextBlock Text="   |   Worker의 요청을 GPT Web에서 처리하고 있습니다." Foreground="{StaticResource Muted}" FontSize="14" Margin="18,0,0,0"/></StackPanel>
@@ -185,24 +185,3 @@
     </Border>
   </Grid>
 </Window>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

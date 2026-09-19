@@ -41,9 +41,9 @@
       </header>
 
       <div class="status-list" aria-label="Connection status">
-        ${statusRow('project', 'Project', 'MCP-with-MiniPC')}
-        ${statusRow('worker', 'Worker', 'ProjectHub Worker')}
-        ${statusRow('web', 'Web', 'Connected')}
+        ${statusRow('project', 'Project', '—')}
+        ${statusRow('worker', 'Worker', '—')}
+        ${statusRow('web', 'Status', 'Connected')}
       </div>
 
       <main class="request-section">
@@ -123,6 +123,43 @@
   const from = root.querySelector('.request-meta strong:nth-of-type(2)');
   const spinner = root.querySelector('.spinner');
 
+  function setStatusValue(kind, value, tone) {
+    const element = root.querySelector('.status-row[data-kind="' + kind + '"] .status-value');
+    if (!element) return;
+    element.textContent = value;
+    element.classList.remove('status-ok', 'status-offline', 'status-pending');
+    element.classList.add('status-' + tone);
+  }
+  async function refreshBridge() {
+    try {
+      const [statusResponse, projectsResponse, taskResponse] = await Promise.all([
+        fetch("http://127.0.0.1:43821/bridge/status"),
+        fetch("http://127.0.0.1:43821/bridge/projects"),
+        fetch("http://127.0.0.1:43821/bridge/task")
+      ]);
+      if (!statusResponse.ok || !projectsResponse.ok || !taskResponse.ok) throw new Error("bridge unavailable");
+      const status = await statusResponse.json();
+      const projects = await projectsResponse.json();
+      const pending = await taskResponse.json();
+      const project = projects.data?.[0];
+      const bridgeTask = pending.data?.task;
+      const projectName = typeof project?.name === 'string' ? project.name.trim() : '';
+      const workerName = typeof status.data?.worker === 'string' ? status.data.worker.trim() : '';
+      setStatusValue('project', projectName || '—', projectName ? 'ok' : 'pending');
+      setStatusValue('worker', workerName || '—', workerName ? 'ok' : 'pending');
+      setStatusValue('web', 'Connected', 'ok');
+      systemText.textContent = bridgeTask ? 'Worker bridge에서 작업을 전달받았습니다.' : '정상적으로 연결되어 있습니다.';
+      if (bridgeTask) {
+        stateIndex = bridgeTask.status === 'CLAIMED' ? 1 : 2;
+        renderState();
+        task.textContent = bridgeTask.id;
+        from.textContent = bridgeTask.status;
+      }
+    } catch {
+      setStatusValue('web', 'Disconnected', 'offline');
+      systemText.textContent = 'Worker bridge에 연결할 수 없습니다.';
+    }
+  }
   function renderState() {
     const state = states[stateIndex];
     card.dataset.state = state.key;
@@ -154,7 +191,7 @@
   });
 
   function statusRow(kind, label, value) {
-    return `<div class="status-row" data-kind="${kind}"><strong>${label}</strong><span>${value}</span><b><i></i>READY</b></div>`;
+    return `<div class="status-row" data-kind="${kind}"><strong>${label}</strong><span class="status-value">${value}</span></div>`;
   }
 
   function svg(path, extra = '') {
@@ -189,7 +226,7 @@
     .status-row { min-height: 41px; display: grid; grid-template-columns: 75px 1fr auto; align-items: center; column-gap: 7px; border-bottom: 1px solid #d8e0e7; font-size: 16px; }
     .status-row:last-child { border-bottom: 0; }
     .status-row strong { font-size: 16px; font-weight: 800; }
-    .status-row > span { color: #18253a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .status-row > span { color: #18253a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .status-row .status-value.status-ok { color: #078443; font-weight: 700; } .status-row .status-value.status-offline { color: #c53b3b; font-weight: 700; } .status-row .status-value.status-pending { color: #b56b00; font-weight: 700; }
     .status-row b { display: flex; align-items: center; gap: 8px; color: #087a3b; font-size: 15px; font-weight: 800; }
     .status-row b i { width: 22px; height: 22px; border-radius: 50%; background: #22cf51; box-shadow: inset 0 0 0 1px rgba(0,0,0,.02); }
     .request-section { border-top: 1px solid #d8e0e7; padding: 19px 21px 20px; }
@@ -218,8 +255,10 @@
     @media (max-width: 680px) { .hub-panel { top: 72px; right: 12px; left: 12px; width: auto; } .reopen { right: 12px; } }
   `;
   root.querySelector('style').textContent = styles;
+  setStatusValue('project', '—', 'pending');
+  setStatusValue('worker', '—', 'pending');
+  setStatusValue('web', 'Disconnected', 'offline');
   renderState();
+  refreshBridge();
+  window.setInterval(refreshBridge, 1500);
 })();
-
-
-

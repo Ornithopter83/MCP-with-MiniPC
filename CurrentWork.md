@@ -44,7 +44,7 @@ Updated: 2026-09-18
 
 ## 진행
 
-잔여 작업: `hw`에서 Force Restore GUI의 계속/취소 동작을 실제 탐색기 기준으로 1회 확인한 뒤 08 Server 설치·이전
+잔여 작업: Worker-B 최소 smoke test, 현재 실행 중인 작업 중지 동작 검증, 이후 Worker-D GPT Web bridge
 
 ## 작업 정책
 
@@ -202,3 +202,69 @@ NAS upload 최종 재검증: 운영 Server assertion 발급 성공 후 NAS `uplo
 2026-09-19 Worker-A Current Task flow refinement: 단계 사이 진행 표시를 `>>>` 화살표로 교체하고 우측 이동·점멸 애니메이션을 추가했다. CODEX/WORKER/GPT WEB은 컬러·그레이스케일 아이콘을 겹쳐 비활성 단계는 회색으로 표시하고, mock task 실행 시 Codex → Worker → GPT Web 순으로 활성 아이콘이 전환되도록 구현했다.
 
 검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개).
+
+2026-09-19 Worker-B 1차: `CodexCliRunner`를 추가해 PATH 및 `%LOCALAPPDATA%\OpenAI\Codex\bin` 하위에서 `codex.exe`를 자동 탐색하고, 선택 모델·추론값을 적용한 `codex exec --json`을 비동기로 실행하도록 연결했다. stdout/stderr, exit code, 실행 시간, output-last-message 결과를 수집하며 Run 버튼은 실행 중 Cancel로 전환되고 취소 시 프로세스 트리를 종료한다. Codex 결과는 Last Result의 Codex 탭과 Current Task 상태에 반영한다. GPT Web bridge는 Worker-D 전까지 mock 유지.
+
+검증: `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-build --no-restore` 성공(Core 1개, Agent 3개, Server 1개). 로컬 Codex CLI `codex-cli 0.155.0-alpha.9.2` 및 `codex exec --help` 확인.
+
+잔여 작업: Worker-B 2차 — JSON event/token usage/session id 파싱 강화 및 실제 CLI 실행 smoke test.
+
+2026-09-19 Worker-A Current Task animation refinement: 진행 화살표를 개별 TextBlock 3개로 분리하고 150ms 타이머로 `>.. → >>. → >>> → .>> → ..>` 5단계 순차 점등을 구현했다. 활성 흐름만 컬러로 애니메이션하며 비활성 흐름은 회색 고정이고, Window 종료 시 타이머를 중지한다.
+
+검증: `dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore -p:OutDir=C:\Users\ornit\AppData\Local\Temp\projecthub-worker-build\ -p:UseAppHost=false` 성공(경고 0, 오류 0). 전체 솔루션 빌드는 실행 중인 `ProjectHub.Worker (PID 43396)`가 기존 DLL을 잠가 실패했으며, 코드 컴파일 오류는 확인되지 않았다.
+
+2026-09-19 Worker 단일 인스턴스 개선: named mutex로 Worker 중복 실행을 차단하고, 두 번째 실행 요청이 들어오면 기존 프로세스에 named event를 보내 기존 창을 복원·활성화하도록 변경했다. StartupUri를 명시적 창 생성으로 전환해 시작 순서를 제어했다.
+
+검증: `dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore -p:OutDir=C:\Users\ornit\AppData\Local\Temp\projecthub-worker-build-single-instance\ -p:UseAppHost=false` 성공(경고 0, 오류 0).
+
+2026-09-19 작업 범위 재분석 및 중지 정책 정정: 기존 잔여 작업에 적힌 `Force Restore GUI 계속/취소 검증`은 현재 GPTWeb-Hub Worker 작업과 무관하므로 이번 작업의 잔여 항목에서 제외한다. 잔여 작업 3번은 `현재 실행 중인 작업 중지` 기능이며, 이는 개발 전체를 중단한다는 뜻이 아니다. 실행 중인 작업을 중지할 때는 이미 진행된 변경을 억지로 되돌리지 않는다. 작업 시작 전 저장소가 최신 동기화 상태가 아니면 이전 작업이 삭제될 수 있으므로, 새 작업 시작 전 최신 pull/rebase와 `GPT-Web-Feedback.md` 확인을 우선한다.
+
+현재 잔여 작업 재정의:
+- Worker-B 2차는 최소 범위로 유지한다: Codex CLI 1회 실제 실행 smoke test와 성공/실패/취소 결과 확인만 수행한다. JSON event/token usage/session ID 확장은 후속 선택 사항으로 둔다.
+- GPT Web bridge는 Worker-D 범위이며 현재는 mock 유지한다.
+- 현재 실행 중인 작업을 중지해도 이미 진행된 변경은 유지하며 억지로 revert하지 않는다. 개발 작업 자체는 계속한다.
+2026-09-19 Worker-B 최소 smoke test 및 현재 작업 중지 검증: 로컬 `codex-cli 0.155.0-alpha.9.2`를 프로젝트 루트에서 파일 변경 금지 프롬프트로 1회 실행했다. `EXIT_CODE=0`, `SMOKE_OK`를 확인했다. 현재 작업 중지는 Run 버튼의 Cancel 전환 → CancellationToken 취소 → Codex 프로세스 트리 종료 → `Codex CANCELED` 표시 흐름으로 동작하며, 완료된 변경을 되돌리는 로직은 없다. Worker 단독 컴파일도 경고 0/오류 0으로 통과했다.
+
+현재 남은 작업: GPT Web bridge(Worker-D 후속 범위). 현재 실행 중인 작업 중지 기능은 구현·코드 검증 완료 상태이며 실제 UI 클릭 검증은 별도 확인 사항이다.
+
+2026-09-19 Worker-D bridge 1차: Worker에 `127.0.0.1:43821` loopback HTTP bridge를 추가했다. status/project list/conversation binding/pending task/create/claim/result/heartbeat API를 제공하고 `%LOCALAPPDATA%\ProjectHub\Worker\bridge-state.json`에 binding·task 상태를 원자적으로 저장한다. Chrome 확장은 1.5초 polling으로 bridge 상태·프로젝트·task를 표시하며, bridge가 끊기면 Disconnected 상태를 표시한다. 외부 LAN bind와 ChatGPT DOM 자동입력은 구현하지 않았다.
+
+검증: `node --check extension/gptweb-hub/content.js` 성공, Worker 단독 빌드 성공(경고 0, 오류 0). Worker DLL에서 bridge를 별도 호스트로 실행해 `/bridge/status`, `/bridge/projects`, `/bridge/bind`, `/bridge/bindings/{conversationId}`를 호출했고 `BRIDGE=ready`, `LOOPBACK=True`, `PROJECT=MCP-with-MiniPC`, `BOUND=True`를 확인했다.
+
+현재 남은 작업: Chrome에서 확장을 실제 로드한 뒤 polling 화면을 확인하는 UI E2E 1건. GPT Web DOM 자동입력·응답 제출은 별도 후속 범위.
+
+2026-09-19 GPTWeb-Hub 확장 상태 행 정리: Project/Worker/Web 상태 텍스트가 실제 연결 상태를 표시하므로 우측 `READY` 점·문구를 제거했다. `node --check extension/gptweb-hub/content.js` 통과.
+
+2026-09-19 GPTWeb-Hub 상태 색상 개선: 확장 상태 텍스트에 정상(`status-ok`, 녹색), 연결 끊김(`status-offline`, 적색), 대기(`status-pending`, 주황색) 스타일을 추가하고 bridge polling 결과에 따라 자동 갱신하도록 변경했다. `node --check extension/gptweb-hub/content.js` 통과.
+
+2026-09-19 확장 bridge 진단 보완: bridge 연결 전에도 Project/Worker는 주황색 대기, Web은 빨간색 연결 끊김으로 즉시 표시하도록 초기 상태 색상 적용을 추가했다. `node --check extension/gptweb-hub/content.js` 통과. 확장 reload만으로 기존 ChatGPT 탭의 content script가 교체되지 않으므로 탭 새로고침이 필요하다.
+
+2026-09-19 상태 색상 미적용 원인 수정: `setStatusValue`는 정상 동작했지만 `statusRow` 생성부의 실제 span에 `status-value` class가 누락되어 CSS가 적용되지 않았다. 해당 class를 추가하고 `node --check extension/gptweb-hub/content.js`를 통과했다.
+
+2026-09-19 Worker 실행 문제 수정: 사용자 세션에 남아 있던 구버전 PID 8812를 종료하고 최신 소스로 실제 `bin\Debug\net9.0-windows`를 재빌드했다. 최신 Worker PID 21844가 `ProjectHub Worker` 창으로 응답하며 `127.0.0.1:43821/bridge/status`에서 `bridge=ready`, `loopback=true`를 확인했다. bridge 시작 실패가 UI 전체 종료로 이어지지 않도록 App 시작 예외를 기록하고 Worker UI는 계속 표시하는 보호 로직을 추가했다.
+
+검증: `dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore` 성공(경고 0, 오류 0), localhost bridge status 성공.
+
+2026-09-19 Worker 재실행 문제 수정: 첫 실행 후 창이 사라져도 activation 대기 Task가 무기한 `WaitOne()`에 남아 숨은 프로세스가 종료되지 않는 경로를 확인했다. activation event를 250ms timeout polling으로 바꿔 CancellationToken을 확인하고, 종료 시 대기 루프가 남지 않도록 수정했다. 기존 숨은 PID 21844를 종료한 뒤 최신 빌드로 1차 실행 및 즉시 2차 실행을 수행했으며 두 번 모두 동일 PID 단일 인스턴스와 `bridge=ready`, `loopback=true`를 확인했다.
+
+검증: `dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore` 성공(경고 0, 오류 0), 1차·2차 실행 bridge status 성공, 최신 Worker 창 제목 `ProjectHub Worker` 확인.
+
+2026-09-19 Worker 트레이 재실행 흐름 정정: X 버튼은 실제 종료하지 않고 `Hide()`로 트레이 상태를 유지하도록 복원했다. 기존 백그라운드 대기 Task 대신 WPF `DispatcherTimer`가 250ms마다 named activation event를 확인해 숨은 창을 복원·활성화한다. 트레이 `Exit`에서만 `_allowClose`를 통해 bridge·tray icon·mutex를 정리한다.
+
+검증: 최신 Worker 빌드 성공(경고 0/오류 0). 1차 실행에서 창 handle `790082`와 bridge ready를 확인하고 X 버튼으로 숨긴 뒤에도 동일 PID `45672`와 bridge ready를 확인했다. 2차 실행 후 동일 PID의 창 handle `790082`가 복원되고 bridge ready가 유지됐다.
+
+2026-09-19 3초/10초 재실행 시나리오 및 트레이 종료 보강: 강제 종료 방식의 `3초 실행 → 종료 → 10초 대기 → 재실행`에서는 기존 문제를 재현하지 못했고 2차 bridge도 정상 확인했다. 실제 트레이 Exit 경로의 종료 보장을 위해 `Application.Current.Shutdown()`을 사용하고, `OnExit`에서 bridge/activation event 정리 실패가 mutex 해제를 건너뛰지 않도록 finally 정리를 추가했다. X 버튼의 트레이 숨김 동작과 재실행 복원은 유지한다.
+
+검증: Worker 빌드 성공(경고 0/오류 0), 최신 Worker PID 25196 창 표시 및 bridge `ready` 확인.
+
+2026-09-19 Worker 실제 shutdown 재검증 및 잔류 프로세스 수정: 강제 종료가 아닌 WPF `Application.Shutdown()` 경로에서 브리지는 닫히지만 PID가 남는 결함을 재현했다. 원인은 X 버튼의 트레이화 Closing 처리와 실제 종료 요청이 같은 경로에서 취소될 수 있었던 점과 Windows Forms 트레이 자원 종료 보장이 부족했던 점이다. App에 명시적 `RequestShutdown()` 상태를 두고 트레이 Exit가 이를 사용하도록 했으며, 종료 중 Closing은 숨김으로 취소하지 않도록 변경하고 ContextMenuStrip/NotifyIcon을 정리한 뒤 프로세스 종료를 보장한다. 테스트 전용 shutdown 옵션과 분리 출력 폴더는 제거했다.
+
+검증: 분리 출력에서 최신 수정본으로 `3초 실행 → 실제 shutdown → 4초 후 확인` 수행 결과 `BRIDGE_EARLY=200`, `LATE=False`, `BRIDGE_LATE=UNREACHABLE`. 최종 일반 빌드 `dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore` 성공(경고 0, 오류 0).
+
+2026-09-19 GPTWeb-Hub 상태 행 명칭 정정: 세 번째 행은 웹 연결 대상명이 아니라 현재 연결 상태를 표시하므로 라벨을 `Web`에서 `Status`로 변경했다. 상태값과 녹색/적색 색상 갱신 로직은 유지했다.
+
+검증: `node --check extension/gptweb-hub/content.js` 성공.
+
+2026-09-19 GPTWeb-Hub 상태 색상 의미 정정: Project/Worker는 bridge에서 실제 값이 지정된 경우에만 녹색으로 표시하고, 아직 값이 없을 때만 대기 상태를 표시하도록 변경했다. bridge 연결이 끊겨도 마지막으로 확인된 Project/Worker 값과 녹색 상태는 유지하며, Status 행만 빨간색 Disconnected로 전환한다.
+
+검증: node --check extension/gptweb-hub/content.js 성공.

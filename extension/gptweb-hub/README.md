@@ -14,4 +14,4 @@
 
 - 우측 패널의 톱니바퀴를 누르면 `IDLE` → `WORKER_TO_WEB` → `WEB_TO_WORKER` → `FINISHED` 상태를 순환한다.
 - 닫기 버튼은 패널을 숨기며, 원형 버튼으로 다시 표시할 수 있다.
-- 현재는 Worker/API/DOM 자동입력과 연결되지 않은 UI 전용 목업이다.
+- Worker의 `http://127.0.0.1:43821` loopback bridge를 1.5초 간격으로 polling해 연결 상태·프로젝트·pending task를 표시한다. ChatGPT DOM 자동입력과 실제 Web 응답 제출은 아직 후속 범위다.
