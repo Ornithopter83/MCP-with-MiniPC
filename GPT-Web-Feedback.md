@@ -3173,3 +3173,279 @@ Force Restore
 ```
 
 핵심 완료 기준은 코드상 가능해 보이는 것이 아니라 실제 이 ChatGPT Web 대화에서 Extension이 2회 이상 자동 메시지 왕복을 끝까지 성공하는 것이다.
+
+---
+
+# 2026-09-20 Worker 단일 파일 배포 및 Extension 내장 배포 피드백
+
+## 목표
+
+최종 사용자 PC에는 별도 .NET 설치나 별도 Worker 파일 묶음이 필요하지 않도록 한다.
+
+최종 실행 전제:
+
+```text
+필수 설치
+- Windows 11
+- Codex CLI 또는 Codex Desktop에 포함된 codex.exe
+- Chrome
+
+ProjectHub 배포물
+- ProjectHub.Worker.exe 1개
+```
+
+Worker는 self-contained single-file publish로 배포하고 대상 PC에 .NET 9 Desktop Runtime 설치를 요구하지 않는다.
+
+## 1. Worker publish 방식
+
+ProjectHub.Worker.csproj 또는 별도 publish profile에 다음 성격을 적용한다.
+
+```xml
+<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+<SelfContained>true</SelfContained>
+<PublishSingleFile>true</PublishSingleFile>
+<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+<PublishTrimmed>false</PublishTrimmed>
+```
+
+WPF/WinForms 앱이므로 우선 Trim은 사용하지 않는다. ReadyToRun은 후속 최적화로 두고 안정적인 single-file 실행을 우선한다.
+
+권장 publish 명령:
+
+```powershell
+dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+```
+
+최종 사용자 배포 기준은 ProjectHub.Worker.exe 1개로 한다. PDB, XML docs, build 임시 파일은 최종 배포물에서 제외한다.
+
+## 2. Codex CLI 탐색
+
+사용자에게 Codex CLI 경로를 수동 지정하게 하는 것을 기본값으로 하지 않는다.
+
+자동 탐색 우선순위:
+
+```text
+1. PATH의 codex.exe
+2. Codex Desktop bundled CLI
+   %LOCALAPPDATA%\OpenAI\Codex\bin\**\codex.exe
+3. 저장된 사용자 설정 경로
+```
+
+실행 전 codex --version 및 codex login status 수준의 smoke check를 수행한다. Codex가 없으면 Worker 자체는 실행되되 작업 실행만 비활성화하고 설치 필요 상태를 표시한다.
+
+## 3. Chrome 탐색
+
+Chrome 설치는 필수 외부 의존성으로 본다.
+
+자동 탐색 후보:
+
+```text
+%ProgramFiles%\Google\Chrome\Application\chrome.exe
+%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe
+%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe
+```
+
+Chrome 미설치 시 GPT Web 기능은 READY로 표시하지 않는다.
+
+## 4. Chrome Extension은 런타임 폴더가 필요함
+
+현재 GPTWeb-Hub는 Manifest V3 unpacked extension 구조다.
+
+```text
+extension/gptweb-hub/
+├─ manifest.json
+└─ content.js
+```
+
+Chrome은 일반 unpacked extension을 EXE 내부 리소스에서 직접 로드할 수 없다.
+
+따라서 배포 파일은 Worker EXE 하나로 만들 수 있지만, 실행 시 Extension 파일을 로컬 폴더로 추출해야 한다.
+
+```text
+배포 시:
+ProjectHub.Worker.exe 1개
+
+첫 실행 후:
+%LOCALAPPDATA%\ProjectHub\GPTWeb-Hub\extension\
+├─ manifest.json
+└─ content.js
+```
+
+Extension 파일은 Worker 프로젝트 EmbeddedResource로 포함하고, Worker 첫 실행 또는 Extension 버전 변경 시 위 폴더로 자동 추출한다.
+
+## 5. Extension 설치 방식
+
+초기 배포에서는 Chrome Web Store 등록 없이 unpacked extension 방식을 유지한다.
+
+Worker 설정 화면에:
+
+```text
+GPTWeb-Hub Extension
+경로: C:\Users\...\AppData\Local\ProjectHub\GPTWeb-Hub\extension
+
+[폴더 열기]
+[Chrome 확장 관리 열기]
+```
+
+를 제공한다.
+
+사용자 최초 1회 작업:
+
+```text
+chrome://extensions
+→ 개발자 모드
+→ 압축해제된 확장 프로그램을 로드
+→ Worker가 생성한 extension 폴더 선택
+```
+
+이후 PC 재부팅, Worker 재실행, Chrome 재실행 시 다시 설정할 필요가 없어야 한다.
+
+## 6. 강제 자동 설치는 제외
+
+현재 구조에서 다음은 구현하지 않는다.
+
+```text
+- EXE 내부에서 Extension 직접 실행
+- Chrome 설정 파일 강제 수정
+- 사용자 동의 없는 Extension 자동 설치
+- registry policy 기반 강제 설치
+```
+
+향후 Chrome Web Store 또는 enterprise 배포를 도입하면 더 자동화할 수 있지만 현재 범위에서는 필요하지 않다.
+
+현재 목표:
+
+```text
+사용자가 받는 배포 파일 = EXE 1개
+실행 후 Worker가 Extension 폴더 자동 생성
+최초 1회 Chrome에서 Load unpacked
+이후 자동 연결
+```
+
+## 7. Extension 버전 관리
+
+Worker EXE 안에 Extension version을 포함한다. Worker 시작 시 embedded version과 설치 폴더 version을 비교한다.
+
+다르면:
+
+```text
+1. 임시 폴더에 새 Extension 파일 추출
+2. 파일 검증
+3. 기존 extension 폴더 교체
+4. UI에 'Chrome 확장 새로고침 필요' 표시
+```
+
+한다.
+
+Chrome에서 이미 Load unpacked 된 경로 자체는 바꾸지 않는다. 경로가 유지돼야 사용자가 다시 폴더를 선택할 필요가 없다.
+
+## 8. Worker 런타임 데이터 위치
+
+single-file 배포본의 실행 폴더를 상태 파일로 오염시키지 않는다.
+
+런타임 데이터는:
+
+```text
+%LOCALAPPDATA%\ProjectHub\Worker\
+├─ config\
+├─ state\
+├─ Task\
+├─ attachments\
+├─ logs\
+└─ GPTWeb-Hub\extension\
+```
+
+처럼 AppData 아래에 저장한다.
+
+현재 EXE 기준 Task 폴더 저장 로직도 최종 배포 단계에서는 이 경로로 이전하는 것을 권장한다. EXE 교체 업데이트 후에도 설정, transcript, extension 상태를 보존한다.
+
+## 9. 첫 실행 진단
+
+Worker 첫 실행 시 다음을 자동 확인한다.
+
+```text
+[1] Codex CLI 발견
+[2] Codex 인증 상태
+[3] Chrome 발견
+[4] Extension 파일 추출 상태
+[5] localhost bridge 127.0.0.1:43821 시작
+[6] GPTWeb-Hub heartbeat 연결 여부
+```
+
+UI에는 Codex / Chrome / GPT Web / Worker의 READY 또는 ERROR 상태만 간단히 표시한다.
+
+## 10. Server/Supabase/NAS는 최소 Worker 의존성에서 제외
+
+Web ↔ CLI Worker 자동화 기능 자체는 다음을 필수 의존성으로 두지 않는다.
+
+```text
+ProjectHub.Server
+Supabase
+NAS Gateway
+NAS
+Agent
+Cloudflare Tunnel
+```
+
+이들은 ProjectHub 전체 관리 기능을 사용할 때만 추가되는 optional subsystem으로 분리한다.
+
+최소 배포판은 Server 연결이 없어도 다음 루프가 실행돼야 한다.
+
+```text
+Codex CLI ↔ Worker ↔ GPTWeb-Hub ↔ ChatGPT Web
+```
+
+## 11. 최종 사용자 최소 구성
+
+```text
+Windows 11
+├─ Chrome
+├─ Codex CLI 또는 Codex Desktop
+└─ ProjectHub.Worker.exe
+```
+
+첫 실행 후 Worker가 자동 생성:
+
+```text
+%LOCALAPPDATA%\ProjectHub\...
+└─ GPTWeb-Hub\extension\
+   ├─ manifest.json
+   └─ content.js
+```
+
+최초 1회 사용자가 Chrome에서 해당 폴더를 Load unpacked하면 이후 재설정 없이 사용 가능해야 한다.
+
+## 12. 검증
+
+가능하면 깨끗한 Windows 11 PC 또는 별도 테스트 사용자에서 검증한다.
+
+```text
+.NET SDK 없음
+.NET Runtime 없음
+Visual Studio 없음
+Node.js 없음
+Git 없음
+ProjectHub source 없음
+
+설치되어 있는 것:
+- Chrome
+- Codex CLI/Codex Desktop
+```
+
+검증:
+
+```text
+1. ProjectHub.Worker.exe 하나만 복사
+2. 실행 성공
+3. .NET Runtime 설치 요구 없음
+4. embedded Extension 자동 추출 확인
+5. Chrome에서 Load unpacked 1회
+6. Worker bridge READY
+7. GPTWeb-Hub Connected
+8. Codex 자동 탐색 성공
+9. Web → Worker → Codex → Web 2회 왕복 성공
+10. PC 재부팅 후 재설정 없이 자동 복구
+11. Worker EXE 교체 업데이트 후 기존 설정/Extension 경로 유지
+```
+
+완료 기준은 배포물 1개(ProjectHub.Worker.exe)만 전달하고, 대상 PC에 Chrome과 Codex만 이미 설치되어 있으면 최초 Extension 등록 1회를 제외하고 ProjectHub Worker 자동화가 정상 동작하는 것이다.
