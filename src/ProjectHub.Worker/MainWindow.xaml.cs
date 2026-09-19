@@ -1,4 +1,8 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Net.Http;
+using System.Text.Json;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -13,19 +17,48 @@ public partial class MainWindow : Window
     private readonly CodexCliRunner _codexRunner = new();
     private CancellationTokenSource? _activeTaskCts;
     private CodexCliResult? _lastCodexResult;
+    private BridgeTask? _lastWebTask;
+    private bool _awaitingWebResult;
+    private CodexUsage _commandUsage = CodexUsage.Empty;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
+    private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private int _flowFrame;
     private bool _codexArrowActive;
     private bool _webArrowActive;
     private bool _allowClose;
     private const string Placeholder = "작업 지시를 입력하세요...";
+    private readonly HttpClient _connectionClient = new() { Timeout = TimeSpan.FromSeconds(2) };
+    private BridgeServer? _bridgeServer;
+    private bool _codexAuthenticated;
+    private bool _serverOnline;
+    private List<CodexProjectOption> _codexProjects = new();
+    private bool _loadingCodexSelections;
 
-    public MainWindow()
+    private sealed record CodexProjectOption(string Name, string Path);
+    private sealed record CodexThreadOption(string Label, string SessionId, string ProjectPath)
+    {
+        public override string ToString() => Label;
+    }
+
+    public MainWindow(BridgeServer? bridgeServer = null)
     {
         InitializeComponent();
+        _bridgeServer = bridgeServer;
+        if (bridgeServer is not null) bridgeServer.TaskChanged += OnBridgeTaskChanged;
         _flowTimer.Tick += (_, _) => UpdateArrowAnimation();
         _flowTimer.Start();
-        SetFlowState(codexActive: false, workerActive: true, webActive: true);
+        _connectionTimer.Tick += async (_, _) => await RefreshConnectionChecksAsync();
+        _connectionTimer.Start();
+        RepositoryNameText.Text = " · MCP-with-MiniPC";
+        PcNameText.Text = Environment.MachineName;
+        SetFlowState(codexActive: false, workerActive: false, webActive: false);
+        ActivateResultTab(web: false);
+        UpdateUsage(CodexUsage.Empty);
+        LoadCodexSelections();
+        Loaded += async (_, _) => await RefreshConnectionChecksAsync();
+        ProjectStatusText.Text = "CHECKING";
+        WebStatusText.Text = "WAITING";
+        ServerStatusText.Text = "CHECKING";
         _trayIcon = new Forms.NotifyIcon
         {
             Text = "ProjectHub Worker · MCP-with-MiniPC",
@@ -48,9 +81,11 @@ public partial class MainWindow : Window
         {
             _activeTaskCts?.Cancel();
             _flowTimer.Stop();
+            _connectionTimer.Stop();
             _trayIcon.Visible = false;
             _trayIcon.ContextMenuStrip?.Dispose();
             _trayIcon.Dispose();
+            _connectionClient.Dispose();
             return;
         }
 
@@ -102,14 +137,26 @@ public partial class MainWindow : Window
 
     private void SetFlowState(bool codexActive, bool workerActive, bool webActive)
     {
+        CodexIconBackground.Background = codexActive ? System.Windows.Media.Brushes.MidnightBlue : System.Windows.Media.Brushes.SlateGray;
+        WorkerIconBackground.Background = workerActive ? System.Windows.Media.Brushes.SeaGreen : System.Windows.Media.Brushes.SlateGray;
+        WebIconBackground.Background = webActive ? System.Windows.Media.Brushes.RoyalBlue : System.Windows.Media.Brushes.SlateGray;
+        CodexLabelText.Foreground = codexActive ? System.Windows.Media.Brushes.MidnightBlue : System.Windows.Media.Brushes.SlateGray;
+        WorkerLabelText.Foreground = workerActive ? System.Windows.Media.Brushes.SeaGreen : System.Windows.Media.Brushes.SlateGray;
+        WebLabelText.Foreground = webActive ? System.Windows.Media.Brushes.RoyalBlue : System.Windows.Media.Brushes.SlateGray;
+        CodexStageText.Foreground = codexActive ? System.Windows.Media.Brushes.MidnightBlue : System.Windows.Media.Brushes.SlateGray;
+        WorkerStageText.Foreground = workerActive ? System.Windows.Media.Brushes.SeaGreen : System.Windows.Media.Brushes.SlateGray;
+        WebStageText.Foreground = webActive ? System.Windows.Media.Brushes.RoyalBlue : System.Windows.Media.Brushes.SlateGray;
         CodexInactiveIcon.Visibility = codexActive ? Visibility.Collapsed : Visibility.Visible;
+        CodexStageText.Text = codexActive ? "실행 중" : "대기 중";
+        WorkerStageText.Text = workerActive ? (webActive ? "요청 전달 중" : "결과 처리 중") : "대기 중";
+        WebStageText.Text = webActive ? "응답 생성 중" : "대기 중";
         CodexActiveIcon.Visibility = codexActive ? Visibility.Visible : Visibility.Collapsed;
         WorkerInactiveIcon.Visibility = workerActive ? Visibility.Collapsed : Visibility.Visible;
         WorkerActiveIcon.Visibility = workerActive ? Visibility.Visible : Visibility.Collapsed;
         WebInactiveIcon.Visibility = webActive ? Visibility.Collapsed : Visibility.Visible;
         WebActiveIcon.Visibility = webActive ? Visibility.Visible : Visibility.Collapsed;
-        _codexArrowActive = codexActive || (workerActive && !webActive);
-        _webArrowActive = workerActive && webActive;
+        _codexArrowActive = codexActive;
+        _webArrowActive = webActive;
         _flowFrame = 0;
         UpdateArrowAnimation();
     }
@@ -145,48 +192,103 @@ public partial class MainWindow : Window
             _activeTaskCts.Cancel();
             return;
         }
+        if (_awaitingWebResult)
+        {
+            _bridgeServer?.CancelActiveTask();
+            ResetTaskState();
+            return;
+        }
+        await RefreshConnectionChecksAsync();
+        if (!_codexAuthenticated || !_serverOnline || _bridgeServer is null || !_bridgeServer.WebConnected)
+        {
+            TaskDirection.Text = "PREFLIGHT";
+            TaskTitle.Text = "연결 상태 확인 필요";
+            SetFlowState(false, false, false);
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(CommandInput.Text) || CommandInput.Text == Placeholder)
             return;
 
         var prompt = CommandInput.Text.Trim();
-        var model = GetSelectedContent(ModelCombo, "GPT-5.6 Terra");
+        var model = GetSelectedContent(ModelCombo, "GPT-5.6 Luna");
         var reasoning = GetSelectedContent(ReasoningCombo, "Medium").ToLowerInvariant();
         var cliModel = ToCliModel(model);
-        var workingDirectory = Environment.CurrentDirectory;
+        var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
+        var workingDirectory = selectedThread?.ProjectPath ?? Environment.CurrentDirectory;
+        var sessionId = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? null : selectedThread.SessionId;
+        _commandUsage = CodexUsage.Empty;
+        UpdateUsage(_commandUsage);
         var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         RunButton.IsEnabled = true;
         RunButton.Content = "■  Cancel";
         TaskDirection.Text = "CODEX → WORKER";
         TaskTitle.Text = "Codex 작업 실행 중";
-        TaskDetail.Text = $"{cliModel} · {reasoning} · Codex CLI 실행 중...";
         SetFlowState(codexActive: true, workerActive: false, webActive: false);
 
         try
         {
-            var result = await _codexRunner.RunAsync(prompt, cliModel, reasoning, workingDirectory, cts.Token);
+            var result = await _codexRunner.RunAsync(prompt, cliModel, reasoning, workingDirectory, sessionId, cts.Token);
             _lastCodexResult = result;
-            CodexConversationText.Text = result.ConversationTitle;
+            CodexThreadArchive.Save(result, prompt, workingDirectory);
+            await RefreshCodexSelectionsAfterCliAsync(result.SessionId, workingDirectory);
+            UpdateCodexSelectionDisplay();
             SetFlowState(codexActive: false, workerActive: true, webActive: false);
             TaskDirection.Text = "CODEX → WORKER";
             TaskTitle.Text = result.ExitCode == 0 ? "Codex 결과 수신 완료" : "Codex 실행 실패";
-            TaskDetail.Text = result.ExitCode == 0 ? "Codex 결과를 Worker가 수신했습니다." : Summarize(result.StandardError, "Codex CLI가 오류를 반환했습니다.");
             ResultTitle.Text = result.ExitCode == 0 ? $"Codex PASS · {cliModel}" : $"Codex FAIL · exit {result.ExitCode}";
             ResultBody.Text = BuildResultBody(result);
+            _commandUsage = result.Usage;
+            UpdateUsage(_commandUsage);
+            ActivateResultTab(web: false);
+
+            if (result.ExitCode == 0 && _bridgeServer is not null)
+            {
+                var webPrompt = prompt;
+                if (!string.IsNullOrWhiteSpace(result.FinalMessage))
+                {
+                    webPrompt += Environment.NewLine + Environment.NewLine
+                        + "Codex 실행 결과:" + Environment.NewLine
+                        + result.FinalMessage;
+                }
+
+                // 실제 Codex 결과를 기준으로 만든 첨부물만 전달한다. 테스트용 고정 문구를 사용하지 않는다.
+                var attachmentText = string.IsNullOrWhiteSpace(result.FinalMessage)
+                    ? prompt
+                    : result.FinalMessage;
+                var attachment = _bridgeServer.CreateTextImageAttachment(attachmentText);
+                var task = _bridgeServer.CreateTaskForLatestBinding(
+                    webPrompt,
+                    new List<BridgeAttachment> { attachment });
+                if (task is null)
+                {
+                    TaskTitle.Text = "GPT Web 대화 연결 필요";
+                    ResultBody.Text += Environment.NewLine + Environment.NewLine + "연결된 GPT Web 대화가 없어 전달하지 못했습니다.";
+                    SetFlowState(false, false, false);
+                }
+                else
+                {
+                    _awaitingWebResult = true;
+                    RunButton.Content = "■  Cancel";
+                    TaskDirection.Text = "WORKER → GPT WEB";
+                    TaskTitle.Text = "GPT Web 전달 대기 중";
+                    SetFlowState(false, true, true);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
+            _awaitingWebResult = false;
             TaskTitle.Text = "Codex 실행 취소";
-            TaskDetail.Text = "사용자가 실행을 취소했습니다.";
             ResultTitle.Text = "Codex CANCELED";
             ResultBody.Text = "Codex CLI 실행이 취소되었습니다.";
             SetFlowState(codexActive: false, workerActive: false, webActive: false);
         }
         catch (Exception ex)
         {
+            _awaitingWebResult = false;
             TaskTitle.Text = "Codex 실행을 시작하지 못했습니다";
-            TaskDetail.Text = ex.Message;
             ResultTitle.Text = "Codex ERROR";
             ResultBody.Text = ex.ToString();
             SetFlowState(codexActive: false, workerActive: false, webActive: false);
@@ -195,15 +297,280 @@ public partial class MainWindow : Window
         {
             _activeTaskCts.Dispose();
             _activeTaskCts = null;
-            RunButton.Content = "▶  Run Task";
+            if (!_awaitingWebResult) RunButton.Content = "▶  Run Task";
         }
     }
 
+    private void ResetTaskState()
+    {
+        _awaitingWebResult = false;
+        _lastWebTask = null;
+        TaskDirection.Text = "IDLE";
+        TaskTitle.Text = "작업 없음";
+        ResultTitle.Text = "Codex 결과 대기 중";
+        ResultBody.Text = "새 작업을 실행하면 결과가 이 영역에 표시됩니다.";
+        RunButton.Content = "▶  Run Task";
+        SetFlowState(false, false, false);
+        ActivateResultTab(web: false);
+    }
+    private void LoadCodexSelections()
+    {
+        _codexProjects = DiscoverCodexProjects();
+        var choices = new List<CodexThreadOption>();
+        foreach (var project in _codexProjects)
+        {
+            choices.Add(new CodexThreadOption("(" + project.Name + ") ＋ 신규 스레드", string.Empty, project.Path));
+            choices.AddRange(DiscoverCodexThreads(project.Path));
+        }
+        choices.Insert(0, new CodexThreadOption("프로젝트 선택", string.Empty, string.Empty));
+        CodexThreadCombo.ItemsSource = choices;
+        var saved = LoadSavedCodexSelection();
+        var savedIndex = saved is null ? -1 : choices.FindIndex(choice => choice.SessionId == saved.Value.SessionId && choice.ProjectPath == saved.Value.ProjectPath);
+        CodexThreadCombo.SelectedIndex = savedIndex >= 0 ? savedIndex : 0;
+        UpdateCodexSelectionDisplay();
+        _loadingCodexSelections = false;
+    }
+    private async Task RefreshCodexSelectionsAfterCliAsync(string? sessionId, string projectPath)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            LoadCodexSelections();
+            if (attempt < 4) await Task.Delay(TimeSpan.FromMilliseconds(300));
+        }
+    }
+    private void CodexThreadCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loadingCodexSelections) SaveCodexSelection();
+        UpdateCodexSelectionDisplay();
+    }
+
+    private void PopulateCodexThreads(CodexProjectOption? project)
+    {
+        var threads = new List<CodexThreadOption>();
+        if (project is not null)
+        {
+            threads.Add(new CodexThreadOption("＋ 신규 스레드", string.Empty, project.Path));
+            threads.AddRange(DiscoverCodexThreads(project.Path));
+        }
+        CodexThreadCombo.ItemsSource = threads;
+        CodexThreadCombo.SelectedIndex = threads.Count > 0 ? 0 : -1;
+    }
+
+    private void UpdateCodexSelectionDisplay()
+    {
+        var thread = CodexThreadCombo.SelectedItem as CodexThreadOption;
+        CodexConversationText.Text = thread?.Label ?? "Codex 스레드를 선택하세요";
+    }
+
+    private static List<CodexProjectOption> DiscoverCodexProjects()
+    {
+        var projects = new Dictionary<string, CodexProjectOption>(StringComparer.OrdinalIgnoreCase);
+        AddProject(projects, Environment.CurrentDirectory);
+        AddProject(projects, FindRepositoryRoot(AppContext.BaseDirectory));
+        try
+        {
+            var sessionsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "sessions");
+            foreach (var file in Directory.EnumerateFiles(sessionsRoot, "*.jsonl", SearchOption.AllDirectories))
+            {
+                var firstLine = File.ReadLines(file).FirstOrDefault();
+                if (string.IsNullOrWhiteSpace(firstLine)) continue;
+                using var document = JsonDocument.Parse(firstLine);
+                if (document.RootElement.TryGetProperty("payload", out var payload) && payload.TryGetProperty("cwd", out var cwd)) AddProject(projects, cwd.GetString());
+            }
+        }
+        catch { }
+        return projects.Values.OrderBy(project => project.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private (string SessionId, string ProjectPath)? LoadSavedCodexSelection()
+    {
+        try
+        {
+            var path = GetSelectionStatePath();
+            if (!File.Exists(path)) return null;
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var root = document.RootElement;
+            var sessionId = root.TryGetProperty("sessionId", out var session) ? session.GetString() : null;
+            var projectPath = root.TryGetProperty("projectPath", out var project) ? project.GetString() : null;
+            return string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(projectPath) ? null : (sessionId, projectPath);
+        }
+        catch { return null; }
+    }
+
+    private void SaveCodexSelection()
+    {
+        try
+        {
+            var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
+            if (selected is null || string.IsNullOrWhiteSpace(selected.SessionId) || string.IsNullOrWhiteSpace(selected.ProjectPath)) return;
+            var path = GetSelectionStatePath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonSerializer.Serialize(new { sessionId = selected.SessionId, projectPath = selected.ProjectPath }));
+        }
+        catch { }
+    }
+
+    private static string GetSelectionStatePath()
+        => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "worker-selection.json");
+    private static string? FindRepositoryRoot(string startPath)
+    {
+        var directory = new DirectoryInfo(startPath);
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, ".git"))) return directory.FullName;
+            directory = directory.Parent;
+        }
+        return null;
+    }
+    private static void AddProject(Dictionary<string, CodexProjectOption> projects, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return;
+        var fullPath = Path.GetFullPath(path);
+        projects.TryAdd(fullPath, new CodexProjectOption(new DirectoryInfo(fullPath).Name, fullPath));
+    }
+
+    private static List<CodexThreadOption> DiscoverCodexThreads(string projectPath)
+    {
+        var indexedNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var matchedNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var indexPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "session_index.jsonl");
+            foreach (var line in File.ReadLines(indexPath))
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(line);
+                    var root = document.RootElement;
+                    var id = root.TryGetProperty("id", out var idElement) ? idElement.GetString() : null;
+                    var name = root.TryGetProperty("thread_name", out var nameElement) ? nameElement.GetString() : null;
+                    if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(name)) indexedNames[id] = name;
+                }
+                catch (JsonException) { }
+            }
+
+            var sessionsRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "sessions");
+            foreach (var file in Directory.EnumerateFiles(sessionsRoot, "*.jsonl", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var firstLine = File.ReadLines(file).FirstOrDefault();
+                    if (string.IsNullOrWhiteSpace(firstLine)) continue;
+                    using var document = JsonDocument.Parse(firstLine);
+                    var payload = document.RootElement.GetProperty("payload");
+                    if (!string.Equals(Path.GetFullPath(payload.GetProperty("cwd").GetString() ?? string.Empty), projectPath, StringComparison.OrdinalIgnoreCase)) continue;
+                    var sessionId = payload.TryGetProperty("session_id", out var sessionElement) ? sessionElement.GetString() : null;
+                    if (!string.IsNullOrWhiteSpace(sessionId) && indexedNames.TryGetValue(sessionId, out var name)) matchedNames[sessionId] = name;
+                }
+                catch (JsonException) { }
+                catch (IOException) { }
+            }
+        }
+        catch { }
+
+        var projectName = new DirectoryInfo(projectPath).Name;
+        return matchedNames.Select(pair => new CodexThreadOption("(" + projectName + ") " + pair.Value, pair.Key, projectPath)).ToList();
+    }
+    private async Task RefreshConnectionChecksAsync()
+    {
+        var wasCodexAuthenticated = _codexAuthenticated;
+        _codexAuthenticated = await CheckCodexAuthenticationAsync();
+        if (_codexAuthenticated && !wasCodexAuthenticated) LoadCodexSelections();
+        _serverOnline = await CheckServerAsync();
+        var webOnline = _bridgeServer?.WebConnected == true;
+        SetConnectionStatus(ProjectStatusText, _codexAuthenticated ? "READY" : "LOGIN NEEDED", _codexAuthenticated, ProjectStatusDot);
+        SetConnectionStatus(WebStatusText, webOnline ? "READY" : "WAITING", webOnline, waiting: !webOnline, indicator: WebStatusDot);
+        WebDescriptionText.Text = webOnline && !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
+        SetConnectionStatus(ServerStatusText, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDot);
+        RepositoryNameText.Foreground = _serverOnline ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
+        PcNameText.Foreground = _codexAuthenticated ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
+    }
+
+    private static void SetConnectionStatus(TextBlock target, string value, bool ready, System.Windows.Shapes.Ellipse? indicator = null, bool waiting = false)
+    {
+        target.Text = value;
+        target.Foreground = ready ? System.Windows.Media.Brushes.ForestGreen : waiting ? System.Windows.Media.Brushes.Black : System.Windows.Media.Brushes.OrangeRed;
+        if (indicator is not null) indicator.Fill = ready ? System.Windows.Media.Brushes.LimeGreen : waiting ? System.Windows.Media.Brushes.SlateGray : System.Windows.Media.Brushes.OrangeRed;
+    }
+
+    private async Task<bool> CheckCodexAuthenticationAsync()
+    {
+        var executable = _codexRunner.FindExecutable();
+        if (executable is null) return false;
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = executable,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            }
+        };
+        process.StartInfo.ArgumentList.Add("login");
+        process.StartInfo.ArgumentList.Add("status");
+        try
+        {
+            if (!process.Start()) return false;
+            await process.WaitForExitAsync();
+            return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task<bool> CheckServerAsync()
+    {
+        try
+        {
+            var serverBaseUrl = Environment.GetEnvironmentVariable("PROJECTHUB_AGENT_SERVER_BASE_URL");
+            if (string.IsNullOrWhiteSpace(serverBaseUrl)) serverBaseUrl = "https://projecthub.ornithopter.bid";
+            using var response = await _connectionClient.GetAsync(serverBaseUrl.TrimEnd('/') + "/api/status");
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
     private static string GetSelectedContent(System.Windows.Controls.ComboBox combo, string fallback)
         => (combo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? fallback;
 
     private static string ToCliModel(string model)
         => model.Trim().ToLowerInvariant().Replace(" ", "-");
+
+    private void OnBridgeTaskChanged(BridgeTask task)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            RepositoryNameText.Text = " · MCP-with-MiniPC";
+            PcNameText.Text = Environment.MachineName;
+            if (task.Status is "PENDING" or "CLAIMED")
+            {
+                _awaitingWebResult = true;
+                RunButton.Content = "■  Cancel";
+                TaskDirection.Text = "WORKER → GPT WEB";
+                TaskTitle.Text = task.Status == "PENDING" ? "Worker Message 대기 중" : "GPT Web에 메시지 전달 중";
+                SetFlowState(false, true, true);
+                return;
+            }
+            if (task.Status is "COMPLETED" or "FAILED")
+            {
+                _awaitingWebResult = false;
+                RunButton.Content = "▶  Run Task";
+                TaskDirection.Text = "GPT WEB → WORKER";
+                TaskTitle.Text = task.Status == "COMPLETED" ? "Web 응답 수신 완료" : "Web 응답 수신 실패";
+                ResultTitle.Text = task.Status == "COMPLETED" ? "GPT Web PASS" : "GPT Web FAIL";
+                ResultBody.Text = task.Result ?? "응답 내용이 없습니다.";
+                _lastWebTask = task;
+                ActivateResultTab(web: true);
+                SetFlowState(false, true, false);
+            }
+        });
+    }
 
     private static string BuildResultBody(CodexCliResult result)
     {
@@ -218,22 +585,49 @@ public partial class MainWindow : Window
         return text.Length <= 4000 ? text : text[..4000] + Environment.NewLine + "…";
     }
 
+    private void ActivateResultTab(bool web)
+    {
+        var active = FindResource("PaleBlue") as System.Windows.Media.Brush;
+        var inactive = System.Windows.Media.Brushes.White;
+        CodexTab.Background = web ? inactive : active;
+        WebTab.Background = web ? active : inactive;
+        CodexTab.FontWeight = web ? FontWeights.Normal : FontWeights.Bold;
+        WebTab.FontWeight = web ? FontWeights.Bold : FontWeights.Normal;
+    }
+
+    private void UpdateUsage(CodexUsage usage)
+    {
+        UsageText.Text = $"5시간/주간 제한: CLI 미제공 · 이번 작업 누적: {usage.TotalTokens:N0} 토큰";
+    }
+
     private void CodexTab_Click(object sender, RoutedEventArgs e)
     {
         if (_lastCodexResult is null)
         {
             ResultTitle.Text = "Codex CLI 대기 중";
             ResultBody.Text = "Run Task를 실행하면 Codex CLI 결과가 이 영역에 표시됩니다.";
+            ActivateResultTab(web: false);
             return;
         }
         ResultTitle.Text = $"Codex {( _lastCodexResult.ExitCode == 0 ? "PASS" : "FAIL" )} · {_lastCodexResult.Model}";
         ResultBody.Text = BuildResultBody(_lastCodexResult);
+        UpdateUsage(_lastCodexResult.Usage);
+        ActivateResultTab(web: false);
     }
 
     private void WebTab_Click(object sender, RoutedEventArgs e)
     {
-        ResultTitle.Text = "REVISE · GPT Web 검토 결과";
-        ResultBody.Text = "보호영역 검증이 필요합니다. GPT Web 결과는 Worker bridge 연결 후 이 영역에 표시됩니다.";
+        ActivateResultTab(web: true);
+        if (_lastWebTask is not null)
+        {
+            ResultTitle.Text = _lastWebTask.Status == "COMPLETED" ? "GPT Web PASS" : "GPT Web FAIL";
+            ResultBody.Text = _lastWebTask.Result ?? "응답 내용이 없습니다.";
+        }
+        else
+        {
+            ResultTitle.Text = "GPT Web 대기 중";
+            ResultBody.Text = "GPT Web 결과가 도착하면 이 영역에 표시됩니다.";
+        }
     }
 }
 

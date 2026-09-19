@@ -48,7 +48,7 @@ public partial class App : System.Windows.Application
         }
 
         base.OnStartup(e);
-        MainWindow = new MainWindow();
+        MainWindow = new MainWindow(_bridgeServer);
         MainWindow.Show();
 
         _activationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };

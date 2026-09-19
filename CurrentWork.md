@@ -310,3 +310,102 @@ NAS upload 최종 재검증: 운영 Server assertion 발급 성공 후 NAS `uplo
 2026-09-19 GPTWeb-Hub 요청·수신 UI 정리: 테스트 전송 버튼과 전용 이미지 생성 코드를 제거했다. CURRENT REQUEST가 IDLE이고 대화가 식별된 경우에만 텍스트 입력·전송·파일 드롭을 활성화하며, 드롭 파일은 파일명만 표시하고 일반 파일 첨부 경로로 ChatGPT에 전달한다. 전송 후 새 assistant 응답이 감지될 때까지 컨트롤을 잠그고, 최신 assistant 메시지를 RESULT MESSAGE에 갱신한다.
 
 검증: node --check extension/gptweb-hub/content.js 성공, git diff --check 통과.
+
+2026-09-19 GPTWeb-Hub 통합 왕복 구현: 최신 GPT-Web-Feedback.md의 통합 범위를 반영했다. Bridge task에 conversation/project 일치, PENDING 중복 방지, CLAIMED lease/시작시각, 첨부 메타데이터, TEXT_RESULT 응답 필드를 추가했다. 확장은 수동 textarea·드롭존·전송·테스트 버튼·별도 RESULT MESSAGE를 제거하고 단일 TASK 영역으로 통합했다. 바인딩된 현재 대화의 PENDING 작업만 한 번 claim한 뒤 Worker Message를 자동 입력·첨부·전송하고, assistant DOM의 신규 응답이 안정화되면 /bridge/task/{id}/result로 반환한다. CLAIMED 작업은 새로고침 후 재전송하지 않고 응답 대기 상태를 복원한다. Worker는 bridge 완료 이벤트를 받아 GPT Web 결과를 Last Result와 Current Task에 표시한다.
+
+최종 검증 예정: node --check extension/gptweb-hub/content.js, dotnet build ProjectHub.sln --no-restore, dotnet test ProjectHub.sln --no-build --no-restore, git diff --check, Worker loopback task create→claim→result 및 중복 claim/재조회 검증. 실제 ChatGPT DOM 자동 입력·응답 완료는 브라우저 확장 로드 상태에서 별도 확인한다.
+
+2026-09-19 Worker 모델 선택기 개선: 설치된 Codex CLI의 실제 사용 가능 모델 세트(Sol, Astra, Terra, Luna)를 조회해 Model 콤보박스 목록을 정정했다. 기본 선택을 GPT-5.6 Luna / Medium으로 변경하고, ComboBox의 화살표 영역만이 아니라 전체 영역을 ToggleButton이 받아 드롭다운이 열리도록 템플릿을 수정했다.
+
+2026-09-19 Worker UI 상태·메시지·사용량 개선: ComboBox Popup의 ZIndex와 항목 hover 스타일을 보강해 메뉴 가림을 줄였고, ProjectHub 저장소명·실제 PC명·bridge task 상태를 Worker UI에 반영했다. Current Task에서 Round/시간/처리 문구와 ChatGPT 응답 생성 중 보조 문구를 제거했다. LAST RESULT를 MESSAGE로 변경하고 Codex/Web 결과 도착 시 해당 탭을 자동 활성화하며, 다음 결과가 올 때까지 각 메시지를 유지한다. 단순 성공 장식은 제거했다. Codex JSONL의 usage/token_usage 이벤트에서 명령별 누적 token을 파싱해 하단에 표시한다. Codex CLI는 계정 5시간/주간 제한값을 노출하지 않으므로 해당 값은 CLI 미제공으로 표시하며 임의 값은 기록하지 않는다.
+
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과. 계정 사용량 조회 도구 자체는 값을 반환했지만, 이 값은 Worker 프로세스가 직접 조회할 수 있는 CLI 계약이 아니므로 UI에 주입하지 않았다.
+2026-09-19 Worker preflight 및 Current Task 확장: Worker 시작 후 Codex login status, ProjectHub Server http://127.0.0.1:5240/api/status, GPT Web bridge heartbeat를 검사하고 Project/Web/Server 카드에 실제 READY/WAITING/OFFLINE 상태를 표시하도록 연결했다. Run Task 직전에도 세 조건을 다시 확인해 준비되지 않은 연동에서는 작업을 시작하지 않는다. 상태는 3초 polling으로 갱신한다. Current Task 우측 아이콘을 84px, 내부 이미지를 72px, 단계 폰트를 17px로 확대하고 단계 문구를 현재 실행 상태에 맞게 갱신한다. 검증: Worker build 성공, 전체 테스트 5개 통과, Codex login status 성공. 현재 로컬 ProjectHub Server 5240은 응답하지 않아 UI에서는 OFFLINE으로 표시된다. GPT Web은 확장 heartbeat가 들어오면 READY로 전환된다.
+
+2026-09-19 Worker 연결상태·Current Task 표시 보완: Server preflight는 ProjectHub_Agent_Test.ps1의 계약과 동일하게 PROJECTHUB_AGENT_SERVER_BASE_URL 환경변수를 우선 사용하고, 미설정 시 https://projecthub.ornithopter.bid/api/status를 확인하도록 변경했다. 로컬 127.0.0.1 검사로 오인하지 않는다. GPT Web 상태의 WAITING은 검정, OFFLINE은 적색으로 구분하고 비활성 Current Task 아이콘 배경은 회색으로 표시한다. 우측 아이콘 영역의 폭과 여백을 조정해 아이콘·>>> 진행 표시가 잘리지 않도록 했다. GPT Web 프로젝트명과 대화방명은 다시 개행 표시한다. 초기 연결 확인값도 WAITING/CHECKING으로 맞췄다.
+검증: node --check 성공, Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과.
+
+2026-09-19 Worker Current Task 시각 상태·GPT Web heartbeat 수정: 아이콘 배경 Border보다 내부 Grid가 작아 배경이 잘리던 구조를 80px 컨테이너로 맞췄다. Codex/Worker/GPT Web 라벨과 단계 글씨를 활성 상태 색상 또는 비활성 SlateGray로 동기화했다. GPT Web 확장의 refresh에서 /bridge/heartbeat 호출이 누락되어 WAITING에 머물던 문제를 복구했다. WAITING은 Worker가 heartbeat를 받기 전 상태이며, heartbeat 수신 후 WebConnected=true가 된다.
+검증: 최신 Worker 실행 후 /bridge/status bridge=ready, heartbeat 응답 ok=true, heartbeat 직후 webConnected=true. node --check 성공, Worker build 성공(경고 0/오류 0), git diff --check 통과.
+
+2026-09-19 Worker 상태 카드 점 표시 수정: GPT Web WAITING 상태에서 XAML 상태 점이 녹색으로 고정되어 있던 문제를 수정했다. Project/Web/Server 상태 점을 코드로 관리해 READY는 녹색, WAITING은 회색, OFFLINE 또는 인증 필요 상태는 적색으로 표시한다.
+검증: Worker build 성공(경고 0/오류 0), extension node --check 성공, git diff --check 통과.
+
+2026-09-19 GPT Web 즉시 연동 재검증: Worker bridge는 확장 heartbeat 수신 시 webConnected=true로 전환되고 10초간 heartbeat가 없으면 false로 복귀한다. 실제 실행 Worker에서 수동 heartbeat 직후 true, 2초 후 heartbeat 미갱신 상태에서 false를 확인해 WAITING 판정 자체는 정상임을 검증했다. 확장이 localhost bridge를 호출하도록 MV3 manifest에 127.0.0.1/localhost:43821 host_permissions를 추가했다.
+검증: content.js node --check 성공, manifest JSON 파싱 성공, git diff --check 통과. 실제 브라우저에서 새 manifest를 적용하려면 확장 새로고침이 필요하다.
+
+2026-09-19 GPTWeb-Hub 제목 개행 재수정: 통합 과정에서 title()이 원문 한 줄을 반환하도록 되돌아가 프로젝트명과 대화방명이 자연 줄바꿈에 맡겨져 잘리던 문제를 확인했다. ChatGPT document.title에서 프로젝트명 - 대화방명 구분자를 분리해 명시적 개행 문자로 반환하도록 복구했다. status-value의 white-space:pre-line과 함께 두 줄 표시를 보장한다.
+검증: node --check extension/gptweb-hub/content.js 성공, git diff --check 통과.
+
+2026-09-19 Worker Codex 프로젝트·스레드 선택 구현: Codex 카드의 고정 Codex 작업 대기 중 문구를 프로젝트 콤보박스와 스레드 콤보박스로 교체했다. 실제 ~/.codex 세션 인덱스와 session_meta의 cwd/session_id/thread_name을 읽어 프로젝트별 기존 스레드를 목록화하고, 프로젝트만 선택하면 ＋ 신규 스레드를 기본 선택한다. 신규 선택은 codex exec -C 프로젝트경로, 기존 선택은 codex exec resume 스레드ID로 실행하도록 연결했다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과. 실제 Codex resume 실행은 사용자 UI에서 선택 후 명령 실행 시 확인한다.
+
+2026-09-19 Codex 프로젝트·스레드 검증: ProjectHub 프로젝트에서 현재 스레드 resume을 시도했으나 기존 thread writer가 활성 상태라 실패했다. 절차에 따라 ProjectHub 신규 스레드에서 --image로 화면 이미지를 첨부하고 이미지를 짧게 설명하라는 1회 실행을 수행했으며 exit 0과 짧은 응답을 받았다. 다만 종료 시 Codex CLI가 신규 rollout flush 실패(thread not found) 경고를 남겼고 session_index에는 신규 thread ID가 확인되지 않아, 실행 성공과 영속 스레드 등록은 분리해서 판단해야 한다.
+검증 결과: 현재 스레드 resume 실패(활성 writer), 신규 스레드 이미지 질문 실행 성공(exit 0), 이미지 응답 수신 성공, 신규 스레드 인덱스 영속화는 미확인.
+
+2026-09-19 검증 정책 변경: 향후 검증 최우선 순위를 빌드 완료 Explorer 실행파일의 실제 화면 조작으로 지정했다. 실행파일을 실행한 뒤 화면에서 메시지를 작성·전송하고 결과 및 연동 상태를 확인한다. Explorer 화면 검증이 불가능한 경우에만 CLI·API·직접 프로세스 호출을 대체 수단으로 사용하며, 결과에 대체 검증임을 명시한다.
+
+2026-09-19 Explorer 우선 검증 재시도: 최신 Worker 실행파일을 빌드하고 C:\AI-AGENT\ProjectHub\src\ProjectHub.Worker\bin\Debug\net9.0-windows\ProjectHub.Worker.exe를 실행했다. 화면 직접 조작을 위해 컴퓨터 제어 런타임을 호출했으나 런타임 초기화 실패로 UI 메시지 작성·전송은 수행하지 못했다. 정책에 따라 화면 성공으로 간주하지 않고 대체 검증으로 전환했다.
+대체 검증 결과: Worker 프로세스 실행 중, bridge=ready, webConnected=true, git diff --check 통과. 화면 메시지 전송 검증은 미완료.
+
+2026-09-19 Codex 선택 UI 단일 목록 개선: 프로젝트 콤보박스를 제거하고 실제 세션을 프로젝트별로 즉시 조회하는 단일 스레드 콤보박스로 변경했다. 항목은 (프로젝트명) 스레드명 또는 (프로젝트명) ＋ 신규 스레드 형식이며 선택 항목의 ProjectPath/session_id를 CLI에 사용한다. 선택 상태가 목록 위를 덮던 원인은 기본 ToggleButton 템플릿의 선택 배경이어서 전용 투명 템플릿으로 교체했다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과.
+
+2026-09-19 Codex 스레드 목록 UX 보완: 선택값이 CodexThreadOption 객체 문자열로 표시되던 문제를 ToString override와 단일 목록 표시로 수정했다. 선택 없음 placeholder를 프로젝트 선택으로 표시하고, 콤보 목록 MaxHeight를 240px에서 960px로 확대했다. 실행파일 위치에서 상위 .git을 찾아 ProjectHub 루트를 프로젝트 목록에 포함하며, 실제 session_id와 projectPath를 %LOCALAPPDATA%/ProjectHub/worker-selection.json에 저장·다음 실행 시 복원한다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과.
+
+2026-09-19 Codex 프로젝트·스레드 매칭 수정: 세션 파일의 모든 rollout ID를 사용자 스레드로 추가하던 오류를 제거하고 session_index.jsonl에 등록된 사용자 thread ID가 해당 프로젝트 cwd와 일치할 때만 목록에 포함하도록 변경했다. 실제 인덱스/cwd 교차검사에서 ProjectHub는 현재 사용자 스레드 1개로 확인됐다.
+검증: 기존 Worker가 EXE를 잠가 첫 빌드는 실패했으나 해당 프로세스를 종료 후 최신 Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과. 최신 Worker 재실행 완료.
+
+2026-09-19 Run Task Codex→GPT Web 전달 원인 분석 및 이미지 첨부 연결: 기존 MainWindow RunTask는 Codex CLI 결과를 MESSAGE에 표시한 뒤 종료했고, BridgeServer에 GPT Web task를 생성하는 호출이 없어 Worker→GPT Web 단계가 시작되지 않았다. Codex 성공 후 최신 GPT Web 바인딩으로 PENDING 작업을 생성하고, Worker가 만든 텍스트 이미지 PNG를 localhost 첨부 URL로 제공하도록 연결했다. 동일 대화의 PENDING/CLAIMED 작업 중복도 차단한다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, content.js node --check 성공, manifest JSON 파싱 성공, git diff --check 통과. 빌드된 Worker EXE 기동 후 /bridge/status에서 bridge=ready·webConnected=true와 최신 binding을 확인했다. Explorer 화면 자동화 런타임은 초기화 직후 종료되어 실제 화면 입력·전송 검증은 수행하지 못했으며, 정책에 따라 이를 성공으로 간주하지 않는다. Codex CLI 실행 자체와 실제 GPT Web 응답 수신은 화면 검증 불가로 미완료.
+
+2026-09-19 GPT Web 본문 미전송 수정: 확장이 파일 첨부 직후 전송 버튼을 즉시 클릭해 업로드 처리 전 전송이 무시될 수 있었고, ChatGPT DOM 변형에 대한 입력창·전송 버튼 선택도 제한적이었다. 표시 중이고 비활성화되지 않은 composer/send button을 탐색하고, 본문 입력 반영·파일 업로드 완료·전송 가능 상태·입력창 비움을 순서대로 확인한 뒤 전송하도록 수정했다. 파일 다운로드 HTTP 오류도 명시적으로 처리한다.
+검증: content.js node --check 성공, git diff --check 통과. 실제 ChatGPT 화면 전송은 화면 자동화 런타임 초기화 실패로 아직 미검증이며, 확장 새로고침 후 기존 바인딩 대화에서 재검증이 필요하다.
+
+2026-09-19 GPT Web 채팅방 이동 동기화 수정: SPA 내 pushState/replaceState/popstate/hashchange로 대화방이 바뀌면 이전 대화 ID를 유지한 채 변경을 감지하도록 수정했다. 기존 대화가 Worker에 연결된 상태로 이동하면 새 대화에 자동 bind하고, 새 conversationId/projectId를 포함한 heartbeat를 다시 전송한다. 이동 전에 ID를 초기화하던 순서 오류를 제거했다.
+검증: content.js node --check 성공, git diff --check 통과. 실제 ChatGPT SPA 이동 검증은 화면 자동화 런타임 초기화 실패로 미완료이며, 확장 새로고침 후 연결된 대화에서 다른 대화로 이동해 Worker 카드의 GPT Web 대화명이 갱신되는지 확인해야 한다.
+
+2026-09-19 GPT Web 동기화 경쟁 상태 및 Worker 대화명 표시 수정: 채팅 이동 직후 자동 동기화 refresh와 1.5초 주기 refresh가 동시에 실행되면 주기 refresh가 새 대화를 미연결 상태로 덮어써 자동 bind가 누락될 수 있었다. refresh를 직렬화하고 queued auto-bind를 보존했다. heartbeat에 conversationId/projectId/conversationTitle을 포함하고 BridgeServer가 현재 GPT Web 대화명을 보관하며 Worker GPT Web 카드에 표시하도록 연결했다.
+검증: Worker build 성공(경고 0/오류 0), content.js node --check 성공, heartbeat 응답 및 /bridge/status에서 conversationId·개행 포함 conversationTitle·projectId 반영 확인. git diff --check 통과. 실제 ChatGPT SPA 이동은 확장 새로고침 후 확인 필요.
+
+2026-09-19 GPT Web 확장 정지 및 FINISHED 후 재수신 수정: refresh에 autoBind 인자를 추가한 뒤 setInterval(refresh, 1500)이 1500을 autoBind=true처럼 전달하던 문제를 setInterval(()=>refresh(), 1500)으로 수정했다. FINISHED 이후 activeTaskId/sentTaskId가 남아 새 PENDING 작업을 claim하지 못하던 문제는 task ID 변경을 감지해 phase·sentTaskId·baselineAssistant를 초기화하도록 수정했다. FINISHED 결과 표시는 유지하면서 다음 작업 수신을 허용한다.
+검증: content.js node --check 성공, git diff --check 통과. 새 task ID 전환 로직은 정적 코드 확인까지 완료했으며 실제 ChatGPT에서 연속 2회 작업 수행은 확장 화면 자동화 런타임 문제로 미완료.
+
+2026-09-19 Worker→GPT Web 대기 중 Run Task 상태 수정: Codex 실행이 끝난 직후 finally에서 Run Task로 복귀하던 문제를 수정했다. GPT Web task가 PENDING/CLAIMED인 동안 _awaitingWebResult를 유지하고 버튼은 Cancel 표시를 계속한다. 이 상태에서는 RunTask_Click이 새 작업을 시작하지 않는다. GPT Web task가 COMPLETED/FAILED가 될 때만 _awaitingWebResult를 해제하고 Run Task로 복구한다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, content.js node --check 성공, git diff --check 통과. 최신 실행 파일 반영을 위해 Worker 재기동이 필요하다.
+
+2026-09-19 GPT Web 확장 연결 확인 정지 진단: 실행 중 Worker 프로세스가 없어 127.0.0.1:43821의 status/projects/task/heartbeat 요청이 모두 연결 거부되어 확장이 초기 연결 확인 상태에 머무는 조건을 재현했다. Worker 실행 파일 기동 후 브리지 응답은 정상(각 엔드포인트 1~270ms)으로 확인했다. 확장이 브리지 무응답을 무한 대기하지 않도록 모든 bridge fetch에 4초 AbortController timeout을 추가했다.
+추가 확인: FINISHED 이후 새 task 재수신, 주기 refresh 인자 오류, Worker→GPT Web Cancel 상태 유지 수정도 함께 반영된 최신 코드 기준이다.
+검증: Worker build 성공, 전체 테스트 5개 통과, content.js node --check 성공, git diff --check 통과. 실제 브라우저 확장 화면은 자동화 런타임 불가로 직접 조작하지 못했으며, 확장 새로고침이 필요하다.
+
+2026-09-19 GPT Web 연결 문구 표시 수정: status/projects/task 조회가 성공하고 Status=Connected인 경우에도 COMPLETED task 분기로 조기 return하면서 초기 systemText인 연결 확인 중...이 남았다. 성공 응답을 받은 직후 정상적으로 연결되어 있습니다.로 갱신해 FINISHED/PENDING/CLAIMED 상태에서도 연결 문구가 일관되게 표시되도록 수정했다.
+검증: content.js node --check 성공, git diff --check 통과. 실제 화면 반영에는 확장 새로고침이 필요하다.
+
+2026-09-19 Worker task 전달 불일치 및 Cancel 일괄 복구 수정: 직접 브리지 상태에서 active PENDING task의 conversationId(6aac...)와 현재 GPT Web heartbeat conversationId(6aa52...)가 달라 확장이 task를 받을 수 없는 원인을 확인했다. CreateTaskForLatestBinding은 최신 저장 바인딩 대신 현재 heartbeat 대화 바인딩을 우선 사용하도록 수정했다. Worker Cancel은 Codex 실행 중에는 CLI 취소, GPT Web 대기 중에는 active task를 FAILED/canceled로 종료하고 화면·버튼·결과 탭을 초기 상태로 복구한다.
+검증: 저장된 PENDING task에 CancelActiveTask를 실제 호출해 Canceled=true 및 activeTask 제거를 확인했다. Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, content.js node --check 성공, git diff --check 통과. 최신 Worker 재기동 후 bridge=ready·webConnected=true·현재 heartbeat conversationId 확인.
+
+2026-09-19 GPT Web 비활성 탭 전송 보완: 이미지와 본문이 ChatGPT 입력창에 도착했지만 전송되지 않은 현상에서, 기존 확장은 composer만 focus하고 넓은 버튼 탐색 후 synthetic click만 실행했다. 실제 전송 버튼 selector를 우선 사용하고 버튼 focus 후 click, 입력창 Enter fallback을 추가했다. 전송 후 입력창이 비워지지 않으면 탭 active/inactive 상태를 포함한 전송 실패를 표시하고 task를 send_failed로 종료한다. 브라우저 탭을 강제로 활성화하지는 않는다.
+검증: content.js node --check 성공, git diff --check 통과. 실제 비활성 ChatGPT 탭에서의 전송은 화면 자동화 런타임을 사용할 수 없어 미완료이며, 실패 시 포커스 상태가 확장에 표시되도록 변경했다.
+
+2026-09-19 GPT Web 조기 FINISHED 및 잘린 응답 수정: 확장이 ChatGPT 스트리밍 중간 문구를 800ms 안정화만으로 최종 응답으로 오인해 Worker에 부분 응답을 전송하고 FINISHED로 전환하던 문제를 확인했다. 생성 중단/Stop 버튼이 표시되는 동안은 완료 타이머를 취소하고, 생성 종료 후 최종 응답이 2.5초 동안 변하지 않을 때만 Worker result API로 전송한다. result API 성공 후에만 확장 phase가 FINISHED가 된다.
+검증: content.js node --check 성공, git diff --check 통과. 실제 ChatGPT 스트리밍 응답 E2E는 화면 자동화 런타임 문제로 미완료.
+
+2026-09-19 GPT Web 응답 반환 정지 추가 진단: 브리지 active task가 CLAIMED 상태이고 Worker result가 없음을 확인했다. 과거 task 두 건은 ChatGPT 스트리밍 중간 문구 "개의 이미지 분석 중"으로 잘못 COMPLETED 처리됐고, 현재 task는 result 미수신 상태였다. assistantStreaming 감지를 일반 취소 텍스트가 아닌 명시적 Stop/중지 버튼 selector로 좁혔다. 현재 멈춘 task는 Cancel 처리 후 Worker 재기동으로 activeTask 제거를 확인했다.
+검증: content.js node --check 성공, git diff --check 통과, Worker 재기동 후 bridge=ready·activeTask 없음 확인. 실제 ChatGPT 최종 스트리밍 E2E는 확장 화면 자동화 런타임 문제로 미완료.
+
+2026-09-19 GPT Web 이전 응답 재사용 및 부분 응답 완료 오인 보완: 확장 새로고침 후 CLAIMED task를 복원할 때 현재 최신 assistant 메시지를 기준 응답으로 초기화하지 않아 이전 질문/답변을 새 응답으로 오인할 수 있던 경로를 수정했다. CLAIMED 복원 시 task별 sentTaskId와 baselineAssistant를 설정하고, 생성 중 판정은 Stop/중지 버튼뿐 아니라 data-is-streaming, data-streaming, aria-busy 상태와 버튼 label/testid/title을 함께 확인한다. 스트리밍 종료 안정화 대기시간을 3.5초에서 5초로 늘려 부분 응답 조기 반환 가능성을 낮췄다. Worker의 GPT Web 전달 문구는 이미지의 글자를 직접 분석하도록 정리되어 있다.
+
+검증: node --check extension/gptweb-hub/content.js 성공, dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과. 빌드된 Worker 실행파일에서 bridge=ready·webConnected=true 확인. Explorer 화면 자동화 런타임은 재시작 후에도 초기화 직후 종료되어 실제 화면 입력·ChatGPT DOM 왕복은 미검증. 대체 로컬 bridge 검증은 task 생성→claim→result→COMPLETED 1회 성공. 잔여: 확장 새로고침 후 실제 ChatGPT에서 새 task를 실행해 최종 응답 전체가 Worker로 반환되는 화면 E2E.
+
+2026-09-19 Codex 스레드 목록 갱신 시점 보완: 최초 Worker 시작 시 목록을 읽은 뒤 Codex 계정 인증이 성공하면 즉시 session_index.jsonl을 다시 조회하도록 연결했다. Codex CLI 실행 완료 후에는 300ms 간격으로 5회 목록을 재조회해 CLI의 session flush가 늦게 반영되는 신규 스레드도 같은 실행에서 확인하도록 보완했다. 기존 저장 선택값 복원은 유지한다.
+
+검증: dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore 성공(경고 0/오류 0), dotnet test ProjectHub.sln --no-build --no-restore 전체 5개 통과, git diff --check 통과. 실제 Codex 신규 스레드가 session_index.jsonl에 등록되는지 여부는 CLI flush 결과에 의존한다.
+
+2026-09-19 Codex 신규 스레드 안전 보관·복원 경로 구현: Codex JSONL의 thread.started에서 session ID를 추출해 Worker 전용 로컬 archive에 metadata.json, transcript.jsonl, handoff.md를 저장하도록 추가했다. Codex 내부 session_index.jsonl은 직접 수정하지 않는다. Worker 스레드 목록은 공식 인덱스와 로컬 archive를 합쳐 표시하고, 신규 CLI 실행 완료 후 archive/session index를 재조회하며 새 session ID를 선택 상태로 복원한다. 이후 실행은 선택된 ID를 공식 codex exec resume 경로로 사용한다.
+
+검증: Worker 빌드 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과, 최신 Worker 재기동 후 bridge=ready·webConnected=true 확인. 실제 Codex 신규 CLI 실행으로 archive 파일 생성 및 resume 왕복은 계정 작업을 추가로 소비하므로 이번 검증에서는 수행하지 않았다.
+
+
+2026-09-19 Worker -> GPT Web 고정 테스트 데이터 제거: Run Task 성공 후 GPT Web task를 생성할 때 사용하던 고정 프롬프트와 테스트 이미지를 제거했다. 이제 현재 CommandInput 명령을 그대로 Web prompt로 전달하고 Codex FinalMessage가 있으면 실행 결과를 추가 문맥으로 전달한다. 첨부물도 고정 문자열 대신 현재 Codex 결과(결과가 없으면 현재 명령)로 생성한다. MainWindow 초기 MESSAGE 샘플 제목·시간·본문도 중립적인 대기 문구로 교체했다. 추가 검색에서 사용자 콘텐츠를 고정하는 다른 Worker/Extension 코드는 발견되지 않았으며 테스트 fixture의 sample 문자열과 일반 상태 라벨은 유지했다.
+검증: node --check extension/gptweb-hub/content.js, dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore, dotnet test ProjectHub.sln --no-build --no-restore, git diff --check. Explorer 화면 자동화는 런타임 초기화 오류로 수행할 수 없어 대체 검증으로 기록한다.
