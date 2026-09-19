@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.IO;
 using System.Windows;
@@ -19,7 +20,23 @@ public partial class MainWindow : Window
     private CodexCliResult? _lastCodexResult;
     private BridgeTask? _lastWebTask;
     private bool _awaitingWebResult;
+    private string? _activePrompt;
+    private string? _activeWorkingDirectory;
+    private string? _activeSessionId;
+    private string? _activeCliModel;
+    private string? _activeReasoning;
+    private bool _webFollowupStarted;
+    private bool _actionProtocolEnabled;
+    private int _round;
+    private int _maxRounds = 30;
+    private string? _lastWebTaskId;
     private CodexUsage _commandUsage = CodexUsage.Empty;
+    private sealed record TaskMessage(DateTimeOffset Timestamp, string Source, string Content);
+    private readonly List<TaskMessage> _taskMessages = new();
+    private DateTimeOffset _taskStartedAt;
+    private string _taskProjectName = "UnknownProject";
+    private string _taskThreadName = "NewThread";
+    private bool _taskExported;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private int _flowFrame;
@@ -34,6 +51,8 @@ public partial class MainWindow : Window
     private List<CodexProjectOption> _codexProjects = new();
     private bool _loadingCodexSelections;
 
+    private enum WebActionKind { None, Begin, Continue, Pause, End, ProtocolError }
+    private sealed record WebAction(WebActionKind Kind, string Body, string? Error = null);
     private sealed record CodexProjectOption(string Name, string Path);
     private sealed record CodexThreadOption(string Label, string SessionId, string ProjectPath)
     {
@@ -211,12 +230,31 @@ public partial class MainWindow : Window
             return;
 
         var prompt = CommandInput.Text.Trim();
+        var seedAction = ParseWebAction(prompt);
+        if (seedAction.Kind is WebActionKind.ProtocolError or WebActionKind.Continue or WebActionKind.Pause or WebActionKind.End || (seedAction.Kind == WebActionKind.Begin && string.IsNullOrWhiteSpace(seedAction.Body)))
+        {
+            TaskTitle.Text = "잘못된 ACTION 시작 형식";
+            ResultBody.Text = seedAction.Error ?? "[ACTION=BEGIN] 뒤에 작업 지시를 입력해야 합니다.";
+            return;
+        }
+        var cliPrompt = seedAction.Kind == WebActionKind.Begin ? seedAction.Body : prompt;
         var model = GetSelectedContent(ModelCombo, "GPT-5.6 Luna");
         var reasoning = GetSelectedContent(ReasoningCombo, "Medium").ToLowerInvariant();
         var cliModel = ToCliModel(model);
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
+        StartTaskTranscript(selectedThread, prompt);
         var workingDirectory = selectedThread?.ProjectPath ?? Environment.CurrentDirectory;
         var sessionId = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? null : selectedThread.SessionId;
+        _activePrompt = cliPrompt;
+        _actionProtocolEnabled = true;
+        _round = 1;
+        _maxRounds = 30;
+        _lastWebTaskId = null;
+        _activeWorkingDirectory = workingDirectory;
+        _activeSessionId = sessionId;
+        _activeCliModel = cliModel;
+        _activeReasoning = reasoning;
+        _webFollowupStarted = false;
         _commandUsage = CodexUsage.Empty;
         UpdateUsage(_commandUsage);
         var cts = new CancellationTokenSource();
@@ -229,9 +267,11 @@ public partial class MainWindow : Window
 
         try
         {
-            var result = await _codexRunner.RunAsync(prompt, cliModel, reasoning, workingDirectory, sessionId, cts.Token);
+            var result = await _codexRunner.RunAsync(cliPrompt, cliModel, reasoning, workingDirectory, sessionId, cts.Token);
             _lastCodexResult = result;
-            CodexThreadArchive.Save(result, prompt, workingDirectory);
+            AddTaskMessage("CODEX", string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage);
+            _activeSessionId = result.SessionId ?? _activeSessionId;
+            CodexThreadArchive.Save(result, cliPrompt, workingDirectory);
             await RefreshCodexSelectionsAfterCliAsync(result.SessionId, workingDirectory);
             UpdateCodexSelectionDisplay();
             SetFlowState(codexActive: false, workerActive: true, webActive: false);
@@ -245,22 +285,13 @@ public partial class MainWindow : Window
 
             if (result.ExitCode == 0 && _bridgeServer is not null)
             {
-                var webPrompt = prompt;
-                if (!string.IsNullOrWhiteSpace(result.FinalMessage))
-                {
-                    webPrompt += Environment.NewLine + Environment.NewLine
-                        + "Codex 실행 결과:" + Environment.NewLine
-                        + result.FinalMessage;
-                }
-
-                // 실제 Codex 결과를 기준으로 만든 첨부물만 전달한다. 테스트용 고정 문구를 사용하지 않는다.
+                var webPrompt = BuildWebPrompt(cliPrompt, result, includeOriginalPrompt: true);
                 var attachmentText = string.IsNullOrWhiteSpace(result.FinalMessage)
-                    ? prompt
+                    ? cliPrompt
                     : result.FinalMessage;
-                var attachment = _bridgeServer.CreateTextImageAttachment(attachmentText);
-                var task = _bridgeServer.CreateTaskForLatestBinding(
-                    webPrompt,
-                    new List<BridgeAttachment> { attachment });
+                var attachments = BuildWebAttachments(_bridgeServer, cliPrompt, attachmentText);
+                AddTaskMessage("WORKER -> GPT WEB", webPrompt);
+                var task = _bridgeServer.CreateTaskForLatestBinding(webPrompt, attachments);
                 if (task is null)
                 {
                     TaskTitle.Text = "GPT Web 대화 연결 필요";
@@ -304,6 +335,15 @@ public partial class MainWindow : Window
     private void ResetTaskState()
     {
         _awaitingWebResult = false;
+        _webFollowupStarted = false;
+        _actionProtocolEnabled = false;
+        _round = 0;
+        _lastWebTaskId = null;
+        _activePrompt = null;
+        _activeWorkingDirectory = null;
+        _activeSessionId = null;
+        _activeCliModel = null;
+        _activeReasoning = null;
         _lastWebTask = null;
         TaskDirection.Text = "IDLE";
         TaskTitle.Text = "작업 없음";
@@ -332,6 +372,8 @@ public partial class MainWindow : Window
     }
     private async Task RefreshCodexSelectionsAfterCliAsync(string? sessionId, string projectPath)
     {
+        // 새 스레드는 CLI가 반환한 session ID를 먼저 저장해야 기존 기본 스레드로 되돌아가지 않는다.
+        if (!string.IsNullOrWhiteSpace(sessionId)) SaveCodexSelection(sessionId, projectPath);
         for (var attempt = 0; attempt < 5; attempt++)
         {
             LoadCodexSelections();
@@ -399,17 +441,21 @@ public partial class MainWindow : Window
 
     private void SaveCodexSelection()
     {
+        var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
+        if (selected is not null) SaveCodexSelection(selected.SessionId, selected.ProjectPath);
+    }
+
+    private static void SaveCodexSelection(string sessionId, string projectPath)
+    {
         try
         {
-            var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
-            if (selected is null || string.IsNullOrWhiteSpace(selected.SessionId) || string.IsNullOrWhiteSpace(selected.ProjectPath)) return;
+            if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(projectPath)) return;
             var path = GetSelectionStatePath();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new { sessionId = selected.SessionId, projectPath = selected.ProjectPath }));
+            File.WriteAllText(path, JsonSerializer.Serialize(new { sessionId, projectPath }));
         }
         catch { }
     }
-
     private static string GetSelectionStatePath()
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "worker-selection.json");
     private static string? FindRepositoryRoot(string startPath)
@@ -544,32 +590,317 @@ public partial class MainWindow : Window
 
     private void OnBridgeTaskChanged(BridgeTask task)
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(new Action(() => HandleBridgeTaskChanged(task)));
+    }
+
+    private async void HandleBridgeTaskChanged(BridgeTask task)
+    {
+        if (task.Status is "PENDING" or "CLAIMED")
         {
-            RepositoryNameText.Text = " · MCP-with-MiniPC";
-            PcNameText.Text = Environment.MachineName;
-            if (task.Status is "PENDING" or "CLAIMED")
+            _awaitingWebResult = true;
+            RunButton.Content = "■  Cancel";
+            TaskDirection.Text = "WORKER → GPT WEB";
+            TaskTitle.Text = task.Status == "PENDING" ? "Worker Message 대기 중" : "GPT Web에 메시지 전달 중";
+            SetFlowState(false, true, true);
+            return;
+        }
+
+        if (task.Status is not "COMPLETED" and not "FAILED") return;
+        if (_actionProtocolEnabled && _lastWebTaskId == task.Id) return;
+        _lastWebTaskId = task.Id;
+        _lastWebTask = task;
+        AddTaskMessage("GPT WEB", task.Result);
+        ResultTitle.Text = task.Status == "COMPLETED" ? "GPT Web 응답 수신 완료" : "GPT Web FAIL";
+        ResultBody.Text = task.Result ?? "응답 내용이 없습니다.";
+        ActivateResultTab(web: true);
+
+        if (task.Status == "COMPLETED" && (_actionProtocolEnabled || !_webFollowupStarted) && _activeWorkingDirectory is not null && _activeCliModel is not null && _activeReasoning is not null)
+        {
+            _webFollowupStarted = true;
+            await RunWebResponseThroughCodexAsync(task);
+            return;
+        }
+
+        _awaitingWebResult = false;
+        RunButton.Content = "▶  Run Task";
+        TaskDirection.Text = "GPT WEB → WORKER";
+        TaskTitle.Text = task.Status == "COMPLETED" ? "Web 응답 수신 완료" : "Web 응답 수신 실패";
+        SetFlowState(false, true, false);
+    }
+
+    private void FinishActionTask(WebAction action, string response)
+    {
+        _awaitingWebResult = false;
+        RunButton.Content = "▶  Run Task";
+        TaskDirection.Text = "GPT WEB → WORKER";
+        TaskTitle.Text = action.Kind switch
+        {
+            WebActionKind.End => "Web이 작업 완료를 알림",
+            WebActionKind.Pause => "Web이 사용자 판단을 요청함",
+            WebActionKind.ProtocolError => "ACTION 프로토콜 오류",
+            _ => "Web 결과 처리 종료"
+        };
+        ResultTitle.Text = action.Kind switch
+        {
+            WebActionKind.End => "FINISH_SUCCESS",
+            WebActionKind.Pause => "FINISH_PAUSED",
+            WebActionKind.ProtocolError => "FINISH_PROTOCOL_ERROR",
+            _ => "Web 결과"
+        };
+        ResultBody.Text = action.Kind == WebActionKind.ProtocolError ? (action.Error ?? "ACTION 프로토콜 오류") + Environment.NewLine + Environment.NewLine + response : response;
+        ActivateResultTab(web: true);
+        ExportTaskTranscript();
+        SetFlowState(false, false, false);
+    }
+
+    private async Task RunWebResponseThroughCodexAsync(BridgeTask task)
+    {
+        var workingDirectory = _activeWorkingDirectory;
+        var model = _activeCliModel;
+        var reasoning = _activeReasoning;
+        if (workingDirectory is null || model is null || reasoning is null)
+        {
+            _awaitingWebResult = false;
+            return;
+        }
+
+        var webResponse = task.Result ?? string.Empty;
+        var action = ParseWebAction(webResponse, defaultPause: true);
+        string followupPrompt;
+        if (_actionProtocolEnabled)
+        {
+            if (action.Kind is WebActionKind.End or WebActionKind.Pause or WebActionKind.ProtocolError or WebActionKind.None or WebActionKind.Begin)
             {
-                _awaitingWebResult = true;
-                RunButton.Content = "■  Cancel";
-                TaskDirection.Text = "WORKER → GPT WEB";
-                TaskTitle.Text = task.Status == "PENDING" ? "Worker Message 대기 중" : "GPT Web에 메시지 전달 중";
-                SetFlowState(false, true, true);
+                FinishActionTask(action, webResponse);
                 return;
             }
-            if (task.Status is "COMPLETED" or "FAILED")
+            if (_round >= _maxRounds)
             {
                 _awaitingWebResult = false;
-                RunButton.Content = "▶  Run Task";
-                TaskDirection.Text = "GPT WEB → WORKER";
-                TaskTitle.Text = task.Status == "COMPLETED" ? "Web 응답 수신 완료" : "Web 응답 수신 실패";
-                ResultTitle.Text = task.Status == "COMPLETED" ? "GPT Web PASS" : "GPT Web FAIL";
-                ResultBody.Text = task.Result ?? "응답 내용이 없습니다.";
-                _lastWebTask = task;
-                ActivateResultTab(web: true);
-                SetFlowState(false, true, false);
+                TaskTitle.Text = "Worker round 제한 초과";
+                ResultTitle.Text = "FINISH_LIMIT";
+                ResultBody.Text = webResponse;
+                SetFlowState(false, false, false);
+                return;
             }
-        });
+            _round++;
+            followupPrompt = action.Body;
+        }
+        else
+        {
+            followupPrompt = "GPT Web 응답을 전달합니다. 원래 작업을 계속 수행해줘." + Environment.NewLine + "작업이 완전히 끝났으면 응답 첫 줄을 [WORKER_DONE]로 시작해줘. 아직 다음 단계가 필요하면 GPT Web에 보낼 다음 요청만 출력해줘." + Environment.NewLine + Environment.NewLine + webResponse;
+        }
+        using var cts = new CancellationTokenSource();
+        _activeTaskCts = cts;
+        _awaitingWebResult = false;
+        RunButton.Content = "■  Cancel";
+        TaskDirection.Text = "GPT WEB → CODEX";
+        TaskTitle.Text = "Web 응답을 Codex에 전달하는 중";
+        SetFlowState(true, true, false);
+
+        try
+        {
+            AddTaskMessage("WORKER -> CODEX", followupPrompt);
+            var result = await _codexRunner.RunAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, cts.Token);
+            _activeSessionId = result.SessionId ?? _activeSessionId;
+            _lastCodexResult = result;
+            AddTaskMessage("CODEX", string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage);
+            CodexThreadArchive.Save(result, followupPrompt, workingDirectory);
+            _commandUsage = _commandUsage.Add(result.Usage);
+            UpdateUsage(_commandUsage);
+            ResultTitle.Text = result.ExitCode == 0 ? $"Codex 중간 결과 · {model}" : $"Codex 후속 처리 실패 · exit {result.ExitCode}";
+            ResultBody.Text = BuildRoundtripResultBody(webResponse, result);
+            ActivateResultTab(web: false);
+
+            if (result.ExitCode == 0 && (_actionProtocolEnabled || ShouldContinueRoundtrip(result)) && _bridgeServer is not null)
+            {
+                var nextPrompt = BuildWebPrompt(_activePrompt ?? "원래 작업", result, includeOriginalPrompt: false);
+                var nextAttachmentText = string.IsNullOrWhiteSpace(result.FinalMessage) ? nextPrompt : result.FinalMessage;
+                var nextAttachments = BuildWebAttachments(_bridgeServer, _activePrompt ?? nextPrompt, nextAttachmentText);
+                AddTaskMessage("WORKER -> GPT WEB", nextPrompt);
+                var nextTask = _bridgeServer.CreateTaskForLatestBinding(nextPrompt, nextAttachments);
+                if (nextTask is not null)
+                {
+                    _awaitingWebResult = true;
+                    RunButton.Content = "■  Cancel";
+                    TaskDirection.Text = "WORKER → GPT WEB";
+                    TaskTitle.Text = "Codex 결과를 GPT Web에 재전달하는 중";
+                    SetFlowState(false, true, true);
+                    return;
+                }
+            }
+
+            _awaitingWebResult = false;
+            TaskDirection.Text = "GPT WEB → CODEX";
+            TaskTitle.Text = result.ExitCode == 0 ? "Worker 최종 처리 완료" : "Codex 후속 처리 실패";
+            SetFlowState(false, false, false);
+        }
+        catch (OperationCanceledException)
+        {
+            TaskDirection.Text = "GPT WEB → CODEX";
+            TaskTitle.Text = "Codex 후속 처리 취소";
+            ResultTitle.Text = "Codex CANCELED";
+            ResultBody.Text = "Web 응답 후속 처리가 취소되었습니다."
+ + Environment.NewLine + Environment.NewLine + webResponse;
+            SetFlowState(false, false, false);
+        }
+        catch (Exception ex)
+        {
+            TaskDirection.Text = "GPT WEB → CODEX";
+            TaskTitle.Text = "Codex 후속 처리 실패";
+            ResultTitle.Text = "Codex ERROR";
+            ResultBody.Text = ex.ToString();
+            SetFlowState(false, false, false);
+        }
+        finally
+        {
+            _activeTaskCts = null;
+            if (!_awaitingWebResult) RunButton.Content = "▶  Run Task";
+        }
+    }
+
+    private static WebAction ParseWebAction(string? response, bool defaultPause = false)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+        {
+            return defaultPause
+                ? new(WebActionKind.Pause, string.Empty, "Web 응답이 없어 PAUSE로 처리합니다.")
+                : new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.");
+        }
+
+        var lines = response.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var nonEmpty = lines.Select((line, index) => (line.Trim(), index)).Where(item => item.Item1.Length > 0).ToList();
+        if (nonEmpty.Count == 0)
+        {
+            return defaultPause
+                ? new(WebActionKind.Pause, string.Empty, "Web 응답이 없어 PAUSE로 처리합니다.")
+                : new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.");
+        }
+
+        var firstLine = nonEmpty[0].Item1.ToUpperInvariant();
+        var kind = firstLine.Contains("CONTINUE", StringComparison.Ordinal)
+            ? WebActionKind.Continue
+            : firstLine.Contains("PAUSE", StringComparison.Ordinal)
+                ? WebActionKind.Pause
+                : firstLine.Contains("END", StringComparison.Ordinal)
+                    ? WebActionKind.End
+                    : firstLine.Contains("BEGIN", StringComparison.Ordinal)
+                        ? WebActionKind.Begin
+                        : defaultPause
+                            ? WebActionKind.Pause
+                            : WebActionKind.None;
+
+        var body = string.Join(Environment.NewLine, lines.Skip(nonEmpty[0].Item2 + 1)).Trim();
+        if ((kind is WebActionKind.Begin or WebActionKind.Continue) && string.IsNullOrWhiteSpace(body))
+        {
+            return new(WebActionKind.ProtocolError, string.Empty, "BEGIN/CONTINUE 본문이 비어 있습니다.");
+        }
+
+        return new(kind, body, kind == WebActionKind.Pause && defaultPause && !firstLine.Contains("PAUSE", StringComparison.Ordinal)
+            ? "ACTION이 없어 PAUSE로 처리합니다."
+            : null);
+    }
+
+    private static string BuildWebPrompt(string originalPrompt, CodexCliResult result, bool includeOriginalPrompt)
+    {
+        var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
+        var original = includeOriginalPrompt
+            ? Environment.NewLine + Environment.NewLine + "원래 작업:" + Environment.NewLine + originalPrompt
+            : string.Empty;
+        return "반드시 답변 첫 줄을 다음 프로토콜 중에서 선택해줘." + Environment.NewLine
+            + "[ACTION=CONTINUE] - 다음 작업을 진행하길 원할 때. 계속 진행해도 문제 없을 때" + Environment.NewLine
+            + "[ACTION=PAUSE] - 사용자가 개입해서 테스트해봐야 하는 상황일 때" + Environment.NewLine
+            + "[ACTION=END] - 목표에 달성한 상태일 때 혹은 대기 작업이 남아있지 않을 때" + Environment.NewLine
+            + Environment.NewLine
+            + original + Environment.NewLine + Environment.NewLine
+            + "Codex 실행 결과:" + Environment.NewLine + output;
+    }
+
+    private bool ShouldContinueRoundtrip(CodexCliResult result)
+    {
+        var text = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
+        if (text.Contains("[WORKER_DONE]", StringComparison.OrdinalIgnoreCase)) return false;
+        var match = System.Text.RegularExpressions.Regex.Match(text, @"(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)");
+        return match.Success && int.TryParse(match.Groups[1].Value, out var current) && int.TryParse(match.Groups[2].Value, out var total) && current < total;
+    }
+
+    private string BuildNextWebPrompt(CodexCliResult result)
+    {
+        var original = string.IsNullOrWhiteSpace(_activePrompt) ? "원래 작업" : _activePrompt;
+        var codex = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
+        return original + Environment.NewLine + Environment.NewLine + "Codex 최신 결과를 반영해 다음 단계 작업을 계속 수행해줘." + Environment.NewLine + Environment.NewLine + "Codex 실행 결과:" + Environment.NewLine + codex;
+    }
+
+    private void StartTaskTranscript(CodexThreadOption? selectedThread, string command)
+    {
+        _taskMessages.Clear();
+        _taskExported = false;
+        _taskStartedAt = DateTimeOffset.Now;
+        _taskProjectName = string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
+            ? "UnknownProject"
+            : new DirectoryInfo(selectedThread.ProjectPath).Name;
+        _taskThreadName = string.IsNullOrWhiteSpace(selectedThread?.SessionId)
+            ? "NewThread"
+            : selectedThread.Label;
+        AddTaskMessage("USER COMMAND", command);
+    }
+
+    private void AddTaskMessage(string source, string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return;
+        _taskMessages.Add(new TaskMessage(DateTimeOffset.Now, source, content.Trim()));
+    }
+
+    private string? ExportTaskTranscript()
+    {
+        if (_taskExported || _taskMessages.Count == 0) return null;
+        try
+        {
+            var folderName = $"{SanitizeFilePart(_taskProjectName)}_{SanitizeFilePart(_taskThreadName)}";
+            var directory = Path.Combine(AppContext.BaseDirectory, "Task", folderName);
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, $"_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+            var lines = new List<string>
+            {
+                $"Project: {_taskProjectName}",
+                $"Thread: {_taskThreadName}",
+                $"Started: {_taskStartedAt:O}",
+                $"Finished: {DateTimeOffset.Now:O}",
+                string.Empty
+            };
+            foreach (var message in _taskMessages)
+            {
+                lines.Add($"[{message.Timestamp:yyyy-MM-dd HH:mm:ss}] {message.Source}");
+                lines.Add(message.Content);
+                lines.Add(string.Empty);
+            }
+            File.WriteAllText(path, string.Join(Environment.NewLine, lines), new UTF8Encoding(false));
+            _taskExported = true;
+            return path;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string SanitizeFilePart(string value)
+    {
+        var invalid = new string(Path.GetInvalidFileNameChars());
+        var sanitized = new string(value.Select(character => invalid.Contains(character) ? '_' : character).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(sanitized) ? "Unnamed" : sanitized;
+    }
+
+    private static List<BridgeAttachment> BuildWebAttachments(BridgeServer bridge, string instruction, string attachmentText)
+    {
+        var compact = System.Text.RegularExpressions.Regex.Replace(instruction, @"\s+", "").ToLowerInvariant();
+        var textOnly = compact.Contains("텍스트만") || compact.Contains("이미지를만들지") || compact.Contains("이미지생성하지") || compact.Contains("이미지첨부하지") || (compact.Contains("이미지") && compact.Contains("아니야") && compact.Contains("만들"));
+        return textOnly ? new List<BridgeAttachment>() : new List<BridgeAttachment> { bridge.CreateTextImageAttachment(attachmentText) };
+    }
+
+    private static string BuildRoundtripResultBody(string webResponse, CodexCliResult result)
+    {
+        return "GPT Web 응답:" + Environment.NewLine + Summarize(webResponse, "응답 내용이 없습니다.") + Environment.NewLine + Environment.NewLine + "Codex 후속 결과:" + Environment.NewLine + BuildResultBody(result);
     }
 
     private static string BuildResultBody(CodexCliResult result)

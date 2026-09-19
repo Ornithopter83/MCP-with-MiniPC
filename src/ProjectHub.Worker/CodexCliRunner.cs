@@ -116,18 +116,65 @@ public sealed class CodexCliRunner
             try
             {
                 using var document = JsonDocument.Parse(line);
-                var root = document.RootElement;
-                if (root.TryGetProperty("usage", out var usage) || root.TryGetProperty("token_usage", out usage))
-                {
-                    total = total.Add(new CodexUsage(ReadLong(usage, "input_tokens"), ReadLong(usage, "cached_input_tokens"), ReadLong(usage, "output_tokens"), ReadLong(usage, "reasoning_output_tokens"), ReadLong(usage, "total_tokens")));
-                }
+                foreach (var usage in FindUsageObjects(document.RootElement))
+                    total = total.Add(ReadUsage(usage));
             }
             catch (JsonException) { }
         }
+
+        if (total.TotalTokens == 0)
+            total = total with { TotalTokens = total.InputTokens + total.OutputTokens + total.ReasoningOutputTokens };
         return total;
     }
 
-    private static long ReadLong(JsonElement element, string name) => element.TryGetProperty(name, out var value) && value.TryGetInt64(out var number) ? number : 0;
+    private static IEnumerable<JsonElement> FindUsageObjects(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
+                yield return usage;
+            if (root.TryGetProperty("token_usage", out var tokenUsage) && tokenUsage.ValueKind == JsonValueKind.Object)
+                yield return tokenUsage;
+
+            foreach (var property in root.EnumerateObject())
+            {
+                if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                {
+                    foreach (var nested in FindUsageObjects(property.Value))
+                        yield return nested;
+                }
+            }
+        }
+        else if (root.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in root.EnumerateArray())
+                foreach (var nested in FindUsageObjects(item))
+                    yield return nested;
+        }
+    }
+
+    private static CodexUsage ReadUsage(JsonElement usage)
+    {
+        var input = ReadLong(usage, "input_tokens", "inputTokens");
+        var cached = ReadLong(usage, "cached_input_tokens", "cachedInputTokens");
+        var output = ReadLong(usage, "output_tokens", "outputTokens");
+        var reasoning = ReadLong(usage, "reasoning_output_tokens", "reasoningOutputTokens");
+        var total = ReadLong(usage, "total_tokens", "totalTokens");
+        if (total == 0)
+            total = input + output + reasoning;
+        return new CodexUsage(input, cached, output, reasoning, total);
+    }
+
+    private static long ReadLong(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!element.TryGetProperty(name, out var value)) continue;
+            if (value.TryGetInt64(out var number)) return number;
+            if (value.ValueKind == JsonValueKind.String && long.TryParse(value.GetString(), out number)) return number;
+        }
+        return 0;
+    }
 
     private static string ExtractFinalMessage(string stdout)
     {

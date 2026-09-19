@@ -409,3 +409,83 @@ NAS upload 최종 재검증: 운영 Server assertion 발급 성공 후 NAS `uplo
 
 2026-09-19 Worker -> GPT Web 고정 테스트 데이터 제거: Run Task 성공 후 GPT Web task를 생성할 때 사용하던 고정 프롬프트와 테스트 이미지를 제거했다. 이제 현재 CommandInput 명령을 그대로 Web prompt로 전달하고 Codex FinalMessage가 있으면 실행 결과를 추가 문맥으로 전달한다. 첨부물도 고정 문자열 대신 현재 Codex 결과(결과가 없으면 현재 명령)로 생성한다. MainWindow 초기 MESSAGE 샘플 제목·시간·본문도 중립적인 대기 문구로 교체했다. 추가 검색에서 사용자 콘텐츠를 고정하는 다른 Worker/Extension 코드는 발견되지 않았으며 테스트 fixture의 sample 문자열과 일반 상태 라벨은 유지했다.
 검증: node --check extension/gptweb-hub/content.js, dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --no-restore, dotnet test ProjectHub.sln --no-build --no-restore, git diff --check. Explorer 화면 자동화는 런타임 초기화 오류로 수행할 수 없어 대체 검증으로 기록한다.
+
+2026-09-19 Web 응답 → Codex CLI 후속 처리 추가: Bridge task가 COMPLETED가 되면 Worker가 화면 갱신만 하고 종료하던 누락을 수정했다. 최초 실행의 project path, session ID, model, reasoning을 보존하고 Web response를 같은 Codex 세션의 후속 prompt로 실행한다. 후속 Codex 결과는 Web task를 재생성하지 않고 최종 MESSAGE에 Web 응답과 Codex 후속 결과를 함께 표시한다. 후속 CLI 실행 중에도 Cancel을 유지한다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, extension node --check 통과, git diff --check 통과. Explorer 화면 E2E는 자동화 런타임 제한으로 수행하지 않았다.
+
+2026-09-19 새 Codex 스레드 선택 복원 수정: CLI가 새 session ID를 반환한 뒤 RefreshCodexSelectionsAfterCliAsync가 해당 ID를 영구 선택 상태에 저장하도록 변경했다. 기존에는 저장된 기본 스레드를 다시 읽어 새 스레드 실행 직후 기본 설정으로 되돌아갔다. 선택 목록이 늦게 갱신되어도 5회 재조회 중 새 session이 나타나면 저장된 선택으로 복원된다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과.
+
+2026-09-19 Extension 상태와 Worker 전체 완료 분리: Extension의 Web task FINISHED는 Worker 전달 완료 의미로 유지한다. Worker가 Web 응답을 Codex CLI에 전달한 뒤 Codex 결과를 검사하고, 응답에 진행 카운터 N/M이 있고 N<M이면 다음 GPT Web task를 Worker가 생성한다. [WORKER_DONE] 또는 진행 조건 부재 시 Worker가 최종 종료한다. 다음 task 생성 후 followup finally가 상태를 초기화하던 문제도 수정했다. Extension 코드는 변경하지 않았다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, extension node --check 통과.
+
+2026-09-19 Worker 이미지 첨부 조건 수정: Worker가 Codex 결과를 항상 PNG로 만들어 Web task에 첨부하던 문제를 수정했다. 원래 명령에 텍스트만·이미지 생성 금지·이미지 첨부 금지 의미가 있으면 attachment를 빈 목록으로 전달하고, 그 외 이미지 분석 작업에는 기존 동적 첨부를 유지한다. 초기 Web 전달과 Worker가 생성하는 다음 순환 task 모두 같은 조건을 적용했다. Extension은 변경하지 않았다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, extension node --check 통과.
+
+2026-09-19 원격 GPT-Web-Feedback ACTION protocol v1 반영: 원격 main의 최신 피드백을 fetch 후 읽었다. 로컬 변경 때문에 pull --rebase는 dirty worktree에서 중단되었으며 stash/reset 없이 원격 문서를 기준으로 구현했다. Worker는 사용자가 입력한 [ACTION=BEGIN]의 본문을 최초 Codex 명령으로 전달하고, ACTION job에서는 Web 응답의 첫 유효 제어행을 파싱한다. CONTINUE 본문만 다음 Codex 명령으로 전달하며, PAUSE/END는 Codex에 전달하지 않고 각각 FINISH_PAUSED/FINISH_SUCCESS로 종료한다. ACTION 누락·중복·알 수 없는 값·빈 본문·진행 중 BEGIN은 FINISH_PROTOCOL_ERROR로 처리한다. Codex 결과를 Web에 재전달할 때 ACTION 프로토콜 설명을 Worker prompt에 추가하고, taskId 중복 소비를 차단하며 round 상한 30을 적용했다. Extension은 transport 역할만 유지하고 수정하지 않았다.
+검증: Worker build 성공(경고 0/오류 0), 전체 테스트 5개 통과, extension node --check 통과.
+## 2026-09-19 ACTION 프로토콜 프롬프트 중복 전송 보완
+
+- 초기 [ACTION=BEGIN]의 CLI 명령은 최초 Web 전달에만 원래 작업으로 포함한다.
+- 이후 ACTION 반복 라운드에서는 원래 COMMAND를 다시 붙이지 않고 Codex 결과와 프로토콜 안내만 전달한다.
+- CLI 결과를 Web에 전달할 때 요청된 [ACTION=CONTINUE], [ACTION=PAUSE], [ACTION=END] 선택 안내를 항상 프롬프트 첫 부분에 포함한다.
+- 검증: Worker 별도 출력 경로 빌드 성공. 기존 테스트와 확장 문법 검사는 앞선 검증에서 통과.
+
+## 2026-09-19 ACTION 접두문 누락 보완
+
+- 일반 명령도 CLI 결과를 GPT Web에 전달할 때 ACTION 프로토콜 안내를 거치도록 초기·반복 Web 프롬프트 경로를 통일했다.
+- 초기 전달에만 원래 COMMAND를 포함하고, 반복 라운드에는 원래 COMMAND를 재전송하지 않는다.
+- 검증: Worker 별도 출력 경로 빌드 성공(경고 0, 오류 0), 확장 JavaScript 문법 검사 성공.
+
+## 2026-09-19 전체 재빌드
+
+- 실행 중인 ProjectHub Worker 프로세스는 확인되지 않았다.
+- ProjectHub.sln을 Debug 구성으로 Clean 후 전체 Build했다.
+- Worker 실행파일이 src/ProjectHub.Worker/bin/Debug/net9.0-windows/ProjectHub.Worker.exe에 현재 시각으로 재생성되었다.
+- 검증: Core 1개, Agent 3개, Server 1개 테스트 통과; 확장 JavaScript 문법 검사 통과.
+
+## 2026-09-19 CONTINUE 응답 판별 보완
+
+- Web 응답의 첫 번째 유효행만 대상으로 Contains 방식으로 CONTINUE/PAUSE/END/BEGIN을 판별한다.
+- Web 응답이 비어 있거나 첫 행에 ACTION이 없으면 PAUSE로 처리한다.
+- 실제 CRLF/LF 개행을 기준으로 응답 본문을 분리한다.
+- 초기 사용자 명령 파싱은 기존 일반 명령 동작을 유지하고, Web 응답에만 기본 PAUSE 정책을 적용한다.
+- 검증: ProjectHub.sln Debug 빌드 성공(경고 0, 오류 0), 테스트 5개 통과, 확장 JavaScript 문법 검사 통과. 최신 Worker 재기동 완료.
+
+## 2026-09-19 일반 COMMAND ACTION 반복 중단 수정
+
+- 원인: 일반 명령은 _actionProtocolEnabled가 false여서 첫 Web 응답만 후속 처리하고 CONTINUE 반복 루프에 진입하지 않았다.
+- 수정: 모든 작업에서 ACTION 반복 모드를 활성화하여 일반 명령도 Web의 CONTINUE/PAUSE/END를 처리한다.
+- 검증: 전체 Debug 빌드 성공(경고 0, 오류 0), 테스트 5개 통과, 확장 JavaScript 문법 검사 통과. 최신 Worker 재기동 완료.
+
+## 2026-09-19 Current Task·토큰·메시지 내보내기
+
+- Current Task 좌측 텍스트 영역을 확장하고 긴 상태 문구 줄바꿈을 허용했다.
+- CLI usage를 중첩 usage/token_usage, snake_case/camelCase, total 누락 계산까지 처리하고 사이클별 누적값을 표시한다.
+- 하나의 Task에서 USER COMMAND, CODEX, WORKER, GPT WEB 메시지를 순서대로 누적한다.
+- 정상 종료 시 실행 폴더의 Task/프로젝트_스레드/_yyyymmdd_hhmmss.txt로 UTF-8 transcript를 내보낸다.
+- 검증: 전체 Debug 빌드 성공(경고 0, 오류 0), 테스트 5개 통과, 확장 JavaScript 문법 검사 통과. 최신 Worker 재기동 완료.
+
+## 2026-09-19 Web 프롬프트 불필요 문구 제거
+
+- ACTION 선택 안내는 유지하고, 첫 유효행·본문 역할·ACTION 오류를 설명하던 중복 문구는 BuildWebPrompt에서 제거했다.
+- Task transcript 저장 기능은 유지한다.
+- 검증: 전체 Debug 빌드 성공, 테스트 5개 통과, 확장 JavaScript 문법 검사 통과. 최신 Worker 재기동 완료.
+
+## 2026-09-19 최신 구현 상태 및 문제점
+
+- Worker는 일반 명령을 포함한 모든 Task에서 Web ACTION 반복을 처리한다.
+- Web 응답은 첫 번째 유효행의 CONTINUE/PAUSE/END/BEGIN을 판별하며, 빈 응답 또는 제어행이 없는 응답은 PAUSE로 안전하게 처리한다.
+- Web 프롬프트에는 ACTION 선택 안내만 남겼고, 중복 COMMAND를 후속 Web 라운드에 재전송하지 않는다.
+- CLI usage는 중첩 구조, snake_case/camelCase, total 누락 계산을 지원하며 한 Task의 라운드별 사용량을 누적한다.
+- 한 Task의 USER COMMAND, CODEX, WORKER, GPT WEB 메시지를 순서대로 누적하고 정상 종료 시 실행 파일 폴더 기준 Task/<프로젝트>_<스레드>/_yyyymmdd_HHmmss.txt로 UTF-8 transcript를 저장한다.
+- Current Task 긴 상태 문구는 좌측 영역에서 줄바꿈되도록 조정했다.
+
+남은 문제와 제약:
+
+- 빌드된 Explorer 실행 파일을 통한 실제 화면 E2E 왕복 검증은 아직 완료하지 못했다. 현재 검증 결과는 build/test/node 문법 검사와 Worker 직접 실행 확인까지다.
+- GPT Web 확장이 응답 완료 또는 Stop 상태를 보고하지 않거나 CLAIMED/연결 확인 상태에 머무르면 Worker는 결과를 확정할 수 없다. 이 경우 무한 대기를 막기 위한 취소·제한 처리가 별도 후속 범위다.
+- CLI가 usage 값을 출력하지 않는 실행에서는 정확한 계정 한도 사용량을 산출할 수 없다. 현재 값은 CLI가 반환한 필드의 누적값이며, 5시간/주간 한도 조회는 별도 계정 API가 필요하다.
+- 원격 최신 커밋과의 동기화는 로컬 변경을 먼저 커밋한 뒤 git pull --rebase로 수행해야 하며, 충돌 발생 시 자동 해결하지 않는다.
+
+최종 확인: dotnet build ProjectHub.sln --configuration Debug --no-restore, dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore, node --check extension/gptweb-hub/content.js.
