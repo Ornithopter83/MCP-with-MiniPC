@@ -23,9 +23,12 @@ public sealed record CodexCliResult(
     string StandardOutput,
     string StandardError,
     string FinalMessage,
+    IReadOnlyList<CodexCliFile> Files,
     CodexUsage Usage,
     DateTimeOffset StartedAt,
     DateTimeOffset FinishedAt);
+
+public sealed record CodexCliFile(string Path, string FileName, string MimeType, long Size);
 
 public sealed class CodexCliRunner
 {
@@ -83,7 +86,7 @@ public sealed class CodexCliRunner
             var stderr = await stderrTask;
             var finalMessage = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile) : ExtractFinalMessage(stdout);
             var resolvedSessionId = sessionId ?? ExtractSessionId(stdout);
-            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractUsage(stdout), startedAt, DateTimeOffset.UtcNow);
+            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, DateTimeOffset.UtcNow);
         }
         finally
         {
@@ -193,6 +196,76 @@ public sealed class CodexCliRunner
         return string.Join(Environment.NewLine, messages);
     }
 
+    private static IReadOnlyList<CodexCliFile> ExtractFiles(string stdout, string workingDirectory)
+    {
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in stdout.SplitLines())
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                CollectFileCandidates(document.RootElement, candidates);
+            }
+            catch (JsonException) { }
+        }
+
+        return candidates
+            .Select(path => ResolveFilePath(path, workingDirectory))
+            .Where(path => path is not null && File.Exists(path))
+            .Select(path => path!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(path => new FileInfo(path))
+            .Where(file => file.Length > 0)
+            .Select(file => new CodexCliFile(file.FullName, file.Name, GetMimeType(file.Extension), file.Length))
+            .ToList();
+    }
+
+    private static void CollectFileCandidates(JsonElement element, HashSet<string> candidates)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.String && IsFileProperty(property.Name))
+                    candidates.Add(property.Value.GetString() ?? string.Empty);
+                else if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                    CollectFileCandidates(property.Value, candidates);
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray()) CollectFileCandidates(item, candidates);
+        }
+    }
+
+    private static bool IsFileProperty(string name) => name.Contains("path", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("file", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("artifact", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("attachment", StringComparison.OrdinalIgnoreCase);
+
+    private static string? ResolveFilePath(string value, string workingDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var normalized = value.Trim().Trim('"');
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var uri) && uri.IsFile)
+            normalized = uri.LocalPath;
+        if (!Path.IsPathRooted(normalized)) normalized = Path.Combine(workingDirectory, normalized);
+        try { return Path.GetFullPath(normalized); } catch (ArgumentException) { return null; }
+    }
+
+    private static string GetMimeType(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".webp" => "image/webp",
+        ".bmp" => "image/bmp",
+        ".pdf" => "application/pdf",
+        ".txt" => "text/plain",
+        ".md" => "text/markdown",
+        ".json" => "application/json",
+        _ => "application/octet-stream"
+    };
     private static string CreateConversationTitle(string prompt)
     {
         var title = prompt.SplitLines().FirstOrDefault()?.Trim() ?? string.Empty;

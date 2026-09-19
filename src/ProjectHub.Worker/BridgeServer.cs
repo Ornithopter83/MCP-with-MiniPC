@@ -44,11 +44,10 @@ public sealed class BridgeServer : IDisposable
     {
         lock (_gate)
         {
-            BindingState? binding = null;
-            if (!string.IsNullOrWhiteSpace(_webConversationId))
-                _state.Bindings.TryGetValue(_webConversationId, out binding);
-            binding ??= _state.Bindings.Values.OrderByDescending(item => item.UpdatedAt).FirstOrDefault();
-            if (binding is null) return null;
+            if (string.IsNullOrWhiteSpace(_webConversationId) ||
+                !_state.Bindings.TryGetValue(_webConversationId, out var binding))
+                return null;
+
             var active = _state.Tasks.FirstOrDefault(item => item.ConversationId.Equals(binding.ConversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
             if (active is not null) return active;
             var task = new BridgeTask(Guid.NewGuid().ToString("N"), binding.ConversationId, binding.ProjectId, prompt, "PENDING", null, null, DateTimeOffset.UtcNow, null, "WEB", null, null, null, attachments ?? new());
@@ -58,7 +57,6 @@ public sealed class BridgeServer : IDisposable
             return task;
         }
     }
-
     public bool CancelActiveTask()
     {
         lock (_gate)
@@ -72,22 +70,20 @@ public sealed class BridgeServer : IDisposable
             return true;
         }
     }
-    public BridgeAttachment CreateTextImageAttachment(string text)
+    public BridgeAttachment CreateFileAttachment(CodexCliFile file)
     {
+        if (!File.Exists(file.Path)) throw new FileNotFoundException("CLI 파일을 찾을 수 없습니다.", file.Path);
+        if (file.Size <= 0 || file.Size > 50 * 1024 * 1024) throw new InvalidOperationException("CLI 파일 크기가 허용 범위를 벗어났습니다.");
+
         var id = Guid.NewGuid().ToString("N");
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "Worker", "attachments");
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, id + ".png");
-        using var bitmap = new Bitmap(720, 240);
-        using (var graphics = Graphics.FromImage(bitmap))
-        using (var font = new Font("Segoe UI", 28, FontStyle.Bold))
-        using (var brush = new SolidBrush(Color.FromArgb(18, 36, 76)))
-        {
-            graphics.Clear(Color.White);
-            graphics.DrawString(text, font, brush, new PointF(34, 92));
-        }
-        bitmap.Save(path, ImageFormat.Png);
-        return new BridgeAttachment(id, id + ".png", "image/png", new FileInfo(path).Length, "http://127.0.0.1:43821/bridge/attachment/" + id);
+        var extension = Path.GetExtension(file.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || extension.Any(character => !char.IsLetterOrDigit(character) && character != '.'))
+            extension = ".bin";
+        var path = Path.Combine(directory, id + extension.ToLowerInvariant());
+        File.Copy(file.Path, path, false);
+        return new BridgeAttachment(id, Path.GetFileName(file.FileName), file.MimeType, new FileInfo(path).Length, "http://127.0.0.1:43821/bridge/attachment/" + id);
     }
 
     public BridgeServer()
@@ -175,7 +171,7 @@ public sealed class BridgeServer : IDisposable
             else if (method == "GET" && path == "/bridge/task") payload = PendingTask(context.Request.QueryString["conversationId"]);
             else if (method == "POST" && path == "/bridge/task") payload = CreateTask(await ReadJsonAsync<CreateTaskRequest>(context.Request));
             else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/claim", StringComparison.Ordinal))
-                payload = Claim(path["/bridge/task/".Length..^"/claim".Length]);
+                payload = Claim(path["/bridge/task/".Length..^"/claim".Length], await ReadJsonAsync<ClaimRequest>(context.Request));
             else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/result", StringComparison.Ordinal))
                 payload = SubmitResult(path["/bridge/task/".Length..^"/result".Length], await ReadJsonAsync<ResultRequest>(context.Request));
             else if (method == "POST" && path == "/bridge/heartbeat") payload = Heartbeat(await ReadJsonAsync<HeartbeatRequest>(context.Request));
@@ -253,32 +249,44 @@ public sealed class BridgeServer : IDisposable
     {
         lock (_gate)
         {
-            return new BridgeResponse(true, new { task = _state.Tasks.Where(task => string.IsNullOrWhiteSpace(conversationId) || task.ConversationId.Equals(conversationId, StringComparison.OrdinalIgnoreCase)).OrderByDescending(task => task.CompletedAt ?? task.ClaimedAt ?? task.CreatedAt).FirstOrDefault() });
+            var tasks = _state.Tasks.Where(task =>
+                string.IsNullOrWhiteSpace(conversationId) ||
+                task.ConversationId.Equals(conversationId, StringComparison.OrdinalIgnoreCase));
+            var task = tasks
+                .OrderByDescending(item => item.Status is "PENDING" or "CLAIMED")
+                .ThenByDescending(item => item.CompletedAt ?? item.ClaimedAt ?? item.CreatedAt)
+                .FirstOrDefault();
+            return new BridgeResponse(true, new { task });
         }
     }
-
     private BridgeResponse CreateTask(CreateTaskRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.ConversationId) || string.IsNullOrWhiteSpace(request.Prompt))
             return new(false, new { error = "conversation_id_and_prompt_required" });
         lock (_gate)
         {
+            if (!_state.Bindings.TryGetValue(request.ConversationId, out var binding))
+                return new(false, new { error = "conversation_not_bound" });
+            if (!string.IsNullOrWhiteSpace(request.ProjectId) && !string.Equals(binding.ProjectId, request.ProjectId, StringComparison.OrdinalIgnoreCase))
+                return new(false, new { error = "project_mismatch" });
+
             var active = _state.Tasks.FirstOrDefault(item => item.ConversationId.Equals(request.ConversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
             if (active is not null) return new(false, new { error = "task_conflict", task = active });
-            var task = new BridgeTask(Guid.NewGuid().ToString("N"), request.ConversationId, request.ProjectId ?? RepositoryName, request.Prompt, "PENDING", null, null, DateTimeOffset.UtcNow, null, "WEB", null, null, null, request.Attachments ?? new());
+            var task = new BridgeTask(Guid.NewGuid().ToString("N"), request.ConversationId, binding.ProjectId, request.Prompt, "PENDING", null, null, DateTimeOffset.UtcNow, null, "WEB", null, null, null, request.Attachments ?? new());
             _state.Tasks.Add(task);
             SaveState();
             TaskChanged?.Invoke(task);
             return new BridgeResponse(true, task);
         }
     }
-
-    private BridgeResponse Claim(string id)
+    private BridgeResponse Claim(string id, ClaimRequest request)
     {
         lock (_gate)
         {
             var task = _state.Tasks.FirstOrDefault(item => item.Id == id);
             if (task is null) return new(false, new { error = "task_not_found" });
+            if (!string.Equals(task.ConversationId, request.ConversationId, StringComparison.OrdinalIgnoreCase))
+                return new(false, new { error = "conversation_mismatch" });
             if (task.Status != "PENDING") return new(false, new { error = "task_not_pending", task });
             var active = _state.Tasks.FirstOrDefault(item => item.Id != id && item.ConversationId.Equals(task.ConversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
             if (active is not null) return new(false, new { error = "task_conflict", task = active });
@@ -290,23 +298,36 @@ public sealed class BridgeServer : IDisposable
             return new BridgeResponse(true, claimed);
         }
     }
-
     private BridgeResponse SubmitResult(string id, ResultRequest request)
     {
         lock (_gate)
         {
             var task = _state.Tasks.FirstOrDefault(item => item.Id == id);
             if (task is null) return new(false, new { error = "task_not_found" });
-            if (!string.IsNullOrWhiteSpace(request.ConversationId) && !task.ConversationId.Equals(request.ConversationId, StringComparison.OrdinalIgnoreCase)) return new(false, new { error = "conversation_mismatch" });
-            if (!string.IsNullOrWhiteSpace(request.LeaseId) && !string.Equals(task.LeaseId, request.LeaseId, StringComparison.Ordinal)) return new(false, new { error = "lease_mismatch" });
-            var completed = task with { Status = request.Success ? "COMPLETED" : "FAILED", Result = request.ResponseText ?? request.Result, FinishReason = request.FinishReason ?? (request.Success ? "completed" : "failed"), CompletedAt = DateTimeOffset.UtcNow };
+            if (!string.IsNullOrWhiteSpace(request.TaskId) && !string.Equals(task.Id, request.TaskId, StringComparison.Ordinal))
+                return new(false, new { error = "task_mismatch" });
+            if (!string.Equals(task.ConversationId, request.ConversationId, StringComparison.OrdinalIgnoreCase))
+                return new(false, new { error = "conversation_mismatch" });
+            if (task.Status is "COMPLETED" or "FAILED")
+                return new BridgeResponse(true, task);
+            if (task.Status != "CLAIMED")
+                return new(false, new { error = "task_not_claimed" });
+            if (string.IsNullOrWhiteSpace(request.LeaseId) || !string.Equals(task.LeaseId, request.LeaseId, StringComparison.Ordinal))
+                return new(false, new { error = "lease_mismatch" });
+
+            var completed = task with
+            {
+                Status = request.Success ? "COMPLETED" : "FAILED",
+                Result = request.ResponseText ?? request.Result,
+                FinishReason = request.FinishReason ?? (request.Success ? "completed" : "failed"),
+                CompletedAt = DateTimeOffset.UtcNow
+            };
             ReplaceTask(completed);
             SaveState();
             TaskChanged?.Invoke(completed);
             return new BridgeResponse(true, completed);
         }
     }
-
     private BridgeResponse Heartbeat(HeartbeatRequest request)
     {
         lock (_gate)
@@ -355,13 +376,29 @@ public sealed class BridgeServer : IDisposable
     private static async Task WriteAttachmentAsync(HttpListenerResponse response, string id)
     {
         if (id.Any(character => !char.IsLetterOrDigit(character))) { response.StatusCode = 404; return; }
-        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "Worker", "attachments", id + ".png");
-        if (!File.Exists(path)) { response.StatusCode = 404; return; }
+        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "Worker", "attachments");
+        var path = Directory.Exists(directory)
+            ? Directory.EnumerateFiles(directory, id + ".*").SingleOrDefault()
+            : null;
+        if (path is null || !File.Exists(path)) { response.StatusCode = 404; return; }
         var bytes = await File.ReadAllBytesAsync(path);
-        response.ContentType = "image/png";
+        response.ContentType = GetMimeType(Path.GetExtension(path));
         response.ContentLength64 = bytes.Length;
         await response.OutputStream.WriteAsync(bytes);
     }
+    private static string GetMimeType(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".gif" => "image/gif",
+        ".webp" => "image/webp",
+        ".bmp" => "image/bmp",
+        ".pdf" => "application/pdf",
+        ".txt" => "text/plain",
+        ".md" => "text/markdown",
+        ".json" => "application/json",
+        _ => "application/octet-stream"
+    };
     private async Task WriteJsonAsync(HttpListenerResponse response, object payload)
     {
         response.ContentType = "application/json; charset=utf-8";
@@ -388,6 +425,7 @@ public sealed record BridgeTask(string Id, string ConversationId, string Project
 public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null);
 public sealed record BridgeResponse(bool Ok, object Data);
 public sealed record BindRequest(string ConversationId, string? ProjectId);
+public sealed record ClaimRequest(string ConversationId);
 public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null);
 public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null);
 public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null);

@@ -34,6 +34,6 @@ C:\AI-AGENT\ProjectHub\src\ProjectHub.Worker\bin\Debug\net9.0-windows\Task
 
 ### 알려진 제약
 
-- 빌드와 단위 테스트는 통과했지만 Explorer 실행 파일을 통한 실제 GPT Web 화면 왕복 E2E는 아직 미완료다.
+- 빌드·테스트와 함께 빌드된 Worker 실행파일 및 연결된 GPT Web의 스무고개 다중 왕복 E2E를 확인했다. ACTION=CONTINUE 반복과 ACTION=END 종료가 정상 동작했다.
 - 확장이 응답 완료/Stop 상태를 보고하지 않으면 Worker가 GPT Web 응답 완료를 확정할 수 없다.
 - CLI usage가 제공되지 않는 경우 누적 토큰은 정확한 계정 한도 조회값이 아니라 CLI 응답에서 추출 가능한 값의 합계다.

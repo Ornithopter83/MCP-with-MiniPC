@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private BridgeTask? _lastWebTask;
     private bool _awaitingWebResult;
     private string? _activePrompt;
+    private string? _activeWebInstruction;
     private string? _activeWorkingDirectory;
     private string? _activeSessionId;
     private string? _activeCliModel;
@@ -43,7 +44,8 @@ public partial class MainWindow : Window
     private bool _codexArrowActive;
     private bool _webArrowActive;
     private bool _allowClose;
-    private const string Placeholder = "작업 지시를 입력하세요...";
+    private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
+    private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
     private readonly HttpClient _connectionClient = new() { Timeout = TimeSpan.FromSeconds(2) };
     private BridgeServer? _bridgeServer;
     private bool _codexAuthenticated;
@@ -131,19 +133,38 @@ public partial class MainWindow : Window
 
     private void CommandInput_GotFocus(object sender, RoutedEventArgs e)
     {
-        if (CommandInput.Text == Placeholder)
-        {
-            CommandInput.Text = string.Empty;
-            CommandInput.Foreground = FindResource("Ink") as System.Windows.Media.Brush;
-        }
+        SetInputFocusState(CommandInput, Placeholder, focused: true);
     }
 
     private void CommandInput_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(CommandInput.Text))
+        SetInputFocusState(CommandInput, Placeholder, focused: false);
+    }
+
+    private void WebInstructionInput_GotFocus(object sender, RoutedEventArgs e)
+    {
+        SetInputFocusState(WebInstructionInput, WebInstructionPlaceholder, focused: true);
+    }
+
+    private void WebInstructionInput_LostFocus(object sender, RoutedEventArgs e)
+    {
+        SetInputFocusState(WebInstructionInput, WebInstructionPlaceholder, focused: false);
+    }
+
+    private void SetInputFocusState(System.Windows.Controls.TextBox input, string placeholder, bool focused)
+    {
+        if (focused)
         {
-            CommandInput.Text = Placeholder;
-            CommandInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
+            if (input.Text == placeholder)
+            {
+                input.Text = string.Empty;
+                input.Foreground = FindResource("Ink") as System.Windows.Media.Brush;
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(input.Text))
+        {
+            input.Text = placeholder;
+            input.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
         }
     }
 
@@ -152,8 +173,9 @@ public partial class MainWindow : Window
         if (_activeTaskCts is not null) return;
         CommandInput.Text = Placeholder;
         CommandInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
+        WebInstructionInput.Text = WebInstructionPlaceholder;
+        WebInstructionInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
     }
-
     private void SetFlowState(bool codexActive, bool workerActive, bool webActive)
     {
         CodexIconBackground.Background = codexActive ? System.Windows.Media.Brushes.MidnightBlue : System.Windows.Media.Brushes.SlateGray;
@@ -230,6 +252,7 @@ public partial class MainWindow : Window
             return;
 
         var prompt = CommandInput.Text.Trim();
+        var webInstruction = WebInstructionInput.Text == WebInstructionPlaceholder ? string.Empty : WebInstructionInput.Text.Trim();
         var seedAction = ParseWebAction(prompt);
         if (seedAction.Kind is WebActionKind.ProtocolError or WebActionKind.Continue or WebActionKind.Pause or WebActionKind.End || (seedAction.Kind == WebActionKind.Begin && string.IsNullOrWhiteSpace(seedAction.Body)))
         {
@@ -242,10 +265,11 @@ public partial class MainWindow : Window
         var reasoning = GetSelectedContent(ReasoningCombo, "Medium").ToLowerInvariant();
         var cliModel = ToCliModel(model);
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
-        StartTaskTranscript(selectedThread, prompt);
+        StartTaskTranscript(selectedThread, cliPrompt, webInstruction);
         var workingDirectory = selectedThread?.ProjectPath ?? Environment.CurrentDirectory;
         var sessionId = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? null : selectedThread.SessionId;
         _activePrompt = cliPrompt;
+        _activeWebInstruction = webInstruction;
         _actionProtocolEnabled = true;
         _round = 1;
         _maxRounds = 30;
@@ -285,11 +309,8 @@ public partial class MainWindow : Window
 
             if (result.ExitCode == 0 && _bridgeServer is not null)
             {
-                var webPrompt = BuildWebPrompt(cliPrompt, result, includeOriginalPrompt: true);
-                var attachmentText = string.IsNullOrWhiteSpace(result.FinalMessage)
-                    ? cliPrompt
-                    : result.FinalMessage;
-                var attachments = BuildWebAttachments(_bridgeServer, cliPrompt, attachmentText);
+                var webPrompt = BuildWebPrompt(result, webInstruction, includeControlInstructions: true, includeWebInstruction: true);
+                var attachments = BuildWebAttachments(_bridgeServer, result.Files);
                 AddTaskMessage("WORKER -> GPT WEB", webPrompt);
                 var task = _bridgeServer.CreateTaskForLatestBinding(webPrompt, attachments);
                 if (task is null)
@@ -340,6 +361,7 @@ public partial class MainWindow : Window
         _round = 0;
         _lastWebTaskId = null;
         _activePrompt = null;
+        _activeWebInstruction = null;
         _activeWorkingDirectory = null;
         _activeSessionId = null;
         _activeCliModel = null;
@@ -665,7 +687,7 @@ public partial class MainWindow : Window
         }
 
         var webResponse = task.Result ?? string.Empty;
-        var action = ParseWebAction(webResponse, defaultPause: true);
+        var action = ParseWebAction(webResponse, strict: true);
         string followupPrompt;
         if (_actionProtocolEnabled)
         {
@@ -714,9 +736,8 @@ public partial class MainWindow : Window
 
             if (result.ExitCode == 0 && (_actionProtocolEnabled || ShouldContinueRoundtrip(result)) && _bridgeServer is not null)
             {
-                var nextPrompt = BuildWebPrompt(_activePrompt ?? "원래 작업", result, includeOriginalPrompt: false);
-                var nextAttachmentText = string.IsNullOrWhiteSpace(result.FinalMessage) ? nextPrompt : result.FinalMessage;
-                var nextAttachments = BuildWebAttachments(_bridgeServer, _activePrompt ?? nextPrompt, nextAttachmentText);
+                var nextPrompt = BuildWebPrompt(result, _activeWebInstruction, includeControlInstructions: true, includeWebInstruction: false);
+                var nextAttachments = BuildWebAttachments(_bridgeServer, result.Files);
                 AddTaskMessage("WORKER -> GPT WEB", nextPrompt);
                 var nextTask = _bridgeServer.CreateTaskForLatestBinding(nextPrompt, nextAttachments);
                 if (nextTask is not null)
@@ -759,63 +780,65 @@ public partial class MainWindow : Window
         }
     }
 
-    private static WebAction ParseWebAction(string? response, bool defaultPause = false)
+    private static WebAction ParseWebAction(string? response, bool strict = false)
     {
         if (string.IsNullOrWhiteSpace(response))
-        {
-            return defaultPause
-                ? new(WebActionKind.Pause, string.Empty, "Web 응답이 없어 PAUSE로 처리합니다.")
-                : new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.");
-        }
+            return strict
+                ? new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.")
+                : new(WebActionKind.None, string.Empty);
 
         var lines = response.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var nonEmpty = lines.Select((line, index) => (line.Trim(), index)).Where(item => item.Item1.Length > 0).ToList();
         if (nonEmpty.Count == 0)
+            return strict
+                ? new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.")
+                : new(WebActionKind.None, string.Empty);
+
+        var actionPattern = new System.Text.RegularExpressions.Regex(@"^\[ACTION=(BEGIN|CONTINUE|PAUSE|END)\]$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var actionLines = nonEmpty.Where(item => actionPattern.IsMatch(item.Item1)).ToList();
+        if (strict && actionLines.Count != 1)
+            return new(WebActionKind.ProtocolError, string.Empty, actionLines.Count == 0 ? "첫 유효행에 유효한 ACTION이 없습니다." : "Web 응답에 ACTION이 여러 개 있습니다.");
+
+        if (strict && actionLines[0].index != nonEmpty[0].index)
+            return new(WebActionKind.ProtocolError, string.Empty, "ACTION은 첫 번째 유효행이어야 합니다.");
+
+        if (!strict && actionLines.Count == 0)
+            return new(WebActionKind.None, string.Empty);
+
+        var actionLine = actionLines[0];
+        var kind = actionLine.Item1.ToUpperInvariant() switch
         {
-            return defaultPause
-                ? new(WebActionKind.Pause, string.Empty, "Web 응답이 없어 PAUSE로 처리합니다.")
-                : new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.");
-        }
-
-        var firstLine = nonEmpty[0].Item1.ToUpperInvariant();
-        var kind = firstLine.Contains("CONTINUE", StringComparison.Ordinal)
-            ? WebActionKind.Continue
-            : firstLine.Contains("PAUSE", StringComparison.Ordinal)
-                ? WebActionKind.Pause
-                : firstLine.Contains("END", StringComparison.Ordinal)
-                    ? WebActionKind.End
-                    : firstLine.Contains("BEGIN", StringComparison.Ordinal)
-                        ? WebActionKind.Begin
-                        : defaultPause
-                            ? WebActionKind.Pause
-                            : WebActionKind.None;
-
-        var body = string.Join(Environment.NewLine, lines.Skip(nonEmpty[0].Item2 + 1)).Trim();
+            "[ACTION=BEGIN]" => WebActionKind.Begin,
+            "[ACTION=CONTINUE]" => WebActionKind.Continue,
+            "[ACTION=PAUSE]" => WebActionKind.Pause,
+            "[ACTION=END]" => WebActionKind.End,
+            _ => WebActionKind.ProtocolError
+        };
+        var body = string.Join(Environment.NewLine, lines.Skip(actionLine.index + 1)).Trim();
         if ((kind is WebActionKind.Begin or WebActionKind.Continue) && string.IsNullOrWhiteSpace(body))
-        {
             return new(WebActionKind.ProtocolError, string.Empty, "BEGIN/CONTINUE 본문이 비어 있습니다.");
-        }
 
-        return new(kind, body, kind == WebActionKind.Pause && defaultPause && !firstLine.Contains("PAUSE", StringComparison.Ordinal)
-            ? "ACTION이 없어 PAUSE로 처리합니다."
-            : null);
+        return new(kind, body);
     }
-
-    private static string BuildWebPrompt(string originalPrompt, CodexCliResult result, bool includeOriginalPrompt)
+    private static string BuildWebPrompt(
+        CodexCliResult result,
+        string? webInstruction,
+        bool includeControlInstructions,
+        bool includeWebInstruction)
     {
         var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
-        var original = includeOriginalPrompt
-            ? Environment.NewLine + Environment.NewLine + "원래 작업:" + Environment.NewLine + originalPrompt
+        var control = includeControlInstructions
+            ? "반드시 답변 첫 줄을 다음 프로토콜 중에서 선택해줘." + Environment.NewLine
+                + "[ACTION=CONTINUE] - 다음 작업을 진행하길 원할 때. 계속 진행해도 문제 없을 때" + Environment.NewLine
+                + "[ACTION=PAUSE] - 사용자가 개입해서 테스트해봐야 하는 상황일 때" + Environment.NewLine
+                + "[ACTION=END] - 목표에 달성한 상태일 때 혹은 대기 작업이 남아있지 않을 때" + Environment.NewLine
+                + Environment.NewLine
             : string.Empty;
-        return "반드시 답변 첫 줄을 다음 프로토콜 중에서 선택해줘." + Environment.NewLine
-            + "[ACTION=CONTINUE] - 다음 작업을 진행하길 원할 때. 계속 진행해도 문제 없을 때" + Environment.NewLine
-            + "[ACTION=PAUSE] - 사용자가 개입해서 테스트해봐야 하는 상황일 때" + Environment.NewLine
-            + "[ACTION=END] - 목표에 달성한 상태일 때 혹은 대기 작업이 남아있지 않을 때" + Environment.NewLine
-            + Environment.NewLine
-            + original + Environment.NewLine + Environment.NewLine
-            + "Codex 실행 결과:" + Environment.NewLine + output;
+        var instruction = includeWebInstruction && !string.IsNullOrWhiteSpace(webInstruction)
+            ? Environment.NewLine + Environment.NewLine + webInstruction
+            : string.Empty;
+        return control + output + instruction;
     }
-
     private bool ShouldContinueRoundtrip(CodexCliResult result)
     {
         var text = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
@@ -831,7 +854,7 @@ public partial class MainWindow : Window
         return original + Environment.NewLine + Environment.NewLine + "Codex 최신 결과를 반영해 다음 단계 작업을 계속 수행해줘." + Environment.NewLine + Environment.NewLine + "Codex 실행 결과:" + Environment.NewLine + codex;
     }
 
-    private void StartTaskTranscript(CodexThreadOption? selectedThread, string command)
+    private void StartTaskTranscript(CodexThreadOption? selectedThread, string command, string webInstruction)
     {
         _taskMessages.Clear();
         _taskExported = false;
@@ -843,6 +866,7 @@ public partial class MainWindow : Window
             ? "NewThread"
             : selectedThread.Label;
         AddTaskMessage("USER COMMAND", command);
+        AddTaskMessage("GPT WEB INSTRUCTION", webInstruction);
     }
 
     private void AddTaskMessage(string source, string? content)
@@ -891,11 +915,17 @@ public partial class MainWindow : Window
         return string.IsNullOrWhiteSpace(sanitized) ? "Unnamed" : sanitized;
     }
 
-    private static List<BridgeAttachment> BuildWebAttachments(BridgeServer bridge, string instruction, string attachmentText)
+    private static List<BridgeAttachment> BuildWebAttachments(BridgeServer bridge, IReadOnlyList<CodexCliFile> files)
     {
-        var compact = System.Text.RegularExpressions.Regex.Replace(instruction, @"\s+", "").ToLowerInvariant();
-        var textOnly = compact.Contains("텍스트만") || compact.Contains("이미지를만들지") || compact.Contains("이미지생성하지") || compact.Contains("이미지첨부하지") || (compact.Contains("이미지") && compact.Contains("아니야") && compact.Contains("만들"));
-        return textOnly ? new List<BridgeAttachment>() : new List<BridgeAttachment> { bridge.CreateTextImageAttachment(attachmentText) };
+        return files
+            .Select(file =>
+            {
+                try { return bridge.CreateFileAttachment(file); }
+                catch { return null; }
+            })
+            .Where(file => file is not null)
+            .Select(file => file!)
+            .ToList();
     }
 
     private static string BuildRoundtripResultBody(string webResponse, CodexCliResult result)
