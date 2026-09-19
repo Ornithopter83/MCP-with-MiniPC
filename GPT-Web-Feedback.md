@@ -1187,3 +1187,405 @@ WORKER   <<<   GPT WEB
 ```
 
 중요: `>>>`는 작은 보조 장식이 아니라 **Task Flow에서 가장 먼저 눈에 들어오는 진행 상태 표시**여야 한다. 현재 단계 아이콘 사이에서 충분한 크기와 굵기를 확보한다.
+
+
+---
+
+# 2026-09-19 GPTWeb-Hub 기능 구체화 — Settings / 연결 설정
+
+## 최신 상태 확인
+
+현재 `main` 최신 확인 커밋:
+
+```text
+631c5272f054eca0da09f2fdd9922e2e35bbc379
+Finalize Worker bridge and GPTWeb-Hub status UI
+```
+
+현재 구현 기준:
+
+```text
+- Worker loopback bridge: http://127.0.0.1:43821
+- Extension polling: 1.5초
+- Project / Worker 값은 bridge에서 실제 값 수신 시 표시
+- bridge 단절 시 Project / Worker 마지막 확인값은 유지
+- Status만 Disconnected로 전환
+- CURRENT REQUEST는 아직 bridge task 표시 중심
+- ChatGPT DOM 자동입력 / 응답 수집은 후속 범위
+- 톱니바퀴 버튼은 현재 mock 상태 순환 용도
+```
+
+사용자가 제공한 현재 UI 시안을 기준으로, 다음 작업은 **톱니바퀴 mock 동작을 제거하고 실제 Settings 창으로 교체**하는 것이다.
+
+## 1. 톱니바퀴 동작 변경
+
+현재:
+
+```text
+⚙ 클릭
+→ IDLE / WORKER_TO_WEB / WEB_TO_WORKER / FINISHED 상태 수동 순환
+```
+
+이 동작은 제거한다.
+
+변경:
+
+```text
+⚙ 클릭
+→ GPTWeb-Hub Settings 표시
+```
+
+상태 전환은 더 이상 설정 버튼이나 사용자의 수동 클릭으로 만들지 않는다.
+
+```text
+CURRENT REQUEST 상태
+= Worker bridge의 실제 task 상태 + 이후 ChatGPT DOM 상태에서만 결정
+```
+
+## 2. Settings UI
+
+메인 패널과 같은 디자인 언어를 사용한 작은 modal/popover 형태로 만든다.
+
+권장 형태:
+
+```text
+┌────────────────────────────────────┐
+│ GPTWeb-Hub Settings             × │
+├────────────────────────────────────┤
+│ WORKER BRIDGE                      │
+│                                    │
+│ Host     [ 127.0.0.1             ] │
+│ Port     [ 43821                 ] │
+│ BasePath [ /bridge              ] │
+│                                    │
+│ Worker   [ 자동 감지 / optional ] │
+│                                    │
+│ [ Test Connection ]                │
+│                                    │
+│ Status   ● Connected               │
+├────────────────────────────────────┤
+│                         [Cancel] [Save] │
+└────────────────────────────────────┘
+```
+
+메인 UI보다 복잡하게 만들지 않는다.
+
+## 3. 설정값
+
+초기 버전에서 실제로 동작해야 할 설정:
+
+```text
+bridgeHost
+bridgePort
+bridgeBasePath
+```
+
+기본값:
+
+```text
+bridgeHost     = 127.0.0.1
+bridgePort     = 43821
+bridgeBasePath = /bridge
+```
+
+최종 base URL:
+
+```text
+http://{bridgeHost}:{bridgePort}{bridgeBasePath}
+```
+
+예:
+
+```text
+http://127.0.0.1:43821/bridge
+```
+
+현재 구현의 하드코딩된 `http://127.0.0.1:43821` 사용부는 전부 이 설정값에서 생성하도록 변경한다.
+
+## 4. Host 보안 정책
+
+초기 버전에서는 기본적으로 loopback만 허용한다.
+
+허용:
+
+```text
+127.0.0.1
+localhost
+::1
+```
+
+LAN IP나 외부 URL은 이번 범위에서 허용하지 않는다.
+
+이유:
+
+```text
+Worker bridge는 현재 인증 없는 로컬 bridge 설계이며 외부 노출을 전제로 하지 않음
+```
+
+Settings에서 외부 주소가 입력되면 Save 전에 validation으로 거부한다.
+
+## 5. Worker Path
+
+사용자가 말하는 "경로"는 별도 필드로 제공할 수 있으나, **현재 Extension 기능에는 필수값이 아니다.**
+
+권장 필드:
+
+```text
+Worker executable path
+C:\...\ProjectHub.Worker.exe
+```
+
+용도:
+
+```text
+- 사용자에게 설치 위치 기록
+- 향후 Worker 자동 실행 / Native Messaging / custom protocol 연동 준비
+```
+
+현재 단계에서는 브라우저 확장이 이 경로의 EXE를 직접 실행하지 않는다.
+
+따라서:
+
+```text
+Worker Path = optional
+Bridge Host/Port = 실제 연결에 사용
+```
+
+으로 명확히 구분한다.
+
+경로 선택 UI는 이번 단계에서는 text input + 저장만 허용해도 충분하다.
+
+## 6. 설정 저장
+
+Extension 설정은 `chrome.storage.local`에 저장한다.
+
+예:
+
+```json
+{
+  "bridgeHost": "127.0.0.1",
+  "bridgePort": 43821,
+  "bridgeBasePath": "/bridge",
+  "workerPath": ""
+}
+```
+
+페이지별 project/conversation binding과 bridge 접속 설정은 분리한다.
+
+```text
+Extension global settings
+- bridge host
+- bridge port
+- base path
+- optional worker path
+
+Conversation binding
+- conversation_id
+- project_id
+- binding state
+```
+
+설정 저장 후 페이지 새로고침 없이 polling endpoint가 즉시 새 설정으로 전환되게 한다.
+
+## 7. Test Connection
+
+Settings에 `Test Connection` 버튼을 둔다.
+
+테스트:
+
+```text
+GET {baseUrl}/status
+```
+
+성공 조건:
+
+```text
+HTTP 200
+bridge == ready
+loopback == true
+```
+
+표시:
+
+```text
+● Connected
+ProjectHub Worker
+127.0.0.1:43821
+```
+
+실패:
+
+```text
+● Disconnected
+Worker bridge에 연결할 수 없습니다.
+```
+
+에러 원인은 한 줄만 보여준다.
+
+예:
+
+```text
+Connection refused
+Invalid port
+Invalid host
+Bridge response invalid
+```
+
+전체 stack trace는 Extension UI에 표시하지 않는다.
+
+## 8. Save / Cancel
+
+`Save`:
+
+```text
+1. 입력값 validation
+2. chrome.storage.local 저장
+3. bridge client base URL 재생성
+4. 즉시 refreshBridge()
+5. Settings 닫기
+```
+
+`Cancel`:
+
+```text
+현재 입력 변경 폐기
+Settings 닫기
+```
+
+Save 후 연결 실패 시 메인 패널:
+
+```text
+Status  Disconnected
+System  Worker bridge에 연결할 수 없습니다.
+```
+
+를 즉시 표시한다.
+
+## 9. 메인 패널 상태 의미 유지
+
+현재 UI의 세 행 구조는 유지한다.
+
+```text
+Project   MCP-with-MiniPC
+Worker    ProjectHub Worker
+Status    Connected / Disconnected
+```
+
+중요:
+
+```text
+Project
+= 마지막으로 Worker가 실제 반환한 project
+
+Worker
+= 마지막으로 Worker가 실제 반환한 worker name
+
+Status
+= 현재 bridge 통신 상태
+```
+
+bridge가 잠시 끊겨도 Project / Worker를 즉시 `—`로 되돌리지 않는다.
+
+```text
+Project   MCP-with-MiniPC        (last known)
+Worker    ProjectHub Worker      (last known)
+Status    Disconnected
+```
+
+현재 구현 방향을 유지한다.
+
+## 10. CURRENT REQUEST mock 제거
+
+Settings 작업과 함께 톱니바퀴 기반 mock state 순환 코드를 제거한다.
+
+preview용 수동 상태 변경은 production extension에서 제거한다.
+
+대신:
+
+```text
+bridge task 없음
+→ 작업 없음
+
+bridge pending/claimed task 존재
+→ Worker → GPT Web
+
+Web 응답을 Worker로 제출하는 단계
+→ GPT Web → Worker
+
+task terminal state
+→ 작업 종료
+```
+
+로 실제 상태만 사용한다.
+
+아직 ChatGPT DOM 자동입력이 구현되지 않았으므로, Worker task가 들어왔을 때:
+
+```text
+WORKER → GPT WEB
+요청 대기 / Web 자동처리 미연결
+```
+
+처럼 사실대로 표시한다. 실제 응답 생성 중이라고 허위 표시하지 않는다.
+
+## 11. 연결 설정과 Conversation Binding 구분
+
+Settings는 Worker bridge 접속 설정이다.
+
+프로젝트 binding은 현재 ChatGPT conversation별 동작으로 유지한다.
+
+```text
+⚙ Settings
+= Worker bridge에 어떻게 접속하는가
+
+Project binding
+= 이 ChatGPT conversation을 어떤 ProjectHub project와 연결하는가
+```
+
+두 기능을 한 화면에 섞지 않는다.
+
+향후 binding UI는 메인 Project 행 또는 별도 Connect 동작으로 처리한다.
+
+## 12. 구현 우선순위
+
+이번 작업은 아래까지만 수행한다.
+
+```text
+A. gear mock state cycling 제거
+B. Settings modal/popover 구현
+C. Host / Port / BasePath / optional WorkerPath
+D. chrome.storage.local 저장/복원
+E. Test Connection
+F. polling URL을 저장 설정 기반으로 변경
+G. 잘못된 설정 / disconnected 상태 표시
+H. page reload 없이 Save 즉시 반영
+```
+
+아직 구현하지 않는다:
+
+```text
+- Worker EXE 자동 실행
+- Native Messaging
+- LAN/외부 Worker 연결
+- ChatGPT DOM 자동 입력
+- 이미지 첨부
+- Web 응답 자동 수집
+```
+
+## 13. 검증
+
+```text
+1. extension reload
+2. ChatGPT 페이지 refresh
+3. ⚙ 클릭 → Settings 표시
+4. 기본값 127.0.0.1 / 43821 / /bridge 확인
+5. Test Connection → Connected
+6. 잘못된 port 입력 → Disconnected 확인
+7. Cancel → 기존 설정 유지
+8. 올바른 port 저장 → 즉시 Status Connected 복구
+9. 페이지 새로고침 → 저장값 유지
+10. 브라우저 재시작 후에도 저장값 유지
+11. gear 클릭이 CURRENT REQUEST 상태를 변경하지 않는지 확인
+12. node --check extension/gptweb-hub/content.js 통과
+```
+
+이 작업 완료 후 다음 기능은 **conversation binding UX 구체화 → ChatGPT DOM 자동입력/응답수집** 순서로 진행한다.
