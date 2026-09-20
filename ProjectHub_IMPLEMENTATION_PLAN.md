@@ -338,3 +338,96 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 ## 2026-09-20 Worker UI 레이아웃 정리
 - 상태 카드는 설정 팝업에서 표시하고, 메인 작업 영역은 MESSAGE와 COMMAND의 실행 상태별 확장·접힘을 적용한다.
 - 빌드는 수행하되 실행 중 게시 EXE를 종료·복사하지 않는다.
+
+## 2026-09-20 저장소·서버 자동설정 1회 초기화
+
+- Worker 시작 시 InitializeStartupConfigurationAsync가 Codex 프로젝트/스레드 탐색, Codex 로그인 상태 확인, 서버 주소 해석 및 /api/status 확인을 한 번만 수행한다.
+- 3초 상태 타이머는 더 이상 CLI 로그인 확인이나 서버 요청을 반복하지 않고, 이미 수신한 Bridge/Web 상태와 초기화 결과만 화면에 반영한다.
+- Run Task 직전에도 동일한 1회 초기화 메서드를 호출하므로 시작 이벤트보다 빠른 클릭도 안전하게 처리한다.
+- CLI 실행 완료 뒤 신규 스레드 목록을 갱신하는 동작은 새 스레드 반영을 위해 유지한다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore, git diff --check.
+## 2026-09-20 MESSAGE 그룹 제목 토글
+
+- 유휴 상태에서 MESSAGE 본문을 완전히 숨기지 않고 MESSAGE 제목 버튼을 유지한다.
+- 제목을 클릭하면 Codex/GPT Web 탭과 결과 본문이 펼쳐지고 다시 클릭하면 본문이 접힌다.
+- 작업 실행 중에는 MESSAGE 본문을 자동으로 펼치고 COMMAND 입력 영역을 접는다.
+- 작업이 끝나면 MESSAGE 본문을 다시 접고 제목만 남긴다.
+- 검증: Debug 빌드, 전체 테스트, git diff --check.
+## 2026-09-20 저장소·서버 대상 설정 계층
+
+- Worker 설정 팝업에 Git Repository URL과 ProjectHub Server Base URL을 추가했다.
+- 시작 시 현재 선택 프로젝트의 Git root, origin URL, branch, Local HEAD SHA를 식별하고, Server Base URL을 Settings manual > environment > 기존 설정 > default 순서로 확정한다.
+- 설정은 실행 폴더 하위 Worker/config/target-settings.json에 저장하며 Repository/Server 값과 자동 감지 출처를 분리한다.
+- Auto Detect는 수동 override를 제거하고 현재 프로젝트·환경변수·기본값을 다시 적용한다. Settings 저장은 다음 실행부터도 유지되는 manual override가 된다.
+- 반복 상태 타이머는 주소를 재조회하지 않는다. 프로젝트 선택 변경과 Settings 저장/Auto Detect에서만 대상 주소·Git 식별을 갱신한다.
+- 현재 구현은 Web 리뷰 직전 Git 상태 재검증·push/remote/server SHA 일치 게이트를 다음 단계로 남긴다. 주소 확정과 리뷰 직전 상태 검증을 별도 경로로 유지한다.
+- 검증: Debug 빌드 성공(경고 0/오류 0), 전체 테스트 5개 통과, git diff --check 통과.
+## 2026-09-20 Git 기반 Web review preflight gate
+
+- Worker는 GPT Web task 생성 직전에 `git status --porcelain`, 현재 branch, local HEAD SHA, `git ls-remote origin refs/heads/<branch>`를 읽기 전용으로 확인한다.
+- working tree가 DIRTY, detached HEAD, local SHA 미확인, remote 조회 실패, remote branch 없음, local/remote SHA 불일치일 때는 Web task를 만들지 않고 `PAUSE` 및 `FINISH_PAUSED`로 원인과 확인값을 표시한다.
+- local/remote SHA가 일치하면 `REMOTE_CONFIRMED`이며 그 local SHA를 `review_commit_sha`로 확정하고 Worker → GPT Web prompt에 `REVIEW_SOURCE=GIT`, `REVIEW_COMMIT_SHA`, `SYNC_STATE`를 붙인다.
+- Worker는 이 gate에서 commit, push, fetch, pull을 실행하지 않는다. push command 성공은 Worker가 관측하지 않으므로 `REMOTE_CONFIRMED (Worker did not run push)`로 구분한다.
+- Server의 현행 state API는 `projectId`와 `workstationId`를 요구한다. Worker target 설정에는 이 식별자 계약이 없어 Server observed SHA 비교는 `UNAVAILABLE`로 표시하며 review 진행 조건으로 사용하지 않는다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(총 5개).
+- 잔여: Release 게시본 Explorer/Chrome에서 clean, dirty, remote SHA mismatch, remote-confirmed의 실제 UI/E2E를 확인한다.
+
+## 2026-09-20 MESSAGE 유휴 제목 잘림 수정
+
+- 유휴 상태의 MESSAGE 행 높이를 36px에서 52px로 조정했다. Section Border의 상·하 padding과 29px 제목 행을 포함해 제목 버튼이 잘리지 않는다.
+- XAML 초기 높이도 52px로 맞춰 초기 레이아웃에서도 같은 높이를 사용한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore`, `git diff --check`.
+## 2026-09-20 설정 Popup Codex 스레드 선택 영역 확장
+
+- 설정 Popup 폭을 1040px로 넓히고, Codex 카드는 가로 공간의 절반을 사용하도록 배치했다.
+- Codex 스레드 ComboBox를 420px × 34px로 확장했다.
+- 상위 Popup의 자동 닫힘을 해제해 내부 ComboBox 드롭다운 항목을 클릭해도 설정 Popup이 먼저 닫히지 않는다. 설정 버튼을 다시 누르거나 Save Settings를 누르면 닫힌다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, git diff --check.
+## 2026-09-20 설정 Popup 배경 어둡게 표시
+
+- 설정 Popup이 열리면 부모 창 전체에 반투명 검은 오버레이를 표시해 설정 작업에 집중할 수 있게 했다.
+- 오버레이를 클릭하면 설정 Popup이 닫히고 배경이 원래 밝기로 돌아온다.
+- Save Settings도 Popup과 오버레이를 함께 닫는다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, git diff --check.
+## 2026-09-20 설정창 Apply·Close 및 상태 정보 재배치
+
+- Target Settings 하단에 Close와 Apply 버튼을 분리했다. Apply는 기존 Save Settings 동작으로 수동 주소 설정을 저장하고 창을 닫는다.
+- Git Repository 아래에 branch, Local HEAD, Git source 및 project path를 표시하고, Server Base URL 아래에 Server source를 표시한다.
+- Target Settings의 제목·라벨·입력·버튼 글자를 키우고 입력 폭을 넓혔다.
+- ComboBox 템플릿 안에 잘못 삽입돼 스레드 선택 입력을 방해하던 중복 오버레이를 제거했다. 설정창 루트에는 입력을 받지 않는 오버레이 하나만 남긴다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, git diff --check.
+## 2026-09-20 설정 Popup 모달 입력 차단
+
+- 설정 Popup이 열리면 반투명 오버레이가 부모 창의 모든 입력을 받도록 변경했다.
+- 설정 Popup 내부의 컨트롤만 사용할 수 있으며, 배경 클릭으로 닫히지 않는다. Close 또는 Apply로만 닫는다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, git diff --check.
+## 2026-09-20 Git·Server 선택 참조 정책 정정
+
+- Git과 Server는 GPT Web 전송의 필수 조건이 아니다. repository 미구성, detached HEAD, dirty 상태, remote 미확인, SHA 불일치에서도 Worker는 GPT Web 확장 전송을 계속한다.
+- remote SHA가 local HEAD와 일치할 때만 GIT source와 exact review commit SHA를 prompt에 넣는다. 그 밖의 경우는 LOCAL source로 현재 Worker 결과를 전달하고 Git 상태는 참고 정보로만 남긴다.
+- Server observed SHA도 현재 Worker에 projectId/workstationId 매핑이 없으므로 참고 불가 정보일 뿐 전송을 막지 않는다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, git diff --check.
+## 2026-09-20 Server 선택사항 preflight 정정
+
+- Run Task preflight에서 Server ONLINE 조건을 제거했다. Server 상태는 Settings와 상태 카드의 참고 표시만 유지한다.
+- Codex 로그인 및 GPT Web bridge/extension 연결만 실행 시작 조건으로 사용한다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, git diff --check.
+## 2026-09-20 Git 참조 최초 요청 한정 및 스레드 ComboBox 보정
+
+- Git 참조 헤더는 Task의 최초 Codex CLI 요청과 최초 Worker → GPT Web 요청에만 포함한다. 후속 Codex resume 및 Web round에는 포함하거나 재조회하지 않는다.
+- CodexThreadCombo는 전역 커스텀 ComboBox 템플릿을 사용하지 않고 기본 WPF ComboBox 스타일을 사용한다. Popup 안에서도 스레드 드롭다운을 열고 항목을 선택할 수 있다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, git diff --check.
+## 2026-09-20 신규 스레드 작업 폴더 설정
+
+- Settings에 Working Folder와 Choose Folder 버튼을 추가했다. 신규 스레드는 저장된 Working Folder를 사용하며 값이 없으면 실행 파일 폴더를 사용한다.
+- 기존 Codex 스레드를 선택하면 해당 Codex ProjectPath가 Working Folder에 표시되고 입력과 폴더 선택 버튼이 잠긴다.
+- Working Folder는 target-settings.json의 manualWorkingDirectory에 저장된다. Auto Detect는 이 수동값을 제거해 실행 파일 폴더로 되돌린다.
+- Apply는 신규 스레드용 Working Folder가 실제 존재하는지 확인한 뒤 저장한다.
+- 검증: dotnet build ProjectHub.sln --configuration Debug --no-restore, git diff --check.
+## 2026-09-20 MESSAGE 누적 로그 및 CLI 라운드 상태
+
+- MESSAGE 본문을 Codex와 GPT Web의 분리 결과 화면 대신 하나의 시간순 누적 로그로 통합했다. 새 메시지는 항상 마지막에 추가되며, 길어지면 세로 스크롤바가 나타나고 최신 메시지로 자동 이동한다.
+- Codex/GPT Web 탭은 같은 로그를 유지한 채 선택 탭의 제목과 더 진한 배경색만 바꾼다.
+- 작업 시작 시에만 모델, reasoning, 실행 파일, 작업 폴더, 세션 정보를 `TASK START` 항목으로 기록한다.
+- CLI 실행은 매 라운드마다 `CLI STATUS`에 PASS/FAIL, exit code, model, session만 기록한다. 실제 Codex 결과는 전달되는 Worker → GPT Web 메시지와 GPT Web 응답의 순서로 로그에 남는다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `git diff --check` 통과.

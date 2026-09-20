@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private bool _webFollowupStarted;
     private bool _actionProtocolEnabled;
     private bool _activeReadOnly;
+    private string? _initialGitReferenceHeader;
     private DateTimeOffset _lastActivityAt;
     private bool _jobTimedOut;
     private static readonly TimeSpan JobInactivityTimeout = TimeSpan.FromMinutes(30);
@@ -54,6 +55,12 @@ public partial class MainWindow : Window
     private BridgeServer? _bridgeServer;
     private bool _codexAuthenticated;
     private bool _serverOnline;
+    private bool _messageExpanded;
+    private bool _startupConfigurationInitialized;
+    private string _serverBaseUrl = WorkerTargetConfiguration.DefaultServerBaseUrl;
+    private string _serverBaseUrlSource = "DEFAULT";
+    private WorkerTargetSettings _targetSettings = new(null, null, null, null);
+    private GitTargetSnapshot? _gitTarget;
     private List<CodexProjectOption> _codexProjects = new();
     private bool _loadingCodexSelections;
     private static string WindowPlacementPath => Path.Combine(WorkerPaths.Config, "window-placement.json");
@@ -82,8 +89,7 @@ public partial class MainWindow : Window
         SetFlowState(codexActive: false, workerActive: false, webActive: false);
         ActivateResultTab(web: false);
         UpdateUsage(CodexUsage.Empty);
-        LoadCodexSelections();
-        Loaded += async (_, _) => { RestoreWindowPosition(); await RefreshConnectionChecksAsync(); };
+        Loaded += async (_, _) => { RestoreWindowPosition(); await InitializeStartupConfigurationAsync(); };
         ProjectStatusText.Text = "CHECKING";
         WebStatusText.Text = "WAITING";
         ServerStatusText.Text = "CHECKING";
@@ -185,9 +191,19 @@ public partial class MainWindow : Window
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        StatusPopup.IsOpen = !StatusPopup.IsOpen;
+        SetSettingsPopupOpen(!StatusPopup.IsOpen);
     }
 
+    private void CloseSettings_Click(object sender, RoutedEventArgs e)
+    {
+        SetSettingsPopupOpen(false);
+    }
+
+    private void SetSettingsPopupOpen(bool open)
+    {
+        StatusPopup.IsOpen = open;
+        SettingsDimOverlay.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
     private void CommandInput_GotFocus(object sender, RoutedEventArgs e)
     {
         SetInputFocusState(CommandInput, Placeholder, focused: true);
@@ -257,15 +273,28 @@ public partial class MainWindow : Window
         _webArrowActive = webActive;
         _flowFrame = 0;
         UpdateArrowAnimation();
-        UpdatePanelLayout(codexActive || workerActive || webActive || _activeTaskCts is not null || _awaitingWebResult);
+        var running = codexActive || workerActive || webActive || _activeTaskCts is not null || _awaitingWebResult;
+        if (!running) _messageExpanded = false;
+        UpdatePanelLayout(running);
     }
 
     private void UpdatePanelLayout(bool running)
     {
-        MessageSection.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
-        MessageRow.Height = running ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        CommandRow.Height = running ? new GridLength(170) : new GridLength(1, GridUnitType.Star);
+        if (running) _messageExpanded = true;
+
+        MessageSection.Visibility = Visibility.Visible;
+        MessageContentGrid.Visibility = _messageExpanded ? Visibility.Visible : Visibility.Collapsed;
+        MessageToggleButton.Content = _messageExpanded ? "▥  MESSAGE  ▲" : "▥  MESSAGE  ▼";
+        MessageRow.Height = _messageExpanded ? new GridLength(1, GridUnitType.Star) : new GridLength(52);
+        CommandRow.Height = running || _messageExpanded ? new GridLength(170) : new GridLength(1, GridUnitType.Star);
         CommandTextGrid.Visibility = running ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void MessageToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTaskCts is not null || _awaitingWebResult) return;
+        _messageExpanded = !_messageExpanded;
+        UpdatePanelLayout(false);
     }
 
     private void UpdateArrowAnimation()
@@ -305,8 +334,8 @@ public partial class MainWindow : Window
             ResetTaskState();
             return;
         }
-        await RefreshConnectionChecksAsync();
-        if (!_codexAuthenticated || !_serverOnline || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized)
+        await InitializeStartupConfigurationAsync();
+        if (!_codexAuthenticated || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized)
         {
             TaskDirection.Text = "PREFLIGHT";
             TaskTitle.Text = "연결 상태 확인 필요";
@@ -332,8 +361,11 @@ public partial class MainWindow : Window
         var cliModel = ToCliModel(model);
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
         StartTaskTranscript(selectedThread, cliPrompt, webInstruction);
-        var workingDirectory = string.IsNullOrWhiteSpace(selectedThread?.ProjectPath) ? AppContext.BaseDirectory : selectedThread.ProjectPath;
+        var workingDirectory = ResolveWorkingDirectory(selectedThread);
         var sessionId = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? null : selectedThread.SessionId;
+        var initialGitReference = await GitReviewGate.CheckAsync(workingDirectory, _targetSettings);
+        _initialGitReferenceHeader = BuildGitReferenceHeader(initialGitReference);
+        var initialCliPrompt = _initialGitReferenceHeader + Environment.NewLine + Environment.NewLine + cliPrompt;
         _activePrompt = cliPrompt;
         _activeWebInstruction = webInstruction;
         _actionProtocolEnabled = true;
@@ -345,6 +377,7 @@ public partial class MainWindow : Window
         _activeSessionId = sessionId;
         _activeCliModel = cliModel;
         _activeReasoning = reasoning;
+        AddTaskMessage("TASK START", BuildTaskStartInfo(cliModel, reasoning, workingDirectory, sessionId));
         _webFollowupStarted = false;
         _commandUsage = CodexUsage.Empty;
         UpdateUsage(_commandUsage);
@@ -358,10 +391,10 @@ public partial class MainWindow : Window
 
         try
         {
-            var result = await _codexRunner.RunAsync(cliPrompt, cliModel, reasoning, workingDirectory, sessionId, _activeReadOnly, cts.Token);
+            var result = await _codexRunner.RunAsync(initialCliPrompt, cliModel, reasoning, workingDirectory, sessionId, _activeReadOnly, cts.Token);
             _lastActivityAt = DateTimeOffset.UtcNow;
             _lastCodexResult = result;
-            AddTaskMessage("CODEX", string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage);
+            AddCliRoundStatus(result);
             _activeSessionId = result.SessionId ?? _activeSessionId;
             CodexThreadArchive.Save(result, cliPrompt, workingDirectory);
             await RefreshCodexSelectionsAfterCliAsync(result.SessionId, workingDirectory);
@@ -379,15 +412,8 @@ public partial class MainWindow : Window
             {
                 var webPrompt = BuildWebPrompt(result, webInstruction, includeControlInstructions: true, includeWebInstruction: true);
                 var attachments = BuildWebAttachments(_bridgeServer, result.Files);
-                AddTaskMessage("WORKER -> GPT WEB", webPrompt);
-                var task = _bridgeServer.CreateTaskForLatestBinding(webPrompt, attachments);
-                if (task is null)
-                {
-                    TaskTitle.Text = "GPT Web 대화 연결 필요";
-                    ResultBody.Text += Environment.NewLine + Environment.NewLine + "연결된 GPT Web 대화가 없어 전달하지 못했습니다.";
-                    SetFlowState(false, false, false);
-                }
-                else
+                var task = await CreateWebTaskAsync(webPrompt, attachments, _initialGitReferenceHeader);
+                if (task is not null)
                 {
                     _awaitingWebResult = true;
                     RunButton.Content = "■  Cancel";
@@ -423,6 +449,30 @@ public partial class MainWindow : Window
         }
     }
 
+    private Task<BridgeTask?> CreateWebTaskAsync(string webPrompt, List<BridgeAttachment> attachments, string? gitReferenceHeader = null)
+    {
+        var prompt = string.IsNullOrWhiteSpace(gitReferenceHeader)
+            ? webPrompt
+            : gitReferenceHeader + Environment.NewLine + Environment.NewLine + webPrompt;
+        AddTaskMessage("WORKER -> GPT WEB", prompt);
+        return Task.FromResult(_bridgeServer?.CreateTaskForLatestBinding(prompt, attachments));
+    }
+
+    private static string BuildGitReferenceHeader(GitReviewCheckpoint checkpoint) =>
+        checkpoint.ReviewCommitSha is null
+            ? $"[REVIEW_SOURCE=LOCAL]{Environment.NewLine}[GIT_REFERENCE={checkpoint.SyncState}]"
+            : $"[REVIEW_SOURCE=GIT]{Environment.NewLine}[REVIEW_COMMIT_SHA={checkpoint.ReviewCommitSha}]{Environment.NewLine}[SYNC_STATE={checkpoint.SyncState}]";
+    private static string BuildGitReviewSummary(GitReviewCheckpoint checkpoint) =>
+        $"Git reference: {checkpoint.SyncState}{Environment.NewLine}" +
+        $"Repository: {checkpoint.RepositoryUrl ?? "unconfigured"}{Environment.NewLine}" +
+        $"Branch: {checkpoint.Branch ?? "unknown"}{Environment.NewLine}" +
+        $"Working tree: {checkpoint.SyncState switch { "LOCAL_DIRTY" => "DIRTY", "REMOTE_CONFIRMED" or "REMOTE_UNREACHABLE" or "REMOTE_BRANCH_UNKNOWN" or "SYNC_MISMATCH" => "CLEAN", _ => "UNKNOWN" }}{Environment.NewLine}" +
+        $"Local HEAD SHA: {checkpoint.LocalHeadSha ?? "unknown"}{Environment.NewLine}" +
+        $"Push confirmation: {checkpoint.PushConfirmation}{Environment.NewLine}" +
+        $"Remote HEAD SHA: {checkpoint.RemoteHeadSha ?? "unknown"}{Environment.NewLine}" +
+        $"Review commit SHA: {checkpoint.ReviewCommitSha ?? "not confirmed"}{Environment.NewLine}" +
+        $"Server observed SHA: {checkpoint.ServerObservation}" +
+        (string.IsNullOrWhiteSpace(checkpoint.PauseReason) ? string.Empty : $"{Environment.NewLine}{Environment.NewLine}Note: {checkpoint.PauseReason}");
     private void CheckJobInactivity()
     {
         if (_jobTimedOut || (!_awaitingWebResult && _activeTaskCts is null)) return;
@@ -447,6 +497,7 @@ public partial class MainWindow : Window
         _webFollowupStarted = false;
         _actionProtocolEnabled = false;
         _activeReadOnly = false;
+        _initialGitReferenceHeader = null;
         _jobTimedOut = false;
         _lastWebTaskId = null;
         _activePrompt = null;
@@ -495,6 +546,7 @@ public partial class MainWindow : Window
     {
         if (!_loadingCodexSelections) SaveCodexSelection();
         UpdateCodexSelectionDisplay();
+        if (_startupConfigurationInitialized) ApplyTargetConfiguration();
     }
 
     private void PopulateCodexThreads(CodexProjectOption? project)
@@ -628,12 +680,124 @@ public partial class MainWindow : Window
         var projectName = new DirectoryInfo(projectPath).Name;
         return matchedNames.Select(pair => new CodexThreadOption("(" + projectName + ") " + pair.Value, pair.Key, projectPath)).ToList();
     }
+    private string ResolveWorkingDirectory(CodexThreadOption? selectedThread)
+    {
+        if (!string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !string.IsNullOrWhiteSpace(selectedThread.ProjectPath) && Directory.Exists(selectedThread.ProjectPath))
+            return Path.GetFullPath(selectedThread.ProjectPath);
+
+        var configured = _targetSettings.ManualWorkingDirectory;
+        return !string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured)
+            ? Path.GetFullPath(configured)
+            : AppContext.BaseDirectory;
+    }
+
+    private void UpdateWorkingDirectoryControls(CodexThreadOption? selectedThread, string workingDirectory)
+    {
+        var lockedToThread = !string.IsNullOrWhiteSpace(selectedThread?.SessionId);
+        WorkingDirectoryInput.Text = workingDirectory;
+        WorkingDirectoryInput.IsReadOnly = lockedToThread;
+        WorkingDirectoryBrowseButton.IsEnabled = !lockedToThread;
+        WorkingDirectorySourceText.Text = lockedToThread
+            ? "Source: CODEX THREAD · ProjectPath locked"
+            : string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
+                ? "Source: EXECUTABLE FOLDER"
+                : "Source: SETTINGS";
+    }
+
+    private void BrowseWorkingDirectory_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorkingDirectoryInput.IsReadOnly) return;
+        using var dialog = new Forms.FolderBrowserDialog
+        {
+            Description = "Choose the working folder for new Codex threads.",
+            UseDescriptionForTitle = true,
+            InitialDirectory = Directory.Exists(WorkingDirectoryInput.Text) ? WorkingDirectoryInput.Text : AppContext.BaseDirectory
+        };
+        if (dialog.ShowDialog() == Forms.DialogResult.OK && Directory.Exists(dialog.SelectedPath))
+            WorkingDirectoryInput.Text = dialog.SelectedPath;
+    }
+    private void ApplyTargetConfiguration()
+    {
+        var server = WorkerTargetConfiguration.ResolveServer(_targetSettings);
+        _serverBaseUrl = server.Url;
+        _serverBaseUrlSource = server.Source;
+
+        var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
+        var workingDirectory = ResolveWorkingDirectory(selected);
+        _gitTarget = WorkerTargetConfiguration.ResolveGit(workingDirectory, _targetSettings);
+        UpdateWorkingDirectoryControls(selected, workingDirectory);
+
+        RepositoryUrlInput.Text = _targetSettings.ManualRepositoryUrl ?? _gitTarget.RepositoryUrl ?? string.Empty;
+        ServerUrlInput.Text = _serverBaseUrl;
+        TargetGitStateText.Text = _gitTarget.IsRepository
+            ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"} · Git: {_gitTarget.Source}"
+            : "Git: UNCONFIGURED";
+        TargetPathText.Text = !string.IsNullOrWhiteSpace(selected?.SessionId) ? $"Codex ProjectPath: {selected.ProjectPath}" : $"New thread folder: {workingDirectory}";
+        RepositoryNameText.Text = " · " + (_targetSettings.ManualRepositoryUrl ?? _gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
+        TargetSettingsStatusText.Text = $"Server: {_serverBaseUrlSource}";
+    }
+
+    private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
+    {
+        _targetSettings = _targetSettings with { ManualRepositoryUrl = null, ManualServerBaseUrl = null, RepositoryUrlSource = null, ServerBaseUrlSource = null, ManualWorkingDirectory = null };
+        WorkerTargetConfiguration.Save(_targetSettings);
+        ApplyTargetConfiguration();
+        _serverOnline = await CheckServerAsync();
+        ApplyConnectionStatus();
+    }
+
+    private async void SaveTargetSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var repository = string.IsNullOrWhiteSpace(RepositoryUrlInput.Text) ? null : RepositoryUrlInput.Text.Trim();
+        var server = string.IsNullOrWhiteSpace(ServerUrlInput.Text) ? WorkerTargetConfiguration.DefaultServerBaseUrl : ServerUrlInput.Text.Trim();
+        var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
+        var workingDirectory = string.IsNullOrWhiteSpace(selectedThread?.SessionId)
+            ? WorkingDirectoryInput.Text.Trim()
+            : _targetSettings.ManualWorkingDirectory;
+        if (string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !Directory.Exists(workingDirectory))
+        {
+            WorkingDirectorySourceText.Text = "Choose an existing folder before applying settings.";
+            return;
+        }
+        _targetSettings = _targetSettings with
+        {
+            ManualRepositoryUrl = repository,
+            ManualServerBaseUrl = server,
+            RepositoryUrlSource = repository is null ? null : "MANUAL",
+            ServerBaseUrlSource = "MANUAL",
+            ManualWorkingDirectory = workingDirectory
+        };
+        WorkerTargetConfiguration.Save(_targetSettings);
+        ApplyTargetConfiguration();
+        _serverOnline = await CheckServerAsync();
+        ApplyConnectionStatus();
+        SetSettingsPopupOpen(false);
+    }
+    private async Task InitializeStartupConfigurationAsync()
+    {
+        if (_startupConfigurationInitialized) return;
+        _startupConfigurationInitialized = true;
+
+        // Repository discovery, Codex login status, and server endpoint resolution are
+        // startup configuration work. Do not repeat them from the periodic status timer.
+        _targetSettings = WorkerTargetConfiguration.Load();
+        LoadCodexSelections();
+        ApplyTargetConfiguration();
+        _codexAuthenticated = await CheckCodexAuthenticationAsync();
+        _serverOnline = await CheckServerAsync();
+        ApplyConnectionStatus();
+    }
+
     private async Task RefreshConnectionChecksAsync()
     {
-        var wasCodexAuthenticated = _codexAuthenticated;
-        _codexAuthenticated = await CheckCodexAuthenticationAsync();
-        if (_codexAuthenticated && !wasCodexAuthenticated) LoadCodexSelections();
-        _serverOnline = await CheckServerAsync();
+        // Keep the timer lightweight: startup configuration is intentionally one-shot.
+        // Bridge/Web state is already updated by heartbeat callbacks and task events.
+        await Task.CompletedTask;
+        ApplyConnectionStatus();
+    }
+
+    private void ApplyConnectionStatus()
+    {
         var webOnline = _bridgeServer?.WebConnected == true;
         var webExtensionReady = _bridgeServer?.WebExtensionSynchronized == true;
         SetConnectionStatus(ProjectStatusText, _codexAuthenticated ? "READY" : "LOGIN NEEDED", _codexAuthenticated, ProjectStatusDot);
@@ -685,9 +849,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var serverBaseUrl = Environment.GetEnvironmentVariable("PROJECTHUB_AGENT_SERVER_BASE_URL");
-            if (string.IsNullOrWhiteSpace(serverBaseUrl)) serverBaseUrl = "https://projecthub.ornithopter.bid";
-            using var response = await _connectionClient.GetAsync(serverBaseUrl.TrimEnd('/') + "/api/status");
+            using var response = await _connectionClient.GetAsync(_serverBaseUrl.TrimEnd('/') + "/api/status");
             return response.IsSuccessStatusCode;
         }
         catch
@@ -695,6 +857,12 @@ public partial class MainWindow : Window
             return false;
         }
     }
+    private static string ResolveServerBaseUrl()
+    {
+        var configured = Environment.GetEnvironmentVariable("PROJECTHUB_AGENT_SERVER_BASE_URL");
+        return string.IsNullOrWhiteSpace(configured) ? "https://projecthub.ornithopter.bid" : configured.Trim();
+    }
+
     private static string GetSelectedContent(System.Windows.Controls.ComboBox combo, string fallback)
         => (combo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? fallback;
 
@@ -812,7 +980,7 @@ public partial class MainWindow : Window
             _lastActivityAt = DateTimeOffset.UtcNow;
             _activeSessionId = result.SessionId ?? _activeSessionId;
             _lastCodexResult = result;
-            AddTaskMessage("CODEX", string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage);
+            AddCliRoundStatus(result);
             CodexThreadArchive.Save(result, followupPrompt, workingDirectory);
             _commandUsage = _commandUsage.Add(result.Usage);
             UpdateUsage(_commandUsage);
@@ -824,8 +992,7 @@ public partial class MainWindow : Window
             {
                 var nextPrompt = BuildWebPrompt(result, _activeWebInstruction, includeControlInstructions: true, includeWebInstruction: false);
                 var nextAttachments = BuildWebAttachments(_bridgeServer, result.Files);
-                AddTaskMessage("WORKER -> GPT WEB", nextPrompt);
-                var nextTask = _bridgeServer.CreateTaskForLatestBinding(nextPrompt, nextAttachments);
+                var nextTask = await CreateWebTaskAsync(nextPrompt, nextAttachments);
                 if (nextTask is not null)
                 {
                     _awaitingWebResult = true;
@@ -835,6 +1002,7 @@ public partial class MainWindow : Window
                     SetFlowState(false, true, true);
                     return;
                 }
+                if (ResultTitle.Text == "FINISH_PAUSED") return;
             }
 
             _awaitingWebResult = false;
@@ -953,12 +1121,40 @@ public partial class MainWindow : Window
         AddTaskMessage("GPT WEB INSTRUCTION", webInstruction);
     }
 
+    private string BuildTaskStartInfo(string model, string reasoning, string workingDirectory, string? sessionId)
+    {
+        var executable = _codexRunner.FindExecutable() ?? "찾을 수 없음";
+        var session = string.IsNullOrWhiteSpace(sessionId) ? "신규 스레드" : sessionId;
+        return $"Model: {model}{Environment.NewLine}" +
+               $"Reasoning: {reasoning}{Environment.NewLine}" +
+               $"Executable: {executable}{Environment.NewLine}" +
+               $"Working directory: {workingDirectory}{Environment.NewLine}" +
+               $"Session ID: {session}";
+    }
+
+    private void AddCliRoundStatus(CodexCliResult result)
+    {
+        var outcome = result.ExitCode == 0 ? "PASS" : "FAIL";
+        var session = string.IsNullOrWhiteSpace(result.SessionId) ? "없음" : result.SessionId;
+        AddTaskMessage("CLI STATUS", $"{outcome} · exit {result.ExitCode} · model {result.Model} · session {session}");
+    }
+
     private void AddTaskMessage(string source, string? content)
     {
         if (string.IsNullOrWhiteSpace(content)) return;
         _taskMessages.Add(new TaskMessage(DateTimeOffset.Now, source, content.Trim()));
+        RefreshMessageLog();
     }
 
+    private void RefreshMessageLog()
+    {
+        if (MessageLogText is null || MessageLogScrollViewer is null) return;
+        MessageLogText.Text = _taskMessages.Count == 0
+            ? "새 작업을 실행하면 이곳에 누적 로그가 표시됩니다."
+            : string.Join(Environment.NewLine + Environment.NewLine, _taskMessages.Select(message =>
+                $"[{message.Timestamp:HH:mm:ss}] {message.Source}{Environment.NewLine}{message.Content}"));
+        Dispatcher.BeginInvoke(new Action(MessageLogScrollViewer.ScrollToEnd), System.Windows.Threading.DispatcherPriority.Background);
+    }
     private string? ExportTaskTranscript()
     {
         if (_taskExported || _taskMessages.Count == 0) return null;
@@ -1045,14 +1241,13 @@ public partial class MainWindow : Window
 
     private void ActivateResultTab(bool web)
     {
-        var active = FindResource("PaleBlue") as System.Windows.Media.Brush;
-        var inactive = System.Windows.Media.Brushes.White;
+        var active = FindResource("ActiveMessageTab") as System.Windows.Media.Brush;
+        var inactive = FindResource("InactiveMessageTab") as System.Windows.Media.Brush;
         CodexTab.Background = web ? inactive : active;
         WebTab.Background = web ? active : inactive;
         CodexTab.FontWeight = web ? FontWeights.Normal : FontWeights.Bold;
         WebTab.FontWeight = web ? FontWeights.Bold : FontWeights.Normal;
     }
-
     private void UpdateUsage(CodexUsage usage)
     {
         UsageText.Text = $"5시간/주간 제한: CLI 미제공 · 이번 작업 누적: {usage.TotalTokens:N0} 토큰";
@@ -1060,31 +1255,15 @@ public partial class MainWindow : Window
 
     private void CodexTab_Click(object sender, RoutedEventArgs e)
     {
-        if (_lastCodexResult is null)
-        {
-            ResultTitle.Text = "Codex CLI 대기 중";
-            ResultBody.Text = "Run Task를 실행하면 Codex CLI 결과가 이 영역에 표시됩니다.";
-            ActivateResultTab(web: false);
-            return;
-        }
-        ResultTitle.Text = $"Codex {( _lastCodexResult.ExitCode == 0 ? "PASS" : "FAIL" )} · {_lastCodexResult.Model}";
-        ResultBody.Text = BuildResultBody(_lastCodexResult);
-        UpdateUsage(_lastCodexResult.Usage);
+        ResultTitle.Text = "MESSAGE LOG · Codex";
         ActivateResultTab(web: false);
+        RefreshMessageLog();
     }
 
     private void WebTab_Click(object sender, RoutedEventArgs e)
     {
+        ResultTitle.Text = "MESSAGE LOG · GPT Web";
         ActivateResultTab(web: true);
-        if (_lastWebTask is not null)
-        {
-            ResultTitle.Text = _lastWebTask.Status == "COMPLETED" ? "GPT Web PASS" : "GPT Web FAIL";
-            ResultBody.Text = _lastWebTask.Result ?? "응답 내용이 없습니다.";
-        }
-        else
-        {
-            ResultTitle.Text = "GPT Web 대기 중";
-            ResultBody.Text = "GPT Web 결과가 도착하면 이 영역에 표시됩니다.";
-        }
+        RefreshMessageLog();
     }
 }

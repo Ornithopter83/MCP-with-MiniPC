@@ -14,6 +14,8 @@
     <SolidColorBrush x:Key="Green" Color="#0AA35A" />
     <SolidColorBrush x:Key="PaleBlue" Color="#EAF4FF" />
     <SolidColorBrush x:Key="PaleGreen" Color="#E9F8EF" />
+    <SolidColorBrush x:Key="ActiveMessageTab" Color="#B9DEFF" />
+    <SolidColorBrush x:Key="InactiveMessageTab" Color="#F4F9FF" />
     <Style x:Key="CardBorder" TargetType="Border">
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="{StaticResource Line}" />
@@ -97,7 +99,7 @@
     <Grid.RowDefinitions>
       <RowDefinition Height="86" />
       <RowDefinition Height="250" />
-      <RowDefinition x:Name="MessageRow" Height="0" />
+      <RowDefinition x:Name="MessageRow" Height="52" />
       <RowDefinition x:Name="CommandRow" Height="*" />
       <RowDefinition Height="0" />
     </Grid.RowDefinitions>
@@ -117,30 +119,66 @@
         </StackPanel>
       </StackPanel>
       <Button x:Name="SettingsButton" Grid.Column="1" Content="⚙" FontSize="24" BorderThickness="0" Background="Transparent" Click="Settings_Click" Margin="0,4,0,0" />
-    </Grid>    <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Slide" Panel.ZIndex="9999">
-      <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="10" Padding="10" Width="740" Margin="0,8,0,0">
-    <UniformGrid Columns="3" Margin="0,0,0,12">
-      <Border Style="{StaticResource CardBorder}" Margin="0,0,8,0">
+    </Grid>    <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" HorizontalOffset="-1040" StaysOpen="True" AllowsTransparency="True" PopupAnimation="Slide" Panel.ZIndex="9999">
+      <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="10" Padding="14" Width="1040" Margin="0,8,0,0">
+        <StackPanel>
+    <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0,0,8,0">
         <Grid>
           <Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
           <Border Width="48" Height="48" Background="#F0F6FF" CornerRadius="12"><TextBlock Text="■" FontSize="27" Foreground="{StaticResource Blue}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
           <StackPanel Grid.Column="1" Margin="10,0,0,0">
             <TextBlock Text="Codex" FontSize="16" FontWeight="Bold"/>
             <TextBlock x:Name="CodexConversationText" Visibility="Collapsed"/>
-            <ComboBox x:Name="CodexThreadCombo" Width="238" Height="30" Margin="0,6,0,0" DisplayMemberPath="Label" SelectionChanged="CodexThreadCombo_SelectionChanged"/>
+            <ComboBox x:Name="CodexThreadCombo" Style="{x:Null}" Width="420" Height="34" Margin="0,6,0,0" DisplayMemberPath="Label" SelectionChanged="CodexThreadCombo_SelectionChanged"/>
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse x:Name="ProjectStatusDot" Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock x:Name="ProjectStatusText" Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel>
           </StackPanel>
         </Grid>
       </Border>
-      <Border Style="{StaticResource CardBorder}" Margin="4,0,4,0">
+      <Border Grid.Column="1" Style="{StaticResource CardBorder}" Margin="4,0,4,0">
         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="48" Height="48" Background="#F0F6FF" CornerRadius="12"><TextBlock Text="•••" FontSize="24" Foreground="{StaticResource Blue}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="GPT Web" FontSize="16" FontWeight="Bold"/><TextBlock x:Name="WebDescriptionText" Text="MCP 프로젝트 진척도 확인" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse x:Name="WebStatusDot" Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock x:Name="WebStatusText" Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
       </Border>
-      <Border Style="{StaticResource CardBorder}" Margin="4,0,4,0">
+      <Border Grid.Column="2" Style="{StaticResource CardBorder}" Margin="4,0,4,0">
         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="48" Height="48" Background="#F0F6FF" CornerRadius="12"><TextBlock Text="▰" FontSize="28" Foreground="#40536E" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="Server" FontSize="16" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse x:Name="ServerStatusDot" Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock x:Name="ServerStatusText" Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
       </Border>
-    </UniformGrid>
+    </Grid>
+      <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="16,14" Margin="0,4,0,0">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <TextBlock Text="TARGET SETTINGS" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Ink}"/>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
+            <TextBlock Text="Git Repository" Width="140" FontSize="16" VerticalAlignment="Center"/>
+            <TextBox x:Name="RepositoryUrlInput" Width="620" Height="36" FontSize="16" Padding="9,5"/>
+            <Button Content="Auto Detect" Margin="10,0,0,0" Padding="14,6" FontSize="15" Click="AutoDetectTargets_Click"/>
+          </StackPanel>
+          <StackPanel Grid.Row="2" Margin="140,7,0,0">
+            <TextBlock x:Name="TargetGitStateText" FontSize="15" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+            <TextBlock x:Name="TargetPathText" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+          </StackPanel>
+          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,14,0,0">
+            <TextBlock Text="Server Base URL" Width="140" FontSize="16" VerticalAlignment="Center"/>
+            <TextBox x:Name="ServerUrlInput" Width="620" Height="36" FontSize="16" Padding="9,5"/>
+          </StackPanel>
+          <TextBlock x:Name="TargetSettingsStatusText" Grid.Row="4" Margin="140,7,0,0" FontSize="15" Foreground="{StaticResource Muted}"/>
+          <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,14,0,0">
+            <TextBlock Text="Working Folder" Width="140" FontSize="16" VerticalAlignment="Center"/>
+            <TextBox x:Name="WorkingDirectoryInput" Width="620" Height="36" FontSize="16" Padding="9,5"/>
+            <Button x:Name="WorkingDirectoryBrowseButton" Content="Choose Folder…" Margin="10,0,0,0" Padding="14,6" FontSize="15" Click="BrowseWorkingDirectory_Click"/>
+          </StackPanel>
+          <TextBlock x:Name="WorkingDirectorySourceText" Grid.Row="6" Margin="140,7,0,0" FontSize="15" Foreground="{StaticResource Muted}"/>
+          <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Close" Padding="18,7" FontSize="15" Click="CloseSettings_Click"/>
+            <Button Content="Apply" Margin="10,0,0,0" Padding="20,7" FontSize="15" Background="{StaticResource Blue}" Foreground="White" BorderBrush="{StaticResource Blue}" Click="SaveTargetSettings_Click"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+        </StackPanel>
       </Border>
     </Popup>
+    <Border x:Name="SettingsDimOverlay" Grid.Row="0" Grid.RowSpan="5" Background="#99000000" Visibility="Collapsed" Panel.ZIndex="100" IsHitTestVisible="True"/>
 
     <Border Grid.Row="1" Style="{StaticResource SectionBorder}" Padding="16,10,16,10">
       <Grid>
@@ -166,7 +204,27 @@
     </Border>
 
     <Border x:Name="MessageSection" Grid.Row="2" Style="{StaticResource SectionBorder}" Padding="16,9,16,10">
-      <Grid><Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions><StackPanel Orientation="Horizontal"><TextBlock Text="▥" FontSize="21" Margin="0,0,12,0"/><TextBlock Text="MESSAGE" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/></StackPanel><StackPanel Grid.Row="1" Orientation="Horizontal"><Button x:Name="CodexTab" Content="&lt;/&gt;  Codex" Width="220" Height="44" FontSize="17" Click="CodexTab_Click" Foreground="{StaticResource Blue}" FontWeight="Bold"/><Button x:Name="WebTab" Content="●  GPT Web" Width="220" Height="44" FontSize="17" Margin="8,0,0,0" Click="WebTab_Click"/></StackPanel><Border Grid.Row="2" Background="{StaticResource PaleGreen}" CornerRadius="11" Padding="18,14"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="ResultTitle" Text="Codex 결과 대기 중" FontSize="19" FontWeight="Bold"/><TextBlock Text="아직 실행된 작업이 없습니다." FontSize="14" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/><TextBlock x:Name="ResultBody" Text="새 작업을 실행하면 결과가 이 영역에 표시됩니다." FontSize="16" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,7,0,0"/></StackPanel></Grid></Border></Grid>
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Button x:Name="MessageToggleButton" Grid.Row="0" Content="▥  MESSAGE  ▼" HorizontalContentAlignment="Left" Padding="0" Background="Transparent" BorderThickness="0" FontSize="16" FontWeight="Bold" Click="MessageToggle_Click"/>
+        <Grid x:Name="MessageContentGrid" Grid.Row="1" Grid.RowSpan="2">
+          <Grid.RowDefinitions><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <StackPanel Grid.Row="0" Orientation="Horizontal"><Button x:Name="CodexTab" Content="&lt;/&gt;  Codex" Width="220" Height="44" FontSize="17" Click="CodexTab_Click" Foreground="{StaticResource Blue}" FontWeight="Bold"/><Button x:Name="WebTab" Content="●  GPT Web" Width="220" Height="44" FontSize="17" Margin="8,0,0,0" Click="WebTab_Click"/></StackPanel>
+          <Border Grid.Row="1" Background="{StaticResource PaleGreen}" CornerRadius="11" Padding="18,14">
+            <Grid>
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+              <StackPanel Grid.Row="0">
+                <TextBlock x:Name="ResultTitle" Text="MESSAGE LOG · Codex" FontSize="19" FontWeight="Bold"/>
+                <TextBlock Text="작업 메시지가 도착한 순서대로 이어집니다." FontSize="14" Foreground="{StaticResource Muted}" Margin="0,4,0,8"/>
+                <TextBlock x:Name="ResultBody" Visibility="Collapsed"/>
+              </StackPanel>
+              <ScrollViewer x:Name="MessageLogScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly">
+                <TextBlock x:Name="MessageLogText" Text="새 작업을 실행하면 이곳에 누적 로그가 표시됩니다." FontSize="16" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
     </Border>
 
     <Border x:Name="CommandSection" Grid.Row="3" Style="{StaticResource SectionBorder}" Padding="16,10,16,12">
