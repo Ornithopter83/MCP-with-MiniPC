@@ -3449,3 +3449,124 @@ ProjectHub source 없음
 ```
 
 완료 기준은 배포물 1개(ProjectHub.Worker.exe)만 전달하고, 대상 PC에 Chrome과 Codex만 이미 설치되어 있으면 최초 Extension 등록 1회를 제외하고 ProjectHub Worker 자동화가 정상 동작하는 것이다.
+
+---
+
+# 2026-09-20 Worker Web 전송 보수 및 Codex 프로젝트 선택 재검토
+
+## 실사용에서 확인된 우선 보수점
+
+실제 Worker 자동 왕복 테스트에서 Codex 첫 작업과 REPORT 생성까지는 완료됐지만 Web 전송 단계가 `SEND_CONFIRM: ChatGPT composer did not clear after send`로 중단됐다. Codex 실행 실패가 아니라 Web transport 확인 로직의 실패로 분리해서 다뤄야 한다.
+
+## 1. SEND_CONFIRM에서 composer clear를 필수 성공 조건으로 쓰지 않는다
+
+ChatGPT Web은 SPA/React rerender 때문에 Send 직후 기존 composer DOM이 바로 비워지지 않거나 node가 교체될 수 있다. `send click -> composer not empty -> fail` 판정은 제거하고 composer clear는 보조 신호로만 사용한다.
+
+전송 성공은 가능한 경우 다음 신호를 조합해 판정한다.
+
+```text
+A. task 전송 이후 새 user message bubble 생성
+B. 마지막 user message가 전송한 prompt와 일치
+C. assistant generation/streaming 시작
+D. composer clear
+```
+
+A/B/C 중 하나 이상이 명확하면 전송 성공으로 복구할 수 있어야 하며 D만 실패했다고 job을 즉시 실패시키지 않는다.
+
+## 2. 짧은 SEND_CONFIRM polling window와 복구 상태
+
+Send 클릭 직후 1회 검사하지 말고 최대 5~8초 동안 새 user message, assistant streaming, composer 상태를 반복 확인한다. 끝까지 확정할 수 없을 때만 `SEND_UNCONFIRMED`로 둔다.
+
+실패 직후 동일 prompt를 자동 재전송하지 않는다. 실제 전송은 성공했는데 composer clear만 늦었던 경우 중복 전송이 발생할 수 있다. retry 전에 `taskId`, `sentTaskId`, `conversationId`, normalized prompt/hash, 마지막 user message를 비교한다. 이미 동일 user message가 있으면 `SEND_CONFIRM_RECOVERED`로 성공 처리하고 응답 대기로 이동한다.
+
+권장 stage:
+
+```text
+SEND_BUTTON_FIND
+SEND_CLICK
+SEND_CONFIRM_WAIT
+SEND_CONFIRMED
+SEND_CONFIRM_RECOVERED
+SEND_UNCONFIRMED
+RESPONSE_START
+```
+
+SPA rerender 후에는 기존 composer reference를 계속 쓰지 말고 현재 conversation의 composer를 다시 resolve한다. `<p><br></p>`, `<br>`, zero-width text 등은 빈 입력으로 정규화한다.
+
+## 3. Codex 프로젝트/스레드 선택은 기본 실행의 필수 조건이 아니어야 한다
+
+현재 Worker 코드에서 Codex 실행의 실질 입력은 `workingDirectory`와 optional `sessionId`다. 새 실행은 `sessionId=null`로 시작할 수 있고 첫 실행이 반환한 session ID를 Worker가 이후 round에 고정해서 resume하면 된다.
+
+따라서 기본 Web ↔ Worker ↔ Codex 자동화에서는 사용자가 Codex Desktop 프로젝트나 기존 thread를 먼저 선택하도록 강제할 필요가 없다. 프로젝트/thread ComboBox는 다음 경우의 선택 기능으로 두는 것이 적절하다.
+
+```text
+- 현재 폴더가 아닌 다른 working directory를 명시적으로 선택할 때
+- 기존 Codex session/thread를 명시적으로 resume할 때
+```
+
+기본값은 `현재 폴더 · 새 스레드`가 적절하다.
+
+## 4. 현재 코드의 빈 ProjectPath 처리 수정
+
+현재 UI의 첫 placeholder는 `프로젝트 선택`, `ProjectPath=""`, `SessionId=""`인데 Run Task는 `selectedThread?.ProjectPath ?? Environment.CurrentDirectory`를 사용한다. placeholder 객체가 존재하므로 빈 ProjectPath가 그대로 선택될 수 있다. 새 session 실행은 다시 `codex exec ... -C <workingDirectory>`를 사용하므로 빈 `-C` 가능성을 제거해야 한다.
+
+최소 수정:
+
+```csharp
+var workingDirectory = string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
+    ? Environment.CurrentDirectory
+    : selectedThread.ProjectPath;
+```
+
+RunAsync 진입 전에 workingDirectory가 비어 있지 않고 `Directory.Exists(workingDirectory)`인지 검증한다.
+
+더 나은 UX는 placeholder 대신 실제 실행 가능한 기본 항목인 `(현재 폴더) 새 스레드`를 제공하는 것이다.
+
+## 5. 한 Job이 시작되면 UI 선택보다 Job binding이 우선
+
+첫 Codex 실행 후 Worker가 아래 값을 고정한다.
+
+```text
+jobId
+workingDirectory
+codexSessionId
+round
+```
+
+`ACTION=CONTINUE`에서는 ComboBox를 다시 읽지 않고 active job state를 사용한다. 첫 실행에서 받은 sessionId를 같은 Job이 끝날 때까지 resume한다. Desktop에서 사용자가 다른 thread를 선택해도 실행 중 Job의 session이 바뀌면 안 된다.
+
+Codex Desktop의 프로젝트 선택 상태를 Worker가 읽어야 하는 구조도 피한다. Worker가 자체적으로 workingDirectory를 정하고 `codex exec -C workingDirectory`를 실행하며 sessionId를 관리하는 것이 기본이다.
+
+## 6. 새 session이어도 파일 기반 작업은 이어갈 수 있다
+
+한 Job 안에서는 같은 session resume가 대화 문맥 유지에 가장 좋다. 하지만 특정 Desktop thread가 없어도 프로젝트 파일이 디스크에 남아 있으면 새 Codex session이 동일 working directory의 현재 파일을 읽고 이어서 작업할 수 있다. 따라서 `기존 Codex Desktop thread가 없으면 작업 자체를 시작할 수 없음`이라는 의존은 두지 않는다.
+
+## 7. 우선 구현 순서
+
+```text
+1. SEND_CONFIRM composer-clear 단일 판정 제거
+2. 새 user message / assistant streaming 기반 확인
+3. SEND_CONFIRM_RECOVERED + 중복 send 방지
+4. 빈 ProjectPath fallback 수정
+5. 기본값을 '(현재 폴더) 새 스레드'로 변경
+6. 프로젝트/thread 선택을 optional UX로 정리
+7. jobId ↔ workingDirectory ↔ sessionId 고정
+8. 실제 Web 2회 왕복 E2E 재검증
+```
+
+## 완료 기준
+
+```text
+[ ] Codex 프로젝트/thread 미선택 상태에서 새 Job 시작 가능
+[ ] 빈 workingDirectory 또는 -C "" 없음
+[ ] 첫 sessionId를 active job에 자동 binding
+[ ] ACTION=CONTINUE에서 같은 session resume
+[ ] composer clear 지연만으로 작업 중단하지 않음
+[ ] 실제 user message 생성으로 Send 성공 확인
+[ ] 불확실한 Send에서 자동 중복 재전송 없음
+[ ] SEND_CONFIRM_RECOVERED 동작
+[ ] 실제 ChatGPT Web에서 최소 2 round 자동 왕복
+[ ] ACTION=END에서 FINISH_SUCCESS
+```
+
+핵심 방향은 Codex Desktop 프로젝트 선택을 필수 전제에서 제거하고 Worker가 현재 작업 폴더와 sessionId를 직접 관리하는 것, 그리고 Web Send 성공 여부를 composer clear 한 가지 DOM 신호에 의존하지 않는 것이다.
