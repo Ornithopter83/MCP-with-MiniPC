@@ -13,6 +13,8 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
+    private const string ExpectedExtensionVersion = "0.1.3";
+    private const string ExpectedExtensionBuild = "2026-09-20.4";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -28,9 +30,26 @@ public sealed class BridgeServer : IDisposable
     private string? _webConversationId;
     private string? _webConversationTitle;
     private string? _webProjectId;
+    private string? _webExtensionVersion;
+    private string? _webExtensionBuild;
     public bool WebConnected
     {
         get { lock (_gate) return _lastWebHeartbeat is not null && DateTimeOffset.UtcNow - _lastWebHeartbeat < TimeSpan.FromSeconds(10); }
+    }
+
+    public bool WebExtensionSynchronized
+    {
+        get { lock (_gate) return WebConnected && string.Equals(_webExtensionVersion, ExpectedExtensionVersion, StringComparison.Ordinal) && string.Equals(_webExtensionBuild, ExpectedExtensionBuild, StringComparison.Ordinal); }
+    }
+
+    public string? WebExtensionVersion
+    {
+        get { lock (_gate) return _webExtensionVersion; }
+    }
+
+    public string? WebExtensionBuild
+    {
+        get { lock (_gate) return _webExtensionBuild; }
     }
 
     public string? WebConversationTitle
@@ -175,6 +194,7 @@ public sealed class BridgeServer : IDisposable
             else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/result", StringComparison.Ordinal))
                 payload = SubmitResult(path["/bridge/task/".Length..^"/result".Length], await ReadJsonAsync<ResultRequest>(context.Request));
             else if (method == "POST" && path == "/bridge/heartbeat") payload = Heartbeat(await ReadJsonAsync<HeartbeatRequest>(context.Request));
+            else if (method == "POST" && path == "/bridge/reset") payload = Reset(await ReadJsonAsync<ResetRequest>(context.Request));
             else
             {
                 response.StatusCode = 404;
@@ -215,7 +235,12 @@ public sealed class BridgeServer : IDisposable
                 webLastSeen = _lastWebHeartbeat,
                 webConversationId = _webConversationId,
                 webConversationTitle = _webConversationTitle,
-                webProjectId = _webProjectId
+                webProjectId = _webProjectId,
+                webExtensionVersion = _webExtensionVersion,
+                webExtensionBuild = _webExtensionBuild,
+                expectedExtensionVersion = ExpectedExtensionVersion,
+                expectedExtensionBuild = ExpectedExtensionBuild,
+                webExtensionSynchronized = WebExtensionSynchronized
             });
         }
     }
@@ -328,6 +353,34 @@ public sealed class BridgeServer : IDisposable
             return new BridgeResponse(true, completed);
         }
     }
+    private BridgeResponse Reset(ResetRequest request)
+    {
+        lock (_gate)
+        {
+            var task = _state.Tasks
+                .Where(item => item.Status is "PENDING" or "CLAIMED")
+                .Where(item => string.IsNullOrWhiteSpace(request.ConversationId) ||
+                               item.ConversationId.Equals(request.ConversationId, StringComparison.OrdinalIgnoreCase))
+                .Where(item => string.IsNullOrWhiteSpace(request.TaskId) || item.Id == request.TaskId)
+                .OrderByDescending(item => item.ClaimedAt ?? item.CreatedAt)
+                .FirstOrDefault();
+
+            if (task is null)
+                return new BridgeResponse(true, new { reset = false });
+
+            var canceled = task with
+            {
+                Status = "FAILED",
+                Result = "확장 업데이트로 작업 상태가 초기화되었습니다.",
+                FinishReason = "extension_reset",
+                CompletedAt = DateTimeOffset.UtcNow
+            };
+            ReplaceTask(canceled);
+            SaveState();
+            TaskChanged?.Invoke(canceled);
+            return new BridgeResponse(true, new { reset = true, taskId = canceled.Id, status = canceled.Status });
+        }
+    }
     private BridgeResponse Heartbeat(HeartbeatRequest request)
     {
         lock (_gate)
@@ -336,8 +389,10 @@ public sealed class BridgeServer : IDisposable
             _webConversationId = request.ConversationId;
             _webConversationTitle = request.ConversationTitle;
             _webProjectId = request.ProjectId;
+            _webExtensionVersion = request.ExtensionVersion;
+            _webExtensionBuild = request.ExtensionBuild;
         }
-        return new BridgeResponse(true, new { worker = "ProjectHub Worker", repository = RepositoryName, client = request.Client ?? "extension", conversationId = request.ConversationId, conversationTitle = request.ConversationTitle, projectId = request.ProjectId, timestamp = _lastWebHeartbeat, status = "ready" });
+        return new BridgeResponse(true, new { worker = "ProjectHub Worker", repository = RepositoryName, client = request.Client ?? "extension", conversationId = request.ConversationId, conversationTitle = request.ConversationTitle, projectId = request.ProjectId, extensionVersion = request.ExtensionVersion, extensionBuild = request.ExtensionBuild, expectedExtensionVersion = ExpectedExtensionVersion, expectedExtensionBuild = ExpectedExtensionBuild, extensionSynchronized = WebExtensionSynchronized, timestamp = _lastWebHeartbeat, status = "ready" });
     }
 
     private void ReplaceTask(BridgeTask task)
@@ -426,6 +481,7 @@ public sealed record BridgeAttachment(string Id, string FileName, string MimeTyp
 public sealed record BridgeResponse(bool Ok, object Data);
 public sealed record BindRequest(string ConversationId, string? ProjectId);
 public sealed record ClaimRequest(string ConversationId);
+public sealed record ResetRequest(string? ConversationId = null, string? TaskId = null);
 public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null);
 public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null);
-public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null);
+public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null, string? ExtensionVersion = null, string? ExtensionBuild = null);

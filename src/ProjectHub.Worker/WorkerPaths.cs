@@ -11,7 +11,7 @@ public static class WorkerPaths
     public static string Task => Path.Combine(Root, "Task");
     public static string Attachments => Path.Combine(Root, "attachments");
     public static string Logs => Path.Combine(Root, "logs");
-    public static string Extension => Path.Combine(AppContext.BaseDirectory, "GPTWeb-Hub", "extension");
+    public static string Extension => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "GPTWeb-Hub", "extension");
 
     public static void EnsureCreated()
     {

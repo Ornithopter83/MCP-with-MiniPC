@@ -18,6 +18,11 @@
     <DebugSymbols>false</DebugSymbols>
     <DebugType>None</DebugType>
   </PropertyGroup>
+  <Target Name="CopyPublishedWorkerToGameProject" AfterTargets="Publish" Condition="'$(Configuration)' == 'Release' and Exists('C:\GameProject') and Exists('$(MSBuildProjectDirectory)\bin\$(AssemblyName).exe')">
+    <Message Importance="high" Text="Copying root publish executable $(MSBuildProjectDirectory)\bin\$(AssemblyName).exe to C:\GameProject\$(AssemblyName).exe" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\bin\$(AssemblyName).exe" DestinationFiles="C:\GameProject\$(AssemblyName).exe" SkipUnchangedFiles="false" />
+  </Target>
+
   <ItemGroup>
     <Resource Include="Assets\worker-icon.png" />
     <Resource Include="Assets\current-openai.png" />
@@ -34,6 +39,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="..\..\extension\gptweb-hub\content.js">
       <LogicalName>ProjectHub.Worker.Extension.content.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\extension\gptweb-hub\background.js">
+      <LogicalName>ProjectHub.Worker.Extension.background.js</LogicalName>
     </EmbeddedResource>  </ItemGroup>
 </Project>
 

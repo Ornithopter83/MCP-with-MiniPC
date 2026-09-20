@@ -201,3 +201,140 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 - Web 또는 Codex 응답이 30분 동안 없을 때만 Worker watchdog이 작업을 종료한다.
 - timeout 시 활성 Codex 취소, Web task 취소, `FINISH_TIMEOUT` 표시, Task transcript 저장을 수행한다.
 - 검증: Extension 구문검사, Debug 빌드, 테스트 5개, diff 검사를 통과했다.
+
+## 2026-09-20 CLI 실패 진단 정보 표시
+
+- Codex 결과 카드에 실행 파일 경로, 작업 디렉터리, session ID, CLI stderr를 추가했다.
+- exit code 1 발생 시 실제 CLI 진단 정보를 확인할 수 있다.
+- 검증 대상은 이번에만 C:\GameProject\ProjectHub.Worker.exe로 복사해 실행한다.
+
+
+## 2026-09-20 Codex resume 비 Git 신뢰 오류 수정
+
+- 최초 신규 스레드뿐 아니라 GPT Web 응답 후 Codex resume에도 작업 폴더의 Git 여부를 확인하도록 수정했다.
+- 비 Git 폴더의 신규 실행과 resume 모두 --skip-git-repo-check를 사용하고, Git 저장소에서는 사용하지 않는다.
+
+
+## 2026-09-20 Codex 파일 생성 권한 보완
+
+- Web 지시가 [ACTION=PAUSE]로 종료된 최신 로그에서 원인이 Git이 아니라 Codex read-only sandbox임을 확인했다.
+- Worker가 실행하는 모든 Codex xec에 --sandbox workspace-write를 추가했다.
+- 사용자가 명령에 파일 권한을 승인한 경우 작업 폴더의 파일·폴더 생성을 허용한다.
+- 기존 비 Git 폴더 조건부 --skip-git-repo-check와 함께 적용한다.
+
+
+## 2026-09-20 CLI sandbox 권한 정책 명확화
+
+- Codex CLI 실행은 기본적으로 `--sandbox workspace-write`를 사용한다.
+- 최초 사용자가 명령에 `읽기 전용`, 파일·폴더 생성/수정 금지, `read-only`, `do not create/modify/write`처럼 제한을 명시한 경우에만 해당 Task 전체를 `--sandbox read-only`로 실행한다.
+- Web 후속 응답의 문구로 sandbox 정책을 다시 판정하지 않고, 최초 사용자 명령에서 결정한 정책을 모든 resume 호출에 유지한다.
+- 결과 진단 정보에 실제 적용 sandbox 모드를 표시한다.
+- 검증: Debug build 성공, 전체 테스트 통과, Release 게시 성공, C:\GameProject 게시본 교체·재시작 완료.
+
+## 2026-09-20 Chrome 확장 경로 고정
+
+- 프로젝트 경로와 Worker 실행 폴더에 따라 Chrome 확장 설정을 다시 하지 않도록 Extension 경로를 `%LOCALAPPDATA%\ProjectHub\GPTWeb-Hub\extension\`로 고정했다.
+- Worker가 어느 프로젝트에서 실행되더라도 시작 시 같은 공용 확장 폴더의 `manifest.json`·`content.js`를 최신 내장 리소스로 갱신한다.
+- Chrome은 이 폴더를 최초 1회 Load unpacked로 등록하고, 이후에는 Worker 재시작 뒤 Chrome 확장 새로고침만 수행하면 된다.
+- 프로젝트 생성·선택 위치는 Worker 데이터 및 Codex 작업 폴더에만 영향을 주며 확장 등록 경로에는 영향을 주지 않는다.
+
+## 2026-09-20 SEND_UNCONFIRMED 보완
+
+- Send 후 8초 안에 단일 selector로 확인하던 방식을 제거했다.
+- 사용자 메시지 탐지에 `data-message-author-role`, `conversation-turn-user`, conversation turn 후보를 함께 사용하고, 전송 전 메시지 목록과 비교해 새 메시지를 판정한다.
+- 새 사용자 메시지와 assistant 응답 시작을 병렬 확인하며 확인 대기 시간을 30초로 늘렸다.
+- composer 비움 여부는 성공 조건으로 사용하지 않는다.
+- 검증: `node --check extension/gptweb-hub/content.js`, Debug build, 전체 테스트, Release publish 성공. 고정 Extension 폴더와 `C:\GameProject` 게시본 갱신 및 Worker 재시작 완료.
+
+## 2026-09-20 Worker watchdog 기준으로 전송 확인 timeout 제거
+
+- Extension의 Send 후 고정 30초 실패 판정을 제거했다.
+- 전송 확인은 `WAIT_RESPONSE` 상태에서 새 사용자 메시지·assistant 응답 시작을 계속 관찰한다.
+- 확인이 늦어도 `send_failed`를 Worker에 보내지 않으며, 결과 수신·사용자 취소·Worker 30분 무응답 watchdog이 최종 종료를 담당한다.
+- 검증: `node --check extension/gptweb-hub/content.js` 통과 후 Release 게시본에 재내장한다.
+
+## 2026-09-20 Send 확인 대기 비동기화
+
+- Send 이후 확장이 확인을 `await`하지 않도록 변경했다. 클릭 직후 `전송 요청 완료 · 응답 대기 중`으로 반환해 refresh 루프를 막지 않는다.
+- 이후 ChatGPT 응답은 기존 observer가 감시하고, 전송이 실제로 진행되지 않으면 Worker watchdog이 최종 timeout 처리한다.
+- 전송 확인 실패를 이유로 Extension이 임의로 `send_failed`를 제출하지 않는다.
+
+## 2026-09-20 전송 버튼 지속 감시 및 창 위치 복원
+
+- Extension은 입력 확인·활성 Send 버튼 대기를 제한 시간으로 실패 처리하지 않고 `WAIT_SEND_READY` 상태를 유지한다.
+- 입력이 확인되고 Send 버튼이 활성화되면 감시 루프가 클릭하고 `WAIT_RESPONSE`로 전환한다. 실제 전송 불가 시 Worker watchdog이 종료를 담당한다.
+- Worker 창의 `Left`·`Top`을 실행파일 폴더 하위 `Worker\config\window-placement.json`에 저장하고, 다음 실행 시 화면 밖 위치가 아닌 경우 복원한다.
+- 검증: Extension `node --check`, Debug build, 전체 테스트 통과, Release 게시 및 C:\GameProject 재시작, 고정 확장 해시 일치, window-placement.json 생성 확인.
+
+## 2026-09-20 창 위치 저장 시점 정정
+
+- 창 이동 중 `LocationChanged` 저장을 제거했다.
+- 트레이 `Exit` 요청과 실제 허용된 Window Closing 시점에만 현재 `Left`·`Top`을 저장한다.
+- 일반 X 버튼은 기존대로 트레이로 숨기므로 위치 파일을 갱신하지 않는다.
+
+## 2026-09-20 공용 확장 업데이트 적용 버튼
+
+- Extension manifest에 background service worker를 추가했다.
+- 설정 화면의 `업데이트 적용` 버튼이 `chrome.runtime.reload()`를 요청하고 현재 ChatGPT 탭을 다시 로드해 최신 content.js를 적용한다.
+- Worker는 계속 `%LOCALAPPDATA%\ProjectHub\GPTWeb-Hub\extension\`만 관리하며, 프로젝트·실행 폴더 변경과 Chrome 확장 등록 경로를 분리한다.
+- 최초 1회 Chrome에서 공용 경로를 Load unpacked로 등록한 뒤에는 프로젝트 변경 시 재등록하지 않는다.
+- 검증: content/background JavaScript 구문 검사, Debug build, 전체 테스트, Release publish, 공용 경로의 manifest/content/background 갱신 및 Worker 재시작 완료.
+
+## 2026-09-20 첨부파일 수신 로직 복구
+
+- `sendToChatGPT`에 남아 있던 미정의 `attachFiles` 호출을 실제 구현으로 교체했다.
+- Worker의 loopback `downloadUrl`에서 파일을 받아 `File`·`DataTransfer`로 ChatGPT file input에 주입하고 input/change 이벤트를 발생시킨다.
+- 파일 input이 아직 DOM에 없으면 첨부/업로드 버튼을 눌러 생성한 뒤 다시 탐색한다.
+- 첨부 수신 이후에는 `WAIT_SEND_READY` 상태에서 Send 버튼 감시로 전환한다.
+- 검증: 첨부 URL HTTP 200 및 App.xaml 269 bytes 수신, JavaScript 구문 검사, Debug build, 전체 테스트, Release 게시, 공용 확장 갱신 및 Worker 재시작 완료.
+
+## 2026-09-20 확장 업데이트 버튼 위치 개선
+- `업데이트` 버튼을 설정 모달 내부에서 제거하고 GPTWeb-Hub 제목 우측 헤더로 이동했다.
+- 패널을 닫거나 설정 모달을 열지 않아도 확장 갱신을 실행할 수 있으며, 기존의 `chrome.runtime.reload()`와 현재 ChatGPT 탭 새로고침 동작은 유지한다.
+- 검증: `node --check extension/gptweb-hub/content.js` 통과.
+
+## 2026-09-20 전송 버튼 주기 감시 보완
+- 첨부파일 주입과 메시지 작성이 끝난 뒤에도 전송 버튼 후보를 계속 탐색한다.
+- `data-testid`·`aria-label` 변형을 확장하고, 버튼이 비활성인 동안에도 주기적으로 `.click()`을 시도한다.
+- 버튼이 활성화된 순간 포인터 이벤트와 click을 발생시키고 즉시 감시를 종료해 중복 전송을 막는다.
+- 전송 완료 및 후속 결과 판정은 기존대로 Worker가 담당한다.
+- 검증: `node --check extension/gptweb-hub/content.js` 통과.
+
+## 2026-09-20 확장 버전 식별 보완
+- Extension manifest 버전을 `0.1.1`로 올려 코드 갱신과 Chrome/Worker 배포 상태를 구분할 수 있게 했다.
+- Worker는 manifest 버전뿐 아니라 `content.js`·`background.js` 내용도 비교해 공용 Extension을 갱신한다.
+- 검증: 게시 후 공용 경로의 manifest 버전과 세 파일 SHA-256을 소스와 비교한다.
+
+## 2026-09-20 확장 0.1.1 실제 재배포 확인
+- 최신 게시 EXE를 `C:\GameProject\ProjectHub.Worker.exe`에 교체하고 Worker를 재시작했다.
+- `%LOCALAPPDATA%\ProjectHub\GPTWeb-Hub\extension\manifest.json`이 `0.1.1`로 갱신됐다.
+- `content.js`, `manifest.json`, `background.js`의 소스·공용 배포본 SHA-256이 모두 일치한다.
+- Worker 실행 상태: `C:\GameProject\ProjectHub.Worker.exe`, 정상 응답.
+- Chrome은 확장 새로고침과 기존 ChatGPT 탭 새로고침이 필요하다.
+
+## 2026-09-20 업데이트 버튼 전체 상태 초기화
+- `업데이트` 클릭 시 현재 conversation의 PENDING/CLAIMED Task를 `/bridge/reset`으로 `extension_reset` 종료한다.
+- 확장의 `sessionStorage` task 복구값, composer 문자열, Worker Message, Web Response, lease, baseline, phase, spinner를 초기화한 후 확장을 재로드한다.
+- reset 요청이 실패해도 로컬 확장 상태는 초기화해 이전 Task 복구로 인한 정지를 방지한다.
+- 검증 완료: `node --check extension/gptweb-hub/content.js`, Debug 빌드 성공, 전체 테스트 5개 통과, Release 게시 및 C:\GameProject 재시작, reset endpoint 응답 확인.
+
+## 2026-09-20 C:\GameProject 게시 실행 기준
+- Release 게시 산출물은 `C:\GameProject\ProjectHub.Worker.exe`에 항상 복사하고, 실행과 실검증도 해당 파일을 사용한다.
+- 게시 후 복사 대상은 self-contained 단일 파일인 `src/ProjectHub.Worker/bin/ProjectHub.Worker.exe`로 고정한다.
+
+## 2026-09-20 확장 빌드 일치 기반 GPT Web READY
+- Worker는 GPT Web heartbeat의 확장 버전·빌드 식별자가 내장 기대값과 일치할 때만 GPT Web 카드를 READY로 판정한다.
+- 불일치 시 `UPDATE REQUIRED`를 표시하고 `Run Task`를 비활성화한다.
+
+## 2026-09-20 루트 bin 게시본 복사 고정
+- Release 게시 후 반드시 `src/ProjectHub.Worker/bin/ProjectHub.Worker.exe` 단일 파일을 `C:\GameProject\ProjectHub.Worker.exe`로 복사한다.
+
+## 2026-09-20 전송 버튼 활성화 대기
+- GPT Web 전송은 disabled 버튼을 클릭하지 않고, 현재 composer에 연결된 활성 버튼을 찾을 때까지 감시한다.
+
+## 2026-09-20 ACTION 판정 범위 수정
+- ACTION 제어행은 응답의 첫 번째 유효행만 검사하며, 본문 속 ACTION 예시나 인용은 제어행으로 해석하지 않는다.
+
+## 2026-09-20 Worker UI 레이아웃 정리
+- 상태 카드는 설정 팝업에서 표시하고, 메인 작업 영역은 MESSAGE와 COMMAND의 실행 상태별 확장·접힘을 적용한다.
+- 빌드는 수행하되 실행 중 게시 EXE를 종료·복사하지 않는다.

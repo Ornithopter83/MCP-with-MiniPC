@@ -45,7 +45,7 @@ public sealed class CodexCliRunner
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
     }
 
-    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, CancellationToken cancellationToken)
+    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
             throw new DirectoryNotFoundException($"Codex 작업 폴더를 찾을 수 없습니다: {workingDirectory}");
@@ -62,6 +62,8 @@ public sealed class CodexCliRunner
             EnableRaisingEvents = true
         };
         process.StartInfo.ArgumentList.Add("exec");
+        process.StartInfo.ArgumentList.Add("--sandbox");
+        process.StartInfo.ArgumentList.Add(readOnly ? "read-only" : "workspace-write");
         if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add("resume");
         process.StartInfo.ArgumentList.Add("--json");
         process.StartInfo.ArgumentList.Add("--model");
@@ -73,6 +75,8 @@ public sealed class CodexCliRunner
             process.StartInfo.ArgumentList.Add("-C");
             process.StartInfo.ArgumentList.Add(workingDirectory);
         }
+        if (!IsGitRepository(workingDirectory))
+            process.StartInfo.ArgumentList.Add("--skip-git-repo-check");
         process.StartInfo.ArgumentList.Add("--output-last-message");
         process.StartInfo.ArgumentList.Add(outputFile);
         if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add(sessionId);
@@ -96,6 +100,17 @@ public sealed class CodexCliRunner
         }
     }
 
+    private static bool IsGitRepository(string path)
+    {
+        var directory = new DirectoryInfo(Path.GetFullPath(path));
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, ".git")) || File.Exists(Path.Combine(directory.FullName, ".git")))
+                return true;
+            directory = directory.Parent;
+        }
+        return false;
+    }
     private static string? ExtractSessionId(string stdout)
     {
         foreach (var line in stdout.SplitLines())

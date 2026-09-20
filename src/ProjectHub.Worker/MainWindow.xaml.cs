@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,6 +29,7 @@ public partial class MainWindow : Window
     private string? _activeReasoning;
     private bool _webFollowupStarted;
     private bool _actionProtocolEnabled;
+    private bool _activeReadOnly;
     private DateTimeOffset _lastActivityAt;
     private bool _jobTimedOut;
     private static readonly TimeSpan JobInactivityTimeout = TimeSpan.FromMinutes(30);
@@ -54,6 +56,7 @@ public partial class MainWindow : Window
     private bool _serverOnline;
     private List<CodexProjectOption> _codexProjects = new();
     private bool _loadingCodexSelections;
+    private static string WindowPlacementPath => Path.Combine(WorkerPaths.Config, "window-placement.json");
 
     private enum WebActionKind { None, Begin, Continue, Pause, End, ProtocolError }
     private sealed record WebAction(WebActionKind Kind, string Body, string? Error = null);
@@ -80,7 +83,7 @@ public partial class MainWindow : Window
         ActivateResultTab(web: false);
         UpdateUsage(CodexUsage.Empty);
         LoadCodexSelections();
-        Loaded += async (_, _) => await RefreshConnectionChecksAsync();
+        Loaded += async (_, _) => { RestoreWindowPosition(); await RefreshConnectionChecksAsync(); };
         ProjectStatusText.Text = "CHECKING";
         WebStatusText.Text = "WAITING";
         ServerStatusText.Text = "CHECKING";
@@ -97,6 +100,39 @@ public partial class MainWindow : Window
         _trayIcon.DoubleClick += (_, _) => ShowFromTray();
     }
 
+    private void RestoreWindowPosition()
+    {
+        try
+        {
+            if (!File.Exists(WindowPlacementPath)) return;
+            using var document = JsonDocument.Parse(File.ReadAllText(WindowPlacementPath));
+            var root = document.RootElement;
+            if (!root.TryGetProperty("left", out var leftElement) || !root.TryGetProperty("top", out var topElement)) return;
+            var left = leftElement.GetDouble();
+            var top = topElement.GetDouble();
+            if (double.IsNaN(left) || double.IsNaN(top) || double.IsInfinity(left) || double.IsInfinity(top)) return;
+            if (Forms.Screen.AllScreens.Any(screen => screen.WorkingArea.Contains((int)left, (int)top)))
+            {
+                Left = left;
+                Top = top;
+            }
+        }
+        catch
+        {
+        }
+    }
+    private void SaveWindowPosition()
+    {
+        try
+        {
+            if (WindowState != WindowState.Normal || double.IsNaN(Left) || double.IsNaN(Top)) return;
+            Directory.CreateDirectory(WorkerPaths.Config);
+            File.WriteAllText(WindowPlacementPath, JsonSerializer.Serialize(new { left = Left, top = Top }));
+        }
+        catch
+        {
+        }
+    }
     private static Drawing.Icon CreateTrayIcon()
     {
         try
@@ -118,6 +154,7 @@ public partial class MainWindow : Window
 
         if (_allowClose)
         {
+            SaveWindowPosition();
             _activeTaskCts?.Cancel();
             _flowTimer.Stop();
             _connectionTimer.Stop();
@@ -141,12 +178,14 @@ public partial class MainWindow : Window
 
     private void ExitWorker()
     {
+        SaveWindowPosition();
         _allowClose = true;
         ((App)System.Windows.Application.Current).RequestShutdown();
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
+        StatusPopup.IsOpen = !StatusPopup.IsOpen;
     }
 
     private void CommandInput_GotFocus(object sender, RoutedEventArgs e)
@@ -218,6 +257,15 @@ public partial class MainWindow : Window
         _webArrowActive = webActive;
         _flowFrame = 0;
         UpdateArrowAnimation();
+        UpdatePanelLayout(codexActive || workerActive || webActive || _activeTaskCts is not null || _awaitingWebResult);
+    }
+
+    private void UpdatePanelLayout(bool running)
+    {
+        MessageSection.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        MessageRow.Height = running ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        CommandRow.Height = running ? new GridLength(170) : new GridLength(1, GridUnitType.Star);
+        CommandTextGrid.Visibility = running ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void UpdateArrowAnimation()
@@ -258,7 +306,7 @@ public partial class MainWindow : Window
             return;
         }
         await RefreshConnectionChecksAsync();
-        if (!_codexAuthenticated || !_serverOnline || _bridgeServer is null || !_bridgeServer.WebConnected)
+        if (!_codexAuthenticated || !_serverOnline || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized)
         {
             TaskDirection.Text = "PREFLIGHT";
             TaskTitle.Text = "연결 상태 확인 필요";
@@ -289,6 +337,7 @@ public partial class MainWindow : Window
         _activePrompt = cliPrompt;
         _activeWebInstruction = webInstruction;
         _actionProtocolEnabled = true;
+        _activeReadOnly = IsExplicitReadOnlyRequest(cliPrompt);
         _jobTimedOut = false;
         _lastActivityAt = DateTimeOffset.UtcNow;
         _lastWebTaskId = null;
@@ -309,7 +358,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var result = await _codexRunner.RunAsync(cliPrompt, cliModel, reasoning, workingDirectory, sessionId, cts.Token);
+            var result = await _codexRunner.RunAsync(cliPrompt, cliModel, reasoning, workingDirectory, sessionId, _activeReadOnly, cts.Token);
             _lastActivityAt = DateTimeOffset.UtcNow;
             _lastCodexResult = result;
             AddTaskMessage("CODEX", string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage);
@@ -369,6 +418,7 @@ public partial class MainWindow : Window
         {
             _activeTaskCts.Dispose();
             _activeTaskCts = null;
+            UpdatePanelLayout(_awaitingWebResult);
             if (!_awaitingWebResult) RunButton.Content = "▶  Run Task";
         }
     }
@@ -396,6 +446,7 @@ public partial class MainWindow : Window
         _awaitingWebResult = false;
         _webFollowupStarted = false;
         _actionProtocolEnabled = false;
+        _activeReadOnly = false;
         _jobTimedOut = false;
         _lastWebTaskId = null;
         _activePrompt = null;
@@ -584,9 +635,11 @@ public partial class MainWindow : Window
         if (_codexAuthenticated && !wasCodexAuthenticated) LoadCodexSelections();
         _serverOnline = await CheckServerAsync();
         var webOnline = _bridgeServer?.WebConnected == true;
+        var webExtensionReady = _bridgeServer?.WebExtensionSynchronized == true;
         SetConnectionStatus(ProjectStatusText, _codexAuthenticated ? "READY" : "LOGIN NEEDED", _codexAuthenticated, ProjectStatusDot);
-        SetConnectionStatus(WebStatusText, webOnline ? "READY" : "WAITING", webOnline, waiting: !webOnline, indicator: WebStatusDot);
-        WebDescriptionText.Text = webOnline && !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
+        SetConnectionStatus(WebStatusText, !webOnline ? "WAITING" : webExtensionReady ? "READY" : "UPDATE REQUIRED", webOnline && webExtensionReady, waiting: !webOnline, indicator: WebStatusDot);
+        WebDescriptionText.Text = !webOnline ? "MCP 프로젝트 진척도 확인" : !webExtensionReady ? "확장 업데이트 필요" : !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
+        RunButton.IsEnabled = _activeTaskCts is not null || _awaitingWebResult || (webOnline && webExtensionReady);
         SetConnectionStatus(ServerStatusText, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDot);
         RepositoryNameText.Foreground = _serverOnline ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
         PcNameText.Foreground = _codexAuthenticated ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
@@ -755,7 +808,7 @@ public partial class MainWindow : Window
         try
         {
             AddTaskMessage("WORKER -> CODEX", followupPrompt);
-            var result = await _codexRunner.RunAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, cts.Token);
+            var result = await _codexRunner.RunAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token);
             _lastActivityAt = DateTimeOffset.UtcNow;
             _activeSessionId = result.SessionId ?? _activeSessionId;
             _lastCodexResult = result;
@@ -810,6 +863,7 @@ public partial class MainWindow : Window
         finally
         {
             _activeTaskCts = null;
+            UpdatePanelLayout(_awaitingWebResult);
             if (!_awaitingWebResult) RunButton.Content = "▶  Run Task";
         }
     }
@@ -828,27 +882,23 @@ public partial class MainWindow : Window
                 ? new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.")
                 : new(WebActionKind.None, string.Empty);
 
+        var firstLine = nonEmpty[0].Item1;
         var actionPattern = new System.Text.RegularExpressions.Regex(@"^\[ACTION=(BEGIN|CONTINUE|PAUSE|END)\]$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        var actionLines = nonEmpty.Where(item => actionPattern.IsMatch(item.Item1)).ToList();
-        if (strict && actionLines.Count != 1)
-            return new(WebActionKind.ProtocolError, string.Empty, actionLines.Count == 0 ? "첫 유효행에 유효한 ACTION이 없습니다." : "Web 응답에 ACTION이 여러 개 있습니다.");
+        var match = actionPattern.Match(firstLine);
+        if (!match.Success)
+            return strict
+                ? new(WebActionKind.ProtocolError, string.Empty, "첫 유효행에 유효한 ACTION이 없습니다.")
+                : new(WebActionKind.None, string.Empty);
 
-        if (strict && actionLines[0].index != nonEmpty[0].index)
-            return new(WebActionKind.ProtocolError, string.Empty, "ACTION은 첫 번째 유효행이어야 합니다.");
-
-        if (!strict && actionLines.Count == 0)
-            return new(WebActionKind.None, string.Empty);
-
-        var actionLine = actionLines[0];
-        var kind = actionLine.Item1.ToUpperInvariant() switch
+        var kind = match.Groups[1].Value.ToUpperInvariant() switch
         {
-            "[ACTION=BEGIN]" => WebActionKind.Begin,
-            "[ACTION=CONTINUE]" => WebActionKind.Continue,
-            "[ACTION=PAUSE]" => WebActionKind.Pause,
-            "[ACTION=END]" => WebActionKind.End,
+            "BEGIN" => WebActionKind.Begin,
+            "CONTINUE" => WebActionKind.Continue,
+            "PAUSE" => WebActionKind.Pause,
+            "END" => WebActionKind.End,
             _ => WebActionKind.ProtocolError
         };
-        var body = string.Join(Environment.NewLine, lines.Skip(actionLine.index + 1)).Trim();
+        var body = string.Join(Environment.NewLine, lines.Skip(nonEmpty[0].index + 1)).Trim();
         if ((kind is WebActionKind.Begin or WebActionKind.Continue) && string.IsNullOrWhiteSpace(body))
             return new(WebActionKind.ProtocolError, string.Empty, "BEGIN/CONTINUE 본문이 비어 있습니다.");
 
@@ -962,16 +1012,29 @@ public partial class MainWindow : Window
             .ToList();
     }
 
-    private static string BuildRoundtripResultBody(string webResponse, CodexCliResult result)
+    private string BuildRoundtripResultBody(string webResponse, CodexCliResult result)
     {
         return "GPT Web 응답:" + Environment.NewLine + Summarize(webResponse, "응답 내용이 없습니다.") + Environment.NewLine + Environment.NewLine + "Codex 후속 결과:" + Environment.NewLine + BuildResultBody(result);
     }
 
-    private static string BuildResultBody(CodexCliResult result)
+    private string BuildResultBody(CodexCliResult result)
     {
         var message = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
         var detail = Summarize(message, "Codex가 결과를 반환하지 않았습니다.");
-        return $"Model: {result.Model} · Reasoning: {result.Reasoning}{Environment.NewLine}Exit code: {result.ExitCode}{Environment.NewLine}{detail}";
+        var stderr = Summarize(result.StandardError, "없음");
+        var session = string.IsNullOrWhiteSpace(result.SessionId) ? "없음(신규 스레드 생성 전/실패)" : result.SessionId;
+        var workingDirectory = _activeWorkingDirectory ?? "확인되지 않음";
+        return $"Model: {result.Model} · Reasoning: {result.Reasoning}{Environment.NewLine}" +
+               $"Exit code: {result.ExitCode}{Environment.NewLine}" +
+               $"Executable: {result.ExecutablePath}{Environment.NewLine}" +
+               $"Working directory: {workingDirectory}{Environment.NewLine}" +
+               $"Session ID: {session}{Environment.NewLine}" +
+               $"CLI stderr: {stderr}{Environment.NewLine}{Environment.NewLine}{detail}";
+    }
+    private static bool IsExplicitReadOnlyRequest(string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt)) return false;
+        return Regex.IsMatch(prompt, @"읽기\s*전용|파일(?:을|은|도)?\s*(?:만들|생성|수정|변경)지?\s*말|(?:파일|폴더).{0,20}(?:만들지|생성하지|수정하지|변경하지)\s*말|read[- ]only|(?:do not|without)\s+(?:create|modify|write)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     private static string Summarize(string? value, string fallback)
@@ -1025,4 +1088,3 @@ public partial class MainWindow : Window
         }
     }
 }
-

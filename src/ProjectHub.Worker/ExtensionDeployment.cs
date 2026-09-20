@@ -10,6 +10,7 @@ public static class ExtensionDeployment
 {
     private const string ManifestResource = "ProjectHub.Worker.Extension.manifest.json";
     private const string ContentResource = "ProjectHub.Worker.Extension.content.js";
+    private const string BackgroundResource = "ProjectHub.Worker.Extension.background.js";
 
     public static ExtensionDeploymentResult EnsureDeployed()
     {
@@ -18,18 +19,23 @@ public static class ExtensionDeployment
         {
             var manifest = ReadResource(ManifestResource);
             var content = ReadResource(ContentResource);
+            var background = ReadResource(BackgroundResource);
             var version = ReadVersion(manifest);
             var existingManifestPath = Path.Combine(WorkerPaths.Extension, "manifest.json");
             var existingContentPath = Path.Combine(WorkerPaths.Extension, "content.js");
+            var existingBackgroundPath = Path.Combine(WorkerPaths.Extension, "background.js");
             var currentVersion = File.Exists(existingManifestPath) ? ReadVersion(File.ReadAllText(existingManifestPath)) : null;
             var updated = !string.Equals(version, currentVersion, StringComparison.Ordinal) ||
                          !File.Exists(existingContentPath) ||
-                         !string.Equals(File.ReadAllText(existingContentPath), content, StringComparison.Ordinal);
+                         !string.Equals(File.ReadAllText(existingContentPath), content, StringComparison.Ordinal) ||
+                         !File.Exists(existingBackgroundPath) ||
+                         !string.Equals(File.ReadAllText(existingBackgroundPath), background, StringComparison.Ordinal);
 
             if (updated)
             {
                 WriteAtomically(existingManifestPath, manifest);
                 WriteAtomically(existingContentPath, content);
+                WriteAtomically(existingBackgroundPath, background);
             }
 
             return new ExtensionDeploymentResult(WorkerPaths.Extension, version, updated, null);
