@@ -28,8 +28,9 @@ public partial class MainWindow : Window
     private string? _activeReasoning;
     private bool _webFollowupStarted;
     private bool _actionProtocolEnabled;
-    private int _round;
-    private int _maxRounds = 30;
+    private DateTimeOffset _lastActivityAt;
+    private bool _jobTimedOut;
+    private static readonly TimeSpan JobInactivityTimeout = TimeSpan.FromMinutes(30);
     private string? _lastWebTaskId;
     private CodexUsage _commandUsage = CodexUsage.Empty;
     private sealed record TaskMessage(DateTimeOffset Timestamp, string Source, string Content);
@@ -40,6 +41,7 @@ public partial class MainWindow : Window
     private bool _taskExported;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _jobWatchdogTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private int _flowFrame;
     private bool _codexArrowActive;
     private bool _webArrowActive;
@@ -70,6 +72,8 @@ public partial class MainWindow : Window
         _flowTimer.Start();
         _connectionTimer.Tick += async (_, _) => await RefreshConnectionChecksAsync();
         _connectionTimer.Start();
+        _jobWatchdogTimer.Tick += (_, _) => CheckJobInactivity();
+        _jobWatchdogTimer.Start();
         RepositoryNameText.Text = " · MCP-with-MiniPC";
         PcNameText.Text = Environment.MachineName;
         SetFlowState(codexActive: false, workerActive: false, webActive: false);
@@ -83,7 +87,7 @@ public partial class MainWindow : Window
         _trayIcon = new Forms.NotifyIcon
         {
             Text = "ProjectHub Worker · MCP-with-MiniPC",
-            Icon = new Drawing.Icon(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "worker-icon.ico")),
+            Icon = CreateTrayIcon(),
             Visible = true,
             ContextMenuStrip = new Forms.ContextMenuStrip()
         };
@@ -93,6 +97,20 @@ public partial class MainWindow : Window
         _trayIcon.DoubleClick += (_, _) => ShowFromTray();
     }
 
+    private static Drawing.Icon CreateTrayIcon()
+    {
+        try
+        {
+            var executable = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(executable))
+                return Drawing.Icon.ExtractAssociatedIcon(executable) ?? Drawing.SystemIcons.Application;
+        }
+        catch
+        {
+        }
+
+        return Drawing.SystemIcons.Application;
+    }
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (!_allowClose && (((App)System.Windows.Application.Current).ShutdownRequested || Dispatcher.HasShutdownStarted))
@@ -266,13 +284,13 @@ public partial class MainWindow : Window
         var cliModel = ToCliModel(model);
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
         StartTaskTranscript(selectedThread, cliPrompt, webInstruction);
-        var workingDirectory = selectedThread?.ProjectPath ?? Environment.CurrentDirectory;
+        var workingDirectory = string.IsNullOrWhiteSpace(selectedThread?.ProjectPath) ? AppContext.BaseDirectory : selectedThread.ProjectPath;
         var sessionId = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? null : selectedThread.SessionId;
         _activePrompt = cliPrompt;
         _activeWebInstruction = webInstruction;
         _actionProtocolEnabled = true;
-        _round = 1;
-        _maxRounds = 30;
+        _jobTimedOut = false;
+        _lastActivityAt = DateTimeOffset.UtcNow;
         _lastWebTaskId = null;
         _activeWorkingDirectory = workingDirectory;
         _activeSessionId = sessionId;
@@ -292,6 +310,7 @@ public partial class MainWindow : Window
         try
         {
             var result = await _codexRunner.RunAsync(cliPrompt, cliModel, reasoning, workingDirectory, sessionId, cts.Token);
+            _lastActivityAt = DateTimeOffset.UtcNow;
             _lastCodexResult = result;
             AddTaskMessage("CODEX", string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage);
             _activeSessionId = result.SessionId ?? _activeSessionId;
@@ -331,6 +350,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            if (_jobTimedOut) return;
             _awaitingWebResult = false;
             TaskTitle.Text = "Codex 실행 취소";
             ResultTitle.Text = "Codex CANCELED";
@@ -353,12 +373,30 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CheckJobInactivity()
+    {
+        if (_jobTimedOut || (!_awaitingWebResult && _activeTaskCts is null)) return;
+        if (DateTimeOffset.UtcNow - _lastActivityAt < JobInactivityTimeout) return;
+
+        _jobTimedOut = true;
+        _activeTaskCts?.Cancel();
+        _bridgeServer?.CancelActiveTask();
+        _awaitingWebResult = false;
+        AddTaskMessage("SYSTEM", "Web 또는 Codex 응답이 30분 동안 없어 작업을 종료했습니다.");
+        TaskDirection.Text = "TIMEOUT";
+        TaskTitle.Text = "30분 무응답으로 작업 종료";
+        ResultTitle.Text = "FINISH_TIMEOUT";
+        ResultBody.Text = "Web 또는 Codex에서 30분 동안 응답이 없어 작업을 종료했습니다.";
+        RunButton.Content = "▶  Run Task";
+        SetFlowState(false, false, false);
+        ExportTaskTranscript();
+    }
     private void ResetTaskState()
     {
         _awaitingWebResult = false;
         _webFollowupStarted = false;
         _actionProtocolEnabled = false;
-        _round = 0;
+        _jobTimedOut = false;
         _lastWebTaskId = null;
         _activePrompt = null;
         _activeWebInstruction = null;
@@ -384,7 +422,7 @@ public partial class MainWindow : Window
             choices.Add(new CodexThreadOption("(" + project.Name + ") ＋ 신규 스레드", string.Empty, project.Path));
             choices.AddRange(DiscoverCodexThreads(project.Path));
         }
-        choices.Insert(0, new CodexThreadOption("프로젝트 선택", string.Empty, string.Empty));
+        choices.Insert(0, new CodexThreadOption("(현재 폴더) ＋ 신규 스레드", string.Empty, AppContext.BaseDirectory));
         CodexThreadCombo.ItemsSource = choices;
         var saved = LoadSavedCodexSelection();
         var savedIndex = saved is null ? -1 : choices.FindIndex(choice => choice.SessionId == saved.Value.SessionId && choice.ProjectPath == saved.Value.ProjectPath);
@@ -479,7 +517,7 @@ public partial class MainWindow : Window
         catch { }
     }
     private static string GetSelectionStatePath()
-        => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "worker-selection.json");
+        => Path.Combine(WorkerPaths.Config, "worker-selection.json");
     private static string? FindRepositoryRoot(string startPath)
     {
         var directory = new DirectoryInfo(startPath);
@@ -619,6 +657,7 @@ public partial class MainWindow : Window
     {
         if (task.Status is "PENDING" or "CLAIMED")
         {
+            _lastActivityAt = DateTimeOffset.UtcNow;
             _awaitingWebResult = true;
             RunButton.Content = "■  Cancel";
             TaskDirection.Text = "WORKER → GPT WEB";
@@ -628,6 +667,8 @@ public partial class MainWindow : Window
         }
 
         if (task.Status is not "COMPLETED" and not "FAILED") return;
+        if (_jobTimedOut) return;
+        _lastActivityAt = DateTimeOffset.UtcNow;
         if (_actionProtocolEnabled && _lastWebTaskId == task.Id) return;
         _lastWebTaskId = task.Id;
         _lastWebTask = task;
@@ -686,6 +727,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        _lastActivityAt = DateTimeOffset.UtcNow;
         var webResponse = task.Result ?? string.Empty;
         var action = ParseWebAction(webResponse, strict: true);
         string followupPrompt;
@@ -696,16 +738,6 @@ public partial class MainWindow : Window
                 FinishActionTask(action, webResponse);
                 return;
             }
-            if (_round >= _maxRounds)
-            {
-                _awaitingWebResult = false;
-                TaskTitle.Text = "Worker round 제한 초과";
-                ResultTitle.Text = "FINISH_LIMIT";
-                ResultBody.Text = webResponse;
-                SetFlowState(false, false, false);
-                return;
-            }
-            _round++;
             followupPrompt = action.Body;
         }
         else
@@ -724,6 +756,7 @@ public partial class MainWindow : Window
         {
             AddTaskMessage("WORKER -> CODEX", followupPrompt);
             var result = await _codexRunner.RunAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, cts.Token);
+            _lastActivityAt = DateTimeOffset.UtcNow;
             _activeSessionId = result.SessionId ?? _activeSessionId;
             _lastCodexResult = result;
             AddTaskMessage("CODEX", string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage);
@@ -758,6 +791,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            if (_jobTimedOut) return;
             TaskDirection.Text = "GPT WEB → CODEX";
             TaskTitle.Text = "Codex 후속 처리 취소";
             ResultTitle.Text = "Codex CANCELED";
@@ -881,7 +915,7 @@ public partial class MainWindow : Window
         try
         {
             var folderName = $"{SanitizeFilePart(_taskProjectName)}_{SanitizeFilePart(_taskThreadName)}";
-            var directory = Path.Combine(AppContext.BaseDirectory, "Task", folderName);
+            var directory = Path.Combine(WorkerPaths.Task, folderName);
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, $"_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
             var lines = new List<string>

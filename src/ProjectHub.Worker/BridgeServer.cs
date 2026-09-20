@@ -76,7 +76,7 @@ public sealed class BridgeServer : IDisposable
         if (file.Size <= 0 || file.Size > 50 * 1024 * 1024) throw new InvalidOperationException("CLI 파일 크기가 허용 범위를 벗어났습니다.");
 
         var id = Guid.NewGuid().ToString("N");
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "Worker", "attachments");
+        var directory = WorkerPaths.Attachments;
         Directory.CreateDirectory(directory);
         var extension = Path.GetExtension(file.FileName);
         if (string.IsNullOrWhiteSpace(extension) || extension.Any(character => !char.IsLetterOrDigit(character) && character != '.'))
@@ -88,7 +88,7 @@ public sealed class BridgeServer : IDisposable
 
     public BridgeServer()
     {
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "Worker");
+        var directory = WorkerPaths.Root;
         Directory.CreateDirectory(directory);
         _statePath = Path.Combine(directory, "bridge-state.json");
         _state = LoadState();
@@ -376,7 +376,7 @@ public sealed class BridgeServer : IDisposable
     private static async Task WriteAttachmentAsync(HttpListenerResponse response, string id)
     {
         if (id.Any(character => !char.IsLetterOrDigit(character))) { response.StatusCode = 404; return; }
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "Worker", "attachments");
+        var directory = WorkerPaths.Attachments;
         var path = Directory.Exists(directory)
             ? Directory.EnumerateFiles(directory, id + ".*").SingleOrDefault()
             : null;

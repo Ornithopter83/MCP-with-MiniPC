@@ -7,6 +7,16 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\worker-icon.ico</ApplicationIcon>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
+    <PublishSingleFile Condition="'$(PublishSingleFile)' == ''">true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract Condition="'$(IncludeNativeLibrariesForSelfExtract)' == ''">true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishDir>$(MSBuildProjectDirectory)\bin\</PublishDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>None</DebugType>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\worker-icon.png" />
@@ -19,7 +29,12 @@
     <Content Include="Assets\worker-icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
+    <EmbeddedResource Include="..\..\extension\gptweb-hub\manifest.json">
+      <LogicalName>ProjectHub.Worker.Extension.manifest.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\extension\gptweb-hub\content.js">
+      <LogicalName>ProjectHub.Worker.Extension.content.js</LogicalName>
+    </EmbeddedResource>  </ItemGroup>
 </Project>
 
 

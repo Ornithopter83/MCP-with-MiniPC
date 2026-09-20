@@ -47,6 +47,8 @@ public sealed class CodexCliRunner
 
     public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
+            throw new DirectoryNotFoundException($"Codex 작업 폴더를 찾을 수 없습니다: {workingDirectory}");
         var executable = FindExecutable() ?? throw new FileNotFoundException("codex.exe를 찾을 수 없습니다.");
         var outputFile = Path.Combine(Path.GetTempPath(), $"projecthub-codex-{Guid.NewGuid():N}.txt");
         var startedAt = DateTimeOffset.UtcNow;
@@ -284,10 +286,7 @@ public static class CodexThreadArchive
 {
     private static readonly object Sync = new();
 
-    public static string RootPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "ProjectHub",
-        "codex-threads");
+    public static string RootPath => Path.Combine(WorkerPaths.Root, "codex-threads");
 
     public static void Save(CodexCliResult result, string prompt, string projectPath)
     {

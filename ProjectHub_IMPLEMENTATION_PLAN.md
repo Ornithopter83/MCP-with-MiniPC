@@ -147,3 +147,57 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 - 후속 Worker → GPT Web 요청마다 ACTION 선택 지침이 포함됐고, 마지막 응답은 [ACTION=END]로 정상 종료됐다.
 - 역할 전도, 중간 응답 재사용, ACTION 누락, 조기 종료는 이번 로그에서 확인되지 않았다.
 - 검증 결과는 실제 Worker 실행파일과 연결된 GPT Web 왕복 로그 기준이며, 현재 ACTION 라운드 반복 구현의 성공 사례로 기록한다.
+
+## 2026-09-20 배포 검증 목표 정정
+- 피드백의 배포·진단·Extension 내장·갱신 작업은 하나의 배포 개선 묶음으로 수행한다.
+- clean PC, 별도 테스트 사용자, 무설치 환경을 이용한 검증은 범위에서 제외한다.
+- 필수 검증 환경은 현재 개발 PC의 빌드된 ProjectHub.Worker.exe와 Chrome이다.
+- Worker EXE 최초 실행 시 %LOCALAPPDATA%\ProjectHub\GPTWeb-Hub\extension\ 폴더가 생성되고 manifest.json/content.js가 추출되는지 확인한다.
+- Chrome에서 해당 폴더를 최초 1회 Load unpacked한 뒤, Extension 파일 갱신 시 Chrome 확장 새로고침으로 버전업·갱신이 가능한지 확인한다.
+- 기존 Task, attachments, logs, state 보존과 Extension 경로 고정 여부를 같은 PC에서 확인한다.
+- self-contained single-file publish 설정은 유지하되, clean PC에서의 .NET Runtime 미설치 실행 검증은 수행하지 않는다.
+
+## 2026-09-20 배포 개선 일괄 구현
+- ProjectHub.Worker에 win-x64 self-contained single-file publish 기본 설정을 추가했다.
+- Extension manifest.json/content.js를 Worker 실행파일에 EmbeddedResource로 내장하고, 최초 실행 및 버전 변경 시 %LOCALAPPDATA%\ProjectHub\GPTWeb-Hub\extension\ 폴더로 원자적 추출·갱신한다.
+- Worker 런타임 데이터 경로를 %LOCALAPPDATA%\ProjectHub\Worker\ 아래의 config, state, Task, attachments, logs로 통합하고 Codex archive도 AppData로 이동했다.
+- Worker UI에 Extension 버전·추출 경로·Chrome 탐색 결과를 표시하고, single-file에서 외부 아이콘 파일에 의존하지 않도록 tray 아이콘을 실행파일 아이콘에서 읽도록 변경했다.
+- Codex CLI 탐색은 PATH 및 bundled 경로를 유지하고 Chrome 설치 경로 진단을 추가했다.
+- 검증: Debug 전체 빌드 성공(경고 0/오류 0), Release self-contained single-file publish 성공, EXE 실행 후 Bridge ready 확인, Extension 파일 자동 생성 확인, 설치 manifest 버전 하향 후 EXE 재실행 시 0.1.0 자동 갱신 확인.
+- clean PC 검증은 수행하지 않는다. 현재 개발 PC의 EXE 최초 실행·Extension 추출·재실행 갱신을 기준으로 한다.
+
+## 2026-09-20 Worker 게시 경로 영구 설정
+- ProjectHub.Worker.csproj의 PublishDir을 src/ProjectHub.Worker/bin/으로 고정했다.
+- 앞으로 Release self-contained single-file publish 결과는 항상 src/ProjectHub.Worker/bin/ProjectHub.Worker.exe로 생성된다.
+- Release DebugSymbols/DebugType을 비활성화해 게시 PDB를 생성하지 않는다.
+- 검증: dotnet publish 성공, bin 루트 EXE 생성 확인, bin 루트 PDB 없음 확인.
+
+## 2026-09-20 EXE 실행 폴더 자급 경로 정정
+
+- `WorkerPaths.Root`를 `AppContext.BaseDirectory\Worker`로 변경했다.
+- 상태, 설정, Task, 첨부파일, 로그, Codex 로컬 archive는 모두 실행 중인 Worker EXE 폴더 아래에 생성된다.
+- GPTWeb-Hub Extension은 `AppContext.BaseDirectory\GPTWeb-Hub\extension`에 생성·갱신된다.
+- 따라서 게시 폴더를 다른 위치로 옮겨 실행해도 해당 폴더가 자체 데이터 루트가 된다. clean PC 검증은 수행하지 않는다.
+- 검증 예정: Release self-contained single-file 게시 후 EXE 옆 `Worker\` 및 `GPTWeb-Hub\extension\` 생성, Bridge ready, 테스트 통과.
+
+## 2026-09-20 CLI 기본 작업 폴더 고정
+
+- 프로젝트·스레드를 선택하지 않은 신규 CLI 작업도 `AppContext.BaseDirectory`를 `workingDirectory`로 사용하도록 수정했다.
+- 따라서 경로를 지정하지 않은 파일 생성·수정 명령은 실행 중인 Worker EXE가 있는 폴더를 기준으로 수행된다.
+- 프로젝트·스레드를 선택한 경우에는 기존처럼 선택된 프로젝트 경로 또는 Codex 세션 경로를 우선한다.
+
+## 2026-09-20 원격 피드백 후속 보수 반영
+
+- 원격 최신 피드백 `e56017f`의 Worker Web 전송 보수 및 Codex 선택 재검토를 읽고 반영했다.
+- Extension은 Send 후 composer 비움만으로 성공/실패를 판정하지 않고, 같은 prompt의 새 user message 또는 assistant 응답 시작을 확인한다. 전송 불확실 시 동일 prompt 자동 재전송은 하지 않는다.
+- Codex placeholder를 `(현재 폴더) ＋ 신규 스레드`로 바꾸고, 빈 ProjectPath도 EXE 폴더로 안전하게 fallback한다.
+- Codex CLI 실행 전 workingDirectory가 비어 있거나 존재하지 않으면 명시적으로 실패하도록 검증을 추가했다.
+- 검증 완료: Debug 빌드 성공, 테스트 5개 통과, Extension 구문 검사 통과, 게시 EXE 실행 및 Bridge ready 확인.
+
+## 2026-09-20 작업 사이클 제한을 무응답 timeout으로 변경
+
+- 기존 Web ↔ Codex 30회 `_maxRounds` 제한을 제거했다.
+- 작업 중 Web task 진행/수신 또는 Codex 결과 수신이 있으면 마지막 활동 시각을 갱신한다.
+- Web 또는 Codex 응답이 30분 동안 없을 때만 Worker watchdog이 작업을 종료한다.
+- timeout 시 활성 Codex 취소, Web task 취소, `FINISH_TIMEOUT` 표시, Task transcript 저장을 수행한다.
+- 검증: Extension 구문검사, Debug 빌드, 테스트 5개, diff 검사를 통과했다.

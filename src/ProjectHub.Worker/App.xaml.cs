@@ -24,6 +24,10 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        WorkerPaths.EnsureCreated();
+        var extension = ExtensionDeployment.EnsureDeployed();
+        if (extension.Error is not null)
+            LogStartupFailure(new InvalidOperationException("Extension deployment failed: " + extension.Error));
         _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var createdNew);
         if (!createdNew)
         {
@@ -107,7 +111,7 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "Worker");
+            var directory = WorkerPaths.Logs;
             Directory.CreateDirectory(directory);
             File.AppendAllText(Path.Combine(directory, "startup-errors.log"), $"{DateTimeOffset.Now:O} {exception}{Environment.NewLine}");
         }
