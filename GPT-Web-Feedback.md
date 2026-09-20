@@ -4048,3 +4048,461 @@ SERVER LAGGING
 ```
 
 핵심 방향은 **주소는 Settings에서 자동으로 채우되 수동 수정도 가능하게 하고, Web review의 진실 기준은 branch 최신 추정이 아니라 Worker가 동기화 확인한 exact commit SHA로 고정하는 것**이다.
+
+---
+
+# 2026-09-20 Optional Judge Branch v1 — 선택형 Sub AI 분기 구조
+
+## 목적
+
+현재의 안정화된 Web ↔ Worker ↔ Codex CLI 경로를 그대로 유지하면서, 선택적으로 Jev 같은 Sub AI를 중간 판단자(Judge)로 삽입할 수 있는 분기 구조를 추가한다.
+
+핵심 원칙:
+
+```text
+기본 경로
+GPT Web → Worker → Codex CLI → Worker → GPT Web
+
+Judge 활성 경로
+GPT Web → Worker → Codex CLI → Worker → Judge(Jev) → 분기 → GPT Web 또는 Codex
+```
+
+Judge는 필수 의존성이 아니다. 비활성화되거나 사용할 수 없으면 기존 경로가 그대로 동작해야 한다.
+
+## 1. 역할 분리
+
+현재 단기 역할은 다음처럼 고정한다.
+
+```text
+GPT Web = Manager / Controller / 최종 승인자
+Worker  = Orchestrator / 상태·분기 관리자
+Codex   = Executor / 실제 작업 수행자
+Jev     = Optional Judge / 중간 검수자
+```
+
+Jev는 작업 수행자처럼 파일을 직접 수정하는 역할로 시작하지 않는다.
+
+초기 Judge v1은 read-only 검토와 다음 분기 판단만 수행한다.
+
+## 2. Judge는 선택형 기능
+
+Settings에 최소 다음 옵션을 추가한다.
+
+```text
+SUB AI / JUDGE
+
+Enable Judge   [ ]
+
+Provider
+[ Jev ]
+
+Executable / Endpoint
+[ Auto Detect / Manual ]
+
+Timeout
+[ 120 sec ]
+
+On Judge Failure
+[ Send To GPT Web ]
+```
+
+기본값은 `Enable Judge = OFF`다.
+
+OFF일 때는 기존 Web ↔ Codex 동작과 결과가 변경되지 않아야 한다.
+
+## 3. 분기 흐름
+
+Judge 활성 시 Codex 한 라운드가 끝난 뒤 바로 GPT Web으로 보내지 않고 먼저 Judge를 거친다.
+
+```text
+CODEX_RUNNING
+↓
+CODEX_RESULT
+↓
+JUDGE_RUNNING
+↓
+JUDGE_RESULT
+```
+
+Judge 결과는 최소 세 가지로 제한한다.
+
+```text
+[JUDGE=PASS]
+상위 관리자(Web) 검토로 전달 가능
+
+[JUDGE=REVISE]
+Codex가 추가 수정해야 함
+
+[JUDGE=ESCALATE]
+Judge가 확정할 수 없으므로 Web 판단 필요
+```
+
+Worker 분기:
+
+```text
+PASS
+→ GPT Web에 Codex 결과 + Judge 결과 전달
+
+REVISE
+→ Judge 본문을 동일 Codex session의 다음 지시로 전달
+→ Codex 재실행
+
+ESCALATE
+→ GPT Web에 Codex 결과 + Judge 판단/사유 전달
+```
+
+## 4. Judge가 전체 작업을 END시키지 않음
+
+중요:
+
+`JUDGE=PASS`는 전체 Task 성공 또는 ACTION=END를 의미하지 않는다.
+
+Judge는 단지 현재 Codex 결과가 상위 Web 검토로 올라갈 수 있다는 판단만 한다.
+
+최종 작업 종료 권한은 기존처럼 GPT Web의 ACTION=END에 둔다.
+
+즉:
+
+```text
+Judge PASS ≠ Task END
+Web ACTION=END = Task END
+```
+
+## 5. Judge 입력 계약
+
+Jev에 Codex raw stdout 전체를 무조건 전달하지 않는다.
+
+Worker가 최소 공통 구조로 정리해서 전달한다.
+
+```text
+ROLE=JUDGE
+
+GOAL
+<현재 Task 목표>
+
+ROUND
+<현재 round>
+
+WORKING_DIRECTORY
+<현재 작업 폴더>
+
+CODEX_RESULT
+<Codex 최종 메시지>
+
+FILES
+- 실제 생성/변경 파일 목록
+
+VALIDATION
+- build/test/lint 결과
+
+REVIEW_SOURCE
+LOCAL | GIT | ATTACHMENT
+
+REVIEW_COMMIT_SHA
+<있으면 exact sha>
+
+REQUEST
+현재 결과를 PASS / REVISE / ESCALATE 중 하나로 판단하라.
+```
+
+Git exact SHA가 유효하면 Judge도 같은 review_commit_sha를 기준으로 검토할 수 있게 한다.
+
+Git이 없거나 remote가 확인되지 않아도 Judge 기능 자체는 막지 않는다.
+
+## 6. Judge 응답 파서
+
+Judge 응답은 Web ACTION 프로토콜과 별도로 관리한다.
+
+첫 번째 유효행은 정확히 다음 중 하나여야 한다.
+
+```text
+[JUDGE=PASS]
+[JUDGE=REVISE]
+[JUDGE=ESCALATE]
+```
+
+REVISE는 뒤에 Codex로 전달할 본문이 반드시 있어야 한다.
+
+예:
+
+```text
+[JUDGE=REVISE]
+실패한 테스트 2개를 먼저 수정하고 다시 전체 테스트를 실행해.
+```
+
+잘못된 Judge 응답은 Worker가 의미를 추측하지 않는다.
+
+```text
+JUDGE_PROTOCOL_ERROR
+→ 기본 fallback으로 GPT Web에 escalate
+```
+
+## 7. 실패 시 기존 경로 유지
+
+Judge는 optional branch이므로 단일 장애점이 되어서는 안 된다.
+
+다음 상황:
+
+```text
+- Jev executable/endpoint 없음
+- 인증 실패
+- timeout
+- process crash
+- invalid response
+- JUDGE protocol error
+```
+
+에서 권장 기본 동작은:
+
+```text
+Judge 실패
+→ Judge를 건너뜀
+→ Codex 결과와 Judge 실패 사유를 GPT Web에 전달
+→ 기존 Web ACTION 흐름 계속
+```
+
+즉 Judge 장애 때문에 Task 자체를 강제 실패시키지 않는다.
+
+설정에서 향후 Strict mode를 추가할 수 있지만 v1 기본은 fallback-to-Web이다.
+
+## 8. Codex session 유지
+
+JUDGE=REVISE일 때 새 Codex 세션을 만들지 않는다.
+
+현재 Job에 고정된:
+
+```text
+jobId
+workingDirectory
+codexSessionId
+round
+```
+
+를 그대로 사용한다.
+
+Judge가 여러 번 REVISE하더라도 같은 Codex session을 resume한다.
+
+Judge 자체 session이 필요하면 별도 `judgeSessionId`로 분리한다.
+
+## 9. 무한 Judge↔Codex 루프 방지
+
+Web ACTION loop와 Judge revise loop를 분리해서 제한한다.
+
+초기 권장:
+
+```text
+MAX_WEB_ROUNDS = 기존 값 유지
+MAX_JUDGE_REVISIONS_PER_WEB_ROUND = 3
+JUDGE_TIMEOUT = 120 sec
+```
+
+예:
+
+```text
+Codex
+→ Judge REVISE #1
+→ Codex
+→ Judge REVISE #2
+→ Codex
+→ Judge REVISE #3
+→ 아직 REVISE
+→ GPT Web ESCALATE
+```
+
+Judge 때문에 Web에 영원히 도달하지 못하는 구조를 만들지 않는다.
+
+## 10. 현재 Codex 전용 코드는 전면 일반화하지 않음
+
+이번 구현에서 바로 전체 IAiProvider 프레임워크로 재작성하지 않는다.
+
+단기 구현:
+
+```text
+CodexCliRunner        기존 Executor 유지
+JevJudgeRunner        신규 Optional Judge
+JudgeRequest          신규
+JudgeResult           신규
+JudgeDecision enum    PASS / REVISE / ESCALATE / ERROR
+```
+
+현재 안정화된 Codex 실행/세션/파일 수집 코드를 최대한 유지한다.
+
+다만 향후 확장을 위해 공통 결과로 변환 가능한 얇은 모델은 허용한다.
+
+예:
+
+```text
+AiExecutionResult
+- provider
+- role
+- model
+- sessionId
+- success
+- message
+- files
+- usage
+- startedAt
+- finishedAt
+```
+
+CodexCliResult를 당장 제거하지 말고 Adapter로 AiExecutionResult로 변환하는 정도만 허용한다.
+
+## 11. Settings 확장성
+
+Jev를 이름으로 UI에 고정하더라도 내부 설정은 provider 기반으로 저장한다.
+
+예:
+
+```json
+{
+  "judge": {
+    "enabled": true,
+    "provider": "jev",
+    "mode": "review",
+    "timeoutSeconds": 120,
+    "failurePolicy": "escalate_to_web"
+  }
+}
+```
+
+이렇게 하면 후속에:
+
+```text
+Jev
+Gemini
+Claude
+Local Qwen
+다른 CLI/API Judge
+```
+
+로 교체할 때 Worker orchestration을 다시 뜯지 않아도 된다.
+
+## 12. MESSAGE LOG 표시
+
+현재 누적 MESSAGE LOG에 Judge 이벤트도 포함한다.
+
+예:
+
+```text
+[12:31:04] CODEX
+구현 및 테스트 완료
+
+[12:31:05] JUDGE STATUS
+Jev · REVIEWING
+
+[12:31:12] JUDGE
+[JUDGE=REVISE]
+예외 처리 테스트가 빠져 있음
+
+[12:31:13] WORKER → CODEX
+예외 처리 테스트를 추가하고 다시 검증해.
+```
+
+Judge 비활성 상태에서는 기존 로그 형식을 유지한다.
+
+## 13. UI 흐름
+
+현재 Codex → Worker → GPT Web 흐름 표시를 깨지 않는다.
+
+Judge 활성일 때만 보조 상태로:
+
+```text
+CODEX
+  ↓
+WORKER
+  ↓
+JUDGE
+  ├─ REVISE → CODEX
+  └─ PASS/ESCALATE → GPT WEB
+```
+
+를 표시한다.
+
+초기 v1에서는 메인 화면 전체 레이아웃을 크게 재설계하지 않아도 된다.
+
+`Current Task`, `MESSAGE LOG`, 또는 설정 카드에 Judge 상태 한 줄만 추가해도 충분하다.
+
+## 14. Jev 자동 탐색
+
+Jev가 CLI 형태라면 Codex와 동일하게 자동 탐색 계층을 둔다.
+
+```text
+1. PATH
+2. 알려진 설치 경로
+3. 저장된 manual path
+```
+
+API/localhost service 형태라면 endpoint + health check 구조로 adapter를 구현한다.
+
+Jev 연결 실패는 Worker 시작 실패 조건이 아니다.
+
+Judge OFF 또는 unavailable이면 기존 Codex/Web 경로는 READY일 수 있어야 한다.
+
+## 15. 보안/권한
+
+Judge v1은 read-only 원칙을 적용한다.
+
+```text
+Codex Executor
+→ workspace-write 가능
+
+Jev Judge
+→ read-only
+→ 직접 파일 수정 금지
+→ git commit/push 금지
+→ 외부 destructive action 금지
+```
+
+Judge가 제안한 수정은 반드시 Worker를 거쳐 Codex에게 전달한다.
+
+기존 commit/push/fetch/pull 승인 정책도 그대로 유지한다.
+
+## 16. 첫 E2E 검증
+
+작은 코드 작업으로 다음을 실제 검증한다.
+
+```text
+1. Judge OFF
+   Web → Codex → Web 기존 경로 정상
+
+2. Judge ON
+   Web → Codex
+   → Jev REVISE
+   → 동일 Codex session 수정
+   → Jev PASS
+   → GPT Web 전달
+   → Web ACTION=END
+
+3. Judge timeout
+   → GPT Web fallback
+
+4. Judge invalid response
+   → GPT Web fallback
+
+5. Judge OFF 재전환
+   → 기존 경로 정상
+```
+
+## 17. 완료 기준
+
+```text
+[ ] Judge 기본값 OFF
+[ ] Judge OFF에서 기존 E2E 회귀 없음
+[ ] Jev 자동/수동 연결 가능
+[ ] Judge는 Codex 결과 후에만 실행
+[ ] JUDGE=PASS → Web
+[ ] JUDGE=REVISE → 같은 Codex session
+[ ] JUDGE=ESCALATE → Web
+[ ] Judge 오류/timeout → Web fallback
+[ ] Judge 오류가 전체 Worker 실행을 막지 않음
+[ ] 최대 revise 횟수 제한
+[ ] Judge read-only
+[ ] MESSAGE LOG에 Judge 이벤트 기록
+[ ] Judge enable/disable 설정 영속화
+[ ] Jev를 다른 provider로 교체 가능한 설정 구조
+[ ] 기존 ACTION=CONTINUE/PAUSE/END 프로토콜 유지
+[ ] build/test 통과
+[ ] 실제 Judge ON/OFF E2E 검증
+```
+
+핵심 완료 기준은 Jev를 추가하면서도 기존 Web ↔ Codex 경로가 필수조건으로 변하지 않는 것이다. Judge는 품질 검수를 위한 선택형 분기이며, 비활성화 또는 실패 시 항상 기존 안정화 경로로 되돌아갈 수 있어야 한다.
