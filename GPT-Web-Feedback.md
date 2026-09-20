@@ -3570,3 +3570,481 @@ Codex Desktop의 프로젝트 선택 상태를 Worker가 읽어야 하는 구조
 ```
 
 핵심 방향은 Codex Desktop 프로젝트 선택을 필수 전제에서 제거하고 Worker가 현재 작업 폴더와 sessionId를 직접 관리하는 것, 그리고 Web Send 성공 여부를 composer clear 한 가지 DOM 신호에 의존하지 않는 것이다.
+
+
+---
+
+# 2026-09-20 TETRIS 장기 자동개발 검증 및 Git/Server 리뷰 전환 피드백
+
+## 1. TETRIS 장기 자동개발 검증
+
+TETRIS 작업은 ProjectHub Worker ↔ GPT Web ↔ Codex CLI 장기 왕복 구조가 실제 소프트웨어 개발 작업에서도 동작한다는 강한 E2E 사례가 됐다.
+
+실제 흐름은 다음과 같았다.
+
+```text
+CLI 최초 상태 조사
+→ [REPORT 0]
+→ GPT Web 전체 계획 수립
+→ [ACTION=CONTINUE]
+→ Codex 구현/검증
+→ REPORT
+→ GPT Web 코드 검토/보정 지시
+→ 반복
+→ 최종 build/run
+→ 사용자 체감 QA
+```
+
+검증된 범위:
+- .NET 9 WPF TETRIS
+- 10x20 / 7종 테트로미노
+- Line Flash
+- Stage 1~5
+- Stage별 낙하 속도
+- Score / Stage Bonus
+- Soft Drop SFX
+- 코드 생성 PCM 효과음
+- Stage 1~5 코드 생성 BGM
+- Stage Clear Curtain
+- Final Clear
+- Restart 및 비-Playing 상태 가드
+
+실제 Core diagnostic:
+- 152 / 152 PASS
+- 1/2/3/4줄 삭제 실제 실행 검증
+- Stage 1 → 2 → 3 → 4 → 5 → FinalClear 검증
+- TotalClearedLines 최종 25
+- BonusRows 0 / 1 / 12 / 19 / 20 edge 검증
+- 10,000 operation stress
+- Game Over 202회
+- Restart 202회
+- exception 0
+
+WPF:
+- 격리된 APPDATA / DOTNET_CLI_HOME / NUGET_PACKAGES와 외부 intermediate/output을 사용해 restore/build 성공
+- warning 0 / error 0
+- 최신 EXE 생성
+- 프로세스 실행, MainWindow 생성, responsive 확인
+
+최종 사용자 QA:
+- 기능 정상
+- BGM 적당
+- SFX 적당
+- Curtain은 기능상 정상이나 단일 선보다는 겹겹이 쌓이는 연출을 선호
+
+이 사례는 완전 무인 개발이라기보다는 “사람이 목표와 최종 수용을 맡고, Web Controller가 계획/리뷰/재지시를 수행하며 Codex가 구현/테스트를 반복하는 거의 자동개발” 사례로 기록하는 것이 정확하다.
+
+## 2. 토큰 usage 표시는 Task 실제 소비량으로 재정의 필요
+
+현재 Worker는 각 Codex CLI 결과의 usage를 라운드마다 `_commandUsage.Add(result.Usage)`로 합산한다.
+
+resume session의 usage가 session cumulative snapshot이면 아래처럼 중복 합산된다.
+
+```text
+round 1 session total = 300k
+round 2 session total = 600k
+round 3 session total = 900k
+
+현재 Worker 표시 = 300k + 600k + 900k = 1.8M
+실제 최신 session total = 900k
+```
+
+따라서 “이번 작업 누적”은 실제 Task 신규 사용량과 크게 다를 수 있다.
+
+개선 권장:
+- task 시작 시 session baseline usage 저장
+- latest session usage 저장
+- task delta = latest - baseline
+- cached input / output / reasoning 분리
+- round count / duration 함께 저장
+- 기존 session resume 여부 표시
+
+UI에서는 최소 다음을 구분한다.
+
+```text
+Task delta
+Session total
+Cached input
+Output
+Rounds
+Duration
+5시간/주간 한도: CLI 미제공
+```
+
+## 3. 다음 자동개발 방식: 파일 첨부 대신 Git/Server 기준 리뷰
+
+다음 프로젝트부터는 매 라운드마다 소스 파일을 GPT Web에 첨부하는 방식을 기본으로 하지 않는다.
+
+권장 흐름:
+
+```text
+Codex CLI
+  ↓ local edit / test
+Worker
+  ↓ Git checkpoint / sync 확인
+Git remote + ProjectHub Server
+  ↓ exact state
+GPT Web
+  ↓ exact commit/source review
+ACTION
+  ↓
+Worker → Codex CLI
+```
+
+핵심은 GPT Web이 “branch의 최신 상태”를 추정하지 않고 Worker가 확정한 정확한 review commit/state를 읽는 것이다.
+
+## 4. Git 동기화는 즉시라고 가정하지 않는다
+
+다음 상태를 명확히 분리한다.
+
+```text
+LOCAL_DIRTY
+LOCAL_COMMITTED
+PUSHING
+PUSHED_UNCONFIRMED
+REMOTE_CONFIRMED
+SERVER_CONFIRMED
+SYNC_MISMATCH
+CONFLICT
+PUSH_REJECTED
+```
+
+의미:
+
+1. 파일 저장
+   - local working tree만 변경
+   - remote에서는 보이지 않음
+
+2. local commit
+   - local HEAD만 변경
+   - remote에서는 아직 보이지 않음
+
+3. push 성공
+   - push command가 성공했지만 Web review 전에 remote exact SHA를 다시 확인
+
+4. remote 확인
+   - remote branch HEAD 또는 exact commit 조회로 pushed SHA 존재 확인
+
+5. Server 확인
+   - ProjectHub Server가 관찰한 branch/SHA/observed_at과 대조
+
+기본 Web review 시작 조건은 `REMOTE_CONFIRMED` 이상으로 둔다.
+
+Server까지 authoritative observation으로 사용할 때는 `SERVER_CONFIRMED`를 추가 확인할 수 있다.
+
+branch 이름만 전달하지 말고 반드시 아래 exact 값 중 하나를 review 기준으로 전달한다.
+
+```text
+review_commit_sha
+```
+
+## 5. Settings에서 Git/Server 주소를 자동 설정 + 수동 입력 가능하게 한다
+
+Git repository 주소와 ProjectHub Server 주소는 메인 화면에 하드코딩하거나 사용자가 매번 입력하게 하지 않는다.
+
+**Settings 창에서 자동 감지된 값을 기본값으로 채우고, 사용자가 필요하면 직접 수정할 수 있게 한다.**
+
+### Git Repository 설정
+
+자동 감지 우선순위 권장:
+
+```text
+1. 현재 selected project path의 Git repository 확인
+2. git remote get-url origin
+3. ProjectHub project metadata에 저장된 repository URL
+4. 기존 Worker 저장 설정
+5. 값이 없으면 빈 상태 + 수동 입력
+```
+
+Settings 필드 예:
+
+```text
+Git Repository
+[ https://github.com/owner/repo                 ]
+[ Auto Detect ] [ Test ]
+
+Branch
+[ main                                             ]
+
+Project Path
+[ C:\Projects\MyProject                        ]
+```
+
+원칙:
+- 자동 감지 성공 시 즉시 입력 필드에 표시
+- 사용자가 수정하면 명시적 override로 저장
+- “Auto Detect”를 다시 누르면 override를 자동값으로 되돌릴 수 있음
+- remote URL은 표시용 canonical form과 실제 fetch/push용 값이 다를 수 있으므로 내부적으로 원본도 보존
+- access token, PAT, credential은 URL에 포함해 저장/표시하지 않음
+
+### ProjectHub Server 설정
+
+자동 감지 우선순위 권장:
+
+```text
+1. PROJECTHUB_AGENT_SERVER_BASE_URL 환경 변수
+2. 기존 Worker config
+3. project metadata / known server setting
+4. 제품 기본값
+5. 수동 입력
+```
+
+현재 코드의 기본값:
+```text
+https://projecthub.ornithopter.bid
+```
+
+Settings 필드 예:
+
+```text
+ProjectHub Server
+[ https://projecthub.ornithopter.bid             ]
+[ Auto Detect ] [ Test Connection ]
+```
+
+원칙:
+- 자동 감지된 값을 Settings에 보여준다.
+- 사용자가 수동 변경 가능하다.
+- 수동 변경값은 Worker persistent config에 저장한다.
+- 환경 변수와 수동 설정의 우선순위를 UI에 명확히 정의한다.
+- 권장 우선순위는 “사용자가 저장한 명시적 override > 자동 감지 > 제품 기본값”이다.
+- credential/API key는 주소와 분리해서 저장하고 화면에 원문 표시하지 않는다.
+
+## 6. Settings의 source mode 표시
+
+각 설정값은 어디서 왔는지 알 수 있어야 한다.
+
+예:
+
+```text
+Git Repository
+https://github.com/owner/repo
+Source: AUTO · origin
+
+ProjectHub Server
+https://projecthub.ornithopter.bid
+Source: AUTO · environment
+
+또는
+
+Source: MANUAL
+```
+
+권장 내부 값:
+
+```text
+value
+source = AUTO_GIT_REMOTE | AUTO_ENV | AUTO_METADATA | MANUAL | DEFAULT
+last_detected_at
+last_test_result
+last_tested_at
+```
+
+사용자가 수동으로 입력한 값과 자동 감지값을 덮어쓰는 규칙이 불명확하면 장기 자동화 중 대상 repository/server가 바뀔 수 있으므로 반드시 source를 저장한다.
+
+## 7. Worker 메인 화면에는 설정값의 요약만 표시
+
+주소 편집은 Settings에서 하고 메인 화면은 현재 실제 연결 대상을 빠르게 확인하는 용도로 사용한다.
+
+권장 메인 UI:
+
+```text
+PROJECT
+MyProject
+C:\Projects\MyProject
+GitHub · owner/repo
+main · a1b2c3d
+CLEAN · REMOTE_CONFIRMED
+
+SERVER
+projecthub.ornithopter.bid
+CONNECTED
+Server SHA · a1b2c3d
+Observed · 14:32:10
+
+GPT WEB REVIEW
+Source · GIT
+Review SHA · a1b2c3d
+CONFIRMED
+```
+
+전체 URL은 길면 축약하고 tooltip 또는 Settings에서 전체값을 확인한다.
+
+## 8. Git review checkpoint 계약
+
+각 Web review 라운드 직전에 Worker가 최소 다음 값을 확정한다.
+
+```text
+project_path
+repository_url
+branch
+working_tree_status
+local_head_sha
+pushed_head_sha
+remote_head_sha
+last_push_result
+last_push_at
+server_observed_sha
+server_observed_at
+review_commit_sha
+sync_state
+```
+
+예:
+
+```json
+{
+  "repository": "https://github.com/owner/repo",
+  "branch": "main",
+  "local_head": "abc123",
+  "pushed_head": "abc123",
+  "remote_head": "abc123",
+  "server_head": "abc123",
+  "review_commit_sha": "abc123",
+  "sync_state": "REMOTE_CONFIRMED"
+}
+```
+
+GPT Web은 반드시 `review_commit_sha`의 파일을 읽고 피드백한다.
+
+## 9. Git/Server review source 선택
+
+Worker가 Web에 전달할 review source를 명시한다.
+
+```text
+ATTACHMENT
+GIT
+SERVER
+```
+
+권장 기본:
+- Git repository가 있고 remote 확인 가능 → GIT
+- Server가 project snapshot/source 조회 기능을 제공하고 exact SHA가 확인됨 → SERVER 가능
+- Git/Server가 없는 임시 프로젝트 → ATTACHMENT fallback
+
+다음 자동개발 E2E의 목표는 **ATTACHMENT 0회**다.
+
+## 10. Git 작업 권한
+
+기존 ProjectHub 정책은 유지한다.
+
+commit/push/fetch/pull은 사용자 명시적 승인 범위에서만 수행한다.
+
+장기 자동개발에서는 Task 시작 시 다음과 같은 task-scoped permission을 받는 방식이 적합하다.
+
+```text
+Allow auto commit for this Task
+Allow push to selected repository/branch for this Task
+Allow fetch for sync verification
+Allow pull only when clean and policy-safe
+```
+
+충돌, dirty pull 대상, detached HEAD, merge/rebase 진행 중, push reject는 자동 해결하지 않고 PAUSE한다.
+
+## 11. Web review 시작 전 sync gate
+
+Web review task를 만들기 전에 Worker가 다음을 확인한다.
+
+```text
+repository configured
+AND branch configured
+AND local commit exists
+AND push succeeded
+AND remote exact SHA == review_commit_sha
+AND no conflict/reject
+= Web Git review 가능
+```
+
+불일치하면 GPT Web에 “최신 소스 리뷰”를 요청하지 않는다.
+
+표시 예:
+
+```text
+SYNC WAITING
+local a1b2c3d
+remote 98fe210
+
+또는
+
+SYNC MISMATCH
+Review blocked
+```
+
+push 직후 remote 조회가 아직 기대값과 다르면 짧은 확인 polling을 허용할 수 있으나 무한 대기하지 않는다.
+
+권장:
+- 수 초 간격
+- 제한된 횟수
+- 최종 불일치 시 PAUSE 또는 retry 가능한 상태로 종료
+
+## 12. Server observation의 역할
+
+Server는 Git push 자체의 성공을 대신 증명하지 않는다.
+
+Server가 저장할 수 있는 값:
+
+```text
+project_id
+workstation
+repository_url
+branch
+observed_commit_sha
+working_tree_status
+observed_at
+```
+
+Worker는 remote Git confirmation과 Server observation을 독립적으로 표시한다.
+
+예:
+
+```text
+Remote SHA  abc123 · CONFIRMED
+Server SHA  abc123 · CONFIRMED
+```
+
+불일치:
+
+```text
+Remote SHA  abc123
+Server SHA  98fe210
+SERVER LAGGING
+```
+
+이 경우 Git review 자체는 remote SHA 기준으로 가능할 수 있지만 “Server까지 동기화 완료”라고 표시하면 안 된다.
+
+## 13. 다음 구현 우선순위
+
+```text
+1. usage telemetry의 cumulative 중복 합산 수정
+2. Settings 창에 Git Repository / Branch / Server URL 추가
+3. Git/Server 자동 감지 + 수동 override + source 표시
+4. 메인 화면에 현재 Git/Server target 요약 표시
+5. Git sync state / exact SHA checkpoint 구현
+6. remote exact commit confirmation
+7. Server observed SHA/state 표시
+8. Web prompt에 review source + exact SHA 전달
+9. Git 기반 Web review E2E
+10. ATTACHMENT 0회 자동개발 실험
+```
+
+## 14. 완료 기준
+
+```text
+[ ] Settings에서 Git repository 자동 감지
+[ ] Settings에서 Git repository 수동 입력/저장
+[ ] Settings에서 Server URL 자동 감지
+[ ] Settings에서 Server URL 수동 입력/저장
+[ ] 각 값의 AUTO/MANUAL source 확인 가능
+[ ] 메인 Worker에서 repository/server 현재 대상 확인 가능
+[ ] local/pushed/remote SHA 구분
+[ ] REMOTE_CONFIRMED 전에는 Web Git review 차단
+[ ] Web prompt에 exact review_commit_sha 포함
+[ ] GPT Web이 exact commit source를 직접 읽어 review
+[ ] Git 지연/불일치 상태가 사용자에게 명확히 표시
+[ ] Server observed SHA와 remote SHA를 독립 비교
+[ ] commit/push는 task-scoped explicit approval 안에서만 수행
+[ ] 파일 첨부 없이 최소 5 round 자동개발 왕복
+[ ] ACTION=END 정상 종료
+```
+
+핵심 방향은 **주소는 Settings에서 자동으로 채우되 수동 수정도 가능하게 하고, Web review의 진실 기준은 branch 최신 추정이 아니라 Worker가 동기화 확인한 exact commit SHA로 고정하는 것**이다.
