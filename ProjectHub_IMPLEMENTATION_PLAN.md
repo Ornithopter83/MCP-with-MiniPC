@@ -431,3 +431,24 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 - 작업 시작 시에만 모델, reasoning, 실행 파일, 작업 폴더, 세션 정보를 `TASK START` 항목으로 기록한다.
 - CLI 실행은 매 라운드마다 `CLI STATUS`에 PASS/FAIL, exit code, model, session만 기록한다. 실제 Codex 결과는 전달되는 Worker → GPT Web 메시지와 GPT Web 응답의 순서로 로그에 남는다.
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `git diff --check` 통과.
+## 2026-09-20 Optional Jev Judge scaffold
+
+- 최신 `GPT-Web-Feedback.md`를 fetch/rebase 뒤 다시 읽고, Judge를 기존 Codex → Worker → GPT Web 흐름의 선택형 보조 단계로 추가했다.
+- Settings에 `SUB AI / JUDGE`를 추가했다. Enable Judge는 기본 OFF이며 provider, executable/endpoint, timeout(10~600초), GPT Web fallback 정책을 `target-settings.json`의 `judge` 설정으로 저장한다.
+- Jev 자동 탐색은 PATH와 알려진 로컬 경로 및 manual path를 확인한다. 현재 Jev CLI/API 실행 계약은 아직 연결하지 않았으므로 Judge를 켜도 `JUDGE=ERROR`과 사유를 MESSAGE LOG에 기록한 뒤 GPT Web으로 계속 전달한다.
+- Judge 활성 시 Current Task에 보라색 pulse 상태를 표시하고 MESSAGE LOG에 `JUDGE STATUS`와 결과를 순서대로 추가한다. Judge OFF에서는 기존 Web handoff prompt, attachment, ACTION=CONTINUE/PAUSE/END 처리가 바뀌지 않는다.
+- `JevJudgeRunner`, `JudgeRequest`, `JudgeResult`, `JudgeDecision`은 실제 실행 어댑터와 PASS/REVISE/ESCALATE 분기를 다음 작업에서 연결하기 위한 구조다. 현재 모델 연동과 Judge ON E2E는 잔여 작업으로 남긴다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(총 5개), `git diff --check` 통과. Explorer 실화면 및 Judge ON E2E는 아직 수행하지 않았다.
+## 2026-09-20 Dynamic two-node task flow
+
+- Current Task의 고정 3개 아이콘을 현재 전송 방향에 맞는 2개 노드로 교체했다. 중간 화살표는 해당 방향으로 pulse 애니메이션을 표시한다.
+- 표시 조합은 `CODEX → WORKER`, `WORKER → GPT WEB`, `GPT WEB → WORKER`, `GPT WEB → CODEX`, `WORKER → JUDGE`, `JUDGE → CODEX`를 지원한다. Judge OFF 상태에서는 기존 Codex/Worker/Web 조합만 사용한다.
+- 각 노드는 현재 단계에서만 `진행 중`과 강조색을 표시하고, 상대 노드는 `대기 중`으로 표시한다. Judge에는 별도 J 아이콘을 사용한다.
+- 실행 분기와 bridge/codex 호출 순서는 변경하지 않았다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `git diff --check` 통과. Explorer 실화면 확인은 잔여 작업이다.
+## 2026-09-20 Task flow icon contrast and publish script
+
+- 두 노드 흐름의 아이콘 영역을 100px 원형 배경과 84px 이미지로 확장했다. 활성 노드는 provider별 컬러 이미지와 강조 배경을, 대기 노드는 그레이스케일 이미지와 slate 배경을 사용한다.
+- 흐름 패널을 오른쪽 정렬에서 왼쪽 정렬로 옮겨 Current Task 카드의 중앙 쪽에 배치했다.
+- `src/ProjectHub.Worker/bin/publish-worker.ps1`을 추가했다. 이 스크립트는 Worker 프로젝트를 Release로 게시하며 `-NoRestore` 옵션을 지원한다. bin 경로가 ignore 대상이므로 파일은 force-add로 Git index에 포함했다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `git diff --check` 및 staged diff check 통과.

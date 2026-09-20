@@ -147,6 +147,7 @@
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
           <TextBlock Text="TARGET SETTINGS" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Ink}"/>
           <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
@@ -169,7 +170,31 @@
             <Button x:Name="WorkingDirectoryBrowseButton" Content="Choose Folder…" Margin="10,0,0,0" Padding="14,6" FontSize="15" Click="BrowseWorkingDirectory_Click"/>
           </StackPanel>
           <TextBlock x:Name="WorkingDirectorySourceText" Grid.Row="6" Margin="140,7,0,0" FontSize="15" Foreground="{StaticResource Muted}"/>
-          <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+          <Border Grid.Row="7" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,16,0,0">
+            <Grid>
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="SUB AI / JUDGE" FontSize="16" FontWeight="Bold"/>
+                <CheckBox x:Name="EnableJudgeCheckBox" Content="Enable Judge" Margin="24,0,0,0" FontSize="15" VerticalAlignment="Center"/>
+                <TextBlock x:Name="JudgeSettingsStatusText" Text="Jev · OFF" Margin="20,1,0,0" FontSize="14" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+              </StackPanel>
+              <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock Text="Provider" Width="140" FontSize="15" VerticalAlignment="Center"/>
+                <ComboBox x:Name="JudgeProviderCombo" Style="{x:Null}" Width="180" Height="32" FontSize="15"><ComboBoxItem Content="Jev"/></ComboBox>
+                <TextBlock Text="Timeout" Margin="26,0,0,0" Width="82" FontSize="15" VerticalAlignment="Center"/>
+                <TextBox x:Name="JudgeTimeoutInput" Width="80" Height="32" FontSize="15" Padding="8,4"/>
+                <TextBlock Text="sec" Margin="8,0,0,0" FontSize="15" VerticalAlignment="Center"/>
+                <TextBlock Text="Failure" Margin="26,0,0,0" Width="70" FontSize="15" VerticalAlignment="Center"/>
+                <TextBlock Text="Send To GPT Web" FontSize="15" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+              </StackPanel>
+              <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock Text="Executable / Endpoint" Width="140" FontSize="15" VerticalAlignment="Center"/>
+                <TextBox x:Name="JudgeExecutableInput" Width="620" Height="32" FontSize="15" Padding="8,4"/>
+                <Button Content="Auto Detect" Margin="10,0,0,0" Padding="12,5" FontSize="14" Click="AutoDetectJudge_Click"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+          <StackPanel Grid.Row="9" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
             <Button Content="Close" Padding="18,7" FontSize="15" Click="CloseSettings_Click"/>
             <Button Content="Apply" Margin="10,0,0,0" Padding="20,7" FontSize="15" Background="{StaticResource Blue}" Foreground="White" BorderBrush="{StaticResource Blue}" Click="SaveTargetSettings_Click"/>
           </StackPanel>
@@ -189,15 +214,53 @@
             <Grid.RowDefinitions><RowDefinition Height="*"/></Grid.RowDefinitions>
             <Grid.ColumnDefinitions><ColumnDefinition Width="1.35*"/><ColumnDefinition Width="1.65*"/></Grid.ColumnDefinitions>
             <StackPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
-              <StackPanel Orientation="Horizontal"><Border Width="52" Height="52" CornerRadius="28" Background="#2089E9"><TextBlock Text="→" FontSize="37" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Margin="16,0,0,0"><TextBlock x:Name="TaskDirection" Text="IDLE" FontSize="26" FontWeight="Bold" TextWrapping="Wrap"/><TextBlock x:Name="TaskTitle" Text="작업 없음" FontSize="20" Margin="0,10,0,0" TextWrapping="Wrap"/></StackPanel></StackPanel>
+              <StackPanel Orientation="Horizontal"><Border Width="52" Height="52" CornerRadius="28" Background="#2089E9"><TextBlock Text="→" FontSize="37" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Margin="16,0,0,0">
+                <TextBlock x:Name="TaskDirection" Text="IDLE" FontSize="26" FontWeight="Bold" TextWrapping="Wrap"/>
+                <TextBlock x:Name="TaskTitle" Text="작업 없음" FontSize="20" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                  <Ellipse x:Name="JudgePulseDot" Width="10" Height="10" Fill="#A6B4C5" VerticalAlignment="Center"/>
+                  <TextBlock x:Name="JudgeFlowText" Text="JUDGE · OFF" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Muted}" Margin="7,0,0,0"/>
+                </StackPanel>
+              </StackPanel></StackPanel>
             </StackPanel>
-            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-              <StackPanel><Grid Width="80" Height="80"><Border x:Name="CodexIconBackground" Width="80" Height="80" CornerRadius="40" Background="#98A5B5"/><Image x:Name="CodexInactiveIcon" Source="Assets/current-openai-gray.png" Width="68" Height="68" Stretch="Uniform"/><Image x:Name="CodexActiveIcon" Source="Assets/current-openai.png" Width="68" Height="68" Stretch="Uniform" Visibility="Collapsed"/></Grid><TextBlock x:Name="CodexLabelText" Text="CODEX" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,24,0,0"/><TextBlock x:Name="CodexStageText" Text="대기 중" FontSize="17" Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/></StackPanel>
-              <StackPanel x:Name="CodexToWorkerArrow" Orientation="Horizontal" Margin="8,0" VerticalAlignment="Center"><TextBlock x:Name="CodexArrow1" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="#B7C4D6"/><TextBlock x:Name="CodexArrow2" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="#B7C4D6"/><TextBlock x:Name="CodexArrow3" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="#B7C4D6"/></StackPanel>
-              <StackPanel><Grid Width="80" Height="80"><Border x:Name="WorkerIconBackground" Width="80" Height="80" CornerRadius="40" Background="#98A5B5"/><Image x:Name="WorkerInactiveIcon" Source="Assets/current-console-gray.png" Width="68" Height="68" Stretch="Uniform" Visibility="Collapsed"/><Image x:Name="WorkerActiveIcon" Source="Assets/current-console.png" Width="68" Height="68" Stretch="Uniform"/></Grid><TextBlock x:Name="WorkerLabelText" Text="WORKER" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Green}" HorizontalAlignment="Center" Margin="0,24,0,0"/><TextBlock x:Name="WorkerStageText" Text="대기 중" FontSize="17" Foreground="{StaticResource Green}" HorizontalAlignment="Center"/></StackPanel>
-              <StackPanel x:Name="WorkerToWebArrow" Orientation="Horizontal" Margin="8,0" VerticalAlignment="Center"><TextBlock x:Name="WebArrow1" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="{StaticResource Blue}"/><TextBlock x:Name="WebArrow2" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="{StaticResource Blue}"/><TextBlock x:Name="WebArrow3" Text=">" FontSize="26" FontWeight="ExtraBold" Foreground="{StaticResource Blue}"/></StackPanel>
-              <StackPanel><Grid Width="80" Height="80"><Border x:Name="WebIconBackground" Width="80" Height="80" CornerRadius="40" Background="#98A5B5"/><Image x:Name="WebInactiveIcon" Source="Assets/current-web-gray.png" Width="68" Height="68" Stretch="Uniform" Visibility="Collapsed"/><Image x:Name="WebActiveIcon" Source="Assets/current-web.png" Width="68" Height="68" Stretch="Uniform"/></Grid><TextBlock x:Name="WebLabelText" Text="GPT WEB" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Blue}" HorizontalAlignment="Center" Margin="0,24,0,0"/><TextBlock x:Name="WebStageText" Text="대기 중" FontSize="17" Foreground="{StaticResource Blue}" HorizontalAlignment="Center"/></StackPanel>
+            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="20,0,0,0">
+              <StackPanel Width="132">
+                <Grid Width="100" Height="100" HorizontalAlignment="Center">
+                  <Border x:Name="LeftNodeBackground" Width="100" Height="100" CornerRadius="50" Background="#748598"/>
+                  <Border x:Name="LeftJudgeIconBorder" Width="100" Height="100" CornerRadius="50" Background="#7652B8" Visibility="Collapsed"/>
+                  <TextBlock x:Name="LeftJudgeIcon" Text="J" FontSize="45" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                  <Image x:Name="LeftCodexGrayIcon" Source="Assets/current-openai-gray.png" Width="84" Height="84" Stretch="Uniform"/>
+                  <Image x:Name="LeftCodexColorIcon" Source="Assets/current-openai.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="LeftWorkerGrayIcon" Source="Assets/current-console-gray.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="LeftWorkerColorIcon" Source="Assets/current-console.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="LeftWebGrayIcon" Source="Assets/current-web-gray.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="LeftWebColorIcon" Source="Assets/current-web.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                </Grid>
+                <TextBlock x:Name="FlowLeftLabel" Text="CODEX" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                <TextBlock x:Name="FlowLeftStage" Text="대기 중" FontSize="16" Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="14,0" VerticalAlignment="Center">
+                <TextBlock x:Name="FlowArrow1" Text="&gt;" FontSize="30" FontWeight="ExtraBold" Foreground="#96C6FD"/>
+                <TextBlock x:Name="FlowArrow2" Text="&gt;" FontSize="30" FontWeight="ExtraBold" Foreground="#96C6FD"/>
+                <TextBlock x:Name="FlowArrow3" Text="&gt;" FontSize="30" FontWeight="ExtraBold" Foreground="#96C6FD"/>
+              </StackPanel>
+              <StackPanel Width="132">
+                <Grid Width="100" Height="100" HorizontalAlignment="Center">
+                  <Border x:Name="RightNodeBackground" Width="100" Height="100" CornerRadius="50" Background="#748598"/>
+                  <Border x:Name="RightJudgeIconBorder" Width="100" Height="100" CornerRadius="50" Background="#7652B8" Visibility="Collapsed"/>
+                  <TextBlock x:Name="RightJudgeIcon" Text="J" FontSize="45" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                  <Image x:Name="RightCodexGrayIcon" Source="Assets/current-openai-gray.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="RightCodexColorIcon" Source="Assets/current-openai.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="RightWorkerGrayIcon" Source="Assets/current-console-gray.png" Width="84" Height="84" Stretch="Uniform"/>
+                  <Image x:Name="RightWorkerColorIcon" Source="Assets/current-console.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="RightWebGrayIcon" Source="Assets/current-web-gray.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="RightWebColorIcon" Source="Assets/current-web.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                </Grid>
+                <TextBlock x:Name="FlowRightLabel" Text="WORKER" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                <TextBlock x:Name="FlowRightStage" Text="대기 중" FontSize="16" Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
+              </StackPanel>
             </StackPanel>
+
           </Grid>
         </Border>
       </Grid>

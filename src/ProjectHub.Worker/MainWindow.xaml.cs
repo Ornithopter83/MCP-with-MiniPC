@@ -17,6 +17,7 @@ public partial class MainWindow : Window
 {
     private readonly Forms.NotifyIcon _trayIcon;
     private readonly CodexCliRunner _codexRunner = new();
+    private readonly JevJudgeRunner _jevJudgeRunner = new();
     private CancellationTokenSource? _activeTaskCts;
     private CodexCliResult? _lastCodexResult;
     private BridgeTask? _lastWebTask;
@@ -46,8 +47,10 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _jobWatchdogTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private int _flowFrame;
-    private bool _codexArrowActive;
-    private bool _webArrowActive;
+    private bool _pairArrowActive;
+    private bool _judgeReviewing;
+    private string _judgeStatus = "OFF";
+    private int _judgeRound;
     private bool _allowClose;
     private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
@@ -65,6 +68,7 @@ public partial class MainWindow : Window
     private bool _loadingCodexSelections;
     private static string WindowPlacementPath => Path.Combine(WorkerPaths.Config, "window-placement.json");
 
+    private enum FlowNode { Codex, Worker, Web, Judge }
     private enum WebActionKind { None, Begin, Continue, Pause, End, ProtocolError }
     private sealed record WebAction(WebActionKind Kind, string Body, string? Error = null);
     private sealed record CodexProjectOption(string Name, string Path);
@@ -251,26 +255,10 @@ public partial class MainWindow : Window
     }
     private void SetFlowState(bool codexActive, bool workerActive, bool webActive)
     {
-        CodexIconBackground.Background = codexActive ? System.Windows.Media.Brushes.MidnightBlue : System.Windows.Media.Brushes.SlateGray;
-        WorkerIconBackground.Background = workerActive ? System.Windows.Media.Brushes.SeaGreen : System.Windows.Media.Brushes.SlateGray;
-        WebIconBackground.Background = webActive ? System.Windows.Media.Brushes.RoyalBlue : System.Windows.Media.Brushes.SlateGray;
-        CodexLabelText.Foreground = codexActive ? System.Windows.Media.Brushes.MidnightBlue : System.Windows.Media.Brushes.SlateGray;
-        WorkerLabelText.Foreground = workerActive ? System.Windows.Media.Brushes.SeaGreen : System.Windows.Media.Brushes.SlateGray;
-        WebLabelText.Foreground = webActive ? System.Windows.Media.Brushes.RoyalBlue : System.Windows.Media.Brushes.SlateGray;
-        CodexStageText.Foreground = codexActive ? System.Windows.Media.Brushes.MidnightBlue : System.Windows.Media.Brushes.SlateGray;
-        WorkerStageText.Foreground = workerActive ? System.Windows.Media.Brushes.SeaGreen : System.Windows.Media.Brushes.SlateGray;
-        WebStageText.Foreground = webActive ? System.Windows.Media.Brushes.RoyalBlue : System.Windows.Media.Brushes.SlateGray;
-        CodexInactiveIcon.Visibility = codexActive ? Visibility.Collapsed : Visibility.Visible;
-        CodexStageText.Text = codexActive ? "실행 중" : "대기 중";
-        WorkerStageText.Text = workerActive ? (webActive ? "요청 전달 중" : "결과 처리 중") : "대기 중";
-        WebStageText.Text = webActive ? "응답 생성 중" : "대기 중";
-        CodexActiveIcon.Visibility = codexActive ? Visibility.Visible : Visibility.Collapsed;
-        WorkerInactiveIcon.Visibility = workerActive ? Visibility.Collapsed : Visibility.Visible;
-        WorkerActiveIcon.Visibility = workerActive ? Visibility.Visible : Visibility.Collapsed;
-        WebInactiveIcon.Visibility = webActive ? Visibility.Collapsed : Visibility.Visible;
-        WebActiveIcon.Visibility = webActive ? Visibility.Visible : Visibility.Collapsed;
-        _codexArrowActive = codexActive;
-        _webArrowActive = webActive;
+        var (left, right) = ResolveFlowPair();
+        SetFlowNode(left, isActive: IsNodeActive(left, codexActive, workerActive, webActive), isLeft: true);
+        SetFlowNode(right, isActive: IsNodeActive(right, codexActive, workerActive, webActive), isLeft: false);
+        _pairArrowActive = codexActive || workerActive || webActive;
         _flowFrame = 0;
         UpdateArrowAnimation();
         var running = codexActive || workerActive || webActive || _activeTaskCts is not null || _awaitingWebResult;
@@ -278,6 +266,65 @@ public partial class MainWindow : Window
         UpdatePanelLayout(running);
     }
 
+    private (FlowNode Left, FlowNode Right) ResolveFlowPair() => TaskDirection.Text switch
+    {
+        "WORKER → GPT WEB" => (FlowNode.Worker, FlowNode.Web),
+        "GPT WEB → WORKER" => (FlowNode.Web, FlowNode.Worker),
+        "GPT WEB → CODEX" => (FlowNode.Web, FlowNode.Codex),
+        "WORKER → JUDGE" => (FlowNode.Worker, FlowNode.Judge),
+        "JUDGE → CODEX" => (FlowNode.Judge, FlowNode.Codex),
+        _ => (FlowNode.Codex, FlowNode.Worker)
+    };
+
+    private bool IsNodeActive(FlowNode node, bool codexActive, bool workerActive, bool webActive) => node switch
+    {
+        FlowNode.Codex => codexActive,
+        FlowNode.Worker => workerActive,
+        FlowNode.Web => webActive,
+        FlowNode.Judge => _judgeReviewing,
+        _ => false
+    };
+
+    private void SetFlowNode(FlowNode node, bool isActive, bool isLeft)
+    {
+        var background = isLeft ? LeftNodeBackground : RightNodeBackground;
+        var codexGray = isLeft ? LeftCodexGrayIcon : RightCodexGrayIcon;
+        var codexColor = isLeft ? LeftCodexColorIcon : RightCodexColorIcon;
+        var workerGray = isLeft ? LeftWorkerGrayIcon : RightWorkerGrayIcon;
+        var workerColor = isLeft ? LeftWorkerColorIcon : RightWorkerColorIcon;
+        var webGray = isLeft ? LeftWebGrayIcon : RightWebGrayIcon;
+        var webColor = isLeft ? LeftWebColorIcon : RightWebColorIcon;
+        var judgeBorder = isLeft ? LeftJudgeIconBorder : RightJudgeIconBorder;
+        var judgeIcon = isLeft ? LeftJudgeIcon : RightJudgeIcon;
+        var label = isLeft ? FlowLeftLabel : FlowRightLabel;
+        var stage = isLeft ? FlowLeftStage : FlowRightStage;
+        SetNodeIcon(codexGray, codexColor, node == FlowNode.Codex, isActive);
+        SetNodeIcon(workerGray, workerColor, node == FlowNode.Worker, isActive);
+        SetNodeIcon(webGray, webColor, node == FlowNode.Web, isActive);
+        judgeBorder.Visibility = node == FlowNode.Judge ? Visibility.Visible : Visibility.Collapsed;
+        judgeIcon.Visibility = node == FlowNode.Judge ? Visibility.Visible : Visibility.Collapsed;
+        var (name, brush) = node switch
+        {
+            FlowNode.Codex => ("CODEX", System.Windows.Media.Brushes.MidnightBlue),
+            FlowNode.Worker => ("WORKER", System.Windows.Media.Brushes.SeaGreen),
+            FlowNode.Web => ("GPT WEB", System.Windows.Media.Brushes.RoyalBlue),
+            _ => ("JUDGE", System.Windows.Media.Brushes.DarkViolet)
+        };
+        background.Visibility = node == FlowNode.Judge ? Visibility.Collapsed : Visibility.Visible;
+        background.Background = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
+        judgeBorder.Background = isActive ? System.Windows.Media.Brushes.DarkViolet : System.Windows.Media.Brushes.SlateGray;
+        label.Text = name;
+        label.Foreground = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
+        stage.Text = isActive ? "진행 중" : "대기 중";
+        stage.Foreground = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
+        judgeIcon.Opacity = isActive ? 1 : 0.72;
+    }
+
+    private static void SetNodeIcon(System.Windows.Controls.Image gray, System.Windows.Controls.Image color, bool selected, bool active)
+    {
+        gray.Visibility = selected && !active ? Visibility.Visible : Visibility.Collapsed;
+        color.Visibility = selected && active ? Visibility.Visible : Visibility.Collapsed;
+    }
     private void UpdatePanelLayout(bool running)
     {
         if (running) _messageExpanded = true;
@@ -301,10 +348,17 @@ public partial class MainWindow : Window
     {
         var activeIndex = _flowFrame++ % 5;
         var opacities = new[] { 1.0, 0.32, 0.32 };
-        SetArrowFrame(new[] { CodexArrow1, CodexArrow2, CodexArrow3 }, _codexArrowActive, activeIndex, opacities);
-        SetArrowFrame(new[] { WebArrow1, WebArrow2, WebArrow3 }, _webArrowActive, activeIndex, opacities);
+        SetArrowFrame(new[] { FlowArrow1, FlowArrow2, FlowArrow3 }, _pairArrowActive, activeIndex, opacities);
+        UpdateJudgeVisual();
     }
-
+    private void UpdateJudgeVisual()
+    {
+        var enabled = _targetSettings.EffectiveJudge.Enabled;
+        JudgeFlowText.Text = _judgeStatus switch { "REVIEWING" => "JUDGE · REVIEWING", "FALLBACK" => "JUDGE · WEB FALLBACK", "READY" => "JUDGE · READY", _ => "JUDGE · OFF" };
+        JudgeFlowText.Foreground = _judgeReviewing ? System.Windows.Media.Brushes.DarkViolet : enabled ? System.Windows.Media.Brushes.SlateBlue : System.Windows.Media.Brushes.SlateGray;
+        JudgePulseDot.Fill = _judgeReviewing ? System.Windows.Media.Brushes.MediumPurple : enabled ? System.Windows.Media.Brushes.SlateBlue : System.Windows.Media.Brushes.SlateGray;
+        JudgePulseDot.Opacity = _judgeReviewing ? 0.45 + ((_flowFrame % 5) * 0.11) : 1;
+    }
     private static void SetArrowFrame(TextBlock[] arrows, bool active, int frame, double[] opacities)
     {
         var phase = active ? frame : -1;
@@ -378,6 +432,8 @@ public partial class MainWindow : Window
         _activeCliModel = cliModel;
         _activeReasoning = reasoning;
         AddTaskMessage("TASK START", BuildTaskStartInfo(cliModel, reasoning, workingDirectory, sessionId));
+        _judgeRound = 0;
+        _judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "READY" : "OFF";
         _webFollowupStarted = false;
         _commandUsage = CodexUsage.Empty;
         UpdateUsage(_commandUsage);
@@ -410,9 +466,7 @@ public partial class MainWindow : Window
 
             if (result.ExitCode == 0 && _bridgeServer is not null)
             {
-                var webPrompt = BuildWebPrompt(result, webInstruction, includeControlInstructions: true, includeWebInstruction: true);
-                var attachments = BuildWebAttachments(_bridgeServer, result.Files);
-                var task = await CreateWebTaskAsync(webPrompt, attachments, _initialGitReferenceHeader);
+                var task = await CreateReviewedWebTaskAsync(result, webInstruction, includeWebInstruction: true, gitReferenceHeader: _initialGitReferenceHeader, cancellationToken: cts.Token);
                 if (task is not null)
                 {
                     _awaitingWebResult = true;
@@ -458,6 +512,52 @@ public partial class MainWindow : Window
         return Task.FromResult(_bridgeServer?.CreateTaskForLatestBinding(prompt, attachments));
     }
 
+    private async Task<BridgeTask?> CreateReviewedWebTaskAsync(CodexCliResult result, string? webInstruction, bool includeWebInstruction, string? gitReferenceHeader, CancellationToken cancellationToken)
+    {
+        var prompt = BuildWebPrompt(result, webInstruction, includeControlInstructions: true, includeWebInstruction);
+        var judgeContext = await RunOptionalJudgeAsync(result, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(judgeContext))
+            prompt += Environment.NewLine + Environment.NewLine + judgeContext;
+        var attachments = _bridgeServer is null ? new List<BridgeAttachment>() : BuildWebAttachments(_bridgeServer, result.Files);
+        return await CreateWebTaskAsync(prompt, attachments, gitReferenceHeader);
+    }
+
+    private async Task<string?> RunOptionalJudgeAsync(CodexCliResult result, CancellationToken cancellationToken)
+    {
+        var settings = _targetSettings.EffectiveJudge;
+        if (!settings.Enabled) return null;
+
+        _judgeReviewing = true;
+        _judgeStatus = "REVIEWING";
+        TaskDirection.Text = "WORKER → JUDGE";
+        TaskTitle.Text = "Jev 중간 검토 준비 중";
+        SetFlowState(codexActive: false, workerActive: true, webActive: false);
+        AddTaskMessage("JUDGE STATUS", $"{settings.Provider} · REVIEWING · round {++_judgeRound}");
+
+        var reviewSource = _initialGitReferenceHeader?.Contains("[REVIEW_SOURCE=GIT]", StringComparison.Ordinal) == true ? "GIT" : "LOCAL";
+        var request = new JudgeRequest(_activePrompt ?? "Current task", _judgeRound,
+            _activeWorkingDirectory ?? AppContext.BaseDirectory,
+            string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage,
+            result.Files, reviewSource, _gitTarget?.HeadSha);
+        JudgeResult response;
+        try { response = await _jevJudgeRunner.ReviewAsync(request, settings, cancellationToken); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception exception) { response = new JudgeResult(JudgeDecision.Error, exception.Message, settings.Provider); }
+        finally { _judgeReviewing = false; }
+
+        if (response.Decision == JudgeDecision.Error)
+        {
+            _judgeStatus = "FALLBACK";
+            AddTaskMessage("JUDGE STATUS", $"{response.Provider} unavailable · GPT Web fallback");
+            AddTaskMessage("JUDGE", "[JUDGE=ERROR]" + Environment.NewLine + response.Message);
+            return "[JUDGE=ERROR]" + Environment.NewLine + response.Message;
+        }
+
+        _judgeStatus = "READY";
+        var decision = response.Decision.ToString().ToUpperInvariant();
+        AddTaskMessage("JUDGE", $"[JUDGE={decision}]{Environment.NewLine}{response.Message}");
+        return $"[JUDGE={decision}]{Environment.NewLine}{response.Message}";
+    }
     private static string BuildGitReferenceHeader(GitReviewCheckpoint checkpoint) =>
         checkpoint.ReviewCommitSha is null
             ? $"[REVIEW_SOURCE=LOCAL]{Environment.NewLine}[GIT_REFERENCE={checkpoint.SyncState}]"
@@ -721,12 +821,10 @@ public partial class MainWindow : Window
         var server = WorkerTargetConfiguration.ResolveServer(_targetSettings);
         _serverBaseUrl = server.Url;
         _serverBaseUrlSource = server.Source;
-
         var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var workingDirectory = ResolveWorkingDirectory(selected);
         _gitTarget = WorkerTargetConfiguration.ResolveGit(workingDirectory, _targetSettings);
         UpdateWorkingDirectoryControls(selected, workingDirectory);
-
         RepositoryUrlInput.Text = _targetSettings.ManualRepositoryUrl ?? _gitTarget.RepositoryUrl ?? string.Empty;
         ServerUrlInput.Text = _serverBaseUrl;
         TargetGitStateText.Text = _gitTarget.IsRepository
@@ -735,8 +833,27 @@ public partial class MainWindow : Window
         TargetPathText.Text = !string.IsNullOrWhiteSpace(selected?.SessionId) ? $"Codex ProjectPath: {selected.ProjectPath}" : $"New thread folder: {workingDirectory}";
         RepositoryNameText.Text = " · " + (_targetSettings.ManualRepositoryUrl ?? _gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
         TargetSettingsStatusText.Text = $"Server: {_serverBaseUrlSource}";
+        ApplyJudgeConfigurationToControls();
     }
 
+    private void ApplyJudgeConfigurationToControls()
+    {
+        var judge = _targetSettings.EffectiveJudge;
+        EnableJudgeCheckBox.IsChecked = judge.Enabled;
+        JudgeProviderCombo.SelectedIndex = 0;
+        JudgeExecutableInput.Text = judge.ManualExecutableOrEndpoint ?? string.Empty;
+        JudgeTimeoutInput.Text = judge.TimeoutSeconds.ToString();
+        JudgeSettingsStatusText.Text = judge.Enabled ? "Jev · optional fallback to GPT Web" : "Jev · OFF";
+        if (!_judgeReviewing) _judgeStatus = judge.Enabled ? "READY" : "OFF";
+        UpdateJudgeVisual();
+    }
+
+    private void AutoDetectJudge_Click(object sender, RoutedEventArgs e)
+    {
+        var detected = _jevJudgeRunner.FindExecutable(null);
+        JudgeExecutableInput.Text = detected ?? string.Empty;
+        JudgeSettingsStatusText.Text = detected is null ? "Jev not found · GPT Web fallback" : "Jev detected · execution adapter pending";
+    }
     private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
     {
         _targetSettings = _targetSettings with { ManualRepositoryUrl = null, ManualServerBaseUrl = null, RepositoryUrlSource = null, ServerBaseUrlSource = null, ManualWorkingDirectory = null };
@@ -751,21 +868,21 @@ public partial class MainWindow : Window
         var repository = string.IsNullOrWhiteSpace(RepositoryUrlInput.Text) ? null : RepositoryUrlInput.Text.Trim();
         var server = string.IsNullOrWhiteSpace(ServerUrlInput.Text) ? WorkerTargetConfiguration.DefaultServerBaseUrl : ServerUrlInput.Text.Trim();
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
-        var workingDirectory = string.IsNullOrWhiteSpace(selectedThread?.SessionId)
-            ? WorkingDirectoryInput.Text.Trim()
-            : _targetSettings.ManualWorkingDirectory;
+        var workingDirectory = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? WorkingDirectoryInput.Text.Trim() : _targetSettings.ManualWorkingDirectory;
         if (string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !Directory.Exists(workingDirectory))
         {
             WorkingDirectorySourceText.Text = "Choose an existing folder before applying settings.";
             return;
         }
+        var timeout = int.TryParse(JudgeTimeoutInput.Text, out var value) ? Math.Clamp(value, 10, 600) : 120;
+        var provider = GetSelectedContent(JudgeProviderCombo, "Jev").ToLowerInvariant();
+        var executable = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text) ? null : JudgeExecutableInput.Text.Trim();
         _targetSettings = _targetSettings with
         {
-            ManualRepositoryUrl = repository,
-            ManualServerBaseUrl = server,
-            RepositoryUrlSource = repository is null ? null : "MANUAL",
-            ServerBaseUrlSource = "MANUAL",
-            ManualWorkingDirectory = workingDirectory
+            ManualRepositoryUrl = repository, ManualServerBaseUrl = server,
+            RepositoryUrlSource = repository is null ? null : "MANUAL", ServerBaseUrlSource = "MANUAL",
+            ManualWorkingDirectory = workingDirectory,
+            Judge = new JudgeSettings(EnableJudgeCheckBox.IsChecked == true, provider, executable, timeout)
         };
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();
@@ -990,9 +1107,7 @@ public partial class MainWindow : Window
 
             if (result.ExitCode == 0 && (_actionProtocolEnabled || ShouldContinueRoundtrip(result)) && _bridgeServer is not null)
             {
-                var nextPrompt = BuildWebPrompt(result, _activeWebInstruction, includeControlInstructions: true, includeWebInstruction: false);
-                var nextAttachments = BuildWebAttachments(_bridgeServer, result.Files);
-                var nextTask = await CreateWebTaskAsync(nextPrompt, nextAttachments);
+                var nextTask = await CreateReviewedWebTaskAsync(result, _activeWebInstruction, includeWebInstruction: false, gitReferenceHeader: null, cancellationToken: cts.Token);
                 if (nextTask is not null)
                 {
                     _awaitingWebResult = true;

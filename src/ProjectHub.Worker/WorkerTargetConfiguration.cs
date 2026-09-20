@@ -5,13 +5,23 @@ using System.Text.Json.Serialization;
 
 namespace ProjectHub.Worker;
 
+public sealed record JudgeSettings(
+    [property: JsonPropertyName("enabled")] bool Enabled = false,
+    [property: JsonPropertyName("provider")] string Provider = "jev",
+    [property: JsonPropertyName("manualExecutableOrEndpoint")] string? ManualExecutableOrEndpoint = null,
+    [property: JsonPropertyName("timeoutSeconds")] int TimeoutSeconds = 120,
+    [property: JsonPropertyName("failurePolicy")] string FailurePolicy = "send_to_gpt_web");
+
 public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("manualRepositoryUrl")] string? ManualRepositoryUrl,
     [property: JsonPropertyName("manualServerBaseUrl")] string? ManualServerBaseUrl,
     [property: JsonPropertyName("repositoryUrlSource")] string? RepositoryUrlSource,
     [property: JsonPropertyName("serverBaseUrlSource")] string? ServerBaseUrlSource,
-    [property: JsonPropertyName("manualWorkingDirectory")] string? ManualWorkingDirectory = null);
-
+    [property: JsonPropertyName("manualWorkingDirectory")] string? ManualWorkingDirectory = null,
+    [property: JsonPropertyName("judge")] JudgeSettings? Judge = null)
+{
+    public JudgeSettings EffectiveJudge => Judge ?? new JudgeSettings();
+}
 public sealed record GitTargetSnapshot(
     string ProjectPath,
     string? RepositoryUrl,
