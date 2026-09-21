@@ -4506,3 +4506,360 @@ Judge가 제안한 수정은 반드시 Worker를 거쳐 Codex에게 전달한다
 ```
 
 핵심 완료 기준은 Jev를 추가하면서도 기존 Web ↔ Codex 경로가 필수조건으로 변하지 않는 것이다. Judge는 품질 검수를 위한 선택형 분기이며, 비활성화 또는 실패 시 항상 기존 안정화 경로로 되돌아갈 수 있어야 한다.
+
+
+---
+
+# 2026-09-21 JEV Contract Gate 분기 시스템 도입 피드백
+
+## 1. 기존 Optional Judge 설계 정정
+
+이전 피드백의 `JUDGE=PASS / REVISE / ESCALATE` 중심 설계를 이번 Contract Gate 기준으로 단순화한다.
+
+JEV와 Codex CLI는 서로 직접 통신하지 않는다.
+
+모든 메시지는 반드시 Worker가 먼저 수신하고 다음 목적지로 전달한다.
+
+```text
+GPT Web
+  ↓
+Worker
+  ↓
+Codex CLI
+  ↓
+Worker
+  ├─ WEB 분기 → GPT Web
+  └─ JEV 분기 → JEV
+                  ↓
+                Worker
+                  ↓
+             후속 목적지
+```
+
+Worker는 의미적 검증자가 아니라 **Message Router + Task State Holder**로 유지한다.
+
+## 2. JEV footer 계약 파일
+
+Worker 프로젝트 경로에 다음 계약 파일을 기준으로 둔다.
+
+```text
+src/ProjectHub.Worker/JEV-FOOTER-CONTRACT.md
+```
+
+Worker가 Codex CLI에 작업을 전달할 때 이 계약 내용을 footer로 붙일 수 있는 구조를 만든다.
+
+초기 구현에서는 계약 파일을 코드에 하드코딩해서 복제하지 말고 파일을 기준 원본으로 삼는다.
+
+단일 파일 publish 단계에서 필요하면 EmbeddedResource로 포함한 뒤 런타임에서 읽는 방법을 사용한다.
+
+## 3. 계약은 Variable Contract + Fixed Contract로 분리
+
+### Variable Contract
+
+Codex CLI가 현재 결과에 대해 JEV 검증이 필요하다고 판단했을 때 검증 요청을 정의한다.
+
+지원 타입은 세 가지로 한정한다.
+
+```text
+NOUL
+- YES/NO 확률 판정
+- 질문 + threshold
+- 예: YES >= 0.90
+
+SCORE
+- 단계/수치형 평가
+- 척도 정의 + threshold
+- 예: SCORE <= 2.0
+
+CHOICE
+- 의미적 상태 분류
+- 선택지 정의 + 허용값
+- 예: EXPECTED 또는 MINOR
+```
+
+질문과 문턱값은 Task마다 바뀔 수 있다.
+
+Worker는 질문의 의미를 이해하거나 자체 평가하지 않는다.
+
+### Fixed Contract
+
+Codex CLI 응답의 첫 유효행은 반드시 둘 중 하나다.
+
+```text
+[NEXT : WEB]
+[NEXT : JEV]
+```
+
+`[NEXT : WEB]`이면 다음에 `[REPORT]`를 작성한다.
+
+```text
+[NEXT : WEB]
+
+[REPORT]
+
+수행 내용:
+- ...
+
+변경 사항:
+- ...
+
+검증 결과:
+- ...
+
+남은 사항:
+- ...
+```
+
+Worker는 이를 그대로 GPT Web 전달 경로로 보낸다.
+
+`[NEXT : JEV]`이면 다음에 `[VALIDATION REQUEST]`만 작성한다.
+
+```text
+[NEXT : JEV]
+
+[VALIDATION REQUEST]
+
+- NOUL | ... | PASS: ...
+- SCORE | ... | PASS: ...
+- CHOICE | ... | PASS: ...
+```
+
+이 경우 보고서나 장문의 자체평가를 붙이지 않는다.
+
+Worker는 이를 JEV 호출 입력으로 전달한다.
+
+## 4. Worker의 책임 범위
+
+Worker가 해야 할 일:
+
+```text
+1. Codex CLI 작업 지시에 JEV footer 계약 추가
+2. CLI 응답 수신
+3. 첫 유효행의 NEXT 태그 파싱
+4. [NEXT : WEB] → 기존 GPT Web 전달
+5. [NEXT : JEV] → VALIDATION REQUEST를 JEV로 전달
+6. JEV 응답 수신
+7. Task 상태에 기록
+8. 정의된 후속 목적지로 다시 전달
+9. MESSAGE LOG에 각 hop 기록
+```
+
+Worker가 하지 않을 일:
+
+```text
+- 요구사항 충족 여부 자체 판단
+- 소스코드 의미 분석
+- build/test 결과 자체 추론
+- JEV 대신 threshold 의미 판단
+- Codex와 JEV 사이의 직접 통신 허용
+```
+
+JEV API 응답의 구조화된 숫자/choice와 계약 threshold의 **기계적 비교**만 허용한다.
+
+## 5. JEV 호출 데이터
+
+JEV 호출 시 최소한 다음 두 정보를 함께 전달한다.
+
+```text
+1. Codex CLI가 반환한 현재 결과/문맥
+2. [VALIDATION REQUEST]에 정의된 검증 항목
+```
+
+필요하다면 원래 Task 지시도 state에 함께 포함할 수 있지만 Worker가 내용을 요약하거나 재해석하지 않는다.
+
+JEV API Key는 사용자 환경변수 `TYPESAFE_API_KEY`에서만 읽는다.
+
+키 원문을 설정 파일, 로그, transcript, Git에 기록하지 않는다.
+
+## 6. JEV 결과 이후 분기
+
+초기 v1에서는 복잡한 자유형 Judge protocol을 만들지 않는다.
+
+각 VARIABLE CHECK의 PASS 조건을 기계적으로 비교한다.
+
+기본 정책:
+
+```text
+모든 요청 검증 PASS
+→ Worker → GPT Web
+
+하나 이상 FAIL
+→ Worker → Codex CLI
+
+JEV 호출 실패 / 응답 파싱 불가 / 판단 불확실
+→ Worker → GPT Web
+```
+
+FAIL 시 Worker가 Codex에 전달할 내용은 실패한 검증 항목과 실제 JEV 결과로 제한한다.
+
+예:
+
+```text
+[JEV VALIDATION FAILED]
+
+NOUL | 요구사항을 충족했는가?
+Expected: YES >= 0.90
+Actual: YES 0.71
+
+SCORE | 범위 이탈 정도
+Expected: SCORE <= 2.0
+Actual: 3.4
+
+위 검증 실패를 해소한 뒤 다시 최종 응답을 제출하라.
+```
+
+이 후속 메시지도:
+
+```text
+JEV → Worker → Codex CLI
+```
+
+순서를 반드시 지킨다.
+
+## 7. JEV는 선택 기능
+
+JEV는 ProjectHub Worker 실행의 필수조건이 아니다.
+
+```text
+Judge OFF
+→ 기존 GPT Web ↔ Worker ↔ Codex CLI 경로 그대로 유지
+
+Judge ON
+→ [NEXT : JEV]가 있을 때만 JEV 호출
+```
+
+Judge ON이라고 해서 모든 Codex 결과를 무조건 JEV에 보내지 않는다.
+
+Codex가 `[NEXT : WEB]`을 반환하면 바로 Web 경로를 사용한다.
+
+즉 JEV 사용 여부는 **Task footer 계약 아래에서 CLI가 요청하는 선택형 검증 분기**다.
+
+## 8. 반복 제한
+
+JEV FAIL → Codex 수정 → 다시 JEV 요청이 반복될 수 있으므로 Worker가 횟수만 관리한다.
+
+권장 초기값:
+
+```text
+MAX_JEV_VALIDATION_ROUNDS = 3
+```
+
+상한을 넘으면 의미 판단 없이 GPT Web으로 올린다.
+
+```text
+JEV_RETRY_LIMIT
+→ Worker → GPT Web
+```
+
+Web 관리자가 이후 ACTION을 결정한다.
+
+## 9. 기존 ACTION 프로토콜과 관계
+
+GPT Web의 기존:
+
+```text
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+```
+
+프로토콜은 그대로 유지한다.
+
+NEXT 계약과 ACTION 계약의 역할은 다르다.
+
+```text
+NEXT
+= Codex 결과를 Worker가 다음 어디로 전달할지 지정
+
+ACTION
+= GPT Web이 Worker에게 다음 작업 상태를 지시
+```
+
+둘을 하나의 parser나 enum으로 섞지 않는다.
+
+## 10. 첫 구현 범위
+
+이번 단계에서는 범용 Multi-AI workflow engine을 만들지 않는다.
+
+필요한 최소 범위:
+
+```text
+- JEV-FOOTER-CONTRACT.md 로드
+- CLI prompt footer 삽입
+- NEXT parser
+- VALIDATION REQUEST parser
+- TypeSafe JEV HTTP adapter
+- TYPESAFE_API_KEY 환경변수 사용
+- NOUL / SCORE / CHOICE 요청 생성
+- threshold 비교
+- WEB / CLI 후속 routing
+- retry limit
+- MESSAGE LOG 기록
+```
+
+현재 `JevJudgeRunner.cs` scaffold는 이 Contract Gate 방식에 맞게 수정한다.
+
+기존의 `JudgeDecision PASS/REVISE/ESCALATE`가 새 계약과 충돌한다면 호환을 억지로 유지하지 말고 NEXT + validation result 중심으로 정리한다.
+
+## 11. 첫 검증 시나리오
+
+TETRIS 같은 작은 코드 변경으로 다음만 먼저 확인한다.
+
+```text
+Case A
+Codex → Worker
+[NEXT : WEB]
+→ GPT Web 정상 전달
+
+Case B
+Codex → Worker
+[NEXT : JEV]
+NOUL 검증 PASS
+→ JEV → Worker → GPT Web
+
+Case C
+Codex → Worker
+[NEXT : JEV]
+NOUL/SCORE/CHOICE 중 하나 FAIL
+→ JEV → Worker → 동일 Codex session
+→ Codex 재작업
+→ Worker
+→ JEV 재검증
+→ PASS
+→ Worker → GPT Web
+
+Case D
+JEV API timeout/error
+→ Worker → GPT Web fallback
+
+Case E
+Judge OFF
+→ 기존 Web/Codex E2E 회귀 없음
+```
+
+## 12. 완료 기준
+
+```text
+[ ] JEV footer 계약 파일이 Worker 프로젝트에 존재
+[ ] Worker가 CLI 요청에 footer를 붙일 수 있음
+[ ] 첫 유효행 [NEXT : WEB] 파싱
+[ ] 첫 유효행 [NEXT : JEV] 파싱
+[ ] WEB 선택 시 REPORT 포함
+[ ] JEV 선택 시 VALIDATION REQUEST만 사용
+[ ] NOUL 질문 + threshold 지원
+[ ] SCORE 척도 + threshold 지원
+[ ] CHOICE 선택지 + 허용값 지원
+[ ] 모든 통신이 Worker를 경유
+[ ] JEV와 Codex의 직접 통신 없음
+[ ] TYPESAFE_API_KEY를 환경변수에서만 읽음
+[ ] API key 로그/파일/Git 기록 없음
+[ ] JEV PASS → Worker → Web
+[ ] JEV FAIL → Worker → Codex
+[ ] JEV error/uncertain → Worker → Web
+[ ] JEV retry 상한 존재
+[ ] Judge OFF 기존 흐름 유지
+[ ] 기존 GPT Web ACTION protocol 유지
+[ ] 실제 Judge ON/OFF E2E 검증
+```
+
+핵심은 **Worker가 AI처럼 관측·판단하도록 확장하는 것이 아니라, Codex가 선택한 NEXT 계약과 JEV의 구조화 결과를 받아 모든 메시지를 정확한 다음 목적지로 전달하는 분기 허브가 되는 것**이다.
