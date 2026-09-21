@@ -2,6 +2,8 @@
 
 Updated: 2026-09-21
 
+2026-09-21 Worker UI 높이 점검 및 축소: `MainWindow.xaml`의 초기 창 높이가 1260px로 1080px을 초과하고 최소 높이도 1100px로 제한되어 있음을 확인했다. 초기 높이를 1050px, 최소 높이를 900px로 조정해 1080px 화면에서도 전체 UI를 표시할 수 있도록 했다. 검증: XAML 변경 후 `dotnet build ProjectHub.sln --configuration Debug --no-restore`.
+
 2026-09-21 최신 원격 동기화: 로컬 변경은 `codex-preserve-before-latest-sync` stash로 보존하고 `origin/main`의 `ce5e93f`까지 `pull --rebase`로 적용했다. 프로젝트 정책상 `reset/checkout`은 수행하지 않았다. CMD와 Setup이 PowerShell 실행 엔진을 저장소 기준 상대 경로 `.\bin\...`로 참조하도록 정리했으며, 루트 `bin`에 모든 `ProjectHub_*.ps1` 엔진이 존재하고 CMD 대상 검사를 통과했다.
 
 2026-09-21 프로젝트 루트 기준 경로 보완: Commit_Push/Fetch_Pull/Force_Restore/Sync 내부 엔진 참조도 `$PSScriptRoot` 기준이 아니라 전달된 프로젝트 루트의 `bin`을 기준으로 해석하도록 변경했다. 따라서 엔진이 `bin`에서 실행되거나 다른 위치에서 호출되어도 대상 프로젝트의 `bin`을 사용한다. 루트·`bin` PowerShell 전체 구문 검사와 `git diff --check`를 통과했다.
