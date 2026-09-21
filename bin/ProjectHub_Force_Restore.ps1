@@ -97,8 +97,7 @@ try {
     New-Item -ItemType Directory -Path $restoredConfigDir -Force | Out-Null
     if (Test-Path -LiteralPath (Join-Path $backupConfig 'project.json')) { Copy-Item -LiteralPath (Join-Path $backupConfig 'project.json') -Destination (Join-Path $restoredConfigDir 'project.json') -Force }
     Get-ChildItem -LiteralPath $backupCmd -File -Force | Copy-Item -Destination $gitRoot -Force
-    $restoredBin = Join-Path $gitRoot 'ProjectHub\bin'
-    if (-not (Test-Path -LiteralPath $restoredBin)) { $restoredBin = Join-Path $gitRoot 'bin' }
+    $restoredBin = Join-Path $gitRoot 'bin'
     New-Item -ItemType Directory -Path $restoredBin -Force | Out-Null
     if (Test-Path -LiteralPath $backupBin) { Get-ChildItem -LiteralPath $backupBin -File -Force | Copy-Item -Destination $restoredBin -Force }
 

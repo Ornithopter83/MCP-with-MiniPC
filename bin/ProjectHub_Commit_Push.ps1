@@ -40,7 +40,7 @@ Invoke-Git @('fetch', '--all', '--prune')
 Invoke-Git @('pull', '--rebase')
 Invoke-Git @('push', 'origin', $branch)
 
-$syncScript = Join-Path $PSScriptRoot 'ProjectHub_Sync.ps1'
+$syncScript = Join-Path $script:GitRoot 'bin\ProjectHub_Sync.ps1'
 if (-not (Test-Path -LiteralPath $syncScript)) { throw "Sync engine was not found: $syncScript" }
 Write-Host 'Running ProjectHub Sync and large-data checkpoint.'
 & $syncScript -ProjectPath $script:GitRoot @SyncArguments

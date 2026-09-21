@@ -35,7 +35,7 @@ Write-Host "Branch: $branch"
 Invoke-Git @('fetch', '--all', '--prune')
 Invoke-Git @('pull', '--rebase')
 
-$restoreScript = Join-Path $PSScriptRoot 'ProjectHub_Restore.ps1'
+$restoreScript = Join-Path $script:GitRoot 'bin\ProjectHub_Restore.ps1'
 if (-not (Test-Path -LiteralPath $restoreScript)) { throw "Restore engine was not found: $restoreScript" }
 Write-Host 'Running ProjectHub Restore.'
 & $restoreScript -ProjectRoot $script:GitRoot @RestoreArguments

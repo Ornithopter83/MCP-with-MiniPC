@@ -1,4 +1,6 @@
 **/bin/
+!/bin/
+!/bin/*.ps1
 **/obj/
 .vs/
 .idea/

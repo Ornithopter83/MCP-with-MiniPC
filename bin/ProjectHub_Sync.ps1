@@ -20,7 +20,7 @@ if (Test-Path -LiteralPath $projectConfigPath) {
     if ($GatewayUrl -eq 'https://dfblackbox-nas.duckdns.org:8443/projecthub/' -and $projectConfig.gatewayUrl) { $GatewayUrl = [string]$projectConfig.gatewayUrl }
 }
 if (-not $ProjectId -or -not $WorkstationId) { throw 'ProjectId and WorkstationId are required or must be present in .projecthub/project.json.' }
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = Join-Path $ProjectPath 'bin'
 $thresholdMatch = [regex]::Match($ThresholdBytes.Trim(), '^(\d+)(B|KB|MB|GB|TB)?$', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
 if (-not $thresholdMatch.Success) { throw "ThresholdBytes must be bytes or a value such as 500MB or 1GB." }
 $threshold = [decimal]$thresholdMatch.Groups[1].Value
