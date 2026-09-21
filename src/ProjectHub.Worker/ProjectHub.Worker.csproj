@@ -31,6 +31,8 @@
     <Resource Include="Assets\current-openai-gray.png" />
     <Resource Include="Assets\current-console-gray.png" />
     <Resource Include="Assets\current-web-gray.png" />
+    <Resource Include="Assets\current-jev.png" />
+    <Resource Include="Assets\current-jev-gray.png" />
     <Content Include="Assets\worker-icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

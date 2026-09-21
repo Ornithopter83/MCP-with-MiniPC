@@ -904,3 +904,58 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 - 현재 저장소에는 TypeSafe/JEV provider의 실제 실행 계약(endpoint payload/response)이 제공되지 않았으므로 외부 호출을 추측해 추가하지 않았다. `JevJudgeRunner`는 provider가 구성되지 않은 경우 안전한 fallback을 반환한다.
 
 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(5개), `node --check extension/gptweb-hub/content.js` 성공, `git diff --check` 재실행 예정.
+
+## 2026-09-21 JEV API Contract v1 일괄 구현
+
+동기화된 `GPT-Web-Feedback.md`, `JEV-FOOTER-CONTRACT.md`, `JEV-API-CONTRACT.md`를 기준으로 JEV scaffold를 실제 계약 흐름으로 확장했다.
+
+- `JevJudgeRunner`가 공식 `https://api.typesafe.ai/v1/systemone`에 `jev-latest`, 원문 task/Codex 결과 state, typed questions를 전송한다.
+- API key는 `TYPESAFE_API_KEY` 환경변수에서만 읽고 로그·설정·transcript에 남기지 않는다. 키가 없으면 호출하지 않고 Web fallback한다.
+- NOUL/SCORE/CHOICE typed parser를 추가하고 SCORE threshold를 1-based footer 기준에서 0-based API 기준으로 정규화해 기계 비교한다.
+- question ID 누락, type 불일치, 값 범위 오류, invalid choice, malformed contract와 API 오류는 PASS/FAIL을 추측하지 않고 ERROR fallback한다.
+- JEV FAIL은 실패 계약과 실제 결과만 같은 Codex session에 전달하며, PASS는 즉시 Web로 보내지 않고 Codex에 `[NEXT : WEB]` 보고서 생성을 요청한 뒤 Web로 전달한다.
+- Web ACTION 흐름과 Judge OFF 흐름은 유지한다. JEV retry count는 Web→Codex 라운드마다 초기화하며 JEV validation은 최대 3회다.
+
+검증: Debug build 성공(경고 0, 오류 0), 기존 테스트 5개 통과, `node --check extension/gptweb-hub/content.js` 통과, `git diff --check` 통과. 현재 실행 환경에는 `TYPESAFE_API_KEY`가 없어 실제 API smoke test는 호출하지 않았다.
+
+## 2026-09-21 JEV 아이콘 자산 반영
+
+첨부된 `JEV이미지.png`를 `current-jev.png`로 등록하고, 투명 alpha를 유지한 `current-jev-gray.png`를 생성했다. Current Task의 JEV 노드는 활성 시 컬러, 대기 시 그레이스케일 아이콘을 사용하며 기존 원형 문자 아이콘과 보라색 배경은 제거했다. 원본 모서리 alpha가 0인 투명 PNG여서 별도 배경색은 추가하지 않았다.
+
+검증: Debug build 성공(경고 0, 오류 0).
+
+# CURRENT AUTHORITATIVE STATUS — 2026-09-22
+
+단기 목표는 **JEV를 통한 AI 분기가 Worker에서 예측 가능하게 완료되는 것**이다. 과거의 scaffold/adapter pending 문장은 당시 상태를 기록한 이력이며 현재 판단 기준으로 사용하지 않는다.
+
+## 단기 목표와 현재 흐름
+
+```text
+Codex CLI → Worker
+  [NEXT : WEB] → Worker → GPT Web
+  [NEXT : JEV] → Worker → TypeSafe JEV → Worker
+      ALL PASS → 같은 Codex session에 [NEXT : WEB] 보고서 생성 요청 → Worker → GPT Web
+      ANY FAIL → 같은 Codex session에 실패 계약/실제 결과만 전달 → 재작업 → JEV 재검증
+      ERROR/timeout/invalid → 원래 Codex 결과와 짧은 오류를 Worker → GPT Web fallback
+```
+
+Worker는 의미 판단을 하지 않고 첫 NEXT 행, typed validation, JEV 구조화 응답의 기계적 비교와 hop 전달만 담당한다. GPT Web의 ACTION 프로토콜과 JEV의 NEXT 프로토콜은 서로 다른 parser로 유지한다.
+
+## 현재 구현 상태
+
+- `JEV-FOOTER-CONTRACT.md`를 임베디드 리소스로 Codex prompt에 주입한다.
+- `[NEXT : WEB]`/`[NEXT : JEV]` 첫 유효행 parser와 `[VALIDATION REQUEST]` typed parser가 있다.
+- NOUL/SCORE/CHOICE 질문을 `C1...` map으로 구성하고, SCORE는 1-based footer threshold를 JEV 0-based 기준으로 정규화한다.
+- 공식 TypeSafe endpoint와 `TYPESAFE_API_KEY` Bearer 인증 adapter가 있다. 키가 없으면 호출하지 않고 Web fallback한다.
+- JEV 응답의 answers 누락, ID 누락, type mismatch, 값 범위 오류, invalid choice는 PASS/FAIL로 추측하지 않고 ERROR fallback한다.
+- JEV PASS는 Web로 직접 보내지 않고 같은 Codex session에서 `[NEXT : WEB]` + `[REPORT]`를 생성한 뒤 Web로 보낸다.
+- JEV FAIL은 최대 3회까지 같은 Codex session으로 되돌리며, Web→Codex 새 라운드마다 validation count를 초기화한다.
+- JEV 활성/대기 아이콘은 첨부 PNG의 컬러/투명 alpha와 생성된 grayscale 자산을 사용한다.
+
+## 남은 단기 검증
+
+1. `TYPESAFE_API_KEY`가 설정된 환경에서 실제 API smoke test 1회.
+2. Explorer 실행본에서 Judge OFF, `[NEXT : WEB]`, JEV PASS, JEV FAIL 재작업, API error fallback의 순서 확인.
+3. 실제 화면 검증 후 문서의 검증 결과를 갱신한다.
+
+보안 규칙: API key는 소스·설정·로그·transcript·Git에 기록하지 않는다. 실제 smoke test 결과에도 키 원문을 남기지 않는다.

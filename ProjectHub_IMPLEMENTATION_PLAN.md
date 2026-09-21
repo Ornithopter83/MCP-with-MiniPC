@@ -455,3 +455,33 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 ## 2026-09-21 Contract Gate 반영
 
 JEV Contract Gate의 고정 NEXT 라우팅과 임베디드 footer 틀을 Worker에 반영했다. 실제 provider adapter는 별도 계약과 승인된 endpoint가 확보된 뒤 연결하며, 그 전까지는 GPT Web fallback을 사용한다. 중간검증 없이 구현을 진행한 이번 변경의 최종 검증은 CurrentWork.md에 기록한다.
+
+## 2026-09-21 JEV API Contract v1 반영
+
+원격에 추가된 `JEV-API-CONTRACT.md`를 기준으로 실제 TypeSafe HTTP adapter, validation parser, structured answer mechanical evaluator, PASS 후 Codex report hop을 구현했다. 실제 API smoke test와 Explorer Judge ON/OFF E2E는 `TYPESAFE_API_KEY` 및 실행 환경 준비 후 남은 검증 항목이다.
+
+## 단기 목표 — JEV AI 분기 안정화 (2026-09-22)
+
+현재 우선순위는 UI 확장이나 범용 workflow engine이 아니라 Worker가 JEV 계약을 통해 Codex 결과를 정확히 분기하는 것이다.
+
+완료된 구현:
+
+- footer 임베딩 및 Codex prompt 주입
+- 첫 유효 NEXT parser와 typed NOUL/SCORE/CHOICE parser
+- TypeSafe `/v1/systemone` HTTP adapter와 환경변수 인증
+- 구조화 응답의 기계적 threshold/allowed-choice 판정
+- PASS 후 Codex 보고서 생성, FAIL 후 동일 session 재작업, 오류 fallback
+- Judge OFF 기존 흐름 보존
+- JEV 컬러/그레이스케일 아이콘 자산 반영
+
+남은 검증:
+
+- API key가 있는 환경에서 실제 smoke test
+- Explorer 화면 기준 Judge OFF/WEB/JEV PASS/JEV FAIL/error fallback E2E
+
+기준 문서:
+
+- `GPT-Web-Feedback.md`: 최신 제품 피드백
+- `src/ProjectHub.Worker/JEV-FOOTER-CONTRACT.md`: Codex footer 및 NEXT 계약
+- `src/ProjectHub.Worker/JEV-API-CONTRACT.md`: TypeSafe API request/response 계약
+- `CurrentWork.md`의 `CURRENT AUTHORITATIVE STATUS`: 현재 구현과 잔여 검증의 단일 요약

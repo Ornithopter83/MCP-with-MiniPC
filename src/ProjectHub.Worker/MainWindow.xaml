@@ -227,8 +227,8 @@
               <StackPanel Width="132">
                 <Grid Width="100" Height="100" HorizontalAlignment="Center">
                   <Border x:Name="LeftNodeBackground" Width="100" Height="100" CornerRadius="50" Background="#748598"/>
-                  <Border x:Name="LeftJudgeIconBorder" Width="100" Height="100" CornerRadius="50" Background="#7652B8" Visibility="Collapsed"/>
-                  <TextBlock x:Name="LeftJudgeIcon" Text="J" FontSize="45" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                  <Image x:Name="LeftJudgeGrayIcon" Source="Assets/current-jev-gray.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="LeftJudgeColorIcon" Source="Assets/current-jev.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
                   <Image x:Name="LeftCodexGrayIcon" Source="Assets/current-openai-gray.png" Width="84" Height="84" Stretch="Uniform"/>
                   <Image x:Name="LeftCodexColorIcon" Source="Assets/current-openai.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
                   <Image x:Name="LeftWorkerGrayIcon" Source="Assets/current-console-gray.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
@@ -247,8 +247,8 @@
               <StackPanel Width="132">
                 <Grid Width="100" Height="100" HorizontalAlignment="Center">
                   <Border x:Name="RightNodeBackground" Width="100" Height="100" CornerRadius="50" Background="#748598"/>
-                  <Border x:Name="RightJudgeIconBorder" Width="100" Height="100" CornerRadius="50" Background="#7652B8" Visibility="Collapsed"/>
-                  <TextBlock x:Name="RightJudgeIcon" Text="J" FontSize="45" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                  <Image x:Name="RightJudgeGrayIcon" Source="Assets/current-jev-gray.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
+                  <Image x:Name="RightJudgeColorIcon" Source="Assets/current-jev.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
                   <Image x:Name="RightCodexGrayIcon" Source="Assets/current-openai-gray.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
                   <Image x:Name="RightCodexColorIcon" Source="Assets/current-openai.png" Width="84" Height="84" Stretch="Uniform" Visibility="Collapsed"/>
                   <Image x:Name="RightWorkerGrayIcon" Source="Assets/current-console-gray.png" Width="84" Height="84" Stretch="Uniform"/>

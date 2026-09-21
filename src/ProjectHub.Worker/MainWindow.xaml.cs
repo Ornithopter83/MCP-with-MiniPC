@@ -294,15 +294,15 @@ public partial class MainWindow : Window
         var workerColor = isLeft ? LeftWorkerColorIcon : RightWorkerColorIcon;
         var webGray = isLeft ? LeftWebGrayIcon : RightWebGrayIcon;
         var webColor = isLeft ? LeftWebColorIcon : RightWebColorIcon;
-        var judgeBorder = isLeft ? LeftJudgeIconBorder : RightJudgeIconBorder;
-        var judgeIcon = isLeft ? LeftJudgeIcon : RightJudgeIcon;
+        var judgeGray = isLeft ? LeftJudgeGrayIcon : RightJudgeGrayIcon;
+        var judgeColor = isLeft ? LeftJudgeColorIcon : RightJudgeColorIcon;
         var label = isLeft ? FlowLeftLabel : FlowRightLabel;
         var stage = isLeft ? FlowLeftStage : FlowRightStage;
         SetNodeIcon(codexGray, codexColor, node == FlowNode.Codex, isActive);
         SetNodeIcon(workerGray, workerColor, node == FlowNode.Worker, isActive);
         SetNodeIcon(webGray, webColor, node == FlowNode.Web, isActive);
-        judgeBorder.Visibility = node == FlowNode.Judge ? Visibility.Visible : Visibility.Collapsed;
-        judgeIcon.Visibility = node == FlowNode.Judge ? Visibility.Visible : Visibility.Collapsed;
+        judgeGray.Visibility = node == FlowNode.Judge && !isActive ? Visibility.Visible : Visibility.Collapsed;
+        judgeColor.Visibility = node == FlowNode.Judge && isActive ? Visibility.Visible : Visibility.Collapsed;
         var (name, brush) = node switch
         {
             FlowNode.Codex => ("CODEX", System.Windows.Media.Brushes.MidnightBlue),
@@ -312,12 +312,12 @@ public partial class MainWindow : Window
         };
         background.Visibility = node == FlowNode.Judge ? Visibility.Collapsed : Visibility.Visible;
         background.Background = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
-        judgeBorder.Background = isActive ? System.Windows.Media.Brushes.DarkViolet : System.Windows.Media.Brushes.SlateGray;
         label.Text = name;
         label.Foreground = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
         stage.Text = isActive ? "진행 중" : "대기 중";
         stage.Foreground = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
-        judgeIcon.Opacity = isActive ? 1 : 0.72;
+        judgeGray.Opacity = 0.72;
+        judgeColor.Opacity = 1;
     }
 
     private static void SetNodeIcon(System.Windows.Controls.Image gray, System.Windows.Controls.Image color, bool selected, bool active)
@@ -557,10 +557,24 @@ public partial class MainWindow : Window
                     UpdateUsage(_commandUsage);
                     return await RouteCodexResultAsync(retry, webInstruction, includeWebInstruction, gitReferenceHeader, cancellationToken);
                 }
-                if (judgment.Decision == JudgeDecision.Pass)
-                    report = directive.Body + Environment.NewLine + Environment.NewLine + "[JEV PASS]" + Environment.NewLine + judgment.Message;
-                else
-                    AddTaskMessage("JEV", "[JEV FALLBACK] GPT Web로 전달합니다.");
+                                if (judgment.Decision == JudgeDecision.Pass)
+                {
+                    _judgeRound = 0;
+                    var reportPrompt = AppendJevFooter("[JEV VALIDATION PASSED]" + Environment.NewLine + Environment.NewLine + "요청한 JEV 검증이 모두 통과했다. 추가 구현이나 변경은 하지 말고 현재 작업 상태를 기준으로 [NEXT : WEB]으로 시작하는 [REPORT]를 작성하라.");
+                    AddTaskMessage("JEV -> CODEX", reportPrompt);
+                    TaskDirection.Text = "JEV → CODEX";
+                    TaskTitle.Text = "JEV 통과 · Codex 보고서 생성 중";
+                    SetFlowState(true, true, false);
+                    var reportResult = await _codexRunner.RunAsync(reportPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken);
+                    _activeSessionId = reportResult.SessionId ?? _activeSessionId;
+                    _lastCodexResult = reportResult;
+                    AddCliRoundStatus(reportResult);
+                    CodexThreadArchive.Save(reportResult, reportPrompt, _activeWorkingDirectory!);
+                    _commandUsage = _commandUsage.Add(reportResult.Usage);
+                    UpdateUsage(_commandUsage);
+                    return await RouteCodexResultAsync(reportResult, webInstruction, includeWebInstruction, gitReferenceHeader, cancellationToken);
+                }
+                AddTaskMessage("JEV", "[JEV FALLBACK] GPT Web로 전달합니다.");
             }
         }
         else if (judgeEnabled && directive.Route == NextRoute.Invalid)
@@ -1107,6 +1121,7 @@ public partial class MainWindow : Window
         {
             followupPrompt = "GPT Web 응답을 전달합니다. 원래 작업을 계속 수행해줘." + Environment.NewLine + "작업이 완전히 끝났으면 응답 첫 줄을 [WORKER_DONE]로 시작해줘. 아직 다음 단계가 필요하면 GPT Web에 보낼 다음 요청만 출력해줘." + Environment.NewLine + Environment.NewLine + webResponse;
         }
+        _judgeRound = 0;
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         _awaitingWebResult = false;
