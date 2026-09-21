@@ -4863,3 +4863,477 @@ Judge OFF
 ```
 
 핵심은 **Worker가 AI처럼 관측·판단하도록 확장하는 것이 아니라, Codex가 선택한 NEXT 계약과 JEV의 구조화 결과를 받아 모든 메시지를 정확한 다음 목적지로 전달하는 분기 허브가 되는 것**이다.
+
+
+---
+
+# 2026-09-21 JEV Contract Gate 본 구현 진행 피드백
+
+## 1. 중간 구현 확인 결과
+
+최신 커밋 `7f61afc12588499ba5c3c1f9776bcf738c29c06a`의 JEV Contract Gate 중간 구현을 확인했다.
+
+현재까지 다음 뼈대는 적절하게 반영됐다.
+
+```text
+- JEV-FOOTER-CONTRACT.md를 EmbeddedResource로 포함
+- Judge ON에서 Codex prompt footer 삽입
+- Codex 결과 첫 유효행의 [NEXT : WEB] / [NEXT : JEV] 파싱
+- [VALIDATION REQUEST] 추출
+- 모든 hop을 Worker가 수신/전달하는 구조 유지
+- JEV FAIL 시 동일 Codex session으로 되돌리는 틀
+- 최대 3회 제한
+- JEV error 시 Web fallback
+- Judge OFF에서 기존 흐름 유지
+```
+
+이제 scaffold 단계에서 멈추지 말고 실제 TypeSafe JEV API를 연결해 E2E까지 마무리한다.
+
+## 2. 중요: API 계약이 이미 저장소에 존재함
+
+현재 `CurrentWork.md`에는 다음 취지의 기록이 있다.
+
+```text
+현재 저장소에는 TypeSafe/JEV provider의 실제 실행 계약(endpoint payload/response)이 제공되지 않았으므로
+외부 호출을 추측해 추가하지 않았다.
+```
+
+하지만 이 구현 커밋의 parent인 `ec79f43db8ad12ccbdec778ca05150b2323bda48`에 이미 다음 파일이 존재한다.
+
+```text
+src/ProjectHub.Worker/JEV-API-CONTRACT.md
+```
+
+따라서 이제는 provider 미정 상태로 간주하지 않는다.
+
+본 작업 전에 반드시 최신 main을 다시 동기화하고 다음 두 파일을 함께 기준으로 읽는다.
+
+```text
+src/ProjectHub.Worker/JEV-FOOTER-CONTRACT.md
+src/ProjectHub.Worker/JEV-API-CONTRACT.md
+```
+
+API 구조를 새로 추측하거나 다른 비공식 endpoint로 바꾸지 않는다.
+
+공식 TypeSafe 경로 기준:
+
+```text
+POST https://api.typesafe.ai/v1/systemone
+Authorization: Bearer <TYPESAFE_API_KEY>
+Content-Type: application/json
+```
+
+환경변수:
+
+```text
+TYPESAFE_API_KEY
+```
+
+## 3. 이번 작업 목표
+
+이번 작업의 목표는 UI scaffold 추가가 아니라 **실제로 [NEXT : JEV]가 발생했을 때 TypeSafe JEV API를 호출하고, 구조화 응답을 Worker가 기계적으로 판정한 뒤 다음 hop으로 전달하는 것**이다.
+
+최소 완성 흐름:
+
+```text
+Codex CLI
+  ↓
+Worker
+  ↓ [NEXT : JEV]
+TypeSafe JEV API
+  ↓
+Worker
+  ├─ FAIL → 같은 Codex session
+  └─ PASS → 같은 Codex session에 WEB 보고서 생성 요청
+                ↓
+              Worker
+                ↓ [NEXT : WEB] + [REPORT]
+              GPT Web
+```
+
+모든 통신은 계속 Worker를 경유한다.
+
+## 4. 가장 중요한 라우팅 정정: JEV PASS 직후 Web으로 바로 보내지 말 것
+
+현재 구현은 JEV PASS일 때 `directive.Body + [JEV PASS]`를 Web prompt로 만들 수 있다.
+
+하지만 footer 계약상 `[NEXT : JEV]` 뒤에는 **검증 요청만** 존재한다.
+
+즉:
+
+```text
+[NEXT : JEV]
+[VALIDATION REQUEST]
+...
+```
+
+에는 GPT Web에 보여줄 작업 완료 보고서가 없다.
+
+따라서 JEV PASS를 곧바로:
+
+```text
+JEV → Worker → GPT Web
+```
+
+으로 보내면 안 된다.
+
+PASS 시에는 Worker가 같은 Codex session에 고정된 후속 지시를 한 번 보낸다.
+
+예:
+
+```text
+[JEV VALIDATION PASSED]
+
+요청한 JEV 검증이 모두 통과했다.
+추가 구현이나 변경은 하지 말고 현재 작업 상태를 기준으로
+[NEXT : WEB]으로 시작하는 [REPORT]를 작성하라.
+```
+
+그 후:
+
+```text
+Codex
+→ Worker
+→ [NEXT : WEB]
+→ GPT Web
+```
+
+으로 전달한다.
+
+이렇게 해야 고정 계약:
+
+```text
+WEB이면 REPORT
+JEV이면 VALIDATION REQUEST만
+```
+
+이 끝까지 유지된다.
+
+## 5. JevJudgeRunner를 실제 HTTP adapter로 구현
+
+현재 `JevJudgeRunner`의 항상 Error fallback 하는 scaffold를 실제 API 호출로 교체한다.
+
+요구사항:
+
+```text
+- HttpClient 재사용
+- endpoint = https://api.typesafe.ai/v1/systemone
+- TYPESAFE_API_KEY 환경변수에서만 key 읽기
+- Bearer 인증
+- timeout은 기존 Judge setting 사용
+- model 기본값 jev-latest
+- API key를 로그/예외/설정/transcript에 남기지 않기
+```
+
+API key가 없으면 외부 호출 없이 명확한 JEV ERROR로 반환하고 Web fallback한다.
+
+## 6. VALIDATION REQUEST 파서 구현
+
+현재 `ExtractValidationRequest`는 문자열 추출만 한다.
+
+이번 작업에서는 이를 실제 typed request로 파싱한다.
+
+지원 범위는 footer 계약의 세 타입으로 제한한다.
+
+```text
+NOUL
+- question
+- PASS YES >= threshold
+
+SCORE
+- question
+- ordered criteria
+- PASS SCORE <= / >= threshold
+
+CHOICE
+- question
+- key = description criteria
+- PASS allowed choices
+```
+
+내부적으로 각 항목에 `C1, C2, C3...` ID를 부여한다.
+
+JEV에는 여러 질문을 한 번의 `questions` map으로 보낸다.
+
+Worker는 질문 의미를 재작성하지 않는다.
+
+## 7. state 구성
+
+JEV의 `state`에는 최소 다음을 포함한다.
+
+```json
+{
+  "task": "<원래 Codex 작업 지시 원문>",
+  "codex_result": "<현재 Codex 최종 응답 원문>"
+}
+```
+
+필요하면 다음 비해석 메타데이터만 추가한다.
+
+```text
+round
+working_directory
+```
+
+Worker가 내용을 요약하거나 평가해서 새로운 의미를 넣지 않는다.
+
+## 8. NOUL / SCORE / CHOICE 응답 판정
+
+판정은 의미 추론 없이 계약과 API 응답의 기계 비교만 한다.
+
+```text
+NOUL
+answer.noul >= threshold
+
+SCORE
+answer.score 와 정규화된 threshold 비교
+
+CHOICE
+answer.choice 가 허용값 집합에 포함되는지 비교
+```
+
+SCORE는 중요하다.
+
+JEV API의 score는 criteria 배열의 0-based index 공간을 사용한다.
+
+Footer의 사람용 표기가:
+
+```text
+1 = ...
+2 = ...
+3 = ...
+4 = ...
+5 = ...
+PASS: SCORE <= 2.0
+```
+
+이면 API 비교 threshold는:
+
+```text
+1.0
+```
+
+으로 정규화한다.
+
+이 규칙은 `JEV-API-CONTRACT.md` 기준으로 구현하고 테스트를 추가한다.
+
+## 9. FAIL 경로
+
+검증 항목 중 하나라도 FAIL이면 Worker가 같은 Codex session으로 보낸다.
+
+Worker가 새로운 의미적 수정안을 만들지 않는다.
+
+전달 내용은 실패한 계약과 실제 결과로 제한한다.
+
+예:
+
+```text
+[JEV VALIDATION FAILED]
+
+C2
+TYPE: SCORE
+QUESTION: 요구사항 대비 범위 이탈 정도는 어느 수준인가?
+EXPECTED: SCORE <= 2.0
+ACTUAL: 3.4
+RESULT: FAIL
+
+해당 검증 실패를 해소한 뒤
+다시 [NEXT : WEB] 또는 [NEXT : JEV] 형식으로 최종 응답을 제출하라.
+```
+
+그 결과 역시 반드시:
+
+```text
+Codex → Worker
+```
+
+로 돌아온 뒤 다음 분기를 수행한다.
+
+## 10. retry count 범위 정정
+
+현재 `_judgeRound`가 Task 전체에서 누적되면 이후 Web ACTION=CONTINUE 라운드에서 JEV를 다시 사용할 수 없게 될 수 있다.
+
+JEV 반복 제한은 **현재 Web→Codex 작업 라운드별**로 관리한다.
+
+권장:
+
+```text
+MAX_JEV_VALIDATION_ROUNDS_PER_WEB_ROUND = 3
+```
+
+다음 상황에서 JEV validation count를 0으로 reset한다.
+
+```text
+- 새 Task 시작
+- GPT Web ACTION=CONTINUE로 새로운 Codex 작업 라운드 시작
+- JEV PASS 후 [NEXT : WEB] 보고서 전달 완료
+```
+
+Web 전체 Task round와 JEV validation round를 같은 counter로 섞지 않는다.
+
+## 11. 계약 형식 검증
+
+Judge ON 상태에서는 NEXT 태그만 보지 말고 최소 구조도 확인한다.
+
+```text
+[NEXT : WEB]
+→ [REPORT] 필요
+
+[NEXT : JEV]
+→ [VALIDATION REQUEST] 필요
+```
+
+형식이 잘못됐다고 Worker가 내용을 추측하지 않는다.
+
+v1 fallback:
+
+```text
+CONTRACT_PROTOCOL_ERROR
+→ Worker → GPT Web
+```
+
+원래 Codex 결과와 오류 이유를 함께 전달한다.
+
+무한 자동 재질문은 만들지 않는다.
+
+## 12. 실제 API smoke test를 먼저 수행
+
+본격적인 Worker E2E 전에 실제 API 1회 호출부터 확인한다.
+
+환경변수는 이미 사용자가 준비한 `TYPESAFE_API_KEY`를 사용한다.
+
+최소 smoke test:
+
+```text
+state:
+간단한 문자열
+
+question:
+NOUL 1개
+
+확인:
+- HTTP 2xx
+- answers 존재
+- noul 값 0.0~1.0
+- 인증 성공
+- key가 로그에 노출되지 않음
+```
+
+실제 API 응답 형태가 `JEV-API-CONTRACT.md`와 다르면 추측으로 보정하지 말고 실제 응답 샘플에서 비밀값을 제거한 뒤 문서를 먼저 갱신한다.
+
+## 13. 단위 테스트
+
+최소 다음 테스트를 추가한다.
+
+```text
+JevContract
+- 첫 유효행 [NEXT : WEB]
+- 첫 유효행 [NEXT : JEV]
+- 뒤쪽에 NEXT 문자열이 있어도 첫 유효행만 사용
+- WEB인데 REPORT 없음
+- JEV인데 VALIDATION REQUEST 없음
+
+Validation parser
+- NOUL 1개
+- SCORE 1개 + 1-based→0-based threshold 정규화
+- CHOICE 1개 + 복수 PASS choice
+- NOUL/SCORE/CHOICE 혼합
+- malformed contract 거부
+
+Response evaluation
+- ALL PASS
+- NOUL FAIL
+- SCORE FAIL
+- CHOICE FAIL
+- question ID missing
+- response type mismatch
+- invalid choice
+```
+
+HTTP adapter는 실제 네트워크 대신 mock handler를 사용한 단위 테스트를 추가한다.
+
+## 14. E2E 완료 조건
+
+단위 테스트만으로 완료 처리하지 않는다.
+
+실제 Explorer 실행본 기준으로 최소 다음을 수행한다.
+
+```text
+A. Judge OFF
+Web → Worker → Codex → Worker → Web
+기존 동작 회귀 없음
+
+B. Judge ON / [NEXT : WEB]
+JEV 호출 없이 바로 Web에 REPORT 전달
+
+C. Judge ON / [NEXT : JEV] / PASS
+Codex → Worker → 실제 JEV API
+→ Worker → 같은 Codex session에 REPORT 생성 요청
+→ Worker → Web
+
+D. Judge ON / [NEXT : JEV] / FAIL
+Codex → Worker → 실제 JEV API
+→ Worker → 동일 Codex session 보완
+→ Worker → JEV 재검증
+→ PASS
+→ Codex WEB REPORT
+→ Worker → Web
+
+E. API error 또는 key 없음
+→ Worker → Web fallback
+
+F. malformed contract
+→ Worker → Web fallback
+```
+
+MESSAGE LOG에서 각 hop이 실제 순서대로 보여야 한다.
+
+```text
+CODEX → WORKER
+WORKER → JEV
+JEV → WORKER
+WORKER → CODEX
+CODEX → WORKER
+WORKER → WEB
+```
+
+JEV와 Codex가 직접 통신하는 것처럼 기록하지 않는다.
+
+## 15. 문서 갱신
+
+작업 완료 후 `CurrentWork.md`의 기존:
+
+```text
+provider 계약이 없어 실제 호출을 연결하지 않았다
+```
+
+기록은 역사 기록으로 남겨도 되지만, 최신 섹션에는 실제 연결 상태를 명확히 적는다.
+
+최종 보고에는:
+
+```text
+- 변경 파일
+- 실제 API smoke test 결과
+- build 결과
+- test 결과
+- Explorer E2E 결과
+- Judge OFF 회귀 결과
+- Judge ON PASS/FAIL 경로 결과
+- 남은 제한사항
+```
+
+을 포함한다.
+
+## 16. 이번 작업에서 하지 않을 것
+
+```text
+- 범용 Multi-AI workflow engine 재설계
+- JEV 이외 provider 추가
+- Worker가 파일/코드 의미를 관측·판단하도록 확장
+- JEV가 직접 Codex를 호출하는 구조
+- API key를 설정 UI에 저장
+- 기존 GPT Web ACTION 프로토콜 변경
+- unrelated UI 리팩터링
+```
+
+이번 목표는 **현재 만들어진 Contract Gate scaffold를 실제 TypeSafe JEV 호출까지 연결하고, Worker가 모든 hop을 관리하는 완전한 선택형 검증 분기를 E2E로 증명하는 것**이다.
