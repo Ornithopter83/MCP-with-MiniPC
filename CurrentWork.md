@@ -892,3 +892,15 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 - 흐름 패널을 오른쪽 정렬에서 왼쪽 정렬로 옮겨 Current Task 카드의 중앙 쪽에 배치했다.
 - `src/ProjectHub.Worker/bin/publish-worker.ps1`을 추가했다. 이 스크립트는 Worker 프로젝트를 Release로 게시하며 `-NoRestore` 옵션을 지원한다. bin 경로가 ignore 대상이므로 파일은 force-add로 Git index에 포함했다.
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `git diff --check` 및 staged diff check 통과.
+
+## 2026-09-21 JEV Contract Gate 구현
+
+최신 `GPT-Web-Feedback.md`와 `JEV-FOOTER-CONTRACT.md`를 기준으로 Worker 라우팅 틀을 구현했다.
+
+- JEV가 켜진 경우 Codex 지시 뒤에 임베디드 `JEV-FOOTER-CONTRACT.md`를 붙인다. Judge OFF에서는 기존 Codex prompt 흐름을 보존한다.
+- Codex 결과의 첫 유효행만 독립적으로 검사해 `[NEXT : WEB]`와 `[NEXT : JEV]`를 구분한다. 기존 Web `[ACTION=...]` 파서는 별도로 유지한다.
+- `[NEXT : WEB]`은 결과를 GPT Web로 전달하고, `[NEXT : JEV]`는 `[VALIDATION REQUEST]`만 JEV 경로로 분리한다.
+- JEV FAIL은 최대 3회까지 같은 Codex session에 보완 지시를 되돌리고, timeout/error/불완전 응답은 GPT Web fallback으로 보낸다. JEV 경로는 파일 쓰기·commit·push를 수행하지 않는다.
+- 현재 저장소에는 TypeSafe/JEV provider의 실제 실행 계약(endpoint payload/response)이 제공되지 않았으므로 외부 호출을 추측해 추가하지 않았다. `JevJudgeRunner`는 provider가 구성되지 않은 경우 안전한 fallback을 반환한다.
+
+검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(5개), `node --check extension/gptweb-hub/content.js` 성공, `git diff --check` 재실행 예정.

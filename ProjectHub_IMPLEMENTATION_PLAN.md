@@ -452,3 +452,6 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 - 흐름 패널을 오른쪽 정렬에서 왼쪽 정렬로 옮겨 Current Task 카드의 중앙 쪽에 배치했다.
 - `src/ProjectHub.Worker/bin/publish-worker.ps1`을 추가했다. 이 스크립트는 Worker 프로젝트를 Release로 게시하며 `-NoRestore` 옵션을 지원한다. bin 경로가 ignore 대상이므로 파일은 force-add로 Git index에 포함했다.
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `git diff --check` 및 staged diff check 통과.
+## 2026-09-21 Contract Gate 반영
+
+JEV Contract Gate의 고정 NEXT 라우팅과 임베디드 footer 틀을 Worker에 반영했다. 실제 provider adapter는 별도 계약과 승인된 endpoint가 확보된 뒤 연결하며, 그 전까지는 GPT Web fallback을 사용한다. 중간검증 없이 구현을 진행한 이번 변경의 최종 검증은 CurrentWork.md에 기록한다.

@@ -42,8 +42,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="..\..\extension\gptweb-hub\background.js">
       <LogicalName>ProjectHub.Worker.Extension.background.js</LogicalName>
-    </EmbeddedResource>  </ItemGroup>
+    </EmbeddedResource>
+    <EmbeddedResource Include="JEV-FOOTER-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.JEV-FOOTER-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>
-
-
-

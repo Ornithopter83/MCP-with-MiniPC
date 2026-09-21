@@ -419,7 +419,7 @@ public partial class MainWindow : Window
         var sessionId = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? null : selectedThread.SessionId;
         var initialGitReference = await GitReviewGate.CheckAsync(workingDirectory, _targetSettings);
         _initialGitReferenceHeader = BuildGitReferenceHeader(initialGitReference);
-        var initialCliPrompt = _initialGitReferenceHeader + Environment.NewLine + Environment.NewLine + cliPrompt;
+        var initialCliPrompt = AppendJevFooter(_initialGitReferenceHeader + Environment.NewLine + Environment.NewLine + cliPrompt);
         _activePrompt = cliPrompt;
         _activeWebInstruction = webInstruction;
         _actionProtocolEnabled = true;
@@ -466,7 +466,7 @@ public partial class MainWindow : Window
 
             if (result.ExitCode == 0 && _bridgeServer is not null)
             {
-                var task = await CreateReviewedWebTaskAsync(result, webInstruction, includeWebInstruction: true, gitReferenceHeader: _initialGitReferenceHeader, cancellationToken: cts.Token);
+                var task = await RouteCodexResultAsync(result, webInstruction, includeWebInstruction: true, gitReferenceHeader: _initialGitReferenceHeader, cancellationToken: cts.Token);
                 if (task is not null)
                 {
                     _awaitingWebResult = true;
@@ -512,51 +512,76 @@ public partial class MainWindow : Window
         return Task.FromResult(_bridgeServer?.CreateTaskForLatestBinding(prompt, attachments));
     }
 
-    private async Task<BridgeTask?> CreateReviewedWebTaskAsync(CodexCliResult result, string? webInstruction, bool includeWebInstruction, string? gitReferenceHeader, CancellationToken cancellationToken)
+    private async Task<BridgeTask?> RouteCodexResultAsync(CodexCliResult result, string? webInstruction, bool includeWebInstruction, string? gitReferenceHeader, CancellationToken cancellationToken)
     {
-        var prompt = BuildWebPrompt(result, webInstruction, includeControlInstructions: true, includeWebInstruction);
-        var judgeContext = await RunOptionalJudgeAsync(result, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(judgeContext))
-            prompt += Environment.NewLine + Environment.NewLine + judgeContext;
-        var attachments = _bridgeServer is null ? new List<BridgeAttachment>() : BuildWebAttachments(_bridgeServer, result.Files);
+        if (result.ExitCode != 0 || _bridgeServer is null) return null;
+        var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
+        var judgeEnabled = _targetSettings.EffectiveJudge.Enabled;
+        var directive = judgeEnabled ? JevContract.ParseNext(output) : new NextDirective(NextRoute.Web, output);
+        var report = output;
+
+        if (judgeEnabled && directive.Route == NextRoute.Jev)
+        {
+            var validation = JevContract.ExtractValidationRequest(directive.Body);
+            if (string.IsNullOrWhiteSpace(validation))
+            {
+                AddTaskMessage("JEV", "[JEV FALLBACK] VALIDATION REQUEST가 없어 GPT Web로 전달합니다.");
+            }
+            else
+            {
+                _judgeRound++;
+                _judgeReviewing = true;
+                _judgeStatus = "REVIEWING";
+                TaskDirection.Text = "WORKER → JEV";
+                TaskTitle.Text = $"JEV 검증 중 · round {_judgeRound}";
+                SetFlowState(false, true, false);
+                AddTaskMessage("JEV REQUEST", validation);
+                var request = new JudgeRequest(_activePrompt ?? "Current task", _judgeRound, _activeWorkingDirectory ?? AppContext.BaseDirectory, output, validation, result.Files, "GIT", _gitTarget?.HeadSha);
+                JudgeResult judgment;
+                try { judgment = await _jevJudgeRunner.ReviewAsync(request, _targetSettings.EffectiveJudge, cancellationToken); }
+                finally { _judgeReviewing = false; }
+                AddTaskMessage("JEV RESULT", $"{judgment.Decision}: {judgment.Message}");
+                if (judgment.Decision == JudgeDecision.Fail && _judgeRound < 3)
+                {
+                    var retryPrompt = AppendJevFooter("JEV 검증 결과가 FAIL입니다. 다음 검증 요청을 만족하도록 현재 작업을 보완한 뒤, 완료되면 다시 [NEXT : WEB] 또는 [NEXT : JEV] 중 하나로 시작해줘.\n\n검증 요청:\n" + validation + "\n\nJEV 결과:\n" + judgment.Message);
+                    AddTaskMessage("WORKER -> CODEX", retryPrompt);
+                    TaskDirection.Text = "JEV → CODEX";
+                    TaskTitle.Text = "JEV FAIL 후 Codex 보완 실행 중";
+                    SetFlowState(true, true, false);
+                    var retry = await _codexRunner.RunAsync(retryPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken);
+                    _activeSessionId = retry.SessionId ?? _activeSessionId;
+                    _lastCodexResult = retry;
+                    AddCliRoundStatus(retry);
+                    CodexThreadArchive.Save(retry, retryPrompt, _activeWorkingDirectory!);
+                    _commandUsage = _commandUsage.Add(retry.Usage);
+                    UpdateUsage(_commandUsage);
+                    return await RouteCodexResultAsync(retry, webInstruction, includeWebInstruction, gitReferenceHeader, cancellationToken);
+                }
+                if (judgment.Decision == JudgeDecision.Pass)
+                    report = directive.Body + Environment.NewLine + Environment.NewLine + "[JEV PASS]" + Environment.NewLine + judgment.Message;
+                else
+                    AddTaskMessage("JEV", "[JEV FALLBACK] GPT Web로 전달합니다.");
+            }
+        }
+        else if (judgeEnabled && directive.Route == NextRoute.Invalid)
+        {
+            AddTaskMessage("JEV", "[JEV FALLBACK] NEXT 형식이 없어 GPT Web로 전달합니다.");
+        }
+
+        var prompt = BuildWebPrompt(result with { FinalMessage = report }, webInstruction, includeControlInstructions: true, includeWebInstruction);
+        var attachments = BuildWebAttachments(_bridgeServer, result.Files);
         return await CreateWebTaskAsync(prompt, attachments, gitReferenceHeader);
     }
 
-    private async Task<string?> RunOptionalJudgeAsync(CodexCliResult result, CancellationToken cancellationToken)
+    private string AppendJevFooter(string prompt)
     {
-        var settings = _targetSettings.EffectiveJudge;
-        if (!settings.Enabled) return null;
-
-        _judgeReviewing = true;
-        _judgeStatus = "REVIEWING";
-        TaskDirection.Text = "WORKER → JUDGE";
-        TaskTitle.Text = "Jev 중간 검토 준비 중";
-        SetFlowState(codexActive: false, workerActive: true, webActive: false);
-        AddTaskMessage("JUDGE STATUS", $"{settings.Provider} · REVIEWING · round {++_judgeRound}");
-
-        var reviewSource = _initialGitReferenceHeader?.Contains("[REVIEW_SOURCE=GIT]", StringComparison.Ordinal) == true ? "GIT" : "LOCAL";
-        var request = new JudgeRequest(_activePrompt ?? "Current task", _judgeRound,
-            _activeWorkingDirectory ?? AppContext.BaseDirectory,
-            string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage,
-            result.Files, reviewSource, _gitTarget?.HeadSha);
-        JudgeResult response;
-        try { response = await _jevJudgeRunner.ReviewAsync(request, settings, cancellationToken); }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception exception) { response = new JudgeResult(JudgeDecision.Error, exception.Message, settings.Provider); }
-        finally { _judgeReviewing = false; }
-
-        if (response.Decision == JudgeDecision.Error)
+        if (!_targetSettings.EffectiveJudge.Enabled) return prompt;
+        try { return prompt + Environment.NewLine + Environment.NewLine + JevContract.LoadFooter(); }
+        catch (Exception exception)
         {
-            _judgeStatus = "FALLBACK";
-            AddTaskMessage("JUDGE STATUS", $"{response.Provider} unavailable · GPT Web fallback");
-            AddTaskMessage("JUDGE", "[JUDGE=ERROR]" + Environment.NewLine + response.Message);
-            return "[JUDGE=ERROR]" + Environment.NewLine + response.Message;
+            AddTaskMessage("JEV", "footer 로드 실패: " + exception.Message);
+            return prompt;
         }
-
-        _judgeStatus = "READY";
-        var decision = response.Decision.ToString().ToUpperInvariant();
-        AddTaskMessage("JUDGE", $"[JUDGE={decision}]{Environment.NewLine}{response.Message}");
-        return $"[JUDGE={decision}]{Environment.NewLine}{response.Message}";
     }
     private static string BuildGitReferenceHeader(GitReviewCheckpoint checkpoint) =>
         checkpoint.ReviewCommitSha is null
@@ -1092,6 +1117,7 @@ public partial class MainWindow : Window
 
         try
         {
+            followupPrompt = AppendJevFooter(followupPrompt);
             AddTaskMessage("WORKER -> CODEX", followupPrompt);
             var result = await _codexRunner.RunAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token);
             _lastActivityAt = DateTimeOffset.UtcNow;
@@ -1107,7 +1133,7 @@ public partial class MainWindow : Window
 
             if (result.ExitCode == 0 && (_actionProtocolEnabled || ShouldContinueRoundtrip(result)) && _bridgeServer is not null)
             {
-                var nextTask = await CreateReviewedWebTaskAsync(result, _activeWebInstruction, includeWebInstruction: false, gitReferenceHeader: null, cancellationToken: cts.Token);
+                var nextTask = await RouteCodexResultAsync(result, _activeWebInstruction, includeWebInstruction: false, gitReferenceHeader: null, cancellationToken: cts.Token);
                 if (nextTask is not null)
                 {
                     _awaitingWebResult = true;
