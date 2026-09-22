@@ -146,13 +146,13 @@
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
           <TextBlock Text="TARGET SETTINGS" FontSize="17" FontWeight="Bold" Foreground="{StaticResource Ink}"/>
           <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0">
             <TextBlock Text="Git Repository" Width="140" FontSize="16" VerticalAlignment="Center"/>
-            <TextBox x:Name="RepositoryUrlInput" Width="620" Height="36" FontSize="16" Padding="9,5"/>
+            <TextBox x:Name="RepositoryUrlInput" Width="620" Height="36" FontSize="16" Padding="9,5" IsReadOnly="True" IsEnabled="False" IsTabStop="False" ToolTip="Working Folder의 Git origin에서 자동으로 확인됩니다."/>
             <Button Content="Auto Detect" Margin="10,0,0,0" Padding="14,6" FontSize="15" Click="AutoDetectTargets_Click"/>
           </StackPanel>
           <StackPanel Grid.Row="2" Margin="140,7,0,0">
@@ -163,14 +163,12 @@
             <TextBlock Text="Server Base URL" Width="140" FontSize="16" VerticalAlignment="Center"/>
             <TextBox x:Name="ServerUrlInput" Width="620" Height="36" FontSize="16" Padding="9,5"/>
           </StackPanel>
-          <TextBlock x:Name="TargetSettingsStatusText" Grid.Row="4" Margin="140,7,0,0" FontSize="15" Foreground="{StaticResource Muted}"/>
-          <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,14,0,0">
+          <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,14,0,0">
             <TextBlock Text="Working Folder" Width="140" FontSize="16" VerticalAlignment="Center"/>
             <TextBox x:Name="WorkingDirectoryInput" Width="620" Height="36" FontSize="16" Padding="9,5"/>
             <Button x:Name="WorkingDirectoryBrowseButton" Content="Choose Folder…" Margin="10,0,0,0" Padding="14,6" FontSize="15" Click="BrowseWorkingDirectory_Click"/>
           </StackPanel>
-          <TextBlock x:Name="WorkingDirectorySourceText" Grid.Row="6" Margin="140,7,0,0" FontSize="15" Foreground="{StaticResource Muted}"/>
-          <Border Grid.Row="7" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,16,0,0">
+          <Border Grid.Row="5" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,16,0,0">
             <Grid>
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <StackPanel Orientation="Horizontal">
@@ -194,7 +192,7 @@
               </StackPanel>
             </Grid>
           </Border>
-          <StackPanel Grid.Row="9" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+          <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
             <Button Content="Close" Padding="18,7" FontSize="15" Click="CloseSettings_Click"/>
             <Button Content="Apply" Margin="10,0,0,0" Padding="20,7" FontSize="15" Background="{StaticResource Blue}" Foreground="White" BorderBrush="{StaticResource Blue}" Click="SaveTargetSettings_Click"/>
           </StackPanel>

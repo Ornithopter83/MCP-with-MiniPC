@@ -73,6 +73,9 @@ public static class WorkerTargetConfiguration
 
     public static GitTargetSnapshot ResolveGit(string projectPath, WorkerTargetSettings settings)
     {
+        if (string.IsNullOrWhiteSpace(projectPath) || !Directory.Exists(projectPath))
+            return new(projectPath ?? string.Empty, null, null, null, "UNCONFIGURED", false);
+
         var path = Path.GetFullPath(projectPath);
         var root = FindRepositoryRoot(path);
         if (root is null)
@@ -81,7 +84,7 @@ public static class WorkerTargetConfiguration
         var remote = RunGit(root, "remote", "get-url", "origin");
         var branch = RunGit(root, "rev-parse", "--abbrev-ref", "HEAD");
         var head = RunGit(root, "rev-parse", "HEAD");
-        var source = !string.IsNullOrWhiteSpace(settings.ManualRepositoryUrl) ? "MANUAL" : !string.IsNullOrWhiteSpace(remote) ? "AUTO_GIT_REMOTE" : "UNCONFIGURED";
+        var source = !string.IsNullOrWhiteSpace(remote) ? "AUTO_GIT_REMOTE" : "UNCONFIGURED";
         return new(root, SanitizeRemote(remote), branch, head, source, true);
     }
 

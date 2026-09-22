@@ -21,7 +21,7 @@
 
 - ChatGPT URL의 conversation ID를 현재 대화 식별자로 사용한다.
 - 현재 대화 제목은 GPT Web 행에 표시한다. 연결되지 않은 대화에서는 GPT Web 행의 연결 버튼으로 현재 Worker 프로젝트를 binding한다.
-- Worker 행에는 bridge가 보고한 실제 Git 저장소명을 표시한다. 연결된 대화는 새로고침·대화 이동 후 Worker에 저장된 binding을 조회해 자동 복원한다.
+- Worker 행에는 bridge가 보고한 실제 Git 저장소명을 표시한다. 연결된 대화는 새로고침·대화 이동 후 Worker에 저장된 binding을 조회해 자동 복원한다. 대화 이동 중 늦게 도착한 이전 polling 응답은 현재 대화 상태에 적용하지 않으며, 연결 실패 시 원인을 패널에 표시한다.
 - task 조회도 conversationId로 필터링해 다른 대화의 작업을 표시하지 않는다.
 
 

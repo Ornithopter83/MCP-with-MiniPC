@@ -389,10 +389,10 @@ public partial class MainWindow : Window
             return;
         }
         await InitializeStartupConfigurationAsync();
-        if (!_codexAuthenticated || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized)
+        if (!_codexAuthenticated || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized || !_bridgeServer.WebConversationBound)
         {
             TaskDirection.Text = "PREFLIGHT";
-            TaskTitle.Text = "연결 상태 확인 필요";
+            TaskTitle.Text = _bridgeServer?.WebConversationBound == false ? "GPT Web 대화 연결 필요" : "연결 상태 확인 필요";
             SetFlowState(false, false, false);
             return;
         }
@@ -830,30 +830,46 @@ public partial class MainWindow : Window
             : AppContext.BaseDirectory;
     }
 
+    private string? ResolveConfiguredGitFolder(CodexThreadOption? selectedThread)
+    {
+        if (!string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !string.IsNullOrWhiteSpace(selectedThread.ProjectPath) && Directory.Exists(selectedThread.ProjectPath))
+            return Path.GetFullPath(selectedThread.ProjectPath);
+
+        return string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
+            ? null
+            : Path.GetFullPath(_targetSettings.ManualWorkingDirectory);
+    }
+
     private void UpdateWorkingDirectoryControls(CodexThreadOption? selectedThread, string workingDirectory)
     {
         var lockedToThread = !string.IsNullOrWhiteSpace(selectedThread?.SessionId);
-        WorkingDirectoryInput.Text = workingDirectory;
+        WorkingDirectoryInput.Text = lockedToThread || !string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
+            ? workingDirectory
+            : string.Empty;
         WorkingDirectoryInput.IsReadOnly = lockedToThread;
         WorkingDirectoryBrowseButton.IsEnabled = !lockedToThread;
-        WorkingDirectorySourceText.Text = lockedToThread
-            ? "Source: CODEX THREAD · ProjectPath locked"
-            : string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
-                ? "Source: EXECUTABLE FOLDER"
-                : "Source: SETTINGS";
     }
 
     private void BrowseWorkingDirectory_Click(object sender, RoutedEventArgs e)
     {
         if (WorkingDirectoryInput.IsReadOnly) return;
-        using var dialog = new Forms.FolderBrowserDialog
+        var settingsWasOpen = StatusPopup.IsOpen;
+        SetSettingsPopupOpen(false);
+        try
         {
-            Description = "Choose the working folder for new Codex threads.",
-            UseDescriptionForTitle = true,
-            InitialDirectory = Directory.Exists(WorkingDirectoryInput.Text) ? WorkingDirectoryInput.Text : AppContext.BaseDirectory
-        };
-        if (dialog.ShowDialog() == Forms.DialogResult.OK && Directory.Exists(dialog.SelectedPath))
-            WorkingDirectoryInput.Text = dialog.SelectedPath;
+            using var dialog = new Forms.FolderBrowserDialog
+            {
+                Description = "Choose the working folder for new Codex threads.",
+                UseDescriptionForTitle = true,
+                InitialDirectory = Directory.Exists(WorkingDirectoryInput.Text) ? WorkingDirectoryInput.Text : AppContext.BaseDirectory
+            };
+            if (dialog.ShowDialog() == Forms.DialogResult.OK && Directory.Exists(dialog.SelectedPath))
+                WorkingDirectoryInput.Text = dialog.SelectedPath;
+        }
+        finally
+        {
+            if (settingsWasOpen) SetSettingsPopupOpen(true);
+        }
     }
     private void ApplyTargetConfiguration()
     {
@@ -862,16 +878,15 @@ public partial class MainWindow : Window
         _serverBaseUrlSource = server.Source;
         var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var workingDirectory = ResolveWorkingDirectory(selected);
-        _gitTarget = WorkerTargetConfiguration.ResolveGit(workingDirectory, _targetSettings);
+        _gitTarget = WorkerTargetConfiguration.ResolveGit(ResolveConfiguredGitFolder(selected) ?? string.Empty, _targetSettings);
         UpdateWorkingDirectoryControls(selected, workingDirectory);
-        RepositoryUrlInput.Text = _targetSettings.ManualRepositoryUrl ?? _gitTarget.RepositoryUrl ?? string.Empty;
+        RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
         ServerUrlInput.Text = _serverBaseUrl;
         TargetGitStateText.Text = _gitTarget.IsRepository
-            ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"} · Git: {_gitTarget.Source}"
+            ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
             : "Git: UNCONFIGURED";
         TargetPathText.Text = !string.IsNullOrWhiteSpace(selected?.SessionId) ? $"Codex ProjectPath: {selected.ProjectPath}" : $"New thread folder: {workingDirectory}";
-        RepositoryNameText.Text = " · " + (_targetSettings.ManualRepositoryUrl ?? _gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
-        TargetSettingsStatusText.Text = $"Server: {_serverBaseUrlSource}";
+        RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
         ApplyJudgeConfigurationToControls();
     }
 
@@ -926,7 +941,7 @@ public partial class MainWindow : Window
     }
     private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
     {
-        _targetSettings = _targetSettings with { ManualRepositoryUrl = null, ManualServerBaseUrl = null, RepositoryUrlSource = null, ServerBaseUrlSource = null, ManualWorkingDirectory = null };
+        _targetSettings = _targetSettings with { ManualRepositoryUrl = null, RepositoryUrlSource = null };
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();
         _serverOnline = await CheckServerAsync();
@@ -935,13 +950,12 @@ public partial class MainWindow : Window
 
     private async void SaveTargetSettings_Click(object sender, RoutedEventArgs e)
     {
-        var repository = string.IsNullOrWhiteSpace(RepositoryUrlInput.Text) ? null : RepositoryUrlInput.Text.Trim();
         var server = string.IsNullOrWhiteSpace(ServerUrlInput.Text) ? WorkerTargetConfiguration.DefaultServerBaseUrl : ServerUrlInput.Text.Trim();
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var workingDirectory = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? WorkingDirectoryInput.Text.Trim() : _targetSettings.ManualWorkingDirectory;
         if (string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !Directory.Exists(workingDirectory))
         {
-            WorkingDirectorySourceText.Text = "Choose an existing folder before applying settings.";
+            WorkingDirectoryInput.ToolTip = "Choose an existing folder before applying settings.";
             return;
         }
         var timeout = int.TryParse(JudgeTimeoutInput.Text, out var value) ? Math.Clamp(value, 10, 600) : 120;
@@ -949,8 +963,8 @@ public partial class MainWindow : Window
         var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text) ? JevJudgeRunner.DefaultEndpoint : JudgeExecutableInput.Text.Trim();
         _targetSettings = _targetSettings with
         {
-            ManualRepositoryUrl = repository, ManualServerBaseUrl = server,
-            RepositoryUrlSource = repository is null ? null : "MANUAL", ServerBaseUrlSource = "MANUAL",
+            ManualRepositoryUrl = null, ManualServerBaseUrl = server,
+            RepositoryUrlSource = null, ServerBaseUrlSource = "MANUAL",
             ManualWorkingDirectory = workingDirectory,
             Judge = new JudgeSettings(EnableJudgeCheckBox.IsChecked == true, provider, endpoint, timeout)
         };
@@ -987,10 +1001,11 @@ public partial class MainWindow : Window
     {
         var webOnline = _bridgeServer?.WebConnected == true;
         var webExtensionReady = _bridgeServer?.WebExtensionSynchronized == true;
+        var webConversationBound = _bridgeServer?.WebConversationBound == true;
         SetConnectionStatus(ProjectStatusText, _codexAuthenticated ? "READY" : "LOGIN NEEDED", _codexAuthenticated, ProjectStatusDot);
-        SetConnectionStatus(WebStatusText, !webOnline ? "WAITING" : webExtensionReady ? "READY" : "UPDATE REQUIRED", webOnline && webExtensionReady, waiting: !webOnline, indicator: WebStatusDot);
-        WebDescriptionText.Text = !webOnline ? "MCP 프로젝트 진척도 확인" : !webExtensionReady ? "확장 업데이트 필요" : !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
-        RunButton.IsEnabled = _activeTaskCts is not null || _awaitingWebResult || (webOnline && webExtensionReady);
+        SetConnectionStatus(WebStatusText, !webOnline ? "WAITING" : !webExtensionReady ? "UPDATE REQUIRED" : !webConversationBound ? "BIND REQUIRED" : "READY", webOnline && webExtensionReady && webConversationBound, waiting: !webOnline, indicator: WebStatusDot);
+        WebDescriptionText.Text = !webOnline ? "MCP 프로젝트 진척도 확인" : !webExtensionReady ? "확장 업데이트 필요" : !webConversationBound ? "현재 GPT Web 대화를 연결하세요" : !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
+        RunButton.IsEnabled = _activeTaskCts is not null || _awaitingWebResult || (webOnline && webExtensionReady && webConversationBound);
         SetConnectionStatus(ServerStatusText, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDot);
         RepositoryNameText.Foreground = _serverOnline ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
         PcNameText.Foreground = _codexAuthenticated ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;

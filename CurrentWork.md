@@ -1,6 +1,12 @@
 # ProjectHub 현재 작업 상태
 
-Updated: 2026-09-21
+Updated: 2026-09-22
+
+2026-09-22 GPT Web 대화 동기화 경합 수정: ChatGPT SPA에서 대화를 빠르게 전환할 때 이전 polling 응답이 새 대화 상태를 덮어쓰지 않도록 navigation generation과 conversation ID를 함께 검증한다. Worker bridge에는 현재 대화의 binding 상태를 노출하고, Worker 설정의 GPT Web 상태를 `READY`/`BIND REQUIRED`로 구분해 미연결 대화에서 작업이 조용히 생성되지 않도록 보완했다. 연결 실패 메시지도 구체적인 원인을 표시한다. 검증: `node --check extension/gptweb-hub/content.js` 통과, `dotnet build ProjectHub.sln --configuration Debug --no-restore`는 기본 샌드박스의 Windows SDK 접근 거부 후 권한 확장으로 경고 0/오류 0 성공, `git diff --check` 통과. 현재 실행 중인 Worker는 수정 전 바이너리이므로 재게시·재기동 후 화면 검증이 필요하다.
+
+2026-09-22 Git Target Settings 정책 정정: Git Repository 주소는 직접 입력하지 않고 저장된 Working Folder의 저장소 `origin`에서만 자동 표시하는 읽기 전용 값으로 변경했다. Working Folder가 없거나 유효하지 않으면 Git 주소·branch·HEAD를 빈 상태로 둔다. Auto Detect는 Working Folder를 지우지 않고 해당 폴더를 다시 탐색한다. Server 설정 기능은 유지하되 `Server: MANUAL`과 Working Folder의 `Source: SETTINGS` 표시를 제거했다. Git 수동 URL은 저장·검증·CLI 전달에 사용하지 않도록 정리했다.
+
+2026-09-22 Working Folder 선택창 표시 수정: WPF 설정 Popup과 Windows FolderBrowserDialog가 서로 다른 최상위 창으로 겹치던 문제를 수정했다. 폴더 선택 중에는 설정 Popup과 입력 차단 오버레이를 잠시 닫고, 선택이 끝나면 설정 Popup을 복원해 폴더 선택창이 항상 전면에 표시되도록 했다.
 
 2026-09-22 JEV Test 샘플 질문 변경: Test 버튼의 NOUL 질문을 `오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐`로 변경하고 `PASS: YES >= 0.5` 문턱값을 적용했다.
 

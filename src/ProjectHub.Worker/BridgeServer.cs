@@ -57,6 +57,11 @@ public sealed class BridgeServer : IDisposable
         get { lock (_gate) return _webConversationTitle; }
     }
 
+    public bool WebConversationBound
+    {
+        get { lock (_gate) return !string.IsNullOrWhiteSpace(_webConversationId) && _state.Bindings.ContainsKey(_webConversationId); }
+    }
+
     public event Action<BridgeTask>? TaskChanged;
 
     public BridgeTask? CreateTaskForLatestBinding(string prompt, List<BridgeAttachment>? attachments = null)
@@ -236,6 +241,7 @@ public sealed class BridgeServer : IDisposable
                 webConversationId = _webConversationId,
                 webConversationTitle = _webConversationTitle,
                 webProjectId = _webProjectId,
+                webConversationBound = WebConversationBound,
                 webExtensionVersion = _webExtensionVersion,
                 webExtensionBuild = _webExtensionBuild,
                 expectedExtensionVersion = ExpectedExtensionVersion,
