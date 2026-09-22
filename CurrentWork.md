@@ -2,6 +2,16 @@
 
 Updated: 2026-09-21
 
+2026-09-22 게시/복사 역할 정정: 게시 결과는 기존처럼 Worker 프로젝트 `bin`에 생성하고, 게시 성공 후 EXE만 저장소 루트의 부모 `Worker` 폴더에 항상 덮어쓴다. `publish-worker.cmd/.ps1`은 배포 폴더에 없을 때만 1회 복사하도록 분리했다.
+
+2026-09-22 Worker 게시 복사 경로 일반화: `publish-worker.ps1`이 저장소 루트를 기준으로 `..\Worker`를 계산해 대상 폴더를 없으면 생성하고, 게시된 `ProjectHub.Worker.exe`와 `publish-worker.cmd/.ps1`을 덮어쓰도록 변경했다. 절대경로를 코드에 넣지 않으며 저장소가 어디에 있든 동일한 상대 구조를 사용한다. 검증 대상: `C:\Projects\AI-AGENTS\MCP\Worker`.
+
+2026-09-22 Worker 게시 경로 기준 고정: `FolderProfile.pubxml`의 기준 없는 `./bin`을 `$(MSBuildProjectDirectory)\bin\`으로 변경했다. `publish-worker.ps1/.cmd`와 `.csproj`도 Worker 프로젝트 경로의 `bin`을 사용하므로 실행 위치에 따라 게시 위치가 바뀌지 않는다. 검증 명령: `src\ProjectHub.Worker\bin\publish-worker.cmd -NoRestore`.
+
+2026-09-22 게시 스크립트 실행 정책 보완: `.ps1` 직접 실행 시 Windows PowerShell 실행 정책으로 `PSSecurityException/UnauthorizedAccess`가 발생할 수 있어, 동일 `bin` 폴더에 `publish-worker.cmd` 래퍼를 추가했다. 래퍼는 `-NoProfile -ExecutionPolicy Bypass`로 게시 PowerShell을 호출하고 실패 시 exit code와 pause를 표시한다. 시스템 실행 정책을 전역 변경하지 않는다.
+
+2026-09-22 JEV API smoke test: 재시작한 Codex 프로세스에서 `TYPESAFE_API_KEY`가 설정된 것을 확인하고, Worker 계약과 동일한 `[NEXT : JEV]`/`[VALIDATION REQUEST]` NOUL payload를 TypeSafe `systemone` endpoint에 전송했다. HTTP 200, `answers` 포함, C1 응답 및 `model/answers/usage` 구조를 확인했다. Worker의 `RouteCodexResultAsync`는 JEV 호출 전 `JEV REQUEST`, 응답 후 `JEV RESULT`를 MESSAGE 로그에 기록하도록 구현되어 있다. 네이티브 Worker 창 자동화 런타임을 사용할 수 없어 실제 화면 캡처 기반 MESSAGE 표시 검증은 별도 잔여로 남긴다.
+
 2026-09-21 Worker UI 높이 점검 및 축소: `MainWindow.xaml`의 초기 창 높이가 1260px로 1080px을 초과하고 최소 높이도 1100px로 제한되어 있음을 확인했다. 초기 높이를 1050px, 최소 높이를 900px로 조정해 1080px 화면에서도 전체 UI를 표시할 수 있도록 했다. 검증: XAML 변경 후 `dotnet build ProjectHub.sln --configuration Debug --no-restore`.
 
 2026-09-21 최신 원격 동기화: 로컬 변경은 `codex-preserve-before-latest-sync` stash로 보존하고 `origin/main`의 `ce5e93f`까지 `pull --rebase`로 적용했다. 프로젝트 정책상 `reset/checkout`은 수행하지 않았다. CMD와 Setup이 PowerShell 실행 엔진을 저장소 기준 상대 경로 `.\bin\...`로 참조하도록 정리했으며, 루트 `bin`에 모든 `ProjectHub_*.ps1` 엔진이 존재하고 CMD 대상 검사를 통과했다.
