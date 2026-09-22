@@ -5337,3 +5337,494 @@ provider 계약이 없어 실제 호출을 연결하지 않았다
 ```
 
 이번 목표는 **현재 만들어진 Contract Gate scaffold를 실제 TypeSafe JEV 호출까지 연결하고, Worker가 모든 hop을 관리하는 완전한 선택형 검증 분기를 E2E로 증명하는 것**이다.
+
+---
+
+# 2026-09-22 GPT Web 최신 피드백 — 09-B JEV v1 계약 정합성·라우팅 보수
+
+## 1. 이번 활성 범위
+
+최신 `main`의 `Master-Polish.md`와 `tasks/09-ai-role-dev-tool.md`를 기준으로 다음 한 단계만 진행한다.
+
+```text
+09-B — JEV v1 계약 정합성과 라우팅 보수
+```
+
+09-A 문서 설계는 완료 상태다. 09-C의 evidence 전달, 10-A 이후 비용/복구/adapter 작업, 07 Force Restore 잔여 검증을 이번 구현에 섞지 않는다.
+
+작업 시작 전 반드시 최신 `main`을 동기화하고 다음 순서로 읽는다.
+
+```text
+1. AGENTS.md
+2. ProjectHub_IMPLEMENTATION_PLAN.md
+3. CurrentWork.md 상단 최신 요약
+4. tasks/09-ai-role-dev-tool.md
+5. GPT-Web-Feedback.md의 이 최신 섹션
+6. Master-Polish.md의 1~3절, 8절, 11절
+7. src/ProjectHub.Worker/JEV-FOOTER-CONTRACT.md
+8. src/ProjectHub.Worker/JEV-API-CONTRACT.md
+```
+
+`GPT-Web-Feedback.md`는 GPT Web 관제 전용 문서다. Codex Desktop에서는 **읽기 전용**으로 사용하고 수정하지 않는다.
+
+## 2. 보존할 공개 계약
+
+다음 계약은 이번 작업에서 이름·의미·wire 형식을 바꾸지 않는다.
+
+```text
+GPT Web → Worker
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+
+Codex → Worker
+[NEXT : WEB]
+[NEXT : JEV]
+```
+
+역할도 유지한다.
+
+```text
+GPT Web = 관리자/관제
+Worker = 모든 메시지 수신, 상태 보유, 기계적 파싱/비교, 라우팅
+Codex CLI = 실제 구현 작업자
+JEV = 선택형 의미 검증자
+```
+
+Codex와 JEV는 직접 통신하지 않는다.
+
+```text
+Codex → Worker → JEV
+JEV → Worker → Codex 또는 Web
+```
+
+Worker가 코드나 요구사항의 의미를 대신 판단하도록 확장하지 않는다. 허용되는 판단은 계약 파싱, 타입/범위 검증, threshold의 기계적 비교, 상태 전이 검증뿐이다.
+
+Judge OFF 경로는 기존 동작을 그대로 보존한다.
+
+## 3. 이번 09-B의 핵심 문제
+
+현재 구현에는 실제 JEV HTTP adapter와 NOUL/SCORE/CHOICE 평가 틀이 이미 있다. 새 provider 연결 작업이 아니다.
+
+이번에 고칠 대상은 다음이다.
+
+```text
+A. parser가 계약 문법을 정확히 받아들이는가
+B. 정상 FAIL과 잘못된 응답 ERROR를 구분하는가
+C. NEXT WEB / NEXT JEV 구조를 강제하는가
+D. JEV PASS 뒤 보고서 전용 단계가 JEV로 재진입하지 않는가
+E. JEV retry count가 현재 Web→Codex round 범위로 제한되는가
+F. ERROR fallback 이유가 GPT Web에 전달되는가
+```
+
+## 4. Parser / Contract 정합성
+
+### 4.1 NEXT
+
+Codex 결과의 **첫 유효행**만 NEXT 제어행으로 판정한다.
+
+허용:
+
+```text
+[NEXT : WEB]
+[NEXT : JEV]
+```
+
+본문, 코드블록, 인용문 안의 뒤쪽 NEXT 문자열을 새로운 제어 명령으로 재해석하지 않는다.
+
+Judge ON에서:
+
+```text
+[NEXT : WEB]
+→ [REPORT] 필수
+
+[NEXT : JEV]
+→ [VALIDATION REQUEST] 필수
+```
+
+`NEXT : JEV` 결과를 Web용 완료 보고서로 간주하지 않는다.
+
+구조가 잘못되면 Worker가 내용을 추측해서 고치지 않는다.
+
+```text
+CONTRACT_PROTOCOL_ERROR
+→ Worker → GPT Web
+```
+
+원래 Codex 결과와 짧은 기계적 오류 이유를 함께 보낸다.
+
+### 4.2 NOUL
+
+현재 문서 이력에 한 줄형과 두 줄형이 모두 존재하므로 둘 다 안전하게 파싱한다.
+
+한 줄형:
+
+```text
+- NOUL | 제공된 증거가 AC-1을 뒷받침하는가? | PASS: YES >= 0.90
+```
+
+두 줄형:
+
+```text
+- NOUL | 제공된 증거가 AC-1을 뒷받침하는가?
+  PASS: YES >= 0.90
+```
+
+중요:
+
+- 한 질문의 PASS가 다음 질문에 잘못 연결되지 않아야 한다.
+- 질문이 비어 있으면 protocol error다.
+- threshold는 유한한 `0.0..1.0` 범위만 허용한다.
+- API의 NOUL 값도 유한한 `0.0..1.0` 범위여야 한다.
+- 정상 범위의 값이 threshold를 못 넘은 경우만 `FAIL`이다.
+- 누락, NaN/Infinity, 범위 밖 값, type mismatch는 `ERROR`다.
+
+### 4.3 SCORE
+
+Footer의 사람용 criteria 번호는 1-based, JEV API score 공간은 0-based라는 현재 계약을 유지한다.
+
+예:
+
+```text
+1 = 정상
+2 = 작은 인접 변경
+3 = 요구하지 않은 변경
+4 = 다른 목표
+
+PASS: SCORE <= 2.0
+```
+
+API 비교 threshold:
+
+```text
+2.0 - 1.0 = 1.0
+```
+
+검증:
+
+- criteria 번호는 1부터 연속이어야 한다.
+- criteria가 비거나 중복 번호/건너뛴 번호가 있으면 protocol error다.
+- 사람용 threshold가 정의된 criteria 범위를 벗어나면 protocol error다.
+- API score는 유한하고 `0..criteriaCount-1` 범위여야 한다.
+- 정상 score의 threshold 미충족만 `FAIL`.
+- 누락/type mismatch/NaN/Infinity/범위 밖 score는 `ERROR`.
+
+### 4.4 CHOICE
+
+- 선택지 key와 설명을 그대로 parser가 보존한다.
+- PASS에 적힌 허용 choice는 반드시 정의된 선택지여야 한다.
+- API answer.choice가 정의된 선택지 중 하나일 때만 정상 응답으로 본다.
+- 정의된 값이지만 허용 집합 밖이면 `FAIL`.
+- 누락/type mismatch/정의되지 않은 choice는 `ERROR`.
+
+### 4.5 Question ID와 응답 구조
+
+Worker가 요청 항목에 `C1, C2, C3...`를 부여한 현재 방식을 유지한다.
+
+다음은 모두 JEV 결과의 `ERROR`다.
+
+```text
+- 요청한 Cn 응답 누락
+- 알 수 없는/중복 응답 ID로 정상 응답을 대체할 수 없음
+- 요청 type과 응답 type 불일치
+- type별 필수 값 누락
+- type별 값 범위 위반
+- 파싱할 수 없는 JSON/응답 구조
+```
+
+이 오류들을 구현 실패인 `FAIL`로 바꿔 Codex에 재작업시키지 않는다.
+
+## 5. PASS / FAIL / ERROR 라우팅
+
+### PASS
+
+모든 검증이 정상 응답이며 threshold를 통과했을 때만 PASS다.
+
+PASS 직후 Web으로 바로 보내지 않는다. 기존 v1 계약대로 **같은 Codex session에 보고서 전용 요청을 1회** 보낸다.
+
+```text
+[JEV VALIDATION PASSED]
+
+요청한 JEV 검증이 모두 통과했다.
+추가 구현이나 변경은 하지 말고 현재 작업 상태를 기준으로
+[NEXT : WEB]으로 시작하는 [REPORT]를 작성하라.
+```
+
+이 시점부터 해당 호출은 `REPORT_ONLY` 성격으로 취급한다.
+
+보고서 전용 응답에서 허용되는 정상 종료는:
+
+```text
+[NEXT : WEB]
+[REPORT]
+...
+```
+
+뿐이다.
+
+보고서 전용 응답이 다시 `[NEXT : JEV]`를 요구하면 **JEV를 다시 호출하지 않는다.**
+
+```text
+REPORT_PHASE_REENTERED_JEV
+→ CONTRACT_PROTOCOL_ERROR
+→ Worker → GPT Web fallback
+```
+
+이 보수로 PASS→report 요청→JEV 재진입 루프를 차단한다.
+
+### FAIL
+
+JEV 응답 자체는 정상이고 하나 이상의 계약 조건만 미달한 경우다.
+
+```text
+JEV → Worker
+Worker → 같은 Codex session
+```
+
+Worker가 새로운 해결책을 만들지 않는다. 실패한 항목의 다음 정보만 전달한다.
+
+```text
+ID
+TYPE
+QUESTION
+EXPECTED
+ACTUAL
+RESULT: FAIL
+```
+
+Codex가 다시 결과를 내면 반드시 Worker가 NEXT를 다시 파싱한다.
+
+FAIL 상태가 남아 있는데 Codex가 `NEXT : WEB`을 선택했다고 해서 Worker가 검증 성공으로 바꾸지 않는다. Web에는 미해결 JEV FAIL이 존재한다는 기계적 상태를 함께 전달할 수 있다.
+
+### ERROR
+
+계약 위반, 응답 누락/type mismatch/범위 오류, key 없음, HTTP 오류, timeout, 잘못된 JSON 등은 ERROR다.
+
+```text
+JEV ERROR
+→ 자동 구현 재작업으로 변환하지 않음
+→ Worker → GPT Web fallback
+```
+
+Web prompt에는 원래 Codex 결과를 보존하고 최소한 다음 기계 정보를 추가한다.
+
+```text
+[JEV FALLBACK]
+CODE: <stable short code>
+ROUND: <current>/<max>
+DETAIL: <secret 없는 짧은 이유>
+```
+
+API key, Authorization header, 민감 URL, 응답 전체 dump를 넣지 않는다.
+
+## 6. JEV validation round 범위
+
+JEV validation count는 Task 전체 누적이 아니라 **현재 GPT Web → Codex 작업 라운드별**로 관리한다.
+
+초기 상한:
+
+```text
+MAX_JEV_VALIDATION_ROUNDS_PER_WEB_ROUND = 3
+```
+
+첫 JEV 검증도 1회로 센다. 따라서 추가 보완 기회는 최대 2회다.
+
+count를 새로 시작하는 경계:
+
+```text
+- 새 Task 시작
+- GPT Web ACTION=CONTINUE로 새 Codex 작업 라운드 시작
+```
+
+정상 PASS 후 report가 Web에 전달되어 해당 라운드가 끝나면 그 round의 judge state를 종료한다.
+
+JEV retry count를 Web ACTION round count와 하나의 변수로 섞지 않는다.
+
+상한 초과 시 의미 판단 없이:
+
+```text
+JEV_RETRY_LIMIT
+→ Worker → GPT Web
+```
+
+으로 보낸다.
+
+## 7. Worker 전용 fixture 테스트
+
+이번 09-B 완료에는 Worker/JEV 전용 자동 테스트가 필요하다.
+
+기존 `tests/`에 적절한 Worker test project가 없다면 이번 범위 안에서 최소 테스트 프로젝트를 추가할 수 있다. 테스트를 위해 제품 계약을 별도 복제하지 말고 실제 parser/evaluator/routing 코드를 참조한다.
+
+최소 fixture:
+
+```text
+NEXT / structure
+- 첫 유효행 NEXT WEB
+- 첫 유효행 NEXT JEV
+- 뒤쪽 NEXT 문자열 무시
+- WEB인데 REPORT 없음 → protocol error
+- JEV인데 VALIDATION REQUEST 없음 → protocol error
+
+NOUL
+- 한 줄 PASS
+- 두 줄 PASS
+- threshold 경계값
+- threshold 범위 밖
+- answer 0.0 / 1.0 경계
+- answer 누락
+- answer type mismatch
+- answer <0 / >1 / non-finite
+
+SCORE
+- 정상 1-based→0-based 변환
+- 정확한 threshold 경계
+- 연속되지 않은 criteria 번호
+- threshold 범위 밖
+- API score 음수/상한 초과/non-finite
+- response type mismatch
+
+CHOICE
+- 단일 허용값 PASS
+- 복수 허용값
+- 정의됐지만 비허용값 → FAIL
+- PASS에 정의되지 않은 choice → protocol error
+- API가 정의되지 않은 choice 반환 → ERROR
+- type mismatch
+
+Response envelope
+- question ID missing → ERROR
+- malformed JSON → ERROR
+- 정상 ALL PASS
+- 정상 하나 FAIL
+
+Routing
+- Judge OFF 기존 Web 경로
+- NEXT WEB + REPORT → JEV 호출 0회
+- JEV PASS → 같은 Codex session report 요청
+- report-only에서 NEXT JEV → Web protocol fallback, JEV 재호출 0회
+- JEV FAIL → 같은 Codex session
+- JEV ERROR → Web fallback
+- ACTION=CONTINUE 새 round에서 JEV count reset
+- round당 3회 상한
+```
+
+HTTP adapter 테스트는 실제 외부 API 대신 mock handler를 사용한다. 기존 실제 HTTP 200 smoke 기록을 단위 테스트가 대신했다고 표현하지 않는다.
+
+## 8. 실제 실행 검증
+
+코드와 자동 테스트가 통과한 뒤 **빌드된 Explorer 실행본을 우선** 사용한다.
+
+최소 시나리오:
+
+```text
+A. Judge OFF
+Web → Worker → Codex → Worker → Web
+기존 동작 회귀 없음
+
+B. Judge ON / NEXT WEB
+JEV 호출 없이 REPORT가 Web으로 전달
+
+C. Judge ON / NEXT JEV / PASS
+Codex → Worker → JEV
+JEV → Worker
+Worker → 같은 Codex session report 요청
+Codex → Worker / NEXT WEB + REPORT
+Worker → Web
+
+D. Judge ON / NEXT JEV / FAIL
+Codex → Worker → JEV
+JEV → Worker
+Worker → 같은 Codex session 보완
+재검증 후 PASS
+report-only
+Worker → Web
+
+E. JEV ERROR
+Worker → Web fallback
+오류 이유 표시
+Codex 구현 재작업으로 오인하지 않음
+
+F. malformed contract
+CONTRACT_PROTOCOL_ERROR
+Worker → Web
+```
+
+MESSAGE LOG의 실제 hop 순서도 확인한다.
+
+Explorer 화면 검증이 환경상 불가능하면 CLI/API/direct process 같은 다음 가능한 방법으로 검증하되 **대체 검증**이라고 명확히 기록하고 Explorer E2E 완료로 표시하지 않는다.
+
+## 9. 변경 금지 / 이번 범위 밖
+
+이번 09-B에서 하지 않는다.
+
+```text
+- 09-C evidence bundle / 실제 diff·test 증거를 JEV state에 연결
+- ACTION 또는 NEXT 공개 wire protocol 변경
+- Web-first 실행으로 전환
+- JEV PASS 뒤 report 전용 Codex 호출 제거
+- 범용 Multi-AI workflow engine
+- JobRunner/전체 crash recovery 구현
+- provider adapter 일반화
+- Codex/JEV 직접 통신
+- JEV 외 새 provider
+- usage/비용 최적화 10-A
+- unrelated UI polish
+- 07 Force Restore 잔여 검증 병행
+```
+
+`JEV-FOOTER-CONTRACT.md`와 `JEV-API-CONTRACT.md`를 구현 편의를 위해 임의로 바꾸지 않는다. 현재 계약과 코드가 충돌하면 우선 코드를 계약에 맞춘다. 계약 자체의 변경이 필요하다고 판단되면 변경하지 말고 결과에 별도 이슈로 보고한다.
+
+## 10. 문서와 Git 정책
+
+구현 완료 후 Codex Desktop은 다음을 최신 사실로 갱신한다.
+
+```text
+- CurrentWork.md 상단 현재 요약
+- tasks/09-ai-role-dev-tool.md의 09-B 결과/검증
+- 필요 시 ProjectHub_IMPLEMENTATION_PLAN.md의 상태
+```
+
+단, `GPT-Web-Feedback.md`는 수정하지 않는다.
+
+결과에는 반드시 구분해서 기록한다.
+
+```text
+- 코드검토
+- 자동 fixture test
+- build/test
+- 실제 API 사용 여부
+- Explorer 실화면 E2E
+- 대체 검증
+- 미검증/잔여
+```
+
+Git commit/push는 별도 사용자 명시 승인이 없으면 수행하지 않는다.
+
+## 11. 09-B 완료 조건
+
+다음이 모두 충족되어야 09-B 완료로 기록한다.
+
+```text
+[ ] 한 줄/두 줄 NOUL 계약 파싱이 서로 독립적으로 정상
+[ ] SCORE criteria/threshold/answer 범위 검증
+[ ] CHOICE 정의/허용값 검증
+[ ] 정상 FAIL과 invalid ERROR 분리
+[ ] question ID missing/type mismatch가 ERROR
+[ ] NEXT WEB에는 REPORT 필수
+[ ] NEXT JEV에는 VALIDATION REQUEST 필수
+[ ] JEV PASS 후 같은 Codex session report 요청
+[ ] REPORT_ONLY에서 JEV 재진입 차단
+[ ] JEV FAIL은 같은 Codex session으로 보완
+[ ] JEV ERROR는 Web fallback
+[ ] fallback에 secret 없는 기계적 원인 전달
+[ ] JEV counter가 Web→Codex round별 최대 3회
+[ ] Judge OFF 회귀 없음
+[ ] Worker 전용 fixture 테스트 통과
+[ ] 전체 관련 build/test 통과
+[ ] Explorer ON/OFF PASS/FAIL/ERROR 경로 검증 또는 미완료를 명시
+```
+
+이번 단계의 목적은 JEV를 더 똑똑하게 만드는 것이 아니다.
+
+**Worker가 기존 v1 계약을 정확히 파싱하고, 잘못된 응답을 구현 실패와 구분하며, 모든 메시지를 올바른 다음 hop으로만 전달하도록 만드는 것**이 09-B의 완료 기준이다.
+
