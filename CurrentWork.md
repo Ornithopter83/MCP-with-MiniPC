@@ -2,6 +2,16 @@
 
 Updated: 2026-09-21
 
+2026-09-22 JEV Test 샘플 질문 변경: Test 버튼의 NOUL 질문을 `오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐`로 변경하고 `PASS: YES >= 0.5` 문턱값을 적용했다.
+
+2026-09-22 JEV Test 문턱값 표시 오류 수정: Test 버튼이 NOUL 질문과 `PASS` 문턱값을 한 줄로 생성해 계약 파서가 threshold를 찾지 못하던 문제를 확인했다. 계약 문서 형식대로 질문과 `PASS: YES >= 0.90`을 별도 줄로 생성하도록 수정했다. Debug build, 전체 테스트 5개, `git diff --check`를 통과했다.
+
+2026-09-22 게시 스크립트 저장소 루트 탐색 정정: 복사본의 `..\Server` 고정 후보 대신 스크립트 위치에서 상위로 이동하며 `.git` 저장소 루트를 찾고, 배포 폴더에서 실행할 때는 현재 상위 폴더의 저장소 자식 후보를 탐색한다. 최종 소스는 항상 `저장소루트\src\ProjectHub.Worker\ProjectHub.Worker.csproj`, 게시·복사 대상은 `저장소루트\..\Worker`로 계산한다.
+
+2026-09-22 복사된 게시 스크립트 빌드 경로 수정: `Worker\publish-worker.ps1`이 자기 상위 폴더를 프로젝트 루트로 오인해 `MCP\ProjectHub.Worker.csproj`를 찾던 문제를 수정했다. 이제 `..\Server\src\ProjectHub.Worker`와 상위 경로를 탐색해 원본 Worker 프로젝트를 찾으며, 원본 `src\ProjectHub.Worker\bin` 실행도 유지한다. 배포 폴더의 복사본을 갱신한 뒤 복사본 CMD로 검증한다.
+
+2026-09-22 JEV Endpoint 설정·Test UI 보완: 근거 없는 `Auto Detect`를 제거하고 공식 계약 문서의 `https://api.typesafe.ai/v1/systemone`을 기본 Endpoint로 표시했다. Test 버튼은 최소 NOUL 계약 요청을 실제 JEV API에 보내 응답 결과를 설정 상태와 MESSAGE의 `JEV TEST` 항목에 표시한다. 저장된 Endpoint는 `JevJudgeRunner`의 실제 호출 주소로 연결하며 HTTPS만 허용한다. 검증: Debug build 성공(경고 0/오류 0), 전체 테스트 5개 통과, Extension 구문 검사 및 `git diff --check` 통과.
+
 2026-09-22 게시/복사 역할 정정: 게시 결과는 기존처럼 Worker 프로젝트 `bin`에 생성하고, 게시 성공 후 EXE만 저장소 루트의 부모 `Worker` 폴더에 항상 덮어쓴다. `publish-worker.cmd/.ps1`은 배포 폴더에 없을 때만 1회 복사하도록 분리했다.
 
 2026-09-22 Worker 게시 복사 경로 일반화: `publish-worker.ps1`이 저장소 루트를 기준으로 `..\Worker`를 계산해 대상 폴더를 없으면 생성하고, 게시된 `ProjectHub.Worker.exe`와 `publish-worker.cmd/.ps1`을 덮어쓰도록 변경했다. 절대경로를 코드에 넣지 않으며 저장소가 어디에 있든 동일한 상대 구조를 사용한다. 검증 대상: `C:\Projects\AI-AGENTS\MCP\Worker`.

@@ -880,18 +880,49 @@ public partial class MainWindow : Window
         var judge = _targetSettings.EffectiveJudge;
         EnableJudgeCheckBox.IsChecked = judge.Enabled;
         JudgeProviderCombo.SelectedIndex = 0;
-        JudgeExecutableInput.Text = judge.ManualExecutableOrEndpoint ?? string.Empty;
+        JudgeExecutableInput.Text = judge.ManualExecutableOrEndpoint ?? JevJudgeRunner.DefaultEndpoint;
         JudgeTimeoutInput.Text = judge.TimeoutSeconds.ToString();
         JudgeSettingsStatusText.Text = judge.Enabled ? "Jev · optional fallback to GPT Web" : "Jev · OFF";
         if (!_judgeReviewing) _judgeStatus = judge.Enabled ? "READY" : "OFF";
         UpdateJudgeVisual();
     }
 
-    private void AutoDetectJudge_Click(object sender, RoutedEventArgs e)
+    private async void TestJudge_Click(object sender, RoutedEventArgs e)
     {
-        var detected = _jevJudgeRunner.FindExecutable(null);
-        JudgeExecutableInput.Text = detected ?? string.Empty;
-        JudgeSettingsStatusText.Text = detected is null ? "Jev not found · GPT Web fallback" : "Jev detected · execution adapter pending";
+        var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text)
+            ? JevJudgeRunner.DefaultEndpoint
+            : JudgeExecutableInput.Text.Trim();
+        JudgeExecutableInput.Text = endpoint;
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps)
+        {
+            JudgeSettingsStatusText.Text = "Jev · invalid HTTPS Endpoint";
+            return;
+        }
+
+        var timeout = int.TryParse(JudgeTimeoutInput.Text, out var value) ? Math.Clamp(value, 10, 600) : 120;
+        JudgeSettingsStatusText.Text = "Jev · testing...";
+        var request = new JudgeRequest(
+            "ProjectHub JEV Endpoint test",
+            1,
+            AppContext.BaseDirectory,
+            "[NEXT : JEV]" + Environment.NewLine + Environment.NewLine + "[VALIDATION REQUEST]" + Environment.NewLine + Environment.NewLine + "- NOUL | 오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐" + Environment.NewLine + "  PASS: YES >= 0.5",
+            "- NOUL | 오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐" + Environment.NewLine + "  PASS: YES >= 0.5",
+            Array.Empty<CodexCliFile>(),
+            "LOCAL",
+            null);
+        try
+        {
+            var result = await _jevJudgeRunner.ReviewAsync(request, new JudgeSettings(true, "jev", endpoint, timeout), CancellationToken.None);
+            AddTaskMessage("JEV TEST", $"{result.Decision}: {result.Message}");
+            JudgeSettingsStatusText.Text = result.Decision == JudgeDecision.Error
+                ? $"Jev · ERROR · {result.Message}"
+                : $"Jev · {result.Decision.ToString().ToUpperInvariant()}";
+        }
+        catch (Exception exception)
+        {
+            AddTaskMessage("JEV TEST", $"ERROR: {exception.GetType().Name}");
+            JudgeSettingsStatusText.Text = "Jev · test failed";
+        }
     }
     private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
     {
@@ -915,13 +946,13 @@ public partial class MainWindow : Window
         }
         var timeout = int.TryParse(JudgeTimeoutInput.Text, out var value) ? Math.Clamp(value, 10, 600) : 120;
         var provider = GetSelectedContent(JudgeProviderCombo, "Jev").ToLowerInvariant();
-        var executable = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text) ? null : JudgeExecutableInput.Text.Trim();
+        var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text) ? JevJudgeRunner.DefaultEndpoint : JudgeExecutableInput.Text.Trim();
         _targetSettings = _targetSettings with
         {
             ManualRepositoryUrl = repository, ManualServerBaseUrl = server,
             RepositoryUrlSource = repository is null ? null : "MANUAL", ServerBaseUrlSource = "MANUAL",
             ManualWorkingDirectory = workingDirectory,
-            Judge = new JudgeSettings(EnableJudgeCheckBox.IsChecked == true, provider, executable, timeout)
+            Judge = new JudgeSettings(EnableJudgeCheckBox.IsChecked == true, provider, endpoint, timeout)
         };
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();

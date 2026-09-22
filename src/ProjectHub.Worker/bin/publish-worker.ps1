@@ -3,9 +3,30 @@ param(
     [switch]$NoRestore
 )
 
-$projectDirectory = Split-Path -Parent $PSScriptRoot
+function Find-ProjectHubRepositoryRoot {
+    $directory = [IO.DirectoryInfo]$PSScriptRoot
+    while ($null -ne $directory) {
+        if (Test-Path -LiteralPath (Join-Path $directory.FullName '.git')) {
+            return $directory.FullName
+        }
+
+        $repositoryCandidates = @(Get-ChildItem -LiteralPath $directory.FullName -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+            (Test-Path -LiteralPath (Join-Path $_.FullName '.git')) -and
+            (Test-Path -LiteralPath (Join-Path $_.FullName 'src\ProjectHub.Worker\ProjectHub.Worker.csproj') -PathType Leaf)
+        })
+        if ($repositoryCandidates.Count -eq 1) {
+            return $repositoryCandidates[0].FullName
+        }
+
+        $directory = $directory.Parent
+    }
+
+    throw "ProjectHub 저장소 루트를 찾을 수 없습니다. 저장소 루트와 Worker 배포 폴더의 위치를 확인하세요."
+}
+
+$repositoryRoot = Find-ProjectHubRepositoryRoot
+$projectDirectory = Join-Path $repositoryRoot 'src\ProjectHub.Worker'
 $projectFile = Join-Path $projectDirectory 'ProjectHub.Worker.csproj'
-$repositoryRoot = Split-Path -Parent (Split-Path -Parent $projectDirectory)
 $deploymentDirectory = [IO.Path]::GetFullPath((Join-Path $repositoryRoot '..\Worker'))
 $arguments = @('publish', $projectFile, '--configuration', 'Release')
 if ($NoRestore) { $arguments += '--no-restore' }

@@ -11,16 +11,19 @@ public sealed record JudgeResult(JudgeDecision Decision,string Message,string Pr
 
 public sealed class JevJudgeRunner
 {
-    private const string Endpoint="https://api.typesafe.ai/v1/systemone";
+    public const string DefaultEndpoint="https://api.typesafe.ai/v1/systemone";
     private static readonly HttpClient Client=new(){Timeout=Timeout.InfiniteTimeSpan};
     public string? FindExecutable(string? value)=>string.IsNullOrWhiteSpace(value)?null:value;
 
     public async Task<JudgeResult> ReviewAsync(JudgeRequest request,JudgeSettings settings,CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var endpoint = string.IsNullOrWhiteSpace(settings.ManualExecutableOrEndpoint) ? DefaultEndpoint : settings.ManualExecutableOrEndpoint.Trim();
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps)
+            return Error("JEV Endpoint는 유효한 HTTPS URL이어야 합니다.", endpoint);
         var key=Environment.GetEnvironmentVariable("TYPESAFE_API_KEY");
-        if(string.IsNullOrWhiteSpace(key))return Error("TYPESAFE_API_KEY가 없어 JEV를 호출하지 않고 GPT Web fallback을 사용합니다.");
-        if(!JevContract.TryParseValidation(request.ValidationRequest,out var validation,out var parseError))return Error("VALIDATION REQUEST 오류: "+parseError);
+        if(string.IsNullOrWhiteSpace(key))return Error("TYPESAFE_API_KEY가 없어 JEV를 호출하지 않고 GPT Web fallback을 사용합니다.", endpoint);
+        if(!JevContract.TryParseValidation(request.ValidationRequest,out var validation,out var parseError))return Error("VALIDATION REQUEST 오류: "+parseError, endpoint);
         using var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(settings.TimeoutSeconds,10,600)));
         var questions=validation.Questions.ToDictionary(q=>q.Id,q=>q.Type switch
         {
@@ -29,13 +32,13 @@ public sealed class JevJudgeRunner
             _=>new object?[]{new{type="choice",instructions=q.Instructions,criteria=q.ChoiceCriteria}}
         });
         var questionMap=questions.ToDictionary(x=>x.Key,x=>x.Value[0]);
-        using var message=new HttpRequestMessage(HttpMethod.Post,Endpoint);message.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);
+        using var message=new HttpRequestMessage(HttpMethod.Post,endpointUri);message.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);
         message.Content=new StringContent(JsonSerializer.Serialize(new{model="jev-latest",state=new{task=request.Goal,codex_result=request.CodexResult,round=request.Round,working_directory=request.WorkingDirectory},questions=questionMap}),Encoding.UTF8,"application/json");
         try
         {
             using var response=await Client.SendAsync(message,timeout.Token);var body=await response.Content.ReadAsStringAsync(timeout.Token);
-            if(!response.IsSuccessStatusCode)return Error($"JEV HTTP {(int)response.StatusCode} 응답입니다.");
-            using var doc=JsonDocument.Parse(body);if(!doc.RootElement.TryGetProperty("answers",out var answers))return Error("JEV 응답에 answers가 없습니다.");
+            if(!response.IsSuccessStatusCode)return Error($"JEV HTTP {(int)response.StatusCode} 응답입니다.", endpoint);
+            using var doc=JsonDocument.Parse(body);if(!doc.RootElement.TryGetProperty("answers",out var answers))return Error("JEV 응답에 answers가 없습니다.", endpoint);
             var failures=new List<string>();
             foreach(var q in validation.Questions)
             {
@@ -45,12 +48,12 @@ public sealed class JevJudgeRunner
                 else if(q.Type==JevQuestionType.Score){if(!answer.TryGetProperty("score",out var value)||value.ValueKind!=JsonValueKind.Number||!value.TryGetDouble(out var actual)||!Compare(actual,q.Rule.Operator,q.Rule.Number!.Value-1))failures.Add($"{q.Id} TYPE: SCORE EXPECTED: SCORE {q.Rule.Operator} {q.Rule.Number!.Value-1} ACTUAL: {(answer.TryGetProperty("score",out var a)?a.ToString():"missing")}");}
                 else {var actual=answer.TryGetProperty("choice",out var value)?value.GetString():null;if(actual is null||!q.Rule.Allowed.Contains(actual))failures.Add($"{q.Id} TYPE: CHOICE EXPECTED: {string.Join(" 또는 ",q.Rule.Allowed)} ACTUAL: {actual??"missing"}");}
             }
-            return failures.Count==0?new(JudgeDecision.Pass,"ALL PASS",settings.Provider,Endpoint):new(JudgeDecision.Fail,"[JEV VALIDATION FAILED]"+Environment.NewLine+string.Join(Environment.NewLine+Environment.NewLine,failures),settings.Provider,Endpoint);
+            return failures.Count==0?new(JudgeDecision.Pass,"ALL PASS",settings.Provider,endpoint):new(JudgeDecision.Fail,"[JEV VALIDATION FAILED]"+Environment.NewLine+string.Join(Environment.NewLine+Environment.NewLine,failures),settings.Provider,endpoint);
         }
-        catch(OperationCanceledException) when(!cancellationToken.IsCancellationRequested){return Error("JEV timeout으로 GPT Web fallback을 사용합니다.");}
-        catch(JsonException){return Error("JEV 응답 JSON을 해석할 수 없어 GPT Web fallback을 사용합니다.");}
-        catch(Exception ex){return Error($"JEV 연결 오류: {ex.GetType().Name}");}
+        catch(OperationCanceledException) when(!cancellationToken.IsCancellationRequested){return Error("JEV timeout으로 GPT Web fallback을 사용합니다.", endpoint);}
+        catch(JsonException){return Error("JEV 응답 JSON을 해석할 수 없어 GPT Web fallback을 사용합니다.", endpoint);}
+        catch(Exception ex){return Error($"JEV 연결 오류: {ex.GetType().Name}", endpoint);}
     }
     private static bool Compare(double actual,string op,double expected)=>op==">="?actual>=expected:actual<=expected;
-    private JudgeResult Error(string message)=>new(JudgeDecision.Error,message,"jev",Endpoint);
+    private static JudgeResult Error(string message, string endpoint)=>new(JudgeDecision.Error,message,"jev",endpoint);
 }
