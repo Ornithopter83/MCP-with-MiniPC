@@ -2,6 +2,18 @@
 
 Updated: 2026-09-22
 
+## 현재 요약 — 2026-09-22 / 09-A Master 설계 완료
+
+이번 사용자 요청의 활성 범위는 `tasks/09-ai-role-dev-tool.md`의 **09-A 문서 설계**이며 2026-09-22 완료했다. 기존 07 배포 패키지와 Worker 실화면 검증은 보존하고 이번에 수행하지 않았다. 아래 누적 이력보다 이 요약을 현재 판단 기준으로 사용한다.
+
+- [Master-Polish.md](Master-Polish.md)에 토큰 절약 우선 운영, ChatGPT Web 관제 → Codex Luna Medium 구현 → JEV 판단, Job 복구, 역할 교체 경계, 사용자·관제·JEV 복사 양식과 단계별 완료 조건을 정리했다.
+- 사용자 승인으로 fetch/pull --rebase 완료. 기준 HEAD `74fcc6a8bef9796ebc3355ebcb34a4bd37f0a804`, 동기화 후 feedback 최종 변경 커밋 `ac47ba5`를 읽고 분석했다.
+- 현재 코드상 BEGIN도 Codex-first이며, JEV state에는 실제 diff/테스트 증거가 연결되지 않는다. 일부 invalid 응답이 ERROR 대신 FAIL로 처리되고 PASS 보고 재진입 제한도 보완이 필요하다. 기존 이력의 완전한 계약 구현 주장은 코드와 차이가 있어 Master에 구분했다.
+- JEV API adapter와 과거 2026-09-22 HTTP 200 smoke 기록은 존재한다. 뒤쪽 이력의 ‘키 없음/실 API smoke 잔여’는 과거 상태다. 최신 실행본의 Explorer 전체 ON/OFF E2E는 여전히 잔여다.
+- 문서 검증: 임시 .NET harness로 실제 JEV parser에 복사 양식 3종을 통과시키고 inline PASS 불일치를 재현했다. JSON 4개·로컬 링크·코드블록 경계 검사를 통과했다. 검증 명령은 활성 09 task에 기록했다.
+- 제품 소스·공개 계약·배포본은 이번에 변경하지 않았다. 제품 build/test·API·Explorer 검증은 재실행하지 않았다.
+- 잔여 식별자: **09-B** JEV 계약/라우팅 보수, **09-C** 실제 증거 전달·AC 고정. **10-A~11-C**는 Master의 후속 후보. 07의 기존 잔여 검증도 유지한다.
+
 2026-09-22 GPT Web 대화 동기화 경합 수정: ChatGPT SPA에서 대화를 빠르게 전환할 때 이전 polling 응답이 새 대화 상태를 덮어쓰지 않도록 navigation generation과 conversation ID를 함께 검증한다. Worker bridge에는 현재 대화의 binding 상태를 노출하고, Worker 설정의 GPT Web 상태를 `READY`/`BIND REQUIRED`로 구분해 미연결 대화에서 작업이 조용히 생성되지 않도록 보완했다. 연결 실패 메시지도 구체적인 원인을 표시한다. 검증: `node --check extension/gptweb-hub/content.js` 통과, `dotnet build ProjectHub.sln --configuration Debug --no-restore`는 기본 샌드박스의 Windows SDK 접근 거부 후 권한 확장으로 경고 0/오류 0 성공, `git diff --check` 통과. 현재 실행 중인 Worker는 수정 전 바이너리이므로 재게시·재기동 후 화면 검증이 필요하다.
 
 2026-09-22 Git Target Settings 정책 정정: Git Repository 주소는 직접 입력하지 않고 저장된 Working Folder의 저장소 `origin`에서만 자동 표시하는 읽기 전용 값으로 변경했다. Working Folder가 없거나 유효하지 않으면 Git 주소·branch·HEAD를 빈 상태로 둔다. Auto Detect는 Working Folder를 지우지 않고 해당 폴더를 다시 탐색한다. Server 설정 기능은 유지하되 `Server: MANUAL`과 Working Folder의 `Source: SETTINGS` 표시를 제거했다. Git 수동 URL은 저장·검증·CLI 전달에 사용하지 않도록 정리했다.

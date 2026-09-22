@@ -1,12 +1,14 @@
 # ProjectHub 구현 로드맵
 
-Updated: 2026-09-18
+Updated: 2026-09-22
 
 ## 목표
 
 Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 수집하고 Supabase에 영속화하는 ProjectHub v0.2를 구축한다.
 
 흐름: `Agent → ProjectHub.Server → ProjectService/Infrastructure → Supabase`
+
+2026-09-22 확장 목표: 기존 v0.2 기반 위에 저비용 AI Role Dev Tool을 구성한다. 우선순위는 토큰 절약 → 목표까지의 지속 실행 → 역할·모델 교체다. 상세 설계는 [Master-Polish.md](Master-Polish.md)를 참조하며, 현재 실행 정책과 공개 계약은 유지한다.
 
 ## 작업지시서
 
@@ -20,6 +22,7 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 | 06 | [Large Data/NAS](tasks/06-large-data-nas.md) | 대용량 데이터 계약·Gateway·업로드 | 완료 |
 | 07 | [프로젝트 배포 패키지](tasks/07-project-deployment-package.md) | Setup·Sync·Restore | 검증 중 |
 | 08 | [Server 설치·이전](tasks/08-server-installation-migration.md) | Windows 11+ 재설치·연결 가이드 | 대기 |
+| 09 | [AI Role Dev Tool 설계와 검증 기반](tasks/09-ai-role-dev-tool.md) | 저비용 역할 분담·지속 실행·JEV 검증 | A 완료 / B·C 대기 |
 
 ## 순서
 
@@ -38,9 +41,9 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: GPTWeb-Hub Worker — 실제 GPT Web 다중 왕복 및 파일 전달 안정화
+현재 문서 작업: **09-A Master 설계 완료 (2026-09-22)**. [09 task](tasks/09-ai-role-dev-tool.md)에 결과·검증 명령을 기록했다. 다음 구현 후보는 **09-B**, 이후 **09-C**다. 이번에는 문서만 변경했으며 07 배포 패키지와 Worker 실화면 검증의 기존 잔여는 보존한다.
 
-잔여 작업: 실제 화면 자동화 런타임이 복구되면 동일 시나리오를 화면 캡처로 재확인한다. 코드 경로와 실제 Worker/GPT Web 로그 왕복은 완료됐다.
+잔여 작업: 09-B JEV v1 정합성·라우팅 보수, 09-C 증거 전달·AC 고정. 기존 Worker/GPT Web 왕복 및 JEV API smoke 기록은 있으나 최신 Explorer Judge ON/OFF 전체 경로와 복구 검증은 미완료다. Master 예제의 현행 parser·JSON·링크 검증은 통과했으며 제품 실행 검증과 구분한다.
 
 대용량 data plane은 `Agent → NAS Gateway → NAS1DUAL`, control plane은 `Agent → ProjectHub.Server → Supabase`로 분리하며 Server는 대용량 binary를 relay하지 않는다.
 
