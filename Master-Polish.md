@@ -40,10 +40,10 @@
 | 브리지 | conversation binding, claim/lease, 결과 저장, 이미 완료된 결과의 중복 제출 처리, JSON 파일 저장 | `BridgeServer.cs` |
 | 브라우저 | composer 입력·전송·응답 수집, 재전송 경계, SPA conversation generation 확인 | `extension/gptweb-hub/content.js` |
 | JEV | `jev-latest` HTTP adapter, 환경변수 키, NOUL/SCORE/CHOICE, PARTIAL triage·PASS 후 Codex 보고·Web review fallback | `JevJudgeRunner.cs`, `JevContract.cs`, `RouteCodexResultAsync` |
-| 비용 표시 | Codex usage 누적은 존재. JEV usage/실제 응답 model은 저장하지 않음 | `ExtractUsage`, `UpdateUsage`, `JudgeResult` |
-| 영속화 | Web bridge 상태와 Codex archive 존재. 활성 목표·session·phase·예산·JEV counter의 통합 Job 복구는 확인되지 않음 | `BridgeServer.SaveState`, MainWindow의 `_active*` 필드 |
-| 기존 테스트 | Core 빈 테스트 1개, Agent 3개, Server 상태 API 1개. Worker/JEV 전용 테스트 프로젝트는 없음 | `tests/` |
-| 실검증 기록 | Web 다중 왕복 로그, JEV API smoke 성공 이력. 최신 화면에서 전체 JEV ON/OFF 분기와 crash 재개를 증명한 상태는 아님 | 최신 `CurrentWork.md` |
+| 비용·payload 계측 | Codex/JEV/Web 호출별 usage-known, provider/model/purpose, payload byte·digest, latency와 retry를 JSONL로 저장. Web/JEV usage 미제공은 unknown이며 Codex cumulative snapshot 중복 합산을 방지 | `UsageTelemetry.cs`, `CodexCliRunner.cs`, `JevJudgeRunner.cs` |
+| 증거·영속화 | 제한된 Codex text artifact를 provenance/digest/QID mapping과 round archive로 저장. 전체 CLI Job의 session/phase crash recovery는 별도 후속 후보 | `JevEvidence.cs`, `JevJudgeRunner.cs`, `BridgeServer.SaveState` |
+| 자동 테스트 | Core 1, Agent 3, Server 1, Worker 16개. JEV 계약·PARTIAL·evidence digest·usage·6개 negative-control fixture 포함 | `tests/` |
+| 검증 상태 기록 | ENGINE_HEADLESS/UI_BROWSER/HUMAN_UX/JEV 계층을 분리한다. 09-B Explorer 잔여는 사용자 결정으로 정기 관리에서 제외했으며, JEV negative-control provider 실측과 전체 Job crash 복구는 미완료 | `JevEvidence.cs`, 최신 `CurrentWork.md` |
 
 기존 구현계획에는 Worker의 자동 빌드 도입 제외 경계가 있다. 이 설계의 당장 가능한 로컬 검증은 **Codex가 작업 카드에 지정된 명령을 실행하고 Worker가 결과를 수집하는 방식**이다. Worker 자체가 빌드를 예약·실행하는 기능을 추가하려면 해당 후속 task에서 기존 정책과 범위를 먼저 명시적으로 변경해야 한다.
 
