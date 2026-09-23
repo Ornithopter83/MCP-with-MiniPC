@@ -3,6 +3,832 @@
 Updated: 2026-09-23
 
 
+## 2026-09-23 메인 화면 시각 정합 후속 — 실제 구현 `476541c` vs 승인 최종 이미지
+
+기준:
+
+```text
+현재 Git HEAD
+476541c783572ad3dbeebbeff166632bee5ea93b
+Redesign ProjectHub worker dashboard
+```
+
+이번 후속의 source of truth는 사용자가 제공한 두 화면 중 **두 번째 승인 최종 이미지**다. 첫 번째 화면은 `476541c` 구현 결과이며, 기능 구조는 맞지만 시각 비율과 상태 표현이 아직 승인 이미지와 다르다.
+
+기존 11-UI-B의 기능 방향은 유지하되 아래 지시는 **시각 정합과 입력/이력 전환에 대해 우선 적용**한다. 특히 이전 지시 중 "메인 이력에는 내용 요약을 표시하지 않는다"는 부분은 이번 사용자 결정으로 수정한다. **raw transcript 전문은 표시하지 않지만, 각 단계의 요청 요약과 수행결과 요약은 표시한다.**
+
+### 11-UI-B-K1 — 전체 레이아웃 비율부터 승인 이미지에 맞춘다
+
+현재 구현은 상단이 너무 낮고, 5단계 카드가 지나치게 좁으며, 이력 영역이 지나치게 큰 빈 면적으로 보인다.
+
+승인 이미지의 세로 비율을 기준으로 메인 Grid를 다음 감각으로 조정한다.
+
+```text
+상단 프로젝트/서버 요약       약 10~11%
+현재 작업                    약 23~25%
+메시지 및 작업 이력          약 52~55%
+하단 실행 영역               약 11~13%
+```
+
+1400×900 기준 권장 시작값:
+
+```xml
+<RowDefinition Height="96"/>
+<RowDefinition Height="220"/>
+<RowDefinition Height="*"/>
+<RowDefinition Height="100"/>
+```
+
+현재의 `78 / 220 / * / 82`는 상단과 하단이 너무 압축되어 보인다.
+
+외곽 margin은 승인 이미지처럼 화면 가장자리에서 충분히 떨어뜨린다.
+
+```text
+좌우: 22~24px
+상단: 16~18px
+하단: 14~18px
+섹션 간 gap: 10~12px
+```
+
+각 SectionBorder는:
+
+```text
+Background   #FFFFFF
+Border       #D7E5F4 계열 1px
+CornerRadius 10~12
+```
+
+으로 통일한다.
+
+### 11-UI-B-K2 — 상단 프로젝트 카드의 글자와 여백을 키운다
+
+현재 첫 화면은 프로젝트/작업 폴더/서버 주소가 작고 상단에 눌려 있다. 승인 이미지에서는 상단 정보 자체가 하나의 안정적인 header 카드처럼 보인다.
+
+왼쪽 정보 카드:
+
+```text
+label column width: 90~105px
+label font: 15~16px, SemiBold
+value font: 15~16px
+행 간격: 6~8px
+좌우 padding: 18~22px
+상하 padding: 12~14px
+```
+
+현재처럼 행 간격 3px은 너무 촘촘하므로 늘린다.
+
+프로젝트 이름은 실제 repository 표시값을 유지한다. 승인 이미지의 `Ornithopter 개발 프로젝트`는 시각 예시이며 고정 문자열로 넣지 않는다.
+
+### 11-UI-B-K3 — 서버 카드를 승인 이미지 수준으로 키운다
+
+현재 서버 카드는 세로 높이가 작고 아이콘/텍스트가 압축되어 있다.
+
+권장:
+
+```text
+server card width: 330~350px
+icon container: 64~70px
+server title: 16~18px Bold
+machine name: 14~15px
+online/offline: 14px Bold
+status dot: 11~12px
+```
+
+온라인은:
+
+```text
+dot  #00AA35
+text #00A33A
+```
+
+오프라인은 현재 실제 상태를 그대로 표시하되:
+
+```text
+dot  #FF4D0A
+text #FF3B00
+```
+
+정도로 선명하게 한다.
+
+승인 이미지가 온라인이라고 해서 실제 offline 상태를 online으로 위장하면 안 된다.
+
+### 11-UI-B-K4 — 우측 설정 버튼을 "아이콘 + 설정" 카드로 복원
+
+현재 구현의 우측 상단 설정은 떠 있는 큰 gear 하나라 승인 이미지와 가장 눈에 띄게 다르다.
+
+승인 이미지처럼 별도 작은 카드로 만든다.
+
+구조:
+
+```text
+┌─────────┐
+│   ⚙     │
+│  설정   │
+└─────────┘
+```
+
+권장:
+
+```text
+width: 72~82px
+height: header full height
+background: #F7FBFF 또는 White
+border: #D7E5F4 1px
+corner radius: 9~10
+gear: 27~30px
+label "설정": 13~14px
+```
+
+hover 시 배경만 `#EAF4FF` 정도로 바꾸고 과한 animation은 넣지 않는다.
+
+기존 `Settings_Click`과 설정 popup 동작은 그대로 연결한다.
+
+### 11-UI-B-K5 — "현재 작업" 제목 앞의 장식 아이콘을 제거
+
+현재 구현:
+
+```text
+▤ 현재 작업
+```
+
+승인 이미지:
+
+```text
+현재 작업
+```
+
+따라서 `▤`를 제거한다.
+
+동일하게 `메시지 및 작업 이력` 앞의 `▤`도 제거한다.
+
+섹션 제목 권장:
+
+```text
+FontSize   19~21
+FontWeight SemiBold 또는 Bold
+Margin     left 4~6
+```
+
+### 11-UI-B-K6 — 5개 카드를 UniformGrid 9열로 만들지 않는다
+
+현재 가장 큰 레이아웃 문제다.
+
+`UniformGrid Columns="9"` 때문에 카드 5개와 화살표 4개가 **모두 동일 폭**을 가져 카드가 지나치게 좁고 카드 사이가 벌어진다.
+
+반드시 일반 `Grid`로 바꾼다.
+
+예:
+
+```xml
+<Grid.ColumnDefinitions>
+  <ColumnDefinition Width="*"/>
+  <ColumnDefinition Width="34"/>
+  <ColumnDefinition Width="*"/>
+  <ColumnDefinition Width="34"/>
+  <ColumnDefinition Width="*"/>
+  <ColumnDefinition Width="34"/>
+  <ColumnDefinition Width="*"/>
+  <ColumnDefinition Width="34"/>
+  <ColumnDefinition Width="*"/>
+</Grid.ColumnDefinitions>
+```
+
+핵심:
+
+- 카드 5개는 같은 넓은 폭.
+- 화살표 영역은 30~38px 정도만 사용.
+- 카드 간 시각적 gap은 8~12px 수준.
+- 카드가 현재 화면처럼 좁고 세로로 긴 형태가 되지 않게 한다.
+
+승인 이미지에서는 5개 카드가 현재 작업 영역의 대부분을 차지한다.
+
+### 11-UI-B-K7 — 카드 크기와 내부 배치를 승인 이미지에 맞춘다
+
+각 카드:
+
+```text
+height: Current Task content 영역 대부분
+corner radius: 8~10
+internal padding: 14~18
+```
+
+내부는 정확히 세 요소만 둔다.
+
+```text
+1. "N. 단계명"
+2. 역할 아이콘
+3. 모델명
+```
+
+권장 타이포:
+
+```text
+단계명 22~24px Bold
+아이콘 74~86px 영역
+모델명 18~20px SemiBold/Bold
+```
+
+현재 구현의 20px / 72px / 17px보다 한 단계 키운다.
+
+대기 카드의 시계 아이콘도 단순 문자 `◷`보다 승인 이미지처럼 두께가 있는 원형 clock asset/vector를 사용한다. 외곽 원은 #7A8797, 내부 clock은 white.
+
+### 11-UI-B-K8 — 카드 컬러는 카드 전체 상태에 적용한다
+
+현재 구현은 비활성 카드의 background만 회색으로 바꾸고 내부 title/model/icon circle은 원래 컬러를 유지한다. 그래서 실제 화면에서 2~5가 모두 색이 살아 있어 "현재 1~2개만 컬러" 원칙이 깨진다.
+
+비활성화 시 아래 **모든 요소를 함께 회색화**한다.
+
+```text
+card background
+title foreground
+model foreground
+icon circle/background
+AI icon image
+border
+```
+
+가능하면 이미지 asset도:
+
+```text
+current-openai.png
+current-openai-gray.png
+current-jev.png
+current-jev-gray.png
+```
+
+처럼 이미 존재하는 gray asset을 재사용한다.
+
+상태별 표시:
+
+#### 현재 단계
+
+- 원래 역할색 100%
+- 2px 역할색 border
+- 약한 외곽 glow/drop shadow
+- opacity 1
+
+#### 다음 단계
+
+- 원래 역할색을 사용하되 current보다 10~20% 약하게
+- border는 1px 또는 없음
+- shadow 없음
+
+#### 나머지 단계
+
+- background #ECEFF3 ~ #F1F3F6
+- foreground #8A95A5
+- gray icon
+- opacity를 전체 카드에 무작정 0.48로 낮추지 않는다. 글자가 너무 흐려지지 않게 명시적인 gray palette를 사용한다.
+
+#### 사용 안 함인 optional 단계
+
+- 같은 gray palette
+- 더 약한 foreground #A6AFBB
+- 필요하면 opacity 0.7 정도
+- 카드 위치는 유지
+
+현재 구현의 `role.Card.Opacity = 0.48` 방식은 텍스트 가독성을 지나치게 떨어뜨리므로 피한다.
+
+### 11-UI-B-K9 — 역할별 기본색을 승인 이미지에 더 가깝게 조정
+
+권장 palette:
+
+```text
+대기
+background #E9EDF2
+accent     #788594
+text       #4F5D70
+
+설계 관제
+background #EAF4FF
+accent     #1477E8
+text       #0765D7
+
+작업
+background #FDE2E6
+accent     #D92B50
+text       #A91636
+
+고수준 작업
+background #E6CDD9
+accent     #8B164D
+text       #70103B
+
+판정
+background #D9F2E2
+accent     #07864A
+text       #056B37
+```
+
+카드에 그라데이션을 과하게 넣지 말고 승인 이미지처럼 매우 약한 tonal variation만 허용한다.
+
+### 11-UI-B-K10 — 활성 카드에만 승인 이미지의 blue focus 느낌을 준다
+
+설계 관제가 current일 때 승인 이미지에는 단순 2px border보다 약간의 빛/그림자가 있다.
+
+WPF에서:
+
+- current card border 2px
+- `DropShadowEffect` BlurRadius 약 10~14
+- ShadowDepth 0
+- Opacity 0.18~0.25
+- color는 해당 역할 accent
+
+정도로 제한한다.
+
+다음 단계는 shadow를 받지 않는다.
+
+### 11-UI-B-K11 — 화살표를 작은 gray 문자가 아니라 파란 connector로 만든다
+
+현재 `❯` 한 글자는 승인 이미지와 다르다.
+
+승인 이미지의 화살표는 카드 사이 중앙을 연결하는 **청색 이중 chevron / capsule connector**처럼 보인다.
+
+권장 구조:
+
+```text
+[카드]  ≫  [카드]
+```
+
+- width 30~36px
+- foreground #1477E8
+- background는 투명 또는 아주 옅은 #EAF4FF
+- 필요하면 원형/rounded capsule 36×48 안에 chevron 배치
+
+비활성 구간:
+
+- #C8D4E2
+- opacity 0.45~0.55
+- animation 없음
+
+활성 구간:
+
+- #1477E8
+- opacity pulse
+- 약한 horizontal translate 3~5px
+
+현재 `FlowArrowStyle`처럼 모든 arrow가 Loaded부터 영구 애니메이션 되는 방식은 사용하지 않는다.
+
+### 11-UI-B-K12 — stage skip을 "인접 index만"으로 판정하지 않는다
+
+현재 `UpdatePipelineVisuals()`는 화살표 활성 조건이 사실상 `from == index+1 && to == index+2`라서:
+
+```text
+작업 → 판정
+```
+
+처럼 HighLevel을 건너뛰면 실제 진행 표현이 끊길 수 있다.
+
+skip 경로는 두 방법 중 하나로 명확히 처리한다.
+
+권장 A:
+
+- `작업 → 고수준` 화살표와 `고수준 → 판정` 화살표를 연속 활성화하되
+- disabled high-level card는 회색
+- 화살표가 "통과"함을 보여준다.
+
+또는 B:
+
+- 카드 overlay 위에 실제 destination까지 하나의 connector animation을 별도로 그린다.
+
+첫 구현은 A가 단순하다.
+
+Judge OFF이고 HighLevel OFF이면 작업 완료 후 더 이상 다음 화살표를 활성화하지 않는다.
+
+### 11-UI-B-K13 — idle 상태에서 "메시지 및 작업 이력" 본문을 입력창으로 사용
+
+현재 구현은 이력 섹션이 비어 있고, 입력창은 별도의 하단 bar에 있다. 사용자가 원하는 구조는 반대다.
+
+**작업이 아직 시작되지 않은 idle/new-task 상태에서는 "메시지 및 작업 이력"의 큰 본문 자체가 작업 입력창으로 변해야 한다.**
+
+즉:
+
+```text
+┌ 메시지 및 작업 이력 ──────────────────────────────┐
+│                                                   │
+│ 작업 내용을 입력하세요...                         │
+│                                                   │
+│                                                   │
+└───────────────────────────────────────────────────┘
+                                      [ ▶ 실행 ]
+```
+
+현재 하단의 별도 `DashboardTaskInput` bar는 제거한다.
+
+입력창 권장:
+
+- section 내부의 남는 공간 전체 사용
+- BorderThickness 0 또는 매우 약한 1px
+- Background #FBFDFF
+- Padding 20~24px
+- FontSize 17~18px
+- TextWrapping Wrap
+- AcceptsReturn true
+- vertical scrollbar Auto
+- placeholder `작업 내용을 입력하세요...`
+- placeholder color #7C8DA8
+
+입력 중에도 section title은 `메시지 및 작업 이력`을 유지한다. title을 COMMAND로 바꾸지 않는다.
+
+### 11-UI-B-K14 — 실행 즉시 같은 영역이 작업 이력으로 전환
+
+사용자가 입력 후 `실행`을 누르면:
+
+```text
+DashboardInputView  → Collapsed
+DashboardHistoryView → Visible
+```
+
+로 같은 자리에서 즉시 전환한다.
+
+첫 번째 이력은 반드시 사용자 요청을 남긴다.
+
+예:
+
+```text
+[설계 관제 아이콘]  설계 관제       23:47:03
+                    작업 요청
+                    "메인 화면의 카드 간격을 승인 이미지 기준으로 조정..."
+                    요청 1건 · 184 B
+```
+
+그 뒤 단계별 결과가 도착할 때 같은 리스트에 누적한다.
+
+### 11-UI-B-K15 — 이전 "요약 금지" 지시는 수정한다
+
+이번 사용자 결정에 따라 메인 이력은 단순히:
+
+```text
+결과 수신 · 18.6 KB
+```
+
+만 표시하지 않는다.
+
+**요청 내용과 수행결과의 짧은 요약을 함께 표시한다.**
+
+단, raw stdout, 전체 prompt, 전체 GPT Web 응답, JSON 원문을 그대로 덤프하지 않는다.
+
+한 행의 본문은 최대 2줄 정도를 권장한다.
+
+예:
+
+```text
+설계 관제
+요청: Current Task를 5단계 고정 카드로 변경하고 활성 단계만 강조
+
+작업
+결과: MainWindow XAML을 변경하고 카드 상태 바인딩 및 단계 전환 로직을 연결
+4 files · 18.6 KB · PASS
+
+판정
+결과: 단계 전환과 optional skip 검증 완료
+2.1 KB · PASS
+```
+
+즉:
+
+```text
+화면 = 사람이 읽을 수 있는 요약
+내부 transcript/export = 원본
+```
+
+의 경계를 유지한다.
+
+### 11-UI-B-K16 — HistoryEvent 모델에 summary를 명시적으로 추가
+
+현재 `WorkerHistoryEvent`가 title/size/count/status 중심이라면 사용자용 요약 필드를 분리한다.
+
+권장:
+
+```csharp
+record WorkerHistoryEvent(
+    DateTimeOffset Timestamp,
+    TaskStage SourceStage,
+    string EventType,
+    string Title,
+    string? Summary,
+    long? SizeBytes,
+    int? ItemCount,
+    int? FileCount,
+    string? Status,
+    string? ReferenceId);
+```
+
+Summary 생성 원칙:
+
+- 요청: 사용자가 입력한 작업 지시를 1~2줄로 잘라 표시.
+- 설계 관제 결과: work card의 핵심 목적/작업 수를 구조화 데이터에서 요약.
+- 작업 결과: changed paths 수, 구현 report summary/status를 우선 사용.
+- 고수준 작업: high-level 결과의 실제 summary가 있을 때만 표시.
+- 판정: decision + 짧은 message.
+- 단순 시스템 telemetry는 summary를 만들지 말고 status/metadata만 표시.
+
+AI를 추가 호출해서 화면용 summary를 별도 생성하지 않는다. 이미 존재하는 구조화 결과/최종 메시지의 짧은 안전한 부분을 사용한다.
+
+### 11-UI-B-K17 — 이력 행 디자인을 승인 이미지와 동일한 정보 밀도로 구성
+
+승인 이미지의 행은 왼쪽 역할 영역 + 오른쪽 넓은 본문 영역이다.
+
+권장 Grid:
+
+```text
+[64px 아이콘] [190~230px 역할/시간] [* 요약/메타]
+```
+
+행 높이:
+
+```text
+약 58~66px
+```
+
+왼쪽:
+
+- 역할별 원형 배경
+- icon 36~40px
+- 설계 관제 blue
+- 작업 coral
+- 고수준 wine
+- 판정 green
+- 시스템 gray
+
+중앙:
+
+- 역할명 15~16px Bold
+- timestamp 12~13px muted
+
+오른쪽:
+
+- 아주 옅은 역할별 배경 또는 alternate row background
+- summary 14~15px
+- metadata 12~13px muted
+- corner radius 7~9
+- padding 14~16
+
+최신 항목이 위로 오도록 한다.
+
+### 11-UI-B-K18 — 작업 완료 후 이력을 즉시 없애지 않는다
+
+중요하다.
+
+`CurrentStage == Idle` 하나만 보고 무조건 입력창으로 되돌리면 작업 완료 직후 사용자가 결과 요약을 볼 수 없다.
+
+따라서 View mode를 stage와 분리한다.
+
+예:
+
+```csharp
+enum DashboardBodyMode
+{
+    NewTaskInput,
+    TaskHistory
+}
+```
+
+전환:
+
+```text
+프로그램 시작 / 새 작업 준비
+→ NewTaskInput
+
+실행 버튼 누름
+→ TaskHistory
+
+작업 수행 중
+→ TaskHistory
+
+작업 완료/실패/취소
+→ TaskHistory 유지
+```
+
+완료 후 자동으로 입력창으로 돌아가지 않는다.
+
+다음 새 작업을 시작할 때만 `NewTaskInput`으로 돌아가야 한다.
+
+이번 범위에서 별도 `새 작업` 버튼을 추가하고 싶지 않다면, 완료 상태에서 하단 버튼을:
+
+```text
+[ 새 작업 ]
+```
+
+으로 바꾸고 클릭 시 입력 모드로 복귀시키는 방식이 가장 단순하다.
+
+입력 모드에서는 다시:
+
+```text
+[ ▶ 실행 ]
+```
+
+이다.
+
+실행 중:
+
+```text
+[ ■ 취소 ]
+```
+
+이렇게 하나의 우하단 버튼을 3상태로 쓰면 승인 이미지의 단순한 UI를 유지할 수 있다.
+
+### 11-UI-B-K19 — 하단에는 입력 bar를 남기지 않는다
+
+현재 첫 화면의 하단 왼쪽 별도 텍스트 입력 bar는 승인 이미지에 없다.
+
+하단 row는 버튼 정렬을 위한 공간으로만 쓴다.
+
+```text
+왼쪽: 빈 공간
+오른쪽: 실행/취소/새 작업 버튼
+```
+
+필요하면 하단 왼쪽에 오류/preflight 문구를 1줄 표시할 수 있으나 기본 상태에서는 비워 둔다.
+
+### 11-UI-B-K20 — 실행 버튼을 더 크게, 더 아래/오른쪽으로 정렬
+
+승인 이미지 기준:
+
+```text
+width  240~270px
+height 64~72px
+font   26~28px Bold
+corner 10~12px
+right margin 18~24px
+bottom margin 14~18px
+```
+
+blue:
+
+```text
+#1477E8 ~ #087BFF
+```
+
+약한 DropShadow:
+
+```text
+blur 14~18
+opacity 0.18~0.25
+depth 3~4
+```
+
+disabled 상태도 현재처럼 거의 흰색이 되어 글자가 사라지지 않게 한다.
+
+권장 disabled:
+
+```text
+background #B8C8DA
+foreground White
+opacity 0.85
+```
+
+### 11-UI-B-K21 — 실행 가능 조건과 시각 상태를 분리해서 보여준다
+
+버튼이 비활성일 때 이유가 화면에서 전혀 보이지 않으면 사용자가 고장으로 오해한다.
+
+다만 승인 이미지의 단순함을 해치지 않도록 별도 큰 status panel은 만들지 않는다.
+
+입력 모드에서 실행 불가 사유가 있다면 입력창 아래 또는 하단 좌측에 한 줄만 표시한다.
+
+예:
+
+```text
+Codex 로그인이 필요합니다.
+설계 관제 모델 설정을 확인하세요.
+작업 내용을 입력하세요.
+```
+
+Server offline은 현재 실행 mode가 Server/Web을 실제로 요구할 때만 block 사유가 되어야 한다. coordinator-first local CLI가 Server와 무관하게 실행 가능하다면 단순 Server offline만으로 실행 버튼을 막지 않는다.
+
+### 11-UI-B-K22 — 현재 단계 산정에서 TaskDirection 문자열 파싱 의존을 줄인다
+
+현재 `SetFlowState()`는:
+
+```csharp
+TaskDirection.Text.Contains("SOL")
+TaskDirection.Text.Contains("JEV")
+...
+```
+
+로 `TaskStage`를 추론한다.
+
+이 방식은 UI 문구가 바뀌면 stage가 깨지고, 향후 high-level 연결도 불안정하다.
+
+이번 후속에서 실행 엔진의 각 경계가 명시적으로:
+
+```csharp
+SetTaskStage(TaskStage.Coordinator, next)
+SetTaskStage(TaskStage.Implementer, next)
+SetTaskStage(TaskStage.HighLevel, next)
+SetTaskStage(TaskStage.Judge, null)
+```
+
+를 호출하도록 바꾼다.
+
+`TaskDirection.Text`는 내부 상태의 결과로 표시할 수는 있어도 source of truth가 되어서는 안 된다.
+
+### 11-UI-B-K23 — 고수준 작업은 실제 실행 연결 전까지 가짜 active로 표시하지 않는다
+
+현재 task 문서상 high-level/JEV 실제 실행 통합은 별도 잔여가 존재한다.
+
+따라서 UI는 설정에서 enable되어 있다는 이유만으로 "현재 고수준 작업 중"처럼 보이면 안 된다.
+
+- enable = 단계 사용 가능
+- active = 실제 runner가 해당 단계 실행 중
+
+을 분리한다.
+
+실제 high-level runner 연결 전에는 카드 자체는 존재하지만 현재 단계로 active 전환하지 않는다.
+
+### 11-UI-B-K24 — 판정 카드의 JEV 아이콘 크기/배경을 승인 이미지에 맞춘다
+
+현재 JEV 이미지가 검은 사각 배경/원형 green background 안에서 다소 작거나 겹쳐 보일 수 있다.
+
+승인 이미지처럼:
+
+- green circular/soft background
+- JEV asset은 중앙 58~64px
+- clipping이 있다면 Uniform stretch
+- 검은 사각 경계가 원 밖으로 튀어나오지 않게 한다.
+
+필요하면 원형 clip을 적용한다.
+
+### 11-UI-B-K25 — 제목/모델의 정렬을 정확히 중앙에 맞춘다
+
+모든 pipeline 카드에서:
+
+```text
+title center
+icon center
+model center
+```
+
+를 강제한다.
+
+모델 이름 길이가 달라도 card 내부 높이가 흔들리지 않도록:
+
+- title row 고정 높이
+- icon row 고정 높이
+- model row 고정 높이
+
+로 Grid를 쓰는 편이 좋다.
+
+### 11-UI-B-K26 — 시각 검증은 "기능 실행 화면"까지 캡처해서 비교한다
+
+이번에는 빌드 성공만으로 UI 완료 처리하지 않는다.
+
+반드시 최소 3상태를 실제 Explorer 실행본에서 확인한다.
+
+```text
+A. NewTaskInput
+- 1. 대기 current
+- 나머지 gray
+- 이력 영역 = 큰 입력창
+- 실행 버튼
+
+B. Coordinator/Implementer 진행
+- current + next 최대 2개 color
+- 나머지 완전 gray
+- 해당 arrow만 animation
+- 입력창이 사라지고 history list
+- 요청 row + 중간 결과 row 생성
+
+C. 완료/판정
+- history가 유지됨
+- 요청/수행결과/판정 요약 확인
+- 버튼이 새 작업 상태로 전환
+```
+
+각 상태에서 승인 이미지와 아래 항목을 눈으로 대조한다.
+
+```text
+header height
+settings card
+card width
+arrow width
+font size
+card saturation
+inactive grayscale
+history row spacing
+run button size/location
+overall empty-space balance
+```
+
+### 11-UI-B-K27 — JEV 검증 요청
+
+위 시각 구조와 상태 연결이 구현된 다음 Codex 작업은 JEV 검증을 우선 요청한다.
+
+검증 항목:
+
+```text
+1. idle/input ↔ history 전환 상태가 실행 lifecycle과 일치하는가
+2. 완료 후 history가 사라지지 않는가
+3. current/next 외 카드가 실제로 완전 grayscale인가
+4. optional high-level/Judge skip 시 arrow route가 끊기지 않는가
+5. summary가 raw transcript 전문을 노출하지 않는가
+6. 같은 이벤트가 HistoryEvent에 중복 삽입되지 않는가
+7. 실행/취소/새 작업 버튼 상태가 서로 충돌하지 않는가
+8. settings 변경 후 카드 모델/아이콘이 즉시 갱신되는가
+```
+
+
+
 ## 2026-09-23 메인 화면 재구성 지시 — 승인 이미지 기준
 
 최신 기준 커밋은 `0c71d91e6d6a5019e1a6b9ff5097010a7da013cd`이다. 현재 `src/ProjectHub.Worker/MainWindow.xaml`에는 기존 2-node CURRENT TASK, Codex/GPT Web MESSAGE 탭, 2개 입력창 COMMAND 영역이 남아 있고, `RunTask_Click`은 `CommandInput`과 `WebInstructionInput`에 직접 의존한다. 이번 작업은 이 실행 경로를 한 번에 뜯어고치지 말고 **승인 이미지와 동일한 메인 구도를 먼저 만든 뒤 기존 기능을 단계적으로 연결**한다.
