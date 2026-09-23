@@ -1152,18 +1152,41 @@ public partial class MainWindow : Window
             PopulateProviderCombo(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider);
             PopulateRoleModelCombo(ImplementerModelCombo, _targetSettings.EffectiveImplementer.Model);
             PopulateRoleReasoningCombo(ImplementerReasoningCombo, _targetSettings.EffectiveImplementer.Model, _targetSettings.EffectiveImplementer.Reasoning);
+            CoordinatorRoleThreadCombo.ItemsSource = CodexThreadCombo.ItemsSource;
+            CoordinatorRoleThreadCombo.SelectedIndex = CodexThreadCombo.SelectedIndex;
+            UpdateCoordinatorProviderCard();
         }
         finally { _loadingRoleControls = false; }
         UpdateRoleCapabilityPresentation();
     }
 
-    private static void PopulateProviderCombo(System.Windows.Controls.ComboBox combo, string configuredProvider)
+    private void PopulateProviderCombo(System.Windows.Controls.ComboBox combo, string configuredProvider)
     {
         combo.Items.Clear();
+        if (ReferenceEquals(combo, CoordinatorProviderCombo))
+        {
+            combo.Items.Add(new ComboBoxItem { Content = "OpenAI Web", Tag = "openai_web" });
+            combo.Items.Add(new ComboBoxItem { Content = "OpenAI Codex CLI", Tag = "openai" });
+        }
+        else
+        {
         combo.Items.Add(new ComboBoxItem { Content = "OpenAI · Codex CLI", Tag = "openai" });
         if (!string.Equals(configuredProvider, "openai", StringComparison.OrdinalIgnoreCase))
             combo.Items.Add(new ComboBoxItem { Content = $"{configuredProvider} · CLI 미지원", Tag = configuredProvider, Foreground = System.Windows.Media.Brushes.OrangeRed });
+        }
         SelectTag(combo, configuredProvider, "openai");
+    }
+
+    private void CoordinatorProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loadingRoleControls) UpdateCoordinatorProviderCard();
+    }
+
+    private void UpdateCoordinatorProviderCard()
+    {
+        var isWeb = string.Equals(GetSelectedTag(CoordinatorProviderCombo, "openai"), "openai_web", StringComparison.OrdinalIgnoreCase);
+        CoordinatorWebCard.Visibility = isWeb ? Visibility.Visible : Visibility.Collapsed;
+        CoordinatorCliCard.Visibility = isWeb ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void PopulateRoleModelCombo(System.Windows.Controls.ComboBox combo, string configuredModel)
@@ -1241,7 +1264,6 @@ public partial class MainWindow : Window
             implementer = implementer with { Model = implementerModel.Tag?.ToString() ?? implementer.Model };
         if (ImplementerReasoningCombo.SelectedItem is ComboBoxItem implementerReasoning)
             implementer = implementer with { Reasoning = implementerReasoning.Tag?.ToString() ?? implementer.Reasoning };
-        CoordinatorCapabilityText.Text = GetRoleCapabilityText(coordinator);
         ImplementerCapabilityText.Text = GetRoleCapabilityText(implementer);
         AiRolesStatusText.Text = _codexModelCatalog.Status == "READY"
             ? $"Codex CLI capability catalog: {_codexModelCatalog.Models.Count}개 모델"
@@ -1426,6 +1448,7 @@ public partial class MainWindow : Window
             : webOnline && webExtensionReady && webConversationBound;
         RunButton.IsEnabled = !(_userCanceledTask && _activeTaskCts is not null) && (_activeTaskCts is not null || _awaitingWebResult || executionReady);
         SetConnectionStatus(ServerStatusText, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDot);
+        SetConnectionStatus(ServerStatusTextSettings, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDotSettings);
         RepositoryNameText.Foreground = _serverOnline ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
         PcNameText.Foreground = _codexAuthenticated ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
     }
