@@ -76,6 +76,7 @@ public partial class MainWindow : Window
     private bool _serverOnline;
     private bool _messageExpanded;
     private bool _startupConfigurationInitialized;
+    private Task? _startupConfigurationTask;
     private UIElement? _settingsPopupDragSurface;
     private System.Windows.Point _settingsPopupDragStartScreen;
     private double _settingsPopupDragStartHorizontalOffset;
@@ -224,8 +225,15 @@ public partial class MainWindow : Window
         ((App)System.Windows.Application.Current).RequestShutdown();
     }
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
+    private async void Settings_Click(object sender, RoutedEventArgs e)
     {
+        if (!StatusPopup.IsOpen)
+        {
+            await InitializeStartupConfigurationAsync();
+            if (_codexModelCatalog.Models.Count <= 1)
+                await RefreshCodexModelCatalogAsync();
+            ApplyRoleSettingsToControls();
+        }
         SetSettingsPopupOpen(!StatusPopup.IsOpen);
     }
 
@@ -1635,11 +1643,17 @@ public partial class MainWindow : Window
         ApplyConnectionStatus();
         SetSettingsPopupOpen(false);
     }
-    private async Task InitializeStartupConfigurationAsync()
+    private Task InitializeStartupConfigurationAsync()
     {
-        if (_startupConfigurationInitialized) return;
+        if (_startupConfigurationTask is not null) return _startupConfigurationTask;
+        if (_startupConfigurationInitialized) return Task.CompletedTask;
         _startupConfigurationInitialized = true;
+        _startupConfigurationTask = InitializeStartupConfigurationCoreAsync();
+        return _startupConfigurationTask;
+    }
 
+    private async Task InitializeStartupConfigurationCoreAsync()
+    {
         // Repository discovery, Codex login status, and server endpoint resolution are
         // startup configuration work. Do not repeat them from the periodic status timer.
         _targetSettings = WorkerTargetConfiguration.Load();

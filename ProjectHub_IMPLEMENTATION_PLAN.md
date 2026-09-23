@@ -43,7 +43,7 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: **11-A Coordinator-first CLI-to-CLI (A/B/C 완료, 2026-09-23); 설정 UI 후속 11-UI-A 시각/설정 반영 완료, 실행 경로 일부 잔여**. 기준 커밋 `f501694`는 `recovery/before-11a-cli-to-cli-2026-09-23` 태그로 보존했다. 역할별 provider/model/reasoning 설정과 capability 차단, Sol 작업 카드→Luna 구현→동일 Sol 세션 검토, 관측된 명령 종료코드 기반 검증 gate를 구현했다. 사용자 폼을 1400×840 팝업/1400×900 창(최대 1440×960)으로 재배치하고, 네 역할 카드·역할별 스레드 선택, Web/CLI 관제 탭 전환, JEV 설정 테스트와 창 아이콘을 반영했다. 네 역할명은 카드에 유지한다. 모델 카탈로그 재조회와 스레드/작업폴더 선택 연동을 추가했으며, 실제 UI에서 저장까지 확인하는 검증은 잔여다. Web coordinator 실행과 활성화된 high-level/JEV의 실제 작업 흐름 통합은 preflight에서 차단하며 후속 잔여다. 09-B Explorer/E2E 잔여는 사용자 결정에 따라 정기 관리에서 제외하고, Bridge 이슈와 07의 기존 잔여는 별도 기존 정책을 유지한다.
+현재 작업: **11-A Coordinator-first CLI-to-CLI (A/B/C 완료, 2026-09-23); 설정 UI 후속 11-UI-A 시각/설정 반영 완료, 실행 경로 일부 잔여**. 기준 커밋 `f501694`는 `recovery/before-11a-cli-to-cli-2026-09-23` 태그로 보존했다. 역할별 provider/model/reasoning 설정과 capability 차단, Sol 작업 카드→Luna 구현→동일 Sol 세션 검토, 관측된 명령 종료코드 기반 검증 gate를 구현했다. 사용자 폼을 1400×840 팝업/1400×900 창(최대 1440×960)으로 재배치하고, 네 역할 카드·역할별 스레드 선택, Web/CLI 관제 탭 전환, JEV 설정 테스트와 창 아이콘을 반영했다. 네 역할명은 카드에 유지한다. 모델 카탈로그를 설정창 진입 전 보장하고, 모델·추론 선택과 스레드/작업폴더 연동을 추가했으며, 실제 UI에서 저장까지 확인하는 검증은 잔여다. Web coordinator 실행과 활성화된 high-level/JEV의 실제 작업 흐름 통합은 preflight에서 차단하며 후속 잔여다. 09-B Explorer/E2E 잔여는 사용자 결정에 따라 정기 관리에서 제외하고, Bridge 이슈와 07의 기존 잔여는 별도 기존 정책을 유지한다.
 
 실 provider JEV benchmark는 실제 API 요청과 사용량을 발생시키므로 실행하지 않았다. 회귀 fixture 구현과 자동화된 전체 검증은 2026-09-23에 통과했다. 사용자는 향후 benchmark 실행을 요청하면 별도로 실행할 수 있다. 기존 07 잔여는 계속 유지한다.
 

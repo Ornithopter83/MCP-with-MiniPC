@@ -70,6 +70,12 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` (0 warning, 0 error); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` (29 passed); `git diff --check` passed.
 - 남은 항목: 실제 Explorer 설정 UI에서 모델, reasoning, 스레드 변경과 적용 후 작업 폴더 저장을 확인한다. 이번 시점에서 origin/main과 동기화했고 최신 `GPT-Web-Feedback.md`를 읽었다.
 
+## 2026-09-23 설정창 모델 목록 초기화 보완 (11-UI-A)
+
+- CLI `debug models`의 현재 결과는 7개 모델이며 `CodexModelCatalog`가 제공하는 reasoning 목록도 모델별 지원값이다. 설정창이 카탈로그 조회가 끝나기 전에 표시될 수 있던 경로를 수정해, 설정창 열기에서 시작 설정 task를 기다린 다음 카탈로그가 0~1개일 때 재조회하고 UI 콤보를 다시 채운다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(0 warning, 0 error), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(29 tests), `git diff --check` 통과.
+- Explorer 설정창에서 실제 목록이 보이는지는 데스크톱 UI 접근이 없어 아직 검증되지 않았다.
+
 ## 2026-09-23 설정 폼·창 아이콘 후속 반영 (11-UI-A, 부분 반영)
 
 - 사용자가 승인한 설정 폼을 반영해 저장소/폴더 및 AI모델 설정 제목과 주요 라벨을 한글화했다. 상단 상태 요약은 설정창에서 접고 서버 상태 카드를 서버 주소 행에 두었다. 판단 AI는 Typesafe/JEV로 표시하고 Endpoint·제한 시간 입력은 감춘 채 JSON 설정 테스트 버튼을 노출했다.

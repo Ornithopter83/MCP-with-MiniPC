@@ -17,6 +17,12 @@ Updated: 2026-09-23
 - Release 게시와 두 배포 폴더 복사 성공. 저장소 게시본, `C:\AI-AGENT\Worker`, `C:\GameProject` SHA-256 일치: `3EE9CE3DBA832595AECBB6F012FED7749194A64C2A354D1B2FC65833F7CF771D`.
 - 잔여: 실제 설정창에서 각 모델/추론/스레드 선택 후 저장값 및 작업 폴더 갱신을 화면으로 확인하지 못했다. 최신 GPT-Web-Feedback.md를 fetch/rebase 후 확인했고 현재 origin/main은 변경이 없었다.
 
+## 후속 — 설정창 모델·추론 목록 초기 표시 (11-UI-A, 2026-09-23)
+
+- CLI의 `debug models`가 현재 지원 모델 7개를 반환함을 확인했다. 설정창이 시작 시 모델 카탈로그를 읽는 동안에도 열릴 수 있고, UI가 아직 초기화되지 않은 목록을 보여줄 수 있어 설정창 열기에서 공유 시작 설정 작업 완료를 기다리게 했다. 열 때 카탈로그가 0~1개면 한 번 더 조회하고 역할 모델/추론 콤보를 다시 채운다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); 전체 29개 테스트 통과; `git diff --check` 통과. 실제 팝업 조작은 이 세션에서 데스크톱 창 제어가 제공되지 않아 미확인이다.
+- Release 게시 및 Worker/GameProject 복사 성공. 세 EXE SHA-256 일치: `E2E40A6B462C633FD1957CB9D3C40888540894F6FEDBEEA9DA2996F8470D607A`.
+
 ## 현재 요약 — 2026-09-23 / Task 11-A 구현 완료
 
 동기화된 깨끗한 기준점 `f501694469f2f1a590d1739be5e6039978c7ebde`에 복구 태그 `recovery/before-11a-cli-to-cli-2026-09-23`를 만들고 시작했다. Task 11-A의 A/B/C를 완료했다.
