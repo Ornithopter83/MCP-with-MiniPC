@@ -1,6 +1,6 @@
 # GPT Web Feedback
 
-Updated: 2026-09-18
+Updated: 2026-09-23
 
 ## 최신 확인
 
@@ -5828,3 +5828,206 @@ Git commit/push는 별도 사용자 명시 승인이 없으면 수행하지 않�
 
 **Worker가 기존 v1 계약을 정확히 파싱하고, 잘못된 응답을 구현 실패와 구분하며, 모든 메시지를 올바른 다음 hop으로만 전달하도록 만드는 것**이 09-B의 완료 기준이다.
 
+
+
+---
+
+# 2026-09-23 GPT Web 피드백 — JEV 질문 원자화·중요도별 threshold 보완
+
+## 1. 배경과 결론
+
+실제 Worker → JEV 반복 검증에서 넓은 질문 하나에 여러 사실을 묶으면, 구현이 정상이고 로컬 증거가 있어도 JEV의 NOUL 값이 어느 하위 주장 때문에 낮아졌는지 구분하기 어려웠다.
+
+예를 들어 “SoundManager가 잘못된 WAV를 격리하고 UI를 막지 않으며 종료 시 모든 자원을 정리하는가?”는 한 항목으로 사용하지 않는다. 이 질문에는 WAV 격리, 재생 예외, UI 비차단, queue 상한, stopping 이후 enqueue 차단, async shutdown, SoundPlayer 정리, 동기화 자원 정리처럼 서로 독립적으로 실패 가능한 사실이 섞여 있다.
+
+핵심 원칙은 다음과 같다.
+
+- JEV 질문은 가능한 한 하나의 YES/NO 사실만 묻는 원자적 질문으로 분리한다.
+- 질문 수를 줄이기 위해 복합 명제를 만드는 것보다, 동일 evidence bundle 안에서 여러 원자적 NOUL 질문을 한 호출에 묶는 편을 우선한다.
+- 호출 수 절약과 질문 단순화는 별개의 문제다.
+- 기존 [NEXT : JEV], [VALIDATION REQUEST] 공개 계약은 유지한다.
+
+## 2. 원자적 질문 원칙
+
+JEV용 NOUL 질문은 기본적으로 다음 조건을 만족한다.
+
+1. 질문 하나는 검증 가능한 주장 하나만 포함한다.
+2. 가능한 한 YES/NO로 직접 답할 수 있게 쓴다.
+3. “그리고”, “및”, “동시에”, “~하면서”로 독립 조건을 연결하지 않는다.
+4. 파일·클래스·메서드·상태·상한값 등 확인 지점을 구체적으로 적는다.
+5. 정상 경로와 실패 경로를 별도 질문으로 나눈다.
+6. 정적 코드 사실과 실제 runtime 체감 품질을 한 질문에 섞지 않는다.
+7. 빌드 성공, exit code, 파일 존재, hash 일치처럼 도구가 직접 판정할 수 있는 사실은 로컬 검증이 원본이다. JEV는 필요할 때 그 증거가 해당 AC를 뒷받침하는지만 판단한다.
+8. 질문의 importance와 threshold는 JEV 호출 전에 확정한다. 실패한 뒤 통과시키기 위해 importance나 threshold를 낮추지 않는다.
+
+“A가 맞고 B도 맞으며 C도 안전한가?”는 C1=A, C2=B, C3=C처럼 나눈다. 여러 항목이 모두 만족해야 하나의 AC가 통과되는 경우에도 각 사실은 별도 C 번호로 검증하고 Worker/관제가 결과를 AC 단위로 종합한다.
+
+## 3. 중요도와 NOUL threshold
+
+JEV의 NOUL 값은 프로그램의 완성도 비율이나 실제 오류 확률로 해석하지 않는다. 경험상 명확한 코드에서도 매우 높은 값이 항상 나오지는 않으므로 0.98 같은 사실상 과도한 문턱을 기본 정책으로 두지 않는다.
+
+| 중요도 | 기본 PASS | 용도 |
+| --- | --- | --- |
+| LOW | YES >= 0.60 | 문서 표현, 부가 정보, 비핵심 정리, 사용자 체감으로 최종 판단 가능한 항목 |
+| MEDIUM | YES >= 0.70 | UI 상태, transient effect 정리, 리소스 설명, 유지보수 품질 |
+| HIGH | YES >= 0.80 | 핵심 기능, 자원 상한, 상태 전이, 충돌·아이템·멀티볼 등 기능 신뢰성 |
+| CRITICAL | YES >= 0.90 | crash, deadlock, 빌드 불가, 데이터/상태 손상, 잘못된 범위 접근, 필수 안전 계약 위반 |
+
+importance는 영향도를 나타내며 JEV가 높은 숫자를 잘 만들 수 있는지를 나타내는 등급이 아니다.
+
+예를 들어 README의 M 키 설명이 실제 입력과 일치하는지는 LOW 또는 MEDIUM일 수 있고, Stage 5 이후 존재하지 않는 Stage 6 배열 원소에 접근할 실행 경로가 없는지는 CRITICAL로 둘 수 있다.
+
+## 4. 권장 질문 형식
+
+현재 parser 호환성을 위해 PASS는 별도 줄을 우선 사용한다.
+
+예시:
+
+[NEXT : JEV]
+
+[VALIDATION REQUEST]
+
+- NOUL | [CRITICAL] Stage 5 완료 후 StageManager의 6번째 항목에 접근하는 실행 경로가 없는가?
+  PASS: YES >= 0.90
+
+- NOUL | [HIGH] MultiBall 상태에서 Ball 하나만 제거됐을 때 Lives 값이 감소하지 않는가?
+  PASS: YES >= 0.80
+
+- NOUL | [MEDIUM] ResetRound() 완료 후 PickupMessageTime이 0인가?
+  PASS: YES >= 0.70
+
+- NOUL | [LOW] README에 M 키가 음소거 토글로 문서화되어 있는가?
+  PASS: YES >= 0.60
+
+importance는 당장 별도 wire field를 추가하지 않고 질문 앞의 [CRITICAL], [HIGH], [MEDIUM], [LOW] 표기로 전달할 수 있다. 향후 typed importance를 지원한다면 별도 계약 변경 task에서 도입한다.
+
+## 5. 좋은 질문 / 피할 질문
+
+피할 질문:
+
+- SoundManager가 안전하고 빠르며 자원을 모두 잘 정리하는가?
+- 그래픽 효과가 성능과 게임 로직에 문제를 일으키지 않는가?
+- 기존 게임 기능이 모두 정상이고 README도 맞는가?
+
+권장 질문:
+
+- [HIGH] SoundManager.Play()에서 SoundPlayer.PlaySync()를 직접 호출하지 않는가?
+- [HIGH] pending queue의 원소 수가 QueueCapacity를 초과할 수 없는가?
+- [HIGH] stopping=true 이후 새 SoundEffect가 pending queue에 추가되지 않는가?
+- [HIGH] DisposeAsync()가 audio worker 완료를 await하는가?
+- [MEDIUM] audio worker 종료 경로에서 생성된 SoundPlayer를 모두 Dispose하는가?
+- [HIGH] Shake를 적용할 때 Ball.Position 값을 수정하지 않는가?
+- [HIGH] Shake를 적용할 때 Paddle.Bounds 값을 수정하지 않는가?
+- [MEDIUM] Ball.RecordTrail() 이후 Trail.Count가 MaxTrailPoints 이하인가?
+- [MEDIUM] Particle 수가 선언된 MaxParticles를 초과하지 않는가?
+- [LOW] README의 audio asset 상대 경로가 csproj의 배포 경로와 같은가?
+
+“자원 관리가 안전한가?” 같은 넓은 표현보다 코드에서 참/거짓을 확인할 수 있는 불변조건을 질문으로 만든다.
+
+## 6. 증거도 질문 단위로 좁힌다
+
+JEV가 전체 파일 목록만 받고 스스로 관련 위치를 추측하게 하지 않는다. 가능하면 각 질문에 대응하는 근거를 evidence index에서 연결한다.
+
+예:
+
+- C1 → SoundManager.cs / Play()
+- C2 → SoundManager.cs / QueueCapacity, Play()
+- C3 → SoundManager.cs / RequestStop(), DisposeAsync()
+- C4 → GameForm.cs / OnPaint() shake transform
+- C5 → GameModels.cs / Ball.RecordTrail()
+- C6 → build-release.txt / final summary
+
+향후 EvidenceBundle에서는 question ID 또는 AC와 evidence ref를 직접 연결하는 방식을 우선 검토한다.
+
+증거가 없으면 질문을 넓혀서 추론시키지 않는다. INSUFFICIENT_EVIDENCE 또는 Web/user 확인 대상으로 분류한다.
+
+## 7. JEV와 직접 검증의 역할 분리
+
+다음 사실은 가능한 한 실제 도구 결과가 원본이다.
+
+- build exit code
+- test exit code
+- warning/error count
+- 파일 존재
+- 파일 크기
+- hash 일치
+- enum 개수
+- 배열/리스트 상한을 확인하는 deterministic test
+
+JEV에게 “빌드가 성공했는가?”를 추측하게 하기보다 실제 build log를 Worker가 기계적으로 확인한다. 의미 검증이 필요하면 “제공된 build log가 AC-3에서 요구한 Release build 실행의 직접 증거인가?”처럼 묻는다.
+
+반대로 다음은 실제 사용자 검증이 최종 판정에 더 적합하다.
+
+- 효과음이 듣기 좋은가
+- 타격감이 충분한가
+- 화면 흔들림이 과하지 않은가
+- 색상 대비가 자연스러운가
+- 플레이 감각이 답답하지 않은가
+
+JEV PASS만으로 이런 체감 조건을 완료 처리하지 않는다.
+
+## 8. 재검증과 다음 행동
+
+점수를 맞추기 위한 무한 수정 루프를 만들지 않는다.
+
+기본 정책:
+
+- CRITICAL 기준 미달: 구체적인 코드/증거 결함이 있으면 CONTINUE. 실제 runtime 사용자 확인 없이는 판정할 수 있으면 PAUSE.
+- HIGH 기준 미달: 재현 가능한 기능/자원 문제면 CONTINUE. 단순 confidence 부족이고 직접 검증이 통과했다면 Web이 판단한다.
+- MEDIUM / LOW 기준 미달: 구체 결함이 있으면 수정한다. 구체 결함 없이 confidence만 낮으면 점수 맞추기식 수정은 금지하고 사용자 실검증으로 넘길 수 있다.
+
+기존 JEV round 상한을 유지한다. 같은 질문이 round 상한까지 기준을 넘지 못했는데 JEV가 수정 가능한 구체 결함을 제시하지 않았다면 같은 검증을 그대로 반복하지 않는다.
+
+Web 보고에는 최소 다음을 구분한다.
+
+- 실제로 재현된 결함
+- JEV confidence만 기준 미달인 항목
+- evidence 부족
+- provider/parser/error
+- 사용자 실검증 필요 항목
+
+## 9. 질문 수 정책 보완
+
+Master-Polish.md 8.2에는 현재 “검증 질문은 가능한 한 1~3개로 제한”한다고 되어 있다. 비용 절감 취지는 유지하되 실제 사용에서는 이 규칙이 한 질문에 여러 독립 주장을 결합시키는 압력이 될 수 있다.
+
+후속 Master 개정 시 다음 취지로 보완하는 것을 권한다.
+
+- 한 질문에는 한 주장만 둔다.
+- 질문 수보다 원자성이 우선이다.
+- 관련 원자 질문은 한 JEV 호출에 batch한다.
+- 사소한 구현 사실을 무제한 질문으로 늘리지는 않는다.
+- 하나의 AC에서 독립적으로 실패 가능한 사실이 여러 개면 각각 별도 질문으로 만든다.
+- 질문이 많아지면 기능군/AC별로 묶되 복합 질문으로 되돌리지 않는다.
+
+초기 운영값으로는 의미 있는 검증이 필요한 기능군 하나당 약 4~12개의 원자 질문을 우선 고려한다. 복잡한 변경에서는 더 많을 수 있으며 숫자 자체를 강제 상한으로 사용하지 않는다.
+
+비용은 질문을 합쳐서 줄이지 말고, 불필요한 질문을 제거하고 관련 질문을 한 API 호출에 batch해서 줄인다.
+
+## 10. 향후 Worker/JEV 검증 테스트 권고
+
+후속 구현 task에서는 다음 회귀 사례를 추가하는 것이 좋다.
+
+- LOW 0.60 threshold parse/evaluate
+- MEDIUM 0.70 threshold parse/evaluate
+- HIGH 0.80 threshold parse/evaluate
+- CRITICAL 0.90 threshold parse/evaluate
+- threshold는 validation 시작 후 자동 하향되지 않음
+- 질문 앞 importance label이 질문 본문을 손상시키지 않음
+- 여러 NOUL 질문을 한 request에서 독립 C ID로 유지
+- 한 질문 실패가 다른 질문의 PASS threshold와 잘못 연결되지 않음
+- round 상한 뒤 동일 검증 무한 반복 없음
+- JEV FAIL / insufficient evidence / provider error / user verification 필요 상태를 구분
+
+importance 자체를 Worker의 새 공개 wire field로 승격하는 작업은 별도 계약 변경으로 다룬다. 이번 피드백은 기존 NOUL + PASS 문법 안에서 운용 가능한 정책을 먼저 제안한다.
+
+## 11. 적용 우선순위
+
+1. 하나의 질문 = 하나의 검증 주장
+2. 가능하면 YES/NO로 답할 수 있는 질문
+3. 중요도에 따라 0.60 / 0.70 / 0.80 / 0.90 threshold
+4. 실제 도구 검증과 JEV 의미 검증 분리
+5. JEV 점수 맞추기식 코드 수정 금지
+6. 사용자 실검증을 최종 품질 판정으로 유지
+7. 질문 수 제한보다 질문 원자성을 우선하되 한 호출에 batch하여 비용 제어
+
+현재 BrickBreaker 실험에서 얻은 경험은 JEV의 역할을 제거하자는 근거가 아니라, JEV에게 더 작고 명확한 판단 단위를 주고 직접 실행 검증과 사용자 체감 검증의 경계를 더 분명히 해야 한다는 근거로 반영한다.
