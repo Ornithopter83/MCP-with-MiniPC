@@ -6926,3 +6926,338 @@ validator 미실행인데 요약에는 PASS라고 기재
 5. 기존 07 Force Restore의 잔여 검증과 외부 변경/배포 승인 정책은 그대로 보존한다.
 
 **핵심 결론:** MiniStore는 GPT-6 Luna Medium이 앱+validator+evidence index를 한 작업에서 구성하고 JEV 질문을 의미 검증에 집중할 수 있음을 보여줬다. 다음 ProjectHub 보완의 우선 목표는 더 많은 JEV 질문이 아니라 **검증 가능한 실행 경로를 자동 선택하고, 원본 evidence를 신뢰 가능한 provenance로 전달하고, 그 과정의 실측 비용을 기록하는 것**이다.
+
+---
+
+# 2026-09-23 GPT Web 상세 설계 피드백 — 네 가지 AI 역할 및 CLI-to-CLI 아키텍처
+
+> **정책 동기화:** 이 피드백은 사용자 지시에 따라 같은 날 수정한 `Master-Polish.md`의 **목표 아키텍처**를 구현 관점으로 풀어 쓴 설계안이다. Master 개정 커밋: `c4dfba8e4ba900793c4d679f4de9b12fa5b41e8f`. **새 CLI-to-CLI·네 역할 설정창은 아직 제품 구현 완료가 아니다.** 기존 09-B Explorer 검증과 09-C evidence 전달, 07 잔여 작업은 유지한다. 활성 번호 작업·A/B/C를 임의 변경하지 않는다.
+
+## 1. 사용자 결정 및 설계의 핵심
+
+새 ProjectHub의 공식 AI 역할 명칭은 네 개로 고정한다.
+
+| 역할 | 필수 | 책임 | 목표 기본값 |
+| --- | --- | --- | --- |
+| **1. 설계·관제 AI** | 필수 | 요구 정리, 시스템 설계, 작업 카드·AC 작성, 결과 검토, 다음 단계 및 종료 판단 | OpenAI GPT-6 Sol CLI |
+| **2. 작업 AI** | 필수 | 실제 구현·수정, 도구 실행, 로컬 validator, 증거 생성 | OpenAI GPT-6 Luna CLI, Medium |
+| **3. 작업 판단 AI** | 선택 | 코드·diff·테스트·실행 evidence를 요구에 대조해 판단 | OFF; 활성화 시 기존 JEV 연결 우선 |
+| **4. 고수준 작업 AI** | 선택 | 작업 AI가 해결하기 힘든 **허가된 하위 구현·분석 작업** 수행 | OFF; 필요 시 별도 OpenAI 모델/추론 설정 |
+
+**역할과 모델은 1:1 고정하지 않는다.** 같은 모델을 복수 역할에 할당하더라도 각 역할은 독립 세션과 별도 사용량을 가진다. 기본값은 사용자 요청에 따른 **목표 구성 예시**이며 계정/CLI에서 모델 및 reasoning을 지원하는지 확인하기 전에는 실행 성공을 보장하지 않는다.
+
+이번 변경은 'GPT Web을 쓰지 못하면 Luna가 혼자 설계한다'가 아니다. **Worker가 사용자 요구를 Sol 설계·관제 CLI에 먼저 전달하고, Sol이 작업 범위를 고정한 다음 Luna가 구현한다.** 브라우저 Web/Extension은 레거시/선택 모드로 유지하지만 CLI-to-CLI 기본 실행에 필요하지 않아야 한다.
+
+## 2. 역할별 결정권과 금지 사항
+
+### 설계·관제 AI: 필수 · read-only 기본
+
+- 사용자 목표를 보존하고 단일 활성 작업의 `goal / scope / AC / evidence_requirements / validation_plan`을 정한다.
+- '실행 가능한 작업 카드'만 작업 AI에 전달한다. 누적 Master·원본 로그 전문을 매번 보내지 않는다.
+- 로컬 테스트 실패는 작업 AI에 좁게 재지시, evidence 부족은 EvidenceCollector 또는 추가 테스트, 판단 불확실성은 사용자 확인/별도 판단으로 분기한다.
+- 완료의 **의미적 제안**은 관제 AI가 하되, 완료 가능한 **기계적 조건**(필수 AC evidence freshness, unresolved FAIL, 승인 범위)은 Worker가 강제한다.
+- 소스 수정이나 shell/Git push를 관제 역할의 독자 권한으로 제공하지 않는다.
+
+### 작업 AI: 필수 · 승인된 작업 범위 내 쓰기
+
+- 지정된 하나의 카드와 해당 AC를 수행하며 자체 판단으로 AC·threshold를 완화하지 않는다.
+- 변경 파일·실행한 명령·exit code·테스트 check ID·evidence digest·잔여 문제를 Worker에 구조화해 보고한다.
+- 같은 카드의 국소 수정은 동일 작업 세션에서 resume한다.
+- 작업 결과를 `ALL_PASS`라고 선언하는 대신 로컬 검증 결과와 증거를 제출한다. 최종 수용은 관제/Worker 규칙을 통과해야 한다.
+
+### 작업 판단 AI: 선택 · 소스 쓰기 금지
+
+- 초기의 검증 엔진 연결은 **현행 JEV**를 재사용한다. JEV는 OpenAI 모델이 아니므로 'AI 공급사에 타사를 올린다'는 뜻이 아니다. Judge 카드의 검증 엔진 선택·연결 항목으로 별도 표시한다.
+- 장차 OpenAI 모델을 판단 AI로 사용하려면 CLI judge 어댑터와 결과 계약을 별도 구현·검증한 뒤 열어 준다. 구현되지 않은 모델 선택이 실제로 JEV를 실행한다고 표시하지 않는다.
+- ON이면 가능한 원자 질문을 `CLAIM + EVIDENCE + SCOPE + COUNTEREXAMPLE`로 batch한다. deterministic 산술·exit code는 로컬 도구가 권위자다.
+- OFF여도 필수 validator는 그대로 실행한다. evidence 미충족 또는 실제 UI 미검증을 자동 PASS로 승격하지 않는다.
+- `FAIL / INSUFFICIENT / PARTIAL / PROVIDER_ERROR`를 구분한다. confidence만 낮고 직접 모순이 없으면 점수 맞추기식 코드 수정을 시키지 않는다.
+
+### 고수준 작업 AI: 선택 · 위임받은 작업자
+
+- '설계·관제 AI보다 더 높은 권한'이라는 뜻이 아니라 **별도 역할·별도 세션의 고난도 실행 자원**이다.
+- 기본 OFF. ON이어도 모든 문제에 자동 호출하지 않는다. 관제가 실패 증거와 이유를 좁히고 설정된 에스컬레이션 규칙·예산·승인 조건이 충족된 경우만 위임한다.
+- 최초 위임은 필요에 따라 읽기 전용 분석만 가능하며, 쓰기가 필요한 경우 Worker가 한시적으로 해당 작업의 exclusive write lease를 이양한다. Luna와 동일 워크스페이스에 동시에 쓰지 않는다.
+- 결과물은 관제에 직접 최종 수용시키지 않고, 원래 AC에 대해 검증 후 설계·관제 AI가 검토한다.
+
+**Worker 경계:** AI가 자신의 역할을 넘어 승인·권한·예산·최종 상태를 직접 덮어쓸 수 없다. provider 오류 시 다른 모델/과금 경로로 무단 전환하지 않는다. Git commit/push·배포 등 외부 변경은 기존 사용자 명시적 승인 정책을 유지한다.
+
+## 3. 설정창: 단일 모델 선택을 네 역할 카드로 이관
+
+최종 UI에는 별도 `설정 > AI 역할 설정` 섹션을 만든다. 기존 메인 화면 하단의 공용 모델/추론 선택은 **새 UI가 실제 연결·검증된 뒤** 제거/이관한다. 기능을 잃지 않은 채 이행해야 한다.
+
+**공통 역할 카드:** 역할 명칭, 필수/선택 배지, 공급사, 모델, 지원되는 reasoning, 연결/사용 가능 상태, 변경 적용 시점을 표시한다.
+
+- 설계·관제 AI와 작업 AI는 필수: ON 고정, 실행 전 모델 선택/인증/필요 capabilities 확인.
+- 작업 판단 AI와 고수준 작업 AI는 선택: OFF일 때 추가 실행·비용 0(로컬 validator는 계속 실행); ON일 때 해당 연결/모델/정책 활성화.
+- AI 공급사 드롭다운에는 **현재 OpenAI(ChatGPT 계열)만 노출**한다. 향후 타사 확장 가능하도록 내부 `provider_id`와 `model_id`는 분리한다. 지원되지 않은 미래 회사/모델을 placeholder로 노출하지 않는다.
+- 모델 목록은 당시 실행 가능한 후보를 CLI capability/preflight에서 검증한다. reasoning 옵션도 모델별 지원 값을 사용한다. 지원하지 않는 조합은 조용히 대체하지 말고 명시적 상태 표시.
+- Judge 카드의 JEV는 `판단 방식=JEV 엔진 연결`, timeout/엔진 상태 등으로 별도 표현한다. 향후 `OpenAI 판단 모델` 방식은 구현 후 활성화. JEV의 제3자 엔진명을 현재 AI 공급사 목록에 추가하지 않는다.
+- 역할별 모델 변경은 이미 실행 중인 세션에 소급하지 않는다. Worker가 Job 시작 시 모델·추론·권한을 snapshot하고, 다음 새 작업/안전한 단계에서 반영한다.
+- 동일 모델을 여러 역할에 지정할 수 있어도 역할별 session ID와 usage는 절대 합쳐 저장하지 않는다.
+
+### 예제 A — 목표 설정 JSON (미구현 내부 schema v2 제안)
+
+```json
+{
+  "schema_version": 2,
+  "execution_mode": "cli_to_cli",
+  "roles": {
+    "coordinator": {
+      "label": "설계·관제 AI",
+      "required": true,
+      "enabled": true,
+      "provider_id": "openai",
+      "transport": "codex-cli",
+      "model_id": "gpt-6-sol",
+      "reasoning": "high",
+      "permission_profile": "read-only"
+    },
+    "implementer": {
+      "label": "작업 AI",
+      "required": true,
+      "enabled": true,
+      "provider_id": "openai",
+      "transport": "codex-cli",
+      "model_id": "gpt-6-luna",
+      "reasoning": "medium",
+      "permission_profile": "approved-workspace-write"
+    },
+    "judge": {
+      "label": "작업 판단 AI",
+      "required": false,
+      "enabled": false,
+      "backend": "jev",
+      "engine_model": "jev-latest"
+    },
+    "advanced_implementer": {
+      "label": "고수준 작업 AI",
+      "required": false,
+      "enabled": false,
+      "provider_id": "openai",
+      "transport": "codex-cli",
+      "model_id": "gpt-6-sol",
+      "reasoning": "high",
+      "permission_profile": "delegated-write-only"
+    }
+  },
+  "policy": {
+    "allow_paid_fallback": false,
+    "allow_automatic_escalation": false,
+    "max_concurrent_workspace_writers": 1
+  }
+}
+```
+
+주의: 위 JSON은 **현재 UI·현재 config 파일 계약이 아니다.** 저장 포맷을 바꿀 때 버전 및 기존 설정 마이그레이션을 설계하고 테스트해야 한다. Web 모드와 기존 모델 설정을 임의 폐기하지 않는다.
+
+## 4. 제안 내부 아키텍처와 정상 단계
+
+```text
+UserCommand
+    → JobRunner / JobState
+    → ICoordinatorAdapter (Sol 전용 CLI session / read-only)
+       → CoordinatorPlan (작업 카드 1개, AC)
+       → IImplementerAdapter (Luna 전용 CLI session / write lease)
+          → ImplementerResult + EvidenceIndex
+          → deterministic validator (권한/실행 사실은 Worker가 확인)
+          → EvidenceCollector (실제 source/diff/log digest 및 증거 범위)
+          → [judge ON] IJudgeAdapter (JEV)
+              ├─ PASS → coordinator review
+              ├─ 부족 → evidence collection
+              ├─ FAIL → 같은 implementer session에서 좁은 보완
+              └─ ERROR → 재시도/대기 또는 정책 fallback (구현 실패 아님)
+          → [judge OFF] coordinator review (로컬 validator 생략 금지)
+       → coordinator: 다음 카드 / 위임 / 대기 / 완료 제안
+       → Worker: 승인된 범위 및 모든 필수 AC freshness gate
+```
+
+구현 시 `ICoordinatorAdapter`, `IImplementerAdapter`, `IJudgeAdapter`, `IAdvancedImplementerAdapter`, `EvidenceCollector`, `JobRunner`로 경계만 명확히 만들되, 09-B/09-C보다 앞서 대규모 추상화 리팩터링을 실행하지 않는다.
+
+상태별 provider 장애(인증/429/연결), 사용자 취소, Job 복구와 budget unknown은 Worker의 영속 상태에서 처리한다. 세션 간에 과거 채팅 전문을 복제하는 대신 **task packet / evidence index / 짧은 review packet**만 전달한다. 사고로 같은 쓰기 작업을 두 번 실행하거나 두 CLI가 같은 파일을 경합하지 않게 한다.
+
+## 5. 복사 가능한 내부 메시지 예제 (신규 계약 제안)
+
+**중요:** 아래 JSON 블록은 **향후 CLI-to-CLI Worker 내부 계약**의 설계 샘플이지 기존 v1 `[ACTION]/[NEXT]` parser가 바로 인식하는 메시지가 아니다. 기존 Web 모드의 공개 wire는 별도 유지한다.
+
+### 예제 B — 사용자 → 설계·관제 AI (초기 설계 요청)
+
+```json
+{
+  "kind": "COORDINATOR_REQUEST",
+  "job_id": "JOB-EXAMPLE",
+  "user_goal": "로컬 매장관리 웹앱 제작",
+  "constraints": ["index.html 더블클릭 실행", "외부 서버 금지"],
+  "current_project_state": "신규 작업",
+  "governance": {
+    "active_work_item_limit": 1,
+    "no_unapproved_git_write": true,
+    "coordinator_permissions": "read-only"
+  },
+  "output_required": [
+    "AC와 검증 기준이 고정된 작업 카드 1개",
+    "필요한 근거와 허용된 변경 경계"
+  ]
+}
+```
+
+### 예제 C — 설계·관제 AI → Worker → 작업 AI (작업 카드)
+
+```json
+{
+  "kind": "WORK_CARD",
+  "job_id": "JOB-EXAMPLE",
+  "work_id": "W01",
+  "parent_goal": "MiniStore local POS",
+  "scope": ["StoreEngine.completeSale", "해당 deterministic validator"],
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-SALE-01",
+      "claim": "재고 부족 결제 실패 시 Sale·stock·ledger가 전혀 변경되지 않는다",
+      "check_ids": ["FAIL-STOCK-REJECT", "FAIL-STOCK-ATOMIC"],
+      "evidence_required": ["실제 실행한 검증 출력", "관련 구현 구간과 diff digest"]
+    }
+  ],
+  "validation_commands": ["기존 headless validator 실행"],
+  "permissions": "approved-workspace-write",
+  "prohibited": ["AC 변경", "JEV threshold 완화", "승인 없는 외부 변경"],
+  "result_contract": "IMPLEMENTER_RESULT"
+}
+```
+
+※ `validation_commands`는 프로젝트 실제 실행 명령으로 작업 카드 생성 시 확정한다. 존재하지 않는 도구 명령을 임의로 실행하지 않는다.
+
+### 예제 D — 작업 AI → Worker (구현 결과와 증거)
+
+```json
+{
+  "kind": "IMPLEMENTER_RESULT",
+  "job_id": "JOB-EXAMPLE",
+  "work_id": "W01",
+  "session_role": "implementer",
+  "changed_paths": ["js/store-engine.js", "js/validation.js"],
+  "validation": [
+    {
+      "runner": "local-node-wrapper",
+      "command": "실제로 실행된 검증 명령",
+      "exit_code": 0,
+      "checked_ids": ["FAIL-STOCK-REJECT", "FAIL-STOCK-ATOMIC"],
+      "result": "PASS",
+      "observed_at": "실제 실행 시각"
+    }
+  ],
+  "evidence_refs": ["E-SALE-SOURCE", "E-SALE-TEST", "E-SALE-RUN"],
+  "unverified": ["실제 file:// 사용자 입력 UX"],
+  "next": "VERIFY"
+}
+```
+
+※ `result=PASS`는 Worker가 해당 명령의 출력을 수집·대조한 뒤 신뢰한다. Codex가 적은 문자열 자체는 실행 증명으로 사용하지 않는다.
+
+### 예제 E — Worker → JEV (기존 v1 호환 질문 텍스트 예시)
+
+```text
+[NEXT : JEV]
+
+[VALIDATION REQUEST]
+
+- NOUL | [CRITICAL] 재고 부족 결제 실패 뒤 Sale이 추가되지 않는가?
+  EVIDENCE: E-SALE-SOURCE + E-SALE-TEST + E-SALE-RUN
+  SCOPE: completeSale() 재고 부족 경로의 Sale collection
+  COUNTEREXAMPLE: 실패 이후 Sale count 증가
+  PASS: YES >= 0.90
+
+- NOUL | [CRITICAL] 재고 부족 결제 실패 뒤 상품 stock이 바뀌지 않는가?
+  EVIDENCE: E-SALE-SOURCE + E-SALE-TEST + E-SALE-RUN
+  SCOPE: 해당 product stock
+  COUNTEREXAMPLE: 실패 이후 stock 불일치
+  PASS: YES >= 0.90
+
+- NOUL | [CRITICAL] 재고 부족 결제 실패 뒤 ledger가 추가되지 않는가?
+  EVIDENCE: E-SALE-SOURCE + E-SALE-TEST + E-SALE-RUN
+  SCOPE: InventoryTransaction collection
+  COUNTEREXAMPLE: 실패 이후 새 ledger row 존재
+  PASS: YES >= 0.90
+```
+
+위 `E-...`는 09-C 이후 **실제 전달된 원본 evidence 객체**를 가리켜야 한다. 단순한 로컬 경로나 테스트 ID 문자열만으로 JEV가 내용을 자동 열람한다고 가정하지 않는다. JEV 응답의 `confidence`를 시스템 완성도로 재해석하지 않는다.
+
+### 예제 F — JEV OFF / 증거 부족 / 고수준 작업 위임
+
+```json
+{
+  "kind": "COORDINATOR_REVIEW",
+  "job_id": "JOB-EXAMPLE",
+  "work_id": "W01",
+  "local_validation": "PASS",
+  "judge": { "enabled": false, "status": "SKIPPED" },
+  "browser_ui": { "status": "UNVERIFIED", "reason": "실행 증거 없음" },
+  "decision": "COLLECT_EVIDENCE",
+  "next_request": "실제 브라우저 UI 검증과 해당 콘솔 결과 확보"
+}
+```
+
+```json
+{
+  "kind": "ADVANCED_DELEGATION_PROPOSAL",
+  "job_id": "JOB-EXAMPLE",
+  "work_id": "W01",
+  "origin": "coordinator",
+  "reason": "동일 실패 재현 근거를 갖춘 고난도 하위 문제",
+  "scope": ["지정한 하위 문제와 관련된 파일만"],
+  "required_permissions": "read-only-first",
+  "max_additional_budget": "사용자가 사전 승인한 구체 한도",
+  "state": "AWAITING_POLICY_AND_BUDGET_APPROVAL"
+}
+```
+
+고수준 작업 AI가 OFF면 위 예제의 위임은 **실행되지 않는다**. 먼저 Sol 관제가 작업 범위를 다시 좁히거나, 승인 필요 상태로 멈춘다. ON 상태도 permission/budget/lease 조건을 통과해야 한다.
+
+## 6. CLI 세션·권한·비용 설계
+
+- Job 안에 `coordinator_session_id`, `implementer_session_id`, `advanced_session_id`(선택)를 분리 저장한다. Judge가 JEV라면 CLI 세션이 아니라 JEV 요청 ID·model revision·usage를 별도로 저장한다.
+- 각 실행에는 role/model/reasoning/permissions snapshot과 `request_id`·`work_id`를 붙인다. 실행 도중 설정창 변경이 현재 호출에 영향을 주지 않는다.
+- 실제 사용량은 role/provider/model 단위로 input/cached/output/reasoning(확인 가능한 경우), JEV 별도 usage, retry·latency를 분리한다. 불명 사용량은 0이 아니라 `unknown`.
+- Luna의 작은 수정·재검증에 Sol을 반복 호출하지 않는다. Sol은 최초 설계, 작업 경계, 본질적 실패 재분해, 최종 수용 검토에 집중한다. 고수준 AI가 켜져도 비용 상한·호출 조건 없이는 실행하지 않는다.
+- Luna/고수준 작업 AI 사이의 작업 위임은 한 시점에 하나의 쓰기 lease만 허용한다. 두 모델 간 임의 세션 공유·자동 모델 상향은 금지한다.
+- 현재 Web 모드의 provider 사용 제한·로그인/권한과 새로운 CLI 모드의 계정/usage 정책을 섞지 않는다. 토큰 절감률을 실측 전 약속하지 않는다.
+
+## 7. 수용 조건 및 필수 회귀 테스트 설계
+
+| ID | 확인 조건 | 검증 방식 |
+| --- | --- | --- |
+| ROLE-01 | 설계·관제 AI와 작업 AI는 비활성화할 수 없다 | UI·설정 validation fixture |
+| ROLE-02 | 판단·고수준 AI OFF라도 기본 CLI-to-CLI Job이 완료된다 | mock coordinator/implementer E2E |
+| ROLE-03 | 설계·관제 모델과 작업 모델 및 reasoning을 서로 다르게 지정할 수 있다 | 설정 round-trip / 실행 snapshot |
+| ROLE-04 | 현재 AI 공급사 목록에는 OpenAI만 표시된다 | UI 목록 확인; Judge의 JEV는 엔진 카드 |
+| FLOW-01 | 최초 사용자 지시는 Sol 관제 세션으로 가며 첫 작업 카드 확정 전 Luna 실행이 0회 | mock CLI invocation log |
+| FLOW-02 | 모델이 같아도 역할별 세션 ID·usage는 분리된다 | CLI session/usage fixture |
+| FLOW-03 | 관제 read-only 위반, 승인되지 않은 Git 변경을 Worker가 거부한다 | permission/approval fixture |
+| FLOW-04 | 동일 폴더에 작업 AI와 고수준 AI가 동시에 쓰지 못한다 | write lease 경합 fixture |
+| JUDGE-01 | Judge OFF에서 deterministic validator는 계속 실행된다 | judge OFF E2E |
+| JUDGE-02 | Judge ON에서 실제 evidence refs와 원자 질문만 전달되고 오래된 PASS는 무효화된다 | 09-C evidence digest fixture |
+| JUDGE-03 | JEV FAIL / 부족 / ERROR는 각각 수정·증거 수집·대기로 분기한다 | mock judge responses |
+| HIGH-01 | 고수준 AI OFF/예산 부족/미승인 상태의 자동 호출은 0회 | escalation guard fixture |
+| RECOVER-01 | 취소·재시작 후 확인된 phase와 역할별 snapshot으로 복구, 중복 side effect 없음 | JobRunner restart fixture |
+| LEGACY-01 | 기존 Web ACTION/NEXT/JEV 경로가 새 CLI 모드 추가 뒤에도 유지된다 | 현재 09-B E2E 회귀 fixture |
+
+표의 test ID는 구현 전 계획이며 실제 PASS 근거가 아니다. mock과 실제 CLI 실행, CLI/API 대체와 Explorer 실화면의 검증 등급을 분리해 기록한다.
+
+## 8. 단계별 구현 인계 — 기존 Master 순서 보존
+
+**이번 피드백은 설계 결정이므로 Codex가 현재 활성 09-B를 건너뛰어 설정 UI·CLI 아키텍처 전체를 동시에 구현하면 안 된다.**
+
+1. **09-B Explorer 마감**: Web 기존 Judge OFF, NEXT WEB, PASS, FAIL 동일 session, ERROR fallback, PASS 후 report-only 차단의 실화면 증거 확보. 기존 체계는 호환 baseline이다.
+2. **09-C evidence envelope / AC freshness**: 역할에 무관한 원본 증거 전달을 먼저 완성한다. MiniStore처럼 `EVIDENCE: 테스트 이름`만 있고 원본이 없는 경우 JEV가 실제 증거를 본 것으로 표시하지 않는다.
+3. **10-A 토큰/메시지 계측**: 이후 Sol 관제 호출과 Luna 작업 호출을 분리해 측정할 수 있는 필드부터 마련한다. 정확성 유지 조건으로 긴 반복 footer·맥락 재전송을 줄인다.
+4. **10-B 개정**: 신규 `Coordinator-first CLI-to-CLI`와 필수 두 역할의 설정창/독립 세션을 **하나의 순차 작업 범위로 세분화**하여 구현한다. 첫 Sol CLI capability smoke, Sol→작업 카드→Luna→로컬 검증→Sol review 정상 경로를 확인한다. 기존 Web 모드는 그대로 유지한다.
+5. **10-C JobRunner 복구**: 모델 snapshot, 관제/작업의 별도 세션, 취소·재개·중복 side effect를 검증한다.
+6. **11-C 개정**: 선택적 작업 판단 AI ON/OFF와 고수준 작업 AI ON/OFF를 추가하고, JEV 연동·고수준 위임 lease/승인/budget의 실제 회귀를 통과한다. 다른 회사 AI의 실통합은 **이번 범위가 아니며**, 독립 인터페이스 경계만 준비한다.
+
+`ProjectHub_IMPLEMENTATION_PLAN.md`, `CurrentWork.md`, 기존 09 task는 과거 완료·미완료의 원본 상태로 남긴다. 코드·UI 구현이 없는 상태에서 이를 완료로 바꾸지 않는다. 구현 순서나 범위를 다시 확정할 때 해당 활성 task에서 별도 반영한다.
+
+## 9. 설계 완료 판정
+
+이번 문서 작업의 완료 조건은 **네 역할 명칭/권한/기본값이 Master와 이 피드백에서 일치하고, 초기 OpenAI 모델 카탈로그와 별도 JEV 엔진을 혼동하지 않으며, 사용자가 선택한 설정창/CLI-to-CLI 경로가 구현 가능한 인터페이스·예제·AC로 구체화되어 있는 것**이다.
+
+제품 완료 조건은 별개다: 실제 Sol CLI와 Luna CLI의 동작, 최소 2-CLI E2E, 설정 실연결, JEV ON/OFF, 선택적 고수준 실행, 상태 복구, 비용 계측은 차후 각 작업의 **실행 evidence**가 있어야 PASS라고 한다.
