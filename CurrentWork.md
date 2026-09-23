@@ -23,6 +23,13 @@ Updated: 2026-09-23
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); 전체 29개 테스트 통과; `git diff --check` 통과. 실제 팝업 조작은 이 세션에서 데스크톱 창 제어가 제공되지 않아 미확인이다.
 - Release 게시 및 Worker/GameProject 복사 성공. 세 EXE SHA-256 일치: `E2E40A6B462C633FD1957CB9D3C40888540894F6FEDBEEA9DA2996F8470D607A`.
 
+## 후속 — 서비스 모델/추론 enum 및 요청 조합 (11-UI-A, 2026-09-23)
+
+- 현재 설치 CLI의 `codex debug models`를 직접 다시 질의했다. `visibility=list`, `supported_in_api=true`인 모델 7개와 모델별 추론 enum 목록을 `CodexServedModels`로 고정 정의했다. UI 목록은 늦은 CLI catalog 로딩에 의존하지 않는다.
+- 설정에서 고른 모델/추론을 `CodexModelRequest`에 검증·보관하고, 실제 CLI 요청에 `--model <model-id> -c model_reasoning_effort="<effort>"`로 추가한다. 동등한 query 표현은 `model=<model-id>&reasoning=<effort>`이며, CLI 실행은 HTTP URL query 대신 CLI 인수 계약을 사용한다. 런타임 catalog 기반 실행 전 capability 검증도 유지한다.
+- 검증: Debug build 경고 0/오류 0; 전체 30개 테스트 통과. 새 fixture가 7개 enum 모델 수, Luna의 `ultra` 거부, query 조합 및 실제 CLI 인수 순서를 확인한다. 설정창의 픽셀/UI 확인은 현재 세션의 데스크톱 창 제어가 없어 미확인이다.
+- Release 게시본과 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사본 해시를 재시도 후 대조해 모두 일치함을 확인했다: `6C14DC32491815EF2C21CAD65EF7C534733598580B1B03B27752DC25C25BACD7`.
+
 ## 현재 요약 — 2026-09-23 / Task 11-A 구현 완료
 
 동기화된 깨끗한 기준점 `f501694469f2f1a590d1739be5e6039978c7ebde`에 복구 태그 `recovery/before-11a-cli-to-cli-2026-09-23`를 만들고 시작했다. Task 11-A의 A/B/C를 완료했다.

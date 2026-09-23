@@ -26,6 +26,17 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void CurrentServedModels_AreEnumsAndComposeTheActualCliRequest()
+    {
+        Assert.Equal(7, CodexServedModels.Current.Count);
+        Assert.True(CodexModelRequest.TryCreate("gpt-6-luna", "high", out var request));
+        Assert.Equal("model=gpt-6-luna&reasoning=high", request.ToQueryString());
+        Assert.Equal(new[] { "--model", "gpt-6-luna", "-c", "model_reasoning_effort=\"high\"" }, request.ToCliArguments());
+        Assert.False(CodexModelRequest.TryCreate("gpt-6-luna", "ultra", out _));
+        Assert.False(CodexModelRequest.TryCreate("unknown-model", "high", out _));
+    }
+
+    [Fact]
     public void ExistingSettings_MigrateToCoordinatorFirstWithoutChangingLegacyTargetFields()
     {
         var settings = JsonSerializer.Deserialize<WorkerTargetSettings>("""

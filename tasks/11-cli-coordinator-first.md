@@ -76,6 +76,24 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(0 warning, 0 error), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(29 tests), `git diff --check` 통과.
 - Explorer 설정창에서 실제 목록이 보이는지는 데스크톱 UI 접근이 없어 아직 검증되지 않았다.
 
+## 2026-09-23 서비스 모델 enum 및 요청 파라미터 연결 (11-UI-A)
+
+- 로컬 설치 Codex CLI의 `debug models`를 직접 조회한 현재 목록은 다음과 같다.
+
+| 모델 enum / ID | 기본 추론 | 허용 추론 |
+| --- | --- | --- |
+| `Gpt6Astra` / `gpt-6-astra` | low | low, medium, high, xhigh, max, ultra |
+| `Gpt6Sol` / `gpt-6-sol` | medium | low, medium, high, xhigh, max, ultra |
+| `Gpt6Luna` / `gpt-6-luna` | medium | low, medium, high, xhigh, max |
+| `Gpt56Sol` / `gpt-5.6-sol` | low | low, medium, high, xhigh, max, ultra |
+| `Gpt56Terra` / `gpt-5.6-terra` | medium | low, medium, high, xhigh, max, ultra |
+| `Gpt56Luna` / `gpt-5.6-luna` | medium | low, medium, high, xhigh, max |
+| `Gpt55` / `gpt-5.5` | medium | low, medium, high, xhigh |
+
+- UI는 enum 카탈로그에서 직접 채워져 CLI catalog 로딩 타이밍에 영향받지 않는다. `CodexModelRequest`는 `model=<id>&reasoning=<effort>` 형태로 두 설정값을 짝지으며, 실행 시 실제 CLI가 받는 `--model <id> -c model_reasoning_effort="<effort>"` 인수로 변환한다. 지원하지 않는 enum 조합은 요청 전에 거부한다. 기존 런타임 CLI capability 검증은 추가 안전 확인으로 유지한다.
+- 검증: 새 테스트에서 모델 7개, `gpt-6-luna/ultra` 불허, query 문자열 및 실제 CLI 인수 구성을 확인; 전체 30개 테스트와 Debug 빌드 통과. Explorer UI 화면 검증은 도구 제약으로 수행하지 못했다.
+- Release EXE 게시 및 두 Worker 배포 폴더 복사 완료. 세 SHA-256 일치: `6C14DC32491815EF2C21CAD65EF7C534733598580B1B03B27752DC25C25BACD7`.
+
 ## 2026-09-23 설정 폼·창 아이콘 후속 반영 (11-UI-A, 부분 반영)
 
 - 사용자가 승인한 설정 폼을 반영해 저장소/폴더 및 AI모델 설정 제목과 주요 라벨을 한글화했다. 상단 상태 요약은 설정창에서 접고 서버 상태 카드를 서버 주소 행에 두었다. 판단 AI는 Typesafe/JEV로 표시하고 Endpoint·제한 시간 입력은 감춘 채 JSON 설정 테스트 버튼을 노출했다.

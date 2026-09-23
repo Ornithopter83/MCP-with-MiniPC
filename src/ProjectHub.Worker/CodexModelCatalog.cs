@@ -3,6 +3,82 @@ using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
+public enum CodexServedModel
+{
+    Gpt6Astra,
+    Gpt6Sol,
+    Gpt6Luna,
+    Gpt56Sol,
+    Gpt56Terra,
+    Gpt56Luna,
+    Gpt55
+}
+
+public enum CodexReasoningDepth
+{
+    Low,
+    Medium,
+    High,
+    XHigh,
+    Max,
+    Ultra
+}
+
+public sealed record CodexServedModelOption(
+    CodexServedModel Value,
+    string Id,
+    string DisplayName,
+    CodexReasoningDepth DefaultReasoning,
+    IReadOnlyList<CodexReasoningDepth> ReasoningDepths);
+
+public sealed record CodexModelRequest(CodexServedModelOption Model, CodexReasoningDepth Reasoning)
+{
+    public string ReasoningId => Reasoning.ToString().ToLowerInvariant();
+
+    public string ToQueryString() =>
+        $"model={Uri.EscapeDataString(Model.Id)}&reasoning={Uri.EscapeDataString(ReasoningId)}";
+
+    public IReadOnlyList<string> ToCliArguments() =>
+        new[] { "--model", Model.Id, "-c", $"model_reasoning_effort=\"{ReasoningId}\"" };
+
+    public static bool TryCreate(string? modelId, string? reasoningId, out CodexModelRequest request)
+    {
+        request = null!;
+        var model = CodexServedModels.Find(modelId);
+        if (model is null || !Enum.TryParse<CodexReasoningDepth>(reasoningId, true, out var reasoning) ||
+            !model.ReasoningDepths.Contains(reasoning))
+            return false;
+
+        request = new CodexModelRequest(model, reasoning);
+        return true;
+    }
+}
+
+public static class CodexServedModels
+{
+    public static IReadOnlyList<CodexServedModelOption> Current { get; } = new[]
+    {
+        Create(CodexServedModel.Gpt6Astra, "gpt-6-astra", "GPT-6 Astra", CodexReasoningDepth.Low, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max, CodexReasoningDepth.Ultra),
+        Create(CodexServedModel.Gpt6Sol, "gpt-6-sol", "GPT-6 Sol", CodexReasoningDepth.Medium, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max, CodexReasoningDepth.Ultra),
+        Create(CodexServedModel.Gpt6Luna, "gpt-6-luna", "GPT-6 Luna", CodexReasoningDepth.Medium, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max),
+        Create(CodexServedModel.Gpt56Sol, "gpt-5.6-sol", "GPT-5.6 Sol", CodexReasoningDepth.Low, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max, CodexReasoningDepth.Ultra),
+        Create(CodexServedModel.Gpt56Terra, "gpt-5.6-terra", "GPT-5.6 Terra", CodexReasoningDepth.Medium, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max, CodexReasoningDepth.Ultra),
+        Create(CodexServedModel.Gpt56Luna, "gpt-5.6-luna", "GPT-5.6 Luna", CodexReasoningDepth.Medium, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max),
+        Create(CodexServedModel.Gpt55, "gpt-5.5", "GPT-5.5", CodexReasoningDepth.Medium, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh)
+    };
+
+    public static CodexServedModelOption? Find(string? id) => Current.FirstOrDefault(option =>
+        string.Equals(option.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    private static CodexServedModelOption Create(
+        CodexServedModel value,
+        string id,
+        string displayName,
+        CodexReasoningDepth defaultReasoning,
+        params CodexReasoningDepth[] reasoningDepths) =>
+        new(value, id, displayName, defaultReasoning, reasoningDepths);
+}
+
 public sealed record CodexModelCapability(
     string Id,
     string DisplayName,

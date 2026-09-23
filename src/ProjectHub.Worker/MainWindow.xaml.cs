@@ -23,7 +23,6 @@ public partial class MainWindow : Window
     private readonly JevJudgeRunner _jevJudgeRunner = new();
     private CodexModelCatalogResult _codexModelCatalog = new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_NOT_LOADED");
     private bool _loadingRoleControls;
-    private bool _refreshingRoleModelCatalog;
     private bool _syncingRoleThreadSelection;
     private bool _activeCoordinatorFirst;
     private CancellationTokenSource? _activeTaskCts;
@@ -230,8 +229,6 @@ public partial class MainWindow : Window
         if (!StatusPopup.IsOpen)
         {
             await InitializeStartupConfigurationAsync();
-            if (_codexModelCatalog.Models.Count <= 1)
-                await RefreshCodexModelCatalogAsync();
             ApplyRoleSettingsToControls();
         }
         SetSettingsPopupOpen(!StatusPopup.IsOpen);
@@ -1265,53 +1262,6 @@ public partial class MainWindow : Window
             : await CodexModelCatalog.LoadAsync(executable);
     }
 
-    private async void RoleModelCombo_DropDownOpened(object sender, EventArgs e)
-    {
-        if (_refreshingRoleModelCatalog || _codexModelCatalog.Models.Count > 1 || sender is not System.Windows.Controls.ComboBox openedCombo)
-            return;
-
-        _refreshingRoleModelCatalog = true;
-        try
-        {
-            var selections = new[]
-            {
-                (Combo: CoordinatorModelCombo, Reasoning: CoordinatorReasoningCombo),
-                (Combo: ImplementerModelCombo, Reasoning: ImplementerReasoningCombo),
-                (Combo: HighLevelModelCombo, Reasoning: HighLevelReasoningCombo)
-            }.Select(item => new
-            {
-                item.Combo,
-                item.Reasoning,
-                Model = GetSelectedTag(item.Combo, string.Empty),
-                Effort = GetSelectedTag(item.Reasoning, string.Empty)
-            }).ToArray();
-
-            await RefreshCodexModelCatalogAsync();
-            if (_codexModelCatalog.Status != "READY" || _codexModelCatalog.Models.Count <= 1)
-                return;
-
-            _loadingRoleControls = true;
-            try
-            {
-                foreach (var selection in selections)
-                {
-                    PopulateRoleModelCombo(selection.Combo, selection.Model);
-                    PopulateRoleReasoningCombo(selection.Reasoning, selection.Model, selection.Effort);
-                }
-            }
-            finally { _loadingRoleControls = false; }
-
-            UpdateRoleCapabilityPresentation();
-            AiRolesStatusText.Text = $"Codex CLI capability catalog: {_codexModelCatalog.Models.Count}개 모델";
-            await Dispatcher.InvokeAsync(() => openedCombo.IsDropDownOpen = true, DispatcherPriority.Input);
-        }
-        catch (Exception exception)
-        {
-            AddTaskMessage("MODEL CATALOG", exception.GetType().Name);
-        }
-        finally { _refreshingRoleModelCatalog = false; }
-    }
-
     private void ApplyRoleSettingsToControls()
     {
         _loadingRoleControls = true;
@@ -1411,9 +1361,9 @@ public partial class MainWindow : Window
     private void PopulateRoleModelCombo(System.Windows.Controls.ComboBox combo, string configuredModel)
     {
         combo.Items.Clear();
-        foreach (var model in _codexModelCatalog.Models)
+        foreach (var model in CodexServedModels.Current)
             combo.Items.Add(new ComboBoxItem { Content = model.DisplayName, Tag = model.Id });
-        if (_codexModelCatalog.Find(configuredModel) is null)
+        if (CodexServedModels.Find(configuredModel) is null)
             combo.Items.Add(new ComboBoxItem { Content = configuredModel, Tag = configuredModel });
         SelectTag(combo, configuredModel, configuredModel);
     }
@@ -1421,14 +1371,20 @@ public partial class MainWindow : Window
     private void PopulateRoleReasoningCombo(System.Windows.Controls.ComboBox combo, string modelId, string configuredReasoning)
     {
         combo.Items.Clear();
-        var model = _codexModelCatalog.Find(modelId);
-        var efforts = model?.ReasoningEfforts ?? (string.IsNullOrWhiteSpace(configuredReasoning) ? Array.Empty<string>() : new[] { configuredReasoning });
+        var model = CodexServedModels.Find(modelId);
+        var efforts = model?.ReasoningDepths.Select(depth => depth.ToString().ToLowerInvariant()).ToArray()
+            ?? (string.IsNullOrWhiteSpace(configuredReasoning) ? Array.Empty<string>() : new[] { configuredReasoning });
         foreach (var effort in efforts)
-            combo.Items.Add(new ComboBoxItem { Content = char.ToUpperInvariant(effort[0]) + effort[1..], Tag = effort });
+            combo.Items.Add(new ComboBoxItem { Content = FormatReasoningLabel(effort), Tag = effort });
         if (!efforts.Contains(configuredReasoning, StringComparer.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(configuredReasoning))
             combo.Items.Add(new ComboBoxItem { Content = $"{configuredReasoning} · 미지원", Tag = configuredReasoning, Foreground = System.Windows.Media.Brushes.OrangeRed });
-        SelectTag(combo, configuredReasoning, model?.DefaultReasoning ?? configuredReasoning);
+        var fallback = model is null ? configuredReasoning : model.DefaultReasoning.ToString().ToLowerInvariant();
+        SelectTag(combo, configuredReasoning, fallback);
     }
+
+    private static string FormatReasoningLabel(string effort) => effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase)
+        ? "XHigh"
+        : char.ToUpperInvariant(effort[0]) + effort[1..];
 
     private static void SelectTag(System.Windows.Controls.ComboBox combo, string? tag, string? fallback)
     {

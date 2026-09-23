@@ -213,7 +213,7 @@
                     </StackPanel>
                     <ComboBox x:Name="CoordinatorProviderCombo" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Height="34" Visibility="Collapsed" SelectionChanged="CoordinatorProviderCombo_SelectionChanged"/>
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                    <ComboBox x:Name="CoordinatorModelCombo" Grid.Row="1" Grid.Column="1" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged" DropDownOpened="RoleModelCombo_DropDownOpened"/>
+                    <ComboBox x:Name="CoordinatorModelCombo" Grid.Row="1" Grid.Column="1" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
                     <TextBlock Grid.Row="1" Grid.Column="2" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
                     <ComboBox x:Name="CoordinatorReasoningCombo" Grid.Row="1" Grid.Column="3" Height="32" Margin="0,4,0,0"/>
                   </Grid>
@@ -238,7 +238,7 @@
                   <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
                   <ComboBox x:Name="ImplementerProviderCombo" Grid.Row="0" Grid.Column="2" Height="32"/>
                   <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                  <ComboBox x:Name="ImplementerModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged" DropDownOpened="RoleModelCombo_DropDownOpened"/>
+                  <ComboBox x:Name="ImplementerModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
                   <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
                   <ComboBox x:Name="ImplementerReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
                   <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
@@ -261,7 +261,7 @@
               <TextBlock Grid.Row="0" Grid.Column="3" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
               <CheckBox x:Name="HighLevelEnabledCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Left"/>
               <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
-              <ComboBox x:Name="HighLevelModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged" DropDownOpened="RoleModelCombo_DropDownOpened"/>
+              <ComboBox x:Name="HighLevelModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
               <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
               <ComboBox x:Name="HighLevelReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
               <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">

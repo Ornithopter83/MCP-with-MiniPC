@@ -61,6 +61,8 @@ public sealed class CodexCliRunner
     {
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
             throw new DirectoryNotFoundException($"Codex 작업 폴더를 찾을 수 없습니다: {workingDirectory}");
+        if (!CodexModelRequest.TryCreate(model, reasoning, out var modelRequest))
+            throw new ArgumentException($"현재 서비스 enum에 없는 모델/reasoning 조합입니다: {model} / {reasoning}");
         var executable = FindExecutable() ?? throw new FileNotFoundException("codex.exe를 찾을 수 없습니다.");
         var outputFile = Path.Combine(Path.GetTempPath(), $"projecthub-codex-{Guid.NewGuid():N}.txt");
         var outputSchemaFile = string.IsNullOrWhiteSpace(outputSchemaJson) ? null : Path.Combine(Path.GetTempPath(), $"projecthub-schema-{Guid.NewGuid():N}.json");
@@ -85,10 +87,8 @@ public sealed class CodexCliRunner
         });
         if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add("resume");
         process.StartInfo.ArgumentList.Add("--json");
-        process.StartInfo.ArgumentList.Add("--model");
-        process.StartInfo.ArgumentList.Add(model);
-        process.StartInfo.ArgumentList.Add("-c");
-        process.StartInfo.ArgumentList.Add($"model_reasoning_effort=\"{reasoning}\"");
+        foreach (var argument in modelRequest.ToCliArguments())
+            process.StartInfo.ArgumentList.Add(argument);
         if (string.IsNullOrWhiteSpace(sessionId))
         {
             process.StartInfo.ArgumentList.Add("-C");
