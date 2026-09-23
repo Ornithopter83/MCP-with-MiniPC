@@ -6798,3 +6798,131 @@ Minesweeper 실험을 근거로 다음을 09-C 후보 AC에 추가하는 것을 
 **Minesweeper에서 JEV는 버그를 직접 찾아내는 도구보다, “현재 질문과 evidence가 요구사항을 정말 입증하고 있는가”를 압박하는 reviewer로 사용할 때 가장 효과적이었다.**
 
 JEV FAIL을 이용해 코드 점수를 맞추는 대신 질문 원자화와 deterministic evidence를 강화했고, 그 결과 최종 검증은 더 설명 가능하고 재현 가능한 형태가 됐다.
+
+
+---
+
+# 2026-09-23 GPT Web 피드백 — MiniStore JEV 효율과 ProjectHub 후속 보완
+
+## A. MiniStore 관찰 결과: 실험 사실과 한계
+
+테스트 프로젝트: 정적 `file://` 매장관리/POS 웹앱. 초기 Worker 작업 모델은 `gpt-6-luna`, reasoning `medium`.
+
+확인된 흐름:
+
+1. Codex는 앱, `MiniStoreValidation.runAll()`, 고유 check ID 56개, `EvidenceIndex.md`를 만들었다.
+2. 초기 작업에서는 Browser Use가 `file://` 접근을 차단하자 validator 자체도 실제 실행하지 못한 상태로 Web에 `[NEXT : WEB]` 보고했다. 검증 불가능이라고 정직하게 표시했지만 **브라우저 UI와 무관한 엔진 검증까지 중단**됐다.
+3. Web은 사용자에게서 받은 실제 JS로 메모리 `window`/storage를 제공하는 로컬 Node 래퍼를 사용해 validator를 실행했다. 결과: `passed=true, total=56, failed=[]`. 이는 **엔진/상태/저장 복구의 직접 실행 증거**이지 실제 브라우저 UI E2E가 아니다.
+4. 새 Worker/Codex 세션에서 15개 JEV 질문(12 NOUL, 2 CHOICE, 1 SCORE)을 일괄 요청했고 JEV 결과는 `ALL_PASS`. transaction atomicity evidence는 `SUPPORTED`, 브라우저 UI evidence는 `PARTIAL`로 요청·보고됐다.
+5. 후속 사용자 실검증 7/7에서 특이사항이 없다고 확인했다.
+
+해석상의 한계:
+
+- 56/56은 **실제 실행한 56개 assertion 범위**만 증명한다. 전체 구현에 미발견 결함이 없다는 뜻은 아니다.
+- JEV에 전달된 `EVIDENCE:`는 함수명·check ID·PASS 결과를 설명하는 **텍스트 요약**이었다. Worker가 원본 소스/실행 로그를 구조화해 JEV state에 자동 첨부한 결과가 아니다.
+- 이번 JEV에는 알려진 결함/모순 fixture를 일부러 삽입한 대조 실험이 없었다. `ALL_PASS`는 판단 성공 사례지만, **JEV의 결함 탐지율이 입증된 것은 아니다**.
+- 사용자가 언급한 약 7만 토큰은 유용한 예산 참고값이지만, 이번 Worker 로그만으로 input/cached/output/reasoning과 Web/JEV 사용량을 단계별로 독립 확인할 수는 없다.
+- Worker 로그에서 긴 지시문과 JEV footer가 누적·반복 보인다. 로그 중복을 곧바로 실제 과금 토큰 중복이라고 단정하지 않고 **실제 전송 payload 크기와 provider usage를 계측**해야 한다.
+
+## B. 다음 ProjectHub 보완 후보
+
+### P0-1. 도구 제약 시 검증 경로 분리·대체
+
+문제: `file://` 브라우저 접근 제한이 headless 실행 가능 validator까지 검증 중단으로 이어졌다.
+
+제안: 작업 카드에서 검증을 `ENGINE_HEADLESS`, `UI_BROWSER`, `HUMAN_UX`처럼 분리하고, 작업 시작 시 가능한 runner/capability를 확인한다.
+
+- UI 브라우저 접근 불가여도 별도 로컬 validator 실행이 가능한지 확인한다.
+- 안전하고 승인된 대체 runner(Node VM/CLI/오프라인 harness)가 있으면 엔진 검증을 먼저 수행한다.
+- 대체 runner가 실제 브라우저 동작을 증명한다고 표시하지 않는다.
+- 불가능한 검증은 `BLOCKED_BY_TOOL`로 보존하고, 이미 통과한 독립 검증까지 미실행으로 덮어쓰지 않는다.
+- 대체 실행에 별도 사용자 승인이나 권한이 필요하면 정책을 존중한다.
+
+AC 후보: 브라우저 접근 차단 fixture에서도 엔진 validator는 수행 가능하면 실제 exit/result가 수집되고, UI는 별도로 `PARTIAL/BLOCKED`로 남아야 한다.
+
+### P0-2. 09-C 원본 Evidence 자동 전달과 provenance
+
+문제: 현재의 JEV `SUPPORTED`는 구조적으로 전달된 원본 증거가 아니라 Codex/Web이 생성한 함수·검증 요약을 기반으로 할 수 있다.
+
+09-C 최소 envelope 후보:
+
+```text
+job_id, ac_id, question_id
+evidence_id, kind(source|diff|test|runtime|user)
+source_revision, content_digest
+runner, command, exit_code, checked_at
+excerpt_or_structured_result, scope
+provenance(EXECUTED|SOURCE_EXCERPT|SUMMARY_ONLY|USER_VERIFIED)
+```
+
+- Worker가 실제 접근 가능한 산출물/실행 결과를 수집하고 question→evidence mapping을 실제 JEV state에 넣는다.
+- 참조 문자열만 존재하거나 `SUMMARY_ONLY`인 evidence를 실행 증거와 구분한다.
+- claim에 필요한 직접 근거가 빠지면 `SUPPORTED`로 자동 승격하지 않는다.
+- 관련 source·AC·fixture·evidence digest가 바뀌면 과거 PASS를 무효화한다.
+- 하나의 evidence 묶음을 관련 원자 질문들이 공유하되, 관계없는 파일·누적 stdout을 보내지 않는다.
+- 증거 수집 시 로컬 접근권한/사용자 승인, 민감값 제거, 크기 상한을 적용한다.
+
+AC 후보: JEV가 실제 원본 evidence를 받은 경우와 문자열 참조만 받은 경우가 결과·상태에서 분명히 구별돼야 한다.
+
+### P0-3. 검증 계층별 상태와 최종 완료 gate
+
+```text
+ENGINE: PASS (56/56; runner=local Node wrapper)
+BROWSER_UI: PARTIAL 또는 BLOCKED (미실행)
+JEV: ALL_PASS (evidence provenance 명시)
+HUMAN_UX: PASS (7/7; user-reported)
+```
+
+- 서로 다른 검증 범위를 전체 `VALIDATION PASS` 한 값으로 합치지 않는다.
+- 실행 이력과 사용자 보고를 분리하고, 주장의 scope를 좁혀 유지한다.
+- `JEV ALL_PASS`가 `BROWSER_UI PASS`를 암시하지 않게 한다.
+- 관련 AC에 실제 증거가 남아 있을 때만 최종 END를 허용한다.
+
+### P1-1. 10-A 비용 계측과 중복 문맥 절약
+
+이번 약 7만 토큰/완료 사례를 **자기보고 baseline**으로 보존한다. 정밀 분석을 위해 다음 항목을 호출별로 계측한다.
+
+```text
+job / round / role / model / reasoning / purpose
+input / cached_input / output / reasoning / provider_total
+prompt_bytes / footer_bytes / evidence_bytes
+latency / retry_reason / usage_known
+JEV question counts / batch size / failure classification
+```
+
+- 누적 snapshot과 incremental usage를 혼동하거나 캐시 입력을 두 번 더하지 않는다.
+- Web 내부 사용량 미공개는 `unknown`으로 둔다.
+- JEV PASS 뒤 report-only Codex 호출 1회의 실측 비용을 별도 집계한다.
+- 동일 내용의 장문 Web instruction/계약/footer 반복 전달을 payload fingerprint로 관찰한다.
+- v1 계약은 보존하고, 우선 초기 full footer + 후속 short reminder, evidence index 기반 부분 전송을 검토한다.
+- 최적화 성공은 총 질문 수나 총 토큰 감소만으로 판정하지 않고 **검증 완료한 AC 1개당 입력·출력 비용, 인간 개입 횟수, 재작업률**로 평가한다.
+
+### P1-2. JEV 음성 대조군으로 실제 판별 능력 측정
+
+MiniStore의 알려진 정답 fixture를 유지한 채, 격리된 테스트 상태에서만 다음 오류를 하나씩 주입한 **mutation/contradiction benchmark**를 제안한다.
+
+```text
+SALE 기록만 남고 재고 차감 없음
+재고 차감은 있으나 SALE ledger 없음
+동일 취소에서 재고 두 번 복원
+CLOSED인데 입고 허용
+코드상 경로 설명과 실행 log가 서로 모순
+validator 미실행인데 요약에는 PASS라고 기재
+```
+
+각 경우 엔진 validator와 JEV가 무엇을 판정하는지 기록한다.
+
+- validator가 발견한 deterministic 결함과 JEV가 발견한 evidence contradiction을 구분한다.
+- `SUPPORTED` 오판, `PARTIAL`/ `INSUFFICIENT` 구분, 응답 누락, usage, latency를 기록한다.
+- 모델·질문·evidence revision을 고정한 대조 실험 없이는 JEV 탐지율·절감률을 단정하지 않는다.
+- 검증 실험은 실제 업무 데이터나 운영 코드에 결함을 남기지 않는 독립 fixture에서만 수행한다.
+
+## C. 다음 실행 순서 — Master 및 활성 task 준수
+
+1. **먼저 기존 09-B 실화면 마감.** 최신 Explorer 실제 실행본의 Judge OFF/NEXT WEB, JEV PASS, FAIL→동일 session, ERROR fallback, report-only 재진입 차단을 확인하고 현재 task/CurrentWork에 빌드와 실행 증거를 연결한다. 이번 외부 MiniStore 성공을 ProjectHub Explorer E2E 완료로 오인하지 않는다.
+2. **이후 09-C만 활성화.** P0-2의 원본 evidence envelope과 출처/무효화, P0-3의 검증 상태 경계를 기존 09-C 범위 안에서 구현한다.
+3. 도구별 대체 검증 경로(P0-1)는 09-C와 무관한 변경까지 섞지 말고 후속 작업 카드로 등록한다.
+4. 09-C 완료 뒤 **10-A 비용 최적화**에서 P1-1을 실측하고, JEV 판별 대조군(P1-2)을 후속 별도 실험으로 운영한다.
+5. 기존 07 Force Restore의 잔여 검증과 외부 변경/배포 승인 정책은 그대로 보존한다.
+
+**핵심 결론:** MiniStore는 GPT-6 Luna Medium이 앱+validator+evidence index를 한 작업에서 구성하고 JEV 질문을 의미 검증에 집중할 수 있음을 보여줬다. 다음 ProjectHub 보완의 우선 목표는 더 많은 JEV 질문이 아니라 **검증 가능한 실행 경로를 자동 선택하고, 원본 evidence를 신뢰 가능한 provenance로 전달하고, 그 과정의 실측 비용을 기록하는 것**이다.
