@@ -471,13 +471,13 @@ v2 완료 후에만 저장된 구현 결과로 짧은 Web 보고를 만들고 PA
   "roles": {
     "coordinator": {
       "required": true, "enabled": true,
-      "provider": "openai", "transport": "codex-cli",
-      "model": "gpt-6-sol", "reasoning": "high", "permissions": "read-only"
+      "provider_id": "openai", "transport": "codex-cli",
+      "model_id": "gpt-6-sol", "reasoning": "high", "permission_profile": "read-only"
     },
     "implementer": {
       "required": true, "enabled": true,
-      "provider": "openai", "transport": "codex-cli",
-      "model": "gpt-6-luna", "reasoning": "medium", "permissions": "approved-workspace-write"
+      "provider_id": "openai", "transport": "codex-cli",
+      "model_id": "gpt-6-luna", "reasoning": "medium", "permission_profile": "approved-workspace-write"
     },
     "judge": {
       "required": false, "enabled": false,
@@ -485,8 +485,8 @@ v2 완료 후에만 저장된 구현 결과로 짧은 Web 보고를 만들고 PA
     },
     "advanced_implementer": {
       "required": false, "enabled": false,
-      "provider": "openai", "transport": "codex-cli",
-      "model": "gpt-6-sol", "reasoning": "high", "permissions": "delegated-write-only"
+      "provider_id": "openai", "transport": "codex-cli",
+      "model_id": "gpt-6-sol", "reasoning": "high", "permission_profile": "delegated-write-only"
     }
   },
   "policy": {
