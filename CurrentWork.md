@@ -1192,3 +1192,10 @@ Worker는 의미 판단을 하지 않고 첫 NEXT 행, typed validation, JEV 구
 - 닫기/적용 버튼을 스크롤 영역 밖 하단에 고정했다. 850px 팝업 안에 들어오도록 설정 여백을 축소하고 스크롤바를 비활성화했다.
 - 검증: Debug 빌드 경고 0·오류 0, 전체 테스트 29개 통과, `git diff --check` 통과. Release EXE 게시 및 두 작업 위치 복사, 세 파일 SHA-256 일치 확인.
 - 실제 화면 캡처는 네이티브 앱이 UI 캡처 세션에 노출되지 않아 미실시.
+
+## 2026-09-23 설정 카드·판단 콤보·헤더 이동 정렬
+
+- 네 역할을 공통 흰 카드로 배치해 아래 두 카드와 상단 카드의 배경 차이를 제거했다. 판단 AI provider/model을 Typesafe/JEV 고정 ComboBox로 표시하고 저장 계약은 기존 `jev` provider를 유지한다.
+- 설정 패널은 WPF Popup이라 기본 타이틀바 드래그가 불가능했다. 헤더 마우스 capture와 화면 좌표 offset 계산으로 패널 제목을 끌어 이동하도록 추가했다.
+- 검증: Debug 빌드 경고 0·오류 0, 전체 테스트 29개, diff check 통과. Release 게시/Worker 및 GameProject 복사 후 SHA-256 일치.
+- 실제 native 화면 capture는 미실시.

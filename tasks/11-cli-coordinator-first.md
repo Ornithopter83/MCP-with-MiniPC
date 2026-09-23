@@ -94,3 +94,11 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
 - Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 실행 파일 SHA-256: `2495676D3EAB3DA2220E7A82A18AF86E261A0A94AA9E3FFE177C4F606DE6B58F`.
 - 제한: 실제 Explorer 화면 배치 확인은 이번 세션에서 네이티브 앱 화면 캡처가 불가능해 수행하지 않았다. 크기 수용 여부의 최종 화면 확인은 실제 실행 화면 증거가 필요하다.
+
+## 2026-09-23 설정 카드 정렬·판단 AI 콤보·팝업 드래그 (11-UI-A)
+
+- 첫 두 역할만 둘러싸던 연한 파란 외곽 그룹을 제거하고, 네 역할을 동일한 흰 배경/테두리 카드로 정렬했다. 고수준과 판단 AI도 provider/model 콤보박스를 노출했고, 판단 AI 옵션은 Typesafe/JEV 고정 목록이다. Typesafe 표시는 설정 저장 시 기존 provider 값 `jev`로 유지한다.
+- `Popup`에는 네이티브 타이틀바가 없어 제목 드래그가 동작하지 않았다. 제목 헤더에서 포인터를 캡처하고 화면 좌표 이동량을 Popup의 수평/수직 offset에 적용해 이동하도록 했다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
+- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 EXE SHA-256: `79FFC737AFA8A09D15E217E803C17B68D20064AE328F128227DD050F9F236BFE`.
+- 제한: 실제 창에서 카드/드래그 동작을 캡처로 확인하는 네이티브 UI 도구가 현재 세션에 없어 build/test 수준까지 검증했다.

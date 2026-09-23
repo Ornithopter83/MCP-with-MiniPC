@@ -74,6 +74,10 @@ public partial class MainWindow : Window
     private bool _serverOnline;
     private bool _messageExpanded;
     private bool _startupConfigurationInitialized;
+    private UIElement? _settingsPopupDragSurface;
+    private System.Windows.Point _settingsPopupDragStartScreen;
+    private double _settingsPopupDragStartHorizontalOffset;
+    private double _settingsPopupDragStartVerticalOffset;
     private string _serverBaseUrl = WorkerTargetConfiguration.DefaultServerBaseUrl;
     private string _serverBaseUrlSource = "DEFAULT";
     private WorkerTargetSettings _targetSettings = new(null, null, null, null);
@@ -226,6 +230,33 @@ public partial class MainWindow : Window
     {
         StatusPopup.IsOpen = open;
         SettingsDimOverlay.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SettingsPopupHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!StatusPopup.IsOpen || sender is not UIElement surface) return;
+        _settingsPopupDragSurface = surface;
+        _settingsPopupDragStartScreen = surface.PointToScreen(e.GetPosition(surface));
+        _settingsPopupDragStartHorizontalOffset = StatusPopup.HorizontalOffset;
+        _settingsPopupDragStartVerticalOffset = StatusPopup.VerticalOffset;
+        surface.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void SettingsPopupHeader_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_settingsPopupDragSurface is not { IsMouseCaptured: true } surface || e.LeftButton != MouseButtonState.Pressed) return;
+        var currentScreenPoint = surface.PointToScreen(e.GetPosition(surface));
+        StatusPopup.HorizontalOffset = _settingsPopupDragStartHorizontalOffset + currentScreenPoint.X - _settingsPopupDragStartScreen.X;
+        StatusPopup.VerticalOffset = _settingsPopupDragStartVerticalOffset + currentScreenPoint.Y - _settingsPopupDragStartScreen.Y;
+    }
+
+    private void SettingsPopupHeader_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_settingsPopupDragSurface is not { } surface) return;
+        surface.ReleaseMouseCapture();
+        _settingsPopupDragSurface = null;
+        e.Handled = true;
     }
     private void CommandInput_GotFocus(object sender, RoutedEventArgs e)
     {
@@ -1441,7 +1472,8 @@ public partial class MainWindow : Window
             return;
         }
         var timeout = ReadJudgeTimeout();
-        var provider = GetSelectedContent(JudgeProviderCombo, "Jev").ToLowerInvariant();
+        var provider = (JudgeProviderCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+            ?? GetSelectedContent(JudgeProviderCombo, "Jev").ToLowerInvariant();
         var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text) ? JevJudgeRunner.DefaultEndpoint : JudgeExecutableInput.Text.Trim();
         _targetSettings = _targetSettings with
         {
