@@ -6507,3 +6507,294 @@ Snake는 다음 실험으로는 구현 난도가 너무 낮고 BrickBreaker와 �
 따라서 **Minesweeper는 Tetris의 grid deterministic 성격과 BrickBreaker의 UI/runtime 성격 사이에서, 새 JEV 원자 질문·evidence 설계를 검증하기 좋은 세 번째 프로젝트**다.
 
 이 프로젝트를 시작하기 전에 먼저 09-B 마감 → 09-C evidence 전달을 완료하고, 개선된 JEV 경로를 Minesweeper에서 처음부터 적용하는 것을 권장한다.
+
+
+---
+
+# 2026-09-23 GPT Web 피드백 — Minesweeper JEV 실사용 결과
+
+## 1. 이번 실험에서 JEV가 실제로 유용했던 지점
+
+Minesweeper 구현에서는 JEV를 단순한 최종 PASS/FAIL 판정기로 쓰기보다, **현재 검증 설계에서 근거가 약한 부분을 찾아내는 리뷰어**로 사용했을 때 가장 유용했다.
+
+첫 JEV 요청은 이미 많은 항목을 원자화했고 각 질문에 `EVIDENCE / SCOPE / COUNTEREXAMPLE`를 붙였지만, 세 항목이 기준을 넘지 못했다.
+
+- C42: 좌클릭 Reveal / 우클릭 Mark / 가운데 클릭 Chord를 한 질문에 함께 묶은 입력 매핑 질문 — HIGH, 실제 0.79.
+- C44: F2 / Ctrl+R / 1 / 2 / 3 / M / F3 / F4 / Esc를 한 질문에 묶은 키보드 입력 질문 — MEDIUM, 실제 0.68.
+- C48: 손상 또는 누락 WAV가 게임 실행을 중단시키지 않는가 — MEDIUM, 실제 0.69.
+
+이 세 항목의 공통점은 **구현이 틀렸다는 직접 contradiction이 없었고, 질문이 여러 독립 입력을 묶었거나 실제 실행 evidence가 약했다**는 점이다.
+
+따라서 첫 FAIL 뒤에 threshold를 낮추거나 구현을 점수 맞추기식으로 바꾸지 않았다.
+
+## 2. JEV FAIL 뒤에 한 올바른 보완
+
+Codex는 실패 항목을 다시 분석해 다음처럼 보완했다.
+
+### 입력 질문을 더 원자화
+
+기존:
+
+```text
+좌클릭 Reveal, 우클릭 Mark, 가운데 클릭 Chord가 각각 지정 동작에 연결되는가?
+```
+
+보완 후:
+
+```text
+좌클릭은 Reveal인가?
+우클릭은 Mark인가?
+가운데 클릭은 Chord인가?
+좌+우 동시 입력은 Chord인가?
+```
+
+키보드도 하나의 질문에 전부 묶지 않고 다음처럼 분리했다.
+
+```text
+Esc → Exit
+F2 → New Game
+Ctrl+R → Replay
+1 → Beginner
+2 → Intermediate
+3 → Expert
+M → ToggleSound
+F3 → DebugWin
+F4 → DebugLoss
+```
+
+이 방식은 “전체 단축키가 맞는가?”보다 어떤 입력이 실제로 실패했는지 즉시 식별할 수 있다.
+
+### 실제 deterministic evidence를 추가
+
+입력 경로를 `InputMapping`으로 분리하고 validator가 각 key/mouse mapping을 직접 검사하도록 근거를 강화했다.
+
+Audio 역시 단순히 `try/catch가 있다`는 코드 사실만 제시하지 않고:
+
+- 임시 `Reveal.wav`에 잘못된 byte를 기록
+- 나머지 WAV가 누락된 임시 폴더 사용
+- SoundManager 초기화가 중단되지 않는지 확인
+- Play 호출이 예외 없이 끝나는지 확인
+
+하는 직접 검증을 추가했다.
+
+최종 Release validator는 `VALIDATION PASS: 101449 checks`를 반환했고, 보완된 JEV 재검증은 `ALL_PASS`가 됐다.
+
+## 3. 이번 실험에서 얻은 JEV 운영 규칙
+
+### 3.1 JEV FAIL은 곧바로 코드 FAIL이 아니다
+
+다음 순서로 해석한다.
+
+```text
+JEV threshold 미달
+→ 실제 contradiction 존재 여부 확인
+→ 질문이 복합 명제인지 확인
+→ evidence가 코드 주장만인지 실행 증거까지 있는지 확인
+→ 질문을 더 원자화
+→ deterministic evidence 보강
+→ 그 뒤에도 contradiction이 있으면 구현 수정
+```
+
+이번 C42/C44/C48은 이 순서를 따랐고, 불필요한 기능 수정 없이 검증 품질만 높여 통과했다.
+
+### 3.2 하나의 질문에 여러 입력을 묶지 않는다
+
+다음 형태는 피한다.
+
+```text
+F2, Ctrl+R, 1, 2, 3, M, F3, F4, Esc가 모두 올바르게 동작하는가?
+```
+
+각 키는 독립적으로 실패할 수 있으므로 각각 별도 질문으로 만든다.
+
+Mouse도 동일하다.
+
+```text
+Left
+Right
+Middle
+Left+Right
+```
+
+를 별도 질문으로 둔다.
+
+### 3.3 코드 존재보다 실행 evidence가 강하다
+
+다음 둘을 같은 수준의 evidence로 취급하지 않는다.
+
+```text
+코드에 Middle → Chord 분기가 있다.
+validator가 Middle → Chord mapping을 실제 assertion으로 검사해 PASS했다.
+```
+
+후자가 더 직접적인 증거다.
+
+특히 오류 처리에서는:
+
+```text
+try/catch가 존재한다
+```
+
+보다:
+
+```text
+손상 파일을 실제로 공급했는데 초기화/호출이 실패하지 않았다
+```
+
+가 더 강한 evidence다.
+
+### 3.4 JEV는 validator를 개선하는 계기로 사용할 수 있다
+
+이번 실험에서 JEV의 가장 유용한 효과는 코드 변경 자체가 아니라 **검증 코드의 약한 부분을 드러낸 것**이다.
+
+첫 FAIL 이후:
+
+- input mapping을 별도 검증 가능 구조로 만듦
+- 각 key/mouse 입력을 독립 assertion으로 만듦
+- 손상 WAV fixture를 실제로 실행함
+- missing WAV 상황을 실제로 확인함
+
+으로 validator coverage가 향상됐다.
+
+즉 JEV의 역할을 다음처럼 보는 것이 적절하다.
+
+> JEV는 deterministic test의 대체물이 아니라, 현재 evidence가 요구사항을 실제로 증명하는지 검토하는 의미적 reviewer다.
+
+## 4. CHOICE의 PARTIAL이 유용했던 이유
+
+이번 첫 JEV 요청에서는 Input/UI와 Audio를 무조건 SUPPORTED로 요구하지 않았다.
+
+Input/UI:
+
+```text
+SUPPORTED = 실제 WinForms 조작 및 화면 확인까지 완료
+PARTIAL = 코드 경로는 확인됐지만 실화면/실조작 확인은 미완료
+```
+
+Audio:
+
+```text
+SUPPORTED = 효과음 파일과 실제 재생/음량 검증까지 완료
+PARTIAL = 파일 및 재생 코드는 있으나 실제 재생 특성은 미검증
+```
+
+처럼 정의했다.
+
+이 방식은 자동화가 확인할 수 있는 영역과 사용자가 최종 판단해야 하는 영역을 분리하는 데 유용했다.
+
+즉:
+
+```text
+코드/validator 수준에서 맞음
+!=
+사용자 체감까지 검증 완료
+```
+
+를 JEV 계약 자체에 표현할 수 있다.
+
+## 5. SCORE는 범위 판단에만 사용한 것이 적절했다
+
+이번 요청에서 SCORE는 사실 확인용으로 쓰지 않고:
+
+```text
+이번 구현의 요구 범위 이탈 정도
+```
+
+만 평가했다.
+
+이 방향을 유지한다.
+
+```text
+NOUL
+= 단일 사실
+
+CHOICE
+= 증거 상태 / 원인 / 분류
+
+SCORE
+= 범위 이탈 / 위험도처럼 순서가 있는 평가
+```
+
+타입을 다양하게 쓰는 것이 목표가 아니라, 판정 성격에 맞는 타입을 선택한다.
+
+## 6. 질문 구조의 실사용 효과
+
+이번 Minesweeper에서는 다음 형식이 실제로 사용됐다.
+
+```text
+CLAIM
+EVIDENCE
+SCOPE
+COUNTEREXAMPLE
+PASS
+```
+
+예:
+
+```text
+- NOUL | [HIGH] 가운데 클릭은 Chord 명령으로 전달되는가?
+  EVIDENCE: InputMapping validator가 Middle → InputCommand.Chord를 검사하고 Release validator가 PASS함.
+  SCOPE: BoardSurface 마우스 입력 라우팅.
+  COUNTEREXAMPLE: 가운데 클릭이 Chord가 아니거나 assertion이 실패하면 NO.
+  PASS: YES >= 0.80
+```
+
+이 구조는 JEV에게 다음을 동시에 알려준다.
+
+- 무엇을 판정할지
+- 어떤 evidence를 볼지
+- 어디까지 판정할지
+- 무엇이 발견되면 실패인지
+
+향후 질문 생성기의 기본 형태로 유지할 가치가 있다.
+
+## 7. 09-C에 직접 연결되는 결론
+
+현재 v1 footer는 `EVIDENCE: E-INPUT` 같은 continuation line을 JEV instructions에 보존할 수 있지만, **경로 문자열을 적었다고 JEV가 로컬 파일 내용을 자동으로 읽는 것은 아니다.**
+
+Minesweeper에서 성공한 재검증도 Codex가 관련 코드/validator 결과를 질문 text에 요약해서 넣었기 때문에 가능했다.
+
+따라서 09-C에서는 다음을 실제 제품 기능으로 만드는 것이 핵심이다.
+
+```text
+Question ID
+→ Evidence ID
+→ source excerpt / diff excerpt / test result / runtime log
+→ digest / revision
+```
+
+권장 내부 구조:
+
+```text
+C42
+  claim: Middle click maps to Chord
+  evidence:
+    - E-INPUT-MIDDLE
+      source_ref: InputMapping.cs
+      test_ref: ProjectValidator input mapping test
+      result_ref: runtime-validation line
+      digest: ...
+```
+
+이렇게 해야 JEV가 문자열로 적힌 파일명을 믿는 것이 아니라, 실제 전달된 evidence를 기준으로 판단할 수 있다.
+
+## 8. 09-C 수용 조건에 추가할 항목
+
+Minesweeper 실험을 근거로 다음을 09-C 후보 AC에 추가하는 것을 권장한다.
+
+```text
+- 원자 질문마다 0개 이상 evidence ref를 가질 수 있다.
+- evidence가 필요한 질문에서 ref가 없으면 SUPPORTED로 완료하지 않는다.
+- question ref가 가리키는 source/test/log 내용이 실제 JEV state에 포함된다.
+- 같은 evidence를 여러 질문이 재사용할 수 있다.
+- source/test/log가 변경되면 digest가 바뀌고 과거 JEV PASS를 재사용하지 않는다.
+- PARTIAL / INSUFFICIENT는 구현 FAIL과 별도 상태다.
+- deterministic assertion PASS는 원본 증거로 보존한다.
+- 사용자 체감 검증은 자동 SUPPORTED로 승격하지 않는다.
+```
+
+## 9. 이번 실험의 한 줄 결론
+
+**Minesweeper에서 JEV는 버그를 직접 찾아내는 도구보다, “현재 질문과 evidence가 요구사항을 정말 입증하고 있는가”를 압박하는 reviewer로 사용할 때 가장 효과적이었다.**
+
+JEV FAIL을 이용해 코드 점수를 맞추는 대신 질문 원자화와 deterministic evidence를 강화했고, 그 결과 최종 검증은 더 설명 가능하고 재현 가능한 형태가 됐다.
