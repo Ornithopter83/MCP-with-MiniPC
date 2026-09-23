@@ -86,3 +86,11 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0); 권한 확장 실행의 `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
 - Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 성공. 게시 실행본과 두 복사본 SHA-256 일치: `1D61AEFD08787B9CC057CDC31A69F6FE47404BFF7BA9E22FC6BBA86E2B4A34E1`.
 - 제한: 네이티브 데스크톱 캡처 인터페이스가 이번 세션에 앱 창을 노출하지 않아 실제 설정 팝업의 화면 캡처/클릭 E2E는 미수행이다. XAML 컴파일과 앱 publish까지만 증거로 기록한다.
+
+## 2026-09-23 설정 팝업 하단·카드 시각 정리 (11-UI-A)
+
+- 고수준 작업 AI와 판단 AI 카드를 위쪽 역할 카드와 동일한 흰 바탕·테두리 스타일로 통일했다. 판단 AI의 JSON 설정 테스트 버튼을 옅은 파란 강조 버튼으로 다듬고 버튼 앞의 중복 상태 문구를 화면에서 제거했다.
+- 닫기/적용 버튼을 스크롤 컨테이너 밖의 팝업 하단 행으로 이동했다. 팝업 높이는 850px로 고정하고 설정 영역의 상하 여백과 행 간격을 줄여 기본 화면에서 콘텐츠와 버튼이 함께 보이도록 했다. 내부 세로 스크롤 표시는 비활성화했다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
+- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 실행 파일 SHA-256: `2495676D3EAB3DA2220E7A82A18AF86E261A0A94AA9E3FFE177C4F606DE6B58F`.
+- 제한: 실제 Explorer 화면 배치 확인은 이번 세션에서 네이티브 앱 화면 캡처가 불가능해 수행하지 않았다. 크기 수용 여부의 최종 화면 확인은 실제 실행 화면 증거가 필요하다.
