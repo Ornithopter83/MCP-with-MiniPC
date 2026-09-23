@@ -2,6 +2,18 @@
 
 Updated: 2026-09-23
 
+## 최근 설정창 작업 통합 요약 (11-UI-A 후속, 2026-09-23)
+
+커밋 `36af426`–`22b2262`에서 반영한 범위:
+
+- 설계·관제 AI / 작업 AI / 고수준 작업 AI / 판단 AI 제목을 보존한다. 저장소·폴더와 AI 설정 카드를 정렬하고, 메인 콤보와 역할별 스레드/작업 폴더 연결을 유지한다.
+- 설치 Codex CLI를 직접 조회해 현재 지원 모델 7개와 모델별 추론 깊이를 enum으로 만든다. 설정 선택은 `--model` 및 `model_reasoning_effort` CLI 인수로 조합하며, 실행 전 CLI capability 확인을 유지한다.
+- 판단 AI JSON endpoint 테스트 결과를 카드 왼쪽 빈 영역에 표시한다. 성공은 파란 `Endpoint 응답 확인 완료`, 실패는 빨간 `Endpoint 확인 실패`; 오류 상세는 tooltip/MESSAGE에 남긴다.
+- 설정 팝업을 위로 60px 이동해 footer 버튼을 화면 안쪽으로 당겼다. 창 드래그, 메인창 입력 차단, 아이콘/카드 UI도 유지한다.
+- 검증: Debug build 0 warning/0 error, 전체 30개 테스트 통과, `git diff --check` 통과. Release EXE는 Worker 및 GameProject 배포 위치와 SHA-256 `2686313D9B80FF02DD507CD10DF330D0999B99A40769A03018318E385004727D`로 일치한다.
+- 남은 확인: 실제 Explorer 설정창에서 전체 모델/추론 목록, footer 노출, endpoint 성공/실패 문구를 눌러 확인하는 시각·UI 검증. 현재 세션에서는 데스크톱 앱 제어가 제공되지 않아 수행하지 못했다.
+- 원격 동기화: `git fetch origin`, `git pull --rebase` 완료, GPT-Web-Feedback 최신본 확인, 당시 `main`은 `origin/main`과 동일했다.
+
 ## 현재 후속 — 설정창 입력 모달·카드 표시 (11-UI-A, 2026-09-23)
 
 - 설정 팝업을 열 때 배경 차단 오버레이를 먼저 켜고 키보드 포커스를 설정 탭으로 이동한다. 메인 창이 포커스를 받으면 입력을 폐기하고, 설정 팝업이 열린 상태의 닫기 요청은 설정창만 닫도록 했다. 팝업 내부 Escape도 설정창을 닫는다.

@@ -101,6 +101,12 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 통과(경고 0/오류 0); 전체 30개 테스트 통과; `git diff --check` 통과. 실제 픽셀 배치 검증은 데스크톱 UI 접근 부재로 미실행.
 - Release 게시 및 두 배포 경로 복사본 SHA-256 일치: `2686313D9B80FF02DD507CD10DF330D0999B99A40769A03018318E385004727D`.
 
+## 2026-09-23 설정 UI 후속 통합 정리 (11-UI-A)
+
+- 역할 제목 4개 보존, 설정 카드와 콤보 연동, 현재 서비스 모델/추론 enum, CLI 요청 인수 조합, JEV Endpoint 테스트 결과 표시, 팝업 상향/footer 노출까지 최근 후속 커밋(`36af426`–`22b2262`)을 한 범위로 정리했다.
+- 검증 기준은 Debug build 경고/오류 0, 전체 30개 테스트, diff check 및 게시 EXE 3개 SHA-256 일치다. 실제 Explorer 팝업 화면에서 항목 선택, 버튼 노출과 JEV 결과 표시를 확인하는 수용 검증은 남아 있다.
+- 동기화 확인: `git fetch origin` / `git pull --rebase` 후 최신 GPT-Web-Feedback 확인. 추가 충돌 없음.
+
 ## 2026-09-23 설정 폼·창 아이콘 후속 반영 (11-UI-A, 부분 반영)
 
 - 사용자가 승인한 설정 폼을 반영해 저장소/폴더 및 AI모델 설정 제목과 주요 라벨을 한글화했다. 상단 상태 요약은 설정창에서 접고 서버 상태 카드를 서버 주소 행에 두었다. 판단 AI는 Typesafe/JEV로 표시하고 Endpoint·제한 시간 입력은 감춘 채 JSON 설정 테스트 버튼을 노출했다.
