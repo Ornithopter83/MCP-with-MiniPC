@@ -94,6 +94,13 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 검증: 새 테스트에서 모델 7개, `gpt-6-luna/ultra` 불허, query 문자열 및 실제 CLI 인수 구성을 확인; 전체 30개 테스트와 Debug 빌드 통과. Explorer UI 화면 검증은 도구 제약으로 수행하지 못했다.
 - Release EXE 게시 및 두 Worker 배포 폴더 복사 완료. 세 SHA-256 일치: `6C14DC32491815EF2C21CAD65EF7C534733598580B1B03B27752DC25C25BACD7`.
 
+## 2026-09-23 팝업 footer·JEV endpoint 결과 표시 (11-UI-A)
+
+- 설정 팝업 `VerticalOffset`을 -60px로 조정해 footer 버튼을 위로 이동했다.
+- 판단 AI의 비어 있던 모델 행 오른쪽에 endpoint 테스트 상태를 노출한다. 유효 응답은 파란 `Endpoint 응답 확인 완료`; HTTPS 검증 실패, provider 오류, 예외는 빨간 `Endpoint 확인 실패`다. 상세 결과는 tooltip과 MESSAGE에 표시하며 테스트 중 버튼을 비활성화한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 통과(경고 0/오류 0); 전체 30개 테스트 통과; `git diff --check` 통과. 실제 픽셀 배치 검증은 데스크톱 UI 접근 부재로 미실행.
+- Release 게시 및 두 배포 경로 복사본 SHA-256 일치: `2686313D9B80FF02DD507CD10DF330D0999B99A40769A03018318E385004727D`.
+
 ## 2026-09-23 설정 폼·창 아이콘 후속 반영 (11-UI-A, 부분 반영)
 
 - 사용자가 승인한 설정 폼을 반영해 저장소/폴더 및 AI모델 설정 제목과 주요 라벨을 한글화했다. 상단 상태 요약은 설정창에서 접고 서버 상태 카드를 서버 주소 행에 두었다. 판단 AI는 Typesafe/JEV로 표시하고 Endpoint·제한 시간 입력은 감춘 채 JSON 설정 테스트 버튼을 노출했다.

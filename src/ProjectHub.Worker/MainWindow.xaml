@@ -121,7 +121,7 @@
         </StackPanel>
       </StackPanel>
       <Button x:Name="SettingsButton" Grid.Column="1" Content="⚙" FontSize="24" BorderThickness="0" Background="Transparent" Click="Settings_Click" Margin="0,4,0,0" />
-    </Grid>    <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" HorizontalOffset="-1360" StaysOpen="True" AllowsTransparency="True" PopupAnimation="Slide" Panel.ZIndex="9999">
+    </Grid>    <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" HorizontalOffset="-1360" VerticalOffset="-60" StaysOpen="True" AllowsTransparency="True" PopupAnimation="Slide" Panel.ZIndex="9999">
       <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="10" Padding="14" Width="1400" Height="850" MaxHeight="850" Margin="0,8,0,0" PreviewKeyDown="SettingsPopup_PreviewKeyDown">
         <Border.Resources>
           <Style TargetType="TextBlock">
@@ -283,8 +283,8 @@
               <ComboBox x:Name="JudgeModelCombo" Grid.Row="1" Grid.Column="2" Height="32" FontSize="14" Margin="0,4,0,0" SelectedIndex="0"><ComboBoxItem Content="JEV"/></ComboBox>
               <TextBlock Grid.Row="0" Grid.Column="3" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
               <CheckBox x:Name="EnableJudgeCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Left"/>
-              <TextBlock x:Name="JudgeSettingsStatusText" Grid.Row="1" Grid.Column="4" Text="Typesafe · JEV · 사용 안 함" Visibility="Collapsed"/>
-              <Button Grid.Row="0" Grid.Column="5" Grid.RowSpan="2" Content="JSON 설정 테스트" Width="350" HorizontalAlignment="Right" Padding="18,10" MinHeight="44" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Blue}" Background="#EAF4FF" BorderBrush="{StaticResource Blue}" BorderThickness="1" Click="TestJudge_Click"/>
+              <TextBlock x:Name="JudgeEndpointTestStatusText" Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="2" Text="" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
+              <Button x:Name="JudgeEndpointTestButton" Grid.Row="0" Grid.Column="5" Grid.RowSpan="2" Content="JSON 설정 테스트" Width="350" HorizontalAlignment="Right" Padding="18,10" MinHeight="44" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Blue}" Background="#EAF4FF" BorderBrush="{StaticResource Blue}" BorderThickness="1" Click="TestJudge_Click"/>
               <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
                 <TextBlock Text="서비스 제공자" Width="140" FontSize="15" VerticalAlignment="Center"/>
                 <TextBlock Text="제한 시간" Margin="26,0,0,0" Width="82" FontSize="15" VerticalAlignment="Center"/>

@@ -1492,7 +1492,9 @@ public partial class MainWindow : Window
         JudgeProviderCombo.SelectedIndex = 0;
         JudgeExecutableInput.Text = judge.ManualExecutableOrEndpoint ?? JevJudgeRunner.DefaultEndpoint;
         JudgeTimeoutInput.Text = judge.TimeoutSeconds.ToString();
-        JudgeSettingsStatusText.Text = judge.Enabled ? "Typesafe · JEV · 사용" : "Typesafe · JEV · 사용 안 함";
+        JudgeEndpointTestStatusText.Text = string.Empty;
+        JudgeEndpointTestStatusText.Foreground = (System.Windows.Media.Brush)FindResource("Muted");
+        JudgeEndpointTestStatusText.ToolTip = null;
         if (!_judgeReviewing) _judgeStatus = judge.Enabled ? "READY" : "OFF";
         UpdateJudgeVisual();
     }
@@ -1524,36 +1526,56 @@ public partial class MainWindow : Window
             ? JevJudgeRunner.DefaultEndpoint
             : JudgeExecutableInput.Text.Trim();
         JudgeExecutableInput.Text = endpoint;
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps)
-        {
-            JudgeSettingsStatusText.Text = "Typesafe · JEV · 주소 설정 오류";
-            return;
-        }
-
-        var timeout = ReadJudgeTimeout();
-        JudgeSettingsStatusText.Text = "Typesafe · JEV · 테스트 중…";
-        var request = new JudgeRequest(
-            "ProjectHub JEV Endpoint test",
-            1,
-            AppContext.BaseDirectory,
-            "[NEXT : JEV]" + Environment.NewLine + Environment.NewLine + "[VALIDATION REQUEST]" + Environment.NewLine + Environment.NewLine + "- NOUL | 오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐" + Environment.NewLine + "  PASS: YES >= 0.5",
-            "- NOUL | 오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐" + Environment.NewLine + "  PASS: YES >= 0.5",
-            Array.Empty<CodexCliFile>(),
-            "LOCAL",
-            null);
+        JudgeEndpointTestButton.IsEnabled = false;
+        SetJudgeEndpointTestStatus("Endpoint 확인 중…", null);
         try
         {
+            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps)
+            {
+                AddTaskMessage("JEV TEST", "Endpoint 확인 실패: HTTPS 주소가 아닙니다.");
+                SetJudgeEndpointTestStatus("Endpoint 확인 실패", false, "HTTPS endpoint 주소를 확인하세요.");
+                return;
+            }
+
+            var timeout = ReadJudgeTimeout();
+            var request = new JudgeRequest(
+                "ProjectHub JEV Endpoint test",
+                1,
+                AppContext.BaseDirectory,
+                "[NEXT : JEV]" + Environment.NewLine + Environment.NewLine + "[VALIDATION REQUEST]" + Environment.NewLine + Environment.NewLine + "- NOUL | 오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐" + Environment.NewLine + "  PASS: YES >= 0.5",
+                "- NOUL | 오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐" + Environment.NewLine + "  PASS: YES >= 0.5",
+                Array.Empty<CodexCliFile>(),
+                "LOCAL",
+                null);
             var result = await _jevJudgeRunner.ReviewAsync(request, new JudgeSettings(true, "jev", endpoint, timeout), CancellationToken.None);
             AddTaskMessage("JEV TEST", $"{result.Decision}: {result.Message}");
-            JudgeSettingsStatusText.Text = result.Decision == JudgeDecision.Error
-                ? $"Typesafe · JEV · 오류 · {result.Message}"
-                : $"Typesafe · JEV · {result.Decision.ToString().ToUpperInvariant()}";
+            var succeeded = result.Decision != JudgeDecision.Error;
+            SetJudgeEndpointTestStatus(
+                succeeded ? "Endpoint 응답 확인 완료" : "Endpoint 확인 실패",
+                succeeded,
+                $"{result.Decision}: {result.Message}");
         }
         catch (Exception exception)
         {
             AddTaskMessage("JEV TEST", $"ERROR: {exception.GetType().Name}");
-            JudgeSettingsStatusText.Text = "Typesafe · JEV · 테스트 실패";
+            SetJudgeEndpointTestStatus("Endpoint 확인 실패", false, exception.GetType().Name);
         }
+        finally
+        {
+            JudgeEndpointTestButton.IsEnabled = true;
+        }
+    }
+
+    private void SetJudgeEndpointTestStatus(string message, bool? succeeded, string? detail = null)
+    {
+        JudgeEndpointTestStatusText.Text = message;
+        JudgeEndpointTestStatusText.Foreground = succeeded switch
+        {
+            true => (System.Windows.Media.Brush)FindResource("Blue"),
+            false => System.Windows.Media.Brushes.Red,
+            _ => (System.Windows.Media.Brush)FindResource("Muted")
+        };
+        JudgeEndpointTestStatusText.ToolTip = detail;
     }
     private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
     {

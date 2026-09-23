@@ -30,6 +30,13 @@ Updated: 2026-09-23
 - 검증: Debug build 경고 0/오류 0; 전체 30개 테스트 통과. 새 fixture가 7개 enum 모델 수, Luna의 `ultra` 거부, query 조합 및 실제 CLI 인수 순서를 확인한다. 설정창의 픽셀/UI 확인은 현재 세션의 데스크톱 창 제어가 없어 미확인이다.
 - Release 게시본과 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사본 해시를 재시도 후 대조해 모두 일치함을 확인했다: `6C14DC32491815EF2C21CAD65EF7C534733598580B1B03B27752DC25C25BACD7`.
 
+## 후속 — 설정 팝업 하단 버튼·JEV 테스트 상태 표시 (11-UI-A, 2026-09-23)
+
+- 팝업을 위로 60px 이동해 하단 닫기/적용 버튼이 작업표시줄/화면 아래에 가려지지 않도록 조정했다.
+- 판단 AI 카드의 비어 있는 두 번째 행에 endpoint 테스트 상태를 표시한다. 성공 응답은 파란색 `Endpoint 응답 확인 완료`, HTTPS 설정 오류/실패/예외는 빨간색 `Endpoint 확인 실패`로 보이고 상세 결과는 tooltip과 MESSAGE에 남는다. 요청 중 버튼은 중복 입력을 막고 완료 뒤 다시 활성화한다.
+- 검증: Debug build 경고 0/오류 0; 전체 30개 테스트 통과; `git diff --check` 통과. 화면 캡처는 현재 데스크톱 UI 제어가 없어 미확인.
+- Release 게시본 및 Worker/GameProject 복사본의 SHA-256 일치: `2686313D9B80FF02DD507CD10DF330D0999B99A40769A03018318E385004727D`.
+
 ## 현재 요약 — 2026-09-23 / Task 11-A 구현 완료
 
 동기화된 깨끗한 기준점 `f501694469f2f1a590d1739be5e6039978c7ebde`에 복구 태그 `recovery/before-11a-cli-to-cli-2026-09-23`를 만들고 시작했다. Task 11-A의 A/B/C를 완료했다.
