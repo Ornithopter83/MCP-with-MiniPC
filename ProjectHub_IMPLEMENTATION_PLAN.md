@@ -502,3 +502,7 @@ JEV Contract Gate의 고정 NEXT 라우팅과 임베디드 footer 틀을 Worker�
 ## 11-UI-A 카드 통일과 패널 드래그 후속 (2026-09-23)
 
 네 AI 역할 카드를 흰 배경으로 통일하고 판단 AI의 provider/model을 Typesafe/JEV 고정 콤보박스로 표시한다. 설정 provider 저장값 `jev`는 호환 유지한다. WPF Popup에 타이틀바가 없어 제목 헤더 드래그 이벤트로 화면 좌표 delta를 Popup offsets에 적용했다. 전체 빌드·29개 테스트·diff 검사를 통과하고 게시·복사를 완료했다. 실제 UI 포인터 조작 캡처는 현재 세션에서 불가하다.
+
+## 11-UI-A 역할 입력·배경 스타일 보정 (2026-09-23)
+
+네 역할 바깥의 파란 패널과 안쪽 흰 카드를 복원했다. provider/model 콤보는 동일한 중앙 열 폭, reasoning은 170px, thread 콤보는 260×30px, 오른쪽 상세 카드와 JSON 테스트 버튼은 350px로 통일했다. 콤보 글꼴은 공통 Segoe UI 14px. Debug 빌드, 29개 전체 테스트, diff check 통과 후 게시/복사 완료. 세 EXE 해시 `89EC339F70067D211C022BEF515405235C01586599BC825578D283CE6952E8FC` 일치.

@@ -1199,3 +1199,9 @@ Worker는 의미 판단을 하지 않고 첫 NEXT 행, typed validation, JEV 구
 - 설정 패널은 WPF Popup이라 기본 타이틀바 드래그가 불가능했다. 헤더 마우스 capture와 화면 좌표 offset 계산으로 패널 제목을 끌어 이동하도록 추가했다.
 - 검증: Debug 빌드 경고 0·오류 0, 전체 테스트 29개, diff check 통과. Release 게시/Worker 및 GameProject 복사 후 SHA-256 일치.
 - 실제 native 화면 capture는 미실시.
+
+## 2026-09-23 AI 설정 콤보/카드 크기 통일 및 파란 패널 복구
+
+- AI 모델 설정의 파란 외곽 배경을 복구하고 각 역할 안쪽에는 흰 카드를 배치했다. 우측 상세/스레드 카드와 판단 JSON 버튼은 폭 350px, 스레드 콤보는 260×30px로 맞췄다. provider/model은 같은 유동 열을 쓰고 reasoning 폭은 170px로 통일했다. 공통 콤보 글꼴은 Segoe UI 14px다.
+- 검증: Debug 빌드 0 경고/0 오류, 전체 29개 테스트 및 diff check 통과. Release EXE 게시/복사 후 세 해시 일치.
+- 실제 앱 캡처로 픽셀 정렬 확인은 불가.

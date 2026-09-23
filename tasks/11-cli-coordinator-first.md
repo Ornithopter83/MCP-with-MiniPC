@@ -102,3 +102,11 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
 - Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 EXE SHA-256: `79FFC737AFA8A09D15E217E803C17B68D20064AE328F128227DD050F9F236BFE`.
 - 제한: 실제 창에서 카드/드래그 동작을 캡처로 확인하는 네이티브 UI 도구가 현재 세션에 없어 build/test 수준까지 검증했다.
+
+## 2026-09-23 역할 콤보·카드 폭 및 파란 패널 스타일 재적용 (11-UI-A)
+
+- AI 모델 설정의 파란 외곽 배경과 흰 역할 카드를 다시 적용했다. 고수준/판단 AI에도 파란 외곽 여백과 안쪽 흰 카드가 보이게 했다.
+- 역할 중앙의 provider/model 입력은 동일한 유동 열 폭, reasoning 콤보는 170px 열로 정렬했다. 구현 provider 콤보가 reasoning 영역까지 늘어나지 않도록 model 열 폭으로 제한했다. Thread 콤보는 260×30px로, 우측 역할 카드/JSON 버튼은 350px로 맞췄다. ComboBox 공통 글꼴은 기존 Segoe UI 14px를 유지한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
+- Release 게시와 Worker/GameProject 복사 완료. 세 EXE SHA-256: `89EC339F70067D211C022BEF515405235C01586599BC825578D283CE6952E8FC`.
+- 제한: 네이티브 앱 화면 캡처 미지원으로 최종 픽셀 비교는 미수행.
