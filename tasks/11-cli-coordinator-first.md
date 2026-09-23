@@ -110,3 +110,17 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
 - Release 게시와 Worker/GameProject 복사 완료. 세 EXE SHA-256: `89EC339F70067D211C022BEF515405235C01586599BC825578D283CE6952E8FC`.
 - 제한: 네이티브 앱 화면 캡처 미지원으로 최종 픽셀 비교는 미수행.
+
+## 2026-09-23 필수·선택 역할 카드 정렬 보정 (11-UI-A)
+
+- 고수준/판단 AI의 파란 바탕 안쪽 여백을 필수 AI 그룹과 동일한 14×12px로 맞춰 흰 카드 시작선과 내용 기준선을 정렬했다.
+- 설계·관제 AI의 `추론` 라벨을 다른 역할과 같은 14px로 통일했다. 판단 AI `사용 여부` 라벨을 체크박스와 같은 첫 행으로 이동하고, 모델 JEV를 콤보 기본 선택값으로 지정했다.
+- 검증: Debug 빌드 경고 0/오류 0, 전체 29개 테스트 통과, `git diff --check` 통과.
+- 화면 캡처 검증은 네이티브 앱 접근 미지원으로 수행하지 않았다.
+
+## 2026-09-23 역할 영역 기준선 세밀 정렬
+
+- 선택 영역의 바깥 파란 카드 패딩을 필수 역할 그룹과 같은 14×12px로 설정해 안쪽 흰 카드 시작선을 맞췄다.
+- 관제 AI `추론` 라벨은 14px, 판단 AI의 `사용 여부` 라벨은 checkbox와 같은 1행으로 정렬했다. JEV 모델은 콤보 기본값으로 선택되도록 설정했다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 29개 통과, `git diff --check` 통과. Release 게시 후 Worker와 GameProject에 복사했고 세 SHA-256 일치: `FF8AE9159BACCD88AB9C7BFE92F8E05E8BAE2280751E5CE4E6EB1F9EBE238867`.
+- 파일 잠금 원인이던 기존 Worker는 Bridge에 active task가 없음을 확인하고 종료 후 갱신했다. 게시본 재기동 후 `ProjectHub Worker` 창과 Bridge ready/Web connected를 확인했다. 설정 팝업 픽셀 캡처는 이번 세션에서 미지원이다.

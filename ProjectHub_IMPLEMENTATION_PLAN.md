@@ -506,3 +506,11 @@ JEV Contract Gate의 고정 NEXT 라우팅과 임베디드 footer 틀을 Worker�
 ## 11-UI-A 역할 입력·배경 스타일 보정 (2026-09-23)
 
 네 역할 바깥의 파란 패널과 안쪽 흰 카드를 복원했다. provider/model 콤보는 동일한 중앙 열 폭, reasoning은 170px, thread 콤보는 260×30px, 오른쪽 상세 카드와 JSON 테스트 버튼은 350px로 통일했다. 콤보 글꼴은 공통 Segoe UI 14px. Debug 빌드, 29개 전체 테스트, diff check 통과 후 게시/복사 완료. 세 EXE 해시 `89EC339F70067D211C022BEF515405235C01586599BC825578D283CE6952E8FC` 일치.
+
+## 11-UI-A 필수/선택 역할 기준선 후속 (2026-09-23)
+
+선택 역할 카드 내부 여백을 필수 AI 그룹과 같은 14×12px로 맞췄다. 설계·관제 `추론` 글꼴 14px, 판단 AI 사용 여부 라벨을 checkbox 첫 행으로 정렬하고 JEV 모델을 기본 선택 처리했다. 전체 Debug 빌드 및 29개 테스트 통과. 실제 화면 캡처 확인은 도구 미지원으로 잔여다.
+
+## 11-UI-A 역할 카드 기준선 최종 보정 (2026-09-23)
+
+선택 영역의 바깥 파란 여백을 필수 AI 그룹과 같은 14×12px로 조정하고, 설계·관제 추론 라벨을 14px로 통일했다. 판단 AI 사용 여부를 checkbox 첫 행에 올리고 JEV combo 기본 선택을 지정했다. 전체 Debug build 및 29개 테스트 통과. 게시 EXE와 Worker/GameProject 복사본 해시가 `FF8AE9159BACCD88AB9C7BFE92F8E05E8BAE2280751E5CE4E6EB1F9EBE238867`로 일치하며 Worker 창/Bridge 기동 확인.
