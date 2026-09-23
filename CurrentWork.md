@@ -1,6 +1,15 @@
 # ProjectHub 현재 작업 상태
 
-Updated: 2026-09-23
+Updated: 2026-09-24
+
+## 현재 후속 — 메인 화면 시각·입력/이력 상태 보정 (11-UI-B-K1–K27, 2026-09-24)
+
+- 동기화된 최신 피드백 `e4859dd`의 11-UI-B-K1–K27을 한 UI 작업 범위로 반영했다. 메인 행 높이와 여백을 승인 비율에 맞추고, 상단 요약/서버 카드/설정 카드를 확대·정렬했다. 5개 단계는 5개의 동일 폭 카드와 4개의 좁은 connector로 재구성했으며, 카드 제목/아이콘/모델을 중앙 정렬했다.
+- 현재 단계와 다음 단계만 색을 유지하고 나머지는 회색 아이콘 자산/배경/글자로 표시한다. 현재 카드에만 강조 그림자를 쓰며 실제 route의 화살표만 pulse한다. `TaskDirection` 텍스트 파싱을 제거하고 상태 enum을 기준으로 단계/skip 경로를 계산한다. 고수준 runner가 연결되지 않은 동안 고수준 작업은 active로 표시되지 않는다.
+- `메시지 및 작업 이력` 본문을 입력/이력 두 모드로 사용한다. 유휴 시 큰 입력란과 실행 버튼, 작업 접수 직후 최신순 요약 이력, 진행 중 취소, 완료 뒤 이력 유지와 새 작업 버튼으로 전환한다. footer 입력 bar는 제거했다. 요약은 요청/구조화 결과의 짧은 부분만 사용하고 JSON 전문·URL·token 형태 문자열을 감춘다. 상세 transcript/export는 그대로 유지한다. 실행 불가 이유는 footer 한 줄에 표시하고 CLI 모드의 Server offline은 차단하지 않는다.
+- 검토/잔여: K26 Explorer 3상태 화면 캡처 수용과 K27 별도 JEV 검증은 미완료다. 연결된 CUA 앱 목록이 비어 있어 화면 조작/캡처를 할 수 없었다. 실행 중인 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`가 main window handle 없이 트레이에 남아 있다. 이를 종료해 Worker 배포 폴더를 덮어쓰려던 단계는 자동 승인 검토에서 `Stop-Process -Force`가 상태 손실 위험으로 거부되어 중단했다. 사용자 승인 전에는 해당 프로세스를 종료하거나 배포 폴더를 덮어쓰지 않는다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 30개 통과; `git diff --check` 통과. Release publish 성공. 최신 게시 EXE와 `C:\GameProject\ProjectHub.Worker.exe` SHA-256은 `9E52E2EA7017F331D266A8554558B6A0121C1016B97DD696876458694F1728FB`로 일치한다. `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`는 실행 중 인스턴스 때문에 이전 SHA-256 `10E30B463B54B5011D4718A4519C1C51C8BD8F83ED833B3EC4B26BE81FD3CAF8` 상태라 최종 배포 복사는 잔여다. CUA에서 Native apps 목록도 비어 있어 실제 화면 확인은 수행하지 못했다. EXE 프로세스 상태 확인은 화면 수용 검증으로 간주하지 않는다.
+- 저장소: 작업 전 `git fetch origin` 및 `git pull --rebase`를 완료했고 최신 `GPT-Web-Feedback.md`를 읽었다. 구현/문서 변경을 검토 후 커밋·푸시한다.
 
 ## 현재 후속 — 승인 이미지 기준 메인 화면 (11-UI-B-A–H, 2026-09-23)
 

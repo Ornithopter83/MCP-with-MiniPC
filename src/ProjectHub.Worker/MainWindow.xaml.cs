@@ -51,7 +51,7 @@ public partial class MainWindow : Window
     private readonly List<TaskMessage> _taskMessages = new();
     private readonly ObservableCollection<string> _messageLogItems = new();
     public ObservableCollection<string> MessageLogItems => _messageLogItems;
-    public sealed record WorkerHistoryEvent(DateTimeOffset Timestamp, string StageKey, string EventType, string Title, long? SizeBytes, int? ItemCount, int? FileCount, string? Status, string? ReferenceId)
+    public sealed record WorkerHistoryEvent(DateTimeOffset Timestamp, string StageKey, string EventType, string Title, string? Summary, long? SizeBytes, int? ItemCount, int? FileCount, string? Status, string? ReferenceId)
     {
         public string Role => StageKey switch { "Coordinator" => "설계 관제", "Implementer" => "작업", "HighLevel" => "고수준 작업", "Judge" => "판정", _ => "시스템" };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
@@ -105,8 +105,11 @@ public partial class MainWindow : Window
     private int _flowFrame;
     private bool _pairArrowActive;
     private enum TaskStage { Idle, Coordinator, Implementer, HighLevel, Judge }
+    private enum DashboardBodyMode { NewTaskInput, TaskHistory }
+    private DashboardBodyMode _dashboardBodyMode = DashboardBodyMode.NewTaskInput;
     private TaskStage _currentTaskStage = TaskStage.Idle;
     private TaskStage? _nextTaskStage;
+    private string _coordinatorStageIconAsset = "current-openai.png";
     private bool _judgeReviewing;
     private string _judgeStatus = "OFF";
     private int _judgeRound;
@@ -116,7 +119,7 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
-    private const string DashboardPromptPlaceholder = "작업 내용을 입력하세요…";
+    private const string DashboardPromptPlaceholder = "작업 내용을 입력하세요...";
     private readonly HttpClient _connectionClient = new() { Timeout = TimeSpan.FromSeconds(2) };
     private BridgeServer? _bridgeServer;
     private bool _codexAuthenticated;
@@ -380,11 +383,56 @@ public partial class MainWindow : Window
     {
         if (RunButton is null || DashboardTaskInput is null) return;
         var active = _activeTaskCts is not null || _awaitingWebResult;
-        var executionReady = _targetSettings.IsCoordinatorFirst
-            ? GetCoordinatorFirstPreflightError(ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption), _targetSettings.EffectiveCoordinator, _targetSettings.EffectiveImplementer, _targetSettings.EffectiveJudge) is null
-            : _codexAuthenticated && _bridgeServer?.WebConnected == true && _bridgeServer.WebExtensionSynchronized && _bridgeServer.WebConversationBound;
+        var preflightError = _targetSettings.IsCoordinatorFirst
+            ? GetCoordinatorFirstPreflightError(ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption), _targetSettings.EffectiveCoordinator, _targetSettings.EffectiveImplementer, _targetSettings.EffectiveJudge)
+            : !_codexAuthenticated ? "Codex 로그인이 필요합니다."
+            : _bridgeServer?.WebConnected != true ? "GPT Web 연결을 기다리고 있습니다."
+            : !_bridgeServer.WebExtensionSynchronized ? "GPT Web 확장 동기화를 기다리고 있습니다."
+            : !_bridgeServer.WebConversationBound ? "GPT Web 대화를 먼저 연결하세요."
+            : null;
+        var executionReady = preflightError is null;
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardTaskInput.Text) && DashboardTaskInput.Text != DashboardPromptPlaceholder;
-        RunButton.IsEnabled = _userCanceledTask && _activeTaskCts is not null ? false : active || executionReady && hasPrompt;
+        if (active)
+        {
+            RunButton.Content = "■   취소";
+            RunButton.IsEnabled = !(_userCanceledTask && _activeTaskCts is not null);
+            DashboardPreflightText.Text = string.Empty;
+            return;
+        }
+
+        if (_dashboardBodyMode == DashboardBodyMode.TaskHistory)
+        {
+            RunButton.Content = "＋   새 작업";
+            RunButton.IsEnabled = true;
+            DashboardPreflightText.Text = string.Empty;
+            return;
+        }
+
+        RunButton.Content = "▶   실행";
+        RunButton.IsEnabled = executionReady && hasPrompt;
+        RunButton.Background = RunButton.IsEnabled ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1477E8")) : new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#B8C8DA"));
+        RunButton.BorderBrush = RunButton.Background;
+        RunButton.Opacity = RunButton.IsEnabled ? 1 : 0.85;
+        RunButton.Effect = RunButton.IsEnabled ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 16, ShadowDepth = 4, Direction = 270, Opacity = 0.22, Color = System.Windows.Media.Color.FromRgb(20, 119, 232) } : null;
+        DashboardPreflightText.Text = preflightError ?? (hasPrompt ? string.Empty : "작업 내용을 입력하세요.");
+        DashboardPreflightText.Foreground = preflightError is null ? (System.Windows.Media.Brush)FindResource("Muted") : System.Windows.Media.Brushes.Firebrick;
+    }
+
+    private void SetDashboardBodyMode(DashboardBodyMode mode)
+    {
+        _dashboardBodyMode = mode;
+        DashboardInputView.Visibility = mode == DashboardBodyMode.NewTaskInput ? Visibility.Visible : Visibility.Collapsed;
+        DashboardHistoryView.Visibility = mode == DashboardBodyMode.TaskHistory ? Visibility.Visible : Visibility.Collapsed;
+        UpdateDashboardRunButtonState();
+    }
+
+    private void BeginNewDashboardTask()
+    {
+        _historyEvents.Clear();
+        DashboardTaskInput.Text = DashboardPromptPlaceholder;
+        DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
+        SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
+        DashboardTaskInput.Focus();
     }
 
     private TaskLaunchRequest? BuildTaskLaunchRequest()
@@ -436,7 +484,7 @@ public partial class MainWindow : Window
         WebInstructionInput.Text = WebInstructionPlaceholder;
         WebInstructionInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
     }
-    private void SetFlowState(bool codexActive, bool workerActive, bool webActive)
+    private void SetFlowState(bool codexActive, bool workerActive, bool webActive, TaskStage? explicitStage = null, TaskStage? explicitNextStage = null)
     {
         var (left, right) = ResolveFlowPair();
         SetFlowNode(left, isActive: IsNodeActive(left, codexActive, workerActive, webActive), isLeft: true);
@@ -446,56 +494,72 @@ public partial class MainWindow : Window
         UpdateArrowAnimation();
         var running = codexActive || workerActive || webActive || (!_userCanceledTask && (_activeTaskCts is not null || _awaitingWebResult));
         _currentTaskStage = !running ? TaskStage.Idle
-            : _judgeReviewing || TaskDirection.Text.Contains("JEV", StringComparison.OrdinalIgnoreCase) || TaskDirection.Text.Contains("JUDGE", StringComparison.OrdinalIgnoreCase) ? TaskStage.Judge
-            : _activeCoordinatorFirst && (TaskDirection.Text.Contains("SOL", StringComparison.OrdinalIgnoreCase) || codexActive) ? TaskStage.Coordinator
+            : explicitStage ?? (_judgeReviewing ? TaskStage.Judge
+            : _activeCoordinatorFirst && codexActive ? TaskStage.Coordinator
             : webActive ? TaskStage.Coordinator
-            : workerActive ? TaskStage.Implementer
-            : codexActive ? TaskStage.Coordinator
-            : TaskStage.Idle;
-        _nextTaskStage = _currentTaskStage switch
+            : workerActive || codexActive ? TaskStage.Implementer
+            : TaskStage.Idle);
+        _nextTaskStage = explicitStage.HasValue ? explicitNextStage : explicitNextStage ?? (_currentTaskStage switch
         {
             TaskStage.Coordinator => TaskStage.Implementer,
-            TaskStage.Implementer when _targetSettings.HighLevelEnabled => TaskStage.HighLevel,
             TaskStage.Implementer when _targetSettings.EffectiveJudge.Enabled => TaskStage.Judge,
-            TaskStage.Implementer => null,
             TaskStage.HighLevel when _targetSettings.EffectiveJudge.Enabled => TaskStage.Judge,
             _ => null
-        };
+        });
         UpdatePipelineVisuals();
         if (!running) _messageExpanded = false;
         UpdatePanelLayout(running);
+        UpdateDashboardRunButtonState();
     }
 
     private void UpdatePipelineVisuals()
     {
-        var roles = new[]
-        {
-            (Stage: TaskStage.Coordinator, Card: PipelineCoordinatorCard, Base: "#E7F2FF", Ink: "#1267D5", Enabled: true),
-            (Stage: TaskStage.Implementer, Card: PipelineImplementerCard, Base: "#FBE0E5", Ink: "#A91938", Enabled: true),
-            (Stage: TaskStage.HighLevel, Card: PipelineHighLevelCard, Base: "#EAD5E2", Ink: "#74133F", Enabled: _targetSettings.HighLevelEnabled),
-            (Stage: TaskStage.Judge, Card: PipelineJudgeCard, Base: "#D7F1E1", Ink: "#08713D", Enabled: _targetSettings.EffectiveJudge.Enabled)
-        };
-        foreach (var role in roles)
-        {
-            var current = _currentTaskStage == role.Stage;
-            var next = _nextTaskStage == role.Stage;
-            var visible = role.Enabled && (current || next);
-            var baseColor = visible ? role.Base : "#ECEFF3";
-            role.Card.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(baseColor));
-            role.Card.BorderBrush = current ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(role.Ink)) : System.Windows.Media.Brushes.Transparent;
-            role.Card.BorderThickness = current ? new Thickness(2) : new Thickness(1);
-            role.Card.Opacity = role.Enabled ? 1 : 0.48;
-        }
-        PipelineIdleCard.BorderBrush = _currentTaskStage == TaskStage.Idle ? System.Windows.Media.Brushes.DimGray : System.Windows.Media.Brushes.Transparent;
-        PipelineIdleCard.BorderThickness = _currentTaskStage == TaskStage.Idle ? new Thickness(2) : new Thickness(1);
-        var arrows = new[] { PipelineArrow1, PipelineArrow2, PipelineArrow3, PipelineArrow4 };
-        for (var index = 0; index < arrows.Length; index++)
-        {
-            var from = (int)_currentTaskStage;
-            var to = _nextTaskStage.HasValue ? (int)_nextTaskStage.Value : -1;
-            arrows[index].Opacity = (from > 0 && from == index + 1 && to == index + 2) ? 1 : 0.28;
-        }
+        SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, "#DDEEFF", "#1477E8", "#1267D5", false);
+        SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, "current-openai.png", TaskStage.Implementer, "#FCE1E7", "#D72F4D", "#A91938", false);
+        SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, "current-openai.png", TaskStage.HighLevel, "#ECD8E4", "#82194B", "#74133F", !_targetSettings.HighLevelEnabled);
+        SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, "current-jev.png", TaskStage.Judge, "#D9F0E2", "#078448", "#08713D", !_targetSettings.EffectiveJudge.Enabled);
+
+        var idle = _currentTaskStage == TaskStage.Idle;
+        SetColor(PipelineIdleCard, idle ? "#7A8797" : "#B8C8DA");
+        PipelineIdleTitle.Foreground = System.Windows.Media.Brushes.White;
+        SetColor(PipelineIdleIconCircle, idle ? "#667487" : "#8798AA");
+        PipelineIdleCard.BorderBrush = idle ? System.Windows.Media.Brushes.DimGray : System.Windows.Media.Brushes.Transparent;
+        PipelineIdleCard.BorderThickness = idle ? new Thickness(2) : new Thickness(1);
+        PipelineIdleCard.Effect = idle ? CreateCurrentStageShadow() : null;
+        UpdatePipelineArrowAnimation();
     }
+
+    private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, string background, string circle, string foreground, bool disabled)
+    {
+        var current = !disabled && _currentTaskStage == stage;
+        var next = !disabled && _nextTaskStage == stage;
+        var colored = current || next;
+        SetColor(card, colored ? background : "#B8C8DA");
+        SetColor(iconCircle, colored ? circle : "#8798AA");
+        title.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
+        var selectedName = colored ? iconAsset : iconAsset.Replace(".png", "-gray.png", StringComparison.OrdinalIgnoreCase);
+        icon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/ProjectHub.Worker;component/Assets/{selectedName}"));
+        if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineImplementerCard) ImplementerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineHighLevelCard) HighLevelStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineJudgeCard) JudgeStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
+        card.BorderBrush = current ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.Transparent;
+        card.BorderThickness = current ? new Thickness(2) : new Thickness(1);
+        card.Effect = current ? CreateCurrentStageShadow() : null;
+        card.Opacity = disabled ? 0.85 : 1;
+    }
+
+    private static void SetColor(Border control, string color)
+        => control.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
+
+    private static System.Windows.Media.Effects.Effect CreateCurrentStageShadow() => new System.Windows.Media.Effects.DropShadowEffect
+    {
+        BlurRadius = 14,
+        ShadowDepth = 3,
+        Direction = 270,
+        Opacity = 0.22,
+        Color = System.Windows.Media.Color.FromRgb(20, 119, 232)
+    };
 
     private (FlowNode Left, FlowNode Right) ResolveFlowPair() => TaskDirection.Text switch
     {
@@ -568,7 +632,6 @@ public partial class MainWindow : Window
         CommandTextGrid.Visibility = running ? Visibility.Collapsed : Visibility.Visible;
         CommandControlsRow.Height = new GridLength(38);
         CommandControlsGrid.Visibility = Visibility.Visible;
-        DashboardTaskInput.Visibility = running ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void MessageToggle_Click(object sender, RoutedEventArgs e)
@@ -590,18 +653,30 @@ public partial class MainWindow : Window
     private void UpdatePipelineArrowAnimation()
     {
         var arrows = new[] { PipelineArrow1, PipelineArrow2, PipelineArrow3, PipelineArrow4 };
+        var labels = new[] { PipelineArrowText1, PipelineArrowText2, PipelineArrowText3, PipelineArrowText4 };
         var start = (int)_currentTaskStage;
         var end = _nextTaskStage.HasValue ? (int)_nextTaskStage.Value : -1;
         if (!_pairArrowActive || start < 1 || end <= start)
         {
-            foreach (var arrow in arrows) arrow.Opacity = 0.28;
+            for (var i = 0; i < arrows.Length; i++)
+            {
+                arrows[i].Opacity = 0.72;
+                arrows[i].Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F1F5FA"));
+                labels[i].Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#B8C9DD"));
+            }
             return;
         }
 
         var routeLength = end - start;
         var pulseEdge = start + ((_flowFrame / 2) % routeLength);
         for (var edge = 1; edge <= arrows.Length; edge++)
-            arrows[edge - 1].Opacity = edge < start || edge >= end ? 0.28 : edge == pulseEdge ? 1 : 0.48;
+        {
+            var onRoute = edge >= start && edge < end;
+            var active = onRoute && edge == pulseEdge;
+            arrows[edge - 1].Opacity = onRoute ? active ? 1 : 0.82 : 0.55;
+            arrows[edge - 1].Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(onRoute ? active ? "#D8EBFF" : "#E6F2FF" : "#F1F5FA"));
+            labels[edge - 1].Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(onRoute ? "#1477E8" : "#B8C9DD"));
+        }
     }
     private void UpdateJudgeVisual()
     {
@@ -639,6 +714,11 @@ public partial class MainWindow : Window
             ApplyConnectionStatus();
             return;
         }
+        if (_dashboardBodyMode == DashboardBodyMode.TaskHistory)
+        {
+            BeginNewDashboardTask();
+            return;
+        }
         await InitializeStartupConfigurationAsync();
         var launchRequest = BuildTaskLaunchRequest();
         if (launchRequest is null) return;
@@ -659,6 +739,8 @@ public partial class MainWindow : Window
                 SetFlowState(false, false, false);
                 return;
             }
+            _historyEvents.Clear();
+            SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
             await RunCoordinatorFirstJobAsync(launchRequest.Prompt, selectedThreadForLaunch, cliWorkingDirectory, coordinator, implementer);
             return;
         }
@@ -684,6 +766,8 @@ public partial class MainWindow : Window
         var reasoning = GetSelectedContent(ReasoningCombo, "Medium").ToLowerInvariant();
         var cliModel = ToCliModel(model);
         var selectedThread = selectedThreadForLaunch;
+        _historyEvents.Clear();
+        SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
         StartTaskTranscript(selectedThread, cliPrompt, webInstruction);
         var workingDirectory = launchRequest.WorkingDirectory;
         var sessionId = launchRequest.SessionId;
@@ -703,7 +787,7 @@ public partial class MainWindow : Window
         _activeCliModel = cliModel;
         _activeReasoning = reasoning;
         AddTaskMessage("TASK START", BuildTaskStartInfo(cliModel, reasoning, workingDirectory, sessionId));
-        AddTaskMessage("TASK REQUEST", "작업 요청을 받았습니다.", sizeBytes: Encoding.UTF8.GetByteCount(cliPrompt), itemCount: 1);
+        AddTaskMessage("TASK REQUEST", cliPrompt, sizeBytes: Encoding.UTF8.GetByteCount(cliPrompt), itemCount: 1);
         _judgeRound = 0;
         _judgeReportOnly = false;
         _pendingJevFailure = null;
@@ -715,8 +799,7 @@ public partial class MainWindow : Window
         var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         ResetDashboardTaskInput();
-        RunButton.IsEnabled = true;
-        RunButton.Content = "■   취소";
+        UpdateDashboardRunButtonState();
         TaskDirection.Text = "CODEX → WORKER";
         TaskTitle.Text = "Codex 작업 실행 중";
         SetFlowState(codexActive: true, workerActive: false, webActive: false);
@@ -776,11 +859,10 @@ public partial class MainWindow : Window
         {
             _activeTaskCts.Dispose();
             _activeTaskCts = null;
-            var wasUserCanceled = _userCanceledTask;
             _userCanceledTask = false;
             UpdatePanelLayout(_awaitingWebResult);
             ApplyConnectionStatus();
-            if (!_awaitingWebResult || wasUserCanceled) RunButton.Content = "▶   실행";
+            UpdateDashboardRunButtonState();
         }
     }
 
@@ -824,7 +906,7 @@ public partial class MainWindow : Window
                 _judgeStatus = "REVIEWING";
                 TaskDirection.Text = "WORKER → JEV";
                 TaskTitle.Text = $"JEV 검증 중 · round {_judgeRound}";
-                SetFlowState(false, true, false);
+                SetFlowState(false, true, false, explicitStage: TaskStage.Judge);
                 AddTaskMessage("JEV REQUEST", validation);
                 var request = new JudgeRequest(_activePrompt ?? "Current task", _judgeRound, _activeWorkingDirectory ?? AppContext.BaseDirectory, output, validation, result.Files, "GIT", _gitTarget?.HeadSha, _activeJevJobId);
                 JudgeResult judgment;
@@ -964,7 +1046,6 @@ public partial class MainWindow : Window
         TaskTitle.Text = "30분 무응답으로 작업 종료";
         ResultTitle.Text = "FINISH_TIMEOUT";
         ResultBody.Text = "Web 또는 Codex에서 30분 동안 응답이 없어 작업을 종료했습니다.";
-        RunButton.Content = "▶   실행";
         SetFlowState(false, false, false);
         ExportTaskTranscript();
     }
@@ -991,7 +1072,6 @@ public partial class MainWindow : Window
         TaskTitle.Text = "작업 없음";
         ResultTitle.Text = "Codex 결과 대기 중";
         ResultBody.Text = "새 작업을 실행하면 결과가 이 영역에 표시됩니다.";
-        RunButton.Content = "▶   실행";
         SetFlowState(false, false, false);
         ActivateResultTab(web: false);
     }
@@ -1271,7 +1351,7 @@ public partial class MainWindow : Window
         _jobTimedOut = false;
         _lastActivityAt = DateTimeOffset.UtcNow;
         StartTaskTranscript(selectedThread, request, string.Empty);
-        AddTaskMessage("TASK REQUEST", "작업 요청을 받았습니다.", sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1);
+        AddTaskMessage("TASK REQUEST", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1);
         AddTaskMessage("TASK START", $"Mode: coordinator-first CLI-to-CLI{Environment.NewLine}Coordinator: {coordinator.Model} / {coordinator.Reasoning}{Environment.NewLine}Implementer: {implementer.Model} / {implementer.Reasoning}{Environment.NewLine}Working directory: {workingDirectory}");
         var coordinatorSession = coordinator.ThreadSessionId;
         IReadOnlyList<CodexCommandExecution> observedExecutions = Array.Empty<CodexCommandExecution>();
@@ -1280,7 +1360,7 @@ public partial class MainWindow : Window
             TaskDirection.Text = "SOL COORDINATOR → LUNA IMPLEMENTER";
             TaskTitle.Text = "작업 카드를 설계하는 중";
             ResultTitle.Text = "COORDINATING";
-            SetFlowState(codexActive: true, workerActive: false, webActive: false);
+            SetFlowState(codexActive: true, workerActive: false, webActive: false, explicitStage: TaskStage.Coordinator, explicitNextStage: TaskStage.Implementer);
             var planPrompt = "You are the read-only Sol coordinator. Convert the user's request into one bounded implementation work card. Do not edit files or execute tools. Preserve explicit constraints, avoid expanding scope, and include concrete validation commands appropriate to the repository. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>";
             var plan = await RunCoordinatorRoleAsync(jobId, "PLAN", planPrompt, coordinator, workingDirectory, coordinatorSession, CoordinatorFirstContracts.WorkCardSchema, cts.Token);
             coordinatorSession ??= plan.SessionId;
@@ -1295,12 +1375,12 @@ public partial class MainWindow : Window
                 ShowCoordinatorFirstBlocked("관제 세션을 이어갈 수 없습니다.", "Coordinator CLI가 세션 ID를 반환하지 않아 동일 관제 세션의 검토를 보장할 수 없습니다.");
                 return;
             }
-            AddTaskMessage("SOL WORK CARD", JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true }));
+            AddTaskMessage("SOL WORK CARD", JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true }), summary: $"{card.Title}: {card.Goal}");
 
             TaskDirection.Text = "LUNA IMPLEMENTER";
             TaskTitle.Text = card.Title;
             ResultTitle.Text = "IMPLEMENTING";
-            SetFlowState(codexActive: false, workerActive: true, webActive: false);
+            SetFlowState(codexActive: false, workerActive: true, webActive: false, explicitStage: TaskStage.Implementer, explicitNextStage: _targetSettings.EffectiveJudge.Enabled ? TaskStage.Judge : null);
             var cardJson = JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true });
             var implementPrompt = "You are the Luna implementer. Implement only the work card below in the current workspace. Follow its prohibited list. Run every listed validation command and report truthful results. Do not claim a command passed unless its process succeeded. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>\n<work_card_json>\n" + cardJson + "\n</work_card_json>";
             var implementation = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT", implementPrompt, implementer, workingDirectory, implementer.ThreadSessionId, CoordinatorFirstContracts.ImplementerResultSchema, cts.Token, CodexSandboxMode.WorkspaceWrite);
@@ -1313,15 +1393,15 @@ public partial class MainWindow : Window
             }
             var evidenceOk = CoordinatorFirstContracts.HasRequiredValidationEvidence(card, observedExecutions, out var evidenceDetail);
             var reportJson = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-            AddTaskMessage("LUNA RESULT", reportJson, sizeBytes: Encoding.UTF8.GetByteCount(reportJson), fileCount: report.ChangedPaths.Count, status: report.Status);
+            AddTaskMessage("LUNA RESULT", reportJson, sizeBytes: Encoding.UTF8.GetByteCount(reportJson), fileCount: report.ChangedPaths.Count, status: report.Status, summary: report.Summary);
             AddTaskMessage("VALIDATION EVIDENCE", observedExecutions.Count == 0
                 ? "Codex CLI JSONL에서 명령 실행/종료코드 증거를 추출하지 못했습니다."
-                : string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit {item.ExitCode}: {item.Command}")), itemCount: observedExecutions.Count, status: observedExecutions.Count > 0 && observedExecutions.All(item => item.ExitCode == 0) ? "PASS" : "FAIL");
+                : string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit {item.ExitCode}: {item.Command}")), itemCount: observedExecutions.Count, status: observedExecutions.Count > 0 && observedExecutions.All(item => item.ExitCode == 0) ? "PASS" : "FAIL", summary: observedExecutions.Count == 0 ? "명령 실행 증거를 확인하지 못했습니다." : $"{observedExecutions.Count}개 검증 명령의 실제 종료 결과를 확인했습니다.");
 
             TaskDirection.Text = "SOL COORDINATOR REVIEW";
             TaskTitle.Text = "구현 결과와 검증 증거를 검토하는 중";
             ResultTitle.Text = "REVIEWING";
-            SetFlowState(codexActive: true, workerActive: false, webActive: false);
+            SetFlowState(codexActive: true, workerActive: false, webActive: false, explicitStage: TaskStage.Coordinator);
             var executionEvidence = string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit_code={item.ExitCode} command={item.Command}"));
             var reviewPrompt = "You are the same read-only Sol coordinator that created the work card. Review the implementation against every acceptance criterion. Treat implementer claims as untrusted until supported by the supplied command evidence. Return one result for each AC ID, no additions or omissions, and only JSON matching the schema.\n\n<work_card_json>\n" + cardJson + "\n</work_card_json>\n<implementer_report_json>\n" + JsonSerializer.Serialize(report) + "\n</implementer_report_json>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n<required_command_evidence_status>\n" + (evidenceOk ? "ALL_REQUIRED_COMMANDS_OBSERVED_EXIT_ZERO" : evidenceDetail) + "\n</required_command_evidence_status>";
             var reviewResult = await RunCoordinatorRoleAsync(jobId, "REVIEW", reviewPrompt, coordinator, workingDirectory, coordinatorSession, CoordinatorFirstContracts.ReviewSchema, cts.Token);
@@ -1331,14 +1411,14 @@ public partial class MainWindow : Window
                 ShowCoordinatorFirstBlocked("관제 검토 결과를 확인할 수 없습니다.", reviewResult.ExitCode != 0 ? $"Coordinator review exit {reviewResult.ExitCode}" : reviewError);
                 return;
             }
-            AddTaskMessage("SOL REVIEW", JsonSerializer.Serialize(review, new JsonSerializerOptions { WriteIndented = true }));
+            AddTaskMessage("SOL REVIEW", JsonSerializer.Serialize(review, new JsonSerializerOptions { WriteIndented = true }), summary: review.Summary);
             var accepted = evidenceOk && string.Equals(report.Status, "IMPLEMENTED", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(review.Decision, "ACCEPT", StringComparison.OrdinalIgnoreCase)
                 && review.AcceptanceCriteria.All(item => string.Equals(item.Status, "PASS", StringComparison.OrdinalIgnoreCase));
             ResultTitle.Text = accepted ? "DONE · REVIEW ACCEPTED" : $"REVIEW · {review.Decision}";
             ResultBody.Text = accepted ? review.Summary : review.Summary + Environment.NewLine + (evidenceOk ? string.Empty : "필수 검증 증거 부족: " + evidenceDetail);
             TaskTitle.Text = accepted ? "검토 승인 완료" : "검토 또는 추가 작업 필요";
-            AddTaskMessage("TASK RESULT", $"{ResultTitle.Text}{Environment.NewLine}{review.Summary}", itemCount: review.AcceptanceCriteria.Count, status: accepted ? "PASS" : review.Decision);
+            AddTaskMessage("TASK RESULT", $"{ResultTitle.Text}{Environment.NewLine}{review.Summary}", itemCount: review.AcceptanceCriteria.Count, status: accepted ? "PASS" : review.Decision, summary: review.Summary);
             SetFlowState(false, false, false);
         }
         catch (OperationCanceledException)
@@ -1357,7 +1437,6 @@ public partial class MainWindow : Window
             _activeCoordinatorFirst = false;
             _activeTaskCts = null;
             _userCanceledTask = false;
-            RunButton.Content = "▶   실행";
             ExportTaskTranscript();
             SetFlowState(false, false, false);
             ApplyConnectionStatus();
@@ -1419,8 +1498,8 @@ public partial class MainWindow : Window
 
         var coordinator = _targetSettings.EffectiveCoordinator;
         CoordinatorStageModelText.Text = IsWebTransport(coordinator.Transport) ? "GPT Web" : FormatStageModel(coordinator.Model);
-        CoordinatorStageIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri(
-            IsWebTransport(coordinator.Transport) ? "pack://application:,,,/ProjectHub.Worker;component/Assets/current-web.png" : "pack://application:,,,/ProjectHub.Worker;component/Assets/current-openai.png"));
+        _coordinatorStageIconAsset = IsWebTransport(coordinator.Transport) ? "current-web.png" : "current-openai.png";
+        CoordinatorStageIcon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/ProjectHub.Worker;component/Assets/{_coordinatorStageIconAsset}"));
         ImplementerStageModelText.Text = FormatStageModel(_targetSettings.EffectiveImplementer.Model);
         HighLevelStageModelText.Text = FormatStageModel(_targetSettings.EffectiveHighLevel.Model);
         JudgeStageModelText.Text = "JEV";
@@ -2130,11 +2209,10 @@ public partial class MainWindow : Window
         finally
         {
             _activeTaskCts = null;
-            var wasUserCanceled = _userCanceledTask;
             _userCanceledTask = false;
             UpdatePanelLayout(_awaitingWebResult);
             ApplyConnectionStatus();
-            if (!_awaitingWebResult || wasUserCanceled) RunButton.Content = "▶   실행";
+            UpdateDashboardRunButtonState();
         }
     }
 
@@ -2249,7 +2327,7 @@ public partial class MainWindow : Window
         AddTaskMessage("CLI STATUS", $"{outcome} · exit {result.ExitCode} · model {result.Model} · session {session}", sizeBytes: Encoding.UTF8.GetByteCount(result.FinalMessage), fileCount: result.Files.Count, status: outcome);
     }
 
-    private void AddTaskMessage(string source, string? content, long? sizeBytes = null, int? itemCount = null, int? fileCount = null, string? status = null, string? referenceId = null)
+    private void AddTaskMessage(string source, string? content, long? sizeBytes = null, int? itemCount = null, int? fileCount = null, string? status = null, string? referenceId = null, string? summary = null)
     {
         if (string.IsNullOrWhiteSpace(content)) return;
         var timestamp = DateTimeOffset.Now;
@@ -2257,17 +2335,16 @@ public partial class MainWindow : Window
         _taskMessages.Add(new TaskMessage(timestamp, source, trimmed));
         _messageLogItems.Add($"[{timestamp:HH:mm:ss}] {source}{Environment.NewLine}{trimmed}");
         MessageLogEmptyText.Visibility = Visibility.Collapsed;
-        var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, referenceId);
+        var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, referenceId, summary);
         if (historyEvent is not null)
         {
             _historyEvents.Insert(0, historyEvent);
             while (_historyEvents.Count > 250) _historyEvents.RemoveAt(_historyEvents.Count - 1);
-            DashboardHistoryEmptyText.Visibility = Visibility.Collapsed;
         }
         RefreshMessageLog();
     }
 
-    private static WorkerHistoryEvent? CreateHistoryEvent(DateTimeOffset timestamp, string source, string content, long? sizeBytes, int? itemCount, int? fileCount, string? explicitStatus, string? referenceId)
+    private static WorkerHistoryEvent? CreateHistoryEvent(DateTimeOffset timestamp, string source, string content, long? sizeBytes, int? itemCount, int? fileCount, string? explicitStatus, string? referenceId, string? summary)
     {
         var normalized = source.Trim().ToUpperInvariant();
         string stage = normalized.Contains("JEV", StringComparison.Ordinal) || normalized.Contains("JUDGE", StringComparison.Ordinal) ? "Judge"
@@ -2280,23 +2357,78 @@ public partial class MainWindow : Window
         var statusText = explicitStatus ?? (status.Success ? status.Value.ToUpperInvariant() : null);
 
         if (normalized is "USER COMMAND" or "GPT WEB INSTRUCTION") return null;
-        if (normalized.Contains("TASK START", StringComparison.Ordinal))
-            return new(timestamp, "System", "TASK_STARTED", "작업을 시작했습니다", null, null, null, null, null);
+        if (normalized.Contains("TASK START", StringComparison.Ordinal)) return null;
         if (normalized == "TASK REQUEST")
-            return new(timestamp, stage, "REQUEST_RECEIVED", "작업 요청을 받았습니다", bytes, itemCount ?? 1, fileCount, statusText, referenceId);
+            return new(timestamp, "Coordinator", "REQUEST_RECEIVED", "작업 요청", HistorySummary(summary ?? content), bytes, itemCount ?? 1, fileCount, null, referenceId);
         if (normalized.Contains("TASK CANCELED", StringComparison.Ordinal) || normalized.Contains("TASK CANCELLED", StringComparison.Ordinal))
-            return new(timestamp, "System", "TASK_FINISHED", "작업이 취소되었습니다", null, null, null, "CANCELED", null);
+            return new(timestamp, "System", "TASK_FINISHED", "작업이 취소되었습니다", "요청에 따라 실행을 중단했습니다.", null, null, null, "CANCELED", null);
         if (normalized.Contains("TASK BLOCKED", StringComparison.Ordinal) || normalized.Contains("TIMEOUT", StringComparison.Ordinal) || normalized.Contains("FAIL", StringComparison.Ordinal) || normalized.Contains("ERROR", StringComparison.Ordinal) || statusText is "FAIL" or "ERROR" or "BLOCKED")
-            return new(timestamp, stage, "TASK_FAILED", "작업을 진행할 수 없습니다", bytes > 0 ? bytes : null, itemCount, fileCount, statusText ?? "BLOCKED", referenceId);
+            return new(timestamp, stage, "TASK_FAILED", "작업을 진행할 수 없습니다", HistorySummary(summary ?? content.Split(Environment.NewLine)[0]), bytes > 0 ? bytes : null, itemCount, fileCount, statusText ?? "BLOCKED", referenceId);
         if (normalized.Contains("TASK RESULT", StringComparison.Ordinal))
-            return new(timestamp, stage, "TASK_FINISHED", "작업 결과가 도착했습니다", bytes, itemCount, fileCount, statusText, referenceId);
-        if (normalized.Contains("SOL WORK CARD", StringComparison.Ordinal) || normalized.Contains("WORKER -> GPT WEB", StringComparison.Ordinal) || normalized.Contains("WORKER -> CODEX", StringComparison.Ordinal) || normalized.Contains("JEV REQUEST", StringComparison.Ordinal))
-            return new(timestamp, stage, "REQUEST_RECEIVED", "단계 요청이 전달되었습니다", bytes, itemCount ?? 1, fileCount, statusText, referenceId);
-        if (normalized.Contains("VALIDATION", StringComparison.Ordinal) || normalized.Contains("JEV RESULT", StringComparison.Ordinal) || normalized.Contains("JEV TEST", StringComparison.Ordinal))
-            return new(timestamp, "Judge", "VALIDATION_RECEIVED", "검증 결과가 도착했습니다", bytes, itemCount, fileCount, statusText, referenceId);
-        if (normalized.Contains("LUNA RESULT", StringComparison.Ordinal) || normalized == "GPT WEB" || normalized.Contains("CLI STATUS", StringComparison.Ordinal) || normalized.Contains("SOL REVIEW", StringComparison.Ordinal))
-            return new(timestamp, stage, "RESULT_RECEIVED", "단계 결과가 도착했습니다", bytes, itemCount, fileCount, statusText, referenceId);
+            return new(timestamp, "Coordinator", "TASK_FINISHED", "수행 결과", HistorySummary(summary ?? SummaryAfterFirstLine(content)), bytes, itemCount, fileCount, statusText, referenceId);
+        if (normalized.Contains("SOL WORK CARD", StringComparison.Ordinal))
+            return new(timestamp, "Coordinator", "WORK_PLANNED", "작업 계획", HistorySummary(summary ?? ReadJsonSummary(content, "goal", "title")), bytes, itemCount ?? 1, fileCount, statusText, referenceId);
+        if (normalized.Contains("WORKER -> GPT WEB", StringComparison.Ordinal) || normalized.Contains("WORKER -> CODEX", StringComparison.Ordinal))
+            return new(timestamp, stage, "REQUEST_RECEIVED", "단계 요청 전달", HistorySummary(summary ?? "구현 결과를 다음 단계에 전달했습니다."), bytes, itemCount ?? 1, fileCount, statusText, referenceId);
+        if (normalized.Contains("JEV REQUEST", StringComparison.Ordinal))
+            return new(timestamp, "Judge", "VALIDATION_REQUEST", "판정 요청", HistorySummary(summary ?? "원자 질문을 판정 AI에 전달했습니다."), bytes, itemCount ?? 1, fileCount, statusText, referenceId);
+        if (normalized.Contains("VALIDATION", StringComparison.Ordinal))
+            return new(timestamp, "Judge", "VALIDATION_RECEIVED", "검증 결과", HistorySummary(summary ?? (itemCount.HasValue ? $"{itemCount.Value}개 검증 항목의 실행 결과를 확인했습니다." : "검증 증거를 확인했습니다.")), bytes, itemCount, fileCount, statusText, referenceId);
+        if (normalized.Contains("JEV RESULT", StringComparison.Ordinal) || normalized.Contains("JEV TEST", StringComparison.Ordinal))
+            return new(timestamp, "Judge", "VALIDATION_RECEIVED", "판정 결과", HistorySummary(summary ?? content), bytes, itemCount, fileCount, statusText, referenceId);
+        if (normalized.Contains("LUNA RESULT", StringComparison.Ordinal))
+            return new(timestamp, "Implementer", "RESULT_RECEIVED", "구현 결과", HistorySummary(summary ?? ReadJsonSummary(content, "summary")), bytes, itemCount, fileCount, statusText, referenceId);
+        if (normalized == "GPT WEB")
+            return new(timestamp, "Coordinator", "RESULT_RECEIVED", "GPT Web 결과", HistorySummary(summary ?? content), bytes, itemCount, fileCount, statusText, referenceId);
+        if (normalized.Contains("CLI STATUS", StringComparison.Ordinal))
+            return new(timestamp, stage, "RESULT_RECEIVED", "Codex 실행 결과", HistorySummary(summary ?? (statusText == "PASS" ? "Codex 명령 실행이 완료되었습니다." : "Codex 명령이 실패했습니다.")), bytes, itemCount, fileCount, statusText, referenceId);
+        if (normalized.Contains("SOL REVIEW", StringComparison.Ordinal))
+            return new(timestamp, "Coordinator", "REVIEW_RECEIVED", "관제 검토", HistorySummary(summary ?? ReadJsonSummary(content, "summary")), bytes, itemCount, fileCount, statusText, referenceId);
         return null;
+    }
+
+    private static string HistorySummary(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var normalized = Regex.Replace(value, @"\s+", " ", RegexOptions.CultureInvariant).Trim();
+        if (normalized.StartsWith('{') || normalized.StartsWith('['))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(normalized);
+                var root = document.RootElement;
+                foreach (var key in new[] { "summary", "message", "decision", "title" })
+                    if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty(key, out var field) && field.ValueKind == JsonValueKind.String)
+                    {
+                        normalized = field.GetString() ?? "구조화 응답을 받았습니다.";
+                        break;
+                    }
+                if (normalized.StartsWith('{') || normalized.StartsWith('[')) normalized = "구조화 응답을 받았습니다.";
+            }
+            catch (JsonException) { normalized = "응답 내용을 요약해 표시할 수 없습니다."; }
+        }
+        normalized = Regex.Replace(normalized, @"https?://\S+", "[주소]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        normalized = Regex.Replace(normalized, @"(?i)(api[_ -]?key|token|password|secret)\s*[:=]\s*\S+", "$1=[숨김]", RegexOptions.CultureInvariant);
+        return normalized.Length <= 240 ? normalized : normalized[..237] + "…";
+    }
+
+    private static string? ReadJsonSummary(string content, params string[] properties)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            foreach (var property in properties)
+                if (document.RootElement.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String)
+                    return value.GetString();
+        }
+        catch (JsonException) { }
+        return null;
+    }
+
+    private static string SummaryAfterFirstLine(string content)
+    {
+        var newline = content.IndexOfAny(['\r', '\n']);
+        return newline < 0 ? content : content[(newline + 1)..];
     }
 
     private void RefreshMessageLog()

@@ -18,6 +18,7 @@
     <SolidColorBrush x:Key="PaleGreen" Color="#E9F8EF" />
     <SolidColorBrush x:Key="ActiveMessageTab" Color="#B9DEFF" />
     <SolidColorBrush x:Key="InactiveMessageTab" Color="#F4F9FF" />
+    <DropShadowEffect x:Key="RunButtonShadow" BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.22" Color="#1477E8" />
     <Style x:Key="CardBorder" TargetType="Border">
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="{StaticResource Line}" />
@@ -97,39 +98,41 @@
     </Style>
   </Window.Resources>
 
-  <Grid Margin="20,16,20,12">
+  <Grid Margin="24,17,24,16">
     <Grid.RowDefinitions>
-      <RowDefinition Height="78" />
+      <RowDefinition Height="96" />
       <RowDefinition Height="220" />
       <RowDefinition Height="*" />
-      <RowDefinition Height="82" />
+      <RowDefinition Height="100" />
     </Grid.RowDefinitions>
 
     <Grid Grid.Row="0">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="350"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions>
-      <Border Style="{StaticResource SectionBorder}" Padding="16,9" Margin="0,0,10,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="350"/><ColumnDefinition Width="78"/></Grid.ColumnDefinitions>
+      <Border Style="{StaticResource SectionBorder}" Padding="20,12" Margin="0,0,10,0">
         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
           <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="프로젝트" FontWeight="SemiBold"/><TextBlock Text="작업 폴더" FontWeight="SemiBold" Margin="0,3,0,0"/><TextBlock Text="서버 주소" FontWeight="SemiBold" Margin="0,3,0,0"/>
+            <TextBlock Text="프로젝트" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="작업 폴더" FontSize="15" FontWeight="SemiBold" Margin="0,6,0,0"/><TextBlock Text="서버 주소" FontSize="15" FontWeight="SemiBold" Margin="0,6,0,0"/>
           </StackPanel>
           <StackPanel Grid.Column="1" VerticalAlignment="Center">
-            <TextBlock x:Name="DashboardProjectText" Text="ProjectHub"/><TextBlock x:Name="DashboardFolderText" Text="작업 폴더 확인 중" Margin="0,3,0,0"/><TextBlock x:Name="DashboardServerUrlText" Text="서버 주소 확인 중" Margin="0,3,0,0"/>
+            <TextBlock x:Name="DashboardProjectText" Text="ProjectHub" FontSize="15"/><TextBlock x:Name="DashboardFolderText" Text="작업 폴더 확인 중" FontSize="15" Margin="0,6,0,0"/><TextBlock x:Name="DashboardServerUrlText" Text="서버 주소 확인 중" FontSize="15" Margin="0,6,0,0"/>
           </StackPanel>
         </Grid>
       </Border>
-      <Border Grid.Column="1" Style="{StaticResource SectionBorder}" Padding="12,8" Margin="0,0,10,0">
-        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-          <Border Width="58" Height="58" Background="#EAF4FF" CornerRadius="9" VerticalAlignment="Center" Padding="7">
+      <Border Grid.Column="1" Style="{StaticResource SectionBorder}" Padding="14,10" Margin="0,0,10,0">
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border Width="68" Height="68" Background="#EAF4FF" CornerRadius="9" VerticalAlignment="Center" Padding="8">
             <Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
               <Border Margin="0,1" Background="#334A68" CornerRadius="2"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border>
               <Border Grid.Row="1" Margin="0,1" Background="#334A68" CornerRadius="2"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border>
               <Border Grid.Row="2" Margin="0,1" Background="#334A68" CornerRadius="2"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border>
             </Grid>
           </Border>
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0"><TextBlock Text="서버" FontSize="16" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/><StackPanel Orientation="Horizontal" Margin="0,4,0,0"><Ellipse x:Name="ServerStatusDot" Width="11" Height="11" Fill="#A6B4C5" Margin="0,0,7,0"/><TextBlock x:Name="ServerStatusText" Text="확인 중" FontWeight="Bold" Foreground="{StaticResource Muted}"/></StackPanel></StackPanel>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0"><TextBlock Text="서버" FontSize="18" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/><StackPanel Orientation="Horizontal" Margin="0,6,0,0"><Ellipse x:Name="ServerStatusDot" Width="12" Height="12" Fill="#A6B4C5" Margin="0,0,7,0"/><TextBlock x:Name="ServerStatusText" Text="확인 중" FontSize="14" FontWeight="Bold" Foreground="{StaticResource Muted}"/></StackPanel></StackPanel>
         </Grid>
       </Border>
-      <Button x:Name="SettingsButton" Grid.Column="2" Content="⚙" FontSize="27" BorderThickness="0" Background="Transparent" Click="Settings_Click" ToolTip="설정"/>
+      <Button x:Name="SettingsButton" Grid.Column="2" Click="Settings_Click" ToolTip="설정" Padding="4" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" Cursor="Hand">
+        <Button.Template><ControlTemplate TargetType="Button"><Border x:Name="SettingsButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10"><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock Text="⚙" FontSize="29" HorizontalAlignment="Center"/><TextBlock Text="설정" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,-2,0,0"/></StackPanel></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="SettingsButtonBorder" Property="Background" Value="#EAF4FF"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Button.Template>
+      </Button>
     </Grid>
     <TextBlock x:Name="RepositoryNameText" Visibility="Collapsed"/><TextBlock x:Name="PcNameText" Visibility="Collapsed"/>
     <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" HorizontalOffset="-1360" VerticalOffset="-60" StaysOpen="True" AllowsTransparency="True" PopupAnimation="Slide" Panel.ZIndex="9999">
@@ -322,47 +325,48 @@
     </Popup>
     <Border x:Name="SettingsDimOverlay" Grid.Row="0" Grid.RowSpan="4" Background="#99000000" Visibility="Collapsed" Panel.ZIndex="100" IsHitTestVisible="True"/>
 
-    <Border Grid.Row="1" Style="{StaticResource SectionBorder}" Padding="12,8">
-      <Grid><Grid.RowDefinitions><RowDefinition Height="28"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal"><TextBlock Text="▤" FontSize="20" Margin="0,0,10,0"/><TextBlock Text="현재 작업" FontSize="17" FontWeight="Bold" VerticalAlignment="Center"/></StackPanel>
-        <UniformGrid Grid.Row="1" Columns="9" Margin="0,5,0,0">
-          <Border x:Name="PipelineIdleCard" Background="#E7E9ED" CornerRadius="9" Margin="4" Padding="8"><StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="1. 대기" FontSize="20" FontWeight="Bold" Foreground="#526176" HorizontalAlignment="Center"/><Border Width="72" Height="72" Background="#778391" CornerRadius="40" Margin="0,8"><TextBlock Text="◷" FontSize="42" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text=" " FontSize="15"/></StackPanel></Border>
-          <TextBlock x:Name="PipelineArrow1" Text="❯" FontSize="30" Foreground="{StaticResource Muted}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          <Border x:Name="PipelineCoordinatorCard" Background="#E7F2FF" CornerRadius="9" Margin="4" Padding="8"><StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="2. 설계 관제" FontSize="20" FontWeight="Bold" Foreground="#1267D5"/><Border Width="72" Height="72" Background="#1267D5" CornerRadius="40" Margin="0,8"><Image x:Name="CoordinatorStageIcon" Source="Assets/current-openai.png" Width="58" Height="58"/></Border><TextBlock x:Name="CoordinatorStageModelText" Text="GPT-6 Sol" FontSize="17" FontWeight="SemiBold" Foreground="#1267D5"/></StackPanel></Border>
-          <TextBlock x:Name="PipelineArrow2" Text="❯" FontSize="30" Foreground="{StaticResource Muted}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          <Border x:Name="PipelineImplementerCard" Background="#FBE0E5" CornerRadius="9" Margin="4" Padding="8"><StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="3. 작업" FontSize="20" FontWeight="Bold" Foreground="#A91938"/><Border Width="72" Height="72" Background="#D3264B" CornerRadius="40" Margin="0,8"><Image x:Name="ImplementerStageIcon" Source="Assets/current-openai.png" Width="58" Height="58"/></Border><TextBlock x:Name="ImplementerStageModelText" Text="GPT-6 Luna" FontSize="17" FontWeight="SemiBold" Foreground="#A91938"/></StackPanel></Border>
-          <TextBlock x:Name="PipelineArrow3" Text="❯" FontSize="30" Foreground="{StaticResource Muted}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          <Border x:Name="PipelineHighLevelCard" Background="#EAD5E2" CornerRadius="9" Margin="4" Padding="8"><StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="4. 고수준 작업" FontSize="20" FontWeight="Bold" Foreground="#74133F"/><Border Width="72" Height="72" Background="#82194B" CornerRadius="40" Margin="0,8"><Image x:Name="HighLevelStageIcon" Source="Assets/current-openai.png" Width="58" Height="58"/></Border><TextBlock x:Name="HighLevelStageModelText" Text="GPT-6 Astra" FontSize="17" FontWeight="SemiBold" Foreground="#74133F"/></StackPanel></Border>
-          <TextBlock x:Name="PipelineArrow4" Text="❯" FontSize="30" Foreground="{StaticResource Muted}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          <Border x:Name="PipelineJudgeCard" Background="#D7F1E1" CornerRadius="9" Margin="4" Padding="8"><StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="5. 판정" FontSize="20" FontWeight="Bold" Foreground="#08713D"/><Border Width="72" Height="72" Background="#09864D" CornerRadius="40" Margin="0,8"><Image Source="Assets/current-jev.png" Width="58" Height="58"/></Border><TextBlock x:Name="JudgeStageModelText" Text="JEV" FontSize="17" FontWeight="SemiBold" Foreground="#08713D"/></StackPanel></Border>
-        </UniformGrid>
+    <Border Grid.Row="1" Style="{StaticResource SectionBorder}" Padding="14,10">
+      <Grid><Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <TextBlock Text="현재 작업" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Margin="5,0"/>
+        <Grid Grid.Row="1" Margin="0,7,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border x:Name="PipelineIdleCard" Grid.Column="0" Background="#7A8797" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineIdleTitle" Text="1. 대기" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="PipelineIdleIconCircle" Grid.Row="1" Width="82" Height="82" Background="#667487" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Grid><Ellipse Width="46" Height="46" Stroke="White" StrokeThickness="5"/><Path Data="M 41,20 L 41,41 L 55,49" Stroke="White" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Width="7" Height="7" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border><TextBlock Grid.Row="2" Text=" " FontSize="19" HorizontalAlignment="Center"/></Grid></Border>
+          <Border x:Name="PipelineArrow1" Grid.Column="1" Width="32" Height="42" Background="#EAF4FF" BorderBrush="#D2E6FF" BorderThickness="1" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PipelineArrowText1" Text="››" FontSize="27" FontWeight="Bold" Foreground="#1477E8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/></Border>
+          <Border x:Name="PipelineCoordinatorCard" Grid.Column="2" Background="#B8C8DA" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineCoordinatorTitle" Text="2. 설계 관제" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="CoordinatorStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="CoordinatorStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="CoordinatorStageModelText" Grid.Row="2" Text="GPT-6 Sol" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+          <Border x:Name="PipelineArrow2" Grid.Column="3" Width="32" Height="42" Background="#EAF4FF" BorderBrush="#D2E6FF" BorderThickness="1" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PipelineArrowText2" Text="››" FontSize="27" FontWeight="Bold" Foreground="#1477E8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/></Border>
+          <Border x:Name="PipelineImplementerCard" Grid.Column="4" Background="#B8C8DA" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineImplementerTitle" Text="3. 작업" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="ImplementerStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="ImplementerStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="ImplementerStageModelText" Grid.Row="2" Text="GPT-6 Luna" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+          <Border x:Name="PipelineArrow3" Grid.Column="5" Width="32" Height="42" Background="#EAF4FF" BorderBrush="#D2E6FF" BorderThickness="1" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PipelineArrowText3" Text="››" FontSize="27" FontWeight="Bold" Foreground="#1477E8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/></Border>
+          <Border x:Name="PipelineHighLevelCard" Grid.Column="6" Background="#B8C8DA" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineHighLevelTitle" Text="4. 고수준 작업" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="HighLevelStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="HighLevelStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="HighLevelStageModelText" Grid.Row="2" Text="GPT-6 Astra" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+          <Border x:Name="PipelineArrow4" Grid.Column="7" Width="32" Height="42" Background="#EAF4FF" BorderBrush="#D2E6FF" BorderThickness="1" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PipelineArrowText4" Text="››" FontSize="27" FontWeight="Bold" Foreground="#1477E8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/></Border>
+          <Border x:Name="PipelineJudgeCard" Grid.Column="8" Background="#B8C8DA" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineJudgeTitle" Text="5. 판정" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="JudgeStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="JudgeStageIcon" Source="Assets/current-jev-gray.png" Width="64" Height="64" Stretch="Uniform"><Image.Clip><EllipseGeometry Center="32,32" RadiusX="32" RadiusY="32"/></Image.Clip></Image></Border><TextBlock x:Name="JudgeStageModelText" Grid.Row="2" Text="JEV" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+        </Grid>
       </Grid>
     </Border>
-    <Border Grid.Row="2" Style="{StaticResource SectionBorder}" Padding="12,8" Margin="0,8,0,0">
-      <Grid><Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-        <TextBlock Text="▤  메시지 및 작업 이력" FontSize="17" FontWeight="Bold" VerticalAlignment="Center"/>
-        <Border Grid.Row="1" Background="#F7FAFD" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8,5">
-          <Grid>
-            <TextBlock x:Name="DashboardHistoryEmptyText" Text="작업을 시작하면 주요 요청·결과 이력이 표시됩니다." FontSize="15" Foreground="{StaticResource Muted}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+    <Border Grid.Row="2" Style="{StaticResource SectionBorder}" Padding="14,10" Margin="0,10,0,0">
+      <Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <TextBlock Text="메시지 및 작업 이력" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Margin="5,0"/>
+        <Grid x:Name="DashboardBodyGrid" Grid.Row="1" Margin="0,4,0,0">
+          <Border x:Name="DashboardInputView" Background="#FBFDFF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="20">
+            <TextBox x:Name="DashboardTaskInput" FontSize="18" Padding="2" VerticalContentAlignment="Top" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" Foreground="{StaticResource Muted}" Text="작업 내용을 입력하세요..." ToolTip="작업 내용을 입력합니다." GotFocus="DashboardTaskInput_GotFocus" LostFocus="DashboardTaskInput_LostFocus" TextChanged="DashboardTaskInput_TextChanged"/>
+          </Border>
+          <Border x:Name="DashboardHistoryView" Background="#FBFDFF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="8,5" Visibility="Collapsed">
             <ListBox x:Name="DashboardHistoryList" Background="Transparent" BorderThickness="0" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=HistoryEvents}" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" FontSize="14" Foreground="{StaticResource Ink}">
               <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0,2"/><Setter Property="Focusable" Value="False"/></Style></ListBox.ItemContainerStyle>
               <ListBox.ItemTemplate><DataTemplate>
-                <Grid MinHeight="54" Margin="1,2"><Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="205"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                  <Border Width="46" Height="46" Background="{Binding IconBackground}" CornerRadius="24" VerticalAlignment="Center"><Image Source="{Binding IconSource}" Width="36" Height="36"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="7,0"><TextBlock Text="{Binding Role}" FontSize="14" FontWeight="Bold" Foreground="{Binding RoleForeground}"/><TextBlock Text="{Binding TimestampText}" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/></StackPanel>
-                  <Border Grid.Column="2" Background="{Binding RowBackground}" CornerRadius="6" Padding="10,5" VerticalAlignment="Stretch"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><TextBlock Text="{Binding Title}" FontWeight="SemiBold"/><TextBlock Grid.Row="1" Text="{Binding Details}" Foreground="{StaticResource Muted}" FontSize="13" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/></Grid></Border>
+                <Grid MinHeight="62" Margin="1,2"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="215"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                  <Border Width="48" Height="48" Background="{Binding IconBackground}" CornerRadius="25" VerticalAlignment="Center"><Image Source="{Binding IconSource}" Width="40" Height="40" Stretch="Uniform"/></Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="7,0"><TextBlock Text="{Binding Role}" FontSize="16" FontWeight="Bold" Foreground="{Binding RoleForeground}"/><TextBlock Text="{Binding TimestampText}" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/></StackPanel>
+                  <Border Grid.Column="2" Background="{Binding RowBackground}" CornerRadius="8" Padding="14,7" VerticalAlignment="Stretch"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"/><TextBlock Grid.Row="1" Text="{Binding Summary}" Foreground="{StaticResource Ink}" FontSize="14" Margin="0,1,0,0" TextWrapping="Wrap" MaxHeight="38" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Row="2" Text="{Binding Details}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/></Grid></Border>
                 </Grid>
               </DataTemplate></ListBox.ItemTemplate>
             </ListBox>
-          </Grid>
-        </Border>
+          </Border>
+        </Grid>
       </Grid>
     </Border>
-    <Grid Grid.Row="3" Margin="0,8,4,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="250"/></Grid.ColumnDefinitions>
-      <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="10" Margin="2,0,16,0" Padding="4">
-        <TextBox x:Name="DashboardTaskInput" Height="54" Padding="10,7" FontSize="15" VerticalContentAlignment="Center" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" Foreground="{StaticResource Muted}" Text="작업 내용을 입력하세요…" ToolTip="유휴 상태에서 작업 요청을 입력합니다." GotFocus="DashboardTaskInput_GotFocus" LostFocus="DashboardTaskInput_LostFocus" TextChanged="DashboardTaskInput_TextChanged"/>
-      </Border>
-      <Button x:Name="RunButton" Grid.Column="1" Content="▶   실행" Width="230" Height="62" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#0878F9" Foreground="White" BorderBrush="#0878F9" FontSize="24" FontWeight="Bold" IsEnabled="False" Click="RunTask_Click"/>
+    <Grid Grid.Row="3" Margin="0,8,18,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
+      <TextBlock x:Name="DashboardPreflightText" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="6,0,12,0"/>
+      <Button x:Name="RunButton" Grid.Column="1" Content="▶   실행" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#1477E8" Foreground="White" BorderBrush="#1477E8" FontSize="27" FontWeight="Bold" IsEnabled="False" Click="RunTask_Click" Effect="{StaticResource RunButtonShadow}"/>
     </Grid>
 
     <Grid Visibility="Collapsed">
