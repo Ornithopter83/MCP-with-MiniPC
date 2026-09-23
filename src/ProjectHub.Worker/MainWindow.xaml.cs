@@ -383,13 +383,7 @@ public partial class MainWindow : Window
     {
         if (RunButton is null || DashboardTaskInput is null) return;
         var active = _activeTaskCts is not null || _awaitingWebResult;
-        var preflightError = _targetSettings.IsCoordinatorFirst
-            ? GetCoordinatorFirstPreflightError(ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption), _targetSettings.EffectiveCoordinator, _targetSettings.EffectiveImplementer, _targetSettings.EffectiveJudge)
-            : !_codexAuthenticated ? "Codex 로그인이 필요합니다."
-            : _bridgeServer?.WebConnected != true ? "GPT Web 연결을 기다리고 있습니다."
-            : !_bridgeServer.WebExtensionSynchronized ? "GPT Web 확장 동기화를 기다리고 있습니다."
-            : !_bridgeServer.WebConversationBound ? "GPT Web 대화를 먼저 연결하세요."
-            : null;
+        var preflightError = GetDashboardPreflightError();
         var executionReady = preflightError is null;
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardTaskInput.Text) && DashboardTaskInput.Text != DashboardPromptPlaceholder;
         if (active)
@@ -423,7 +417,26 @@ public partial class MainWindow : Window
         _dashboardBodyMode = mode;
         DashboardInputView.Visibility = mode == DashboardBodyMode.NewTaskInput ? Visibility.Visible : Visibility.Collapsed;
         DashboardHistoryView.Visibility = mode == DashboardBodyMode.TaskHistory ? Visibility.Visible : Visibility.Collapsed;
+        UpdatePipelineVisuals();
         UpdateDashboardRunButtonState();
+    }
+
+    private string? GetDashboardPreflightError()
+    {
+        if (_targetSettings.IsCoordinatorFirst)
+        {
+            return GetCoordinatorFirstPreflightError(
+                ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption),
+                _targetSettings.EffectiveCoordinator,
+                _targetSettings.EffectiveImplementer,
+                _targetSettings.EffectiveJudge);
+        }
+
+        if (!_codexAuthenticated) return "Codex 로그인이 필요합니다.";
+        if (_bridgeServer?.WebConnected != true) return "GPT Web 연결을 기다리고 있습니다.";
+        if (!_bridgeServer.WebExtensionSynchronized) return "GPT Web 확장 동기화를 기다리고 있습니다.";
+        if (!_bridgeServer.WebConversationBound) return "GPT Web 대화를 먼저 연결하세요.";
+        return null;
     }
 
     private void BeginNewDashboardTask()
@@ -533,7 +546,8 @@ public partial class MainWindow : Window
     {
         var current = !disabled && _currentTaskStage == stage;
         var next = !disabled && _nextTaskStage == stage;
-        var colored = current || next;
+        var initialIdle = _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _currentTaskStage == TaskStage.Idle;
+        var colored = initialIdle || current || next;
         SetColor(card, colored ? background : "#B8C8DA");
         SetColor(iconCircle, colored ? circle : "#8798AA");
         title.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
@@ -546,7 +560,7 @@ public partial class MainWindow : Window
         card.BorderBrush = current ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.Transparent;
         card.BorderThickness = current ? new Thickness(2) : new Thickness(1);
         card.Effect = current ? CreateCurrentStageShadow() : null;
-        card.Opacity = disabled ? 0.85 : 1;
+        card.Opacity = disabled && !initialIdle ? 0.85 : 1;
     }
 
     private static void SetColor(Border control, string color)
@@ -1482,6 +1496,7 @@ public partial class MainWindow : Window
         ApplyExecutionModePresentation(_targetSettings.IsCoordinatorFirst);
         UpdateDashboardSummary();
         UpdatePipelineVisuals();
+        UpdateDashboardRunButtonState();
     }
 
     private void UpdateDashboardSummary()

@@ -2,6 +2,12 @@
 
 Updated: 2026-09-24
 
+## 현재 후속 — 시작 대기 카드 색상 및 하단 preflight 동기화 (2026-09-24)
+
+- 시작/새 작업 입력 대기 상태에서는 설계 관제·작업·고수준 작업·판단 역할 카드를 모두 역할색으로 표시한다. 실행이 시작되어 이력 모드로 바뀌면 기존 current/next만 컬러로 표시하는 단계별 강조 규칙을 적용한다. 중간에 설정을 적용해도 본문 모드와 실행 단계에 따라 카드 표시가 일관되게 다시 계산된다.
+- 하단 안내와 실행 버튼 활성 조건을 `GetDashboardPreflightError()` 한 경로에서 계산하도록 정리했다. coordinator-first 모드는 현재 저장된 `_targetSettings`의 JEV/high-level/provider/model/reasoning/folder 값, Web 모드는 로그인/Bridge/확장/대화 연결 상태를 기준으로 한다. 설정 적용 직후 안내도 갱신한다. 편집 중인 미적용 초안은 실행에 사용되지 않으므로 안내에 반영하지 않는다. 실행 설정 파일의 비민감 필드도 확인했으며 현재 `CLI_TO_CLI`, `judge.enabled=true`, `highLevelEnabled=false`, coordinator `codex_cli`다. 첨부 화면의 JEV 안내는 현재 저장 설정과 일치한다. 판단 AI를 끄고 적용하면 같은 계산 경로가 이를 반영한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 30개 통과(Worker 25, Core 1, Agent 3, Server 1); `git diff --check` 통과. Release 게시 성공, `C:\GameProject\ProjectHub.Worker.exe`와 `src/ProjectHub.Worker/bin/ProjectHub.Worker.exe` SHA-256 `415765284F766BBA794373CE12B73BD8D5F91A31EAF1ECD37986723C95B7A451` 일치. `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`는 다른 이전 바이너리 상태라 갱신하지 않았다. 실제 Explorer 화면 확인은 CUA Native apps가 제공되지 않아 미실행이다.
+
 ## 현재 후속 — 메인 화면 시각·입력/이력 상태 보정 (11-UI-B-K1–K27, 2026-09-24)
 
 - 동기화된 최신 피드백 `e4859dd`의 11-UI-B-K1–K27을 한 UI 작업 범위로 반영했다. 메인 행 높이와 여백을 승인 비율에 맞추고, 상단 요약/서버 카드/설정 카드를 확대·정렬했다. 5개 단계는 5개의 동일 폭 카드와 4개의 좁은 connector로 재구성했으며, 카드 제목/아이콘/모델을 중앙 정렬했다.
