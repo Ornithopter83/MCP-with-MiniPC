@@ -2,24 +2,24 @@
 
 작성·기준일: 2026-09-23 (KST)
 문서 작업: **09-A 완료** · 제품 구현 후속: **09-B 실화면 마감 → 09-C**
-검토 기준: `main` / `9c0d6833f10da600348046ca37f6768cca1aab7e`
+검토 기준: 2026-09-23 GitHub `main` 최신 확인 후 신규 목표 정책 갱신. 기존 09-A/B 구현·실검증 이력은 보존한다.
 2026-09-23 갱신 기준: GitHub `main`의 `AGENTS.md`, 구현계획, 최신 `CurrentWork.md`, 활성 09 task, Master, 최신 `GPT-Web-Feedback.md`를 다시 대조했다.
 
-> 목표는 **무료 ChatGPT Web이 작은 작업을 설계하고, Codex Luna Medium이 구현하며, JEV가 증거를 분류·평가하는 저비용 개발 도구**다. Worker가 작업 상태와 재개를 책임져 사람이 매번 메시지를 복사하거나 다음 실행을 누르지 않게 한다. 토큰 절약 → 목표까지의 지속성 → 역할·모델 교체 순으로 투자한다.
+> **개정 목표(2026-09-23): ProjectHub는 네 가지 AI 역할을 설정창에서 독립적으로 구성하는 CLI-to-CLI 중심의 저비용 개발 시스템이다.** 필수: **설계·관제 AI**(예: GPT-6 Sol CLI), **작업 AI**(예: GPT-6 Luna Medium CLI). 선택: **작업 판단 AI**(기존 JEV 연결 또는 향후 AI 판단 어댑터), **고수준 작업 AI**(어려운 구현을 위한 별도 모델). Worker가 상태·권한·예산·증거·복구와 독립 세션을 관리한다. ChatGPT Web/Extension은 기존 호환 경로로 보존하되 신규 기본 관제 경로가 아니다. 토큰 절약 → 목표까지의 지속성 → 교체 가능한 역할·모델 순서로 투자한다.
 >
-> 이 문서는 설계와 실행 지침이다. 이번 변경은 문서만 작성한다. 아래의 ‘제안’은 아직 실행 가능한 설정이나 구현 완료 기능이 아니다. 기존 ACTION/NEXT 공개 계약, Agent/Server/NAS 동작과 Git 승인 정책을 변경하지 않는다.
+> 이 개정은 **목표 정책과 구현 백로그 변경**이지 제품 코드 구현 완료 선언이 아니다. 아래 과거 Web-first 운영 예제·실험 기록은 당시 현행 제품의 설명으로 보존하며, 새로운 목표 구조와 충돌하면 이 개정 목표를 우선한다. 기존 ACTION/NEXT 공개 계약, Agent/Server/NAS 동작과 Git 승인 정책은 변경하지 않는다.
 
 ## 1. AI가 매번 먼저 읽을 짧은 운영 지침
 
 1. 원래 요구와 완료 조건을 고정하고 **번호 작업 하나 + A/B/C 하나**만 구현한다. 새로운 요구는 대기 목록에 둔다.
-2. 기본 구현자는 현재 Worker 기본값인 `gpt-6-luna`, reasoning `medium`이다. 모델 상향·유료 대체·동시 다중 AI는 기본 OFF다.
-3. 관제는 작업 범위·수용 조건·검증 명령을 먼저 정한다. 구현자가 자기 평가 기준을 느슨하게 바꿔 통과시키지 않는다.
+2. 목표 기본값: 필수 **설계·관제 AI** = OpenAI GPT-6 Sol CLI, 필수 **작업 AI** = OpenAI GPT-6 Luna Medium CLI. **작업 판단 AI**와 **고수준 작업 AI**는 기본 OFF다. 모든 역할의 공급사·모델·추론 설정을 설정창에서 독립 관리하며, CLI 실행 전 실제 지원 여부를 확인한다. 이는 목표값이며 현재 구현 완료 상태를 뜻하지 않는다.
+3. 최초 사용자 지시는 설계·관제 AI에 먼저 전달한다(목표 모드). 설계·관제 AI가 작업 범위·AC·검증 명령을 고정하고, 작업 AI는 이를 임의로 완화하지 않는다. 현재 제품의 Codex-first 동작은 후속 10-B에서 교체한다.
 4. Codex는 관련 파일과 필요한 구간만 읽고 수정한다. 전체 저장소, 누적 로그, Master 전문을 매 라운드 재전송하지 않는다.
 5. 같은 작업의 보완은 같은 Codex session을 쓴다. session 재사용이 과거 문맥 비용을 없애 주지는 않는다.
-6. 빌드·테스트·파일 존재·exit code는 실제 도구로 확인한다. JEV는 전달된 증거의 의미를 평가하며 테스트 실행을 대체하지 않는다.
+6. 빌드·테스트·파일·exit code는 로컬 도구로 확인한다. 선택적 작업 판단 AI(JEV 연동 포함)는 실제 전달된 증거의 의미를 평가하며 테스트 실행을 대체하지 않는다. 비활성화한 경우 로컬 검증을 건너뛰지 않는다.
 7. 작은 수정은 로컬 검증으로 끝낼 수 있다. JEV는 의미 판단이 필요한 변경에만 쓴다. 질문은 개수를 억지로 줄이지 말고 **독립적으로 참/거짓 또는 상태를 판정할 수 있을 때까지 최대한 원자화**한 뒤 관련 질문을 가능한 한 한 호출에 묶는다.
 8. FAIL은 구현 보완, ERROR는 연결·계약 문제, 증거 부족은 증거 수집이다. 서로 다른 원인에 같은 재작업을 시키지 않는다.
-9. Web이 일시적으로 불가능하면 상태를 저장하고 기다린다. 사전 승인된 작업 범위·예산 안에서만 이어간다.
+9. 선택된 설계·관제 provider(CLI 또는 기존 Web)가 일시적으로 불가능하면 상태를 저장하고 정책에 따라 기다린다. 승인되지 않은 타 provider·고수준 모델로 임의 전환하지 않는다.
 10. 모든 필수 완료 조건에 최신 증거가 있을 때만 END한다. 미실행은 PASS가 아니다.
 11. 사용자 Git 승인을 기억하되 다른 작업까지 확대하지 않는다. 이번 문서의 commit/push 승인은 미래 자동 push의 포괄 승인이 아니다.
 12. 비밀값·자격증명·민감 URL을 프롬프트, Git, 로그, 증거 묶음에 넣지 않는다.
@@ -78,37 +78,39 @@
 
 모델 선택 UI는 있으나 coordinator/implementer/judge의 공통 provider 계약은 없다. 현재 실행 로직이 `MainWindow.xaml.cs` 약 1,471행에 모여 있다. 먼저 작은 실행 코어로 옮기고 안정화한 뒤 역할 어댑터를 추가한다. 교체 가능성을 이유로 현재 안정화보다 추상화 작업을 앞세우지 않는다.
 
-## 4. 목표 구조와 역할 책임
+## 4. 목표 구조와 역할 책임 — 개정된 네 역할
+
+명칭은 모델명이나 회사명이 아닌 **책임**을 기준으로 고정한다. 각 역할별 공급사·모델·추론 설정은 독립적이다.
+
+| AI 역할 | 필수 여부 | 책임 | 초기 목표 구성 |
+| --- | --- | --- | --- |
+| **1. 설계·관제 AI** | 필수 | 사용자 요구 해석, 설계, 하나의 작업 카드·AC 발행, 결과 검토, 재분해, 최종 완료 제안 | OpenAI GPT-6 Sol CLI |
+| **2. 작업 AI** | 필수 | 지정 범위 코드 구현·수정, 도구 실행, deterministic validator, 원본 증거 생성 | OpenAI GPT-6 Luna CLI / medium |
+| **3. 작업 판단 AI** | 선택 | AC 대비 증거의 의미 판단, 누락·모순 분류, 원자 질문 검증. 소스 직접 변경 금지 | 기본 OFF; 켤 때 기존 JEV 엔진 연결 가능 |
+| **4. 고수준 작업 AI** | 선택 | 설계·관제 AI가 승인된 특정 고난도 구현/분석 작업을 위임하는 별도 작업자 | 기본 OFF; 모델 별도 선택 |
 
 ```text
 사용자 요구
-    ↓
-Worker: Goal / WorkItem / 승인 범위 / 예산 / 증거 / 상태의 원본
-    ↓
-관제 AI: ChatGPT Web — 요구 정리, 작은 작업 카드, 수용 조건
-    ↓
-구현 AI: Codex Luna Medium — 코드 수정, 도구 실행, 결과 제출
-    ↓
-로컬 검증: 명령 exit code, 테스트 결과, 파일/diff 증거
-    ↓ (의미 검토가 필요한 경우만)
-판단 AI: JEV — 공급된 증거를 typed 질문으로 평가
-    ├─ 보완 필요 → Worker → 같은 Codex session
-    ├─ 정보 부족 → Worker → 제한된 증거 수집
-    ├─ 완료 후보 → Worker → 관제의 수용 판정
-    └─ 호출 오류 → Worker → 대기/정책 fallback
+  → ProjectHub Worker (원본 상태·권한·예산·세션 관리)
+  → 설계·관제 AI (전용 읽기 중심 CLI 세션)
+      → 한 작업 카드와 고정 AC
+      → 작업 AI (별도 쓰기 허가 CLI 세션)
+      → 로컬 deterministic validator (실제 실행)
+      → [옵션] 작업 판단 AI (원본 evidence에 대한 JEV/선택한 판단 백엔드)
+      → 설계·관제 AI (PASS/FAIL/증거 부족을 구분해 다음 카드 또는 종료)
+      ↳ [옵션·설정된 권한/예산 충족 시에만] 고수준 작업 AI
+           → 실행 결과와 검증 증거를 관제로 반환
 ```
 
-| 역할 | 책임 | 입력 제한 / 출력 |
-| --- | --- | --- |
-| 사용자 | 최종 목표, 제약, 금액·권한 한도 | 사용자 요구 양식 |
-| 관제 | 순서·범위·AC(수용 조건) 작성, 반복 실패 재분해, END 판단 | 최신 상태와 증거 요약 → 작업 카드 하나 |
-| 구현 | 정해진 파일 범위 수정, 검증 명령 실행 | 작업 카드 + 관련 코드 → 변경/검증/미완료 결과 |
-| JEV | 요구와 증거의 부합 여부, 범위 이탈 등 평가 | 작은 state + 질문 묶음 → typed answers |
-| Worker | 문법·상태·예산·수치 비교·증거 수집·실행 중계 | 의미적 수정안이나 임의 작업 생성 금지 |
-| Extension | 지정 conversation의 송수신 | 작업 의미 판단·Git 실행 금지 |
-| Agent/Server | 기존 프로젝트 관찰·공유 상태 | 로컬 AI 개발 루프의 필수 의존성으로 만들지 않음 |
+**Worker는 AI가 아니다.** 실행 순서, 작업별 배타적 쓰기 권한, 결과 중복 차단, 모델/세션 snapshot, 예산, 체크포인트, 복구와 완료 조건을 강제한다. 설계·관제 AI가 직접 임의 shell/Git push/권한 상승을 행사하는 구조가 아니다.
 
-JEV는 범용 구현 AI나 테스트 실행기가 아니다. 빌드 성공은 프로세스로 검사하고, JEV에는 ‘이 증거가 AC-2의 동작을 실제로 뒷받침하는가’처럼 좁게 묻는다. 관제 역시 파일 접근·첨부 수신을 확인하기 전에는 코드를 읽었다고 가정하지 않는다.
+**독립 세션:** 설계·관제 AI, 작업 AI, 선택된 고수준 작업 AI는 각자 별도 CLI 세션을 가진다. 같은 모델을 두 역할에 할당해도 세션은 공유하지 않는다. 한 역할 내부의 같은 작업 보완은 가능하면 같은 세션을 resume하고, 역할 사이에는 요약된 작업 카드와 evidence packet만 전달한다.
+
+**쓰기 경계:** 설계·관제 AI는 기본 읽기 전용, 작업 AI만 승인된 범위에서 쓰기 가능. 고수준 작업 AI는 단순 추가 권한이 아니며, 승인된 위임 범위에서만 쓰기 가능하다. 같은 파일/작업 폴더에 두 작업자가 동시에 쓰지 않도록 Worker의 하나의 write lease를 적용한다. 외부 시스템 변경 및 Git commit/push는 기존 명시적 승인 정책을 유지한다.
+
+**작업 판단 AI OFF:** deterministic validator는 필수 수용 조건에 따라 그대로 시행한다. 의미 판단이 필요한 상태인데 판단 AI를 끈 경우 설계·관제 AI가 evidence 부족 또는 사용자 확인을 구분하며, '판단 AI가 없으니 PASS'로 해석하지 않는다. ON일 때도 JEV `ALL_PASS`가 실제 브라우저/사용자 UX 검증까지 완료시킨 것은 아니다.
+
+**기존 Web 경로:** ChatGPT Web·브라우저 Extension의 공개 wire `[ACTION]`, `[NEXT : WEB|JEV]`와 과거 구현을 제거하지 않는다. 신규 CLI 모드는 별도의 내부 구조화 메시지 계약을 사용하고 Web 태그 의미를 재해석하지 않는다. 현재 제품 구현상 Web/Codex-first 동작은 후속 작업에서 이행한다.
 
 ## 5. 토큰 절약 정책
 
@@ -143,10 +145,10 @@ JEV는 범용 구현 AI나 테스트 실행기가 아니다. 빌드 성공은 �
 3. 로컬 검증 실패면 실패 로그만 Codex에 전달한다. 명백한 컴파일 오류를 JEV에 묻지 않는다.
 4. 의미 판단이 필요한 경우에만 JEV 한 번에 여러 질문을 보낸다.
 5. 동일 증거+동일 rubric+동일 모델 revision의 재판정은 기존 결과를 사용한다. 파일 hash/AC/모델이 바뀌면 무효화한다. `jev-latest`처럼 변경 가능한 alias만으로 영구 캐시하지 않는다.
-6. Web은 시작·작업 경계·복잡한 실패·최종 완료에 관여한다. 승인된 카드 내부의 사소한 보완마다 재계획하지 않는다.
+6. 설계·관제 AI는 시작·작업 경계·복잡한 실패·최종 완료에 관여한다. 승인된 카드 내부의 사소한 보완마다 상위 관제 호출을 반복하지 않는다. 기존 Web 모드에서도 같은 규칙을 적용한다.
 7. 같은 작업은 resume한다. 문맥이 커지거나 독립된 새 작업이면 `현재 상태 + 결정 사항 + 다음 작업 + 증거 위치`로 짧게 인계해 새 session을 만든다.
 
-상위 모델은 기본 사용하지 않는다. 같은 실패가 반복되면 먼저 Web이 지시를 더 좁힌다. 그래도 해결되지 않고 사용자가 모델·추가 비용 상한을 승인한 경우에만 상향한다. 기본 설정 제안은 `allow_paid_fallback=false`, `allow_model_upgrade=false`다.
+설계·관제 AI가 처음부터 별도 GPT-6 Sol을 사용하는 것은 **기본 관제 설정**이지 작업 AI의 무조건적 모델 상향이 아니다. 같은 구현 실패가 반복되면 관제가 먼저 작업 카드를 좁힌다. 선택적 **고수준 작업 AI** 호출은 활성화·명시된 위임 규칙·예산 승인·독점 write lease가 모두 충족될 때만 가능하다. 기본 정책: `allow_paid_fallback=false`, `allow_automatic_escalation=false`.
 
 ## 6. 연속 실행과 복구 설계
 
@@ -154,7 +156,7 @@ JEV는 범용 구현 AI나 테스트 실행기가 아니다. 빌드 성공은 �
 
 정상 범위에서는 사람이 다음 버튼을 누르지 않아도 계속 진행한다. 외부 서비스 제한·로그인 만료·네트워크 단절은 없다고 가정하지 않는다. **대기 후 같은 작업으로 돌아오며 중복 수정·중복 전송이 없어야 한다.** 승인이 필요한 외부 변경이나 예산 소진은 이유를 보존해 대기한다.
 
-ChatGPT Web은 현재 사용자의 무료 관제 채널이라는 전제로 유지한다. 무제한 가용성이나 자동화 안정성을 보장하지 않는다. 로그인·사용 제한은 우회하지 않고, 유료 API로 몰래 전환하지 않는다.
+신규 CLI-to-CLI 목표 모드에서는 지정된 관제 CLI 가용성을 확인하며, 기존 ChatGPT Web은 호환/선택 모드로 유지한다. 어떤 provider든 무제한 가용성·자동 전환을 전제하지 않고 로그인·사용 제한을 우회하거나 사용자가 허가하지 않은 유료 경로로 전환하지 않는다.
 
 ### 6.2 상태 머신 제안 — 기존 wire protocol은 유지
 
@@ -243,7 +245,10 @@ Git/배포 권한: 이번에는 없음 / 구체적으로 승인한 범위
 
 당장 모든 칸을 채울 필요는 없다. 관제가 누락을 정리하되 로컬 코드에서 확인할 수 있는 사항을 사용자에게 반복해서 묻지 않는다.
 
-### 7.2 현재 Worker에서 관제 우선에 가깝게 시작하기
+### 7.2 기존 Web 관제 모드의 임시 실행 양식(레거시)
+
+**아래 BEGIN 우회 양식은 현재 제품/과거 Web 모드의 호환 예제이지, 새로운 기본 CLI-to-CLI 설계의 시작 절차가 아니다.** 신규 모드는 10-B의 진짜 Coordinator-first 라우팅을 구현한다.
+
 
 **현재 BEGIN도 Codex-first다.** 다음은 구현을 바로 시작하지 않도록 첫 CLI를 짧은 인계 전용으로 쓰는 임시 운영법이다. 첫 호출 비용은 남는다. Judge ON에서 사용한다.
 
@@ -440,34 +445,61 @@ JudgeEnvelope
 
 v2 완료 후에만 저장된 구현 결과로 짧은 Web 보고를 만들고 PASS 후 Codex 보고 전용 호출을 제거한다. 이 변경은 최신 피드백의 v1 규칙을 바꾸는 별도 작업이므로 계약 문서와 회귀 검증을 함께 갱신해야 한다.
 
-## 9. 역할·모델 교체 설계
+## 9. 역할별 설정과 Provider 교체 설계 — 개정안
 
-당장은 세 역할을 유지하며 바꿔 끼울 경계만 만든다.
+**UI 요구:** 기존 메인 화면 하단의 단일 모델·추론 선택은 신규 목표에서 설정창 `AI 역할 설정`으로 이동한다. 각 역할 카드에 필수/선택 여부, ON/OFF(선택 역할만), 공급사, 실제 사용 가능한 모델, 해당 모델이 지원하는 추론 수준을 별도 표시한다. 설정 변경은 실행 중인 역할 세션의 모델을 바꾸지 않으며 다음 **새 Job 또는 안전한 새 단계**에만 적용한다. 새 모델로 바꿀 경우 세션 호환 여부를 확인하고 필요 시 짧은 인계 packet으로 신규 세션을 생성한다.
 
-| 경계 제안 | 최소 기능 |
+**모델 목록:** 초기 AI 공급사/모델 카탈로그는 **OpenAI(ChatGPT 계열)**만 표시한다. UI 목록의 모델명은 제품의 지원 보장이 아니라 후보이며 실제 Codex CLI 권한·모델 ID·reasoning 지원을 실행 전 점검한다. 향후 타사 추가를 위해 `provider_id`, `model_id`, `capabilities`를 분리하지만 타사 이름/미지원 옵션을 현재 UI에 노출하지 않는다.
+
+**작업 판단 AI 예외:** JEV는 ChatGPT 모델이 아니라 **기존 전문 판단 엔진 연결**이다. 'AI 공급사' 목록에 다른 AI 업체를 임의로 추가하는 대신 판단 카드의 `판단 방식: JEV 연결 / 향후 OpenAI 판단 모델`로 구분한다. JEV 모드에서는 JEV 모델·timeout·인증을 해당 엔진 설정으로 표시하며 OpenAI 모델·reasoning 선택값이 JEV를 구동한다고 오해시키지 않는다. OpenAI 기반 판단 모델은 실제 어댑터 구현·검증 후 활성화한다.
+
+| 내부 경계 | 최소 책임 |
 | --- | --- |
-| `ICoordinatorAdapter` | 작업 계획/리뷰 요청, conversation binding, 사용 가능 상태 |
-| `IImplementerAdapter` | 실행, 명시적 session resume, cancel, progress events, usage |
-| `IJudgeAdapter` | typed 평가, timeout, model revision, usage |
-| `JobRunner` | phase 전이·권한·예산·재시도·복구. WPF UI와 분리 |
-| `EvidenceCollector` | 허용된 파일·diff·검증 결과의 제한 수집과 비밀값 차단 |
+| `ICoordinatorAdapter` | 설계·리뷰, 전용 CLI 세션, read-only, 카드·AC 반환, cancel/progress/usage |
+| `IImplementerAdapter` | Luna 등 선택 모델 실행, 독립 session resume, 도구·테스트, 실제 증거 반환 |
+| `IJudgeAdapter` | 선택적 JEV/향후 OpenAI 판단, typed 평가, timeout, model revision·usage |
+| `IAdvancedImplementerAdapter` | 선택적 고수준 작업 위임, 독립 세션, 제한된 쓰기 lease, 결과 반환 |
+| `JobRunner` | coordinator-first phase, AC/권한/예산/상태 복구와 중복 방지. WPF와 분리 |
+| `EvidenceCollector` | 질문-증거 연결, source/diff/test/log digest, 비밀값 차단, freshness |
 
-설정 예시는 미래 내부 설정이며 현재 UI가 읽지 않는다.
+다음은 **미구현 목표 설정 형식**이다. 실제 모델·계정 지원은 실행 시 확인한다.
 
 ```json
 {
+  "schema_version": 2,
+  "execution_mode": "cli_to_cli",
   "roles": {
-    "coordinator": {"provider": "chatgpt-web", "model": "user-selected"},
-    "implementer": {"provider": "codex-cli", "model": "gpt-6-luna", "reasoning": "medium"},
-    "judge": {"provider": "typesafe", "model": "jev-latest"}
+    "coordinator": {
+      "required": true, "enabled": true,
+      "provider": "openai", "transport": "codex-cli",
+      "model": "gpt-6-sol", "reasoning": "high", "permissions": "read-only"
+    },
+    "implementer": {
+      "required": true, "enabled": true,
+      "provider": "openai", "transport": "codex-cli",
+      "model": "gpt-6-luna", "reasoning": "medium", "permissions": "approved-workspace-write"
+    },
+    "judge": {
+      "required": false, "enabled": false,
+      "backend": "jev", "engine_model": "jev-latest"
+    },
+    "advanced_implementer": {
+      "required": false, "enabled": false,
+      "provider": "openai", "transport": "codex-cli",
+      "model": "gpt-6-sol", "reasoning": "high", "permissions": "delegated-write-only"
+    }
   },
-  "policy": {"allow_model_upgrade": false, "allow_paid_fallback": false, "max_concurrent_implementers": 1}
+  "policy": {
+    "allow_paid_fallback": false,
+    "allow_automatic_escalation": false,
+    "max_concurrent_workspace_writers": 1
+  }
 }
 ```
 
-provider별 capabilities에는 resume, tools, structured output, progress, usage, vision을 명시한다. 이름이 같다고 동일 기능을 가정하지 않는다. session은 provider 간 이식하지 않고 작업 인계 packet으로 전환한다. 한 단계 실행 중 모델을 바꾸지 않으며 실행 전 실제 사용 가능한 모델 ID와 reasoning을 확인한다.
+역할별 세션 ID, 실행 단계의 모델·추론·권한 snapshot 및 usage는 Job과 함께 저장한다. provider capability에는 `resume/tools/structured_output/progress/usage` 등을 포함하며 지원하지 않는 옵션은 disable·명시적 오류 처리한다.
 
-Codex 공식 문서는 Luna ID와 CLI 모델 선택을 안내하지만 계정별 제공 여부는 다를 수 있다. 이 프로젝트의 Luna/Medium 기본값은 사용자 선택을 유지하는 정책이다. [공식 모델 안내](https://learn.chatgpt.com/docs/models)
+**기존 Web 호환:** 현재 UI·브리지·ACTION/NEXT 계약은 09-B 실화면 검증을 먼저 끝내고 보존한다. 새 설정창과 CLI-to-CLI 어댑터는 이후 해당 작업에서 구현한다. 현재 제품에 새 JSON schema나 네 역할 설정창이 이미 있다고 기록하지 않는다.
 
 ## 10. 문서·증거 관리
 
@@ -496,11 +528,11 @@ Endpoint 보안도 실제 코드 개선 항목이다. 현재 custom HTTPS endpoi
 | **09-B** | JEV v1 계약 정합성과 라우팅 보수 | 한/두 줄 NOUL, SCORE 경계, CHOICE, missing/type 오류 분리, REPORT 검사, PASS 보고 재진입 차단, fallback 사유 전달. Worker 전용 fixture 테스트와 Explorer ON/OFF 분기 |
 | **09-C** | 실제 증거 전달과 AC 고정 | 수정 내용/검증 결과가 JEV에 전달됨, 누락 증거는 완료 금지, 변경된 파일의 과거 PASS 무효화. 기존 v1 wire 형식 유지 |
 | **10-A 후보** | 토큰 계측·짧은 prompt | 중복 usage 제거, unknown 표시, JEV 사용량·model 기록, 동일 과제 전후 비교. 정확성 유지 시에만 짧은 footer 적용 |
-| **10-B 후보** | 관제에서 시작 | 최초 요구가 Web에 도착하기 전 CLI 구현 호출 0회, 기존 Codex-first 모드 회귀 없음 |
-| **10-C 후보** | JobRunner 분리와 재시작 복구 | 실행·Web 전송·결과 저장 직전/직후 종료 후 동일 단계 복구, 중복 side effect 0 |
+| **10-B 후보(개정)** | CLI-to-CLI 관제 우선 시작과 역할별 설정 UI | 최초 사용자 요구가 설계·관제 Sol CLI에 전달되고 작업 AI Luna CLI 호출이 카드 확정 전 0회. 필수 두 역할은 독립 설정/세션을 갖고 선택 두 역할은 OFF여도 완료 가능. 기존 Web 모드 회귀 없음. 정식 단계 세분화는 09-C·10-A 이후 하나씩 확정 |
+| **10-C 후보** | JobRunner 분리와 재시작 복구 | coordinator/implementer 세션·단계·모델 snapshot을 저장해 각 CLI 실행·결과 저장 전후 중단 시 안전 복구; Web 모드 기존 전송 회귀·중복 side effect 0 |
 | **11-A 후보** | 대기·예산·반복 진척 | 429/timeout/인증/예산 대기와 재개, 동일 실패 재분해, 승인 없는 사용량 증가 없음 |
 | **11-B 후보** | v2 evidence/report 전달 | 계약 버전 호환 후 PASS 보고 전용 CLI 호출 제거, 절약한 호출 수와 정상 완료 증거 |
-| **11-C 후보** | 역할 어댑터·선택 모델 | 기본 세 역할 회귀 후 가짜 provider로 교체 테스트. 실제 추가 provider는 별도 승인·비용 범위 |
+| **11-C 후보(개정)** | 선택적 판단/고수준 작업 AI와 확장 Provider | 필수 두 역할 회귀 후 Judge ON/OFF, 고수준 AI ON/OFF, 역할별 모델/추론·독립 세션·단일 쓰기 lease와 mock provider 교체 테스트. 실제 타사 Provider 추가는 별도 승인 |
 
 각 B/C도 너무 크면 활성화 전에 하위 검증 사례를 정리하되 동시에 다른 번호 작업을 열지 않는다. 디자인 polish는 오류 원인을 이해하고 재개하는 UI를 우선한다. 상태 카드에 현재 단계, 대기 이유, 다음 재개 조건, 이번 작업 사용량을 보여주고 기술적 상세는 펼침 영역에 둔다.
 
@@ -512,7 +544,7 @@ Master의 “번호 작업 하나 + A/B/C 하나” 원칙에 따라 다음 순�
 2. **그 다음 하나만 09-C로 활성화한다.** AC별로 코드/diff/deterministic test/runtime log evidence를 묶고 질문마다 evidence reference를 연결한다. 질문은 원자성이 확보될 때까지 분해하며 `CLAIM + EVIDENCE + SCOPE + COUNTEREXAMPLE`을 기본형으로 한다.
 3. 09-C에서는 `SUPPORTED / PARTIAL / INSUFFICIENT / CONTRADICTORY` 같은 증거 상태를 코드 FAIL과 분리하고, 파일·AC·evidence hash가 바뀌면 과거 PASS를 무효화한다.
 4. provider의 질문 batch 실한도는 문서 추측으로 정하지 않는다. API 호출 예산이 허용되는 별도 smoke에서 32→64→128→256 질문을 단계적으로 보내 HTTP/응답 완전성/usage/latency를 기록한다. 실패한 크기보다 작은 마지막 성공 크기를 운영값 후보로 삼되, 질문 원자성은 유지하고 큰 묶음은 여러 request로 나눈다.
-5. 09-C가 끝나기 전에는 10-A 이후 후보를 동시에 활성화하지 않는다.
+5. 09-C가 끝나기 전에는 10-A 이후 후보를 동시에 활성화하지 않는다. **이번 네 역할/CLI-to-CLI 개정은 목표 정책 문서 변경이며, 현재 활성 09-B 실화면 마감과 09-C의 완료 판정을 앞당기지 않는다.**
 
 ### 권장 검증 매트릭스
 
