@@ -1,8 +1,8 @@
 # Master-Polish — 저비용 AI Role Dev Tool 설계
 
 작성·기준일: 2026-09-23 (KST)
-문서 작업: **09-A 완료** · 제품 구현 후속: **09-B 실화면 마감 → 09-C**
-검토 기준: 2026-09-23 GitHub `main` 최신 확인 후 신규 목표 정책 갱신. 기존 09-A/B 구현·실검증 이력은 보존한다.
+문서 작업: **09-A 완료** · 제품 구현 후속: **09-C → 10-A/B/C 완료 → 11-A 후보**
+검토 기준: 2026-09-23 동기화된 GitHub `main`과 이후 로컬 완료 작업을 대조. 09-B 실화면 잔여는 사용자 결정으로 해결 처리하고 정기 관리에서 제외한다.
 2026-09-23 갱신 기준: GitHub `main`의 `AGENTS.md`, 구현계획, 최신 `CurrentWork.md`, 활성 09 task, Master, 최신 `GPT-Web-Feedback.md`를 다시 대조했다.
 
 > **개정 목표(2026-09-23): ProjectHub는 네 가지 AI 역할을 설정창에서 독립적으로 구성하는 CLI-to-CLI 중심의 저비용 개발 시스템이다.** 필수: **설계·관제 AI**(예: GPT-6 Sol CLI), **작업 AI**(예: GPT-6 Luna Medium CLI). 선택: **작업 판단 AI**(기존 JEV 연결 또는 향후 AI 판단 어댑터), **고수준 작업 AI**(어려운 구현을 위한 별도 모델). Worker가 상태·권한·예산·증거·복구와 독립 세션을 관리한다. ChatGPT Web/Extension은 기존 호환 경로로 보존하되 신규 기본 관제 경로가 아니다. 토큰 절약 → 목표까지의 지속성 → 교체 가능한 역할·모델 순서로 투자한다.
@@ -13,13 +13,13 @@
 
 1. 원래 요구와 완료 조건을 고정하고 **번호 작업 하나 + A/B/C 하나**만 구현한다. 새로운 요구는 대기 목록에 둔다.
 2. 목표 기본값: 필수 **설계·관제 AI** = OpenAI GPT-6 Sol CLI, 필수 **작업 AI** = OpenAI GPT-6 Luna Medium CLI. **작업 판단 AI**와 **고수준 작업 AI**는 기본 OFF다. 모든 역할의 공급사·모델·추론 설정을 설정창에서 독립 관리하며, CLI 실행 전 실제 지원 여부를 확인한다. 이는 목표값이며 현재 구현 완료 상태를 뜻하지 않는다.
-3. 최초 사용자 지시는 설계·관제 AI에 먼저 전달한다(목표 모드). 설계·관제 AI가 작업 범위·AC·검증 명령을 고정하고, 작업 AI는 이를 임의로 완화하지 않는다. 현재 제품의 Codex-first 동작은 후속 10-B에서 교체한다.
+3. 최초 사용자 지시는 설계·관제 AI에 먼저 전달한다(목표 모드). 설계·관제 AI가 작업 범위·AC·검증 명령을 고정하고, 작업 AI는 이를 임의로 완화하지 않는다. 현재 제품의 Codex-first 동작은 후속 11-A에서 교체한다.
 4. Codex는 관련 파일과 필요한 구간만 읽고 수정한다. 전체 저장소, 누적 로그, Master 전문을 매 라운드 재전송하지 않는다.
 5. 같은 작업의 보완은 같은 Codex session을 쓴다. session 재사용이 과거 문맥 비용을 없애 주지는 않는다.
 6. 빌드·테스트·파일·exit code는 로컬 도구로 확인한다. 선택적 작업 판단 AI(JEV 연동 포함)는 실제 전달된 증거의 의미를 평가하며 테스트 실행을 대체하지 않는다. 비활성화한 경우 로컬 검증을 건너뛰지 않는다.
 7. 작은 수정은 로컬 검증으로 끝낼 수 있다. JEV는 의미 판단이 필요한 변경에만 쓴다. 질문은 개수를 억지로 줄이지 말고 **독립적으로 참/거짓 또는 상태를 판정할 수 있을 때까지 최대한 원자화**한 뒤 관련 질문을 가능한 한 한 호출에 묶는다.
-8. FAIL은 구현 보완, ERROR는 연결·계약 문제, 증거 부족은 증거 수집이다. 서로 다른 원인에 같은 재작업을 시키지 않는다.
-9. 선택된 설계·관제 provider(CLI 또는 기존 Web)가 일시적으로 불가능하면 상태를 저장하고 정책에 따라 기다린다. 승인되지 않은 타 provider·고수준 모델로 임의 전환하지 않는다.
+8. JEV threshold 미달은 우선 `PARTIAL`로 분류한다. 실제 모순이 확인될 때만 구현을 보완하고, 증거 부족은 증거 수집, confidence만 낮으면 코드 변경 없이 검토한다. provider/contract 오류는 `ERROR`다.
+9. 선택된 설계·관제 provider(CLI 또는 기존 Web)가 일시적으로 불가능하면 상태를 저장하고 정책에 따라 기다린다. 승인되지 않은 타 provider·고수준 모델로 임의 전환하지 않는다. 사전 승인된 작업 범위·예산 안에서만 이어간다.
 10. 모든 필수 완료 조건에 최신 증거가 있을 때만 END한다. 미실행은 PASS가 아니다.
 11. 사용자 Git 승인을 기억하되 다른 작업까지 확대하지 않는다. 이번 문서의 commit/push 승인은 미래 자동 push의 포괄 승인이 아니다.
 12. 비밀값·자격증명·민감 URL을 프롬프트, Git, 로그, 증거 묶음에 넣지 않는다.
@@ -39,7 +39,7 @@
 | Web 반복 | ACTION CONTINUE/PAUSE/END, 후속 지시를 같은 Codex session으로 전달. 30분 무활동 종료 | `ParseWebAction`, `RunWebResponseThroughCodexAsync`, `CheckJobInactivity` |
 | 브리지 | conversation binding, claim/lease, 결과 저장, 이미 완료된 결과의 중복 제출 처리, JSON 파일 저장 | `BridgeServer.cs` |
 | 브라우저 | composer 입력·전송·응답 수집, 재전송 경계, SPA conversation generation 확인 | `extension/gptweb-hub/content.js` |
-| JEV | `jev-latest` HTTP adapter, 환경변수 키, NOUL/SCORE/CHOICE, FAIL 보완·PASS 후 Codex 보고·Web fallback | `JevJudgeRunner.cs`, `JevContract.cs`, `RouteCodexResultAsync` |
+| JEV | `jev-latest` HTTP adapter, 환경변수 키, NOUL/SCORE/CHOICE, PARTIAL triage·PASS 후 Codex 보고·Web review fallback | `JevJudgeRunner.cs`, `JevContract.cs`, `RouteCodexResultAsync` |
 | 비용 표시 | Codex usage 누적은 존재. JEV usage/실제 응답 model은 저장하지 않음 | `ExtractUsage`, `UpdateUsage`, `JudgeResult` |
 | 영속화 | Web bridge 상태와 Codex archive 존재. 활성 목표·session·phase·예산·JEV counter의 통합 Job 복구는 확인되지 않음 | `BridgeServer.SaveState`, MainWindow의 `_active*` 필드 |
 | 기존 테스트 | Core 빈 테스트 1개, Agent 3개, Server 상태 API 1개. Worker/JEV 전용 테스트 프로젝트는 없음 | `tests/` |
@@ -54,8 +54,8 @@
 ### P0 — 판단에 필요한 증거와 계약 일치
 
 - **JEV의 검증 대상이 비어 있을 수 있다.** `JudgeRequest`에는 Files/ReviewSource/ReviewCommitSha가 있지만 실제 HTTP state는 task, codex_result, round, working_directory만 보낸다. footer대로 NEXT JEV 결과에 질문만 담으면 JEV는 코드·diff·테스트 결과를 받지 못한다. 로컬 경로 문자열만으로 원격 JEV가 파일을 읽을 수 없다. ‘현재 구현이 맞는가’에 대한 PASS를 완성 증거로 쓰면 안 된다.
-- **문서 예제와 parser가 다르다.** footer의 `NOUL | 질문 | PASS: ...` 한 줄 예제를 현재 parser는 정상적인 단일 항목으로 처리하지 못한다. PASS는 다음 줄에서 찾는다. 질문 줄에 PASS가 들어가면 뒤 질문의 PASS를 잘못 연결할 가능성도 점검해야 한다. 당장은 이 문서의 두 줄 형식을 쓴다. 원 계약의 한 줄 형식도 지원하도록 후속 수정한다.
-- **ERROR와 FAIL이 뒤섞인다.** question ID 누락/type mismatch/NOUL 잘못된 값/선택지 밖 응답이 일부 `failures` 목록으로 들어가 `JudgeDecision.Fail`이 된다. SCORE는 유효 범위 검사 없이 비교하므로 음수나 범위 초과값이 조건에 따라 PASS할 수 있다. 최신 피드백의 ‘invalid → ERROR’ 요구와 다르다.
+- **문서 예제와 parser 호환성을 회귀 검사한다.** 현재 parser는 inline PASS와 다음 줄 PASS를 모두 파싱한다. 새 권장 양식은 PASS를 별도 줄에 두고 optional EVIDENCE/SCOPE/COUNTEREXAMPLE continuation을 JEV instructions에 보존한다. metadata 참조만으로 Worker가 파일 내용을 JEV에 첨부하는 것은 아니며, 실제 evidence bundle 전달은 09-C 범위다.
+- **JEV threshold 미달과 구현 결함은 다르다.** 유효 응답의 미달은 PARTIAL로 Codex triage에 보내고, question ID 누락/type mismatch/잘못된 값은 ERROR로 분리한다. 실제 코드 결함은 결정적 모순을 확인한 뒤에만 수정한다.
 - **형식 검증이 부족하다.** NEXT WEB의 REPORT 필수, SCORE 연속 번호·threshold 범위, CHOICE 허용값의 정의 포함 여부 등을 강제할 필요가 있다. ACTION/NEXT의 첫 유효행 원칙은 보존한다. 본문의 코드·인용에 태그가 등장하는 것과 두 제어 명령을 제출하는 것은 구분한다.
 - **fallback 사유가 관제에 빠질 수 있다.** JEV 오류는 MESSAGE에 기록하지만 Web prompt는 원 Codex 결과 중심이다. `JEV_ERROR`, 실패한 항목, 시도 횟수를 짧은 기계 필드로 함께 보내야 Web이 같은 요청을 반복하지 않는다.
 
@@ -64,7 +64,7 @@
 - JEV ON이면 매 CLI 호출에 긴 footer 전문을 붙인다. 최초 계약과 짧은 후속 상기문으로 나눌 여지가 크다.
 - JEV PASS 뒤 보고서 작성만을 위한 Codex 호출이 **최소 한 번 더** 필요하다. 현재 v1 계약을 지키기 위한 동작이므로 지금 삭제하지 않는다. 나중에 구현 결과와 검증 요청을 분리 저장하는 v2 계약이 검증되면 템플릿 보고로 대체한다.
 - PASS 직후 `_judgeRound=0`으로 만들고 재귀 라우팅한다. 보고서 요청에 Codex가 다시 NEXT JEV를 출력하면 PASS→보고 요청→JEV가 반복될 수 있다. 보고 전용 phase에서 WEB+REPORT만 허용하고 다시 JEV를 호출하지 않아야 한다.
-- FAIL 뒤 Codex는 NEXT WEB도 선택할 수 있다. 필수 검증 실패가 남아 있을 때 Web으로 보낸다고 실패가 해소된 것으로 취급해서는 안 된다.
+- PARTIAL 뒤 Codex는 evidence 보완이 불가능하거나 사용자 확인이 필요하면 NEXT WEB을 선택할 수 있다. PARTIAL을 PASS나 구현 결함으로 오인하지 말고 미해결 상태를 보고한다.
 - usage는 여러 위치의 usage/token_usage를 모두 더한다. provider가 누적 snapshot 또는 별칭을 함께 주면 중복 계상될 수 있다. reasoning이 output에 포함되는지 확인하지 않고 더하는 total fallback도 점검 대상이다. 실제 JSONL fixture로 재현 후 정규화한다.
 
 ### P1 — 계속 실행하는 것과 복구하는 것은 다름
@@ -166,7 +166,7 @@ NEW → PLAN_PENDING → IMPLEMENTING → VERIFYING
                                    ├─ 의미 검증 필요 → JUDGING
                                    └─ 검증 충분 → REVIEW_PENDING
 JUDGING → PASS → REPORT_PENDING → REVIEW_PENDING
-        → FAIL → REWORK
+        → PARTIAL → TRIAGE
         → INSUFFICIENT_EVIDENCE → COLLECT_EVIDENCE
         → ERROR → WAITING_PROVIDER / REVIEW_PENDING (정책에 따라)
 REVIEW_PENDING → 다음 승인된 카드 / COMPLETED
@@ -216,7 +216,8 @@ REVIEW_PENDING → 다음 승인된 카드 / COMPLETED
 | CLI 실행 중 Worker 종료 | 프로세스/session·실제 diff·완료 기록을 먼저 대조. 증거 없이 재실행하지 않음 |
 | 429 / 일시 5xx / 연결 실패 | Retry-After 우선, 없으면 예: 5초→15초→60초. 호출 예산 안에서 제한 재시도 후 WAITING_PROVIDER |
 | 401 / 키 없음 | 자동 반복 호출 중단, 자격증명 필요 상태. 준비 후 동일 단계 재개 |
-| JEV의 유효한 FAIL | 현재 Web 작업 라운드 기준 총 3회 검증까지. 첫 검증 포함이므로 추가 보완 기회는 최대 2회 |
+| JEV의 유효한 PARTIAL | 현재 Web 작업 라운드 기준 총 3회 검증까지. threshold 미달만으로 구현 결함을 단정하지 않고, 구체 모순·증거 부족·confidence 미달을 분리한다. 세 번째에도 PASS가 아니면 사용자/관제 검토로 넘긴다. |
+| evidence 변경 후 JEV 재검증 | 변경된 evidence를 참조하는 원자 질문만 다시 판정한다. 영향받지 않은 질문의 PASS는 유지한다. |
 | JEV malformed 응답 | ERROR. 구현 실패로 취급하지 않고 원본 보존 + 짧은 오류를 Web에 전달 |
 | 같은 실패 지문 2회, 증거 변화 없음 | 기본 튜닝값: Web에 작은 재분해 요청 1회. 다시 실패하면 BLOCKED 상태와 재개 입력 보존 |
 | 예산 소진 | WAITING_BUDGET, 승인 없는 모델 상향·추가 사용 금지 |
@@ -307,7 +308,7 @@ JEV는 질문과 제공된 상태를 평가한다. `0.90`은 질문에 대한 ye
 
 ### 8.2 현재 parser와 호환되는 복사 양식
 
-**PASS를 질문 다음 줄에 둔다.** 아래 질문은 형식 예이며, 실제 diff/테스트 증거를 전달하는 기능이 마련되기 전에는 결과를 최종 구현 검증으로 사용하지 않는다. 코드블록 테두리를 제거한 본문만 Codex의 최종 응답으로 사용한다.
+새 질문은 PASS를 별도 줄에 두는 다중 행 형식을 우선한다. 과거 inline PASS 입력은 계속 허용한다. 아래 질문은 형식 예이며, Worker가 evidence bundle을 전달하기 전에는 경로/참조만으로 JEV가 로컬 파일을 읽는다고 간주하지 않는다. 코드블록 테두리를 제거한 본문만 Codex의 최종 응답으로 사용한다.
 
 <!-- FORM:JEV_CURRENT_START -->
 ```text
@@ -315,8 +316,11 @@ JEV는 질문과 제공된 상태를 평가한다. `0.90`은 질문에 대한 ye
 
 [VALIDATION REQUEST]
 
-- NOUL | 제공된 증거가 AC-1의 기대 동작을 직접 뒷받침하는가?
-  PASS: YES >= 0.90
+- NOUL | [HIGH] ResetRound()은 생명 손실 뒤 현재 Brick 배치를 유지하는가?
+  EVIDENCE: GameWorld.cs / ResetRound() — LoadStage()를 호출하지 않음.
+  SCOPE: 생명 손실 후 같은 Stage를 재시작하는 경로.
+  COUNTEREXAMPLE: Brick 목록을 비우거나 다시 만들면 NO.
+  PASS: YES >= 0.80
 
 - SCORE | 제공된 변경 증거에서 허용 범위를 벗어난 정도는 어느 수준인가?
   1 = 모든 변경이 허용 범위 안에 있다
@@ -333,7 +337,7 @@ JEV는 질문과 제공된 상태를 평가한다. `0.90`은 질문에 대한 ye
 ```
 <!-- FORM:JEV_CURRENT_END -->
 
-현재 parser는 등장 순서로 C1/C2/C3를 부여한다. SCORE의 위 표기는 1-based이며 API criteria는 0-based다. 예시의 `<= 2.0`은 API 값 `<= 1.0`과 비교한다. `INSUFFICIENT`는 현재 코드에서는 허용값 밖이므로 FAIL 경로가 된다. 이를 증거 수집으로 따로 보내는 것은 **09-C 이후 설계**다.
+현재 parser는 등장 순서로 C1/C2/C3를 부여하고, 질문 다음의 continuation line을 JEV `instructions`에 보존한다. NOUL의 `EVIDENCE`, `SCOPE`, `COUNTEREXAMPLE`는 현재 질의 지침 텍스트로 전달될 뿐 Worker가 참조된 파일이나 로그를 읽어 API state에 첨부하지는 않는다. 실제 증거 수집과 질문별 evidence 연결은 **09-C**에서 다룬다. SCORE의 위 표기는 1-based이며 API criteria는 0-based다. 예시의 `<= 2.0`은 API 값 `<= 1.0`과 비교한다. `INSUFFICIENT`를 증거 수집 단계로 따로 보내는 것도 09-C 이후 설계다.
 
 검증 질문의 **개수 자체를 목표로 제한하지 않는다. 질문 원자성이 우선**이다. 하나의 질문에 ‘보안·성능·완성도 모두 충분한가’처럼 독립적으로 실패할 수 있는 명제를 합치지 않는다. 각 명제가 별도로 반증될 수 있다면 C1/C2/C3처럼 끝까지 분리하고, 관련 원자 질문을 동일 JEV 요청에 batch한다.
 
@@ -404,7 +408,7 @@ BrickBreaker 실험에서는 동일한 MultiBall 질문이 근거 위치 없이 
 }
 ```
 
-전송은 `POST https://api.typesafe.ai/v1/systemone`, Bearer 인증은 `TYPESAFE_API_KEY` 환경변수에서만 읽는다. payload와 인증 헤더를 섞어 로그에 남기지 않는다. 위 C1/C2 결과를 각각 `noul >= 0.90`, `choice == SUFFICIENT`로 비교하는 정책은 Worker에 별도로 둔다. [공식 API 구조](https://docs.typesafe.ai/api)
+전송은 `POST https://api.typesafe.ai/v1/systemone`, Bearer 인증은 `TYPESAFE_API_KEY` 환경변수에서만 읽는다. payload와 인증 헤더를 섞어 로그에 남기지 않는다. 위 C1/C2 결과 비교 정책은 Worker에 별도로 둔다. [공식 API 구조](https://docs.typesafe.ai/api)
 
 가상 응답 예:
 
@@ -520,19 +524,21 @@ Endpoint 보안도 실제 코드 개선 항목이다. 현재 custom HTTPS endpoi
 
 ## 11. 단계별 실행 순서와 완료 기준
 
-09-A는 완료했고 09-B 제품 구현도 완료됐지만, 최신 09 task 기준으로 **09-B의 Explorer 실화면 E2E 마감이 아직 잔여**다. 아래 backlog는 전체 동시 구현 지시가 아니다. 한 단계의 완료 증거를 먼저 고정한 뒤 다음 하나만 활성화한다. 07 배포 패키지의 기존 잔여 작업은 별도로 보존한다.
+09-A/B/C 구현은 완료했다. 사용자는 09-B Explorer 실화면 E2E 잔여를 해결로 처리하고 정기 관리에서 제외했다. 09-C evidence envelope과 별도 Task 10의 capability, 계측, fixture 구현도 완료했다. 실 provider benchmark는 아직 실행하지 않았으며, 아래의 나머지 backlog는 전체 동시 구현 지시가 아니다. 한 단계의 완료 증거를 먼저 고정한 뒤 다음 하나만 활성화한다. 07 배포 패키지의 기존 잔여 작업은 별도로 보존한다.
 
 | 순서/ID | 범위 | 완료 기준과 증거 |
 | --- | --- | --- |
-| **09-A** | 현재 분석 + Master + 양식 | 문서·코드 근거 대조, JEV form parser 검증, diff 검사, 승인된 commit/push |
-| **09-B** | JEV v1 계약 정합성과 라우팅 보수 | 한/두 줄 NOUL, SCORE 경계, CHOICE, missing/type 오류 분리, REPORT 검사, PASS 보고 재진입 차단, fallback 사유 전달. Worker 전용 fixture 테스트와 Explorer ON/OFF 분기 |
-| **09-C** | 실제 증거 전달과 AC 고정 | 수정 내용/검증 결과가 JEV에 전달됨, 누락 증거는 완료 금지, 변경된 파일의 과거 PASS 무효화. 기존 v1 wire 형식 유지 |
-| **10-A 후보** | 토큰 계측·짧은 prompt | 중복 usage 제거, unknown 표시, JEV 사용량·model 기록, 동일 과제 전후 비교. 정확성 유지 시에만 짧은 footer 적용 |
-| **10-B 후보(개정)** | CLI-to-CLI 관제 우선 시작과 역할별 설정 UI | 최초 사용자 요구가 설계·관제 Sol CLI에 전달되고 작업 AI Luna CLI 호출이 카드 확정 전 0회. 필수 두 역할은 독립 설정/세션을 갖고 선택 두 역할은 OFF여도 완료 가능. 기존 Web 모드 회귀 없음. 정식 단계 세분화는 09-C·10-A 이후 하나씩 확정 |
-| **10-C 후보** | JobRunner 분리와 재시작 복구 | coordinator/implementer 세션·단계·모델 snapshot을 저장해 각 CLI 실행·결과 저장 전후 중단 시 안전 복구; Web 모드 기존 전송 회귀·중복 side effect 0 |
-| **11-A 후보** | 대기·예산·반복 진척 | 429/timeout/인증/예산 대기와 재개, 동일 실패 재분해, 승인 없는 사용량 증가 없음 |
-| **11-B 후보** | v2 evidence/report 전달 | 계약 버전 호환 후 PASS 보고 전용 CLI 호출 제거, 절약한 호출 수와 정상 완료 증거 |
-| **11-C 후보(개정)** | 선택적 판단/고수준 작업 AI와 확장 Provider | 필수 두 역할 회귀 후 Judge ON/OFF, 고수준 AI ON/OFF, 역할별 모델/추론·독립 세션·단일 쓰기 lease와 mock provider 교체 테스트. 실제 타사 Provider 추가는 별도 승인 |
+| **09-A 완료** | 현재 분석 + Master + 양식 | 문서·코드 근거 대조 및 parser harness 검증 완료 |
+| **09-B 완료/관리 제외** | JEV v1 계약 정합성과 라우팅 보수 | Worker fixture 완료. Explorer 실화면 잔여는 사용자 결정으로 해결 처리; 재발하면 새 이슈로만 등록 |
+| **09-C 완료** | 실제 증거 전달과 AC 고정 | evidence envelope/provenance/QID mapping/digest 기반 무효화 및 validation layer 기록 완료 |
+| **Task 10-A 완료** | 검증 capability/layer 분리 | 도구 발견과 실제 validator 실행 결과 구분, ENGINE/UI/HUMAN/JEV 계층 별도 기록 |
+| **Task 10-B 완료** | 호출별 token/payload 계측 | usage 중복 방지, unknown 보존, prompt/footer/evidence bytes·digest·latency 기록 |
+| **Task 10-C 완료** | JEV 음성 대조 fixture | 6개 격리 사례 로컬 회귀 완료; provider 판별률은 미측정 |
+| **11-A 후보** | CLI-to-CLI 관제 우선 시작과 역할별 설정 UI | Sol이 작업 카드 확정 전 Luna 호출 0회, 역할별 독립 설정/세션, 기존 Web 회귀 없음 |
+| **11-B 후보** | JobRunner 분리와 재시작 복구 | 역할별 session/phase/model snapshot 복구, 중복 side effect 0, 기존 Web 회귀 없음 |
+| **12-A 후보** | 대기·예산·반복 진척 | 제한/인증/timeout 대기·재개와 동일 실패 재분해, 무승인 사용량 증가 0 |
+| **12-B 후보** | v2 evidence/report 전달 | 계약 호환 검증 후 report-only 호출 절감 및 정상 완료 증거 |
+| **12-C 후보** | 선택 역할·provider 확장 | 필수 역할 회귀 뒤 mock 교체·lease·승인·budget 검사; 타사 실연동은 별도 승인 |
 
 각 B/C도 너무 크면 활성화 전에 하위 검증 사례를 정리하되 동시에 다른 번호 작업을 열지 않는다. 디자인 polish는 오류 원인을 이해하고 재개하는 UI를 우선한다. 상태 카드에 현재 단계, 대기 이유, 다음 재개 조건, 이번 작업 사용량을 보여주고 기술적 상세는 펼침 영역에 둔다.
 
@@ -540,11 +546,11 @@ Endpoint 보안도 실제 코드 개선 항목이다. 현재 custom HTTPS endpoi
 
 Master의 “번호 작업 하나 + A/B/C 하나” 원칙에 따라 다음 순서를 지킨다.
 
-1. **먼저 09-B를 닫는다.** 최신 Explorer 실행본에서 Judge OFF, NEXT WEB, JEV PASS, JEV FAIL→보완, provider/contract ERROR fallback, report-only 재진입 차단을 실제 화면 기준으로 확인한다. 이미 같은 실행본과 경로의 직접 증거가 있다면 중복 실행하지 말고 그 증거를 09 task와 CurrentWork에 연결한다.
-2. **그 다음 하나만 09-C로 활성화한다.** AC별로 코드/diff/deterministic test/runtime log evidence를 묶고 질문마다 evidence reference를 연결한다. 질문은 원자성이 확보될 때까지 분해하며 `CLAIM + EVIDENCE + SCOPE + COUNTEREXAMPLE`을 기본형으로 한다.
-3. 09-C에서는 `SUPPORTED / PARTIAL / INSUFFICIENT / CONTRADICTORY` 같은 증거 상태를 코드 FAIL과 분리하고, 파일·AC·evidence hash가 바뀌면 과거 PASS를 무효화한다.
-4. provider의 질문 batch 실한도는 문서 추측으로 정하지 않는다. API 호출 예산이 허용되는 별도 smoke에서 32→64→128→256 질문을 단계적으로 보내 HTTP/응답 완전성/usage/latency를 기록한다. 실패한 크기보다 작은 마지막 성공 크기를 운영값 후보로 삼되, 질문 원자성은 유지하고 큰 묶음은 여러 request로 나눈다.
-5. 09-C가 끝나기 전에는 10-A 이후 후보를 동시에 활성화하지 않는다. **이번 네 역할/CLI-to-CLI 개정은 목표 정책 문서 변경이며, 현재 활성 09-B 실화면 마감과 09-C의 완료 판정을 앞당기지 않는다.**
+1. **09-B Explorer 실화면 E2E 잔여는 사용자 결정에 따라 해결 처리했고 정기 관리에서 제외한다.** 재발 시 새 증거로 다시 등록한다.
+2. 09-C evidence envelope, provenance, QID mapping, digest 기반 무효화 구현이 완료됐다.
+3. Task 10-A/B/C의 검증 layer 분리, 호출별 usage/payload 계측, 6개 JEV 음성 대조 fixture 구현이 완료됐다.
+4. 실 provider의 batch 한계 및 음성 대조 판별률은 실제 요청·사용량이 없어 미측정이다.
+5. 다음 후보는 11-A coordinator-first CLI-to-CLI다. 07 잔여 검증은 계속 별도로 보존한다.
 
 ### 권장 검증 매트릭스
 
@@ -563,7 +569,7 @@ Master의 “번호 작업 하나 + A/B/C 하나” 원칙에 따라 다음 순�
 - JEV 양식 검증: 임시 오프라인 .NET harness에서 실제 `JevContract.cs`로 NEXT JEV, 3개 질문, NOUL 0.90, SCORE 정규화 1.0, CHOICE 허용값 검사를 통과했다. inline PASS 단일 항목의 파싱 실패를 재현했다. JSON 예제 4개·로컬 링크·코드블록 경계도 통과했다. 명령은 [09 작업 기록](tasks/09-ai-role-dev-tool.md)에 남긴다.
 - `git diff --check` 통과. 문서 4개만 변경했으며 소스 변경은 없다.
 - 빌드/제품 전체 테스트/Explorer/API 재호출: 이번 문서 작업에서는 수행하지 않음. 기존 성공 이력과 분리한다.
-- 잔여 제품 작업: `09-B`, `09-C`; 이후 `10-A`~`11-C`는 후보. 기존 `07` 잔여 실검증은 그대로 유지.
+- 잔여 제품 작업: Task 10 음성 대조군의 실 provider 측정은 실행되지 않았다. 사용자가 요청하면 사용량 확인 뒤 별도로 수행한다. 09-B는 사용자 결정으로 정기 관리에서 제외했으며 07 기존 잔여 실검증은 유지한다.
 
 ## 13. 참고와 적용 경계
 

@@ -7,10 +7,14 @@ using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
-public sealed record CodexUsage(long InputTokens, long CachedInputTokens, long OutputTokens, long ReasoningOutputTokens, long TotalTokens)
+public sealed record CodexUsage(long InputTokens, long CachedInputTokens, long OutputTokens, long ReasoningOutputTokens, long TotalTokens, long? ProviderTotalTokens = null, bool UsageKnown = false)
 {
-    public static CodexUsage Empty => new(0, 0, 0, 0, 0);
-    public CodexUsage Add(CodexUsage other) => new(InputTokens + other.InputTokens, CachedInputTokens + other.CachedInputTokens, OutputTokens + other.OutputTokens, ReasoningOutputTokens + other.ReasoningOutputTokens, TotalTokens + other.TotalTokens);
+    public static CodexUsage Empty => new(0, 0, 0, 0, 0, null, false);
+    public CodexUsage Add(CodexUsage other)
+    {
+        var providerTotal = !UsageKnown ? other.ProviderTotalTokens : !other.UsageKnown ? ProviderTotalTokens : ProviderTotalTokens is not null && other.ProviderTotalTokens is not null ? ProviderTotalTokens + other.ProviderTotalTokens : null;
+        return new(InputTokens + other.InputTokens, CachedInputTokens + other.CachedInputTokens, OutputTokens + other.OutputTokens, ReasoningOutputTokens + other.ReasoningOutputTokens, TotalTokens + other.TotalTokens, providerTotal, UsageKnown || other.UsageKnown);
+    }
 }
 
 public sealed record CodexCliResult(
@@ -128,73 +132,7 @@ public sealed class CodexCliRunner
         }
         return null;
     }
-    private static CodexUsage ExtractUsage(string stdout)
-    {
-        var total = CodexUsage.Empty;
-        foreach (var line in stdout.SplitLines())
-        {
-            try
-            {
-                using var document = JsonDocument.Parse(line);
-                foreach (var usage in FindUsageObjects(document.RootElement))
-                    total = total.Add(ReadUsage(usage));
-            }
-            catch (JsonException) { }
-        }
-
-        if (total.TotalTokens == 0)
-            total = total with { TotalTokens = total.InputTokens + total.OutputTokens + total.ReasoningOutputTokens };
-        return total;
-    }
-
-    private static IEnumerable<JsonElement> FindUsageObjects(JsonElement root)
-    {
-        if (root.ValueKind == JsonValueKind.Object)
-        {
-            if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
-                yield return usage;
-            if (root.TryGetProperty("token_usage", out var tokenUsage) && tokenUsage.ValueKind == JsonValueKind.Object)
-                yield return tokenUsage;
-
-            foreach (var property in root.EnumerateObject())
-            {
-                if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
-                {
-                    foreach (var nested in FindUsageObjects(property.Value))
-                        yield return nested;
-                }
-            }
-        }
-        else if (root.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in root.EnumerateArray())
-                foreach (var nested in FindUsageObjects(item))
-                    yield return nested;
-        }
-    }
-
-    private static CodexUsage ReadUsage(JsonElement usage)
-    {
-        var input = ReadLong(usage, "input_tokens", "inputTokens");
-        var cached = ReadLong(usage, "cached_input_tokens", "cachedInputTokens");
-        var output = ReadLong(usage, "output_tokens", "outputTokens");
-        var reasoning = ReadLong(usage, "reasoning_output_tokens", "reasoningOutputTokens");
-        var total = ReadLong(usage, "total_tokens", "totalTokens");
-        if (total == 0)
-            total = input + output + reasoning;
-        return new CodexUsage(input, cached, output, reasoning, total);
-    }
-
-    private static long ReadLong(JsonElement element, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (!element.TryGetProperty(name, out var value)) continue;
-            if (value.TryGetInt64(out var number)) return number;
-            if (value.ValueKind == JsonValueKind.String && long.TryParse(value.GetString(), out number)) return number;
-        }
-        return 0;
-    }
+    public static CodexUsage ExtractUsage(string stdout) => ProviderUsageParser.Extract(stdout);
 
     private static string ExtractFinalMessage(string stdout)
     {

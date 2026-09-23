@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Security.Cryptography;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -36,6 +37,8 @@ public partial class MainWindow : Window
     private string? _initialGitReferenceHeader;
     private DateTimeOffset _lastActivityAt;
     private bool _jobTimedOut;
+    private bool _userCanceledTask;
+    private readonly HashSet<string> _userCanceledBridgeTaskIds = new(StringComparer.Ordinal);
     private static readonly TimeSpan JobInactivityTimeout = TimeSpan.FromMinutes(30);
     private string? _lastWebTaskId;
     private string? _lastExtensionProgressKey;
@@ -58,6 +61,7 @@ public partial class MainWindow : Window
     private int _judgeRound;
     private bool _judgeReportOnly;
     private string? _pendingJevFailure;
+    private string _activeJevJobId = Guid.NewGuid().ToString("N");
     private bool _allowClose;
     private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
@@ -272,7 +276,7 @@ public partial class MainWindow : Window
         _pairArrowActive = codexActive || workerActive || webActive;
         _flowFrame = 0;
         UpdateArrowAnimation();
-        var running = codexActive || workerActive || webActive || _activeTaskCts is not null || _awaitingWebResult;
+        var running = codexActive || workerActive || webActive || (!_userCanceledTask && (_activeTaskCts is not null || _awaitingWebResult));
         if (!running) _messageExpanded = false;
         UpdatePanelLayout(running);
     }
@@ -344,8 +348,10 @@ public partial class MainWindow : Window
         MessageContentGrid.Visibility = _messageExpanded ? Visibility.Visible : Visibility.Collapsed;
         MessageToggleButton.Content = _messageExpanded ? "▥  MESSAGE  ▲" : "▥  MESSAGE  ▼";
         MessageRow.Height = _messageExpanded ? new GridLength(1, GridUnitType.Star) : new GridLength(52);
-        CommandRow.Height = running || _messageExpanded ? new GridLength(170) : new GridLength(1, GridUnitType.Star);
+        CommandRow.Height = running ? new GridLength(90) : _messageExpanded ? new GridLength(170) : new GridLength(1, GridUnitType.Star);
         CommandTextGrid.Visibility = running ? Visibility.Collapsed : Visibility.Visible;
+        CommandControlsRow.Height = new GridLength(38);
+        CommandControlsGrid.Visibility = Visibility.Visible;
     }
 
     private void MessageToggle_Click(object sender, RoutedEventArgs e)
@@ -390,9 +396,12 @@ public partial class MainWindow : Window
     {
         if (_activeTaskCts is not null || _awaitingWebResult)
         {
+            _userCanceledTask = true;
             _activeTaskCts?.Cancel();
-            if (_awaitingWebResult) _bridgeServer?.CancelActiveTask();
+            if (_bridgeServer is not null && _bridgeServer.CancelActiveTask(out var canceledTaskId) && canceledTaskId is not null)
+                _userCanceledBridgeTaskIds.Add(canceledTaskId);
             ResetTaskState();
+            ApplyConnectionStatus();
             return;
         }
         await InitializeStartupConfigurationAsync();
@@ -432,6 +441,7 @@ public partial class MainWindow : Window
         _actionProtocolEnabled = true;
         _activeReadOnly = IsExplicitReadOnlyRequest(cliPrompt);
         _jobTimedOut = false;
+        _userCanceledTask = false;
         _lastActivityAt = DateTimeOffset.UtcNow;
         _lastWebTaskId = null;
         _activeWorkingDirectory = workingDirectory;
@@ -442,6 +452,7 @@ public partial class MainWindow : Window
         _judgeRound = 0;
         _judgeReportOnly = false;
         _pendingJevFailure = null;
+        _activeJevJobId = Guid.NewGuid().ToString("N");
         _judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "READY" : "OFF";
         _webFollowupStarted = false;
         _commandUsage = CodexUsage.Empty;
@@ -456,7 +467,8 @@ public partial class MainWindow : Window
 
         try
         {
-            var result = await RunCodexWithJevFooterAsync(initialCliPrompt, cliModel, reasoning, workingDirectory, sessionId, _activeReadOnly, cts.Token);
+            var result = await RunCodexWithJevFooterAsync(initialCliPrompt, cliModel, reasoning, workingDirectory, sessionId, _activeReadOnly, cts.Token, "INITIAL_IMPLEMENTATION");
+            if (_userCanceledTask) return;
             _lastActivityAt = DateTimeOffset.UtcNow;
             _lastCodexResult = result;
             AddCliRoundStatus(result);
@@ -476,6 +488,7 @@ public partial class MainWindow : Window
             if (result.ExitCode == 0 && _bridgeServer is not null)
             {
                 var task = await RouteCodexResultAsync(result, webInstruction, includeWebInstruction: true, gitReferenceHeader: _initialGitReferenceHeader, cancellationToken: cts.Token);
+                if (_userCanceledTask) return;
                 if (task is not null)
                 {
                     _awaitingWebResult = true;
@@ -488,7 +501,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            if (_jobTimedOut) return;
+            if (_jobTimedOut || _userCanceledTask) return;
             _awaitingWebResult = false;
             TaskTitle.Text = "Codex 실행 취소";
             ResultTitle.Text = "Codex CANCELED";
@@ -507,8 +520,11 @@ public partial class MainWindow : Window
         {
             _activeTaskCts.Dispose();
             _activeTaskCts = null;
+            var wasUserCanceled = _userCanceledTask;
+            _userCanceledTask = false;
             UpdatePanelLayout(_awaitingWebResult);
-            if (!_awaitingWebResult) RunButton.Content = "▶  Run Task";
+            ApplyConnectionStatus();
+            if (!_awaitingWebResult || wasUserCanceled) RunButton.Content = "▶  Run Task";
         }
     }
 
@@ -554,22 +570,22 @@ public partial class MainWindow : Window
                 TaskTitle.Text = $"JEV 검증 중 · round {_judgeRound}";
                 SetFlowState(false, true, false);
                 AddTaskMessage("JEV REQUEST", validation);
-                var request = new JudgeRequest(_activePrompt ?? "Current task", _judgeRound, _activeWorkingDirectory ?? AppContext.BaseDirectory, output, validation, result.Files, "GIT", _gitTarget?.HeadSha);
+                var request = new JudgeRequest(_activePrompt ?? "Current task", _judgeRound, _activeWorkingDirectory ?? AppContext.BaseDirectory, output, validation, result.Files, "GIT", _gitTarget?.HeadSha, _activeJevJobId);
                 JudgeResult judgment;
                 try { judgment = await _jevJudgeRunner.ReviewAsync(request, _targetSettings.EffectiveJudge, cancellationToken); }
                 finally { _judgeReviewing = false; }
                 AddTaskMessage("JEV RESULT", $"{judgment.Decision}: {judgment.Message}");
-                if (judgment.Decision == JudgeDecision.Fail)
+                if (judgment.Decision == JudgeDecision.Partial)
                 {
                     _pendingJevFailure = judgment.Message;
                     if (_judgeRound < 3)
                     {
-                        var retryPrompt = AppendJevFooter("[JEV VALIDATION FAILED]" + Environment.NewLine + judgment.Message + Environment.NewLine + Environment.NewLine + "해당 검증 실패를 해소한 뒤 다시 [NEXT : WEB] 또는 [NEXT : JEV] 형식으로 최종 응답을 제출하라.");
+                        var retryPrompt = AppendJevFooter(JevRetryPromptBuilder.Build(judgment.Message, _judgeRound));
                         AddTaskMessage("WORKER -> CODEX", retryPrompt);
                         TaskDirection.Text = "JEV → CODEX";
                         TaskTitle.Text = "JEV FAIL 후 Codex 보완 실행 중";
                         SetFlowState(true, true, false);
-                        var retry = await RunCodexWithJevFooterAsync(retryPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken);
+                        var retry = await RunCodexWithJevFooterAsync(retryPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken, "JEV_PARTIAL_RETRY", "JEV_PARTIAL");
                         _activeSessionId = retry.SessionId ?? _activeSessionId;
                         _lastCodexResult = retry;
                         AddCliRoundStatus(retry);
@@ -578,7 +594,7 @@ public partial class MainWindow : Window
                         UpdateUsage(_commandUsage);
                         return await RouteCodexResultAsync(retry, webInstruction, includeWebInstruction, gitReferenceHeader, cancellationToken);
                     }
-                    report += Environment.NewLine + Environment.NewLine + "[JEV FALLBACK]" + Environment.NewLine + "CODE: JEV_RETRY_LIMIT" + Environment.NewLine + "ROUND: 3/3" + Environment.NewLine + "DETAIL: 검증 실패가 라운드 상한에 도달했습니다." + Environment.NewLine + Environment.NewLine + judgment.Message;
+                    report += Environment.NewLine + Environment.NewLine + "[JEV REVIEW]" + Environment.NewLine + "CODE: JEV_PARTIAL_LIMIT" + Environment.NewLine + "ROUND: 3/3" + Environment.NewLine + "DETAIL: PARTIAL 상태가 재검증 상한까지 해소되지 않아 검토가 필요합니다." + Environment.NewLine + Environment.NewLine + judgment.Message;
                 }
                 else if (judgment.Decision == JudgeDecision.Error)
                 {
@@ -594,7 +610,7 @@ public partial class MainWindow : Window
                     TaskDirection.Text = "JEV → CODEX";
                     TaskTitle.Text = "JEV 통과 · Codex 보고서 생성 중";
                     SetFlowState(true, true, false);
-                    var reportResult = await RunCodexWithJevFooterAsync(reportPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken);
+                    var reportResult = await RunCodexWithJevFooterAsync(reportPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken, "JEV_REPORT_ONLY");
                     _activeSessionId = reportResult.SessionId ?? _activeSessionId;
                     _lastCodexResult = reportResult;
                     AddCliRoundStatus(reportResult);
@@ -625,8 +641,43 @@ public partial class MainWindow : Window
             return prompt;
         }
     }
-    private Task<CodexCliResult> RunCodexWithJevFooterAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken) =>
-        _codexRunner.RunAsync(AppendJevFooter(prompt), model, reasoning, workingDirectory, sessionId, readOnly, cancellationToken);
+    private async Task<CodexCliResult> RunCodexWithJevFooterAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string purpose = "WEB_FOLLOWUP", string? retryReason = null)
+    {
+        var fullPrompt = AppendJevFooter(prompt);
+        var startedAt = DateTimeOffset.UtcNow;
+        var footerBytes = Math.Max(0, Encoding.UTF8.GetByteCount(fullPrompt) - Encoding.UTF8.GetByteCount(prompt));
+        var footerText = fullPrompt.Length >= prompt.Length ? fullPrompt[prompt.Length..] : string.Empty;
+        CodexCliResult result;
+        try { result = await _codexRunner.RunAsync(fullPrompt, model, reasoning, workingDirectory, sessionId, readOnly, cancellationToken); }
+        catch (OperationCanceledException)
+        {
+            AppendCodexFailureTelemetry(startedAt, prompt, fullPrompt, footerText, model, reasoning, purpose, retryReason, "CANCELLED");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            AppendCodexFailureTelemetry(startedAt, prompt, fullPrompt, footerText, model, reasoning, purpose, retryReason, "ERROR_" + ex.GetType().Name);
+            throw;
+        }
+        UsageTelemetryStore.Append(new ModelCallTelemetry(
+            _activeJevJobId, _judgeRound, "CODEX", model, reasoning, purpose,
+            result.Usage.InputTokens, result.Usage.CachedInputTokens, result.Usage.OutputTokens, result.Usage.ReasoningOutputTokens, result.Usage.ProviderTotalTokens,
+            Encoding.UTF8.GetByteCount(fullPrompt), Encoding.UTF8.GetByteCount(prompt), footerBytes, null, Encoding.UTF8.GetByteCount(result.StandardOutput),
+            Math.Max(0, (long)(result.FinishedAt - result.StartedAt).TotalMilliseconds), retryReason ?? (result.ExitCode != 0 ? "CLI_EXIT_" + result.ExitCode : null), result.Usage.UsageKnown,
+            null, null, result.FinishedAt, DigestText(prompt), DigestText(footerText), DigestText(fullPrompt)));
+        return result;
+    }
+
+    private void AppendCodexFailureTelemetry(DateTimeOffset startedAt, string prompt, string fullPrompt, string footer, string model, string reasoning, string purpose, string? retryReason, string error)
+    {
+        UsageTelemetryStore.Append(new ModelCallTelemetry(
+            _activeJevJobId, _judgeRound, "CODEX", model, reasoning, purpose, null, null, null, null, null,
+            Encoding.UTF8.GetByteCount(fullPrompt), Encoding.UTF8.GetByteCount(prompt), Math.Max(0, Encoding.UTF8.GetByteCount(fullPrompt) - Encoding.UTF8.GetByteCount(prompt)), null, 0,
+            Math.Max(0, (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds), retryReason ?? error, false, null, null, DateTimeOffset.UtcNow,
+            DigestText(prompt), DigestText(footer), DigestText(fullPrompt)));
+    }
+
+    private static string DigestText(string value) => "sha256:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
     private static string BuildGitReferenceHeader(GitReviewCheckpoint checkpoint) =>
         checkpoint.ReviewCommitSha is null
@@ -1059,7 +1110,7 @@ public partial class MainWindow : Window
         SetConnectionStatus(ProjectStatusText, _codexAuthenticated ? "READY" : "LOGIN NEEDED", _codexAuthenticated, ProjectStatusDot);
         SetConnectionStatus(WebStatusText, !webOnline ? "WAITING" : !webExtensionReady ? "UPDATE REQUIRED" : !webConversationBound ? "BIND REQUIRED" : "READY", webOnline && webExtensionReady && webConversationBound, waiting: !webOnline, indicator: WebStatusDot);
         WebDescriptionText.Text = !webOnline ? "MCP 프로젝트 진척도 확인" : !webExtensionReady ? "확장 업데이트 필요" : !webConversationBound ? "현재 GPT Web 대화를 연결하세요" : !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
-        RunButton.IsEnabled = _activeTaskCts is not null || _awaitingWebResult || (webOnline && webExtensionReady && webConversationBound);
+        RunButton.IsEnabled = !(_userCanceledTask && _activeTaskCts is not null) && (_activeTaskCts is not null || _awaitingWebResult || (webOnline && webExtensionReady && webConversationBound));
         SetConnectionStatus(ServerStatusText, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDot);
         RepositoryNameText.Foreground = _serverOnline ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
         PcNameText.Foreground = _codexAuthenticated ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
@@ -1150,6 +1201,18 @@ public partial class MainWindow : Window
 
     private async void HandleBridgeTaskChanged(BridgeTask task)
     {
+        if ((task.Status is "COMPLETED" or "FAILED") && _userCanceledBridgeTaskIds.Remove(task.Id))
+        {
+            SetFlowState(false, false, false);
+            return;
+        }
+
+        if (_userCanceledTask && (task.Status is "COMPLETED" or "FAILED"))
+        {
+            SetFlowState(false, false, false);
+            return;
+        }
+
         if (task.Status is "PENDING" or "CLAIMED")
         {
             _lastActivityAt = DateTimeOffset.UtcNow;
@@ -1173,6 +1236,12 @@ public partial class MainWindow : Window
         }
         _lastWebTaskId = task.Id;
         _lastWebTask = task;
+        UsageTelemetryStore.Append(new ModelCallTelemetry(
+            _activeJevJobId, _judgeRound, "GPT_WEB", "unknown", null, "COORDINATOR_RESPONSE",
+            null, null, null, null, null, Encoding.UTF8.GetByteCount(task.Prompt ?? string.Empty), Encoding.UTF8.GetByteCount(task.Prompt ?? string.Empty), 0,
+            task.Attachments?.Sum(x => x.Size) ?? 0, Encoding.UTF8.GetByteCount(task.Result ?? string.Empty),
+            task.StartedAt is not null && task.CompletedAt is not null ? Math.Max(0, (long)(task.CompletedAt.Value - task.StartedAt.Value).TotalMilliseconds) : 0,
+            task.FinishReason, false, null, null, DateTimeOffset.UtcNow));
         AddTaskMessage("GPT WEB", task.Result);
         ResultTitle.Text = task.Status == "COMPLETED" ? "GPT Web 응답 수신 완료" : "GPT Web FAIL";
         ResultBody.Text = task.Result ?? "응답 내용이 없습니다.";
@@ -1259,7 +1328,8 @@ public partial class MainWindow : Window
         try
         {
             AddTaskMessage("WORKER -> CODEX", followupPrompt);
-            var result = await RunCodexWithJevFooterAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token);
+            var result = await RunCodexWithJevFooterAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token, "WEB_FOLLOWUP");
+            if (_userCanceledTask) return;
             _lastActivityAt = DateTimeOffset.UtcNow;
             _activeSessionId = result.SessionId ?? _activeSessionId;
             _lastCodexResult = result;
@@ -1293,7 +1363,7 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            if (_jobTimedOut) return;
+            if (_jobTimedOut || _userCanceledTask) return;
             TaskDirection.Text = "GPT WEB → CODEX";
             TaskTitle.Text = "Codex 후속 처리 취소";
             ResultTitle.Text = "Codex CANCELED";
@@ -1312,8 +1382,11 @@ public partial class MainWindow : Window
         finally
         {
             _activeTaskCts = null;
+            var wasUserCanceled = _userCanceledTask;
+            _userCanceledTask = false;
             UpdatePanelLayout(_awaitingWebResult);
-            if (!_awaitingWebResult) RunButton.Content = "▶  Run Task";
+            ApplyConnectionStatus();
+            if (!_awaitingWebResult || wasUserCanceled) RunButton.Content = "▶  Run Task";
         }
     }
 

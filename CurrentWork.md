@@ -1,32 +1,30 @@
 # ProjectHub 현재 작업 상태
 
-Updated: 2026-09-22
+Updated: 2026-09-23
 
-## 현재 요약 — 2026-09-22 / 09-B JEV 계약·라우팅 구현 완료
+## 현재 요약 — 2026-09-23 / 09-C 및 10-A/B/C 구현 완료
 
-최신 feedback 커밋 `2d75139`까지 fetch/pull --rebase로 동기화한 뒤 `GPT-Web-Feedback.md`의 09-B 요구를 읽고 구현했다. 현재 판단 기준은 아래 09-B 결과이며, 실제 Explorer 화면 E2E는 아직 남아 있다.
+정책/피드백 동기화 기준 HEAD는 `6c4634e`이다. 동기화된 피드백의 CLI-to-CLI 네 역할 설계를 검토했다. 사용자 결정에 따라 09-B E2E 잔여는 해결 처리하고 정기 관리에서 제외하며, 재발할 때만 새 이슈로 등록한다. 09-C evidence envelope 이후 Task 10-A/B/C에서 capability 계층 분리, 호출별 사용량 계측, 격리 음성 대조 fixture를 구현했다.
 
 - `JevContract`는 첫 유효 NEXT만 해석하고, Judge ON Web은 첫 본문 `[REPORT]`, JEV는 `[VALIDATION REQUEST]`를 요구한다. NOUL/SCORE/CHOICE의 구조·범위·연속 번호·허용값을 검증한다.
-- `JevJudgeRunner`는 `TYPESAFE_API_KEY`를 환경변수에서만 읽고, 실제 키·응답 전문·endpoint를 로그나 Web 메시지에 남기지 않는다. 누락/타입/범위/알 수 없는 ID는 ERROR, 조건 미달만 FAIL이다.
-- JEV FAIL은 같은 Codex 세션으로 실패 항목만 재질문하고, PASS는 report-only Web 보고로 전환한다. report-only 단계의 `[NEXT : JEV]` 재진입은 `REPORT_PHASE_REENTERED_JEV`로 차단한다.
-- Worker fixture 테스트 프로젝트를 추가했고 mock HTTP handler로 PASS/FAIL/ERROR 및 계약 파서를 검증했다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(Core 1, Agent 3, Server 1, Worker 5).
-- 실제 Explorer 실행파일 화면 검증과 실제 TypeSafe API 재호출은 수행하지 않았으므로 09-C와 함께 잔여다.
+- `JevJudgeRunner`는 `TYPESAFE_API_KEY`를 환경변수에서만 읽고, 실제 키·응답 전문·endpoint를 로그나 Web 메시지에 남기지 않는다. 누락/타입/범위/알 수 없는 ID는 ERROR, 유효 응답의 threshold 미달은 PARTIAL이다.
+- Footer v1의 고정 표식은 유지한다. `JevEvidenceEnvelope`은 Codex의 텍스트 파일 artifact를 제한적으로 수집하고 QID→Evidence ID 연결, source revision/content digest/provenance를 만든다. free-form 결과는 `SUMMARY_ONLY`로 분리한다.
+- 명시적 `EVIDENCE:` 질문이 SUMMARY_ONLY만 가지면 높은 JEV 점수만으로 PASS할 수 없다. 최신 evidence, QID별 결과와 JEV 결과는 Worker state에 보존한다. 바뀐 증거가 현재 batch 밖의 QID에 영향을 주면 그 QID만 NEEDS_RECHECK 처리하며, 현재 batch에서 이미 재검증한 QID는 추가 반복하지 않고 무관한 QID의 PASS는 다음 round에도 유지한다.
+- ENGINE_HEADLESS/UI_BROWSER/HUMAN_UX/JEV 검증 계층을 별도로 보존하며 관측하지 못한 계층은 `NOT_RECORDED`다.
+- ENGINE_HEADLESS에서는 Node/.NET 실행 파일 탐지와 실제 미실행 상태를 구분하고, Worker UI adapter가 없는 UI_BROWSER는 `BLOCKED_BY_TOOL`로 기록한다. HUMAN_UX는 사용자 확인이 없으면 `NOT_RECORDED`다.
+- Codex/JEV/Web 호출 메타데이터와 토큰·payload byte·latency·retry·usage-known을 `%Worker%/state/usage/<job-id>/calls.jsonl`에 기록한다. 본문 대신 prompt/footer/payload hash를 쓰며 Web usage는 `unknown`이다. Codex cumulative usage snapshot 중복 합산을 방지한다.
+- `JevNegativeControls.json`에 6개 격리 사례를 두고 fixture 구조 회귀를 검증했다. 실 TypeSafe provider 대조 실험은 실행하지 않아 탐지율을 주장하지 않는다.
+- JEV PARTIAL은 같은 Codex 세션에서 triage 후 최대 3회 재검증하고, 미해결은 Web 검토로 넘긴다. QID와 threshold를 유지하며, report-only 단계 재진입은 `REPORT_PHASE_REENTERED_JEV`로 차단한다.
+- Worker 회귀 테스트는 importance threshold, PARTIAL 분류, QID, retry 지침, evidence reference/digest/provenance, SUMMARY_ONLY 차단, QID별 이전 PASS 무효화를 검증한다.
+- 검증: `dotnet test ProjectHub.sln --configuration Debug --no-restore` 통과 (Core 1, Agent 3, Server 1, Worker 16). 기본 sandbox는 Windows SDK 사용자 경로 접근이 거부되어 권한 확장 실행으로 통과했다.
+- 실제 TypeSafe API 호출은 수행하지 않았다. 이번 변경의 Release 게시본을 `C:\AI-AGENT\Worker`와 `C:\GameProject`에 복사했다. 세 EXE SHA-256은 `F727D0BCD0FC0BFD9E1B6CA059089D099EB0B11E7F744CACB659C547B8EED0EF`로 일치한다. 파일 잠금 해제를 위해 기존 Worker를 종료했으며, 새 실행본의 Bridge/Extension 연결 상태는 이번 작업에서 재확인하지 않았다.
 - 설정창의 JEV Timeout 입력을 명시적 활성 상태로 보강하고 숫자 입력·포커스 전체 선택·10~600초 정규화를 추가했다. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore`, `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`, `git diff --check` 성공.
 - 2026-09-23 Worker 자동 CLI 실행의 일반 작업 sandbox를 `danger-full-access`로 변경했다. CLI 빌드가 Windows SDK·MSBuild·NuGet 외부 경로에서 접근 거부되는 문제를 해소하기 위한 설정이며, 명시적 읽기 전용 요청은 기존 `read-only`를 유지한다.
-- 2026-09-23 Release 게시: `src/ProjectHub.Worker/bin/ProjectHub.Worker.exe`를 생성하고 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`에 단일 파일로 복사했다. 게시 프로필의 기존 동작에 따라 `C:\GameProject\ProjectHub.Worker.exe`도 갱신되었으며 세 파일의 SHA-256이 일치한다.
+- Release 게시와 복사 증거는 위 최신 SHA-256을 기준으로 한다.
 
 
 
-09-B 구현 결과는 위 최신 요약을 기준으로 판단한다. 09-A의 과거 설계 이력과 07 배포 패키지 잔여 검증은 보존한다.
-
-- [Master-Polish.md](Master-Polish.md)에 토큰 절약 우선 운영, ChatGPT Web 관제 → Codex Luna Medium 구현 → JEV 판단, Job 복구, 역할 교체 경계, 사용자·관제·JEV 복사 양식과 단계별 완료 조건을 정리했다.
-- 사용자 승인으로 fetch/pull --rebase 완료. 최신 동기화 기준 HEAD는 `2d75139`이며, 동기화 후 `GPT-Web-Feedback.md`의 09-B 섹션을 읽고 분석했다.
-- 현재 09-B 구현은 JEV 계약 파싱, ERROR/FAIL 분기, 같은 Codex 세션 재시도, report-only PASS 경계를 반영했다. 09-C의 실제 evidence envelope과 Explorer 화면 E2E는 아직 남아 있다.
-- JEV API adapter와 과거 2026-09-22 HTTP 200 smoke 기록은 존재한다. 뒤쪽 이력의 ‘키 없음/실 API smoke 잔여’는 과거 상태다. 최신 실행본의 Explorer 전체 ON/OFF E2E는 여전히 잔여다.
-- Worker fixture 테스트 5개가 실제 `JevContract`와 mock HTTP handler를 사용해 계약 파싱·JEV PASS/FAIL/ERROR를 검증했다.
-- 이번 변경은 Worker JEV 소스와 Worker fixture 테스트, 상태 문서에 반영했다. 원 계약 문서와 `GPT-Web-Feedback.md`는 수정하지 않았다. 실제 TypeSafe API와 Explorer는 재실행하지 않았다.
-- 잔여 식별자: **09-C** 실제 증거 전달·AC 고정 및 Explorer 화면 E2E. **10-A~11-C**는 Master의 후속 후보. 07의 기존 잔여 검증도 유지한다.
+09-A·09-B의 세부 구현과 기존 실험은 아래 날짜별 이력으로 보존한다. 현재 활성 09-B/09-C/10-A/B/C 구현 backlog는 없다. 실 provider JEV 음성 대조 측정과 07 잔여 검증은 실행 여부/상태를 위 정책에 따라 별도로 관리한다.
 
 2026-09-22 GPT Web 대화 동기화 경합 수정: ChatGPT SPA에서 대화를 빠르게 전환할 때 이전 polling 응답이 새 대화 상태를 덮어쓰지 않도록 navigation generation과 conversation ID를 함께 검증한다. Worker bridge에는 현재 대화의 binding 상태를 노출하고, Worker 설정의 GPT Web 상태를 `READY`/`BIND REQUIRED`로 구분해 미연결 대화에서 작업이 조용히 생성되지 않도록 보완했다. 연결 실패 메시지도 구체적인 원인을 표시한다. 검증: `node --check extension/gptweb-hub/content.js` 통과, `dotnet build ProjectHub.sln --configuration Debug --no-restore`는 기본 샌드박스의 Windows SDK 접근 거부 후 권한 확장으로 경고 0/오류 0 성공, `git diff --check` 통과. 현재 실행 중인 Worker는 수정 전 바이너리이므로 재게시·재기동 후 화면 검증이 필요하다.
 
@@ -1058,3 +1056,95 @@ Worker는 의미 판단을 하지 않고 첫 NEXT 행, typed validation, JEV 구
 - 기존 Codex session을 선택하고 모델을 `GPT-6 Luna`로 바꾼 뒤 다음 실행하면 Worker가 같은 session을 `resume`해 인계한다.
 - 실행 중 모델 변경은 지원하지 않으며, 먼저 Cancel 후 기존 스레드를 다시 선택해 실행한다.
 - 실제 사용 모델은 MESSAGE의 `TASK START`와 `CLI STATUS`의 model 항목으로 확인한다.
+
+## 2026-09-23 09-B 잔여 검증 재시도
+
+- 일반 권한 Debug 빌드는 Windows SDK 확인 중 `C:\Users\ornit\AppData\Local\Microsoft SDKs` 접근 거부로 실패했다. 동일 명령을 권한 확장으로 재실행해 성공했다(경고 0, 오류 0).
+- 전체 테스트 10개 통과(Core 1, Agent 3, Server 1, Worker 5). `node --check extension/gptweb-hub/content.js`와 `git diff --check`도 통과했다.
+- `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`를 기동 시도했다. 프로세스는 실행되지만 MainWindowHandle이 0이고 CUA 앱 열거 결과도 비어 있어 Explorer 화면을 조작할 수 없었다. `http://127.0.0.1:43821/bridge/status`도 연결 거부됐다. 따라서 실제 Explorer Judge ON/OFF 왕복 검증은 완료로 기록하지 않는다.
+- `TYPESAFE_API_KEY`는 프로세스 환경에 존재했으나, 이 검증 시도에서는 TypeSafe 외부 API 호출을 보내지 않았다.
+- 재현/검증 명령: `dotnet build ProjectHub.sln --configuration Debug --no-restore`; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`; `node --check extension/gptweb-hub/content.js`; `git diff --check`.
+- 잔여 식별자: **09-B Explorer 화면 검증 재시도**, **09-C 증거 전달·수용 조건 고정**, **07 기존 검증 잔여**.
+
+## 2026-09-23 취소 즉시 복구 및 Voice 전용 상태 감지
+
+- 사용자 취소 시 진행 중인 CLI의 취소 정리를 기다리지 않고 즉시 IDLE 레이아웃으로 복원한다. 취소한 Bridge task ID를 기록해 늦게 도착한 terminal 이벤트가 복원 화면을 덮지 않게 하고, CLI 정리가 끝날 때까지 Run 버튼 재진입을 막는다. 활성 CLI와 Web task가 겹친 경우 둘 다 취소한다.
+- Web Extension이 Worker task를 취소 상태로 받으면 자신이 삽입한 텍스트와 composer 내용이 정확히 일치할 때만 지워 Web 입력창을 복구한다. 취소로 전송 확인 대기가 풀려도 이를 성공으로 오판하지 않는다.
+- 전송 버튼 판별에서 Voice/마이크 컨트롤을 제외한다. 입력 텍스트가 남아 있고 활성 Voice 버튼만 일정 시간 지속되면 내용을 보내지 못한 것으로 처리해 `FAILED`를 Worker에 전달한다.
+- Extension build를 `2026-09-23.2`로 올리고 Worker의 동기화 기준도 함께 갱신했다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 10개 통과, `node --check extension/gptweb-hub/content.js`, `git diff --check` 통과.
+- Explorer/Chrome 실제 화면 검증 및 새 Extension 새로고침은 UI 런타임 문제로 아직 수행하지 않았다. 코드 게시/배포도 하지 않았다.
+
+## 2026-09-23 작업 중 MESSAGE 공간 확장
+
+- 작업 중 COMMAND 행이 170px로 고정되어 입력 본문이 접혀도 여백과 하단 모델/실행 컨트롤이 공간을 차지하던 문제를 수정했다.
+- 실행 중 COMMAND 행을 56px로 축소하고 입력 본문·하단 컨트롤 행을 접어 MESSAGE가 남는 높이를 사용할 수 있게 했다. 유휴 상태의 COMMAND 입력 UI는 유지한다.
+- 검증: Debug build 성공(경고 0/오류 0), 전체 테스트 10개 통과, Extension `node --check`, `git diff --check` 통과.
+- 실제 Explorer 화면에서 크기 확인은 UI 런타임 문제로 미수행이며 Worker 게시도 하지 않았다.
+
+## 2026-09-23 빠른 GPT 응답과 동일 본문 응답 감지
+
+- GPT Web 응답 감지는 본문 문자열만 비교하지 않고 assistant 메시지 개수, DOM 요소 정체성, 메시지 식별자를 기준점으로 저장·비교한다. 이전 응답과 본문이 같아도 새 assistant turn이면 새 응답으로 처리한다.
+- Send 확인 대기 중 Voice 버튼만 남는 경우에도 새 사용자 메시지 또는 새 assistant turn이 빠르게 나타났는지 먼저 확인한다. 입력창이 비워졌다는 사실만으로 전송 성공 처리하지 않는다.
+- 응답 본문은 새 turn이 확인된 뒤 스트리밍 종료 및 5초 안정화 확인을 거쳐 전송한다.
+- Extension build와 Worker 기대값을 `2026-09-23.3`으로 맞췄다.
+- 검증: `node --check extension/gptweb-hub/content.js`와 `git diff --check` 통과. `dotnet build ProjectHub.sln --configuration Debug --no-restore`는 SDK 경로 권한으로 기본 sandbox에서 실패했지만 권한 확장 재실행에서 경고 0/오류 0으로 성공했다. `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`도 권한 확장 실행에서 10개 통과(Core 1, Agent 3, Server 1, Worker 5).
+- 잔여: 실제 Chrome에서 빠른 응답·동일 본문 응답 및 Voice-only 전송 실패를 재현할 UI 검증. Extension은 게시/배포하지 않았다.
+
+## 2026-09-23 Release 게시 및 작업 폴더 반영
+
+- Debug 빌드와 전체 테스트 성공 후 `src/ProjectHub.Worker/bin/publish-worker.ps1 -NoRestore`로 Release self-contained EXE를 게시했다.
+- 게시 스크립트가 `C:\GameProject\ProjectHub.Worker.exe`를 자동 갱신했다. 기존 실행 중 파일 잠금으로 `C:\AI-AGENT\Worker` 복사가 처음에는 실패해, 해당 Bridge task가 이미 canceled/terminal임을 확인하고 Worker를 종료한 뒤 새 EXE를 복사·재기동했다.
+- 저장소 게시본, `C:\AI-AGENT\Worker`, `C:\GameProject` EXE의 SHA-256이 모두 `6424083FE1F1B2832C7813824D5FFDE1332F5129F11BBF8196A45326EECADBD1`로 일치한다.
+- 새 Worker Bridge는 `ready`; Chrome의 GPTWeb-Hub 업데이트 버튼을 눌러 확장을 다시 불러온 뒤 현재/기대 Extension build가 모두 `2026-09-23.3`, 동기화 `true`임을 확인했다. 공용 확장 폴더의 manifest/content/background 해시도 소스와 각각 일치한다.
+- 잔여: 실제 GPT Web에서 빠른 응답 및 동일 본문 응답 시나리오를 전송해 E2E 동작을 확인한다.
+
+## 2026-09-23 신뢰 작업 폴더 일반 권한 실행 재시도
+
+- 사용자가 C:\AI-AGENT\Worker를 trust 작업 폴더로 추가한 뒤, 기존 ProjectHub.Worker 프로세스를 종료하고 이 폴더의 EXE를 일반 권한으로 실행했다. PowerShell 실행 자체와 EXE 프로세스 시작은 성공했지만 두 번 모두 프로세스 종료/Bridge 연결 거부로 끝났다.
+- 화면에 `ProjectHub.Worker.exe - 응용 프로그램 오류`, 예외 코드 `0xe0434352`가 표시됐다. 일반 권한 실행 sandbox와 trust 폴더 설정의 접근 거부는 재현되지 않았다.
+- 현재 `ProjectHub.Worker` 프로세스는 없고 `127.0.0.1:43821/bridge/status`는 연결 거부된다. 최근 45분의 .NET Runtime/WER/Worker startup log에서 이번 실행의 예외 stack trace를 찾지 못했다. Event Log에 있는 과거 `0xe0434352` 항목은 2026-09-20 게시 하위 폴더의 누락된 `Assets\worker-icon.ico` 관련 기록이라 이번 실패 원인으로 간주하지 않는다.
+- 잔여: 현재 실행 시점의 .NET 예외 상세를 확보한 뒤 원인을 수정하고 다시 게시/복사/실행한다.
+
+## 2026-09-23 COMMAND 도구 유지 및 실제 ChatGPT composer 선택 수정
+
+- 작업 중 COMMAND 영역을 90px로 조정했다. 입력 본문은 접되 모델/Reasoning 선택, Clear, Run Task, 사용량 표시가 있는 하단 제어행(38px)은 계속 표시한다.
+- 사용자 화면의 `TEXT_INSERT` 후 Voice-only 실패를 추적한 결과, ChatGPT의 assistant 응답 안에도 편집 가능한 writing block이 있고 기존 `composer()`가 DOM 순서 첫 편집 요소를 composer로 잘못 선택했다. 실제 페이지 DOM에서 해당 블록과 `#prompt-textarea`가 같이 존재하는 것을 확인했다.
+- Extension은 `#prompt-textarea`를 우선 선택하고, 대화 응답 편집 블록은 후보에서 제외한다. 전달 문구를 실제 composer에서 다시 읽어 확인한 후에만 Send 감시로 진행하며, progress detail에 선택된 입력 대상을 기록한다.
+- Extension build와 Worker 기대값을 `2026-09-23.4`로 맞췄다.
+- 검증: Node 구문 검사 통과, Debug build 경고 0/오류 0, 전체 테스트 10개 통과, diff check 통과. Release 게시 및 C:\AI-AGENT\Worker/C:\GameProject 복사를 완료했고 세 실행파일의 SHA-256이 일치한다. 새 Worker Bridge ready, Extension build .4 synchronized=true, 배포 확장 manifest/content/background source hash 일치를 확인했다.
+- 실제 입력 전송은 사용자의 대화에 시험 메시지를 추가하므로 수행하지 않았다. 작업 중 툴바의 실제 화면 배치는 Explorer 화면 캡처 자동화가 없어 코드/빌드 및 실행 상태 확인까지 완료했다.
+
+## 2026-09-23 GPT Web 응답의 Worker 전달 정체 조사
+
+- 기존 `de45e57d38e74728b03ff414f40fe46c` 작업의 GPT 응답은 대화에 완료되어 있었다. Extension 전송 성공 단계가 `RESPONSE_START`에 머무르고 응답 감시기는 `WAIT_RESPONSE`만 처리하는 상태 전이 불일치를 확인해 Extension/Worker 기대 빌드를 `2026-09-23.5`로 수정했다. 복구 시 기존 사용자 메시지를 기준점과 비교해 중복 전송 없이 응답 감시를 재개하도록 했다.
+- Debug build는 Windows SDK 경로 접근 제한으로 기본 권한에서 실패했으나 권한 확장 실행에서 성공(경고 0/오류 0), 전체 테스트 10개 통과, Extension `node --check` 및 `git diff --check` 통과. Release 게시와 작업 폴더 복사도 완료했고 게시본/`C:\AI-AGENT\Worker`/`C:\GameProject` EXE SHA-256이 일치한다.
+- 복구 확인 중 GPTWeb-Hub의 `업데이트` 버튼을 눌렀고 기존 작업은 Bridge에 `FAILED`, `finishReason=extension_reset`으로 기록됐다. 응답은 Worker에 전달되지 않았다. Bridge는 현재 `ready`; Chrome extension은 `2026-09-23.4`, Worker 기대값은 `.5`로 동기화 `false`다.
+- 코드 수정·게시 성공과 실제 기존 응답 회수 성공을 구분한다. 이미 종료된 FAILED task는 현재 API에서 재개되지 않으며 기존 대화 메시지를 재전송하지 않았다. 후속 확인은 설치된 Chrome 확장을 `.5`로 갱신한 뒤 별도 시험 요청으로 Worker 수신을 확인해야 한다.
+- 잔여 식별자: **09-B GPT Web 응답 회수 E2E 및 extension reset 복구 정책 확인**, **09-B Explorer 화면 검증**, **09-C 증거 전달·AC 고정**, **07 기존 검증 잔여**.
+
+## 2026-09-23 Footer metadata parser 보강 및 Worker startup cleanup 수정
+
+- Footer v1의 고정 routing marker를 유지하고 NOUL의 claim/evidence/scope/counterexample continuation을 parser가 JEV instructions에 보존하도록 했다. 계약 문서와 Master 예시를 함께 갱신했으며, evidence bundle 전달은 09-C로 남긴다.
+- BridgeServer의 HttpListener 시작 실패 후 Dispose 과정에서 발생한 ObjectDisposedException이 원래 시작 실패 원인을 덮는 것을 확인해 cleanup을 listening 상태에 맞게 수행하도록 보강했다.
+- `dotnet test ProjectHub.sln --configuration Debug --no-restore` 통과: Core 1, Agent 3, Server 1, Worker 6. 기본 샌드박스는 Windows SDK 경로 접근 거부로 실패해 동일 명령을 권한 확장으로 재실행했다.
+- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 게시 실행본은 SHA-256 일치 확인.
+- 일반 권한 실행에서 WPF 프로세스는 유지되고 MainWindowHandle이 생성됐지만 Bridge `127.0.0.1:43821/bridge/status` 연결은 거부됐다. UI/Bridge E2E는 미완료이며 startup 원인은 추가 관찰이 필요하다.
+- 잔여: **09-B Explorer Judge OFF/ON 및 Bridge 왕복 확인**, **09-C evidence bundle/AC**, **07 기존 검증**. commit/push는 수행하지 않았다.
+
+## 2026-09-23 Worker 실행 불가 신고 후속 확인
+
+- 게시 EXE를 일반 권한으로 실행해 process와 ProjectHub Worker 1200x1050 main window가 생성되는 것을 확인했다. 따라서 실행 파일 자체의 즉시 크래시는 재현되지 않았다.
+- Bridge `127.0.0.1:43821/bridge/status`는 연결 거부. `netsh http show urlacl`에서 해당 주소 예약이 없음을 확인해 일반 사용자 `HttpListener.Start()`가 막히는 원인으로 판명했다.
+- `netsh http add urlacl url=http://127.0.0.1:43821/ user=DESKTOP-OJJF37U\ornit`를 시도했으나 관리자 권한 필요 오류(5)로 적용되지 않았다. OS 설정 변경은 관리자 승인 후 가능하다.
+- 결과: GUI 시작은 확인, Bridge/Extension 연동은 미복구. 관리자 권한 예약 추가가 잔여다.
+
+## 2026-09-23 JEV PARTIAL 및 Codex 보완 지침 회귀 기준
+
+- 유효한 JEV threshold 미달을 구현 FAIL로 단정하지 않고 `PARTIAL`로 분류한다. malformed/provider 응답은 기존처럼 ERROR다.
+- 같은 Codex session에 구체 모순만 제한적으로 수정하고, 증거 부족은 결정적 검증으로 보완하며, confidence-only는 코드 변경 금지하도록 지침을 추가했다. threshold는 고정한다.
+- Footer에서 `[QID:C2]`와 같은 선택적 질문 ID를 읽고, 보완 요청은 evidence 변경 영향을 받는 원자 질문만 재제출하도록 안내한다. 기존 ID 없는 양식은 순번 기반 C1… 할당을 유지한다.
+- 같은 작업에서 PARTIAL 검증은 최대 3회이며, 세 번째에도 미통과면 `JEV_PARTIAL_LIMIT`로 Web 검토에 넘긴다.
+- 새 mock 회귀 항목: LOW/MEDIUM/HIGH/CRITICAL threshold 동일 batch 판정, 실패 QID만 PARTIAL에 표시, QID 보존·중복 거부, retry prompt의 PASS 보존·threshold 고정 지침.
+- 09-C 잔여: 실제 question→evidence content/digest 연결, 이전 질문 PASS 보존을 포함한 결과 영속화 및 evidence 변경 시 참조 질문만 재판정하도록 Worker가 기계적으로 강제하는 기능. 이번 prompt는 이 규칙을 Codex에게 지시하며 evidence envelope은 아직 구현하지 않는다.
+- 검증: `dotnet test ProjectHub.sln --configuration Debug --no-restore` 성공(기본 권한 실행은 SDK 경로 권한 거부; 권한 확장 재실행에서 Core 1, Agent 3, Server 1, Worker 10 통과).

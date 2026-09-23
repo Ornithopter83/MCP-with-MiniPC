@@ -8,4 +8,5 @@
   </ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\src\ProjectHub.Worker\ProjectHub.Worker.csproj" /></ItemGroup>
   <ItemGroup><Using Include="Xunit" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Fixtures\JevNegativeControls.json" /></ItemGroup>
 </Project>

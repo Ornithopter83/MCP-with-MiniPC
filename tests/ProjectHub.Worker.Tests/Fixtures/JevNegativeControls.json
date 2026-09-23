@@ -1,0 +1,62 @@
+[
+  {
+    "id": "SALE_WITHOUT_STOCK_DECREMENT",
+    "isolation": "synthetic-ministore-fixture",
+    "defect": "A SALE ledger entry exists but stock is unchanged.",
+    "sourceFact": "sale commits ledger while inventory delta is zero",
+    "runtimeFact": "sale completes; beforeStock equals afterStock",
+    "engineExpected": "FAIL_STOCK_DELTA_ASSERTION",
+    "jevExpectedDisposition": "NOT_SUPPORTED",
+    "requiresDirectEvidence": true
+  },
+  {
+    "id": "STOCK_DECREMENT_WITHOUT_SALE_LEDGER",
+    "isolation": "synthetic-ministore-fixture",
+    "defect": "Stock decreases without a corresponding SALE ledger row.",
+    "sourceFact": "inventory mutation commits before ledger append",
+    "runtimeFact": "stock decreases; matching sale ledger row is absent",
+    "engineExpected": "FAIL_LEDGER_ASSERTION",
+    "jevExpectedDisposition": "NOT_SUPPORTED",
+    "requiresDirectEvidence": true
+  },
+  {
+    "id": "DUPLICATE_RESTOCK_ON_CANCEL",
+    "isolation": "synthetic-ministore-fixture",
+    "defect": "Repeating the same cancel restores stock twice.",
+    "sourceFact": "cancel path does not guard an already-canceled transaction",
+    "runtimeFact": "two identical cancel requests produce two restock deltas",
+    "engineExpected": "FAIL_IDEMPOTENCY_ASSERTION",
+    "jevExpectedDisposition": "NOT_SUPPORTED",
+    "requiresDirectEvidence": true
+  },
+  {
+    "id": "CLOSED_REGISTER_ACCEPTS_RECEIVING",
+    "isolation": "synthetic-ministore-fixture",
+    "defect": "Stock receiving is accepted after the register is CLOSED.",
+    "sourceFact": "receiving handler omits register status guard",
+    "runtimeFact": "CLOSED register receives stock and changes inventory",
+    "engineExpected": "FAIL_CLOSED_STATE_ASSERTION",
+    "jevExpectedDisposition": "NOT_SUPPORTED",
+    "requiresDirectEvidence": true
+  },
+  {
+    "id": "SOURCE_RUNTIME_CONTRADICTION",
+    "isolation": "synthetic-ministore-fixture",
+    "defect": "Source says an operation is blocked while runtime evidence shows it succeeds.",
+    "sourceFact": "status guard returns before write",
+    "runtimeFact": "operation returns success and writes a record",
+    "engineExpected": "FAIL_SOURCE_RUNTIME_CONSISTENCY",
+    "jevExpectedDisposition": "CONTRADICTORY",
+    "requiresDirectEvidence": true
+  },
+  {
+    "id": "UNEXECUTED_VALIDATOR_CLAIMED_PASS",
+    "isolation": "synthetic-ministore-fixture",
+    "defect": "A validation summary claims PASS without a runner result.",
+    "sourceFact": "no validator invocation artifact exists",
+    "runtimeFact": "summary says all checks passed; no command, exit code, or output exists",
+    "engineExpected": "BLOCKED_MISSING_EXECUTION_EVIDENCE",
+    "jevExpectedDisposition": "INSUFFICIENT",
+    "requiresDirectEvidence": true
+  }
+]

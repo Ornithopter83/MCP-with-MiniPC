@@ -1,0 +1,42 @@
+# 10 검증 capability·사용량 관찰·JEV 기준실험
+
+Updated: 2026-09-23
+
+## 목표
+
+JEV 의미 검증과 엔진 실행, 브라우저 UI, 사용자 체감 확인의 범위를 분리하고, 호출별 실측 사용량과 통제된 JEV 음성 대조 fixture를 제공한다.
+
+## 세부 작업
+
+### A. 검증 capability 및 layer 분리 — 완료 (2026-09-23)
+
+- ENGINE_HEADLESS, UI_BROWSER, HUMAN_UX, JEV의 capability/status/runner/scope를 별도로 기록한다.
+- 실행 가능 도구가 발견됐다는 사실을 validator 실행 PASS로 표시하지 않는다.
+- 브라우저 adapter가 없으면 UI 검증을 BLOCKED_BY_TOOL로 남기며, 실행·결과 evidence는 독립 검증으로 보존한다.
+- 결과는 09-C envelope와 함께 round state에 기록한다. 엔진 실행 명령·validator를 추론해서 실행하지 않는다.
+
+### B. 호출별 사용량과 payload 계측 — 완료 (2026-09-23)
+
+- Codex/JEV의 job·round·role·model·reasoning·purpose, token usage, prompt/footer/evidence/payload bytes, latency, retry 및 usage-known을 호출 단위로 보존한다.
+- Codex의 cumulative usage snapshot을 중복 합산하지 않는다. JEV/Web provider usage가 오지 않으면 unknown으로 기록한다.
+- token cost 또는 절감률을 실제 provider usage 없이 추정하지 않는다.
+- Codex/JEV/Web 각각 role별 호출 JSONL을 `%Worker%/state/usage/<job-id>/calls.jsonl`에 남긴다. 본문은 기록하지 않고 prompt/footer/payload SHA-256만 저장한다.
+- Codex usage parser는 `total_token_usage`의 최신 스냅샷을 사용하고, `last_token_usage`만 있으면 증분 합산하며, 구형 일반 usage 객체는 마지막 값만 선택한다. provider가 제공하지 않은 provider total은 `null`이다.
+- JEV 응답 usage가 없으면 usage_known=false, token 필드는 null로 남긴다. GPT Web 사용량은 항상 unknown으로 기록한다.
+
+### C. JEV 음성 대조 fixture — 구현 완료 (2026-09-23; provider 측정 미실행)
+
+- MiniStore 유사 격리 fixture에 알려진 결함과 증거 모순을 구조화한다.
+- 결정적 validator 결과와 JEV 판정 결과를 다른 필드로 저장한다.
+- fixture 정의와 로컬 회귀만으로 JEV 탐지율을 주장하지 않는다. 실 provider 실행은 사용량·외부 요청 승인 조건에서 별도로 수행한다.
+- `JevNegativeControls.json`에 SALE/재고/원장 불일치, 중복 복원, CLOSED 상태 입고, 소스/runtime 모순, 미실행 validator의 허위 PASS 등 6개 격리 사례를 정의하고 test assembly resource로 회귀 검증한다.
+
+## 완료 및 잔여
+
+- A/B/C 각 결과, 완료일, 실제 검증 명령, 실 provider 호출 여부를 기록한다.
+- 09-C evidence envelope와 공개 JEV v1 wire 계약을 바꾸지 않는다.
+- 07 Force Restore 잔여 및 사용자의 09-B 해결 처리와 혼합하지 않는다.
+
+## 결과와 검증
+
+2026-09-23 10-A/B/C: envelope에 ENGINE_HEADLESS/UI_BROWSER/HUMAN_UX/JEV capability·상태를 추가했다. 호출별 Codex/JEV/Web usage, payload 크기·digest·지연을 로컬 JSONL에 보존하고 usage 미제공은 unknown으로 구분한다. Codex usage 중복 집계를 cumulative/incremental 규칙으로 수정했다. JEV 음성 대조 6건 fixture를 추가했다. 검증: `dotnet test ProjectHub.sln --configuration Debug --no-restore` 통과 (Core 1, Agent 3, Server 1, Worker 16), `git diff --check`, Release publish 성공. `C:\AI-AGENT\Worker`/`C:\GameProject` 복사본 SHA-256 모두 `CCD2C0B67FC85652B5387D7E54D3FD69A337D7DFD9BAE21768958866C3868E55`이며 Bridge ready, Extension synchronized=true다. 실 TypeSafe benchmark는 호출/비용 측정하지 않았으므로 판별 성공률은 미측정이다.

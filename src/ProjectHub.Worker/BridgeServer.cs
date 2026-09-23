@@ -14,7 +14,7 @@ public sealed class BridgeServer : IDisposable
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
     private const string ExpectedExtensionVersion = "0.1.3";
-    private const string ExpectedExtensionBuild = "2026-09-23.1";
+    private const string ExpectedExtensionBuild = "2026-09-23.5";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -84,11 +84,16 @@ public sealed class BridgeServer : IDisposable
         }
     }
     public bool CancelActiveTask()
+        => CancelActiveTask(out _);
+
+    public bool CancelActiveTask(out string? canceledTaskId)
     {
+        canceledTaskId = null;
         lock (_gate)
         {
             var task = _state.Tasks.FirstOrDefault(item => item.Status is "PENDING" or "CLAIMED");
             if (task is null) return false;
+            canceledTaskId = task.Id;
             var canceled = task with { Status = "FAILED", Result = "작업이 취소되었습니다.", FinishReason = "canceled", CompletedAt = DateTimeOffset.UtcNow };
             ReplaceTask(canceled);
             SaveState();
@@ -133,10 +138,14 @@ public sealed class BridgeServer : IDisposable
     {
         if (_cts is null) return;
         _cts.Cancel();
-        _listener.Stop();
+        // Start() can fail before HttpListener enters the listening state (for
+        // example, when the URL reservation is unavailable). Cleanup must not
+        // replace that startup exception with ObjectDisposedException.
+        if (_listener.IsListening)
+            _listener.Stop();
         if (_loop is not null)
         {
-            try { await _loop; } catch (HttpListenerException) { }
+            try { await _loop; } catch (HttpListenerException) { } catch (ObjectDisposedException) { }
         }
         _loop = null;
         _cts.Dispose();
