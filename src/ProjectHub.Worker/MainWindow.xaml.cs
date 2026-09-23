@@ -181,6 +181,13 @@ public partial class MainWindow : Window
     }
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (StatusPopup.IsOpen)
+        {
+            e.Cancel = true;
+            SetSettingsPopupOpen(false);
+            return;
+        }
+
         if (!_allowClose && (((App)System.Windows.Application.Current).ShutdownRequested || Dispatcher.HasShutdownStarted))
             _allowClose = true;
 
@@ -228,8 +235,34 @@ public partial class MainWindow : Window
 
     private void SetSettingsPopupOpen(bool open)
     {
-        StatusPopup.IsOpen = open;
         SettingsDimOverlay.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        StatusPopup.IsOpen = open;
+        if (open)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (!StatusPopup.IsOpen) return;
+                CoordinatorWebTabButton.Focus();
+                Keyboard.Focus(CoordinatorWebTabButton);
+            }, DispatcherPriority.Input);
+        }
+        else if (IsVisible)
+        {
+            Dispatcher.BeginInvoke(() => SettingsButton.Focus(), DispatcherPriority.Input);
+        }
+    }
+
+    private void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (!StatusPopup.IsOpen) return;
+        e.Handled = true;
+    }
+
+    private void SettingsPopup_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        e.Handled = true;
+        SetSettingsPopupOpen(false);
     }
 
     private void SettingsPopupHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1253,6 +1286,7 @@ public partial class MainWindow : Window
     private void UpdateCoordinatorProviderCard()
     {
         var isWeb = string.Equals(GetSelectedTag(CoordinatorProviderCombo, "web"), "web", StringComparison.OrdinalIgnoreCase);
+        CoordinatorModelCombo.IsEnabled = !isWeb;
         CoordinatorWebCard.Visibility = isWeb ? Visibility.Visible : Visibility.Collapsed;
         CoordinatorCliCard.Visibility = isWeb ? Visibility.Collapsed : Visibility.Visible;
         CoordinatorWebTabButton.IsChecked = isWeb;

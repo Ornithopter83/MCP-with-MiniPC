@@ -514,3 +514,9 @@ JEV Contract Gate의 고정 NEXT 라우팅과 임베디드 footer 틀을 Worker�
 ## 11-UI-A 역할 카드 기준선 최종 보정 (2026-09-23)
 
 선택 영역의 바깥 파란 여백을 필수 AI 그룹과 같은 14×12px로 조정하고, 설계·관제 추론 라벨을 14px로 통일했다. 판단 AI 사용 여부를 checkbox 첫 행에 올리고 JEV combo 기본 선택을 지정했다. 전체 Debug build 및 29개 테스트 통과. 게시 EXE와 Worker/GameProject 복사본 해시가 `FF8AE9159BACCD88AB9C7BFE92F8E05E8BAE2280751E5CE4E6EB1F9EBE238867`로 일치하며 Worker 창/Bridge 기동 확인.
+
+## 2026-09-23 설정창 포커스·역할 카드 표시 후속 (11-UI-A)
+
+- 설정 팝업을 열 때 배경 overlay를 먼저 표시하고 포커스를 설정 탭으로 이동한다. 메인 창의 키 입력을 차단하고 설정 팝업이 열린 동안 닫기 요청은 팝업만 닫게 했다. 팝업의 Escape 닫기도 연결했다.
+- GPT Web 탭에서 coordinator model ComboBox를 비활성화했다. Server 카드의 랙 아이콘과 Codex 스레드 선택 카드의 대화 아이콘을 교체했고, 네 역할 카드의 이름 라벨을 빼고 설정 팝업 TextBlock 기본 글꼴을 14px로 통일했다.
+- 검증: Debug build 경고 0/오류 0, 전체 테스트 29개 통과, git diff --check 통과. Release 게시 및 C:\AI-AGENT\Worker, C:\GameProject 복사 완료; 세 EXE SHA-256 0A219F77B9F83FC588D7E540F23F234DF4050B4929B745DCB0F26C2A7AC0BF69. GUI 픽셀 비교는 수행하지 않았다.

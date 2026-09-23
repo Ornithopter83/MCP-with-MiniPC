@@ -124,3 +124,10 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 관제 AI `추론` 라벨은 14px, 판단 AI의 `사용 여부` 라벨은 checkbox와 같은 1행으로 정렬했다. JEV 모델은 콤보 기본값으로 선택되도록 설정했다.
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 29개 통과, `git diff --check` 통과. Release 게시 후 Worker와 GameProject에 복사했고 세 SHA-256 일치: `FF8AE9159BACCD88AB9C7BFE92F8E05E8BAE2280751E5CE4E6EB1F9EBE238867`.
 - 파일 잠금 원인이던 기존 Worker는 Bridge에 active task가 없음을 확인하고 종료 후 갱신했다. 게시본 재기동 후 `ProjectHub Worker` 창과 Bridge ready/Web connected를 확인했다. 설정 팝업 픽셀 캡처는 이번 세션에서 미지원이다.
+
+## 2026-09-23 설정창 입력 차단·카드 표시 후속 (11-UI-A)
+
+- 팝업 표시 시 배경 차단 overlay를 먼저 켜고 키보드 포커스를 설정 탭에 둔다. 메인 창의 키 입력은 무시하고 설정 팝업이 열린 동안 메인 창 닫기 요청은 설정창만 닫는다. 설정 팝업의 Escape 닫기를 추가했다.
+- coordinator가 GPT Web이면 모델 콤보를 비활성화한다. 서버 상태 카드는 랙/표시등 아이콘으로, Codex 스레드 카드는 대화 아이콘으로 바꿨다. 네 역할 제목 문구를 카드에서 제거하고 팝업 기본 글꼴을 14px로 통일했다.
+- 검증: Debug build 경고 0/오류 0; 전체 테스트 29개 통과; git diff --check 통과. Release 및 Worker/GameProject 복사 성공, 세 SHA-256 0A219F77B9F83FC588D7E540F23F234DF4050B4929B745DCB0F26C2A7AC0BF69.
+- 비고: Explorer 설정 팝업의 실제 시각 캡처 검증은 수행하지 않았다. 활성 실행 경로 잔여는 변경하지 않았다.

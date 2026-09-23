@@ -6,6 +6,7 @@
         Width="1400" Height="900" MinWidth="1180" MinHeight="820" MaxWidth="1440" MaxHeight="960"
         Background="#F7FAFF" Foreground="#12244C"
         WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="MainWindow_PreviewKeyDown"
         Closing="Window_Closing">
   <Window.Resources>
     <SolidColorBrush x:Key="Ink" Color="#12244C" />
@@ -121,7 +122,13 @@
       </StackPanel>
       <Button x:Name="SettingsButton" Grid.Column="1" Content="⚙" FontSize="24" BorderThickness="0" Background="Transparent" Click="Settings_Click" Margin="0,4,0,0" />
     </Grid>    <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" HorizontalOffset="-1360" StaysOpen="True" AllowsTransparency="True" PopupAnimation="Slide" Panel.ZIndex="9999">
-      <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="10" Padding="14" Width="1400" Height="850" MaxHeight="850" Margin="0,8,0,0">
+      <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="10" Padding="14" Width="1400" Height="850" MaxHeight="850" Margin="0,8,0,0" PreviewKeyDown="SettingsPopup_PreviewKeyDown">
+        <Border.Resources>
+          <Style TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="14"/>
+          </Style>
+        </Border.Resources>
         <Grid>
           <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled">
@@ -170,7 +177,7 @@
             <TextBlock Text="서버 주소" Width="140" FontSize="15" VerticalAlignment="Center"/>
             <TextBox x:Name="ServerUrlInput" Width="780" Height="36" FontSize="16" Padding="9,5"/>
             <Border Width="390" Height="110" Margin="14,0,0,0" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="16,12" Background="#F8FBFF">
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="64" Height="72" Background="#EAF4FF" CornerRadius="10" VerticalAlignment="Center"><StackPanel Margin="12,15"><Border Height="10" Margin="0,0,0,4" Background="#334A68" CornerRadius="2"/><Border Height="10" Margin="0,0,0,4" Background="#334A68" CornerRadius="2"/><Border Height="10" Background="#334A68" CornerRadius="2"/></StackPanel></Border><StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"><TextBlock Text="서버" FontSize="17" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,5,0,0"/><StackPanel Orientation="Horizontal" Margin="0,7,0,0"><Ellipse x:Name="ServerStatusDotSettings" Width="11" Height="11" Fill="#20C65A" Margin="0,0,7,0"/><TextBlock x:Name="ServerStatusTextSettings" Text="READY" FontSize="13" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="64" Height="72" Background="#EAF4FF" CornerRadius="10" VerticalAlignment="Center" Padding="10"><Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Grid.Row="0" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border><Border Grid.Row="1" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border><Border Grid.Row="2" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border></Grid></Border><StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"><TextBlock Text="서버" FontSize="17" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,5,0,0"/><StackPanel Orientation="Horizontal" Margin="0,7,0,0"><Ellipse x:Name="ServerStatusDotSettings" Width="11" Height="11" Fill="#20C65A" Margin="0,0,7,0"/><TextBlock x:Name="ServerStatusTextSettings" Text="READY" FontSize="13" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
             </Border>
           </StackPanel>
           <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,6,0,0">
@@ -192,14 +199,14 @@
               <Border BorderBrush="#DCE6F3" BorderThickness="1" CornerRadius="7" Background="White" Padding="8,6" Margin="0,8,0,0">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-                  <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="설계·관제 AI" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/><Border Width="48" Height="48" Margin="0,8,0,0" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border></StackPanel>
+                  <Border Grid.Column="0" Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
                   <Grid Grid.Column="1" Margin="0,0,14,0">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/></Grid.ColumnDefinitions>
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="서비스 제공자" VerticalAlignment="Center"/>
                     <StackPanel Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal">
-                      <ToggleButton x:Name="CoordinatorWebTabButton" Content="GPT Web" Width="150" Height="34" IsChecked="True" Click="CoordinatorWebTab_Click"/>
-                      <ToggleButton x:Name="CoordinatorCliTabButton" Content="OpenAI Codex CLI" Width="190" Height="34" Click="CoordinatorCliTab_Click"/>
+                      <ToggleButton x:Name="CoordinatorWebTabButton" Content="GPT Web" Width="150" Height="34" FontSize="14" IsChecked="True" Click="CoordinatorWebTab_Click"/>
+                      <ToggleButton x:Name="CoordinatorCliTabButton" Content="OpenAI Codex CLI" Width="190" Height="34" FontSize="14" Click="CoordinatorCliTab_Click"/>
                     </StackPanel>
                     <ComboBox x:Name="CoordinatorProviderCombo" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Height="34" Visibility="Collapsed" SelectionChanged="CoordinatorProviderCombo_SelectionChanged"/>
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
@@ -209,10 +216,10 @@
                   </Grid>
                   <Grid Grid.Column="2">
                     <Border x:Name="CoordinatorWebCard" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="10">
-                      <StackPanel Orientation="Horizontal"><Image Source="Assets/current-web.png" Width="46" Height="46" Margin="0,0,10,0"/><StackPanel VerticalAlignment="Center"><TextBlock Text="GPT Web" FontSize="15" FontWeight="Bold"/><TextBlock Text="웹 대화 연결 상태를 사용합니다" FontSize="12" Foreground="{StaticResource Muted}"/></StackPanel></StackPanel>
+                      <StackPanel Orientation="Horizontal"><Image Source="Assets/current-web.png" Width="46" Height="46" Margin="0,0,10,0"/><StackPanel VerticalAlignment="Center"><TextBlock Text="GPT Web" FontSize="14" FontWeight="Bold"/><TextBlock Text="웹 대화 연결 상태를 사용합니다" FontSize="12" Foreground="{StaticResource Muted}"/></StackPanel></StackPanel>
                     </Border>
                     <Border x:Name="CoordinatorCliCard" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="10" Visibility="Collapsed">
-                      <StackPanel Orientation="Horizontal"><Border Width="42" Height="36" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,10,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"><Ellipse Width="5" Height="5" Fill="{StaticResource Blue}" Margin="2,0"/><Ellipse Width="5" Height="5" Fill="{StaticResource Blue}" Margin="2,0"/><Ellipse Width="5" Height="5" Fill="{StaticResource Blue}" Margin="2,0"/></StackPanel></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="CoordinatorRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
+                      <StackPanel Orientation="Horizontal"><Border Width="42" Height="36" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,10,0" Background="#EAF4FF"><Grid Margin="8,7"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,3"/><Border Grid.Row="1" Width="18" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="CoordinatorRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
                     </Border>
                   </Grid>
                 </Grid>
@@ -221,7 +228,7 @@
                 <Grid>
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-                  <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="작업 AI" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/><Border Width="48" Height="48" Margin="0,8,0,0" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border></StackPanel>
+                  <Border Grid.Column="0" Grid.RowSpan="2" Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
                   <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
                   <ComboBox x:Name="ImplementerProviderCombo" Grid.Row="0" Grid.Column="2" Height="32"/>
                   <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
@@ -229,7 +236,7 @@
                   <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
                   <ComboBox x:Name="ImplementerReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
                   <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
-                    <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"><Ellipse Width="4" Height="4" Fill="{StaticResource Blue}" Margin="2,0"/><Ellipse Width="4" Height="4" Fill="{StaticResource Blue}" Margin="2,0"/><Ellipse Width="4" Height="4" Fill="{StaticResource Blue}" Margin="2,0"/></StackPanel></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="ImplementerRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#EAF4FF"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="ImplementerRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
                   </Border>
                 </Grid>
               </Border>
@@ -239,17 +246,17 @@
             <Grid Background="White">
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="고수준 작업 AI" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/><Border Width="48" Height="48" Margin="0,8,0,0" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border></StackPanel>
+              <Border Grid.Column="0" Grid.RowSpan="2" Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
               <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
               <TextBlock Grid.Row="0" Grid.Column="2" Text="OpenAI Codex CLI" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
               <TextBlock Grid.Row="0" Grid.Column="3" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-              <CheckBox x:Name="HighLevelEnabledCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+              <CheckBox x:Name="HighLevelEnabledCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Left"/>
               <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
               <ComboBox x:Name="HighLevelModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
               <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
               <ComboBox x:Name="HighLevelReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
               <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
-                <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"><Ellipse Width="4" Height="4" Fill="{StaticResource Blue}" Margin="2,0"/><Ellipse Width="4" Height="4" Fill="{StaticResource Blue}" Margin="2,0"/><Ellipse Width="4" Height="4" Fill="{StaticResource Blue}" Margin="2,0"/></StackPanel></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="HighLevelRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
+                <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#EAF4FF"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="HighLevelRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
               </Border>
             </Grid>
           </Border>
@@ -257,13 +264,13 @@
             <Grid Background="White">
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="판단 AI" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/><Image Source="Assets/current-jev.png" Width="48" Height="48" Margin="0,8,0,0"/></StackPanel>
+              <Image Grid.Column="0" Grid.RowSpan="2" Source="Assets/current-jev.png" Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
               <ComboBox x:Name="JudgeProviderCombo" Grid.Row="0" Grid.Column="2" Height="32" FontSize="14"><ComboBoxItem Content="Typesafe" Tag="jev"/></ComboBox>
               <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,4,0,0"/>
               <ComboBox x:Name="JudgeModelCombo" Grid.Row="1" Grid.Column="2" Height="32" FontSize="14" Margin="0,4,0,0" SelectedIndex="0"><ComboBoxItem Content="JEV"/></ComboBox>
               <TextBlock Grid.Row="0" Grid.Column="3" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-              <CheckBox x:Name="EnableJudgeCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="15" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+              <CheckBox x:Name="EnableJudgeCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Left"/>
               <TextBlock x:Name="JudgeSettingsStatusText" Grid.Row="1" Grid.Column="4" Text="Typesafe · JEV · 사용 안 함" Visibility="Collapsed"/>
               <Button Grid.Row="0" Grid.Column="5" Grid.RowSpan="2" Content="JSON 설정 테스트" Width="350" HorizontalAlignment="Right" Padding="18,10" MinHeight="44" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Blue}" Background="#EAF4FF" BorderBrush="{StaticResource Blue}" BorderThickness="1" Click="TestJudge_Click"/>
               <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
