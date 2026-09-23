@@ -12,6 +12,7 @@ Updated: 2026-09-23
 - 작업 완료는 implementer exit 0, 모든 필수 validation command의 JSONL 관측 및 실제 exit 0, 구조화 검토의 정확한 AC 집합 전체 PASS, `ACCEPT`가 모두 충족될 때만 허용한다. 역할·모델·reasoning·session·호출 usage를 MESSAGE/telemetry에 기록하고 취소 시 프로세스 취소와 UI 복구를 연결했다.
 - JEV ON은 현재 CLI-to-CLI 모드에서 preflight 차단하며 Legacy Web에서 유지한다. ACTION/NEXT Web 계약을 바꾸지 않았다. 09-B E2E 잔여는 사용자 결정대로 해결 처리/정기 관리 제외, Bridge 이슈와 07 잔여는 기존 정책 유지.
 - 검증: `dotnet test ProjectHub.sln --configuration Debug --no-restore` 통과 (Core 1, Agent 3, Server 1, Worker 23; 전체 28); `node --check extension/gptweb-hub/content.js`; `git diff --check` 성공. disposable temp 폴더에서 지원 모델 `gpt-5.6-sol` / `low`의 구조화 출력 및 session ID smoke 통과.
+- 후속 재확인(2026-09-23): 기존의 “GPT-6 Sol/Luna가 미지원” 안내를 정정한다. 현재 `codex-cli 0.155.0-alpha.16`의 `codex debug models`는 두 모델 모두 `visibility=list`, `supported_in_api=True`로 표시한다. 실제 `codex exec --ephemeral --sandbox read-only` 호출도 각 모델 `low` 설정에서 성공했다. Explorer Worker를 재시작해 최신 catalog를 읽혔다.
 - Release 게시 성공. `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`와 `C:\GameProject\ProjectHub.Worker.exe` 복사본 및 프로젝트 게시본의 SHA-256은 `11E56140632E5BCCA5650B5310AC9C585532F606B25A8BC2A07466AB8FF5C8D1`로 일치한다. Explorer에서 기존 Worker를 종료한 뒤 새 Worker 창이 응답하는 것을 확인했다.
 - 다음 후보는 11-B JobRunner 분리/재시작 복구다. 이번 범위에서는 시작하지 않았다.
 

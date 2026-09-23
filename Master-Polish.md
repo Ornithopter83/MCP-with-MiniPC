@@ -7,7 +7,7 @@
 
 > **개정 목표(2026-09-23): ProjectHub는 네 가지 AI 역할을 설정창에서 독립적으로 구성하는 CLI-to-CLI 중심의 저비용 개발 시스템이다.** 필수: **설계·관제 AI**(예: GPT-6 Sol CLI), **작업 AI**(예: GPT-6 Luna Medium CLI). 선택: **작업 판단 AI**(기존 JEV 연결 또는 향후 AI 판단 어댑터), **고수준 작업 AI**(어려운 구현을 위한 별도 모델). Worker가 상태·권한·예산·증거·복구와 독립 세션을 관리한다. ChatGPT Web/Extension은 기존 호환 경로로 보존하되 신규 기본 관제 경로가 아니다. 토큰 절약 → 목표까지의 지속성 → 교체 가능한 역할·모델 순서로 투자한다.
 >
-> 2026-09-23 기준 11-A coordinator-first CLI 흐름과 필수 역할 UI를 구현했다. GPT-6 Sol/Luna는 설치된 CLI catalog에 없으면 선택/실행할 수 없고 자동 대체하지 않는다. 선택적 판단 AI·고수준 AI, 지속 실행·재시작 복구 등은 아직 별도 backlog다. 기존 ACTION/NEXT 공개 계약, Agent/Server/NAS 동작과 Git 승인 정책은 변경하지 않는다.
+> 2026-09-23 기준 11-A coordinator-first CLI 흐름과 필수 역할 UI를 구현했다. 현재 `codex-cli 0.155.0-alpha.16` catalog와 직접 실행에서 GPT-6 Sol/Luna가 확인됐다. 실행 시에는 항상 설치된 CLI catalog로 지원 여부를 판정하고 자동 대체하지 않는다. 선택적 판단 AI·고수준 AI, 지속 실행·재시작 복구 등은 아직 별도 backlog다. 기존 ACTION/NEXT 공개 계약, Agent/Server/NAS 동작과 Git 승인 정책은 변경하지 않는다.
 
 ## 1. AI가 매번 먼저 읽을 짧은 운영 지침
 
