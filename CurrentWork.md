@@ -2,9 +2,35 @@
 
 Updated: 2026-09-24
 
+## 재현 후속 — CODEX_HOME와 CLI 세션 경로 불일치 (2026-09-24)
+
+- 07:45:10 실행 transcript `_20260924_074546.txt`에서 SOL PLAN은 `exit 0`으로 성공했지만 REVIEW용 session ID 복구가 실패해 Luna 전에 다시 차단된 것을 확인했다. 같은 시각 rollout `C:\Users\ornit\.codex\sessions\2026\09\24\rollout-2026-09-24T07-45-10-01a0d071-bff5-7bd2-b0c1-bdeab1c5e9e4.jsonl`에는 정상 `session_meta`와 세션 ID가 있다. 설치 EXE는 이전 수정 게시본 A379…와 일치했으므로 실패 원인은 미배포가 아니다.
+- 새 원인: Worker는 `CODEX_HOME`이 있으면 해당 세션 저장소만 조사했지만, 실제 codex.exe가 다른 `USERPROFILE\.codex`에 rollout을 기록할 수 있다. 세 환경값의 세션 경로를 우선순위 단일 선택 대신 모두 검색하고, 중복 경로는 제거하도록 수정했다. 세션 ID가 다른 루트에 있어도 기존 CWD/시각/originator/source 조건 및 후보 유일성은 그대로 적용한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 36개 통과(Worker 31, Core 1, Agent 3, Server 1); `git diff --check` 통과. Release 게시 성공. 첫 수동 복사 때 `bin\Release\...\ProjectHub.Worker.exe`의 framework-dependent 파일을 복사해 DLL 누락 실행 오류를 만들었다. 이를 단일 파일 게시 결과 `src\ProjectHub.Worker\bin\ProjectHub.Worker.exe`로 교체했고 게시본과 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`의 SHA-256은 `843871D45623C8850090D6B0207C438B29E9D531F04579C5987E2E330A2F492B`로 일치한다. Application 로그의 DLL 오류는 잘못된 파일을 실행했던 시각의 기록이다. Computer Use에서 native 앱 목록/제어를 제공하지 않아 사용자 데스크톱에서 창 표시를 시각 검증하지 못했다. 도구 실행 세션에서 시작한 Worker는 정리했다. `C:\GameProject`는 없어 추가 복사 위치는 생략했다. 다음 실제 실행에서 PLAN→REVIEW 연속과 동일 세션 ID 연결을 재현 확인해야 한다.
+
+## 재현 후속 — 세션 저장소 경로 확인 (2026-09-24)
+
+- 사용자가 올린 07:38 화면의 Worker transcript `_20260924_073844.txt`와 같은 시각 Codex rollout을 대조했다. 이전 복구판(C928… 해시)이 실제 실행되어 계획은 다시 `exit 0`으로 성공했으나 세션 ID 연결에서 막혔다. 해당 rollout 파일은 `C:\Users\ornit\.codex\sessions\2026\09\24`에 실제 생성돼 있었다.
+- 복구 코드가 `Environment.GetFolderPath(UserProfile)`를 사용해 `C:\Users\CodexSandboxOffline\.codex`를 찾고 있었고, Codex CLI는 `USERPROFILE=C:\Users\ornit`의 `.codex`를 사용했다. 이 프로필 경로 불일치가 새 rollout 검색 실패의 원인이다. `CODEX_HOME`을 최우선, `USERPROFILE`을 다음 우선으로 사용하고 .NET special-folder 값은 마지막 fallback으로 바꿨다.
+- 검증: Debug 빌드 경고 0/오류 0, 전체 35개 테스트 통과(Worker 30, Core 1, Agent 3, Server 1), `git diff --check` 통과. 프로필 경로 우선순위 회귀 테스트를 추가했다. Release 게시 성공, 게시 EXE SHA-256 `A379242F7027B5DA0443ADF5D20E5D3C22174B81F73B03B175E032B5AF1892C3`. 기존 `C:\AI-AGENT\Worker` 파일은 아직 C928… 해시다. 게시 스크립트의 해당 위치 덮어쓰기는 자동 승인 검토가 명시적 배포 승인이 없다는 이유로 거부했다. 실행 중 Worker와 `C:\GameProject`는 없었다. 실제 복사 및 화면 재검증은 미완료다.
+
+## 현재 후속 — 관제 세션 식별 복구와 작업 흐름 애니메이션 (2026-09-24)
+
+- 첨부 시각과 일치하는 `Worker/Task/Worker_NewThread/_20260924_010358.txt`를 조사했다. SOL PLAN 호출은 `exit 0`으로 작업 카드를 반환했지만 결과의 session 필드가 비어 있었다. Worker는 같은 관제 세션으로 REVIEW 해야 한다는 계약에 따라 Luna 호출 전에 중단했다. 대응 시각·작업 폴더의 Codex CLI rollout 메타데이터에는 `originator=codex_exec`, `source=exec`, 일치하는 CWD와 session ID가 기록되어 있었다. 즉 관제 추론 실패가 아니라 stdout의 `thread.started` ID를 Worker가 받지 못한 세션 상관관계 실패다.
+- JSONL session ID 읽기를 BOM 및 필드 대소문자 차이에 강하게 만들고, 이벤트가 빠진 경우 CLI 세션 디렉터리에서 호출 전 snapshot 대비 새 파일 중 `codex_exec`/`exec`, 동일 CWD, 호출 시간대가 모두 맞는 세션이 정확히 하나일 때만 ID를 보완하도록 했다. 후보가 없거나 여러 개면 이전과 같이 구현 AI를 실행하지 않아 엉뚱한 세션 리뷰를 막는다. 기존 요청별 SOL 계획 → Luna 구현 → 같은 SOL 세션 검토 구조는 유지한다.
+- pipeline 화살표가 한 칸뿐인 경로에서도 opacity/이동 pulse를 보이며, Luna에서 SOL 관제로 되돌아가는 화살표도 역방향 표기로 움직이게 했다. 중앙 Current Task 화살표도 세 기호 사이에 진행 pulse가 순환한다.
+- 검증: Debug build 경고 0/오류 0; 전체 34개 테스트 통과(Worker 29, Core 1, Agent 3, Server 1); `git diff --check` 통과. JSONL BOM/대소문자 파서, 동일 폴더·호출 시각의 세션 rollout 유일 후보 및 모호한 복수 후보 거부를 테스트했다. Release 게시 성공, 게시 EXE SHA-256 `C92837826EEF2C52443C2B4EEBCD526DB8F6E0C27CCCF7BF464F9B1E2470C258`. C:\GameProject는 현재 없어 자동 복사되지 않았다. `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`는 구버전 해시 `FC421C2E13D514CA37C50C388333C005C4385CEF5E0FD7FEE955EEBD86ED7F04`이며 활성 PID 50960이 이 파일을 사용 중이다. 종료·교체 시도는 자동 검토가 거부해 새 변경은 게시 출력에만 있다. Native desktop 앱이 연결되지 않아 실행 화면에서 애니메이션을 직접 확인하지 못했다.
+
+## 현재 후속 — 역할 모델 capability 중복 검사 제거 (2026-09-24)
+
+- 첨부 화면의 `gpt-6-sol / high`는 설정 enum에 실제 포함되어 있고 `CodexModelRequest`가 CLI 요청 인수로 조합할 수 있다. 그러나 실행 전 안내는 별도로 비동기 로딩한 `codex debug models` 카탈로그로 같은 조합을 재검사해 차단했다. 이 두 목록의 차이/시점 차이가 사용자에게 보인 오탐 경로다.
+- 실행 preflight에서 동적 카탈로그 기반 coordinator/implementer 차단을 제거했다. 모델·추론 유효성은 설정 콤보와 요청 조합이 공유하는 `CodexServedModels` enum만 기준으로 한다. 미등록 저장값은 설정 콤보에 임의 항목으로 추가하지 않고 enum 첫 모델 및 해당 모델 기본 추론으로 안전하게 표시한다. 폴더·provider·transport·CLI 인증 검사는 유지한다.
+- 자동 회귀 검사에 정확히 `gpt-6-sol / high` 조합이 CLI 인수로 만들어지는 검증을 추가했다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 32개 통과(Worker 27, Core 1, Agent 3, Server 1); `git diff --check` 통과. Release 게시 성공, 새 EXE SHA-256 `FC421C2E13D514CA37C50C388333C005C4385CEF5E0FD7FEE955EEBD86ED7F04`. `C:\GameProject` 폴더가 현재 없어 프로젝트 게시 후 복사는 실행되지 않았다. 활성 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` PID 27136의 EXE는 이전 SHA-256 `44C02E1A1F140F09E1CFF5233FEFD5644A7F82A78AED8F6A6A652F75A1259758`이고, 종료 시도가 자동 승인 검토에서 진행 중 작업 중단 위험으로 거부되어 덮어쓰지 않았다. `git fetch origin`은 성공했지만 미커밋 변경이 있어 `git pull --rebase`는 저장소 지침에 따라 중단했다. 따라서 최신 피드백 확인 및 커밋/푸시는 아직 수행하지 않았다.
+
 ## 현재 후속 — JEV 설정 검사 기록과 비차단 적용 (2026-09-24)
 
-- CLI-to-CLI 사전 검사에서 JEV 활성 여부를 실행 차단 조건으로 사용하던 오류를 제거했다. 실행 preflight는 실제 실행에 필요한 경로·CLI 인증·모델 capability 등 환경 조건만 확인한다. Luna 뒤의 실제 CLI-to-CLI 경로는 구현된 Sol 검토로 진행하며 Judge 카드를 다음 활성 단계라고 잘못 표시하지 않는다.
+- CLI-to-CLI 사전 검사에서 JEV 활성 여부를 실행 차단 조건으로 사용하던 오류를 제거했다. 실행 preflight는 실제 실행에 필요한 경로·CLI 인증 등 환경 조건만 확인한다. 모델/추론 유효성은 역할 콤보와 CLI 요청 구성이 공유하는 enum이 담당한다. Luna 뒤의 실제 CLI-to-CLI 경로는 구현된 Sol 검토로 진행하며 Judge 카드를 다음 활성 단계라고 잘못 표시하지 않는다.
 - `JSON 설정 테스트` 실행 결과를 `target-settings.json`의 `judgeEndpointValidation`에 기록한다. provider/endpoint/timeout의 SHA-256 fingerprint, 성공 여부, 결과 코드, UTC 시각만 저장하고 Endpoint 주소나 응답 전문을 검증 기록에 중복 저장하지 않는다. 적용하는 현재 설정과 fingerprint가 일치하는 성공 기록이 없으면 미검증/실패 경고를 띄우되 저장·실행을 막지 않는다. 테스트 실패 시에도 결과를 보존하여 사용자가 환경을 확인하고 직접 다시 검사할 수 있다. Endpoint/timeout/provider가 바뀌면 fingerprint 불일치로 현 설정은 재검사 대상으로 판단한다.
 - 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 32개 통과(Worker 27, Core 1, Agent 3, Server 1); `git diff --check` 통과. Worker 테스트에 JSON round-trip, 구성 변경 시 stale 기록, 미검증/실패 경고 동작을 추가했다. Release publish 성공; 게시 EXE와 `C:\GameProject\ProjectHub.Worker.exe` SHA-256 `376D4094D3609A518D4A964E54DBDDDDCF01DD045E0AB8C7F611432740AB5FC9` 일치. 실행 중인 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`는 자동 검토가 종료를 거부한 기존 프로세스 상태를 보존하기 위해 덮어쓰지 않았다.
 

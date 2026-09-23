@@ -29,6 +29,12 @@ public sealed class CoordinatorFirstContractTests
     public void CurrentServedModels_AreEnumsAndComposeTheActualCliRequest()
     {
         Assert.Equal(7, CodexServedModels.Current.Count);
+        // The settings combo offers this exact pair; it must remain a valid CLI request
+        // even when the independently refreshed `codex debug models` cache disagrees.
+        Assert.True(CodexModelRequest.TryCreate("gpt-6-sol", "high", out var coordinatorRequest));
+        Assert.Equal("--model", coordinatorRequest.ToCliArguments()[0]);
+        Assert.Equal("gpt-6-sol", coordinatorRequest.ToCliArguments()[1]);
+        Assert.Equal("high", coordinatorRequest.ReasoningId);
         Assert.True(CodexModelRequest.TryCreate("gpt-6-luna", "high", out var request));
         Assert.Equal("model=gpt-6-luna&reasoning=high", request.ToQueryString());
         Assert.Equal(new[] { "--model", "gpt-6-luna", "-c", "model_reasoning_effort=\"high\"" }, request.ToCliArguments());
@@ -136,6 +142,98 @@ public sealed class CoordinatorFirstContractTests
         var executions = CodexCliRunner.ExtractCommandExecutions(jsonl);
 
         Assert.Equal(new CodexCommandExecution("dotnet test Sample.sln", 0), Assert.Single(executions));
+    }
+
+    [Fact]
+    public void SessionIdParser_HandlesUtf8BomAndJsonPropertyCasing()
+    {
+        const string jsonl = "\uFEFF{\"Type\":\"thread.started\",\"Thread_Id\":\"session-123\"}";
+
+        Assert.Equal("session-123", CodexCliRunner.ExtractSessionId(jsonl));
+    }
+
+    [Fact]
+    public void SessionLocator_PrefersCodexHomeThenUserProfileEnvironment()
+    {
+        Assert.Equal(Path.Combine("C:\\Users\\ornit", ".codex", "sessions"),
+            CodexSessionLocator.ResolveSessionsRoot(null, "C:\\Users\\ornit", "C:\\Users\\CodexSandboxOffline"));
+        Assert.Equal(Path.Combine("D:\\CodexData", "sessions"),
+            CodexSessionLocator.ResolveSessionsRoot("D:\\CodexData", "C:\\Users\\ornit", "C:\\Users\\CodexSandboxOffline"));
+        Assert.Equal(new[]
+        {
+            Path.Combine("D:\\CodexData", "sessions"),
+            Path.Combine("C:\\Users\\ornit", ".codex", "sessions"),
+            Path.Combine("C:\\Users\\CodexSandboxOffline", ".codex", "sessions")
+        }, CodexSessionLocator.ResolveSessionsRoots("D:\\CodexData", "C:\\Users\\ornit", "C:\\Users\\CodexSandboxOffline"));
+    }
+
+    [Fact]
+    public void SessionLocator_FindsSessionWhenCodexHomeAndCliProfileDiffer()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "projecthub-session-roots-test-" + Guid.NewGuid().ToString("N"));
+        var workingDirectory = Path.Combine(root, "workspace");
+        var codexHomeSessions = Path.Combine(root, "custom-codex-home", "sessions");
+        var userSessions = Path.Combine(root, "user-profile", ".codex", "sessions");
+        Directory.CreateDirectory(workingDirectory);
+        var startedAt = DateTimeOffset.Now.AddSeconds(-4);
+        var finishedAt = DateTimeOffset.Now.AddSeconds(2);
+        var day = startedAt.ToLocalTime();
+        var dayDirectory = Path.Combine(userSessions, day.ToString("yyyy"), day.ToString("MM"), day.ToString("dd"));
+        Directory.CreateDirectory(dayDirectory);
+        try
+        {
+            var snapshot = new CodexSessionSnapshot(
+                new[] { codexHomeSessions, userSessions }, Path.GetFullPath(workingDirectory), startedAt,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            File.WriteAllText(Path.Combine(dayDirectory, "rollout-cli-session.jsonl"), JsonSerializer.Serialize(new
+            {
+                type = "session_meta",
+                payload = new { id = "session-from-user-profile", timestamp = startedAt.ToUniversalTime().ToString("O"), originator = "codex_exec", source = "exec", cwd = workingDirectory }
+            }));
+
+            Assert.Equal("session-from-user-profile", CodexSessionLocator.FindNewSessionId(snapshot, finishedAt));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SessionLocator_UsesOnlyOneNewCodexExecSessionForTheSameWorkingFolder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "projecthub-session-test-" + Guid.NewGuid().ToString("N"));
+        var workingDirectory = Path.Combine(root, "workspace");
+        var sessionsRoot = Path.Combine(root, "sessions");
+        Directory.CreateDirectory(workingDirectory);
+        var startedAt = DateTimeOffset.Now.AddSeconds(-4);
+        var finishedAt = DateTimeOffset.Now.AddSeconds(2);
+        var day = startedAt.ToLocalTime();
+        var dayDirectory = Path.Combine(sessionsRoot, day.ToString("yyyy"), day.ToString("MM"), day.ToString("dd"));
+        Directory.CreateDirectory(dayDirectory);
+        try
+        {
+            var snapshot = new CodexSessionSnapshot(new[] { sessionsRoot }, Path.GetFullPath(workingDirectory), startedAt, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            var sessionFile = Path.Combine(dayDirectory, "rollout-test-session.jsonl");
+            File.WriteAllText(sessionFile, JsonSerializer.Serialize(new
+            {
+                type = "session_meta",
+                payload = new { id = "session-123", timestamp = startedAt.ToUniversalTime().ToString("O"), originator = "codex_exec", source = "exec", cwd = workingDirectory }
+            }));
+
+            Assert.Equal("session-123", CodexSessionLocator.FindNewSessionId(snapshot, finishedAt));
+
+            File.WriteAllText(Path.Combine(dayDirectory, "rollout-second-session.jsonl"), JsonSerializer.Serialize(new
+            {
+                type = "session_meta",
+                payload = new { id = "session-456", timestamp = startedAt.ToUniversalTime().ToString("O"), originator = "codex_exec", source = "exec", cwd = workingDirectory }
+            }));
+            Assert.Null(CodexSessionLocator.FindNewSessionId(snapshot, finishedAt));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

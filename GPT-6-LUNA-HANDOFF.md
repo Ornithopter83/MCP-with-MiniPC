@@ -31,6 +31,27 @@ GPT-5.6 Luna로 진행하던 Codex 작업을 GPT-6 Luna가 같은 스레드와 �
 - 인계 직후에는 `TASK START`와 `CLI STATUS`의 model 항목에서 실제 `gpt-6-luna` 사용 여부를 확인한다.
 - 계정이나 CLI 버전에서 모델이 제공되지 않으면 exit code와 stderr를 확인하고 사용 가능한 모델로 선택한다.
 
+## 2026-09-24 작업 인계 및 이주용 문구
+
+### 현재 구현과 재현 결과
+
+- CLI-to-CLI coordinator가 PLAN은 성공했지만 같은 관제 session ID를 얻지 못해 Luna 호출 전 BLOCKED 되는 재현이 있었다. `thread.started` JSONL 추출을 BOM/필드 대소문자에 강하게 했고, 누락 시 `CODEX_HOME`, `USERPROFILE\.codex`, .NET 프로필의 세션 루트를 모두 조사한다. 새 rollout의 `codex_exec`/`exec`, 동일 CWD, 시간 범위 조건을 확인하고 후보가 정확히 하나일 때만 복구한다.
+- 2026-09-24 07:45:10 재현의 SOL PLAN은 exit 0이었다. 세션 기록은 `C:\Users\ornit\.codex\sessions`에 생성됐지만 Worker의 선택 경로와 다를 수 있었던 것이 차단 원인이었다.
+- 검증은 Debug 빌드 성공(경고/오류 0), 전체 36개 테스트 통과, `git diff --check` 통과다. 설치 배포 때 작은 framework-dependent EXE를 잘못 복사한 적이 있어 DLL 누락으로 실행 실패했다. 단일 파일 publish EXE로 다시 교체했고 프로젝트 게시본과 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`의 SHA-256은 `843871D45623C8850090D6B0207C438B29E9D531F04579C5987E2E330A2F492B`로 일치한다.
+- Computer Use의 native Windows 앱 목록이 이 세션에 노출되지 않아 사용자가 연 창의 시각 확인과 PLAN→REVIEW 실제 왕복은 아직 못 했다. 먼저 Explorer에서 설치본을 직접 확인하고, 실제 새 작업으로 PLAN 다음 동일 session REVIEW가 이어지는지 transcript와 rollout ID를 대조한다.
+
+### 다음 Codex 작업으로 옮길 문구
+
+```text
+ProjectHub 저장소의 미완료 후속을 이어서 확인해줘. 우선 AGENTS.md, ProjectHub_IMPLEMENTATION_PLAN.md, CurrentWork.md, tasks/11-cli-coordinator-first.md, GPT-Web-Feedback.md, GPT-6-LUNA-HANDOFF.md를 읽고 git status를 확인해.
+
+최근 수정은 coordinator CLI 세션 ID 복구야. CODEX_HOME, USERPROFILE\\.codex, .NET user-profile 세션 루트를 모두 검색하고, codex_exec/exec + 동일 CWD + 시간 조건을 만족하는 유일한 새 rollout만 세션으로 채택해. 07:45:10 transcript에서는 PLAN exit 0 뒤 REVIEW 세션 식별에 실패했으며 rollout은 C:\\Users\\ornit\\.codex\\sessions 아래에 실제 생성돼 있었어.
+
+설치 실행 실패는 작은 framework-dependent Release EXE를 복사했던 실수였어. 올바른 self-contained 단일 파일 EXE를 C:\\AI-AGENT\\Worker\\ProjectHub.Worker.exe에 배포했고 게시/설치 해시는 843871D45623C8850090D6B0207C438B29E9D531F04579C5987E2E330A2F492B야. 실행 UI/Explorer 시각 확인 및 PLAN→같은 Sol session REVIEW 실 왕복은 아직 미완료이니 이 두 가지를 먼저 검증하고 실패 원인을 수정해.
+
+현재 수정 사항은 main 브랜치의 unstaged 작업 트리에 남아 있었고, 2026-09-24 git fetch origin은 성공했지만 git pull --rebase는 unstaged 변경 때문에 중단됐어. 원격 main과 HEAD는 fetch 시점에 동일했어. 이 인계 세션에서 아직 commit/push하지 않았어. 먼저 변경 전체를 검토하고 저장소 지침에 맞춰 pull/rebase 및 최신 GPT-Web-Feedback을 확인한 뒤 커밋/푸시 상태를 정리해. 인증정보는 문서·로그에 기록하지 마.
+```
+
 ## 공식 모델 비교
 
 - GPT-5.6 Luna: 입력 $0.20/1M, 출력 $1.20/1M, 1.05M context, 최대 출력 128K

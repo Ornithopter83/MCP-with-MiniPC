@@ -2,6 +2,20 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 후속 — 역할 모델 선택과 실행 검사 일치
+
+설정 UI와 별도 `codex debug models` 카탈로그 사이의 이중 capability 검사를 제거했다. CLI 실행용 모델/추론 선택은 설정과 요청 인수 조합에서 공통으로 쓰는 `CodexServedModels` enum에 맡기고, 폴더·provider·transport·인증 사전검사는 유지한다. 콤보에 enum 외 저장값을 임의로 노출하지 않는다. `gpt-6-sol / high` 회귀 검증을 추가했다. Debug 빌드(경고/오류 0), 전체 32개 테스트, Release 게시가 성공했다. 새 게시 EXE SHA-256은 `FC421C2E13D514CA37C50C388333C005C4385CEF5E0FD7FEE955EEBD86ED7F04`. C:\GameProject가 없어 자동 복사는 생략됐고, 실행 중 PID 27136의 이전 EXE 교체는 자동 검토가 거부해 잔여다. 미커밋 작업 때문에 pull/rebase·최신 피드백 확인·커밋/푸시는 중단했다. 상세는 CurrentWork 후속 기록을 참조한다.
+
+## 2026-09-24 후속 — Coordinator session correlation 및 flow pulse
+
+첨부된 실패 transcript에서 Sol PLAN은 정상 종료·계획 반환 뒤 세션 ID가 누락되어 같은 관제 세션 REVIEW를 보장할 수 없다는 이유로 Luna 호출 전에 차단된 것을 확인했다. JSONL 이벤트 파서를 보강하고, 이벤트가 없을 때는 호출 전 snapshot과 비교하여 동일 작업 폴더/시간/originator/source에 해당하는 새 Codex CLI rollout이 단 하나일 때만 세션 ID를 복구한다. 모호하면 fail-closed 상태를 유지한다. 파이프라인/현재 작업 화살표에는 한 구간과 역방향 전환에도 보이는 pulse를 추가했다. Debug 빌드 경고 0/오류 0, 전체 34개 테스트 통과, Release 게시 성공(게시 EXE SHA-256 `C92837826EEF2C52443C2B4EEBCD526DB8F6E0C27CCCF7BF464F9B1E2470C258`). `C:\GameProject`가 없어 자동 복사는 생략됐고, 활성 Worker PID 50960의 구버전 교체는 자동 검토에서 종료 요청이 거부되어 잔여다. Native desktop 앱이 없어 Explorer 화면 수용 확인은 수행하지 못했다. 상세는 CurrentWork 최신 후속 기록을 참조한다.
+
+## 2026-09-24 재현 — Codex 세션 경로와 Worker 프로필 불일치
+
+07:38 재현은 rollout이 `C:\Users\ornit\.codex\sessions`에 생성됐지만 Worker가 .NET special-folder 경로 `C:\Users\CodexSandboxOffline\.codex`를 검색해 복구하지 못했다. 이후 CODEX_HOME/USERPROFILE 경로 우선순위도 보정했으나 07:45에 CODEX_HOME이 실제 CLI 기록 경로와 다른 추가 사례가 재현됐다. 세 세션 루트를 모두 검색하도록 확장해 해결했고, Debug 빌드 경고 0/오류 0, 전체 36개 테스트 통과, Release 게시 및 `C:\AI-AGENT\Worker` 복사를 완료했다. 최초 수동 복사에서는 잘못된 framework-dependent EXE를 설치했지만 단일 파일 게시 EXE로 바로잡았다. 게시본/설치본 SHA-256 `843871D45623C8850090D6B0207C438B29E9D531F04579C5987E2E330A2F492B`. native 앱 제어가 제공되지 않아 사용자 데스크톱에서 창 실행 확인은 미완료다. 실제 PLAN→REVIEW 연속 확인도 잔여다. 상세는 CurrentWork 최신 기록 참조.
+
+07:45 재현에서 A379 설치본도 계속 실패했다. 새 증거상 CODEX_HOME과 codex.exe가 실제 rollout을 기록하는 USERPROFILE 경로가 다를 수 있는데 기존 코드는 첫 경로만 검사했다. 현재는 세 후보 세션 루트를 모두 검색하고 기존 메타데이터/CWD/시간/단일 후보 조건으로 안전하게 판정한다. CODEX_HOME과 USERPROFILE이 다른 회귀 테스트 및 최신 게시/배포 결과는 CurrentWork의 07:45 후속에 기록한다.
+
 ## 목표
 
 Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 수집하고 Supabase에 영속화하는 ProjectHub v0.2를 구축한다.

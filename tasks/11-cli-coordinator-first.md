@@ -51,6 +51,13 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 
 ## Results
 
+### 2026-09-24 재현 후속 — 서로 다른 Codex 세션 루트 검색
+
+- 재현 transcript에서 PLAN은 정상 성공했지만 session ID 연결을 못 해 차단됐다. 동시각 rollout은 `USERPROFILE\.codex\sessions` 아래에 정상 기록되어 있었다. 앞 수정본이 설치되어 있었으므로 `CODEX_HOME`이 설정된 Worker 프로세스와 실제 CLI 기록 경로가 다른 경우가 남은 원인이다.
+- `CODEX_HOME`, `USERPROFILE\.codex`, .NET user-profile 기반 경로를 모두 조사하고 경로 중복을 제거한다. 기존 rollout snapshot 비교, CLI source/originator, CWD, 시간대, 단일 후보 요건을 유지한다.
+- 추가 회귀: CODEX_HOME과 실제 CLI 세션 경로가 다를 때 user-profile 루트에서 단일 rollout ID를 복구한다.
+- 완료일: 2026-09-24. 검증 명령과 게시본/설치본 해시는 `CurrentWork.md` 재현 후속에 기록한다.
+
 - Status: A/B/C complete (2026-09-23).
 - Baseline recovery tag: `recovery/before-11a-cli-to-cli-2026-09-23` at `f501694469f2f1a590d1739be5e6039978c7ebde`.
 - Initial local Codex model catalog snapshot omitted GPT-6 Sol/Luna. Follow-up check on `codex-cli 0.155.0-alpha.16` (2026-09-23) shows both as `visibility=list`, `supported_in_api=True`; direct ephemeral read-only calls to each model with `low` reasoning returned `OK`. Treat model availability as runtime catalog data; do not hard-code the initial snapshot.
@@ -62,6 +69,19 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - Release publish: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\src\ProjectHub.Worker\bin\publish-worker.ps1 -NoRestore` succeeded and copied the executable to `C:\AI-AGENT\Worker` and `C:\GameProject`.
 - SHA-256 for the project publish executable and both deployment copies: `11E56140632E5BCCA5650B5310AC9C585532F606B25A8BC2A07466AB8FF5C8D1`.
 - Next task candidate: 11-B JobRunner separation/restart recovery; not started in this task.
+
+## 2026-09-24 follow-up — coordinator session ID recovery and flow pulse
+
+- Investigated the Worker transcript `_20260924_010358.txt`: the Sol PLAN call returned exit code 0 and a work card, but its session ID was blank. The Worker correctly stopped before Luna because it could not guarantee that the later review would resume the same coordinator context. A matching Codex CLI rollout record existed for that time and working folder, so this was session-ID correlation failure rather than failure to produce a plan.
+- Hardened JSONL `thread.started` extraction for UTF-8 BOM and property casing. If that event is absent, Worker compares pre/post-call rollout files and accepts only one newly created `codex_exec` record matching source, exact working directory, and call time. Zero or ambiguous candidates remain blocked; this preserves the same-session review contract.
+- Added visible pulse/travel motion to the current-flow and pipeline arrows, including the one-edge Sol → Luna route and reverse Luna → Sol handoff.
+- Verification: Debug build succeeded with 0 warnings/errors; all 34 solution tests passed (Worker 29, Core 1, Agent 3, Server 1); `git diff --check` passed. Release publish succeeded (SHA-256 recorded in `CurrentWork.md`). Explorer animation and live CLI roundtrip were not verified: Native desktop apps were unavailable, and no extra model call was issued.
+
+### 2026-09-24 reproduction — profile path mismatch
+
+- The user reproduced the block on the prior recovery build. The new transcript showed PLAN exit 0 and again stopped at session resolution. Its matching rollout existed under `C:\Users\ornit\.codex\sessions`.
+- Worker had searched the .NET special-folder profile `C:\Users\CodexSandboxOffline` while the Codex CLI used `USERPROFILE=C:\Users\ornit`. Session root resolution now prefers `CODEX_HOME`, then the `USERPROFILE` environment variable, then the special-folder fallback.
+- Verification: Debug build 0 warnings/0 errors; 35 tests passed (Worker 30, Core 1, Agent 3, Server 1); diff check passed. Release EXE hash `A379242F7027B5DA0443ADF5D20E5D3C22174B81F73B03B175E032B5AF1892C3`. Replacing `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` was rejected by approval review because it requires explicit deployment authorization; installed copy and UI recheck remain pending.
 
 ## 2026-09-23 설정 선택 연동 후속 — 11-UI-A
 

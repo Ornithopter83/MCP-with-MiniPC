@@ -669,26 +669,34 @@ public partial class MainWindow : Window
         var labels = new[] { PipelineArrowText1, PipelineArrowText2, PipelineArrowText3, PipelineArrowText4 };
         var start = (int)_currentTaskStage;
         var end = _nextTaskStage.HasValue ? (int)_nextTaskStage.Value : -1;
-        if (!_pairArrowActive || start < 1 || end <= start)
+        if (!_pairArrowActive || start < 1 || end < 1 || end == start)
         {
             for (var i = 0; i < arrows.Length; i++)
             {
                 arrows[i].Opacity = 0.72;
+                arrows[i].RenderTransform = new System.Windows.Media.TranslateTransform();
                 arrows[i].Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F1F5FA"));
                 labels[i].Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#B8C9DD"));
+                labels[i].Text = "››";
             }
             return;
         }
 
-        var routeLength = end - start;
-        var pulseEdge = start + ((_flowFrame / 2) % routeLength);
+        var routeStart = Math.Min(start, end);
+        var routeEnd = Math.Max(start, end);
+        var routeLength = routeEnd - routeStart;
+        var pulseEdge = routeStart + ((_flowFrame / 2) % routeLength);
+        var direction = end > start ? 1 : -1;
+        var pulse = (Math.Sin((_flowFrame % 8) * Math.PI / 4) + 1) / 2;
         for (var edge = 1; edge <= arrows.Length; edge++)
         {
-            var onRoute = edge >= start && edge < end;
+            var onRoute = edge >= routeStart && edge < routeEnd;
             var active = onRoute && edge == pulseEdge;
-            arrows[edge - 1].Opacity = onRoute ? active ? 1 : 0.82 : 0.55;
+            arrows[edge - 1].Opacity = onRoute ? active ? 0.68 + pulse * 0.32 : 0.82 : 0.55;
+            arrows[edge - 1].RenderTransform = new System.Windows.Media.TranslateTransform(active ? direction * pulse * 5 : 0, 0);
             arrows[edge - 1].Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(onRoute ? active ? "#D8EBFF" : "#E6F2FF" : "#F1F5FA"));
             labels[edge - 1].Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(onRoute ? "#1477E8" : "#B8C9DD"));
+            labels[edge - 1].Text = onRoute ? direction > 0 ? "›››" : "‹‹‹" : "››";
         }
     }
     private void UpdateJudgeVisual()
@@ -701,18 +709,12 @@ public partial class MainWindow : Window
     }
     private static void SetArrowFrame(TextBlock[] arrows, bool active, int frame, double[] opacities)
     {
-        var phase = active ? frame : -1;
+        var phase = active ? frame % arrows.Length : -1;
         for (var index = 0; index < arrows.Length; index++)
         {
-            arrows[index].Opacity = phase switch
-            {
-                0 => index <= 0 ? opacities[0] : opacities[1],
-                1 => index <= 1 ? opacities[0] : opacities[1],
-                2 => opacities[0],
-                3 => index == 0 ? opacities[1] : opacities[0],
-                4 => index == 2 ? opacities[0] : opacities[1],
-                _ => 0.3
-            };
+            var moving = phase == index;
+            arrows[index].Opacity = phase < 0 ? 0.3 : moving ? opacities[0] : opacities[1];
+            arrows[index].RenderTransform = new System.Windows.Media.TranslateTransform(moving ? 5 : 0, 0);
         }
     }
     private async void RunTask_Click(object sender, RoutedEventArgs e)
@@ -1385,7 +1387,7 @@ public partial class MainWindow : Window
             }
             if (string.IsNullOrWhiteSpace(plan.SessionId))
             {
-                ShowCoordinatorFirstBlocked("관제 세션을 이어갈 수 없습니다.", "Coordinator CLI가 세션 ID를 반환하지 않아 동일 관제 세션의 검토를 보장할 수 없습니다.");
+                ShowCoordinatorFirstBlocked("관제 세션을 이어갈 수 없습니다.", "설계 계획은 받았지만 CLI JSONL 이벤트와 새 세션 기록에서 관제 세션 ID를 하나로 확인하지 못했습니다. 다른 세션으로 잘못 이어가지 않도록 작업 AI 호출 전에 멈췄습니다.");
                 return;
             }
             AddTaskMessage("SOL WORK CARD", JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true }), summary: $"{card.Title}: {card.Goal}");
@@ -1654,22 +1656,17 @@ public partial class MainWindow : Window
         combo.Items.Clear();
         foreach (var model in CodexServedModels.Current)
             combo.Items.Add(new ComboBoxItem { Content = model.DisplayName, Tag = model.Id });
-        if (CodexServedModels.Find(configuredModel) is null)
-            combo.Items.Add(new ComboBoxItem { Content = configuredModel, Tag = configuredModel });
-        SelectTag(combo, configuredModel, configuredModel);
+        SelectTag(combo, configuredModel, CodexServedModels.Current[0].Id);
     }
 
     private void PopulateRoleReasoningCombo(System.Windows.Controls.ComboBox combo, string modelId, string configuredReasoning)
     {
         combo.Items.Clear();
-        var model = CodexServedModels.Find(modelId);
-        var efforts = model?.ReasoningDepths.Select(depth => depth.ToString().ToLowerInvariant()).ToArray()
-            ?? (string.IsNullOrWhiteSpace(configuredReasoning) ? Array.Empty<string>() : new[] { configuredReasoning });
+        var model = CodexServedModels.Find(modelId) ?? CodexServedModels.Current[0];
+        var efforts = model.ReasoningDepths.Select(depth => depth.ToString().ToLowerInvariant()).ToArray();
         foreach (var effort in efforts)
             combo.Items.Add(new ComboBoxItem { Content = FormatReasoningLabel(effort), Tag = effort });
-        if (!efforts.Contains(configuredReasoning, StringComparer.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(configuredReasoning))
-            combo.Items.Add(new ComboBoxItem { Content = $"{configuredReasoning} · 미지원", Tag = configuredReasoning, Foreground = System.Windows.Media.Brushes.OrangeRed });
-        var fallback = model is null ? configuredReasoning : model.DefaultReasoning.ToString().ToLowerInvariant();
+        var fallback = model.DefaultReasoning.ToString().ToLowerInvariant();
         SelectTag(combo, configuredReasoning, fallback);
     }
 
@@ -1740,10 +1737,6 @@ public partial class MainWindow : Window
             : $"Codex CLI 모델 capability를 확인하지 못했습니다 ({_codexModelCatalog.Status}).";
     }
 
-    private string GetRoleCapabilityText(WorkerAiRoleSettings role) => _codexModelCatalog.Supports(role.Model, role.Reasoning)
-        ? "CLI 지원 확인"
-        : _codexModelCatalog.Find(role.Model) is null ? "CLI 미지원" : "reasoning 미지원";
-
     private static string? GetExecutionModeConfigError(string workingDirectory)
     {
         if (!Directory.Exists(workingDirectory)) return "Working Folder가 없거나 접근할 수 없습니다.";
@@ -1760,10 +1753,9 @@ public partial class MainWindow : Window
         if (!string.Equals(coordinator.Provider, "openai", StringComparison.OrdinalIgnoreCase) || !string.Equals(implementer.Provider, "openai", StringComparison.OrdinalIgnoreCase) || !string.Equals(implementer.Transport, "codex_cli", StringComparison.OrdinalIgnoreCase))
             return "현재 CLI-to-CLI에서 지원하는 provider는 OpenAI Codex CLI뿐입니다. 자동 provider 대체는 하지 않습니다.";
         if (!_codexAuthenticated) return "Codex CLI 인증을 확인할 수 없습니다. codex login status를 확인하세요.";
-        if (!_codexModelCatalog.Supports(coordinator.Model, coordinator.Reasoning))
-            return $"설계·관제 AI 모델/reasoning 조합이 현재 Codex CLI에서 지원되지 않습니다: {coordinator.Model} / {coordinator.Reasoning}. 설정에서 capability가 표시된 조합을 선택하세요.";
-        if (!_codexModelCatalog.Supports(implementer.Model, implementer.Reasoning))
-            return $"작업 AI 모델/reasoning 조합이 현재 Codex CLI에서 지원되지 않습니다: {implementer.Model} / {implementer.Reasoning}. 설정에서 capability가 표시된 조합을 선택하세요.";
+        // Model and reasoning are selected from CodexServedModels in the settings UI.
+        // Do not gate execution using the separately loaded `codex debug models` catalog:
+        // that runtime catalog can lag or differ from the enum and reject a valid UI choice.
         return null;
     }
 

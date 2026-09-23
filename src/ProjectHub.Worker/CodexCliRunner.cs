@@ -68,6 +68,9 @@ public sealed class CodexCliRunner
         var outputSchemaFile = string.IsNullOrWhiteSpace(outputSchemaJson) ? null : Path.Combine(Path.GetTempPath(), $"projecthub-schema-{Guid.NewGuid():N}.json");
         if (outputSchemaFile is not null) await File.WriteAllTextAsync(outputSchemaFile, outputSchemaJson!, new UTF8Encoding(false), cancellationToken);
         var startedAt = DateTimeOffset.UtcNow;
+        var sessionSnapshot = string.IsNullOrWhiteSpace(sessionId)
+            ? CodexSessionLocator.CaptureSnapshot(workingDirectory, startedAt)
+            : null;
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
@@ -115,8 +118,10 @@ public sealed class CodexCliRunner
             var stdout = await stdoutTask;
             var stderr = await stderrTask;
             var finalMessage = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile) : ExtractFinalMessage(stdout);
-            var resolvedSessionId = sessionId ?? ExtractSessionId(stdout);
-            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, DateTimeOffset.UtcNow, ExtractCommandExecutions(stdout));
+            var finishedAt = DateTimeOffset.UtcNow;
+            var resolvedSessionId = sessionId ?? ExtractSessionId(stdout) ??
+                (sessionSnapshot is null ? null : CodexSessionLocator.FindNewSessionId(sessionSnapshot, finishedAt));
+            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, finishedAt, ExtractCommandExecutions(stdout));
         }
         finally
         {
@@ -179,22 +184,40 @@ public sealed class CodexCliRunner
         }
         return false;
     }
-    private static string? ExtractSessionId(string stdout)
+    public static string? ExtractSessionId(string stdout)
     {
         foreach (var line in stdout.SplitLines())
         {
             try
             {
-                using var document = JsonDocument.Parse(line);
+                using var document = JsonDocument.Parse(line.TrimStart('\uFEFF', ' ', '\t'));
                 var root = document.RootElement;
-                if (root.TryGetProperty("type", out var type) &&
+                if (TryGetPropertyIgnoreCase(root, "type", out var type) && type.ValueKind == JsonValueKind.String &&
                     string.Equals(type.GetString(), "thread.started", StringComparison.OrdinalIgnoreCase) &&
-                    root.TryGetProperty("thread_id", out var id))
+                    TryGetPropertyIgnoreCase(root, "thread_id", out var id) &&
+                    id.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(id.GetString()))
                     return id.GetString();
             }
             catch (JsonException) { }
         }
         return null;
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+        value = default;
+        return false;
     }
     public static CodexUsage ExtractUsage(string stdout) => ProviderUsageParser.Extract(stdout);
 
@@ -290,6 +313,125 @@ public sealed class CodexCliRunner
         var title = prompt.SplitLines().FirstOrDefault()?.Trim() ?? string.Empty;
         if (title.Length > 80) title = title[..80].TrimEnd() + "...";
         return string.IsNullOrWhiteSpace(title) ? "Codex 작업" : title;
+    }
+}
+
+public sealed record CodexSessionSnapshot(IReadOnlyList<string> SessionsRoots, string WorkingDirectory, DateTimeOffset StartedAt, IReadOnlySet<string> ExistingRolloutFiles);
+
+public static class CodexSessionLocator
+{
+    public static CodexSessionSnapshot CaptureSnapshot(string workingDirectory, DateTimeOffset startedAt)
+    {
+        var codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+        var userProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        var specialFolderProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var sessionsRoots = ResolveSessionsRoots(codexHome, userProfile, specialFolderProfile);
+        var existing = sessionsRoots.SelectMany(root => EnumerateRolloutFiles(root, startedAt, startedAt)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return new(sessionsRoots, Path.GetFullPath(workingDirectory), startedAt, existing);
+    }
+
+    public static IReadOnlyList<string> ResolveSessionsRoots(string? codexHome, string? userProfile, string? specialFolderProfile) =>
+        new[]
+        {
+            string.IsNullOrWhiteSpace(codexHome) ? null : Path.Combine(codexHome, "sessions"),
+            string.IsNullOrWhiteSpace(userProfile) ? null : Path.Combine(userProfile, ".codex", "sessions"),
+            string.IsNullOrWhiteSpace(specialFolderProfile) ? null : Path.Combine(specialFolderProfile, ".codex", "sessions")
+        }
+        .Where(path => path is not null)
+        .Select(path => Path.GetFullPath(path!))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    public static string ResolveSessionsRoot(string? codexHome, string? userProfile, string? specialFolderProfile)
+    {
+        var root = !string.IsNullOrWhiteSpace(codexHome)
+            ? codexHome
+            : !string.IsNullOrWhiteSpace(userProfile)
+                ? Path.Combine(userProfile, ".codex")
+                : Path.Combine(specialFolderProfile ?? string.Empty, ".codex");
+        return Path.Combine(root, "sessions");
+    }
+
+    public static string? FindNewSessionId(CodexSessionSnapshot snapshot, DateTimeOffset finishedAt)
+    {
+        var matches = new List<string>();
+        foreach (var path in snapshot.SessionsRoots.SelectMany(root => EnumerateRolloutFiles(root, snapshot.StartedAt, finishedAt)))
+        {
+            if (snapshot.ExistingRolloutFiles.Contains(path)) continue;
+            try
+            {
+                var lastWrite = File.GetLastWriteTimeUtc(path);
+                if (lastWrite < snapshot.StartedAt.UtcDateTime.AddSeconds(-3) || lastWrite > finishedAt.UtcDateTime.AddSeconds(5)) continue;
+                using var stream = File.OpenRead(path);
+                using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+                var firstLine = reader.ReadLine();
+                if (string.IsNullOrWhiteSpace(firstLine)) continue;
+                using var document = JsonDocument.Parse(firstLine);
+                var root = document.RootElement;
+                if (!TryGetString(root, "type", out var type) || !string.Equals(type, "session_meta", StringComparison.OrdinalIgnoreCase) ||
+                    !TryGetPropertyIgnoreCase(root, "payload", out var payload) ||
+                    !TryGetString(payload, "originator", out var originator) || !string.Equals(originator, "codex_exec", StringComparison.OrdinalIgnoreCase) ||
+                    !TryGetString(payload, "source", out var source) || !string.Equals(source, "exec", StringComparison.OrdinalIgnoreCase) ||
+                    !TryGetString(payload, "cwd", out var cwd) || !PathsEqual(cwd, snapshot.WorkingDirectory)) continue;
+                if (!TryGetString(payload, "timestamp", out var timestamp) ||
+                    !DateTimeOffset.TryParse(timestamp, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var sessionStartedAt) ||
+                    sessionStartedAt < snapshot.StartedAt.AddSeconds(-3) || sessionStartedAt > finishedAt.AddSeconds(5)) continue;
+                if (!TryGetString(payload, "id", out var id) && !TryGetString(payload, "session_id", out id)) continue;
+                if (!string.IsNullOrWhiteSpace(id)) matches.Add(id);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+            {
+                // Session metadata is only a fallback to the CLI's JSONL event; unreadable files are ignored.
+            }
+        }
+        return matches.Count == 1 ? matches[0] : null;
+    }
+
+    private static IEnumerable<string> EnumerateRolloutFiles(string root, DateTimeOffset start, DateTimeOffset end)
+    {
+        if (!Directory.Exists(root)) yield break;
+        for (var day = start.ToLocalTime().Date; day <= end.ToLocalTime().Date; day = day.AddDays(1))
+        {
+            var directory = Path.Combine(root, day.ToString("yyyy"), day.ToString("MM"), day.ToString("dd"));
+            if (!Directory.Exists(directory)) continue;
+            IEnumerable<string> files;
+            try { files = Directory.EnumerateFiles(directory, "rollout-*.jsonl", SearchOption.TopDirectoryOnly).ToArray(); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { continue; }
+            foreach (var file in files) yield return file;
+        }
+    }
+
+    private static bool PathsEqual(string left, string right) => string.Equals(
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    private static bool TryGetString(JsonElement element, string propertyName, out string value)
+    {
+        if (TryGetPropertyIgnoreCase(element, propertyName, out var property) && property.ValueKind == JsonValueKind.String)
+        {
+            value = property.GetString() ?? string.Empty;
+            return true;
+        }
+        value = string.Empty;
+        return false;
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+        value = default;
+        return false;
     }
 }
 
