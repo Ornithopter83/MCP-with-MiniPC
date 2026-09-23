@@ -2,6 +2,361 @@
 
 Updated: 2026-09-23
 
+
+## 2026-09-23 메인 화면 재구성 지시 — 승인 이미지 기준
+
+최신 기준 커밋은 `0c71d91e6d6a5019e1a6b9ff5097010a7da013cd`이다. 현재 `src/ProjectHub.Worker/MainWindow.xaml`에는 기존 2-node CURRENT TASK, Codex/GPT Web MESSAGE 탭, 2개 입력창 COMMAND 영역이 남아 있고, `RunTask_Click`은 `CommandInput`과 `WebInstructionInput`에 직접 의존한다. 이번 작업은 이 실행 경로를 한 번에 뜯어고치지 말고 **승인 이미지와 동일한 메인 구도를 먼저 만든 뒤 기존 기능을 단계적으로 연결**한다.
+
+### 11-UI-B-A — 메인 화면 시각 구조를 먼저 승인 이미지와 동일하게 고정
+
+첫 단계에서는 기능 확장보다 `MainWindow.xaml`의 메인 화면 구조를 교체한다. 설정 팝업, 서버 상태 확인, 역할별 모델/추론 설정, Codex thread 연결, JEV endpoint 테스트는 보존한다.
+
+메인 화면의 최종 순서는 아래로 고정한다.
+
+```text
+Window title / ProjectHub
+┌──────────────────────────────────────────────┐
+│ 프로젝트 / 작업 폴더 / 서버 주소     서버 │ ⚙ │
+├──────────────────────────────────────────────┤
+│ 현재 작업                                    │
+│ [1 대기] → [2 설계 관제] → [3 작업] → [4 고수준 작업] → [5 판정] │
+├──────────────────────────────────────────────┤
+│ 메시지 및 작업 이력                          │
+│ 최근 이벤트 목록                             │
+├──────────────────────────────────────────────┤
+│                                      [▶ 실행]│
+└──────────────────────────────────────────────┘
+```
+
+삭제/이동 대상:
+
+- 기존 좌측 메뉴는 두지 않는다.
+- 기존 `CURRENT TASK`의 좌우 2-node 원형 흐름은 제거한다.
+- 기존 `MESSAGE`의 `Codex` / `GPT Web` 선택 탭과 `MESSAGE LOG · ...` 헤더를 제거한다.
+- 기존 `COMMAND` 시각 영역 전체를 메인 화면에서 제거한다.
+- 하단 usage/model/reasoning/Clear 조작부도 메인 화면에서 제거한다. 역할별 모델/추론은 설정창이 source of truth다.
+- 우측 상단의 설정 아이콘은 유지하고 현재 설정 팝업을 그대로 연다.
+- 하단 우측에는 승인 이미지처럼 큰 `▶ 실행` 버튼만 둔다.
+- 불필요한 하단 상태 문구는 두지 않는다.
+
+이미지 재현 단계에서는 기존 비즈니스 로직 삭제를 최소화한다. 제거되는 컨트롤에 직접 묶인 로직은 다음 단계에서 adapter/state로 옮길 수 있게 분리하되, 먼저 빌드 가능한 화면을 만든다.
+
+### 11-UI-B-B — 현재 작업을 5개 고정 카드로 변경
+
+현재 작업 영역은 런타임에 카드가 재배치되지 않는다. 항상 가로 한 줄에 아래 5개 위치를 유지한다.
+
+```text
+1. 대기
+2. 설계 관제
+3. 작업
+4. 고수준 작업
+5. 판정
+```
+
+카드 표시 규칙:
+
+- `대기`: 회색 카드 + 시계 아이콘.
+- `설계 관제`: 청색 계열.
+- `작업`: 연적색/코랄 계열.
+- `고수준 작업`: 와인/버건디 계열.
+- `판정`: 녹색 계열.
+- 각 AI 단계는 설정창에서 선택된 역할의 실제 아이콘과 모델명을 표시한다.
+- 설정 변경 후 메인 카드의 모델명/아이콘이 즉시 동기화돼야 한다.
+- 고수준 작업 또는 판정이 `사용 안 함`이면 위치는 유지하고 비활성 그레이스케일로 표시한다.
+
+활성화 규칙은 **현재 단계 1개 + 필요하면 다음 단계 1개까지만 컬러**다.
+
+예:
+
+```text
+설계 관제 실행 중:
+1 회색
+2 컬러 + 강한 테두리
+3 약한 컬러(다음 단계)
+4 회색
+5 회색
+
+판정 실행 중:
+1~4 회색
+5 컬러 + 강한 테두리
+```
+
+완료된 이전 단계라고 해서 계속 컬러로 남기지 않는다. 메인 화면의 목적은 이력 누적이 아니라 **현재 위치 식별**이다.
+
+카드 내부 텍스트는 승인 이미지 수준으로 제한한다.
+
+```text
+단계 번호 + 단계명
+AI 아이콘
+모델명
+```
+
+기존의 `진행 중`, `대기 중`, 설명 문장, JUDGE 상태 문구 등은 카드 내부에서 제거한다. 필요 상태는 테두리/배경/애니메이션으로 전달한다.
+
+### 11-UI-B-C — 카드 사이 방향 애니메이션
+
+기존 `FlowArrow1~3` 방식의 애니메이션 아이디어는 재사용할 수 있으나, 2-node 흐름이 아니라 **5개 고정 카드 사이의 4개 구간**으로 옮긴다.
+
+원칙:
+
+- 카드 사이에 방향 화살표를 고정 배치한다.
+- 전체 화살표가 항상 움직이지 않는다.
+- 현재 단계에서 실제 다음 단계로 진행하는 구간만 pulse/opacity 애니메이션을 준다.
+- 대기 상태에서는 애니메이션을 멈춘다.
+- 고수준 작업을 사용하지 않는 실행에서는 `작업 → 판정`처럼 실제 라우팅 구간만 활성화한다.
+- 애니메이션은 의미를 표현해야 하므로 장식용 무한 흐름으로 사용하지 않는다.
+
+기존 `_flowTimer`, `UpdateArrowAnimation()`은 보존 가능하지만 `_pairArrowActive`/좌우 node 전용 구조 대신 `currentStage`, `nextStage` 기반으로 재구성한다.
+
+권장 내부 상태:
+
+```csharp
+enum TaskStage
+{
+    Idle,
+    Coordinator,
+    Implementer,
+    HighLevel,
+    Judge
+}
+
+TaskStage CurrentStage;
+TaskStage? NextStage;
+```
+
+UI의 카드 색/테두리/화살표는 모두 이 상태에서 계산한다. `TaskDirection.Text` 같은 개별 문자열 변경을 UI 상태의 원본으로 삼지 않는다.
+
+### 11-UI-B-D — AI 설정과 메인 카드 연결
+
+현재 설정창에는 이미 coordinator / implementer / high-level / judge 역할별 provider/model/reasoning과 enable 상태가 있다. 새로운 별도 설정 저장소를 만들지 말고 기존 `WorkerTargetSettings` / Effective role 값을 그대로 사용한다.
+
+메인 카드 표시 매핑:
+
+```text
+설계 관제     = EffectiveCoordinator
+작업          = EffectiveImplementer
+고수준 작업   = EffectiveHighLevel
+판정          = EffectiveJudge
+```
+
+provider에 따라 아이콘을 선택하고, 메인 화면에서는 provider 이름보다 사용자가 설정한 **모델명**을 우선 표시한다.
+
+예:
+
+```text
+설계 관제   GPT-6 Sol
+작업        GPT-6 Luna
+고수준 작업 GPT-6 Astra
+판정        JEV
+```
+
+GPT Web coordinator를 선택한 경우에도 별도의 "GPT Web" 메시지 탭을 만들지 않는다. 설계 관제 카드의 아이콘/모델 표시에만 반영한다.
+
+### 11-UI-B-E — MESSAGE를 실시간 대화 뷰가 아닌 이벤트 이력으로 변경
+
+현재 `TaskMessage`, `_taskMessages`, `_messageLogItems`, `AddTaskMessage()`는 실제 prompt/response 본문을 메시지 UI에 노출하는 방향이다. 새 메인 화면에서는 이 영역을 **대화 내용 요약창으로 사용하지 않는다.**
+
+이유: Worker가 모든 외부 AI 화면을 실시간으로 계속 감시하는 구조가 아니므로, 사용자가 메인 화면에서 확인해야 할 것은 "무슨 내용이었는가"가 아니라 **어떤 주요 데이터/결과가 언제 도착했는가**다.
+
+새 표시 예:
+
+```text
+10:24:18  설계 관제   요청 수신       1건 · 3.2 KB
+10:25:42  작업        결과 수신       4 files · 18.6 KB
+10:26:10  고수준 작업 검토 결과 수신  9.4 KB
+10:27:31  판정        판정 결과 수신  PASS · 2.1 KB
+```
+
+권장 이벤트 모델:
+
+```csharp
+record WorkerHistoryEvent(
+    DateTimeOffset Timestamp,
+    TaskStage SourceStage,
+    string EventType,
+    string Title,
+    long? SizeBytes,
+    int? ItemCount,
+    int? FileCount,
+    string? Status,
+    string? ReferenceId);
+```
+
+초기 이벤트 타입은 과도하게 늘리지 않는다.
+
+```text
+TASK_STARTED
+REQUEST_RECEIVED
+RESULT_RECEIVED
+FILES_CHANGED
+VALIDATION_RECEIVED
+TASK_FINISHED
+TASK_FAILED
+```
+
+원본 prompt/response/transcript는 내부 기록/디버깅/기존 export 용도로 유지할 수 있지만, 메인 이력 목록에는 전문이나 4,000자 요약을 표시하지 않는다.
+
+기존 `AddTaskMessage()` 호출을 즉시 모두 없애지 말고:
+
+```text
+internal transcript
++
+user-facing HistoryEvent
+```
+
+두 층으로 분리한다. 사용자 화면은 `ObservableCollection<WorkerHistoryEvent>`에 바인딩한다.
+
+### 11-UI-B-F — 이력 목록 UI
+
+승인 이미지의 넓은 리스트 형태를 그대로 따른다.
+
+각 행은:
+
+```text
+[역할 아이콘] [단계명]
+              [시각]
+              [이벤트 제목 / 주요 정보]
+```
+
+또는 동일 너비 안에서 2열/3열 정렬해도 되지만, 메시지 전문이 차지하던 영역은 **파일 수, payload 크기, 결과 상태, 도착 여부** 표시를 위해 사용한다.
+
+필수:
+
+- 최신 이벤트가 위에 오도록 한다.
+- 스크롤 가능해야 한다.
+- 각 행 높이는 일정하게 유지한다.
+- Codex/GPT Web 필터 탭은 만들지 않는다.
+- source는 서비스 이름이 아니라 `설계 관제 / 작업 / 고수준 작업 / 판정 / 시스템` 역할명으로 표시한다.
+- 필요하면 행 클릭 시 tooltip 또는 작은 상세 panel로 reference id/파일 목록을 보여줄 수 있지만 첫 구현에서는 필수가 아니다.
+
+### 11-UI-B-G — 실행 버튼과 기존 RunTask 로직 분리
+
+현재 `RunTask_Click`은 `CommandInput.Text`, `WebInstructionInput.Text`, 메인 ModelCombo/ReasoningCombo에 직접 의존한다. 새 승인 화면에서는 이 컨트롤들이 보이지 않으므로 **시각 컨트롤을 숨긴 채 참조하는 식으로 구현하지 않는다.**
+
+먼저 실행 요청 모델을 분리한다.
+
+권장:
+
+```csharp
+record TaskLaunchRequest(
+    string Prompt,
+    string? WebInstruction,
+    string WorkingDirectory,
+    string? SessionId);
+```
+
+그리고:
+
+```text
+Run button
+→ BuildTaskLaunchRequest()
+→ Preflight
+→ 기존 coordinator-first / legacy 실행 엔진
+```
+
+형태로 만든다.
+
+모델/추론은 메인 콤보에서 읽지 않고 역할 설정의 Effective role에서 가져온다.
+
+중요:
+
+- 승인 이미지에 없는 숨은 `CommandInput`을 source of truth로 남기지 않는다.
+- 실행할 명령이 없으면 실행 버튼을 disabled 처리한다.
+- 명령 입력/생성 방식은 coordinator-first 흐름과 이후 별도 지시에 맞춰 연결하되, 이번 시각 개편에서 임의의 새 팝업이나 shell 입력창을 추가하지 않는다.
+- 기존 Cancel 동작은 실행 중 `실행` 버튼을 `취소`로 바꾸는 방식으로 보존할 수 있다.
+
+### 11-UI-B-H — 기존 기능 보존 경계
+
+이번 메인 UI 개편에서 아래는 회귀시키지 않는다.
+
+- 설정 아이콘 / 설정 popup.
+- popup modal overlay와 Escape/닫기 동작.
+- 프로젝트/작업 폴더/서버 주소 표시 및 설정.
+- 서버 online/offline 확인.
+- Codex CLI capability/model/reasoning enum.
+- 역할별 thread 선택 및 working directory 연결.
+- coordinator-first 실행 엔진.
+- high-level / JEV enable 설정.
+- JEV JSON endpoint 테스트 및 결과 표시.
+- bridge / GPT Web binding 내부 기능.
+- task cancel.
+- 내부 transcript/export 기능.
+
+단, 메인 화면에서 서비스별 메시지 탭과 raw command 조작부를 노출하지 않는 것은 의도된 변경이다.
+
+### 11-UI-B-I — 구현 순서
+
+한 번에 로직과 디자인을 모두 바꾸지 않는다. 아래 순서를 지킨다.
+
+```text
+A1. XAML 메인 레이아웃을 승인 이미지와 동일하게 변경
+    - Header
+    - 5개 Current Task 카드
+    - History 리스트
+    - 우하단 실행 버튼
+    - 설정 버튼 유지
+
+A2. 더미 TaskStage 값으로 카드 컬러/그레이스케일/화살표 검증
+    - Idle
+    - Coordinator
+    - Implementer
+    - HighLevel
+    - Judge
+    - optional stage disabled
+
+A3. 설정값을 각 카드 아이콘/모델명에 연결
+
+A4. 기존 실행 코드에서 UI 컨트롤 직접 의존 제거
+    - TaskLaunchRequest
+    - Effective role settings
+    - Run/Cancel 연결
+
+A5. 실행 엔진의 상태 전환을 TaskStage에 연결
+    - coordinator 시작/완료
+    - implementer 시작/완료
+    - high-level optional
+    - judge optional
+
+A6. 기존 message UI 대신 HistoryEvent 연결
+    - 수신 시각
+    - 역할
+    - event type
+    - bytes/files/count/status
+
+A7. 기존 transcript/export/bridge/JEV 회귀 테스트
+```
+
+### 11-UI-B-J — 검증 기준
+
+자동 검증:
+
+```powershell
+dotnet build ProjectHub.sln --configuration Debug --no-restore
+dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore
+git diff --check
+```
+
+UI 수용 검증은 반드시 실제 Explorer 실행본에서 수행한다.
+
+확인 항목:
+
+```text
+1. 좌측 메뉴가 없고 승인 이미지와 같은 단일 화면인지
+2. 우측 상단 설정 아이콘이 동작하는지
+3. 현재 작업 5개 카드가 한 줄 고정인지
+4. 현재/다음 1~2개만 컬러이고 나머지는 그레이스케일인지
+5. 각 카드의 아이콘/모델명이 설정값과 일치하는지
+6. 실제 진행 구간의 화살표만 애니메이션 되는지
+7. MESSAGE의 Codex/GPT Web 탭이 사라졌는지
+8. 이력이 본문 요약이 아니라 도착 이벤트/크기/파일수/상태 중심인지
+9. COMMAND 입력 영역이 메인에서 사라졌는지
+10. 우하단 실행 버튼이 존재하고 기존 preflight/run/cancel 흐름과 연결되는지
+11. 설정창의 모델/추론/thread/JEV test 기능이 회귀하지 않았는지
+```
+
+의미 있는 UI와 실행 상태 연결까지 구현되면 다음 Codex 작업에서 JEV 검증을 우선 요청한다. JEV에는 적어도 **단계 전환 상태, optional high-level/judge skip, 실행 버튼 preflight, HistoryEvent 누락/중복**을 판정 항목으로 전달한다.
+
+
 ## 최신 확인
 
 ```text
