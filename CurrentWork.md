@@ -2,6 +2,15 @@
 
 Updated: 2026-09-23
 
+## 현재 후속 — 승인 이미지 기준 메인 화면 (11-UI-B-A–H, 2026-09-23)
+
+- 동기화된 `GPT-Web-Feedback.md`의 11-UI-B 지시와 승인 화면을 확인했다. 메인 창을 상단 프로젝트/폴더/서버 요약 및 설정 버튼, 고정 5단계 파이프라인, 메시지·작업 이력, 우하단 실행 버튼의 단일 화면으로 재구성했다. 기존 설정 팝업과 내부 동작 컨트롤은 보존했다.
+- 설정에서 프로젝트/작업 폴더/서버 주소와 역할별 모델명·아이콘을 카드에 연결했다. 현재/다음 단계만 컬러로 표시하며 진행 경로 화살표만 pulse하고, 선택형 high-level/JEV를 건너뛰는 경로를 표현한다. 사용자 화면 이력은 원문 transcript와 분리해 최신순의 단계/유형/payload 크기/파일 수/검증 상태를 표시하고, 내부 transcript/export는 보존한다.
+- 사용자 결정에 따라 -G 입력은 작업 대기 중에만 표시되는 Dashboard 텍스트 상자로 연결했다. `TaskLaunchRequest`가 보이는 입력, 작업 폴더, 선택 세션을 하나의 요청으로 전달하며, 비어 있는 입력/준비되지 않은 연결에서는 실행 버튼을 비활성화한다. 실행 중에는 같은 버튼으로 취소하고 입력란은 감춘다.
+- 완료: 11-UI-B-A–H 구현 및 자동 회귀 검증. 잔여: -J 실제 Explorer 화면에서 폼·단계 애니메이션·입력/전송/취소 동작을 확인하는 수용 검증.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 30개 통과; `git diff --check` 통과. Release 게시 성공, `C:\AI-AGENT\Worker` 및 `C:\GameProject` 복사 완료. 세 실행 파일 SHA-256은 `8031046C35FFBACB9A93B7D6D489D97B65CD712614C1AE5BCD1D5792A015F858`로 일치한다. 게시 EXE를 실행해 PID 41236, 창 제목 `ProjectHub`인 프로세스가 살아 있음을 확인했다. Explorer 화면 캡처/조작은 이 세션에 연결된 앱 목록이 비어 있어 수행하지 못했다. 첫 샌드박스 빌드는 SDK 경로 접근 거부로 막혔고, 승인된 재실행에서 XAML 컴파일을 통과했다.
+- 저장소 동기화: 변경 전 `git fetch origin`과 `git pull --rebase`를 완료하고 최신 `GPT-Web-Feedback.md`를 읽었다. 변경 적용 후 커밋·푸시 예정.
+
 ## 최근 설정창 작업 통합 요약 (11-UI-A 후속, 2026-09-23)
 
 커밋 `36af426`–`22b2262`에서 반영한 범위:

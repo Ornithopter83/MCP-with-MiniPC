@@ -25,6 +25,7 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 | 09 | [AI Role Dev Tool 설계와 검증 기반](tasks/09-ai-role-dev-tool.md) | 저비용 역할 분담·지속 실행·JEV 검증 | A/B/C 구현 완료 (2026-09-23) |
 | 10 | [검증 capability·사용량 관찰·JEV 기준실험](tasks/10-verification-observability.md) | 검증 범위 분리·실측 계측·통제 fixture | A/B/C 구현 완료 (2026-09-23; 실 provider benchmark 미실행) |
 | 11 | [Coordinator-first CLI-to-CLI](tasks/11-cli-coordinator-first.md) | 독립 Sol 관제·Luna 작업 CLI와 역할별 설정 | A/B/C 완료 (2026-09-23) |
+| 11-UI-B | [승인 이미지 기준 메인 화면](GPT-Web-Feedback.md#2026-09-23-메인-화면-재구성-지시--승인-이미지-기준) | 고정 5단계 파이프라인·이력·실행 UI와 기능 연동 | A–H 구현·자동 검증 완료; J Explorer UI 수용 검증 잔여 (2026-09-23) |
 
 ## 순서
 
@@ -34,6 +35,7 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 - 번호 작업 하나, 세부 A/B/C 하나씩 진행한다.
 - 완료 항목에는 날짜와 검증 근거를 남긴다.
+- 11-UI-B-A–H는 승인 화면, 단계/경로 표시, 설정 카드 연동, 원문과 분리된 최신순 HistoryEvent, idle 전용 입력과 TaskLaunchRequest 기반 Run/Cancel을 구성했다. 빈 입력/준비되지 않은 연결은 실행할 수 없다. `dotnet build ProjectHub.sln --configuration Debug --no-restore`, `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`(30개 통과), `git diff --check` 통과. Release EXE 게시 및 Worker/GameProject 복사 완료, 세 파일 SHA-256 `8031046C35FFBACB9A93B7D6D489D97B65CD712614C1AE5BCD1D5792A015F858` 일치. Explorer 실행 파일이 PID 41236, 창 제목 `ProjectHub`로 살아 있는 것을 확인했다. CUA 앱 목록이 비어 있어 -J 화면 캡처와 실제 상호작용 검증은 잔여다.
 - 새로 발견된 범위는 별도 후보로 기록하고 임의로 흡수하지 않는다.
 
 ## 변경 금지 경계
