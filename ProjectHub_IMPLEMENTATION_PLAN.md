@@ -490,3 +490,7 @@ JEV Contract Gate의 고정 NEXT 라우팅과 임베디드 footer 틀을 Worker�
 - `src/ProjectHub.Worker/JEV-FOOTER-CONTRACT.md`: Codex footer 및 NEXT 계약
 - `src/ProjectHub.Worker/JEV-API-CONTRACT.md`: TypeSafe API request/response 계약
 - `CurrentWork.md`의 `CURRENT AUTHORITATIVE STATUS`: 현재 구현과 잔여 검증의 단일 요약
+
+## 11-UI-A 화면 수용 후속 (2026-09-23)
+
+최근 보정에서 서버 카드 크기를 390×110px로 복구하고 랙 아이콘을 추가했다. 네 역할의 왼쪽 제목/아이콘을 세로 정렬하고, 판단 AI와 고수준 작업 AI의 사용 항목 위치를 같은 열로 맞췄다. ComboBox 템플릿은 전체 컨트롤 면적이 클릭을 받도록 변경했다. WPF 빌드(경고 0/오류 0), 테스트 29개, diff 검사를 통과했고 Release EXE를 게시·복사했다. 실제 Explorer 팝업 화면 비교와 콤보 클릭 확인은 네이티브 앱 캡처 불가로 미실시 상태다.

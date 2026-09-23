@@ -1178,3 +1178,10 @@ Worker는 의미 판단을 하지 않고 첫 NEXT 행, typed validation, JEV 구
 - 기존 설정과 JSON을 호환하도록 coordinator transport 기본값 Web, implementer/high-level Codex CLI로 설정했다. Web coordinator, 활성 JEV, 활성 high-level은 아직 실행 경로가 없으므로 preflight에서 명시적으로 차단한다.
 - 검증: 전체 테스트 29개 통과, Node 확장 구문 검사와 diff 검사 통과. WPF 빌드 결과 실행 시 앱이 살아 있고 제목 `ProjectHub Worker`를 표시했다. UI 자동 캡처 API는 현재 세션에서 네이티브 앱을 반환하지 않아 새 팝업의 화면 캡처 검증은 불가했다.
 - Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 EXE SHA-256 일치: `3C2ECBECAF10DCDBF78162145D976A14AFCA211F94F3AB45E6A0A1835099AD99`. 배포본 실행 시 `ProjectHub Worker` 창 기동을 확인했다. 이번 후속 수정의 문서 갱신·커밋·푸시는 아직 완료 전이다.
+
+## 2026-09-23 설정 폼 정렬·ComboBox 클릭 영역 후속 보정
+
+- 서버 카드를 390×110px로 복구하고 랙 아이콘을 적용했다. 네 AI 역할의 왼쪽 제목/아이콘을 세로 정렬했으며, 판단 AI와 고수준 작업 AI의 사용 항목을 같은 그리드 열에 맞췄다.
+- 판단 AI를 provider/model, 사용, 설정 JSON 테스트가 포함된 역할 카드 행으로 재구성했다. ComboBox 템플릿의 클릭 ToggleButton을 전체 컨트롤 면적으로 확장해 값 표시 영역 어디를 눌러도 목록이 열리도록 수정했다.
+- 검증: Debug build 경고 0/오류 0, 전체 테스트 29개 통과, `git diff --check` 통과. Release 게시 및 Worker/GameProject 복사 후 SHA-256 일치 확인.
+- 실제 팝업 클릭/화면 비교는 네이티브 앱 캡처 인터페이스 미노출로 검증하지 못했다. 이 UI 수용 검증은 사용자가 실행 후 확인할 화면상 잔여로 남긴다.

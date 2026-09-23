@@ -77,3 +77,12 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 회귀 검사: 설정 기본값·transport·독립 threadSessionId/threadProjectPath를 확인하는 Worker 테스트를 추가했다. 현재 검증 결과는 전체 29개 통과, `node --check extension/gptweb-hub/content.js`, `git diff --check`, WPF 앱 시작 및 1400×900 선언값 확인이다.
 - 제한: 현재 실행 엔진은 CLI-to-CLI이므로 Web 관제 선택, JEV 활성화, 고수준 역할 활성화는 실행 전 차단한다. 데스크톱 캡처 인터페이스가 현재 세션에 제공되지 않아 새 팝업의 Explorer 화면 캡처는 확인하지 못했다.
 - Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 실행파일 SHA-256 일치: `3C2ECBECAF10DCDBF78162145D976A14AFCA211F94F3AB45E6A0A1835099AD99`. 배포본 `ProjectHub Worker` 창 기동 성공.
+
+## 2026-09-23 설정 폼 정렬·클릭 영역 재수정 (11-UI-A)
+
+- 서버 상태 카드를 폭 390px·높이 110px로 키우고 랙 형태 아이콘과 서버명/연결 상태를 배치해 저장소 설정 오른쪽 큰 카드로 복구했다.
+- 설계·관제, 작업, 고수준 작업, 판단 AI의 왼쪽 제목·아이콘을 세로 구조로 통일했다. 판단 AI를 역할 카드 구조로 바꾸고 Typesafe/JEV, 사용 스위치, JSON 설정 테스트를 다른 행과 같은 열 기준으로 배치했다. 고수준 작업 AI의 사용 항목도 판단 AI의 사용 항목과 같은 열에 맞췄다.
+- ComboBox 템플릿에서 드롭다운 ToggleButton이 전체 컨트롤을 덮도록 바꾸고, 투명 배경 Border가 전체 클릭 hit-test를 받도록 수정했다. 화살표 glyph 자체는 hit-test에서 제외했다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0); 권한 확장 실행의 `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
+- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 성공. 게시 실행본과 두 복사본 SHA-256 일치: `1D61AEFD08787B9CC057CDC31A69F6FE47404BFF7BA9E22FC6BBA86E2B4A34E1`.
+- 제한: 네이티브 데스크톱 캡처 인터페이스가 이번 세션에 앱 창을 노출하지 않아 실제 설정 팝업의 화면 캡처/클릭 E2E는 미수행이다. XAML 컴파일과 앱 publish까지만 증거로 기록한다.

@@ -33,7 +33,7 @@
       <Setter Property="FontFamily" Value="Segoe UI" />
     </Style>
     <Style TargetType="ComboBoxItem"><Setter Property="Padding" Value="8,7"/><Setter Property="HorizontalContentAlignment" Value="Left"/><Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#EAF4FF"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#DCEBFA"/></Trigger></Style.Triggers></Style>
-    <ControlTemplate x:Key="ComboDropToggleTemplate" TargetType="ToggleButton"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" /></ControlTemplate>
+    <ControlTemplate x:Key="ComboDropToggleTemplate" TargetType="ToggleButton"><Border Background="{TemplateBinding Background}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" IsHitTestVisible="False" /></Border></ControlTemplate>
     <Style TargetType="ComboBox">
       <Setter Property="FontFamily" Value="Segoe UI" />
       <Setter Property="FontSize" Value="14" />
@@ -50,7 +50,7 @@
               <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="9">
                 <Grid>
                   <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
-                  <ToggleButton Height="32" HorizontalAlignment="Stretch" VerticalAlignment="Center" HorizontalContentAlignment="Right" VerticalContentAlignment="Center" Padding="0,0,10,0" Background="Transparent" BorderThickness="0" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}" ClickMode="Press" Template="{StaticResource ComboDropToggleTemplate}">
+                  <ToggleButton HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Right" VerticalContentAlignment="Center" Padding="0,0,10,0" Background="Transparent" BorderThickness="0" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}" ClickMode="Press" Template="{StaticResource ComboDropToggleTemplate}">
                     <TextBlock Text="⌄" FontSize="18" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-3,0,0" />
                   </ToggleButton>
                 </Grid>
@@ -165,8 +165,8 @@
           <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,14,0,0">
             <TextBlock Text="서버 주소" Width="140" FontSize="15" VerticalAlignment="Center"/>
             <TextBox x:Name="ServerUrlInput" Width="780" Height="36" FontSize="16" Padding="9,5"/>
-            <Border Width="300" Margin="14,0,0,0" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8,4" Background="#F8FBFF">
-              <StackPanel Orientation="Horizontal"><TextBlock Text="▤" FontSize="25" Foreground="#40536E" VerticalAlignment="Center" Margin="0,0,10,0"/><StackPanel VerticalAlignment="Center"><TextBlock Text="Server" FontSize="14" FontWeight="Bold"/><StackPanel Orientation="Horizontal"><Ellipse x:Name="ServerStatusDotSettings" Width="9" Height="9" Fill="#20C65A" Margin="0,0,6,0"/><TextBlock x:Name="ServerStatusTextSettings" Text="READY" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></StackPanel>
+            <Border Width="390" Height="110" Margin="14,0,0,0" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="16,12" Background="#F8FBFF">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="64" Height="72" Background="#EAF4FF" CornerRadius="10" VerticalAlignment="Center"><StackPanel Margin="12,15"><Border Height="10" Margin="0,0,0,4" Background="#334A68" CornerRadius="2"/><Border Height="10" Margin="0,0,0,4" Background="#334A68" CornerRadius="2"/><Border Height="10" Background="#334A68" CornerRadius="2"/></StackPanel></Border><StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"><TextBlock Text="서버" FontSize="17" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,5,0,0"/><StackPanel Orientation="Horizontal" Margin="0,7,0,0"><Ellipse x:Name="ServerStatusDotSettings" Width="11" Height="11" Fill="#20C65A" Margin="0,0,7,0"/><TextBlock x:Name="ServerStatusTextSettings" Text="READY" FontSize="13" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
             </Border>
           </StackPanel>
           <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,14,0,0">
@@ -188,7 +188,7 @@
               <Border BorderBrush="#DCE6F3" BorderThickness="1" CornerRadius="7" Background="White" Padding="12,10" Margin="0,12,0,0">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-                  <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"><Border Width="38" Height="38" CornerRadius="19" Background="#1F1C79" Margin="0,0,10,0"><Image Source="Assets/current-openai.png" Width="28" Height="28"/></Border><TextBlock Text="설계·관제 AI" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/></StackPanel>
+                  <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="설계·관제 AI" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/><Border Width="48" Height="48" Margin="0,8,0,0" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border></StackPanel>
                   <Grid Grid.Column="1" Margin="0,0,14,0">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/></Grid.ColumnDefinitions>
@@ -217,7 +217,7 @@
                 <Grid>
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-                  <StackPanel Grid.Column="0" Grid.RowSpan="2" Orientation="Horizontal" VerticalAlignment="Center"><Border Width="38" Height="38" CornerRadius="19" Background="#1F1C79" Margin="0,0,10,0"><Image Source="Assets/current-openai.png" Width="28" Height="28"/></Border><TextBlock Text="작업 AI" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/></StackPanel>
+                  <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="작업 AI" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/><Border Width="48" Height="48" Margin="0,8,0,0" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border></StackPanel>
                   <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
                   <ComboBox x:Name="ImplementerProviderCombo" Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="3" Height="34"/>
                   <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
@@ -235,9 +235,11 @@
             <Grid>
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" Grid.RowSpan="2" Orientation="Horizontal" VerticalAlignment="Center"><Border Width="38" Height="38" CornerRadius="19" Background="#1F1C79" Margin="0,0,10,0"><Image Source="Assets/current-openai.png" Width="28" Height="28"/></Border><TextBlock Text="고수준 작업 AI" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/></StackPanel>
+              <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="고수준 작업 AI" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/><Border Width="48" Height="48" Margin="0,8,0,0" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border></StackPanel>
               <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
-              <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="OpenAI Codex CLI" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/><CheckBox x:Name="HighLevelEnabledCheckBox" Content="사용" Margin="24,0,0,0"/></StackPanel>
+              <TextBlock Grid.Row="0" Grid.Column="2" Text="OpenAI Codex CLI" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+              <TextBlock Grid.Row="0" Grid.Column="3" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+              <CheckBox x:Name="HighLevelEnabledCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" VerticalAlignment="Center" HorizontalAlignment="Left"/>
               <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
               <ComboBox x:Name="HighLevelModelCombo" Grid.Row="1" Grid.Column="2" Height="34" Margin="0,8,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
               <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,8,0,0"/>
@@ -249,20 +251,25 @@
           </Border>
           <Border Grid.Row="7" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,8,0,0">
             <Grid>
-              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-              <StackPanel Orientation="Horizontal">
-                <Image Source="Assets/current-jev.png" Width="34" Height="34" Margin="0,0,8,0"/><TextBlock Text="판단 AI" FontSize="16" FontWeight="Bold"/>
-                <CheckBox x:Name="EnableJudgeCheckBox" Content="사용" Margin="24,0,0,0" FontSize="15" VerticalAlignment="Center"/>
-                <TextBlock x:Name="JudgeSettingsStatusText" Text="Typesafe · JEV · 사용 안 함" Margin="20,1,0,0" FontSize="14" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/><Button Content="JSON 설정 테스트" Margin="18,0,0,0" Padding="16,6" Click="TestJudge_Click"/>
-              </StackPanel>
-              <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="판단 AI" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center"/><Image Source="Assets/current-jev.png" Width="48" Height="48" Margin="0,8,0,0"/></StackPanel>
+              <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
+              <TextBlock Grid.Row="0" Grid.Column="2" Text="Typesafe" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
+              <TextBlock Grid.Row="1" Grid.Column="2" Text="JEV" VerticalAlignment="Center" Margin="0,8,0,0" Foreground="{StaticResource Muted}"/>
+              <TextBlock Grid.Row="0" Grid.Column="3" Grid.RowSpan="2" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+              <CheckBox x:Name="EnableJudgeCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="15" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+              <TextBlock x:Name="JudgeSettingsStatusText" Grid.Row="1" Grid.Column="4" Text="Typesafe · JEV · 사용 안 함" FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+              <Button Grid.Row="0" Grid.Column="5" Grid.RowSpan="2" Content="JSON 설정 테스트" Padding="16,10" Click="TestJudge_Click"/>
+              <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
                 <TextBlock Text="서비스 제공자" Width="140" FontSize="15" VerticalAlignment="Center"/>
                 <ComboBox x:Name="JudgeProviderCombo" Style="{x:Null}" Width="180" Height="32" FontSize="15"><ComboBoxItem Content="JEV"/></ComboBox>
                 <TextBlock Text="제한 시간" Margin="26,0,0,0" Width="82" FontSize="15" VerticalAlignment="Center"/>
                 <TextBox x:Name="JudgeTimeoutInput" Width="80" Height="32" FontSize="15" Padding="8,4" IsReadOnly="False" IsEnabled="True" IsHitTestVisible="True" Focusable="True" IsTabStop="True" MaxLength="3" Background="White" Foreground="{StaticResource Ink}" HorizontalContentAlignment="Right" PreviewTextInput="JudgeTimeoutInput_PreviewTextInput" GotFocus="JudgeTimeoutInput_GotFocus" LostFocus="JudgeTimeoutInput_LostFocus" ToolTip="10~600초"/>
                 <TextBlock Text="sec" Margin="8,0,0,0" FontSize="15" VerticalAlignment="Center"/>
               </StackPanel>
-              <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
+              <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
                 <TextBlock Text="접속 주소" Width="140" FontSize="15" VerticalAlignment="Center"/>
                 <TextBox x:Name="JudgeExecutableInput" Width="620" Height="32" FontSize="15" Padding="8,4" ToolTip="기본값: https://api.typesafe.ai/v1/systemone"/>
                 <Button Content="Test" Margin="10,0,0,0" Padding="18,5" FontSize="14" Click="TestJudge_Click"/>
