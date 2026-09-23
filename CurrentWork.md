@@ -2,17 +2,31 @@
 
 Updated: 2026-09-22
 
-## 현재 요약 — 2026-09-22 / 09-A Master 설계 완료
+## 현재 요약 — 2026-09-22 / 09-B JEV 계약·라우팅 구현 완료
 
-이번 사용자 요청의 활성 범위는 `tasks/09-ai-role-dev-tool.md`의 **09-A 문서 설계**이며 2026-09-22 완료했다. 기존 07 배포 패키지와 Worker 실화면 검증은 보존하고 이번에 수행하지 않았다. 아래 누적 이력보다 이 요약을 현재 판단 기준으로 사용한다.
+최신 feedback 커밋 `2d75139`까지 fetch/pull --rebase로 동기화한 뒤 `GPT-Web-Feedback.md`의 09-B 요구를 읽고 구현했다. 현재 판단 기준은 아래 09-B 결과이며, 실제 Explorer 화면 E2E는 아직 남아 있다.
+
+- `JevContract`는 첫 유효 NEXT만 해석하고, Judge ON Web은 첫 본문 `[REPORT]`, JEV는 `[VALIDATION REQUEST]`를 요구한다. NOUL/SCORE/CHOICE의 구조·범위·연속 번호·허용값을 검증한다.
+- `JevJudgeRunner`는 `TYPESAFE_API_KEY`를 환경변수에서만 읽고, 실제 키·응답 전문·endpoint를 로그나 Web 메시지에 남기지 않는다. 누락/타입/범위/알 수 없는 ID는 ERROR, 조건 미달만 FAIL이다.
+- JEV FAIL은 같은 Codex 세션으로 실패 항목만 재질문하고, PASS는 report-only Web 보고로 전환한다. report-only 단계의 `[NEXT : JEV]` 재진입은 `REPORT_PHASE_REENTERED_JEV`로 차단한다.
+- Worker fixture 테스트 프로젝트를 추가했고 mock HTTP handler로 PASS/FAIL/ERROR 및 계약 파서를 검증했다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(Core 1, Agent 3, Server 1, Worker 5).
+- 실제 Explorer 실행파일 화면 검증과 실제 TypeSafe API 재호출은 수행하지 않았으므로 09-C와 함께 잔여다.
+- 설정창의 JEV Timeout 입력을 명시적 활성 상태로 보강하고 숫자 입력·포커스 전체 선택·10~600초 정규화를 추가했다. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore`, `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`, `git diff --check` 성공.
+- 2026-09-23 Worker 자동 CLI 실행의 일반 작업 sandbox를 `danger-full-access`로 변경했다. CLI 빌드가 Windows SDK·MSBuild·NuGet 외부 경로에서 접근 거부되는 문제를 해소하기 위한 설정이며, 명시적 읽기 전용 요청은 기존 `read-only`를 유지한다.
+- 2026-09-23 Release 게시: `src/ProjectHub.Worker/bin/ProjectHub.Worker.exe`를 생성하고 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`에 단일 파일로 복사했다. 게시 프로필의 기존 동작에 따라 `C:\GameProject\ProjectHub.Worker.exe`도 갱신되었으며 세 파일의 SHA-256이 일치한다.
+
+
+
+09-B 구현 결과는 위 최신 요약을 기준으로 판단한다. 09-A의 과거 설계 이력과 07 배포 패키지 잔여 검증은 보존한다.
 
 - [Master-Polish.md](Master-Polish.md)에 토큰 절약 우선 운영, ChatGPT Web 관제 → Codex Luna Medium 구현 → JEV 판단, Job 복구, 역할 교체 경계, 사용자·관제·JEV 복사 양식과 단계별 완료 조건을 정리했다.
-- 사용자 승인으로 fetch/pull --rebase 완료. 기준 HEAD `74fcc6a8bef9796ebc3355ebcb34a4bd37f0a804`, 동기화 후 feedback 최종 변경 커밋 `ac47ba5`를 읽고 분석했다.
-- 현재 코드상 BEGIN도 Codex-first이며, JEV state에는 실제 diff/테스트 증거가 연결되지 않는다. 일부 invalid 응답이 ERROR 대신 FAIL로 처리되고 PASS 보고 재진입 제한도 보완이 필요하다. 기존 이력의 완전한 계약 구현 주장은 코드와 차이가 있어 Master에 구분했다.
+- 사용자 승인으로 fetch/pull --rebase 완료. 최신 동기화 기준 HEAD는 `2d75139`이며, 동기화 후 `GPT-Web-Feedback.md`의 09-B 섹션을 읽고 분석했다.
+- 현재 09-B 구현은 JEV 계약 파싱, ERROR/FAIL 분기, 같은 Codex 세션 재시도, report-only PASS 경계를 반영했다. 09-C의 실제 evidence envelope과 Explorer 화면 E2E는 아직 남아 있다.
 - JEV API adapter와 과거 2026-09-22 HTTP 200 smoke 기록은 존재한다. 뒤쪽 이력의 ‘키 없음/실 API smoke 잔여’는 과거 상태다. 최신 실행본의 Explorer 전체 ON/OFF E2E는 여전히 잔여다.
-- 문서 검증: 임시 .NET harness로 실제 JEV parser에 복사 양식 3종을 통과시키고 inline PASS 불일치를 재현했다. JSON 4개·로컬 링크·코드블록 경계 검사를 통과했다. 검증 명령은 활성 09 task에 기록했다.
-- 제품 소스·공개 계약·배포본은 이번에 변경하지 않았다. 제품 build/test·API·Explorer 검증은 재실행하지 않았다.
-- 잔여 식별자: **09-B** JEV 계약/라우팅 보수, **09-C** 실제 증거 전달·AC 고정. **10-A~11-C**는 Master의 후속 후보. 07의 기존 잔여 검증도 유지한다.
+- Worker fixture 테스트 5개가 실제 `JevContract`와 mock HTTP handler를 사용해 계약 파싱·JEV PASS/FAIL/ERROR를 검증했다.
+- 이번 변경은 Worker JEV 소스와 Worker fixture 테스트, 상태 문서에 반영했다. 원 계약 문서와 `GPT-Web-Feedback.md`는 수정하지 않았다. 실제 TypeSafe API와 Explorer는 재실행하지 않았다.
+- 잔여 식별자: **09-C** 실제 증거 전달·AC 고정 및 Explorer 화면 E2E. **10-A~11-C**는 Master의 후속 후보. 07의 기존 잔여 검증도 유지한다.
 
 2026-09-22 GPT Web 대화 동기화 경합 수정: ChatGPT SPA에서 대화를 빠르게 전환할 때 이전 polling 응답이 새 대화 상태를 덮어쓰지 않도록 navigation generation과 conversation ID를 함께 검증한다. Worker bridge에는 현재 대화의 binding 상태를 노출하고, Worker 설정의 GPT Web 상태를 `READY`/`BIND REQUIRED`로 구분해 미연결 대화에서 작업이 조용히 생성되지 않도록 보완했다. 연결 실패 메시지도 구체적인 원인을 표시한다. 검증: `node --check extension/gptweb-hub/content.js` 통과, `dotnet build ProjectHub.sln --configuration Debug --no-restore`는 기본 샌드박스의 Windows SDK 접근 거부 후 권한 확장으로 경고 0/오류 0 성공, `git diff --check` 통과. 현재 실행 중인 Worker는 수정 전 바이너리이므로 재게시·재기동 후 화면 검증이 필요하다.
 
@@ -964,6 +978,23 @@ Extension 재검증 전에는 Chrome에서 확장을 새로고침해야 한다.
 
 검증: Debug build 성공(경고 0, 오류 0).
 
+## 2026-09-23 MESSAGE 성능·JEV 전달 보강
+
+- MESSAGE UI를 전체 문자열 재생성 방식에서 가상화된 `ListBox` 누적 항목 방식으로 변경했다. transcript용 전체 `_taskMessages`는 유지하고 화면 렌더링만 항목 단위로 분리해 긴 대화에서도 스크롤 비용을 줄인다.
+- 최초 Codex, Web 후속 Codex, JEV FAIL 재시도, JEV PASS 후 보고서 생성 등 모든 Codex 실행을 `RunCodexWithJevFooterAsync`로 통합해 Judge가 활성화된 모든 호출에 footer가 붙도록 했다.
+- GPT Web 전달문에 JEV 검증 안내를 추가했다. 의미 있는 구현·설계·파일·테스트 검증이 가능하면 Codex가 `[NEXT : JEV]`와 `[VALIDATION REQUEST]`를 선택하도록 유도하고, 검증 항목이 없을 때만 `[NEXT : WEB]`을 사용하도록 안내한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(총 10개), `node --check extension/gptweb-hub/content.js`, `git diff --check` 통과.
+- 실제 Explorer 화면에서 장시간 MESSAGE 스크롤 및 JEV ON 왕복 검증은 아직 남아 있다.
+
+## 2026-09-23 Extension 전달 단계 telemetry 보강
+
+- Extension에 `CLAIMED`, `TEXT_INSERT`, `SEND_BUTTON_FIND`, `SEND_CONFIRM`, `RESPONSE_START`, `RESPONSE_STABLE`, `RESULT_POST`, `RESULT_POST_RETRY`, `FAILED` 단계 보고를 추가했다.
+- Bridge에 `/bridge/progress`를 추가하고 현재 Extension 진행 상태를 `/bridge/status`에도 포함했다. Worker는 각 단계 변경을 `WEB EXTENSION` 한 줄 MESSAGE 로그로 기록한다.
+- composer 탐색은 최대 120초, Send 버튼·실제 user message 확인은 전체 최대 180초 동안 재시도한다. click 직후 완료로 처리하지 않고 새 user message 또는 composer 비움을 확인한다.
+- 새 Extension build는 `2026-09-23.1`이며 Worker가 이전 Extension을 동기화 불일치로 감지한다.
+- 검증: `node --check extension/gptweb-hub/content.js`, `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(총 10개), `git diff --check` 통과.
+- 잔여: 새 Extension을 Chrome에서 새로고침한 뒤 실제 화면에서 단계 로그와 Web 전송 1회 확인.
+
 # CURRENT AUTHORITATIVE STATUS — 2026-09-22
 
 단기 목표는 **JEV를 통한 AI 분기가 Worker에서 예측 가능하게 완료되는 것**이다. 과거의 scaffold/adapter pending 문장은 당시 상태를 기록한 이력이며 현재 판단 기준으로 사용하지 않는다.
@@ -999,3 +1030,31 @@ Worker는 의미 판단을 하지 않고 첫 NEXT 행, typed validation, JEV 구
 3. 실제 화면 검증 후 문서의 검증 결과를 갱신한다.
 
 보안 규칙: API key는 소스·설정·로그·transcript·Git에 기록하지 않는다. 실제 smoke test 결과에도 키 원문을 남기지 않는다.
+
+## 2026-09-23 취소 후 진행 애니메이션 잔류 수정
+
+- Worker의 terminal Task 이벤트에서 중복/timeout 조건이 화면 정리보다 먼저 반환되던 경로를 수정했다.
+- 취소 또는 이미 처리된 Task라도 `_awaitingWebResult`를 해제하고 Run 버튼을 복구한 뒤 `SetFlowState(false, false, false)`로 진행 애니메이션을 종료한다.
+- 검증: Debug build 성공(경고 0/오류 0), 전체 테스트 10개 통과, Extension `node --check` 통과, `git diff --check` 통과.
+- 실제 실행파일/Chrome 화면 검증은 아직 수행하지 않았다.
+
+## 2026-09-23 복합 취소 경로 수정
+
+- Run Task 버튼에서 Codex 실행 취소가 먼저 반환되어 GPT Web Task 취소와 화면 초기화가 누락될 수 있던 문제를 수정했다.
+- Codex CTS와 Web Task가 동시에 활성인 경우 양쪽을 모두 취소하고 Worker 진행 상태·애니메이션을 즉시 초기화한다.
+- 검증: Debug build 성공(경고 0/오류 0), 전체 테스트 10개 통과, `git diff --check` 통과.
+
+## 2026-09-23 GPT-6 Luna 기본 모델 및 모델 선택 확장
+
+- Worker의 기본 Codex 모델을 `gpt-6-luna`로 변경했다.
+- 모델 선택 목록에 `GPT-6 Luna`, `GPT-6 Sol`, `GPT-6 Astra`, `GPT-5.6 Luna`, `GPT-5.6 Terra`, `GPT-5.6 Sol`, `GPT-5.5`를 제공한다.
+- 공식 OpenAI 자료 기준 GPT-6 Luna는 입력 $0.10/1M, 출력 $0.50/1M이며 GPT-5.6 Luna는 입력 $0.20/1M, 출력 $1.20/1M이다. GPT-6 Luna는 입력 약 50%, 출력 약 58.3% 낮다.
+- 두 Luna 모델은 공식 자료상 1.05M 컨텍스트, 128K 최대 출력, `medium` 기본 reasoning을 지원한다. 실제 Codex 계정별 사용 가능 여부는 CLI 계정 권한에 따른다.
+- 검증: Debug build와 전체 테스트, `git diff --check`를 수행한다.
+
+## 2026-09-23 GPT-6 Luna 인계 운영 가이드
+
+- `GPT-6-LUNA-HANDOFF.md`를 추가했다.
+- 기존 Codex session을 선택하고 모델을 `GPT-6 Luna`로 바꾼 뒤 다음 실행하면 Worker가 같은 session을 `resume`해 인계한다.
+- 실행 중 모델 변경은 지원하지 않으며, 먼저 Cancel 후 기존 스레드를 다시 선택해 실행한다.
+- 실제 사용 모델은 MESSAGE의 `TASK START`와 `CLI STATUS`의 model 항목으로 확인한다.

@@ -63,7 +63,7 @@ public sealed class CodexCliRunner
         };
         process.StartInfo.ArgumentList.Add("exec");
         process.StartInfo.ArgumentList.Add("--sandbox");
-        process.StartInfo.ArgumentList.Add(readOnly ? "read-only" : "workspace-write");
+        process.StartInfo.ArgumentList.Add(readOnly ? "read-only" : "danger-full-access");
         if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add("resume");
         process.StartInfo.ArgumentList.Add("--json");
         process.StartInfo.ArgumentList.Add("--model");

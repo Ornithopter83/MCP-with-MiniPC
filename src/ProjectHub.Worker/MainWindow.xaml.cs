@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
@@ -7,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
@@ -36,9 +38,12 @@ public partial class MainWindow : Window
     private bool _jobTimedOut;
     private static readonly TimeSpan JobInactivityTimeout = TimeSpan.FromMinutes(30);
     private string? _lastWebTaskId;
+    private string? _lastExtensionProgressKey;
     private CodexUsage _commandUsage = CodexUsage.Empty;
     private sealed record TaskMessage(DateTimeOffset Timestamp, string Source, string Content);
     private readonly List<TaskMessage> _taskMessages = new();
+    private readonly ObservableCollection<string> _messageLogItems = new();
+    public ObservableCollection<string> MessageLogItems => _messageLogItems;
     private DateTimeOffset _taskStartedAt;
     private string _taskProjectName = "UnknownProject";
     private string _taskThreadName = "NewThread";
@@ -51,6 +56,8 @@ public partial class MainWindow : Window
     private bool _judgeReviewing;
     private string _judgeStatus = "OFF";
     private int _judgeRound;
+    private bool _judgeReportOnly;
+    private string? _pendingJevFailure;
     private bool _allowClose;
     private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
@@ -81,7 +88,11 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _bridgeServer = bridgeServer;
-        if (bridgeServer is not null) bridgeServer.TaskChanged += OnBridgeTaskChanged;
+        if (bridgeServer is not null)
+        {
+            bridgeServer.TaskChanged += OnBridgeTaskChanged;
+            bridgeServer.ExtensionProgressChanged += OnExtensionProgress;
+        }
         _flowTimer.Tick += (_, _) => UpdateArrowAnimation();
         _flowTimer.Start();
         _connectionTimer.Tick += async (_, _) => await RefreshConnectionChecksAsync();
@@ -377,14 +388,10 @@ public partial class MainWindow : Window
     }
     private async void RunTask_Click(object sender, RoutedEventArgs e)
     {
-        if (_activeTaskCts is not null)
+        if (_activeTaskCts is not null || _awaitingWebResult)
         {
-            _activeTaskCts.Cancel();
-            return;
-        }
-        if (_awaitingWebResult)
-        {
-            _bridgeServer?.CancelActiveTask();
+            _activeTaskCts?.Cancel();
+            if (_awaitingWebResult) _bridgeServer?.CancelActiveTask();
             ResetTaskState();
             return;
         }
@@ -410,7 +417,7 @@ public partial class MainWindow : Window
             return;
         }
         var cliPrompt = seedAction.Kind == WebActionKind.Begin ? seedAction.Body : prompt;
-        var model = GetSelectedContent(ModelCombo, "GPT-5.6 Luna");
+        var model = GetSelectedContent(ModelCombo, "GPT-6 Luna");
         var reasoning = GetSelectedContent(ReasoningCombo, "Medium").ToLowerInvariant();
         var cliModel = ToCliModel(model);
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
@@ -419,7 +426,7 @@ public partial class MainWindow : Window
         var sessionId = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? null : selectedThread.SessionId;
         var initialGitReference = await GitReviewGate.CheckAsync(workingDirectory, _targetSettings);
         _initialGitReferenceHeader = BuildGitReferenceHeader(initialGitReference);
-        var initialCliPrompt = AppendJevFooter(_initialGitReferenceHeader + Environment.NewLine + Environment.NewLine + cliPrompt);
+        var initialCliPrompt = _initialGitReferenceHeader + Environment.NewLine + Environment.NewLine + cliPrompt;
         _activePrompt = cliPrompt;
         _activeWebInstruction = webInstruction;
         _actionProtocolEnabled = true;
@@ -433,6 +440,8 @@ public partial class MainWindow : Window
         _activeReasoning = reasoning;
         AddTaskMessage("TASK START", BuildTaskStartInfo(cliModel, reasoning, workingDirectory, sessionId));
         _judgeRound = 0;
+        _judgeReportOnly = false;
+        _pendingJevFailure = null;
         _judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "READY" : "OFF";
         _webFollowupStarted = false;
         _commandUsage = CodexUsage.Empty;
@@ -447,7 +456,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var result = await _codexRunner.RunAsync(initialCliPrompt, cliModel, reasoning, workingDirectory, sessionId, _activeReadOnly, cts.Token);
+            var result = await RunCodexWithJevFooterAsync(initialCliPrompt, cliModel, reasoning, workingDirectory, sessionId, _activeReadOnly, cts.Token);
             _lastActivityAt = DateTimeOffset.UtcNow;
             _lastCodexResult = result;
             AddCliRoundStatus(result);
@@ -517,18 +526,27 @@ public partial class MainWindow : Window
         if (result.ExitCode != 0 || _bridgeServer is null) return null;
         var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
         var judgeEnabled = _targetSettings.EffectiveJudge.Enabled;
+        var reportOnly = _judgeReportOnly;
         var directive = judgeEnabled ? JevContract.ParseNext(output) : new NextDirective(NextRoute.Web, output);
         var report = output;
+        string? protocolError = judgeEnabled ? JevContract.ValidateStructure(directive, reportOnly) : null;
 
-        if (judgeEnabled && directive.Route == NextRoute.Jev)
+        if (judgeEnabled && protocolError is not null)
         {
-            var validation = JevContract.ExtractValidationRequest(directive.Body);
-            if (string.IsNullOrWhiteSpace(validation))
+            AddTaskMessage("JEV", $"[CONTRACT_PROTOCOL_ERROR] {protocolError}");
+            report += Environment.NewLine + Environment.NewLine + $"[JEV FALLBACK]{Environment.NewLine}CODE: {protocolError}{Environment.NewLine}ROUND: {_judgeRound}/3{Environment.NewLine}DETAIL: 계약 구조를 기계적으로 확인할 수 없습니다.";
+            _judgeStatus = "FALLBACK";
+        }
+        else if (judgeEnabled && directive.Route == NextRoute.Jev)
+        {
+            if (reportOnly)
             {
-                AddTaskMessage("JEV", "[JEV FALLBACK] VALIDATION REQUEST가 없어 GPT Web로 전달합니다.");
+                AddTaskMessage("JEV", "[CONTRACT_PROTOCOL_ERROR] REPORT_PHASE_REENTERED_JEV");
+                report += Environment.NewLine + Environment.NewLine + "[JEV FALLBACK]" + Environment.NewLine + "CODE: REPORT_PHASE_REENTERED_JEV" + Environment.NewLine + "DETAIL: 보고서 전용 단계에서 JEV 재진입을 요청했습니다.";
             }
             else
             {
+                var validation = JevContract.ExtractValidationRequest(directive.Body);
                 _judgeRound++;
                 _judgeReviewing = true;
                 _judgeStatus = "REVIEWING";
@@ -541,31 +559,42 @@ public partial class MainWindow : Window
                 try { judgment = await _jevJudgeRunner.ReviewAsync(request, _targetSettings.EffectiveJudge, cancellationToken); }
                 finally { _judgeReviewing = false; }
                 AddTaskMessage("JEV RESULT", $"{judgment.Decision}: {judgment.Message}");
-                if (judgment.Decision == JudgeDecision.Fail && _judgeRound < 3)
+                if (judgment.Decision == JudgeDecision.Fail)
                 {
-                    var retryPrompt = AppendJevFooter("JEV 검증 결과가 FAIL입니다. 다음 검증 요청을 만족하도록 현재 작업을 보완한 뒤, 완료되면 다시 [NEXT : WEB] 또는 [NEXT : JEV] 중 하나로 시작해줘.\n\n검증 요청:\n" + validation + "\n\nJEV 결과:\n" + judgment.Message);
-                    AddTaskMessage("WORKER -> CODEX", retryPrompt);
-                    TaskDirection.Text = "JEV → CODEX";
-                    TaskTitle.Text = "JEV FAIL 후 Codex 보완 실행 중";
-                    SetFlowState(true, true, false);
-                    var retry = await _codexRunner.RunAsync(retryPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken);
-                    _activeSessionId = retry.SessionId ?? _activeSessionId;
-                    _lastCodexResult = retry;
-                    AddCliRoundStatus(retry);
-                    CodexThreadArchive.Save(retry, retryPrompt, _activeWorkingDirectory!);
-                    _commandUsage = _commandUsage.Add(retry.Usage);
-                    UpdateUsage(_commandUsage);
-                    return await RouteCodexResultAsync(retry, webInstruction, includeWebInstruction, gitReferenceHeader, cancellationToken);
+                    _pendingJevFailure = judgment.Message;
+                    if (_judgeRound < 3)
+                    {
+                        var retryPrompt = AppendJevFooter("[JEV VALIDATION FAILED]" + Environment.NewLine + judgment.Message + Environment.NewLine + Environment.NewLine + "해당 검증 실패를 해소한 뒤 다시 [NEXT : WEB] 또는 [NEXT : JEV] 형식으로 최종 응답을 제출하라.");
+                        AddTaskMessage("WORKER -> CODEX", retryPrompt);
+                        TaskDirection.Text = "JEV → CODEX";
+                        TaskTitle.Text = "JEV FAIL 후 Codex 보완 실행 중";
+                        SetFlowState(true, true, false);
+                        var retry = await RunCodexWithJevFooterAsync(retryPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken);
+                        _activeSessionId = retry.SessionId ?? _activeSessionId;
+                        _lastCodexResult = retry;
+                        AddCliRoundStatus(retry);
+                        CodexThreadArchive.Save(retry, retryPrompt, _activeWorkingDirectory!);
+                        _commandUsage = _commandUsage.Add(retry.Usage);
+                        UpdateUsage(_commandUsage);
+                        return await RouteCodexResultAsync(retry, webInstruction, includeWebInstruction, gitReferenceHeader, cancellationToken);
+                    }
+                    report += Environment.NewLine + Environment.NewLine + "[JEV FALLBACK]" + Environment.NewLine + "CODE: JEV_RETRY_LIMIT" + Environment.NewLine + "ROUND: 3/3" + Environment.NewLine + "DETAIL: 검증 실패가 라운드 상한에 도달했습니다." + Environment.NewLine + Environment.NewLine + judgment.Message;
                 }
-                                if (judgment.Decision == JudgeDecision.Pass)
+                else if (judgment.Decision == JudgeDecision.Error)
                 {
-                    _judgeRound = 0;
+                    report += Environment.NewLine + Environment.NewLine + "[JEV FALLBACK]" + Environment.NewLine + $"CODE: {judgment.Message}" + Environment.NewLine + $"ROUND: {_judgeRound}/3" + Environment.NewLine + "DETAIL: JEV 검증 오류로 원래 Codex 결과를 전달합니다.";
+                    _judgeStatus = "FALLBACK";
+                }
+                else
+                {
+                    _pendingJevFailure = null;
+                    _judgeReportOnly = true;
                     var reportPrompt = AppendJevFooter("[JEV VALIDATION PASSED]" + Environment.NewLine + Environment.NewLine + "요청한 JEV 검증이 모두 통과했다. 추가 구현이나 변경은 하지 말고 현재 작업 상태를 기준으로 [NEXT : WEB]으로 시작하는 [REPORT]를 작성하라.");
                     AddTaskMessage("JEV -> CODEX", reportPrompt);
                     TaskDirection.Text = "JEV → CODEX";
                     TaskTitle.Text = "JEV 통과 · Codex 보고서 생성 중";
                     SetFlowState(true, true, false);
-                    var reportResult = await _codexRunner.RunAsync(reportPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken);
+                    var reportResult = await RunCodexWithJevFooterAsync(reportPrompt, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken);
                     _activeSessionId = reportResult.SessionId ?? _activeSessionId;
                     _lastCodexResult = reportResult;
                     AddCliRoundStatus(reportResult);
@@ -574,19 +603,18 @@ public partial class MainWindow : Window
                     UpdateUsage(_commandUsage);
                     return await RouteCodexResultAsync(reportResult, webInstruction, includeWebInstruction, gitReferenceHeader, cancellationToken);
                 }
-                AddTaskMessage("JEV", "[JEV FALLBACK] GPT Web로 전달합니다.");
             }
         }
-        else if (judgeEnabled && directive.Route == NextRoute.Invalid)
-        {
-            AddTaskMessage("JEV", "[JEV FALLBACK] NEXT 형식이 없어 GPT Web로 전달합니다.");
-        }
 
+        if (!string.IsNullOrWhiteSpace(_pendingJevFailure))
+            report += Environment.NewLine + Environment.NewLine + "[JEV UNRESOLVED]" + Environment.NewLine + _pendingJevFailure;
         var prompt = BuildWebPrompt(result with { FinalMessage = report }, webInstruction, includeControlInstructions: true, includeWebInstruction);
         var attachments = BuildWebAttachments(_bridgeServer, result.Files);
+        _judgeReportOnly = false;
+        _judgeRound = 0;
+        _pendingJevFailure = null;
         return await CreateWebTaskAsync(prompt, attachments, gitReferenceHeader);
     }
-
     private string AppendJevFooter(string prompt)
     {
         if (!_targetSettings.EffectiveJudge.Enabled) return prompt;
@@ -597,6 +625,9 @@ public partial class MainWindow : Window
             return prompt;
         }
     }
+    private Task<CodexCliResult> RunCodexWithJevFooterAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken) =>
+        _codexRunner.RunAsync(AppendJevFooter(prompt), model, reasoning, workingDirectory, sessionId, readOnly, cancellationToken);
+
     private static string BuildGitReferenceHeader(GitReviewCheckpoint checkpoint) =>
         checkpoint.ReviewCommitSha is null
             ? $"[REVIEW_SOURCE=LOCAL]{Environment.NewLine}[GIT_REFERENCE={checkpoint.SyncState}]"
@@ -640,6 +671,8 @@ public partial class MainWindow : Window
         _jobTimedOut = false;
         _lastWebTaskId = null;
         _activePrompt = null;
+        _judgeReportOnly = false;
+        _pendingJevFailure = null;
         _activeWebInstruction = null;
         _activeWorkingDirectory = null;
         _activeSessionId = null;
@@ -902,6 +935,27 @@ public partial class MainWindow : Window
         UpdateJudgeVisual();
     }
 
+    private void JudgeTimeoutInput_GotFocus(object sender, RoutedEventArgs e)
+    {
+        JudgeTimeoutInput.SelectAll();
+    }
+
+    private void JudgeTimeoutInput_LostFocus(object sender, RoutedEventArgs e)
+    {
+        JudgeTimeoutInput.Text = ReadJudgeTimeout().ToString();
+    }
+
+    private void JudgeTimeoutInput_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        e.Handled = e.Text.Any(character => !char.IsDigit(character));
+    }
+
+    private int ReadJudgeTimeout()
+    {
+        return int.TryParse(JudgeTimeoutInput.Text.Trim(), out var value)
+            ? Math.Clamp(value, 10, 600)
+            : 120;
+    }
     private async void TestJudge_Click(object sender, RoutedEventArgs e)
     {
         var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text)
@@ -914,7 +968,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var timeout = int.TryParse(JudgeTimeoutInput.Text, out var value) ? Math.Clamp(value, 10, 600) : 120;
+        var timeout = ReadJudgeTimeout();
         JudgeSettingsStatusText.Text = "Jev · testing...";
         var request = new JudgeRequest(
             "ProjectHub JEV Endpoint test",
@@ -958,7 +1012,7 @@ public partial class MainWindow : Window
             WorkingDirectoryInput.ToolTip = "Choose an existing folder before applying settings.";
             return;
         }
-        var timeout = int.TryParse(JudgeTimeoutInput.Text, out var value) ? Math.Clamp(value, 10, 600) : 120;
+        var timeout = ReadJudgeTimeout();
         var provider = GetSelectedContent(JudgeProviderCombo, "Jev").ToLowerInvariant();
         var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text) ? JevJudgeRunner.DefaultEndpoint : JudgeExecutableInput.Text.Trim();
         _targetSettings = _targetSettings with
@@ -1071,6 +1125,24 @@ public partial class MainWindow : Window
     private static string ToCliModel(string model)
         => model.Trim().ToLowerInvariant().Replace(" ", "-");
 
+    private void OnExtensionProgress(ExtensionProgress progress)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var key = $"{progress.TaskId}|{progress.Stage}|{progress.Detail}|{progress.Attempt}";
+            if (string.Equals(_lastExtensionProgressKey, key, StringComparison.Ordinal)) return;
+            _lastExtensionProgressKey = key;
+            var detail = string.IsNullOrWhiteSpace(progress.Detail) ? string.Empty : $" · {progress.Detail}";
+            AddTaskMessage("WEB EXTENSION", $"{progress.Stage}{detail}");
+            if (progress.Stage is not "FINISHED" and not "FAILED")
+            {
+                TaskDirection.Text = "WORKER → GPT WEB";
+                TaskTitle.Text = $"Web {progress.Stage}";
+                SetFlowState(false, true, true);
+            }
+        }));
+    }
+
     private void OnBridgeTaskChanged(BridgeTask task)
     {
         Dispatcher.BeginInvoke(new Action(() => HandleBridgeTaskChanged(task)));
@@ -1090,9 +1162,15 @@ public partial class MainWindow : Window
         }
 
         if (task.Status is not "COMPLETED" and not "FAILED") return;
-        if (_jobTimedOut) return;
         _lastActivityAt = DateTimeOffset.UtcNow;
-        if (_actionProtocolEnabled && _lastWebTaskId == task.Id) return;
+        var duplicateTerminalEvent = _actionProtocolEnabled && _lastWebTaskId == task.Id;
+        _awaitingWebResult = false;
+        RunButton.Content = "▶  Run Task";
+        if (_jobTimedOut || duplicateTerminalEvent)
+        {
+            SetFlowState(false, false, false);
+            return;
+        }
         _lastWebTaskId = task.Id;
         _lastWebTask = task;
         AddTaskMessage("GPT WEB", task.Result);
@@ -1168,6 +1246,8 @@ public partial class MainWindow : Window
             followupPrompt = "GPT Web 응답을 전달합니다. 원래 작업을 계속 수행해줘." + Environment.NewLine + "작업이 완전히 끝났으면 응답 첫 줄을 [WORKER_DONE]로 시작해줘. 아직 다음 단계가 필요하면 GPT Web에 보낼 다음 요청만 출력해줘." + Environment.NewLine + Environment.NewLine + webResponse;
         }
         _judgeRound = 0;
+        _judgeReportOnly = false;
+        _pendingJevFailure = null;
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         _awaitingWebResult = false;
@@ -1178,9 +1258,8 @@ public partial class MainWindow : Window
 
         try
         {
-            followupPrompt = AppendJevFooter(followupPrompt);
             AddTaskMessage("WORKER -> CODEX", followupPrompt);
-            var result = await _codexRunner.RunAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token);
+            var result = await RunCodexWithJevFooterAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token);
             _lastActivityAt = DateTimeOffset.UtcNow;
             _activeSessionId = result.SessionId ?? _activeSessionId;
             _lastCodexResult = result;
@@ -1274,7 +1353,7 @@ public partial class MainWindow : Window
 
         return new(kind, body);
     }
-    private static string BuildWebPrompt(
+    private string BuildWebPrompt(
         CodexCliResult result,
         string? webInstruction,
         bool includeControlInstructions,
@@ -1291,7 +1370,13 @@ public partial class MainWindow : Window
         var instruction = includeWebInstruction && !string.IsNullOrWhiteSpace(webInstruction)
             ? Environment.NewLine + Environment.NewLine + webInstruction
             : string.Empty;
-        return control + output + instruction;
+        var jevGuidance = includeControlInstructions && _targetSettings.EffectiveJudge.Enabled
+            ? Environment.NewLine + Environment.NewLine
+                + "JEV 검증 지침: 구현·설계·파일·테스트 결과처럼 의미 있는 검증이 가능한 상태라면 다음 Codex 작업에서 JEV 검증을 우선 요청하도록 안내하세요."
+                + Environment.NewLine
+                + "Worker는 Codex의 [NEXT : JEV] 및 [VALIDATION REQUEST]를 감지해 JEV로 전달합니다. 검증할 항목이 없을 때만 [NEXT : WEB] 보고를 사용하세요."
+            : string.Empty;
+        return control + output + instruction + jevGuidance;
     }
     private bool ShouldContinueRoundtrip(CodexCliResult result)
     {
@@ -1311,6 +1396,8 @@ public partial class MainWindow : Window
     private void StartTaskTranscript(CodexThreadOption? selectedThread, string command, string webInstruction)
     {
         _taskMessages.Clear();
+        _messageLogItems.Clear();
+        MessageLogEmptyText.Visibility = Visibility.Visible;
         _taskExported = false;
         _taskStartedAt = DateTimeOffset.Now;
         _taskProjectName = string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
@@ -1344,18 +1431,22 @@ public partial class MainWindow : Window
     private void AddTaskMessage(string source, string? content)
     {
         if (string.IsNullOrWhiteSpace(content)) return;
-        _taskMessages.Add(new TaskMessage(DateTimeOffset.Now, source, content.Trim()));
+        var timestamp = DateTimeOffset.Now;
+        var trimmed = content.Trim();
+        _taskMessages.Add(new TaskMessage(timestamp, source, trimmed));
+        _messageLogItems.Add($"[{timestamp:HH:mm:ss}] {source}{Environment.NewLine}{trimmed}");
+        MessageLogEmptyText.Visibility = Visibility.Collapsed;
         RefreshMessageLog();
     }
 
     private void RefreshMessageLog()
     {
-        if (MessageLogText is null || MessageLogScrollViewer is null) return;
-        MessageLogText.Text = _taskMessages.Count == 0
-            ? "새 작업을 실행하면 이곳에 누적 로그가 표시됩니다."
-            : string.Join(Environment.NewLine + Environment.NewLine, _taskMessages.Select(message =>
-                $"[{message.Timestamp:HH:mm:ss}] {message.Source}{Environment.NewLine}{message.Content}"));
-        Dispatcher.BeginInvoke(new Action(MessageLogScrollViewer.ScrollToEnd), System.Windows.Threading.DispatcherPriority.Background);
+        if (MessageLogList is null) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (MessageLogList.Items.Count > 0)
+                MessageLogList.ScrollIntoView(MessageLogList.Items[MessageLogList.Items.Count - 1]);
+        }), DispatcherPriority.Background);
     }
     private string? ExportTaskTranscript()
     {

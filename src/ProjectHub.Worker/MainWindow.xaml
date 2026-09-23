@@ -180,10 +180,8 @@
                 <TextBlock Text="Provider" Width="140" FontSize="15" VerticalAlignment="Center"/>
                 <ComboBox x:Name="JudgeProviderCombo" Style="{x:Null}" Width="180" Height="32" FontSize="15"><ComboBoxItem Content="Jev"/></ComboBox>
                 <TextBlock Text="Timeout" Margin="26,0,0,0" Width="82" FontSize="15" VerticalAlignment="Center"/>
-                <TextBox x:Name="JudgeTimeoutInput" Width="80" Height="32" FontSize="15" Padding="8,4"/>
+                <TextBox x:Name="JudgeTimeoutInput" Width="80" Height="32" FontSize="15" Padding="8,4" IsReadOnly="False" IsEnabled="True" IsHitTestVisible="True" Focusable="True" IsTabStop="True" MaxLength="3" Background="White" Foreground="{StaticResource Ink}" HorizontalContentAlignment="Right" PreviewTextInput="JudgeTimeoutInput_PreviewTextInput" GotFocus="JudgeTimeoutInput_GotFocus" LostFocus="JudgeTimeoutInput_LostFocus" ToolTip="10~600초"/>
                 <TextBlock Text="sec" Margin="8,0,0,0" FontSize="15" VerticalAlignment="Center"/>
-                <TextBlock Text="Failure" Margin="26,0,0,0" Width="70" FontSize="15" VerticalAlignment="Center"/>
-                <TextBlock Text="Send To GPT Web" FontSize="15" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
               </StackPanel>
               <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
                 <TextBlock Text="Endpoint" Width="140" FontSize="15" VerticalAlignment="Center"/>
@@ -279,9 +277,23 @@
                 <TextBlock Text="작업 메시지가 도착한 순서대로 이어집니다." FontSize="14" Foreground="{StaticResource Muted}" Margin="0,4,0,8"/>
                 <TextBlock x:Name="ResultBody" Visibility="Collapsed"/>
               </StackPanel>
-              <ScrollViewer x:Name="MessageLogScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PanningMode="VerticalOnly">
-                <TextBlock x:Name="MessageLogText" Text="새 작업을 실행하면 이곳에 누적 로그가 표시됩니다." FontSize="16" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
-              </ScrollViewer>
+              <Grid Grid.Row="1">
+                <TextBlock x:Name="MessageLogEmptyText" Text="새 작업을 실행하면 이곳에 누적 로그가 표시됩니다." FontSize="16" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="2"/>
+                <ListBox x:Name="MessageLogList" Background="Transparent" BorderThickness="0" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=MessageLogItems}" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" SelectionMode="Single" FontSize="16" Foreground="{StaticResource Ink}">
+                  <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                      <Setter Property="Padding" Value="0,0,0,14"/>
+                      <Setter Property="Focusable" Value="False"/>
+                    </Style>
+                  </ListBox.ItemContainerStyle>
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </Grid>
             </Grid>
           </Border>
         </Grid>
@@ -310,11 +322,14 @@
         <Grid Grid.Row="2">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="152"/><ColumnDefinition Width="100"/><ColumnDefinition Width="140"/></Grid.ColumnDefinitions>
           <TextBlock x:Name="UsageText" Grid.Column="0" Text="5시간/주간 제한: CLI 미제공 · 이번 작업 누적: 0 토큰" FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,12,0" TextWrapping="Wrap"/>
-          <ComboBox x:Name="ModelCombo" Grid.Column="1" Height="34" Margin="8,0,8,0" SelectedIndex="3">
-            <ComboBoxItem Content="GPT-5.6 Sol" />
+          <ComboBox x:Name="ModelCombo" Grid.Column="1" Height="34" Margin="8,0,8,0" SelectedIndex="0">
+            <ComboBoxItem Content="GPT-6 Luna" />
+            <ComboBoxItem Content="GPT-6 Sol" />
             <ComboBoxItem Content="GPT-6 Astra" />
-            <ComboBoxItem Content="GPT-5.6 Terra" />
             <ComboBoxItem Content="GPT-5.6 Luna" />
+            <ComboBoxItem Content="GPT-5.6 Terra" />
+            <ComboBoxItem Content="GPT-5.6 Sol" />
+            <ComboBoxItem Content="GPT-5.5" />
           </ComboBox>
           <ComboBox x:Name="ReasoningCombo" Grid.Column="2" Height="34" Margin="0,0,16,0" SelectedIndex="1">
             <ComboBoxItem Content="Minimal" />

@@ -14,7 +14,7 @@ public sealed class BridgeServer : IDisposable
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
     private const string ExpectedExtensionVersion = "0.1.3";
-    private const string ExpectedExtensionBuild = "2026-09-20.4";
+    private const string ExpectedExtensionBuild = "2026-09-23.1";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -27,6 +27,7 @@ public sealed class BridgeServer : IDisposable
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private DateTimeOffset? _lastWebHeartbeat;
+    private ExtensionProgress? _extensionProgress;
     private string? _webConversationId;
     private string? _webConversationTitle;
     private string? _webProjectId;
@@ -63,6 +64,7 @@ public sealed class BridgeServer : IDisposable
     }
 
     public event Action<BridgeTask>? TaskChanged;
+    public event Action<ExtensionProgress>? ExtensionProgressChanged;
 
     public BridgeTask? CreateTaskForLatestBinding(string prompt, List<BridgeAttachment>? attachments = null)
     {
@@ -199,6 +201,7 @@ public sealed class BridgeServer : IDisposable
             else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/result", StringComparison.Ordinal))
                 payload = SubmitResult(path["/bridge/task/".Length..^"/result".Length], await ReadJsonAsync<ResultRequest>(context.Request));
             else if (method == "POST" && path == "/bridge/heartbeat") payload = Heartbeat(await ReadJsonAsync<HeartbeatRequest>(context.Request));
+            else if (method == "POST" && path == "/bridge/progress") payload = Progress(await ReadJsonAsync<ProgressRequest>(context.Request));
             else if (method == "POST" && path == "/bridge/reset") payload = Reset(await ReadJsonAsync<ResetRequest>(context.Request));
             else
             {
@@ -246,7 +249,8 @@ public sealed class BridgeServer : IDisposable
                 webExtensionBuild = _webExtensionBuild,
                 expectedExtensionVersion = ExpectedExtensionVersion,
                 expectedExtensionBuild = ExpectedExtensionBuild,
-                webExtensionSynchronized = WebExtensionSynchronized
+                webExtensionSynchronized = WebExtensionSynchronized,
+                extensionProgress = _extensionProgress
             });
         }
     }
@@ -401,6 +405,26 @@ public sealed class BridgeServer : IDisposable
         return new BridgeResponse(true, new { worker = "ProjectHub Worker", repository = RepositoryName, client = request.Client ?? "extension", conversationId = request.ConversationId, conversationTitle = request.ConversationTitle, projectId = request.ProjectId, extensionVersion = request.ExtensionVersion, extensionBuild = request.ExtensionBuild, expectedExtensionVersion = ExpectedExtensionVersion, expectedExtensionBuild = ExpectedExtensionBuild, extensionSynchronized = WebExtensionSynchronized, timestamp = _lastWebHeartbeat, status = "ready" });
     }
 
+    private BridgeResponse Progress(ProgressRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.TaskId) || string.IsNullOrWhiteSpace(request.ConversationId) || string.IsNullOrWhiteSpace(request.Stage))
+            return new(false, new { error = "progress_fields_required" });
+        lock (_gate)
+        {
+            var task = _state.Tasks.FirstOrDefault(item => item.Id == request.TaskId);
+            if (task is null) return new(false, new { error = "task_not_found" });
+            if (!task.ConversationId.Equals(request.ConversationId, StringComparison.OrdinalIgnoreCase))
+                return new(false, new { error = "conversation_mismatch" });
+            if (task.Status != "CLAIMED") return new(false, new { error = "task_not_claimed" });
+            if (string.IsNullOrWhiteSpace(request.LeaseId) || !string.Equals(task.LeaseId, request.LeaseId, StringComparison.Ordinal))
+                return new(false, new { error = "lease_mismatch" });
+            var progress = new ExtensionProgress(task.Id, task.ConversationId, request.Stage.Trim(), request.Detail?.Trim(), request.Attempt, DateTimeOffset.UtcNow);
+            _extensionProgress = progress;
+            ExtensionProgressChanged?.Invoke(progress);
+            return new BridgeResponse(true, progress);
+        }
+    }
+
     private void ReplaceTask(BridgeTask task)
     {
         var index = _state.Tasks.FindIndex(item => item.Id == task.Id);
@@ -491,3 +515,5 @@ public sealed record ResetRequest(string? ConversationId = null, string? TaskId 
 public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null);
 public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null);
 public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null, string? ExtensionVersion = null, string? ExtensionBuild = null);
+public sealed record ProgressRequest(string TaskId, string ConversationId, string LeaseId, string Stage, string? Detail = null, int Attempt = 0);
+public sealed record ExtensionProgress(string TaskId, string ConversationId, string Stage, string? Detail, int Attempt, DateTimeOffset UpdatedAt);

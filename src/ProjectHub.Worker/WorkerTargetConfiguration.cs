@@ -9,8 +9,7 @@ public sealed record JudgeSettings(
     [property: JsonPropertyName("enabled")] bool Enabled = false,
     [property: JsonPropertyName("provider")] string Provider = "jev",
     [property: JsonPropertyName("manualExecutableOrEndpoint")] string? ManualExecutableOrEndpoint = null,
-    [property: JsonPropertyName("timeoutSeconds")] int TimeoutSeconds = 120,
-    [property: JsonPropertyName("failurePolicy")] string FailurePolicy = "send_to_gpt_web");
+    [property: JsonPropertyName("timeoutSeconds")] int TimeoutSeconds = 120);
 
 public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("manualRepositoryUrl")] string? ManualRepositoryUrl,
