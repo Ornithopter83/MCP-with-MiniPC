@@ -69,3 +69,11 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - 설계·관제 AI의 OpenAI Web/Codex CLI 선택에 따라 우측 Web/스레드 카드가 바뀌도록 했고, GPT Web·스레드 아이콘을 구분했다. WPF Window.Icon에 worker-icon.png를 지정했다. EXE ApplicationIcon 설정은 기존 worker-icon.ico를 계속 사용한다.
 - 검증: `dotnet test ProjectHub.sln --configuration Debug --no-restore` 통과(Core 1, Agent 3, Server 1, Worker 23), `node --check extension/gptweb-hub/content.js`, `git diff --check` 통과. Release 게시/복사 후 세 EXE의 SHA-256은 `00722E076184D29F8CA2C86601F05FE0839103F920C1F1E34E686A6A9AF8DEA7`이며 배포 EXE가 ProjectHub Worker 창으로 실행되는 것을 확인했다.
 - 제한/잔여: Web 선택에 따른 coordinator-first Web 실행 경로는 아직 구현되어 있지 않아 현재 CLI-to-CLI preflight가 차단한다. 역할별 thread 선택은 coordinator 카드만 표시되며 implementer/high-level 역할 카드 및 스레드 설정은 미구현이다. 따라서 UI 폼은 부분 반영으로 기록하며, 이를 11-A/B/C 완료로 승격하지 않는다.
+
+## 2026-09-23 화면 불일치 수정 (11-UI-A 후속)
+
+- 첨부 화면에서 발생한 우측 카드 잘림 원인은 1220px 팝업 안에 고정 6열을 넣은 레이아웃이었다. 창 기본 크기를 1400×900, 최대 1440×960으로 제한하고 설정 팝업은 1400×840로 확장했다. 모델/추론을 공급자 아래 두 줄로 재배치하고, 네 역할 모두 왼쪽 아이콘/이름, 중앙 선택값, 오른쪽 상태/스레드 카드 형식으로 맞췄다.
+- 설계·관제는 GPT Web/OpenAI Codex CLI 탭에 따라 대응 카드와 아이콘을 바꾼다. 작업·고수준 역할은 각각 현재 작업 폴더에 한정된 Codex 스레드 선택을 보여 주고 선택된 세션/프로젝트 경로를 JSON에 저장한다. 고수준 역할은 Astra/High 및 OFF 기본값이다. 기존 설정 파일에서 transport가 빠진 설계·관제 역할은 Web 기본값을 사용한다.
+- 회귀 검사: 설정 기본값·transport·독립 threadSessionId/threadProjectPath를 확인하는 Worker 테스트를 추가했다. 현재 검증 결과는 전체 29개 통과, `node --check extension/gptweb-hub/content.js`, `git diff --check`, WPF 앱 시작 및 1400×900 선언값 확인이다.
+- 제한: 현재 실행 엔진은 CLI-to-CLI이므로 Web 관제 선택, JEV 활성화, 고수준 역할 활성화는 실행 전 차단한다. 데스크톱 캡처 인터페이스가 현재 세션에 제공되지 않아 새 팝업의 Explorer 화면 캡처는 확인하지 못했다.
+- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 실행파일 SHA-256 일치: `3C2ECBECAF10DCDBF78162145D976A14AFCA211F94F3AB45E6A0A1835099AD99`. 배포본 `ProjectHub Worker` 창 기동 성공.

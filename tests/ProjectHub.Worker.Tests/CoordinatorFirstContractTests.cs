@@ -34,7 +34,12 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.True(settings.IsCoordinatorFirst);
         Assert.Equal("gpt-6-sol", settings.EffectiveCoordinator.Model);
+        Assert.Equal("web", settings.EffectiveCoordinator.Transport);
         Assert.Equal("gpt-6-luna", settings.EffectiveImplementer.Model);
+        Assert.Equal("codex_cli", settings.EffectiveImplementer.Transport);
+        Assert.False(settings.HighLevelEnabled);
+        Assert.Equal("gpt-6-astra", settings.EffectiveHighLevel.Model);
+        Assert.Equal("high", settings.EffectiveHighLevel.Reasoning);
         Assert.Equal("C:/work", settings.ManualWorkingDirectory);
     }
 
@@ -47,8 +52,23 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Equal("gpt-5.6-sol", settings.EffectiveCoordinator.Model);
         Assert.Equal("high", settings.EffectiveCoordinator.Reasoning);
+        Assert.Equal("web", settings.EffectiveCoordinator.Transport);
         Assert.Equal("gpt-5.6-luna", settings.EffectiveImplementer.Model);
         Assert.Equal("low", settings.EffectiveImplementer.Reasoning);
+    }
+
+    [Fact]
+    public void RoleSettings_PersistTransportAndIndependentThreadSelections()
+    {
+        var settings = JsonSerializer.Deserialize<WorkerTargetSettings>("""
+            {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null,"coordinator":{"provider":"openai","model":"gpt-6-sol","reasoning":"high","transport":"codex_cli","threadSessionId":"coord-session","threadProjectPath":"C:/work"},"implementer":{"provider":"openai","model":"gpt-6-luna","reasoning":"medium","transport":"codex_cli","threadSessionId":"impl-session","threadProjectPath":"C:/work"},"highLevelEnabled":false,"highLevel":{"provider":"openai","model":"gpt-6-astra","reasoning":"high","transport":"codex_cli"}}
+            """)!;
+
+        Assert.Equal("codex_cli", settings.EffectiveCoordinator.Transport);
+        Assert.Equal("coord-session", settings.EffectiveCoordinator.ThreadSessionId);
+        Assert.Equal("impl-session", settings.EffectiveImplementer.ThreadSessionId);
+        Assert.Equal("C:/work", settings.EffectiveCoordinator.ThreadProjectPath);
+        Assert.False(settings.HighLevelEnabled);
     }
 
     [Fact]

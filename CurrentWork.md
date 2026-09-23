@@ -1170,3 +1170,11 @@ Worker는 의미 판단을 하지 않고 첫 NEXT 행, typed validation, JEV 구
 - `dotnet test ProjectHub.sln --configuration Debug --no-restore`: Core 1, Agent 3, Server 1, Worker 23 통과. `node --check extension/gptweb-hub/content.js`, `git diff --check` 통과. Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. SHA-256 세 곳 일치: `00722E076184D29F8CA2C86601F05FE0839103F920C1F1E34E686A6A9AF8DEA7`. 배포본 기동 시 `ProjectHub Worker` 창과 정상 프로세스를 확인했다.
 - 현재 커밋: `5460d39` (소스 변경). 원격은 fetch 후 동일 기준점임을 확인했고 clean 상태에서 `git pull --rebase origin main` 완료. 문서 변경은 별도 커밋 예정.
 - 잔여: Web coordinator 실제 실행 경로는 CLI-to-CLI에 연결되지 않아 Web 선택 시 현재 preflight가 막는다. 구현 역할별 스레드 카드(implementer/high-level)와 고수준 작업 AI 카드는 아직 없다. 이 UI 변경은 부분 반영이며 11-A/B/C 완료 상태를 변경하지 않는다.
+
+## 2026-09-23 설정 화면 첨부 이미지 불일치 수정
+
+- 첨부 화면에서 보인 오른쪽 카드 잘림/빈 공간은 1220px 팝업에 고정 6열을 배치해 생겼다. 창을 1400×900으로 조정하고 최대 크기를 1440×960으로 제한했다. 설정 팝업은 1400×840, 내부 세로 스크롤로 제한한다.
+- 저장소 및 폴더를 상단에 두고, 서버 카드는 서버 주소 행에 정렬했다. 네 역할 행을 2줄 구조(서비스 제공자 위, 모델·추론 아래)와 동일 열로 맞췄다. 설계·관제 탭은 GPT Web/OpenAI Codex CLI이며 선택에 따라 Web/스레드 카드가 바뀐다. 작업 AI와 고수준 작업 AI에 현재 작업 폴더 내 스레드 선택 카드를 제공하고 역할별 세션/프로젝트 경로를 JSON에 저장한다. 고수준은 Astra/High, 기본 OFF.
+- 기존 설정과 JSON을 호환하도록 coordinator transport 기본값 Web, implementer/high-level Codex CLI로 설정했다. Web coordinator, 활성 JEV, 활성 high-level은 아직 실행 경로가 없으므로 preflight에서 명시적으로 차단한다.
+- 검증: 전체 테스트 29개 통과, Node 확장 구문 검사와 diff 검사 통과. WPF 빌드 결과 실행 시 앱이 살아 있고 제목 `ProjectHub Worker`를 표시했다. UI 자동 캡처 API는 현재 세션에서 네이티브 앱을 반환하지 않아 새 팝업의 화면 캡처 검증은 불가했다.
+- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 EXE SHA-256 일치: `3C2ECBECAF10DCDBF78162145D976A14AFCA211F94F3AB45E6A0A1835099AD99`. 배포본 실행 시 `ProjectHub Worker` 창 기동을 확인했다. 이번 후속 수정의 문서 갱신·커밋·푸시는 아직 완료 전이다.

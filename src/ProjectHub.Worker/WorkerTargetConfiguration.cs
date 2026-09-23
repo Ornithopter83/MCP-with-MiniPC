@@ -14,7 +14,10 @@ public sealed record JudgeSettings(
 public sealed record WorkerAiRoleSettings(
     [property: JsonPropertyName("provider")] string Provider = "openai",
     [property: JsonPropertyName("model")] string Model = "",
-    [property: JsonPropertyName("reasoning")] string Reasoning = "medium");
+    [property: JsonPropertyName("reasoning")] string Reasoning = "medium",
+    [property: JsonPropertyName("transport")] string Transport = "web",
+    [property: JsonPropertyName("threadSessionId")] string? ThreadSessionId = null,
+    [property: JsonPropertyName("threadProjectPath")] string? ThreadProjectPath = null);
 
 public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("manualRepositoryUrl")] string? ManualRepositoryUrl,
@@ -25,11 +28,14 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("judge")] JudgeSettings? Judge = null,
     [property: JsonPropertyName("executionMode")] string ExecutionMode = "CLI_TO_CLI",
     [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
-    [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null)
+    [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null,
+    [property: JsonPropertyName("highLevelEnabled")] bool HighLevelEnabled = false,
+    [property: JsonPropertyName("highLevel")] WorkerAiRoleSettings? HighLevel = null)
 {
     public JudgeSettings EffectiveJudge => Judge ?? new JudgeSettings();
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
-    public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium");
+    public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
+    public WorkerAiRoleSettings EffectiveHighLevel => HighLevel ?? new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high", Transport: "codex_cli");
     public bool IsCoordinatorFirst => string.Equals(ExecutionMode, "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
 }
 public sealed record GitTargetSnapshot(

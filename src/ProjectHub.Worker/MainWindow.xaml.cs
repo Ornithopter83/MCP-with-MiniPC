@@ -996,7 +996,7 @@ public partial class MainWindow : Window
         _lastActivityAt = DateTimeOffset.UtcNow;
         StartTaskTranscript(selectedThread, request, string.Empty);
         AddTaskMessage("TASK START", $"Mode: coordinator-first CLI-to-CLI{Environment.NewLine}Coordinator: {coordinator.Model} / {coordinator.Reasoning}{Environment.NewLine}Implementer: {implementer.Model} / {implementer.Reasoning}{Environment.NewLine}Working directory: {workingDirectory}");
-        var coordinatorSession = (string?)null;
+        var coordinatorSession = coordinator.ThreadSessionId;
         IReadOnlyList<CodexCommandExecution> observedExecutions = Array.Empty<CodexCommandExecution>();
         try
         {
@@ -1026,7 +1026,7 @@ public partial class MainWindow : Window
             SetFlowState(codexActive: false, workerActive: true, webActive: false);
             var cardJson = JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true });
             var implementPrompt = "You are the Luna implementer. Implement only the work card below in the current workspace. Follow its prohibited list. Run every listed validation command and report truthful results. Do not claim a command passed unless its process succeeded. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>\n<work_card_json>\n" + cardJson + "\n</work_card_json>";
-            var implementation = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT", implementPrompt, implementer, workingDirectory, null, CoordinatorFirstContracts.ImplementerResultSchema, cts.Token, CodexSandboxMode.WorkspaceWrite);
+            var implementation = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT", implementPrompt, implementer, workingDirectory, implementer.ThreadSessionId, CoordinatorFirstContracts.ImplementerResultSchema, cts.Token, CodexSandboxMode.WorkspaceWrite);
             observedExecutions = implementation.CommandExecutions ?? Array.Empty<CodexCommandExecution>();
             var reportParsed = CoordinatorFirstContracts.TryParseImplementerResult(implementation.FinalMessage, out var report, out var reportError);
             if (implementation.ExitCode != 0 || !reportParsed || report is null)
@@ -1146,18 +1146,43 @@ public partial class MainWindow : Window
         try
         {
             SelectTag(ExecutionModeCombo, _targetSettings.ExecutionMode, "CLI_TO_CLI");
-            PopulateProviderCombo(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider);
+            PopulateProviderCombo(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Transport);
             PopulateRoleModelCombo(CoordinatorModelCombo, _targetSettings.EffectiveCoordinator.Model);
             PopulateRoleReasoningCombo(CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator.Model, _targetSettings.EffectiveCoordinator.Reasoning);
             PopulateProviderCombo(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider);
             PopulateRoleModelCombo(ImplementerModelCombo, _targetSettings.EffectiveImplementer.Model);
             PopulateRoleReasoningCombo(ImplementerReasoningCombo, _targetSettings.EffectiveImplementer.Model, _targetSettings.EffectiveImplementer.Reasoning);
-            CoordinatorRoleThreadCombo.ItemsSource = CodexThreadCombo.ItemsSource;
-            CoordinatorRoleThreadCombo.SelectedIndex = CodexThreadCombo.SelectedIndex;
+            PopulateRoleModelCombo(HighLevelModelCombo, _targetSettings.EffectiveHighLevel.Model);
+            PopulateRoleReasoningCombo(HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel.Model, _targetSettings.EffectiveHighLevel.Reasoning);
+            HighLevelEnabledCheckBox.IsChecked = _targetSettings.HighLevelEnabled;
+            SetRoleThreadOptions(CoordinatorRoleThreadCombo, _targetSettings.EffectiveCoordinator.ThreadSessionId);
+            SetRoleThreadOptions(ImplementerRoleThreadCombo, _targetSettings.EffectiveImplementer.ThreadSessionId);
+            SetRoleThreadOptions(HighLevelRoleThreadCombo, _targetSettings.EffectiveHighLevel.ThreadSessionId);
             UpdateCoordinatorProviderCard();
         }
         finally { _loadingRoleControls = false; }
         UpdateRoleCapabilityPresentation();
+    }
+
+    private void SetRoleThreadOptions(System.Windows.Controls.ComboBox combo, string? sessionId)
+    {
+        var options = (CodexThreadCombo.ItemsSource as IEnumerable<CodexThreadOption>)?.ToArray() ?? Array.Empty<CodexThreadOption>();
+        var selectedProject = CodexThreadCombo.SelectedItem as CodexThreadOption;
+        var targetPath = !string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
+            ? _targetSettings.ManualWorkingDirectory
+            : !string.IsNullOrWhiteSpace(WorkingDirectoryInput.Text) ? WorkingDirectoryInput.Text : selectedProject?.ProjectPath;
+        var roleOptions = options.Where(option => PathsEqual(option.ProjectPath, targetPath)).ToArray();
+        combo.ItemsSource = roleOptions;
+        combo.SelectedItem = roleOptions.FirstOrDefault(option => !string.IsNullOrWhiteSpace(sessionId) && option.SessionId == sessionId)
+            ?? roleOptions.FirstOrDefault(option => string.IsNullOrWhiteSpace(option.SessionId))
+            ?? roleOptions.FirstOrDefault();
+    }
+
+    private static bool PathsEqual(string left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right)) return false;
+        try { return string.Equals(Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase); }
+        catch { return false; }
     }
 
     private void PopulateProviderCombo(System.Windows.Controls.ComboBox combo, string configuredProvider)
@@ -1165,16 +1190,16 @@ public partial class MainWindow : Window
         combo.Items.Clear();
         if (ReferenceEquals(combo, CoordinatorProviderCombo))
         {
-            combo.Items.Add(new ComboBoxItem { Content = "OpenAI Web", Tag = "openai_web" });
-            combo.Items.Add(new ComboBoxItem { Content = "OpenAI Codex CLI", Tag = "openai" });
+            combo.Items.Add(new ComboBoxItem { Content = "OpenAI Web", Tag = "web" });
+            combo.Items.Add(new ComboBoxItem { Content = "OpenAI Codex CLI", Tag = "codex_cli" });
         }
         else
         {
         combo.Items.Add(new ComboBoxItem { Content = "OpenAI · Codex CLI", Tag = "openai" });
         if (!string.Equals(configuredProvider, "openai", StringComparison.OrdinalIgnoreCase))
-            combo.Items.Add(new ComboBoxItem { Content = $"{configuredProvider} · CLI 미지원", Tag = configuredProvider, Foreground = System.Windows.Media.Brushes.OrangeRed });
+            combo.Items.Add(new ComboBoxItem { Content = configuredProvider, Tag = configuredProvider });
         }
-        SelectTag(combo, configuredProvider, "openai");
+        SelectTag(combo, configuredProvider, ReferenceEquals(combo, CoordinatorProviderCombo) ? "web" : "openai");
     }
 
     private void CoordinatorProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1182,11 +1207,27 @@ public partial class MainWindow : Window
         if (!_loadingRoleControls) UpdateCoordinatorProviderCard();
     }
 
+    private void CoordinatorWebTab_Click(object sender, RoutedEventArgs e)
+    {
+        SelectTag(CoordinatorProviderCombo, "web", "web");
+        UpdateCoordinatorProviderCard();
+    }
+
+    private void CoordinatorCliTab_Click(object sender, RoutedEventArgs e)
+    {
+        SelectTag(CoordinatorProviderCombo, "codex_cli", "codex_cli");
+        UpdateCoordinatorProviderCard();
+    }
+
     private void UpdateCoordinatorProviderCard()
     {
-        var isWeb = string.Equals(GetSelectedTag(CoordinatorProviderCombo, "openai"), "openai_web", StringComparison.OrdinalIgnoreCase);
+        var isWeb = string.Equals(GetSelectedTag(CoordinatorProviderCombo, "web"), "web", StringComparison.OrdinalIgnoreCase);
         CoordinatorWebCard.Visibility = isWeb ? Visibility.Visible : Visibility.Collapsed;
         CoordinatorCliCard.Visibility = isWeb ? Visibility.Collapsed : Visibility.Visible;
+        CoordinatorWebTabButton.IsChecked = isWeb;
+        CoordinatorCliTabButton.IsChecked = !isWeb;
+        CoordinatorWebTabButton.Background = isWeb ? (System.Windows.Media.Brush)FindResource("ActiveMessageTab") : System.Windows.Media.Brushes.White;
+        CoordinatorCliTabButton.Background = isWeb ? System.Windows.Media.Brushes.White : (System.Windows.Media.Brush)FindResource("ActiveMessageTab");
     }
 
     private void PopulateRoleModelCombo(System.Windows.Controls.ComboBox combo, string configuredModel)
@@ -1195,7 +1236,7 @@ public partial class MainWindow : Window
         foreach (var model in _codexModelCatalog.Models)
             combo.Items.Add(new ComboBoxItem { Content = model.DisplayName, Tag = model.Id });
         if (_codexModelCatalog.Find(configuredModel) is null)
-            combo.Items.Add(new ComboBoxItem { Content = $"{configuredModel} · CLI capability 미확인", Tag = configuredModel, Foreground = System.Windows.Media.Brushes.OrangeRed });
+            combo.Items.Add(new ComboBoxItem { Content = configuredModel, Tag = configuredModel });
         SelectTag(combo, configuredModel, configuredModel);
     }
 
@@ -1221,14 +1262,13 @@ public partial class MainWindow : Window
     {
         if (_loadingRoleControls) return;
         var combo = (System.Windows.Controls.ComboBox)sender;
-        var currentReasoning = ReferenceEquals(combo, CoordinatorModelCombo)
-            ? GetSelectedTag(CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator.Reasoning)
-            : GetSelectedTag(ImplementerReasoningCombo, _targetSettings.EffectiveImplementer.Reasoning);
+        var reasoningCombo = ReferenceEquals(combo, CoordinatorModelCombo) ? CoordinatorReasoningCombo
+            : ReferenceEquals(combo, ImplementerModelCombo) ? ImplementerReasoningCombo : HighLevelReasoningCombo;
+        var fallbackReasoning = ReferenceEquals(combo, CoordinatorModelCombo) ? _targetSettings.EffectiveCoordinator.Reasoning
+            : ReferenceEquals(combo, ImplementerModelCombo) ? _targetSettings.EffectiveImplementer.Reasoning : _targetSettings.EffectiveHighLevel.Reasoning;
+        var currentReasoning = GetSelectedTag(reasoningCombo, fallbackReasoning);
         _loadingRoleControls = true;
-        if (ReferenceEquals(combo, CoordinatorModelCombo))
-            PopulateRoleReasoningCombo(CoordinatorReasoningCombo, GetSelectedTag(combo, string.Empty), currentReasoning);
-        else
-            PopulateRoleReasoningCombo(ImplementerReasoningCombo, GetSelectedTag(combo, string.Empty), currentReasoning);
+        PopulateRoleReasoningCombo(reasoningCombo, GetSelectedTag(combo, string.Empty), currentReasoning);
         _loadingRoleControls = false;
         UpdateRoleCapabilityPresentation();
     }
@@ -1245,15 +1285,21 @@ public partial class MainWindow : Window
     private static string GetSelectedTag(System.Windows.Controls.ComboBox combo, string fallback) =>
         (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? fallback;
 
-    private WorkerAiRoleSettings ReadRoleSettings(System.Windows.Controls.ComboBox providerCombo, System.Windows.Controls.ComboBox modelCombo, System.Windows.Controls.ComboBox reasoningCombo, WorkerAiRoleSettings fallback) =>
-        new(GetSelectedTag(providerCombo, fallback.Provider), GetSelectedTag(modelCombo, fallback.Model), GetSelectedTag(reasoningCombo, fallback.Reasoning));
+    private WorkerAiRoleSettings ReadRoleSettings(System.Windows.Controls.ComboBox providerCombo, System.Windows.Controls.ComboBox modelCombo, System.Windows.Controls.ComboBox reasoningCombo, WorkerAiRoleSettings fallback, System.Windows.Controls.ComboBox? threadCombo = null)
+    {
+        var thread = threadCombo?.SelectedItem as CodexThreadOption;
+        var coordinatorTransport = ReferenceEquals(providerCombo, CoordinatorProviderCombo);
+        var provider = coordinatorTransport ? fallback.Provider : GetSelectedTag(providerCombo, fallback.Provider);
+        var transport = coordinatorTransport ? GetSelectedTag(providerCombo, fallback.Transport) : fallback.Transport;
+        return new(provider, GetSelectedTag(modelCombo, fallback.Model), GetSelectedTag(reasoningCombo, fallback.Reasoning), transport, thread?.SessionId, thread?.ProjectPath);
+    }
 
     private void UpdateRoleCapabilityPresentation()
     {
         var coordinator = _targetSettings.EffectiveCoordinator;
         var implementer = _targetSettings.EffectiveImplementer;
         if (CoordinatorProviderCombo.SelectedItem is ComboBoxItem coordinatorProvider)
-            coordinator = coordinator with { Provider = coordinatorProvider.Tag?.ToString() ?? coordinator.Provider };
+            coordinator = coordinator with { Transport = coordinatorProvider.Tag?.ToString() ?? coordinator.Transport };
         if (CoordinatorModelCombo.SelectedItem is ComboBoxItem coordinatorModel)
             coordinator = coordinator with { Model = coordinatorModel.Tag?.ToString() ?? coordinator.Model };
         if (CoordinatorReasoningCombo.SelectedItem is ComboBoxItem coordinatorReasoning)
@@ -1264,7 +1310,6 @@ public partial class MainWindow : Window
             implementer = implementer with { Model = implementerModel.Tag?.ToString() ?? implementer.Model };
         if (ImplementerReasoningCombo.SelectedItem is ComboBoxItem implementerReasoning)
             implementer = implementer with { Reasoning = implementerReasoning.Tag?.ToString() ?? implementer.Reasoning };
-        ImplementerCapabilityText.Text = GetRoleCapabilityText(implementer);
         AiRolesStatusText.Text = _codexModelCatalog.Status == "READY"
             ? $"Codex CLI capability catalog: {_codexModelCatalog.Models.Count}개 모델"
             : $"Codex CLI 모델 capability를 확인하지 못했습니다 ({_codexModelCatalog.Status}).";
@@ -1277,7 +1322,7 @@ public partial class MainWindow : Window
     private static string? GetExecutionModeConfigError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer, JudgeSettings judge)
     {
         if (!Directory.Exists(workingDirectory)) return "Working Folder가 없거나 접근할 수 없습니다.";
-        if (judge.Enabled) return "JEV Judge는 CLI-to-CLI mode에서 아직 연결되지 않았습니다. Legacy Web mode에서 사용하거나 Judge를 끄세요.";
+        if (judge.Enabled) return "JEV 판단 AI가 CLI-to-CLI 작업 흐름에 아직 연결되지 않았습니다. 실행하려면 판단 AI를 끄세요.";
         return null;
     }
 
@@ -1285,7 +1330,10 @@ public partial class MainWindow : Window
     {
         var basic = GetExecutionModeConfigError(workingDirectory, coordinator, implementer, judge);
         if (basic is not null) return basic;
-        if (!string.Equals(coordinator.Provider, "openai", StringComparison.OrdinalIgnoreCase) || !string.Equals(implementer.Provider, "openai", StringComparison.OrdinalIgnoreCase))
+        if (_targetSettings.HighLevelEnabled) return "고수준 작업 AI의 위임 실행은 아직 연결되지 않았습니다. 설정에서 사용을 끄세요.";
+        if (!string.Equals(coordinator.Transport, "codex_cli", StringComparison.OrdinalIgnoreCase))
+            return "설계·관제 AI를 Web으로 설정했지만, Web 관제 실행 경로는 아직 연결되지 않았습니다. CLI 탭으로 바꿔 실행하세요.";
+        if (!string.Equals(coordinator.Provider, "openai", StringComparison.OrdinalIgnoreCase) || !string.Equals(implementer.Provider, "openai", StringComparison.OrdinalIgnoreCase) || !string.Equals(implementer.Transport, "codex_cli", StringComparison.OrdinalIgnoreCase))
             return "현재 CLI-to-CLI에서 지원하는 provider는 OpenAI Codex CLI뿐입니다. 자동 provider 대체는 하지 않습니다.";
         if (!_codexAuthenticated) return "Codex CLI 인증을 확인할 수 없습니다. codex login status를 확인하세요.";
         if (!_codexModelCatalog.Supports(coordinator.Model, coordinator.Reasoning))
@@ -1402,8 +1450,10 @@ public partial class MainWindow : Window
             ManualWorkingDirectory = workingDirectory,
             Judge = new JudgeSettings(EnableJudgeCheckBox.IsChecked == true, provider, endpoint, timeout),
             ExecutionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"),
-            Coordinator = ReadRoleSettings(CoordinatorProviderCombo, CoordinatorModelCombo, CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator),
-            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer)
+            Coordinator = ReadRoleSettings(CoordinatorProviderCombo, CoordinatorModelCombo, CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator, CoordinatorRoleThreadCombo),
+            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo),
+            HighLevelEnabled = HighLevelEnabledCheckBox.IsChecked == true,
+            HighLevel = ReadRoleSettings(ImplementerProviderCombo, HighLevelModelCombo, HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel, HighLevelRoleThreadCombo)
         };
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();
