@@ -1,19 +1,19 @@
 # Master-Polish — 저비용 AI Role Dev Tool 설계
 
 작성·기준일: 2026-09-23 (KST)
-문서 작업: **09-A 완료** · 제품 구현 후속: **09-C → 10-A/B/C 완료 → 11-A 후보**
+문서 작업: **09-A 완료** · 제품 구현 후속: **09-C, 10-A/B/C, 11-A 완료**
 검토 기준: 2026-09-23 동기화된 GitHub `main`과 이후 로컬 완료 작업을 대조. 09-B 실화면 잔여는 사용자 결정으로 해결 처리하고 정기 관리에서 제외한다.
 2026-09-23 갱신 기준: GitHub `main`의 `AGENTS.md`, 구현계획, 최신 `CurrentWork.md`, 활성 09 task, Master, 최신 `GPT-Web-Feedback.md`를 다시 대조했다.
 
 > **개정 목표(2026-09-23): ProjectHub는 네 가지 AI 역할을 설정창에서 독립적으로 구성하는 CLI-to-CLI 중심의 저비용 개발 시스템이다.** 필수: **설계·관제 AI**(예: GPT-6 Sol CLI), **작업 AI**(예: GPT-6 Luna Medium CLI). 선택: **작업 판단 AI**(기존 JEV 연결 또는 향후 AI 판단 어댑터), **고수준 작업 AI**(어려운 구현을 위한 별도 모델). Worker가 상태·권한·예산·증거·복구와 독립 세션을 관리한다. ChatGPT Web/Extension은 기존 호환 경로로 보존하되 신규 기본 관제 경로가 아니다. 토큰 절약 → 목표까지의 지속성 → 교체 가능한 역할·모델 순서로 투자한다.
 >
-> 이 개정은 **목표 정책과 구현 백로그 변경**이지 제품 코드 구현 완료 선언이 아니다. 아래 과거 Web-first 운영 예제·실험 기록은 당시 현행 제품의 설명으로 보존하며, 새로운 목표 구조와 충돌하면 이 개정 목표를 우선한다. 기존 ACTION/NEXT 공개 계약, Agent/Server/NAS 동작과 Git 승인 정책은 변경하지 않는다.
+> 2026-09-23 기준 11-A coordinator-first CLI 흐름과 필수 역할 UI를 구현했다. GPT-6 Sol/Luna는 설치된 CLI catalog에 없으면 선택/실행할 수 없고 자동 대체하지 않는다. 선택적 판단 AI·고수준 AI, 지속 실행·재시작 복구 등은 아직 별도 backlog다. 기존 ACTION/NEXT 공개 계약, Agent/Server/NAS 동작과 Git 승인 정책은 변경하지 않는다.
 
 ## 1. AI가 매번 먼저 읽을 짧은 운영 지침
 
 1. 원래 요구와 완료 조건을 고정하고 **번호 작업 하나 + A/B/C 하나**만 구현한다. 새로운 요구는 대기 목록에 둔다.
 2. 목표 기본값: 필수 **설계·관제 AI** = OpenAI GPT-6 Sol CLI, 필수 **작업 AI** = OpenAI GPT-6 Luna Medium CLI. **작업 판단 AI**와 **고수준 작업 AI**는 기본 OFF다. 모든 역할의 공급사·모델·추론 설정을 설정창에서 독립 관리하며, CLI 실행 전 실제 지원 여부를 확인한다. 이는 목표값이며 현재 구현 완료 상태를 뜻하지 않는다.
-3. 최초 사용자 지시는 설계·관제 AI에 먼저 전달한다(목표 모드). 설계·관제 AI가 작업 범위·AC·검증 명령을 고정하고, 작업 AI는 이를 임의로 완화하지 않는다. 현재 제품의 Codex-first 동작은 후속 11-A에서 교체한다.
+3. 최초 사용자 지시는 설계·관제 AI에 먼저 전달한다(목표 모드). 설계·관제 AI가 작업 범위·AC·검증 명령을 고정하고, 작업 AI는 이를 임의로 완화하지 않는다. 현재 제품의 Codex-first 동작은 11-A에서 CLI-to-CLI 기본 모드로 보완하며 Legacy Web 경로를 보존한다.
 4. Codex는 관련 파일과 필요한 구간만 읽고 수정한다. 전체 저장소, 누적 로그, Master 전문을 매 라운드 재전송하지 않는다.
 5. 같은 작업의 보완은 같은 Codex session을 쓴다. session 재사용이 과거 문맥 비용을 없애 주지는 않는다.
 6. 빌드·테스트·파일·exit code는 로컬 도구로 확인한다. 선택적 작업 판단 AI(JEV 연동 포함)는 실제 전달된 증거의 의미를 평가하며 테스트 실행을 대체하지 않는다. 비활성화한 경우 로컬 검증을 건너뛰지 않는다.
@@ -248,7 +248,7 @@ Git/배포 권한: 이번에는 없음 / 구체적으로 승인한 범위
 
 ### 7.2 기존 Web 관제 모드의 임시 실행 양식(레거시)
 
-**아래 BEGIN 우회 양식은 현재 제품/과거 Web 모드의 호환 예제이지, 새로운 기본 CLI-to-CLI 설계의 시작 절차가 아니다.** 신규 모드는 10-B의 진짜 Coordinator-first 라우팅을 구현한다.
+**아래 BEGIN 우회 양식은 현재 제품/과거 Web 모드의 호환 예제이지, 새로운 기본 CLI-to-CLI 설계의 시작 절차가 아니다.** 신규 모드는 11-A의 Coordinator-first 라우팅을 구현한다.
 
 
 **현재 BEGIN도 Codex-first다.** 다음은 구현을 바로 시작하지 않도록 첫 CLI를 짧은 인계 전용으로 쓰는 임시 운영법이다. 첫 호출 비용은 남는다. Judge ON에서 사용한다.
@@ -534,7 +534,7 @@ Endpoint 보안도 실제 코드 개선 항목이다. 현재 custom HTTPS endpoi
 | **Task 10-A 완료** | 검증 capability/layer 분리 | 도구 발견과 실제 validator 실행 결과 구분, ENGINE/UI/HUMAN/JEV 계층 별도 기록 |
 | **Task 10-B 완료** | 호출별 token/payload 계측 | usage 중복 방지, unknown 보존, prompt/footer/evidence bytes·digest·latency 기록 |
 | **Task 10-C 완료** | JEV 음성 대조 fixture | 6개 격리 사례 로컬 회귀 완료; provider 판별률은 미측정 |
-| **11-A 후보** | CLI-to-CLI 관제 우선 시작과 역할별 설정 UI | Sol이 작업 카드 확정 전 Luna 호출 0회, 역할별 독립 설정/세션, 기존 Web 회귀 없음 |
+| **11-A 완료 (2026-09-23)** | CLI-to-CLI 관제 우선, 역할별 provider/model/reasoning 및 capability 설정, 구현 결과 관제 검토 | 구조화 work card, 별도 workspace-write implementer, 동일 read-only coordinator review, observed exit-code gate; 28 tests, supported-model CLI smoke, Release Explorer launch |
 | **11-B 후보** | JobRunner 분리와 재시작 복구 | 역할별 session/phase/model snapshot 복구, 중복 side effect 0, 기존 Web 회귀 없음 |
 | **12-A 후보** | 대기·예산·반복 진척 | 제한/인증/timeout 대기·재개와 동일 실패 재분해, 무승인 사용량 증가 0 |
 | **12-B 후보** | v2 evidence/report 전달 | 계약 호환 검증 후 report-only 호출 절감 및 정상 완료 증거 |
@@ -550,7 +550,7 @@ Master의 “번호 작업 하나 + A/B/C 하나” 원칙에 따라 다음 순�
 2. 09-C evidence envelope, provenance, QID mapping, digest 기반 무효화 구현이 완료됐다.
 3. Task 10-A/B/C의 검증 layer 분리, 호출별 usage/payload 계측, 6개 JEV 음성 대조 fixture 구현이 완료됐다.
 4. 실 provider의 batch 한계 및 음성 대조 판별률은 실제 요청·사용량이 없어 미측정이다.
-5. 다음 후보는 11-A coordinator-first CLI-to-CLI다. 07 잔여 검증은 계속 별도로 보존한다.
+5. Task 11-A coordinator-first CLI-to-CLI 구현을 완료했다. 다음 후보는 11-B JobRunner 분리·재시작 복구이며, 07 잔여 검증은 별도로 보존한다.
 
 ### 권장 검증 매트릭스
 

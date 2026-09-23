@@ -24,10 +24,11 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 | 08 | [Server 설치·이전](tasks/08-server-installation-migration.md) | Windows 11+ 재설치·연결 가이드 | 대기 |
 | 09 | [AI Role Dev Tool 설계와 검증 기반](tasks/09-ai-role-dev-tool.md) | 저비용 역할 분담·지속 실행·JEV 검증 | A/B/C 구현 완료 (2026-09-23) |
 | 10 | [검증 capability·사용량 관찰·JEV 기준실험](tasks/10-verification-observability.md) | 검증 범위 분리·실측 계측·통제 fixture | A/B/C 구현 완료 (2026-09-23; 실 provider benchmark 미실행) |
+| 11 | [Coordinator-first CLI-to-CLI](tasks/11-cli-coordinator-first.md) | 독립 Sol 관제·Luna 작업 CLI와 역할별 설정 | A/B/C 완료 (2026-09-23) |
 
 ## 순서
 
-01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10
+01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11
 
 ## 운영 규칙
 
@@ -42,7 +43,7 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: **09-C 및 10-A/B/C 구현 완료 (2026-09-23)**. 사용자는 09-B 실화면/E2E 잔여를 해결로 처리하고 정기 관리 목록에서 제외하도록 지시했다. 향후 같은 문제가 실제 발생할 때 신규 이슈로 등록한다. 09-C는 제한된 Codex artifact evidence, SUMMARY_ONLY 구분, job별 round archive, source/question/evidence digest 변경 시 참조 QID만 PARTIAL로 무효화했다. 10은 validation capability/status 분리, 호출별 usage/payload 계측, 6개 격리 JEV negative fixture를 추가했다. Bridge 이슈와 07의 기존 잔여는 별도 기존 정책을 유지한다.
+현재 작업: **11-A Coordinator-first CLI-to-CLI (A/B/C 완료, 2026-09-23)**. 기준 커밋 `f501694`는 `recovery/before-11a-cli-to-cli-2026-09-23` 태그로 보존했다. 역할별 provider/model/reasoning 설정과 capability 차단, Sol 작업 카드→Luna 구현→동일 Sol 세션 검토, 관측된 명령 종료코드 기반 검증 gate를 구현했다. 전체 솔루션 테스트 28개, 확장 구문 검사, 지원 모델 구조화 출력 CLI smoke, Release 게시 및 Explorer 기동을 확인했다. 09-B Explorer/E2E 잔여는 사용자 결정에 따라 정기 관리에서 제외하고, Bridge 이슈와 07의 기존 잔여는 별도 기존 정책을 유지한다.
 
 실 provider JEV benchmark는 실제 API 요청과 사용량을 발생시키므로 실행하지 않았다. 회귀 fixture 구현과 자동화된 전체 검증은 2026-09-23에 통과했다. 사용자는 향후 benchmark 실행을 요청하면 별도로 실행할 수 있다. 기존 07 잔여는 계속 유지한다.
 

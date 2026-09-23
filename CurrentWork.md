@@ -2,6 +2,19 @@
 
 Updated: 2026-09-23
 
+## 현재 요약 — 2026-09-23 / Task 11-A 구현 완료
+
+동기화된 깨끗한 기준점 `f501694469f2f1a590d1739be5e6039978c7ebde`에 복구 태그 `recovery/before-11a-cli-to-cli-2026-09-23`를 만들고 시작했다. Task 11-A의 A/B/C를 완료했다.
+
+- 설정에 Legacy Web / coordinator-first CLI 모드, coordinator·implementer별 모델/reasoning 선택을 추가했다. Codex CLI model catalog에서 공개·지원되는 모델과 reasoning만 실행 가능하며 자동 대체하지 않는다. 설정 계약은 기존 JSON과 호환된다.
+- 역할별 provider/model/reasoning 설정을 각각 저장·표시한다. 현재 선택 가능한 provider는 OpenAI Codex CLI이며, 다른 provider가 설정 파일에 있으면 미지원 상태로 표시하고 실행을 차단한다.
+- Sol 관제는 read-only 별도 세션에서 구조화 work card를 만든다. 유효 카드와 세션 ID가 확보되기 전 Luna를 실행하지 않는다. Luna는 별도 workspace-write 세션에서 구현·구조화 결과를 반환한다. 같은 Sol 세션이 read-only 검토한다.
+- 작업 완료는 implementer exit 0, 모든 필수 validation command의 JSONL 관측 및 실제 exit 0, 구조화 검토의 정확한 AC 집합 전체 PASS, `ACCEPT`가 모두 충족될 때만 허용한다. 역할·모델·reasoning·session·호출 usage를 MESSAGE/telemetry에 기록하고 취소 시 프로세스 취소와 UI 복구를 연결했다.
+- JEV ON은 현재 CLI-to-CLI 모드에서 preflight 차단하며 Legacy Web에서 유지한다. ACTION/NEXT Web 계약을 바꾸지 않았다. 09-B E2E 잔여는 사용자 결정대로 해결 처리/정기 관리 제외, Bridge 이슈와 07 잔여는 기존 정책 유지.
+- 검증: `dotnet test ProjectHub.sln --configuration Debug --no-restore` 통과 (Core 1, Agent 3, Server 1, Worker 23; 전체 28); `node --check extension/gptweb-hub/content.js`; `git diff --check` 성공. disposable temp 폴더에서 지원 모델 `gpt-5.6-sol` / `low`의 구조화 출력 및 session ID smoke 통과.
+- Release 게시 성공. `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`와 `C:\GameProject\ProjectHub.Worker.exe` 복사본 및 프로젝트 게시본의 SHA-256은 `11E56140632E5BCCA5650B5310AC9C585532F606B25A8BC2A07466AB8FF5C8D1`로 일치한다. Explorer에서 기존 Worker를 종료한 뒤 새 Worker 창이 응답하는 것을 확인했다.
+- 다음 후보는 11-B JobRunner 분리/재시작 복구다. 이번 범위에서는 시작하지 않았다.
+
 ## 현재 요약 — 2026-09-23 / 09-C 및 10-A/B/C 구현 완료
 
 정책/피드백 동기화 기준 HEAD는 `6c4634e`이다. 동기화된 피드백의 CLI-to-CLI 네 역할 설계를 검토했다. 사용자 결정에 따라 09-B E2E 잔여는 해결 처리하고 정기 관리에서 제외하며, 재발할 때만 새 이슈로 등록한다. 09-C evidence envelope 이후 Task 10-A/B/C에서 capability 계층 분리, 호출별 사용량 계측, 격리 음성 대조 fixture를 구현했다.

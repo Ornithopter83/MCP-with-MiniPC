@@ -119,8 +119,9 @@
         </StackPanel>
       </StackPanel>
       <Button x:Name="SettingsButton" Grid.Column="1" Content="⚙" FontSize="24" BorderThickness="0" Background="Transparent" Click="Settings_Click" Margin="0,4,0,0" />
-    </Grid>    <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" HorizontalOffset="-1040" StaysOpen="True" AllowsTransparency="True" PopupAnimation="Slide" Panel.ZIndex="9999">
-      <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="10" Padding="14" Width="1040" Margin="0,8,0,0">
+    </Grid>    <Popup x:Name="StatusPopup" PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom" HorizontalOffset="-1220" StaysOpen="True" AllowsTransparency="True" PopupAnimation="Slide" Panel.ZIndex="9999">
+      <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="10" Padding="14" Width="1220" MaxHeight="1040" Margin="0,8,0,0">
+        <ScrollViewer MaxHeight="1000" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel>
     <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0,0,8,0">
@@ -168,7 +169,43 @@
             <TextBox x:Name="WorkingDirectoryInput" Width="620" Height="36" FontSize="16" Padding="9,5"/>
             <Button x:Name="WorkingDirectoryBrowseButton" Content="Choose Folder…" Margin="10,0,0,0" Padding="14,6" FontSize="15" Click="BrowseWorkingDirectory_Click"/>
           </StackPanel>
-          <Border Grid.Row="5" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,16,0,0">
+          <Border Grid.Row="5" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="14,12" Margin="0,16,0,0">
+            <StackPanel>
+              <TextBlock Text="AI ROLE EXECUTION" FontSize="17" FontWeight="Bold"/>
+              <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <TextBlock Text="Execution Mode" Width="140" FontSize="15" VerticalAlignment="Center"/>
+                <ComboBox x:Name="ExecutionModeCombo" Style="{x:Null}" Width="300" Height="34" FontSize="15" SelectionChanged="ExecutionModeCombo_SelectionChanged">
+                  <ComboBoxItem Content="Coordinator-first CLI → CLI" Tag="CLI_TO_CLI"/>
+                  <ComboBoxItem Content="Legacy Codex → GPT Web" Tag="LEGACY_WEB"/>
+                </ComboBox>
+                <TextBlock x:Name="AiRolesStatusText" Margin="16,0,0,0" FontSize="14" Foreground="{StaticResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+              </StackPanel>
+              <Border BorderBrush="#DCE6F3" BorderThickness="1" CornerRadius="7" Background="White" Padding="12,10" Margin="0,12,0,0">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="185"/><ColumnDefinition Width="275"/><ColumnDefinition Width="115"/><ColumnDefinition Width="250"/><ColumnDefinition Width="135"/></Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0"><TextBlock Text="설계·관제 AI" FontSize="16" FontWeight="Bold"/><TextBlock Text="필수 · read-only" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/></StackPanel>
+                  <ComboBox x:Name="CoordinatorProviderCombo" Grid.Column="1" Height="34" Margin="0,0,8,0"/>
+                  <ComboBox x:Name="CoordinatorModelCombo" Grid.Column="2" Height="34" Margin="0,0,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
+                  <TextBlock Grid.Column="3" Text="Reasoning" FontSize="14" VerticalAlignment="Center"/>
+                  <ComboBox x:Name="CoordinatorReasoningCombo" Grid.Column="4" Height="34" Margin="0,0,8,0"/>
+                  <TextBlock x:Name="CoordinatorCapabilityText" Grid.Column="5" FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+              <Border BorderBrush="#DCE6F3" BorderThickness="1" CornerRadius="7" Background="White" Padding="12,10" Margin="0,8,0,0">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="185"/><ColumnDefinition Width="275"/><ColumnDefinition Width="115"/><ColumnDefinition Width="250"/><ColumnDefinition Width="135"/></Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0"><TextBlock Text="작업 AI" FontSize="16" FontWeight="Bold"/><TextBlock Text="필수 · workspace-write" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/></StackPanel>
+                  <ComboBox x:Name="ImplementerProviderCombo" Grid.Column="1" Height="34" Margin="0,0,8,0"/>
+                  <ComboBox x:Name="ImplementerModelCombo" Grid.Column="2" Height="34" Margin="0,0,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
+                  <TextBlock Grid.Column="3" Text="Reasoning" FontSize="14" VerticalAlignment="Center"/>
+                  <ComboBox x:Name="ImplementerReasoningCombo" Grid.Column="4" Height="34" Margin="0,0,8,0"/>
+                  <TextBlock x:Name="ImplementerCapabilityText" Grid.Column="5" FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+              <TextBlock Text="역할별 세션과 사용량은 분리됩니다. CLI가 제공하는 모델·추론 capability를 확인하며, 지원되지 않는 조합은 실행을 막습니다." Margin="2,9,2,0" FontSize="13" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Border>
+          <Border Grid.Row="6" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,12,0,0">
             <Grid>
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <StackPanel Orientation="Horizontal">
@@ -190,13 +227,14 @@
               </StackPanel>
             </Grid>
           </Border>
-          <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+          <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
             <Button Content="Close" Padding="18,7" FontSize="15" Click="CloseSettings_Click"/>
             <Button Content="Apply" Margin="10,0,0,0" Padding="20,7" FontSize="15" Background="{StaticResource Blue}" Foreground="White" BorderBrush="{StaticResource Blue}" Click="SaveTargetSettings_Click"/>
           </StackPanel>
         </Grid>
       </Border>
         </StackPanel>
+        </ScrollViewer>
       </Border>
     </Popup>
     <Border x:Name="SettingsDimOverlay" Grid.Row="0" Grid.RowSpan="5" Background="#99000000" Visibility="Collapsed" Panel.ZIndex="100" IsHitTestVisible="True"/>

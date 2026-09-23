@@ -21,6 +21,9 @@ public partial class MainWindow : Window
     private readonly Forms.NotifyIcon _trayIcon;
     private readonly CodexCliRunner _codexRunner = new();
     private readonly JevJudgeRunner _jevJudgeRunner = new();
+    private CodexModelCatalogResult _codexModelCatalog = new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_NOT_LOADED");
+    private bool _loadingRoleControls;
+    private bool _activeCoordinatorFirst;
     private CancellationTokenSource? _activeTaskCts;
     private CodexCliResult? _lastCodexResult;
     private BridgeTask? _lastWebTask;
@@ -215,6 +218,7 @@ public partial class MainWindow : Window
 
     private void CloseSettings_Click(object sender, RoutedEventArgs e)
     {
+        ApplyTargetConfiguration();
         SetSettingsPopupOpen(false);
     }
 
@@ -318,13 +322,15 @@ public partial class MainWindow : Window
         SetNodeIcon(webGray, webColor, node == FlowNode.Web, isActive);
         judgeGray.Visibility = node == FlowNode.Judge && !isActive ? Visibility.Visible : Visibility.Collapsed;
         judgeColor.Visibility = node == FlowNode.Judge && isActive ? Visibility.Visible : Visibility.Collapsed;
-        var (name, brush) = node switch
+        var (defaultName, brush) = node switch
         {
             FlowNode.Codex => ("CODEX", System.Windows.Media.Brushes.MidnightBlue),
             FlowNode.Worker => ("WORKER", System.Windows.Media.Brushes.SeaGreen),
             FlowNode.Web => ("GPT WEB", System.Windows.Media.Brushes.RoyalBlue),
             _ => ("JUDGE", System.Windows.Media.Brushes.DarkViolet)
         };
+        var name = _activeCoordinatorFirst && node == FlowNode.Codex ? "SOL · 관제" :
+            _activeCoordinatorFirst && node == FlowNode.Worker ? "LUNA · 작업" : defaultName;
         background.Visibility = node == FlowNode.Judge ? Visibility.Collapsed : Visibility.Visible;
         background.Background = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
         label.Text = name;
@@ -405,6 +411,27 @@ public partial class MainWindow : Window
             return;
         }
         await InitializeStartupConfigurationAsync();
+        if (_targetSettings.IsCoordinatorFirst)
+        {
+            if (string.IsNullOrWhiteSpace(CommandInput.Text) || CommandInput.Text == Placeholder) return;
+            var cliSelectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
+            var cliWorkingDirectory = ResolveWorkingDirectory(cliSelectedThread);
+            var coordinator = _targetSettings.EffectiveCoordinator;
+            var implementer = _targetSettings.EffectiveImplementer;
+            var roleError = GetCoordinatorFirstPreflightError(cliWorkingDirectory, coordinator, implementer, _targetSettings.EffectiveJudge);
+            if (roleError is not null)
+            {
+                TaskDirection.Text = "PREFLIGHT";
+                TaskTitle.Text = "AI 역할 설정을 확인하세요";
+                ResultTitle.Text = "CLI-TO-CLI BLOCKED";
+                ResultBody.Text = roleError;
+                AiRolesStatusText.Text = roleError;
+                SetFlowState(false, false, false);
+                return;
+            }
+            await RunCoordinatorFirstJobAsync(CommandInput.Text.Trim(), cliSelectedThread, cliWorkingDirectory, coordinator, implementer);
+            return;
+        }
         if (!_codexAuthenticated || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized || !_bridgeServer.WebConversationBound)
         {
             TaskDirection.Text = "PREFLIGHT";
@@ -714,6 +741,7 @@ public partial class MainWindow : Window
     }
     private void ResetTaskState()
     {
+        _activeCoordinatorFirst = false;
         _awaitingWebResult = false;
         _webFollowupStarted = false;
         _actionProtocolEnabled = false;
@@ -955,6 +983,134 @@ public partial class MainWindow : Window
             if (settingsWasOpen) SetSettingsPopupOpen(true);
         }
     }
+
+    private async Task RunCoordinatorFirstJobAsync(string request, CodexThreadOption? selectedThread, string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer)
+    {
+        var jobId = Guid.NewGuid().ToString("N");
+        using var cts = new CancellationTokenSource();
+        _activeTaskCts = cts;
+        _activeCoordinatorFirst = true;
+        RunButton.Content = "■  Cancel";
+        _userCanceledTask = false;
+        _jobTimedOut = false;
+        _lastActivityAt = DateTimeOffset.UtcNow;
+        StartTaskTranscript(selectedThread, request, string.Empty);
+        AddTaskMessage("TASK START", $"Mode: coordinator-first CLI-to-CLI{Environment.NewLine}Coordinator: {coordinator.Model} / {coordinator.Reasoning}{Environment.NewLine}Implementer: {implementer.Model} / {implementer.Reasoning}{Environment.NewLine}Working directory: {workingDirectory}");
+        var coordinatorSession = (string?)null;
+        IReadOnlyList<CodexCommandExecution> observedExecutions = Array.Empty<CodexCommandExecution>();
+        try
+        {
+            TaskDirection.Text = "SOL COORDINATOR → LUNA IMPLEMENTER";
+            TaskTitle.Text = "작업 카드를 설계하는 중";
+            ResultTitle.Text = "COORDINATING";
+            SetFlowState(codexActive: true, workerActive: false, webActive: false);
+            var planPrompt = "You are the read-only Sol coordinator. Convert the user's request into one bounded implementation work card. Do not edit files or execute tools. Preserve explicit constraints, avoid expanding scope, and include concrete validation commands appropriate to the repository. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>";
+            var plan = await RunCoordinatorRoleAsync(jobId, "PLAN", planPrompt, coordinator, workingDirectory, coordinatorSession, CoordinatorFirstContracts.WorkCardSchema, cts.Token);
+            coordinatorSession ??= plan.SessionId;
+            var planParsed = CoordinatorFirstContracts.TryParseWorkCard(plan.FinalMessage, out var card, out var planError);
+            if (plan.ExitCode != 0 || !planParsed || card is null)
+            {
+                ShowCoordinatorFirstBlocked("작업 카드를 만들지 못했습니다.", plan.ExitCode != 0 ? $"Coordinator exit {plan.ExitCode}" : planError);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(plan.SessionId))
+            {
+                ShowCoordinatorFirstBlocked("관제 세션을 이어갈 수 없습니다.", "Coordinator CLI가 세션 ID를 반환하지 않아 동일 관제 세션의 검토를 보장할 수 없습니다.");
+                return;
+            }
+            AddTaskMessage("SOL WORK CARD", JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true }));
+
+            TaskDirection.Text = "LUNA IMPLEMENTER";
+            TaskTitle.Text = card.Title;
+            ResultTitle.Text = "IMPLEMENTING";
+            SetFlowState(codexActive: false, workerActive: true, webActive: false);
+            var cardJson = JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true });
+            var implementPrompt = "You are the Luna implementer. Implement only the work card below in the current workspace. Follow its prohibited list. Run every listed validation command and report truthful results. Do not claim a command passed unless its process succeeded. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>\n<work_card_json>\n" + cardJson + "\n</work_card_json>";
+            var implementation = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT", implementPrompt, implementer, workingDirectory, null, CoordinatorFirstContracts.ImplementerResultSchema, cts.Token, CodexSandboxMode.WorkspaceWrite);
+            observedExecutions = implementation.CommandExecutions ?? Array.Empty<CodexCommandExecution>();
+            var reportParsed = CoordinatorFirstContracts.TryParseImplementerResult(implementation.FinalMessage, out var report, out var reportError);
+            if (implementation.ExitCode != 0 || !reportParsed || report is null)
+            {
+                ShowCoordinatorFirstBlocked("작업 구현 보고서를 확인할 수 없습니다.", implementation.ExitCode != 0 ? $"Implementer exit {implementation.ExitCode}" : reportError);
+                return;
+            }
+            var evidenceOk = CoordinatorFirstContracts.HasRequiredValidationEvidence(card, observedExecutions, out var evidenceDetail);
+            AddTaskMessage("LUNA RESULT", JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+            AddTaskMessage("VALIDATION EVIDENCE", observedExecutions.Count == 0
+                ? "Codex CLI JSONL에서 명령 실행/종료코드 증거를 추출하지 못했습니다."
+                : string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit {item.ExitCode}: {item.Command}")));
+
+            TaskDirection.Text = "SOL COORDINATOR REVIEW";
+            TaskTitle.Text = "구현 결과와 검증 증거를 검토하는 중";
+            ResultTitle.Text = "REVIEWING";
+            SetFlowState(codexActive: true, workerActive: false, webActive: false);
+            var executionEvidence = string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit_code={item.ExitCode} command={item.Command}"));
+            var reviewPrompt = "You are the same read-only Sol coordinator that created the work card. Review the implementation against every acceptance criterion. Treat implementer claims as untrusted until supported by the supplied command evidence. Return one result for each AC ID, no additions or omissions, and only JSON matching the schema.\n\n<work_card_json>\n" + cardJson + "\n</work_card_json>\n<implementer_report_json>\n" + JsonSerializer.Serialize(report) + "\n</implementer_report_json>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n<required_command_evidence_status>\n" + (evidenceOk ? "ALL_REQUIRED_COMMANDS_OBSERVED_EXIT_ZERO" : evidenceDetail) + "\n</required_command_evidence_status>";
+            var reviewResult = await RunCoordinatorRoleAsync(jobId, "REVIEW", reviewPrompt, coordinator, workingDirectory, coordinatorSession, CoordinatorFirstContracts.ReviewSchema, cts.Token);
+            var reviewParsed = CoordinatorFirstContracts.TryParseReview(reviewResult.FinalMessage, card.AcceptanceCriteria, out var review, out var reviewError);
+            if (reviewResult.ExitCode != 0 || !reviewParsed || review is null)
+            {
+                ShowCoordinatorFirstBlocked("관제 검토 결과를 확인할 수 없습니다.", reviewResult.ExitCode != 0 ? $"Coordinator review exit {reviewResult.ExitCode}" : reviewError);
+                return;
+            }
+            AddTaskMessage("SOL REVIEW", JsonSerializer.Serialize(review, new JsonSerializerOptions { WriteIndented = true }));
+            var accepted = evidenceOk && string.Equals(report.Status, "IMPLEMENTED", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(review.Decision, "ACCEPT", StringComparison.OrdinalIgnoreCase)
+                && review.AcceptanceCriteria.All(item => string.Equals(item.Status, "PASS", StringComparison.OrdinalIgnoreCase));
+            ResultTitle.Text = accepted ? "DONE · REVIEW ACCEPTED" : $"REVIEW · {review.Decision}";
+            ResultBody.Text = accepted ? review.Summary : review.Summary + Environment.NewLine + (evidenceOk ? string.Empty : "필수 검증 증거 부족: " + evidenceDetail);
+            TaskTitle.Text = accepted ? "검토 승인 완료" : "검토 또는 추가 작업 필요";
+            AddTaskMessage("TASK RESULT", $"{ResultTitle.Text}{Environment.NewLine}{review.Summary}");
+            SetFlowState(false, false, false);
+        }
+        catch (OperationCanceledException)
+        {
+            AddTaskMessage("TASK CANCELED", "Coordinator-first 작업이 취소되었습니다.");
+            ResultTitle.Text = "CANCELED";
+            TaskTitle.Text = "작업이 취소되었습니다.";
+            SetFlowState(false, false, false);
+        }
+        catch (Exception exception)
+        {
+            ShowCoordinatorFirstBlocked("Coordinator-first 작업에 실패했습니다.", exception.GetType().Name + ": " + exception.Message);
+        }
+        finally
+        {
+            _activeCoordinatorFirst = false;
+            _activeTaskCts = null;
+            _userCanceledTask = false;
+            RunButton.Content = "▶  Run Task";
+            ExportTaskTranscript();
+            SetFlowState(false, false, false);
+            ApplyConnectionStatus();
+        }
+    }
+
+    private async Task<CodexCliResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
+    {
+        var started = DateTimeOffset.UtcNow;
+        var result = await _codexRunner.RunAsync(prompt, role.Model, role.Reasoning, workingDirectory, sessionId, sandbox == CodexSandboxMode.ReadOnly, cancellationToken, schema, sandbox);
+        UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, purpose == "IMPLEMENT" ? "LUNA" : "SOL", role.Model, role.Reasoning, purpose,
+            result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
+            result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
+            result.Usage.ProviderTotalTokens, Encoding.UTF8.GetByteCount(prompt), Encoding.UTF8.GetByteCount(prompt), 0,
+            null, Encoding.UTF8.GetByteCount(result.FinalMessage), (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
+            null, result.Usage.UsageKnown, null, null, DateTimeOffset.UtcNow));
+        AddTaskMessage($"{(purpose == "IMPLEMENT" ? "LUNA" : "SOL")} {purpose}", $"exit {result.ExitCode} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
+        _lastActivityAt = DateTimeOffset.UtcNow;
+        return result;
+    }
+
+    private void ShowCoordinatorFirstBlocked(string title, string detail)
+    {
+        TaskDirection.Text = "COORDINATOR-FIRST BLOCKED";
+        TaskTitle.Text = title;
+        ResultTitle.Text = "BLOCKED";
+        ResultBody.Text = detail;
+        AddTaskMessage("TASK BLOCKED", title + Environment.NewLine + detail);
+        SetFlowState(false, false, false);
+    }
+
     private void ApplyTargetConfiguration()
     {
         var server = WorkerTargetConfiguration.ResolveServer(_targetSettings);
@@ -972,6 +1128,157 @@ public partial class MainWindow : Window
         TargetPathText.Text = !string.IsNullOrWhiteSpace(selected?.SessionId) ? $"Codex ProjectPath: {selected.ProjectPath}" : $"New thread folder: {workingDirectory}";
         RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
         ApplyJudgeConfigurationToControls();
+        ApplyRoleSettingsToControls();
+        ApplyExecutionModePresentation(_targetSettings.IsCoordinatorFirst);
+    }
+
+    private async Task RefreshCodexModelCatalogAsync()
+    {
+        var executable = _codexRunner.FindExecutable();
+        _codexModelCatalog = executable is null
+            ? new(Array.Empty<CodexModelCapability>(), "CODEX_CLI_NOT_FOUND")
+            : await CodexModelCatalog.LoadAsync(executable);
+    }
+
+    private void ApplyRoleSettingsToControls()
+    {
+        _loadingRoleControls = true;
+        try
+        {
+            SelectTag(ExecutionModeCombo, _targetSettings.ExecutionMode, "CLI_TO_CLI");
+            PopulateProviderCombo(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider);
+            PopulateRoleModelCombo(CoordinatorModelCombo, _targetSettings.EffectiveCoordinator.Model);
+            PopulateRoleReasoningCombo(CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator.Model, _targetSettings.EffectiveCoordinator.Reasoning);
+            PopulateProviderCombo(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider);
+            PopulateRoleModelCombo(ImplementerModelCombo, _targetSettings.EffectiveImplementer.Model);
+            PopulateRoleReasoningCombo(ImplementerReasoningCombo, _targetSettings.EffectiveImplementer.Model, _targetSettings.EffectiveImplementer.Reasoning);
+        }
+        finally { _loadingRoleControls = false; }
+        UpdateRoleCapabilityPresentation();
+    }
+
+    private static void PopulateProviderCombo(System.Windows.Controls.ComboBox combo, string configuredProvider)
+    {
+        combo.Items.Clear();
+        combo.Items.Add(new ComboBoxItem { Content = "OpenAI · Codex CLI", Tag = "openai" });
+        if (!string.Equals(configuredProvider, "openai", StringComparison.OrdinalIgnoreCase))
+            combo.Items.Add(new ComboBoxItem { Content = $"{configuredProvider} · CLI 미지원", Tag = configuredProvider, Foreground = System.Windows.Media.Brushes.OrangeRed });
+        SelectTag(combo, configuredProvider, "openai");
+    }
+
+    private void PopulateRoleModelCombo(System.Windows.Controls.ComboBox combo, string configuredModel)
+    {
+        combo.Items.Clear();
+        foreach (var model in _codexModelCatalog.Models)
+            combo.Items.Add(new ComboBoxItem { Content = model.DisplayName, Tag = model.Id });
+        if (_codexModelCatalog.Find(configuredModel) is null)
+            combo.Items.Add(new ComboBoxItem { Content = $"{configuredModel} · CLI capability 미확인", Tag = configuredModel, Foreground = System.Windows.Media.Brushes.OrangeRed });
+        SelectTag(combo, configuredModel, configuredModel);
+    }
+
+    private void PopulateRoleReasoningCombo(System.Windows.Controls.ComboBox combo, string modelId, string configuredReasoning)
+    {
+        combo.Items.Clear();
+        var model = _codexModelCatalog.Find(modelId);
+        var efforts = model?.ReasoningEfforts ?? (string.IsNullOrWhiteSpace(configuredReasoning) ? Array.Empty<string>() : new[] { configuredReasoning });
+        foreach (var effort in efforts)
+            combo.Items.Add(new ComboBoxItem { Content = char.ToUpperInvariant(effort[0]) + effort[1..], Tag = effort });
+        if (!efforts.Contains(configuredReasoning, StringComparer.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(configuredReasoning))
+            combo.Items.Add(new ComboBoxItem { Content = $"{configuredReasoning} · 미지원", Tag = configuredReasoning, Foreground = System.Windows.Media.Brushes.OrangeRed });
+        SelectTag(combo, configuredReasoning, model?.DefaultReasoning ?? configuredReasoning);
+    }
+
+    private static void SelectTag(System.Windows.Controls.ComboBox combo, string? tag, string? fallback)
+    {
+        combo.SelectedItem = combo.Items.OfType<ComboBoxItem>().FirstOrDefault(item => string.Equals(item.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase))
+            ?? combo.Items.OfType<ComboBoxItem>().FirstOrDefault(item => string.Equals(item.Tag?.ToString(), fallback, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void RoleModelCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingRoleControls) return;
+        var combo = (System.Windows.Controls.ComboBox)sender;
+        var currentReasoning = ReferenceEquals(combo, CoordinatorModelCombo)
+            ? GetSelectedTag(CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator.Reasoning)
+            : GetSelectedTag(ImplementerReasoningCombo, _targetSettings.EffectiveImplementer.Reasoning);
+        _loadingRoleControls = true;
+        if (ReferenceEquals(combo, CoordinatorModelCombo))
+            PopulateRoleReasoningCombo(CoordinatorReasoningCombo, GetSelectedTag(combo, string.Empty), currentReasoning);
+        else
+            PopulateRoleReasoningCombo(ImplementerReasoningCombo, GetSelectedTag(combo, string.Empty), currentReasoning);
+        _loadingRoleControls = false;
+        UpdateRoleCapabilityPresentation();
+    }
+
+    private void ExecutionModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingRoleControls) return;
+        var cliMode = string.Equals(GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"), "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
+        AiRolesStatusText.Text = cliMode
+            ? "Coordinator-first 실행: Web 연결은 필요하지 않습니다."
+            : "Legacy 실행: 기존 Codex → GPT Web 경로를 사용합니다.";
+    }
+
+    private static string GetSelectedTag(System.Windows.Controls.ComboBox combo, string fallback) =>
+        (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? fallback;
+
+    private WorkerAiRoleSettings ReadRoleSettings(System.Windows.Controls.ComboBox providerCombo, System.Windows.Controls.ComboBox modelCombo, System.Windows.Controls.ComboBox reasoningCombo, WorkerAiRoleSettings fallback) =>
+        new(GetSelectedTag(providerCombo, fallback.Provider), GetSelectedTag(modelCombo, fallback.Model), GetSelectedTag(reasoningCombo, fallback.Reasoning));
+
+    private void UpdateRoleCapabilityPresentation()
+    {
+        var coordinator = _targetSettings.EffectiveCoordinator;
+        var implementer = _targetSettings.EffectiveImplementer;
+        if (CoordinatorProviderCombo.SelectedItem is ComboBoxItem coordinatorProvider)
+            coordinator = coordinator with { Provider = coordinatorProvider.Tag?.ToString() ?? coordinator.Provider };
+        if (CoordinatorModelCombo.SelectedItem is ComboBoxItem coordinatorModel)
+            coordinator = coordinator with { Model = coordinatorModel.Tag?.ToString() ?? coordinator.Model };
+        if (CoordinatorReasoningCombo.SelectedItem is ComboBoxItem coordinatorReasoning)
+            coordinator = coordinator with { Reasoning = coordinatorReasoning.Tag?.ToString() ?? coordinator.Reasoning };
+        if (ImplementerProviderCombo.SelectedItem is ComboBoxItem implementerProvider)
+            implementer = implementer with { Provider = implementerProvider.Tag?.ToString() ?? implementer.Provider };
+        if (ImplementerModelCombo.SelectedItem is ComboBoxItem implementerModel)
+            implementer = implementer with { Model = implementerModel.Tag?.ToString() ?? implementer.Model };
+        if (ImplementerReasoningCombo.SelectedItem is ComboBoxItem implementerReasoning)
+            implementer = implementer with { Reasoning = implementerReasoning.Tag?.ToString() ?? implementer.Reasoning };
+        CoordinatorCapabilityText.Text = GetRoleCapabilityText(coordinator);
+        ImplementerCapabilityText.Text = GetRoleCapabilityText(implementer);
+        AiRolesStatusText.Text = _codexModelCatalog.Status == "READY"
+            ? $"Codex CLI capability catalog: {_codexModelCatalog.Models.Count}개 모델"
+            : $"Codex CLI 모델 capability를 확인하지 못했습니다 ({_codexModelCatalog.Status}).";
+    }
+
+    private string GetRoleCapabilityText(WorkerAiRoleSettings role) => _codexModelCatalog.Supports(role.Model, role.Reasoning)
+        ? "CLI 지원 확인"
+        : _codexModelCatalog.Find(role.Model) is null ? "CLI 미지원" : "reasoning 미지원";
+
+    private static string? GetExecutionModeConfigError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer, JudgeSettings judge)
+    {
+        if (!Directory.Exists(workingDirectory)) return "Working Folder가 없거나 접근할 수 없습니다.";
+        if (judge.Enabled) return "JEV Judge는 CLI-to-CLI mode에서 아직 연결되지 않았습니다. Legacy Web mode에서 사용하거나 Judge를 끄세요.";
+        return null;
+    }
+
+    private string? GetCoordinatorFirstPreflightError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer, JudgeSettings judge)
+    {
+        var basic = GetExecutionModeConfigError(workingDirectory, coordinator, implementer, judge);
+        if (basic is not null) return basic;
+        if (!string.Equals(coordinator.Provider, "openai", StringComparison.OrdinalIgnoreCase) || !string.Equals(implementer.Provider, "openai", StringComparison.OrdinalIgnoreCase))
+            return "현재 CLI-to-CLI에서 지원하는 provider는 OpenAI Codex CLI뿐입니다. 자동 provider 대체는 하지 않습니다.";
+        if (!_codexAuthenticated) return "Codex CLI 인증을 확인할 수 없습니다. codex login status를 확인하세요.";
+        if (!_codexModelCatalog.Supports(coordinator.Model, coordinator.Reasoning))
+            return $"설계·관제 AI 모델/reasoning 조합이 현재 Codex CLI에서 지원되지 않습니다: {coordinator.Model} / {coordinator.Reasoning}. 설정에서 capability가 표시된 조합을 선택하세요.";
+        if (!_codexModelCatalog.Supports(implementer.Model, implementer.Reasoning))
+            return $"작업 AI 모델/reasoning 조합이 현재 Codex CLI에서 지원되지 않습니다: {implementer.Model} / {implementer.Reasoning}. 설정에서 capability가 표시된 조합을 선택하세요.";
+        return null;
+    }
+
+    private void ApplyExecutionModePresentation(bool coordinatorFirst)
+    {
+        ModelCombo.IsEnabled = !coordinatorFirst;
+        ReasoningCombo.IsEnabled = !coordinatorFirst;
+        WebInstructionInput.IsEnabled = !coordinatorFirst;
+        if (_startupConfigurationInitialized) ApplyConnectionStatus();
     }
 
     private void ApplyJudgeConfigurationToControls()
@@ -1071,7 +1378,10 @@ public partial class MainWindow : Window
             ManualRepositoryUrl = null, ManualServerBaseUrl = server,
             RepositoryUrlSource = null, ServerBaseUrlSource = "MANUAL",
             ManualWorkingDirectory = workingDirectory,
-            Judge = new JudgeSettings(EnableJudgeCheckBox.IsChecked == true, provider, endpoint, timeout)
+            Judge = new JudgeSettings(EnableJudgeCheckBox.IsChecked == true, provider, endpoint, timeout),
+            ExecutionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"),
+            Coordinator = ReadRoleSettings(CoordinatorProviderCombo, CoordinatorModelCombo, CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator),
+            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer)
         };
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();
@@ -1088,6 +1398,7 @@ public partial class MainWindow : Window
         // startup configuration work. Do not repeat them from the periodic status timer.
         _targetSettings = WorkerTargetConfiguration.Load();
         LoadCodexSelections();
+        await RefreshCodexModelCatalogAsync();
         ApplyTargetConfiguration();
         _codexAuthenticated = await CheckCodexAuthenticationAsync();
         _serverOnline = await CheckServerAsync();
@@ -1110,7 +1421,10 @@ public partial class MainWindow : Window
         SetConnectionStatus(ProjectStatusText, _codexAuthenticated ? "READY" : "LOGIN NEEDED", _codexAuthenticated, ProjectStatusDot);
         SetConnectionStatus(WebStatusText, !webOnline ? "WAITING" : !webExtensionReady ? "UPDATE REQUIRED" : !webConversationBound ? "BIND REQUIRED" : "READY", webOnline && webExtensionReady && webConversationBound, waiting: !webOnline, indicator: WebStatusDot);
         WebDescriptionText.Text = !webOnline ? "MCP 프로젝트 진척도 확인" : !webExtensionReady ? "확장 업데이트 필요" : !webConversationBound ? "현재 GPT Web 대화를 연결하세요" : !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
-        RunButton.IsEnabled = !(_userCanceledTask && _activeTaskCts is not null) && (_activeTaskCts is not null || _awaitingWebResult || (webOnline && webExtensionReady && webConversationBound));
+        var executionReady = _targetSettings.IsCoordinatorFirst
+            ? _codexAuthenticated && _codexModelCatalog.Supports(_targetSettings.EffectiveCoordinator.Model, _targetSettings.EffectiveCoordinator.Reasoning) && _codexModelCatalog.Supports(_targetSettings.EffectiveImplementer.Model, _targetSettings.EffectiveImplementer.Reasoning)
+            : webOnline && webExtensionReady && webConversationBound;
+        RunButton.IsEnabled = !(_userCanceledTask && _activeTaskCts is not null) && (_activeTaskCts is not null || _awaitingWebResult || executionReady);
         SetConnectionStatus(ServerStatusText, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDot);
         RepositoryNameText.Foreground = _serverOnline ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
         PcNameText.Foreground = _codexAuthenticated ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;

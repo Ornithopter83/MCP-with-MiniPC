@@ -11,15 +11,26 @@ public sealed record JudgeSettings(
     [property: JsonPropertyName("manualExecutableOrEndpoint")] string? ManualExecutableOrEndpoint = null,
     [property: JsonPropertyName("timeoutSeconds")] int TimeoutSeconds = 120);
 
+public sealed record WorkerAiRoleSettings(
+    [property: JsonPropertyName("provider")] string Provider = "openai",
+    [property: JsonPropertyName("model")] string Model = "",
+    [property: JsonPropertyName("reasoning")] string Reasoning = "medium");
+
 public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("manualRepositoryUrl")] string? ManualRepositoryUrl,
     [property: JsonPropertyName("manualServerBaseUrl")] string? ManualServerBaseUrl,
     [property: JsonPropertyName("repositoryUrlSource")] string? RepositoryUrlSource,
     [property: JsonPropertyName("serverBaseUrlSource")] string? ServerBaseUrlSource,
     [property: JsonPropertyName("manualWorkingDirectory")] string? ManualWorkingDirectory = null,
-    [property: JsonPropertyName("judge")] JudgeSettings? Judge = null)
+    [property: JsonPropertyName("judge")] JudgeSettings? Judge = null,
+    [property: JsonPropertyName("executionMode")] string ExecutionMode = "CLI_TO_CLI",
+    [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
+    [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null)
 {
     public JudgeSettings EffectiveJudge => Judge ?? new JudgeSettings();
+    public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
+    public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium");
+    public bool IsCoordinatorFirst => string.Equals(ExecutionMode, "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
 }
 public sealed record GitTargetSnapshot(
     string ProjectPath,

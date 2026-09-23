@@ -30,7 +30,15 @@ public sealed record CodexCliResult(
     IReadOnlyList<CodexCliFile> Files,
     CodexUsage Usage,
     DateTimeOffset StartedAt,
-    DateTimeOffset FinishedAt);
+    DateTimeOffset FinishedAt,
+    IReadOnlyList<CodexCommandExecution>? CommandExecutions = null);
+
+public enum CodexSandboxMode
+{
+    ReadOnly,
+    WorkspaceWrite,
+    DangerFullAccess
+}
 
 public sealed record CodexCliFile(string Path, string FileName, string MimeType, long Size);
 
@@ -49,12 +57,14 @@ public sealed class CodexCliRunner
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
     }
 
-    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken)
+    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null)
     {
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
             throw new DirectoryNotFoundException($"Codex 작업 폴더를 찾을 수 없습니다: {workingDirectory}");
         var executable = FindExecutable() ?? throw new FileNotFoundException("codex.exe를 찾을 수 없습니다.");
         var outputFile = Path.Combine(Path.GetTempPath(), $"projecthub-codex-{Guid.NewGuid():N}.txt");
+        var outputSchemaFile = string.IsNullOrWhiteSpace(outputSchemaJson) ? null : Path.Combine(Path.GetTempPath(), $"projecthub-schema-{Guid.NewGuid():N}.json");
+        if (outputSchemaFile is not null) await File.WriteAllTextAsync(outputSchemaFile, outputSchemaJson!, new UTF8Encoding(false), cancellationToken);
         var startedAt = DateTimeOffset.UtcNow;
         using var process = new Process
         {
@@ -67,7 +77,12 @@ public sealed class CodexCliRunner
         };
         process.StartInfo.ArgumentList.Add("exec");
         process.StartInfo.ArgumentList.Add("--sandbox");
-        process.StartInfo.ArgumentList.Add(readOnly ? "read-only" : "danger-full-access");
+        process.StartInfo.ArgumentList.Add((sandboxMode ?? (readOnly ? CodexSandboxMode.ReadOnly : CodexSandboxMode.DangerFullAccess)) switch
+        {
+            CodexSandboxMode.ReadOnly => "read-only",
+            CodexSandboxMode.WorkspaceWrite => "workspace-write",
+            _ => "danger-full-access"
+        });
         if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add("resume");
         process.StartInfo.ArgumentList.Add("--json");
         process.StartInfo.ArgumentList.Add("--model");
@@ -83,6 +98,11 @@ public sealed class CodexCliRunner
             process.StartInfo.ArgumentList.Add("--skip-git-repo-check");
         process.StartInfo.ArgumentList.Add("--output-last-message");
         process.StartInfo.ArgumentList.Add(outputFile);
+        if (outputSchemaFile is not null)
+        {
+            process.StartInfo.ArgumentList.Add("--output-schema");
+            process.StartInfo.ArgumentList.Add(outputSchemaFile);
+        }
         if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add(sessionId);
         process.StartInfo.ArgumentList.Add(prompt);
         try
@@ -96,11 +116,55 @@ public sealed class CodexCliRunner
             var stderr = await stderrTask;
             var finalMessage = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile) : ExtractFinalMessage(stdout);
             var resolvedSessionId = sessionId ?? ExtractSessionId(stdout);
-            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, DateTimeOffset.UtcNow);
+            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, DateTimeOffset.UtcNow, ExtractCommandExecutions(stdout));
         }
         finally
         {
             try { if (File.Exists(outputFile)) File.Delete(outputFile); } catch (IOException) { }
+            try { if (outputSchemaFile is not null && File.Exists(outputSchemaFile)) File.Delete(outputSchemaFile); } catch (IOException) { }
+        }
+    }
+
+    public static IReadOnlyList<CodexCommandExecution> ExtractCommandExecutions(string stdout)
+    {
+        var executions = new List<CodexCommandExecution>();
+        foreach (var line in stdout.SplitLines())
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                CollectCommandExecutions(document.RootElement, executions);
+            }
+            catch (JsonException) { }
+        }
+        return executions
+            .DistinctBy(item => (item.Command, item.ExitCode))
+            .Take(250)
+            .ToList();
+    }
+
+    private static void CollectCommandExecutions(JsonElement element, List<CodexCommandExecution> executions)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var hasCommand = element.TryGetProperty("command", out var command) && command.ValueKind == JsonValueKind.String;
+            var hasExitCode = element.TryGetProperty("exit_code", out var exitCode) || element.TryGetProperty("exitCode", out exitCode);
+            var parsedExitCode = 0;
+            hasExitCode = hasExitCode && exitCode.TryGetInt32(out parsedExitCode);
+            var type = element.TryGetProperty("type", out var typeValue) && typeValue.ValueKind == JsonValueKind.String ? typeValue.GetString() : null;
+            if (hasCommand && hasExitCode && type is not null && (type.Contains("command", StringComparison.OrdinalIgnoreCase) || type.Contains("exec", StringComparison.OrdinalIgnoreCase)))
+            {
+                var text = command.GetString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(text) && text.Length <= 2000)
+                    executions.Add(new(text, parsedExitCode));
+            }
+            foreach (var property in element.EnumerateObject())
+                if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                    CollectCommandExecutions(property.Value, executions);
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray()) CollectCommandExecutions(item, executions);
         }
     }
 
