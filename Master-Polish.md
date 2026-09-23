@@ -458,7 +458,7 @@ v2 완료 후에만 저장된 구현 결과로 짧은 Web 보고를 만들고 PA
 {
   "roles": {
     "coordinator": {"provider": "chatgpt-web", "model": "user-selected"},
-    "implementer": {"provider": "codex-cli", "model": "gpt-5.6-luna", "reasoning": "medium"},
+    "implementer": {"provider": "codex-cli", "model": "gpt-6-luna", "reasoning": "medium"},
     "judge": {"provider": "typesafe", "model": "jev-latest"}
   },
   "policy": {"allow_model_upgrade": false, "allow_paid_fallback": false, "max_concurrent_implementers": 1}
