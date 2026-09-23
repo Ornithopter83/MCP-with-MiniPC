@@ -428,8 +428,7 @@ public partial class MainWindow : Window
             return GetCoordinatorFirstPreflightError(
                 ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption),
                 _targetSettings.EffectiveCoordinator,
-                _targetSettings.EffectiveImplementer,
-                _targetSettings.EffectiveJudge);
+                _targetSettings.EffectiveImplementer);
         }
 
         if (!_codexAuthenticated) return "Codex 로그인이 필요합니다.";
@@ -742,7 +741,7 @@ public partial class MainWindow : Window
             var cliWorkingDirectory = launchRequest.WorkingDirectory;
             var coordinator = _targetSettings.EffectiveCoordinator;
             var implementer = _targetSettings.EffectiveImplementer;
-            var roleError = GetCoordinatorFirstPreflightError(cliWorkingDirectory, coordinator, implementer, _targetSettings.EffectiveJudge);
+            var roleError = GetCoordinatorFirstPreflightError(cliWorkingDirectory, coordinator, implementer);
             if (roleError is not null)
             {
                 TaskDirection.Text = "PREFLIGHT";
@@ -1394,7 +1393,7 @@ public partial class MainWindow : Window
             TaskDirection.Text = "LUNA IMPLEMENTER";
             TaskTitle.Text = card.Title;
             ResultTitle.Text = "IMPLEMENTING";
-            SetFlowState(codexActive: false, workerActive: true, webActive: false, explicitStage: TaskStage.Implementer, explicitNextStage: _targetSettings.EffectiveJudge.Enabled ? TaskStage.Judge : null);
+            SetFlowState(codexActive: false, workerActive: true, webActive: false, explicitStage: TaskStage.Implementer, explicitNextStage: TaskStage.Coordinator);
             var cardJson = JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true });
             var implementPrompt = "You are the Luna implementer. Implement only the work card below in the current workspace. Follow its prohibited list. Run every listed validation command and report truthful results. Do not claim a command passed unless its process succeeded. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>\n<work_card_json>\n" + cardJson + "\n</work_card_json>";
             var implementation = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT", implementPrompt, implementer, workingDirectory, implementer.ThreadSessionId, CoordinatorFirstContracts.ImplementerResultSchema, cts.Token, CodexSandboxMode.WorkspaceWrite);
@@ -1745,16 +1744,15 @@ public partial class MainWindow : Window
         ? "CLI 지원 확인"
         : _codexModelCatalog.Find(role.Model) is null ? "CLI 미지원" : "reasoning 미지원";
 
-    private static string? GetExecutionModeConfigError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer, JudgeSettings judge)
+    private static string? GetExecutionModeConfigError(string workingDirectory)
     {
         if (!Directory.Exists(workingDirectory)) return "Working Folder가 없거나 접근할 수 없습니다.";
-        if (judge.Enabled) return "JEV 판단 AI가 CLI-to-CLI 작업 흐름에 아직 연결되지 않았습니다. 실행하려면 판단 AI를 끄세요.";
         return null;
     }
 
-    private string? GetCoordinatorFirstPreflightError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer, JudgeSettings judge)
+    private string? GetCoordinatorFirstPreflightError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer)
     {
-        var basic = GetExecutionModeConfigError(workingDirectory, coordinator, implementer, judge);
+        var basic = GetExecutionModeConfigError(workingDirectory);
         if (basic is not null) return basic;
         if (_targetSettings.HighLevelEnabled) return "고수준 작업 AI의 위임 실행은 아직 연결되지 않았습니다. 설정에서 사용을 끄세요.";
         if (!string.Equals(coordinator.Transport, "codex_cli", StringComparison.OrdinalIgnoreCase))
@@ -1784,9 +1782,21 @@ public partial class MainWindow : Window
         JudgeProviderCombo.SelectedIndex = 0;
         JudgeExecutableInput.Text = judge.ManualExecutableOrEndpoint ?? JevJudgeRunner.DefaultEndpoint;
         JudgeTimeoutInput.Text = judge.TimeoutSeconds.ToString();
-        JudgeEndpointTestStatusText.Text = string.Empty;
-        JudgeEndpointTestStatusText.Foreground = (System.Windows.Media.Brush)FindResource("Muted");
-        JudgeEndpointTestStatusText.ToolTip = null;
+        var testSettings = ReadJudgeSettingsFromControls(judge.Enabled);
+        var validation = _targetSettings.JudgeEndpointValidation;
+        if (WorkerTargetConfiguration.IsJudgeEndpointValidationCurrent(validation, testSettings))
+        {
+            SetJudgeEndpointTestStatus(
+                validation!.Succeeded ? "Endpoint 응답 확인 완료" : "Endpoint 확인 실패",
+                validation.Succeeded,
+                $"저장된 테스트 결과: {validation.Outcome} ({validation.TestedAtUtc.LocalDateTime:g})");
+        }
+        else
+        {
+            JudgeEndpointTestStatusText.Text = string.Empty;
+            JudgeEndpointTestStatusText.Foreground = (System.Windows.Media.Brush)FindResource("Muted");
+            JudgeEndpointTestStatusText.ToolTip = null;
+        }
         if (!_judgeReviewing) _judgeStatus = judge.Enabled ? "READY" : "OFF";
         UpdateJudgeVisual();
     }
@@ -1812,11 +1822,42 @@ public partial class MainWindow : Window
             ? Math.Clamp(value, 10, 600)
             : 120;
     }
-    private async void TestJudge_Click(object sender, RoutedEventArgs e)
+
+    private JudgeSettings ReadJudgeSettingsFromControls(bool enabled)
     {
+        var provider = (JudgeProviderCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+            ?? GetSelectedContent(JudgeProviderCombo, "Jev").ToLowerInvariant();
         var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text)
             ? JevJudgeRunner.DefaultEndpoint
             : JudgeExecutableInput.Text.Trim();
+        return new JudgeSettings(enabled, provider, endpoint, ReadJudgeTimeout());
+    }
+
+    private bool PersistJudgeEndpointValidation(JudgeSettings testedSettings, bool succeeded, string outcome)
+    {
+        var validation = new JudgeEndpointValidation(
+            WorkerTargetConfiguration.GetJudgeEndpointFingerprint(testedSettings),
+            succeeded,
+            outcome,
+            DateTimeOffset.UtcNow);
+        try
+        {
+            WorkerTargetConfiguration.SaveJudgeEndpointValidation(validation);
+            _targetSettings = _targetSettings with { JudgeEndpointValidation = validation };
+            return true;
+        }
+        catch (Exception exception)
+        {
+            _targetSettings = _targetSettings with { JudgeEndpointValidation = null };
+            AddTaskMessage("JEV TEST", $"테스트 결과 저장 실패: {exception.GetType().Name}");
+            return false;
+        }
+    }
+
+    private async void TestJudge_Click(object sender, RoutedEventArgs e)
+    {
+        var testSettings = ReadJudgeSettingsFromControls(enabled: true);
+        var endpoint = testSettings.ManualExecutableOrEndpoint!;
         JudgeExecutableInput.Text = endpoint;
         JudgeEndpointTestButton.IsEnabled = false;
         SetJudgeEndpointTestStatus("Endpoint 확인 중…", null);
@@ -1825,11 +1866,11 @@ public partial class MainWindow : Window
             if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps)
             {
                 AddTaskMessage("JEV TEST", "Endpoint 확인 실패: HTTPS 주소가 아닙니다.");
-                SetJudgeEndpointTestStatus("Endpoint 확인 실패", false, "HTTPS endpoint 주소를 확인하세요.");
+                var invalidEndpointSaved = PersistJudgeEndpointValidation(testSettings, false, "INVALID_ENDPOINT");
+                SetJudgeEndpointTestStatus(invalidEndpointSaved ? "Endpoint 확인 실패" : "테스트 결과 저장 실패", false, "HTTPS endpoint 주소를 확인하세요.");
                 return;
             }
 
-            var timeout = ReadJudgeTimeout();
             var request = new JudgeRequest(
                 "ProjectHub JEV Endpoint test",
                 1,
@@ -1839,18 +1880,20 @@ public partial class MainWindow : Window
                 Array.Empty<CodexCliFile>(),
                 "LOCAL",
                 null);
-            var result = await _jevJudgeRunner.ReviewAsync(request, new JudgeSettings(true, "jev", endpoint, timeout), CancellationToken.None);
+            var result = await _jevJudgeRunner.ReviewAsync(request, testSettings, CancellationToken.None);
             AddTaskMessage("JEV TEST", $"{result.Decision}: {result.Message}");
             var succeeded = result.Decision != JudgeDecision.Error;
+            var testResultSaved = PersistJudgeEndpointValidation(testSettings, succeeded, result.Decision.ToString());
             SetJudgeEndpointTestStatus(
-                succeeded ? "Endpoint 응답 확인 완료" : "Endpoint 확인 실패",
-                succeeded,
+                testResultSaved ? succeeded ? "Endpoint 응답 확인 완료" : "Endpoint 확인 실패" : "테스트 결과 저장 실패",
+                testResultSaved && succeeded,
                 $"{result.Decision}: {result.Message}");
         }
         catch (Exception exception)
         {
             AddTaskMessage("JEV TEST", $"ERROR: {exception.GetType().Name}");
-            SetJudgeEndpointTestStatus("Endpoint 확인 실패", false, exception.GetType().Name);
+            var exceptionResultSaved = PersistJudgeEndpointValidation(testSettings, false, $"ERROR_{exception.GetType().Name}");
+            SetJudgeEndpointTestStatus(exceptionResultSaved ? "Endpoint 확인 실패" : "테스트 결과 저장 실패", false, exception.GetType().Name);
         }
         finally
         {
@@ -1891,15 +1934,16 @@ public partial class MainWindow : Window
             return;
         }
         var timeout = ReadJudgeTimeout();
-        var provider = (JudgeProviderCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString()
-            ?? GetSelectedContent(JudgeProviderCombo, "Jev").ToLowerInvariant();
-        var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text) ? JevJudgeRunner.DefaultEndpoint : JudgeExecutableInput.Text.Trim();
+        var judgeSettings = ReadJudgeSettingsFromControls(EnableJudgeCheckBox.IsChecked == true) with { TimeoutSeconds = timeout };
+        var judgeWarning = WorkerTargetConfiguration.GetJudgeApplyWarning(judgeSettings, _targetSettings.JudgeEndpointValidation);
+        if (judgeWarning is not null)
+            System.Windows.MessageBox.Show(this, judgeWarning, "판단 AI 설정 확인", MessageBoxButton.OK, MessageBoxImage.Warning);
         _targetSettings = _targetSettings with
         {
             ManualRepositoryUrl = null, ManualServerBaseUrl = server,
             RepositoryUrlSource = null, ServerBaseUrlSource = "MANUAL",
             ManualWorkingDirectory = workingDirectory,
-            Judge = new JudgeSettings(EnableJudgeCheckBox.IsChecked == true, provider, endpoint, timeout),
+            Judge = judgeSettings,
             ExecutionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"),
             Coordinator = ReadRoleSettings(CoordinatorProviderCombo, CoordinatorModelCombo, CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator, CoordinatorRoleThreadCombo),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo),

@@ -137,4 +137,32 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Equal(new CodexCommandExecution("dotnet test Sample.sln", 0), Assert.Single(executions));
     }
+
+    [Fact]
+    public void JudgeEndpointTest_IsPersistableAndBoundToTheTestedConfiguration()
+    {
+        var settings = new JudgeSettings(true, "jev", "https://example.test/v1", 30);
+        var fingerprint = WorkerTargetConfiguration.GetJudgeEndpointFingerprint(settings);
+        var validation = new JudgeEndpointValidation(fingerprint, true, "PASS", DateTimeOffset.Parse("2026-09-24T00:00:00Z"));
+        var storedJson = JsonSerializer.Serialize(new WorkerTargetSettings(null, null, null, null, Judge: settings, JudgeEndpointValidation: validation));
+        var loaded = JsonSerializer.Deserialize<WorkerTargetSettings>(storedJson)!;
+
+        Assert.True(WorkerTargetConfiguration.IsJudgeEndpointValidationCurrent(loaded.JudgeEndpointValidation, settings));
+        Assert.Equal("설정 테스트가 수행되지 않았습니다. 현재 설정으로 JSON 설정 테스트를 다시 실행해 주세요. 계속 적용합니다.",
+            WorkerTargetConfiguration.GetJudgeApplyWarning(settings with { ManualExecutableOrEndpoint = "https://example.test/changed" }, loaded.JudgeEndpointValidation));
+        Assert.Null(WorkerTargetConfiguration.GetJudgeApplyWarning(settings, loaded.JudgeEndpointValidation));
+        Assert.DoesNotContain("example.test", JsonSerializer.Serialize(loaded.JudgeEndpointValidation), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void JudgeEndpointTest_FailureWarnsButDoesNotCreateRunConfigurationBlock()
+    {
+        var settings = new JudgeSettings(true, "jev", "https://example.test/v1", 30);
+        var validation = new JudgeEndpointValidation(
+            WorkerTargetConfiguration.GetJudgeEndpointFingerprint(settings), false, "ERROR_TIMEOUT", DateTimeOffset.UtcNow);
+
+        Assert.Equal("설정 테스트가 실패했습니다. 환경을 확인한 뒤 직접 재검증해 주세요. 설정은 계속 적용합니다.",
+            WorkerTargetConfiguration.GetJudgeApplyWarning(settings, validation));
+        Assert.Null(WorkerTargetConfiguration.GetJudgeApplyWarning(settings with { Enabled = false }, validation));
+    }
 }

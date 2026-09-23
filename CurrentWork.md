@@ -2,6 +2,12 @@
 
 Updated: 2026-09-24
 
+## 현재 후속 — JEV 설정 검사 기록과 비차단 적용 (2026-09-24)
+
+- CLI-to-CLI 사전 검사에서 JEV 활성 여부를 실행 차단 조건으로 사용하던 오류를 제거했다. 실행 preflight는 실제 실행에 필요한 경로·CLI 인증·모델 capability 등 환경 조건만 확인한다. Luna 뒤의 실제 CLI-to-CLI 경로는 구현된 Sol 검토로 진행하며 Judge 카드를 다음 활성 단계라고 잘못 표시하지 않는다.
+- `JSON 설정 테스트` 실행 결과를 `target-settings.json`의 `judgeEndpointValidation`에 기록한다. provider/endpoint/timeout의 SHA-256 fingerprint, 성공 여부, 결과 코드, UTC 시각만 저장하고 Endpoint 주소나 응답 전문을 검증 기록에 중복 저장하지 않는다. 적용하는 현재 설정과 fingerprint가 일치하는 성공 기록이 없으면 미검증/실패 경고를 띄우되 저장·실행을 막지 않는다. 테스트 실패 시에도 결과를 보존하여 사용자가 환경을 확인하고 직접 다시 검사할 수 있다. Endpoint/timeout/provider가 바뀌면 fingerprint 불일치로 현 설정은 재검사 대상으로 판단한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 32개 통과(Worker 27, Core 1, Agent 3, Server 1); `git diff --check` 통과. Worker 테스트에 JSON round-trip, 구성 변경 시 stale 기록, 미검증/실패 경고 동작을 추가했다. Release publish 성공; 게시 EXE와 `C:\GameProject\ProjectHub.Worker.exe` SHA-256 `376D4094D3609A518D4A964E54DBDDDDCF01DD045E0AB8C7F611432740AB5FC9` 일치. 실행 중인 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`는 자동 검토가 종료를 거부한 기존 프로세스 상태를 보존하기 위해 덮어쓰지 않았다.
+
 ## 현재 후속 — 시작 대기 카드 색상 및 하단 preflight 동기화 (2026-09-24)
 
 - 시작/새 작업 입력 대기 상태에서는 설계 관제·작업·고수준 작업·판단 역할 카드를 모두 역할색으로 표시한다. 실행이 시작되어 이력 모드로 바뀌면 기존 current/next만 컬러로 표시하는 단계별 강조 규칙을 적용한다. 중간에 설정을 적용해도 본문 모드와 실행 단계에 따라 카드 표시가 일관되게 다시 계산된다.
