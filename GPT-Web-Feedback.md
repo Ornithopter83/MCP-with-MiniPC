@@ -6031,3 +6031,479 @@ importance 자체를 Worker의 새 공개 wire field로 승격하는 작업은 �
 7. 질문 수 제한보다 질문 원자성을 우선하되 한 호출에 batch하여 비용 제어
 
 현재 BrickBreaker 실험에서 얻은 경험은 JEV의 역할을 제거하자는 근거가 아니라, JEV에게 더 작고 명확한 판단 단위를 주고 직접 실행 검증과 사용자 체감 검증의 경계를 더 분명히 해야 한다는 근거로 반영한다.
+
+
+---
+
+# 2026-09-23 GPT Web 종합 피드백 — JEV 질문 설계 v2와 다음 실험
+
+## 1. 이번 BrickBreaker 실험에서 확인한 핵심
+
+이번 실험은 JEV가 단순히 “질문을 많이 받으면 잘 판정한다”는 결론보다 **질문이 어떤 증거를 가리키는지가 매우 중요하다**는 점을 보여줬다.
+
+첫 MultiBall 검증에서는 다음처럼 기능 자체를 묻는 원자 NOUL과 증거 상태 CHOICE를 보냈다.
+
+- 적용 후 Ball 수가 정확히 2배인가
+- 새 Ball이 같은 호출에서 재복제되지 않는가
+- 생성 Ball이 Stage MaxBallSpeed 이하인가
+- 다른 Ball이 남아 있을 때 Life가 감소하지 않는가
+- Trail이 Ball별로 독립적인가
+- 전체 증거가 SUPPORTED / INSUFFICIENT / CONTRADICTORY 중 무엇인가
+
+질문은 이미 비교적 잘 쪼개져 있었지만, 각 질문에 직접적인 코드/test/log 위치가 붙지 않은 첫 요청에서는 NOUL이 대체로 0.5~0.6대에 머물고 CHOICE는 INSUFFICIENT를 반환했다.
+
+같은 구현을 불필요하게 다시 바꾸지 않고 다음 재요청에서 각 질문에 실제 근거를 붙였다.
+
+예:
+
+```text
+근거:
+- GameWorld.cs의 snapshot 생성/복제 위치
+- ProjectValidator.cs의 해당 assertion
+- runtime-validation.txt의 PASS line
+```
+
+그 결과 같은 핵심 요구가 ALL_PASS로 바뀌었다.
+
+따라서 JEV 결과가 낮을 때 첫 대응은 “코드를 더 고친다”가 아니라 다음 순서여야 한다.
+
+```text
+1. 질문이 원자적인가
+2. 질문이 실제 evidence를 직접 가리키는가
+3. 판정 범위가 명확한가
+4. 어떤 반례가 NO/FAIL인지 명시돼 있는가
+5. 그래도 contradiction이 있으면 그때 구현을 수정한다
+```
+
+## 2. 질문 설계 기본 공식
+
+앞으로 의미 있는 JEV 질문은 가능한 한 다음 네 요소를 갖춘다.
+
+```text
+CLAIM + EVIDENCE + SCOPE + COUNTEREXAMPLE
+```
+
+### CLAIM
+
+한 질문에서 판정할 단 하나의 주장이다.
+
+나쁜 예:
+
+```text
+SoundManager가 안전하고 UI를 막지 않으며 모든 자원을 정상 정리하는가?
+```
+
+좋은 예:
+
+```text
+SoundManager.Play() 호출 경로에서 PlaySync()가 UI thread에서 실행되지 않는가?
+```
+
+### EVIDENCE
+
+판단에 사용할 코드, test, log, diff, artifact 위치를 지정한다.
+
+예:
+
+```text
+근거:
+SoundManager.cs / Play(), PlaybackLoop()
+ProjectValidator.cs / audio queue assertion
+Validation/runtime-validation.txt / 해당 PASS line
+```
+
+JEV가 전체 저장소나 전체 로그에서 스스로 핵심 근거를 찾게 하지 않는다.
+
+### SCOPE
+
+이번 질문이 무엇만 판정하는지 한정한다.
+
+예:
+
+```text
+이번 질문은 재생 품질이나 실제 스피커 출력은 판정하지 않는다.
+UI-thread blocking 경로 존재 여부만 판정한다.
+```
+
+### COUNTEREXAMPLE
+
+어떤 상태가 발견되면 실패인지 명시한다.
+
+예:
+
+```text
+Play() 또는 UI event handler에서 PlaySync()로 이어지는 실행 경로가 있으면 NO.
+```
+
+이 네 요소를 모두 매 질문에 장문으로 반복할 필요는 없다. 같은 evidence bundle을 공유하는 질문은 공통 evidence index를 두고 C1/C2가 해당 ref를 가리켜도 된다.
+
+## 3. 질문은 원자성을 가질 때까지 최대한 분리
+
+기존 Master의 “가능한 한 1~3개 질문” 정책은 폐기하는 것이 맞다.
+
+질문 개수보다 다음 기준을 우선한다.
+
+- 서로 독립적으로 실패할 수 있는 명제는 반드시 별도 질문으로 만든다.
+- 한 질문 안의 “그리고 / 및 / 동시에 / ~하면서”가 독립 조건을 연결한다면 분리 후보로 본다.
+- 정상 경로와 금지 경로도 가능하면 따로 묻는다.
+- 직접 계산 가능한 여러 assertion을 하나의 “전체가 정상인가?”로 다시 합치지 않는다.
+- 질문이 많아져도 관련 질문을 한 API request에 batch하여 호출 수를 줄인다.
+- provider payload 한계를 넘으면 원자 질문을 합치지 말고 batch를 여러 개로 나눈다.
+
+즉 비용 절감의 대상은 **질문 개수 자체가 아니라 중복 context, 불필요한 evidence, 반복 API call**이다.
+
+## 4. 질문 타입별 역할
+
+### NOUL — 단일 사실
+
+YES/NO로 의미가 명확한 단일 주장에 사용한다.
+
+예:
+
+```text
+- NOUL | [HIGH] MultiBall 한 번 적용 후 활성 Ball 수가 적용 직전의 정확히 2배인가?
+  근거: E-MULTI-COUNT
+  범위: 이번 ApplyItem 호출 1회
+  반례: afterCount != beforeCount * 2
+  PASS: YES >= 0.80
+```
+
+또 다른 예:
+
+```text
+- NOUL | [HIGH] MultiBall 생성 Ball의 speed magnitude가 현재 Stage MaxBallSpeed를 초과하지 않는가?
+  근거: E-MULTI-SPEED
+  반례: 새 Ball 중 하나라도 magnitude > CurrentMaxBallSpeed
+  PASS: YES >= 0.80
+```
+
+### CHOICE — 의미적 상태 분류
+
+증거 상태, 실패 원인, 변경 성격처럼 여러 상태 중 하나를 고를 때 사용한다.
+
+증거 상태의 기본 후보:
+
+```text
+SUPPORTED
+= 코드와 직접 실행 증거가 요구사항을 모두 지지한다
+
+PARTIAL
+= 일부 하위 주장은 증명됐지만 하나 이상 직접 증거가 빠졌다
+
+INSUFFICIENT
+= 요구사항을 판정할 직접 근거가 부족하다
+
+CONTRADICTORY
+= 코드 또는 실행 증거가 요구사항과 충돌한다
+```
+
+PARTIAL을 두는 이유는 “증거가 전혀 없음”과 “1→2, 2→4는 확인했지만 4→8은 아직 없음”을 구분하기 위해서다.
+
+예:
+
+```text
+- CHOICE | MultiBall count 요구에 대한 evidence 상태를 분류하라.
+  SUPPORTED = 1→2, 2→4, 4→8 직접 실행 검증이 모두 있고 코드와 모순 없음
+  PARTIAL = 일부 배수 사례만 직접 검증됨
+  INSUFFICIENT = count를 판정할 실행 증거 없음
+  CONTRADICTORY = 구현 또는 실행 결과가 2배 규칙과 충돌
+  PASS: SUPPORTED
+```
+
+CHOICE는 NOUL을 다양하게 보이게 하려고 억지로 추가하지 않는다. 실제로 분류 문제가 있을 때만 사용한다.
+
+### SCORE — 순서가 있는 정도
+
+SCORE는 사실 확인에 사용하지 않는다.
+
+적절한 예는 범위 이탈이나 회귀 위험처럼 단계가 자연스럽게 존재할 때다.
+
+```text
+- SCORE | 이번 변경의 요구 범위 이탈 정도는?
+  1 = 요청 범위 안의 변경만 있음
+  2 = 요구 구현에 필요한 작은 인접 변경만 있음
+  3 = 요구하지 않은 동작 변경이 있으나 핵심 기능에는 영향 없음
+  4 = 기존 동작에 의미 있는 비요구 변경이 있음
+  5 = 사실상 다른 작업 범위까지 변경됨
+  PASS: SCORE <= 2.0
+```
+
+각 단계는 “좋음/나쁨” 같은 감상적 표현보다 diff로 구분 가능한 관찰 상태여야 한다.
+
+## 5. 중요도와 threshold
+
+초기 운영값은 다음을 유지한다.
+
+| 중요도 | NOUL 기본 PASS | 의미 |
+| --- | --- | --- |
+| LOW | YES >= 0.60 | 문서·부가 정보·최종 사용자 확인으로 보완 가능한 항목 |
+| MEDIUM | YES >= 0.70 | UI state·transient·유지보수 품질 |
+| HIGH | YES >= 0.80 | 주요 기능·상태 전이·resource invariant |
+| CRITICAL | YES >= 0.90 | crash/deadlock/data loss/build-blocking/필수 안전 계약 |
+
+이 값은 프로그램 완성도를 뜻하지 않는다.
+
+중요도가 높으면 “JEV가 더 높은 값을 잘 내야 한다”는 의미도 아니다. 높은 중요도 항목은 오히려 deterministic test와 직접 실행 증거를 더 강하게 요구해야 한다.
+
+실패 후 threshold를 낮춰 통과시키지 않는다.
+
+## 6. deterministic evidence와 JEV 분리
+
+다음은 Worker/Codex/local validator가 직접 판정한다.
+
+```text
+build/test exit code
+warning/error count
+파일 존재/크기/hash
+collection count
+timer 숫자
+enum 값
+Max/Min bound
+정확한 state transition assertion
+seeded deterministic 결과
+```
+
+JEV는 이런 숫자를 다시 추측하는 용도가 아니다.
+
+예를 들어 build가 실제로 0 warning / 0 error라면 JEV에게 단순히 “빌드됐는가?”라고 묻기보다 필요할 때 다음을 묻는다.
+
+```text
+제공된 build artifact/log가 이번 AC에서 요구한 최종 Release source revision의 직접 증거인가?
+```
+
+build 결과 자체의 진실값은 실제 process exit/log가 authoritative하다.
+
+## 7. 질문 개수와 256에 대한 정책
+
+2026-09-23 확인한 TypeSafe 공개 API 문서에서 요청의 `questions`는 `map<string, Question>`으로 정의돼 있으며, **한 request에 넣을 수 있는 question 수의 최대값은 공개 문서에 명시돼 있지 않다.**
+
+공식 문서에 명시된 별도 제한은:
+
+```text
+Choice: 한 질문의 option 최대 255개
+Score: 한 질문의 level 2~10개
+```
+
+이다.
+
+따라서 Choice의 255개 option을 “질문 약 256개까지 가능”으로 해석하지 않는다.
+
+운영 정책:
+
+```text
+질문 상한을 임의로 3개, 12개, 256개로 고정하지 않는다.
+→ 먼저 원자화한다.
+→ 한 request에 batch한다.
+→ 실제 provider 한계는 smoke test로 측정한다.
+→ 한도를 넘으면 여러 request로 나눈다.
+```
+
+향후 smoke 후보:
+
+```text
+32 questions
+64 questions
+128 questions
+256 questions
+```
+
+각 단계에서 확인:
+
+```text
+HTTP status
+모든 question ID에 answer가 반환되는가
+응답 누락/중복 여부
+input/output usage
+latency
+429/422/529 여부
+같은 작은 fixture에서 answer 안정성
+```
+
+최대 성공값을 발견해도 이를 영구 API 계약으로 간주하지 않는다. provider/model revision별 측정 시각과 함께 기록한다.
+
+## 8. JEV FAIL 처리 순서
+
+JEV FAIL을 바로 “코드 FAIL”로 번역하지 않는다.
+
+```text
+NOUL threshold 미달
+→ evidence reference가 실제로 전달됐는지 확인
+→ 질문이 복합 명제인지 확인
+→ 반례가 실제로 존재하는지 확인
+→ 구체 contradiction이면 코드 수정
+→ contradiction 없이 evidence 부족이면 evidence 보완
+
+CHOICE = PARTIAL
+→ 빠진 하위 주장/evidence만 추가
+
+CHOICE = INSUFFICIENT
+→ 코드 변경보다 evidence 수집 우선
+
+CHOICE = CONTRADICTORY
+→ 요구와 코드/실행 결과 충돌을 찾아 구현 수정
+
+provider/parser ERROR
+→ 구현 재작업 금지
+→ Web fallback 또는 provider 재시도 정책
+```
+
+동일 질문·동일 evidence로 round 상한까지 confidence만 반복해서 낮으면 score-chasing 수정은 중단한다.
+
+## 9. Master-Polish에 이번에 반영한 결정
+
+이번 Web 변경에서 Master를 다음 방향으로 직접 갱신했다.
+
+- “질문 1~3개 제한” 제거.
+- 질문은 독립 판정 가능할 때까지 최대한 원자화.
+- `CLAIM + EVIDENCE + SCOPE + COUNTEREXAMPLE` 기본형.
+- NOUL / CHOICE / SCORE 역할 분리.
+- LOW 0.60 / MEDIUM 0.70 / HIGH 0.80 / CRITICAL 0.90.
+- deterministic evidence와 의미 판단 분리.
+- 공개 API 문서에 없는 256 question limit를 계약으로 고정하지 않음.
+- 실제 질문 batch 한도는 단계적 smoke로 측정.
+- 질문을 합쳐 비용을 줄이지 않고 context/evidence 중복과 호출 수를 줄임.
+
+## 10. Master 방침에 따른 다음 ProjectHub 진행
+
+현재 활성 09 task에는 09-B가 “구현 완료, Explorer 검증 대기”, 09-C가 대기로 기록돼 있다.
+
+따라서 Master의 “번호 작업 하나 + A/B/C 하나” 원칙상 순서는 다음과 같다.
+
+### 먼저 09-B 실화면 마감
+
+최신 Explorer 실행본에서 남아 있는 E2E를 확인한다.
+
+```text
+Judge OFF
+NEXT WEB
+JEV PASS
+JEV FAIL → 동일 Codex session 보완
+JEV ERROR/provider fallback
+malformed contract fallback
+PASS 후 report-only에서 JEV 재진입 차단
+```
+
+이미 같은 build에서 직접 수행한 증거가 있다면 다시 돌리지 말고 해당 transcript/evidence를 CurrentWork와 09 task에 연결한다.
+
+### 그 다음 09-C를 하나만 활성화
+
+09-C의 핵심은 이번 BrickBreaker 실험에서 드러난 문제와 정확히 맞는다.
+
+```text
+AC
+↕
+atomic question
+↕
+evidence ref
+↕
+source/diff/test/log hash
+```
+
+목표:
+
+- 질문마다 관련 evidence를 실제 JEV state에 전달.
+- 전체 파일을 던지는 대신 question→evidence index를 제공.
+- SUPPORTED / PARTIAL / INSUFFICIENT / CONTRADICTORY를 구현 FAIL과 분리.
+- 검증 이후 관련 source/evidence가 바뀌면 과거 PASS 자동 무효화.
+- v1 ACTION/NEXT 공개 wire 형식은 유지.
+- JEV의 낮은 confidence를 코드 결함으로 자동 변환하지 않음.
+
+09-C가 안정화된 뒤에만 10-A usage/token 최적화로 넘어간다.
+
+## 11. 다음 테스트 프로젝트 제안 — Minesweeper / 지뢰찾기
+
+테트리스 → 벽돌깨기 다음은 **지뢰찾기(Minesweeper)** 를 권장한다.
+
+이유는 앞의 두 프로젝트와 검증 성격이 겹치지 않으면서도 구현 규모가 지나치게 커지지 않기 때문이다.
+
+테트리스에서 확인한 것:
+
+```text
+discrete grid
+rotation
+collision
+line clear
+게임 state
+키 입력
+```
+
+BrickBreaker에서 추가로 확인한 것:
+
+```text
+continuous movement
+collision response
+timers
+multi-object state
+sound
+particles/trail/shake
+runtime UI
+user play feel
+```
+
+Minesweeper는 새롭게 다음을 검증할 수 있다.
+
+```text
+random board generation
+seeded deterministic replay
+정확한 mine count invariant
+first-click safety
+adjacent mine number 계산
+flood-fill / connected reveal
+right-click flag state
+flag와 reveal 상호 배타성
+win/loss 판정
+difficulty별 board size / mine count
+timer
+restart/reset
+mouse input
+대량의 작고 원자적인 invariant
+```
+
+특히 JEV 질문 설계 실험에 적합하다. 물리·체감보다 **정확한 불변조건이 많아서 원자 질문을 수십 개로 자연스럽게 분리**할 수 있다.
+
+권장 첫 범위:
+
+```text
+C# / .NET 8 WinForms
+Beginner / Intermediate / Expert 3단계
+첫 클릭은 mine가 아니도록 보장
+첫 클릭 주변 3x3 safe 여부는 요구사항에서 명확히 선택
+좌클릭 reveal
+우클릭 flag
+0-cell flood reveal
+mine 클릭 Game Over
+모든 non-mine reveal 시 Win
+timer
+restart
+seed 표시 또는 debug seed 입력
+headless validator
+```
+
+seed 기능은 자동 검증에서 특히 중요하다. 같은 seed로 동일 board를 재현할 수 있어 JEV evidence와 deterministic test를 직접 연결할 수 있다.
+
+예상 원자 질문군:
+
+```text
+보드 크기
+mine 정확한 개수
+첫 클릭 안전
+mine 중복 배치 없음
+각 숫자가 인접 mine 수와 일치
+0 flood가 대각 포함 8-neighbor 규칙을 따름
+flagged cell 좌클릭 처리
+revealed cell flag 금지
+mine click loss
+마지막 safe cell reveal win
+reset 후 timer/state 초기화
+difficulty 변경 후 새 board 생성
+같은 seed 동일 board
+다른 seed에서 생성 경로 정상
+```
+
+NOUL은 각 invariant에, CHOICE는 evidence 상태·실패 원인 분류에, SCORE는 변경 범위 이탈이나 회귀 위험처럼 실제 단계가 있는 평가에만 사용한다.
+
+Snake는 다음 실험으로는 구현 난도가 너무 낮고 BrickBreaker와 실시간 이동 면에서 겹치는 부분이 많다. Pac-Man은 pathfinding/ghost AI까지 들어가 09-C evidence 전달 자체보다 게임 구현 복잡도가 먼저 커질 가능성이 있다.
+
+따라서 **Minesweeper는 Tetris의 grid deterministic 성격과 BrickBreaker의 UI/runtime 성격 사이에서, 새 JEV 원자 질문·evidence 설계를 검증하기 좋은 세 번째 프로젝트**다.
+
+이 프로젝트를 시작하기 전에 먼저 09-B 마감 → 09-C evidence 전달을 완료하고, 개선된 JEV 경로를 Minesweeper에서 처음부터 적용하는 것을 권장한다.
