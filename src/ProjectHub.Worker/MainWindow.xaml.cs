@@ -1310,7 +1310,7 @@ public partial class MainWindow : Window
         JudgeProviderCombo.SelectedIndex = 0;
         JudgeExecutableInput.Text = judge.ManualExecutableOrEndpoint ?? JevJudgeRunner.DefaultEndpoint;
         JudgeTimeoutInput.Text = judge.TimeoutSeconds.ToString();
-        JudgeSettingsStatusText.Text = judge.Enabled ? "Jev · optional fallback to GPT Web" : "Jev · OFF";
+        JudgeSettingsStatusText.Text = judge.Enabled ? "Typesafe · JEV · 사용" : "Typesafe · JEV · 사용 안 함";
         if (!_judgeReviewing) _judgeStatus = judge.Enabled ? "READY" : "OFF";
         UpdateJudgeVisual();
     }
@@ -1344,12 +1344,12 @@ public partial class MainWindow : Window
         JudgeExecutableInput.Text = endpoint;
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps)
         {
-            JudgeSettingsStatusText.Text = "Jev · invalid HTTPS Endpoint";
+            JudgeSettingsStatusText.Text = "Typesafe · JEV · 주소 설정 오류";
             return;
         }
 
         var timeout = ReadJudgeTimeout();
-        JudgeSettingsStatusText.Text = "Jev · testing...";
+        JudgeSettingsStatusText.Text = "Typesafe · JEV · 테스트 중…";
         var request = new JudgeRequest(
             "ProjectHub JEV Endpoint test",
             1,
@@ -1364,13 +1364,13 @@ public partial class MainWindow : Window
             var result = await _jevJudgeRunner.ReviewAsync(request, new JudgeSettings(true, "jev", endpoint, timeout), CancellationToken.None);
             AddTaskMessage("JEV TEST", $"{result.Decision}: {result.Message}");
             JudgeSettingsStatusText.Text = result.Decision == JudgeDecision.Error
-                ? $"Jev · ERROR · {result.Message}"
-                : $"Jev · {result.Decision.ToString().ToUpperInvariant()}";
+                ? $"Typesafe · JEV · 오류 · {result.Message}"
+                : $"Typesafe · JEV · {result.Decision.ToString().ToUpperInvariant()}";
         }
         catch (Exception exception)
         {
             AddTaskMessage("JEV TEST", $"ERROR: {exception.GetType().Name}");
-            JudgeSettingsStatusText.Text = "Jev · test failed";
+            JudgeSettingsStatusText.Text = "Typesafe · JEV · 테스트 실패";
         }
     }
     private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)

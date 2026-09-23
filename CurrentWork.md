@@ -1162,3 +1162,11 @@ Worker는 의미 판단을 하지 않고 첫 NEXT 행, typed validation, JEV 구
 - 새 mock 회귀 항목: LOW/MEDIUM/HIGH/CRITICAL threshold 동일 batch 판정, 실패 QID만 PARTIAL에 표시, QID 보존·중복 거부, retry prompt의 PASS 보존·threshold 고정 지침.
 - 09-C 잔여: 실제 question→evidence content/digest 연결, 이전 질문 PASS 보존을 포함한 결과 영속화 및 evidence 변경 시 참조 질문만 재판정하도록 Worker가 기계적으로 강제하는 기능. 이번 prompt는 이 규칙을 Codex에게 지시하며 evidence envelope은 아직 구현하지 않는다.
 - 검증: `dotnet test ProjectHub.sln --configuration Debug --no-restore` 성공(기본 권한 실행은 SDK 경로 권한 거부; 권한 확장 재실행에서 Core 1, Agent 3, Server 1, Worker 10 통과).
+
+## 2026-09-23 설정 폼·작업표시줄 아이콘 후속 반영
+
+- 사용자가 승인한 폼을 따라 저장소/폴더, AI모델 설정, 판단 AI 주요 표기를 한글화했다. 설정창 상단 상태 카드 요약을 접고 서버 상태 카드를 서버 주소 행에 배치했다. JEV의 endpoint/timeout 입력은 화면에서 감추고 JSON 설정 테스트 버튼을 노출했다.
+- 설계·관제 provider 선택에 따라 Web 카드와 Codex 스레드 카드 표시를 전환한다. GPT Web에는 Web 아이콘, 스레드에는 말풍선 아이콘, Server에는 서버 형태 아이콘을 사용했다. Window.Icon에 프로그램 worker-icon.png를 지정했고 EXE ApplicationIcon은 worker-icon.ico로 유지한다.
+- `dotnet test ProjectHub.sln --configuration Debug --no-restore`: Core 1, Agent 3, Server 1, Worker 23 통과. `node --check extension/gptweb-hub/content.js`, `git diff --check` 통과. Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. SHA-256 세 곳 일치: `00722E076184D29F8CA2C86601F05FE0839103F920C1F1E34E686A6A9AF8DEA7`. 배포본 기동 시 `ProjectHub Worker` 창과 정상 프로세스를 확인했다.
+- 현재 커밋: `5460d39` (소스 변경). 원격은 fetch 후 동일 기준점임을 확인했고 clean 상태에서 `git pull --rebase origin main` 완료. 문서 변경은 별도 커밋 예정.
+- 잔여: Web coordinator 실제 실행 경로는 CLI-to-CLI에 연결되지 않아 Web 선택 시 현재 preflight가 막는다. 구현 역할별 스레드 카드(implementer/high-level)와 고수준 작업 AI 카드는 아직 없다. 이 UI 변경은 부분 반영이며 11-A/B/C 완료 상태를 변경하지 않는다.

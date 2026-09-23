@@ -157,7 +157,7 @@
             <TextBox x:Name="RepositoryUrlInput" Width="620" Height="36" FontSize="16" Padding="9,5" IsReadOnly="True" IsEnabled="False" IsTabStop="False" ToolTip="Working Folder의 Git origin에서 자동으로 확인됩니다."/>
             <Button Content="자동 확인" Margin="10,0,0,0" Padding="14,6" FontSize="15" Click="AutoDetectTargets_Click"/>
           </StackPanel>
-          <StackPanel Grid.Row="2" Margin="140,7,0,0">
+          <StackPanel Grid.Row="2" Margin="140,7,0,0" Visibility="Collapsed">
             <TextBlock x:Name="TargetGitStateText" FontSize="15" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
             <TextBlock x:Name="TargetPathText" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap"/>
           </StackPanel>
@@ -187,7 +187,7 @@
               <Border BorderBrush="#DCE6F3" BorderThickness="1" CornerRadius="7" Background="White" Padding="12,10" Margin="0,12,0,0">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="185"/><ColumnDefinition Width="275"/><ColumnDefinition Width="115"/><ColumnDefinition Width="250"/><ColumnDefinition Width="135"/></Grid.ColumnDefinitions>
-                  <StackPanel Grid.Column="0"><TextBlock Text="설계·관제 AI" FontSize="16" FontWeight="Bold"/></StackPanel>
+                  <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"><Image Source="Assets/current-openai.png" Width="34" Height="34" Margin="0,0,8,0"/><TextBlock Text="설계·관제 AI" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"/></StackPanel>
                   <ComboBox x:Name="CoordinatorProviderCombo" Grid.Column="1" Height="34" Margin="0,0,8,0" SelectionChanged="CoordinatorProviderCombo_SelectionChanged"/>
                   <ComboBox x:Name="CoordinatorModelCombo" Grid.Column="2" Height="34" Margin="0,0,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
                   <TextBlock Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center"/>
@@ -205,7 +205,7 @@
               <Border BorderBrush="#DCE6F3" BorderThickness="1" CornerRadius="7" Background="White" Padding="12,10" Margin="0,8,0,0">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="185"/><ColumnDefinition Width="275"/><ColumnDefinition Width="115"/><ColumnDefinition Width="250"/><ColumnDefinition Width="135"/></Grid.ColumnDefinitions>
-                  <StackPanel Grid.Column="0"><TextBlock Text="작업 AI" FontSize="16" FontWeight="Bold"/></StackPanel>
+                  <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"><Image Source="Assets/current-openai.png" Width="34" Height="34" Margin="0,0,8,0"/><TextBlock Text="작업 AI" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"/></StackPanel>
                   <ComboBox x:Name="ImplementerProviderCombo" Grid.Column="1" Height="34" Margin="0,0,8,0"/>
                   <ComboBox x:Name="ImplementerModelCombo" Grid.Column="2" Height="34" Margin="0,0,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
                   <TextBlock Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center"/>
@@ -220,7 +220,7 @@
             <Grid>
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="판단 AI" FontSize="16" FontWeight="Bold"/>
+                <Image Source="Assets/current-jev.png" Width="34" Height="34" Margin="0,0,8,0"/><TextBlock Text="판단 AI" FontSize="16" FontWeight="Bold"/>
                 <CheckBox x:Name="EnableJudgeCheckBox" Content="사용" Margin="24,0,0,0" FontSize="15" VerticalAlignment="Center"/>
                 <TextBlock x:Name="JudgeSettingsStatusText" Text="Typesafe · JEV · 사용 안 함" Margin="20,1,0,0" FontSize="14" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/><Button Content="JSON 설정 테스트" Margin="18,0,0,0" Padding="16,6" Click="TestJudge_Click"/>
               </StackPanel>
