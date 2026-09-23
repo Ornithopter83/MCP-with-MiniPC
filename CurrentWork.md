@@ -5,9 +5,17 @@ Updated: 2026-09-23
 ## 현재 후속 — 설정창 입력 모달·카드 표시 (11-UI-A, 2026-09-23)
 
 - 설정 팝업을 열 때 배경 차단 오버레이를 먼저 켜고 키보드 포커스를 설정 탭으로 이동한다. 메인 창이 포커스를 받으면 입력을 폐기하고, 설정 팝업이 열린 상태의 닫기 요청은 설정창만 닫도록 했다. 팝업 내부 Escape도 설정창을 닫는다.
-- 설계·관제 AI가 GPT Web 탭이면 모델 콤보를 비활성화한다. 서버 카드에는 상태 LED가 있는 랙 아이콘, CLI 스레드 카드에는 대화 아이콘을 넣었다. 역할 카드의 설계·관제/작업/고수준 작업/판단 AI 제목 문구를 제거하고 팝업 기본 TextBlock 글꼴 크기를 14px로 맞췄다.
+- 설계·관제 AI가 GPT Web 탭이면 모델 콤보를 비활성화한다. 서버 카드에는 상태 LED가 있는 랙 아이콘, CLI 스레드 카드에는 대화 아이콘을 넣었다. 팝업 기본 TextBlock 글꼴 크기를 14px로 맞췄다. 역할 카드의 네 제목은 보존 대상이며, 아래 기록의 제거 표기는 사용자 의도를 잘못 해석한 내용이다.
 - 검증: Debug build 경고 0/오류 0; 전체 테스트 29개 통과; git diff --check 통과. Release 게시와 C:\AI-AGENT\Worker, C:\GameProject 복사 완료. 세 EXE SHA-256: 0A219F77B9F83FC588D7E540F23F234DF4050B4929B745DCB0F26C2A7AC0BF69.
 - 저장소 동기화: git fetch, git pull --rebase 완료(원격 최신 상태). 최신 GPT-Web-Feedback.md 확인; 이번 설정 UI 수정과 충돌하는 새 지시는 없었다. 시각 E2E 캡처는 수행하지 않았다.
+
+## 현재 후속 — 역할 제목 복원·선택 목록 연동 (11-UI-A, 2026-09-23)
+
+- 사용자 정정에 따라 네 역할 이름을 제거하지 않고 카드 왼쪽 아이콘 위에 복원했다: 설계·관제 AI, 작업 AI, 고수준 작업 AI, 판단 AI.
+- 모델 콤보를 열 때 Codex CLI 카탈로그가 0~1개 모델만 반환한 기존 UI 상태를 다시 조회하도록 하고, 조회 성공 시 모델과 모델별 reasoning 목록을 갱신한다. 스레드 선택 목록은 발견된 프로젝트/세션 전체를 제공한다. 항목 선택은 공통 작업 폴더와 메인 스레드 선택을 동기화하고, 역할 간 호환 세션을 유지하며, 적용 시 작업 폴더와 선택 세션을 저장한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
+- Release 게시와 두 배포 폴더 복사 성공. 저장소 게시본, `C:\AI-AGENT\Worker`, `C:\GameProject` SHA-256 일치: `3EE9CE3DBA832595AECBB6F012FED7749194A64C2A354D1B2FC65833F7CF771D`.
+- 잔여: 실제 설정창에서 각 모델/추론/스레드 선택 후 저장값 및 작업 폴더 갱신을 화면으로 확인하지 못했다. 최신 GPT-Web-Feedback.md를 fetch/rebase 후 확인했고 현재 origin/main은 변경이 없었다.
 
 ## 현재 요약 — 2026-09-23 / Task 11-A 구현 완료
 

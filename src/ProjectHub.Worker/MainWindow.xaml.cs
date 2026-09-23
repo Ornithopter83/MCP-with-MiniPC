@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     private readonly JevJudgeRunner _jevJudgeRunner = new();
     private CodexModelCatalogResult _codexModelCatalog = new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_NOT_LOADED");
     private bool _loadingRoleControls;
+    private bool _refreshingRoleModelCatalog;
+    private bool _syncingRoleThreadSelection;
     private bool _activeCoordinatorFirst;
     private CancellationTokenSource? _activeTaskCts;
     private CodexCliResult? _lastCodexResult;
@@ -843,7 +845,12 @@ public partial class MainWindow : Window
         CodexThreadCombo.ItemsSource = choices;
         var saved = LoadSavedCodexSelection();
         var savedIndex = saved is null ? -1 : choices.FindIndex(choice => choice.SessionId == saved.Value.SessionId && choice.ProjectPath == saved.Value.ProjectPath);
-        CodexThreadCombo.SelectedIndex = savedIndex >= 0 ? savedIndex : 0;
+        var manualFolder = _targetSettings.ManualWorkingDirectory;
+        var preferredFolderIndex = string.IsNullOrWhiteSpace(manualFolder) ? -1 : choices.FindIndex(choice =>
+            string.IsNullOrWhiteSpace(choice.SessionId) && PathsEqual(choice.ProjectPath, manualFolder));
+        var savedMatchesManualFolder = savedIndex >= 0 &&
+            (string.IsNullOrWhiteSpace(manualFolder) || PathsEqual(choices[savedIndex].ProjectPath, manualFolder));
+        CodexThreadCombo.SelectedIndex = savedMatchesManualFolder ? savedIndex : preferredFolderIndex >= 0 ? preferredFolderIndex : savedIndex >= 0 ? savedIndex : 0;
         UpdateCodexSelectionDisplay();
         _loadingCodexSelections = false;
     }
@@ -859,9 +866,9 @@ public partial class MainWindow : Window
     }
     private void CodexThreadCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_loadingCodexSelections) SaveCodexSelection();
+        if (!_loadingCodexSelections && !_syncingRoleThreadSelection) SaveCodexSelection();
         UpdateCodexSelectionDisplay();
-        if (_startupConfigurationInitialized) ApplyTargetConfiguration();
+        if (_startupConfigurationInitialized && !_syncingRoleThreadSelection) ApplyTargetConfiguration();
     }
 
     private void PopulateCodexThreads(CodexProjectOption? project)
@@ -1001,9 +1008,11 @@ public partial class MainWindow : Window
             return Path.GetFullPath(selectedThread.ProjectPath);
 
         var configured = _targetSettings.ManualWorkingDirectory;
-        return !string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured)
-            ? Path.GetFullPath(configured)
-            : AppContext.BaseDirectory;
+        if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
+            return Path.GetFullPath(configured);
+        if (!string.IsNullOrWhiteSpace(selectedThread?.ProjectPath) && Directory.Exists(selectedThread.ProjectPath))
+            return Path.GetFullPath(selectedThread.ProjectPath);
+        return AppContext.BaseDirectory;
     }
 
     private string? ResolveConfiguredGitFolder(CodexThreadOption? selectedThread)
@@ -1011,19 +1020,58 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !string.IsNullOrWhiteSpace(selectedThread.ProjectPath) && Directory.Exists(selectedThread.ProjectPath))
             return Path.GetFullPath(selectedThread.ProjectPath);
 
-        return string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
-            ? null
-            : Path.GetFullPath(_targetSettings.ManualWorkingDirectory);
+        if (!string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory) && Directory.Exists(_targetSettings.ManualWorkingDirectory))
+            return Path.GetFullPath(_targetSettings.ManualWorkingDirectory);
+        return !string.IsNullOrWhiteSpace(selectedThread?.ProjectPath) && Directory.Exists(selectedThread.ProjectPath)
+            ? Path.GetFullPath(selectedThread.ProjectPath)
+            : null;
     }
 
     private void UpdateWorkingDirectoryControls(CodexThreadOption? selectedThread, string workingDirectory)
     {
         var lockedToThread = !string.IsNullOrWhiteSpace(selectedThread?.SessionId);
-        WorkingDirectoryInput.Text = lockedToThread || !string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
+        WorkingDirectoryInput.Text = lockedToThread || !string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory) || !string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
             ? workingDirectory
             : string.Empty;
         WorkingDirectoryInput.IsReadOnly = lockedToThread;
         WorkingDirectoryBrowseButton.IsEnabled = !lockedToThread;
+    }
+
+    private void RoleThreadCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingRoleControls || !_startupConfigurationInitialized || _syncingRoleThreadSelection || sender is not System.Windows.Controls.ComboBox roleCombo)
+            return;
+
+        if (roleCombo.SelectedItem is not CodexThreadOption selected || string.IsNullOrWhiteSpace(selected.ProjectPath) || !Directory.Exists(selected.ProjectPath))
+            return;
+
+        var mainSelection = (CodexThreadCombo.ItemsSource as IEnumerable<CodexThreadOption>)?.FirstOrDefault(option =>
+            string.Equals(option.SessionId, selected.SessionId, StringComparison.OrdinalIgnoreCase) && PathsEqual(option.ProjectPath, selected.ProjectPath));
+        if (mainSelection is null) return;
+
+        _syncingRoleThreadSelection = true;
+        try { CodexThreadCombo.SelectedItem = mainSelection; }
+        finally { _syncingRoleThreadSelection = false; }
+
+        _targetSettings = _targetSettings with { ManualWorkingDirectory = selected.ProjectPath };
+        var workingDirectory = ResolveWorkingDirectory(mainSelection);
+        _loadingRoleControls = true;
+        try
+        {
+            SetRoleThreadOptions(CoordinatorRoleThreadCombo, GetCompatibleThreadSession(CoordinatorRoleThreadCombo, selected.ProjectPath));
+            SetRoleThreadOptions(ImplementerRoleThreadCombo, GetCompatibleThreadSession(ImplementerRoleThreadCombo, selected.ProjectPath));
+            SetRoleThreadOptions(HighLevelRoleThreadCombo, GetCompatibleThreadSession(HighLevelRoleThreadCombo, selected.ProjectPath));
+            roleCombo.SelectedItem = (roleCombo.ItemsSource as IEnumerable<CodexThreadOption>)?.FirstOrDefault(option =>
+                string.Equals(option.SessionId, selected.SessionId, StringComparison.OrdinalIgnoreCase) && PathsEqual(option.ProjectPath, selected.ProjectPath));
+        }
+        finally { _loadingRoleControls = false; }
+        UpdateWorkspaceControls(mainSelection, workingDirectory);
+    }
+
+    private static string? GetCompatibleThreadSession(System.Windows.Controls.ComboBox combo, string projectPath)
+    {
+        var selected = combo.SelectedItem as CodexThreadOption;
+        return selected is not null && PathsEqual(selected.ProjectPath, projectPath) ? selected.SessionId : null;
     }
 
     private void BrowseWorkingDirectory_Click(object sender, RoutedEventArgs e)
@@ -1182,18 +1230,23 @@ public partial class MainWindow : Window
         _serverBaseUrlSource = server.Source;
         var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var workingDirectory = ResolveWorkingDirectory(selected);
+        UpdateWorkspaceControls(selected, workingDirectory);
+        ServerUrlInput.Text = _serverBaseUrl;
+        ApplyJudgeConfigurationToControls();
+        ApplyRoleSettingsToControls();
+        ApplyExecutionModePresentation(_targetSettings.IsCoordinatorFirst);
+    }
+
+    private void UpdateWorkspaceControls(CodexThreadOption? selected, string workingDirectory)
+    {
         _gitTarget = WorkerTargetConfiguration.ResolveGit(ResolveConfiguredGitFolder(selected) ?? string.Empty, _targetSettings);
         UpdateWorkingDirectoryControls(selected, workingDirectory);
         RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
-        ServerUrlInput.Text = _serverBaseUrl;
         TargetGitStateText.Text = _gitTarget.IsRepository
             ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
             : "Git: UNCONFIGURED";
         TargetPathText.Text = !string.IsNullOrWhiteSpace(selected?.SessionId) ? $"Codex ProjectPath: {selected.ProjectPath}" : $"New thread folder: {workingDirectory}";
         RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
-        ApplyJudgeConfigurationToControls();
-        ApplyRoleSettingsToControls();
-        ApplyExecutionModePresentation(_targetSettings.IsCoordinatorFirst);
     }
 
     private async Task RefreshCodexModelCatalogAsync()
@@ -1202,6 +1255,53 @@ public partial class MainWindow : Window
         _codexModelCatalog = executable is null
             ? new(Array.Empty<CodexModelCapability>(), "CODEX_CLI_NOT_FOUND")
             : await CodexModelCatalog.LoadAsync(executable);
+    }
+
+    private async void RoleModelCombo_DropDownOpened(object sender, EventArgs e)
+    {
+        if (_refreshingRoleModelCatalog || _codexModelCatalog.Models.Count > 1 || sender is not System.Windows.Controls.ComboBox openedCombo)
+            return;
+
+        _refreshingRoleModelCatalog = true;
+        try
+        {
+            var selections = new[]
+            {
+                (Combo: CoordinatorModelCombo, Reasoning: CoordinatorReasoningCombo),
+                (Combo: ImplementerModelCombo, Reasoning: ImplementerReasoningCombo),
+                (Combo: HighLevelModelCombo, Reasoning: HighLevelReasoningCombo)
+            }.Select(item => new
+            {
+                item.Combo,
+                item.Reasoning,
+                Model = GetSelectedTag(item.Combo, string.Empty),
+                Effort = GetSelectedTag(item.Reasoning, string.Empty)
+            }).ToArray();
+
+            await RefreshCodexModelCatalogAsync();
+            if (_codexModelCatalog.Status != "READY" || _codexModelCatalog.Models.Count <= 1)
+                return;
+
+            _loadingRoleControls = true;
+            try
+            {
+                foreach (var selection in selections)
+                {
+                    PopulateRoleModelCombo(selection.Combo, selection.Model);
+                    PopulateRoleReasoningCombo(selection.Reasoning, selection.Model, selection.Effort);
+                }
+            }
+            finally { _loadingRoleControls = false; }
+
+            UpdateRoleCapabilityPresentation();
+            AiRolesStatusText.Text = $"Codex CLI capability catalog: {_codexModelCatalog.Models.Count}개 모델";
+            await Dispatcher.InvokeAsync(() => openedCombo.IsDropDownOpen = true, DispatcherPriority.Input);
+        }
+        catch (Exception exception)
+        {
+            AddTaskMessage("MODEL CATALOG", exception.GetType().Name);
+        }
+        finally { _refreshingRoleModelCatalog = false; }
     }
 
     private void ApplyRoleSettingsToControls()
@@ -1232,14 +1332,19 @@ public partial class MainWindow : Window
     {
         var options = (CodexThreadCombo.ItemsSource as IEnumerable<CodexThreadOption>)?.ToArray() ?? Array.Empty<CodexThreadOption>();
         var selectedProject = CodexThreadCombo.SelectedItem as CodexThreadOption;
-        var targetPath = !string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
-            ? _targetSettings.ManualWorkingDirectory
-            : !string.IsNullOrWhiteSpace(WorkingDirectoryInput.Text) ? WorkingDirectoryInput.Text : selectedProject?.ProjectPath;
-        var roleOptions = options.Where(option => PathsEqual(option.ProjectPath, targetPath)).ToArray();
-        combo.ItemsSource = roleOptions;
-        combo.SelectedItem = roleOptions.FirstOrDefault(option => !string.IsNullOrWhiteSpace(sessionId) && option.SessionId == sessionId)
-            ?? roleOptions.FirstOrDefault(option => string.IsNullOrWhiteSpace(option.SessionId))
-            ?? roleOptions.FirstOrDefault();
+        var targetPath = !string.IsNullOrWhiteSpace(selectedProject?.SessionId)
+            ? selectedProject.ProjectPath
+            : !string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
+                ? _targetSettings.ManualWorkingDirectory
+                : !string.IsNullOrWhiteSpace(WorkingDirectoryInput.Text) ? WorkingDirectoryInput.Text : selectedProject?.ProjectPath;
+        combo.ItemsSource = options;
+        combo.SelectedItem = options.FirstOrDefault(option =>
+                !string.IsNullOrWhiteSpace(sessionId) &&
+                string.Equals(option.SessionId, sessionId, StringComparison.OrdinalIgnoreCase) &&
+                PathsEqual(option.ProjectPath, targetPath))
+            ?? options.FirstOrDefault(option => string.IsNullOrWhiteSpace(option.SessionId) && PathsEqual(option.ProjectPath, targetPath))
+            ?? options.FirstOrDefault(option => string.IsNullOrWhiteSpace(option.SessionId))
+            ?? options.FirstOrDefault();
     }
 
     private static bool PathsEqual(string left, string? right)
@@ -1499,7 +1604,9 @@ public partial class MainWindow : Window
     {
         var server = string.IsNullOrWhiteSpace(ServerUrlInput.Text) ? WorkerTargetConfiguration.DefaultServerBaseUrl : ServerUrlInput.Text.Trim();
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
-        var workingDirectory = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? WorkingDirectoryInput.Text.Trim() : _targetSettings.ManualWorkingDirectory;
+        var workingDirectory = !string.IsNullOrWhiteSpace(selectedThread?.SessionId)
+            ? ResolveWorkingDirectory(selectedThread)
+            : WorkingDirectoryInput.Text.Trim();
         if (string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !Directory.Exists(workingDirectory))
         {
             WorkingDirectoryInput.ToolTip = "Choose an existing folder before applying settings.";
@@ -1521,6 +1628,7 @@ public partial class MainWindow : Window
             HighLevelEnabled = HighLevelEnabledCheckBox.IsChecked == true,
             HighLevel = ReadRoleSettings(ImplementerProviderCombo, HighLevelModelCombo, HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel, HighLevelRoleThreadCombo)
         };
+        SaveCodexSelection();
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();
         _serverOnline = await CheckServerAsync();

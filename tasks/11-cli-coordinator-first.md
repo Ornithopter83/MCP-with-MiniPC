@@ -63,6 +63,13 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 - SHA-256 for the project publish executable and both deployment copies: `11E56140632E5BCCA5650B5310AC9C585532F606B25A8BC2A07466AB8FF5C8D1`.
 - Next task candidate: 11-B JobRunner separation/restart recovery; not started in this task.
 
+## 2026-09-23 설정 선택 연동 후속 — 11-UI-A
+
+- 사용자 정정: 역할 이름은 삭제 요청이 아니라 그대로 유지 요청이었다. 설계·관제 AI, 작업 AI, 고수준 작업 AI, 판단 AI 제목을 네 카드의 왼쪽 아이콘 위에 복원했다.
+- 모델 목록이 한 개 이하인 상태에서 모델 콤보를 열면 CLI capability catalog를 재조회하고, 성공한 경우 모델별 reasoning 선택지를 갱신한다. 각 Codex 스레드 선택 콤보는 조회된 프로젝트/세션 전체를 표시하고, 선택한 프로젝트 경로를 메인 스레드/작업 폴더와 동기화해 설정 적용 시 저장한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` (0 warning, 0 error); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` (29 passed); `git diff --check` passed.
+- 남은 항목: 실제 Explorer 설정 UI에서 모델, reasoning, 스레드 변경과 적용 후 작업 폴더 저장을 확인한다. 이번 시점에서 origin/main과 동기화했고 최신 `GPT-Web-Feedback.md`를 읽었다.
+
 ## 2026-09-23 설정 폼·창 아이콘 후속 반영 (11-UI-A, 부분 반영)
 
 - 사용자가 승인한 설정 폼을 반영해 저장소/폴더 및 AI모델 설정 제목과 주요 라벨을 한글화했다. 상단 상태 요약은 설정창에서 접고 서버 상태 카드를 서버 주소 행에 두었다. 판단 AI는 Typesafe/JEV로 표시하고 Endpoint·제한 시간 입력은 감춘 채 JSON 설정 테스트 버튼을 노출했다.

@@ -199,7 +199,10 @@
               <Border BorderBrush="#DCE6F3" BorderThickness="1" CornerRadius="7" Background="White" Padding="8,6" Margin="0,8,0,0">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
+                  <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="설계·관제 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <Border Width="42" Height="42" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
+                  </StackPanel>
                   <Grid Grid.Column="1" Margin="0,0,14,0">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/></Grid.ColumnDefinitions>
@@ -210,7 +213,7 @@
                     </StackPanel>
                     <ComboBox x:Name="CoordinatorProviderCombo" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Height="34" Visibility="Collapsed" SelectionChanged="CoordinatorProviderCombo_SelectionChanged"/>
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                    <ComboBox x:Name="CoordinatorModelCombo" Grid.Row="1" Grid.Column="1" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
+                    <ComboBox x:Name="CoordinatorModelCombo" Grid.Row="1" Grid.Column="1" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged" DropDownOpened="RoleModelCombo_DropDownOpened"/>
                     <TextBlock Grid.Row="1" Grid.Column="2" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
                     <ComboBox x:Name="CoordinatorReasoningCombo" Grid.Row="1" Grid.Column="3" Height="32" Margin="0,4,0,0"/>
                   </Grid>
@@ -219,7 +222,7 @@
                       <StackPanel Orientation="Horizontal"><Image Source="Assets/current-web.png" Width="46" Height="46" Margin="0,0,10,0"/><StackPanel VerticalAlignment="Center"><TextBlock Text="GPT Web" FontSize="14" FontWeight="Bold"/><TextBlock Text="웹 대화 연결 상태를 사용합니다" FontSize="12" Foreground="{StaticResource Muted}"/></StackPanel></StackPanel>
                     </Border>
                     <Border x:Name="CoordinatorCliCard" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="10" Visibility="Collapsed">
-                      <StackPanel Orientation="Horizontal"><Border Width="42" Height="36" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,10,0" Background="#EAF4FF"><Grid Margin="8,7"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,3"/><Border Grid.Row="1" Width="18" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="CoordinatorRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
+                      <StackPanel Orientation="Horizontal"><Border Width="42" Height="36" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,10,0" Background="#EAF4FF"><Grid Margin="8,7"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,3"/><Border Grid.Row="1" Width="18" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="CoordinatorRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label" SelectionChanged="RoleThreadCombo_SelectionChanged"/></StackPanel></StackPanel>
                     </Border>
                   </Grid>
                 </Grid>
@@ -228,15 +231,18 @@
                 <Grid>
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Grid.RowSpan="2" Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
+                  <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="작업 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <Border Width="42" Height="42" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
+                  </StackPanel>
                   <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
                   <ComboBox x:Name="ImplementerProviderCombo" Grid.Row="0" Grid.Column="2" Height="32"/>
                   <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                  <ComboBox x:Name="ImplementerModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
+                  <ComboBox x:Name="ImplementerModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged" DropDownOpened="RoleModelCombo_DropDownOpened"/>
                   <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
                   <ComboBox x:Name="ImplementerReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
                   <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
-                    <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#EAF4FF"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="ImplementerRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#EAF4FF"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="ImplementerRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label" SelectionChanged="RoleThreadCombo_SelectionChanged"/></StackPanel></StackPanel>
                   </Border>
                 </Grid>
               </Border>
@@ -246,17 +252,20 @@
             <Grid Background="White">
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-              <Border Grid.Column="0" Grid.RowSpan="2" Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
+              <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="고수준 작업 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                <Border Width="42" Height="42" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
+              </StackPanel>
               <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
               <TextBlock Grid.Row="0" Grid.Column="2" Text="OpenAI Codex CLI" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
               <TextBlock Grid.Row="0" Grid.Column="3" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
               <CheckBox x:Name="HighLevelEnabledCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Left"/>
               <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
-              <ComboBox x:Name="HighLevelModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
+              <ComboBox x:Name="HighLevelModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged" DropDownOpened="RoleModelCombo_DropDownOpened"/>
               <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
               <ComboBox x:Name="HighLevelReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
               <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
-                <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#EAF4FF"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="HighLevelRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label"/></StackPanel></StackPanel>
+                <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#EAF4FF"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Codex 스레드 선택" FontWeight="Bold"/><ComboBox x:Name="HighLevelRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label" SelectionChanged="RoleThreadCombo_SelectionChanged"/></StackPanel></StackPanel>
               </Border>
             </Grid>
           </Border>
@@ -264,7 +273,10 @@
             <Grid Background="White">
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
               <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-              <Image Grid.Column="0" Grid.RowSpan="2" Source="Assets/current-jev.png" Width="48" Height="48" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="판단 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                <Image Source="Assets/current-jev.png" Width="42" Height="42"/>
+              </StackPanel>
               <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
               <ComboBox x:Name="JudgeProviderCombo" Grid.Row="0" Grid.Column="2" Height="32" FontSize="14"><ComboBoxItem Content="Typesafe" Tag="jev"/></ComboBox>
               <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,4,0,0"/>
