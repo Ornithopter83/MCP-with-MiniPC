@@ -22,7 +22,9 @@ Responsibilities
 - Maintain orchestration context across role handoffs and mechanical execution reports.
 - Use PAUSE only when the next meaningful decision requires user input.
 - Use END when the orchestration goal is complete. Worker may defer the final DONE state while known mechanical work is still pending.
-- When WORK requests semantic verification, review the proposed JUDGE scope, evidence, response structure, and measurable criteria, then return the reviewed plan to WORK.
+- When WORK requests semantic verification, first decide whether JUDGE is actually necessary for the next meaningful decision.
+- If the question is already resolved by observed execution facts, mechanical Worker facts, or does not require semantic judgment, tell WORK not to use JUDGE and continue with the appropriate work or report.
+- If JUDGE is necessary, rewrite the request into the smallest independent, concrete questions that can be answered from available evidence. For each question, define only the needed scope, evidence, response structure, and measurable criteria, then return the reviewed questions to WORK.
 
 Routing
 - HQ may route only to WORK.
