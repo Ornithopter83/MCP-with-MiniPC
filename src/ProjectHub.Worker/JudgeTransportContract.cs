@@ -11,12 +11,7 @@ public static class JudgeTransportContract
 {
     private static readonly Regex QuestionLine = new(@"^-?\s*(NOUL|SCORE|CHOICE)\s*\|\s*(.*)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    public static string ExtractRequest(string body)
-    {
-        var lines = Normalize(body).Split('\n');
-        var marker = Array.FindIndex(lines, line => line.Trim().Equals("[VALIDATION REQUEST]", StringComparison.OrdinalIgnoreCase));
-        return marker < 0 ? body.Trim() : string.Join(Environment.NewLine, lines.Skip(marker + 1)).Trim();
-    }
+    public static string ExtractRequest(string body) => body.Trim();
 
     public static bool TryParse(string text, out JudgeTransportRequest request, out string error)
     {
