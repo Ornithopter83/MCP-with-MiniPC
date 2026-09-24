@@ -23,10 +23,13 @@ public static class JudgeTransportContract
             if (!match.Success) continue;
             var type = Enum.Parse<JudgeTransportQuestionType>(match.Groups[1].Value, true);
             var prompt = match.Groups[2].Value.Trim();
-            var qid = Regex.Match(prompt, @"^\[QID:([A-Z][A-Z0-9_-]{0,31})\]\s*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            var qid = Regex.Match(
+                prompt,
+                @"^(?:\[QID:(?<id>[A-Z][A-Z0-9_-]{0,31})\]|QID:\s*(?<id>[A-Z][A-Z0-9_-]{0,31}))\s*",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             var explicitId = qid.Success;
             var generatedId = questions.Count + 1;
-            var id = explicitId ? qid.Groups[1].Value.ToUpperInvariant() : $"C{generatedId}";
+            var id = explicitId ? qid.Groups["id"].Value.ToUpperInvariant() : $"C{generatedId}";
             while (!explicitId && questions.Any(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase))) id = $"C{++generatedId}";
             if (qid.Success) prompt = prompt[qid.Length..].Trim();
             if (prompt.Length == 0) return Fail("QUESTION_EMPTY", out request, out error);

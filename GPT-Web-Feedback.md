@@ -86,3 +86,12 @@ Worker가 판단하지 않는 것:
 - HQ가 END를 반환해도 RESOURCE 실행/대기가 남아 있으면 Worker는 FINALIZING으로 유지한다.
 - RESOURCE 카드 animation은 메인 active role과 독립한다.
 - 이미지 생성 완료 후 DOM mutation이 끊겨도 1초 watchdog이 완료 감시를 계속한다.
+
+
+## 2026-09-24 계약 단순화
+
+- WORK에게 RESOURCE 반복 횟수를 기억시키지 않는다.
+- 한 RESOURCE 요청이 queue에 들어가면 Worker는 RESOURCE_QUEUED 사실만 HQ로 반환한다.
+- HQ가 사용자 목표 기준으로 다음 RESOURCE 요청 필요 여부와 남은 횟수를 관리한다.
+- Worker는 목표 횟수를 해석하지 않고 queue의 실제 requestId/queued/outstanding만 기록한다.
+- role/inbound/availability/body용 대괄호 header를 제거하고 실제 ACTION/GOTO control token에만 대괄호를 사용한다.

@@ -1501,7 +1501,7 @@ public partial class MainWindow : Window
                             if (completedResources.Count > 0)
                             {
                                 var resourceNotice = string.Join("\n\n", completedResources.Select(item => item.Message));
-                                inbound = $"[RESOURCE 완료 알림]\n{resourceNotice}\n\n[기존 입력: {inboundType}]\n{inbound}";
+                                inbound = $"Resource completion notice:\n{resourceNotice}\n\nPrevious inbound type: {inboundType}\n{inbound}";
                                 inboundType = "RESOURCE_RESULT";
                             }
 
@@ -1550,8 +1550,8 @@ public partial class MainWindow : Window
                                 var queuedResource = resourceQueue.Enqueue(resourceRequest!.Prompt);
                                 AddTaskMessage("RESOURCE QUEUED", $"request {queuedResource.Id} · 대기열 접수\n{queuedResource.Prompt}", status: "QUEUED", includeHistory: false);
                                 inboundType = "RESOURCE_QUEUED";
-                                inbound = $"리소스 요청을 대기열에 접수했습니다. requestId={queuedResource.Id}. RESOURCE는 한 번에 1건씩 이미지 생성·다운로드·저장을 완료한 뒤 다음 요청을 수행합니다. WORK는 다른 작업을 계속할 수 있습니다.";
-                                state = WorkerRoleState.Work;
+                                inbound = $"RESOURCE 요청 1건을 기계적으로 대기열에 접수했습니다. requestId={queuedResource.Id}. 현재 outstanding={resourceQueue.OutstandingCount}, queued={resourceQueue.QueuedCount}. 요청 목표 횟수나 남은 횟수는 Worker가 판단하지 않습니다.";
+                                state = WorkerRoleState.Hq;
                             }
                             else
                             {

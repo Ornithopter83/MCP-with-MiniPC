@@ -12,9 +12,10 @@ Updated: 2026-09-24
 
 ~~~text
 HQ       -> WORK
-WORK     -> HQ | JUDGE | RESOURCE
+WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
-RESOURCE -> WORK
+RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
+RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
 UNKNOWN  -> HQ summary once
 ~~~
 
@@ -77,7 +78,7 @@ IMAGE:
 - 실행 중 새 요청은 FIFO queue에 적재
 - 확장이 최신 assistant turn의 생성 이미지들을 모두 다운로드해 bytes 배열로 반환
 - Worker가 workspace 하위 requestId 폴더에 image-NN.*로 저장
-- WORK는 RESOURCE 완료를 기다리지 않고 계속 진행
+- WORK는 RESOURCE 완료를 기다리지 않는다. 접수 ack는 HQ로 돌아가며 HQ가 다음 WORK 지시를 결정
 - 완료 결과는 다음 WORK 호출에 기계적으로 전달
 - HQ END 시 outstanding RESOURCE가 있으면 FINALIZING으로 대기
 
@@ -113,7 +114,7 @@ RESOURCE:
 - HQ Web roundtrip
 - 두 Web conversation 동시 heartbeat
 - RESOURCE image 실제 생성/저장
-- 저장 뒤 WORK session 복귀
+- RESOURCE_QUEUED가 HQ로 복귀하고 HQ가 다음 RESOURCE/WORK 지시를 결정
 - 자동 integration 없음
 - JUDGE 회귀
 
@@ -158,7 +159,7 @@ RESOURCE:
 - RESOURCE는 single-reader FIFO sidecar queue로 실행
 - 동시에 RESOURCE Web task 1건만 허용
 - 실행 중 후속 RESOURCE 요청은 QUEUED
-- WORK는 queue 접수 직후 같은 session으로 계속 진행
+- WORK는 queue 접수 직후 반복 수를 관리하지 않고 종료되며 RESOURCE_QUEUED가 HQ로 복귀
 - 완료된 RESOURCE 결과는 다음 WORK 호출에 기계적으로 함께 전달
 - 최신 assistant turn의 생성 이미지 전부 다운로드
 - requestId별 폴더에 image-NN.* 저장
@@ -169,3 +170,13 @@ RESOURCE:
 - content script 이미지 fetch 실패 시 background service worker fallback
 - 작은 UI 이미지를 generated image candidate에서 제외
 - RESOURCE outbound prompt / bridge task transcript 유지
+
+
+## J — contract noise reduction / HQ repetition ownership
+
+- RESOURCE 접수 ack를 WORK가 아니라 HQ로 전달
+- HQ가 사용자 요청의 RESOURCE 총 횟수/남은 횟수 관리
+- WORK는 한 턴에 RESOURCE 한 건만 생성하고 반복 수를 기억하지 않음
+- Worker는 requestId/queued/outstanding만 기계적으로 관리
+- ACTION/GOTO 외 pseudo-control 대괄호 제거
+- JUDGE QID plain syntax(QID:NAME) 지원, bracket syntax는 호환 유지

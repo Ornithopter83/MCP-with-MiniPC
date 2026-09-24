@@ -10,7 +10,9 @@ Updated: 2026-09-24
 HQ       -> WORK
 WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
-RESOURCE_QUEUE -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue -> WORK
+RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
+RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
+완료 알림 -> 다음 WORK 입력 또는 HQ END finalization
 ~~~
 
 UNKNOWN은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.
@@ -27,7 +29,7 @@ UNKNOWN은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 �
 
 구현 단위:
 1. 역할 enum/router/contract에서 HIGH 제거
-2. RESOURCE sidecar queue와 WORK→RESOURCE_QUEUE→WORK 계속 진행 추가
+2. RESOURCE sidecar queue와 WORK→RESOURCE_QUEUE→HQ 접수 ack 흐름 추가
 3. HQ Web/CLI target settings
 4. Bridge role binding
 5. RESOURCE natural-language forwarding + Worker-assigned save path
@@ -49,3 +51,8 @@ UNKNOWN은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 �
 ## Validation gate
 
 코드 변경 후 Windows 환경에서 solution test/build와 Explorer 실제 Web 왕복 검증을 완료하기 전까지 runtime 완료로 간주하지 않는다.
+
+
+## Orchestration ownership note
+
+RESOURCE 반복 목표 수는 HQ가 관리한다. Worker는 RESOURCE queue의 실제 outstanding/queued 상태만 관리하며 사용자 의도에서 총 횟수나 남은 횟수를 계산하지 않는다. 한 RESOURCE 접수 뒤 RESOURCE_QUEUED는 HQ로 전달되어 다음 WORK 지시 여부를 HQ가 결정한다.

@@ -51,7 +51,9 @@ Worker가 하지 않는 것:
 HQ       -> WORK
 WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
-RESOURCE_QUEUE -> RESOURCE Web (FIFO 1건 실행) -> 완료 알림 queue -> WORK
+RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
+RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
+완료 알림 -> 다음 WORK 입력 또는 HQ END finalization
 UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
 UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
@@ -147,7 +149,7 @@ JUDGE:
 <opaque body>
 ~~~
 
-RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 즉시 같은 WORK session을 계속 진행시킨다. RESOURCE 완료 결과는 다음 WORK 호출 시 기계적으로 함께 전달한다.
+RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE 한 건을 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 RESOURCE_QUEUED 접수 사실을 HQ에 돌려준다. 다음 RESOURCE 요청이 필요한지는 HQ가 결정한다. RESOURCE 완료 결과는 다음 WORK 호출에 기계적으로 함께 전달하거나 HQ END finalization에서 기계적으로 반영한다.
 
 일반 body는 opaque다. JUDGE destination의 schema 검사와 RESOURCE 자연어 body의 비어 있음 검사는 transport 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
 
@@ -285,3 +287,13 @@ RESOURCE가 하지 않는 것:
 8. 테스트/문서 갱신
 
 실제 Windows build/test/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
+
+
+## 2026-09-24 orchestration ownership clarification
+
+- 사용자가 요구한 RESOURCE 반복 횟수와 남은 횟수는 HQ의 orchestration state다.
+- WORK는 RESOURCE 요청 한 건을 자연어로 만드는 역할만 하며 총 횟수나 남은 횟수를 기억·추론하지 않는다.
+- Worker는 requestId, queued/outstanding, 실행/완료/실패 같은 기계적 queue 사실만 관리한다. 사용자 목표에서 필요한 총 요청 수를 추론하거나 감소 계산하지 않는다.
+- WORK가 RESOURCE 한 건을 요청하면 Worker는 queue에 기계적으로 접수한 뒤 RESOURCE_QUEUED 사실을 HQ에 반환한다. HQ가 다음 RESOURCE 요청이 필요한지 결정해 WORK에 새 지시를 보낸다.
+- 역할 prompt에서 대괄호는 실제 파서 제어 토큰 ACTION/GOTO에만 사용한다. role/inbound/availability/body 표시는 평문 metadata로 전달한다.
+- JUDGE QID는 `QID:NAME` 평문을 우선 사용하며 기존 `[QID:NAME]` 입력도 parser 호환을 위해 계속 허용한다.

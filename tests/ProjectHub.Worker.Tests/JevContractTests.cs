@@ -14,7 +14,7 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[ACTION=CONTINUE]", hq);
         Assert.Contains("[GOTO : WORK]", hq);
         Assert.DoesNotContain("[GOTO : RESOURCE]", hq);
-        Assert.Contains("Do not use [GOTO=WORK]", hq);
+        Assert.Contains("Only the ACTION and GOTO control lines above use square brackets.", hq);
         Assert.DoesNotContain("GOTO : JUDGE", hq);
         Assert.DoesNotContain("GOTO : HQ", hq);
         Assert.DoesNotContain("You are WORK", hq);
@@ -31,16 +31,13 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[GOTO : HQ]", enabled);
         Assert.Contains("[GOTO : JUDGE]", enabled);
         Assert.Contains("first return to HQ", enabled);
-        Assert.Contains("After you have read", enabled);
-        Assert.Contains("NOUL | [QID:IMPLEMENTED]", enabled);
-        Assert.Contains("SCORE | [QID:QUALITY]", enabled);
-        Assert.Contains("CHOICE | [QID:FORMAT]", enabled);
-        Assert.Contains("SCORE | [QID:ASSET_COUNT]", enabled);
-        Assert.Contains("CHOICE | [QID:BLOCKER]", enabled);
-        Assert.Contains("These examples are illustrative, not restrictions.", enabled);
+        Assert.Contains("After HQ reviews it", enabled);
+        Assert.Contains("NOUL | QID:IMPLEMENTED", enabled);
+        Assert.Contains("SCORE | QID:QUALITY", enabled);
+        Assert.Contains("CHOICE | QID:FORMAT", enabled);
         Assert.Contains("EVIDENCE:", enabled);
         Assert.DoesNotContain("[GOTO : JUDGE]", disabled);
-        Assert.DoesNotContain("NOUL | [QID:IMPLEMENTED]", disabled);
+        Assert.DoesNotContain("NOUL | QID:IMPLEMENTED", disabled);
         Assert.Contains("JUDGE is unavailable", disabled);
         Assert.DoesNotContain("[REPORT]", enabled);
         Assert.DoesNotContain("[VALIDATION REQUEST]", enabled);
@@ -50,12 +47,11 @@ public sealed class RoleContractBoundaryTests
     public void HqContractReviewsJudgePlanWithoutCreatingNewWorkerProtocol()
     {
         var hq = RoleContractLoader.LoadHqFooter();
-        Assert.Contains("asks you to review a draft", hq);
-        Assert.Contains("Return the reviewed judgment plan to WORK", hq);
-        Assert.Contains("NOUL | [QID:RESTART_CLEAN]", hq);
-        Assert.Contains("SCORE | [QID:PLAYBACK_COMPLETION]", hq);
-        Assert.Contains("CHOICE | [QID:PROGRESSION_BLOCKER]", hq);
-        Assert.Contains("not quotas or mandatory proportions", hq);
+        Assert.Contains("When WORK asks for semantic verification", hq);
+        Assert.Contains("Return the reviewed plan to WORK", hq);
+        Assert.Contains("NOUL | QID:RESTART_CLEAN", hq);
+        Assert.Contains("SCORE | QID:PLAYBACK_COMPLETION", hq);
+        Assert.Contains("CHOICE | QID:PROGRESSION_BLOCKER", hq);
         Assert.DoesNotContain("[JUDGE PLAN]", hq);
         Assert.DoesNotContain("[VALIDATION REQUEST]", hq);
     }
@@ -64,15 +60,15 @@ public sealed class RoleContractBoundaryTests
     public void WorkContractJevQuestionExamplesMatchTheTransportParser()
     {
         const string request = """
-            NOUL | [QID:IMPLEMENTED] Is the requested behavior implemented?
+            NOUL | QID:IMPLEMENTED Is the requested behavior implemented?
             PASS: YES >= 0.90
             EVIDENCE: src/implementation.cs
             SCOPE: requested behavior only
             COUNTEREXAMPLE: a missing required case
-            SCORE | [QID:QUALITY] Rate the required behavior.
+            SCORE | QID:QUALITY Rate the required behavior.
             0 = absent
             1 = partial
-            CHOICE | [QID:FORMAT] Is the response format valid?
+            CHOICE | QID:FORMAT Is the response format valid?
             YES = valid
             NO = invalid
             """;
@@ -87,9 +83,11 @@ public sealed class RoleContractBoundaryTests
     public void WorkContractUsesNaturalLanguageForResourceAndJudgeKeepsItsReturnRoute()
     {
         var work = RoleContractLoader.LoadWorkFooter(true);
-        Assert.Contains("write only the natural-language image request", work);
+        Assert.Contains("one natural-language image request", work);
         Assert.Contains("Do not use JSON", work);
-        Assert.Contains("과일 이미지 16개 만들어줘", work);
+        Assert.Contains("사과를 심플한 게임 아이콘 스타일", work);
+        Assert.Contains("Do not track, infer, or remember how many RESOURCE requests remain.", work);
+        Assert.Contains("only the GOTO control line submits it", work);
         var judge = RoleContractLoader.LoadJudgeFooter();
         Assert.Contains("[GOTO : WORK]", judge);
         Assert.DoesNotContain("[JUDGMENT]", judge);
@@ -99,11 +97,38 @@ public sealed class RoleContractBoundaryTests
     public void HqPromptSeparatesMechanicalHeaderFromOpaqueInboundAndOnlyAllowsWork()
     {
         var prompt = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "opaque report");
-        Assert.Contains("[ROLE : HQ]", prompt);
-        Assert.Contains("[AVAILABLE GOTO]\n[GOTO : WORK]", prompt);
+        Assert.Contains("Role: HQ", prompt);
+        Assert.Contains("Inbound type: WORK_REPORT", prompt);
+        Assert.Contains("Allowed destination: WORK", prompt);
+        Assert.DoesNotContain("[ROLE :", prompt);
+        Assert.DoesNotContain("[INBOUND TYPE", prompt);
+        Assert.DoesNotContain("[AVAILABLE GOTO", prompt);
         Assert.DoesNotContain("[GOTO : RESOURCE]", prompt);
         Assert.DoesNotContain("[GOTO : JUDGE]", prompt);
         Assert.Contains("opaque report", prompt);
+    }
+
+    [Fact]
+    public void ResourceQueueRepetitionBelongsToHqNotWorkOrWorker()
+    {
+        var hq = RoleContractLoader.LoadHqFooter();
+        var work = RoleContractLoader.LoadWorkFooter(true);
+        Assert.Contains("HQ owns user-requested repetition and remaining-count tracking.", hq);
+        Assert.Contains("RESOURCE_QUEUED", hq);
+        Assert.Contains("Do not track, infer, or remember how many RESOURCE requests remain.", work);
+
+        var prompt = RoleContractLoader.BuildWorkPrompt("RESOURCE_QUEUED", "requestId=r1; outstanding=3; queued=2", true);
+        Assert.Contains("Inbound type: RESOURCE_QUEUED", prompt);
+        Assert.DoesNotContain("[INBOUND TYPE", prompt);
+        Assert.DoesNotContain("[RESOURCE AVAILABLE", prompt);
+    }
+
+    [Fact]
+    public void JudgeTransportAcceptsPlainQidWithoutSquareBrackets()
+    {
+        const string request = "NOUL | QID:PLAIN_ID Is the behavior present?\nPASS: YES >= 0.9";
+        Assert.True(JudgeTransportContract.TryParse(request, out var parsed, out var error), error);
+        Assert.Equal("PLAIN_ID", Assert.Single(parsed.Questions).Id);
     }
 
     [Fact]

@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.IO;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace ProjectHub.Worker;
@@ -20,14 +19,14 @@ public static class RoleContractLoader
 
     public static string BuildHqPrompt(string inboundType, string body)
     {
-        var header = $"[ROLE : HQ]\n\n[INBOUND TYPE : {inboundType}]\n\n[AVAILABLE GOTO]\n[GOTO : WORK]\n\n";
-        return header + "[INBOUND BODY : JSON]\n" + JsonSerializer.Serialize(new { body }) + "\n\n" + LoadHqFooter();
+        var header = $"Role: HQ\nInbound type: {inboundType}\nAllowed destination: WORK\n\nInbound body:\n";
+        return header + body + "\n\n" + LoadHqFooter();
     }
 
     public static string BuildWorkPrompt(string inboundType, string body, bool judgeAvailable)
     {
-        var header = $"[ROLE : WORK]\n\n[INBOUND TYPE : {inboundType}]\n\n[JUDGE AVAILABLE : {judgeAvailable.ToString().ToLowerInvariant()}]\n[RESOURCE AVAILABLE : true]\n\n";
-        return header + "[OPAQUE INBOUND BODY]\n" + body + "\n\n" + LoadWorkFooter(judgeAvailable);
+        var header = $"Role: WORK\nInbound type: {inboundType}\nJudge available: {(judgeAvailable ? "yes" : "no")}\nResource available: yes\n\nInbound body:\n";
+        return header + body + "\n\n" + LoadWorkFooter(judgeAvailable);
     }
 
 

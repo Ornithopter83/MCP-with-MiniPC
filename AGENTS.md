@@ -21,3 +21,6 @@
 - ProjectHub v0.2는 개발 PC Agent → Mini PC Server → Supabase 흐름을 보존한다.
 - Git 동작은 충돌/detached HEAD/dirty pull/rebase 진행 상태를 자동 해결하지 않는다.
 - Supabase Service Role Key는 Server 환경 변수에만 둔다.
+
+- RESOURCE 반복 횟수/남은 횟수는 HQ가 관리한다. WORK는 한 번에 한 RESOURCE 요청만 만들고, Worker는 목표 횟수를 추론하지 않은 채 queue의 requestId/queued/outstanding 상태만 기계적으로 관리한다.
+- 역할 prompt의 대괄호는 실제 ACTION/GOTO 제어 토큰에만 사용하고, role/inbound/availability 같은 metadata는 평문으로 쓴다.

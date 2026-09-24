@@ -136,3 +136,15 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 
 - 이미지 URL을 content script에서 직접 fetch하지 못하면 extension background service worker가 허용된 ChatGPT/OpenAI image host에서 재시도한다.
 - RESOURCE 실제 Web 전송 prompt와 bridge task id를 transcript에 계속 기록한다.
+
+
+## 2026-09-24 contract simplification + HQ repetition ownership
+
+- RESOURCE 한 건 queue 접수 후 제어를 같은 WORK에 되돌리지 않고 HQ에 RESOURCE_QUEUED로 반환.
+- 반복 횟수/남은 횟수는 HQ가 orchestration history로 관리. WORK/Worker는 목표 횟수를 기억·추론하지 않음.
+- Worker는 requestId, queued/outstanding 등 기계적 queue 사실만 보고.
+- RoleContractLoader의 [ROLE], [INBOUND TYPE], [AVAILABLE GOTO], [OPAQUE INBOUND BODY] 등 pseudo-control bracket header를 평문 metadata로 변경.
+- HQ/WORK 계약 예시를 축소하고 실제 ACTION/GOTO 외 대괄호 사용 제거.
+- JUDGE QID에 QID:NAME 평문 표기를 추가하고 기존 [QID:NAME] parser 호환은 유지.
+
+- RESOURCE completion을 WORK input에 합칠 때 쓰던 [RESOURCE 완료 알림]/[기존 입력] pseudo-marker도 평문 metadata로 변경.
