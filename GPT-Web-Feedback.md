@@ -59,3 +59,12 @@ Worker가 판단하지 않는 것:
 - WORK 기본값은 OpenAI / GPT-6 Luna / Medium이며 별도 model migration 로직은 두지 않는다.
 - HQ/RESOURCE Web 상태는 각각 독립 binding 기준으로 표시하고 preflight한다.
 - 설정창 Provider 아이콘 대비, 긴 Web 설명 wrapping, 작은 화면 scroll/footer, 설계·관제/판정 용어를 보정한다.
+
+
+## 2026-09-24 RESOURCE Web 실제 왕복 피드백
+
+- RESOURCE Web에는 JSON/역할 계약을 보내지 않고 WORK가 만든 자연어 이미지 요청만 그대로 보낸다.
+- 저장 경로/파일명은 Worker 내부에서 requestId 기반으로 생성한다.
+- Web claim이 HQ/RESOURCE role identity를 덮어쓰지 않게 role과 ClaimedBy를 분리한다.
+- Worker outbound와 RESOURCE lifecycle을 transcript에 남긴다.
+- RESOURCE 오류를 생성 없음/캡처/다운로드/저장/Web 전달 단계로 나눈다.

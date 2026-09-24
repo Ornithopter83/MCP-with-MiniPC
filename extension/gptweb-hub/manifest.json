@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPTWeb-Hub UI Preview",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A visual preview of the GPTWeb-Hub Worker bridge panel.",
   "background": { "service_worker": "background.js" },
   "content_scripts": [

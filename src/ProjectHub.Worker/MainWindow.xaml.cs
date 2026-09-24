@@ -1317,9 +1317,11 @@ public partial class MainWindow : Window
             string unknownCode = string.Empty;
             string unknownDetail = string.Empty;
             var unknownSummaryHandedToHq = false;
+            var jobHadErrors = false;
 
             void RouteUnknown(WorkerRoleState source, string code, string detail)
             {
+                jobHadErrors = true;
                 state = WorkerRoleState.Unknown;
                 previousState = source;
                 unknownCode = code;
@@ -1383,8 +1385,13 @@ public partial class MainWindow : Window
                                 providerWireId: IsWebTransport(coordinator.Transport) ? null : coordinator.Provider);
                             if (route.Action == WorkerAction.End)
                             {
-                                ResultTitle.Text = "DONE"; ResultBody.Text = route.Body; TaskTitle.Text = "관제 AI가 작업을 종료했습니다.";
-                                AddTaskMessage("TASK RESULT", route.Body, status: "DONE", includeHistory: false); SetFlowState(false, false, false); return;
+                                var finalStatus = jobHadErrors ? "DONE_WITH_ERROR" : "DONE";
+                                ResultTitle.Text = jobHadErrors ? "DONE · 오류 기록 있음" : "DONE";
+                                ResultBody.Text = route.Body;
+                                TaskTitle.Text = "관제 AI가 작업을 종료했습니다.";
+                                AddTaskMessage("TASK RESULT", route.Body, status: finalStatus, includeHistory: false);
+                                SetFlowState(false, false, false);
+                                return;
                             }
                             if (route.Action == WorkerAction.Pause)
                             {
@@ -1440,11 +1447,6 @@ public partial class MainWindow : Window
                                 if (!ResourceTransportContract.TryParse(route.Body, out pendingResourceRequest, out var resourceError))
                                 {
                                     RouteUnknown(WorkerRoleState.Work, "RESOURCE_REQUEST_INVALID", resourceError ?? "RESOURCE_REQUEST_INVALID");
-                                    continue;
-                                }
-                                if (pendingResourceRequest!.Type == "SOUND")
-                                {
-                                    RouteUnknown(WorkerRoleState.Work, "RESOURCE_SOUND_NOT_IMPLEMENTED", "SOUND transport is reserved but not connected.");
                                     continue;
                                 }
                                 state = WorkerRoleState.Resource;
@@ -1515,17 +1517,23 @@ public partial class MainWindow : Window
 
                             TaskDirection.Text = "리소스 AI"; TaskTitle.Text = "ChatGPT Web에서 리소스 생성 중"; ResultTitle.Text = "RESOURCE";
                             SetFlowState(false, true, true, explicitStage: TaskStage.Resource);
+                            var resourceId = Guid.NewGuid().ToString("N");
+                            const string targetDirectory = "assets/resources";
+                            var targetFileName = $"resource-{resourceId}.png";
+                            var relativeTargetPath = $"{targetDirectory}/{targetFileName}";
+                            var resourcePrompt = pendingResourceRequest.Prompt;
                             var trackedResource = new ResourceRequest(
-                                Guid.NewGuid().ToString("N"),
-                                pendingResourceRequest.Type,
-                                pendingResourceRequest.Prompt,
-                                pendingResourceRequest.TargetDirectory,
-                                pendingResourceRequest.TargetFileName,
+                                resourceId,
+                                "IMAGE",
+                                resourcePrompt,
+                                targetDirectory,
+                                targetFileName,
                                 "WORK",
                                 "REQUESTED",
                                 null,
                                 workingDirectory);
-                            var resourcePrompt = RoleContractLoader.BuildResourcePrompt(pendingResourceRequest);
+                            AddTaskMessage("RESOURCE REQUESTED", $"저장 예정 경로: {relativeTargetPath}\n요청:\n{resourcePrompt}", status: "REQUESTED", includeHistory: false);
+                            AddTaskMessage("WORKER → RESOURCE WEB", resourcePrompt, sizeBytes: Encoding.UTF8.GetByteCount(resourcePrompt), status: "SENDING", includeHistory: false);
                             var bridgeServer = _bridgeServer;
                             if (bridgeServer is null)
                             {
@@ -1538,10 +1546,14 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.Resource, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE Web task를 생성할 수 없습니다.");
                                 continue;
                             }
+                            AddTaskMessage("RESOURCE WEB TASK", $"task {resourceTask.Id} · {relativeTargetPath}", status: "GENERATING", includeHistory: false);
                             var completedResource = await bridgeServer.WaitForTaskCompletionAsync(resourceTask.Id, cts.Token);
                             if (completedResource is null || completedResource.Status != "COMPLETED" || string.IsNullOrWhiteSpace(completedResource.SavedPath) || !File.Exists(completedResource.SavedPath))
                             {
-                                RouteUnknown(WorkerRoleState.Resource, "RESOURCE_RESULT_MISSING", completedResource?.Result ?? "RESOURCE result file missing.");
+                                var failureCode = GetResourceFailureCode(completedResource);
+                                var failureDetail = completedResource?.Result ?? "RESOURCE result file missing.";
+                                AddTaskMessage("RESOURCE FAILED", failureDetail, status: failureCode, includeHistory: false);
+                                RouteUnknown(WorkerRoleState.Resource, failureCode, failureDetail);
                                 continue;
                             }
 
@@ -1549,7 +1561,7 @@ public partial class MainWindow : Window
                             var savedFile = new CodexCliFile(savedInfo.FullName, savedInfo.Name, GetResourceMimeType(savedInfo.Extension), savedInfo.Length);
                             var relativeSavedPath = Path.GetRelativePath(workingDirectory, savedInfo.FullName).Replace('\\', '/');
                             var resourceResult = $"리소스 저장 완료: {relativeSavedPath}\n자동 코드 연결은 수행하지 않았습니다.";
-                            AddTaskMessage("RESOURCE", resourceResult, status: "SAVED", includeHistory: false);
+                            AddTaskMessage("RESOURCE SAVED", resourceResult, status: "SAVED", includeHistory: false);
                             AddRoleResponseHistory(
                                 WorkerRoleState.Resource,
                                 "리소스 저장",
@@ -1603,6 +1615,7 @@ public partial class MainWindow : Window
             throw new InvalidOperationException($"{roleName}_WEB_UNAVAILABLE");
 
         var started = DateTimeOffset.UtcNow;
+        AddTaskMessage($"WORKER → {roleName} WEB", prompt, sizeBytes: Encoding.UTF8.GetByteCount(prompt), status: "SENDING", includeHistory: false);
         var task = bridgeServer.CreateTaskForRole(roleName, prompt)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_CREATE_FAILED");
         var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
@@ -1622,6 +1635,16 @@ public partial class MainWindow : Window
         return new AiRoleRunResult("web", "chatgpt-web", string.Empty, null, success ? 0 : 1,
             message, success ? string.Empty : message, message, Array.Empty<CodexCliFile>(), CodexUsage.Empty, Array.Empty<CodexCommandExecution>());
     }
+
+    private static string GetResourceFailureCode(BridgeTask? task) => task?.FinishReason switch
+    {
+        "resource_image_not_generated" => "RESOURCE_IMAGE_NOT_GENERATED",
+        "resource_image_capture_failed" => "RESOURCE_IMAGE_CAPTURE_FAILED",
+        "resource_image_download_failed" => "RESOURCE_IMAGE_DOWNLOAD_FAILED",
+        "resource_save_failed" => "RESOURCE_SAVE_FAILED",
+        "send_failed" => "RESOURCE_WEB_DELIVERY_FAILED",
+        _ => "RESOURCE_RESULT_MISSING"
+    };
 
     private static string GetResourceMimeType(string extension) => extension.ToLowerInvariant() switch
     {
@@ -1645,7 +1668,8 @@ public partial class MainWindow : Window
             result.Usage.ProviderTotalTokens, Encoding.UTF8.GetByteCount(prompt), Encoding.UTF8.GetByteCount(prompt), 0,
             null, Encoding.UTF8.GetByteCount(result.FinalMessage), (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
             null, result.Usage.UsageKnown, null, null, DateTimeOffset.UtcNow));
-        AddTaskMessage($"{roleName} {purpose}", $"exit {result.ExitCode} · provider {role.Provider} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
+        var transcriptSource = roleName == "WORK" && purpose == "WORK" ? "WORK CLI" : $"{roleName} {purpose}";
+        AddTaskMessage(transcriptSource, $"exit {result.ExitCode} · provider {role.Provider} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
         _lastActivityAt = DateTimeOffset.UtcNow;
         return result;
     }

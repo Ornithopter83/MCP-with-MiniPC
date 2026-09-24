@@ -16,7 +16,6 @@ public static class RoleContractLoader
         return Regex.Replace(value, @"\{\{/?JUDGE_(?:ON|OFF)\}\}", string.Empty).Trim();
     }
 
-    public static string LoadResourceFooter() => Load("RESOURCE-ROUTING-CONTRACT.md");
     public static string LoadJudgeFooter() => Load("JUDGE-ROUTING-CONTRACT.md");
 
     public static string BuildHqPrompt(string inboundType, string body)
@@ -31,11 +30,6 @@ public static class RoleContractLoader
         return header + "[OPAQUE INBOUND BODY]\n" + body + "\n\n" + LoadWorkFooter(judgeAvailable);
     }
 
-    public static string BuildResourcePrompt(ResourceTransportRequest request)
-    {
-        var header = "[ROLE : RESOURCE]\n\n[RESOURCE REQUEST : JSON]\n" + JsonSerializer.Serialize(request) + "\n\n";
-        return header + LoadResourceFooter();
-    }
 
     private static string Load(string fileName)
     {

@@ -13,8 +13,8 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
-    private const string ExpectedExtensionVersion = "0.1.4";
-    private const string ExpectedExtensionBuild = "2026-09-24.1";
+    private const string ExpectedExtensionVersion = "0.1.5";
+    private const string ExpectedExtensionBuild = "2026-09-24.2";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -410,7 +410,7 @@ public sealed class BridgeServer : IDisposable
                 Status = "CLAIMED",
                 ClaimedAt = now,
                 StartedAt = now,
-                Owner = "WEB",
+                ClaimedBy = "WEB",
                 LeaseId = Guid.NewGuid().ToString("N"),
                 Resource = task.Resource is null ? null : task.Resource with { Status = "GENERATING" }
             };
@@ -670,7 +670,7 @@ public sealed class BridgeState
 public sealed record BindingState(string ConversationId, string ProjectId, DateTimeOffset UpdatedAt);
 public sealed record WebRoleBindingStatus(string Role, bool Bound, bool Connected, bool ExtensionSynchronized, string? ConversationId, string? ConversationTitle);
 public sealed record ResourceRequest(string Id, string Type, string Prompt, string TargetDirectory, string TargetFileName, string RequestedBy, string Status, string? SavedPath, string WorkspaceRoot);
-public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null);
+public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null);
 public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null);
 public sealed record BridgeResponse(bool Ok, object Data);
 public sealed record BindRequest(string ConversationId, string? ProjectId, string? Role = null);

@@ -30,7 +30,7 @@ UNKNOWN은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 �
 2. RESOURCE state와 WORK→RESOURCE→WORK 추가
 3. HQ Web/CLI target settings
 4. Bridge role binding
-5. RESOURCE transport JSON + workspace path safety
+5. RESOURCE natural-language forwarding + Worker-assigned save path
 6. 확장 generated image capture + result payload
 7. Worker file save + ResourceRequest status
 8. Pipeline/History/Settings

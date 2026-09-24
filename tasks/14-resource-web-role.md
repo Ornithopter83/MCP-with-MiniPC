@@ -49,18 +49,14 @@ UNKNOWN  -> HQ summary once
 
 ## D — RESOURCE transport
 
-WORK body schema:
+WORK body는 자연어만 사용한다.
 
-~~~json
-{
-  "type": "IMAGE",
-  "prompt": "...",
-  "targetDirectory": "assets/tiles",
-  "targetFileName": "fruit_tiles.png"
-}
+~~~text
+[GOTO : RESOURCE]
+과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도처럼 서로 구별하기 쉽게 만들어줘.
 ~~~
 
-Worker는 JSON/schema/path safety만 기계적으로 검사한다.
+Worker는 본문이 비어 있지 않은지만 기계적으로 확인하고 ChatGPT Web에 그대로 전달한다. 저장 경로/파일명은 Worker가 requestId 기반으로 생성한다.
 
 ResourceRequest:
 - Id
@@ -132,3 +128,13 @@ RESOURCE:
 - 설정의 HQ/RESOURCE Web 카드는 역할별 binding/heartbeat/extension 상태를 표시한다.
 - role-specific Web preflight를 사용하여 다른 Web 창의 latest heartbeat가 실행 여부에 영향을 주지 않게 한다.
 - Provider icon contrast, text wrapping, scroll/fixed footer, 역할명 표기를 정리한다.
+
+
+## G — RESOURCE Web runtime/observability follow-up
+
+- RESOURCE 전용 JSON/role wrapper 제거, 자연어 direct forwarding
+- Bridge task role과 claimer 분리
+- Worker outbound/lifecycle transcript 추가
+- resource 오류 단계 세분화
+- WORK WORK -> WORK CLI
+- error가 있었던 정상 END는 DONE_WITH_ERROR telemetry

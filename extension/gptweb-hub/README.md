@@ -1,6 +1,6 @@
 # GPTWeb-Hub extension
 
-Version: 0.1.4 / build 2026-09-24.1
+Version: 0.1.5 / build 2026-09-24.2
 
 ProjectHub Worker와 ChatGPT Web 대화를 loopback bridge로 연결한다.
 
@@ -17,7 +17,9 @@ HQ와 RESOURCE는 같은 conversationId를 동시에 사용할 수 없다. heart
 
 - task 조회/claim/result는 conversationId로 격리한다.
 - 일반 HQ Web task는 assistant 텍스트를 TEXT_RESULT로 반환한다.
-- RESOURCE IMAGE task는 새 assistant turn에서 생성 이미지를 찾고 image bytes를 base64 payload로 Worker에 반환한다.
+- RESOURCE IMAGE task는 자연어 요청을 그대로 ChatGPT Web에 보내고, 새 assistant turn에 실제 로드 완료된 이미지가 있을 때만 image bytes를 base64 payload로 Worker에 반환한다.
+- 이미지 없이 텍스트 응답만 끝나면 기계적 대기 후 `resource_image_not_generated`로 실패 처리한다.
+- progress POST는 직렬 queue로 전송해 transcript 순서를 보존한다.
 - Worker가 workspace 하위의 요청된 targetDirectory/targetFileName에 저장한다.
 - RESOURCE는 저장까지만 수행하며 코드/CSS/HTML 연결은 하지 않는다.
 - SOUND는 현재 transport 예약만 되어 있고 실제 결과 캡처는 구현하지 않았다.

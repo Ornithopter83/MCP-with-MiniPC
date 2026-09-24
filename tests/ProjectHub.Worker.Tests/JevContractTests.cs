@@ -84,12 +84,12 @@ public sealed class RoleContractBoundaryTests
     }
 
     [Fact]
-    public void ResourceAndJudgeContractsKeepTheirFixedReturnSemantics()
+    public void WorkContractUsesNaturalLanguageForResourceAndJudgeKeepsItsReturnRoute()
     {
-        var resource = RoleContractLoader.LoadResourceFooter();
-        Assert.Contains("returns mechanically to the same WORK session", resource);
-        Assert.DoesNotContain("[GOTO : HQ]", resource);
-        Assert.DoesNotContain("[GOTO : JUDGE]", resource);
+        var work = RoleContractLoader.LoadWorkFooter(true);
+        Assert.Contains("write only the natural-language image request", work);
+        Assert.Contains("Do not use JSON", work);
+        Assert.Contains("과일 이미지 16개 만들어줘", work);
         var judge = RoleContractLoader.LoadJudgeFooter();
         Assert.Contains("[GOTO : WORK]", judge);
         Assert.DoesNotContain("[JUDGMENT]", judge);

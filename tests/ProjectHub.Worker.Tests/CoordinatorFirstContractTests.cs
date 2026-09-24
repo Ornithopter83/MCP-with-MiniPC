@@ -54,7 +54,7 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Work, "[GOTO : HQ] report on the same line", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", null, WorkerRoleState.Judge)]
-    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\n{\"type\":\"IMAGE\",\"prompt\":\"tile\",\"targetDirectory\":\"assets\",\"targetFileName\":\"tile.png\"}", null, WorkerRoleState.Resource)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\n과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도처럼 서로 구별하기 쉽게 만들어줘.", null, WorkerRoleState.Resource)]
     [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", null, WorkerRoleState.Work)]
     [InlineData(WorkerRoleState.Resource, "[GOTO : WORK]\nsaved", null, WorkerRoleState.Work)]
     public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, WorkerAction? action, WorkerRoleState? target)
@@ -80,18 +80,15 @@ public sealed class CoordinatorFirstContractTests
         => Assert.Equal(error, WorkerGotoContract.Parse(source, text).Error);
 
     [Fact]
-    public void ResourceTransport_ValidatesMechanicalSchemaAndWorkspaceRelativePath()
+    public void ResourceTransport_AcceptsNaturalLanguageVerbatimAndRejectsEmptyBody()
     {
-        Assert.True(ResourceTransportContract.TryParse(
-            "{\"type\":\"IMAGE\",\"prompt\":\"fruit tiles\",\"targetDirectory\":\"assets/tiles\",\"targetFileName\":\"fruit_tiles.png\"}",
-            out var request, out var error));
+        const string body = "과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도를 포함해줘.";
+        Assert.True(ResourceTransportContract.TryParse(body, out var request, out var error));
         Assert.Null(error);
-        Assert.Equal("IMAGE", request!.Type);
-        Assert.Equal("assets/tiles", request.TargetDirectory);
-        Assert.False(ResourceTransportContract.TryParse(
-            "{\"type\":\"IMAGE\",\"prompt\":\"x\",\"targetDirectory\":\"../outside\",\"targetFileName\":\"x.png\"}",
-            out _, out var unsafeError));
-        Assert.Equal("RESOURCE_TARGET_DIRECTORY_INVALID", unsafeError);
+        Assert.Equal(body, request!.Prompt);
+
+        Assert.False(ResourceTransportContract.TryParse("   ", out _, out var emptyError));
+        Assert.Equal("RESOURCE_REQUEST_EMPTY", emptyError);
     }
 
     [Fact]

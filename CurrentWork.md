@@ -94,3 +94,15 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 실행 중인 Worker 프로세스가 없음을 확인하고 게시 EXE를 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`에 복사했다. 게시본과 복사본 SHA-256은 `072FAC4E47DF2F2DA568D9823221ED2E5FC33830962F0154B4D82E774D3712FD`로 일치한다.
 - `git diff --check`: 통과.
 - Explorer 실화면/HQ-Web·RESOURCE 왕복은 사용자 확인 잔여다.
+
+
+## 2026-09-24 RESOURCE natural-language + observability fix
+
+- RESOURCE Web 전송에서 ROLE/JSON/RESOURCE contract wrapper를 제거하고 WORK의 자연어 본문을 그대로 전달.
+- RESOURCE 저장 경로는 Worker가 `assets/resources/resource-<requestId>.png`로 기계적으로 생성.
+- Web task의 역할 Owner는 claim 이후에도 HQ/RESOURCE로 유지하고 실제 claim 주체는 ClaimedBy=WEB로 분리.
+- Worker outbound HQ Web/RESOURCE Web 메시지와 RESOURCE REQUESTED/GENERATING/FAILED/SAVED lifecycle을 transcript에 기록.
+- RESOURCE 오류를 생성 없음/캡처/다운로드/저장/Web 전달 단계로 구분.
+- WORK WORK transcript source를 WORK CLI로 수정.
+- 오류를 거친 Job이 HQ END로 끝나면 TASK RESULT status를 DONE_WITH_ERROR로 기록.
+- 확장 0.1.5와 함께 image 완료 조건/progress ordering을 보강한다.

@@ -57,21 +57,23 @@ JUDGE is unavailable for this Job.
 {{/JUDGE_OFF}}
 
 RESOURCE delegation:
-- Prefer RESOURCE for final user-facing generated images, icons, sprites, backgrounds, and generated audio assets instead of making final generative assets directly in WORK.
-- WORK defines purpose, format/size when useful, desired mood/character, target directory, and target file name.
+- Prefer RESOURCE for final user-facing generated images, icons, sprites, backgrounds, and other image-generation work instead of making final generative assets directly in WORK.
 - Temporary placeholders are allowed for compile/layout checks, but do not treat placeholders as final resources.
-- RESOURCE creates and saves the asset only. It does not connect the asset to HTML/CSS/code.
+- RESOURCE creates and saves the generated image only. It does not connect the asset to HTML/CSS/code.
 - After a RESOURCE result returns, do not automatically integrate that saved asset unless the current inbound request is an explicit later user instruction to connect previously saved resources.
-- SOUND is reserved structurally; current execution supports IMAGE only.
+- Current RESOURCE execution supports IMAGE generation only.
 
-For [GOTO : RESOURCE], the entire body must be one JSON object with exactly these transport fields (ordinary JSON, no markdown fence):
-{"type":"IMAGE","prompt":"...","targetDirectory":"assets/tiles","targetFileName":"fruit_tiles.png"}
+For [GOTO : RESOURCE], write only the natural-language image request that should be sent to ChatGPT Web. Do not use JSON, role headers, transport fields, target paths, file names, or protocol explanations.
 
-type is IMAGE or SOUND. targetDirectory must be workspace-relative and targetFileName must be a file name, not a path. Worker validates only this transport schema/path safety and does not judge whether the prompt or asset is good.
+Good:
+[GOTO : RESOURCE]
+과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도처럼 서로 구별하기 쉬운 과일을 밝은 캐주얼 게임 아이콘 스타일로 만들어줘.
+
+The Worker forwards this body verbatim. It assigns the saved PNG path mechanically and returns that saved path to the same WORK session. Worker does not interpret the natural-language request.
 
 GOTO syntax is strict:
 - Use a colon exactly as shown.
 - Do not use '=' or omit square brackets.
 - Use only the destinations listed for the current JUDGE availability state.
 
-Everything after GOTO is opaque body except when the selected destination has a dedicated mechanical transport schema such as JUDGE or RESOURCE. Do not invent routing markers. Never reproduce Worker-internal UNKNOWN/error-envelope headers.
+Everything after GOTO is opaque body except JUDGE, which has its dedicated mechanical transport schema. RESOURCE body is natural language and is forwarded verbatim. Do not invent routing markers. Never reproduce Worker-internal UNKNOWN/error-envelope headers.

@@ -19,6 +19,7 @@ Worker가 처리할 수 있는 것:
 - timeout/cancel/auth/schema/path-safety 오류 처리
 - Web conversation binding 및 heartbeat 생존 확인
 - transcript/usage/file telemetry 기록
+- Worker가 실제로 생성·전달한 HQ/RESOURCE Web outbound와 RESOURCE lifecycle 기록
 - 전용 JUDGE/RESOURCE transport의 기계적 schema 변환
 - UNKNOWN 원문 로그와 HQ용 한글 오류 요약
 - 이미 알고 있는 실행 사실을 History UI에 표시
@@ -205,20 +206,18 @@ WORK
  -> 같은 WORK session 복귀
 ~~~
 
-WORK의 RESOURCE JSON:
+WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤에는 ChatGPT Web에 그대로 보낼 자연어 이미지 요청만 둔다.
 
-~~~json
-{
-  "type": "IMAGE",
-  "prompt": "fruit tile sprite sheet ...",
-  "targetDirectory": "assets/tiles",
-  "targetFileName": "fruit_tiles.png"
-}
+~~~text
+[GOTO : RESOURCE]
+과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도처럼 서로 구별하기 쉬운 과일을 밝은 게임 아이콘 스타일로 만들어줘.
 ~~~
+
+Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE Web에 전달한다. 저장 위치는 Worker가 기계적으로 `assets/resources/resource-<requestId>.png` 형태로 생성한다.
 
 기계적 ResourceRequest 기록:
 - Id
-- Type: IMAGE / SOUND
+- Type: IMAGE
 - Prompt
 - TargetDirectory
 - TargetFileName
@@ -226,7 +225,7 @@ WORK의 RESOURCE JSON:
 - Status: REQUESTED / GENERATING / SAVED / FAILED
 - SavedPath
 
-현재 SOUND는 schema에 예약하지만 실제 Web 결과 transport는 구현하지 않는다.
+현재 RESOURCE 실제 범위는 IMAGE이며 SOUND transport 예약 규칙은 제거한다.
 
 RESOURCE가 하지 않는 것:
 - 자동 코드 연결
