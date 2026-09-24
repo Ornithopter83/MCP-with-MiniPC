@@ -47,24 +47,48 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Theory]
-    [InlineData("[ACTION=CONTINUE]\n[NEXT : IMPLEMENTER]\nbody", WorkerAction.Continue, WorkerNextRole.Implementer)]
-    [InlineData("[ACTION = HQ]\nmessage", WorkerAction.Hq, WorkerNextRole.Coordinator)]
-    [InlineData("[NEXT : COORDINATOR]\n[REPORT]\nopaque", null, WorkerNextRole.Coordinator)]
-    public void WorkerRoute_ParsesOnlyControlAndPreservesOpaqueBody(string text, WorkerAction? action, WorkerNextRole next)
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : WORK]\nopaque body", false, WorkerAction.Continue, WorkerRoleState.Work)]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : HIGH]\ninstruction", true, WorkerAction.Continue, WorkerRoleState.High)]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\nreport", false, WorkerAction.Pause, null)]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=END]\nreport", false, WorkerAction.End, null)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : HQ]\nreport", false, null, WorkerRoleState.Hq)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", false, null, WorkerRoleState.Judge)]
+    [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", false, null, WorkerRoleState.Work)]
+    [InlineData(WorkerRoleState.High, "[GOTO : HQ]\nreport", false, null, WorkerRoleState.Hq)]
+    public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, bool permit, WorkerAction? action, WorkerRoleState? target)
     {
-        var result = WorkerRouteContract.Parse(text, actionRequired: action is not null);
+        var result = WorkerGotoContract.Parse(source, text, permit);
         Assert.Null(result.Error);
         Assert.Equal(action, result.Action);
-        Assert.Equal(next, result.Next);
+        Assert.Equal(target, result.Target);
         Assert.NotEmpty(result.Body);
     }
 
+    [Theory]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=HQ]\nbody", false, "CONTROL_INVALID_FIRST_LINE")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : HIGH]\nbody", false, "HIGH_NOT_AUTHORIZED")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : JUDGE]\nbody", true, "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\n[GOTO : WORK]\nbody", false, "GOTO_NOT_ALLOWED_WITH_ACTION")]
+    [InlineData(WorkerRoleState.Work, "[ACTION=END]\nbody", false, "ACTION_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Work, "[GOTO : HIGH]\nbody", false, "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.High, "[GOTO : JUDGE]\nbody", true, "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Judge, "[GOTO : HQ]\nbody", false, "GOTO_NOT_ALLOWED")]
+    public void WorkerGoto_RejectsInvalidControlsAndForbiddenTransitions(WorkerRoleState source, string text, bool permit, string error)
+        => Assert.Equal(error, WorkerGotoContract.Parse(source, text, permit).Error);
+
     [Fact]
-    public void WorkerRoute_RejectsMissingOrInvalidFirstControlLine()
+    public void HighLevelPermit_IsJobLocalAndConsumedExactlyOnce()
     {
-        Assert.Equal("CONTROL_INVALID_FIRST_LINE", WorkerRouteContract.Parse("prose\n[ACTION=END]", true).Error);
-        Assert.Equal("NEXT_MISSING", WorkerRouteContract.Parse("[ACTION=CONTINUE]\nbody", true).Error);
-        Assert.Equal("BODY_MISSING", WorkerRouteContract.Parse("[ACTION=CONTINUE]\n[NEXT : IMPLEMENTER]", true).Error);
+        var denied = new JobHighLevelPermit(false);
+        Assert.False(denied.IsAvailable);
+        Assert.False(denied.TryConsume());
+
+        var allowed = new JobHighLevelPermit(true);
+        Assert.True(allowed.IsAvailable);
+        Assert.True(allowed.TryConsume());
+        Assert.False(allowed.IsAvailable);
+        Assert.False(allowed.TryConsume());
+        Assert.False(new JobHighLevelPermit(false).IsAvailable);
     }
 
     [Fact]

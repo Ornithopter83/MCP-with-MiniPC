@@ -20,24 +20,23 @@ ACTION은 HQ만 CONTINUE/PAUSE/END를 사용한다.
 
 신규 CLI-to-CLI는 GOTO를 사용한다.
 
-## Current implementation gap
+## Implementation status (2026-09-24)
 
-현재 활성 작업은 11-C-GOTO-CONTRACT다.
+11-C-GOTO-CONTRACT 코드 변경과 자동 검증은 완료했다. Explorer 실제 왕복 검증은 사용자가 직접 수행할 잔여 작업이다.
 
-현재 코드에 최종 정책 이전 계약이 남아 있을 수 있으므로 아래를 정리한다.
+적용: HQ ACTION+GOTO 상태표, UNKNOWN→HQ 오류 전달, WORK/HIGH 분리 footer, JEV raw 응답의 동일 WORK 세션 복귀, HIGH 실행 시점 one-shot permit, Worker 의미판정·자동 재시도 제거. Legacy Web NEXT:WEB/JEV는 유지했다.
 
-- ACTION=HQ 제거
-- 신규 CLI NEXT 제거 → GOTO
-- HQ/WORK/JUDGE/HIGH/UNKNOWN 전이 적용
-- Worker의 AC/test/evidence/JUDGE 의미 판단 제거
-- Worker의 END 재판정 제거
-- JUDGE raw result를 같은 WORK session으로 복귀
-- HIGH는 HQ에서만 호출, HQ로만 복귀, JUDGE 미사용
-- HIGH 설정창 상시 사용 체크 제거
-- 메인 실행 버튼 왼쪽 고수준 작업 허용 one-shot checkbox 추가
-- 사용자 체크+실행 때만 Job-local HIGH permit 1회 생성
-- 오류 → UNKNOWN → HQ
-- Legacy Web NEXT:WEB/JEV 회귀 보존
+검증: `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), `dotnet build ProjectHub.sln -c Release --no-restore` 성공 (경고 0, 오류 0). Explorer E2E는 수행하지 않았다.
+
+## Implemented scope
+
+- HQ ACTION + GOTO, HQ/WORK/JUDGE/HIGH/UNKNOWN 전이를 구현했다.
+- JEV adapter는 raw 응답만 반환하며 같은 WORK 세션으로 전달한다. PASS/PARTIAL threshold 판정, evidence 의미 재검사와 자동 재시도를 제거했다.
+- HIGH는 실행 시 체크한 one-shot permit으로만 호출한다.
+- protocol/provider/session/transport 오류는 UNKNOWN envelope로 HQ에 전달한다.
+- Legacy Web NEXT:WEB/JEV는 보존했다.
+
+Explorer 실사용 경로 검증은 사용자 직접 확인 대상으로 남아 있다.
 
 ## Worker boundary
 
@@ -73,6 +72,8 @@ HIGH dispatch 직전에 permit을 소모한다.
 Worker는 사용자 텍스트에서 HIGH 허가를 추론하지 않는다.
 
 ## Verification required
+
+자동 검증 결과: `dotnet test ProjectHub.sln --no-restore` 통과. 사용자 요청에 따라 항목 6 Explorer 실제 검증은 제외하고 사용자가 직접 확인한다.
 
 단위:
 - 상태 전이 parser/router

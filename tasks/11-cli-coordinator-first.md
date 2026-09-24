@@ -236,8 +236,12 @@ C. HIGH 허가 -> HQ -> HIGH -> HQ -> END 또는 WORK
 D. invalid route/provider error -> UNKNOWN -> HQ
 ~~~
 
-## Completion condition
+## Implementation update — 2026-09-24
 
-11-C-GOTO-CONTRACT 완료는 **Worker가 의미 판단 없이 계약된 흐름만 제어하는 실제 Explorer 왕복**이 확인됐을 때 기록한다.
+코드 구현 및 자동화 검증 완료. `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), `dotnet build ProjectHub.sln -c Release --no-restore` 성공 (경고 0, 오류 0). Worker의 JEV PASS/PARTIAL threshold 판정·evidence 자동 재검사·재시도 경로를 제거하고 raw 응답을 기존 WORK 세션으로 전달한다. Legacy Web NEXT:WEB/JEV 라우팅은 유지한다.
+
+잔여: Explorer 실제 왕복 검증은 사용자가 직접 수행한다. 이 검증이 끝날 때까지 전체 작업을 Explorer E2E 완료로 표시하지 않는다.
+
+코드/자동화 구현은 완료했다. 11-C-GOTO-CONTRACT 전체 완료는 **Worker가 의미 판단 없이 계약된 흐름만 제어하는 실제 Explorer 왕복**이 확인된 뒤에만 기록한다.
 
 빌드/단위테스트만으로 Explorer E2E 완료를 선언하지 않는다.

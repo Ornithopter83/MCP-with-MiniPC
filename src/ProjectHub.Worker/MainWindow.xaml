@@ -271,9 +271,7 @@
                 <Border Width="42" Height="42" Background="#101820"><Border.OpacityMask><ImageBrush ImageSource="Assets/current-openai.png" Stretch="Uniform"/></Border.OpacityMask></Border>
               </StackPanel>
               <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
-              <TextBlock Grid.Row="0" Grid.Column="2" Text="OpenAI Codex CLI" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
-              <TextBlock Grid.Row="0" Grid.Column="3" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-              <CheckBox x:Name="HighLevelEnabledCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+              <TextBlock Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="3" Text="OpenAI Codex CLI" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
               <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,8,0,0"/>
               <ComboBox x:Name="HighLevelModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
               <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
@@ -364,9 +362,10 @@
         </Grid>
       </Grid>
     </Border>
-    <Grid Grid.Row="3" Margin="0,8,18,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
+    <Grid Grid.Row="3" Margin="0,8,18,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
       <TextBlock x:Name="DashboardPreflightText" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="6,0,12,0"/>
-      <Button x:Name="RunButton" Grid.Column="1" Content="▶   실행" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#1477E8" Foreground="White" BorderBrush="#1477E8" FontSize="27" FontWeight="Bold" IsEnabled="False" Click="RunTask_Click" Effect="{StaticResource RunButtonShadow}"/>
+      <CheckBox x:Name="HighLevelPermitCheckBox" Grid.Column="1" Content="고수준 작업 허용" VerticalAlignment="Center" Margin="4,0,14,0" FontSize="14"/>
+      <Button x:Name="RunButton" Grid.Column="2" Content="▶   실행" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#1477E8" Foreground="White" BorderBrush="#1477E8" FontSize="27" FontWeight="Bold" IsEnabled="False" Click="RunTask_Click" Effect="{StaticResource RunButtonShadow}"/>
     </Grid>
 
     <Grid Visibility="Collapsed">
