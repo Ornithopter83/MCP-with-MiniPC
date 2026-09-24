@@ -1,37 +1,29 @@
-# Coordinator-first JEV Footer Contract
+# Coordinator Router Footer
 
-This footer is for the implementer's routing turn after its structured implementation result. The Worker has already captured the implementation report and command exit codes. Do not edit files or run tools in this routing turn.
+The configured coordinator owns interpretation of inbound message types and chooses the next action. Worker parses only the first control tag and optional destination; every following body is opaque.
 
-The first nonempty response line must be exactly one of:
+Coordinator responses begin with exactly one of:
 
 ```text
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+[ACTION=HQ]
+```
+
+For `CONTINUE`, put one destination on the next non-empty line, then the body:
+
+```text
+[NEXT : IMPLEMENTER]
+[NEXT : HIGH_LEVEL]
+[NEXT : JUDGE]
 [NEXT : COORDINATOR]
-[NEXT : JEV]
 ```
 
-Use `[NEXT : COORDINATOR]` when the implementation report is ready for the read-only coordinator to review. Follow it with `[REPORT]` and a concise account of completed work, observed validation, remaining uncertainty, and any JEV result supplied by the Worker. The Worker forwards this report together with the structured implementation result and actual command evidence to the coordinator. This tag does not mean the whole task is complete; only the coordinator can return `[ACTION=END]` and the Worker still checks its own gates.
+`ACTION=HQ` is shorthand for routing the opaque body to the currently configured coordinator role. The coordinator routine receives an envelope with `message_type` and `body`; it interprets whether the content is a user request, role report, judge result, or a technical error. Worker does not infer task meaning from the content.
 
-Use `[NEXT : JEV]` only when a semantic claim needs optional Judge AI verification before coordinator review. Follow it with `[VALIDATION REQUEST]` and one or more atomic questions. Do not include a report in this branch. Use only questions for which the Worker can supply evidence; a command merely mentioned in prose is not execution evidence. Each question needs a fixed PASS rule. Supported forms:
+Implementer and High-level role responses include their route in the same execution response. They return `[NEXT : COORDINATOR]` with a report, or `[NEXT : JUDGE]` with a validation request. Do not require a second route-only model call. The Worker forwards the body unchanged to the configured coordinator routine.
 
-```text
-[NEXT : JEV]
-[VALIDATION REQUEST]
-- NOUL | [HIGH] One falsifiable claim
-  EVIDENCE: a short observed excerpt or a file in the working folder
-  SCOPE: the current task
-  COUNTEREXAMPLE: what would disprove the claim
-  PASS: YES >= 0.80
-- SCORE | A graded question
-  1 = desired condition
-  2 = minor problem
-  3 = major problem
-  PASS: SCORE <= 2.0
-- CHOICE | A classification question
-  EXPECTED = requested result
-  OUT_OF_SCOPE = unrelated result
-  PASS: EXPECTED
-```
+For JEV, the adapter parses the atomic question syntax needed to construct the HTTP request and returns the provider response unchanged. It does not turn scores into PASS/PARTIAL, downgrade results based on evidence availability, or decide what role runs next. The coordinator interprets the `JUDGE_RESULT` message type.
 
-After a JEV response, the Worker will send its outcome back to this same implementer session in a read-only reporting turn. Then return `[NEXT : COORDINATOR]`, `[REPORT]`, and a concise report that distinguishes JEV PASS, PARTIAL, ERROR, and missing direct evidence. Do not change a threshold to force a pass. The Worker forwards the Judge outcome to the coordinator and never treats JEV PASS alone as task completion.
-
-Use exactly one NEXT tag. Do not add Markdown fences around the response. If Judge AI is unavailable or its result is inconclusive, report that fact to the coordinator rather than claiming success.
+Worker retains transport and safety duties: selected role/session, workspace, process exit/cancel/timeout, HTTP status, transcript/usage, and unavailable-route reporting. It does not require a work-card schema, review JSON, validation command match, evidence freshness, fixed retry count, or semantic agreement before forwarding an AI response or accepting `[ACTION=END]`.

@@ -2,6 +2,10 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 11-C 후속 — 계약 라우터 및 ACTION=HQ 통합
+
+동기화된 최신 GPT-Web-Feedback의 Worker 의미 판정 제거를 적용했다. 새 CLI 경로는 첫 ACTION/NEXT 제어행만 파싱하고 역할 응답 본문은 불투명하게 전달한다. 작업카드/구조화 보고/AC·검증증거 gate, 별도 IMPLEMENT_ROUTE 호출, 고정 3회 제한을 제거했다. 사용자 지정 6번은 `[ACTION = HQ]`로 통일해 현재 관제 역할에 `message_type` envelope로 전달하고 타입은 관제 호출 루틴이 해석한다. High-level 활성 라우트와 JEV raw-response adapter를 연결했다. Debug 빌드 0 경고/오류, 전체 46개 테스트, diff check 통과. Release 게시 및 `C:\AI-AGENT\Worker` 복사 성공(동일 SHA-256 `55450FE3DF72FAD3F61C81526A8A19CCD369DBACE9A6B0BDD43E01EDF420C2A8`). `C:\GameProject`는 존재하지 않는다. 잔여: `11-C-ROUTER-EXPLORER`, `11-C-WEB-HQ-LOOP`.
+
 ## 2026-09-24 11-C 후속 — transcript·검증 증거·판정 보고 연결
 
 첨부 09:50 transcript는 유효한 UTF-8이었고 작업 JSON의 기본 `\\uXXXX` 이스케이프가 가독성 문제였다. transcript JSON을 한글 그대로 기록한다. 검증 명령은 첫 시도 exit 1 뒤 성공한 exit 0 명령을 CLI 이중 PowerShell wrapper의 이스케이프 따옴표 때문에 놓쳤다. wrapper를 풀고 전체 명령 비교를 유지한다. 작업 AI는 구조화 결과 후 같은 세션의 읽기 전용 Footer 턴에서 관제 보고 또는 JEV 요청을 선택한다. JEV가 요청되면 실제 명령 종료 증거와 함께 판정하고 결과를 같은 작업 세션으로 돌려보낸 뒤 같은 Sol REVIEW에 전달한다. Worker는 판정 미통과 시 END를 거부한다. 완료일 2026-09-24, Debug 빌드 경고 0/오류 0, 전체 42개 테스트와 diff check 통과. 설치본 교체 없이 코드만 유지하므로 `11-C-FOOTER-EXPLORER`, `11-C-JEV-LIVE`, `11-C-DEPLOY`가 잔여다. 상세는 CurrentWork와 task 11을 참조한다.
@@ -75,7 +79,7 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 
 ## 현재 상태
 
-현재 작업: **11-A Coordinator-first CLI-to-CLI (A/B/C 완료, 2026-09-23); 설정 UI 후속 11-UI-A 시각/설정 반영 완료, 실행 경로 일부 잔여**. 기준 커밋 `f501694`는 `recovery/before-11a-cli-to-cli-2026-09-23` 태그로 보존했다. 역할별 provider/model/reasoning 설정과 capability 차단, Sol 작업 카드→Luna 구현→동일 Sol 세션 검토, 관측된 명령 종료코드 기반 검증 gate를 구현했다. 사용자 폼을 1400×840 팝업/1400×900 창(최대 1440×960)으로 재배치하고, 네 역할 카드·역할별 스레드 선택, Web/CLI 관제 탭 전환, JEV 설정 테스트와 창 아이콘을 반영했다. 네 역할명은 카드에 유지한다. 현재 Codex 서비스 모델/추론 목록을 enum으로 명시하고 모델별 추론 선택값을 카드에 채운다. 선택된 두 값은 실행 시 CLI `--model`과 `model_reasoning_effort` 인수로 조합된다. 판단 AI JSON endpoint 테스트 결과를 카드 왼쪽에 표시하고 팝업 footer를 위로 60px 이동했다. 스레드/작업폴더 연동도 유지한다. 잔여는 실제 Explorer 화면에서 모델/추론 목록, footer 노출, endpoint 성공·실패 응답 표시를 확인하는 UI 수용 검증이다. Web coordinator 실행과 활성화된 high-level/JEV의 실제 작업 흐름 통합은 preflight에서 차단하며 후속 잔여다. 09-B Explorer/E2E 잔여는 사용자 결정에 따라 정기 관리에서 제외하고, Bridge 이슈와 07의 기존 잔여는 별도 기존 정책을 유지한다.
+현재 작업: **11-C CLI-to-CLI 계약 라우터 후속 구현 완료(2026-09-24)**. 기존 11-A/B/C 완료 이력과 UI 설정 구현은 유지한다. 최신 router follow-up은 이전 고정 작업카드·AC/검증증거 gate를 대체하며, 첫 ACTION/NEXT만 해석하고 본문은 opaque handoff 한다. `[ACTION = HQ]`는 현재 관제 역할로 통일하고 message_type 해석은 관제 루틴에 둔다. High-level 활성 실행과 JEV raw-response adapter를 연결했다. Debug 빌드 0 warning/error, 전체 46 tests, Release 게시 성공(상단 후속 SHA 참조). 미완료: Explorer/확장 실브라우저 왕복(`11-C-ROUTER-EXPLORER`, `11-C-WEB-HQ-LOOP`) 및 설치 폴더 복사(`11-C-DEPLOY`, auto-review가 배포 파일 덮어쓰기를 거부). 09-B Explorer/E2E 제외 기준, 기존 Bridge 및 07 잔여는 유지한다.
 
 실 provider JEV benchmark는 실제 API 요청과 사용량을 발생시키므로 실행하지 않았다. 회귀 fixture 구현과 자동화된 전체 검증은 2026-09-23에 통과했다. 사용자는 향후 benchmark 실행을 요청하면 별도로 실행할 수 있다. 기존 07 잔여는 계속 유지한다.
 

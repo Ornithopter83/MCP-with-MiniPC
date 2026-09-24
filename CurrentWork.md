@@ -2,6 +2,16 @@
 
 Updated: 2026-09-24
 
+## 11-C 후속 — 계약 라우터 단순화 및 ACTION=HQ 통합 (2026-09-24)
+
+- 최신 동기화 피드백에 따라 새 CLI 경로에서 Worker가 작업카드/보고 JSON, AC 상태, 명령 exit code, JEV 점수로 의미를 판정하던 흐름을 제어행 라우터로 교체했다. 관제 AI는 `[ACTION=CONTINUE|PAUSE|END|HQ]`와 NEXT 목적지를 내고, Worker는 본문을 해석하지 않고 전달한다. 고정 3회 반복과 별도 `IMPLEMENT_ROUTE` 호출을 제거했다.
+- 구현·고수준 AI는 NEXT 결과를 같은 호출에서 반환하도록 라우팅했고, High-level 설정 활성 상태를 preflight에서 거부하지 않는다. 비활성 High-level/Judge 요청은 대체 역할로 보내지 않고 `ROUTE_UNAVAILABLE` 타입으로 관제 AI에 돌려보낸다.
+- 사용자의 명시적 6번 정정도 적용했다. `[ACTION = HQ]`는 현재 관제 역할로 통일하며, `message_type`과 본문을 관제 루틴에 전달해 해당 루틴이 USER_REQUEST/HQ_MESSAGE/ROLE_RESPONSE/JUDGE_RESULT/오류 타입을 해석한다. 레거시 Web 수신도 ACTION=HQ일 때 설정된 관제 transport(Web 또는 CLI)에 전달한다.
+- JEV 새 라우터 어댑터는 endpoint transport·HTTP 오류·usage를 기록하고 원 응답 JSON을 보존한다. PASS/PARTIAL 판정 및 evidence archive 의미 판정은 이 경로에서 호출하지 않는다. 기존 Web/JEV 호환 경로는 기존 `ReviewAsync`를 유지한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` (경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` (전체 46개 통과), `git diff --check` 통과. 최종 소스 Release 게시 성공, SHA-256 `55450FE3DF72FAD3F61C81526A8A19CCD369DBACE9A6B0BDD43E01EDF420C2A8`. Explorer 실제 UI/브리지 왕복은 네이티브 데스크톱 도구가 제공되지 않아 미검증이다.
+- 게시·복사: 사용자의 명시적 승인 후 기존 Worker 프로세스가 없음을 확인하고 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`를 갱신했다. 게시본과 설치본 SHA-256은 `55450FE3DF72FAD3F61C81526A8A19CCD369DBACE9A6B0BDD43E01EDF420C2A8`로 일치한다. `C:\GameProject`는 경로가 존재하지 않아 대상이 아니다.
+- 잔여 식별자: `11-C-ROUTER-EXPLORER` (실제 화면/역할 간 왕복 확인), `11-C-WEB-HQ-LOOP` (Extension 실브라우저에서 ACTION=HQ 회신 왕복 확인).
+
 ## 11-C 후속 — transcript 가독성·검증 명령·Footer→JEV→관제 경로 (2026-09-24)
 
 - 첨부 `_20260924_095010.txt`는 엄격한 UTF-8 디코딩이 가능한 파일이었다. 한글 요청은 정상이고 작업 카드·보고서·REVIEW JSON만 기본 serializer가 `\\uXXXX`로 이스케이프해 깨진 것처럼 보였다. transcript용 JSON serializer에서 한글을 그대로 쓰되 JSON 형식은 유지하도록 수정했다. transcript 파일 쓰기는 기존 UTF-8 no BOM이다.

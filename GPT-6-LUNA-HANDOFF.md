@@ -1,5 +1,12 @@
 # GPT-6 Luna 인계 가이드
 
+## 2026-09-24 라우팅 정책 후속
+
+- CLI-to-CLI Worker는 첫 ACTION/NEXT 제어행만 파싱하고 역할 응답 본문 의미를 판정하지 않는다. 관제 AI가 message_type이 포함된 입력을 해석하고 다음 역할을 고른다.
+- `[ACTION = HQ]`는 현재 설정된 관제 역할로 돌아가는 공통 경로다. 역할 응답은 별도 라우팅 호출 없이 같은 응답의 NEXT 태그를 사용한다.
+- 새 CLI router path는 작업카드/AC/evidence semantic gate와 고정 3회 반복을 사용하지 않는다. JEV adapter는 원 응답을 보존하며 판정은 관제 역할이 맡는다.
+- 코드 검증 완료: Debug build 0 warning/error, 전체 46 tests. Explorer 및 확장 실브라우저 왕복은 아직 확인하지 않았다.
+
 ## 목적
 
 GPT-5.6 Luna로 진행하던 Codex 작업을 GPT-6 Luna가 같은 스레드와 작업 폴더에서 이어받도록 한다. 실행 중인 CLI 프로세스의 모델을 중간에 변경하는 방식이 아니라, 다음 실행부터 동일 session을 `gpt-6-luna`로 resume한다.

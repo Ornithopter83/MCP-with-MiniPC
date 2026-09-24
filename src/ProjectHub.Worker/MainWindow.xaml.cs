@@ -140,7 +140,7 @@ public partial class MainWindow : Window
     private static string WindowPlacementPath => Path.Combine(WorkerPaths.Config, "window-placement.json");
 
     private enum FlowNode { Codex, Worker, Web, Judge }
-    private enum WebActionKind { None, Begin, Continue, Pause, End, ProtocolError }
+    private enum WebActionKind { None, Begin, Continue, Pause, End, Hq, ProtocolError }
     private sealed record WebAction(WebActionKind Kind, string Body, string? Error = null);
     private sealed record CodexProjectOption(string Name, string Path);
     private sealed record TaskLaunchRequest(string Prompt, string? WebInstruction, string WorkingDirectory, string? SessionId);
@@ -1363,213 +1363,155 @@ public partial class MainWindow : Window
         _userCanceledTask = false;
         _jobTimedOut = false;
         _lastActivityAt = DateTimeOffset.UtcNow;
-        _judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "READY" : "OFF";
         StartTaskTranscript(selectedThread, request, string.Empty);
         AddTaskMessage("TASK REQUEST", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1);
-        AddTaskMessage("TASK START", $"Mode: coordinator-first CLI-to-CLI{Environment.NewLine}Coordinator: {coordinator.Model} / {coordinator.Reasoning}{Environment.NewLine}Implementer: {implementer.Model} / {implementer.Reasoning}{Environment.NewLine}Working directory: {workingDirectory}");
         var coordinatorSession = CodexCliRunner.NormalizeSessionId(coordinator.ThreadSessionId);
-        IReadOnlyList<CodexCommandExecution> observedExecutions = Array.Empty<CodexCommandExecution>();
+        var implementerSession = CodexCliRunner.NormalizeSessionId(implementer.ThreadSessionId);
+        var highLevel = _targetSettings.EffectiveHighLevel;
+        var highLevelSession = CodexCliRunner.NormalizeSessionId(highLevel.ThreadSessionId);
         try
         {
-            TaskDirection.Text = "SOL COORDINATOR → LUNA IMPLEMENTER";
-            TaskTitle.Text = "작업 카드를 설계하는 중";
-            ResultTitle.Text = "COORDINATING";
-            SetFlowState(codexActive: true, workerActive: false, webActive: false, explicitStage: TaskStage.Coordinator, explicitNextStage: TaskStage.Implementer);
-            var planPrompt = "You are the read-only Sol coordinator. Convert the user's request into one bounded implementation work card. Do not edit files or execute tools. Preserve explicit constraints, avoid expanding scope, and include concrete validation commands appropriate to the repository. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>";
-            var plan = await RunCoordinatorRoleAsync(jobId, "PLAN", planPrompt, coordinator, workingDirectory, coordinatorSession, CoordinatorFirstContracts.WorkCardSchema, cts.Token);
-            coordinatorSession ??= plan.SessionId;
-            var planParsed = CoordinatorFirstContracts.TryParseWorkCard(plan.FinalMessage, out var card, out var planError);
-            if (plan.ExitCode != 0 || !planParsed || card is null)
+            var inboundType = "USER_REQUEST";
+            var inbound = request;
+            var coordinatorHasRun = false;
+            while (true)
             {
-                ShowCoordinatorFirstBlocked("작업 카드를 만들지 못했습니다.", plan.ExitCode != 0 ? $"Coordinator exit {plan.ExitCode}" : planError);
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(plan.SessionId))
-            {
-                ShowCoordinatorFirstBlocked("관제 세션을 이어갈 수 없습니다.", "설계 계획은 받았지만 CLI JSONL 이벤트와 새 세션 기록에서 관제 세션 ID를 하나로 확인하지 못했습니다. 다른 세션으로 잘못 이어가지 않도록 작업 AI 호출 전에 멈췄습니다." +
-                    (string.IsNullOrWhiteSpace(plan.SessionDiagnostic) ? string.Empty : Environment.NewLine + "세션 진단: " + plan.SessionDiagnostic));
-                return;
-            }
-            AddTaskMessage("SOL WORK CARD", WorkerTranscriptJson.Serialize(card), summary: $"{card.Title}: {card.Goal}");
-
-            var cardJson = WorkerTranscriptJson.Serialize(card);
-            var implementerSession = CodexCliRunner.NormalizeSessionId(implementer.ThreadSessionId);
-            string? continuationReview = null;
-            const int maxRounds = 3;
-            for (var round = 1; round <= maxRounds; round++)
-            {
-                TaskDirection.Text = "LUNA IMPLEMENTER";
-                TaskTitle.Text = card.Title;
-                ResultTitle.Text = $"IMPLEMENTING · {round}/{maxRounds}";
-                SetFlowState(codexActive: false, workerActive: true, webActive: false, explicitStage: TaskStage.Implementer, explicitNextStage: TaskStage.Coordinator);
-                var implementPrompt = "You are the implementer. Implement only the work card below in the current workspace. Follow its prohibited list. Run every listed validation command and report truthful results. Do not claim a command passed unless its process succeeded. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>\n<work_card_json>\n" + cardJson + "\n</work_card_json>" +
-                    (continuationReview is null ? string.Empty : "\n<coordinator_review_json>\n" + continuationReview + "\n</coordinator_review_json>\nResolve only the review's remaining deficiencies within the original work card. Re-run every listed validation command.");
-                var implementation = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT", implementPrompt, implementer, workingDirectory, implementerSession, CoordinatorFirstContracts.ImplementerResultSchema, cts.Token, CodexSandboxMode.WorkspaceWrite);
-                implementerSession ??= implementation.SessionId;
-                observedExecutions = implementation.CommandExecutions ?? Array.Empty<CodexCommandExecution>();
-                var reportParsed = CoordinatorFirstContracts.TryParseImplementerResult(implementation.FinalMessage, out var report, out var reportError);
-                if (implementation.ExitCode != 0 || !reportParsed || report is null)
+                cts.Token.ThrowIfCancellationRequested();
+                if (coordinatorHasRun && string.IsNullOrWhiteSpace(coordinatorSession))
                 {
-                    ShowCoordinatorFirstBlocked("작업 구현 보고서를 확인할 수 없습니다.", implementation.ExitCode != 0 ? $"Implementer exit {implementation.ExitCode}" : reportError);
-                    return;
+                    ShowCoordinatorFirstBlocked("관제 세션을 이어갈 수 없습니다.", "관제 응답을 받았지만 이어서 호출할 세션 ID가 없습니다."); return;
                 }
-                var evidenceOk = CoordinatorFirstContracts.HasRequiredValidationEvidence(card, observedExecutions, out var evidenceDetail);
-                var reportJson = WorkerTranscriptJson.Serialize(report);
-                AddTaskMessage("LUNA RESULT", reportJson, sizeBytes: Encoding.UTF8.GetByteCount(reportJson), fileCount: report.ChangedPaths.Count, status: report.Status, summary: report.Summary);
-                AddTaskMessage("VALIDATION EVIDENCE", observedExecutions.Count == 0
-                    ? "Codex CLI JSONL에서 명령 실행/종료코드 증거를 추출하지 못했습니다."
-                    : string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit {item.ExitCode}: {item.Command}")), itemCount: observedExecutions.Count, status: evidenceOk ? "PASS" : "FAIL", summary: evidenceOk ? "필수 검증 명령의 정상 종료를 확인했습니다." : "필수 검증 명령의 정상 종료를 확인하지 못했습니다.");
-
-                var executionEvidence = string.Join(Environment.NewLine, observedExecutions
-                    .Where(item => card.ValidationCommands.Any(command => CoordinatorFirstContracts.CommandMatches(command, item.Command)))
-                    .Select(item => WorkerTranscriptJson.Serialize(new { command = item.Command, exit_code = item.ExitCode, output = HistorySummary(item.Output) })));
-                var routedReport = report.Summary;
-                var judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "NOT_REQUESTED" : "DISABLED";
-                var judgeOk = true;
+                TaskDirection.Text = "관제 AI";
+                TaskTitle.Text = "다음 처리 단계를 정하는 중";
+                ResultTitle.Text = "COORDINATING";
+                SetFlowState(true, false, false, explicitStage: TaskStage.Coordinator);
+                // Message type is intentionally interpreted by this coordinator call routine, not by Worker gates.
+                var coordinatorPrompt = "You are the configured coordinator. Interpret the inbound message according to its message_type, preserve its content, and choose the next role or final action. Return a first control line [ACTION=CONTINUE], [ACTION=PAUSE], [ACTION=END], or [ACTION=HQ]. For CONTINUE, put exactly one [NEXT : IMPLEMENTER|HIGH_LEVEL|JUDGE|COORDINATOR] line next, then an opaque handoff body. Worker only routes these tags and does not judge body meaning or validation evidence.\n<inbound_message>\n" + WorkerTranscriptJson.Serialize(new { message_type = inboundType, body = inbound }) + "\n</inbound_message>";
+                var routed = await RunCoordinatorRoleAsync(jobId, "COORDINATE_" + inboundType, coordinatorPrompt, coordinator, workingDirectory, coordinatorSession, null, cts.Token);
+                coordinatorSession ??= routed.SessionId;
+                coordinatorHasRun = true;
+                if (routed.ExitCode != 0) { ShowCoordinatorFirstBlocked("관제 AI 호출에 실패했습니다.", $"Coordinator exit {routed.ExitCode}"); return; }
+                var decision = WorkerRouteContract.Parse(routed.FinalMessage, actionRequired: true);
+                if (decision.Error is not null) { ShowCoordinatorFirstBlocked("관제 제어행을 확인할 수 없습니다.", decision.Error); return; }
+                AddTaskMessage("관제 AI", routed.FinalMessage, status: decision.Action?.ToString());
+                if (decision.Action is WorkerAction.End)
                 {
-                    if (string.IsNullOrWhiteSpace(implementerSession))
+                    ResultTitle.Text = "DONE"; ResultBody.Text = decision.Body; TaskTitle.Text = "관제 AI가 작업을 종료했습니다.";
+                    AddTaskMessage("TASK RESULT", decision.Body, status: "DONE"); SetFlowState(false, false, false); return;
+                }
+                if (decision.Action is WorkerAction.Pause)
+                {
+                    ResultTitle.Text = "PAUSED"; ResultBody.Text = decision.Body; TaskTitle.Text = "사용자 입력 대기";
+                    AddTaskMessage("TASK PAUSED", decision.Body, status: "PAUSED"); SetFlowState(false, false, false); return;
+                }
+                if (decision.Action is WorkerAction.Hq || decision.Next is WorkerNextRole.Coordinator)
+                {
+                    inboundType = "HQ_MESSAGE"; inbound = decision.Body; continue;
+                }
+                CodexCliResult roleResult;
+                WorkerAiRoleSettings selectedRole;
+                string? roleSession;
+                CodexSandboxMode sandbox;
+                switch (decision.Next)
+                {
+                    case WorkerNextRole.Implementer:
+                        selectedRole = implementer; roleSession = implementerSession; sandbox = CodexSandboxMode.WorkspaceWrite;
+                        TaskDirection.Text = "작업 AI"; SetFlowState(false, true, false, explicitStage: TaskStage.Implementer);
+                        break;
+                    case WorkerNextRole.HighLevel when _targetSettings.HighLevelEnabled:
+                        selectedRole = highLevel; roleSession = highLevelSession; sandbox = CodexSandboxMode.WorkspaceWrite;
+                        TaskDirection.Text = "고수준 작업 AI"; SetFlowState(false, true, false, explicitStage: TaskStage.HighLevel);
+                        break;
+                    case WorkerNextRole.HighLevel:
+                        inboundType = "ROUTE_UNAVAILABLE"; inbound = "HIGH_LEVEL is disabled in settings. Do not substitute another role. Tell the user or select another route."; continue;
+                    case WorkerNextRole.Judge when _targetSettings.EffectiveJudge.Enabled:
+                        var validation = JevContract.ExtractValidationRequest(decision.Body);
+                        var judgeRequest = new JudgeRequest(request, 1, workingDirectory, inbound, validation, Array.Empty<CodexCliFile>(), "GIT", _gitTarget?.HeadSha, jobId);
+                        TaskDirection.Text = "판단 AI"; SetFlowState(false, true, false, explicitStage: TaskStage.Judge);
+                        var judgment = await _jevJudgeRunner.ReviewRawAsync(judgeRequest, _targetSettings.EffectiveJudge, cts.Token);
+                        _judgeStatus = judgment.ErrorCode ?? "RESPONSE_RECEIVED";
+                        inboundType = "JUDGE_RESULT";
+                        inbound = WorkerTranscriptJson.Serialize(new { provider = "jev", transport_status = judgment.ErrorCode ?? "OK", raw_result = judgment.RawResponse, usage = judgment.Telemetry });
+                        AddTaskMessage("JEV RESULT", inbound, status: _judgeStatus);
+                        continue;
+                    case WorkerNextRole.Judge:
+                        inboundType = "ROUTE_UNAVAILABLE"; inbound = "JUDGE is disabled in settings. Do not substitute another role."; continue;
+                    default:
+                        ShowCoordinatorFirstBlocked("관제 경로를 인식하지 못했습니다.", "NEXT route was absent or unsupported."); return;
+                }
+                var roleFooter = "\n\nControl contract: make the routing decision in this same role response. Start with exactly [NEXT : COORDINATOR] or [NEXT : JUDGE], followed by the opaque report/request body. Do not emit a second routing-only turn.\n";
+                roleResult = await RunCoordinatorRoleAsync(jobId, "ROLE_" + decision.Next, decision.Body + roleFooter, selectedRole, workingDirectory, roleSession, null, cts.Token, sandbox);
+                if (decision.Next == WorkerNextRole.Implementer) implementerSession ??= roleResult.SessionId;
+                else highLevelSession ??= roleResult.SessionId;
+                var returnedRoleSession = decision.Next == WorkerNextRole.Implementer ? implementerSession : highLevelSession;
+                if (roleResult.ExitCode != 0)
+                {
+                    inboundType = "ROLE_TRANSPORT_ERROR"; inbound = WorkerTranscriptJson.Serialize(new { role = decision.Next.ToString(), exit_code = roleResult.ExitCode, output = roleResult.FinalMessage });
+                }
+                else if (string.IsNullOrWhiteSpace(returnedRoleSession))
+                {
+                    ShowCoordinatorFirstBlocked("역할 세션을 이어갈 수 없습니다.", "역할 응답은 받았지만 동일 세션을 식별할 session ID가 없습니다."); return;
+                }
+                else
+                {
+                    var roleRoute = WorkerRouteContract.Parse(roleResult.FinalMessage, actionRequired: false);
+                    if (roleRoute.Error is not null) { inboundType = "ROLE_RESPONSE"; inbound = roleResult.FinalMessage; }
+                    else if (roleRoute.Next == WorkerNextRole.Judge)
                     {
-                        ShowCoordinatorFirstBlocked("작업 세션을 이어갈 수 없습니다.", "Footer 경로를 같은 작업 AI 세션에서 실행할 세션 ID가 없습니다.");
-                        return;
-                    }
-                    var footer = JevContract.LoadCoordinatorFooter();
-                    var routePrompt = "The structured implementation report and command execution record have been captured by the Worker. Make a routing decision for this round. Do not edit files or run tools. Return only the NEXT contract response. Judge AI status: " + (_targetSettings.EffectiveJudge.Enabled ? "AVAILABLE" : "DISABLED; select [NEXT : COORDINATOR]") + ".\n<implementation_report_json>\n" + reportJson + "\n</implementation_report_json>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n\n" + footer;
-                    var routeResult = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT_ROUTE", routePrompt, implementer, workingDirectory, implementerSession, null, cts.Token);
-                    var route = JevContract.ParseNext(routeResult.FinalMessage, coordinatorMode: true);
-                    var routeError = JevContract.ValidateCoordinatorStructure(route);
-                    if (routeResult.ExitCode != 0 || routeError is not null)
-                    {
-                        ShowCoordinatorFirstBlocked("작업 AI Footer 경로를 확인할 수 없습니다.", routeResult.ExitCode != 0 ? $"Implementer route exit {routeResult.ExitCode}" : routeError!);
-                        return;
-                    }
-                    AddTaskMessage("LUNA FOOTER", routeResult.FinalMessage, status: route.Route.ToString().ToUpperInvariant());
-                    if (route.Route == NextRoute.Jev)
-                    {
-                        var validation = JevContract.ExtractValidationRequest(route.Body);
-                        if (!JevContract.TryParseValidation(validation, out _, out var validationError))
+                        if (string.IsNullOrWhiteSpace(returnedRoleSession))
                         {
-                            ShowCoordinatorFirstBlocked("판정 요청 계약을 확인할 수 없습니다.", validationError);
-                            return;
+                            inboundType = "ROLE_SESSION_ERROR"; inbound = "The role response did not include a session ID for its requested follow-up.";
                         }
-                        TaskDirection.Text = "LUNA → JEV → SOL";
-                        TaskTitle.Text = "판정 AI가 요청한 주장을 검증하는 중";
-                        ResultTitle.Text = $"JUDGING · {round}/{maxRounds}";
-                        SetFlowState(false, true, false, explicitStage: TaskStage.Judge, explicitNextStage: TaskStage.Coordinator);
-                        _judgeStatus = "REVIEWING";
-                        AddTaskMessage("JEV REQUEST", validation);
-                        var judgeRequest = new JudgeRequest(request, round, workingDirectory,
-                            reportJson + Environment.NewLine + executionEvidence, validation, implementation.Files,
-                            "GIT", _gitTarget?.HeadSha, jobId,
-                            observedExecutions.Where(item => card.ValidationCommands.Any(command => CoordinatorFirstContracts.CommandMatches(command, item.Command))).ToArray());
-                        var judgment = _targetSettings.EffectiveJudge.Enabled
-                            ? await _jevJudgeRunner.ReviewAsync(judgeRequest, _targetSettings.EffectiveJudge, cts.Token)
-                            : new JudgeResult(JudgeDecision.Error, "JEV_DISABLED", "worker");
-                        judgeStatus = judgment.Decision.ToString().ToUpperInvariant();
-                        judgeOk = judgment.Decision == JudgeDecision.Pass;
-                        _judgeStatus = judgeStatus;
-                        AddTaskMessage("JEV RESULT", $"{judgeStatus}: {judgment.Message}", status: judgeStatus);
-                        var reportPrompt = "Report the Judge AI result to the same read-only Sol coordinator. Do not edit files, run tools, or request another JEV review in this turn. Start with [NEXT : COORDINATOR], then [REPORT]. State the verdict and unresolved claims truthfully.\n<judge_result>\n" + judgeStatus + ": " + judgment.Message + "\n</judge_result>\n\n" + footer;
-                        var reportResult = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT_JEV_REPORT", reportPrompt, implementer, workingDirectory, implementerSession, null, cts.Token);
-                        var reportRoute = JevContract.ParseNext(reportResult.FinalMessage, coordinatorMode: true);
-                        var reportRouteError = JevContract.ValidateCoordinatorStructure(reportRoute, reportOnly: true);
-                        if (reportResult.ExitCode != 0 || reportRouteError is not null || reportRoute.Route != NextRoute.Coordinator)
+                        else if (!_targetSettings.EffectiveJudge.Enabled)
                         {
-                            ShowCoordinatorFirstBlocked("판정 후 설계 관제 보고 경로를 확인할 수 없습니다.", reportResult.ExitCode != 0 ? $"Implementer report exit {reportResult.ExitCode}" : reportRouteError ?? "JEV_REPORT_NOT_COORDINATOR");
-                            return;
+                            inboundType = "ROUTE_UNAVAILABLE"; inbound = "JUDGE is disabled in settings. Do not substitute another role.";
                         }
-                        routedReport = reportRoute.Body;
-                        AddTaskMessage("LUNA → SOL REPORT", routedReport, status: judgeStatus);
+                        else
+                        {
+                            var judgeRequest = new JudgeRequest(request, 1, workingDirectory, roleResult.FinalMessage, roleRoute.Body, roleResult.Files, "GIT", _gitTarget?.HeadSha, jobId);
+                            var judgment = await _jevJudgeRunner.ReviewRawAsync(judgeRequest, _targetSettings.EffectiveJudge, cts.Token);
+                            _judgeStatus = judgment.ErrorCode ?? "RESPONSE_RECEIVED";
+                            inboundType = "JUDGE_RESULT";
+                            inbound = WorkerTranscriptJson.Serialize(new { provider = "jev", transport_status = judgment.ErrorCode ?? "OK", raw_result = judgment.RawResponse, usage = judgment.Telemetry });
+                            AddTaskMessage("JEV RESULT", inbound, status: _judgeStatus);
+                        }
+                    }
+                    else if (roleRoute.Action == WorkerAction.Hq || roleRoute.Next == WorkerNextRole.Coordinator)
+                    {
+                        inboundType = "HQ_MESSAGE"; inbound = roleRoute.Body;
                     }
                     else
                     {
-                        routedReport = route.Body;
-                        AddTaskMessage("LUNA → SOL REPORT", routedReport, status: "READY");
+                        inboundType = "ROLE_RESPONSE"; inbound = roleRoute.Body;
                     }
                 }
-
-                TaskDirection.Text = "SOL COORDINATOR REVIEW";
-                TaskTitle.Text = "구현 결과와 검증 증거를 검토하는 중";
-                ResultTitle.Text = $"REVIEWING · {round}/{maxRounds}";
-                SetFlowState(codexActive: true, workerActive: false, webActive: false, explicitStage: TaskStage.Coordinator);
-                var reviewPrompt = "You are the same read-only coordinator that created the work card. Review the implementation against every acceptance criterion. Treat implementer claims as untrusted until supported by command evidence. Your first nonempty line must be exactly [ACTION=CONTINUE], [ACTION=PAUSE], or [ACTION=END]. CONTINUE means a bounded correction within this work card is possible; use decision REVISE or COLLECT_EVIDENCE and give concrete deficiencies in the JSON review. PAUSE means user input or approval is needed or the task is blocked. END is allowed only when the implementer reported IMPLEMENTED, all required commands have exit 0 evidence, every AC passes, and any requested JEV verification passed; use decision ACCEPT. After the ACTION line, return only one JSON object matching the schema below, with every AC ID exactly once and no Markdown fence. The JSON must have exactly decision (review verdict, not the ACTION word), summary (string), and acceptance_criteria (array). Each array item must have exactly ac_id, status, and reason; never use an object keyed by AC ID.\n<review_schema>\n" + CoordinatorFirstContracts.ReviewSchema + "\n</review_schema>\n<work_card_json>\n" + cardJson + "\n</work_card_json>\n<implementer_report_json>\n" + reportJson + "\n</implementer_report_json>\n<implementer_footer_report>\n" + routedReport + "\n</implementer_footer_report>\n<judge_status>\n" + judgeStatus + "\n</judge_status>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n<required_command_evidence_status>\n" + (evidenceOk ? "ALL_REQUIRED_COMMANDS_OBSERVED_EXIT_ZERO" : evidenceDetail) + "\n</required_command_evidence_status>";
-                var reviewResult = await RunCoordinatorRoleAsync(jobId, "REVIEW", reviewPrompt, coordinator, workingDirectory, coordinatorSession, null, cts.Token);
-                var actionParsed = CoordinatorFirstContracts.TryParseReviewAction(reviewResult.FinalMessage, card.AcceptanceCriteria, out var action, out var reviewError);
-                if (reviewResult.ExitCode != 0 || !actionParsed || action is null)
-                {
-                    ShowCoordinatorFirstBlocked("관제 검토 결과를 확인할 수 없습니다.", reviewResult.ExitCode != 0 ? $"Coordinator review exit {reviewResult.ExitCode}" : reviewError);
-                    return;
-                }
-                var review = action.Review;
-                var reviewJson = WorkerTranscriptJson.Serialize(review);
-                AddTaskMessage("SOL REVIEW", $"[ACTION={action.Kind.ToString().ToUpperInvariant()}]{Environment.NewLine}{reviewJson}", status: action.Kind.ToString().ToUpperInvariant(), summary: review.Summary);
-                var accepted = evidenceOk && judgeOk && string.Equals(report.Status, "IMPLEMENTED", StringComparison.OrdinalIgnoreCase)
-                    && review.Decision == "ACCEPT" && review.AcceptanceCriteria.All(item => item.Status == "PASS");
-                if (action.Kind == CoordinatorActionKind.End && !accepted)
-                {
-                    ShowCoordinatorFirstBlocked("관제 종료 조건이 충족되지 않았습니다.", !evidenceOk ? "필수 검증 증거 부족: " + evidenceDetail : !judgeOk ? "판정 AI 검증이 통과하지 않았습니다: " + judgeStatus : "구현 상태나 AC 판정이 완료 조건과 일치하지 않습니다.");
-                    return;
-                }
-                if (action.Kind == CoordinatorActionKind.Continue)
-                {
-                    if (round == maxRounds)
-                    {
-                        ResultTitle.Text = "FINISH_LIMIT";
-                        ResultBody.Text = review.Summary;
-                        TaskTitle.Text = "자동 작업 횟수 한도에 도달했습니다.";
-                        AddTaskMessage("TASK RESULT", $"FINISH_LIMIT{Environment.NewLine}{review.Summary}", status: "LIMIT", summary: review.Summary);
-                        SetFlowState(false, false, false);
-                        return;
-                    }
-                    if (string.IsNullOrWhiteSpace(implementerSession))
-                    {
-                        ShowCoordinatorFirstBlocked("작업 세션을 이어갈 수 없습니다.", "CONTINUE 지시를 받았지만 작업 AI의 세션 ID가 없습니다.");
-                        return;
-                    }
-                    continuationReview = reviewJson;
-                    continue;
-                }
-                ResultTitle.Text = action.Kind == CoordinatorActionKind.End ? "DONE · REVIEW ACCEPTED" : "FINISH_PAUSED";
-                ResultBody.Text = review.Summary + (evidenceOk ? string.Empty : Environment.NewLine + "필수 검증 증거 부족: " + evidenceDetail);
-                TaskTitle.Text = action.Kind == CoordinatorActionKind.End ? "검토 승인 완료" : "사용자 판단 또는 입력 대기";
-                AddTaskMessage("TASK RESULT", $"{ResultTitle.Text}{Environment.NewLine}{review.Summary}", itemCount: review.AcceptanceCriteria.Count, status: action.Kind == CoordinatorActionKind.End ? "PASS" : "PAUSED", summary: review.Summary);
-                SetFlowState(false, false, false);
-                return;
+                AddTaskMessage("AI HANDOFF", inbound, status: inboundType);
             }
         }
         catch (OperationCanceledException)
         {
-            AddTaskMessage("TASK CANCELED", "Coordinator-first 작업이 취소되었습니다.");
-            ResultTitle.Text = "CANCELED";
-            TaskTitle.Text = "작업이 취소되었습니다.";
-            SetFlowState(false, false, false);
+            AddTaskMessage("TASK CANCELED", "Coordinator-router 작업이 취소되었습니다."); ResultTitle.Text = "CANCELED"; TaskTitle.Text = "작업이 취소되었습니다."; SetFlowState(false, false, false);
         }
-        catch (Exception exception)
-        {
-            ShowCoordinatorFirstBlocked("Coordinator-first 작업에 실패했습니다.", exception.GetType().Name + ": " + exception.Message);
-        }
+        catch (Exception exception) { ShowCoordinatorFirstBlocked("Coordinator-router 작업에 실패했습니다.", exception.GetType().Name + ": " + exception.Message); }
         finally
         {
-            _activeCoordinatorFirst = false;
-            _activeTaskCts = null;
-            _userCanceledTask = false;
-            ExportTaskTranscript();
-            SetFlowState(false, false, false);
-            ApplyConnectionStatus();
+            _activeCoordinatorFirst = false; _activeTaskCts = null; _userCanceledTask = false; ExportTaskTranscript(); SetFlowState(false, false, false); ApplyConnectionStatus();
         }
     }
-
     private async Task<CodexCliResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string? schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
     {
         var started = DateTimeOffset.UtcNow;
         var result = await _codexRunner.RunAsync(prompt, role.Model, role.Reasoning, workingDirectory, sessionId, sandbox == CodexSandboxMode.ReadOnly, cancellationToken, schema, sandbox);
-        var isImplementer = purpose.StartsWith("IMPLEMENT", StringComparison.Ordinal);
-        UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, isImplementer ? "LUNA" : "SOL", role.Model, role.Reasoning, purpose,
+        var roleName = purpose.Contains("HIGH_LEVEL", StringComparison.OrdinalIgnoreCase) || purpose.Contains("HIGHLEVEL", StringComparison.OrdinalIgnoreCase) || purpose.Contains("ASTRA", StringComparison.OrdinalIgnoreCase) ? "HIGH_LEVEL"
+            : purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) || purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) ? "LUNA"
+            : "COORDINATOR";
+        UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
             result.Usage.ProviderTotalTokens, Encoding.UTF8.GetByteCount(prompt), Encoding.UTF8.GetByteCount(prompt), 0,
             null, Encoding.UTF8.GetByteCount(result.FinalMessage), (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
             null, result.Usage.UsageKnown, null, null, DateTimeOffset.UtcNow));
-        AddTaskMessage($"{(isImplementer ? "LUNA" : "SOL")} {purpose}", $"exit {result.ExitCode} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
+        AddTaskMessage($"{roleName} {purpose}", $"exit {result.ExitCode} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
         _lastActivityAt = DateTimeOffset.UtcNow;
         return result;
     }
@@ -1848,7 +1790,6 @@ public partial class MainWindow : Window
     {
         var basic = GetExecutionModeConfigError(workingDirectory);
         if (basic is not null) return basic;
-        if (_targetSettings.HighLevelEnabled) return "고수준 작업 AI의 위임 실행은 아직 연결되지 않았습니다. 설정에서 사용을 끄세요.";
         if (!string.Equals(coordinator.Transport, "codex_cli", StringComparison.OrdinalIgnoreCase))
             return "설계·관제 AI를 Web으로 설정했지만, Web 관제 실행 경로는 아직 연결되지 않았습니다. CLI 탭으로 바꿔 실행하세요.";
         if (!string.Equals(coordinator.Provider, "openai", StringComparison.OrdinalIgnoreCase) || !string.Equals(implementer.Provider, "openai", StringComparison.OrdinalIgnoreCase) || !string.Equals(implementer.Transport, "codex_cli", StringComparison.OrdinalIgnoreCase))
@@ -2282,6 +2223,24 @@ public partial class MainWindow : Window
         string followupPrompt;
         if (_actionProtocolEnabled)
         {
+            if (action.Kind == WebActionKind.Hq)
+            {
+                var coordinator = _targetSettings.EffectiveCoordinator;
+                var typedHandoff = WorkerTranscriptJson.Serialize(new { message_type = "HQ_MESSAGE", body = action.Body });
+                AddTaskMessage("ACTION HQ", "현재 설정된 설계·관제 AI에 메시지를 전달합니다.", status: "ROUTING");
+                if (IsWebTransport(coordinator.Transport))
+                {
+                    var webTask = await CreateWebTaskAsync("관제 전달 메시지입니다. message_type에 따라 본문을 해석한 뒤 다음 행동을 정하세요. 첫 줄은 [ACTION=CONTINUE|PAUSE|END|HQ] 중 하나로 시작하세요. CONTINUE면 다음 줄에 [NEXT : IMPLEMENTER|HIGH_LEVEL|JUDGE|COORDINATOR]를 쓰고 본문을 전달하세요.\n" + typedHandoff, task.Attachments ?? new List<BridgeAttachment>());
+                    _awaitingWebResult = webTask is not null;
+                    RunButton.Content = webTask is null ? "▶   실행" : "■   취소";
+                    TaskDirection.Text = "WORKER → GPT WEB (HQ)";
+                    TaskTitle.Text = webTask is null ? "관제 전달 실패" : "관제 응답 대기";
+                    SetFlowState(false, true, webTask is not null);
+                    return;
+                }
+                await RunCoordinatorFirstJobAsync(typedHandoff, null, _activeWorkingDirectory!, coordinator, _targetSettings.EffectiveImplementer);
+                return;
+            }
             if (action.Kind is WebActionKind.End or WebActionKind.Pause or WebActionKind.ProtocolError or WebActionKind.None or WebActionKind.Begin)
             {
                 FinishActionTask(action, webResponse);
@@ -2383,7 +2342,7 @@ public partial class MainWindow : Window
                 : new(WebActionKind.None, string.Empty);
 
         var firstLine = nonEmpty[0].Item1;
-        var actionPattern = new System.Text.RegularExpressions.Regex(@"^\[ACTION=(BEGIN|CONTINUE|PAUSE|END)\]$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var actionPattern = new System.Text.RegularExpressions.Regex(@"^\[ACTION\s*=\s*(BEGIN|CONTINUE|PAUSE|END|HQ)\s*\]$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         var match = actionPattern.Match(firstLine);
         if (!match.Success)
             return strict
@@ -2396,11 +2355,12 @@ public partial class MainWindow : Window
             "CONTINUE" => WebActionKind.Continue,
             "PAUSE" => WebActionKind.Pause,
             "END" => WebActionKind.End,
+            "HQ" => WebActionKind.Hq,
             _ => WebActionKind.ProtocolError
         };
         var body = string.Join(Environment.NewLine, lines.Skip(nonEmpty[0].index + 1)).Trim();
-        if ((kind is WebActionKind.Begin or WebActionKind.Continue) && string.IsNullOrWhiteSpace(body))
-            return new(WebActionKind.ProtocolError, string.Empty, "BEGIN/CONTINUE 본문이 비어 있습니다.");
+        if ((kind is WebActionKind.Begin or WebActionKind.Continue or WebActionKind.Hq) && string.IsNullOrWhiteSpace(body))
+            return new(WebActionKind.ProtocolError, string.Empty, "BEGIN/CONTINUE/HQ 본문이 비어 있습니다.");
 
         return new(kind, body);
     }
@@ -2416,6 +2376,7 @@ public partial class MainWindow : Window
                 + "[ACTION=CONTINUE] - 다음 작업을 진행하길 원할 때. 계속 진행해도 문제 없을 때" + Environment.NewLine
                 + "[ACTION=PAUSE] - 사용자가 개입해서 테스트해봐야 하는 상황일 때" + Environment.NewLine
                 + "[ACTION=END] - 목표에 달성한 상태일 때 혹은 대기 작업이 남아있지 않을 때" + Environment.NewLine
+                + "[ACTION=HQ] - 본문을 현재 설정된 관제 역할에 전달할 때. 관제 루틴이 message_type과 본문을 해석합니다." + Environment.NewLine
                 + Environment.NewLine
             : string.Empty;
         var instruction = includeWebInstruction && !string.IsNullOrWhiteSpace(webInstruction)

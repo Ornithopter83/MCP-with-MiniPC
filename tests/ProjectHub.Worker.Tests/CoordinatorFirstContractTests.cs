@@ -5,6 +5,27 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class CoordinatorFirstContractTests
 {
+    [Theory]
+    [InlineData("[ACTION=CONTINUE]\n[NEXT : IMPLEMENTER]\nbody", WorkerAction.Continue, WorkerNextRole.Implementer)]
+    [InlineData("[ACTION = HQ]\nmessage", WorkerAction.Hq, WorkerNextRole.Coordinator)]
+    [InlineData("[NEXT : COORDINATOR]\n[REPORT]\nopaque", null, WorkerNextRole.Coordinator)]
+    public void WorkerRoute_ParsesOnlyControlAndPreservesOpaqueBody(string text, WorkerAction? action, WorkerNextRole next)
+    {
+        var result = WorkerRouteContract.Parse(text, actionRequired: action is not null);
+        Assert.Null(result.Error);
+        Assert.Equal(action, result.Action);
+        Assert.Equal(next, result.Next);
+        Assert.NotEmpty(result.Body);
+    }
+
+    [Fact]
+    public void WorkerRoute_RejectsMissingOrInvalidFirstControlLine()
+    {
+        Assert.Equal("CONTROL_INVALID_FIRST_LINE", WorkerRouteContract.Parse("prose\n[ACTION=END]", true).Error);
+        Assert.Equal("NEXT_MISSING", WorkerRouteContract.Parse("[ACTION=CONTINUE]\nbody", true).Error);
+        Assert.Equal("BODY_MISSING", WorkerRouteContract.Parse("[ACTION=CONTINUE]\n[NEXT : IMPLEMENTER]", true).Error);
+    }
+
     [Fact]
     public void TranscriptJson_KeepsKoreanReadableAndValidUtf8Json()
     {

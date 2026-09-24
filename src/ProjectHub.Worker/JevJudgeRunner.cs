@@ -11,6 +11,7 @@ namespace ProjectHub.Worker;
 public enum JudgeDecision { Pass, Partial, Error }
 public sealed record JudgeRequest(string Goal,int Round,string WorkingDirectory,string CodexResult,string ValidationRequest,IReadOnlyList<CodexCliFile> Files,string ReviewSource,string? ReviewCommitSha,string? JobId=null,IReadOnlyList<CodexCommandExecution>? CommandExecutions=null);
 public sealed record JudgeResult(JudgeDecision Decision,string Message,string Provider,string? ExecutableOrEndpoint=null,JevCallTelemetry? Telemetry=null);
+public sealed record JudgeTransportResult(string? RawResponse, string? ErrorCode, JevCallTelemetry? Telemetry);
 
 public sealed class JevJudgeRunner
 {
@@ -23,6 +24,40 @@ public sealed class JevJudgeRunner
     }
 
     public string? FindExecutable(string? value)=>string.IsNullOrWhiteSpace(value)?null:value;
+
+    /// <summary>Coordinator-router adapter: performs transport and preserves the judge response without evaluating it.</summary>
+    public async Task<JudgeTransportResult> ReviewRawAsync(JudgeRequest request, JudgeSettings settings, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var endpoint = string.IsNullOrWhiteSpace(settings.ManualExecutableOrEndpoint) ? DefaultEndpoint : settings.ManualExecutableOrEndpoint.Trim();
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps) return new(null, "JEV_ENDPOINT_INVALID", null);
+        var key = Environment.GetEnvironmentVariable("TYPESAFE_API_KEY");
+        if (string.IsNullOrWhiteSpace(key)) return new(null, "JEV_API_KEY_MISSING", null);
+        if (!JevContract.TryParseValidation(request.ValidationRequest, out var validation, out var parseError)) return new(null, "JEV_VALIDATION_" + parseError, null);
+        var envelope = JevEvidenceEnvelope.Create(request, validation);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(settings.TimeoutSeconds, 10, 600)));
+        var questions = validation.Questions.ToDictionary(q => q.Id, q => BuildQuestion(q, envelope.EvidenceFor(q.Id)));
+        var payload = JsonSerializer.Serialize(new { model = "jev-latest", state = new { task = request.Goal, codex_result = request.CodexResult, round = request.Round, working_directory = request.WorkingDirectory, evidence = envelope }, questions });
+        var requestBytes = Encoding.UTF8.GetByteCount(payload);
+        var evidenceBytes = Encoding.UTF8.GetByteCount(envelope.ToProviderState());
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Post, endpointUri);
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            message.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+            using var response = await _client.SendAsync(message, timeout.Token);
+            var body = await response.Content.ReadAsStringAsync(timeout.Token);
+            stopwatch.Stop();
+            var telemetry = ReadTelemetry(body, requestBytes, evidenceBytes, Encoding.UTF8.GetByteCount(body), stopwatch.ElapsedMilliseconds, validation.Questions.Count, response.IsSuccessStatusCode ? null : $"JEV_HTTP_{(int)response.StatusCode}");
+            return response.IsSuccessStatusCode ? new(body, null, telemetry) : new(null, $"JEV_HTTP_{(int)response.StatusCode}", telemetry);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { stopwatch.Stop(); return new(null, "JEV_TIMEOUT", EmptyTelemetry(requestBytes, evidenceBytes, 0, stopwatch.ElapsedMilliseconds, validation.Questions.Count, "JEV_TIMEOUT")); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (HttpRequestException) { stopwatch.Stop(); return new(null, "JEV_CONNECTION", EmptyTelemetry(requestBytes, evidenceBytes, 0, stopwatch.ElapsedMilliseconds, validation.Questions.Count, "JEV_CONNECTION")); }
+        catch (Exception) { stopwatch.Stop(); return new(null, "JEV_TRANSPORT_ERROR", EmptyTelemetry(requestBytes, evidenceBytes, 0, stopwatch.ElapsedMilliseconds, validation.Questions.Count, "JEV_TRANSPORT_ERROR")); }
+    }
 
     public async Task<JudgeResult> ReviewAsync(JudgeRequest request,JudgeSettings settings,CancellationToken cancellationToken)
     {

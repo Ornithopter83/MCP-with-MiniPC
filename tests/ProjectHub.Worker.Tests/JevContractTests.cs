@@ -17,11 +17,12 @@ public sealed class JevContractTests
     }
 
     [Fact]
-    public void CoordinatorFooter_RoutesToCoordinatorOrJudgeWithoutChangingWebContract()
+    public void CoordinatorFooter_UsesActionHqAndKeepsJudgeTransportTyped()
     {
         var footer = JevContract.LoadCoordinatorFooter();
-        Assert.Contains("[NEXT : COORDINATOR]", footer);
-        Assert.Contains("[NEXT : JEV]", footer);
+        Assert.Contains("[ACTION=HQ]", footer);
+        Assert.Contains("message_type", footer);
+        Assert.Contains("provider response unchanged", footer, StringComparison.OrdinalIgnoreCase);
 
         var report = JevContract.ParseNext("[NEXT : COORDINATOR]\n[REPORT]\n검증 완료", coordinatorMode: true);
         Assert.Equal(NextRoute.Coordinator, report.Route);
