@@ -9994,3 +9994,561 @@ Worker = control contract router, not semantic evaluator
 ~~~
 
 이 규약이 신규 CLI-to-CLI의 최종 기준이다. 이전 피드백/현재 코드에서 이 규약과 충돌하는 ACTION=HQ, NEXT, HQ→JUDGE, HIGH→JUDGE, 자동 대체, Worker 자체 의미 판정은 신규 경로 기준에서 폐기한다.
+
+---
+
+# 2026-09-24 GPT Web HIGH 허가 정정 — 실행 버튼 기반 one-shot 사용자 커맨드
+
+> **최우선 정정 / HIGH 조건 supersede:** 바로 앞의 ACTION + GOTO 최종 계약은 유지한다. 다만 그 절의 HIGH 조건 중 `high_enabled` 설정 ON/OFF와 별도 `high_user_authorized` 개념은 이번 절로 대체한다.
+>
+> HIGH 사용 가능 여부는 **설정창의 영구 “사용” 옵션이 아니라, 사용자가 작업 실행 직전에 메인 화면의 “고수준 작업 허용” 체크박스를 직접 체크하고 실행 버튼을 누른 행위**로 생성한다. 즉 HIGH 허가는 텍스트 의미 분석이 아니라 **사용자가 직접 발생시킨 명시적 UI 커맨드**다.
+
+## 1. 사용자 의도
+
+HIGH는 평소에는 존재하지 않는 선택지처럼 취급한다.
+
+사용자가 메인 화면에서:
+
+~~~text
+☑ 고수준 작업 허용        [ ▶ 실행 ]
+~~~
+
+상태로 **실행 버튼을 직접 누른 경우에만**, Worker가 그 Job에 한정된 HIGH 1회 사용권을 생성한다.
+
+체크하지 않고 실행:
+
+~~~text
+☐ 고수준 작업 허용        [ ▶ 실행 ]
+~~~
+
+이면 해당 Job에서는 HIGH가 아예 허용되지 않는다.
+
+중요:
+- 사용자 자연어에서 “어려우면 고수준 써”, “Astra 써” 같은 문장을 Worker가 해석해 HIGH 권한을 만들지 않는다.
+- HQ가 스스로 작업 난이도를 보고 HIGH 권한을 생성하지 않는다.
+- 설정창에서 HIGH를 상시 ON으로 두는 개념을 없앤다.
+- **체크 + 실행 클릭**이라는 명시적 사용자 이벤트만 HIGH permit 생성 원인이다.
+
+## 2. UI 변경
+
+현재 XAML 기준 설정창 고수준 작업 AI 카드에는:
+
+~~~text
+사용 여부   [ ] 사용
+~~~
+
+체크박스 `HighLevelEnabledCheckBox`가 있다.
+
+이 체크박스를 설정창에서 제거한다.
+
+고수준 작업 AI 설정 카드에는 다음만 남긴다.
+
+- 서비스 제공자
+- 모델
+- 추론
+- 스레드/세션 선택
+- 해당 provider/model 실행 가능 상태
+
+즉 설정창은 **“HIGH를 무엇으로 실행할 것인가”**만 정한다.
+**“이번 작업에서 HIGH를 쓸 수 있는가”**는 설정창이 결정하지 않는다.
+
+### 메인 화면 배치
+
+현재 메인 하단은 대략:
+
+~~~text
+[ DashboardPreflightText ................................ ] [ ▶ 실행 ]
+~~~
+
+이다.
+
+이를 다음처럼 바꾼다.
+
+~~~text
+[ 상태/안내 ................................ ] [ ] 고수준 작업 허용   [ ▶ 실행 ]
+~~~
+
+권장 XAML 구조:
+
+~~~text
+Grid columns:
+* | Auto | 270
+
+Column 0: DashboardPreflightText
+Column 1: HighLevelPermitCheckBox
+Column 2: RunButton
+~~~
+
+체크박스 표시 문구:
+
+~~~text
+고수준 작업 허용
+~~~
+
+설정창의 기존 “사용”이라는 모호한 문구는 제거한다.
+
+## 3. 체크박스의 의미 — persistent setting이 아니라 launch command
+
+이 체크박스는 환경 설정이 아니다.
+
+다음처럼 해석한다.
+
+~~~text
+사용자가 체크
+   +
+사용자가 실행 버튼 클릭
+   ↓
+Worker가 새 Job 생성
+   ↓
+HIGH_PERMIT = 1
+~~~
+
+즉 사용자 행위가 Worker에게 전달하는 명시적 실행 커맨드다.
+
+체크 여부를 `WorkerTargetSettings.HighLevelEnabled` 같은 영구 설정으로 저장하지 않는다.
+
+권장 Job 내부 상태:
+
+~~~text
+high_permit_granted: bool
+high_permit_consumed: bool
+~~~
+
+또는 더 단순하게:
+
+~~~text
+high_uses_remaining: 0 | 1
+~~~
+
+가장 단순한 정의:
+
+~~~text
+Run click 시 checkbox unchecked:
+    high_uses_remaining = 0
+
+Run click 시 checkbox checked:
+    high_uses_remaining = 1
+~~~
+
+Worker는 자연어를 읽지 않고 UI 상태를 그대로 Job snapshot으로 옮긴다.
+
+## 4. 실행 버튼 클릭 시 정확한 순서
+
+`RunTask_Click`에서 새 CLI-to-CLI Job을 시작할 때:
+
+1. 현재 작업 입력을 읽는다.
+2. `HighLevelPermitCheckBox.IsChecked == true`를 읽는다.
+3. 새 Job에 `high_uses_remaining = 1` 또는 `0`으로 snapshot한다.
+4. Job 시작 직후 메인 UI 체크박스를 **unchecked로 되돌린다.**
+5. 이후 실행 중에는 체크박스를 비활성화한다.
+6. 현재 Job의 HIGH 사용 가능 여부는 UI 현재값이 아니라 **Job snapshot**만 사용한다.
+
+이렇게 해야:
+- 사용자가 실행 후 체크 상태를 바꿔도 진행 중 Job 권한이 바뀌지 않는다.
+- 다음 새 작업에 이전 허가가 실수로 이월되지 않는다.
+- 사용자는 HIGH를 허가할 때마다 직접 다시 체크하고 실행해야 한다.
+
+## 5. HIGH permit 수명
+
+permit은 **그 Job 안에서만 유효하고 최대 1회**다.
+
+~~~text
+JOB START
+high_uses_remaining = 1
+    ↓
+HQ가 WORK 선택
+    → permit 유지 (아직 1)
+    ↓
+WORK → HQ
+    ↓
+HQ가 HIGH 선택 가능
+~~~
+
+즉 체크했다고 HIGH를 즉시 사용해야 하는 것은 아니다.
+HQ는 해당 Job 중 필요하다고 판단하는 한 시점에 1회 사용할 수 있다.
+
+실제 HIGH dispatch 직전:
+
+~~~text
+if high_uses_remaining == 1:
+    high_uses_remaining = 0
+    invoke HIGH
+~~~
+
+이후 같은 Job:
+
+~~~text
+HIGH unavailable
+~~~
+
+Job이 END / PAUSE 종료 / 취소 / 실패로 끝나면 남은 permit도 폐기한다.
+다음 새 Job에 carry-over하지 않는다.
+
+## 6. HQ에 전달하는 one-shot HIGH 계약
+
+Worker는 체크박스 의미를 설명하기 위해 사용자 원문을 바꾸거나 해석하지 않는다.
+
+대신 HQ 호출 Footer/Control Contract에 **기계적 capability 상태**를 추가한다.
+
+### HIGH 미허가 Job
+
+HQ에:
+
+~~~text
+Allowed GOTO:
+- WORK
+
+HIGH is not authorized for this Job.
+Do not emit [GOTO : HIGH].
+~~~
+
+즉 HIGH는 정상 선택지에서 제거한다.
+
+### HIGH 허가 + 미사용 Job
+
+~~~text
+Allowed GOTO:
+- WORK
+- HIGH
+
+HIGH contract:
+- The user explicitly granted one HIGH invocation when launching this Job.
+- HIGH may be selected at most once.
+- If selected, the permit is consumed before HIGH starts.
+- HIGH returns directly to HQ and never uses JUDGE.
+~~~
+
+이 문구는 Worker의 의미 판단이 아니라 Job의 기계적 permit 상태를 AI에 알려주는 계약이다.
+
+### HIGH 사용 후
+
+다음 HQ 호출부터 다시:
+
+~~~text
+Allowed GOTO:
+- WORK
+
+HIGH has already been consumed for this Job.
+Do not emit [GOTO : HIGH].
+~~~
+
+## 7. 기존 최종 상태 머신과의 결합
+
+상태 전이 자체는 변경하지 않는다.
+
+~~~text
+HQ      -> WORK | HIGH
+WORK    -> JUDGE | HQ
+JUDGE   -> WORK
+HIGH    -> HQ
+UNKNOWN -> HQ
+~~~
+
+단, 실제 HQ의 `HIGH` edge 존재 조건만 다음으로 정정한다.
+
+이전 개념:
+
+~~~text
+high_enabled
+AND high_user_authorized
+AND NOT high_consumed
+~~~
+
+폐기.
+
+새 최종 개념:
+
+~~~text
+HIGH_AVAILABLE =
+    job.high_uses_remaining == 1
+~~~
+
+그리고 이 값의 유일한 생성자는:
+
+~~~text
+사용자가 메인 화면에서
+"고수준 작업 허용" 체크
++
+"실행" 클릭
+~~~
+
+이다.
+
+## 8. HIGH 호출 자체는 강제가 아니다
+
+체크박스의 의미는:
+
+~~~text
+반드시 HIGH를 사용해라
+~~~
+
+가 아니다.
+
+정확한 의미는:
+
+~~~text
+이번 Job에서 HQ가 필요하다고 판단하면
+HIGH를 최대 한 번 호출해도 좋다.
+~~~
+
+이다.
+
+따라서:
+- 체크되어 있어도 HQ가 WORK만 사용하고 END할 수 있다.
+- 이 경우 HIGH 호출 횟수는 0.
+- 사용하지 않은 permit은 Job 종료와 함께 소멸한다.
+- 사용하지 않았다고 다음 Job에 적립되지 않는다.
+
+## 9. 잘못된 HIGH 요청 처리
+
+### permit 없음
+
+HQ가 계약을 위반해:
+
+~~~text
+[ACTION=CONTINUE]
+[GOTO : HIGH]
+~~~
+
+를 반환했지만 `high_uses_remaining == 0`이면 Worker는 HIGH를 실행하지 않는다.
+
+의미 판단 없이:
+
+~~~text
+[GOTO : UNKNOWN]
+
+[ERROR]
+source_state: HQ
+code: HIGH_NOT_AUTHORIZED
+requested_goto: HIGH
+detail: This Job has no remaining user-issued HIGH permit.
+~~~
+
+형태의 오류를 HQ 상태에 되돌린다.
+
+Worker가 자동으로 WORK로 바꾸면 안 된다.
+
+### 이미 사용함
+
+동일하게:
+
+~~~text
+code: HIGH_PERMIT_CONSUMED
+~~~
+
+또는 하나의 `HIGH_NOT_AVAILABLE` 코드로 통일해도 된다.
+
+핵심은:
+- HIGH 재호출 0회
+- 자동 WORK 대체 0회
+- HQ가 오류를 보고 새 ACTION/GOTO 결정
+
+## 10. HIGH transport 실패 시 permit
+
+사용자는 **1회 HIGH 호출 허용**을 준 것이므로, permit은 HIGH 프로세스를 실제 dispatch하는 순간 소모한다.
+
+~~~text
+HQ -> HIGH dispatch
+high_uses_remaining: 1 -> 0
+~~~
+
+이후:
+- HIGH 정상 완료 → HQ
+- CLI 시작 실패 / provider 오류 / timeout → UNKNOWN → HQ
+
+어느 경우든 자동 재호출하지 않는다.
+
+다시 HIGH를 사용하려면 현재 Job 안에서 Worker/HQ가 임의로 권한을 복구하지 않는다.
+사용자에게 새 작업 또는 향후 명시적 재허가 UX가 필요하다.
+
+현재 범위에서는 **Job당 실행 시점 1회 permit만 지원**한다.
+
+## 11. 설정 저장/마이그레이션
+
+현재 `WorkerTargetSettings.HighLevelEnabled` 및 XAML `HighLevelEnabledCheckBox`가 존재한다.
+
+새 구조에서:
+
+- 설정창의 `HighLevelEnabledCheckBox` 제거.
+- 기존 저장 JSON에 `highLevelEnabled` 값이 남아 있어도 신규 HIGH permit 결정에는 사용하지 않는다.
+- backward compatibility 때문에 property를 즉시 삭제하기 어렵다면 읽기만 하고 deprecated 처리할 수 있다.
+- 저장 시 더 이상 “HIGH 사용 여부”의 진실 원본으로 사용하지 않는다.
+- HIGH 모델/provider/reasoning/thread 설정은 그대로 보존한다.
+
+새 메인 체크박스는 저장 설정에 persist하지 않는다.
+
+앱 재시작 후 항상 unchecked가 기본이다.
+
+## 12. 실행 가능성 표시
+
+고수준 모델 설정 자체가 실행 불가능한 상태라면:
+- 메인 “고수준 작업 허용” 체크박스를 disabled로 표시하거나,
+- 체크 후 실행 preflight에서 기술 오류를 명확히 표시할 수 있다.
+
+추천은 **체크박스를 disabled + 짧은 tooltip/status**다.
+
+예:
+
+~~~text
+☐ 고수준 작업 허용
+  (고수준 작업 AI 설정을 먼저 완료하세요)
+~~~
+
+이것도 의미 판단이 아니라 provider/model/session의 기계적 실행 가능성 검사다.
+
+## 13. Current Task / 이력 표시
+
+사용자가 HIGH permit을 주었지만 아직 사용하지 않은 것은 **실행 단계가 아니다.**
+
+따라서 파이프라인의 HIGH 카드를 컬러 활성화하지 않는다.
+
+~~~text
+permit granted != HIGH active
+~~~
+
+HIGH 카드가 활성화되는 시점은 실제:
+
+~~~text
+HQ [GOTO : HIGH]
+→ Worker가 HIGH dispatch 시작
+~~~
+
+했을 때뿐이다.
+
+메시지 이력에는 필요하면 시스템 메타 이벤트를 짧게 기록한다.
+
+~~~text
+SYSTEM
+고수준 작업 1회 허용
+~~~
+
+실제 HIGH 호출 시:
+
+~~~text
+HQ → HIGH
+고수준 작업 허가 사용
+~~~
+
+이 메타 로그는 권한 추적용이며 AI 의미 판단이 아니다.
+
+## 14. 회귀 테스트
+
+| ID | 시나리오 | 기대 |
+| --- | --- | --- |
+| HIGH-UI-01 | 설정창 열기 | 기존 “사용 여부 / 사용” 체크박스 없음 |
+| HIGH-UI-02 | 메인 입력 화면 | 실행 버튼 왼쪽에 “고수준 작업 허용” 표시 |
+| HIGH-UI-03 | 앱 최초 시작 | permit checkbox unchecked |
+| HIGH-UI-04 | Job 실행 후 | checkbox 즉시 unchecked / 실행 중 disabled |
+| HIGH-PERMIT-01 | unchecked + Run | Job `high_uses_remaining=0` |
+| HIGH-PERMIT-02 | checked + Run | Job `high_uses_remaining=1` |
+| HIGH-PERMIT-03 | checked + Run 후 UI 변경 | 진행 중 Job permit 변화 없음 |
+| HIGH-PERMIT-04 | permit 미사용으로 END | 다음 Job에 이월 0 |
+| HIGH-PERMIT-05 | permit 1 + HQ→HIGH | dispatch 직전 0으로 consume |
+| HIGH-PERMIT-06 | HIGH 완료 후 HQ→HIGH 재요청 | HIGH 실행 0, UNKNOWN→HQ |
+| HIGH-PERMIT-07 | HIGH transport 실패 | permit 복구 없음, UNKNOWN→HQ |
+| HIGH-ROUTE-01 | permit 0인 HQ prompt | Allowed GOTO에 HIGH 없음 |
+| HIGH-ROUTE-02 | permit 1인 HQ prompt | Allowed GOTO = WORK, HIGH |
+| HIGH-ROUTE-03 | HIGH 사용 후 HQ prompt | Allowed GOTO에 HIGH 없음 |
+| HIGH-ROUTE-04 | permit 1이어도 HQ가 WORK만 사용 | 정상 완료 가능, HIGH 호출 0 |
+| HIGH-JUDGE-01 | HIGH 실행 | HIGH Footer에 JUDGE 선택지 없음 |
+| HIGH-JUDGE-02 | HIGH가 GOTO:JUDGE 출력 | UNKNOWN→HQ |
+| HIGH-PERSIST-01 | 설정 저장/앱 재시작 | main permit checkbox는 항상 unchecked |
+| HIGH-LEGACY-01 | 기존 저장값 highLevelEnabled=true | 신규 Job permit을 자동 생성하지 않음 |
+
+## 15. Explorer E2E
+
+### A. 허가 없음
+
+1. “고수준 작업 허용” unchecked.
+2. 일반 작업 실행.
+3. HQ prompt/로그의 정상 allowed route에 HIGH가 없는지 확인.
+4. HQ → WORK → HQ 정상 진행.
+
+### B. 허가 후 미사용
+
+1. checkbox 체크.
+2. 실행.
+3. 체크가 즉시 해제되는지 확인.
+4. HQ가 WORK를 선택하게 하는 단순 작업 실행.
+5. HIGH 카드가 활성화되지 않는지 확인.
+6. 작업 종료 후 permit이 다음 Job에 남지 않는지 확인.
+
+### C. 허가 후 실제 1회 사용
+
+1. checkbox 체크.
+2. 실행.
+3. HQ가 HIGH를 선택하는 fixture/명시된 테스트 시나리오 사용.
+4. HIGH 카드가 실제 호출 중에만 활성.
+5. HIGH → HQ 직접 복귀.
+6. JUDGE 단계가 사이에 나타나지 않음.
+7. 이후 HQ allowed route에서 HIGH가 사라졌는지 확인.
+8. 재선택 시 HIGH 호출 없이 UNKNOWN → HQ.
+
+## 16. 현재 코드에 대한 구체 수정 포인트
+
+### XAML
+
+현재 설정:
+- `HighLevelEnabledCheckBox` — 제거.
+
+현재 메인 하단:
+- `DashboardPreflightText`
+- `RunButton`
+
+변경:
+- `DashboardPreflightText`
+- 새 `HighLevelPermitCheckBox` (Content=`고수준 작업 허용`)
+- `RunButton`
+
+실행 버튼 **바로 왼쪽**에 배치한다.
+
+### Settings load/save
+
+현재:
+- `HighLevelEnabledCheckBox.IsChecked = _targetSettings.HighLevelEnabled`
+- apply 시 `HighLevelEnabled = HighLevelEnabledCheckBox.IsChecked == true`
+
+신규:
+- 위 두 UI binding 제거.
+- provider/model/reasoning/thread 설정만 저장.
+- legacy `HighLevelEnabled` property는 migration 목적 외 신규 route 판단에 사용 금지.
+
+### RunTask_Click / Job init
+
+신규:
+- launch 순간 `HighLevelPermitCheckBox.IsChecked` snapshot.
+- Job-local `high_uses_remaining` 생성.
+- snapshot 직후 UI checkbox false.
+- active Job 중 checkbox disabled.
+
+### HQ contract builder
+
+현재 전역 설정의 `HighLevelEnabled`을 기준으로 HIGH를 보여주는 코드를 제거한다.
+
+신규:
+- `high_uses_remaining == 1`일 때만 HQ allowed GOTO에 HIGH 포함.
+- 그 외에는 WORK만 포함.
+
+### HIGH dispatch
+
+- GOTO:HIGH를 받은 시점에 permit이 1인지 기계적으로 확인.
+- 실제 HIGH 호출 직전에 0으로 consume.
+- HIGH 결과는 기존 최종 규약대로 무조건 HQ.
+- JUDGE route 제공 금지.
+
+## 17. 최종 HIGH 불변식
+
+~~~text
+HIGH 권한 생성자 = 사용자 메인 UI 체크 + 실행 클릭
+HIGH 권한 저장 위치 = 현재 Job snapshot
+HIGH 사용 횟수 = 최대 1
+HIGH 미사용 permit = Job 종료 시 폐기
+HIGH 재호출 = 자동 허용 금지
+HIGH -> HQ only
+HIGH -> JUDGE never
+Worker는 텍스트에서 HIGH 허가를 추론하지 않는다
+~~~
+
+따라서 HIGH의 최종 정의는:
+
+> **고수준 작업 AI는 설정에서 상시 활성화하는 기능이 아니다. 사용자가 새 작업을 실행하기 직전 메인 화면의 “고수준 작업 허용”을 직접 체크해 실행했을 때, Worker가 그 Job에 한해 1회성 HIGH GOTO 권한을 HQ 계약에 추가한다. HIGH를 실제 dispatch하면 권한은 즉시 소모되며, HIGH는 판정을 거치지 않고 반드시 HQ로 복귀한다.**
