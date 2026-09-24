@@ -2,264 +2,242 @@
 
 Updated: 2026-09-24
 
-## 2026-09-24 정책 기준 — ACTION + GOTO (현재 활성)
+## Current active scope — 11-C-GOTO-CONTRACT
 
-이 절은 아래 A/B/C와 11-C의 **과거 구현 결과를 삭제하지 않지만**, 현재 CLI-to-CLI 라우팅 정책으로는 이 절이 우선한다.
+Master-Polish.md가 최상위 정책 원본이다.
 
-- 상태: `HQ / WORK / HIGH / JUDGE / UNKNOWN`.
-- 전이: `HQ→WORK|HIGH`, `WORK→JUDGE|HQ`, `JUDGE→WORK`, `HIGH→HQ`, `UNKNOWN→HQ`.
-- ACTION은 HQ만 `CONTINUE / PAUSE / END`를 사용한다. `ACTION=HQ`는 폐기한다.
-- 신규 CLI wire는 `GOTO`를 사용한다. `NEXT : IMPLEMENTER/HIGH_LEVEL/COORDINATOR/JUDGE`는 신규 경로에서 폐기한다.
-- Worker는 계약/상태 전이/세션/transport 라우터다. WorkCard/AC/validation command/evidence/JEV 점수/REPORT 내용을 의미적으로 판정해 END를 막지 않는다.
-- JUDGE는 WORK만 호출하며 결과는 같은 WORK session으로 복귀한다.
-- HIGH는 JUDGE를 호출하지 않고 HQ로만 복귀한다.
-- HIGH의 실행 허가는 설정창 ON/OFF가 아니다. 메인 화면에서 사용자가 `고수준 작업 허용` 체크 후 `실행`을 눌렀을 때 현재 Job에 `high_uses_remaining=1`을 만든다. 실제 HIGH dispatch 직전에 0으로 소모하고 다음 Job에 이월하지 않는다.
-- 설정창의 기존 HIGH `사용` 체크박스는 제거하고 HIGH provider/model/reasoning/thread 설정만 유지한다.
-- 계약·provider·transport·session 오류는 UNKNOWN으로 포장해 HQ에 전달하며 자동 대체하지 않는다.
-- 기존 GPT Web의 `NEXT : WEB/JEV`는 legacy 경로에서 보존한다.
+현재 목표는 기존 CLI-to-CLI 경로를 **HQ / WORK / JUDGE / HIGH / UNKNOWN + ACTION/GOTO** 계약으로 맞추는 것이다.
 
-**현재 후속 작업 식별자:** `11-C-GOTO-CONTRACT` — 위 정책을 코드/Footer/UI/parser에 반영하고 Explorer에서 기본/JUDGE/HIGH one-shot/UNKNOWN 네 경로를 검증한다.
+## Core invariant
 
+**Worker는 판단하지 않는다. Worker는 흐름 제어 도구다.**
 
-## 2026-09-24 UI-B 후속 — 대기 카드 활성/비활성 팔레트
+Worker가 수행하는 일:
+- 제어행 문법 파싱
+- 상태 전이 확인
+- 역할별 session/provider 실행
+- GOTO 라우팅
+- timeout/cancel/auth/transport 오류 처리
+- transcript/usage 기록
+- HIGH one-shot permit 저장/소모
 
-- 대기 활성 카드만 청록색(배경 `#E0F2F4`, 아이콘 원/테두리 `#0D7884`, 제목 `#0F6B73`)으로 변경한다. 대기 비활성 및 다른 단계의 회색 규칙은 유지한다. 이미지의 `#D0784`는 유효하지 않아 `#0D7884`를 적용했다.
-- Debug 빌드 경고 0/오류 0, 전체 54개 테스트 통과, diff check 통과. Release 게시 및 `C:\AI-AGENT\Worker` 복사 완료(SHA-256 `3E6D649665EB8B9A39AB8A5BE3C3A18DB943A987E7DE41490853DC1DA409D844`). fetch/pull-rebase 및 최신 피드백 확인 후 커밋 `d5163d9`.
+Worker가 하지 않는 일:
+- 작업 결과 정답 여부 판단
+- AC 충족 판단
+- 테스트 충분성 판단
+- evidence 충분성 판단
+- JUDGE/JEV PASS/FAIL 의미 판정
+- 재작업 필요 여부 판단
+- 최종 완료 여부 판단
+- 역할 자동 승격/대체
 
-## 2026-09-24 UI-B 후속 — 현재 작업과 이력 카드 색상/아이콘 일치
+최종 판단은 AI가 한다.
 
-- UI-B의 파이프라인 카드와 이력 좌측 역할 카드의 역할별 배경색, 아이콘 배경색, 글자색이 서로 달랐다. 작업/판정은 색상 의미도 뒤바뀌어 있었다.
-- 네 AI 역할에 공통 역할 팔레트를 두고 두 화면 모두 같은 팔레트를 사용하도록 변경했다. 관제 이력 아이콘은 설정된 Web/CLI transport의 아이콘을 따른다. 실행 중 파이프라인의 역할 비활성/회색조 상태는 그대로 둔다.
-- 완료일: 2026-09-24. 검증: Debug 빌드 성공(경고 0/오류 0), 전체 53개 테스트 통과, `git diff --check` 통과. Release 게시 및 `C:\AI-AGENT\Worker` 복사 완료(SHA-256 `C0319B39853698CB309829C54DEA00F41FB879032D452EBFDC93FBE523EBA14A`). 커밋: `27f0c4d`. 잔여: `11-UI-B-EXPLORER-COLORS` 실제 화면 검증.
+## State contract
 
-## 2026-09-24 UI-B 후속 — 시작 대기 카드 색상 누락 수정
+~~~text
+HQ      -> WORK | HIGH
+WORK    -> JUDGE | HQ
+JUDGE   -> WORK
+HIGH    -> HQ
+UNKNOWN -> HQ
+~~~
 
-- 기존 CurrentWork와 구현 계획에 “시작/새 작업 대기 시 네 역할 카드 모두 역할색”이 기록돼 있었지만, 실제 `UpdatePipelineVisuals`는 오직 current stage만 색칠하고 있었다.
-- 초기 NewTaskInput + Idle에서 선택 여부와 무관하게 네 AI 역할 카드를 컬러/full-opacity로 그린다. 실행 후에는 기존 current-stage color, inactive grayscale/opacity를 적용한다.
-- 검증: Debug 빌드 경고 0/오류 0, 전체 49 tests, `git diff --check` 통과. Release 게시 및 Worker 복사 완료(SHA-256 `E7D0567D6C7B85D68D448E1D60CCA2BEDE363D29800EFACE62A911BF7C02E22A`).
-- 잔여 `11-UI-B-EXPLORER-COLORS`: 시작 대기·실행 중·새 작업 대기 상태의 Explorer 화면 검증.
+## ACTION
 
-## 2026-09-24 후속 — 제어행 라우터 및 ACTION=HQ (구현 완료)
+ACTION은 HQ만 사용한다.
 
-- 새 CLI path에서 Worker 의미 판정 gate를 제거하고 ACTION/NEXT 첫 제어행 parser와 opaque body handoff를 구현했다. WORK_CARD/IMPLEMENTER_RESULT/REVIEW JSON 강제, AC 집합 비교, command/evidence matcher, END 재판정, 고정 3회 제한, 별도 IMPLEMENT_ROUTE 호출을 사용하지 않는다.
-- 구현/고수준 AI의 NEXT는 같은 실행 응답에서 전달된다. 사용자 6번 지시에 따라 `[ACTION = HQ]`는 관제 역할로 회귀하며, 관제 루틴이 `message_type` envelope를 해석한다. Web 수신도 ACTION=HQ를 현재 설정된 Web/CLI 관제로 전달한다.
-- High-level 설정 활성 실행 경로와 JEV raw-response/transport adapter를 연결했다. 비활성 역할 요청은 ROUTE_UNAVAILABLE로 관제에 돌려보낸다.
-- 검증: Debug build 경고 0/오류 0, 전체 46 tests, `git diff --check` 통과. 최종 Release 게시 SHA-256 `40315A0D98DCFE88F41764CF5AB7FC485B60335EC8894823F202DC010452ED06`.
-- Release 게시 및 설치본 잠금 프로세스가 없는 것을 확인한 후 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` 복사를 완료했다. 게시본과 복사본 SHA-256은 `40315A0D98DCFE88F41764CF5AB7FC485B60335EC8894823F202DC010452ED06`로 일치한다. `C:\GameProject` 경로는 존재하지 않는다.
-- 잔여: `11-C-ROUTER-EXPLORER`, `11-C-WEB-HQ-LOOP`. 실제 Explorer 및 Extension 실브라우저 왕복은 도구 미제공으로 확인하지 못했다.
+~~~text
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+~~~
 
-## 2026-09-24 11-C follow-up — readable transcript, exact validation evidence, JEV route
+ACTION=HQ는 사용하지 않는다.
 
-- The attached 09:50 transcript is valid UTF-8. Default JSON escaping made Korean in the work card/result/review hard to read; transcript JSON now emits readable Korean while remaining parseable JSON.
-- The first PowerShell validation attempt exited 1. A later exact retry exited 0, but the matcher missed its nested CLI PowerShell wrapper and escaped inner quotes. The matcher now removes that wrapper encoding and still requires a complete command match.
-- After the structured implementation report, the implementer resumes in a read-only routing turn with the embedded coordinator Footer. It sends one `[NEXT : COORDINATOR]` report or one `[NEXT : JEV]` validation request. When JEV is requested, Worker supplies independently observed command exit evidence, returns the verdict to the same implementer session for a report, and forwards report/verdict/evidence to the original coordinator REVIEW session. Worker rejects END if requested JEV did not pass. Legacy Web NEXT behavior remains separate.
-- Completed: 2026-09-24. Verification: `dotnet build ProjectHub.sln --configuration Debug --no-restore` (0 warnings, 0 errors), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` (42 passed), `git diff --check` (passed). Remaining: `11-C-FOOTER-EXPLORER`, `11-C-JEV-LIVE`, `11-C-DEPLOY` (installation deferred by user preference); this new binary has not been tested through the Explorer UI.
+HQ의 CONTINUE:
+- 기본: [GOTO : WORK]
+- 현재 Job에 HIGH permit이 남아 있을 때만: [GOTO : HIGH]
 
-## Goal
+PAUSE/END에는 GOTO가 없다.
 
-신규 CLI-to-CLI에서 HQ를 유일한 ACTION 주체로 두고, Worker는 ACTION+GOTO 계약만 라우팅한다. 일반 구현은 WORK, 선택 판정은 WORK↔JUDGE, 사용자 launch-time one-shot 허가가 있는 고수준 작업은 HQ→HIGH→HQ로 처리한다. 기존 GPT Web ACTION/NEXT/JEV 경로는 legacy 호환으로 보존한다.
+HQ의 유효한 END를 Worker가 별도 semantic gate로 거부하지 않는다.
 
-## Policy boundary
+## Role contracts
 
-- HQ/WORK는 필수 독립 세션이다. JUDGE는 선택 기능이다. HIGH는 설정상 enable 기능이 아니라 사용자 launch-time one-shot permit으로만 호출 가능하다.
-- HQ: `ACTION=CONTINUE|PAUSE|END`; CONTINUE에서 `GOTO:WORK` 또는 permit이 있을 때 `GOTO:HIGH`.
-- WORK: `GOTO:HQ|JUDGE`.
-- JUDGE: 결과를 반드시 같은 WORK session으로 반환.
-- HIGH: `GOTO:HQ`만 허용, JUDGE 미사용, 한 Job 최대 1회.
-- UNKNOWN: protocol/provider/transport/session/route 오류를 보존해 HQ로 전달.
-- Worker는 BODY를 opaque하게 전달한다. 작업 카드·AC·검증 명령·exit code·JEV 점수·보고서의 의미를 완료 gate로 사용하지 않는다.
-- Worker는 인증, 선택 role/session, workspace sandbox, cancel/timeout, transcript/usage, 허용 GOTO와 one-shot permit 같은 **기계적 실행 경계**만 강제한다.
-- HIGH permit은 메인 화면 `고수준 작업 허용` 체크 + 실행 클릭으로만 생성한다. 자유형 텍스트에서 Worker가 허가를 추론하지 않는다.
-- Git commit/push·배포·외부 시스템 변경은 기존 사용자 승인 정책을 유지한다.
-- 아래 2026-09-23 A/B/C의 strict WorkCard/evidence gate 설명은 당시 구현 baseline 기록이며 새 라우팅 정책을 정의하지 않는다.
+### HQ
 
-## A — Role settings and capability preflight (complete, 2026-09-23)
+~~~text
+[ACTION=CONTINUE]
+[GOTO : WORK]
 
-- Add CLI-to-CLI and Legacy Web execution modes; default new installs to coordinator-first while preserving an explicit legacy option.
-- Persist independent coordinator/implementer provider, model, and reasoning settings. Existing settings deserialize safely. The UI currently exposes OpenAI Codex CLI only; an unknown saved provider is shown as unsupported and blocked rather than substituted.
-- Read the local `codex debug models` catalog without logging or persisting its raw output; expose only listed models and supported reasoning efforts.
-- Block execution for missing authentication, unsupported model/reasoning, missing Working Folder, or unsupported enabled Judge. Never silently substitute.
-- Keep legacy bottom-bar model/reasoning controls and Web/JEV behavior available in Legacy Web mode.
+[INSTRUCTION]
+...
+~~~
 
-## B — Coordinator work card and implementer execution (complete, 2026-09-23)
+또는 HIGH permit이 있을 때:
 
-- Route the initial user request to the selected coordinator in a new read-only session.
-- Require one schema-validated work card with goal, scope, atomic ACs, evidence requirements, and validation commands before any implementer invocation.
-- Send only the user request, work card, and relevant local project context to the selected implementer in a separate new session with workspace-write sandboxing.
-- Require a structured implementer result and capture role/model/session/usage separately.
-- Capture command execution events from Codex JSONL and compare them to the declared validation commands.
+~~~text
+[ACTION=CONTINUE]
+[GOTO : HIGH]
 
-## C — Coordinator review, UI flow, and regression (complete, 2026-09-23)
+[INSTRUCTION]
+...
+~~~
 
-- Send implementer result and observed validation evidence to the same coordinator session in read-only mode.
-- Complete only if CLI exit is successful, every required validator was observed with exit 0, and coordinator reports PASS for every AC without missing/duplicate IDs.
-- Show role direction, phase, model, and decision in Current Task/MESSAGE. Cancel must stop the active role process and restore UI.
-- Preserve Legacy Web ACTION/NEXT/JEV behavior.
+### WORK
 
-## Verification
+~~~text
+[GOTO : HQ]
 
-- Unit fixtures for catalog filtering/reasoning support, strict work-card/review parsing, command-execution extraction, and required-validation matching.
-- `dotnet test ProjectHub.sln --configuration Debug --no-restore`
-- `node --check extension/gptweb-hub/content.js`
-- `git diff --check`
-- Smoke-test only models explicitly shown as supported by the installed CLI; use a disposable workspace and record model IDs/usage. Do not claim GPT-6 Sol/Luna capability if the installed catalog omits them.
-- Publish the Release executable and copy it to the configured Worker deployment locations after the build succeeds.
+[REPORT]
+...
+~~~
 
-## Results
+또는:
 
-### 2026-09-24 11-C 후속 — 단계 카드·이력·관제 ACTION
+~~~text
+[GOTO : JUDGE]
 
-- 현재 작업 단계만 색을 갖도록 카드 상태를 보정했다. 비활성 아이콘 원형의 대비를 높이고 활성 작업/판정 배경을 각각 녹색/노란색으로 변경했다. `HistoryEvents`는 시간순으로 끝에 추가하고 마지막 항목을 표시한다.
-- 관제 REVIEW의 첫 유효행은 `[ACTION=CONTINUE]`, `[ACTION=PAUSE]`, `[ACTION=END]` 중 하나다. 그 뒤에는 기존 review 구조의 JSON을 반환한다. Web의 ACTION 의미를 적용하되 CLI REVIEW 본문은 원자 AC 검토 JSON이다. Worker는 모델 이름 대신 ACTION을 읽어 CONTINUE일 때 같은 카드·구현 세션으로 수정과 재검증을 진행하고, PAUSE는 종료/사용자 대기, END는 구현·실행 증거·모든 AC PASS를 확인한 뒤 완료한다. 부정확한 형식과 모순된 판정은 중단하며 자동 재작업은 최대 3회다. Web 계약과 Legacy Web 경로는 유지했다.
-- 완료일: 2026-09-24. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore`(경고/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`(39 passed), `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj --configuration Release --no-restore` 성공. 읽기 전용 임시 Codex CLI 호출에서 유효한 `[ACTION=END]`/REVIEW JSON을 확인했다. 게시 EXE SHA-256 `1B894FD0F3CB9CEB7DC8C3067F924036F50F40E37511C051AABA6E85A87C82C2`. Computer Use 앱 목록에 Windows 앱이 없어 Explorer 화면·통합 작업은 미검증이고 사용자 선택에 따라 설치는 보류했다. 잔여 `11-C-UI-EXPLORER`, `11-C-ACTION-E2E`, `11-C-DEPLOY`(설치 보류).
+[VALIDATION REQUEST]
+...
+~~~
 
-### 2026-09-24 11-C 후속 — 관제 세션 연결과 validator 실검증
+WORK는 HIGH를 호출하지 않는다.
 
-- 08:01 및 08:55 설치본에서 Sol PLAN exit 0 뒤 세션 ID 누락 차단이 반복됐다. 저장 설정의 `threadSessionId` 빈 문자열이 신규 세션 ID 추출을 가로막는 것이 확정 원인이었다. Runner와 관제에서 빈/공백 ID를 null로 정규화했다. LocalAppData에서 확인되는 사용자 프로필도 세션 루트 후보에 추가해 보조 복구를 강화했다.
-- CLI 실행 진행 이벤트의 `exit_code: null`은 숫자로 읽지 않는다. validation gate는 명령의 부분 문자열 언급을 실행 증거로 인정하지 않고 정확한 명령 또는 최대 두 겹의 PowerShell/cmd wrapper만 비교한다. 실패 후 성공한 재시도는 PASS로 판정한다. 실행 출력의 제한된 요약을 Sol REVIEW에 전달하고 검증 이력도 실제 증거로 표시한다.
-- 완료일: 2026-09-24. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore`(0 warning/0 error), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`(38 passed), `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj --configuration Release --no-restore` 성공. 승인받은 Worker 설치본과 게시본 SHA-256 `CFCF23323352A51FA6975CC656F088DEC39E1F50961E6277672A24DF20EAA0CF` 일치. Explorer에서 직접 작성·전송한 작업이 Sol PLAN→Luna IMPLEMENT→동일 Sol 세션 REVIEW로 끝났고 `MODEL_ACCESS_OK`, 검증 PASS, `DONE · REVIEW ACCEPTED`를 화면과 `_20260924_091428.txt` transcript에서 확인했다. 잔여 식별자 `11-C-DEPLOY`, `11-C-LIVE-SESSION` 완료.
+### JUDGE
 
-### 2026-09-24 재현 후속 — 서로 다른 Codex 세션 루트 검색
+JUDGE는 반드시 같은 WORK session으로 복귀한다.
 
-- 재현 transcript에서 PLAN은 정상 성공했지만 session ID 연결을 못 해 차단됐다. 동시각 rollout은 `USERPROFILE\.codex\sessions` 아래에 정상 기록되어 있었다. 앞 수정본이 설치되어 있었으므로 `CODEX_HOME`이 설정된 Worker 프로세스와 실제 CLI 기록 경로가 다른 경우가 남은 원인이다.
-- `CODEX_HOME`, `USERPROFILE\.codex`, .NET user-profile 기반 경로를 모두 조사하고 경로 중복을 제거한다. 기존 rollout snapshot 비교, CLI source/originator, CWD, 시간대, 단일 후보 요건을 유지한다.
-- 추가 회귀: CODEX_HOME과 실제 CLI 세션 경로가 다를 때 user-profile 루트에서 단일 rollout ID를 복구한다.
-- 완료일: 2026-09-24. 검증 명령과 게시본/설치본 해시는 `CurrentWork.md` 재현 후속에 기록한다.
+~~~text
+[GOTO : WORK]
 
-- Status: A/B/C complete (2026-09-23).
-- Baseline recovery tag: `recovery/before-11a-cli-to-cli-2026-09-23` at `f501694469f2f1a590d1739be5e6039978c7ebde`.
-- Initial local Codex model catalog snapshot omitted GPT-6 Sol/Luna. Follow-up check on `codex-cli 0.155.0-alpha.16` (2026-09-23) shows both as `visibility=list`, `supported_in_api=True`; direct ephemeral read-only calls to each model with `low` reasoning returned `OK`. Treat model availability as runtime catalog data; do not hard-code the initial snapshot.
-- Implementation: expanded settings UI and persisted independent roles/modes; catalog-gated model/reasoning choices; coordinator read-only work-card call; implementer workspace-write call in its own session; same coordinator session read-only review; exact AC-set and observed validation command exit-code gates; role/model/reasoning/session and usage telemetry/message records; cancel and transcript cleanup.
-- Verification: `dotnet test ProjectHub.sln --configuration Debug --no-restore` passed (Core 1, Agent 3, Server 1, Worker 23; total 28). `node --check extension/gptweb-hub/content.js` passed. `git diff --check` passed (line-ending normalization warnings only).
-- CLI smoke: disposable temp directory; explicitly catalog-supported `gpt-5.6-sol` with `low`; structured output schema and session ID passed. Temporary workspace removed.
-- Follow-up model support check: `gpt-6-sol` and `gpt-6-luna` both appeared in the current CLI catalog and each passed a direct `codex exec --ephemeral --sandbox read-only` call with `low` reasoning. This supersedes the earlier conclusion that these models were unsupported.
-- Explorer: published `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` launched with a responsive `ProjectHub Worker` window. Existing instance was stopped before launch.
-- Release publish: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\src\ProjectHub.Worker\bin\publish-worker.ps1 -NoRestore` succeeded and copied the executable to `C:\AI-AGENT\Worker` and `C:\GameProject`.
-- SHA-256 for the project publish executable and both deployment copies: `11E56140632E5BCCA5650B5310AC9C585532F606B25A8BC2A07466AB8FF5C8D1`.
-- Next task candidate: 11-B JobRunner separation/restart recovery; not started in this task.
+[JUDGMENT]
+...
+~~~
 
-## 2026-09-24 follow-up — coordinator session ID recovery and flow pulse
+JEV native 응답에는 adapter가 GOTO:WORK wrapper만 기계적으로 붙일 수 있다. Worker가 threshold를 비교해 의미적 PASS/FAIL을 만들지 않는다.
 
-- Investigated the Worker transcript `_20260924_010358.txt`: the Sol PLAN call returned exit code 0 and a work card, but its session ID was blank. The Worker correctly stopped before Luna because it could not guarantee that the later review would resume the same coordinator context. A matching Codex CLI rollout record existed for that time and working folder, so this was session-ID correlation failure rather than failure to produce a plan.
-- Hardened JSONL `thread.started` extraction for UTF-8 BOM and property casing. If that event is absent, Worker compares pre/post-call rollout files and accepts only one newly created `codex_exec` record matching source, exact working directory, and call time. Zero or ambiguous candidates remain blocked; this preserves the same-session review contract.
-- Added visible pulse/travel motion to the current-flow and pipeline arrows, including the one-edge Sol → Luna route and reverse Luna → Sol handoff.
-- Verification: Debug build succeeded with 0 warnings/errors; all 34 solution tests passed (Worker 29, Core 1, Agent 3, Server 1); `git diff --check` passed. Release publish succeeded (SHA-256 recorded in `CurrentWork.md`). Explorer animation and live CLI roundtrip were not verified: Native desktop apps were unavailable, and no extra model call was issued.
+### HIGH
 
-### 2026-09-24 reproduction — profile path mismatch
+HIGH는 JUDGE를 사용하지 않는다.
 
-- The user reproduced the block on the prior recovery build. The new transcript showed PLAN exit 0 and again stopped at session resolution. Its matching rollout existed under `C:\Users\ornit\.codex\sessions`.
-- Worker had searched the .NET special-folder profile `C:\Users\CodexSandboxOffline` while the Codex CLI used `USERPROFILE=C:\Users\ornit`. Session root resolution now prefers `CODEX_HOME`, then the `USERPROFILE` environment variable, then the special-folder fallback.
-- Verification: Debug build 0 warnings/0 errors; 35 tests passed (Worker 30, Core 1, Agent 3, Server 1); diff check passed. Release EXE hash `A379242F7027B5DA0443ADF5D20E5D3C22174B81F73B03B175E032B5AF1892C3`. Replacing `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` was rejected by approval review because it requires explicit deployment authorization; installed copy and UI recheck remain pending.
+~~~text
+[GOTO : HQ]
 
-## 2026-09-23 설정 선택 연동 후속 — 11-UI-A
+[REPORT]
+...
+~~~
 
-- 사용자 정정: 역할 이름은 삭제 요청이 아니라 그대로 유지 요청이었다. 설계·관제 AI, 작업 AI, 고수준 작업 AI, 판단 AI 제목을 네 카드의 왼쪽 아이콘 위에 복원했다.
-- 모델 목록이 한 개 이하인 상태에서 모델 콤보를 열면 CLI capability catalog를 재조회하고, 성공한 경우 모델별 reasoning 선택지를 갱신한다. 각 Codex 스레드 선택 콤보는 조회된 프로젝트/세션 전체를 표시하고, 선택한 프로젝트 경로를 메인 스레드/작업 폴더와 동기화해 설정 적용 시 저장한다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` (0 warning, 0 error); `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` (29 passed); `git diff --check` passed.
-- 남은 항목: 실제 Explorer 설정 UI에서 모델, reasoning, 스레드 변경과 적용 후 작업 폴더 저장을 확인한다. 이번 시점에서 origin/main과 동기화했고 최신 `GPT-Web-Feedback.md`를 읽었다.
+## HIGH one-shot permit
 
-## 2026-09-23 설정창 모델 목록 초기화 보완 (11-UI-A)
+HIGH는 설정창의 상시 ON/OFF 기능이 아니다.
 
-- CLI `debug models`의 현재 결과는 7개 모델이며 `CodexModelCatalog`가 제공하는 reasoning 목록도 모델별 지원값이다. 설정창이 카탈로그 조회가 끝나기 전에 표시될 수 있던 경로를 수정해, 설정창 열기에서 시작 설정 task를 기다린 다음 카탈로그가 0~1개일 때 재조회하고 UI 콤보를 다시 채운다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(0 warning, 0 error), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 성공(29 tests), `git diff --check` 통과.
-- Explorer 설정창에서 실제 목록이 보이는지는 데스크톱 UI 접근이 없어 아직 검증되지 않았다.
+설정창에는 HIGH의 provider/model/reasoning/thread 설정만 둔다.
 
-## 2026-09-23 서비스 모델 enum 및 요청 파라미터 연결 (11-UI-A)
+메인 화면 실행 버튼 왼쪽:
 
-- 로컬 설치 Codex CLI의 `debug models`를 직접 조회한 현재 목록은 다음과 같다.
+~~~text
+[ ] 고수준 작업 허용    [ ▶ 실행 ]
+~~~
 
-| 모델 enum / ID | 기본 추론 | 허용 추론 |
-| --- | --- | --- |
-| `Gpt6Astra` / `gpt-6-astra` | low | low, medium, high, xhigh, max, ultra |
-| `Gpt6Sol` / `gpt-6-sol` | medium | low, medium, high, xhigh, max, ultra |
-| `Gpt6Luna` / `gpt-6-luna` | medium | low, medium, high, xhigh, max |
-| `Gpt56Sol` / `gpt-5.6-sol` | low | low, medium, high, xhigh, max, ultra |
-| `Gpt56Terra` / `gpt-5.6-terra` | medium | low, medium, high, xhigh, max, ultra |
-| `Gpt56Luna` / `gpt-5.6-luna` | medium | low, medium, high, xhigh, max |
-| `Gpt55` / `gpt-5.5` | medium | low, medium, high, xhigh |
+사용자가 체크한 상태로 실행을 누르면:
 
-- UI는 enum 카탈로그에서 직접 채워져 CLI catalog 로딩 타이밍에 영향받지 않는다. `CodexModelRequest`는 `model=<id>&reasoning=<effort>` 형태로 두 설정값을 짝지으며, 실행 시 실제 CLI가 받는 `--model <id> -c model_reasoning_effort="<effort>"` 인수로 변환한다. 지원하지 않는 enum 조합은 요청 전에 거부한다. 기존 런타임 CLI capability 검증은 추가 안전 확인으로 유지한다.
-- 검증: 새 테스트에서 모델 7개, `gpt-6-luna/ultra` 불허, query 문자열 및 실제 CLI 인수 구성을 확인; 전체 30개 테스트와 Debug 빌드 통과. Explorer UI 화면 검증은 도구 제약으로 수행하지 못했다.
-- Release EXE 게시 및 두 Worker 배포 폴더 복사 완료. 세 SHA-256 일치: `6C14DC32491815EF2C21CAD65EF7C534733598580B1B03B27752DC25C25BACD7`.
+~~~text
+high_uses_remaining = 1
+~~~
 
-## 2026-09-23 팝업 footer·JEV endpoint 결과 표시 (11-UI-A)
+미체크 실행:
 
-- 설정 팝업 `VerticalOffset`을 -60px로 조정해 footer 버튼을 위로 이동했다.
-- 판단 AI의 비어 있던 모델 행 오른쪽에 endpoint 테스트 상태를 노출한다. 유효 응답은 파란 `Endpoint 응답 확인 완료`; HTTPS 검증 실패, provider 오류, 예외는 빨간 `Endpoint 확인 실패`다. 상세 결과는 tooltip과 MESSAGE에 표시하며 테스트 중 버튼을 비활성화한다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 통과(경고 0/오류 0); 전체 30개 테스트 통과; `git diff --check` 통과. 실제 픽셀 배치 검증은 데스크톱 UI 접근 부재로 미실행.
-- Release 게시 및 두 배포 경로 복사본 SHA-256 일치: `2686313D9B80FF02DD507CD10DF330D0999B99A40769A03018318E385004727D`.
+~~~text
+high_uses_remaining = 0
+~~~
 
-## 2026-09-23 설정 UI 후속 통합 정리 (11-UI-A)
+규칙:
+- Worker는 텍스트에서 허가를 추론하지 않는다.
+- 실제 HIGH dispatch 직전에 1→0.
+- HIGH 실패 시 permit 자동 복구 없음.
+- Job 종료 시 남은 permit 폐기.
+- 다음 Job에 이월 금지.
+- 실행 직후 checkbox는 unchecked.
+- 진행 중 Job은 실행 시작 snapshot만 사용.
 
-- 역할 제목 4개 보존, 설정 카드와 콤보 연동, 현재 서비스 모델/추론 enum, CLI 요청 인수 조합, JEV Endpoint 테스트 결과 표시, 팝업 상향/footer 노출까지 최근 후속 커밋(`36af426`–`22b2262`)을 한 범위로 정리했다.
-- 검증 기준은 Debug build 경고/오류 0, 전체 30개 테스트, diff check 및 게시 EXE 3개 SHA-256 일치다. 실제 Explorer 팝업 화면에서 항목 선택, 버튼 노출과 JEV 결과 표시를 확인하는 수용 검증은 남아 있다.
-- 동기화 확인: `git fetch origin` / `git pull --rebase` 후 최신 GPT-Web-Feedback 확인. 추가 충돌 없음.
+## UNKNOWN
 
-## 2026-09-23 설정 폼·창 아이콘 후속 반영 (11-UI-A, 부분 반영)
+정상 AI 역할이 아니다.
 
-- 사용자가 승인한 설정 폼을 반영해 저장소/폴더 및 AI모델 설정 제목과 주요 라벨을 한글화했다. 상단 상태 요약은 설정창에서 접고 서버 상태 카드를 서버 주소 행에 두었다. 판단 AI는 Typesafe/JEV로 표시하고 Endpoint·제한 시간 입력은 감춘 채 JSON 설정 테스트 버튼을 노출했다.
-- 설계·관제 AI의 OpenAI Web/Codex CLI 선택에 따라 우측 Web/스레드 카드가 바뀌도록 했고, GPT Web·스레드 아이콘을 구분했다. WPF Window.Icon에 worker-icon.png를 지정했다. EXE ApplicationIcon 설정은 기존 worker-icon.ico를 계속 사용한다.
-- 검증: `dotnet test ProjectHub.sln --configuration Debug --no-restore` 통과(Core 1, Agent 3, Server 1, Worker 23), `node --check extension/gptweb-hub/content.js`, `git diff --check` 통과. Release 게시/복사 후 세 EXE의 SHA-256은 `00722E076184D29F8CA2C86601F05FE0839103F920C1F1E34E686A6A9AF8DEA7`이며 배포 EXE가 ProjectHub Worker 창으로 실행되는 것을 확인했다.
-- 제한/잔여: Web 선택에 따른 coordinator-first Web 실행 경로는 아직 구현되어 있지 않아 현재 CLI-to-CLI preflight가 차단한다. 역할별 thread 선택은 coordinator 카드만 표시되며 implementer/high-level 역할 카드 및 스레드 설정은 미구현이다. 따라서 UI 폼은 부분 반영으로 기록하며, 이를 11-A/B/C 완료로 승격하지 않는다.
+기계적 오류 예:
+- 제어행 누락/문법 오류
+- 금지된 GOTO
+- HIGH permit 없음
+- JUDGE 비활성/연결 실패
+- provider timeout/auth 오류
+- process/session/transport 오류
 
-## 2026-09-23 화면 불일치 수정 (11-UI-A 후속)
+Worker는 자동 대체하지 않는다.
 
-- 첨부 화면에서 발생한 우측 카드 잘림 원인은 1220px 팝업 안에 고정 6열을 넣은 레이아웃이었다. 창 기본 크기를 1400×900, 최대 1440×960으로 제한하고 설정 팝업은 1400×840로 확장했다. 모델/추론을 공급자 아래 두 줄로 재배치하고, 네 역할 모두 왼쪽 아이콘/이름, 중앙 선택값, 오른쪽 상태/스레드 카드 형식으로 맞췄다.
-- 설계·관제는 GPT Web/OpenAI Codex CLI 탭에 따라 대응 카드와 아이콘을 바꾼다. 작업·고수준 역할은 각각 현재 작업 폴더에 한정된 Codex 스레드 선택을 보여 주고 선택된 세션/프로젝트 경로를 JSON에 저장한다. 고수준 역할은 Astra/High 및 OFF 기본값이다. 기존 설정 파일에서 transport가 빠진 설계·관제 역할은 Web 기본값을 사용한다.
-- 회귀 검사: 설정 기본값·transport·독립 threadSessionId/threadProjectPath를 확인하는 Worker 테스트를 추가했다. 현재 검증 결과는 전체 29개 통과, `node --check extension/gptweb-hub/content.js`, `git diff --check`, WPF 앱 시작 및 1400×900 선언값 확인이다.
-- 제한: 현재 실행 엔진은 CLI-to-CLI이므로 Web 관제 선택, JEV 활성화, 고수준 역할 활성화는 실행 전 차단한다. 데스크톱 캡처 인터페이스가 현재 세션에 제공되지 않아 새 팝업의 Explorer 화면 캡처는 확인하지 못했다.
-- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 실행파일 SHA-256 일치: `3C2ECBECAF10DCDBF78162145D976A14AFCA211F94F3AB45E6A0A1835099AD99`. 배포본 `ProjectHub Worker` 창 기동 성공.
+~~~text
+[GOTO : UNKNOWN]
 
-## 2026-09-23 설정 폼 정렬·클릭 영역 재수정 (11-UI-A)
+[ERROR]
+source_state: ...
+code: ...
+detail: ...
+~~~
 
-- 서버 상태 카드를 폭 390px·높이 110px로 키우고 랙 형태 아이콘과 서버명/연결 상태를 배치해 저장소 설정 오른쪽 큰 카드로 복구했다.
-- 설계·관제, 작업, 고수준 작업, 판단 AI의 왼쪽 제목·아이콘을 세로 구조로 통일했다. 판단 AI를 역할 카드 구조로 바꾸고 Typesafe/JEV, 사용 스위치, JSON 설정 테스트를 다른 행과 같은 열 기준으로 배치했다. 고수준 작업 AI의 사용 항목도 판단 AI의 사용 항목과 같은 열에 맞췄다.
-- ComboBox 템플릿에서 드롭다운 ToggleButton이 전체 컨트롤을 덮도록 바꾸고, 투명 배경 Border가 전체 클릭 hit-test를 받도록 수정했다. 화살표 glyph 자체는 hit-test에서 제외했다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0); 권한 확장 실행의 `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
-- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 성공. 게시 실행본과 두 복사본 SHA-256 일치: `1D61AEFD08787B9CC057CDC31A69F6FE47404BFF7BA9E22FC6BBA86E2B4A34E1`.
-- 제한: 네이티브 데스크톱 캡처 인터페이스가 이번 세션에 앱 창을 노출하지 않아 실제 설정 팝업의 화면 캡처/클릭 E2E는 미수행이다. XAML 컴파일과 앱 publish까지만 증거로 기록한다.
+를 HQ에 전달한다.
 
-## 2026-09-23 설정 팝업 하단·카드 시각 정리 (11-UI-A)
+HQ가 다음 ACTION을 판단한다.
 
-- 고수준 작업 AI와 판단 AI 카드를 위쪽 역할 카드와 동일한 흰 바탕·테두리 스타일로 통일했다. 판단 AI의 JSON 설정 테스트 버튼을 옅은 파란 강조 버튼으로 다듬고 버튼 앞의 중복 상태 문구를 화면에서 제거했다.
-- 닫기/적용 버튼을 스크롤 컨테이너 밖의 팝업 하단 행으로 이동했다. 팝업 높이는 850px로 고정하고 설정 영역의 상하 여백과 행 간격을 줄여 기본 화면에서 콘텐츠와 버튼이 함께 보이도록 했다. 내부 세로 스크롤 표시는 비활성화했다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
-- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 실행 파일 SHA-256: `2495676D3EAB3DA2220E7A82A18AF86E261A0A94AA9E3FFE177C4F606DE6B58F`.
-- 제한: 실제 Explorer 화면 배치 확인은 이번 세션에서 네이티브 앱 화면 캡처가 불가능해 수행하지 않았다. 크기 수용 여부의 최종 화면 확인은 실제 실행 화면 증거가 필요하다.
+## Required code changes
 
-## 2026-09-23 설정 카드 정렬·판단 AI 콤보·팝업 드래그 (11-UI-A)
+1. 신규 CLI 경로의 NEXT 제거, GOTO 도입
+2. ACTION=HQ 제거
+3. 역할 enum/state를 HQ/WORK/JUDGE/HIGH/UNKNOWN으로 정리
+4. ACTION parser를 HQ 응답에만 적용
+5. HQ allowed GOTO = WORK 또는 permit이 남은 HIGH
+6. WORK allowed GOTO = HQ/JUDGE
+7. JUDGE return = 같은 WORK session
+8. HIGH return = HQ only
+9. WORK/HIGH Footer 분리
+10. Worker semantic gates 제거
+11. JEV threshold/evidence 의미 판정을 Worker flow에서 제거
+12. protocol/infrastructure error → UNKNOWN → HQ
+13. 설정창 HIGH 사용 체크박스 제거
+14. 메인 실행 버튼 왼쪽 one-shot HIGH checkbox 추가
+15. Job-local high_uses_remaining 구현
+16. 기존 GPT Web NEXT:WEB/JEV legacy 회귀 보존
 
-- 첫 두 역할만 둘러싸던 연한 파란 외곽 그룹을 제거하고, 네 역할을 동일한 흰 배경/테두리 카드로 정렬했다. 고수준과 판단 AI도 provider/model 콤보박스를 노출했고, 판단 AI 옵션은 Typesafe/JEV 고정 목록이다. Typesafe 표시는 설정 저장 시 기존 provider 값 `jev`로 유지한다.
-- `Popup`에는 네이티브 타이틀바가 없어 제목 드래그가 동작하지 않았다. 제목 헤더에서 포인터를 캡처하고 화면 좌표 이동량을 Popup의 수평/수직 offset에 적용해 이동하도록 했다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
-- Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 세 EXE SHA-256: `79FFC737AFA8A09D15E217E803C17B68D20064AE328F128227DD050F9F236BFE`.
-- 제한: 실제 창에서 카드/드래그 동작을 캡처로 확인하는 네이티브 UI 도구가 현재 세션에 없어 build/test 수준까지 검증했다.
+## Regression tests
 
-## 2026-09-23 역할 콤보·카드 폭 및 파란 패널 스타일 재적용 (11-UI-A)
+- HQ CONTINUE + GOTO WORK → WORK 1회
+- HQ END → 추가 AI 호출 0, Worker semantic gate 0
+- WORK GOTO HQ → 같은 HQ session
+- WORK GOTO JUDGE → JUDGE → 같은 WORK session
+- WORK GOTO HIGH → UNKNOWN → HQ
+- JUDGE ACTION 출력 → UNKNOWN → HQ
+- HIGH GOTO HQ → 같은 HQ session
+- HIGH GOTO JUDGE → UNKNOWN → HQ
+- HIGH permit 0 → HQ allowed list에 HIGH 없음
+- HIGH permit 1 → HIGH 최대 1회
+- HIGH 사용 후 재요청 → UNKNOWN → HQ
+- REPORT/JUDGMENT 내용이 잘못돼 보여도 Worker가 의미 판정하지 않고 전달
+- command quoting/exit code가 달라도 Worker가 작업 성공/실패를 판단하지 않음
+- Legacy Web NEXT:WEB/JEV 정상 회귀
 
-- AI 모델 설정의 파란 외곽 배경과 흰 역할 카드를 다시 적용했다. 고수준/판단 AI에도 파란 외곽 여백과 안쪽 흰 카드가 보이게 했다.
-- 역할 중앙의 provider/model 입력은 동일한 유동 열 폭, reasoning 콤보는 170px 열로 정렬했다. 구현 provider 콤보가 reasoning 영역까지 늘어나지 않도록 model 열 폭으로 제한했다. Thread 콤보는 260×30px로, 우측 역할 카드/JSON 버튼은 350px로 맞췄다. ComboBox 공통 글꼴은 기존 Segoe UI 14px를 유지한다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0; `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 29개 통과; `git diff --check` 통과.
-- Release 게시와 Worker/GameProject 복사 완료. 세 EXE SHA-256: `89EC339F70067D211C022BEF515405235C01586599BC825578D283CE6952E8FC`.
-- 제한: 네이티브 앱 화면 캡처 미지원으로 최종 픽셀 비교는 미수행.
+## Explorer E2E
 
-## 2026-09-23 필수·선택 역할 카드 정렬 보정 (11-UI-A)
+최소 네 경로를 실제 UI에서 확인한다.
 
-- 고수준/판단 AI의 파란 바탕 안쪽 여백을 필수 AI 그룹과 동일한 14×12px로 맞춰 흰 카드 시작선과 내용 기준선을 정렬했다.
-- 설계·관제 AI의 `추론` 라벨을 다른 역할과 같은 14px로 통일했다. 판단 AI `사용 여부` 라벨을 체크박스와 같은 첫 행으로 이동하고, 모델 JEV를 콤보 기본 선택값으로 지정했다.
-- 검증: Debug 빌드 경고 0/오류 0, 전체 29개 테스트 통과, `git diff --check` 통과.
-- 화면 캡처 검증은 네이티브 앱 접근 미지원으로 수행하지 않았다.
+~~~text
+A. HQ -> WORK -> HQ -> END
+B. HQ -> WORK -> JUDGE -> WORK -> HQ -> END
+C. HIGH 허가 -> HQ -> HIGH -> HQ -> END 또는 WORK
+D. invalid route/provider error -> UNKNOWN -> HQ
+~~~
 
-## 2026-09-23 역할 영역 기준선 세밀 정렬
+## Completion condition
 
-- 선택 영역의 바깥 파란 카드 패딩을 필수 역할 그룹과 같은 14×12px로 설정해 안쪽 흰 카드 시작선을 맞췄다.
-- 관제 AI `추론` 라벨은 14px, 판단 AI의 `사용 여부` 라벨은 checkbox와 같은 1행으로 정렬했다. JEV 모델은 콤보 기본값으로 선택되도록 설정했다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 29개 통과, `git diff --check` 통과. Release 게시 후 Worker와 GameProject에 복사했고 세 SHA-256 일치: `FF8AE9159BACCD88AB9C7BFE92F8E05E8BAE2280751E5CE4E6EB1F9EBE238867`.
-- 파일 잠금 원인이던 기존 Worker는 Bridge에 active task가 없음을 확인하고 종료 후 갱신했다. 게시본 재기동 후 `ProjectHub Worker` 창과 Bridge ready/Web connected를 확인했다. 설정 팝업 픽셀 캡처는 이번 세션에서 미지원이다.
+11-C-GOTO-CONTRACT 완료는 **Worker가 의미 판단 없이 계약된 흐름만 제어하는 실제 Explorer 왕복**이 확인됐을 때 기록한다.
 
-## 2026-09-23 설정창 입력 차단·카드 표시 후속 (11-UI-A)
-
-- 팝업 표시 시 배경 차단 overlay를 먼저 켜고 키보드 포커스를 설정 탭에 둔다. 메인 창의 키 입력은 무시하고 설정 팝업이 열린 동안 메인 창 닫기 요청은 설정창만 닫는다. 설정 팝업의 Escape 닫기를 추가했다.
-- coordinator가 GPT Web이면 모델 콤보를 비활성화한다. 서버 상태 카드는 랙/표시등 아이콘으로, Codex 스레드 카드는 대화 아이콘으로 바꿨다. 네 역할 제목 문구를 카드에서 제거하고 팝업 기본 글꼴을 14px로 통일했다.
-- 검증: Debug build 경고 0/오류 0; 전체 테스트 29개 통과; git diff --check 통과. Release 및 Worker/GameProject 복사 성공, 세 SHA-256 0A219F77B9F83FC588D7E540F23F234DF4050B4929B745DCB0F26C2A7AC0BF69.
-- 비고: Explorer 설정 팝업의 실제 시각 캡처 검증은 수행하지 않았다. 활성 실행 경로 잔여는 변경하지 않았다.
+빌드/단위테스트만으로 Explorer E2E 완료를 선언하지 않는다.
