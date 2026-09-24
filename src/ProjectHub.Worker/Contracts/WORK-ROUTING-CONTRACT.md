@@ -45,6 +45,8 @@ F=insufficient evidence
 EVIDENCE: src/game_loop.cpp
 
 These examples are illustrative, not restrictions. Use measurable criteria only when the user request or evidence supports them. If another judgment round is useful after reading a JUDGE response, take the proposed follow-up plan through HQ review again before sending it.
+
+For [GOTO : JUDGE], use the existing JUDGE transport forms and workspace-relative EVIDENCE paths.
 {{/JUDGE_ON}}
 {{JUDGE_OFF}}
 Your first non-empty control line must be exactly one of:
@@ -66,8 +68,6 @@ For [GOTO : RESOURCE], the entire body must be one JSON object with exactly thes
 {"type":"IMAGE","prompt":"...","targetDirectory":"assets/tiles","targetFileName":"fruit_tiles.png"}
 
 type is IMAGE or SOUND. targetDirectory must be workspace-relative and targetFileName must be a file name, not a path. Worker validates only this transport schema/path safety and does not judge whether the prompt or asset is good.
-
-For [GOTO : JUDGE], use the existing JUDGE transport forms and workspace-relative EVIDENCE paths.
 
 GOTO syntax is strict:
 - Use a colon exactly as shown.

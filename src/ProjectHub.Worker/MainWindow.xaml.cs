@@ -1526,13 +1526,19 @@ public partial class MainWindow : Window
                                 null,
                                 workingDirectory);
                             var resourcePrompt = RoleContractLoader.BuildResourcePrompt(pendingResourceRequest);
-                            var resourceTask = _bridgeServer.CreateTaskForRole("RESOURCE", resourcePrompt, resource: trackedResource);
+                            var bridgeServer = _bridgeServer;
+                            if (bridgeServer is null)
+                            {
+                                RouteUnknown(WorkerRoleState.Resource, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE Web task를 생성할 수 없습니다.");
+                                continue;
+                            }
+                            var resourceTask = bridgeServer.CreateTaskForRole("RESOURCE", resourcePrompt, resource: trackedResource);
                             if (resourceTask is null)
                             {
                                 RouteUnknown(WorkerRoleState.Resource, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE Web task를 생성할 수 없습니다.");
                                 continue;
                             }
-                            var completedResource = await _bridgeServer.WaitForTaskCompletionAsync(resourceTask.Id, cts.Token);
+                            var completedResource = await bridgeServer.WaitForTaskCompletionAsync(resourceTask.Id, cts.Token);
                             if (completedResource is null || completedResource.Status != "COMPLETED" || string.IsNullOrWhiteSpace(completedResource.SavedPath) || !File.Exists(completedResource.SavedPath))
                             {
                                 RouteUnknown(WorkerRoleState.Resource, "RESOURCE_RESULT_MISSING", completedResource?.Result ?? "RESOURCE result file missing.");
@@ -1591,14 +1597,15 @@ public partial class MainWindow : Window
 
     private async Task<AiRoleRunResult> RunWebRoleAsync(string jobId, string roleName, string purpose, string prompt, CancellationToken cancellationToken)
     {
-        var webStatus = _bridgeServer?.GetRoleBindingStatus(roleName);
-        if (webStatus is null || !webStatus.Bound || !webStatus.Connected || !webStatus.ExtensionSynchronized)
+        var bridgeServer = _bridgeServer;
+        var webStatus = bridgeServer?.GetRoleBindingStatus(roleName);
+        if (bridgeServer is null || webStatus is null || !webStatus.Bound || !webStatus.Connected || !webStatus.ExtensionSynchronized)
             throw new InvalidOperationException($"{roleName}_WEB_UNAVAILABLE");
 
         var started = DateTimeOffset.UtcNow;
-        var task = _bridgeServer.CreateTaskForRole(roleName, prompt)
+        var task = bridgeServer.CreateTaskForRole(roleName, prompt)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_CREATE_FAILED");
-        var completed = await _bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
+        var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
         var message = completed.Result ?? string.Empty;
         var success = completed.Status == "COMPLETED";

@@ -81,3 +81,16 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - UI 용어를 설계·관제 / 작업 / 리소스 / 판정으로 통일
 
 Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
+
+## 2026-09-24 Windows build/test/publish
+
+- 원격 `main` `09ac0dc`에서 확인한 compile 오류를 수정했다: `AiRoleRunner.cs`의 `Directory`, `ResourceTransportContract.cs`의 `Path` 참조를 위해 `System.IO`를 명시했다.
+- RESOURCE/HQ Web 호출의 `_bridgeServer` nullable 경고는 명시적 null guard로 정리했다.
+- Judge 비활성 시 WORK footer에서 JUDGE GOTO transport 안내가 노출되던 내용을 `JUDGE_ON` 조건부 블록으로 이동했다.
+- `dotnet test ProjectHub.sln --no-restore`: 통과 (Core 1, Agent 3, Server 1, Worker 70; 전체 75).
+- `dotnet build ProjectHub.sln -c Debug --no-restore`: 성공, 경고 0 / 오류 0.
+- `dotnet build ProjectHub.sln -c Release --no-restore`: 성공, 경고 0 / 오류 0.
+- `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj -c Release -r win-x64 --no-restore`: 성공.
+- 실행 중인 Worker 프로세스가 없음을 확인하고 게시 EXE를 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`에 복사했다. 게시본과 복사본 SHA-256은 `072FAC4E47DF2F2DA568D9823221ED2E5FC33830962F0154B4D82E774D3712FD`로 일치한다.
+- `git diff --check`: 통과.
+- Explorer 실화면/HQ-Web·RESOURCE 왕복은 사용자 확인 잔여다.
