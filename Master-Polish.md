@@ -1,6 +1,6 @@
 # Master-Polish — 저비용 AI Role Dev Tool 설계
 
-작성·기준일: 2026-09-23 (KST)
+작성·기준일: 2026-09-24 (KST)
 문서 작업: **09-A 완료** · 제품 구현 후속: **09-C, 10-A/B/C, 11-A 완료**
 검토 기준: 2026-09-23 동기화된 GitHub `main`과 이후 로컬 완료 작업을 대조. 09-B 실화면 잔여는 사용자 결정으로 해결 처리하고 정기 관리에서 제외한다.
 2026-09-23 갱신 기준: GitHub `main`의 `AGENTS.md`, 구현계획, 최신 `CurrentWork.md`, 활성 09 task, Master, 최신 `GPT-Web-Feedback.md`를 다시 대조했다.
@@ -8,23 +8,26 @@
 > **개정 목표(2026-09-23): ProjectHub는 네 가지 AI 역할을 설정창에서 독립적으로 구성하는 CLI-to-CLI 중심의 저비용 개발 시스템이다.** 필수: **설계·관제 AI**(예: GPT-6 Sol CLI), **작업 AI**(예: GPT-6 Luna Medium CLI). 선택: **작업 판단 AI**(기존 JEV 연결 또는 향후 AI 판단 어댑터), **고수준 작업 AI**(어려운 구현을 위한 별도 모델). Worker가 상태·권한·예산·증거·복구와 독립 세션을 관리한다. ChatGPT Web/Extension은 기존 호환 경로로 보존하되 신규 기본 관제 경로가 아니다. 토큰 절약 → 목표까지의 지속성 → 교체 가능한 역할·모델 순서로 투자한다.
 >
 > 2026-09-23 기준 11-A coordinator-first CLI 흐름과 필수 역할 UI를 구현했다. 현재 `codex-cli 0.155.0-alpha.16` catalog와 직접 실행에서 GPT-6 Sol/Luna가 확인됐다. 실행 시에는 항상 설치된 CLI catalog로 지원 여부를 판정하고 자동 대체하지 않는다. 선택적 판단 AI·고수준 AI, 지속 실행·재시작 복구 등은 아직 별도 backlog다. 기존 ACTION/NEXT 공개 계약, Agent/Server/NAS 동작과 Git 승인 정책은 변경하지 않는다.
+>
+> **2026-09-24 최종 라우팅 정책:** 신규 CLI-to-CLI는 `HQ / WORK / HIGH / JUDGE / UNKNOWN` 상태와 `ACTION + GOTO` 계약을 사용한다. ACTION은 HQ만 `CONTINUE / PAUSE / END`를 출력한다. 정상 전이는 `HQ→WORK|HIGH`, `WORK→JUDGE|HQ`, `JUDGE→WORK`, `HIGH→HQ`, `UNKNOWN→HQ`로 고정한다. Worker는 계약 라우터이며 본문 의미·AC·테스트 주장·완료 여부를 재판정하지 않는다. HIGH는 설정의 상시 ON/OFF가 아니라 메인 화면에서 사용자가 `고수준 작업 허용`을 체크한 뒤 실행을 누를 때 해당 Job에만 생기는 **1회성 permit**이다. 기존 Web의 `[NEXT : WEB|JEV]`는 레거시 호환 wire로만 보존한다.
 
 ## 1. AI가 매번 먼저 읽을 짧은 운영 지침
 
 1. 원래 요구와 완료 조건을 고정하고 **번호 작업 하나 + A/B/C 하나**만 구현한다. 새로운 요구는 대기 목록에 둔다.
-2. 목표 기본값: 필수 **설계·관제 AI** = OpenAI GPT-6 Sol CLI, 필수 **작업 AI** = OpenAI GPT-6 Luna Medium CLI. **작업 판단 AI**와 **고수준 작업 AI**는 기본 OFF다. 모든 역할의 공급사·모델·추론 설정을 설정창에서 독립 관리하며, CLI 실행 전 실제 지원 여부를 확인한다. 이는 목표값이며 현재 구현 완료 상태를 뜻하지 않는다.
-3. 최초 사용자 지시는 설계·관제 AI에 먼저 전달한다(목표 모드). 설계·관제 AI가 작업 범위·AC·검증 명령을 고정하고, 작업 AI는 이를 임의로 완화하지 않는다. 현재 제품의 Codex-first 동작은 11-A에서 CLI-to-CLI 기본 모드로 보완하며 Legacy Web 경로를 보존한다.
-4. Codex는 관련 파일과 필요한 구간만 읽고 수정한다. 전체 저장소, 누적 로그, Master 전문을 매 라운드 재전송하지 않는다.
-5. 같은 작업의 보완은 같은 Codex session을 쓴다. session 재사용이 과거 문맥 비용을 없애 주지는 않는다.
-6. 빌드·테스트·파일·exit code는 로컬 도구로 확인한다. 선택적 작업 판단 AI(JEV 연동 포함)는 실제 전달된 증거의 의미를 평가하며 테스트 실행을 대체하지 않는다. 비활성화한 경우 로컬 검증을 건너뛰지 않는다.
-7. 작은 수정은 로컬 검증으로 끝낼 수 있다. JEV는 의미 판단이 필요한 변경에만 쓴다. 질문은 개수를 억지로 줄이지 말고 **독립적으로 참/거짓 또는 상태를 판정할 수 있을 때까지 최대한 원자화**한 뒤 관련 질문을 가능한 한 한 호출에 묶는다.
-8. JEV threshold 미달은 우선 `PARTIAL`로 분류한다. 실제 모순이 확인될 때만 구현을 보완하고, 증거 부족은 증거 수집, confidence만 낮으면 코드 변경 없이 검토한다. provider/contract 오류는 `ERROR`다.
-9. 선택된 설계·관제 provider(CLI 또는 기존 Web)가 일시적으로 불가능하면 상태를 저장하고 정책에 따라 기다린다. 승인되지 않은 타 provider·고수준 모델로 임의 전환하지 않는다. 사전 승인된 작업 범위·예산 안에서만 이어간다.
-10. 모든 필수 완료 조건에 최신 증거가 있을 때만 END한다. 미실행은 PASS가 아니다.
-11. 사용자 Git 승인을 기억하되 다른 작업까지 확대하지 않는다. 이번 문서의 commit/push 승인은 미래 자동 push의 포괄 승인이 아니다.
-12. 비밀값·자격증명·민감 URL을 프롬프트, Git, 로그, 증거 묶음에 넣지 않는다.
+2. 필수 역할은 **HQ(설계·관제 AI)**와 **WORK(작업 AI)**다. 초기 기본 예시는 HQ=OpenAI GPT-6 Sol CLI, WORK=OpenAI GPT-6 Luna Medium CLI다. **JUDGE(작업 판단 AI)**는 선택 기능이고, **HIGH(고수준 작업 AI)**는 모델 설정은 보존하되 상시 활성화하지 않는다.
+3. 최초 사용자 요청은 HQ에 전달한다. HQ만 `[ACTION=CONTINUE|PAUSE|END]`를 출력할 수 있고, CONTINUE일 때 `[GOTO : WORK]` 또는 그 Job에서 one-shot permit이 남아 있을 때만 `[GOTO : HIGH]`를 선택한다.
+4. WORK는 관련 파일과 필요한 구간만 읽고 수정한다. 전체 저장소, 누적 로그, Master 전문을 매 라운드 재전송하지 않는다.
+5. 같은 역할의 같은 작업 보완은 가능하면 같은 CLI session을 resume한다. HQ, WORK, HIGH는 역할별 독립 session을 가진다.
+6. WORK와 HIGH는 필요한 빌드·테스트·도구를 직접 실행하고 결과를 보고한다. Worker는 프로세스·exit code·transcript를 기록할 수 있지만 그 결과가 요구사항을 충족하는지 의미적으로 판정하지 않는다.
+7. JUDGE는 **WORK만 요청할 수 있다.** WORK는 `[GOTO : JUDGE]` 또는 `[GOTO : HQ]`만 선택한다. JUDGE 결과는 반드시 같은 WORK session으로 돌아가며, HIGH는 JUDGE를 사용하지 않는다.
+8. JUDGE/JEV 응답의 의미·충분성·재작업 필요 여부는 WORK가 해석하고 최종 완료 판단은 HQ가 한다. Worker는 provider/transport/schema 오류와 허용 상태 전이만 기계적으로 처리한다.
+9. HIGH permit의 유일한 생성자는 사용자가 메인 화면의 **`고수준 작업 허용` 체크박스를 체크한 상태로 `실행`을 누르는 행위**다. permit은 Job-local 1회이고 실제 HIGH dispatch 직전에 소모되며 Job 종료 시 이월되지 않는다. Worker는 자유형 텍스트에서 HIGH 허가를 추론하지 않는다.
+10. HQ의 `[ACTION=END]`가 유효한 계약 형식이면 Worker는 별도 AC/evidence/test gate로 거부하지 않는다. 내용상 완료 여부의 책임은 HQ에 있다.
+11. 허용되지 않은 GOTO, 비활성 JUDGE, provider/transport/session 오류 등은 `UNKNOWN` 오류 envelope로 보존해 HQ에 전달한다. Worker가 다른 정상 역할로 자동 대체하지 않는다.
+12. 사용자 Git 승인을 기억하되 다른 작업까지 확대하지 않는다. commit/push/배포/외부 변경은 기존 명시적 승인 정책을 유지한다.
+13. 비밀값·자격증명·민감 URL을 프롬프트, Git, 로그, 판단 요청에 넣지 않는다.
 
-이 절은 **목표 운영 정책**이다. 현재 Worker가 모두 강제하는 것은 아니다. 특히 3·6·8·9·10은 아래 구현 단계가 필요하다.
+이 절은 신규 CLI-to-CLI의 **최상위 운영 정책**이다. 아래의 과거 WorkCard/AC/evidence gate/JEV threshold 중심 서술이 이 절과 충돌하면 역사적 설계·구현 이력으로만 해석한다.
 
 ## 2. 현재 구현에서 확인한 것
 
@@ -78,39 +81,45 @@
 
 모델 선택 UI는 있으나 coordinator/implementer/judge의 공통 provider 계약은 없다. 현재 실행 로직이 `MainWindow.xaml.cs` 약 1,471행에 모여 있다. 먼저 작은 실행 코어로 옮기고 안정화한 뒤 역할 어댑터를 추가한다. 교체 가능성을 이유로 현재 안정화보다 추상화 작업을 앞세우지 않는다.
 
-## 4. 목표 구조와 역할 책임 — 개정된 네 역할
+## 4. 목표 구조와 역할 책임 — 최종 ACTION + GOTO 정책
 
-명칭은 모델명이나 회사명이 아닌 **책임**을 기준으로 고정한다. 각 역할별 공급사·모델·추론 설정은 독립적이다.
+명칭은 모델이나 회사명이 아니라 책임과 상태를 기준으로 한다.
 
-| AI 역할 | 필수 여부 | 책임 | 초기 목표 구성 |
+| 상태 | UI 역할명 | 책임 | 정상 다음 상태 |
 | --- | --- | --- | --- |
-| **1. 설계·관제 AI** | 필수 | 사용자 요구 해석, 설계, 하나의 작업 카드·AC 발행, 결과 검토, 재분해, 최종 완료 제안 | OpenAI GPT-6 Sol CLI |
-| **2. 작업 AI** | 필수 | 지정 범위 코드 구현·수정, 도구 실행, deterministic validator, 원본 증거 생성 | OpenAI GPT-6 Luna CLI / medium |
-| **3. 작업 판단 AI** | 선택 | AC 대비 증거의 의미 판단, 누락·모순 분류, 원자 질문 검증. 소스 직접 변경 금지 | 기본 OFF; 켤 때 기존 JEV 엔진 연결 가능 |
-| **4. 고수준 작업 AI** | 선택 | 설계·관제 AI가 승인된 특정 고난도 구현/분석 작업을 위임하는 별도 작업자 | 기본 OFF; 모델 별도 선택 |
+| **HQ** | 설계·관제 AI | 사용자 요구 해석, 작업 지시, 결과 검토, 유일한 ACTION 결정 | WORK 또는 허가된 HIGH |
+| **WORK** | 작업 AI | 일반 구현·수정·테스트·보고 | JUDGE 또는 HQ |
+| **JUDGE** | 작업 판단 AI | WORK가 요청한 판단 수행 | WORK만 |
+| **HIGH** | 고수준 작업 AI | 사용자가 1회 허가한 고수준 구현·분석 | HQ만 |
+| **UNKNOWN** | 시스템 오류 상태 | 계약/transport/provider/session 오류 원문 보존 | HQ만 |
 
 ```text
-사용자 요구
-  → ProjectHub Worker (원본 상태·권한·예산·세션 관리)
-  → 설계·관제 AI (전용 읽기 중심 CLI 세션)
-      → 한 작업 카드와 고정 AC
-      → 작업 AI (별도 쓰기 허가 CLI 세션)
-      → 로컬 deterministic validator (실제 실행)
-      → [옵션] 작업 판단 AI (원본 evidence에 대한 JEV/선택한 판단 백엔드)
-      → 설계·관제 AI (PASS/FAIL/증거 부족을 구분해 다음 카드 또는 종료)
-      ↳ [옵션·설정된 권한/예산 충족 시에만] 고수준 작업 AI
-           → 실행 결과와 검증 증거를 관제로 반환
+HQ      -> WORK | HIGH
+WORK    -> JUDGE | HQ
+JUDGE   -> WORK
+HIGH    -> HQ
+UNKNOWN -> HQ
 ```
 
-**Worker는 AI가 아니다.** 실행 순서, 작업별 배타적 쓰기 권한, 결과 중복 차단, 모델/세션 snapshot, 예산, 체크포인트, 복구와 완료 조건을 강제한다. 설계·관제 AI가 직접 임의 shell/Git push/권한 상승을 행사하는 구조가 아니다.
+**ACTION:** HQ만 `[ACTION=CONTINUE]`, `[ACTION=PAUSE]`, `[ACTION=END]`를 출력한다. WORK/HIGH/JUDGE는 ACTION을 사용하지 않는다. `ACTION=HQ`는 신규 CLI 경로에서 폐기한다.
 
-**독립 세션:** 설계·관제 AI, 작업 AI, 선택된 고수준 작업 AI는 각자 별도 CLI 세션을 가진다. 같은 모델을 두 역할에 할당해도 세션은 공유하지 않는다. 한 역할 내부의 같은 작업 보완은 가능하면 같은 세션을 resume하고, 역할 사이에는 요약된 작업 카드와 evidence packet만 전달한다.
+**GOTO:** 신규 CLI-to-CLI는 `[GOTO : HQ|WORK|HIGH|JUDGE|UNKNOWN]`를 사용한다. 기존 `NEXT : IMPLEMENTER/HIGH_LEVEL/COORDINATOR/JUDGE`는 신규 경로에서 폐기한다. 기존 GPT Web의 `[NEXT : WEB|JEV]`는 레거시 호환용으로 유지한다.
 
-**쓰기 경계:** 설계·관제 AI는 기본 읽기 전용, 작업 AI만 승인된 범위에서 쓰기 가능. 고수준 작업 AI는 단순 추가 권한이 아니며, 승인된 위임 범위에서만 쓰기 가능하다. 같은 파일/작업 폴더에 두 작업자가 동시에 쓰지 않도록 Worker의 하나의 write lease를 적용한다. 외부 시스템 변경 및 Git commit/push는 기존 명시적 승인 정책을 유지한다.
+**Worker = Contract Router:** Worker는 현재 상태와 첫 제어행을 파싱하고 허용 상태 전이를 검사하며, 역할별 session·프로세스·취소·timeout·usage·transcript를 관리한다. Worker는 REPORT/INSTRUCTION/JUDGMENT의 의미, 테스트 결과의 충분성, AC 충족, 최종 완료 여부를 재판정하지 않는다.
 
-**작업 판단 AI OFF:** deterministic validator는 필수 수용 조건에 따라 그대로 시행한다. 의미 판단이 필요한 상태인데 판단 AI를 끈 경우 설계·관제 AI가 evidence 부족 또는 사용자 확인을 구분하며, '판단 AI가 없으니 PASS'로 해석하지 않는다. ON일 때도 JEV `ALL_PASS`가 실제 브라우저/사용자 UX 검증까지 완료시킨 것은 아니다.
+**HQ:** 최초 사용자 요청과 WORK/HIGH/UNKNOWN의 반환을 해석한다. HQ의 CONTINUE에서 정상 GOTO는 WORK와, one-shot permit이 있을 때의 HIGH뿐이다. HQ는 JUDGE를 직접 호출하지 않는다.
 
-**기존 Web 경로:** ChatGPT Web·브라우저 Extension의 공개 wire `[ACTION]`, `[NEXT : WEB|JEV]`와 과거 구현을 제거하지 않는다. 신규 CLI 모드는 별도의 내부 구조화 메시지 계약을 사용하고 Web 태그 의미를 재해석하지 않는다. 현재 제품 구현상 Web/Codex-first 동작은 후속 작업에서 이행한다.
+**WORK:** 일반 작업자다. 결과가 관제 검토 준비가 됐으면 `GOTO:HQ + REPORT`, 의미 판정이 필요하면 `GOTO:JUDGE + VALIDATION REQUEST`를 사용한다. WORK가 HIGH를 선택할 수 없다.
+
+**JUDGE:** WORK의 보조 판정자다. 결과는 반드시 같은 WORK session으로 복귀한다. JEV 같은 native API가 GOTO를 출력하지 않으면 adapter가 `GOTO:WORK` wrapper만 기계적으로 붙일 수 있으며 결과 의미를 바꾸지 않는다.
+
+**HIGH:** 설정창에는 provider/model/reasoning/thread만 둔다. 호출 허가는 메인 실행 버튼 왼쪽의 `고수준 작업 허용` 체크박스에서만 생성한다. 체크+실행 시 Job에 `high_uses_remaining=1`, 미체크 시 0이다. HIGH dispatch 직전에 0으로 소모하고, 실패해도 자동 복구하지 않으며, HIGH는 JUDGE를 거치지 않고 `GOTO:HQ`만 사용한다.
+
+**UNKNOWN:** 정상 AI 역할이 아니다. 잘못된 GOTO, protocol/provider/transport/session 오류를 원문과 함께 포장해 HQ로 돌린다. Worker는 UNKNOWN을 보고 WORK/HIGH/JUDGE 중 하나로 자동 대체하지 않는다.
+
+**독립 세션과 쓰기 경계:** HQ는 기본 read-only, WORK/HIGH는 승인된 작업 폴더에서 workspace-write를 사용할 수 있다. 역할별 session은 분리한다. Git commit/push·배포·외부 시스템 변경은 기존 사용자 승인 정책을 유지한다.
+
+**기존 Web 경로:** ChatGPT Web·Extension의 공개 ACTION/NEXT wire는 legacy로 보존한다. 신규 GOTO 계약을 Web Extension에 몰래 재해석해 적용하지 않는다.
 
 ## 5. 토큰 절약 정책
 
@@ -148,7 +157,7 @@
 6. 설계·관제 AI는 시작·작업 경계·복잡한 실패·최종 완료에 관여한다. 승인된 카드 내부의 사소한 보완마다 상위 관제 호출을 반복하지 않는다. 기존 Web 모드에서도 같은 규칙을 적용한다.
 7. 같은 작업은 resume한다. 문맥이 커지거나 독립된 새 작업이면 `현재 상태 + 결정 사항 + 다음 작업 + 증거 위치`로 짧게 인계해 새 session을 만든다.
 
-설계·관제 AI가 처음부터 별도 GPT-6 Sol을 사용하는 것은 **기본 관제 설정**이지 작업 AI의 무조건적 모델 상향이 아니다. 같은 구현 실패가 반복되면 관제가 먼저 작업 카드를 좁힌다. 선택적 **고수준 작업 AI** 호출은 활성화·명시된 위임 규칙·예산 승인·독점 write lease가 모두 충족될 때만 가능하다. 기본 정책: `allow_paid_fallback=false`, `allow_automatic_escalation=false`.
+HQ에 GPT-6 Sol을 지정하는 것은 관제 기본값일 뿐 WORK의 자동 모델 상향을 뜻하지 않는다. HIGH는 난이도를 Worker가 판정해 자동 호출하는 fallback이 아니며, 사용자가 실행 직전에 `고수준 작업 허용`을 체크해 생성한 Job-local one-shot permit이 있을 때 HQ가 선택할 수 있는 별도 경로다. 기본 정책은 `allow_paid_fallback=false`, `allow_automatic_escalation=false`를 유지한다.
 
 ## 6. 연속 실행과 복구 설계
 
@@ -158,23 +167,26 @@
 
 신규 CLI-to-CLI 목표 모드에서는 지정된 관제 CLI 가용성을 확인하며, 기존 ChatGPT Web은 호환/선택 모드로 유지한다. 어떤 provider든 무제한 가용성·자동 전환을 전제하지 않고 로그인·사용 제한을 우회하거나 사용자가 허가하지 않은 유료 경로로 전환하지 않는다.
 
-### 6.2 상태 머신 제안 — 기존 wire protocol은 유지
+### 6.2 신규 CLI-to-CLI 상태 머신 — ACTION + GOTO
 
 ```text
-NEW → PLAN_PENDING → IMPLEMENTING → VERIFYING
-                                   ├─ 실패 → REWORK → IMPLEMENTING
-                                   ├─ 의미 검증 필요 → JUDGING
-                                   └─ 검증 충분 → REVIEW_PENDING
-JUDGING → PASS → REPORT_PENDING → REVIEW_PENDING
-        → PARTIAL → TRIAGE
-        → INSUFFICIENT_EVIDENCE → COLLECT_EVIDENCE
-        → ERROR → WAITING_PROVIDER / REVIEW_PENDING (정책에 따라)
-REVIEW_PENDING → 다음 승인된 카드 / COMPLETED
-어느 단계든 → WAITING_APPROVAL / WAITING_BUDGET / CANCELED
-재시작 → RECOVERING → 마지막 확인된 안전 단계
+HQ      -> WORK | HIGH
+WORK    -> JUDGE | HQ
+JUDGE   -> WORK
+HIGH    -> HQ
+UNKNOWN -> HQ
 ```
 
-이 상태 이름은 새 내부 설계다. 기존 `[ACTION=CONTINUE|PAUSE|END]`, `[NEXT : WEB|JEV]`를 다른 태그로 바꾸지 않는다. `END`는 Worker가 남은 필수 AC, 최신 증거, 실패 미해결 여부를 확인한 뒤 완료로 반영한다. 의미 해석은 관제/JEV에 맡기고 Worker는 상태표의 불일치만 거부한다.
+- HQ만 ACTION을 사용한다: CONTINUE / PAUSE / END.
+- HQ의 CONTINUE에는 GOTO가 필요하고 정상 대상은 WORK 또는 사용 가능한 HIGH다.
+- WORK는 HQ 또는 JUDGE로만 간다.
+- JUDGE는 반드시 같은 WORK session으로 돌아간다.
+- HIGH는 반드시 HQ로 돌아가며 JUDGE를 거치지 않는다.
+- protocol/provider/transport/session/route 오류는 UNKNOWN envelope로 HQ에 전달한다.
+- Worker는 이 전이의 문법과 가용성만 확인한다. 본문의 의미와 완료 여부는 HQ/WORK/JUDGE가 담당한다.
+- HIGH 가용성은 설정의 상시 enable 값이 아니라 현재 Job의 `high_uses_remaining`으로 결정한다.
+
+기존 GPT Web의 `[NEXT : WEB|JEV]`는 legacy wire로 별도 유지한다. 신규 CLI-to-CLI에서 NEXT를 GOTO의 별칭으로 허용하지 않는다.
 
 ### 6.3 최소 영속 데이터
 
@@ -451,7 +463,7 @@ v2 완료 후에만 저장된 구현 결과로 짧은 Web 보고를 만들고 PA
 
 ## 9. 역할별 설정과 Provider 교체 설계 — 개정안
 
-**UI 요구:** 기존 메인 화면 하단의 단일 모델·추론 선택은 신규 목표에서 설정창 `AI 역할 설정`으로 이동한다. 각 역할 카드에 필수/선택 여부, ON/OFF(선택 역할만), 공급사, 실제 사용 가능한 모델, 해당 모델이 지원하는 추론 수준을 별도 표시한다. 설정 변경은 실행 중인 역할 세션의 모델을 바꾸지 않으며 다음 **새 Job 또는 안전한 새 단계**에만 적용한다. 새 모델로 바꿀 경우 세션 호환 여부를 확인하고 필요 시 짧은 인계 packet으로 신규 세션을 생성한다.
+**UI 요구:** 역할별 provider/model/reasoning/thread 설정은 설정창 `AI 역할 설정`에서 관리한다. HQ와 WORK는 필수, JUDGE는 선택 ON/OFF다. HIGH 설정 카드에는 provider/model/reasoning/thread만 두고 **상시 `사용` 체크박스를 두지 않는다.** HIGH 호출 허가는 메인 화면 `실행` 버튼 바로 왼쪽의 `고수준 작업 허용` 체크박스가 담당하며, 체크+실행 시 현재 Job에만 1회 permit을 생성한다. 실행 직후 체크는 해제하고 진행 중 Job은 snapshot 값을 사용한다.
 
 **모델 목록:** 초기 AI 공급사/모델 카탈로그는 **OpenAI(ChatGPT 계열)**만 표시한다. UI 목록의 모델명은 제품의 지원 보장이 아니라 후보이며 실제 Codex CLI 권한·모델 ID·reasoning 지원을 실행 전 점검한다. 향후 타사 추가를 위해 `provider_id`, `model_id`, `capabilities`를 분리하지만 타사 이름/미지원 옵션을 현재 UI에 노출하지 않는다.
 
@@ -488,9 +500,10 @@ v2 완료 후에만 저장된 구현 결과로 짧은 Web 보고를 만들고 PA
       "backend": "jev", "engine_model": "jev-latest"
     },
     "advanced_implementer": {
-      "required": false, "enabled": false,
+      "required": false,
       "provider_id": "openai", "transport": "codex-cli",
-      "model_id": "gpt-6-sol", "reasoning": "high", "permission_profile": "delegated-write-only"
+      "model_id": "gpt-6-sol", "reasoning": "high", "permission_profile": "delegated-write-only",
+      "invocation": "job_one_shot_user_permit"
     }
   },
   "policy": {
