@@ -24,6 +24,13 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal(0.85, inactiveOptional.Opacity);
     }
 
+    [Fact]
+    public void IdlePipelineCard_UsesTealWhenWaitingAndKeepsSharedGrayWhenInactive()
+    {
+        Assert.Equal(new PipelineIdleCardVisual("#E0F2F4", "#0D7884", "#0F6B73", "#0D7884"), PipelineIdleCardVisualPolicy.Resolve(active: true));
+        Assert.Equal(new PipelineIdleCardVisual("#B8C8DA", "#526477", "#FFFFFF", "Transparent"), PipelineIdleCardVisualPolicy.Resolve(active: false));
+    }
+
     [Theory]
     [InlineData("Coordinator", "#FFDDEEFF", "#FF1477E8", "#FF1267D5", "current-openai.png")]
     [InlineData("Implementer", "#FFDCF5E3", "#FF168A4A", "#FF116B39", "current-openai.png")]

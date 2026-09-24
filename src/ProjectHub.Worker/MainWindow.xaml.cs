@@ -528,10 +528,13 @@ public partial class MainWindow : Window
         SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, RoleVisuals["HighLevel"].IconAsset, TaskStage.HighLevel, RoleVisuals["HighLevel"], !_targetSettings.HighLevelEnabled, initialInputIdle);
         SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, RoleVisuals["Judge"].IconAsset, TaskStage.Judge, RoleVisuals["Judge"], !_targetSettings.EffectiveJudge.Enabled, initialInputIdle);
 
-        SetColor(PipelineIdleCard, idle ? "#7A8797" : "#B8C8DA");
-        PipelineIdleTitle.Foreground = System.Windows.Media.Brushes.White;
-        SetColor(PipelineIdleIconCircle, idle ? "#566578" : "#526477");
-        PipelineIdleCard.BorderBrush = idle ? System.Windows.Media.Brushes.DimGray : System.Windows.Media.Brushes.Transparent;
+        var idleVisual = PipelineIdleCardVisualPolicy.Resolve(idle);
+        SetColor(PipelineIdleCard, idleVisual.Background);
+        PipelineIdleTitle.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(idleVisual.Foreground));
+        SetColor(PipelineIdleIconCircle, idleVisual.IconBackground);
+        PipelineIdleCard.BorderBrush = idleVisual.Border == "Transparent"
+            ? System.Windows.Media.Brushes.Transparent
+            : new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(idleVisual.Border));
         PipelineIdleCard.BorderThickness = idle ? new Thickness(2) : new Thickness(1);
         PipelineIdleCard.Effect = idle ? CreateCurrentStageShadow() : null;
         UpdatePipelineArrowAnimation();
