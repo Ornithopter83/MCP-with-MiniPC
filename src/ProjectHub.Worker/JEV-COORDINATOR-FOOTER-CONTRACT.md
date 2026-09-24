@@ -1,29 +1,153 @@
-# Coordinator Router Footer
+# CLI Role Routing Contract — ACTION + GOTO
 
-The configured coordinator owns interpretation of inbound message types and chooses the next action. Worker parses only the first control tag and optional destination; every following body is opaque.
+Updated: 2026-09-24
 
-Coordinator responses begin with exactly one of:
+정책 원본은 Master-Polish.md다.
 
-```text
+이 문서는 신규 CLI-to-CLI 역할 계약을 정의한다.
+
+## Core rule
+
+**Worker는 판단하지 않는다.**
+
+Worker는 첫 제어행과 상태 전이만 파싱하고 BODY를 opaque하게 전달한다.
+
+## State graph
+
+~~~text
+HQ      -> WORK | HIGH
+WORK    -> JUDGE | HQ
+JUDGE   -> WORK
+HIGH    -> HQ
+UNKNOWN -> HQ
+~~~
+
+## HQ
+
+HQ만 ACTION을 사용한다.
+
+~~~text
 [ACTION=CONTINUE]
 [ACTION=PAUSE]
 [ACTION=END]
-[ACTION=HQ]
-```
+~~~
 
-For `CONTINUE`, put one destination on the next non-empty line, then the body:
+CONTINUE:
 
-```text
-[NEXT : IMPLEMENTER]
-[NEXT : HIGH_LEVEL]
-[NEXT : JUDGE]
-[NEXT : COORDINATOR]
-```
+~~~text
+[ACTION=CONTINUE]
+[GOTO : WORK]
 
-`ACTION=HQ` is shorthand for routing the opaque body to the currently configured coordinator role. The coordinator routine receives an envelope with `message_type` and `body`; it interprets whether the content is a user request, role report, judge result, or a technical error. Worker does not infer task meaning from the content.
+[INSTRUCTION]
+...
+~~~
 
-Implementer and High-level role responses include their route in the same execution response. They return `[NEXT : COORDINATOR]` with a report, or `[NEXT : JUDGE]` with a validation request. Do not require a second route-only model call. The Worker forwards the body unchanged to the configured coordinator routine.
+HIGH one-shot permit이 남아 있을 때만:
 
-For JEV, the adapter parses the atomic question syntax needed to construct the HTTP request and returns the provider response unchanged. It does not turn scores into PASS/PARTIAL, downgrade results based on evidence availability, or decide what role runs next. The coordinator interprets the `JUDGE_RESULT` message type.
+~~~text
+[ACTION=CONTINUE]
+[GOTO : HIGH]
 
-Worker retains transport and safety duties: selected role/session, workspace, process exit/cancel/timeout, HTTP status, transcript/usage, and unavailable-route reporting. It does not require a work-card schema, review JSON, validation command match, evidence freshness, fixed retry count, or semantic agreement before forwarding an AI response or accepting `[ACTION=END]`.
+[INSTRUCTION]
+...
+~~~
+
+PAUSE/END에는 GOTO가 없다.
+
+Worker는 HQ END를 의미적으로 재판정하지 않는다.
+
+## WORK
+
+WORK는 ACTION을 사용하지 않는다.
+
+허용:
+
+~~~text
+[GOTO : HQ]
+
+[REPORT]
+...
+~~~
+
+또는:
+
+~~~text
+[GOTO : JUDGE]
+
+[VALIDATION REQUEST]
+...
+~~~
+
+WORK -> HIGH는 금지다.
+
+## JUDGE
+
+JUDGE 결과는 반드시 같은 WORK session으로 복귀한다.
+
+~~~text
+[GOTO : WORK]
+
+[JUDGMENT]
+<raw judge result>
+~~~
+
+JEV native API가 GOTO를 출력하지 않으면 adapter가 GOTO:WORK wrapper만 붙인다.
+
+Worker는 score/confidence/threshold를 비교하지 않는다.
+
+## HIGH
+
+HIGH는 JUDGE를 사용하지 않는다.
+
+~~~text
+[GOTO : HQ]
+
+[REPORT]
+...
+~~~
+
+HIGH -> HQ만 허용한다.
+
+## UNKNOWN
+
+protocol/provider/transport/session/route 오류는:
+
+~~~text
+[GOTO : UNKNOWN]
+
+[ERROR]
+source_state: ...
+code: ...
+detail: ...
+~~~
+
+형태로 HQ에 전달한다.
+
+Worker는 다른 정상 역할로 자동 대체하지 않는다.
+
+## HIGH one-shot availability
+
+HIGH route는 현재 Job의 high_uses_remaining == 1일 때만 HQ allowed route에 포함한다.
+
+permit 생성자는 메인 UI의 사용자 체크 + 실행 클릭이다.
+
+Worker는 사용자 텍스트에서 HIGH 허가를 추론하지 않는다.
+
+## Worker responsibilities
+
+허용:
+- syntax/state transition
+- role/session/provider execution
+- timeout/cancel/auth/transport
+- transcript/usage
+- HIGH permit state
+- raw body forwarding
+
+금지:
+- WorkCard/AC/evidence semantic validation
+- command equivalence 판단
+- test sufficiency 판단
+- JUDGE/JEV PASS/FAIL 계산
+- END 재검증
+- 자동 재작업
+- 자동 HIGH 승격
