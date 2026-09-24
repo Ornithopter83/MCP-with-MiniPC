@@ -14,58 +14,41 @@ HIGH    -> HQ
 UNKNOWN -> HQ
 ~~~
 
-- ACTION은 HQ만 CONTINUE/PAUSE/END를 사용한다.
-- 신규 CLI 행선지는 GOTO를 사용한다.
-- Worker는 흐름 제어 도구이며 의미 판단을 하지 않는다.
-- HIGH는 사용자 실행 시점 one-shot permit으로만 사용 가능하다.
-- 기존 GPT Web NEXT:WEB/JEV는 legacy mode에서 보존한다.
+- ACTION은 HQ만 CONTINUE/PAUSE/END를 사용
+- 신규 CLI 행선지는 GOTO
+- ACTION/GOTO 뒤의 모든 내용은 opaque body
+- Worker는 판단하지 않고 흐름·session·transport·telemetry만 관리
+- HIGH는 사용자 실행 시점 one-shot permit
+- Legacy Web NEXT:WEB/JEV는 별도 legacy mode
 
-## Worker boundary
+## Current active work — 11-C-GOTO-CONTRACT
 
-Worker가 담당:
-- 제어행 문법
-- 상태 전이
-- 역할별 session/provider 실행
-- timeout/cancel/auth/transport 오류
-- transcript/usage
-- HIGH permit 상태
+핵심 GOTO router와 HIGH/JUDGE transport baseline은 구현돼 있다.
 
-Worker가 담당하지 않음:
-- AC 충족 판단
-- 테스트 충분성 판단
-- evidence 의미 판단
-- JUDGE/JEV 결과 재판정
-- WORK 재작업 필요 여부 판단
-- HIGH 자동 승격
-- HQ END 재검증
+Explorer 기본 경로에서 WORK 응답이 transcript에는 남지만 History 카드에 누락되는 문제가 확인됐다. 동시에 역할 output contract에 INSTRUCTION/REPORT/VALIDATION REQUEST/JUDGMENT 같은 불필요한 semantic tag 요구가 남아 있다.
 
-판단과 다음 행동 결정은 AI가 수행한다.
+현재 마무리 범위:
+- 신규 CLI output contract를 ACTION/GOTO only로 단순화
+- role body를 완전 opaque 전달
+- JudgeTransport marker 의존 제거
+- JUDGE raw body marker 삽입 제거
+- History card를 role/state/response completion/usage/file telemetry로 직접 생성
+- source 문자열과 body tag 기반 History 분류 제거
+- 카드 3줄 표시: 1줄 축약, 2줄 token, 3줄 file change
+- file change 정보가 없으면 추정하지 않음
+- 단위 테스트/Release build/Explorer E2E 재검증
 
-## Current active work
+## Card display target
 
-### 11-C-GOTO-CONTRACT
+~~~text
+<응답 첫 유효 텍스트를 짧게 표시> …
+토큰 · 총 N · 입력 N · 캐시 N · 출력 N
+파일 · 생성 N · 수정 N · 삭제 N · 대표파일 외 N개
+~~~
 
-목표:
-- 기존 CLI-to-CLI 라우터를 최종 ACTION+GOTO 계약으로 정리
-- Worker semantic judgment 제거
-- JUDGE 결과를 같은 WORK session으로 복귀
-- HIGH를 HQ→HIGH→HQ one-shot 경로로 제한
-- UNKNOWN 오류 복귀 경로 구현
-- HIGH 실행 권한을 메인 UI의 사용자 체크+실행 이벤트로 변경
-
-상세 구현 계약은 tasks/11-cli-coordinator-first.md를 따른다.
-
-2026-09-24: 역할별 embedded contract, Legacy Web 계약 분리, JUDGE transport parser와 opaque PASS 지침 전달로 구현을 정리했다. `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), Release build/publish 성공 (경고 0, 오류 0), `git diff --check` 통과. 게시 EXE를 `C:\AI-AGENT\Worker`에 복사하고 SHA-256을 대조했다. Explorer 왕복 검증은 사용자가 직접 확인할 잔여 작업이며 완료로 간주하지 않는다.
-
-완료 조건:
-- 단위 라우팅 테스트
-- Debug/Release 빌드
-- Explorer 실제 왕복
-- Legacy Web 회귀 없음
+전체 원문과 상세 telemetry는 transcript/detail에 유지한다.
 
 ## Deferred
-
-현재 활성 작업이 끝나기 전에는 다음을 동시에 구현하지 않는다.
 
 - JobRunner crash/restart 복구
 - 추가 Provider 실연동
@@ -75,14 +58,12 @@ Worker가 담당하지 않음:
 
 ## UI residual
 
-11-UI-B-EXPLORER-COLORS는 실제 화면 확인이 남아 있다. GOTO 계약 구현과 섞어 기능 범위를 확장하지 않는다.
+- 11-UI-B-EXPLORER-COLORS: 실제 Explorer 색상 확인 잔여
 
 ## Policy guard
 
-향후 기능을 추가할 때 다음 질문을 먼저 적용한다.
+Worker가 작업 결과를 판단하게 만드는 로직은 금지한다.
 
-> 이 기능이 Worker가 작업 결과를 판단하게 만드는가?
+UI를 위해 AI에게 ACTION/GOTO 외 semantic tag를 출력시키는 설계도 금지한다.
 
-YES면 Worker 기능으로 구현하지 않는다.
-
-판단은 HQ/WORK/JUDGE/HIGH가 수행하고 Worker는 계약된 흐름만 실행한다.
+History는 Worker가 이미 보유한 실행 사실과 telemetry로 만든다.
