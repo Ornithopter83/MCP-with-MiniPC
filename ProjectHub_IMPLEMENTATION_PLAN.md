@@ -53,6 +53,7 @@ UNKNOWN은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 �
 코드 변경 후 Windows 환경에서 solution test/build와 Explorer 실제 Web 왕복 검증을 완료하기 전까지 runtime 완료로 간주하지 않는다.
 
 
-## Orchestration ownership note
 
-RESOURCE 반복 목표 수는 HQ가 관리한다. Worker는 RESOURCE queue의 실제 outstanding/queued 상태만 관리하며 사용자 의도에서 총 횟수나 남은 횟수를 계산하지 않는다. 한 RESOURCE 접수 뒤 RESOURCE_QUEUED는 HQ로 전달되어 다음 WORK 지시 여부를 HQ가 결정한다.
+## Contract maintenance rule
+
+역할 contract에는 장기 역할 책임, ACTION/GOTO 문법, transport 형식, 기계적 경계만 둔다. 특정 테스트·도메인·횟수·파일·장애 사례는 contract에 넣지 않고 tests/fixtures/task history에 둔다.

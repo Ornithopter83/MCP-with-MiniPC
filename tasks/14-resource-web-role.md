@@ -54,7 +54,7 @@ WORK body는 자연어만 사용한다.
 
 ~~~text
 [GOTO : RESOURCE]
-과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도처럼 서로 구별하기 쉽게 만들어줘.
+<natural-language image generation request>
 ~~~
 
 Worker는 본문이 비어 있지 않은지만 기계적으로 확인하고 ChatGPT Web에 그대로 전달한다. 저장 경로/파일명은 Worker가 requestId 기반으로 생성한다.
@@ -78,7 +78,7 @@ IMAGE:
 - 실행 중 새 요청은 FIFO queue에 적재
 - 확장이 최신 assistant turn의 생성 이미지들을 모두 다운로드해 bytes 배열로 반환
 - Worker가 workspace 하위 requestId 폴더에 image-NN.*로 저장
-- WORK는 RESOURCE 완료를 기다리지 않는다. 접수 ack는 HQ로 돌아가며 HQ가 다음 WORK 지시를 결정
+- WORK는 RESOURCE 완료를 기다리지 않는다. 접수 사실은 HQ로 돌아가며 이후 의미적 다음 단계는 HQ가 결정
 - 완료 결과는 다음 WORK 호출에 기계적으로 전달
 - HQ END 시 outstanding RESOURCE가 있으면 FINALIZING으로 대기
 
@@ -114,7 +114,7 @@ RESOURCE:
 - HQ Web roundtrip
 - 두 Web conversation 동시 heartbeat
 - RESOURCE image 실제 생성/저장
-- RESOURCE_QUEUED가 HQ로 복귀하고 HQ가 다음 RESOURCE/WORK 지시를 결정
+- RESOURCE 접수 사실이 HQ로 복귀하고 HQ가 다음 의미적 지시를 결정
 - 자동 integration 없음
 - JUDGE 회귀
 
@@ -159,7 +159,7 @@ RESOURCE:
 - RESOURCE는 single-reader FIFO sidecar queue로 실행
 - 동시에 RESOURCE Web task 1건만 허용
 - 실행 중 후속 RESOURCE 요청은 QUEUED
-- WORK는 queue 접수 직후 반복 수를 관리하지 않고 종료되며 RESOURCE_QUEUED가 HQ로 복귀
+- WORK는 queue 접수 후 orchestration을 HQ에 반환
 - 완료된 RESOURCE 결과는 다음 WORK 호출에 기계적으로 함께 전달
 - 최신 assistant turn의 생성 이미지 전부 다운로드
 - requestId별 폴더에 image-NN.* 저장
@@ -171,12 +171,10 @@ RESOURCE:
 - 작은 UI 이미지를 generated image candidate에서 제외
 - RESOURCE outbound prompt / bridge task transcript 유지
 
+## J — contract generalization
 
-## J — contract noise reduction / HQ repetition ownership
-
-- RESOURCE 접수 ack를 WORK가 아니라 HQ로 전달
-- HQ가 사용자 요청의 RESOURCE 총 횟수/남은 횟수 관리
-- WORK는 한 턴에 RESOURCE 한 건만 생성하고 반복 수를 기억하지 않음
-- Worker는 requestId/queued/outstanding만 기계적으로 관리
 - ACTION/GOTO 외 pseudo-control 대괄호 제거
-- JUDGE QID plain syntax(QID:NAME) 지원, bracket syntax는 호환 유지
+- 역할 contract에서 특정 사용자 요청·도메인·횟수·장애 사례 제거
+- JUDGE transport 예시는 concrete scenario가 아닌 placeholder grammar로만 유지
+- RESOURCE contract는 자연어 body와 역할 경계만 규정
+- 특정 검증 사례는 tests/fixtures로 이동

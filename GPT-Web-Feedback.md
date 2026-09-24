@@ -10,9 +10,10 @@ ProjectHub의 current role graph는 다음과 같다.
 
 ~~~text
 HQ       -> WORK
-WORK     -> HQ | JUDGE | RESOURCE
+WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
-RESOURCE -> WORK
+RESOURCE_QUEUE 접수 -> HQ
+RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
 ~~~
 
 HIGH 역할과 one-shot permit 구조는 제거한다.
@@ -24,9 +25,8 @@ HIGH 역할과 one-shot permit 구조는 제거한다.
 - RESOURCE는 별도 ChatGPT Web conversation에 고정한다.
 - HQ Web과 RESOURCE Web은 explicit role binding을 사용한다.
 - heartbeat는 liveness용이며 destination 선택에 사용하지 않는다.
-- RESOURCE 초기 실제 범위는 IMAGE 생성 -> 지정 workspace 경로 저장 -> WORK 복귀다.
+- RESOURCE 실제 범위는 IMAGE 생성 -> 복수 다운로드 -> requestId별 workspace 저장이며 메인 역할 흐름과 분리된 FIFO sidecar로 실행한다.
 - RESOURCE가 저장한 파일은 사용자의 별도 연결 명령 전까지 코드/CSS/HTML에 자동 연결하지 않는다.
-- SOUND는 schema만 예약하고 실제 transport는 deferred다.
 
 ## Worker boundary
 
@@ -48,7 +48,7 @@ Worker가 판단하지 않는 것:
 - HQ CLI flow
 - HQ Web flow
 - HQ/RESOURCE 두 Web conversation 동시 heartbeat 격리
-- WORK -> RESOURCE -> 실제 이미지 생성/저장 -> same WORK session 복귀
+- WORK -> RESOURCE queue 접수 -> 실제 이미지 생성/복수 다운로드/저장 -> 이후 orchestration/finalization 반영
 - 저장된 RESOURCE가 자동 integration되지 않는지 확인
 - JUDGE 회귀
 
@@ -88,10 +88,9 @@ Worker가 판단하지 않는 것:
 - 이미지 생성 완료 후 DOM mutation이 끊겨도 1초 watchdog이 완료 감시를 계속한다.
 
 
-## 2026-09-24 계약 단순화
+## 2026-09-24 계약 일반화
 
-- WORK에게 RESOURCE 반복 횟수를 기억시키지 않는다.
-- 한 RESOURCE 요청이 queue에 들어가면 Worker는 RESOURCE_QUEUED 사실만 HQ로 반환한다.
-- HQ가 사용자 목표 기준으로 다음 RESOURCE 요청 필요 여부와 남은 횟수를 관리한다.
-- Worker는 목표 횟수를 해석하지 않고 queue의 실제 requestId/queued/outstanding만 기록한다.
-- role/inbound/availability/body용 대괄호 header를 제거하고 실제 ACTION/GOTO control token에만 대괄호를 사용한다.
+- 역할 contract에는 역할 책임, ACTION/GOTO, transport 형식, Worker/AI 경계만 남긴다.
+- 특정 사용자 요청·테스트·도메인·횟수·파일명·장애 사례는 contract에 넣지 않는다.
+- RESOURCE 접수/완료는 Worker의 기계적 사실로 HQ에 전달하며 의미적 다음 단계는 HQ가 현재 목표와 실행 결과로 결정한다.
+- JUDGE 형식은 concrete example 대신 placeholder grammar로만 안내한다.

@@ -8,17 +8,18 @@ Updated: 2026-09-24
 
 ~~~text
 HQ       -> WORK
-WORK     -> HQ | JUDGE | RESOURCE
+WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
-RESOURCE -> WORK
+RESOURCE_QUEUE 접수 -> HQ
+RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
 UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 ~~~
 
 - HQ = 설계·관제, ChatGPT Web 또는 CLI Provider
 - WORK = CLI 구현/수정/검증
-- RESOURCE = 별도 ChatGPT Web, 현재 IMAGE 생성/저장
+- RESOURCE = 별도 ChatGPT Web, IMAGE 생성/복수 다운로드/저장 sidecar queue
 - JUDGE = JEV
-- Worker = role/session/binding/transport/process/file telemetry/protocol 오류의 기계적 관리
+- Worker = role/session/binding/transport/process/file telemetry/protocol 오류와 RESOURCE queue 사실의 기계적 관리
 
 ## Active — 14 RESOURCE Web role + HQ Web restore
 
@@ -32,11 +33,11 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 과거 coordinator transport=web 강제 CLI normalize 제거
 - Bridge에 HQ/RESOURCE role→conversationId explicit binding 추가
 - latest heartbeat 기반 task destination 제거
-- RESOURCE request JSON의 기계적 schema/path 검증 추가
-- RESOURCE IMAGE 결과를 브라우저 확장이 base64로 반환하고 Worker가 workspace 하위 지정 경로에 저장
+- RESOURCE 자연어 body의 기계적 유효성 검사와 sidecar queue 접수 추가
+- RESOURCE IMAGE 결과를 브라우저 확장이 복수 image payload로 반환하고 Worker가 requestId별 workspace 경로에 저장
 - ResourceRequest REQUESTED→GENERATING→SAVED/FAILED 기록
-- RESOURCE 저장 후 같은 WORK session으로 기계적 복귀
-- WORK/HQ/RESOURCE 역할 contract 갱신
+- RESOURCE 접수 사실은 HQ로 전달하고, 완료 결과는 이후 WORK 입력 또는 finalization에 기계적으로 반영
+- WORK/HQ/JUDGE 역할 contract를 durable protocol 중심으로 일반화
 - HQ 설계 책임과 PAUSE 사용 예 추가
 - Pipeline 네 번째 카드를 리소스/ChatGPT Web으로 교체
 - 확장 패널에 HQ 연결 / RESOURCE 연결 명시적 버튼 추가
@@ -61,7 +62,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - Explorer HQ CLI E2E
 - Explorer HQ Web E2E
 - HQ Web + RESOURCE Web 두 창 동시 heartbeat 격리
-- WORK→RESOURCE 실제 이미지 생성→지정 파일 저장→WORK 복귀
+- WORK→RESOURCE queue 접수→실제 이미지 생성/복수 다운로드/저장→HQ/WORK/finalization 반영
 - RESOURCE 저장 후 자동 코드 연결이 발생하지 않는지 확인
 - JUDGE 회귀
 
@@ -138,13 +139,10 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - RESOURCE 실제 Web 전송 prompt와 bridge task id를 transcript에 계속 기록한다.
 
 
-## 2026-09-24 contract simplification + HQ repetition ownership
+## 2026-09-24 contract generalization cleanup
 
-- RESOURCE 한 건 queue 접수 후 제어를 같은 WORK에 되돌리지 않고 HQ에 RESOURCE_QUEUED로 반환.
-- 반복 횟수/남은 횟수는 HQ가 orchestration history로 관리. WORK/Worker는 목표 횟수를 기억·추론하지 않음.
-- Worker는 requestId, queued/outstanding 등 기계적 queue 사실만 보고.
-- RoleContractLoader의 [ROLE], [INBOUND TYPE], [AVAILABLE GOTO], [OPAQUE INBOUND BODY] 등 pseudo-control bracket header를 평문 metadata로 변경.
-- HQ/WORK 계약 예시를 축소하고 실제 ACTION/GOTO 외 대괄호 사용 제거.
-- JUDGE QID에 QID:NAME 평문 표기를 추가하고 기존 [QID:NAME] parser 호환은 유지.
-
-- RESOURCE completion을 WORK input에 합칠 때 쓰던 [RESOURCE 완료 알림]/[기존 입력] pseudo-marker도 평문 metadata로 변경.
+- HQ/WORK/JUDGE 역할 contract에서 특정 시나리오에 종속된 예시와 일회성 대응 문구를 제거했다.
+- 계약에는 durable role responsibility, ACTION/GOTO syntax, generic transport grammar, Worker/AI boundary만 남겼다.
+- RoleContractLoader의 metadata는 평문 형식을 유지하며 실제 ACTION/GOTO control만 대괄호를 사용한다.
+- JUDGE QID parser는 QID:NAME과 기존 [QID:NAME]을 모두 허용하지만 역할 contract에는 placeholder grammar만 제시한다.
+- Master-Polish.md와 AGENTS.md에 contract generalization rule을 추가해 특정 사용자 요청/장애 사례를 contract로 승격하지 못하게 했다.

@@ -8,19 +8,16 @@ namespace ProjectHub.Worker.Tests;
 public sealed class RoleContractBoundaryTests
 {
     [Fact]
-    public void HqContractIsIsolatedFromOtherRoleOutputContracts()
+    public void HqContractExposesOnlyDurableHqControls()
     {
         var hq = RoleContractLoader.LoadHqFooter();
         Assert.Contains("[ACTION=CONTINUE]", hq);
+        Assert.Contains("[ACTION=PAUSE]", hq);
+        Assert.Contains("[ACTION=END]", hq);
         Assert.Contains("[GOTO : WORK]", hq);
         Assert.DoesNotContain("[GOTO : RESOURCE]", hq);
-        Assert.Contains("Only the ACTION and GOTO control lines above use square brackets.", hq);
-        Assert.DoesNotContain("GOTO : JUDGE", hq);
-        Assert.DoesNotContain("GOTO : HQ", hq);
-        Assert.DoesNotContain("You are WORK", hq);
-        Assert.DoesNotContain("You are RESOURCE", hq);
-        Assert.DoesNotContain("[INSTRUCTION]", hq);
-        Assert.DoesNotContain("[REPORT]", hq);
+        Assert.DoesNotContain("[GOTO : JUDGE]", hq);
+        Assert.Contains("Mechanical Worker facts are observations, not semantic decisions.", hq);
     }
 
     [Fact]
@@ -28,73 +25,53 @@ public sealed class RoleContractBoundaryTests
     {
         var enabled = RoleContractLoader.LoadWorkFooter(true);
         var disabled = RoleContractLoader.LoadWorkFooter(false);
+
         Assert.Contains("[GOTO : HQ]", enabled);
         Assert.Contains("[GOTO : JUDGE]", enabled);
-        Assert.Contains("first return to HQ", enabled);
-        Assert.Contains("After HQ reviews it", enabled);
-        Assert.Contains("NOUL | QID:IMPLEMENTED", enabled);
-        Assert.Contains("SCORE | QID:QUALITY", enabled);
-        Assert.Contains("CHOICE | QID:FORMAT", enabled);
-        Assert.Contains("EVIDENCE:", enabled);
+        Assert.Contains("[GOTO : RESOURCE]", enabled);
+        Assert.Contains("NOUL | QID:<id> <question>", enabled);
+        Assert.Contains("SCORE | QID:<id> <question>", enabled);
+        Assert.Contains("CHOICE | QID:<id> <question>", enabled);
+
+        Assert.Contains("[GOTO : HQ]", disabled);
+        Assert.Contains("[GOTO : RESOURCE]", disabled);
         Assert.DoesNotContain("[GOTO : JUDGE]", disabled);
-        Assert.DoesNotContain("NOUL | QID:IMPLEMENTED", disabled);
-        Assert.Contains("JUDGE is unavailable", disabled);
-        Assert.DoesNotContain("[REPORT]", enabled);
-        Assert.DoesNotContain("[VALIDATION REQUEST]", enabled);
+        Assert.DoesNotContain("NOUL | QID:<id>", disabled);
     }
 
     [Fact]
-    public void HqContractReviewsJudgePlanWithoutCreatingNewWorkerProtocol()
+    public void ActiveRoleContractsStayStructuralAndExampleFree()
     {
-        var hq = RoleContractLoader.LoadHqFooter();
-        Assert.Contains("When WORK asks for semantic verification", hq);
-        Assert.Contains("Return the reviewed plan to WORK", hq);
-        Assert.Contains("NOUL | QID:RESTART_CLEAN", hq);
-        Assert.Contains("SCORE | QID:PLAYBACK_COMPLETION", hq);
-        Assert.Contains("CHOICE | QID:PROGRESSION_BLOCKER", hq);
-        Assert.DoesNotContain("[JUDGE PLAN]", hq);
-        Assert.DoesNotContain("[VALIDATION REQUEST]", hq);
+        var contracts = new[]
+        {
+            RoleContractLoader.LoadHqFooter(),
+            RoleContractLoader.LoadWorkFooter(true),
+            RoleContractLoader.LoadWorkFooter(false),
+            RoleContractLoader.LoadJudgeFooter()
+        };
+
+        foreach (var contract in contracts)
+        {
+            Assert.DoesNotContain("Example:", contract, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Illustrative", contract, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("src/", contract, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("tests/", contract, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(".cs", contract, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(".log", contract, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]
-    public void WorkContractJevQuestionExamplesMatchTheTransportParser()
-    {
-        const string request = """
-            NOUL | QID:IMPLEMENTED Is the requested behavior implemented?
-            PASS: YES >= 0.90
-            EVIDENCE: src/implementation.cs
-            SCOPE: requested behavior only
-            COUNTEREXAMPLE: a missing required case
-            SCORE | QID:QUALITY Rate the required behavior.
-            0 = absent
-            1 = partial
-            CHOICE | QID:FORMAT Is the response format valid?
-            YES = valid
-            NO = invalid
-            """;
-
-        Assert.True(JudgeTransportContract.TryParse(request, out var parsed, out var error), error);
-        Assert.Equal(new[] { "IMPLEMENTED", "QUALITY", "FORMAT" }, parsed.Questions.Select(question => question.Id));
-        Assert.Equal(3, parsed.Questions.Count);
-        Assert.Contains("EVIDENCE: src/implementation.cs", parsed.Questions[0].Instructions);
-    }
-
-    [Fact]
-    public void WorkContractUsesNaturalLanguageForResourceAndJudgeKeepsItsReturnRoute()
+    public void WorkResourceContractStatesGeneralTransportBoundary()
     {
         var work = RoleContractLoader.LoadWorkFooter(true);
-        Assert.Contains("one natural-language image request", work);
-        Assert.Contains("Do not use JSON", work);
-        Assert.Contains("사과를 심플한 게임 아이콘 스타일", work);
-        Assert.Contains("Do not track, infer, or remember how many RESOURCE requests remain.", work);
-        Assert.Contains("only the GOTO control line submits it", work);
-        var judge = RoleContractLoader.LoadJudgeFooter();
-        Assert.Contains("[GOTO : WORK]", judge);
-        Assert.DoesNotContain("[JUDGMENT]", judge);
+        Assert.Contains("RESOURCE body is only the natural-language generation instruction", work);
+        Assert.Contains("Only a valid GOTO control line changes routing; prose does not change routing.", work);
+        Assert.DoesNotContain("Example:", work, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void HqPromptSeparatesMechanicalHeaderFromOpaqueInboundAndOnlyAllowsWork()
+    public void HqPromptUsesPlainMetadataAndOnlyAllowsWork()
     {
         var prompt = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "opaque report");
         Assert.Contains("Role: HQ", prompt);
@@ -109,26 +86,28 @@ public sealed class RoleContractBoundaryTests
     }
 
     [Fact]
-    public void ResourceQueueRepetitionBelongsToHqNotWorkOrWorker()
+    public void WorkPromptUsesPlainMetadata()
     {
-        var hq = RoleContractLoader.LoadHqFooter();
-        var work = RoleContractLoader.LoadWorkFooter(true);
-        Assert.Contains("HQ owns user-requested repetition and remaining-count tracking.", hq);
-        Assert.Contains("RESOURCE_QUEUED", hq);
-        Assert.Contains("Do not track, infer, or remember how many RESOURCE requests remain.", work);
-
-        var prompt = RoleContractLoader.BuildWorkPrompt("RESOURCE_QUEUED", "requestId=r1; outstanding=3; queued=2", true);
+        var prompt = RoleContractLoader.BuildWorkPrompt("RESOURCE_QUEUED", "mechanical status", true);
+        Assert.Contains("Role: WORK", prompt);
         Assert.Contains("Inbound type: RESOURCE_QUEUED", prompt);
+        Assert.Contains("Judge available: yes", prompt);
+        Assert.Contains("Resource available: yes", prompt);
+        Assert.DoesNotContain("[ROLE :", prompt);
         Assert.DoesNotContain("[INBOUND TYPE", prompt);
         Assert.DoesNotContain("[RESOURCE AVAILABLE", prompt);
     }
 
     [Fact]
-    public void JudgeTransportAcceptsPlainQidWithoutSquareBrackets()
+    public void JudgeTransportAcceptsPlainAndLegacyQidSyntax()
     {
-        const string request = "NOUL | QID:PLAIN_ID Is the behavior present?\nPASS: YES >= 0.9";
-        Assert.True(JudgeTransportContract.TryParse(request, out var parsed, out var error), error);
-        Assert.Equal("PLAIN_ID", Assert.Single(parsed.Questions).Id);
+        const string plain = "NOUL | QID:PLAIN_ID Is the behavior present?\nPASS: YES >= 0.9";
+        Assert.True(JudgeTransportContract.TryParse(plain, out var plainParsed, out var plainError), plainError);
+        Assert.Equal("PLAIN_ID", Assert.Single(plainParsed.Questions).Id);
+
+        const string legacy = "NOUL | [QID:LEGACY_ID] Is the behavior present?\nPASS: YES >= 0.9";
+        Assert.True(JudgeTransportContract.TryParse(legacy, out var legacyParsed, out var legacyError), legacyError);
+        Assert.Equal("LEGACY_ID", Assert.Single(legacyParsed.Questions).Id);
     }
 
     [Fact]

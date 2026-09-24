@@ -149,7 +149,7 @@ JUDGE:
 <opaque body>
 ~~~
 
-RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE 한 건을 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 RESOURCE_QUEUED 접수 사실을 HQ에 돌려준다. 다음 RESOURCE 요청이 필요한지는 HQ가 결정한다. RESOURCE 완료 결과는 다음 WORK 호출에 기계적으로 함께 전달하거나 HQ END finalization에서 기계적으로 반영한다.
+RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. RESOURCE 완료 결과는 다음 WORK 호출에 기계적으로 함께 전달하거나 HQ END finalization에서 기계적으로 반영한다.
 
 일반 body는 opaque다. JUDGE destination의 schema 검사와 RESOURCE 자연어 body의 비어 있음 검사는 transport 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
 
@@ -216,7 +216,7 @@ WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지
 
 ~~~text
 [GOTO : RESOURCE]
-과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도처럼 서로 구별하기 쉬운 과일을 밝은 게임 아이콘 스타일로 만들어줘.
+<natural-language image generation request>
 ~~~
 
 Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE queue에 넣는다. 저장 위치는 Worker가 기계적으로 `assets/resources/<requestId>/image-01.*`, `image-02.*` 형태로 생성한다.
@@ -289,11 +289,20 @@ RESOURCE가 하지 않는 것:
 실제 Windows build/test/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
 
 
-## 2026-09-24 orchestration ownership clarification
+## 11. Role contract generalization rule
 
-- 사용자가 요구한 RESOURCE 반복 횟수와 남은 횟수는 HQ의 orchestration state다.
-- WORK는 RESOURCE 요청 한 건을 자연어로 만드는 역할만 하며 총 횟수나 남은 횟수를 기억·추론하지 않는다.
-- Worker는 requestId, queued/outstanding, 실행/완료/실패 같은 기계적 queue 사실만 관리한다. 사용자 목표에서 필요한 총 요청 수를 추론하거나 감소 계산하지 않는다.
-- WORK가 RESOURCE 한 건을 요청하면 Worker는 queue에 기계적으로 접수한 뒤 RESOURCE_QUEUED 사실을 HQ에 반환한다. HQ가 다음 RESOURCE 요청이 필요한지 결정해 WORK에 새 지시를 보낸다.
-- 역할 prompt에서 대괄호는 실제 파서 제어 토큰 ACTION/GOTO에만 사용한다. role/inbound/availability/body 표시는 평문 metadata로 전달한다.
-- JUDGE QID는 `QID:NAME` 평문을 우선 사용하며 기존 `[QID:NAME]` 입력도 parser 호환을 위해 계속 허용한다.
+Role contracts are long-lived protocol boundaries, not task notes.
+
+Contracts may contain only:
+- durable role responsibility
+- allowed ACTION/GOTO syntax and state-transition constraints
+- transport grammar or mechanical invariants required for interoperability
+- general boundaries between semantic AI decisions and mechanical Worker behavior
+
+Contracts must not contain:
+- examples copied from a particular user request, test run, product domain, file name, asset, game, audio case, or incident
+- one-off counts, lists, retries, or remaining-work logic that only makes sense for a specific scenario
+- prose written to patch one observed model failure when the same rule can be expressed as a general protocol invariant
+- temporary implementation history, debugging instructions, or acceptance-test scripts
+
+Scenario-specific material belongs in tests, fixtures, task history, or validation notes. Before adding a contract rule, verify that it would still be correct for an unrelated future job. If not, do not add it to the contract.

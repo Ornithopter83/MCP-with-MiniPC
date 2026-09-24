@@ -22,5 +22,8 @@
 - Git 동작은 충돌/detached HEAD/dirty pull/rebase 진행 상태를 자동 해결하지 않는다.
 - Supabase Service Role Key는 Server 환경 변수에만 둔다.
 
-- RESOURCE 반복 횟수/남은 횟수는 HQ가 관리한다. WORK는 한 번에 한 RESOURCE 요청만 만들고, Worker는 목표 횟수를 추론하지 않은 채 queue의 requestId/queued/outstanding 상태만 기계적으로 관리한다.
 - 역할 prompt의 대괄호는 실제 ACTION/GOTO 제어 토큰에만 사용하고, role/inbound/availability 같은 metadata는 평문으로 쓴다.
+
+- 역할 contract는 장기 불변식만 담는다. 특정 사용자 요청, 테스트 시나리오, 도메인 예시, 파일명, 횟수/목록, 일회성 장애 대응 문구를 contract에 추가하지 않는다.
+- contract 변경 전 “무관한 다른 Job에도 그대로 적용되는가?”를 확인한다. 아니라면 tests/fixtures/task history/validation note에만 둔다.
+- 장애를 고칠 때 관측된 실패 문장을 그대로 contract에 넣지 말고, 필요한 경우 일반 protocol invariant로 최소화한다.
