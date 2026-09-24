@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ProjectHub.Worker;
 
@@ -20,6 +21,8 @@ public sealed record ImplementerResult(
     IReadOnlyList<string> Unverified);
 public sealed record CoordinatorAcReview(string AcId, string Status, string Reason);
 public sealed record CoordinatorReview(string Decision, string Summary, IReadOnlyList<CoordinatorAcReview> AcceptanceCriteria);
+public enum CoordinatorActionKind { Continue, Pause, End }
+public sealed record CoordinatorAction(CoordinatorActionKind Kind, CoordinatorReview Review);
 
 public static class CoordinatorFirstContracts
 {
@@ -82,14 +85,25 @@ public static class CoordinatorFirstContracts
         if (!TryGetRoot(json, out var root, out error)) return false;
         try
         {
+            if (!HasExactProperties(root, "decision", "summary", "acceptance_criteria"))
+                return Fail("REVIEW_INVALID_FIELDS", out error);
             var criteria = root.GetProperty("acceptance_criteria").EnumerateArray().Select(item => new CoordinatorAcReview(
                 RequiredString(item, "ac_id"), RequiredString(item, "status"), RequiredString(item, "reason"))).ToList();
+            if (root.GetProperty("acceptance_criteria").EnumerateArray().Any(item => !HasExactProperties(item, "ac_id", "status", "reason")))
+                return Fail("REVIEW_INVALID_FIELDS", out error);
             if (criteria.Select(ac => ac.AcId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != criteria.Count)
                 return Fail("REVIEW_DUPLICATE_AC_ID", out error);
             var requiredIds = requiredCriteria.Select(ac => ac.AcId).ToHashSet(StringComparer.OrdinalIgnoreCase);
             if (criteria.Count != requiredIds.Count || criteria.Any(ac => !requiredIds.Contains(ac.AcId)))
                 return Fail("REVIEW_AC_SET_MISMATCH", out error);
-            review = new CoordinatorReview(RequiredString(root, "decision"), RequiredString(root, "summary"), criteria);
+            var decision = RequiredString(root, "decision");
+            if (decision is not ("ACCEPT" or "REVISE" or "COLLECT_EVIDENCE" or "BLOCKED") ||
+                criteria.Any(ac => ac.Status is not ("PASS" or "FAIL" or "INSUFFICIENT")))
+                return Fail("REVIEW_INVALID_STATUS", out error);
+            var summary = RequiredString(root, "summary");
+            if (summary.Length > 3000 || criteria.Any(ac => ac.AcId.Length > 40 || ac.Reason.Length > 1000))
+                return Fail("REVIEW_INVALID_LENGTH", out error);
+            review = new CoordinatorReview(decision, summary, criteria);
             error = string.Empty;
             return true;
         }
@@ -99,14 +113,42 @@ public static class CoordinatorFirstContracts
         }
     }
 
+    public static bool TryParseReviewAction(string? response, IReadOnlyList<WorkAcceptanceCriterion> requiredCriteria, out CoordinatorAction? action, out string error)
+    {
+        action = null;
+        var lines = (response ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var first = Array.FindIndex(lines, line => !string.IsNullOrWhiteSpace(line));
+        if (first < 0) return Fail("ACTION_MISSING", out error);
+        var control = lines[first].Trim().TrimStart('\uFEFF');
+        var match = Regex.Match(control, @"^\[ACTION=(CONTINUE|PAUSE|END)\]$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!match.Success) return Fail("ACTION_INVALID_FIRST_LINE", out error);
+        var body = string.Join('\n', lines.Skip(first + 1)).Trim();
+        if (Regex.IsMatch(body, @"(?m)^\s*\[ACTION=", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return Fail("ACTION_DUPLICATE", out error);
+        if (!TryParseReview(body, requiredCriteria, out var review, out error) || review is null) return false;
+        var kind = match.Groups[1].Value.ToUpperInvariant() switch
+        {
+            "CONTINUE" => CoordinatorActionKind.Continue,
+            "PAUSE" => CoordinatorActionKind.Pause,
+            _ => CoordinatorActionKind.End
+        };
+        if (kind == CoordinatorActionKind.End && review.Decision != "ACCEPT" ||
+            kind == CoordinatorActionKind.Continue && review.Decision is not ("REVISE" or "COLLECT_EVIDENCE") ||
+            kind == CoordinatorActionKind.Pause && review.Decision == "ACCEPT")
+            return Fail("ACTION_REVIEW_CONFLICT", out error);
+        action = new CoordinatorAction(kind, review);
+        error = string.Empty;
+        return true;
+    }
+
     public static bool HasRequiredValidationEvidence(CoordinatorWorkCard card, IReadOnlyList<CodexCommandExecution> executions, out string detail)
     {
         var missing = new List<string>();
         foreach (var command in card.ValidationCommands)
         {
-            var execution = executions.FirstOrDefault(item => CommandMatches(command, item.Command));
-            if (execution is null) missing.Add($"NOT_OBSERVED: {command}");
-            else if (execution.ExitCode != 0) missing.Add($"EXIT_{execution.ExitCode}: {command}");
+            var matches = executions.Where(item => CommandMatches(command, item.Command)).ToList();
+            if (matches.Count == 0) missing.Add($"NOT_OBSERVED: {command}");
+            else if (!matches.Any(item => item.ExitCode == 0)) missing.Add($"EXIT_{matches[^1].ExitCode}: {command}");
         }
         detail = string.Join(Environment.NewLine, missing);
         return missing.Count == 0;
@@ -114,8 +156,25 @@ public static class CoordinatorFirstContracts
 
     public static bool CommandMatches(string requiredCommand, string observedCommand)
     {
-        static string Normalize(string value) => string.Join(' ', value.Trim().Trim('"', '\'').Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        return Normalize(observedCommand).Contains(Normalize(requiredCommand), StringComparison.OrdinalIgnoreCase);
+        static string Unquote(string value)
+        {
+            value = value.Trim();
+            return value.Length >= 2 && value[0] == value[^1] && value[0] is '"' or '\'' ? value[1..^1] : value;
+        }
+        static string Normalize(string value) => string.Join(' ', Unquote(value).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        var observed = observedCommand.Trim();
+        for (var depth = 0; depth <= 2; depth++)
+        {
+            if (string.Equals(Normalize(observed), Normalize(requiredCommand), StringComparison.OrdinalIgnoreCase)) return true;
+            var wrapper = Regex.Match(observed,
+                "^(?:\"[^\"]*(?:powershell|pwsh)\\.exe\"|(?:[^\\s\"']*[\\\\/])?(?:powershell|pwsh)(?:\\.exe)?)(?:\\s+-(?:NoProfile|NonInteractive))*\\s+-Command\\s+(.+)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!wrapper.Success)
+                wrapper = Regex.Match(observed, @"^(?:cmd(?:\.exe)?)\s+/[cC]\s+(.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!wrapper.Success) return false;
+            observed = Unquote(wrapper.Groups[1].Value);
+        }
+        return false;
     }
 
     private static bool TryGetRoot(string? json, out JsonElement root, out string error)
@@ -134,6 +193,10 @@ public static class CoordinatorFirstContracts
             return Fail("JSON_INVALID", out error);
         }
     }
+
+    private static bool HasExactProperties(JsonElement element, params string[] names) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal).SetEquals(names);
 
     private static string RequiredString(JsonElement element, string name)
     {
@@ -166,4 +229,4 @@ public static class CoordinatorFirstContracts
     }
 }
 
-public sealed record CodexCommandExecution(string Command, int ExitCode);
+public sealed record CodexCommandExecution(string Command, int ExitCode, string? Output = null);

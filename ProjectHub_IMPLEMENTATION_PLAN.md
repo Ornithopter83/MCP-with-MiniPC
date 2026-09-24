@@ -2,6 +2,14 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 11-C 후속 — 현재 단계 UI와 ACTION 제어
+
+현재 단계만 컬러로 표시하고 비활성 아이콘 배경의 대비를 높였다. 작업은 녹색, 판정은 노란색 활성 팔레트로 바꿨고 대화 이력은 아래로 추가한다. Web의 첫 줄 ACTION 형식을 참고해 CLI 관제 REVIEW가 `[ACTION=CONTINUE|PAUSE|END]` 첫 줄과 REVIEW JSON을 반환하도록 했다. Worker는 모델과 무관하게 ACTION을 파싱해 최대 3회까지 같은 작업 카드의 재작업을 이어가거나, 사용자 판단을 기다리거나, 필수 검증 증거와 모든 AC가 PASS일 때만 완료한다. Debug 빌드 경고/오류 0, 전체 39개 테스트 통과, Release 게시 성공(게시본 SHA-256 `1B894FD0F3CB9CEB7DC8C3067F924036F50F40E37511C051AABA6E85A87C82C2`). 읽기 전용 CLI 모델 호출에서 ACTION 첫 줄과 유효한 END/ACCEPT JSON을 확인했다. Explorer 앱 제어가 노출되지 않아 UI·통합 왕복은 미검증이고, 사용자 선택에 따라 설치본 교체는 보류했다. 잔여 `11-C-UI-EXPLORER`, `11-C-ACTION-E2E`, `11-C-DEPLOY`(설치 보류); 상세는 CurrentWork와 task 11을 참조한다.
+
+## 2026-09-24 11-C 후속 — 관제 세션 연결과 검증 증거
+
+08:01 설치본에서 Sol PLAN은 exit 0이었지만 Luna 전에 세션 ID 연결이 실패했다. 설정의 `threadSessionId`가 null이 아닌 빈 문자열이었고 Runner의 null 병합과 관제의 `??=`가 이를 기존 세션으로 취급한 것이 확정 원인이었다. ID를 정규화하고, CLI 진행 이벤트의 `exit_code: null` 파싱을 보정했다. 검증 명령은 부분 문자열 언급을 제외하고 최대 두 겹의 shell wrapper를 풀어 정확히 비교한다. 검증 명령 출력 요약을 Sol REVIEW에 전달하며 이력 판정도 실제 증거와 일치시켰다. LocalAppData 프로필 세션 루트 검색은 보조 복구 경로로 유지한다. Debug 빌드 경고/오류 0, 전체 38개 테스트 통과, Release 단일 파일 게시 성공. 사용자 승인을 받아 Worker 설치본을 교체했고 게시본/설치본 SHA-256은 `CFCF23323352A51FA6975CC656F088DEC39E1F50961E6277672A24DF20EAA0CF`로 일치한다. Explorer 실작업에서 Sol PLAN→Luna IMPLEMENT→동일 Sol 세션 REVIEW, 검증 명령 출력 `MODEL_ACCESS_OK`, 검증 PASS 및 `DONE · REVIEW ACCEPTED`를 확인했다. 잔여 `11-C-DEPLOY`, `11-C-LIVE-SESSION` 완료. 상세는 CurrentWork를 참조한다.
+
 ## 2026-09-24 후속 — 역할 모델 선택과 실행 검사 일치
 
 설정 UI와 별도 `codex debug models` 카탈로그 사이의 이중 capability 검사를 제거했다. CLI 실행용 모델/추론 선택은 설정과 요청 인수 조합에서 공통으로 쓰는 `CodexServedModels` enum에 맡기고, 폴더·provider·transport·인증 사전검사는 유지한다. 콤보에 enum 외 저장값을 임의로 노출하지 않는다. `gpt-6-sol / high` 회귀 검증을 추가했다. Debug 빌드(경고/오류 0), 전체 32개 테스트, Release 게시가 성공했다. 새 게시 EXE SHA-256은 `FC421C2E13D514CA37C50C388333C005C4385CEF5E0FD7FEE955EEBD86ED7F04`. C:\GameProject가 없어 자동 복사는 생략됐고, 실행 중 PID 27136의 이전 EXE 교체는 자동 검토가 거부해 잔여다. 미커밋 작업 때문에 pull/rebase·최신 피드백 확인·커밋/푸시는 중단했다. 상세는 CurrentWork 후속 기록을 참조한다.

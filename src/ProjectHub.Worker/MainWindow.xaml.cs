@@ -527,14 +527,14 @@ public partial class MainWindow : Window
     private void UpdatePipelineVisuals()
     {
         SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, "#DDEEFF", "#1477E8", "#1267D5", false);
-        SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, "current-openai.png", TaskStage.Implementer, "#FCE1E7", "#D72F4D", "#A91938", false);
+        SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, "current-openai.png", TaskStage.Implementer, "#DCF5E3", "#168A4A", "#116B39", false);
         SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, "current-openai.png", TaskStage.HighLevel, "#ECD8E4", "#82194B", "#74133F", !_targetSettings.HighLevelEnabled);
-        SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, "current-jev.png", TaskStage.Judge, "#D9F0E2", "#078448", "#08713D", !_targetSettings.EffectiveJudge.Enabled);
+        SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, "current-jev.png", TaskStage.Judge, "#FFF0B8", "#B87900", "#765000", !_targetSettings.EffectiveJudge.Enabled);
 
         var idle = _currentTaskStage == TaskStage.Idle;
         SetColor(PipelineIdleCard, idle ? "#7A8797" : "#B8C8DA");
         PipelineIdleTitle.Foreground = System.Windows.Media.Brushes.White;
-        SetColor(PipelineIdleIconCircle, idle ? "#667487" : "#8798AA");
+        SetColor(PipelineIdleIconCircle, idle ? "#566578" : "#526477");
         PipelineIdleCard.BorderBrush = idle ? System.Windows.Media.Brushes.DimGray : System.Windows.Media.Brushes.Transparent;
         PipelineIdleCard.BorderThickness = idle ? new Thickness(2) : new Thickness(1);
         PipelineIdleCard.Effect = idle ? CreateCurrentStageShadow() : null;
@@ -544,11 +544,9 @@ public partial class MainWindow : Window
     private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, string background, string circle, string foreground, bool disabled)
     {
         var current = !disabled && _currentTaskStage == stage;
-        var next = !disabled && _nextTaskStage == stage;
-        var initialIdle = _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _currentTaskStage == TaskStage.Idle;
-        var colored = initialIdle || current || next;
+        var colored = current;
         SetColor(card, colored ? background : "#B8C8DA");
-        SetColor(iconCircle, colored ? circle : "#8798AA");
+        SetColor(iconCircle, colored ? circle : "#526477");
         title.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
         var selectedName = colored ? iconAsset : iconAsset.Replace(".png", "-gray.png", StringComparison.OrdinalIgnoreCase);
         icon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/ProjectHub.Worker;component/Assets/{selectedName}"));
@@ -559,7 +557,7 @@ public partial class MainWindow : Window
         card.BorderBrush = current ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.Transparent;
         card.BorderThickness = current ? new Thickness(2) : new Thickness(1);
         card.Effect = current ? CreateCurrentStageShadow() : null;
-        card.Opacity = disabled && !initialIdle ? 0.85 : 1;
+        card.Opacity = disabled ? 0.85 : 1;
     }
 
     private static void SetColor(Border control, string color)
@@ -1368,7 +1366,7 @@ public partial class MainWindow : Window
         StartTaskTranscript(selectedThread, request, string.Empty);
         AddTaskMessage("TASK REQUEST", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1);
         AddTaskMessage("TASK START", $"Mode: coordinator-first CLI-to-CLI{Environment.NewLine}Coordinator: {coordinator.Model} / {coordinator.Reasoning}{Environment.NewLine}Implementer: {implementer.Model} / {implementer.Reasoning}{Environment.NewLine}Working directory: {workingDirectory}");
-        var coordinatorSession = coordinator.ThreadSessionId;
+        var coordinatorSession = CodexCliRunner.NormalizeSessionId(coordinator.ThreadSessionId);
         IReadOnlyList<CodexCommandExecution> observedExecutions = Array.Empty<CodexCommandExecution>();
         try
         {
@@ -1387,54 +1385,91 @@ public partial class MainWindow : Window
             }
             if (string.IsNullOrWhiteSpace(plan.SessionId))
             {
-                ShowCoordinatorFirstBlocked("관제 세션을 이어갈 수 없습니다.", "설계 계획은 받았지만 CLI JSONL 이벤트와 새 세션 기록에서 관제 세션 ID를 하나로 확인하지 못했습니다. 다른 세션으로 잘못 이어가지 않도록 작업 AI 호출 전에 멈췄습니다.");
+                ShowCoordinatorFirstBlocked("관제 세션을 이어갈 수 없습니다.", "설계 계획은 받았지만 CLI JSONL 이벤트와 새 세션 기록에서 관제 세션 ID를 하나로 확인하지 못했습니다. 다른 세션으로 잘못 이어가지 않도록 작업 AI 호출 전에 멈췄습니다." +
+                    (string.IsNullOrWhiteSpace(plan.SessionDiagnostic) ? string.Empty : Environment.NewLine + "세션 진단: " + plan.SessionDiagnostic));
                 return;
             }
             AddTaskMessage("SOL WORK CARD", JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true }), summary: $"{card.Title}: {card.Goal}");
 
-            TaskDirection.Text = "LUNA IMPLEMENTER";
-            TaskTitle.Text = card.Title;
-            ResultTitle.Text = "IMPLEMENTING";
-            SetFlowState(codexActive: false, workerActive: true, webActive: false, explicitStage: TaskStage.Implementer, explicitNextStage: TaskStage.Coordinator);
             var cardJson = JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true });
-            var implementPrompt = "You are the Luna implementer. Implement only the work card below in the current workspace. Follow its prohibited list. Run every listed validation command and report truthful results. Do not claim a command passed unless its process succeeded. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>\n<work_card_json>\n" + cardJson + "\n</work_card_json>";
-            var implementation = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT", implementPrompt, implementer, workingDirectory, implementer.ThreadSessionId, CoordinatorFirstContracts.ImplementerResultSchema, cts.Token, CodexSandboxMode.WorkspaceWrite);
-            observedExecutions = implementation.CommandExecutions ?? Array.Empty<CodexCommandExecution>();
-            var reportParsed = CoordinatorFirstContracts.TryParseImplementerResult(implementation.FinalMessage, out var report, out var reportError);
-            if (implementation.ExitCode != 0 || !reportParsed || report is null)
+            var implementerSession = CodexCliRunner.NormalizeSessionId(implementer.ThreadSessionId);
+            string? continuationReview = null;
+            const int maxRounds = 3;
+            for (var round = 1; round <= maxRounds; round++)
             {
-                ShowCoordinatorFirstBlocked("작업 구현 보고서를 확인할 수 없습니다.", implementation.ExitCode != 0 ? $"Implementer exit {implementation.ExitCode}" : reportError);
-                return;
-            }
-            var evidenceOk = CoordinatorFirstContracts.HasRequiredValidationEvidence(card, observedExecutions, out var evidenceDetail);
-            var reportJson = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
-            AddTaskMessage("LUNA RESULT", reportJson, sizeBytes: Encoding.UTF8.GetByteCount(reportJson), fileCount: report.ChangedPaths.Count, status: report.Status, summary: report.Summary);
-            AddTaskMessage("VALIDATION EVIDENCE", observedExecutions.Count == 0
-                ? "Codex CLI JSONL에서 명령 실행/종료코드 증거를 추출하지 못했습니다."
-                : string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit {item.ExitCode}: {item.Command}")), itemCount: observedExecutions.Count, status: observedExecutions.Count > 0 && observedExecutions.All(item => item.ExitCode == 0) ? "PASS" : "FAIL", summary: observedExecutions.Count == 0 ? "명령 실행 증거를 확인하지 못했습니다." : $"{observedExecutions.Count}개 검증 명령의 실제 종료 결과를 확인했습니다.");
+                TaskDirection.Text = "LUNA IMPLEMENTER";
+                TaskTitle.Text = card.Title;
+                ResultTitle.Text = $"IMPLEMENTING · {round}/{maxRounds}";
+                SetFlowState(codexActive: false, workerActive: true, webActive: false, explicitStage: TaskStage.Implementer, explicitNextStage: TaskStage.Coordinator);
+                var implementPrompt = "You are the implementer. Implement only the work card below in the current workspace. Follow its prohibited list. Run every listed validation command and report truthful results. Do not claim a command passed unless its process succeeded. Return only JSON matching the required schema.\n\n<user_request>\n" + request + "\n</user_request>\n<work_card_json>\n" + cardJson + "\n</work_card_json>" +
+                    (continuationReview is null ? string.Empty : "\n<coordinator_review_json>\n" + continuationReview + "\n</coordinator_review_json>\nResolve only the review's remaining deficiencies within the original work card. Re-run every listed validation command.");
+                var implementation = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT", implementPrompt, implementer, workingDirectory, implementerSession, CoordinatorFirstContracts.ImplementerResultSchema, cts.Token, CodexSandboxMode.WorkspaceWrite);
+                implementerSession ??= implementation.SessionId;
+                observedExecutions = implementation.CommandExecutions ?? Array.Empty<CodexCommandExecution>();
+                var reportParsed = CoordinatorFirstContracts.TryParseImplementerResult(implementation.FinalMessage, out var report, out var reportError);
+                if (implementation.ExitCode != 0 || !reportParsed || report is null)
+                {
+                    ShowCoordinatorFirstBlocked("작업 구현 보고서를 확인할 수 없습니다.", implementation.ExitCode != 0 ? $"Implementer exit {implementation.ExitCode}" : reportError);
+                    return;
+                }
+                var evidenceOk = CoordinatorFirstContracts.HasRequiredValidationEvidence(card, observedExecutions, out var evidenceDetail);
+                var reportJson = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+                AddTaskMessage("LUNA RESULT", reportJson, sizeBytes: Encoding.UTF8.GetByteCount(reportJson), fileCount: report.ChangedPaths.Count, status: report.Status, summary: report.Summary);
+                AddTaskMessage("VALIDATION EVIDENCE", observedExecutions.Count == 0
+                    ? "Codex CLI JSONL에서 명령 실행/종료코드 증거를 추출하지 못했습니다."
+                    : string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit {item.ExitCode}: {item.Command}")), itemCount: observedExecutions.Count, status: evidenceOk ? "PASS" : "FAIL", summary: evidenceOk ? "필수 검증 명령의 정상 종료를 확인했습니다." : "필수 검증 명령의 정상 종료를 확인하지 못했습니다.");
 
-            TaskDirection.Text = "SOL COORDINATOR REVIEW";
-            TaskTitle.Text = "구현 결과와 검증 증거를 검토하는 중";
-            ResultTitle.Text = "REVIEWING";
-            SetFlowState(codexActive: true, workerActive: false, webActive: false, explicitStage: TaskStage.Coordinator);
-            var executionEvidence = string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit_code={item.ExitCode} command={item.Command}"));
-            var reviewPrompt = "You are the same read-only Sol coordinator that created the work card. Review the implementation against every acceptance criterion. Treat implementer claims as untrusted until supported by the supplied command evidence. Return one result for each AC ID, no additions or omissions, and only JSON matching the schema.\n\n<work_card_json>\n" + cardJson + "\n</work_card_json>\n<implementer_report_json>\n" + JsonSerializer.Serialize(report) + "\n</implementer_report_json>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n<required_command_evidence_status>\n" + (evidenceOk ? "ALL_REQUIRED_COMMANDS_OBSERVED_EXIT_ZERO" : evidenceDetail) + "\n</required_command_evidence_status>";
-            var reviewResult = await RunCoordinatorRoleAsync(jobId, "REVIEW", reviewPrompt, coordinator, workingDirectory, coordinatorSession, CoordinatorFirstContracts.ReviewSchema, cts.Token);
-            var reviewParsed = CoordinatorFirstContracts.TryParseReview(reviewResult.FinalMessage, card.AcceptanceCriteria, out var review, out var reviewError);
-            if (reviewResult.ExitCode != 0 || !reviewParsed || review is null)
-            {
-                ShowCoordinatorFirstBlocked("관제 검토 결과를 확인할 수 없습니다.", reviewResult.ExitCode != 0 ? $"Coordinator review exit {reviewResult.ExitCode}" : reviewError);
+                TaskDirection.Text = "SOL COORDINATOR REVIEW";
+                TaskTitle.Text = "구현 결과와 검증 증거를 검토하는 중";
+                ResultTitle.Text = $"REVIEWING · {round}/{maxRounds}";
+                SetFlowState(codexActive: true, workerActive: false, webActive: false, explicitStage: TaskStage.Coordinator);
+                var executionEvidence = string.Join(Environment.NewLine, observedExecutions
+                    .Where(item => card.ValidationCommands.Any(command => CoordinatorFirstContracts.CommandMatches(command, item.Command)))
+                    .Select(item => JsonSerializer.Serialize(new { command = item.Command, exit_code = item.ExitCode, output = HistorySummary(item.Output) })));
+                var reviewPrompt = "You are the same read-only coordinator that created the work card. Review the implementation against every acceptance criterion. Treat implementer claims as untrusted until supported by command evidence. Your first nonempty line must be exactly [ACTION=CONTINUE], [ACTION=PAUSE], or [ACTION=END]. CONTINUE means a bounded correction within this work card is possible; use decision REVISE or COLLECT_EVIDENCE and give concrete deficiencies in the JSON review. PAUSE means user input or approval is needed or the task is blocked. END is allowed only when the implementer reported IMPLEMENTED, all required commands have exit 0 evidence, and every AC passes; use decision ACCEPT. After the ACTION line, return only one JSON object matching the schema below, with every AC ID exactly once and no Markdown fence. The JSON must have exactly decision (review verdict, not the ACTION word), summary (string), and acceptance_criteria (array). Each array item must have exactly ac_id, status, and reason; never use an object keyed by AC ID.\n<review_schema>\n" + CoordinatorFirstContracts.ReviewSchema + "\n</review_schema>\n<work_card_json>\n" + cardJson + "\n</work_card_json>\n<implementer_report_json>\n" + reportJson + "\n</implementer_report_json>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n<required_command_evidence_status>\n" + (evidenceOk ? "ALL_REQUIRED_COMMANDS_OBSERVED_EXIT_ZERO" : evidenceDetail) + "\n</required_command_evidence_status>";
+                var reviewResult = await RunCoordinatorRoleAsync(jobId, "REVIEW", reviewPrompt, coordinator, workingDirectory, coordinatorSession, null, cts.Token);
+                var actionParsed = CoordinatorFirstContracts.TryParseReviewAction(reviewResult.FinalMessage, card.AcceptanceCriteria, out var action, out var reviewError);
+                if (reviewResult.ExitCode != 0 || !actionParsed || action is null)
+                {
+                    ShowCoordinatorFirstBlocked("관제 검토 결과를 확인할 수 없습니다.", reviewResult.ExitCode != 0 ? $"Coordinator review exit {reviewResult.ExitCode}" : reviewError);
+                    return;
+                }
+                var review = action.Review;
+                var reviewJson = JsonSerializer.Serialize(review, new JsonSerializerOptions { WriteIndented = true });
+                AddTaskMessage("SOL REVIEW", $"[ACTION={action.Kind.ToString().ToUpperInvariant()}]{Environment.NewLine}{reviewJson}", status: action.Kind.ToString().ToUpperInvariant(), summary: review.Summary);
+                var accepted = evidenceOk && string.Equals(report.Status, "IMPLEMENTED", StringComparison.OrdinalIgnoreCase)
+                    && review.Decision == "ACCEPT" && review.AcceptanceCriteria.All(item => item.Status == "PASS");
+                if (action.Kind == CoordinatorActionKind.End && !accepted)
+                {
+                    ShowCoordinatorFirstBlocked("관제 종료 조건이 충족되지 않았습니다.", evidenceOk ? "구현 상태나 AC 판정이 완료 조건과 일치하지 않습니다." : "필수 검증 증거 부족: " + evidenceDetail);
+                    return;
+                }
+                if (action.Kind == CoordinatorActionKind.Continue)
+                {
+                    if (round == maxRounds)
+                    {
+                        ResultTitle.Text = "FINISH_LIMIT";
+                        ResultBody.Text = review.Summary;
+                        TaskTitle.Text = "자동 작업 횟수 한도에 도달했습니다.";
+                        AddTaskMessage("TASK RESULT", $"FINISH_LIMIT{Environment.NewLine}{review.Summary}", status: "LIMIT", summary: review.Summary);
+                        SetFlowState(false, false, false);
+                        return;
+                    }
+                    if (string.IsNullOrWhiteSpace(implementerSession))
+                    {
+                        ShowCoordinatorFirstBlocked("작업 세션을 이어갈 수 없습니다.", "CONTINUE 지시를 받았지만 작업 AI의 세션 ID가 없습니다.");
+                        return;
+                    }
+                    continuationReview = reviewJson;
+                    continue;
+                }
+                ResultTitle.Text = action.Kind == CoordinatorActionKind.End ? "DONE · REVIEW ACCEPTED" : "FINISH_PAUSED";
+                ResultBody.Text = review.Summary + (evidenceOk ? string.Empty : Environment.NewLine + "필수 검증 증거 부족: " + evidenceDetail);
+                TaskTitle.Text = action.Kind == CoordinatorActionKind.End ? "검토 승인 완료" : "사용자 판단 또는 입력 대기";
+                AddTaskMessage("TASK RESULT", $"{ResultTitle.Text}{Environment.NewLine}{review.Summary}", itemCount: review.AcceptanceCriteria.Count, status: action.Kind == CoordinatorActionKind.End ? "PASS" : "PAUSED", summary: review.Summary);
+                SetFlowState(false, false, false);
                 return;
             }
-            AddTaskMessage("SOL REVIEW", JsonSerializer.Serialize(review, new JsonSerializerOptions { WriteIndented = true }), summary: review.Summary);
-            var accepted = evidenceOk && string.Equals(report.Status, "IMPLEMENTED", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(review.Decision, "ACCEPT", StringComparison.OrdinalIgnoreCase)
-                && review.AcceptanceCriteria.All(item => string.Equals(item.Status, "PASS", StringComparison.OrdinalIgnoreCase));
-            ResultTitle.Text = accepted ? "DONE · REVIEW ACCEPTED" : $"REVIEW · {review.Decision}";
-            ResultBody.Text = accepted ? review.Summary : review.Summary + Environment.NewLine + (evidenceOk ? string.Empty : "필수 검증 증거 부족: " + evidenceDetail);
-            TaskTitle.Text = accepted ? "검토 승인 완료" : "검토 또는 추가 작업 필요";
-            AddTaskMessage("TASK RESULT", $"{ResultTitle.Text}{Environment.NewLine}{review.Summary}", itemCount: review.AcceptanceCriteria.Count, status: accepted ? "PASS" : review.Decision, summary: review.Summary);
-            SetFlowState(false, false, false);
         }
         catch (OperationCanceledException)
         {
@@ -1458,7 +1493,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<CodexCliResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
+    private async Task<CodexCliResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string? schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
     {
         var started = DateTimeOffset.UtcNow;
         var result = await _codexRunner.RunAsync(prompt, role.Model, role.Reasoning, workingDirectory, sessionId, sandbox == CodexSandboxMode.ReadOnly, cancellationToken, schema, sandbox);
@@ -2389,8 +2424,8 @@ public partial class MainWindow : Window
         var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, referenceId, summary);
         if (historyEvent is not null)
         {
-            _historyEvents.Insert(0, historyEvent);
-            while (_historyEvents.Count > 250) _historyEvents.RemoveAt(_historyEvents.Count - 1);
+            _historyEvents.Add(historyEvent);
+            while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
         }
         RefreshMessageLog();
     }
@@ -2488,7 +2523,7 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (DashboardHistoryList.Items.Count > 0)
-                DashboardHistoryList.ScrollIntoView(DashboardHistoryList.Items[0]);
+                DashboardHistoryList.ScrollIntoView(DashboardHistoryList.Items[DashboardHistoryList.Items.Count - 1]);
         }), DispatcherPriority.Background);
     }
     private string? ExportTaskTranscript()

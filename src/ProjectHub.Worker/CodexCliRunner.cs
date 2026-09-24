@@ -31,7 +31,8 @@ public sealed record CodexCliResult(
     CodexUsage Usage,
     DateTimeOffset StartedAt,
     DateTimeOffset FinishedAt,
-    IReadOnlyList<CodexCommandExecution>? CommandExecutions = null);
+    IReadOnlyList<CodexCommandExecution>? CommandExecutions = null,
+    string? SessionDiagnostic = null);
 
 public enum CodexSandboxMode
 {
@@ -59,6 +60,7 @@ public sealed class CodexCliRunner
 
     public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null)
     {
+        sessionId = NormalizeSessionId(sessionId);
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
             throw new DirectoryNotFoundException($"Codex 작업 폴더를 찾을 수 없습니다: {workingDirectory}");
         if (!CodexModelRequest.TryCreate(model, reasoning, out var modelRequest))
@@ -119,9 +121,15 @@ public sealed class CodexCliRunner
             var stderr = await stderrTask;
             var finalMessage = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile) : ExtractFinalMessage(stdout);
             var finishedAt = DateTimeOffset.UtcNow;
-            var resolvedSessionId = sessionId ?? ExtractSessionId(stdout) ??
-                (sessionSnapshot is null ? null : CodexSessionLocator.FindNewSessionId(sessionSnapshot, finishedAt));
-            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, finishedAt, ExtractCommandExecutions(stdout));
+            var resolvedSessionId = sessionId ?? ExtractSessionId(stdout);
+            string? sessionDiagnostic = null;
+            if (resolvedSessionId is null && sessionSnapshot is not null)
+            {
+                resolvedSessionId = CodexSessionLocator.FindNewSessionId(sessionSnapshot, finishedAt, out var searchDiagnostic);
+                if (resolvedSessionId is null)
+                    sessionDiagnostic = $"stdoutBytes={Encoding.UTF8.GetByteCount(stdout)}; {searchDiagnostic}";
+            }
+            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, finishedAt, ExtractCommandExecutions(stdout), sessionDiagnostic);
         }
         finally
         {
@@ -129,6 +137,9 @@ public sealed class CodexCliRunner
             try { if (outputSchemaFile is not null && File.Exists(outputSchemaFile)) File.Delete(outputSchemaFile); } catch (IOException) { }
         }
     }
+
+    public static string? NormalizeSessionId(string? sessionId) =>
+        string.IsNullOrWhiteSpace(sessionId) ? null : sessionId.Trim();
 
     public static IReadOnlyList<CodexCommandExecution> ExtractCommandExecutions(string stdout)
     {
@@ -155,13 +166,18 @@ public sealed class CodexCliRunner
             var hasCommand = element.TryGetProperty("command", out var command) && command.ValueKind == JsonValueKind.String;
             var hasExitCode = element.TryGetProperty("exit_code", out var exitCode) || element.TryGetProperty("exitCode", out exitCode);
             var parsedExitCode = 0;
-            hasExitCode = hasExitCode && exitCode.TryGetInt32(out parsedExitCode);
+            hasExitCode = hasExitCode && exitCode.ValueKind == JsonValueKind.Number && exitCode.TryGetInt32(out parsedExitCode);
             var type = element.TryGetProperty("type", out var typeValue) && typeValue.ValueKind == JsonValueKind.String ? typeValue.GetString() : null;
             if (hasCommand && hasExitCode && type is not null && (type.Contains("command", StringComparison.OrdinalIgnoreCase) || type.Contains("exec", StringComparison.OrdinalIgnoreCase)))
             {
                 var text = command.GetString()?.Trim();
                 if (!string.IsNullOrWhiteSpace(text) && text.Length <= 2000)
-                    executions.Add(new(text, parsedExitCode));
+                {
+                    var output = element.TryGetProperty("aggregated_output", out var aggregatedOutput) && aggregatedOutput.ValueKind == JsonValueKind.String
+                        ? aggregatedOutput.GetString()
+                        : null;
+                    executions.Add(new(text, parsedExitCode, output is { Length: > 4000 } ? output[..4000] : output));
+                }
             }
             foreach (var property in element.EnumerateObject())
                 if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
@@ -325,22 +341,34 @@ public static class CodexSessionLocator
         var codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
         var userProfile = Environment.GetEnvironmentVariable("USERPROFILE");
         var specialFolderProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var sessionsRoots = ResolveSessionsRoots(codexHome, userProfile, specialFolderProfile);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var sessionsRoots = ResolveSessionsRoots(codexHome, userProfile, specialFolderProfile, localAppData);
         var existing = sessionsRoots.SelectMany(root => EnumerateRolloutFiles(root, startedAt, startedAt)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return new(sessionsRoots, Path.GetFullPath(workingDirectory), startedAt, existing);
     }
 
-    public static IReadOnlyList<string> ResolveSessionsRoots(string? codexHome, string? userProfile, string? specialFolderProfile) =>
+    public static IReadOnlyList<string> ResolveSessionsRoots(string? codexHome, string? userProfile, string? specialFolderProfile, string? localAppData = null) =>
         new[]
         {
             string.IsNullOrWhiteSpace(codexHome) ? null : Path.Combine(codexHome, "sessions"),
             string.IsNullOrWhiteSpace(userProfile) ? null : Path.Combine(userProfile, ".codex", "sessions"),
-            string.IsNullOrWhiteSpace(specialFolderProfile) ? null : Path.Combine(specialFolderProfile, ".codex", "sessions")
+            string.IsNullOrWhiteSpace(specialFolderProfile) ? null : Path.Combine(specialFolderProfile, ".codex", "sessions"),
+            ProfileFromLocalAppData(localAppData) is { } localProfile ? Path.Combine(localProfile, ".codex", "sessions") : null
         }
         .Where(path => path is not null)
         .Select(path => Path.GetFullPath(path!))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
+
+    private static string? ProfileFromLocalAppData(string? localAppData)
+    {
+        if (string.IsNullOrWhiteSpace(localAppData)) return null;
+        var local = new DirectoryInfo(Path.GetFullPath(localAppData));
+        return string.Equals(local.Name, "Local", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(local.Parent?.Name, "AppData", StringComparison.OrdinalIgnoreCase)
+            ? local.Parent?.Parent?.FullName
+            : null;
+    }
 
     public static string ResolveSessionsRoot(string? codexHome, string? userProfile, string? specialFolderProfile)
     {
@@ -352,16 +380,29 @@ public static class CodexSessionLocator
         return Path.Combine(root, "sessions");
     }
 
-    public static string? FindNewSessionId(CodexSessionSnapshot snapshot, DateTimeOffset finishedAt)
+    public static string? FindNewSessionId(CodexSessionSnapshot snapshot, DateTimeOffset finishedAt) =>
+        FindNewSessionId(snapshot, finishedAt, out _);
+
+    public static string? FindNewSessionId(CodexSessionSnapshot snapshot, DateTimeOffset finishedAt, out string diagnostic)
     {
         var matches = new List<string>();
+        var scanned = 0;
+        var newFiles = 0;
+        var writeWindow = 0;
+        var metadata = 0;
+        var cliSource = 0;
+        var cwdMatch = 0;
+        var timestampMatch = 0;
         foreach (var path in snapshot.SessionsRoots.SelectMany(root => EnumerateRolloutFiles(root, snapshot.StartedAt, finishedAt)))
         {
+            scanned++;
             if (snapshot.ExistingRolloutFiles.Contains(path)) continue;
+            newFiles++;
             try
             {
                 var lastWrite = File.GetLastWriteTimeUtc(path);
                 if (lastWrite < snapshot.StartedAt.UtcDateTime.AddSeconds(-3) || lastWrite > finishedAt.UtcDateTime.AddSeconds(5)) continue;
+                writeWindow++;
                 using var stream = File.OpenRead(path);
                 using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
                 var firstLine = reader.ReadLine();
@@ -369,13 +410,17 @@ public static class CodexSessionLocator
                 using var document = JsonDocument.Parse(firstLine);
                 var root = document.RootElement;
                 if (!TryGetString(root, "type", out var type) || !string.Equals(type, "session_meta", StringComparison.OrdinalIgnoreCase) ||
-                    !TryGetPropertyIgnoreCase(root, "payload", out var payload) ||
-                    !TryGetString(payload, "originator", out var originator) || !string.Equals(originator, "codex_exec", StringComparison.OrdinalIgnoreCase) ||
-                    !TryGetString(payload, "source", out var source) || !string.Equals(source, "exec", StringComparison.OrdinalIgnoreCase) ||
-                    !TryGetString(payload, "cwd", out var cwd) || !PathsEqual(cwd, snapshot.WorkingDirectory)) continue;
+                    !TryGetPropertyIgnoreCase(root, "payload", out var payload)) continue;
+                metadata++;
+                if (!TryGetString(payload, "originator", out var originator) || !string.Equals(originator, "codex_exec", StringComparison.OrdinalIgnoreCase) ||
+                    !TryGetString(payload, "source", out var source) || !string.Equals(source, "exec", StringComparison.OrdinalIgnoreCase)) continue;
+                cliSource++;
+                if (!TryGetString(payload, "cwd", out var cwd) || !PathsEqual(cwd, snapshot.WorkingDirectory)) continue;
+                cwdMatch++;
                 if (!TryGetString(payload, "timestamp", out var timestamp) ||
                     !DateTimeOffset.TryParse(timestamp, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var sessionStartedAt) ||
                     sessionStartedAt < snapshot.StartedAt.AddSeconds(-3) || sessionStartedAt > finishedAt.AddSeconds(5)) continue;
+                timestampMatch++;
                 if (!TryGetString(payload, "id", out var id) && !TryGetString(payload, "session_id", out id)) continue;
                 if (!string.IsNullOrWhiteSpace(id)) matches.Add(id);
             }
@@ -384,6 +429,7 @@ public static class CodexSessionLocator
                 // Session metadata is only a fallback to the CLI's JSONL event; unreadable files are ignored.
             }
         }
+        diagnostic = $"roots={snapshot.SessionsRoots.Count}; availableRoots={snapshot.SessionsRoots.Count(Directory.Exists)}; scanned={scanned}; new={newFiles}; writeWindow={writeWindow}; metadata={metadata}; cliSource={cliSource}; cwd={cwdMatch}; timestamp={timestampMatch}; ids={matches.Count}";
         return matches.Count == 1 ? matches[0] : null;
     }
 

@@ -2,6 +2,20 @@
 
 Updated: 2026-09-24
 
+## 11-C 후속 — 현재 단계 표시·시간순 이력·모델 독립 ACTION 분기 (2026-09-24)
+
+- 첨부 화면의 다음 단계가 미리 컬러가 되는 원인을 `SetPipelineCard`의 `current || next || initialIdle` 규칙에서 확인했다. 현재 실행 단계만 역할색으로 표시한다. 비활성 카드의 아이콘 배경을 더 어두운 중립색으로 바꾸고, 작업 단계는 녹색, 판정 단계는 노란색 활성 팔레트로 바꿨다. 이력은 `Insert(0)` 대신 끝에 추가하고 최신 항목으로 스크롤해 아래로 쌓이게 했다.
+- 기존 Web의 첫 줄 ACTION 규약을 CLI 관제 REVIEW에도 적용했다. 첫 유효행은 `[ACTION=CONTINUE]`, `[ACTION=PAUSE]`, `[ACTION=END]` 중 하나이고 뒤에는 정확한 AC 집합을 가진 REVIEW JSON이 온다. Worker는 모델 이름이 아닌 ACTION으로 분기한다. CONTINUE는 같은 작업 카드와 구현 세션에서 지적된 결함만 재작업하고 검증 명령을 다시 실행한다. PAUSE는 사용자 입력 대기, END는 구현 상태·검증 명령 증거·모든 AC PASS가 함께 충족될 때만 완료다. 자동 라운드는 최대 3회이며 잘못된 ACTION/JSON이나 모순된 종료 신호는 차단한다. 기존 Web ACTION 경로는 변경하지 않았다.
+- 완료일: 2026-09-24. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 39개 통과, `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj --configuration Release --no-restore` 성공. 읽기 전용 `codex exec --ephemeral --sandbox read-only --model gpt-6-sol` 대체 검사에서는 ACTION 첫 줄을 출력했으며, REVIEW JSON 필드와 배열 형태를 명확히 한 호출에서 `[ACTION=END]`/`ACCEPT`/`AC-1 PASS`가 나왔다. 첫 호출은 JSON 구조가 틀려 지시를 보강한 뒤 재검사했다. 게시본 SHA-256은 `1B894FD0F3CB9CEB7DC8C3067F924036F50F40E37511C051AABA6E85A87C82C2`다. Computer Use의 앱 목록이 비어 Explorer 화면 검증은 불가능했고 CLI 검사는 대체 검증이다. 설치본은 이전 해시 `CFCF23323352A51FA6975CC656F088DEC39E1F50961E6277672A24DF20EAA0CF`이며, 사용자 선택에 따라 이번 설치는 보류했다. 잔여 식별자: `11-C-UI-EXPLORER`, `11-C-ACTION-E2E`, `11-C-DEPLOY`(설치 보류). 이번 변경에 대한 commit/push/fetch/pull은 수행하지 않았다.
+
+## 11-C 후속 — 모델 실행 뒤 관제 세션 연결 및 검증 증거 보강 (2026-09-24)
+
+- 08:01 및 08:55 설치본 재현에서 `gpt-6-sol / high` PLAN은 exit 0이었지만 세션 ID가 비어 Luna 전에 차단됐다. 처음에는 프로필 경로 불일치를 의심했으나 09:01 실검증에서 경로 진단이 기록되지 않아 설정을 재확인했다. 저장된 coordinator/implementer `threadSessionId`는 `null`이 아닌 빈 문자열이었다. Runner는 빈 문자열로 신규 세션 snapshot을 만들면서 결과 선택에서는 null 병합으로 빈 문자열을 그대로 채택했고, 관제 코드의 `??=`도 PLAN ID를 저장하지 못했다. 두 곳에서 공백/빈 ID를 null로 정규화한 것이 확정된 핵심 수정이다.
+- `CodexSessionLocator`가 기존 `CODEX_HOME`/`USERPROFILE`/.NET 프로필 외에 Codex 실행 파일 검색에도 사용되는 LocalAppData의 `AppData\Local` 상위 프로필을 조사하도록 했다. 루트 중복은 제거하고 신규 rollout 단일 후보·CWD·시각·CLI 메타데이터 조건은 유지한다. 서로 다른 프로필 값의 회귀 테스트를 추가했다.
+- 코드 점검에서 `echo dotnet test ...`도 검증 실행 증거로 오인할 수 있는 부분 문자열 판정을 발견했다. 정확한 명령 또는 최대 두 겹의 PowerShell/cmd wrapper만 비교하고, 실패 후 성공한 재시도는 정상 증거로 판정한다. Luna 실행 중 `exit_code: null` 이벤트의 숫자 파싱 예외도 수정했다. 완료된 CLI 명령의 출력은 요약·민감 문자열 마스킹 후 Sol REVIEW에 전달하며 검증 이력의 PASS/FAIL은 필수 명령 대조 결과와 일치시켰다.
+- 완료일: 2026-09-24. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 38개 통과. 최초 샌드박스 빌드의 Windows SDK 경로 접근 거부는 권한 확장 재실행으로 해결했다. 단일 파일 Release 게시본과 승인받아 교체한 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`의 SHA-256은 `CFCF23323352A51FA6975CC656F088DEC39E1F50961E6277672A24DF20EAA0CF`로 일치한다. Explorer 설치본에서 09:13 작업을 작성·전송했고 Sol PLAN→별도 Luna IMPLEMENT→동일 Sol 세션 REVIEW가 이어졌다. 실제 명령 출력 `MODEL_ACCESS_OK`, 종료 코드 0, 검증 PASS 및 최종 `DONE · REVIEW ACCEPTED`를 화면과 `_20260924_091428.txt` transcript로 확인했다. 파일 변경은 Luna 보고상 0개다. 잔여 `11-C-DEPLOY`, `11-C-LIVE-SESSION` 완료. commit/push/fetch/pull은 수행하지 않았다.
+- 별도 검토 후보: `11-A-AUTH-REFRESH` — CLI 인증 상태는 시작 시 한 번만 확인해 로그인 후에도 실행 버튼이 재기동 전까지 잠길 수 있다. `WORKER-LEGACY-SANDBOX` — legacy Web 경로의 비읽기 요청은 `danger-full-access`가 기본값이다. `WORKER-ATTACHMENT-SCOPE` — CLI JSON의 경로/파일 필드에서 작업 폴더 밖 절대경로도 첨부 대상으로 선택할 수 있다. 이번 11-C 수정 범위에 흡수하지 않았다.
+
 ## 재현 후속 — CODEX_HOME와 CLI 세션 경로 불일치 (2026-09-24)
 
 - 07:45:10 실행 transcript `_20260924_074546.txt`에서 SOL PLAN은 `exit 0`으로 성공했지만 REVIEW용 session ID 복구가 실패해 Luna 전에 다시 차단된 것을 확인했다. 같은 시각 rollout `C:\Users\ornit\.codex\sessions\2026\09\24\rollout-2026-09-24T07-45-10-01a0d071-bff5-7bd2-b0c1-bdeab1c5e9e4.jsonl`에는 정상 `session_meta`와 세션 ID가 있다. 설치 EXE는 이전 수정 게시본 A379…와 일치했으므로 실패 원인은 미배포가 아니다.

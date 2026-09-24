@@ -118,6 +118,34 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void CoordinatorAction_RequiresFirstLineAndConsistentReview()
+    {
+        var acs = new[] { new WorkAcceptanceCriterion("AC-1", "claim", new[] { "test" }) };
+        const string accepted = """
+            {"decision":"ACCEPT","summary":"complete","acceptance_criteria":[{"ac_id":"AC-1","status":"PASS","reason":"observed"}]}
+            """;
+        const string revise = """
+            {"decision":"REVISE","summary":"fix the failing case","acceptance_criteria":[{"ac_id":"AC-1","status":"FAIL","reason":"validation failed"}]}
+            """;
+        const string blocked = """
+            {"decision":"BLOCKED","summary":"user approval needed","acceptance_criteria":[{"ac_id":"AC-1","status":"INSUFFICIENT","reason":"approval pending"}]}
+            """;
+
+        Assert.True(CoordinatorFirstContracts.TryParseReviewAction("[ACTION=END]\n" + accepted, acs, out var end, out var endError), endError);
+        Assert.Equal(CoordinatorActionKind.End, end!.Kind);
+        Assert.True(CoordinatorFirstContracts.TryParseReviewAction("\n[ACTION=CONTINUE]\r\n" + revise, acs, out var next, out var nextError), nextError);
+        Assert.Equal(CoordinatorActionKind.Continue, next!.Kind);
+        Assert.True(CoordinatorFirstContracts.TryParseReviewAction("[ACTION=PAUSE]\n" + blocked, acs, out var pause, out var pauseError), pauseError);
+        Assert.Equal(CoordinatorActionKind.Pause, pause!.Kind);
+        Assert.False(CoordinatorFirstContracts.TryParseReviewAction(accepted, acs, out _, out var missing));
+        Assert.Equal("ACTION_INVALID_FIRST_LINE", missing);
+        Assert.False(CoordinatorFirstContracts.TryParseReviewAction("[ACTION=END]\n" + revise, acs, out _, out var conflict));
+        Assert.Equal("ACTION_REVIEW_CONFLICT", conflict);
+        Assert.False(CoordinatorFirstContracts.TryParseReviewAction("[ACTION=CONTINUE]\n" + revise + "\n[ACTION=END]", acs, out _, out var duplicate));
+        Assert.Equal("ACTION_DUPLICATE", duplicate);
+    }
+
+    [Fact]
     public void ValidationGate_RequiresObservedMatchingCommandsWithZeroExit()
     {
         Assert.True(CoordinatorFirstContracts.HasRequiredValidationEvidence(
@@ -131,17 +159,41 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void ValidationGate_RejectsMentionedCommandsAndAcceptsSuccessfulRetry()
+    {
+        var card = new CoordinatorWorkCard("W01", "Task", "Goal", new[] { "src" },
+            new[] { new WorkAcceptanceCriterion("AC-1", "claim", new[] { "test" }) },
+            new[] { "dotnet test Sample.sln" }, Array.Empty<string>());
+
+        Assert.False(CoordinatorFirstContracts.HasRequiredValidationEvidence(card,
+            new[] { new CodexCommandExecution("echo dotnet test Sample.sln", 0) }, out var missing));
+        Assert.Contains("NOT_OBSERVED", missing);
+        Assert.False(CoordinatorFirstContracts.CommandMatches("dotnet test Sample.sln", "powershell -Command \"dotnet test Sample.sln; echo done\""));
+        Assert.True(CoordinatorFirstContracts.CommandMatches(
+            "powershell -NoProfile -Command \"Write-Output MODEL_ACCESS_OK\"",
+            "\"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -Command 'powershell -NoProfile -Command \"Write-Output MODEL_ACCESS_OK\"'"));
+        Assert.True(CoordinatorFirstContracts.HasRequiredValidationEvidence(card,
+            new[]
+            {
+                new CodexCommandExecution("dotnet test Sample.sln", 1),
+                new CodexCommandExecution("powershell -NoProfile -Command \"dotnet test Sample.sln\"", 0)
+            }, out var retryDetail));
+        Assert.Empty(retryDetail);
+    }
+
+    [Fact]
     public void CommandExecutionParser_ExtractsOnlyCompletedShellCommandsAndExitCodes()
     {
         const string jsonl = """
             {"type":"thread.started","thread_id":"s1"}
+            {"type":"item.started","item":{"type":"command_execution","command":"dotnet test Sample.sln","exit_code":null}}
             {"type":"item.completed","item":{"type":"command_execution","command":"dotnet test Sample.sln","exit_code":0,"aggregated_output":"passed"}}
             {"type":"item.completed","item":{"type":"agent_message","text":"test passed"}}
             """;
 
         var executions = CodexCliRunner.ExtractCommandExecutions(jsonl);
 
-        Assert.Equal(new CodexCommandExecution("dotnet test Sample.sln", 0), Assert.Single(executions));
+        Assert.Equal(new CodexCommandExecution("dotnet test Sample.sln", 0, "passed"), Assert.Single(executions));
     }
 
     [Fact]
@@ -150,6 +202,15 @@ public sealed class CoordinatorFirstContractTests
         const string jsonl = "\uFEFF{\"Type\":\"thread.started\",\"Thread_Id\":\"session-123\"}";
 
         Assert.Equal("session-123", CodexCliRunner.ExtractSessionId(jsonl));
+    }
+
+    [Fact]
+    public void EmptyStoredSessionId_StartsNewSessionAndCanAcceptPlanSession()
+    {
+        Assert.Null(CodexCliRunner.NormalizeSessionId(null));
+        Assert.Null(CodexCliRunner.NormalizeSessionId(string.Empty));
+        Assert.Null(CodexCliRunner.NormalizeSessionId("  "));
+        Assert.Equal("session-123", CodexCliRunner.NormalizeSessionId(" session-123 "));
     }
 
     [Fact]
@@ -182,8 +243,14 @@ public sealed class CoordinatorFirstContractTests
         Directory.CreateDirectory(dayDirectory);
         try
         {
+            var roots = CodexSessionLocator.ResolveSessionsRoots(
+                Path.Combine(root, "custom-codex-home"),
+                Path.Combine(root, "sandbox-user"),
+                Path.Combine(root, "sandbox-special"),
+                Path.Combine(root, "user-profile", "AppData", "Local"));
+            Assert.Contains(userSessions, roots);
             var snapshot = new CodexSessionSnapshot(
-                new[] { codexHomeSessions, userSessions }, Path.GetFullPath(workingDirectory), startedAt,
+                roots, Path.GetFullPath(workingDirectory), startedAt,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase));
             File.WriteAllText(Path.Combine(dayDirectory, "rollout-cli-session.jsonl"), JsonSerializer.Serialize(new
             {
@@ -228,7 +295,8 @@ public sealed class CoordinatorFirstContractTests
                 type = "session_meta",
                 payload = new { id = "session-456", timestamp = startedAt.ToUniversalTime().ToString("O"), originator = "codex_exec", source = "exec", cwd = workingDirectory }
             }));
-            Assert.Null(CodexSessionLocator.FindNewSessionId(snapshot, finishedAt));
+            Assert.Null(CodexSessionLocator.FindNewSessionId(snapshot, finishedAt, out var diagnostic));
+            Assert.Contains("ids=2", diagnostic);
         }
         finally
         {

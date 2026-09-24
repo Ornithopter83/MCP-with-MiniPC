@@ -51,6 +51,18 @@ Add a coordinator-first CLI workflow while preserving the existing Codex → GPT
 
 ## Results
 
+### 2026-09-24 11-C 후속 — 단계 카드·이력·관제 ACTION
+
+- 현재 작업 단계만 색을 갖도록 카드 상태를 보정했다. 비활성 아이콘 원형의 대비를 높이고 활성 작업/판정 배경을 각각 녹색/노란색으로 변경했다. `HistoryEvents`는 시간순으로 끝에 추가하고 마지막 항목을 표시한다.
+- 관제 REVIEW의 첫 유효행은 `[ACTION=CONTINUE]`, `[ACTION=PAUSE]`, `[ACTION=END]` 중 하나다. 그 뒤에는 기존 review 구조의 JSON을 반환한다. Web의 ACTION 의미를 적용하되 CLI REVIEW 본문은 원자 AC 검토 JSON이다. Worker는 모델 이름 대신 ACTION을 읽어 CONTINUE일 때 같은 카드·구현 세션으로 수정과 재검증을 진행하고, PAUSE는 종료/사용자 대기, END는 구현·실행 증거·모든 AC PASS를 확인한 뒤 완료한다. 부정확한 형식과 모순된 판정은 중단하며 자동 재작업은 최대 3회다. Web 계약과 Legacy Web 경로는 유지했다.
+- 완료일: 2026-09-24. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore`(경고/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`(39 passed), `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj --configuration Release --no-restore` 성공. 읽기 전용 임시 Codex CLI 호출에서 유효한 `[ACTION=END]`/REVIEW JSON을 확인했다. 게시 EXE SHA-256 `1B894FD0F3CB9CEB7DC8C3067F924036F50F40E37511C051AABA6E85A87C82C2`. Computer Use 앱 목록에 Windows 앱이 없어 Explorer 화면·통합 작업은 미검증이고 사용자 선택에 따라 설치는 보류했다. 잔여 `11-C-UI-EXPLORER`, `11-C-ACTION-E2E`, `11-C-DEPLOY`(설치 보류).
+
+### 2026-09-24 11-C 후속 — 관제 세션 연결과 validator 실검증
+
+- 08:01 및 08:55 설치본에서 Sol PLAN exit 0 뒤 세션 ID 누락 차단이 반복됐다. 저장 설정의 `threadSessionId` 빈 문자열이 신규 세션 ID 추출을 가로막는 것이 확정 원인이었다. Runner와 관제에서 빈/공백 ID를 null로 정규화했다. LocalAppData에서 확인되는 사용자 프로필도 세션 루트 후보에 추가해 보조 복구를 강화했다.
+- CLI 실행 진행 이벤트의 `exit_code: null`은 숫자로 읽지 않는다. validation gate는 명령의 부분 문자열 언급을 실행 증거로 인정하지 않고 정확한 명령 또는 최대 두 겹의 PowerShell/cmd wrapper만 비교한다. 실패 후 성공한 재시도는 PASS로 판정한다. 실행 출력의 제한된 요약을 Sol REVIEW에 전달하고 검증 이력도 실제 증거로 표시한다.
+- 완료일: 2026-09-24. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore`(0 warning/0 error), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore`(38 passed), `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj --configuration Release --no-restore` 성공. 승인받은 Worker 설치본과 게시본 SHA-256 `CFCF23323352A51FA6975CC656F088DEC39E1F50961E6277672A24DF20EAA0CF` 일치. Explorer에서 직접 작성·전송한 작업이 Sol PLAN→Luna IMPLEMENT→동일 Sol 세션 REVIEW로 끝났고 `MODEL_ACCESS_OK`, 검증 PASS, `DONE · REVIEW ACCEPTED`를 화면과 `_20260924_091428.txt` transcript에서 확인했다. 잔여 식별자 `11-C-DEPLOY`, `11-C-LIVE-SESSION` 완료.
+
 ### 2026-09-24 재현 후속 — 서로 다른 Codex 세션 루트 검색
 
 - 재현 transcript에서 PLAN은 정상 성공했지만 session ID 연결을 못 해 차단됐다. 동시각 rollout은 `USERPROFILE\.codex\sessions` 아래에 정상 기록되어 있었다. 앞 수정본이 설치되어 있었으므로 `CODEX_HOME`이 설정된 Worker 프로세스와 실제 CLI 기록 경로가 다른 경우가 남은 원인이다.

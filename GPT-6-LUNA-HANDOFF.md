@@ -52,6 +52,12 @@ ProjectHub 저장소의 미완료 후속을 이어서 확인해줘. 우선 AGENT
 현재 수정 사항은 main 브랜치의 unstaged 작업 트리에 남아 있었고, 2026-09-24 git fetch origin은 성공했지만 git pull --rebase는 unstaged 변경 때문에 중단됐어. 원격 main과 HEAD는 fetch 시점에 동일했어. 이 인계 세션에서 아직 commit/push하지 않았어. 먼저 변경 전체를 검토하고 저장소 지침에 맞춰 pull/rebase 및 최신 GPT-Web-Feedback을 확인한 뒤 커밋/푸시 상태를 정리해. 인증정보는 문서·로그에 기록하지 마.
 ```
 
+## 2026-09-24 추가 확인
+
+- 위 이주용 문구의 `unstaged 작업 트리`와 `pull --rebase 중단` 설명은 작성 당시 상태다. 현재 HEAD와 로컬 `origin/main`은 `49203b6`으로 같았고, 이번 후속 변경 전 작업 트리는 깨끗했다. 이번 작업에서는 fetch/pull/commit/push를 수행하지 않았다.
+- 08:01/08:55 설치본 재현에서 Sol PLAN exit 0 후 session ID 연결이 멈춘 확정 원인은 저장된 `threadSessionId`의 빈 문자열이었다. Runner와 관제의 빈 ID를 null로 정규화했다. 이어진 실검증에서 발견한 CLI 진행 이벤트의 `exit_code: null` 파싱도 수정했다. 검증 명령은 최대 두 겹의 shell wrapper를 정확히 대조하며, 출력 요약을 Sol REVIEW에 전달한다. LocalAppData 프로필 루트 추가는 보조 복구 경로다.
+- Debug 빌드 경고/오류 0, 전체 38개 테스트 통과, Release 단일 파일 게시 성공. 승인받은 설치본과 게시본 SHA-256 `CFCF23323352A51FA6975CC656F088DEC39E1F50961E6277672A24DF20EAA0CF` 일치. Explorer 실작업에서 Sol PLAN→Luna IMPLEMENT→같은 Sol 세션 REVIEW, 명령 출력 `MODEL_ACCESS_OK`, 검증 PASS, 최종 `DONE · REVIEW ACCEPTED`를 확인했다. 잔여 `11-C-DEPLOY`, `11-C-LIVE-SESSION` 완료. 상세는 CurrentWork.md와 task 11 문서를 참조한다.
+
 ## 공식 모델 비교
 
 - GPT-5.6 Luna: 입력 $0.20/1M, 출력 $1.20/1M, 1.05M context, 최대 출력 128K
