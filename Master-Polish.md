@@ -1,6 +1,6 @@
 # Master-Polish — ProjectHub 현재 정책
 
-Updated: 2026-09-24 (KST)
+Updated: 2026-09-25 (KST)
 
 이 문서는 ProjectHub의 현재 최상위 정책 원본이다.
 
@@ -20,6 +20,7 @@ Worker가 처리할 수 있는 것:
 - Web conversation binding 및 heartbeat 생존 확인
 - transcript/usage/file telemetry 기록
 - Worker가 실제로 생성·전달한 HQ/RESOURCE Web outbound와 RESOURCE lifecycle 기록
+- RESOURCE 완료 사실을 별도 HQ 확인 이벤트로 예약하고 AI turn 경계에서 기계적으로 전달
 - JUDGE transport schema와 RESOURCE 자연어 body의 기계적 전달
 - UNKNOWN 원문 로그와 HQ용 한글 오류 요약
 - 이미 알고 있는 실행 사실을 History UI에 표시
@@ -53,7 +54,8 @@ WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
 RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
-완료 알림 -> 다음 WORK 입력 또는 HQ END finalization
+RESOURCE 완료 -> HQ 확인 이벤트 예약 -> 현재 AI turn 종료 -> HQ 우선 확인
+완료 결과 -> 다음 WORK 입력 또는 HQ END finalization
 UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
 UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
@@ -149,7 +151,7 @@ JUDGE:
 <opaque body>
 ~~~
 
-RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. RESOURCE 완료 결과는 다음 WORK 호출에 기계적으로 함께 전달하거나 HQ END finalization에서 기계적으로 반영한다.
+RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. RESOURCE 완료 결과는 다음 WORK 호출에 기계적으로 함께 전달하거나 HQ END finalization에서 기계적으로 반영한다. 동시에 Worker는 RESOURCE 완료 사실을 별도 HQ 확인 이벤트로 예약한다. 실행 중인 HQ/WORK/JUDGE turn은 중단하지 않으며, 해당 turn이 끝난 role boundary에서 아직 수행하지 않은 다음 route보다 HQ 확인 이벤트를 먼저 전달해 HQ가 흐름을 다시 결정하게 한다.
 
 일반 body는 opaque다. JUDGE destination의 schema 검사와 RESOURCE 자연어 body의 비어 있음 검사는 transport 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
 
@@ -209,7 +211,8 @@ WORK -> GOTO:RESOURCE + 자연어 요청
 HQ ACTION=END
   -> RESOURCE 실행/대기 0건인지 finalization gate 확인
   -> 남아 있으면 FINALIZING
-  -> 모두 종료된 뒤에만 DONE / DONE_WITH_ERROR
+  -> RESOURCE 완료 이벤트를 HQ에 다시 전달해 최종 흐름 확인
+  -> queue가 비고 HQ가 END를 다시 선택한 뒤 DONE / DONE_WITH_ERROR
 ~~~
 
 WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤에는 ChatGPT Web에 그대로 보낼 자연어 이미지 요청만 둔다.

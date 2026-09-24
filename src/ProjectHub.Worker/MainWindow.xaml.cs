@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net.Http;
@@ -1367,8 +1368,12 @@ public partial class MainWindow : Window
         var state = WorkerRoleState.Hq;
         var previousState = WorkerRoleState.Hq;
         var resourceQueue = new ResourceSidecarQueue(_bridgeServer, workingDirectory, cts.Token);
+        var pendingResourceHqEvents = new ConcurrentQueue<ResourceSidecarCompletion>();
+        void QueueResourceHqEvent(ResourceSidecarCompletion completion)
+            => pendingResourceHqEvents.Enqueue(completion);
         resourceQueue.StateChanged += OnResourceSidecarStateChanged;
         resourceQueue.CompletionAvailable += OnResourceSidecarCompletion;
+        resourceQueue.CompletionAvailable += QueueResourceHqEvent;
         resourceQueue.TransportEvent += OnResourceSidecarTransportEvent;
         try
         {
@@ -1391,6 +1396,35 @@ public partial class MainWindow : Window
                 previousState = source;
                 unknownCode = code;
                 unknownDetail = detail;
+            }
+
+            bool TryRoutePendingResourceCompletionToHq(
+                string boundarySource,
+                WorkerRoleState pendingState,
+                string pendingInboundType,
+                string pendingBody)
+            {
+                var completions = new List<ResourceSidecarCompletion>();
+                while (pendingResourceHqEvents.TryDequeue(out var completion))
+                    completions.Add(completion);
+                if (completions.Count == 0) return false;
+
+                var facts = string.Join("\n\n", completions.Select(item =>
+                {
+                    var status = item.Success ? "SAVED" : item.ErrorCode ?? "FAILED";
+                    return $"requestId={item.RequestId}\nstatus={status}\n{item.Message}";
+                }));
+                inboundType = "RESOURCE_COMPLETED";
+                inbound =
+                    $"RESOURCE completion event:\n{facts}\n\n" +
+                    "이 내용은 Worker가 관측한 기계적 완료 사실입니다. 현재 진행 중이던 AI turn은 중단하지 않았으며, role boundary에서 HQ가 다음 흐름을 결정하도록 예약된 이벤트입니다.\n\n" +
+                    $"Boundary source: {boundarySource}\n" +
+                    $"Pending state: {pendingState}\n" +
+                    $"Pending inbound type: {pendingInboundType}\n" +
+                    $"Pending body:\n{pendingBody}";
+                state = WorkerRoleState.Hq;
+                AddTaskMessage("RESOURCE COMPLETED → HQ", facts, status: "RESOURCE_COMPLETED", includeHistory: false);
+                return true;
             }
 
             while (true)
@@ -1416,6 +1450,9 @@ public partial class MainWindow : Window
                     TaskTitle.Text = "오류 요약을 설계·관제 AI에 전달 중";
                     state = WorkerRoleState.Hq;
                 }
+
+                TryRoutePendingResourceCompletionToHq("ROLE_BOUNDARY", state, inboundType, inbound);
+
                 try
                 {
                     switch (state)
@@ -1448,6 +1485,12 @@ public partial class MainWindow : Window
                                 files: routed.Files,
                                 status: route.Action?.ToString().ToUpperInvariant(),
                                 providerWireId: IsWebTransport(coordinator.Transport) ? null : coordinator.Provider);
+                            if (TryRoutePendingResourceCompletionToHq(
+                                "HQ",
+                                route.Target ?? WorkerRoleState.Hq,
+                                "HQ_DECISION_" + route.Action?.ToString().ToUpperInvariant(),
+                                route.Body))
+                                continue;
                             if (route.Action == WorkerAction.End)
                             {
                                 if (!resourceQueue.IsIdle)
@@ -1458,6 +1501,12 @@ public partial class MainWindow : Window
                                     AddTaskMessage("TASK FINALIZING", $"HQ가 종료를 결정했지만 RESOURCE {resourceQueue.OutstandingCount}건이 아직 실행/대기 중이므로 완료 상태를 보류합니다.", status: "WAITING_RESOURCE", includeHistory: false);
                                     SetFlowState(false, false, false);
                                     await resourceQueue.WaitForIdleAsync(cts.Token);
+                                    if (TryRoutePendingResourceCompletionToHq(
+                                        "RESOURCE_FINALIZATION",
+                                        WorkerRoleState.Hq,
+                                        "HQ_END_DECISION",
+                                        route.Body))
+                                        continue;
                                 }
 
                                 while (resourceQueue.TryDequeueCompletion(out var finalResource))
@@ -1535,6 +1584,12 @@ public partial class MainWindow : Window
                                 files: result.Files,
                                 status: route.Target?.ToString().ToUpperInvariant(),
                                 providerWireId: implementer.Provider);
+                            if (TryRoutePendingResourceCompletionToHq(
+                                "WORK",
+                                route.Target ?? WorkerRoleState.Hq,
+                                "WORK_ROUTE_" + route.Target?.ToString().ToUpperInvariant(),
+                                route.Body))
+                                continue;
                             if (route.Target == WorkerRoleState.Hq)
                             {
                                 inboundType = "WORK_REPORT"; inbound = route.Body; state = WorkerRoleState.Hq;
@@ -1600,6 +1655,12 @@ public partial class MainWindow : Window
                                 inbound,
                                 judgeTelemetry: transport.Telemetry,
                                 status: _judgeStatus);
+                            if (TryRoutePendingResourceCompletionToHq(
+                                "JUDGE",
+                                WorkerRoleState.Work,
+                                "JUDGMENT",
+                                inbound))
+                                continue;
                             state = WorkerRoleState.Work;
                             break;
                         }
@@ -1629,6 +1690,7 @@ public partial class MainWindow : Window
             try { await resourceQueue.DisposeAsync(); } catch (OperationCanceledException) { }
             resourceQueue.StateChanged -= OnResourceSidecarStateChanged;
             resourceQueue.CompletionAvailable -= OnResourceSidecarCompletion;
+            resourceQueue.CompletionAvailable -= QueueResourceHqEvent;
             resourceQueue.TransportEvent -= OnResourceSidecarTransportEvent;
             _resourceSidecarActive = false;
             _resourceSidecarQueued = 0;

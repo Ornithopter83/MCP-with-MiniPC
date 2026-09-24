@@ -1,6 +1,6 @@
 # CurrentWork
 
-Updated: 2026-09-24
+Updated: 2026-09-25
 
 정책 원본: Master-Polish.md
 
@@ -12,6 +12,7 @@ WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
 RESOURCE_QUEUE 접수 -> HQ
 RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
+RESOURCE 완료 -> HQ 확인 이벤트 예약 -> role boundary에서 HQ 우선 확인
 UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 ~~~
 
@@ -157,3 +158,12 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - IMAGE_DETECTED candidate/loaded telemetry 추가.
 - Worker sidecar에 5분 transport timeout 추가. timeout 시 해당 bridge task ID만 FAILED(resource_timeout) 처리하여 다음 FIFO 작업의 slot conflict를 방지.
 - extension 0.1.7 / build 2026-09-25.1.
+
+
+## 2026-09-25 RESOURCE completion HQ wake
+
+- RESOURCE 완료 결과 queue와 별도로 HQ 확인 이벤트 queue를 둔다.
+- RESOURCE 저장/실패 완료 이벤트가 발생해도 실행 중인 HQ/WORK/JUDGE AI turn은 중단하지 않는다.
+- 현재 turn이 끝난 role boundary에서 pending RESOURCE 완료 이벤트를 먼저 HQ에 전달하고, 아직 수행하지 않은 다음 route는 context로 함께 넘겨 HQ가 흐름을 다시 결정한다.
+- RESOURCE 완료 결과 자체는 기존처럼 다음 WORK 입력 또는 END finalization에서도 소비할 수 있게 유지한다.
+- HQ가 RESOURCE outstanding 상태에서 END를 선택한 경우 queue idle까지 기다린 뒤 완료 이벤트를 HQ에 다시 전달하고, HQ의 최종 END 이후 DONE/DONE_WITH_ERROR로 종료한다.

@@ -1,6 +1,6 @@
 # 14 RESOURCE Web role + HQ Web restore
 
-Updated: 2026-09-24
+Updated: 2026-09-25
 
 정책 원본은 Master-Polish.md다.
 
@@ -16,6 +16,7 @@ WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
 RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
+RESOURCE 완료 -> HQ 확인 이벤트 예약 -> role boundary에서 HQ 우선 확인
 UNKNOWN  -> HQ summary once
 ~~~
 
@@ -189,3 +190,13 @@ RESOURCE:
 - Worker RESOURCE transport 5분 timeout
 - timeout 시 해당 bridge task를 resource_timeout FAILED로 종료해 다음 FIFO slot 해제
 - extension 0.1.7 / build 2026-09-25.1
+
+
+## L — RESOURCE completion HQ wake
+
+- completion result queue와 별도로 HQ 확인 이벤트를 예약
+- AI turn 실행 중에는 HQ/WORK/JUDGE를 중단하거나 병렬 호출하지 않음
+- role boundary에서 pending completion event가 있으면 다음 route 실행 전에 HQ가 먼저 확인
+- 직전 AI의 미실행 next route/body는 mechanical context로 HQ에 함께 전달
+- completion result는 WORK 입력/finalization용 queue에도 그대로 유지
+- outstanding 상태에서 HQ END 후 queue가 비면 완료 event를 HQ에 다시 전달하고 최종 END를 확인한 뒤 DONE 처리
