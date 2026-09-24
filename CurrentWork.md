@@ -106,3 +106,18 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - WORK WORK transcript source를 WORK CLI로 수정.
 - 오류를 거친 Job이 HQ END로 끝나면 TASK RESULT status를 DONE_WITH_ERROR로 기록.
 - 확장 0.1.5와 함께 image 완료 조건/progress ordering을 보강한다.
+
+
+## 2026-09-24 RESOURCE image completion follow-up
+
+- 중간 변경은 `ab6f831`로 main에 먼저 커밋/푸시했다.
+- RESOURCE 이미지 element가 DOM에 먼저 생기고 load 완료만 나중에 발생하는 경우 load event로 재검사.
+- DOM mutation이 추가로 없어도 최대 120초 후 실제 로드된 이미지가 있으면 성공 전송.
+- extension reset 시 owner/response/progress 관련 상태를 모두 초기화.
+- CLI HQ/WORK에 Worker가 실제 전송한 prompt도 transcript에 기록.
+- extension build 2026-09-24.3.
+
+
+- HQ/RESOURCE 소유 Web task는 coordinator-first 종료 시점과 무관하게 legacy Web handler에서 항상 제외하여 늦게 도착한 terminal event의 중복 로그/UI 갱신을 차단.
+- HQ Web progress 중 Pipeline이 작업 단계로 바뀌지 않고 설계·관제 active stage를 유지하도록 보정.
+- coordinator-first 종료 후 늦게 도착한 non-terminal progress는 legacy UI를 다시 활성화하지 않음.

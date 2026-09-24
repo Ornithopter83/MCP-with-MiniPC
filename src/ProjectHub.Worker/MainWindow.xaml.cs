@@ -1658,10 +1658,12 @@ public partial class MainWindow : Window
     private async Task<AiRoleRunResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string? schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
     {
         var started = DateTimeOffset.UtcNow;
+        var roleName = purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) || purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) || purpose == "WORK" ? "WORK" : "COORDINATOR";
+        var outboundRole = roleName == "WORK" ? "WORK" : "HQ";
+        AddTaskMessage($"WORKER → {outboundRole} CLI", prompt, sizeBytes: Encoding.UTF8.GetByteCount(prompt), status: "SENDING", includeHistory: false);
         var runner = _aiRoleRunners.Resolve(role)
             ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
         var result = await runner.RunAsync(new AiRoleRunRequest(prompt, role, workingDirectory, sessionId, sandbox, cancellationToken, schema));
-        var roleName = purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) || purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) || purpose == "WORK" ? "WORK" : "COORDINATOR";
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
@@ -2438,7 +2440,13 @@ public partial class MainWindow : Window
                     TaskTitle.Text = $"RESOURCE Web {progress.Stage}";
                     SetFlowState(false, true, true, explicitStage: TaskStage.Resource);
                 }
-                else
+                else if (_activeCoordinatorFirst && _currentTaskStage == TaskStage.Coordinator)
+                {
+                    TaskDirection.Text = "설계·관제 AI";
+                    TaskTitle.Text = $"HQ Web {progress.Stage}";
+                    SetFlowState(true, false, true, explicitStage: TaskStage.Coordinator);
+                }
+                else if (_awaitingWebResult)
                 {
                     TaskDirection.Text = "WORKER → GPT WEB";
                     TaskTitle.Text = $"Web {progress.Stage}";
@@ -2455,7 +2463,7 @@ public partial class MainWindow : Window
 
     private async void HandleBridgeTaskChanged(BridgeTask task)
     {
-        if (_activeCoordinatorFirst && (task.Owner.Equals("HQ", StringComparison.OrdinalIgnoreCase) || task.Owner.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase)))
+        if (task.Owner.Equals("HQ", StringComparison.OrdinalIgnoreCase) || task.Owner.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase))
             return;
 
         if ((task.Status is "COMPLETED" or "FAILED") && _userCanceledBridgeTaskIds.Remove(task.Id))

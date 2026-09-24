@@ -68,3 +68,11 @@ Worker가 판단하지 않는 것:
 - Web claim이 HQ/RESOURCE role identity를 덮어쓰지 않게 role과 ClaimedBy를 분리한다.
 - Worker outbound와 RESOURCE lifecycle을 transcript에 남긴다.
 - RESOURCE 오류를 생성 없음/캡처/다운로드/저장/Web 전달 단계로 나눈다.
+
+
+## 2026-09-24 RESOURCE 이미지 로드 보강
+
+- 생성 이미지 element가 먼저 생기고 load만 나중에 끝나는 경우를 별도로 처리한다.
+- load 이벤트가 오면 즉시 RESOURCE 응답을 재평가한다.
+- 추가 DOM mutation이 없어도 timeout 검사에서 이미지가 로드됐으면 정상 저장 경로로 진행한다.
+- CLI HQ/WORK outbound prompt도 원본 transcript에 남긴다.

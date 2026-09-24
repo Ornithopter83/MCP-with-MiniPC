@@ -1,6 +1,6 @@
 # GPTWeb-Hub extension
 
-Version: 0.1.5 / build 2026-09-24.2
+Version: 0.1.5 / build 2026-09-24.3
 
 ProjectHub Worker와 ChatGPT Web 대화를 loopback bridge로 연결한다.
 
@@ -20,12 +20,17 @@ HQ와 RESOURCE는 같은 conversationId를 동시에 사용할 수 없다. heart
 - RESOURCE IMAGE task는 자연어 요청을 그대로 ChatGPT Web에 보내고, 새 assistant turn에 실제 로드 완료된 이미지가 있을 때만 image bytes를 base64 payload로 Worker에 반환한다.
 - 이미지 없이 텍스트 응답만 끝나면 기계적 대기 후 `resource_image_not_generated`로 실패 처리한다.
 - progress POST는 직렬 queue로 전송해 transcript 순서를 보존한다.
-- Worker가 workspace 하위의 요청된 targetDirectory/targetFileName에 저장한다.
+- Worker가 `assets/resources/resource-<requestId>.png` 경로를 기계적으로 정해 저장한다.
 - RESOURCE는 저장까지만 수행하며 코드/CSS/HTML 연결은 하지 않는다.
-- SOUND는 현재 transport 예약만 되어 있고 실제 결과 캡처는 구현하지 않았다.
+- 현재 RESOURCE transport는 IMAGE만 지원한다.
 
 ## 안전 경계
 
 - bridge host는 127.0.0.1/localhost만 허용한다.
 - 생성 이미지 다운로드를 위해 ChatGPT/OpenAI image host 권한을 사용한다.
 - RESOURCE 저장 경로는 Worker에서 workspace 하위인지 다시 검증한다.
+
+
+### Image completion detail
+
+이미지 element가 assistant turn에 먼저 추가되고 실제 bytes 로딩이 나중에 끝나는 경우를 지원한다. 확장은 해당 image의 load 이벤트를 기다려 다시 검사하며, DOM mutation이 추가로 발생하지 않더라도 최대 120초 검사 시점에 이미지가 로드되어 있으면 정상 결과 전송으로 이어간다.

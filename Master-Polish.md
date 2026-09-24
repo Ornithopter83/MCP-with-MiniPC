@@ -20,7 +20,7 @@ Worker가 처리할 수 있는 것:
 - Web conversation binding 및 heartbeat 생존 확인
 - transcript/usage/file telemetry 기록
 - Worker가 실제로 생성·전달한 HQ/RESOURCE Web outbound와 RESOURCE lifecycle 기록
-- 전용 JUDGE/RESOURCE transport의 기계적 schema 변환
+- JUDGE transport schema와 RESOURCE 자연어 body의 기계적 전달
 - UNKNOWN 원문 로그와 HQ용 한글 오류 요약
 - 이미 알고 있는 실행 사실을 History UI에 표시
 

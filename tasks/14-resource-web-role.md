@@ -138,3 +138,17 @@ RESOURCE:
 - resource 오류 단계 세분화
 - WORK WORK -> WORK CLI
 - error가 있었던 정상 END는 DONE_WITH_ERROR telemetry
+
+
+## H — image load completion follow-up
+
+- generated image DOM insertion과 실제 image load 완료를 분리해 처리
+- load/error event에서 response observer 재평가
+- text-only no-image 판단 timeout을 120초로 두고, timeout 시점에 이미지가 로드됐으면 성공 전송
+- extension reset에서 progress/owner/response state 초기화
+- CLI outbound Worker prompt transcript 추가
+
+
+- HQ/RESOURCE Owner task의 legacy handler 차단을 active flag와 분리
+- HQ Web extension progress에서 Coordinator stage 유지
+- 종료 후 stale progress가 legacy UI를 재활성화하지 않도록 guard
