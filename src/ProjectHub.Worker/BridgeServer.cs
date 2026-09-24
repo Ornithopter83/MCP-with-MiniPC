@@ -34,6 +34,9 @@ public sealed class BridgeServer : IDisposable
     private string? _webExtensionVersion;
     private string? _webExtensionBuild;
     private readonly Dictionary<string, DateTimeOffset> _webHeartbeats = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _webConversationTitles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _webExtensionVersions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _webExtensionBuilds = new(StringComparer.OrdinalIgnoreCase);
     public bool WebConnected
     {
         get { lock (_gate) return _lastWebHeartbeat is not null && DateTimeOffset.UtcNow - _lastWebHeartbeat < TimeSpan.FromSeconds(10); }
@@ -85,6 +88,26 @@ public sealed class BridgeServer : IDisposable
     public string? GetRoleConversationId(string role)
     {
         lock (_gate) return _state.RoleBindings.TryGetValue(NormalizeRole(role), out var value) ? value : null;
+    }
+
+    public WebRoleBindingStatus GetRoleBindingStatus(string role)
+    {
+        lock (_gate)
+        {
+            var normalizedRole = NormalizeRole(role);
+            if (!_state.RoleBindings.TryGetValue(normalizedRole, out var conversationId))
+                return new(normalizedRole, false, false, false, null, null);
+
+            var connected = _webHeartbeats.TryGetValue(conversationId, out var seen) &&
+                            DateTimeOffset.UtcNow - seen < TimeSpan.FromSeconds(10);
+            _webConversationTitles.TryGetValue(conversationId, out var title);
+            var synchronized = connected &&
+                _webExtensionVersions.TryGetValue(conversationId, out var version) &&
+                _webExtensionBuilds.TryGetValue(conversationId, out var build) &&
+                string.Equals(version, ExpectedExtensionVersion, StringComparison.Ordinal) &&
+                string.Equals(build, ExpectedExtensionBuild, StringComparison.Ordinal);
+            return new(normalizedRole, true, connected, synchronized, conversationId, title);
+        }
     }
 
     public BridgeTask? CreateTaskForRole(string role, string prompt, List<BridgeAttachment>? attachments = null, ResourceRequest? resource = null)
@@ -495,7 +518,15 @@ public sealed class BridgeServer : IDisposable
         {
             _lastWebHeartbeat = DateTimeOffset.UtcNow;
             if (!string.IsNullOrWhiteSpace(request.ConversationId))
+            {
                 _webHeartbeats[request.ConversationId] = _lastWebHeartbeat.Value;
+                if (!string.IsNullOrWhiteSpace(request.ConversationTitle))
+                    _webConversationTitles[request.ConversationId] = request.ConversationTitle;
+                if (!string.IsNullOrWhiteSpace(request.ExtensionVersion))
+                    _webExtensionVersions[request.ConversationId] = request.ExtensionVersion;
+                if (!string.IsNullOrWhiteSpace(request.ExtensionBuild))
+                    _webExtensionBuilds[request.ConversationId] = request.ExtensionBuild;
+            }
             _webConversationId = request.ConversationId;
             _webConversationTitle = request.ConversationTitle;
             _webProjectId = request.ProjectId;
@@ -637,6 +668,7 @@ public sealed class BridgeState
 }
 
 public sealed record BindingState(string ConversationId, string ProjectId, DateTimeOffset UpdatedAt);
+public sealed record WebRoleBindingStatus(string Role, bool Bound, bool Connected, bool ExtensionSynchronized, string? ConversationId, string? ConversationTitle);
 public sealed record ResourceRequest(string Id, string Type, string Prompt, string TargetDirectory, string TargetFileName, string RequestedBy, string Status, string? SavedPath, string WorkspaceRoot);
 public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null);
 public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null);

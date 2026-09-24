@@ -299,6 +299,35 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void RuntimeNormalization_MigratesLegacyWorkAstraLowOnce()
+    {
+        var legacy = new WorkerTargetSettings(
+            null, null, null, null,
+            Implementer: new WorkerAiRoleSettings("openai", "gpt-6-astra", "low", "codex_cli"),
+            SettingsSchemaVersion: 0);
+
+        var normalized = WorkerTargetConfiguration.NormalizeForRuntime(legacy);
+
+        Assert.Equal(WorkerTargetConfiguration.CurrentSettingsSchemaVersion, normalized.SettingsSchemaVersion);
+        Assert.Equal("gpt-6-luna", normalized.EffectiveImplementer.Model);
+        Assert.Equal("medium", normalized.EffectiveImplementer.Reasoning);
+    }
+
+    [Fact]
+    public void RuntimeNormalization_PreservesExplicitWorkModelAfterCurrentSchema()
+    {
+        var current = new WorkerTargetSettings(
+            null, null, null, null,
+            Implementer: new WorkerAiRoleSettings("openai", "gpt-6-astra", "low", "codex_cli"),
+            SettingsSchemaVersion: WorkerTargetConfiguration.CurrentSettingsSchemaVersion);
+
+        var normalized = WorkerTargetConfiguration.NormalizeForRuntime(current);
+
+        Assert.Equal("gpt-6-astra", normalized.EffectiveImplementer.Model);
+        Assert.Equal("low", normalized.EffectiveImplementer.Reasoning);
+    }
+
+    [Fact]
     public void RoleSettings_PersistIndependentProvidersForHqAndWork()
     {
         var settings = JsonSerializer.Deserialize<WorkerTargetSettings>("""

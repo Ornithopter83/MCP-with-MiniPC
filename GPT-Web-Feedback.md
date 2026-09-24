@@ -51,3 +51,11 @@ Worker가 판단하지 않는 것:
 - WORK -> RESOURCE -> 실제 이미지 생성/저장 -> same WORK session 복귀
 - 저장된 RESOURCE가 자동 integration되지 않는지 확인
 - JUDGE 회귀
+
+
+## 2026-09-24 UI 확인 후 보정
+
+- 대기 상태에서 5개 Pipeline 카드가 모두 컬러인 것은 의도된 정책이다.
+- WORK에 남은 legacy GPT-6 Astra / Low 조합은 Luna / Medium으로 1회 migration한다.
+- HQ/RESOURCE Web 상태는 각각 독립 binding 기준으로 표시하고 preflight한다.
+- 설정창 Provider 아이콘 대비, 긴 Web 설명 wrapping, 작은 화면 scroll/footer, 설계·관제/판정 용어를 보정한다.

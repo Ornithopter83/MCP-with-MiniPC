@@ -64,3 +64,20 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - WORK→RESOURCE 실제 이미지 생성→지정 파일 저장→WORK 복귀
 - RESOURCE 저장 후 자동 코드 연결이 발생하지 않는지 확인
 - JUDGE 회귀
+
+
+## UI follow-up — 2026-09-24
+
+사용자 화면 확인 후 다음을 보정했다.
+
+- 대기 상태의 Pipeline 5개 카드 전체 컬러 정책은 의도된 동작으로 유지
+- 구버전 target-settings의 정확한 WORK = GPT-6 Astra / Low 조합만 1회 GPT-6 Luna / Medium으로 migration
+- 이후 사용자가 명시적으로 선택한 Astra/Low 등 WORK 모델은 보존
+- 설정 Provider 아이콘에 역할 컬러 배경을 추가해 OpenAI 흰 아이콘 대비 개선
+- HQ Web / RESOURCE Web 각각의 binding, heartbeat, 확장 동기화, conversation 정보를 설정 카드에 표시
+- 실제 preflight도 전역 latest Web 상태가 아니라 역할별 Web 상태를 사용
+- Web 설명 카드의 긴 문장을 wrapping 처리
+- 설정 본문 세로/가로 스크롤 및 화면 높이 기반 popup 크기 조절, 하단 적용/닫기 footer 유지
+- UI 용어를 설계·관제 / 작업 / 리소스 / 판정으로 통일
+
+Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.

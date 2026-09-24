@@ -121,3 +121,14 @@ RESOURCE:
 - 저장 뒤 WORK session 복귀
 - 자동 integration 없음
 - JUDGE 회귀
+
+
+## F — settings/UI polish follow-up
+
+화면 확인 피드백:
+- 대기 상태 전체 컬러는 정상 정책이므로 변경하지 않는다.
+- legacy WORK Astra/Low 설정은 schema v2 migration에서 Luna/Medium으로 1회 교정한다.
+- 현재 schema에서 사용자가 명시적으로 선택한 WORK 모델은 덮어쓰지 않는다.
+- 설정의 HQ/RESOURCE Web 카드는 역할별 binding/heartbeat/extension 상태를 표시한다.
+- role-specific Web preflight를 사용하여 다른 Web 창의 latest heartbeat가 실행 여부에 영향을 주지 않게 한다.
+- Provider icon contrast, text wrapping, scroll/fixed footer, 역할명 표기를 정리한다.

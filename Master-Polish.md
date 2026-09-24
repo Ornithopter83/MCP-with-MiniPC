@@ -254,13 +254,16 @@ RESOURCE가 하지 않는 것:
 - 리소스: ChatGPT Web
 - 판정: JEV
 
-현재 실행 중인 단계만 gold active border/orbit을 사용한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
+대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold active border/orbit은 사용하지 않는다. 실행 중에는 현재 역할이 gold active border/orbit으로 강조된다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
 
 설정:
 - HQ: 실행 대상 Web/CLI + CLI일 때 Provider/Model/Reasoning/Session
 - WORK: Provider/Model/Reasoning/Session
-- RESOURCE: ChatGPT Web 고정 설명
+- RESOURCE: ChatGPT Web 고정
 - JUDGE: JEV 설정
+- HQ/RESOURCE Web 카드는 각각 명시적 role binding의 연결/heartbeat/확장 동기화 상태와 연결된 대화 정보를 보여준다.
+- 설정 본문은 작은 화면에서도 세로 스크롤되며 하단 닫기/적용 버튼은 항상 별도 footer에 남는다.
+- 역할 표기는 설계·관제 / 작업 / 리소스 / 판정으로 통일한다.
 
 ---
 

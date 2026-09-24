@@ -65,7 +65,7 @@ public partial class MainWindow : Window
         public string? IconAssetOverride { get; init; }
         public string TokenDetails { get; init; } = "토큰 · 해당 없음";
         public string FileDetails { get; init; } = "파일 · 해당 없음";
-        public string Role => StageKey switch { "Coordinator" => "설계 관제", "Implementer" => "작업", "Resource" => "리소스", "Judge" => "판정", _ => "시스템" };
+        public string Role => StageKey switch { "Coordinator" => "설계·관제", "Implementer" => "작업", "Resource" => "리소스", "Judge" => "판정", _ => "시스템" };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         public string Details
         {
@@ -294,6 +294,11 @@ public partial class MainWindow : Window
         StatusPopup.IsOpen = open;
         if (open)
         {
+            var workArea = SystemParameters.WorkArea;
+            SettingsPopupBorder.Height = Math.Clamp(workArea.Height - 90, 560, 850);
+            SettingsPopupBorder.MaxHeight = SettingsPopupBorder.Height;
+            SettingsPopupBorder.Width = Math.Clamp(workArea.Width - 40, 1040, 1400);
+            UpdateWebRoleBindingStatusPresentation();
             Dispatcher.BeginInvoke(() =>
             {
                 if (!StatusPopup.IsOpen) return;
@@ -428,9 +433,11 @@ public partial class MainWindow : Window
         }
 
         if (!_codexAuthenticated) return "Codex 로그인이 필요합니다.";
-        if (_bridgeServer?.WebConnected != true) return "GPT Web 연결을 기다리고 있습니다.";
-        if (!_bridgeServer.WebExtensionSynchronized) return "GPT Web 확장 동기화를 기다리고 있습니다.";
-        if (!_bridgeServer.IsRoleBound("HQ")) return "ChatGPT Web 대화를 HQ 역할로 연결하세요.";
+        if (_bridgeServer is null) return "GPT Web 연결을 기다리고 있습니다.";
+        var hqWeb = _bridgeServer.GetRoleBindingStatus("HQ");
+        if (!hqWeb.Bound) return "ChatGPT Web 대화를 HQ 역할로 연결하세요.";
+        if (!hqWeb.Connected) return "HQ ChatGPT Web 대화의 heartbeat를 기다리고 있습니다.";
+        if (!hqWeb.ExtensionSynchronized) return "HQ GPT Web 확장 동기화를 기다리고 있습니다.";
         return null;
     }
 
@@ -731,10 +738,11 @@ public partial class MainWindow : Window
             await RunCoordinatorFirstJobAsync(launchRequest.Prompt, selectedThreadForLaunch, cliWorkingDirectory, coordinator, implementer);
             return;
         }
-        if (!_codexAuthenticated || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized || !_bridgeServer.IsRoleBound("HQ"))
+        var legacyHqWeb = _bridgeServer?.GetRoleBindingStatus("HQ");
+        if (!_codexAuthenticated || legacyHqWeb is null || !legacyHqWeb.Bound || !legacyHqWeb.Connected || !legacyHqWeb.ExtensionSynchronized)
         {
             TaskDirection.Text = "PREFLIGHT";
-            TaskTitle.Text = _bridgeServer?.WebConversationBound == false ? "GPT Web 대화 연결 필요" : "연결 상태 확인 필요";
+            TaskTitle.Text = legacyHqWeb is null || !legacyHqWeb.Bound ? "HQ GPT Web 대화 연결 필요" : "HQ GPT Web 연결 상태 확인 필요";
             SetFlowState(false, false, false);
             return;
         }
@@ -1468,7 +1476,7 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.Judge, "WORK_SESSION_MISSING", "The JEV response cannot be returned because the requesting WORK session is unavailable.");
                                 continue;
                             }
-                            TaskDirection.Text = "판단 AI"; TaskTitle.Text = "JUDGE 전송 중"; ResultTitle.Text = "JUDGE";
+                            TaskDirection.Text = "판정 AI"; TaskTitle.Text = "JUDGE 전송 중"; ResultTitle.Text = "JUDGE";
                             SetFlowState(false, true, false, explicitStage: TaskStage.Judge);
                             var judgeRequest = new JudgeRequest(request, 1, workingDirectory, workResultForJudge, workValidationRequest, workFilesForJudge, "GIT", _gitTarget?.HeadSha, jobId, workCommandsForJudge);
                             var transport = await _jevJudgeRunner.ReviewRawAsync(judgeRequest, _targetSettings.EffectiveJudge, cts.Token);
@@ -1498,9 +1506,10 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.Resource, "RESOURCE_REQUEST_INVALID", "RESOURCE request state is missing.");
                                 continue;
                             }
-                            if (_bridgeServer is null || !_bridgeServer.IsRoleConnected("RESOURCE") || !_bridgeServer.WebExtensionSynchronized)
+                            var resourceWeb = _bridgeServer?.GetRoleBindingStatus("RESOURCE");
+                            if (resourceWeb is null || !resourceWeb.Bound || !resourceWeb.Connected || !resourceWeb.ExtensionSynchronized)
                             {
-                                RouteUnknown(WorkerRoleState.Resource, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE 역할로 연결된 ChatGPT Web 대화가 활성 상태가 아닙니다.");
+                                RouteUnknown(WorkerRoleState.Resource, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE 역할로 연결된 ChatGPT Web 대화가 활성 상태가 아니거나 확장 버전이 맞지 않습니다.");
                                 continue;
                             }
 
@@ -1582,7 +1591,8 @@ public partial class MainWindow : Window
 
     private async Task<AiRoleRunResult> RunWebRoleAsync(string jobId, string roleName, string purpose, string prompt, CancellationToken cancellationToken)
     {
-        if (_bridgeServer is null || !_bridgeServer.IsRoleConnected(roleName) || !_bridgeServer.WebExtensionSynchronized)
+        var webStatus = _bridgeServer?.GetRoleBindingStatus(roleName);
+        if (webStatus is null || !webStatus.Bound || !webStatus.Connected || !webStatus.ExtensionSynchronized)
             throw new InvalidOperationException($"{roleName}_WEB_UNAVAILABLE");
 
         var started = DateTimeOffset.UtcNow;
@@ -1849,11 +1859,13 @@ public partial class MainWindow : Window
     {
         if (string.Equals(GetSelectedTag(CoordinatorTargetCombo, "cli"), "web", StringComparison.OrdinalIgnoreCase))
         {
+            CoordinatorProviderIconCircle.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#EAF4FF"));
             CoordinatorProviderIcon.Source = LoadProviderAsset("current-web.png");
             CoordinatorProviderIcon.ToolTip = "ChatGPT Web";
         }
         else
         {
+            CoordinatorProviderIconCircle.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1477E8"));
             SetProviderIcon(CoordinatorProviderIcon, GetSelectedTag(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider));
         }
         SetProviderIcon(ImplementerProviderIcon, GetSelectedTag(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider));
@@ -1874,11 +1886,13 @@ public partial class MainWindow : Window
         CoordinatorRoleThreadCombo.IsEnabled = !web && AiProviderCatalog.Find(GetSelectedTag(CoordinatorProviderCombo, string.Empty))?.SupportsSessions == true;
         if (web)
         {
+            CoordinatorProviderIconCircle.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#EAF4FF"));
             CoordinatorProviderIcon.Source = LoadProviderAsset("current-web.png");
             CoordinatorProviderIcon.ToolTip = "ChatGPT Web";
         }
         else
         {
+            CoordinatorProviderIconCircle.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1477E8"));
             ApplyRoleSessionCapability(CoordinatorProviderCombo, CoordinatorRoleThreadCombo);
             SetProviderIcon(CoordinatorProviderIcon, GetSelectedTag(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider));
         }
@@ -2020,9 +2034,10 @@ public partial class MainWindow : Window
 
         if (IsWebTransport(coordinator.Transport))
         {
-            if (_bridgeServer is null || !_bridgeServer.IsRoleBound("HQ")) return "ChatGPT Web 대화를 HQ 역할로 연결하세요.";
-            if (!_bridgeServer.IsRoleConnected("HQ")) return "HQ ChatGPT Web 대화의 heartbeat를 기다리고 있습니다.";
-            if (!_bridgeServer.WebExtensionSynchronized) return "GPT Web 확장 동기화를 기다리고 있습니다.";
+            var hqWeb = _bridgeServer?.GetRoleBindingStatus("HQ");
+            if (hqWeb is null || !hqWeb.Bound) return "ChatGPT Web 대화를 HQ 역할로 연결하세요.";
+            if (!hqWeb.Connected) return "HQ ChatGPT Web 대화의 heartbeat를 기다리고 있습니다.";
+            if (!hqWeb.ExtensionSynchronized) return "HQ GPT Web 확장 동기화를 기다리고 있습니다.";
         }
         else
         {
@@ -2203,7 +2218,7 @@ public partial class MainWindow : Window
         var judgeSettings = ReadJudgeSettingsFromControls(EnableJudgeCheckBox.IsChecked == true) with { TimeoutSeconds = timeout };
         var judgeWarning = WorkerTargetConfiguration.GetJudgeApplyWarning(judgeSettings, _targetSettings.JudgeEndpointValidation);
         if (judgeWarning is not null)
-            System.Windows.MessageBox.Show(this, judgeWarning, "판단 AI 설정 확인", MessageBoxButton.OK, MessageBoxImage.Warning);
+            System.Windows.MessageBox.Show(this, judgeWarning, "판정 AI 설정 확인", MessageBoxButton.OK, MessageBoxImage.Warning);
         _targetSettings = _targetSettings with
         {
             ManualRepositoryUrl = null, ManualServerBaseUrl = server,
@@ -2251,8 +2266,57 @@ public partial class MainWindow : Window
         ApplyConnectionStatus();
     }
 
+    private void UpdateWebRoleBindingStatusPresentation()
+    {
+        ApplyWebRoleBindingStatus(
+            _bridgeServer?.GetRoleBindingStatus("HQ"),
+            CoordinatorWebBindingStatusText,
+            CoordinatorWebBindingDetailText,
+            "HQ");
+        ApplyWebRoleBindingStatus(
+            _bridgeServer?.GetRoleBindingStatus("RESOURCE"),
+            ResourceWebBindingStatusText,
+            ResourceWebBindingDetailText,
+            "RESOURCE");
+    }
+
+    private static void ApplyWebRoleBindingStatus(WebRoleBindingStatus? status, TextBlock statusText, TextBlock detailText, string role)
+    {
+        if (status is null || !status.Bound)
+        {
+            statusText.Text = $"{role} Web 미연결";
+            statusText.Foreground = System.Windows.Media.Brushes.OrangeRed;
+            detailText.Text = $"브라우저 확장에서 {role} 역할로 연결하세요.";
+            return;
+        }
+
+        var id = status.ConversationId ?? string.Empty;
+        var shortId = id.Length > 12 ? id[..12] + "…" : id;
+        var label = !string.IsNullOrWhiteSpace(status.ConversationTitle) ? status.ConversationTitle : shortId;
+        if (!status.Connected)
+        {
+            statusText.Text = $"{role} Web 연결 대기";
+            statusText.Foreground = System.Windows.Media.Brushes.DarkOrange;
+            detailText.Text = string.IsNullOrWhiteSpace(label) ? "연결된 대화의 heartbeat를 기다리고 있습니다." : $"{label} · heartbeat 대기";
+            return;
+        }
+
+        if (!status.ExtensionSynchronized)
+        {
+            statusText.Text = $"{role} Web 확장 업데이트 필요";
+            statusText.Foreground = System.Windows.Media.Brushes.OrangeRed;
+            detailText.Text = string.IsNullOrWhiteSpace(label) ? "확장 버전을 확인하세요." : label;
+            return;
+        }
+
+        statusText.Text = $"{role} Web 연결됨";
+        statusText.Foreground = System.Windows.Media.Brushes.ForestGreen;
+        detailText.Text = string.IsNullOrWhiteSpace(label) ? "연결된 대화가 활성 상태입니다." : label;
+    }
+
     private void ApplyConnectionStatus()
     {
+        UpdateWebRoleBindingStatusPresentation();
         var webOnline = _bridgeServer?.WebConnected == true;
         var webExtensionReady = _bridgeServer?.WebExtensionSynchronized == true;
         var webConversationBound = _bridgeServer?.WebConversationBound == true;
