@@ -23,8 +23,6 @@ public static class RoleContractLoader
     }
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");
     public static string LoadJudgeFooter() => Load("JUDGE-ROUTING-CONTRACT.md");
-    public static string LoadUnknownEnvelopeContract() => Load("UNKNOWN-ENVELOPE-CONTRACT.md");
-
     public static string BuildHqPrompt(string inboundType, string body, bool highPermitAvailable)
     {
         var routes = highPermitAvailable ? "[GOTO : WORK]\n[GOTO : HIGH]" : "[GOTO : WORK]";
@@ -40,12 +38,6 @@ public static class RoleContractLoader
     }
 
     public static string BuildHighPrompt(string body) => "[ROLE : HIGH]\n\n[INVOCATION : ONE_SHOT]\n\n[OPAQUE INBOUND BODY]\n" + body + "\n\n" + LoadHighFooter();
-
-    public static string BuildUnknownEnvelope(string sourceState, string code, string detail)
-    {
-        return "[ROLE : UNKNOWN]\n\n" + LoadUnknownEnvelopeContract() + "\n\n[ERROR ENVELOPE : JSON]\n" +
-            JsonSerializer.Serialize(new { source_state = sourceState, code, detail });
-    }
 
     private static string Load(string fileName)
     {

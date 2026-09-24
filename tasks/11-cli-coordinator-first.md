@@ -31,7 +31,7 @@ HQ      -> WORK | HIGH
 WORK    -> JUDGE | HQ
 JUDGE   -> WORK
 HIGH    -> HQ
-UNKNOWN -> HQ
+UNKNOWN -> 한글 로그 기록 후 종료
 ~~~
 
 ## Output examples
@@ -154,7 +154,7 @@ protocol/provider/session/transport 오류를 source/code/detail로 HQ에 전달
 A. HQ -> WORK -> HQ -> END
 B. HQ -> WORK -> JUDGE -> WORK -> HQ -> END
 C. HIGH permit -> HQ -> HIGH -> HQ
-D. error -> UNKNOWN -> HQ
+D. error -> UNKNOWN 로그 기록 -> 종료 (AI 전달 없음)
 ~~~
 
 A 경로에서 최소:
@@ -201,6 +201,15 @@ A 경로에서 최소:
 - malformed candidate를 `ACTION_INVALID`/`GOTO_INVALID`로 분류하도록 하고 기존 test 기대값을 갱신했다.
 - 이 parser 변경 뒤 자동 테스트는 미실행. `dotnet build ProjectHub.sln -c Release --no-restore` 및 Worker Release publish는 경고 0/오류 0으로 성공했다.
 - 게시 EXE를 `C:\AI-AGENT\Worker`로 복사했고 SHA-256 `ACF5EF21945D14AEB40A4DB97D22602639B76096943ED8C6B654277A29BE3389`를 대조했다. `git diff --check` 통과.
+
+### 2026-09-24 닫는 괄호 위치와 실로그 원인
+
+- 사용자 결정: 닫는 대괄호는 인식된 제어어 바로 뒤에 있는지만 검사한다. 제어행 뒤 같은 줄의 자연어 본문은 허용해 body로 전달한다.
+- Tetris 로그의 첫 WORK 출력 `[GOTO : HQ] I’ll inspect ...`는 제어행 뒤 설명을 포함했으나 이전 parser가 마지막 문자 `]`만 허용해 실패했다.
+- 재지시의 “Worker는 GOTO 제어선을 출력하지 말고”는 Worker 문구가 아니라 HQ AI가 만든 응답 본문이다. 이후 WORK가 제어행 없는 본문을 반환해 `GOTO_INVALID_FIRST_LINE`이 됐다.
+- 구현: 제어어 바로 뒤 `]`를 확인하고, 뒤따르는 같은 줄 텍스트를 body에 합친다. 테스트: Worker 61개 통과. Release 게시/복사는 이 수정 이후 미수행.
+- UNKNOWN 오류는 다른 AI에 전달하지 않고 한글 시스템 로그에 원문과 발생 역할·오류 코드를 기록한 뒤 종료한다. `[ROLE : UNKNOWN]` prompt envelope를 제거했다.
+- 전체 테스트 67개 통과, Release build/publish 성공, 실행 중 Worker 종료 후 게시 EXE 복사 및 SHA-256 대조 완료 (`460EFAC18A399E3F1E4197807883C3418507B3A4729B2EA3FEE8F6BC4D487CAF`). Explorer 실제 오류 재현 검증은 잔여다.
 
 ### 제어행 키워드 포함 판별 후속
 

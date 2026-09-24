@@ -1353,11 +1353,13 @@ public partial class MainWindow : Window
                 cts.Token.ThrowIfCancellationRequested();
                 if (state == WorkerRoleState.Unknown)
                 {
-                    inboundType = "UNKNOWN";
-                    inbound = RoleContractLoader.BuildUnknownEnvelope(previousState.ToString().ToUpperInvariant(), unknownCode, unknownDetail);
-                    AddTaskMessage("UNKNOWN → HQ", inbound, status: unknownCode, includeHistory: false);
-                    AddRoleResponseHistory(WorkerRoleState.Unknown, "오류 전달", $"{unknownCode} · {unknownDetail}", status: unknownCode);
-                    state = WorkerRoleState.Hq;
+                    var errorLog = WorkerUnknownErrorLog.Format(previousState, unknownCode, unknownDetail);
+                    AddTaskMessage("시스템 오류", errorLog, status: unknownCode);
+                    ResultTitle.Text = "오류";
+                    ResultBody.Text = errorLog;
+                    TaskTitle.Text = "오류 내용을 기록하고 작업을 중단했습니다.";
+                    SetFlowState(false, false, false);
+                    return;
                 }
                 try
                 {

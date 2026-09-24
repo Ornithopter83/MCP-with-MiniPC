@@ -15,7 +15,7 @@ HQ      -> WORK | HIGH
 WORK    -> JUDGE | HQ
 JUDGE   -> WORK
 HIGH    -> HQ
-UNKNOWN -> HQ
+UNKNOWN -> 한글 로그 기록 후 종료
 ~~~
 
 ## Current implementation status
@@ -42,6 +42,16 @@ Explorer에서 HQ가 `[GOTO=WORK]` / `GOTO=WORK`를 출력해 strict parser가 `
 - `[GOTO=WORK]`, `GOTO=WORK`가 `GOTO_INVALID`인 회귀 테스트 추가
 
 이번 수정 이후 Explorer 재실행에서 HQ가 정확히 `[ACTION=CONTINUE]` + `[GOTO : WORK]`를 출력하는지 확인해야 한다.
+
+## 2026-09-24 제어 토큰 닫힘 판별 및 테트리스 로그 분석
+
+로그 `C:\AI-AGENT\Worker\Worker\Task\Worker_NewThread\_20260924_154428.txt`를 분석했다. HQ가 `[ACTION=CONTINUE]`와 `[GOTO : WORK]`를 정상 출력했지만, WORK의 첫 응답은 `[GOTO : HQ]` 뒤에 설명 문구를 같은 줄에 붙여 기존 parser에서 거부됐다. HQ가 재시도 지시를 만들면서 “Worker는 GOTO 제어선을 출력하지 말고”라는 모순된 문구를 추가했다. 이 문구는 Worker가 삽입한 것이 아니라 HQ AI 응답 본문에서 생성됐다. 재시도한 WORK는 GOTO 제어행 없이 일반 설명만 반환해 `GOTO_INVALID_FIRST_LINE`이 됐다. 테트리스 파일은 생성돼 있었으므로 작업 내용 완료와 라우팅 계약 실패가 함께 발생한 사례다.
+
+parser는 `[ACTION`/`[GOTO` 접두어로 후보를 고른 다음, 후보 줄 안에서 유효 제어어 바로 뒤에 `]`가 있는지 확인한다. 닫는 괄호 뒤 같은 줄의 문구는 opaque body로 보존한다. route/HIGH permit 제한은 유지한다.
+
+UNKNOWN 계약 오류는 다른 AI에 보내지 않는다. 발생 역할과 오류 코드를 한글로 요약하고 원문을 로그에 기록한 뒤 작업을 종료한다. UNKNOWN 프롬프트 봉투와 리소스를 제거했다.
+
+검증: 전체 테스트 67개 통과 (Worker 62, Agent 3, Core 1, Server 1), Release 빌드 경고 0/오류 0, Worker publish 성공. 실행 중 Worker를 종료한 뒤 EXE를 `C:\AI-AGENT\Worker`에 복사하고 SHA-256 `460EFAC18A399E3F1E4197807883C3418507B3A4729B2EA3FEE8F6BC4D487CAF` 일치를 확인했다. Explorer에서 오류를 실제 재현해 추가 AI 호출이 없는지 확인하는 것은 잔여다.
 
 ## Active residual — opaque body + History
 
@@ -105,7 +115,7 @@ Explorer 재검증:
 - HQ→WORK→HQ→END: HQ/WORK/HQ 카드가 순서대로 표시
 - HQ→WORK→JUDGE→WORK→HQ→END: JUDGE와 복귀 WORK 카드 표시
 - HIGH permit→HQ→HIGH→HQ: HIGH 카드 표시
-- invalid route/provider error→UNKNOWN→HQ: 오류 카드/관제 복귀 확인
+- invalid route/provider error→UNKNOWN log→stop: 한글 오류 로그가 기록되고 추가 AI 호출이 없는지 확인 (Explorer 실검증 잔여)
 
 각 카드에서 AI 본문 tag 검색 없이 3줄 메타 표시가 나와야 한다.
 

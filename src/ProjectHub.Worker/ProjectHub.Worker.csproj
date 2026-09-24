@@ -63,8 +63,5 @@
     <EmbeddedResource Include="Contracts\JUDGE-ROUTING-CONTRACT.md">
       <LogicalName>ProjectHub.Worker.Contracts.JUDGE-ROUTING-CONTRACT.md</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="Contracts\UNKNOWN-ENVELOPE-CONTRACT.md">
-      <LogicalName>ProjectHub.Worker.Contracts.UNKNOWN-ENVELOPE-CONTRACT.md</LogicalName>
-    </EmbeddedResource>
   </ItemGroup>
 </Project>

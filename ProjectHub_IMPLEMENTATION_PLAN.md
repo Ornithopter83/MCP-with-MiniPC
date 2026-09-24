@@ -11,7 +11,7 @@ HQ      -> WORK | HIGH
 WORK    -> JUDGE | HQ
 JUDGE   -> WORK
 HIGH    -> HQ
-UNKNOWN -> HQ
+UNKNOWN -> 한글 로그 기록 후 종료
 ~~~
 
 - ACTION은 HQ만 CONTINUE/PAUSE/END를 사용
@@ -55,6 +55,21 @@ Explorer 기본 경로에서 WORK 응답이 transcript에는 남지만 History �
 - 비용 기반 자동 정책
 - 고급 예산/호출 제한 UX
 - 기타 대규모 리팩터링
+
+## 2026-09-24 제어행 닫힘 판별 후속
+
+- ACTION/GOTO 후보는 시작 접두어로 구분하고, 제어어 포함 상태와 그 제어어 바로 뒤의 닫는 `]`로 제어 토큰을 판별한다. 닫는 괄호가 줄의 마지막 문자일 필요는 없다.
+- 괄호 뒤 같은 줄의 설명 문구는 라우팅 본문에 보존한다. 상태 전이/HIGH permit은 유지한다.
+- `_20260924_154428.txt` 로그에서 첫 WORK 응답의 `[GOTO : HQ]` 뒤 설명 문구가 기존 parser에 의해 거부된 것을 확인했다. 재지시의 “Worker는 GOTO 제어선을 출력하지 말고” 문구는 HQ AI가 생성한 본문이며 Worker 코드에서 삽입되지 않았다. 재시도 WORK가 GOTO 없이 본문만 반환해 오류가 종결됐다.
+- Worker 테스트 61개 통과. 이번 변경 이후 Release build/publish 및 실행파일 복사는 잔여다.
+
+## 2026-09-24 UNKNOWN 오류 처리 변경
+
+- UNKNOWN 오류는 더 이상 다른 AI에 전달하지 않고, 발생 역할·오류 코드·원문을 한글 시스템 로그에 기록한 뒤 해당 작업을 종료한다.
+- `[ROLE : UNKNOWN]` 및 `[ERROR ENVELOPE : JSON]` 프롬프트 봉투를 삭제했다.
+- 전체 테스트 67개 통과 (Worker 62, Agent 3, Core 1, Server 1), Release build 경고 0/오류 0, Worker publish 성공.
+- 실행 중 Worker 프로세스를 종료한 뒤 게시 EXE를 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`에 복사하고 SHA-256 `460EFAC18A399E3F1E4197807883C3418507B3A4729B2EA3FEE8F6BC4D487CAF` 일치를 확인했다.
+- Explorer 화면에서 실제 오류를 재현해 추가 AI 호출이 없는지 확인하는 것은 잔여다.
 
 ## UI residual
 

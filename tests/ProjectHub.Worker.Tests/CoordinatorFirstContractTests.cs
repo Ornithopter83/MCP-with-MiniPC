@@ -52,6 +52,8 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\nreport", false, WorkerAction.Pause, null)]
     [InlineData(WorkerRoleState.Hq, "[ACTION=END]\nreport", false, WorkerAction.End, null)]
     [InlineData(WorkerRoleState.Work, "[GOTO : HQ]\nreport", false, null, WorkerRoleState.Hq)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : HQ] report on the same line", false, null, WorkerRoleState.Hq)]
+    [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", false, null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", false, null, WorkerRoleState.Judge)]
     [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", false, null, WorkerRoleState.Work)]
     [InlineData(WorkerRoleState.High, "[GOTO : HQ]\nreport", false, null, WorkerRoleState.Hq)]
@@ -65,7 +67,7 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Theory]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO=WORK]\nbody", false, "GOTO_INVALID")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO=WORK\nbody", false, "GOTO_INVALID")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\nGOTO=WORK\nbody", false, "GOTO_INVALID")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=HQ]\nbody", false, "ACTION_INVALID")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : HIGH]\nbody", false, "HIGH_NOT_AUTHORIZED")]
@@ -100,6 +102,19 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("모델 소개와 날짜 판정", json);
         Assert.DoesNotContain("\\uBAA8", json);
         Assert.Equal("모델 소개와 날짜 판정", JsonDocument.Parse(json).RootElement.GetProperty("Summary").GetString());
+    }
+
+    [Fact]
+    public void UnknownErrors_AreFormattedAsKoreanLogEntriesWithoutAiEnvelope()
+    {
+        var message = WorkerUnknownErrorLog.Format(WorkerRoleState.Work, "GOTO_INVALID_FIRST_LINE", "작업 결과 원문");
+
+        Assert.Contains("올바른 전달 경로", message);
+        Assert.Contains("발생 단계: 작업 AI", message);
+        Assert.Contains("오류 내용은 로그에만 기록", message);
+        Assert.Contains("작업 결과 원문", message);
+        Assert.DoesNotContain("[ROLE : UNKNOWN]", message);
+        Assert.DoesNotContain("[ERROR ENVELOPE : JSON]", message);
     }
 
     [Fact]
