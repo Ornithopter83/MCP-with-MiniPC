@@ -2,6 +2,13 @@
 
 Updated: 2026-09-24
 
+## 11-UI-B 후속 — 프로그램 시작 대기 상태 카드 활성 컬러 (2026-09-24)
+
+- 요구사항은 이미 11-UI-B 기록에 있었지만 시작 입력 화면에서 `TaskStage.Idle`만 적용돼 대기 카드만 강조되고 네 AI 역할 카드는 회색으로 렌더링되는 결함이 남아 있었다.
+- 시작/새 작업 입력 화면이고 작업/브리지 대기가 없을 때를 `initialInputIdle`로 계산한다. 이때 설계 관제·작업·고수준 작업·판정 카드는 설정상 선택 역할이 꺼져 있어도 역할 컬러 아이콘/배경/문구를 표시한다. 새 작업이 시작되어 이력 화면으로 전환되면 기존 실행 단계 기준 컬러/그레이스케일 및 비활성 역할 opacity 동작을 유지한다.
+- 회귀 테스트를 추가했다. `dotnet build ProjectHub.sln --configuration Debug --no-restore` 경고 0/오류 0, `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 49개 통과, `git diff --check` 통과. Release 게시 및 `C:\AI-AGENT\Worker` 복사 완료; 게시/설치본 SHA-256 `E7D0567D6C7B85D68D448E1D60CCA2BEDE363D29800EFACE62A911BF7C02E22A`. 실제 Explorer 화면 캡처는 아직 미확인이다.
+- 남은 작업 식별자: `11-UI-B-EXPLORER-COLORS` (시작 대기/실행/새 작업 3상태를 실제 화면에서 확인).
+
 ## 11-C 후속 — 계약 라우터 단순화 및 ACTION=HQ 통합 (2026-09-24)
 
 - 최신 동기화 피드백에 따라 새 CLI 경로에서 Worker가 작업카드/보고 JSON, AC 상태, 명령 exit code, JEV 점수로 의미를 판정하던 흐름을 제어행 라우터로 교체했다. 관제 AI는 `[ACTION=CONTINUE|PAUSE|END|HQ]`와 NEXT 목적지를 내고, Worker는 본문을 해석하지 않고 전달한다. 고정 3회 반복과 별도 `IMPLEMENT_ROUTE` 호출을 제거했다.

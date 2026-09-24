@@ -2,6 +2,13 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 UI-B 후속 — 시작 대기 카드 색상 누락 수정
+
+- 기존 CurrentWork와 구현 계획에 “시작/새 작업 대기 시 네 역할 카드 모두 역할색”이 기록돼 있었지만, 실제 `UpdatePipelineVisuals`는 오직 current stage만 색칠하고 있었다.
+- 초기 NewTaskInput + Idle에서 선택 여부와 무관하게 네 AI 역할 카드를 컬러/full-opacity로 그린다. 실행 후에는 기존 current-stage color, inactive grayscale/opacity를 적용한다.
+- 검증: Debug 빌드 경고 0/오류 0, 전체 49 tests, `git diff --check` 통과. Release 게시 및 Worker 복사 완료(SHA-256 `E7D0567D6C7B85D68D448E1D60CCA2BEDE363D29800EFACE62A911BF7C02E22A`).
+- 잔여 `11-UI-B-EXPLORER-COLORS`: 시작 대기·실행 중·새 작업 대기 상태의 Explorer 화면 검증.
+
 ## 2026-09-24 후속 — 제어행 라우터 및 ACTION=HQ (구현 완료)
 
 - 새 CLI path에서 Worker 의미 판정 gate를 제거하고 ACTION/NEXT 첫 제어행 parser와 opaque body handoff를 구현했다. WORK_CARD/IMPLEMENTER_RESULT/REVIEW JSON 강제, AC 집합 비교, command/evidence matcher, END 재판정, 고정 3회 제한, 별도 IMPLEMENT_ROUTE 호출을 사용하지 않는다.

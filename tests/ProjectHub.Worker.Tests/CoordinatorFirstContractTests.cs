@@ -6,6 +6,25 @@ namespace ProjectHub.Worker.Tests;
 public sealed class CoordinatorFirstContractTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public void PipelineRoles_AreAllColoredAtInitialInputIdleEvenWhenOptionalRoleIsDisabled(bool current, bool disabled)
+    {
+        var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle: true, isCurrent: current, disabled: disabled);
+        Assert.True(visual.IsColored);
+        Assert.Equal(1.0, visual.Opacity);
+    }
+
+    [Fact]
+    public void PipelineRoles_AfterLaunchUseCurrentStageColorAndDisabledOpacity()
+    {
+        Assert.True(PipelineCardVisualPolicy.Resolve(initialInputIdle: false, isCurrent: true, disabled: false).IsColored);
+        var inactiveOptional = PipelineCardVisualPolicy.Resolve(initialInputIdle: false, isCurrent: false, disabled: true);
+        Assert.False(inactiveOptional.IsColored);
+        Assert.Equal(0.85, inactiveOptional.Opacity);
+    }
+
+    [Theory]
     [InlineData("[ACTION=CONTINUE]\n[NEXT : IMPLEMENTER]\nbody", WorkerAction.Continue, WorkerNextRole.Implementer)]
     [InlineData("[ACTION = HQ]\nmessage", WorkerAction.Hq, WorkerNextRole.Coordinator)]
     [InlineData("[NEXT : COORDINATOR]\n[REPORT]\nopaque", null, WorkerNextRole.Coordinator)]

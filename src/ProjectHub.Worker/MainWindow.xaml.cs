@@ -526,12 +526,13 @@ public partial class MainWindow : Window
 
     private void UpdatePipelineVisuals()
     {
-        SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, "#DDEEFF", "#1477E8", "#1267D5", false);
-        SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, "current-openai.png", TaskStage.Implementer, "#DCF5E3", "#168A4A", "#116B39", false);
-        SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, "current-openai.png", TaskStage.HighLevel, "#ECD8E4", "#82194B", "#74133F", !_targetSettings.HighLevelEnabled);
-        SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, "current-jev.png", TaskStage.Judge, "#FFF0B8", "#B87900", "#765000", !_targetSettings.EffectiveJudge.Enabled);
-
         var idle = _currentTaskStage == TaskStage.Idle;
+        var initialInputIdle = idle && _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _activeTaskCts is null && !_awaitingWebResult;
+        SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, "#DDEEFF", "#1477E8", "#1267D5", false, initialInputIdle);
+        SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, "current-openai.png", TaskStage.Implementer, "#DCF5E3", "#168A4A", "#116B39", false, initialInputIdle);
+        SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, "current-openai.png", TaskStage.HighLevel, "#ECD8E4", "#82194B", "#74133F", !_targetSettings.HighLevelEnabled, initialInputIdle);
+        SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, "current-jev.png", TaskStage.Judge, "#FFF0B8", "#B87900", "#765000", !_targetSettings.EffectiveJudge.Enabled, initialInputIdle);
+
         SetColor(PipelineIdleCard, idle ? "#7A8797" : "#B8C8DA");
         PipelineIdleTitle.Foreground = System.Windows.Media.Brushes.White;
         SetColor(PipelineIdleIconCircle, idle ? "#566578" : "#526477");
@@ -541,10 +542,11 @@ public partial class MainWindow : Window
         UpdatePipelineArrowAnimation();
     }
 
-    private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, string background, string circle, string foreground, bool disabled)
+    private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, string background, string circle, string foreground, bool disabled, bool initialInputIdle)
     {
         var current = !disabled && _currentTaskStage == stage;
-        var colored = current;
+        var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
+        var colored = visual.IsColored;
         SetColor(card, colored ? background : "#B8C8DA");
         SetColor(iconCircle, colored ? circle : "#526477");
         title.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
@@ -557,7 +559,7 @@ public partial class MainWindow : Window
         card.BorderBrush = current ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.Transparent;
         card.BorderThickness = current ? new Thickness(2) : new Thickness(1);
         card.Effect = current ? CreateCurrentStageShadow() : null;
-        card.Opacity = disabled ? 0.85 : 1;
+        card.Opacity = visual.Opacity;
     }
 
     private static void SetColor(Border control, string color)

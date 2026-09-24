@@ -2,6 +2,10 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 11-UI-B 후속 — 초기 입력 대기 pipeline 카드 색상
+
+시작 직후 NewTaskInput + Idle 상태에서는 설계 관제·작업·고수준 작업·판정 카드 모두 컬러와 full opacity로 표시한다. 실행 진입 시에는 기존 현재 단계 강조/비활성 역할 그레이스케일 규칙으로 돌아간다. 요구는 기존 UI-B 기록에 있었지만 MainWindow의 실제 색상 계산에 초기 입력 상태가 빠져 있던 불일치를 수정했다. Debug 빌드 0 경고/오류, 전체 49개 테스트, diff check 통과. Release 게시/설치 복사 완료(sha256 `E7D0567D6C7B85D68D448E1D60CCA2BEDE363D29800EFACE62A911BF7C02E22A`). 잔여 `11-UI-B-EXPLORER-COLORS`.
+
 ## 2026-09-24 11-C 후속 — 계약 라우터 및 ACTION=HQ 통합
 
 동기화된 최신 GPT-Web-Feedback의 Worker 의미 판정 제거를 적용했다. 새 CLI 경로는 첫 ACTION/NEXT 제어행만 파싱하고 역할 응답 본문은 불투명하게 전달한다. 작업카드/구조화 보고/AC·검증증거 gate, 별도 IMPLEMENT_ROUTE 호출, 고정 3회 제한을 제거했다. 사용자 지정 6번은 `[ACTION = HQ]`로 통일해 현재 관제 역할에 `message_type` envelope로 전달하고 타입은 관제 호출 루틴이 해석한다. High-level 활성 라우트와 JEV raw-response adapter를 연결하고 요청자 AI의 같은 세션으로 판정 원문을 복귀시킨다. Debug 빌드 0 경고/오류, 전체 46개 테스트, diff check 통과. Release 게시 및 `C:\AI-AGENT\Worker` 복사 성공(동일 SHA-256 `40315A0D98DCFE88F41764CF5AB7FC485B60335EC8894823F202DC010452ED06`). `C:\GameProject`는 존재하지 않는다. 잔여: `11-C-ROUTER-EXPLORER`, `11-C-WEB-HQ-LOOP`.
