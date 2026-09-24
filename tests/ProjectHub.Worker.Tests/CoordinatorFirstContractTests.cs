@@ -25,6 +25,21 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Theory]
+    [InlineData("Coordinator", "#FFDDEEFF", "#FF1477E8", "#FF1267D5", "current-openai.png")]
+    [InlineData("Implementer", "#FFDCF5E3", "#FF168A4A", "#FF116B39", "current-openai.png")]
+    [InlineData("HighLevel", "#FFECD8E4", "#FF82194B", "#FF74133F", "current-openai.png")]
+    [InlineData("Judge", "#FFFFF0B8", "#FFB87900", "#FF765000", "current-jev.png")]
+    public void HistoryRoleCard_UsesTheSameRolePaletteAsCurrentTask(string stage, string background, string iconBackground, string foreground, string icon)
+    {
+        var item = new MainWindow.WorkerHistoryEvent(DateTimeOffset.Now, stage, "TEST", "test", null, null, null, null, null, null);
+
+        Assert.Equal(background, item.RowBackground.ToString());
+        Assert.Equal(iconBackground, item.IconBackground.ToString());
+        Assert.Equal(foreground, item.RoleForeground.ToString());
+        Assert.Equal(icon, item.IconAssetName);
+    }
+
+    [Theory]
     [InlineData("[ACTION=CONTINUE]\n[NEXT : IMPLEMENTER]\nbody", WorkerAction.Continue, WorkerNextRole.Implementer)]
     [InlineData("[ACTION = HQ]\nmessage", WorkerAction.Hq, WorkerNextRole.Coordinator)]
     [InlineData("[NEXT : COORDINATOR]\n[REPORT]\nopaque", null, WorkerNextRole.Coordinator)]

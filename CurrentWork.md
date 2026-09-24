@@ -2,6 +2,15 @@
 
 Updated: 2026-09-24
 
+## 11-UI-B 후속 — 현재 작업과 이력 카드 역할 스타일 통일 (2026-09-24)
+
+- 기존 불일치: 이력 카드에서 작업 역할이 붉은색, 판정 역할이 녹색이었고 좌측 아이콘 원형 배경도 카드 배경과 같았다. 현재 작업 카드의 역할색(작업 녹색, 판정 노랑 등)과 일치하지 않았다.
+- 현재 작업/메시지 이력에 공통 역할 팔레트를 적용했다. Coordinator·Implementer·HighLevel·Judge의 카드 배경, 아이콘 원형 배경, 역할 텍스트, 기본 아이콘을 공통 값으로 사용한다. Coordinator 이력 아이콘은 설정된 GPT Web/CLI 아이콘을 따른다. 실행 중 현재 작업 카드가 회색조로 바뀌는 상태 규칙은 유지한다.
+- 회귀 테스트가 네 역할의 이력 색상/아이콘 자산을 공유 팔레트 값과 비교한다. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 53개 통과(Worker 48, Core 1, Agent 3, Server 1), `git diff --check` 통과.
+- Release 게시 및 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` 복사 완료. 게시본/설치본 SHA-256: `C0319B39853698CB309829C54DEA00F41FB879032D452EBFDC93FBE523EBA14A`. 게시 시 실행 중인 Worker가 없어 종료할 프로세스는 없었다. `C:\GameProject`는 존재하지 않는다.
+- 원격 fetch/pull-rebase 성공, 최신 `GPT-Web-Feedback.md` 확인(이번 스타일 정합과 충돌하는 지시 없음). 커밋 `27f0c4d Align pipeline and history role visuals`.
+- 남은 작업 식별자: Explorer에서 현재 작업/이력 화면의 실제 아이콘 렌더링을 확인하는 `11-UI-B-EXPLORER-COLORS`.
+
 ## 11-UI-B 후속 — 프로그램 시작 대기 상태 카드 활성 컬러 (2026-09-24)
 
 - 요구사항은 이미 11-UI-B 기록에 있었지만 시작 입력 화면에서 `TaskStage.Idle`만 적용돼 대기 카드만 강조되고 네 AI 역할 카드는 회색으로 렌더링되는 결함이 남아 있었다.

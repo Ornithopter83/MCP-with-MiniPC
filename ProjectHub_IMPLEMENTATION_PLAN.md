@@ -2,6 +2,10 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 11-UI-B 후속 — 현재 작업/이력 카드 역할 스타일 통일
+
+이력 카드의 역할별 배경·아이콘 배경·글자색이 현재 작업 카드와 달랐던 문제를 수정했다. 단일 역할 팔레트를 두 화면에 공통 적용하고 Coordinator 아이콘은 GPT Web/CLI 설정과 동기화한다. 네 역할의 팔레트/아이콘 자산 회귀 테스트를 추가했다. Debug 빌드 경고 0/오류 0, 전체 53개 테스트 통과, diff check 통과. Release 게시·`C:\AI-AGENT\Worker` 복사 완료(SHA-256 `C0319B39853698CB309829C54DEA00F41FB879032D452EBFDC93FBE523EBA14A`), 커밋 `27f0c4d`. 남은 작업: `11-UI-B-EXPLORER-COLORS`의 실제 Explorer 화면 검증.
+
 ## 2026-09-24 11-UI-B 후속 — 초기 입력 대기 pipeline 카드 색상
 
 시작 직후 NewTaskInput + Idle 상태에서는 설계 관제·작업·고수준 작업·판정 카드 모두 컬러와 full opacity로 표시한다. 실행 진입 시에는 기존 현재 단계 강조/비활성 역할 그레이스케일 규칙으로 돌아간다. 요구는 기존 UI-B 기록에 있었지만 MainWindow의 실제 색상 계산에 초기 입력 상태가 빠져 있던 불일치를 수정했다. Debug 빌드 0 경고/오류, 전체 49개 테스트, diff check 통과. Release 게시/설치 복사 완료(sha256 `E7D0567D6C7B85D68D448E1D60CCA2BEDE363D29800EFACE62A911BF7C02E22A`). 잔여 `11-UI-B-EXPLORER-COLORS`.

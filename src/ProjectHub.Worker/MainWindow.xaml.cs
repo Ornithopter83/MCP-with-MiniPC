@@ -48,11 +48,20 @@ public partial class MainWindow : Window
     private string? _lastExtensionProgressKey;
     private CodexUsage _commandUsage = CodexUsage.Empty;
     private sealed record TaskMessage(DateTimeOffset Timestamp, string Source, string Content);
+    private sealed record RoleVisualPalette(string Background, string IconBackground, string Foreground, string IconAsset);
+    private static readonly IReadOnlyDictionary<string, RoleVisualPalette> RoleVisuals = new Dictionary<string, RoleVisualPalette>(StringComparer.Ordinal)
+    {
+        ["Coordinator"] = new("#DDEEFF", "#1477E8", "#1267D5", "current-openai.png"),
+        ["Implementer"] = new("#DCF5E3", "#168A4A", "#116B39", "current-openai.png"),
+        ["HighLevel"] = new("#ECD8E4", "#82194B", "#74133F", "current-openai.png"),
+        ["Judge"] = new("#FFF0B8", "#B87900", "#765000", "current-jev.png")
+    };
     private readonly List<TaskMessage> _taskMessages = new();
     private readonly ObservableCollection<string> _messageLogItems = new();
     public ObservableCollection<string> MessageLogItems => _messageLogItems;
     public sealed record WorkerHistoryEvent(DateTimeOffset Timestamp, string StageKey, string EventType, string Title, string? Summary, long? SizeBytes, int? ItemCount, int? FileCount, string? Status, string? ReferenceId)
     {
+        public string? IconAssetOverride { get; init; }
         public string Role => StageKey switch { "Coordinator" => "설계 관제", "Implementer" => "작업", "HighLevel" => "고수준 작업", "Judge" => "판정", _ => "시스템" };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         public string Details
@@ -67,30 +76,16 @@ public partial class MainWindow : Window
                 return parts.Count == 0 ? EventType : string.Join(" · ", parts);
             }
         }
-        public System.Windows.Media.Brush RowBackground => StageKey switch
-        {
-            "Coordinator" => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 240, 255)),
-            "Implementer" => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(253, 235, 238)),
-            "HighLevel" => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 231, 239)),
-            "Judge" => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(227, 246, 235)),
-            _ => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(238, 241, 245))
-        };
-        public System.Windows.Media.Brush IconBackground => RowBackground;
-        public System.Windows.Media.Brush RoleForeground => StageKey switch
-        {
-            "Coordinator" => System.Windows.Media.Brushes.RoyalBlue,
-            "Implementer" => System.Windows.Media.Brushes.Firebrick,
-            "HighLevel" => System.Windows.Media.Brushes.Maroon,
-            "Judge" => System.Windows.Media.Brushes.ForestGreen,
-            _ => System.Windows.Media.Brushes.SlateGray
-        };
+        public System.Windows.Media.Brush RowBackground => GetRoleBrush(StageKey, p => p.Background, System.Windows.Media.Color.FromRgb(238, 241, 245));
+        public System.Windows.Media.Brush IconBackground => GetRoleBrush(StageKey, p => p.IconBackground, System.Windows.Media.Color.FromRgb(126, 139, 155));
+        public System.Windows.Media.Brush RoleForeground => GetRoleBrush(StageKey, p => p.Foreground, System.Windows.Media.Color.FromRgb(112, 128, 144));
+        public string IconAssetName => IconAssetOverride ?? (RoleVisuals.TryGetValue(StageKey, out var palette) ? palette.IconAsset : "current-console.png");
         public System.Windows.Media.ImageSource IconSource => new System.Windows.Media.Imaging.BitmapImage(new Uri(
-            "pack://application:,,,/ProjectHub.Worker;component/Assets/" + (StageKey switch
-            {
-                "Coordinator" or "Implementer" or "HighLevel" => "current-openai.png",
-                "Judge" => "current-jev.png",
-                _ => "current-console.png"
-            })));
+            "pack://application:,,,/ProjectHub.Worker;component/Assets/" + IconAssetName));
+        private static System.Windows.Media.Brush GetRoleBrush(string stageKey, Func<RoleVisualPalette, string> selector, System.Windows.Media.Color fallback)
+            => new System.Windows.Media.SolidColorBrush(RoleVisuals.TryGetValue(stageKey, out var palette)
+                ? (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(selector(palette))
+                : fallback);
         private static string FormatHistorySize(long bytes) => bytes >= 1024 * 1024 ? $"{bytes / 1024d / 1024d:0.0} MB" : bytes >= 1024 ? $"{bytes / 1024d:0.0} KB" : $"{bytes} B";
     }
     private readonly ObservableCollection<WorkerHistoryEvent> _historyEvents = new();
@@ -528,10 +523,10 @@ public partial class MainWindow : Window
     {
         var idle = _currentTaskStage == TaskStage.Idle;
         var initialInputIdle = idle && _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _activeTaskCts is null && !_awaitingWebResult;
-        SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, "#DDEEFF", "#1477E8", "#1267D5", false, initialInputIdle);
-        SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, "current-openai.png", TaskStage.Implementer, "#DCF5E3", "#168A4A", "#116B39", false, initialInputIdle);
-        SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, "current-openai.png", TaskStage.HighLevel, "#ECD8E4", "#82194B", "#74133F", !_targetSettings.HighLevelEnabled, initialInputIdle);
-        SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, "current-jev.png", TaskStage.Judge, "#FFF0B8", "#B87900", "#765000", !_targetSettings.EffectiveJudge.Enabled, initialInputIdle);
+        SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, RoleVisuals["Coordinator"], false, initialInputIdle);
+        SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, RoleVisuals["Implementer"].IconAsset, TaskStage.Implementer, RoleVisuals["Implementer"], false, initialInputIdle);
+        SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, RoleVisuals["HighLevel"].IconAsset, TaskStage.HighLevel, RoleVisuals["HighLevel"], !_targetSettings.HighLevelEnabled, initialInputIdle);
+        SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, RoleVisuals["Judge"].IconAsset, TaskStage.Judge, RoleVisuals["Judge"], !_targetSettings.EffectiveJudge.Enabled, initialInputIdle);
 
         SetColor(PipelineIdleCard, idle ? "#7A8797" : "#B8C8DA");
         PipelineIdleTitle.Foreground = System.Windows.Media.Brushes.White;
@@ -542,21 +537,21 @@ public partial class MainWindow : Window
         UpdatePipelineArrowAnimation();
     }
 
-    private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, string background, string circle, string foreground, bool disabled, bool initialInputIdle)
+    private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, RoleVisualPalette palette, bool disabled, bool initialInputIdle)
     {
         var current = !disabled && _currentTaskStage == stage;
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
         var colored = visual.IsColored;
-        SetColor(card, colored ? background : "#B8C8DA");
-        SetColor(iconCircle, colored ? circle : "#526477");
-        title.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
+        SetColor(card, colored ? palette.Background : "#B8C8DA");
+        SetColor(iconCircle, colored ? palette.IconBackground : "#526477");
+        title.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         var selectedName = colored ? iconAsset : iconAsset.Replace(".png", "-gray.png", StringComparison.OrdinalIgnoreCase);
         icon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/ProjectHub.Worker;component/Assets/{selectedName}"));
-        if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
-        else if (card == PipelineImplementerCard) ImplementerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
-        else if (card == PipelineHighLevelCard) HighLevelStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
-        else if (card == PipelineJudgeCard) JudgeStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.White;
-        card.BorderBrush = current ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(foreground)) : System.Windows.Media.Brushes.Transparent;
+        if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineImplementerCard) ImplementerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineHighLevelCard) HighLevelStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineJudgeCard) JudgeStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
+        card.BorderBrush = current ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.Transparent;
         card.BorderThickness = current ? new Thickness(2) : new Thickness(1);
         card.Effect = current ? CreateCurrentStageShadow() : null;
         card.Opacity = visual.Opacity;
@@ -2472,6 +2467,8 @@ public partial class MainWindow : Window
         var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, referenceId, summary);
         if (historyEvent is not null)
         {
+            if (historyEvent.StageKey == "Coordinator")
+                historyEvent = historyEvent with { IconAssetOverride = _coordinatorStageIconAsset };
             _historyEvents.Add(historyEvent);
             while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
         }
