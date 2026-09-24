@@ -22,7 +22,9 @@ public sealed record AiProviderDescriptor(
     AiServiceProvider Provider,
     string WireId,
     string DisplayName,
+    string DefaultTransport,
     bool ExecutionConfigured,
+    bool SupportsSessions,
     IReadOnlyList<AiModelDescriptor> Models)
 {
     public AiModelDescriptor? FindModel(string? modelId) =>
@@ -34,12 +36,15 @@ public static class AiProviderCatalog
     public static IReadOnlyList<AiProviderDescriptor> Current { get; } = new[]
     {
         CreateOpenAi(),
-        new AiProviderDescriptor(AiServiceProvider.Claude, "claude", "Claude", false, Array.Empty<AiModelDescriptor>()),
-        new AiProviderDescriptor(AiServiceProvider.Muse, "muse", "Muse", false, Array.Empty<AiModelDescriptor>())
+        new AiProviderDescriptor(AiServiceProvider.Claude, "claude", "Claude", "claude_cli", false, false, Array.Empty<AiModelDescriptor>()),
+        new AiProviderDescriptor(AiServiceProvider.Muse, "muse", "Muse", "muse_cli", false, false, Array.Empty<AiModelDescriptor>())
     };
 
     public static AiProviderDescriptor Get(AiServiceProvider provider) =>
         Current.Single(item => item.Provider == provider);
+
+    public static AiProviderDescriptor? Find(string? wireId) =>
+        TryParse(wireId, out var provider) ? Get(provider) : null;
 
     public static bool TryParse(string? value, out AiServiceProvider provider)
     {
@@ -63,6 +68,15 @@ public static class AiProviderCatalog
 
     public static string ToWireId(AiServiceProvider provider) => Get(provider).WireId;
 
+    public static string FormatModel(string? providerWireId, string? modelId)
+    {
+        var provider = Find(providerWireId);
+        if (provider is null) return string.IsNullOrWhiteSpace(modelId) ? providerWireId ?? "Unknown" : modelId;
+        var model = provider.FindModel(modelId);
+        if (model is not null) return model.DisplayName;
+        return string.IsNullOrWhiteSpace(modelId) ? provider.DisplayName : modelId;
+    }
+
     private static AiProviderDescriptor CreateOpenAi()
     {
         var models = CodexServedModels.Current
@@ -73,6 +87,6 @@ public static class AiProviderCatalog
                 model.ReasoningDepths.Select(depth => depth.ToString().ToLowerInvariant()).ToArray()))
             .ToArray();
 
-        return new AiProviderDescriptor(AiServiceProvider.OpenAI, "openai", "OpenAI", true, models);
+        return new AiProviderDescriptor(AiServiceProvider.OpenAI, "openai", "OpenAI", "codex_cli", true, true, models);
     }
 }

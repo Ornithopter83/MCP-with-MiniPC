@@ -23,7 +23,7 @@ public sealed record WorkerAiRoleSettings(
     [property: JsonPropertyName("provider")] string Provider = "openai",
     [property: JsonPropertyName("model")] string Model = "",
     [property: JsonPropertyName("reasoning")] string Reasoning = "medium",
-    [property: JsonPropertyName("transport")] string Transport = "web",
+    [property: JsonPropertyName("transport")] string Transport = "codex_cli",
     [property: JsonPropertyName("threadSessionId")] string? ThreadSessionId = null,
     [property: JsonPropertyName("threadProjectPath")] string? ThreadProjectPath = null)
 {
@@ -73,13 +73,37 @@ public static class WorkerTargetConfiguration
             if (!File.Exists(SettingsPath))
                 return new(null, null, null, null);
 
-            return JsonSerializer.Deserialize<WorkerTargetSettings>(File.ReadAllText(SettingsPath))
+            var settings = JsonSerializer.Deserialize<WorkerTargetSettings>(File.ReadAllText(SettingsPath))
                 ?? new(null, null, null, null);
+            return NormalizeForRuntime(settings);
         }
         catch
         {
             return new(null, null, null, null);
         }
+    }
+
+    public static WorkerTargetSettings NormalizeForRuntime(WorkerTargetSettings settings)
+    {
+        WorkerAiRoleSettings? NormalizeRole(WorkerAiRoleSettings? role)
+        {
+            if (role is null) return null;
+            var descriptor = AiProviderCatalog.Find(role.Provider);
+            if (descriptor is null) return role;
+            var transport = role.Transport;
+            if (string.IsNullOrWhiteSpace(transport) ||
+                (settings.IsCoordinatorFirst && descriptor.Provider == AiServiceProvider.OpenAI &&
+                 string.Equals(transport, "web", StringComparison.OrdinalIgnoreCase)))
+                transport = descriptor.DefaultTransport;
+            return role with { Transport = transport };
+        }
+
+        return settings with
+        {
+            Coordinator = NormalizeRole(settings.Coordinator),
+            Implementer = NormalizeRole(settings.Implementer),
+            HighLevel = NormalizeRole(settings.HighLevel)
+        };
     }
 
     public static void Save(WorkerTargetSettings settings)

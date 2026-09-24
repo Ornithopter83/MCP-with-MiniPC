@@ -246,9 +246,15 @@ Muse
 
 영속 설정의 wire 값은 호환성을 위해 소문자 문자열(`openai`, `claude`, `muse`)을 유지하고, 실행 코드에서는 이를 enum으로 해석한다. 알 수 없는 Provider를 OpenAI로 자동 대체하지 않는다.
 
-Provider 이름은 안정된 식별자이고 모델명은 교체 가능한 catalog 데이터다. 모델과 reasoning 목록을 enum에 고정하지 않는다.
+Provider 이름은 안정된 식별자이고 모델명과 reasoning은 교체 가능한 catalog 데이터다. HQ / WORK / HIGH는 각각 독립적으로 Provider → Model → Reasoning을 선택한다.
 
-현재 실제 실행이 연결된 Provider는 OpenAI뿐이다. Claude/Muse는 catalog/runner/UI 구조를 준비할 수 있지만 인증·실행 transport가 연결되기 전에는 `NOT_CONFIGURED` 상태로 취급하고 다른 Provider로 자동 fallback하지 않는다.
+실행은 `IAiRoleRunner` 경계로 분리한다. Worker의 역할 라우팅은 Provider별 CLI 세부 명령을 판단하지 않고, 선택된 Provider runner의 preflight/run 결과만 기계적으로 처리한다.
+
+현재 실제 실행이 연결된 Provider는 OpenAI Codex CLI뿐이다. Claude/Muse는 UI/catalog/visual/runner skeleton까지 준비하되 인증·실행 transport가 연결되기 전에는 `CLAUDE_NOT_CONFIGURED` / `MUSE_NOT_CONFIGURED`로 차단한다. 다른 Provider로 자동 fallback하지 않는다.
+
+Provider가 session/resume을 지원하는지는 capability로 관리한다. 지원하지 않거나 아직 연결되지 않은 Provider의 session 선택 UI는 비활성화한다.
+
+Provider icon은 단일 visual resolver에서 결정한다. 공식 자산이 준비되지 않은 Provider는 중립 console symbol을 fallback으로 사용하며, 기능 코드에 특정 브랜드 asset 경로를 하드코딩하지 않는다.
 
 JEV는 AI 역할 Provider 목록에 포함하지 않고 JUDGE 전용 판단 transport로 유지한다.
 
@@ -272,31 +278,25 @@ Legacy의 기존 본문 marker가 필요하면 legacy namespace/contract 내부�
 
 ## 11. 현재 구현 우선순위
 
-현재 최우선 후속은 11-C-GOTO-CONTRACT의 opaque-body/history 정리다.
+현재 활성 작업은 **12-B Provider-ready UI + runner boundary**다.
 
-1. 역할 output contract에서 INSTRUCTION/REPORT/VALIDATION REQUEST/JUDGMENT 요구 제거
-2. WorkerGotoContract는 ACTION/GOTO만 계속 파싱
-3. JudgeTransportContract에서 VALIDATION REQUEST marker 검색 제거
-4. native JUDGE 결과에 JUDGMENT marker 삽입 제거
-5. role response body를 처음부터 끝까지 opaque하게 전달
-6. History 카드 생성 근거를 role/state/response completion/telemetry로 변경
-7. source 문자열 추론 기반 신규 CLI History mapping 제거
-8. 카드 3줄 규격 적용
-9. 파일 생성/수정/삭제 telemetry가 없으면 추정 금지; 필요 시 FileChangeTelemetry 추가
-10. Legacy Web contract 격리 유지
-11. 단위 테스트/Release build
-12. Explorer 실제 왕복 재검증
+완료 목표:
+1. HQ / WORK / HIGH 독립 Provider 선택
+2. Provider → Model → Reasoning catalog binding
+3. HIGH 독립 Provider 저장
+4. provider visual resolver
+5. session capability
+6. `IAiRoleRunner` / registry
+7. 기존 OpenAI Codex 경로를 runner adapter로 이관
+8. Claude/Muse NOT_CONFIGURED skeleton
+9. provider별 preflight와 자동 fallback 금지
+10. 기존 설정 runtime migration
+11. provider/GOTO/JUDGE/HIGH/History 회귀 테스트
+12. Windows build/test 및 Explorer 확인
 
-최소 E2E:
+12-B 이후 구조 작업으로 남기는 것은 실제 Claude/Muse CLI·인증·모델 discovery·session/resume을 연결하는 12-D다.
 
-~~~text
-A. HQ -> WORK -> HQ -> END
-B. HQ -> WORK -> JUDGE -> WORK -> HQ -> END
-C. 사용자 HIGH 허가 -> HQ -> HIGH -> HQ
-D. 오류 -> UNKNOWN 원문 로그 + HQ 한글 요약 -> 정상 관제 재개 (요약 전달 후 오류 재발 시 종료)
-~~~
-
-각 E2E에서 역할 응답 카드가 빠짐없이 생성되고 AI 출력에는 ACTION/GOTO 외 semantic body tag 요구가 없어야 한다.
+11-C의 GOTO/History 구현 잔여는 코드 변경 대상으로 다시 섞지 않고 Explorer 실제 왕복 회귀 확인 항목으로 유지한다.
 
 ---
 

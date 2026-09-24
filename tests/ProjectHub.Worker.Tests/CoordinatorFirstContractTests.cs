@@ -176,7 +176,7 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.True(settings.IsCoordinatorFirst);
         Assert.Equal("gpt-6-sol", settings.EffectiveCoordinator.Model);
-        Assert.Equal("web", settings.EffectiveCoordinator.Transport);
+        Assert.Equal("codex_cli", settings.EffectiveCoordinator.Transport);
         Assert.Equal("gpt-6-luna", settings.EffectiveImplementer.Model);
         Assert.Equal("codex_cli", settings.EffectiveImplementer.Transport);
         Assert.False(settings.HighLevelEnabled);
@@ -194,7 +194,7 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Equal("gpt-5.6-sol", settings.EffectiveCoordinator.Model);
         Assert.Equal("high", settings.EffectiveCoordinator.Reasoning);
-        Assert.Equal("web", settings.EffectiveCoordinator.Transport);
+        Assert.Equal("codex_cli", settings.EffectiveCoordinator.Transport);
         Assert.Equal("gpt-5.6-luna", settings.EffectiveImplementer.Model);
         Assert.Equal("low", settings.EffectiveImplementer.Reasoning);
     }
@@ -239,6 +239,88 @@ public sealed class CoordinatorFirstContractTests
 
         var unknown = new WorkerAiRoleSettings(Provider: "vendor-x");
         Assert.Null(unknown.ProviderKind);
+    }
+
+    [Fact]
+    public void ProviderCatalog_DeclaresTransportSessionAndVisualCapabilities()
+    {
+        var openAi = AiProviderCatalog.Get(AiServiceProvider.OpenAI);
+        Assert.Equal("codex_cli", openAi.DefaultTransport);
+        Assert.True(openAi.ExecutionConfigured);
+        Assert.True(openAi.SupportsSessions);
+        Assert.NotEmpty(openAi.Models);
+
+        var claude = AiProviderCatalog.Get(AiServiceProvider.Claude);
+        Assert.Equal("claude_cli", claude.DefaultTransport);
+        Assert.False(claude.ExecutionConfigured);
+        Assert.False(claude.SupportsSessions);
+        Assert.Empty(claude.Models);
+
+        var muse = AiProviderCatalog.Get(AiServiceProvider.Muse);
+        Assert.Equal("muse_cli", muse.DefaultTransport);
+        Assert.False(muse.ExecutionConfigured);
+        Assert.False(muse.SupportsSessions);
+        Assert.Empty(muse.Models);
+
+        Assert.Equal("current-openai.png", ProviderVisualCatalog.Resolve("openai").ColorAsset);
+        Assert.Equal("current-console.png", ProviderVisualCatalog.Resolve("claude").ColorAsset);
+        Assert.Equal("current-console-gray.png", ProviderVisualCatalog.Resolve("muse").GrayAsset);
+        Assert.Equal("?", ProviderVisualCatalog.Resolve("unknown").FallbackSymbol);
+    }
+
+    [Fact]
+    public void RoleRunnerRegistry_UsesOpenAiAdapterAndBlocksUnconfiguredProvidersWithoutFallback()
+    {
+        var registry = AiRoleRunnerRegistry.CreateDefault(new CodexCliRunner());
+        var openAi = new WorkerAiRoleSettings("openai", "gpt-6-luna", "medium", "codex_cli");
+        Assert.Equal(AiServiceProvider.OpenAI, registry.Resolve(openAi)!.Provider);
+        Assert.True(registry.Resolve(openAi)!.SupportsSessions);
+
+        var claude = new WorkerAiRoleSettings("claude", "", "", "claude_cli");
+        var claudeRunner = registry.Resolve(claude);
+        Assert.NotNull(claudeRunner);
+        Assert.Equal(AiServiceProvider.Claude, claudeRunner!.Provider);
+        Assert.False(claudeRunner.SupportsSessions);
+        Assert.Contains("CLAUDE_NOT_CONFIGURED", registry.GetPreflightError(claude, Path.GetTempPath(), true));
+
+        var muse = new WorkerAiRoleSettings("muse", "", "", "muse_cli");
+        Assert.Contains("MUSE_NOT_CONFIGURED", registry.GetPreflightError(muse, Path.GetTempPath(), true));
+
+        var unknown = new WorkerAiRoleSettings("vendor-x", "", "", "vendor_cli");
+        Assert.Null(registry.Resolve(unknown));
+        Assert.Contains("지원되지 않는 AI Provider", registry.GetPreflightError(unknown, Path.GetTempPath(), true));
+    }
+
+    [Fact]
+    public void RuntimeNormalization_MigratesCoordinatorWebTransportOnlyForCliToCli()
+    {
+        var cliSettings = new WorkerTargetSettings(
+            null, null, null, null,
+            ExecutionMode: "CLI_TO_CLI",
+            Coordinator: new WorkerAiRoleSettings("openai", "gpt-6-sol", "high", "web"));
+        var normalized = WorkerTargetConfiguration.NormalizeForRuntime(cliSettings);
+        Assert.Equal("codex_cli", normalized.EffectiveCoordinator.Transport);
+
+        var legacySettings = cliSettings with { ExecutionMode = "LEGACY_WEB" };
+        var legacy = WorkerTargetConfiguration.NormalizeForRuntime(legacySettings);
+        Assert.Equal("web", legacy.EffectiveCoordinator.Transport);
+    }
+
+    [Fact]
+    public void RoleSettings_PersistIndependentProvidersForHqWorkAndHigh()
+    {
+        var settings = JsonSerializer.Deserialize<WorkerTargetSettings>("""
+            {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null,
+             "coordinator":{"provider":"openai","model":"gpt-6-sol","reasoning":"high","transport":"codex_cli"},
+             "implementer":{"provider":"claude","model":"","reasoning":"","transport":"claude_cli"},
+             "highLevel":{"provider":"muse","model":"","reasoning":"","transport":"muse_cli"}}
+            """)!;
+
+        Assert.Equal(AiServiceProvider.OpenAI, settings.EffectiveCoordinator.ProviderKind);
+        Assert.Equal(AiServiceProvider.Claude, settings.EffectiveImplementer.ProviderKind);
+        Assert.Equal(AiServiceProvider.Muse, settings.EffectiveHighLevel.ProviderKind);
+        Assert.Equal("claude_cli", settings.EffectiveImplementer.Transport);
+        Assert.Equal("muse_cli", settings.EffectiveHighLevel.Transport);
     }
 
     [Fact]
