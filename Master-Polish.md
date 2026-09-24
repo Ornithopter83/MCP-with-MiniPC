@@ -2,76 +2,107 @@
 
 Updated: 2026-09-24 (KST)
 
-이 문서는 ProjectHub의 현재 최상위 정책 원본이다. 다른 구현계획, CurrentWork, task, feedback 문서가 충돌하면 이 문서를 우선한다.
+이 문서는 ProjectHub의 현재 최상위 정책 원본이다.
 
-ProjectHub의 목표는 AI가 판단하고 Worker가 흐름만 제어하는 역할 분리형 CLI-to-CLI 개발 도구다.
+ProjectHub의 목표는 AI가 설계·판단하고 Worker가 흐름·세션·transport·telemetry만 기계적으로 관리하는 역할 분리형 개발 도구다.
 
 ---
 
 ## 1. 최상위 불변식
 
-### 1.1 Worker는 판단하지 않는다
+Worker는 의미 판단 주체가 아니다.
 
-Worker는 흐름 제어 도구다. 판단 주체가 아니다.
+Worker가 처리할 수 있는 것:
+- 현재 역할 상태 저장 및 허용 상태 전이 검사
+- ACTION/GOTO 제어행 문법 파싱
+- 역할별 session/transport/process 실행
+- timeout/cancel/auth/schema/path-safety 오류 처리
+- Web conversation binding 및 heartbeat 생존 확인
+- transcript/usage/file telemetry 기록
+- 전용 JUDGE/RESOURCE transport의 기계적 schema 변환
+- UNKNOWN 원문 로그와 HQ용 한글 오류 요약
+- 이미 알고 있는 실행 사실을 History UI에 표시
 
-판단 주체는 HQ, WORK, JUDGE, HIGH다. Worker는 역할 실행, 상태 전환, 세션, transport, telemetry를 기계적으로 관리한다.
-
-Worker가 해도 되는 일:
-- 현재 상태(HQ/WORK/JUDGE/HIGH/UNKNOWN) 저장
-- ACTION/GOTO 제어행 문법 파싱과 허용 전이 확인
-- 역할별 provider/model/reasoning/session 실행 및 resume
-- process start/exit, timeout, cancel, authentication, transport/schema 오류 처리
-- transcript, usage, session ID, 호출 시각, 파일 변경 telemetry 기록
-- HIGH one-shot permit 저장/소모
-- 제어행 뒤 opaque body를 원문 의미 그대로 전달
-- protocol/provider/transport/session 오류를 UNKNOWN으로 기록하고 HQ에 한글 요약으로 1회 복귀
-- 사용자 승인 경계와 sandbox 같은 기계적 안전장치 적용
-- 역할 응답 완료 시 이미 알고 있는 role/state/usage/file telemetry로 UI 이력 카드 기록
-
-Worker가 하면 안 되는 일:
-- 요청 난이도, 의도, 우선순위 판단
-- 적절한 역할을 Worker가 선택하거나 HIGH로 자동 승격
-- AC 충족, 테스트 충분성, command/evidence/file/diff의 의미 판단
-- JUDGE/JEV score/confidence/threshold를 비교해 PASS/PARTIAL/FAIL 생성
-- JUDGE 결과를 근거로 자동 재작업 또는 다음 역할 결정
-- 토큰/반복 횟수를 근거로 작업 성공·실패 판정
-- HQ의 유효한 ACTION=END를 별도 semantic gate로 거부
-- opaque body를 읽고 GOTO 추론
-- AI 대신 작업 지시·수정 방향·검증 질문 생성
-- UI나 routing을 위해 AI 본문에 semantic section tag를 강제하거나 검색
+Worker가 하지 않는 것:
+- 요청 난이도·의도·우선순위 판단
+- 다음 역할을 본문 의미로 추론
+- 요구사항/AC/test/evidence 충족 여부 판정
+- JUDGE 결과 의미 해석 후 자동 PASS/FAIL 생성
+- RESOURCE 이미지의 미적/기능적 품질 판정
+- 생성 리소스가 어느 컴포넌트에 맞는지 판단
+- 사용자의 후속 명령 없이 저장 리소스를 코드에 자동 연결
 
 ---
 
 ## 2. 역할과 상태
 
-| 상태 | UI 역할명 | 책임 |
-| --- | --- | --- |
-| HQ | 설계·관제 AI | 전체 설계·관제·최종 판단 |
-| WORK | 작업 AI | 일반 구현·수정·검증·보고 |
-| JUDGE | 작업 판단 AI | WORK가 요청한 의미 판단 |
-| HIGH | 고수준 작업 AI | 사용자 1회 허가 기반 고수준 작업 |
-| UNKNOWN | 오류 상태 | 오류 원문은 한글 시스템 로그에 보관하고, HQ에는 한글 오류 요약만 전달 |
+| 상태 | UI 역할명 | 책임 | 실행 |
+| --- | --- | --- | --- |
+| HQ | 설계·관제 AI | 사용자 요청 해석, 구현 방향 설계, WORK 지시, JUDGE 질문 검토, CONTINUE/PAUSE/END | ChatGPT Web 또는 CLI Provider |
+| WORK | 작업 AI | 코드 구현·수정·빌드·테스트·보고, RESOURCE/JUDGE 요청 | CLI Provider |
+| RESOURCE | 리소스 AI | 최종 생성 이미지 제작·지정 파일 저장 | 별도 ChatGPT Web 고정 |
+| JUDGE | 작업 판단 AI | HQ 검토를 거친 WORK 질문 판정 | JEV |
+| UNKNOWN | 오류 상태 | 기계적 오류 기록 및 HQ 요약 복귀 | Worker 내부 |
 
 상태 전이:
 
 ~~~text
-HQ      -> WORK | HIGH
-WORK    -> JUDGE | HQ
-JUDGE   -> WORK
-HIGH    -> HQ
-UNKNOWN -> 원문 로그 기록 -> HQ에 요약 전달 (Job당 1회) -> 일반 라우팅 재개
+HQ       -> WORK
+WORK     -> HQ | JUDGE | RESOURCE
+JUDGE    -> WORK
+RESOURCE -> WORK
+UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
 UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
 
-역할별 session은 독립 유지한다.
+HIGH 역할, HIGH GOTO, HIGH one-shot permit, high_uses_remaining, 고수준 작업 허용 UI는 현재 정책에 존재하지 않는다.
 
 ---
 
-## 3. 신규 CLI 출력 계약 — ACTION과 GOTO만 제어 토큰
+## 3. HQ 실행 대상
 
-신규 CLI-to-CLI에서 AI가 출력해야 하는 제어 토큰은 ACTION과 GOTO뿐이다. 제어행 뒤의 모든 내용은 opaque body다.
+HQ target은 두 종류다.
 
-### HQ
+~~~text
+HQ
+├─ ChatGPT Web
+└─ CLI
+   ├─ OpenAI
+   ├─ Claude
+   └─ Muse
+~~~
+
+- ChatGPT Web 선택 시 Provider/Model/Reasoning/CLI session UI를 숨긴다.
+- CLI 선택 시 Provider → Model → Reasoning → Session 구조를 사용한다.
+- OpenAI Codex CLI는 실제 실행이 연결되어 있다.
+- Claude/Muse는 기존 provider abstraction을 유지하되 실제 runner가 연결되기 전에는 미연결 오류를 반환한다.
+- 과거 transport=web을 CLI_TO_CLI에서 자동으로 codex_cli로 바꾸지 않는다.
+- WORK에는 ChatGPT Web target을 추가하지 않는다.
+
+---
+
+## 4. Web binding
+
+HQ Web과 RESOURCE Web은 반드시 서로 다른 ChatGPT conversation을 사용한다.
+
+Bridge는 다음 역할 binding을 명시적으로 저장한다.
+
+~~~text
+HQ       -> conversationId A
+RESOURCE -> conversationId B
+~~~
+
+- 사용자가 각 ChatGPT 대화의 확장 패널에서 HQ 또는 RESOURCE 역할을 명시적으로 연결한다.
+- 하나의 conversationId를 HQ와 RESOURCE에 동시에 binding하지 않는다.
+- heartbeat는 대화가 살아 있는지/확장 버전이 맞는지 확인하는 용도다.
+- 마지막 heartbeat conversation을 task 목적지로 사용하지 않는다.
+- Worker는 역할 binding에서 얻은 conversationId로 task를 명시적으로 생성한다.
+
+---
+
+## 5. 출력 계약
+
+HQ만 ACTION을 사용한다.
 
 ~~~text
 [ACTION=CONTINUE]
@@ -79,7 +110,7 @@ UNKNOWN 재발 -> 로그 기록 후 종료
 <opaque body>
 ~~~
 
-HIGH permit이 남아 있을 때만 GOTO:HIGH를 사용할 수 있다.
+또는:
 
 ~~~text
 [ACTION=PAUSE]
@@ -91,238 +122,160 @@ HIGH permit이 남아 있을 때만 GOTO:HIGH를 사용할 수 있다.
 <opaque body>
 ~~~
 
-### WORK
+WORK:
 
 ~~~text
 [GOTO : HQ]
 <opaque body>
 ~~~
-
-또는:
 
 ~~~text
 [GOTO : JUDGE]
-<opaque body>
+<JUDGE transport body>
 ~~~
-
-### HIGH
 
 ~~~text
-[GOTO : HQ]
-<opaque body>
+[GOTO : RESOURCE]
+<RESOURCE transport JSON>
 ~~~
 
-### 자유형 AI JUDGE
+JUDGE:
 
 ~~~text
 [GOTO : WORK]
 <opaque body>
 ~~~
 
-UNKNOWN은 Worker 내부 오류 상태이며 정상 AI가 선택하는 목적지가 아니다.
+RESOURCE는 Web transport 완료와 파일 저장 후 Worker가 기계적으로 같은 WORK session으로 복귀시킨다.
 
-### semantic body tag 금지
-
-신규 CLI 역할 계약은 INSTRUCTION, REPORT, VALIDATION REQUEST, JUDGMENT 같은 본문 태그를 요구하지 않는다.
-
-Worker는 이런 태그를 찾거나, 붙이거나, 지우거나, History 카드 분류에 사용하지 않는다.
-
-제어행을 소비한 뒤 남은 전체 문자열이 그대로 body다.
-
-예를 들어 WORK가 GOTO:JUDGE 뒤에 쓴 전체 body가 곧 JUDGE 요청 원문이다.
-
-### Worker 입력 metadata
-
-Worker는 ROLE, INBOUND TYPE, AVAILABLE GOTO, HIGH PERMIT, JUDGE AVAILABLE 같은 입력 전용 metadata를 호출 대상 AI에 제공할 수 있다.
-
-이 metadata는 AI가 반환해야 하는 출력 계약이 아니며 History 카드 생성이나 의미 판단에 사용하지 않는다.
+일반 body는 opaque다. JUDGE/RESOURCE destination에서 필요한 schema 검사는 transport 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
 
 ---
 
-## 4. 역할별 정책
+## 6. HQ 설계와 ACTION 의미
 
-- HQ만 ACTION=CONTINUE/PAUSE/END를 사용한다.
-- HQ CONTINUE의 정상 목적지는 WORK와, one-shot permit이 있을 때의 HIGH뿐이다.
-- WORK는 HQ 또는 JUDGE로만 이동한다. JUDGE 사용 필요성은 WORK가 판단한다.
-- WORK가 JUDGE 판정이 유용하다고 판단하면 먼저 HQ에 판정 초안과 현재 evidence를 전달한다.
-- HQ는 판정 초안의 질문 범위, evidence, 응답 형태와 수치화 가능한 기준을 검토해 같은 WORK 흐름으로 돌려준다.
-- WORK는 HQ의 검토안을 인지한 뒤 실제 JUDGE 요청을 구성해 `[GOTO : JUDGE]`로 보낸다.
-- JUDGE 결과는 반드시 같은 WORK session으로 복귀한다.
-- native JEV provider의 raw response는 별도 JUDGMENT tag 없이 같은 WORK session에 opaque body로 전달한다.
-- 추가 판정이 필요하면 WORK는 새 판정 초안을 다시 HQ에 검토 요청한 뒤 JUDGE로 보낼 수 있다.
-- HIGH는 JUDGE를 사용하지 않고 HQ로만 복귀한다.
-- UNKNOWN은 오류 원문과 기술 상세를 한글 시스템 로그에 보관하고, 발생 역할·오류 코드·한국어 설명만 HQ에 최대 한 번 전달해 정상 관제를 재개한다. 동일 Job에서 오류 요약 전달 후 UNKNOWN이 다시 발생하면 추가 AI 호출 없이 로그에 기록하고 종료한다.
+새 사용자 요청 또는 목표가 크게 바뀐 요청에서 HQ는 단순 전달자가 아니다. 필요한 만큼 구현 방향을 설계해 WORK에 전달한다.
 
-판정 흐름은 기존 상태 전이만 사용한다.
+설계에 필요할 수 있는 항목:
+- 목표
+- 주요 구조
+- 핵심 제약
+- 검증 방향
+- 필요한 리소스
+- 사용자만 결정할 수 있는 부분
+
+작은 후속 수정에는 전체 설계를 반복하지 않고 영향 범위만 갱신한다.
+
+ACTION 사용 예:
+- CONTINUE: AI/Worker가 스스로 다음 의미 있는 진전을 만들 수 있음
+- PAUSE: 화면 인상, 조작감, 음질, 취향, 외부 로그인/권한, 사용자 전용 선택 등 사람 개입 없이는 다음 판단이 의미 없음
+- END: 요청 목표가 충족됐고 사용자 확인을 기다릴 이유도 없음
+
+HQ가 Web이든 CLI든 같은 역할 계약을 사용한다.
+
+---
+
+## 7. JUDGE 흐름
 
 ~~~text
-WORK -> HQ (판정 초안 검토)
-HQ   -> WORK (검토안 반환)
-WORK -> JUDGE
-JUDGE -> WORK
-WORK -> HQ (결과 보고 또는 다음 판정 초안)
+WORK -> HQ      판정 초안 + evidence 검토
+HQ   -> WORK    질문 범위/evidence/응답형태/수치화 기준 검토안
+WORK -> JUDGE   실제 NOUL/SCORE/CHOICE 요청
+JUDGE -> WORK   raw 결과
 ~~~
 
-Worker는 body를 읽어 이 검토가 실제로 수행됐는지 판정하거나 강제하지 않는다. 새 제어 토큰이나 semantic marker도 추가하지 않는다. 이 흐름은 AI 역할 계약으로 유지한다.
-
-WORK는 JUDGE가 활성화된 경우 `[GOTO : JUDGE]` 본문에 NOUL/SCORE/CHOICE 형식의 원자적 질문을 작성할 수 있다. 질문마다 고유 QID를 사용하고 SCORE/CHOICE 기준을 포함한다. PASS, SCOPE, COUNTEREXAMPLE, workspace 상대 EVIDENCE는 선택적으로 질문에 붙일 수 있다. 일부 질문의 재판정이 필요하면 해당 QID 질문만 다시 요청한다.
-
-NOUL/SCORE/CHOICE는 사용 비율이나 우선순위를 강제하지 않는다. 역할 contract에는 다양한 사용 예를 제공한다.
-- NOUL 예: 재시작 후 특정 transient state가 정리되는지 같은 단일 yes/no 주장
-- SCORE 예: 7개 asset 중 몇 개가 조건을 만족하는지, 측정 가능한 단계/범위를 표현하는 질문
-- CHOICE 예: 여러 후보 중 어떤 상태가 지연 원인인지 구분하는 질문
-- 수치 기준은 사용자 요청, 현재 작업 결과 또는 workspace evidence에서 유도하고, 근거가 없는 숫자를 새로 만들지 않는다.
+- NOUL/SCORE/CHOICE는 quota나 의무 비율이 아니다.
+- Worker는 HQ 검토가 의미적으로 충분했는지 검사하지 않는다.
+- JEV raw response는 같은 WORK session으로 반환한다.
 
 ---
 
-## 5. HIGH one-shot 사용자 허가
+## 8. RESOURCE 흐름
 
-설정창에는 HIGH의 provider/model/reasoning/thread-session 설정만 둔다.
-
-메인 화면 실행 버튼 왼쪽:
+최초 구현 범위는 IMAGE 생성 → 저장 → 기록이다.
 
 ~~~text
-[ ] 고수준 작업 허용    [ ▶ 실행 ]
+WORK
+ -> GOTO:RESOURCE + Resource transport JSON
+ -> RESOURCE Web 별도 대화
+ -> 이미지 생성
+ -> 확장이 생성 이미지 bytes 반환
+ -> Worker가 workspace 하위 지정 경로/파일명으로 저장
+ -> RESOURCE_RESULT
+ -> 같은 WORK session 복귀
 ~~~
 
-체크 + 실행이면 현재 Job의 high_uses_remaining=1, 미체크 실행이면 0이다.
+WORK의 RESOURCE JSON:
 
-- permit 생성자는 사용자 체크 + 실행 클릭뿐
-- Worker는 자연어에서 HIGH 허가를 추론하지 않음
-- HIGH dispatch 직전에 1 -> 0
-- 실패 시 자동 복구 없음
-- Job 종료 시 남은 permit 폐기
-- 다음 Job으로 이월 금지
-- 실행 직후 checkbox unchecked
-- permit이 있어도 HIGH 사용 여부는 HQ가 판단
+~~~json
+{
+  "type": "IMAGE",
+  "prompt": "fruit tile sprite sheet ...",
+  "targetDirectory": "assets/tiles",
+  "targetFileName": "fruit_tiles.png"
+}
+~~~
+
+기계적 ResourceRequest 기록:
+- Id
+- Type: IMAGE / SOUND
+- Prompt
+- TargetDirectory
+- TargetFileName
+- RequestedBy
+- Status: REQUESTED / GENERATING / SAVED / FAILED
+- SavedPath
+
+현재 SOUND는 schema에 예약하지만 실제 Web 결과 transport는 구현하지 않는다.
+
+RESOURCE가 하지 않는 것:
+- 자동 코드 연결
+- 자동 CSS/HTML 반영
+- 생성 결과의 사용 컴포넌트 의미 판단
+- 자동 빌드 반영
+- 복잡한 병렬 resource queue
+- 자동 품질 판정
+
+사용자가 이후 별도 명령으로 "연결 대상인 리소스를 연결해줘"라고 요청하면 새 USER -> HQ -> WORK 흐름에서 저장된 리소스를 통합한다.
 
 ---
 
-## 6. JUDGE transport 정책
+## 9. UI
 
-Worker/Judge adapter는 provider 호출, 최소 schema 변환, timeout/auth/HTTP/schema 오류, raw response 보존과 전달만 수행한다.
-
-WORK가 HQ 검토안을 인지한 뒤 GOTO:JUDGE를 출력하면 GOTO 뒤 body 전체를 요청 원문으로 취급한다. 신규 CLI에서는 VALIDATION REQUEST marker를 찾지 않는다.
-
-HQ 검토 여부는 Worker가 body를 해석해 검사하지 않는다. Worker는 유효한 상태 전이와 transport만 처리한다.
-
-Worker는 confidence/score threshold 비교, PASS/PARTIAL/FAIL 생성, evidence 충분성 판단, 자동 재작업을 하지 않는다.
-
----
-
-## 7. 메시지 및 작업 이력 카드 정책
-
-History UI는 관찰/표시 계층이며 routing protocol이 아니다. 카드를 만들기 위해 AI에게 별도 태그를 출력시키지 않는다.
-
-카드 생성 근거는 Worker가 이미 알고 있는 호출 role, 응답 완료 시점, ACTION/GOTO 결과, provider usage, file telemetry, infrastructure error다.
-
-신규 CLI에서는 LUNA RESULT, JEV RESULT 같은 source 문자열이나 본문 태그를 역으로 해석해 role/card 종류를 추론하지 않는다.
-
-### 카드 본문 3줄 규격
-
-1줄 — 표시용 요약:
-- opaque body의 첫 유효 텍스트를 whitespace normalize
-- 약 100~140자 범위의 UI 상수로 자르고 뒤 내용이 있으면 … 표시
-- 추가 AI 호출로 요약하지 않음
-- Worker가 의미를 재작성하거나 성공/실패를 추론하지 않음
-
-2줄 — 토큰:
+상단 Pipeline:
 
 ~~~text
-토큰 · 총 1,284 · 입력 920 · 캐시 210 · 출력 164
+대기 / 설계·관제 / 작업 / 리소스 / 판정
 ~~~
 
-reasoning usage가 별도 제공되면 같은 줄에 추가한다. usage가 없으면 토큰 · 미제공으로 표시하고 0으로 추정하지 않는다.
+표시:
+- 설계·관제: ChatGPT Web 또는 선택된 CLI model
+- 작업: 선택된 WORK model
+- 리소스: ChatGPT Web
+- 판정: JEV
 
-3줄 — 파일:
+현재 실행 중인 단계만 gold active border/orbit을 사용한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
 
-~~~text
-파일 · 생성 1 · 수정 0 · 삭제 0 · projecthub-smoke.txt
-~~~
-
-파일이 많으면 대표 파일명 + 외 N개 형식으로 줄인다. 변경이 없으면 파일 · 변경 없음으로 표시한다.
-
-현재 telemetry가 path/name/mime/size만 제공해 생성·수정·삭제를 구분할 수 없으면 Worker가 추정하지 않는다. 우선 파일 · N개 감지로 표시하거나 별도 기계적 FileChangeTelemetry를 추가한다.
-
-카드는 짧게 보여주되 전체 AI 원문, stdout/stderr, 상세 usage/file 목록은 transcript/detail에 보존할 수 있다.
-
----
-
-## 8. 인프라·세션·Provider 경계
-
-Worker는 working directory, provider/model 실행 가능 여부, auth, timeout/cancel, sandbox, role session, secret redaction, 승인 없는 Git/배포 차단, transcript/usage/file telemetry를 기계적으로 관리할 수 있다.
-
-HQ는 기본 read-only, WORK/HIGH는 승인된 작업 폴더에서 workspace-write를 사용할 수 있다.
-
-Worker는 지원되지 않는 모델을 임의 대체하지 않는다.
-
-### 8.1 Provider 확장 정책
-
-AI 역할 Provider의 코드 식별자는 `AiServiceProvider` enum으로 관리한다.
-
-현재 예약 Provider:
-
-~~~text
-OpenAI
-Claude
-Muse
-~~~
-
-영속 설정의 wire 값은 호환성을 위해 소문자 문자열(`openai`, `claude`, `muse`)을 유지하고, 실행 코드에서는 이를 enum으로 해석한다. 알 수 없는 Provider를 OpenAI로 자동 대체하지 않는다.
-
-Provider 이름은 안정된 식별자이고 모델명과 reasoning은 교체 가능한 catalog 데이터다. HQ / WORK / HIGH는 각각 독립적으로 Provider → Model → Reasoning을 선택한다.
-
-실행은 `IAiRoleRunner` 경계로 분리한다. Worker의 역할 라우팅은 Provider별 CLI 세부 명령을 판단하지 않고, 선택된 Provider runner의 preflight/run 결과만 기계적으로 처리한다.
-
-현재 실제 실행이 연결된 Provider는 OpenAI Codex CLI뿐이다. Claude/Muse는 UI/catalog/visual/runner skeleton까지 준비하되 인증·실행 transport가 연결되기 전에는 `CLAUDE_NOT_CONFIGURED` / `MUSE_NOT_CONFIGURED`로 차단한다. 다른 Provider로 자동 fallback하지 않는다.
-
-Provider가 session/resume을 지원하는지는 capability로 관리한다. 지원하지 않거나 아직 연결되지 않은 Provider의 session 선택 UI는 비활성화한다.
-
-Provider icon은 단일 visual resolver에서 결정한다. 공식 자산이 준비되지 않은 Provider는 중립 console symbol을 fallback으로 사용하며, 기능 코드에 특정 브랜드 asset 경로를 하드코딩하지 않는다.
-
-JEV는 AI 역할 Provider 목록에 포함하지 않고 JUDGE 전용 판단 transport로 유지한다.
+설정:
+- HQ: 실행 대상 Web/CLI + CLI일 때 Provider/Model/Reasoning/Session
+- WORK: Provider/Model/Reasoning/Session
+- RESOURCE: ChatGPT Web 고정 설명
+- JUDGE: JEV 설정
 
 ---
 
-## 9. 비용·토큰 정책
+## 10. 현재 활성 작업
 
-Worker는 role/provider/model/reasoning, input/cached/output/reasoning usage, latency, session/call ID 같은 측정값만 기록한다.
+활성 task는 tasks/14-resource-web-role.md다.
 
-비용이나 토큰량을 작업 품질 판단에 사용하지 않는다. History 카드의 토큰 줄도 telemetry 표시일 뿐이다.
+구현 코드 범위:
+1. HIGH 제거 / RESOURCE state
+2. HQ Web target 복원
+3. HQ/RESOURCE explicit conversation binding
+4. HQ 설계 책임 + PAUSE 예시
+5. WORK RESOURCE 위임 계약
+6. RESOURCE IMAGE 생성 결과 transport와 저장
+7. Pipeline/Settings/History 교체
+8. 테스트/문서 갱신
 
----
-
-## 10. Legacy Web 호환
-
-Legacy Web의 ACTION=CONTINUE/PAUSE/END와 NEXT:WEB/JEV는 별도 legacy mode에서만 보존한다.
-
-Legacy의 기존 본문 marker가 필요하면 legacy namespace/contract 내부에만 한정하고 신규 CLI로 가져오지 않는다.
-
----
-
-## 11. 현재 구현 우선순위
-
-현재 활성 작업은 **13-A JUDGE plan review flow**다.
-
-1. WORK가 판정이 필요하다고 판단하면 판정 초안과 evidence를 HQ에 먼저 전달
-2. HQ가 질문 범위, evidence, 수치화 가능한 기준과 응답 형태를 검토해 WORK에 반환
-3. WORK가 검토안을 인지한 뒤 JUDGE 요청 구성
-4. JUDGE raw response는 같은 WORK session으로 복귀
-5. 추가 판정이 필요하면 새 초안을 다시 HQ 검토 흐름에 태울 수 있음
-6. NOUL/SCORE/CHOICE 사용 예를 WORK/HQ contract에 다양하게 제공
-7. 질문형 비율, 우선순위, 금지 조건은 Worker 규칙으로 만들지 않음
-8. Worker parser/state/JEV transport와 opaque-body 원칙은 유지
-9. contract 회귀 테스트
-10. Windows build/test 및 Explorer 실제 흐름 확인
-
-12-B Provider-ready 구조는 완료 기록으로 유지한다. Claude/Muse 실제 CLI/인증/model discovery/session 연결은 12-D deferred다.
-
----
-
-## 12. 최종 체크
-
-이 로직이 작업 내용의 옳고 그름이나 다음 행동을 Worker 스스로 판단하면 Worker에 두지 않는다.
-
-UI/전달 기능 때문에 AI에게 ACTION/GOTO 외 별도 semantic tag를 출력시키고 있다면 태그 의존성을 제거하고 Worker가 이미 가진 state/telemetry를 사용한다.
-
-판단은 AI가 하고 Worker는 계약된 흐름과 관찰 가능한 실행 사실만 관리한다.
+실제 Windows build/test/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.

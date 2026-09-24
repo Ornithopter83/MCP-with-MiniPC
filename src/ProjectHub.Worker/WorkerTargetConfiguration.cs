@@ -42,14 +42,11 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("executionMode")] string ExecutionMode = "CLI_TO_CLI",
     [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
     [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null,
-    [property: JsonPropertyName("highLevelEnabled")] bool HighLevelEnabled = false,
-    [property: JsonPropertyName("highLevel")] WorkerAiRoleSettings? HighLevel = null,
     [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null)
 {
     public JudgeSettings EffectiveJudge => Judge ?? new JudgeSettings();
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
     public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
-    public WorkerAiRoleSettings EffectiveHighLevel => HighLevel ?? new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high", Transport: "codex_cli");
     public bool IsCoordinatorFirst => string.Equals(ExecutionMode, "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
 }
 public sealed record GitTargetSnapshot(
@@ -91,9 +88,7 @@ public static class WorkerTargetConfiguration
             var descriptor = AiProviderCatalog.Find(role.Provider);
             if (descriptor is null) return role;
             var transport = role.Transport;
-            if (string.IsNullOrWhiteSpace(transport) ||
-                (settings.IsCoordinatorFirst && descriptor.Provider == AiServiceProvider.OpenAI &&
-                 string.Equals(transport, "web", StringComparison.OrdinalIgnoreCase)))
+            if (string.IsNullOrWhiteSpace(transport))
                 transport = descriptor.DefaultTransport;
             return role with { Transport = transport };
         }
@@ -101,8 +96,7 @@ public static class WorkerTargetConfiguration
         return settings with
         {
             Coordinator = NormalizeRole(settings.Coordinator),
-            Implementer = NormalizeRole(settings.Implementer),
-            HighLevel = NormalizeRole(settings.HighLevel)
+            Implementer = NormalizeRole(settings.Implementer)
         };
     }
 

@@ -13,8 +13,8 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
-    private const string ExpectedExtensionVersion = "0.1.3";
-    private const string ExpectedExtensionBuild = "2026-09-23.5";
+    private const string ExpectedExtensionVersion = "0.1.4";
+    private const string ExpectedExtensionBuild = "2026-09-24.1";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -33,6 +33,7 @@ public sealed class BridgeServer : IDisposable
     private string? _webProjectId;
     private string? _webExtensionVersion;
     private string? _webExtensionBuild;
+    private readonly Dictionary<string, DateTimeOffset> _webHeartbeats = new(StringComparer.OrdinalIgnoreCase);
     public bool WebConnected
     {
         get { lock (_gate) return _lastWebHeartbeat is not null && DateTimeOffset.UtcNow - _lastWebHeartbeat < TimeSpan.FromSeconds(10); }
@@ -66,23 +67,50 @@ public sealed class BridgeServer : IDisposable
     public event Action<BridgeTask>? TaskChanged;
     public event Action<ExtensionProgress>? ExtensionProgressChanged;
 
-    public BridgeTask? CreateTaskForLatestBinding(string prompt, List<BridgeAttachment>? attachments = null)
+    public bool IsRoleBound(string role)
+    {
+        lock (_gate) return _state.RoleBindings.ContainsKey(NormalizeRole(role));
+    }
+
+    public bool IsRoleConnected(string role)
     {
         lock (_gate)
         {
-            if (string.IsNullOrWhiteSpace(_webConversationId) ||
-                !_state.Bindings.TryGetValue(_webConversationId, out var binding))
-                return null;
-
-            var active = _state.Tasks.FirstOrDefault(item => item.ConversationId.Equals(binding.ConversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
-            if (active is not null) return active;
-            var task = new BridgeTask(Guid.NewGuid().ToString("N"), binding.ConversationId, binding.ProjectId, prompt, "PENDING", null, null, DateTimeOffset.UtcNow, null, "WEB", null, null, null, attachments ?? new());
-            _state.Tasks.Add(task);
-            SaveState();
-            TaskChanged?.Invoke(task);
-            return task;
+            return _state.RoleBindings.TryGetValue(NormalizeRole(role), out var conversationId) &&
+                   _webHeartbeats.TryGetValue(conversationId, out var seen) &&
+                   DateTimeOffset.UtcNow - seen < TimeSpan.FromSeconds(10);
         }
     }
+
+    public string? GetRoleConversationId(string role)
+    {
+        lock (_gate) return _state.RoleBindings.TryGetValue(NormalizeRole(role), out var value) ? value : null;
+    }
+
+    public BridgeTask? CreateTaskForRole(string role, string prompt, List<BridgeAttachment>? attachments = null, ResourceRequest? resource = null)
+    {
+        lock (_gate)
+        {
+            var normalizedRole = NormalizeRole(role);
+            if (!_state.RoleBindings.TryGetValue(normalizedRole, out var conversationId)) return null;
+            return CreateTaskLocked(conversationId, prompt, attachments, normalizedRole, resource);
+        }
+    }
+
+    public async Task<BridgeTask?> WaitForTaskCompletionAsync(string taskId, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                var task = _state.Tasks.FirstOrDefault(item => item.Id == taskId);
+                if (task is null || task.Status is "COMPLETED" or "FAILED") return task;
+            }
+            await Task.Delay(250, cancellationToken);
+        }
+    }
+
     public bool CancelActiveTask()
         => CancelActiveTask(out _);
 
@@ -254,6 +282,7 @@ public sealed class BridgeServer : IDisposable
                 webConversationTitle = _webConversationTitle,
                 webProjectId = _webProjectId,
                 webConversationBound = WebConversationBound,
+                roleBindings = _state.RoleBindings,
                 webExtensionVersion = _webExtensionVersion,
                 webExtensionBuild = _webExtensionBuild,
                 expectedExtensionVersion = ExpectedExtensionVersion,
@@ -274,7 +303,8 @@ public sealed class BridgeServer : IDisposable
         lock (_gate)
         {
             _state.Bindings.TryGetValue(conversationId, out var binding);
-            return new BridgeResponse(true, new { conversationId, bound = binding is not null, projectId = binding?.ProjectId, updatedAt = binding?.UpdatedAt });
+            var role = _state.RoleBindings.FirstOrDefault(pair => pair.Value.Equals(conversationId, StringComparison.OrdinalIgnoreCase)).Key;
+            return new BridgeResponse(true, new { conversationId, bound = binding is not null, projectId = binding?.ProjectId, role, updatedAt = binding?.UpdatedAt });
         }
     }
 
@@ -283,9 +313,21 @@ public sealed class BridgeServer : IDisposable
         if (string.IsNullOrWhiteSpace(request.ConversationId)) return new(false, new { error = "conversation_id_required" });
         lock (_gate)
         {
+            var normalizedRole = string.IsNullOrWhiteSpace(request.Role) ? null : NormalizeRole(request.Role);
+            if (normalizedRole is not null && normalizedRole is not ("HQ" or "RESOURCE"))
+                return new(false, new { error = "binding_role_invalid" });
+            if (normalizedRole is not null)
+            {
+                var conflict = _state.RoleBindings.FirstOrDefault(pair =>
+                    !pair.Key.Equals(normalizedRole, StringComparison.OrdinalIgnoreCase) &&
+                    pair.Value.Equals(request.ConversationId, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrWhiteSpace(conflict.Key))
+                    return new(false, new { error = "role_requires_distinct_conversation", boundRole = conflict.Key });
+                _state.RoleBindings[normalizedRole] = request.ConversationId;
+            }
             _state.Bindings[request.ConversationId] = new BindingState(request.ConversationId, request.ProjectId ?? RepositoryName, DateTimeOffset.UtcNow);
             SaveState();
-            return new BridgeResponse(true, _state.Bindings[request.ConversationId]);
+            return new BridgeResponse(true, new { binding = _state.Bindings[request.ConversationId], role = normalizedRole });
         }
     }
 
@@ -309,20 +351,25 @@ public sealed class BridgeServer : IDisposable
             return new(false, new { error = "conversation_id_and_prompt_required" });
         lock (_gate)
         {
-            if (!_state.Bindings.TryGetValue(request.ConversationId, out var binding))
-                return new(false, new { error = "conversation_not_bound" });
-            if (!string.IsNullOrWhiteSpace(request.ProjectId) && !string.Equals(binding.ProjectId, request.ProjectId, StringComparison.OrdinalIgnoreCase))
-                return new(false, new { error = "project_mismatch" });
-
-            var active = _state.Tasks.FirstOrDefault(item => item.ConversationId.Equals(request.ConversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
-            if (active is not null) return new(false, new { error = "task_conflict", task = active });
-            var task = new BridgeTask(Guid.NewGuid().ToString("N"), request.ConversationId, binding.ProjectId, request.Prompt, "PENDING", null, null, DateTimeOffset.UtcNow, null, "WEB", null, null, null, request.Attachments ?? new());
-            _state.Tasks.Add(task);
-            SaveState();
-            TaskChanged?.Invoke(task);
-            return new BridgeResponse(true, task);
+            var task = CreateTaskLocked(request.ConversationId, request.Prompt, request.Attachments, request.Role ?? "WEB", request.Resource);
+            return task is null
+                ? new(false, new { error = "conversation_not_bound_or_task_conflict" })
+                : new(true, task);
         }
     }
+
+    private BridgeTask? CreateTaskLocked(string conversationId, string prompt, List<BridgeAttachment>? attachments, string role, ResourceRequest? resource)
+    {
+        if (!_state.Bindings.TryGetValue(conversationId, out var binding)) return null;
+        var active = _state.Tasks.FirstOrDefault(item => item.ConversationId.Equals(conversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
+        if (active is not null) return null;
+        var task = new BridgeTask(Guid.NewGuid().ToString("N"), conversationId, binding.ProjectId, prompt, "PENDING", null, null, DateTimeOffset.UtcNow, null, role, null, null, null, attachments ?? new(), resource);
+        _state.Tasks.Add(task);
+        SaveState();
+        TaskChanged?.Invoke(task);
+        return task;
+    }
+
     private BridgeResponse Claim(string id, ClaimRequest request)
     {
         lock (_gate)
@@ -335,7 +382,15 @@ public sealed class BridgeServer : IDisposable
             var active = _state.Tasks.FirstOrDefault(item => item.Id != id && item.ConversationId.Equals(task.ConversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
             if (active is not null) return new(false, new { error = "task_conflict", task = active });
             var now = DateTimeOffset.UtcNow;
-            var claimed = task with { Status = "CLAIMED", ClaimedAt = now, StartedAt = now, Owner = "WEB", LeaseId = Guid.NewGuid().ToString("N") };
+            var claimed = task with
+            {
+                Status = "CLAIMED",
+                ClaimedAt = now,
+                StartedAt = now,
+                Owner = "WEB",
+                LeaseId = Guid.NewGuid().ToString("N"),
+                Resource = task.Resource is null ? null : task.Resource with { Status = "GENERATING" }
+            };
             ReplaceTask(claimed);
             SaveState();
             TaskChanged?.Invoke(claimed);
@@ -359,12 +414,46 @@ public sealed class BridgeServer : IDisposable
             if (string.IsNullOrWhiteSpace(request.LeaseId) || !string.Equals(task.LeaseId, request.LeaseId, StringComparison.Ordinal))
                 return new(false, new { error = "lease_mismatch" });
 
+            var resource = task.Resource;
+            string? savedPath = resource?.SavedPath;
+            if (request.Success && resource is not null)
+            {
+                try
+                {
+                    savedPath = SaveResourceResult(resource, request);
+                    resource = resource with { Status = "SAVED", SavedPath = savedPath };
+                }
+                catch (Exception exception)
+                {
+                    resource = resource with { Status = "FAILED" };
+                    var failed = task with
+                    {
+                        Status = "FAILED",
+                        Result = "RESOURCE 저장 실패: " + exception.Message,
+                        FinishReason = "resource_save_failed",
+                        CompletedAt = DateTimeOffset.UtcNow,
+                        Resource = resource,
+                        SavedPath = null
+                    };
+                    ReplaceTask(failed);
+                    SaveState();
+                    TaskChanged?.Invoke(failed);
+                    return new BridgeResponse(true, failed);
+                }
+            }
+            else if (!request.Success && resource is not null)
+            {
+                resource = resource with { Status = "FAILED" };
+            }
+
             var completed = task with
             {
                 Status = request.Success ? "COMPLETED" : "FAILED",
                 Result = request.ResponseText ?? request.Result,
                 FinishReason = request.FinishReason ?? (request.Success ? "completed" : "failed"),
-                CompletedAt = DateTimeOffset.UtcNow
+                CompletedAt = DateTimeOffset.UtcNow,
+                Resource = resource,
+                SavedPath = savedPath
             };
             ReplaceTask(completed);
             SaveState();
@@ -405,6 +494,8 @@ public sealed class BridgeServer : IDisposable
         lock (_gate)
         {
             _lastWebHeartbeat = DateTimeOffset.UtcNow;
+            if (!string.IsNullOrWhiteSpace(request.ConversationId))
+                _webHeartbeats[request.ConversationId] = _lastWebHeartbeat.Value;
             _webConversationId = request.ConversationId;
             _webConversationTitle = request.ConversationTitle;
             _webProjectId = request.ProjectId;
@@ -432,6 +523,36 @@ public sealed class BridgeServer : IDisposable
             ExtensionProgressChanged?.Invoke(progress);
             return new BridgeResponse(true, progress);
         }
+    }
+
+    private static string NormalizeRole(string role) => role.Trim().ToUpperInvariant();
+
+    private static string SaveResourceResult(ResourceRequest resource, ResultRequest request)
+    {
+        if (!resource.Type.Equals("IMAGE", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Only IMAGE resource results are supported.");
+        if (string.IsNullOrWhiteSpace(request.ResultFileBase64))
+            throw new InvalidOperationException("RESOURCE_IMAGE_DATA_MISSING");
+
+        var root = Path.GetFullPath(resource.WorkspaceRoot);
+        var relativeDirectory = resource.TargetDirectory.Replace('/', Path.DirectorySeparatorChar);
+        var targetDirectory = Path.GetFullPath(Path.Combine(root, relativeDirectory));
+        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!targetDirectory.Equals(root, StringComparison.OrdinalIgnoreCase) &&
+            !targetDirectory.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("RESOURCE_TARGET_OUTSIDE_WORKSPACE");
+
+        if (Path.GetFileName(resource.TargetFileName) != resource.TargetFileName)
+            throw new InvalidOperationException("RESOURCE_TARGET_FILENAME_INVALID");
+
+        var bytes = Convert.FromBase64String(request.ResultFileBase64);
+        if (bytes.Length == 0 || bytes.Length > 25 * 1024 * 1024)
+            throw new InvalidOperationException("RESOURCE_IMAGE_SIZE_INVALID");
+
+        Directory.CreateDirectory(targetDirectory);
+        var path = Path.Combine(targetDirectory, resource.TargetFileName);
+        File.WriteAllBytes(path, bytes);
+        return path;
     }
 
     private void ReplaceTask(BridgeTask task)
@@ -511,18 +632,20 @@ public sealed class BridgeServer : IDisposable
 public sealed class BridgeState
 {
     public Dictionary<string, BindingState> Bindings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> RoleBindings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<BridgeTask> Tasks { get; set; } = new();
 }
 
 public sealed record BindingState(string ConversationId, string ProjectId, DateTimeOffset UpdatedAt);
-public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null);
+public sealed record ResourceRequest(string Id, string Type, string Prompt, string TargetDirectory, string TargetFileName, string RequestedBy, string Status, string? SavedPath, string WorkspaceRoot);
+public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null);
 public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null);
 public sealed record BridgeResponse(bool Ok, object Data);
-public sealed record BindRequest(string ConversationId, string? ProjectId);
+public sealed record BindRequest(string ConversationId, string? ProjectId, string? Role = null);
 public sealed record ClaimRequest(string ConversationId);
 public sealed record ResetRequest(string? ConversationId = null, string? TaskId = null);
-public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null);
-public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null);
+public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null, string? Role = null, ResourceRequest? Resource = null);
+public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null, string? ResultFileBase64 = null, string? ResultFileMimeType = null, string? ResultFileName = null);
 public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null, string? ExtensionVersion = null, string? ExtensionBuild = null);
 public sealed record ProgressRequest(string TaskId, string ConversationId, string LeaseId, string Stage, string? Detail = null, int Attempt = 0);
 public sealed record ExtensionProgress(string TaskId, string ConversationId, string Stage, string? Detail, int Attempt, DateTimeOffset UpdatedAt);

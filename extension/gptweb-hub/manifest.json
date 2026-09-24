@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPTWeb-Hub UI Preview",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A visual preview of the GPTWeb-Hub Worker bridge panel.",
   "background": { "service_worker": "background.js" },
   "content_scripts": [
@@ -15,5 +15,5 @@
     }
   ],
   "permissions": ["storage"],
-  "host_permissions": ["http://127.0.0.1:43821/*", "http://localhost:43821/*"]
+  "host_permissions": ["http://127.0.0.1:43821/*", "http://localhost:43821/*", "https://*.oaiusercontent.com/*", "https://*.openai.com/*"]
 }

@@ -1,13 +1,13 @@
 namespace ProjectHub.Worker;
 
-public enum WorkerRoleState { Hq, Work, Judge, High, Unknown }
+public enum WorkerRoleState { Hq, Work, Judge, Resource, Unknown }
 public enum WorkerAction { Continue, Pause, End }
 public sealed record WorkerGotoRoute(WorkerRoleState? Target, string Body, WorkerAction? Action = null, string? Error = null);
 
-/// <summary>Parses only control lines and enforces the configured state graph. Body content remains opaque.</summary>
+/// <summary>Parses only control lines and enforces the configured state graph. Body content remains opaque except at dedicated transport boundaries.</summary>
 public static class WorkerGotoContract
 {
-    public static WorkerGotoRoute Parse(WorkerRoleState source, string? response, bool highPermitAvailable = false)
+    public static WorkerGotoRoute Parse(WorkerRoleState source, string? response)
     {
         var lines = (response ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var first = Array.FindIndex(lines, line => !string.IsNullOrWhiteSpace(line));
@@ -31,8 +31,7 @@ public static class WorkerGotoContract
             var gotoLine = lines[nextIndex].Trim();
             if (!IsGotoCandidate(gotoLine)) return Invalid("GOTO_INVALID");
             if (!TryParseTarget(gotoLine, out var target, out var gotoEnd)) return Invalid("GOTO_INVALID");
-            if (target is not (WorkerRoleState.Work or WorkerRoleState.High)) return Invalid("GOTO_NOT_ALLOWED");
-            if (target == WorkerRoleState.High && !highPermitAvailable) return Invalid("HIGH_NOT_AUTHORIZED");
+            if (target != WorkerRoleState.Work) return Invalid("GOTO_NOT_ALLOWED");
             return new(target, JoinBody(gotoLine, gotoEnd, lines, nextIndex), action);
         }
 
@@ -42,9 +41,9 @@ public static class WorkerGotoContract
         if (!TryParseTarget(control, out var destination, out var controlEnd)) return Invalid("GOTO_INVALID");
         var allowed = source switch
         {
-            WorkerRoleState.Work => destination is WorkerRoleState.Hq or WorkerRoleState.Judge,
+            WorkerRoleState.Work => destination is WorkerRoleState.Hq or WorkerRoleState.Judge or WorkerRoleState.Resource,
             WorkerRoleState.Judge => destination == WorkerRoleState.Work,
-            WorkerRoleState.High => destination == WorkerRoleState.Hq,
+            WorkerRoleState.Resource => destination == WorkerRoleState.Work,
             _ => false
         };
         if (!allowed) return Invalid("GOTO_NOT_ALLOWED");
@@ -84,7 +83,7 @@ public static class WorkerGotoContract
         var close = line.IndexOf(']');
         if (close < 0) return false;
         var control = line[..(close + 1)];
-        var matches = new[] { "HQ", "WORK", "JUDGE", "HIGH", "UNKNOWN" }
+        var matches = new[] { "HQ", "WORK", "JUDGE", "RESOURCE", "UNKNOWN" }
             .Where(token => ContainsKeywordBeforeClose(control, token)).ToArray();
         if (matches.Length != 1) return false;
         target = ParseTarget(matches[0]);
@@ -114,7 +113,7 @@ public static class WorkerGotoContract
         "HQ" => WorkerRoleState.Hq,
         "WORK" => WorkerRoleState.Work,
         "JUDGE" => WorkerRoleState.Judge,
-        "HIGH" => WorkerRoleState.High,
+        "RESOURCE" => WorkerRoleState.Resource,
         _ => WorkerRoleState.Unknown
     };
 

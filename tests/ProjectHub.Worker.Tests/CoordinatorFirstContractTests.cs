@@ -34,7 +34,7 @@ public sealed class CoordinatorFirstContractTests
     [Theory]
     [InlineData("Coordinator", "#FFDDEEFF", "#FF1477E8", "#FF1267D5", "current-openai.png")]
     [InlineData("Implementer", "#FFDCF5E3", "#FF168A4A", "#FF116B39", "current-openai.png")]
-    [InlineData("HighLevel", "#FFECD8E4", "#FF82194B", "#FF74133F", "current-openai.png")]
+    [InlineData("Resource", "#FFECD8E4", "#FF82194B", "#FF74133F", "current-web.png")]
     [InlineData("Judge", "#FFFFF0B8", "#FFB87900", "#FF765000", "current-jev.png")]
     public void HistoryRoleCard_UsesTheSameRolePaletteAsCurrentTask(string stage, string background, string iconBackground, string foreground, string icon)
     {
@@ -47,19 +47,19 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Theory]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : WORK]\nopaque body", false, WorkerAction.Continue, WorkerRoleState.Work)]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : HIGH]\ninstruction", true, WorkerAction.Continue, WorkerRoleState.High)]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\nreport", false, WorkerAction.Pause, null)]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=END]\nreport", false, WorkerAction.End, null)]
-    [InlineData(WorkerRoleState.Work, "[GOTO : HQ]\nreport", false, null, WorkerRoleState.Hq)]
-    [InlineData(WorkerRoleState.Work, "[GOTO : HQ] report on the same line", false, null, WorkerRoleState.Hq)]
-    [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", false, null, WorkerRoleState.Hq)]
-    [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", false, null, WorkerRoleState.Judge)]
-    [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", false, null, WorkerRoleState.Work)]
-    [InlineData(WorkerRoleState.High, "[GOTO : HQ]\nreport", false, null, WorkerRoleState.Hq)]
-    public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, bool permit, WorkerAction? action, WorkerRoleState? target)
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : WORK]\nopaque body", WorkerAction.Continue, WorkerRoleState.Work)]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\nreport", WorkerAction.Pause, null)]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=END]\nreport", WorkerAction.End, null)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : HQ]\nreport", null, WorkerRoleState.Hq)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : HQ] report on the same line", null, WorkerRoleState.Hq)]
+    [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", null, WorkerRoleState.Hq)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", null, WorkerRoleState.Judge)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\n{\"type\":\"IMAGE\",\"prompt\":\"tile\",\"targetDirectory\":\"assets\",\"targetFileName\":\"tile.png\"}", null, WorkerRoleState.Resource)]
+    [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", null, WorkerRoleState.Work)]
+    [InlineData(WorkerRoleState.Resource, "[GOTO : WORK]\nsaved", null, WorkerRoleState.Work)]
+    public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, WorkerAction? action, WorkerRoleState? target)
     {
-        var result = WorkerGotoContract.Parse(source, text, permit);
+        var result = WorkerGotoContract.Parse(source, text);
         Assert.Null(result.Error);
         Assert.Equal(action, result.Action);
         Assert.Equal(target, result.Target);
@@ -67,32 +67,31 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Theory]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO=WORK\nbody", false, "GOTO_INVALID")]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\nGOTO=WORK\nbody", false, "GOTO_INVALID")]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=HQ]\nbody", false, "ACTION_INVALID")]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : HIGH]\nbody", false, "HIGH_NOT_AUTHORIZED")]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : JUDGE]\nbody", true, "GOTO_NOT_ALLOWED")]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\n[GOTO : WORK]\nbody", false, "GOTO_NOT_ALLOWED_WITH_ACTION")]
-    [InlineData(WorkerRoleState.Work, "[ACTION=END]\nbody", false, "ACTION_NOT_ALLOWED")]
-    [InlineData(WorkerRoleState.Work, "[GOTO : HIGH]\nbody", false, "GOTO_NOT_ALLOWED")]
-    [InlineData(WorkerRoleState.High, "[GOTO : JUDGE]\nbody", true, "GOTO_NOT_ALLOWED")]
-    [InlineData(WorkerRoleState.Judge, "[GOTO : HQ]\nbody", false, "GOTO_NOT_ALLOWED")]
-    public void WorkerGoto_RejectsInvalidControlsAndForbiddenTransitions(WorkerRoleState source, string text, bool permit, string error)
-        => Assert.Equal(error, WorkerGotoContract.Parse(source, text, permit).Error);
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO=WORK\nbody", "GOTO_INVALID")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\nGOTO=WORK\nbody", "GOTO_INVALID")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=HQ]\nbody", "ACTION_INVALID")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : RESOURCE]\nbody", "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : JUDGE]\nbody", "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\n[GOTO : WORK]\nbody", "GOTO_NOT_ALLOWED_WITH_ACTION")]
+    [InlineData(WorkerRoleState.Work, "[ACTION=END]\nbody", "ACTION_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Resource, "[GOTO : HQ]\nbody", "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Judge, "[GOTO : HQ]\nbody", "GOTO_NOT_ALLOWED")]
+    public void WorkerGoto_RejectsInvalidControlsAndForbiddenTransitions(WorkerRoleState source, string text, string error)
+        => Assert.Equal(error, WorkerGotoContract.Parse(source, text).Error);
 
     [Fact]
-    public void HighLevelPermit_IsJobLocalAndConsumedExactlyOnce()
+    public void ResourceTransport_ValidatesMechanicalSchemaAndWorkspaceRelativePath()
     {
-        var denied = new JobHighLevelPermit(false);
-        Assert.False(denied.IsAvailable);
-        Assert.False(denied.TryConsume());
-
-        var allowed = new JobHighLevelPermit(true);
-        Assert.True(allowed.IsAvailable);
-        Assert.True(allowed.TryConsume());
-        Assert.False(allowed.IsAvailable);
-        Assert.False(allowed.TryConsume());
-        Assert.False(new JobHighLevelPermit(false).IsAvailable);
+        Assert.True(ResourceTransportContract.TryParse(
+            "{\"type\":\"IMAGE\",\"prompt\":\"fruit tiles\",\"targetDirectory\":\"assets/tiles\",\"targetFileName\":\"fruit_tiles.png\"}",
+            out var request, out var error));
+        Assert.Null(error);
+        Assert.Equal("IMAGE", request!.Type);
+        Assert.Equal("assets/tiles", request.TargetDirectory);
+        Assert.False(ResourceTransportContract.TryParse(
+            "{\"type\":\"IMAGE\",\"prompt\":\"x\",\"targetDirectory\":\"../outside\",\"targetFileName\":\"x.png\"}",
+            out _, out var unsafeError));
+        Assert.Equal("RESOURCE_TARGET_DIRECTORY_INVALID", unsafeError);
     }
 
     [Fact]
@@ -179,9 +178,6 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("codex_cli", settings.EffectiveCoordinator.Transport);
         Assert.Equal("gpt-6-luna", settings.EffectiveImplementer.Model);
         Assert.Equal("codex_cli", settings.EffectiveImplementer.Transport);
-        Assert.False(settings.HighLevelEnabled);
-        Assert.Equal("gpt-6-astra", settings.EffectiveHighLevel.Model);
-        Assert.Equal("high", settings.EffectiveHighLevel.Reasoning);
         Assert.Equal("C:/work", settings.ManualWorkingDirectory);
     }
 
@@ -292,49 +288,42 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void RuntimeNormalization_MigratesCoordinatorWebTransportOnlyForCliToCli()
+    public void RuntimeNormalization_PreservesCoordinatorWebTransport()
     {
-        var cliSettings = new WorkerTargetSettings(
+        var settings = new WorkerTargetSettings(
             null, null, null, null,
             ExecutionMode: "CLI_TO_CLI",
             Coordinator: new WorkerAiRoleSettings("openai", "gpt-6-sol", "high", "web"));
-        var normalized = WorkerTargetConfiguration.NormalizeForRuntime(cliSettings);
-        Assert.Equal("codex_cli", normalized.EffectiveCoordinator.Transport);
-
-        var legacySettings = cliSettings with { ExecutionMode = "LEGACY_WEB" };
-        var legacy = WorkerTargetConfiguration.NormalizeForRuntime(legacySettings);
-        Assert.Equal("web", legacy.EffectiveCoordinator.Transport);
+        var normalized = WorkerTargetConfiguration.NormalizeForRuntime(settings);
+        Assert.Equal("web", normalized.EffectiveCoordinator.Transport);
     }
 
     [Fact]
-    public void RoleSettings_PersistIndependentProvidersForHqWorkAndHigh()
+    public void RoleSettings_PersistIndependentProvidersForHqAndWork()
     {
         var settings = JsonSerializer.Deserialize<WorkerTargetSettings>("""
             {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null,
-             "coordinator":{"provider":"openai","model":"gpt-6-sol","reasoning":"high","transport":"codex_cli"},
-             "implementer":{"provider":"claude","model":"","reasoning":"","transport":"claude_cli"},
-             "highLevel":{"provider":"muse","model":"","reasoning":"","transport":"muse_cli"}}
+             "coordinator":{"provider":"openai","model":"gpt-6-sol","reasoning":"high","transport":"web"},
+             "implementer":{"provider":"claude","model":"","reasoning":"","transport":"claude_cli"}}
             """)!;
 
         Assert.Equal(AiServiceProvider.OpenAI, settings.EffectiveCoordinator.ProviderKind);
+        Assert.Equal("web", settings.EffectiveCoordinator.Transport);
         Assert.Equal(AiServiceProvider.Claude, settings.EffectiveImplementer.ProviderKind);
-        Assert.Equal(AiServiceProvider.Muse, settings.EffectiveHighLevel.ProviderKind);
         Assert.Equal("claude_cli", settings.EffectiveImplementer.Transport);
-        Assert.Equal("muse_cli", settings.EffectiveHighLevel.Transport);
     }
 
     [Fact]
     public void RoleSettings_PersistTransportAndIndependentThreadSelections()
     {
         var settings = JsonSerializer.Deserialize<WorkerTargetSettings>("""
-            {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null,"coordinator":{"provider":"openai","model":"gpt-6-sol","reasoning":"high","transport":"codex_cli","threadSessionId":"coord-session","threadProjectPath":"C:/work"},"implementer":{"provider":"openai","model":"gpt-6-luna","reasoning":"medium","transport":"codex_cli","threadSessionId":"impl-session","threadProjectPath":"C:/work"},"highLevelEnabled":false,"highLevel":{"provider":"openai","model":"gpt-6-astra","reasoning":"high","transport":"codex_cli"}}
+            {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null,"coordinator":{"provider":"openai","model":"gpt-6-sol","reasoning":"high","transport":"codex_cli","threadSessionId":"coord-session","threadProjectPath":"C:/work"},"implementer":{"provider":"openai","model":"gpt-6-luna","reasoning":"medium","transport":"codex_cli","threadSessionId":"impl-session","threadProjectPath":"C:/work"}}
             """)!;
 
         Assert.Equal("codex_cli", settings.EffectiveCoordinator.Transport);
         Assert.Equal("coord-session", settings.EffectiveCoordinator.ThreadSessionId);
         Assert.Equal("impl-session", settings.EffectiveImplementer.ThreadSessionId);
         Assert.Equal("C:/work", settings.EffectiveCoordinator.ThreadProjectPath);
-        Assert.False(settings.HighLevelEnabled);
     }
 
     [Fact]

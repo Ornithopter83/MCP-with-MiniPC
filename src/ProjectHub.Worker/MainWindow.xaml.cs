@@ -54,7 +54,7 @@ public partial class MainWindow : Window
     {
         ["Coordinator"] = new("#DDEEFF", "#1477E8", "#1267D5", "current-openai.png"),
         ["Implementer"] = new("#DCF5E3", "#168A4A", "#116B39", "current-openai.png"),
-        ["HighLevel"] = new("#ECD8E4", "#82194B", "#74133F", "current-openai.png"),
+        ["Resource"] = new("#ECD8E4", "#82194B", "#74133F", "current-web.png"),
         ["Judge"] = new("#FFF0B8", "#B87900", "#765000", "current-jev.png")
     };
     private readonly List<TaskMessage> _taskMessages = new();
@@ -65,7 +65,7 @@ public partial class MainWindow : Window
         public string? IconAssetOverride { get; init; }
         public string TokenDetails { get; init; } = "토큰 · 해당 없음";
         public string FileDetails { get; init; } = "파일 · 해당 없음";
-        public string Role => StageKey switch { "Coordinator" => "설계 관제", "Implementer" => "작업", "HighLevel" => "고수준 작업", "Judge" => "판정", _ => "시스템" };
+        public string Role => StageKey switch { "Coordinator" => "설계 관제", "Implementer" => "작업", "Resource" => "리소스", "Judge" => "판정", _ => "시스템" };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         public string Details
         {
@@ -102,13 +102,13 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _jobWatchdogTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private int _flowFrame;
     private bool _pairArrowActive;
-    private enum TaskStage { Idle, Coordinator, Implementer, HighLevel, Judge }
+    private enum TaskStage { Idle, Coordinator, Implementer, Resource, Judge }
     private enum DashboardBodyMode { NewTaskInput, TaskHistory }
     private DashboardBodyMode _dashboardBodyMode = DashboardBodyMode.NewTaskInput;
     private TaskStage _currentTaskStage = TaskStage.Idle;
     private string _coordinatorStageIconAsset = "current-openai.png";
     private string _implementerStageIconAsset = "current-openai.png";
-    private string _highLevelStageIconAsset = "current-openai.png";
+    private string _resourceStageIconAsset = "current-web.png";
     private bool _judgeReviewing;
     private string _judgeStatus = "OFF";
     private int _judgeRound;
@@ -297,8 +297,8 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(() =>
             {
                 if (!StatusPopup.IsOpen) return;
-                CoordinatorProviderCombo.Focus();
-                Keyboard.Focus(CoordinatorProviderCombo);
+                CoordinatorTargetCombo.Focus();
+                Keyboard.Focus(CoordinatorTargetCombo);
             }, DispatcherPriority.Input);
         }
         else if (IsVisible)
@@ -382,8 +382,6 @@ public partial class MainWindow : Window
         var preflightError = GetDashboardPreflightError();
         var executionReady = preflightError is null;
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardTaskInput.Text) && DashboardTaskInput.Text != DashboardPromptPlaceholder;
-        HighLevelPermitCheckBox.Visibility = _targetSettings.IsCoordinatorFirst && _dashboardBodyMode == DashboardBodyMode.NewTaskInput ? Visibility.Visible : Visibility.Collapsed;
-        HighLevelPermitCheckBox.IsEnabled = !active && _dashboardBodyMode == DashboardBodyMode.NewTaskInput && executionReady;
         if (active)
         {
             RunButton.Content = "■   취소";
@@ -426,14 +424,13 @@ public partial class MainWindow : Window
             return GetCoordinatorFirstPreflightError(
                 ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption),
                 _targetSettings.EffectiveCoordinator,
-                _targetSettings.EffectiveImplementer,
-                HighLevelPermitCheckBox.IsChecked == true);
+                _targetSettings.EffectiveImplementer);
         }
 
         if (!_codexAuthenticated) return "Codex 로그인이 필요합니다.";
         if (_bridgeServer?.WebConnected != true) return "GPT Web 연결을 기다리고 있습니다.";
         if (!_bridgeServer.WebExtensionSynchronized) return "GPT Web 확장 동기화를 기다리고 있습니다.";
-        if (!_bridgeServer.WebConversationBound) return "GPT Web 대화를 먼저 연결하세요.";
+        if (!_bridgeServer.IsRoleBound("HQ")) return "ChatGPT Web 대화를 HQ 역할로 연결하세요.";
         return null;
     }
 
@@ -522,7 +519,7 @@ public partial class MainWindow : Window
         var initialInputIdle = idle && _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _activeTaskCts is null && !_awaitingWebResult;
         SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, RoleVisuals["Coordinator"], false, initialInputIdle);
         SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, _implementerStageIconAsset, TaskStage.Implementer, RoleVisuals["Implementer"], false, initialInputIdle);
-        SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, _highLevelStageIconAsset, TaskStage.HighLevel, RoleVisuals["HighLevel"], false, initialInputIdle);
+        SetPipelineCard(PipelineResourceCard, PipelineResourceTitle, ResourceStageCircle, ResourceStageIcon, _resourceStageIconAsset, TaskStage.Resource, RoleVisuals["Resource"], false, initialInputIdle);
         SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, RoleVisuals["Judge"].IconAsset, TaskStage.Judge, RoleVisuals["Judge"], !_targetSettings.EffectiveJudge.Enabled, initialInputIdle);
 
         var idleVisual = PipelineIdleCardVisualPolicy.Resolve(idle);
@@ -547,7 +544,7 @@ public partial class MainWindow : Window
         icon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/ProjectHub.Worker;component/Assets/{selectedName}"));
         if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineImplementerCard) ImplementerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
-        else if (card == PipelineHighLevelCard) HighLevelStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineResourceCard) ResourceStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineJudgeCard) JudgeStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         card.BorderBrush = System.Windows.Media.Brushes.Transparent;
         card.BorderThickness = new Thickness(1);
@@ -561,7 +558,7 @@ public partial class MainWindow : Window
         {
             TaskStage.Coordinator => (PipelineCoordinatorActiveBase, PipelineCoordinatorActiveOrbit),
             TaskStage.Implementer => (PipelineImplementerActiveBase, PipelineImplementerActiveOrbit),
-            TaskStage.HighLevel => (PipelineHighLevelActiveBase, PipelineHighLevelActiveOrbit),
+            TaskStage.Resource => (PipelineResourceActiveBase, PipelineResourceActiveOrbit),
             TaskStage.Judge => (PipelineJudgeActiveBase, PipelineJudgeActiveOrbit),
             _ => throw new ArgumentOutOfRangeException(nameof(stage))
         };
@@ -709,8 +706,6 @@ public partial class MainWindow : Window
             BeginNewDashboardTask();
             return;
         }
-        var highLevelAuthorizedAtLaunch = _targetSettings.IsCoordinatorFirst && HighLevelPermitCheckBox.IsChecked == true;
-        HighLevelPermitCheckBox.IsChecked = false;
         await InitializeStartupConfigurationAsync();
         var launchRequest = BuildTaskLaunchRequest();
         if (launchRequest is null) return;
@@ -720,7 +715,7 @@ public partial class MainWindow : Window
             var cliWorkingDirectory = launchRequest.WorkingDirectory;
             var coordinator = _targetSettings.EffectiveCoordinator;
             var implementer = _targetSettings.EffectiveImplementer;
-            var roleError = GetCoordinatorFirstPreflightError(cliWorkingDirectory, coordinator, implementer, highLevelAuthorizedAtLaunch);
+            var roleError = GetCoordinatorFirstPreflightError(cliWorkingDirectory, coordinator, implementer);
             if (roleError is not null)
             {
                 TaskDirection.Text = "PREFLIGHT";
@@ -733,10 +728,10 @@ public partial class MainWindow : Window
             }
             _historyEvents.Clear();
             SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
-            await RunCoordinatorFirstJobAsync(launchRequest.Prompt, selectedThreadForLaunch, cliWorkingDirectory, coordinator, implementer, highLevelAuthorizedAtLaunch);
+            await RunCoordinatorFirstJobAsync(launchRequest.Prompt, selectedThreadForLaunch, cliWorkingDirectory, coordinator, implementer);
             return;
         }
-        if (!_codexAuthenticated || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized || !_bridgeServer.WebConversationBound)
+        if (!_codexAuthenticated || _bridgeServer is null || !_bridgeServer.WebConnected || !_bridgeServer.WebExtensionSynchronized || !_bridgeServer.IsRoleBound("HQ"))
         {
             TaskDirection.Text = "PREFLIGHT";
             TaskTitle.Text = _bridgeServer?.WebConversationBound == false ? "GPT Web 대화 연결 필요" : "연결 상태 확인 필요";
@@ -862,7 +857,7 @@ public partial class MainWindow : Window
             ? webPrompt
             : gitReferenceHeader + Environment.NewLine + Environment.NewLine + webPrompt;
         AddTaskMessage("WORKER -> GPT WEB", prompt);
-        return Task.FromResult(_bridgeServer?.CreateTaskForLatestBinding(prompt, attachments));
+        return Task.FromResult(_bridgeServer?.CreateTaskForRole("HQ", prompt, attachments));
     }
 
     private async Task<BridgeTask?> RouteCodexResultAsync(CodexCliResult result, string? webInstruction, bool includeWebInstruction, string? gitReferenceHeader, CancellationToken cancellationToken)
@@ -1249,7 +1244,6 @@ public partial class MainWindow : Window
         {
             SetRoleThreadOptions(CoordinatorRoleThreadCombo, GetCompatibleThreadSession(CoordinatorRoleThreadCombo, selected.ProjectPath));
             SetRoleThreadOptions(ImplementerRoleThreadCombo, GetCompatibleThreadSession(ImplementerRoleThreadCombo, selected.ProjectPath));
-            SetRoleThreadOptions(HighLevelRoleThreadCombo, GetCompatibleThreadSession(HighLevelRoleThreadCombo, selected.ProjectPath));
             roleCombo.SelectedItem = (roleCombo.ItemsSource as IEnumerable<CodexThreadOption>)?.FirstOrDefault(option =>
                 string.Equals(option.SessionId, selected.SessionId, StringComparison.OrdinalIgnoreCase) && PathsEqual(option.ProjectPath, selected.ProjectPath));
         }
@@ -1285,7 +1279,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task RunCoordinatorFirstJobAsync(string request, CodexThreadOption? selectedThread, string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer, bool highLevelAuthorizedAtLaunch = false)
+    private async Task RunCoordinatorFirstJobAsync(string request, CodexThreadOption? selectedThread, string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer)
     {
         var jobId = Guid.NewGuid().ToString("N");
         using var cts = new CancellationTokenSource();
@@ -1300,9 +1294,6 @@ public partial class MainWindow : Window
         AddTaskMessage("TASK REQUEST", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1);
         var coordinatorSession = CodexCliRunner.NormalizeSessionId(coordinator.ThreadSessionId);
         var workSession = CodexCliRunner.NormalizeSessionId(implementer.ThreadSessionId);
-        var highLevel = _targetSettings.EffectiveHighLevel;
-        var highLevelSession = CodexCliRunner.NormalizeSessionId(highLevel.ThreadSessionId);
-        var highPermit = new JobHighLevelPermit(highLevelAuthorizedAtLaunch);
         var state = WorkerRoleState.Hq;
         var previousState = WorkerRoleState.Hq;
         try
@@ -1310,6 +1301,7 @@ public partial class MainWindow : Window
             var inboundType = "USER_REQUEST";
             var inbound = request;
             var coordinatorHasRun = false;
+            ResourceTransportRequest? pendingResourceRequest = null;
             var workValidationRequest = string.Empty;
             var workResultForJudge = string.Empty;
             IReadOnlyList<CodexCliFile> workFilesForJudge = Array.Empty<CodexCliFile>();
@@ -1357,8 +1349,8 @@ public partial class MainWindow : Window
                         {
                             TaskDirection.Text = "설계·관제 AI"; TaskTitle.Text = "다음 단계를 결정하는 중"; ResultTitle.Text = "HQ";
                             SetFlowState(true, false, false, explicitStage: TaskStage.Coordinator);
-                            var coordinatorPrompt = RoleContractLoader.BuildHqPrompt(inboundType, inbound, highPermit.IsAvailable);
-                            var routed = await RunCoordinatorRoleAsync(jobId, "HQ_" + inboundType, coordinatorPrompt, coordinator, workingDirectory, coordinatorSession, null, cts.Token);
+                            var coordinatorPrompt = RoleContractLoader.BuildHqPrompt(inboundType, inbound);
+                            var routed = await RunHqRoleAsync(jobId, "HQ_" + inboundType, coordinatorPrompt, coordinator, workingDirectory, coordinatorSession, cts.Token);
                             coordinatorSession = CodexCliRunner.NormalizeSessionId(routed.SessionId) ?? coordinatorSession;
                             coordinatorHasRun = true;
                             if (routed.ExitCode != 0)
@@ -1366,7 +1358,7 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.Hq, "PROCESS_EXIT", WorkerTranscriptJson.Serialize(new { exit_code = routed.ExitCode, stdout = routed.StandardOutput, stderr = routed.StandardError }));
                                 continue;
                             }
-                            var route = WorkerGotoContract.Parse(WorkerRoleState.Hq, routed.FinalMessage, highPermit.IsAvailable);
+                            var route = WorkerGotoContract.Parse(WorkerRoleState.Hq, routed.FinalMessage);
                             if (route.Error is not null)
                             {
                                 RouteUnknown(WorkerRoleState.Hq, route.Error, routed.FinalMessage);
@@ -1380,7 +1372,7 @@ public partial class MainWindow : Window
                                 usage: routed.Usage,
                                 files: routed.Files,
                                 status: route.Action?.ToString().ToUpperInvariant(),
-                                providerWireId: coordinator.Provider);
+                                providerWireId: IsWebTransport(coordinator.Transport) ? null : coordinator.Provider);
                             if (route.Action == WorkerAction.End)
                             {
                                 ResultTitle.Text = "DONE"; ResultBody.Text = route.Body; TaskTitle.Text = "관제 AI가 작업을 종료했습니다.";
@@ -1391,7 +1383,7 @@ public partial class MainWindow : Window
                                 ResultTitle.Text = "PAUSED"; ResultBody.Text = route.Body; TaskTitle.Text = "사용자 입력 대기";
                                 AddTaskMessage("TASK PAUSED", route.Body, status: "PAUSED", includeHistory: false); SetFlowState(false, false, false); return;
                             }
-                            if (coordinatorHasRun && string.IsNullOrWhiteSpace(coordinatorSession))
+                            if (!IsWebTransport(coordinator.Transport) && coordinatorHasRun && string.IsNullOrWhiteSpace(coordinatorSession))
                             {
                                 RouteUnknown(WorkerRoleState.Hq, "SESSION_RESUME_FAILED", "HQ 응답 후 동일 세션 ID를 받지 못해 새 HQ 세션으로 오류를 전달합니다.");
                                 continue;
@@ -1425,7 +1417,7 @@ public partial class MainWindow : Window
                             AddTaskMessage("WORK", result.FinalMessage, includeHistory: false);
                             AddRoleResponseHistory(
                                 WorkerRoleState.Work,
-                                route.Target == WorkerRoleState.Judge ? "판정 요청" : "수행 결과",
+                                route.Target == WorkerRoleState.Judge ? "판정 요청" : route.Target == WorkerRoleState.Resource ? "리소스 요청" : "수행 결과",
                                 route.Body,
                                 usage: result.Usage,
                                 files: result.Files,
@@ -1434,6 +1426,20 @@ public partial class MainWindow : Window
                             if (route.Target == WorkerRoleState.Hq)
                             {
                                 inboundType = "WORK_REPORT"; inbound = route.Body; state = WorkerRoleState.Hq;
+                            }
+                            else if (route.Target == WorkerRoleState.Resource)
+                            {
+                                if (!ResourceTransportContract.TryParse(route.Body, out pendingResourceRequest, out var resourceError))
+                                {
+                                    RouteUnknown(WorkerRoleState.Work, "RESOURCE_REQUEST_INVALID", resourceError ?? "RESOURCE_REQUEST_INVALID");
+                                    continue;
+                                }
+                                if (pendingResourceRequest!.Type == "SOUND")
+                                {
+                                    RouteUnknown(WorkerRoleState.Work, "RESOURCE_SOUND_NOT_IMPLEMENTED", "SOUND transport is reserved but not connected.");
+                                    continue;
+                                }
+                                state = WorkerRoleState.Resource;
                             }
                             else
                             {
@@ -1485,44 +1491,60 @@ public partial class MainWindow : Window
                             state = WorkerRoleState.Work;
                             break;
                         }
-                        case WorkerRoleState.High:
+                        case WorkerRoleState.Resource:
                         {
-                            if (!highPermit.TryConsume())
+                            if (pendingResourceRequest is null)
                             {
-                                RouteUnknown(WorkerRoleState.Hq, "HIGH_NOT_AUTHORIZED", "No unused HIGH permit exists for this job.");
+                                RouteUnknown(WorkerRoleState.Resource, "RESOURCE_REQUEST_INVALID", "RESOURCE request state is missing.");
                                 continue;
                             }
-                            TaskDirection.Text = "고수준 작업 AI"; TaskTitle.Text = "고수준 작업 AI가 수행 중"; ResultTitle.Text = "HIGH";
-                            SetFlowState(false, true, false, explicitStage: TaskStage.HighLevel);
-                            var highPrompt = RoleContractLoader.BuildHighPrompt(inbound);
-                            var result = await RunCoordinatorRoleAsync(jobId, "HIGH_LEVEL", highPrompt, highLevel, workingDirectory, highLevelSession, null, cts.Token, CodexSandboxMode.WorkspaceWrite);
-                            highLevelSession = CodexCliRunner.NormalizeSessionId(result.SessionId) ?? highLevelSession;
-                            if (result.ExitCode != 0)
+                            if (_bridgeServer is null || !_bridgeServer.IsRoleConnected("RESOURCE") || !_bridgeServer.WebExtensionSynchronized)
                             {
-                                RouteUnknown(WorkerRoleState.High, "PROCESS_EXIT", WorkerTranscriptJson.Serialize(new { exit_code = result.ExitCode, stdout = result.StandardOutput, stderr = result.StandardError }));
+                                RouteUnknown(WorkerRoleState.Resource, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE 역할로 연결된 ChatGPT Web 대화가 활성 상태가 아닙니다.");
                                 continue;
                             }
-                            if (string.IsNullOrWhiteSpace(highLevelSession))
+
+                            TaskDirection.Text = "리소스 AI"; TaskTitle.Text = "ChatGPT Web에서 리소스 생성 중"; ResultTitle.Text = "RESOURCE";
+                            SetFlowState(false, true, true, explicitStage: TaskStage.Resource);
+                            var trackedResource = new ResourceRequest(
+                                Guid.NewGuid().ToString("N"),
+                                pendingResourceRequest.Type,
+                                pendingResourceRequest.Prompt,
+                                pendingResourceRequest.TargetDirectory,
+                                pendingResourceRequest.TargetFileName,
+                                "WORK",
+                                "REQUESTED",
+                                null,
+                                workingDirectory);
+                            var resourcePrompt = RoleContractLoader.BuildResourcePrompt(pendingResourceRequest);
+                            var resourceTask = _bridgeServer.CreateTaskForRole("RESOURCE", resourcePrompt, resource: trackedResource);
+                            if (resourceTask is null)
                             {
-                                RouteUnknown(WorkerRoleState.High, "SESSION_RESUME_FAILED", "HIGH response did not include a resumable session ID.");
+                                RouteUnknown(WorkerRoleState.Resource, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE Web task를 생성할 수 없습니다.");
                                 continue;
                             }
-                            var route = WorkerGotoContract.Parse(WorkerRoleState.High, result.FinalMessage);
-                            if (route.Error is not null)
+                            var completedResource = await _bridgeServer.WaitForTaskCompletionAsync(resourceTask.Id, cts.Token);
+                            if (completedResource is null || completedResource.Status != "COMPLETED" || string.IsNullOrWhiteSpace(completedResource.SavedPath) || !File.Exists(completedResource.SavedPath))
                             {
-                                RouteUnknown(WorkerRoleState.High, route.Error, result.FinalMessage);
+                                RouteUnknown(WorkerRoleState.Resource, "RESOURCE_RESULT_MISSING", completedResource?.Result ?? "RESOURCE result file missing.");
                                 continue;
                             }
-                            AddTaskMessage("HIGH", result.FinalMessage, status: "RETURNED_TO_HQ", includeHistory: false);
+
+                            var savedInfo = new FileInfo(completedResource.SavedPath);
+                            var savedFile = new CodexCliFile(savedInfo.FullName, savedInfo.Name, GetResourceMimeType(savedInfo.Extension), savedInfo.Length);
+                            var relativeSavedPath = Path.GetRelativePath(workingDirectory, savedInfo.FullName).Replace('\\', '/');
+                            var resourceResult = $"리소스 저장 완료: {relativeSavedPath}\n자동 코드 연결은 수행하지 않았습니다.";
+                            AddTaskMessage("RESOURCE", resourceResult, status: "SAVED", includeHistory: false);
                             AddRoleResponseHistory(
-                                WorkerRoleState.High,
-                                "수행 결과",
-                                route.Body,
-                                usage: result.Usage,
-                                files: result.Files,
-                                status: "HQ",
-                                providerWireId: highLevel.Provider);
-                            inboundType = "HIGH_REPORT"; inbound = route.Body; state = WorkerRoleState.Hq;
+                                WorkerRoleState.Resource,
+                                "리소스 저장",
+                                resourceResult,
+                                files: new[] { savedFile },
+                                status: "SAVED");
+                            pendingResourceRequest = null;
+                            inboundType = "RESOURCE_RESULT";
+                            inbound = resourceResult;
+                            state = WorkerRoleState.Work;
                             break;
                         }
                         default:
@@ -1551,15 +1573,55 @@ public partial class MainWindow : Window
             _activeCoordinatorFirst = false; _activeTaskCts = null; _userCanceledTask = false; ExportTaskTranscript(); SetFlowState(false, false, false); ApplyConnectionStatus();
         }
     }
+    private async Task<AiRoleRunResult> RunHqRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, CancellationToken cancellationToken)
+    {
+        if (!IsWebTransport(role.Transport))
+            return await RunCoordinatorRoleAsync(jobId, purpose, prompt, role, workingDirectory, sessionId, null, cancellationToken);
+        return await RunWebRoleAsync(jobId, "HQ", purpose, prompt, cancellationToken);
+    }
+
+    private async Task<AiRoleRunResult> RunWebRoleAsync(string jobId, string roleName, string purpose, string prompt, CancellationToken cancellationToken)
+    {
+        if (_bridgeServer is null || !_bridgeServer.IsRoleConnected(roleName) || !_bridgeServer.WebExtensionSynchronized)
+            throw new InvalidOperationException($"{roleName}_WEB_UNAVAILABLE");
+
+        var started = DateTimeOffset.UtcNow;
+        var task = _bridgeServer.CreateTaskForRole(roleName, prompt)
+            ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_CREATE_FAILED");
+        var completed = await _bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
+            ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
+        var message = completed.Result ?? string.Empty;
+        var success = completed.Status == "COMPLETED";
+        UsageTelemetryStore.Append(new ModelCallTelemetry(
+            jobId, null, roleName, "chatgpt-web", null, purpose,
+            null, null, null, null, null,
+            Encoding.UTF8.GetByteCount(prompt), Encoding.UTF8.GetByteCount(prompt), 0,
+            completed.Attachments?.Sum(item => item.Size) ?? 0,
+            Encoding.UTF8.GetByteCount(message),
+            Math.Max(0, (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds),
+            success ? null : completed.FinishReason,
+            false, null, null, DateTimeOffset.UtcNow));
+        _lastActivityAt = DateTimeOffset.UtcNow;
+        return new AiRoleRunResult("web", "chatgpt-web", string.Empty, null, success ? 0 : 1,
+            message, success ? string.Empty : message, message, Array.Empty<CodexCliFile>(), CodexUsage.Empty, Array.Empty<CodexCommandExecution>());
+    }
+
+    private static string GetResourceMimeType(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".webp" => "image/webp",
+        ".gif" => "image/gif",
+        _ => "application/octet-stream"
+    };
+
     private async Task<AiRoleRunResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string? schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
     {
         var started = DateTimeOffset.UtcNow;
         var runner = _aiRoleRunners.Resolve(role)
             ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
         var result = await runner.RunAsync(new AiRoleRunRequest(prompt, role, workingDirectory, sessionId, sandbox, cancellationToken, schema));
-        var roleName = purpose.Contains("HIGH_LEVEL", StringComparison.OrdinalIgnoreCase) || purpose.Contains("HIGHLEVEL", StringComparison.OrdinalIgnoreCase) || purpose.Contains("ASTRA", StringComparison.OrdinalIgnoreCase) ? "HIGH_LEVEL"
-            : purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) || purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) || purpose == "WORK" ? "WORK"
-            : "COORDINATOR";
+        var roleName = purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) || purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) || purpose == "WORK" ? "WORK" : "COORDINATOR";
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
@@ -1621,20 +1683,19 @@ public partial class MainWindow : Window
 
         var coordinator = _targetSettings.EffectiveCoordinator;
         var implementer = _targetSettings.EffectiveImplementer;
-        var highLevel = _targetSettings.EffectiveHighLevel;
-        CoordinatorStageModelText.Text = IsWebTransport(coordinator.Transport) ? "GPT Web" : AiProviderCatalog.FormatModel(coordinator.Provider, coordinator.Model);
+        CoordinatorStageModelText.Text = IsWebTransport(coordinator.Transport) ? "ChatGPT Web" : AiProviderCatalog.FormatModel(coordinator.Provider, coordinator.Model);
         ImplementerStageModelText.Text = AiProviderCatalog.FormatModel(implementer.Provider, implementer.Model);
-        HighLevelStageModelText.Text = AiProviderCatalog.FormatModel(highLevel.Provider, highLevel.Model);
+        ResourceStageModelText.Text = "ChatGPT Web";
         JudgeStageModelText.Text = "JEV";
 
         _coordinatorStageIconAsset = IsWebTransport(coordinator.Transport)
             ? "current-web.png"
             : ProviderVisualCatalog.Resolve(coordinator.Provider).ColorAsset;
         _implementerStageIconAsset = ProviderVisualCatalog.Resolve(implementer.Provider).ColorAsset;
-        _highLevelStageIconAsset = ProviderVisualCatalog.Resolve(highLevel.Provider).ColorAsset;
+        _resourceStageIconAsset = "current-web.png";
         CoordinatorStageIcon.Source = LoadProviderAsset(_coordinatorStageIconAsset);
         ImplementerStageIcon.Source = LoadProviderAsset(_implementerStageIconAsset);
-        HighLevelStageIcon.Source = LoadProviderAsset(_highLevelStageIconAsset);
+        ResourceStageIcon.Source = LoadProviderAsset(_resourceStageIconAsset);
     }
 
     private static bool IsWebTransport(string transport) => string.Equals(transport, "web", StringComparison.OrdinalIgnoreCase);
@@ -1670,6 +1731,7 @@ public partial class MainWindow : Window
             SelectTag(ExecutionModeCombo, _targetSettings.ExecutionMode, "CLI_TO_CLI");
 
             var coordinator = _targetSettings.EffectiveCoordinator;
+            SelectTag(CoordinatorTargetCombo, IsWebTransport(coordinator.Transport) ? "web" : "cli", "cli");
             PopulateProviderCombo(CoordinatorProviderCombo, coordinator.Provider);
             PopulateRoleModelCombo(CoordinatorModelCombo, coordinator.Provider, coordinator.Model);
             PopulateRoleReasoningCombo(CoordinatorReasoningCombo, coordinator.Provider, coordinator.Model, coordinator.Reasoning);
@@ -1679,17 +1741,10 @@ public partial class MainWindow : Window
             PopulateRoleModelCombo(ImplementerModelCombo, implementer.Provider, implementer.Model);
             PopulateRoleReasoningCombo(ImplementerReasoningCombo, implementer.Provider, implementer.Model, implementer.Reasoning);
 
-            var highLevel = _targetSettings.EffectiveHighLevel;
-            PopulateProviderCombo(HighLevelProviderCombo, highLevel.Provider);
-            PopulateRoleModelCombo(HighLevelModelCombo, highLevel.Provider, highLevel.Model);
-            PopulateRoleReasoningCombo(HighLevelReasoningCombo, highLevel.Provider, highLevel.Model, highLevel.Reasoning);
-
             SetRoleThreadOptions(CoordinatorRoleThreadCombo, coordinator.ThreadSessionId);
             SetRoleThreadOptions(ImplementerRoleThreadCombo, implementer.ThreadSessionId);
-            SetRoleThreadOptions(HighLevelRoleThreadCombo, highLevel.ThreadSessionId);
             ApplyRoleSessionCapability(CoordinatorProviderCombo, CoordinatorRoleThreadCombo);
             ApplyRoleSessionCapability(ImplementerProviderCombo, ImplementerRoleThreadCombo);
-            ApplyRoleSessionCapability(HighLevelProviderCombo, HighLevelRoleThreadCombo);
             UpdateRoleProviderVisuals();
             UpdateCoordinatorProviderCard();
         }
@@ -1738,6 +1793,14 @@ public partial class MainWindow : Window
         SelectTag(combo, configuredProvider, string.IsNullOrWhiteSpace(configuredProvider) ? "openai" : null);
     }
 
+    private void CoordinatorTargetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingRoleControls) return;
+        UpdateCoordinatorProviderCard();
+        UpdateRoleCapabilityPresentation();
+        UpdateDashboardRunButtonState();
+    }
+
     private void RoleProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_loadingRoleControls || sender is not System.Windows.Controls.ComboBox providerCombo) return;
@@ -1767,13 +1830,13 @@ public partial class MainWindow : Window
             return (CoordinatorModelCombo, CoordinatorReasoningCombo, CoordinatorRoleThreadCombo, CoordinatorProviderIcon);
         if (ReferenceEquals(providerCombo, ImplementerProviderCombo))
             return (ImplementerModelCombo, ImplementerReasoningCombo, ImplementerRoleThreadCombo, ImplementerProviderIcon);
-        return (HighLevelModelCombo, HighLevelReasoningCombo, HighLevelRoleThreadCombo, HighLevelProviderIcon);
+        throw new ArgumentException("Unknown role provider control.", nameof(providerCombo));
     }
 
     private System.Windows.Controls.ComboBox GetProviderComboForModel(System.Windows.Controls.ComboBox modelCombo) =>
         ReferenceEquals(modelCombo, CoordinatorModelCombo) ? CoordinatorProviderCombo
         : ReferenceEquals(modelCombo, ImplementerModelCombo) ? ImplementerProviderCombo
-        : HighLevelProviderCombo;
+        : throw new ArgumentException("Unknown model control.", nameof(modelCombo));
 
     private void ApplyRoleSessionCapability(System.Windows.Controls.ComboBox providerCombo, System.Windows.Controls.ComboBox threadCombo)
     {
@@ -1784,9 +1847,16 @@ public partial class MainWindow : Window
 
     private void UpdateRoleProviderVisuals()
     {
-        SetProviderIcon(CoordinatorProviderIcon, GetSelectedTag(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider));
+        if (string.Equals(GetSelectedTag(CoordinatorTargetCombo, "cli"), "web", StringComparison.OrdinalIgnoreCase))
+        {
+            CoordinatorProviderIcon.Source = LoadProviderAsset("current-web.png");
+            CoordinatorProviderIcon.ToolTip = "ChatGPT Web";
+        }
+        else
+        {
+            SetProviderIcon(CoordinatorProviderIcon, GetSelectedTag(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider));
+        }
         SetProviderIcon(ImplementerProviderIcon, GetSelectedTag(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider));
-        SetProviderIcon(HighLevelProviderIcon, GetSelectedTag(HighLevelProviderCombo, _targetSettings.EffectiveHighLevel.Provider));
     }
 
     private static void SetProviderIcon(System.Windows.Controls.Image image, string providerWireId)
@@ -1797,9 +1867,21 @@ public partial class MainWindow : Window
 
     private void UpdateCoordinatorProviderCard()
     {
-        CoordinatorWebCard.Visibility = Visibility.Collapsed;
-        CoordinatorCliCard.Visibility = Visibility.Visible;
-        ApplyRoleSessionCapability(CoordinatorProviderCombo, CoordinatorRoleThreadCombo);
+        var web = string.Equals(GetSelectedTag(CoordinatorTargetCombo, IsWebTransport(_targetSettings.EffectiveCoordinator.Transport) ? "web" : "cli"), "web", StringComparison.OrdinalIgnoreCase);
+        CoordinatorCliOptionsPanel.Visibility = web ? Visibility.Collapsed : Visibility.Visible;
+        CoordinatorWebCard.Visibility = web ? Visibility.Visible : Visibility.Collapsed;
+        CoordinatorCliCard.Visibility = web ? Visibility.Collapsed : Visibility.Visible;
+        CoordinatorRoleThreadCombo.IsEnabled = !web && AiProviderCatalog.Find(GetSelectedTag(CoordinatorProviderCombo, string.Empty))?.SupportsSessions == true;
+        if (web)
+        {
+            CoordinatorProviderIcon.Source = LoadProviderAsset("current-web.png");
+            CoordinatorProviderIcon.ToolTip = "ChatGPT Web";
+        }
+        else
+        {
+            ApplyRoleSessionCapability(CoordinatorProviderCombo, CoordinatorRoleThreadCombo);
+            SetProviderIcon(CoordinatorProviderIcon, GetSelectedTag(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider));
+        }
     }
 
     private void PopulateRoleModelCombo(System.Windows.Controls.ComboBox combo, string providerId, string configuredModel)
@@ -1867,10 +1949,8 @@ public partial class MainWindow : Window
     {
         if (_loadingRoleControls || sender is not System.Windows.Controls.ComboBox modelCombo) return;
         var providerCombo = GetProviderComboForModel(modelCombo);
-        var reasoningCombo = ReferenceEquals(modelCombo, CoordinatorModelCombo) ? CoordinatorReasoningCombo
-            : ReferenceEquals(modelCombo, ImplementerModelCombo) ? ImplementerReasoningCombo : HighLevelReasoningCombo;
-        var fallbackReasoning = ReferenceEquals(modelCombo, CoordinatorModelCombo) ? _targetSettings.EffectiveCoordinator.Reasoning
-            : ReferenceEquals(modelCombo, ImplementerModelCombo) ? _targetSettings.EffectiveImplementer.Reasoning : _targetSettings.EffectiveHighLevel.Reasoning;
+        var reasoningCombo = ReferenceEquals(modelCombo, CoordinatorModelCombo) ? CoordinatorReasoningCombo : ImplementerReasoningCombo;
+        var fallbackReasoning = ReferenceEquals(modelCombo, CoordinatorModelCombo) ? _targetSettings.EffectiveCoordinator.Reasoning : _targetSettings.EffectiveImplementer.Reasoning;
         var currentReasoning = GetSelectedTag(reasoningCombo, fallbackReasoning);
         _loadingRoleControls = true;
         PopulateRoleReasoningCombo(reasoningCombo, GetSelectedTag(providerCombo, string.Empty), GetSelectedTag(modelCombo, string.Empty), currentReasoning);
@@ -1883,12 +1963,20 @@ public partial class MainWindow : Window
         if (_loadingRoleControls) return;
         var cliMode = string.Equals(GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"), "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
         AiRolesStatusText.Text = cliMode
-            ? "Coordinator-first 실행: Web 연결은 필요하지 않습니다."
+            ? "Coordinator-first 실행: HQ는 ChatGPT Web 또는 CLI Provider, WORK는 CLI, RESOURCE는 Web 고정입니다."
             : "Legacy 실행: 기존 Codex → GPT Web 경로를 사용합니다.";
     }
 
     private static string GetSelectedTag(System.Windows.Controls.ComboBox combo, string fallback) =>
         (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? fallback;
+
+    private WorkerAiRoleSettings ReadCoordinatorSettings()
+    {
+        var fallback = _targetSettings.EffectiveCoordinator;
+        if (string.Equals(GetSelectedTag(CoordinatorTargetCombo, "cli"), "web", StringComparison.OrdinalIgnoreCase))
+            return fallback with { Transport = "web", ThreadSessionId = null, ThreadProjectPath = null };
+        return ReadRoleSettings(CoordinatorProviderCombo, CoordinatorModelCombo, CoordinatorReasoningCombo, fallback, CoordinatorRoleThreadCombo);
+    }
 
     private WorkerAiRoleSettings ReadRoleSettings(System.Windows.Controls.ComboBox providerCombo, System.Windows.Controls.ComboBox modelCombo, System.Windows.Controls.ComboBox reasoningCombo, WorkerAiRoleSettings fallback, System.Windows.Controls.ComboBox? threadCombo = null)
     {
@@ -1901,12 +1989,12 @@ public partial class MainWindow : Window
 
     private void UpdateRoleCapabilityPresentation()
     {
-        var selectedProviders = new[]
+        var selectedProviders = new List<string>
         {
-            GetSelectedTag(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider),
-            GetSelectedTag(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider),
-            GetSelectedTag(HighLevelProviderCombo, _targetSettings.EffectiveHighLevel.Provider)
+            GetSelectedTag(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider)
         };
+        if (!string.Equals(GetSelectedTag(CoordinatorTargetCombo, "cli"), "web", StringComparison.OrdinalIgnoreCase))
+            selectedProviders.Add(GetSelectedTag(CoordinatorProviderCombo, _targetSettings.EffectiveCoordinator.Provider));
         var unresolved = selectedProviders
             .Select(AiProviderCatalog.Find)
             .Where(provider => provider is null || !provider.ExecutionConfigured)
@@ -1925,19 +2013,24 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private string? GetCoordinatorFirstPreflightError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer, bool highLevelAuthorizedAtLaunch)
+    private string? GetCoordinatorFirstPreflightError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer)
     {
         var basic = GetExecutionModeConfigError(workingDirectory);
         if (basic is not null) return basic;
 
-        foreach (var role in highLevelAuthorizedAtLaunch
-                     ? new[] { coordinator, implementer, _targetSettings.EffectiveHighLevel }
-                     : new[] { coordinator, implementer })
+        if (IsWebTransport(coordinator.Transport))
         {
-            var error = _aiRoleRunners.GetPreflightError(role, workingDirectory, _codexAuthenticated);
-            if (error is not null) return error;
+            if (_bridgeServer is null || !_bridgeServer.IsRoleBound("HQ")) return "ChatGPT Web 대화를 HQ 역할로 연결하세요.";
+            if (!_bridgeServer.IsRoleConnected("HQ")) return "HQ ChatGPT Web 대화의 heartbeat를 기다리고 있습니다.";
+            if (!_bridgeServer.WebExtensionSynchronized) return "GPT Web 확장 동기화를 기다리고 있습니다.";
         }
-        return null;
+        else
+        {
+            var coordinatorError = _aiRoleRunners.GetPreflightError(coordinator, workingDirectory, _codexAuthenticated);
+            if (coordinatorError is not null) return coordinatorError;
+        }
+
+        return _aiRoleRunners.GetPreflightError(implementer, workingDirectory, _codexAuthenticated);
     }
 
     private void ApplyExecutionModePresentation(bool coordinatorFirst)
@@ -1945,7 +2038,6 @@ public partial class MainWindow : Window
         ModelCombo.IsEnabled = !coordinatorFirst;
         ReasoningCombo.IsEnabled = !coordinatorFirst;
         WebInstructionInput.IsEnabled = !coordinatorFirst;
-        HighLevelPermitCheckBox.Visibility = coordinatorFirst && _dashboardBodyMode == DashboardBodyMode.NewTaskInput ? Visibility.Visible : Visibility.Collapsed;
         if (_startupConfigurationInitialized) ApplyConnectionStatus();
     }
 
@@ -2119,9 +2211,8 @@ public partial class MainWindow : Window
             ManualWorkingDirectory = workingDirectory,
             Judge = judgeSettings,
             ExecutionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"),
-            Coordinator = ReadRoleSettings(CoordinatorProviderCombo, CoordinatorModelCombo, CoordinatorReasoningCombo, _targetSettings.EffectiveCoordinator, CoordinatorRoleThreadCombo),
-            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo),
-            HighLevel = ReadRoleSettings(HighLevelProviderCombo, HighLevelModelCombo, HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel, HighLevelRoleThreadCombo)
+            Coordinator = ReadCoordinatorSettings(),
+            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo)
         };
         SaveCodexSelection();
         WorkerTargetConfiguration.Save(_targetSettings);
@@ -2246,9 +2337,18 @@ public partial class MainWindow : Window
             AddTaskMessage("WEB EXTENSION", $"{progress.Stage}{detail}");
             if (progress.Stage is not "FINISHED" and not "FAILED")
             {
-                TaskDirection.Text = "WORKER → GPT WEB";
-                TaskTitle.Text = $"Web {progress.Stage}";
-                SetFlowState(false, true, true);
+                if (_activeCoordinatorFirst && _currentTaskStage == TaskStage.Resource)
+                {
+                    TaskDirection.Text = "리소스 AI";
+                    TaskTitle.Text = $"RESOURCE Web {progress.Stage}";
+                    SetFlowState(false, true, true, explicitStage: TaskStage.Resource);
+                }
+                else
+                {
+                    TaskDirection.Text = "WORKER → GPT WEB";
+                    TaskTitle.Text = $"Web {progress.Stage}";
+                    SetFlowState(false, true, true);
+                }
             }
         }));
     }
@@ -2260,6 +2360,9 @@ public partial class MainWindow : Window
 
     private async void HandleBridgeTaskChanged(BridgeTask task)
     {
+        if (_activeCoordinatorFirst && (task.Owner.Equals("HQ", StringComparison.OrdinalIgnoreCase) || task.Owner.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase)))
+            return;
+
         if ((task.Status is "COMPLETED" or "FAILED") && _userCanceledBridgeTaskIds.Remove(task.Id))
         {
             SetFlowState(false, false, false);
@@ -2551,7 +2654,7 @@ public partial class MainWindow : Window
         {
             WorkerRoleState.Hq => "Coordinator",
             WorkerRoleState.Work => "Implementer",
-            WorkerRoleState.High => "HighLevel",
+            WorkerRoleState.Resource => "Resource",
             WorkerRoleState.Judge => "Judge",
             _ => "System"
         };
@@ -2586,7 +2689,7 @@ public partial class MainWindow : Window
     {
         var normalized = source.Trim().ToUpperInvariant();
         string stage = normalized.Contains("JEV", StringComparison.Ordinal) || normalized.Contains("JUDGE", StringComparison.Ordinal) ? "Judge"
-            : normalized.Contains("ASTRA", StringComparison.Ordinal) || normalized.Contains("HIGH LEVEL", StringComparison.Ordinal) ? "HighLevel"
+            : normalized.Contains("RESOURCE", StringComparison.Ordinal) ? "Resource"
             : normalized.Contains("LUNA", StringComparison.Ordinal) || normalized.Contains("IMPLEMENT", StringComparison.Ordinal) || normalized.Contains("WORKER", StringComparison.Ordinal) ? "Implementer"
             : normalized.Contains("SOL", StringComparison.Ordinal) || normalized.Contains("CODEX", StringComparison.Ordinal) || normalized.Contains("GPT WEB", StringComparison.Ordinal) ? "Coordinator"
             : "System";

@@ -13,12 +13,12 @@ public sealed class RoleContractBoundaryTests
         var hq = RoleContractLoader.LoadHqFooter();
         Assert.Contains("[ACTION=CONTINUE]", hq);
         Assert.Contains("[GOTO : WORK]", hq);
-        Assert.Contains("[GOTO : HIGH]", hq);
+        Assert.DoesNotContain("[GOTO : RESOURCE]", hq);
         Assert.Contains("Do not use [GOTO=WORK]", hq);
         Assert.DoesNotContain("GOTO : JUDGE", hq);
         Assert.DoesNotContain("GOTO : HQ", hq);
         Assert.DoesNotContain("You are WORK", hq);
-        Assert.DoesNotContain("You are HIGH", hq);
+        Assert.DoesNotContain("You are RESOURCE", hq);
         Assert.DoesNotContain("[INSTRUCTION]", hq);
         Assert.DoesNotContain("[REPORT]", hq);
     }
@@ -84,31 +84,26 @@ public sealed class RoleContractBoundaryTests
     }
 
     [Fact]
-    public void HighAndJudgeContractsExposeOnlyTheirAllowedReturnRoutes()
+    public void ResourceAndJudgeContractsKeepTheirFixedReturnSemantics()
     {
-        var high = RoleContractLoader.LoadHighFooter();
-        Assert.Contains("[GOTO : HQ]", high);
-        Assert.DoesNotContain("[GOTO : WORK]", high);
-        Assert.DoesNotContain("[GOTO : JUDGE]", high);
-        Assert.DoesNotContain("[GOTO : HIGH]", high);
-        Assert.DoesNotContain("[REPORT]", high);
+        var resource = RoleContractLoader.LoadResourceFooter();
+        Assert.Contains("returns mechanically to the same WORK session", resource);
+        Assert.DoesNotContain("[GOTO : HQ]", resource);
+        Assert.DoesNotContain("[GOTO : JUDGE]", resource);
         var judge = RoleContractLoader.LoadJudgeFooter();
         Assert.Contains("[GOTO : WORK]", judge);
         Assert.DoesNotContain("[JUDGMENT]", judge);
     }
 
     [Fact]
-    public void HqPromptSeparatesMechanicalHeaderFromOpaqueInboundAndAvailableRoutes()
+    public void HqPromptSeparatesMechanicalHeaderFromOpaqueInboundAndOnlyAllowsWork()
     {
-        var withoutPermit = RoleContractLoader.BuildHqPrompt("USER_REQUEST", "opaque body", false);
-        var withPermit = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "opaque report", true);
-        Assert.Contains("[AVAILABLE GOTO]\n[GOTO : WORK]", withoutPermit);
-        Assert.DoesNotContain("[GOTO : HIGH]", withoutPermit);
-        Assert.DoesNotContain("HIGH]", RoleContractLoader.LoadHqFooter(highPermitAvailable: false));
-        Assert.Contains("[ROLE : HQ]", withPermit);
-        Assert.Contains("[HIGH PERMIT : ONE_SHOT]", withPermit);
-        Assert.Contains("[AVAILABLE GOTO]\n[GOTO : WORK]\n[GOTO : HIGH]", withPermit);
-        Assert.Contains("opaque report", withPermit);
+        var prompt = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "opaque report");
+        Assert.Contains("[ROLE : HQ]", prompt);
+        Assert.Contains("[AVAILABLE GOTO]\n[GOTO : WORK]", prompt);
+        Assert.DoesNotContain("[GOTO : RESOURCE]", prompt);
+        Assert.DoesNotContain("[GOTO : JUDGE]", prompt);
+        Assert.Contains("opaque report", prompt);
     }
 
     [Fact]
