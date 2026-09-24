@@ -7,8 +7,8 @@ Updated: 2026-09-24
 - 새 CLI path에서 Worker 의미 판정 gate를 제거하고 ACTION/NEXT 첫 제어행 parser와 opaque body handoff를 구현했다. WORK_CARD/IMPLEMENTER_RESULT/REVIEW JSON 강제, AC 집합 비교, command/evidence matcher, END 재판정, 고정 3회 제한, 별도 IMPLEMENT_ROUTE 호출을 사용하지 않는다.
 - 구현/고수준 AI의 NEXT는 같은 실행 응답에서 전달된다. 사용자 6번 지시에 따라 `[ACTION = HQ]`는 관제 역할로 회귀하며, 관제 루틴이 `message_type` envelope를 해석한다. Web 수신도 ACTION=HQ를 현재 설정된 Web/CLI 관제로 전달한다.
 - High-level 설정 활성 실행 경로와 JEV raw-response/transport adapter를 연결했다. 비활성 역할 요청은 ROUTE_UNAVAILABLE로 관제에 돌려보낸다.
-- 검증: Debug build 경고 0/오류 0, 전체 46 tests, `git diff --check` 통과. 최종 Release 게시 SHA-256 `55450FE3DF72FAD3F61C81526A8A19CCD369DBACE9A6B0BDD43E01EDF420C2A8`.
-- Release 게시 및 사용 중 Worker 프로세스가 없는 것을 확인한 후 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` 복사까지 완료했다. 게시본과 복사본 SHA-256은 `55450FE3DF72FAD3F61C81526A8A19CCD369DBACE9A6B0BDD43E01EDF420C2A8`로 일치한다. `C:\GameProject` 경로는 존재하지 않는다.
+- 검증: Debug build 경고 0/오류 0, 전체 46 tests, `git diff --check` 통과. 최종 Release 게시 SHA-256 `40315A0D98DCFE88F41764CF5AB7FC485B60335EC8894823F202DC010452ED06`.
+- Release 게시 및 설치본 잠금 프로세스가 없는 것을 확인한 후 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` 복사를 완료했다. 게시본과 복사본 SHA-256은 `40315A0D98DCFE88F41764CF5AB7FC485B60335EC8894823F202DC010452ED06`로 일치한다. `C:\GameProject` 경로는 존재하지 않는다.
 - 잔여: `11-C-ROUTER-EXPLORER`, `11-C-WEB-HQ-LOOP`. 실제 Explorer 및 Extension 실브라우저 왕복은 도구 미제공으로 확인하지 못했다.
 
 ## 2026-09-24 11-C follow-up — readable transcript, exact validation evidence, JEV route

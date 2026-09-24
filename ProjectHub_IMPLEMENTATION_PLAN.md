@@ -4,7 +4,7 @@ Updated: 2026-09-24
 
 ## 2026-09-24 11-C 후속 — 계약 라우터 및 ACTION=HQ 통합
 
-동기화된 최신 GPT-Web-Feedback의 Worker 의미 판정 제거를 적용했다. 새 CLI 경로는 첫 ACTION/NEXT 제어행만 파싱하고 역할 응답 본문은 불투명하게 전달한다. 작업카드/구조화 보고/AC·검증증거 gate, 별도 IMPLEMENT_ROUTE 호출, 고정 3회 제한을 제거했다. 사용자 지정 6번은 `[ACTION = HQ]`로 통일해 현재 관제 역할에 `message_type` envelope로 전달하고 타입은 관제 호출 루틴이 해석한다. High-level 활성 라우트와 JEV raw-response adapter를 연결했다. Debug 빌드 0 경고/오류, 전체 46개 테스트, diff check 통과. Release 게시 및 `C:\AI-AGENT\Worker` 복사 성공(동일 SHA-256 `55450FE3DF72FAD3F61C81526A8A19CCD369DBACE9A6B0BDD43E01EDF420C2A8`). `C:\GameProject`는 존재하지 않는다. 잔여: `11-C-ROUTER-EXPLORER`, `11-C-WEB-HQ-LOOP`.
+동기화된 최신 GPT-Web-Feedback의 Worker 의미 판정 제거를 적용했다. 새 CLI 경로는 첫 ACTION/NEXT 제어행만 파싱하고 역할 응답 본문은 불투명하게 전달한다. 작업카드/구조화 보고/AC·검증증거 gate, 별도 IMPLEMENT_ROUTE 호출, 고정 3회 제한을 제거했다. 사용자 지정 6번은 `[ACTION = HQ]`로 통일해 현재 관제 역할에 `message_type` envelope로 전달하고 타입은 관제 호출 루틴이 해석한다. High-level 활성 라우트와 JEV raw-response adapter를 연결하고 요청자 AI의 같은 세션으로 판정 원문을 복귀시킨다. Debug 빌드 0 경고/오류, 전체 46개 테스트, diff check 통과. Release 게시 및 `C:\AI-AGENT\Worker` 복사 성공(동일 SHA-256 `40315A0D98DCFE88F41764CF5AB7FC485B60335EC8894823F202DC010452ED06`). `C:\GameProject`는 존재하지 않는다. 잔여: `11-C-ROUTER-EXPLORER`, `11-C-WEB-HQ-LOOP`.
 
 ## 2026-09-24 11-C 후속 — transcript·검증 증거·판정 보고 연결
 

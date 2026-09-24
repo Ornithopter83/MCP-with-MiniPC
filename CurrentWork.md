@@ -8,8 +8,9 @@ Updated: 2026-09-24
 - 구현·고수준 AI는 NEXT 결과를 같은 호출에서 반환하도록 라우팅했고, High-level 설정 활성 상태를 preflight에서 거부하지 않는다. 비활성 High-level/Judge 요청은 대체 역할로 보내지 않고 `ROUTE_UNAVAILABLE` 타입으로 관제 AI에 돌려보낸다.
 - 사용자의 명시적 6번 정정도 적용했다. `[ACTION = HQ]`는 현재 관제 역할로 통일하며, `message_type`과 본문을 관제 루틴에 전달해 해당 루틴이 USER_REQUEST/HQ_MESSAGE/ROLE_RESPONSE/JUDGE_RESULT/오류 타입을 해석한다. 레거시 Web 수신도 ACTION=HQ일 때 설정된 관제 transport(Web 또는 CLI)에 전달한다.
 - JEV 새 라우터 어댑터는 endpoint transport·HTTP 오류·usage를 기록하고 원 응답 JSON을 보존한다. PASS/PARTIAL 판정 및 evidence archive 의미 판정은 이 경로에서 호출하지 않는다. 기존 Web/JEV 호환 경로는 기존 `ReviewAsync`를 유지한다.
-- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` (경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` (전체 46개 통과), `git diff --check` 통과. 최종 소스 Release 게시 성공, SHA-256 `55450FE3DF72FAD3F61C81526A8A19CCD369DBACE9A6B0BDD43E01EDF420C2A8`. Explorer 실제 UI/브리지 왕복은 네이티브 데스크톱 도구가 제공되지 않아 미검증이다.
-- 게시·복사: 사용자의 명시적 승인 후 기존 Worker 프로세스가 없음을 확인하고 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`를 갱신했다. 게시본과 설치본 SHA-256은 `55450FE3DF72FAD3F61C81526A8A19CCD369DBACE9A6B0BDD43E01EDF420C2A8`로 일치한다. `C:\GameProject`는 경로가 존재하지 않아 대상이 아니다.
+- 역할 AI가 JEV를 요청한 경우 JEV 응답을 그 역할의 동일 세션에 먼저 돌려보내고, 그 역할의 NEXT 계약 응답을 관제에 전달한다. 관제 자신이 요청한 JEV 결과는 동일 관제 세션으로 반환한다.
+- 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` (경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` (전체 46개 통과), `git diff --check` 통과. 최종 소스 Release 게시 성공, SHA-256 `40315A0D98DCFE88F41764CF5AB7FC485B60335EC8894823F202DC010452ED06`. Explorer 실제 UI/브리지 왕복은 네이티브 데스크톱 도구가 제공되지 않아 미검증이다.
+- 게시·복사: 사용자의 명시적 승인 후 설치본 잠금 프로세스가 없는 것을 확인하고 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`를 갱신했다. 게시본과 설치본 SHA-256은 `40315A0D98DCFE88F41764CF5AB7FC485B60335EC8894823F202DC010452ED06`로 일치한다. `C:\GameProject`는 경로가 존재하지 않아 대상이 아니다.
 - 잔여 식별자: `11-C-ROUTER-EXPLORER` (실제 화면/역할 간 왕복 확인), `11-C-WEB-HQ-LOOP` (Extension 실브라우저에서 ACTION=HQ 회신 왕복 확인).
 
 ## 11-C 후속 — transcript 가독성·검증 명령·Footer→JEV→관제 경로 (2026-09-24)

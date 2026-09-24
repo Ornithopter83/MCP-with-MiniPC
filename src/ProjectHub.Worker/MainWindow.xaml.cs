@@ -1458,9 +1458,33 @@ public partial class MainWindow : Window
                     if (roleRoute.Error is not null) { inboundType = "ROLE_RESPONSE"; inbound = roleResult.FinalMessage; }
                     else if (roleRoute.Next == WorkerNextRole.Judge)
                     {
-                        if (string.IsNullOrWhiteSpace(returnedRoleSession))
+                        var requestingResult = roleResult;
+                        var requestingRoute = roleRoute;
+                        while (requestingRoute.Next == WorkerNextRole.Judge && _targetSettings.EffectiveJudge.Enabled)
                         {
-                            inboundType = "ROLE_SESSION_ERROR"; inbound = "The role response did not include a session ID for its requested follow-up.";
+                            var validation = JevContract.ExtractValidationRequest(requestingRoute.Body);
+                            var judgeRequest = new JudgeRequest(request, 1, workingDirectory, requestingResult.FinalMessage, validation, requestingResult.Files, "GIT", _gitTarget?.HeadSha, jobId);
+                            var judgment = await _jevJudgeRunner.ReviewRawAsync(judgeRequest, _targetSettings.EffectiveJudge, cts.Token);
+                            _judgeStatus = judgment.ErrorCode ?? "RESPONSE_RECEIVED";
+                            var judgeEnvelope = WorkerTranscriptJson.Serialize(new { message_type = "JUDGE_RESULT", provider = "jev", transport_status = judgment.ErrorCode ?? "OK", raw_result = judgment.RawResponse, usage = judgment.Telemetry });
+                            AddTaskMessage("JEV RESULT", judgeEnvelope, status: _judgeStatus);
+                            var requesterPrompt = "JEV result for the request you just made. Interpret it in this role, then emit your routing contract again in the same session. Do not treat the Worker as a semantic evaluator.\n" + judgeEnvelope + "\n\nControl contract: start with [NEXT : COORDINATOR] or [NEXT : JUDGE], followed by the opaque report/request body.\n";
+                            requestingResult = await RunCoordinatorRoleAsync(jobId, "ROLE_JUDGE_RESULT_" + decision.Next, requesterPrompt, selectedRole, workingDirectory, returnedRoleSession, null, cts.Token, CodexSandboxMode.ReadOnly);
+                            if (requestingResult.ExitCode != 0) break;
+                            requestingRoute = WorkerRouteContract.Parse(requestingResult.FinalMessage, actionRequired: false);
+                            if (requestingRoute.Error is not null) break;
+                        }
+                        if (requestingResult.ExitCode != 0)
+                        {
+                            inboundType = "ROLE_TRANSPORT_ERROR"; inbound = WorkerTranscriptJson.Serialize(new { role = decision.Next.ToString(), exit_code = requestingResult.ExitCode, output = requestingResult.FinalMessage });
+                        }
+                        else if (requestingRoute.Error is null && requestingRoute.Action == WorkerAction.Hq)
+                        {
+                            inboundType = "HQ_MESSAGE"; inbound = requestingRoute.Body;
+                        }
+                        else if (requestingRoute.Error is null && requestingRoute.Next == WorkerNextRole.Coordinator)
+                        {
+                            inboundType = "ROLE_RESPONSE"; inbound = requestingRoute.Body;
                         }
                         else if (!_targetSettings.EffectiveJudge.Enabled)
                         {
@@ -1468,12 +1492,7 @@ public partial class MainWindow : Window
                         }
                         else
                         {
-                            var judgeRequest = new JudgeRequest(request, 1, workingDirectory, roleResult.FinalMessage, roleRoute.Body, roleResult.Files, "GIT", _gitTarget?.HeadSha, jobId);
-                            var judgment = await _jevJudgeRunner.ReviewRawAsync(judgeRequest, _targetSettings.EffectiveJudge, cts.Token);
-                            _judgeStatus = judgment.ErrorCode ?? "RESPONSE_RECEIVED";
-                            inboundType = "JUDGE_RESULT";
-                            inbound = WorkerTranscriptJson.Serialize(new { provider = "jev", transport_status = judgment.ErrorCode ?? "OK", raw_result = judgment.RawResponse, usage = judgment.Telemetry });
-                            AddTaskMessage("JEV RESULT", inbound, status: _judgeStatus);
+                            inboundType = "ROLE_RESPONSE"; inbound = requestingResult.FinalMessage;
                         }
                     }
                     else if (roleRoute.Action == WorkerAction.Hq || roleRoute.Next == WorkerNextRole.Coordinator)
