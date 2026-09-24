@@ -2,6 +2,25 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 정책 기준 — ACTION + GOTO (현재 활성)
+
+이 절은 아래 A/B/C와 11-C의 **과거 구현 결과를 삭제하지 않지만**, 현재 CLI-to-CLI 라우팅 정책으로는 이 절이 우선한다.
+
+- 상태: `HQ / WORK / HIGH / JUDGE / UNKNOWN`.
+- 전이: `HQ→WORK|HIGH`, `WORK→JUDGE|HQ`, `JUDGE→WORK`, `HIGH→HQ`, `UNKNOWN→HQ`.
+- ACTION은 HQ만 `CONTINUE / PAUSE / END`를 사용한다. `ACTION=HQ`는 폐기한다.
+- 신규 CLI wire는 `GOTO`를 사용한다. `NEXT : IMPLEMENTER/HIGH_LEVEL/COORDINATOR/JUDGE`는 신규 경로에서 폐기한다.
+- Worker는 계약/상태 전이/세션/transport 라우터다. WorkCard/AC/validation command/evidence/JEV 점수/REPORT 내용을 의미적으로 판정해 END를 막지 않는다.
+- JUDGE는 WORK만 호출하며 결과는 같은 WORK session으로 복귀한다.
+- HIGH는 JUDGE를 호출하지 않고 HQ로만 복귀한다.
+- HIGH의 실행 허가는 설정창 ON/OFF가 아니다. 메인 화면에서 사용자가 `고수준 작업 허용` 체크 후 `실행`을 눌렀을 때 현재 Job에 `high_uses_remaining=1`을 만든다. 실제 HIGH dispatch 직전에 0으로 소모하고 다음 Job에 이월하지 않는다.
+- 설정창의 기존 HIGH `사용` 체크박스는 제거하고 HIGH provider/model/reasoning/thread 설정만 유지한다.
+- 계약·provider·transport·session 오류는 UNKNOWN으로 포장해 HQ에 전달하며 자동 대체하지 않는다.
+- 기존 GPT Web의 `NEXT : WEB/JEV`는 legacy 경로에서 보존한다.
+
+**현재 후속 작업 식별자:** `11-C-GOTO-CONTRACT` — 위 정책을 코드/Footer/UI/parser에 반영하고 Explorer에서 기본/JUDGE/HIGH one-shot/UNKNOWN 네 경로를 검증한다.
+
+
 ## 2026-09-24 UI-B 후속 — 대기 카드 활성/비활성 팔레트
 
 - 대기 활성 카드만 청록색(배경 `#E0F2F4`, 아이콘 원/테두리 `#0D7884`, 제목 `#0F6B73`)으로 변경한다. 대기 비활성 및 다른 단계의 회색 규칙은 유지한다. 이미지의 `#D0784`는 유효하지 않아 `#0D7884`를 적용했다.
@@ -38,18 +57,21 @@ Updated: 2026-09-24
 
 ## Goal
 
-Add a coordinator-first CLI workflow while preserving the existing Codex → GPT Web workflow and its public ACTION/NEXT contracts.
+신규 CLI-to-CLI에서 HQ를 유일한 ACTION 주체로 두고, Worker는 ACTION+GOTO 계약만 라우팅한다. 일반 구현은 WORK, 선택 판정은 WORK↔JUDGE, 사용자 launch-time one-shot 허가가 있는 고수준 작업은 HQ→HIGH→HQ로 처리한다. 기존 GPT Web ACTION/NEXT/JEV 경로는 legacy 호환으로 보존한다.
 
 ## Policy boundary
 
-- Required roles: coordinator and implementer, each with independent model/reasoning settings and independent CLI sessions.
-- Coordinator is read-only. Implementer receives workspace-write access only to the selected Working Folder.
-- Use the Codex CLI model catalog and per-model reasoning capabilities. Do not substitute an unavailable model silently or use paid/alternate fallback.
-- One coordinator-issued work card per user request. Reject malformed or incomplete cards before starting the implementer.
-- The implementer runs only the work card's listed validation commands. Worker checks command-execution events and exit codes; a model's prose claim alone is not execution evidence.
-- Coordinator review is advisory, but Worker enforces implementer exit, required validation evidence, and a PASS result for every AC before marking the task complete.
-- No automatic retry/escalation, JEV integration, crash recovery, external Git write, or Web contract change in 11-A.
-- The latest feedback uses the former 10-B label for coordinator-first CLI-to-CLI; after Tasks 10-A/B/C completed, this is tracked as ProjectHub Task 11-A. The user-resolved 09-B Explorer E2E item stays out of regular management.
+- HQ/WORK는 필수 독립 세션이다. JUDGE는 선택 기능이다. HIGH는 설정상 enable 기능이 아니라 사용자 launch-time one-shot permit으로만 호출 가능하다.
+- HQ: `ACTION=CONTINUE|PAUSE|END`; CONTINUE에서 `GOTO:WORK` 또는 permit이 있을 때 `GOTO:HIGH`.
+- WORK: `GOTO:HQ|JUDGE`.
+- JUDGE: 결과를 반드시 같은 WORK session으로 반환.
+- HIGH: `GOTO:HQ`만 허용, JUDGE 미사용, 한 Job 최대 1회.
+- UNKNOWN: protocol/provider/transport/session/route 오류를 보존해 HQ로 전달.
+- Worker는 BODY를 opaque하게 전달한다. 작업 카드·AC·검증 명령·exit code·JEV 점수·보고서의 의미를 완료 gate로 사용하지 않는다.
+- Worker는 인증, 선택 role/session, workspace sandbox, cancel/timeout, transcript/usage, 허용 GOTO와 one-shot permit 같은 **기계적 실행 경계**만 강제한다.
+- HIGH permit은 메인 화면 `고수준 작업 허용` 체크 + 실행 클릭으로만 생성한다. 자유형 텍스트에서 Worker가 허가를 추론하지 않는다.
+- Git commit/push·배포·외부 시스템 변경은 기존 사용자 승인 정책을 유지한다.
+- 아래 2026-09-23 A/B/C의 strict WorkCard/evidence gate 설명은 당시 구현 baseline 기록이며 새 라우팅 정책을 정의하지 않는다.
 
 ## A — Role settings and capability preflight (complete, 2026-09-23)
 
