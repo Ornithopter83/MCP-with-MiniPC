@@ -111,10 +111,23 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Contains("올바른 전달 경로", message);
         Assert.Contains("발생 단계: 작업 AI", message);
-        Assert.Contains("오류 내용은 로그에만 기록", message);
+        Assert.Contains("오류 원문과 상세 출력은 로그에만 기록", message);
         Assert.Contains("작업 결과 원문", message);
         Assert.DoesNotContain("[ROLE : UNKNOWN]", message);
         Assert.DoesNotContain("[ERROR ENVELOPE : JSON]", message);
+    }
+
+    [Fact]
+    public void UnknownErrors_CreateKoreanHqHandoffSummaryWithoutOriginalDetail()
+    {
+        var summary = WorkerUnknownErrorLog.CreateHandoffSummary(WorkerRoleState.Work, "GOTO_INVALID_FIRST_LINE");
+
+        Assert.Contains("작업 AI", summary);
+        Assert.Contains("올바른 전달 경로", summary);
+        Assert.Contains("오류 코드: GOTO_INVALID_FIRST_LINE", summary);
+        Assert.Contains("원문과 상세 출력은 로그에만", summary);
+        Assert.DoesNotContain("[ROLE : UNKNOWN]", summary);
+        Assert.DoesNotContain("세부 내용:", summary);
     }
 
     [Fact]

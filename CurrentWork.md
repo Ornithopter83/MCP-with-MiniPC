@@ -15,7 +15,8 @@ HQ      -> WORK | HIGH
 WORK    -> JUDGE | HQ
 JUDGE   -> WORK
 HIGH    -> HQ
-UNKNOWN -> 한글 로그 기록 후 종료
+UNKNOWN -> 원문 한글 로그 + HQ 한글 요약 (Job당 1회), 정상 관제 재개
+반복 UNKNOWN -> 로그 기록 후 종료
 ~~~
 
 ## Current implementation status
@@ -49,9 +50,13 @@ Explorer에서 HQ가 `[GOTO=WORK]` / `GOTO=WORK`를 출력해 strict parser가 `
 
 parser는 `[ACTION`/`[GOTO` 접두어로 후보를 고른 다음, 후보 줄 안에서 유효 제어어 바로 뒤에 `]`가 있는지 확인한다. 닫는 괄호 뒤 같은 줄의 문구는 opaque body로 보존한다. route/HIGH permit 제한은 유지한다.
 
-UNKNOWN 계약 오류는 다른 AI에 보내지 않는다. 발생 역할과 오류 코드를 한글로 요약하고 원문을 로그에 기록한 뒤 작업을 종료한다. UNKNOWN 프롬프트 봉투와 리소스를 제거했다.
+UNKNOWN 계약 오류의 원문과 기술 상세는 한글 시스템 로그에만 보관한다. HQ에는 발생 역할·오류 코드·한글 설명만 한 번 전달해 관제를 재개하며, 요약 전달 뒤 같은 Job에서 오류가 다시 나면 로그를 남기고 종료한다. UNKNOWN 프롬프트 봉투와 리소스를 제거했다.
 
-검증: 전체 테스트 67개 통과 (Worker 62, Agent 3, Core 1, Server 1), Release 빌드 경고 0/오류 0, Worker publish 성공. 실행 중 Worker를 종료한 뒤 EXE를 `C:\AI-AGENT\Worker`에 복사하고 SHA-256 `460EFAC18A399E3F1E4197807883C3418507B3A4729B2EA3FEE8F6BC4D487CAF` 일치를 확인했다. Explorer에서 오류를 실제 재현해 추가 AI 호출이 없는지 확인하는 것은 잔여다.
+WORK의 현재 GOTO footer에 JEV 호출 지침을 추가했다. JUDGE 사용 가능 시 `[GOTO : JUDGE]` 본문은 원자적 `NOUL`/`SCORE`/`CHOICE` 질문 형식이며, 고유 QID와 필요한 score/choice 기준 및 선택적 `EVIDENCE:` 경로를 포함한다. JUDGE 비활성 시 지침은 제거된다.
+
+직전 변경은 전체 테스트 67개, Release 빌드/publish와 EXE 복사를 완료했다. 아래 후속에서 UNKNOWN 동작을 HQ 요약 전달로 조정했다.
+
+후속 검증: 전체 테스트 69개 통과 (Worker 64, Agent 3, Core 1, Server 1), Release 빌드 경고 0/오류 0, Worker publish 성공. 실행 중인 Worker 프로세스는 없음을 확인했고 EXE를 `C:\AI-AGENT\Worker`에 복사해 SHA-256 `8C22F3D50CFFEAB2E27A6D84C7568D84A9ECEEA04F5D7DEA9A5B70626891A95A` 일치를 확인했다. Explorer 실제 오류 복귀 E2E는 잔여다.
 
 ## Active residual — opaque body + History
 
@@ -115,7 +120,7 @@ Explorer 재검증:
 - HQ→WORK→HQ→END: HQ/WORK/HQ 카드가 순서대로 표시
 - HQ→WORK→JUDGE→WORK→HQ→END: JUDGE와 복귀 WORK 카드 표시
 - HIGH permit→HQ→HIGH→HQ: HIGH 카드 표시
-- invalid route/provider error→UNKNOWN log→stop: 한글 오류 로그가 기록되고 추가 AI 호출이 없는지 확인 (Explorer 실검증 잔여)
+- invalid route/provider error→UNKNOWN full Korean log + one Korean HQ summary; repeated error logs and stops (Explorer 실검증 잔여)
 
 각 카드에서 AI 본문 tag 검색 없이 3줄 메타 표시가 나와야 한다.
 

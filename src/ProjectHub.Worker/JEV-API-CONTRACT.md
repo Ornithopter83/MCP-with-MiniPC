@@ -42,7 +42,24 @@ Worker는:
 
 ## 3. Request
 
-JUDGE 요청 본문은 WORK 또는 legacy Codex가 만든 VALIDATION REQUEST를 기반으로 한다.
+신규 CLI에서 JUDGE 요청 본문은 WORK가 `[GOTO : JUDGE]` 뒤에 작성한 opaque body다. 별도 `VALIDATION REQUEST` marker를 붙이지 않는다. Legacy Codex는 legacy 계약에 따른 요청 본문을 사용한다.
+
+신규 WORK body는 하나 이상의 원자적 질문을 다음 형식으로 표현한다:
+
+~~~text
+NOUL | [QID:IMPLEMENTED] <question and response instructions>
+PASS: YES >= 0.90
+EVIDENCE: src/implementation.cs
+SCOPE: the requested behavior only
+COUNTEREXAMPLE: one concrete failure condition
+SCORE | [QID:QUALITY] <question and response instructions>
+<integer>=<score criterion>
+CHOICE | [QID:FORMAT] <question and response instructions>
+<CHOICE_KEY>=<choice criterion>
+EVIDENCE: <workspace-relative file path>
+~~~
+
+QID는 질문별로 고유하게 지정한다. SCORE/CHOICE는 각각 최소 하나의 criterion이 필요하다. EVIDENCE, SCOPE, COUNTEREXAMPLE, PASS는 선택적 질문 지침이며, EVIDENCE 경로는 workspace 상대 경로로 지정한다. 질문은 각각 독립된 하나의 판단 대상이어야 한다. 일부 질문만 다시 판정할 때는 해당 QID의 질문만 다시 보낸다. Worker는 이 필드를 provider transport 구조로만 변환하며 판정의 의미를 결정하지 않는다.
 
 Worker adapter는 provider API에 필요한 구조 변환만 수행한다.
 
@@ -108,7 +125,7 @@ WORK -> JUDGE API -> raw result -> same WORK session
 
 adapter return envelope:
 
-Worker consumes the WORK-to-JUDGE route. Its next WORK input uses a role header and JUDGMENT body, without replaying a GOTO control line.
+Worker consumes the WORK-to-JUDGE route. Its next WORK input uses a role header and raw JEV response body, without replaying a GOTO control line or adding a semantic `JUDGMENT` marker.
 
 legacy mode:
 
@@ -129,7 +146,7 @@ Codex -> JEV API -> raw result -> same Codex session
 - required provider field missing
 - unsupported schema/type
 
-신규 CLI-to-CLI에서는 오류를 UNKNOWN으로 HQ에 전달한다.
+신규 CLI-to-CLI에서는 오류 원문과 기술 상세를 로컬 한글 로그에 기록하고, 발생 역할·오류 코드·한글 설명만 HQ에 Job당 한 번 전달해 정상 관제를 재개한다. 요약 전달 후 오류가 재발하면 추가 AI 호출 없이 로그 기록 후 종료한다.
 
 legacy mode에서는 오류 원문을 요청 Codex/관제 경로에 전달한다.
 

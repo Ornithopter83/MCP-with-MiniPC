@@ -24,7 +24,7 @@ Worker가 해도 되는 일:
 - transcript, usage, session ID, 호출 시각, 파일 변경 telemetry 기록
 - HIGH one-shot permit 저장/소모
 - 제어행 뒤 opaque body를 원문 의미 그대로 전달
-- protocol/provider/transport/session 오류를 UNKNOWN 상태로 기록하고 작업 종료
+- protocol/provider/transport/session 오류를 UNKNOWN으로 기록하고 HQ에 한글 요약으로 1회 복귀
 - 사용자 승인 경계와 sandbox 같은 기계적 안전장치 적용
 - 역할 응답 완료 시 이미 알고 있는 role/state/usage/file telemetry로 UI 이력 카드 기록
 
@@ -50,7 +50,7 @@ Worker가 하면 안 되는 일:
 | WORK | 작업 AI | 일반 구현·수정·검증·보고 |
 | JUDGE | 작업 판단 AI | WORK가 요청한 의미 판단 |
 | HIGH | 고수준 작업 AI | 사용자 1회 허가 기반 고수준 작업 |
-| UNKNOWN | 오류 상태 | 오류 원문을 한글 시스템 로그에만 기록하고 작업 종료 |
+| UNKNOWN | 오류 상태 | 오류 원문은 한글 시스템 로그에 보관하고, HQ에는 한글 오류 요약만 전달 |
 
 상태 전이:
 
@@ -59,7 +59,8 @@ HQ      -> WORK | HIGH
 WORK    -> JUDGE | HQ
 JUDGE   -> WORK
 HIGH    -> HQ
-UNKNOWN -> 로그 기록 후 종료
+UNKNOWN -> 원문 로그 기록 -> HQ에 요약 전달 (Job당 1회) -> 일반 라우팅 재개
+UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
 
 역할별 session은 독립 유지한다.
@@ -146,7 +147,9 @@ Worker는 ROLE, INBOUND TYPE, AVAILABLE GOTO, HIGH PERMIT, JUDGE AVAILABLE 같�
 - JUDGE 결과는 반드시 같은 WORK session으로 복귀한다.
 - native JEV provider의 raw response는 별도 JUDGMENT tag 없이 같은 WORK session에 opaque body로 전달한다.
 - HIGH는 JUDGE를 사용하지 않고 HQ로만 복귀한다.
-- UNKNOWN은 오류 원문과 source/code를 한글 시스템 로그에만 기록한다. 오류 정보를 어떤 AI에도 전달하지 않고 작업을 종료한다.
+- UNKNOWN은 오류 원문과 기술 상세를 한글 시스템 로그에 보관하고, 발생 역할·오류 코드·한국어 설명만 HQ에 최대 한 번 전달해 정상 관제를 재개한다. 동일 Job에서 오류 요약 전달 후 UNKNOWN이 다시 발생하면 추가 AI 호출 없이 로그에 기록하고 종료한다.
+
+WORK는 JUDGE가 활성화된 경우 `[GOTO : JUDGE]` 본문에 NOUL/SCORE/CHOICE 형식의 원자적 질문을 작성할 수 있다. 질문마다 고유 QID를 사용하고 SCORE/CHOICE 기준을 포함한다. PASS, SCOPE, COUNTEREXAMPLE, workspace 상대 EVIDENCE는 선택적으로 질문에 붙일 수 있다. 일부 질문의 재판정이 필요하면 해당 QID 질문만 다시 요청한다.
 
 ---
 
@@ -270,7 +273,7 @@ Legacy의 기존 본문 marker가 필요하면 legacy namespace/contract 내부�
 A. HQ -> WORK -> HQ -> END
 B. HQ -> WORK -> JUDGE -> WORK -> HQ -> END
 C. 사용자 HIGH 허가 -> HQ -> HIGH -> HQ
-D. 오류 -> UNKNOWN 로그 기록 -> 종료 (AI 전달 없음)
+D. 오류 -> UNKNOWN 원문 로그 + HQ 한글 요약 -> 정상 관제 재개 (요약 전달 후 오류 재발 시 종료)
 ~~~
 
 각 E2E에서 역할 응답 카드가 빠짐없이 생성되고 AI 출력에는 ACTION/GOTO 외 semantic body tag 요구가 없어야 한다.

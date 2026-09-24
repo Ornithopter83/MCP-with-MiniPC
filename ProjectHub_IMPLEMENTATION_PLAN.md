@@ -11,7 +11,8 @@ HQ      -> WORK | HIGH
 WORK    -> JUDGE | HQ
 JUDGE   -> WORK
 HIGH    -> HQ
-UNKNOWN -> 한글 로그 기록 후 종료
+UNKNOWN -> 원문 한글 로그 + HQ 한글 요약 (Job당 1회), 이후 정상 관제 재개
+반복 UNKNOWN -> 로그 기록 후 종료
 ~~~
 
 - ACTION은 HQ만 CONTINUE/PAUSE/END를 사용
@@ -63,13 +64,16 @@ Explorer 기본 경로에서 WORK 응답이 transcript에는 남지만 History �
 - `_20260924_154428.txt` 로그에서 첫 WORK 응답의 `[GOTO : HQ]` 뒤 설명 문구가 기존 parser에 의해 거부된 것을 확인했다. 재지시의 “Worker는 GOTO 제어선을 출력하지 말고” 문구는 HQ AI가 생성한 본문이며 Worker 코드에서 삽입되지 않았다. 재시도 WORK가 GOTO 없이 본문만 반환해 오류가 종결됐다.
 - Worker 테스트 61개 통과. 이번 변경 이후 Release build/publish 및 실행파일 복사는 잔여다.
 
-## 2026-09-24 UNKNOWN 오류 처리 변경
+## 2026-09-24 UNKNOWN 오류 및 JEV WORK 계약
 
-- UNKNOWN 오류는 더 이상 다른 AI에 전달하지 않고, 발생 역할·오류 코드·원문을 한글 시스템 로그에 기록한 뒤 해당 작업을 종료한다.
+- UNKNOWN 오류 원문/기술 상세는 한글 시스템 로그에 보관하고 HQ에는 발생 역할·코드·설명만 담은 한글 요약을 Job당 1회 전달해 관제를 재개한다. 요약 전달 후 오류가 재발하면 로그 기록 후 종료한다.
 - `[ROLE : UNKNOWN]` 및 `[ERROR ENVELOPE : JSON]` 프롬프트 봉투를 삭제했다.
+- WORK footer에 JEV 호출 시 `[GOTO : JUDGE]`와 원자적 `NOUL`/`SCORE`/`CHOICE` 질문, 고유 QID, SCORE/CHOICE 기준, 선택적 `EVIDENCE:` 경로 형식을 명시했다. JUDGE 비활성 시 이 지침은 프롬프트에서 빠진다.
 - 전체 테스트 67개 통과 (Worker 62, Agent 3, Core 1, Server 1), Release build 경고 0/오류 0, Worker publish 성공.
 - 실행 중 Worker 프로세스를 종료한 뒤 게시 EXE를 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`에 복사하고 SHA-256 `460EFAC18A399E3F1E4197807883C3418507B3A4729B2EA3FEE8F6BC4D487CAF` 일치를 확인했다.
 - Explorer 화면에서 실제 오류를 재현해 추가 AI 호출이 없는지 확인하는 것은 잔여다.
+
+2026-09-24 후속: 사용자 결정에 따라 UNKNOWN의 원문·기술 상세는 로컬 로그에 보관하고, HQ에는 한글 요약만 Job당 1회 전달해 관제를 재개한다. 반복 오류는 로그 후 종료한다. WORK JEV footer와 API 계약에 atomic NOUL/SCORE/CHOICE, QID, 기준값, 선택적 PASS/SCOPE/COUNTEREXAMPLE/EVIDENCE, 일부 QID만 재판정하도록 명시했으며 transport parser 호환 테스트를 추가했다. 전체 테스트 69개 통과, Release 빌드 경고 0/오류 0, publish/복사 완료. SHA-256 `8C22F3D50CFFEAB2E27A6D84C7568D84A9ECEEA04F5D7DEA9A5B70626891A95A`. Explorer 오류 복귀 E2E 잔여.
 
 ## UI residual
 

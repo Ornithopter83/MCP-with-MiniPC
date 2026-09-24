@@ -30,10 +30,38 @@ public sealed class RoleContractBoundaryTests
         var disabled = RoleContractLoader.LoadWorkFooter(false);
         Assert.Contains("[GOTO : HQ]", enabled);
         Assert.Contains("[GOTO : JUDGE]", enabled);
+        Assert.Contains("NOUL | [QID:IMPLEMENTED]", enabled);
+        Assert.Contains("SCORE | [QID:QUALITY]", enabled);
+        Assert.Contains("CHOICE | [QID:FORMAT]", enabled);
+        Assert.Contains("EVIDENCE:", enabled);
         Assert.DoesNotContain("[GOTO : JUDGE]", disabled);
+        Assert.DoesNotContain("NOUL | [QID:IMPLEMENTED]", disabled);
         Assert.Contains("JUDGE is unavailable", disabled);
         Assert.DoesNotContain("[REPORT]", enabled);
         Assert.DoesNotContain("[VALIDATION REQUEST]", enabled);
+    }
+
+    [Fact]
+    public void WorkContractJevQuestionExamplesMatchTheTransportParser()
+    {
+        const string request = """
+            NOUL | [QID:IMPLEMENTED] Is the requested behavior implemented?
+            PASS: YES >= 0.90
+            EVIDENCE: src/implementation.cs
+            SCOPE: requested behavior only
+            COUNTEREXAMPLE: a missing required case
+            SCORE | [QID:QUALITY] Rate the required behavior.
+            0 = absent
+            1 = partial
+            CHOICE | [QID:FORMAT] Is the response format valid?
+            YES = valid
+            NO = invalid
+            """;
+
+        Assert.True(JudgeTransportContract.TryParse(request, out var parsed, out var error), error);
+        Assert.Equal(new[] { "IMPLEMENTED", "QUALITY", "FORMAT" }, parsed.Questions.Select(question => question.Id));
+        Assert.Equal(3, parsed.Questions.Count);
+        Assert.Contains("EVIDENCE: src/implementation.cs", parsed.Questions[0].Instructions);
     }
 
     [Fact]

@@ -1339,6 +1339,7 @@ public partial class MainWindow : Window
             IReadOnlyList<CodexCommandExecution> workCommandsForJudge = Array.Empty<CodexCommandExecution>();
             string unknownCode = string.Empty;
             string unknownDetail = string.Empty;
+            var unknownSummaryHandedToHq = false;
 
             void RouteUnknown(WorkerRoleState source, string code, string detail)
             {
@@ -1355,11 +1356,21 @@ public partial class MainWindow : Window
                 {
                     var errorLog = WorkerUnknownErrorLog.Format(previousState, unknownCode, unknownDetail);
                     AddTaskMessage("시스템 오류", errorLog, status: unknownCode);
-                    ResultTitle.Text = "오류";
-                    ResultBody.Text = errorLog;
-                    TaskTitle.Text = "오류 내용을 기록하고 작업을 중단했습니다.";
-                    SetFlowState(false, false, false);
-                    return;
+                    if (unknownSummaryHandedToHq)
+                    {
+                        ResultTitle.Text = "오류";
+                        ResultBody.Text = errorLog;
+                        TaskTitle.Text = "오류를 기록하고 작업을 중단했습니다.";
+                        SetFlowState(false, false, false);
+                        return;
+                    }
+
+                    unknownSummaryHandedToHq = true;
+                    inboundType = "ERROR_SUMMARY";
+                    inbound = WorkerUnknownErrorLog.CreateHandoffSummary(previousState, unknownCode);
+                    AddTaskMessage("오류 요약 → 설계·관제 AI", inbound, status: unknownCode, includeHistory: false);
+                    TaskTitle.Text = "오류 요약을 설계·관제 AI에 전달 중";
+                    state = WorkerRoleState.Hq;
                 }
                 try
                 {

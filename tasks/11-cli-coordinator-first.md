@@ -31,7 +31,8 @@ HQ      -> WORK | HIGH
 WORK    -> JUDGE | HQ
 JUDGE   -> WORK
 HIGH    -> HQ
-UNKNOWN -> 한글 로그 기록 후 종료
+UNKNOWN -> 원문 한글 로그 + HQ 한글 요약 (Job당 1회)
+요약 전달 뒤 UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
 
 ## Output examples
@@ -127,7 +128,7 @@ HIGH 사용 여부는 HQ가 판단한다. Worker는 permit 가용성만 전달�
 
 ## UNKNOWN
 
-protocol/provider/session/transport 오류를 source/code/detail로 HQ에 전달한다.
+protocol/provider/session/transport 오류 원문은 로컬 로그에 보관하고, source/code/Korean explanation만 HQ에 한 차례 전달한다. 재발 오류는 추가 AI 호출 없이 기록 후 종료한다.
 
 오류 body에도 UI 분류용 semantic tag를 요구하지 않는다.
 
@@ -154,7 +155,7 @@ protocol/provider/session/transport 오류를 source/code/detail로 HQ에 전달
 A. HQ -> WORK -> HQ -> END
 B. HQ -> WORK -> JUDGE -> WORK -> HQ -> END
 C. HIGH permit -> HQ -> HIGH -> HQ
-D. error -> UNKNOWN 로그 기록 -> 종료 (AI 전달 없음)
+D. error -> UNKNOWN 원문 로그 + HQ 한글 요약 -> 관제 재개; 재발 시 로그 후 종료
 ~~~
 
 A 경로에서 최소:
@@ -208,8 +209,10 @@ A 경로에서 최소:
 - Tetris 로그의 첫 WORK 출력 `[GOTO : HQ] I’ll inspect ...`는 제어행 뒤 설명을 포함했으나 이전 parser가 마지막 문자 `]`만 허용해 실패했다.
 - 재지시의 “Worker는 GOTO 제어선을 출력하지 말고”는 Worker 문구가 아니라 HQ AI가 만든 응답 본문이다. 이후 WORK가 제어행 없는 본문을 반환해 `GOTO_INVALID_FIRST_LINE`이 됐다.
 - 구현: 제어어 바로 뒤 `]`를 확인하고, 뒤따르는 같은 줄 텍스트를 body에 합친다. 테스트: Worker 61개 통과. Release 게시/복사는 이 수정 이후 미수행.
-- UNKNOWN 오류는 다른 AI에 전달하지 않고 한글 시스템 로그에 원문과 발생 역할·오류 코드를 기록한 뒤 종료한다. `[ROLE : UNKNOWN]` prompt envelope를 제거했다.
-- 전체 테스트 67개 통과, Release build/publish 성공, 실행 중 Worker 종료 후 게시 EXE 복사 및 SHA-256 대조 완료 (`460EFAC18A399E3F1E4197807883C3418507B3A4729B2EA3FEE8F6BC4D487CAF`). Explorer 실제 오류 재현 검증은 잔여다.
+- UNKNOWN은 원문·기술 상세를 한글 시스템 로그에 남기고, HQ에는 발생 역할·오류 코드·한글 설명만 Job당 1회 전달한다. 반복 오류는 로그 기록 후 종료하며 `[ROLE : UNKNOWN]` prompt envelope는 제거했다.
+- 후속: UNKNOWN의 원문·기술 상세는 로그에만 보관하고 HQ에는 한글 오류 요약만 Job당 1회 전달한다. 재발 오류는 기록 후 종료한다.
+- WORK JEV footer와 API 문서에 atomic NOUL/SCORE/CHOICE, QID, criteria, optional PASS/SCOPE/COUNTEREXAMPLE/EVIDENCE, 일부 QID만 재판정 규칙을 추가했다. JUDGE 비활성 시 지침은 제거된다.
+- 전체 테스트 69개 통과 (Worker 64, Agent 3, Core 1, Server 1), Release build 경고 0/오류 0, publish/복사 성공. SHA-256 `8C22F3D50CFFEAB2E27A6D84C7568D84A9ECEEA04F5D7DEA9A5B70626891A95A`. Explorer 오류 복귀 E2E 잔여.
 
 ### 제어행 키워드 포함 판별 후속
 
