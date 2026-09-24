@@ -525,9 +525,8 @@ public partial class MainWindow : Window
         PipelineIdleTitle.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(idleVisual.Foreground));
         SetColor(PipelineIdleIconCircle, idleVisual.IconBackground);
         PipelineIdleCard.BorderBrush = System.Windows.Media.Brushes.Transparent;
-        PipelineIdleCard.BorderThickness = new Thickness(1);
+        PipelineIdleCard.BorderThickness = new Thickness(0);
         PipelineIdleCard.Effect = null;
-        SetPipelineStageAnimation(TaskStage.Idle, idle);
     }
 
     private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, RoleVisualPalette palette, bool disabled, bool initialInputIdle)
@@ -555,7 +554,6 @@ public partial class MainWindow : Window
     {
         var (baseOutline, orbit) = stage switch
         {
-            TaskStage.Idle => (PipelineIdleActiveBase, PipelineIdleActiveOrbit),
             TaskStage.Coordinator => (PipelineCoordinatorActiveBase, PipelineCoordinatorActiveOrbit),
             TaskStage.Implementer => (PipelineImplementerActiveBase, PipelineImplementerActiveOrbit),
             TaskStage.HighLevel => (PipelineHighLevelActiveBase, PipelineHighLevelActiveOrbit),
