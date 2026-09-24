@@ -144,6 +144,21 @@ Explorer 재검증:
 - 기존 테스트 기대값을 새 오류 분류에 맞게 수정했다. 이 파서 변경 이후 자동 테스트는 실행하지 않았고, Release build/publish는 경고 0·오류 0으로 통과했다.
 - `C:\AI-AGENT\Worker`에 게시 EXE를 갱신 복사하고 SHA-256 `CBCC02AF7038EE9D1C8D14783753DD5219666734A2E24722B047ACD1893B0E5C` 일치를 확인했다. `git diff --check` 통과.
 
+## 2026-09-24 파이프라인 UI 미세조정
+
+사용자 실제 화면 확인을 반영해 상단 파이프라인을 다시 다듬었다.
+
+- Idle 상태에서는 gold overlay를 아예 사용하지 않고 card border도 0으로 처리해 대기 중 테두리/애니메이션이 보이지 않게 함
+- 실제 HQ/WORK/HIGH/JUDGE 실행 단계에서만 gold overlay 표시
+- active base outline 3px, moving orbit 4px로 굵게 조정
+- gold glow를 BlurRadius 11 / Opacity 0.40으로 조금 강화
+- 카드 자체 Margin 4 → 2
+- 카드 사이 spacer 12px → 2px
+- Idle active overlay XAML 자체 제거
+- routing/JEV/UNKNOWN/HIGH permit/History 로직은 변경하지 않음
+
+저장소 코드 재조회로 Idle overlay 참조 0, spacer 2px, active stroke 3/4px 반영을 확인했다. 새 변경분의 Windows 실제 화면 및 build/test 재검증은 잔여다.
+
 ## 2026-09-24 현재 작업 파이프라인 활성 표시
 
 동기화된 최신 `GPT-Web-Feedback.md`의 pipeline UI 기준을 구현했다. 상단 단계 사이 화살표를 제거하고 간격을 12px로 줄였으며, Idle/HQ/WORK/HIGH/JUDGE 각 카드에 정적 금색 윤곽과 점선 orbit overlay를 추가했다. 애니메이션은 `_currentTaskStage` 하나만 기준으로 2초 주기로 움직이고, 단계 해제 시 즉시 정지한다. 역할별 카드 배경·아이콘 색 및 비활성 회색 정책은 유지한다.
