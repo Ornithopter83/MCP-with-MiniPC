@@ -30,15 +30,34 @@ public sealed class RoleContractBoundaryTests
         var disabled = RoleContractLoader.LoadWorkFooter(false);
         Assert.Contains("[GOTO : HQ]", enabled);
         Assert.Contains("[GOTO : JUDGE]", enabled);
+        Assert.Contains("first return to HQ", enabled);
+        Assert.Contains("After you have read", enabled);
         Assert.Contains("NOUL | [QID:IMPLEMENTED]", enabled);
         Assert.Contains("SCORE | [QID:QUALITY]", enabled);
         Assert.Contains("CHOICE | [QID:FORMAT]", enabled);
+        Assert.Contains("SCORE | [QID:ASSET_COUNT]", enabled);
+        Assert.Contains("CHOICE | [QID:BLOCKER]", enabled);
+        Assert.Contains("These examples are illustrative, not restrictions.", enabled);
         Assert.Contains("EVIDENCE:", enabled);
         Assert.DoesNotContain("[GOTO : JUDGE]", disabled);
         Assert.DoesNotContain("NOUL | [QID:IMPLEMENTED]", disabled);
         Assert.Contains("JUDGE is unavailable", disabled);
         Assert.DoesNotContain("[REPORT]", enabled);
         Assert.DoesNotContain("[VALIDATION REQUEST]", enabled);
+    }
+
+    [Fact]
+    public void HqContractReviewsJudgePlanWithoutCreatingNewWorkerProtocol()
+    {
+        var hq = RoleContractLoader.LoadHqFooter();
+        Assert.Contains("asks you to review a draft", hq);
+        Assert.Contains("Return the reviewed judgment plan to WORK", hq);
+        Assert.Contains("NOUL | [QID:RESTART_CLEAN]", hq);
+        Assert.Contains("SCORE | [QID:PLAYBACK_COMPLETION]", hq);
+        Assert.Contains("CHOICE | [QID:PROGRESSION_BLOCKER]", hq);
+        Assert.Contains("not quotas or mandatory proportions", hq);
+        Assert.DoesNotContain("[JUDGE PLAN]", hq);
+        Assert.DoesNotContain("[VALIDATION REQUEST]", hq);
     }
 
     [Fact]

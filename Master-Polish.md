@@ -143,13 +143,35 @@ Worker는 ROLE, INBOUND TYPE, AVAILABLE GOTO, HIGH PERMIT, JUDGE AVAILABLE 같�
 
 - HQ만 ACTION=CONTINUE/PAUSE/END를 사용한다.
 - HQ CONTINUE의 정상 목적지는 WORK와, one-shot permit이 있을 때의 HIGH뿐이다.
-- WORK는 HQ 또는 JUDGE로만 이동한다. JUDGE 사용 여부는 WORK가 판단한다.
+- WORK는 HQ 또는 JUDGE로만 이동한다. JUDGE 사용 필요성은 WORK가 판단한다.
+- WORK가 JUDGE 판정이 유용하다고 판단하면 먼저 HQ에 판정 초안과 현재 evidence를 전달한다.
+- HQ는 판정 초안의 질문 범위, evidence, 응답 형태와 수치화 가능한 기준을 검토해 같은 WORK 흐름으로 돌려준다.
+- WORK는 HQ의 검토안을 인지한 뒤 실제 JUDGE 요청을 구성해 `[GOTO : JUDGE]`로 보낸다.
 - JUDGE 결과는 반드시 같은 WORK session으로 복귀한다.
 - native JEV provider의 raw response는 별도 JUDGMENT tag 없이 같은 WORK session에 opaque body로 전달한다.
+- 추가 판정이 필요하면 WORK는 새 판정 초안을 다시 HQ에 검토 요청한 뒤 JUDGE로 보낼 수 있다.
 - HIGH는 JUDGE를 사용하지 않고 HQ로만 복귀한다.
 - UNKNOWN은 오류 원문과 기술 상세를 한글 시스템 로그에 보관하고, 발생 역할·오류 코드·한국어 설명만 HQ에 최대 한 번 전달해 정상 관제를 재개한다. 동일 Job에서 오류 요약 전달 후 UNKNOWN이 다시 발생하면 추가 AI 호출 없이 로그에 기록하고 종료한다.
 
+판정 흐름은 기존 상태 전이만 사용한다.
+
+~~~text
+WORK -> HQ (판정 초안 검토)
+HQ   -> WORK (검토안 반환)
+WORK -> JUDGE
+JUDGE -> WORK
+WORK -> HQ (결과 보고 또는 다음 판정 초안)
+~~~
+
+Worker는 body를 읽어 이 검토가 실제로 수행됐는지 판정하거나 강제하지 않는다. 새 제어 토큰이나 semantic marker도 추가하지 않는다. 이 흐름은 AI 역할 계약으로 유지한다.
+
 WORK는 JUDGE가 활성화된 경우 `[GOTO : JUDGE]` 본문에 NOUL/SCORE/CHOICE 형식의 원자적 질문을 작성할 수 있다. 질문마다 고유 QID를 사용하고 SCORE/CHOICE 기준을 포함한다. PASS, SCOPE, COUNTEREXAMPLE, workspace 상대 EVIDENCE는 선택적으로 질문에 붙일 수 있다. 일부 질문의 재판정이 필요하면 해당 QID 질문만 다시 요청한다.
+
+NOUL/SCORE/CHOICE는 사용 비율이나 우선순위를 강제하지 않는다. 역할 contract에는 다양한 사용 예를 제공한다.
+- NOUL 예: 재시작 후 특정 transient state가 정리되는지 같은 단일 yes/no 주장
+- SCORE 예: 7개 asset 중 몇 개가 조건을 만족하는지, 측정 가능한 단계/범위를 표현하는 질문
+- CHOICE 예: 여러 후보 중 어떤 상태가 지연 원인인지 구분하는 질문
+- 수치 기준은 사용자 요청, 현재 작업 결과 또는 workspace evidence에서 유도하고, 근거가 없는 숫자를 새로 만들지 않는다.
 
 ---
 
@@ -180,7 +202,9 @@ WORK는 JUDGE가 활성화된 경우 `[GOTO : JUDGE]` 본문에 NOUL/SCORE/CHOIC
 
 Worker/Judge adapter는 provider 호출, 최소 schema 변환, timeout/auth/HTTP/schema 오류, raw response 보존과 전달만 수행한다.
 
-WORK가 GOTO:JUDGE를 출력하면 GOTO 뒤 body 전체를 요청 원문으로 취급한다. 신규 CLI에서는 VALIDATION REQUEST marker를 찾지 않는다.
+WORK가 HQ 검토안을 인지한 뒤 GOTO:JUDGE를 출력하면 GOTO 뒤 body 전체를 요청 원문으로 취급한다. 신규 CLI에서는 VALIDATION REQUEST marker를 찾지 않는다.
+
+HQ 검토 여부는 Worker가 body를 해석해 검사하지 않는다. Worker는 유효한 상태 전이와 transport만 처리한다.
 
 Worker는 confidence/score threshold 비교, PASS/PARTIAL/FAIL 생성, evidence 충분성 판단, 자동 재작업을 하지 않는다.
 
@@ -278,25 +302,20 @@ Legacy의 기존 본문 marker가 필요하면 legacy namespace/contract 내부�
 
 ## 11. 현재 구현 우선순위
 
-현재 활성 작업은 **12-B Provider-ready UI + runner boundary**다.
+현재 활성 작업은 **13-A JUDGE plan review flow**다.
 
-완료 목표:
-1. HQ / WORK / HIGH 독립 Provider 선택
-2. Provider → Model → Reasoning catalog binding
-3. HIGH 독립 Provider 저장
-4. provider visual resolver
-5. session capability
-6. `IAiRoleRunner` / registry
-7. 기존 OpenAI Codex 경로를 runner adapter로 이관
-8. Claude/Muse NOT_CONFIGURED skeleton
-9. provider별 preflight와 자동 fallback 금지
-10. 기존 설정 runtime migration
-11. provider/GOTO/JUDGE/HIGH/History 회귀 테스트
-12. Windows build/test 및 Explorer 확인
+1. WORK가 판정이 필요하다고 판단하면 판정 초안과 evidence를 HQ에 먼저 전달
+2. HQ가 질문 범위, evidence, 수치화 가능한 기준과 응답 형태를 검토해 WORK에 반환
+3. WORK가 검토안을 인지한 뒤 JUDGE 요청 구성
+4. JUDGE raw response는 같은 WORK session으로 복귀
+5. 추가 판정이 필요하면 새 초안을 다시 HQ 검토 흐름에 태울 수 있음
+6. NOUL/SCORE/CHOICE 사용 예를 WORK/HQ contract에 다양하게 제공
+7. 질문형 비율, 우선순위, 금지 조건은 Worker 규칙으로 만들지 않음
+8. Worker parser/state/JEV transport와 opaque-body 원칙은 유지
+9. contract 회귀 테스트
+10. Windows build/test 및 Explorer 실제 흐름 확인
 
-12-B 이후 구조 작업으로 남기는 것은 실제 Claude/Muse CLI·인증·모델 discovery·session/resume을 연결하는 12-D다.
-
-11-C의 GOTO/History 구현 잔여는 코드 변경 대상으로 다시 섞지 않고 Explorer 실제 왕복 회귀 확인 항목으로 유지한다.
+12-B Provider-ready 구조는 완료 기록으로 유지한다. Claude/Muse 실제 CLI/인증/model discovery/session 연결은 12-D deferred다.
 
 ---
 

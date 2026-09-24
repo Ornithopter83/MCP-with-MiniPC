@@ -22,28 +22,27 @@ UNKNOWN -> 원문 한글 로그 + HQ 한글 요약 (Job당 1회), 이후 정상 
 - HIGH는 사용자 실행 시점 one-shot permit
 - Legacy Web NEXT:WEB/JEV는 별도 legacy mode
 
-## Current active work — 12-B Provider-ready structure
+## Current active work — 13-A JUDGE plan review flow
 
-실제 결제/인증 없이 가능한 Provider 교체 구조를 완성한다.
+목표는 WORK가 JUDGE에 바로 넓은 NOUL 질문을 반복하는 대신, 판정이 필요할 때 먼저 HQ에 판정 초안과 evidence를 보내 검토받고 그 검토안을 WORK가 인지한 뒤 JUDGE로 전달하게 하는 것이다.
 
-구현 범위:
-- OpenAI / Claude / Muse enum + stable wire id
-- HQ / WORK / HIGH 독립 Provider 설정
-- provider → model → reasoning catalog binding
-- HIGH 독립 Provider 저장
-- provider visual resolver + neutral fallback symbol
-- provider session capability
-- `IAiRoleRunner` / registry
-- OpenAI Codex runner adapter
-- Claude/Muse unconfigured runner skeleton
-- provider별 preflight와 자동 fallback 금지
-- 기존 OpenAI 설정 runtime migration
+~~~text
+WORK -> HQ -> WORK -> JUDGE -> WORK -> HQ
+~~~
 
-현재 실제 실행 Provider는 OpenAI뿐이다. Claude/Muse 실제 CLI/인증/model discovery/session E2E는 12-D 외부 연동으로 남긴다.
+구현 원칙:
+- 기존 GOTO 상태 그래프 사용
+- 새 Worker state/control token 없음
+- Worker가 body 의미나 HQ 검토 여부를 검사하지 않음
+- NOUL/SCORE/CHOICE 사용을 비율이나 금지 규칙으로 규제하지 않음
+- WORK/HQ contract에 다양한 실제형 예시 추가
+- HQ는 판정 초안의 수치화 가능한 부분, evidence, 질문 범위를 검토
+- WORK는 검토안을 읽은 뒤 실제 JUDGE request 작성
+- 재판정도 같은 검토 흐름을 다시 사용할 수 있음
 
-상세: `tasks/12-provider-abstraction.md`
+상세: `tasks/13-judge-plan-review.md`
 
-Windows 환경의 build/test/Explorer 검증은 잔여다.
+12-B Provider-ready 구조는 완료 기록으로 유지하고, Claude/Muse 실제 연동은 기존 12-D deferred 항목으로 남긴다.
 
 ## Previous active residual — 11-C-GOTO-CONTRACT
 

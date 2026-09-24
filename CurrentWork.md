@@ -40,6 +40,30 @@ Provider 구조의 다음 안전 단위를 구현했다.
 
 이번 변경으로 유료 계정 없이 가능한 다중 Provider 내부 구조는 완료했다. 남은 것은 실제 Claude/Muse CLI 규격·인증·모델 discovery·session/resume 연결과 Windows build/test/Explorer 검증이다.
 
+## 2026-09-24 13-A JUDGE plan review flow
+
+최근 작업 로그에서 WORK가 JUDGE 요청을 반복하면서 NOUL 형태를 과도하게 사용하고, 여러 독립 조건을 한 질문에 묶거나 이미 확보한 수치 evidence를 충분히 활용하지 못하는 패턴을 확인했다.
+
+사용자 결정에 따라 질문 형식 자체를 규제하지 않는다. NOUL/SCORE/CHOICE의 비율, 우선순위, 금지 조건 같은 Worker 규칙은 추가하지 않는다. 대신 역할 contract에 다양한 사용 예를 추가한다.
+
+판정 흐름은 기존 상태 그래프 안에서 다음처럼 조정한다.
+
+~~~text
+WORK -> HQ      판정 초안 + evidence 검토 요청
+HQ   -> WORK    질문 범위/수치화/evidence 검토안 반환
+WORK -> JUDGE   검토안을 인지한 뒤 실제 판정 요청
+JUDGE -> WORK   raw 판정 결과
+WORK -> HQ      결과 보고 또는 다음 판정 초안
+~~~
+
+Worker parser/state enum/JEV transport는 변경하지 않는다. Worker는 판정 초안이나 HQ 검토 여부를 의미적으로 검사하지 않는다. 새 semantic marker도 추가하지 않는다.
+
+WORK/HQ contract에는 다음과 같은 예를 추가한다.
+- NOUL: restart 시 transient state 정리 여부
+- SCORE: 7개 asset 중 정상 완료 개수
+- CHOICE: line-clear/stage-card/input gate/spawn wait 중 지연 원인
+- 예시는 사용 힌트일 뿐 강제 규칙이나 quota가 아님
+
 ## Current implementation status
 
 핵심 ACTION+GOTO router, HIGH one-shot permit, JUDGE raw transport, 역할별 contract 파일 분리는 구현돼 있다.
