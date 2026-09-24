@@ -6,6 +6,15 @@ namespace ProjectHub.Worker.Tests;
 public sealed class CoordinatorFirstContractTests
 {
     [Fact]
+    public void TranscriptJson_KeepsKoreanReadableAndValidUtf8Json()
+    {
+        var json = WorkerTranscriptJson.Serialize(new { Summary = "모델 소개와 날짜 판정" });
+        Assert.Contains("모델 소개와 날짜 판정", json);
+        Assert.DoesNotContain("\\uBAA8", json);
+        Assert.Equal("모델 소개와 날짜 판정", JsonDocument.Parse(json).RootElement.GetProperty("Summary").GetString());
+    }
+
+    [Fact]
     public void ModelCatalog_ExposesOnlyListedAndSupportedModelsAndTheirEfforts()
     {
         const string json = """
@@ -172,6 +181,11 @@ public sealed class CoordinatorFirstContractTests
         Assert.True(CoordinatorFirstContracts.CommandMatches(
             "powershell -NoProfile -Command \"Write-Output MODEL_ACCESS_OK\"",
             "\"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -Command 'powershell -NoProfile -Command \"Write-Output MODEL_ACCESS_OK\"'"));
+        var dateCommand = "powershell -NoProfile -Command \"[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow, 'Korea Standard Time').ToString('yyyy-MM-dd HH:mm:ss zzz')\"";
+        var observedWrapped = "\"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -Command \"powershell -NoProfile -Command \\\"[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow, 'Korea Standard Time').ToString('yyyy-MM-dd HH:mm:ss zzz')\\\"\"";
+        Assert.True(CoordinatorFirstContracts.CommandMatches(dateCommand, observedWrapped));
+        Assert.True(CoordinatorFirstContracts.HasRequiredValidationEvidence(card with { ValidationCommands = new[] { dateCommand } },
+            new[] { new CodexCommandExecution(observedWrapped, 0) }, out var dateDetail), dateDetail);
         Assert.True(CoordinatorFirstContracts.HasRequiredValidationEvidence(card,
             new[]
             {

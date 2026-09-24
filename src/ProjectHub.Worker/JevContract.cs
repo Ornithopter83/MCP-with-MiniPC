@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace ProjectHub.Worker;
 
-public enum NextRoute { Invalid, Web, Jev }
+public enum NextRoute { Invalid, Web, Jev, Coordinator }
 public sealed record NextDirective(NextRoute Route, string Body, string? Error = null);
 public enum JevQuestionType { Noul, Score, Choice }
 public sealed record JevPassRule(string Operator, double? Number, IReadOnlySet<string> Allowed);
@@ -13,11 +13,11 @@ public sealed record JevValidationRequest(IReadOnlyList<JevQuestion> Questions);
 
 public static class JevContract
 {
-    private static readonly Regex NextPattern = new(@"^\[NEXT\s*:\s*(WEB|JEV)\]$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex NextPattern = new(@"^\[NEXT\s*:\s*(WEB|JEV|COORDINATOR)\]$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex NumericPass = new(@"^PASS\s*:\s*(?:YES|SCORE)\s*(>=|<=)\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex ChoicePass = new(@"^PASS\s*:\s*(?:CHOICE\s+IN\s+)?(.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    public static NextDirective ParseNext(string? text)
+    public static NextDirective ParseNext(string? text, bool coordinatorMode = false)
     {
         if (string.IsNullOrWhiteSpace(text)) return new(NextRoute.Invalid, string.Empty, "CODEX_EMPTY");
         var lines = Normalize(text).Split('\n');
@@ -25,17 +25,38 @@ public static class JevContract
         if (string.IsNullOrWhiteSpace(first.Item1)) return new(NextRoute.Invalid,string.Empty,"NEXT_MISSING");
         var match=NextPattern.Match(first.Item1);
         if(!match.Success) return new(NextRoute.Invalid,string.Empty,"NEXT_INVALID");
+        var route=match.Groups[1].Value.ToUpperInvariant() switch { "WEB"=>NextRoute.Web, "JEV"=>NextRoute.Jev, _=>NextRoute.Coordinator };
+        if(coordinatorMode ? route==NextRoute.Web : route==NextRoute.Coordinator) return new(NextRoute.Invalid,string.Empty,"NEXT_WRONG_MODE");
         var body=string.Join(Environment.NewLine,lines.Skip(first.index+1)).Trim();
-        return match.Groups[1].Value.Equals("WEB",StringComparison.OrdinalIgnoreCase)?new(NextRoute.Web,body):new(NextRoute.Jev,body);
+        if(coordinatorMode && Normalize(body).Split('\n').Any(line=>NextPattern.IsMatch(line.Trim()))) return new(NextRoute.Invalid,string.Empty,"NEXT_DUPLICATE");
+        return new(route,body);
     }
 
     public static string? ValidateStructure(NextDirective directive, bool reportOnly = false)
     {
         if (directive.Route == NextRoute.Invalid) return directive.Error ?? "NEXT_INVALID";
         var body = Normalize(directive.Body);
-        if (directive.Route == NextRoute.Web && !FirstContentLine(body).Equals("[REPORT]", StringComparison.OrdinalIgnoreCase)) return reportOnly ? "REPORT_PROTOCOL_ERROR" : "REPORT_MISSING";
+        if ((directive.Route is NextRoute.Web or NextRoute.Coordinator) && !FirstContentLine(body).Equals("[REPORT]", StringComparison.OrdinalIgnoreCase)) return reportOnly ? "REPORT_PROTOCOL_ERROR" : "REPORT_MISSING";
         if (directive.Route == NextRoute.Jev && !body.Split('\n').Any(line=>line.Trim().Equals("[VALIDATION REQUEST]",StringComparison.OrdinalIgnoreCase))) return "VALIDATION_REQUEST_MISSING";
         return null;
+    }
+
+    public static string? ValidateCoordinatorStructure(NextDirective directive, bool reportOnly = false)
+    {
+        var error = ValidateStructure(directive, reportOnly);
+        if (error is not null) return error;
+        var lines = Normalize(directive.Body).Split('\n').Select(line => line.Trim()).ToArray();
+        var reportCount = lines.Count(line => line.Equals("[REPORT]", StringComparison.OrdinalIgnoreCase));
+        var validationCount = lines.Count(line => line.Equals("[VALIDATION REQUEST]", StringComparison.OrdinalIgnoreCase));
+        if (directive.Route == NextRoute.Coordinator)
+            return reportCount == 1 && validationCount == 0 ? null : "COORDINATOR_REPORT_AMBIGUOUS";
+        if (directive.Route == NextRoute.Jev)
+        {
+            if (reportOnly) return "JEV_REPORT_NOT_COORDINATOR";
+            return reportCount == 0 && validationCount == 1 && FirstContentLine(directive.Body).Equals("[VALIDATION REQUEST]", StringComparison.OrdinalIgnoreCase)
+                ? null : "JEV_REQUEST_AMBIGUOUS";
+        }
+        return "NEXT_WRONG_MODE";
     }
 
     public static string ExtractValidationRequest(string body)
@@ -99,4 +120,5 @@ public static class JevContract
     private static string Normalize(string text)=>text.Replace("\r\n","\n").Replace('\r','\n');
     private static string FirstContentLine(string text)=>text.Split('\n').Select(x=>x.Trim()).FirstOrDefault(x=>x.Length>0)??string.Empty;
     public static string LoadFooter(){using var stream=typeof(JevContract).Assembly.GetManifestResourceStream("ProjectHub.Worker.JEV-FOOTER-CONTRACT.md")??throw new FileNotFoundException("Embedded JEV footer contract was not found.");using var reader=new StreamReader(stream);return reader.ReadToEnd().Trim();}
+    public static string LoadCoordinatorFooter(){using var stream=typeof(JevContract).Assembly.GetManifestResourceStream("ProjectHub.Worker.JEV-COORDINATOR-FOOTER-CONTRACT.md")??throw new FileNotFoundException("Embedded coordinator JEV footer contract was not found.");using var reader=new StreamReader(stream);return reader.ReadToEnd().Trim();}
 }

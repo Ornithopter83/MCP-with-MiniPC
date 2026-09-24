@@ -48,5 +48,8 @@
     <EmbeddedResource Include="JEV-FOOTER-CONTRACT.md">
       <LogicalName>ProjectHub.Worker.JEV-FOOTER-CONTRACT.md</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="JEV-COORDINATOR-FOOTER-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.JEV-COORDINATOR-FOOTER-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

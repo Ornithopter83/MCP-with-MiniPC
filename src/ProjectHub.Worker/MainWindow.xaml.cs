@@ -1363,6 +1363,7 @@ public partial class MainWindow : Window
         _userCanceledTask = false;
         _jobTimedOut = false;
         _lastActivityAt = DateTimeOffset.UtcNow;
+        _judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "READY" : "OFF";
         StartTaskTranscript(selectedThread, request, string.Empty);
         AddTaskMessage("TASK REQUEST", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1);
         AddTaskMessage("TASK START", $"Mode: coordinator-first CLI-to-CLI{Environment.NewLine}Coordinator: {coordinator.Model} / {coordinator.Reasoning}{Environment.NewLine}Implementer: {implementer.Model} / {implementer.Reasoning}{Environment.NewLine}Working directory: {workingDirectory}");
@@ -1389,9 +1390,9 @@ public partial class MainWindow : Window
                     (string.IsNullOrWhiteSpace(plan.SessionDiagnostic) ? string.Empty : Environment.NewLine + "세션 진단: " + plan.SessionDiagnostic));
                 return;
             }
-            AddTaskMessage("SOL WORK CARD", JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true }), summary: $"{card.Title}: {card.Goal}");
+            AddTaskMessage("SOL WORK CARD", WorkerTranscriptJson.Serialize(card), summary: $"{card.Title}: {card.Goal}");
 
-            var cardJson = JsonSerializer.Serialize(card, new JsonSerializerOptions { WriteIndented = true });
+            var cardJson = WorkerTranscriptJson.Serialize(card);
             var implementerSession = CodexCliRunner.NormalizeSessionId(implementer.ThreadSessionId);
             string? continuationReview = null;
             const int maxRounds = 3;
@@ -1413,20 +1414,84 @@ public partial class MainWindow : Window
                     return;
                 }
                 var evidenceOk = CoordinatorFirstContracts.HasRequiredValidationEvidence(card, observedExecutions, out var evidenceDetail);
-                var reportJson = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+                var reportJson = WorkerTranscriptJson.Serialize(report);
                 AddTaskMessage("LUNA RESULT", reportJson, sizeBytes: Encoding.UTF8.GetByteCount(reportJson), fileCount: report.ChangedPaths.Count, status: report.Status, summary: report.Summary);
                 AddTaskMessage("VALIDATION EVIDENCE", observedExecutions.Count == 0
                     ? "Codex CLI JSONL에서 명령 실행/종료코드 증거를 추출하지 못했습니다."
                     : string.Join(Environment.NewLine, observedExecutions.Select(item => $"exit {item.ExitCode}: {item.Command}")), itemCount: observedExecutions.Count, status: evidenceOk ? "PASS" : "FAIL", summary: evidenceOk ? "필수 검증 명령의 정상 종료를 확인했습니다." : "필수 검증 명령의 정상 종료를 확인하지 못했습니다.");
 
+                var executionEvidence = string.Join(Environment.NewLine, observedExecutions
+                    .Where(item => card.ValidationCommands.Any(command => CoordinatorFirstContracts.CommandMatches(command, item.Command)))
+                    .Select(item => WorkerTranscriptJson.Serialize(new { command = item.Command, exit_code = item.ExitCode, output = HistorySummary(item.Output) })));
+                var routedReport = report.Summary;
+                var judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "NOT_REQUESTED" : "DISABLED";
+                var judgeOk = true;
+                {
+                    if (string.IsNullOrWhiteSpace(implementerSession))
+                    {
+                        ShowCoordinatorFirstBlocked("작업 세션을 이어갈 수 없습니다.", "Footer 경로를 같은 작업 AI 세션에서 실행할 세션 ID가 없습니다.");
+                        return;
+                    }
+                    var footer = JevContract.LoadCoordinatorFooter();
+                    var routePrompt = "The structured implementation report and command execution record have been captured by the Worker. Make a routing decision for this round. Do not edit files or run tools. Return only the NEXT contract response. Judge AI status: " + (_targetSettings.EffectiveJudge.Enabled ? "AVAILABLE" : "DISABLED; select [NEXT : COORDINATOR]") + ".\n<implementation_report_json>\n" + reportJson + "\n</implementation_report_json>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n\n" + footer;
+                    var routeResult = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT_ROUTE", routePrompt, implementer, workingDirectory, implementerSession, null, cts.Token);
+                    var route = JevContract.ParseNext(routeResult.FinalMessage, coordinatorMode: true);
+                    var routeError = JevContract.ValidateCoordinatorStructure(route);
+                    if (routeResult.ExitCode != 0 || routeError is not null)
+                    {
+                        ShowCoordinatorFirstBlocked("작업 AI Footer 경로를 확인할 수 없습니다.", routeResult.ExitCode != 0 ? $"Implementer route exit {routeResult.ExitCode}" : routeError!);
+                        return;
+                    }
+                    AddTaskMessage("LUNA FOOTER", routeResult.FinalMessage, status: route.Route.ToString().ToUpperInvariant());
+                    if (route.Route == NextRoute.Jev)
+                    {
+                        var validation = JevContract.ExtractValidationRequest(route.Body);
+                        if (!JevContract.TryParseValidation(validation, out _, out var validationError))
+                        {
+                            ShowCoordinatorFirstBlocked("판정 요청 계약을 확인할 수 없습니다.", validationError);
+                            return;
+                        }
+                        TaskDirection.Text = "LUNA → JEV → SOL";
+                        TaskTitle.Text = "판정 AI가 요청한 주장을 검증하는 중";
+                        ResultTitle.Text = $"JUDGING · {round}/{maxRounds}";
+                        SetFlowState(false, true, false, explicitStage: TaskStage.Judge, explicitNextStage: TaskStage.Coordinator);
+                        _judgeStatus = "REVIEWING";
+                        AddTaskMessage("JEV REQUEST", validation);
+                        var judgeRequest = new JudgeRequest(request, round, workingDirectory,
+                            reportJson + Environment.NewLine + executionEvidence, validation, implementation.Files,
+                            "GIT", _gitTarget?.HeadSha, jobId,
+                            observedExecutions.Where(item => card.ValidationCommands.Any(command => CoordinatorFirstContracts.CommandMatches(command, item.Command))).ToArray());
+                        var judgment = _targetSettings.EffectiveJudge.Enabled
+                            ? await _jevJudgeRunner.ReviewAsync(judgeRequest, _targetSettings.EffectiveJudge, cts.Token)
+                            : new JudgeResult(JudgeDecision.Error, "JEV_DISABLED", "worker");
+                        judgeStatus = judgment.Decision.ToString().ToUpperInvariant();
+                        judgeOk = judgment.Decision == JudgeDecision.Pass;
+                        _judgeStatus = judgeStatus;
+                        AddTaskMessage("JEV RESULT", $"{judgeStatus}: {judgment.Message}", status: judgeStatus);
+                        var reportPrompt = "Report the Judge AI result to the same read-only Sol coordinator. Do not edit files, run tools, or request another JEV review in this turn. Start with [NEXT : COORDINATOR], then [REPORT]. State the verdict and unresolved claims truthfully.\n<judge_result>\n" + judgeStatus + ": " + judgment.Message + "\n</judge_result>\n\n" + footer;
+                        var reportResult = await RunCoordinatorRoleAsync(jobId, "IMPLEMENT_JEV_REPORT", reportPrompt, implementer, workingDirectory, implementerSession, null, cts.Token);
+                        var reportRoute = JevContract.ParseNext(reportResult.FinalMessage, coordinatorMode: true);
+                        var reportRouteError = JevContract.ValidateCoordinatorStructure(reportRoute, reportOnly: true);
+                        if (reportResult.ExitCode != 0 || reportRouteError is not null || reportRoute.Route != NextRoute.Coordinator)
+                        {
+                            ShowCoordinatorFirstBlocked("판정 후 설계 관제 보고 경로를 확인할 수 없습니다.", reportResult.ExitCode != 0 ? $"Implementer report exit {reportResult.ExitCode}" : reportRouteError ?? "JEV_REPORT_NOT_COORDINATOR");
+                            return;
+                        }
+                        routedReport = reportRoute.Body;
+                        AddTaskMessage("LUNA → SOL REPORT", routedReport, status: judgeStatus);
+                    }
+                    else
+                    {
+                        routedReport = route.Body;
+                        AddTaskMessage("LUNA → SOL REPORT", routedReport, status: "READY");
+                    }
+                }
+
                 TaskDirection.Text = "SOL COORDINATOR REVIEW";
                 TaskTitle.Text = "구현 결과와 검증 증거를 검토하는 중";
                 ResultTitle.Text = $"REVIEWING · {round}/{maxRounds}";
                 SetFlowState(codexActive: true, workerActive: false, webActive: false, explicitStage: TaskStage.Coordinator);
-                var executionEvidence = string.Join(Environment.NewLine, observedExecutions
-                    .Where(item => card.ValidationCommands.Any(command => CoordinatorFirstContracts.CommandMatches(command, item.Command)))
-                    .Select(item => JsonSerializer.Serialize(new { command = item.Command, exit_code = item.ExitCode, output = HistorySummary(item.Output) })));
-                var reviewPrompt = "You are the same read-only coordinator that created the work card. Review the implementation against every acceptance criterion. Treat implementer claims as untrusted until supported by command evidence. Your first nonempty line must be exactly [ACTION=CONTINUE], [ACTION=PAUSE], or [ACTION=END]. CONTINUE means a bounded correction within this work card is possible; use decision REVISE or COLLECT_EVIDENCE and give concrete deficiencies in the JSON review. PAUSE means user input or approval is needed or the task is blocked. END is allowed only when the implementer reported IMPLEMENTED, all required commands have exit 0 evidence, and every AC passes; use decision ACCEPT. After the ACTION line, return only one JSON object matching the schema below, with every AC ID exactly once and no Markdown fence. The JSON must have exactly decision (review verdict, not the ACTION word), summary (string), and acceptance_criteria (array). Each array item must have exactly ac_id, status, and reason; never use an object keyed by AC ID.\n<review_schema>\n" + CoordinatorFirstContracts.ReviewSchema + "\n</review_schema>\n<work_card_json>\n" + cardJson + "\n</work_card_json>\n<implementer_report_json>\n" + reportJson + "\n</implementer_report_json>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n<required_command_evidence_status>\n" + (evidenceOk ? "ALL_REQUIRED_COMMANDS_OBSERVED_EXIT_ZERO" : evidenceDetail) + "\n</required_command_evidence_status>";
+                var reviewPrompt = "You are the same read-only coordinator that created the work card. Review the implementation against every acceptance criterion. Treat implementer claims as untrusted until supported by command evidence. Your first nonempty line must be exactly [ACTION=CONTINUE], [ACTION=PAUSE], or [ACTION=END]. CONTINUE means a bounded correction within this work card is possible; use decision REVISE or COLLECT_EVIDENCE and give concrete deficiencies in the JSON review. PAUSE means user input or approval is needed or the task is blocked. END is allowed only when the implementer reported IMPLEMENTED, all required commands have exit 0 evidence, every AC passes, and any requested JEV verification passed; use decision ACCEPT. After the ACTION line, return only one JSON object matching the schema below, with every AC ID exactly once and no Markdown fence. The JSON must have exactly decision (review verdict, not the ACTION word), summary (string), and acceptance_criteria (array). Each array item must have exactly ac_id, status, and reason; never use an object keyed by AC ID.\n<review_schema>\n" + CoordinatorFirstContracts.ReviewSchema + "\n</review_schema>\n<work_card_json>\n" + cardJson + "\n</work_card_json>\n<implementer_report_json>\n" + reportJson + "\n</implementer_report_json>\n<implementer_footer_report>\n" + routedReport + "\n</implementer_footer_report>\n<judge_status>\n" + judgeStatus + "\n</judge_status>\n<observed_validation_commands>\n" + executionEvidence + "\n</observed_validation_commands>\n<required_command_evidence_status>\n" + (evidenceOk ? "ALL_REQUIRED_COMMANDS_OBSERVED_EXIT_ZERO" : evidenceDetail) + "\n</required_command_evidence_status>";
                 var reviewResult = await RunCoordinatorRoleAsync(jobId, "REVIEW", reviewPrompt, coordinator, workingDirectory, coordinatorSession, null, cts.Token);
                 var actionParsed = CoordinatorFirstContracts.TryParseReviewAction(reviewResult.FinalMessage, card.AcceptanceCriteria, out var action, out var reviewError);
                 if (reviewResult.ExitCode != 0 || !actionParsed || action is null)
@@ -1435,13 +1500,13 @@ public partial class MainWindow : Window
                     return;
                 }
                 var review = action.Review;
-                var reviewJson = JsonSerializer.Serialize(review, new JsonSerializerOptions { WriteIndented = true });
+                var reviewJson = WorkerTranscriptJson.Serialize(review);
                 AddTaskMessage("SOL REVIEW", $"[ACTION={action.Kind.ToString().ToUpperInvariant()}]{Environment.NewLine}{reviewJson}", status: action.Kind.ToString().ToUpperInvariant(), summary: review.Summary);
-                var accepted = evidenceOk && string.Equals(report.Status, "IMPLEMENTED", StringComparison.OrdinalIgnoreCase)
+                var accepted = evidenceOk && judgeOk && string.Equals(report.Status, "IMPLEMENTED", StringComparison.OrdinalIgnoreCase)
                     && review.Decision == "ACCEPT" && review.AcceptanceCriteria.All(item => item.Status == "PASS");
                 if (action.Kind == CoordinatorActionKind.End && !accepted)
                 {
-                    ShowCoordinatorFirstBlocked("관제 종료 조건이 충족되지 않았습니다.", evidenceOk ? "구현 상태나 AC 판정이 완료 조건과 일치하지 않습니다." : "필수 검증 증거 부족: " + evidenceDetail);
+                    ShowCoordinatorFirstBlocked("관제 종료 조건이 충족되지 않았습니다.", !evidenceOk ? "필수 검증 증거 부족: " + evidenceDetail : !judgeOk ? "판정 AI 검증이 통과하지 않았습니다: " + judgeStatus : "구현 상태나 AC 판정이 완료 조건과 일치하지 않습니다.");
                     return;
                 }
                 if (action.Kind == CoordinatorActionKind.Continue)
@@ -1497,13 +1562,14 @@ public partial class MainWindow : Window
     {
         var started = DateTimeOffset.UtcNow;
         var result = await _codexRunner.RunAsync(prompt, role.Model, role.Reasoning, workingDirectory, sessionId, sandbox == CodexSandboxMode.ReadOnly, cancellationToken, schema, sandbox);
-        UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, purpose == "IMPLEMENT" ? "LUNA" : "SOL", role.Model, role.Reasoning, purpose,
+        var isImplementer = purpose.StartsWith("IMPLEMENT", StringComparison.Ordinal);
+        UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, isImplementer ? "LUNA" : "SOL", role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
             result.Usage.ProviderTotalTokens, Encoding.UTF8.GetByteCount(prompt), Encoding.UTF8.GetByteCount(prompt), 0,
             null, Encoding.UTF8.GetByteCount(result.FinalMessage), (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
             null, result.Usage.UsageKnown, null, null, DateTimeOffset.UtcNow));
-        AddTaskMessage($"{(purpose == "IMPLEMENT" ? "LUNA" : "SOL")} {purpose}", $"exit {result.ExitCode} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
+        AddTaskMessage($"{(isImplementer ? "LUNA" : "SOL")} {purpose}", $"exit {result.ExitCode} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
         _lastActivityAt = DateTimeOffset.UtcNow;
         return result;
     }

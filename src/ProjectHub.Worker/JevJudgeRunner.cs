@@ -9,7 +9,7 @@ using System.Security.Cryptography;
 namespace ProjectHub.Worker;
 
 public enum JudgeDecision { Pass, Partial, Error }
-public sealed record JudgeRequest(string Goal,int Round,string WorkingDirectory,string CodexResult,string ValidationRequest,IReadOnlyList<CodexCliFile> Files,string ReviewSource,string? ReviewCommitSha,string? JobId=null);
+public sealed record JudgeRequest(string Goal,int Round,string WorkingDirectory,string CodexResult,string ValidationRequest,IReadOnlyList<CodexCliFile> Files,string ReviewSource,string? ReviewCommitSha,string? JobId=null,IReadOnlyList<CodexCommandExecution>? CommandExecutions=null);
 public sealed record JudgeResult(JudgeDecision Decision,string Message,string Provider,string? ExecutableOrEndpoint=null,JevCallTelemetry? Telemetry=null);
 
 public sealed class JevJudgeRunner

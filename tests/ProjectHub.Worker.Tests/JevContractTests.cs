@@ -17,6 +17,31 @@ public sealed class JevContractTests
     }
 
     [Fact]
+    public void CoordinatorFooter_RoutesToCoordinatorOrJudgeWithoutChangingWebContract()
+    {
+        var footer = JevContract.LoadCoordinatorFooter();
+        Assert.Contains("[NEXT : COORDINATOR]", footer);
+        Assert.Contains("[NEXT : JEV]", footer);
+
+        var report = JevContract.ParseNext("[NEXT : COORDINATOR]\n[REPORT]\n검증 완료", coordinatorMode: true);
+        Assert.Equal(NextRoute.Coordinator, report.Route);
+        Assert.Null(JevContract.ValidateCoordinatorStructure(report));
+
+        var judge = JevContract.ParseNext("[NEXT : JEV]\n[VALIDATION REQUEST]\nNOUL | 검증 질문\nPASS: YES >= 0.8", coordinatorMode: true);
+        Assert.Equal(NextRoute.Jev, judge.Route);
+        Assert.Null(JevContract.ValidateCoordinatorStructure(judge));
+        Assert.True(JevContract.TryParseValidation(JevContract.ExtractValidationRequest(judge.Body), out _, out var error), error);
+
+        Assert.Equal("NEXT_WRONG_MODE", JevContract.ParseNext("[NEXT : WEB]\n[REPORT]\n내용", coordinatorMode: true).Error);
+        Assert.Equal("NEXT_WRONG_MODE", JevContract.ParseNext("[NEXT : COORDINATOR]\n[REPORT]\n내용").Error);
+        Assert.Equal("NEXT_DUPLICATE", JevContract.ParseNext("[NEXT : COORDINATOR]\n[REPORT]\n내용\n[NEXT : JEV]", coordinatorMode: true).Error);
+        Assert.Equal("REPORT_PROTOCOL_ERROR", JevContract.ValidateStructure(JevContract.ParseNext("[NEXT : COORDINATOR]\n내용", coordinatorMode: true), reportOnly: true));
+        Assert.Equal("COORDINATOR_REPORT_AMBIGUOUS", JevContract.ValidateCoordinatorStructure(JevContract.ParseNext("[NEXT : COORDINATOR]\n[REPORT]\n내용\n[VALIDATION REQUEST]", coordinatorMode: true)));
+        Assert.Equal("JEV_REQUEST_AMBIGUOUS", JevContract.ValidateCoordinatorStructure(JevContract.ParseNext("[NEXT : JEV]\n서문\n[VALIDATION REQUEST]\n질문", coordinatorMode: true)));
+        Assert.Equal("JEV_REPORT_NOT_COORDINATOR", JevContract.ValidateCoordinatorStructure(judge, reportOnly: true));
+    }
+
+    [Fact]
     public void ParseValidation_AcceptsNoulOneLineAndScoreNormalizesHumanThreshold()
     {
         Assert.True(JevContract.TryParseValidation("[VALIDATION REQUEST]\nNOUL | 완료율 | PASS: YES >= 0.8\nSCORE | 상태 점수\n1 = 낮음\n2 = 높음\nPASS: SCORE >= 2",out var request,out var error),error);
@@ -100,6 +125,27 @@ public sealed class JevContractTests
             Assert.Equal("NOT_RECORDED",envelope.VerificationLayers["HUMAN_UX"].Status);
         }
         finally { Directory.Delete(directory,true); }
+    }
+
+    [Fact]
+    public void EvidenceEnvelope_RecordsCliCommandExitSeparatelyFromImplementerClaims()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "jev-command-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            const string command = "dotnet test ProjectHub.sln";
+            Assert.True(JevContract.TryParseValidation("NOUL | Did dotnet test ProjectHub.sln succeed?\nPASS: YES >= 0.8", out var validation, out var error), error);
+            var request = new JudgeRequest("goal", 1, directory, "tests passed", "NOUL | Did dotnet test ProjectHub.sln succeed?\nPASS: YES >= 0.8",
+                Array.Empty<CodexCliFile>(), "GIT", null, "job-command", new[] { new CodexCommandExecution(command, 0, "token=do-not-leak\nPassed") });
+            var envelope = JevEvidenceEnvelope.Create(request, validation);
+            var executed = Assert.Single(envelope.Evidence, item => item.Provenance == EvidenceProvenance.Executed);
+            Assert.Equal(command, executed.Command);
+            Assert.Equal(0, executed.ExitCode);
+            Assert.Contains("[REDACTED]", executed.Excerpt);
+            Assert.True(envelope.HasDirectEvidence("C1"));
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     [Fact]

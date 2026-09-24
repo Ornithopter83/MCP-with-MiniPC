@@ -159,7 +159,11 @@ public static class CoordinatorFirstContracts
         static string Unquote(string value)
         {
             value = value.Trim();
-            return value.Length >= 2 && value[0] == value[^1] && value[0] is '"' or '\'' ? value[1..^1] : value;
+            if (value.Length >= 2 && value[0] == value[^1] && value[0] is '"' or '\'')
+                value = value[1..^1];
+            // Codex CLI quotes an inner Windows PowerShell -Command argument as \"...\".
+            // Decode that single wrapper layer before comparing complete commands.
+            return value.Replace("\\\"", "\"", StringComparison.Ordinal);
         }
         static string Normalize(string value) => string.Join(' ', Unquote(value).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         var observed = observedCommand.Trim();

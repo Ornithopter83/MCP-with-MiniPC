@@ -2,6 +2,13 @@
 
 Updated: 2026-09-24
 
+## 11-C 후속 — transcript 가독성·검증 명령·Footer→JEV→관제 경로 (2026-09-24)
+
+- 첨부 `_20260924_095010.txt`는 엄격한 UTF-8 디코딩이 가능한 파일이었다. 한글 요청은 정상이고 작업 카드·보고서·REVIEW JSON만 기본 serializer가 `\\uXXXX`로 이스케이프해 깨진 것처럼 보였다. transcript용 JSON serializer에서 한글을 그대로 쓰되 JSON 형식은 유지하도록 수정했다. transcript 파일 쓰기는 기존 UTF-8 no BOM이다.
+- 필수 검증 실패 메시지의 원인은 필수 PowerShell 명령이 아니라 관측 명령 대조였다. 첫 실행은 따옴표 누락으로 exit 1, 두 번째 실행은 exit 0이었지만 CLI의 `powershell.exe -Command "powershell ... \\"...\\""` 이중 wrapper에 남은 이스케이프 따옴표를 비교기가 해제하지 못했다. wrapper 한 층의 따옴표를 풀어 전체 명령을 정확히 비교한다. 단순 문자열 언급은 증거로 인정하지 않는다.
+- CLI-to-CLI 작업 AI의 구조화 결과 뒤 같은 작업 세션에서 읽기 전용 Footer 턴을 실행한다. `[NEXT : COORDINATOR]`는 `[REPORT]`를 같은 Sol 관제 세션의 REVIEW로 전달한다. `[NEXT : JEV]`는 `[VALIDATION REQUEST]`를 판정 AI에 보내고, 실제 CLI 명령·종료 코드를 별도 실행 증거로 포함한다. 판정 결과는 다시 같은 작업 AI 세션에 보내 `[NEXT : COORDINATOR]` 보고를 받은 후 Sol에 전달한다. JEV 오류·부분 판정, 필수 명령 증거 부족은 Worker END 게이트를 통과할 수 없다. JEV 사용 안 함도 Footer 보고 경로를 거친다. 기존 Web NEXT 계약은 유지한다.
+- 완료일: 2026-09-24. 검증: `dotnet build ProjectHub.sln --configuration Debug --no-restore` 성공(경고 0/오류 0), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 전체 42개 통과, `git diff --check` 통과. 회귀 테스트에 한글 JSON, 실제 이중 PowerShell wrapper의 성공 재시도, Footer 계약, 판정 실행 증거를 포함했다. 사용자 선택에 따라 설치본 교체는 수행하지 않았으며 새 빌드의 Explorer 실작업 왕복은 미검증이다. 잔여 식별자: `11-C-FOOTER-EXPLORER`, `11-C-JEV-LIVE`, `11-C-DEPLOY`(설치 보류).
+
 ## 11-C 후속 — 현재 단계 표시·시간순 이력·모델 독립 ACTION 분기 (2026-09-24)
 
 - 첨부 화면의 다음 단계가 미리 컬러가 되는 원인을 `SetPipelineCard`의 `current || next || initialIdle` 규칙에서 확인했다. 현재 실행 단계만 역할색으로 표시한다. 비활성 카드의 아이콘 배경을 더 어두운 중립색으로 바꾸고, 작업 단계는 녹색, 판정 단계는 노란색 활성 팔레트로 바꿨다. 이력은 `Insert(0)` 대신 끝에 추가하고 최신 항목으로 스크롤해 아래로 쌓이게 했다.

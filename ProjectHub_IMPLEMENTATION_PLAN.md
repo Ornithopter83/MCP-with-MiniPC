@@ -2,6 +2,10 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 11-C 후속 — transcript·검증 증거·판정 보고 연결
+
+첨부 09:50 transcript는 유효한 UTF-8이었고 작업 JSON의 기본 `\\uXXXX` 이스케이프가 가독성 문제였다. transcript JSON을 한글 그대로 기록한다. 검증 명령은 첫 시도 exit 1 뒤 성공한 exit 0 명령을 CLI 이중 PowerShell wrapper의 이스케이프 따옴표 때문에 놓쳤다. wrapper를 풀고 전체 명령 비교를 유지한다. 작업 AI는 구조화 결과 후 같은 세션의 읽기 전용 Footer 턴에서 관제 보고 또는 JEV 요청을 선택한다. JEV가 요청되면 실제 명령 종료 증거와 함께 판정하고 결과를 같은 작업 세션으로 돌려보낸 뒤 같은 Sol REVIEW에 전달한다. Worker는 판정 미통과 시 END를 거부한다. 완료일 2026-09-24, Debug 빌드 경고 0/오류 0, 전체 42개 테스트와 diff check 통과. 설치본 교체 없이 코드만 유지하므로 `11-C-FOOTER-EXPLORER`, `11-C-JEV-LIVE`, `11-C-DEPLOY`가 잔여다. 상세는 CurrentWork와 task 11을 참조한다.
+
 ## 2026-09-24 11-C 후속 — 현재 단계 UI와 ACTION 제어
 
 현재 단계만 컬러로 표시하고 비활성 아이콘 배경의 대비를 높였다. 작업은 녹색, 판정은 노란색 활성 팔레트로 바꿨고 대화 이력은 아래로 추가한다. Web의 첫 줄 ACTION 형식을 참고해 CLI 관제 REVIEW가 `[ACTION=CONTINUE|PAUSE|END]` 첫 줄과 REVIEW JSON을 반환하도록 했다. Worker는 모델과 무관하게 ACTION을 파싱해 최대 3회까지 같은 작업 카드의 재작업을 이어가거나, 사용자 판단을 기다리거나, 필수 검증 증거와 모든 AC가 PASS일 때만 완료한다. Debug 빌드 경고/오류 0, 전체 39개 테스트 통과, Release 게시 성공(게시본 SHA-256 `1B894FD0F3CB9CEB7DC8C3067F924036F50F40E37511C051AABA6E85A87C82C2`). 읽기 전용 CLI 모델 호출에서 ACTION 첫 줄과 유효한 END/ACCEPT JSON을 확인했다. Explorer 앱 제어가 노출되지 않아 UI·통합 왕복은 미검증이고, 사용자 선택에 따라 설치본 교체는 보류했다. 잔여 `11-C-UI-EXPLORER`, `11-C-ACTION-E2E`, `11-C-DEPLOY`(설치 보류); 상세는 CurrentWork와 task 11을 참조한다.

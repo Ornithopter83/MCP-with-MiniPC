@@ -1,6 +1,13 @@
 # 11 Coordinator-first CLI-to-CLI
 
-Updated: 2026-09-23
+Updated: 2026-09-24
+
+## 2026-09-24 11-C follow-up — readable transcript, exact validation evidence, JEV route
+
+- The attached 09:50 transcript is valid UTF-8. Default JSON escaping made Korean in the work card/result/review hard to read; transcript JSON now emits readable Korean while remaining parseable JSON.
+- The first PowerShell validation attempt exited 1. A later exact retry exited 0, but the matcher missed its nested CLI PowerShell wrapper and escaped inner quotes. The matcher now removes that wrapper encoding and still requires a complete command match.
+- After the structured implementation report, the implementer resumes in a read-only routing turn with the embedded coordinator Footer. It sends one `[NEXT : COORDINATOR]` report or one `[NEXT : JEV]` validation request. When JEV is requested, Worker supplies independently observed command exit evidence, returns the verdict to the same implementer session for a report, and forwards report/verdict/evidence to the original coordinator REVIEW session. Worker rejects END if requested JEV did not pass. Legacy Web NEXT behavior remains separate.
+- Completed: 2026-09-24. Verification: `dotnet build ProjectHub.sln --configuration Debug --no-restore` (0 warnings, 0 errors), `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` (42 passed), `git diff --check` (passed). Remaining: `11-C-FOOTER-EXPLORER`, `11-C-JEV-LIVE`, `11-C-DEPLOY` (installation deferred by user preference); this new binary has not been tested through the Explorer UI.
 
 ## Goal
 

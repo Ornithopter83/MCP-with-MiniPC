@@ -87,6 +87,17 @@ public sealed record JevEvidenceEnvelope(
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or DecoderFallbackException or NotSupportedException) { }
         }
 
+        foreach (var (execution, index) in (request.CommandExecutions ?? Array.Empty<CodexCommandExecution>()).Take(32).Select((item, index) => (item, index)))
+        {
+            var excerpt = Sanitize(execution.Output ?? string.Empty);
+            if (excerpt.Length > maxExcerptChars) excerpt = excerpt[..maxExcerptChars] + "\n[TRUNCATED]";
+            var sourceRef = $"codex-command/{index + 1}";
+            evidence.Add(new(EvidenceId(sourceRef + execution.Command), EvidenceKind.Runtime, sourceRef, revision,
+                Digest(Encoding.UTF8.GetBytes(execution.Command + "\n" + execution.ExitCode + "\n" + excerpt)),
+                "Codex CLI JSONL", execution.Command, execution.ExitCode,
+                execution.ExitCode == 0 ? "AVAILABLE" : "FAILED", now, excerpt, execution.Command, EvidenceProvenance.Executed));
+        }
+
         var summary = Sanitize(request.CodexResult);
         if (summary.Length > maxExcerptChars) summary = summary[..maxExcerptChars] + "\n[TRUNCATED]";
         var summaryBytes = Encoding.UTF8.GetBytes(summary);
@@ -98,6 +109,7 @@ public sealed record JevEvidenceEnvelope(
         {
             var candidates = evidence.Where(e => e.Provenance != EvidenceProvenance.SummaryOnly &&
                 (q.Instructions.Contains(Path.GetFileName(e.Scope), StringComparison.OrdinalIgnoreCase) ||
+                 (e.Command is not null && q.Instructions.Contains(e.Command, StringComparison.OrdinalIgnoreCase)) ||
                  q.Instructions.Contains(e.EvidenceId, StringComparison.OrdinalIgnoreCase))).Select(e => e.EvidenceId).ToList();
             if (candidates.Count == 0) candidates.Add(evidence[^1].EvidenceId);
             return new JevQuestionEvidence(q.Id, candidates);
