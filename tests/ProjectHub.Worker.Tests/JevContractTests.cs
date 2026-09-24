@@ -12,6 +12,9 @@ public sealed class RoleContractBoundaryTests
     {
         var hq = RoleContractLoader.LoadHqFooter();
         Assert.Contains("[ACTION=CONTINUE]", hq);
+        Assert.Contains("[GOTO : WORK]", hq);
+        Assert.Contains("[GOTO : HIGH]", hq);
+        Assert.Contains("Do not use [GOTO=WORK]", hq);
         Assert.DoesNotContain("GOTO : JUDGE", hq);
         Assert.DoesNotContain("GOTO : HQ", hq);
         Assert.DoesNotContain("You are WORK", hq);
@@ -52,10 +55,11 @@ public sealed class RoleContractBoundaryTests
     {
         var withoutPermit = RoleContractLoader.BuildHqPrompt("USER_REQUEST", "opaque body", false);
         var withPermit = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "opaque report", true);
-        Assert.Contains("[AVAILABLE GOTO]\nWORK", withoutPermit);
-        Assert.DoesNotContain("HIGH\n", withoutPermit);
+        Assert.Contains("[AVAILABLE GOTO]\n[GOTO : WORK]", withoutPermit);
+        Assert.DoesNotContain("[GOTO : HIGH]", withoutPermit);
         Assert.Contains("[ROLE : HQ]", withPermit);
         Assert.Contains("[HIGH PERMIT : ONE_SHOT]", withPermit);
+        Assert.Contains("[AVAILABLE GOTO]\n[GOTO : WORK]\n[GOTO : HIGH]", withPermit);
         Assert.Contains("opaque report", withPermit);
     }
 
