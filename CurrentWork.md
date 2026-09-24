@@ -22,11 +22,13 @@ UNKNOWN -> HQ
 
 핵심 ACTION+GOTO router, HIGH one-shot permit, JUDGE raw transport, 역할별 contract 파일 분리는 구현돼 있다.
 
-사용자 Explorer 기본 경로에서 HQ → WORK → HQ → END 실제 진행은 확인됐지만, WORK 응답 body가 transcript에는 남고 메시지/작업 이력 카드에는 표시되지 않는 문제가 확인됐다.
+2026-09-24 직접 수정으로 신규 CLI 역할 contract에서 INSTRUCTION/REPORT/VALIDATION REQUEST/JUDGMENT 출력 요구를 제거했다. JudgeTransportContract는 GOTO:JUDGE 뒤 body 전체를 opaque request로 사용하고, native JUDGE raw response에는 JUDGMENT marker를 다시 붙이지 않는다.
 
-추가 점검 결과 신규 CLI 역할 계약에 INSTRUCTION/REPORT/VALIDATION REQUEST/JUDGMENT 같은 semantic body tag 요구가 남아 있고, JudgeTransportContract가 VALIDATION REQUEST marker를 검색하며, JUDGE raw 결과에도 JUDGMENT marker를 삽입하고 있다.
+HQ/WORK/JUDGE/HIGH 응답 완료 시 Worker가 현재 role/state와 usage/files telemetry를 직접 사용해 History 카드를 생성하도록 연결했다. 카드 UI는 제목 아래에 1줄 preview, token line, file line을 표시하며 body tag/source 문자열로 역할을 추론하지 않는다. 현재 CodexCliFile에는 create/modify/delete 구분이 없으므로 파일 줄은 'N개 감지'로만 표시하고 유형을 추정하지 않는다.
 
-따라서 11-C-GOTO-CONTRACT는 아직 완료가 아니다.
+이번 변경분은 저장소 코드 검토로 반영 여부를 확인했지만, 현재 GPT 실행 환경에는 .NET SDK가 없어 dotnet test/build를 새 변경분에 대해 직접 실행하지 못했다. 따라서 자동 빌드·테스트와 Explorer 실제 왕복 재검증은 잔여다.
+
+11-C-GOTO-CONTRACT는 아직 완료가 아니다.
 
 ## Active residual — opaque body + History
 
