@@ -245,3 +245,13 @@ D. invalid route/provider error -> UNKNOWN -> HQ
 코드/자동화 구현은 완료했다. 11-C-GOTO-CONTRACT 전체 완료는 **Worker가 의미 판단 없이 계약된 흐름만 제어하는 실제 Explorer 왕복**이 확인된 뒤에만 기록한다.
 
 빌드/단위테스트만으로 Explorer E2E 완료를 선언하지 않는다.
+
+## 2026-09-24 contract 정리 및 게시 준비
+
+- 역할별 HQ/WORK/HIGH/JUDGE/UNKNOWN 계약을 embedded resource로 분리하고 `RoleContractLoader`를 추가했다.
+- Legacy Web의 ACTION/NEXT 규약을 전용 contract/parser로 분리했다. legacy에서는 ACTION CONTINUE/PAUSE/END와 NEXT WEB/JEV만 유효하다.
+- JUDGE transport schema parser는 API 필수 질문 구조만 처리하며 PASS threshold의 의미·범위를 해석하지 않는다. JUDGE raw 응답은 `[ROLE : WORK][INBOUND TYPE : JUDGMENT]`로 같은 WORK session에 이어 붙이고 GOTO 재생성을 막는다.
+- 구 coordinator-first semantic gate와 해당 테스트를 삭제했다. `CodexCommandExecution`은 제거된 파일에서 독립 모델로 분리했다.
+- 검증: `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1); Release build 및 Worker publish 통과 (경고 0, 오류 0); `git diff --check` 통과.
+- 게시 실행파일을 `C:\AI-AGENT\Worker`에 복사하고 SHA-256 일치 (`A9B4773029AD35EB3497FD41E2DA743D2F4477D19289E65255FCB4AE22529C2C`)를 확인했다. 실행 중인 Worker 프로세스는 없었다. `C:\GameProject`는 경로가 없어 복사하지 않았다.
+- 배포 후 잔여: Explorer 실제 왕복 경로 검증 미수행. 이를 완료로 처리하지 않는다.

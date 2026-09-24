@@ -55,7 +55,7 @@ Worker가 담당하지 않음:
 
 상세 구현 계약은 tasks/11-cli-coordinator-first.md를 따른다.
 
-2026-09-24: 구현 및 자동 테스트 완료. `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), `dotnet build ProjectHub.sln -c Release --no-restore` 성공 (경고 0, 오류 0). Explorer 왕복 검증은 사용자가 직접 확인할 잔여 작업이며 완료로 간주하지 않는다.
+2026-09-24: 역할별 embedded contract, Legacy Web 계약 분리, JUDGE transport parser와 opaque PASS 지침 전달로 구현을 정리했다. `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), Release build/publish 성공 (경고 0, 오류 0), `git diff --check` 통과. 게시 EXE를 `C:\AI-AGENT\Worker`에 복사하고 SHA-256을 대조했다. Explorer 왕복 검증은 사용자가 직접 확인할 잔여 작업이며 완료로 간주하지 않는다.
 
 완료 조건:
 - 단위 라우팅 테스트

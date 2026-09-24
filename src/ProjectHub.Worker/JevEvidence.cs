@@ -32,10 +32,9 @@ public sealed record JevEvidenceEnvelope(
     string SourceRevision,
     IReadOnlyList<JevEvidence> Evidence,
     IReadOnlyList<JevQuestionEvidence> QuestionEvidence,
-    IReadOnlyDictionary<string, string> QuestionDigests,
     IReadOnlyDictionary<string, JevVerificationLayer> VerificationLayers)
 {
-    public static JevEvidenceEnvelope Create(JudgeRequest request, JevValidationRequest validation)
+    public static JevEvidenceEnvelope Create(JudgeRequest request, JudgeTransportRequest validation)
     {
         const int maxFileBytes = 64 * 1024;
         const int maxExcerptChars = 12_000;
@@ -46,7 +45,6 @@ public sealed record JevEvidenceEnvelope(
         var root = Path.GetFullPath(request.WorkingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
         foreach (var file in request.Files.Take(32)) evidencePaths.Add(file.Path);
-        foreach (var priorPath in LoadPriorSourcePaths(request.JobId, root)) evidencePaths.Add(priorPath);
         foreach (var question in validation.Questions)
         foreach (Match match in Regex.Matches(question.Instructions, @"(?im)^\s*EVIDENCE\s*:\s*(.+)$"))
         foreach (Match pathMatch in Regex.Matches(match.Groups[1].Value.Split(new[] { " — ", " – ", ";", "," }, StringSplitOptions.None)[0], @"(?:[A-Za-z]:[\\/])?[\w .\\/-]+\.(?:cs|xaml|js|ts|tsx|jsx|json|md|log|txt|csproj|sln|xml|yml|yaml|toml|ps1)", RegexOptions.IgnoreCase))
@@ -115,10 +113,9 @@ public sealed record JevEvidenceEnvelope(
             return new JevQuestionEvidence(q.Id, candidates);
         }).ToArray();
 
-        var questionDigests = validation.Questions.ToDictionary(q => q.Id, q => Digest(Encoding.UTF8.GetBytes($"{q.Type}|{q.Instructions}|{q.Rule.Operator}|{q.Rule.Number}|{string.Join(";", q.Rule.Allowed.OrderBy(x => x))}|{string.Join(";", q.Criteria)}|{string.Join(";", q.ChoiceCriteria.OrderBy(x => x.Key).Select(x => x.Key + "=" + x.Value))}")), StringComparer.OrdinalIgnoreCase);
         var engineRunners = new[] { FindOnPath("node.exe"), FindOnPath("dotnet.exe") }.Where(x => x is not null).ToArray();
         var hasJevKey = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TYPESAFE_API_KEY"));
-        return new(string.IsNullOrWhiteSpace(request.JobId) ? Guid.NewGuid().ToString("N") : request.JobId!, revision, evidence, mappings, questionDigests,
+        return new(string.IsNullOrWhiteSpace(request.JobId) ? Guid.NewGuid().ToString("N") : request.JobId!, revision, evidence, mappings,
             new Dictionary<string, JevVerificationLayer>(StringComparer.OrdinalIgnoreCase)
             {
                 ["ENGINE_HEADLESS"] = new(engineRunners.Length > 0 ? "NODE_OR_DOTNET_AVAILABLE" : "NO_SUPPORTED_RUNNER_FOUND", "NOT_RUN", string.Join(",", engineRunners!), "Executable availability only; no test command or fixture was inferred."),
@@ -130,18 +127,7 @@ public sealed record JevEvidenceEnvelope(
 
     public string ToProviderState() => JsonSerializer.Serialize(this);
 
-    public bool HasDirectEvidence(string questionId) => QuestionEvidence.FirstOrDefault(x => x.QuestionId.Equals(questionId, StringComparison.OrdinalIgnoreCase))?.EvidenceIds
-        .Any(id => Evidence.Any(e => e.EvidenceId == id && e.Status == "AVAILABLE" && e.Provenance != EvidenceProvenance.SummaryOnly)) == true;
-
     public string EvidenceFor(string questionId) => string.Join(",", QuestionEvidence.FirstOrDefault(x => x.QuestionId.Equals(questionId, StringComparison.OrdinalIgnoreCase))?.EvidenceIds ?? Array.Empty<string>());
-
-    public JevEvidenceEnvelope WithLayer(string layer, string status) => this with
-    {
-        VerificationLayers = new Dictionary<string, JevVerificationLayer>(VerificationLayers, StringComparer.OrdinalIgnoreCase)
-        {
-            [layer] = VerificationLayers.TryGetValue(layer, out var previous) ? previous with { Status = status } : new("UNKNOWN", status, null, "")
-        }
-    };
 
     private static bool IsTestFile(string name) => name.Contains("test", StringComparison.OrdinalIgnoreCase) || name.Contains("spec", StringComparison.OrdinalIgnoreCase);
     private static string? FindOnPath(string executable)
@@ -165,27 +151,4 @@ public sealed record JevEvidenceEnvelope(
         ? Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/')
         : "artifact:" + Path.GetFileName(path);
 
-    private static IReadOnlyList<string> LoadPriorSourcePaths(string? jobId, string root)
-    {
-        var paths = new List<string>();
-        if (string.IsNullOrWhiteSpace(jobId)) return paths;
-        var latest = Path.Combine(WorkerPaths.State, "jev-evidence", Regex.Replace(jobId, @"[^A-Za-z0-9_-]", "_"), "latest.json");
-        if (!File.Exists(latest)) return paths;
-        JsonDocument? document = null;
-        try
-        {
-            document = JsonDocument.Parse(File.ReadAllText(latest));
-            foreach (var item in document.RootElement.GetProperty("envelope").GetProperty("Evidence").EnumerateArray())
-            {
-                if (!item.TryGetProperty("SourceRef", out var value) || value.ValueKind != JsonValueKind.String) continue;
-                var sourceRef = value.GetString();
-                if (string.IsNullOrWhiteSpace(sourceRef) || Path.IsPathRooted(sourceRef) || sourceRef.StartsWith("artifact:", StringComparison.OrdinalIgnoreCase)) continue;
-                var path = Path.GetFullPath(Path.Combine(root, sourceRef.Replace('/', Path.DirectorySeparatorChar)));
-                if (path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) paths.Add(path);
-            }
-        }
-        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException or ArgumentException or NotSupportedException) { }
-        finally { document?.Dispose(); }
-        return paths;
-    }
 }

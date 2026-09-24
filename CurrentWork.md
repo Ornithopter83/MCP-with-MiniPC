@@ -22,11 +22,11 @@ ACTION은 HQ만 CONTINUE/PAUSE/END를 사용한다.
 
 ## Implementation status (2026-09-24)
 
-11-C-GOTO-CONTRACT 코드 변경과 자동 검증은 완료했다. Explorer 실제 왕복 검증은 사용자가 직접 수행할 잔여 작업이다.
+11-C-GOTO-CONTRACT 구현 및 자동 검증은 완료했다. Explorer 실제 왕복 검증은 미수행 잔여 작업으로 사용자 확인을 기다린다.
 
 적용: HQ ACTION+GOTO 상태표, UNKNOWN→HQ 오류 전달, WORK/HIGH 분리 footer, JEV raw 응답의 동일 WORK 세션 복귀, HIGH 실행 시점 one-shot permit, Worker 의미판정·자동 재시도 제거. Legacy Web NEXT:WEB/JEV는 유지했다.
 
-검증: `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), `dotnet build ProjectHub.sln -c Release --no-restore` 성공 (경고 0, 오류 0). Explorer E2E는 수행하지 않았다.
+검증: `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), `dotnet build ProjectHub.sln -c Release --no-restore` 및 Worker `dotnet publish ... -c Release -r win-x64 --no-restore` 성공 (경고 0, 오류 0), `git diff --check` 통과. 게시 EXE와 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` SHA-256 일치 (`A9B4773029AD35EB3497FD41E2DA743D2F4477D19289E65255FCB4AE22529C2C`). Explorer E2E는 요청에 따라 미수행이며 잔여다. `C:\GameProject`는 존재하지 않아 복사 대상이 아니었다.
 
 ## Implemented scope
 
@@ -35,8 +35,11 @@ ACTION은 HQ만 CONTINUE/PAUSE/END를 사용한다.
 - HIGH는 실행 시 체크한 one-shot permit으로만 호출한다.
 - protocol/provider/session/transport 오류는 UNKNOWN envelope로 HQ에 전달한다.
 - Legacy Web NEXT:WEB/JEV는 보존했다.
+- 역할별 지침을 독립 embedded contract 파일로 분리했고, 역할 prompt는 `[ROLE]`/`[INBOUND TYPE]` 헤더와 opaque body, 역할 footer 구조로 만든다.
+- JUDGE transport parser는 API 질문 구조만 파싱하고 PASS 임계값 지침은 opaque 원문으로 보존한다. JUDGE 응답은 제어행 재주입 없이 같은 WORK session으로 전달한다.
+- 레거시 Web의 ACTION은 CONTINUE/PAUSE/END만 허용하고 NEXT:WEB/JEV만 보존했다. 구 coordinator semantic gate와 관련 테스트를 제거했다.
 
-Explorer 실사용 경로 검증은 사용자 직접 확인 대상으로 남아 있다.
+잔여 식별자: **11-C-GOTO-CONTRACT Explorer E2E**. 빌드·테스트 완료와 커밋/푸시/복사 상태가 반영되더라도 실제 Explorer 왕복 검증 전까지 완료 처리하지 않는다.
 
 ## Worker boundary
 

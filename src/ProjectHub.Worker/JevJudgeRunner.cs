@@ -30,7 +30,7 @@ public sealed class JevJudgeRunner
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps) return new(null, "JEV_ENDPOINT_INVALID", null);
         var key = Environment.GetEnvironmentVariable("TYPESAFE_API_KEY");
         if (string.IsNullOrWhiteSpace(key)) return new(null, "JEV_API_KEY_MISSING", null);
-        if (!JevContract.TryParseValidation(request.ValidationRequest, out var validation, out var parseError)) return new(null, "JEV_VALIDATION_" + parseError, null);
+        if (!JudgeTransportContract.TryParse(JudgeTransportContract.ExtractRequest(request.ValidationRequest), out var validation, out var parseError)) return new(null, "JEV_VALIDATION_" + parseError, null);
         var envelope = JevEvidenceEnvelope.Create(request, validation);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(settings.TimeoutSeconds, 10, 600)));
@@ -76,10 +76,10 @@ public sealed class JevJudgeRunner
         return new(model,requestBytes,evidenceBytes,responseBytes,latency,input is not null||cached is not null||output is not null||reasoning is not null||total is not null,input,cached,output,reasoning,total,questionCount,errorCode);
         }
     }
-    private static object BuildQuestion(JevQuestion question,string evidenceIds)=>question.Type switch
+    private static object BuildQuestion(JudgeTransportQuestion question,string evidenceIds)=>question.Type switch
     {
-        JevQuestionType.Noul=>new { type="noul", instructions=question.Instructions, evidence_ids=evidenceIds },
-        JevQuestionType.Score=>new { type="score", instructions=question.Instructions, criteria=question.Criteria, evidence_ids=evidenceIds },
+        JudgeTransportQuestionType.Noul=>new { type="noul", instructions=question.Instructions, evidence_ids=evidenceIds },
+        JudgeTransportQuestionType.Score=>new { type="score", instructions=question.Instructions, criteria=question.Criteria, evidence_ids=evidenceIds },
         _=>new { type="choice", instructions=question.Instructions, criteria=question.ChoiceCriteria, evidence_ids=evidenceIds }
     };
     private static JevCallTelemetry EmptyTelemetry(long requestBytes,long evidenceBytes,long responseBytes,long latency,int questionCount,string errorCode)=>new("jev-latest",requestBytes,evidenceBytes,responseBytes,latency,false,null,null,null,null,null,questionCount,errorCode);

@@ -2,7 +2,7 @@
 
 Updated: 2026-09-24
 
-이 문서는 기존 GPT Web ↔ Codex ↔ JEV legacy mode의 공개 NEXT wire만 보존한다.
+이 문서는 기존 GPT Web ↔ Codex ↔ JEV legacy mode의 공개 ACTION/NEXT wire만 보존한다.
 
 신규 CLI-to-CLI 정책은 Master-Polish.md의 ACTION + GOTO 계약을 따른다.
 
@@ -11,6 +11,16 @@ Updated: 2026-09-24
 **Legacy mode에서도 Worker는 판단하지 않는다.**
 
 Worker는 NEXT를 읽어 전달하고 JEV provider 응답을 같은 Codex session에 돌려줄 뿐, threshold나 evidence를 보고 PASS/FAIL을 만들지 않는다.
+
+Legacy Web action은 다음 세 값만 사용한다.
+
+~~~text
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+~~~
+
+CONTINUE는 본문이 있어야 한다. Legacy Web은 HQ 역할 라우팅을 수행하지 않는다.
 
 ## Codex route
 
@@ -66,7 +76,7 @@ Worker는 transport/schema 수준에서 응답을 읽을 수 있으면 원문을
 <raw JEV response>
 ~~~
 
-Codex가 결과를 해석하고 다시 NEXT:WEB 또는 NEXT:JEV를 선택한다.
+Worker는 `GOTO:WORK` 제어행을 다시 입력에 넣지 않는다. Codex가 결과를 해석하고 `NEXT:WEB` 또는 `NEXT:JEV`를 선택한다.
 
 ## Technical error
 

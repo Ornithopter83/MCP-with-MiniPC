@@ -45,11 +45,26 @@
     <EmbeddedResource Include="..\..\extension\gptweb-hub\background.js">
       <LogicalName>ProjectHub.Worker.Extension.background.js</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="JEV-FOOTER-CONTRACT.md">
-      <LogicalName>ProjectHub.Worker.JEV-FOOTER-CONTRACT.md</LogicalName>
+    <EmbeddedResource Include="Legacy\LEGACY-WEB-JEV-FOOTER-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.Legacy.LEGACY-WEB-JEV-FOOTER-CONTRACT.md</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="JEV-COORDINATOR-FOOTER-CONTRACT.md">
-      <LogicalName>ProjectHub.Worker.JEV-COORDINATOR-FOOTER-CONTRACT.md</LogicalName>
+    <EmbeddedResource Include="JEV-API-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.JEV-API-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Contracts\HQ-ROUTING-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.Contracts.HQ-ROUTING-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Contracts\WORK-ROUTING-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.Contracts.WORK-ROUTING-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Contracts\HIGH-ROUTING-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.Contracts.HIGH-ROUTING-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Contracts\JUDGE-ROUTING-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.Contracts.JUDGE-ROUTING-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Contracts\UNKNOWN-ENVELOPE-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.Contracts.UNKNOWN-ENVELOPE-CONTRACT.md</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 </Project>

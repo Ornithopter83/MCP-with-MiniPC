@@ -108,12 +108,7 @@ WORK -> JUDGE API -> raw result -> same WORK session
 
 adapter return envelope:
 
-~~~text
-[GOTO : WORK]
-
-[JUDGMENT]
-<raw provider response>
-~~~
+Worker consumes the WORK-to-JUDGE route. Its next WORK input uses a role header and JUDGMENT body, without replaying a GOTO control line.
 
 legacy mode:
 
@@ -121,7 +116,7 @@ legacy mode:
 Codex -> JEV API -> raw result -> same Codex session
 ~~~
 
-그 후 Codex가 다음 NEXT를 선택한다.
+그 후 Codex가 legacy `NEXT:WEB/JEV` 중 다음 경로를 선택한다.
 
 ## 6. Error
 

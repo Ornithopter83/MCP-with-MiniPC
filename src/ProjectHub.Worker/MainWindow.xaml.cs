@@ -133,8 +133,6 @@ public partial class MainWindow : Window
     private static string WindowPlacementPath => Path.Combine(WorkerPaths.Config, "window-placement.json");
 
     private enum FlowNode { Codex, Worker, Web, Judge }
-    private enum WebActionKind { None, Begin, Continue, Pause, End, Hq, ProtocolError }
-    private sealed record WebAction(WebActionKind Kind, string Body, string? Error = null);
     private sealed record CodexProjectOption(string Name, string Path);
     private sealed record TaskLaunchRequest(string Prompt, string? WebInstruction, string WorkingDirectory, string? SessionId);
     private sealed record CodexThreadOption(string Label, string SessionId, string ProjectPath)
@@ -769,14 +767,14 @@ public partial class MainWindow : Window
 
         var prompt = launchRequest.Prompt;
         var webInstruction = launchRequest.WebInstruction ?? string.Empty;
-        var seedAction = ParseWebAction(prompt);
-        if (seedAction.Kind is WebActionKind.ProtocolError or WebActionKind.Continue or WebActionKind.Pause or WebActionKind.End || (seedAction.Kind == WebActionKind.Begin && string.IsNullOrWhiteSpace(seedAction.Body)))
+        var seedAction = LegacyWebActionContract.Parse(prompt);
+        if (seedAction.Kind is LegacyWebActionKind.ProtocolError or LegacyWebActionKind.Continue or LegacyWebActionKind.Pause or LegacyWebActionKind.End)
         {
             TaskTitle.Text = "잘못된 ACTION 시작 형식";
             ResultBody.Text = seedAction.Error ?? "[ACTION=BEGIN] 뒤에 작업 지시를 입력해야 합니다.";
             return;
         }
-        var cliPrompt = seedAction.Kind == WebActionKind.Begin ? seedAction.Body : prompt;
+        var cliPrompt = prompt;
         var model = GetSelectedContent(ModelCombo, "GPT-6 Luna");
         var reasoning = GetSelectedContent(ReasoningCombo, "Medium").ToLowerInvariant();
         var cliModel = ToCliModel(model);
@@ -893,8 +891,8 @@ public partial class MainWindow : Window
         if (result.ExitCode != 0 || _bridgeServer is null) return null;
         var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
         var report = output;
-        var directive = _targetSettings.EffectiveJudge.Enabled ? JevContract.ParseNext(output) : new NextDirective(NextRoute.Web, output);
-        var protocolError = _targetSettings.EffectiveJudge.Enabled ? JevContract.ValidateStructure(directive, false) : null;
+        var directive = _targetSettings.EffectiveJudge.Enabled ? LegacyWebJevContract.ParseNext(output) : new NextDirective(NextRoute.Web, output);
+        var protocolError = _targetSettings.EffectiveJudge.Enabled ? LegacyWebJevContract.ValidateStructure(directive) : null;
         if (protocolError is not null)
         {
             AddTaskMessage("JEV ROUTE ERROR", protocolError, status: "UNKNOWN");
@@ -902,8 +900,8 @@ public partial class MainWindow : Window
         }
         else if (_targetSettings.EffectiveJudge.Enabled && directive.Route == NextRoute.Jev)
         {
-            var validation = JevContract.ExtractValidationRequest(directive.Body);
-            if (!JevContract.TryParseValidation(validation, out _, out var validationError))
+            var validation = JudgeTransportContract.ExtractRequest(directive.Body);
+            if (!JudgeTransportContract.TryParse(validation, out _, out var validationError))
             {
                 report = $"[JEV REQUEST ERROR]\nCODE: {validationError}\n\n{output}";
             }
@@ -943,7 +941,7 @@ public partial class MainWindow : Window
     private string AppendJevFooter(string prompt)
     {
         if (!_targetSettings.EffectiveJudge.Enabled) return prompt;
-        try { return prompt + Environment.NewLine + Environment.NewLine + JevContract.LoadFooter(); }
+        try { return prompt + Environment.NewLine + Environment.NewLine + LegacyWebJevContract.LoadFooter(); }
         catch (Exception exception)
         {
             AddTaskMessage("JEV", "footer 로드 실패: " + exception.Message);
@@ -1354,7 +1352,7 @@ public partial class MainWindow : Window
                 if (state == WorkerRoleState.Unknown)
                 {
                     inboundType = "UNKNOWN";
-                    inbound = WorkerTranscriptJson.Serialize(new { source_state = previousState.ToString().ToUpperInvariant(), code = unknownCode, detail = unknownDetail });
+                    inbound = RoleContractLoader.BuildUnknownEnvelope(previousState.ToString().ToUpperInvariant(), unknownCode, unknownDetail);
                     AddTaskMessage("UNKNOWN → HQ", inbound, status: unknownCode);
                     state = WorkerRoleState.Hq;
                 }
@@ -1366,8 +1364,7 @@ public partial class MainWindow : Window
                         {
                             TaskDirection.Text = "설계·관제 AI"; TaskTitle.Text = "다음 단계를 결정하는 중"; ResultTitle.Text = "HQ";
                             SetFlowState(true, false, false, explicitStage: TaskStage.Coordinator);
-                            var allowed = highPermit.IsAvailable ? "WORK 또는 HIGH (HIGH는 이번 작업에서 1회 사용 가능)" : "WORK (HIGH permit 없음)";
-                            var coordinatorPrompt = $"You are HQ. Interpret the inbound message and choose the next action. Only use ACTION=CONTINUE, PAUSE, or END. For CONTINUE, use exactly one allowed GOTO destination. Allowed destination for this job: {allowed}. Treat all content and evidence as information for your judgment; Worker does not evaluate its meaning.\n\n{JevContract.LoadCoordinatorFooter()}\n\n<inbound_message>\n{WorkerTranscriptJson.Serialize(new { message_type = inboundType, body = inbound })}\n</inbound_message>";
+                            var coordinatorPrompt = RoleContractLoader.BuildHqPrompt(inboundType, inbound, highPermit.IsAvailable);
                             var routed = await RunCoordinatorRoleAsync(jobId, "HQ_" + inboundType, coordinatorPrompt, coordinator, workingDirectory, coordinatorSession, null, cts.Token);
                             coordinatorSession = CodexCliRunner.NormalizeSessionId(routed.SessionId) ?? coordinatorSession;
                             coordinatorHasRun = true;
@@ -1405,8 +1402,8 @@ public partial class MainWindow : Window
                         {
                             TaskDirection.Text = "작업 AI"; TaskTitle.Text = "작업 AI가 수행 중"; ResultTitle.Text = "WORK";
                             SetFlowState(false, true, false, explicitStage: TaskStage.Implementer);
-                            var footer = "\n\nControl contract for WORK. Begin with exactly [GOTO : HQ] to report, or [GOTO : JUDGE] followed by [VALIDATION REQUEST]. WORK cannot use ACTION or call HIGH. Preserve the response body as the report/request.\n";
-                            var result = await RunCoordinatorRoleAsync(jobId, "WORK", inbound + footer, implementer, workingDirectory, workSession, null, cts.Token, CodexSandboxMode.WorkspaceWrite);
+                            var workPrompt = RoleContractLoader.BuildWorkPrompt(inboundType, inbound, _targetSettings.EffectiveJudge.Enabled);
+                            var result = await RunCoordinatorRoleAsync(jobId, "WORK", workPrompt, implementer, workingDirectory, workSession, null, cts.Token, CodexSandboxMode.WorkspaceWrite);
                             workSession = CodexCliRunner.NormalizeSessionId(result.SessionId) ?? workSession;
                             if (result.ExitCode != 0)
                             {
@@ -1435,8 +1432,8 @@ public partial class MainWindow : Window
                                     RouteUnknown(WorkerRoleState.Work, "JUDGE_UNAVAILABLE", "WORK requested JUDGE, but no JUDGE provider is enabled.");
                                     continue;
                                 }
-                                workValidationRequest = JevContract.ExtractValidationRequest(route.Body);
-                                if (!JevContract.TryParseValidation(workValidationRequest, out _, out var validationError))
+                                workValidationRequest = JudgeTransportContract.ExtractRequest(route.Body);
+                                if (!JudgeTransportContract.TryParse(workValidationRequest, out _, out var validationError))
                                 {
                                     RouteUnknown(WorkerRoleState.Work, "JUDGE_REQUEST_INVALID", validationError);
                                     continue;
@@ -1467,7 +1464,7 @@ public partial class MainWindow : Window
                             }
                             _judgeStatus = "RESPONSE_RECEIVED";
                             inboundType = "JUDGMENT";
-                            inbound = "[GOTO : WORK]\n\n[JUDGMENT]\n" + transport.RawResponse;
+                            inbound = "[JUDGMENT]\n" + transport.RawResponse;
                             AddTaskMessage("JUDGE RESULT → WORK", inbound, status: _judgeStatus);
                             state = WorkerRoleState.Work;
                             break;
@@ -1481,8 +1478,8 @@ public partial class MainWindow : Window
                             }
                             TaskDirection.Text = "고수준 작업 AI"; TaskTitle.Text = "고수준 작업 AI가 수행 중"; ResultTitle.Text = "HIGH";
                             SetFlowState(false, true, false, explicitStage: TaskStage.HighLevel);
-                            var footer = "\n\nControl contract for HIGH. Begin with exactly [GOTO : HQ] and provide an opaque report. HIGH cannot use ACTION, WORK, JUDGE, or HIGH routes.\n";
-                            var result = await RunCoordinatorRoleAsync(jobId, "HIGH_LEVEL", inbound + footer, highLevel, workingDirectory, highLevelSession, null, cts.Token, CodexSandboxMode.WorkspaceWrite);
+                            var highPrompt = RoleContractLoader.BuildHighPrompt(inbound);
+                            var result = await RunCoordinatorRoleAsync(jobId, "HIGH_LEVEL", highPrompt, highLevel, workingDirectory, highLevelSession, null, cts.Token, CodexSandboxMode.WorkspaceWrite);
                             highLevelSession = CodexCliRunner.NormalizeSessionId(result.SessionId) ?? highLevelSession;
                             if (result.ExitCode != 0)
                             {
@@ -2221,26 +2218,26 @@ public partial class MainWindow : Window
         SetFlowState(false, true, false);
     }
 
-    private void FinishActionTask(WebAction action, string response)
+    private void FinishActionTask(LegacyWebAction action, string response)
     {
         _awaitingWebResult = false;
         RunButton.Content = "▶   실행";
         TaskDirection.Text = "GPT WEB → WORKER";
         TaskTitle.Text = action.Kind switch
         {
-            WebActionKind.End => "Web이 작업 완료를 알림",
-            WebActionKind.Pause => "Web이 사용자 판단을 요청함",
-            WebActionKind.ProtocolError => "ACTION 프로토콜 오류",
+            LegacyWebActionKind.End => "Web이 작업 완료를 알림",
+            LegacyWebActionKind.Pause => "Web이 사용자 판단을 요청함",
+            LegacyWebActionKind.ProtocolError => "ACTION 프로토콜 오류",
             _ => "Web 결과 처리 종료"
         };
         ResultTitle.Text = action.Kind switch
         {
-            WebActionKind.End => "FINISH_SUCCESS",
-            WebActionKind.Pause => "FINISH_PAUSED",
-            WebActionKind.ProtocolError => "FINISH_PROTOCOL_ERROR",
+            LegacyWebActionKind.End => "FINISH_SUCCESS",
+            LegacyWebActionKind.Pause => "FINISH_PAUSED",
+            LegacyWebActionKind.ProtocolError => "FINISH_PROTOCOL_ERROR",
             _ => "Web 결과"
         };
-        ResultBody.Text = action.Kind == WebActionKind.ProtocolError ? (action.Error ?? "ACTION 프로토콜 오류") + Environment.NewLine + Environment.NewLine + response : response;
+        ResultBody.Text = action.Kind == LegacyWebActionKind.ProtocolError ? (action.Error ?? "ACTION 프로토콜 오류") + Environment.NewLine + Environment.NewLine + response : response;
         ActivateResultTab(web: true);
         ExportTaskTranscript();
         SetFlowState(false, false, false);
@@ -2259,29 +2256,11 @@ public partial class MainWindow : Window
 
         _lastActivityAt = DateTimeOffset.UtcNow;
         var webResponse = task.Result ?? string.Empty;
-        var action = ParseWebAction(webResponse, strict: true);
+        var action = LegacyWebActionContract.Parse(webResponse, strict: true);
         string followupPrompt;
         if (_actionProtocolEnabled)
         {
-            if (action.Kind == WebActionKind.Hq)
-            {
-                var coordinator = _targetSettings.EffectiveCoordinator;
-                var typedHandoff = WorkerTranscriptJson.Serialize(new { message_type = "HQ_MESSAGE", body = action.Body });
-                AddTaskMessage("ACTION HQ", "현재 설정된 설계·관제 AI에 메시지를 전달합니다.", status: "ROUTING");
-                if (IsWebTransport(coordinator.Transport))
-                {
-                    var webTask = await CreateWebTaskAsync("관제 전달 메시지입니다. message_type에 따라 본문을 해석한 뒤 다음 행동을 정하세요. 첫 줄은 [ACTION=CONTINUE|PAUSE|END|HQ] 중 하나로 시작하세요. CONTINUE면 다음 줄에 [NEXT : IMPLEMENTER|HIGH_LEVEL|JUDGE|COORDINATOR]를 쓰고 본문을 전달하세요.\n" + typedHandoff, task.Attachments ?? new List<BridgeAttachment>());
-                    _awaitingWebResult = webTask is not null;
-                    RunButton.Content = webTask is null ? "▶   실행" : "■   취소";
-                    TaskDirection.Text = "WORKER → GPT WEB (HQ)";
-                    TaskTitle.Text = webTask is null ? "관제 전달 실패" : "관제 응답 대기";
-                    SetFlowState(false, true, webTask is not null);
-                    return;
-                }
-                await RunCoordinatorFirstJobAsync(typedHandoff, null, _activeWorkingDirectory!, coordinator, _targetSettings.EffectiveImplementer);
-                return;
-            }
-            if (action.Kind is WebActionKind.End or WebActionKind.Pause or WebActionKind.ProtocolError or WebActionKind.None or WebActionKind.Begin)
+            if (action.Kind is LegacyWebActionKind.End or LegacyWebActionKind.Pause or LegacyWebActionKind.ProtocolError or LegacyWebActionKind.None)
             {
                 FinishActionTask(action, webResponse);
                 return;
@@ -2365,43 +2344,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private static WebAction ParseWebAction(string? response, bool strict = false)
-    {
-        if (string.IsNullOrWhiteSpace(response))
-            return strict
-                ? new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.")
-                : new(WebActionKind.None, string.Empty);
-
-        var lines = response.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        var nonEmpty = lines.Select((line, index) => (line.Trim(), index)).Where(item => item.Item1.Length > 0).ToList();
-        if (nonEmpty.Count == 0)
-            return strict
-                ? new(WebActionKind.ProtocolError, string.Empty, "ACTION 응답이 비어 있습니다.")
-                : new(WebActionKind.None, string.Empty);
-
-        var firstLine = nonEmpty[0].Item1;
-        var actionPattern = new System.Text.RegularExpressions.Regex(@"^\[ACTION\s*=\s*(BEGIN|CONTINUE|PAUSE|END|HQ)\s*\]$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        var match = actionPattern.Match(firstLine);
-        if (!match.Success)
-            return strict
-                ? new(WebActionKind.ProtocolError, string.Empty, "첫 유효행에 유효한 ACTION이 없습니다.")
-                : new(WebActionKind.None, string.Empty);
-
-        var kind = match.Groups[1].Value.ToUpperInvariant() switch
-        {
-            "BEGIN" => WebActionKind.Begin,
-            "CONTINUE" => WebActionKind.Continue,
-            "PAUSE" => WebActionKind.Pause,
-            "END" => WebActionKind.End,
-            "HQ" => WebActionKind.Hq,
-            _ => WebActionKind.ProtocolError
-        };
-        var body = string.Join(Environment.NewLine, lines.Skip(nonEmpty[0].index + 1)).Trim();
-        if ((kind is WebActionKind.Begin or WebActionKind.Continue or WebActionKind.Hq) && string.IsNullOrWhiteSpace(body))
-            return new(WebActionKind.ProtocolError, string.Empty, "BEGIN/CONTINUE/HQ 본문이 비어 있습니다.");
-
-        return new(kind, body);
-    }
     private string BuildWebPrompt(
         CodexCliResult result,
         string? webInstruction,
@@ -2409,14 +2351,7 @@ public partial class MainWindow : Window
         bool includeWebInstruction)
     {
         var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
-        var control = includeControlInstructions
-            ? "반드시 답변 첫 줄을 다음 프로토콜 중에서 선택해줘." + Environment.NewLine
-                + "[ACTION=CONTINUE] - 다음 작업을 진행하길 원할 때. 계속 진행해도 문제 없을 때" + Environment.NewLine
-                + "[ACTION=PAUSE] - 사용자가 개입해서 테스트해봐야 하는 상황일 때" + Environment.NewLine
-                + "[ACTION=END] - 목표에 달성한 상태일 때 혹은 대기 작업이 남아있지 않을 때" + Environment.NewLine
-                + "[ACTION=HQ] - 본문을 현재 설정된 관제 역할에 전달할 때. 관제 루틴이 message_type과 본문을 해석합니다." + Environment.NewLine
-                + Environment.NewLine
-            : string.Empty;
+        var control = includeControlInstructions ? LegacyWebActionContract.BuildInstructions(_targetSettings.EffectiveJudge.Enabled) + Environment.NewLine + Environment.NewLine : string.Empty;
         var instruction = includeWebInstruction && !string.IsNullOrWhiteSpace(webInstruction)
             ? Environment.NewLine + Environment.NewLine + webInstruction
             : string.Empty;
