@@ -2,6 +2,22 @@
 
 Updated: 2026-09-24
 
+## 2026-09-24 현재 정책 — ACTION + GOTO 라우터 정정
+
+신규 CLI-to-CLI의 현재 정책 원본은 `Master-Polish.md`의 최신 최종 라우팅 절이다. 아래에 남아 있는 11-A/11-C의 WorkCard·validation evidence·`ACTION=HQ`·`NEXT : COORDINATOR/HIGH_LEVEL` 설명은 당시 구현 이력이며 현재 목표 계약을 덮어쓰지 않는다.
+
+- `HQ→WORK|HIGH`
+- `WORK→JUDGE|HQ`
+- `JUDGE→WORK`
+- `HIGH→HQ`
+- `UNKNOWN→HQ`
+- ACTION은 HQ만 `CONTINUE/PAUSE/END`를 사용한다.
+- 신규 CLI route keyword는 `GOTO`; 기존 GPT Web의 `NEXT:WEB/JEV`는 legacy로 보존한다.
+- Worker는 계약 문법·상태 전이·session·transport router이며 BODY 의미, AC, 테스트 주장, 완료 여부를 재판정하지 않는다.
+- HIGH는 설정의 상시 enable이 아니다. 사용자가 메인 화면에서 `고수준 작업 허용`을 체크한 채 `실행`을 눌렀을 때 현재 Job에만 1회 permit을 생성한다.
+- HIGH permit은 실제 HIGH dispatch 직전에 소모하며 다음 Job에 이월하지 않는다.
+- 현재 후속 식별자: `11-C-GOTO-CONTRACT`.
+
 ## 2026-09-24 11-UI-B 후속 — 대기 카드 활성 색상
 
 첨부 화면에 맞춰 대기 활성 카드 배경을 `#E0F2F4`, 아이콘 원/테두리를 `#0D7884`, 제목을 `#0F6B73`로 적용했다. 비활성 대기는 기존 회색을 유지하고 다른 역할 카드 상태색에는 손대지 않았다. 참고 코드의 `#D0784`는 유효한 색상 코드가 아니므로 청록 톤에 맞는 `#0D7884`를 사용했다. Debug 빌드 경고 0/오류 0, 전체 54개 테스트 통과, diff check 통과. Release 게시 및 Worker 복사 성공(SHA-256 `3E6D649665EB8B9A39AB8A5BE3C3A18DB943A987E7DE41490853DC1DA409D844`), 커밋 `d5163d9`, fetch/pull-rebase와 피드백 확인 완료. 잔여: `11-UI-B-EXPLORER-COLORS` 실제 화면 검증.
@@ -66,7 +82,7 @@ Mini PC의 ASP.NET Core 서버가 개발 PC Agent들의 Git·활동 상태를 �
 | 08 | [Server 설치·이전](tasks/08-server-installation-migration.md) | Windows 11+ 재설치·연결 가이드 | 대기 |
 | 09 | [AI Role Dev Tool 설계와 검증 기반](tasks/09-ai-role-dev-tool.md) | 저비용 역할 분담·지속 실행·JEV 검증 | A/B/C 구현 완료 (2026-09-23) |
 | 10 | [검증 capability·사용량 관찰·JEV 기준실험](tasks/10-verification-observability.md) | 검증 범위 분리·실측 계측·통제 fixture | A/B/C 구현 완료 (2026-09-23; 실 provider benchmark 미실행) |
-| 11 | [Coordinator-first CLI-to-CLI](tasks/11-cli-coordinator-first.md) | 독립 Sol 관제·Luna 작업 CLI와 역할별 설정 | A/B/C 완료 (2026-09-23) |
+| 11 | [Coordinator-first CLI-to-CLI](tasks/11-cli-coordinator-first.md) | HQ/WORK/HIGH/JUDGE/UNKNOWN ACTION+GOTO 계약, 역할별 세션·설정 | A/B/C baseline 완료 · `11-C-GOTO-CONTRACT` 정책 반영 대기 |
 | 11-UI-B | [승인 이미지 기준 메인 화면](GPT-Web-Feedback.md#2026-09-23-메인-화면-시각-정합-후속--실제-구현-476541c-vs-승인-최종-이미지) | 승인 화면 비율·5단계 흐름·입력/이력 상태 연결 | K1–K25·초기 카드색/preflight·JEV 검사 JSON 기록 및 비차단 적용 반영; K26 Explorer 화면·K27 JEV 실검증 잔여 (2026-09-24) |
 
 ## 순서
