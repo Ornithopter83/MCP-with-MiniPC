@@ -101,6 +101,46 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void MultiImageResultPayload_DeserializesAllResourceFiles()
+    {
+        const string json = """
+            {
+              "success": true,
+              "resultType": "RESOURCE_IMAGES",
+              "resultFiles": [
+                {"base64":"YQ==","mimeType":"image/png","fileName":"image-01.png"},
+                {"base64":"Yg==","mimeType":"image/webp","fileName":"image-02.webp"}
+              ]
+            }
+            """;
+        var request = JsonSerializer.Deserialize<ResultRequest>(
+            json,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.NotNull(request);
+        Assert.Equal("RESOURCE_IMAGES", request!.ResultType);
+        Assert.Equal(2, request.ResultFiles!.Count);
+        Assert.Equal("image/webp", request.ResultFiles[1].MimeType);
+    }
+
+    [Fact]
+    public void BridgeTask_PreservesMultipleSavedPaths()
+    {
+        var task = new BridgeTask(
+            "id", "conversation", "project", "prompt", "COMPLETED", "ok",
+            null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            "RESOURCE", SavedPath: "assets/resources/id/image-01.png",
+            SavedPaths: new List<string>
+            {
+                "assets/resources/id/image-01.png",
+                "assets/resources/id/image-02.png"
+            });
+
+        Assert.Equal(2, task.SavedPaths!.Count);
+        Assert.EndsWith("image-01.png", task.SavedPath!, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void UnknownErrors_AreFormattedAsKoreanLogEntriesWithoutAiEnvelope()
     {
         var message = WorkerUnknownErrorLog.Format(WorkerRoleState.Work, "GOTO_INVALID_FIRST_LINE", "작업 결과 원문");

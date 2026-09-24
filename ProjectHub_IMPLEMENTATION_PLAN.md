@@ -8,9 +8,9 @@ Updated: 2026-09-24
 
 ~~~text
 HQ       -> WORK
-WORK     -> HQ | JUDGE | RESOURCE
+WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
-RESOURCE -> WORK
+RESOURCE_QUEUE -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue -> WORK
 ~~~
 
 UNKNOWN은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.
@@ -22,16 +22,16 @@ UNKNOWN은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 �
 - HQ에 ChatGPT Web 실행 대상을 복원
 - HQ/RESOURCE Web task 목적지를 heartbeat가 아니라 explicit conversation binding으로 고정
 - HQ의 설계 책임과 PAUSE 의미를 강화
-- WORK가 최종 이미지/사운드 제작을 RESOURCE에 위임하도록 계약 정리
-- 초기 실제 transport는 IMAGE 생성/저장까지만 구현
+- WORK가 최종 이미지 제작을 RESOURCE에 위임하도록 계약 정리
+- RESOURCE IMAGE 생성/복수 다운로드/저장과 FIFO queue를 구현
 
 구현 단위:
 1. 역할 enum/router/contract에서 HIGH 제거
-2. RESOURCE state와 WORK→RESOURCE→WORK 추가
+2. RESOURCE sidecar queue와 WORK→RESOURCE_QUEUE→WORK 계속 진행 추가
 3. HQ Web/CLI target settings
 4. Bridge role binding
 5. RESOURCE natural-language forwarding + Worker-assigned save path
-6. 확장 generated image capture + result payload
+6. 확장 generated multi-image capture + result payload array
 7. Worker file save + ResourceRequest status
 8. Pipeline/History/Settings
 9. 테스트/문서
@@ -39,7 +39,7 @@ UNKNOWN은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 �
 ## Deferred
 
 - SOUND 실제 생성/result transport
-- RESOURCE 병렬 queue
+- RESOURCE Web 동시 병렬 실행
 - 자동 리소스 품질 판정
 - 자동 코드/CSS/HTML 연결
 - Claude/Muse 실제 CLI 연결

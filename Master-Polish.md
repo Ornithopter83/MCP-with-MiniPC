@@ -41,7 +41,7 @@ Worker가 하지 않는 것:
 | --- | --- | --- | --- |
 | HQ | 설계·관제 AI | 사용자 요청 해석, 구현 방향 설계, WORK 지시, JUDGE 질문 검토, CONTINUE/PAUSE/END | ChatGPT Web 또는 CLI Provider |
 | WORK | 작업 AI | 코드 구현·수정·빌드·테스트·보고, RESOURCE/JUDGE 요청 | CLI Provider |
-| RESOURCE | 리소스 AI | 최종 생성 이미지 제작·지정 파일 저장 | 별도 ChatGPT Web 고정 |
+| RESOURCE | 리소스 AI | 최종 생성 이미지 제작·복수 이미지 다운로드·지정 파일 저장 | 별도 ChatGPT Web 고정 |
 | JUDGE | 작업 판단 AI | HQ 검토를 거친 WORK 질문 판정 | JEV |
 | UNKNOWN | 오류 상태 | 기계적 오류 기록 및 HQ 요약 복귀 | Worker 내부 |
 
@@ -49,9 +49,9 @@ Worker가 하지 않는 것:
 
 ~~~text
 HQ       -> WORK
-WORK     -> HQ | JUDGE | RESOURCE
+WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
-RESOURCE -> WORK
+RESOURCE_QUEUE -> RESOURCE Web (FIFO 1건 실행) -> 완료 알림 queue -> WORK
 UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
 UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
@@ -137,7 +137,7 @@ WORK:
 
 ~~~text
 [GOTO : RESOURCE]
-<RESOURCE transport JSON>
+<자연어 이미지 생성 요청>
 ~~~
 
 JUDGE:
@@ -147,9 +147,9 @@ JUDGE:
 <opaque body>
 ~~~
 
-RESOURCE는 Web transport 완료와 파일 저장 후 Worker가 기계적으로 같은 WORK session으로 복귀시킨다.
+RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 즉시 같은 WORK session을 계속 진행시킨다. RESOURCE 완료 결과는 다음 WORK 호출 시 기계적으로 함께 전달한다.
 
-일반 body는 opaque다. JUDGE/RESOURCE destination에서 필요한 schema 검사는 transport 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
+일반 body는 opaque다. JUDGE destination의 schema 검사와 RESOURCE 자연어 body의 비어 있음 검사는 transport 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
 
 ---
 
@@ -193,17 +193,21 @@ JUDGE -> WORK   raw 결과
 
 ## 8. RESOURCE 흐름
 
-최초 구현 범위는 IMAGE 생성 → 저장 → 기록이다.
+현재 RESOURCE는 IMAGE 생성 → 복수 이미지 다운로드 → 저장 → 기록을 sidecar FIFO queue로 수행한다.
 
 ~~~text
-WORK
- -> GOTO:RESOURCE + Resource transport JSON
- -> RESOURCE Web 별도 대화
- -> 이미지 생성
- -> 확장이 생성 이미지 bytes 반환
- -> Worker가 workspace 하위 지정 경로/파일명으로 저장
- -> RESOURCE_RESULT
- -> 같은 WORK session 복귀
+WORK -> GOTO:RESOURCE + 자연어 요청
+  └─ Worker RESOURCE FIFO queue
+       ├─ 현재 1건만 RESOURCE Web 실행
+       ├─ 추가 요청은 QUEUED
+       ├─ 생성 이미지 전부 다운로드
+       ├─ assets/resources/<requestId>/image-NN.* 저장
+       └─ 완료 결과 queue -> 다음 WORK 호출에 전달
+
+HQ ACTION=END
+  -> RESOURCE 실행/대기 0건인지 finalization gate 확인
+  -> 남아 있으면 FINALIZING
+  -> 모두 종료된 뒤에만 DONE / DONE_WITH_ERROR
 ~~~
 
 WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤에는 ChatGPT Web에 그대로 보낼 자연어 이미지 요청만 둔다.
@@ -213,7 +217,7 @@ WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지
 과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도처럼 서로 구별하기 쉬운 과일을 밝은 게임 아이콘 스타일로 만들어줘.
 ~~~
 
-Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE Web에 전달한다. 저장 위치는 Worker가 기계적으로 `assets/resources/resource-<requestId>.png` 형태로 생성한다.
+Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE queue에 넣는다. 저장 위치는 Worker가 기계적으로 `assets/resources/<requestId>/image-01.*`, `image-02.*` 형태로 생성한다.
 
 기계적 ResourceRequest 기록:
 - Id
@@ -232,7 +236,7 @@ RESOURCE가 하지 않는 것:
 - 자동 CSS/HTML 반영
 - 생성 결과의 사용 컴포넌트 의미 판단
 - 자동 빌드 반영
-- 복잡한 병렬 resource queue
+- RESOURCE Web 동시 병렬 실행(항상 1건씩 FIFO)
 - 자동 품질 판정
 
 사용자가 이후 별도 명령으로 "연결 대상인 리소스를 연결해줘"라고 요청하면 새 USER -> HQ -> WORK 흐름에서 저장된 리소스를 통합한다.
@@ -253,7 +257,7 @@ RESOURCE가 하지 않는 것:
 - 리소스: ChatGPT Web
 - 판정: JEV
 
-대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold active border/orbit은 사용하지 않는다. 실행 중에는 현재 역할이 gold active border/orbit으로 강조된다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
+대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold active border/orbit은 사용하지 않는다. 실행 중에는 현재 메인 역할이 gold active border/orbit으로 강조된다. RESOURCE sidecar가 실행/대기 중이면 메인 역할과 별개로 RESOURCE 카드의 gold orbit도 독립 동작하며 상태와 대기 건수를 표시한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
 
 설정:
 - HQ: 실행 대상 Web/CLI + CLI일 때 Provider/Model/Reasoning/Session
@@ -271,12 +275,12 @@ RESOURCE가 하지 않는 것:
 활성 task는 tasks/14-resource-web-role.md다.
 
 구현 코드 범위:
-1. HIGH 제거 / RESOURCE state
+1. HIGH 제거 / RESOURCE role + sidecar queue
 2. HQ Web target 복원
 3. HQ/RESOURCE explicit conversation binding
 4. HQ 설계 책임 + PAUSE 예시
 5. WORK RESOURCE 위임 계약
-6. RESOURCE IMAGE 생성 결과 transport와 저장
+6. RESOURCE sidecar FIFO queue + 복수 IMAGE 결과 transport와 저장
 7. Pipeline/Settings/History 교체
 8. 테스트/문서 갱신
 

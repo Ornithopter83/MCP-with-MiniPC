@@ -121,3 +121,18 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - HQ/RESOURCE 소유 Web task는 coordinator-first 종료 시점과 무관하게 legacy Web handler에서 항상 제외하여 늦게 도착한 terminal event의 중복 로그/UI 갱신을 차단.
 - HQ Web progress 중 Pipeline이 작업 단계로 바뀌지 않고 설계·관제 active stage를 유지하도록 보정.
 - coordinator-first 종료 후 늦게 도착한 non-terminal progress는 legacy UI를 다시 활성화하지 않음.
+
+
+## 2026-09-24 RESOURCE sidecar queue + multi-image
+
+- RESOURCE를 메인 역할 상태의 직렬 대기에서 분리하여 single-reader FIFO sidecar queue로 변경.
+- WORK의 RESOURCE 요청은 queue에 즉시 접수되고 같은 WORK session은 계속 진행.
+- RESOURCE Web은 동시에 1건만 실행하며 실행 중 새 요청은 실패 대신 대기열에 적재.
+- 최신 assistant turn의 생성 이미지 여러 장을 모두 다운로드하고 requestId별 폴더에 image-01, image-02 ...로 저장.
+- HQ ACTION=END 이후 RESOURCE outstanding이 1건 이상이면 FINALIZING으로 남고 queue idle 이후에만 DONE 생성.
+- RESOURCE 카드의 gold orbit은 메인 Pipeline active role과 독립적으로 동작하고 queue 상태/대기 수를 표시.
+- MutationObserver 외 1초 watchdog을 추가해 이미지 생성 후 다운로드 단계로 전이되지 않는 고착을 방지.
+- extension 0.1.6 / build 2026-09-24.4.
+
+- 이미지 URL을 content script에서 직접 fetch하지 못하면 extension background service worker가 허용된 ChatGPT/OpenAI image host에서 재시도한다.
+- RESOURCE 실제 Web 전송 prompt와 bridge task id를 transcript에 계속 기록한다.

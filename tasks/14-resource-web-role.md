@@ -70,17 +70,16 @@ ResourceRequest:
 - WorkspaceRoot (transport 내부 저장 안전 경계)
 
 상태:
-REQUESTED -> GENERATING -> SAVED | FAILED
+QUEUED -> REQUESTED -> GENERATING -> DOWNLOADING -> SAVED | FAILED
 
 IMAGE:
-- RESOURCE ChatGPT Web에서 생성
-- 확장이 생성 이미지 bytes를 반환
-- Worker가 workspace 하위 target path에 저장
-- same WORK session으로 복귀
-
-SOUND:
-- schema 예약
-- 실제 transport 미구현
+- RESOURCE ChatGPT Web에서 한 번에 1건씩 생성
+- 실행 중 새 요청은 FIFO queue에 적재
+- 확장이 최신 assistant turn의 생성 이미지들을 모두 다운로드해 bytes 배열로 반환
+- Worker가 workspace 하위 requestId 폴더에 image-NN.*로 저장
+- WORK는 RESOURCE 완료를 기다리지 않고 계속 진행
+- 완료 결과는 다음 WORK 호출에 기계적으로 전달
+- HQ END 시 outstanding RESOURCE가 있으면 FINALIZING으로 대기
 
 ## E — role contracts
 
@@ -90,7 +89,7 @@ HQ:
 - PAUSE는 사람 확인/취향/로그인/권한/사용자 선택이 필요할 때 사용
 
 WORK:
-- 최종 이미지/아이콘/스프라이트/배경/생성 음향은 RESOURCE 우선
+- 최종 이미지/아이콘/스프라이트/배경은 RESOURCE 우선
 - placeholder는 임시 확인용만 허용
 - RESOURCE 저장 결과를 사용자 후속 명령 없이 자동 연결하지 않음
 
@@ -152,3 +151,21 @@ RESOURCE:
 - HQ/RESOURCE Owner task의 legacy handler 차단을 active flag와 분리
 - HQ Web extension progress에서 Coordinator stage 유지
 - 종료 후 stale progress가 legacy UI를 재활성화하지 않도록 guard
+
+
+## I — RESOURCE sidecar queue / multi-image / finalization
+
+- RESOURCE는 single-reader FIFO sidecar queue로 실행
+- 동시에 RESOURCE Web task 1건만 허용
+- 실행 중 후속 RESOURCE 요청은 QUEUED
+- WORK는 queue 접수 직후 같은 session으로 계속 진행
+- 완료된 RESOURCE 결과는 다음 WORK 호출에 기계적으로 함께 전달
+- 최신 assistant turn의 생성 이미지 전부 다운로드
+- requestId별 폴더에 image-NN.* 저장
+- RESOURCE 카드 독립 orbit + queue count/status
+- HQ END 후 outstanding RESOURCE가 있으면 FINALIZING, queue idle 전 DONE 금지
+- 1초 completion watchdog으로 생성 완료 후 다운로드 고착 방지
+
+- content script 이미지 fetch 실패 시 background service worker fallback
+- 작은 UI 이미지를 generated image candidate에서 제외
+- RESOURCE outbound prompt / bridge task transcript 유지

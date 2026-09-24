@@ -76,3 +76,13 @@ Worker가 판단하지 않는 것:
 - load 이벤트가 오면 즉시 RESOURCE 응답을 재평가한다.
 - 추가 DOM mutation이 없어도 timeout 검사에서 이미지가 로드됐으면 정상 저장 경로로 진행한다.
 - CLI HQ/WORK outbound prompt도 원본 transcript에 남긴다.
+
+
+## 2026-09-24 RESOURCE sidecar 방향 반영
+
+- RESOURCE 실행은 WORK/HQ/JUDGE와 분리된 FIFO sidecar로 둔다.
+- RESOURCE Web은 동시에 1건만 실행하며 새 요청은 실패 대신 queue에 넣는다.
+- 복수 생성 이미지는 한 assistant turn에서 전부 수집해 각각 다운로드/저장한다.
+- HQ가 END를 반환해도 RESOURCE 실행/대기가 남아 있으면 Worker는 FINALIZING으로 유지한다.
+- RESOURCE 카드 animation은 메인 active role과 독립한다.
+- 이미지 생성 완료 후 DOM mutation이 끊겨도 1초 watchdog이 완료 감시를 계속한다.

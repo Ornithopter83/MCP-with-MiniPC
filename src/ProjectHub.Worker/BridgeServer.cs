@@ -13,8 +13,8 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
-    private const string ExpectedExtensionVersion = "0.1.5";
-    private const string ExpectedExtensionBuild = "2026-09-24.3";
+    private const string ExpectedExtensionVersion = "0.1.6";
+    private const string ExpectedExtensionBuild = "2026-09-24.4";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -439,11 +439,13 @@ public sealed class BridgeServer : IDisposable
 
             var resource = task.Resource;
             string? savedPath = resource?.SavedPath;
+            List<string>? savedPaths = task.SavedPaths;
             if (request.Success && resource is not null)
             {
                 try
                 {
-                    savedPath = SaveResourceResult(resource, request);
+                    savedPaths = SaveResourceResults(resource, request);
+                    savedPath = savedPaths.FirstOrDefault();
                     resource = resource with { Status = "SAVED", SavedPath = savedPath };
                 }
                 catch (Exception exception)
@@ -456,7 +458,8 @@ public sealed class BridgeServer : IDisposable
                         FinishReason = "resource_save_failed",
                         CompletedAt = DateTimeOffset.UtcNow,
                         Resource = resource,
-                        SavedPath = null
+                        SavedPath = null,
+                        SavedPaths = null
                     };
                     ReplaceTask(failed);
                     SaveState();
@@ -476,7 +479,8 @@ public sealed class BridgeServer : IDisposable
                 FinishReason = request.FinishReason ?? (request.Success ? "completed" : "failed"),
                 CompletedAt = DateTimeOffset.UtcNow,
                 Resource = resource,
-                SavedPath = savedPath
+                SavedPath = savedPath,
+                SavedPaths = savedPaths
             };
             ReplaceTask(completed);
             SaveState();
@@ -558,12 +562,19 @@ public sealed class BridgeServer : IDisposable
 
     private static string NormalizeRole(string role) => role.Trim().ToUpperInvariant();
 
-    private static string SaveResourceResult(ResourceRequest resource, ResultRequest request)
+    private static List<string> SaveResourceResults(ResourceRequest resource, ResultRequest request)
     {
         if (!resource.Type.Equals("IMAGE", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Only IMAGE resource results are supported.");
-        if (string.IsNullOrWhiteSpace(request.ResultFileBase64))
+
+        var payloads = request.ResultFiles?.Where(file => !string.IsNullOrWhiteSpace(file.Base64)).ToList()
+            ?? new List<ResourceResultFile>();
+        if (payloads.Count == 0 && !string.IsNullOrWhiteSpace(request.ResultFileBase64))
+            payloads.Add(new ResourceResultFile(request.ResultFileBase64, request.ResultFileMimeType ?? "image/png", request.ResultFileName));
+        if (payloads.Count == 0)
             throw new InvalidOperationException("RESOURCE_IMAGE_DATA_MISSING");
+        if (payloads.Count > 32)
+            throw new InvalidOperationException("RESOURCE_IMAGE_COUNT_INVALID");
 
         var root = Path.GetFullPath(resource.WorkspaceRoot);
         var relativeDirectory = resource.TargetDirectory.Replace('/', Path.DirectorySeparatorChar);
@@ -573,18 +584,50 @@ public sealed class BridgeServer : IDisposable
             !targetDirectory.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("RESOURCE_TARGET_OUTSIDE_WORKSPACE");
 
-        if (Path.GetFileName(resource.TargetFileName) != resource.TargetFileName)
-            throw new InvalidOperationException("RESOURCE_TARGET_FILENAME_INVALID");
-
-        var bytes = Convert.FromBase64String(request.ResultFileBase64);
-        if (bytes.Length == 0 || bytes.Length > 25 * 1024 * 1024)
-            throw new InvalidOperationException("RESOURCE_IMAGE_SIZE_INVALID");
+        var decoded = new List<(byte[] Bytes, string Extension)>();
+        long totalBytes = 0;
+        foreach (var payload in payloads)
+        {
+            var bytes = Convert.FromBase64String(payload.Base64);
+            if (bytes.Length == 0 || bytes.Length > 25 * 1024 * 1024)
+                throw new InvalidOperationException("RESOURCE_IMAGE_SIZE_INVALID");
+            totalBytes += bytes.Length;
+            if (totalBytes > 128L * 1024 * 1024)
+                throw new InvalidOperationException("RESOURCE_IMAGE_TOTAL_SIZE_INVALID");
+            decoded.Add((bytes, ResourceImageExtension(payload.MimeType)));
+        }
 
         Directory.CreateDirectory(targetDirectory);
-        var path = Path.Combine(targetDirectory, resource.TargetFileName);
-        File.WriteAllBytes(path, bytes);
-        return path;
+        var paths = decoded
+            .Select((item, index) => Path.Combine(targetDirectory, $"image-{index + 1:D2}{item.Extension}"))
+            .ToList();
+        var tempPaths = paths.Select(path => path + ".tmp").ToList();
+        try
+        {
+            for (var index = 0; index < decoded.Count; index++)
+                File.WriteAllBytes(tempPaths[index], decoded[index].Bytes);
+            for (var index = 0; index < paths.Count; index++)
+                File.Move(tempPaths[index], paths[index], true);
+            return paths;
+        }
+        catch
+        {
+            foreach (var path in tempPaths.Concat(paths))
+            {
+                try { if (File.Exists(path)) File.Delete(path); }
+                catch { }
+            }
+            throw;
+        }
     }
+
+    private static string ResourceImageExtension(string? mimeType) => mimeType?.ToLowerInvariant() switch
+    {
+        "image/jpeg" or "image/jpg" => ".jpg",
+        "image/webp" => ".webp",
+        "image/gif" => ".gif",
+        _ => ".png"
+    };
 
     private void ReplaceTask(BridgeTask task)
     {
@@ -670,14 +713,15 @@ public sealed class BridgeState
 public sealed record BindingState(string ConversationId, string ProjectId, DateTimeOffset UpdatedAt);
 public sealed record WebRoleBindingStatus(string Role, bool Bound, bool Connected, bool ExtensionSynchronized, string? ConversationId, string? ConversationTitle);
 public sealed record ResourceRequest(string Id, string Type, string Prompt, string TargetDirectory, string TargetFileName, string RequestedBy, string Status, string? SavedPath, string WorkspaceRoot);
-public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null);
+public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null, List<string>? SavedPaths = null);
 public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null);
 public sealed record BridgeResponse(bool Ok, object Data);
 public sealed record BindRequest(string ConversationId, string? ProjectId, string? Role = null);
 public sealed record ClaimRequest(string ConversationId);
 public sealed record ResetRequest(string? ConversationId = null, string? TaskId = null);
 public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null, string? Role = null, ResourceRequest? Resource = null);
-public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null, string? ResultFileBase64 = null, string? ResultFileMimeType = null, string? ResultFileName = null);
+public sealed record ResourceResultFile(string Base64, string MimeType, string? FileName = null);
+public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null, string? ResultFileBase64 = null, string? ResultFileMimeType = null, string? ResultFileName = null, List<ResourceResultFile>? ResultFiles = null);
 public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null, string? ExtensionVersion = null, string? ExtensionBuild = null);
 public sealed record ProgressRequest(string TaskId, string ConversationId, string LeaseId, string Stage, string? Detail = null, int Attempt = 0);
 public sealed record ExtensionProgress(string TaskId, string ConversationId, string Stage, string? Detail, int Attempt, DateTimeOffset UpdatedAt);

@@ -308,7 +308,7 @@
               <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,14,0">
                 <TextBlock Text="ChatGPT Web 고정" FontSize="15" FontWeight="Bold"/>
                 <TextBlock Text="이미지 생성·저장 전용 · Provider/Model/Reasoning 선택 없음" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,5,0,0" TextWrapping="Wrap"/>
-                <TextBlock Text="사운드 transport는 구조만 예약되어 있으며 현재 실행은 IMAGE만 지원합니다." FontSize="12" Foreground="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                <TextBlock Text="RESOURCE 요청은 FIFO 대기열에서 1건씩 생성·다운로드·저장되며 현재 실행은 IMAGE만 지원합니다." FontSize="12" Foreground="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap"/>
               </StackPanel>
               <Border Grid.Column="2" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="10">
                 <Grid>
