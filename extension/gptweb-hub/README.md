@@ -1,6 +1,6 @@
 # GPTWeb-Hub extension
 
-Version: 0.1.6 / build 2026-09-24.4
+Version: 0.1.7 / build 2026-09-25.1
 
 ProjectHub Worker와 ChatGPT Web 대화를 loopback bridge로 연결한다.
 
@@ -44,3 +44,12 @@ RESOURCE 응답 감시는 MutationObserver 외에 1초 watchdog도 사용한다.
 
 - content script의 이미지 fetch가 브라우저 CORS/권한 문제로 실패하면 background service worker가 허용된 ChatGPT/OpenAI 이미지 host에서 재시도한다.
 - Worker는 한 RESOURCE 응답의 모든 이미지 파일을 먼저 임시 파일로 기록한 뒤 최종 이름으로 이동하며, 저장 실패 시 해당 요청의 부분 파일을 정리한다.
+
+
+## Download stall hardening — 2026-09-25
+
+- RESOURCE 시작 시 main 영역의 기존 image URL을 baseline으로 기록하고, 이후 새로 나타난 큰 이미지들을 assistant bubble과 main 영역에서 함께 탐색한다.
+- image completion timeout은 response snapshot 변화와 독립된 절대 120초 deadline으로 동작한다.
+- 생성 이미지가 하나 이상 로드되면 streaming 표기가 남아 있어도 이미지 집합이 잠시 안정된 뒤 IMAGE_READY -> DOWNLOAD_START로 진행한다.
+- IMAGE_DETECTED progress에 candidate/loaded 수를 기록해 생성 감지와 실제 다운로드 진입을 구분한다.
+- Worker sidecar에도 5분 transport timeout이 있어 extension이 고착돼도 해당 bridge task를 FAILED 처리하고 FIFO 슬롯을 해제한다.

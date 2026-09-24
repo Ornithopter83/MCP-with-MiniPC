@@ -178,3 +178,14 @@ RESOURCE:
 - JUDGE transport 예시는 concrete scenario가 아닌 placeholder grammar로만 유지
 - RESOURCE contract는 자연어 body와 역할 경계만 규정
 - 특정 검증 사례는 tests/fixtures로 이동
+
+
+## K — RESOURCE download stall hardening
+
+- baseline 이후 새 large image를 assistant/main 영역에서 탐색
+- image response absolute deadline 120초
+- loaded image settle 후 streaming 표기와 무관하게 IMAGE_READY/DOWNLOAD_START 진행
+- IMAGE_DETECTED candidate/loaded progress
+- Worker RESOURCE transport 5분 timeout
+- timeout 시 해당 bridge task를 resource_timeout FAILED로 종료해 다음 FIFO slot 해제
+- extension 0.1.7 / build 2026-09-25.1

@@ -13,8 +13,8 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
-    private const string ExpectedExtensionVersion = "0.1.6";
-    private const string ExpectedExtensionBuild = "2026-09-24.4";
+    private const string ExpectedExtensionVersion = "0.1.7";
+    private const string ExpectedExtensionBuild = "2026-09-25.1";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -131,6 +131,30 @@ public sealed class BridgeServer : IDisposable
                 if (task is null || task.Status is "COMPLETED" or "FAILED") return task;
             }
             await Task.Delay(250, cancellationToken);
+        }
+    }
+
+    public BridgeTask? FailTask(string taskId, string result, string finishReason)
+    {
+        lock (_gate)
+        {
+            var task = _state.Tasks.FirstOrDefault(item => item.Id == taskId);
+            if (task is null) return null;
+            if (task.Status is "COMPLETED" or "FAILED") return task;
+
+            var resource = task.Resource is null ? null : task.Resource with { Status = "FAILED" };
+            var failed = task with
+            {
+                Status = "FAILED",
+                Result = result,
+                FinishReason = finishReason,
+                CompletedAt = DateTimeOffset.UtcNow,
+                Resource = resource
+            };
+            ReplaceTask(failed);
+            SaveState();
+            TaskChanged?.Invoke(failed);
+            return failed;
         }
     }
 

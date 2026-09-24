@@ -14,6 +14,7 @@ public sealed record ResourceSidecarTransportEvent(string Source, string Content
 /// </summary>
 public sealed class ResourceSidecarQueue : IAsyncDisposable
 {
+    private static readonly TimeSpan ResourceTransportTimeout = TimeSpan.FromMinutes(5);
     private readonly BridgeServer? _bridgeServer;
     private readonly string _workingDirectory;
     private readonly Channel<ResourceSidecarRequest> _queue;
@@ -184,7 +185,21 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
             $"task {bridgeTask.Id} · assets/resources/{request.Id}",
             "GENERATING"));
 
-        var completed = await _bridgeServer.WaitForTaskCompletionAsync(bridgeTask.Id, cancellationToken);
+        BridgeTask? completed;
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(ResourceTransportTimeout);
+            completed = await _bridgeServer.WaitForTaskCompletionAsync(bridgeTask.Id, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            var detail = $"RESOURCE Web 작업이 {ResourceTransportTimeout.TotalMinutes:0}분 내 완료되지 않아 transport timeout으로 종료했습니다.";
+            completed = _bridgeServer.FailTask(bridgeTask.Id, detail, "resource_timeout");
+            if (completed is null)
+                return Failure(request, "RESOURCE_TIMEOUT", detail);
+        }
+
         if (completed is null)
             return Failure(request, "RESOURCE_RESULT_MISSING", "RESOURCE result task가 사라졌습니다.");
 
@@ -218,6 +233,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         "resource_image_download_failed" => "RESOURCE_IMAGE_DOWNLOAD_FAILED",
         "resource_save_failed" => "RESOURCE_SAVE_FAILED",
         "send_failed" => "RESOURCE_WEB_DELIVERY_FAILED",
+        "resource_timeout" => "RESOURCE_TIMEOUT",
         _ => "RESOURCE_RESULT_MISSING"
     };
 

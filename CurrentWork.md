@@ -146,3 +146,14 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - RoleContractLoader의 metadata는 평문 형식을 유지하며 실제 ACTION/GOTO control만 대괄호를 사용한다.
 - JUDGE QID parser는 QID:NAME과 기존 [QID:NAME]을 모두 허용하지만 역할 contract에는 placeholder grammar만 제시한다.
 - Master-Polish.md와 AGENTS.md에 contract generalization rule을 추가해 특정 사용자 요청/장애 사례를 contract로 승격하지 못하게 했다.
+
+
+## 2026-09-25 RESOURCE download stall hardening
+
+- 로그에서 RESOURCE 첫 task가 RESPONSE_START 이후 IMAGE_READY/DOWNLOAD_START 없이 고착되는 경로를 수정.
+- RESOURCE 시작 시 기존 main image URL을 baseline으로 잡고 새 이미지 탐색 범위를 latest assistant + main 영역으로 확대.
+- snapshot 변화에 의해 재시작되지 않는 절대 120초 image deadline 추가.
+- loaded image가 있으면 전역 streaming flag가 남아 있어도 settle 후 다운로드 진입.
+- IMAGE_DETECTED candidate/loaded telemetry 추가.
+- Worker sidecar에 5분 transport timeout 추가. timeout 시 해당 bridge task ID만 FAILED(resource_timeout) 처리하여 다음 FIFO 작업의 slot conflict를 방지.
+- extension 0.1.7 / build 2026-09-25.1.

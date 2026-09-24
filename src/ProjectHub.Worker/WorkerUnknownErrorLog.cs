@@ -39,6 +39,7 @@ public static class WorkerUnknownErrorLog
         "RESOURCE_WEB_UNAVAILABLE" => "리소스 전용 ChatGPT Web 대화가 연결되어 있지 않습니다.",
         "RESOURCE_WEB_DELIVERY_FAILED" => "리소스 요청을 ChatGPT Web에 전달하거나 결과를 회수하지 못했습니다.",
         "RESOURCE_TRANSPORT_ERROR" => "리소스 백그라운드 전송 중 오류가 발생했습니다.",
+        "RESOURCE_TIMEOUT" => "리소스 Web 작업이 제한 시간 내 완료되지 않아 다음 대기 작업을 진행할 수 있도록 종료했습니다.",
         "RESOURCE_IMAGE_NOT_GENERATED" => "ChatGPT Web 응답에서 생성된 이미지를 확인하지 못했습니다.",
         "RESOURCE_IMAGE_CAPTURE_FAILED" => "생성 이미지 요소를 파일 데이터로 캡처하지 못했습니다.",
         "RESOURCE_IMAGE_DOWNLOAD_FAILED" => "생성 이미지 데이터를 내려받지 못했습니다.",
