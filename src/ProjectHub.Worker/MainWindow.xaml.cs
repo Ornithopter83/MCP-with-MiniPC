@@ -62,6 +62,8 @@ public partial class MainWindow : Window
     public sealed record WorkerHistoryEvent(DateTimeOffset Timestamp, string StageKey, string EventType, string Title, string? Summary, long? SizeBytes, int? ItemCount, int? FileCount, string? Status, string? ReferenceId)
     {
         public string? IconAssetOverride { get; init; }
+        public string TokenDetails { get; init; } = "토큰 · 해당 없음";
+        public string FileDetails { get; init; } = "파일 · 해당 없음";
         public string Role => StageKey switch { "Coordinator" => "설계 관제", "Implementer" => "작업", "HighLevel" => "고수준 작업", "Judge" => "판정", _ => "시스템" };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         public string Details
@@ -1353,7 +1355,8 @@ public partial class MainWindow : Window
                 {
                     inboundType = "UNKNOWN";
                     inbound = RoleContractLoader.BuildUnknownEnvelope(previousState.ToString().ToUpperInvariant(), unknownCode, unknownDetail);
-                    AddTaskMessage("UNKNOWN → HQ", inbound, status: unknownCode);
+                    AddTaskMessage("UNKNOWN → HQ", inbound, status: unknownCode, includeHistory: false);
+                    AddRoleResponseHistory(WorkerRoleState.Unknown, "오류 전달", $"{unknownCode} · {unknownDetail}", status: unknownCode);
                     state = WorkerRoleState.Hq;
                 }
                 try
@@ -1379,16 +1382,23 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.Hq, route.Error, routed.FinalMessage);
                                 continue;
                             }
-                            AddTaskMessage("HQ", routed.FinalMessage, status: route.Action?.ToString());
+                            AddTaskMessage("HQ", routed.FinalMessage, status: route.Action?.ToString(), includeHistory: false);
+                            AddRoleResponseHistory(
+                                WorkerRoleState.Hq,
+                                route.Action == WorkerAction.Continue ? "작업 요청" : "수행 결과",
+                                route.Body,
+                                usage: routed.Usage,
+                                files: routed.Files,
+                                status: route.Action?.ToString().ToUpperInvariant());
                             if (route.Action == WorkerAction.End)
                             {
                                 ResultTitle.Text = "DONE"; ResultBody.Text = route.Body; TaskTitle.Text = "관제 AI가 작업을 종료했습니다.";
-                                AddTaskMessage("TASK RESULT", route.Body, status: "DONE"); SetFlowState(false, false, false); return;
+                                AddTaskMessage("TASK RESULT", route.Body, status: "DONE", includeHistory: false); SetFlowState(false, false, false); return;
                             }
                             if (route.Action == WorkerAction.Pause)
                             {
                                 ResultTitle.Text = "PAUSED"; ResultBody.Text = route.Body; TaskTitle.Text = "사용자 입력 대기";
-                                AddTaskMessage("TASK PAUSED", route.Body, status: "PAUSED"); SetFlowState(false, false, false); return;
+                                AddTaskMessage("TASK PAUSED", route.Body, status: "PAUSED", includeHistory: false); SetFlowState(false, false, false); return;
                             }
                             if (coordinatorHasRun && string.IsNullOrWhiteSpace(coordinatorSession))
                             {
@@ -1421,6 +1431,14 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.Work, route.Error, result.FinalMessage);
                                 continue;
                             }
+                            AddTaskMessage("WORK", result.FinalMessage, includeHistory: false);
+                            AddRoleResponseHistory(
+                                WorkerRoleState.Work,
+                                route.Target == WorkerRoleState.Judge ? "판정 요청" : "수행 결과",
+                                route.Body,
+                                usage: result.Usage,
+                                files: result.Files,
+                                status: route.Target?.ToString().ToUpperInvariant());
                             if (route.Target == WorkerRoleState.Hq)
                             {
                                 inboundType = "WORK_REPORT"; inbound = route.Body; state = WorkerRoleState.Hq;
@@ -1432,7 +1450,7 @@ public partial class MainWindow : Window
                                     RouteUnknown(WorkerRoleState.Work, "JUDGE_UNAVAILABLE", "WORK requested JUDGE, but no JUDGE provider is enabled.");
                                     continue;
                                 }
-                                workValidationRequest = JudgeTransportContract.ExtractRequest(route.Body);
+                                workValidationRequest = route.Body.Trim();
                                 if (!JudgeTransportContract.TryParse(workValidationRequest, out _, out var validationError))
                                 {
                                     RouteUnknown(WorkerRoleState.Work, "JUDGE_REQUEST_INVALID", validationError);
@@ -1464,8 +1482,14 @@ public partial class MainWindow : Window
                             }
                             _judgeStatus = "RESPONSE_RECEIVED";
                             inboundType = "JUDGMENT";
-                            inbound = "[JUDGMENT]\n" + transport.RawResponse;
-                            AddTaskMessage("JUDGE RESULT → WORK", inbound, status: _judgeStatus);
+                            inbound = transport.RawResponse;
+                            AddTaskMessage("JUDGE RESULT → WORK", inbound, status: _judgeStatus, includeHistory: false);
+                            AddRoleResponseHistory(
+                                WorkerRoleState.Judge,
+                                "판정 결과",
+                                inbound,
+                                judgeTelemetry: transport.Telemetry,
+                                status: _judgeStatus);
                             state = WorkerRoleState.Work;
                             break;
                         }
@@ -1497,7 +1521,14 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.High, route.Error, result.FinalMessage);
                                 continue;
                             }
-                            AddTaskMessage("HIGH", result.FinalMessage, status: "RETURNED_TO_HQ");
+                            AddTaskMessage("HIGH", result.FinalMessage, status: "RETURNED_TO_HQ", includeHistory: false);
+                            AddRoleResponseHistory(
+                                WorkerRoleState.High,
+                                "수행 결과",
+                                route.Body,
+                                usage: result.Usage,
+                                files: result.Files,
+                                status: "HQ");
                             inboundType = "HIGH_REPORT"; inbound = route.Body; state = WorkerRoleState.Hq;
                             break;
                         }
@@ -1514,7 +1545,7 @@ public partial class MainWindow : Window
                     RouteUnknown(state, "TRANSPORT_OR_PROTOCOL_ERROR", WorkerTranscriptJson.Serialize(new { error_type = exception.GetType().Name, detail = exception.Message }));
                     continue;
                 }
-                if (state == WorkerRoleState.Hq) AddTaskMessage("AI HANDOFF", inbound, status: inboundType);
+                if (state == WorkerRoleState.Hq) AddTaskMessage("AI HANDOFF", inbound, status: inboundType, includeHistory: false);
             }
         }
         catch (OperationCanceledException)
@@ -2413,7 +2444,7 @@ public partial class MainWindow : Window
         AddTaskMessage("CLI STATUS", $"{outcome} · exit {result.ExitCode} · model {result.Model} · session {session}", sizeBytes: Encoding.UTF8.GetByteCount(result.FinalMessage), fileCount: result.Files.Count, status: outcome);
     }
 
-    private void AddTaskMessage(string source, string? content, long? sizeBytes = null, int? itemCount = null, int? fileCount = null, string? status = null, string? referenceId = null, string? summary = null)
+    private void AddTaskMessage(string source, string? content, long? sizeBytes = null, int? itemCount = null, int? fileCount = null, string? status = null, string? referenceId = null, string? summary = null, bool includeHistory = true)
     {
         if (string.IsNullOrWhiteSpace(content)) return;
         var timestamp = DateTimeOffset.Now;
@@ -2421,14 +2452,59 @@ public partial class MainWindow : Window
         _taskMessages.Add(new TaskMessage(timestamp, source, trimmed));
         _messageLogItems.Add($"[{timestamp:HH:mm:ss}] {source}{Environment.NewLine}{trimmed}");
         MessageLogEmptyText.Visibility = Visibility.Collapsed;
-        var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, referenceId, summary);
-        if (historyEvent is not null)
+        if (includeHistory)
         {
-            if (historyEvent.StageKey == "Coordinator")
-                historyEvent = historyEvent with { IconAssetOverride = _coordinatorStageIconAsset };
-            _historyEvents.Add(historyEvent);
-            while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
+            var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, referenceId, summary);
+            if (historyEvent is not null)
+            {
+                if (historyEvent.StageKey == "Coordinator")
+                    historyEvent = historyEvent with { IconAssetOverride = _coordinatorStageIconAsset };
+                _historyEvents.Add(historyEvent);
+                while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
+            }
         }
+        RefreshMessageLog();
+    }
+
+    private void AddRoleResponseHistory(
+        WorkerRoleState role,
+        string title,
+        string? body,
+        CodexUsage? usage = null,
+        IReadOnlyList<CodexCliFile>? files = null,
+        JevCallTelemetry? judgeTelemetry = null,
+        string? status = null)
+    {
+        var stage = role switch
+        {
+            WorkerRoleState.Hq => "Coordinator",
+            WorkerRoleState.Work => "Implementer",
+            WorkerRoleState.High => "HighLevel",
+            WorkerRoleState.Judge => "Judge",
+            _ => "System"
+        };
+        var text = body?.Trim() ?? string.Empty;
+        var item = new WorkerHistoryEvent(
+            DateTimeOffset.Now,
+            stage,
+            "ROLE_RESPONSE",
+            title,
+            WorkerHistoryCardFormatter.Preview(text),
+            string.IsNullOrEmpty(text) ? null : Encoding.UTF8.GetByteCount(text),
+            null,
+            files?.Count,
+            status,
+            null)
+        {
+            TokenDetails = judgeTelemetry is not null
+                ? WorkerHistoryCardFormatter.TokenLine(judgeTelemetry)
+                : WorkerHistoryCardFormatter.TokenLine(usage),
+            FileDetails = WorkerHistoryCardFormatter.FileLine(files)
+        };
+        if (item.StageKey == "Coordinator")
+            item = item with { IconAssetOverride = _coordinatorStageIconAsset };
+        _historyEvents.Add(item);
+        while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
         RefreshMessageLog();
     }
 
