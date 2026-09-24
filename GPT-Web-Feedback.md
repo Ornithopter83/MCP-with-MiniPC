@@ -9204,3 +9204,793 @@ Judge 결과는 같은 관제 session으로 반환한다.
 - Worker가 test/AC/evidence/보고서 의미를 분석해 END를 거부하는 코드가 CLI-to-CLI control path에 없음.
 - 기존 Web ↔ Codex ↔ JEV 계약은 legacy 모드에서 그대로 동작.
 - 모델명을 바꿔도 동일 계약이 작동하며 역할 이름으로만 routing.
+
+---
+
+# 2026-09-24 GPT Web 최종 라우팅 계약 — ACTION + GOTO 상태 머신
+
+> **최우선 / supersede:** 이 절은 바로 앞의 “Worker는 계약 라우터만 수행” 원칙을 유지하되, 그 절에서 사용한 NEXT, IMPLEMENTER, HIGH_LEVEL, COORDINATOR, ACTION=HQ 표기를 **새 CLI-to-CLI 경로에서 폐기하고 최종 상태 계약으로 대체한다.**
+>
+> 새 계약의 핵심은 단순하다. **ACTION은 HQ만 사용한다. GOTO는 다음 상태만 나타낸다. Worker는 현재 상태에서 허용된 GOTO인지 기계적으로 확인하고 전달할 뿐 본문 의미를 판단하지 않는다.**
+>
+> 기존 GPT Web ↔ Codex의 [NEXT : WEB|JEV]는 레거시 호환 wire이므로 이번 변경에서 즉시 파괴하지 않는다. **새 네 역할 CLI-to-CLI 경로에서는 NEXT를 사용하지 않고 GOTO만 사용한다.** 레거시 Web까지 GOTO로 이관하려면 Extension/Bridge 호환을 포함한 별도 작업으로 한다.
+
+## 1. 최종 역할/상태 이름
+
+새 CLI-to-CLI 런타임의 역할/상태 이름은 아래 다섯 개만 사용한다.
+
+| 상태 | 기존 대응 | 의미 |
+| --- | --- | --- |
+| **HQ** | 설계·관제 AI / Coordinator | 유일한 전체 의사결정자. 사용자 목표 해석, 다음 작업 선택, PAUSE/END 결정 |
+| **WORK** | 작업 AI / Implementer | 일반 구현·수정·테스트·보고 수행 |
+| **HIGH** | 고수준 작업 AI / HighLevel | 사용자가 명시적으로 허가한 경우에만 1회 호출되는 고수준 작업자 |
+| **JUDGE** | 작업 판단 AI / JEV | WORK가 요청한 판단만 수행하고 반드시 WORK로 복귀 |
+| **UNKNOWN** | 기존 ROUTE_UNAVAILABLE/transport/protocol error 등 | 정상 AI 역할이 아니라 오류 envelope 상태. 오류 내용을 가지고 즉시 HQ로 복귀 |
+
+신규 코드/로그/UI 내부 상태에서는 가능하면 Coordinator/Implementer/HighLevel보다 HQ/WORK/HIGH/JUDGE를 기준 명칭으로 사용한다. UI 표시 문구는 기존 “설계 관제 / 작업 / 고수준 작업 / 판정”을 유지할 수 있다.
+
+## 2. ACTION 최종 규약 — 오직 HQ 전용
+
+허용 ACTION은 아래 세 개뿐이다.
+
+~~~text
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+~~~
+
+### 권한
+
+- **HQ만 ACTION을 출력할 수 있다.**
+- WORK, HIGH, JUDGE, UNKNOWN은 ACTION을 출력하지 않는다.
+- 기존 [ACTION=HQ]는 새 CLI-to-CLI 경로에서 **완전히 제거한다.**
+- Worker가 ACTION을 생성하거나 의미적으로 수정하지 않는다.
+
+### HQ 응답 형식
+
+#### 계속 진행
+
+~~~text
+[ACTION=CONTINUE]
+[GOTO : WORK]
+
+[INSTRUCTION]
+...
+~~~
+
+또는 HIGH가 이번 Job에서 실제 사용 가능한 경우에만:
+
+~~~text
+[ACTION=CONTINUE]
+[GOTO : HIGH]
+
+[INSTRUCTION]
+...
+~~~
+
+HQ의 CONTINUE에서 허용되는 GOTO는 **WORK 또는 HIGH뿐**이다.
+
+#### 사용자 대기
+
+~~~text
+[ACTION=PAUSE]
+
+[REPORT]
+...
+~~~
+
+- GOTO 없음.
+- Worker는 추가 AI 호출 없이 사용자 대기 상태로 이동한다.
+
+#### 종료
+
+~~~text
+[ACTION=END]
+
+[REPORT]
+...
+~~~
+
+- GOTO 없음.
+- Worker는 별도 AC/evidence/test 의미 gate 없이 종료한다.
+- 완료 판단 책임은 HQ에 있다.
+
+## 3. GOTO 최종 규약
+
+새 CLI-to-CLI에서는 NEXT라는 단어를 사용하지 않는다.
+
+허용 토큰:
+
+~~~text
+[GOTO : HQ]
+[GOTO : WORK]
+[GOTO : HIGH]
+[GOTO : JUDGE]
+[GOTO : UNKNOWN]
+~~~
+
+GOTO는 **오직 다음 상태/행선지**를 뜻한다. 성공/실패/PASS 여부를 뜻하지 않는다.
+
+### 상태 전이표
+
+| 현재 상태 | 정상 허용 GOTO | 비고 |
+| --- | --- | --- |
+| **HQ** | WORK, HIGH | HQ는 CONTINUE와 함께 선택. JUDGE 직접 호출 금지 |
+| **WORK** | JUDGE, HQ | 판정 필요 시 JUDGE, 아니면 보고 후 HQ |
+| **JUDGE** | **WORK만** | 판정 후 반드시 요청한 동일 WORK 세션으로 복귀 |
+| **HIGH** | **HQ만** | JUDGE를 거치지 않음. 결과는 무조건 HQ |
+| **UNKNOWN** | **HQ만** | 오류 정보 그대로 HQ에 전달 |
+
+정상 상태 전이:
+
+~~~text
+USER
+ ↓
+HQ
+ ├─ GOTO:WORK ──> WORK ── GOTO:JUDGE ──> JUDGE ── GOTO:WORK ──> 같은 WORK
+ │                  └────────────────────────────── GOTO:HQ ───────────────┐
+ └─ GOTO:HIGH ──> HIGH ─────────────────────────── GOTO:HQ ────────────────┤
+                                                                            ↓
+                                                                            HQ
+~~~
+
+오류:
+
+~~~text
+어느 상태에서든 protocol / provider / transport / session / unavailable 오류
+    ↓
+[GOTO : UNKNOWN]
+[ERROR]
+...
+    ↓
+UNKNOWN
+    ↓
+HQ
+~~~
+
+## 4. HIGH 사용 규칙 — 설정 ON + 사용자 명시 허가 + Job당 1회
+
+HIGH는 일반 작업의 자동 상향 모델이 아니다.
+
+**세 조건이 모두 참일 때만 선택 가능하다.**
+
+~~~text
+HIGH_AVAILABLE =
+    high_enabled
+    AND high_user_authorized
+    AND NOT high_consumed
+~~~
+
+### 4.1 high_enabled
+
+- 설정창의 “고수준 작업 AI 사용” 옵션.
+- OFF이면 HQ에게 [GOTO : HIGH] 선택지를 **아예 주입하지 않는다.**
+- OFF 상태에서 HIGH를 정상 route로 보여준 뒤 ROUTE_UNAVAILABLE로 되돌리는 현재 방식은 제거한다.
+
+### 4.2 high_user_authorized
+
+사용자가 **이번 Job에서 HIGH 사용을 명시적으로 허가했다는 기계적 상태**다.
+
+중요: Worker가 자유형 사용자 문장을 의미 분석해 “고수준이 필요하다는 뜻”이라고 추론하면 안 된다.
+
+권장 구현은 다음 중 하나의 **명시적 UI/제어 입력**으로 Job 시작 시 one-shot permit을 만든다.
+
+- 작업 실행 전에 “이번 작업에서 고수준 AI 1회 사용 허용” 체크/토글
+- 또는 사용자가 직접 누르는 “고수준 1회 허용” control
+- 향후 명시적 wire flag가 생기면 동일 boolean에 매핑
+
+자유형 본문에 “어려우면 알아서 고수준 써”와 같은 문장이 있어도 Worker가 직접 NLP로 판정하지 않는다. 필요하면 HQ가 사용자에게 PAUSE로 명시 허가를 요청하게 한다.
+
+**목표:** HIGH 호출 비용/권한은 사용자 명시 행위로 생성된 one-shot permit이 있어야 한다.
+
+### 4.3 high_consumed
+
+- 실제 HIGH 호출을 **시작하는 순간** true로 바꾼다.
+- 한 Job에서 HIGH 정상 호출은 최대 1회다.
+- HIGH의 provider/transport 실행이 실패해도 이미 한 번 호출을 시도했으므로 permit은 소모된 것으로 본다. 다시 HIGH가 필요하면 사용자에게 새 명시 허가를 받아야 한다.
+- HIGH 완료 후 HQ로 돌아왔을 때 HIGH 선택지는 제거한다.
+
+### 4.4 HIGH 내부 계약
+
+HIGH는 JUDGE를 절대 호출하지 않는다.
+
+정상 HIGH 응답:
+
+~~~text
+[GOTO : HQ]
+
+[REPORT]
+
+수행 내용:
+- ...
+
+변경 사항:
+- ...
+
+검증/분석:
+- ...
+
+남은 사항:
+- ...
+~~~
+
+허용 전이:
+
+~~~text
+HIGH -> JUDGE    X
+HIGH -> WORK     X
+HIGH -> HIGH     X
+HIGH -> HQ       O
+~~~
+
+HIGH 응답이 잘못된 GOTO를 내면 Worker는 의미를 수정하지 않고 UNKNOWN envelope로 HQ에 보고한다.
+
+## 5. WORK 계약
+
+WORK는 일반 구현 담당이며 ACTION 권한이 없다.
+
+정상 선택은 둘뿐이다.
+
+### 5.1 HQ에 보고
+
+~~~text
+[GOTO : HQ]
+
+[REPORT]
+
+수행 내용:
+- ...
+
+변경 사항:
+- ...
+
+검증 결과:
+- ...
+
+남은 사항:
+- ...
+~~~
+
+Worker는 REPORT의 테스트 결과나 완료 주장을 검증하지 않고 같은 HQ session에 전달한다.
+
+### 5.2 JUDGE 요청
+
+~~~text
+[GOTO : JUDGE]
+
+[VALIDATION REQUEST]
+
+<판정할 내용>
+~~~
+
+- JUDGE 옵션이 활성화되어 있을 때만 실제 호출 가능.
+- JUDGE가 비활성인데 WORK가 JUDGE를 요청한 경우 정상 대체 route를 Worker가 선택하지 않는다.
+- 대신 UNKNOWN 오류 envelope를 HQ에 전달한다.
+- 즉 비활성 JUDGE 상태에서 Worker가 임의로 WORK → HQ를 성공 경로로 바꾸지 않는다.
+
+WORK → HIGH는 금지한다. 고수준 작업을 사용할 권한과 선택은 HQ에만 있다.
+
+## 6. JUDGE 계약 — 반드시 WORK로 복귀
+
+JUDGE는 전체 작업을 종료하거나 HQ로 직접 보고하지 않는다.
+
+~~~text
+WORK
+  ↓ GOTO:JUDGE
+JUDGE
+  ↓ GOTO:WORK
+같은 WORK session
+~~~
+
+자유형 판단 AI라면:
+
+~~~text
+[GOTO : WORK]
+
+[JUDGMENT]
+
+...
+~~~
+
+JEV처럼 API 응답 자체에 GOTO 태그가 없는 provider는 Worker adapter가 **라우팅 wrapper만 기계적으로 추가**할 수 있다.
+
+~~~text
+[GOTO : WORK]
+
+[JUDGMENT]
+<provider raw response>
+~~~
+
+이 wrapper는 의미 판정이 아니다. 현재 상태 JUDGE의 유일한 정상 목적지가 WORK라는 고정 계약을 표현할 뿐이다.
+
+### Judge 오류
+
+JUDGE provider timeout/HTTP/schema/인증 오류가 발생하면:
+
+~~~text
+[GOTO : UNKNOWN]
+
+[ERROR]
+source: JUDGE
+code: ...
+detail: ...
+~~~
+
+→ UNKNOWN → HQ.
+
+오류를 WORK에 성공 응답처럼 돌려주지 않는다.
+
+## 7. UNKNOWN 계약
+
+UNKNOWN은 AI 모델 역할이 아니다.
+
+다음 상황을 **해석하지 않고 포장해 HQ로 반환하기 위한 시스템 상태**다.
+
+- 허용되지 않은 GOTO
+- ACTION을 쓸 수 없는 역할이 ACTION 출력
+- HQ CONTINUE인데 GOTO 누락
+- HIGH permission 없음
+- JUDGE 비활성/연결 불가
+- provider timeout
+- process nonzero exit
+- session resume 실패
+- transport/schema/protocol 오류
+
+표준 envelope 제안:
+
+~~~text
+[GOTO : UNKNOWN]
+
+[ERROR]
+source_state: WORK
+code: GOTO_NOT_ALLOWED
+requested_goto: HIGH
+detail: <원본 기술 오류 또는 응답>
+~~~
+
+Worker는 UNKNOWN의 오류 원인을 보고 어떤 모델로 재시도할지 결정하지 않는다.
+
+기계적 전이:
+
+~~~text
+UNKNOWN -> HQ
+~~~
+
+HQ에는 예를 들어 다음 inbound envelope만 전달한다.
+
+~~~json
+{
+  "message_type": "UNKNOWN",
+  "body": "<ERROR 원문>"
+}
+~~~
+
+HQ가 이후 CONTINUE/PAUSE/END 및 WORK/HIGH를 새로 선택한다.
+
+## 8. Worker가 파싱할 최소 문법
+
+### HQ parser
+
+~~~text
+첫 유효행 ACTION 필수
+CONTINUE -> 두 번째 제어행 GOTO 필수
+            허용 = WORK 또는 HIGH(available일 때만)
+PAUSE    -> GOTO 금지
+END      -> GOTO 금지
+~~~
+
+### WORK parser
+
+~~~text
+첫 유효행 GOTO 필수
+허용 = HQ 또는 JUDGE
+ACTION 존재 -> protocol error -> UNKNOWN
+~~~
+
+### HIGH parser
+
+~~~text
+첫 유효행 [GOTO : HQ]만 허용
+ACTION / JUDGE / WORK / HIGH -> UNKNOWN
+~~~
+
+### JUDGE parser
+
+~~~text
+정상 목적지 = WORK 고정
+provider native 응답이면 adapter가 GOTO:WORK wrapper
+ACTION 사용 불가
+~~~
+
+### UNKNOWN
+
+~~~text
+다음 상태 = HQ 고정
+~~~
+
+**본문은 opaque다.** REPORT, INSTRUCTION, VALIDATION REQUEST, JUDGMENT, ERROR marker는 가독성과 상대 AI prompt 구성을 위한 양식이다. Worker가 그 안의 사실관계를 평가하지 않는다.
+
+## 9. 현재 코드에서 반드시 바꿀 지점
+
+2026-09-24 최신 main 기준 실제 런타임에는 아직 아래 구계약이 있다.
+
+### 9.1 ACTION=HQ 제거
+
+현재:
+
+~~~text
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+[ACTION=HQ]
+~~~
+
+변경:
+
+~~~text
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+~~~
+
+- WorkerAction.Hq 제거.
+- HQ 자기호출 shortcut 제거.
+- HQ가 자기 자신으로 GOTO하는 정상 전이도 제거.
+
+### 9.2 NEXT → GOTO 및 이름 변경
+
+현재:
+
+~~~text
+[NEXT : IMPLEMENTER]
+[NEXT : HIGH_LEVEL]
+[NEXT : JUDGE]
+[NEXT : COORDINATOR]
+~~~
+
+신규 CLI:
+
+~~~text
+[GOTO : WORK]
+[GOTO : HIGH]
+[GOTO : JUDGE]
+[GOTO : HQ]
+[GOTO : UNKNOWN]
+~~~
+
+기존 WorkerNextRole은 WorkerGotoState 또는 동등한 enum으로 정리한다.
+
+### 9.3 HQ allowed routes를 동적으로 주입
+
+현재 관제 prompt는 IMPLEMENTER/HIGH_LEVEL/JUDGE/COORDINATOR를 항상 노출한다. 이를 제거한다.
+
+일반 Job:
+
+~~~text
+Allowed GOTO for HQ:
+- WORK
+~~~
+
+HIGH one-shot이 사용 가능한 Job:
+
+~~~text
+Allowed GOTO for HQ:
+- WORK
+- HIGH
+
+HIGH is user-authorized for one call only.
+~~~
+
+HQ에게 JUDGE를 정상 선택지로 노출하지 않는다.
+
+### 9.4 HIGH_LEVEL → HIGH
+
+- 신규 CLI control wire와 내부 route enum에서 HIGH_LEVEL을 HIGH로 단순화.
+- UI 한글 “고수준 작업”은 유지 가능.
+- 저장 설정의 기존 property 이름은 migration 호환이 필요하면 읽되 내부 상태로 변환.
+- 기존 transcript는 역사 기록이므로 rewrite하지 않는다.
+
+### 9.5 WORK와 HIGH Footer 분리
+
+현재 WORK/HIGH가 같은 footer를 사용해 둘 다 JUDGE를 선택할 수 있다. 이를 분리한다.
+
+WORK:
+
+~~~text
+[GOTO : HQ]
+또는
+[GOTO : JUDGE]
+~~~
+
+HIGH:
+
+~~~text
+[GOTO : HQ]
+~~~
+
+HIGH에는 JUDGE 문구 자체를 주입하지 않는다.
+
+### 9.6 JUDGE requester 고정
+
+신규 규약에서는 Judge requester는 항상 WORK다.
+
+- HQ → JUDGE 제거.
+- HIGH → JUDGE 제거.
+- Judge request context에는 WORK session만 존재.
+- 결과는 같은 WORK session으로 복귀.
+- WORK가 결과를 읽고 다시 JUDGE 또는 HQ를 선택.
+
+## 10. 새 Footer 예시
+
+### HQ-ROUTING-CONTRACT
+
+~~~text
+You are HQ, the only role allowed to emit ACTION.
+
+First nonempty line:
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+
+If ACTION=CONTINUE, use exactly one GOTO from the Allowed GOTO list supplied by the Worker.
+
+Normal route:
+[GOTO : WORK]
+
+Only when HIGH is explicitly available for this Job:
+[GOTO : HIGH]
+
+Do not emit GOTO:JUDGE, GOTO:HQ, or GOTO:UNKNOWN as a normal HQ decision.
+PAUSE and END do not have a GOTO.
+The Worker routes control tags only and treats the body as opaque.
+~~~
+
+### WORK-ROUTING-CONTRACT
+
+~~~text
+You are WORK. Do not emit ACTION.
+
+First nonempty control line:
+[GOTO : HQ]
+or
+[GOTO : JUDGE]
+
+Use GOTO:HQ with [REPORT].
+Use GOTO:JUDGE with [VALIDATION REQUEST].
+Do not route to HIGH. Only HQ can choose HIGH.
+~~~
+
+### HIGH-ROUTING-CONTRACT
+
+~~~text
+You are HIGH. This is a one-shot high-level task delegated by HQ.
+
+Do not emit ACTION.
+Do not request JUDGE.
+
+Your first nonempty control line must be:
+[GOTO : HQ]
+
+Follow it with [REPORT].
+~~~
+
+### JUDGE return wrapper
+
+~~~text
+[GOTO : WORK]
+
+[JUDGMENT]
+<raw judge result>
+~~~
+
+## 11. 예제 전체 왕복
+
+### 11.1 기본
+
+~~~text
+USER
+  ↓
+HQ
+[ACTION=CONTINUE]
+[GOTO : WORK]
+[INSTRUCTION] 숫자 야구게임을 구현하라.
+  ↓
+WORK
+[GOTO : HQ]
+[REPORT] 구현 및 테스트 결과...
+  ↓
+HQ
+[ACTION=END]
+[REPORT] 완료 판단...
+~~~
+
+### 11.2 Judge
+
+~~~text
+HQ
+[ACTION=CONTINUE]
+[GOTO : WORK]
+...
+  ↓
+WORK
+[GOTO : JUDGE]
+[VALIDATION REQUEST]
+...
+  ↓
+JUDGE
+[GOTO : WORK]
+[JUDGMENT]
+...
+  ↓ same WORK session
+WORK
+[GOTO : HQ]
+[REPORT]
+...
+  ↓
+HQ
+[ACTION=CONTINUE|PAUSE|END]
+~~~
+
+### 11.3 HIGH one-shot
+
+사전 상태:
+
+~~~text
+high_enabled = true
+high_user_authorized = true
+high_consumed = false
+~~~
+
+HQ:
+
+~~~text
+[ACTION=CONTINUE]
+[GOTO : HIGH]
+
+[INSTRUCTION]
+...
+~~~
+
+Worker는 HIGH 호출 시작 직전에 high_consumed=true로 바꾸고 이후 같은 Job의 HQ allowed route에서 HIGH를 제거한다.
+
+HIGH:
+
+~~~text
+[GOTO : HQ]
+
+[REPORT]
+...
+~~~
+
+### 11.4 UNKNOWN
+
+WORK가 잘못 HIGH를 선택한 경우:
+
+~~~text
+WORK:
+[GOTO : HIGH]
+~~~
+
+Worker:
+
+~~~text
+[GOTO : UNKNOWN]
+
+[ERROR]
+source_state: WORK
+code: GOTO_NOT_ALLOWED
+requested_goto: HIGH
+detail: <원본 응답>
+~~~
+
+→ HQ에 전달. HQ가 새 ACTION을 결정한다.
+
+## 12. 회귀 테스트
+
+| ID | 입력/상태 | 기대 |
+| --- | --- | --- |
+| GOTO-HQ-01 | HQ CONTINUE + GOTO WORK | WORK 정확히 1회 호출 |
+| GOTO-HQ-02 | HQ CONTINUE + GOTO HIGH, HIGH available | HIGH 1회 호출, permit consumed |
+| GOTO-HQ-03 | HIGH option OFF | HQ allowed list에 HIGH 없음 |
+| GOTO-HQ-04 | user permit 없음 | HQ allowed list에 HIGH 없음; 출력 시 UNKNOWN→HQ |
+| GOTO-HQ-05 | HIGH 이미 consumed | HIGH 재호출 0, 출력 시 UNKNOWN→HQ |
+| GOTO-HQ-06 | HQ CONTINUE + GOTO JUDGE | UNKNOWN→HQ, Judge 호출 0 |
+| GOTO-HQ-07 | HQ PAUSE | 추가 AI 호출 0 |
+| GOTO-HQ-08 | HQ END | 추가 AI 호출 0, Worker semantic gate 없음 |
+| GOTO-ACT-01 | WORK가 ACTION 출력 | UNKNOWN→HQ |
+| GOTO-ACT-02 | HIGH가 ACTION 출력 | UNKNOWN→HQ |
+| GOTO-ACT-03 | JUDGE가 ACTION 출력 | UNKNOWN→HQ |
+| GOTO-W-01 | WORK → HQ | 같은 HQ session에 REPORT 전달 |
+| GOTO-W-02 | WORK → JUDGE | Judge 뒤 같은 WORK session |
+| GOTO-W-03 | WORK → HIGH | UNKNOWN→HQ |
+| GOTO-J-01 | JUDGE 정상 응답 | WORK로 복귀 |
+| GOTO-J-02 | Judge timeout | UNKNOWN→HQ |
+| GOTO-H-01 | HIGH → HQ | 같은 HQ session으로 복귀 |
+| GOTO-H-02 | HIGH → JUDGE | UNKNOWN→HQ |
+| GOTO-H-03 | HIGH → WORK | UNKNOWN→HQ |
+| GOTO-U-01 | provider/session/protocol error | UNKNOWN envelope 보존 후 HQ |
+| GOTO-BODY-01 | REPORT에 잘못된 테스트 주장 | Worker는 해석하지 않고 전달 |
+| GOTO-LEGACY-01 | 기존 Web NEXT:WEB/JEV | legacy 모드 회귀 없음 |
+
+## 13. Explorer E2E 최소 세트
+
+### A. 기본
+
+~~~text
+HQ → WORK → HQ → END
+~~~
+
+### B. Judge
+
+~~~text
+HQ → WORK → JUDGE → WORK → HQ → END
+~~~
+
+### C. HIGH one-shot
+
+사용자 one-shot 허가 후:
+
+~~~text
+HQ → HIGH → HQ → WORK 또는 END
+~~~
+
+확인:
+- HIGH는 한 번만 활성.
+- HIGH 뒤 JUDGE 상태가 나타나지 않음.
+- HIGH 사용 후 HQ의 route 후보에서 HIGH 제거.
+
+### D. UNKNOWN
+
+~~~text
+WORK → HIGH (invalid)
+→ UNKNOWN
+→ HQ
+~~~
+
+확인:
+- Worker가 다른 정상 역할로 자동 대체하지 않음.
+- 원본 오류를 HQ에 전달.
+- HQ가 다음 ACTION을 선택.
+
+## 14. 구현 체크리스트
+
+- [ ] ACTION=HQ 삭제
+- [ ] 신규 CLI-to-CLI의 NEXT를 GOTO로 변경
+- [ ] IMPLEMENTER → WORK
+- [ ] HIGH_LEVEL → HIGH
+- [ ] COORDINATOR → HQ
+- [ ] UNKNOWN 오류 상태 추가
+- [ ] HQ는 WORK/HIGH만 선택 가능
+- [ ] WORK는 HQ/JUDGE만 선택 가능
+- [ ] JUDGE는 WORK로만 복귀
+- [ ] HIGH는 HQ로만 복귀하고 JUDGE 미사용
+- [ ] ACTION parser는 HQ 응답에서만 활성
+- [ ] high_enabled + high_user_authorized + high_consumed 상태 구현
+- [ ] HIGH OFF/미허가/소모 상태면 HQ allowed list에서 HIGH 제거
+- [ ] HIGH dispatch 시작 시 permit 즉시 consume
+- [ ] 잘못된 GOTO/기술 오류를 UNKNOWN→HQ로 통일
+- [ ] WORK/HIGH Footer 분리
+- [ ] HQ/JUDGE 직접 경로 제거
+- [ ] JUDGE 결과를 같은 WORK session으로 복귀
+- [ ] Worker semantic gate를 신규 경로에 다시 도입하지 않음
+- [ ] 기존 Web NEXT 계약은 legacy 모드 회귀 없음
+
+## 15. 최종 불변식
+
+~~~text
+HQ      -> WORK | HIGH
+WORK    -> JUDGE | HQ
+JUDGE   -> WORK
+HIGH    -> HQ
+UNKNOWN -> HQ
+~~~
+
+그리고:
+
+~~~text
+ACTION = HQ only
+HIGH = option ON + explicit user one-shot authorization + not consumed
+Worker = control contract router, not semantic evaluator
+~~~
+
+이 규약이 신규 CLI-to-CLI의 최종 기준이다. 이전 피드백/현재 코드에서 이 규약과 충돌하는 ACTION=HQ, NEXT, HQ→JUDGE, HIGH→JUDGE, 자동 대체, Worker 자체 의미 판정은 신규 경로 기준에서 폐기한다.
