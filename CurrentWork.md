@@ -30,6 +30,19 @@ HQ/WORK/JUDGE/HIGH 응답 완료 시 Worker가 현재 role/state와 usage/files 
 
 11-C-GOTO-CONTRACT는 아직 완료가 아니다.
 
+## 2026-09-24 GOTO_INVALID 회귀 수정
+
+Explorer에서 HQ가 `[GOTO=WORK]` / `GOTO=WORK`를 출력해 strict parser가 `GOTO_INVALID`로 UNKNOWN→HQ를 반복하는 문제가 확인됐다.
+
+수정:
+- HQ/WORK/HIGH/JUDGE role contract에 정확한 `[GOTO : ...]` wire 예시를 명시
+- GOTO는 반드시 colon(`:`)과 square bracket을 사용하도록 계약에 명시
+- HQ `[AVAILABLE GOTO]` header도 `WORK/HIGH` 문자열이 아니라 실제 `[GOTO : WORK]`, `[GOTO : HIGH]` 형태로 제공
+- parser는 느슨하게 만들지 않고 strict syntax 유지
+- `[GOTO=WORK]`, `GOTO=WORK`가 `GOTO_INVALID`인 회귀 테스트 추가
+
+이번 수정 이후 Explorer 재실행에서 HQ가 정확히 `[ACTION=CONTINUE]` + `[GOTO : WORK]`를 출력하는지 확인해야 한다.
+
 ## Active residual — opaque body + History
 
 - 역할 output contract에서 INSTRUCTION/REPORT/VALIDATION REQUEST/JUDGMENT 요구 제거
