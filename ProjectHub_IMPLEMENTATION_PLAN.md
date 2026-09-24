@@ -94,3 +94,11 @@ History는 Worker가 이미 보유한 실행 사실과 telemetry로 만든다.
 제어행 검사도 `[ACTION`/`[GOTO` prefix로 후보를 구분한 뒤 기존 strict syntax parser에 넘기도록 보완했다. 오류 분류 기대값을 갱신했다. 이 후속 parser 조정은 자동 테스트 미실행 상태이나 Release build/publish 성공, `git diff --check` 통과 및 실행파일 복사·해시 대조를 완료했다.
 
 후속 조정: 제어 prefix 식별 후 ACTION/GOTO 키워드를 포함 검색으로 판별하며, 유일한 키워드와 바깥 닫는 대괄호 한 쌍을 요구한다. 이 버전으로 Release build/publish 성공; 전체 테스트는 미실행이다. 실행파일 복사본 SHA-256은 `CBCC02AF7038EE9D1C8D14783753DD5219666734A2E24722B047ACD1893B0E5C`.
+
+## 2026-09-24 현재 작업 pipeline UI 피드백 적용
+
+최신 동기화 피드백의 표시 기준에 따라 상단 pipeline 화살표를 제거하고 단계 간격을 12px로 축소했다. 각 단계 카드에 base gold outline과 2초 주기의 gold dashed orbit을 추가하고, `_currentTaskStage`에 해당하는 카드만 표시·애니메이션하도록 구현했다. Idle도 실제 current일 때 활성화하며 HIGH permit만으로는 활성화하지 않는다. Judge 비활성 카드에는 애니메이션을 표시하지 않는다. role color/grayscale 정책은 유지한다.
+
+상단 arrow routing animation과 미사용 `_nextTaskStage` 상태는 제거했다. `_flowTimer`, 하단 legacy Flow arrow 및 Judge pulse는 유지했고, Worker routing/JEV/UNKNOWN/HIGH permit/History 코드는 수정하지 않았다.
+
+검증: Debug/Release solution build 모두 경고 0·오류 0, 전체 69개 테스트 통과, `git diff --check` 통과. 실제 Explorer UI 확인은 Computer Use 런타임이 `Trusted RPC service is not configured: sky` 오류로 연결되지 않아 잔여다.

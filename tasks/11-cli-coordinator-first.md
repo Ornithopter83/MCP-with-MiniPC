@@ -219,3 +219,22 @@ A 경로에서 최소:
 - `[ACTION`/`[GOTO` 시작으로 후보 종류를 식별하고 ACTION/GOTO 키워드 포함 상태로 값을 판별한다.
 - 바깥 대괄호 한 쌍이 닫히고 일치 키워드가 하나인 경우만 파싱하며, role route/HIGH permit 제한은 그대로 적용한다.
 - 이 변경 뒤 전체 테스트는 실행하지 않았다. Release build/publish 성공, `git diff --check` 통과. `C:\AI-AGENT\Worker` 복사본 SHA-256: `CBCC02AF7038EE9D1C8D14783753DD5219666734A2E24722B047ACD1893B0E5C`.
+
+## 2026-09-24 UI feedback — current pipeline active outline
+
+### 구현
+
+- 최신 피드백을 동기화한 뒤 상단 현재 작업 pipeline에만 범위를 제한했다.
+- pipeline 사이 화살표를 제거하고 카드 사이 spacer를 12px로 변경했다.
+- Idle/Coordinator/Implementer/HighLevel/Judge 각각 정적 base outline + 금색 dash orbit을 두고, `_currentTaskStage`인 카드만 활성화한다. orbit 주기는 2초이며 단계 전환 시 이전 애니메이션을 중단한다.
+- 카드 role 배경·아이콘 색, 비활성 grayscale 정책을 유지한다. HIGH permit 체크만으로 HIGH를 활성화하지 않고 Judge OFF일 때 Judge animation은 끈다.
+- 상단 arrow animation 및 미사용 `_nextTaskStage`를 제거했다. 하단 legacy arrow / `_flowTimer` / Judge pulse는 유지한다.
+- Routing, JEV, UNKNOWN, HIGH permit, History 동작은 변경하지 않았다.
+
+### 검증
+
+- `dotnet build ProjectHub.sln -c Debug --no-restore` — 통과, 경고 0/오류 0.
+- `dotnet build ProjectHub.sln -c Release --no-restore` — 통과, 경고 0/오류 0.
+- `dotnet test ProjectHub.sln --no-restore` — 통과, 전체 69 (Worker 64, Agent 3, Core 1, Server 1).
+- `git diff --check` — 통과.
+- Explorer 단계별 화면 검증은 Computer Use 연결 실패(`Trusted RPC service is not configured: sky`)로 미수행, 잔여.

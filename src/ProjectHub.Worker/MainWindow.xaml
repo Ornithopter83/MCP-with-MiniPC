@@ -19,6 +19,25 @@
     <SolidColorBrush x:Key="ActiveMessageTab" Color="#B9DEFF" />
     <SolidColorBrush x:Key="InactiveMessageTab" Color="#F4F9FF" />
     <DropShadowEffect x:Key="RunButtonShadow" BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.22" Color="#1477E8" />
+    <DropShadowEffect x:Key="PipelineGoldGlow" BlurRadius="9" ShadowDepth="0" Opacity="0.32" Color="#FFC84A" />
+    <Style x:Key="PipelineActiveOutline" TargetType="Rectangle">
+      <Setter Property="Fill" Value="Transparent" />
+      <Setter Property="Stroke" Value="#806F5315" />
+      <Setter Property="StrokeThickness" Value="2" />
+      <Setter Property="RadiusX" Value="10" />
+      <Setter Property="RadiusY" Value="10" />
+      <Setter Property="Margin" Value="4" />
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Panel.ZIndex" Value="5" />
+    </Style>
+    <Style x:Key="PipelineActiveOrbit" TargetType="Rectangle" BasedOn="{StaticResource PipelineActiveOutline}">
+      <Setter Property="Stroke" Value="#FFFFD76A" />
+      <Setter Property="StrokeThickness" Value="2.5" />
+      <Setter Property="StrokeDashArray" Value="2 10" />
+      <Setter Property="StrokeDashCap" Value="Round" />
+      <Setter Property="Effect" Value="{StaticResource PipelineGoldGlow}" />
+    </Style>
     <Style x:Key="CardBorder" TargetType="Border">
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="{StaticResource Line}" />
@@ -327,16 +346,22 @@
       <Grid><Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <TextBlock Text="현재 작업" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Margin="5,0"/>
         <Grid Grid.Row="1" Margin="0,7,0,0">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
           <Border x:Name="PipelineIdleCard" Grid.Column="0" Background="#7A8797" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineIdleTitle" Text="1. 대기" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="PipelineIdleIconCircle" Grid.Row="1" Width="82" Height="82" Background="#667487" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Grid><Ellipse Width="46" Height="46" Stroke="White" StrokeThickness="5"/><Path Data="M 41,20 L 41,41 L 55,49" Stroke="White" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Width="7" Height="7" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border><TextBlock Grid.Row="2" Text=" " FontSize="19" HorizontalAlignment="Center"/></Grid></Border>
-          <Border x:Name="PipelineArrow1" Grid.Column="1" Width="32" Height="42" Background="#EAF4FF" BorderBrush="#D2E6FF" BorderThickness="1" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PipelineArrowText1" Text="››" FontSize="27" FontWeight="Bold" Foreground="#1477E8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/></Border>
+          <Rectangle x:Name="PipelineIdleActiveBase" Grid.Column="0" Style="{StaticResource PipelineActiveOutline}"/>
+          <Rectangle x:Name="PipelineIdleActiveOrbit" Grid.Column="0" Style="{StaticResource PipelineActiveOrbit}"/>
           <Border x:Name="PipelineCoordinatorCard" Grid.Column="2" Background="#B8C8DA" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineCoordinatorTitle" Text="2. 설계 관제" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="CoordinatorStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="CoordinatorStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="CoordinatorStageModelText" Grid.Row="2" Text="GPT-6 Sol" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
-          <Border x:Name="PipelineArrow2" Grid.Column="3" Width="32" Height="42" Background="#EAF4FF" BorderBrush="#D2E6FF" BorderThickness="1" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PipelineArrowText2" Text="››" FontSize="27" FontWeight="Bold" Foreground="#1477E8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/></Border>
+          <Rectangle x:Name="PipelineCoordinatorActiveBase" Grid.Column="2" Style="{StaticResource PipelineActiveOutline}"/>
+          <Rectangle x:Name="PipelineCoordinatorActiveOrbit" Grid.Column="2" Style="{StaticResource PipelineActiveOrbit}"/>
           <Border x:Name="PipelineImplementerCard" Grid.Column="4" Background="#B8C8DA" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineImplementerTitle" Text="3. 작업" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="ImplementerStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="ImplementerStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="ImplementerStageModelText" Grid.Row="2" Text="GPT-6 Luna" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
-          <Border x:Name="PipelineArrow3" Grid.Column="5" Width="32" Height="42" Background="#EAF4FF" BorderBrush="#D2E6FF" BorderThickness="1" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PipelineArrowText3" Text="››" FontSize="27" FontWeight="Bold" Foreground="#1477E8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/></Border>
+          <Rectangle x:Name="PipelineImplementerActiveBase" Grid.Column="4" Style="{StaticResource PipelineActiveOutline}"/>
+          <Rectangle x:Name="PipelineImplementerActiveOrbit" Grid.Column="4" Style="{StaticResource PipelineActiveOrbit}"/>
           <Border x:Name="PipelineHighLevelCard" Grid.Column="6" Background="#B8C8DA" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineHighLevelTitle" Text="4. 고수준 작업" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="HighLevelStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="HighLevelStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="HighLevelStageModelText" Grid.Row="2" Text="GPT-6 Astra" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
-          <Border x:Name="PipelineArrow4" Grid.Column="7" Width="32" Height="42" Background="#EAF4FF" BorderBrush="#D2E6FF" BorderThickness="1" CornerRadius="12" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock x:Name="PipelineArrowText4" Text="››" FontSize="27" FontWeight="Bold" Foreground="#1477E8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/></Border>
+          <Rectangle x:Name="PipelineHighLevelActiveBase" Grid.Column="6" Style="{StaticResource PipelineActiveOutline}"/>
+          <Rectangle x:Name="PipelineHighLevelActiveOrbit" Grid.Column="6" Style="{StaticResource PipelineActiveOrbit}"/>
           <Border x:Name="PipelineJudgeCard" Grid.Column="8" Background="#B8C8DA" CornerRadius="10" Margin="4" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineJudgeTitle" Text="5. 판정" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="JudgeStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="JudgeStageIcon" Source="Assets/current-jev-gray.png" Width="64" Height="64" Stretch="Uniform"><Image.Clip><EllipseGeometry Center="32,32" RadiusX="32" RadiusY="32"/></Image.Clip></Image></Border><TextBlock x:Name="JudgeStageModelText" Grid.Row="2" Text="JEV" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+          <Rectangle x:Name="PipelineJudgeActiveBase" Grid.Column="8" Style="{StaticResource PipelineActiveOutline}"/>
+          <Rectangle x:Name="PipelineJudgeActiveOrbit" Grid.Column="8" Style="{StaticResource PipelineActiveOrbit}"/>
         </Grid>
       </Grid>
     </Border>

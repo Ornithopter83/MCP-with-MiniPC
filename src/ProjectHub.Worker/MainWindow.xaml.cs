@@ -105,7 +105,6 @@ public partial class MainWindow : Window
     private enum DashboardBodyMode { NewTaskInput, TaskHistory }
     private DashboardBodyMode _dashboardBodyMode = DashboardBodyMode.NewTaskInput;
     private TaskStage _currentTaskStage = TaskStage.Idle;
-    private TaskStage? _nextTaskStage;
     private string _coordinatorStageIconAsset = "current-openai.png";
     private bool _judgeReviewing;
     private string _judgeStatus = "OFF";
@@ -491,7 +490,7 @@ public partial class MainWindow : Window
         WebInstructionInput.Text = WebInstructionPlaceholder;
         WebInstructionInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
     }
-    private void SetFlowState(bool codexActive, bool workerActive, bool webActive, TaskStage? explicitStage = null, TaskStage? explicitNextStage = null)
+    private void SetFlowState(bool codexActive, bool workerActive, bool webActive, TaskStage? explicitStage = null)
     {
         var (left, right) = ResolveFlowPair();
         SetFlowNode(left, isActive: IsNodeActive(left, codexActive, workerActive, webActive), isLeft: true);
@@ -506,13 +505,6 @@ public partial class MainWindow : Window
             : webActive ? TaskStage.Coordinator
             : workerActive || codexActive ? TaskStage.Implementer
             : TaskStage.Idle);
-        _nextTaskStage = explicitStage.HasValue ? explicitNextStage : explicitNextStage ?? (_currentTaskStage switch
-        {
-            TaskStage.Coordinator => TaskStage.Implementer,
-            TaskStage.Implementer when _targetSettings.EffectiveJudge.Enabled => TaskStage.Judge,
-            TaskStage.HighLevel when _targetSettings.EffectiveJudge.Enabled => TaskStage.Judge,
-            _ => null
-        });
         UpdatePipelineVisuals();
         if (!running) _messageExpanded = false;
         UpdatePanelLayout(running);
@@ -532,17 +524,16 @@ public partial class MainWindow : Window
         SetColor(PipelineIdleCard, idleVisual.Background);
         PipelineIdleTitle.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(idleVisual.Foreground));
         SetColor(PipelineIdleIconCircle, idleVisual.IconBackground);
-        PipelineIdleCard.BorderBrush = idleVisual.Border == "Transparent"
-            ? System.Windows.Media.Brushes.Transparent
-            : new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(idleVisual.Border));
-        PipelineIdleCard.BorderThickness = idle ? new Thickness(2) : new Thickness(1);
-        PipelineIdleCard.Effect = idle ? CreateCurrentStageShadow() : null;
-        UpdatePipelineArrowAnimation();
+        PipelineIdleCard.BorderBrush = System.Windows.Media.Brushes.Transparent;
+        PipelineIdleCard.BorderThickness = new Thickness(1);
+        PipelineIdleCard.Effect = null;
+        SetPipelineStageAnimation(TaskStage.Idle, idle);
     }
 
     private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, RoleVisualPalette palette, bool disabled, bool initialInputIdle)
     {
         var current = !disabled && _currentTaskStage == stage;
+        SetPipelineStageAnimation(stage, current);
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
         var colored = visual.IsColored;
         SetColor(card, colored ? palette.Background : "#B8C8DA");
@@ -554,23 +545,44 @@ public partial class MainWindow : Window
         else if (card == PipelineImplementerCard) ImplementerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineHighLevelCard) HighLevelStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineJudgeCard) JudgeStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
-        card.BorderBrush = current ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.Transparent;
-        card.BorderThickness = current ? new Thickness(2) : new Thickness(1);
-        card.Effect = current ? CreateCurrentStageShadow() : null;
+        card.BorderBrush = System.Windows.Media.Brushes.Transparent;
+        card.BorderThickness = new Thickness(1);
+        card.Effect = null;
         card.Opacity = visual.Opacity;
+    }
+
+    private void SetPipelineStageAnimation(TaskStage stage, bool active)
+    {
+        var (baseOutline, orbit) = stage switch
+        {
+            TaskStage.Idle => (PipelineIdleActiveBase, PipelineIdleActiveOrbit),
+            TaskStage.Coordinator => (PipelineCoordinatorActiveBase, PipelineCoordinatorActiveOrbit),
+            TaskStage.Implementer => (PipelineImplementerActiveBase, PipelineImplementerActiveOrbit),
+            TaskStage.HighLevel => (PipelineHighLevelActiveBase, PipelineHighLevelActiveOrbit),
+            TaskStage.Judge => (PipelineJudgeActiveBase, PipelineJudgeActiveOrbit),
+            _ => throw new ArgumentOutOfRangeException(nameof(stage))
+        };
+
+        baseOutline.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        if (!active)
+        {
+            orbit.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, null);
+            orbit.StrokeDashOffset = 0;
+            orbit.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (orbit.Visibility == Visibility.Visible) return;
+        orbit.Visibility = Visibility.Visible;
+        orbit.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, -24, TimeSpan.FromSeconds(2))
+            {
+                RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever
+            });
     }
 
     private static void SetColor(Border control, string color)
         => control.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
-
-    private static System.Windows.Media.Effects.Effect CreateCurrentStageShadow() => new System.Windows.Media.Effects.DropShadowEffect
-    {
-        BlurRadius = 14,
-        ShadowDepth = 3,
-        Direction = 270,
-        Opacity = 0.22,
-        Color = System.Windows.Media.Color.FromRgb(20, 119, 232)
-    };
 
     private (FlowNode Left, FlowNode Right) ResolveFlowPair() => TaskDirection.Text switch
     {
@@ -657,45 +669,7 @@ public partial class MainWindow : Window
         var activeIndex = _flowFrame++ % 5;
         var opacities = new[] { 1.0, 0.32, 0.32 };
         SetArrowFrame(new[] { FlowArrow1, FlowArrow2, FlowArrow3 }, _pairArrowActive, activeIndex, opacities);
-        UpdatePipelineArrowAnimation();
         UpdateJudgeVisual();
-    }
-
-    private void UpdatePipelineArrowAnimation()
-    {
-        var arrows = new[] { PipelineArrow1, PipelineArrow2, PipelineArrow3, PipelineArrow4 };
-        var labels = new[] { PipelineArrowText1, PipelineArrowText2, PipelineArrowText3, PipelineArrowText4 };
-        var start = (int)_currentTaskStage;
-        var end = _nextTaskStage.HasValue ? (int)_nextTaskStage.Value : -1;
-        if (!_pairArrowActive || start < 1 || end < 1 || end == start)
-        {
-            for (var i = 0; i < arrows.Length; i++)
-            {
-                arrows[i].Opacity = 0.72;
-                arrows[i].RenderTransform = new System.Windows.Media.TranslateTransform();
-                arrows[i].Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#F1F5FA"));
-                labels[i].Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#B8C9DD"));
-                labels[i].Text = "››";
-            }
-            return;
-        }
-
-        var routeStart = Math.Min(start, end);
-        var routeEnd = Math.Max(start, end);
-        var routeLength = routeEnd - routeStart;
-        var pulseEdge = routeStart + ((_flowFrame / 2) % routeLength);
-        var direction = end > start ? 1 : -1;
-        var pulse = (Math.Sin((_flowFrame % 8) * Math.PI / 4) + 1) / 2;
-        for (var edge = 1; edge <= arrows.Length; edge++)
-        {
-            var onRoute = edge >= routeStart && edge < routeEnd;
-            var active = onRoute && edge == pulseEdge;
-            arrows[edge - 1].Opacity = onRoute ? active ? 0.68 + pulse * 0.32 : 0.82 : 0.55;
-            arrows[edge - 1].RenderTransform = new System.Windows.Media.TranslateTransform(active ? direction * pulse * 5 : 0, 0);
-            arrows[edge - 1].Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(onRoute ? active ? "#D8EBFF" : "#E6F2FF" : "#F1F5FA"));
-            labels[edge - 1].Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(onRoute ? "#1477E8" : "#B8C9DD"));
-            labels[edge - 1].Text = onRoute ? direction > 0 ? "›››" : "‹‹‹" : "››";
-        }
     }
     private void UpdateJudgeVisual()
     {

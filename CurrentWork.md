@@ -143,3 +143,11 @@ Explorer 재검증:
 - ACTION/GOTO 제어줄이 한 쌍의 바깥 대괄호로 닫혀야 하고 키워드 후보가 하나만 매칭되어야 한다. 닫는 대괄호 누락·중복 또는 다중 키워드 후보는 거부한다. 상태별 허용 route 및 HIGH permit 검사는 유지한다.
 - 기존 테스트 기대값을 새 오류 분류에 맞게 수정했다. 이 파서 변경 이후 자동 테스트는 실행하지 않았고, Release build/publish는 경고 0·오류 0으로 통과했다.
 - `C:\AI-AGENT\Worker`에 게시 EXE를 갱신 복사하고 SHA-256 `CBCC02AF7038EE9D1C8D14783753DD5219666734A2E24722B047ACD1893B0E5C` 일치를 확인했다. `git diff --check` 통과.
+
+## 2026-09-24 현재 작업 파이프라인 활성 표시
+
+동기화된 최신 `GPT-Web-Feedback.md`의 pipeline UI 기준을 구현했다. 상단 단계 사이 화살표를 제거하고 간격을 12px로 줄였으며, Idle/HQ/WORK/HIGH/JUDGE 각 카드에 정적 금색 윤곽과 점선 orbit overlay를 추가했다. 애니메이션은 `_currentTaskStage` 하나만 기준으로 2초 주기로 움직이고, 단계 해제 시 즉시 정지한다. 역할별 카드 배경·아이콘 색 및 비활성 회색 정책은 유지한다.
+
+상단 전용 화살표 애니메이션과 `_nextTaskStage` 의존성을 제거했으며, 하단 Legacy Flow 화살표 애니메이션, `_flowTimer`, Judge pulse는 유지했다. Router/GOTO/JEV/UNKNOWN/HIGH permit/History 동작은 변경하지 않았다.
+
+검증: `dotnet build ProjectHub.sln -c Debug --no-restore` 성공 (경고 0, 오류 0), `dotnet build ProjectHub.sln -c Release --no-restore` 성공 (경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공 (Worker 64, Agent 3, Core 1, Server 1; 전체 69). `git diff --check` 통과. Windows 실제 화면 검증은 Computer Use 런타임이 `Trusted RPC service is not configured: sky`로 초기화되지 않아 수행하지 못했다. Explorer 단계 전환 확인은 잔여다.
