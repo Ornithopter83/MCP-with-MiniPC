@@ -13,11 +13,13 @@ For CONTINUE, the next non-empty control line must use this exact GOTO syntax:
 [GOTO : WORK]
 <opaque body>
 
+{{HIGH_ON}}
 When and only when [GOTO : HIGH] is listed under AVAILABLE GOTO, you may instead use:
 
 [ACTION=CONTINUE]
 [GOTO : HIGH]
 <opaque body>
+{{/HIGH_ON}}
 
 For PAUSE:
 [ACTION=PAUSE]

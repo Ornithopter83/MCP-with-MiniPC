@@ -67,3 +67,11 @@ Worker가 작업 결과를 판단하게 만드는 로직은 금지한다.
 UI를 위해 AI에게 ACTION/GOTO 외 semantic tag를 출력시키는 설계도 금지한다.
 
 History는 Worker가 이미 보유한 실행 사실과 telemetry로 만든다.
+
+## 2026-09-24 동기화 빌드 기록
+
+최신 원격 `main` `60db01f`를 동기화했다. 전체 테스트에서 무허가 HQ prompt에 HIGH GOTO 문구가 노출되는 회귀가 발견되어 permit별 footer 필터와 테스트를 추가했다. `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 59, Server 1, Agent 3, Core 1), Release build/publish 성공 (경고 0, 오류 0), `git diff --check` 통과. EXE를 `C:\AI-AGENT\Worker`에 복사하고 SHA-256 일치를 확인했다. Explorer A~D는 미검증 잔여로 유지한다.
+
+제어행 검사도 `[ACTION`/`[GOTO` prefix로 후보를 구분한 뒤 기존 strict syntax parser에 넘기도록 보완했다. 오류 분류 기대값을 갱신했다. 이 후속 parser 조정은 자동 테스트 미실행 상태이나 Release build/publish 성공, `git diff --check` 통과 및 실행파일 복사·해시 대조를 완료했다.
+
+후속 조정: 제어 prefix 식별 후 ACTION/GOTO 키워드를 포함 검색으로 판별하며, 유일한 키워드와 바깥 닫는 대괄호 한 쌍을 요구한다. 이 버전으로 Release build/publish 성공; 전체 테스트는 미실행이다. 실행파일 복사본 SHA-256은 `CBCC02AF7038EE9D1C8D14783753DD5219666734A2E24722B047ACD1893B0E5C`.

@@ -7,7 +7,14 @@ namespace ProjectHub.Worker;
 
 public static class RoleContractLoader
 {
-    public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
+    public static string LoadHqFooter(bool highPermitAvailable = true)
+    {
+        var value = Load("HQ-ROUTING-CONTRACT.md");
+        if (!highPermitAvailable)
+            value = Regex.Replace(value, @"(?s)\{\{HIGH_ON\}\}.*?\{\{/HIGH_ON\}\}", string.Empty);
+        return value.Replace("{{HIGH_ON}}", string.Empty, StringComparison.Ordinal)
+            .Replace("{{/HIGH_ON}}", string.Empty, StringComparison.Ordinal).Trim();
+    }
     public static string LoadWorkFooter(bool judgeAvailable)
     {
         var value = Load("WORK-ROUTING-CONTRACT.md");
@@ -23,7 +30,7 @@ public static class RoleContractLoader
         var routes = highPermitAvailable ? "[GOTO : WORK]\n[GOTO : HIGH]" : "[GOTO : WORK]";
         var permit = highPermitAvailable ? "[HIGH PERMIT : ONE_SHOT]\nremaining=1\n\n" : string.Empty;
         var header = $"[ROLE : HQ]\n\n[INBOUND TYPE : {inboundType}]\n\n[AVAILABLE GOTO]\n{routes}\n\n{permit}";
-        return header + "[INBOUND BODY : JSON]\n" + JsonSerializer.Serialize(new { body }) + "\n\n" + LoadHqFooter();
+        return header + "[INBOUND BODY : JSON]\n" + JsonSerializer.Serialize(new { body }) + "\n\n" + LoadHqFooter(highPermitAvailable);
     }
 
     public static string BuildWorkPrompt(string inboundType, string body, bool judgeAvailable)

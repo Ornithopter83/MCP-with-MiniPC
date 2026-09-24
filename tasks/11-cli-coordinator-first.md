@@ -185,3 +185,25 @@ A 경로에서 최소:
 ## Completion condition
 
 11-C-GOTO-CONTRACT는 ACTION/GOTO 외 semantic body tag 의존성이 신규 CLI runtime과 History에서 제거되고, Explorer에서 역할별 카드가 누락 없이 표시된 뒤 완료 처리한다.
+
+## 2026-09-24 최신 동기화 검증·게시
+
+- 동기화 기준: `main` `60db01f`.
+- 전체 테스트 첫 실행에서 무허가 HQ prompt의 footer가 `[GOTO : HIGH]`를 여전히 포함하는 회귀가 드러났다. 역할 계약을 permit에 따라 필터링하고 회귀 테스트를 보강했다.
+- `dotnet test ProjectHub.sln --no-restore`: 통과 (Worker 59, Server 1, Agent 3, Core 1).
+- `dotnet build ProjectHub.sln -c Release --no-restore`: 성공, 경고 0/오류 0.
+- `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj -c Release -r win-x64 --no-restore`: 성공.
+- 게시 EXE를 `C:\AI-AGENT\Worker`에 복사했고 SHA-256 `7D68083D103296898692429C0BF5DDCBD63148311B31CE81C17719FFA08E3FEC` 일치. Explorer A~D 검증은 미수행. 현재 변경은 commit/push 전 상태다.
+
+## 2026-09-24 제어행 prefix 후보 판별 후속
+
+- `[ACTION`/`[GOTO` 시작 문자열로 control candidate를 식별하고 exact parser가 실제 wire 문법을 검증한다. 유효 문법 허용 범위는 확장하지 않았다.
+- malformed candidate를 `ACTION_INVALID`/`GOTO_INVALID`로 분류하도록 하고 기존 test 기대값을 갱신했다.
+- 이 parser 변경 뒤 자동 테스트는 미실행. `dotnet build ProjectHub.sln -c Release --no-restore` 및 Worker Release publish는 경고 0/오류 0으로 성공했다.
+- 게시 EXE를 `C:\AI-AGENT\Worker`로 복사했고 SHA-256 `ACF5EF21945D14AEB40A4DB97D22602639B76096943ED8C6B654277A29BE3389`를 대조했다. `git diff --check` 통과.
+
+### 제어행 키워드 포함 판별 후속
+
+- `[ACTION`/`[GOTO` 시작으로 후보 종류를 식별하고 ACTION/GOTO 키워드 포함 상태로 값을 판별한다.
+- 바깥 대괄호 한 쌍이 닫히고 일치 키워드가 하나인 경우만 파싱하며, role route/HIGH permit 제한은 그대로 적용한다.
+- 이 변경 뒤 전체 테스트는 실행하지 않았다. Release build/publish 성공, `git diff --check` 통과. `C:\AI-AGENT\Worker` 복사본 SHA-256: `CBCC02AF7038EE9D1C8D14783753DD5219666734A2E24722B047ACD1893B0E5C`.

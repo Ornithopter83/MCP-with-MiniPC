@@ -67,7 +67,7 @@ public sealed class CoordinatorFirstContractTests
     [Theory]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO=WORK]\nbody", false, "GOTO_INVALID")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\nGOTO=WORK\nbody", false, "GOTO_INVALID")]
-    [InlineData(WorkerRoleState.Hq, "[ACTION=HQ]\nbody", false, "CONTROL_INVALID_FIRST_LINE")]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=HQ]\nbody", false, "ACTION_INVALID")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : HIGH]\nbody", false, "HIGH_NOT_AUTHORIZED")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : JUDGE]\nbody", true, "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\n[GOTO : WORK]\nbody", false, "GOTO_NOT_ALLOWED_WITH_ACTION")]

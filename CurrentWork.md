@@ -112,3 +112,19 @@ Explorer 재검증:
 ## Other residual
 
 - 11-UI-B-EXPLORER-COLORS: 실제 Explorer 색상 확인 잔여
+
+## 2026-09-24 최신 원격 동기화·빌드·게시
+
+- 원격 `main`의 최신 커밋 `60db01f`까지 fast-forward 동기화했다. `GPT-Web-Feedback.md`의 opaque body/History 변경과 strict GOTO wire 보완 사항을 확인했다.
+- 전체 테스트 첫 실행에서 Worker 1건이 실패했다. HIGH permit이 없는 HQ prompt footer에도 `[GOTO : HIGH]`가 노출되는 계약/테스트 불일치였다.
+- HQ contract footer를 permit 여부에 따라 필터링하도록 수정하고 회귀 테스트를 추가했다. 검증: `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 59, Server 1, Agent 3, Core 1).
+- 검증: `dotnet build ProjectHub.sln -c Release --no-restore` 성공 (경고 0, 오류 0); `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj -c Release -r win-x64 --no-restore` 성공; `git diff --check` 통과.
+- 게시 EXE를 `C:\AI-AGENT\Worker`에 복사했고 양쪽 SHA-256은 `7D68083D103296898692429C0BF5DDCBD63148311B31CE81C17719FFA08E3FEC`로 일치한다. 실행 중인 Worker 프로세스는 없었다. `C:\GameProject`는 없다.
+- 잔여: Explorer A~D 실화면 왕복 검증. 이번 변경은 아직 commit/push하지 않았다.
+
+## 2026-09-24 제어행 prefix·키워드 판별
+
+- 첫 유효 행의 `[ACTION`/`[GOTO` prefix로 control family를 식별한 뒤 `CONTINUE`/`PAUSE`/`END`, `HQ`/`WORK`/`JUDGE`/`HIGH`/`UNKNOWN`의 포함 여부로 후보 값을 판별한다.
+- ACTION/GOTO 제어줄이 한 쌍의 바깥 대괄호로 닫혀야 하고 키워드 후보가 하나만 매칭되어야 한다. 닫는 대괄호 누락·중복 또는 다중 키워드 후보는 거부한다. 상태별 허용 route 및 HIGH permit 검사는 유지한다.
+- 기존 테스트 기대값을 새 오류 분류에 맞게 수정했다. 이 파서 변경 이후 자동 테스트는 실행하지 않았고, Release build/publish는 경고 0·오류 0으로 통과했다.
+- `C:\AI-AGENT\Worker`에 게시 EXE를 갱신 복사하고 SHA-256 `CBCC02AF7038EE9D1C8D14783753DD5219666734A2E24722B047ACD1893B0E5C` 일치를 확인했다. `git diff --check` 통과.

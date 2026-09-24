@@ -57,6 +57,7 @@ public sealed class RoleContractBoundaryTests
         var withPermit = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "opaque report", true);
         Assert.Contains("[AVAILABLE GOTO]\n[GOTO : WORK]", withoutPermit);
         Assert.DoesNotContain("[GOTO : HIGH]", withoutPermit);
+        Assert.DoesNotContain("HIGH]", RoleContractLoader.LoadHqFooter(highPermitAvailable: false));
         Assert.Contains("[ROLE : HQ]", withPermit);
         Assert.Contains("[HIGH PERMIT : ONE_SHOT]", withPermit);
         Assert.Contains("[AVAILABLE GOTO]\n[GOTO : WORK]\n[GOTO : HIGH]", withPermit);
