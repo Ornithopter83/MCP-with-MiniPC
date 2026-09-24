@@ -2,11 +2,13 @@
 
 Updated: 2026-09-24
 
-## Current policy
-
 정책 원본: Master-Polish.md
 
-**Worker는 판단하지 않는다. Worker는 흐름 제어 도구다.**
+## Current policy
+
+Worker는 판단하지 않는다. Worker는 흐름 제어 도구다.
+
+신규 CLI에서 AI가 반환하는 제어 계약은 ACTION/GOTO뿐이며 제어행 뒤의 내용은 opaque body다.
 
 ~~~text
 HQ      -> WORK | HIGH
@@ -16,85 +18,82 @@ HIGH    -> HQ
 UNKNOWN -> HQ
 ~~~
 
-ACTION은 HQ만 CONTINUE/PAUSE/END를 사용한다.
+## Current implementation status
 
-신규 CLI-to-CLI는 GOTO를 사용한다.
+핵심 ACTION+GOTO router, HIGH one-shot permit, JUDGE raw transport, 역할별 contract 파일 분리는 구현돼 있다.
 
-## Implementation status (2026-09-24)
+사용자 Explorer 기본 경로에서 HQ → WORK → HQ → END 실제 진행은 확인됐지만, WORK 응답 body가 transcript에는 남고 메시지/작업 이력 카드에는 표시되지 않는 문제가 확인됐다.
 
-11-C-GOTO-CONTRACT 구현 및 자동 검증은 완료했다. Explorer 실제 왕복 검증은 미수행 잔여 작업으로 사용자 확인을 기다린다.
+추가 점검 결과 신규 CLI 역할 계약에 INSTRUCTION/REPORT/VALIDATION REQUEST/JUDGMENT 같은 semantic body tag 요구가 남아 있고, JudgeTransportContract가 VALIDATION REQUEST marker를 검색하며, JUDGE raw 결과에도 JUDGMENT marker를 삽입하고 있다.
 
-적용: HQ ACTION+GOTO 상태표, UNKNOWN→HQ 오류 전달, WORK/HIGH 분리 footer, JEV raw 응답의 동일 WORK 세션 복귀, HIGH 실행 시점 one-shot permit, Worker 의미판정·자동 재시도 제거. Legacy Web NEXT:WEB/JEV는 유지했다.
+따라서 11-C-GOTO-CONTRACT는 아직 완료가 아니다.
 
-검증: `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), `dotnet build ProjectHub.sln -c Release --no-restore` 및 Worker `dotnet publish ... -c Release -r win-x64 --no-restore` 성공 (경고 0, 오류 0), `git diff --check` 통과. 게시 EXE와 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe` SHA-256 일치 (`A9B4773029AD35EB3497FD41E2DA743D2F4477D19289E65255FCB4AE22529C2C`). Explorer E2E는 요청에 따라 미수행이며 잔여다. `C:\GameProject`는 존재하지 않아 복사 대상이 아니었다.
+## Active residual — opaque body + History
 
-## Implemented scope
+- 역할 output contract에서 INSTRUCTION/REPORT/VALIDATION REQUEST/JUDGMENT 요구 제거
+- WorkerGotoContract는 ACTION/GOTO만 파싱
+- JudgeTransportContract는 GOTO:JUDGE 뒤 body 전체를 request로 사용
+- native JUDGE raw response에 JUDGMENT marker 삽입 금지
+- Worker role/state/response completion로 History 카드 직접 생성
+- 신규 CLI History에서 LUNA/JEV/source 문자열 추론 제거
+- 카드 1줄: body 기계적 truncate + …
+- 카드 2줄: token usage
+- 카드 3줄: file change telemetry
+- 파일 생성/수정/삭제 타입을 모르면 추정하지 않음
+- 전체 원문은 transcript/detail에 유지
 
-- HQ ACTION + GOTO, HQ/WORK/JUDGE/HIGH/UNKNOWN 전이를 구현했다.
-- JEV adapter는 raw 응답만 반환하며 같은 WORK 세션으로 전달한다. PASS/PARTIAL threshold 판정, evidence 의미 재검사와 자동 재시도를 제거했다.
-- HIGH는 실행 시 체크한 one-shot permit으로만 호출한다.
-- protocol/provider/session/transport 오류는 UNKNOWN envelope로 HQ에 전달한다.
-- Legacy Web NEXT:WEB/JEV는 보존했다.
-- 역할별 지침을 독립 embedded contract 파일로 분리했고, 역할 prompt는 `[ROLE]`/`[INBOUND TYPE]` 헤더와 opaque body, 역할 footer 구조로 만든다.
-- JUDGE transport parser는 API 질문 구조만 파싱하고 PASS 임계값 지침은 opaque 원문으로 보존한다. JUDGE 응답은 제어행 재주입 없이 같은 WORK session으로 전달한다.
-- 레거시 Web의 ACTION은 CONTINUE/PAUSE/END만 허용하고 NEXT:WEB/JEV만 보존했다. 구 coordinator semantic gate와 관련 테스트를 제거했다.
+## Card format
 
-잔여 식별자: **11-C-GOTO-CONTRACT Explorer E2E**. 빌드·테스트 완료와 커밋/푸시/복사 상태가 반영되더라도 실제 Explorer 왕복 검증 전까지 완료 처리하지 않는다.
+~~~text
+<본문 첫 유효 텍스트를 한 줄로 축약> …
+토큰 · 총 N · 입력 N · 캐시 N · 출력 N
+파일 · 생성 N · 수정 N · 삭제 N · 대표파일 외 N개
+~~~
+
+usage 미제공:
+
+~~~text
+토큰 · 미제공
+~~~
+
+파일 변경 없음:
+
+~~~text
+파일 · 변경 없음
+~~~
+
+현재 CodexCliFile telemetry가 생성/수정/삭제 타입을 제공하지 않으면 우선 파일 N개 감지처럼 사실만 표시하고, 정확한 구분이 필요하면 기계적 FileChangeTelemetry를 추가한다.
 
 ## Worker boundary
 
-Worker는 다음을 기계적으로 처리한다.
-
-- 제어행 문법
-- 상태 전이
+Worker가 처리:
+- ACTION/GOTO 문법과 상태 전이
 - session/provider 실행
 - timeout/cancel/auth/transport
-- transcript/usage
+- transcript/usage/file telemetry
 - HIGH permit
+- UI 카드의 기계적 표시 formatting
 
-Worker는 다음을 판단하지 않는다.
-
+Worker가 판단하지 않음:
 - 요구사항 충족 여부
-- AC PASS/FAIL
-- 테스트 충분성
-- evidence 충분성
-- JUDGE/JEV 의미 결과
-- 재작업 필요 여부
-- HIGH 필요 여부
+- AC/test/evidence 충분성
+- JUDGE 의미 결과
+- 재작업/HIGH 필요 여부
 - 최종 완료 여부
-
-## HIGH permit
-
-~~~text
-unchecked + Run -> high_uses_remaining = 0
-checked   + Run -> high_uses_remaining = 1
-~~~
-
-HIGH dispatch 직전에 permit을 소모한다.
-
-Worker는 사용자 텍스트에서 HIGH 허가를 추론하지 않는다.
+- 카드용 의미적 요약
 
 ## Verification required
 
-자동 검증 결과: `dotnet test ProjectHub.sln --no-restore` 통과. 사용자 요청에 따라 항목 6 Explorer 실제 검증은 제외하고 사용자가 직접 확인한다.
+자동 검증은 기존 GOTO baseline에서 통과했지만 이번 opaque-body/history 수정 후 다시 실행해야 한다.
 
-단위:
-- 상태 전이 parser/router
-- HQ-only ACTION
-- JUDGE→same WORK
-- HIGH→HQ only
-- HIGH one-shot permit
-- UNKNOWN→HQ
-- Worker semantic gate 없음
+Explorer 재검증:
+- HQ→WORK→HQ→END: HQ/WORK/HQ 카드가 순서대로 표시
+- HQ→WORK→JUDGE→WORK→HQ→END: JUDGE와 복귀 WORK 카드 표시
+- HIGH permit→HQ→HIGH→HQ: HIGH 카드 표시
+- invalid route/provider error→UNKNOWN→HQ: 오류 카드/관제 복귀 확인
 
-Explorer:
-- HQ→WORK→HQ→END
-- HQ→WORK→JUDGE→WORK→HQ→END
-- HIGH 허가→HQ→HIGH→HQ
-- invalid route/provider error→UNKNOWN→HQ
+각 카드에서 AI 본문 tag 검색 없이 3줄 메타 표시가 나와야 한다.
 
 ## Other residual
 
 - 11-UI-B-EXPLORER-COLORS: 실제 Explorer 색상 확인 잔여
-
-과거 구현 계약은 현재 판단 기준으로 사용하지 않는다.
