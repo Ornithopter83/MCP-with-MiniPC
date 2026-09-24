@@ -2,36 +2,27 @@
 
 Updated: 2026-09-24
 
+정책 원본은 Master-Polish.md다.
+
 ## Current active scope — 11-C-GOTO-CONTRACT
 
-Master-Polish.md가 최상위 정책 원본이다.
+핵심 GOTO router는 구현됐지만 Explorer 기본 경로에서 WORK 응답 카드 누락이 확인됐고, 신규 CLI 역할 계약에 불필요한 semantic body tag가 남아 있다.
 
-현재 목표는 기존 CLI-to-CLI 경로를 **HQ / WORK / JUDGE / HIGH / UNKNOWN + ACTION/GOTO** 계약으로 맞추는 것이다.
+현재 목표는 **ACTION/GOTO만 제어 계약으로 남기고 body를 완전히 opaque하게 전달하면서, History 카드는 Worker의 role/state/telemetry로 직접 기록하는 것**이다.
 
 ## Core invariant
 
-**Worker는 판단하지 않는다. Worker는 흐름 제어 도구다.**
+Worker는 판단하지 않는다.
 
-Worker가 수행하는 일:
-- 제어행 문법 파싱
-- 상태 전이 확인
-- 역할별 session/provider 실행
-- GOTO 라우팅
-- timeout/cancel/auth/transport 오류 처리
-- transcript/usage 기록
-- HIGH one-shot permit 저장/소모
+AI 출력에서 Worker가 해석하는 것은:
+- HQ의 ACTION
+- 역할의 GOTO
 
-Worker가 하지 않는 일:
-- 작업 결과 정답 여부 판단
-- AC 충족 판단
-- 테스트 충분성 판단
-- evidence 충분성 판단
-- JUDGE/JEV PASS/FAIL 의미 판정
-- 재작업 필요 여부 판단
-- 최종 완료 여부 판단
-- 역할 자동 승격/대체
+뿐이다.
 
-최종 판단은 AI가 한다.
+제어행 뒤 전체 문자열은 opaque body다.
+
+INSTRUCTION, REPORT, VALIDATION REQUEST, JUDGMENT 같은 semantic section tag는 신규 CLI 계약에서 사용하지 않는다.
 
 ## State contract
 
@@ -43,215 +34,137 @@ HIGH    -> HQ
 UNKNOWN -> HQ
 ~~~
 
-## ACTION
+## Output examples
 
-ACTION은 HQ만 사용한다.
-
-~~~text
-[ACTION=CONTINUE]
-[ACTION=PAUSE]
-[ACTION=END]
-~~~
-
-ACTION=HQ는 사용하지 않는다.
-
-HQ의 CONTINUE:
-- 기본: [GOTO : WORK]
-- 현재 Job에 HIGH permit이 남아 있을 때만: [GOTO : HIGH]
-
-PAUSE/END에는 GOTO가 없다.
-
-HQ의 유효한 END를 Worker가 별도 semantic gate로 거부하지 않는다.
-
-## Role contracts
-
-### HQ
+HQ:
 
 ~~~text
 [ACTION=CONTINUE]
 [GOTO : WORK]
-
-[INSTRUCTION]
-...
+<opaque body>
 ~~~
 
-또는 HIGH permit이 있을 때:
-
-~~~text
-[ACTION=CONTINUE]
-[GOTO : HIGH]
-
-[INSTRUCTION]
-...
-~~~
-
-### WORK
+WORK:
 
 ~~~text
 [GOTO : HQ]
-
-[REPORT]
-...
+<opaque body>
 ~~~
 
 또는:
 
 ~~~text
 [GOTO : JUDGE]
-
-[VALIDATION REQUEST]
-...
+<opaque body>
 ~~~
 
-WORK는 HIGH를 호출하지 않는다.
-
-### JUDGE
-
-JUDGE는 반드시 같은 WORK session으로 복귀한다.
-
-~~~text
-[GOTO : WORK]
-
-[JUDGMENT]
-...
-~~~
-
-JEV native 응답에는 adapter가 GOTO:WORK wrapper만 기계적으로 붙일 수 있다. Worker가 threshold를 비교해 의미적 PASS/FAIL을 만들지 않는다.
-
-### HIGH
-
-HIGH는 JUDGE를 사용하지 않는다.
+HIGH:
 
 ~~~text
 [GOTO : HQ]
-
-[REPORT]
-...
+<opaque body>
 ~~~
 
-## HIGH one-shot permit
+native JEV는 AI routing token을 출력하지 않는다. raw provider response를 같은 WORK session에 opaque body로 반환한다.
 
-HIGH는 설정창의 상시 ON/OFF 기능이 아니다.
+## Required implementation changes
 
-설정창에는 HIGH의 provider/model/reasoning/thread 설정만 둔다.
+### A. Role contracts
 
-메인 화면 실행 버튼 왼쪽:
+- HQ-ROUTING-CONTRACT.md에서 INSTRUCTION/REPORT 요구 제거
+- WORK-ROUTING-CONTRACT.md에서 REPORT/VALIDATION REQUEST 요구 제거
+- HIGH-ROUTING-CONTRACT.md에서 REPORT 요구 제거
+- JUDGE-ROUTING-CONTRACT.md에서 JUDGMENT 요구 제거
+- role footer는 허용 ACTION/GOTO와 금지 route만 설명
+
+### B. Judge transport
+
+- JudgeTransportContract.ExtractRequest()의 VALIDATION REQUEST marker 검색 제거
+- WORK의 GOTO:JUDGE 뒤 body 전체를 provider request source로 사용
+- native JEV raw response 앞에 JUDGMENT marker를 붙이지 않음
+- same WORK session에 raw body를 그대로 전달
+
+### C. History
+
+새 wire/event protocol을 만들지 않는다.
+
+Worker는 이미 다음을 알고 있다:
+- 현재 WorkerRoleState
+- 어떤 role call이 끝났는지
+- parsed ACTION/GOTO
+- Codex/JEV usage
+- result.Files 및 향후 file change telemetry
+
+이 정보를 직접 History card builder에 전달한다.
+
+CreateHistoryEvent()에서 신규 CLI role을 LUNA/JEV/SOL/HIGH 같은 source 문자열로 역추론하지 않는다.
+
+### D. Card display
+
+역할명/아이콘/시간 외 본문은 3줄:
 
 ~~~text
-[ ] 고수준 작업 허용    [ ▶ 실행 ]
-~~~
-
-사용자가 체크한 상태로 실행을 누르면:
-
-~~~text
-high_uses_remaining = 1
-~~~
-
-미체크 실행:
-
-~~~text
-high_uses_remaining = 0
+<첫 유효 body 텍스트를 100~140자 내에서 잘라 표시> …
+토큰 · 총 N · 입력 N · 캐시 N · 출력 N
+파일 · 생성 N · 수정 N · 삭제 N · 대표 파일 외 N개
 ~~~
 
 규칙:
-- Worker는 텍스트에서 허가를 추론하지 않는다.
-- 실제 HIGH dispatch 직전에 1→0.
-- HIGH 실패 시 permit 자동 복구 없음.
-- Job 종료 시 남은 permit 폐기.
-- 다음 Job에 이월 금지.
-- 실행 직후 checkbox는 unchecked.
-- 진행 중 Job은 실행 시작 snapshot만 사용.
+- 요약은 추가 AI 호출 없이 whitespace normalize + deterministic truncate
+- 짧아서 잘리지 않으면 …를 붙이지 않음
+- usage unknown이면 토큰 · 미제공
+- 파일 변경 없으면 파일 · 변경 없음
+- create/modify/delete telemetry가 없으면 추정 금지
+- 현재 CodexCliFile(path/name/mime/size)만으로 change type을 만들지 않음
+- 필요하면 별도 FileChangeTelemetry를 기계적으로 수집
+- 상세 body/usage/files는 transcript/detail에 보존
+
+## HIGH one-shot
+
+메인 화면 고수준 작업 허용 체크 + 실행 클릭 시 현재 Job에만 permit 1회를 만든다.
+
+HIGH 사용 여부는 HQ가 판단한다. Worker는 permit 가용성만 전달한다.
 
 ## UNKNOWN
 
-정상 AI 역할이 아니다.
+protocol/provider/session/transport 오류를 source/code/detail로 HQ에 전달한다.
 
-기계적 오류 예:
-- 제어행 누락/문법 오류
-- 금지된 GOTO
-- HIGH permit 없음
-- JUDGE 비활성/연결 실패
-- provider timeout/auth 오류
-- process/session/transport 오류
-
-Worker는 자동 대체하지 않는다.
-
-~~~text
-[GOTO : UNKNOWN]
-
-[ERROR]
-source_state: ...
-code: ...
-detail: ...
-~~~
-
-를 HQ에 전달한다.
-
-HQ가 다음 ACTION을 판단한다.
-
-## Required code changes
-
-1. 신규 CLI 경로의 NEXT 제거, GOTO 도입
-2. ACTION=HQ 제거
-3. 역할 enum/state를 HQ/WORK/JUDGE/HIGH/UNKNOWN으로 정리
-4. ACTION parser를 HQ 응답에만 적용
-5. HQ allowed GOTO = WORK 또는 permit이 남은 HIGH
-6. WORK allowed GOTO = HQ/JUDGE
-7. JUDGE return = 같은 WORK session
-8. HIGH return = HQ only
-9. WORK/HIGH Footer 분리
-10. Worker semantic gates 제거
-11. JEV threshold/evidence 의미 판정을 Worker flow에서 제거
-12. protocol/infrastructure error → UNKNOWN → HQ
-13. 설정창 HIGH 사용 체크박스 제거
-14. 메인 실행 버튼 왼쪽 one-shot HIGH checkbox 추가
-15. Job-local high_uses_remaining 구현
-16. 기존 GPT Web NEXT:WEB/JEV legacy 회귀 보존
+오류 body에도 UI 분류용 semantic tag를 요구하지 않는다.
 
 ## Regression tests
 
-- HQ CONTINUE + GOTO WORK → WORK 1회
-- HQ END → 추가 AI 호출 0, Worker semantic gate 0
-- WORK GOTO HQ → 같은 HQ session
-- WORK GOTO JUDGE → JUDGE → 같은 WORK session
-- WORK GOTO HIGH → UNKNOWN → HQ
-- JUDGE ACTION 출력 → UNKNOWN → HQ
-- HIGH GOTO HQ → 같은 HQ session
-- HIGH GOTO JUDGE → UNKNOWN → HQ
-- HIGH permit 0 → HQ allowed list에 HIGH 없음
-- HIGH permit 1 → HIGH 최대 1회
-- HIGH 사용 후 재요청 → UNKNOWN → HQ
-- REPORT/JUDGMENT 내용이 잘못돼 보여도 Worker가 의미 판정하지 않고 전달
-- command quoting/exit code가 달라도 Worker가 작업 성공/실패를 판단하지 않음
-- Legacy Web NEXT:WEB/JEV 정상 회귀
+- HQ parser가 ACTION/GOTO만 요구
+- WORK/HIGH parser가 GOTO만 요구
+- semantic body tag가 없어도 정상 route
+- body에 REPORT/JUDGMENT 문자열이 있어도 routing에 영향 없음
+- WORK GOTO:JUDGE 뒤 body 전체가 Judge transport 입력
+- native JUDGE raw body가 marker 없이 same WORK session으로 복귀
+- WORK response completion 시 Implementer History card 1개 생성
+- HIGH response completion 시 HighLevel History card 1개 생성
+- JUDGE response completion 시 Judge History card 1개 생성
+- HQ response completion 시 Coordinator History card 생성
+- card summary는 deterministic truncate
+- usage unknown을 0으로 표시하지 않음
+- file change type unknown을 created/modified로 추정하지 않음
+- Legacy Web NEXT:WEB/JEV 회귀 없음
 
 ## Explorer E2E
-
-최소 네 경로를 실제 UI에서 확인한다.
 
 ~~~text
 A. HQ -> WORK -> HQ -> END
 B. HQ -> WORK -> JUDGE -> WORK -> HQ -> END
-C. HIGH 허가 -> HQ -> HIGH -> HQ -> END 또는 WORK
-D. invalid route/provider error -> UNKNOWN -> HQ
+C. HIGH permit -> HQ -> HIGH -> HQ
+D. error -> UNKNOWN -> HQ
 ~~~
 
-## Implementation update — 2026-09-24
+A 경로에서 최소:
+- 사용자 작업 요청 카드
+- HQ 작업 지시 카드
+- WORK 수행 결과 카드
+- HQ 최종 결과 카드
 
-코드 구현 및 자동화 검증 완료. `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1), `dotnet build ProjectHub.sln -c Release --no-restore` 성공 (경고 0, 오류 0). Worker의 JEV PASS/PARTIAL threshold 판정·evidence 자동 재검사·재시도 경로를 제거하고 raw 응답을 기존 WORK 세션으로 전달한다. Legacy Web NEXT:WEB/JEV 라우팅은 유지한다.
+가 순서대로 보이고, 각 AI 응답 카드가 3줄 표시 규격을 따라야 한다.
 
-잔여: Explorer 실제 왕복 검증은 사용자가 직접 수행한다. 이 검증이 끝날 때까지 전체 작업을 Explorer E2E 완료로 표시하지 않는다.
+## Completion condition
 
-코드/자동화 구현은 완료했다. 11-C-GOTO-CONTRACT 전체 완료는 **Worker가 의미 판단 없이 계약된 흐름만 제어하는 실제 Explorer 왕복**이 확인된 뒤에만 기록한다.
-
-빌드/단위테스트만으로 Explorer E2E 완료를 선언하지 않는다.
-
-## 2026-09-24 contract 정리 및 게시 준비
-
-- 역할별 HQ/WORK/HIGH/JUDGE/UNKNOWN 계약을 embedded resource로 분리하고 `RoleContractLoader`를 추가했다.
-- Legacy Web의 ACTION/NEXT 규약을 전용 contract/parser로 분리했다. legacy에서는 ACTION CONTINUE/PAUSE/END와 NEXT WEB/JEV만 유효하다.
-- JUDGE transport schema parser는 API 필수 질문 구조만 처리하며 PASS threshold의 의미·범위를 해석하지 않는다. JUDGE raw 응답은 `[ROLE : WORK][INBOUND TYPE : JUDGMENT]`로 같은 WORK session에 이어 붙이고 GOTO 재생성을 막는다.
-- 구 coordinator-first semantic gate와 해당 테스트를 삭제했다. `CodexCommandExecution`은 제거된 파일에서 독립 모델로 분리했다.
-- 검증: `dotnet test ProjectHub.sln --no-restore` 통과 (Worker 56, Server 1, Agent 3, Core 1); Release build 및 Worker publish 통과 (경고 0, 오류 0); `git diff --check` 통과.
-- 게시 실행파일을 `C:\AI-AGENT\Worker`에 복사하고 SHA-256 일치 (`A9B4773029AD35EB3497FD41E2DA743D2F4477D19289E65255FCB4AE22529C2C`)를 확인했다. 실행 중인 Worker 프로세스는 없었다. `C:\GameProject`는 경로가 없어 복사하지 않았다.
-- 배포 후 잔여: Explorer 실제 왕복 경로 검증 미수행. 이를 완료로 처리하지 않는다.
+11-C-GOTO-CONTRACT는 ACTION/GOTO 외 semantic body tag 의존성이 신규 CLI runtime과 History에서 제거되고, Explorer에서 역할별 카드가 누락 없이 표시된 뒤 완료 처리한다.
