@@ -1,808 +1,498 @@
-# GPT-Web-Feedback — 11-C-GOTO-CONTRACT 최신 점검 및 계약 분리
+# GPT-Web-Feedback — opaque body + 역할 응답 History 카드
 
 Updated: 2026-09-24
 
-정책 원본은 `Master-Polish.md`다.
+정책 원본은 Master-Polish.md다.
 
-이 문서는 최신 `main` HEAD `ef673549a15561a9dd8a071dfd5660256be1ff24`의 실제 구현을 점검한 **현재 작업 피드백**만 담는다.
+최신 코드 baseline: d9dfc3d77209059dbc645dc108faeb0f3f44ace0 (Refactor role contracts and JEV transport).
 
----
+이번 Explorer 기본 경로에서 HQ → WORK → HQ → END 동작은 확인됐지만 WORK의 실제 응답이 transcript에만 남고 메시지/작업 이력 카드에는 표시되지 않았다.
 
-## 1. 현재 구현 상태
-
-11-C-GOTO-CONTRACT의 핵심 코드는 이미 구현됐다.
-
-확인된 구현:
-
-- `WorkerGotoContract` 추가
-- 상태: `HQ / WORK / JUDGE / HIGH / UNKNOWN`
-- 전이:
-  - `HQ -> WORK | HIGH`
-  - `WORK -> JUDGE | HQ`
-  - `JUDGE -> WORK`
-  - `HIGH -> HQ`
-  - `UNKNOWN -> HQ`
-- ACTION은 HQ에서만 `CONTINUE / PAUSE / END`
-- HIGH one-shot permit용 `JobHighLevelPermit` 구현
-- 메인 화면의 `고수준 작업 허용` 체크박스 구현
-- HIGH dispatch 전에 permit 소모
-- WORK와 HIGH의 routing 규칙을 분리
-- JEV adapter는 raw response를 반환
-- JUDGE 결과는 기존 WORK session으로 돌아감
-- Worker의 JEV PASS/PARTIAL threshold 판정과 자동 재시도 제거
-- protocol/provider/session/transport 오류를 UNKNOWN으로 HQ에 전달
-- Legacy Web의 `NEXT:WEB/JEV` 경로는 유지
-
-현재 자동 검증 기록:
-
-~~~text
-dotnet test ProjectHub.sln --no-restore
-Worker 56
-Server 1
-Agent 3
-Core 1
-
-dotnet build ProjectHub.sln -c Release --no-restore
-경고 0 / 오류 0
-~~~
-
-즉 **핵심 상태 머신의 코드 구현과 자동 테스트는 완료 단계**다.
-
-남은 실제 완료 조건은 Explorer E2E다.
-
-~~~text
-A. HQ -> WORK -> HQ -> END
-B. HQ -> WORK -> JUDGE -> WORK -> HQ -> END
-C. HIGH permit -> HQ -> HIGH -> HQ
-D. 오류 -> UNKNOWN -> HQ
-~~~
+원인은 WORK가 REPORT tag를 만들지 못한 것이 아니다. 신규 GOTO flow와 History UI 사이에 불필요한 semantic tag/source 문자열 의존이 남아 있는 것이 문제다.
 
 ---
 
-## 2. 현재 잘 된 부분
+## 1. 최종 원칙
 
-### 2.1 Worker 비판단 원칙이 실제 흐름에 반영됨
-
-최신 `RunCoordinatorFirstJobAsync()`는 과거의:
-
-- WorkCard 완료 gate
-- AC 집합 비교
-- required command match
-- evidenceOk
-- judgeOk
-- JEV threshold PASS/PARTIAL
-- 고정 재시도 횟수
-
-를 현재 GOTO 흐름의 완료 판단에 사용하지 않는다.
-
-HQ가 유효한 `ACTION=END`를 반환하면 Worker가 내용 검사를 추가하지 않고 종료한다.
-
-이 방향이 Master 정책과 맞다.
-
-### 2.2 HIGH one-shot permit이 올바른 위치로 이동함
-
-HIGH 허가는 설정의 상시 enable이 아니라 실행 시점 UI snapshot으로 들어간다.
+신규 CLI에서 Worker가 AI 출력에서 해석하는 제어 토큰은 ACTION과 GOTO뿐이다.
 
 ~~~text
-unchecked + Run -> permit 0
-checked   + Run -> permit 1
-~~~
-
-`JobHighLevelPermit.TryConsume()`이 실제 HIGH dispatch 직전에 한 번만 성공한다.
-
-이 구조를 유지한다.
-
-### 2.3 JUDGE 결과를 Worker가 판정하지 않음
-
-`JevJudgeRunner.ReviewRawAsync()`는 provider raw body와 transport error를 반환한다.
-
-현재 GOTO 경로에서 Worker가 결과 점수를 비교해 PASS/FAIL을 만들지 않는다.
-
-이 원칙을 유지한다.
-
----
-
-# 3. P0 — 역할별 계약을 완전히 분리할 것
-
-현재 가장 먼저 보완할 부분이다.
-
-정책은 역할별 계약이 분리되어 있지만 실제 구현은 아직 세 방식이 섞여 있다.
-
-현재:
-
-- HQ: `JEV-COORDINATOR-FOOTER-CONTRACT.md` 전체를 로드
-- WORK: `MainWindow.xaml.cs` 안의 inline string
-- HIGH: `MainWindow.xaml.cs` 안의 inline string
-- JUDGE: `MainWindow.xaml.cs`에서 raw response 앞에 `GOTO:WORK`를 직접 조합
-- UNKNOWN: local `RouteUnknown()`에서 envelope 생성
-
-이 상태에서는 계약을 수정할 때 MainWindow 코드와 여러 문서를 같이 수정해야 하고, HQ에게 다른 역할의 규칙까지 불필요하게 노출된다.
-
-## 3.1 최종 계약 파일 구조
-
-신규 CLI 계약은 아래처럼 **역할별 독립 파일**로 분리한다.
-
-~~~text
-src/ProjectHub.Worker/Contracts/
-  HQ-ROUTING-CONTRACT.md
-  WORK-ROUTING-CONTRACT.md
-  HIGH-ROUTING-CONTRACT.md
-  JUDGE-ROUTING-CONTRACT.md
-  UNKNOWN-ENVELOPE-CONTRACT.md
-
-Legacy:
-  LEGACY-WEB-JEV-FOOTER-CONTRACT.md
-~~~
-
-기존 `JEV-COORDINATOR-FOOTER-CONTRACT.md`라는 이름은 제거한다.
-
-HQ 계약은 JEV 계약이 아니다.
-
-역할 라우팅 계약과 JEV provider 계약을 파일명부터 분리한다.
-
-## 3.2 계약 로더 분리
-
-`JevContract.LoadCoordinatorFooter()`로 HQ contract를 읽지 않는다.
-
-예:
-
-~~~text
-RoleContractLoader.LoadHq()
-RoleContractLoader.LoadWork(judgeAvailable)
-RoleContractLoader.LoadHigh()
-RoleContractLoader.LoadJudge()
-~~~
-
-또는 동등한 작은 loader를 둔다.
-
-각 계약은 embedded resource로 포함한다.
-
-MainWindow에는 role-specific contract 본문을 하드코딩하지 않는다.
-
----
-
-# 4. Header와 Footer의 책임도 분리
-
-각 AI 호출은 아래 구조로 통일하는 것을 권장한다.
-
-~~~text
-ROLE INPUT HEADER
-+
-OPAQUE INBOUND BODY
-+
-ROLE OUTPUT FOOTER
-~~~
-
-Worker는 Header/Footer를 제공하지만 **본문을 해석하거나 새 작업 판단을 추가하지 않는다.**
-
----
-
-## 4.1 HQ 계약
-
-### HQ Input Header
-
-Worker가 알려줄 것은 기계적 상태뿐이다.
-
-~~~text
-[ROLE : HQ]
-
-[INBOUND TYPE : USER_REQUEST | WORK_REPORT | HIGH_REPORT | UNKNOWN]
-
-[AVAILABLE GOTO]
-WORK
-HIGH   # permit이 있을 때만
-~~~
-
-HIGH permit이 없으면 HIGH 줄 자체를 넣지 않는다.
-
-permit이 있으면 추가 메타데이터:
-
-~~~text
-[HIGH PERMIT : ONE_SHOT]
-remaining=1
-~~~
-
-HQ Header에 포함하면 안 되는 것:
-
-- “이 작업은 어려우므로 HIGH를 써라”
-- “테스트가 부족하다”
-- “JUDGE 결과가 낮다”
-- “다시 수정해야 한다”
-
-이런 판단은 HQ가 한다.
-
-### HQ Output Footer
-
-~~~text
-You are HQ.
-Only HQ may emit ACTION.
-
-First control line:
-[ACTION=CONTINUE]
-[ACTION=PAUSE]
-[ACTION=END]
-
-CONTINUE requires exactly one GOTO from AVAILABLE GOTO.
-
-Use [INSTRUCTION] after CONTINUE.
-Use [REPORT] after PAUSE or END.
-
-Do not emit GOTO:JUDGE.
-Do not emit GOTO:HQ.
-~~~
-
-HQ 계약 파일에는 WORK/JUDGE/HIGH 역할의 출력 계약을 설명하지 않는다.
-
----
-
-## 4.2 WORK 계약
-
-### WORK Input Header
-
-~~~text
-[ROLE : WORK]
-
-[INBOUND TYPE : HQ_INSTRUCTION | JUDGMENT]
-
-[JUDGE AVAILABLE : true|false]
-~~~
-
-JUDGE가 OFF이면 Worker는 WORK에게 JUDGE를 정상 선택지로 보여주지 않는 편이 좋다.
-
-이것은 의미 판단이 아니라 capability 전달이다.
-
-### WORK Output Footer — JUDGE ON
-
-~~~text
-You are WORK.
-Do not emit ACTION.
-
-First control line must be exactly one of:
-
+HQ:
+[ACTION=CONTINUE|PAUSE|END]
+[GOTO : WORK|HIGH]   # CONTINUE일 때만
+<opaque body>
+
+WORK:
+[GOTO : HQ|JUDGE]
+<opaque body>
+
+HIGH:
 [GOTO : HQ]
-[GOTO : JUDGE]
-
-GOTO:HQ -> [REPORT]
-GOTO:JUDGE -> [VALIDATION REQUEST]
-
-Do not emit GOTO:HIGH.
+<opaque body>
 ~~~
 
-### WORK Output Footer — JUDGE OFF
+제어행 뒤의 모든 문자열은 opaque body다.
 
-~~~text
-You are WORK.
-Do not emit ACTION.
+다음 semantic section tag를 신규 CLI 출력 계약에서 제거한다:
+- INSTRUCTION
+- REPORT
+- VALIDATION REQUEST
+- JUDGMENT
 
-Your only normal destination is:
+Worker는 위 태그를 요구하지 않고, 찾지 않고, 삽입하지 않고, History 카드 생성에 사용하지 않는다.
 
-[GOTO : HQ]
-
-Follow with [REPORT].
-
-JUDGE is unavailable for this Job.
-Do not emit GOTO:HIGH.
-~~~
-
-현재 구현처럼 JUDGE가 OFF인데도 WORK Footer가 항상 JUDGE를 보여준 뒤 UNKNOWN으로 보내는 것보다 이 방식이 불필요한 오류를 줄인다.
+카드 때문에 AI 계약을 늘리지 않는다.
 
 ---
 
-## 4.3 HIGH 계약
+## 2. 현재 코드에서 실제 제거할 지점
 
-### HIGH Input Header
+### 2.1 역할 contract 파일
 
-~~~text
-[ROLE : HIGH]
+현재 다음 문구가 남아 있다.
 
-[INVOCATION : ONE_SHOT]
-~~~
+- Contracts/HQ-ROUTING-CONTRACT.md: CONTINUE 뒤 INSTRUCTION, PAUSE/END 뒤 REPORT 강제
+- Contracts/WORK-ROUTING-CONTRACT.md: GOTO:HQ 뒤 REPORT, GOTO:JUDGE 뒤 VALIDATION REQUEST 강제
+- Contracts/HIGH-ROUTING-CONTRACT.md: GOTO:HQ 뒤 REPORT 강제
+- Contracts/JUDGE-ROUTING-CONTRACT.md: GOTO:WORK 뒤 JUDGMENT 강제
 
-HQ가 작성한 INSTRUCTION 본문을 그대로 넣는다.
+수정 후 각 파일은 허용 ACTION/GOTO와 금지 route만 설명한다.
 
-### HIGH Output Footer
-
-~~~text
-You are HIGH.
-
-Do not emit ACTION.
-Do not use JUDGE.
-Do not route to WORK.
-Do not route to HIGH.
-
-Your only valid destination is:
-
-[GOTO : HQ]
-
-Follow with [REPORT].
-~~~
-
-HIGH 계약에는 JUDGE 사용법 자체를 넣지 않는다.
-
----
-
-## 4.4 JUDGE 계약
-
-JUDGE는 두 종류를 구분한다.
-
-### Native JEV provider
-
-JEV는 일반 CLI 역할처럼 Footer를 요구하지 않는다.
-
-Worker adapter는 WORK의 `VALIDATION REQUEST`를 provider request로 변환하고 raw response를 받는다.
-
-Worker가 할 일:
+HQ 예:
 
 ~~~text
-serialize request
-call provider
-read response
-return raw response to WORK
+You are HQ. Only HQ may emit ACTION.
+CONTINUE requires one GOTO from AVAILABLE GOTO.
+PAUSE and END have no GOTO.
+Everything after the control line(s) is opaque body.
 ~~~
 
-Worker가 하지 않을 일:
+WORK 예:
 
 ~~~text
-threshold compare
-PASS/PARTIAL/FAIL
-evidence sufficiency
-retry decision
-next role decision
+You are WORK. Do not emit ACTION.
+Allowed GOTO is HQ, or JUDGE when available.
+Everything after GOTO is opaque body.
 ~~~
 
-### 향후 AI Judge provider
-
-AI Judge를 붙이는 경우에만 독립 `JUDGE-ROUTING-CONTRACT.md`를 사용한다.
+HIGH 예:
 
 ~~~text
-You are JUDGE.
-Do not emit ACTION.
-
-Your only destination is:
-
-[GOTO : WORK]
-
-Follow with [JUDGMENT].
+You are HIGH. Do not emit ACTION.
+Your only destination is HQ.
+Everything after GOTO is opaque body.
 ~~~
 
----
-
-# 5. P0 — JUDGE → WORK 입력에서 GOTO를 제거할 것
-
-현재 JUDGE 처리 후 Worker는 WORK에 넘길 `inbound` 자체를:
+JUDGE AI 예:
 
 ~~~text
-[GOTO : WORK]
-
-[JUDGMENT]
-<raw response>
+You are JUDGE. Do not emit ACTION.
+Your only destination is WORK.
+Everything after GOTO is opaque body.
 ~~~
 
-형태로 만든 뒤 state를 WORK로 변경한다.
+### 2.2 RoleContractLoader
 
-여기에는 **출력 제어행과 입력 메시지의 역할이 섞여 있다.**
+ROLE / INBOUND TYPE / AVAILABLE GOTO / HIGH PERMIT / JUDGE AVAILABLE 같은 Worker 입력 metadata는 유지 가능하다.
 
-GOTO는 Worker가 이미 소비한 routing command다.
+이것은 AI 출력 요구가 아니라 현재 실행 문맥을 알려주는 input header다.
 
-다음 WORK 호출의 입력에는 GOTO를 다시 넣지 않는 편이 명확하다.
+단:
+- input metadata를 History 분류에 사용하지 않음
+- body 앞에 semantic section marker를 삽입하지 않음
+- body는 문자열 그대로 전달
+
+현재 OPAQUE INBOUND BODY 같은 Worker 입력 라벨은 기술적으로 유지 가능하지만 routing에 필요하지 않다면 더 단순화해도 된다. 중요한 것은 AI가 그것을 반환하도록 요구하지 않는 것이다.
+
+### 2.3 JudgeTransportContract
+
+현재 ExtractRequest()가 VALIDATION REQUEST marker를 찾는다.
+
+신규 GOTO flow에서는 이미 WORK가 GOTO:JUDGE를 선택했으므로 route.Body 전체가 JUDGE 요청이다.
 
 권장:
 
 ~~~text
-[ROLE : WORK]
-[INBOUND TYPE : JUDGMENT]
-
-[JUDGMENT]
-<raw response>
+ExtractRequest(body) -> body.Trim()
 ~~~
 
-그 뒤 WORK 전용 Output Footer를 붙인다.
+또는 ExtractRequest 자체를 제거하고 route.Body를 TryParse/serialize에 직접 전달한다.
+
+provider가 요구하는 NOUL/SCORE/CHOICE 구조 parsing은 transport schema 목적에 한해 유지할 수 있다.
+
+PASS threshold의 의미 판단은 Worker가 하지 않는다.
+
+### 2.4 JUDGE raw return
+
+현재 MainWindow.xaml.cs에서:
+
+~~~text
+inbound = [JUDGMENT] + raw response
+~~~
+
+형태로 marker를 다시 붙인다.
+
+제거한다.
+
+native JEV 결과는:
+
+~~~text
+inboundType = JUDGMENT
+inbound = transport.RawResponse
+state = WORK
+~~~
+
+처럼 같은 WORK session에 raw body를 직접 전달한다.
+
+inboundType은 Worker 내부 metadata이고 AI output tag가 아니다.
+
+---
+
+## 3. History 카드 — 새 이벤트 프로토콜을 만들지 말 것
+
+역할별 WORK REPORT, HIGH REPORT 같은 새 wire tag나 AI event contract를 만들 필요가 없다.
+
+각 역할 호출이 끝나는 순간 Worker는 이미 다음 정보를 안다.
+
+- 현재 WorkerRoleState
+- 실행한 role
+- response completion
+- parsed ACTION/GOTO
+- Codex/JEV usage
+- Codex result files
+- process/transport error
+
+이 실행 사실을 History builder에 직접 전달한다.
 
 즉:
 
 ~~~text
-JUDGE raw result
-   ↓ Worker가 state=WORK 설정
-WORK input header + raw judgment + WORK footer
+WORK call 완료
+  -> WorkerGotoContract.Parse(WORK, response)
+  -> role = WORK를 이미 알고 있음
+  -> body = route.Body
+  -> usage = result.Usage
+  -> files = result.Files / file change telemetry
+  -> WORK History card 생성
+  -> 다음 state로 이동
 ~~~
-
-로 한다.
-
-AI 입력에 과거 GOTO 제어행을 다시 넣지 않는다.
-
----
-
-# 6. P0 — Legacy Web에 남은 구형 HQ 계약 제거
-
-최신 CLI GOTO 구현은 정리됐지만 `MainWindow.xaml.cs`의 Legacy Web 영역에는 아직 다음 구형 계약이 남아 있다.
-
-~~~text
-[ACTION=HQ]
-[NEXT : IMPLEMENTER|HIGH_LEVEL|JUDGE|COORDINATOR]
-~~~
-
-구체적으로:
-
-- `WebActionKind.Hq`
-- `ParseWebAction()`의 HQ
-- `RunWebResponseThroughCodexAsync()`의 ACTION HQ 분기
-- `BuildWebPrompt()`의 ACTION=HQ 안내
-- Web HQ 전달 prompt의 old role NEXT
-
-이 문구들은 현재 Master의 신규 역할 계약과 충돌한다.
-
-Legacy Web에서 보존해야 할 것은 원래 공개 wire인:
-
-~~~text
-[ACTION=CONTINUE]
-[ACTION=PAUSE]
-[ACTION=END]
-
-[NEXT : WEB]
-[NEXT : JEV]
-~~~
-
-뿐이다.
-
-### 권장
-
-Legacy Web에는 `ACTION=HQ`를 제거한다.
-
-Web이 새 CLI HQ에 메시지를 넘겨야 할 기능이 정말 필요하면 old NEXT role protocol을 Web에게 가르치지 말고 별도 adapter command를 사용한다.
-
-예:
-
-~~~text
-SYSTEM HANDOFF -> HQ
-message_type = WEB_HANDOFF
-body = <raw web body>
-~~~
-
-그 뒤부터는 새 HQ ACTION+GOTO contract가 처리한다.
-
-**Legacy Web protocol과 신규 role protocol을 한 응답 안에 섞지 않는다.**
-
----
-
-# 7. P0 — 사용하지 않는 구형 semantic contract 코드 제거
-
-최신 GOTO loop는 `WorkerGotoContract`를 사용한다.
-
-하지만 저장소에는 아직 `CoordinatorFirstContracts.cs`의 구형 구조가 남아 있다.
-
-예:
-
-- `CoordinatorWorkCard`
-- `WorkAcceptanceCriterion`
-- `ImplementerResult`
-- `CoordinatorReview`
-- `TryParseWorkCard()`
-- `TryParseReview()`
-- `TryParseReviewAction()`
-- `HasRequiredValidationEvidence()`
-- `CommandMatches()`
-
-그리고 현재 테스트에도 이 구형 contract 테스트가 남아 있다.
-
-이 코드는 **Worker 비판단 정책을 다시 끌어들일 수 있는 가장 큰 혼동 요소**다.
-
-### 작업
-
-1. 전체 참조 검색
-2. 신규 GOTO/Legacy Web 어느 runtime에서도 사용하지 않으면 파일과 해당 테스트 제거
-3. 정말 Legacy에 필요한 타입이 있으면 의미 gate가 없는 최소 transport 타입만 별도 legacy namespace/file로 이동
-
-단위 테스트 숫자를 유지하기 위해 사용하지 않는 semantic gate 코드를 보존하지 않는다.
-
----
-
-# 8. P1 — JUDGE request parser의 책임을 더 좁힐 것
-
-현재 신규 JUDGE 경로도:
-
-~~~text
-JevContract.TryParseValidation(...)
-~~~
-
-을 호출한다.
-
-이 parser는 현재 `PASS:` threshold까지 읽고 range를 검사한다.
-
-최신 `ReviewRawAsync()`는 이 threshold를 provider 결과 판단에는 사용하지 않는다.
-
-실제 provider request 생성에 필요한 것은 주로:
-
-- question type
-- instructions
-- score criteria
-- choice criteria
-- evidence IDs/state
 
 이다.
 
-따라서 신규 GOTO JUDGE path에서는 **provider 호출에 필요한 구조만 parse**하는 별도 parser를 두는 것을 권장한다.
+AI 본문에 REPORT가 있는지 확인하는 단계는 없다.
+
+---
+
+## 4. 현재 History 코드 문제
+
+MainWindow.xaml.cs의 CreateHistoryEvent()는 source 문자열을 검사해 역할을 추정한다.
+
+예:
+- LUNA / IMPLEMENT / WORKER -> Implementer
+- JEV / JUDGE -> Judge
+- SOL / CODEX / GPT WEB -> Coordinator
+
+그리고 LUNA RESULT, JEV RESULT, SOL REVIEW 같은 과거 source 이름을 특정 카드로 매핑한다.
+
+신규 GOTO flow에서 WORK → HQ 반환은:
+
+~~~text
+inboundType = WORK_REPORT
+inbound = route.Body
+state = HQ
+...
+AddTaskMessage(AI HANDOFF, inbound, status: WORK_REPORT)
+~~~
+
+형태라 CreateHistoryEvent()가 AI HANDOFF를 신규 WORK 결과 카드로 인식하지 못해 null을 반환한다.
+
+이것이 이번 WORK 카드 누락의 직접 원인이다.
+
+### 수정 방향
+
+Legacy Web 쪽 source-string mapper는 legacy용으로 남길 수 있다.
+
+신규 CLI에는 별도 typed helper를 둔다.
+
+개념 예:
+
+~~~text
+AddRoleResponseHistory(
+    role: WorkerRoleState.Work,
+    body: route.Body,
+    action: null,
+    target: WorkerRoleState.Hq,
+    usage: result.Usage,
+    files: result.Files,
+    fileChanges: ...);
+~~~
+
+이 helper는 새로운 wire/event protocol이 아니다. Worker 내부 UI 기록 함수일 뿐이다.
+
+role/card title은 body 내용이 아니라 이미 아는 state/control에서 정한다.
+
+권장 title:
+- HQ + CONTINUE: 작업 요청
+- HQ + PAUSE/END: 수행 결과
+- WORK: 수행 결과
+- JUDGE: 판정 결과
+- HIGH: 수행 결과
+- UNKNOWN: 오류 전달
+
+---
+
+## 5. 카드 본문 포맷 — 정확히 3줄
+
+사용자가 원하는 카드는 상세 보고서가 아니라 짧은 이력이다.
+
+역할명/아이콘/시각 영역을 제외하고 본문은 기본 3줄로 고정한다.
+
+### 1줄 — 응답 미리보기
+
+body를 의미적으로 요약하지 않는다.
+
+처리:
+1. route.Body 또는 raw provider body 사용
+2. newline/tab/연속 공백을 한 칸으로 normalize
+3. TextBlock은 TextWrapping=NoWrap
+4. TextTrimming=CharacterEllipsis
+5. 한 줄만 표시
+
+가능하면 문자열을 임의 재작성하기보다 WPF ellipsis로 잘라 표시한다.
 
 예:
 
 ~~~text
-JudgeTransportContract.ParseRequest(...)
+projecthub-smoke.txt를 생성하고 다시 읽어 PROJECTHUB_WORK_OK 한 줄을 확인했습니다. …
 ~~~
 
-이 parser는:
-- request 구조가 API 호출 가능한지 확인
-- 질문 type/criteria를 provider schema로 변환
+AI를 추가 호출해 요약하지 않는다.
 
-만 한다.
+### 2줄 — 토큰 telemetry
 
-WORK가 자신의 판단 기준으로 적은 PASS threshold는:
-- opaque instructions로 보존하거나
-- WORK session 문맥에 맡기고
-- Worker가 range/meaning을 검증하지 않는다.
+예:
 
-Legacy Web/JEV가 기존 PASS 문법 호환을 꼭 필요로 한다면 legacy parser에만 남긴다.
+~~~text
+토큰 · 총 1,284 · 입력 920 · 캐시 210 · 출력 164
+~~~
+
+reasoning token이 별도 제공되면:
+
+~~~text
+토큰 · 총 1,284 · 입력 920 · 캐시 210 · 출력 164 · 추론 80
+~~~
+
+provider usage 미제공:
+
+~~~text
+토큰 · 미제공
+~~~
+
+unknown을 0으로 표시하지 않는다.
+
+### 3줄 — 파일 telemetry
+
+목표:
+
+~~~text
+파일 · 생성 1 · 수정 0 · 삭제 0 · projecthub-smoke.txt
+~~~
+
+여러 파일:
+
+~~~text
+파일 · 생성 1 · 수정 3 · 삭제 0 · projecthub-smoke.txt 외 3개
+~~~
+
+변경 없음:
+
+~~~text
+파일 · 변경 없음
+~~~
+
+### 현재 telemetry 한계
+
+현재 CodexCliFile은 Path / FileName / MimeType / Size만 가진다.
+
+ExtractFiles()도 JSONL에서 후보 path를 수집한 뒤 현재 존재하는 파일만 반환한다.
+
+따라서 현재 정보만으로는:
+- 생성인지 수정인지 구분 불가
+- 삭제 파일 표현 불가
+
+이다.
+
+Worker가 AI 응답 문장을 읽어 생성/수정/삭제를 추정하면 안 된다.
+
+권장:
+1. Codex CLI JSONL의 기계적 file/tool event에서 change type을 얻을 수 있으면 그것을 사용
+2. 부족하면 별도 FileChangeTelemetry 모델/collector 추가
+3. 정확한 change type이 없을 때는 파일 · N개 감지 · 대표파일 외 N개로 표시
+
+파일 change telemetry도 작업 품질 판단이 아니라 실행 사실 기록이어야 한다.
 
 ---
 
-# 9. P1 — 파일명에서도 역할과 Provider를 분리
+## 6. 카드 생성 위치
 
-현재 이름:
+### HQ
 
-~~~text
-JEV-COORDINATOR-FOOTER-CONTRACT.md
-~~~
+RunCoordinatorRoleAsync 결과를 받고 ACTION/GOTO parse가 끝난 직후 카드 기록.
 
-은 두 책임을 섞는다.
+CONTINUE이면 body는 HQ가 다음 역할에 보낸 지시 내용의 preview.
 
-최종적으로:
+PAUSE/END이면 body는 HQ의 사용자-facing 결과 preview.
 
-~~~text
-Contracts/HQ-ROUTING-CONTRACT.md
-Contracts/WORK-ROUTING-CONTRACT.md
-Contracts/HIGH-ROUTING-CONTRACT.md
-Contracts/JUDGE-ROUTING-CONTRACT.md
-Contracts/UNKNOWN-ENVELOPE-CONTRACT.md
+### WORK
 
-Legacy/LEGACY-WEB-JEV-FOOTER-CONTRACT.md
-JEV-API-CONTRACT.md
-~~~
+WorkerGotoContract.Parse(WORK, result.FinalMessage) 직후 카드 기록.
 
-처럼 구분하는 편이 좋다.
+GOTO:HQ든 GOTO:JUDGE든 WORK 응답 자체는 한 번 완료됐으므로 WORK 카드 1개를 남긴다.
 
-- Role contract = AI 출력 제어
-- JEV API contract = provider transport
-- Legacy Web contract = 과거 Web wire
+### JUDGE
 
-세 영역을 파일 구조에서도 섞지 않는다.
+provider raw response 수신 직후 Judge 카드 기록.
 
----
+그 뒤 같은 WORK session으로 raw body 전달.
 
-# 10. P1 — MainWindow에서 계약 문자열 제거
+### HIGH
 
-현재 WORK/HIGH footer가 `MainWindow.xaml.cs` inline string이다.
+WorkerGotoContract.Parse(HIGH, result.FinalMessage) 직후 HighLevel 카드 기록.
 
-이를 모두 contract loader로 이동한다.
+그 뒤 HQ로 이동.
 
-MainWindow의 역할은:
+### UNKNOWN
 
-~~~text
-1. 현재 state 확인
-2. 입력 Header 생성
-3. 해당 role contract 로드
-4. prompt 조립
-5. AI 실행
-6. control parse
-7. 다음 state 전환
-~~~
+RouteUnknown이 만든 source/code/detail로 System/오류 카드 기록 가능.
 
-까지만 둔다.
-
-MainWindow에 다음과 같은 긴 자연어 규약을 직접 넣지 않는다.
-
-~~~text
-"Control contract for WORK..."
-"Control contract for HIGH..."
-~~~
-
-계약 수정 시 UI orchestration 코드를 수정하지 않아도 되게 한다.
+오류 내용을 의미적으로 요약하지 않고 code + 짧은 detail preview만 표시한다.
 
 ---
 
-# 11. 계약 조립 예시
+## 7. transcript와 카드 역할 분리
 
-## HQ
+Transcript:
+- AI 응답 원문
+- full stdout/stderr
+- 상세 usage
+- 파일 상세 목록
+- session/provider 정보
 
-~~~text
-[ROLE : HQ]
-[INBOUND TYPE : WORK_REPORT]
+History 카드:
+- 한 줄 preview
+- token line
+- file line
 
-[AVAILABLE GOTO]
-WORK
-HIGH
-
-[HIGH PERMIT]
-remaining=1
-
-[INBOUND BODY]
-<WORK report>
-
---- OUTPUT CONTRACT ---
-<HQ-ROUTING-CONTRACT.md>
-~~~
-
-## WORK — 최초 작업
-
-~~~text
-[ROLE : WORK]
-[INBOUND TYPE : HQ_INSTRUCTION]
-[JUDGE AVAILABLE : true]
-
-[INBOUND BODY]
-<HQ instruction>
-
---- OUTPUT CONTRACT ---
-<WORK-ROUTING-CONTRACT.md>
-~~~
-
-## WORK — Judge 복귀
-
-~~~text
-[ROLE : WORK]
-[INBOUND TYPE : JUDGMENT]
-[JUDGE AVAILABLE : true]
-
-[JUDGMENT]
-<raw JEV response>
-
---- OUTPUT CONTRACT ---
-<WORK-ROUTING-CONTRACT.md>
-~~~
-
-## HIGH
-
-~~~text
-[ROLE : HIGH]
-[INVOCATION : ONE_SHOT]
-
-[INBOUND BODY]
-<HQ instruction>
-
---- OUTPUT CONTRACT ---
-<HIGH-ROUTING-CONTRACT.md>
-~~~
+카드가 짧다는 이유로 AI 응답 형식을 짧게 강제하지 않는다.
 
 ---
 
-# 12. 회귀 테스트 추가
+## 8. 단위 테스트
 
-## 계약 파일 격리
+### Control contract
+- HQ 응답이 ACTION/GOTO + plain body만으로 통과
+- WORK 응답이 GOTO:HQ + plain body만으로 통과
+- WORK 응답이 GOTO:JUDGE + plain body만으로 통과
+- HIGH 응답이 GOTO:HQ + plain body만으로 통과
+- semantic body tag가 없어도 정상
+- body 안에 REPORT/JUDGMENT 문자열이 있어도 routing 결과에 영향 없음
 
-### CONTRACT-HQ-01
-HQ contract에 다음이 없어야 한다.
+### Judge transport
+- GOTO:JUDGE 뒤 plain body가 그대로 transport parser 입력
+- VALIDATION REQUEST marker 없이 정상 request 가능
+- native raw response에 JUDGMENT marker를 삽입하지 않음
+- same WORK session 복귀
 
-~~~text
-GOTO : JUDGE
-GOTO : HQ
-WORK output rules
-HIGH output rules
-~~~
+### History
+- WORK response completion -> Implementer 카드 정확히 1개
+- HIGH response completion -> HighLevel 카드 정확히 1개
+- JUDGE response -> Judge 카드 정확히 1개
+- HQ CONTINUE/END -> Coordinator 카드
+- AI HANDOFF source 문자열에 의존하지 않음
+- preview는 한 줄 ellipsis
+- usage unknown -> 미제공
+- change type unknown -> 생성/수정/삭제 추정 없음
 
-### CONTRACT-WORK-01
-Judge ON:
-- HQ/JUDGE만 존재
-
-Judge OFF:
-- HQ만 존재
-
-### CONTRACT-HIGH-01
-HIGH contract에는 정상 GOTO가 HQ 하나뿐이다.
-
-### CONTRACT-JUDGE-01
-native JEV adapter는 raw response를 변경하지 않는다.
-
-### CONTRACT-JUDGE-02
-JUDGE 결과를 WORK 입력으로 줄 때 `[GOTO : WORK]`를 prompt body에 다시 넣지 않는다.
-
-## Legacy 분리
-
-### CONTRACT-LEGACY-01
-Legacy Web에는:
-
-~~~text
-ACTION CONTINUE/PAUSE/END
-NEXT WEB/JEV
-~~~
-
-만 존재.
-
-### CONTRACT-LEGACY-02
-Legacy Web prompt에 아래 문자열이 없어야 한다.
-
-~~~text
-ACTION=HQ
-NEXT : IMPLEMENTER
-NEXT : HIGH_LEVEL
-NEXT : COORDINATOR
-~~~
-
-## dead code
-
-### CONTRACT-DEAD-01
-신규 GOTO runtime에서 `CoordinatorFirstContracts` semantic gate 참조 0.
-
-### CONTRACT-DEAD-02
-구형 `HasRequiredValidationEvidence/CommandMatches`가 runtime completion decision에 사용되지 않음.
+### Legacy
+- NEXT:WEB/JEV 기존 흐름 회귀 없음
+- legacy marker parsing은 legacy namespace에만 존재
 
 ---
 
-# 13. Explorer E2E에서 추가로 볼 것
+## 9. Explorer 재검증
 
-기존 네 경로에 **실제 prompt 계약 표시/로그**를 같이 확인한다.
+### A. 기본
 
-### A. HQ → WORK → HQ
+~~~text
+HQ -> WORK -> HQ -> END
+~~~
 
-확인:
-- HQ prompt에는 HQ contract만
-- WORK prompt에는 WORK contract만
-- HIGH/JUDGE 출력 규칙이 불필요하게 노출되지 않음
+화면 기대 순서:
 
-### B. WORK → JUDGE → WORK
+~~~text
+설계 관제 · 작업 요청
+작업 · 수행 결과
+설계 관제 · 수행 결과
+~~~
 
-확인:
-- JUDGE raw response가 같은 WORK session으로 복귀
-- WORK 입력에 이전 `GOTO:WORK` control tag가 다시 섞이지 않음
-- Worker가 PASS/FAIL을 생성하지 않음
+사용자 최초 요청 카드를 별도 표시한다면 그 카드가 맨 앞에 추가될 수 있다.
+
+WORK 카드가 transcript에만 있고 UI에 빠지면 실패.
+
+### B. Judge
+
+~~~text
+HQ -> WORK -> JUDGE -> WORK -> HQ -> END
+~~~
+
+WORK/JUDGE/복귀 WORK 응답 카드가 각각 누락 없이 표시되는지 확인.
 
 ### C. HIGH
 
-확인:
-- permit이 없을 때 HQ available GOTO에 HIGH 없음
-- permit이 있을 때만 HIGH 노출
-- HIGH prompt에는 JUDGE 선택지 없음
-- HIGH 결과는 HQ로만 복귀
+~~~text
+permit -> HQ -> HIGH -> HQ
+~~~
+
+HIGH 카드가 실제 HIGH 호출 완료 시 생성되는지 확인.
 
 ### D. UNKNOWN
 
-확인:
-- 원본 오류가 HQ에 전달
-- Worker가 WORK/HIGH/JUDGE 중 하나로 자동 대체하지 않음
+~~~text
+invalid route/provider error -> UNKNOWN -> HQ
+~~~
+
+Worker가 fallback 역할을 고르지 않고 오류 사실만 표시하는지 확인.
 
 ---
 
-# 14. 권장 작업 순서
+## 10. 구현 순서
 
-현재 코드 구현은 이미 상당 부분 완료됐으므로 기능을 다시 쓰지 말고 **계약 경계 정리**에 집중한다.
-
-1. 역할별 contract 파일 생성
-2. `RoleContractLoader` 추가
-3. HQ의 combined coordinator footer 제거
-4. WORK/HIGH inline footer 제거
-5. JUDGE→WORK input에서 GOTO control tag 제거
-6. JUDGE ON/OFF에 따라 WORK allowed route contract 생성
-7. Legacy Web의 ACTION=HQ / old role NEXT 제거
-8. `CoordinatorFirstContracts` 구형 semantic code 참조 검색 후 제거/격리
-9. 신규 Judge transport parser와 legacy parser 책임 분리
-10. 단위 회귀 테스트
-11. Release build
-12. Explorer 네 경로 E2E
+1. 네 role output contract에서 semantic body tag 요구 제거
+2. JudgeTransportContract marker 검색 제거
+3. JUDGE raw response marker 삽입 제거
+4. 신규 CLI typed History helper 추가
+5. HQ/WORK/JUDGE/HIGH 응답 완료 지점에 직접 카드 기록 연결
+6. 신규 CLI에서 source-string History 추론 우회/제거
+7. 카드 3줄 UI binding 구성
+8. token telemetry 연결
+9. file change telemetry 정확도에 맞는 표시 구현
+10. 필요하면 FileChangeTelemetry 추가
+11. 단위 테스트
+12. Release build/publish
+13. Explorer A~D 재검증
 
 ---
 
-# 15. 이번 점검의 결론
+## 11. 완료 기준
 
-현재 구현은 **정책 방향 자체는 맞게 넘어왔다.**
+다음이 모두 충족돼야 11-C-GOTO-CONTRACT를 완료 처리한다.
 
-가장 중요한 상태 머신과 Worker 비판단 원칙은 코드에 반영됐다.
-
-다음 단계에서 새 기능을 더 붙이기보다:
-
-> **역할별 계약을 파일 단위로 분리하고, MainWindow는 계약을 로드해서 전달만 하며, legacy Web/JEV와 신규 GOTO 계약을 완전히 격리하는 것**
-
-이 우선이다.
-
-특히 다음 세 항목은 P0로 본다.
-
-1. **HQ/WORK/HIGH/JUDGE 계약 파일 분리**
-2. **Legacy Web의 ACTION=HQ + old role NEXT 제거**
-3. **구형 CoordinatorFirstContracts semantic gate 코드 제거/격리**
-
-이 세 가지가 끝나면 Worker가 “흐름제어 툴”이라는 구조가 코드 레벨에서도 훨씬 명확해진다.
+- 신규 CLI AI 출력 제어 계약이 ACTION/GOTO only
+- semantic body tag 의존성 0
+- body는 opaque 전달
+- Worker 의미 판단 0
+- History 카드가 AI tag/source 추론 없이 role/state/telemetry에서 생성
+- 카드가 1줄 preview + 2줄 token + 3줄 file 형식
+- WORK/JUDGE/HIGH 카드 누락 없음
+- Legacy Web 회귀 없음
+- Explorer A~D 확인
