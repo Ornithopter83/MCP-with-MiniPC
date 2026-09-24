@@ -71,8 +71,8 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 사용자 화면 확인 후 다음을 보정했다.
 
 - 대기 상태의 Pipeline 5개 카드 전체 컬러 정책은 의도된 동작으로 유지
-- 구버전 target-settings의 정확한 WORK = GPT-6 Astra / Low 조합만 1회 GPT-6 Luna / Medium으로 migration
-- 이후 사용자가 명시적으로 선택한 Astra/Low 등 WORK 모델은 보존
+- WORK의 기본값은 OpenAI / GPT-6 Luna / Medium으로 유지
+- 저장된 모델 값을 런타임에서 임의 치환하는 migration/schema-version 로직은 두지 않음
 - 설정 Provider 아이콘에 역할 컬러 배경을 추가해 OpenAI 흰 아이콘 대비 개선
 - HQ Web / RESOURCE Web 각각의 binding, heartbeat, 확장 동기화, conversation 정보를 설정 카드에 표시
 - 실제 preflight도 전역 latest Web 상태가 아니라 역할별 Web 상태를 사용

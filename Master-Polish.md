@@ -258,7 +258,7 @@ RESOURCE가 하지 않는 것:
 
 설정:
 - HQ: 실행 대상 Web/CLI + CLI일 때 Provider/Model/Reasoning/Session
-- WORK: Provider/Model/Reasoning/Session
+- WORK: Provider/Model/Reasoning/Session. 기본값은 OpenAI / GPT-6 Luna / Medium이며 저장 모델을 임의 변환하는 migration은 하지 않는다.
 - RESOURCE: ChatGPT Web 고정
 - JUDGE: JEV 설정
 - HQ/RESOURCE Web 카드는 각각 명시적 role binding의 연결/heartbeat/확장 동기화 상태와 연결된 대화 정보를 보여준다.

@@ -42,8 +42,7 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("executionMode")] string ExecutionMode = "CLI_TO_CLI",
     [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
     [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null,
-    [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null,
-    [property: JsonPropertyName("settingsSchemaVersion")] int SettingsSchemaVersion = 0)
+    [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null)
 {
     public JudgeSettings EffectiveJudge => Judge ?? new JudgeSettings();
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
@@ -61,7 +60,6 @@ public sealed record GitTargetSnapshot(
 public static class WorkerTargetConfiguration
 {
     public const string DefaultServerBaseUrl = "https://projecthub.ornithopter.bid";
-    public const int CurrentSettingsSchemaVersion = 2;
 
     public static string SettingsPath => Path.Combine(WorkerPaths.Config, "target-settings.json");
 
@@ -95,31 +93,10 @@ public static class WorkerTargetConfiguration
             return role with { Transport = transport };
         }
 
-        var coordinator = NormalizeRole(settings.Coordinator);
-        var implementer = NormalizeRole(settings.Implementer);
-
-        // v1 -> v2: the HIGH removal build could retain the old WORK Astra/Low selection
-        // in target-settings.json. Migrate only that exact legacy combination once;
-        // all other explicit WORK model choices remain untouched.
-        if (settings.SettingsSchemaVersion < 2 &&
-            implementer is not null &&
-            string.Equals(implementer.Provider, "openai", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(implementer.Model, "gpt-6-astra", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(implementer.Reasoning, "low", StringComparison.OrdinalIgnoreCase))
-        {
-            implementer = implementer with
-            {
-                Model = "gpt-6-luna",
-                Reasoning = "medium",
-                Transport = "codex_cli"
-            };
-        }
-
         return settings with
         {
-            Coordinator = coordinator,
-            Implementer = implementer,
-            SettingsSchemaVersion = CurrentSettingsSchemaVersion
+            Coordinator = NormalizeRole(settings.Coordinator),
+            Implementer = NormalizeRole(settings.Implementer)
         };
     }
 
