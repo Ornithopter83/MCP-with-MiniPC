@@ -1,6 +1,7 @@
 # ProjectHub 작업 지침
 
 - 변경 전 `ProjectHub_IMPLEMENTATION_PLAN.md`, `CurrentWork.md`, 활성 task 파일을 먼저 읽는다.
+- AI 역할·라우팅 정책은 `Master-Polish.md`의 **가장 최신 최종 정책 절**을 원본으로 본다. `CurrentWork.md`, 구현계획, task의 과거 완료 기록이 최신 Master와 충돌하면 과거 구현 이력으로만 해석한다. Worker는 최신 계약이 허용한 문법·상태 전이·세션·transport를 강제하되 작업 본문·테스트 주장·완료 여부를 의미적으로 재판정하지 않는다.
 - 한 번에 하나의 번호 작업과 하나의 A/B/C 작업만 수행한다.
 - 완료일, 잔여 작업 식별자, 결과와 검증 명령을 문서에 갱신한다.
 - 무관한 사용자 변경과 공개 계약을 보존한다.
