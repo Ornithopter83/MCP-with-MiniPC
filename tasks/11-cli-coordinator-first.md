@@ -165,6 +165,23 @@ A 경로에서 최소:
 
 가 순서대로 보이고, 각 AI 응답 카드가 3줄 표시 규격을 따라야 한다.
 
+## Implementation update — 2026-09-24 direct edit
+
+적용:
+- HQ/WORK/HIGH/JUDGE role footer에서 semantic body tag 요구 제거
+- JudgeTransportContract의 VALIDATION REQUEST marker 의존 제거
+- native JUDGE raw response의 JUDGMENT marker 재삽입 제거
+- HQ/WORK/JUDGE/HIGH/UNKNOWN 응답 완료 지점에서 typed History 카드 기록
+- History 카드 1줄 preview + token line + file line UI 적용
+- 신규 CLI History는 role/state를 직접 사용하고 source 문자열 추론을 우회
+- 현재 file telemetry가 change type을 제공하지 않으므로 created/modified/deleted를 추정하지 않고 'N개 감지'로 표시
+- contract/formatter 회귀 테스트 추가
+
+검증 상태:
+- 저장소 최신 코드/계약 재조회로 적용 여부 확인
+- 현재 GPT 실행 환경에는 .NET SDK가 없어 이번 변경 이후 dotnet test/build는 미실행
+- Explorer A~D 실제 왕복도 재검증 필요
+
 ## Completion condition
 
 11-C-GOTO-CONTRACT는 ACTION/GOTO 외 semantic body tag 의존성이 신규 CLI runtime과 History에서 제거되고, Explorer에서 역할별 카드가 누락 없이 표시된 뒤 완료 처리한다.
