@@ -8442,3 +8442,765 @@ UserCommand
 이번 문서 작업의 완료 조건은 **네 역할 명칭/권한/기본값이 Master와 이 피드백에서 일치하고, 초기 OpenAI 모델 카탈로그와 별도 JEV 엔진을 혼동하지 않으며, 사용자가 선택한 설정창/CLI-to-CLI 경로가 구현 가능한 인터페이스·예제·AC로 구체화되어 있는 것**이다.
 
 제품 완료 조건은 별개다: 실제 Sol CLI와 Luna CLI의 동작, 최소 2-CLI E2E, 설정 실연결, JEV ON/OFF, 선택적 고수준 실행, 상태 복구, 비용 계측은 차후 각 작업의 **실행 evidence**가 있어야 PASS라고 한다.
+
+---
+
+# 2026-09-24 GPT Web 설계 정정 — Worker는 계약 라우터만 수행
+
+> **최우선 정정 / 이후 구현 기준:** 이 절은 앞선 GPT Web 피드백 중 CLI-to-CLI에서 Worker가 AC, validation command, evidence freshness, JEV 의미 결과를 직접 판정하도록 제안한 부분을 **대체한다.** 기존 Web ↔ Codex 장기 개발에서 검증된 핵심은 Worker가 답의 의미를 심사한 것이 아니라, **고정 Footer 계약을 매 호출에 주입하고 첫 제어 태그에 따라 다음 상대에게 전달한 것**이었다. 새 네 역할 구조도 이 방식만 범용화한다.
+>
+> 이 절의 목표는 “Worker를 더 똑똑하게 만들기”가 아니라 반대다. **Worker는 계약 문법·행선지·세션·프로세스만 관리하고, 작업 내용의 진위·충분성·완료 여부는 AI 역할들이 판단한다.**
+
+## 1. 최종 설계 원칙 — Worker = Contract Router
+
+Worker가 수행할 책임은 아래 범위로 제한한다.
+
+### Worker가 해야 하는 일
+
+1. 역할별 설정에 따라 대상 AI/모델/세션을 실행한다.
+2. 각 역할 호출 prompt 끝에 해당 역할용 **고정 계약(Footer)** 을 주입한다.
+3. 응답의 **첫 제어행**만 파싱한다.
+4. 정해진 행선지에 응답 본문을 가능한 그대로 전달한다.
+5. 역할별 session ID를 보존하고 같은 역할의 후속 턴은 같은 세션으로 resume한다.
+6. 선택 역할이 OFF이거나 provider/CLI가 실행 불가능한 경우 **라우팅 불가 상태**만 표시한다.
+7. 프로세스 시작/종료, 취소, timeout, 인증, transport 오류, transcript, usage 등 실행 인프라를 관리한다.
+8. 파일 첨부/CLI artifact 전달이 필요한 경우 경로 접근 권한과 크기·보안 제한만 적용한다.
+9. 기존 Web 모드의 `[ACTION]`, `[NEXT : WEB|JEV]` 계약은 legacy로 보존한다.
+10. 새 CLI-to-CLI 모드는 동일 철학으로 역할명만 일반화한다.
+
+### Worker가 하지 말아야 하는 일
+
+- 작업 지시의 내용이 적절한지 판단
+- AC가 실제로 만족됐는지 판단
+- 테스트가 충분한지 판단
+- shell command가 관제 AI가 요구한 command와 의미상 같은지 비교
+- 실행 결과를 보고 PASS/FAIL을 자체 생성
+- 작업 AI의 `IMPLEMENTED/PARTIAL/BLOCKED`를 의미적으로 검증
+- 관제 AI의 `[ACTION=END]`를 별도 evidence gate로 거부
+- JEV/Judge 결과를 다시 threshold 계산해 PASS/PARTIAL로 판정
+- evidence digest 변화만으로 과거 판정을 무효화
+- 몇 회 수정했는지를 이유로 자동 FINISH_LIMIT 처리
+- 관제 AI 대신 “다음에는 같은 작업 AI를 다시 호출해야 한다”고 결정
+- Luna 결과를 분석해 고수준 AI로 자동 승격
+- 작업 내용을 읽고 다음 행선지를 추론
+
+**핵심:** Worker는 **문법을 확인할 수는 있지만 의미를 판정하지 않는다.** 예를 들어 `[NEXT : COORDINATOR]` 다음에 `[REPORT]`가 있는지는 확인할 수 있지만, REPORT에 적힌 “테스트 통과”가 사실인지는 판단하지 않는다.
+
+## 2. 기존 Web 관제 방식에서 그대로 가져올 부분
+
+기존 `JEV-FOOTER-CONTRACT.md`의 가장 중요한 구조는 다음이었다.
+
+```text
+GPT Web
+  ↓
+Worker
+  ↓
+Codex CLI
+  ↓
+Worker
+  ├─ [NEXT : WEB] → GPT Web
+  └─ [NEXT : JEV] → JEV
+```
+
+여기서 Worker의 본래 역할은 **중계자**였다. Codex에게 Footer를 붙여 “첫 줄에 어디로 갈지 적어라”라고 요구하고, 결과가 Web이면 Web에, JEV면 JEV에 전달했다.
+
+새 구조는 이것을 아래처럼 일반화한다.
+
+```text
+사용자
+  ↓
+Worker
+  ↓
+설계·관제 AI
+  ↓
+Worker
+  ├─ [ACTION=CONTINUE] + [NEXT : IMPLEMENTER] → 작업 AI
+  ├─ [ACTION=CONTINUE] + [NEXT : HIGH_LEVEL]  → 고수준 작업 AI
+  ├─ [ACTION=CONTINUE] + [NEXT : JUDGE]       → 작업 판단 AI
+  ├─ [ACTION=PAUSE]                            → 사용자 대기
+  └─ [ACTION=END]                              → 작업 종료
+
+작업 AI / 고수준 작업 AI
+  ↓
+Worker
+  ├─ [NEXT : COORDINATOR] → [REPORT]를 설계·관제 AI에 전달
+  └─ [NEXT : JUDGE]       → [VALIDATION REQUEST]를 작업 판단 AI에 전달
+
+작업 판단 AI
+  ↓
+Worker
+  → 판단을 요청한 원래 AI 세션으로 결과 전달
+  → 그 AI가 다시 자신의 고정 계약에 따라 다음 행선지를 선택
+```
+
+**Judge 결과의 복귀 원칙:** Judge를 요청한 주체를 Worker가 기억한다. 작업 AI가 Judge를 요청했으면 같은 작업 AI session으로 Judge 결과를 돌려주고, 설계·관제 AI가 Judge를 요청했으면 같은 관제 session으로 돌려준다. Worker가 Judge 결과를 해석해 다음 목적지를 고르지 않는다.
+
+이 구조는 과거 **Codex → JEV → 동일 Codex session → Web 보고** 패턴을 역할 독립적으로 일반화한 것이다.
+
+## 3. 범용 계약 — 제어부와 본문을 분리
+
+계약은 **CONTROL HEADER + OPAQUE BODY**로 본다.
+
+Worker가 이해하는 것은 CONTROL HEADER뿐이다. BODY는 대상 AI가 읽는다.
+
+### 3.1 설계·관제 AI 계약
+
+설계·관제 AI의 **첫 유효행은 반드시 ACTION**이다.
+
+허용:
+
+```text
+[ACTION=CONTINUE]
+[ACTION=PAUSE]
+[ACTION=END]
+```
+
+`CONTINUE`일 때만 다음 유효 제어행으로 행선지를 요구한다.
+
+```text
+[NEXT : IMPLEMENTER]
+[NEXT : HIGH_LEVEL]
+[NEXT : JUDGE]
+```
+
+그 뒤 내용은 Worker가 해석하지 않는다. 권장 block marker만 구분한다.
+
+작업 AI/고수준 작업 AI로 갈 때:
+
+```text
+[ACTION=CONTINUE]
+[NEXT : IMPLEMENTER]
+
+[INSTRUCTION]
+
+현재 요구사항을 구현한다.
+필요한 테스트를 수행한다.
+결과와 남은 문제를 보고한다.
+```
+
+또는:
+
+```text
+[ACTION=CONTINUE]
+[NEXT : HIGH_LEVEL]
+
+[INSTRUCTION]
+
+일반 작업 AI가 해결하기 어려운 특정 문제를 분석하고 수정한다.
+...
+```
+
+Judge를 직접 선택할 때:
+
+```text
+[ACTION=CONTINUE]
+[NEXT : JUDGE]
+
+[VALIDATION REQUEST]
+
+<판정 AI가 확인할 내용>
+```
+
+대기:
+
+```text
+[ACTION=PAUSE]
+
+[REPORT]
+
+사용자 승인 또는 실제 화면 확인이 필요하다.
+```
+
+종료:
+
+```text
+[ACTION=END]
+
+[REPORT]
+
+요청한 목표를 완료했다고 판단한다.
+```
+
+**Worker 동작:**
+- ACTION 값이 세 종류 중 하나인지 확인한다.
+- CONTINUE이면 NEXT가 허용 역할인지 확인한다.
+- PAUSE이면 사용자 대기 상태로 바꾼다.
+- END이면 종료 상태로 바꾼다.
+- **END가 맞는 판단인지 재검증하지 않는다.**
+- 본문의 AC, 테스트, 증거, 주장 내용은 파싱하지 않는다.
+
+### 3.2 작업 AI / 고수준 작업 AI 계약
+
+두 작업 역할은 같은 범용 Footer를 사용한다. 차이는 설정된 모델·권한·세션뿐이다.
+
+첫 유효행:
+
+```text
+[NEXT : COORDINATOR]
+```
+
+또는:
+
+```text
+[NEXT : JUDGE]
+```
+
+관제 복귀 시:
+
+```text
+[NEXT : COORDINATOR]
+
+[REPORT]
+
+수행 내용:
+- ...
+
+변경 사항:
+- ...
+
+검증 결과:
+- ...
+
+남은 사항:
+- ...
+```
+
+판정 요청 시:
+
+```text
+[NEXT : JUDGE]
+
+[VALIDATION REQUEST]
+
+- NOUL | ...
+  EVIDENCE: ...
+  PASS: ...
+```
+
+**Worker 동작:**
+- NEXT가 허용 대상인지 검사한다.
+- COORDINATOR이면 REPORT 존재만 확인하고 본문 전체를 같은 관제 session에 전달한다.
+- JUDGE이면 VALIDATION REQUEST 존재만 확인하고 판정 AI에 전달한다.
+- 작업 AI의 보고에서 `테스트 성공`, `변경 완료`, `미검증` 등을 Worker가 자체 판정하지 않는다.
+- 별도의 `IMPLEMENTER_RESULT JSON → IMPLEMENT_ROUTE 두 번째 호출` 구조를 만들지 않는다. **작업을 수행한 바로 그 응답의 첫머리에 NEXT를 출력**하도록 Footer를 주입한다.
+
+### 3.3 작업 판단 AI 계약
+
+판정 AI는 요청받은 판단만 수행한다.
+
+백엔드가 자유형 AI라면 권장 응답:
+
+```text
+[JUDGMENT]
+
+<판정 결과 전체>
+```
+
+JEV처럼 별도 typed API라면 provider adapter는 **transport/schema 변환만** 한다. 응답의 NOUL/SCORE/CHOICE 값, confidence, provider 원문을 보존해 요청자에게 전달한다.
+
+Worker는:
+- HTTP/JSON 형식이 깨졌는지,
+- provider 응답 자체가 없는지,
+- timeout/transport error인지
+
+같은 **기술 오류**만 구분한다.
+
+Worker가 하면 안 되는 것:
+- threshold를 적용해 `JudgeDecision.Pass/Partial`을 직접 산출
+- direct evidence 부족을 이유로 JEV PASS를 PARTIAL로 변경
+- evidence digest 변화로 Judge 결과를 무효화
+- Judge 응답을 근거로 구현 코드 재작업을 자동 선택
+
+이 판단은 Judge를 요청한 작업 AI 또는 최종 설계·관제 AI가 한다.
+
+## 4. 현재 코드에서 제거/비활성화할 의미 게이트
+
+아래 항목은 **CLI-to-CLI control path에서 제거**한다. Legacy Web 계약을 깨뜨릴 필요가 없으면 코드 삭제 대신 legacy 전용 경로로 격리할 수 있다.
+
+### 4.1 `CoordinatorFirstContracts.cs`
+
+CLI-to-CLI 라우팅에서 다음 의미 검사를 사용하지 않는다.
+
+- `WorkCardSchema`를 필수 제어 계약으로 사용하는 구조
+- `ImplementerResultSchema`를 필수 제어 계약으로 사용하는 구조
+- `ReviewSchema`의 AC 집합/상태 일치 검사
+- `ACTION_REVIEW_CONFLICT`
+- `REVIEW_AC_SET_MISMATCH`
+- `REVIEW_INVALID_STATUS`
+- `HasRequiredValidationEvidence()`
+- `CommandMatches()`
+
+새 parser의 책임은 다음 정도로 줄인다.
+
+```text
+ParseCoordinatorControl:
+  first = ACTION
+  if CONTINUE: NEXT required and target allowed
+  if PAUSE/END: NEXT not required
+  body = opaque remainder
+
+ParseWorkerRoleControl:
+  first = NEXT
+  COORDINATOR → REPORT marker required
+  JUDGE → VALIDATION REQUEST marker required
+  body = opaque remainder
+```
+
+JSON을 사용하고 싶다면 BODY 내부에서 AI 간 합의 형식으로 쓸 수 있지만 Worker 완료 gate가 되어서는 안 된다.
+
+### 4.2 `RunCoordinatorFirstJobAsync()`
+
+현재 루프에서 제거해야 할 변수/결정:
+
+- `evidenceOk`
+- `evidenceDetail`
+- `judgeOk`
+- `accepted = evidenceOk && judgeOk && ...`
+- `ALL_REQUIRED_COMMANDS_OBSERVED_EXIT_ZERO`
+- `NOT_OBSERVED`
+- `FINISH_LIMIT`을 만드는 고정 `maxRounds = 3`
+- CONTINUE이면 반드시 같은 카드/같은 deficiency만 해결하도록 Worker가 강제하는 분기
+- REPORT의 status/AC를 해석해 END를 거부하는 분기
+
+바꿀 핵심:
+
+```text
+invoke coordinator
+→ parse ACTION/NEXT
+→ route raw instruction body
+
+invoke selected worker role
+→ parse NEXT
+→ route REPORT or VALIDATION REQUEST
+
+if Judge requested
+→ invoke Judge
+→ return raw Judge result to requester session
+→ requester emits another normal contract response
+
+when coordinator emits PAUSE
+→ pause
+
+when coordinator emits END
+→ end
+```
+
+**CONTINUE 횟수는 Worker의 내용 판단 한도가 아니다.** 무한 실행 보호가 필요하면 사용자 설정의 일반 실행 한도(시간/호출 수/예산)로 별도 관리하고, 한도 도달 시 `SYSTEM_LIMIT`으로 PAUSE한다. “세 번 수정했으니 구현 실패” 같은 의미 판단을 만들지 않는다.
+
+### 4.3 Codex command execution 기록
+
+`CodexCliRunner.ExtractCommandExecutions()`는 **관측/로그용으로 남겨도 된다.**
+
+허용 사용:
+- transcript에 실제 CLI command/exit code 표시
+- 관제 AI에게 원문 또는 요약 전달
+- 사용자가 펼쳐보기로 확인
+
+금지 사용:
+- required command와 문자열 비교해 Worker PASS/FAIL 생성
+- Sol END를 차단하는 증거 gate
+- JEV 요청 여부 자동 결정
+
+이번 `hello.txt` 사례의 `NOT_OBSERVED` 오류는 이 기능을 의미 gate로 사용했기 때문에 생겼다. 해당 실환경 quote-stitching 문자열을 matcher 개선 과제로 쫓지 말고, **matcher 자체를 완료 gate에서 제거**하는 것이 이번 설계의 답이다.
+
+## 5. JEV / Evidence 코드의 역할 축소
+
+### 유지
+
+- JEV endpoint 호출
+- 인증/timeout/HTTP 오류 처리
+- 요청/응답 schema의 기술적 parsing
+- 요청 ID, provider revision, usage, latency 기록
+- 허용된 파일/텍스트 artifact의 안전한 전달
+- transcript/history 저장
+
+### CLI-to-CLI 자동 판단에서 제거
+
+- `JevJudgeRunner.Evaluate()`가 threshold를 읽어 Worker `Pass/Partial`로 만드는 의미 판정
+- direct evidence가 없다는 이유로 결과를 Worker가 PARTIAL로 변경
+- `JevEvidenceArchive.Save()`의 digest 변화 → prior PASS invalidation → `NEEDS_RECHECK`
+- failed question ID를 Worker가 해석해 다음 재검증 질문 선택
+- JEV 결과를 근거로 Worker가 작업 AI 재호출/관제 복귀를 선택
+
+필요하면 이 기존 기능은 **legacy Web/JEV 실험용 evaluator**로 격리한다. 새 범용 router path에서는 Judge의 원시 결과를 요청자 AI가 해석한다.
+
+## 6. 고수준 작업 AI 실제 연결
+
+현재 설정에는 고수준 역할이 있으나 실행 preflight에서 활성화하면 차단한다. 새 계약에서는 제거한다.
+
+관제 AI가:
+
+```text
+[ACTION=CONTINUE]
+[NEXT : HIGH_LEVEL]
+
+[INSTRUCTION]
+...
+```
+
+을 반환하면 Worker는 설정의 `EffectiveHighLevel` 모델·reasoning·session을 사용해 실행한다.
+
+고수준 작업 AI에도 **작업 AI와 동일한 Worker-role Footer**를 붙인다.
+
+```text
+[NEXT : COORDINATOR]
+[REPORT]
+...
+
+또는
+
+[NEXT : JUDGE]
+[VALIDATION REQUEST]
+...
+```
+
+Worker는 “이 문제가 정말 고수준 모델이 필요한가?”를 판단하지 않는다. 호출 선택은 관제 AI 책임이다.
+
+선택 역할이 OFF인데 관제 AI가 HIGH_LEVEL/JUDGE를 선택한 경우에만:
+
+```text
+ROUTE_UNAVAILABLE: HIGH_LEVEL_DISABLED
+ROUTE_UNAVAILABLE: JUDGE_DISABLED
+```
+
+같은 **구성 오류**로 관제 AI에 되돌려준다. 다른 역할로 자동 대체하지 않는다.
+
+## 7. Prompt/Footer 파일 제안
+
+모델명별 prompt를 만들지 말고 역할별 고정 계약으로 둔다.
+
+### `COORDINATOR-ROUTING-CONTRACT.md`
+
+핵심 내용:
+
+```text
+첫 유효행:
+[ACTION=CONTINUE|PAUSE|END]
+
+CONTINUE인 경우 다음 제어행:
+[NEXT : IMPLEMENTER]
+[NEXT : HIGH_LEVEL]
+[NEXT : JUDGE]
+
+다음 역할에게 보낼 실제 내용은 제어행 뒤에 작성한다.
+Worker는 본문의 의미를 판단하지 않는다.
+최종 작업 완료 여부는 설계·관제 AI가 판단한다.
+```
+
+### `WORKER-ROLE-ROUTING-CONTRACT.md`
+
+작업 AI와 고수준 작업 AI 공용:
+
+```text
+첫 유효행:
+[NEXT : COORDINATOR]
+또는
+[NEXT : JUDGE]
+
+COORDINATOR:
+[REPORT] 양식 사용
+
+JUDGE:
+[VALIDATION REQUEST] 양식 사용
+
+Worker는 이 태그에 따라 전달할 뿐 결과의 의미를 판정하지 않는다.
+```
+
+### `JUDGE-RETURN-CONTRACT.md`
+
+Judge가 자유형 AI라면:
+
+```text
+[JUDGMENT]
+요청받은 항목의 판정과 근거를 작성한다.
+결과는 Worker가 해석하지 않고 요청자에게 전달한다.
+```
+
+JEV API 자체 형식이 고정이면 Footer를 억지로 주입하지 말고 adapter가 API 계약에 맞춰 전달한다.
+
+## 8. 예제 전체 왕복
+
+### 예제 1 — 일반 작업
+
+관제:
+
+```text
+[ACTION=CONTINUE]
+[NEXT : IMPLEMENTER]
+
+[INSTRUCTION]
+
+hello.txt를 만들고 내용이 정확한지 확인해라.
+검증 방법은 네가 적절히 선택하고 결과를 보고하라.
+```
+
+Worker → 작업 AI.
+
+작업 AI:
+
+```text
+[NEXT : COORDINATOR]
+
+[REPORT]
+
+hello.txt를 생성했다.
+내용을 다시 읽어 PROJECTHUB_OK와 일치함을 확인했다.
+실행한 명령과 결과:
+- ...
+남은 사항: 없음
+```
+
+Worker는 REPORT를 분석하지 않고 같은 관제 session에 전달.
+
+관제:
+
+```text
+[ACTION=END]
+
+[REPORT]
+
+요구사항과 작업 보고를 검토했고 종료한다.
+```
+
+Worker 종료.
+
+**여기에는 `HasRequiredValidationEvidence`, `CommandMatches`, `accepted` gate가 없다.**
+
+### 예제 2 — 작업 AI가 Judge를 요청
+
+관제:
+
+```text
+[ACTION=CONTINUE]
+[NEXT : IMPLEMENTER]
+
+[INSTRUCTION]
+
+기능을 구현하고, 의미적 판단이 필요하면 판정 AI를 사용해라.
+```
+
+작업 AI:
+
+```text
+[NEXT : JUDGE]
+
+[VALIDATION REQUEST]
+
+- NOUL | [HIGH] 현재 변경이 요구 범위 밖의 기능을 추가하지 않았는가?
+  EVIDENCE: 변경 요약 및 관련 diff
+  PASS: YES >= 0.80
+```
+
+Worker → Judge.
+
+Judge 결과:
+
+```text
+[JUDGMENT]
+
+Q1: noul=0.92
+근거: ...
+```
+
+Worker는 PASS를 계산하지 않고 **Judge를 요청했던 같은 작업 AI session**에 그대로 전달.
+
+작업 AI 후속:
+
+```text
+[NEXT : COORDINATOR]
+
+[REPORT]
+
+판정 AI 결과를 확인했다.
+구현 및 판정 결과:
+- ...
+```
+
+Worker → 관제.
+
+관제가 최종 판단.
+
+### 예제 3 — 관제가 고수준 작업 AI 선택
+
+관제:
+
+```text
+[ACTION=CONTINUE]
+[NEXT : HIGH_LEVEL]
+
+[INSTRUCTION]
+
+일반 작업 결과의 특정 동시성 문제를 분석하고 해결하라.
+...
+```
+
+Worker → 고수준 작업 AI의 독립 session.
+
+고수준 작업 AI:
+
+```text
+[NEXT : COORDINATOR]
+
+[REPORT]
+
+원인:
+- ...
+
+수정:
+- ...
+
+검증:
+- ...
+```
+
+관제가 다음 ACTION을 결정한다.
+
+### 예제 4 — 관제가 직접 Judge 선택
+
+관제:
+
+```text
+[ACTION=CONTINUE]
+[NEXT : JUDGE]
+
+[VALIDATION REQUEST]
+
+현재 작업 보고가 원래 사용자 목표를 충족한다고 볼 수 있는가?
+...
+```
+
+Judge 결과는 같은 관제 session으로 반환한다.
+
+관제 후속:
+
+```text
+[ACTION=END]
+
+[REPORT]
+
+판정 결과까지 검토했고 종료한다.
+```
+
+## 9. 회귀 테스트 — 내용 정답이 아니라 라우팅만 검증
+
+새 테스트의 초점은 **AI가 옳은 판단을 했는지**가 아니다. Worker가 계약대로 전달했는지다.
+
+| ID | 테스트 | 기대 결과 |
+| --- | --- | --- |
+| ROUTE-C01 | Coordinator `CONTINUE + NEXT IMPLEMENTER` | Implementer 정확히 1회 호출 |
+| ROUTE-C02 | Coordinator `CONTINUE + NEXT HIGH_LEVEL` | HighLevel 정확히 1회 호출 |
+| ROUTE-C03 | Coordinator `CONTINUE + NEXT JUDGE` | Judge 정확히 1회 호출 |
+| ROUTE-C04 | Coordinator `PAUSE` | AI 추가 호출 0, 사용자 대기 |
+| ROUTE-C05 | Coordinator `END` | AI 추가 호출 0, 완료 |
+| ROUTE-W01 | Worker-role `NEXT COORDINATOR + REPORT` | 동일 coordinator session으로 body 전달 |
+| ROUTE-W02 | Worker-role `NEXT JUDGE + VALIDATION REQUEST` | Judge에 body 전달 |
+| ROUTE-J01 | Implementer가 Judge 요청 | Judge 결과를 **같은 implementer session**에 반환 |
+| ROUTE-J02 | Coordinator가 Judge 요청 | Judge 결과를 **같은 coordinator session**에 반환 |
+| ROUTE-ERR01 | 첫 제어행 누락 | 계약 오류로 중지/요청자에게 protocol error |
+| ROUTE-ERR02 | 비활성 HIGH_LEVEL 선택 | `ROUTE_UNAVAILABLE`을 coordinator에 전달; 자동 대체 0 |
+| ROUTE-ERR03 | 비활성 JUDGE 선택 | `ROUTE_UNAVAILABLE`을 requester에 전달; 자동 대체 0 |
+| ROUTE-BODY01 | REPORT에 거짓 PASS 문자열 포함 | Worker는 의미 판정하지 않고 그대로 전달 |
+| ROUTE-BODY02 | 서로 다른 shell quoting이 포함됨 | Worker 라우팅 결과에 영향 0 |
+| ROUTE-END01 | Coordinator가 END 반환 | Worker 별도 AC/evidence gate 없이 종료 |
+| LEGACY-01 | 기존 Web `NEXT WEB/JEV` | 기존 모드 회귀 없음 |
+
+특히 **ROUTE-BODY01/02와 ROUTE-END01**은 이번 설계 정정의 핵심 회귀 테스트다.
+
+## 10. 구현 순서
+
+이번 변경은 의미 gate를 더 보강하는 작업이 아니다. **기존 Web 방식으로 단순화하는 작업**이다.
+
+1. **현재 hello.txt transcript를 회귀 근거로 보존**
+   - 실제 명령 exit 0인데 Worker `NOT_OBSERVED`로 반복된 사례.
+   - 목표는 matcher 개선이 아니라 이 matcher가 routing/END gate에 관여하지 않게 하는 것.
+
+2. **범용 Control parser 추가**
+   - Coordinator: ACTION + optional NEXT.
+   - Worker role: NEXT + REPORT/VALIDATION REQUEST.
+   - BODY opaque.
+   - Legacy Web parser는 그대로 둔다.
+
+3. **Coordinator-first 루프 교체**
+   - WorkCard JSON 강제 대신 coordinator의 ACTION/NEXT 본문 전달.
+   - 필요 시 관제가 BODY에서 JSON/Markdown을 자유롭게 사용할 수 있으나 Worker가 내용 schema를 요구하지 않는다.
+
+4. **Implementer의 두 번째 routing 호출 제거**
+   - 현재 `IMPLEMENT → IMPLEMENT_ROUTE` 두 호출을 하나로 통합.
+   - 구현 호출 prompt에 Worker-role Footer를 처음부터 붙인다.
+   - 작업 AI 최종 답 첫 줄이 직접 NEXT여야 한다.
+
+5. **Worker semantic gate 제거**
+   - `HasRequiredValidationEvidence`, `CommandMatches`, `accepted`, `judgeOk`를 flow decision에서 제거.
+   - command execution 기록은 transcript/관제 전달용으로만 남긴다.
+
+6. **Judge return-to-requester 구현**
+   - requester role/session ID를 push/pop 가능한 작은 route context로 저장.
+   - Judge 결과를 같은 requester session에 전달.
+   - 그 AI가 다시 ACTION 또는 NEXT를 낸다.
+
+7. **HighLevel route 연결**
+   - 현재 preflight의 `HighLevelEnabled이면 차단` 제거.
+   - coordinator NEXT에 따라 `EffectiveHighLevel` 별도 session 실행.
+   - 작업 AI와 같은 Worker-role Footer 사용.
+
+8. **JEV evaluator 의미 gate 분리**
+   - transport/schema 오류와 의미 결과를 분리.
+   - 새 router path에서는 raw typed result를 requester에게 전달.
+   - 기존 threshold/digest evaluator가 필요하면 legacy 모듈로 격리.
+
+9. **고정 3회 자동루프 제거**
+   - 필요하면 사용자 설정의 예산/시간/호출 횟수 같은 인프라 limit만 둔다.
+   - limit 도달은 `PAUSE/SYSTEM_LIMIT`; 구현 FAIL로 판단하지 않는다.
+
+10. **라우팅 회귀 테스트 후 실제 Explorer E2E**
+    - Judge OFF: Sol → Luna → Sol → END.
+    - Judge ON: Sol → Luna → Judge → 동일 Luna → Sol → END.
+    - HighLevel ON: Sol → HighLevel → Sol → END.
+    - Coordinator direct Judge: Sol → Judge → 동일 Sol → END.
+    - 각 경로에서 Worker가 report/test 내용을 자체 판정하지 않는 로그를 확인.
+
+## 11. 유지해야 하는 인프라 안전 경계
+
+“Worker가 내용을 판단하지 않는다”와 “아무 보안도 없다”는 다르다. 아래는 **내용 판단이 아니라 실행 인프라 경계**이므로 유지한다.
+
+- 선택된 working directory가 존재하는지 확인
+- role/provider/model/session 실행 가능 여부
+- CLI 인증 상태
+- 사용자 취소
+- process timeout / provider transport error
+- 외부 Git commit/push/배포의 기존 사용자 승인
+- 허용되지 않은 path/file attachment 차단
+- credential 마스킹/host 보안
+- 동시에 같은 workspace를 두 writer가 수정하지 않도록 하는 기계적 write lock을 유지할지 여부는 별도 인프라 정책으로 결정
+- transcript/usage 기록
+
+단, 이러한 인프라 오류도 **작업 내용의 실패**와 섞지 않는다. 예: `ROUTE_UNAVAILABLE`, `PROVIDER_TIMEOUT`, `AUTH_REQUIRED`처럼 별도 상태로 반환한다.
+
+## 12. 이전 피드백 중 폐기되는 지시
+
+이 절 이후 다음 종류의 과거 제안은 CLI-to-CLI 신규 경로의 구현 기준으로 사용하지 않는다.
+
+- “Worker가 실제 validation command와 계획 command를 대조해 PASS해야 한다.”
+- “Worker가 모든 AC freshness를 확인해야 END 가능하다.”
+- “Worker가 JEV confidence/threshold를 계산해 PASS/PARTIAL을 만든다.”
+- “Worker가 direct evidence 부족을 판단해 JEV 결과를 강등한다.”
+- “Worker가 evidence digest가 바뀌면 해당 질문의 PASS를 무효화한다.”
+- “Worker가 세 번 재작업 후 FINISH_LIMIT으로 자동 중단한다.”
+- “작업 AI structured result를 받은 뒤 별도 routing-only CLI 턴을 실행한다.”
+- “Judge FAIL/PARTIAL에 따라 Worker가 자동으로 구현 AI를 재호출한다.”
+
+과거 문서·테스트 이력은 역사 기록으로 보존하지만, **새 범용 CLI-to-CLI의 정답은 ‘Footer 계약 주입 + 첫 제어행 라우팅 + 본문 opaque 전달’이다.**
+
+## 13. 설계 완료 기준
+
+다음이 만족되면 이 구조의 설계 의도가 구현된 것으로 본다.
+
+- 설계·관제 AI의 모든 정상 응답 첫 유효행이 `[ACTION=...]`.
+- CONTINUE이면 관제 AI가 다음 AI 역할을 직접 선택.
+- 작업 AI와 고수준 작업 AI의 모든 정상 응답 첫 유효행이 `[NEXT : ...]`.
+- COORDINATOR 목적지는 REPORT, JUDGE 목적지는 VALIDATION REQUEST 형식으로 AI가 작성.
+- Judge 결과는 Worker 판단 없이 요청자 session으로 반환.
+- 최종 END는 설계·관제 AI만 결정.
+- Worker가 test/AC/evidence/보고서 의미를 분석해 END를 거부하는 코드가 CLI-to-CLI control path에 없음.
+- 기존 Web ↔ Codex ↔ JEV 계약은 legacy 모드에서 그대로 동작.
+- 모델명을 바꿔도 동일 계약이 작동하며 역할 이름으로만 routing.
