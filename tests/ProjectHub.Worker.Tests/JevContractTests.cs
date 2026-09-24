@@ -16,6 +16,8 @@ public sealed class RoleContractBoundaryTests
         Assert.DoesNotContain("GOTO : HQ", hq);
         Assert.DoesNotContain("You are WORK", hq);
         Assert.DoesNotContain("You are HIGH", hq);
+        Assert.DoesNotContain("[INSTRUCTION]", hq);
+        Assert.DoesNotContain("[REPORT]", hq);
     }
 
     [Fact]
@@ -27,6 +29,8 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[GOTO : JUDGE]", enabled);
         Assert.DoesNotContain("[GOTO : JUDGE]", disabled);
         Assert.Contains("JUDGE is unavailable", disabled);
+        Assert.DoesNotContain("[REPORT]", enabled);
+        Assert.DoesNotContain("[VALIDATION REQUEST]", enabled);
     }
 
     [Fact]
@@ -37,7 +41,10 @@ public sealed class RoleContractBoundaryTests
         Assert.DoesNotContain("[GOTO : WORK]", high);
         Assert.DoesNotContain("[GOTO : JUDGE]", high);
         Assert.DoesNotContain("[GOTO : HIGH]", high);
-        Assert.Equal("You are JUDGE. Do not emit ACTION. Your only destination is [GOTO : WORK], followed by [JUDGMENT].", RoleContractLoader.LoadJudgeFooter());
+        Assert.DoesNotContain("[REPORT]", high);
+        var judge = RoleContractLoader.LoadJudgeFooter();
+        Assert.Contains("[GOTO : WORK]", judge);
+        Assert.DoesNotContain("[JUDGMENT]", judge);
     }
 
     [Fact]
@@ -96,7 +103,8 @@ public sealed class JudgeTransportContractTests
     [Fact]
     public void ParserPreservesPassThresholdAsOpaqueTextWithoutRangeJudgment()
     {
-        const string input = "[VALIDATION REQUEST]\nNOUL | claim\nPASS: YES >= 99\nSCORE | status\n1 = low\n3 = high\nPASS: SCORE >= 999";
+        const string input = "NOUL | claim\nPASS: YES >= 99\nSCORE | status\n1 = low\n3 = high\nPASS: SCORE >= 999";
+        Assert.Equal(input, JudgeTransportContract.ExtractRequest(input));
         Assert.True(JudgeTransportContract.TryParse(JudgeTransportContract.ExtractRequest(input), out var request, out var error), error);
         Assert.Equal(2, request.Questions.Count);
         Assert.Contains("PASS: YES >= 99", request.Questions[0].Instructions);
@@ -127,6 +135,24 @@ public sealed class JudgeTransportContractTests
         Assert.Equal(110, usage.InputTokens);
         Assert.Equal(22, usage.CachedInputTokens);
         Assert.Equal(135, usage.ProviderTotalTokens);
+    }
+
+    [Fact]
+    public void HistoryCardFormatter_UsesMechanicalPreviewUsageAndDetectedFiles()
+    {
+        Assert.Equal("첫 줄 둘째 줄", WorkerHistoryCardFormatter.Preview("첫 줄\n\t둘째 줄"));
+
+        var usage = new CodexUsage(920, 210, 164, 80, 1164, 1284, true);
+        Assert.Equal("토큰 · 총 1,284 · 입력 920 · 캐시 210 · 출력 164 · 추론 80", WorkerHistoryCardFormatter.TokenLine(usage));
+        Assert.Equal("토큰 · 미제공", WorkerHistoryCardFormatter.TokenLine(CodexUsage.Empty));
+
+        var files = new[]
+        {
+            new CodexCliFile("C:\\work\\projecthub-smoke.txt", "projecthub-smoke.txt", "text/plain", 19),
+            new CodexCliFile("C:\\work\\other.txt", "other.txt", "text/plain", 4)
+        };
+        Assert.Equal("파일 · 2개 감지 · projecthub-smoke.txt 외 1개", WorkerHistoryCardFormatter.FileLine(files));
+        Assert.Equal("파일 · 감지 없음", WorkerHistoryCardFormatter.FileLine(Array.Empty<CodexCliFile>()));
     }
 
     [Fact]
