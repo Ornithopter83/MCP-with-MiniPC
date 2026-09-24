@@ -19,6 +19,22 @@ UNKNOWN -> 원문 한글 로그 + HQ 한글 요약 (Job당 1회), 정상 관제 
 반복 UNKNOWN -> 로그 기록 후 종료
 ~~~
 
+## 2026-09-24 12-A Provider foundation
+
+사용자 요청으로 Provider 확장 작업의 첫 안전 단위를 시작한다.
+
+이번 12-A 범위:
+- `AiServiceProvider` enum에 OpenAI / Claude / Muse 식별자 정의
+- 기존 소문자 provider JSON wire 값을 그대로 유지하면서 `WorkerAiRoleSettings.ProviderKind` typed view 추가
+- 기존 `CodexServedModels`를 OpenAI 모델 source로 사용하는 provider-neutral `AiProviderCatalog` 추가
+- Claude/Muse descriptor는 등록하되 모델 목록과 실제 실행은 아직 연결하지 않음
+- 알 수 없는 provider 또는 미연결 provider를 OpenAI로 자동 대체하지 않음
+- 기존 UI, Codex runner, GOTO/JUDGE/HIGH/History 동작은 변경하지 않음
+
+다음 단위에서 HQ/WORK/HIGH 설정 UI와 model/reasoning binding을 provider catalog 기준으로 이관한다. 실제 Claude/Muse runner/인증 연동은 그 이후 단계로 둔다.
+
+검증용 provider catalog/settings 회귀 테스트를 추가했다. 이번 GPT 작업 환경에서는 .NET SDK를 직접 실행할 수 없으므로 commit 전 저장소 정적 검토까지만 수행하고, Windows build/test는 후속 실제 환경 검증으로 남긴다.
+
 ## Current implementation status
 
 핵심 ACTION+GOTO router, HIGH one-shot permit, JUDGE raw transport, 역할별 contract 파일 분리는 구현돼 있다.

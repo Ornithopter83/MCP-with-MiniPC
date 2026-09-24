@@ -200,6 +200,48 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void ProviderCatalog_ExposesStableEnumAndOpenAiCompatibilityWithoutFallback()
+    {
+        Assert.Equal(
+            new[] { AiServiceProvider.OpenAI, AiServiceProvider.Claude, AiServiceProvider.Muse },
+            AiProviderCatalog.Current.Select(provider => provider.Provider).ToArray());
+
+        Assert.True(AiProviderCatalog.TryParse("openai", out var openAi));
+        Assert.Equal(AiServiceProvider.OpenAI, openAi);
+        Assert.True(AiProviderCatalog.TryParse("CLAUDE", out var claude));
+        Assert.Equal(AiServiceProvider.Claude, claude);
+        Assert.True(AiProviderCatalog.TryParse("muse", out var muse));
+        Assert.Equal(AiServiceProvider.Muse, muse);
+        Assert.False(AiProviderCatalog.TryParse("unknown-provider", out _));
+
+        var openAiDescriptor = AiProviderCatalog.Get(AiServiceProvider.OpenAI);
+        Assert.True(openAiDescriptor.ExecutionConfigured);
+        var sol = openAiDescriptor.FindModel("gpt-6-sol");
+        Assert.NotNull(sol);
+        Assert.True(sol!.SupportsReasoning("high"));
+
+        Assert.False(AiProviderCatalog.Get(AiServiceProvider.Claude).ExecutionConfigured);
+        Assert.Empty(AiProviderCatalog.Get(AiServiceProvider.Claude).Models);
+        Assert.False(AiProviderCatalog.Get(AiServiceProvider.Muse).ExecutionConfigured);
+        Assert.Empty(AiProviderCatalog.Get(AiServiceProvider.Muse).Models);
+    }
+
+    [Fact]
+    public void RoleSettings_KeepLowercaseProviderWireValueAndExposeTypedProviderKind()
+    {
+        var settings = JsonSerializer.Deserialize<WorkerTargetSettings>("""
+            {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null,"implementer":{"provider":"claude","model":"future-model","reasoning":"medium","transport":"cli"}}
+            """)!;
+
+        Assert.Equal("claude", settings.EffectiveImplementer.Provider);
+        Assert.Equal(AiServiceProvider.Claude, settings.EffectiveImplementer.ProviderKind);
+        Assert.Contains("\"provider\":\"claude\"", JsonSerializer.Serialize(settings));
+
+        var unknown = new WorkerAiRoleSettings(Provider: "vendor-x");
+        Assert.Null(unknown.ProviderKind);
+    }
+
+    [Fact]
     public void RoleSettings_PersistTransportAndIndependentThreadSelections()
     {
         var settings = JsonSerializer.Deserialize<WorkerTargetSettings>("""

@@ -25,7 +25,12 @@ public sealed record WorkerAiRoleSettings(
     [property: JsonPropertyName("reasoning")] string Reasoning = "medium",
     [property: JsonPropertyName("transport")] string Transport = "web",
     [property: JsonPropertyName("threadSessionId")] string? ThreadSessionId = null,
-    [property: JsonPropertyName("threadProjectPath")] string? ThreadProjectPath = null);
+    [property: JsonPropertyName("threadProjectPath")] string? ThreadProjectPath = null)
+{
+    [JsonIgnore]
+    public AiServiceProvider? ProviderKind =>
+        AiProviderCatalog.TryParse(Provider, out var provider) ? provider : null;
+}
 
 public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("manualRepositoryUrl")] string? ManualRepositoryUrl,

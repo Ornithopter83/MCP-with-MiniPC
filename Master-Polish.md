@@ -232,6 +232,26 @@ HQ는 기본 read-only, WORK/HIGH는 승인된 작업 폴더에서 workspace-wri
 
 Worker는 지원되지 않는 모델을 임의 대체하지 않는다.
 
+### 8.1 Provider 확장 정책
+
+AI 역할 Provider의 코드 식별자는 `AiServiceProvider` enum으로 관리한다.
+
+현재 예약 Provider:
+
+~~~text
+OpenAI
+Claude
+Muse
+~~~
+
+영속 설정의 wire 값은 호환성을 위해 소문자 문자열(`openai`, `claude`, `muse`)을 유지하고, 실행 코드에서는 이를 enum으로 해석한다. 알 수 없는 Provider를 OpenAI로 자동 대체하지 않는다.
+
+Provider 이름은 안정된 식별자이고 모델명은 교체 가능한 catalog 데이터다. 모델과 reasoning 목록을 enum에 고정하지 않는다.
+
+현재 실제 실행이 연결된 Provider는 OpenAI뿐이다. Claude/Muse는 catalog/runner/UI 구조를 준비할 수 있지만 인증·실행 transport가 연결되기 전에는 `NOT_CONFIGURED` 상태로 취급하고 다른 Provider로 자동 fallback하지 않는다.
+
+JEV는 AI 역할 Provider 목록에 포함하지 않고 JUDGE 전용 판단 transport로 유지한다.
+
 ---
 
 ## 9. 비용·토큰 정책

@@ -22,7 +22,24 @@ UNKNOWN -> 원문 한글 로그 + HQ 한글 요약 (Job당 1회), 이후 정상 
 - HIGH는 사용자 실행 시점 one-shot permit
 - Legacy Web NEXT:WEB/JEV는 별도 legacy mode
 
-## Current active work — 11-C-GOTO-CONTRACT
+## Current active work — 12-A Provider foundation
+
+목표는 실제 유료 Provider 연결 전에 Provider/Model/Reasoning 교체가 가능한 내부 구조를 먼저 만든다.
+
+12-A 안전 범위:
+- Provider enum: OpenAI / Claude / Muse
+- 기존 `provider: "openai"` JSON 호환 유지
+- provider-neutral descriptor/catalog 도입
+- 기존 Codex model 목록을 OpenAI descriptor에 연결
+- Claude/Muse는 미연결 descriptor만 등록
+- 미연결/알 수 없는 Provider 자동 fallback 금지
+- UI/runner/icon 변경은 다음 단위로 분리
+
+상세: `tasks/12-provider-abstraction.md`
+
+11-C의 Explorer 실검증 잔여는 유지하되 이번 12-A 내부 구조 변경과 섞지 않는다.
+
+## Previous active residual — 11-C-GOTO-CONTRACT
 
 핵심 GOTO router와 HIGH/JUDGE transport baseline은 구현돼 있다.
 
