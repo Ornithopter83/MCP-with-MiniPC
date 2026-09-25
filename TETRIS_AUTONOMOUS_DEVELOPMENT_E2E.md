@@ -96,7 +96,7 @@ Stage:
 - 10,000 연산
 - 202 게임 오버
 - 202 재시작
-- exception 0
+- 예외 0
 - 불변식 PASS
 
 WPF:
@@ -166,7 +166,7 @@ Worker는 각 Codex CLI 결과의 `usage` 또는 `token_usage`를 파싱해 라�
 - 작업 baseline 세션 사용량
 - latest 세션 사용량
 - 작업 차이 = 최신값 - 기준값
-- cached input
+- 캐시 입력
 - 출력/추론
 - 회차 count
 - 소요 시간
@@ -218,7 +218,7 @@ review / next ACTION
 - 브랜치
 - 작업 트리 status
 - 로컬 HEAD SHA
-- pushed SHA
+- 푸시된 SHA
 - 원격 HEAD SHA
 - last push 결과
 - 마지막 푸시 시각
@@ -280,7 +280,7 @@ Server를 권위 있는 관측 계층로 사용할 경우 `SERVER_CONFIRMED`를 
 최소 표시 권장:
 
 ### 프로젝트 / Git
-- Project path
+- 프로젝트 경로
 - 저장소 URL
 - 브랜치
 - 로컬 HEAD 짧은 SHA
@@ -312,7 +312,7 @@ Server를 권위 있는 관측 계층로 사용할 경우 `SERVER_CONFIRMED`를 
    - repo URL
    - 브랜치
    - 로컬/원격 SHA
-   - Server URL/status
+   - 서버 URL/상태
 
 3. Worker에 Git review 체크포인트 추가
    - push 완료 후 원격 정확한 SHA 확인
@@ -326,7 +326,7 @@ Server를 권위 있는 관측 계층로 사용할 경우 `SERVER_CONFIRMED`를 
 
 5. Web 프롬프트에 review 출처 메타데이터 전달
    - exact 저장소
-   - exact SHA
+   - 정확한 SHA
    - 서버 관측 상태
 
 6. 다음 자동개발 프로젝트에서 Git-based E2E 수행
