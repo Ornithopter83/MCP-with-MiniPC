@@ -3115,9 +3115,9 @@ public partial class MainWindow : Window
             : string.Empty;
         var jevGuidance = includeControlInstructions && _targetSettings.EffectiveJudge.Enabled
             ? Environment.NewLine + Environment.NewLine
-                + "JEV 검증 지침: 구현·설계·파일·테스트 결과처럼 의미 있는 검증이 가능한 상태라면 다음 Codex 작업에서 JEV 검증을 우선 요청하도록 안내하세요."
+                + "JEV 검증 지침: 관측 사실 자체를 다시 확인하지 말고, 현재 근거만으로 기계적으로 확정할 수 없는 판단이 다음 작업이나 완료 결과에 영향을 줄 때 JEV 판정을 요청하세요."
                 + Environment.NewLine
-                + "Worker는 Codex의 [NEXT : JEV] 및 [VALIDATION REQUEST]를 감지해 JEV로 전달합니다. 검증할 항목이 없을 때만 [NEXT : WEB] 보고를 사용하세요."
+                + "이미 판정한 판단의 근거가 의미 있게 바뀌면 새 근거로 다시 요청하고, 기계적으로 확인 가능한 사실만 남았으면 JEV 없이 보고하세요."
             : string.Empty;
         return control + output + instruction + jevGuidance;
     }
