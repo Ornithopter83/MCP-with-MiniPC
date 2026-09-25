@@ -290,3 +290,12 @@ RESOURCE:
 - transcript는 `.projecthub/transcripts/<jobId>.txt`에 저장한다.
 - History 항목은 요약을 유지하고 두 번 클릭하면 Full Message를 연다.
 - 명시적 새 작업은 활성 session-state만 제거하며 과거 event/handoff/transcript 기록은 남긴다.
+
+## V — RESOURCE 전송 확인 고착 복구
+
+- 실제 Web 전송 후 사용자 메시지 DOM 확인이 지연돼도 composer 비움, 새 assistant turn, 새 RESOURCE 후보를 기계적 전송 증거로 인정한다.
+- 새 RESOURCE 결과가 보이면 SEND_CONFIRM에서 재전송하지 않고 WAIT_RESPONSE로 전환해 중복 생성 요청을 막는다.
+- WAIT_RESPONSE 진입 시점부터 120초 절대 RESOURCE 수집 마감 시간을 시작한다.
+- 확장 패널에 현재 결과 다시 수집 기능을 추가해 현재 CLAIMED RESOURCE 결과만 재탐색·다운로드할 수 있게 한다.
+- Worker RESOURCE Pipeline은 확장의 실제 progress stage를 표시한다.
+- 확장 0.1.9 / 빌드 2026-09-25.3.
