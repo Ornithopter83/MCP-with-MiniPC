@@ -255,3 +255,12 @@ RESOURCE:
 - Codex `thread.started`의 `thread_id`를 실행 중 즉시 받아 새 세션도 최종 응답 전에 보존한다.
 - 취소 뒤 후속 입력 영역과 `작업 추가`를 표시하고, 사용자가 명시적으로 요청할 때만 `USER_FOLLOWUP`으로 HQ부터 새 실행 구간을 시작한다.
 - 취소된 RESOURCE/기계적 대기 작업은 자동 재실행하지 않으며 이미 저장된 파일은 작업공간에 남긴다.
+
+## R — RESOURCE 종류 분리와 실패 WORK 복귀
+
+- WORK는 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE`을 명시한다.
+- 한 요청에는 한 종류만 포함하며 서로 다른 생성 종류는 별도 RESOURCE 요청으로 나눈다.
+- Worker는 종류를 의미 추론하지 않고 토큰만 파싱하며 Web에는 자연어 본문만 전달한다.
+- RESOURCE 성공과 실패 completion을 모두 `RESOURCE_RESULT`로 같은 WORK 세션에 전달한다.
+- 실패 completion에는 requestId, 종류, 오류 코드, 결과 메시지를 포함한다.
+- RESOURCE 실패는 더 이상 UNKNOWN→HQ 오류 요약으로 우회하지 않는다.
