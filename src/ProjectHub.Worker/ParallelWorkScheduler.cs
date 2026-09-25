@@ -156,6 +156,35 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         return result;
     }
 
+    public async Task<bool> ResumeBlockedAsync(
+        string workItemId,
+        string inputType,
+        string body,
+        CancellationToken cancellationToken = default)
+    {
+        ParallelWorkSchedulerSnapshot snapshot;
+        bool released;
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            released = _graph.TryReleaseBlocked(workItemId, inputType, body);
+            if (released && _started && !_lifetimeCts.IsCancellationRequested)
+                LaunchReadyLocked();
+            UpdateQuiescenceLocked();
+            snapshot = CreateSnapshotLocked();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        if (released)
+            StateChanged?.Invoke(snapshot);
+        return released;
+    }
+
     public async Task<ParallelWorkSchedulerSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default)
     {

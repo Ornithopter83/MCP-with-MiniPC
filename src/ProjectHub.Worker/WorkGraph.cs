@@ -243,6 +243,22 @@ public sealed class WorkGraph
         return true;
     }
 
+    public bool TryReleaseBlocked(string id, string? inputType = null, string? body = null)
+    {
+        if (!_items.TryGetValue(id, out var item) ||
+            item.State != WorkItemState.Blocked ||
+            string.IsNullOrWhiteSpace(item.BlockCode))
+            return false;
+
+        item.BlockCode = null;
+        item.ResumeInputType = NullIfWhiteSpace(inputType) ?? "WORK_RESULT";
+        item.ResumeBody = NullIfWhiteSpace(body);
+        item.State = WorkItemState.Planned;
+        item.FinishedAtUtc = null;
+        RecalculateStates();
+        return true;
+    }
+
     private static string? ApplyOperation(
         Dictionary<string, WorkItemEntry> items,
         ref long nextCreatedOrder,

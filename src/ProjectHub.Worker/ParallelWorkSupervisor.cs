@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Threading.Channels;
 
@@ -21,6 +22,15 @@ public sealed record ParallelWorkSupervisorResult(
     string HqBody,
     string? ErrorCode,
     WorkGraphSnapshot Graph);
+
+public sealed record ParallelWorkExternalBlock(
+    string WorkItemId,
+    string BlockCode,
+    string Body,
+    string? ResultRef,
+    string? Branch,
+    string? WorktreePath,
+    string? SessionId);
 
 public static class ParallelHqTurnContract
 {
@@ -79,6 +89,7 @@ public sealed class ParallelWorkSupervisor : IAsyncDisposable
             AllowSynchronousContinuations = false
         });
     private readonly HashSet<string> _reportedSignals = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _pendingExternalBlocks = new(StringComparer.Ordinal);
     private string? _lastQuiescentSignature;
     private bool _schedulerStarted;
     private bool _disposed;
@@ -100,6 +111,27 @@ public sealed class ParallelWorkSupervisor : IAsyncDisposable
     }
 
     public event Action<ParallelWorkSchedulerSnapshot>? StateChanged;
+    public event Action<ParallelWorkExternalBlock>? ExternalBlockAvailable;
+
+    public async Task<bool> ResumeExternalWorkItemAsync(
+        string workItemId,
+        string inputType,
+        string body,
+        CancellationToken cancellationToken = default)
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ParallelWorkSupervisor));
+
+        var released = await _scheduler.ResumeBlockedAsync(
+            workItemId,
+            inputType,
+            body,
+            cancellationToken).ConfigureAwait(false);
+
+        if (released)
+            _pendingExternalBlocks.TryRemove(workItemId, out _);
+        return released;
+    }
 
     public async Task<ParallelWorkSupervisorResult> RunAsync(
         string initialInboundType,
@@ -192,6 +224,7 @@ public sealed class ParallelWorkSupervisor : IAsyncDisposable
             while (_stateChanges.Reader.TryRead(out var newer))
                 snapshot = newer;
 
+            RefreshExternalBlocks(snapshot);
             var reasons = CollectNewSemanticSignals(snapshot);
             if (reasons.Count > 0)
             {
@@ -200,7 +233,9 @@ public sealed class ParallelWorkSupervisor : IAsyncDisposable
                     FormatMechanicalGraphEvent(reasons, snapshot));
             }
 
-            if (snapshot.RunningCount == 0 && snapshot.ReadyCount == 0)
+            if (snapshot.RunningCount == 0 &&
+                snapshot.ReadyCount == 0 &&
+                _pendingExternalBlocks.IsEmpty)
             {
                 var signature = BuildQuiescentSignature(snapshot);
                 if (!string.Equals(signature, _lastQuiescentSignature, StringComparison.Ordinal))
@@ -233,6 +268,29 @@ public sealed class ParallelWorkSupervisor : IAsyncDisposable
             else if (item.State == WorkItemState.Blocked && !string.IsNullOrWhiteSpace(item.BlockCode))
             {
                 signal = $"{item.Id}|BLOCKED|{item.BlockCode}|{item.FinishedAtUtc:O}";
+                if (IsExternalBlockCode(item.BlockCode))
+                {
+                    if (_reportedSignals.Add(signal))
+                    {
+                        _pendingExternalBlocks[item.Id] = signal;
+                        try
+                        {
+                            ExternalBlockAvailable?.Invoke(new ParallelWorkExternalBlock(
+                                item.Id,
+                                item.BlockCode,
+                                item.ResultSummary ?? string.Empty,
+                                item.ResultRef,
+                                item.Branch,
+                                item.WorktreePath,
+                                item.SessionId));
+                        }
+                        catch
+                        {
+                        }
+                    }
+                    continue;
+                }
+
                 reason = $"WorkItem {item.Id}가 {item.BlockCode} 상태로 HQ 판단을 기다립니다.";
             }
 
@@ -242,6 +300,22 @@ public sealed class ParallelWorkSupervisor : IAsyncDisposable
 
         return reasons;
     }
+
+    private void RefreshExternalBlocks(ParallelWorkSchedulerSnapshot snapshot)
+    {
+        foreach (var id in _pendingExternalBlocks.Keys)
+        {
+            var item = snapshot.Graph.Items.FirstOrDefault(value => value.Id == id);
+            if (item is null ||
+                item.State != WorkItemState.Blocked ||
+                !IsExternalBlockCode(item.BlockCode))
+                _pendingExternalBlocks.TryRemove(id, out _);
+        }
+    }
+
+    private static bool IsExternalBlockCode(string? blockCode)
+        => string.Equals(blockCode, "JUDGE_REQUEST", StringComparison.Ordinal) ||
+           string.Equals(blockCode, "RESOURCE_REQUEST", StringComparison.Ordinal);
 
     public static string FormatMechanicalGraphEvent(
         IReadOnlyList<string> reasons,
