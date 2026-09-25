@@ -316,3 +316,12 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - `ResourceSidecarQueue.ResourceTransportTimeout`을 5분에서 30분으로 변경했다.
 - 기존 timeout 처리와 실패 코드는 유지되며 제한 시간과 오류 메시지는 같은 상수를 사용한다.
 - 빌드·테스트는 이번 변경에서 실행하지 않았다.
+
+## 2026-09-25 HQ JUDGE Form 전송 문법 보강
+
+- WORK 계약은 질문 목록과 근거를 HQ에 보내 Form 생성을 요청하는 간략한 책임만 유지한다.
+- HQ 계약에 JUDGE 전송 문법을 추가했다.
+- HQ는 NOUL/SCORE/CHOICE와 QID 형식으로 실제 전송 가능한 Form을 작성한다.
+- SCORE에는 정수=기준, CHOICE에는 선택지=기준이 하나 이상 포함되어야 한다.
+- Worker는 의미를 판단하지 않고 기존 JudgeTransportContract로 Form 구조만 기계적으로 검사한다.
+- 이번 변경은 계약과 문서/테스트만 갱신하며 JUDGE parser 코드는 변경하지 않는다.
