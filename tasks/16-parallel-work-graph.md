@@ -534,3 +534,18 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 병렬 WORK 프롬프트에는 workItemId, kind, goal, dependencies, baseRef, branch, worktree와 이전 보고를 제공할 수 있다.
 - 병렬 WORK가 HQ로 보고할 때 `WORK_ITEM_STATUS: COMPLETED|BLOCKED|SPLIT_REQUEST|FAILED` 상태 행을 사용하도록 전용 계약을 추가했다.
 - 레거시 단일 HQ/WORK 프롬프트에는 병렬 계약을 노출하지 않아 현재 직렬 흐름을 깨지 않는다.
+
+
+### 2026-09-25 실제 WORK 실행 어댑터 기반
+
+- 사용자 병렬도 설정 commit: `2af057b40fe905d4f3e4c9d98c9f4834d21d88a9`
+- WorkItem checkpoint commit: `2ce5a6880fe116de1c53f891fadfaf9374389faf`
+- Codex WorkItem executor commit: `d1e4aee004b894efcaa6d92d9dd61e7111208c12`
+- WorkerTargetSettings에 maxConcurrentWork를 추가하고 기본값 1, 유효 범위 1~8을 사용한다. 저장된 잘못된 값은 덮어쓰지 않고 runtime에서 1로 해석한다.
+- WorkItem 전용 worktree의 변경은 HQ 보고 전에 로컬 checkpoint commit으로 기계적으로 고정할 수 있다. push와 force는 수행하지 않는다.
+- CodexWorkItemExecutor는 WorkItem별 worktree를 준비하고 기존 WORK 역할 계약으로 Codex를 실행한다.
+- 병렬 WORK의 HQ 보고는 WORK_ITEM_STATUS를 파싱해 COMPLETED/FAILED/BLOCKED/SPLIT_REQUEST를 scheduler outcome으로 변환한다.
+- JUDGE/RESOURCE 요청은 해당 WorkItem만 JUDGE_REQUEST/RESOURCE_REQUEST 상태로 BLOCKED하여 이후 전용 라우팅이 이어받을 수 있게 한다.
+- dependency의 resultRef/resultSummary를 후속 WorkItem 프롬프트에 기계적으로 전달한다.
+- 실행 결과에는 branch/worktree/sessionId를 함께 반환해 WorkGraph 실행 문맥에 보존한다.
+- 아직 MainWindow 관제 루프와 실제 병렬 scheduler를 연결하지 않았으므로 현재 사용자 실행 경로는 기존 직렬 WORK 흐름을 유지한다.

@@ -39,7 +39,9 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - ParallelWorkScheduler와 maxConcurrentWork 슬롯 실행 기반 구현
 - GitWorktreeManager와 WorkItem별 branch/worktree 격리 기반 구현
 - 병렬 HQ GraphPatch transport와 병렬 WORK_ITEM_STATUS 보고 계약 기반 구현
-- 다음 구현은 Worktree + CodexCliRunner를 결합하는 실제 WorkItem executor
+- Worktree + Codex 역할 runner를 결합하는 CodexWorkItemExecutor 구현
+- WorkItem checkpoint/resultRef와 dependency 결과 프롬프트 전달 구현
+- 현재 사용자 실행 경로는 아직 기존 직렬 WORK 흐름이며, 다음 구현은 MainWindow에서 병렬 관제 루프를 분리·연결하는 단계
 
 착수 commit:
 - 정책/계획: `0c87a0021643efc00e147fead82ed45cb1bf4c91`

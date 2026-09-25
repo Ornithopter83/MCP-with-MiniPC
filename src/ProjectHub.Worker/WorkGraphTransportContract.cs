@@ -39,7 +39,7 @@ public static class WorkGraphTransportContract
             return false;
         }
 
-        if (dto is null || dto.ExpectedRevision < 0 || dto.Operations is null || dto.Operations.Count == 0)
+        if (dto is null || dto.ExpectedRevision is null || dto.ExpectedRevision < 0 || dto.Operations is null || dto.Operations.Count == 0)
         {
             error = "WORK_GRAPH_PATCH_SCHEMA_INVALID";
             return false;
@@ -53,7 +53,7 @@ public static class WorkGraphTransportContract
             operations.Add(mapped!);
         }
 
-        patch = new WorkGraphPatch(dto.ExpectedRevision, operations);
+        patch = new WorkGraphPatch(dto.ExpectedRevision.Value, operations);
         return true;
     }
 
@@ -180,12 +180,16 @@ public static class WorkGraphTransportContract
 
     private sealed class PatchDto
     {
-        public long ExpectedRevision { get; init; }
+        public PatchDto() { }
+
+        public long? ExpectedRevision { get; init; }
         public List<OperationDto>? Operations { get; init; }
     }
 
     private sealed class OperationDto
     {
+        public OperationDto() { }
+
         public string? Type { get; init; }
         public string? WorkItemId { get; init; }
         public string? Goal { get; init; }
