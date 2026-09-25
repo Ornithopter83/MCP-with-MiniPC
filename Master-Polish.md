@@ -1,10 +1,17 @@
 # Master-Polish — ProjectHub 현재 정책
 
-Updated: 2026-09-25 (KST)
+## 문서 언어 절대 규칙
+
+- 이 저장소의 정책 문서, 작업 문서, 인수인계 문서, 역할 계약, AI 역할 프롬프트의 설명 문장은 반드시 한글로 작성하고 저장한다.
+- 설명 문장을 영문으로 작성하거나 영문 상태로 저장해서는 안 된다.
+- ACTION, GOTO, QID, 상태 코드, 클래스명, 파일명, 명령어, API 필드명, 외부 제품명처럼 상호 운용이나 코드 식별에 필요한 고유 토큰만 원형을 유지할 수 있다.
+
+
+갱신일: 2026-09-25 (KST)
 
 이 문서는 ProjectHub의 현재 최상위 정책 원본이다.
 
-ProjectHub의 목표는 AI가 설계·판단하고 Worker가 흐름·세션·transport·telemetry만 기계적으로 관리하는 역할 분리형 개발 도구다.
+ProjectHub의 목표는 AI가 설계·판단하고 Worker가 흐름·세션·전송·계측만 기계적으로 관리하는 역할 분리형 개발 도구다.
 
 ---
 
@@ -15,13 +22,13 @@ Worker는 의미 판단 주체가 아니다.
 Worker가 처리할 수 있는 것:
 - 현재 역할 상태 저장 및 허용 상태 전이 검사
 - ACTION/GOTO 제어행 문법 파싱
-- 역할별 session/transport/process 실행
-- timeout/cancel/auth/schema/path-safety 오류 처리
-- Web conversation binding 및 heartbeat 생존 확인
-- transcript/usage/file telemetry 기록
-- Worker가 실제로 생성·전달한 HQ/RESOURCE Web outbound와 RESOURCE lifecycle 기록
-- JUDGE transport schema와 RESOURCE 자연어 body의 기계적 전달
-- UNKNOWN 원문 로그와 HQ용 한글 오류 요약
+- 역할별 세션/전송/프로세스 실행
+- 시간 초과/취소/인증/스키마/경로 안전성 오류 처리
+- Web 대화 연결 및 생존 신호 생존 확인
+- 기록/사용량/file 계측 기록
+- Worker가 실제로 생성·전달한 HQ/RESOURCE Web 송신와 RESOURCE 생명주기 기록
+- JUDGE 전송 스키마와 RESOURCE 자연어 본문의 기계적 전달
+- 미확인 원문 로그와 HQ용 한글 오류 요약
 - 이미 알고 있는 실행 사실을 History UI에 표시
 
 Worker가 하지 않는 것:
@@ -39,11 +46,11 @@ Worker가 하지 않는 것:
 
 | 상태 | UI 역할명 | 책임 | 실행 |
 | --- | --- | --- | --- |
-| HQ | 설계·관제 AI | 사용자 요청 해석, 구현 방향 설계, WORK 지시, JUDGE 질문 검토, CONTINUE/PAUSE/END | ChatGPT Web 또는 CLI Provider |
-| WORK | 작업 AI | 코드 구현·수정·빌드·테스트·보고, RESOURCE/JUDGE 요청 | CLI Provider |
+| HQ | 설계·관제 AI | 사용자 요청 해석, 구현 방향 설계, WORK 지시, JUDGE 질문 검토, CONTINUE/PAUSE/END | ChatGPT Web 또는 CLI 제공자 |
+| WORK | 작업 AI | 코드 구현·수정·빌드·테스트·보고, RESOURCE/JUDGE 요청 | CLI 제공자 |
 | RESOURCE | 리소스 AI | 최종 생성 이미지 제작·복수 이미지 다운로드·지정 파일 저장 | 별도 ChatGPT Web 고정 |
 | JUDGE | 작업 판단 AI | HQ 검토를 거친 WORK 질문 판정 | JEV |
-| UNKNOWN | 오류 상태 | 기계적 오류 기록 및 HQ 요약 복귀 | Worker 내부 |
+| 미확인 | 오류 상태 | 기계적 오류 기록 및 HQ 요약 복귀 | Worker 내부 |
 
 상태 전이:
 
@@ -60,13 +67,13 @@ UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
 UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
 
-HIGH 역할, HIGH GOTO, HIGH one-shot permit, high_uses_remaining, 고수준 작업 허용 UI는 현재 정책에 존재하지 않는다.
+HIGH 역할, HIGH GOTO, HIGH 일회성 허가, high_uses_remaining, 고수준 작업 허용 UI는 현재 정책에 존재하지 않는다.
 
 ---
 
 ## 3. HQ 실행 대상
 
-HQ target은 두 종류다.
+HQ 대상은 두 종류다.
 
 ~~~text
 HQ
@@ -77,20 +84,20 @@ HQ
    └─ Muse
 ~~~
 
-- ChatGPT Web 선택 시 Provider/Model/Reasoning/CLI session UI를 숨긴다.
-- CLI 선택 시 Provider → Model → Reasoning → Session 구조를 사용한다.
+- ChatGPT Web 선택 시 제공자/모델/추론/CLI 세션 UI를 숨긴다.
+- CLI 선택 시 제공자 → 모델 → 추론 → 세션 구조를 사용한다.
 - OpenAI Codex CLI는 실제 실행이 연결되어 있다.
-- Claude/Muse는 기존 provider abstraction을 유지하되 실제 runner가 연결되기 전에는 미연결 오류를 반환한다.
-- 과거 transport=web을 CLI_TO_CLI에서 자동으로 codex_cli로 바꾸지 않는다.
-- WORK에는 ChatGPT Web target을 추가하지 않는다.
+- Claude/Muse는 기존 제공자 abstraction을 유지하되 실제 runner가 연결되기 전에는 미연결 오류를 반환한다.
+- 과거 전송=web을 CLI_TO_CLI에서 자동으로 codex_cli로 바꾸지 않는다.
+- WORK에는 ChatGPT Web 대상을 추가하지 않는다.
 
 ---
 
-## 4. Web binding
+## 4. Web 연결
 
-HQ Web과 RESOURCE Web은 반드시 서로 다른 ChatGPT conversation을 사용한다.
+HQ Web과 RESOURCE Web은 반드시 서로 다른 ChatGPT 대화을 사용한다.
 
-Bridge는 다음 역할 binding을 명시적으로 저장한다.
+Bridge는 다음 역할 연결을 명시적으로 저장한다.
 
 ~~~text
 HQ       -> conversationId A
@@ -98,10 +105,10 @@ RESOURCE -> conversationId B
 ~~~
 
 - 사용자가 각 ChatGPT 대화의 확장 패널에서 HQ 또는 RESOURCE 역할을 명시적으로 연결한다.
-- 하나의 conversationId를 HQ와 RESOURCE에 동시에 binding하지 않는다.
-- heartbeat는 대화가 살아 있는지/확장 버전이 맞는지 확인하는 용도다.
-- 마지막 heartbeat conversation을 task 목적지로 사용하지 않는다.
-- Worker는 역할 binding에서 얻은 conversationId로 task를 명시적으로 생성한다.
+- 하나의 conversationId를 HQ와 RESOURCE에 동시에 연결하지 않는다.
+- 생존 신호는 대화가 살아 있는지/확장 버전이 맞는지 확인하는 용도다.
+- 마지막 생존 신호 대화을 작업 목적지로 사용하지 않는다.
+- Worker는 역할 연결에서 얻은 conversationId로 작업를 명시적으로 생성한다.
 
 ---
 
@@ -151,9 +158,9 @@ JUDGE:
 <opaque body>
 ~~~
 
-RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. HQ가 아직 END하지 않은 동안 완료 결과가 다음 WORK 작업에 필요하면 Worker가 기계적으로 함께 전달할 수 있다. HQ가 END한 뒤에는 RESOURCE 완료 때문에 HQ나 WORK를 다시 호출하지 않는다. Worker는 HQ 종료 상태를 고정하고 남은 기계적 대기 작업만 추적한다.
+RESOURCE는 메인 역할 상태와 분리된 사이드카 대기열로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO 대기열에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. HQ가 아직 END하지 않은 동안 완료 결과가 다음 WORK 작업에 필요하면 Worker가 기계적으로 함께 전달할 수 있다. HQ가 END한 뒤에는 RESOURCE 완료 때문에 HQ나 WORK를 다시 호출하지 않는다. Worker는 HQ 종료 상태를 고정하고 남은 기계적 대기 작업만 추적한다.
 
-일반 body는 opaque다. JUDGE destination의 schema 검사와 RESOURCE 자연어 body의 비어 있음 검사는 transport 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
+일반 본문는 불투명다. JUDGE 목적지의 스키마 검사와 RESOURCE 자연어 본문의 비어 있음 검사는 전송 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
 
 ---
 
@@ -191,13 +198,13 @@ JUDGE -> WORK   raw 결과
 
 - NOUL/SCORE/CHOICE는 quota나 의무 비율이 아니다.
 - Worker는 HQ 검토가 의미적으로 충분했는지 검사하지 않는다.
-- JEV raw response는 같은 WORK session으로 반환한다.
+- JEV raw response는 같은 WORK 세션으로 반환한다.
 
 ---
 
 ## 8. RESOURCE 흐름
 
-현재 RESOURCE는 IMAGE 생성 → 복수 이미지 다운로드 → 저장 → 기록을 sidecar FIFO queue로 수행한다.
+현재 RESOURCE는 IMAGE 생성 → 복수 이미지 다운로드 → 저장 → 기록을 사이드카 FIFO 대기열로 수행한다.
 
 ~~~text
 WORK -> GOTO:RESOURCE + 자연어 요청
@@ -223,19 +230,19 @@ WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지
 <natural-language image generation request>
 ~~~
 
-Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE queue에 넣는다. 저장 위치는 Worker가 기계적으로 `assets/resources/<requestId>/image-01.*`, `image-02.*` 형태로 생성한다.
+Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE 대기열에 넣는다. 저장 위치는 Worker가 기계적으로 `assets/resources/<requestId>/image-01.*`, `image-02.*` 형태로 생성한다.
 
 기계적 ResourceRequest 기록:
 - Id
 - Type: IMAGE
-- Prompt
+- 프롬프트
 - TargetDirectory
 - TargetFileName
 - RequestedBy
 - Status: REQUESTED / GENERATING / SAVED / FAILED
 - SavedPath
 
-현재 RESOURCE 실제 범위는 IMAGE이며 SOUND transport 예약 규칙은 제거한다.
+현재 RESOURCE 실제 범위는 IMAGE이며 SOUND 전송 예약 규칙은 제거한다.
 
 RESOURCE가 하지 않는 것:
 - 자동 코드 연결
@@ -258,19 +265,19 @@ RESOURCE가 하지 않는 것:
 ~~~
 
 표시:
-- 설계·관제: ChatGPT Web 또는 선택된 CLI model
-- 작업: 선택된 WORK model
+- 설계·관제: ChatGPT Web 또는 선택된 CLI 모델
+- 작업: 선택된 WORK 모델
 - 리소스: ChatGPT Web
 - 판정: JEV
 
-대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold active border/orbit은 사용하지 않는다. 실행 중에는 현재 메인 역할이 gold active border/orbit으로 강조된다. RESOURCE sidecar가 실행/대기 중이면 메인 역할과 별개로 RESOURCE 카드의 gold orbit도 독립 동작하며 상태와 대기 건수를 표시한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
+대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold 활성 border/orbit은 사용하지 않는다. 실행 중에는 현재 메인 역할이 gold 활성 border/orbit으로 강조된다. RESOURCE 사이드카가 실행/대기 중이면 메인 역할과 별개로 RESOURCE 카드의 gold orbit도 독립 동작하며 상태와 대기 건수를 표시한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
 
 설정:
-- HQ: 실행 대상 Web/CLI + CLI일 때 Provider/Model/Reasoning/Session
-- WORK: Provider/Model/Reasoning/Session. 기본값은 OpenAI / GPT-6 Luna / Medium이며 저장 모델을 임의 변환하는 migration은 하지 않는다.
+- HQ: 실행 대상 Web/CLI + CLI일 때 제공자/모델/추론/세션
+- WORK: 제공자/모델/추론/세션. 기본값은 OpenAI / GPT-6 Luna / Medium이며 저장 모델을 임의 변환하는 마이그레이션은 하지 않는다.
 - RESOURCE: ChatGPT Web 고정
 - JUDGE: JEV 설정
-- HQ/RESOURCE Web 카드는 각각 명시적 role binding의 연결/heartbeat/확장 동기화 상태와 연결된 대화 정보를 보여준다.
+- HQ/RESOURCE Web 카드는 각각 명시적 역할 연결의 연결/생존 신호/확장 동기화 상태와 연결된 대화 정보를 보여준다.
 - 설정 본문은 작은 화면에서도 세로 스크롤되며 하단 닫기/적용 버튼은 항상 별도 footer에 남는다.
 - 역할 표기는 설계·관제 / 작업 / 리소스 / 판정으로 통일한다.
 
@@ -278,19 +285,19 @@ RESOURCE가 하지 않는 것:
 
 ## 10. 현재 활성 작업
 
-활성 task는 tasks/14-resource-web-role.md다.
+활성 작업는 tasks/14-resource-web-역할.md다.
 
 구현 코드 범위:
-1. HIGH 제거 / RESOURCE role + sidecar queue
-2. HQ Web target 복원
-3. HQ/RESOURCE explicit conversation binding
+1. HIGH 제거 / RESOURCE 역할 + 사이드카 대기열
+2. HQ Web 대상 복원
+3. HQ/RESOURCE 명시적 대화 연결
 4. HQ 설계 책임 + PAUSE 예시
 5. WORK RESOURCE 위임 계약
-6. RESOURCE sidecar FIFO queue + 복수 IMAGE 결과 transport와 저장
-7. Pipeline/Settings/History 교체
+6. RESOURCE 사이드카 FIFO 대기열 + 복수 IMAGE 결과 전송와 저장
+7. Pipeline/설정/History 교체
 8. 테스트/문서 갱신
 
-실제 Windows build/test/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
+실제 Windows 빌드/test/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
 
 
 ## 11. 역할 계약 일반화 규칙
