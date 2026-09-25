@@ -670,6 +670,18 @@ public sealed class BridgeServer : IDisposable
         if (string.IsNullOrWhiteSpace(stem))
             stem = $"resource-{index:D2}";
 
+        if (stem.Length > 120)
+            stem = stem[..120];
+
+        var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CON", "PRN", "AUX", "NUL",
+            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        };
+        if (reserved.Contains(stem))
+            stem = "_" + stem;
+
         var fileName = stem + extension;
         var suffix = 2;
         while (!usedNames.Add(fileName))
