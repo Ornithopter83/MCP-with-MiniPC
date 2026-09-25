@@ -264,3 +264,11 @@ RESOURCE:
 - RESOURCE 성공과 실패 completion을 모두 `RESOURCE_RESULT`로 같은 WORK 세션에 전달한다.
 - 실패 completion에는 requestId, 종류, 오류 코드, 결과 메시지를 포함한다.
 - RESOURCE 실패는 더 이상 UNKNOWN→HQ 오류 요약으로 우회하지 않는다.
+
+## S — JUDGE 질문 원자화 실험
+
+- HQ는 WORK가 올린 판정 질문에 대해 JUDGE 필요 여부를 재판단하지 않는다.
+- HQ는 판정 질문을 가능한 한 작은 독립 질문으로 원자화하고 범위/evidence/응답 형태/수치화 기준을 정제한다.
+- HQ의 `JUDGE 불필요` 선택은 이 실험 동안 사용하지 않는다.
+- WORK는 HQ가 정제한 판정 질문을 다시 필요성 판단하지 않고 JUDGE로 전송한다.
+- Worker 코드 강제 규칙은 추가하지 않고 역할 계약 변화만으로 호출 빈도와 품질을 검증한다.
