@@ -43,7 +43,7 @@ Worker가 판단하지 않는 것:
 
 현재 Web 작업 환경에는 .NET SDK/Windows Explorer 실행 환경이 없으므로 다음은 Windows에서 실검증해야 한다.
 
-- dotnet test ProjectHub.sln
+- `dotnet test ProjectHub.sln` 실행
 - Release 빌드/게시
 - HQ CLI 흐름
 - HQ Web 흐름
