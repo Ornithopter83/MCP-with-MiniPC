@@ -477,10 +477,13 @@ public partial class MainWindow
                     hadMechanicalErrors = true;
             }
 
-            var finalStatus = hadMechanicalErrors
+            var hadGraphErrors = result.Graph.Items.Any(
+                item => item.State == WorkItemState.Failed);
+            var finalHasErrors = hadMechanicalErrors || hadGraphErrors;
+            var finalStatus = finalHasErrors
                 ? "DONE_WITH_ERROR"
                 : "DONE";
-            ResultTitle.Text = hadMechanicalErrors
+            ResultTitle.Text = finalHasErrors
                 ? "DONE · 오류 기록 있음"
                 : "DONE";
             ResultBody.Text = result.HqBody;
