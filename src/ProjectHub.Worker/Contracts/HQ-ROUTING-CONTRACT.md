@@ -81,7 +81,7 @@ operations의 type:
 - SET_DEPENDENCIES: workItemId, dependencies
 - SET_GOAL: workItemId, value
 - SET_BASE_REF: workItemId, value
-- RELEASE: workItemId
+- RELEASE: workItemId, 선택적 inputType, 선택적 value. 차단된 같은 WORK 세션에 새 관제 입력을 돌려줄 때 사용한다.
 - SET_MAX_CONCURRENCY는 사용자 설정 전용이므로 HQ가 전송하지 않는다.
 
 Worker는 JSON 구조, revision, ID, dependency 존재, self dependency, cycle 같은 기계적 유효성만 검사한다. 작업 분해와 dependency가 의미적으로 적절한지는 HQ 책임이다.

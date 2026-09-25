@@ -120,7 +120,10 @@ public static class WorkGraphTransportContract
             case "RELEASE":
                 if (!IsSafeId(id))
                     return Fail("WORK_GRAPH_WORK_ITEM_ID_INVALID", out mapped, out error);
-                mapped = WorkGraphPatchOperation.Release(id);
+                mapped = WorkGraphPatchOperation.Release(
+                    id,
+                    NullIfWhiteSpace(operation.InputType),
+                    NullIfWhiteSpace(operation.Value));
                 return true;
 
             case "SET_MAX_CONCURRENCY":
@@ -197,6 +200,7 @@ public static class WorkGraphTransportContract
         public string? Kind { get; init; }
         public string? BaseRef { get; init; }
         public string? Value { get; init; }
+        public string? InputType { get; init; }
     }
 }
 

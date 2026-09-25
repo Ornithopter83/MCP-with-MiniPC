@@ -77,8 +77,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             .ToArray();
 
         var prompt = RoleContractLoader.BuildWorkPrompt(
-            item.SessionId is null ? "WORK_ITEM" : "WORK_ITEM_RESUME",
-            item.Goal,
+            request.InboundType,
+            request.InboundBody,
             _judgeAvailable,
             _observationRequestDirectory?.Invoke(item.Id),
             new WorkItemPromptContext(
