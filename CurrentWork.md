@@ -349,3 +349,14 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 명시적 새 작업은 활성 session-state만 제거하고 과거 이벤트/handoff/transcript는 보존한다.
 - 관련 계약 및 프로젝트 기억/event log 단위 테스트를 추가했다.
 - 이번 변경에 대해 Windows `dotnet test`/빌드는 아직 실행하지 않았다.
+
+## 2026-09-25 RESOURCE Send 확인 고착 복구
+
+- 실제 요청이 ChatGPT Web에 전송되고 이미지가 생성됐지만 확장이 SEND_CONFIRM에서 새 사용자 메시지를 확인하지 못해 WAIT_RESPONSE로 넘어가지 못하는 로그를 확인했다.
+- 전송 성공의 기계적 증거를 새 사용자 메시지 외에 composer 비움, 새 assistant turn, 새 RESOURCE 후보까지 확대했다.
+- 새 생성 결과가 이미 나타난 경우 프롬프트를 재전송하지 않고 바로 RESOURCE 수집으로 전환한다.
+- WAIT_RESPONSE 진입과 동시에 120초 절대 수집 timeout을 시작한다.
+- 확장 패널에 `현재 결과 다시 수집` 버튼을 추가했으며 재전송 없이 현재 결과만 스캔한다.
+- Worker RESOURCE Pipeline의 단일 `생성·다운로드 중` 표시는 Web 확장 progress에 따라 전송 확인/생성 결과 대기/결과 확인/다운로드/Worker 전달로 세분화했다.
+- 확장 버전 0.1.9 / 빌드 2026-09-25.3, Worker가 요구하는 확장 버전도 동일하게 갱신했다.
+- 실제 RESOURCE Web 이미지 생성 E2E와 Windows `dotnet test`는 아직 실행 확인이 필요하다.
