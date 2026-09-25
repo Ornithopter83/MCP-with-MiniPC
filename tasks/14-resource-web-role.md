@@ -265,10 +265,9 @@ RESOURCE:
 - 실패 completion에는 requestId, 종류, 오류 코드, 결과 메시지를 포함한다.
 - RESOURCE 실패는 더 이상 UNKNOWN→HQ 오류 요약으로 우회하지 않는다.
 
-## S — JUDGE 질문 원자화 실험
+## S — JUDGE용 Form 생성 흐름
 
-- HQ는 WORK가 올린 판정 질문에 대해 JUDGE 필요 여부를 재판단하지 않는다.
-- HQ는 판정 질문을 가능한 한 작은 독립 질문으로 원자화하고 범위/evidence/응답 형태/수치화 기준을 정제한다.
-- HQ의 `JUDGE 불필요` 선택은 이 실험 동안 사용하지 않는다.
-- WORK는 HQ가 정제한 판정 질문을 다시 필요성 판단하지 않고 JUDGE로 전송한다.
-- Worker 코드 강제 규칙은 추가하지 않고 역할 계약 변화만으로 호출 빈도와 품질을 검증한다.
+- WORK는 검증할 내용을 질문 목록과 현재 근거로 정리해 HQ에 JUDGE용 Form 생성을 요청한다.
+- HQ는 질문을 독립 판단 단위로 정리하고 필요한 범위, evidence, 응답 형태, 기준을 포함한 JUDGE용 Form으로 돌려준다.
+- WORK는 받은 Form을 `[GOTO : JUDGE]`로 전송한다.
+- Worker는 질문이나 Form의 의미를 판단하지 않고 기존 JUDGE 전송 스키마만 기계적으로 검사한다.
