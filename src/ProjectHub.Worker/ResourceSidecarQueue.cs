@@ -166,10 +166,10 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         var targetDirectory = $"assets/resources/{request.Id}";
         var trackedResource = new ResourceRequest(
             request.Id,
-            "IMAGE",
+            "RESOURCE",
             request.Prompt,
             targetDirectory,
-            "image-01.png",
+            "resource-01.bin",
             "WORK",
             "REQUESTED",
             null,
@@ -228,9 +228,12 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
 
     private static string FailureCode(BridgeTask task) => task.FinishReason switch
     {
-        "resource_image_not_generated" => "RESOURCE_IMAGE_NOT_GENERATED",
-        "resource_image_capture_failed" => "RESOURCE_IMAGE_CAPTURE_FAILED",
-        "resource_image_download_failed" => "RESOURCE_IMAGE_DOWNLOAD_FAILED",
+        "resource_not_generated" => "RESOURCE_NOT_GENERATED",
+        "resource_capture_failed" => "RESOURCE_CAPTURE_FAILED",
+        "resource_download_failed" => "RESOURCE_DOWNLOAD_FAILED",
+        "resource_image_not_generated" => "RESOURCE_NOT_GENERATED",
+        "resource_image_capture_failed" => "RESOURCE_CAPTURE_FAILED",
+        "resource_image_download_failed" => "RESOURCE_DOWNLOAD_FAILED",
         "resource_save_failed" => "RESOURCE_SAVE_FAILED",
         "send_failed" => "RESOURCE_WEB_DELIVERY_FAILED",
         "resource_timeout" => "RESOURCE_TIMEOUT",
