@@ -400,6 +400,8 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 - WORK는 자신에게 배정된 WorkItem 범위 안에서 구현·검증하고, 새 독립 작업이 필요하다고 판단하면 직접 새 WORK를 시작하지 않고 SPLIT_REQUEST를 HQ에 보고한다.
 - Worker는 WorkItem의 의미를 판단하지 않는다. 이미 HQ가 승인한 WorkGraph에서 상태와 의존성을 기계적으로 계산하고 READY WorkItem을 빈 슬롯에 배정한다.
 - 여러 READY WorkItem 중 별도 의미 우선순위가 없으면 Worker는 HQ가 제공한 명시적 순서 또는 안정적인 생성 순서를 기계적으로 사용한다.
+- 새 Job은 maxConcurrentWork가 1이어도 동일한 WorkGraph/Scheduler 경로를 사용한다. 값 1은 병렬 기능을 끄는 레거시 모드가 아니라 실행 슬롯을 하나로 제한한 직렬 WorkGraph 모드다.
+- 병렬 기능 도입 전 저장된 레거시 continuation은 저장 WorkGraph가 없고 maxConcurrentWork가 1인 경우에만 기존 직렬 실행 경로를 유지해 과거 세션 호환성을 보존한다.
 
 WorkItem 기본 상태:
 - PLANNED: HQ가 정의했지만 아직 실행 조건을 평가하지 않은 상태

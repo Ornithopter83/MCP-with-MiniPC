@@ -584,3 +584,12 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 작업 카드 ToolTip에는 RUNNING WorkItem의 slot과 READY/BLOCKED/COMPLETED/FAILED WorkItem ID 목록을 표시한다.
 - 병렬 실행 종료 시 상태 텍스트와 ToolTip을 제거하고 기존 모델 표시로 복구한다.
 - `ParallelWorkUiFormatterTests`를 Windows 병렬 검증 스크립트 대상에 포함했다.
+
+
+### 2026-09-26 max=1 동일 runtime 정리
+
+- `d446365a17debaf3f9b2ba3102e7c2377389738c`: 새 Job은 `maxConcurrentWork=1`이어도 WorkGraph/Scheduler runtime을 사용하도록 전환했다.
+- 따라서 max=1과 max=4의 차이는 실행 엔진이 아니라 슬롯 수뿐이며, max=1 회귀 검증도 동일 병렬 구조의 직렬 모드 검증이 된다.
+- 병렬화 이전 continuation을 깨지 않기 위해 저장 WorkGraph가 없는 기존 continuation은 max=1일 때만 레거시 직렬 runtime으로 이어간다.
+- 저장 WorkGraph가 있거나 maxConcurrentWork를 2 이상으로 올린 continuation은 병렬 runtime으로 복귀한다.
+- `ParallelWorkActivationPolicyTests`를 추가했고 Windows 검증 스크립트의 핵심 테스트 필터에도 포함했다.
