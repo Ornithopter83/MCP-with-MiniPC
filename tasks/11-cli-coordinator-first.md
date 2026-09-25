@@ -93,7 +93,7 @@ Worker는 이미 다음을 알고 있다:
 - 현재 WorkerRoleState
 - 어떤 role call이 끝났는지
 - 파싱된 ACTION/GOTO
-- Codex/JEV usage
+- Codex/JEV 사용량
 - result.Files 및 향후 파일 변경 계측
 
 이 정보를 직접 이력 카드 생성기에 전달한다.
@@ -149,7 +149,7 @@ protocol/제공자/세션/transport 오류 원문은 로컬 로그에 보관하�
 - file 변경 유형 UNKNOWN을 생성/수정로 추정하지 않음
 - Legacy Web NEXT:WEB/JEV 회귀 없음
 
-## Explorer E2E
+## Explorer E2E 검증
 
 ~~~text
 A. HQ -> WORK -> HQ -> END
