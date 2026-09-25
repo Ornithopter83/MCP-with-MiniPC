@@ -559,7 +559,9 @@ public partial class MainWindow : Window
     private void BeginNewDashboardTask()
     {
         ExportTaskTranscript();
+        ProjectWorkspacePersistence.ClearContinuation(_activeWorkingDirectory);
         _continuationState = null;
+        _activeProjectJobId = null;
         SetFollowupComposerVisible(false);
         _historyEvents.Clear();
         DashboardTaskInput.Text = DashboardPromptPlaceholder;
@@ -2105,6 +2107,69 @@ public partial class MainWindow : Window
             : "Git: UNCONFIGURED";
         TargetPathText.Text = !string.IsNullOrWhiteSpace(selected?.SessionId) ? $"Codex ProjectPath: {selected.ProjectPath}" : $"New thread folder: {workingDirectory}";
         RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
+        TryRestoreProjectContinuation(workingDirectory);
+    }
+
+    private void TryRestoreProjectContinuation(string workingDirectory)
+    {
+        if (!_targetSettings.IsCoordinatorFirst ||
+            _activeTaskCts is not null ||
+            _awaitingWebResult ||
+            _continuationState is not null ||
+            string.IsNullOrWhiteSpace(workingDirectory) ||
+            !Directory.Exists(workingDirectory))
+            return;
+
+        var snapshot = ProjectWorkspacePersistence.TryLoad(workingDirectory);
+        if (snapshot is null || !TaskContinuationContract.IsResumableStatus(snapshot.Status))
+            return;
+
+        _continuationState = snapshot.ToContinuation();
+        _activeWorkingDirectory = workingDirectory;
+        _activeProjectJobId = snapshot.JobId;
+        _taskStartedAt = snapshot.UpdatedAtUtc.ToLocalTime();
+        _taskProjectName = new DirectoryInfo(workingDirectory).Name;
+        _taskThreadName = "ProjectMemory";
+        _taskTranscriptPath = ProjectWorkspacePersistence.TranscriptPath(workingDirectory, snapshot.JobId);
+        _taskExported = false;
+
+        _taskMessages.Clear();
+        _messageLogItems.Clear();
+        var priorEvents = ProjectWorkspacePersistence.ReadRecentEvents(workingDirectory, snapshot.JobId);
+        foreach (var entry in priorEvents)
+        {
+            _taskMessages.Add(new TaskMessage(entry.Timestamp, entry.Source, entry.FullMessage));
+            _messageLogItems.Add($"[{entry.Timestamp.LocalDateTime:HH:mm:ss}] {entry.Source}{Environment.NewLine}{entry.FullMessage}");
+        }
+        MessageLogEmptyText.Visibility = priorEvents.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        _historyEvents.Clear();
+        var recoveryMessage =
+            $"프로젝트 폴더의 기억을 복구했습니다.{Environment.NewLine}" +
+            $"상태: {snapshot.Status}{Environment.NewLine}" +
+            $"작업 ID: {snapshot.JobId}{Environment.NewLine}" +
+            $"기억 파일: {ProjectWorkspacePersistence.HandoffPath(workingDirectory)}{Environment.NewLine}" +
+            $"이벤트 로그: {snapshot.EventLogPath}";
+        _historyEvents.Add(new WorkerHistoryEvent(
+            DateTimeOffset.Now,
+            "Message",
+            "PROJECT_MEMORY_RESTORED",
+            "프로젝트 기억 복구",
+            WorkerHistoryCardFormatter.Preview(recoveryMessage),
+            Encoding.UTF8.GetByteCount(recoveryMessage),
+            priorEvents.Count,
+            null,
+            snapshot.Status,
+            null)
+        {
+            FullMessage = recoveryMessage,
+            TokenDetails = "토큰 · 해당 없음",
+            FileDetails = "파일 · 프로젝트 기억"
+        });
+
+        SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
+        SetFollowupComposerVisible(true);
+        RefreshMessageLog();
     }
 
     private async Task RefreshCodexModelCatalogAsync()
