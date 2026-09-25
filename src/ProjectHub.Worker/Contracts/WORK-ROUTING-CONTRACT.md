@@ -27,7 +27,11 @@ CHOICE | QID:<id> <질문>
 
 RESOURCE 위임
 - [GOTO : RESOURCE]는 WORK의 허용 목적지 중 하나다.
-- RESOURCE 본문에는 현재 한 건의 리소스 생성에 필요한 자연어 생성 지시만 넣고, 다른 내용은 절대 넣어선 안 된다.
+- RESOURCE 요청의 첫 줄에는 정확히 `RESOURCE_TYPE: <종류>`를 쓴다.
+- 종류는 IMAGE, AUDIO, VIDEO, DOCUMENT, FILE 중 하나다.
+- 한 RESOURCE 요청에는 한 종류의 생성 리소스만 포함한다. 서로 다른 종류가 필요하면 요청을 분리한다.
+- RESOURCE_TYPE 다음에는 현재 한 건의 리소스 생성에 필요한 자연어 생성 지시만 넣고, 상태 조회·저장 지시·Worker 운영 지시는 넣지 않는다.
+- RESOURCE 실패 결과가 돌아오면 같은 WORK 세션에서 원 요청과 오류 사실을 보고 필요한 다음 동작을 결정한다.
 
 라우팅
 - 한 응답은 허용된 목적지 하나만 선택한다.
