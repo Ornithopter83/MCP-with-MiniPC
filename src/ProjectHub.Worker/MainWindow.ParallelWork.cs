@@ -325,8 +325,11 @@ public partial class MainWindow
                     var implementerModel = AiProviderCatalog.FormatModel(
                         implementer.Provider,
                         implementer.Model);
-                    ImplementerStageModelText.Text =
-                        $"{implementerModel} · {snapshot.RunningCount}/{snapshot.Graph.MaxConcurrentWork}";
+                    ImplementerStageModelText.Text = implementerModel;
+                    var parallelUi = ParallelWorkUiFormatter.Format(snapshot);
+                    ImplementerParallelStateText.Text = parallelUi.Summary;
+                    ImplementerParallelStateText.Visibility = Visibility.Visible;
+                    PipelineImplementerCard.ToolTip = parallelUi.Detail;
                     TaskDirection.Text = "작업 AI";
                     TaskTitle.Text =
                         $"병렬 WORK · {snapshot.RunningCount}/{snapshot.Graph.MaxConcurrentWork} 실행 중 · " +
@@ -614,7 +617,13 @@ public partial class MainWindow
             _resourceSidecarActive = false;
             _resourceSidecarQueued = 0;
             _resourceSidecarStatus = "ChatGPT Web";
-            RunOnUi(UpdateDashboardSummary);
+            RunOnUi(() =>
+            {
+                ImplementerParallelStateText.Text = string.Empty;
+                ImplementerParallelStateText.Visibility = Visibility.Collapsed;
+                PipelineImplementerCard.ToolTip = null;
+                UpdateDashboardSummary();
+            });
             _activeCoordinatorFirst = false;
             _activeTaskCts = null;
             _userCanceledTask = false;
