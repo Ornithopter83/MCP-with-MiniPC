@@ -589,7 +589,7 @@ public sealed class BridgeServer : IDisposable
     private static List<string> SaveResourceResults(ResourceRequest resource, ResultRequest request)
     {
         if (!resource.Type.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase) &&
-            !resource.Type.Equals("IMAGE", StringComparison.OrdinalIgnoreCase))
+            !ResourceTransportContract.IsSupportedType(resource.Type))
             throw new InvalidOperationException("RESOURCE_TYPE_UNSUPPORTED");
 
         var payloads = request.ResultFiles?.Where(file => !string.IsNullOrWhiteSpace(file.Base64)).ToList()
