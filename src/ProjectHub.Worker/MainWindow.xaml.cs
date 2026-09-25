@@ -64,6 +64,7 @@ public partial class MainWindow : Window
     public sealed record WorkerHistoryEvent(DateTimeOffset Timestamp, string StageKey, string EventType, string Title, string? Summary, long? SizeBytes, int? ItemCount, int? FileCount, string? Status, string? ReferenceId)
     {
         public string? IconAssetOverride { get; init; }
+        public string FullMessage { get; init; } = string.Empty;
         public string TokenDetails { get; init; } = "토큰 · 해당 없음";
         public string FileDetails { get; init; } = "파일 · 해당 없음";
         public string Role => StageKey switch { "Coordinator" => "설계·관제", "Implementer" => "작업", "Resource" => "리소스", "Judge" => "판정", "Message" => "메시지", _ => "시스템" };
@@ -103,6 +104,7 @@ public partial class MainWindow : Window
     private string _taskThreadName = "NewThread";
     private bool _taskExported;
     private string? _taskTranscriptPath;
+    private string? _activeProjectJobId;
     private CoordinatorContinuationState? _continuationState;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
