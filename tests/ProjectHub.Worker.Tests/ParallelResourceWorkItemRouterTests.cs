@@ -33,7 +33,7 @@ public sealed class ParallelResourceWorkItemRouterTests
                 "RESOURCE_TYPE: IMAGE\n작은 아이콘을 생성해 주세요.",
                 null,
                 "branch-W9",
-                "worktree-W9",
+                root,
                 "session-W9"));
 
             var resume = await host.Resume.Task.WaitAsync(cts.Token);
@@ -43,6 +43,49 @@ public sealed class ParallelResourceWorkItemRouterTests
             Assert.Contains("workItemId: W9", resume.Body);
             Assert.Contains("status: FAILED", resume.Body);
             Assert.Contains("RESOURCE_WEB_UNAVAILABLE", resume.Body);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task MissingWorktreeReturnsFailureWithoutWritingToMainWorkspace()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-parallel-resource-missing-worktree-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var host = new FakeHost();
+
+        try
+        {
+            await using var queue = new ResourceSidecarQueue(
+                bridgeServer: null,
+                workingDirectory: root,
+                jobCancellation: cts.Token);
+            await using var router = new ParallelResourceWorkItemRouter(
+                host,
+                queue,
+                cts.Token);
+
+            host.Publish(new ParallelWorkExternalBlock(
+                "W3",
+                "RESOURCE_REQUEST",
+                "RESOURCE_TYPE: IMAGE\n아이콘을 생성해 주세요.",
+                null,
+                "branch-W3",
+                Path.Combine(root, "missing"),
+                "session-W3"));
+
+            var resume = await host.Resume.Task.WaitAsync(cts.Token);
+
+            Assert.Equal("W3", resume.WorkItemId);
+            Assert.Contains("RESOURCE_WORKTREE_MISSING", resume.Body);
+            Assert.Equal(0, queue.OutstandingCount);
         }
         finally
         {

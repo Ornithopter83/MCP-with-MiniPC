@@ -98,6 +98,28 @@ public sealed class ParallelResourceWorkItemRouter : IAsyncDisposable
         ParallelWorkExternalBlock block,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(block.WorktreePath) ||
+            !Directory.Exists(block.WorktreePath))
+        {
+            const string errorCode = "RESOURCE_WORKTREE_MISSING";
+            RoutingEvent?.Invoke(new ParallelResourceRoutingEvent(
+                block.WorkItemId,
+                "WORKTREE_MISSING",
+                "RESOURCE 결과를 저장할 WorkItem worktree를 찾을 수 없습니다.",
+                ErrorCode: errorCode));
+
+            await ResumeAsync(
+                block.WorkItemId,
+                BuildFailureResult(
+                    block.WorkItemId,
+                    null,
+                    null,
+                    errorCode,
+                    "RESOURCE 결과를 저장할 WorkItem worktree를 찾을 수 없습니다."),
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (!ResourceTransportContract.TryParse(
                 block.Body,
                 out var resource,
@@ -128,7 +150,8 @@ public sealed class ParallelResourceWorkItemRouter : IAsyncDisposable
             queued = _resourceQueue.Enqueue(
                 resource!.Type,
                 resource.Prompt,
-                block.WorkItemId);
+                block.WorkItemId,
+                block.WorktreePath);
         }
         catch (Exception exception)
         {

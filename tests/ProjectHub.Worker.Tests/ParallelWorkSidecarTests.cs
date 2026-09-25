@@ -28,6 +28,7 @@ public sealed class ParallelWorkSidecarTests
                 workItemId: "W17");
 
             Assert.Equal("W17", request.WorkItemId);
+            Assert.Null(request.TargetWorkingDirectory);
 
             await queue.WaitForIdleAsync(cts.Token);
 

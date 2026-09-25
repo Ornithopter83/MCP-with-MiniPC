@@ -4,7 +4,12 @@ using System.Threading.Channels;
 
 namespace ProjectHub.Worker;
 
-public sealed record ResourceSidecarRequest(string Id, string Type, string Prompt, string? WorkItemId = null);
+public sealed record ResourceSidecarRequest(
+    string Id,
+    string Type,
+    string Prompt,
+    string? WorkItemId = null,
+    string? TargetWorkingDirectory = null);
 public sealed record ResourceSidecarCompletion(string RequestId, string Type, bool Success, string Message, string? ErrorCode, IReadOnlyList<string> SavedPaths, string? WorkItemId = null);
 public sealed record ResourceSidecarQueueState(bool Running, int QueuedCount, int OutstandingCount, string Stage, string? RequestId);
 public sealed record ResourceSidecarTransportEvent(string Source, string Content, string? Status = null);
@@ -66,12 +71,26 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         get { lock (_gate) return _queuedCount; }
     }
 
-    public ResourceSidecarRequest Enqueue(string type, string prompt, string? workItemId = null)
+    public ResourceSidecarRequest Enqueue(
+        string type,
+        string prompt,
+        string? workItemId = null,
+        string? targetWorkingDirectory = null)
     {
         if (!ResourceTransportContract.IsSupportedType(type))
             throw new InvalidOperationException("RESOURCE_TYPE_UNSUPPORTED");
         workItemId = string.IsNullOrWhiteSpace(workItemId) ? null : workItemId.Trim();
-        var request = new ResourceSidecarRequest(Guid.NewGuid().ToString("N"), type.Trim().ToUpperInvariant(), prompt, workItemId);
+        targetWorkingDirectory = string.IsNullOrWhiteSpace(targetWorkingDirectory)
+            ? null
+            : Path.GetFullPath(targetWorkingDirectory.Trim());
+        if (targetWorkingDirectory is not null && !Directory.Exists(targetWorkingDirectory))
+            throw new DirectoryNotFoundException("RESOURCE_TARGET_WORKSPACE_MISSING");
+        var request = new ResourceSidecarRequest(
+            Guid.NewGuid().ToString("N"),
+            type.Trim().ToUpperInvariant(),
+            prompt,
+            workItemId,
+            targetWorkingDirectory);
         ResourceSidecarQueueState state;
         lock (_gate)
         {
@@ -200,6 +219,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         if (!status.Bound || !status.Connected || !status.ExtensionSynchronized)
             return Failure(request, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE 역할로 연결된 ChatGPT Web 대화가 활성 상태가 아니거나 확장 버전이 맞지 않습니다.");
 
+        var targetWorkspace = request.TargetWorkingDirectory ?? _workingDirectory;
         var targetDirectory = $"assets/resources/{request.Id}";
         var trackedResource = new ResourceRequest(
             request.Id,
@@ -210,7 +230,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
             "WORK",
             "REQUESTED",
             null,
-            _workingDirectory);
+            targetWorkspace);
 
         TransportEvent?.Invoke(new ResourceSidecarTransportEvent("WORKER → RESOURCE WEB", request.Prompt, "SENDING"));
         var bridgeTask = _bridgeServer.CreateTaskForRole("RESOURCE", request.Prompt, resource: trackedResource);
