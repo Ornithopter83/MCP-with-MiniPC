@@ -30,7 +30,8 @@ public sealed record ParallelWorkExternalBlock(
     string? ResultRef,
     string? Branch,
     string? WorktreePath,
-    string? SessionId);
+    string? SessionId,
+    string? Goal = null);
 
 public static class ParallelHqTurnContract
 {
@@ -282,7 +283,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                                 item.ResultRef,
                                 item.Branch,
                                 item.WorktreePath,
-                                item.SessionId));
+                                item.SessionId,
+                                item.Goal));
                         }
                         catch
                         {
