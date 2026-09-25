@@ -1,6 +1,6 @@
-# ProjectHub Conversation Handoff
+# ProjectHub 대화 인계
 
-Updated: 2026-09-18
+갱신일: 2026-09-18
 
 ## 목적
 
@@ -12,8 +12,8 @@ Updated: 2026-09-18
 2. ProjectHub_IMPLEMENTATION_PLAN.md
 3. CurrentWork.md
 4. 활성 tasks/*.md
-5. GPT-Web-Feedback.md
-6. Conversation-Handoff.md
+5. GPT-Web-피드백.md
+6. 대화-Handoff.md
 
 ## 현재 단계
 
@@ -51,7 +51,7 @@ ProjectHub_Force_Restore.cmd
 
 ## Git + ProjectHub 동작
 
-### Commit Push
+### 커밋·푸시
 
 ```text
 git add -A
@@ -63,7 +63,7 @@ git add -A
 → checkpoint
 ```
 
-### Fetch Pull
+### 가져오기·풀
 
 ```text
 dirty 상태 확인
@@ -72,7 +72,7 @@ dirty 상태 확인
 → ProjectHub Large Data Restore
 ```
 
-### Force Restore
+### 강제 복원
 
 로컬 상태를 신뢰하지 않고 GitHub + ProjectHub/NAS의 최신 상태를 정답으로 강제 복구한다.
 
@@ -90,7 +90,7 @@ dirty 상태 확인
 - Git clean 시 위 관리영역을 명시적으로 보호한다.
 - 임의 conflict 자동 해결은 하지 않는다.
 
-## Large Data / NAS
+## 대용량 데이터 / NAS
 
 - Git에 적합하지 않은 대용량 파일은 NAS에 저장
 - canonical object는 SHA-256 content-addressed 방식
@@ -109,7 +109,7 @@ NAS storage root:
 /mnt/HDD1/ProjectHub
 ```
 
-## Restore 무결성
+## 복원 무결성
 
 Restore는 다음 구조로 강화됐다.
 
@@ -169,10 +169,10 @@ local large file 삭제
 → 결과 기록
 ```
 
-현재 ref는 workstation-local presence count가 아니라 서버의 현재 active project path reference 기준이다.
+현재 ref는 workstation-local presence count가 아니라 서버의 현재 활성 project path reference 기준이다.
 workstation별 presence ref 모델은 아직 도입하지 않는다.
 
-## Server / Logging
+## 서버 / 로그
 
 Server:
 ```text
@@ -192,17 +192,17 @@ Full log:
 
 정책:
 - 같은 날짜 재시작 시 append
-- heartbeat는 file-only
+- 생존 신호는 file-only
 - 정상 종료 시 SERVER_STOPPING + 구분
 - secret/token/Authorization 원문 기록 금지
 
 ## Agent 상태
 
-Heartbeat + Git state watcher 기능은 구현 및 과거 E2E 기록이 있지만,
+생존 신호 + Git 상태 watcher 기능은 구현 및 과거 E2E 기록이 있지만,
 현재 사용자 판단상 이 기능은 보류사항으로 취급한다.
 
 따라서 ProjectHub와 GitHub MCP 비교나 다음 설계 논의에서
-Heartbeat/Watcher를 현재 핵심 장점으로 전제하지 않는다.
+생존 신호/Watcher를 현재 핵심 장점으로 전제하지 않는다.
 
 ## Web ChatGPT와 ProjectHub 직접 연결 방향
 
@@ -237,13 +237,13 @@ write/action은 제한된 API 및 사용자 승인형 흐름을 우선한다.
 
 ## Web ChatGPT와 GitHub MCP 비교 시 핵심
 
-Heartbeat/Watcher를 제외해도 ProjectHub의 차별점은 다음과 같다.
+생존 신호/Watcher를 제외해도 ProjectHub의 차별점은 다음과 같다.
 
 - GitHub에 넣기 어려운 대용량 파일 관리
 - Git 파일 + NAS 대용량 파일을 하나의 프로젝트 상태/checkpoint로 결합
 - Commit Push / Fetch Pull / Force Restore의 통합 사용자 UX
 - GitHub + NAS를 함께 복구하는 전체 프로젝트 복구
-- 대용량 object lifecycle / tombstone / reference 기반 삭제
+- 대용량 object 생명주기 / tombstone / reference 기반 삭제
 - ProjectHub 전용 정책 및 향후 GitHub 외 확장 가능성
 
 요약:
