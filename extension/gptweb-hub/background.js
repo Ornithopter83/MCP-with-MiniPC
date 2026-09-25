@@ -7,7 +7,7 @@ function toBase64(buffer) {
   return btoa(binary);
 }
 
-function allowedImageUrl(value) {
+function allowedResourceUrl(value) {
   try {
     const url = new URL(value);
     if (url.protocol !== "https:") return false;
@@ -27,30 +27,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === "fetch-resource-image") {
+  if (message?.type === "fetch-resource-file" || message?.type === "fetch-resource-image") {
     (async () => {
-      if (!allowedImageUrl(message.url)) {
-        sendResponse({ ok: false, error: "RESOURCE_IMAGE_URL_NOT_ALLOWED" });
+      if (!allowedResourceUrl(message.url)) {
+        sendResponse({ ok: false, error: "RESOURCE_URL_NOT_ALLOWED" });
         return;
       }
       try {
         const response = await fetch(message.url, { credentials: "include" });
         if (!response.ok) {
-          sendResponse({ ok: false, error: "RESOURCE_IMAGE_DOWNLOAD_HTTP_" + response.status });
+          sendResponse({ ok: false, error: "RESOURCE_DOWNLOAD_HTTP_" + response.status });
           return;
         }
         const buffer = await response.arrayBuffer();
         if (!buffer.byteLength) {
-          sendResponse({ ok: false, error: "RESOURCE_IMAGE_EMPTY" });
+          sendResponse({ ok: false, error: "RESOURCE_FILE_EMPTY" });
           return;
         }
         sendResponse({
           ok: true,
           base64: toBase64(buffer),
-          mimeType: response.headers.get("content-type") || "image/png"
+          mimeType: response.headers.get("content-type") || "application/octet-stream",
+          contentDisposition: response.headers.get("content-disposition") || ""
         });
       } catch (error) {
-        sendResponse({ ok: false, error: "RESOURCE_IMAGE_BACKGROUND_FETCH: " + (error?.message || error) });
+        sendResponse({ ok: false, error: "RESOURCE_BACKGROUND_FETCH: " + (error?.message || error) });
       }
     })();
     return true;
