@@ -276,6 +276,11 @@ public partial class MainWindow
                 RunOnUi(() =>
                 {
                     _lastActivityAt = DateTimeOffset.UtcNow;
+                    var implementerModel = AiProviderCatalog.FormatModel(
+                        implementer.Provider,
+                        implementer.Model);
+                    ImplementerStageModelText.Text =
+                        $"{implementerModel} · {snapshot.RunningCount}/{snapshot.Graph.MaxConcurrentWork}";
                     TaskDirection.Text = "작업 AI";
                     TaskTitle.Text =
                         $"병렬 WORK · {snapshot.RunningCount}/{snapshot.Graph.MaxConcurrentWork} 실행 중 · " +
@@ -552,6 +557,7 @@ public partial class MainWindow
             _resourceSidecarActive = false;
             _resourceSidecarQueued = 0;
             _resourceSidecarStatus = "ChatGPT Web";
+            RunOnUi(UpdateDashboardSummary);
             _activeCoordinatorFirst = false;
             _activeTaskCts = null;
             _userCanceledTask = false;
