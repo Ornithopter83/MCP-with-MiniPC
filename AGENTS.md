@@ -20,9 +20,9 @@
 
 ## 프로젝트 기준
 
-- ProjectHub v0.2는 개발 PC Agent → Mini PC Server → Supabase 흐름을 보존한다.
-- Git 동작은 충돌/detached HEAD/dirty pull/rebase 진행 상태를 자동 해결하지 않는다.
-- Supabase Service 역할 Key는 Server 환경 변수에만 둔다.
+- ProjectHub v0.2는 개발 PC 에이전트 → Mini PC 서버 → Supabase 흐름을 보존한다.
+- Git 동작은 충돌, 분리된 HEAD, 변경 사항이 있는 상태의 pull, rebase 진행 상태를 자동 해결하지 않는다.
+- Supabase 서비스 역할 키는 서버 환경 변수에만 둔다.
 
 - 역할 프롬프트의 대괄호는 실제 ACTION/GOTO 제어 토큰에만 사용하고, 역할/inbound/availability 같은 메타데이터는 평문으로 쓴다.
 
