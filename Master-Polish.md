@@ -62,6 +62,7 @@ RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
 HQ ACTION=END -> 의미 작업 종료 고정 -> Worker가 기계적 대기 작업 확인
 기계적 대기 작업 있음 -> 대기 -> 모두 종료 -> DONE / DONE_WITH_ERROR
+PAUSED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ (기존 HQ/WORK 세션 유지)
 HQ END 전 완료 결과 -> 필요 시 다음 WORK 입력에 기계적으로 전달
 UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
 UNKNOWN 재발 -> 로그 기록 후 종료
@@ -181,7 +182,9 @@ RESOURCE는 메인 역할 상태와 분리된 사이드카 대기열로 실행�
 ACTION 사용 예:
 - CONTINUE: AI/Worker가 스스로 다음 의미 있는 진전을 만들 수 있음
 - PAUSE: 화면 인상, 조작감, 음질, 취향, 외부 로그인/권한, 사용자 전용 선택 등 사람 개입 없이는 다음 판단이 의미 없음
-- END: 의미 작업 목표가 충족됐고 사용자 확인을 기다릴 이유도 없음. Worker가 추적하는 기계적 대기 작업이 남아 있어도 END 판단을 미루지 않음
+- END: 현재 실행 구간의 의미 작업 목표가 충족됐고 사용자 확인을 기다릴 이유도 없음. Worker가 추적하는 기계적 대기 작업이 남아 있어도 END 판단을 미루지 않음
+- PAUSE와 END는 HQ/WORK 세션 폐기를 뜻하지 않는다. 사용자가 명시적으로 새 작업을 시작하기 전까지 현재 세션과 작업공간을 유지한다.
+- 사용자가 작업 추가를 실행하면 Worker는 USER_FOLLOWUP으로 기존 HQ 세션부터 새 실행 구간을 시작한다. Worker가 후속 요청의 의미를 판단하거나 자동으로 재개하지 않는다.
 
 HQ가 Web이든 CLI든 같은 역할 계약을 사용한다.
 
@@ -216,11 +219,12 @@ WORK -> GOTO:RESOURCE + 자연어 요청
        └─ 완료 결과 queue -> HQ END 전 필요할 때 다음 WORK 호출에 전달
 
 HQ ACTION=END
-  -> Worker가 HQ 의미 작업 종료 상태를 고정
-  -> 이후 WORK 보고가 HQ로 향하면 "HQ의 작업은 종료되었습니다."로 차단
+  -> Worker가 현재 실행 구간의 HQ 의미 작업 종료 상태를 고정
+  -> 현재 실행 구간에서 이후 WORK 보고가 HQ로 향하면 "HQ의 작업은 종료되었습니다."로 차단
   -> Worker가 모든 기계적 대기 작업을 확인
   -> 남아 있으면 대기 상태에서 AI 호출 없이 완료만 기다림
   -> 모두 종료되면 Worker가 DONE / DONE_WITH_ERROR로 전환
+  -> 사용자 작업 추가가 들어오면 기존 HQ/WORK 세션을 유지한 USER_FOLLOWUP 새 실행 구간 시작
 ~~~
 
 WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤에는 ChatGPT Web에 그대로 보낼 새로운 이미지 생성 요청 한 건의 자연어 지시만 둔다. 기존 요청의 상태 조회·취소·추적·확인·보고는 RESOURCE 라우팅으로 보내지 않는다.
@@ -272,6 +276,8 @@ RESOURCE가 하지 않는 것:
 
 대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold 활성 border/orbit은 사용하지 않는다. 실행 중에는 현재 메인 역할이 gold 활성 border/orbit으로 강조된다. RESOURCE 사이드카가 실행/대기 중이면 메인 역할과 별개로 RESOURCE 카드의 gold orbit도 독립 동작하며 상태와 대기 건수를 표시한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
 
+메시지 및 작업 이력 그룹의 전체 크기는 고정한다. PAUSE 또는 DONE / DONE_WITH_ERROR 상태에서는 기존 이력을 위쪽에 유지하고 목록 아래에 이력 카드 약 두 개 높이의 후속 메시지 입력 영역을 표시한다. 하단에는 기존 실행/새 작업 버튼 왼쪽에 녹색 계열의 작업 추가 버튼을 표시한다. 작업 추가는 기존 이력과 HQ/WORK 세션을 유지한 채 USER_FOLLOWUP을 시작하며, 새 작업 버튼만 기존 세션과 이력을 명시적으로 초기화한다.
+
 설정:
 - HQ: 실행 대상 Web/CLI + CLI일 때 제공자/모델/추론/세션
 - WORK: 제공자/모델/추론/세션. 기본값은 OpenAI / GPT-6 Luna / Medium이며 저장 모델을 임의 변환하는 마이그레이션은 하지 않는다.
@@ -295,7 +301,8 @@ RESOURCE가 하지 않는 것:
 5. WORK RESOURCE 위임 계약
 6. RESOURCE 사이드카 FIFO 대기열 + 복수 IMAGE 결과 전송와 저장
 7. 파이프라인/설정/이력 교체
-8. 테스트/문서 갱신
+8. PAUSE/END 후 동일 세션 작업 추가와 고정 크기 이력 입력 UI
+9. 테스트/문서 갱신
 
 실제 Windows 빌드/테스트/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
 
