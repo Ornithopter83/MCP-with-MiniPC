@@ -26,7 +26,7 @@ Worker가 처리할 수 있는 것:
 - 시간 초과/취소/인증/스키마/경로 안전성 오류 처리
 - Web 대화 연결 및 생존 신호 생존 확인
 - 기록/사용량/file 계측 기록
-- Worker가 실제로 생성·전달한 HQ/RESOURCE Web 송신와 RESOURCE 생명주기 기록
+- Worker가 실제로 생성·전달한 HQ/RESOURCE Web 송신 내용과 RESOURCE 생명주기 기록
 - JUDGE 전송 스키마와 RESOURCE 자연어 본문의 기계적 전달
 - 미확인 원문 로그와 HQ용 한글 오류 요약
 - 이미 알고 있는 실행 사실을 History UI에 표시
@@ -34,7 +34,7 @@ Worker가 처리할 수 있는 것:
 Worker가 하지 않는 것:
 - 요청 난이도·의도·우선순위 판단
 - 다음 역할을 본문 의미로 추론
-- 요구사항/AC/test/evidence 충족 여부 판정
+- 요구사항/AC/테스트/근거 충족 여부 판정
 - JUDGE 결과 의미 해석 후 자동 PASS/FAIL 생성
 - RESOURCE 이미지의 미적/기능적 품질 판정
 - 생성 리소스가 어느 컴포넌트에 맞는지 판단
@@ -95,7 +95,7 @@ HQ
 
 ## 4. Web 연결
 
-HQ Web과 RESOURCE Web은 반드시 서로 다른 ChatGPT 대화을 사용한다.
+HQ Web과 RESOURCE Web은 반드시 서로 다른 ChatGPT 대화를 사용한다.
 
 Bridge는 다음 역할 연결을 명시적으로 저장한다.
 
@@ -196,9 +196,9 @@ WORK -> JUDGE   실제 NOUL/SCORE/CHOICE 요청
 JUDGE -> WORK   raw 결과
 ~~~
 
-- NOUL/SCORE/CHOICE는 quota나 의무 비율이 아니다.
+- NOUL/SCORE/CHOICE는 할당량이나 의무 비율이 아니다.
 - Worker는 HQ 검토가 의미적으로 충분했는지 검사하지 않는다.
-- JEV raw response는 같은 WORK 세션으로 반환한다.
+- JEV 원본 응답은 같은 WORK 세션으로 반환한다.
 
 ---
 
@@ -285,7 +285,7 @@ RESOURCE가 하지 않는 것:
 
 ## 10. 현재 활성 작업
 
-활성 작업는 tasks/14-resource-web-역할.md다.
+활성 작업은 tasks/14-resource-web-role.md다.
 
 구현 코드 범위:
 1. HIGH 제거 / RESOURCE 역할 + 사이드카 대기열
@@ -294,10 +294,10 @@ RESOURCE가 하지 않는 것:
 4. HQ 설계 책임 + PAUSE 예시
 5. WORK RESOURCE 위임 계약
 6. RESOURCE 사이드카 FIFO 대기열 + 복수 IMAGE 결과 전송와 저장
-7. Pipeline/설정/History 교체
+7. 파이프라인/설정/이력 교체
 8. 테스트/문서 갱신
 
-실제 Windows 빌드/test/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
+실제 Windows 빌드/테스트/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
 
 
 ## 11. 역할 계약 일반화 규칙
