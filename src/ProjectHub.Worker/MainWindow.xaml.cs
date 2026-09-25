@@ -479,7 +479,7 @@ public partial class MainWindow : Window
         SetFollowupComposerVisible(false);
         await RunCoordinatorFirstJobAsync(
             followup,
-            selectedThread: null,
+            null,
             continuation.WorkingDirectory,
             continuation.Coordinator,
             continuation.Implementer,
