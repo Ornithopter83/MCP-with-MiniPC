@@ -19,6 +19,16 @@ JUDGE에게 이미지·오디오·비디오 등 비텍스트 리소스 자체의
 이 작업에서는 JUDGE를 사용할 수 없다.
 {{/JUDGE_OFF}}
 
+비동기 계측
+- 장시간 프로그램 실행·계측을 현재 WORK 호출과 분리할 필요가 있을 때만 헤더의 `비동기 계측 요청 폴더`에 요청 JSON을 생성한다.
+- 비동기 계측 요청은 GOTO가 아니다. 요청 파일을 만든 뒤에도 현재 응답은 기존 허용 목적지 하나로 정상 라우팅한다.
+- 요청 파일은 임시 파일에 완성된 JSON을 쓴 뒤 같은 폴더의 `.json` 파일로 이름을 바꾸는 방식으로 원자적으로 게시한다.
+- 요청 JSON은 `kind=OBSERVATION`, 안전한 `id`, 직접 실행할 `command`, 선택적 `arguments[]`, `workingDirectory`, `timeoutSeconds`, `resultPaths[]`, `environment`, `completionMode`를 사용한다.
+- `completionMode`는 `WORK_RESULT_REQUIRED` 또는 `FINALIZE_ONLY`다.
+- `WORK_RESULT_REQUIRED`는 현재 WORK 응답의 라우팅을 Worker가 보류하고 AI 호출 없이 계측 완료를 기다린 뒤 같은 WORK 세션에 `OBSERVATION_RESULT`로 결과를 돌려받아야 할 때 사용한다.
+- `FINALIZE_ONLY`는 결과를 WORK가 다시 해석할 필요가 없는 기계 작업에만 사용하며 현재 의미 흐름을 막지 않는다.
+- Worker가 반환한 계측 결과의 의미 해석과 후속 수정 여부는 WORK가 결정한다.
+
 RESOURCE 위임
 - RESOURCE는 WORK의 허용 목적지 중 하나다.
 - RESOURCE 요청의 첫 줄에는 정확히 `RESOURCE_TYPE: <종류>`를 쓴다.
