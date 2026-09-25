@@ -210,6 +210,33 @@ public static class ProjectWorkspacePersistence
         }
     }
 
+    public static IReadOnlyList<ProjectEventLogEntry> ReadAllEvents(string workingDirectory, string jobId)
+    {
+        try
+        {
+            var path = EventLogPath(workingDirectory, jobId);
+            if (!File.Exists(path)) return Array.Empty<ProjectEventLogEntry>();
+            var entries = new List<ProjectEventLogEntry>();
+            foreach (var line in File.ReadLines(path, Encoding.UTF8))
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    var entry = JsonSerializer.Deserialize<ProjectEventLogEntry>(line, EventJsonOptions);
+                    if (entry is not null) entries.Add(entry);
+                }
+                catch (JsonException)
+                {
+                }
+            }
+            return entries;
+        }
+        catch
+        {
+            return Array.Empty<ProjectEventLogEntry>();
+        }
+    }
+
     public static IReadOnlyList<ProjectEventLogEntry> ReadRecentEvents(string workingDirectory, string jobId, int maxCount = 200)
     {
         if (maxCount <= 0) return Array.Empty<ProjectEventLogEntry>();
