@@ -91,11 +91,11 @@ Worker가 자동 재시도 횟수나 구현 실패를 결정하지 않는다.
 허용:
 - NEXT syntax 파싱
 - 제공자 call
-- request/response serialization
+- 요청/응답 직렬화
 - 시간 초과/auth/HTTP/스키마 오류
 - same-세션 return
 - 기록/사용량
-- secret redaction
+- 비밀값 가림 처리
 
 금지:
 - 임계값 comparison
