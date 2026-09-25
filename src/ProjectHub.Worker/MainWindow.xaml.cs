@@ -541,7 +541,7 @@ public partial class MainWindow : Window
         if (active)
         {
             RunButton.Content = "■   취소";
-            RunButton.IsEnabled = !(_userCanceledTask && _activeTaskCts is not null);
+            ApplyRunButtonVisualState(!(_userCanceledTask && _activeTaskCts is not null));
             DashboardPreflightText.Text = string.Empty;
             UpdateFollowupButtonState();
             return;
@@ -550,21 +550,36 @@ public partial class MainWindow : Window
         if (_dashboardBodyMode == DashboardBodyMode.TaskHistory)
         {
             RunButton.Content = "＋   새 작업";
-            RunButton.IsEnabled = true;
+            ApplyRunButtonVisualState(true);
             DashboardPreflightText.Text = string.Empty;
             UpdateFollowupButtonState();
             return;
         }
 
         RunButton.Content = "▶   실행";
-        RunButton.IsEnabled = executionReady && hasPrompt;
-        RunButton.Background = RunButton.IsEnabled ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1477E8")) : new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#B8C8DA"));
-        RunButton.BorderBrush = RunButton.Background;
-        RunButton.Opacity = RunButton.IsEnabled ? 1 : 0.85;
-        RunButton.Effect = RunButton.IsEnabled ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 16, ShadowDepth = 4, Direction = 270, Opacity = 0.22, Color = System.Windows.Media.Color.FromRgb(20, 119, 232) } : null;
+        ApplyRunButtonVisualState(executionReady && hasPrompt);
         DashboardPreflightText.Text = preflightError ?? (hasPrompt ? string.Empty : "작업 내용을 입력하세요.");
         DashboardPreflightText.Foreground = preflightError is null ? (System.Windows.Media.Brush)FindResource("Muted") : System.Windows.Media.Brushes.Firebrick;
         UpdateFollowupButtonState();
+    }
+
+    private void ApplyRunButtonVisualState(bool enabled)
+    {
+        RunButton.IsEnabled = enabled;
+        RunButton.Background = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(enabled ? "#1477E8" : "#B8C8DA"));
+        RunButton.BorderBrush = RunButton.Background;
+        RunButton.Opacity = enabled ? 1 : 0.85;
+        RunButton.Effect = enabled
+            ? new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 16,
+                ShadowDepth = 4,
+                Direction = 270,
+                Opacity = 0.22,
+                Color = System.Windows.Media.Color.FromRgb(20, 119, 232)
+            }
+            : null;
     }
 
     private void SetDashboardBodyMode(DashboardBodyMode mode)
