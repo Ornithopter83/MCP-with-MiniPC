@@ -3442,19 +3442,35 @@ public partial class MainWindow : Window
                        (hasProjectTranscript
                            ? ProjectWorkspacePersistence.TranscriptPath(_activeWorkingDirectory!, _activeProjectJobId!)
                            : Path.Combine(directory, $"_{_taskStartedAt:yyyyMMdd_HHmmss}.txt"));
+            var projectEvents = hasProjectTranscript
+                ? ProjectWorkspacePersistence.ReadAllEvents(_activeWorkingDirectory!, _activeProjectJobId!)
+                : Array.Empty<ProjectEventLogEntry>();
+            var startedAt = projectEvents.Count > 0 ? projectEvents[0].Timestamp : _taskStartedAt;
             var lines = new List<string>
             {
                 $"Project: {_taskProjectName}",
                 $"Thread: {_taskThreadName}",
-                $"Started: {_taskStartedAt:O}",
+                $"Started: {startedAt:O}",
                 $"Finished: {DateTimeOffset.Now:O}",
                 string.Empty
             };
-            foreach (var message in _taskMessages)
+            if (projectEvents.Count > 0)
             {
-                lines.Add($"[{message.Timestamp:yyyy-MM-dd HH:mm:ss}] {message.Source}");
-                lines.Add(message.Content);
-                lines.Add(string.Empty);
+                foreach (var entry in projectEvents)
+                {
+                    lines.Add($"[{entry.Timestamp:yyyy-MM-dd HH:mm:ss}] {entry.Source}");
+                    lines.Add(entry.FullMessage);
+                    lines.Add(string.Empty);
+                }
+            }
+            else
+            {
+                foreach (var message in _taskMessages)
+                {
+                    lines.Add($"[{message.Timestamp:yyyy-MM-dd HH:mm:ss}] {message.Source}");
+                    lines.Add(message.Content);
+                    lines.Add(string.Empty);
+                }
             }
             File.WriteAllText(path, string.Join(Environment.NewLine, lines), new UTF8Encoding(false));
             _taskTranscriptPath = path;
