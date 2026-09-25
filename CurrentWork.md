@@ -286,3 +286,12 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - HQ는 이 실험 동안 `JUDGE 불필요`, `JUDGE를 사용하지 말라`는 선택을 하지 않는다.
 - HQ가 정제한 판정 질문을 받은 WORK는 필요성을 다시 판단하지 않고 `[GOTO : JUDGE]`로 전송한다.
 - Worker 라우팅/전송 코드는 변경하지 않는다. 역할 프롬프트 정책만 바꿔 실제 JEV 호출 빈도와 질문 품질을 관찰한다.
+
+## 2026-09-25 JUDGE용 Form 위임 계약 간략화
+
+- WORK 계약에서 NOUL/SCORE/CHOICE Form 문법 설명과 장문의 판정 절차를 제거했다.
+- WORK는 검증할 내용을 질문 목록과 현재 근거로 정리해 HQ에 JUDGE용 Form 생성을 요청한다.
+- HQ는 질문을 독립 판단 단위로 정리하고 필요한 범위, evidence, 응답 형태, 기준을 포함한 Form을 작성해 WORK에 돌려준다.
+- WORK는 받은 Form을 `[GOTO : JUDGE]`로 전송한다.
+- HQ 계약의 `WORK가 의미 판정 질문을 올리면...` 문구와 JUDGE 필요성 재판단 관련 실험 문구를 제거했다.
+- Worker 라우팅 및 JUDGE transport 코드는 변경하지 않았다.
