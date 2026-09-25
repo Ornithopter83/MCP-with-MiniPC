@@ -14,7 +14,7 @@ RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
 HQ END 전 완료 알림 -> 필요 시 다음 WORK 입력
 HQ ACTION=END -> Worker 기계적 대기 게이트 -> 모두 종료 -> DONE / DONE_WITH_ERROR
-PAUSED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ (기존 HQ/WORK 세션)
+PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ (기존 HQ/WORK 세션)
 ~~~
 
 미확인은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.
@@ -69,6 +69,7 @@ PAUSED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ
 - 남은 RESOURCE 대기열을 포함한 기계적 대기 작업이 있으면 Worker가 대기 상태에서 완료만 기다린다.
 - 대기 작업이 모두 끝나면 Worker가 DONE 또는 DONE_WITH_ERROR로 전환한다.
 - RESOURCE 완료 이벤트는 HQ를 깨우지 않는다.
-- PAUSE와 DONE / DONE_WITH_ERROR 이후에도 HQ/WORK 세션과 작업공간은 유지한다.
+- PAUSE, CANCELED, DONE / DONE_WITH_ERROR 이후에도 HQ/WORK 세션과 작업공간은 유지한다.
+- 실행 중 사용자 취소는 현재 프로세스를 중단하되 `thread.started`에서 확보한 CLI session ID를 보존한다.
 - 사용자가 `작업 추가`를 실행할 때만 USER_FOLLOWUP으로 기존 HQ 세션에서 새 실행 구간을 시작한다.
 - `새 작업`을 선택하면 이전 연속 세션과 이력을 명시적으로 초기화한다.
