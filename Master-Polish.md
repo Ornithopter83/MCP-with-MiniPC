@@ -88,7 +88,7 @@ HQ
 - CLI 선택 시 제공자 → 모델 → 추론 → 세션 구조를 사용한다.
 - OpenAI Codex CLI는 실제 실행이 연결되어 있다.
 - Claude/Muse는 기존 제공자 abstraction을 유지하되 실제 runner가 연결되기 전에는 미연결 오류를 반환한다.
-- 과거 전송=web을 CLI_TO_CLI에서 자동으로 codex_cli로 바꾸지 않는다.
+- 과거 transport=web을 CLI_TO_CLI에서 자동으로 codex_cli로 바꾸지 않는다.
 - WORK에는 ChatGPT Web 대상을 추가하지 않는다.
 
 ---
