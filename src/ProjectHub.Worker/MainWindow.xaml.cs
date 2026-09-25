@@ -1483,6 +1483,8 @@ public partial class MainWindow : Window
     {
         var continuing = continuation is not null;
         var jobId = continuation?.JobId ?? Guid.NewGuid().ToString("N");
+        _activeWorkingDirectory = workingDirectory;
+        _activeProjectJobId = jobId;
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         _activeCoordinatorFirst = true;
@@ -1514,7 +1516,12 @@ public partial class MainWindow : Window
         {
             var inboundType = continuing ? "USER_FOLLOWUP" : "USER_REQUEST";
             var inbound = continuing
-                ? TaskContinuationContract.BuildHqFollowupInput(continuation!.Status, continuation.LastHqMessage, request)
+                ? TaskContinuationContract.BuildHqFollowupInput(
+                    continuation!.Status,
+                    continuation.LastHqMessage,
+                    request,
+                    ProjectWorkspacePersistence.HandoffPath(workingDirectory),
+                    ProjectWorkspacePersistence.EventLogPath(workingDirectory, jobId))
                 : request;
             var coordinatorHasRun = false;
             var workValidationRequest = string.Empty;
@@ -1553,6 +1560,7 @@ public partial class MainWindow : Window
                     workSession,
                     status,
                     lastHqMessage);
+                ProjectWorkspacePersistence.SaveContinuation(_continuationState);
                 SetFollowupComposerVisible(true);
             }
 
@@ -1866,6 +1874,7 @@ public partial class MainWindow : Window
                     workSession,
                     "CANCELED",
                     lastHqMessage);
+                ProjectWorkspacePersistence.SaveContinuation(_continuationState);
                 AddTaskMessage(
                     "TASK CANCELED",
                     "사용자가 현재 실행 구간을 중단했습니다. 작업공간과 확보된 HQ/WORK 세션을 유지합니다.",
