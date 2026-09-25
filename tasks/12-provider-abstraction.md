@@ -29,7 +29,7 @@
 ### 시각 요소
 
 - `ProviderVisualCatalog` 단일 해석기
-- OpenAI: current-openai color/gray
+- OpenAI: current-openai 컬러/회색
 - Claude/Muse: 공식 심볼 자산이 준비될 때까지 current-console color/gray 대체
 - 설정창, pipeline, 신규 role 이력가 해석기를 사용
 - 실제 브랜드 asset 추가 시 해석기만 교체
@@ -39,7 +39,7 @@
 - `IAiRoleRunner`
 - `AiRoleRunnerRegistry`
 - `OpenAiCodexRoleRunner`
-- `UnconfiguredAiRoleRunner` for Claude/Muse
+- Claude/Muse용 `UnconfiguredAiRoleRunner`
 - 관제 우선 HQ/WORK/HIGH 실행은 등록소를 경유
 - Claude/Muse 선택 시 `CLAUDE_NOT_CONFIGURED` / `MUSE_NOT_CONFIGURED`
 - 미연결 제공자를 OpenAI로 대체하지 않음
