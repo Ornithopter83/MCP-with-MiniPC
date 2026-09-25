@@ -8,6 +8,11 @@ public sealed record CodexWorkItemSessionStarted(
     string WorkItemId,
     string SessionId);
 
+public sealed record CodexWorkItemContextPrepared(
+    string WorkItemId,
+    string Branch,
+    string WorktreePath);
+
 public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 {
     private readonly string _jobId;
@@ -46,6 +51,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
     public event Action<CodexWorkItemProgress>? Progress;
     public event Action<CodexWorkItemSessionStarted>? SessionStarted;
+    public event Action<CodexWorkItemContextPrepared>? ContextPrepared;
 
     public async Task<WorkItemExecutionResult> ExecuteAsync(
         WorkItemExecutionRequest request,
@@ -73,6 +79,10 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         }
 
         _observationGate?.RegisterWorkItemRoot(item.Id, preparation.WorktreePath);
+        ContextPrepared?.Invoke(new CodexWorkItemContextPrepared(
+            item.Id,
+            preparation.Branch,
+            preparation.WorktreePath));
 
         var dependencyResults = request.Dependencies
             .Select(result => new WorkItemDependencyPromptContext(

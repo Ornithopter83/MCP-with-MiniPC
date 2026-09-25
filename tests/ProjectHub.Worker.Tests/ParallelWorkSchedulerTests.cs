@@ -331,4 +331,37 @@ public sealed class ParallelWorkSchedulerTests
         private static TaskCompletionSource<bool> NewSignal()
             => new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
+    [Fact]
+    public async Task RunningExecutionContextCanBePersistedBeforeExecutorCompletes()
+    {
+        var graph = new WorkGraph("job", 1);
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("W1", "장시간 작업", BaseRef: "base"))
+        })).Success);
+
+        var executor = new ControlledExecutor();
+        executor.SetControlled("W1");
+
+        await using var scheduler = new ParallelWorkScheduler(graph, executor);
+        await scheduler.StartAsync();
+
+        await executor.WhenStartedCount("W1", 1);
+
+        Assert.True(await scheduler.UpdateRunningContextAsync(
+            "W1",
+            "branch-W1",
+            "worktree-W1",
+            "session-W1"));
+
+        var item = graph.Find("W1")!;
+        Assert.Equal(WorkItemState.Running, item.State);
+        Assert.Equal("branch-W1", item.Branch);
+        Assert.Equal("worktree-W1", item.WorktreePath);
+        Assert.Equal("session-W1", item.SessionId);
+
+        executor.Release("W1");
+        await scheduler.WaitForQuiescenceAsync();
+    }
+
 }

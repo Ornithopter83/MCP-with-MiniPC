@@ -185,6 +185,37 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         return released;
     }
 
+    public async Task<bool> UpdateRunningContextAsync(
+        string workItemId,
+        string? branch = null,
+        string? worktreePath = null,
+        string? sessionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ParallelWorkSchedulerSnapshot snapshot;
+        bool updated;
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            updated = _graph.TryUpdateExecutionContext(
+                workItemId,
+                branch,
+                worktreePath,
+                sessionId);
+            snapshot = CreateSnapshotLocked();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        if (updated)
+            StateChanged?.Invoke(snapshot);
+        return updated;
+    }
+
     public async Task<ParallelWorkSchedulerSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default)
     {

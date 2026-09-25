@@ -114,6 +114,24 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     public event Action<ParallelWorkSchedulerSnapshot>? StateChanged;
     public event Action<ParallelWorkExternalBlock>? ExternalBlockAvailable;
 
+    public Task<bool> UpdateRunningContextAsync(
+        string workItemId,
+        string? branch = null,
+        string? worktreePath = null,
+        string? sessionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ParallelWorkSupervisor));
+
+        return _scheduler.UpdateRunningContextAsync(
+            workItemId,
+            branch,
+            worktreePath,
+            sessionId,
+            cancellationToken);
+    }
+
     public async Task<bool> ResumeExternalWorkItemAsync(
         string workItemId,
         string inputType,
