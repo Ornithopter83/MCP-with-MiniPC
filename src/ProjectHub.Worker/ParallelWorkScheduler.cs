@@ -333,7 +333,8 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                             string.IsNullOrWhiteSpace(result.BlockCode)
                                 ? "WORK_EXECUTOR_BLOCKED"
                                 : result.BlockCode,
-                            result.ResultSummary);
+                            result.ResultSummary,
+                            result.ResultRef);
                         break;
                     default:
                         _graph.TryMarkFailed(

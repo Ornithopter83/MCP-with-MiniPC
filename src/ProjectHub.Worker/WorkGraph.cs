@@ -224,7 +224,7 @@ public sealed class WorkGraph
         return true;
     }
 
-    public bool TryMarkBlocked(string id, string blockCode, string? resultSummary = null)
+    public bool TryMarkBlocked(string id, string blockCode, string? resultSummary = null, string? resultRef = null)
     {
         if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
             return false;
@@ -234,6 +234,7 @@ public sealed class WorkGraph
         item.State = WorkItemState.Blocked;
         item.BlockCode = blockCode.Trim();
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
+        item.ResultRef = NullIfWhiteSpace(resultRef) ?? item.ResultRef;
         item.FailureCode = null;
         item.ResumeInputType = null;
         item.ResumeBody = null;
