@@ -251,7 +251,10 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         var running = ExecuteRequestAsync(request, completionMode, activePath, _cts.Token);
         _running[request.Id] = running;
         _ = running.ContinueWith(
-            _ => _running.TryRemove(request.Id, out _),
+            completedTask =>
+            {
+                _running.TryRemove(request.Id, out var removed);
+            },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
