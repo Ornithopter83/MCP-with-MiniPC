@@ -6,7 +6,7 @@ ProjectHub v0.2의 범위, 기술 기준, 보안 경계와 완료 조건을 확�
 
 ## 현재 기준
 
-설계 문서 기준으로 ASP.NET Core, Supabase, Agent 구조가 합의된 상태이며 실제 운영 환경값은 미정이다.
+설계 문서 기준으로 ASP.NET Core, Supabase, 에이전트 구조가 합의된 상태이며 실제 운영 환경값은 미정이다.
 
 ## 세부 작업
 
@@ -16,11 +16,11 @@ ProjectHub v0.2의 범위, 기술 기준, 보안 경계와 완료 조건을 확�
 
 ### B. 인증·비밀값 경계 확정
 
-- Server만 Supabase Service Role Key를 보유하고 Agent는 Agent API Key로 Server에 접근한다.
+- 서버만 Supabase 서비스 역할 키를 보유하고 에이전트는 에이전트 API Key로 서버에 접근한다.
 
 ### C. v0.2 수용 시나리오 확정
 
-- heartbeat, Git 상태, 프로젝트 조회, 60초 offline 판정, 서버 재시작 후 상태 조회 시나리오를 확정한다.
+- 생존 신호, Git 상태, 프로젝트 조회, 60초 offline 판정, 서버 재시작 후 상태 조회 시나리오를 확정한다.
 
 ## 진행
 
@@ -28,7 +28,7 @@ ProjectHub v0.2의 범위, 기술 기준, 보안 경계와 완료 조건을 확�
 
 ## 변경 금지
 
-- Agent 자동 Git 조작은 금지하되, 사용자가 명시적으로 실행한 v0.2 Commit_Push/Fetch_Pull CMD의 Git orchestration은 허용한다. MCP, 원격 shell, 자체 DB 도입은 범위에 넣지 않는다.
+- 에이전트 자동 Git 조작은 금지하되, 사용자가 명시적으로 실행한 v0.2 Commit_Push/Fetch_Pull CMD의 Git orchestration은 허용한다. MCP, 원격 shell, 자체 DB 도입은 범위에 넣지 않는다.
 
 ## 완료 기준
 
