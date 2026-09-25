@@ -42,11 +42,13 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("executionMode")] string ExecutionMode = "CLI_TO_CLI",
     [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
     [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null,
-    [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null)
+    [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null,
+    [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = 1)
 {
     public JudgeSettings EffectiveJudge => Judge ?? new JudgeSettings();
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
     public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
+    public int EffectiveMaxConcurrentWork => MaxConcurrentWork is >= WorkGraph.MinimumConcurrency and <= WorkGraph.MaximumConcurrency ? MaxConcurrentWork : 1;
     public bool IsCoordinatorFirst => string.Equals(ExecutionMode, "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
 }
 public sealed record GitTargetSnapshot(

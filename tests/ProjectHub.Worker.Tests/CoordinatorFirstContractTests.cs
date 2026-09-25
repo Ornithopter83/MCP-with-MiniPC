@@ -351,6 +351,27 @@ public sealed class CoordinatorFirstContractTests
         Assert.False(CodexModelRequest.TryCreate("unknown-model", "high", out _));
     }
 
+
+    [Fact]
+    public void ParallelWorkConcurrencyDefaultsToOneAndPreservesValidUserSetting()
+    {
+        var defaults = JsonSerializer.Deserialize<WorkerTargetSettings>("""
+            {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null}
+            """)!;
+        Assert.Equal(1, defaults.EffectiveMaxConcurrentWork);
+
+        var configured = JsonSerializer.Deserialize<WorkerTargetSettings>("""
+            {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null,"maxConcurrentWork":4}
+            """)!;
+        Assert.Equal(4, configured.EffectiveMaxConcurrentWork);
+
+        var invalid = JsonSerializer.Deserialize<WorkerTargetSettings>("""
+            {"manualRepositoryUrl":null,"manualServerBaseUrl":null,"repositoryUrlSource":null,"serverBaseUrlSource":null,"maxConcurrentWork":99}
+            """)!;
+        Assert.Equal(1, invalid.EffectiveMaxConcurrentWork);
+        Assert.Equal(99, invalid.MaxConcurrentWork);
+    }
+
     [Fact]
     public void ExistingSettings_MigrateToCoordinatorFirstWithoutChangingLegacyTargetFields()
     {
