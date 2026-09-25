@@ -1530,6 +1530,31 @@ public partial class MainWindow : Window
         });
     }
 
+    private void OnObservationSidecarEvent(ObservationSidecarEvent observation)
+    {
+        RunOnUi(() =>
+            AddTaskMessage(
+                observation.Source,
+                observation.Content,
+                sizeBytes: Encoding.UTF8.GetByteCount(observation.Content),
+                status: observation.Status,
+                includeHistory: false));
+    }
+
+    private void OnObservationSidecarCompletion(MechanicalWorkCompletion completion)
+    {
+        RunOnUi(() =>
+            AddTaskMessage(
+                completion.Success ? "OBSERVATION COMPLETED" : "OBSERVATION FAILED",
+                $"observation {completion.Id} · mode {FormatCompletionMode(completion.CompletionMode)}\n{completion.Message}",
+                fileCount: completion.ResultPaths.Count,
+                status: completion.Success ? "COMPLETED" : completion.ErrorCode ?? "FAILED",
+                includeHistory: false));
+    }
+
+    private static string FormatCompletionMode(MechanicalWorkCompletionMode mode)
+        => mode == MechanicalWorkCompletionMode.WorkResultRequired ? "WORK_RESULT_REQUIRED" : "FINALIZE_ONLY";
+
     private async Task RunCoordinatorFirstJobAsync(
         string request,
         CodexThreadOption? selectedThread,
@@ -1565,10 +1590,14 @@ public partial class MainWindow : Window
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
         var state = WorkerRoleState.Hq;
         var previousState = WorkerRoleState.Hq;
-        var resourceQueue = new ResourceSidecarQueue(_bridgeServer, workingDirectory, cts.Token);
+        var mechanicalWork = new MechanicalWorkRegistry();
+        var resourceQueue = new ResourceSidecarQueue(_bridgeServer, workingDirectory, cts.Token, mechanicalWork);
+        var observationQueue = new ObservationSidecarQueue(workingDirectory, jobId, mechanicalWork, cts.Token);
         resourceQueue.StateChanged += OnResourceSidecarStateChanged;
         resourceQueue.CompletionAvailable += OnResourceSidecarCompletion;
         resourceQueue.TransportEvent += OnResourceSidecarTransportEvent;
+        observationQueue.TransportEvent += OnObservationSidecarEvent;
+        observationQueue.CompletionAvailable += OnObservationSidecarCompletion;
         try
         {
             var inboundType = continuing ? "USER_FOLLOWUP" : "USER_REQUEST";
@@ -1594,16 +1623,51 @@ public partial class MainWindow : Window
             const string HqEndedNotice = "HQ의 작업은 종료되었습니다.";
 
             int GetPendingMechanicalWorkCount()
+                => mechanicalWork.OutstandingCount;
+
+            Task WaitForPendingMechanicalWorkAsync(CancellationToken cancellationToken)
+                => mechanicalWork.WaitForAllAsync(cancellationToken);
+
+            static string FormatObservationResults(IReadOnlyList<MechanicalWorkCompletion> completions)
             {
-                // 향후 RESOURCE 이외의 비동기 대기 작업이 추가되면 이 집계 지점에 포함한다.
-                return resourceQueue.OutstandingCount;
+                var blocks = completions.Select(item =>
+                {
+                    var status = item.Success ? "COMPLETED" : "FAILED";
+                    var error = string.IsNullOrWhiteSpace(item.ErrorCode) ? string.Empty : $"\nerrorCode={item.ErrorCode}";
+                    var exit = item.ExitCode is null ? string.Empty : $"\nexitCode={item.ExitCode}";
+                    var paths = item.ResultPaths.Count == 0
+                        ? string.Empty
+                        : "\nresultPaths:\n" + string.Join("\n", item.ResultPaths.Select(path => "- " + path));
+                    return $"observationId={item.Id}\nstatus={status}\ncompletionMode={FormatCompletionMode(item.CompletionMode)}{error}{exit}\n{item.Message}{paths}";
+                });
+                return "비동기 계측 결과:\n" + string.Join("\n\n", blocks);
             }
 
-            async Task WaitForPendingMechanicalWorkAsync(CancellationToken cancellationToken)
+            async Task<IReadOnlyList<MechanicalWorkCompletion>> CollectRequiredObservationResultsAsync()
             {
-                // 현재 실제 대기 대상은 RESOURCE queue이며, 향후 다른 기계적 대기 작업을 이곳에 합친다.
-                if (!resourceQueue.IsIdle)
-                    await resourceQueue.WaitForIdleAsync(cancellationToken);
+                await observationQueue.ScanNowAsync(cts.Token);
+                var results = new List<MechanicalWorkCompletion>();
+                results.AddRange(mechanicalWork.DrainCompletions(
+                    "OBSERVATION",
+                    MechanicalWorkCompletionMode.WorkResultRequired));
+
+                var pending = mechanicalWork.WorkResultRequiredCount;
+                if (pending > 0)
+                {
+                    TaskTitle.Text = $"비동기 계측 완료 대기 · {pending}건";
+                    AddTaskMessage(
+                        "OBSERVATION WAIT",
+                        $"WORK_RESULT_REQUIRED 계측 {pending}건이 완료될 때까지 Worker가 AI 호출 없이 기다립니다.",
+                        status: "WAITING_OBSERVATION",
+                        includeHistory: false);
+                    SetFlowState(false, false, false);
+                    await mechanicalWork.WaitForWorkResultRequiredAsync(cts.Token);
+                    results.AddRange(mechanicalWork.DrainCompletions(
+                        "OBSERVATION",
+                        MechanicalWorkCompletionMode.WorkResultRequired));
+                }
+
+                return results.OrderBy(item => item.FinishedAt).ToArray();
             }
 
             void SaveContinuation(string status, string lastHqMessage)
@@ -1623,6 +1687,7 @@ public partial class MainWindow : Window
 
             async Task FinalizeEndedJobAsync()
             {
+                await observationQueue.ScanNowAsync(cts.Token);
                 var pendingCount = GetPendingMechanicalWorkCount();
                 if (pendingCount > 0)
                 {
@@ -1641,6 +1706,12 @@ public partial class MainWindow : Window
                 while (resourceQueue.TryDequeueCompletion(out var finalResource))
                 {
                     if (!finalResource.Success)
+                        jobHadErrors = true;
+                }
+
+                foreach (var finalMechanical in mechanicalWork.DrainCompletions())
+                {
+                    if (!finalMechanical.Success)
                         jobHadErrors = true;
                 }
 
@@ -1772,6 +1843,7 @@ public partial class MainWindow : Window
                             {
                                 if (completedResources.Any(item => !item.Success))
                                     jobHadErrors = true;
+                                mechanicalWork.DrainCompletions("RESOURCE");
 
                                 var resourceNotice = string.Join("\n\n", completedResources.Select(item =>
                                 {
@@ -1787,7 +1859,11 @@ public partial class MainWindow : Window
 
                             TaskDirection.Text = "작업 AI"; TaskTitle.Text = "작업 AI가 수행 중"; ResultTitle.Text = "WORK";
                             SetFlowState(false, true, false, explicitStage: TaskStage.Implementer);
-                            var workPrompt = RoleContractLoader.BuildWorkPrompt(inboundType, inbound, _targetSettings.EffectiveJudge.Enabled);
+                            var workPrompt = RoleContractLoader.BuildWorkPrompt(
+                                inboundType,
+                                inbound,
+                                _targetSettings.EffectiveJudge.Enabled,
+                                observationQueue.RequestDirectory);
                             var result = await RunCoordinatorRoleAsync(
                                 jobId,
                                 "WORK",
@@ -1817,6 +1893,35 @@ public partial class MainWindow : Window
                                 continue;
                             }
                             AddTaskMessage("WORK", result.FinalMessage, includeHistory: false);
+
+                            var requiredObservationResults = await CollectRequiredObservationResultsAsync();
+                            if (requiredObservationResults.Count > 0)
+                            {
+                                if (requiredObservationResults.Any(item => !item.Success))
+                                    jobHadErrors = true;
+
+                                var observationNotice = FormatObservationResults(requiredObservationResults);
+                                AddRoleResponseHistory(
+                                    WorkerRoleState.Work,
+                                    "비동기 계측 결과 대기",
+                                    route.Body,
+                                    usage: result.Usage,
+                                    files: result.Files,
+                                    status: "OBSERVATION_WAIT",
+                                    providerWireId: implementer.Provider,
+                                    fullMessage: result.FinalMessage);
+                                AddTaskMessage(
+                                    "OBSERVATION RESULT → WORK",
+                                    observationNotice,
+                                    fileCount: requiredObservationResults.Sum(item => item.ResultPaths.Count),
+                                    status: requiredObservationResults.All(item => item.Success) ? "COMPLETED" : "FAILED",
+                                    includeHistory: false);
+                                inboundType = "OBSERVATION_RESULT";
+                                inbound = observationNotice + "\n\n보류된 이전 WORK 응답:\n" + result.FinalMessage;
+                                state = WorkerRoleState.Work;
+                                break;
+                            }
+
                             AddRoleResponseHistory(
                                 WorkerRoleState.Work,
                                 route.Target == WorkerRoleState.Judge ? "판정 요청" : route.Target == WorkerRoleState.Resource ? "리소스 요청" : "수행 결과",
@@ -1954,7 +2059,10 @@ public partial class MainWindow : Window
         catch (Exception exception) { AddTaskMessage("TASK ERROR", WorkerTranscriptJson.Serialize(new { error_type = exception.GetType().Name, detail = exception.Message }), status: "UNKNOWN"); }
         finally
         {
+            try { await observationQueue.DisposeAsync(); } catch (OperationCanceledException) { }
             try { await resourceQueue.DisposeAsync(); } catch (OperationCanceledException) { }
+            observationQueue.TransportEvent -= OnObservationSidecarEvent;
+            observationQueue.CompletionAvailable -= OnObservationSidecarCompletion;
             resourceQueue.StateChanged -= OnResourceSidecarStateChanged;
             resourceQueue.CompletionAvailable -= OnResourceSidecarCompletion;
             resourceQueue.TransportEvent -= OnResourceSidecarTransportEvent;
