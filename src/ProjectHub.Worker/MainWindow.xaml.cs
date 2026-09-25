@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net.Http;
@@ -1368,12 +1367,8 @@ public partial class MainWindow : Window
         var state = WorkerRoleState.Hq;
         var previousState = WorkerRoleState.Hq;
         var resourceQueue = new ResourceSidecarQueue(_bridgeServer, workingDirectory, cts.Token);
-        var pendingResourceHqEvents = new ConcurrentQueue<ResourceSidecarCompletion>();
-        void QueueResourceHqEvent(ResourceSidecarCompletion completion)
-            => pendingResourceHqEvents.Enqueue(completion);
         resourceQueue.StateChanged += OnResourceSidecarStateChanged;
         resourceQueue.CompletionAvailable += OnResourceSidecarCompletion;
-        resourceQueue.CompletionAvailable += QueueResourceHqEvent;
         resourceQueue.TransportEvent += OnResourceSidecarTransportEvent;
         try
         {
@@ -1388,6 +1383,58 @@ public partial class MainWindow : Window
             string unknownDetail = string.Empty;
             var unknownSummaryHandedToHq = false;
             var jobHadErrors = false;
+            var hqEnded = false;
+            var hqEndBody = string.Empty;
+            const string HqEndedNotice = "HQ의 작업은 종료되었습니다.";
+
+            int GetPendingMechanicalWorkCount()
+            {
+                // 향후 RESOURCE 이외의 비동기 대기 작업이 추가되면 이 집계 지점에 포함한다.
+                return resourceQueue.OutstandingCount;
+            }
+
+            async Task WaitForPendingMechanicalWorkAsync(CancellationToken cancellationToken)
+            {
+                // 현재 실제 대기 대상은 RESOURCE queue이며, 향후 다른 기계적 대기 작업을 이곳에 합친다.
+                if (!resourceQueue.IsIdle)
+                    await resourceQueue.WaitForIdleAsync(cancellationToken);
+            }
+
+            async Task FinalizeEndedJobAsync()
+            {
+                var pendingCount = GetPendingMechanicalWorkCount();
+                if (pendingCount > 0)
+                {
+                    ResultTitle.Text = "WAITING";
+                    ResultBody.Text = hqEndBody;
+                    TaskTitle.Text = $"기계적 대기 작업 완료 대기 · {pendingCount}건";
+                    AddTaskMessage(
+                        "TASK WAITING",
+                        $"HQ의 의미 작업은 종료되었습니다. Worker가 남은 기계적 대기 작업 {pendingCount}건의 완료만 기다립니다.",
+                        status: "WAITING_PENDING_WORK",
+                        includeHistory: false);
+                    SetFlowState(false, false, false);
+                    await WaitForPendingMechanicalWorkAsync(cts.Token);
+                }
+
+                while (resourceQueue.TryDequeueCompletion(out var finalResource))
+                {
+                    if (!finalResource.Success)
+                        jobHadErrors = true;
+                }
+
+                var finalStatus = jobHadErrors ? "DONE_WITH_ERROR" : "DONE";
+                ResultTitle.Text = jobHadErrors ? "DONE · 오류 기록 있음" : "DONE";
+                ResultBody.Text = hqEndBody;
+                TaskTitle.Text = "Worker가 모든 대기 작업을 확인하고 종료했습니다.";
+                AddTaskMessage("TASK RESULT", hqEndBody, status: finalStatus, includeHistory: false);
+                SetFlowState(false, false, false);
+            }
+
+            void RejectWorkAfterHqEnd()
+            {
+                AddTaskMessage("WORKER → WORK", HqEndedNotice, status: "HQ_ENDED", includeHistory: false);
+            }
 
             void RouteUnknown(WorkerRoleState source, string code, string detail)
             {
@@ -1396,35 +1443,6 @@ public partial class MainWindow : Window
                 previousState = source;
                 unknownCode = code;
                 unknownDetail = detail;
-            }
-
-            bool TryRoutePendingResourceCompletionToHq(
-                string boundarySource,
-                WorkerRoleState pendingState,
-                string pendingInboundType,
-                string pendingBody)
-            {
-                var completions = new List<ResourceSidecarCompletion>();
-                while (pendingResourceHqEvents.TryDequeue(out var completion))
-                    completions.Add(completion);
-                if (completions.Count == 0) return false;
-
-                var facts = string.Join("\n\n", completions.Select(item =>
-                {
-                    var status = item.Success ? "SAVED" : item.ErrorCode ?? "FAILED";
-                    return $"requestId={item.RequestId}\nstatus={status}\n{item.Message}";
-                }));
-                inboundType = "RESOURCE_COMPLETED";
-                inbound =
-                    $"RESOURCE completion event:\n{facts}\n\n" +
-                    "이 내용은 Worker가 관측한 기계적 완료 사실입니다. 현재 진행 중이던 AI turn은 중단하지 않았으며, role boundary에서 HQ가 다음 흐름을 결정하도록 예약된 이벤트입니다.\n\n" +
-                    $"Boundary source: {boundarySource}\n" +
-                    $"Pending state: {pendingState}\n" +
-                    $"Pending inbound type: {pendingInboundType}\n" +
-                    $"Pending body:\n{pendingBody}";
-                state = WorkerRoleState.Hq;
-                AddTaskMessage("RESOURCE COMPLETED → HQ", facts, status: "RESOURCE_COMPLETED", includeHistory: false);
-                return true;
             }
 
             while (true)
@@ -1450,8 +1468,6 @@ public partial class MainWindow : Window
                     TaskTitle.Text = "오류 요약을 설계·관제 AI에 전달 중";
                     state = WorkerRoleState.Hq;
                 }
-
-                TryRoutePendingResourceCompletionToHq("ROLE_BOUNDARY", state, inboundType, inbound);
 
                 try
                 {
@@ -1485,42 +1501,11 @@ public partial class MainWindow : Window
                                 files: routed.Files,
                                 status: route.Action?.ToString().ToUpperInvariant(),
                                 providerWireId: IsWebTransport(coordinator.Transport) ? null : coordinator.Provider);
-                            if (TryRoutePendingResourceCompletionToHq(
-                                "HQ",
-                                route.Target ?? WorkerRoleState.Hq,
-                                "HQ_DECISION_" + route.Action?.ToString().ToUpperInvariant(),
-                                route.Body))
-                                continue;
                             if (route.Action == WorkerAction.End)
                             {
-                                if (!resourceQueue.IsIdle)
-                                {
-                                    ResultTitle.Text = "FINALIZING";
-                                    ResultBody.Text = route.Body;
-                                    TaskTitle.Text = $"리소스 완료 대기 · {resourceQueue.OutstandingCount}건";
-                                    AddTaskMessage("TASK FINALIZING", $"HQ가 종료를 결정했지만 RESOURCE {resourceQueue.OutstandingCount}건이 아직 실행/대기 중이므로 완료 상태를 보류합니다.", status: "WAITING_RESOURCE", includeHistory: false);
-                                    SetFlowState(false, false, false);
-                                    await resourceQueue.WaitForIdleAsync(cts.Token);
-                                    if (TryRoutePendingResourceCompletionToHq(
-                                        "RESOURCE_FINALIZATION",
-                                        WorkerRoleState.Hq,
-                                        "HQ_END_DECISION",
-                                        route.Body))
-                                        continue;
-                                }
-
-                                while (resourceQueue.TryDequeueCompletion(out var finalResource))
-                                {
-                                    if (!finalResource.Success)
-                                        jobHadErrors = true;
-                                }
-
-                                var finalStatus = jobHadErrors ? "DONE_WITH_ERROR" : "DONE";
-                                ResultTitle.Text = jobHadErrors ? "DONE · 오류 기록 있음" : "DONE";
-                                ResultBody.Text = route.Body;
-                                TaskTitle.Text = "관제 AI가 작업을 종료했습니다.";
-                                AddTaskMessage("TASK RESULT", route.Body, status: finalStatus, includeHistory: false);
-                                SetFlowState(false, false, false);
+                                hqEnded = true;
+                                hqEndBody = route.Body;
+                                await FinalizeEndedJobAsync();
                                 return;
                             }
                             if (route.Action == WorkerAction.Pause)
@@ -1538,6 +1523,13 @@ public partial class MainWindow : Window
                         }
                         case WorkerRoleState.Work:
                         {
+                            if (hqEnded)
+                            {
+                                RejectWorkAfterHqEnd();
+                                await FinalizeEndedJobAsync();
+                                return;
+                            }
+
                             var completedResources = new List<ResourceSidecarCompletion>();
                             while (resourceQueue.TryDequeueCompletion(out var resourceCompletion))
                                 completedResources.Add(resourceCompletion);
@@ -1550,7 +1542,7 @@ public partial class MainWindow : Window
                             if (completedResources.Count > 0)
                             {
                                 var resourceNotice = string.Join("\n\n", completedResources.Select(item => item.Message));
-                                inbound = $"Resource completion notice:\n{resourceNotice}\n\nPrevious inbound type: {inboundType}\n{inbound}";
+                                inbound = $"리소스 완료 알림:\n{resourceNotice}\n\n이전 입력 유형: {inboundType}\n{inbound}";
                                 inboundType = "RESOURCE_RESULT";
                             }
 
@@ -1584,12 +1576,12 @@ public partial class MainWindow : Window
                                 files: result.Files,
                                 status: route.Target?.ToString().ToUpperInvariant(),
                                 providerWireId: implementer.Provider);
-                            if (TryRoutePendingResourceCompletionToHq(
-                                "WORK",
-                                route.Target ?? WorkerRoleState.Hq,
-                                "WORK_ROUTE_" + route.Target?.ToString().ToUpperInvariant(),
-                                route.Body))
-                                continue;
+                            if (hqEnded)
+                            {
+                                RejectWorkAfterHqEnd();
+                                await FinalizeEndedJobAsync();
+                                return;
+                            }
                             if (route.Target == WorkerRoleState.Hq)
                             {
                                 inboundType = "WORK_REPORT"; inbound = route.Body; state = WorkerRoleState.Hq;
@@ -1612,7 +1604,7 @@ public partial class MainWindow : Window
                             {
                                 if (!_targetSettings.EffectiveJudge.Enabled)
                                 {
-                                    RouteUnknown(WorkerRoleState.Work, "JUDGE_UNAVAILABLE", "WORK requested JUDGE, but no JUDGE provider is enabled.");
+                                    RouteUnknown(WorkerRoleState.Work, "JUDGE_UNAVAILABLE", "WORK가 JUDGE를 요청했지만 활성화된 JUDGE 제공자가 없습니다.");
                                     continue;
                                 }
                                 workValidationRequest = route.Body.Trim();
@@ -1632,7 +1624,7 @@ public partial class MainWindow : Window
                         {
                             if (string.IsNullOrWhiteSpace(workSession))
                             {
-                                RouteUnknown(WorkerRoleState.Judge, "WORK_SESSION_MISSING", "The JEV response cannot be returned because the requesting WORK session is unavailable.");
+                                RouteUnknown(WorkerRoleState.Judge, "WORK_SESSION_MISSING", "요청한 WORK 세션을 사용할 수 없어 JEV 응답을 반환할 수 없습니다.");
                                 continue;
                             }
                             TaskDirection.Text = "판정 AI"; TaskTitle.Text = "JUDGE 전송 중"; ResultTitle.Text = "JUDGE";
@@ -1655,18 +1647,12 @@ public partial class MainWindow : Window
                                 inbound,
                                 judgeTelemetry: transport.Telemetry,
                                 status: _judgeStatus);
-                            if (TryRoutePendingResourceCompletionToHq(
-                                "JUDGE",
-                                WorkerRoleState.Work,
-                                "JUDGMENT",
-                                inbound))
-                                continue;
                             state = WorkerRoleState.Work;
                             break;
                         }
                         default:
                         {
-                            RouteUnknown(state, "STATE_INVALID", "Worker entered an unsupported role state.");
+                            RouteUnknown(state, "STATE_INVALID", "Worker가 지원하지 않는 역할 상태에 진입했습니다.");
                             continue;
                         }
                     }
@@ -1690,7 +1676,6 @@ public partial class MainWindow : Window
             try { await resourceQueue.DisposeAsync(); } catch (OperationCanceledException) { }
             resourceQueue.StateChanged -= OnResourceSidecarStateChanged;
             resourceQueue.CompletionAvailable -= OnResourceSidecarCompletion;
-            resourceQueue.CompletionAvailable -= QueueResourceHqEvent;
             resourceQueue.TransportEvent -= OnResourceSidecarTransportEvent;
             _resourceSidecarActive = false;
             _resourceSidecarQueued = 0;

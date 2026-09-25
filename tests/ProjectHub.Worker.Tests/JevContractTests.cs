@@ -17,7 +17,8 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[GOTO : WORK]", hq);
         Assert.DoesNotContain("[GOTO : RESOURCE]", hq);
         Assert.DoesNotContain("[GOTO : JUDGE]", hq);
-        Assert.Contains("Mechanical Worker facts are observations, not semantic decisions.", hq);
+        Assert.Contains("Worker의 기계적 사실은 관측값이며 의미 판단이 아니다.", hq);
+        Assert.Contains("기계적 대기 작업이 남아 있어도 END 판단을 미루지 않는다.", hq);
     }
 
     [Fact]
@@ -65,34 +66,35 @@ public sealed class RoleContractBoundaryTests
     public void WorkResourceContractStatesGeneralTransportBoundary()
     {
         var work = RoleContractLoader.LoadWorkFooter(true);
-        Assert.Contains("RESOURCE body is only the natural-language generation instruction", work);
-        Assert.Contains("Only a valid GOTO control line changes routing; prose does not change routing.", work);
-        Assert.DoesNotContain("Example:", work, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("새로운 RESOURCE queue 요청 한 건", work);
+        Assert.Contains("상태 조회, 취소, 추적, 확인, 보고를 위해 RESOURCE로 라우팅하지 않는다.", work);
+        Assert.Contains("유효한 GOTO 제어행만 라우팅을 변경", work);
+        Assert.DoesNotContain("예시:", work, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void HqPromptUsesPlainMetadataAndOnlyAllowsWork()
     {
-        var prompt = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "opaque report");
-        Assert.Contains("Role: HQ", prompt);
-        Assert.Contains("Inbound type: WORK_REPORT", prompt);
-        Assert.Contains("Allowed destination: WORK", prompt);
+        var prompt = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "불투명 보고");
+        Assert.Contains("역할: HQ", prompt);
+        Assert.Contains("입력 유형: WORK_REPORT", prompt);
+        Assert.Contains("허용 목적지: WORK", prompt);
         Assert.DoesNotContain("[ROLE :", prompt);
         Assert.DoesNotContain("[INBOUND TYPE", prompt);
         Assert.DoesNotContain("[AVAILABLE GOTO", prompt);
         Assert.DoesNotContain("[GOTO : RESOURCE]", prompt);
         Assert.DoesNotContain("[GOTO : JUDGE]", prompt);
-        Assert.Contains("opaque report", prompt);
+        Assert.Contains("불투명 보고", prompt);
     }
 
     [Fact]
     public void WorkPromptUsesPlainMetadata()
     {
-        var prompt = RoleContractLoader.BuildWorkPrompt("RESOURCE_QUEUED", "mechanical status", true);
-        Assert.Contains("Role: WORK", prompt);
-        Assert.Contains("Inbound type: RESOURCE_QUEUED", prompt);
-        Assert.Contains("Judge available: yes", prompt);
-        Assert.Contains("Resource available: yes", prompt);
+        var prompt = RoleContractLoader.BuildWorkPrompt("RESOURCE_QUEUED", "기계적 상태", true);
+        Assert.Contains("역할: WORK", prompt);
+        Assert.Contains("입력 유형: RESOURCE_QUEUED", prompt);
+        Assert.Contains("판정 사용 가능: 예", prompt);
+        Assert.Contains("리소스 사용 가능: 예", prompt);
         Assert.DoesNotContain("[ROLE :", prompt);
         Assert.DoesNotContain("[INBOUND TYPE", prompt);
         Assert.DoesNotContain("[RESOURCE AVAILABLE", prompt);

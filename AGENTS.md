@@ -8,6 +8,8 @@
 - HQ는 설계·관제 역할이며 ChatGPT Web 또는 CLI Provider로 실행할 수 있다. WORK는 CLI Provider 실행을 사용한다. RESOURCE는 별도 ChatGPT Web 대화에 고정하고, Worker 내부 single-reader FIFO queue가 한 번에 1건씩 실행한다. JUDGE는 JEV transport다.
 - HQ Web과 RESOURCE Web은 서로 다른 conversationId에 명시적으로 binding한다. heartbeat는 생존 확인용이며 task 목적지 선택에 사용하지 않는다.
 - RESOURCE는 최종 생성 이미지 제작·복수 이미지 다운로드·지정 경로 저장까지만 담당한다. 자동 코드/CSS/HTML 연결, 의미 기반 컴포넌트 선택, 자동 품질 판정은 하지 않는다. 현재 실제 RESOURCE transport는 IMAGE만 지원한다.
+- [GOTO : RESOURCE] 한 번은 새로운 이미지 생성 queue 요청 한 건을 만든다. 기존 요청의 상태 조회·취소·추적·확인·보고를 RESOURCE로 라우팅하지 않는다.
+- HQ의 [ACTION=END]는 의미 작업 종료를 확정한다. Worker는 이후 HQ/WORK/JUDGE 의미 흐름을 다시 열지 않고, 남은 기계적 대기 작업만 확인해 모두 끝난 뒤 DONE/DONE_WITH_ERROR로 전환한다. END 이후 WORK 보고가 HQ로 향하면 Worker가 "HQ의 작업은 종료되었습니다."로 차단한다.
 - History는 Worker가 이미 가진 role/state/usage/file telemetry로 만든다. AI 본문 tag나 source 문자열을 routing 판단에 사용하지 않는다.
 - 한 번에 하나의 활성 구조 작업을 기준으로 수행하고, 완료/잔여/실제 검증 결과를 문서에 갱신한다.
 - 변경 규모에 맞는 빌드·테스트를 실행하고 실제 결과만 기록한다. 실행 환경에 도구가 없으면 미실행 사실과 대체 정적 검증을 명시한다.
@@ -27,3 +29,5 @@
 - 역할 contract는 장기 불변식만 담는다. 특정 사용자 요청, 테스트 시나리오, 도메인 예시, 파일명, 횟수/목록, 일회성 장애 대응 문구를 contract에 추가하지 않는다.
 - contract 변경 전 “무관한 다른 Job에도 그대로 적용되는가?”를 확인한다. 아니라면 tests/fixtures/task history/validation note에만 둔다.
 - 장애를 고칠 때 관측된 실패 문장을 그대로 contract에 넣지 말고, 필요한 경우 일반 protocol invariant로 최소화한다.
+
+- 역할 계약, 정책 문서, 작업 계획, 작업 기록, AI 역할 프롬프트의 설명 문장은 한글로 작성한다. ACTION/GOTO/QID, 상태 코드, 클래스명, 파일명 등 상호 운용과 코드 식별에 필요한 토큰은 예외다.

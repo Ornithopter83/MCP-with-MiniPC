@@ -19,13 +19,13 @@ public static class RoleContractLoader
 
     public static string BuildHqPrompt(string inboundType, string body)
     {
-        var header = $"Role: HQ\nInbound type: {inboundType}\nAllowed destination: WORK\n\nInbound body:\n";
+        var header = $"역할: HQ\n입력 유형: {inboundType}\n허용 목적지: WORK\n\n입력 본문:\n";
         return header + body + "\n\n" + LoadHqFooter();
     }
 
     public static string BuildWorkPrompt(string inboundType, string body, bool judgeAvailable)
     {
-        var header = $"Role: WORK\nInbound type: {inboundType}\nJudge available: {(judgeAvailable ? "yes" : "no")}\nResource available: yes\n\nInbound body:\n";
+        var header = $"역할: WORK\n입력 유형: {inboundType}\n판정 사용 가능: {(judgeAvailable ? "예" : "아니오")}\n리소스 사용 가능: 예\n\n입력 본문:\n";
         return header + body + "\n\n" + LoadWorkFooter(judgeAvailable);
     }
 
@@ -34,7 +34,7 @@ public static class RoleContractLoader
     {
         var name = $"ProjectHub.Worker.Contracts.{fileName}";
         using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name)
-            ?? throw new FileNotFoundException($"Role contract resource not found: {name}");
+            ?? throw new FileNotFoundException($"역할 계약 리소스를 찾을 수 없습니다: {name}");
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd().Trim();
     }

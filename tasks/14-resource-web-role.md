@@ -1,14 +1,14 @@
-# 14 RESOURCE Web role + HQ Web restore
+# 14 RESOURCE Web 역할 + HQ Web 복원
 
 Updated: 2026-09-25
 
 정책 원본은 Master-Polish.md다.
 
-## Goal
+## 목표
 
 기존 HIGH 역할을 완전히 제거하고, 별도 ChatGPT Web 대화에서 최종 생성 이미지를 만들고 지정 경로에 저장하는 RESOURCE 역할을 도입한다. 동시에 HQ는 ChatGPT Web 또는 CLI Provider를 선택할 수 있게 복원한다.
 
-## State graph
+## 상태 그래프
 
 ~~~text
 HQ       -> WORK
@@ -16,8 +16,9 @@ WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
 RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
-RESOURCE 완료 -> HQ 확인 이벤트 예약 -> role boundary에서 HQ 우선 확인
-UNKNOWN  -> HQ summary once
+HQ ACTION=END -> 의미 흐름 종료 고정 -> Worker 기계적 대기 작업 확인
+기계적 대기 작업 있음 -> 대기 -> 모두 종료 -> DONE / DONE_WITH_ERROR
+UNKNOWN  -> HQ 요약 1회
 ~~~
 
 ## A — HIGH removal
@@ -80,10 +81,10 @@ IMAGE:
 - 확장이 최신 assistant turn의 생성 이미지들을 모두 다운로드해 bytes 배열로 반환
 - Worker가 workspace 하위 requestId 폴더에 image-NN.*로 저장
 - WORK는 RESOURCE 완료를 기다리지 않는다. 접수 사실은 HQ로 돌아가며 이후 의미적 다음 단계는 HQ가 결정
-- 완료 결과는 다음 WORK 호출에 기계적으로 전달
-- HQ END 시 outstanding RESOURCE가 있으면 FINALIZING으로 대기
+- HQ END 전 후속 WORK에 실제로 필요한 완료 결과만 기계적으로 전달
+- HQ END 시 의미 흐름을 종료하고 outstanding RESOURCE는 Worker의 기계적 대기 작업으로만 추적
 
-## E — role contracts
+## E — 역할 계약
 
 HQ:
 - 새/대규모 사용자 목표는 필요한 수준으로 구현 방향 설계
@@ -99,7 +100,7 @@ RESOURCE:
 - 생성/저장만
 - 코드 작성/연결/통합 금지
 
-## Verification
+## 검증
 
 자동:
 - Worker/Test source에서 HIGH 구조 잔존 없음
@@ -120,7 +121,7 @@ RESOURCE:
 - JUDGE 회귀
 
 
-## F — settings/UI polish follow-up
+## F — 설정/UI 후속 보정
 
 화면 확인 피드백:
 - 대기 상태 전체 컬러는 정상 정책이므로 변경하지 않는다.
@@ -131,7 +132,7 @@ RESOURCE:
 - Provider icon contrast, text wrapping, scroll/fixed footer, 역할명 표기를 정리한다.
 
 
-## G — RESOURCE Web runtime/observability follow-up
+## G — RESOURCE Web 실행/관측성 후속 보정
 
 - RESOURCE 전용 JSON/role wrapper 제거, 자연어 direct forwarding
 - Bridge task role과 claimer 분리
@@ -141,7 +142,7 @@ RESOURCE:
 - error가 있었던 정상 END는 DONE_WITH_ERROR telemetry
 
 
-## H — image load completion follow-up
+## H — 이미지 로드 완료 후속 보정
 
 - generated image DOM insertion과 실제 image load 완료를 분리해 처리
 - load/error event에서 response observer 재평가
@@ -155,7 +156,7 @@ RESOURCE:
 - 종료 후 stale progress가 legacy UI를 재활성화하지 않도록 guard
 
 
-## I — RESOURCE sidecar queue / multi-image / finalization
+## I — RESOURCE 사이드카 대기열 / 복수 이미지 / 종료 대기
 
 - RESOURCE는 single-reader FIFO sidecar queue로 실행
 - 동시에 RESOURCE Web task 1건만 허용
@@ -172,7 +173,7 @@ RESOURCE:
 - 작은 UI 이미지를 generated image candidate에서 제외
 - RESOURCE outbound prompt / bridge task transcript 유지
 
-## J — contract generalization
+## J — 계약 일반화
 
 - ACTION/GOTO 외 pseudo-control 대괄호 제거
 - 역할 contract에서 특정 사용자 요청·도메인·횟수·장애 사례 제거
@@ -181,7 +182,7 @@ RESOURCE:
 - 특정 검증 사례는 tests/fixtures로 이동
 
 
-## K — RESOURCE download stall hardening
+## K — RESOURCE 다운로드 고착 방지 강화
 
 - baseline 이후 새 large image를 assistant/main 영역에서 탐색
 - image response absolute deadline 120초
@@ -192,11 +193,14 @@ RESOURCE:
 - extension 0.1.7 / build 2026-09-25.1
 
 
-## L — RESOURCE completion HQ wake
+## L — RESOURCE 완료 HQ 깨우기 폐기와 일반 대기 게이트
 
-- completion result queue와 별도로 HQ 확인 이벤트를 예약
-- AI turn 실행 중에는 HQ/WORK/JUDGE를 중단하거나 병렬 호출하지 않음
-- role boundary에서 pending completion event가 있으면 다음 route 실행 전에 HQ가 먼저 확인
-- 직전 AI의 미실행 next route/body는 mechanical context로 HQ에 함께 전달
-- completion result는 WORK 입력/finalization용 queue에도 그대로 유지
-- outstanding 상태에서 HQ END 후 queue가 비면 완료 event를 HQ에 다시 전달하고 최종 END를 확인한 뒤 DONE 처리
+- RESOURCE 완료마다 HQ를 깨우는 별도 완료 이벤트를 제거한다.
+- HQ ACTION=END는 의미 작업 종료를 즉시 확정한다.
+- END 이후 Worker는 HQ/WORK/JUDGE 의미 흐름을 다시 열지 않는다.
+- END 이후 WORK 보고가 HQ로 향하면 "HQ의 작업은 종료되었습니다."로 차단한다.
+- RESOURCE outstanding은 Worker가 관리하는 기계적 대기 작업의 한 종류로 취급한다.
+- 기계적 대기 작업이 남아 있으면 대기 상태에서 AI 호출 없이 완료를 기다린다.
+- 모든 기계적 대기 작업이 끝나면 Worker가 DONE 또는 DONE_WITH_ERROR로 전환한다.
+- [GOTO : RESOURCE]는 새 이미지 생성 요청 한 건 전용이며 상태 조회·취소·추적에 사용하지 않는다.
+

@@ -4,7 +4,7 @@ Updated: 2026-09-25
 
 정책 원본: Master-Polish.md
 
-## Current architecture
+## 현재 구조
 
 ~~~text
 HQ       -> WORK
@@ -12,7 +12,8 @@ WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
 RESOURCE_QUEUE 접수 -> HQ
 RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
-RESOURCE 완료 -> HQ 확인 이벤트 예약 -> role boundary에서 HQ 우선 확인
+HQ ACTION=END -> 의미 흐름 종료 고정 -> Worker 기계적 대기 작업 확인
+기계적 대기 작업 있음 -> 대기 -> 모두 종료 -> DONE / DONE_WITH_ERROR
 UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 ~~~
 
@@ -22,7 +23,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - JUDGE = JEV
 - Worker = role/session/binding/transport/process/file telemetry/protocol 오류와 RESOURCE queue 사실의 기계적 관리
 
-## Active — 14 RESOURCE Web role + HQ Web restore
+## 활성 작업 — 14 RESOURCE Web 역할 + HQ Web 복원
 
 이번 구조 변경에서 코드상 다음 항목을 반영했다.
 
@@ -37,7 +38,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - RESOURCE 자연어 body의 기계적 유효성 검사와 sidecar queue 접수 추가
 - RESOURCE IMAGE 결과를 브라우저 확장이 복수 image payload로 반환하고 Worker가 requestId별 workspace 경로에 저장
 - ResourceRequest REQUESTED→GENERATING→SAVED/FAILED 기록
-- RESOURCE 접수 사실은 HQ로 전달하고, 완료 결과는 이후 WORK 입력 또는 finalization에 기계적으로 반영
+- RESOURCE 접수 사실은 HQ로 전달하고, HQ END 전 필요한 완료 결과만 이후 WORK 입력에 기계적으로 반영
 - WORK/HQ/JUDGE 역할 contract를 durable protocol 중심으로 일반화
 - HQ 설계 책임과 PAUSE 사용 예 추가
 - Pipeline 네 번째 카드를 리소스/ChatGPT Web으로 교체
@@ -68,7 +69,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - JUDGE 회귀
 
 
-## UI follow-up — 2026-09-24
+## UI 후속 보정 — 2026-09-24
 
 사용자 화면 확인 후 다음을 보정했다.
 
@@ -84,7 +85,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 
 Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 
-## 2026-09-24 Windows build/test/publish
+## 2026-09-24 Windows 빌드/테스트/게시
 
 - 원격 `main` `09ac0dc`에서 확인한 compile 오류를 수정했다: `AiRoleRunner.cs`의 `Directory`, `ResourceTransportContract.cs`의 `Path` 참조를 위해 `System.IO`를 명시했다.
 - RESOURCE/HQ Web 호출의 `_bridgeServer` nullable 경고는 명시적 null guard로 정리했다.
@@ -98,7 +99,7 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - Explorer 실화면/HQ-Web·RESOURCE 왕복은 사용자 확인 잔여다.
 
 
-## 2026-09-24 RESOURCE natural-language + observability fix
+## 2026-09-24 RESOURCE 자연어 전송 + 관측성 보정
 
 - RESOURCE Web 전송에서 ROLE/JSON/RESOURCE contract wrapper를 제거하고 WORK의 자연어 본문을 그대로 전달.
 - RESOURCE 저장 경로는 Worker가 `assets/resources/resource-<requestId>.png`로 기계적으로 생성.
@@ -110,7 +111,7 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 확장 0.1.5와 함께 image 완료 조건/progress ordering을 보강한다.
 
 
-## 2026-09-24 RESOURCE image completion follow-up
+## 2026-09-24 RESOURCE 이미지 완료 후속 보정
 
 - 중간 변경은 `ab6f831`로 main에 먼저 커밋/푸시했다.
 - RESOURCE 이미지 element가 DOM에 먼저 생기고 load 완료만 나중에 발생하는 경우 load event로 재검사.
@@ -125,7 +126,7 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - coordinator-first 종료 후 늦게 도착한 non-terminal progress는 legacy UI를 다시 활성화하지 않음.
 
 
-## 2026-09-24 RESOURCE sidecar queue + multi-image
+## 2026-09-24 RESOURCE 사이드카 대기열 + 복수 이미지
 
 - RESOURCE를 메인 역할 상태의 직렬 대기에서 분리하여 single-reader FIFO sidecar queue로 변경.
 - WORK의 RESOURCE 요청은 queue에 즉시 접수되고 같은 WORK session은 계속 진행.
@@ -140,7 +141,7 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - RESOURCE 실제 Web 전송 prompt와 bridge task id를 transcript에 계속 기록한다.
 
 
-## 2026-09-24 contract generalization cleanup
+## 2026-09-24 계약 일반화 정리
 
 - HQ/WORK/JUDGE 역할 contract에서 특정 시나리오에 종속된 예시와 일회성 대응 문구를 제거했다.
 - 계약에는 durable role responsibility, ACTION/GOTO syntax, generic transport grammar, Worker/AI boundary만 남겼다.
@@ -149,7 +150,7 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - Master-Polish.md와 AGENTS.md에 contract generalization rule을 추가해 특정 사용자 요청/장애 사례를 contract로 승격하지 못하게 했다.
 
 
-## 2026-09-25 RESOURCE download stall hardening
+## 2026-09-25 RESOURCE 다운로드 고착 방지 강화
 
 - 로그에서 RESOURCE 첫 task가 RESPONSE_START 이후 IMAGE_READY/DOWNLOAD_START 없이 고착되는 경로를 수정.
 - RESOURCE 시작 시 기존 main image URL을 baseline으로 잡고 새 이미지 탐색 범위를 latest assistant + main 영역으로 확대.
@@ -160,10 +161,21 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - extension 0.1.7 / build 2026-09-25.1.
 
 
-## 2026-09-25 RESOURCE completion HQ wake
+## 2026-09-25 RESOURCE 완료 HQ 깨우기 폐기
 
-- RESOURCE 완료 결과 queue와 별도로 HQ 확인 이벤트 queue를 둔다.
-- RESOURCE 저장/실패 완료 이벤트가 발생해도 실행 중인 HQ/WORK/JUDGE AI turn은 중단하지 않는다.
-- 현재 turn이 끝난 role boundary에서 pending RESOURCE 완료 이벤트를 먼저 HQ에 전달하고, 아직 수행하지 않은 다음 route는 context로 함께 넘겨 HQ가 흐름을 다시 결정한다.
-- RESOURCE 완료 결과 자체는 기존처럼 다음 WORK 입력 또는 END finalization에서도 소비할 수 있게 유지한다.
-- HQ가 RESOURCE outstanding 상태에서 END를 선택한 경우 queue idle까지 기다린 뒤 완료 이벤트를 HQ에 다시 전달하고, HQ의 최종 END 이후 DONE/DONE_WITH_ERROR로 종료한다.
+- RESOURCE 완료마다 HQ를 깨우는 별도 이벤트 queue는 반복 흐름을 만들 수 있어 제거 대상으로 확정했다.
+- HQ ACTION=END를 의미 작업 종료의 단일 확정점으로 사용한다.
+- END 이후에는 Worker가 HQ/WORK/JUDGE 의미 흐름을 다시 실행하지 않는다.
+- RESOURCE를 포함한 남은 기계적 대기 작업은 Worker가 대기 상태에서 직접 추적한다.
+- 모든 기계적 대기 작업이 끝나면 Worker가 DONE 또는 DONE_WITH_ERROR로 전환한다.
+- END 이후 WORK 보고가 HQ로 향하는 경우 Worker가 "HQ의 작업은 종료되었습니다."로 차단한다.
+- [GOTO : RESOURCE]는 새로운 이미지 생성 요청 한 건 전용이며 기존 요청 조회·취소·추적 용도로 사용하지 않는다.
+
+
+## 2026-09-25 HQ 종료와 기계적 대기 분리
+
+- RESOURCE 완료 HQ 자동 깨우기 제거.
+- HQ END 뒤 재확인 END 요구 제거.
+- Worker 내부의 일반 기계적 대기 작업 집계 지점을 두고 현재 RESOURCE outstanding을 연결.
+- 대기 상태는 사용자 입력 대기뿐 아니라 AI 의미 작업 종료 후 기계적 비동기 작업 완료 대기에도 사용.
+- 관련 역할 계약과 역할 프롬프트 설명을 한글로 통일.

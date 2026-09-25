@@ -20,7 +20,6 @@ Worker가 처리할 수 있는 것:
 - Web conversation binding 및 heartbeat 생존 확인
 - transcript/usage/file telemetry 기록
 - Worker가 실제로 생성·전달한 HQ/RESOURCE Web outbound와 RESOURCE lifecycle 기록
-- RESOURCE 완료 사실을 별도 HQ 확인 이벤트로 예약하고 AI turn 경계에서 기계적으로 전달
 - JUDGE transport schema와 RESOURCE 자연어 body의 기계적 전달
 - UNKNOWN 원문 로그와 HQ용 한글 오류 요약
 - 이미 알고 있는 실행 사실을 History UI에 표시
@@ -54,8 +53,9 @@ WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
 RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
-RESOURCE 완료 -> HQ 확인 이벤트 예약 -> 현재 AI turn 종료 -> HQ 우선 확인
-완료 결과 -> 다음 WORK 입력 또는 HQ END finalization
+HQ ACTION=END -> 의미 작업 종료 고정 -> Worker가 기계적 대기 작업 확인
+기계적 대기 작업 있음 -> 대기 -> 모두 종료 -> DONE / DONE_WITH_ERROR
+HQ END 전 완료 결과 -> 필요 시 다음 WORK 입력에 기계적으로 전달
 UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
 UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
@@ -151,7 +151,7 @@ JUDGE:
 <opaque body>
 ~~~
 
-RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. RESOURCE 완료 결과는 다음 WORK 호출에 기계적으로 함께 전달하거나 HQ END finalization에서 기계적으로 반영한다. 동시에 Worker는 RESOURCE 완료 사실을 별도 HQ 확인 이벤트로 예약한다. 실행 중인 HQ/WORK/JUDGE turn은 중단하지 않으며, 해당 turn이 끝난 role boundary에서 아직 수행하지 않은 다음 route보다 HQ 확인 이벤트를 먼저 전달해 HQ가 흐름을 다시 결정하게 한다.
+RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 자연어 요청을 FIFO queue에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. HQ가 아직 END하지 않은 동안 완료 결과가 다음 WORK 작업에 필요하면 Worker가 기계적으로 함께 전달할 수 있다. HQ가 END한 뒤에는 RESOURCE 완료 때문에 HQ나 WORK를 다시 호출하지 않는다. Worker는 HQ 종료 상태를 고정하고 남은 기계적 대기 작업만 추적한다.
 
 일반 body는 opaque다. JUDGE destination의 schema 검사와 RESOURCE 자연어 body의 비어 있음 검사는 transport 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
 
@@ -174,7 +174,7 @@ RESOURCE는 메인 역할 상태와 분리된 sidecar queue로 실행한다. WOR
 ACTION 사용 예:
 - CONTINUE: AI/Worker가 스스로 다음 의미 있는 진전을 만들 수 있음
 - PAUSE: 화면 인상, 조작감, 음질, 취향, 외부 로그인/권한, 사용자 전용 선택 등 사람 개입 없이는 다음 판단이 의미 없음
-- END: 요청 목표가 충족됐고 사용자 확인을 기다릴 이유도 없음
+- END: 의미 작업 목표가 충족됐고 사용자 확인을 기다릴 이유도 없음. Worker가 추적하는 기계적 대기 작업이 남아 있어도 END 판단을 미루지 않음
 
 HQ가 Web이든 CLI든 같은 역할 계약을 사용한다.
 
@@ -206,16 +206,17 @@ WORK -> GOTO:RESOURCE + 자연어 요청
        ├─ 추가 요청은 QUEUED
        ├─ 생성 이미지 전부 다운로드
        ├─ assets/resources/<requestId>/image-NN.* 저장
-       └─ 완료 결과 queue -> 다음 WORK 호출에 전달
+       └─ 완료 결과 queue -> HQ END 전 필요할 때 다음 WORK 호출에 전달
 
 HQ ACTION=END
-  -> RESOURCE 실행/대기 0건인지 finalization gate 확인
-  -> 남아 있으면 FINALIZING
-  -> RESOURCE 완료 이벤트를 HQ에 다시 전달해 최종 흐름 확인
-  -> queue가 비고 HQ가 END를 다시 선택한 뒤 DONE / DONE_WITH_ERROR
+  -> Worker가 HQ 의미 작업 종료 상태를 고정
+  -> 이후 WORK 보고가 HQ로 향하면 "HQ의 작업은 종료되었습니다."로 차단
+  -> Worker가 모든 기계적 대기 작업을 확인
+  -> 남아 있으면 대기 상태에서 AI 호출 없이 완료만 기다림
+  -> 모두 종료되면 Worker가 DONE / DONE_WITH_ERROR로 전환
 ~~~
 
-WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤에는 ChatGPT Web에 그대로 보낼 자연어 이미지 요청만 둔다.
+WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤에는 ChatGPT Web에 그대로 보낼 새로운 이미지 생성 요청 한 건의 자연어 지시만 둔다. 기존 요청의 상태 조회·취소·추적·확인·보고는 RESOURCE 라우팅으로 보내지 않는다.
 
 ~~~text
 [GOTO : RESOURCE]
@@ -292,20 +293,26 @@ RESOURCE가 하지 않는 것:
 실제 Windows build/test/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
 
 
-## 11. Role contract generalization rule
+## 11. 역할 계약 일반화 규칙
 
-Role contracts are long-lived protocol boundaries, not task notes.
+역할 계약은 일회성 작업 메모가 아니라 장기간 유지되는 프로토콜 경계다.
 
-Contracts may contain only:
-- durable role responsibility
-- allowed ACTION/GOTO syntax and state-transition constraints
-- transport grammar or mechanical invariants required for interoperability
-- general boundaries between semantic AI decisions and mechanical Worker behavior
+계약에 포함할 수 있는 내용:
+- 지속 가능한 역할 책임
+- 허용된 ACTION/GOTO 문법과 상태 전이 제약
+- 상호 운용에 필요한 전송 문법 또는 기계적 불변식
+- 의미 판단을 하는 AI와 기계적 Worker 사이의 일반 경계
 
-Contracts must not contain:
-- examples copied from a particular user request, test run, product domain, file name, asset, game, audio case, or incident
-- one-off counts, lists, retries, or remaining-work logic that only makes sense for a specific scenario
-- prose written to patch one observed model failure when the same rule can be expressed as a general protocol invariant
-- temporary implementation history, debugging instructions, or acceptance-test scripts
+계약에 포함하지 않는 내용:
+- 특정 사용자 요청, 테스트 실행, 제품 도메인, 파일명, 자산, 게임, 오디오 사례, 장애에서 복사한 예시
+- 특정 시나리오에만 맞는 횟수, 목록, 재시도, 남은 작업 계산
+- 관측된 실패 문장을 그대로 붙이는 임시 대응 문구
+- 임시 구현 이력, 디버깅 지시, 인수 테스트 스크립트
 
-Scenario-specific material belongs in tests, fixtures, task history, or validation notes. Before adding a contract rule, verify that it would still be correct for an unrelated future job. If not, do not add it to the contract.
+시나리오별 내용은 테스트, 픽스처, 작업 이력, 검증 기록에 둔다. 계약 규칙을 추가하기 전에 무관한 미래 작업에도 그대로 맞는지 확인한다. 아니라면 계약에 넣지 않는다.
+
+## 12. 문서와 작업 언어
+
+- 역할 계약, 정책 문서, 작업 계획, 작업 기록, AI 역할 프롬프트의 설명 문장은 한글로 작성한다.
+- ACTION, GOTO, QID, 상태 코드, 클래스명, 파일명처럼 상호 운용이나 코드 식별에 필요한 토큰은 원형을 유지할 수 있다.
+- 효율보다 해석 일관성과 한글 문맥 유지를 우선한다.
