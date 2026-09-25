@@ -23,6 +23,8 @@ Worker가 처리할 수 있는 것:
 - 현재 역할 상태 저장 및 허용 상태 전이 검사
 - ACTION/GOTO 제어행 문법 파싱
 - 역할별 세션/전송/프로세스 실행
+- WORK가 등록한 비동기 기계 작업의 실행, 시간 초과, 결과 경로 수집과 완료 상태 관리
+- WORK_RESULT_REQUIRED 계측 완료까지 AI 호출 없이 대기하고 같은 WORK 세션에 결과 재주입
 - 시간 초과/취소/인증/스키마/경로 안전성 오류 처리
 - Web 대화 연결 및 생존 신호 생존 확인
 - 기록/사용량/file 계측 기록
@@ -40,6 +42,7 @@ Worker가 하지 않는 것:
 - RESOURCE 생성 파일의 미적/기능적 품질 또는 용도 판정
 - 생성 리소스가 어느 컴포넌트에 맞는지 판단
 - 사용자의 후속 명령 없이 저장 리소스를 코드에 자동 연결
+- 비동기 계측 결과의 의미·품질·요구사항 충족 여부 판단
 
 ---
 
@@ -58,6 +61,9 @@ Worker가 하지 않는 것:
 ~~~text
 HQ       -> WORK
 WORK     -> HQ | JUDGE | RESOURCE_QUEUE
+WORK 실행 중 -> 기계 계측 요청 파일 등록 -> OBSERVATION sidecar
+OBSERVATION WORK_RESULT_REQUIRED -> 현재 WORK 응답 보류 -> 완료 후 같은 WORK 세션 OBSERVATION_RESULT
+OBSERVATION FINALIZE_ONLY -> 메인 의미 흐름 비차단 -> HQ END 시 기계적 대기 대상
 JUDGE    -> WORK
 RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
@@ -162,6 +168,8 @@ JUDGE:
 ~~~
 
 RESOURCE는 메인 역할 상태와 분리된 사이드카 대기열로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 명시된 종류와 자연어 요청을 FIFO 대기열에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. HQ가 아직 END하지 않은 동안 RESOURCE 완료가 성공이든 실패든 Worker는 해당 requestId, 종류, 결과/오류를 다음 WORK 입력에 기계적으로 함께 전달한다. RESOURCE 실패는 UNKNOWN으로 승격해 HQ에 우회 전달하지 않는다. HQ가 END한 뒤에는 RESOURCE 완료 때문에 HQ나 WORK를 다시 호출하지 않는다. Worker는 HQ 종료 상태를 고정하고 남은 기계적 대기 작업만 추적한다.
+
+비동기 계측은 새로운 GOTO 목적지나 AI 역할이 아니다. WORK는 현재 호출 중 헤더에 제공된 기계 작업 요청 폴더에 OBSERVATION JSON을 원자적으로 게시할 수 있다. Worker는 요청된 명령을 별도 프로세스로 실행하고 시간 초과·종료 코드·표준 출력/오류·명시된 결과 경로를 기계적으로 수집한다. WORK_RESULT_REQUIRED 요청이 있으면 현재 WORK 응답의 의미 라우팅을 보류하고 AI를 호출하지 않은 채 완료를 기다린 뒤 같은 WORK 세션에 OBSERVATION_RESULT를 전달한다. FINALIZE_ONLY 요청은 의미 흐름을 막지 않으며 HQ END 뒤 최종 DONE 전환 전에 Worker가 완료만 확인한다.
 
 일반 본문는 불투명다. JUDGE 목적지의 스키마 검사와 RESOURCE 자연어 본문의 비어 있음 검사는 전송 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
 
@@ -320,7 +328,7 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 
 ## 11. 현재 활성 작업
 
-활성 작업은 tasks/14-resource-web-role.md다.
+활성 작업은 tasks/15-async-mechanical-observation.md다.
 
 구현 코드 범위:
 1. HIGH 제거 / RESOURCE 역할 + 사이드카 대기열
@@ -359,3 +367,19 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 - 역할 계약, 정책 문서, 작업 계획, 작업 기록, AI 역할 프롬프트의 설명 문장은 한글로 작성한다.
 - ACTION, GOTO, QID, 상태 코드, 클래스명, 파일명처럼 상호 운용이나 코드 식별에 필요한 토큰은 원형을 유지할 수 있다.
 - 효율보다 해석 일관성과 한글 문맥 유지를 우선한다.
+
+
+---
+
+## 14. 비동기 기계 작업과 계측
+
+- 비동기 기계 작업의 공통 생명주기는 Worker의 `MechanicalWorkRegistry`가 관리한다.
+- 현재 종류는 RESOURCE와 OBSERVATION이며 새 종류가 추가돼도 Worker가 작업 의미를 추론하지 않는다.
+- OBSERVATION 요청은 작업별 `.projecthub/mechanical/<jobId>/requests` 폴더를 사용하고, active/result 기록도 같은 jobId 아래에 보존한다.
+- WORK는 완성된 요청 JSON을 임시 파일에 쓴 뒤 `.json`으로 원자적으로 게시한다.
+- OBSERVATION은 직접 실행할 command/arguments, 실행 폴더, 시간 제한, 결과 경로, 환경 변수와 completionMode를 기계적으로 명시한다.
+- 실행 폴더와 결과 경로는 현재 작업공간 또는 ProjectHub 실행 디렉터리 하위만 허용한다.
+- WORK_RESULT_REQUIRED는 현재 WORK 응답을 보류하는 안전 게이트다. Worker는 완료까지 AI 호출 없이 대기하고 결과를 같은 WORK 세션에 `OBSERVATION_RESULT`로 재주입한 뒤 새 WORK 응답을 받아야 의미 라우팅을 계속한다.
+- FINALIZE_ONLY는 결과 의미 해석이 필요 없는 작업에만 사용한다. 의미 흐름은 계속되며 HQ가 END한 뒤에도 남아 있으면 Worker가 완료까지 기다린 후 DONE 또는 DONE_WITH_ERROR를 기록한다.
+- RESOURCE도 같은 공통 기계 작업 레지스트리에 FINALIZE_ONLY로 등록해 전체 outstanding 집계와 최종 대기 게이트에 포함한다.
+- 계측 결과의 성공 여부는 프로세스 종료 코드, 시간 초과, 결과 경로 존재 같은 기계 사실만 뜻한다. 결과가 제품 요구를 만족하는지는 WORK/HQ가 판단한다.
