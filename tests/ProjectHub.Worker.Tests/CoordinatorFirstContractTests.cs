@@ -55,7 +55,7 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Work, "[GOTO : HQ] report on the same line", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", null, WorkerRoleState.Judge)]
-    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\n과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도처럼 서로 구별하기 쉽게 만들어줘.", null, WorkerRoleState.Resource)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\n게임용 효과음을 짧고 선명하게 만들어줘.", null, WorkerRoleState.Resource)]
     [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", null, WorkerRoleState.Work)]
     [InlineData(WorkerRoleState.Resource, "[GOTO : WORK]\nsaved", null, WorkerRoleState.Work)]
     public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, WorkerAction? action, WorkerRoleState? target)
@@ -83,7 +83,7 @@ public sealed class CoordinatorFirstContractTests
     [Fact]
     public void ResourceTransport_AcceptsNaturalLanguageVerbatimAndRejectsEmptyBody()
     {
-        const string body = "과일 이미지 16개 만들어줘. 사과, 바나나, 배, 딸기, 포도를 포함해줘.";
+        const string body = "게임용 효과음을 짧고 선명하게 만들어줘.";
         Assert.True(ResourceTransportContract.TryParse(body, out var request, out var error));
         Assert.Null(error);
         Assert.Equal(body, request!.Prompt);
@@ -135,15 +135,16 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void MultiImageResultPayload_DeserializesAllResourceFiles()
+    public void MultiResourceResultPayload_DeserializesMixedGeneratedFiles()
     {
         const string json = """
             {
               "success": true,
-              "resultType": "RESOURCE_IMAGES",
+              "resultType": "RESOURCE_FILES",
               "resultFiles": [
-                {"base64":"YQ==","mimeType":"image/png","fileName":"image-01.png"},
-                {"base64":"Yg==","mimeType":"image/webp","fileName":"image-02.webp"}
+                {"base64":"YQ==","mimeType":"image/png","fileName":"tile.png"},
+                {"base64":"Yg==","mimeType":"audio/mpeg","fileName":"match.mp3"},
+                {"base64":"Yw==","mimeType":"application/pdf","fileName":"guide.pdf"}
               ]
             }
             """;
@@ -152,9 +153,10 @@ public sealed class CoordinatorFirstContractTests
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
         Assert.NotNull(request);
-        Assert.Equal("RESOURCE_IMAGES", request!.ResultType);
-        Assert.Equal(2, request.ResultFiles!.Count);
-        Assert.Equal("image/webp", request.ResultFiles[1].MimeType);
+        Assert.Equal("RESOURCE_FILES", request!.ResultType);
+        Assert.Equal(3, request.ResultFiles!.Count);
+        Assert.Equal("audio/mpeg", request.ResultFiles[1].MimeType);
+        Assert.Equal("guide.pdf", request.ResultFiles[2].FileName);
     }
 
     [Fact]
@@ -163,15 +165,16 @@ public sealed class CoordinatorFirstContractTests
         var task = new BridgeTask(
             "id", "conversation", "project", "prompt", "COMPLETED", "ok",
             null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            "RESOURCE", SavedPath: "assets/resources/id/image-01.png",
+            "RESOURCE", SavedPath: "assets/resources/id/tile.png",
             SavedPaths: new List<string>
             {
-                "assets/resources/id/image-01.png",
-                "assets/resources/id/image-02.png"
+                "assets/resources/id/tile.png",
+                "assets/resources/id/match.mp3",
+                "assets/resources/id/guide.pdf"
             });
 
-        Assert.Equal(2, task.SavedPaths!.Count);
-        Assert.EndsWith("image-01.png", task.SavedPath!, StringComparison.Ordinal);
+        Assert.Equal(3, task.SavedPaths!.Count);
+        Assert.EndsWith("tile.png", task.SavedPath!, StringComparison.Ordinal);
     }
 
     [Fact]
