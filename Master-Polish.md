@@ -36,7 +36,7 @@ Worker가 하지 않는 것:
 - 다음 역할을 본문 의미로 추론
 - 요구사항/AC/테스트/근거 충족 여부 판정
 - JUDGE 결과 의미 해석 후 자동 PASS/FAIL 생성
-- RESOURCE 이미지의 미적/기능적 품질 판정
+- RESOURCE 생성 파일의 미적/기능적 품질 또는 용도 판정
 - 생성 리소스가 어느 컴포넌트에 맞는지 판단
 - 사용자의 후속 명령 없이 저장 리소스를 코드에 자동 연결
 
@@ -48,7 +48,7 @@ Worker가 하지 않는 것:
 | --- | --- | --- | --- |
 | HQ | 설계·관제 AI | 사용자 요청 해석, 구현 방향 설계, WORK 지시, JUDGE 질문 검토, CONTINUE/PAUSE/END | ChatGPT Web 또는 CLI 제공자 |
 | WORK | 작업 AI | 코드 구현·수정·빌드·테스트·보고, RESOURCE/JUDGE 요청 | CLI 제공자 |
-| RESOURCE | 리소스 AI | 최종 생성 이미지 제작·복수 이미지 다운로드·지정 파일 저장 | 별도 ChatGPT Web 고정 |
+| RESOURCE | 리소스 AI | ChatGPT Web 생성 리소스 제작·생성 파일 수집·다운로드·지정 경로 저장 | 별도 ChatGPT Web 고정 |
 | JUDGE | 작업 판단 AI | HQ 검토를 거친 WORK 질문 판정 | JEV |
 | 미확인 | 오류 상태 | 기계적 오류 기록 및 HQ 요약 복귀 | Worker 내부 |
 
@@ -149,7 +149,7 @@ WORK:
 
 ~~~text
 [GOTO : RESOURCE]
-<자연어 이미지 생성 요청>
+<자연어 리소스 생성 요청>
 ~~~
 
 JUDGE:
@@ -207,15 +207,15 @@ JUDGE -> WORK   raw 결과
 
 ## 8. RESOURCE 흐름
 
-현재 RESOURCE는 IMAGE 생성 → 복수 이미지 다운로드 → 저장 → 기록을 사이드카 FIFO 대기열로 수행한다.
+RESOURCE는 ChatGPT Web이 생성해 파일로 반환할 수 있는 모든 생성 리소스를 생성 → 수집/다운로드 → 저장 → 기록하는 사이드카 FIFO 대기열로 수행한다. 이미지·오디오·문서 등 구체 형식은 역할 의미가 아니라 반환 파일의 MIME 형식과 파일 정보로 구분한다.
 
 ~~~text
 WORK -> GOTO:RESOURCE + 자연어 요청
   └─ Worker RESOURCE FIFO queue
        ├─ 현재 1건만 RESOURCE Web 실행
        ├─ 추가 요청은 QUEUED
-       ├─ 생성 이미지 전부 다운로드
-       ├─ assets/resources/<requestId>/image-NN.* 저장
+       ├─ 생성 파일 전부 수집/다운로드
+       ├─ assets/resources/<requestId>/ 아래에 안전한 파일명으로 저장
        └─ 완료 결과 queue -> HQ END 전 필요할 때 다음 WORK 호출에 전달
 
 HQ ACTION=END
@@ -227,18 +227,18 @@ HQ ACTION=END
   -> 사용자 작업 추가가 들어오면 기존 HQ/WORK 세션을 유지한 USER_FOLLOWUP 새 실행 구간 시작
 ~~~
 
-WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤에는 ChatGPT Web에 그대로 보낼 새로운 이미지 생성 요청 한 건의 자연어 지시만 둔다. 기존 요청의 상태 조회·취소·추적·확인·보고는 RESOURCE 라우팅으로 보내지 않는다.
+WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤에는 ChatGPT Web에 그대로 보낼 새로운 리소스 생성 요청 한 건의 자연어 지시만 둔다. 기존 요청의 상태 조회·취소·추적·확인·보고는 RESOURCE 라우팅으로 보내지 않는다.
 
 ~~~text
 [GOTO : RESOURCE]
-<natural-language image generation request>
+<자연어 리소스 생성 요청>
 ~~~
 
-Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE 대기열에 넣는다. 저장 위치는 Worker가 기계적으로 `assets/resources/<requestId>/image-01.*`, `image-02.*` 형태로 생성한다.
+Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE 대기열에 넣는다. RESOURCE Web은 생성 결과를 공통 `resultFiles[]`로 반환하며 각 항목은 파일 bytes, MIME 형식, 파일명을 포함한다. Worker는 작업공간 하위 `assets/resources/<requestId>/`에 저장한다. 반환 파일명이 안전하면 이를 정규화해 사용하고, 없거나 사용할 수 없으면 `resource-NN.<확장자>` 형식으로 기계적으로 이름을 만든다.
 
 기계적 ResourceRequest 기록:
 - Id
-- Type: IMAGE
+- Type: RESOURCE
 - 프롬프트
 - TargetDirectory
 - TargetFileName
@@ -246,7 +246,7 @@ Worker는 자연어 본문을 해석하지 않고 그대로 RESOURCE 대기열�
 - Status: REQUESTED / GENERATING / SAVED / FAILED
 - SavedPath
 
-현재 RESOURCE 실제 범위는 IMAGE이며 SOUND 전송 예약 규칙은 제거한다.
+RESOURCE 범위는 특정 파일 형식으로 제한하지 않는다. ChatGPT Web이 생성 결과를 실제 파일로 반환할 수 있고 확장이 이를 기계적으로 수집할 수 있으면 동일 RESOURCE 파이프라인을 사용한다. 형식별 차이는 RESOURCE 역할 분리가 아니라 확장의 파일 탐지·수집 어댑터 차이로 처리한다.
 
 RESOURCE가 하지 않는 것:
 - 자동 코드 연결
@@ -299,7 +299,7 @@ RESOURCE가 하지 않는 것:
 3. HQ/RESOURCE 명시적 대화 연결
 4. HQ 설계 책임 + PAUSE 예시
 5. WORK RESOURCE 위임 계약
-6. RESOURCE 사이드카 FIFO 대기열 + 복수 IMAGE 결과 전송와 저장
+6. RESOURCE 사이드카 FIFO 대기열 + 복수 생성 파일 결과 전송과 저장
 7. 파이프라인/설정/이력 교체
 8. PAUSE/END 후 동일 세션 작업 추가와 고정 크기 이력 입력 UI
 9. 테스트/문서 갱신
