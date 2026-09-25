@@ -241,6 +241,16 @@ public sealed class GitWorktreeManagerTests
             Assert.Equal("base123", result.BeforeHead);
             Assert.Equal("integrated456", result.AfterHead);
 
+            var statusCalls = runner.Calls
+                .Where(call => call.Arguments.Count > 0 && call.Arguments[0] == "status")
+                .ToArray();
+            Assert.Equal(2, statusCalls.Length);
+            Assert.All(statusCalls, call =>
+            {
+                Assert.Contains(":(exclude).projecthub", call.Arguments);
+                Assert.Contains(":(exclude).projecthub/**", call.Arguments);
+            });
+
             var merge = runner.Calls.Single(call => call.Arguments.Count > 0 && call.Arguments[0] == "merge");
             Assert.Equal(new[] { "merge", "--ff-only", "integrated456" }, merge.Arguments);
             Assert.DoesNotContain(

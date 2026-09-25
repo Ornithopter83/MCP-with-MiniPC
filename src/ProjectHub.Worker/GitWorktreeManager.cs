@@ -531,13 +531,9 @@ public sealed class GitWorktreeManager
 
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
 
-        var statusBefore = await RunAsync(
+        var statusBefore = await ReadPrimaryWorkspaceStatusAsync(
             repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=all").ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false);
 
         if (statusBefore.ExitCode != 0)
             return new(false, "INTEGRATION_TARGET_STATUS_UNAVAILABLE", repositoryRoot, normalizedRef, null, null, null, null, false);
@@ -701,13 +697,9 @@ public sealed class GitWorktreeManager
                 true);
         }
 
-        var statusAfter = await RunAsync(
+        var statusAfter = await ReadPrimaryWorkspaceStatusAsync(
             repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=all").ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false);
 
         if (statusAfter.ExitCode != 0)
         {
@@ -799,6 +791,21 @@ public sealed class GitWorktreeManager
             StableSegment(jobId, 36),
             StableSegment(workItemId, 36));
     }
+
+    private Task<GitCommandResult> ReadPrimaryWorkspaceStatusAsync(
+        string repositoryRoot,
+        CancellationToken cancellationToken)
+        => RunAsync(
+            repositoryRoot,
+            ReadTimeout,
+            cancellationToken,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--",
+            ".",
+            ":(exclude).projecthub",
+            ":(exclude).projecthub/**");
 
     private Task<GitCommandResult> RunAsync(
         string workingDirectory,
