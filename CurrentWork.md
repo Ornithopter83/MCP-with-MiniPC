@@ -252,3 +252,14 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - Worker는 취소 후 자동으로 AI를 다시 호출하지 않는다.
 - 현재 실행 구간과 함께 취소된 RESOURCE 대기 작업은 자동 재실행하지 않으며 이미 저장된 파일과 작업공간 이력은 유지한다.
 - `CANCELED` 후속 입력과 `thread.started` 실시간 파서 테스트를 추가했다.
+
+## 2026-09-25 RESOURCE 종류 분리와 실패 WORK 복귀
+
+- WORK가 RESOURCE를 요청할 때 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE`을 명시한다.
+- 한 RESOURCE 요청에는 한 종류만 포함하며 이미지와 오디오처럼 생성 방식이 다른 리소스는 별도 요청으로 분리한다.
+- Worker는 본문 의미로 종류를 추론하지 않고 명시된 분류 토큰만 기계적으로 파싱한다.
+- RESOURCE Web에는 분류 헤더를 제거한 자연어 생성 요청만 전달한다.
+- RESOURCE 성공과 실패는 모두 completion queue를 통해 다음 WORK 입력의 `RESOURCE_RESULT`로 전달한다.
+- RESOURCE 실패는 더 이상 `UNKNOWN -> HQ ERROR_SUMMARY` 경로로 우회하지 않는다.
+- 실패 결과에는 requestId, RESOURCE_TYPE, 오류 코드, Web/transport 결과 메시지를 포함해 같은 WORK 세션이 재요청·분리·보고 여부를 결정한다.
+- HQ END 이후에는 기존 정책대로 AI를 다시 깨우지 않고 Worker가 기계적 종료 상태만 정리한다.
