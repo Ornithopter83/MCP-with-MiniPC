@@ -1555,6 +1555,20 @@ public partial class MainWindow : Window
         WorkerAiRoleSettings implementer,
         CoordinatorContinuationState? continuation = null)
     {
+        var persistedParallelGraph = continuation is null
+            ? null
+            : ProjectWorkspacePersistence.TryLoadWorkGraph(workingDirectory, continuation.JobId);
+        if (_targetSettings.EffectiveMaxConcurrentWork > 1 || persistedParallelGraph is not null)
+        {
+            await RunParallelCoordinatorFirstJobAsync(
+                request,
+                selectedThread,
+                workingDirectory,
+                coordinator,
+                implementer,
+                continuation);
+            return;
+        }
         var continuing = continuation is not null;
         var jobId = continuation?.JobId ?? Guid.NewGuid().ToString("N");
         _activeWorkingDirectory = workingDirectory;
