@@ -125,7 +125,7 @@ WORK -> JUDGE API -> raw result -> same WORK session
 
 어댑터 return 봉투 구조:
 
-Worker consumes the WORK-to-JUDGE 경로. Its next WORK input uses a 역할 header and raw JEV response body, without replaying a GOTO control line or adding a semantic `JUDGMENT` marker.
+Worker는 WORK에서 JUDGE로 향하는 경로를 처리한다. 다음 WORK 입력에는 역할 헤더와 JEV 원본 응답 본문을 사용하며, GOTO 제어행을 다시 넣거나 의미 표식 `JUDGMENT`를 추가하지 않는다.
 
 레거시 모드:
 
@@ -143,8 +143,8 @@ Codex -> JEV API -> raw result -> same Codex session
 - 시간 초과
 - 네트워크/HTTP 오류
 - 잘못된 JSON
-- required 제공자 field missing
-- unsupported 스키마/type
+- 필수 제공자 필드 누락
+- 지원하지 않는 스키마/형식
 
 신규 CLI-to-CLI에서는 오류 원문과 기술 상세를 로컬 한글 로그에 기록하고, 발생 역할·오류 코드·한글 설명만 HQ에 Job당 한 번 전달해 정상 관제를 재개한다. 요약 전달 후 오류가 재발하면 추가 AI 호출 없이 로그 기록 후 종료한다.
 
@@ -157,7 +157,7 @@ Worker는 오류를 구현 FAIL로 바꾸지 않는다.
 가능하면 다음을 기록한다.
 
 - 제공자
-- model/revision
+- 모델/개정
 - 요청 ID
 - 지연 시간
 - 사용량
