@@ -4,8 +4,8 @@ using System.Threading.Channels;
 
 namespace ProjectHub.Worker;
 
-public sealed record ResourceSidecarRequest(string Id, string Prompt);
-public sealed record ResourceSidecarCompletion(string RequestId, bool Success, string Message, string? ErrorCode, IReadOnlyList<string> SavedPaths);
+public sealed record ResourceSidecarRequest(string Id, string Type, string Prompt);
+public sealed record ResourceSidecarCompletion(string RequestId, string Type, bool Success, string Message, string? ErrorCode, IReadOnlyList<string> SavedPaths);
 public sealed record ResourceSidecarQueueState(bool Running, int QueuedCount, int OutstandingCount, string Stage, string? RequestId);
 public sealed record ResourceSidecarTransportEvent(string Source, string Content, string? Status = null);
 
@@ -60,9 +60,11 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         get { lock (_gate) return _queuedCount; }
     }
 
-    public ResourceSidecarRequest Enqueue(string prompt)
+    public ResourceSidecarRequest Enqueue(string type, string prompt)
     {
-        var request = new ResourceSidecarRequest(Guid.NewGuid().ToString("N"), prompt);
+        if (!ResourceTransportContract.IsSupportedType(type))
+            throw new InvalidOperationException("RESOURCE_TYPE_UNSUPPORTED");
+        var request = new ResourceSidecarRequest(Guid.NewGuid().ToString("N"), type.Trim().ToUpperInvariant(), prompt);
         ResourceSidecarQueueState state;
         lock (_gate)
         {
@@ -127,6 +129,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
                 {
                     completion = new ResourceSidecarCompletion(
                         request.Id,
+                        request.Type,
                         false,
                         exception.Message,
                         "RESOURCE_TRANSPORT_ERROR",
@@ -166,7 +169,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         var targetDirectory = $"assets/resources/{request.Id}";
         var trackedResource = new ResourceRequest(
             request.Id,
-            "RESOURCE",
+            request.Type,
             request.Prompt,
             targetDirectory,
             "resource-01.bin",
@@ -182,7 +185,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
 
         TransportEvent?.Invoke(new ResourceSidecarTransportEvent(
             "RESOURCE WEB TASK",
-            $"task {bridgeTask.Id} · assets/resources/{request.Id}",
+            $"task {bridgeTask.Id} · type {request.Type} · assets/resources/{request.Id}",
             "GENERATING"));
 
         BridgeTask? completed;
@@ -217,14 +220,14 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         var relative = paths
             .Select(path => Path.GetRelativePath(_workingDirectory, path).Replace('\\', '/'))
             .ToArray();
-        var message = $"리소스 저장 완료 ({relative.Length}개):\n" +
+        var message = $"RESOURCE 저장 완료 · type={request.Type} · {relative.Length}개:\n" +
                       string.Join("\n", relative.Select(path => "- " + path)) +
                       "\n자동 코드 연결은 수행하지 않았습니다.";
-        return new ResourceSidecarCompletion(request.Id, true, message, null, paths);
+        return new ResourceSidecarCompletion(request.Id, request.Type, true, message, null, paths);
     }
 
     private static ResourceSidecarCompletion Failure(ResourceSidecarRequest request, string code, string message)
-        => new(request.Id, false, message, code, Array.Empty<string>());
+        => new(request.Id, request.Type, false, message, code, Array.Empty<string>());
 
     private static string FailureCode(BridgeTask task) => task.FinishReason switch
     {
