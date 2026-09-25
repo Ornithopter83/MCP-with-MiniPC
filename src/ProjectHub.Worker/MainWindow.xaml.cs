@@ -1491,6 +1491,7 @@ public partial class MainWindow : Window
         }
         var coordinatorSession = continuation?.CoordinatorSessionId ?? CodexCliRunner.NormalizeSessionId(coordinator.ThreadSessionId);
         var workSession = continuation?.WorkSessionId ?? CodexCliRunner.NormalizeSessionId(implementer.ThreadSessionId);
+        var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
         var state = WorkerRoleState.Hq;
         var previousState = WorkerRoleState.Hq;
         var resourceQueue = new ResourceSidecarQueue(_bridgeServer, workingDirectory, cts.Token);
@@ -1622,7 +1623,15 @@ public partial class MainWindow : Window
                             TaskDirection.Text = "설계·관제 AI"; TaskTitle.Text = "다음 단계를 결정하는 중"; ResultTitle.Text = "HQ";
                             SetFlowState(true, false, false, explicitStage: TaskStage.Coordinator);
                             var coordinatorPrompt = RoleContractLoader.BuildHqPrompt(inboundType, inbound);
-                            var routed = await RunHqRoleAsync(jobId, "HQ_" + inboundType, coordinatorPrompt, coordinator, workingDirectory, coordinatorSession, cts.Token);
+                            var routed = await RunHqRoleAsync(
+                                jobId,
+                                "HQ_" + inboundType,
+                                coordinatorPrompt,
+                                coordinator,
+                                workingDirectory,
+                                coordinatorSession,
+                                cts.Token,
+                                startedSessionId => coordinatorSession = CodexCliRunner.NormalizeSessionId(startedSessionId) ?? coordinatorSession);
                             coordinatorSession = CodexCliRunner.NormalizeSessionId(routed.SessionId) ?? coordinatorSession;
                             coordinatorHasRun = true;
                             if (routed.ExitCode != 0)
@@ -1636,6 +1645,7 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.Hq, route.Error, routed.FinalMessage);
                                 continue;
                             }
+                            lastHqMessage = route.Body;
                             AddTaskMessage("HQ", routed.FinalMessage, status: route.Action?.ToString(), includeHistory: false);
                             AddRoleResponseHistory(
                                 WorkerRoleState.Hq,
@@ -1696,7 +1706,17 @@ public partial class MainWindow : Window
                             TaskDirection.Text = "작업 AI"; TaskTitle.Text = "작업 AI가 수행 중"; ResultTitle.Text = "WORK";
                             SetFlowState(false, true, false, explicitStage: TaskStage.Implementer);
                             var workPrompt = RoleContractLoader.BuildWorkPrompt(inboundType, inbound, _targetSettings.EffectiveJudge.Enabled);
-                            var result = await RunCoordinatorRoleAsync(jobId, "WORK", workPrompt, implementer, workingDirectory, workSession, null, cts.Token, CodexSandboxMode.WorkspaceWrite);
+                            var result = await RunCoordinatorRoleAsync(
+                                jobId,
+                                "WORK",
+                                workPrompt,
+                                implementer,
+                                workingDirectory,
+                                workSession,
+                                null,
+                                cts.Token,
+                                CodexSandboxMode.WorkspaceWrite,
+                                startedSessionId => workSession = CodexCliRunner.NormalizeSessionId(startedSessionId) ?? workSession);
                             workSession = CodexCliRunner.NormalizeSessionId(result.SessionId) ?? workSession;
                             if (result.ExitCode != 0)
                             {
@@ -1815,7 +1835,33 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            AddTaskMessage("TASK CANCELED", "Coordinator-router 작업이 취소되었습니다."); ResultTitle.Text = "CANCELED"; TaskTitle.Text = "작업이 취소되었습니다."; SetFlowState(false, false, false);
+            if (_userCanceledTask)
+            {
+                _continuationState = new CoordinatorContinuationState(
+                    jobId,
+                    workingDirectory,
+                    coordinator,
+                    implementer,
+                    coordinatorSession,
+                    workSession,
+                    "CANCELED",
+                    lastHqMessage);
+                AddTaskMessage(
+                    "TASK CANCELED",
+                    "사용자가 현재 실행 구간을 중단했습니다. 작업공간과 확보된 HQ/WORK 세션을 유지합니다.",
+                    status: "CANCELED");
+                ResultTitle.Text = "CANCELED";
+                ResultBody.Text = "현재 실행 구간을 중단했습니다. 작업 추가로 같은 세션에서 이어갈 수 있습니다.";
+                TaskTitle.Text = "작업이 중단되었습니다. 후속 작업 입력 대기";
+                SetFollowupComposerVisible(true);
+            }
+            else
+            {
+                AddTaskMessage("TASK CANCELED", "Coordinator-router 작업이 취소되었습니다.");
+                ResultTitle.Text = "CANCELED";
+                TaskTitle.Text = "작업이 취소되었습니다.";
+            }
+            SetFlowState(false, false, false);
         }
         catch (Exception exception) { AddTaskMessage("TASK ERROR", WorkerTranscriptJson.Serialize(new { error_type = exception.GetType().Name, detail = exception.Message }), status: "UNKNOWN"); }
         finally
@@ -1830,10 +1876,28 @@ public partial class MainWindow : Window
             _activeCoordinatorFirst = false; _activeTaskCts = null; _userCanceledTask = false; ExportTaskTranscript(); SetFlowState(false, false, false); ApplyConnectionStatus();
         }
     }
-    private async Task<AiRoleRunResult> RunHqRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, CancellationToken cancellationToken)
+    private async Task<AiRoleRunResult> RunHqRoleAsync(
+        string jobId,
+        string purpose,
+        string prompt,
+        WorkerAiRoleSettings role,
+        string workingDirectory,
+        string? sessionId,
+        CancellationToken cancellationToken,
+        Action<string>? sessionStarted = null)
     {
         if (!IsWebTransport(role.Transport))
-            return await RunCoordinatorRoleAsync(jobId, purpose, prompt, role, workingDirectory, sessionId, null, cancellationToken);
+            return await RunCoordinatorRoleAsync(
+                jobId,
+                purpose,
+                prompt,
+                role,
+                workingDirectory,
+                sessionId,
+                null,
+                cancellationToken,
+                CodexSandboxMode.ReadOnly,
+                sessionStarted);
         return await RunWebRoleAsync(jobId, "HQ", purpose, prompt, cancellationToken);
     }
 
@@ -1903,7 +1967,7 @@ public partial class MainWindow : Window
         _ => "application/octet-stream"
     };
 
-    private async Task<AiRoleRunResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string? schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly)
+    private async Task<AiRoleRunResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string? schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly, Action<string>? sessionStarted = null)
     {
         var started = DateTimeOffset.UtcNow;
         var roleName = purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) || purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) || purpose == "WORK" ? "WORK" : "COORDINATOR";
@@ -1919,7 +1983,7 @@ public partial class MainWindow : Window
                 AddRoleProgressHistory(progressRole, message, role.Provider);
             })
             : null;
-        var result = await runner.RunAsync(new AiRoleRunRequest(prompt, role, workingDirectory, sessionId, sandbox, cancellationToken, schema, progress));
+        var result = await runner.RunAsync(new AiRoleRunRequest(prompt, role, workingDirectory, sessionId, sandbox, cancellationToken, schema, progress, sessionStarted));
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
