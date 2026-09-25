@@ -438,7 +438,11 @@ public partial class MainWindow : Window
 
     private void DashboardHistoryList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (DashboardHistoryList.SelectedItem is not WorkerHistoryEvent item ||
+        var current = e.OriginalSource as DependencyObject;
+        while (current is not null && current is not ListBoxItem)
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+        if (current is not ListBoxItem container ||
+            container.DataContext is not WorkerHistoryEvent item ||
             string.IsNullOrWhiteSpace(item.FullMessage))
             return;
 
