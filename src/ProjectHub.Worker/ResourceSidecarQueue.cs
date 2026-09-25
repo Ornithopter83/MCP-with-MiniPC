@@ -17,6 +17,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
     private static readonly TimeSpan ResourceTransportTimeout = TimeSpan.FromMinutes(30);
     private readonly BridgeServer? _bridgeServer;
     private readonly string _workingDirectory;
+    private readonly MechanicalWorkRegistry _mechanicalWork;
     private readonly Channel<ResourceSidecarRequest> _queue;
     private readonly ConcurrentQueue<ResourceSidecarCompletion> _completions = new();
     private readonly CancellationTokenSource _cts;
@@ -27,10 +28,15 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
     private bool _running;
     private TaskCompletionSource<bool> _idle = CompletedIdle();
 
-    public ResourceSidecarQueue(BridgeServer? bridgeServer, string workingDirectory, CancellationToken jobCancellation)
+    public ResourceSidecarQueue(
+        BridgeServer? bridgeServer,
+        string workingDirectory,
+        CancellationToken jobCancellation,
+        MechanicalWorkRegistry? mechanicalWork = null)
     {
         _bridgeServer = bridgeServer;
         _workingDirectory = workingDirectory;
+        _mechanicalWork = mechanicalWork ?? new MechanicalWorkRegistry();
         _queue = Channel.CreateUnbounded<ResourceSidecarRequest>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -75,8 +81,27 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
             state = SnapshotLocked("QUEUED", request.Id);
         }
 
+        _mechanicalWork.Register(
+            request.Id,
+            "RESOURCE",
+            MechanicalWorkCompletionMode.FinalizeOnly,
+            $"type={request.Type}");
+
         if (!_queue.Writer.TryWrite(request))
+        {
+            _mechanicalWork.Complete(
+                request.Id,
+                false,
+                "RESOURCE 대기열이 닫혀 요청을 접수하지 못했습니다.",
+                "RESOURCE_QUEUE_CLOSED");
+            lock (_gate)
+            {
+                _queuedCount = Math.Max(0, _queuedCount - 1);
+                _outstandingCount = Math.Max(0, _outstandingCount - 1);
+                if (_outstandingCount == 0) _idle.TrySetResult(true);
+            }
             throw new InvalidOperationException("RESOURCE_QUEUE_CLOSED");
+        }
 
         StateChanged?.Invoke(state);
         return request;
@@ -137,6 +162,12 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
                 }
 
                 _completions.Enqueue(completion);
+                _mechanicalWork.Complete(
+                    request.Id,
+                    completion.Success,
+                    completion.Message,
+                    completion.ErrorCode,
+                    completion.SavedPaths);
                 CompletionAvailable?.Invoke(completion);
 
                 ResourceSidecarQueueState finished;
