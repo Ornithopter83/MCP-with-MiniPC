@@ -1,4 +1,4 @@
-# Project 상태 API
+# 프로젝트 상태 API
 
 ## 목표
 
