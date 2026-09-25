@@ -3144,9 +3144,12 @@ public partial class MainWindow : Window
         _taskExported = false;
         _taskTranscriptPath = null;
         _taskStartedAt = DateTimeOffset.Now;
-        _taskProjectName = string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
+        var projectPath = !string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
+            ? selectedThread.ProjectPath
+            : _activeWorkingDirectory;
+        _taskProjectName = string.IsNullOrWhiteSpace(projectPath)
             ? "UnknownProject"
-            : new DirectoryInfo(selectedThread.ProjectPath).Name;
+            : new DirectoryInfo(projectPath).Name;
         _taskThreadName = string.IsNullOrWhiteSpace(selectedThread?.SessionId)
             ? "NewThread"
             : selectedThread.Label;
