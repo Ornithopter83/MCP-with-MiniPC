@@ -194,6 +194,20 @@ public sealed class WorkGraph
         return true;
     }
 
+    public bool TryMarkCanceled(string id, string? resultSummary = null)
+    {
+        if (!_items.TryGetValue(id, out var item) ||
+            item.State is WorkItemState.Completed or WorkItemState.Failed or WorkItemState.Canceled)
+            return false;
+
+        item.State = WorkItemState.Canceled;
+        item.ResultSummary = NullIfWhiteSpace(resultSummary);
+        item.FailureCode = null;
+        item.FinishedAtUtc = DateTimeOffset.UtcNow;
+        RecalculateStates();
+        return true;
+    }
+
     private static string? ApplyOperation(
         Dictionary<string, WorkItemEntry> items,
         ref long nextCreatedOrder,
@@ -237,8 +251,10 @@ public sealed class WorkGraph
             {
                 if (!items.TryGetValue(id, out var item))
                     return "WORK_GRAPH_ITEM_NOT_FOUND";
-                if (item.State == WorkItemState.Completed)
-                    return "WORK_GRAPH_COMPLETED_ITEM_IMMUTABLE";
+                if (item.State is WorkItemState.Completed or WorkItemState.Failed)
+                    return "WORK_GRAPH_TERMINAL_ITEM_IMMUTABLE";
+                if (item.State == WorkItemState.Canceled)
+                    return null;
                 item.State = WorkItemState.Canceled;
                 item.FinishedAtUtc ??= DateTimeOffset.UtcNow;
                 return null;
