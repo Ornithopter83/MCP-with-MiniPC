@@ -320,6 +320,7 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 - `.projecthub/events/<jobId>.jsonl`은 작업 종료 시 일괄 생성하지 않고 이벤트 발생 시마다 즉시 append한다.
 - `.projecthub/transcripts/<jobId>.txt`에는 작업 transcript를 저장한다.
 - Worker 재시작 후 작업공간에 재개 가능한 상태가 있으면 이를 기계적으로 복구해 `작업 추가`를 허용한다.
+- 병렬 WorkGraph를 복구해 USER_FOLLOWUP을 시작할 때는 저장 파일 경로만 전달하지 않고 현재 revision과 WorkItem 상태를 HQ 입력 본문에도 기계적으로 포함한다. 따라서 HQ가 Web이든 CLI든 복구 상태를 직접 확인할 수 있다.
 - 저장된 Codex 세션이 로컬에 없으면 해당 세션 ID를 사용하지 않고, 새 HQ 세션에 프로젝트 기억 파일과 이벤트 로그 경로를 함께 전달해 관제 문맥을 복구할 수 있게 한다.
 - 사용자가 `새 작업`을 명시적으로 선택하면 활성 session-state만 제거하고 과거 handoff/event/transcript 파일은 기록으로 남긴다.
 - Worker는 저장된 기억이나 로그의 의미를 해석해 자동 작업을 시작하지 않는다.
@@ -423,7 +424,11 @@ WorkItem 기본 상태:
 Integration:
 - 병렬 결과의 통합도 별도 새 AI 역할이 아니라 WORK 역할의 Integration WorkItem으로 표현한다.
 - Integration WorkItem은 통합 대상 WorkItem을 명시적 dependency로 가진다.
+- 서로 다른 완료 WorkItem의 resultRef를 최종 코드 상태에 함께 반영해야 하는지는 HQ가 판단하며, 필요하면 END 전에 kind=INTEGRATION WorkItem을 추가한다.
 - Integration WORK는 각 결과 ref/branch를 바탕으로 병합, 충돌 해결, 전체 빌드·테스트를 수행하고 통합 결과를 HQ에 보고한다.
+- Integration WORK가 COMPLETED를 보고하면 Worker는 해당 checkpoint commit을 주 작업공간의 현재 branch에 fast-forward만 허용하는 방식으로 기계적으로 반영한다.
+- 주 작업공간이 dirty 상태이거나 detached HEAD이거나 integration commit이 현재 HEAD의 fast-forward 대상이 아니면 Worker는 force/reset/push로 해결하지 않고 INTEGRATION_LANDING_FAILED로 해당 WorkItem을 BLOCKED 처리한다.
+- Integration landing 실패의 의미적 해결 방법과 사용자 개입 필요 여부는 HQ가 판단한다.
 - Worker는 merge 충돌의 의미적 해결책을 선택하지 않는다.
 
 기존 사이드카:

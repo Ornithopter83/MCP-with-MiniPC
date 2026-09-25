@@ -41,7 +41,13 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 병렬 HQ GraphPatch transport와 병렬 WORK_ITEM_STATUS 보고 계약 기반 구현
 - Worktree + Codex 역할 runner를 결합하는 CodexWorkItemExecutor 구현
 - WorkItem checkpoint/resultRef와 dependency 결과 프롬프트 전달 구현
-- 현재 사용자 실행 경로는 아직 기존 직렬 WORK 흐름이며, 다음 구현은 MainWindow에서 병렬 관제 루프를 분리·연결하는 단계
+- MainWindow 병렬 관제 루프 연결 완료: maxConcurrentWork>1 또는 저장된 병렬 WorkGraph가 있으면 ParallelWorkSupervisor 경로를 사용
+- RESOURCE/JUDGE/OBSERVATION 결과를 workItemId 기준으로 원래 WorkItem에 복귀
+- WorkGraph snapshot persistence/recovery와 실행 중 session/branch/worktree 문맥 보존
+- 설정 UI의 최대 동시 WORK 1~8, Pipeline의 RUNNING/MAX 및 READY/BLOCKED 상태 표시
+- Integration COMPLETED 결과를 clean 주 작업공간 branch에 fast-forward로 landing하고 위험 상태에서는 INTEGRATION_LANDING_FAILED로 차단
+- USER_FOLLOWUP 복구 시 WorkGraph 현재 상태를 HQ 본문에 직접 제공
+- 다음 우선순위는 Windows dotnet test/build와 실제 max=4 병렬 E2E, Integration landing E2E
 
 착수 commit:
 - 정책/계획: `0c87a0021643efc00e147fead82ed45cb1bf4c91`

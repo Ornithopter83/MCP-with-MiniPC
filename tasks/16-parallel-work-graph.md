@@ -232,9 +232,11 @@ Integration WorkItem:
 - 별도 integration worktree에서 실행
 - merge/cherry-pick/rebase 중 어떤 의미적 통합 방식을 택할지는 WORK가 현재 코드와 목표를 보고 판단
 - 충돌 해결, 전체 build/test, 통합 결과 commit 생성
+- COMPLETED checkpoint를 Worker가 주 작업공간 현재 branch에 fast-forward로 landing
+- landing 성공 사실과 target branch / before / after HEAD를 결과 보고에 추가
 - 결과를 HQ에 반환
 
-Worker는 Git 명령 실행 환경과 안전 경계를 제공하지만 충돌 해결 내용을 선택하지 않는다.
+Worker는 Git 명령 실행 환경과 안전 경계를 제공하지만 충돌 해결 내용을 선택하지 않는다. 주 작업공간이 dirty, detached HEAD, non-fast-forward 상태이면 force/reset/push를 사용하지 않고 `INTEGRATION_LANDING_FAILED`로 BLOCKED 처리한다.
 
 ## 12. RESOURCE / JUDGE / OBSERVATION
 
@@ -549,3 +551,12 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - dependency의 resultRef/resultSummary를 후속 WorkItem 프롬프트에 기계적으로 전달한다.
 - 실행 결과에는 branch/worktree/sessionId를 함께 반환해 WorkGraph 실행 문맥에 보존한다.
 - 아직 MainWindow 관제 루프와 실제 병렬 scheduler를 연결하지 않았으므로 현재 사용자 실행 경로는 기존 직렬 WORK 흐름을 유지한다.
+
+
+### 2026-09-26 병렬 runtime 연결 이후 보강
+
+- 중단된 이전 실행 중 main은 이미 병렬 관제 runtime 연결, RESOURCE/JUDGE/OBSERVATION WorkItem 귀속, WorkGraph persistence, 최대 동시 WORK 설정 UI, pipeline 점유 표시까지 구현된 상태였다.
+- `63e0bdab51b84eb35d79a3fc778ca0145c673d13`: `GitWorktreeManager.LandIntegrationAsync`를 추가했다. 주 작업공간이 clean branch이고 Integration result가 현재 HEAD의 후손일 때만 `git merge --ff-only`로 반영한다. dirty/detached/non-fast-forward에서는 변경하지 않는다.
+- `524e212dd2b2127a6820f8070c15e2ee589c5ce5`: kind=INTEGRATION WorkItem이 COMPLETED checkpoint를 만든 뒤 주 작업공간 landing까지 성공해야 최종 COMPLETED가 되도록 연결했다. landing 실패는 checkpoint resultRef를 보존한 `INTEGRATION_LANDING_FAILED` BLOCKED로 HQ에 돌려준다.
+- `adc4307e57907f4c7965d65d6258ec91540523c5`: 병렬 USER_FOLLOWUP 복구 시 snapshot 파일 경로만 전달하지 않고 현재 WorkGraph 기계 상태를 HQ 본문에 직접 포함한다. Web HQ도 복구된 BLOCKED/COMPLETED 상태를 읽고 GraphPatch를 판단할 수 있다.
+- 현재 실행 환경에는 .NET SDK가 없어 신규 테스트와 전체 solution 빌드는 아직 실행하지 못했다. Windows 환경 실검증이 필요하다.

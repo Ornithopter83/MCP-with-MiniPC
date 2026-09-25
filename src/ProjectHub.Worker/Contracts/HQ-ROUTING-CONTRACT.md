@@ -69,6 +69,8 @@ B=<기준>
 - 최대 동시 WORK 수는 사용자 설정이며 HQ가 변경하지 않는다.
 - WorkItem의 중간 진행은 Worker 이벤트로 처리되므로 필요하지 않은 진행 확인을 반복 요청하지 않는다.
 - Integration은 새 역할이 아니라 kind=INTEGRATION인 WorkItem으로 만든다.
+- 서로 다른 완료 WorkItem의 resultRef를 최종 코드 상태에 함께 반영해야 하면 해당 WorkItem들을 dependency로 갖는 INTEGRATION WorkItem을 END 전에 추가한다.
+- Integration COMPLETED 뒤 Worker는 checkpoint commit을 주 작업공간 현재 branch에 fast-forward로만 반영한다. dirty target, detached HEAD, non-fast-forward 같은 기계적 이유로 INTEGRATION_LANDING_FAILED가 발생하면 force/reset을 요구하지 말고 현재 사실을 바탕으로 RELEASE, 추가 Integration, PAUSE 중 필요한 의미 동작을 결정한다.
 
 병렬 모드에서 CONTINUE로 WORK에 보낼 본문은 반드시 다음 전송 형식을 사용한다.
 
