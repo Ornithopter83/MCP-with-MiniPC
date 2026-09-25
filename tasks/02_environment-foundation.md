@@ -16,7 +16,7 @@ ProjectHub의 계층형 .NET 솔루션과 테스트 프로젝트를 준비한다
 
 ### B. 프로젝트 참조 연결 (완료: 2026-09-15)
 
-- Infrastructure와 서버가 Core를 참조하고 서버가 Infrastructure를 참조하도록 연결했다.
+- Infrastructure와 서버가 Core를 참조하고, 서버가 Infrastructure를 참조하도록 연결했다.
 
 ### C. 기본 빌드 기준 확인 (완료: 2026-09-15)
 
