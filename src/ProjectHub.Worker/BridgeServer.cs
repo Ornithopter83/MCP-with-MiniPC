@@ -679,7 +679,11 @@ public sealed class BridgeServer : IDisposable
 
     private static string ResourceFileExtension(string? mimeType, string? fileName)
     {
-        var normalized = mimeType?.Split(';', 2)[0].Trim().ToLowerInvariant();
+        var normalized = mimeType?.Trim();
+        var separator = normalized?.IndexOf(';') ?? -1;
+        if (separator >= 0)
+            normalized = normalized![..separator].Trim();
+        normalized = normalized?.ToLowerInvariant();
         var mapped = normalized switch
         {
             "image/png" => ".png",
@@ -714,7 +718,7 @@ public sealed class BridgeServer : IDisposable
             return candidate.ToLowerInvariant();
 
         return ".bin";
-    };
+    }
 
     private void ReplaceTask(BridgeTask task)
     {
