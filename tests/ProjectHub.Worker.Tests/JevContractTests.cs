@@ -20,6 +20,9 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("Worker의 기계적 사실은 관측값이며 의미 판단이 아니다.", hq);
         Assert.Contains("기계적 대기 작업이 남아 있어도 END 판단을 미루지 않는다.", hq);
         Assert.Contains("JUDGE용 Form", hq);
+        Assert.Contains("NOUL | QID:<id>", hq);
+        Assert.Contains("SCORE | QID:<id>", hq);
+        Assert.Contains("CHOICE | QID:<id>", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
