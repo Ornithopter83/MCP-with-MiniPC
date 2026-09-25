@@ -9,7 +9,7 @@
 - HQ Web과 RESOURCE Web은 서로 다른 conversationId에 명시적으로 연결한다. 생존 신호는 생존 확인용이며 작업 목적지 선택에 사용하지 않는다.
 - RESOURCE는 ChatGPT Web이 생성해 파일로 반환할 수 있는 생성 리소스의 제작·다운로드·지정 경로 저장까지만 담당한다. 이미지·오디오·문서 등 구체 형식은 역할 의미가 아니라 반환 파일의 MIME 형식과 파일 정보로 구분한다. 자동 코드/CSS/HTML 연결, 의미 기반 컴포넌트 선택, 자동 품질 판정은 하지 않는다.
 - [GOTO : RESOURCE] 한 번은 새로운 생성 리소스 요청 한 건을 만든다. 기존 요청의 상태 조회·취소·추적·확인·보고를 RESOURCE로 라우팅하지 않는다.
-- HQ의 [ACTION=END]는 현재 실행 구간의 의미 작업 종료를 확정한다. Worker는 같은 실행 구간에서 HQ/WORK/JUDGE 의미 흐름을 자동으로 다시 열지 않고, 남은 기계적 대기 작업만 확인해 모두 끝난 뒤 DONE/DONE_WITH_ERROR로 전환한다. END 이후 같은 실행 구간의 WORK 보고가 HQ로 향하면 Worker가 "HQ의 작업은 종료되었습니다."로 차단한다. PAUSE 또는 DONE/DONE_WITH_ERROR 뒤 사용자가 명시적으로 작업 추가를 실행하면 기존 HQ/WORK 세션을 보존한 USER_FOLLOWUP 새 실행 구간을 HQ부터 시작할 수 있다.
+- HQ의 [ACTION=END]는 현재 실행 구간의 의미 작업 종료를 확정한다. Worker는 같은 실행 구간에서 HQ/WORK/JUDGE 의미 흐름을 자동으로 다시 열지 않고, 남은 기계적 대기 작업만 확인해 모두 끝난 뒤 DONE/DONE_WITH_ERROR로 전환한다. END 이후 같은 실행 구간의 WORK 보고가 HQ로 향하면 Worker가 "HQ의 작업은 종료되었습니다."로 차단한다. PAUSE, 사용자 취소(CANCELED) 또는 DONE/DONE_WITH_ERROR 뒤 사용자가 명시적으로 작업 추가를 실행하면 기존 HQ/WORK 세션과 작업공간을 보존한 USER_FOLLOWUP 새 실행 구간을 HQ부터 시작할 수 있다. 취소는 현재 실행 구간만 중단하며 자동 재개하지 않는다.
 - History는 Worker가 이미 가진 역할/상태/사용량/file 계측로 만든다. AI 본문 tag나 출처 문자열을 routing 판단에 사용하지 않는다.
 - 한 번에 하나의 활성 구조 작업을 기준으로 수행하고, 완료/잔여/실제 검증 결과를 문서에 갱신한다.
 - 변경 규모에 맞는 빌드·테스트를 실행하고 실제 결과만 기록한다. 실행 환경에 도구가 없으면 미실행 사실과 대체 정적 검증을 명시한다.
