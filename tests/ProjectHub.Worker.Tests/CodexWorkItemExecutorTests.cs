@@ -157,6 +157,77 @@ public sealed class CodexWorkItemExecutorTests
 
 
     [Fact]
+    public async Task CompletedIntegrationFastForwardsPrimaryWorkspaceBeforeCompletion()
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            모든 선행 결과를 통합하고 검증했습니다.
+            """,
+            kind: WorkItemKind.Integration);
+
+        fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
+        fixture.Git.Enqueue(0, "");
+        fixture.Git.Enqueue(0, "main");
+        fixture.Git.Enqueue(0, "base123");
+        fixture.Git.Enqueue(0, "head123");
+        fixture.Git.Enqueue(0, "");
+        fixture.Git.Enqueue(0, "Fast-forward");
+        fixture.Git.Enqueue(0, "head123");
+        fixture.Git.Enqueue(0, "");
+
+        try
+        {
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
+            Assert.Equal("head123", result.ResultRef);
+            Assert.Contains("INTEGRATION_LANDING", result.ResultSummary);
+            Assert.Contains("status: FAST_FORWARDED", result.ResultSummary);
+            Assert.Contains("targetBranch: main", result.ResultSummary);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task IntegrationLandingFailureBlocksWithCheckpointForHqRecovery()
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            통합 worktree 검증은 완료했습니다.
+            """,
+            kind: WorkItemKind.Integration);
+
+        fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
+        fixture.Git.Enqueue(0, " M local-change.cs");
+
+        try
+        {
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("INTEGRATION_LANDING_FAILED", result.BlockCode);
+            Assert.Equal("head123", result.ResultRef);
+            Assert.Contains("errorCode: INTEGRATION_TARGET_DIRTY", result.ResultSummary);
+            Assert.Contains("integrationRef: head123", result.ResultSummary);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task ResumeRequestUsesExplicitInboundBodyInsteadOfRepeatingGoal()
     {
         var fixture = CreateFixture("""
@@ -186,7 +257,8 @@ public sealed class CodexWorkItemExecutorTests
 
     private static Fixture CreateFixture(
         string finalMessage,
-        IReadOnlyList<WorkItemDependencyResult>? dependencies = null)
+        IReadOnlyList<WorkItemDependencyResult>? dependencies = null,
+        WorkItemKind kind = WorkItemKind.Normal)
     {
         var parent = Path.Combine(Path.GetTempPath(), "projecthub-codex-workitem-" + Guid.NewGuid().ToString("N"));
         var root = Path.Combine(parent, "repo");
@@ -218,7 +290,7 @@ public sealed class CodexWorkItemExecutorTests
             workItemId,
             "기능을 구현하세요.",
             dependencies?.Select(value => value.WorkItemId).ToArray() ?? Array.Empty<string>(),
-            WorkItemKind.Normal,
+            kind,
             WorkItemState.Running,
             0,
             "main",
@@ -240,6 +312,7 @@ public sealed class CodexWorkItemExecutorTests
             branch,
             executor,
             ai,
+            git,
             new WorkItemExecutionRequest(
                 item,
                 1,
@@ -255,12 +328,14 @@ public sealed class CodexWorkItemExecutorTests
             string branch,
             CodexWorkItemExecutor executor,
             FakeAiRoleRunner runner,
+            FakeGitRunner git,
             WorkItemExecutionRequest request)
         {
             Parent = parent;
             Branch = branch;
             Executor = executor;
             Runner = runner;
+            Git = git;
             Request = request;
         }
 
@@ -268,6 +343,7 @@ public sealed class CodexWorkItemExecutorTests
         public string Branch { get; }
         public CodexWorkItemExecutor Executor { get; }
         public FakeAiRoleRunner Runner { get; }
+        public FakeGitRunner Git { get; }
         public WorkItemExecutionRequest Request { get; }
 
         public void Dispose()

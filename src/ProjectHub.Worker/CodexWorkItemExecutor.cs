@@ -273,7 +273,53 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId);
         }
 
-        return report!.Status switch
+        if (report!.Status == WorkItemReportStatus.Completed &&
+            item.Kind == WorkItemKind.Integration)
+        {
+            if (string.IsNullOrWhiteSpace(checkpoint.HeadCommit))
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "INTEGRATION_LANDING_FAILED",
+                    BuildIntegrationLandingFailure(
+                        report.Body,
+                        "INTEGRATION_RESULT_REF_MISSING",
+                        checkpoint.HeadCommit,
+                        null),
+                    checkpoint.HeadCommit,
+                    checkpoint.Branch ?? preparation.Branch,
+                    checkpoint.WorktreePath,
+                    sessionId);
+            }
+
+            var landing = await _worktrees.LandIntegrationAsync(
+                _workspace,
+                checkpoint.HeadCommit,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!landing.Success)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "INTEGRATION_LANDING_FAILED",
+                    BuildIntegrationLandingFailure(
+                        report.Body,
+                        landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED",
+                        checkpoint.HeadCommit,
+                        landing),
+                    checkpoint.HeadCommit,
+                    checkpoint.Branch ?? preparation.Branch,
+                    checkpoint.WorktreePath,
+                    sessionId);
+            }
+
+            return WorkItemExecutionResult.Completed(
+                checkpoint.HeadCommit,
+                BuildIntegrationLandingSuccess(report.Body, landing),
+                checkpoint.Branch ?? preparation.Branch,
+                checkpoint.WorktreePath,
+                sessionId);
+        }
+
+        return report.Status switch
         {
             WorkItemReportStatus.Completed => WorkItemExecutionResult.Completed(
                 checkpoint.HeadCommit,
@@ -302,6 +348,49 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 sessionId)
         };
+    }
+
+    private static string BuildIntegrationLandingSuccess(
+        string reportBody,
+        GitIntegrationLandingResult landing)
+    {
+        var lines = new List<string>
+        {
+            reportBody.Trim(),
+            string.Empty,
+            "INTEGRATION_LANDING",
+            "status: " + (landing.FastForwarded ? "FAST_FORWARDED" : "ALREADY_APPLIED"),
+            "targetBranch: " + (landing.TargetBranch ?? "없음"),
+            "beforeHead: " + (landing.BeforeHead ?? "없음"),
+            "afterHead: " + (landing.AfterHead ?? "없음")
+        };
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildIntegrationLandingFailure(
+        string reportBody,
+        string errorCode,
+        string? integrationRef,
+        GitIntegrationLandingResult? landing)
+    {
+        var lines = new List<string>
+        {
+            reportBody.Trim(),
+            string.Empty,
+            "INTEGRATION_LANDING",
+            "status: BLOCKED",
+            "errorCode: " + errorCode,
+            "integrationRef: " + (integrationRef ?? "없음")
+        };
+
+        if (landing is not null)
+        {
+            lines.Add("targetBranch: " + (landing.TargetBranch ?? "없음"));
+            lines.Add("beforeHead: " + (landing.BeforeHead ?? "없음"));
+            lines.Add("afterHead: " + (landing.AfterHead ?? "없음"));
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static string BuildFailureSummary(string standardError, string finalMessage)
