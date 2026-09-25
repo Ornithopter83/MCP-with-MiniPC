@@ -78,6 +78,29 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task JudgeRequestFailsMechanicallyWhenJudgeIsDisabled()
+    {
+        var fixture = CreateFixture("""
+            [GOTO : JUDGE]
+            NOUL | QID:q1 판단이 필요한가?
+            """);
+
+        try
+        {
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
+            Assert.Equal("JUDGE_UNAVAILABLE", result.FailureCode);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task DependencyResultsAreIncludedInWorkItemPrompt()
     {
         var fixture = CreateFixture("""

@@ -192,6 +192,16 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
         if (route.Target == WorkerRoleState.Judge)
         {
+            if (!_judgeAvailable)
+            {
+                return WorkItemExecutionResult.Failed(
+                    "JUDGE_UNAVAILABLE",
+                    "현재 병렬 WorkItem에서는 JUDGE가 비활성화되어 있습니다.",
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId);
+            }
+
             return WorkItemExecutionResult.Blocked(
                 "JUDGE_REQUEST",
                 route.Body,
