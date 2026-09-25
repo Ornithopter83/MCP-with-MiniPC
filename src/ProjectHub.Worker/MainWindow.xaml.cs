@@ -55,7 +55,8 @@ public partial class MainWindow : Window
         ["Coordinator"] = new("#DDEEFF", "#1477E8", "#1267D5", "current-openai.png"),
         ["Implementer"] = new("#DCF5E3", "#168A4A", "#116B39", "current-openai.png"),
         ["Resource"] = new("#ECD8E4", "#82194B", "#74133F", "current-web.png"),
-        ["Judge"] = new("#FFF0B8", "#B87900", "#765000", "current-jev.png")
+        ["Judge"] = new("#FFF0B8", "#B87900", "#765000", "current-jev.png"),
+        ["Message"] = new("#EEF8F2", "#168A4A", "#116B39", "current-console.png")
     };
     private readonly List<TaskMessage> _taskMessages = new();
     private readonly ObservableCollection<string> _messageLogItems = new();
@@ -65,7 +66,7 @@ public partial class MainWindow : Window
         public string? IconAssetOverride { get; init; }
         public string TokenDetails { get; init; } = "토큰 · 해당 없음";
         public string FileDetails { get; init; } = "파일 · 해당 없음";
-        public string Role => StageKey switch { "Coordinator" => "설계·관제", "Implementer" => "작업", "Resource" => "리소스", "Judge" => "판정", _ => "시스템" };
+        public string Role => StageKey switch { "Coordinator" => "설계·관제", "Implementer" => "작업", "Resource" => "리소스", "Judge" => "판정", "Message" => "메시지", _ => "시스템" };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         public string Details
         {
@@ -97,6 +98,8 @@ public partial class MainWindow : Window
     private string _taskProjectName = "UnknownProject";
     private string _taskThreadName = "NewThread";
     private bool _taskExported;
+    private string? _taskTranscriptPath;
+    private CoordinatorContinuationState? _continuationState;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _jobWatchdogTimer = new() { Interval = TimeSpan.FromSeconds(10) };
@@ -120,6 +123,7 @@ public partial class MainWindow : Window
     private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
     private const string DashboardPromptPlaceholder = "작업 내용을 입력하세요...";
+    private const string FollowupPromptPlaceholder = "추가할 작업을 입력하세요...";
     private readonly HttpClient _connectionClient = new() { Timeout = TimeSpan.FromSeconds(2) };
     private BridgeServer? _bridgeServer;
     private bool _codexAuthenticated;
@@ -383,6 +387,105 @@ public partial class MainWindow : Window
     private void DashboardTaskInput_TextChanged(object sender, TextChangedEventArgs e)
         => UpdateDashboardRunButtonState();
 
+    private void DashboardFollowupInput_GotFocus(object sender, RoutedEventArgs e)
+        => SetInputFocusState(DashboardFollowupInput, FollowupPromptPlaceholder, focused: true);
+
+    private void DashboardFollowupInput_LostFocus(object sender, RoutedEventArgs e)
+        => SetInputFocusState(DashboardFollowupInput, FollowupPromptPlaceholder, focused: false);
+
+    private void DashboardFollowupInput_TextChanged(object sender, TextChangedEventArgs e)
+        => UpdateFollowupButtonState();
+
+    private void UpdateFollowupButtonState()
+    {
+        if (AddWorkButton is null || DashboardFollowupInput is null) return;
+        var inactive = _activeTaskCts is null && !_awaitingWebResult;
+        var hasContinuation = _continuationState is not null &&
+                              TaskContinuationContract.IsResumableStatus(_continuationState.Status);
+        var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
+                        DashboardFollowupInput.Text != FollowupPromptPlaceholder;
+        AddWorkButton.IsEnabled = inactive && hasContinuation && hasPrompt;
+        AddWorkButton.Opacity = AddWorkButton.IsEnabled ? 1 : 0.72;
+    }
+
+    private void SetFollowupComposerVisible(bool visible)
+    {
+        if (DashboardFollowupComposer is null || AddWorkButton is null) return;
+        DashboardFollowupComposer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        AddWorkButton.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (visible)
+        {
+            if (string.IsNullOrWhiteSpace(DashboardFollowupInput.Text))
+            {
+                DashboardFollowupInput.Text = FollowupPromptPlaceholder;
+                DashboardFollowupInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
+            }
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (DashboardHistoryList.Items.Count > 0)
+                    DashboardHistoryList.ScrollIntoView(DashboardHistoryList.Items[DashboardHistoryList.Items.Count - 1]);
+                DashboardFollowupInput.Focus();
+            }), DispatcherPriority.Background);
+        }
+        UpdateFollowupButtonState();
+    }
+
+    private void AddUserFollowupHistory(string followup)
+    {
+        var text = followup.Trim();
+        var item = new WorkerHistoryEvent(
+            DateTimeOffset.Now,
+            "Message",
+            "USER_FOLLOWUP",
+            "추가 작업",
+            WorkerHistoryCardFormatter.Preview(text),
+            Encoding.UTF8.GetByteCount(text),
+            1,
+            null,
+            "USER_FOLLOWUP",
+            null)
+        {
+            TokenDetails = "토큰 · 사용자 입력",
+            FileDetails = "파일 · 해당 없음"
+        };
+        _historyEvents.Add(item);
+        while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
+        RefreshMessageLog();
+    }
+
+    private async void AddWorkButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTaskCts is not null || _awaitingWebResult) return;
+        var continuation = _continuationState;
+        if (continuation is null || !TaskContinuationContract.IsResumableStatus(continuation.Status)) return;
+
+        var followup = DashboardFollowupInput.Text?.Trim() ?? string.Empty;
+        if (followup.Length == 0 || followup == FollowupPromptPlaceholder) return;
+
+        var preflightError = GetCoordinatorFirstPreflightError(
+            continuation.WorkingDirectory,
+            continuation.Coordinator,
+            continuation.Implementer);
+        if (preflightError is not null)
+        {
+            DashboardPreflightText.Text = preflightError;
+            DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            return;
+        }
+
+        AddUserFollowupHistory(followup);
+        DashboardFollowupInput.Text = FollowupPromptPlaceholder;
+        DashboardFollowupInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
+        SetFollowupComposerVisible(false);
+        await RunCoordinatorFirstJobAsync(
+            followup,
+            selectedThread: null,
+            continuation.WorkingDirectory,
+            continuation.Coordinator,
+            continuation.Implementer,
+            continuation);
+    }
+
     private void UpdateDashboardRunButtonState()
     {
         if (RunButton is null || DashboardTaskInput is null) return;
@@ -395,6 +498,7 @@ public partial class MainWindow : Window
             RunButton.Content = "■   취소";
             RunButton.IsEnabled = !(_userCanceledTask && _activeTaskCts is not null);
             DashboardPreflightText.Text = string.Empty;
+            UpdateFollowupButtonState();
             return;
         }
 
@@ -403,6 +507,7 @@ public partial class MainWindow : Window
             RunButton.Content = "＋   새 작업";
             RunButton.IsEnabled = true;
             DashboardPreflightText.Text = string.Empty;
+            UpdateFollowupButtonState();
             return;
         }
 
@@ -414,6 +519,7 @@ public partial class MainWindow : Window
         RunButton.Effect = RunButton.IsEnabled ? new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 16, ShadowDepth = 4, Direction = 270, Opacity = 0.22, Color = System.Windows.Media.Color.FromRgb(20, 119, 232) } : null;
         DashboardPreflightText.Text = preflightError ?? (hasPrompt ? string.Empty : "작업 내용을 입력하세요.");
         DashboardPreflightText.Foreground = preflightError is null ? (System.Windows.Media.Brush)FindResource("Muted") : System.Windows.Media.Brushes.Firebrick;
+        UpdateFollowupButtonState();
     }
 
     private void SetDashboardBodyMode(DashboardBodyMode mode)
@@ -446,6 +552,9 @@ public partial class MainWindow : Window
 
     private void BeginNewDashboardTask()
     {
+        ExportTaskTranscript();
+        _continuationState = null;
+        SetFollowupComposerVisible(false);
         _historyEvents.Clear();
         DashboardTaskInput.Text = DashboardPromptPlaceholder;
         DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
@@ -1349,21 +1458,36 @@ public partial class MainWindow : Window
         });
     }
 
-    private async Task RunCoordinatorFirstJobAsync(string request, CodexThreadOption? selectedThread, string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer)
+    private async Task RunCoordinatorFirstJobAsync(
+        string request,
+        CodexThreadOption? selectedThread,
+        string workingDirectory,
+        WorkerAiRoleSettings coordinator,
+        WorkerAiRoleSettings implementer,
+        CoordinatorContinuationState? continuation = null)
     {
-        var jobId = Guid.NewGuid().ToString("N");
+        var continuing = continuation is not null;
+        var jobId = continuation?.JobId ?? Guid.NewGuid().ToString("N");
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         _activeCoordinatorFirst = true;
+        SetFollowupComposerVisible(false);
         ResetDashboardTaskInput();
         RunButton.Content = "■   취소";
         _userCanceledTask = false;
         _jobTimedOut = false;
         _lastActivityAt = DateTimeOffset.UtcNow;
-        StartTaskTranscript(selectedThread, request, string.Empty);
-        AddTaskMessage("TASK REQUEST", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1);
-        var coordinatorSession = CodexCliRunner.NormalizeSessionId(coordinator.ThreadSessionId);
-        var workSession = CodexCliRunner.NormalizeSessionId(implementer.ThreadSessionId);
+        if (!continuing)
+        {
+            StartTaskTranscript(selectedThread, request, string.Empty);
+            AddTaskMessage("TASK REQUEST", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1);
+        }
+        else
+        {
+            AddTaskMessage("USER FOLLOWUP", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1, includeHistory: false);
+        }
+        var coordinatorSession = continuation?.CoordinatorSessionId ?? CodexCliRunner.NormalizeSessionId(coordinator.ThreadSessionId);
+        var workSession = continuation?.WorkSessionId ?? CodexCliRunner.NormalizeSessionId(implementer.ThreadSessionId);
         var state = WorkerRoleState.Hq;
         var previousState = WorkerRoleState.Hq;
         var resourceQueue = new ResourceSidecarQueue(_bridgeServer, workingDirectory, cts.Token);
@@ -1372,8 +1496,10 @@ public partial class MainWindow : Window
         resourceQueue.TransportEvent += OnResourceSidecarTransportEvent;
         try
         {
-            var inboundType = "USER_REQUEST";
-            var inbound = request;
+            var inboundType = continuing ? "USER_FOLLOWUP" : "USER_REQUEST";
+            var inbound = continuing
+                ? TaskContinuationContract.BuildHqFollowupInput(continuation!.Status, continuation.LastHqMessage, request)
+                : request;
             var coordinatorHasRun = false;
             var workValidationRequest = string.Empty;
             var workResultForJudge = string.Empty;
@@ -1398,6 +1524,20 @@ public partial class MainWindow : Window
                 // 현재 실제 대기 대상은 RESOURCE queue이며, 향후 다른 기계적 대기 작업을 이곳에 합친다.
                 if (!resourceQueue.IsIdle)
                     await resourceQueue.WaitForIdleAsync(cancellationToken);
+            }
+
+            void SaveContinuation(string status, string lastHqMessage)
+            {
+                _continuationState = new CoordinatorContinuationState(
+                    jobId,
+                    workingDirectory,
+                    coordinator,
+                    implementer,
+                    coordinatorSession,
+                    workSession,
+                    status,
+                    lastHqMessage);
+                SetFollowupComposerVisible(true);
             }
 
             async Task FinalizeEndedJobAsync()
@@ -1428,6 +1568,7 @@ public partial class MainWindow : Window
                 ResultBody.Text = hqEndBody;
                 TaskTitle.Text = "Worker가 모든 대기 작업을 확인하고 종료했습니다.";
                 AddTaskMessage("TASK RESULT", hqEndBody, status: finalStatus, includeHistory: false);
+                SaveContinuation(finalStatus, hqEndBody);
                 SetFlowState(false, false, false);
             }
 
@@ -1511,7 +1652,10 @@ public partial class MainWindow : Window
                             if (route.Action == WorkerAction.Pause)
                             {
                                 ResultTitle.Text = "PAUSED"; ResultBody.Text = route.Body; TaskTitle.Text = "사용자 입력 대기";
-                                AddTaskMessage("TASK PAUSED", route.Body, status: "PAUSED", includeHistory: false); SetFlowState(false, false, false); return;
+                                AddTaskMessage("TASK PAUSED", route.Body, status: "PAUSED", includeHistory: false);
+                                SaveContinuation("PAUSED", route.Body);
+                                SetFlowState(false, false, false);
+                                return;
                             }
                             if (!IsWebTransport(coordinator.Transport) && coordinatorHasRun && string.IsNullOrWhiteSpace(coordinatorSession))
                             {
@@ -2775,6 +2919,7 @@ public partial class MainWindow : Window
         _messageLogItems.Clear();
         MessageLogEmptyText.Visibility = Visibility.Visible;
         _taskExported = false;
+        _taskTranscriptPath = null;
         _taskStartedAt = DateTimeOffset.Now;
         _taskProjectName = string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
             ? "UnknownProject"
@@ -2809,6 +2954,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(content)) return;
         var timestamp = DateTimeOffset.Now;
         var trimmed = content.Trim();
+        _taskExported = false;
         _taskMessages.Add(new TaskMessage(timestamp, source, trimmed));
         _messageLogItems.Add($"[{timestamp:HH:mm:ss}] {source}{Environment.NewLine}{trimmed}");
         MessageLogEmptyText.Visibility = Visibility.Collapsed;
@@ -2969,13 +3115,14 @@ public partial class MainWindow : Window
     }
     private string? ExportTaskTranscript()
     {
-        if (_taskExported || _taskMessages.Count == 0) return null;
+        if (_taskMessages.Count == 0) return null;
+        if (_taskExported) return _taskTranscriptPath;
         try
         {
             var folderName = $"{SanitizeFilePart(_taskProjectName)}_{SanitizeFilePart(_taskThreadName)}";
             var directory = Path.Combine(WorkerPaths.Task, folderName);
             Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, $"_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+            var path = _taskTranscriptPath ?? Path.Combine(directory, $"_{_taskStartedAt:yyyyMMdd_HHmmss}.txt");
             var lines = new List<string>
             {
                 $"Project: {_taskProjectName}",
@@ -2991,6 +3138,7 @@ public partial class MainWindow : Window
                 lines.Add(string.Empty);
             }
             File.WriteAllText(path, string.Join(Environment.NewLine, lines), new UTF8Encoding(false));
+            _taskTranscriptPath = path;
             _taskExported = true;
             return path;
         }
