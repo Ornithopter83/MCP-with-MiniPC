@@ -16,19 +16,19 @@ HQ와 RESOURCE는 같은 conversationId를 동시에 사용할 수 없다. heart
 ## 작업 처리
 
 - 작업 조회/클레임/결과는 conversationId로 격리한다.
-- 일반 HQ Web 작업는 assistant 텍스트를 TEXT_RESULT로 반환한다.
+- 일반 HQ Web 작업은 assistant 텍스트를 TEXT_RESULT로 반환한다.
 - RESOURCE IMAGE 작업는 자연어 요청을 그대로 ChatGPT Web에 보내고, 최신 assistant turn의 로드 완료된 생성 이미지들을 모두 수집해 base64 배열로 Worker에 반환한다.
 - 이미지 없이 텍스트 응답만 끝나면 기계적 대기 후 `resource_image_not_generated`로 실패 처리한다.
 - 진행 상황 POST는 직렬 대기열로 전송해 기록 순서를 보존한다.
 - Worker가 `assets/resources/<requestId>/image-01.*`, `image-02.*` 형태로 요청별 폴더에 복수 이미지를 저장한다.
 - RESOURCE는 저장까지만 수행하며 코드/CSS/HTML 연결은 하지 않는다.
-- 현재 RESOURCE 전송는 IMAGE만 지원한다.
+- 현재 RESOURCE 전송은 IMAGE만 지원한다.
 
 ## 안전 경계
 
-- bridge 호스트는 127.0.0.1/localhost만 허용한다.
+- 브리지 호스트는 127.0.0.1/localhost만 허용한다.
 - 생성 이미지 다운로드를 위해 ChatGPT/OpenAI image 호스트 권한을 사용한다.
-- RESOURCE 저장 경로는 Worker에서 workspace 하위인지 다시 검증한다.
+- RESOURCE 저장 경로는 Worker에서 작업공간 하위인지 다시 검증한다.
 
 
 ### 이미지 완료 세부사항
@@ -48,7 +48,7 @@ RESOURCE 응답 감시는 MutationObserver 외에 1초 watchdog도 사용한다.
 
 ## 다운로드 고착 방지 강화 — 2026-09-25
 
-- RESOURCE 시작 시 main 영역의 기존 image URL을 baseline으로 기록하고, 이후 새로 나타난 큰 이미지들을 assistant bubble과 main 영역에서 함께 탐색한다.
+- RESOURCE 시작 시 main 영역의 기존 이미지 URL을 기준선으로 기록하고, 이후 새로 나타난 큰 이미지를 assistant 응답 영역과 main 영역에서 함께 탐색한다.
 - image completion 시간 초과은 응답 스냅샷 변화와 독립된 절대 120초 마감 시간으로 동작한다.
 - 생성 이미지가 하나 이상 로드되면 streaming 표기가 남아 있어도 이미지 집합이 잠시 안정된 뒤 IMAGE_READY -> DOWNLOAD_START로 진행한다.
 - IMAGE_DETECTED 진행 상황에 candidate/loaded 수를 기록해 생성 감지와 실제 다운로드 진입을 구분한다.
