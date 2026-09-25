@@ -263,3 +263,16 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - RESOURCE 실패는 더 이상 `UNKNOWN -> HQ ERROR_SUMMARY` 경로로 우회하지 않는다.
 - 실패 결과에는 requestId, RESOURCE_TYPE, 오류 코드, Web/transport 결과 메시지를 포함해 같은 WORK 세션이 재요청·분리·보고 여부를 결정한다.
 - HQ END 이후에는 기존 정책대로 AI를 다시 깨우지 않고 Worker가 기계적 종료 상태만 정리한다.
+
+## 2026-09-25 RESOURCE 분류/실패 복귀 구현 완료
+
+- `ResourceTransportContract`가 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE` 첫 줄을 필수로 파싱한다.
+- Worker는 분류 토큰을 제거한 자연어 본문만 RESOURCE Web에 전달한다.
+- `ResourceSidecarRequest`와 completion에 RESOURCE 종류를 보존한다.
+- `ResourceRequest.Type`에는 명시된 종류를 기록하고 Bridge 저장 계층은 해당 종류들을 공통 파일 저장 방식으로 처리한다.
+- RESOURCE 성공/실패 completion은 requestId, 종류, 상태, 오류 코드와 결과 메시지를 다음 WORK 입력의 `RESOURCE_RESULT`에 포함한다.
+- 기존 RESOURCE 실패의 `RouteUnknown(Resource) -> HQ ERROR_SUMMARY` 경로를 제거했다.
+- 같은 WORK 세션이 Web의 생성 제한이나 미지원 형식 오류를 보고 요청 분리·재시도·보고 여부를 결정한다.
+- HQ가 이미 END한 뒤에는 기존 정책대로 AI를 다시 호출하지 않고 기계적 종료 상태만 정리한다.
+- 분류 파서와 지원 종류 테스트를 갱신했다.
+- 최신 소스 정적 대조에서 분류 파서, queue 종류 보존, Bridge 허용, 실패 WORK 복귀, 기존 UNKNOWN 분기 제거를 확인했다.
