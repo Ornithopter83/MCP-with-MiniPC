@@ -2403,6 +2403,7 @@ public partial class MainWindow : Window
             PopulateProviderCombo(ImplementerProviderCombo, implementer.Provider);
             PopulateRoleModelCombo(ImplementerModelCombo, implementer.Provider, implementer.Model);
             PopulateRoleReasoningCombo(ImplementerReasoningCombo, implementer.Provider, implementer.Model, implementer.Reasoning);
+            SelectTag(MaxConcurrentWorkCombo, _targetSettings.EffectiveMaxConcurrentWork.ToString(), "1");
 
             SetRoleThreadOptions(CoordinatorRoleThreadCombo, coordinator.ThreadSessionId);
             SetRoleThreadOptions(ImplementerRoleThreadCombo, implementer.ThreadSessionId);
@@ -2870,6 +2871,11 @@ public partial class MainWindow : Window
         var timeout = ReadJudgeTimeout();
         var judgeSettings = ReadJudgeSettingsFromControls(EnableJudgeCheckBox.IsChecked == true) with { TimeoutSeconds = timeout };
         var judgeWarning = WorkerTargetConfiguration.GetJudgeApplyWarning(judgeSettings, _targetSettings.JudgeEndpointValidation);
+        var maxConcurrentWork = int.TryParse(
+            GetSelectedTag(MaxConcurrentWorkCombo, "1"),
+            out var parsedMaxConcurrentWork)
+            ? Math.Clamp(parsedMaxConcurrentWork, WorkGraph.MinimumConcurrency, WorkGraph.MaximumConcurrency)
+            : 1;
         if (judgeWarning is not null)
             System.Windows.MessageBox.Show(this, judgeWarning, "판정 AI 설정 확인", MessageBoxButton.OK, MessageBoxImage.Warning);
         _targetSettings = _targetSettings with
@@ -2880,7 +2886,8 @@ public partial class MainWindow : Window
             Judge = judgeSettings,
             ExecutionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"),
             Coordinator = ReadCoordinatorSettings(),
-            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo)
+            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo),
+            MaxConcurrentWork = maxConcurrentWork
         };
         SaveCodexSelection();
         WorkerTargetConfiguration.Save(_targetSettings);
