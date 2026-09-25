@@ -47,6 +47,8 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 설정 UI의 최대 동시 WORK 1~8, Pipeline의 RUNNING/MAX 및 READY/BLOCKED 상태 표시
 - Integration COMPLETED 결과를 clean 주 작업공간 branch에 fast-forward로 landing하고 위험 상태에서는 INTEGRATION_LANDING_FAILED로 차단
 - USER_FOLLOWUP 복구 시 WorkGraph 현재 상태를 HQ 본문에 직접 제공
+- 성공한 Integration resultRef를 이후 WorkItem의 기본 baseRef로 승격하되 dependency만으로 의미적 base를 추론하지 않음
+- 새 병렬 실행 구간에서는 현재 작업공간 Git HEAD를 다시 읽어 stale 기준 ref를 피함
 - 다음 우선순위는 Windows dotnet test/build와 실제 max=4 병렬 E2E, Integration landing E2E
 
 착수 commit:

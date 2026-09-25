@@ -137,6 +137,17 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
+    public void ParallelHqContractRequiresIntegrationBeforeEndWhenFinalCodeNeedsMultipleResults()
+    {
+        var footer = RoleContractLoader.LoadHqFooter(parallelWorkGraph: true);
+
+        Assert.Contains("INTEGRATION WorkItem을 END 전에 추가", footer);
+        Assert.Contains("INTEGRATION_LANDING_FAILED", footer);
+        Assert.Contains("fast-forward", footer);
+        Assert.Contains("force/reset", footer);
+    }
+
+    [Fact]
     public void HqPromptExposesGraphPatchContractOnlyInParallelMode()
     {
         var legacy = RoleContractLoader.BuildHqPrompt("USER", "요청");

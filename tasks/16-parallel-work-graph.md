@@ -560,3 +560,11 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `524e212dd2b2127a6820f8070c15e2ee589c5ce5`: kind=INTEGRATION WorkItem이 COMPLETED checkpoint를 만든 뒤 주 작업공간 landing까지 성공해야 최종 COMPLETED가 되도록 연결했다. landing 실패는 checkpoint resultRef를 보존한 `INTEGRATION_LANDING_FAILED` BLOCKED로 HQ에 돌려준다.
 - `adc4307e57907f4c7965d65d6258ec91540523c5`: 병렬 USER_FOLLOWUP 복구 시 snapshot 파일 경로만 전달하지 않고 현재 WorkGraph 기계 상태를 HQ 본문에 직접 포함한다. Web HQ도 복구된 BLOCKED/COMPLETED 상태를 읽고 GraphPatch를 판단할 수 있다.
 - 현재 실행 환경에는 .NET SDK가 없어 신규 테스트와 전체 solution 빌드는 아직 실행하지 못했다. Windows 환경 실검증이 필요하다.
+
+
+### 2026-09-26 Integration 이후 기준 ref 연속성
+
+- `3e3e1a461092d72935e99fd53cb64e3542495e61`: 주 작업공간 landing의 clean 검사에서 ProjectHub 자체 런타임 상태 폴더 `.projecthub`를 제외했다. 내부 기억/event 파일 때문에 Integration이 항상 dirty로 오판되는 경로를 막았다.
+- `21dc6ac0ec7a6a9cd2b64b6bb064ef7b2675ec6a`: 성공한 Integration resultRef를 이후 새 WorkItem의 기계적 기본 baseRef로 승격했다. dependency 자체만으로 Worker가 의미적 base를 추론하지는 않는다.
+- `bec9c6b3d6330d895accb99f15fbf1d10956299f`: USER_FOLLOWUP 등 새 병렬 실행 구간 시작 시 저장된 과거 `_gitTarget` 대신 현재 작업공간 Git HEAD를 다시 읽어 기준 ref를 갱신한다.
+- 특정 dependency 결과에서 직접 이어야 하는 WorkItem은 HQ가 `baseRef`를 명시한다. 생략 시 현재 주 작업공간 HEAD 또는 가장 최근 성공 Integration resultRef가 기본값이다.

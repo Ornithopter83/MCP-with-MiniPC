@@ -7,14 +7,18 @@
 ## 현재 구조
 
 ~~~text
-HQ       -> WORK
-WORK     -> HQ | JUDGE | RESOURCE_QUEUE
-JUDGE    -> WORK
-RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
-RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
-HQ END 전 완료 알림 -> 필요 시 다음 WORK 입력
-HQ ACTION=END -> Worker 기계적 대기 게이트 -> 모두 종료 -> DONE / DONE_WITH_ERROR
-PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ (기존 HQ/WORK 세션)
+                         ┌─ WORK Item A ─┐
+                         ├─ WORK Item B ─┤
+USER -> HQ -> WorkGraph ─┼─ WORK Item C ─┼─> Integration WORK -> HQ
+                         └─ WORK Item D ─┘
+                               │
+                               ├─ RESOURCE_QUEUE (FIFO sidecar)
+                               ├─ JUDGE
+                               └─ OBSERVATION sidecar
+
+Worker: 승인된 READY WorkItem의 슬롯/세션/worktree/전송/계측만 기계적으로 관리
+HQ ACTION=END -> 열린 WorkItem이 없을 때 의미 종료 -> 기계적 outstanding 대기 -> DONE / DONE_WITH_ERROR
+PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ
 ~~~
 
 미확인은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.

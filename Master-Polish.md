@@ -430,6 +430,8 @@ Integration:
 - 주 작업공간이 dirty 상태이거나 detached HEAD이거나 integration commit이 현재 HEAD의 fast-forward 대상이 아니면 Worker는 force/reset/push로 해결하지 않고 INTEGRATION_LANDING_FAILED로 해당 WorkItem을 BLOCKED 처리한다.
 - Integration landing 실패의 의미적 해결 방법과 사용자 개입 필요 여부는 HQ가 판단한다.
 - Worker는 merge 충돌의 의미적 해결책을 선택하지 않는다.
+- 성공한 Integration resultRef를 이후 새 WorkItem의 기본 baseRef로 기계적으로 사용할 수 있다. dependency가 있다는 사실만으로 Worker가 임의의 dependency resultRef를 baseRef로 선택하지는 않는다.
+- HQ가 특정 선행 결과에서 직접 이어서 구현해야 한다고 판단하면 해당 WorkItem의 baseRef를 GraphPatch에 명시한다. baseRef가 생략된 새 WorkItem은 현재 주 작업공간 HEAD 또는 가장 최근 성공 Integration resultRef를 기계적 기본값으로 사용한다.
 
 기존 사이드카:
 - RESOURCE, JUDGE, OBSERVATION은 기존 역할과 책임을 유지한다.
