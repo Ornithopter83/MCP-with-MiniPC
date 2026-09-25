@@ -604,3 +604,28 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 새 병렬 Job이 max=1에서도 WorkGraph runtime을 사용하므로 Git worktree 요구 조건도 동일하게 적용된다.
 - 과거 레거시 continuation 중 저장 WorkGraph가 없고 max=1인 경우에는 기존 직렬 경로를 유지하므로 병렬 Git 사전 검사를 강제하지 않는다.
 - Windows 핵심 검증 스크립트에 `ParallelWorkGitPreflightTests`를 추가했다.
+
+
+## 22. 현재 구현 판정
+
+소스 기준으로 계획한 핵심 구조는 모두 연결된 상태다.
+
+구현 완료 범위:
+- WorkGraph / GraphPatch / dependency / revision
+- ParallelWorkScheduler와 설정 가능한 1~8 슬롯
+- WorkItem별 Git worktree / branch / checkpoint
+- 실제 Codex WORK executor와 WorkItem별 session
+- HQ GraphPatch와 WORK SPLIT_REQUEST
+- Integration WorkItem과 안전한 주 작업공간 landing
+- RESOURCE / JUDGE / OBSERVATION의 workItemId 귀속
+- WorkGraph persistence와 USER_FOLLOWUP 복구
+- 새 Job의 max=1 동일 WorkGraph runtime
+- 병렬 상태 Pipeline 요약과 WorkItem 상세 목록
+- Git 저장소/HEAD/attached branch 사전 점검
+- Windows 자동 검증 스크립트
+
+아직 완료로 판정하지 않는 이유:
+- 현재 Web 실행 환경에서는 .NET SDK를 사용할 수 없어 신규 C# 단위 테스트와 전체 solution build를 실제 실행하지 못했다.
+- Explorer 실제 실행에서 max=1, max=4, SPLIT_REQUEST, Integration landing, sidecar 귀속, 취소/복구, END gate를 확인하지 못했다.
+
+따라서 tasks/16은 코드 구현 단계는 종료하고 Windows 실검증 단계로 유지한다. 실검증 결과에 따라 회귀 수정이 생기면 이 작업 문서에 이어서 기록한다.

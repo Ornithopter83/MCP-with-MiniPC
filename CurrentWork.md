@@ -52,6 +52,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 새 Job은 maxConcurrentWork=1이어도 WorkGraph/Scheduler runtime을 사용하며, 저장 WorkGraph가 없는 과거 continuation만 max=1에서 레거시 직렬 경로를 유지
 - 메시지/작업 이력 상단에 WorkItem 상태 목록을 직접 표시하고 Integration/CANCELED/BLOCKED/FAILED 세부 상태를 노출
 - 병렬 runtime 시작 전 Git 저장소/HEAD/attached branch 사전 검사를 추가하고 실행 버튼/작업 추가에도 같은 오류를 노출
+- 소스 구현 단계는 완료 상태이며 작업 16은 Windows 실검증 대기 상태
 - 다음 우선순위는 Windows dotnet test/build와 실제 max=1 동일-runtime 회귀, max=4 병렬 E2E, Integration landing E2E
 
 착수 commit:
