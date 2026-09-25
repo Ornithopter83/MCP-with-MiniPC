@@ -7,8 +7,8 @@ v0.2의 운영 배포 준비와 완료 조건을 검증하고 후속 확장 경�
 ## 세부 작업
 
 ### A. Mini PC 실행·환경 변수·로그 기준
-### B. 재시작·offline·Supabase 영속성 검증
-### C. GitHub Bridge·Checkpoint·MCP·NAS 후속 범위 정리
+### B. 재시작·오프라인·Supabase 영속성 검증
+### C. GitHub Bridge·체크포인트·MCP·NAS 후속 범위 정리
 
 ## 진행
 
