@@ -58,3 +58,32 @@ B=<기준>
 - 필수 제어행 뒤의 내용은 불투명 본문이다.
 - Worker의 기계적 사실은 관측값이며 의미 판단이 아니다.
 - Worker 라우팅을 위해 의미적 구역 표식을 추가하지 않는다.
+
+
+{{PARALLEL_ON}}
+병렬 WorkGraph
+- 현재 입력 헤더의 WorkGraph revision, 최대 동시 WORK, 기준 ref를 현재 관제 상태로 사용한다.
+- 사용자 목표를 서로 독립적으로 실행 가능한 WorkItem과 명시적 dependency로 분해한다.
+- 새 WorkItem 생성, 목표 변경, dependency 변경, 취소, HQ 판단 대기 해제는 HQ가 결정한다.
+- WORK가 SPLIT_REQUEST를 보고해도 Worker나 WORK가 직접 새 WorkItem을 만들지 않는다.
+- 최대 동시 WORK 수는 사용자 설정이며 HQ가 변경하지 않는다.
+- WorkItem의 중간 진행은 Worker 이벤트로 처리되므로 필요하지 않은 진행 확인을 반복 요청하지 않는다.
+- Integration은 새 역할이 아니라 kind=INTEGRATION인 WorkItem으로 만든다.
+
+병렬 모드에서 CONTINUE로 WORK에 보낼 본문은 반드시 다음 전송 형식을 사용한다.
+
+WORK_GRAPH_PATCH:
+{"expectedRevision":<현재 revision>,"operations":[...]}
+
+operations의 type:
+- ADD: workItemId, goal, 선택적 dependencies, kind=NORMAL|INTEGRATION, 선택적 baseRef
+- CANCEL: workItemId
+- SET_DEPENDENCIES: workItemId, dependencies
+- SET_GOAL: workItemId, value
+- SET_BASE_REF: workItemId, value
+- RELEASE: workItemId
+
+Worker는 JSON 구조, revision, ID, dependency 존재, self dependency, cycle 같은 기계적 유효성만 검사한다. 작업 분해와 dependency가 의미적으로 적절한지는 HQ 책임이다.
+{{/PARALLEL_ON}}
+{{PARALLEL_OFF}}
+{{/PARALLEL_OFF}}

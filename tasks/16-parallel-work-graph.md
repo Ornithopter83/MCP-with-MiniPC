@@ -523,3 +523,14 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 기존 branch/path를 임의 재사용하지 않으며, 등록된 동일 WorkItem worktree만 기계적으로 재사용한다.
 - dirty worktree 제거와 force remove를 금지한다.
 - 현재 환경에는 .NET SDK가 없어 추가 단위 테스트는 아직 실행하지 못했다.
+
+
+### 2026-09-25 병렬 전송 계약 기반
+
+- 병렬 HQ 프롬프트에는 WorkGraph revision, 사용자 maxConcurrentWork, 기준 ref를 제공한다.
+- HQ의 병렬 CONTINUE 본문은 `WORK_GRAPH_PATCH:` 뒤 JSON 한 건으로 제한하고 Worker가 전용 transport parser로 기계 검증한다.
+- HQ GraphPatch는 ADD/CANCEL/SET_DEPENDENCIES/SET_GOAL/SET_BASE_REF/RELEASE를 사용할 수 있다.
+- maxConcurrentWork는 사용자 설정이므로 HQ transport에서 SET_MAX_CONCURRENCY를 거부한다.
+- 병렬 WORK 프롬프트에는 workItemId, kind, goal, dependencies, baseRef, branch, worktree와 이전 보고를 제공할 수 있다.
+- 병렬 WORK가 HQ로 보고할 때 `WORK_ITEM_STATUS: COMPLETED|BLOCKED|SPLIT_REQUEST|FAILED` 상태 행을 사용하도록 전용 계약을 추가했다.
+- 레거시 단일 HQ/WORK 프롬프트에는 병렬 계약을 노출하지 않아 현재 직렬 흐름을 깨지 않는다.

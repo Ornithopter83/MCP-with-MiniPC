@@ -38,6 +38,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 단계 1 단위 테스트 추가
 - ParallelWorkScheduler와 maxConcurrentWork 슬롯 실행 기반 구현
 - GitWorktreeManager와 WorkItem별 branch/worktree 격리 기반 구현
+- 병렬 HQ GraphPatch transport와 병렬 WORK_ITEM_STATUS 보고 계약 기반 구현
 - 다음 구현은 Worktree + CodexCliRunner를 결합하는 실제 WorkItem executor
 
 착수 commit:
