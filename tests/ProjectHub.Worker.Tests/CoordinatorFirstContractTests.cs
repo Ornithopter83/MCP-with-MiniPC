@@ -36,6 +36,7 @@ public sealed class CoordinatorFirstContractTests
     [InlineData("Implementer", "#FFDCF5E3", "#FF168A4A", "#FF116B39", "current-openai.png")]
     [InlineData("Resource", "#FFECD8E4", "#FF82194B", "#FF74133F", "current-web.png")]
     [InlineData("Judge", "#FFFFF0B8", "#FFB87900", "#FF765000", "current-jev.png")]
+    [InlineData("Message", "#FFEEF8F2", "#FF168A4A", "#FF116B39", "current-console.png")]
     public void HistoryRoleCard_UsesTheSameRolePaletteAsCurrentTask(string stage, string background, string iconBackground, string foreground, string icon)
     {
         var item = new MainWindow.WorkerHistoryEvent(DateTimeOffset.Now, stage, "TEST", "test", null, null, null, null, null, null);
