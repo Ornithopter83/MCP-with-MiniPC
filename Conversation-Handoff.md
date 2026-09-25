@@ -18,7 +18,7 @@
 ## 현재 단계
 
 - 활성 작업: `tasks/07-project-deployment-package.md`
-- 06 Large Data/NAS 핵심 기능은 검증 완료
+- 06 대용량 데이터/NAS 핵심 기능은 검증 완료
 - 07 프로젝트 배포 패키지는 마무리 단계
 - 현재 최신 작업 기록상 남은 실제 검증은 `hw`에서 Force Restore GUI의 계속/취소 동작 확인 1건
 - 이후 08 Server 설치/이전 단계로 이동 예정
@@ -93,18 +93,18 @@ dirty 상태 확인
 ## 대용량 데이터 / NAS
 
 - Git에 적합하지 않은 대용량 파일은 NAS에 저장
-- canonical object는 SHA-256 content-addressed 방식
+- 정규 객체는 SHA-256 콘텐츠 주소 기반 방식
 - named alias는 프로젝트 경로 기준
-- resumable chunk upload 지원
-- Server가 assertion 발급, NAS Gateway가 검증
-- DEV Agent가 Supabase나 NAS filesystem에 직접 접근하지 않는다.
+- 재개 가능한 청크 업로드 지원
+- 서버가 검증 토큰을 발급하고 NAS 게이트웨이가 검증
+- 개발 에이전트가 Supabase나 NAS 파일 시스템에 직접 접근하지 않는다.
 
 운영 Gateway:
 ```text
 https://dfblackbox-nas.duckdns.org:8443/projecthub/
 ```
 
-NAS storage root:
+NAS 저장소 루트:
 ```text
 /mnt/HDD1/ProjectHub
 ```
@@ -132,26 +132,26 @@ missing    = 0
 ```
 
 500MiB 테스트 파일 기준 Restore E2E는 최종적으로 성공했으며,
-로컬 SHA-256과 NAS canonical object가 일치하는 것을 확인했다.
+로컬 SHA-256과 NAS 정규 객체가 일치하는 것을 확인했다.
 
 ## NAS download.php 문제와 해결
 
-한때 Restore에서 `RESTORE_SIZE_MISMATCH`와 download 500 문제가 있었다.
+한때 복원에서 `RESTORE_SIZE_MISMATCH`와 다운로드 500 문제가 있었다.
 
 원인:
 - NAS 웹 루트에 구버전 `download.php`가 남아 있었고 readfile 처리 문제가 겹침
 
 조치:
-- canonical object 경로 통일
+- 정규 객체 경로 통일
 - object_not_found / object_size_mismatch / object_not_readable / object_read_failed 구분
-- readability/size/readfile 진단 보강
+- 읽기 가능 여부/크기/파일 읽기 진단 보강
 - 수정 PHP를 실제 NAS 웹 루트에 재배포
 
 재검증:
-- canonical object 524,288,000 bytes
-- assertion 단독 download HTTP 200
+- 정규 객체 524,288,000 바이트
+- 검증 토큰 단독 다운로드 HTTP 200
 - Content-Length 일치
-- Restore matched=1, mismatched=0, missing=0
+- 복원 결과 일치=1, 불일치=0, 누락=0
 - SHA-256 일치
 
 ## 삭제 정책
@@ -165,12 +165,12 @@ local large file 삭제
 → REMOVED/tombstone
 → NAS named alias 삭제
 → 현재 active reference 확인
-→ ref=0이면 canonical object 삭제
+→ ref=0이면 정규 객체 삭제
 → 결과 기록
 ```
 
-현재 ref는 workstation-local presence count가 아니라 서버의 현재 활성 project path reference 기준이다.
-workstation별 presence ref 모델은 아직 도입하지 않는다.
+현재 참조는 작업 PC 로컬 존재 개수가 아니라 서버의 현재 활성 프로젝트 경로 참조를 기준으로 한다.
+작업 PC별 존재 참조 모델은 아직 도입하지 않는다.
 
 ## 서버 / 로그
 
@@ -194,7 +194,7 @@ Full log:
 - 같은 날짜 재시작 시 append
 - 생존 신호는 file-only
 - 정상 종료 시 SERVER_STOPPING + 구분
-- secret/token/Authorization 원문 기록 금지
+- 비밀값/토큰/Authorization 원문 기록 금지
 
 ## Agent 상태
 
@@ -212,7 +212,7 @@ Full log:
 
 현재 결론:
 - 기존 구조를 바꾸는 것이 아니라 ChatGPT용 MCP/Connector 계층을 추가하는 방향
-- 기존 Server / Supabase / NAS / CMD 구조는 유지
+- 기존 서버 / Supabase / NAS / CMD 구조는 유지
 - 먼저 read-only로 시작
 
 추천 초기 MCP 도구:
@@ -232,7 +232,7 @@ request_fetch_pull
 request_force_restore
 ```
 
-임의 shell을 Web ChatGPT에 노출하지 않는다.
+임의 셸을 Web ChatGPT에 노출하지 않는다.
 write/action은 제한된 API 및 사용자 승인형 흐름을 우선한다.
 
 ## Web ChatGPT와 GitHub MCP 비교 시 핵심
@@ -241,9 +241,9 @@ write/action은 제한된 API 및 사용자 승인형 흐름을 우선한다.
 
 - GitHub에 넣기 어려운 대용량 파일 관리
 - Git 파일 + NAS 대용량 파일을 하나의 프로젝트 상태/checkpoint로 결합
-- Commit Push / Fetch Pull / Force Restore의 통합 사용자 UX
+- 커밋·푸시 / 가져오기·풀 / 강제 복원의 통합 사용자 UX
 - GitHub + NAS를 함께 복구하는 전체 프로젝트 복구
-- 대용량 object 생명주기 / tombstone / reference 기반 삭제
+- 대용량 객체 생명주기 / 삭제 표식 / 참조 기반 삭제
 - ProjectHub 전용 정책 및 향후 GitHub 외 확장 가능성
 
 요약:
