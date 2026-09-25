@@ -78,6 +78,35 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task CallCompletedReportsWorkItemUsageBoundary()
+    {
+        var fixture = CreateFixture("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            완료
+            """);
+        CodexWorkItemCallCompleted? observed = null;
+        fixture.Executor.CallCompleted += value => observed = value;
+
+        try
+        {
+            await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.NotNull(observed);
+            Assert.Equal("W1", observed!.WorkItemId);
+            Assert.Equal("WORK_ITEM", observed.InboundType);
+            Assert.True(observed.PromptBytes > 0);
+            Assert.Equal(0, observed.Result.ExitCode);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task JudgeRequestFailsMechanicallyWhenJudgeIsDisabled()
     {
         var fixture = CreateFixture("""

@@ -13,6 +13,13 @@ public sealed record CodexWorkItemContextPrepared(
     string Branch,
     string WorktreePath);
 
+public sealed record CodexWorkItemCallCompleted(
+    string WorkItemId,
+    string InboundType,
+    int PromptBytes,
+    long LatencyMs,
+    AiRoleRunResult Result);
+
 public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 {
     private readonly string _jobId;
@@ -52,6 +59,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     public event Action<CodexWorkItemProgress>? Progress;
     public event Action<CodexWorkItemSessionStarted>? SessionStarted;
     public event Action<CodexWorkItemContextPrepared>? ContextPrepared;
+    public event Action<CodexWorkItemCallCompleted>? CallCompleted;
 
     public async Task<WorkItemExecutionResult> ExecuteAsync(
         WorkItemExecutionRequest request,
@@ -118,6 +126,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     dependencyResults));
 
             string? startedSession = sessionId;
+            var callStartedAt = DateTimeOffset.UtcNow;
             runResult = await _runner.RunAsync(new AiRoleRunRequest(
                 prompt,
                 _role,
@@ -139,6 +148,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 string.IsNullOrWhiteSpace(observationRequestDirectory)
                     ? null
                     : new[] { observationRequestDirectory })).ConfigureAwait(false);
+
+            CallCompleted?.Invoke(new CodexWorkItemCallCompleted(
+                item.Id,
+                inboundType,
+                System.Text.Encoding.UTF8.GetByteCount(prompt),
+                Math.Max(0, (long)(DateTimeOffset.UtcNow - callStartedAt).TotalMilliseconds),
+                runResult));
 
             sessionId = CodexCliRunner.NormalizeSessionId(runResult.SessionId) ??
                         startedSession ??

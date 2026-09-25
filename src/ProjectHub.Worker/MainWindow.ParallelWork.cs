@@ -219,6 +219,43 @@ public partial class MainWindow
                     cts.Token);
             }
 
+            executor.CallCompleted += call =>
+            {
+                var usage = call.Result.Usage;
+                UsageTelemetryStore.Append(new ModelCallTelemetry(
+                    jobId,
+                    null,
+                    "WORK",
+                    call.Result.Model,
+                    call.Result.Reasoning,
+                    $"WORK_ITEM:{call.WorkItemId}:{call.InboundType}",
+                    usage.UsageKnown ? usage.InputTokens : null,
+                    usage.UsageKnown ? usage.CachedInputTokens : null,
+                    usage.UsageKnown ? usage.OutputTokens : null,
+                    usage.UsageKnown ? usage.ReasoningOutputTokens : null,
+                    usage.ProviderTotalTokens,
+                    call.PromptBytes,
+                    call.PromptBytes,
+                    0,
+                    null,
+                    System.Text.Encoding.UTF8.GetByteCount(call.Result.FinalMessage),
+                    call.LatencyMs,
+                    call.Result.ExitCode == 0 ? null : "WORK_PROCESS_EXIT",
+                    usage.UsageKnown,
+                    null,
+                    null,
+                    DateTimeOffset.UtcNow));
+
+                ProjectWorkspacePersistence.AppendEvent(
+                    workingDirectory,
+                    jobId,
+                    DateTimeOffset.UtcNow,
+                    "WORK CALL",
+                    $"workItemId={call.WorkItemId} · inboundType={call.InboundType} · exitCode={call.Result.ExitCode}",
+                    call.Result.ExitCode == 0 ? "COMPLETED" : "FAILED",
+                    workItemId: call.WorkItemId);
+            };
+
             executor.Progress += progress => RunOnUi(() =>
             {
                 _lastActivityAt = DateTimeOffset.UtcNow;
