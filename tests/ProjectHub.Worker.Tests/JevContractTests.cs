@@ -27,6 +27,7 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("한글 선택지 키는 사용하지 않는다.", hq);
         Assert.Contains("A=<기준>", hq);
         Assert.Contains("B=<기준>", hq);
+        Assert.Contains("명시적인 Form 요청이 없어도", hq);
         Assert.Contains("이미 관측 사실로 확정한 항목 자체를 다시 JUDGE 문항으로 만들지 않고", hq);
         Assert.Contains("이전 판정 이후 근거가 바뀌었다고 WORK가 보고하면", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
