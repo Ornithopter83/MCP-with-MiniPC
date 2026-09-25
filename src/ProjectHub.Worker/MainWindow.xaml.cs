@@ -1558,7 +1558,10 @@ public partial class MainWindow : Window
         var persistedParallelGraph = continuation is null
             ? null
             : ProjectWorkspacePersistence.TryLoadWorkGraph(workingDirectory, continuation.JobId);
-        if (_targetSettings.EffectiveMaxConcurrentWork > 1 || persistedParallelGraph is not null)
+        if (ParallelWorkActivationPolicy.ShouldUseParallel(
+                continuation is not null,
+                _targetSettings.EffectiveMaxConcurrentWork,
+                persistedParallelGraph is not null))
         {
             await RunParallelCoordinatorFirstJobAsync(
                 request,
