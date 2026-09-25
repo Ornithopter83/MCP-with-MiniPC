@@ -436,6 +436,41 @@ public partial class MainWindow : Window
         UpdateFollowupButtonState();
     }
 
+    private void DashboardHistoryList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DashboardHistoryList.SelectedItem is not WorkerHistoryEvent item ||
+            string.IsNullOrWhiteSpace(item.FullMessage))
+            return;
+
+        var viewer = new System.Windows.Controls.TextBox
+        {
+            Text = item.FullMessage,
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            AcceptsTab = true,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            FontSize = 14,
+            Padding = new Thickness(12),
+            Background = System.Windows.Media.Brushes.White,
+            Foreground = (System.Windows.Media.Brush)FindResource("Ink")
+        };
+        var dialog = new Window
+        {
+            Title = $"{item.Role} · {item.Title} · Full Message",
+            Owner = this,
+            Width = 980,
+            Height = 700,
+            MinWidth = 720,
+            MinHeight = 480,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = viewer
+        };
+        dialog.ShowDialog();
+    }
+
     private void AddUserFollowupHistory(string followup)
     {
         var text = followup.Trim();
