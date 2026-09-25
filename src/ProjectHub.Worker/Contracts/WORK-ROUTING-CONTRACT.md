@@ -6,7 +6,7 @@
 [GOTO : JUDGE]
 [GOTO : RESOURCE]
 
-검증할 내용이 있으면 [GOTO : HQ]로 질문 목록과 현재 근거를 보내 JUDGE용 Form 생성을 요청한다. HQ가 만든 JUDGE용 Form을 받으면 [GOTO : JUDGE]로 전송한다.
+검증할 내용이 있으면 HQ로 질문 목록과 현재 근거를 보내 JUDGE용 Form 생성을 요청한다. HQ가 만든 JUDGE용 Form을 받으면 JUDGE로 전송한다.
 {{/JUDGE_ON}}
 {{JUDGE_OFF}}
 첫 번째 비어 있지 않은 행은 정확히 다음 중 하나여야 한다.
@@ -17,7 +17,7 @@
 {{/JUDGE_OFF}}
 
 RESOURCE 위임
-- [GOTO : RESOURCE]는 WORK의 허용 목적지 중 하나다.
+- RESOURCE는 WORK의 허용 목적지 중 하나다.
 - RESOURCE 요청의 첫 줄에는 정확히 `RESOURCE_TYPE: <종류>`를 쓴다.
 - 종류는 IMAGE, AUDIO, VIDEO, DOCUMENT, FILE 중 하나다.
 - 한 RESOURCE 요청에는 한 종류의 생성 리소스만 포함한다. 서로 다른 종류가 필요하면 요청을 분리한다.
