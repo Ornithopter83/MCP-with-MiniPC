@@ -4,8 +4,8 @@ using System.Threading.Channels;
 
 namespace ProjectHub.Worker;
 
-public sealed record ResourceSidecarRequest(string Id, string Type, string Prompt);
-public sealed record ResourceSidecarCompletion(string RequestId, string Type, bool Success, string Message, string? ErrorCode, IReadOnlyList<string> SavedPaths);
+public sealed record ResourceSidecarRequest(string Id, string Type, string Prompt, string? WorkItemId = null);
+public sealed record ResourceSidecarCompletion(string RequestId, string Type, bool Success, string Message, string? ErrorCode, IReadOnlyList<string> SavedPaths, string? WorkItemId = null);
 public sealed record ResourceSidecarQueueState(bool Running, int QueuedCount, int OutstandingCount, string Stage, string? RequestId);
 public sealed record ResourceSidecarTransportEvent(string Source, string Content, string? Status = null);
 
@@ -66,11 +66,12 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         get { lock (_gate) return _queuedCount; }
     }
 
-    public ResourceSidecarRequest Enqueue(string type, string prompt)
+    public ResourceSidecarRequest Enqueue(string type, string prompt, string? workItemId = null)
     {
         if (!ResourceTransportContract.IsSupportedType(type))
             throw new InvalidOperationException("RESOURCE_TYPE_UNSUPPORTED");
-        var request = new ResourceSidecarRequest(Guid.NewGuid().ToString("N"), type.Trim().ToUpperInvariant(), prompt);
+        workItemId = string.IsNullOrWhiteSpace(workItemId) ? null : workItemId.Trim();
+        var request = new ResourceSidecarRequest(Guid.NewGuid().ToString("N"), type.Trim().ToUpperInvariant(), prompt, workItemId);
         ResourceSidecarQueueState state;
         lock (_gate)
         {
@@ -85,7 +86,8 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
             request.Id,
             "RESOURCE",
             MechanicalWorkCompletionMode.FinalizeOnly,
-            $"type={request.Type}");
+            $"type={request.Type}",
+            request.WorkItemId);
 
         if (!_queue.Writer.TryWrite(request))
         {
@@ -158,7 +160,8 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
                         false,
                         exception.Message,
                         "RESOURCE_TRANSPORT_ERROR",
-                        Array.Empty<string>());
+                        Array.Empty<string>(),
+                        request.WorkItemId);
                 }
 
                 _completions.Enqueue(completion);
@@ -254,11 +257,11 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         var message = $"RESOURCE 저장 완료 · type={request.Type} · {relative.Length}개:\n" +
                       string.Join("\n", relative.Select(path => "- " + path)) +
                       "\n자동 코드 연결은 수행하지 않았습니다.";
-        return new ResourceSidecarCompletion(request.Id, request.Type, true, message, null, paths);
+        return new ResourceSidecarCompletion(request.Id, request.Type, true, message, null, paths, request.WorkItemId);
     }
 
     private static ResourceSidecarCompletion Failure(ResourceSidecarRequest request, string code, string message)
-        => new(request.Id, request.Type, false, message, code, Array.Empty<string>());
+        => new(request.Id, request.Type, false, message, code, Array.Empty<string>(), request.WorkItemId);
 
     private static string FailureCode(BridgeTask task) => task.FinishReason switch
     {
