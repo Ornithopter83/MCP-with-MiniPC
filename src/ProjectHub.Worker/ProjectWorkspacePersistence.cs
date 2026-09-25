@@ -75,6 +75,18 @@ public static class ProjectWorkspacePersistence
     public static string TranscriptPath(string workingDirectory, string jobId)
         => Path.Combine(TranscriptDirectory(workingDirectory), SanitizeId(jobId) + ".txt");
 
+    public static string MechanicalWorkDirectory(string workingDirectory, string jobId)
+        => Path.Combine(RootDirectory(workingDirectory), "mechanical", SanitizeId(jobId));
+
+    public static string MechanicalRequestDirectory(string workingDirectory, string jobId)
+        => Path.Combine(MechanicalWorkDirectory(workingDirectory, jobId), "requests");
+
+    public static string MechanicalActiveDirectory(string workingDirectory, string jobId)
+        => Path.Combine(MechanicalWorkDirectory(workingDirectory, jobId), "active");
+
+    public static string MechanicalResultDirectory(string workingDirectory, string jobId)
+        => Path.Combine(MechanicalWorkDirectory(workingDirectory, jobId), "results");
+
     public static string? AppendEvent(
         string? workingDirectory,
         string? jobId,
