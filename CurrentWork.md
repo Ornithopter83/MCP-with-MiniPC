@@ -59,10 +59,10 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 을 수행한다.
 
 잔여 실검증:
-- Windows dotnet test ProjectHub.sln
+- Windows에서 `dotnet test ProjectHub.sln` 실행
 - Release 빌드/게시
-- Explorer HQ CLI E2E
-- Explorer HQ Web E2E
+- Explorer HQ CLI E2E 검증
+- Explorer HQ Web E2E 검증
 - HQ Web + RESOURCE Web 두 창 동시 생존 신호 격리
 - WORK→RESOURCE 대기열 접수→실제 이미지 생성/복수 다운로드/저장→HQ/WORK/마무리 반영
 - RESOURCE 저장 후 자동 코드 연결이 발생하지 않는지 확인
