@@ -30,7 +30,7 @@ Worker는 하나의 작업 안에서 Codex CLI 결과를 GPT Web으로 전달하
 
 현재 실행 파일 기준 작업 루트:
 
-C:\AI-AGENT\ProjectHub\src\ProjectHub.Worker\bin\Debug\net9.0-windows\작업
+C:\AI-AGENT\ProjectHub\src\ProjectHub.Worker\bin\Debug\net9.0-windows\Task
 
 ### 알려진 제약
 
