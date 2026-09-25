@@ -26,7 +26,7 @@ Worker는 하나의 작업 안에서 Codex CLI 결과를 GPT Web으로 전달하
 
 작업 메시지는 USER COMMAND → CODEX → WORKER → GPT WEB 순으로 누적되며 정상 종료 시 실행 파일 폴더 아래에 다음 형식으로 저장된다.
 
-<작업 실행 폴더>\작업\<프로젝트>_<스레드>\_<yyyymmdd_HHmmss>.txt
+<Task 실행 폴더>\Task\<프로젝트>_<스레드>\_<yyyymmdd_HHmmss>.txt
 
 현재 실행 파일 기준 작업 루트:
 
