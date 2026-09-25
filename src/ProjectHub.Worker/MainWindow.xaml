@@ -394,23 +394,40 @@
             <TextBox x:Name="DashboardTaskInput" FontSize="18" Padding="2" VerticalContentAlignment="Top" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" Foreground="{StaticResource Muted}" Text="작업 내용을 입력하세요..." ToolTip="작업 내용을 입력합니다." GotFocus="DashboardTaskInput_GotFocus" LostFocus="DashboardTaskInput_LostFocus" TextChanged="DashboardTaskInput_TextChanged"/>
           </Border>
           <Border x:Name="DashboardHistoryView" Background="#FBFDFF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="8,5" Visibility="Collapsed">
-            <ListBox x:Name="DashboardHistoryList" Background="Transparent" BorderThickness="0" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=HistoryEvents}" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" FontSize="14" Foreground="{StaticResource Ink}">
-              <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0,2"/><Setter Property="Focusable" Value="False"/></Style></ListBox.ItemContainerStyle>
-              <ListBox.ItemTemplate><DataTemplate>
-                <Grid MinHeight="62" Margin="1,2"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="215"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                  <Border Width="48" Height="48" Background="{Binding IconBackground}" CornerRadius="25" VerticalAlignment="Center"><Image Source="{Binding IconSource}" Width="40" Height="40" Stretch="Uniform"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="7,0"><TextBlock Text="{Binding Role}" FontSize="16" FontWeight="Bold" Foreground="{Binding RoleForeground}"/><TextBlock Text="{Binding TimestampText}" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/></StackPanel>
-                  <Border Grid.Column="2" Background="{Binding RowBackground}" CornerRadius="8" Padding="14,7" VerticalAlignment="Stretch"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"/><TextBlock Grid.Row="1" Text="{Binding Summary}" Foreground="{StaticResource Ink}" FontSize="14" Margin="0,1,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Row="2" Text="{Binding TokenDetails}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Row="3" Text="{Binding FileDetails}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,1,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/></Grid></Border>
-                </Grid>
-              </DataTemplate></ListBox.ItemTemplate>
-            </ListBox>
+            <Grid>
+              <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+              <ListBox x:Name="DashboardHistoryList" Grid.Row="0" Background="Transparent" BorderThickness="0" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=HistoryEvents}" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" FontSize="14" Foreground="{StaticResource Ink}">
+                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0,2"/><Setter Property="Focusable" Value="False"/></Style></ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate><DataTemplate>
+                  <Grid MinHeight="62" Margin="1,2"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="215"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Border Width="48" Height="48" Background="{Binding IconBackground}" CornerRadius="25" VerticalAlignment="Center"><Image Source="{Binding IconSource}" Width="40" Height="40" Stretch="Uniform"/></Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="7,0"><TextBlock Text="{Binding Role}" FontSize="16" FontWeight="Bold" Foreground="{Binding RoleForeground}"/><TextBlock Text="{Binding TimestampText}" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/></StackPanel>
+                    <Border Grid.Column="2" Background="{Binding RowBackground}" CornerRadius="8" Padding="14,7" VerticalAlignment="Stretch"><Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"/><TextBlock Grid.Row="1" Text="{Binding Summary}" Foreground="{StaticResource Ink}" FontSize="14" Margin="0,1,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Row="2" Text="{Binding TokenDetails}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,2,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Row="3" Text="{Binding FileDetails}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,1,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/></Grid></Border>
+                  </Grid>
+                </DataTemplate></ListBox.ItemTemplate>
+              </ListBox>
+              <Grid x:Name="DashboardFollowupComposer" Grid.Row="1" MinHeight="132" Margin="1,6,18,3" Visibility="Collapsed">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="215"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Width="48" Height="48" Background="#168A4A" CornerRadius="25" VerticalAlignment="Top" Margin="0,9,0,0"><TextBlock Text="＋" FontSize="28" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="7,13,10,0">
+                  <TextBlock Text="메시지" FontSize="16" FontWeight="Bold" Foreground="#116B39"/>
+                  <TextBlock Text="현재 세션에 작업 추가" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
+                </StackPanel>
+                <Border Grid.Column="2" Background="#F1FAF5" BorderBrush="#CFE9D8" BorderThickness="1" CornerRadius="8" Padding="12,9">
+                  <TextBox x:Name="DashboardFollowupInput" Text="추가할 작업을 입력하세요..." Foreground="{StaticResource Muted}" Background="Transparent" BorderThickness="0" FontSize="15" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" GotFocus="DashboardFollowupInput_GotFocus" LostFocus="DashboardFollowupInput_LostFocus" TextChanged="DashboardFollowupInput_TextChanged"/>
+                </Border>
+              </Grid>
+            </Grid>
           </Border>
         </Grid>
       </Grid>
     </Border>
-    <Grid Grid.Row="3" Margin="0,8,18,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
+    <Grid Grid.Row="3" Margin="0,8,18,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/><ColumnDefinition Width="18"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
       <TextBlock x:Name="DashboardPreflightText" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="6,0,12,0"/>
-      <Button x:Name="RunButton" Grid.Column="1" Content="▶   실행" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#1477E8" Foreground="White" BorderBrush="#1477E8" FontSize="27" FontWeight="Bold" IsEnabled="False" Click="RunTask_Click" Effect="{StaticResource RunButtonShadow}"/>
+      <Button x:Name="AddWorkButton" Grid.Column="1" Content="＋   작업 추가" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#168A4A" Foreground="White" BorderBrush="#168A4A" FontSize="25" FontWeight="Bold" IsEnabled="False" Visibility="Collapsed" Click="AddWorkButton_Click">
+        <Button.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.22" Color="#168A4A"/></Button.Effect>
+      </Button>
+      <Button x:Name="RunButton" Grid.Column="3" Content="▶   실행" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#1477E8" Foreground="White" BorderBrush="#1477E8" FontSize="27" FontWeight="Bold" IsEnabled="False" Click="RunTask_Click" Effect="{StaticResource RunButtonShadow}"/>
     </Grid>
 
     <Grid Visibility="Collapsed">
