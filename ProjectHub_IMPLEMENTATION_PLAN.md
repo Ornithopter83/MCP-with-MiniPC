@@ -14,6 +14,7 @@ RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
 HQ END 전 완료 알림 -> 필요 시 다음 WORK 입력
 HQ ACTION=END -> Worker 기계적 대기 게이트 -> 모두 종료 -> DONE / DONE_WITH_ERROR
+PAUSED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ (기존 HQ/WORK 세션)
 ~~~
 
 미확인은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.
@@ -37,8 +38,9 @@ HQ ACTION=END -> Worker 기계적 대기 게이트 -> 모두 종료 -> DONE / DO
 6. 확장 생성 복수 이미지 수집 + 결과 데이터 묶음 배열
 7. Worker 파일 저장 + ResourceRequest 상태
 8. 파이프라인/이력/설정
-9. HQ END 이후 의미 흐름 차단 + 일반 기계적 대기 게이트
-10. 테스트/문서
+9. HQ END 이후 자동 의미 흐름 차단 + 일반 기계적 대기 게이트
+10. PAUSE/END 후 기존 세션 작업 추가 + 고정 크기 이력 입력 UI
+11. 테스트/문서
 
 ## 보류 항목
 
@@ -61,10 +63,13 @@ HQ ACTION=END -> Worker 기계적 대기 게이트 -> 모두 종료 -> DONE / DO
 역할 계약에는 장기 역할 책임, ACTION/GOTO 문법, 전송 형식, 기계적 경계만 둔다. 특정 테스트·도메인·횟수·파일·장애 사례는 계약에 넣지 않고 tests/fixtures/작업 history에 둔다.
 
 
-## 현재 종료 정책
+## 현재 종료와 후속 작업 정책
 
-- HQ의 ACTION=END는 의미 작업 종료를 확정한다.
-- Worker는 END 이후 HQ/WORK/JUDGE 의미 흐름을 다시 열지 않는다.
-- 남은 RESOURCE 대기열를 포함한 기계적 대기 작업이 있으면 Worker가 대기 상태에서 완료만 기다린다.
+- HQ의 ACTION=END는 현재 실행 구간의 의미 작업 종료를 확정한다.
+- Worker는 END 이후 현재 실행 구간에서 HQ/WORK/JUDGE 의미 흐름을 자동으로 다시 열지 않는다.
+- 남은 RESOURCE 대기열을 포함한 기계적 대기 작업이 있으면 Worker가 대기 상태에서 완료만 기다린다.
 - 대기 작업이 모두 끝나면 Worker가 DONE 또는 DONE_WITH_ERROR로 전환한다.
 - RESOURCE 완료 이벤트는 HQ를 깨우지 않는다.
+- PAUSE와 DONE / DONE_WITH_ERROR 이후에도 HQ/WORK 세션과 작업공간은 유지한다.
+- 사용자가 `작업 추가`를 실행할 때만 USER_FOLLOWUP으로 기존 HQ 세션에서 새 실행 구간을 시작한다.
+- `새 작업`을 선택하면 이전 연속 세션과 이력을 명시적으로 초기화한다.
