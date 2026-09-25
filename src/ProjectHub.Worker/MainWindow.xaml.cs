@@ -2180,6 +2180,36 @@ public partial class MainWindow : Window
         MessageLogEmptyText.Visibility = priorEvents.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         _historyEvents.Clear();
+        foreach (var entry in priorEvents)
+        {
+            var source = entry.Source.ToUpperInvariant();
+            var stage = source.Contains("JUDGE", StringComparison.Ordinal) || source.Contains("JEV", StringComparison.Ordinal)
+                ? "Judge"
+                : source.Contains("RESOURCE", StringComparison.Ordinal)
+                    ? "Resource"
+                    : source.Contains("WORK", StringComparison.Ordinal) || source.Contains("IMPLEMENT", StringComparison.Ordinal)
+                        ? "Implementer"
+                        : source.Contains("HQ", StringComparison.Ordinal) || source.Contains("COORDINATOR", StringComparison.Ordinal)
+                            ? "Coordinator"
+                            : "Message";
+            _historyEvents.Add(new WorkerHistoryEvent(
+                entry.Timestamp,
+                stage,
+                "PROJECT_EVENT",
+                entry.Source,
+                WorkerHistoryCardFormatter.Preview(entry.FullMessage),
+                entry.SizeBytes ?? Encoding.UTF8.GetByteCount(entry.FullMessage),
+                entry.ItemCount,
+                entry.FileCount,
+                entry.Status,
+                entry.EventId)
+            {
+                FullMessage = entry.FullMessage,
+                TokenDetails = string.Empty,
+                FileDetails = string.Empty
+            });
+        }
+
         var recoveryMessage =
             $"프로젝트 폴더의 기억을 복구했습니다.{Environment.NewLine}" +
             $"상태: {snapshot.Status}{Environment.NewLine}" +
