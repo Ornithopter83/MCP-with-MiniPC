@@ -325,3 +325,13 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - SCORE에는 정수=기준, CHOICE에는 선택지=기준이 하나 이상 포함되어야 한다.
 - Worker는 의미를 판단하지 않고 기존 JudgeTransportContract로 Form 구조만 기계적으로 검사한다.
 - 이번 변경은 계약과 문서/테스트만 갱신하며 JUDGE parser 코드는 변경하지 않는다.
+
+## 2026-09-25 HQ JUDGE CHOICE 선택지 키 규칙 보강
+
+- 실제 JUDGE transport parser는 CHOICE 선택지 키를 영문자로 시작하는 ASCII 토큰으로만 인식한다.
+- HQ 계약에 선택지 키가 영문자로 시작하고 영문자, 숫자, 밑줄, 하이픈만 사용할 수 있다는 규칙을 추가했다.
+- 한글 선택지 키는 사용하지 않도록 명시하고 Form 문법 예시는 A, B 키를 사용하도록 바꿨다.
+- Master-Polish.md에도 같은 기계적 전송 규칙을 반영했다.
+- 계약 테스트에 HQ가 해당 규칙과 A/B 예시를 노출하는지 확인하는 검사를 추가했다.
+- parser 회귀 테스트에 한글 CHOICE 키가 CHOICE_CRITERIA_MISSING으로 거부되는 현재 전송 규칙을 고정했다.
+- JudgeTransportContract 구현 코드는 변경하지 않았다.
