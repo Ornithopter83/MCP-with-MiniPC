@@ -26,14 +26,14 @@
 
 - 최신 피드백에 요구된 ERROR/FAIL 구분과 입력·응답 검증, REPORT 경계, PASS 재진입 차단을 먼저 구현한다.
 - Worker 전용 파서/evaluator/라우팅 픽스처 테스트를 마련한다.
-- 하단 계약의 NEXT/REPORT/VALIDATION REQUEST 고정 표식과 v1 라우팅은 보존한다. NOUL 질문은 원자 주장, 선택 중요도/evidence/scope/counterexample 메타데이터를 지원하며 파서가 연속 입력을 JEV instructions에 보존한다.
+- 하단 계약의 NEXT/REPORT/VALIDATION REQUEST 고정 표식과 v1 라우팅은 보존한다. NOUL 질문은 원자 주장, 선택 중요도/근거/범위/반례 메타데이터를 지원하며 파서가 연속 입력을 JEV 지시에 보존한다.
 - 유효 응답의 임계값 미달은 PARTIAL로 분류한다. 같은 Codex 세션에서 실제 모순·증거 부족·confidence 미달·사용자 검증 필요를 먼저 구분하고, evidence가 바뀐 원자 질문만 기존 QID로 다시 평가한다. 최대 3회 후 PASS가 아니면 검토로 보낸다.
 - 회귀 기준: 중요도별 고정 임계값, 독립 질문 묶음 판정, QID 유지·중복 거부, 임계값 미달 PARTIAL 분류, Codex 점수 맞추기 방지 지침을 픽스처로 검증한다.
 - 파일 evidence 전달과 digest 기반 무효화 구현은 하위 09-C에 기록한다.
 - Explorer 실검증 잔여는 사용자가 해결로 처리하고 이후 관리하지 않도록 결정했다. 실제 재발하면 별도 건으로 확인한다.
 - `JevContract`가 첫 NEXT/REPORT 경계, NOUL·SCORE·CHOICE 구조·범위·허용값을 검증한다.
 - `JevJudgeRunner`가 TypeSafe 응답의 누락·알 수 없는 ID·타입·범위 오류를 ERROR로, 유효하지만 임계값 미달인 답을 PARTIAL로 분류한다.
-- 같은 Codex 세션에서 PARTIAL triage/revalidation을 최대 3회 수행하고, PASS report-only 단계를 거치며 report-only 단계의 JEV 재진입을 차단한다.
+- 같은 Codex 세션에서 PARTIAL 분류/재검증을 최대 3회 수행하고, PASS 보고 전용 단계를 거치며 보고 전용 단계의 JEV 재진입을 차단한다.
 - 모의 HTTP 처리기 기반 Worker 픽스처 테스트를 추가했다.
 
 ### C. Evidence 전달·출처·무효화 — 구현 완료 (2026-09-23)
@@ -43,7 +43,7 @@
 - 자유형 Codex 결과는 별도 `SUMMARY_ONLY` evidence로 분류한다. QID의 `EVIDENCE:` 선언에 직접 근거가 없으면 JEV 점수가 높아도 `PASS`로 완료하지 않고 `PARTIAL`로 보낸다.
 - evidence 봉투 구조와 JEV 결과를 `%Worker%/state/jev-evidence/<job-id>/`에 round별 및 최신 스냅샷으로 원자 저장한다. 동일한 Worker 작업의 JEV round는 작업 ID를 공유한다.
 - 같은 QID의 출처 버전, 질문/수용 기준 digest, 참조 evidence 내용 요약 해시가 바뀌면 해당 원자 질문의 이전 PASS를 무효화하고 PARTIAL 재검증으로 보낸다. 해당 QID가 이미 새 증거로 이번 묶음에 재검증됐으면 추가 재검증을 요구하지 않는다. 영향받지 않은 QID의 PASS는 다음 round에도 보존한다.
-- ENGINE_HEADLESS/UI_BROWSER/HUMAN_UX/JEV 계층를 별도 상태로 기록한다. 아직 관측되지 않은 계층은 `NOT_RECORDED`로 둔다.
+- ENGINE_HEADLESS/UI_BROWSER/HUMAN_UX/JEV 계층을 별도 상태로 기록한다. 아직 관측되지 않은 계층은 `NOT_RECORDED`로 둔다.
 - footer v1 wire 표식과 Worker의 기존 라우팅 형식은 변경하지 않는다.
 
 ## 진행
@@ -55,7 +55,7 @@
 ## 변경 금지
 
 - 09-B에서는 Worker 제품 코드, 하단 계약 문서의 v1 호환 clarification, 픽스처 테스트를 변경할 수 있다. 고정 NEXT wire 표식은 바꾸지 않는다. 브라우저 확장과 배포본은 변경하지 않는다.
-- 기존 Agent → Server → Supabase와 NAS 경계를 보존한다.
+- 기존 에이전트 → 서버 → Supabase와 NAS 경계를 보존한다.
 - 현재 문서 push 승인을 향후 자동 Git/배포의 포괄 승인으로 사용하지 않는다.
 
 ## 완료 기준
@@ -100,7 +100,7 @@ git -c safe.directory=C:/AI-AGENT/ProjectHub diff --check
 
 - Bridge `/bridge/progress`와 Worker `WEB EXTENSION` MESSAGE 로그를 추가했다.
 - Extension은 전송 단계별 상태를 보고하고 composer·Send·실제 user message 확인을 여유 있게 재시도한다.
-- Extension 빌드 `2026-09-23.1`로 동기화 기준을 갱신했다.
+- 확장 빌드 `2026-09-23.1`로 동기화 기준을 갱신했다.
 - 검증: Node 구문 검사, Debug 빌드, 전체 테스트 10개, 차이 검사 통과.
 - 실제 Chrome 화면 검증은 Extension 새로고침 후 잔여.
 
@@ -108,7 +108,7 @@ git -c safe.directory=C:/AI-AGENT/ProjectHub diff --check
 
 - Worker의 terminal Task 이벤트에서 중복/timeout 조건이 화면 정리보다 먼저 반환되던 경로를 수정했다.
 - 취소 또는 이미 처리된 Task라도 `_awaitingWebResult`를 해제하고 Run 버튼을 복구한 뒤 `SetFlowState(false, false, false)`로 진행 애니메이션을 종료한다.
-- 검증: Debug 빌드 성공(경고 0/오류 0), 전체 테스트 10개 통과, Extension `node --check` 통과, `git diff --check` 통과.
+- 검증: Debug 빌드 성공(경고 0/오류 0), 전체 테스트 10개 통과, 확장 `node --check` 통과, `git diff --check` 통과.
 - 실제 실행파일/Chrome 화면 검증은 아직 수행하지 않았다.
 
 ## 2026-09-23 복합 취소 경로 수정
@@ -135,7 +135,7 @@ git -c safe.directory=C:/AI-AGENT/ProjectHub diff --check
 ## 2026-09-23 09-B Explorer 검증 재시도
 
 - `dotnet build ProjectHub.sln --configuration Debug --no-restore`는 기본 sandbox에서 Windows SDK 경로 접근 거부로 실패했다. 권한 확장 재실행은 성공(경고 0, 오류 0).
-- `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 통과: Core 1, Agent 3, Server 1, Worker 5. Extension `node --check`와 `git diff --check`도 통과.
+- `dotnet test ProjectHub.sln --configuration Debug --no-build --no-restore` 통과: Core 1, Agent 3, Server 1, Worker 5. 확장 `node --check`와 `git diff --check`도 통과.
 - `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`를 실행했으나 프로세스의 MainWindowHandle이 0이고 CUA가 Windows 앱을 열거하지 못했다. Bridge `http://127.0.0.1:43821/bridge/status` 연결도 거부되어 화면 왕복 검증을 수행하지 못했다.
 - `TYPESAFE_API_KEY` 환경 변수 존재는 확인했으나 외부 TypeSafe 호출은 보내지 않았다.
 - 검증 명령: 위 Debug 빌드/테스트, `node --check extension/gptweb-hub/content.js`, `git diff --check`.
@@ -146,7 +146,7 @@ git -c safe.directory=C:/AI-AGENT/ProjectHub diff --check
 - 사용자 취소 상태에서 활성 CTS가 남아 있어도 Worker 레이아웃을 즉시 IDLE로 복원하고 취소된 Bridge task ID의 늦은 terminal 이벤트가 화면을 덮지 않게 했다. CLI와 Web task가 겹치면 둘 다 취소한다. 취소 정리 완료 전 Run 재진입은 막고, 완료 후 연결 상태에 따라 다시 활성화한다.
 - Extension은 취소된 Worker 메시지가 아직 composer에 정확히 남아 있을 때만 지워 입력창을 복구한다. 전송 대기 루프는 task 취소를 전송 성공으로 오인하지 않는다.
 - Voice/마이크 버튼은 Send 후보에서 제외한다. Send 없이 입력 텍스트와 Voice 버튼만 유지되면 약 2.25초 후 `FAILED` 전송 결과를 Worker에 보고한다.
-- Extension 빌드 및 Worker 기대값: `2026-09-23.2`.
+- 확장 빌드 및 Worker 기대값: `2026-09-23.2`.
 - 검증: Debug 빌드 성공(경고 0/오류 0), 전체 테스트 10개 통과, `node --check extension/gptweb-hub/content.js`, `git diff --check` 통과.
 - 잔여: 빌드된 Worker 화면과 갱신한 Chrome Extension으로 실제 취소 및 Voice 전용 상태 E2E 재현. UI 런타임이 사용 가능해지면 실행하고 결과를 갱신한다. 이번 변경은 코드 게시/배포하지 않았다.
 
@@ -161,7 +161,7 @@ git -c safe.directory=C:/AI-AGENT/ProjectHub diff --check
 
 - Assistant 응답의 기준점을 본문뿐 아니라 메시지 수, DOM 요소, 메시지 키로 저장해, 같은 문자열을 반환해도 새 turn임을 감지한다.
 - 전송 확인 단계에서 새 사용자 메시지나 새 assistant turn이 발견되면 Voice 버튼만 남은 상태라도 빠른 전송/응답으로 인식한다. composer가 비워진 것만으로 성공 처리하지 않는다.
-- Extension 빌드 및 Worker 기대값: `2026-09-23.3`.
+- 확장 빌드 및 Worker 기대값: `2026-09-23.3`.
 - 검증: `node --check extension/gptweb-hub/content.js` 및 `git diff --check` 통과. Debug 빌드는 기본 sandbox에서 SDK 경로 접근 거부됐지만 권한 확장 실행에서 경고 0/오류 0. 전체 테스트는 권한 확장 실행에서 10개 통과(Core 1, Agent 3, Server 1, Worker 5).
 - 잔여: 실제 Chrome에서 빠른 답변, 이전과 동일한 답변 본문, Voice-only 전송 실패를 재현해 결과 확인. 이번 변경은 게시/배포하지 않았다.
 
@@ -169,7 +169,7 @@ git -c safe.directory=C:/AI-AGENT/ProjectHub diff --check
 
 - Release 게시 성공 후 게시 스크립트가 C:\GameProject 실행본을 갱신했다. C:\AI-AGENT\Worker 실행본이 기존 프로세스에 잠겨 처음 복사에 실패했으나, Bridge task가 terminal/canceled임을 확인하고 프로세스를 교체한 뒤 복사 및 재기동했다.
 - 저장소 bin 게시 EXE, C:\AI-AGENT\Worker EXE, C:\GameProject EXE SHA-256 모두 일치: `6424083FE1F1B2832C7813824D5FFDE1332F5129F11BBF8196A45326EECADBD1`.
-- Chrome 확장 재로드 후 Bridge 준비 완료 및 Extension 빌드 `2026-09-23.3` 동기화 `true`를 확인했다. 공용 확장 manifest/content/background도 소스 해시와 일치한다.
+- Chrome 확장 재로드 후 Bridge 준비 완료 및 확장 빌드 `2026-09-23.3` 동기화 `true`를 확인했다. 공용 확장 매니페스트/콘텐츠/백그라운드도 소스 해시와 일치한다.
 - 잔여: 실제 GPT Web 빠른/동일 본문 응답 E2E.
 
 ## 2026-09-23 trust 작업 폴더 일반 권한 실행 재시도 실패
@@ -182,8 +182,8 @@ git -c safe.directory=C:/AI-AGENT/ProjectHub diff --check
 
 - 작업 중 COMMAND 행을 90px로 조정하고 입력 본문만 접어, 모델·Reasoning·Clear·Run Task·사용량 컨트롤을 계속 표시한다.
 - Voice-only 실패 원인을 확인했다. Assistant writing block과 실제 `#prompt-textarea`가 모두 편집 가능 후보였고, 기존 코드가 첫 번째 assistant block을 골랐다. `composer()`는 이제 실제 ChatGPT 입력창 ID를 우선하고 assistant message 편집 영역을 거른다. 입력 뒤 prompt가 실제 composer에 반영됐는지 검증하고 선택 대상을 progress detail에 남긴다.
-- Extension 빌드/Worker 기대값 `2026-09-23.4`.
-- 검증: `node --check extension/gptweb-hub/content.js`, Debug 빌드 0 warning/0 error, 전체 테스트 10개, `git diff --check` 통과. Release 게시 후 C:\AI-AGENT\Worker 및 C:\GameProject 복사. 세 EXE SHA-256 일치. Worker Bridge 준비 완료, Chrome 확장 재로드 뒤 빌드 .4 동기화됨=true, 공용 manifest/content/background 해시 일치.
+- 확장 빌드/Worker 기대값 `2026-09-23.4`.
+- 검증: `node --check extension/gptweb-hub/content.js`, Debug 빌드 경고 0/오류 0, 전체 테스트 10개, `git diff --check` 통과. Release 게시 후 C:\AI-AGENT\Worker 및 C:\GameProject 복사. 세 EXE SHA-256 일치. Worker Bridge 준비 완료, Chrome 확장 재로드 뒤 빌드 .4 동기화됨=true, 공용 매니페스트/콘텐츠/백그라운드 해시 일치.
 - 실제 새 시험 메시지 전송은 기존 대화에 메시지를 추가하므로 실행하지 않았다. 실제 Explorer 화면 캡처 검증은 미실행.
 
 ## 2026-09-23 GPT Web 답변의 Worker 전달 정체 조사
@@ -196,13 +196,13 @@ git -c safe.directory=C:/AI-AGENT/ProjectHub diff --check
 
 ## 2026-09-23 하단 계약 메타데이터 파서 보강 및 Worker 시작 정리 수정
 
-- 하단 계약 v1의 고정 라우팅 표식를 유지하고 NOUL의 claim/evidence/scope/counterexample 연속 입력을 파서가 JEV instructions에 보존하도록 했다. 계약 문서와 Master 예시를 함께 갱신했으며, evidence bundle 전달은 09-C로 남긴다.
-- BridgeServer의 HttpListener 시작 실패 후 Dispose 과정에서 발생한 ObjectDisposedException이 원래 시작 실패 원인을 덮는 것을 확인해 정리을 listening 상태에 맞게 수행하도록 보강했다.
+- 하단 계약 v1의 고정 라우팅 표식를 유지하고 NOUL의 클레임/근거/범위/반례 연속 입력을 파서가 JEV 지시에 보존하도록 했다. 계약 문서와 Master 예시를 함께 갱신했으며, 근거 묶음 전달은 09-C로 남긴다.
+- BridgeServer의 HttpListener 시작 실패 후 Dispose 과정에서 발생한 ObjectDisposedException이 원래 시작 실패 원인을 덮는 것을 확인해 정리를 수신 상태에 맞게 수행하도록 보강했다.
 - `dotnet test ProjectHub.sln --configuration Debug --no-restore` 통과: Core 1, Agent 3, Server 1, Worker 6. 기본 샌드박스는 Windows SDK 경로 접근 거부로 실패해 동일 명령을 권한 확장으로 재실행했다.
 - Release 게시 및 `C:\AI-AGENT\Worker`, `C:\GameProject` 복사 완료. 게시 실행본은 SHA-256 일치 확인.
 - 일반 권한 실행에서 WPF 프로세스는 유지되고 MainWindowHandle이 생성됐지만 Bridge `127.0.0.1:43821/bridge/status` 연결은 거부됐다. UI/Bridge E2E는 미완료이며 시작 원인은 추가 관찰이 필요하다.
-- 잔여: **09-B Explorer Judge OFF/ON 및 Bridge 왕복 확인**, **09-C evidence bundle/AC**, **07 기존 검증**. commit/push는 수행하지 않았다.
+- 잔여: **09-B Explorer Judge OFF/ON 및 Bridge 왕복 확인**, **09-C 근거 묶음/AC**, **07 기존 검증**. 커밋/푸시는 수행하지 않았다.
 
-## 2026-09-23 Worker ordinary-user 시작 diagnosis
+## 2026-09-23 Worker 일반 사용자 시작 진단
 
-The 게시된 실행 파일 remains running and creates the 1200x1050 ProjectHub Worker 주 창. The local Bridge refuses connections because Windows has no URL ACL 예약 for `http://127.0.0.1:43821/`. Adding the reservation for the current user requires 관리자 권한 상승; the attempted `netsh http add urlacl` returned error 5. GUI launch verified; Bridge and Extension 왕복 remain blocked until the URL reservation is installed with 관리자 승인.
+게시된 실행 파일은 계속 실행되며 1200x1050 크기의 ProjectHub Worker 주 창을 생성한다. Windows에 `http://127.0.0.1:43821/`용 URL ACL 예약이 없어 로컬 Bridge 연결이 거부된다. 현재 사용자용 예약 추가에는 관리자 권한이 필요하며, 시도한 `netsh http add urlacl`은 오류 5를 반환했다. GUI 실행은 확인했지만 URL 예약을 관리자 승인으로 설치하기 전까지 Bridge와 확장의 왕복 통신은 차단된 상태다.
