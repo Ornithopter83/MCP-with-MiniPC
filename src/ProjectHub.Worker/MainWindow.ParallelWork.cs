@@ -121,7 +121,8 @@ public partial class MainWindow
                 implementer,
                 runner,
                 judgeAvailable: _targetSettings.EffectiveJudge.Enabled,
-                observationGate: observationGate);
+                observationGate: observationGate,
+                expectedPrimaryBranch: currentGitTarget.Branch);
 
             async Task<string> RunParallelHqAsync(
                 string prompt,

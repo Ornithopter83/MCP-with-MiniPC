@@ -30,6 +30,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     private readonly bool _judgeAvailable;
     private readonly Func<string, string?>? _observationRequestDirectory;
     private readonly IWorkItemObservationGate? _observationGate;
+    private readonly string? _expectedPrimaryBranch;
 
     public CodexWorkItemExecutor(
         string jobId,
@@ -39,7 +40,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         GitWorktreeManager? worktrees = null,
         bool judgeAvailable = false,
         Func<string, string?>? observationRequestDirectory = null,
-        IWorkItemObservationGate? observationGate = null)
+        IWorkItemObservationGate? observationGate = null,
+        string? expectedPrimaryBranch = null)
     {
         if (string.IsNullOrWhiteSpace(jobId))
             throw new ArgumentException("Job ID가 비어 있습니다.", nameof(jobId));
@@ -54,6 +56,9 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         _judgeAvailable = judgeAvailable;
         _observationRequestDirectory = observationRequestDirectory;
         _observationGate = observationGate;
+        _expectedPrimaryBranch = string.IsNullOrWhiteSpace(expectedPrimaryBranch)
+            ? null
+            : expectedPrimaryBranch.Trim();
     }
 
     public event Action<CodexWorkItemProgress>? Progress;
@@ -294,6 +299,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             var landing = await _worktrees.LandIntegrationAsync(
                 _workspace,
                 checkpoint.HeadCommit,
+                _expectedPrimaryBranch,
                 cancellationToken).ConfigureAwait(false);
 
             if (!landing.Success)

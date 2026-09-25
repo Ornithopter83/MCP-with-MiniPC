@@ -196,6 +196,39 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task IntegrationBranchChangeBlocksWithCheckpointForHqRecovery()
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            통합 worktree 검증은 완료했습니다.
+            """,
+            kind: WorkItemKind.Integration);
+
+        fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
+        fixture.Git.Enqueue(0, "");
+        fixture.Git.Enqueue(0, "feature");
+
+        try
+        {
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("INTEGRATION_LANDING_FAILED", result.BlockCode);
+            Assert.Equal("head123", result.ResultRef);
+            Assert.Contains("errorCode: INTEGRATION_TARGET_BRANCH_CHANGED", result.ResultSummary);
+            Assert.Contains("targetBranch: feature", result.ResultSummary);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task IntegrationLandingFailureBlocksWithCheckpointForHqRecovery()
     {
         var fixture = CreateFixture(
@@ -284,7 +317,8 @@ public sealed class CodexWorkItemExecutorTests
             root,
             new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
             ai,
-            new GitWorktreeManager(git));
+            new GitWorktreeManager(git),
+            expectedPrimaryBranch: "main");
 
         var item = new WorkItemSnapshot(
             workItemId,

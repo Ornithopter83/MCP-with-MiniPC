@@ -297,6 +297,36 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task IntegrationLandingRejectsChangedPrimaryBranch()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "feature");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.LandIntegrationAsync(
+                root,
+                "integration-ref",
+                "main");
+
+            Assert.False(result.Success);
+            Assert.Equal("INTEGRATION_TARGET_BRANCH_CHANGED", result.ErrorCode);
+            Assert.Equal("feature", result.TargetBranch);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 && call.Arguments[0] == "merge");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task IntegrationLandingRejectsDirtyTargetBeforeChangingHead()
     {
         var root = CreateTempRepositoryDirectory();

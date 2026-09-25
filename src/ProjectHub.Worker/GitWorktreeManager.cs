@@ -508,9 +508,20 @@ public sealed class GitWorktreeManager
         return new(true, null, after.WorktreePath, after.Branch, after.HeadCommit, true);
     }
 
+    public Task<GitIntegrationLandingResult> LandIntegrationAsync(
+        string workspace,
+        string integrationRef,
+        CancellationToken cancellationToken = default)
+        => LandIntegrationAsync(
+            workspace,
+            integrationRef,
+            expectedTargetBranch: null,
+            cancellationToken);
+
     public async Task<GitIntegrationLandingResult> LandIntegrationAsync(
         string workspace,
         string integrationRef,
+        string? expectedTargetBranch,
         CancellationToken cancellationToken = default)
     {
         var normalizedRef = integrationRef?.Trim() ?? string.Empty;
@@ -555,6 +566,24 @@ public sealed class GitWorktreeManager
             : null;
         if (string.IsNullOrWhiteSpace(targetBranch))
             return new(false, "INTEGRATION_TARGET_BRANCH_REQUIRED", repositoryRoot, normalizedRef, null, null, null, null, false);
+
+        var expectedBranch = string.IsNullOrWhiteSpace(expectedTargetBranch)
+            ? null
+            : expectedTargetBranch.Trim();
+        if (expectedBranch is not null &&
+            !string.Equals(targetBranch, expectedBranch, StringComparison.Ordinal))
+        {
+            return new(
+                false,
+                "INTEGRATION_TARGET_BRANCH_CHANGED",
+                repositoryRoot,
+                normalizedRef,
+                null,
+                targetBranch,
+                null,
+                null,
+                false);
+        }
 
         var headBeforeResult = await RunAsync(
             repositoryRoot,
