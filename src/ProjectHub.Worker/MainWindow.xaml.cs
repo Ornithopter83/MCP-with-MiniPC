@@ -1886,14 +1886,10 @@ public partial class MainWindow : Window
                                 RouteUnknown(WorkerRoleState.Work, "SESSION_RESUME_FAILED", "WORK 응답 후 이어갈 session ID가 없습니다.");
                                 continue;
                             }
-                            var route = WorkerGotoContract.Parse(WorkerRoleState.Work, result.FinalMessage);
-                            if (route.Error is not null)
-                            {
-                                RouteUnknown(WorkerRoleState.Work, route.Error, result.FinalMessage);
-                                continue;
-                            }
                             AddTaskMessage("WORK", result.FinalMessage, includeHistory: false);
 
+                            // WORK_RESULT_REQUIRED is a mechanical gate on the WORK turn itself.
+                            // Do not accept or reject the semantic GOTO until every required observation has returned.
                             var requiredObservationResults = await CollectRequiredObservationResultsAsync();
                             if (requiredObservationResults.Count > 0)
                             {
@@ -1904,7 +1900,7 @@ public partial class MainWindow : Window
                                 AddRoleResponseHistory(
                                     WorkerRoleState.Work,
                                     "비동기 계측 결과 대기",
-                                    route.Body,
+                                    result.FinalMessage,
                                     usage: result.Usage,
                                     files: result.Files,
                                     status: "OBSERVATION_WAIT",
@@ -1920,6 +1916,13 @@ public partial class MainWindow : Window
                                 inbound = observationNotice + "\n\n보류된 이전 WORK 응답:\n" + result.FinalMessage;
                                 state = WorkerRoleState.Work;
                                 break;
+                            }
+
+                            var route = WorkerGotoContract.Parse(WorkerRoleState.Work, result.FinalMessage);
+                            if (route.Error is not null)
+                            {
+                                RouteUnknown(WorkerRoleState.Work, route.Error, result.FinalMessage);
+                                continue;
                             }
 
                             AddRoleResponseHistory(
