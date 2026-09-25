@@ -271,3 +271,21 @@ RESOURCE:
 - HQ는 질문을 독립 판단 단위로 정리하고 필요한 범위, evidence, 응답 형태, 기준을 포함한 JUDGE용 Form으로 돌려준다.
 - WORK는 받은 Form을 `[GOTO : JUDGE]`로 전송한다.
 - Worker는 질문이나 Form의 의미를 판단하지 않고 기존 JUDGE 전송 스키마만 기계적으로 검사한다.
+
+## T — JUDGE 판단 경계 최소 계약
+
+- JUDGE는 관측 사실 자체가 아니라 현재 근거만으로 기계적으로 확정할 수 없는 판단에 사용한다.
+- 그 판단이 다음 작업 또는 완료 결과에 영향을 주면 WORK가 HQ에 질문 목록과 현재 근거를 보내 Form 생성을 요청한다.
+- 이미 판정한 판단의 근거가 의미 있게 바뀌면 새 근거로 다시 요청한다.
+- HQ는 이미 확정된 관측 사실을 JUDGE 문항으로 반복하지 않고 추가 해석이 필요한 판단만 Form으로 만든다.
+- Worker는 판단 필요 여부를 추론하지 않는다.
+
+## U — 프로젝트 기억 영속화와 실시간 이벤트 로그
+
+- 작업공간 `.projecthub/session-state.json`에 재개 가능한 HQ/WORK 세션 상태를 저장한다.
+- `.projecthub/last-handoff.md`에 마지막 HQ 메시지와 세션/로그 위치를 저장한다.
+- 로컬 Codex session이 사라진 경우 저장된 session ID를 제거하고 새 HQ 세션에 기억 파일과 event log 경로를 전달한다.
+- 모든 Worker 관측 메시지는 `.projecthub/events/<jobId>.jsonl`에 이벤트 발생 즉시 한 줄 JSON으로 append한다.
+- transcript는 `.projecthub/transcripts/<jobId>.txt`에 저장한다.
+- History 항목은 요약을 유지하고 두 번 클릭하면 Full Message를 연다.
+- 명시적 새 작업은 활성 session-state만 제거하며 과거 event/handoff/transcript 기록은 남긴다.
