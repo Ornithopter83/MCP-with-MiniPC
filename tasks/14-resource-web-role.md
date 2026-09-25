@@ -143,7 +143,7 @@ RESOURCE:
 - 오류가 있었던 정상 END는 DONE_WITH_ERROR 계측
 
 
-## H — 이미지 로드 완료 후속 보정
+## H — 이미지 수집 어댑터 로드 완료 후속 보정
 
 - 생성 이미지 DOM 삽입과 실제 이미지 로드 완료를 분리해 처리
 - load/오류 event에서 응답 감시기 재평가
@@ -157,21 +157,21 @@ RESOURCE:
 - 종료 후 오래된 진행 상황가 legacy UI를 재활성화하지 않도록 보호 로직
 
 
-## I — RESOURCE 사이드카 대기열 / 복수 이미지 / 종료 대기
+## I — RESOURCE 사이드카 대기열 / 복수 생성 파일 / 종료 대기
 
 - RESOURCE는 단일 읽기 FIFO 사이드카 대기열로 실행
 - 동시에 RESOURCE Web 작업 1건만 허용
 - 실행 중 후속 RESOURCE 요청은 QUEUED
 - WORK는 대기열 접수 후 관제 흐름을 HQ에 반환
 - 완료된 RESOURCE 결과는 다음 WORK 호출에 기계적으로 함께 전달
-- 최신 assistant turn의 생성 이미지 전부 다운로드
-- requestId별 폴더에 image-NN.* 저장
+- 최신 assistant turn의 생성 파일을 수집해 모두 다운로드
+- requestId별 폴더에 반환 파일명 또는 `resource-NN.<확장자>`로 저장
 - RESOURCE 카드 독립 궤도 + 대기열 count/상태
 - HQ END 후 미완료 RESOURCE가 있으면 FINALIZING, 대기열 유휴 전 DONE 금지
 - 1초 completion watchdog으로 생성 완료 후 다운로드 고착 방지
 
 - 콘텐츠 스크립트 이미지 가져오기 실패 시 백그라운드 서비스 워커 대체 처리
-- 작은 UI 이미지를 생성 이미지 후보에서 제외
+- 이미지 수집 어댑터에서는 작은 UI 이미지를 생성 이미지 후보에서 제외
 - RESOURCE 송신 프롬프트 / 브리지 작업 기록 유지
 
 ## J — 계약 일반화
