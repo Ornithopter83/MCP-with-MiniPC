@@ -1,6 +1,6 @@
 # GPTWeb-Hub 확장
 
-버전: 0.1.7 / build 2026-09-25.1
+버전: 0.1.8 / build 2026-09-25.2
 
 ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 
@@ -52,3 +52,12 @@ RESOURCE 응답 감시는 MutationObserver 외에 1초 watchdog도 사용한다.
 - 생성 이미지가 하나 이상 로드되면 streaming 표기가 남아 있어도 이미지 집합이 잠시 안정된 뒤 IMAGE_READY -> DOWNLOAD_START로 진행한다.
 - IMAGE_DETECTED 진행 상황에 candidate/loaded 수를 기록해 생성 감지와 실제 다운로드 진입을 구분한다.
 - Worker 사이드카에도 5분 전송 시간 초과이 있어 확장이 고착돼도 해당 bridge 작업를 실패 처리하고 FIFO 슬롯을 해제한다.
+
+
+## 생성 파일 일반화 — 2026-09-25
+
+- 확장 0.1.8부터 RESOURCE는 이미지 전용이 아니라 생성 파일 공통 결과를 처리한다.
+- 기존 생성 이미지 DOM 탐지는 이미지 수집 어댑터로 유지한다.
+- 다운로드 가능한 링크, 첨부 요소, 오디오·비디오 소스는 일반 파일 수집 어댑터로 감지한다.
+- 결과는 모두 `RESOURCE_FILES`의 `resultFiles[]`로 전달하며 각 항목은 base64, MIME 형식, 파일명을 포함한다.
+- 구버전 이미지 fetch 메시지는 호환을 위해 백그라운드 서비스 워커에서 계속 허용한다.
