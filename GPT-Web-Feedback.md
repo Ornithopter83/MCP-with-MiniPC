@@ -2,7 +2,7 @@
 
 갱신일: 2026-09-24
 기준 정책: Master-Polish.md
-활성 작업: tasks/14-resource-web-역할.md
+활성 작업: tasks/14-resource-web-role.md
 
 ## 현재 방향
 
@@ -49,7 +49,7 @@ Worker가 판단하지 않는 것:
 - HQ Web 흐름
 - HQ/RESOURCE 두 Web 대화 동시 생존 신호 격리
 - WORK -> RESOURCE 대기열 접수 -> 실제 이미지 생성/복수 다운로드/저장 -> 이후 orchestration/마무리 반영
-- 저장된 RESOURCE가 자동 integration되지 않는지 확인
+- 저장된 RESOURCE가 자동 통합되지 않는지 확인
 - JUDGE 회귀
 
 
@@ -93,4 +93,4 @@ Worker가 판단하지 않는 것:
 - 역할 계약에는 역할 책임, ACTION/GOTO, 전송 형식, Worker/AI 경계만 남긴다.
 - 특정 사용자 요청·테스트·도메인·횟수·파일명·장애 사례는 계약에 넣지 않는다.
 - RESOURCE 접수/완료는 Worker의 기계적 사실로 HQ에 전달하며 의미적 다음 단계는 HQ가 현재 목표와 실행 결과로 결정한다.
-- JUDGE 형식은 concrete example 대신 placeholder grammar로만 안내한다.
+- JUDGE 형식은 구체 예시 대신 자리표시자 문법로만 안내한다.
