@@ -29,7 +29,8 @@ public sealed record ObservationResultFile(
     DateTimeOffset FinishedAt,
     string? ErrorCode,
     string Message,
-    IReadOnlyList<string> ResultPaths);
+    IReadOnlyList<string> ResultPaths,
+    string? WorkItemId = null);
 
 public static class ObservationRequestContract
 {
@@ -160,6 +161,16 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
     public event Action<ObservationSidecarEvent>? TransportEvent;
     public event Action<MechanicalWorkCompletion>? CompletionAvailable;
 
+    public string GetRequestDirectory(string workItemId)
+    {
+        if (!IsSafeWorkItemId(workItemId))
+            throw new ArgumentException("WorkItem ID가 안전한 경로 토큰이 아닙니다.", nameof(workItemId));
+
+        var path = Path.Combine(RequestDirectory, OwnerFolderName(workItemId));
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
     public async Task ScanNowAsync(CancellationToken cancellationToken)
     {
         await _scanGate.WaitAsync(cancellationToken);
@@ -168,7 +179,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             if (!Directory.Exists(RequestDirectory))
                 return;
 
-            foreach (var path in Directory.EnumerateFiles(RequestDirectory, "*.json", SearchOption.TopDirectoryOnly)
+            foreach (var path in Directory.EnumerateFiles(RequestDirectory, "*.json", SearchOption.AllDirectories)
                          .OrderBy(File.GetCreationTimeUtc))
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -212,6 +223,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
 
     private async Task TryStartRequestAsync(string requestPath, CancellationToken cancellationToken)
     {
+        var workItemId = ResolveWorkItemId(requestPath);
         string json;
         try
         {
@@ -227,11 +239,13 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             if (DateTime.UtcNow - File.GetLastWriteTimeUtc(requestPath) < TimeSpan.FromSeconds(1))
                 return;
 
-            await CompleteInvalidRequestAsync(requestPath, error ?? "OBSERVATION_REQUEST_INVALID", cancellationToken);
+            await CompleteInvalidRequestAsync(requestPath, workItemId, error ?? "OBSERVATION_REQUEST_INVALID", cancellationToken);
             return;
         }
 
-        var activePath = Path.Combine(ActiveDirectory, request!.Id + ".json");
+        var activeDirectory = OwnerScopedDirectory(ActiveDirectory, workItemId);
+        Directory.CreateDirectory(activeDirectory);
+        var activePath = Path.Combine(activeDirectory, request!.Id + ".json");
         try
         {
             if (File.Exists(activePath))
@@ -248,11 +262,16 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
 
         try
         {
-            _registry.Register(request.Id, "OBSERVATION", completionMode, request.Command.Trim());
+            _registry.Register(
+                request.Id,
+                "OBSERVATION",
+                completionMode,
+                request.Command.Trim(),
+                workItemId);
         }
         catch (InvalidOperationException exception)
         {
-            await WriteStandaloneFailureAsync(request.Id, completionMode, "OBSERVATION_REGISTER_FAILED", exception.Message, cancellationToken);
+            await WriteStandaloneFailureAsync(request.Id, workItemId, completionMode, "OBSERVATION_REGISTER_FAILED", exception.Message, cancellationToken);
             TryDelete(activePath);
             return;
         }
@@ -262,7 +281,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             $"observation {request.Id} · mode {ToToken(completionMode)} · 기계 계측 접수",
             "QUEUED"));
 
-        var running = ExecuteRequestAsync(request, completionMode, activePath, _cts.Token);
+        var running = ExecuteRequestAsync(request, workItemId, completionMode, activePath, _cts.Token);
         _running[request.Id] = running;
         _ = running.ContinueWith(
             completedTask =>
@@ -276,6 +295,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
 
     private async Task ExecuteRequestAsync(
         ObservationSidecarRequest request,
+        string? workItemId,
         MechanicalWorkCompletionMode completionMode,
         string activePath,
         CancellationToken cancellationToken)
@@ -288,7 +308,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             if (processWorkingDirectory is null)
             {
                 await FinishAsync(
-                    request, completionMode, false, null, startedAt,
+                    request, workItemId, completionMode, false, null, startedAt,
                     "OBSERVATION_WORKING_DIRECTORY_OUTSIDE_ALLOWED_ROOT",
                     "계측 실행 폴더가 현재 작업공간 또는 ProjectHub 실행 폴더 범위를 벗어났습니다.",
                     Array.Empty<string>(), cancellationToken);
@@ -345,7 +365,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                 throw new OperationCanceledException(cancellationToken);
 
             var requestedResults = ResolveResultPaths(request.ResultPaths, processWorkingDirectory, out var missingOrInvalid);
-            var outputDirectory = Path.Combine(ResultDirectory, request.Id);
+            var outputDirectory = Path.Combine(OwnerScopedDirectory(ResultDirectory, workItemId), request.Id);
             Directory.CreateDirectory(outputDirectory);
             var stdoutPath = Path.Combine(outputDirectory, "stdout.txt");
             var stderrPath = Path.Combine(outputDirectory, "stderr.txt");
@@ -368,7 +388,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                     ? "계측 프로세스는 종료됐지만 지정한 결과 경로 일부를 확인하지 못했습니다: " + string.Join(", ", missingOrInvalid)
                     : $"계측 프로세스 종료 · exitCode={exitCode}";
 
-            await FinishAsync(request, completionMode, success, exitCode, startedAt, errorCode, message, resultPaths, cancellationToken);
+            await FinishAsync(request, workItemId, completionMode, success, exitCode, startedAt, errorCode, message, resultPaths, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -389,7 +409,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             try
             {
                 await FinishAsync(
-                    request, completionMode, false,
+                    request, workItemId, completionMode, false,
                     TryGetExitCode(process),
                     startedAt, "OBSERVATION_EXECUTION_ERROR", exception.Message,
                     Array.Empty<string>(), CancellationToken.None);
@@ -413,6 +433,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
 
     private async Task FinishAsync(
         ObservationSidecarRequest request,
+        string? workItemId,
         MechanicalWorkCompletionMode completionMode,
         bool success,
         int? exitCode,
@@ -423,7 +444,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var finishedAt = DateTimeOffset.UtcNow;
-        var outputDirectory = Path.Combine(ResultDirectory, request.Id);
+        var outputDirectory = Path.Combine(OwnerScopedDirectory(ResultDirectory, workItemId), request.Id);
         Directory.CreateDirectory(outputDirectory);
         var resultFilePath = Path.Combine(outputDirectory, "observation-result.json");
         var resultFile = new ObservationResultFile(
@@ -435,7 +456,8 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             finishedAt,
             errorCode,
             message,
-            resultPaths);
+            resultPaths,
+            workItemId);
         await File.WriteAllTextAsync(
             resultFilePath,
             JsonSerializer.Serialize(resultFile, ResultJsonOptions),
@@ -454,13 +476,19 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         }
     }
 
-    private async Task CompleteInvalidRequestAsync(string requestPath, string error, CancellationToken cancellationToken)
+    private async Task CompleteInvalidRequestAsync(
+        string requestPath,
+        string? workItemId,
+        string error,
+        CancellationToken cancellationToken)
     {
         var id = Path.GetFileNameWithoutExtension(requestPath);
         if (!ObservationRequestContract.IsSafeId(id))
             id = "invalid-" + Guid.NewGuid().ToString("N");
 
-        var activePath = Path.Combine(ActiveDirectory, id + ".json");
+        var invalidActiveDirectory = OwnerScopedDirectory(ActiveDirectory, workItemId);
+        Directory.CreateDirectory(invalidActiveDirectory);
+        var activePath = Path.Combine(invalidActiveDirectory, id + ".json");
         try
         {
             File.Move(requestPath, activePath, true);
@@ -473,10 +501,10 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         const MechanicalWorkCompletionMode mode = MechanicalWorkCompletionMode.WorkResultRequired;
         try
         {
-            _registry.Register(id, "OBSERVATION", mode, "invalid request");
+            _registry.Register(id, "OBSERVATION", mode, "invalid request", workItemId);
             var request = new ObservationSidecarRequest { Id = id, Command = "invalid", CompletionMode = "WORK_RESULT_REQUIRED" };
             await FinishAsync(
-                request, mode, false, null, DateTimeOffset.UtcNow,
+                request, workItemId, mode, false, null, DateTimeOffset.UtcNow,
                 error, "비동기 계측 요청 형식이 올바르지 않습니다.",
                 Array.Empty<string>(), cancellationToken);
         }
@@ -488,17 +516,18 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
 
     private async Task WriteStandaloneFailureAsync(
         string id,
+        string? workItemId,
         MechanicalWorkCompletionMode mode,
         string errorCode,
         string message,
         CancellationToken cancellationToken)
     {
-        var outputDirectory = Path.Combine(ResultDirectory, id);
+        var outputDirectory = Path.Combine(OwnerScopedDirectory(ResultDirectory, workItemId), id);
         Directory.CreateDirectory(outputDirectory);
         var result = new ObservationResultFile(
             id, "FAILED", ToToken(mode), null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            errorCode, message, Array.Empty<string>());
+            errorCode, message, Array.Empty<string>(), workItemId);
         await File.WriteAllTextAsync(
             Path.Combine(outputDirectory, "observation-result.json"),
             JsonSerializer.Serialize(result, ResultJsonOptions),
@@ -509,6 +538,45 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             $"observation {id} · {errorCode} · {message}",
             errorCode));
     }
+
+    private string? ResolveWorkItemId(string requestPath)
+    {
+        try
+        {
+            var relative = Path.GetRelativePath(RequestDirectory, requestPath);
+            var directory = Path.GetDirectoryName(relative);
+            if (string.IsNullOrWhiteSpace(directory) || directory == ".")
+                return null;
+
+            var first = directory
+                .Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault();
+            if (first is null || !first.StartsWith("item-", StringComparison.Ordinal))
+                return null;
+
+            var id = first["item-".Length..];
+            return IsSafeWorkItemId(id) ? id : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string OwnerScopedDirectory(string root, string? workItemId)
+        => string.IsNullOrWhiteSpace(workItemId)
+            ? root
+            : Path.Combine(root, OwnerFolderName(workItemId));
+
+    private static string OwnerFolderName(string workItemId)
+        => "item-" + workItemId;
+
+    private static bool IsSafeWorkItemId(string? value)
+        => !string.IsNullOrWhiteSpace(value) &&
+           value.Length <= 96 &&
+           value.All(character =>
+               char.IsAsciiLetterOrDigit(character) ||
+               character is '-' or '_' or '.');
 
     private string? ResolveAllowedDirectory(string? requested)
     {
