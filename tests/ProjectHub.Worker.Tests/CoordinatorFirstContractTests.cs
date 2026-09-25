@@ -55,7 +55,7 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Work, "[GOTO : HQ] report on the same line", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", null, WorkerRoleState.Judge)]
-    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\n게임용 효과음을 짧고 선명하게 만들어줘.", null, WorkerRoleState.Resource)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\nRESOURCE_TYPE: AUDIO\n게임용 효과음을 짧고 선명하게 만들어줘.", null, WorkerRoleState.Resource)]
     [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", null, WorkerRoleState.Work)]
     [InlineData(WorkerRoleState.Resource, "[GOTO : WORK]\nsaved", null, WorkerRoleState.Work)]
     public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, WorkerAction? action, WorkerRoleState? target)
@@ -81,15 +81,41 @@ public sealed class CoordinatorFirstContractTests
         => Assert.Equal(error, WorkerGotoContract.Parse(source, text).Error);
 
     [Fact]
-    public void ResourceTransport_AcceptsNaturalLanguageVerbatimAndRejectsEmptyBody()
+    public void ResourceTransport_RequiresExplicitTypeAndForwardsOnlyNaturalLanguagePrompt()
     {
-        const string body = "게임용 효과음을 짧고 선명하게 만들어줘.";
+        const string prompt = "게임용 효과음을 짧고 선명하게 만들어줘.";
+        const string body = "RESOURCE_TYPE: AUDIO\n" + prompt;
+
         Assert.True(ResourceTransportContract.TryParse(body, out var request, out var error));
         Assert.Null(error);
-        Assert.Equal(body, request!.Prompt);
+        Assert.Equal("AUDIO", request!.Type);
+        Assert.Equal(prompt, request.Prompt);
 
-        Assert.False(ResourceTransportContract.TryParse("   ", out _, out var emptyError));
-        Assert.Equal("RESOURCE_REQUEST_EMPTY", emptyError);
+        Assert.False(ResourceTransportContract.TryParse(prompt, out _, out var missingType));
+        Assert.Equal("RESOURCE_TYPE_MISSING", missingType);
+
+        Assert.False(ResourceTransportContract.TryParse("RESOURCE_TYPE: UNKNOWN\n요청", out _, out var unsupportedType));
+        Assert.Equal("RESOURCE_TYPE_UNSUPPORTED", unsupportedType);
+
+        Assert.False(ResourceTransportContract.TryParse("RESOURCE_TYPE: IMAGE", out _, out var emptyPrompt));
+        Assert.Equal("RESOURCE_REQUEST_EMPTY", emptyPrompt);
+    }
+
+    [Theory]
+    [InlineData("IMAGE")]
+    [InlineData("AUDIO")]
+    [InlineData("VIDEO")]
+    [InlineData("DOCUMENT")]
+    [InlineData("FILE")]
+    public void ResourceTransport_AllowsSupportedGenerationTypes(string type)
+    {
+        Assert.True(ResourceTransportContract.IsSupportedType(type));
+        Assert.True(ResourceTransportContract.TryParse(
+            $"RESOURCE_TYPE: {type}\n테스트 생성 요청",
+            out var request,
+            out var error));
+        Assert.Null(error);
+        Assert.Equal(type, request!.Type);
     }
 
     [Theory]
