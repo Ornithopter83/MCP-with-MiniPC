@@ -9,6 +9,11 @@ public sealed record WorkGraphPromptContext(
     int MaxConcurrentWork,
     string BaseRef);
 
+public sealed record WorkItemDependencyPromptContext(
+    string WorkItemId,
+    string? ResultRef,
+    string? ResultSummary);
+
 public sealed record WorkItemPromptContext(
     string WorkItemId,
     WorkItemKind Kind,
@@ -17,7 +22,8 @@ public sealed record WorkItemPromptContext(
     string? BaseRef,
     string? Branch,
     string? WorktreePath,
-    string? PreviousReport = null);
+    string? PreviousReport = null,
+    IReadOnlyList<WorkItemDependencyPromptContext>? DependencyResults = null);
 
 public static class RoleContractLoader
 {
@@ -69,6 +75,10 @@ public static class RoleContractLoader
         var previous = string.IsNullOrWhiteSpace(workItem.PreviousReport)
             ? string.Empty
             : $"이전 WorkItem 보고:\n{workItem.PreviousReport}\n";
+        var dependencyResults = workItem.DependencyResults is null || workItem.DependencyResults.Count == 0
+            ? string.Empty
+            : "선행 WorkItem 결과:\n" + string.Join("\n", workItem.DependencyResults.Select(result =>
+                $"- {result.WorkItemId} | ref={result.ResultRef ?? "없음"} | report={result.ResultSummary ?? "없음"}")) + "\n";
 
         return
             "병렬 WorkItem 사용: 예\n" +
@@ -79,6 +89,7 @@ public static class RoleContractLoader
             $"기준 ref: {workItem.BaseRef ?? "없음"}\n" +
             $"branch: {workItem.Branch ?? "미배정"}\n" +
             $"worktree: {workItem.WorktreePath ?? "미배정"}\n" +
+            dependencyResults +
             previous;
     }
 

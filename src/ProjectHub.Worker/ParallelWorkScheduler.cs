@@ -1,8 +1,14 @@
 namespace ProjectHub.Worker;
 
+public sealed record WorkItemDependencyResult(
+    string WorkItemId,
+    string? ResultRef,
+    string? ResultSummary);
+
 public sealed record WorkItemExecutionRequest(
     WorkItemSnapshot Item,
-    int Slot);
+    int Slot,
+    IReadOnlyList<WorkItemDependencyResult> Dependencies);
 
 public enum WorkItemExecutionOutcome
 {
@@ -16,16 +22,35 @@ public sealed record WorkItemExecutionResult(
     string? ResultRef = null,
     string? ResultSummary = null,
     string? FailureCode = null,
-    string? BlockCode = null)
+    string? BlockCode = null,
+    string? Branch = null,
+    string? WorktreePath = null,
+    string? SessionId = null)
 {
-    public static WorkItemExecutionResult Completed(string? resultRef = null, string? resultSummary = null)
-        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary);
+    public static WorkItemExecutionResult Completed(
+        string? resultRef = null,
+        string? resultSummary = null,
+        string? branch = null,
+        string? worktreePath = null,
+        string? sessionId = null)
+        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary, null, null, branch, worktreePath, sessionId);
 
-    public static WorkItemExecutionResult Failed(string failureCode, string? resultSummary = null)
-        => new(WorkItemExecutionOutcome.Failed, null, resultSummary, failureCode);
+    public static WorkItemExecutionResult Failed(
+        string failureCode,
+        string? resultSummary = null,
+        string? branch = null,
+        string? worktreePath = null,
+        string? sessionId = null)
+        => new(WorkItemExecutionOutcome.Failed, null, resultSummary, failureCode, null, branch, worktreePath, sessionId);
 
-    public static WorkItemExecutionResult Blocked(string blockCode, string? resultSummary = null)
-        => new(WorkItemExecutionOutcome.Blocked, null, resultSummary, null, blockCode);
+    public static WorkItemExecutionResult Blocked(
+        string blockCode,
+        string? resultSummary = null,
+        string? resultRef = null,
+        string? branch = null,
+        string? worktreePath = null,
+        string? sessionId = null)
+        => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId);
 }
 
 public interface IWorkItemExecutor
@@ -209,10 +234,15 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
 
             var runningSnapshot = _graph.Find(next.Id)
                 ?? throw new InvalidOperationException("RUNNING으로 전환한 WorkItem을 찾을 수 없습니다.");
+            var dependencyResults = runningSnapshot.Dependencies
+                .Select(id => _graph.Find(id))
+                .Where(item => item is not null)
+                .Select(item => new WorkItemDependencyResult(item!.Id, item.ResultRef, item.ResultSummary))
+                .ToArray();
             var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
             var running = new RunningWork(next.Id, slot.Value, itemCancellation);
             _running.Add(next.Id, running);
-            running.Task = ExecuteOneAsync(runningSnapshot, slot.Value, itemCancellation.Token);
+            running.Task = ExecuteOneAsync(runningSnapshot, dependencyResults, slot.Value, itemCancellation.Token);
         }
     }
 
@@ -230,6 +260,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
 
     private async Task ExecuteOneAsync(
         WorkItemSnapshot item,
+        IReadOnlyList<WorkItemDependencyResult> dependencies,
         int slot,
         CancellationToken cancellationToken)
     {
@@ -240,7 +271,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         try
         {
             result = await _executor.ExecuteAsync(
-                new WorkItemExecutionRequest(item, slot),
+                new WorkItemExecutionRequest(item, slot, dependencies),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -281,6 +312,8 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             }
             else
             {
+                _graph.TryUpdateExecutionContext(item.Id, result.Branch, result.WorktreePath, result.SessionId);
+
                 switch (result.Outcome)
                 {
                     case WorkItemExecutionOutcome.Completed:
