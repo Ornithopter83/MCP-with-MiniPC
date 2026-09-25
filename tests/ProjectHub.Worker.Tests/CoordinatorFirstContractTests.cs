@@ -709,4 +709,152 @@ public sealed class CoordinatorFirstContractTests
             WorkerTargetConfiguration.GetJudgeApplyWarning(settings, validation));
         Assert.Null(WorkerTargetConfiguration.GetJudgeApplyWarning(settings with { Enabled = false }, validation));
     }
+
+    [Fact]
+    public async Task MechanicalWorkRegistry_SeparatesRequiredReviewFromFinalizeOnlyWork()
+    {
+        var registry = new MechanicalWorkRegistry();
+        registry.Register("resource-1", "RESOURCE", MechanicalWorkCompletionMode.FinalizeOnly);
+        registry.Register("observation-1", "OBSERVATION", MechanicalWorkCompletionMode.WorkResultRequired);
+
+        Assert.Equal(2, registry.OutstandingCount);
+        Assert.Equal(1, registry.WorkResultRequiredCount);
+
+        var requiredWait = registry.WaitForWorkResultRequiredAsync(CancellationToken.None);
+        Assert.False(requiredWait.IsCompleted);
+
+        registry.Complete("observation-1", true, "ok", resultPaths: new[] { "result.json" }, exitCode: 0);
+        await requiredWait;
+        Assert.Equal(1, registry.OutstandingCount);
+        Assert.Equal(0, registry.WorkResultRequiredCount);
+
+        var observation = Assert.Single(registry.DrainCompletions(
+            "OBSERVATION",
+            MechanicalWorkCompletionMode.WorkResultRequired));
+        Assert.True(observation.Success);
+        Assert.Equal(0, observation.ExitCode);
+
+        registry.Complete("resource-1", false, "failed", "RESOURCE_FAILED");
+        await registry.WaitForAllAsync(CancellationToken.None);
+        Assert.Equal(0, registry.OutstandingCount);
+
+        var resource = Assert.Single(registry.DrainCompletions(
+            "RESOURCE",
+            MechanicalWorkCompletionMode.FinalizeOnly));
+        Assert.False(resource.Success);
+    }
+
+    [Fact]
+    public void ObservationRequestContract_RequiresExplicitCompletionModeAndMechanicalFields()
+    {
+        const string requiredJson = """
+            {
+              "kind": "OBSERVATION",
+              "id": "obs-17",
+              "command": "dotnet",
+              "arguments": ["test", "Sample.sln"],
+              "timeoutSeconds": 180,
+              "completionMode": "WORK_RESULT_REQUIRED",
+              "resultPaths": ["build/results"]
+            }
+            """;
+
+        Assert.True(ObservationRequestContract.TryParse(
+            requiredJson,
+            out var request,
+            out var mode,
+            out var error));
+        Assert.Null(error);
+        Assert.NotNull(request);
+        Assert.Equal("obs-17", request!.Id);
+        Assert.Equal(MechanicalWorkCompletionMode.WorkResultRequired, mode);
+
+        const string finalizeJson = """
+            {"kind":"OBSERVATION","id":"obs-final","command":"collector","completionMode":"FINALIZE_ONLY"}
+            """;
+        Assert.True(ObservationRequestContract.TryParse(
+            finalizeJson,
+            out _,
+            out var finalizeMode,
+            out _));
+        Assert.Equal(MechanicalWorkCompletionMode.FinalizeOnly, finalizeMode);
+
+        Assert.False(ObservationRequestContract.TryParse(
+            """{"kind":"OBSERVATION","id":"../bad","command":"collector","completionMode":"WORK_RESULT_REQUIRED"}""",
+            out _,
+            out _,
+            out var idError));
+        Assert.Equal("OBSERVATION_ID_INVALID", idError);
+    }
+
+    [Fact]
+    public void WorkPrompt_ExposesObservationInboxWithoutAddingANewGotoDestination()
+    {
+        var prompt = RoleContractLoader.BuildWorkPrompt(
+            "HQ_INSTRUCTION",
+            "작업을 진행하라.",
+            judgeAvailable: true,
+            observationRequestDirectory: @"C:\work\.projecthub\mechanical\job\requests");
+
+        Assert.Contains("비동기 계측 요청 폴더:", prompt);
+        Assert.Contains("WORK_RESULT_REQUIRED", prompt);
+        Assert.Contains("FINALIZE_ONLY", prompt);
+        Assert.DoesNotContain("[GOTO : OBSERVATION]", prompt);
+    }
+
+    [Fact]
+    public async Task ResourceSidecar_RegistersResourceAsFinalizeOnlyMechanicalWork()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "projecthub-resource-mechanical-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var registry = new MechanicalWorkRegistry();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await using var queue = new ResourceSidecarQueue(null, directory, cts.Token, registry);
+            queue.Enqueue("IMAGE", "테스트 이미지 생성");
+
+            await registry.WaitForAllAsync(cts.Token);
+            var completion = Assert.Single(registry.DrainCompletions(
+                "RESOURCE",
+                MechanicalWorkCompletionMode.FinalizeOnly));
+            Assert.False(completion.Success);
+            Assert.Equal("RESOURCE_WEB_UNAVAILABLE", completion.ErrorCode);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void CodexWorkspaceWrite_AddsProjectHubExecutableRootForSiblingFolders()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "projecthub-add-dir-" + Guid.NewGuid().ToString("N"));
+        var appRoot = Path.Combine(root, "Worker");
+        var project = Path.Combine(appRoot, "Game");
+        Directory.CreateDirectory(project);
+        try
+        {
+            var additional = CodexCliRunner.ResolveAdditionalWritableDirectories(
+                CodexSandboxMode.WorkspaceWrite,
+                project,
+                appRoot);
+
+            Assert.Equal(Path.GetFullPath(appRoot), Assert.Single(additional));
+            Assert.Empty(CodexCliRunner.ResolveAdditionalWritableDirectories(
+                CodexSandboxMode.ReadOnly,
+                project,
+                appRoot));
+            Assert.Empty(CodexCliRunner.ResolveAdditionalWritableDirectories(
+                CodexSandboxMode.WorkspaceWrite,
+                appRoot,
+                appRoot));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
 }
