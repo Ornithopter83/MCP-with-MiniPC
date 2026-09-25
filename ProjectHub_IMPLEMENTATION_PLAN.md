@@ -29,14 +29,14 @@ HQ ACTION=END -> Worker 기계적 대기 게이트 -> 모두 종료 -> DONE / DO
 - RESOURCE IMAGE 생성/복수 다운로드/저장과 FIFO 대기열를 구현
 
 구현 단위:
-1. 역할 enum/router/계약에서 HIGH 제거
-2. RESOURCE 사이드카 대기열와 WORK→RESOURCE_QUEUE→HQ 접수 ack 흐름 추가
+1. 역할 열거형/라우터/계약에서 HIGH 제거
+2. RESOURCE 사이드카 대기열와 WORK→RESOURCE_QUEUE→HQ 접수 확인 응답 흐름 추가
 3. HQ Web/CLI 대상 설정
 4. Bridge 역할 연결
-5. RESOURCE natural-language forwarding + Worker-assigned save path
-6. 확장 generated multi-image capture + result 데이터 묶음 array
-7. Worker file save + ResourceRequest status
-8. Pipeline/History/설정
+5. RESOURCE 자연어 전달 + Worker 지정 저장 경로
+6. 확장 생성 복수 이미지 수집 + 결과 데이터 묶음 배열
+7. Worker 파일 저장 + ResourceRequest 상태
+8. 파이프라인/이력/설정
 9. HQ END 이후 의미 흐름 차단 + 일반 기계적 대기 게이트
 10. 테스트/문서
 
@@ -47,7 +47,7 @@ HQ ACTION=END -> Worker 기계적 대기 게이트 -> 모두 종료 -> DONE / DO
 - 자동 리소스 품질 판정
 - 자동 코드/CSS/HTML 연결
 - Claude/Muse 실제 CLI 연결
-- JobRunner crash/restart 고급 복구
+- JobRunner 비정상 종료/재시작 고급 복구
 - 비용 기반 자동 정책
 
 ## 검증 기준
