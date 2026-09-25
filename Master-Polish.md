@@ -331,15 +331,14 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 활성 작업은 tasks/15-async-mechanical-observation.md다.
 
 구현 코드 범위:
-1. HIGH 제거 / RESOURCE 역할 + 사이드카 대기열
-2. HQ Web 대상 복원
-3. HQ/RESOURCE 명시적 대화 연결
-4. HQ 설계 책임 + PAUSE 예시
-5. WORK RESOURCE 위임 계약
-6. RESOURCE 사이드카 FIFO 대기열 + 복수 생성 파일 결과 전송과 저장
-7. 파이프라인/설정/이력 교체
-8. PAUSE/END 후 동일 세션 작업 추가와 고정 크기 이력 입력 UI
-9. 테스트/문서 갱신
+1. 공통 MechanicalWorkRegistry와 완료 모드 FINALIZE_ONLY / WORK_RESULT_REQUIRED
+2. OBSERVATION 요청 폴더 감시와 비동기 프로세스 실행·시간 초과·결과 수집
+3. WORK_RESULT_REQUIRED 완료까지 AI 비호출 대기 후 같은 WORK 세션에 OBSERVATION_RESULT 재주입
+4. RESOURCE를 공통 기계 작업 레지스트리의 FINALIZE_ONLY 작업으로 통합
+5. HQ END 이후 모든 FINALIZE_ONLY 기계 작업의 공통 최종 대기
+6. WORK workspace-write에 ProjectHub 실행 디렉터리를 추가 writable root로 제공
+7. 프로젝트별 .projecthub/mechanical/<jobId> 요청·active·result 기록
+8. 계약·테스트·작업 문서 갱신
 
 실제 Windows 빌드/테스트/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
 
