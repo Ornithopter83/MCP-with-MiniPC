@@ -165,6 +165,78 @@ public sealed class CoordinatorFirstContractTests
             TaskContinuationContract.BuildHqFollowupInput("PAUSED", "사용자 입력 대기", "   "));
 
     [Fact]
+    public void TaskContinuation_IncludesProjectMemoryPathsForRecoveredSession()
+    {
+        var input = TaskContinuationContract.BuildHqFollowupInput(
+            "DONE",
+            "이전 작업 완료",
+            "계속 진행해줘.",
+            "C:/work/.projecthub/last-handoff.md",
+            "C:/work/.projecthub/events/job.jsonl");
+
+        Assert.Contains("프로젝트 기억 파일:", input);
+        Assert.Contains("last-handoff.md", input);
+        Assert.Contains("이벤트 로그:", input);
+        Assert.Contains("이전 CLI 세션을 사용할 수 없으면", input);
+    }
+
+    [Fact]
+    public void ProjectWorkspacePersistence_WritesStateHandoffAndRealtimeJsonl()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "projecthub-memory-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            const string jobId = "job-memory";
+            var eventId = ProjectWorkspacePersistence.AppendEvent(
+                directory,
+                jobId,
+                DateTimeOffset.UtcNow,
+                "WORK PROGRESS",
+                "한글 Full Message",
+                "RUNNING");
+
+            Assert.False(string.IsNullOrWhiteSpace(eventId));
+            var eventPath = ProjectWorkspacePersistence.EventLogPath(directory, jobId);
+            Assert.True(File.Exists(eventPath));
+            var lines = File.ReadAllLines(eventPath);
+            Assert.Single(lines);
+            using (var document = JsonDocument.Parse(lines[0]))
+                Assert.Equal("한글 Full Message", document.RootElement.GetProperty("fullMessage").GetString());
+
+            var state = new CoordinatorContinuationState(
+                jobId,
+                directory,
+                new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high"),
+                new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
+                null,
+                null,
+                "DONE",
+                "마지막 HQ 메시지");
+
+            Assert.True(ProjectWorkspacePersistence.SaveContinuation(state));
+            Assert.True(File.Exists(ProjectWorkspacePersistence.StatePath(directory)));
+            Assert.True(File.Exists(ProjectWorkspacePersistence.HandoffPath(directory)));
+
+            var restored = ProjectWorkspacePersistence.TryLoad(directory);
+            Assert.NotNull(restored);
+            Assert.Equal(jobId, restored!.JobId);
+            Assert.Equal("DONE", restored.Status);
+            Assert.Equal("마지막 HQ 메시지", restored.LastHqMessage);
+            Assert.Equal("한글 Full Message", Assert.Single(ProjectWorkspacePersistence.ReadRecentEvents(directory, jobId)).FullMessage);
+
+            ProjectWorkspacePersistence.ClearContinuation(directory);
+            Assert.False(File.Exists(ProjectWorkspacePersistence.StatePath(directory)));
+            Assert.True(File.Exists(ProjectWorkspacePersistence.HandoffPath(directory)));
+            Assert.True(File.Exists(eventPath));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void TranscriptJson_KeepsKoreanReadableAndValidUtf8Json()
     {
         var json = WorkerTranscriptJson.Serialize(new { Summary = "모델 소개와 날짜 판정" });
