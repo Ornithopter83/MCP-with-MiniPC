@@ -54,6 +54,33 @@ public sealed class ParallelWorkTransportTests
         Assert.Equal("WORK_GRAPH_HQ_CONCURRENCY_CHANGE_NOT_ALLOWED", error);
     }
 
+
+    [Fact]
+    public void ReleasePatchCarriesResumeInputForSameWorkSession()
+    {
+        const string body = """
+            WORK_GRAPH_PATCH:
+            {
+              "expectedRevision": 5,
+              "operations": [
+                {
+                  "type": "RELEASE",
+                  "workItemId": "W1",
+                  "inputType": "HQ_RESUME",
+                  "value": "새 WorkItem을 추가했습니다. 기존 작업을 계속하세요."
+                }
+              ]
+            }
+            """;
+
+        Assert.True(WorkGraphTransportContract.TryParse(body, out var patch, out var error));
+        Assert.Null(error);
+        var operation = Assert.Single(patch!.Operations);
+        Assert.Equal(WorkGraphPatchOperationType.Release, operation.Type);
+        Assert.Equal("HQ_RESUME", operation.InputType);
+        Assert.Contains("기존 작업", operation.Value);
+    }
+
     [Theory]
     [InlineData("COMPLETED", WorkItemReportStatus.Completed)]
     [InlineData("BLOCKED", WorkItemReportStatus.Blocked)]

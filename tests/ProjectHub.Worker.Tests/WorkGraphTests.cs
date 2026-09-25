@@ -192,11 +192,13 @@ public sealed class WorkGraphTests
 
         var release = graph.ApplyPatch(new WorkGraphPatch(
             graph.Revision,
-            new[] { WorkGraphPatchOperation.Release("A") }));
+            new[] { WorkGraphPatchOperation.Release("A", "HQ_RESUME", "분할 작업을 추가했으니 계속 진행하세요.") }));
 
         Assert.True(release.Success);
         Assert.Equal(WorkItemState.Ready, graph.Find("A")!.State);
         Assert.Null(graph.Find("A")!.BlockCode);
+        Assert.Equal("HQ_RESUME", graph.Find("A")!.ResumeInputType);
+        Assert.Equal("분할 작업을 추가했으니 계속 진행하세요.", graph.Find("A")!.ResumeBody);
         Assert.Equal("session-a", graph.Find("A")!.SessionId);
     }
 

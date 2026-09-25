@@ -103,6 +103,35 @@ public sealed class CodexWorkItemExecutorTests
         }
     }
 
+
+    [Fact]
+    public async Task ResumeRequestUsesExplicitInboundBodyInsteadOfRepeatingGoal()
+    {
+        var fixture = CreateFixture("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            재개 완료
+            """);
+
+        try
+        {
+            var resumeRequest = fixture.Request with
+            {
+                InboundType = "RESOURCE_RESULT",
+                InboundBody = "resourceId=R1 status=SAVED"
+            };
+
+            await fixture.Executor.ExecuteAsync(resumeRequest, CancellationToken.None);
+
+            Assert.Contains("입력 유형: RESOURCE_RESULT", fixture.Runner.LastRequest!.Prompt);
+            Assert.Contains("resourceId=R1 status=SAVED", fixture.Runner.LastRequest.Prompt);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
     private static Fixture CreateFixture(
         string finalMessage,
         IReadOnlyList<WorkItemDependencyResult>? dependencies = null)
@@ -148,6 +177,8 @@ public sealed class CodexWorkItemExecutorTests
             null,
             null,
             null,
+            null,
+            null,
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
             null);
@@ -157,7 +188,12 @@ public sealed class CodexWorkItemExecutorTests
             branch,
             executor,
             ai,
-            new WorkItemExecutionRequest(item, 1, dependencies ?? Array.Empty<WorkItemDependencyResult>()));
+            new WorkItemExecutionRequest(
+                item,
+                1,
+                dependencies ?? Array.Empty<WorkItemDependencyResult>(),
+                "WORK_ITEM",
+                "기능을 구현하세요."));
     }
 
     private sealed class Fixture : IDisposable
