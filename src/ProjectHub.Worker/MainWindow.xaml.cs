@@ -68,6 +68,10 @@ public partial class MainWindow : Window
         public string FileDetails { get; init; } = "파일 · 해당 없음";
         public string Role => StageKey switch { "Coordinator" => "설계·관제", "Implementer" => "작업", "Resource" => "리소스", "Judge" => "판정", "Message" => "메시지", _ => "시스템" };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+        public Visibility MetricsVisibility => EventType == "ROLE_PROGRESS" ? Visibility.Collapsed : Visibility.Visible;
+        public TextWrapping SummaryWrapping => EventType == "ROLE_PROGRESS" ? TextWrapping.Wrap : TextWrapping.NoWrap;
+        public TextTrimming SummaryTrimming => EventType == "ROLE_PROGRESS" ? TextTrimming.None : TextTrimming.CharacterEllipsis;
+        public double SummaryMaxHeight => EventType == "ROLE_PROGRESS" ? 62d : double.PositiveInfinity;
         public string Details
         {
             get
@@ -449,7 +453,6 @@ public partial class MainWindow : Window
             FileDetails = "파일 · 해당 없음"
         };
         _historyEvents.Add(item);
-        while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
         RefreshMessageLog();
     }
 
@@ -1908,7 +1911,15 @@ public partial class MainWindow : Window
         AddTaskMessage($"WORKER → {outboundRole} CLI", prompt, sizeBytes: Encoding.UTF8.GetByteCount(prompt), status: "SENDING", includeHistory: false);
         var runner = _aiRoleRunners.Resolve(role)
             ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
-        var result = await runner.RunAsync(new AiRoleRunRequest(prompt, role, workingDirectory, sessionId, sandbox, cancellationToken, schema));
+        var progressRole = roleName == "WORK" ? WorkerRoleState.Work : WorkerRoleState.Hq;
+        Action<string>? progress = string.Equals(role.Transport, "codex_cli", StringComparison.OrdinalIgnoreCase)
+            ? message => RunOnUi(() =>
+            {
+                _lastActivityAt = DateTimeOffset.UtcNow;
+                AddRoleProgressHistory(progressRole, message, role.Provider);
+            })
+            : null;
+        var result = await runner.RunAsync(new AiRoleRunRequest(prompt, role, workingDirectory, sessionId, sandbox, cancellationToken, schema, progress));
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
@@ -2984,9 +2995,46 @@ public partial class MainWindow : Window
                 if (historyEvent.StageKey == "Coordinator")
                     historyEvent = historyEvent with { IconAssetOverride = _coordinatorStageIconAsset };
                 _historyEvents.Add(historyEvent);
-                while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
             }
         }
+        RefreshMessageLog();
+    }
+
+    private void AddRoleProgressHistory(WorkerRoleState role, string? body, string? providerWireId = null)
+    {
+        var text = body?.Trim() ?? string.Empty;
+        if (text.Length == 0) return;
+
+        var stage = role switch
+        {
+            WorkerRoleState.Hq => "Coordinator",
+            WorkerRoleState.Work => "Implementer",
+            _ => "System"
+        };
+        var item = new WorkerHistoryEvent(
+            DateTimeOffset.Now,
+            stage,
+            "ROLE_PROGRESS",
+            "작업 진행",
+            WorkerHistoryCardFormatter.ProgressPreview(text),
+            Encoding.UTF8.GetByteCount(text),
+            null,
+            null,
+            "RUNNING",
+            null)
+        {
+            TokenDetails = string.Empty,
+            FileDetails = string.Empty
+        };
+        if (!string.IsNullOrWhiteSpace(providerWireId))
+            item = item with { IconAssetOverride = ProviderVisualCatalog.Resolve(providerWireId).ColorAsset };
+        else if (item.StageKey == "Coordinator")
+            item = item with { IconAssetOverride = _coordinatorStageIconAsset };
+
+        _historyEvents.Add(item);
+        AddTaskMessage(role == WorkerRoleState.Work ? "WORK PROGRESS" : "HQ PROGRESS", text, status: "RUNNING", includeHistory: false);
+        if (DashboardHistoryList.Items.Count > 0)
+            DashboardHistoryList.ScrollIntoView(DashboardHistoryList.Items[DashboardHistoryList.Items.Count - 1]);
         RefreshMessageLog();
     }
 
@@ -3031,7 +3079,6 @@ public partial class MainWindow : Window
         else if (item.StageKey == "Coordinator")
             item = item with { IconAssetOverride = _coordinatorStageIconAsset };
         _historyEvents.Add(item);
-        while (_historyEvents.Count > 250) _historyEvents.RemoveAt(0);
         RefreshMessageLog();
     }
 
