@@ -568,3 +568,10 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `21dc6ac0ec7a6a9cd2b64b6bb064ef7b2675ec6a`: 성공한 Integration resultRef를 이후 새 WorkItem의 기계적 기본 baseRef로 승격했다. dependency 자체만으로 Worker가 의미적 base를 추론하지는 않는다.
 - `bec9c6b3d6330d895accb99f15fbf1d10956299f`: USER_FOLLOWUP 등 새 병렬 실행 구간 시작 시 저장된 과거 `_gitTarget` 대신 현재 작업공간 Git HEAD를 다시 읽어 기준 ref를 갱신한다.
 - 특정 dependency 결과에서 직접 이어야 하는 WorkItem은 HQ가 `baseRef`를 명시한다. 생략 시 현재 주 작업공간 HEAD 또는 가장 최근 성공 Integration resultRef가 기본값이다.
+
+
+### 2026-09-26 Windows 검증 실행 스크립트
+
+- `bin/ProjectHub_Worker_Parallel_Test.ps1`를 추가해 병렬 WorkGraph 관련 Worker 테스트, 전체 solution 테스트, Debug/Release 빌드, `git diff --check`를 한 번에 실행할 수 있게 한다.
+- 자동 검증 뒤 실제 Explorer에서 max=1 회귀, max=4 병렬, 동적 SPLIT_REQUEST, Integration landing, sidecar 귀속, 취소/복구, END gate를 확인하는 수동 E2E 체크 항목을 출력한다.
+- 이 Web 실행 환경에는 .NET SDK가 없어 스크립트 자체의 실제 dotnet 실행 결과는 아직 없다.
