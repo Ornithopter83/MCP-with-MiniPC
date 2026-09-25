@@ -40,7 +40,10 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 8. 파이프라인/이력/설정
 9. HQ END 이후 자동 의미 흐름 차단 + 일반 기계적 대기 게이트
 10. PAUSE/END 후 기존 세션 작업 추가 + 고정 크기 이력 입력 UI
-11. 테스트/문서
+11. JUDGE 판단 경계 최소 계약
+12. 작업공간 `.projecthub` 세션 상태/이벤트 로그/transcript 영속화
+13. History Full Message 열람
+14. 테스트/문서
 
 ## 보류 항목
 
@@ -48,7 +51,7 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - 자동 리소스 품질 판정
 - 자동 코드/CSS/HTML 연결
 - Claude/Muse 실제 CLI 연결
-- JobRunner 비정상 종료/재시작 고급 복구
+- 실행 중 프로세스 강제 종료 시점의 세부 checkpoint 복구 고도화
 - 비용 기반 자동 정책
 
 ## 검증 기준
@@ -73,5 +76,8 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - 실행 중 사용자 취소는 현재 프로세스를 중단하되 `thread.started`에서 확보한 CLI session ID를 보존한다.
 - 사용자가 `작업 추가`를 실행할 때만 USER_FOLLOWUP으로 기존 HQ 세션에서 새 실행 구간을 시작한다.
 - `새 작업`을 선택하면 이전 연속 세션과 이력을 명시적으로 초기화한다.
+- 재개 가능한 상태는 작업공간 `.projecthub/session-state.json`에 저장하고 Worker 재시작 시 복구한다.
+- 로컬 Codex 세션이 사라졌으면 저장된 session ID를 사용하지 않고 프로젝트 기억 파일과 이벤트 로그 경로를 새 HQ 세션에 전달한다.
+- Worker 관측 메시지는 `.projecthub/events/<jobId>.jsonl`에 실시간 append하고 transcript는 `.projecthub/transcripts/<jobId>.txt`에 저장한다.
 
 - RESOURCE 성공/실패 completion은 HQ END 전 다음 WORK 입력의 `RESOURCE_RESULT`로 전달하고, RESOURCE 실패를 UNKNOWN으로 승격하지 않는다.
