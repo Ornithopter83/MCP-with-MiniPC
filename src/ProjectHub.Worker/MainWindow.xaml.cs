@@ -884,10 +884,13 @@ public partial class MainWindow : Window
         var reasoning = GetSelectedContent(ReasoningCombo, "Medium").ToLowerInvariant();
         var cliModel = ToCliModel(model);
         var selectedThread = selectedThreadForLaunch;
+        var workingDirectory = launchRequest.WorkingDirectory;
+        _activeWorkingDirectory = workingDirectory;
+        _activeJevJobId = Guid.NewGuid().ToString("N");
+        _activeProjectJobId = _activeJevJobId;
         _historyEvents.Clear();
         SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
         StartTaskTranscript(selectedThread, cliPrompt, webInstruction);
-        var workingDirectory = launchRequest.WorkingDirectory;
         var sessionId = launchRequest.SessionId;
         var initialGitReference = await GitReviewGate.CheckAsync(workingDirectory, _targetSettings);
         _initialGitReferenceHeader = BuildGitReferenceHeader(initialGitReference);
@@ -900,14 +903,12 @@ public partial class MainWindow : Window
         _userCanceledTask = false;
         _lastActivityAt = DateTimeOffset.UtcNow;
         _lastWebTaskId = null;
-        _activeWorkingDirectory = workingDirectory;
         _activeSessionId = sessionId;
         _activeCliModel = cliModel;
         _activeReasoning = reasoning;
         AddTaskMessage("TASK START", BuildTaskStartInfo(cliModel, reasoning, workingDirectory, sessionId));
         AddTaskMessage("TASK REQUEST", cliPrompt, sizeBytes: Encoding.UTF8.GetByteCount(cliPrompt), itemCount: 1);
         _judgeRound = 0;
-        _activeJevJobId = Guid.NewGuid().ToString("N");
         _judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "READY" : "OFF";
         _webFollowupStarted = false;
         _commandUsage = CodexUsage.Empty;
@@ -3357,10 +3358,18 @@ public partial class MainWindow : Window
         if (_taskExported) return _taskTranscriptPath;
         try
         {
+            var hasProjectTranscript = !string.IsNullOrWhiteSpace(_activeWorkingDirectory) &&
+                                       !string.IsNullOrWhiteSpace(_activeProjectJobId) &&
+                                       Directory.Exists(_activeWorkingDirectory);
             var folderName = $"{SanitizeFilePart(_taskProjectName)}_{SanitizeFilePart(_taskThreadName)}";
-            var directory = Path.Combine(WorkerPaths.Task, folderName);
+            var directory = hasProjectTranscript
+                ? ProjectWorkspacePersistence.TranscriptDirectory(_activeWorkingDirectory!)
+                : Path.Combine(WorkerPaths.Task, folderName);
             Directory.CreateDirectory(directory);
-            var path = _taskTranscriptPath ?? Path.Combine(directory, $"_{_taskStartedAt:yyyyMMdd_HHmmss}.txt");
+            var path = _taskTranscriptPath ??
+                       (hasProjectTranscript
+                           ? ProjectWorkspacePersistence.TranscriptPath(_activeWorkingDirectory!, _activeProjectJobId!)
+                           : Path.Combine(directory, $"_{_taskStartedAt:yyyyMMdd_HHmmss}.txt"));
             var lines = new List<string>
             {
                 $"Project: {_taskProjectName}",
