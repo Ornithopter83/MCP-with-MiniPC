@@ -331,6 +331,8 @@ public partial class MainWindow
                     ImplementerParallelStateText.Text = parallelUi.Summary;
                     ImplementerParallelStateText.Visibility = System.Windows.Visibility.Visible;
                     PipelineImplementerCard.ToolTip = parallelUi.Detail;
+                    ParallelWorkDetailText.Text = parallelUi.Detail;
+                    ParallelWorkDetailPanel.Visibility = System.Windows.Visibility.Visible;
                     TaskDirection.Text = "작업 AI";
                     TaskTitle.Text =
                         $"병렬 WORK · {snapshot.RunningCount}/{snapshot.Graph.MaxConcurrentWork} 실행 중 · " +
@@ -623,6 +625,8 @@ public partial class MainWindow
                 ImplementerParallelStateText.Text = string.Empty;
                 ImplementerParallelStateText.Visibility = System.Windows.Visibility.Collapsed;
                 PipelineImplementerCard.ToolTip = null;
+                ParallelWorkDetailText.Text = string.Empty;
+                ParallelWorkDetailPanel.Visibility = System.Windows.Visibility.Collapsed;
                 UpdateDashboardSummary();
             });
             _activeCoordinatorFirst = false;
