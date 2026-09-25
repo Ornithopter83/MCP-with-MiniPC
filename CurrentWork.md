@@ -208,3 +208,25 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 반환 파일명이 안전하면 정규화해 사용하고, 사용할 수 없으면 `resource-NN.<확장자>` 형식으로 저장한다.
 - 이미지 DOM 감시 로직은 RESOURCE 전체 의미가 아니라 이미지 형식용 수집 어댑터로 유지한다.
 - 오디오·문서·기타 생성 파일은 ChatGPT Web에서 실제 다운로드 가능한 파일/첨부 요소로 제공되는 경우 같은 공통 결과 배열로 수집한다.
+
+## 2026-09-25 RESOURCE 생성 파일 공통 파이프라인 구현
+
+- 새 RESOURCE 요청의 `ResourceRequest.Type`을 `RESOURCE`로 변경했다.
+- 구버전 실행 상태 호환을 위해 Worker 저장 계층은 기존 `IMAGE` 형식도 계속 허용한다.
+- 확장은 RESOURCE 결과를 파일 형식과 무관한 `RESOURCE_FILES` / `resultFiles[]`로 반환한다.
+- Worker는 각 결과의 base64, MIME 형식, 선택적 파일명을 기계적으로 검증해 `assets/resources/<requestId>/` 아래에 저장한다.
+- 반환 파일명이 안전하면 이름을 유지하고 MIME 형식에 맞는 확장자를 적용한다. 파일명이 없으면 `resource-NN.<확장자>`를 사용한다.
+- 파일명은 경로 성분, 제어 문자, Windows 예약 이름을 제거하고 중복 이름에는 순번을 붙인다.
+- 기존 생성 이미지 DOM 탐지는 이미지 수집 어댑터로 유지한다.
+- 다운로드 가능한 ChatGPT/OpenAI 파일 링크, 첨부 링크, 오디오·비디오 소스는 일반 생성 파일 수집 어댑터로 추가했다.
+- 외부 일반 웹 링크를 생성 파일로 오인하지 않도록 ChatGPT/OpenAI 계열 호스트와 blob/data URL로 후보 범위를 제한한다.
+- 백그라운드 서비스 워커의 다운로드 메시지를 `fetch-resource-file`로 일반화하고 기존 `fetch-resource-image`도 호환용으로 허용한다.
+- 확장 버전은 0.1.8, 빌드는 2026-09-25.2로 갱신했다.
+- `content.js`, `background.js`는 V8 구문 컴파일 검사를 통과했다.
+- 현재 실행 환경에는 `.NET SDK`가 없어 C# 빌드와 `dotnet test`는 실행하지 못했다. 혼합 이미지/오디오/PDF `RESOURCE_FILES` 직렬화 테스트는 소스에 추가했다.
+
+잔여 실검증:
+- Windows에서 `dotnet test ProjectHub.sln`
+- RESOURCE Web에서 실제 이미지 생성 후 저장 회귀
+- RESOURCE Web에서 실제 오디오 또는 다운로드 가능한 일반 생성 파일을 만든 뒤 `assets/resources/<requestId>/` 저장 확인
+- 복수 형식이 한 응답에 함께 있을 때 파일명/MIME/복수 저장 확인
