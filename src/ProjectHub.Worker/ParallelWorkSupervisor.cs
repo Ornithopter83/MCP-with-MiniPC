@@ -198,8 +198,11 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     _graph.Snapshot());
             }
 
-            var patchResult = await _scheduler.ApplyPatchAsync(
+            var normalizedPatch = ApplyDefaultBaseRef(
                 turn.Patch!,
+                _baseRef);
+            var patchResult = await _scheduler.ApplyPatchAsync(
+                normalizedPatch,
                 cancellationToken).ConfigureAwait(false);
 
             if (!patchResult.Success)
@@ -215,6 +218,31 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             inboundType = next.InboundType;
             inboundBody = next.Body;
         }
+    }
+
+    internal static WorkGraphPatch ApplyDefaultBaseRef(
+        WorkGraphPatch patch,
+        string baseRef)
+    {
+        if (string.IsNullOrWhiteSpace(baseRef))
+            throw new ArgumentException("기준 ref가 비어 있습니다.", nameof(baseRef));
+
+        var operations = patch.Operations
+            .Select(operation =>
+            {
+                if (operation.Type != WorkGraphPatchOperationType.Add ||
+                    operation.Item is null ||
+                    !string.IsNullOrWhiteSpace(operation.Item.BaseRef))
+                    return operation;
+
+                return operation with
+                {
+                    Item = operation.Item with { BaseRef = baseRef.Trim() }
+                };
+            })
+            .ToArray();
+
+        return patch with { Operations = operations };
     }
 
     private async Task<SupervisorWake> WaitForHqWakeAsync(CancellationToken cancellationToken)

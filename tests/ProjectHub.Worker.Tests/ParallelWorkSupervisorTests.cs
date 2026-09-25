@@ -154,6 +154,33 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task AddWithoutBaseRefUsesSupervisorMechanicalBaseRef()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+
+        var hq = new QueueHqRunner(
+            "[ACTION=CONTINUE]\n[GOTO : WORK]\nWORK_GRAPH_PATCH:\n" +
+            """{"expectedRevision":0,"operations":[{"type":"ADD","workItemId":"W1","goal":"기준 ref 생략","dependencies":[],"kind":"NORMAL"}]}""",
+            End("완료"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "작업을 실행하세요.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        var request = Assert.Single(executor.Requests);
+        Assert.Equal("base123", request.Item.BaseRef);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+    }
+
+    [Fact]
     public void ParallelHqTurnRequiresGraphPatchOnlyForContinue()
     {
         var end = End("완료");
