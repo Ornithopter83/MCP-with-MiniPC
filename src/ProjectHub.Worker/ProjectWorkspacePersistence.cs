@@ -154,6 +154,20 @@ public static class ProjectWorkspacePersistence
         }
     }
 
+    public static void ClearContinuation(string? workingDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
+            return;
+        try
+        {
+            var path = StatePath(workingDirectory);
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+        }
+    }
+
     public static ProjectMemorySnapshot? TryLoad(string workingDirectory)
     {
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
