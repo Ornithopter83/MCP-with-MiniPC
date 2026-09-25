@@ -14,7 +14,7 @@ ProjectHub.서버 검증 토큰 발급기, ProjectHub NAS Gateway 검증기/프�
 
 ### B. 서버 검증 토큰 발급기
 
-RS256 계열 서명, 짧은 만료, project/workstation/session/작업/object 범위 claim을 발급한다.
+RS256 계열 서명, 짧은 만료, 프로젝트/작업 PC/세션/작업/객체 범위 클레임을 발급한다.
 
 ### C. 게이트웨이 검증기와 프로비저닝
 
@@ -56,7 +56,7 @@ GC 적용 결과: 승인된 두 안전 session에 `-Apply`를 실행해 cleanup 
 
 - ProjectHub.서버가 대용량 바이너리를 relay하지 않는다.
 - 에이전트는 Supabase·SMB·NAS 파일 시스템에 직접 접근하지 않으며 NAS Gateway HTTPS만 사용한다.
-- 에이전트는 자동 Git commit/push/pull/reset/merge/delete를 수행하지 않는다. v0.2의 사용자 명시적 Commit_Push CMD만 Git 체크포인트 흐름을 실행한다.
+- 에이전트는 자동 Git 커밋/푸시/풀/리셋/병합/삭제를 수행하지 않는다. v0.2의 사용자 명시적 Commit_Push CMD만 Git 체크포인트 흐름을 실행한다.
 
 ## 현재 한계: 로컬 대용량 파일 삭제 추적
 
