@@ -511,6 +511,21 @@ public partial class MainWindow : Window
             continuation.WorkingDirectory,
             continuation.Coordinator,
             continuation.Implementer);
+        if (preflightError is null)
+        {
+            var hasPersistedGraph =
+                ProjectWorkspacePersistence.TryLoadWorkGraph(
+                    continuation.WorkingDirectory,
+                    continuation.JobId) is not null;
+            if (ParallelWorkActivationPolicy.ShouldUseParallel(
+                    isContinuation: true,
+                    _targetSettings.EffectiveMaxConcurrentWork,
+                    hasPersistedGraph))
+            {
+                preflightError = GetParallelGitPreflightError(
+                    continuation.WorkingDirectory);
+            }
+        }
         if (preflightError is not null)
         {
             DashboardPreflightText.Text = preflightError;
@@ -595,10 +610,13 @@ public partial class MainWindow : Window
     {
         if (_targetSettings.IsCoordinatorFirst)
         {
-            return GetCoordinatorFirstPreflightError(
-                ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption),
+            var workingDirectory =
+                ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption);
+            var roleError = GetCoordinatorFirstPreflightError(
+                workingDirectory,
                 _targetSettings.EffectiveCoordinator,
                 _targetSettings.EffectiveImplementer);
+            return roleError ?? GetParallelGitPreflightError(workingDirectory);
         }
 
         if (!_codexAuthenticated) return "Codex 로그인이 필요합니다.";
@@ -2696,6 +2714,15 @@ public partial class MainWindow : Window
     {
         if (!Directory.Exists(workingDirectory)) return "Working Folder가 없거나 접근할 수 없습니다.";
         return null;
+    }
+
+    private string? GetParallelGitPreflightError(string workingDirectory)
+    {
+        var result = ParallelWorkGitPreflight.Validate(
+            WorkerTargetConfiguration.ResolveGit(
+                workingDirectory,
+                _targetSettings));
+        return result.Success ? null : result.Message;
     }
 
     private string? GetCoordinatorFirstPreflightError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer)
