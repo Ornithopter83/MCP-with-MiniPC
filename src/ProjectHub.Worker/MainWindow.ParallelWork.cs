@@ -328,7 +328,7 @@ public partial class MainWindow
                     ImplementerStageModelText.Text = implementerModel;
                     var parallelUi = ParallelWorkUiFormatter.Format(snapshot);
                     ImplementerParallelStateText.Text = parallelUi.Summary;
-                    ImplementerParallelStateText.Visibility = Visibility.Visible;
+                    ImplementerParallelStateText.Visibility = System.Windows.Visibility.Visible;
                     PipelineImplementerCard.ToolTip = parallelUi.Detail;
                     TaskDirection.Text = "작업 AI";
                     TaskTitle.Text =
@@ -620,7 +620,7 @@ public partial class MainWindow
             RunOnUi(() =>
             {
                 ImplementerParallelStateText.Text = string.Empty;
-                ImplementerParallelStateText.Visibility = Visibility.Collapsed;
+                ImplementerParallelStateText.Visibility = System.Windows.Visibility.Collapsed;
                 PipelineImplementerCard.ToolTip = null;
                 UpdateDashboardSummary();
             });
