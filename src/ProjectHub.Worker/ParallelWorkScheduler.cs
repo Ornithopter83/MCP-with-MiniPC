@@ -70,7 +70,13 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         {
             ThrowIfDisposed();
             _started = true;
-            LaunchReadyLocked();
+            if (_lifetimeCts.IsCancellationRequested)
+                CancelRemainingLocked("SCHEDULER_LIFETIME_CANCELED");
+            else
+                if (_lifetimeCts.IsCancellationRequested)
+                CancelRemainingLocked("SCHEDULER_LIFETIME_CANCELED");
+            else
+                LaunchReadyLocked();
             UpdateQuiescenceLocked();
             snapshot = CreateSnapshotLocked();
         }
@@ -97,7 +103,9 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             if (result.Success)
             {
                 CancelGraphCanceledRunningItemsLocked();
-                if (_started)
+                if (_lifetimeCts.IsCancellationRequested)
+                    CancelRemainingLocked("SCHEDULER_LIFETIME_CANCELED");
+                else if (_started)
                     LaunchReadyLocked();
             }
 
@@ -155,11 +163,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         {
             ThrowIfDisposed();
 
-            foreach (var item in _graph.Items)
-            {
-                if (item.State is WorkItemState.Planned or WorkItemState.Ready or WorkItemState.Running or WorkItemState.Blocked)
-                    _graph.TryMarkCanceled(item.Id, "SCHEDULER_CANCELED");
-            }
+            CancelRemainingLocked("SCHEDULER_CANCELED");
 
             foreach (var running in _running.Values)
                 running.Cancellation.Cancel();
@@ -299,6 +303,15 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         }
     }
 
+    private void CancelRemainingLocked(string reason)
+    {
+        foreach (var item in _graph.Items)
+        {
+            if (item.State is WorkItemState.Planned or WorkItemState.Ready or WorkItemState.Running or WorkItemState.Blocked)
+                _graph.TryMarkCanceled(item.Id, reason);
+        }
+    }
+
     private void UpdateQuiescenceLocked()
     {
         var hasRunnableOrRunning =
@@ -344,6 +357,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
 
             _disposed = true;
             _lifetimeCts.Cancel();
+            CancelRemainingLocked("SCHEDULER_DISPOSED");
 
             foreach (var running in _running.Values)
                 running.Cancellation.Cancel();

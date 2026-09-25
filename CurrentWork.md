@@ -36,7 +36,9 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - dependency/cycle/revision 기계 검증과 READY 계산 구현 완료
 - Integration을 같은 WORK 역할의 WorkItemKind로 표현
 - 단계 1 단위 테스트 추가
-- 다음 구현은 ParallelWorkScheduler와 maxConcurrentWork 슬롯 실행
+- ParallelWorkScheduler와 maxConcurrentWork 슬롯 실행 기반 구현
+- GitWorktreeManager와 WorkItem별 branch/worktree 격리 기반 구현
+- 다음 구현은 Worktree + CodexCliRunner를 결합하는 실제 WorkItem executor
 
 착수 commit:
 - 정책/계획: `0c87a0021643efc00e147fead82ed45cb1bf4c91`

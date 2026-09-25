@@ -161,14 +161,6 @@ public sealed class GitWorktreeManagerTests
         var parent = Directory.GetParent(repository)?.FullName;
         if (!string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent))
             Directory.Delete(parent, true);
-
-        var sibling = Path.Combine(
-            Directory.GetParent(repository)?.Parent?.FullName ?? Path.GetTempPath(),
-            ".projecthub-worktrees");
-        if (Directory.Exists(sibling))
-        {
-            try { Directory.Delete(sibling, true); } catch { }
-        }
     }
 
     private sealed class FakeGitRunner : IGitWorktreeCommandRunner

@@ -156,10 +156,12 @@ Worker가 확인하는 것은 ID 중복, dependency 존재, self dependency, cyc
 
 `GitWorktreeManager`를 신규 구성요소로 둔다.
 
+worktree는 주 작업공간 내부에 중첩하지 않는다. Git worktree 간 경로 중첩을 피하기 위해 저장소의 형제 경로를 사용한다.
+
 예상 경로:
 
 ~~~text
-<workspace>/.projecthub/worktrees/<jobId>/<workItemId>/
+<workspace-parent>/.projecthub-worktrees/<repository>/<jobId>/<workItemId>/
 ~~~
 
 branch 예:
@@ -505,3 +507,19 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - Integration은 새 역할이 아니라 `WorkItemKind.Integration`으로 같은 WORK 역할 안에 표현한다.
 - 단위 테스트는 독립 READY 순서, dependency 해제, revision mismatch, self/unknown/cycle 거부, 실패 dependency 차단, RUNNING 정의 불변, cancel dependency 차단, concurrency 범위, Integration dependency를 포함한다.
 - 현재 실행 환경에는 .NET SDK가 없어 `dotnet test`와 빌드는 실행하지 못했다. 다음 Windows 검증에서 단계 1 테스트를 우선 실행한다.
+
+
+### 2026-09-25 단계 2~3 기반
+
+- ParallelWorkScheduler commit: `f084cbf7c20f7a1150042c14d60c0f74290f6704`
+- GitWorktreeManager commit: `b2ade9b4bc4f52c4cdfb6e8009dc107477fdf376`
+- Scheduler는 READY WorkItem을 안정적인 생성 순서로 빈 슬롯에 배정하고 maxConcurrentWork를 넘지 않는다.
+- 실행 중 maxConcurrentWork 증가를 GraphPatch로 반영하면 새 슬롯을 즉시 채운다.
+- 특정 RUNNING WorkItem CANCEL은 해당 실행 token만 취소하고 독립 WorkItem은 계속 진행한다.
+- executor 실패는 해당 WorkItem FAILED로 귀속하며 실패 dependency의 후속 WorkItem은 BLOCKED를 유지한다.
+- Job lifetime 취소 또는 scheduler 전체 취소 시 RUNNING/READY/BLOCKED WorkItem을 CANCELED로 기계적으로 전환한다.
+- GitWorktreeManager는 baseRef를 commit으로 먼저 해석하고 WorkItem별 고유 branch/worktree를 만든다.
+- worktree는 주 저장소 내부가 아니라 저장소 형제 `.projecthub-worktrees` 루트에 두어 중첩 checkout을 피한다.
+- 기존 branch/path를 임의 재사용하지 않으며, 등록된 동일 WorkItem worktree만 기계적으로 재사용한다.
+- dirty worktree 제거와 force remove를 금지한다.
+- 현재 환경에는 .NET SDK가 없어 추가 단위 테스트는 아직 실행하지 못했다.

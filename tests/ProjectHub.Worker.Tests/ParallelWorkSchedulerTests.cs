@@ -124,6 +124,27 @@ public sealed class ParallelWorkSchedulerTests
     }
 
     [Fact]
+    public async Task LifetimeCancellationCancelsRunningAndQueuedWork()
+    {
+        using var lifetime = new CancellationTokenSource();
+        var graph = CreateGraph(1, "W1", "W2");
+        var executor = new ControlledExecutor();
+
+        await using var scheduler = new ParallelWorkScheduler(graph, executor, lifetime.Token);
+        await scheduler.StartAsync();
+        await executor.WhenStarted("W1");
+
+        lifetime.Cancel();
+        await executor.WhenCanceled("W1");
+        await scheduler.WaitForQuiescenceAsync();
+
+        var snapshot = await scheduler.GetSnapshotAsync();
+        Assert.Equal(WorkItemState.Canceled, snapshot.Graph.Items.Single(item => item.Id == "W1").State);
+        Assert.Equal(WorkItemState.Canceled, snapshot.Graph.Items.Single(item => item.Id == "W2").State);
+        Assert.False(executor.IsStarted("W2"));
+    }
+
+    [Fact]
     public async Task SchedulerUsesStableCreationOrderWhenOnlyOneSlotExists()
     {
         var graph = CreateGraph(1, "B", "A", "C");

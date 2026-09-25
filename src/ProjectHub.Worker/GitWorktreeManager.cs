@@ -213,6 +213,20 @@ public sealed class GitWorktreeManager
 
         if (existing is not null)
         {
+            if (!Directory.Exists(worktreePath))
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    "WORKTREE_REGISTERED_PATH_MISSING",
+                    repositoryRoot,
+                    worktreePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    existing.Head,
+                    false);
+            }
+
             if (!string.Equals(existing.Branch, branch, StringComparison.Ordinal))
             {
                 return new GitWorktreePreparationResult(
