@@ -215,6 +215,95 @@ public sealed class GitWorktreeManagerTests
         }
     }
 
+    [Fact]
+    public async Task IntegrationLandingFastForwardsOnlyCleanTargetBranch()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "integrated456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "Updating base123..integrated456");
+        runner.Enqueue(0, "integrated456");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.LandIntegrationAsync(root, "integration-ref");
+
+            Assert.True(result.Success);
+            Assert.True(result.FastForwarded);
+            Assert.Equal("main", result.TargetBranch);
+            Assert.Equal("base123", result.BeforeHead);
+            Assert.Equal("integrated456", result.AfterHead);
+
+            var merge = runner.Calls.Single(call => call.Arguments.Count > 0 && call.Arguments[0] == "merge");
+            Assert.Equal(new[] { "merge", "--ff-only", "integrated456" }, merge.Arguments);
+            Assert.DoesNotContain(
+                runner.Calls.SelectMany(call => call.Arguments),
+                argument => argument is "push" or "reset" or "--force" or "-f");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task IntegrationLandingRejectsDirtyTargetBeforeChangingHead()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, " M local-change.cs");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.LandIntegrationAsync(root, "integration-ref");
+
+            Assert.False(result.Success);
+            Assert.Equal("INTEGRATION_TARGET_DIRTY", result.ErrorCode);
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Count > 0 && call.Arguments[0] == "merge");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task IntegrationLandingRejectsNonFastForwardResult()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "other456");
+        runner.Enqueue(1, "");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.LandIntegrationAsync(root, "integration-ref");
+
+            Assert.False(result.Success);
+            Assert.Equal("INTEGRATION_NOT_FAST_FORWARD", result.ErrorCode);
+            Assert.Equal("other456", result.IntegrationCommit);
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Count > 0 && call.Arguments[0] == "merge");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
     private static string CreateTempRepositoryDirectory()
     {
         var root = Path.Combine(Path.GetTempPath(), "projecthub-worktree-test-" + Guid.NewGuid().ToString("N"), "repo");
