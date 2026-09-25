@@ -121,6 +121,72 @@ public sealed class GitWorktreeManagerTests
         }
     }
 
+
+    [Fact]
+    public async Task CheckpointCommitsDirtyWorktreeWithoutPushOrForce()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var worktree = Path.Combine(Directory.GetParent(root)!.FullName, "worktree");
+        Directory.CreateDirectory(worktree);
+        var runner = new FakeGitRunner(root);
+
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "projecthub/job/W1");
+        runner.Enqueue(0, " M changed.cs");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "[projecthub/job/W1 new456] checkpoint");
+        runner.Enqueue(0, "new456");
+        runner.Enqueue(0, "projecthub/job/W1");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.CreateCheckpointAsync(worktree, "W1");
+
+            Assert.True(result.Success);
+            Assert.True(result.CreatedCommit);
+            Assert.Equal("new456", result.HeadCommit);
+            Assert.Contains(runner.Calls, call => call.Arguments.SequenceEqual(new[] { "add", "--all" }));
+            Assert.Contains(runner.Calls, call => call.Arguments.Contains("commit"));
+            Assert.DoesNotContain(runner.Calls.SelectMany(call => call.Arguments), argument => argument == "push");
+            Assert.DoesNotContain(runner.Calls.SelectMany(call => call.Arguments), argument => argument == "--force" || argument == "-f");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task CheckpointReusesCleanHeadWithoutCreatingCommit()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var worktree = Path.Combine(Directory.GetParent(root)!.FullName, "worktree");
+        Directory.CreateDirectory(worktree);
+        var runner = new FakeGitRunner(root);
+
+        runner.Enqueue(0, "head123");
+        runner.Enqueue(0, "projecthub/job/W1");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.CreateCheckpointAsync(worktree, "W1");
+
+            Assert.True(result.Success);
+            Assert.False(result.CreatedCommit);
+            Assert.Equal("head123", result.HeadCommit);
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("commit"));
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.SequenceEqual(new[] { "add", "--all" }));
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
     [Fact]
     public async Task RemoveRefusesDirtyWorktreeAndNeverUsesForce()
     {

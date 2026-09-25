@@ -126,6 +126,14 @@ public sealed record GitWorktreeRemovalResult(
     string WorktreePath,
     string Branch);
 
+public sealed record GitWorktreeCheckpointResult(
+    bool Success,
+    string? ErrorCode,
+    string WorktreePath,
+    string? Branch,
+    string? HeadCommit,
+    bool CreatedCommit);
+
 public sealed class GitWorktreeManager
 {
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
@@ -418,6 +426,77 @@ public sealed class GitWorktreeManager
             string.IsNullOrWhiteSpace(statusResult.StandardOutput));
     }
 
+    public async Task<GitWorktreeCheckpointResult> CreateCheckpointAsync(
+        string worktreePath,
+        string workItemId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workItemId))
+            return new(false, "WORKTREE_CHECKPOINT_ID_MISSING", worktreePath, null, null, false);
+
+        var before = await InspectAsync(worktreePath, cancellationToken).ConfigureAwait(false);
+        if (!before.Success)
+            return new(false, before.ErrorCode, worktreePath, before.Branch, before.HeadCommit, false);
+
+        if (before.IsClean)
+            return new(true, null, before.WorktreePath, before.Branch, before.HeadCommit, false);
+
+        var addResult = await RunAsync(
+            worktreePath,
+            ReadTimeout,
+            cancellationToken,
+            "add",
+            "--all").ConfigureAwait(false);
+
+        if (addResult.ExitCode != 0)
+        {
+            return new(
+                false,
+                addResult.TimedOut ? "WORKTREE_CHECKPOINT_ADD_TIMEOUT"
+                    : addResult.Canceled ? "WORKTREE_CHECKPOINT_ADD_CANCELED"
+                    : "WORKTREE_CHECKPOINT_ADD_FAILED",
+                worktreePath,
+                before.Branch,
+                before.HeadCommit,
+                false);
+        }
+
+        var message = "ProjectHub WorkItem " + SafeCommitLabel(workItemId) + " checkpoint";
+        var commitResult = await RunAsync(
+            worktreePath,
+            CreateTimeout,
+            cancellationToken,
+            "-c",
+            "user.name=ProjectHub",
+            "-c",
+            "user.email=projecthub@local",
+            "commit",
+            "--no-gpg-sign",
+            "-m",
+            message).ConfigureAwait(false);
+
+        if (commitResult.ExitCode != 0)
+        {
+            return new(
+                false,
+                commitResult.TimedOut ? "WORKTREE_CHECKPOINT_COMMIT_TIMEOUT"
+                    : commitResult.Canceled ? "WORKTREE_CHECKPOINT_COMMIT_CANCELED"
+                    : "WORKTREE_CHECKPOINT_COMMIT_FAILED",
+                worktreePath,
+                before.Branch,
+                before.HeadCommit,
+                false);
+        }
+
+        var after = await InspectAsync(worktreePath, cancellationToken).ConfigureAwait(false);
+        if (!after.Success)
+            return new(false, after.ErrorCode, worktreePath, after.Branch, after.HeadCommit, true);
+        if (!after.IsClean)
+            return new(false, "WORKTREE_CHECKPOINT_NOT_CLEAN", worktreePath, after.Branch, after.HeadCommit, true);
+
+        return new(true, null, after.WorktreePath, after.Branch, after.HeadCommit, true);
+    }
+
     public async Task<GitWorktreeRemovalResult> RemoveAsync(
         string repositoryRoot,
         string worktreePath,
@@ -566,6 +645,22 @@ public sealed class GitWorktreeManager
 
         Flush();
         return result;
+    }
+
+    private static string SafeCommitLabel(string value)
+    {
+        var builder = new StringBuilder();
+        foreach (var character in value.Trim())
+        {
+            if (char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.')
+                builder.Append(character);
+            else
+                builder.Append('-');
+            if (builder.Length >= 48)
+                break;
+        }
+
+        return builder.Length == 0 ? "item" : builder.ToString();
     }
 
     private static string StableSegment(string value, int maxReadableLength)
