@@ -203,8 +203,10 @@ JUDGE -> WORK   raw 결과
 
 - WORK는 검증할 내용을 질문 목록과 현재 근거로 정리해 HQ에 JUDGE용 Form 생성을 요청한다.
 - HQ는 질문 목적을 유지하며 독립 판단 단위로 정리하고 필요한 범위, evidence, 응답 형태, 기준을 포함한 JUDGE용 Form으로 반환한다.
+- HQ가 만드는 Form은 Worker의 JUDGE 전송 파서가 읽을 수 있는 NOUL/SCORE/CHOICE 문법을 사용한다.
+- 질문 식별자는 QID:<id> 형식을 사용한다. SCORE에는 정수=기준 항목이 하나 이상 필요하고, CHOICE에는 선택지=기준 항목이 하나 이상 필요하다.
 - WORK는 받은 JUDGE용 Form을 JUDGE로 전송한다.
-- Worker는 질문이나 Form의 의미적 적합성을 검사하지 않는다.
+- Worker는 질문이나 Form의 의미적 적합성을 검사하지 않고 전송 문법만 기계적으로 확인한다.
 - JEV 원본 응답은 같은 WORK 세션으로 반환한다.
 
 ---
