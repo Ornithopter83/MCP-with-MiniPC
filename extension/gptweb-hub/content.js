@@ -256,6 +256,7 @@ function observeResponse(){if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;cons
     baselineAssistantCount=-1;
     baselineUserMessages=[];
     baselineImageSources=new Set();
+    baselineFileUrls=new Set();
     pendingResult=null;
     lastProgressKey='';
     progressQueue=Promise.resolve();
