@@ -58,7 +58,7 @@ public sealed class CodexCliRunner
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
     }
 
-    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null)
+    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null)
     {
         sessionId = NormalizeSessionId(sessionId);
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
@@ -113,11 +113,26 @@ public sealed class CodexCliRunner
         try
         {
             if (!process.Start()) throw new InvalidOperationException("Codex CLI 프로세스를 시작하지 못했습니다.");
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var stdoutBuilder = new StringBuilder();
+            var stdoutTask = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var line = await process.StandardOutput.ReadLineAsync(cancellationToken);
+                    if (line is null) break;
+                    stdoutBuilder.AppendLine(line);
+                    if (progress is not null && TryExtractAgentMessage(line, out var progressText))
+                    {
+                        try { progress(progressText); }
+                        catch { }
+                    }
+                }
+            }, CancellationToken.None);
             var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
             try { await process.WaitForExitAsync(cancellationToken); }
             catch (OperationCanceledException) { try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } throw; }
-            var stdout = await stdoutTask;
+            await stdoutTask;
+            var stdout = stdoutBuilder.ToString();
             var stderr = await stderrTask;
             var finalMessage = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile) : ExtractFinalMessage(stdout);
             var finishedAt = DateTimeOffset.UtcNow;
@@ -135,6 +150,32 @@ public sealed class CodexCliRunner
         {
             try { if (File.Exists(outputFile)) File.Delete(outputFile); } catch (IOException) { }
             try { if (outputSchemaFile is not null && File.Exists(outputSchemaFile)) File.Delete(outputSchemaFile); } catch (IOException) { }
+        }
+    }
+
+    public static bool TryExtractAgentMessage(string jsonLine, out string text)
+    {
+        text = string.Empty;
+        if (string.IsNullOrWhiteSpace(jsonLine)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(jsonLine.TrimStart('\uFEFF'));
+            var root = document.RootElement;
+            if (!TryGetString(root, "type", out var eventType) ||
+                !string.Equals(eventType, "item.completed", StringComparison.OrdinalIgnoreCase) ||
+                !TryGetPropertyIgnoreCase(root, "item", out var item) ||
+                !TryGetString(item, "type", out var itemType) ||
+                !string.Equals(itemType, "agent_message", StringComparison.OrdinalIgnoreCase) ||
+                !TryGetString(item, "text", out var message) ||
+                string.IsNullOrWhiteSpace(message))
+                return false;
+
+            text = message.Trim();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 
