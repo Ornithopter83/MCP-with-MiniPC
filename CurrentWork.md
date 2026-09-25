@@ -19,7 +19,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 
 - HQ = 설계·관제, ChatGPT Web 또는 CLI 제공자
 - WORK = CLI 구현/수정/검증
-- RESOURCE = 별도 ChatGPT Web, IMAGE 생성/복수 다운로드/저장 사이드카 대기열
+- RESOURCE = 별도 ChatGPT Web, 생성 리소스 제작/파일 수집·다운로드/저장 사이드카 대기열
 - JUDGE = JEV
 - Worker = 역할/세션/연결/전송/프로세스/file 계측/프로토콜 오류와 RESOURCE 대기열 사실의 기계적 관리
 
@@ -36,7 +36,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - Bridge에 HQ/RESOURCE 역할→conversationId 명시적 연결 추가
 - 최신 생존 신호 기반 작업 목적지 제거
 - RESOURCE 자연어 본문의 기계적 유효성 검사와 사이드카 대기열 접수 추가
-- RESOURCE IMAGE 결과를 브라우저 확장이 복수 image 데이터 묶음로 반환하고 Worker가 requestId별 작업공간 경로에 저장
+- RESOURCE 생성 결과를 브라우저 확장이 공통 `resultFiles[]`로 반환하고 Worker가 requestId별 작업공간 경로에 저장
 - ResourceRequest REQUESTED→GENERATING→SAVED/FAILED 기록
 - RESOURCE 접수 사실은 HQ로 전달하고, HQ END 전 필요한 완료 결과만 이후 WORK 입력에 기계적으로 반영
 - WORK/HQ/JUDGE 역할 계약를 지속 가능한 프로토콜 중심으로 일반화
@@ -64,7 +64,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - Explorer HQ CLI E2E 검증
 - Explorer HQ Web E2E 검증
 - HQ Web + RESOURCE Web 두 창 동시 생존 신호 격리
-- WORK→RESOURCE 대기열 접수→실제 이미지 생성/복수 다운로드/저장→HQ/WORK/마무리 반영
+- WORK→RESOURCE 대기열 접수→실제 생성 파일 수집/복수 다운로드/저장→HQ/WORK/마무리 반영
 - RESOURCE 저장 후 자동 코드 연결이 발생하지 않는지 확인
 - JUDGE 회귀
 
@@ -169,7 +169,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - RESOURCE를 포함한 남은 기계적 대기 작업은 Worker가 대기 상태에서 직접 추적한다.
 - 모든 기계적 대기 작업이 끝나면 Worker가 DONE 또는 DONE_WITH_ERROR로 전환한다.
 - END 이후 WORK 보고가 HQ로 향하는 경우 Worker가 "HQ의 작업은 종료되었습니다."로 차단한다.
-- [GOTO : RESOURCE]는 새로운 이미지 생성 요청 한 건 전용이며 기존 요청 조회·취소·추적 용도로 사용하지 않는다.
+- [GOTO : RESOURCE]는 새로운 생성 리소스 요청 한 건 전용이며 기존 요청 조회·취소·추적 용도로 사용하지 않는다.
 
 
 ## 2026-09-25 HQ 종료와 기계적 대기 분리
@@ -198,3 +198,13 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - END → DONE → 작업 추가 → 동일 HQ/WORK 세션 ID 유지 확인
 - 새 작업 → 이전 세션/이력 초기화 확인
 - 후속 입력 UI가 이력 그룹 높이를 변경하지 않고 목록을 위로 밀어 올리는지 실화면 확인
+
+## 2026-09-25 RESOURCE 생성 파일 일반화
+
+- RESOURCE 의미를 IMAGE 전용에서 ChatGPT Web이 생성해 파일로 반환하는 모든 생성 리소스로 일반화한다.
+- 이미지·오디오·문서 등 형식은 역할이 아니라 `resultFiles[]`의 MIME 형식과 파일명으로 구분한다.
+- Worker는 리소스 종류를 의미적으로 판정하지 않고 공통 파일 저장 규칙만 적용한다.
+- 저장 루트는 기존과 동일한 `assets/resources/<requestId>/`를 유지한다.
+- 반환 파일명이 안전하면 정규화해 사용하고, 사용할 수 없으면 `resource-NN.<확장자>` 형식으로 저장한다.
+- 이미지 DOM 감시 로직은 RESOURCE 전체 의미가 아니라 이미지 형식용 수집 어댑터로 유지한다.
+- 오디오·문서·기타 생성 파일은 ChatGPT Web에서 실제 다운로드 가능한 파일/첨부 요소로 제공되는 경우 같은 공통 결과 배열로 수집한다.
