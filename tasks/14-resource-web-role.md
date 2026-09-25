@@ -6,7 +6,7 @@
 
 ## 목표
 
-기존 HIGH 역할을 완전히 제거하고, 별도 ChatGPT Web 대화에서 최종 생성 이미지를 만들고 지정 경로에 저장하는 RESOURCE 역할을 도입한다. 동시에 HQ는 ChatGPT Web 또는 CLI 제공자를 선택할 수 있게 복원한다.
+기존 HIGH 역할을 완전히 제거하고, 별도 ChatGPT Web 대화에서 생성 리소스를 만들고 결과 파일을 지정 경로에 저장하는 RESOURCE 역할을 도입한다. RESOURCE는 이미지에 한정하지 않고 ChatGPT Web이 파일로 반환할 수 있는 생성 결과를 공통 처리한다. 동시에 HQ는 ChatGPT Web 또는 CLI 제공자를 선택할 수 있게 복원한다.
 
 ## 상태 그래프
 
@@ -56,7 +56,7 @@ WORK body는 자연어만 사용한다.
 
 ~~~text
 [GOTO : RESOURCE]
-<자연어 이미지 생성 요청>
+<자연어 리소스 생성 요청>
 ~~~
 
 Worker는 본문이 비어 있지 않은지만 기계적으로 확인하고 ChatGPT Web에 그대로 전달한다. 저장 경로/파일명은 Worker가 requestId 기반으로 생성한다.
@@ -75,11 +75,12 @@ ResourceRequest:
 상태:
 QUEUED -> REQUESTED -> GENERATING -> DOWNLOADING -> SAVED | FAILED
 
-IMAGE:
+생성 파일:
 - RESOURCE ChatGPT Web에서 한 번에 1건씩 생성
 - 실행 중 새 요청은 FIFO 대기열에 적재
-- 확장이 최신 assistant turn의 생성 이미지들을 모두 다운로드해 bytes 배열로 반환
-- Worker가 작업공간 하위 requestId 폴더에 image-NN.*로 저장
+- 확장이 최신 assistant turn에서 생성된 파일 결과를 수집해 공통 `resultFiles[]` 배열로 반환
+- Worker가 작업공간 하위 requestId 폴더에 안전한 파일명으로 저장
+- 이미지·오디오·문서 등 구체 형식은 MIME 형식과 파일 정보로 구분하며 Worker는 의미 판정을 하지 않음
 - WORK는 RESOURCE 완료를 기다리지 않는다. 접수 사실은 HQ로 돌아가며 이후 의미적 다음 단계는 HQ가 결정
 - HQ END 전 후속 WORK에 실제로 필요한 완료 결과만 기계적으로 전달
 - HQ END 시 의미 흐름을 종료하고 미완료 RESOURCE는 Worker의 기계적 대기 작업으로만 추적
@@ -92,7 +93,7 @@ HQ:
 - PAUSE는 사람 확인/취향/로그인/권한/사용자 선택이 필요할 때 사용
 
 WORK:
-- 최종 이미지/아이콘/스프라이트/배경은 RESOURCE 우선
+- ChatGPT Web에서 생성 파일을 받아야 하는 리소스는 형식과 무관하게 RESOURCE를 사용
 - placeholder는 임시 확인용만 허용
 - RESOURCE 저장 결과를 사용자 후속 명령 없이 자동 연결하지 않음
 
@@ -115,7 +116,7 @@ RESOURCE:
 - HQ CLI 왕복
 - HQ Web 왕복
 - 두 Web 대화 동시 생존 신호
-- RESOURCE image 실제 생성/저장
+- RESOURCE 생성 파일 실제 생성/저장
 - RESOURCE 접수 사실이 HQ로 복귀하고 HQ가 다음 의미적 지시를 결정
 - 자동 통합 없음
 - JUDGE 회귀
@@ -202,7 +203,7 @@ RESOURCE:
 - RESOURCE 미완료은 Worker가 관리하는 기계적 대기 작업의 한 종류로 취급한다.
 - 기계적 대기 작업이 남아 있으면 대기 상태에서 AI 호출 없이 완료를 기다린다.
 - 모든 기계적 대기 작업이 끝나면 Worker가 DONE 또는 DONE_WITH_ERROR로 전환한다.
-- [GOTO : RESOURCE]는 새 이미지 생성 요청 한 건 전용이며 상태 조회·취소·추적에 사용하지 않는다.
+- [GOTO : RESOURCE]는 새 생성 리소스 요청 한 건 전용이며 상태 조회·취소·추적에 사용하지 않는다.
 
 
 
@@ -216,3 +217,13 @@ RESOURCE:
 - 하단 기존 실행/새 작업 버튼 왼쪽에 녹색 `작업 추가` 버튼을 표시한다.
 - `새 작업`은 기존 연속 세션과 이력을 명시적으로 초기화하는 동작으로 유지한다.
 - 동일 작업 기록 파일은 후속 구간이 추가될 때 같은 파일을 갱신한다.
+
+## N — 생성 파일 일반화
+
+- RESOURCE는 IMAGE 역할이 아니라 ChatGPT Web 생성 파일 역할이다.
+- 반환 계약은 파일 형식과 무관한 `resultFiles[]`를 사용한다.
+- 각 결과는 bytes/base64, MIME 형식, 선택적 파일명을 가진다.
+- Worker의 저장 루트는 `assets/resources/<requestId>/`로 유지한다.
+- 안전한 반환 파일명은 보존하고, 파일명이 없거나 사용할 수 없으면 `resource-NN.<확장자>`를 사용한다.
+- 이미지 수집은 기존 DOM 이미지 탐지기를 사용하고, 다운로드 가능한 첨부·오디오·문서 파일은 일반 파일 탐지기로 수집한다.
+- 생성 결과의 내용·품질·용도는 Worker가 판단하지 않는다.
