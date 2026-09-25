@@ -1690,16 +1690,20 @@ public partial class MainWindow : Window
                             var completedResources = new List<ResourceSidecarCompletion>();
                             while (resourceQueue.TryDequeueCompletion(out var resourceCompletion))
                                 completedResources.Add(resourceCompletion);
-                            var failedResource = completedResources.FirstOrDefault(item => !item.Success);
-                            if (failedResource is not null)
-                            {
-                                RouteUnknown(WorkerRoleState.Resource, failedResource.ErrorCode ?? "RESOURCE_RESULT_MISSING", failedResource.Message);
-                                continue;
-                            }
                             if (completedResources.Count > 0)
                             {
-                                var resourceNotice = string.Join("\n\n", completedResources.Select(item => item.Message));
-                                inbound = $"리소스 완료 알림:\n{resourceNotice}\n\n이전 입력 유형: {inboundType}\n{inbound}";
+                                if (completedResources.Any(item => !item.Success))
+                                    jobHadErrors = true;
+
+                                var resourceNotice = string.Join("\n\n", completedResources.Select(item =>
+                                {
+                                    var status = item.Success ? "SAVED" : "FAILED";
+                                    var error = item.Success || string.IsNullOrWhiteSpace(item.ErrorCode)
+                                        ? string.Empty
+                                        : $"\nerrorCode={item.ErrorCode}";
+                                    return $"requestId={item.RequestId}\nresourceType={item.Type}\nstatus={status}{error}\n{item.Message}";
+                                }));
+                                inbound = $"RESOURCE 처리 결과:\n{resourceNotice}\n\n이전 입력 유형: {inboundType}\n{inbound}";
                                 inboundType = "RESOURCE_RESULT";
                             }
 
@@ -1761,10 +1765,14 @@ public partial class MainWindow : Window
                                     continue;
                                 }
 
-                                var queuedResource = resourceQueue.Enqueue(resourceRequest!.Prompt);
-                                AddTaskMessage("RESOURCE QUEUED", $"request {queuedResource.Id} · 대기열 접수\n{queuedResource.Prompt}", status: "QUEUED", includeHistory: false);
+                                var queuedResource = resourceQueue.Enqueue(resourceRequest!.Type, resourceRequest.Prompt);
+                                AddTaskMessage(
+                                    "RESOURCE QUEUED",
+                                    $"request {queuedResource.Id} · type {queuedResource.Type} · 대기열 접수\n{queuedResource.Prompt}",
+                                    status: "QUEUED",
+                                    includeHistory: false);
                                 inboundType = "RESOURCE_QUEUED";
-                                inbound = $"RESOURCE 요청 1건을 기계적으로 대기열에 접수했습니다. requestId={queuedResource.Id}. 현재 outstanding={resourceQueue.OutstandingCount}, queued={resourceQueue.QueuedCount}. 요청 목표 횟수나 남은 횟수는 Worker가 판단하지 않습니다.";
+                                inbound = $"RESOURCE 요청 1건을 기계적으로 대기열에 접수했습니다. requestId={queuedResource.Id}, type={queuedResource.Type}. 현재 outstanding={resourceQueue.OutstandingCount}, queued={resourceQueue.QueuedCount}. 요청 목표 횟수나 남은 횟수는 Worker가 판단하지 않습니다.";
                                 state = WorkerRoleState.Hq;
                             }
                             else
