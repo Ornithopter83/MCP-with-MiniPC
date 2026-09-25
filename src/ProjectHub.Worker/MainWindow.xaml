@@ -396,7 +396,7 @@
           <Border x:Name="DashboardHistoryView" Background="#FBFDFF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="8,5" Visibility="Collapsed">
             <Grid>
               <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-              <ListBox x:Name="DashboardHistoryList" Grid.Row="0" Background="Transparent" BorderThickness="0" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=HistoryEvents}" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" FontSize="14" Foreground="{StaticResource Ink}">
+              <ListBox x:Name="DashboardHistoryList" Grid.Row="0" Background="Transparent" BorderThickness="0" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=HistoryEvents}" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" FontSize="14" Foreground="{StaticResource Ink}" MouseDoubleClick="DashboardHistoryList_MouseDoubleClick" ToolTip="항목을 두 번 클릭하면 Full Message를 엽니다.">
                 <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0,2"/><Setter Property="Focusable" Value="False"/></Style></ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate><DataTemplate>
                   <Grid MinHeight="62" Margin="1,2"><Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="215"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
