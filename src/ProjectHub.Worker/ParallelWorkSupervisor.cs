@@ -200,11 +200,28 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             {
                 if (_schedulerStarted)
                     await _scheduler.WaitForQuiescenceAsync(cancellationToken).ConfigureAwait(false);
+
+                var endSnapshot = _graph.Snapshot();
+                var openItems = endSnapshot.Items
+                    .Where(item => item.State is
+                        WorkItemState.Planned or
+                        WorkItemState.Ready or
+                        WorkItemState.Running or
+                        WorkItemState.Blocked)
+                    .ToArray();
+
+                if (openItems.Length > 0)
+                {
+                    inboundType = "WORK_GRAPH_END_REJECTED";
+                    inboundBody = FormatEndRejected(openItems, endSnapshot);
+                    continue;
+                }
+
                 return new(
                     ParallelWorkSupervisorExit.Ended,
                     turn.Body,
                     null,
-                    _graph.Snapshot());
+                    endSnapshot);
             }
 
             if (turn.Action == WorkerAction.Pause)

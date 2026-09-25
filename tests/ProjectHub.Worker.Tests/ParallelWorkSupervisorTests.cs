@@ -181,6 +181,40 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task HqEndWithBlockedWorkItemReturnsMechanicalStateInsteadOfClosingGraph()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        executor.SetSplitOnceThenComplete("W1");
+
+        var hq = new QueueHqRunner(
+            ContinuePatch(0, Add("W1", "분할 제안이 필요한 작업")),
+            End("종료 시도"),
+            ContinuePatch(
+                1,
+                """
+                {"type":"RELEASE","workItemId":"W1","inputType":"HQ_RESUME","value":"추가 분할 없이 현재 범위를 완료하세요."}
+                """),
+            End("완료"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "작업을 수행하세요.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(4, hq.Prompts.Count);
+        Assert.Contains("입력 유형: WORK_GRAPH_END_REJECTED", hq.Prompts[2]);
+        Assert.Contains("id=W1 state=BLOCKED", hq.Prompts[2]);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+    }
+
+    [Fact]
     public void ParallelHqTurnRequiresGraphPatchOnlyForContinue()
     {
         var end = End("완료");
