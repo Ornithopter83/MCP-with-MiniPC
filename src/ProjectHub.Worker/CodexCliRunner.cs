@@ -58,7 +58,7 @@ public sealed class CodexCliRunner
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
     }
 
-    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null)
+    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null)
     {
         sessionId = NormalizeSessionId(sessionId);
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
@@ -121,6 +121,11 @@ public sealed class CodexCliRunner
                     var line = await process.StandardOutput.ReadLineAsync(cancellationToken);
                     if (line is null) break;
                     stdoutBuilder.AppendLine(line);
+                    if (sessionStarted is not null && TryExtractThreadStarted(line, out var startedSessionId))
+                    {
+                        try { sessionStarted(startedSessionId); }
+                        catch { }
+                    }
                     if (progress is not null && TryExtractAgentMessage(line, out var progressText))
                     {
                         try { progress(progressText); }
@@ -150,6 +155,29 @@ public sealed class CodexCliRunner
         {
             try { if (File.Exists(outputFile)) File.Delete(outputFile); } catch (IOException) { }
             try { if (outputSchemaFile is not null && File.Exists(outputSchemaFile)) File.Delete(outputSchemaFile); } catch (IOException) { }
+        }
+    }
+
+    public static bool TryExtractThreadStarted(string jsonLine, out string sessionId)
+    {
+        sessionId = string.Empty;
+        if (string.IsNullOrWhiteSpace(jsonLine)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(jsonLine.TrimStart('\uFEFF', ' ', '\t'));
+            var root = document.RootElement;
+            if (!TryGetString(root, "type", out var eventType) ||
+                !string.Equals(eventType, "thread.started", StringComparison.OrdinalIgnoreCase) ||
+                !TryGetString(root, "thread_id", out var id) ||
+                string.IsNullOrWhiteSpace(id))
+                return false;
+
+            sessionId = id.Trim();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 
