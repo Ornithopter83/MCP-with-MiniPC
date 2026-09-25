@@ -106,6 +106,53 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Contains(result.Graph.Items, item => item.Id == "W3");
     }
 
+
+    [Fact]
+    public async Task ResourceBlockWaitsForSidecarResumeWithoutWakingHq()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        executor.SetResourceOnceThenComplete("W1");
+
+        var externalBlock = new TaskCompletionSource<ParallelWorkExternalBlock>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var hq = new QueueHqRunner(
+            ContinuePatch(0, Add("W1", "리소스가 필요한 작업")),
+            End("리소스 결과까지 반영되었습니다."));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+        supervisor.ExternalBlockAvailable += block => externalBlock.TrySetResult(block);
+
+        var runTask = supervisor.RunAsync("USER_REQUEST", "리소스를 포함해 구현하세요.");
+        var block = await externalBlock.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal("W1", block.WorkItemId);
+        Assert.Equal("RESOURCE_REQUEST", block.BlockCode);
+        Assert.Single(hq.Prompts);
+
+        var revisionBeforeResume = graph.Revision;
+        Assert.True(await supervisor.ResumeExternalWorkItemAsync(
+            "W1",
+            "RESOURCE_RESULT",
+            "requestId=R1 status=SAVED"));
+        Assert.Equal(revisionBeforeResume, graph.Revision);
+
+        await executor.WhenStartedCount("W1", 2);
+        var resumed = executor.Requests.Last(request => request.Item.Id == "W1");
+        Assert.Equal("RESOURCE_RESULT", resumed.InboundType);
+        Assert.Contains("requestId=R1", resumed.InboundBody);
+
+        var result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(2, hq.Prompts.Count);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+    }
+
     [Fact]
     public void ParallelHqTurnRequiresGraphPatchOnlyForContinue()
     {
@@ -170,6 +217,7 @@ public sealed class ParallelWorkSupervisorTests
         public void SetImmediate(string id) => _modes[id] = "IMMEDIATE";
         public void SetControlled(string id) => _modes[id] = "CONTROLLED";
         public void SetSplitOnceThenComplete(string id) => _modes[id] = "SPLIT_ONCE";
+        public void SetResourceOnceThenComplete(string id) => _modes[id] = "RESOURCE_ONCE";
 
         public bool IsRunning(string id)
             => _active.TryGetValue(id, out var count) && count > 0;
@@ -215,6 +263,17 @@ public sealed class ParallelWorkSupervisorTests
                     return WorkItemExecutionResult.Blocked(
                         "SPLIT_REQUEST",
                         "W3라는 독립 WorkItem을 추가해 주세요.",
+                        "checkpoint-" + request.Item.Id,
+                        "branch-" + request.Item.Id,
+                        "worktree-" + request.Item.Id,
+                        "session-" + request.Item.Id);
+                }
+
+                if (mode == "RESOURCE_ONCE" && count == 1)
+                {
+                    return WorkItemExecutionResult.Blocked(
+                        "RESOURCE_REQUEST",
+                        "RESOURCE_TYPE: IMAGE\n아이콘을 생성해 주세요.",
                         "checkpoint-" + request.Item.Id,
                         "branch-" + request.Item.Id,
                         "worktree-" + request.Item.Id,
