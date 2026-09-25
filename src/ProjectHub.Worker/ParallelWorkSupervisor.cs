@@ -75,7 +75,7 @@ public static class ParallelHqTurnContract
     }
 }
 
-public sealed class ParallelWorkSupervisor : IAsyncDisposable
+public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncDisposable
 {
     private readonly WorkGraph _graph;
     private readonly ParallelWorkScheduler _scheduler;
