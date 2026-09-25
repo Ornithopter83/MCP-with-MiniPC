@@ -41,7 +41,7 @@ NOUL:
 
 SCORE:
 - 7개 bundled asset 중 몇 개가 검증 조건을 만족하는가
-- 측정 가능한 count/range/level을 단계로 표현
+- 측정 가능한 개수/범위/수준을 단계로 표현
 
 CHOICE:
 - 라인 제거 / 스테이지 카드 / 입력 차단 / 생성 대기 / 복합 원인 / 근거 부족 중 무엇이 현재 차단 원인인가
@@ -60,7 +60,7 @@ Worker는 WORK body가 판정 초안인지, HQ가 검토했는지, 질문형이 
 
 ### 검증
 
-- WORK 계약가 JUDGE 전 HQ 검토 flow를 설명
+- WORK 계약이 JUDGE 전 HQ 검토 흐름를 설명
 - HQ 계약가 WORK의 판정 초안을 검토해 WORK로 반환하는 역할을 설명
 - 두 계약 모두 NOUL/SCORE/CHOICE 예시를 포함
 - 예시가 할당량/의무 분배이 아님을 명시
