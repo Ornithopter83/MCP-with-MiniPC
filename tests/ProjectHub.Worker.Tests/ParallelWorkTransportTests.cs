@@ -5,6 +5,19 @@ namespace ProjectHub.Worker.Tests;
 public sealed class ParallelWorkTransportTests
 {
     [Fact]
+    public void ParallelWorkContractDefinesIntegrationAsSameWorkRole()
+    {
+        var footer = RoleContractLoader.LoadWorkFooter(
+            judgeAvailable: true,
+            parallelWorkItem: true);
+
+        Assert.Contains("workItemKind가 INTEGRATION", footer);
+        Assert.Contains("resultRef", footer);
+        Assert.Contains("Git 병합", footer);
+        Assert.Contains("Worker에게 의미적 충돌 해결을 넘기지 않는다", footer);
+    }
+
+    [Fact]
     public void WorkGraphTransportParsesAddDependencyAndIntegration()
     {
         const string body = """

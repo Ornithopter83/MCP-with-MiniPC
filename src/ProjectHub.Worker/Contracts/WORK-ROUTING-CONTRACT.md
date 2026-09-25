@@ -51,6 +51,7 @@ RESOURCE 위임
 - 새 독립 작업이 필요하면 HQ에 SPLIT_REQUEST로 보고한다.
 - HQ 판단이나 외부 의미 결정이 필요해 현재 WorkItem을 계속할 수 없으면 BLOCKED로 보고한다.
 - 현재 WorkItem 범위를 완료했으면 COMPLETED로 보고한다.
+- workItemKind가 INTEGRATION이면 선행 WorkItem의 resultRef와 보고를 통합 입력으로 사용한다. 현재 integration worktree에서 필요한 Git 병합·cherry-pick·충돌 해결과 전체 검증을 수행하고, Worker에게 의미적 충돌 해결을 넘기지 않는다.
 - 현재 WorkItem을 계속 수행할 수 없는 실패가 확정되면 FAILED로 보고한다.
 - 병렬 WorkItem의 HQ 보고에서는 GOTO 제어행 바로 다음 첫 비어 있지 않은 줄에 아래 상태 행 하나를 반드시 둔다.
 
