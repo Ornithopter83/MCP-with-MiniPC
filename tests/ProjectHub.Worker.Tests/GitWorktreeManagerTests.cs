@@ -264,6 +264,39 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task IntegrationLandingExcludesNestedProjectHubRuntimeState()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var workspace = Path.Combine(root, "src", "Game");
+        Directory.CreateDirectory(workspace);
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "same123");
+        runner.Enqueue(0, "same123");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.LandIntegrationAsync(workspace, "integration-ref");
+
+            Assert.True(result.Success);
+            Assert.False(result.FastForwarded);
+
+            var status = runner.Calls.Single(call =>
+                call.Arguments.Count > 0 &&
+                call.Arguments[0] == "status");
+            Assert.Contains(":(exclude)src/Game/.projecthub", status.Arguments);
+            Assert.Contains(":(exclude)src/Game/.projecthub/**", status.Arguments);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task IntegrationLandingRejectsDirtyTargetBeforeChangingHead()
     {
         var root = CreateTempRepositoryDirectory();

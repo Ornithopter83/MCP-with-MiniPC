@@ -533,6 +533,7 @@ public sealed class GitWorktreeManager
 
         var statusBefore = await ReadPrimaryWorkspaceStatusAsync(
             repositoryRoot,
+            workspace,
             cancellationToken).ConfigureAwait(false);
 
         if (statusBefore.ExitCode != 0)
@@ -699,6 +700,7 @@ public sealed class GitWorktreeManager
 
         var statusAfter = await ReadPrimaryWorkspaceStatusAsync(
             repositoryRoot,
+            workspace,
             cancellationToken).ConfigureAwait(false);
 
         if (statusAfter.ExitCode != 0)
@@ -794,18 +796,41 @@ public sealed class GitWorktreeManager
 
     private Task<GitCommandResult> ReadPrimaryWorkspaceStatusAsync(
         string repositoryRoot,
+        string workspace,
         CancellationToken cancellationToken)
-        => RunAsync(
-            repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
+    {
+        var arguments = new List<string>
+        {
             "status",
             "--porcelain=v1",
             "--untracked-files=all",
             "--",
-            ".",
-            ":(exclude).projecthub",
-            ":(exclude).projecthub/**");
+            "."
+        };
+
+        var stateDirectory = Path.Combine(
+            Path.GetFullPath(workspace),
+            ".projecthub");
+        var relativeState = Path.GetRelativePath(
+                Path.GetFullPath(repositoryRoot),
+                stateDirectory)
+            .Replace(Path.DirectorySeparatorChar, '/')
+            .Replace(Path.AltDirectorySeparatorChar, '/');
+
+        if (!string.Equals(relativeState, "..", StringComparison.Ordinal) &&
+            !relativeState.StartsWith("../", StringComparison.Ordinal) &&
+            !Path.IsPathRooted(relativeState))
+        {
+            arguments.Add(":(exclude)" + relativeState);
+            arguments.Add(":(exclude)" + relativeState.TrimEnd('/') + "/**");
+        }
+
+        return _runner.RunAsync(
+            repositoryRoot,
+            arguments,
+            ReadTimeout,
+            cancellationToken);
+    }
 
     private Task<GitCommandResult> RunAsync(
         string workingDirectory,
