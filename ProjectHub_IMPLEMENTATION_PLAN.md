@@ -34,7 +34,7 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 2. RESOURCE 사이드카 대기열와 WORK→RESOURCE_QUEUE→HQ 접수 확인 응답 흐름 추가
 3. HQ Web/CLI 대상 설정
 4. Bridge 역할 연결
-5. RESOURCE 자연어 전달 + Worker 지정 저장 경로
+5. RESOURCE_TYPE 기계적 분류 + 자연어 전달 + Worker 지정 저장 경로
 6. 확장 생성 파일 수집 + 공통 resultFiles 배열
 7. Worker 파일 저장 + ResourceRequest 상태
 8. 파이프라인/이력/설정
@@ -73,3 +73,5 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - 실행 중 사용자 취소는 현재 프로세스를 중단하되 `thread.started`에서 확보한 CLI session ID를 보존한다.
 - 사용자가 `작업 추가`를 실행할 때만 USER_FOLLOWUP으로 기존 HQ 세션에서 새 실행 구간을 시작한다.
 - `새 작업`을 선택하면 이전 연속 세션과 이력을 명시적으로 초기화한다.
+
+- RESOURCE 성공/실패 completion은 HQ END 전 다음 WORK 입력의 `RESOURCE_RESULT`로 전달하고, RESOURCE 실패를 UNKNOWN으로 승격하지 않는다.
