@@ -26,8 +26,8 @@ PAUSED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ
 - HQ에 ChatGPT Web 실행 대상을 복원
 - HQ/RESOURCE Web 작업 목적지를 생존 신호가 아니라 명시적 대화 연결으로 고정
 - HQ의 설계 책임과 PAUSE 의미를 강화
-- WORK가 최종 이미지 제작을 RESOURCE에 위임하도록 계약 정리
-- RESOURCE IMAGE 생성/복수 다운로드/저장과 FIFO 대기열를 구현
+- WORK가 ChatGPT Web 생성 파일이 필요한 작업을 RESOURCE에 위임하도록 계약 정리
+- RESOURCE 생성 파일 수집/복수 다운로드/저장과 FIFO 대기열을 구현
 
 구현 단위:
 1. 역할 열거형/라우터/계약에서 HIGH 제거
@@ -35,7 +35,7 @@ PAUSED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ
 3. HQ Web/CLI 대상 설정
 4. Bridge 역할 연결
 5. RESOURCE 자연어 전달 + Worker 지정 저장 경로
-6. 확장 생성 복수 이미지 수집 + 결과 데이터 묶음 배열
+6. 확장 생성 파일 수집 + 공통 resultFiles 배열
 7. Worker 파일 저장 + ResourceRequest 상태
 8. 파이프라인/이력/설정
 9. HQ END 이후 자동 의미 흐름 차단 + 일반 기계적 대기 게이트
@@ -44,7 +44,6 @@ PAUSED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ
 
 ## 보류 항목
 
-- SOUND 실제 생성/result 전송
 - RESOURCE Web 동시 병렬 실행
 - 자동 리소스 품질 판정
 - 자동 코드/CSS/HTML 연결
