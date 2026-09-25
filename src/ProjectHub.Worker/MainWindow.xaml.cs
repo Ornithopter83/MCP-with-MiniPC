@@ -451,6 +451,7 @@ public partial class MainWindow : Window
             "USER_FOLLOWUP",
             null)
         {
+            FullMessage = text,
             TokenDetails = "토큰 · 사용자 입력",
             FileDetails = "파일 · 해당 없음"
         };
@@ -3066,15 +3067,28 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(content)) return;
         var timestamp = DateTimeOffset.Now;
         var trimmed = content.Trim();
+        var eventId = ProjectWorkspacePersistence.AppendEvent(
+            _activeWorkingDirectory,
+            _activeProjectJobId,
+            timestamp,
+            source,
+            trimmed,
+            status,
+            referenceId,
+            sizeBytes,
+            itemCount,
+            fileCount);
+        var effectiveReferenceId = referenceId ?? eventId;
         _taskExported = false;
         _taskMessages.Add(new TaskMessage(timestamp, source, trimmed));
         _messageLogItems.Add($"[{timestamp:HH:mm:ss}] {source}{Environment.NewLine}{trimmed}");
         MessageLogEmptyText.Visibility = Visibility.Collapsed;
         if (includeHistory)
         {
-            var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, referenceId, summary);
+            var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, effectiveReferenceId, summary);
             if (historyEvent is not null)
             {
+                historyEvent = historyEvent with { FullMessage = trimmed };
                 if (historyEvent.StageKey == "Coordinator")
                     historyEvent = historyEvent with { IconAssetOverride = _coordinatorStageIconAsset };
                 _historyEvents.Add(historyEvent);
@@ -3106,6 +3120,7 @@ public partial class MainWindow : Window
             "RUNNING",
             null)
         {
+            FullMessage = text,
             TokenDetails = string.Empty,
             FileDetails = string.Empty
         };
@@ -3152,6 +3167,7 @@ public partial class MainWindow : Window
             status,
             null)
         {
+            FullMessage = text,
             TokenDetails = judgeTelemetry is not null
                 ? WorkerHistoryCardFormatter.TokenLine(judgeTelemetry)
                 : WorkerHistoryCardFormatter.TokenLine(usage),
