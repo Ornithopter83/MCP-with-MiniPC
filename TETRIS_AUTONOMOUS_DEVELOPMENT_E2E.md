@@ -15,7 +15,7 @@
 
 역할 분리:
 - GPT Web: 계획 / 검토 / 제어
-- Worker: orchestration / 프로토콜 / 기록 / 사용량 aggregation
+- Worker: 관제 / 프로토콜 / 기록 / 사용량 집계
 - Codex CLI: 실행 / 테스트 / 보고
 - 사용자: 최초 목표 제시, 환경 문제 개입, 최종 체감 QA
 
@@ -33,15 +33,15 @@
 UI:
 - 보드 중심 dark UI
 - 상태 카드
-- 동적 Stage / Lines / Score
+- 동적 스테이지 / 제거 줄 / 점수
 - 스테이지 클리어 / 게임 오버 / 최종 클리어 오버레이
 - 반응형 Viewbox
 
 연출:
 - 완성 라인을 즉시 삭제하지 않고 약 3회 점멸 후 삭제
 - LineClearing 상태에서 입력/자동 낙하 잠금
-- 스테이지 클리어 Curtain/Scan line
-- BonusRows 계산 및 Stage Bonus 반영
+- 스테이지 클리어 커튼/스캔 라인
+- BonusRows 계산 및 스테이지 보너스 반영
 
 Stage:
 - Stage 1~5
@@ -54,7 +54,7 @@ Stage:
 - 2줄: 300 × Stage
 - 3줄: 500 × Stage
 - 4줄: 800 × Stage
-- Stage Bonus: BonusRows × 100 × CurrentStage
+- 스테이지 보너스: BonusRows × 100 × CurrentStage
 
 사운드:
 - 외부 음원 없이 코드 생성 PCM WAV
@@ -87,8 +87,8 @@ Stage:
 - 1/2/3/4줄 삭제 실제 검증 PASS
 - Stage 1 → 2 → 3 → 4 → 5 → FinalClear PASS
 - TotalClearedLines 최종 25 PASS
-- BonusRows edge case 0 / 1 / 12 / 19 / 20 PASS
-- duplicate bonus / duplicate CompleteLineClear 방어 PASS
+- BonusRows 경계 사례 0 / 1 / 12 / 19 / 20 PASS
+- 중복 보너스 / 중복 CompleteLineClear 방어 PASS
 - 재시작 전체 초기화 PASS
 - 비-Playing 상태 안전성 PASS
 
@@ -97,10 +97,10 @@ Stage:
 - 202 게임 오버
 - 202 재시작
 - exception 0
-- invariant PASS
+- 불변식 PASS
 
 WPF:
-- 격리된 APPDATA / DOTNET_CLI_HOME / NUGET_PACKAGES와 외부 intermediate/output 경로를 사용
+- 격리된 APPDATA / DOTNET_CLI_HOME / NUGET_PACKAGES와 외부 중간/출력 경로를 사용
 - restore 성공
 - build 성공
 - 경고 0 / 오류 0
@@ -165,9 +165,9 @@ Worker는 각 Codex CLI 결과의 `usage` 또는 `token_usage`를 파싱해 라�
 향후 계측는 최소 다음을 구분해야 한다.
 - 작업 baseline 세션 사용량
 - latest 세션 사용량
-- 작업 delta = latest - baseline
+- 작업 차이 = 최신값 - 기준값
 - cached input
-- output/reasoning
+- 출력/추론
 - 회차 count
 - 소요 시간
 
@@ -221,9 +221,9 @@ review / next ACTION
 - pushed SHA
 - 원격 HEAD SHA
 - last push 결과
-- last push time
-- server observed SHA
-- server observed time
+- 마지막 푸시 시각
+- 서버 관측 SHA
+- 서버 관측 시각
 
 Web에 넘길 기준은 브랜치 이름보다 `review_commit_sha` 하나를 명시하는 것이 좋다.
 
@@ -258,7 +258,7 @@ Web은 반드시 `review_commit_sha`의 파일을 읽고 피드백한다.
 
 Web review 가능 기준은 기본적으로 `REMOTE_CONFIRMED` 이상으로 둔다.
 
-Server를 authoritative observation layer로 사용할 경우 `SERVER_CONFIRMED`를 추가 수용할 수 있다.
+Server를 권위 있는 관측 계층로 사용할 경우 `SERVER_CONFIRMED`를 추가 수용할 수 있다.
 
 ### Git 작업 권한
 
@@ -271,7 +271,7 @@ Server를 authoritative observation layer로 사용할 경우 `SERVER_CONFIRMED`
 
 를 승인하는 작업-scoped permission 방식이 적합하다.
 
-충돌, dirty pull 대상, detached HEAD, push reject는 자동 해결하지 않고 PAUSE해야 한다.
+충돌, 변경 상태 pull 대상, 분리된 HEAD, 푸시 거부는 자동 해결하지 않고 PAUSE해야 한다.
 
 ## Worker UI에 추가해야 할 식별 정보
 
@@ -283,43 +283,43 @@ Server를 authoritative observation layer로 사용할 경우 `SERVER_CONFIRMED`
 - Project path
 - 저장소 URL
 - 브랜치
-- 로컬 HEAD short SHA
-- 원격 HEAD short SHA
-- Git status: CLEAN / DIRTY
+- 로컬 HEAD 짧은 SHA
+- 원격 HEAD 짧은 SHA
+- Git 상태: CLEAN / DIRTY
 - Sync 상태
-- Last push/fetch timestamp
+- 마지막 푸시/가져오기 시각
 
 ### 서버
-- ProjectHub Server base URL
-- Connection status
-- Last successful heartbeat/상태 update
-- Server가 기록한 latest commit SHA
+- ProjectHub 서버 기본 URL
+- 연결 상태
+- 마지막 성공 생존 신호/상태 갱신
+- 서버가 기록한 최신 커밋 SHA
 
 ### GPT Web 검토 연결
-- Review 출처: ATTACHMENT / GIT / SERVER
-- Review commit SHA
-- Review 상태: WAITING / CONFIRMED / MISMATCH
+- 검토 출처: ATTACHMENT / GIT / SERVER
+- 검토 커밋 SHA
+- 검토 상태: WAITING / CONFIRMED / MISMATCH
 
 비밀키/API Key 등 자격증명은 UI에 표시하지 않는다.
 
 ## 다음 구현 권장 순서
 
 1. Worker 사용량 계측 수정
-   - cumulative snapshot 단순 합산 제거
-   - baseline/latest/delta 구조 도입
+   - 누적 스냅샷 단순 합산 제거
+   - 기준값/최신값/차이 구조 도입
 
-2. Worker UI에 저장소/server identity 표시
+2. Worker UI에 저장소/서버 식별 정보 표시
    - repo URL
    - 브랜치
    - 로컬/원격 SHA
    - Server URL/status
 
 3. Worker에 Git review 체크포인트 추가
-   - push 완료 후 원격 exact SHA 확인
-   - 확인 전 GPT Web review 요청 생성 금지
+   - push 완료 후 원격 정확한 SHA 확인
+   - 확인 전 GPT Web 검토 요청 생성 금지
 
-4. Server project-상태에 Git sync observation 확장
-   - latest commit
+4. 서버 프로젝트 상태에 Git 동기화 관측 확장
+   - 최신 커밋
    - observed_at
    - 브랜치
    - workstation
@@ -327,7 +327,7 @@ Server를 authoritative observation layer로 사용할 경우 `SERVER_CONFIRMED`
 5. Web 프롬프트에 review 출처 메타데이터 전달
    - exact 저장소
    - exact SHA
-   - server observation 상태
+   - 서버 관측 상태
 
 6. 다음 자동개발 프로젝트에서 Git-based E2E 수행
    - 파일 첨부 없이 Web이 exact commit을 직접 읽어 리뷰
@@ -336,7 +336,7 @@ Server를 authoritative observation layer로 사용할 경우 `SERVER_CONFIRMED`
 
 ## TETRIS E2E의 기준 가치
 
-이 TETRIS 사례는 ProjectHub의 첫 장기 Autonomous Development E2E 기준 사례로 활용할 수 있다.
+이 TETRIS 사례는 ProjectHub의 첫 장기 자율 개발 E2E 기준 사례로 활용할 수 있다.
 
 다음 프로젝트에서 비교할 지표:
 - 총 소요 시간
@@ -346,8 +346,8 @@ Server를 authoritative observation layer로 사용할 경우 `SERVER_CONFIRMED`
 - 빌드 시도
 - 테스트 통과/실패
 - 실제 작업 token delta
-- cached tokens
+- 캐시 토큰
 - 변경 파일 수
-- Git checkpoints
-- sync mismatch 횟수
+- Git 체크포인트
+- 동기화 불일치 횟수
 - 최종 사용자 승인
