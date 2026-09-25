@@ -12,7 +12,7 @@ WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 JUDGE    -> WORK
 RESOURCE_QUEUE 접수 -> HQ
 RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
-HQ ACTION=END -> 의미 흐름 종료 고정 -> Worker 기계적 대기 작업 확인
+HQ ACTION=END -> 현재 실행 구간 의미 흐름 종료 고정 -> Worker 기계적 대기 작업 확인
 기계적 대기 작업 있음 -> 대기 -> 모두 종료 -> DONE / DONE_WITH_ERROR
 UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 ~~~
@@ -165,7 +165,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 
 - RESOURCE 완료마다 HQ를 깨우는 별도 이벤트 대기열는 반복 흐름을 만들 수 있어 제거 대상으로 확정했다.
 - HQ ACTION=END를 의미 작업 종료의 단일 확정점으로 사용한다.
-- END 이후에는 Worker가 HQ/WORK/JUDGE 의미 흐름을 다시 실행하지 않는다.
+- END 이후 같은 실행 구간에서는 Worker가 HQ/WORK/JUDGE 의미 흐름을 자동으로 다시 실행하지 않는다. 사용자가 작업 추가를 실행하면 기존 세션으로 새 실행 구간을 시작할 수 있다.
 - RESOURCE를 포함한 남은 기계적 대기 작업은 Worker가 대기 상태에서 직접 추적한다.
 - 모든 기계적 대기 작업이 끝나면 Worker가 DONE 또는 DONE_WITH_ERROR로 전환한다.
 - END 이후 WORK 보고가 HQ로 향하는 경우 Worker가 "HQ의 작업은 종료되었습니다."로 차단한다.
