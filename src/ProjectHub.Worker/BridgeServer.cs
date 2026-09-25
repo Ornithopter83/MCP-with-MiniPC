@@ -120,6 +120,12 @@ public sealed class BridgeServer : IDisposable
         }
     }
 
+    public BridgeTask? GetTaskSnapshot(string taskId)
+    {
+        lock (_gate)
+            return _state.Tasks.FirstOrDefault(item => item.Id == taskId);
+    }
+
     public async Task<BridgeTask?> WaitForTaskCompletionAsync(string taskId, CancellationToken cancellationToken)
     {
         while (true)
