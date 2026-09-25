@@ -94,14 +94,14 @@ public sealed class CoordinatorFirstContractTests
 
     [Theory]
     [InlineData("PAUSED")]
+    [InlineData("CANCELED")]
     [InlineData("DONE")]
     [InlineData("DONE_WITH_ERROR")]
-    public void TaskContinuation_AllowsPauseAndCompletedSegments(string status)
+    public void TaskContinuation_AllowsInterruptedAndCompletedSegments(string status)
         => Assert.True(TaskContinuationContract.IsResumableStatus(status));
 
     [Theory]
     [InlineData("RUNNING")]
-    [InlineData("CANCELED")]
     [InlineData("")]
     public void TaskContinuation_RejectsNonResumableStatuses(string status)
         => Assert.False(TaskContinuationContract.IsResumableStatus(status));
@@ -118,6 +118,19 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("이전 작업을 완료했습니다.", input);
         Assert.Contains("사용자 추가 요청:", input);
         Assert.Contains("효과음을 추가하고 계속 다듬어줘.", input);
+    }
+
+    [Fact]
+    public void TaskContinuation_BuildsCanceledFollowupForSameHqContext()
+    {
+        var input = TaskContinuationContract.BuildHqFollowupInput(
+            "CANCELED",
+            "현재 구현을 진행하세요.",
+            "중단한 곳부터 계속해줘.");
+
+        Assert.Contains("이전 작업 상태: CANCELED", input);
+        Assert.Contains("현재 구현을 진행하세요.", input);
+        Assert.Contains("중단한 곳부터 계속해줘.", input);
     }
 
     [Fact]
@@ -399,6 +412,21 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("coord-session", settings.EffectiveCoordinator.ThreadSessionId);
         Assert.Equal("impl-session", settings.EffectiveImplementer.ThreadSessionId);
         Assert.Equal("C:/work", settings.EffectiveCoordinator.ThreadProjectPath);
+    }
+
+    [Fact]
+    public void CodexThreadStartedParser_ExtractsSessionIdImmediately()
+    {
+        const string started = """
+            {"type":"thread.started","thread_id":"session-live-123"}
+            """;
+        const string message = """
+            {"type":"item.completed","item":{"type":"agent_message","text":"진행 중"}}
+            """;
+
+        Assert.True(CodexCliRunner.TryExtractThreadStarted(started, out var sessionId));
+        Assert.Equal("session-live-123", sessionId);
+        Assert.False(CodexCliRunner.TryExtractThreadStarted(message, out _));
     }
 
     [Fact]
