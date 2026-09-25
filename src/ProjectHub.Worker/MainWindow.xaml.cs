@@ -1533,23 +1533,29 @@ public partial class MainWindow : Window
     private void OnObservationSidecarEvent(ObservationSidecarEvent observation)
     {
         RunOnUi(() =>
+        {
+            _lastActivityAt = DateTimeOffset.UtcNow;
             AddTaskMessage(
                 observation.Source,
                 observation.Content,
                 sizeBytes: Encoding.UTF8.GetByteCount(observation.Content),
                 status: observation.Status,
-                includeHistory: false));
+                includeHistory: false);
+        });
     }
 
     private void OnObservationSidecarCompletion(MechanicalWorkCompletion completion)
     {
         RunOnUi(() =>
+        {
+            _lastActivityAt = DateTimeOffset.UtcNow;
             AddTaskMessage(
                 completion.Success ? "OBSERVATION COMPLETED" : "OBSERVATION FAILED",
                 $"observation {completion.Id} · mode {FormatCompletionMode(completion.CompletionMode)}\n{completion.Message}",
                 fileCount: completion.ResultPaths.Count,
                 status: completion.Success ? "COMPLETED" : completion.ErrorCode ?? "FAILED",
-                includeHistory: false));
+                includeHistory: false);
+        });
     }
 
     private static string FormatCompletionMode(MechanicalWorkCompletionMode mode)
@@ -1625,8 +1631,24 @@ public partial class MainWindow : Window
             int GetPendingMechanicalWorkCount()
                 => mechanicalWork.OutstandingCount;
 
-            Task WaitForPendingMechanicalWorkAsync(CancellationToken cancellationToken)
-                => mechanicalWork.WaitForAllAsync(cancellationToken);
+            async Task WaitWithMechanicalHeartbeatAsync(Task waitTask, CancellationToken cancellationToken)
+            {
+                while (!waitTask.IsCompleted)
+                {
+                    var heartbeat = Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
+                    var completed = await Task.WhenAny(waitTask, heartbeat);
+                    if (completed == waitTask)
+                        break;
+                    _lastActivityAt = DateTimeOffset.UtcNow;
+                }
+                await waitTask;
+                _lastActivityAt = DateTimeOffset.UtcNow;
+            }
+
+            async Task WaitForPendingMechanicalWorkAsync(CancellationToken cancellationToken)
+                => await WaitWithMechanicalHeartbeatAsync(
+                    mechanicalWork.WaitForAllAsync(cancellationToken),
+                    cancellationToken);
 
             static string FormatObservationResults(IReadOnlyList<MechanicalWorkCompletion> completions)
             {
@@ -1661,7 +1683,9 @@ public partial class MainWindow : Window
                         status: "WAITING_OBSERVATION",
                         includeHistory: false);
                     SetFlowState(false, false, false);
-                    await mechanicalWork.WaitForWorkResultRequiredAsync(cts.Token);
+                    await WaitWithMechanicalHeartbeatAsync(
+                        mechanicalWork.WaitForWorkResultRequiredAsync(cts.Token),
+                        cts.Token);
                     results.AddRange(mechanicalWork.DrainCompletions(
                         "OBSERVATION",
                         MechanicalWorkCompletionMode.WorkResultRequired));
