@@ -23,6 +23,10 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("NOUL | QID:<id>", hq);
         Assert.Contains("SCORE | QID:<id>", hq);
         Assert.Contains("CHOICE | QID:<id>", hq);
+        Assert.Contains("CHOICE의 선택지 키는 영문자로 시작", hq);
+        Assert.Contains("한글 선택지 키는 사용하지 않는다.", hq);
+        Assert.Contains("A=<기준>", hq);
+        Assert.Contains("B=<기준>", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
@@ -185,6 +189,14 @@ public sealed class JudgeTransportContractTests
         Assert.Contains("PASS: YES >= 0.8", parsed.Questions[0].Instructions);
         Assert.Equal(new Dictionary<string, string> { ["A"] = "ready", ["B"] = "pending" }, parsed.Questions[1].ChoiceCriteria);
         Assert.Contains("PASS: A or B", parsed.Questions[1].Instructions);
+    }
+
+    [Fact]
+    public void ChoiceParserRejectsNonAsciiChoiceKeys()
+    {
+        const string input = "CHOICE | QID:STATE 상태를 선택하라.\n성공=완료\n실패=미완료";
+        Assert.False(JudgeTransportContract.TryParse(input, out _, out var error));
+        Assert.Equal("CHOICE_CRITERIA_MISSING", error);
     }
 
     [Fact]
