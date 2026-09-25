@@ -773,10 +773,23 @@ public sealed class BridgeServer : IDisposable
         ".gif" => "image/gif",
         ".webp" => "image/webp",
         ".bmp" => "image/bmp",
+        ".svg" => "image/svg+xml",
+        ".mp3" => "audio/mpeg",
+        ".wav" => "audio/wav",
+        ".ogg" => "audio/ogg",
+        ".flac" => "audio/flac",
+        ".m4a" => "audio/mp4",
+        ".mp4" => "video/mp4",
+        ".webm" => "video/webm",
         ".pdf" => "application/pdf",
+        ".zip" => "application/zip",
         ".txt" => "text/plain",
         ".md" => "text/markdown",
         ".json" => "application/json",
+        ".csv" => "text/csv",
+        ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         _ => "application/octet-stream"
     };
     private async Task WriteJsonAsync(HttpListenerResponse response, object payload)
