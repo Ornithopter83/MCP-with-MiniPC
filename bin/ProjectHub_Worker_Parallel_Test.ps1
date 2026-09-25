@@ -53,7 +53,7 @@ if ($NoRestore) {
 }
 
 Invoke-Checked "1. 병렬 WORK 핵심 Worker 테스트" {
-    dotnet test $WorkerTests -c Debug @restoreArgs --filter "FullyQualifiedName~WorkGraphTests|FullyQualifiedName~ParallelWorkSchedulerTests|FullyQualifiedName~GitWorktreeManagerTests|FullyQualifiedName~ParallelWorkTransportTests|FullyQualifiedName~CodexWorkItemExecutorTests|FullyQualifiedName~ParallelWorkSupervisorTests|FullyQualifiedName~ParallelResourceWorkItemRouterTests|FullyQualifiedName~ParallelJudgeWorkItemRouterTests|FullyQualifiedName~ParallelWorkSidecarTests|FullyQualifiedName~WorkGraphPersistenceTests|FullyQualifiedName~ParallelWorkUiFormatterTests|FullyQualifiedName~ParallelWorkActivationPolicyTests"
+    dotnet test $WorkerTests -c Debug @restoreArgs --filter "FullyQualifiedName~WorkGraphTests|FullyQualifiedName~ParallelWorkSchedulerTests|FullyQualifiedName~GitWorktreeManagerTests|FullyQualifiedName~ParallelWorkTransportTests|FullyQualifiedName~CodexWorkItemExecutorTests|FullyQualifiedName~ParallelWorkSupervisorTests|FullyQualifiedName~ParallelResourceWorkItemRouterTests|FullyQualifiedName~ParallelJudgeWorkItemRouterTests|FullyQualifiedName~ParallelWorkSidecarTests|FullyQualifiedName~WorkGraphPersistenceTests|FullyQualifiedName~ParallelWorkUiFormatterTests|FullyQualifiedName~ParallelWorkActivationPolicyTests|FullyQualifiedName~ParallelWorkGitPreflightTests"
 }
 
 Invoke-Checked "2. 전체 solution 테스트" {

@@ -1,6 +1,6 @@
 # 현재 작업
 
-갱신일: 2026-09-25
+갱신일: 2026-09-26
 
 정책 원본: Master-Polish.md
 
@@ -50,6 +50,8 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 성공한 Integration resultRef를 이후 WorkItem의 기본 baseRef로 승격하되 dependency만으로 의미적 base를 추론하지 않음
 - 새 병렬 실행 구간에서는 현재 작업공간 Git HEAD를 다시 읽어 stale 기준 ref를 피함
 - 새 Job은 maxConcurrentWork=1이어도 WorkGraph/Scheduler runtime을 사용하며, 저장 WorkGraph가 없는 과거 continuation만 max=1에서 레거시 직렬 경로를 유지
+- 메시지/작업 이력 상단에 WorkItem 상태 목록을 직접 표시하고 Integration/CANCELED/BLOCKED/FAILED 세부 상태를 노출
+- 병렬 runtime 시작 전 Git 저장소/HEAD/attached branch 사전 검사를 추가하고 실행 버튼/작업 추가에도 같은 오류를 노출
 - 다음 우선순위는 Windows dotnet test/build와 실제 max=1 동일-runtime 회귀, max=4 병렬 E2E, Integration landing E2E
 
 착수 commit:

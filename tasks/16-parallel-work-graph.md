@@ -593,3 +593,14 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 병렬화 이전 continuation을 깨지 않기 위해 저장 WorkGraph가 없는 기존 continuation은 max=1일 때만 레거시 직렬 runtime으로 이어간다.
 - 저장 WorkGraph가 있거나 maxConcurrentWork를 2 이상으로 올린 continuation은 병렬 runtime으로 복귀한다.
 - `ParallelWorkActivationPolicyTests`를 추가했고 Windows 검증 스크립트의 핵심 테스트 필터에도 포함했다.
+
+
+### 2026-09-26 UI 상세 목록과 Git 사전 차단
+
+- `2469627236ab6f8a484cbc27588ff29ec1d0a20a`: 메시지/작업 이력 상단에 현재 WorkItem 상태 목록을 직접 표시하도록 추가했다. 기존 Pipeline 요약과 ToolTip도 유지한다.
+- `993ed64c33f94fc92d633eae3159a3876bfb37d2`: 상태 목록에 CANCELED를 포함하고, Integration WorkItem은 `[I]`, BLOCKED/FAILED는 기계적 코드도 함께 표시한다.
+- `2eab6a01eac0b6e82f021bb5755cfc12a6cbc59e`: 병렬 runtime이 HQ를 호출하기 전에 Git 저장소, HEAD commit, attached branch를 기계적으로 확인한다. 조건을 만족하지 않으면 WorkGraph 실행을 시작하지 않는다.
+- `a705ae6f7a45db71693a85c7dcfaa275d4c56164`: 같은 Git 사전 검사를 실행 버튼과 작업 추가 사전 점검에도 연결해 사용자가 AI 호출 전에 문제를 확인할 수 있게 했다.
+- 새 병렬 Job이 max=1에서도 WorkGraph runtime을 사용하므로 Git worktree 요구 조건도 동일하게 적용된다.
+- 과거 레거시 continuation 중 저장 WorkGraph가 없고 max=1인 경우에는 기존 직렬 경로를 유지하므로 병렬 Git 사전 검사를 강제하지 않는다.
+- Windows 핵심 검증 스크립트에 `ParallelWorkGitPreflightTests`를 추가했다.
