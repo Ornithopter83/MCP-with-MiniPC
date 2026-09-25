@@ -1,16 +1,16 @@
-# Legacy Web JEV Footer Contract
+# 레거시 Web JEV 하단 계약
 
-Updated: 2026-09-24
+갱신일: 2026-09-24
 
-이 문서는 기존 GPT Web ↔ Codex ↔ JEV legacy mode의 공개 ACTION/NEXT wire만 보존한다.
+이 문서는 기존 GPT Web ↔ Codex ↔ JEV 레거시 모드의 공개 ACTION/NEXT wire만 보존한다.
 
 신규 CLI-to-CLI 정책은 Master-Polish.md의 ACTION + GOTO 계약을 따른다.
 
-## Core rule
+## 핵심 규칙
 
-**Legacy mode에서도 Worker는 판단하지 않는다.**
+**레거시 모드에서도 Worker는 판단하지 않는다.**
 
-Worker는 NEXT를 읽어 전달하고 JEV provider 응답을 같은 Codex session에 돌려줄 뿐, threshold나 evidence를 보고 PASS/FAIL을 만들지 않는다.
+Worker는 NEXT를 읽어 전달하고 JEV 제공자 응답을 같은 Codex 세션에 돌려줄 뿐, 임계값나 근거를 보고 PASS/FAIL을 만들지 않는다.
 
 Legacy Web action은 다음 세 값만 사용한다.
 
@@ -22,7 +22,7 @@ Legacy Web action은 다음 세 값만 사용한다.
 
 CONTINUE는 본문이 있어야 한다. Legacy Web은 HQ 역할 라우팅을 수행하지 않는다.
 
-## Codex route
+## Codex 경로
 
 첫 유효행:
 
@@ -58,17 +58,17 @@ REPORT의 사실 여부를 Worker가 판단하지 않는다.
 ...
 ~~~
 
-Worker는 VALIDATION REQUEST를 JEV adapter에 전달한다.
+Worker는 VALIDATION REQUEST를 JEV 어댑터에 전달한다.
 
-질문 안의 PASS/threshold/criteria는 **JUDGE가 해석할 요청 내용**이며 Worker 완료 gate가 아니다.
+질문 안의 PASS/임계값/criteria는 **JUDGE가 해석할 요청 내용**이며 Worker 완료 gate가 아니다.
 
-## JEV response
+## JEV 응답
 
 JEV 응답은 Worker가 의미적으로 평가하지 않는다.
 
-Worker는 transport/schema 수준에서 응답을 읽을 수 있으면 원문을 같은 Codex session으로 전달한다.
+Worker는 전송/스키마 수준에서 응답을 읽을 수 있으면 원문을 같은 Codex 세션으로 전달한다.
 
-권장 envelope:
+권장 봉투 구조:
 
 ~~~text
 [JUDGMENT]
@@ -78,36 +78,36 @@ Worker는 transport/schema 수준에서 응답을 읽을 수 있으면 원문을
 
 Worker는 `GOTO:WORK` 제어행을 다시 입력에 넣지 않는다. Codex가 결과를 해석하고 `NEXT:WEB` 또는 `NEXT:JEV`를 선택한다.
 
-## Technical error
+## 기술 오류
 
-JEV timeout/auth/HTTP/schema 오류는 PASS/FAIL로 추측하지 않는다.
+JEV 시간 초과/auth/HTTP/스키마 오류는 PASS/FAIL로 추측하지 않는다.
 
-Worker는 오류 원문을 같은 Codex session 또는 legacy 관제 경로에 전달한다.
+Worker는 오류 원문을 같은 Codex 세션 또는 legacy 관제 경로에 전달한다.
 
 Worker가 자동 재시도 횟수나 구현 실패를 결정하지 않는다.
 
-## Worker responsibilities
+## Worker 책임
 
 허용:
-- NEXT syntax parse
-- provider call
+- NEXT syntax 파싱
+- 제공자 call
 - request/response serialization
-- timeout/auth/HTTP/schema error
-- same-session return
-- transcript/usage
+- 시간 초과/auth/HTTP/스키마 오류
+- same-세션 return
+- 기록/사용량
 - secret redaction
 
 금지:
-- threshold comparison
+- 임계값 comparison
 - PASS/PARTIAL/FAIL 생성
-- evidence 충분성 판단
-- evidence freshness 판단
+- 근거 충분성 판단
+- 근거 freshness 판단
 - 자동 Codex 재작업
 - 자동 Web 완료 판단
 - 결과 본문 의미 변형
 
-## Compatibility
+## 호환성
 
-이 문서의 NEXT:WEB/JEV는 legacy mode에만 해당한다.
+이 문서의 NEXT:WEB/JEV는 레거시 모드에만 해당한다.
 
 신규 CLI-to-CLI에서는 NEXT를 사용하지 않고 GOTO를 사용한다.
