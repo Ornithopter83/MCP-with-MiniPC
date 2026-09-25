@@ -32,10 +32,17 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 이번 활성 작업은 단일 WORK 직렬 흐름을 완전한 동적 DAG 기반 병렬 WorkGraph로 확장한다. 상세 구현 순서와 검증 게이트는 `tasks/16-parallel-work-graph.md`를 기준으로 한다.
 
 현재 착수 범위:
-- WorkGraph 도메인과 상태 전이
-- dependency/cycle/revision 기계 검증
-- READY 계산
-- 이후 ParallelWorkScheduler, worktree, 실제 Codex 병렬 실행 순으로 확장
+- WorkGraph 도메인과 상태 전이 구현 완료
+- dependency/cycle/revision 기계 검증과 READY 계산 구현 완료
+- Integration을 같은 WORK 역할의 WorkItemKind로 표현
+- 단계 1 단위 테스트 추가
+- 다음 구현은 ParallelWorkScheduler와 maxConcurrentWork 슬롯 실행
+
+착수 commit:
+- 정책/계획: `0c87a0021643efc00e147fead82ed45cb1bf4c91`
+- WorkGraph 기반: `49a51cbd0e259dd43f7bd3fffe2484f2117dd0d8`
+
+현재 실행 환경에는 .NET SDK가 없어 단계 1의 `dotnet test`/빌드는 아직 실행하지 못했다.
 
 이전 구조 변경에서 코드상 다음 항목을 반영했다.
 

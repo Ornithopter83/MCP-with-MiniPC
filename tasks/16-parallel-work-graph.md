@@ -490,3 +490,18 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - WorkGraph가 재시작 후 복구 가능
 - UI에서 현재 병렬 상태를 식별 가능
 - max=1 회귀와 max=4 실제 병렬 E2E가 모두 통과
+
+
+## 21. 진행 기록
+
+### 2026-09-25 착수
+
+- 구현 전 복구 branch `recovery/pre-parallel-work-graph-20260925`를 commit `000a478f6e21c25e8d89020137e93abed1cab5e2`에 생성했다.
+- 정책/종합 계획 commit: `0c87a0021643efc00e147fead82ed45cb1bf4c91`
+- 단계 1 첫 구현 commit: `49a51cbd0e259dd43f7bd3fffe2484f2117dd0d8`
+- `WorkGraph.cs`에 WorkItem 종류/상태, snapshot, revision, maxConcurrentWork, dependency 기반 READY 계산, 실행 상태 전이를 추가했다.
+- `WorkGraphPatch.cs`에 ADD/CANCEL/SET_DEPENDENCIES/SET_GOAL/SET_BASE_REF/SET_MAX_CONCURRENCY와 revision 검증 결과 모델을 추가했다.
+- patch는 임시 graph에 원자적으로 적용한 뒤 unknown dependency, self dependency, cycle을 기계적으로 검증하고 성공 시에만 commit한다.
+- Integration은 새 역할이 아니라 `WorkItemKind.Integration`으로 같은 WORK 역할 안에 표현한다.
+- 단위 테스트는 독립 READY 순서, dependency 해제, revision mismatch, self/unknown/cycle 거부, 실패 dependency 차단, RUNNING 정의 불변, cancel dependency 차단, concurrency 범위, Integration dependency를 포함한다.
+- 현재 실행 환경에는 .NET SDK가 없어 `dotnet test`와 빌드는 실행하지 못했다. 다음 Windows 검증에서 단계 1 테스트를 우선 실행한다.
