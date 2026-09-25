@@ -91,6 +91,39 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("RESOURCE_REQUEST_EMPTY", emptyError);
     }
 
+    [Theory]
+    [InlineData("PAUSED")]
+    [InlineData("DONE")]
+    [InlineData("DONE_WITH_ERROR")]
+    public void TaskContinuation_AllowsPauseAndCompletedSegments(string status)
+        => Assert.True(TaskContinuationContract.IsResumableStatus(status));
+
+    [Theory]
+    [InlineData("RUNNING")]
+    [InlineData("CANCELED")]
+    [InlineData("")]
+    public void TaskContinuation_RejectsNonResumableStatuses(string status)
+        => Assert.False(TaskContinuationContract.IsResumableStatus(status));
+
+    [Fact]
+    public void TaskContinuation_BuildsUserFollowupForSameHqContext()
+    {
+        var input = TaskContinuationContract.BuildHqFollowupInput(
+            "DONE",
+            "이전 작업을 완료했습니다.",
+            "효과음을 추가하고 계속 다듬어줘.");
+
+        Assert.Contains("이전 작업 상태: DONE", input);
+        Assert.Contains("이전 작업을 완료했습니다.", input);
+        Assert.Contains("사용자 추가 요청:", input);
+        Assert.Contains("효과음을 추가하고 계속 다듬어줘.", input);
+    }
+
+    [Fact]
+    public void TaskContinuation_RejectsEmptyFollowup()
+        => Assert.Throws<InvalidOperationException>(() =>
+            TaskContinuationContract.BuildHqFollowupInput("PAUSED", "사용자 입력 대기", "   "));
+
     [Fact]
     public void TranscriptJson_KeepsKoreanReadableAndValidUtf8Json()
     {
