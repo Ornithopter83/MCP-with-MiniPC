@@ -71,6 +71,70 @@ public sealed class WorkGraph
         MaxConcurrentWork = maxConcurrentWork;
     }
 
+    public static WorkGraph Restore(
+        WorkGraphSnapshot snapshot,
+        bool markRunningAsRecoveryBlocked = true)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Revision < 0)
+            throw new InvalidDataException("WorkGraph revision이 유효하지 않습니다.");
+
+        var graph = new WorkGraph(snapshot.JobId, snapshot.MaxConcurrentWork);
+        var maxCreatedOrder = -1L;
+
+        foreach (var source in snapshot.Items ?? Array.Empty<WorkItemSnapshot>())
+        {
+            if (!IsSafeId(source.Id))
+                throw new InvalidDataException("WorkItem ID가 유효하지 않습니다.");
+            if (string.IsNullOrWhiteSpace(source.Goal))
+                throw new InvalidDataException($"WorkItem {source.Id} 목표가 비어 있습니다.");
+            if (graph._items.ContainsKey(source.Id))
+                throw new InvalidDataException($"WorkItem {source.Id}가 중복되었습니다.");
+
+            var state = source.State;
+            var blockCode = source.BlockCode;
+            var finishedAt = source.FinishedAtUtc;
+            if (markRunningAsRecoveryBlocked && state == WorkItemState.Running)
+            {
+                state = WorkItemState.Blocked;
+                blockCode = "RECOVERY_REQUIRED";
+                finishedAt = DateTimeOffset.UtcNow;
+            }
+
+            graph._items[source.Id] = new WorkItemEntry
+            {
+                Id = source.Id,
+                Goal = source.Goal,
+                Dependencies = NormalizeDependencies(source.Dependencies),
+                Kind = source.Kind,
+                State = state,
+                CreatedOrder = source.CreatedOrder,
+                BaseRef = NullIfWhiteSpace(source.BaseRef),
+                Branch = NullIfWhiteSpace(source.Branch),
+                WorktreePath = NullIfWhiteSpace(source.WorktreePath),
+                SessionId = NullIfWhiteSpace(source.SessionId),
+                ResultRef = NullIfWhiteSpace(source.ResultRef),
+                ResultSummary = NullIfWhiteSpace(source.ResultSummary),
+                FailureCode = NullIfWhiteSpace(source.FailureCode),
+                BlockCode = NullIfWhiteSpace(blockCode),
+                ResumeInputType = NullIfWhiteSpace(source.ResumeInputType),
+                ResumeBody = NullIfWhiteSpace(source.ResumeBody),
+                CreatedAtUtc = source.CreatedAtUtc,
+                StartedAtUtc = source.StartedAtUtc,
+                FinishedAtUtc = finishedAt
+            };
+            maxCreatedOrder = Math.Max(maxCreatedOrder, source.CreatedOrder);
+        }
+
+        var validationError = ValidateGraph(graph._items);
+        if (validationError is not null)
+            throw new InvalidDataException(validationError);
+
+        graph.Revision = snapshot.Revision;
+        graph._nextCreatedOrder = maxCreatedOrder + 1;
+        return graph;
+    }
+
     public string JobId { get; }
 
     public long Revision { get; private set; }
