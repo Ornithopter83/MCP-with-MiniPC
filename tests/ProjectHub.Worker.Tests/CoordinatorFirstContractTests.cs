@@ -402,6 +402,38 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void CodexProgressParser_ExtractsCompletedAgentMessagesOnly()
+    {
+        const string agent = """
+            {"type":"item.completed","item":{"type":"agent_message","text":"프로젝트 구조를 확인했습니다.\n다음 구현을 진행합니다."}}
+            """;
+        const string command = """
+            {"type":"item.completed","item":{"type":"command_execution","command":"dotnet test Sample.sln","exit_code":0}}
+            """;
+        const string started = """
+            {"type":"item.started","item":{"type":"agent_message","text":"중간 상태"}}
+            """;
+
+        Assert.True(CodexCliRunner.TryExtractAgentMessage(agent, out var text));
+        Assert.Equal("프로젝트 구조를 확인했습니다.\n다음 구현을 진행합니다.", text);
+        Assert.False(CodexCliRunner.TryExtractAgentMessage(command, out _));
+        Assert.False(CodexCliRunner.TryExtractAgentMessage(started, out _));
+    }
+
+    [Fact]
+    public void ProgressPreview_PreservesLinesWithoutSemanticSummarization()
+    {
+        var preview = WorkerHistoryCardFormatter.ProgressPreview(
+            "첫 번째 줄\n\n두 번째    줄\n세 번째 줄");
+
+        Assert.Equal(
+            "첫 번째 줄" + Environment.NewLine +
+            "두 번째 줄" + Environment.NewLine +
+            "세 번째 줄",
+            preview);
+    }
+
+    [Fact]
     public void CommandExecutionParser_ExtractsOnlyCompletedShellCommandsAndExitCodes()
     {
         const string jsonl = """
