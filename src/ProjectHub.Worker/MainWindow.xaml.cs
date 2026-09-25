@@ -1865,11 +1865,12 @@ public partial class MainWindow : Window
 
     private static string GetResourceFailureCode(BridgeTask? task) => task?.FinishReason switch
     {
-        "resource_image_not_generated" => "RESOURCE_IMAGE_NOT_GENERATED",
-        "resource_image_capture_failed" => "RESOURCE_IMAGE_CAPTURE_FAILED",
-        "resource_image_download_failed" => "RESOURCE_IMAGE_DOWNLOAD_FAILED",
+        "resource_not_generated" or "resource_image_not_generated" => "RESOURCE_NOT_GENERATED",
+        "resource_capture_failed" or "resource_image_capture_failed" => "RESOURCE_CAPTURE_FAILED",
+        "resource_download_failed" or "resource_image_download_failed" => "RESOURCE_DOWNLOAD_FAILED",
         "resource_save_failed" => "RESOURCE_SAVE_FAILED",
         "send_failed" => "RESOURCE_WEB_DELIVERY_FAILED",
+        "resource_timeout" => "RESOURCE_TIMEOUT",
         _ => "RESOURCE_RESULT_MISSING"
     };
 
@@ -1879,6 +1880,23 @@ public partial class MainWindow : Window
         ".jpg" or ".jpeg" => "image/jpeg",
         ".webp" => "image/webp",
         ".gif" => "image/gif",
+        ".svg" => "image/svg+xml",
+        ".mp3" => "audio/mpeg",
+        ".wav" => "audio/wav",
+        ".ogg" => "audio/ogg",
+        ".flac" => "audio/flac",
+        ".m4a" => "audio/mp4",
+        ".mp4" => "video/mp4",
+        ".webm" => "video/webm",
+        ".pdf" => "application/pdf",
+        ".zip" => "application/zip",
+        ".json" => "application/json",
+        ".txt" => "text/plain",
+        ".md" => "text/markdown",
+        ".csv" => "text/csv",
+        ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         _ => "application/octet-stream"
     };
 
