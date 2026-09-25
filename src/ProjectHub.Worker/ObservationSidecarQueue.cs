@@ -134,6 +134,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
     private readonly CancellationTokenSource _cts;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly ConcurrentDictionary<string, Task> _running = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _workItemRoots = new(StringComparer.Ordinal);
     private readonly Task _pump;
 
     public ObservationSidecarQueue(
@@ -169,6 +170,16 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         var path = Path.Combine(RequestDirectory, OwnerFolderName(workItemId));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    public void RegisterWorkItemRoot(string workItemId, string worktreePath)
+    {
+        if (!IsSafeWorkItemId(workItemId))
+            throw new ArgumentException("WorkItem ID가 안전하지 않습니다.", nameof(workItemId));
+        if (string.IsNullOrWhiteSpace(worktreePath) || !Directory.Exists(worktreePath))
+            throw new DirectoryNotFoundException("WorkItem worktree를 찾을 수 없습니다.");
+
+        _workItemRoots[workItemId] = Path.GetFullPath(worktreePath);
     }
 
     public async Task ScanNowAsync(CancellationToken cancellationToken)
@@ -304,7 +315,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         Process? process = null;
         try
         {
-            var processWorkingDirectory = ResolveAllowedDirectory(request.WorkingDirectory);
+            var processWorkingDirectory = ResolveAllowedDirectory(request.WorkingDirectory, workItemId);
             if (processWorkingDirectory is null)
             {
                 await FinishAsync(
@@ -364,7 +375,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             if (cancellationToken.IsCancellationRequested)
                 throw new OperationCanceledException(cancellationToken);
 
-            var requestedResults = ResolveResultPaths(request.ResultPaths, processWorkingDirectory, out var missingOrInvalid);
+            var requestedResults = ResolveResultPaths(request.ResultPaths, processWorkingDirectory, workItemId, out var missingOrInvalid);
             var outputDirectory = Path.Combine(OwnerScopedDirectory(ResultDirectory, workItemId), request.Id);
             Directory.CreateDirectory(outputDirectory);
             var stdoutPath = Path.Combine(outputDirectory, "stdout.txt");
@@ -578,7 +589,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                char.IsAsciiLetterOrDigit(character) ||
                character is '-' or '_' or '.');
 
-    private string? ResolveAllowedDirectory(string? requested)
+    private string? ResolveAllowedDirectory(string? requested, string? workItemId)
     {
         string fullPath;
         try
@@ -594,12 +605,13 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             return null;
         }
 
-        return Directory.Exists(fullPath) && IsAllowedPath(fullPath) ? fullPath : null;
+        return Directory.Exists(fullPath) && IsAllowedPath(fullPath, workItemId) ? fullPath : null;
     }
 
     private IReadOnlyList<string> ResolveResultPaths(
         IReadOnlyList<string>? requestedPaths,
         string processWorkingDirectory,
+        string? workItemId,
         out IReadOnlyList<string> missingOrInvalid)
     {
         var found = new List<string>();
@@ -622,7 +634,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                 continue;
             }
 
-            if (!IsAllowedPath(fullPath))
+            if (!IsAllowedPath(fullPath, workItemId))
             {
                 missing.Add(requested);
                 continue;
@@ -638,8 +650,16 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         return found;
     }
 
-    private bool IsAllowedPath(string path)
-        => IsWithin(path, _workingDirectory) || IsWithin(path, Path.GetFullPath(AppContext.BaseDirectory));
+    private bool IsAllowedPath(string path, string? workItemId)
+    {
+        if (IsWithin(path, _workingDirectory) ||
+            IsWithin(path, Path.GetFullPath(AppContext.BaseDirectory)))
+            return true;
+
+        return !string.IsNullOrWhiteSpace(workItemId) &&
+               _workItemRoots.TryGetValue(workItemId, out var worktreeRoot) &&
+               IsWithin(path, worktreeRoot);
+    }
 
     private static bool IsWithin(string path, string root)
     {

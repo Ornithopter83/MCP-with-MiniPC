@@ -72,6 +72,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 item.SessionId);
         }
 
+        _observationGate?.RegisterWorkItemRoot(item.Id, preparation.WorktreePath);
+
         var dependencyResults = request.Dependencies
             .Select(result => new WorkItemDependencyPromptContext(
                 result.WorkItemId,

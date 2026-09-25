@@ -6,6 +6,8 @@ public interface IWorkItemObservationGate
 {
     string GetRequestDirectory(string workItemId);
 
+    void RegisterWorkItemRoot(string workItemId, string worktreePath);
+
     Task<IReadOnlyList<MechanicalWorkCompletion>> CollectRequiredAsync(
         string workItemId,
         CancellationToken cancellationToken);
@@ -26,6 +28,9 @@ public sealed class WorkItemObservationGate : IWorkItemObservationGate
 
     public string GetRequestDirectory(string workItemId)
         => _queue.GetRequestDirectory(workItemId);
+
+    public void RegisterWorkItemRoot(string workItemId, string worktreePath)
+        => _queue.RegisterWorkItemRoot(workItemId, worktreePath);
 
     public async Task<IReadOnlyList<MechanicalWorkCompletion>> CollectRequiredAsync(
         string workItemId,
