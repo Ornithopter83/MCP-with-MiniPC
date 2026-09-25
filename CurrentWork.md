@@ -301,3 +301,18 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - WORK 계약의 설명 문장에서는 GOTO 목적지를 대괄호 제어행 형태로 쓰지 않는다.
 - 대괄호는 실제 ACTION/GOTO 제어행에만 사용하고, 설명 문장에서는 HQ, JUDGE, RESOURCE 역할명으로만 지칭한다.
 - 실제 라우팅 제어행 문법과 Worker 파서는 변경하지 않았다.
+
+## 2026-09-25 WORK 계약 간략화 동기화 및 배포 복사
+
+- 원격 `main` `bb0239f`까지 fast-forward 동기화하고 최신 `GPT-Web-Feedback.md`를 확인했다.
+- 새 변경은 HQ의 JUDGE용 Form 위임과 WORK 설명 문장의 대괄호 제어 표기 정리이며 Worker 라우팅 코드는 변경하지 않는다.
+- `dotnet build ProjectHub.sln -c Release --no-restore`: 성공, 경고 0 / 오류 0.
+- `dotnet publish src/ProjectHub.Worker/ProjectHub.Worker.csproj -c Release -r win-x64 --no-restore`: 성공.
+- 복사 직전 Worker 프로세스가 없음을 확인하고 게시 실행 파일을 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`에 복사했다. 원본/복사본 SHA-256 일치: `6A28F871982CAC2B79C00FB5F8F748B2F075A8DD0F4E9B8409B066837D440CD1`.
+- 자동 테스트와 Explorer 실화면/E2E는 실행하지 않았다. `artifacts/tower_defense_bgm.wav` 추적되지 않은 파일은 그대로 보존했다.
+
+## 2026-09-25 RESOURCE transport 시간 제한 연장
+
+- `ResourceSidecarQueue.ResourceTransportTimeout`을 5분에서 30분으로 변경했다.
+- 기존 timeout 처리와 실패 코드는 유지되며 제한 시간과 오류 메시지는 같은 상수를 사용한다.
+- 빌드·테스트는 이번 변경에서 실행하지 않았다.

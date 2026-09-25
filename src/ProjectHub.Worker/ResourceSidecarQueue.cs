@@ -14,7 +14,7 @@ public sealed record ResourceSidecarTransportEvent(string Source, string Content
 /// </summary>
 public sealed class ResourceSidecarQueue : IAsyncDisposable
 {
-    private static readonly TimeSpan ResourceTransportTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan ResourceTransportTimeout = TimeSpan.FromMinutes(30);
     private readonly BridgeServer? _bridgeServer;
     private readonly string _workingDirectory;
     private readonly Channel<ResourceSidecarRequest> _queue;

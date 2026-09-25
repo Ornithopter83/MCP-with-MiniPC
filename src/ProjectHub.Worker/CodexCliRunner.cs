@@ -304,6 +304,18 @@ public sealed class CodexCliRunner
         value = default;
         return false;
     }
+
+    private static bool TryGetString(JsonElement element, string propertyName, out string value)
+    {
+        if (TryGetPropertyIgnoreCase(element, propertyName, out var property) && property.ValueKind == JsonValueKind.String)
+        {
+            value = property.GetString() ?? string.Empty;
+            return true;
+        }
+        value = string.Empty;
+        return false;
+    }
+
     public static CodexUsage ExtractUsage(string stdout) => ProviderUsageParser.Extract(stdout);
 
     private static string ExtractFinalMessage(string stdout)

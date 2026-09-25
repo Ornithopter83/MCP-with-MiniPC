@@ -189,7 +189,7 @@ RESOURCE:
 - image response 절대 마감 시간 120초
 - 로드 완료 이미지 안정화 후 스트리밍 표기와 무관하게 IMAGE_READY/DOWNLOAD_START 진행
 - IMAGE_DETECTED 후보/로드 완료 진행 상황
-- Worker RESOURCE 전송 5분 시간 초과
+- Worker RESOURCE 전송 시간 초과를 5분에서 30분으로 연장
 - 시간 초과 시 해당 브리지 작업을 resource_timeout FAILED로 종료해 다음 FIFO 슬롯 해제
 - 확장 0.1.7 / 빌드 2026-09-25.1
 
