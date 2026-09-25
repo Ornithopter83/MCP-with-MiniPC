@@ -328,17 +328,21 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 
 ## 11. 현재 활성 작업
 
-활성 작업은 tasks/15-async-mechanical-observation.md다.
+활성 작업은 tasks/16-parallel-work-graph.md다.
+
+목표는 단일 WORK 직렬 실행을 동적 DAG 기반 병렬 WORK 실행으로 확장하는 것이다.
 
 구현 코드 범위:
-1. 공통 MechanicalWorkRegistry와 완료 모드 FINALIZE_ONLY / WORK_RESULT_REQUIRED
-2. OBSERVATION 요청 폴더 감시와 비동기 프로세스 실행·시간 초과·결과 수집
-3. WORK_RESULT_REQUIRED 완료까지 AI 비호출 대기 후 같은 WORK 세션에 OBSERVATION_RESULT 재주입
-4. RESOURCE를 공통 기계 작업 레지스트리의 FINALIZE_ONLY 작업으로 통합
-5. HQ END 이후 모든 FINALIZE_ONLY 기계 작업의 공통 최종 대기
-6. WORK workspace-write에 ProjectHub 실행 디렉터리를 추가 writable root로 제공
-7. 프로젝트별 .projecthub/mechanical/<jobId> 요청·active·result 기록
-8. 계약·테스트·작업 문서 갱신
+1. WorkItem / WorkGraph / GraphPatch 도메인과 상태 전이
+2. 설정 가능한 maxConcurrentWork와 ParallelWorkScheduler
+3. WorkItem별 Codex 세션, Git branch, worktree 격리
+4. HQ가 의미적으로 WorkItem 생성·변경·취소·의존성을 결정하는 계약
+5. WORK의 SPLIT_REQUEST와 HQ GraphPatch 반영
+6. Integration WorkItem을 통한 병렬 결과 통합·충돌 해결·전체 검증
+7. RESOURCE / JUDGE / OBSERVATION의 workItemId 귀속
+8. WorkGraph와 WorkItem 세션/branch/worktree/result 상태 영속화 및 재시작 복구
+9. Pipeline의 병렬 WORK 상태와 세부 WorkItem 표시
+10. 단일 WORK 대비 병렬 WORK 실제 E2E 비교 검증
 
 실제 Windows 빌드/테스트/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
 
@@ -382,3 +386,51 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 - FINALIZE_ONLY는 결과 의미 해석이 필요 없는 작업에만 사용한다. 의미 흐름은 계속되며 HQ가 END한 뒤에도 남아 있으면 Worker가 완료까지 기다린 후 DONE 또는 DONE_WITH_ERROR를 기록한다.
 - RESOURCE도 같은 공통 기계 작업 레지스트리에 FINALIZE_ONLY로 등록해 전체 outstanding 집계와 최종 대기 게이트에 포함한다.
 - 계측 결과의 성공 여부는 프로세스 종료 코드, 시간 초과, 결과 경로 존재 같은 기계 사실만 뜻한다. 결과가 제품 요구를 만족하는지는 WORK/HQ가 판단한다.
+
+
+---
+
+## 15. 동적 병렬 WORK Graph
+
+병렬 WORK는 고정된 WORK-1, WORK-2 같은 새 역할을 만들지 않는다. WORK 역할은 동일하며 Worker가 설정된 최대 동시 실행 수 안에서 HQ가 승인한 WorkItem을 독립 실행 슬롯에 배정한다.
+
+의미 판단 경계:
+- HQ는 사용자 목표를 WorkItem으로 분해하고 각 WorkItem의 목표, 의존성, 추가·변경·취소를 결정한다.
+- WORK는 자신에게 배정된 WorkItem 범위 안에서 구현·검증하고, 새 독립 작업이 필요하다고 판단하면 직접 새 WORK를 시작하지 않고 SPLIT_REQUEST를 HQ에 보고한다.
+- Worker는 WorkItem의 의미를 판단하지 않는다. 이미 HQ가 승인한 WorkGraph에서 상태와 의존성을 기계적으로 계산하고 READY WorkItem을 빈 슬롯에 배정한다.
+- 여러 READY WorkItem 중 별도 의미 우선순위가 없으면 Worker는 HQ가 제공한 명시적 순서 또는 안정적인 생성 순서를 기계적으로 사용한다.
+
+WorkItem 기본 상태:
+- PLANNED: HQ가 정의했지만 아직 실행 조건을 평가하지 않은 상태
+- READY: 모든 명시적 선행 의존성이 완료되어 실행 가능한 상태
+- RUNNING: Worker가 실행 슬롯, 세션, 작업공간을 배정해 실행 중인 상태
+- COMPLETED: 해당 WorkItem 실행이 정상적으로 끝나 결과 참조가 기록된 상태
+- FAILED: 기계적 실행 실패 또는 WORK가 실패 결과로 종료한 상태
+- BLOCKED: 미완료·실패 의존성 또는 HQ 판단이 필요한 조건 때문에 실행할 수 없는 상태
+- CANCELED: HQ 또는 사용자의 명시적 취소가 적용된 상태
+
+동시 쓰기 격리:
+- 동시 실행 WorkItem은 각각 독립 Git branch와 worktree를 사용한다.
+- worktree와 branch 생성·삭제·경로 검증은 Worker가 기계적으로 수행한다.
+- WorkItem의 시작 기준 ref는 WorkGraph에 명시적으로 기록한다.
+- Worker는 충돌의 의미를 자동 해결하지 않는다.
+
+동적 확장:
+- HQ는 실행 중에도 GraphPatch로 WorkItem을 추가·변경·취소하거나 의존성을 변경할 수 있다.
+- WORK가 SPLIT_REQUEST를 보고해도 새 WorkItem 생성 여부와 의존성은 HQ가 결정한다.
+- Worker는 승인되지 않은 작업을 의미적으로 생성하지 않는다.
+
+Integration:
+- 병렬 결과의 통합도 별도 새 AI 역할이 아니라 WORK 역할의 Integration WorkItem으로 표현한다.
+- Integration WorkItem은 통합 대상 WorkItem을 명시적 dependency로 가진다.
+- Integration WORK는 각 결과 ref/branch를 바탕으로 병합, 충돌 해결, 전체 빌드·테스트를 수행하고 통합 결과를 HQ에 보고한다.
+- Worker는 merge 충돌의 의미적 해결책을 선택하지 않는다.
+
+기존 사이드카:
+- RESOURCE, JUDGE, OBSERVATION은 기존 역할과 책임을 유지한다.
+- 병렬 실행에서는 모든 요청·완료·결과에 workItemId를 연결해 원래 WORK 세션으로 기계적으로 귀속한다.
+- WORK_RESULT_REQUIRED OBSERVATION은 해당 WorkItem만 대기시키며 다른 READY WorkItem의 실행을 막지 않는다.
+
+종료:
+- HQ ACTION=END는 더 이상 실행 중인 의미 WorkItem을 암묵적으로 폐기하지 않는다. END를 수용하려면 현재 WorkGraph가 HQ가 완료로 판단한 상태여야 하며, Worker는 그 판단 자체를 검증하지 않고 명시된 제어와 기계적 outstanding만 처리한다.
+- 최종 DONE / DONE_WITH_ERROR 전에는 실행 중 WorkItem, Integration WorkItem, RESOURCE, OBSERVATION 등 Worker가 추적하는 기계적 outstanding이 모두 종료되어야 한다.

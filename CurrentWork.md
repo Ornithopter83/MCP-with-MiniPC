@@ -23,9 +23,21 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - JUDGE = JEV
 - Worker = 역할/세션/연결/전송/프로세스/file 계측/프로토콜 오류와 RESOURCE 대기열 사실의 기계적 관리
 
-## 활성 작업 — 14 RESOURCE Web 역할 + HQ Web 복원
+## 활성 작업 — 16 동적 병렬 WORK Graph
 
-이번 구조 변경에서 코드상 다음 항목을 반영했다.
+복구 기준:
+- commit `000a478f6e21c25e8d89020137e93abed1cab5e2`
+- branch `recovery/pre-parallel-work-graph-20260925`
+
+이번 활성 작업은 단일 WORK 직렬 흐름을 완전한 동적 DAG 기반 병렬 WorkGraph로 확장한다. 상세 구현 순서와 검증 게이트는 `tasks/16-parallel-work-graph.md`를 기준으로 한다.
+
+현재 착수 범위:
+- WorkGraph 도메인과 상태 전이
+- dependency/cycle/revision 기계 검증
+- READY 계산
+- 이후 ParallelWorkScheduler, worktree, 실제 Codex 병렬 실행 순으로 확장
+
+이전 구조 변경에서 코드상 다음 항목을 반영했다.
 
 - WorkerRoleState.High 제거, Resource 도입
 - HIGH GOTO/허가/설정/UI/계약 제거

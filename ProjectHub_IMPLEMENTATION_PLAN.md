@@ -19,31 +19,30 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 
 미확인은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.
 
-## 활성 작업 — 14 RESOURCE Web 역할 + HQ Web 복원
+## 활성 작업 — 16 동적 병렬 WORK Graph
 
 목표:
-- HIGH를 제거하고 생성 리소스 전용 RESOURCE 역할로 구조를 교체
-- HQ에 ChatGPT Web 실행 대상을 복원
-- HQ/RESOURCE Web 작업 목적지를 생존 신호가 아니라 명시적 대화 연결으로 고정
-- HQ의 설계 책임과 PAUSE 의미를 강화
-- WORK가 ChatGPT Web 생성 파일이 필요한 작업을 RESOURCE에 위임하도록 계약 정리
-- RESOURCE 생성 파일 수집/복수 다운로드/저장과 FIFO 대기열을 구현
+- 단일 WORK 직렬 실행을 동적 DAG 기반 병렬 WorkGraph로 확장
+- HQ가 작업 분해·의존성·추가·취소를 의미적으로 결정
+- Worker가 maxConcurrentWork 안에서 승인된 READY WorkItem을 기계적으로 병렬 실행
+- WorkItem별 Codex session과 Git branch/worktree를 격리
+- SPLIT_REQUEST와 GraphPatch로 실행 중 동적 작업 추가
+- Integration WorkItem으로 병렬 결과를 통합
+- RESOURCE/JUDGE/OBSERVATION과 프로젝트 기억을 workItemId 기준으로 확장
 
 구현 단위:
-1. 역할 열거형/라우터/계약에서 HIGH 제거
-2. RESOURCE 사이드카 대기열와 WORK→RESOURCE_QUEUE→HQ 접수 확인 응답 흐름 추가
-3. HQ Web/CLI 대상 설정
-4. Bridge 역할 연결
-5. RESOURCE_TYPE 기계적 분류 + 자연어 전달 + Worker 지정 저장 경로
-6. 확장 생성 파일 수집 + 공통 resultFiles 배열
-7. Worker 파일 저장 + ResourceRequest 상태
-8. 파이프라인/이력/설정
-9. HQ END 이후 자동 의미 흐름 차단 + 일반 기계적 대기 게이트
-10. PAUSE/END 후 기존 세션 작업 추가 + 고정 크기 이력 입력 UI
-11. JUDGE 판단 경계 최소 계약
-12. 작업공간 `.projecthub` 세션 상태/이벤트 로그/transcript 영속화
-13. History Full Message 열람
-14. 테스트/문서
+1. WorkItem / WorkGraph / GraphPatch
+2. dependency/cycle/revision 검증과 READY 계산
+3. ParallelWorkScheduler와 maxConcurrentWork
+4. GitWorktreeManager
+5. WorkItem별 Codex session/progress/result 귀속
+6. HQ GraphPatch transport와 WORK SPLIT_REQUEST
+7. Integration WorkItem
+8. RESOURCE/JUDGE/OBSERVATION workItemId 귀속
+9. WorkGraph persistence/recovery
+10. 병렬 상태 UI와 E2E
+
+상세 계획과 복구 기준은 tasks/16-parallel-work-graph.md를 따른다.
 
 ## 보류 항목
 
