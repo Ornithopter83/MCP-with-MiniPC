@@ -154,6 +154,42 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task CompletedIntegrationBecomesDefaultBaseForLaterWorkItems()
+    {
+        var graph = new WorkGraph("job", 2);
+        var executor = new SupervisorExecutor();
+
+        var hq = new QueueHqRunner(
+            ContinuePatch(
+                0,
+                Add("W1", "기능 구현"),
+                """
+                {"type":"ADD","workItemId":"I1","goal":"W1 통합","dependencies":["W1"],"kind":"INTEGRATION","baseRef":"base123"}
+                """),
+            "[ACTION=CONTINUE]\n[GOTO : WORK]\nWORK_GRAPH_PATCH:\n" +
+            """{"expectedRevision":1,"operations":[{"type":"ADD","workItemId":"W2","goal":"통합 이후 후속 작업","dependencies":[]}]}""",
+            End("후속 작업까지 완료"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "기능을 통합한 뒤 후속 작업을 진행하세요.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        var integration = executor.Requests.Single(request => request.Item.Id == "I1");
+        Assert.Equal(WorkItemKind.Integration, integration.Item.Kind);
+
+        var followup = executor.Requests.Single(request => request.Item.Id == "W2");
+        Assert.Equal("ref-I1", followup.Item.BaseRef);
+        Assert.Contains("기준 ref: ref-I1", hq.Prompts[1]);
+    }
+
+    [Fact]
     public async Task AddWithoutBaseRefUsesSupervisorMechanicalBaseRef()
     {
         var graph = new WorkGraph("job", 1);
@@ -342,9 +378,14 @@ public sealed class ParallelWorkSupervisorTests
                 }
 
                 _completed[request.Item.Id] = true;
+                var summary = request.Item.Kind == WorkItemKind.Integration
+                    ? "완료" + Environment.NewLine + Environment.NewLine +
+                      "INTEGRATION_LANDING" + Environment.NewLine +
+                      "status: FAST_FORWARDED"
+                    : "완료";
                 return WorkItemExecutionResult.Completed(
                     "ref-" + request.Item.Id,
-                    "완료",
+                    summary,
                     "branch-" + request.Item.Id,
                     "worktree-" + request.Item.Id,
                     "session-" + request.Item.Id);

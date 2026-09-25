@@ -81,7 +81,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private readonly WorkGraph _graph;
     private readonly ParallelWorkScheduler _scheduler;
     private readonly Func<string, CancellationToken, Task<string>> _runHqAsync;
-    private readonly string _baseRef;
+    private readonly string _initialBaseRef;
     private readonly Channel<ParallelWorkSchedulerSnapshot> _stateChanges =
         Channel.CreateUnbounded<ParallelWorkSchedulerSnapshot>(new UnboundedChannelOptions
         {
@@ -105,7 +105,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         if (string.IsNullOrWhiteSpace(baseRef))
             throw new ArgumentException("병렬 WorkGraph 기준 ref가 비어 있습니다.", nameof(baseRef));
-        _baseRef = baseRef.Trim();
+        _initialBaseRef = baseRef.Trim();
         _runHqAsync = runHqAsync ?? throw new ArgumentNullException(nameof(runHqAsync));
         _scheduler = new ParallelWorkScheduler(graph, executor, cancellationToken);
         _scheduler.StateChanged += OnSchedulerStateChanged;
@@ -175,7 +175,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 new WorkGraphPromptContext(
                     _graph.Revision,
                     _graph.MaxConcurrentWork,
-                    _baseRef));
+                    GetCurrentDefaultBaseRef()));
 
             string rawHqMessage;
             try
@@ -235,7 +235,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
             var normalizedPatch = ApplyDefaultBaseRef(
                 turn.Patch!,
-                _baseRef);
+                GetCurrentDefaultBaseRef());
             var patchResult = await _scheduler.ApplyPatchAsync(
                 normalizedPatch,
                 cancellationToken).ConfigureAwait(false);
@@ -253,6 +253,20 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             inboundType = next.InboundType;
             inboundBody = next.Body;
         }
+    }
+
+    private string GetCurrentDefaultBaseRef()
+    {
+        var latestIntegration = _graph.Items
+            .Where(item =>
+                item.Kind == WorkItemKind.Integration &&
+                item.State == WorkItemState.Completed &&
+                !string.IsNullOrWhiteSpace(item.ResultRef))
+            .OrderByDescending(item => item.FinishedAtUtc ?? DateTimeOffset.MinValue)
+            .ThenByDescending(item => item.CreatedOrder)
+            .FirstOrDefault();
+
+        return latestIntegration?.ResultRef ?? _initialBaseRef;
     }
 
     internal static WorkGraphPatch ApplyDefaultBaseRef(
