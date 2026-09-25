@@ -376,15 +376,23 @@ public partial class MainWindow
             }
 
             var inboundType = continuing ? "USER_FOLLOWUP" : "USER_REQUEST";
+            var restoredGraphSummary = continuing
+                ? ParallelWorkSupervisor.FormatMechanicalGraphEvent(
+                    new[] { "저장된 WorkGraph를 복구했습니다. 아래 상태를 기준으로 후속 GraphPatch를 판단합니다." },
+                    new ParallelWorkSchedulerSnapshot(
+                        graph.Snapshot(),
+                        Array.Empty<RunningWorkItemSnapshot>()))
+                : null;
             var inboundBody = continuing
                 ? TaskContinuationContract.BuildHqFollowupInput(
                     continuation!.Status,
                     continuation.LastHqMessage,
                     request,
                     ProjectWorkspacePersistence.HandoffPath(workingDirectory),
-                    ProjectWorkspacePersistence.EventLogPath(workingDirectory, jobId)) +
+                    ProjectWorkspacePersistence.EventLogPath(workingDirectory, jobId),
+                    restoredGraphSummary) +
                   Environment.NewLine +
-                  $"병렬 WorkGraph snapshot: {ProjectWorkspacePersistence.WorkGraphPath(workingDirectory, jobId)}"
+                  $"병렬 WorkGraph snapshot 파일: {ProjectWorkspacePersistence.WorkGraphPath(workingDirectory, jobId)}"
                 : request;
 
             var result = await supervisor.RunAsync(

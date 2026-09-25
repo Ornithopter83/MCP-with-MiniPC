@@ -160,6 +160,24 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void TaskContinuation_IncludesParallelWorkGraphStateForWebOrCliRecovery()
+    {
+        var input = TaskContinuationContract.BuildHqFollowupInput(
+            "CANCELED",
+            "이전 병렬 관제",
+            "계속 진행해줘.",
+            "C:/work/.projecthub/last-handoff.md",
+            "C:/work/.projecthub/events/job.jsonl",
+            "WorkGraph revision=7\n- id=W1 state=BLOCKED blockCode=RECOVERY_REQUIRED");
+
+        Assert.Contains("병렬 WorkGraph 현재 상태:", input);
+        Assert.Contains("revision=7", input);
+        Assert.Contains("id=W1 state=BLOCKED", input);
+        Assert.Contains("RECOVERY_REQUIRED", input);
+        Assert.Contains("사용자 추가 요청:", input);
+    }
+
+    [Fact]
     public void TaskContinuation_RejectsEmptyFollowup()
         => Assert.Throws<InvalidOperationException>(() =>
             TaskContinuationContract.BuildHqFollowupInput("PAUSED", "사용자 입력 대기", "   "));
