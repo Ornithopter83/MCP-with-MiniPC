@@ -195,19 +195,16 @@ HQ가 Web이든 CLI든 같은 역할 계약을 사용한다.
 ## 7. JUDGE 흐름
 
 ~~~text
-WORK -> HQ      판정 초안 + evidence
-HQ   -> WORK    질문 원자화 + 범위/evidence/응답형태/수치화 기준 정제
-WORK -> JUDGE   정제된 NOUL/SCORE/CHOICE 요청
+WORK -> HQ      검증 질문 목록 + evidence + JUDGE용 Form 생성 요청
+HQ   -> WORK    JUDGE용 Form
+WORK -> JUDGE   Form 전송
 JUDGE -> WORK   raw 결과
 ~~~
 
-- NOUL/SCORE/CHOICE는 할당량이나 의무 비율이 아니다.
-- WORK가 판정 질문을 HQ에 올린 뒤에는 HQ가 JUDGE 사용 필요 여부를 다시 판단하지 않는다.
-- HQ는 받은 질문을 가능한 한 작은 독립 판단 단위로 원자화한다. 하나의 질문에는 하나의 판단 대상만 남기고 독립적으로 답할 수 있는 항목은 별도 질문으로 분리한다.
-- HQ는 원 질문의 판단 목적을 유지하면서 필요한 범위, evidence, 응답 형태, 수치화 기준만 정제한다.
-- 이 실험 정책에서는 HQ가 스스로 "JUDGE 불필요"를 선택하거나 WORK에 JUDGE를 사용하지 말라고 지시하지 않는다.
-- HQ가 정제한 판정 질문을 받은 WORK는 필요성을 다시 판단하지 않고 JUDGE로 전송한다.
-- Worker는 HQ 검토가 의미적으로 충분했는지 검사하지 않는다.
+- WORK는 검증할 내용을 질문 목록과 현재 근거로 정리해 HQ에 JUDGE용 Form 생성을 요청한다.
+- HQ는 질문 목적을 유지하며 독립 판단 단위로 정리하고 필요한 범위, evidence, 응답 형태, 기준을 포함한 JUDGE용 Form으로 반환한다.
+- WORK는 받은 JUDGE용 Form을 JUDGE로 전송한다.
+- Worker는 질문이나 Form의 의미적 적합성을 검사하지 않는다.
 - JEV 원본 응답은 같은 WORK 세션으로 반환한다.
 
 ---
