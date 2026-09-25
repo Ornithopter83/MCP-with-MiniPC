@@ -1,4 +1,4 @@
-# Server 스켈레톤
+# 서버 스켈레톤
 
 ## 목표
 
@@ -6,7 +6,7 @@ ASP.NET Core Minimal API가 `/api/status`에 ProjectHub 상태를 응답한다.
 
 ## 현재 기준
 
-Server는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성이다.
+서버는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성이다.
 
 ## 세부 작업
 
@@ -18,7 +18,7 @@ Server는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성�
 
 - Core에 `IProjectStateRepository`, `IProjectService`, `ProjectService`를 추가하고 Infrastructure에 `AddProjectHubInfrastructure` 등록 경계를 마련했다. 실제 Supabase 호출 대신 교체 가능한 NoOp 저장소를 등록한다.
 
-### C. Server 테스트 추가 (완료: 2026-09-15)
+### C. 서버 테스트 추가 (완료: 2026-09-15)
 
 - 상태 응답과 기본 설정을 자동 검증한다.
 
@@ -28,7 +28,7 @@ Server는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성�
 
 ## 변경 금지
 
-- 이 작업에서는 Supabase 쓰기나 Agent 인증을 구현하지 않는다.
+- 이 작업에서는 Supabase 쓰기나 에이전트 인증을 구현하지 않는다.
 
 ## 완료 기준
 
@@ -42,5 +42,5 @@ Server는 `/api/status` 초기 스켈레톤이며 Supabase 연결은 미구성�
 ## 결과
 
 - A 완료: `/api/status` Minimal API 스켈레톤을 생성했다.
-- B 완료: Core/Infrastructure/Server DI 경계를 연결했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
+- B 완료: Core/Infrastructure/서버 DI 경계를 연결했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
 - C 완료: `GET /api/status` 통합 테스트를 추가했다. HTTP 200과 기본 JSON 필드를 확인했으며 `dotnet test ProjectHub.sln --no-restore` 전체 통과(2개).
