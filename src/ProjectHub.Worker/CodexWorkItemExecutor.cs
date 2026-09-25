@@ -17,6 +17,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     private readonly GitWorktreeManager _worktrees;
     private readonly bool _judgeAvailable;
     private readonly Func<string, string?>? _observationRequestDirectory;
+    private readonly IWorkItemObservationGate? _observationGate;
 
     public CodexWorkItemExecutor(
         string jobId,
@@ -25,7 +26,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         IAiRoleRunner runner,
         GitWorktreeManager? worktrees = null,
         bool judgeAvailable = false,
-        Func<string, string?>? observationRequestDirectory = null)
+        Func<string, string?>? observationRequestDirectory = null,
+        IWorkItemObservationGate? observationGate = null)
     {
         if (string.IsNullOrWhiteSpace(jobId))
             throw new ArgumentException("Job ID가 비어 있습니다.", nameof(jobId));
@@ -39,6 +41,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         _worktrees = worktrees ?? new GitWorktreeManager();
         _judgeAvailable = judgeAvailable;
         _observationRequestDirectory = observationRequestDirectory;
+        _observationGate = observationGate;
     }
 
     public event Action<CodexWorkItemProgress>? Progress;
@@ -76,62 +79,89 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 result.ResultSummary))
             .ToArray();
 
-        var prompt = RoleContractLoader.BuildWorkPrompt(
-            request.InboundType,
-            request.InboundBody,
-            _judgeAvailable,
-            _observationRequestDirectory?.Invoke(item.Id),
-            new WorkItemPromptContext(
-                item.Id,
-                item.Kind,
-                item.Goal,
-                item.Dependencies,
-                item.BaseRef,
-                preparation.Branch,
-                preparation.WorktreePath,
-                item.ResultSummary,
-                dependencyResults));
+        var observationRequestDirectory = _observationGate is not null
+            ? _observationGate.GetRequestDirectory(item.Id)
+            : _observationRequestDirectory?.Invoke(item.Id);
+        var inboundType = request.InboundType;
+        var inboundBody = request.InboundBody;
+        var sessionId = item.SessionId;
+        AiRoleRunResult runResult;
 
-        string? startedSession = item.SessionId;
-        var runResult = await _runner.RunAsync(new AiRoleRunRequest(
-            prompt,
-            _role,
-            preparation.WorktreePath,
-            item.SessionId,
-            CodexSandboxMode.WorkspaceWrite,
-            cancellationToken,
-            null,
-            message => Progress?.Invoke(new CodexWorkItemProgress(item.Id, message)),
-            sessionId =>
-            {
-                var normalized = CodexCliRunner.NormalizeSessionId(sessionId);
-                if (!string.IsNullOrWhiteSpace(normalized))
+        while (true)
+        {
+            var prompt = RoleContractLoader.BuildWorkPrompt(
+                inboundType,
+                inboundBody,
+                _judgeAvailable,
+                observationRequestDirectory,
+                new WorkItemPromptContext(
+                    item.Id,
+                    item.Kind,
+                    item.Goal,
+                    item.Dependencies,
+                    item.BaseRef,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    item.ResultSummary,
+                    dependencyResults));
+
+            string? startedSession = sessionId;
+            runResult = await _runner.RunAsync(new AiRoleRunRequest(
+                prompt,
+                _role,
+                preparation.WorktreePath,
+                sessionId,
+                CodexSandboxMode.WorkspaceWrite,
+                cancellationToken,
+                null,
+                message => Progress?.Invoke(new CodexWorkItemProgress(item.Id, message)),
+                started =>
                 {
-                    startedSession = normalized;
-                    SessionStarted?.Invoke(new CodexWorkItemSessionStarted(item.Id, normalized));
-                }
-            })).ConfigureAwait(false);
+                    var normalized = CodexCliRunner.NormalizeSessionId(started);
+                    if (!string.IsNullOrWhiteSpace(normalized))
+                    {
+                        startedSession = normalized;
+                        SessionStarted?.Invoke(new CodexWorkItemSessionStarted(item.Id, normalized));
+                    }
+                })).ConfigureAwait(false);
 
-        var sessionId = CodexCliRunner.NormalizeSessionId(runResult.SessionId) ?? startedSession ?? item.SessionId;
+            sessionId = CodexCliRunner.NormalizeSessionId(runResult.SessionId) ??
+                        startedSession ??
+                        sessionId;
 
-        if (runResult.ExitCode != 0)
-        {
-            return WorkItemExecutionResult.Failed(
-                "WORK_PROCESS_EXIT",
-                BuildFailureSummary(runResult.StandardError, runResult.FinalMessage),
-                preparation.Branch,
-                preparation.WorktreePath,
-                sessionId);
-        }
+            if (runResult.ExitCode != 0)
+            {
+                return WorkItemExecutionResult.Failed(
+                    "WORK_PROCESS_EXIT",
+                    BuildFailureSummary(runResult.StandardError, runResult.FinalMessage),
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId);
+            }
 
-        if (string.IsNullOrWhiteSpace(sessionId))
-        {
-            return WorkItemExecutionResult.Failed(
-                "WORK_SESSION_RESUME_FAILED",
-                "WORK 실행 후 이어갈 session ID가 없습니다.",
-                preparation.Branch,
-                preparation.WorktreePath,
-                null);
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                return WorkItemExecutionResult.Failed(
+                    "WORK_SESSION_RESUME_FAILED",
+                    "WORK 실행 후 이어갈 session ID가 없습니다.",
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    null);
+            }
+
+            if (_observationGate is null)
+                break;
+
+            var requiredObservations = await _observationGate
+                .CollectRequiredAsync(item.Id, cancellationToken)
+                .ConfigureAwait(false);
+            if (requiredObservations.Count == 0)
+                break;
+
+            inboundType = "OBSERVATION_RESULT";
+            inboundBody = WorkItemObservationGate.FormatResultBody(
+                item.Id,
+                requiredObservations);
         }
 
         var route = WorkerGotoContract.Parse(WorkerRoleState.Work, runResult.FinalMessage);
