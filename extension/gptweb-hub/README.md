@@ -1,6 +1,6 @@
 # GPTWeb-Hub 확장
 
-버전: 0.1.8 / build 2026-09-25.2
+버전: 0.1.9 / build 2026-09-25.3
 
 ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 
@@ -51,7 +51,7 @@ RESOURCE 응답 감시는 MutationObserver 외에 1초 watchdog도 사용한다.
 - image completion 시간 초과은 응답 스냅샷 변화와 독립된 절대 120초 마감 시간으로 동작한다.
 - 이미지 수집 어댑터는 생성 이미지가 하나 이상 로드되면 streaming 표기가 남아 있어도 이미지 집합이 잠시 안정된 뒤 다운로드 단계로 진행한다.
 - IMAGE_DETECTED 진행 상황에 candidate/loaded 수를 기록해 생성 감지와 실제 다운로드 진입을 구분한다.
-- Worker 사이드카에도 5분 전송 시간 초과이 있어 확장이 고착돼도 해당 bridge 작업를 실패 처리하고 FIFO 슬롯을 해제한다.
+- Worker 사이드카에는 30분 전송 시간 초과가 있어 확장이 최종적으로 고착돼도 해당 bridge 작업을 실패 처리하고 FIFO 슬롯을 해제한다.
 
 
 ## 생성 파일 일반화 — 2026-09-25
@@ -61,3 +61,11 @@ RESOURCE 응답 감시는 MutationObserver 외에 1초 watchdog도 사용한다.
 - 다운로드 가능한 링크, 첨부 요소, 오디오·비디오 소스는 일반 파일 수집 어댑터로 감지한다.
 - 결과는 모두 `RESOURCE_FILES`의 `resultFiles[]`로 전달하며 각 항목은 base64, MIME 형식, 파일명을 포함한다.
 - 구버전 이미지 fetch 메시지는 호환을 위해 백그라운드 서비스 워커에서 계속 허용한다.
+
+## 전송 확인 복구와 수동 재수집 — 2026-09-25
+
+- Send 버튼 클릭 뒤 새 사용자 메시지 DOM만 기다리지 않고, composer 비움, 새 assistant turn, 새 RESOURCE 후보도 전송 성공의 기계적 증거로 사용한다.
+- 새 RESOURCE 결과가 보이면 전송 확인 상태에서도 재전송하지 않고 응답 수집 단계로 전환한다.
+- RESOURCE가 WAIT_RESPONSE에 진입하는 즉시 120초 절대 수집 마감 시간을 시작해 결과 탐지가 전혀 되지 않는 경우에도 명확히 실패 처리한다.
+- RESOURCE 작업 카드에 `현재 결과 다시 수집` 버튼을 추가했다. 이 버튼은 프롬프트를 다시 보내지 않고 현재 assistant 결과만 재탐색·다운로드한다.
+- Worker Pipeline의 RESOURCE 카드에는 확장이 보고한 전송 확인, 생성 결과 대기, 결과 확인, 다운로드, Worker 전달 단계를 그대로 표시한다.
