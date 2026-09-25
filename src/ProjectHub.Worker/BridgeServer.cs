@@ -13,8 +13,8 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
-    private const string ExpectedExtensionVersion = "0.1.7";
-    private const string ExpectedExtensionBuild = "2026-09-25.1";
+    private const string ExpectedExtensionVersion = "0.1.8";
+    private const string ExpectedExtensionBuild = "2026-09-25.2";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
@@ -588,17 +588,21 @@ public sealed class BridgeServer : IDisposable
 
     private static List<string> SaveResourceResults(ResourceRequest resource, ResultRequest request)
     {
-        if (!resource.Type.Equals("IMAGE", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Only IMAGE resource results are supported.");
+        if (!resource.Type.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase) &&
+            !resource.Type.Equals("IMAGE", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("RESOURCE_TYPE_UNSUPPORTED");
 
         var payloads = request.ResultFiles?.Where(file => !string.IsNullOrWhiteSpace(file.Base64)).ToList()
             ?? new List<ResourceResultFile>();
         if (payloads.Count == 0 && !string.IsNullOrWhiteSpace(request.ResultFileBase64))
-            payloads.Add(new ResourceResultFile(request.ResultFileBase64, request.ResultFileMimeType ?? "image/png", request.ResultFileName));
+            payloads.Add(new ResourceResultFile(
+                request.ResultFileBase64,
+                request.ResultFileMimeType ?? "application/octet-stream",
+                request.ResultFileName));
         if (payloads.Count == 0)
-            throw new InvalidOperationException("RESOURCE_IMAGE_DATA_MISSING");
+            throw new InvalidOperationException("RESOURCE_DATA_MISSING");
         if (payloads.Count > 32)
-            throw new InvalidOperationException("RESOURCE_IMAGE_COUNT_INVALID");
+            throw new InvalidOperationException("RESOURCE_FILE_COUNT_INVALID");
 
         var root = Path.GetFullPath(resource.WorkspaceRoot);
         var relativeDirectory = resource.TargetDirectory.Replace('/', Path.DirectorySeparatorChar);
@@ -608,22 +612,27 @@ public sealed class BridgeServer : IDisposable
             !targetDirectory.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("RESOURCE_TARGET_OUTSIDE_WORKSPACE");
 
-        var decoded = new List<(byte[] Bytes, string Extension)>();
+        var decoded = new List<(byte[] Bytes, string FileName)>();
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long totalBytes = 0;
-        foreach (var payload in payloads)
+        for (var index = 0; index < payloads.Count; index++)
         {
+            var payload = payloads[index];
             var bytes = Convert.FromBase64String(payload.Base64);
             if (bytes.Length == 0 || bytes.Length > 25 * 1024 * 1024)
-                throw new InvalidOperationException("RESOURCE_IMAGE_SIZE_INVALID");
+                throw new InvalidOperationException("RESOURCE_FILE_SIZE_INVALID");
             totalBytes += bytes.Length;
             if (totalBytes > 128L * 1024 * 1024)
-                throw new InvalidOperationException("RESOURCE_IMAGE_TOTAL_SIZE_INVALID");
-            decoded.Add((bytes, ResourceImageExtension(payload.MimeType)));
+                throw new InvalidOperationException("RESOURCE_TOTAL_SIZE_INVALID");
+
+            var extension = ResourceFileExtension(payload.MimeType, payload.FileName);
+            var fileName = ResourceFileName(payload.FileName, extension, index + 1, usedNames);
+            decoded.Add((bytes, fileName));
         }
 
         Directory.CreateDirectory(targetDirectory);
         var paths = decoded
-            .Select((item, index) => Path.Combine(targetDirectory, $"image-{index + 1:D2}{item.Extension}"))
+            .Select(item => Path.Combine(targetDirectory, item.FileName))
             .ToList();
         var tempPaths = paths.Select(path => path + ".tmp").ToList();
         try
@@ -645,12 +654,66 @@ public sealed class BridgeServer : IDisposable
         }
     }
 
-    private static string ResourceImageExtension(string? mimeType) => mimeType?.ToLowerInvariant() switch
+    private static string ResourceFileName(string? candidate, string extension, int index, ISet<string> usedNames)
     {
-        "image/jpeg" or "image/jpg" => ".jpg",
-        "image/webp" => ".webp",
-        "image/gif" => ".gif",
-        _ => ".png"
+        var original = Path.GetFileName(candidate ?? string.Empty);
+        var stem = Path.GetFileNameWithoutExtension(original);
+        if (string.IsNullOrWhiteSpace(stem))
+            stem = $"resource-{index:D2}";
+
+        var invalid = Path.GetInvalidFileNameChars();
+        stem = new string(stem
+            .Select(character => invalid.Contains(character) || char.IsControl(character) ? '_' : character)
+            .ToArray())
+            .Trim()
+            .Trim('.');
+        if (string.IsNullOrWhiteSpace(stem))
+            stem = $"resource-{index:D2}";
+
+        var fileName = stem + extension;
+        var suffix = 2;
+        while (!usedNames.Add(fileName))
+            fileName = $"{stem}-{suffix++}{extension}";
+        return fileName;
+    }
+
+    private static string ResourceFileExtension(string? mimeType, string? fileName)
+    {
+        var normalized = mimeType?.Split(';', 2)[0].Trim().ToLowerInvariant();
+        var mapped = normalized switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" or "image/jpg" => ".jpg",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            "image/svg+xml" => ".svg",
+            "audio/mpeg" => ".mp3",
+            "audio/wav" or "audio/x-wav" => ".wav",
+            "audio/ogg" => ".ogg",
+            "audio/flac" => ".flac",
+            "audio/mp4" => ".m4a",
+            "video/mp4" => ".mp4",
+            "video/webm" => ".webm",
+            "application/pdf" => ".pdf",
+            "application/zip" => ".zip",
+            "application/json" => ".json",
+            "text/plain" => ".txt",
+            "text/markdown" => ".md",
+            "text/csv" => ".csv",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => ".pptx",
+            _ => null
+        };
+        if (mapped is not null)
+            return mapped;
+
+        var candidate = Path.GetExtension(Path.GetFileName(fileName ?? string.Empty));
+        if (candidate.Length is > 1 and <= 16 &&
+            candidate.Skip(1).All(character => char.IsLetterOrDigit(character)))
+            return candidate.ToLowerInvariant();
+
+        return ".bin";
     };
 
     private void ReplaceTask(BridgeTask task)
