@@ -47,9 +47,9 @@ RESOURCE 응답 감시는 MutationObserver 외에 1초 watchdog도 사용한다.
 
 ## 다운로드 고착 방지 강화 — 2026-09-25
 
-- RESOURCE 시작 시 main 영역의 기존 이미지 URL을 기준선으로 기록하고, 이후 새로 나타난 큰 이미지를 assistant 응답 영역과 main 영역에서 함께 탐색한다.
+- 이미지 수집 어댑터는 RESOURCE 시작 시 main 영역의 기존 이미지 URL을 기준선으로 기록하고, 이후 새로 나타난 큰 이미지를 assistant 응답 영역과 main 영역에서 함께 탐색한다.
 - image completion 시간 초과은 응답 스냅샷 변화와 독립된 절대 120초 마감 시간으로 동작한다.
-- 생성 이미지가 하나 이상 로드되면 streaming 표기가 남아 있어도 이미지 집합이 잠시 안정된 뒤 IMAGE_READY -> DOWNLOAD_START로 진행한다.
+- 이미지 수집 어댑터는 생성 이미지가 하나 이상 로드되면 streaming 표기가 남아 있어도 이미지 집합이 잠시 안정된 뒤 다운로드 단계로 진행한다.
 - IMAGE_DETECTED 진행 상황에 candidate/loaded 수를 기록해 생성 감지와 실제 다운로드 진입을 구분한다.
 - Worker 사이드카에도 5분 전송 시간 초과이 있어 확장이 고착돼도 해당 bridge 작업를 실패 처리하고 FIFO 슬롯을 해제한다.
 
