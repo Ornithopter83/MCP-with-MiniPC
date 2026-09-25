@@ -91,11 +91,16 @@ public partial class MainWindow
                         concurrencyPatch.ErrorCode ?? "WORK_GRAPH_CONCURRENCY_UPDATE_FAILED");
             }
 
-            ProjectWorkspacePersistence.SaveWorkGraph(workingDirectory, graph.Snapshot());
-
             var currentGitTarget = WorkerTargetConfiguration.ResolveGit(
                 workingDirectory,
                 _targetSettings);
+            var gitPreflight = ParallelWorkGitPreflight.Validate(currentGitTarget);
+            if (!gitPreflight.Success)
+                throw new InvalidOperationException(
+                    gitPreflight.ErrorCode + ": " + gitPreflight.Message);
+
+            ProjectWorkspacePersistence.SaveWorkGraph(workingDirectory, graph.Snapshot());
+
             var baseRef =
                 currentGitTarget.HeadSha ??
                 graph.Items
