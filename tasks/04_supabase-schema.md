@@ -13,12 +13,12 @@ Supabase `workstations` 최소 경로를 먼저 실제 E2E로 연결하고, 이�
 ### A. Supabase 연결 설정/클라이언트 경계 (완료: 2026-09-15)
 
 - `SupabaseOptions`가 설정에 지정된 환경 변수에서 URL과 서비스 역할 키를 읽는다.
-- Infrastructure가 named `HttpClient`를 등록하며 REST base address와 인증 헤더를 구성한다.
+- Infrastructure가 이름 있는 `HttpClient`를 등록하며 REST 기본 주소와 인증 헤더를 구성한다.
 - 환경 변수가 없을 때도 서버가 기동되며 실제 비밀값은 저장소에 기록하지 않는다.
 
 ### B. workstations 최소 스키마 (완료: 2026-09-15)
 
-- `supabase/workstations.sql`에 `workstation_id` unique, 표시 이름, hostname, last_seen, created/updated 시각, updated_at 트리거, RLS 활성화를 정의했다. 사용자가 Supabase SQL Editor에서 실행해야 한다.
+- `supabase/workstations.sql`에 `workstation_id` 고유 제약, 표시 이름, 호스트명, `last_seen`, 생성/갱신 시각, `updated_at` 트리거, RLS 활성화를 정의했다. 사용자가 Supabase SQL Editor에서 실행해야 한다.
 
 ### C. IWorkstationRepository와 Supabase 구현 (완료: 2026-09-15)
 
@@ -91,7 +91,7 @@ Supabase `workstations` 최소 경로를 먼저 실제 E2E로 연결하고, 이�
 F 완료: 사용자가 실제 Mini PC→Supabase E2E를 검증했다.
 G-A 완료: `supabase/project-state.sql`을 작성했고 사용자가 Supabase 적용 및 테이블 생성을 확인했다.
 G-B 완료: 프로젝트 상태 저장소와 수동 POST/GET API를 구현했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
-G-C 완료: 사용자가 서버 PC에서 프로젝트 상태 POST/GET, Supabase 저장, 동일 project/workstation update, 실제 `head_sha` 저장을 검증했다.
+G-C 완료: 사용자가 서버 PC에서 프로젝트 상태 POST/GET, Supabase 저장, 동일 프로젝트/작업 PC 갱신, 실제 `head_sha` 저장을 검증했다.
 
 ## 사용자 수행 필요
 
