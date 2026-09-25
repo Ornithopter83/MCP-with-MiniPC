@@ -1716,7 +1716,8 @@ public partial class MainWindow : Window
                                 usage: routed.Usage,
                                 files: routed.Files,
                                 status: route.Action?.ToString().ToUpperInvariant(),
-                                providerWireId: IsWebTransport(coordinator.Transport) ? null : coordinator.Provider);
+                                providerWireId: IsWebTransport(coordinator.Transport) ? null : coordinator.Provider,
+                                fullMessage: routed.FinalMessage);
                             if (route.Action == WorkerAction.End)
                             {
                                 hqEnded = true;
@@ -1808,7 +1809,8 @@ public partial class MainWindow : Window
                                 usage: result.Usage,
                                 files: result.Files,
                                 status: route.Target?.ToString().ToUpperInvariant(),
-                                providerWireId: implementer.Provider);
+                                providerWireId: implementer.Provider,
+                                fullMessage: result.FinalMessage);
                             if (hqEnded)
                             {
                                 RejectWorkAfterHqEnd();
@@ -3291,7 +3293,8 @@ public partial class MainWindow : Window
         IReadOnlyList<CodexCliFile>? files = null,
         JevCallTelemetry? judgeTelemetry = null,
         string? status = null,
-        string? providerWireId = null)
+        string? providerWireId = null,
+        string? fullMessage = null)
     {
         var stage = role switch
         {
@@ -3302,6 +3305,7 @@ public partial class MainWindow : Window
             _ => "System"
         };
         var text = body?.Trim() ?? string.Empty;
+        var fullText = string.IsNullOrWhiteSpace(fullMessage) ? text : fullMessage.Trim();
         var item = new WorkerHistoryEvent(
             DateTimeOffset.Now,
             stage,
@@ -3314,7 +3318,7 @@ public partial class MainWindow : Window
             status,
             null)
         {
-            FullMessage = text,
+            FullMessage = fullText,
             TokenDetails = judgeTelemetry is not null
                 ? WorkerHistoryCardFormatter.TokenLine(judgeTelemetry)
                 : WorkerHistoryCardFormatter.TokenLine(usage),
