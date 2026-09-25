@@ -19,6 +19,8 @@ public sealed class RoleContractBoundaryTests
         Assert.DoesNotContain("[GOTO : JUDGE]", hq);
         Assert.Contains("Worker의 기계적 사실은 관측값이며 의미 판단이 아니다.", hq);
         Assert.Contains("기계적 대기 작업이 남아 있어도 END 판단을 미루지 않는다.", hq);
+        Assert.Contains("JUDGE용 Form", hq);
+        Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
     [Fact]
@@ -30,9 +32,11 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[GOTO : HQ]", enabled);
         Assert.Contains("[GOTO : JUDGE]", enabled);
         Assert.Contains("[GOTO : RESOURCE]", enabled);
-        Assert.Contains("NOUL | QID:<id> <question>", enabled);
-        Assert.Contains("SCORE | QID:<id> <question>", enabled);
-        Assert.Contains("CHOICE | QID:<id> <question>", enabled);
+        Assert.Contains("질문 목록", enabled);
+        Assert.Contains("JUDGE용 Form", enabled);
+        Assert.DoesNotContain("NOUL | QID:<id>", enabled);
+        Assert.DoesNotContain("SCORE | QID:<id>", enabled);
+        Assert.DoesNotContain("CHOICE | QID:<id>", enabled);
 
         Assert.Contains("[GOTO : HQ]", disabled);
         Assert.Contains("[GOTO : RESOURCE]", disabled);
