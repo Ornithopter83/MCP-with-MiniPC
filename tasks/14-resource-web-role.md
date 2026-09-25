@@ -37,7 +37,7 @@ UNKNOWN  -> HQ 요약 1회
 - Web 선택 시 제공자/모델/추론/세션 숨김
 - CLI 선택 시 OpenAI/Claude/Muse 제공자 구조 유지
 - WORK는 CLI-only 유지
-- coordinator 전송=web을 codex_cli로 자동 정규화하지 않음
+- coordinator transport=web을 codex_cli로 자동 정규화하지 않음
 - HQ Web도 CLI HQ와 동일한 HQ 계약 사용
 
 ## C — 명시적 Web 연결
@@ -79,7 +79,7 @@ IMAGE:
 - RESOURCE ChatGPT Web에서 한 번에 1건씩 생성
 - 실행 중 새 요청은 FIFO 대기열에 적재
 - 확장이 최신 assistant turn의 생성 이미지들을 모두 다운로드해 bytes 배열로 반환
-- Worker가 workspace 하위 requestId 폴더에 image-NN.*로 저장
+- Worker가 작업공간 하위 requestId 폴더에 image-NN.*로 저장
 - WORK는 RESOURCE 완료를 기다리지 않는다. 접수 사실은 HQ로 돌아가며 이후 의미적 다음 단계는 HQ가 결정
 - HQ END 전 후속 WORK에 실제로 필요한 완료 결과만 기계적으로 전달
 - HQ END 시 의미 흐름을 종료하고 미완료 RESOURCE는 Worker의 기계적 대기 작업으로만 추적
@@ -103,11 +103,11 @@ RESOURCE:
 ## 검증
 
 자동:
-- Worker/Test 출처에서 HIGH 구조 잔존 없음
-- HQ only GOTO:WORK
+- Worker/테스트 소스에서 HIGH 구조 잔존 없음
+- HQ는 GOTO:WORK만 허용
 - WORK GOTO:HQ/JUDGE/RESOURCE
-- RESOURCE 전송 traversal 차단
-- coordinator web 전송 보존
+- RESOURCE 전송 경로 이탈 차단
+- 관제 Web 전송 보존
 - HQ/RESOURCE 동일 대화 연결 거부
 
 실환경:
@@ -138,7 +138,7 @@ RESOURCE:
 - Bridge 작업 role과 선점 주체 분리
 - Worker 송신/생명주기 기록 추가
 - resource 오류 단계 세분화
-- WORK WORK -> WORK CLI
+- WORK 기록 출처를 WORK CLI로 유지
 - 오류가 있었던 정상 END는 DONE_WITH_ERROR 계측
 
 
@@ -148,7 +148,7 @@ RESOURCE:
 - load/오류 event에서 응답 감시기 재평가
 - text-only no-image 판단 시간 초과을 120초로 두고, 시간 초과 시점에 이미지가 로드됐으면 성공 전송
 - 확장 초기화에서 진행 상황/소유자/response state 초기화
-- CLI 송신 Worker prompt 기록 추가
+- CLI 송신 Worker 프롬프트 기록 추가
 
 
 - HQ/RESOURCE 소유자 작업의 레거시 처리기 차단을 활성 플래그와 분리
@@ -166,12 +166,12 @@ RESOURCE:
 - 최신 assistant turn의 생성 이미지 전부 다운로드
 - requestId별 폴더에 image-NN.* 저장
 - RESOURCE 카드 독립 궤도 + 대기열 count/상태
-- HQ END 후 미완료 RESOURCE가 있으면 FINALIZING, 대기열 idle 전 DONE 금지
+- HQ END 후 미완료 RESOURCE가 있으면 FINALIZING, 대기열 유휴 전 DONE 금지
 - 1초 completion watchdog으로 생성 완료 후 다운로드 고착 방지
 
 - 콘텐츠 스크립트 이미지 가져오기 실패 시 백그라운드 서비스 워커 대체 처리
 - 작은 UI 이미지를 생성 이미지 후보에서 제외
-- RESOURCE 송신 prompt / bridge 작업 기록 유지
+- RESOURCE 송신 프롬프트 / 브리지 작업 기록 유지
 
 ## J — 계약 일반화
 
@@ -187,9 +187,9 @@ RESOURCE:
 - 기준선 이후 새 대형 이미지를 assistant/main 영역에서 탐색
 - image response 절대 마감 시간 120초
 - 로드 완료 이미지 안정화 후 스트리밍 표기와 무관하게 IMAGE_READY/DOWNLOAD_START 진행
-- IMAGE_DETECTED 후보/loaded 진행 상황
+- IMAGE_DETECTED 후보/로드 완료 진행 상황
 - Worker RESOURCE 전송 5분 시간 초과
-- 시간 초과 시 해당 bridge 작업를 resource_timeout FAILED로 종료해 다음 FIFO 슬롯 해제
+- 시간 초과 시 해당 브리지 작업을 resource_timeout FAILED로 종료해 다음 FIFO 슬롯 해제
 - 확장 0.1.7 / 빌드 2026-09-25.1
 
 
