@@ -1,6 +1,6 @@
-# CurrentWork
+# 현재 작업
 
-Updated: 2026-09-25
+갱신일: 2026-09-25
 
 정책 원본: Master-Polish.md
 
@@ -17,54 +17,54 @@ HQ ACTION=END -> 의미 흐름 종료 고정 -> Worker 기계적 대기 작업 �
 UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 ~~~
 
-- HQ = 설계·관제, ChatGPT Web 또는 CLI Provider
+- HQ = 설계·관제, ChatGPT Web 또는 CLI 제공자
 - WORK = CLI 구현/수정/검증
-- RESOURCE = 별도 ChatGPT Web, IMAGE 생성/복수 다운로드/저장 sidecar queue
+- RESOURCE = 별도 ChatGPT Web, IMAGE 생성/복수 다운로드/저장 사이드카 대기열
 - JUDGE = JEV
-- Worker = role/session/binding/transport/process/file telemetry/protocol 오류와 RESOURCE queue 사실의 기계적 관리
+- Worker = 역할/세션/연결/전송/프로세스/file 계측/프로토콜 오류와 RESOURCE 대기열 사실의 기계적 관리
 
 ## 활성 작업 — 14 RESOURCE Web 역할 + HQ Web 복원
 
 이번 구조 변경에서 코드상 다음 항목을 반영했다.
 
 - WorkerRoleState.High 제거, Resource 도입
-- HIGH GOTO/permit/설정/UI/contract 제거
+- HIGH GOTO/permit/설정/UI/계약 제거
 - 상태 그래프를 HQ→WORK, WORK→HQ/JUDGE/RESOURCE, JUDGE→WORK, RESOURCE→WORK로 변경
-- HQ settings에 ChatGPT Web / CLI target 선택 추가
-- HQ Web 선택 시 CLI Provider/Model/Reasoning/session UI 숨김
-- 과거 coordinator transport=web 강제 CLI normalize 제거
-- Bridge에 HQ/RESOURCE role→conversationId explicit binding 추가
-- latest heartbeat 기반 task destination 제거
-- RESOURCE 자연어 body의 기계적 유효성 검사와 sidecar queue 접수 추가
-- RESOURCE IMAGE 결과를 브라우저 확장이 복수 image payload로 반환하고 Worker가 requestId별 workspace 경로에 저장
+- HQ 설정에 ChatGPT Web / CLI 대상 선택 추가
+- HQ Web 선택 시 CLI 제공자/모델/추론/세션 UI 숨김
+- 과거 coordinator 전송=web 강제 CLI 정규화 제거
+- Bridge에 HQ/RESOURCE 역할→conversationId 명시적 연결 추가
+- 최신 생존 신호 기반 작업 목적지 제거
+- RESOURCE 자연어 본문의 기계적 유효성 검사와 사이드카 대기열 접수 추가
+- RESOURCE IMAGE 결과를 브라우저 확장이 복수 image 데이터 묶음로 반환하고 Worker가 requestId별 작업공간 경로에 저장
 - ResourceRequest REQUESTED→GENERATING→SAVED/FAILED 기록
 - RESOURCE 접수 사실은 HQ로 전달하고, HQ END 전 필요한 완료 결과만 이후 WORK 입력에 기계적으로 반영
-- WORK/HQ/JUDGE 역할 contract를 durable protocol 중심으로 일반화
+- WORK/HQ/JUDGE 역할 계약를 지속 가능한 프로토콜 중심으로 일반화
 - HQ 설계 책임과 PAUSE 사용 예 추가
 - Pipeline 네 번째 카드를 리소스/ChatGPT Web으로 교체
 - 확장 패널에 HQ 연결 / RESOURCE 연결 명시적 버튼 추가
-- HQ와 RESOURCE에 동일 conversation을 binding하는 경우 거부
+- HQ와 RESOURCE에 동일 대화을 연결하는 경우 거부
 
 ## Verification
 
-현재 이 ChatGPT 실행 환경에는 .NET SDK가 없어 dotnet build/test를 실행할 수 없다.
+현재 이 ChatGPT 실행 환경에는 .NET SDK가 없어 dotnet 빌드/test를 실행할 수 없다.
 
 대신 commit 전 정적 검증으로:
 - Worker/Test C#·XAML 파일의 HIGH/HighLevel/JobHighLevelPermit/old Parse signature 잔존 참조 검색
-- role contract loader와 embedded resource 이름 일치 확인
-- MainWindow RESOURCE state, explicit Web routing, HQ target UI 참조 확인
-- Bridge role binding/resource save 코드와 확장 payload field 이름 대조
+- 역할 계약 loader와 embedded resource 이름 일치 확인
+- MainWindow RESOURCE 상태, 명시적 Web routing, HQ 대상 UI 참조 확인
+- Bridge 역할 연결/resource save 코드와 확장 데이터 묶음 field 이름 대조
 - 기존 HIGH 전용 테스트를 RESOURCE/HQ Web 테스트로 치환
 
 을 수행한다.
 
 잔여 실검증:
 - Windows dotnet test ProjectHub.sln
-- Release build/publish
+- Release 빌드/게시
 - Explorer HQ CLI E2E
 - Explorer HQ Web E2E
-- HQ Web + RESOURCE Web 두 창 동시 heartbeat 격리
-- WORK→RESOURCE queue 접수→실제 이미지 생성/복수 다운로드/저장→HQ/WORK/finalization 반영
+- HQ Web + RESOURCE Web 두 창 동시 생존 신호 격리
+- WORK→RESOURCE 대기열 접수→실제 이미지 생성/복수 다운로드/저장→HQ/WORK/마무리 반영
 - RESOURCE 저장 후 자동 코드 연결이 발생하지 않는지 확인
 - JUDGE 회귀
 
@@ -75,21 +75,21 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 
 - 대기 상태의 Pipeline 5개 카드 전체 컬러 정책은 의도된 동작으로 유지
 - WORK의 기본값은 OpenAI / GPT-6 Luna / Medium으로 유지
-- 저장된 모델 값을 런타임에서 임의 치환하는 migration/schema-version 로직은 두지 않음
-- 설정 Provider 아이콘에 역할 컬러 배경을 추가해 OpenAI 흰 아이콘 대비 개선
-- HQ Web / RESOURCE Web 각각의 binding, heartbeat, 확장 동기화, conversation 정보를 설정 카드에 표시
-- 실제 preflight도 전역 latest Web 상태가 아니라 역할별 Web 상태를 사용
+- 저장된 모델 값을 런타임에서 임의 치환하는 마이그레이션/스키마-version 로직은 두지 않음
+- 설정 제공자 아이콘에 역할 컬러 배경을 추가해 OpenAI 흰 아이콘 대비 개선
+- HQ Web / RESOURCE Web 각각의 연결, 생존 신호, 확장 동기화, 대화 정보를 설정 카드에 표시
+- 실제 사전 점검도 전역 최신 Web 상태가 아니라 역할별 Web 상태를 사용
 - Web 설명 카드의 긴 문장을 wrapping 처리
 - 설정 본문 세로/가로 스크롤 및 화면 높이 기반 popup 크기 조절, 하단 적용/닫기 footer 유지
 - UI 용어를 설계·관제 / 작업 / 리소스 / 판정으로 통일
 
-Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
+Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 
 ## 2026-09-24 Windows 빌드/테스트/게시
 
 - 원격 `main` `09ac0dc`에서 확인한 compile 오류를 수정했다: `AiRoleRunner.cs`의 `Directory`, `ResourceTransportContract.cs`의 `Path` 참조를 위해 `System.IO`를 명시했다.
 - RESOURCE/HQ Web 호출의 `_bridgeServer` nullable 경고는 명시적 null guard로 정리했다.
-- Judge 비활성 시 WORK footer에서 JUDGE GOTO transport 안내가 노출되던 내용을 `JUDGE_ON` 조건부 블록으로 이동했다.
+- Judge 비활성 시 WORK footer에서 JUDGE GOTO 전송 안내가 노출되던 내용을 `JUDGE_ON` 조건부 블록으로 이동했다.
 - `dotnet test ProjectHub.sln --no-restore`: 통과 (Core 1, Agent 3, Server 1, Worker 70; 전체 75).
 - `dotnet build ProjectHub.sln -c Debug --no-restore`: 성공, 경고 0 / 오류 0.
 - `dotnet build ProjectHub.sln -c Release --no-restore`: 성공, 경고 0 / 오류 0.
@@ -101,13 +101,13 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 
 ## 2026-09-24 RESOURCE 자연어 전송 + 관측성 보정
 
-- RESOURCE Web 전송에서 ROLE/JSON/RESOURCE contract wrapper를 제거하고 WORK의 자연어 본문을 그대로 전달.
+- RESOURCE Web 전송에서 역할/JSON/RESOURCE 계약 래퍼를 제거하고 WORK의 자연어 본문을 그대로 전달.
 - RESOURCE 저장 경로는 Worker가 `assets/resources/resource-<requestId>.png`로 기계적으로 생성.
-- Web task의 역할 Owner는 claim 이후에도 HQ/RESOURCE로 유지하고 실제 claim 주체는 ClaimedBy=WEB로 분리.
-- Worker outbound HQ Web/RESOURCE Web 메시지와 RESOURCE REQUESTED/GENERATING/FAILED/SAVED lifecycle을 transcript에 기록.
+- Web 작업의 역할 소유자는 클레임 이후에도 HQ/RESOURCE로 유지하고 실제 클레임 주체는 ClaimedBy=WEB로 분리.
+- Worker 송신 HQ Web/RESOURCE Web 메시지와 RESOURCE REQUESTED/GENERATING/FAILED/SAVED 생명주기을 기록에 기록.
 - RESOURCE 오류를 생성 없음/캡처/다운로드/저장/Web 전달 단계로 구분.
-- WORK WORK transcript source를 WORK CLI로 수정.
-- 오류를 거친 Job이 HQ END로 끝나면 TASK RESULT status를 DONE_WITH_ERROR로 기록.
+- WORK WORK 기록 출처를 WORK CLI로 수정.
+- 오류를 거친 Job이 HQ END로 끝나면 작업 RESULT status를 DONE_WITH_ERROR로 기록.
 - 확장 0.1.5와 함께 image 완료 조건/progress ordering을 보강한다.
 
 
@@ -116,54 +116,54 @@ Windows build 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 중간 변경은 `ab6f831`로 main에 먼저 커밋/푸시했다.
 - RESOURCE 이미지 element가 DOM에 먼저 생기고 load 완료만 나중에 발생하는 경우 load event로 재검사.
 - DOM mutation이 추가로 없어도 최대 120초 후 실제 로드된 이미지가 있으면 성공 전송.
-- extension reset 시 owner/response/progress 관련 상태를 모두 초기화.
-- CLI HQ/WORK에 Worker가 실제 전송한 prompt도 transcript에 기록.
-- extension build 2026-09-24.3.
+- 확장 reset 시 소유자/response/progress 관련 상태를 모두 초기화.
+- CLI HQ/WORK에 Worker가 실제 전송한 프롬프트도 기록에 기록.
+- 확장 빌드 2026-09-24.3.
 
 
-- HQ/RESOURCE 소유 Web task는 coordinator-first 종료 시점과 무관하게 legacy Web handler에서 항상 제외하여 늦게 도착한 terminal event의 중복 로그/UI 갱신을 차단.
-- HQ Web progress 중 Pipeline이 작업 단계로 바뀌지 않고 설계·관제 active stage를 유지하도록 보정.
+- HQ/RESOURCE 소유 Web 작업는 coordinator-first 종료 시점과 무관하게 legacy Web handler에서 항상 제외하여 늦게 도착한 terminal event의 중복 로그/UI 갱신을 차단.
+- HQ Web progress 중 Pipeline이 작업 단계로 바뀌지 않고 설계·관제 활성 stage를 유지하도록 보정.
 - coordinator-first 종료 후 늦게 도착한 non-terminal progress는 legacy UI를 다시 활성화하지 않음.
 
 
 ## 2026-09-24 RESOURCE 사이드카 대기열 + 복수 이미지
 
-- RESOURCE를 메인 역할 상태의 직렬 대기에서 분리하여 single-reader FIFO sidecar queue로 변경.
-- WORK의 RESOURCE 요청은 queue에 즉시 접수되고 같은 WORK session은 계속 진행.
+- RESOURCE를 메인 역할 상태의 직렬 대기에서 분리하여 single-reader FIFO 사이드카 대기열로 변경.
+- WORK의 RESOURCE 요청은 대기열에 즉시 접수되고 같은 WORK 세션은 계속 진행.
 - RESOURCE Web은 동시에 1건만 실행하며 실행 중 새 요청은 실패 대신 대기열에 적재.
 - 최신 assistant turn의 생성 이미지 여러 장을 모두 다운로드하고 requestId별 폴더에 image-01, image-02 ...로 저장.
-- HQ ACTION=END 이후 RESOURCE outstanding이 1건 이상이면 FINALIZING으로 남고 queue idle 이후에만 DONE 생성.
-- RESOURCE 카드의 gold orbit은 메인 Pipeline active role과 독립적으로 동작하고 queue 상태/대기 수를 표시.
+- HQ ACTION=END 이후 RESOURCE outstanding이 1건 이상이면 FINALIZING으로 남고 대기열 idle 이후에만 DONE 생성.
+- RESOURCE 카드의 gold orbit은 메인 Pipeline 활성 역할과 독립적으로 동작하고 대기열 상태/대기 수를 표시.
 - MutationObserver 외 1초 watchdog을 추가해 이미지 생성 후 다운로드 단계로 전이되지 않는 고착을 방지.
-- extension 0.1.6 / build 2026-09-24.4.
+- 확장 0.1.6 / 빌드 2026-09-24.4.
 
-- 이미지 URL을 content script에서 직접 fetch하지 못하면 extension background service worker가 허용된 ChatGPT/OpenAI image host에서 재시도한다.
-- RESOURCE 실제 Web 전송 prompt와 bridge task id를 transcript에 계속 기록한다.
+- 이미지 URL을 content script에서 직접 fetch하지 못하면 확장 background service worker가 허용된 ChatGPT/OpenAI image host에서 재시도한다.
+- RESOURCE 실제 Web 전송 프롬프트와 bridge 작업 id를 기록에 계속 기록한다.
 
 
 ## 2026-09-24 계약 일반화 정리
 
-- HQ/WORK/JUDGE 역할 contract에서 특정 시나리오에 종속된 예시와 일회성 대응 문구를 제거했다.
-- 계약에는 durable role responsibility, ACTION/GOTO syntax, generic transport grammar, Worker/AI boundary만 남겼다.
-- RoleContractLoader의 metadata는 평문 형식을 유지하며 실제 ACTION/GOTO control만 대괄호를 사용한다.
-- JUDGE QID parser는 QID:NAME과 기존 [QID:NAME]을 모두 허용하지만 역할 contract에는 placeholder grammar만 제시한다.
-- Master-Polish.md와 AGENTS.md에 contract generalization rule을 추가해 특정 사용자 요청/장애 사례를 contract로 승격하지 못하게 했다.
+- HQ/WORK/JUDGE 역할 계약에서 특정 시나리오에 종속된 예시와 일회성 대응 문구를 제거했다.
+- 계약에는 지속 가능한 역할 responsibility, ACTION/GOTO syntax, 일반 전송 grammar, Worker/AI boundary만 남겼다.
+- RoleContractLoader의 메타데이터는 평문 형식을 유지하며 실제 ACTION/GOTO 제어만 대괄호를 사용한다.
+- JUDGE QID 파서는 QID:NAME과 기존 [QID:NAME]을 모두 허용하지만 역할 계약에는 placeholder grammar만 제시한다.
+- Master-Polish.md와 AGENTS.md에 계약 generalization rule을 추가해 특정 사용자 요청/장애 사례를 계약로 승격하지 못하게 했다.
 
 
 ## 2026-09-25 RESOURCE 다운로드 고착 방지 강화
 
-- 로그에서 RESOURCE 첫 task가 RESPONSE_START 이후 IMAGE_READY/DOWNLOAD_START 없이 고착되는 경로를 수정.
-- RESOURCE 시작 시 기존 main image URL을 baseline으로 잡고 새 이미지 탐색 범위를 latest assistant + main 영역으로 확대.
+- 로그에서 RESOURCE 첫 작업가 RESPONSE_START 이후 IMAGE_READY/DOWNLOAD_START 없이 고착되는 경로를 수정.
+- RESOURCE 시작 시 기존 main image URL을 기준선으로 잡고 새 이미지 탐색 범위를 최신 assistant + main 영역으로 확대.
 - snapshot 변화에 의해 재시작되지 않는 절대 120초 image deadline 추가.
-- loaded image가 있으면 전역 streaming flag가 남아 있어도 settle 후 다운로드 진입.
-- IMAGE_DETECTED candidate/loaded telemetry 추가.
-- Worker sidecar에 5분 transport timeout 추가. timeout 시 해당 bridge task ID만 FAILED(resource_timeout) 처리하여 다음 FIFO 작업의 slot conflict를 방지.
-- extension 0.1.7 / build 2026-09-25.1.
+- 로드 완료 image가 있으면 전역 스트리밍 flag가 남아 있어도 안정화 후 다운로드 진입.
+- IMAGE_DETECTED candidate/로드 완료 계측 추가.
+- Worker 사이드카에 5분 전송 시간 초과 추가. 시간 초과 시 해당 bridge 작업 ID만 FAILED(resource_timeout) 처리하여 다음 FIFO 작업의 슬롯 conflict를 방지.
+- 확장 0.1.7 / 빌드 2026-09-25.1.
 
 
 ## 2026-09-25 RESOURCE 완료 HQ 깨우기 폐기
 
-- RESOURCE 완료마다 HQ를 깨우는 별도 이벤트 queue는 반복 흐름을 만들 수 있어 제거 대상으로 확정했다.
+- RESOURCE 완료마다 HQ를 깨우는 별도 이벤트 대기열는 반복 흐름을 만들 수 있어 제거 대상으로 확정했다.
 - HQ ACTION=END를 의미 작업 종료의 단일 확정점으로 사용한다.
 - END 이후에는 Worker가 HQ/WORK/JUDGE 의미 흐름을 다시 실행하지 않는다.
 - RESOURCE를 포함한 남은 기계적 대기 작업은 Worker가 대기 상태에서 직접 추적한다.
