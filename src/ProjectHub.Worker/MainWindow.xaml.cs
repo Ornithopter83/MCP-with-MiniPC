@@ -2918,6 +2918,25 @@ public partial class MainWindow : Window
             _lastExtensionProgressKey = key;
             var detail = string.IsNullOrWhiteSpace(progress.Detail) ? string.Empty : $" · {progress.Detail}";
             AddTaskMessage("WEB EXTENSION", $"{progress.Stage}{detail}");
+            var progressTask = _bridgeServer?.GetTaskSnapshot(progress.TaskId);
+            if (progressTask is not null && progressTask.Owner.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase))
+            {
+                _resourceSidecarStatus = progress.Stage switch
+                {
+                    "CLAIMED" or "WAIT_SEND_READY" or "TEXT_INSERT" or "SEND_BUTTON_FIND" or "SEND_CONFIRM" => "Web 전송 확인 중",
+                    "WAIT_RESPONSE" or "RESPONSE_START" => "생성 결과 대기",
+                    "RESOURCE_DETECTED" => "생성 결과 확인",
+                    "RESOURCE_READY" => "다운로드 준비",
+                    "DOWNLOAD_START" or "DOWNLOAD_PROGRESS" => "다운로드 중",
+                    "RESULT_POST" or "RESULT_POST_RETRY" => "Worker 전달 중",
+                    "RESOURCE_RESCAN" => "결과 다시 수집",
+                    "RESOURCE_NO_FILE" => "생성 파일 미확인",
+                    "FINISHED" => "저장 완료",
+                    "FAILED" => "실패",
+                    _ => _resourceSidecarStatus
+                };
+                UpdatePipelineVisuals();
+            }
             if (progress.Stage is not "FINISHED" and not "FAILED")
             {
                 if (_activeCoordinatorFirst && _currentTaskStage == TaskStage.Resource)
