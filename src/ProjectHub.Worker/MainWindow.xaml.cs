@@ -1544,20 +1544,6 @@ public partial class MainWindow : Window
         });
     }
 
-    private void OnObservationSidecarCompletion(MechanicalWorkCompletion completion)
-    {
-        RunOnUi(() =>
-        {
-            _lastActivityAt = DateTimeOffset.UtcNow;
-            AddTaskMessage(
-                completion.Success ? "OBSERVATION COMPLETED" : "OBSERVATION FAILED",
-                $"observation {completion.Id} · mode {FormatCompletionMode(completion.CompletionMode)}\n{completion.Message}",
-                fileCount: completion.ResultPaths.Count,
-                status: completion.Success ? "COMPLETED" : completion.ErrorCode ?? "FAILED",
-                includeHistory: false);
-        });
-    }
-
     private static string FormatCompletionMode(MechanicalWorkCompletionMode mode)
         => mode == MechanicalWorkCompletionMode.WorkResultRequired ? "WORK_RESULT_REQUIRED" : "FINALIZE_ONLY";
 
@@ -1603,7 +1589,6 @@ public partial class MainWindow : Window
         resourceQueue.CompletionAvailable += OnResourceSidecarCompletion;
         resourceQueue.TransportEvent += OnResourceSidecarTransportEvent;
         observationQueue.TransportEvent += OnObservationSidecarEvent;
-        observationQueue.CompletionAvailable += OnObservationSidecarCompletion;
         try
         {
             var inboundType = continuing ? "USER_FOLLOWUP" : "USER_REQUEST";
@@ -2089,7 +2074,6 @@ public partial class MainWindow : Window
             try { await observationQueue.DisposeAsync(); } catch (OperationCanceledException) { }
             try { await resourceQueue.DisposeAsync(); } catch (OperationCanceledException) { }
             observationQueue.TransportEvent -= OnObservationSidecarEvent;
-            observationQueue.CompletionAvailable -= OnObservationSidecarCompletion;
             resourceQueue.StateChanged -= OnResourceSidecarStateChanged;
             resourceQueue.CompletionAvailable -= OnResourceSidecarCompletion;
             resourceQueue.TransportEvent -= OnResourceSidecarTransportEvent;
