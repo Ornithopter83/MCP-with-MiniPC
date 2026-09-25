@@ -40,6 +40,7 @@ public sealed record WorkItemSnapshot(
     string? ResultRef,
     string? ResultSummary,
     string? FailureCode,
+    string? BlockCode,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? FinishedAtUtc);
@@ -143,9 +144,13 @@ public sealed class WorkGraph
             return false;
 
         item.State = WorkItemState.Running;
-        item.Branch = NullIfWhiteSpace(branch);
-        item.WorktreePath = NullIfWhiteSpace(worktreePath);
-        item.SessionId = NullIfWhiteSpace(sessionId);
+        item.BlockCode = null;
+        if (!string.IsNullOrWhiteSpace(branch))
+            item.Branch = branch.Trim();
+        if (!string.IsNullOrWhiteSpace(worktreePath))
+            item.WorktreePath = worktreePath.Trim();
+        if (!string.IsNullOrWhiteSpace(sessionId))
+            item.SessionId = sessionId.Trim();
         item.StartedAtUtc = DateTimeOffset.UtcNow;
         item.FinishedAtUtc = null;
         return true;
@@ -174,6 +179,7 @@ public sealed class WorkGraph
         item.ResultRef = NullIfWhiteSpace(resultRef);
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.FailureCode = null;
+        item.BlockCode = null;
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
         RecalculateStates();
         return true;
@@ -188,6 +194,7 @@ public sealed class WorkGraph
 
         item.State = WorkItemState.Failed;
         item.FailureCode = failureCode.Trim();
+        item.BlockCode = null;
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
         RecalculateStates();
@@ -201,6 +208,23 @@ public sealed class WorkGraph
             return false;
 
         item.State = WorkItemState.Canceled;
+        item.ResultSummary = NullIfWhiteSpace(resultSummary);
+        item.FailureCode = null;
+        item.BlockCode = null;
+        item.FinishedAtUtc = DateTimeOffset.UtcNow;
+        RecalculateStates();
+        return true;
+    }
+
+    public bool TryMarkBlocked(string id, string blockCode, string? resultSummary = null)
+    {
+        if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
+            return false;
+        if (string.IsNullOrWhiteSpace(blockCode))
+            throw new ArgumentException("차단 코드는 비어 있을 수 없습니다.", nameof(blockCode));
+
+        item.State = WorkItemState.Blocked;
+        item.BlockCode = blockCode.Trim();
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.FailureCode = null;
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
@@ -292,6 +316,18 @@ public sealed class WorkGraph
                 return null;
             }
 
+            case WorkGraphPatchOperationType.Release:
+            {
+                if (!items.TryGetValue(id, out var item))
+                    return "WORK_GRAPH_ITEM_NOT_FOUND";
+                if (item.State != WorkItemState.Blocked || string.IsNullOrWhiteSpace(item.BlockCode))
+                    return "WORK_GRAPH_ITEM_NOT_HELD";
+                item.BlockCode = null;
+                item.State = WorkItemState.Planned;
+                item.FinishedAtUtc = null;
+                return null;
+            }
+
             case WorkGraphPatchOperationType.SetMaxConcurrency:
             {
                 if (operation.IntegerValue is null ||
@@ -359,6 +395,12 @@ public sealed class WorkGraph
                 or WorkItemState.Canceled)
                 continue;
 
+            if (!string.IsNullOrWhiteSpace(item.BlockCode))
+            {
+                item.State = WorkItemState.Blocked;
+                continue;
+            }
+
             item.State = item.Dependencies.All(dependency =>
                     _items.TryGetValue(dependency, out var dependencyItem) &&
                     dependencyItem.State == WorkItemState.Completed)
@@ -409,6 +451,7 @@ public sealed class WorkGraph
             item.ResultRef,
             item.ResultSummary,
             item.FailureCode,
+            item.BlockCode,
             item.CreatedAtUtc,
             item.StartedAtUtc,
             item.FinishedAtUtc);
@@ -440,6 +483,7 @@ public sealed class WorkGraph
         public string? ResultRef { get; set; }
         public string? ResultSummary { get; set; }
         public string? FailureCode { get; set; }
+        public string? BlockCode { get; set; }
         public DateTimeOffset CreatedAtUtc { get; set; }
         public DateTimeOffset? StartedAtUtc { get; set; }
         public DateTimeOffset? FinishedAtUtc { get; set; }
@@ -460,6 +504,7 @@ public sealed class WorkGraph
                 ResultRef = ResultRef,
                 ResultSummary = ResultSummary,
                 FailureCode = FailureCode,
+                BlockCode = BlockCode,
                 CreatedAtUtc = CreatedAtUtc,
                 StartedAtUtc = StartedAtUtc,
                 FinishedAtUtc = FinishedAtUtc

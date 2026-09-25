@@ -145,6 +145,40 @@ public sealed class ParallelWorkSchedulerTests
     }
 
     [Fact]
+    public async Task BlockedResultReleasesSlotAndCanResumeAfterHqRelease()
+    {
+        var graph = CreateGraph(1, "W1", "W2");
+        var executor = new ControlledExecutor();
+        executor.Block("W1", "SPLIT_REQUEST");
+
+        await using var scheduler = new ParallelWorkScheduler(graph, executor);
+        await scheduler.StartAsync();
+
+        await executor.WhenStarted("W1");
+        executor.Complete("W1");
+        await executor.WhenStarted("W2");
+
+        var blocked = await scheduler.GetSnapshotAsync();
+        Assert.Equal(WorkItemState.Blocked, blocked.Graph.Items.Single(item => item.Id == "W1").State);
+        Assert.Equal("SPLIT_REQUEST", blocked.Graph.Items.Single(item => item.Id == "W1").BlockCode);
+
+        executor.Complete("W2");
+        await scheduler.WaitForQuiescenceAsync();
+
+        executor.Unblock("W1");
+        var release = await scheduler.ApplyPatchAsync(new WorkGraphPatch(
+            graph.Revision,
+            new[] { WorkGraphPatchOperation.Release("W1") }));
+        Assert.True(release.Success);
+
+        await executor.WhenStartedCount("W1", 2);
+        executor.Complete("W1");
+        await scheduler.WaitForQuiescenceAsync();
+
+        Assert.Equal(WorkItemState.Completed, (await scheduler.GetSnapshotAsync()).Graph.Items.Single(item => item.Id == "W1").State);
+    }
+
+    [Fact]
     public async Task SchedulerUsesStableCreationOrderWhenOnlyOneSlotExists()
     {
         var graph = CreateGraph(1, "B", "A", "C");
@@ -181,6 +215,8 @@ public sealed class ParallelWorkSchedulerTests
         private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _release = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _canceled = new(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, string> _failures = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, string> _blocks = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, int> _startCounts = new(StringComparer.Ordinal);
         private readonly object _orderGate = new();
         private readonly List<string> _startOrder = new();
         private int _active;
@@ -206,11 +242,36 @@ public sealed class ParallelWorkSchedulerTests
         public Task WhenCanceled(string id)
             => CanceledSignal(id).Task.WaitAsync(TimeSpan.FromSeconds(5));
 
+        public async Task WhenStartedCount(string id, int expected)
+        {
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                if (_startCounts.TryGetValue(id, out var count) && count >= expected)
+                    return;
+                await Task.Delay(10);
+            }
+            throw new TimeoutException($"WorkItem {id} 시작 횟수가 {expected}에 도달하지 못했습니다.");
+        }
+
         public void Complete(string id)
-            => ReleaseSignal(id).TrySetResult(true);
+        {
+            var current = ReleaseSignal(id);
+            current.TrySetResult(true);
+        }
 
         public void Fail(string id, string failureCode)
             => _failures[id] = failureCode;
+
+        public void Block(string id, string blockCode)
+            => _blocks[id] = blockCode;
+
+        public void Unblock(string id)
+        {
+            _blocks.TryRemove(id, out _);
+            _release[id] = NewSignal();
+            _started[id] = NewSignal();
+        }
 
         public async Task<WorkItemExecutionResult> ExecuteAsync(
             WorkItemExecutionRequest request,
@@ -218,6 +279,7 @@ public sealed class ParallelWorkSchedulerTests
         {
             lock (_orderGate)
                 _startOrder.Add(request.Item.Id);
+            _startCounts.AddOrUpdate(request.Item.Id, 1, static (_, count) => count + 1);
 
             var active = Interlocked.Increment(ref _active);
             UpdateMax(active);
@@ -236,6 +298,9 @@ public sealed class ParallelWorkSchedulerTests
             {
                 Interlocked.Decrement(ref _active);
             }
+
+            if (_blocks.TryGetValue(request.Item.Id, out var block))
+                return WorkItemExecutionResult.Blocked(block, "HQ 판단 대기");
 
             return _failures.TryGetValue(request.Item.Id, out var failure)
                 ? WorkItemExecutionResult.Failed(failure)

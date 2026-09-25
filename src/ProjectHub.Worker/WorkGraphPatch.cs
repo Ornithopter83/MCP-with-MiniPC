@@ -7,6 +7,7 @@ public enum WorkGraphPatchOperationType
     SetDependencies,
     SetGoal,
     SetBaseRef,
+    Release,
     SetMaxConcurrency
 }
 
@@ -36,6 +37,9 @@ public sealed record WorkGraphPatchOperation(
 
     public static WorkGraphPatchOperation SetBaseRef(string workItemId, string? baseRef)
         => new(WorkGraphPatchOperationType.SetBaseRef, workItemId, Value: baseRef);
+
+    public static WorkGraphPatchOperation Release(string workItemId)
+        => new(WorkGraphPatchOperationType.Release, workItemId);
 
     public static WorkGraphPatchOperation SetMaxConcurrency(int value)
         => new(WorkGraphPatchOperationType.SetMaxConcurrency, string.Empty, IntegerValue: value);

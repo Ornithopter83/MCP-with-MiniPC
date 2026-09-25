@@ -173,6 +173,34 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
+    public void HqHoldRemainsBlockedUntilExplicitRelease()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("A", "분할 판단이 필요한 작업"))
+        })).Success);
+
+        Assert.True(graph.TryMarkRunning("A", sessionId: "session-a"));
+        Assert.True(graph.TryMarkBlocked("A", "SPLIT_REQUEST", "새 독립 작업이 필요합니다."));
+
+        var held = graph.Find("A")!;
+        Assert.Equal(WorkItemState.Blocked, held.State);
+        Assert.Equal("SPLIT_REQUEST", held.BlockCode);
+        Assert.Equal("session-a", held.SessionId);
+        Assert.Empty(graph.GetReadyItems());
+
+        var release = graph.ApplyPatch(new WorkGraphPatch(
+            graph.Revision,
+            new[] { WorkGraphPatchOperation.Release("A") }));
+
+        Assert.True(release.Success);
+        Assert.Equal(WorkItemState.Ready, graph.Find("A")!.State);
+        Assert.Null(graph.Find("A")!.BlockCode);
+        Assert.Equal("session-a", graph.Find("A")!.SessionId);
+    }
+
+    [Fact]
     public void IntegrationItemUsesTheSameWorkRoleAndWaitsForAllDependencies()
     {
         var graph = new WorkGraph("job", 4);

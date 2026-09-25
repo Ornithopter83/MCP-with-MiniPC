@@ -4,17 +4,28 @@ public sealed record WorkItemExecutionRequest(
     WorkItemSnapshot Item,
     int Slot);
 
+public enum WorkItemExecutionOutcome
+{
+    Completed,
+    Failed,
+    Blocked
+}
+
 public sealed record WorkItemExecutionResult(
-    bool Success,
+    WorkItemExecutionOutcome Outcome,
     string? ResultRef = null,
     string? ResultSummary = null,
-    string? FailureCode = null)
+    string? FailureCode = null,
+    string? BlockCode = null)
 {
     public static WorkItemExecutionResult Completed(string? resultRef = null, string? resultSummary = null)
-        => new(true, resultRef, resultSummary);
+        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary);
 
     public static WorkItemExecutionResult Failed(string failureCode, string? resultSummary = null)
-        => new(false, null, resultSummary, failureCode);
+        => new(WorkItemExecutionOutcome.Failed, null, resultSummary, failureCode);
+
+    public static WorkItemExecutionResult Blocked(string blockCode, string? resultSummary = null)
+        => new(WorkItemExecutionOutcome.Blocked, null, resultSummary, null, blockCode);
 }
 
 public interface IWorkItemExecutor
@@ -268,18 +279,30 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             {
                 _graph.TryMarkFailed(item.Id, "WORK_EXECUTOR_NO_RESULT");
             }
-            else if (result.Success)
-            {
-                _graph.TryMarkCompleted(item.Id, result.ResultRef, result.ResultSummary);
-            }
             else
             {
-                _graph.TryMarkFailed(
-                    item.Id,
-                    string.IsNullOrWhiteSpace(result.FailureCode)
-                        ? "WORK_EXECUTOR_FAILED"
-                        : result.FailureCode,
-                    result.ResultSummary);
+                switch (result.Outcome)
+                {
+                    case WorkItemExecutionOutcome.Completed:
+                        _graph.TryMarkCompleted(item.Id, result.ResultRef, result.ResultSummary);
+                        break;
+                    case WorkItemExecutionOutcome.Blocked:
+                        _graph.TryMarkBlocked(
+                            item.Id,
+                            string.IsNullOrWhiteSpace(result.BlockCode)
+                                ? "WORK_EXECUTOR_BLOCKED"
+                                : result.BlockCode,
+                            result.ResultSummary);
+                        break;
+                    default:
+                        _graph.TryMarkFailed(
+                            item.Id,
+                            string.IsNullOrWhiteSpace(result.FailureCode)
+                                ? "WORK_EXECUTOR_FAILED"
+                                : result.FailureCode,
+                            result.ResultSummary);
+                        break;
+                }
             }
 
             LaunchReadyLocked();
