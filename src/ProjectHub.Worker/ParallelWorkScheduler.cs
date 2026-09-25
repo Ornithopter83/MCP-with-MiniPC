@@ -8,7 +8,9 @@ public sealed record WorkItemDependencyResult(
 public sealed record WorkItemExecutionRequest(
     WorkItemSnapshot Item,
     int Slot,
-    IReadOnlyList<WorkItemDependencyResult> Dependencies);
+    IReadOnlyList<WorkItemDependencyResult> Dependencies,
+    string InboundType,
+    string InboundBody);
 
 public enum WorkItemExecutionOutcome
 {
@@ -107,9 +109,6 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             ThrowIfDisposed();
             _started = true;
             if (_lifetimeCts.IsCancellationRequested)
-                CancelRemainingLocked("SCHEDULER_LIFETIME_CANCELED");
-            else
-                if (_lifetimeCts.IsCancellationRequested)
                 CancelRemainingLocked("SCHEDULER_LIFETIME_CANCELED");
             else
                 LaunchReadyLocked();
@@ -229,6 +228,13 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             if (slot is null)
                 break;
 
+            var inboundType = string.IsNullOrWhiteSpace(next.ResumeInputType)
+                ? (string.IsNullOrWhiteSpace(next.SessionId) ? "WORK_ITEM" : "WORK_ITEM_RESUME")
+                : next.ResumeInputType!;
+            var inboundBody = string.IsNullOrWhiteSpace(next.ResumeBody)
+                ? next.Goal
+                : next.ResumeBody!;
+
             if (!_graph.TryMarkRunning(next.Id))
                 continue;
 
@@ -242,7 +248,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
             var running = new RunningWork(next.Id, slot.Value, itemCancellation);
             _running.Add(next.Id, running);
-            running.Task = ExecuteOneAsync(runningSnapshot, dependencyResults, slot.Value, itemCancellation.Token);
+            running.Task = ExecuteOneAsync(runningSnapshot, dependencyResults, inboundType, inboundBody, slot.Value, itemCancellation.Token);
         }
     }
 
@@ -261,6 +267,8 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
     private async Task ExecuteOneAsync(
         WorkItemSnapshot item,
         IReadOnlyList<WorkItemDependencyResult> dependencies,
+        string inboundType,
+        string inboundBody,
         int slot,
         CancellationToken cancellationToken)
     {
@@ -271,7 +279,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         try
         {
             result = await _executor.ExecuteAsync(
-                new WorkItemExecutionRequest(item, slot, dependencies),
+                new WorkItemExecutionRequest(item, slot, dependencies, inboundType, inboundBody),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

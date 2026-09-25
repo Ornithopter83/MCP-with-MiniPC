@@ -21,7 +21,8 @@ public sealed record WorkGraphPatchOperation(
     WorkItemSpec? Item = null,
     IReadOnlyList<string>? Dependencies = null,
     string? Value = null,
-    int? IntegerValue = null)
+    int? IntegerValue = null,
+    string? InputType = null)
 {
     public static WorkGraphPatchOperation Add(WorkItemSpec item)
         => new(WorkGraphPatchOperationType.Add, item.Id, Item: item);
@@ -38,8 +39,8 @@ public sealed record WorkGraphPatchOperation(
     public static WorkGraphPatchOperation SetBaseRef(string workItemId, string? baseRef)
         => new(WorkGraphPatchOperationType.SetBaseRef, workItemId, Value: baseRef);
 
-    public static WorkGraphPatchOperation Release(string workItemId)
-        => new(WorkGraphPatchOperationType.Release, workItemId);
+    public static WorkGraphPatchOperation Release(string workItemId, string? inputType = null, string? body = null)
+        => new(WorkGraphPatchOperationType.Release, workItemId, Value: body, InputType: inputType);
 
     public static WorkGraphPatchOperation SetMaxConcurrency(int value)
         => new(WorkGraphPatchOperationType.SetMaxConcurrency, string.Empty, IntegerValue: value);

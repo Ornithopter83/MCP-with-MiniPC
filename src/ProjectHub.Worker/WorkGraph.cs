@@ -41,6 +41,8 @@ public sealed record WorkItemSnapshot(
     string? ResultSummary,
     string? FailureCode,
     string? BlockCode,
+    string? ResumeInputType,
+    string? ResumeBody,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? FinishedAtUtc);
@@ -180,6 +182,8 @@ public sealed class WorkGraph
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.FailureCode = null;
         item.BlockCode = null;
+        item.ResumeInputType = null;
+        item.ResumeBody = null;
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
         RecalculateStates();
         return true;
@@ -196,6 +200,8 @@ public sealed class WorkGraph
         item.FailureCode = failureCode.Trim();
         item.BlockCode = null;
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
+        item.ResumeInputType = null;
+        item.ResumeBody = null;
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
         RecalculateStates();
         return true;
@@ -211,6 +217,8 @@ public sealed class WorkGraph
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.FailureCode = null;
         item.BlockCode = null;
+        item.ResumeInputType = null;
+        item.ResumeBody = null;
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
         RecalculateStates();
         return true;
@@ -227,6 +235,8 @@ public sealed class WorkGraph
         item.BlockCode = blockCode.Trim();
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.FailureCode = null;
+        item.ResumeInputType = null;
+        item.ResumeBody = null;
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
         RecalculateStates();
         return true;
@@ -323,6 +333,8 @@ public sealed class WorkGraph
                 if (item.State != WorkItemState.Blocked || string.IsNullOrWhiteSpace(item.BlockCode))
                     return "WORK_GRAPH_ITEM_NOT_HELD";
                 item.BlockCode = null;
+                item.ResumeInputType = NullIfWhiteSpace(operation.InputType) ?? "HQ_RESUME";
+                item.ResumeBody = NullIfWhiteSpace(operation.Value);
                 item.State = WorkItemState.Planned;
                 item.FinishedAtUtc = null;
                 return null;
@@ -452,6 +464,8 @@ public sealed class WorkGraph
             item.ResultSummary,
             item.FailureCode,
             item.BlockCode,
+            item.ResumeInputType,
+            item.ResumeBody,
             item.CreatedAtUtc,
             item.StartedAtUtc,
             item.FinishedAtUtc);
@@ -484,6 +498,8 @@ public sealed class WorkGraph
         public string? ResultSummary { get; set; }
         public string? FailureCode { get; set; }
         public string? BlockCode { get; set; }
+        public string? ResumeInputType { get; set; }
+        public string? ResumeBody { get; set; }
         public DateTimeOffset CreatedAtUtc { get; set; }
         public DateTimeOffset? StartedAtUtc { get; set; }
         public DateTimeOffset? FinishedAtUtc { get; set; }
@@ -505,6 +521,8 @@ public sealed class WorkGraph
                 ResultSummary = ResultSummary,
                 FailureCode = FailureCode,
                 BlockCode = BlockCode,
+                ResumeInputType = ResumeInputType,
+                ResumeBody = ResumeBody,
                 CreatedAtUtc = CreatedAtUtc,
                 StartedAtUtc = StartedAtUtc,
                 FinishedAtUtc = FinishedAtUtc
