@@ -295,3 +295,9 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - WORK는 받은 Form을 `[GOTO : JUDGE]`로 전송한다.
 - HQ 계약의 `WORK가 의미 판정 질문을 올리면...` 문구와 JUDGE 필요성 재판단 관련 실험 문구를 제거했다.
 - Worker 라우팅 및 JUDGE transport 코드는 변경하지 않았다.
+
+## 2026-09-25 WORK 계약 제어행 대괄호 정리
+
+- WORK 계약의 설명 문장에서는 GOTO 목적지를 대괄호 제어행 형태로 쓰지 않는다.
+- 대괄호는 실제 ACTION/GOTO 제어행에만 사용하고, 설명 문장에서는 HQ, JUDGE, RESOURCE 역할명으로만 지칭한다.
+- 실제 라우팅 제어행 문법과 Worker 파서는 변경하지 않았다.
