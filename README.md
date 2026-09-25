@@ -24,13 +24,14 @@ dotnet run --project src/ProjectHub.Server
 
 Worker는 하나의 작업 안에서 Codex CLI 결과를 GPT Web으로 전달하고, Web 응답의 ACTION에 따라 다음 Codex 라운드를 진행하거나 PAUSE/END로 종료한다. 후속 Web 라운드에는 최초 COMMAND를 중복해서 보내지 않고, 현재 라운드 결과를 전달한다.
 
-작업 메시지는 USER COMMAND → CODEX → WORKER → GPT WEB 순으로 누적되며 정상 종료 시 실행 파일 폴더 아래에 다음 형식으로 저장된다.
+작업 메시지는 실행 중에도 실시간 이벤트로 기록된다. Coordinator-first 작업은 작업 폴더 아래의 `.projecthub`에 상태와 로그를 남긴다.
 
-<Task 실행 폴더>\Task\<프로젝트>_<스레드>\_<yyyymmdd_HHmmss>.txt
+<작업 폴더>\.projecthub\session-state.json
+<작업 폴더>\.projecthub\last-handoff.md
+<작업 폴더>\.projecthub\events\<jobId>.jsonl
+<작업 폴더>\.projecthub\transcripts\<jobId>.txt
 
-현재 실행 파일 기준 작업 루트:
-
-C:\AI-AGENT\ProjectHub\src\ProjectHub.Worker\bin\Debug\net9.0-windows\Task
+`events/<jobId>.jsonl`은 이벤트 발생 시마다 한 줄 JSON으로 append되며 Full Message를 보존한다. 재개 가능한 작업은 Worker 재시작 후 `session-state.json`에서 복구할 수 있다.
 
 ### 알려진 제약
 
