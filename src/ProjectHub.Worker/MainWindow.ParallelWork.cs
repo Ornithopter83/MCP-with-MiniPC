@@ -93,8 +93,17 @@ public partial class MainWindow
 
             ProjectWorkspacePersistence.SaveWorkGraph(workingDirectory, graph.Snapshot());
 
+            var currentGitTarget = WorkerTargetConfiguration.ResolveGit(
+                workingDirectory,
+                _targetSettings);
             var baseRef =
-                _gitTarget?.HeadSha ??
+                currentGitTarget.HeadSha ??
+                graph.Items
+                    .Where(item => item.Kind == WorkItemKind.Integration &&
+                                   item.State == WorkItemState.Completed)
+                    .OrderByDescending(item => item.FinishedAtUtc ?? DateTimeOffset.MinValue)
+                    .Select(item => item.ResultRef)
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
                 graph.Items.Select(item => item.BaseRef)
                     .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
                 "HEAD";
