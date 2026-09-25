@@ -15,6 +15,22 @@ public static class WorkerHistoryCardFormatter
         return value.Length <= HardPreviewLimit ? value : value[..(HardPreviewLimit - 1)] + "…";
     }
 
+    public static string ProgressPreview(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return "(본문 없음)";
+        var lines = body
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n')
+            .Select(line => Regex.Replace(line, @"\s+", " ", RegexOptions.CultureInvariant).Trim())
+            .Where(line => line.Length > 0)
+            .Select(line => Regex.Replace(line, @"https?://\S+", "[주소]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            .Select(line => Regex.Replace(line, @"(?i)(api[_ -]?key|token|password|secret)\s*[:=]\s*\S+", "$1=[숨김]", RegexOptions.CultureInvariant));
+        var value = string.Join(Environment.NewLine, lines).Trim();
+        if (value.Length == 0) return "(본문 없음)";
+        return value.Length <= HardPreviewLimit ? value : value[..(HardPreviewLimit - 1)] + "…";
+    }
+
     public static string TokenLine(CodexUsage? usage)
     {
         if (usage is null || !usage.UsageKnown) return "토큰 · 미제공";
