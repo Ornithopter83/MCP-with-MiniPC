@@ -10,6 +10,6 @@ Server-only 환경 변수: `PROJECTHUB_SUPABASE_URL`, `PROJECTHUB_SUPABASE_SERVI
 
 운영 자동 시작은 Windows Task Scheduler에 위 명령을 등록하고, 환경 변수는 해당 작업의 실행 계정 환경에 설정한다.
 
-이전 검증 순서: local/public `/api/status=200`, 기존 Supabase project 조회, assertion 발급, NAS Gateway 인증, 기존 SHA-256 object 재사용, 프로젝트 Sync, checkpoint Restore.
+이전 검증 순서: local/public `/api/status=200`, 기존 Supabase project 조회, assertion 발급, NAS Gateway 인증, 기존 SHA-256 object 재사용, 프로젝트 Sync, 체크포인트 Restore.
 
 Server 주소가 변경되면 각 프로젝트의 `.projecthub/project.json`의 `serverBaseUrl`을 수동 갱신한다. 기존 Supabase/NAS object는 재업로드하지 않는다.
