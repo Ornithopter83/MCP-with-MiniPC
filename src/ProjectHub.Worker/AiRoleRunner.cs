@@ -11,7 +11,8 @@ public sealed record AiRoleRunRequest(
     CancellationToken CancellationToken,
     string? OutputSchemaJson = null,
     Action<string>? Progress = null,
-    Action<string>? SessionStarted = null);
+    Action<string>? SessionStarted = null,
+    IReadOnlyList<string>? AdditionalWritableDirectories = null);
 
 public sealed record AiRoleRunResult(
     string Provider,
@@ -64,7 +65,8 @@ public sealed class OpenAiCodexRoleRunner(CodexCliRunner codexRunner) : IAiRoleR
             request.OutputSchemaJson,
             request.Sandbox,
             request.Progress,
-            request.SessionStarted);
+            request.SessionStarted,
+            request.AdditionalWritableDirectories);
 
         return new(
             AiProviderCatalog.ToWireId(Provider),

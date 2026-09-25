@@ -125,7 +125,10 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                         startedSession = normalized;
                         SessionStarted?.Invoke(new CodexWorkItemSessionStarted(item.Id, normalized));
                     }
-                })).ConfigureAwait(false);
+                },
+                string.IsNullOrWhiteSpace(observationRequestDirectory)
+                    ? null
+                    : new[] { observationRequestDirectory })).ConfigureAwait(false);
 
             sessionId = CodexCliRunner.NormalizeSessionId(runResult.SessionId) ??
                         startedSession ??

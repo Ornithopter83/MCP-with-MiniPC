@@ -58,7 +58,7 @@ public sealed class CodexCliRunner
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
     }
 
-    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null)
+    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null, IReadOnlyList<string>? additionalWritableDirectories = null)
     {
         sessionId = NormalizeSessionId(sessionId);
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
@@ -91,7 +91,11 @@ public sealed class CodexCliRunner
             CodexSandboxMode.WorkspaceWrite => "workspace-write",
             _ => "danger-full-access"
         });
-        foreach (var directory in ResolveAdditionalWritableDirectories(effectiveSandbox, workingDirectory, AppContext.BaseDirectory))
+        foreach (var directory in ResolveAdditionalWritableDirectories(
+                     effectiveSandbox,
+                     workingDirectory,
+                     AppContext.BaseDirectory,
+                     additionalWritableDirectories))
         {
             process.StartInfo.ArgumentList.Add("--add-dir");
             process.StartInfo.ArgumentList.Add(directory);
@@ -167,22 +171,48 @@ public sealed class CodexCliRunner
     public static IReadOnlyList<string> ResolveAdditionalWritableDirectories(
         CodexSandboxMode sandboxMode,
         string workingDirectory,
-        string appBaseDirectory)
+        string appBaseDirectory,
+        IReadOnlyList<string>? requestedDirectories = null)
     {
         if (sandboxMode != CodexSandboxMode.WorkspaceWrite ||
-            string.IsNullOrWhiteSpace(workingDirectory) ||
-            string.IsNullOrWhiteSpace(appBaseDirectory) ||
-            !Directory.Exists(appBaseDirectory))
+            string.IsNullOrWhiteSpace(workingDirectory))
             return Array.Empty<string>();
 
         try
         {
-            var workspace = Path.GetFullPath(workingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var appRoot = Path.GetFullPath(appBaseDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (string.Equals(workspace, appRoot, StringComparison.OrdinalIgnoreCase) ||
-                IsPathWithin(appRoot, workspace))
-                return Array.Empty<string>();
-            return new[] { appRoot };
+            var workspace = Path.GetFullPath(workingDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var candidates = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(appBaseDirectory) && Directory.Exists(appBaseDirectory))
+                candidates.Add(appBaseDirectory);
+            if (requestedDirectories is not null)
+                candidates.AddRange(requestedDirectories.Where(path => !string.IsNullOrWhiteSpace(path)));
+
+            var result = new List<string>();
+            foreach (var candidate in candidates)
+            {
+                string fullPath;
+                try
+                {
+                    fullPath = Path.GetFullPath(candidate)
+                        .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (!Directory.Exists(fullPath) ||
+                    string.Equals(workspace, fullPath, StringComparison.OrdinalIgnoreCase) ||
+                    IsPathWithin(fullPath, workspace) ||
+                    result.Any(existing => string.Equals(existing, fullPath, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                result.Add(fullPath);
+            }
+
+            return result;
         }
         catch
         {
