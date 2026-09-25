@@ -23,9 +23,16 @@ public static class RoleContractLoader
         return header + body + "\n\n" + LoadHqFooter();
     }
 
-    public static string BuildWorkPrompt(string inboundType, string body, bool judgeAvailable)
+    public static string BuildWorkPrompt(
+        string inboundType,
+        string body,
+        bool judgeAvailable,
+        string? observationRequestDirectory = null)
     {
-        var header = $"역할: WORK\n입력 유형: {inboundType}\n판정 사용 가능: {(judgeAvailable ? "예" : "아니오")}\n리소스 사용 가능: 예\n\n입력 본문:\n";
+        var observationHeader = string.IsNullOrWhiteSpace(observationRequestDirectory)
+            ? string.Empty
+            : $"비동기 계측 요청 폴더: {observationRequestDirectory}\n";
+        var header = $"역할: WORK\n입력 유형: {inboundType}\n판정 사용 가능: {(judgeAvailable ? "예" : "아니오")}\n리소스 사용 가능: 예\n{observationHeader}\n입력 본문:\n";
         return header + body + "\n\n" + LoadWorkFooter(judgeAvailable);
     }
 
