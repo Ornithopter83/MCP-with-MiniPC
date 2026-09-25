@@ -242,3 +242,13 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - command 실행, usage, session metadata 등은 `agent_message`가 아니므로 진행 카드로 만들지 않는다.
 - 최종 역할 응답 카드는 기존 `작업 요청`, `수행 결과`, `리소스 요청` 형식을 그대로 유지한다.
 - parser와 다중 줄 미리보기 단위 테스트를 추가했다.
+
+## 2026-09-25 실행 중 취소 후 동일 세션 보존
+
+- `CANCELED`를 `PAUSED`, `DONE`, `DONE_WITH_ERROR`와 같은 사용자 후속 재개 가능 상태로 추가했다.
+- 사용자가 실행 중 취소하면 현재 실행 프로세스를 중단하되 현재 JobId, 작업공간, HQ/WORK 설정, 확보된 세션 ID, 마지막 완료 HQ 메시지를 `CoordinatorContinuationState`에 저장한다.
+- Codex `--json`의 `thread.started` / `thread_id`를 실행 중 즉시 수집해 새 CLI 세션도 최종 응답 전에 보존한다.
+- 취소 뒤 후속 입력 영역을 표시하고 `작업 추가`로 같은 HQ/WORK 문맥의 `USER_FOLLOWUP` 새 실행 구간을 시작한다.
+- Worker는 취소 후 자동으로 AI를 다시 호출하지 않는다.
+- 현재 실행 구간과 함께 취소된 RESOURCE 대기 작업은 자동 재실행하지 않으며 이미 저장된 파일과 작업공간 이력은 유지한다.
+- `CANCELED` 후속 입력과 `thread.started` 실시간 파서 테스트를 추가했다.
