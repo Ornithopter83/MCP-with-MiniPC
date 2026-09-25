@@ -6,27 +6,27 @@ Supabase `workstations` 최소 경로를 먼저 실제 E2E로 연결하고, 이�
 
 ## 현재 기준
 
-Server와 Infrastructure DI 경계가 존재한다. 환경 변수 기반 Supabase REST 연결과 project state 수동 저장·조회 경로가 실제 서버 PC에서 검증됐다.
+서버와 Infrastructure DI 경계가 존재한다. 환경 변수 기반 Supabase REST 연결과 프로젝트 상태 수동 저장·조회 경로가 실제 서버 PC에서 검증됐다.
 
 ## 세부 작업
 
 ### A. Supabase 연결 설정/클라이언트 경계 (완료: 2026-09-15)
 
-- `SupabaseOptions`가 설정에 지정된 환경 변수에서 URL과 Service Role Key를 읽는다.
+- `SupabaseOptions`가 설정에 지정된 환경 변수에서 URL과 서비스 역할 키를 읽는다.
 - Infrastructure가 named `HttpClient`를 등록하며 REST base address와 인증 헤더를 구성한다.
 - 환경 변수가 없을 때도 서버가 기동되며 실제 비밀값은 저장소에 기록하지 않는다.
 
 ### B. workstations 최소 스키마 (완료: 2026-09-15)
 
-- `supabase/workstations.sql`에 `workstation_id` unique, display name, hostname, last_seen, created/updated 시각, updated_at trigger, RLS 활성화를 정의했다. 사용자가 Supabase SQL Editor에서 실행해야 한다.
+- `supabase/workstations.sql`에 `workstation_id` unique, 표시 이름, hostname, last_seen, created/updated 시각, updated_at 트리거, RLS 활성화를 정의했다. 사용자가 Supabase SQL Editor에서 실행해야 한다.
 
 ### C. IWorkstationRepository와 Supabase 구현 (완료: 2026-09-15)
 
-- `IWorkstationRepository`와 `SupabaseWorkstationRepository`를 추가했다. 기존 named `HttpClient("Supabase")`를 통해 PostgREST upsert/list를 수행한다.
+- `IWorkstationRepository`와 `SupabaseWorkstationRepository`를 추가했다. 기존 named `HttpClient("Supabase")`를 통해 PostgREST 업서트/list를 수행한다.
 
-### D. heartbeat upsert (완료: 2026-09-15)
+### D. 생존 신호 업서트 (완료: 2026-09-15)
 
-- `POST /api/agent/heartbeat` 요청 검증, 서버 시각 기반 `last_seen` 생성, `workstation_id` 충돌 병합 upsert와 503 오류 응답을 구현했다.
+- `POST /api/agent/heartbeat` 요청 검증, 서버 시각 기반 `last_seen` 생성, `workstation_id` 충돌 병합 업서트와 503 오류 응답을 구현했다.
 
 ### E. workstation 조회 (완료: 2026-09-15)
 
@@ -34,28 +34,28 @@ Server와 Infrastructure DI 경계가 존재한다. 환경 변수 기반 Supabas
 
 ### F. 실제 E2E 검증 (완료: 2026-09-15)
 
-- 사용자가 Mini PC와 Supabase에서 heartbeat POST, row 생성, 동일 workstation upsert, `last_seen` 갱신, 목록 GET, 서버 재시작 후 persistence를 확인했다.
+- 사용자가 Mini PC와 Supabase에서 생존 신호 POST, 행 생성, 동일 workstation 업서트, `last_seen` 갱신, 목록 GET, 서버 재시작 후 영속성를 확인했다.
 
 ### G. Project 상태 확장 (진행)
 
-- 첫 heartbeat E2E 성공 후 projects와 project_states 최소 저장 경로부터 단계적으로 추가한다.
+- 첫 생존 신호 E2E 성공 후 projects와 project_states 최소 저장 경로부터 단계적으로 추가한다.
 
 #### G-A. projects/project_states 최소 스키마 설계 (완료: 2026-09-15)
 
 - `supabase/project-state.sql`에 프로젝트 식별자와 workstation별 최신 상태의 unique 제약을 정의했다.
 - 사용자가 Supabase SQL Editor에서 실행하고 테이블 생성을 확인했다.
 
-#### G-B. project state 저장소와 수동 API (완료: 2026-09-15)
+#### G-B. 프로젝트 상태 저장소와 수동 API (완료: 2026-09-15)
 
-- `SupabaseProjectStateRepository`가 `projects`와 `project_states`를 순서대로 upsert한다.
+- `SupabaseProjectStateRepository`가 `projects`와 `project_states`를 순서대로 업서트한다.
 - `POST /api/projects/{projectId}/state`로 수동 상태를 저장한다.
 - `GET /api/projects/{projectId}/states`와 `/states/{workstationId}`로 상태를 조회한다.
-- 자동 Git 수집과 FileSystemWatcher는 구현하지 않는다.
+- 자동 Git 수집과 파일 시스템 감시기는 구현하지 않는다.
 
-#### G-C. project state 실제 E2E 검증 (완료: 2026-09-16)
+#### G-C. 프로젝트 상태 실제 E2E 검증 (완료: 2026-09-16)
 
-- 사용자가 서버 PC에서 project state 수동 POST/GET를 성공시켰다.
-- Supabase `project_states`에 `SERVER-PC-01`, `main`, `dirty=true`, `changed_count=1`, `untracked_count=0` row를 확인했다.
+- 사용자가 서버 PC에서 프로젝트 상태 수동 POST/GET를 성공시켰다.
+- Supabase `project_states`에 `SERVER-PC-01`, `main`, `dirty=true`, `changed_count=1`, `untracked_count=0` 행를 확인했다.
 - `head_sha`에 실제 전체 커밋 SHA `cebda36a4937056e9abd11254131ee42ad7afc83`가 저장됐다.
 - 동일 `project_id` + `workstation_id` 재전송에 따른 update를 확인했다.
 
@@ -65,13 +65,13 @@ Server와 Infrastructure DI 경계가 존재한다. 환경 변수 기반 Supabas
 
 ## 변경 금지
 
-- Service Role Key를 코드·문서·로그에 기록하지 않는다.
-- Agent가 Supabase에 직접 접근하지 않는다.
-- 첫 heartbeat E2E 전에는 FileSystemWatcher, Git 상태 수집, MCP, NAS, GitHub Bridge, 복잡한 인증을 구현하지 않는다.
+- 서비스 역할 키를 코드·문서·로그에 기록하지 않는다.
+- 에이전트가 Supabase에 직접 접근하지 않는다.
+- 첫 생존 신호 E2E 전에는 파일 시스템 감시기, Git 상태 수집, MCP, NAS, GitHub Bridge, 복잡한 인증을 구현하지 않는다.
 
 ## 완료 기준
 
-- heartbeat가 `workstations`에 중복 없이 저장되고 조회 API에서 확인된다.
+- 생존 신호가 `workstations`에 중복 없이 저장되고 조회 API에서 확인된다.
 
 ## 검증 방법
 
@@ -84,19 +84,19 @@ Server와 Infrastructure DI 경계가 존재한다. 환경 변수 기반 Supabas
 - A 완료: 환경 변수 기반 `SupabaseOptions`와 Supabase REST named `HttpClient` 경계를 추가했다. 환경 변수가 없어도 서버가 기동되며 비밀값은 저장소에 기록하지 않는다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
 - B 완료: `supabase/workstations.sql`을 추가했다. 실제 Supabase 적용은 아직 하지 않았다.
 - C 완료: workstation 저장소 계약과 PostgREST 구현을 추가했다.
-- D 완료: heartbeat upsert API를 추가했다.
-- D 보완: upsert 요청에서 null 메타데이터 필드를 제외하고 Supabase 오류 본문을 읽어 502 응답에 포함하도록 수정했다.
+- D 완료: 생존 신호 업서트 API를 추가했다.
+- D 보완: 업서트 요청에서 null 메타데이터 필드를 제외하고 Supabase 오류 본문을 읽어 502 응답에 포함하도록 수정했다.
 - E 완료: workstation 목록 조회 API를 추가했다.
 
 F 완료: 사용자가 실제 Mini PC→Supabase E2E를 검증했다.
 G-A 완료: `supabase/project-state.sql`을 작성했고 사용자가 Supabase 적용 및 테이블 생성을 확인했다.
-G-B 완료: project state 저장소와 수동 POST/GET API를 구현했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
-G-C 완료: 사용자가 서버 PC에서 project state POST/GET, Supabase 저장, 동일 project/workstation update, 실제 `head_sha` 저장을 검증했다.
+G-B 완료: 프로젝트 상태 저장소와 수동 POST/GET API를 구현했다. `dotnet build ProjectHub.sln --no-restore` 성공(경고 0, 오류 0), `dotnet test ProjectHub.sln --no-restore` 성공(2개 통과).
+G-C 완료: 사용자가 서버 PC에서 프로젝트 상태 POST/GET, Supabase 저장, 동일 project/workstation update, 실제 `head_sha` 저장을 검증했다.
 
 ## 사용자 수행 필요
 
-- Supabase 프로젝트를 생성하고 URL과 Service Role Key를 Mini PC Server 실행 환경에 `PROJECTHUB_SUPABASE_URL`, `PROJECTHUB_SUPABASE_SERVICE_ROLE_KEY`로 등록한다.
+- Supabase 프로젝트를 생성하고 URL과 서비스 역할 키를 Mini PC 서버 실행 환경에 `PROJECTHUB_SUPABASE_URL`, `PROJECTHUB_SUPABASE_SERVICE_ROLE_KEY`로 등록한다.
 - 실제 키는 이 저장소나 문서에 기록하지 않는다.
 - `supabase/workstations.sql`을 Supabase SQL Editor에서 실행하고 테이블 생성 여부를 확인한다.
-- Mini PC에서 Server를 재시작한 뒤 `/api/status`, heartbeat POST, `/api/workstations`를 순서대로 호출한다.
+- Mini PC에서 서버를 재시작한 뒤 `/api/status`, 생존 신호 POST, `/api/workstations`를 순서대로 호출한다.
 - 04-G 검증 완료. 다음 활성 작업은 `tasks/05-agent-state.md`의 05-A다.
