@@ -1444,7 +1444,11 @@ public partial class MainWindow : Window
         {
             if (!completion.Success)
             {
-                AddTaskMessage("RESOURCE FAILED", completion.Message, status: completion.ErrorCode ?? "RESOURCE_FAILED", includeHistory: false);
+                AddTaskMessage(
+                    "RESOURCE FAILED",
+                    $"request {completion.RequestId} · type {completion.Type}\n{completion.Message}",
+                    status: completion.ErrorCode ?? "RESOURCE_FAILED",
+                    includeHistory: false);
                 return;
             }
 
@@ -1456,7 +1460,12 @@ public partial class MainWindow : Window
                     return new CodexCliFile(info.FullName, info.Name, GetResourceMimeType(info.Extension), info.Length);
                 })
                 .ToArray();
-            AddTaskMessage("RESOURCE SAVED", completion.Message, fileCount: files.Length, status: "SAVED", includeHistory: false);
+            AddTaskMessage(
+                "RESOURCE SAVED",
+                $"request {completion.RequestId} · type {completion.Type}\n{completion.Message}",
+                fileCount: files.Length,
+                status: "SAVED",
+                includeHistory: false);
             AddRoleResponseHistory(WorkerRoleState.Resource, "리소스 저장", completion.Message, files: files, status: "SAVED");
         });
     }
