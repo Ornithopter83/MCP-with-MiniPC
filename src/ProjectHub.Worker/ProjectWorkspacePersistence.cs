@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.Encodings.Web;
 
 namespace ProjectHub.Worker;
 
@@ -44,7 +45,13 @@ public static class ProjectWorkspacePersistence
     private static readonly object EventSync = new();
     private static readonly JsonSerializerOptions StateJsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+    private static readonly JsonSerializerOptions EventJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = false,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public static string RootDirectory(string workingDirectory)
@@ -102,7 +109,7 @@ public static class ProjectWorkspacePersistence
                 sizeBytes,
                 itemCount,
                 fileCount);
-            var line = WorkerTranscriptJson.Serialize(entry) + Environment.NewLine;
+            var line = JsonSerializer.Serialize(entry, EventJsonOptions) + Environment.NewLine;
             lock (EventSync)
             {
                 File.AppendAllText(path, line, new UTF8Encoding(false));
@@ -216,7 +223,7 @@ public static class ProjectWorkspacePersistence
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 try
                 {
-                    var entry = JsonSerializer.Deserialize<ProjectEventLogEntry>(line, StateJsonOptions);
+                    var entry = JsonSerializer.Deserialize<ProjectEventLogEntry>(line, EventJsonOptions);
                     if (entry is null) continue;
                     if (queue.Count == maxCount) queue.Dequeue();
                     queue.Enqueue(entry);
