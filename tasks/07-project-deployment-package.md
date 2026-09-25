@@ -10,7 +10,7 @@
 
 2026-09-18 `hw` 실제 검증: Explorer Sync와 동일한 `ProjectHub_Sync.ps1` 경로로 `forUpload.z01` 524,288,000 bytes를 업로드했다. curl 전송은 실패 0건, 원본 및 NAS object SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267`, `STAGED`, `CHECKPOINTED=true`로 완료됐다. Server 조회에서 `project_large_files` lifecycle `STAGED`, 세션 `COMPLETED`, 체크포인트 commit `be3cff250b18ce651f1e50167a9ff8407d395197`를 확인했다. 수정본은 중앙 uploader와 `hw\bin\ProjectHub_LargeData_Uploader.ps1`에 반영했다.
 
-2026-09-18 작업 로그: Server에 `ProjectHub.Server` 범주를 추가해 시작, project state, assertion, upload 세션 완료, STAGED, 체크포인트, removal/tombstone 주요 단계만 Information으로 기록한다. `Microsoft`, ASP.NET Core, Supabase HttpClient 반복 로그는 Warning으로 제한하고 Console을 한 줄/시각 형식으로 설정했다. 로컬 `http://127.0.0.1:5280/api/status`가 200으로 응답하고 `SERVER_STARTED` 한 줄 로그를 출력하는 것을 확인했다.
+2026-09-18 작업 로그: 서버에 `ProjectHub.Server` 범주를 추가해 시작, 프로젝트 상태, 검증 토큰, 업로드 세션 완료, STAGED, 체크포인트, 제거/삭제 표식 주요 단계만 정보 수준으로 기록한다. `Microsoft`, ASP.NET Core, Supabase HttpClient 반복 로그는 경고 수준으로 제한하고 콘솔을 한 줄/시각 형식으로 설정했다. 로컬 `http://127.0.0.1:5280/api/status`가 200으로 응답하고 `SERVER_STARTED` 한 줄 로그를 출력하는 것을 확인했다.
 
 2026-09-18 삭제 반복 표시 수정: Server enum의 `Removed` 값이 숫자 `7`로 JSON 반환되는 점을 반영하고, 체크포인트 API의 여러 결과에서 최신 단일 객체·문자열 commit SHA를 선택하도록 `Sync`를 보완했다. 삭제 API가 `forUpload.z01` tombstone 처리를 성공적으로 반환했으며, `hw`에서 후속 Sync 결과가 `0 large files`, `Removed=0`, `Failed=0`으로 확인되어 삭제 확인 창이 재표시되지 않았다.
 
@@ -26,15 +26,15 @@
 
 2026-09-18 CMD 진입점 보완: Setup/Sync/Restore/GC/Update/Agent 테스트 모든 사용자용 CMD가 PowerShell 종료 코드를 출력하고 항상 `pause`한 뒤 원래 종료 코드를 반환한다. Update는 `mode con: cols=220 lines=50`을 적용했다. Agent 테스트의 스크립트 누락 오류 경로도 같은 종료 처리를 사용한다. `git diff --check` 통과; 서버/게이트웨이 배포 후 Explorer 더블클릭 E2E만 남았다.
 
-2026-09-18 v0.2 Git 진입점 구현: `ProjectHub_Commit_Push.cmd`는 `git add -A` → commit → fetch → pull --rebase → push → 기존 Sync/체크포인트 순서로 실행한다. `ProjectHub_Fetch_Pull.cmd`는 local dirty를 먼저 검사한 뒤 fetch → pull --rebase → Restore를 실행한다. 분리된 HEAD, merge/rebase 진행, 충돌, 푸시 거부는 자동 해결하지 않고 중단한다. 두 PS1 엔진은 Setup에서 `bin`으로 배포되며 모든 CMD는 pause/exit-code를 유지한다.
+2026-09-18 v0.2 Git 진입점 구현: `ProjectHub_Commit_Push.cmd`는 `git add -A` → 커밋 → 가져오기 → `pull --rebase` → 푸시 → 기존 동기화/체크포인트 순서로 실행한다. `ProjectHub_Fetch_Pull.cmd`는 로컬 변경 여부를 먼저 검사한 뒤 가져오기 → `pull --rebase` → 복원를 실행한다. 분리된 HEAD, 병합/rebase 진행, 충돌, 푸시 거부는 자동 해결하지 않고 중단한다. 두 PS1 엔진은 설치 과정에서 `bin`으로 배포되며 모든 CMD는 일시정지와 종료 코드를 유지한다.
 
 2026-09-18 강제 복구 구현: `ProjectHub_Force_Restore.cmd`는 `FORCE` 확인 전에는 아무것도 변경하지 않는다. 승인 후 remote branch 확인, `fetch origin`, `reset --hard`, `clean -fd`를 수행하고, `.projecthub/project.json`과 ProjectHub launcher/engine을 보존한 뒤 기존 Restore로 최신 체크포인트/NAS 상태를 복구한다. 실행 결과 HEAD와 최종 working tree를 출력하며, 사용자가 명시적으로 승인한 파괴적 작업으로만 동작한다.
 
-2026-09-18 hw 순차 검증 결과: 최신 파일 배포, 일반 Fetch_Pull dirty 보호, Force Restore의 Git reset/clean, 500MiB 업로드·STAGED·CHECKPOINTED, ProjectHub 외 로컬 파일 삭제를 확인했다. Force Restore 재실행 시 Git 상태와 로컬 삭제는 복구됐지만 NAS 다운로드가 `RESTORE_SIZE_MISMATCH: forUpload.z01`로 실패했다. 따라서 NAS `download.php`가 반환하는 실제 크기/hash와 canonical object를 추가 확인해야 07 최종 E2E를 완료할 수 있다.
+2026-09-18 hw 순차 검증 결과: 최신 파일 배포, 일반 Fetch_Pull dirty 보호, Force Restore의 Git reset/clean, 500MiB 업로드·STAGED·CHECKPOINTED, ProjectHub 외 로컬 파일 삭제를 확인했다. Force Restore 재실행 시 Git 상태와 로컬 삭제는 복구됐지만 NAS 다운로드가 `RESTORE_SIZE_MISMATCH: forUpload.z01`로 실패했다. 따라서 NAS `download.php`가 반환하는 실제 크기/해시와 정규 객체를 추가 확인해야 07 최종 E2E를 완료할 수 있다.
 
-2026-09-18 최신 피드백 구현: Gateway `download.php`의 canonical path/readability/size/readfile 진단을 보강했고, Restore/Force Restore를 PREPARE→APPLY→최종 0 mismatch/0 missing 검증 구조로 변경했다. Setup은 `ProjectHub\bin`, `ProjectHub\config`, `ProjectHub\state`, `ProjectHub\log`를 생성하고 루트 최종 진입점 3개를 연결한다. PowerShell 파서, 빌드, 테스트는 통과했다. NAS에 수정 PHP를 배포한 뒤 `download.php` 단독 호출과 Fetch_Pull/Force Restore E2E를 재검증해야 한다.
+2026-09-18 최신 피드백 구현: Gateway `download.php`의 정규 경로/읽기 가능 여부/크기/파일 읽기 진단을 보강했고, 복원/강제 복원을 PREPARE→APPLY→최종 불일치 0/누락 0 검증 구조로 변경했다. 설치 과정은 `ProjectHub\bin`, `ProjectHub\config`, `ProjectHub\state`, `ProjectHub\log`를 생성하고 루트 최종 진입점 3개를 연결한다. PowerShell 파서, 빌드, 테스트는 통과했다. NAS에 수정 PHP를 배포한 뒤 `download.php` 단독 호출과 가져오기·풀/강제 복원 E2E를 재검증해야 한다.
 
-2026-09-18 다운로드/복원 E2E 완료: NAS 웹 루트의 구버전 `download.php`를 수정본으로 교체했다. canonical object 실제 크기 524,288,000 bytes 확인, assertion 단독 download HTTP 200/Content-Length 일치, `hw` Restore 실행에서 matched=1/mismatched=0/missing=0, 로컬 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267` 일치를 확인했다. 이후 `expected` 집계 표시도 배열 안전성을 보완했다.
+2026-09-18 다운로드/복원 E2E 완료: NAS 웹 루트의 구버전 `download.php`를 수정본으로 교체했다. 정규 객체 실제 크기 524,288,000 bytes 확인, 검증 토큰 단독 다운로드 HTTP 200/Content-Length 일치, `hw` 복원 실행에서 일치=1/불일치=0/누락=0, 로컬 SHA-256 `e93ac6ff6751cd7f016305ba1f5eb97440108c59bfda42b364eb41927f9e8267` 일치를 확인했다. 이후 `expected` 집계 표시도 배열 안전성을 보완했다.
 2026-09-18 Restore 다운로드 UX 보완: `ProjectHub_Restore.ps1`의 NAS 다운로드를 HttpClient 스트림 수신으로 변경해 `DOWNLOAD`/퍼센트/바이트 진행과 완료 로그를 표시한다. 기존 PREPARE/APPLY 검증 및 완료 후 `pause`는 유지한다.
 2026-09-18 Force Restore UX 보완: 파괴적 실행 전 콘솔에서 `FORCE`를 직접 입력하던 방식을 Windows 확인 대화상자로 변경했다. 경고 아이콘·대상 경로·삭제 범위를 표시하고 `계속`/`취소` 선택으로 승인하며, 새 `ProjectHub\bin` 엔진을 우선 사용하고 구형 `bin`은 호환한다.
 
