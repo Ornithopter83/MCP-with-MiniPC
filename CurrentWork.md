@@ -44,7 +44,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - MainWindow 병렬 관제 루프 연결 완료: maxConcurrentWork>1 또는 저장된 병렬 WorkGraph가 있으면 ParallelWorkSupervisor 경로를 사용
 - RESOURCE/JUDGE/OBSERVATION 결과를 workItemId 기준으로 원래 WorkItem에 복귀
 - WorkGraph snapshot persistence/recovery와 실행 중 session/branch/worktree 문맥 보존
-- 설정 UI의 최대 동시 WORK 1~8, Pipeline의 RUNNING/MAX 및 READY/BLOCKED 상태 표시
+- 설정 UI의 최대 동시 WORK 1~8, Pipeline 작업 카드에 RUN/READY/BLOCKED/COMPLETED/FAILED 집계와 WorkItem ID ToolTip 표시
 - Integration COMPLETED 결과를 clean 주 작업공간 branch에 fast-forward로 landing하고 위험 상태에서는 INTEGRATION_LANDING_FAILED로 차단
 - USER_FOLLOWUP 복구 시 WorkGraph 현재 상태를 HQ 본문에 직접 제공
 - 성공한 Integration resultRef를 이후 WorkItem의 기본 baseRef로 승격하되 dependency만으로 의미적 base를 추론하지 않음

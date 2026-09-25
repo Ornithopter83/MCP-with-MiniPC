@@ -575,3 +575,12 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `bin/ProjectHub_Worker_Parallel_Test.ps1`를 추가해 병렬 WorkGraph 관련 Worker 테스트, 전체 solution 테스트, Debug/Release 빌드, `git diff --check`를 한 번에 실행할 수 있게 한다.
 - 자동 검증 뒤 실제 Explorer에서 max=1 회귀, max=4 병렬, 동적 SPLIT_REQUEST, Integration landing, sidecar 귀속, 취소/복구, END gate를 확인하는 수동 E2E 체크 항목을 출력한다.
 - 이 Web 실행 환경에는 .NET SDK가 없어 스크립트 자체의 실제 dotnet 실행 결과는 아직 없다.
+
+
+### 2026-09-26 병렬 상태 UI
+
+- `1ac715f5b8e1d45b02eb980fce1c3379fb3b91af`: Pipeline의 작업 카드에 병렬 상태 요약을 추가했다.
+- 표시 요약은 `RUN N/M · R <READY> · B <BLOCKED> · C <COMPLETED> · F <FAILED>` 형식이며 의미 요약 없이 WorkGraph의 기계 상태만 사용한다.
+- 작업 카드 ToolTip에는 RUNNING WorkItem의 slot과 READY/BLOCKED/COMPLETED/FAILED WorkItem ID 목록을 표시한다.
+- 병렬 실행 종료 시 상태 텍스트와 ToolTip을 제거하고 기존 모델 표시로 복구한다.
+- `ParallelWorkUiFormatterTests`를 Windows 병렬 검증 스크립트 대상에 포함했다.
