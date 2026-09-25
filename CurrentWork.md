@@ -111,10 +111,10 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 확장 0.1.5와 함께 이미지 완료 조건/진행 순서을 보강한다.
 
 
-## 2026-09-24 RESOURCE 이미지 완료 후속 보정
+## 2026-09-24 RESOURCE 이미지 수집 어댑터 완료 후속 보정
 
 - 중간 변경은 `ab6f831`로 main에 먼저 커밋/푸시했다.
-- RESOURCE 이미지 element가 DOM에 먼저 생기고 load 완료만 나중에 발생하는 경우 load event로 재검사.
+- 당시 이미지 수집 어댑터에서 이미지 element가 DOM에 먼저 생기고 load 완료만 나중에 발생하는 경우 load event로 재검사.
 - DOM mutation이 추가로 없어도 최대 120초 후 실제 로드된 이미지가 있으면 성공 전송.
 - 확장 초기화 시 소유자/응답/진행 상황 관련 상태를 모두 초기화.
 - CLI HQ/WORK에 Worker가 실제 전송한 프롬프트도 기록에 기록.
@@ -126,7 +126,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 관제 우선 흐름 종료 후 늦게 도착한 비종료 진행 이벤트는 레거시 UI를 다시 활성화하지 않음.
 
 
-## 2026-09-24 RESOURCE 사이드카 대기열 + 복수 이미지
+## 2026-09-24 RESOURCE 사이드카 대기열 + 복수 이미지 수집 어댑터
 
 - RESOURCE를 메인 역할 상태의 직렬 대기에서 분리하여 single-reader FIFO 사이드카 대기열로 변경.
 - WORK의 RESOURCE 요청은 대기열에 즉시 접수되고 같은 WORK 세션은 계속 진행.
@@ -152,8 +152,8 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 
 ## 2026-09-25 RESOURCE 다운로드 고착 방지 강화
 
-- 로그에서 RESOURCE 첫 작업이 RESPONSE_START 이후 IMAGE_READY/DOWNLOAD_START 없이 고착되는 경로를 수정.
-- RESOURCE 시작 시 기존 main image URL을 기준선으로 잡고 새 이미지 탐색 범위를 최신 assistant + main 영역으로 확대.
+- 당시 이미지 수집 어댑터에서 RESOURCE 첫 작업이 RESPONSE_START 이후 IMAGE_READY/DOWNLOAD_START 없이 고착되는 경로를 수정.
+- 이미지 수집 어댑터는 RESOURCE 시작 시 기존 main image URL을 기준선으로 잡고 새 이미지 탐색 범위를 최신 assistant + main 영역으로 확대.
 - snapshot 변화에 의해 재시작되지 않는 절대 120초 이미지 마감 시간 추가.
 - 로드 완료 image가 있으면 전역 스트리밍 flag가 남아 있어도 안정화 후 다운로드 진입.
 - IMAGE_DETECTED 후보/로드 완료 계측 추가.
