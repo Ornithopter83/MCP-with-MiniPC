@@ -25,7 +25,7 @@ HIGH 역할과 일회성 허가 구조는 제거한다.
 - RESOURCE는 별도 ChatGPT Web 대화에 고정한다.
 - HQ Web과 RESOURCE Web은 명시적 역할 연결을 사용한다.
 - 생존 신호는 생존 확인용이며 목적지 선택에 사용하지 않는다.
-- RESOURCE 실제 범위는 IMAGE 생성 -> 복수 다운로드 -> requestId별 작업공간 저장이며 메인 역할 흐름과 분리된 FIFO 사이드카로 실행한다.
+- RESOURCE 범위는 ChatGPT Web이 파일로 반환하는 생성 리소스 전체이며, 생성 파일 수집 -> 복수 다운로드 -> requestId별 작업공간 저장을 메인 역할 흐름과 분리된 FIFO 사이드카로 실행한다.
 - RESOURCE가 저장한 파일은 사용자의 별도 연결 명령 전까지 코드/CSS/HTML에 자동 연결하지 않는다.
 
 ## Worker 경계
@@ -48,7 +48,7 @@ Worker가 판단하지 않는 것:
 - HQ CLI 흐름
 - HQ Web 흐름
 - HQ/RESOURCE 두 Web 대화 동시 생존 신호 격리
-- WORK -> RESOURCE 대기열 접수 -> 실제 이미지 생성/복수 다운로드/저장 -> 이후 orchestration/마무리 반영
+- WORK -> RESOURCE 대기열 접수 -> 실제 생성 파일 수집/복수 다운로드/저장 -> 이후 관제/마무리 반영
 - 저장된 RESOURCE가 자동 통합되지 않는지 확인
 - JUDGE 회귀
 
@@ -63,7 +63,7 @@ Worker가 판단하지 않는 것:
 
 ## 2026-09-24 RESOURCE Web 실제 왕복 피드백
 
-- RESOURCE Web에는 JSON/역할 계약을 보내지 않고 WORK가 만든 자연어 이미지 요청만 그대로 보낸다.
+- RESOURCE Web에는 JSON/역할 계약을 보내지 않고 WORK가 만든 자연어 리소스 생성 요청만 그대로 보낸다.
 - 저장 경로/파일명은 Worker 내부에서 requestId 기반으로 생성한다.
 - Web 클레임이 HQ/RESOURCE 역할 식별 정보를 덮어쓰지 않게 역할과 ClaimedBy를 분리한다.
 - Worker 송신와 RESOURCE 생명주기을 기록에 남긴다.
