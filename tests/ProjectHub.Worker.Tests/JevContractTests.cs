@@ -34,6 +34,9 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[GOTO : RESOURCE]", enabled);
         Assert.Contains("질문 목록", enabled);
         Assert.Contains("JUDGE용 Form", enabled);
+        Assert.DoesNotContain("[GOTO : HQ]로", enabled);
+        Assert.DoesNotContain("[GOTO : JUDGE]로", enabled);
+        Assert.DoesNotContain("- [GOTO : RESOURCE]는", enabled);
         Assert.DoesNotContain("NOUL | QID:<id>", enabled);
         Assert.DoesNotContain("SCORE | QID:<id>", enabled);
         Assert.DoesNotContain("CHOICE | QID:<id>", enabled);
