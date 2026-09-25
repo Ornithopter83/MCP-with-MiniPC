@@ -335,3 +335,16 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 계약 테스트에 HQ가 해당 규칙과 A/B 예시를 노출하는지 확인하는 검사를 추가했다.
 - parser 회귀 테스트에 한글 CHOICE 키가 CHOICE_CRITERIA_MISSING으로 거부되는 현재 전송 규칙을 고정했다.
 - JudgeTransportContract 구현 코드는 변경하지 않았다.
+
+## 2026-09-25 판단 제어 · 프로젝트 기억 · 실시간 이벤트 로그
+
+- WORK JUDGE 계약을 최소 판단 경계로 정리했다. 관측 사실 자체는 JUDGE에 보내지 않고, 현재 근거만으로 기계적으로 확정할 수 없는 판단이 다음 작업/완료에 영향을 줄 때 HQ에 질문과 근거를 올린다.
+- 이전 판정 뒤 근거가 의미 있게 바뀌면 새 근거로 다시 Form을 요청한다.
+- HQ는 이미 확정된 관측 사실을 JUDGE 문항으로 반복하지 않고 추가 해석이 필요한 판단만 Form으로 만든다.
+- 작업공간 `.projecthub/session-state.json`과 `last-handoff.md`에 재개 상태와 마지막 HQ 관제 문맥을 영속화한다.
+- Worker 재시작 시 재개 가능한 상태를 복구하며, 저장된 Codex session이 로컬에 없으면 session ID를 버리고 프로젝트 기억 파일/이벤트 로그를 새 HQ 문맥 복구 입력에 포함한다.
+- 모든 Worker 관측 메시지를 `.projecthub/events/<jobId>.jsonl`에 실시간 append하고, transcript는 `.projecthub/transcripts/<jobId>.txt`에 저장한다.
+- History 항목에 Full Message를 보존하고 두 번 클릭해 별도 읽기 창으로 확인할 수 있게 했다.
+- 명시적 새 작업은 활성 session-state만 제거하고 과거 이벤트/handoff/transcript는 보존한다.
+- 관련 계약 및 프로젝트 기억/event log 단위 테스트를 추가했다.
+- 이번 변경에 대해 Windows `dotnet test`/빌드는 아직 실행하지 않았다.
