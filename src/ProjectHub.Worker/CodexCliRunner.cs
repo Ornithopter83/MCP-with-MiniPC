@@ -82,14 +82,20 @@ public sealed class CodexCliRunner
             },
             EnableRaisingEvents = true
         };
+        var effectiveSandbox = sandboxMode ?? (readOnly ? CodexSandboxMode.ReadOnly : CodexSandboxMode.DangerFullAccess);
         process.StartInfo.ArgumentList.Add("exec");
         process.StartInfo.ArgumentList.Add("--sandbox");
-        process.StartInfo.ArgumentList.Add((sandboxMode ?? (readOnly ? CodexSandboxMode.ReadOnly : CodexSandboxMode.DangerFullAccess)) switch
+        process.StartInfo.ArgumentList.Add(effectiveSandbox switch
         {
             CodexSandboxMode.ReadOnly => "read-only",
             CodexSandboxMode.WorkspaceWrite => "workspace-write",
             _ => "danger-full-access"
         });
+        foreach (var directory in ResolveAdditionalWritableDirectories(effectiveSandbox, workingDirectory, AppContext.BaseDirectory))
+        {
+            process.StartInfo.ArgumentList.Add("--add-dir");
+            process.StartInfo.ArgumentList.Add(directory);
+        }
         if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add("resume");
         process.StartInfo.ArgumentList.Add("--json");
         foreach (var argument in modelRequest.ToCliArguments())
@@ -156,6 +162,41 @@ public sealed class CodexCliRunner
             try { if (File.Exists(outputFile)) File.Delete(outputFile); } catch (IOException) { }
             try { if (outputSchemaFile is not null && File.Exists(outputSchemaFile)) File.Delete(outputSchemaFile); } catch (IOException) { }
         }
+    }
+
+    public static IReadOnlyList<string> ResolveAdditionalWritableDirectories(
+        CodexSandboxMode sandboxMode,
+        string workingDirectory,
+        string appBaseDirectory)
+    {
+        if (sandboxMode != CodexSandboxMode.WorkspaceWrite ||
+            string.IsNullOrWhiteSpace(workingDirectory) ||
+            string.IsNullOrWhiteSpace(appBaseDirectory) ||
+            !Directory.Exists(appBaseDirectory))
+            return Array.Empty<string>();
+
+        try
+        {
+            var workspace = Path.GetFullPath(workingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var appRoot = Path.GetFullPath(appBaseDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(workspace, appRoot, StringComparison.OrdinalIgnoreCase) ||
+                IsPathWithin(appRoot, workspace))
+                return Array.Empty<string>();
+            return new[] { appRoot };
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    private static bool IsPathWithin(string path, string root)
+    {
+        var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(fullPath, fullRoot, StringComparison.OrdinalIgnoreCase) ||
+               fullPath.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+               fullPath.StartsWith(fullRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool TryExtractThreadStarted(string jsonLine, out string sessionId)
