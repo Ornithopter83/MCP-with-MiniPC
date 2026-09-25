@@ -172,7 +172,21 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                          .OrderBy(File.GetCreationTimeUtc))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await TryStartRequestAsync(path, cancellationToken);
+                try
+                {
+                    await TryStartRequestAsync(path, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    TransportEvent?.Invoke(new ObservationSidecarEvent(
+                        "OBSERVATION FAILED",
+                        $"요청 파일 처리 실패 · {Path.GetFileName(path)} · {exception.Message}",
+                        "OBSERVATION_REQUEST_PROCESSING_ERROR"));
+                }
             }
         }
         finally
@@ -339,7 +353,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             await File.WriteAllTextAsync(stderrPath, stderr, new UTF8Encoding(false), cancellationToken);
 
             var resultPaths = requestedResults.Concat(new[] { stdoutPath, stderrPath }).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            int? exitCode = process.HasExited ? process.ExitCode : null;
+            var exitCode = TryGetExitCode(process);
             var success = !timedOut && exitCode == 0 && missingOrInvalid.Count == 0;
             var errorCode = timedOut
                 ? "OBSERVATION_TIMEOUT"
@@ -376,7 +390,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             {
                 await FinishAsync(
                     request, completionMode, false,
-                    process is { HasExited: true } ? process.ExitCode : null,
+                    TryGetExitCode(process),
                     startedAt, "OBSERVATION_EXECUTION_ERROR", exception.Message,
                     Array.Empty<string>(), CancellationToken.None);
             }
@@ -581,6 +595,20 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
 
     private static string ToToken(MechanicalWorkCompletionMode mode)
         => mode == MechanicalWorkCompletionMode.WorkResultRequired ? "WORK_RESULT_REQUIRED" : "FINALIZE_ONLY";
+
+    private static int? TryGetExitCode(Process? process)
+    {
+        if (process is null)
+            return null;
+        try
+        {
+            return process.HasExited ? process.ExitCode : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private static void TryKill(Process process)
     {
