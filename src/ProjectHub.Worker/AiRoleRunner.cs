@@ -9,7 +9,8 @@ public sealed record AiRoleRunRequest(
     string? SessionId,
     CodexSandboxMode Sandbox,
     CancellationToken CancellationToken,
-    string? OutputSchemaJson = null);
+    string? OutputSchemaJson = null,
+    Action<string>? Progress = null);
 
 public sealed record AiRoleRunResult(
     string Provider,
@@ -60,7 +61,8 @@ public sealed class OpenAiCodexRoleRunner(CodexCliRunner codexRunner) : IAiRoleR
             request.Sandbox == CodexSandboxMode.ReadOnly,
             request.CancellationToken,
             request.OutputSchemaJson,
-            request.Sandbox);
+            request.Sandbox,
+            request.Progress);
 
         return new(
             AiProviderCatalog.ToWireId(Provider),
