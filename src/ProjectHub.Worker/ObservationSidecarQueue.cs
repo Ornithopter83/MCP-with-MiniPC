@@ -594,11 +594,16 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         string fullPath;
         try
         {
+            var relativeRoot =
+                !string.IsNullOrWhiteSpace(workItemId) &&
+                _workItemRoots.TryGetValue(workItemId, out var worktreeRoot)
+                    ? worktreeRoot
+                    : _workingDirectory;
             fullPath = string.IsNullOrWhiteSpace(requested)
-                ? _workingDirectory
+                ? relativeRoot
                 : Path.GetFullPath(Path.IsPathRooted(requested)
                     ? requested
-                    : Path.Combine(_workingDirectory, requested));
+                    : Path.Combine(relativeRoot, requested));
         }
         catch
         {
