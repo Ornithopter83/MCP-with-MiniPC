@@ -6,7 +6,7 @@
 
 신규 CLI-to-CLI 정책은 Master-Polish.md의 ACTION + GOTO 계약을 따른다.
 
-## 핵심 규칙
+제1조 (핵심 규칙)
 
 **레거시 모드에서도 Worker는 판단하지 않는다.**
 
@@ -22,7 +22,7 @@ Legacy Web action은 다음 세 값만 사용한다.
 
 CONTINUE는 본문이 있어야 한다. Legacy Web은 HQ 역할 라우팅을 수행하지 않는다.
 
-## Codex 경로
+제2조 (Codex 경로)
 
 첫 유효행:
 
@@ -36,7 +36,7 @@ CONTINUE는 본문이 있어야 한다. Legacy Web은 HQ 역할 라우팅을 수
 [NEXT : JEV]
 ~~~
 
-### WEB
+① WEB
 
 ~~~text
 [NEXT : WEB]
@@ -49,7 +49,7 @@ Worker는 REPORT를 GPT Web에 전달한다.
 
 REPORT의 사실 여부를 Worker가 판단하지 않는다.
 
-### JEV
+② JEV
 
 ~~~text
 [NEXT : JEV]
@@ -62,7 +62,7 @@ Worker는 VALIDATION REQUEST를 JEV 어댑터에 전달한다.
 
 질문 안의 PASS/임계값/criteria는 **JUDGE가 해석할 요청 내용**이며 Worker 완료 gate가 아니다.
 
-## JEV 응답
+제3조 (JEV 응답)
 
 JEV 응답은 Worker가 의미적으로 평가하지 않는다.
 
@@ -78,7 +78,7 @@ Worker는 전송/스키마 수준에서 응답을 읽을 수 있으면 원문을
 
 Worker는 `GOTO:WORK` 제어행을 다시 입력에 넣지 않는다. Codex가 결과를 해석하고 `NEXT:WEB` 또는 `NEXT:JEV`를 선택한다.
 
-## 기술 오류
+제4조 (기술 오류)
 
 JEV 시간 초과/auth/HTTP/스키마 오류는 PASS/FAIL로 추측하지 않는다.
 
@@ -86,7 +86,7 @@ Worker는 오류 원문을 같은 Codex 세션 또는 legacy 관제 경로에 �
 
 Worker가 자동 재시도 횟수나 구현 실패를 결정하지 않는다.
 
-## Worker 책임
+제5조 (Worker 책임)
 
 허용:
 - NEXT syntax 파싱
@@ -106,7 +106,7 @@ Worker가 자동 재시도 횟수나 구현 실패를 결정하지 않는다.
 - 자동 Web 완료 판단
 - 결과 본문 의미 변형
 
-## 호환성
+제6조 (호환성)
 
 이 문서의 NEXT:WEB/JEV는 레거시 모드에만 해당한다.
 
