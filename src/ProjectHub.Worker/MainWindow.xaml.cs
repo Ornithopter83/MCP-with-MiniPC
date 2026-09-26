@@ -174,6 +174,7 @@ public partial class MainWindow : Window
     {
         _aiRoleRunners = AiRoleRunnerRegistry.CreateDefault(_codexRunner);
         InitializeComponent();
+        InitializeDirectWorkControls();
         _bridgeServer = bridgeServer;
         if (bridgeServer is not null)
         {
@@ -421,8 +422,9 @@ public partial class MainWindow : Window
         var inactive = !_gitPreparationInProgress &&
                        _activeTaskCts is null &&
                        !_awaitingWebResult;
-        var hasContinuation = _continuationState is not null &&
-                              TaskContinuationContract.IsResumableStatus(_continuationState.Status);
+        var hasContinuation = IsDirectWorkMode ||
+                              (_continuationState is not null &&
+                               TaskContinuationContract.IsResumableStatus(_continuationState.Status));
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
                         DashboardFollowupInput.Text != FollowupPromptPlaceholder;
         AddWorkButton.Content = _gitPreparationInProgress ? "Git 준비 중..." : "＋   작업 추가";
@@ -517,6 +519,16 @@ public partial class MainWindow : Window
     private async void AddWorkButton_Click(object sender, RoutedEventArgs e)
     {
         if (_gitPreparationInProgress || _activeTaskCts is not null || _awaitingWebResult) return;
+
+        if (IsDirectWorkMode)
+        {
+            var directPrompt = DashboardFollowupInput.Text ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(directPrompt) || directPrompt == FollowupPromptPlaceholder) return;
+            await InitializeStartupConfigurationAsync();
+            await RunDirectWorkAsync(directPrompt, appendToHistory: true);
+            return;
+        }
+
         var continuation = _continuationState;
         if (continuation is null || !TaskContinuationContract.IsResumableStatus(continuation.Status)) return;
 
@@ -568,7 +580,8 @@ public partial class MainWindow : Window
         }
 
         var active = _activeTaskCts is not null || _awaitingWebResult;
-        var preflightError = GetDashboardPreflightError();
+        var preflightError = IsDirectWorkMode ? GetDirectWorkPreflightError() : GetDashboardPreflightError();
+        UpdateDirectWorkControlState(active);
         var executionReady = preflightError is null;
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardTaskInput.Text) && DashboardTaskInput.Text != DashboardPromptPlaceholder;
         if (active)
@@ -752,7 +765,9 @@ public partial class MainWindow : Window
 
     private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, RoleVisualPalette palette, bool disabled, bool initialInputIdle)
     {
-        var current = !disabled && (_currentTaskStage == stage || (stage == TaskStage.Resource && _resourceSidecarActive));
+        var current = _directWorkRunning
+            ? !disabled && stage == TaskStage.Implementer
+            : !disabled && (_currentTaskStage == stage || (stage == TaskStage.Resource && _resourceSidecarActive));
         SetPipelineStageAnimation(stage, current);
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
         var colored = visual.IsColored;
@@ -928,6 +943,12 @@ public partial class MainWindow : Window
             return;
         }
         await InitializeStartupConfigurationAsync();
+        if (IsDirectWorkMode)
+        {
+            await RunDirectWorkFromDashboardAsync();
+            return;
+        }
+
         var launchRequest = BuildTaskLaunchRequest();
         if (launchRequest is null) return;
         var selectedThreadForLaunch = CodexThreadCombo.SelectedItem as CodexThreadOption;
