@@ -476,6 +476,20 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - WorkGraph 병렬 실행 기능과 maxConcurrentWork 1~8 설정은 그대로 유지한다.
 - 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 빌드에서 검증이 필요하다.
 
+## 2026-09-26 활성 WorkItem 게이지 글꼴 크기 조정
+
+- 현재 XAML에서 네모칸 게이지는 `ImplementerStageModelText`가 아니라 `ImplementerWorkGaugeText`로 선언되어 있어 해당 요소를 수정했다.
+- 네모 게이지 `FontSize`를 18에서 24로 변경했다.
+- Release 솔루션 빌드 성공: 경고 0, 오류 0.
+
+## 2026-09-26 최신 단일 파일 복사
+
+- 원격 `main`을 `c756233b9f1cbc5b7be66ee6f15625fb7167378a`까지 동기화했다. 활성 WorkItem 게이지와 병렬 WORK UI 표현 정리 변경을 포함한다.
+- Release 솔루션 빌드 성공: 경고 0, 오류 0.
+- self-contained win-x64 단일 실행파일 게시 폴더에 `ProjectHub.Worker.exe` 하나만 생성됐다.
+- Worker 종료를 확인하고 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`로 복사했으며 SHA-256 일치.
+- 자동 테스트와 Explorer 검증은 실행하지 않았다.
+
 
 ## 2026-09-26 작업 카드 활성 WorkItem 게이지
 

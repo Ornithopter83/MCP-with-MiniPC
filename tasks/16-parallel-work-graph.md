@@ -731,3 +731,16 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - WORK 진행·응답 History 이벤트에 createdOrder+1 기반 WorkNumber를 전달해 왼쪽 역할명을 `작업 (#N)`으로 표시한다.
 - 내부 WorkItem ID는 화면의 주 식별자로 반복 노출하지 않고 event log, ReferenceId, Full Message에서 추적한다.
 - WorkGraph의 동시 실행 기능과 maxConcurrentWork는 변경하지 않았다.
+
+
+### 2026-09-26 활성 WorkItem 게이지 크기
+
+- `ImplementerWorkGaugeText` 네모 게이지의 `FontSize`를 24로 조정했다.
+- Release 빌드 성공: 경고 0, 오류 0.
+
+
+### 2026-09-26 단일 파일 빌드·복사
+
+- 원격 `main` `c756233b9f1cbc5b7be66ee6f15625fb7167378a` Release 빌드 성공: 경고 0, 오류 0.
+- self-contained win-x64 단일 파일 하나를 게시해 Worker 배포 경로로 복사했고 SHA-256 일치.
+- 자동 테스트와 Explorer E2E는 실행하지 않았다.
