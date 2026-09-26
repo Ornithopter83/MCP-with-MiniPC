@@ -75,6 +75,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
     private readonly object _gate = new();
     private readonly string _extensionDirectory;
+    private readonly string _managedRuntimeToken;
     private readonly Dictionary<ManagedWebRole, Slot> _slots = new()
     {
         [ManagedWebRole.Hq] = new Slot(),
@@ -83,9 +84,12 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
     public event Action<ManagedWebRuntimeStatus>? StatusChanged;
 
-    public ManagedWebRuntimeManager(string extensionDirectory)
+    public ManagedWebRuntimeManager(string extensionDirectory, string managedRuntimeToken)
     {
         _extensionDirectory = Path.GetFullPath(extensionDirectory);
+        _managedRuntimeToken = string.IsNullOrWhiteSpace(managedRuntimeToken)
+            ? throw new ArgumentException("관리형 Web 런타임 토큰이 필요합니다.", nameof(managedRuntimeToken))
+            : managedRuntimeToken.Trim();
     }
 
     public ManagedWebRuntimeStatus GetStatus(ManagedWebRole role)
@@ -102,39 +106,19 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         ManagedWebRole role,
         string? conversationId = null,
         CancellationToken cancellationToken = default)
-        => StartAsync(role, hidden: true, conversationId, cancellationToken);
+        => RestartFreshAsync(role, hidden: true, conversationId, cancellationToken);
 
-    public async Task<ManagedWebRuntimeStatus> ShowForLoginAsync(
+    public Task<ManagedWebRuntimeStatus> ShowForLoginAsync(
         ManagedWebRole role,
         string? conversationId = null,
         CancellationToken cancellationToken = default)
-    {
-        var existing = GetRunningProcess(role);
-        if (existing is null)
-            return await StartAsync(role, hidden: false, conversationId, cancellationToken);
+        => RestartFreshAsync(role, hidden: false, conversationId, cancellationToken);
 
-        return await SetVisibilityAsync(
-            role,
-            existing,
-            hidden: false,
-            cancellationToken);
-    }
-
-    public async Task<ManagedWebRuntimeStatus> HideAsync(
+    public Task<ManagedWebRuntimeStatus> HideAsync(
         ManagedWebRole role,
         string? conversationId = null,
         CancellationToken cancellationToken = default)
-    {
-        var existing = GetRunningProcess(role);
-        if (existing is null)
-            return await StartAsync(role, hidden: true, conversationId, cancellationToken);
-
-        return await SetVisibilityAsync(
-            role,
-            existing,
-            hidden: true,
-            cancellationToken);
-    }
+        => RestartFreshAsync(role, hidden: true, conversationId, cancellationToken);
 
     public async Task<ManagedWebRuntimeStatus> RestartHiddenAsync(
         ManagedWebRole role,
@@ -166,12 +150,19 @@ public sealed class ManagedWebRuntimeManager : IDisposable
     public static string RoleToken(ManagedWebRole role)
         => role == ManagedWebRole.Hq ? "HQ" : "RESOURCE";
 
-    public static string ResolveLaunchUrl(ManagedWebRole role, string? conversationId)
+    public static string ResolveLaunchUrl(
+        ManagedWebRole role,
+        string? conversationId,
+        string? managedRuntimeToken = null)
     {
         var roleToken = Uri.EscapeDataString(RoleToken(role));
+        var query = "projecthub-managed-role=" + roleToken;
+        if (!string.IsNullOrWhiteSpace(managedRuntimeToken))
+            query += "&projecthub-runtime-token=" + Uri.EscapeDataString(managedRuntimeToken.Trim());
+
         if (!string.IsNullOrWhiteSpace(conversationId))
-            return $"https://chatgpt.com/c/{Uri.EscapeDataString(conversationId.Trim())}?projecthub-managed-role={roleToken}";
-        return $"https://chatgpt.com/?projecthub-managed-role={roleToken}";
+            return $"https://chatgpt.com/c/{Uri.EscapeDataString(conversationId.Trim())}?{query}";
+        return $"https://chatgpt.com/?{query}";
     }
 
     public static IReadOnlyList<string> BuildLaunchArguments(
@@ -179,7 +170,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         bool hidden,
         string extensionDirectory,
         string profilePath,
-        string? conversationId)
+        string? conversationId,
+        string? managedRuntimeToken = null)
     {
         var arguments = new List<string>
         {
@@ -200,7 +192,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
             arguments.Add("--start-minimized");
         }
 
-        arguments.Add(ResolveLaunchUrl(role, conversationId));
+        arguments.Add("--app=" + ResolveLaunchUrl(role, conversationId, managedRuntimeToken));
         return arguments;
     }
 
@@ -425,6 +417,45 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         }
     }
 
+    private async Task<ManagedWebRuntimeStatus> RestartFreshAsync(
+        ManagedWebRole role,
+        bool hidden,
+        string? conversationId,
+        CancellationToken cancellationToken)
+    {
+        await Task.Run(() => Stop(role), cancellationToken);
+        ClearBrowserSessionState(ProfilePathFor(role));
+        return await StartAsync(role, hidden, conversationId, cancellationToken);
+    }
+
+    public static void ClearBrowserSessionState(string profilePath)
+    {
+        var defaultProfile = Path.Combine(Path.GetFullPath(profilePath), "Default");
+        var sessionsDirectory = Path.Combine(defaultProfile, "Sessions");
+
+        try
+        {
+            if (Directory.Exists(sessionsDirectory))
+                Directory.Delete(sessionsDirectory, recursive: true);
+        }
+        catch
+        {
+        }
+
+        foreach (var fileName in new[] { "Current Session", "Current Tabs", "Last Session", "Last Tabs" })
+        {
+            try
+            {
+                var path = Path.Combine(defaultProfile, fileName);
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private async Task<ManagedWebRuntimeStatus> StartAsync(
         ManagedWebRole role,
         bool hidden,
@@ -445,6 +476,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         try
         {
             await EnsureBrowserRuntimeAsync(cancellationToken);
+            ClearBrowserSessionState(ProfilePathFor(role));
             lock (_gate)
                 _slots[role].Provisioning = false;
             return Start(role, hidden, conversationId);
@@ -613,7 +645,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                     hidden,
                     _extensionDirectory,
                     ProfilePathFor(role),
-                    conversationId))
+                    conversationId,
+                    _managedRuntimeToken))
                 {
                     startInfo.ArgumentList.Add(argument);
                 }
