@@ -2444,9 +2444,18 @@ public partial class MainWindow : Window
         {
             statusText.Text = $"{role} Web 확장 업데이트 필요";
             statusText.Foreground = System.Windows.Media.Brushes.OrangeRed;
-            detailText.Text = string.IsNullOrWhiteSpace(label) ? "확장 버전을 확인하세요." : label;
+
+            var actual = $"{status.ExtensionVersion ?? "?"} / {status.ExtensionBuild ?? "?"}";
+            var expected = $"{status.ExpectedExtensionVersion ?? "?"} / {status.ExpectedExtensionBuild ?? "?"}";
+            var versionDetail = $"확장 {actual} → 필요 {expected}";
+            detailText.Text = string.IsNullOrWhiteSpace(label)
+                ? versionDetail
+                : $"{label} · {versionDetail}";
+            detailText.ToolTip = versionDetail;
             return;
         }
+
+        detailText.ToolTip = null;
 
         statusText.Text = $"{role} Web 연결됨";
         statusText.Foreground = System.Windows.Media.Brushes.ForestGreen;
