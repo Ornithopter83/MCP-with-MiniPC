@@ -6,7 +6,7 @@
 
 이 문서는 Worker/Judge 어댑터가 JEV API와 통신할 때의 **전송 계약**만 정의한다.
 
-## 1. 원칙
+제1조 (원칙)
 
 **Worker는 JEV 결과를 판단하지 않는다.**
 
@@ -28,7 +28,7 @@ Worker는:
 
 을 하지 않는다.
 
-## 2. 인증
+제2조 (인증)
 
 인증은 환경변수에서 읽는다.
 
@@ -40,7 +40,7 @@ Worker는:
 
 인증이 없으면 제공자 호출을 시도하지 않고 기술 오류를 반환한다.
 
-## 3. 요청
+제3조 (요청)
 
 신규 CLI에서 JUDGE 요청 본문은 WORK가 `[GOTO : JUDGE]` 뒤에 작성한 opaque body다. 별도 `VALIDATION REQUEST` marker를 붙이지 않는다. Legacy Codex는 legacy 계약에 따른 요청 본문을 사용한다.
 
@@ -83,7 +83,7 @@ Worker가 질문의 의미를 새로 작성하거나 보완하지 않는다.
 
 필요한 제공자 필드가 없으면 스키마/프로토콜 오류로 처리한다.
 
-## 4. 응답
+제4조 (응답)
 
 응답 예시 개념:
 
@@ -115,7 +115,7 @@ evidence가 충분한가?
 
 이 질문들에 Worker가 답하지 않는다.
 
-## 5. 반환 경로
+제5조 (반환 경로)
 
 신규 CLI-to-CLI:
 
@@ -135,7 +135,7 @@ Codex -> JEV API -> raw result -> same Codex session
 
 그 후 Codex가 legacy `NEXT:WEB/JEV` 중 다음 경로를 선택한다.
 
-## 6. 오류
+제6조 (오류)
 
 다음은 기술 오류다.
 
@@ -152,7 +152,7 @@ Codex -> JEV API -> raw result -> same Codex session
 
 Worker는 오류를 구현 FAIL로 바꾸지 않는다.
 
-## 7. 사용량
+제7조 (사용량)
 
 가능하면 다음을 기록한다.
 
@@ -165,19 +165,19 @@ Worker는 오류를 구현 FAIL로 바꾸지 않는다.
 
 사용량 값이 없으면 0으로 추정하지 않고 UNKNOWN으로 기록한다.
 
-## 8. Worker에서 의미 기반 캐시 무효화 금지
+제8조 (Worker에서 의미 기반 캐시 무효화 금지)
 
 Worker는 근거 digest나 model revision을 보고 기존 JUDGE 결과가 의미적으로 유효/무효인지 결정하지 않는다.
 
 필요하면 raw 메타데이터를 기록해 AI가 판단할 수 있게 전달한다.
 
-## 9. 판정 결과 기반 재시도 정책 금지
+제9조 (판정 결과 기반 재시도 정책 금지)
 
 전송 재시도는 일반 인프라 정책이 명시된 경우에만 수행할 수 있다.
 
 낮은 score/confidence를 이유로 Worker가 재질문하거나 WORK를 재호출하지 않는다.
 
-## 10. 요약
+제10조 (요약)
 
 ~~~text
 Worker/Judge adapter = transport
