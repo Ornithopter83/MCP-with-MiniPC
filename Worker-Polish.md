@@ -476,3 +476,18 @@ Integration:
 ⑥ 숨김 실행을 누르면 기존 visible 창을 숨기는 대신 새 hidden app window를 시작한다.
 ⑦ 브라우저 재시작과 종료 대기는 UI thread 밖에서 수행한다.
 
+제16조 (사용자 첨부 입력)
+
+① 메시지 및 작업 이력의 신규 작업 입력과 작업 추가 입력은 사용자 파일 drag-and-drop과 클립보드 이미지 붙여넣기를 공통 입력 방식으로 지원한다.
+② 첨부는 사용자 자연어 본문과 분리된 기계적 attachment 객체로 관리하며 파일명, MIME 형식, byte 크기, SHA-256, 캐시 경로와 입력 출처를 기록한다.
+③ 한 메시지는 최대 20개, 파일 하나는 최대 50MB로 제한한다. 폴더와 실행 바이너리·설치 패키지·바로가기 형식은 사용자 입력 첨부로 받지 않는다.
+④ 클립보드 이미지가 있으면 Ctrl+V를 PNG 파일로 캐시해 일반 파일 첨부와 같은 경로로 처리한다. 클립보드에 이미지가 없으면 기존 텍스트 붙여넣기 동작을 방해하지 않는다.
+⑤ CLI AI에 전달할 첨부는 현재 작업공간의 `.projecthub/attachments/<batch>/`에 복사하고 복사 뒤 SHA-256을 재검증한다. 이 staging 경로는 ProjectHub 런타임 입력이며 Git 결과물로 취급하지 않는다.
+⑥ CLI 프롬프트에는 첨부 파일의 실제 경로, MIME, byte 크기와 SHA-256을 구조화된 USER_ATTACHMENTS 블록으로 전달하고 파일 내용을 확인한 뒤 작업하도록 명시한다.
+⑦ coordinator-first의 첫 HQ 호출에는 현재 사용자 메시지의 첨부를 전달하고, HQ가 만든 WORK WorkItem에도 각 독립 worktree에 같은 첨부를 staging해 읽을 수 있게 한다.
+⑧ HQ가 ChatGPT Web transport이면 파일 bytes를 기존 BridgeAttachment 경로로 실제 ChatGPT turn에 첨부하고 Web에는 downstream WORK가 사용할 workspace 경로 메타데이터도 함께 제공한다.
+⑨ legacy Web 왕복에서도 사용자 첨부는 최초 CLI 입력과 첫 HQ Web 전달에 포함한다.
+⑩ `계약문서 무시` 직통 작업은 ProjectHub 역할 계약과 프로젝트 자동 지침만 우회한다. 사용자 첨부의 캐시, SHA-256 검증, workspace staging과 선택된 AI로의 전달은 동일하게 유지한다.
+⑪ preflight 또는 attachment staging이 실패하면 해당 입력의 첨부를 자동 소비하지 않는다. 실제 실행에 사용할 준비가 완료된 뒤에만 입력 UI의 대기 첨부에서 제거한다.
+⑫ Worker는 첨부 내용의 의미를 판정해 라우팅하지 않고 사용자가 명시한 작업 입력의 기계적 자료로만 전달한다.
+
