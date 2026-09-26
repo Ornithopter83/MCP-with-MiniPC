@@ -39,6 +39,6 @@ Worker는 HQ와 RESOURCE용 Web 브라우저 슬롯을 최대 두 개 관리할 
 
 관리형 브라우저에서 GPTWeb-Hub 확장은 시각 패널 없이 bridge 기능만 실행하고 현재 대화를 슬롯의 HQ 또는 RESOURCE 역할에 자동 연결한다. 수동 브라우저 연결 방식은 호환용으로 유지한다. 세부 정책은 `Web-Polish.md`에 둔다.
 
-관리형 HQ/RESOURCE browser profile은 시작 또는 `로그인/표시` 시 해당 역할의 ChatGPT 대화 탭 하나만 활성 상태로 유지하고 같은 profile의 다른 ChatGPT 탭을 정리한다.
+관리형 HQ/RESOURCE browser profile은 시작 또는 `로그인/표시` 시 해당 역할의 ChatGPT 대화 탭 하나만 활성 상태로 유지하고 같은 profile의 다른 ChatGPT 탭을 정리한다. 실행 중인 브라우저가 있으면 표시/숨김은 프로세스를 재시작하지 않고 기존 창 상태만 전환한다.
 
 과거 실행 기록과 작업 계획은 정책 원본으로 사용하지 않는다.
