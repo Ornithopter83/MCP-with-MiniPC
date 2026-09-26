@@ -81,3 +81,12 @@
 ⑧ Worker result endpoint 제출 직전 RESULT_POSTING을 기록하고 Worker는 일반 결과 파일을 별도 web-results 경로에 저장한다.
 ⑨ CLAIMED 진행 상세에는 현재 extension version/build를 포함한다.
 
+제10조 (첨부 준비 상태)
+
+① Worker에서 전달받은 attachment bytes/hash 검증 성공은 ChatGPT 첨부 업로드·처리 완료를 의미하지 않는다.
+② attachment 전달은 ATTACHMENT_BYTES_VERIFIED, ATTACHMENT_INPUT_SET, ATTACHMENT_UI_DETECTED/ATTACHMENT_PROCESSING, ATTACHMENT_READY 단계로 구분한다.
+③ content script는 file input에 파일을 설정한 뒤 ChatGPT composer 영역의 첨부 UI와 활성 Send 버튼을 관찰한다.
+④ 첨부가 있는 동안 Voice-only 상태는 2.25초 조기 실패 규칙을 적용하지 않고 전체 첨부 준비 제한시간 동안 대기한다.
+⑤ 활성 Send 버튼 확인을 attachment ready의 최종 기계 증거로 사용한다.
+⑥ 첨부 관련 alert/error UI가 명시적으로 나타나면 조기 실패할 수 있다.
+
