@@ -317,8 +317,10 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 
 - 작업공간 루트의 `.projecthub/session-state.json`에 JobId, HQ/WORK 설정과 세션 ID, 마지막 상태, 마지막 HQ 메시지, 이벤트 로그 경로를 저장한다.
 - `.projecthub/last-handoff.md`에는 사람이 읽을 수 있는 마지막 관제 인수인계를 저장한다.
-- `.projecthub/events/<jobId>.jsonl`은 작업 종료 시 일괄 생성하지 않고 이벤트 발생 시마다 즉시 append한다.
-- `.projecthub/transcripts/<jobId>.txt`에는 작업 transcript를 저장한다.
+- `.projecthub/events/<jobId>.jsonl`은 Job 전체의 실시간 원시 이벤트 스트림으로 유지하며 작업 종료 시 일괄 생성하지 않고 이벤트 발생 시마다 즉시 append한다.
+- `.projecthub/transcripts/`는 통합 Job 로그가 아니라 사용자 명령 실행 구간별 transcript 보관소다. 최초 `실행`과 각 `작업 추가`는 서로 다른 transcript 파일을 만든다.
+- 명령 실행 구간이 DONE, DONE_WITH_ERROR, PAUSED, CANCELED 또는 실행 오류로 끝나면 Worker는 해당 구간에서 발생한 메시지만 새 transcript 파일에 기록한다. 이전 명령의 transcript를 덮어쓰거나 뒤에 합치지 않는다.
+- transcript 파일명은 시작 시각 기반의 짧은 `yyMMdd-HHmmss.txt` 형식을 사용한다. 같은 초에 이름이 겹치면 `-02`, `-03` 순번을 붙인다.
 - Worker 재시작 후 작업공간에 재개 가능한 상태가 있으면 이를 기계적으로 복구해 `작업 추가`를 허용한다.
 - 병렬 WorkGraph를 복구해 USER_FOLLOWUP을 시작할 때는 저장 파일 경로만 전달하지 않고 현재 revision과 WorkItem 상태를 HQ 입력 본문에도 기계적으로 포함한다. 따라서 HQ가 Web이든 CLI든 복구 상태를 직접 확인할 수 있다.
 - 저장된 Codex 세션이 로컬에 없으면 해당 세션 ID를 사용하지 않고, 새 HQ 세션에 프로젝트 기억 파일과 이벤트 로그 경로를 함께 전달해 관제 문맥을 복구할 수 있게 한다.

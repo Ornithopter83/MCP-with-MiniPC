@@ -651,3 +651,14 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 준비 중 실행 버튼과 작업 추가 버튼에는 `Git 준비 중...`을 표시해 클릭이 무시되는 상태임을 명시한다.
 - 실행/작업 추가 event handler도 같은 게이트를 먼저 검사해 빠른 연속 클릭으로 Git 준비가 중복 시작되지 않게 한다.
 - 기준점 생성 취소·실패·성공 어느 경로에서도 `finally`에서 게이트를 해제하고 버튼 상태를 다시 계산한다.
+
+
+### 2026-09-26 명령 단위 transcript 복원
+
+- `3ba67341de15d5ea7b8d0aa3671af9cdfc8c6cae`: 프로젝트 transcript를 Job 전체 통합 파일에서 사용자 명령 실행 구간별 파일로 되돌렸다.
+- 최초 `실행`과 각 `작업 추가`는 transcript 시작 지점을 새로 잡고, 종료 시 그 구간에서 추가된 메시지만 별도 파일로 저장한다.
+- 프로젝트 복구 시 과거 이벤트는 History 복구에만 사용하고 다음 명령 transcript에 자동 합산하지 않는다.
+- 파일명은 `yyMMdd-HHmmss.txt`로 짧게 만들고 같은 초 충돌 시 `-02`, `-03` 접미사를 붙인다.
+- `events/<jobId>.jsonl`은 세션 복구와 실시간 관측을 위한 Job 단위 원시 이벤트 스트림으로 그대로 유지한다.
+- `6c8b7f649566e3b855756dbf62ea94e8f7314a5d`: transcript 파일명의 시각 문자열이 호출 시각의 offset을 그대로 사용하도록 고정해 환경 timezone에 따른 이름 변화를 없앴다.
+- `CommandTranscriptPathUsesShortTimestampAndAvoidsOverwrite` 테스트를 추가했다.

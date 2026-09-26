@@ -54,6 +54,8 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 병렬 runtime 시작 전 Git 저장소/HEAD/attached branch 사전 검사를 유지하되, 실제 실행/작업 추가 시 Git이 없으면 Worker가 먼저 git init을 수행하고 기준점 필요 시 repository root/branch를 표시해 사용자 승인을 받은 뒤 baseline commit을 생성
 - Git 준비 자동화는 .gitignore/exclude/preset을 건드리지 않으며 기존 origin URL 확인만 유지하고 remote 생성/push/pull은 하지 않음
 - Git 기준점 준비 중에는 실행/작업 추가 버튼을 비활성화하고 `Git 준비 중...` 상태를 표시해 중복 실행을 차단
+- transcript는 Job 전체 통합 파일이 아니라 명령 단위로 저장: 최초 실행/각 작업 추가가 종료될 때 `.projecthub/transcripts/yyMMdd-HHmmss.txt` 새 파일 생성, 같은 초 충돌 시 순번 접미사 사용
+- Job 단위 `events/<jobId>.jsonl`은 프로젝트 기억/복구용 실시간 원시 이벤트 스트림으로 유지
 - 최소 Git 준비 자동화까지 소스 구현 완료 상태이며 작업 16은 Windows 실검증 대기 상태
 - 다음 우선순위는 Windows dotnet test/build와 실제 max=1 동일-runtime 회귀, max=4 병렬 E2E, Integration landing E2E
 
