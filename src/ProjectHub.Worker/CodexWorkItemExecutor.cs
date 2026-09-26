@@ -36,6 +36,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     private readonly Func<string, string?>? _observationRequestDirectory;
     private readonly IWorkItemObservationGate? _observationGate;
     private readonly string? _expectedPrimaryBranch;
+    private readonly IReadOnlyList<UserAttachmentInput> _userAttachments;
 
     public CodexWorkItemExecutor(
         string jobId,
@@ -46,7 +47,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         bool judgeAvailable = false,
         Func<string, string?>? observationRequestDirectory = null,
         IWorkItemObservationGate? observationGate = null,
-        string? expectedPrimaryBranch = null)
+        string? expectedPrimaryBranch = null,
+        IReadOnlyList<UserAttachmentInput>? userAttachments = null)
     {
         if (string.IsNullOrWhiteSpace(jobId))
             throw new ArgumentException("Job ID가 비어 있습니다.", nameof(jobId));
@@ -64,6 +66,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         _expectedPrimaryBranch = string.IsNullOrWhiteSpace(expectedPrimaryBranch)
             ? null
             : expectedPrimaryBranch.Trim();
+        _userAttachments = userAttachments?.ToArray() ?? Array.Empty<UserAttachmentInput>();
     }
 
     public event Action<CodexWorkItemProgress>? Progress;
@@ -120,6 +123,25 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             preparation.WorktreePath,
             preparation.BaseRef));
 
+        IReadOnlyList<AiInputAttachment> stagedUserAttachments;
+        try
+        {
+            stagedUserAttachments = UserAttachmentTransport.StageForWorkspace(
+                _userAttachments,
+                preparation.WorktreePath,
+                _jobId + "-" + item.Id);
+        }
+        catch (Exception exception)
+        {
+            return WorkItemExecutionResult.Blocked(
+                "USER_ATTACHMENT_STAGE_FAILED",
+                exception.Message,
+                resultRef: null,
+                branch: preparation.Branch,
+                worktreePath: preparation.WorktreePath,
+                sessionId: item.SessionId);
+        }
+
         var dependencyResults = request.Dependencies
             .Select(result => new WorkItemDependencyPromptContext(
                 result.WorkItemId,
@@ -175,7 +197,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 },
                 string.IsNullOrWhiteSpace(observationRequestDirectory)
                     ? null
-                    : new[] { observationRequestDirectory })).ConfigureAwait(false);
+                    : new[] { observationRequestDirectory },
+                InputAttachments: stagedUserAttachments)).ConfigureAwait(false);
 
             CallCompleted?.Invoke(new CodexWorkItemCallCompleted(
                 item.Id,
