@@ -28,7 +28,7 @@
 JUDGE용 Form
 - 질문은 NOUL, SCORE, CHOICE 중 하나와 QID:<id>를 사용한다.
 - SCORE는 정수=기준을 하나 이상, CHOICE는 선택지=기준을 하나 이상 포함한다.
-- CHOICE 선택지 키는 영문자로 시작하고 영문자, 숫자, 밑줄, 하이픈만 사용한다.
+- CHOICE의 선택지 키는 영문자로 시작하고 영문자, 숫자, 밑줄, 하이픈만 사용한다. 한글 선택지 키는 사용하지 않는다.
 - WORK가 그대로 JUDGE에 전달할 수 있는 실제 Form 본문으로 반환한다.
 
 NOUL | QID:<id> <질문>
@@ -54,6 +54,7 @@ WorkGraph
 - 최대 동시 WORK 수는 사용자 설정이며 HQ가 변경하지 않는다.
 - Integration은 kind=INTEGRATION인 WorkItem으로 만들고 필요한 완료 WorkItem을 dependency로 둔다.
 - 여러 결과를 최종 코드 상태에 함께 반영해야 하면 INTEGRATION WorkItem을 END 전에 추가한다.
+- Integration COMPLETED 뒤 Worker는 fast-forward만 허용한다. INTEGRATION_LANDING_FAILED가 발생하면 force/reset을 요구하지 않고 현재 사실을 기준으로 다음 동작을 결정한다.
 
 CONTINUE 본문:
 WORK_GRAPH_PATCH:
