@@ -332,16 +332,14 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 
 ## 10. 프로젝트 기억과 실시간 이벤트 로그
 
-- 작업공간 루트의 `.projecthub/session-state.json`에 JobId, HQ/WORK 설정과 세션 ID, 마지막 상태, 마지막 HQ 메시지, 이벤트 로그 경로를 저장한다.
-- `.projecthub/last-handoff.md`에는 사람이 읽을 수 있는 마지막 관제 인수인계를 저장한다.
-- `.projecthub/events/<jobId>.jsonl`은 Job 전체의 실시간 원시 이벤트 스트림으로 유지하며 작업 종료 시 일괄 생성하지 않고 이벤트 발생 시마다 즉시 append한다.
-- `.projecthub/transcripts/`는 통합 Job 로그가 아니라 사용자 명령 실행 구간별 transcript 보관소다. 최초 `실행`과 각 `작업 추가`는 서로 다른 transcript 파일을 만든다.
-- 명령 실행 구간이 DONE, DONE_WITH_ERROR, PAUSED, CANCELED 또는 실행 오류로 끝나면 Worker는 해당 구간에서 발생한 메시지만 새 transcript 파일에 기록한다. 이전 명령의 transcript를 덮어쓰거나 뒤에 합치지 않는다.
-- transcript 파일명은 시작 시각 기반의 짧은 `yyMMdd-HHmmss.txt` 형식을 사용한다. 같은 초에 이름이 겹치면 `-02`, `-03` 순번을 붙인다.
-- Worker 재시작 후 작업공간에 재개 가능한 상태가 있으면 이를 기계적으로 복구해 `작업 추가`를 허용한다.
-- 병렬 WorkGraph를 복구해 USER_FOLLOWUP을 시작할 때는 저장 파일 경로만 전달하지 않고 현재 revision과 WorkItem 상태를 HQ 입력 본문에도 기계적으로 포함한다. 따라서 HQ가 Web이든 CLI든 복구 상태를 직접 확인할 수 있다.
-- 저장된 Codex 세션이 로컬에 없으면 해당 세션 ID를 사용하지 않고, 새 HQ 세션에 프로젝트 기억 파일과 이벤트 로그 경로를 함께 전달해 관제 문맥을 복구할 수 있게 한다.
-- 사용자가 `새 작업`을 명시적으로 선택하면 활성 session-state만 제거하고 과거 handoff/event/transcript 파일은 기록으로 남긴다.
+- 현재 구현의 `.projecthub/session-state.json`, `last-handoff.md`, `events/<jobId>.jsonl`, `transcripts/` 기록은 기존 진단·이력 저장 형식으로 유지한다.
+- 프로그램 시작 시 과거 session-state, HQ/WORK 세션, WorkGraph, 이벤트 이력을 자동 로드하거나 화면에 복구하지 않는다. 시작 상태는 항상 새 작업이다.
+- 새 작업은 설정이나 선택 항목에 남아 있는 과거 CLI session ID를 실행 세션으로 사용하지 않고 HQ와 신규 WorkItem을 새 세션으로 시작한다.
+- 과거 작업 맥락, 로그, 계획 문서는 사용자가 명시적으로 파악·조사를 요청했을 때만 AI가 확인한다.
+- 현재 프로그램 실행 안에서 사용자가 `작업 추가`로 같은 작업을 이어갈 때는 기존 HQ/WORK 세션과 WorkGraph를 사용할 수 있다. 이때 이벤트 로그 경로, handoff 파일, 전체 WorkGraph snapshot을 HQ 입력에 자동 재주입하지 않는다.
+- HQ에는 직전 HQ 입력 이후 상태가 바뀐 WorkItem만 WorkGraph 변경 이벤트로 전달한다. 전체 WorkGraph는 Worker 내부 상태와 기록 용도로 유지한다.
+- HQ/WORK 역할 계약 전문은 해당 AI 세션의 첫 호출에만 주입한다. 같은 세션의 후속 호출에는 현재 입력과 필요한 기계적 사실만 전달한다.
+- 사용자가 `새 작업`을 선택하면 활성 continuation을 제거하고 과거 기록 파일은 이력으로만 남긴다.
 - Worker는 저장된 기억이나 로그의 의미를 해석해 자동 작업을 시작하지 않는다.
 
 ---
@@ -360,7 +358,7 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 5. WORK의 SPLIT_REQUEST와 HQ GraphPatch 반영
 6. Integration WorkItem을 통한 병렬 결과 통합·충돌 해결·전체 검증
 7. RESOURCE / JUDGE / OBSERVATION의 workItemId 귀속
-8. WorkGraph와 WorkItem 세션/branch/worktree/result 상태 영속화 및 재시작 복구
+8. WorkGraph와 WorkItem 세션/branch/worktree/result 상태의 현재 실행 관리와 기록
 9. History 카드의 WorkItem 번호 표시와 실행 상태 귀속
 10. 병렬 실행 진입 전 로컬 Git 자동 초기화와 사용자 승인 기반 baseline commit
 11. 단일 WORK 대비 병렬 WORK 실제 E2E 비교 검증
@@ -427,7 +425,8 @@ WorkItem 번호 #0~#9는 시스템 예약 영역이며 HQ가 일반 작업에 �
 - 여러 READY WorkItem 중 별도 의미 우선순위가 없으면 Worker는 HQ가 제공한 명시적 순서 또는 안정적인 생성 순서를 기계적으로 사용한다.
 - 새 Job과 USER_FOLLOWUP은 maxConcurrentWork 값과 기존 WorkGraph 유무와 관계없이 동일한 WorkGraph/Scheduler 경로를 사용한다.
 - maxConcurrentWork=1은 별도 직렬 엔진이 아니라 실행 슬롯이 1개인 WorkGraph다.
-- 과거 continuation에 저장 WorkGraph가 없으면 Worker가 빈 WorkGraph를 생성해 같은 HQ 관제 문맥에서 후속 요청을 이어가며 레거시 직렬 실행 경로로 돌아가지 않는다.
+- 프로그램 시작 시 과거 WorkGraph를 자동 복구하지 않는다. 현재 프로그램 실행 안의 USER_FOLLOWUP만 현재 작업의 WorkGraph를 이어갈 수 있다.
+- HQ 상태 통지는 전체 WorkGraph 반복 전송이 아니라 직전 HQ 전달 이후 바뀐 WorkItem만 포함한다.
 
 WorkItem 기본 상태:
 - PLANNED: HQ가 정의했지만 아직 실행 조건을 평가하지 않은 상태
