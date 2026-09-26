@@ -1,7 +1,7 @@
 (() => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.2.0';
-  const EXTENSION_BUILD = '2026-09-26.3';
+  const EXTENSION_BUILD = '2026-09-26.4';
   if (document.getElementById(HOST_ID)) return;
   const host = document.createElement('div');
   host.id = HOST_ID;
@@ -91,7 +91,11 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
       const response=await fetchWithTimeout(attachment.downloadUrl,{},LONG_OPERATION_TIMEOUT);
       if(!response.ok)throw new Error('ATTACH_DOWNLOAD: '+attachment.fileName+' (HTTP '+response.status+')');
       const blob=await response.blob();
-      const file=new File([blob],attachment.fileName||'attachment',{type:attachment.mimeType||blob.type||'application/octet-stream'});
+      const buffer=await blob.arrayBuffer();
+      const actualSha256=await sha256Hex(buffer);
+      if(attachment.sha256&&actualSha256.toLowerCase()!==String(attachment.sha256).trim().toLowerCase())throw new Error('ATTACH_HASH_MISMATCH: '+(attachment.fileName||'attachment'));
+      reportProgress('ATTACHMENT_VERIFIED',(attachment.fileName||'attachment')+' · sha256='+actualSha256);
+      const file=new File([buffer],attachment.fileName||'attachment',{type:attachment.mimeType||blob.type||'application/octet-stream'});
       transfer.items.add(file);
     }
     input.files=transfer.files;
@@ -198,10 +202,11 @@ function readyResourceCandidates(){return latestGeneratedResourceCandidates().fi
 function resourceFingerprint(item){if(item.kind==='image')return 'image:'+imageFingerprint(item.element);return 'file:'+item.url+':'+(item.fileName||'');}
 function responseSnapshot(){const resources=activeResource?latestGeneratedResourceCandidates():[];return latestAssistant()+'|'+resources.map(resourceFingerprint).join('|');}
 function bytesToBase64(buffer){const bytes=new Uint8Array(buffer);let binary='';const chunk=0x8000;for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));return btoa(binary);}
+async function sha256Hex(buffer){const digest=await crypto.subtle.digest('SHA-256',buffer);return [...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('').toUpperCase();}
 function contentDispositionFileName(value){if(!value)return '';const utf=value.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);if(utf){try{return decodeURIComponent(utf[1].trim().replace(/^"|"$/g,''));}catch{}}const plain=value.match(/filename\s*=\s*"?([^";]+)"?/i);return plain?plain[1].trim():'';}
 function extensionForMime(mime=''){const type=String(mime).split(';')[0].trim().toLowerCase();return ({'image/png':'.png','image/jpeg':'.jpg','image/jpg':'.jpg','image/webp':'.webp','image/gif':'.gif','image/svg+xml':'.svg','audio/mpeg':'.mp3','audio/wav':'.wav','audio/x-wav':'.wav','audio/ogg':'.ogg','audio/flac':'.flac','audio/mp4':'.m4a','video/mp4':'.mp4','video/webm':'.webm','application/pdf':'.pdf','application/zip':'.zip','application/json':'.json','text/plain':'.txt','text/markdown':'.md','text/csv':'.csv','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'.docx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'.xlsx','application/vnd.openxmlformats-officedocument.presentationml.presentation':'.pptx'})[type]||'.bin';}
-async function fetchResourceBytes(src){try{const response=await fetchWithTimeout(src,{credentials:'include'},LONG_OPERATION_TIMEOUT);if(!response.ok)throw new Error('RESOURCE_DOWNLOAD_HTTP_'+response.status);const blob=await response.blob();if(!blob.size)throw new Error('RESOURCE_FILE_EMPTY');return {base64:bytesToBase64(await blob.arrayBuffer()),mimeType:blob.type||response.headers.get('content-type')||'application/octet-stream',contentDisposition:response.headers.get('content-disposition')||''};}catch(error){if(!/^https?:/i.test(src)||!globalThis.chrome?.runtime?.sendMessage)throw error;return await new Promise((resolve,reject)=>chrome.runtime.sendMessage({type:'fetch-resource-file',url:src},response=>{if(chrome.runtime.lastError){reject(new Error(chrome.runtime.lastError.message));return;}if(!response?.ok){reject(new Error(response?.error||String(error.message||error)));return;}resolve({base64:response.base64,mimeType:response.mimeType||'application/octet-stream',contentDisposition:response.contentDisposition||''});}));}}
-async function fetchResourcePayload(item,index,total){reportProgress(index===0?'DOWNLOAD_START':'DOWNLOAD_PROGRESS',(index+1)+'/'+total+' 리소스 파일 다운로드 중');const payload=await fetchResourceBytes(item.url);let fileName=item.fileName||contentDispositionFileName(payload.contentDisposition);if(!fileName){const prefix=item.kind==='image'?'image':'resource';fileName=prefix+'-'+String(index+1).padStart(2,'0')+extensionForMime(payload.mimeType);}reportProgress('DOWNLOAD_PROGRESS',(index+1)+'/'+total+' 리소스 파일 다운로드 완료');return {base64:payload.base64,mimeType:payload.mimeType,fileName};}
+async function fetchResourceBytes(src){try{const response=await fetchWithTimeout(src,{credentials:'include'},LONG_OPERATION_TIMEOUT);if(!response.ok)throw new Error('RESOURCE_DOWNLOAD_HTTP_'+response.status);const blob=await response.blob();if(!blob.size)throw new Error('RESOURCE_FILE_EMPTY');const buffer=await blob.arrayBuffer();return {base64:bytesToBase64(buffer),sha256:await sha256Hex(buffer),mimeType:blob.type||response.headers.get('content-type')||'application/octet-stream',contentDisposition:response.headers.get('content-disposition')||''};}catch(error){if(!/^https?:/i.test(src)||!globalThis.chrome?.runtime?.sendMessage)throw error;return await new Promise((resolve,reject)=>chrome.runtime.sendMessage({type:'fetch-resource-file',url:src},response=>{if(chrome.runtime.lastError){reject(new Error(chrome.runtime.lastError.message));return;}if(!response?.ok){reject(new Error(response?.error||String(error.message||error)));return;}resolve({base64:response.base64,sha256:response.sha256||'',mimeType:response.mimeType||'application/octet-stream',contentDisposition:response.contentDisposition||''});}));}}
+async function fetchResourcePayload(item,index,total){reportProgress(index===0?'DOWNLOAD_START':'DOWNLOAD_PROGRESS',(index+1)+'/'+total+' 리소스 파일 다운로드 중');const payload=await fetchResourceBytes(item.url);let fileName=item.fileName||contentDispositionFileName(payload.contentDisposition);if(!fileName){const prefix=item.kind==='image'?'image':'resource';fileName=prefix+'-'+String(index+1).padStart(2,'0')+extensionForMime(payload.mimeType);}reportProgress('DOWNLOAD_VERIFIED',(index+1)+'/'+total+' 다운로드 검증 완료 · sha256='+payload.sha256);return {base64:payload.base64,mimeType:payload.mimeType,fileName,sha256:payload.sha256};}
 async function resourcePayloads(){const candidates=readyResourceCandidates();if(!candidates.length)throw new Error('RESOURCE_NOT_FOUND');const files=[];for(let i=0;i<candidates.length;i++)files.push(await fetchResourcePayload(candidates[i],i,candidates.length));return files;}
 
 function clearResponseTimers(){clearTimeout(stableTimer);stableTimer=0;stableSnapshot='';clearTimeout(responseDeadlineTimer);responseDeadlineTimer=0;}
