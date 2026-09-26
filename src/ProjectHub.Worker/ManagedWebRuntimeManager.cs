@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace ProjectHub.Worker;
@@ -24,6 +25,10 @@ public sealed record ManagedWebRuntimeStatus(
 
 public sealed class ManagedWebRuntimeManager : IDisposable
 {
+    private const int SwHide = 0;
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr windowHandle, int command);
     private const string ChromeForTestingMetadataUrl =
         "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json";
 
@@ -371,6 +376,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
                 slot.Process = process;
                 slot.ExecutablePath = executable;
+                if (hidden)
+                    _ = HideProcessWindowWhenReadyAsync(process);
             }
             catch (Exception exception)
             {
@@ -384,6 +391,32 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
         StatusChanged?.Invoke(status);
         return status;
+    }
+
+    private static async Task HideProcessWindowWhenReadyAsync(Process process)
+    {
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            try
+            {
+                if (process.HasExited)
+                    return;
+
+                process.Refresh();
+                var handle = process.MainWindowHandle;
+                if (handle != IntPtr.Zero)
+                {
+                    ShowWindow(handle, SwHide);
+                    return;
+                }
+            }
+            catch
+            {
+                return;
+            }
+
+            await Task.Delay(250);
+        }
     }
 
     private void OnProcessExited(ManagedWebRole role, Process process)
