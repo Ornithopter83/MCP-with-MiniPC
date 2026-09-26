@@ -491,3 +491,17 @@ Integration:
 ⑪ preflight 또는 attachment staging이 실패하면 해당 입력의 첨부를 자동 소비하지 않는다. 실제 실행에 사용할 준비가 완료된 뒤에만 입력 UI의 대기 첨부에서 제거한다.
 ⑫ Worker는 첨부 내용의 의미를 판정해 라우팅하지 않고 사용자가 명시한 작업 입력의 기계적 자료로만 전달한다.
 
+제17조 (Web 응답 회수와 일반 결과 파일)
+
+① Web 요청 송신 성공과 Web 응답 회수 성공은 별도 기계 단계로 관리한다.
+② 일반 HQ Web 응답은 assistant turn 감지, assistant text 추출, 다운로드 파일 탐지, 파일 bytes/hash 검증, Worker result 저장을 분리 계측한다.
+③ role 속성 기반 assistant 탐지가 실패해도 현재 Worker prompt가 들어 있는 conversation turn을 찾고 그 다음 conversation turn을 assistant 응답 후보로 회수할 수 있다.
+④ prompt 다음 turn fallback은 전송 전 conversation container fingerprint baseline에 없던 현재 prompt turn에만 적용하며 이전 assistant 응답을 새 결과로 재사용하지 않는다.
+⑤ 일반 Web 응답에 다운로드 가능한 파일이 있으면 RESOURCE 여부와 무관하게 bytes를 회수한다. 일반 HQ 결과 파일 탐지는 현재 assistant 응답 turn 범위로 제한해 사용자 입력 첨부를 결과 파일로 오인하지 않는다.
+⑥ 일반 Web 결과 파일은 `Worker/web-results/<taskId>/`에 저장하며 파일별 path, byte 크기와 SHA-256 receipt를 BridgeTask에 기록한다.
+⑦ 파일명과 MIME은 응답 링크, Content-Disposition과 실제 response metadata를 사용하고 PDF, ZIP, JSON, TXT, Markdown, CSV, DOCX, XLSX, PPTX 및 허용된 오디오·비디오를 포함한 비이미지 파일을 처리할 수 있다.
+⑧ 일반 Web 결과 파일도 저장 전에 base64 decode, 개별 크기, 전체 크기와 SHA-256을 검증한다.
+⑨ assistant 응답에 파일이 명시적으로 존재하는데 다운로드 또는 hash 검증이 실패하면 텍스트만 성공 처리하지 않고 Web 결과 회수 실패로 처리한다.
+⑩ 저장된 일반 HQ Web 파일은 AiRoleRunResult.Files에 포함해 후속 관제 코드에서 경로를 잃지 않는다.
+⑪ 확장의 실제 version/build는 CLAIMED 진행 로그에 기록해 실패 로그만으로 테스트에 사용된 확장 빌드를 확인할 수 있게 한다.
+
