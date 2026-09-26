@@ -65,6 +65,18 @@
 ④ 시스템 Chrome, 외부 PROJECTHUB_CHROMIUM_PATH 등 ProjectHub 소유 경로 밖의 브라우저는 자동 종료 대상에서 제외한다.
 ⑤ 역할별 Web 상태에 실제 ExtensionVersion/ExtensionBuild와 ExpectedExtensionVersion/ExpectedExtensionBuild를 포함하고 UI에서 불일치 값을 직접 표시한다.
 ⑥ 이전 로컬 재게시에서 확인된 MainWindow.ManagedWeb.cs의 System.Drawing 대 WPF Brush/Brushes 모호성은 System.Windows.Media 형식을 명시하는 방식으로 저장소에 정식 반영했다.
-⑦ 확장 자체의 version/build는 0.2.0 / 2026-09-26.5를 유지한다. 이번 수정은 동일 build를 새 브라우저 프로세스가 확실히 다시 로드하게 하는 Worker 수명주기 보강이다.
+⑦ 당시 확장 version/build는 0.2.0 / 2026-09-26.5였고, 이후 관리형 단일 탭 기능에서 0.2.1 / 2026-09-26.6으로 갱신했다.
 ⑧ 새 Worker 빌드·게시 후 실제 HQ/RESOURCE 로그인 profile 유지와 두 역할의 heartbeat build 동기화 E2E가 필요하다.
+
+제7조 (관리형 ChatGPT 단일 탭)
+
+① Worker의 `로그인/표시` 또는 hidden 시작으로 생성된 `projecthub-managed-role` launch 탭만 해당 profile의 탭 정리 권한을 행사하도록 했다.
+② background service worker에 `ensure-single-chatgpt-tab` 명령을 추가하고 관리형 탭 정리 요청을 직렬화했다.
+③ 저장된 conversationId가 있으면 Worker launch 탭이 그 대화를 열고 있는 경우 해당 탭을 최우선으로 유지하며, 같은 profile의 다른 ChatGPT 탭을 닫는다.
+④ conversationId가 없으면 Worker launch 탭 하나만 남겨 최초 로그인과 대화 선택을 계속할 수 있게 한다.
+⑤ 정리 대상은 현재 profile의 `chatgpt.com` 및 `www.chatgpt.com` 탭으로 제한하고 다른 사이트 탭은 유지한다.
+⑥ manifest에 `tabs` 권한을 추가했고 확장을 0.2.1 / build 2026-09-26.6으로 갱신했다.
+⑦ Worker Bridge의 기대 version/build도 0.2.1 / 2026-09-26.6으로 맞췄다.
+⑧ Worker EXE에 내장되는 manifest/background/content에 단일 탭 계약이 실제 포함되는지 확인하는 테스트를 추가했다.
+⑨ 실제 Windows Worker 빌드·게시와 세션 복원 환경의 HQ/RESOURCE 단일 탭 E2E는 아직 수행하지 않았다.
 
