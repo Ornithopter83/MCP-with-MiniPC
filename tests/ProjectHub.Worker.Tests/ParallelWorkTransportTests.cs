@@ -7,9 +7,7 @@ public sealed class ParallelWorkTransportTests
     [Fact]
     public void ParallelWorkContractDefinesIntegrationAsSameWorkRole()
     {
-        var footer = RoleContractLoader.LoadWorkFooter(
-            judgeAvailable: true,
-            parallelWorkItem: true);
+        var footer = RoleContractLoader.LoadWorkFooter();
 
         Assert.Contains("workItemKind가 INTEGRATION", footer);
         Assert.Contains("resultRef", footer);
@@ -110,36 +108,33 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
-    public void WorkItemPromptExposesParallelContextWithoutChangingLegacyPrompt()
+    public void WorkItemPromptAlwaysUsesWorkGraphContextWithoutAvailabilityInjection()
     {
-        var legacy = RoleContractLoader.BuildWorkPrompt("HQ_INSTRUCTION", "기존 작업", judgeAvailable: false);
-        Assert.Contains("병렬 WorkItem 사용: 아니오", legacy);
-        Assert.DoesNotContain("WORK_ITEM_STATUS: COMPLETED", legacy);
-
-        var parallel = RoleContractLoader.BuildWorkPrompt(
+        var prompt = RoleContractLoader.BuildWorkPrompt(
             "WORK_ITEM",
             "수행하세요.",
-            judgeAvailable: false,
-            observationRequestDirectory: "C:/obs",
-            workItem: new WorkItemPromptContext(
+            new WorkItemPromptContext(
                 "W17",
                 WorkItemKind.Normal,
                 "기능 구현",
                 new[] { "W3" },
                 "abc123",
                 "projecthub/job/W17",
-                "C:/wt/W17"));
+                "C:/wt/W17"),
+            "C:/obs");
 
-        Assert.Contains("병렬 WorkItem 사용: 예", parallel);
-        Assert.Contains("workItemId: W17", parallel);
-        Assert.Contains("WorkItem 목표: 기능 구현", parallel);
-        Assert.Contains("WORK_ITEM_STATUS: COMPLETED", parallel);
+        Assert.Contains("workItemId: W17", prompt);
+        Assert.Contains("WorkItem 목표: 기능 구현", prompt);
+        Assert.Contains("WORK_ITEM_STATUS: COMPLETED", prompt);
+        Assert.DoesNotContain("병렬 WorkItem 사용:", prompt);
+        Assert.DoesNotContain("판정 사용 가능:", prompt);
+        Assert.DoesNotContain("리소스 사용 가능:", prompt);
     }
 
     [Fact]
     public void ParallelHqContractRequiresIntegrationBeforeEndWhenFinalCodeNeedsMultipleResults()
     {
-        var footer = RoleContractLoader.LoadHqFooter(parallelWorkGraph: true);
+        var footer = RoleContractLoader.LoadHqFooter();
 
         Assert.Contains("INTEGRATION WorkItem을 END 전에 추가", footer);
         Assert.Contains("INTEGRATION_LANDING_FAILED", footer);
@@ -148,22 +143,17 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
-    public void HqPromptExposesGraphPatchContractOnlyInParallelMode()
+    public void HqPromptAlwaysUsesWorkGraphContract()
     {
-        var legacy = RoleContractLoader.BuildHqPrompt("USER", "요청");
-        Assert.Contains("병렬 WorkGraph 사용: 아니오", legacy);
-        Assert.DoesNotContain("WORK_GRAPH_PATCH:", legacy);
-
-        var parallel = RoleContractLoader.BuildHqPrompt(
+        var prompt = RoleContractLoader.BuildHqPrompt(
             "USER",
             "요청",
-            new WorkGraphPromptContext(2, 4, "abc123"));
+            new WorkGraphPromptContext(2, 1, "abc123"));
 
-        Assert.Contains("병렬 WorkGraph 사용: 예", parallel);
-        Assert.Contains("WorkGraph revision: 2", parallel);
-        Assert.Contains("최대 동시 WORK: 4", parallel);
-        Assert.Contains("WORK_GRAPH_PATCH:", parallel);
-        Assert.Contains("SET_MAX_CONCURRENCY", parallel);
-        Assert.Contains("HQ가 변경하지 않는다", parallel);
+        Assert.Contains("WorkGraph revision: 2", prompt);
+        Assert.Contains("최대 동시 WORK: 1", prompt);
+        Assert.Contains("WORK_GRAPH_PATCH:", prompt);
+        Assert.DoesNotContain("병렬 WorkGraph 사용:", prompt);
+        Assert.DoesNotContain("PARALLEL_ON", prompt);
     }
 }

@@ -49,7 +49,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - USER_FOLLOWUP 복구 시 WorkGraph 현재 상태를 HQ 본문에 직접 제공
 - 성공한 Integration resultRef를 이후 WorkItem의 기본 baseRef로 승격하되 dependency만으로 의미적 base를 추론하지 않음
 - 새 병렬 실행 구간에서는 현재 작업공간 Git HEAD를 다시 읽어 stale 기준 ref를 피함
-- 새 Job은 maxConcurrentWork=1이어도 WorkGraph/Scheduler runtime을 사용하며, 저장 WorkGraph가 없는 과거 continuation만 max=1에서 레거시 직렬 경로를 유지
+- 새 Job과 모든 continuation은 maxConcurrentWork=1을 포함해 WorkGraph/Scheduler runtime만 사용
 - 메시지/작업 이력 상단에 WorkItem 상태 목록을 직접 표시하고 Integration/CANCELED/BLOCKED/FAILED 세부 상태를 노출
 - 병렬 runtime 시작 전 Git 저장소/HEAD/attached branch 사전 검사를 유지하되, 실제 실행/작업 추가 시 Git이 없으면 Worker가 먼저 git init을 수행하고 기준점 필요 시 repository root/branch를 표시해 사용자 승인을 받은 뒤 baseline commit을 생성
 - Git 준비 자동화는 .gitignore/exclude/preset을 건드리지 않으며 기존 origin URL 확인만 유지하고 remote 생성/push/pull은 하지 않음
@@ -418,3 +418,13 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - HQ 계약에는 종료 항목을 그대로 기록으로 남기고 재시도는 새 ID로 ADD한 뒤 비종료 후속 dependency만 교체한다는 일반 불변식만 추가했다.
 - 동일 형태의 회귀 테스트 `TerminalCancelIsIdempotentAndDoesNotBlockRetryPatch`를 추가했다.
 - 현재 Web 실행 환경에는 .NET SDK가 없어 테스트/빌드는 실행하지 못했으며 Windows 검증 대상에 포함한다.
+
+
+## 2026-09-26 라우팅 계약 및 WorkGraph 단일화
+
+- JUDGE-ROUTING-CONTRACT를 제거했다. JUDGE는 ACTION/GOTO를 만들지 않고 Worker가 JEV raw 결과를 요청한 같은 WORK 세션에 직접 반환한다.
+- WORK 계약의 JUDGE_ON/JUDGE_OFF와 HQ/WORK 계약의 PARALLEL_ON/PARALLEL_OFF 조건부 구역을 제거했다.
+- WORK 프롬프트에서 JUDGE/RESOURCE 사용 가능 여부와 직렬/병렬 여부를 주입하지 않는다.
+- JUDGE 비활성 상태에서 WORK가 JUDGE를 요청하면 실패로 종료하지 않고 해당 WorkItem을 JUDGE_UNAVAILABLE BLOCKED로 두어 HQ가 현재 graph 사실과 요청 내용을 보고 다음 동작을 결정한다.
+- 신규 작업과 저장 WorkGraph가 없는 과거 continuation까지 모두 WorkGraph/Scheduler 경로를 사용하며 레거시 직렬 실행 진입을 제거했다.
+- 현재 Web 환경에는 .NET SDK가 없어 dotnet test/build는 미실행이며 Windows 검증이 필요하다.

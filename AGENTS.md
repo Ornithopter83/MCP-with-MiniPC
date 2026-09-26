@@ -4,12 +4,12 @@
 - AI 역할·라우팅 정책은 Master-Polish.md의 가장 최신 최종 정책을 원본으로 본다. 다른 문서의 과거 완료 기록이 충돌하면 이력으로만 해석한다.
 - Worker 비판단 원칙: Worker는 흐름 제어 도구다. 작업 내용, 요구사항 충족, 테스트 충분성, JUDGE 결과, 리소스 품질을 의미적으로 판단하지 않는다. 프로토콜/전송/세션/스키마/경로 안전성 같은 기계적 오류만 미확인으로 처리한다.
 - 현재 신규 역할은 HQ / WORK / RESOURCE / JUDGE / 미확인이다. HIGH와 일회성 허가은 사용하지 않는다.
-- 신규 AI 출력 제어 계약은 ACTION/GOTO를 사용한다. 일반 본문은 불투명이다. JUDGE는 전용 스키마를 기계적으로 검사하고, RESOURCE는 WORK가 명시한 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE`과 비어 있지 않은 자연어 본문만 기계적으로 검사한 뒤 FIFO 사이드카 대기열에 넣는다. Worker는 RESOURCE 종류를 본문에서 추론하지 않는다.
+- 신규 AI 출력 제어 계약은 ACTION/GOTO를 사용한다. 일반 본문은 불투명이다. JUDGE 요청은 전용 스키마를 기계적으로 검사하고 JEV raw 결과는 Worker가 요청한 같은 WORK 세션에 직접 반환한다. RESOURCE는 WORK가 명시한 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE`과 비어 있지 않은 자연어 본문만 기계적으로 검사한 뒤 FIFO 사이드카 대기열에 넣는다. Worker는 RESOURCE 종류를 본문에서 추론하지 않는다.
 - HQ는 설계·관제 역할이며 ChatGPT Web 또는 CLI 제공자로 실행할 수 있다. WORK는 CLI 제공자 실행을 사용한다. RESOURCE는 별도 ChatGPT Web 대화에 고정하고, Worker 내부 single-reader FIFO 대기열가 한 번에 1건씩 실행한다. JUDGE는 JEV 전송다.
 - HQ Web과 RESOURCE Web은 서로 다른 conversationId에 명시적으로 연결한다. 생존 신호는 생존 확인용이며 작업 목적지 선택에 사용하지 않는다.
 - RESOURCE는 ChatGPT Web이 생성해 파일로 반환할 수 있는 생성 리소스의 제작·다운로드·지정 경로 저장까지만 담당한다. 이미지·오디오·문서 등 구체 형식은 역할 의미가 아니라 반환 파일의 MIME 형식과 파일 정보로 구분한다. 자동 코드/CSS/HTML 연결, 의미 기반 컴포넌트 선택, 자동 품질 판정은 하지 않는다.
 - [GOTO : RESOURCE] 한 번은 새로운 생성 리소스 요청 한 건을 만든다. 기존 요청의 상태 조회·취소·추적·확인·보고를 RESOURCE로 라우팅하지 않는다.
-- HQ의 [ACTION=END]는 현재 실행 구간의 의미 작업 종료를 확정한다. Worker는 같은 실행 구간에서 HQ/WORK/JUDGE 의미 흐름을 자동으로 다시 열지 않고, 남은 기계적 대기 작업만 확인해 모두 끝난 뒤 DONE/DONE_WITH_ERROR로 전환한다. END 이후 같은 실행 구간의 WORK 보고가 HQ로 향하면 Worker가 "HQ의 작업은 종료되었습니다."로 차단한다. PAUSE, 사용자 취소(CANCELED) 또는 DONE/DONE_WITH_ERROR 뒤 사용자가 명시적으로 작업 추가를 실행하면 기존 HQ/WORK 세션과 작업공간을 보존한 USER_FOLLOWUP 새 실행 구간을 HQ부터 시작할 수 있다. 취소는 현재 실행 구간만 중단하며 자동 재개하지 않는다.
+- HQ의 [ACTION=END]는 현재 실행 구간의 의미 작업 종료를 확정한다. Worker는 같은 실행 구간에서 HQ/WORK 의미 흐름을 자동으로 다시 열지 않고, 남은 기계적 대기 작업만 확인해 모두 끝난 뒤 DONE/DONE_WITH_ERROR로 전환한다. END 이후 같은 실행 구간의 WORK 보고가 HQ로 향하면 Worker가 "HQ의 작업은 종료되었습니다."로 차단한다. PAUSE, 사용자 취소(CANCELED) 또는 DONE/DONE_WITH_ERROR 뒤 사용자가 명시적으로 작업 추가를 실행하면 기존 HQ/WORK 세션과 작업공간을 보존한 USER_FOLLOWUP 새 실행 구간을 HQ부터 시작할 수 있다. 취소는 현재 실행 구간만 중단하며 자동 재개하지 않는다.
 - History는 Worker가 이미 가진 역할/상태/사용량/file 계측로 만든다. AI 본문 tag나 출처 문자열을 routing 판단에 사용하지 않는다.
 - JUDGE는 관측 사실 자체의 재확인이 아니라 현재 근거만으로 기계적으로 확정할 수 없는 판단에 사용한다. WORK가 그 판단이 다음 작업/완료에 영향을 준다고 판단하면 HQ에 질문과 근거를 보내 Form을 요청하고, 근거가 의미 있게 바뀌면 다시 요청한다. Worker는 이 판단 여부를 추론하지 않는다. HQ는 WORK가 Form 요청을 놓쳐도 WORK 보고에 그런 미판정 판단이 남아 있으면 해당 판단만 Form으로 만들어 WORK에 돌려주는 안전망을 가진다.
 - 작업공간의 `.projecthub`에는 재개 가능한 session-state, 마지막 HQ handoff, 실시간 JSONL event log, transcript를 기계적으로 저장한다. Worker는 저장 내용을 의미 해석해 자동 실행하지 않는다.

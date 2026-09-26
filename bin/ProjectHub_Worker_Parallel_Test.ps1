@@ -52,8 +52,8 @@ if ($NoRestore) {
     $restoreArgs += "--no-restore"
 }
 
-Invoke-Checked "1. 병렬 WORK 핵심 Worker 테스트" {
-    dotnet test $WorkerTests -c Debug @restoreArgs --filter "FullyQualifiedName~WorkGraphTests|FullyQualifiedName~ParallelWorkSchedulerTests|FullyQualifiedName~GitWorktreeManagerTests|FullyQualifiedName~ParallelWorkTransportTests|FullyQualifiedName~CodexWorkItemExecutorTests|FullyQualifiedName~ParallelWorkSupervisorTests|FullyQualifiedName~ParallelResourceWorkItemRouterTests|FullyQualifiedName~ParallelJudgeWorkItemRouterTests|FullyQualifiedName~ParallelWorkSidecarTests|FullyQualifiedName~WorkGraphPersistenceTests|FullyQualifiedName~ParallelWorkUiFormatterTests|FullyQualifiedName~ParallelWorkActivationPolicyTests|FullyQualifiedName~ParallelWorkGitPreflightTests|FullyQualifiedName~GitWorkspaceBootstrapperTests"
+Invoke-Checked "1. WorkGraph 핵심 Worker 테스트" {
+    dotnet test $WorkerTests -c Debug @restoreArgs --filter "FullyQualifiedName~WorkGraphTests|FullyQualifiedName~ParallelWorkSchedulerTests|FullyQualifiedName~GitWorktreeManagerTests|FullyQualifiedName~ParallelWorkTransportTests|FullyQualifiedName~CodexWorkItemExecutorTests|FullyQualifiedName~ParallelWorkSupervisorTests|FullyQualifiedName~ParallelResourceWorkItemRouterTests|FullyQualifiedName~ParallelJudgeWorkItemRouterTests|FullyQualifiedName~ParallelWorkSidecarTests|FullyQualifiedName~WorkGraphPersistenceTests|FullyQualifiedName~ParallelWorkUiFormatterTests|FullyQualifiedName~ParallelWorkGitPreflightTests|FullyQualifiedName~GitWorkspaceBootstrapperTests"
 }
 
 Invoke-Checked "2. 전체 solution 테스트" {
@@ -79,7 +79,7 @@ Write-Host "남은 Explorer E2E:" -ForegroundColor Yellow
 Write-Host "  1) Git 없는 작업 폴더에서 실행 -> git init -> 기준점 경로 확인 -> 승인/취소"
 Write-Host "     - 기준점 생성 중 실행/작업 추가 버튼이 'Git 준비 중...'으로 비활성화되는지 확인"
 Write-Host "  2) 기존 Git dirty 작업 폴더에서 기준점 승인 후 clean HEAD 확인"
-Write-Host "  3) 최대 동시 WORK=1 직렬 회귀"
+Write-Host "  3) 최대 동시 WORK=1 WorkGraph 회귀"
 Write-Host "  4) 최대 동시 WORK=4에서 독립 WorkItem 4개 동시 실행"
 Write-Host "  5) 5번째 READY WorkItem이 슬롯 해제 직후 시작"
 Write-Host "  6) SPLIT_REQUEST -> HQ GraphPatch -> 동적 WorkItem 추가"

@@ -64,7 +64,7 @@ WORK     -> HQ | JUDGE | RESOURCE_QUEUE
 WORK 실행 중 -> 기계 계측 요청 파일 등록 -> OBSERVATION sidecar
 OBSERVATION WORK_RESULT_REQUIRED -> 현재 WORK 응답 보류 -> 완료 후 같은 WORK 세션 OBSERVATION_RESULT
 OBSERVATION FINALIZE_ONLY -> 메인 의미 흐름 비차단 -> HQ END 시 기계적 대기 대상
-JUDGE    -> WORK
+JUDGE 요청 -> Worker가 JEV raw 결과를 요청한 같은 WORK 세션에 반환
 RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
 RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
 HQ ACTION=END -> 의미 작업 종료 고정 -> Worker가 기계적 대기 작업 확인
@@ -160,12 +160,7 @@ RESOURCE_TYPE: IMAGE
 <자연어 리소스 생성 요청>
 ~~~
 
-JUDGE:
-
-~~~text
-[GOTO : WORK]
-<opaque body>
-~~~
+JUDGE는 ACTION/GOTO를 만들지 않는다. Worker가 JEV raw 결과를 요청한 같은 WORK 세션에 JUDGMENT 입력으로 반환한다.
 
 RESOURCE는 메인 역할 상태와 분리된 사이드카 대기열로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 명시된 종류와 자연어 요청을 FIFO 대기열에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. HQ가 아직 END하지 않은 동안 RESOURCE 완료가 성공이든 실패든 Worker는 해당 requestId, 종류, 결과/오류를 다음 WORK 입력에 기계적으로 함께 전달한다. RESOURCE 실패는 UNKNOWN으로 승격해 HQ에 우회 전달하지 않는다. HQ가 END한 뒤에는 RESOURCE 완료 때문에 HQ나 WORK를 다시 호출하지 않는다. Worker는 HQ 종료 상태를 고정하고 남은 기계적 대기 작업만 추적한다.
 
@@ -207,7 +202,7 @@ HQ가 Web이든 CLI든 같은 역할 계약을 사용한다.
 WORK -> HQ      검증 질문 목록 + evidence + JUDGE용 Form 생성 요청
 HQ   -> WORK    JUDGE용 Form
 WORK -> JUDGE   Form 전송
-JUDGE -> WORK   raw 결과
+Worker -> WORK  JEV raw 결과를 같은 세션에 반환
 ~~~
 
 - JUDGE는 관측 가능한 사실 자체를 다시 확인하는 용도가 아니라, 현재 근거만으로 기계적으로 확정할 수 없는 판단에 사용한다.
@@ -221,7 +216,8 @@ JUDGE -> WORK   raw 결과
 - CHOICE 선택지 키는 영문자로 시작하고 영문자, 숫자, 밑줄, 하이픈만 사용한다. 한글 선택지 키는 전송 문법으로 인정하지 않는다.
 - WORK는 받은 JUDGE용 Form을 JUDGE로 전송한다.
 - Worker는 질문이나 Form의 의미적 적합성을 검사하지 않고 전송 문법만 기계적으로 확인한다.
-- JEV 원본 응답은 같은 WORK 세션으로 반환한다.
+- JEV 원본 응답은 Worker가 같은 WORK 세션으로 직접 반환하며 JUDGE는 별도 라우팅 출력을 만들지 않는다.
+- JUDGE가 비활성인데 WORK가 JUDGE를 요청하면 Worker는 해당 WorkItem을 JUDGE_UNAVAILABLE로 BLOCKED 처리하고 현재 상태를 HQ에 전달한다.
 
 ---
 
@@ -403,8 +399,9 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 - WORK는 자신에게 배정된 WorkItem 범위 안에서 구현·검증하고, 새 독립 작업이 필요하다고 판단하면 직접 새 WORK를 시작하지 않고 SPLIT_REQUEST를 HQ에 보고한다.
 - Worker는 WorkItem의 의미를 판단하지 않는다. 이미 HQ가 승인한 WorkGraph에서 상태와 의존성을 기계적으로 계산하고 READY WorkItem을 빈 슬롯에 배정한다.
 - 여러 READY WorkItem 중 별도 의미 우선순위가 없으면 Worker는 HQ가 제공한 명시적 순서 또는 안정적인 생성 순서를 기계적으로 사용한다.
-- 새 Job은 maxConcurrentWork가 1이어도 동일한 WorkGraph/Scheduler 경로를 사용한다. 값 1은 병렬 기능을 끄는 레거시 모드가 아니라 실행 슬롯을 하나로 제한한 직렬 WorkGraph 모드다.
-- 병렬 기능 도입 전 저장된 레거시 continuation은 저장 WorkGraph가 없고 maxConcurrentWork가 1인 경우에만 기존 직렬 실행 경로를 유지해 과거 세션 호환성을 보존한다.
+- 새 Job과 USER_FOLLOWUP은 maxConcurrentWork 값과 기존 WorkGraph 유무와 관계없이 동일한 WorkGraph/Scheduler 경로를 사용한다.
+- maxConcurrentWork=1은 별도 직렬 엔진이 아니라 실행 슬롯이 1개인 WorkGraph다.
+- 과거 continuation에 저장 WorkGraph가 없으면 Worker가 빈 WorkGraph를 생성해 같은 HQ 관제 문맥에서 후속 요청을 이어가며 레거시 직렬 실행 경로로 돌아가지 않는다.
 
 WorkItem 기본 상태:
 - PLANNED: HQ가 정의했지만 아직 실행 조건을 평가하지 않은 상태

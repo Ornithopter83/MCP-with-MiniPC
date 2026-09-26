@@ -680,3 +680,13 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - HQ는 실패 작업 재시도 시 기존 종료 항목을 수정·취소하지 않고 새 ID WorkItem을 ADD하고 필요한 비종료 후속 dependency를 새 ID로 연결한다.
 - `TerminalCancelIsIdempotentAndDoesNotBlockRetryPatch` 회귀 테스트를 추가했다.
 - 현재 Web 실행 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 실검증이 필요하다.
+
+
+### 2026-09-26 WorkGraph 단일 실행 경로와 JUDGE 반환 단순화
+
+- maxConcurrentWork=1~8을 모두 동일 WorkGraph/Scheduler 실행으로 통합했다.
+- 저장 WorkGraph가 없는 과거 continuation도 새 빈 WorkGraph에서 HQ 후속 GraphPatch로 이어지며 레거시 직렬 runtime을 사용하지 않는다.
+- JUDGE 역할 출력 계약과 JUDGE -> WORK GOTO를 제거했다. Worker가 JEV raw 결과를 요청한 같은 WorkItem 세션에 직접 반환한다.
+- HQ/WORK의 PARALLEL 조건부 계약과 WORK의 JUDGE 활성/비활성 조건부 계약을 제거했다.
+- JUDGE 비활성 요청은 JUDGE_UNAVAILABLE BLOCKED 상태로 HQ에 노출하고 Worker가 의미적 대안을 선택하지 않는다.
+- 현재 Web 환경에는 .NET SDK가 없어 자동 테스트/빌드는 미실행이며 Windows 검증 대상이다.

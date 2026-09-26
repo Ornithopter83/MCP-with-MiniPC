@@ -23,12 +23,12 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 
 미확인은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.
 
-## 활성 작업 — 16 동적 병렬 WORK Graph
+## 활성 작업 — 16 동적 WorkGraph
 
 목표:
-- 단일 WORK 직렬 실행을 동적 DAG 기반 병렬 WorkGraph로 확장
+- 모든 WORK 실행을 maxConcurrentWork 1~8의 동일한 DAG WorkGraph로 통합
 - HQ가 작업 분해·의존성·추가·취소를 의미적으로 결정
-- Worker가 maxConcurrentWork 안에서 승인된 READY WorkItem을 기계적으로 병렬 실행
+- Worker가 maxConcurrentWork 안에서 승인된 READY WorkItem을 기계적으로 실행하며 1도 동일한 WorkGraph 경로를 사용
 - WorkItem별 Codex session과 Git branch/worktree를 격리
 - SPLIT_REQUEST와 GraphPatch로 실행 중 동적 작업 추가
 - Integration WorkItem으로 병렬 결과를 통합
@@ -84,3 +84,11 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - Worker 관측 메시지는 `.projecthub/events/<jobId>.jsonl`에 실시간 append하고 transcript는 `.projecthub/transcripts/<jobId>.txt`에 저장한다.
 
 - RESOURCE 성공/실패 completion은 HQ END 전 다음 WORK 입력의 `RESOURCE_RESULT`로 전달하고, RESOURCE 실패를 UNKNOWN으로 승격하지 않는다.
+
+
+## 2026-09-26 WorkGraph 단일 실행 경로
+
+- 신규 작업과 기존 continuation을 모두 WorkGraph/Scheduler로 실행한다.
+- 저장 WorkGraph가 없는 과거 continuation도 빈 WorkGraph로 시작하며 레거시 직렬 runtime으로 돌아가지 않는다.
+- JUDGE는 라우팅 역할이 아니며 JEV raw 결과를 Worker가 요청한 같은 WORK 세션에 직접 반환한다.
+- 역할 프롬프트에는 JUDGE 활성 여부나 직렬/병렬 모드 여부를 별도로 주입하지 않는다.

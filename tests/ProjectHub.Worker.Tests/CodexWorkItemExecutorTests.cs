@@ -107,7 +107,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task JudgeRequestFailsMechanicallyWhenJudgeIsDisabled()
+    public async Task JudgeRequestBlocksForHqWhenJudgeIsDisabled()
     {
         var fixture = CreateFixture("""
             [GOTO : JUDGE]
@@ -120,8 +120,9 @@ public sealed class CodexWorkItemExecutorTests
                 fixture.Request,
                 CancellationToken.None);
 
-            Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
-            Assert.Equal("JUDGE_UNAVAILABLE", result.FailureCode);
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("JUDGE_UNAVAILABLE", result.BlockCode);
+            Assert.Contains("QID:q1", result.ResultSummary ?? string.Empty);
         }
         finally
         {

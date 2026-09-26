@@ -18,7 +18,7 @@ public sealed class RoleContractBoundaryTests
         Assert.DoesNotContain("[GOTO : RESOURCE]", hq);
         Assert.DoesNotContain("[GOTO : JUDGE]", hq);
         Assert.Contains("Worker의 기계적 사실은 관측값이며 의미 판단이 아니다.", hq);
-        Assert.Contains("기계적 대기 작업이 남아 있어도 END 판단을 미루지 않는다.", hq);
+        Assert.Contains("기계적 대기 작업 때문에 END 판단을 미루지 않는다.", hq);
         Assert.Contains("JUDGE용 Form", hq);
         Assert.Contains("NOUL | QID:<id>", hq);
         Assert.Contains("SCORE | QID:<id>", hq);
@@ -27,37 +27,24 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("한글 선택지 키는 사용하지 않는다.", hq);
         Assert.Contains("A=<기준>", hq);
         Assert.Contains("B=<기준>", hq);
-        Assert.Contains("명시적인 Form 요청이 없어도", hq);
-        Assert.Contains("이미 관측 사실로 확정한 항목 자체를 다시 JUDGE 문항으로 만들지 않고", hq);
-        Assert.Contains("이전 판정 이후 근거가 바뀌었다고 WORK가 보고하면", hq);
+        Assert.Contains("이미 관측 사실로 확정된 항목은 다시 JUDGE 문항으로 만들지 않는다.", hq);
+        Assert.Contains("이전 판정 뒤 근거가 의미 있게 바뀌면", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
     [Fact]
-    public void WorkContractOnlyOffersJudgeWhenAvailable()
+    public void WorkContractKeepsStableRoutingAndJudgeBoundary()
     {
-        var enabled = RoleContractLoader.LoadWorkFooter(true);
-        var disabled = RoleContractLoader.LoadWorkFooter(false);
+        var work = RoleContractLoader.LoadWorkFooter();
 
-        Assert.Contains("[GOTO : HQ]", enabled);
-        Assert.Contains("[GOTO : JUDGE]", enabled);
-        Assert.Contains("[GOTO : RESOURCE]", enabled);
-        Assert.Contains("질문 목록", enabled);
-        Assert.Contains("JUDGE용 Form", enabled);
-        Assert.Contains("관측 사실 확인이 아니라", enabled);
-        Assert.Contains("다음 작업이나 완료 결과에 영향을 주면", enabled);
-        Assert.Contains("근거가 의미 있게 바뀌면", enabled);
-        Assert.DoesNotContain("[GOTO : HQ]로", enabled);
-        Assert.DoesNotContain("[GOTO : JUDGE]로", enabled);
-        Assert.DoesNotContain("- [GOTO : RESOURCE]는", enabled);
-        Assert.DoesNotContain("NOUL | QID:<id>", enabled);
-        Assert.DoesNotContain("SCORE | QID:<id>", enabled);
-        Assert.DoesNotContain("CHOICE | QID:<id>", enabled);
-
-        Assert.Contains("[GOTO : HQ]", disabled);
-        Assert.Contains("[GOTO : RESOURCE]", disabled);
-        Assert.DoesNotContain("[GOTO : JUDGE]", disabled);
-        Assert.DoesNotContain("NOUL | QID:<id>", disabled);
+        Assert.Contains("[GOTO : HQ]", work);
+        Assert.Contains("[GOTO : JUDGE]", work);
+        Assert.Contains("[GOTO : RESOURCE]", work);
+        Assert.Contains("관측 사실 확인이 아니라", work);
+        Assert.Contains("JUDGE용 Form", work);
+        Assert.DoesNotContain("JUDGE_ON", work);
+        Assert.DoesNotContain("JUDGE_OFF", work);
+        Assert.DoesNotContain("사용 가능", work);
     }
 
     [Fact]
@@ -66,9 +53,7 @@ public sealed class RoleContractBoundaryTests
         var contracts = new[]
         {
             RoleContractLoader.LoadHqFooter(),
-            RoleContractLoader.LoadWorkFooter(true),
-            RoleContractLoader.LoadWorkFooter(false),
-            RoleContractLoader.LoadJudgeFooter()
+            RoleContractLoader.LoadWorkFooter()
         };
 
         foreach (var contract in contracts)
@@ -85,39 +70,53 @@ public sealed class RoleContractBoundaryTests
     [Fact]
     public void WorkResourceContractStatesGeneralTransportBoundary()
     {
-        var work = RoleContractLoader.LoadWorkFooter(true);
-        Assert.Contains("새로운 RESOURCE queue 요청 한 건", work);
-        Assert.Contains("상태 조회, 취소, 추적, 확인, 보고를 위해 RESOURCE로 라우팅하지 않는다.", work);
+        var work = RoleContractLoader.LoadWorkFooter();
+        Assert.Contains("한 요청에는 한 종류의 새로운 생성 리소스만 포함한다.", work);
+        Assert.Contains("상태 조회·저장 지시·Worker 운영 지시는 넣지 않는다.", work);
         Assert.Contains("유효한 GOTO 제어행만 라우팅을 변경", work);
         Assert.DoesNotContain("예시:", work, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void HqPromptUsesPlainMetadataAndOnlyAllowsWork()
+    public void HqPromptUsesOnlyRequiredWorkGraphMetadata()
     {
-        var prompt = RoleContractLoader.BuildHqPrompt("WORK_REPORT", "불투명 보고");
+        var prompt = RoleContractLoader.BuildHqPrompt(
+            "WORK_REPORT",
+            "불투명 보고",
+            new WorkGraphPromptContext(3, 1, "abc123"));
+
         Assert.Contains("역할: HQ", prompt);
         Assert.Contains("입력 유형: WORK_REPORT", prompt);
-        Assert.Contains("허용 목적지: WORK", prompt);
+        Assert.Contains("WorkGraph revision: 3", prompt);
+        Assert.Contains("최대 동시 WORK: 1", prompt);
+        Assert.DoesNotContain("허용 목적지:", prompt);
+        Assert.DoesNotContain("병렬 WorkGraph 사용:", prompt);
         Assert.DoesNotContain("[ROLE :", prompt);
-        Assert.DoesNotContain("[INBOUND TYPE", prompt);
-        Assert.DoesNotContain("[AVAILABLE GOTO", prompt);
-        Assert.DoesNotContain("[GOTO : RESOURCE]", prompt);
-        Assert.DoesNotContain("[GOTO : JUDGE]", prompt);
         Assert.Contains("불투명 보고", prompt);
     }
 
     [Fact]
-    public void WorkPromptUsesPlainMetadata()
+    public void WorkPromptUsesOnlyRequiredWorkItemMetadata()
     {
-        var prompt = RoleContractLoader.BuildWorkPrompt("RESOURCE_QUEUED", "기계적 상태", true);
+        var prompt = RoleContractLoader.BuildWorkPrompt(
+            "RESOURCE_QUEUED",
+            "기계적 상태",
+            new WorkItemPromptContext(
+                "W1",
+                WorkItemKind.Normal,
+                "작업",
+                Array.Empty<string>(),
+                "abc123",
+                "branch",
+                "worktree"));
+
         Assert.Contains("역할: WORK", prompt);
         Assert.Contains("입력 유형: RESOURCE_QUEUED", prompt);
-        Assert.Contains("판정 사용 가능: 예", prompt);
-        Assert.Contains("리소스 사용 가능: 예", prompt);
+        Assert.Contains("workItemId: W1", prompt);
+        Assert.DoesNotContain("판정 사용 가능:", prompt);
+        Assert.DoesNotContain("리소스 사용 가능:", prompt);
+        Assert.DoesNotContain("병렬 WorkItem 사용:", prompt);
         Assert.DoesNotContain("[ROLE :", prompt);
-        Assert.DoesNotContain("[INBOUND TYPE", prompt);
-        Assert.DoesNotContain("[RESOURCE AVAILABLE", prompt);
     }
 
     [Fact]

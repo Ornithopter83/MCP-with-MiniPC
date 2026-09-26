@@ -56,7 +56,6 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", null, WorkerRoleState.Judge)]
     [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\nRESOURCE_TYPE: AUDIO\n게임용 효과음을 짧고 선명하게 만들어줘.", null, WorkerRoleState.Resource)]
-    [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", null, WorkerRoleState.Work)]
     [InlineData(WorkerRoleState.Resource, "[GOTO : WORK]\nsaved", null, WorkerRoleState.Work)]
     public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, WorkerAction? action, WorkerRoleState? target)
     {
@@ -76,6 +75,7 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\n[GOTO : WORK]\nbody", "GOTO_NOT_ALLOWED_WITH_ACTION")]
     [InlineData(WorkerRoleState.Work, "[ACTION=END]\nbody", "ACTION_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Resource, "[GOTO : HQ]\nbody", "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Judge, "[GOTO : HQ]\nbody", "GOTO_NOT_ALLOWED")]
     public void WorkerGoto_RejectsInvalidControlsAndForbiddenTransitions(WorkerRoleState source, string text, string error)
         => Assert.Equal(error, WorkerGotoContract.Parse(source, text).Error);
@@ -832,8 +832,15 @@ public sealed class CoordinatorFirstContractTests
         var prompt = RoleContractLoader.BuildWorkPrompt(
             "HQ_INSTRUCTION",
             "작업을 진행하라.",
-            judgeAvailable: true,
-            observationRequestDirectory: @"C:\work\.projecthub\mechanical\job\requests");
+            new WorkItemPromptContext(
+                "W1",
+                WorkItemKind.Normal,
+                "작업을 진행하라.",
+                Array.Empty<string>(),
+                "abc123",
+                "branch",
+                "worktree"),
+            @"C:\work\.projecthub\mechanical\job\requests");
 
         Assert.Contains("비동기 계측 요청 폴더:", prompt);
         Assert.Contains("WORK_RESULT_REQUIRED", prompt);
