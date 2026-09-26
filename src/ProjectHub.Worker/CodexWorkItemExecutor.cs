@@ -150,7 +150,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     preparation.WorktreePath,
                     item.ResultSummary,
                     dependencyResults),
-                observationRequestDirectory);
+                observationRequestDirectory,
+                includeContract: string.IsNullOrWhiteSpace(sessionId));
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
