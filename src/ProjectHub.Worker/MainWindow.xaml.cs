@@ -81,8 +81,10 @@ public partial class MainWindow : Window
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         public Visibility MetricsVisibility => EventType == "ROLE_PROGRESS" ? Visibility.Collapsed : Visibility.Visible;
         public TextWrapping SummaryWrapping => EventType == "ROLE_PROGRESS" ? TextWrapping.Wrap : TextWrapping.NoWrap;
-        public TextTrimming SummaryTrimming => EventType == "ROLE_PROGRESS" ? TextTrimming.None : TextTrimming.CharacterEllipsis;
-        public double SummaryMaxHeight => EventType == "ROLE_PROGRESS" ? 62d : double.PositiveInfinity;
+        public TextTrimming SummaryTrimming => TextTrimming.CharacterEllipsis;
+        public double SummaryMaxHeight => EventType == "ROLE_PROGRESS" ? 72d : double.PositiveInfinity;
+        public double SummaryHeight => EventType == "ROLE_PROGRESS" ? 72d : double.NaN;
+        public double CardHeight => EventType == "ROLE_PROGRESS" ? 104d : double.NaN;
         public string Details
         {
             get
