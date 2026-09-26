@@ -415,8 +415,25 @@
           <TextBlock Text="항목 두 번 클릭 · Full Message" FontSize="12" Foreground="{StaticResource Muted}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0"/>
         </Grid>
         <Grid x:Name="DashboardBodyGrid" Grid.Row="1" Margin="0,4,0,0">
-          <Border x:Name="DashboardInputView" Background="#FBFDFF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="20">
-            <TextBox x:Name="DashboardTaskInput" FontSize="18" Padding="2" VerticalContentAlignment="Top" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" Foreground="{StaticResource Muted}" Text="작업 내용을 입력하세요..." ToolTip="작업 내용을 입력합니다." GotFocus="DashboardTaskInput_GotFocus" LostFocus="DashboardTaskInput_LostFocus" TextChanged="DashboardTaskInput_TextChanged"/>
+          <Border x:Name="DashboardInputView" Background="#FBFDFF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="20" AllowDrop="True" PreviewDragOver="DashboardInputView_PreviewDragOver" PreviewDrop="DashboardInputView_PreviewDrop">
+            <Grid>
+              <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+              <TextBox x:Name="DashboardTaskInput" Grid.Row="0" FontSize="18" Padding="2" VerticalContentAlignment="Top" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" Foreground="{StaticResource Muted}" Text="작업 내용을 입력하세요..." ToolTip="작업 내용을 입력합니다. 파일을 드롭하거나 Ctrl+V로 화면 캡처를 첨부할 수 있습니다." GotFocus="DashboardTaskInput_GotFocus" LostFocus="DashboardTaskInput_LostFocus" TextChanged="DashboardTaskInput_TextChanged" PreviewKeyDown="DashboardTaskInput_PreviewKeyDown"/>
+              <ItemsControl Grid.Row="1" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=InitialAttachments}" Margin="0,8,0,0">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate><DataTemplate>
+                  <Border Background="#EAF4FF" BorderBrush="#C8DDF5" BorderThickness="1" CornerRadius="7" Padding="9,5" Margin="0,0,7,6">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <TextBlock Text="📎" FontSize="13" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                      <TextBlock Text="{Binding FileName}" FontSize="13" FontWeight="SemiBold" MaxWidth="220" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding DisplaySize}" FontSize="11" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="7,0,4,0"/>
+                      <Button Content="×" CommandParameter="{Binding Id}" Click="RemoveInitialAttachment_Click" Width="22" Height="22" Padding="0" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Muted}" FontSize="16" ToolTip="첨부 제거"/>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Grid.Row="2" Text="파일 드롭 · 화면 캡처 후 Ctrl+V · 최대 20개 / 파일당 50MB" FontSize="11" Foreground="{StaticResource Muted}" Margin="2,1,0,0"/>
+            </Grid>
           </Border>
           <Border x:Name="DashboardHistoryView" Background="#FBFDFF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="8,5" Visibility="Collapsed">
             <Grid>
@@ -438,8 +455,25 @@
                   <TextBlock Text="메시지" FontSize="16" FontWeight="Bold" Foreground="#116B39"/>
                   <TextBlock Text="현재 세션에 작업 추가" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
                 </StackPanel>
-                <Border Grid.Column="2" Background="#F1FAF5" BorderBrush="#CFE9D8" BorderThickness="1" CornerRadius="8" Padding="12,9">
-                  <TextBox x:Name="DashboardFollowupInput" Text="추가할 작업을 입력하세요..." Foreground="{StaticResource Muted}" Background="Transparent" BorderThickness="0" FontSize="15" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" GotFocus="DashboardFollowupInput_GotFocus" LostFocus="DashboardFollowupInput_LostFocus" TextChanged="DashboardFollowupInput_TextChanged"/>
+                <Border x:Name="DashboardFollowupAttachmentView" Grid.Column="2" Background="#F1FAF5" BorderBrush="#CFE9D8" BorderThickness="1" CornerRadius="8" Padding="12,9" AllowDrop="True" PreviewDragOver="DashboardFollowupAttachmentView_PreviewDragOver" PreviewDrop="DashboardFollowupAttachmentView_PreviewDrop">
+                  <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <TextBox x:Name="DashboardFollowupInput" Grid.Row="0" MinHeight="48" Text="추가할 작업을 입력하세요..." Foreground="{StaticResource Muted}" Background="Transparent" BorderThickness="0" FontSize="15" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" GotFocus="DashboardFollowupInput_GotFocus" LostFocus="DashboardFollowupInput_LostFocus" TextChanged="DashboardFollowupInput_TextChanged" PreviewKeyDown="DashboardFollowupInput_PreviewKeyDown"/>
+                    <ItemsControl Grid.Row="1" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=FollowupAttachments}" Margin="0,6,0,0">
+                      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate><DataTemplate>
+                        <Border Background="#E7F6EC" BorderBrush="#C2E3CD" BorderThickness="1" CornerRadius="7" Padding="8,4" Margin="0,0,6,5">
+                          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="📎" FontSize="12" Margin="0,0,4,0"/>
+                            <TextBlock Text="{Binding FileName}" FontSize="12" FontWeight="SemiBold" MaxWidth="190" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{Binding DisplaySize}" FontSize="10" Foreground="{StaticResource Muted}" Margin="6,0,3,0"/>
+                            <Button Content="×" CommandParameter="{Binding Id}" Click="RemoveFollowupAttachment_Click" Width="20" Height="20" Padding="0" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Muted}" FontSize="15"/>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Grid.Row="2" Text="파일 드롭 · 캡처 Ctrl+V" FontSize="10" Foreground="{StaticResource Muted}" Margin="1,0,0,0"/>
+                  </Grid>
                 </Border>
               </Grid>
             </Grid>
