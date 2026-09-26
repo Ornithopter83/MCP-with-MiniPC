@@ -41,7 +41,7 @@
   style.textContent = ':host{all:initial;font-family:Inter,system-ui,sans-serif;color:#101828}*{box-sizing:border-box}.hub-panel{position:fixed;top:88px;right:24px;width:428px;max-height:calc(100vh - 106px);overflow:hidden;background:#fff;border:9px solid #26323a;border-radius:19px;box-shadow:0 16px 40px #0f172a38;z-index:2147483646}.hub-panel.hidden{display:none}.hub-header{padding:20px 21px 14px}.title-row{display:flex;justify-content:space-between;align-items:center}h1,h2,h3,p{margin:0}h1{font-size:26px;font-weight:800}.header-actions{display:flex;gap:10px;align-items:center}.header-update{border:1px solid #cbd7e3;border-radius:7px;padding:5px 9px;color:#24364d;background:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.header-update:hover{background:#f3f7fb}.icon-button{border:0;background:transparent;color:#637183;width:23px;height:23px;padding:0;cursor:pointer}.icon-button svg{width:100%;height:100%;fill:currentColor}.system-line{display:flex;gap:9px;align-items:center;margin-top:14px;color:#617084;font-size:15px}.system-icon{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#3288e8;color:#fff;font-weight:800}.status-list{border-top:1px solid #d8e0e7;padding:5px 21px 7px}.status-row{min-height:48px;display:grid;grid-template-columns:75px 1fr auto;align-items:center;gap:7px;border-bottom:1px solid #d8e0e7;font-size:16px}.status-row:last-child{border:0}.status-row[data-kind=web]{min-height:60px}.status-row strong{font-weight:800}.role-bind{display:flex;gap:7px;align-items:center;padding:8px 21px 10px;border-top:1px solid #d8e0e7}.role-binding{margin-right:auto;color:#617084;font-size:12px;font-weight:700}.status-value{white-space:pre-line;line-height:1.2;overflow:hidden;text-overflow:ellipsis}.status-ok{color:#078443;font-weight:700}.status-offline{color:#c53b3b;font-weight:700}.status-pending{color:#111827;font-weight:700}.status-action{border:1px solid #d5a34b;border-radius:6px;padding:4px 8px;color:#9a5b00;background:#fff8e8;font:inherit;font-size:12px;font-weight:700}.task-section{border-top:1px solid #d8e0e7;padding:19px 21px 20px}.section-label{color:#617084;font-size:14px;font-weight:800;margin-bottom:14px}.task-card{min-height:390px;border-radius:12px;padding:20px 18px 15px;background:#edf1f5}.task-card[data-tone=green]{background:#e6f7ee}.task-card[data-tone=blue]{background:#e5f1fe}.task-card[data-tone=amber]{background:#fff6d9}.task-main{display:flex;align-items:center;gap:15px;min-height:74px}.task-icon{width:56px;height:56px;flex:0 0 56px;padding:13px;border-radius:50%;color:#fff;background:#8b99a7}.task-icon svg{width:100%;height:100%;fill:currentColor}.task-card[data-tone=green] .task-icon{background:#0b9b5c}.task-card[data-tone=blue] .task-icon{background:#247bd4}.task-card[data-tone=amber] .task-icon{background:#f0ad00}.task-title{font-size:21px;font-weight:800}.task-detail{margin-top:8px;color:#536274;font-size:15px}.spinner{display:none;margin-left:auto;width:23px;height:23px;border:3px dotted #29445c;border-radius:50%;animation:spin 1.3s linear infinite}.spinner.visible{display:block}.task-meta{display:flex;gap:10px;margin-top:15px;color:#56687c;font-size:13px}.task-meta strong{font-weight:500}.message-block{margin-top:18px}.message-block h3{color:#617084;font-size:13px;font-weight:800;margin-bottom:7px}.worker-message,.web-response{max-height:140px;overflow-y:auto;padding:10px 12px;border-radius:8px;background:#fff8;white-space:pre-wrap;overflow-wrap:anywhere;color:#24364d;font-size:14px;line-height:1.45}.web-response{max-height:220px}.response-block{border-top:1px solid #ffffffaa;padding-top:14px}.resource-rescan{width:100%;margin-top:12px;border-color:#8bb7df;background:#eef7ff;color:#1f5f99;cursor:pointer}.resource-rescan:hover{background:#e2f1ff}.hidden{display:none!important}.hub-footer{text-align:center;padding:0 21px 10px;color:#91a0b0;font-size:11px}.settings-modal{position:fixed;inset:0;display:grid;place-items:center;background:#0f172a47;z-index:2147483647;padding:16px}.settings-modal.hidden{display:none}.settings-dialog{width:380px;max-width:100%;background:#fff;border:3px solid #26323a;border-radius:14px;padding:18px}.settings-title-row{display:flex;justify-content:space-between}.settings-close{border:0;background:transparent;width:24px;height:24px}.settings-form{display:grid;gap:11px;margin-top:16px}.settings-form label{display:grid;gap:5px;font-size:13px;font-weight:700}.settings-form input{min-height:34px;border:1px solid #bdcad7;border-radius:7px;padding:6px 9px;font:inherit}.settings-test-row,.settings-actions{display:flex;justify-content:flex-end;gap:10px;align-items:center}.secondary-button,.primary-button{min-height:34px;border-radius:7px;padding:6px 12px;font:inherit;font-size:13px;font-weight:700}.secondary-button{border:1px solid #cbd7e3;background:#fff}.primary-button{border:1px solid #1475de;background:#1475de;color:#fff}.test-status{font-size:12px}.test-status.success{color:#078443}.test-status.error{color:#c53b3b}.reopen{display:none;position:fixed;top:100px;right:24px;z-index:2147483646;width:42px;height:42px;border:0;border-radius:50%;color:#fff;background:#26323a;padding:10px}.reopen.visible{display:block}@keyframes spin{to{transform:rotate(360deg)}}';
   const panel=root.querySelector('.hub-panel'), systemText=root.querySelector('.system-text'), systemIcon=root.querySelector('.system-icon'), card=root.querySelector('.task-card'), taskIcon=root.querySelector('.task-icon'), taskTitle=root.querySelector('.task-title'), taskDetail=root.querySelector('.task-detail'), taskId=root.querySelector('.task-id'), taskFrom=root.querySelector('.task-from'), spinner=root.querySelector('.spinner'), workerMessage=root.querySelector('.worker-message'), responseBlock=root.querySelector('.response-block'), webResponse=root.querySelector('.web-response'), resourceRescan=root.querySelector('.resource-rescan'), settingsModal=root.querySelector('.settings-modal'), settingsForm=root.querySelector('.settings-form'), testStatus=root.querySelector('.test-status');
   const DEFAULT={bridgeHost:'127.0.0.1',bridgePort:43821,bridgeBasePath:'/bridge'};
-  let settings=Object.assign({},DEFAULT), managedRole=preflightManagedRole, managedRuntimeToken=preflightRuntimeToken, currentConversationId=null, lastBoundConversationId=null, currentProjectId='', activeTaskId=null, sentTaskId=null, activeLeaseId=null, activeResource=null, phase='IDLE', baselineAssistant='', baselineAssistantElement=null, baselineAssistantKey='', baselineAssistantCount=-1, baselineUserMessages=[], baselineTurnFingerprints=new Set(), baselineContainerFingerprints=new Set(), latchedSendEvidence='', baselineImageSources=new Set(), baselineFileUrls=new Set(), pendingResult=null, lastProgressKey='', activeTaskOwner=null, sendTriggeredForActiveTask=false, responseStarted=false, responseStartedAt=0, responseDeadlineTimer=0, lastResourceProgressKey='', stableSnapshot='', progressQueue=Promise.resolve(); let resetGeneration=0, navigationGeneration=0; const LONG_OPERATION_TIMEOUT=300000, DELIVERY_TIMEOUT=LONG_OPERATION_TIMEOUT, COMPOSER_TIMEOUT=LONG_OPERATION_TIMEOUT, SEND_CONFIRM_TIMEOUT=LONG_OPERATION_TIMEOUT, RESOURCE_WAIT_TIMEOUT=LONG_OPERATION_TIMEOUT, RESOURCE_SETTLE_DELAY=5000;
+  let settings=Object.assign({},DEFAULT), managedRole=preflightManagedRole, managedRuntimeToken=preflightRuntimeToken, currentConversationId=null, lastBoundConversationId=null, currentProjectId='', activeTaskId=null, sentTaskId=null, activeLeaseId=null, activeResource=null, phase='IDLE', baselineAssistant='', baselineAssistantElement=null, baselineAssistantKey='', baselineAssistantCount=-1, baselineUserMessages=[], baselineTurnFingerprints=new Set(), baselineContainerFingerprints=new Set(), latchedSendEvidence='', baselineImageSources=new Set(), baselineFileUrls=new Set(), pendingResult=null, lastProgressKey='', activeTaskOwner=null, sendTriggeredForActiveTask=false, responseStarted=false, responseStartedAt=0, responseDeadlineTimer=0, responseTurnLogged=false, responseTextLogged=false, lastResourceProgressKey='', lastWebFileProgressKey='', stableSnapshot='', progressQueue=Promise.resolve(); let resetGeneration=0, navigationGeneration=0; const LONG_OPERATION_TIMEOUT=300000, DELIVERY_TIMEOUT=LONG_OPERATION_TIMEOUT, COMPOSER_TIMEOUT=LONG_OPERATION_TIMEOUT, SEND_CONFIRM_TIMEOUT=LONG_OPERATION_TIMEOUT, RESOURCE_WAIT_TIMEOUT=LONG_OPERATION_TIMEOUT, RESOURCE_SETTLE_DELAY=5000;
   function validate(c){if(c.bridgeHost!=='127.0.0.1'&&c.bridgeHost!=='localhost')throw new Error('Loopback host only');if(!Number.isInteger(Number(c.bridgePort))||Number(c.bridgePort)<1||Number(c.bridgePort)>65535)throw new Error('Invalid port');return {bridgeHost:String(c.bridgeHost),bridgePort:Number(c.bridgePort),bridgeBasePath:'/'+String(c.bridgeBasePath||'/bridge').replace(/^\/|\/$/g,'')};}
   function normalizeManagedRole(value){const role=String(value||'').trim().toUpperCase();return role==='HQ'||role==='RESOURCE'?role:'';}
   function managedRoleFromUrl(){try{return normalizeManagedRole(new URL(location.href).searchParams.get('projecthub-managed-role'));}catch{return '';}}
@@ -256,7 +256,7 @@ async function resourcePayloads(){const candidates=readyResourceCandidates();if(
 async function webResultPayloads(){const candidates=readyResponseFileCandidates();const files=[];for(let i=0;i<candidates.length;i++)files.push(await fetchResourcePayload(candidates[i],i,candidates.length,'WEB_FILE'));return files;}
 
 function clearResponseTimers(){clearTimeout(stableTimer);stableTimer=0;stableSnapshot='';clearTimeout(responseDeadlineTimer);responseDeadlineTimer=0;}
-function resetResponseTracking(){clearResponseTimers();sendTriggeredForActiveTask=false;latchedSendEvidence='';responseStarted=false;responseStartedAt=0;lastResourceProgressKey='';}
+function resetResponseTracking(){clearResponseTimers();sendTriggeredForActiveTask=false;latchedSendEvidence='';responseStarted=false;responseStartedAt=0;responseTurnLogged=false;responseTextLogged=false;lastResourceProgressKey='';lastWebFileProgressKey='';}
 function captureAssistantBaseline(){resetResponseTracking();const turns=conversationTurns();baselineTurnFingerprints=new Set(turns.map(turnFingerprint).filter(Boolean));baselineContainerFingerprints=new Set(conversationTurnContainers().map(containerFingerprint).filter(Boolean));const assistants=turns.filter(turn=>turn.role==='assistant');const latest=assistants.length?assistants[assistants.length-1]:null;baselineAssistantElement=latest?.element||null;baselineAssistant=latest?.text||'';baselineAssistantKey=latest?.key||assistantMessageKey(baselineAssistantElement);baselineAssistantCount=assistants.length;captureImageBaseline();captureFileBaseline();}
 function taskUserMessageConfirmed(){const prompt=normalizeText(workerMessage?.textContent||'');return !!prompt&&hasNewUserMessage(prompt,baselineUserMessages);}
 function assistantTurnEvidence(){const turns=assistantTurnRecords();if(!turns.length)return '';const currentSendConfirmed=taskUserMessageConfirmed()||sendTriggeredForActiveTask;if(!currentSendConfirmed)return '';const latest=turns[turns.length-1],fingerprint=turnFingerprint(latest);if(fingerprint&&!baselineTurnFingerprints.has(fingerprint))return latest.key?'TURN':'TEXT';if(baselineAssistantCount>=0&&turns.length>baselineAssistantCount)return 'COUNT';const latestElement=latest.element,key=latest.key||assistantMessageKey(latestElement);if(!!baselineAssistantElement&&latestElement!==baselineAssistantElement)return 'ELEMENT';if(!!baselineAssistantKey&&!!key&&key!==baselineAssistantKey)return 'KEY';const latestText=normalizeText(latest.text||''),baselineText=normalizeText(baselineAssistant);if(latestElement===baselineAssistantElement&&latestText&&latestText!==baselineText)return 'TEXT';return '';}
@@ -267,7 +267,89 @@ function assistantStreaming(){return [...document.querySelectorAll('button,[role
 let stableTimer=0;
 function scheduleStableCheck(snapshot,delay,callback,allowStreaming=false){if(stableSnapshot===snapshot&&stableTimer)return;clearTimeout(stableTimer);stableSnapshot=snapshot;stableTimer=setTimeout(async()=>{stableTimer=0;const prompt=normalizeText(workerMessage?.textContent||''),responseText=currentResponseText(prompt),candidates=activeResource?latestGeneratedResourceCandidates():readyResponseFileCandidates();if(phase!=='WAIT_RESPONSE'||!activeTaskId||responseSnapshot()!==snapshot||(!responseText&&!candidates.length)||(!allowStreaming&&assistantStreaming()))return;await callback();},delay);}
 function scheduleResponseDeadline(){if(responseDeadlineTimer||!activeTaskId||!activeResource)return;if(!responseStartedAt)responseStartedAt=Date.now();const remaining=Math.max(1000,RESOURCE_WAIT_TIMEOUT-(Date.now()-responseStartedAt));responseDeadlineTimer=setTimeout(async()=>{responseDeadlineTimer=0;if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;const ready=readyResourceCandidates(),prompt=normalizeText(workerMessage?.textContent||''),responseText=currentResponseText(prompt);if(ready.length){reportProgress('RESOURCE_READY',ready.length+'개 생성 파일 확인 · deadline');await submitResult(responseText||('RESOURCE files generated: '+ready.length));return;}const reason='RESOURCE_NOT_GENERATED: response deadline exceeded without downloadable files.\n'+responseText;reportProgress('RESOURCE_NO_FILE','시간 내 다운로드 가능한 생성 파일을 확인하지 못했습니다.');await failTask(reason,'resource_not_generated');},remaining);}
-function observeResponse(){if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;const isResource=!!activeResource,candidates=isResource?latestGeneratedResourceCandidates():[],assistantEvidence=assistantTurnEvidence(),newAssistant=!!assistantEvidence;if(!newAssistant&&!(isResource&&candidates.length))return;const text=newAssistant?latestAssistant():'',ready=isResource?readyResourceCandidates():[];if(!text&&!candidates.length)return;responseBlock.classList.remove('hidden');webResponse.textContent=text||(candidates.length?'생성 리소스 처리 중':'응답을 기다리고 있습니다.');if(!responseStarted){responseStarted=true;if(!responseStartedAt)responseStartedAt=Date.now();reportProgress('RESPONSE_START',isResource?'RESOURCE 생성 결과 응답을 확인했습니다.':'새 assistant 응답을 확인했습니다. evidence='+(assistantEvidence||'RESOURCE'));if(assistantEvidence==='TEXT')reportProgress('RESPONSE_TEXT_CHANGED','기존 assistant DOM의 텍스트 변화로 새 응답을 확인했습니다.');if(isResource)scheduleResponseDeadline();}if(isResource){const progressKey=candidates.length+'/'+ready.length;if(progressKey!==lastResourceProgressKey){lastResourceProgressKey=progressKey;reportProgress('RESOURCE_DETECTED','candidate='+candidates.length+', ready='+ready.length);}for(const candidate of candidates){if(candidate.kind==='image'&&!candidate.element.complete&&!candidate.element.dataset.projecthubLoadWatch){candidate.element.dataset.projecthubLoadWatch='1';candidate.element.addEventListener('load',()=>{candidate.element.dataset.projecthubLoadWatch='';observeResponse();},{once:true});candidate.element.addEventListener('error',()=>{candidate.element.dataset.projecthubLoadWatch='';observeResponse();},{once:true});}}if(ready.length){const snapshot=responseSnapshot(),delay=assistantStreaming()?15000:RESOURCE_SETTLE_DELAY;scheduleStableCheck(snapshot,delay,async()=>{const files=readyResourceCandidates();if(!files.length)return;reportProgress('RESOURCE_READY',files.length+'개 생성 파일 확인');await submitResult(hasNewAssistantTurn()?latestAssistant():('RESOURCE files generated: '+files.length));},true);}return;}if(assistantStreaming()){clearTimeout(stableTimer);stableTimer=0;stableSnapshot='';return;}const snapshot=responseSnapshot();scheduleStableCheck(snapshot,5000,async()=>{reportProgress('RESPONSE_STABLE','응답이 안정되어 결과를 전달합니다.');await submitResult(latestAssistant());});}
+function observeResponse(){
+  if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;
+  const isResource=!!activeResource;
+  const prompt=normalizeText(workerMessage?.textContent||'');
+  const assistantEvidence=assistantTurnEvidence();
+  const fallbackResponse=responseTurnAfterPrompt(prompt);
+  const text=currentResponseText(prompt);
+  const candidates=isResource?latestGeneratedResourceCandidates():readyResponseFileCandidates();
+  const ready=isResource?readyResourceCandidates():readyResponseFileCandidates();
+  const responseTurnDetected=!!assistantEvidence||!!fallbackResponse;
+  if(!responseTurnDetected&&!text&&!candidates.length)return;
+
+  if(responseTurnDetected&&!responseTurnLogged){
+    responseTurnLogged=true;
+    reportProgress(
+      'ASSISTANT_TURN_DETECTED',
+      fallbackResponse&&!assistantEvidence
+        ? 'prompt 다음 conversation turn fallback으로 assistant 응답을 확인했습니다.'
+        : 'assistant turn을 확인했습니다. evidence='+(assistantEvidence||'CONTAINER'));
+  }
+  if(text&&!responseTextLogged){
+    responseTextLogged=true;
+    reportProgress('ASSISTANT_TEXT_EXTRACTED','assistant 응답 텍스트 추출 완료 · chars='+text.length);
+  }
+
+  responseBlock.classList.remove('hidden');
+  webResponse.textContent=text||(candidates.length?(isResource?'생성 리소스 처리 중':'Web 응답 파일 처리 중'):'응답을 기다리고 있습니다.');
+  if(!responseStarted){
+    responseStarted=true;
+    if(!responseStartedAt)responseStartedAt=Date.now();
+    reportProgress('RESPONSE_START',isResource?'RESOURCE 생성 결과 응답을 확인했습니다.':'Web assistant 응답 회수를 시작했습니다.');
+    if(assistantEvidence==='TEXT')reportProgress('RESPONSE_TEXT_CHANGED','기존 assistant DOM의 텍스트 변화로 새 응답을 확인했습니다.');
+    if(isResource)scheduleResponseDeadline();
+  }
+
+  if(isResource){
+    const progressKey=candidates.length+'/'+ready.length;
+    if(progressKey!==lastResourceProgressKey){
+      lastResourceProgressKey=progressKey;
+      reportProgress('RESOURCE_DETECTED','candidate='+candidates.length+', ready='+ready.length);
+    }
+    for(const candidate of candidates){
+      if(candidate.kind==='image'&&!candidate.element.complete&&!candidate.element.dataset.projecthubLoadWatch){
+        candidate.element.dataset.projecthubLoadWatch='1';
+        candidate.element.addEventListener('load',()=>{candidate.element.dataset.projecthubLoadWatch='';observeResponse();},{once:true});
+        candidate.element.addEventListener('error',()=>{candidate.element.dataset.projecthubLoadWatch='';observeResponse();},{once:true});
+      }
+    }
+    if(ready.length){
+      const snapshot=responseSnapshot(),delay=assistantStreaming()?15000:RESOURCE_SETTLE_DELAY;
+      scheduleStableCheck(snapshot,delay,async()=>{
+        const files=readyResourceCandidates();
+        if(!files.length)return;
+        const settledText=currentResponseText(prompt);
+        reportProgress('RESOURCE_READY',files.length+'개 생성 파일 확인');
+        await submitResult(settledText||('RESOURCE files generated: '+files.length));
+      },true);
+    }
+    return;
+  }
+
+  const fileKey=ready.map(resourceFingerprint).join('|');
+  if(fileKey&&fileKey!==lastWebFileProgressKey){
+    lastWebFileProgressKey=fileKey;
+    reportProgress('WEB_FILE_DETECTED',ready.length+'개 다운로드 가능한 Web 응답 파일을 확인했습니다.');
+  }
+
+  if(assistantStreaming()){
+    clearTimeout(stableTimer);
+    stableTimer=0;
+    stableSnapshot='';
+    return;
+  }
+
+  const snapshot=responseSnapshot();
+  scheduleStableCheck(snapshot,5000,async()=>{
+    const settledText=currentResponseText(prompt);
+    const settledFiles=readyResponseFileCandidates();
+    if(!settledText&&!settledFiles.length)return;
+    reportProgress('RESPONSE_STABLE','응답이 안정되어 텍스트와 파일 결과를 Worker에 전달합니다.');
+    await submitResult(settledText||('Web response files generated: '+settledFiles.length));
+  });
+}
   function resumeClaimedResponse(task){activeResource=task.resource||null;activeTaskOwner=task.owner||null;resetResponseTracking();sentTaskId=task.id;activeLeaseId=task.leaseId||activeLeaseId||null;saveTaskMemory();setTask('PENDING',task);workerMessage.textContent=task.prompt;reportProgress('CLAIMED','전송된 대화의 응답 수신을 재개했습니다.');enterWaitResponse('기존 사용자 메시지 또는 생성 결과를 확인해 응답 수신을 재개합니다.');systemText.textContent='ChatGPT 응답을 Worker로 전달하는 중입니다.';}
   async function submitResult(text){
     if((phase!=='WAIT_RESPONSE'&&phase!=='WAIT_WORKER')||!activeTaskId)return;
@@ -276,20 +358,52 @@ function observeResponse(){if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;cons
     pendingResult=text;
     setTask('CLAIMED',{id:activeTaskId,owner:activeTaskOwner||'WEB',prompt:workerMessage.textContent,result:text});
     const body={success:true,taskId:activeTaskId,conversationId:currentConversationId,leaseId:activeLeaseId,responseText:text,resultType:'TEXT_RESULT'};
+
     if(activeResource){
-      try{body.resultFiles=await resourcePayloads();body.resultType='RESOURCE_FILES';}
-      catch(error){const message=String(error.message||error);const finishReason=/DOWNLOAD_HTTP|RESOURCE_FILE_EMPTY|BACKGROUND_FETCH|URL_NOT_ALLOWED/i.test(message)?'resource_download_failed':'resource_capture_failed';await failTask('RESOURCE_CAPTURE: '+message,finishReason);return;}
+      try{
+        body.resultFiles=await resourcePayloads();
+        body.resultType='RESOURCE_FILES';
+      }catch(error){
+        const message=String(error.message||error);
+        const finishReason=/DOWNLOAD_HTTP|RESOURCE_FILE_EMPTY|BACKGROUND_FETCH|URL_NOT_ALLOWED/i.test(message)?'resource_download_failed':'resource_capture_failed';
+        await failTask('RESOURCE_CAPTURE: '+message,finishReason);
+        return;
+      }
+    }else{
+      const responseFiles=readyResponseFileCandidates();
+      if(responseFiles.length){
+        try{
+          body.resultFiles=await webResultPayloads();
+          body.resultType='TEXT_WITH_FILES';
+          reportProgress('WEB_FILES_CAPTURED',body.resultFiles.length+'개 Web 응답 파일의 bytes/hash 검증을 완료했습니다.');
+        }catch(error){
+          const message=String(error.message||error);
+          await failTask('WEB_FILE_CAPTURE: '+message,'web_file_download_failed');
+          return;
+        }
+      }
     }
+
     let lastError=null;
     for(let attempt=0;attempt<3;attempt++){
       try{
+        reportProgress('RESULT_POSTING','Worker result endpoint에 응답을 전달합니다. files='+(body.resultFiles?.length||0),attempt+1);
         const r=await fetchWithTimeout(url('task/'+activeTaskId+'/result'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},LONG_OPERATION_TIMEOUT);
         const p=await r.json();
         if(!p.ok)throw new Error(p.data?.error||'result rejected');
-        pendingResult=null;activeResource=null;setPhase('FINISHED','Worker 결과 전달 완료');setTask(p.data?.status==='FAILED'?'FAILED':'COMPLETED',p.data);return;
-      }catch(error){lastError=error;reportProgress('RESULT_POST_RETRY','결과 전달 재시도 중: '+error.message,attempt+1);await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));}
+        pendingResult=null;
+        activeResource=null;
+        setPhase('FINISHED','Worker 결과 전달 완료');
+        setTask(p.data?.status==='FAILED'?'FAILED':'COMPLETED',p.data);
+        return;
+      }catch(error){
+        lastError=error;
+        reportProgress('RESULT_POST_RETRY','결과 전달 재시도 중: '+error.message,attempt+1);
+        await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));
+      }
     }
-    systemText.textContent='Worker 결과 전달 실패: '+lastError.message+' · 재시도 대기';phase='WAIT_WORKER';
+    systemText.textContent='Worker 결과 전달 실패: '+lastError.message+' · 재시도 대기';
+    phase='WAIT_WORKER';
   }
   async function deliverClaimedTask(claimed){activeResource=claimed.resource||null;activeTaskOwner=claimed.owner||null;resetResponseTracking();sentTaskId=claimed.id;activeLeaseId=claimed.leaseId||activeLeaseId||null;saveTaskMemory();setTask('PENDING',claimed);workerMessage.textContent=claimed.prompt;reportProgress('CLAIMED','Worker task를 확장이 수신했습니다.');setPhase('WAIT_SEND_READY','Worker Message를 전달하고 있습니다.');systemText.textContent='Worker Message를 전달하고 있습니다.';try{await sendToChatGPT(claimed.prompt,claimed.attachments||[]);}catch(error){if(String(error.message||error).startsWith('WEB_REQUIRES_FOREGROUND')){phase='WAIT_FOREGROUND';systemText.textContent='WEB_REQUIRES_FOREGROUND: ChatGPT 탭을 활성화하면 전송을 재개합니다.';setTask('CLAIMED',claimed);return;}systemText.textContent='Worker Message 전달 실패: '+error.message;phase='IDLE';sentTaskId=null;activeLeaseId=null;await fetchWithTimeout(url('task/'+claimed.id+'/result'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({success:false,taskId:claimed.id,conversationId:currentConversationId,leaseId:claimed.leaseId,responseText:error.message,resultType:'TEXT_RESULT',finishReason:'send_failed'})});}}async function bind(role){if(!currentConversationId)return;const response=await fetchWithTimeout(url('bind'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationId:currentConversationId,projectId:currentProjectId,role})});const payload=await response.json();if(!payload.ok){systemText.textContent='역할 연결 실패: '+(payload.data?.error||'unknown');return;}refresh();}
   async function refreshNow(autoBind=false){const refreshGeneration=resetGeneration;const refreshNavigationGeneration=navigationGeneration;try{const previousConversationId=currentConversationId;const cid=conversation();currentConversationId=cid;const [sr,pr,tr,br]=await Promise.all([fetchWithTimeout(url('status')),fetchWithTimeout(url('projects')),fetchWithTimeout(url('task?conversationId='+(encodeURIComponent(cid||'__none__')))),cid?fetchWithTimeout(url('bindings/'+encodeURIComponent(cid))):Promise.resolve(null)]);if(!sr.ok||!pr.ok||!tr.ok)throw new Error('bridge unavailable');const status=await sr.json(),projects=await pr.json(),taskPayload=await tr.json(),binding=br?await br.json():null;if(refreshGeneration!==resetGeneration||refreshNavigationGeneration!==navigationGeneration||currentConversationId!==cid)return;const project=projects.data?.[0];let task=taskPayload.data?.task;if(task&&currentConversationId){const ignoredTaskId=sessionStorage.getItem('gptweb-hub-reset-task-'+currentConversationId);if(ignoredTaskId===task.id){task=null;}else if(ignoredTaskId){sessionStorage.removeItem('gptweb-hub-reset-task-'+currentConversationId);}}currentProjectId=project?.id||'';let bound=binding?.data?.bound?binding.data.projectId:'';let boundRole=binding?.data?.role||'';if(refreshNavigationGeneration!==navigationGeneration||currentConversationId!==cid)return;if(cid&&managedRole&&boundRole!==managedRole){const managedBindResponse=await fetchWithTimeout(url('bind'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationId:cid,projectId:currentProjectId,role:managedRole})});const managedBindPayload=await managedBindResponse.json();if(!managedBindPayload.ok){systemText.textContent='관리형 역할 자동 연결 실패: '+(managedBindPayload.data?.error||'unknown');return;}bound=currentProjectId||'managed';boundRole=managedRole;}lastBoundConversationId=bound?cid:null;if(sr.ok) await fetchWithTimeout(url('heartbeat'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:'gptweb-hub',conversationId:cid,projectId:currentProjectId,conversationTitle:title(),extensionVersion:EXTENSION_VERSION,extensionBuild:EXTENSION_BUILD})});if(refreshNavigationGeneration!==navigationGeneration||currentConversationId!==cid)return;setStatus('web',title(),cid?'ok':'pending');setStatus('worker',status.data?.repository||'—',status.data?.repository?'ok':'pending');setStatus('status','Connected','ok');systemText.textContent='정상적으로 연결되어 있습니다.';const roleLabel=root.querySelector('.role-binding');roleLabel.textContent=boundRole?boundRole+' 연결됨':'역할 미연결';if(!cid){phase='IDLE';setTask('IDLE');systemText.textContent=managedRole?'ChatGPT 로그인 후 '+managedRole+' 전용 대화를 선택하세요.':'현재 ChatGPT 대화를 식별할 수 없습니다.';return;}if(!bound){phase='IDLE';setTask('IDLE');systemText.textContent=managedRole?'관리형 '+managedRole+' 대화를 자동 연결하는 중입니다.':'현재 ChatGPT 대화를 HQ 또는 RESOURCE 역할로 명시적으로 연결하세요.';return;}if(!task){if(phase!=='WAIT_RESPONSE'&&phase!=='WAIT_WORKER')phase='IDLE';if(phase==='IDLE')setTask('IDLE');systemText.textContent='정상적으로 연결되어 있습니다.';return;}const previousTaskId=activeTaskId;activeTaskId=task.id;if(previousTaskId&&previousTaskId!==task.id){phase='IDLE';sentTaskId=null;activeTaskOwner=null;resetResponseTracking();baselineAssistant='';baselineAssistantElement=null;baselineAssistantKey='';baselineAssistantCount=-1;baselineUserMessages=[];baselineTurnFingerprints=new Set();baselineContainerFingerprints=new Set();latchedSendEvidence='';baselineImageSources=new Set();baselineFileUrls=new Set();lastProgressKey='';}if(['COMPLETED','FAILED'].includes(task.status)){if(task.status==='FAILED'&&task.finishReason==='canceled'&&sentTaskId===task.id){const input=composer();if(input&&normalizeText(composerText(input))===normalizeText(task.prompt))clearComposer();}phase='FINISHED';setTask(task.status,task);return;}if(task.status==='PENDING'&&phase==='IDLE'&&!sentTaskId){captureAssistantBaseline();baselineUserMessages=userMessages();const claim=await fetchWithTimeout(url('task/'+task.id+'/claim'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationId:currentConversationId})});const cp=await claim.json();if(cp.ok){await deliverClaimedTask(cp.data);}return;}if(task.status==='CLAIMED'){if(phase==='IDLE'){restoreTaskMemory(task.id,task.prompt);if(sentTaskId!==task.id||baselineAssistantCount<0){systemText.textContent='기존 task의 응답 기준점을 복구할 수 없습니다. 중복 전송을 막기 위해 대기합니다.';setTask('CLAIMED',task);return;}if(hasNewUserMessage(task.prompt,baselineUserMessages)||hasNewAssistantTurn()||(task.resource&&latestGeneratedResourceCandidates().length)){resumeClaimedResponse(task);return;}await deliverClaimedTask(task);}else if(phase==='WAIT_FOREGROUND'){await deliverClaimedTask(task);}setTask('CLAIMED',task);if(!sentTaskId)systemText.textContent='이미 전달된 작업입니다. 응답을 기다립니다.';}}catch(e){setStatus('status','Disconnected','offline');systemText.textContent='Worker bridge 오류: '+(e.message||e);}}
