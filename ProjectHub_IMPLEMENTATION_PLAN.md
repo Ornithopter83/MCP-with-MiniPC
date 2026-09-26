@@ -2,7 +2,8 @@
 
 갱신일: 2026-09-25
 
-정책 원본: Master-Polish.md
+상위 공통 정책: Master-Polish.md
+Worker 정책: Worker-Polish.md
 
 제1조 (현재 구조)
 
