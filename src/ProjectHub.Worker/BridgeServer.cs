@@ -14,8 +14,8 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
-    private const string ExpectedExtensionVersion = "0.2.1";
-    private const string ExpectedExtensionBuild = "2026-09-26.6";
+    private const string ExpectedExtensionVersion = "0.2.2";
+    private const string ExpectedExtensionBuild = "2026-09-26.7";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _statePath;
