@@ -415,6 +415,8 @@ WorkItem 기본 상태:
 동시 쓰기 격리:
 - 동시 실행 WorkItem은 각각 독립 Git branch와 worktree를 사용한다.
 - worktree와 branch 생성·삭제·경로 검증은 Worker가 기계적으로 수행한다.
+- 같은 Git 저장소의 worktree 준비처럼 공유 Git metadata를 변경하는 짧은 구간은 Worker가 저장소 단위로 직렬화하고, 준비가 끝난 WORK 실행은 설정된 슬롯 수대로 병렬 수행한다.
+- Git 준비 명령이 실패하면 Worker는 오류 코드뿐 아니라 실제 exit code와 stderr를 WorkItem 기계 보고에 보존한다.
 - WorkItem의 시작 기준 ref는 WorkGraph에 명시적으로 기록한다.
 - Worker는 충돌의 의미를 자동 해결하지 않는다.
 - 새 병렬 실행을 시작할 때 작업 폴더가 Git 저장소가 아니면 Worker는 AI를 호출하기 전에 해당 작업 폴더에서 `git init`을 기계적으로 수행할 수 있다.

@@ -428,3 +428,14 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - JUDGE 비활성 상태에서 WORK가 JUDGE를 요청하면 실패로 종료하지 않고 해당 WorkItem을 JUDGE_UNAVAILABLE BLOCKED로 두어 HQ가 현재 graph 사실과 요청 내용을 보고 다음 동작을 결정한다.
 - 신규 작업과 저장 WorkGraph가 없는 과거 continuation까지 모두 WorkGraph/Scheduler 경로를 사용하며 레거시 직렬 실행 진입을 제거했다.
 - 현재 Web 환경에는 .NET SDK가 없어 dotnet test/build는 미실행이며 Windows 검증이 필요하다.
+
+
+## 2026-09-26 동시 worktree 생성 실패 보강
+
+- 실사용 로그에서 서로 다른 두 WorkItem이 거의 동시에 시작해 두 차례 연속 `WORKTREE_CREATE_FAILED`로 실패하는 현상을 확인했다.
+- `GitWorktreeManager.PrepareAsync`의 worktree list/path/branch 검사부터 `git worktree add`와 HEAD 확인까지를 repository root별 gate로 직렬화했다.
+- WorkItem의 실제 Codex 실행과 WorkGraph 슬롯 병렬성은 변경하지 않는다. 공유 Git metadata를 변경하는 준비 구간만 직렬화한다.
+- `GitWorktreePreparationResult.ErrorDetail`을 추가해 Git 명령의 exit code와 stderr/stdout을 보존하고, `CodexWorkItemExecutor`가 이를 WorkItem 실패 보고에 포함하도록 했다.
+- 저장소 단위 동시 Prepare가 실제 `worktree add`를 1개씩 실행하는 회귀 테스트와 오류 상세 전파 테스트를 추가했다.
+- HQ/WORK 라우팅 계약에는 이 기계 동작을 주입하지 않았다.
+- 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 검증이 필요하다.

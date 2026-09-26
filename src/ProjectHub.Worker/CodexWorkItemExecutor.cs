@@ -85,9 +85,12 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
         if (!preparation.Success)
         {
+            var detail = string.IsNullOrWhiteSpace(preparation.ErrorDetail)
+                ? "WorkItem worktree 준비에 실패했습니다."
+                : "WorkItem worktree 준비에 실패했습니다." + Environment.NewLine + preparation.ErrorDetail;
             return WorkItemExecutionResult.Failed(
                 preparation.ErrorCode ?? "WORKTREE_PREPARE_FAILED",
-                "WorkItem worktree 준비에 실패했습니다.",
+                detail,
                 preparation.Branch,
                 preparation.WorktreePath,
                 item.SessionId);

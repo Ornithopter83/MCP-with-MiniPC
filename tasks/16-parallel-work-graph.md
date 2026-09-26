@@ -602,7 +602,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `2eab6a01eac0b6e82f021bb5755cfc12a6cbc59e`: 병렬 runtime이 HQ를 호출하기 전에 Git 저장소, HEAD commit, attached branch를 기계적으로 확인한다. 조건을 만족하지 않으면 WorkGraph 실행을 시작하지 않는다.
 - `a705ae6f7a45db71693a85c7dcfaa275d4c56164`: 같은 Git 사전 검사를 실행 버튼과 작업 추가 사전 점검에도 연결해 사용자가 AI 호출 전에 문제를 확인할 수 있게 했다.
 - 새 병렬 Job이 max=1에서도 WorkGraph runtime을 사용하므로 Git worktree 요구 조건도 동일하게 적용된다.
-- 과거 레거시 continuation 중 저장 WorkGraph가 없고 max=1인 경우에는 기존 직렬 경로를 유지하므로 병렬 Git 사전 검사를 강제하지 않는다.
+- 저장 WorkGraph가 없는 과거 continuation도 WorkGraph runtime으로 승격되므로 동일한 Git 사전 검사를 적용한다.
 - Windows 핵심 검증 스크립트에 `ParallelWorkGitPreflightTests`를 추가했다.
 
 
@@ -690,3 +690,11 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - HQ/WORK의 PARALLEL 조건부 계약과 WORK의 JUDGE 활성/비활성 조건부 계약을 제거했다.
 - JUDGE 비활성 요청은 JUDGE_UNAVAILABLE BLOCKED 상태로 HQ에 노출하고 Worker가 의미적 대안을 선택하지 않는다.
 - 현재 Web 환경에는 .NET SDK가 없어 자동 테스트/빌드는 미실행이며 Windows 검증 대상이다.
+
+
+### 2026-09-26 repository 단위 worktree 준비 직렬화
+
+- WorkGraph 슬롯은 계속 병렬 실행하지만 동일 repository의 `GitWorktreeManager.PrepareAsync` 준비 구간은 repository root 기준으로 직렬화한다.
+- 공유 `.git/worktrees` 및 branch metadata를 변경하는 `git worktree add`가 동시에 실행되지 않게 한다.
+- `WORKTREE_CREATE_FAILED` 등 Git 준비 오류에는 실제 Git exit code와 stderr/stdout 상세를 보존해 WorkItem report와 HQ 기계 상태에서 원인을 확인할 수 있게 한다.
+- 동시 Prepare 직렬화와 오류 상세 전파 회귀 테스트를 추가한다.

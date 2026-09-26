@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
@@ -111,7 +112,8 @@ public sealed record GitWorktreePreparationResult(
     string BaseRef,
     string? BaseCommit,
     string? HeadCommit,
-    bool Reused);
+    bool Reused,
+    string? ErrorDetail = null);
 
 public sealed record GitWorktreeInspectionResult(
     bool Success,
@@ -151,6 +153,8 @@ public sealed class GitWorktreeManager
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CreateTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan RemoveTimeout = TimeSpan.FromMinutes(1);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPreparationGates =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
     private readonly IGitWorktreeCommandRunner _runner;
 
@@ -205,61 +209,170 @@ public sealed class GitWorktreeManager
                 baseRef.Trim(),
                 null,
                 null,
-                false);
+                false,
+                BuildGitFailureDetail("git rev-parse --verify", baseResult));
 
         var baseCommit = FirstLine(baseResult.StandardOutput);
-        var listResult = await RunAsync(
-            repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "worktree",
-            "list",
-            "--porcelain").ConfigureAwait(false);
-
-        if (listResult.ExitCode != 0)
-            return new GitWorktreePreparationResult(
-                false,
-                "WORKTREE_LIST_FAILED",
-                repositoryRoot,
-                worktreePath,
-                branch,
-                baseRef.Trim(),
-                baseCommit,
-                null,
-                false);
-
-        var existing = ParseWorktrees(listResult.StandardOutput)
-            .FirstOrDefault(entry => PathsEqual(entry.Path, worktreePath));
-
-        if (existing is not null)
+        var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
+        await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            if (!Directory.Exists(worktreePath))
-            {
+            var listResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "worktree",
+                "list",
+                "--porcelain").ConfigureAwait(false);
+
+            if (listResult.ExitCode != 0)
                 return new GitWorktreePreparationResult(
                     false,
-                    "WORKTREE_REGISTERED_PATH_MISSING",
+                    "WORKTREE_LIST_FAILED",
+                    repositoryRoot,
+                    worktreePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git worktree list --porcelain", listResult));
+
+            var existing = ParseWorktrees(listResult.StandardOutput)
+                .FirstOrDefault(entry => PathsEqual(entry.Path, worktreePath));
+
+            if (existing is not null)
+            {
+                if (!Directory.Exists(worktreePath))
+                    return new GitWorktreePreparationResult(
+                        false,
+                        "WORKTREE_REGISTERED_PATH_MISSING",
+                        repositoryRoot,
+                        worktreePath,
+                        branch,
+                        baseRef.Trim(),
+                        baseCommit,
+                        existing.Head,
+                        false);
+
+                if (!string.Equals(existing.Branch, branch, StringComparison.Ordinal))
+                    return new GitWorktreePreparationResult(
+                        false,
+                        "WORKTREE_REGISTERED_BRANCH_MISMATCH",
+                        repositoryRoot,
+                        worktreePath,
+                        branch,
+                        baseRef.Trim(),
+                        baseCommit,
+                        existing.Head,
+                        false);
+
+                return new GitWorktreePreparationResult(
+                    true,
+                    null,
                     repositoryRoot,
                     worktreePath,
                     branch,
                     baseRef.Trim(),
                     baseCommit,
                     existing.Head,
-                    false);
+                    true);
             }
 
-            if (!string.Equals(existing.Branch, branch, StringComparison.Ordinal))
-            {
+            if (Directory.Exists(worktreePath) || File.Exists(worktreePath))
                 return new GitWorktreePreparationResult(
                     false,
-                    "WORKTREE_REGISTERED_BRANCH_MISMATCH",
+                    "WORKTREE_PATH_OCCUPIED",
                     repositoryRoot,
                     worktreePath,
                     branch,
                     baseRef.Trim(),
                     baseCommit,
-                    existing.Head,
+                    null,
                     false);
-            }
+
+            var branchResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/heads/" + branch).ConfigureAwait(false);
+
+            if (branchResult.ExitCode == 0)
+                return new GitWorktreePreparationResult(
+                    false,
+                    "WORKTREE_BRANCH_EXISTS",
+                    repositoryRoot,
+                    worktreePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    null,
+                    false);
+
+            if (branchResult.ExitCode != 1)
+                return new GitWorktreePreparationResult(
+                    false,
+                    "WORKTREE_BRANCH_CHECK_FAILED",
+                    repositoryRoot,
+                    worktreePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git show-ref --verify", branchResult));
+
+            var parent = Directory.GetParent(worktreePath)?.FullName;
+            if (string.IsNullOrWhiteSpace(parent))
+                return new GitWorktreePreparationResult(
+                    false,
+                    "WORKTREE_PARENT_INVALID",
+                    repositoryRoot,
+                    worktreePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    null,
+                    false);
+
+            Directory.CreateDirectory(parent);
+
+            var addResult = await RunAsync(
+                repositoryRoot,
+                CreateTimeout,
+                cancellationToken,
+                "worktree",
+                "add",
+                "-b",
+                branch,
+                worktreePath,
+                baseCommit).ConfigureAwait(false);
+
+            if (addResult.ExitCode != 0)
+                return new GitWorktreePreparationResult(
+                    false,
+                    addResult.TimedOut ? "WORKTREE_CREATE_TIMEOUT"
+                        : addResult.Canceled ? "WORKTREE_CREATE_CANCELED"
+                        : "WORKTREE_CREATE_FAILED",
+                    repositoryRoot,
+                    worktreePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git worktree add", addResult));
+
+            var headResult = await RunAsync(
+                worktreePath,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
 
             return new GitWorktreePreparationResult(
                 true,
@@ -269,123 +382,13 @@ public sealed class GitWorktreeManager
                 branch,
                 baseRef.Trim(),
                 baseCommit,
-                existing.Head,
-                true);
-        }
-
-        if (Directory.Exists(worktreePath) || File.Exists(worktreePath))
-        {
-            return new GitWorktreePreparationResult(
-                false,
-                "WORKTREE_PATH_OCCUPIED",
-                repositoryRoot,
-                worktreePath,
-                branch,
-                baseRef.Trim(),
-                baseCommit,
-                null,
+                headResult.ExitCode == 0 ? FirstLine(headResult.StandardOutput) : baseCommit,
                 false);
         }
-
-        var branchResult = await RunAsync(
-            repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "show-ref",
-            "--verify",
-            "--quiet",
-            "refs/heads/" + branch).ConfigureAwait(false);
-
-        if (branchResult.ExitCode == 0)
+        finally
         {
-            return new GitWorktreePreparationResult(
-                false,
-                "WORKTREE_BRANCH_EXISTS",
-                repositoryRoot,
-                worktreePath,
-                branch,
-                baseRef.Trim(),
-                baseCommit,
-                null,
-                false);
+            preparationGate.Release();
         }
-
-        if (branchResult.ExitCode != 1)
-        {
-            return new GitWorktreePreparationResult(
-                false,
-                "WORKTREE_BRANCH_CHECK_FAILED",
-                repositoryRoot,
-                worktreePath,
-                branch,
-                baseRef.Trim(),
-                baseCommit,
-                null,
-                false);
-        }
-
-        var parent = Directory.GetParent(worktreePath)?.FullName;
-        if (string.IsNullOrWhiteSpace(parent))
-        {
-            return new GitWorktreePreparationResult(
-                false,
-                "WORKTREE_PARENT_INVALID",
-                repositoryRoot,
-                worktreePath,
-                branch,
-                baseRef.Trim(),
-                baseCommit,
-                null,
-                false);
-        }
-
-        Directory.CreateDirectory(parent);
-
-        var addResult = await RunAsync(
-            repositoryRoot,
-            CreateTimeout,
-            cancellationToken,
-            "worktree",
-            "add",
-            "-b",
-            branch,
-            worktreePath,
-            baseCommit).ConfigureAwait(false);
-
-        if (addResult.ExitCode != 0)
-        {
-            return new GitWorktreePreparationResult(
-                false,
-                addResult.TimedOut ? "WORKTREE_CREATE_TIMEOUT"
-                    : addResult.Canceled ? "WORKTREE_CREATE_CANCELED"
-                    : "WORKTREE_CREATE_FAILED",
-                repositoryRoot,
-                worktreePath,
-                branch,
-                baseRef.Trim(),
-                baseCommit,
-                null,
-                false);
-        }
-
-        var headResult = await RunAsync(
-            worktreePath,
-            ReadTimeout,
-            cancellationToken,
-            "rev-parse",
-            "--verify",
-            "HEAD").ConfigureAwait(false);
-
-        return new GitWorktreePreparationResult(
-            true,
-            null,
-            repositoryRoot,
-            worktreePath,
-            branch,
-            baseRef.Trim(),
-            baseCommit,
-            headResult.ExitCode == 0 ? FirstLine(headResult.StandardOutput) : baseCommit,
-            false);
     }
 
     public async Task<GitWorktreeInspectionResult> InspectAsync(
@@ -868,6 +871,36 @@ public sealed class GitWorktreeManager
         CancellationToken cancellationToken,
         params string[] arguments)
         => _runner.RunAsync(workingDirectory, arguments, timeout, cancellationToken);
+
+    private static SemaphoreSlim GetRepositoryPreparationGate(string repositoryRoot)
+    {
+        var key = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return RepositoryPreparationGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+    }
+
+    private static string BuildGitFailureDetail(string command, GitCommandResult result)
+    {
+        var detail = $"{command} 실패: exitCode={result.ExitCode}";
+        if (result.TimedOut)
+            detail += " timedOut=true";
+        if (result.Canceled)
+            detail += " canceled=true";
+        if (!string.IsNullOrWhiteSpace(result.StandardError))
+            detail += Environment.NewLine + "stderr:" + Environment.NewLine + LimitDiagnostic(result.StandardError);
+        if (!string.IsNullOrWhiteSpace(result.StandardOutput))
+            detail += Environment.NewLine + "stdout:" + Environment.NewLine + LimitDiagnostic(result.StandardOutput);
+        return detail;
+    }
+
+    private static string LimitDiagnostic(string value)
+    {
+        const int limit = 8000;
+        var normalized = value.Trim();
+        return normalized.Length <= limit
+            ? normalized
+            : normalized[..limit] + Environment.NewLine + "...(truncated)";
+    }
 
     private static GitWorktreePreparationResult Failure(
         string errorCode,

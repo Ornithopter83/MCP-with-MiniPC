@@ -123,6 +123,57 @@ public sealed class GitWorktreeManagerTests
 
 
     [Fact]
+    public async Task PrepareSerializesRepositoryMutationAcrossManagers()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new ConcurrentPrepareGitRunner(root);
+
+        try
+        {
+            var first = new GitWorktreeManager(runner);
+            var second = new GitWorktreeManager(runner);
+
+            var results = await Task.WhenAll(
+                first.PrepareAsync(root, "job", "W1", "main"),
+                second.PrepareAsync(root, "job", "W2", "main"));
+
+            Assert.All(results, result => Assert.True(result.Success));
+            Assert.Equal(1, runner.MaxConcurrentAdds);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task PreparePreservesGitWorktreeAddFailureDetail()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "abc123");
+        runner.Enqueue(0, "");
+        runner.Enqueue(1, "");
+        runner.Enqueue(128, "", "fatal: simulated worktree lock failure");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .PrepareAsync(root, "job", "W1", "main");
+
+            Assert.False(result.Success);
+            Assert.Equal("WORKTREE_CREATE_FAILED", result.ErrorCode);
+            Assert.Contains("exitCode=128", result.ErrorDetail ?? string.Empty);
+            Assert.Contains("fatal: simulated worktree lock failure", result.ErrorDetail ?? string.Empty);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task CheckpointCommitsDirtyWorktreeWithoutPushOrForce()
     {
         var root = CreateTempRepositoryDirectory();
@@ -389,6 +440,63 @@ public sealed class GitWorktreeManagerTests
         var parent = Directory.GetParent(repository)?.FullName;
         if (!string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent))
             Directory.Delete(parent, true);
+    }
+
+    private sealed class ConcurrentPrepareGitRunner : IGitWorktreeCommandRunner
+    {
+        private readonly string _root;
+        private readonly object _sync = new();
+        private int _activeAdds;
+
+        public ConcurrentPrepareGitRunner(string root)
+        {
+            _root = root;
+        }
+
+        public int MaxConcurrentAdds { get; private set; }
+
+        public async Task<GitCommandResult> RunAsync(
+            string workingDirectory,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken cancellationToken = default)
+        {
+            if (arguments.SequenceEqual(new[] { "rev-parse", "--show-toplevel" }))
+                return new(0, _root, string.Empty);
+            if (arguments.Count >= 2 &&
+                arguments[0] == "rev-parse" &&
+                arguments[1] == "--verify")
+                return new(0, "abc123", string.Empty);
+            if (arguments.Count >= 2 &&
+                arguments[0] == "worktree" &&
+                arguments[1] == "list")
+                return new(0, string.Empty, string.Empty);
+            if (arguments.Count > 0 && arguments[0] == "show-ref")
+                return new(1, string.Empty, string.Empty);
+            if (arguments.Count >= 2 &&
+                arguments[0] == "worktree" &&
+                arguments[1] == "add")
+            {
+                lock (_sync)
+                {
+                    _activeAdds++;
+                    MaxConcurrentAdds = Math.Max(MaxConcurrentAdds, _activeAdds);
+                }
+
+                try
+                {
+                    await Task.Delay(80, cancellationToken);
+                    return new(0, "Preparing worktree", string.Empty);
+                }
+                finally
+                {
+                    lock (_sync)
+                        _activeAdds--;
+                }
+            }
+
+            throw new InvalidOperationException("예상하지 않은 Git 호출입니다: " + string.Join(" ", arguments));
+        }
     }
 
     private sealed class FakeGitRunner : IGitWorktreeCommandRunner

@@ -131,6 +131,69 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task WorktreeCreateFailureDetailReachesWorkItemResult()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "projecthub-worktree-failure-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(parent, "repo");
+        Directory.CreateDirectory(root);
+        var git = new FakeGitRunner();
+        git.Enqueue(0, root);
+        git.Enqueue(0, "base123");
+        git.Enqueue(0, "");
+        git.Enqueue(1, "");
+        git.Enqueue(128, "", "fatal: simulated concurrent worktree failure");
+
+        try
+        {
+            var executor = new CodexWorkItemExecutor(
+                "job",
+                root,
+                new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
+                new FakeAiRoleRunner("[GOTO : HQ]\nWORK_ITEM_STATUS: COMPLETED\nunused"),
+                new GitWorktreeManager(git));
+
+            var item = new WorkItemSnapshot(
+                "W1",
+                "기능을 구현하세요.",
+                Array.Empty<string>(),
+                WorkItemKind.Normal,
+                WorkItemState.Running,
+                0,
+                "main",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                null);
+
+            var result = await executor.ExecuteAsync(
+                new WorkItemExecutionRequest(
+                    item,
+                    1,
+                    Array.Empty<WorkItemDependencyResult>(),
+                    "WORK_ITEM",
+                    item.Goal),
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
+            Assert.Equal("WORKTREE_CREATE_FAILED", result.FailureCode);
+            Assert.Contains("exitCode=128", result.ResultSummary ?? string.Empty);
+            Assert.Contains("fatal: simulated concurrent worktree failure", result.ResultSummary ?? string.Empty);
+        }
+        finally
+        {
+            Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
     public async Task DependencyResultsAreIncludedInWorkItemPrompt()
     {
         var fixture = CreateFixture("""
