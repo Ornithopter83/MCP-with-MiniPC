@@ -54,6 +54,57 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
+    public void WorkGraphTransportFindsPatchAfterExplanatoryTextAndIgnoresTrailingText()
+    {
+        const string body = """
+            기준 ref abc123에서 확인한 결과를 먼저 설명합니다.
+
+            HQ 확정 설계:
+            - 공통 데이터 계약을 먼저 만든다.
+            - 이후 구현 WorkItem을 분리한다.
+
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":0,"operations":[]}
+
+            위 패치 기준으로 작업을 진행하세요.
+            """;
+
+        Assert.True(WorkGraphTransportContract.TryParse(body, out var patch, out var error), error);
+        Assert.Null(error);
+        Assert.NotNull(patch);
+        Assert.Equal(0, patch!.ExpectedRevision);
+        Assert.Empty(patch.Operations);
+    }
+
+    [Fact]
+    public void WorkGraphTransportAcceptsInlineJsonAfterMarker()
+    {
+        const string body = """
+            설계 설명
+            WORK_GRAPH_PATCH: {"expectedRevision":4,"operations":[]}
+            추가 설명
+            """;
+
+        Assert.True(WorkGraphTransportContract.TryParse(body, out var patch, out var error), error);
+        Assert.Null(error);
+        Assert.Equal(4, patch!.ExpectedRevision);
+    }
+
+    [Fact]
+    public void WorkGraphTransportRejectsDuplicateMarkers()
+    {
+        const string body = """
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":1,"operations":[]}
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":1,"operations":[]}
+            """;
+
+        Assert.False(WorkGraphTransportContract.TryParse(body, out _, out var error));
+        Assert.Equal("WORK_GRAPH_PATCH_MARKER_DUPLICATE", error);
+    }
+
+    [Fact]
     public void WorkGraphTransportAcceptsExplicitNoOpContinue()
     {
         const string body = """
@@ -120,6 +171,36 @@ public sealed class ParallelWorkTransportTests
         Assert.Null(error);
         Assert.Equal(expected, report!.Status);
         Assert.Equal("보고 본문", report.Body);
+    }
+
+    [Fact]
+    public void WorkItemReportFindsStatusAfterExplanatoryTextAndPreservesReportBody()
+    {
+        const string body = """
+            구현 결과를 먼저 요약합니다.
+            WORK_ITEM_STATUS: COMPLETED
+            검증 결과: 성공
+            """;
+
+        Assert.True(WorkItemReportContract.TryParse(body, out var report, out var error), error);
+        Assert.Null(error);
+        Assert.Equal(WorkItemReportStatus.Completed, report!.Status);
+        Assert.Contains("구현 결과를 먼저 요약합니다.", report.Body);
+        Assert.Contains("검증 결과: 성공", report.Body);
+        Assert.DoesNotContain("WORK_ITEM_STATUS:", report.Body);
+    }
+
+    [Fact]
+    public void WorkItemReportRejectsDuplicateStatusMarkers()
+    {
+        const string body = """
+            WORK_ITEM_STATUS: COMPLETED
+            설명
+            WORK_ITEM_STATUS: FAILED
+            """;
+
+        Assert.False(WorkItemReportContract.TryParse(body, out _, out var error));
+        Assert.Equal("WORK_ITEM_STATUS_DUPLICATE", error);
     }
 
     [Fact]
