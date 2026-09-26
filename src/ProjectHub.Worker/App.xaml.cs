@@ -54,7 +54,10 @@ public partial class App : System.Windows.Application
 
         try
         {
-            _managedWebRuntimeManager = new ManagedWebRuntimeManager(WorkerPaths.Extension);
+            _managedWebRuntimeManager = new ManagedWebRuntimeManager(
+                WorkerPaths.Extension,
+                _bridgeServer?.ManagedRuntimeToken
+                    ?? throw new InvalidOperationException("관리형 Web bridge 토큰을 생성하지 못했습니다."));
         }
         catch (Exception ex)
         {
