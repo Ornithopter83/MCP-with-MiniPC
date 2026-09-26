@@ -318,7 +318,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 복구 branch 생성
 - Master-Polish.md 목표 정책 반영
 - 본 작업 계획 문서 활성화
-- CurrentWork/구현 로드맵 동기화
+- 필요한 구현 로드맵 갱신
 
 ② 단계 1 — WorkGraph 도메인
 - WorkItem 상태/종류 모델
