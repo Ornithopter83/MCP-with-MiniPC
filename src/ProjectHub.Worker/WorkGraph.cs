@@ -172,8 +172,10 @@ public sealed class WorkGraph
         if (patch.ExpectedRevision != Revision)
             return WorkGraphPatchResult.Fail("WORK_GRAPH_REVISION_MISMATCH", Revision);
 
-        if (patch.Operations is null || patch.Operations.Count == 0)
-            return WorkGraphPatchResult.Fail("WORK_GRAPH_PATCH_EMPTY", Revision);
+        if (patch.Operations is null)
+            return WorkGraphPatchResult.Fail("WORK_GRAPH_PATCH_INVALID", Revision);
+        if (patch.Operations.Count == 0)
+            return WorkGraphPatchResult.Ok(Revision);
 
         var staged = _items.ToDictionary(
             pair => pair.Key,
@@ -323,6 +325,65 @@ public sealed class WorkGraph
         RecalculateStates();
         return true;
     }
+
+    public IReadOnlyList<string> RecoverPreparationFailuresForContinuation()
+    {
+        var referencedByOpenItems = _items.Values
+            .Where(item => item.State is
+                WorkItemState.Planned or
+                WorkItemState.Ready or
+                WorkItemState.Running or
+                WorkItemState.Blocked)
+            .SelectMany(item => item.Dependencies)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var recovered = new List<string>();
+        foreach (var item in _items.Values
+                     .OrderBy(value => value.CreatedOrder)
+                     .ThenBy(value => value.Id, StringComparer.Ordinal))
+        {
+            var retryableBlocked =
+                item.State == WorkItemState.Blocked &&
+                IsPreparationFailureCode(item.BlockCode) &&
+                IsPreExecutionItem(item);
+
+            var legacyReferencedFailure =
+                item.State == WorkItemState.Failed &&
+                referencedByOpenItems.Contains(item.Id) &&
+                IsPreparationFailureCode(item.FailureCode) &&
+                IsPreExecutionItem(item);
+
+            if (!retryableBlocked && !legacyReferencedFailure)
+                continue;
+
+            item.State = WorkItemState.Planned;
+            item.Branch = null;
+            item.WorktreePath = null;
+            item.SessionId = null;
+            item.ResultRef = null;
+            item.ResultSummary = null;
+            item.FailureCode = null;
+            item.BlockCode = null;
+            item.ResumeInputType = null;
+            item.ResumeBody = null;
+            item.StartedAtUtc = null;
+            item.FinishedAtUtc = null;
+            recovered.Add(item.Id);
+        }
+
+        if (recovered.Count > 0)
+            RecalculateStates();
+
+        return recovered;
+    }
+
+    private static bool IsPreparationFailureCode(string? code)
+        => !string.IsNullOrWhiteSpace(code) &&
+           code.StartsWith("WORKTREE_", StringComparison.Ordinal);
+
+    private static bool IsPreExecutionItem(WorkItemEntry item)
+        => string.IsNullOrWhiteSpace(item.SessionId) &&
+           string.IsNullOrWhiteSpace(item.ResultRef);
 
     private static string? ApplyOperation(
         Dictionary<string, WorkItemEntry> items,

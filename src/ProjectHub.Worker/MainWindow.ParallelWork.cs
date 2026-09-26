@@ -100,6 +100,10 @@ public partial class MainWindow
                 throw new InvalidOperationException(
                     gitPreflight.ErrorCode + ": " + gitPreflight.Message);
 
+            IReadOnlyList<string> recoveredPreparationItems = Array.Empty<string>();
+            if (continuing)
+                recoveredPreparationItems = graph.RecoverPreparationFailuresForContinuation();
+
             ProjectWorkspacePersistence.SaveWorkGraph(workingDirectory, graph.Snapshot());
 
             var baseRef =
@@ -399,7 +403,14 @@ public partial class MainWindow
             var inboundType = continuing ? "USER_FOLLOWUP" : "USER_REQUEST";
             var restoredGraphSummary = continuing
                 ? ParallelWorkSupervisor.FormatMechanicalGraphEvent(
-                    new[] { "저장된 WorkGraph를 복구했습니다. 아래 상태를 기준으로 후속 GraphPatch를 판단합니다." },
+                    recoveredPreparationItems.Count == 0
+                        ? new[] { "저장된 WorkGraph를 복구했습니다." }
+                        : new[]
+                        {
+                            "저장된 WorkGraph를 복구했습니다.",
+                            "현재 Git 사전 검사를 통과해 WORK 시작 전 준비 실패 항목을 재활성화했습니다: " +
+                            string.Join(",", recoveredPreparationItems)
+                        },
                     new ParallelWorkSchedulerSnapshot(
                         graph.Snapshot(),
                         Array.Empty<RunningWorkItemSnapshot>()))

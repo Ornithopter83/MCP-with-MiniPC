@@ -182,8 +182,9 @@ public sealed class CodexWorkItemExecutorTests
                     item.Goal),
                 CancellationToken.None);
 
-            Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
-            Assert.Equal("WORKTREE_CREATE_FAILED", result.FailureCode);
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("WORKTREE_CREATE_FAILED", result.BlockCode);
+            Assert.Null(result.FailureCode);
             Assert.Contains("exitCode=128", result.ResultSummary ?? string.Empty);
             Assert.Contains("fatal: simulated concurrent worktree failure", result.ResultSummary ?? string.Empty);
         }

@@ -698,3 +698,14 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 공유 `.git/worktrees` 및 branch metadata를 변경하는 `git worktree add`가 동시에 실행되지 않게 한다.
 - `WORKTREE_CREATE_FAILED` 등 Git 준비 오류에는 실제 Git exit code와 stderr/stdout 상세를 보존해 WorkItem report와 HQ 기계 상태에서 원인을 확인할 수 있게 한다.
 - 동시 Prepare 직렬화와 오류 상세 전파 회귀 테스트를 추가한다.
+
+
+### 2026-09-26 WORK 시작 전 준비 실패 복구
+
+- `WORKTREE_*`는 Codex WORK 세션 시작 전 실패이므로 새 실행부터 `FAILED`가 아니라 `BLOCKED`로 저장한다.
+- USER_FOLLOWUP의 현재 Git preflight가 성공하면 preparation BLOCKED를 같은 WorkItem으로 재활성화한다.
+- 과거 snapshot 호환을 위해 sessionId/resultRef가 없는 `WORKTREE_*` FAILED 중 현재 열린 dependency가 직접 참조하는 항목만 재활성화하고, 참조되지 않는 이전 실패는 기록으로 보존한다.
+- 실패한 `git worktree add -b`가 branch만 남긴 경우 동일 base commit이며 다른 worktree에 연결되지 않은 ProjectHub branch만 안전하게 재사용한다.
+- 이미 READY인 graph를 변경 없이 진행할 수 있도록 `operations: []`을 revision 불변 no-op GraphPatch로 허용한다.
+- USER_FOLLOWUP에는 이전 HQ raw ACTION/GOTO/GraphPatch와 과거 실행 상태 문자열을 다시 주입하지 않고 현재 WorkGraph 기계 상태와 사용자 요청을 사용한다.
+- 회귀 테스트는 legacy preparation failure 선택 복구, current preparation block 복구, no-op patch, residue branch 재사용, worktree 실패 BLOCKED 귀속을 포함한다.

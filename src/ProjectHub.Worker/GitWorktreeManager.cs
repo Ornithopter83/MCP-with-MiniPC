@@ -300,19 +300,63 @@ public sealed class GitWorktreeManager
                 "--quiet",
                 "refs/heads/" + branch).ConfigureAwait(false);
 
+            var reuseExistingBranch = false;
             if (branchResult.ExitCode == 0)
-                return new GitWorktreePreparationResult(
-                    false,
-                    "WORKTREE_BRANCH_EXISTS",
-                    repositoryRoot,
-                    worktreePath,
-                    branch,
-                    baseRef.Trim(),
-                    baseCommit,
-                    null,
-                    false);
+            {
+                var branchOwner = ParseWorktrees(listResult.StandardOutput)
+                    .FirstOrDefault(entry =>
+                        string.Equals(entry.Branch, branch, StringComparison.Ordinal));
+                if (branchOwner is not null)
+                    return new GitWorktreePreparationResult(
+                        false,
+                        "WORKTREE_BRANCH_IN_USE",
+                        repositoryRoot,
+                        worktreePath,
+                        branch,
+                        baseRef.Trim(),
+                        baseCommit,
+                        branchOwner.Head,
+                        false);
 
-            if (branchResult.ExitCode != 1)
+                var branchCommitResult = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "rev-parse",
+                    "--verify",
+                    "refs/heads/" + branch + "^{commit}").ConfigureAwait(false);
+                if (branchCommitResult.ExitCode != 0 ||
+                    string.IsNullOrWhiteSpace(branchCommitResult.StandardOutput))
+                    return new GitWorktreePreparationResult(
+                        false,
+                        "WORKTREE_BRANCH_CHECK_FAILED",
+                        repositoryRoot,
+                        worktreePath,
+                        branch,
+                        baseRef.Trim(),
+                        baseCommit,
+                        null,
+                        false,
+                        BuildGitFailureDetail("git rev-parse existing WorkItem branch", branchCommitResult));
+
+                var branchCommit = FirstLine(branchCommitResult.StandardOutput);
+                if (!string.Equals(branchCommit, baseCommit, StringComparison.OrdinalIgnoreCase))
+                    return new GitWorktreePreparationResult(
+                        false,
+                        "WORKTREE_BRANCH_EXISTS",
+                        repositoryRoot,
+                        worktreePath,
+                        branch,
+                        baseRef.Trim(),
+                        baseCommit,
+                        branchCommit,
+                        false,
+                        $"기존 WorkItem branch가 현재 base와 다릅니다. branchCommit={branchCommit} baseCommit={baseCommit}");
+
+                reuseExistingBranch = true;
+            }
+            else if (branchResult.ExitCode != 1)
+            {
                 return new GitWorktreePreparationResult(
                     false,
                     "WORKTREE_BRANCH_CHECK_FAILED",
@@ -324,6 +368,7 @@ public sealed class GitWorktreeManager
                     null,
                     false,
                     BuildGitFailureDetail("git show-ref --verify", branchResult));
+            }
 
             var parent = Directory.GetParent(worktreePath)?.FullName;
             if (string.IsNullOrWhiteSpace(parent))
@@ -340,16 +385,25 @@ public sealed class GitWorktreeManager
 
             Directory.CreateDirectory(parent);
 
-            var addResult = await RunAsync(
-                repositoryRoot,
-                CreateTimeout,
-                cancellationToken,
-                "worktree",
-                "add",
-                "-b",
-                branch,
-                worktreePath,
-                baseCommit).ConfigureAwait(false);
+            var addResult = reuseExistingBranch
+                ? await RunAsync(
+                    repositoryRoot,
+                    CreateTimeout,
+                    cancellationToken,
+                    "worktree",
+                    "add",
+                    worktreePath,
+                    branch).ConfigureAwait(false)
+                : await RunAsync(
+                    repositoryRoot,
+                    CreateTimeout,
+                    cancellationToken,
+                    "worktree",
+                    "add",
+                    "-b",
+                    branch,
+                    worktreePath,
+                    baseCommit).ConfigureAwait(false);
 
             if (addResult.ExitCode != 0)
                 return new GitWorktreePreparationResult(

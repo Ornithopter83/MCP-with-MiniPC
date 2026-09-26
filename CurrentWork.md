@@ -439,3 +439,16 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 저장소 단위 동시 Prepare가 실제 `worktree add`를 1개씩 실행하는 회귀 테스트와 오류 상세 전파 테스트를 추가했다.
 - HQ/WORK 라우팅 계약에는 이 기계 동작을 주입하지 않았다.
 - 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 검증이 필요하다.
+
+
+## 2026-09-26 준비 실패 복구와 USER_FOLLOWUP 최소화
+
+- WORK가 시작되기 전의 `WORKTREE_*` 실패를 WorkItem semantic `FAILED`가 아니라 `BLOCKED`로 기록하도록 변경했다.
+- USER_FOLLOWUP에서 현재 Git 사전 검사가 성공하면 preparation BLOCKED 항목을 같은 WorkItem으로 재활성화한다.
+- 구버전 snapshot의 `WORKTREE_*` FAILED는 sessionId/resultRef가 없고 현재 열린 WorkItem dependency가 직접 참조하는 항목만 재활성화한다. 참조되지 않는 과거 실패는 역사 기록으로 남긴다.
+- 현재 사용 사례에서는 `stage2_design_v3`, `wave_clear_break_v3`가 복구 대상이고 최초 `stage2_design`, `wave_clear_break` 실패 기록은 유지되는 형태다.
+- USER_FOLLOWUP HQ 입력에서 이전 작업 상태와 이전 HQ raw ACTION/GOTO/GraphPatch를 제거했다. 현재 WorkGraph 상태와 사용자 추가 요청을 authoritative 입력으로 사용한다.
+- HQ가 기존 READY Graph를 그대로 진행하려고 `operations: []`를 보내면 revision을 증가시키지 않는 no-op CONTINUE로 허용한다.
+- 이전 실패에서 같은 WorkItem branch만 남은 경우 branch가 다른 worktree에서 사용 중이지 않고 정확히 같은 base commit을 가리킬 때만 안전하게 재사용한다.
+- HQ/WORK 역할 계약에는 복구용 지시 문장을 추가하지 않았다.
+- 현재 Web 환경에는 .NET SDK가 없어 dotnet test/build는 미실행이며 Windows에서 재검증이 필요하다.

@@ -43,6 +43,84 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
+    public void NoOpPatchKeepsRevisionAndCurrentGraph()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("W1", "작업"))
+        })).Success);
+
+        var revision = graph.Revision;
+        var result = graph.ApplyPatch(new WorkGraphPatch(
+            revision,
+            Array.Empty<WorkGraphPatchOperation>()));
+
+        Assert.True(result.Success);
+        Assert.Equal(revision, result.Revision);
+        Assert.Equal(revision, graph.Revision);
+        Assert.Equal(WorkItemState.Ready, graph.Find("W1")!.State);
+    }
+
+    [Fact]
+    public void ContinuationRecoveryReactivatesOnlyReferencedLegacyPreparationFailures()
+    {
+        var graph = new WorkGraph("job", 4);
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("old_design", "과거 설계")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("old_wave", "과거 웨이브")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("design_v3", "현재 설계")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("wave_v3", "현재 웨이브")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("implementation", "구현", new[] { "design_v3" })),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("integration", "통합", new[] { "implementation", "wave_v3" }, WorkItemKind.Integration))
+        })).Success);
+
+        foreach (var id in new[] { "old_design", "old_wave", "design_v3", "wave_v3" })
+        {
+            Assert.True(graph.TryMarkRunning(id));
+            Assert.True(graph.TryMarkFailed(id, "WORKTREE_CREATE_FAILED", "과거 준비 실패"));
+        }
+
+        var recovered = graph.RecoverPreparationFailuresForContinuation();
+
+        Assert.Equal(new[] { "design_v3", "wave_v3" }, recovered);
+        Assert.Equal(WorkItemState.Failed, graph.Find("old_design")!.State);
+        Assert.Equal(WorkItemState.Failed, graph.Find("old_wave")!.State);
+        Assert.Equal(WorkItemState.Ready, graph.Find("design_v3")!.State);
+        Assert.Equal(WorkItemState.Ready, graph.Find("wave_v3")!.State);
+        Assert.Null(graph.Find("design_v3")!.FailureCode);
+        Assert.Null(graph.Find("wave_v3")!.ResultSummary);
+        Assert.Equal(WorkItemState.Blocked, graph.Find("implementation")!.State);
+        Assert.Equal(WorkItemState.Blocked, graph.Find("integration")!.State);
+    }
+
+    [Fact]
+    public void ContinuationRecoveryReleasesCurrentPreparationBlock()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("W1", "작업"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("W1"));
+        Assert.True(graph.TryMarkBlocked(
+            "W1",
+            "WORKTREE_CREATE_FAILED",
+            "git worktree add 실패"));
+
+        var recovered = graph.RecoverPreparationFailuresForContinuation();
+
+        Assert.Equal(new[] { "W1" }, recovered);
+        var item = graph.Find("W1")!;
+        Assert.Equal(WorkItemState.Ready, item.State);
+        Assert.Null(item.BlockCode);
+        Assert.Null(item.ResultSummary);
+        Assert.Null(item.StartedAtUtc);
+        Assert.Null(item.FinishedAtUtc);
+    }
+
+    [Fact]
     public void PatchRevisionMismatchIsRejectedWithoutMutation()
     {
         var graph = new WorkGraph("job");

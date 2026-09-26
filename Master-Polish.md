@@ -408,8 +408,8 @@ WorkItem 기본 상태:
 - READY: 모든 명시적 선행 의존성이 완료되어 실행 가능한 상태
 - RUNNING: Worker가 실행 슬롯, 세션, 작업공간을 배정해 실행 중인 상태
 - COMPLETED: 해당 WorkItem 실행이 정상적으로 끝나 결과 참조가 기록된 상태
-- FAILED: 기계적 실행 실패 또는 WORK가 실패 결과로 종료한 상태
-- BLOCKED: 미완료·실패 의존성 또는 HQ 판단이 필요한 조건 때문에 실행할 수 없는 상태
+- FAILED: WORK 프로세스가 실제로 시작된 뒤 복구할 수 없는 실행 실패가 발생했거나 WORK가 실패 결과로 종료한 상태
+- BLOCKED: 미완료·실패 의존성, HQ 판단 대기, 또는 WORK 시작 전의 기계적 실행 준비 실패 때문에 현재 실행할 수 없는 상태
 - CANCELED: HQ 또는 사용자의 명시적 취소가 적용된 상태
 
 동시 쓰기 격리:
@@ -417,6 +417,9 @@ WorkItem 기본 상태:
 - worktree와 branch 생성·삭제·경로 검증은 Worker가 기계적으로 수행한다.
 - 같은 Git 저장소의 worktree 준비처럼 공유 Git metadata를 변경하는 짧은 구간은 Worker가 저장소 단위로 직렬화하고, 준비가 끝난 WORK 실행은 설정된 슬롯 수대로 병렬 수행한다.
 - Git 준비 명령이 실패하면 Worker는 오류 코드뿐 아니라 실제 exit code와 stderr를 WorkItem 기계 보고에 보존한다.
+- WORK 세션이 시작되기 전의 WORKTREE_* 준비 실패는 의미적 FAILED로 확정하지 않고 BLOCKED로 보존한다. USER_FOLLOWUP의 현재 Git 사전 검사가 성공하면 같은 WorkItem을 다시 실행 가능한 상태로 되돌린다.
+- 구버전 snapshot에 WORKTREE_*가 FAILED로 저장되어 있으면, 현재 열린 WorkItem의 dependency가 직접 참조하고 sessionId/resultRef가 없는 항목만 준비 실패로 마이그레이션해 재활성화한다. 참조되지 않는 과거 FAILED 항목은 기록으로 유지한다.
+- 실패한 worktree add가 동일 WorkItem branch만 남겼다면 그 branch가 다른 worktree에서 사용 중이지 않고 정확히 원래 base commit을 가리킬 때만 새 worktree에 안전하게 재사용한다.
 - WorkItem의 시작 기준 ref는 WorkGraph에 명시적으로 기록한다.
 - Worker는 충돌의 의미를 자동 해결하지 않는다.
 - 새 병렬 실행을 시작할 때 작업 폴더가 Git 저장소가 아니면 Worker는 AI를 호출하기 전에 해당 작업 폴더에서 `git init`을 기계적으로 수행할 수 있다.
@@ -427,7 +430,9 @@ WorkItem 기본 상태:
 
 동적 확장:
 - HQ는 실행 중에도 GraphPatch로 WorkItem을 추가·변경·취소하거나 의존성을 변경할 수 있다.
-- COMPLETED, FAILED, CANCELED WorkItem은 종료 기록으로 유지한다. 재시도는 기존 종료 항목을 재작성하지 않고 새 ID WorkItem을 추가한 뒤 필요한 비종료 후속 항목의 dependency를 새 작업으로 바꾼다.
+- COMPLETED, FAILED, CANCELED WorkItem은 종료 기록으로 유지한다. WORK가 실제로 시작된 뒤의 FAILED 재시도는 기존 종료 항목을 재작성하지 않고 새 ID WorkItem을 추가한 뒤 필요한 비종료 후속 항목의 dependency를 새 작업으로 바꾼다.
+- WORK 시작 전 준비 실패의 재실행은 의미 작업 재시도가 아니라 Worker 실행 준비 재개이므로 같은 WorkItem을 사용할 수 있다.
+- 현재 Graph를 변경하지 않고 이미 READY인 WorkItem을 계속 실행할 때 HQ의 operations=[] GraphPatch는 revision을 바꾸지 않는 no-op CONTINUE로 처리한다.
 - 이미 종료된 WorkItem에 대한 CANCEL은 상태를 바꾸지 않는 멱등 요청으로 기계적으로 수용한다. 목표·dependency·baseRef처럼 종료 기록을 변경하는 수정은 계속 금지한다.
 - WORK가 SPLIT_REQUEST를 보고해도 새 WorkItem 생성 여부와 의존성은 HQ가 결정한다.
 - Worker는 승인되지 않은 작업을 의미적으로 생성하지 않는다.

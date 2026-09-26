@@ -54,6 +54,21 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
+    public void WorkGraphTransportAcceptsExplicitNoOpContinue()
+    {
+        const string body = """
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":3,"operations":[]}
+            """;
+
+        Assert.True(WorkGraphTransportContract.TryParse(body, out var patch, out var error));
+        Assert.Null(error);
+        Assert.NotNull(patch);
+        Assert.Equal(3, patch!.ExpectedRevision);
+        Assert.Empty(patch.Operations);
+    }
+
+    [Fact]
     public void WorkGraphTransportRejectsHqConcurrencyChange()
     {
         const string body = """

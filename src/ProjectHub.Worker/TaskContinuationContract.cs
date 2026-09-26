@@ -30,26 +30,22 @@ public static class TaskContinuationContract
         if (followup.Length == 0)
             throw new InvalidOperationException("FOLLOWUP_EMPTY");
 
-        var previous = string.IsNullOrWhiteSpace(lastHqMessage)
-            ? "이전 HQ 메시지 없음"
-            : lastHqMessage.Trim();
+        _ = lastHqMessage;
 
-        var memory = string.IsNullOrWhiteSpace(projectMemoryPath)
-            ? string.Empty
-            : $"{Environment.NewLine}{Environment.NewLine}프로젝트 기억 파일: {projectMemoryPath.Trim()}" +
-              (string.IsNullOrWhiteSpace(eventLogPath)
-                  ? string.Empty
-                  : $"{Environment.NewLine}이벤트 로그: {eventLogPath.Trim()}") +
-              $"{Environment.NewLine}이전 CLI 세션을 사용할 수 없으면 프로젝트 기억 파일과 이벤트 로그를 관제 문맥 복구에 사용한다.";
+        var sections = new List<string>();
 
-        var graph = string.IsNullOrWhiteSpace(workGraphSummary)
-            ? string.Empty
-            : $"{Environment.NewLine}{Environment.NewLine}WorkGraph 현재 상태:{Environment.NewLine}{workGraphSummary.Trim()}";
+        if (!string.IsNullOrWhiteSpace(projectMemoryPath))
+        {
+            var memory = $"프로젝트 기억 파일: {projectMemoryPath.Trim()}";
+            if (!string.IsNullOrWhiteSpace(eventLogPath))
+                memory += $"{Environment.NewLine}이벤트 로그: {eventLogPath.Trim()}";
+            sections.Add(memory);
+        }
 
-        return $"이전 작업 상태: {status}{Environment.NewLine}" +
-               $"이전 HQ 메시지:{Environment.NewLine}{previous}" +
-               memory +
-               graph +
-               $"{Environment.NewLine}{Environment.NewLine}사용자 추가 요청:{Environment.NewLine}{followup}";
+        if (!string.IsNullOrWhiteSpace(workGraphSummary))
+            sections.Add($"WorkGraph 현재 상태:{Environment.NewLine}{workGraphSummary.Trim()}");
+
+        sections.Add($"사용자 추가 요청:{Environment.NewLine}{followup}");
+        return string.Join(Environment.NewLine + Environment.NewLine, sections);
     }
 }

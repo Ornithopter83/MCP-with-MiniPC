@@ -39,7 +39,7 @@ public static class WorkGraphTransportContract
             return false;
         }
 
-        if (dto is null || dto.ExpectedRevision is null || dto.ExpectedRevision < 0 || dto.Operations is null || dto.Operations.Count == 0)
+        if (dto is null || dto.ExpectedRevision is null || dto.ExpectedRevision < 0 || dto.Operations is null)
         {
             error = "WORK_GRAPH_PATCH_SCHEMA_INVALID";
             return false;

@@ -105,6 +105,7 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "abc123");
         runner.Enqueue(0, "");
         runner.Enqueue(0, "");
+        runner.Enqueue(0, "different456");
 
         try
         {
@@ -121,6 +122,39 @@ public sealed class GitWorktreeManagerTests
         }
     }
 
+
+    [Fact]
+    public async Task PrepareReusesDetachedResidueBranchWhenItMatchesBase()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "abc123");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "abc123");
+        runner.Enqueue(0, "Preparing worktree");
+        runner.Enqueue(0, "abc123");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.PrepareAsync(root, "job", "W1", "main");
+
+            Assert.True(result.Success);
+            var add = runner.Calls.Single(call =>
+                call.Arguments.Count > 1 &&
+                call.Arguments[0] == "worktree" &&
+                call.Arguments[1] == "add");
+            Assert.DoesNotContain("-b", add.Arguments);
+            Assert.Equal(result.WorktreePath, add.Arguments[2]);
+            Assert.Equal(result.Branch, add.Arguments[3]);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
 
     [Fact]
     public async Task PrepareSerializesRepositoryMutationAcrossManagers()

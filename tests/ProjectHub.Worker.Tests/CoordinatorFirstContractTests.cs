@@ -140,8 +140,8 @@ public sealed class CoordinatorFirstContractTests
             "이전 작업을 완료했습니다.",
             "효과음을 추가하고 계속 다듬어줘.");
 
-        Assert.Contains("이전 작업 상태: DONE", input);
-        Assert.Contains("이전 작업을 완료했습니다.", input);
+        Assert.DoesNotContain("이전 작업 상태:", input);
+        Assert.DoesNotContain("이전 작업을 완료했습니다.", input);
         Assert.Contains("사용자 추가 요청:", input);
         Assert.Contains("효과음을 추가하고 계속 다듬어줘.", input);
     }
@@ -154,8 +154,8 @@ public sealed class CoordinatorFirstContractTests
             "현재 구현을 진행하세요.",
             "중단한 곳부터 계속해줘.");
 
-        Assert.Contains("이전 작업 상태: CANCELED", input);
-        Assert.Contains("현재 구현을 진행하세요.", input);
+        Assert.DoesNotContain("이전 작업 상태:", input);
+        Assert.DoesNotContain("현재 구현을 진행하세요.", input);
         Assert.Contains("중단한 곳부터 계속해줘.", input);
     }
 
@@ -170,7 +170,7 @@ public sealed class CoordinatorFirstContractTests
             "C:/work/.projecthub/events/job.jsonl",
             "WorkGraph revision=7\n- id=W1 state=BLOCKED blockCode=RECOVERY_REQUIRED");
 
-        Assert.Contains("병렬 WorkGraph 현재 상태:", input);
+        Assert.Contains("WorkGraph 현재 상태:", input);
         Assert.Contains("revision=7", input);
         Assert.Contains("id=W1 state=BLOCKED", input);
         Assert.Contains("RECOVERY_REQUIRED", input);
@@ -195,7 +195,6 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("프로젝트 기억 파일:", input);
         Assert.Contains("last-handoff.md", input);
         Assert.Contains("이벤트 로그:", input);
-        Assert.Contains("이전 CLI 세션을 사용할 수 없으면", input);
     }
 
     [Fact]

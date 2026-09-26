@@ -74,7 +74,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     {
         var item = request.Item;
         if (string.IsNullOrWhiteSpace(item.BaseRef))
-            return WorkItemExecutionResult.Failed("WORKTREE_BASE_REF_MISSING", "WorkItem baseRef가 없습니다.");
+            return WorkItemExecutionResult.Blocked("WORKTREE_BASE_REF_MISSING", "WorkItem baseRef가 없습니다.");
 
         var preparation = await _worktrees.PrepareAsync(
             _workspace,
@@ -88,12 +88,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             var detail = string.IsNullOrWhiteSpace(preparation.ErrorDetail)
                 ? "WorkItem worktree 준비에 실패했습니다."
                 : "WorkItem worktree 준비에 실패했습니다." + Environment.NewLine + preparation.ErrorDetail;
-            return WorkItemExecutionResult.Failed(
+            return WorkItemExecutionResult.Blocked(
                 preparation.ErrorCode ?? "WORKTREE_PREPARE_FAILED",
                 detail,
-                preparation.Branch,
-                preparation.WorktreePath,
-                item.SessionId);
+                resultRef: null,
+                branch: preparation.Branch,
+                worktreePath: preparation.WorktreePath,
+                sessionId: item.SessionId);
         }
 
         _observationGate?.RegisterWorkItemRoot(item.Id, preparation.WorktreePath);

@@ -33,9 +33,41 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Null(result.ErrorCode);
         Assert.Equal(2, result.Graph.Items.Count(item => item.State == WorkItemState.Completed));
         Assert.Equal(2, hq.Prompts.Count);
-        Assert.Contains("병렬 WorkGraph 사용: 예", hq.Prompts[0]);
+        Assert.Contains("WorkGraph revision: 0", hq.Prompts[0]);
         Assert.Contains("입력 유형: WORK_GRAPH_QUIESCENT", hq.Prompts[1]);
         Assert.Contains("state=COMPLETED", hq.Prompts[1]);
+    }
+
+    [Fact]
+    public async Task NoOpContinueStartsExistingReadyGraphWithoutRevisionChange()
+    {
+        var graph = new WorkGraph("job", 1);
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("W1", "복구 작업", BaseRef: "base123"))
+        })).Success);
+        var revision = graph.Revision;
+
+        var executor = new SupervisorExecutor();
+        executor.SetImmediate("W1");
+        var hq = new QueueHqRunner(
+            ContinuePatch(revision),
+            End("복구 작업 완료"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_FOLLOWUP",
+            "계속 진행해줘.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(revision, result.Graph.Revision);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+        Assert.Single(executor.Requests);
     }
 
     [Fact]
