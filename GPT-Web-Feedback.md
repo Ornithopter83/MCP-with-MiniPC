@@ -154,3 +154,22 @@
 ⑫ 내장 확장 계약 테스트에 fingerprint baseline, evidence latch, mutation 확인, timeout reconciliation과 현재 Send 이전 assistant 오탐 방지 조건을 추가했다.
 ⑬ JavaScript 문법과 version/build 정합성은 정적으로 확인하고 실제 Windows Worker 빌드·게시 및 숨김 상태 E2E는 후속 확인 대상으로 남긴다.
 
+제13조 (assistant 응답 및 일반 파일 회수)
+
+① 실패 재현에서는 Worker→HQ Web 전송과 ChatGPT assistant 응답 생성까지는 성공했지만 GPTWeb-Hub가 응답을 Worker result로 회수하지 못했다.
+② 기존 role-aware selector가 실제 ChatGPT turn 구조와 어긋날 수 있으므로 현재 Worker prompt를 포함하는 새 conversation-turn container를 찾고 그 다음 turn을 assistant 결과로 회수하는 순서 기반 fallback을 추가했다.
+③ fallback prompt 매칭은 현재 prompt와 거의 동일한 turn만 허용하고 assistant role turn은 prompt 후보에서 제외해 응답이 입력을 인용하는 경우의 오탐을 줄였다.
+④ currentResponseText는 현재 작업의 assistant 증거 또는 prompt-next-turn fallback이 없으면 과거 latestAssistant 텍스트를 사용하지 않는다.
+⑤ 응답 회수 단계에 ASSISTANT_TURN_DETECTED, ASSISTANT_TEXT_EXTRACTED, RESPONSE_START, RESPONSE_STABLE, RESULT_POSTING을 분리했다.
+⑥ HQ 일반 Web 응답도 RESOURCE 여부와 무관하게 다운로드 가능한 파일을 수집한다.
+⑦ 일반 결과 파일 탐지는 assistant 응답 turn 내부로 제한해 user 입력 첨부를 생성 결과로 오인하지 않는다.
+⑧ PDF, ZIP, JSON, TXT, Markdown, CSV, DOCX, XLSX, PPTX 및 허용된 오디오·비디오 등 비이미지 다운로드를 기존 fetch-resource-file fallback과 SHA-256 검증 경로로 회수한다.
+⑨ 텍스트가 먼저 안정돼도 새 파일 링크가 나타나면 response snapshot이 바뀌므로 안정화 대기를 다시 시작하고 텍스트와 파일을 한 result로 제출한다.
+⑩ 일반 Web 결과 파일은 TEXT_WITH_FILES로 제출하고 Worker는 `Worker/web-results/<taskId>/` 아래에 저장해 path·size·SHA-256 receipt를 남긴다.
+⑪ 일반 Web 파일의 base64, 개별 25MB, 전체 128MB, SHA-256 검증을 RESOURCE 저장과 공통 decoder로 통합했다.
+⑫ HQ Web 역할 결과는 저장된 파일을 AiRoleRunResult.Files로 노출한다.
+⑬ CLAIMED 진행 로그에 실제 extension version/build를 기록하도록 바꿔 이후 실패 로그에서 사용 빌드를 바로 식별할 수 있다.
+⑭ 확장은 0.3.2 / build 2026-09-27.1이며 Worker Bridge 기대 버전도 동일하다.
+⑮ 내장 확장 회귀 테스트와 WebResultFileStorageTests를 추가해 assistant fallback, 일반 파일 탐지, non-image 파일 저장과 SHA mismatch 거부를 고정했다.
+⑯ JavaScript 문법과 주요 연결은 정적으로 확인했으며 실제 Windows Worker 빌드·게시 및 숨김 HQ 응답/파일 E2E는 후속 확인 대상이다.
+
