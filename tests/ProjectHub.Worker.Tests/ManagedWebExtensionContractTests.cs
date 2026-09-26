@@ -13,7 +13,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.3.1", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.3.2", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -62,6 +62,23 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("conversationTurns()", StringComparison.Ordinal));
         Assert.True(source.Contains("currentSendConfirmed=taskUserMessageConfirmed()||sendTriggeredForActiveTask", StringComparison.Ordinal));
         Assert.False(source.Contains("messages.length<=beforeMessages.length", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void EmbeddedContent_RecoversAssistantTextAndGeneralDownloadFiles()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.True(source.Contains("responseTurnAfterPrompt", StringComparison.Ordinal));
+        Assert.True(source.Contains("ASSISTANT_CONTAINER_RECONCILED", StringComparison.Ordinal));
+        Assert.True(source.Contains("ASSISTANT_TURN_DETECTED", StringComparison.Ordinal));
+        Assert.True(source.Contains("ASSISTANT_TEXT_EXTRACTED", StringComparison.Ordinal));
+        Assert.True(source.Contains("readyResponseFileCandidates", StringComparison.Ordinal));
+        Assert.True(source.Contains("WEB_FILE_DETECTED", StringComparison.Ordinal));
+        Assert.True(source.Contains("WEB_FILE_DOWNLOAD_VERIFIED", StringComparison.Ordinal));
+        Assert.True(source.Contains("TEXT_WITH_FILES", StringComparison.Ordinal));
+        Assert.True(source.Contains("pdf|zip|json|txt|md|csv|docx|xlsx|pptx", StringComparison.Ordinal));
+        Assert.True(source.Contains("extension='+EXTENSION_VERSION+' / '+EXTENSION_BUILD", StringComparison.Ordinal));
     }
 
     [Fact]
