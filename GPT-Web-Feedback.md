@@ -1,18 +1,20 @@
-# GPT Web 피드백 — 토큰 누적 억제
+# GPT Web 피드백 — 정책 문서 계층 분리
 
 갱신일: 2026-09-26
-기준 정책: Master-Polish.md
 
-## 반영 완료
+제1조 (반영 완료)
 
-- AGENTS.md의 과거 계획/작업 문서 자동 조사 지시를 제거했다.
-- 프로그램 시작 시 저장된 continuation과 이벤트 이력을 자동 복구하지 않는다.
-- 새 작업은 선택되거나 설정에 남은 과거 CLI session ID를 실행 세션으로 사용하지 않는다.
-- HQ WorkGraph 상태 통지는 전체 snapshot 반복 전송 대신 직전 HQ 전달 이후 변경된 WorkItem만 전달한다.
-- 같은 작업의 USER_FOLLOWUP에서도 이벤트 로그 경로, handoff, 전체 WorkGraph를 HQ 입력에 다시 붙이지 않는다.
-- HQ/WORK 역할 계약 전문은 각 AI 세션 첫 호출에만 주입하고 같은 세션 resume에는 재주입하지 않는다.
+① `Master-Polish.md`는 ProjectHub 전체 공통 영구 정책과 규범 문서 작성 형식만 남기도록 축소했다.
+② 기존 Worker 세부 정책은 `Worker-Polish.md`로 분리했다.
+③ `Core-Polish.md`, `Infrastructure-Polish.md`, `Server-Polish.md`, `Agent-Polish.md`, `Web-Polish.md`를 생성했다.
+④ `AGENTS.md`는 특정 Worker 중심 규칙을 제거하고 저장소 공통 작업 계약으로 일반화했다.
+⑤ `CurrentWork.md`는 CORE, INFRASTRUCTURE, SERVER, AGENT, WORKER, WEB 여섯 영역의 현재 상태만 보관하도록 재구성했다.
+⑥ Worker 전용 JEV 계약, 활성 병렬 WORK 작업 문서와 구현 로드맵은 Worker 정책 문서를 세부 정책 원본으로 참조하도록 정리했다.
+⑦ README는 여섯 프로젝트 구성과 정책 문서 체계를 설명하도록 갱신했다.
 
-## 유지 범위
+제2조 (문서 역할)
 
-- 현재 프로그램 실행 안의 `작업 추가`는 같은 작업의 기존 HQ/WORK 세션과 WorkGraph를 이어갈 수 있다.
-- 기존 .projecthub 기록 파일 형식과 worktree 실행 구조 자체는 이번 변경에서 제거하지 않았다.
+① Master는 하위 프로젝트의 구현 세부를 담지 않는다.
+② 각 `*-Polish.md`는 해당 프로젝트의 장기 책임과 경계만 담는다.
+③ 역할·API·전송 계약은 프로젝트 정책보다 세부적인 프로토콜 경계를 정의한다.
+④ CurrentWork의 과거 상태는 누적하지 않고 Git 이력으로 보존한다.
