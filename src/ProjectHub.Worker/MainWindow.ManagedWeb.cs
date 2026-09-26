@@ -74,51 +74,69 @@ public partial class MainWindow
             : (Brush)new BrushConverter().ConvertFromString("#1477E8")!;
     }
 
-    private void ShowManagedHqWeb_Click(object sender, RoutedEventArgs e)
-        => ShowManagedWeb(ManagedWebRole.Hq, "HQ");
-
-    private void HideManagedHqWeb_Click(object sender, RoutedEventArgs e)
-        => HideManagedWeb(ManagedWebRole.Hq, "HQ");
-
-    private void ShowManagedResourceWeb_Click(object sender, RoutedEventArgs e)
-        => ShowManagedWeb(ManagedWebRole.Resource, "RESOURCE");
-
-    private void HideManagedResourceWeb_Click(object sender, RoutedEventArgs e)
-        => HideManagedWeb(ManagedWebRole.Resource, "RESOURCE");
-
-    private void ShowManagedWeb(ManagedWebRole role, string bindingRole)
+    private async Task EnsureManagedWebRuntimesStartedAsync()
     {
         if (_managedWebRuntimeManager is null)
             return;
 
-        var conversationId = _bridgeServer?.GetRoleConversationId(bindingRole);
-        var status = _managedWebRuntimeManager.ShowForLogin(role, conversationId);
+        CoordinatorManagedWebRuntimeStatusText.Text = "HQ 브라우저 런타임 준비 중…";
+        ResourceManagedWebRuntimeStatusText.Text = "RESOURCE 브라우저 런타임 준비 중…";
+
+        var hq = await _managedWebRuntimeManager.StartHiddenAsync(
+            ManagedWebRole.Hq,
+            _bridgeServer?.GetRoleConversationId("HQ"));
+        var resource = await _managedWebRuntimeManager.StartHiddenAsync(
+            ManagedWebRole.Resource,
+            _bridgeServer?.GetRoleConversationId("RESOURCE"));
+
         RefreshManagedWebRuntimePresentation();
-        if (!string.IsNullOrWhiteSpace(status.Error))
-        {
-            AddTaskMessage(
-                "WEB RUNTIME",
-                $"{bindingRole} 브라우저 표시 실패: {status.Error}",
-                status: "ERROR",
-                includeHistory: false);
-        }
+        ReportManagedWebStartFailure("HQ", hq);
+        ReportManagedWebStartFailure("RESOURCE", resource);
     }
 
-    private void HideManagedWeb(ManagedWebRole role, string bindingRole)
+    private async void ShowManagedHqWeb_Click(object sender, RoutedEventArgs e)
+        => await ShowManagedWebAsync(ManagedWebRole.Hq, "HQ");
+
+    private async void HideManagedHqWeb_Click(object sender, RoutedEventArgs e)
+        => await HideManagedWebAsync(ManagedWebRole.Hq, "HQ");
+
+    private async void ShowManagedResourceWeb_Click(object sender, RoutedEventArgs e)
+        => await ShowManagedWebAsync(ManagedWebRole.Resource, "RESOURCE");
+
+    private async void HideManagedResourceWeb_Click(object sender, RoutedEventArgs e)
+        => await HideManagedWebAsync(ManagedWebRole.Resource, "RESOURCE");
+
+    private async Task ShowManagedWebAsync(ManagedWebRole role, string bindingRole)
     {
         if (_managedWebRuntimeManager is null)
             return;
 
         var conversationId = _bridgeServer?.GetRoleConversationId(bindingRole);
-        var status = _managedWebRuntimeManager.RestartHidden(role, conversationId);
+        var status = await _managedWebRuntimeManager.ShowForLoginAsync(role, conversationId);
         RefreshManagedWebRuntimePresentation();
-        if (!string.IsNullOrWhiteSpace(status.Error))
-        {
-            AddTaskMessage(
-                "WEB RUNTIME",
-                $"{bindingRole} 숨김 브라우저 시작 실패: {status.Error}",
-                status: "ERROR",
-                includeHistory: false);
-        }
+        ReportManagedWebStartFailure(bindingRole, status);
+    }
+
+    private async Task HideManagedWebAsync(ManagedWebRole role, string bindingRole)
+    {
+        if (_managedWebRuntimeManager is null)
+            return;
+
+        var conversationId = _bridgeServer?.GetRoleConversationId(bindingRole);
+        var status = await _managedWebRuntimeManager.RestartHiddenAsync(role, conversationId);
+        RefreshManagedWebRuntimePresentation();
+        ReportManagedWebStartFailure(bindingRole, status);
+    }
+
+    private void ReportManagedWebStartFailure(string role, ManagedWebRuntimeStatus status)
+    {
+        if (string.IsNullOrWhiteSpace(status.Error))
+            return;
+
+        AddTaskMessage(
+            "WEB RUNTIME",
+            $"{role} 브라우저 시작 실패: {status.Error}",
+            status: "ERROR",
+            includeHistory: false);
     }
 }
