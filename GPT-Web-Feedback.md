@@ -94,3 +94,18 @@
 ⑩ 확장은 0.2.2 / build 2026-09-26.8이며 Worker Bridge의 기대 version/build도 동일하다.
 ⑪ JavaScript 문법, manifest tabs 권한, version/build 일치는 정적으로 확인했고 실제 Windows Worker 빌드·게시 및 중복 탭/프리징 E2E는 아직 수행하지 않았다.
 
+제9조 (clean ChatGPT app window 전환)
+
+① 관리형 Chromium은 오로지 ProjectHub의 숨김 HQ/RESOURCE ChatGPT 실행환경으로 사용한다는 전제로 구조를 단순화했다.
+② 각 역할 브라우저는 일반 탭 URL 인자가 아니라 `--app=<ChatGPT URL>`로 시작해 일반 탭 UI와 세션 복원 탭 정리 로직에 의존하지 않는다.
+③ 새 브라우저를 시작하기 전에 profile의 `Default/Sessions`, `Current Session`, `Current Tabs`, `Last Session`, `Last Tabs`만 제거하며 Cookies와 로그인 데이터는 유지한다.
+④ `로그인/표시`와 `숨김 실행`은 기존 hidden/visible window를 상호 복원하지 않는다. 기존 슬롯 프로세스를 UI thread 밖에서 종료한 뒤 clean session 상태의 새 visible/hidden app window를 실행한다.
+⑤ 기존 Win32 SetWindowPos/SetForegroundWindow 기반 창 복원 경로는 제거했다. hidden 시작 시에만 생성 직후 창을 숨긴다.
+⑥ GPTWeb-Hub는 0.3.0 / build 2026-09-26.9부터 관리형 Chromium 전용이다. 시작 URL에서 HQ/RESOURCE 역할과 runtime token을 확인하지 못하면 bridge 초기화를 시작하지 않는다.
+⑦ Worker는 실행마다 임의 managed runtime token을 생성하고 app URL로 전달한다. content script는 loopback 요청에 `X-ProjectHub-Managed-Token`을 포함하며 Worker는 token이 없거나 다르면 HTTP 401과 `managed_runtime_required`로 거부한다.
+⑧ 이 token 경계 때문에 일반 Chrome에 과거 unpacked extension이 남아 있거나 오래된 content script가 살아 있어도 현재 Worker bridge를 사용할 수 없다.
+⑨ background의 chrome.tabs 기반 단일 탭 정리 로직과 manifest tabs 권한을 제거했다.
+⑩ 잔존 관리형 Chromium 프로세스 정리도 UI thread 밖에서 실행하도록 변경했다.
+⑪ Worker의 app mode/session cleanup 테스트와 내장 확장의 managed-only/no-tabs 계약 테스트를 갱신했다.
+⑫ JavaScript 문법과 extension/Bridge version-build 일치는 정적으로 확인했으며 Windows Worker 실제 빌드·게시와 ChatGPT 로그인/E2E는 아직 수행하지 않았다.
+
