@@ -101,6 +101,38 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("RESOURCE_REQUEST_EMPTY", emptyPrompt);
     }
 
+    [Fact]
+    public void ResourceTransportFindsTypeAfterExplanatoryTextAndForwardsOnlyFollowingPrompt()
+    {
+        const string body = """
+            RESOURCE 요청을 준비합니다.
+            RESOURCE_TYPE: IMAGE
+            디펜스게임용 기관총 포탑 이미지를 생성해줘.
+            투명 배경 PNG로 만들어줘.
+            """;
+
+        Assert.True(ResourceTransportContract.TryParse(body, out var request, out var error), error);
+        Assert.Null(error);
+        Assert.Equal("IMAGE", request!.Type);
+        Assert.DoesNotContain("RESOURCE 요청을 준비합니다.", request.Prompt);
+        Assert.Contains("디펜스게임용 기관총 포탑", request.Prompt);
+        Assert.Contains("투명 배경 PNG", request.Prompt);
+    }
+
+    [Fact]
+    public void ResourceTransportRejectsDuplicateTypeMarkers()
+    {
+        const string body = """
+            RESOURCE_TYPE: IMAGE
+            첫 요청
+            RESOURCE_TYPE: AUDIO
+            둘째 요청
+            """;
+
+        Assert.False(ResourceTransportContract.TryParse(body, out _, out var error));
+        Assert.Equal("RESOURCE_TYPE_DUPLICATE", error);
+    }
+
     [Theory]
     [InlineData("IMAGE")]
     [InlineData("AUDIO")]
