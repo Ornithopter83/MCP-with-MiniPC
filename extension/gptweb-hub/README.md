@@ -1,6 +1,6 @@
 # GPTWeb-Hub 확장
 
-버전: 0.2.0 / build 2026-09-26.5
+버전: 0.2.1 / build 2026-09-26.6
 
 ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 
@@ -51,3 +51,14 @@ ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 ② 생성 파일 다운로드는 허용된 ChatGPT/OpenAI 파일 호스트로 제한한다.
 ③ RESOURCE 최종 저장 경로는 Worker가 작업공간 하위인지 다시 검증한다.
 ④ 확장은 Web 응답이나 생성 리소스의 의미적 품질을 판단하지 않는다.
+
+제7조 (관리형 탭 단일화)
+
+① Worker가 HQ 또는 RESOURCE 브라우저를 시작할 때 `projecthub-managed-role`이 포함된 launch 탭만 탭 정리 명령을 시작한다.
+② 해당 profile 안의 `chatgpt.com` 및 `www.chatgpt.com` 탭만 정리 대상으로 삼는다.
+③ 저장된 conversationId가 있으면 해당 대화 탭을 하나만 유지하고 활성 탭으로 만든다.
+④ 저장된 conversationId가 없으면 Worker가 연 ChatGPT 탭 하나만 유지해 사용자가 로그인하고 대화를 선택할 수 있게 한다.
+⑤ 동일 대화의 복원 탭이 이미 있어도 Worker launch 탭이 해당 대화를 열고 있으면 launch 탭을 우선 유지한다.
+⑥ 다른 사이트 탭, 인증용 외부 페이지와 다른 browser profile의 탭은 닫지 않는다.
+⑦ 탭 정리 명령은 background service worker에서 직렬화해 동시에 여러 content script가 정리 요청을 보내더라도 중복 제거 경쟁을 줄인다.
+
