@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.3.4", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.3.5", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -98,6 +98,14 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("monitorSendReady(prompt,attachmentState.count)", StringComparison.Ordinal));
         Assert.True(source.Contains("if(attachmentCount>0)", StringComparison.Ordinal));
         Assert.True(source.Contains("첨부 처리/Send 활성화를 계속 기다리는 중", StringComparison.Ordinal));
+        Assert.True(source.Contains("generationStartEvidence", StringComparison.Ordinal));
+        Assert.True(source.Contains("GENERATION_STARTED_", StringComparison.Ordinal));
+        Assert.True(source.Contains("SEND_FALLBACK", StringComparison.Ordinal));
+        Assert.True(source.Contains("SEND_CONFIRM_DIAGNOSTIC", StringComparison.Ordinal));
+        Assert.True(source.Contains("fallbackSubmitComposer", StringComparison.Ordinal));
+        Assert.True(source.Contains("form.requestSubmit()", StringComparison.Ordinal));
+        Assert.False(source.Contains("new PointerEvent('pointerdown'", StringComparison.Ordinal));
+        Assert.False(source.Contains("SEND_CONFIRM_TIMEOUT", StringComparison.Ordinal));
 
         var assignmentIndex = source.IndexOf("input.files=transfer.files;", StringComparison.Ordinal);
         var countValidationIndex = source.IndexOf("if(assignedFileCount!==attachments.length)", StringComparison.Ordinal);
