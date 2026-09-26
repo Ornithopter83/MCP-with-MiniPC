@@ -138,3 +138,19 @@
 ⑫ UserAttachmentTransport 회귀 테스트를 추가해 cache/hash, 실행 바이너리 차단과 source script 허용, workspace staging, AI prompt metadata, Bridge attachment ID/hash를 검증하도록 했다.
 ⑬ 이 환경에서는 실제 Windows Worker 빌드와 UI/Web E2E를 아직 실행하지 못했다.
 
+제12조 (숨김 상태 Send false negative 방어)
+
+① 실제 테스트는 관리형 Chromium이 숨김 상태인 동안 수행됐다.
+② Worker 로그에서는 Send 버튼 클릭이 완료됐지만 5분 동안 실제 user turn 또는 assistant 응답 확인에 실패해 SEND_BUTTON_FIND timeout과 PARALLEL_HQ_EXECUTION_FAILED로 종료됐다.
+③ 같은 실행의 ChatGPT 화면에는 HQ의 WORK_GRAPH_PATCH 응답이 완성된 상태로 존재했으므로 실제 Web Send와 assistant 생성은 성공했고 확장 감지가 false negative였다고 판단했다.
+④ 기존 userMessages는 일반 conversation article까지 user 후보로 포함하고 새 메시지 개수 증가를 필수 조건으로 사용해 DOM virtualization이나 turn 교체에 취약했다.
+⑤ user/assistant를 role-aware conversationTurns로 분리하고 role, message key, 정규화 text를 합친 fingerprint baseline을 전송 전에 저장하도록 변경했다.
+⑥ 새 user turn은 총 메시지 개수가 늘지 않아도 baseline에 없던 동일 prompt turn이면 전송 증거로 인정한다.
+⑦ assistant 증거는 이번 작업의 Send trigger 또는 현재 user turn 확인 이후에만 인정해 기존 streaming 응답 변화가 새 작업 증거로 오인되지 않게 했다.
+⑧ SEND_BUTTON_FIND/SEND_CONFIRM 중 MutationObserver가 발견한 전송 증거는 latchedSendEvidence에 즉시 고정하고 sessionStorage task memory에도 저장한다.
+⑨ polling이 늦거나 DOM이 이후 virtualization돼도 latch된 증거는 SEND_EVIDENCE_LATCHED / SEND_MUTATION_CONFIRMED 단계로 유지한다.
+⑩ 5분 제한시간 직전에는 현재 DOM을 다시 reconciliation해 이번 prompt user turn과 뒤따른 assistant turn을 찾고 발견하면 SEND_TIMEOUT_RECOVERED로 WAIT_RESPONSE에 복구한다.
+⑪ 확장 version/build는 0.3.1 / 2026-09-26.10으로 올리고 Worker Bridge 기대 version/build도 동일하게 동기화했다.
+⑫ 내장 확장 계약 테스트에 fingerprint baseline, evidence latch, mutation 확인, timeout reconciliation과 현재 Send 이전 assistant 오탐 방지 조건을 추가했다.
+⑬ JavaScript 문법과 version/build 정합성은 정적으로 확인하고 실제 Windows Worker 빌드·게시 및 숨김 상태 E2E는 후속 확인 대상으로 남긴다.
+
