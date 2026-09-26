@@ -3733,7 +3733,7 @@ public partial class MainWindow : Window
         string directory,
         DateTimeOffset startedAt)
     {
-        var stem = startedAt.ToLocalTime().ToString(
+        var stem = startedAt.ToString(
             "yyMMdd-HHmmss",
             System.Globalization.CultureInfo.InvariantCulture);
         var candidate = Path.Combine(directory, stem + ".txt");
