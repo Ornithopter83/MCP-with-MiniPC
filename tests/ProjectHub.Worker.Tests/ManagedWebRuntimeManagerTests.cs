@@ -40,6 +40,23 @@ public sealed class ManagedWebRuntimeManagerTests
     }
 
     [Fact]
+    public void WorkerOwnedBrowserExecutable_AcceptsManagedRuntimeAndRejectsArbitraryChrome()
+    {
+        var managed = Path.Combine(
+            WorkerPaths.ManagedWebBrowserRuntime,
+            "chrome-win64",
+            "chrome.exe");
+        var arbitrary = Path.Combine(
+            Path.GetTempPath(),
+            "external-chrome",
+            "chrome.exe");
+
+        Assert.True(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(managed));
+        Assert.False(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(arbitrary));
+        Assert.False(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(null));
+    }
+
+    [Fact]
     public void HiddenLaunchArguments_UseDedicatedProfileAndExtension()
     {
         var extension = Path.Combine(Path.GetTempPath(), "projecthub-extension");
