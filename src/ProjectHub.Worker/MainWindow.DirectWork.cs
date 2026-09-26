@@ -225,10 +225,16 @@ public partial class MainWindow
         if (string.IsNullOrWhiteSpace(prompt) || prompt == DashboardPromptPlaceholder)
             return Task.CompletedTask;
 
-        return RunDirectWorkAsync(prompt, appendToHistory: false);
+        return RunDirectWorkAsync(
+            prompt,
+            appendToHistory: false,
+            SnapshotInitialAttachments());
     }
 
-    private async Task RunDirectWorkAsync(string prompt, bool appendToHistory)
+    private async Task RunDirectWorkAsync(
+        string prompt,
+        bool appendToHistory,
+        IReadOnlyList<UserAttachmentInput>? attachments = null)
     {
         var role = GetDirectWorkRole();
         if (role is null)
@@ -263,6 +269,24 @@ public partial class MainWindow
             return;
         }
 
+        IReadOnlyList<AiInputAttachment> stagedAttachments;
+        try
+        {
+            stagedAttachments = StageUserAttachments(
+                attachments,
+                workingDirectory,
+                "direct-" + Guid.NewGuid().ToString("N"));
+        }
+        catch (Exception exception)
+        {
+            DashboardPreflightText.Text = "첨부 준비 실패: " + exception.Message;
+            DashboardPreflightText.Foreground =
+                System.Windows.Media.Brushes.Firebrick;
+            return;
+        }
+
+        ConsumePendingAttachments(attachments);
+
         if (!appendToHistory)
             _historyEvents.Clear();
 
@@ -284,13 +308,13 @@ public partial class MainWindow
             WorkerHistoryCardFormatter.Preview(prompt),
             Encoding.UTF8.GetByteCount(prompt),
             1,
-            null,
+            attachments?.Count,
             "REQUESTED",
             null)
         {
             FullMessage = prompt,
             TokenDetails = "토큰 · 사용자 입력",
-            FileDetails = "파일 · 해당 없음",
+            FileDetails = FormatAttachmentHistory(attachments),
             IconAssetOverride = providerVisual.ColorAsset
         };
         _historyEvents.Add(requestCard);
@@ -338,7 +362,8 @@ public partial class MainWindow
                                 role.Provider);
                     }));
                 },
-                IgnoreProjectInstructions: true));
+                IgnoreProjectInstructions: true,
+                InputAttachments: stagedAttachments));
 
             _lastActivityAt = DateTimeOffset.UtcNow;
             var response = string.IsNullOrWhiteSpace(result.FinalMessage)
