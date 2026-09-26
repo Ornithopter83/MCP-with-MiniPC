@@ -172,6 +172,29 @@ public sealed class RoleContractBoundaryTests
         Assert.Equal("NEXT_INVALID", LegacyWebJevContract.ParseNext("[NEXT : COORDINATOR]\n[REPORT]\n내용").Error);
         Assert.Equal("NEXT_DUPLICATE", LegacyWebJevContract.ParseNext("[NEXT : WEB]\n[REPORT]\n내용\n[NEXT : JEV]").Error);
     }
+
+
+    [Fact]
+    public void LegacyBodyMarkerCanAppearAfterExplanatoryText()
+    {
+        var report = LegacyWebJevContract.ParseNext("[NEXT : WEB]\n설명\n[REPORT]\n내용");
+        Assert.Equal(NextRoute.Web, report.Route);
+        Assert.Null(LegacyWebJevContract.ValidateStructure(report));
+
+        var validation = LegacyWebJevContract.ParseNext("[NEXT : JEV]\n설명\n[VALIDATION REQUEST]\n질문");
+        Assert.Equal(NextRoute.Jev, validation.Route);
+        Assert.Null(LegacyWebJevContract.ValidateStructure(validation));
+    }
+
+    [Fact]
+    public void LegacyBodyMarkerRejectsDuplicates()
+    {
+        var report = LegacyWebJevContract.ParseNext("[NEXT : WEB]\n[REPORT]\n내용\n[REPORT]");
+        Assert.Equal("REPORT_DUPLICATE", LegacyWebJevContract.ValidateStructure(report));
+
+        var validation = LegacyWebJevContract.ParseNext("[NEXT : JEV]\n[VALIDATION REQUEST]\n질문\n[VALIDATION REQUEST]");
+        Assert.Equal("VALIDATION_REQUEST_DUPLICATE", LegacyWebJevContract.ValidateStructure(validation));
+    }
 }
 
 public sealed class JudgeTransportContractTests
