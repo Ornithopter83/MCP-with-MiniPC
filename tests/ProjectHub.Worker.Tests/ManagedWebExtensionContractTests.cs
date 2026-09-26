@@ -13,7 +13,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.3.3", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.3.4", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -96,6 +96,17 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("monitorSendReady(prompt,attachmentState.count)", StringComparison.Ordinal));
         Assert.True(source.Contains("if(attachmentCount>0)", StringComparison.Ordinal));
         Assert.True(source.Contains("첨부 처리/Send 활성화를 계속 기다리는 중", StringComparison.Ordinal));
+
+        var assignmentIndex = source.IndexOf("input.files=transfer.files;", StringComparison.Ordinal);
+        var countValidationIndex = source.IndexOf("if(assignedFileCount!==attachments.length)", StringComparison.Ordinal);
+        var inputEventIndex = source.IndexOf("input.dispatchEvent(new Event('input'", StringComparison.Ordinal);
+        var changeEventIndex = source.IndexOf("input.dispatchEvent(new Event('change'", StringComparison.Ordinal);
+
+        Assert.True(assignmentIndex >= 0);
+        Assert.True(countValidationIndex > assignmentIndex);
+        Assert.True(inputEventIndex > countValidationIndex);
+        Assert.True(changeEventIndex > inputEventIndex);
+        Assert.False(source.Contains("file input count mismatch", StringComparison.Ordinal));
     }
 
     [Fact]

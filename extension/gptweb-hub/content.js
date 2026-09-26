@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
-  const EXTENSION_VERSION = '0.3.3';
-  const EXTENSION_BUILD = '2026-09-27.2';
+  const EXTENSION_VERSION = '0.3.4';
+  const EXTENSION_BUILD = '2026-09-27.3';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -33,7 +33,7 @@
     '<div class="status-list">'+statusRow('web','GPT Web','—','')+statusRow('worker','Worker','—','')+statusRow('status','Status','Disconnected','')+'</div>'+
     '<div class="role-bind"><span class="role-binding">역할 미연결</span><button class="status-action bind-hq" type="button">HQ 연결</button><button class="status-action bind-resource" type="button">RESOURCE 연결</button></div>'+
     '<main class="task-section"><div class="section-label">TASK</div><article class="task-card" data-state="IDLE"><div class="task-main"><div class="task-icon">'+icon(icons.idle)+'</div><div class="task-copy"><h2 class="task-title">작업 없음</h2><p class="task-detail">현재 처리할 요청이 없습니다.</p></div><div class="spinner"></div></div><div class="task-meta"><span>Task</span><strong class="task-id">—</strong><span>|</span><span>From</span><strong class="task-from">—</strong></div><div class="message-block worker-message-block"><h3>Worker Message</h3><div class="worker-message">대기 중</div></div><div class="message-block response-block hidden"><h3>Web Response</h3><div class="web-response">응답을 기다리고 있습니다.</div></div><button class="secondary-button resource-rescan hidden" type="button">현재 결과 다시 수집</button></article></main>'+
-    '<footer class="hub-footer">GPTWeb-Hub <span>v0.3.3</span></footer></section>'+
+    '<footer class="hub-footer">GPTWeb-Hub <span>v0.3.4</span></footer></section>'+
     '<section class="settings-modal hidden"><div class="settings-dialog"><div class="settings-title-row"><h2>GPTWeb-Hub Settings</h2><button class="settings-close">'+icon(icons.close)+'</button></div><form class="settings-form"><label>Host<input name="bridgeHost"></label><label>Port<input name="bridgePort" type="number"></label><label>Base Path<input name="bridgeBasePath"></label><div class="settings-test-row"><button class="secondary-button test-connection" type="button">Test Connection</button><span class="test-status">Not tested</span></div><div class="settings-actions"><button class="secondary-button settings-cancel" type="button">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></section>'+
         '<button class="reopen" aria-label="Open GPTWeb-Hub">'+icon(icons.info)+'</button>';
   function statusRow(kind,label,value,action) { return '<div class="status-row" data-kind="'+kind+'"><strong>'+label+'</strong><span class="status-value status-pending">'+value+'</span>'+(action?'<button class="status-action web-connect" type="button">연결</button>':'')+'</div>'; }
@@ -165,10 +165,11 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
       fileNames.push(fileName);
     }
     input.files=transfer.files;
+    const assignedFileCount=input.files?.length||0;
+    if(assignedFileCount!==attachments.length)throw new Error('ATTACH_INPUT_SET_FAILED: expected '+attachments.length+', got '+assignedFileCount);
+    reportProgress('ATTACHMENT_INPUT_SET',attachments.length+'개 파일을 ChatGPT file input에 설정했습니다.');
     input.dispatchEvent(new Event('input',{bubbles:true,composed:true}));
     input.dispatchEvent(new Event('change',{bubbles:true,composed:true}));
-    if(input.files?.length!==attachments.length)throw new Error('ATTACH_INPUT_SET_FAILED: file input count mismatch');
-    reportProgress('ATTACHMENT_INPUT_SET',attachments.length+'개 파일을 ChatGPT file input에 설정했습니다.');
     await waitForAttachmentReady(fileNames);
     return {count:attachments.length,fileNames};
   }
