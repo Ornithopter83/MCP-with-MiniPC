@@ -553,7 +553,7 @@ public partial class MainWindow : Window
             await RunDirectWorkAsync(
                 directPrompt,
                 appendToHistory: true,
-                directAttachments);
+                attachments: directAttachments);
             return;
         }
 
@@ -1683,14 +1683,16 @@ public partial class MainWindow : Window
         string workingDirectory,
         WorkerAiRoleSettings coordinator,
         WorkerAiRoleSettings implementer,
-        CoordinatorContinuationState? continuation = null)
+        CoordinatorContinuationState? continuation = null,
+        IReadOnlyList<UserAttachmentInput>? attachments = null)
         => RunParallelCoordinatorFirstJobAsync(
             request,
             selectedThread,
             workingDirectory,
             coordinator,
             implementer,
-            continuation);
+            continuation,
+            attachments);
 
     private async Task<AiRoleRunResult> RunHqRoleAsync(
         string jobId,
