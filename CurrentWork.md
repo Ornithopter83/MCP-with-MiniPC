@@ -29,11 +29,11 @@
 제5조 (WORKER)
 
 ① 상태는 중단이다.
-② 완료하려 한 작업은 HQ/RESOURCE용 Chromium을 일반 탭 브라우저가 아닌 clean ChatGPT app window로 매번 새로 시작하고, persistent profile의 로그인 정보는 유지하면서 이전 browser session/tab restore 정보만 제거하며, 로그인·표시/숨김 전환의 프로세스 종료 대기를 UI thread 밖으로 이동하는 것이다.
-③ 중단 지점은 app mode 실행 인자, session restore 정리, fresh visible/hidden 재시작, managed runtime token 전달, 정책·테스트 반영까지 완료했고 새 Worker 빌드·게시 후 로그인 유지·단일 app window·비프리징 E2E 확인이 남은 상태다.
+② 완료하려 한 작업은 숨김 HQ/RESOURCE app window가 시간이 지나면 heartbeat 대기 상태로 떨어지는 문제를 막기 위해 최소화·SW_HIDE 방식 대신 화면 밖 정상 렌더링 상태를 사용하고 Chromium background throttling을 비활성화하며 heartbeat 생존 허용 구간을 30초로 완화하는 것이다.
+③ 중단 지점은 Worker 실행 인자, heartbeat 판정, 회귀 테스트와 정책 반영까지 완료했고 새 Worker 빌드·게시 후 장시간 숨김 상태에서 heartbeat 유지와 실제 HQ/RESOURCE 작업 송수신 E2E 확인이 남은 상태다.
 
 제6조 (WEB)
 
 ① 상태는 중단이다.
-② 완료하려 한 작업은 GPTWeb-Hub를 Worker 관리 Chromium 전용 bridge로 제한하고 일반 Chrome이나 runtime token이 없는 ChatGPT 페이지가 Worker와 연결되지 않게 하며 tabs 권한과 탭 정리 로직을 제거하는 것이다.
-③ 중단 지점은 확장 0.3.0 / build 2026-09-26.9, managed-only preflight, X-ProjectHub-Managed-Token 검증, tabs 권한 제거와 JavaScript 정적 검증까지 완료했고 실제 일반 Chrome 비연결·HQ/RESOURCE 송수신 E2E 확인이 남은 상태다.
+② 완료하려 한 작업은 관리형 app window의 content script가 숨김 상태에서도 1.5초 refresh/heartbeat와 Web 자동화를 계속 수행하도록 브라우저 렌더러가 background throttling되지 않는 실행 환경을 보장하는 것이다.
+③ 중단 지점은 확장 자체의 추가 변경 없이 Worker Chromium 실행 방식과 연결 생존 판정을 보강했고 실제 장시간 hidden app window에서 heartbeat·메시지 전송·응답 수집이 유지되는지 확인해야 한다.
