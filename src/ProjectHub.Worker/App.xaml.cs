@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application
     private EventWaitHandle? _activateEvent;
     private DispatcherTimer? _activationTimer;
     private BridgeServer? _bridgeServer;
+    private ManagedWebRuntimeManager? _managedWebRuntimeManager;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -51,8 +52,25 @@ public partial class App : System.Windows.Application
             _bridgeServer = null;
         }
 
+        try
+        {
+            _managedWebRuntimeManager = new ManagedWebRuntimeManager(WorkerPaths.Extension);
+            _managedWebRuntimeManager.StartHidden(
+                ManagedWebRole.Hq,
+                _bridgeServer?.GetRoleConversationId("HQ"));
+            _managedWebRuntimeManager.StartHidden(
+                ManagedWebRole.Resource,
+                _bridgeServer?.GetRoleConversationId("RESOURCE"));
+        }
+        catch (Exception ex)
+        {
+            LogStartupFailure(ex);
+            _managedWebRuntimeManager?.Dispose();
+            _managedWebRuntimeManager = null;
+        }
+
         base.OnStartup(e);
-        MainWindow = new MainWindow(_bridgeServer);
+        MainWindow = new MainWindow(_bridgeServer, _managedWebRuntimeManager);
         MainWindow.Show();
 
         _activationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -65,6 +83,8 @@ public partial class App : System.Windows.Application
         _activationTimer?.Stop();
         try
         {
+            _managedWebRuntimeManager?.Dispose();
+            _managedWebRuntimeManager = null;
             _bridgeServer?.Dispose();
             _activateEvent?.Dispose();
         }
