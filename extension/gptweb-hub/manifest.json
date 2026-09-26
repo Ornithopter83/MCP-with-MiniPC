@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "GPTWeb-Hub UI Preview",
-  "version": "0.2.2",
-  "description": "A visual preview of the GPTWeb-Hub Worker bridge panel.",
+  "name": "ProjectHub Managed Web Bridge",
+  "version": "0.3.0",
+  "description": "Bridge for ProjectHub-managed ChatGPT app windows.",
   "background": {
     "service_worker": "background.js"
   },
@@ -19,8 +19,7 @@
     }
   ],
   "permissions": [
-    "storage",
-    "tabs"
+    "storage"
   ],
   "host_permissions": [
     "http://127.0.0.1:43821/*",
