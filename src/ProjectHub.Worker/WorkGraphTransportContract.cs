@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace ProjectHub.Worker;
@@ -14,17 +15,38 @@ public static class WorkGraphTransportContract
 
         var normalized = (body ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n');
         var lines = normalized.Split('\n');
-        var first = Array.FindIndex(lines, line => !string.IsNullOrWhiteSpace(line));
-        if (first < 0 || !string.Equals(lines[first].Trim(), Marker, StringComparison.Ordinal))
+        var markerIndexes = lines
+            .Select((line, index) => (Line: line.Trim(), Index: index))
+            .Where(item => item.Line.StartsWith(Marker, StringComparison.Ordinal))
+            .Select(item => item.Index)
+            .ToArray();
+
+        if (markerIndexes.Length == 0)
         {
             error = "WORK_GRAPH_PATCH_MARKER_MISSING";
             return false;
         }
 
-        var json = string.Join("\n", lines.Skip(first + 1)).Trim();
-        if (string.IsNullOrWhiteSpace(json))
+        if (markerIndexes.Length > 1)
         {
-            error = "WORK_GRAPH_PATCH_JSON_MISSING";
+            error = "WORK_GRAPH_PATCH_MARKER_DUPLICATE";
+            return false;
+        }
+
+        var markerIndex = markerIndexes[0];
+        var markerLine = lines[markerIndex].Trim();
+        var inlinePayload = markerLine[Marker.Length..].Trim();
+        var payload = string.Join("\n", new[]
+        {
+            inlinePayload,
+            string.Join("\n", lines.Skip(markerIndex + 1))
+        }.Where(value => value.Length > 0));
+
+        if (!TryExtractFirstJsonObject(payload, out var json, out var jsonFound))
+        {
+            error = jsonFound
+                ? "WORK_GRAPH_PATCH_JSON_INVALID"
+                : "WORK_GRAPH_PATCH_JSON_MISSING";
             return false;
         }
 
@@ -55,6 +77,44 @@ public static class WorkGraphTransportContract
 
         patch = new WorkGraphPatch(dto.ExpectedRevision.Value, operations);
         return true;
+    }
+
+    private static bool TryExtractFirstJsonObject(
+        string payload,
+        out string json,
+        out bool jsonFound)
+    {
+        json = string.Empty;
+        jsonFound = false;
+
+        for (var searchStart = 0; searchStart < payload.Length;)
+        {
+            var objectStart = payload.IndexOf('{', searchStart);
+            if (objectStart < 0)
+                return false;
+
+            jsonFound = true;
+            var bytes = Encoding.UTF8.GetBytes(payload[objectStart..]);
+            try
+            {
+                var reader = new Utf8JsonReader(bytes, isFinalBlock: true, state: default);
+                if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+                {
+                    searchStart = objectStart + 1;
+                    continue;
+                }
+
+                using var document = JsonDocument.ParseValue(ref reader);
+                json = document.RootElement.GetRawText();
+                return true;
+            }
+            catch (JsonException)
+            {
+                searchStart = objectStart + 1;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryMapOperation(
@@ -229,20 +289,32 @@ public static class WorkItemReportContract
             .Replace("\r\n", "\n")
             .Replace('\r', '\n')
             .Split('\n');
-        var first = Array.FindIndex(lines, line => !string.IsNullOrWhiteSpace(line));
-        if (first < 0)
+        if (!lines.Any(line => !string.IsNullOrWhiteSpace(line)))
         {
             error = "WORK_ITEM_REPORT_EMPTY";
             return false;
         }
 
-        var line = lines[first].Trim();
-        if (!line.StartsWith(Prefix, StringComparison.Ordinal))
+        var statusIndexes = lines
+            .Select((line, index) => (Line: line.Trim(), Index: index))
+            .Where(item => item.Line.StartsWith(Prefix, StringComparison.Ordinal))
+            .Select(item => item.Index)
+            .ToArray();
+
+        if (statusIndexes.Length == 0)
         {
             error = "WORK_ITEM_STATUS_MISSING";
             return false;
         }
 
+        if (statusIndexes.Length > 1)
+        {
+            error = "WORK_ITEM_STATUS_DUPLICATE";
+            return false;
+        }
+
+        var statusIndex = statusIndexes[0];
+        var line = lines[statusIndex].Trim();
         var value = line[Prefix.Length..].Trim().ToUpperInvariant();
         var status = value switch
         {
@@ -259,7 +331,9 @@ public static class WorkItemReportContract
             return false;
         }
 
-        var remainder = string.Join("\n", lines.Skip(first + 1)).Trim();
+        var remainder = string.Join(
+            "\n",
+            lines.Where((_, index) => index != statusIndex)).Trim();
         report = new WorkItemReport(status.Value, remainder);
         return true;
     }
