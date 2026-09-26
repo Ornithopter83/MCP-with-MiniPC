@@ -49,9 +49,10 @@
 제7조 (관리형 탭 정리)
 
 ① 관리형 브라우저의 권위 있는 launch 탭은 background service worker에 ChatGPT 탭 단일화를 요청한다.
-② 저장된 conversationId가 있으면 같은 대화의 launch 탭을 우선 유지하고 나머지 ChatGPT 탭을 닫는다.
+② 저장된 conversationId가 있으면 `/c/<id>`뿐 아니라 `/g/.../c/<id>` 같은 Project/GPT 경로에서도 같은 conversationId를 인식하고, 실제 기존 대화 탭을 canonical launch 탭보다 우선 유지한다.
 ③ conversationId가 없으면 launch 탭 하나만 남겨 로그인과 대화 선택을 계속할 수 있게 한다.
 ④ background service worker는 탭 정리 요청을 직렬화한다.
 ⑤ 탭 정리 대상은 현재 browser profile의 chatgpt.com 및 www.chatgpt.com 탭으로 제한한다.
 ⑥ 다른 사이트, 다른 profile과 운영체제의 다른 브라우저는 탭 정리 대상으로 삼지 않는다.
+⑦ Worker의 역할별 탭 정리 generation이 증가하면 관리형 content script는 background service worker에 단일 탭 정리를 다시 요청한다.
 
