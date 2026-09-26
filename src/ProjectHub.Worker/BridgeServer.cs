@@ -544,6 +544,35 @@ public sealed class BridgeServer : IDisposable
                     return new BridgeResponse(true, failed);
                 }
             }
+            else if (request.Success && resource is null && HasResultFiles(request))
+            {
+                try
+                {
+                    savedPaths = SaveWebResults(task.Id, request);
+                    savedPath = savedPaths.FirstOrDefault();
+                    savedFileReceipts = savedPaths.Select(CreateFileReceipt).ToList();
+                }
+                catch (Exception exception)
+                {
+                    var failed = task with
+                    {
+                        Status = "FAILED",
+                        Result = "WEB 응답 파일 저장 실패: " + exception.Message,
+                        FinishReason = "web_result_save_failed",
+                        CompletedAt = DateTimeOffset.UtcNow,
+                        SavedPath = null,
+                        SavedPaths = null,
+                        SavedFileReceipts = null,
+                        LastStage = "WEB_RESULT_SAVE_FAILED",
+                        LastStageDetail = exception.Message,
+                        LastProgressAt = DateTimeOffset.UtcNow
+                    };
+                    ReplaceTask(failed);
+                    SaveState();
+                    TaskChanged?.Invoke(failed);
+                    return new BridgeResponse(true, failed);
+                }
+            }
             else if (!request.Success && resource is not null)
             {
                 resource = resource with { Status = "FAILED" };
@@ -655,48 +684,87 @@ public sealed class BridgeServer : IDisposable
 
     private static string NormalizeRole(string role) => role.Trim().ToUpperInvariant();
 
-    private static List<string> SaveResourceResults(ResourceRequest resource, ResultRequest request)
+    private static bool HasResultFiles(ResultRequest request)
     {
-        if (!resource.Type.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase) &&
-            !ResourceTransportContract.IsSupportedType(resource.Type))
-            throw new InvalidOperationException("RESOURCE_TYPE_UNSUPPORTED");
+        if (request.ResultFiles?.Any(file => !string.IsNullOrWhiteSpace(file.Base64)) == true)
+            return true;
+        return !string.IsNullOrWhiteSpace(request.ResultFileBase64);
+    }
 
-        var payloads = request.ResultFiles?.Where(file => !string.IsNullOrWhiteSpace(file.Base64)).ToList()
+    private static List<string> SaveWebResults(string taskId, ResultRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(taskId) ||
+            taskId.Any(character => !char.IsLetterOrDigit(character)))
+            throw new InvalidOperationException("WEB_RESULT_TASK_ID_INVALID");
+
+        var payloads = CollectResultPayloads(request);
+        if (payloads.Count == 0)
+            throw new InvalidOperationException("WEB_RESULT_DATA_MISSING");
+        if (payloads.Count > 32)
+            throw new InvalidOperationException("WEB_RESULT_FILE_COUNT_INVALID");
+
+        var root = Path.GetFullPath(WorkerPaths.WebResults);
+        var targetDirectory = Path.GetFullPath(Path.Combine(root, taskId));
+        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        if (!targetDirectory.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("WEB_RESULT_TARGET_OUTSIDE_ROOT");
+
+        return SaveDecodedResultFiles(
+            payloads,
+            targetDirectory,
+            "WEB_RESULT");
+    }
+
+    private static List<ResourceResultFile> CollectResultPayloads(ResultRequest request)
+    {
+        var payloads = request.ResultFiles?
+            .Where(file => !string.IsNullOrWhiteSpace(file.Base64))
+            .ToList()
             ?? new List<ResourceResultFile>();
         if (payloads.Count == 0 && !string.IsNullOrWhiteSpace(request.ResultFileBase64))
+        {
             payloads.Add(new ResourceResultFile(
                 request.ResultFileBase64,
                 request.ResultFileMimeType ?? "application/octet-stream",
                 request.ResultFileName));
-        if (payloads.Count == 0)
-            throw new InvalidOperationException("RESOURCE_DATA_MISSING");
-        if (payloads.Count > 32)
-            throw new InvalidOperationException("RESOURCE_FILE_COUNT_INVALID");
+        }
+        return payloads;
+    }
 
-        var root = Path.GetFullPath(resource.WorkspaceRoot);
-        var relativeDirectory = resource.TargetDirectory.Replace('/', Path.DirectorySeparatorChar);
-        var targetDirectory = Path.GetFullPath(Path.Combine(root, relativeDirectory));
-        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!targetDirectory.Equals(root, StringComparison.OrdinalIgnoreCase) &&
-            !targetDirectory.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("RESOURCE_TARGET_OUTSIDE_WORKSPACE");
-
+    private static List<string> SaveDecodedResultFiles(
+        IReadOnlyList<ResourceResultFile> payloads,
+        string targetDirectory,
+        string errorPrefix)
+    {
         var decoded = new List<(byte[] Bytes, string FileName)>();
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long totalBytes = 0;
+
         for (var index = 0; index < payloads.Count; index++)
         {
             var payload = payloads[index];
-            var bytes = Convert.FromBase64String(payload.Base64);
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(payload.Base64);
+            }
+            catch (FormatException)
+            {
+                throw new InvalidOperationException(errorPrefix + "_BASE64_INVALID");
+            }
+
             if (bytes.Length == 0 || bytes.Length > 25 * 1024 * 1024)
-                throw new InvalidOperationException("RESOURCE_FILE_SIZE_INVALID");
+                throw new InvalidOperationException(errorPrefix + "_FILE_SIZE_INVALID");
+
             var actualSha256 = Convert.ToHexString(SHA256.HashData(bytes));
             if (!string.IsNullOrWhiteSpace(payload.Sha256) &&
                 !string.Equals(actualSha256, payload.Sha256.Trim(), StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("RESOURCE_HASH_MISMATCH");
+                throw new InvalidOperationException(errorPrefix + "_HASH_MISMATCH");
+
             totalBytes += bytes.Length;
             if (totalBytes > 128L * 1024 * 1024)
-                throw new InvalidOperationException("RESOURCE_TOTAL_SIZE_INVALID");
+                throw new InvalidOperationException(errorPrefix + "_TOTAL_SIZE_INVALID");
 
             var extension = ResourceFileExtension(payload.MimeType, payload.FileName);
             var fileName = ResourceFileName(payload.FileName, extension, index + 1, usedNames);
@@ -704,9 +772,7 @@ public sealed class BridgeServer : IDisposable
         }
 
         Directory.CreateDirectory(targetDirectory);
-        var paths = decoded
-            .Select(item => Path.Combine(targetDirectory, item.FileName))
-            .ToList();
+        var paths = decoded.Select(item => Path.Combine(targetDirectory, item.FileName)).ToList();
         var tempPaths = paths.Select(path => path + ".tmp").ToList();
         try
         {
@@ -725,6 +791,33 @@ public sealed class BridgeServer : IDisposable
             }
             throw;
         }
+    }
+
+    private static List<string> SaveResourceResults(ResourceRequest resource, ResultRequest request)
+    {
+        if (!resource.Type.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase) &&
+            !ResourceTransportContract.IsSupportedType(resource.Type))
+            throw new InvalidOperationException("RESOURCE_TYPE_UNSUPPORTED");
+
+        var payloads = CollectResultPayloads(request);
+        if (payloads.Count == 0)
+            throw new InvalidOperationException("RESOURCE_DATA_MISSING");
+        if (payloads.Count > 32)
+            throw new InvalidOperationException("RESOURCE_FILE_COUNT_INVALID");
+
+        var root = Path.GetFullPath(resource.WorkspaceRoot);
+        var relativeDirectory = resource.TargetDirectory.Replace('/', Path.DirectorySeparatorChar);
+        var targetDirectory = Path.GetFullPath(Path.Combine(root, relativeDirectory));
+        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        if (!targetDirectory.Equals(root, StringComparison.OrdinalIgnoreCase) &&
+            !targetDirectory.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("RESOURCE_TARGET_OUTSIDE_WORKSPACE");
+
+        return SaveDecodedResultFiles(
+            payloads,
+            targetDirectory,
+            "RESOURCE");
     }
 
     private static BridgeFileReceipt CreateFileReceipt(string path)
