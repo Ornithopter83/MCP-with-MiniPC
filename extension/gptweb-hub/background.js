@@ -43,8 +43,18 @@ function isChatGptPageUrl(value) {
 
 function conversationIdFromTabUrl(value) {
   try {
-    const match = new URL(value).pathname.match(/^\/c\/([a-zA-Z0-9-]+)/);
+    const match = new URL(value).pathname.match(/\/c\/([a-zA-Z0-9-]+)/);
     return match ? match[1] : "";
+  } catch {
+    return "";
+  }
+}
+
+function withManagedRoleMarker(value, role) {
+  try {
+    const url = new URL(value);
+    url.searchParams.set("projecthub-managed-role", role);
+    return url.toString();
   } catch {
     return "";
   }
@@ -70,15 +80,22 @@ async function ensureSingleManagedChatGptTab(message, sender) {
   const chatTabs = tabs.filter(tab => isChatGptPageUrl(tab.url || ""));
 
   let target = null;
-  if (requestedConversationId &&
-      senderTab &&
-      conversationIdFromTabUrl(senderTab.url || "") === requestedConversationId) {
-    target = senderTab;
+  if (requestedConversationId) {
+    target = chatTabs.find(tab =>
+      tab.id !== senderTab?.id &&
+      conversationIdFromTabUrl(tab.url || "") === requestedConversationId) || null;
+
+    if (!target &&
+        senderTab &&
+        conversationIdFromTabUrl(senderTab.url || "") === requestedConversationId) {
+      target = senderTab;
+    }
   }
 
-  if (!target && requestedConversationId) {
+  if (!target && !requestedConversationId) {
     target = chatTabs.find(tab =>
-      conversationIdFromTabUrl(tab.url || "") === requestedConversationId) || null;
+      tab.id !== senderTab?.id &&
+      !!conversationIdFromTabUrl(tab.url || "")) || null;
   }
 
   if (!target && senderTab)
@@ -93,16 +110,31 @@ async function ensureSingleManagedChatGptTab(message, sender) {
              conversationIdFromTabUrl(target.url || "") !== requestedConversationId) {
     target = await chrome.tabs.update(target.id, { url: targetUrl, active: true });
   } else {
-    target = await chrome.tabs.update(target.id, { active: true });
+    const markedUrl = withManagedRoleMarker(target.url || "", role);
+    target = await chrome.tabs.update(
+      target.id,
+      markedUrl ? { url: markedUrl, active: true } : { active: true });
   }
 
   const removeIds = chatTabs
     .filter(tab => tab.id !== target?.id)
     .map(tab => tab.id)
     .filter(id => Number.isInteger(id));
+  const senderRemoveId = senderTab?.id && removeIds.includes(senderTab.id)
+    ? senderTab.id
+    : null;
+  const immediateRemoveIds = senderRemoveId
+    ? removeIds.filter(id => id !== senderRemoveId)
+    : removeIds;
 
-  if (removeIds.length)
-    await chrome.tabs.remove(removeIds);
+  if (immediateRemoveIds.length)
+    await chrome.tabs.remove(immediateRemoveIds);
+
+  if (senderRemoveId) {
+    setTimeout(() => {
+      chrome.tabs.remove(senderRemoveId).catch(() => {});
+    }, 150);
+  }
 
   return {
     ok: true,
