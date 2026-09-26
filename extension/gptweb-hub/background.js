@@ -7,6 +7,14 @@ function toBase64(buffer) {
   return btoa(binary);
 }
 
+async function sha256Hex(buffer) {
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return [...new Uint8Array(digest)]
+    .map(value => value.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
 function allowedResourceUrl(value) {
   try {
     const url = new URL(value);
@@ -47,6 +55,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           ok: true,
           base64: toBase64(buffer),
+          sha256: await sha256Hex(buffer),
           mimeType: response.headers.get("content-type") || "application/octet-stream",
           contentDisposition: response.headers.get("content-disposition") || ""
         });
