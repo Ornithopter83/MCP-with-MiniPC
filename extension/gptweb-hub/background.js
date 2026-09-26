@@ -28,7 +28,102 @@ function allowedResourceUrl(value) {
   }
 }
 
+let managedTabCleanupQueue = Promise.resolve();
+
+function isChatGptPageUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" &&
+      (url.hostname.toLowerCase() === "chatgpt.com" ||
+       url.hostname.toLowerCase() === "www.chatgpt.com");
+  } catch {
+    return false;
+  }
+}
+
+function conversationIdFromTabUrl(value) {
+  try {
+    const match = new URL(value).pathname.match(/^\/c\/([a-zA-Z0-9-]+)/);
+    return match ? match[1] : "";
+  } catch {
+    return "";
+  }
+}
+
+function managedConversationUrl(conversationId, role) {
+  const suffix = "?projecthub-managed-role=" + encodeURIComponent(role);
+  return conversationId
+    ? "https://chatgpt.com/c/" + encodeURIComponent(conversationId) + suffix
+    : "https://chatgpt.com/" + suffix;
+}
+
+async function ensureSingleManagedChatGptTab(message, sender) {
+  const role = String(message?.role || "").trim().toUpperCase();
+  if (role !== "HQ" && role !== "RESOURCE")
+    throw new Error("MANAGED_ROLE_INVALID");
+
+  const requestedConversationId = String(message?.conversationId || "").trim();
+  const senderTab = sender?.tab && isChatGptPageUrl(sender.tab.url || "")
+    ? sender.tab
+    : null;
+  const tabs = await chrome.tabs.query({});
+  const chatTabs = tabs.filter(tab => isChatGptPageUrl(tab.url || ""));
+
+  let target = null;
+  if (requestedConversationId) {
+    target = chatTabs.find(tab =>
+      conversationIdFromTabUrl(tab.url || "") === requestedConversationId) || null;
+  }
+
+  if (!target && senderTab)
+    target = senderTab;
+  if (!target && chatTabs.length)
+    target = chatTabs[0];
+
+  const targetUrl = managedConversationUrl(requestedConversationId, role);
+  if (!target) {
+    target = await chrome.tabs.create({ url: targetUrl, active: true });
+  } else if (requestedConversationId &&
+             conversationIdFromTabUrl(target.url || "") !== requestedConversationId) {
+    target = await chrome.tabs.update(target.id, { url: targetUrl, active: true });
+  } else {
+    target = await chrome.tabs.update(target.id, { active: true });
+  }
+
+  const removeIds = chatTabs
+    .filter(tab => tab.id !== target?.id)
+    .map(tab => tab.id)
+    .filter(id => Number.isInteger(id));
+
+  if (removeIds.length)
+    await chrome.tabs.remove(removeIds);
+
+  return {
+    ok: true,
+    role,
+    tabId: target?.id ?? null,
+    removedTabs: removeIds.length,
+    conversationId: conversationIdFromTabUrl(target?.url || "") || requestedConversationId || null
+  };
+}
+
+function queueManagedTabCleanup(message, sender, sendResponse) {
+  managedTabCleanupQueue = managedTabCleanupQueue
+    .catch(() => {})
+    .then(() => ensureSingleManagedChatGptTab(message, sender));
+
+  managedTabCleanupQueue.then(
+    result => sendResponse(result),
+    error => sendResponse({ ok: false, error: error?.message || String(error) })
+  );
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "ensure-single-chatgpt-tab") {
+    queueManagedTabCleanup(message, sender, sendResponse);
+    return true;
+  }
+
   if (message?.type === "reload-extension") {
     sendResponse({ ok: true });
     setTimeout(() => chrome.runtime.reload(), 250);
