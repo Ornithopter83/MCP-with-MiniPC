@@ -2,7 +2,7 @@
 
 갱신일: 2026-09-25
 
-정책 원본은 Master-Polish.md다.
+상위 공통 정책은 Master-Polish.md이며 Worker 세부 정책은 Worker-Polish.md다.
 
 제1조 (목표)
 
@@ -316,7 +316,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 
 ① 단계 0 — 기준선과 문서
 - 복구 branch 생성
-- Master-Polish.md 목표 정책 반영
+- Worker-Polish.md 목표 정책 반영
 - 본 작업 계획 문서 활성화
 - 필요한 구현 로드맵 갱신
 
