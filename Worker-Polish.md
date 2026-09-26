@@ -465,9 +465,11 @@ Integration:
 제15조 (관리형 Web 단일 탭)
 
 ① HQ와 RESOURCE의 관리형 browser profile은 각각 ChatGPT 작업 탭 하나를 활성 상태로 유지하는 것을 원칙으로 한다.
-② Worker가 관리형 브라우저를 시작하거나 로그인·표시할 때 Worker launch 탭을 기준으로 같은 profile의 ChatGPT 탭을 정리할 수 있다.
+② Worker가 관리형 브라우저를 시작하거나 로그인·표시할 때 같은 profile의 ChatGPT 탭을 하나로 정리할 수 있다. 저장된 conversationId와 일치하는 기존 Project/GPT 대화 탭이 있으면 임시 canonical launch 탭보다 기존 대화 탭을 우선 유지한다.
 ③ 저장된 conversationId가 있으면 해당 대화 하나를 유지하고, 없으면 로그인과 대화 선택을 위한 ChatGPT 탭 하나를 유지한다.
 ④ 탭 정리는 해당 profile의 chatgpt.com 계열 탭에만 적용하며 다른 사이트와 외부 브라우저의 탭을 자동 종료하지 않는다.
 ⑤ 관리형 browser profile 간 탭과 세션은 서로 공유하지 않는다.
 ⑥ 동일 profile의 여러 ChatGPT 탭이 동시에 heartbeat와 역할 연결을 보내는 상태를 정상 운영 상태로 사용하지 않는다.
+⑦ 로그인·표시와 숨김 실행은 실행 중인 관리형 브라우저를 재시작하지 않고 기존 창의 표시 상태만 전환하는 것을 원칙으로 한다.
+⑧ 로그인·표시 요청은 해당 역할의 탭 정리 generation을 증가시켜 실행 중인 Web bridge가 단일 탭 정리를 다시 수행할 수 있게 한다.
 
