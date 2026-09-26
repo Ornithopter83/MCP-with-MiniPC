@@ -41,7 +41,7 @@
 ② 관리 역할은 HQ 또는 RESOURCE 중 하나이며 해당 persistent profile에 저장할 수 있다.
 ③ 로그인 뒤 사용자가 ChatGPT 대화를 선택하면 현재 conversationId를 지정된 역할에 자동 연결한다.
 ④ 관리형 HQ와 RESOURCE는 서로 다른 브라우저 프로필과 서로 다른 conversationId를 사용한다.
-⑤ 메시지 전송, assistant 응답 탐지, streaming 종료와 응답 안정화는 관측 가능한 Web 상태를 이용해 기계적으로 확인한다.
+⑤ Send 제어 실행과 실제 메시지 전송 확인을 구분한다. composer가 비워졌다는 사실만으로 전송 완료를 확정하지 않고 사용자 turn, assistant 응답 또는 RESOURCE 결과 같은 후속 관측값으로 확인한다.
 ⑥ 기존 assistant DOM이 재사용되는 경우 현재 Worker 메시지의 실제 전송이 확인된 뒤 assistant 텍스트 변화도 새 응답의 기계적 증거로 사용할 수 있다.
 ⑦ Worker에서 Web으로 보내는 첨부 파일과 RESOURCE가 Worker로 반환하는 파일은 가능한 경우 SHA-256을 함께 전달하고 양쪽에서 다시 계산해 불일치를 실패로 처리한다.
 ⑧ 확장은 파일의 내용 적합성이나 생성 품질을 판단하지 않는다.
