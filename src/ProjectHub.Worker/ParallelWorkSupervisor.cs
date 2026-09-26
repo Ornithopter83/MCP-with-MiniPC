@@ -82,6 +82,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private readonly ParallelWorkScheduler _scheduler;
     private readonly Func<string, CancellationToken, Task<string>> _runHqAsync;
     private readonly string _initialBaseRef;
+    private readonly bool _includeContractOnFirstHqTurn;
     private readonly Channel<ParallelWorkSchedulerSnapshot> _stateChanges =
         Channel.CreateUnbounded<ParallelWorkSchedulerSnapshot>(new UnboundedChannelOptions
         {
@@ -101,13 +102,15 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         IWorkItemExecutor executor,
         string baseRef,
         Func<string, CancellationToken, Task<string>> runHqAsync,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeContractOnFirstHqTurn = true)
     {
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         if (string.IsNullOrWhiteSpace(baseRef))
             throw new ArgumentException("병렬 WorkGraph 기준 ref가 비어 있습니다.", nameof(baseRef));
         _initialBaseRef = baseRef.Trim();
         _runHqAsync = runHqAsync ?? throw new ArgumentNullException(nameof(runHqAsync));
+        _includeContractOnFirstHqTurn = includeContractOnFirstHqTurn;
         _hqKnownSnapshot = graph.Snapshot();
         _scheduler = new ParallelWorkScheduler(graph, executor, cancellationToken);
         _scheduler.StateChanged += OnSchedulerStateChanged;
@@ -168,6 +171,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
         var inboundType = initialInboundType.Trim();
         var inboundBody = initialBody ?? string.Empty;
+        var firstHqTurn = true;
 
         while (true)
         {
@@ -179,7 +183,9 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 new WorkGraphPromptContext(
                     _graph.Revision,
                     _graph.MaxConcurrentWork,
-                    GetCurrentDefaultBaseRef()));
+                    GetCurrentDefaultBaseRef()),
+                includeContract: firstHqTurn && _includeContractOnFirstHqTurn);
+            firstHqTurn = false;
 
             string rawHqMessage;
             try
