@@ -505,3 +505,11 @@ Integration:
 ⑩ 저장된 일반 HQ Web 파일은 AiRoleRunResult.Files에 포함해 후속 관제 코드에서 경로를 잃지 않는다.
 ⑪ 확장의 실제 version/build는 CLAIMED 진행 로그에 기록해 실패 로그만으로 테스트에 사용된 확장 빌드를 확인할 수 있게 한다.
 
+제18조 (Web 첨부 전송 준비)
+
+① Worker가 Web에 첨부를 전달할 때 로컬 bytes/hash 검증 완료와 ChatGPT 측 첨부 준비 완료를 구분한다.
+② Web 확장은 file input 설정 뒤 ChatGPT의 활성 Send 버튼을 확인한 후에만 첨부 준비 완료로 간주한다.
+③ 첨부 요청은 Voice 버튼만 보인다는 이유로 2.25초 안에 실패시키지 않는다.
+④ 첨부 UI 오류가 없으면 장기 Web 작업 제한시간 안에서 업로드·처리와 Send 활성화를 기다린다.
+⑤ 첨부 준비 단계와 실패 원인은 Worker 진행 로그에 별도 stage로 남긴다.
+
