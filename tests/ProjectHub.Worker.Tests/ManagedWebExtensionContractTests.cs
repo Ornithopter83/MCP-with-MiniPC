@@ -1,4 +1,6 @@
+using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ProjectHub.Worker;
 
 namespace ProjectHub.Worker.Tests;
@@ -107,6 +109,37 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(inputEventIndex > countValidationIndex);
         Assert.True(changeEventIndex > inputEventIndex);
         Assert.False(source.Contains("file input count mismatch", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BridgeExpectedExtensionIdentity_MatchesEmbeddedExtension()
+    {
+        var flags = BindingFlags.NonPublic | BindingFlags.Static;
+        var expectedVersion = typeof(BridgeServer)
+            .GetField("ExpectedExtensionVersion", flags)?
+            .GetRawConstantValue() as string;
+        var expectedBuild = typeof(BridgeServer)
+            .GetField("ExpectedExtensionBuild", flags)?
+            .GetRawConstantValue() as string;
+
+        Assert.False(string.IsNullOrWhiteSpace(expectedVersion));
+        Assert.False(string.IsNullOrWhiteSpace(expectedBuild));
+
+        var assembly = typeof(BridgeServer).Assembly;
+        using var stream = assembly.GetManifestResourceStream("ProjectHub.Worker.Extension.manifest.json");
+        Assert.NotNull(stream);
+        using var document = JsonDocument.Parse(stream!);
+        var manifestVersion = document.RootElement.GetProperty("version").GetString();
+
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+        var contentVersion = Regex.Match(source, @"const EXTENSION_VERSION = '([^']+)';");
+        var contentBuild = Regex.Match(source, @"const EXTENSION_BUILD = '([^']+)';");
+
+        Assert.True(contentVersion.Success);
+        Assert.True(contentBuild.Success);
+        Assert.Equal(manifestVersion, expectedVersion);
+        Assert.Equal(contentVersion.Groups[1].Value, expectedVersion);
+        Assert.Equal(contentBuild.Groups[1].Value, expectedBuild);
     }
 
     [Fact]
