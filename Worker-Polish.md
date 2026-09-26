@@ -438,20 +438,23 @@ Integration:
 
 제13조 (관리형 Web 런타임)
 
-① Worker는 ChatGPT Web 실행 환경을 최대 두 개의 고정 브라우저 슬롯으로 관리할 수 있다.
+① Worker는 ChatGPT Web 실행 환경을 HQ와 RESOURCE 두 개의 고정 관리형 Chromium 슬롯으로 운영한다.
 1. HQ 슬롯은 설계·관제 Web 전용이다.
 2. RESOURCE 슬롯은 생성 리소스 Web 전용이다.
-② HQ와 RESOURCE 슬롯은 서로 다른 persistent browser profile을 사용한다.
-③ 브라우저 프로필은 Git 작업공간 밖의 사용자 로컬 데이터 영역에 저장하며 로그인 쿠키·세션·브라우저 저장소를 코드, Git, 로그 또는 AI 프롬프트에 복사하지 않는다.
-④ 평상시 브라우저는 화면 밖의 숨김 상태로 실행할 수 있으며 사용자가 로그인, 대화 선택 또는 장애 복구를 수행할 때만 Worker UI에서 해당 브라우저를 표시할 수 있다.
-⑤ 관리형 브라우저의 역할은 Worker 슬롯에서 기계적으로 정한다. HQ와 RESOURCE 역할을 사용자가 Web 확장 UI에서 다시 지정하도록 요구하지 않는다.
-⑥ 관리형 Web 확장은 슬롯 역할을 사용해 현재 대화를 자동 연결할 수 있으며 HQ와 RESOURCE에 같은 conversationId를 동시에 사용하지 않는다.
-⑦ 브라우저 프로세스 생존, heartbeat, 대화 연결, 메시지 전송 단계, 응답 시작·안정화, 파일 byte·크기·SHA-256, 저장 완료는 Worker가 기계적 사실로 기록할 수 있다.
-⑧ Worker는 Web 응답의 의미적 정확성이나 RESOURCE 결과의 미적·기능적 품질을 판단하지 않는다.
-⑨ Web 작업의 진행 단계는 taskId, conversationId와 leaseId에 귀속하며 재시도 시 이미 확정된 기계 단계와 새 시도를 구분할 수 있게 보존한다.
-⑩ 관리형 브라우저는 unpacked extension 자동 로드를 지원하는 호환 런타임을 사용한다. 명시된 BrowserRuntime 또는 PROJECTHUB_CHROMIUM_PATH가 없으면 Worker는 공식 Chrome for Testing Stable win64 런타임을 사용자 로컬 데이터 영역에 자동 준비할 수 있다.
-⑪ Worker 시작 시 ProjectHub가 소유한 관리형 브라우저 런타임의 잔존 프로세스를 정리한 뒤 HQ와 RESOURCE 슬롯을 시작한다. 외부 시스템 Chrome이나 ProjectHub 관리 경로 밖의 브라우저 프로세스는 자동 종료하지 않는다.
-⑫ 역할별 heartbeat의 실제 확장 version/build와 Worker가 요구하는 version/build가 다르면 해당 불일치를 기계적 상태로 표시한다.
+② HQ와 RESOURCE는 서로 다른 persistent profile을 사용해 로그인 쿠키와 ChatGPT 계정 상태를 보존한다.
+③ 관리형 profile은 Git 작업공간 밖의 사용자 로컬 데이터 영역에 두며 로그인 쿠키·세션·브라우저 저장소를 코드, Git, 로그 또는 AI 프롬프트에 복사하지 않는다.
+④ 브라우저를 시작할 때 이전 탭 복원 정보만 제거하고 로그인 데이터는 유지한다.
+⑤ 각 슬롯은 일반 탭 브라우저가 아니라 `--app=<ChatGPT URL>` 형태의 ProjectHub 전용 app window 하나로 시작한다.
+⑥ 로그인·표시와 숨김 실행은 기존 Chromium 창을 재사용하지 않는다. 기존 슬롯 프로세스를 UI thread 밖에서 종료한 뒤 세션 복원 정보를 정리하고 새 app window를 시작한다.
+⑦ 숨김 app window는 화면 밖에서 시작해 숨기며, 로그인·표시는 처음부터 visible 상태의 새 app window를 시작한다.
+⑧ 관리형 브라우저 역할은 Worker가 HQ 또는 RESOURCE로 기계적으로 지정하며 사용자가 확장 UI에서 역할을 다시 지정하지 않는다.
+⑨ 관리형 확장은 Worker가 해당 실행에 발급한 runtime token이 있을 때만 로컬 bridge를 사용한다.
+⑩ 일반 Chrome, 외부 브라우저 또는 runtime token이 없는 ChatGPT 페이지는 Worker bridge 클라이언트로 취급하지 않는다.
+⑪ 브라우저 프로세스 생존, heartbeat, 대화 연결, 메시지 전송 단계, 응답 시작·안정화, 파일 byte·크기·SHA-256, 저장 완료는 Worker가 기계적 사실로 기록할 수 있다.
+⑫ Worker는 Web 응답의 의미적 정확성이나 RESOURCE 결과의 미적·기능적 품질을 판단하지 않는다.
+⑬ 관리형 브라우저는 unpacked extension 자동 로드를 지원하는 호환 런타임을 사용한다. 명시된 BrowserRuntime 또는 PROJECTHUB_CHROMIUM_PATH가 없으면 Worker는 공식 Chrome for Testing Stable win64 런타임을 사용자 로컬 데이터 영역에 자동 준비할 수 있다.
+⑭ Worker 시작 시 ProjectHub가 소유한 관리형 브라우저 런타임의 잔존 프로세스를 정리한 뒤 HQ와 RESOURCE 슬롯을 시작한다. 외부 시스템 Chrome이나 ProjectHub 관리 경로 밖의 브라우저 프로세스는 자동 종료하지 않는다.
+⑮ 역할별 heartbeat의 실제 확장 version/build와 Worker가 요구하는 version/build가 다르면 해당 불일치를 기계적 상태로 표시한다.
 
 제14조 (본문 구조 마커)
 
@@ -462,14 +465,13 @@ Integration:
 ⑤ RESOURCE_TYPE 앞의 설명은 생성 프롬프트로 전달하지 않고 RESOURCE_TYPE 행 뒤의 자연어 요청만 전달한다.
 ⑥ Worker는 마커의 위치와 구조만 판단하며 마커 앞뒤 설명의 의미를 해석해 라우팅 또는 작업 결과를 결정하지 않는다.
 
-제15조 (관리형 Web 단일 탭)
+제15조 (관리형 Web app window)
 
-① HQ와 RESOURCE의 관리형 browser profile은 각각 ChatGPT 작업 탭 하나를 활성 상태로 유지하는 것을 원칙으로 한다.
-② Worker가 관리형 브라우저를 시작하거나 로그인·표시할 때 같은 profile의 ChatGPT 탭을 하나로 정리할 수 있다. 저장된 conversationId와 일치하는 기존 Project/GPT 대화 탭이 있으면 임시 canonical launch 탭보다 기존 대화 탭을 우선 유지한다.
-③ 저장된 conversationId가 있으면 해당 대화 하나를 유지하고, 없으면 로그인과 대화 선택을 위한 ChatGPT 탭 하나를 유지한다.
-④ 탭 정리는 해당 profile의 chatgpt.com 계열 탭에만 적용하며 다른 사이트와 외부 브라우저의 탭을 자동 종료하지 않는다.
-⑤ 관리형 browser profile 간 탭과 세션은 서로 공유하지 않는다.
-⑥ 동일 profile의 여러 ChatGPT 탭이 동시에 heartbeat와 역할 연결을 보내는 상태를 정상 운영 상태로 사용하지 않는다.
-⑦ 로그인·표시와 숨김 실행은 실행 중인 관리형 브라우저를 재시작하지 않고 기존 창의 표시 상태만 전환하는 것을 원칙으로 한다.
-⑧ 로그인·표시 요청은 해당 역할의 탭 정리 generation을 증가시켜 실행 중인 Web bridge가 단일 탭 정리를 다시 수행할 수 있게 한다.
+① HQ와 RESOURCE 슬롯은 각각 Chromium app window 하나와 ChatGPT 페이지 하나만 실행하는 것을 정상 상태로 사용한다.
+② 이전 browser session의 탭 목록은 새 실행 전에 제거하며 tab restore 결과를 정리하는 사후 로직에 의존하지 않는다.
+③ 확장은 browser tab 생성·조회·제거 권한을 사용하지 않는다.
+④ app window에 저장된 conversationId가 있으면 해당 ChatGPT 대화를 시작 URL로 사용하고, 없으면 ChatGPT 시작 화면을 사용한다.
+⑤ 로그인·표시를 누르면 숨겨진 기존 창을 복원하지 않고 새 visible app window를 시작한다.
+⑥ 숨김 실행을 누르면 기존 visible 창을 숨기는 대신 새 hidden app window를 시작한다.
+⑦ 브라우저 재시작과 종료 대기는 UI thread 밖에서 수행한다.
 
