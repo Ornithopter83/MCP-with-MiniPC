@@ -4,7 +4,7 @@
 
 정책 원본: Master-Polish.md
 
-## 현재 구조
+제1조 (현재 구조)
 
 ~~~text
 HQ       -> WORK
@@ -23,7 +23,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - JUDGE = JEV
 - Worker = 역할/세션/연결/전송/프로세스/file 계측/프로토콜 오류와 RESOURCE 대기열 사실의 기계적 관리
 
-## 활성 작업 — 16 동적 병렬 WORK Graph
+제2조 (활성 작업 — 16 동적 병렬 WORK Graph)
 
 복구 기준:
 - commit `000a478f6e21c25e8d89020137e93abed1cab5e2`
@@ -59,7 +59,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 최소 Git 준비 자동화까지 소스 구현 완료 상태이며 작업 16은 Windows 실검증 대기 상태
 - 다음 우선순위는 Windows dotnet test/build와 실제 max=1 동일-runtime 회귀, max=4 병렬 E2E, Integration landing E2E
 
-## 2026-09-26 원격 main 빌드 및 복사
+제3조 (2026-09-26 원격 main 빌드 및 복사)
 
 - 원격 `main` `4b43568715791bd720c979aa9078dced75aa0ed6` 기준으로 작업 트리를 맞췄다.
 - Git 준비 화면의 WPF `MessageBox` 참조를 명시해 WinForms와의 이름 충돌을 해결했다.
@@ -94,7 +94,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 확장 패널에 HQ 연결 / RESOURCE 연결 명시적 버튼 추가
 - HQ와 RESOURCE에 동일 대화을 연결하는 경우 거부
 
-## 검증
+제4조 (검증)
 
 현재 이 ChatGPT 실행 환경에는 .NET SDK가 없어 dotnet 빌드/test를 실행할 수 없다.
 
@@ -118,7 +118,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - JUDGE 회귀
 
 
-## UI 후속 보정 — 2026-09-24
+제5조 (UI 후속 보정 — 2026-09-24)
 
 사용자 화면 확인 후 다음을 보정했다.
 
@@ -134,7 +134,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 
 Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 
-## 2026-09-24 Windows 빌드/테스트/게시
+제6조 (2026-09-24 Windows 빌드/테스트/게시)
 
 - 원격 `main` `09ac0dc`에서 확인한 compile 오류를 수정했다: `AiRoleRunner.cs`의 `Directory`, `ResourceTransportContract.cs`의 `Path` 참조를 위해 `System.IO`를 명시했다.
 - RESOURCE/HQ Web 호출의 `_bridgeServer` nullable 경고는 명시적 null 보호 로직으로 정리했다.
@@ -148,7 +148,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - Explorer 실화면/HQ-Web·RESOURCE 왕복은 사용자 확인 잔여다.
 
 
-## 2026-09-24 RESOURCE 자연어 전송 + 관측성 보정
+제7조 (2026-09-24 RESOURCE 자연어 전송 + 관측성 보정)
 
 - RESOURCE Web 전송에서 역할/JSON/RESOURCE 계약 래퍼를 제거하고 WORK의 자연어 본문을 그대로 전달.
 - RESOURCE 저장 경로는 Worker가 `assets/resources/resource-<requestId>.png`로 기계적으로 생성.
@@ -160,7 +160,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 확장 0.1.5와 함께 이미지 완료 조건/진행 순서을 보강한다.
 
 
-## 2026-09-24 RESOURCE 이미지 수집 어댑터 완료 후속 보정
+제8조 (2026-09-24 RESOURCE 이미지 수집 어댑터 완료 후속 보정)
 
 - 중간 변경은 `ab6f831`로 main에 먼저 커밋/푸시했다.
 - 당시 이미지 수집 어댑터에서 이미지 element가 DOM에 먼저 생기고 load 완료만 나중에 발생하는 경우 load event로 재검사.
@@ -175,7 +175,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 관제 우선 흐름 종료 후 늦게 도착한 비종료 진행 이벤트는 레거시 UI를 다시 활성화하지 않음.
 
 
-## 2026-09-24 RESOURCE 사이드카 대기열 + 복수 이미지 수집 어댑터
+제9조 (2026-09-24 RESOURCE 사이드카 대기열 + 복수 이미지 수집 어댑터)
 
 - RESOURCE를 메인 역할 상태의 직렬 대기에서 분리하여 single-reader FIFO 사이드카 대기열로 변경.
 - WORK의 RESOURCE 요청은 대기열에 즉시 접수되고 같은 WORK 세션은 계속 진행.
@@ -190,7 +190,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - RESOURCE 실제 Web 전송 프롬프트와 bridge 작업 id를 기록에 계속 기록한다.
 
 
-## 2026-09-24 계약 일반화 정리
+제10조 (2026-09-24 계약 일반화 정리)
 
 - HQ/WORK/JUDGE 역할 계약에서 특정 시나리오에 종속된 예시와 일회성 대응 문구를 제거했다.
 - 계약에는 지속 가능한 역할 책임, ACTION/GOTO 문법, 일반 전송 문법, Worker/AI 경계만 남겼다.
@@ -199,7 +199,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - Master-Polish.md와 AGENTS.md에 계약 일반화 규칙을 추가해 특정 사용자 요청/장애 사례를 계약로 승격하지 못하게 했다.
 
 
-## 2026-09-25 RESOURCE 다운로드 고착 방지 강화
+제11조 (2026-09-25 RESOURCE 다운로드 고착 방지 강화)
 
 - 당시 이미지 수집 어댑터에서 RESOURCE 첫 작업이 RESPONSE_START 이후 IMAGE_READY/DOWNLOAD_START 없이 고착되는 경로를 수정.
 - 이미지 수집 어댑터는 RESOURCE 시작 시 기존 main image URL을 기준선으로 잡고 새 이미지 탐색 범위를 최신 assistant + main 영역으로 확대.
@@ -210,7 +210,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 확장 0.1.7 / 빌드 2026-09-25.1.
 
 
-## 2026-09-25 RESOURCE 완료 HQ 깨우기 폐기
+제12조 (2026-09-25 RESOURCE 완료 HQ 깨우기 폐기)
 
 - RESOURCE 완료마다 HQ를 깨우는 별도 이벤트 대기열는 반복 흐름을 만들 수 있어 제거 대상으로 확정했다.
 - HQ ACTION=END를 의미 작업 종료의 단일 확정점으로 사용한다.
@@ -221,7 +221,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - [GOTO : RESOURCE]는 새로운 생성 리소스 요청 한 건 전용이며 기존 요청 조회·취소·추적 용도로 사용하지 않는다.
 
 
-## 2026-09-25 HQ 종료와 기계적 대기 분리
+제13조 (2026-09-25 HQ 종료와 기계적 대기 분리)
 
 - RESOURCE 완료 HQ 자동 깨우기 제거.
 - HQ END 뒤 재확인 END 요구 제거.
@@ -230,7 +230,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 관련 역할 계약과 역할 프롬프트 설명을 한글로 통일.
 
 
-## 2026-09-25 PAUSE/END 후 작업 추가
+제14조 (2026-09-25 PAUSE/END 후 작업 추가)
 
 - PAUSE와 END/DONE을 세션 폐기가 아닌 현재 실행 구간의 중단/완료로 분리했다.
 - `CoordinatorContinuationState`에 작업 ID, 작업공간, HQ/WORK 설정과 세션 ID, 마지막 상태와 HQ 메시지를 보존한다.
@@ -248,7 +248,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 새 작업 → 이전 세션/이력 초기화 확인
 - 후속 입력 UI가 이력 그룹 높이를 변경하지 않고 목록을 위로 밀어 올리는지 실화면 확인
 
-## 2026-09-25 RESOURCE 생성 파일 일반화
+제15조 (2026-09-25 RESOURCE 생성 파일 일반화)
 
 - RESOURCE 의미를 IMAGE 전용에서 ChatGPT Web이 생성해 파일로 반환하는 모든 생성 리소스로 일반화한다.
 - 이미지·오디오·문서 등 형식은 역할이 아니라 `resultFiles[]`의 MIME 형식과 파일명으로 구분한다.
@@ -258,7 +258,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 이미지 DOM 감시 로직은 RESOURCE 전체 의미가 아니라 이미지 형식용 수집 어댑터로 유지한다.
 - 오디오·문서·기타 생성 파일은 ChatGPT Web에서 실제 다운로드 가능한 파일/첨부 요소로 제공되는 경우 같은 공통 결과 배열로 수집한다.
 
-## 2026-09-25 RESOURCE 생성 파일 공통 파이프라인 구현
+제16조 (2026-09-25 RESOURCE 생성 파일 공통 파이프라인 구현)
 
 - 새 RESOURCE 요청의 `ResourceRequest.Type`을 `RESOURCE`로 변경했다.
 - 구버전 실행 상태 호환을 위해 Worker 저장 계층은 기존 `IMAGE` 형식도 계속 허용한다.
@@ -280,7 +280,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - RESOURCE Web에서 실제 오디오 또는 다운로드 가능한 일반 생성 파일을 만든 뒤 `assets/resources/<requestId>/` 저장 확인
 - 복수 형식이 한 응답에 함께 있을 때 파일명/MIME/복수 저장 확인
 
-## 2026-09-25 CLI 작업 진행 카드
+제17조 (2026-09-25 CLI 작업 진행 카드)
 
 - Codex CLI stdout을 종료 후 일괄 수집하는 방식에서 JSONL 한 줄 단위 수집으로 변경했다.
 - `item.completed`이면서 `item.type=agent_message`인 주 응답 이벤트만 프로토콜 타입으로 기계적으로 추출한다.
@@ -292,7 +292,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 최종 역할 응답 카드는 기존 `작업 요청`, `수행 결과`, `리소스 요청` 형식을 그대로 유지한다.
 - parser와 다중 줄 미리보기 단위 테스트를 추가했다.
 
-## 2026-09-25 실행 중 취소 후 동일 세션 보존
+제18조 (2026-09-25 실행 중 취소 후 동일 세션 보존)
 
 - `CANCELED`를 `PAUSED`, `DONE`, `DONE_WITH_ERROR`와 같은 사용자 후속 재개 가능 상태로 추가했다.
 - 사용자가 실행 중 취소하면 현재 실행 프로세스를 중단하되 현재 JobId, 작업공간, HQ/WORK 설정, 확보된 세션 ID, 마지막 완료 HQ 메시지를 `CoordinatorContinuationState`에 저장한다.
@@ -302,7 +302,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 현재 실행 구간과 함께 취소된 RESOURCE 대기 작업은 자동 재실행하지 않으며 이미 저장된 파일과 작업공간 이력은 유지한다.
 - `CANCELED` 후속 입력과 `thread.started` 실시간 파서 테스트를 추가했다.
 
-## 2026-09-25 RESOURCE 종류 분리와 실패 WORK 복귀
+제19조 (2026-09-25 RESOURCE 종류 분리와 실패 WORK 복귀)
 
 - WORK가 RESOURCE를 요청할 때 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE`을 명시한다.
 - 한 RESOURCE 요청에는 한 종류만 포함하며 이미지와 오디오처럼 생성 방식이 다른 리소스는 별도 요청으로 분리한다.
@@ -313,7 +313,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 실패 결과에는 requestId, RESOURCE_TYPE, 오류 코드, Web/transport 결과 메시지를 포함해 같은 WORK 세션이 재요청·분리·보고 여부를 결정한다.
 - HQ END 이후에는 기존 정책대로 AI를 다시 깨우지 않고 Worker가 기계적 종료 상태만 정리한다.
 
-## 2026-09-25 RESOURCE 분류/실패 복귀 구현 완료
+제20조 (2026-09-25 RESOURCE 분류/실패 복귀 구현 완료)
 
 - `ResourceTransportContract`가 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE` 첫 줄을 필수로 파싱한다.
 - Worker는 분류 토큰을 제거한 자연어 본문만 RESOURCE Web에 전달한다.
@@ -326,7 +326,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 분류 파서와 지원 종류 테스트를 갱신했다.
 - 최신 소스 정적 대조에서 분류 파서, queue 종류 보존, Bridge 허용, 실패 WORK 복귀, 기존 UNKNOWN 분기 제거를 확인했다.
 
-## 2026-09-25 JUDGE 질문 원자화 실험 정책
+제21조 (2026-09-25 JUDGE 질문 원자화 실험 정책)
 
 - HQ의 역할을 `JUDGE 사용 필요성 게이트`에서 `JUDGE 질문 원자화·정제`로 임시 변경했다.
 - WORK가 의미 판정 질문을 HQ에 올리면 HQ는 JUDGE가 필요한지 다시 판단하지 않는다.
@@ -336,7 +336,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - HQ가 정제한 판정 질문을 받은 WORK는 필요성을 다시 판단하지 않고 `[GOTO : JUDGE]`로 전송한다.
 - Worker 라우팅/전송 코드는 변경하지 않는다. 역할 프롬프트 정책만 바꿔 실제 JEV 호출 빈도와 질문 품질을 관찰한다.
 
-## 2026-09-25 JUDGE용 Form 위임 계약 간략화
+제22조 (2026-09-25 JUDGE용 Form 위임 계약 간략화)
 
 - WORK 계약에서 NOUL/SCORE/CHOICE Form 문법 설명과 장문의 판정 절차를 제거했다.
 - WORK는 검증할 내용을 질문 목록과 현재 근거로 정리해 HQ에 JUDGE용 Form 생성을 요청한다.
@@ -345,13 +345,13 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - HQ 계약의 `WORK가 의미 판정 질문을 올리면...` 문구와 JUDGE 필요성 재판단 관련 실험 문구를 제거했다.
 - Worker 라우팅 및 JUDGE transport 코드는 변경하지 않았다.
 
-## 2026-09-25 WORK 계약 제어행 대괄호 정리
+제23조 (2026-09-25 WORK 계약 제어행 대괄호 정리)
 
 - WORK 계약의 설명 문장에서는 GOTO 목적지를 대괄호 제어행 형태로 쓰지 않는다.
 - 대괄호는 실제 ACTION/GOTO 제어행에만 사용하고, 설명 문장에서는 HQ, JUDGE, RESOURCE 역할명으로만 지칭한다.
 - 실제 라우팅 제어행 문법과 Worker 파서는 변경하지 않았다.
 
-## 2026-09-25 WORK 계약 간략화 동기화 및 배포 복사
+제24조 (2026-09-25 WORK 계약 간략화 동기화 및 배포 복사)
 
 - 원격 `main` `bb0239f`까지 fast-forward 동기화하고 최신 `GPT-Web-Feedback.md`를 확인했다.
 - 새 변경은 HQ의 JUDGE용 Form 위임과 WORK 설명 문장의 대괄호 제어 표기 정리이며 Worker 라우팅 코드는 변경하지 않는다.
@@ -360,13 +360,13 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 복사 직전 Worker 프로세스가 없음을 확인하고 게시 실행 파일을 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`에 복사했다. 원본/복사본 SHA-256 일치: `6A28F871982CAC2B79C00FB5F8F748B2F075A8DD0F4E9B8409B066837D440CD1`.
 - 자동 테스트와 Explorer 실화면/E2E는 실행하지 않았다. `artifacts/tower_defense_bgm.wav` 추적되지 않은 파일은 그대로 보존했다.
 
-## 2026-09-25 RESOURCE transport 시간 제한 연장
+제25조 (2026-09-25 RESOURCE transport 시간 제한 연장)
 
 - `ResourceSidecarQueue.ResourceTransportTimeout`을 5분에서 30분으로 변경했다.
 - 기존 timeout 처리와 실패 코드는 유지되며 제한 시간과 오류 메시지는 같은 상수를 사용한다.
 - 빌드·테스트는 이번 변경에서 실행하지 않았다.
 
-## 2026-09-25 HQ JUDGE Form 전송 문법 보강
+제26조 (2026-09-25 HQ JUDGE Form 전송 문법 보강)
 
 - WORK 계약은 질문 목록과 근거를 HQ에 보내 Form 생성을 요청하는 간략한 책임만 유지한다.
 - HQ 계약에 JUDGE 전송 문법을 추가했다.
@@ -375,7 +375,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - Worker는 의미를 판단하지 않고 기존 JudgeTransportContract로 Form 구조만 기계적으로 검사한다.
 - 이번 변경은 계약과 문서/테스트만 갱신하며 JUDGE parser 코드는 변경하지 않는다.
 
-## 2026-09-25 HQ JUDGE CHOICE 선택지 키 규칙 보강
+제27조 (2026-09-25 HQ JUDGE CHOICE 선택지 키 규칙 보강)
 
 - 실제 JUDGE transport parser는 CHOICE 선택지 키를 영문자로 시작하는 ASCII 토큰으로만 인식한다.
 - HQ 계약에 선택지 키가 영문자로 시작하고 영문자, 숫자, 밑줄, 하이픈만 사용할 수 있다는 규칙을 추가했다.
@@ -385,7 +385,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - parser 회귀 테스트에 한글 CHOICE 키가 CHOICE_CRITERIA_MISSING으로 거부되는 현재 전송 규칙을 고정했다.
 - JudgeTransportContract 구현 코드는 변경하지 않았다.
 
-## 2026-09-25 판단 제어 · 프로젝트 기억 · 실시간 이벤트 로그
+제28조 (2026-09-25 판단 제어 · 프로젝트 기억 · 실시간 이벤트 로그)
 
 - WORK JUDGE 계약을 최소 판단 경계로 정리했다. 관측 사실 자체는 JUDGE에 보내지 않고, 현재 근거만으로 기계적으로 확정할 수 없는 판단이 다음 작업/완료에 영향을 줄 때 HQ에 질문과 근거를 올린다.
 - 이전 판정 뒤 근거가 의미 있게 바뀌면 새 근거로 다시 Form을 요청한다.
@@ -399,7 +399,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 관련 계약 및 프로젝트 기억/event log 단위 테스트를 추가했다.
 - 이번 변경에 대해 Windows `dotnet test`/빌드는 아직 실행하지 않았다.
 
-## 2026-09-25 RESOURCE Send 확인 고착 복구
+제29조 (2026-09-25 RESOURCE Send 확인 고착 복구)
 
 - 실제 요청이 ChatGPT Web에 전송되고 이미지가 생성됐지만 확장이 SEND_CONFIRM에서 새 사용자 메시지를 확인하지 못해 WAIT_RESPONSE로 넘어가지 못하는 로그를 확인했다.
 - 전송 성공의 기계적 증거를 새 사용자 메시지 외에 composer 비움, 새 assistant turn, 새 RESOURCE 후보까지 확대했다.
@@ -411,7 +411,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 실제 RESOURCE Web 이미지 생성 E2E와 Windows `dotnet test`는 아직 실행 확인이 필요하다.
 
 
-## 2026-09-26 terminal WorkItem 재시도 패치 보강
+제30조 (2026-09-26 terminal WorkItem 재시도 패치 보강)
 
 - 실사용 로그에서 FAILED WorkItem을 HQ가 재시도용 새 WorkItem으로 교체하면서 기존 FAILED 항목에도 CANCEL을 포함해 전체 GraphPatch가 `WORK_GRAPH_TERMINAL_ITEM_IMMUTABLE`로 원자 거부되는 회귀를 확인했다.
 - COMPLETED / FAILED / CANCELED 항목에 대한 CANCEL은 상태를 바꾸지 않는 멱등 no-op으로 처리해 불필요한 CANCEL 하나가 같은 패치의 정상 ADD / dependency 변경을 막지 않게 했다.
@@ -420,7 +420,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 현재 Web 실행 환경에는 .NET SDK가 없어 테스트/빌드는 실행하지 못했으며 Windows 검증 대상에 포함한다.
 
 
-## 2026-09-26 라우팅 계약 및 WorkGraph 단일화
+제31조 (2026-09-26 라우팅 계약 및 WorkGraph 단일화)
 
 - JUDGE-ROUTING-CONTRACT를 제거했다. JUDGE는 ACTION/GOTO를 만들지 않고 Worker가 JEV raw 결과를 요청한 같은 WORK 세션에 직접 반환한다.
 - WORK 계약의 JUDGE_ON/JUDGE_OFF와 HQ/WORK 계약의 PARALLEL_ON/PARALLEL_OFF 조건부 구역을 제거했다.
@@ -430,7 +430,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 현재 Web 환경에는 .NET SDK가 없어 dotnet test/build는 미실행이며 Windows 검증이 필요하다.
 
 
-## 2026-09-26 동시 worktree 생성 실패 보강
+제32조 (2026-09-26 동시 worktree 생성 실패 보강)
 
 - 실사용 로그에서 서로 다른 두 WorkItem이 거의 동시에 시작해 두 차례 연속 `WORKTREE_CREATE_FAILED`로 실패하는 현상을 확인했다.
 - `GitWorktreeManager.PrepareAsync`의 worktree list/path/branch 검사부터 `git worktree add`와 HEAD 확인까지를 repository root별 gate로 직렬화했다.
@@ -441,7 +441,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 검증이 필요하다.
 
 
-## 2026-09-26 준비 실패 복구와 USER_FOLLOWUP 최소화
+제33조 (2026-09-26 준비 실패 복구와 USER_FOLLOWUP 최소화)
 
 - WORK가 시작되기 전의 `WORKTREE_*` 실패를 WorkItem semantic `FAILED`가 아니라 `BLOCKED`로 기록하도록 변경했다.
 - USER_FOLLOWUP에서 현재 Git 사전 검사가 성공하면 preparation BLOCKED 항목을 같은 WorkItem으로 재활성화한다.
@@ -454,7 +454,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 현재 Web 환경에는 .NET SDK가 없어 dotnet test/build는 미실행이며 Windows에서 재검증이 필요하다.
 
 
-## 2026-09-26 범용 Git hygiene와 긴 경로 방어
+제34조 (2026-09-26 범용 Git hygiene와 긴 경로 방어)
 
 - Git 준비 시 repository local `core.longpaths=true`를 자동 적용한다. 전역 Git 설정은 변경하지 않는다.
 - baseline 승인 전에는 source/index를 변경하지 않고, 승인 뒤 ProjectHub 관리 `.gitignore` 블록을 멱등적으로 생성·갱신한다.
@@ -465,7 +465,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - HQ/WORK 프롬프트에는 Git hygiene 지시를 추가하지 않는다.
 
 
-## 2026-09-26 HQ 설계 책임·PAUSE 수명주기·History 작업 번호
+제35조 (2026-09-26 HQ 설계 책임·PAUSE 수명주기·History 작업 번호)
 
 - HQ 계약에 사용자 지정 문장 `사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다`를 한 줄만 추가했다. WORK 계약에는 같은 의미를 중복 주입하지 않았다.
 - HQ PAUSE가 실행 중 WorkItem을 즉시 버리지 않도록 Scheduler에 새 READY 시작 동결을 추가했다. 이미 RUNNING인 WORK는 정상 완료까지 기다리고 결과를 graph에 반영한 뒤 PAUSED로 반환한다.
@@ -476,13 +476,13 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - WorkGraph 병렬 실행 기능과 maxConcurrentWork 1~8 설정은 그대로 유지한다.
 - 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 빌드에서 검증이 필요하다.
 
-## 2026-09-26 활성 WorkItem 게이지 글꼴 크기 조정
+제36조 (2026-09-26 활성 WorkItem 게이지 글꼴 크기 조정)
 
 - 현재 XAML에서 네모칸 게이지는 `ImplementerStageModelText`가 아니라 `ImplementerWorkGaugeText`로 선언되어 있어 해당 요소를 수정했다.
 - 네모 게이지 `FontSize`를 18에서 24로 변경했다.
 - Release 솔루션 빌드 성공: 경고 0, 오류 0.
 
-## 2026-09-26 최신 단일 파일 복사
+제37조 (2026-09-26 최신 단일 파일 복사)
 
 - 원격 `main`을 `c756233b9f1cbc5b7be66ee6f15625fb7167378a`까지 동기화했다. 활성 WorkItem 게이지와 병렬 WORK UI 표현 정리 변경을 포함한다.
 - Release 솔루션 빌드 성공: 경고 0, 오류 0.
@@ -491,7 +491,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 자동 테스트와 Explorer 검증은 실행하지 않았다.
 
 
-## 2026-09-26 작업 카드 활성 WorkItem 게이지
+제38조 (2026-09-26 작업 카드 활성 WorkItem 게이지)
 
 - 현재 작업의 `3. 작업` 카드 하단에서 흰색 RUN/R/B/C/F 요약 표현과 모델명 표시를 사용하지 않는다.
 - RUNNING WorkItem 수를 8칸 고정 녹색 문자 게이지로 표시한다.
@@ -499,7 +499,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - WorkGraph 상태 변경 때 RunningCount만 반영하고 실행 구간 종료 시 `□□□□□□□□`로 초기화한다.
 
 
-## 2026-09-26 Integration stale base와 landing 원인 전달 보강
+제39조 (2026-09-26 Integration stale base와 landing 원인 전달 보강)
 
 - 실사용에서 Integration WorkItem이 오래된 baseRef에서 시작해 통합 결과 자체는 생성됐지만 현재 primary HEAD와 비 fast-forward 관계가 되어 `INTEGRATION_NOT_FAST_FORWARD`로 landing이 차단된 사례를 확인했다.
 - 새 INTEGRATION WorkItem의 첫 실행은 저장된 Graph baseRef를 그대로 쓰지 않고 실행 시점의 clean primary branch/HEAD를 Worker가 읽어 그 HEAD에서 integration worktree를 만든다.
@@ -513,7 +513,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 검증이 필요하다.
 
 
-## 2026-09-26 Web/RESOURCE 5분 미만 제한시간 통일
+제40조 (2026-09-26 Web/RESOURCE 5분 미만 제한시간 통일)
 
 - GPTWeb-Hub 확장의 사용자 작업형 timeout 중 5분 미만이던 값을 5분(300000ms)으로 통일했다.
 - 대상은 메시지 전달 준비, composer 준비, send confirm, RESOURCE 다운로드 가능 파일 대기, 개별 첨부/리소스 다운로드, Worker 결과 POST다.
@@ -523,7 +523,7 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 확장 호환 버전은 0.1.10 / build 2026-09-26.1로 올리고 Worker 기대 버전도 함께 갱신했다.
 
 
-## 2026-09-26 RESOURCE 우회 금지
+제41조 (2026-09-26 RESOURCE 우회 금지)
 
 - 생성 리소스의 제작·수급은 RESOURCE 경로만 사용하도록 HQ/WORK 계약에 장기 불변식을 추가했다.
 - HQ는 RESOURCE 실패 시 직접 생성하거나 외부 사이트에서 대체 리소스를 수급하도록 지시하지 않는다.
