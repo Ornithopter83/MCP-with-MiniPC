@@ -1,6 +1,6 @@
 # GPTWeb-Hub 확장
 
-버전: 0.2.0 / build 2026-09-26.4
+버전: 0.2.0 / build 2026-09-26.5
 
 ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 
@@ -18,7 +18,8 @@ ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 ② 일반 HQ Web 작업은 assistant 텍스트를 TEXT_RESULT로 반환한다.
 ③ 새 assistant 응답은 새 turn, DOM 교체, message key 변경 또는 조건부 assistant 텍스트 변화로 탐지한다.
 ④ 기존 assistant DOM의 텍스트 변화는 현재 Worker 메시지가 실제 사용자 메시지로 전송된 것이 확인된 경우에만 새 응답 증거로 사용한다.
-⑤ 전송과 응답 진행 단계는 Worker에 보고하며 Worker는 마지막 진행 체크포인트를 bridge 상태에 저장한다.
+⑤ Send 버튼 실행은 SEND_TRIGGERED 단계로 취급하고 composer가 비워진 사실만으로 전송 완료를 확정하지 않는다. 실제 사용자 turn, assistant 응답 또는 RESOURCE 결과를 확인한 뒤 응답 대기로 전환한다.
+⑥ 전송과 응답 진행 단계는 Worker에 보고하며 Worker는 마지막 진행 체크포인트를 bridge 상태에 저장한다.
 
 제3조 (첨부 업로드 검증)
 
