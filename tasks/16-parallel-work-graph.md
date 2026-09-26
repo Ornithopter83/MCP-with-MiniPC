@@ -671,3 +671,12 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - Release 컴파일에서 확인된 파일 시스템 using 누락과 END 거부 보고 formatter 누락을 보완했다.
 - Release solution build는 경고 0, 오류 0으로 성공했고 win-x64 publish와 배포 폴더 복사를 완료했다.
 - 자동 테스트와 Explorer E2E는 이번에 실행하지 않았으며 계속 실검증 대기다.
+
+
+### 2026-09-26 terminal WorkItem 재시도 패치 보강
+
+- FAILED/COMPLETED/CANCELED WorkItem은 종료 기록으로 유지한다.
+- 종료 항목에 대한 CANCEL은 멱등 no-op으로 수용해 동일 GraphPatch 안의 retry ADD와 dependency 교체가 불필요하게 원자 거부되지 않게 했다.
+- HQ는 실패 작업 재시도 시 기존 종료 항목을 수정·취소하지 않고 새 ID WorkItem을 ADD하고 필요한 비종료 후속 dependency를 새 ID로 연결한다.
+- `TerminalCancelIsIdempotentAndDoesNotBlockRetryPatch` 회귀 테스트를 추가했다.
+- 현재 Web 실행 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 실검증이 필요하다.

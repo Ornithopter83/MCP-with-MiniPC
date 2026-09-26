@@ -367,9 +367,7 @@ public sealed class WorkGraph
             {
                 if (!items.TryGetValue(id, out var item))
                     return "WORK_GRAPH_ITEM_NOT_FOUND";
-                if (item.State is WorkItemState.Completed or WorkItemState.Failed)
-                    return "WORK_GRAPH_TERMINAL_ITEM_IMMUTABLE";
-                if (item.State == WorkItemState.Canceled)
+                if (item.State is WorkItemState.Completed or WorkItemState.Failed or WorkItemState.Canceled)
                     return null;
                 item.State = WorkItemState.Canceled;
                 item.FinishedAtUtc ??= DateTimeOffset.UtcNow;

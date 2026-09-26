@@ -409,3 +409,12 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - Worker RESOURCE Pipeline의 단일 `생성·다운로드 중` 표시는 Web 확장 progress에 따라 전송 확인/생성 결과 대기/결과 확인/다운로드/Worker 전달로 세분화했다.
 - 확장 버전 0.1.9 / 빌드 2026-09-25.3, Worker가 요구하는 확장 버전도 동일하게 갱신했다.
 - 실제 RESOURCE Web 이미지 생성 E2E와 Windows `dotnet test`는 아직 실행 확인이 필요하다.
+
+
+## 2026-09-26 terminal WorkItem 재시도 패치 보강
+
+- 실사용 로그에서 FAILED WorkItem을 HQ가 재시도용 새 WorkItem으로 교체하면서 기존 FAILED 항목에도 CANCEL을 포함해 전체 GraphPatch가 `WORK_GRAPH_TERMINAL_ITEM_IMMUTABLE`로 원자 거부되는 회귀를 확인했다.
+- COMPLETED / FAILED / CANCELED 항목에 대한 CANCEL은 상태를 바꾸지 않는 멱등 no-op으로 처리해 불필요한 CANCEL 하나가 같은 패치의 정상 ADD / dependency 변경을 막지 않게 했다.
+- HQ 계약에는 종료 항목을 그대로 기록으로 남기고 재시도는 새 ID로 ADD한 뒤 비종료 후속 dependency만 교체한다는 일반 불변식만 추가했다.
+- 동일 형태의 회귀 테스트 `TerminalCancelIsIdempotentAndDoesNotBlockRetryPatch`를 추가했다.
+- 현재 Web 실행 환경에는 .NET SDK가 없어 테스트/빌드는 실행하지 못했으며 Windows 검증 대상에 포함한다.

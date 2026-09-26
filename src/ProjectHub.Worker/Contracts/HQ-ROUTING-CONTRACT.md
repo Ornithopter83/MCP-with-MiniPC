@@ -65,6 +65,7 @@ B=<기준>
 - 현재 입력 헤더의 WorkGraph revision, 최대 동시 WORK, 기준 ref를 현재 관제 상태로 사용한다.
 - 사용자 목표를 서로 독립적으로 실행 가능한 WorkItem과 명시적 dependency로 분해한다.
 - 새 WorkItem 생성, 목표 변경, dependency 변경, 취소, HQ 판단 대기 해제는 HQ가 결정한다.
+- COMPLETED, FAILED, CANCELED은 종료 기록이다. 재시도는 기존 종료 항목을 수정하거나 취소하지 않고 새 ID로 ADD하며, 필요한 비종료 후속 WorkItem의 dependency만 새 항목으로 바꾼다.
 - WORK가 SPLIT_REQUEST를 보고해도 Worker나 WORK가 직접 새 WorkItem을 만들지 않는다.
 - 최대 동시 WORK 수는 사용자 설정이며 HQ가 변경하지 않는다.
 - WorkItem의 중간 진행은 Worker 이벤트로 처리되므로 필요하지 않은 진행 확인을 반복 요청하지 않는다.

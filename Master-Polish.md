@@ -428,6 +428,8 @@ WorkItem 기본 상태:
 
 동적 확장:
 - HQ는 실행 중에도 GraphPatch로 WorkItem을 추가·변경·취소하거나 의존성을 변경할 수 있다.
+- COMPLETED, FAILED, CANCELED WorkItem은 종료 기록으로 유지한다. 재시도는 기존 종료 항목을 재작성하지 않고 새 ID WorkItem을 추가한 뒤 필요한 비종료 후속 항목의 dependency를 새 작업으로 바꾼다.
+- 이미 종료된 WorkItem에 대한 CANCEL은 상태를 바꾸지 않는 멱등 요청으로 기계적으로 수용한다. 목표·dependency·baseRef처럼 종료 기록을 변경하는 수정은 계속 금지한다.
 - WORK가 SPLIT_REQUEST를 보고해도 새 WorkItem 생성 여부와 의존성은 HQ가 결정한다.
 - Worker는 승인되지 않은 작업을 의미적으로 생성하지 않는다.
 

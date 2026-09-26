@@ -152,6 +152,42 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
+    public void TerminalCancelIsIdempotentAndDoesNotBlockRetryPatch()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("failed", "실패 작업")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("completed", "완료 작업")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("dependent", "후속 작업", new[] { "failed" }))
+        })).Success);
+
+        Assert.True(graph.TryMarkRunning("failed"));
+        Assert.True(graph.TryMarkFailed("failed", "TEST_FAILURE"));
+        Assert.True(graph.TryMarkRunning("completed"));
+        Assert.True(graph.TryMarkCompleted("completed", "completed-ref"));
+
+        var retry = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.Cancel("failed"),
+            WorkGraphPatchOperation.Cancel("completed"),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("retry", "재시도 작업")),
+            WorkGraphPatchOperation.SetDependencies("dependent", new[] { "retry" })
+        }));
+
+        Assert.True(retry.Success);
+        Assert.Equal(WorkItemState.Failed, graph.Find("failed")!.State);
+        Assert.Equal(WorkItemState.Completed, graph.Find("completed")!.State);
+        Assert.Equal(WorkItemState.Ready, graph.Find("retry")!.State);
+        Assert.Equal(WorkItemState.Blocked, graph.Find("dependent")!.State);
+        Assert.Equal(new[] { "retry" }, graph.Find("dependent")!.Dependencies);
+
+        Assert.True(graph.TryMarkRunning("retry"));
+        Assert.True(graph.TryMarkCompleted("retry", "retry-ref"));
+        Assert.Equal(WorkItemState.Ready, graph.Find("dependent")!.State);
+    }
+
+    [Fact]
     public void ConcurrencyCanBeChangedOnlyWithinMechanicalBounds()
     {
         var graph = new WorkGraph("job", 1);
