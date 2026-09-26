@@ -1,6 +1,6 @@
 # ProjectHub Managed Web Bridge
 
-버전: 0.3.1 / build 2026-09-26.10
+버전: 0.3.2 / build 2026-09-27.1
 
 ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로컬 Worker를 연결한다.
 
@@ -53,3 +53,14 @@ ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로�
 ② 수신 측은 실제 bytes의 SHA-256을 다시 계산해 불일치를 실패 처리한다.
 ③ CORS 때문에 content script가 직접 가져올 수 없는 허용된 ChatGPT/OpenAI 파일은 background service worker가 재시도할 수 있다.
 ④ RESOURCE 최종 저장 경로와 경로 안전성은 Worker가 검증한다.
+
+제7조 (일반 Web 응답 파일)
+
+① HQ 등 일반 Web 응답도 assistant 텍스트와 함께 다운로드 가능한 파일 링크를 수집한다.
+② 일반 응답 파일은 RESOURCE 전용 이미지·리소스 처리와 분리하되 동일한 bytes 다운로드, MIME 확인과 SHA-256 검증 경로를 사용한다.
+③ PDF, ZIP, JSON, TXT, Markdown, CSV, DOCX, XLSX, PPTX와 허용된 오디오·비디오 등 비이미지 파일을 포함하며 download 속성·첨부/다운로드 표기·파일 API URL도 후보로 탐지한다.
+④ 일반 Web 응답의 텍스트가 먼저 안정돼도 새 다운로드 링크가 나타나면 response snapshot이 변경된 것으로 보고 안정화 대기를 다시 시작한다.
+⑤ 검증된 일반 Web 파일은 Worker의 `Worker/web-results/<taskId>/`에 저장하고 path·size·SHA-256 receipt를 남긴다.
+⑥ 파일 다운로드나 hash 검증이 실패하면 텍스트만 성공 처리하지 않고 해당 Web 작업을 파일 회수 실패로 처리한다.
+⑦ HQ Web 역할 결과는 저장된 파일 경로를 AiRoleRunResult.Files에도 포함해 후속 실행에서 결과 파일을 잃지 않는다.
+
