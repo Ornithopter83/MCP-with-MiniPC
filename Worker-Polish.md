@@ -462,3 +462,12 @@ Integration:
 ⑤ RESOURCE_TYPE 앞의 설명은 생성 프롬프트로 전달하지 않고 RESOURCE_TYPE 행 뒤의 자연어 요청만 전달한다.
 ⑥ Worker는 마커의 위치와 구조만 판단하며 마커 앞뒤 설명의 의미를 해석해 라우팅 또는 작업 결과를 결정하지 않는다.
 
+제15조 (관리형 Web 단일 탭)
+
+① HQ와 RESOURCE의 관리형 browser profile은 각각 ChatGPT 작업 탭 하나를 활성 상태로 유지하는 것을 원칙으로 한다.
+② Worker가 관리형 브라우저를 시작하거나 로그인·표시할 때 Worker launch 탭을 기준으로 같은 profile의 ChatGPT 탭을 정리할 수 있다.
+③ 저장된 conversationId가 있으면 해당 대화 하나를 유지하고, 없으면 로그인과 대화 선택을 위한 ChatGPT 탭 하나를 유지한다.
+④ 탭 정리는 해당 profile의 chatgpt.com 계열 탭에만 적용하며 다른 사이트와 외부 브라우저의 탭을 자동 종료하지 않는다.
+⑤ 관리형 browser profile 간 탭과 세션은 서로 공유하지 않는다.
+⑥ 동일 profile의 여러 ChatGPT 탭이 동시에 heartbeat와 역할 연결을 보내는 상태를 정상 운영 상태로 사용하지 않는다.
+
