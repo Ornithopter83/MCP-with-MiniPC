@@ -311,6 +311,14 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 
 모든 Worker 관측 메시지는 작업 중 즉시 `.projecthub/events/<jobId>.jsonl`에 한 이벤트 한 줄로 append한다. 이벤트에는 시각, 출처, 상태, 참조 정보와 실제 Full Message를 저장한다. History 카드는 요약 표시를 유지하되 사용자가 항목을 두 번 클릭하면 해당 Full Message를 별도 창에서 확인할 수 있다.
 
+직통 작업:
+- 하단 `계약문서 무시` 체크박스는 기본 해제 상태다.
+- 체크하면 왼쪽에 서비스 제공사, 모델, 추론 깊이 선택 항목을 표시한다.
+- 직통 작업은 HQ, WorkGraph, JUDGE, RESOURCE 라우팅과 역할 계약 프롬프트를 사용하지 않고 현재 작업 폴더에서 사용자 입력을 선택한 모델에 직접 전달한다.
+- Codex CLI 직통 작업은 프로젝트 `AGENTS.md` 자동 지침 주입도 사용하지 않는다.
+- 직통 작업 실행 중에는 Pipeline의 작업 카드만 활성화하고 요청·진행·결과를 모두 작업 History 카드로 기록한다.
+- 체크를 해제하면 기존 ProjectHub 실행 흐름을 그대로 사용한다.
+
 설정:
 - HQ: 실행 대상 Web/CLI + CLI일 때 제공자/모델/추론/세션
 - WORK: 제공자/모델/추론/세션. 기본값은 OpenAI / GPT-6 Luna / Medium이며 저장 모델을 임의 변환하는 마이그레이션은 하지 않는다.
