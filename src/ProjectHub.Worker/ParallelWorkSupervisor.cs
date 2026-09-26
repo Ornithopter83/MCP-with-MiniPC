@@ -92,6 +92,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private readonly HashSet<string> _reportedSignals = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _pendingExternalBlocks = new(StringComparer.Ordinal);
     private string? _lastQuiescentSignature;
+    private WorkGraphSnapshot _hqKnownSnapshot;
     private bool _schedulerStarted;
     private bool _disposed;
 
@@ -107,6 +108,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             throw new ArgumentException("병렬 WorkGraph 기준 ref가 비어 있습니다.", nameof(baseRef));
         _initialBaseRef = baseRef.Trim();
         _runHqAsync = runHqAsync ?? throw new ArgumentNullException(nameof(runHqAsync));
+        _hqKnownSnapshot = graph.Snapshot();
         _scheduler = new ParallelWorkScheduler(graph, executor, cancellationToken);
         _scheduler.StateChanged += OnSchedulerStateChanged;
     }
@@ -259,6 +261,10 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             if (!patchResult.Success)
                 return Failure(patchResult.ErrorCode ?? "WORK_GRAPH_PATCH_REJECTED", turn.Body);
 
+            // HQ가 방금 요청한 GraphPatch 결과는 이미 HQ가 알고 있는 정의 상태다.
+            // 이후 HQ 입력에는 이 기준점 이후의 기계적 상태 변화만 전달한다.
+            _hqKnownSnapshot = _graph.Snapshot();
+
             if (!_schedulerStarted)
             {
                 _schedulerStarted = true;
@@ -322,9 +328,14 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             var reasons = CollectNewSemanticSignals(snapshot);
             if (reasons.Count > 0)
             {
+                var body = FormatMechanicalGraphDeltaEvent(
+                    reasons,
+                    _hqKnownSnapshot,
+                    snapshot);
+                _hqKnownSnapshot = snapshot.Graph;
                 return new SupervisorWake(
                     "WORK_GRAPH_EVENT",
-                    FormatMechanicalGraphEvent(reasons, snapshot));
+                    body);
             }
 
             if (snapshot.RunningCount == 0 &&
@@ -335,11 +346,14 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 if (!string.Equals(signature, _lastQuiescentSignature, StringComparison.Ordinal))
                 {
                     _lastQuiescentSignature = signature;
+                    var body = FormatMechanicalGraphDeltaEvent(
+                        new[] { "실행 가능한 WORK와 실행 중 WORK가 없습니다." },
+                        _hqKnownSnapshot,
+                        snapshot);
+                    _hqKnownSnapshot = snapshot.Graph;
                     return new SupervisorWake(
                         "WORK_GRAPH_QUIESCENT",
-                        FormatMechanicalGraphEvent(
-                            new[] { "실행 가능한 WORK와 실행 중 WORK가 없습니다." },
-                            snapshot));
+                        body);
                 }
             }
         }
@@ -412,6 +426,87 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         => string.Equals(blockCode, "JUDGE_REQUEST", StringComparison.Ordinal) ||
            string.Equals(blockCode, "RESOURCE_REQUEST", StringComparison.Ordinal);
 
+    public static string FormatMechanicalGraphDeltaEvent(
+        IReadOnlyList<string> reasons,
+        WorkGraphSnapshot previous,
+        ParallelWorkSchedulerSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        var previousItems = previous.Items.ToDictionary(item => item.Id, StringComparer.Ordinal);
+        var changedItems = snapshot.Graph.Items
+            .Where(item =>
+                !previousItems.TryGetValue(item.Id, out var prior) ||
+                HasHqVisibleChange(prior, item))
+            .OrderBy(item => item.CreatedOrder)
+            .ToArray();
+
+        var builder = new StringBuilder();
+        builder.AppendLine("병렬 WorkGraph 변경 이벤트");
+        builder.AppendLine($"revision={snapshot.Graph.Revision}");
+        builder.AppendLine($"running={snapshot.RunningCount}");
+        builder.AppendLine($"ready={snapshot.ReadyCount}");
+        builder.AppendLine($"blocked={snapshot.BlockedCount}");
+        builder.AppendLine($"completed={snapshot.CompletedCount}");
+        builder.AppendLine($"failed={snapshot.FailedCount}");
+
+        if (reasons.Count > 0)
+        {
+            builder.AppendLine("eventReasons:");
+            foreach (var reason in reasons)
+                builder.AppendLine("- " + reason);
+        }
+
+        builder.AppendLine("changedItems:");
+        if (changedItems.Length == 0)
+        {
+            builder.AppendLine("- 없음");
+        }
+        else
+        {
+            foreach (var item in changedItems)
+                AppendMechanicalItem(builder, item);
+        }
+
+        builder.AppendLine("전체 WorkGraph는 Worker 내부 상태로 유지되며, HQ에는 직전 전달 이후 변경된 항목만 제공됩니다.");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static bool HasHqVisibleChange(
+        WorkItemSnapshot previous,
+        WorkItemSnapshot current)
+        => previous.State != current.State ||
+           previous.Kind != current.Kind ||
+           !previous.Dependencies.SequenceEqual(current.Dependencies) ||
+           !string.Equals(previous.BaseRef, current.BaseRef, StringComparison.Ordinal) ||
+           !string.Equals(previous.ResultRef, current.ResultRef, StringComparison.Ordinal) ||
+           !string.Equals(previous.ResultSummary, current.ResultSummary, StringComparison.Ordinal) ||
+           !string.Equals(previous.FailureCode, current.FailureCode, StringComparison.Ordinal) ||
+           !string.Equals(previous.BlockCode, current.BlockCode, StringComparison.Ordinal) ||
+           !string.Equals(previous.BlockDetailCode, current.BlockDetailCode, StringComparison.Ordinal);
+
+    private static void AppendMechanicalItem(StringBuilder builder, WorkItemSnapshot item)
+    {
+        builder.Append("- id=").Append(item.Id)
+            .Append(" kind=").Append(item.Kind.ToString().ToUpperInvariant())
+            .Append(" state=").Append(item.State.ToString().ToUpperInvariant());
+
+        if (item.Dependencies.Count > 0)
+            builder.Append(" dependencies=").Append(string.Join(",", item.Dependencies));
+        if (!string.IsNullOrWhiteSpace(item.ResultRef))
+            builder.Append(" resultRef=").Append(item.ResultRef);
+        if (!string.IsNullOrWhiteSpace(item.FailureCode))
+            builder.Append(" failureCode=").Append(item.FailureCode);
+        if (!string.IsNullOrWhiteSpace(item.BlockCode))
+            builder.Append(" blockCode=").Append(item.BlockCode);
+        if (!string.IsNullOrWhiteSpace(item.BlockDetailCode))
+            builder.Append(" blockDetailCode=").Append(item.BlockDetailCode);
+        if (!string.IsNullOrWhiteSpace(item.ResultSummary))
+            builder.Append(" report=").Append(SingleLine(item.ResultSummary));
+        builder.AppendLine();
+    }
+
     public static string FormatMechanicalGraphEvent(
         IReadOnlyList<string> reasons,
         ParallelWorkSchedulerSnapshot snapshot)
@@ -435,25 +530,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
         builder.AppendLine("items:");
         foreach (var item in snapshot.Graph.Items.OrderBy(value => value.CreatedOrder))
-        {
-            builder.Append("- id=").Append(item.Id)
-                .Append(" kind=").Append(item.Kind.ToString().ToUpperInvariant())
-                .Append(" state=").Append(item.State.ToString().ToUpperInvariant());
-
-            if (item.Dependencies.Count > 0)
-                builder.Append(" dependencies=").Append(string.Join(",", item.Dependencies));
-            if (!string.IsNullOrWhiteSpace(item.ResultRef))
-                builder.Append(" resultRef=").Append(item.ResultRef);
-            if (!string.IsNullOrWhiteSpace(item.FailureCode))
-                builder.Append(" failureCode=").Append(item.FailureCode);
-            if (!string.IsNullOrWhiteSpace(item.BlockCode))
-                builder.Append(" blockCode=").Append(item.BlockCode);
-            if (!string.IsNullOrWhiteSpace(item.BlockDetailCode))
-                builder.Append(" blockDetailCode=").Append(item.BlockDetailCode);
-            if (!string.IsNullOrWhiteSpace(item.ResultSummary))
-                builder.Append(" report=").Append(SingleLine(item.ResultSummary));
-            builder.AppendLine();
-        }
+            AppendMechanicalItem(builder, item);
 
         builder.AppendLine("위 값은 Worker가 관측한 기계적 상태이며 작업 의미 판단 결과가 아닙니다.");
         return builder.ToString().TrimEnd();
