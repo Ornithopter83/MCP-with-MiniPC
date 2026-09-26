@@ -145,6 +145,7 @@ public partial class MainWindow : Window
     private const string FollowupPromptPlaceholder = "추가할 작업을 입력하세요...";
     private readonly HttpClient _connectionClient = new() { Timeout = TimeSpan.FromSeconds(2) };
     private BridgeServer? _bridgeServer;
+    private ManagedWebRuntimeManager? _managedWebRuntimeManager;
     private bool _codexAuthenticated;
     private bool _serverOnline;
     private bool _messageExpanded;
@@ -170,17 +171,22 @@ public partial class MainWindow : Window
         public override string ToString() => Label;
     }
 
-    public MainWindow(BridgeServer? bridgeServer = null)
+    public MainWindow(
+        BridgeServer? bridgeServer = null,
+        ManagedWebRuntimeManager? managedWebRuntimeManager = null)
     {
         _aiRoleRunners = AiRoleRunnerRegistry.CreateDefault(_codexRunner);
         InitializeComponent();
         InitializeDirectWorkControls();
         _bridgeServer = bridgeServer;
+        _managedWebRuntimeManager = managedWebRuntimeManager;
         if (bridgeServer is not null)
         {
             bridgeServer.TaskChanged += OnBridgeTaskChanged;
             bridgeServer.ExtensionProgressChanged += OnExtensionProgress;
         }
+        if (managedWebRuntimeManager is not null)
+            managedWebRuntimeManager.StatusChanged += OnManagedWebRuntimeStatusChanged;
         _flowTimer.Tick += (_, _) => UpdateArrowAnimation();
         _flowTimer.Start();
         _connectionTimer.Tick += async (_, _) => await RefreshConnectionChecksAsync();
@@ -192,7 +198,12 @@ public partial class MainWindow : Window
         SetFlowState(codexActive: false, workerActive: false, webActive: false);
         ActivateResultTab(web: false);
         UpdateUsage(CodexUsage.Empty);
-        Loaded += async (_, _) => { RestoreWindowPosition(); await InitializeStartupConfigurationAsync(); };
+        Loaded += async (_, _) =>
+        {
+            RestoreWindowPosition();
+            await InitializeStartupConfigurationAsync();
+            RefreshManagedWebRuntimePresentation();
+        };
         ProjectStatusText.Text = "CHECKING";
         WebStatusText.Text = "WAITING";
         ServerStatusText.Text = "CHECKING";
@@ -274,6 +285,8 @@ public partial class MainWindow : Window
             _activeTaskCts?.Cancel();
             _flowTimer.Stop();
             _connectionTimer.Stop();
+            if (_managedWebRuntimeManager is not null)
+                _managedWebRuntimeManager.StatusChanged -= OnManagedWebRuntimeStatusChanged;
             _trayIcon.Visible = false;
             _trayIcon.ContextMenuStrip?.Dispose();
             _trayIcon.Dispose();
