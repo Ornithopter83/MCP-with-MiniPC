@@ -29,8 +29,8 @@
 제5조 (WORKER)
 
 ① 상태는 중단이다.
-② 완료하려 한 작업은 HQ/WORK 본문에서 구조 마커가 설명문 뒤에 나타나도 안전하게 처리하도록 WORK_GRAPH_PATCH, WORK_ITEM_STATUS, RESOURCE_TYPE와 레거시 REPORT/VALIDATION REQUEST 파서를 위치 독립 방식으로 보강하는 것이다.
-③ 중단 지점은 수정 전 실패 로그와 동일한 설명문 선행 형식, 중복 마커, JSON 뒤 설명을 방어하는 코드·회귀 테스트·계약 반영까지 완료했고 실제 .NET Worker 빌드·테스트 실행이 남은 상태다.
+② 완료하려 한 작업은 관리형 HQ/RESOURCE Chromium의 확장 버전이 서로 어긋나는 상태를 방어하기 위해 Worker 시작 시 ProjectHub 소유 잔존 Chromium을 정리하고, 역할별 실제 확장 version/build와 기대 version/build를 진단 표시하며, MainWindow.ManagedWeb.cs의 WPF Brush/Brushes 형식 모호성을 제거하는 것이다.
+③ 중단 지점은 코드·정적 경계 테스트·정책 반영까지 완료했고 새 Worker 빌드·게시 후 기존 HQ/RESOURCE profile 로그인 유지, 두 역할의 extension build 동기화와 실제 송수신 E2E 확인이 남은 상태다.
 
 제6조 (WEB)
 
