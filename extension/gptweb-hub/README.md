@@ -1,6 +1,6 @@
 # GPTWeb-Hub 확장
 
-버전: 0.1.9 / build 2026-09-25.3
+버전: 0.1.11 / build 2026-09-26.2
 
 ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 
@@ -69,3 +69,10 @@ RESOURCE 응답 감시는 MutationObserver 외에 1초 watchdog도 사용한다.
 - RESOURCE가 WAIT_RESPONSE에 진입하는 즉시 120초 절대 수집 마감 시간을 시작해 결과 탐지가 전혀 되지 않는 경우에도 명확히 실패 처리한다.
 - RESOURCE 작업 카드에 `현재 결과 다시 수집` 버튼을 추가했다. 이 버튼은 프롬프트를 다시 보내지 않고 현재 assistant 결과만 재탐색·다운로드한다.
 - Worker Pipeline의 RESOURCE 카드에는 확장이 보고한 전송 확인, 생성 결과 대기, 결과 확인, 다운로드, Worker 전달 단계를 그대로 표시한다.
+
+
+## 응답 텍스트 변화 감지 — 2026-09-26
+
+- 새 assistant 응답 판정은 DOM 개수 증가, 노드 교체, message key 변경 외에 기존 assistant DOM의 텍스트 변화도 사용할 수 있다.
+- 텍스트 변화 fallback은 현재 Worker 메시지가 실제 사용자 메시지로 대화에 나타난 것이 확인된 경우에만 허용한다.
+- 텍스트 변화 fallback으로 응답을 감지하면 `RESPONSE_TEXT_CHANGED` 진행 상태를 기록한다.
