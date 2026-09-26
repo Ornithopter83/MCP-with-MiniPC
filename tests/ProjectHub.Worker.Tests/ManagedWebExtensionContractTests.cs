@@ -30,10 +30,10 @@ public sealed class ManagedWebExtensionContractTests
     {
         var source = ReadEmbeddedText("ProjectHub.Worker.Extension.background.js");
 
-        Assert.Contains("ensure-single-chatgpt-tab", source, StringComparison.Ordinal);
-        Assert.Contains("chrome.tabs.query", source, StringComparison.Ordinal);
-        Assert.Contains("chrome.tabs.remove", source, StringComparison.Ordinal);
-        Assert.Contains("chrome.tabs.update", source, StringComparison.Ordinal);
+        Assert.True(source.Contains("ensure-single-chatgpt-tab", StringComparison.Ordinal));
+        Assert.True(source.Contains("chrome.tabs.query", StringComparison.Ordinal));
+        Assert.True(source.Contains("chrome.tabs.remove", StringComparison.Ordinal));
+        Assert.True(source.Contains("chrome.tabs.update", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -41,8 +41,8 @@ public sealed class ManagedWebExtensionContractTests
     {
         var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
 
-        Assert.Contains("projecthub-managed-role", source, StringComparison.Ordinal);
-        Assert.Contains("ensureManagedSingleChatTab", source, StringComparison.Ordinal);
+        Assert.True(source.Contains("projecthub-managed-role", StringComparison.Ordinal));
+        Assert.True(source.Contains("ensureManagedSingleChatTab", StringComparison.Ordinal));
         Assert.Contains("ensure-single-chatgpt-tab", source, StringComparison.Ordinal);
     }
 
