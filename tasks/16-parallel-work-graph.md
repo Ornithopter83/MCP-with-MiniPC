@@ -639,7 +639,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - HEAD가 없거나 commit되지 않은 변경사항이 있으면 기준점 생성 경로(repository root)와 현재 branch를 사용자에게 표시하고 승인을 받는다.
 - 승인 시에만 `git add --all` 후 `ProjectHub <projecthub@local>` 로컬 identity로 baseline commit을 생성한다. 전역 Git 사용자 설정은 변경하지 않는다.
 - 사용자가 취소하면 HQ/WORK를 호출하지 않고 현재 입력 상태에 머문다.
-- `.gitignore`, `.git/info/exclude`, .NET/Godot 등 프로젝트별 ignore preset은 이번 범위에서 전혀 생성·수정하지 않는다.
+- 초기 구현에서는 `.gitignore`와 프로젝트별 preset을 수정하지 않았으나, Windows worktree 실검증에서 추적된 검증 캐시의 긴 경로 문제가 확인되어 이후 Git hygiene 단계에서 보강한다.
 - 기존 `origin` 자동 확인은 유지한다. remote가 없어도 로컬 Git + HEAD + attached branch 조건만 충족하면 병렬 WORK를 사용할 수 있고, 자동 push/pull/remote 생성은 하지 않는다.
 - Windows 핵심 검증에 `GitWorkspaceBootstrapperTests`를 추가한다.
 
@@ -709,3 +709,14 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 이미 READY인 graph를 변경 없이 진행할 수 있도록 `operations: []`을 revision 불변 no-op GraphPatch로 허용한다.
 - USER_FOLLOWUP에는 이전 HQ raw ACTION/GOTO/GraphPatch와 과거 실행 상태 문자열을 다시 주입하지 않고 현재 WorkGraph 기계 상태와 사용자 요청을 사용한다.
 - 회귀 테스트는 legacy preparation failure 선택 복구, current preparation block 복구, no-op patch, residue branch 재사용, worktree 실패 BLOCKED 귀속을 포함한다.
+
+
+### 2026-09-26 범용 Git ignore와 longpaths 보강
+
+- `.verification-appdata/.../shader_cache/... `가 추적된 상태에서 Windows `Filename too long`으로 worktree checkout이 실패한 실사용 사례를 기준으로 Git 준비 계층을 보강했다.
+- `PrepareAsync`는 repository local `core.longpaths=true`를 적용하고, ProjectHub 관리 ignore 갱신 필요 여부와 관리 경로의 현재 추적 여부만 검사한다.
+- 실제 `.gitignore` 갱신과 `git rm --cached`는 사용자가 baseline 생성을 승인한 뒤 `CreateBaselineAsync`에서 수행해 취소 시 index를 변경하지 않는다.
+- 기본 관리 ignore는 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/`와 명백한 OS/편집기 임시 파일이다.
+- 신규 또는 아직 HEAD가 없는 저장소에는 Godot/Unity/.NET/Node 안전 preset을 파일 존재 기준으로 추가하고, 기존 저장소에는 프로젝트 preset을 새로 주입하지 않는다.
+- 기존 사용자 `.gitignore` 내용은 보존하고 `# >>> ProjectHub managed` / `# <<< ProjectHub managed` 블록만 멱등 갱신한다.
+- WorkItem worktree 경로 segment를 축소해 긴 경로 위험을 추가로 줄였다.

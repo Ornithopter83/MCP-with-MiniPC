@@ -31,9 +31,11 @@ public partial class MainWindow
 
             if (state.NeedsBaseline)
             {
-                var reason = state.HasHead
-                ? "현재 작업 폴더에 commit되지 않은 변경사항이 있습니다.\n현재 변경사항을 새 Git 기준점에 포함합니다."
-                : "병렬 WORK를 위한 최초 Git 기준점이 필요합니다.\n현재 폴더의 내용을 Git 기준점으로 생성합니다.";
+                var reason = !state.HasHead
+                    ? "WorkGraph를 위한 최초 Git 기준점이 필요합니다.\n현재 폴더의 내용을 Git 기준점으로 생성합니다."
+                    : state.NeedsManagedIgnoreUpdate || state.NeedsManagedIndexCleanup
+                        ? "ProjectHub의 Git 관리 규칙을 적용해야 합니다.\n.projecthub와 검증 캐시는 소스 추적에서 제외하고 현재 변경사항과 함께 새 기준점에 반영합니다."
+                        : "현재 작업 폴더에 commit되지 않은 변경사항이 있습니다.\n현재 변경사항을 새 Git 기준점에 포함합니다.";
 
                 var prompt =
                 reason + Environment.NewLine + Environment.NewLine +
@@ -113,7 +115,16 @@ public partial class MainWindow
             "GIT_BOOTSTRAP_INIT_TIMEOUT" => "git init 실행 시간이 초과되었습니다.",
             "GIT_BOOTSTRAP_INIT_CANCELED" => "git init 실행이 취소되었습니다.",
             "GIT_BOOTSTRAP_INIT_FAILED" => "git init을 실행하지 못했습니다.",
+            "GIT_BOOTSTRAP_LONGPATHS_CONFIG_TIMEOUT" => "Git 긴 경로 설정 시간이 초과되었습니다.",
+            "GIT_BOOTSTRAP_LONGPATHS_CONFIG_CANCELED" => "Git 긴 경로 설정이 취소되었습니다.",
+            "GIT_BOOTSTRAP_LONGPATHS_CONFIG_FAILED" => "저장소의 core.longpaths 설정을 적용하지 못했습니다.",
+            "GIT_IGNORE_INSPECTION_FAILED" => ".gitignore 상태를 확인하지 못했습니다.",
+            "GIT_BOOTSTRAP_MANAGED_PATH_SCAN_FAILED" => "ProjectHub 관리 경로의 Git 추적 상태를 확인하지 못했습니다.",
             "GIT_BOOTSTRAP_ATTACHED_BRANCH_REQUIRED" => "현재 Git 상태가 detached HEAD입니다. branch에 연결한 뒤 다시 실행하세요.",
+            "GIT_IGNORE_UPDATE_FAILED" => "ProjectHub 관리 .gitignore 규칙을 갱신하지 못했습니다.",
+            "GIT_MANAGED_INDEX_CLEANUP_TIMEOUT" => "ProjectHub 관리 경로의 Git 추적 해제 시간이 초과되었습니다.",
+            "GIT_MANAGED_INDEX_CLEANUP_CANCELED" => "ProjectHub 관리 경로의 Git 추적 해제가 취소되었습니다.",
+            "GIT_MANAGED_INDEX_CLEANUP_FAILED" => "ProjectHub 관리 경로를 Git index에서 정리하지 못했습니다.",
             "GIT_BASELINE_ADD_TIMEOUT" => "기준점 파일 등록 시간이 초과되었습니다.",
             "GIT_BASELINE_ADD_CANCELED" => "기준점 파일 등록이 취소되었습니다.",
             "GIT_BASELINE_ADD_FAILED" => "기준점 파일을 Git에 등록하지 못했습니다.",

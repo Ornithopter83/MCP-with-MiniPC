@@ -871,14 +871,16 @@ public sealed class GitWorktreeManager
         var root = Path.GetFullPath(repositoryRoot);
         var parent = Directory.GetParent(root)?.FullName
             ?? throw new InvalidOperationException("저장소 상위 경로를 계산할 수 없습니다.");
-        var repository = StableSegment(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), 36);
+        var repository = StableSegment(
+            Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+            12);
 
         return Path.Combine(
             parent,
             ".projecthub-worktrees",
             repository,
-            StableSegment(jobId, 36),
-            StableSegment(workItemId, 36));
+            StableSegment(jobId, 8),
+            StableSegment(workItemId, 18));
     }
 
     private Task<GitCommandResult> ReadPrimaryWorkspaceStatusAsync(

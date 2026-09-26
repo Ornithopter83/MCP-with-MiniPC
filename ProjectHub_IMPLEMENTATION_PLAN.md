@@ -92,3 +92,11 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - 저장 WorkGraph가 없는 과거 continuation도 빈 WorkGraph로 시작하며 레거시 직렬 runtime으로 돌아가지 않는다.
 - JUDGE는 라우팅 역할이 아니며 JEV raw 결과를 Worker가 요청한 같은 WORK 세션에 직접 반환한다.
 - 역할 프롬프트에는 JUDGE 활성 여부나 직렬/병렬 모드 여부를 별도로 주입하지 않는다.
+
+
+## 2026-09-26 Git 준비 위생 보강
+
+- WorkGraph 실행 전 Git 준비는 repository local `core.longpaths=true`를 적용한다.
+- ProjectHub 관리 `.gitignore` 블록과 이미 추적된 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/` index 정리는 baseline 사용자 승인 뒤 수행한다.
+- 기존 사용자 ignore 규칙은 보존하고, 새 Git 저장소에만 파일 존재로 기계적으로 판별 가능한 안전한 Godot/Unity/.NET/Node preset을 추가한다.
+- worktree 파일시스템 경로는 짧은 안정 segment를 사용해 Windows 경로 길이 위험을 낮춘다.

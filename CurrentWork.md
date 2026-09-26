@@ -52,7 +52,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 새 Job과 모든 continuation은 maxConcurrentWork=1을 포함해 WorkGraph/Scheduler runtime만 사용
 - 메시지/작업 이력 상단에 WorkItem 상태 목록을 직접 표시하고 Integration/CANCELED/BLOCKED/FAILED 세부 상태를 노출
 - 병렬 runtime 시작 전 Git 저장소/HEAD/attached branch 사전 검사를 유지하되, 실제 실행/작업 추가 시 Git이 없으면 Worker가 먼저 git init을 수행하고 기준점 필요 시 repository root/branch를 표시해 사용자 승인을 받은 뒤 baseline commit을 생성
-- Git 준비 자동화는 .gitignore/exclude/preset을 건드리지 않으며 기존 origin URL 확인만 유지하고 remote 생성/push/pull은 하지 않음
+- Git 준비 자동화는 ProjectHub 관리 `.gitignore` 블록, repository local `core.longpaths=true`, ProjectHub 런타임/검증 캐시의 index 정리를 지원하며 기존 origin URL 확인만 유지하고 remote 생성/push/pull은 하지 않음
 - Git 기준점 준비 중에는 실행/작업 추가 버튼을 비활성화하고 `Git 준비 중...` 상태를 표시해 중복 실행을 차단
 - transcript는 Job 전체 통합 파일이 아니라 명령 단위로 저장: 최초 실행/각 작업 추가가 종료될 때 `.projecthub/transcripts/yyMMdd-HHmmss.txt` 새 파일 생성, 같은 초 충돌 시 순번 접미사 사용
 - Job 단위 `events/<jobId>.jsonl`은 프로젝트 기억/복구용 실시간 원시 이벤트 스트림으로 유지
@@ -452,3 +452,14 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 이전 실패에서 같은 WorkItem branch만 남은 경우 branch가 다른 worktree에서 사용 중이지 않고 정확히 같은 base commit을 가리킬 때만 안전하게 재사용한다.
 - HQ/WORK 역할 계약에는 복구용 지시 문장을 추가하지 않았다.
 - 현재 Web 환경에는 .NET SDK가 없어 dotnet test/build는 미실행이며 Windows에서 재검증이 필요하다.
+
+
+## 2026-09-26 범용 Git hygiene와 긴 경로 방어
+
+- Git 준비 시 repository local `core.longpaths=true`를 자동 적용한다. 전역 Git 설정은 변경하지 않는다.
+- baseline 승인 전에는 source/index를 변경하지 않고, 승인 뒤 ProjectHub 관리 `.gitignore` 블록을 멱등적으로 생성·갱신한다.
+- 관리 블록은 기존 사용자 `.gitignore` 규칙을 보존하면서 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/`, OS/편집기 임시 파일을 제외한다.
+- 새로 초기화한 저장소 또는 HEAD가 없는 초기 저장소만 안전한 Godot/Unity/.NET/Node preset을 파일 존재 기준으로 추가한다. 기존 저장소에는 프로젝트 preset을 새로 주입하지 않는다.
+- 이미 Git이 추적 중인 ProjectHub 런타임/검증 캐시는 사용자가 baseline을 승인한 경우에만 `git rm -r --cached --ignore-unmatch`로 index에서 제거하고 로컬 파일은 유지한다.
+- WorkItem worktree 경로의 repository/job/item segment 길이를 축소해 Windows path-length 여유를 늘린다. branch 이름은 변경하지 않는다.
+- HQ/WORK 프롬프트에는 Git hygiene 지시를 추가하지 않는다.

@@ -21,6 +21,9 @@ public sealed class GitWorktreeManagerTests
                 Path.Combine(parent, ".projecthub-worktrees") + Path.DirectorySeparatorChar,
                 path,
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            Assert.True(
+                Path.GetRelativePath(parent, path).Length < 100,
+                "Worktree 상대 경로는 Windows 도구 호환성을 위해 짧게 유지해야 합니다.");
             Assert.False(
                 Path.GetFullPath(path).StartsWith(
                     Path.GetFullPath(repository) + Path.DirectorySeparatorChar,

@@ -415,6 +415,7 @@ WorkItem 기본 상태:
 동시 쓰기 격리:
 - 동시 실행 WorkItem은 각각 독립 Git branch와 worktree를 사용한다.
 - worktree와 branch 생성·삭제·경로 검증은 Worker가 기계적으로 수행한다.
+- worktree 파일시스템 경로는 Windows와 외부 도구의 경로 길이 위험을 줄이기 위해 repository/job/workItem 식별자를 짧은 안정 해시가 포함된 segment로 축약한다. Git branch 이름은 기존의 식별 가능한 형식을 유지한다.
 - 같은 Git 저장소의 worktree 준비처럼 공유 Git metadata를 변경하는 짧은 구간은 Worker가 저장소 단위로 직렬화하고, 준비가 끝난 WORK 실행은 설정된 슬롯 수대로 병렬 수행한다.
 - Git 준비 명령이 실패하면 Worker는 오류 코드뿐 아니라 실제 exit code와 stderr를 WorkItem 기계 보고에 보존한다.
 - WORK 세션이 시작되기 전의 WORKTREE_* 준비 실패는 의미적 FAILED로 확정하지 않고 BLOCKED로 보존한다. USER_FOLLOWUP의 현재 Git 사전 검사가 성공하면 같은 WorkItem을 다시 실행 가능한 상태로 되돌린다.
@@ -425,7 +426,12 @@ WorkItem 기본 상태:
 - 새 병렬 실행을 시작할 때 작업 폴더가 Git 저장소가 아니면 Worker는 AI를 호출하기 전에 해당 작업 폴더에서 `git init`을 기계적으로 수행할 수 있다.
 - Git HEAD가 없거나 현재 저장소에 commit되지 않은 변경이 있으면 Worker는 실제 repository root와 현재 branch를 사용자에게 보여주고 기준점 생성 승인을 요청한다.
 - 사용자가 승인한 경우에만 Worker가 `git add --all`과 로컬 ProjectHub identity를 사용한 baseline commit을 생성한다. 사용자가 취소하면 AI 의미 작업을 시작하지 않는다.
-- 이 자동 준비 단계는 `.gitignore`, `.git/info/exclude`, 프로젝트별 ignore preset을 생성·수정하지 않고 현재 Git 규칙을 그대로 사용한다.
+- Git 준비 단계는 사용자 승인 전에는 source/index를 변경하지 않고, baseline 승인을 받은 뒤에만 ProjectHub 관리 `.gitignore` 블록을 생성·갱신하고 ProjectHub 런타임/검증 캐시의 index 추적을 해제한다.
+- ProjectHub 관리 ignore 기본값은 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/`와 명백한 OS·편집기 임시 파일만 포함한다. 기존 사용자 규칙은 보존한다.
+- Worker가 새로 `git init`한 저장소 또는 아직 HEAD가 없는 초기 저장소에는 파일/폴더 존재만으로 기계적으로 식별 가능한 안전 preset을 추가할 수 있다. Godot은 `.godot/`, Unity는 `Library/`, `Temp/`, `Logs/`, `Obj/`, `UserSettings/`, .NET은 `bin/`, `obj/`, Node는 `node_modules/`만 자동 제외한다.
+- 이미 존재하던 Git 저장소에는 프로젝트별 preset을 새로 주입하지 않고 ProjectHub 관리 블록만 보장한다.
+- Git 준비 시 repository local `core.longpaths=true`를 기계적으로 설정하며 전역 Git 설정은 변경하지 않는다.
+- 이미 추적 중인 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/`는 사용자가 baseline 생성을 승인한 경우에만 `git rm --cached`로 index에서 제거하고 로컬 파일은 보존한다.
 - 원격 저장소는 기존처럼 `origin` URL이 있으면 기계적으로 확인만 하며 자동 remote 생성, pull, push는 수행하지 않는다.
 
 동적 확장:
