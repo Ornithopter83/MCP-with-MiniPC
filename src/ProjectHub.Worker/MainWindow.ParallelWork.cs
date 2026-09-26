@@ -137,7 +137,7 @@ public partial class MainWindow
                 RunOnUi(() =>
                 {
                     TaskDirection.Text = "설계·관제 AI";
-                    TaskTitle.Text = "병렬 WorkGraph 관제";
+                    TaskTitle.Text = "WorkGraph 관제";
                     ResultTitle.Text = "HQ";
                     SetFlowState(
                         codexActive: true,
@@ -151,7 +151,7 @@ public partial class MainWindow
                 {
                     result = await RunHqRoleAsync(
                         jobId,
-                        "HQ_PARALLEL",
+                        "HQ_WORK_GRAPH",
                         prompt,
                         coordinator,
                         workingDirectory,
@@ -169,7 +169,7 @@ public partial class MainWindow
                     var operation = Dispatcher.InvokeAsync(() =>
                         RunHqRoleAsync(
                             jobId,
-                            "HQ_PARALLEL",
+                            "HQ_WORK_GRAPH",
                             prompt,
                             coordinator,
                             workingDirectory,
@@ -192,7 +192,7 @@ public partial class MainWindow
                 {
                     throw new InvalidOperationException(
                         string.IsNullOrWhiteSpace(result.StandardError)
-                            ? "HQ_PARALLEL_PROCESS_EXIT"
+                            ? "HQ_WORK_GRAPH_PROCESS_EXIT"
                             : result.StandardError);
                 }
 
@@ -201,7 +201,7 @@ public partial class MainWindow
                 {
                     AddRoleResponseHistory(
                         WorkerRoleState.Hq,
-                        "병렬 관제",
+                        "WorkGraph 관제",
                         result.FinalMessage,
                         usage: result.Usage,
                         files: result.Files,
@@ -378,7 +378,7 @@ public partial class MainWindow
                         RecordJevTransportTelemetry(jobId, routing.Telemetry, "JUDGE_PARALLEL");
 
                     AddTaskMessage(
-                        "PARALLEL JUDGE",
+                        "JUDGE",
                         $"workItemId={routing.WorkItemId} · stage={routing.Stage}" +
                         Environment.NewLine +
                         routing.Message,
@@ -413,7 +413,7 @@ public partial class MainWindow
                     ProjectWorkspacePersistence.EventLogPath(workingDirectory, jobId),
                     restoredGraphSummary) +
                   Environment.NewLine +
-                  $"병렬 WorkGraph snapshot 파일: {ProjectWorkspacePersistence.WorkGraphPath(workingDirectory, jobId)}"
+                  $"WorkGraph snapshot 파일: {ProjectWorkspacePersistence.WorkGraphPath(workingDirectory, jobId)}"
                 : request;
 
             var result = await supervisor.RunAsync(
@@ -429,13 +429,13 @@ public partial class MainWindow
             if (result.Exit == ParallelWorkSupervisorExit.Failed)
             {
                 var errorBody =
-                    $"병렬 WorkGraph 관제가 기계적 오류로 종료되었습니다.{Environment.NewLine}" +
-                    $"errorCode={result.ErrorCode ?? "PARALLEL_WORK_FAILED"}{Environment.NewLine}" +
+                    $"WorkGraph 관제가 기계적 오류로 종료되었습니다.{Environment.NewLine}" +
+                    $"errorCode={result.ErrorCode ?? "WORK_GRAPH_FAILED"}{Environment.NewLine}" +
                     result.HqBody;
                 AddTaskMessage(
                     "TASK ERROR",
                     errorBody,
-                    status: result.ErrorCode ?? "PARALLEL_WORK_FAILED");
+                    status: result.ErrorCode ?? "WORK_GRAPH_FAILED");
                 ResultTitle.Text = "DONE · 오류 기록 있음";
                 ResultBody.Text = errorBody;
                 TaskTitle.Text = "병렬 WORK 관제 오류";
@@ -554,21 +554,21 @@ public partial class MainWindow
                     snapshot);
                 AddTaskMessage(
                     "TASK CANCELED",
-                    "사용자가 병렬 실행 구간을 중단했습니다. WorkGraph와 확보된 세션 정보를 보존합니다.",
+                    "사용자가 실행 구간을 중단했습니다. WorkGraph와 확보된 세션 정보를 보존합니다.",
                     status: "CANCELED");
                 ResultTitle.Text = "CANCELED";
                 ResultBody.Text =
-                    "현재 병렬 실행 구간을 중단했습니다. 작업 추가로 같은 WorkGraph에서 이어갈 수 있습니다.";
-                TaskTitle.Text = "병렬 작업이 중단되었습니다. 후속 작업 입력 대기";
+                    "현재 실행 구간을 중단했습니다. 작업 추가로 같은 WorkGraph에서 이어갈 수 있습니다.";
+                TaskTitle.Text = "WorkGraph 작업이 중단되었습니다. 후속 작업 입력 대기";
                 SetFollowupComposerVisible(true);
             }
             else
             {
                 AddTaskMessage(
                     "TASK CANCELED",
-                    "병렬 Coordinator 작업이 취소되었습니다.");
+                    "WorkGraph 관제 작업이 취소되었습니다.");
                 ResultTitle.Text = "CANCELED";
-                TaskTitle.Text = "병렬 작업이 취소되었습니다.";
+                TaskTitle.Text = "WorkGraph 작업이 취소되었습니다.";
             }
 
             SetFlowState(false, false, false);
@@ -591,7 +591,7 @@ public partial class MainWindow
                 status: "UNKNOWN");
             ResultTitle.Text = "ERROR";
             ResultBody.Text = detail;
-            TaskTitle.Text = "병렬 WORK 실행 오류";
+            TaskTitle.Text = "WorkGraph 실행 오류";
             SetFlowState(false, false, false);
         }
         finally

@@ -42,7 +42,6 @@ public static class WorkerGotoContract
         var allowed = source switch
         {
             WorkerRoleState.Work => destination is WorkerRoleState.Hq or WorkerRoleState.Judge or WorkerRoleState.Resource,
-            WorkerRoleState.Judge => destination == WorkerRoleState.Work,
             WorkerRoleState.Resource => destination == WorkerRoleState.Work,
             _ => false
         };

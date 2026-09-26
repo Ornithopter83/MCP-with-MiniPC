@@ -119,8 +119,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             var prompt = RoleContractLoader.BuildWorkPrompt(
                 inboundType,
                 inboundBody,
-                _judgeAvailable,
-                observationRequestDirectory,
                 new WorkItemPromptContext(
                     item.Id,
                     item.Kind,
@@ -130,7 +128,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     preparation.Branch,
                     preparation.WorktreePath,
                     item.ResultSummary,
-                    dependencyResults));
+                    dependencyResults),
+                observationRequestDirectory);
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
@@ -217,9 +216,10 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         {
             if (!_judgeAvailable)
             {
-                return WorkItemExecutionResult.Failed(
+                return WorkItemExecutionResult.Blocked(
                     "JUDGE_UNAVAILABLE",
-                    "현재 병렬 WorkItem에서는 JUDGE가 비활성화되어 있습니다.",
+                    route.Body,
+                    preparation.HeadCommit,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId);

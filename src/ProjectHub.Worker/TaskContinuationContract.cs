@@ -44,7 +44,7 @@ public static class TaskContinuationContract
 
         var graph = string.IsNullOrWhiteSpace(workGraphSummary)
             ? string.Empty
-            : $"{Environment.NewLine}{Environment.NewLine}병렬 WorkGraph 현재 상태:{Environment.NewLine}{workGraphSummary.Trim()}";
+            : $"{Environment.NewLine}{Environment.NewLine}WorkGraph 현재 상태:{Environment.NewLine}{workGraphSummary.Trim()}";
 
         return $"이전 작업 상태: {status}{Environment.NewLine}" +
                $"이전 HQ 메시지:{Environment.NewLine}{previous}" +
