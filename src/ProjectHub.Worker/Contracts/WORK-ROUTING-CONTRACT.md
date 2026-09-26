@@ -29,9 +29,10 @@
 ① [GOTO : RESOURCE]는 WorkItem #0에서만 사용한다. 다른 WorkItem은 RESOURCE를 직접 요청하지 않는다.
 ② WorkItem #0은 리소스 관련 작업만 수행한다.
 ③ 생성 리소스의 제작·수급은 반드시 RESOURCE 경로만 사용하며, RESOURCE 실패 시 자체 생성 도구나 외부 사이트로 우회하지 않는다.
-④ 요청 첫 줄에는 RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE 중 하나를 쓴다.
-⑤ 한 요청에는 한 종류의 새로운 생성 리소스만 포함한다.
-⑥ 그 아래에는 자연어 생성 지시만 넣고 상태 조회·저장 지시·Worker 운영 지시는 넣지 않는다.
+④ GOTO 뒤 본문에는 RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE 행을 정확히 하나 포함한다. 설명이 먼저 와도 되며 Worker는 본문에서 해당 행을 기계적으로 찾는다.
+⑤ Worker는 RESOURCE_TYPE 행 뒤의 내용만 RESOURCE 생성 프롬프트로 전달한다.
+⑥ 한 요청에는 한 종류의 새로운 생성 리소스만 포함한다.
+⑦ RESOURCE_TYPE 뒤에는 자연어 생성 지시만 넣고 상태 조회·저장 지시·Worker 운영 지시는 넣지 않는다.
 
 제5조 (라우팅)
 
@@ -51,12 +52,13 @@
 
 제7조 (HQ 보고)
 
-① HQ 보고에서는 GOTO 다음 첫 비어 있지 않은 줄에 상태 행 하나를 둔다.
+① HQ 보고 본문에는 다음 상태 행 중 하나를 정확히 하나 포함한다. 설명이 먼저 와도 되며 Worker는 본문에서 상태 행을 기계적으로 찾는다.
 
 WORK_ITEM_STATUS: COMPLETED
 WORK_ITEM_STATUS: BLOCKED
 WORK_ITEM_STATUS: SPLIT_REQUEST
 WORK_ITEM_STATUS: FAILED
 
-② 상태 행 뒤에는 HQ가 다음 GraphPatch를 판단할 수 있는 사실만 필요한 범위에서 적는다.
-③ JUDGE와 RESOURCE 목적지에는 WORK_ITEM_STATUS를 붙이지 않는다.
+② 상태 행을 제외한 나머지 본문에는 HQ가 다음 GraphPatch를 판단할 수 있는 사실만 필요한 범위에서 적는다.
+③ 같은 응답에 WORK_ITEM_STATUS를 두 번 쓰지 않는다.
+④ JUDGE와 RESOURCE 목적지에는 WORK_ITEM_STATUS를 붙이지 않는다.
