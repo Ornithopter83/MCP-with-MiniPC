@@ -97,17 +97,37 @@ public sealed class BridgeServer : IDisposable
         {
             var normalizedRole = NormalizeRole(role);
             if (!_state.RoleBindings.TryGetValue(normalizedRole, out var conversationId))
-                return new(normalizedRole, false, false, false, null, null);
+                return new(
+                    normalizedRole,
+                    false,
+                    false,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    ExpectedExtensionVersion,
+                    ExpectedExtensionBuild);
 
             var connected = _webHeartbeats.TryGetValue(conversationId, out var seen) &&
                             DateTimeOffset.UtcNow - seen < TimeSpan.FromSeconds(10);
             _webConversationTitles.TryGetValue(conversationId, out var title);
+            _webExtensionVersions.TryGetValue(conversationId, out var version);
+            _webExtensionBuilds.TryGetValue(conversationId, out var build);
             var synchronized = connected &&
-                _webExtensionVersions.TryGetValue(conversationId, out var version) &&
-                _webExtensionBuilds.TryGetValue(conversationId, out var build) &&
                 string.Equals(version, ExpectedExtensionVersion, StringComparison.Ordinal) &&
                 string.Equals(build, ExpectedExtensionBuild, StringComparison.Ordinal);
-            return new(normalizedRole, true, connected, synchronized, conversationId, title);
+            return new(
+                normalizedRole,
+                true,
+                connected,
+                synchronized,
+                conversationId,
+                title,
+                version,
+                build,
+                ExpectedExtensionVersion,
+                ExpectedExtensionBuild);
         }
     }
 
@@ -875,7 +895,17 @@ public sealed class BridgeState
 }
 
 public sealed record BindingState(string ConversationId, string ProjectId, DateTimeOffset UpdatedAt);
-public sealed record WebRoleBindingStatus(string Role, bool Bound, bool Connected, bool ExtensionSynchronized, string? ConversationId, string? ConversationTitle);
+public sealed record WebRoleBindingStatus(
+    string Role,
+    bool Bound,
+    bool Connected,
+    bool ExtensionSynchronized,
+    string? ConversationId,
+    string? ConversationTitle,
+    string? ExtensionVersion = null,
+    string? ExtensionBuild = null,
+    string? ExpectedExtensionVersion = null,
+    string? ExpectedExtensionBuild = null);
 public sealed record ResourceRequest(string Id, string Type, string Prompt, string TargetDirectory, string TargetFileName, string RequestedBy, string Status, string? SavedPath, string WorkspaceRoot);
 public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null, List<string>? SavedPaths = null, List<BridgeFileReceipt>? SavedFileReceipts = null, string? LastStage = null, string? LastStageDetail = null, int LastAttempt = 0, DateTimeOffset? LastProgressAt = null);
 public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null, string? Sha256 = null);
