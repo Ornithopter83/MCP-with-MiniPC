@@ -343,7 +343,8 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 7. RESOURCE / JUDGE / OBSERVATION의 workItemId 귀속
 8. WorkGraph와 WorkItem 세션/branch/worktree/result 상태 영속화 및 재시작 복구
 9. Pipeline의 병렬 WORK 상태와 세부 WorkItem 표시
-10. 단일 WORK 대비 병렬 WORK 실제 E2E 비교 검증
+10. 병렬 실행 진입 전 로컬 Git 자동 초기화와 사용자 승인 기반 baseline commit
+11. 단일 WORK 대비 병렬 WORK 실제 E2E 비교 검증
 
 실제 Windows 빌드/테스트/Explorer E2E는 실행 가능한 .NET/Explorer 환경에서 검증해야 한다.
 
