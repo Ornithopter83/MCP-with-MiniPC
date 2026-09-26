@@ -228,7 +228,7 @@ public partial class MainWindow
         return RunDirectWorkAsync(
             prompt,
             appendToHistory: false,
-            SnapshotInitialAttachments());
+            attachments: SnapshotInitialAttachments());
     }
 
     private async Task RunDirectWorkAsync(
