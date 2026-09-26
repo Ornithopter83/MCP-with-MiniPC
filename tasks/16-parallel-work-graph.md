@@ -642,3 +642,12 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `.gitignore`, `.git/info/exclude`, .NET/Godot 등 프로젝트별 ignore preset은 이번 범위에서 전혀 생성·수정하지 않는다.
 - 기존 `origin` 자동 확인은 유지한다. remote가 없어도 로컬 Git + HEAD + attached branch 조건만 충족하면 병렬 WORK를 사용할 수 있고, 자동 push/pull/remote 생성은 하지 않는다.
 - Windows 핵심 검증에 `GitWorkspaceBootstrapperTests`를 추가한다.
+
+
+### 2026-09-26 Git 기준점 준비 중 중복 입력 차단
+
+- `421d58781c238fc290cd0a496cc79390ae7bce2d`: Git 준비 시작부터 완료·취소까지 `_gitPreparationInProgress` 게이트를 추가했다.
+- 기준점 확인창에서 사용자가 확인한 뒤 `git add --all` / baseline commit / HEAD 재확인이 끝날 때까지 실행 버튼과 작업 추가 버튼을 비활성화한다.
+- 준비 중 실행 버튼과 작업 추가 버튼에는 `Git 준비 중...`을 표시해 클릭이 무시되는 상태임을 명시한다.
+- 실행/작업 추가 event handler도 같은 게이트를 먼저 검사해 빠른 연속 클릭으로 Git 준비가 중복 시작되지 않게 한다.
+- 기준점 생성 취소·실패·성공 어느 경로에서도 `finally`에서 게이트를 해제하고 버튼 상태를 다시 계산한다.

@@ -77,6 +77,7 @@ Write-Host "자동 검증 통과." -ForegroundColor Green
 Write-Host ""
 Write-Host "남은 Explorer E2E:" -ForegroundColor Yellow
 Write-Host "  1) Git 없는 작업 폴더에서 실행 -> git init -> 기준점 경로 확인 -> 승인/취소"
+Write-Host "     - 기준점 생성 중 실행/작업 추가 버튼이 'Git 준비 중...'으로 비활성화되는지 확인"
 Write-Host "  2) 기존 Git dirty 작업 폴더에서 기준점 승인 후 clean HEAD 확인"
 Write-Host "  3) 최대 동시 WORK=1 직렬 회귀"
 Write-Host "  4) 최대 동시 WORK=4에서 독립 WorkItem 4개 동시 실행"

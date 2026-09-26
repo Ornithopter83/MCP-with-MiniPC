@@ -53,6 +53,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 메시지/작업 이력 상단에 WorkItem 상태 목록을 직접 표시하고 Integration/CANCELED/BLOCKED/FAILED 세부 상태를 노출
 - 병렬 runtime 시작 전 Git 저장소/HEAD/attached branch 사전 검사를 유지하되, 실제 실행/작업 추가 시 Git이 없으면 Worker가 먼저 git init을 수행하고 기준점 필요 시 repository root/branch를 표시해 사용자 승인을 받은 뒤 baseline commit을 생성
 - Git 준비 자동화는 .gitignore/exclude/preset을 건드리지 않으며 기존 origin URL 확인만 유지하고 remote 생성/push/pull은 하지 않음
+- Git 기준점 준비 중에는 실행/작업 추가 버튼을 비활성화하고 `Git 준비 중...` 상태를 표시해 중복 실행을 차단
 - 최소 Git 준비 자동화까지 소스 구현 완료 상태이며 작업 16은 Windows 실검증 대기 상태
 - 다음 우선순위는 Windows dotnet test/build와 실제 max=1 동일-runtime 회귀, max=4 병렬 E2E, Integration landing E2E
 
