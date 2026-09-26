@@ -13,7 +13,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.3.0", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.3.1", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -45,6 +45,22 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("X-ProjectHub-Managed-Token", StringComparison.Ordinal));
         Assert.True(source.Contains("if(!preflightManagedRole||!preflightRuntimeToken)return;", StringComparison.Ordinal));
         Assert.False(source.Contains("ensureManagedSingleChatTab", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void EmbeddedContent_LatchesHiddenSendEvidenceAndReconcilesTurns()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.True(source.Contains("baselineTurnFingerprints", StringComparison.Ordinal));
+        Assert.True(source.Contains("latchedSendEvidence", StringComparison.Ordinal));
+        Assert.True(source.Contains("SEND_EVIDENCE_LATCHED", StringComparison.Ordinal));
+        Assert.True(source.Contains("SEND_MUTATION_CONFIRMED", StringComparison.Ordinal));
+        Assert.True(source.Contains("SEND_TIMEOUT_RECOVERED", StringComparison.Ordinal));
+        Assert.True(source.Contains("reconcileConversationAfterSend", StringComparison.Ordinal));
+        Assert.True(source.Contains("observeConversationMutation", StringComparison.Ordinal));
+        Assert.True(source.Contains("conversationTurns()", StringComparison.Ordinal));
+        Assert.False(source.Contains("messages.length<=beforeMessages.length", StringComparison.Ordinal));
     }
 
     [Fact]
