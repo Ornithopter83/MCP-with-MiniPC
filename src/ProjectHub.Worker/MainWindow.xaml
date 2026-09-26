@@ -451,15 +451,15 @@
       <StackPanel x:Name="DirectWorkOptionsPanel" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,0,10,0">
         <StackPanel Margin="0,0,6,0">
           <TextBlock Text="서비스 제공사" FontSize="11" Foreground="{StaticResource Muted}" Margin="2,0,0,2"/>
-          <ComboBox x:Name="DirectWorkProviderCombo" Width="108" Height="34" DisplayMemberPath="DisplayName" SelectionChanged="DirectWorkProviderCombo_SelectionChanged"/>
+          <ComboBox x:Name="DirectWorkProviderCombo" Width="150" Height="34" SelectionChanged="DirectWorkProviderCombo_SelectionChanged"/>
         </StackPanel>
         <StackPanel Margin="0,0,6,0">
           <TextBlock Text="모델" FontSize="11" Foreground="{StaticResource Muted}" Margin="2,0,0,2"/>
-          <ComboBox x:Name="DirectWorkModelCombo" Width="148" Height="34" DisplayMemberPath="DisplayName" SelectionChanged="DirectWorkModelCombo_SelectionChanged"/>
+          <ComboBox x:Name="DirectWorkModelCombo" Width="230" Height="34" SelectionChanged="DirectWorkModelCombo_SelectionChanged"/>
         </StackPanel>
         <StackPanel>
           <TextBlock Text="추론 깊이" FontSize="11" Foreground="{StaticResource Muted}" Margin="2,0,0,2"/>
-          <ComboBox x:Name="DirectWorkReasoningCombo" Width="94" Height="34" SelectionChanged="DirectWorkReasoningCombo_SelectionChanged"/>
+          <ComboBox x:Name="DirectWorkReasoningCombo" Width="110" Height="34" SelectionChanged="DirectWorkReasoningCombo_SelectionChanged"/>
         </StackPanel>
       </StackPanel>
       <CheckBox x:Name="DirectWorkModeCheckBox" Grid.Column="2" Content="계약문서 무시" IsChecked="False" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Checked="DirectWorkModeCheckBox_Changed" Unchecked="DirectWorkModeCheckBox_Changed" ToolTip="ProjectHub 역할 계약과 프로젝트 AGENTS 지침 주입 없이 현재 작업 폴더에서 선택한 모델을 직접 실행합니다."/>
