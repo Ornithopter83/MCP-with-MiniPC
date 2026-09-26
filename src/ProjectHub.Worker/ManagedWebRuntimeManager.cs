@@ -44,6 +44,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         public bool Hidden { get; set; }
         public string? ExecutablePath { get; set; }
         public string? Error { get; set; }
+        public bool Provisioning { get; set; }
     }
 
     private readonly object _gate = new();
@@ -100,6 +101,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
             var slot = _slots[role];
             StopProcess(slot);
             slot.Error = null;
+            slot.Provisioning = false;
             slot.Hidden = true;
             status = Snapshot(role, slot);
         }
@@ -305,9 +307,22 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         string? conversationId,
         CancellationToken cancellationToken)
     {
+        ManagedWebRuntimeStatus provisioningStatus;
+        lock (_gate)
+        {
+            var slot = _slots[role];
+            slot.Hidden = hidden;
+            slot.Error = null;
+            slot.Provisioning = ResolveBrowserExecutable() is null;
+            provisioningStatus = Snapshot(role, slot);
+        }
+        StatusChanged?.Invoke(provisioningStatus);
+
         try
         {
             await EnsureBrowserRuntimeAsync(cancellationToken);
+            lock (_gate)
+                _slots[role].Provisioning = false;
             return Start(role, hidden, conversationId);
         }
         catch (Exception exception)
@@ -317,6 +332,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
             {
                 var slot = _slots[role];
                 StopProcess(slot);
+                slot.Provisioning = false;
                 slot.Hidden = hidden;
                 slot.ExecutablePath = null;
                 slot.Error = exception.Message;
@@ -499,7 +515,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         var running = slot.Process is not null;
         return new ManagedWebRuntimeStatus(
             role,
-            slot.Error is not null ? "ERROR" : running ? slot.Hidden ? "HIDDEN" : "VISIBLE" : "STOPPED",
+            slot.Error is not null ? "ERROR" : slot.Provisioning ? "PROVISIONING" : running ? slot.Hidden ? "HIDDEN" : "VISIBLE" : "STOPPED",
             running,
             running && slot.Hidden,
             slot.ExecutablePath,
