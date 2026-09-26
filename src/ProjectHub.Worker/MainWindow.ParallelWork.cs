@@ -219,7 +219,8 @@ public partial class MainWindow
                 executor,
                 baseRef,
                 RunParallelHqAsync,
-                cts.Token);
+                cts.Token,
+                includeContractOnFirstHqTurn: string.IsNullOrWhiteSpace(coordinatorSession));
 
             resourceRouter = new ParallelResourceWorkItemRouter(
                 supervisor,
