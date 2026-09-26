@@ -580,7 +580,6 @@ public partial class MainWindow : Window
         if (!gitReady)
             return;
 
-        ConsumePendingAttachments(followupAttachments);
         AddUserFollowupHistory(followup, followupAttachments);
         DashboardFollowupInput.Text = FollowupPromptPlaceholder;
         DashboardFollowupInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
@@ -1012,7 +1011,6 @@ public partial class MainWindow : Window
                 return;
 
             _historyEvents.Clear();
-            ConsumePendingAttachments(launchRequest.Attachments);
             SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
             await RunCoordinatorFirstJobAsync(
                 launchRequest.Prompt,
