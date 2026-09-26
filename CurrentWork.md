@@ -497,3 +497,17 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - RUNNING WorkItem 수를 8칸 고정 녹색 문자 게이지로 표시한다.
 - 기본은 `□□□□□□□□`, 4개 실행 중이면 `■■■■□□□□`이며 8개를 초과하는 값은 8칸으로 제한한다.
 - WorkGraph 상태 변경 때 RunningCount만 반영하고 실행 구간 종료 시 `□□□□□□□□`로 초기화한다.
+
+
+## 2026-09-26 Integration stale base와 landing 원인 전달 보강
+
+- 실사용에서 Integration WorkItem이 오래된 baseRef에서 시작해 통합 결과 자체는 생성됐지만 현재 primary HEAD와 비 fast-forward 관계가 되어 `INTEGRATION_NOT_FAST_FORWARD`로 landing이 차단된 사례를 확인했다.
+- 새 INTEGRATION WorkItem의 첫 실행은 저장된 Graph baseRef를 그대로 쓰지 않고 실행 시점의 clean primary branch/HEAD를 Worker가 읽어 그 HEAD에서 integration worktree를 만든다.
+- 실제 사용한 Integration baseRef를 WorkItem 실행 문맥에 다시 기록해 이후 resume과 snapshot에서 같은 기준을 유지한다.
+- WORK 계약에 INTEGRATION은 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다는 장기 불변식 한 줄을 추가했다.
+- Integration 첫 준비와 ff-only landing은 repository primary mutation gate로 직렬화하고, worktree remove는 기존 worktree metadata gate로 직렬화했다.
+- `INTEGRATION_LANDING_FAILED`는 `blockDetailCode`로 실제 `INTEGRATION_NOT_FAST_FORWARD`, branch 변경, dirty 등의 기계 세부 원인을 별도 보존한다.
+- HQ 기계 상태 이벤트는 `blockDetailCode`를 긴 WORK report보다 앞에 표시해 1000자 report 축약 때문에 진짜 landing 원인이 사라지지 않게 했다.
+- 과거 snapshot은 Worker가 생성한 `INTEGRATION_LANDING` 블록 뒤의 `errorCode:`만 읽어 구조화된 세부 코드로 마이그레이션한다.
+- force/reset/push 자동 복구는 추가하지 않았다. 기존 차단 Integration의 의미적 재시도/새 Integration 생성 여부는 HQ가 현재 graph 사실을 보고 판단한다.
+- 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 검증이 필요하다.

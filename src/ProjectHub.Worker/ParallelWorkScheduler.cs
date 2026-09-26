@@ -27,7 +27,8 @@ public sealed record WorkItemExecutionResult(
     string? BlockCode = null,
     string? Branch = null,
     string? WorktreePath = null,
-    string? SessionId = null)
+    string? SessionId = null,
+    string? BlockDetailCode = null)
 {
     public static WorkItemExecutionResult Completed(
         string? resultRef = null,
@@ -51,8 +52,9 @@ public sealed record WorkItemExecutionResult(
         string? resultRef = null,
         string? branch = null,
         string? worktreePath = null,
-        string? sessionId = null)
-        => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId);
+        string? sessionId = null,
+        string? blockDetailCode = null)
+        => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId, blockDetailCode);
 }
 
 public interface IWorkItemExecutor
@@ -191,6 +193,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         string? branch = null,
         string? worktreePath = null,
         string? sessionId = null,
+        string? baseRef = null,
         CancellationToken cancellationToken = default)
     {
         ParallelWorkSchedulerSnapshot snapshot;
@@ -204,7 +207,8 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                 workItemId,
                 branch,
                 worktreePath,
-                sessionId);
+                sessionId,
+                baseRef);
             snapshot = CreateSnapshotLocked();
         }
         finally
@@ -416,7 +420,8 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                                 ? "WORK_EXECUTOR_BLOCKED"
                                 : result.BlockCode,
                             result.ResultSummary,
-                            result.ResultRef);
+                            result.ResultRef,
+                            result.BlockDetailCode);
                         break;
                     default:
                         _graph.TryMarkFailed(

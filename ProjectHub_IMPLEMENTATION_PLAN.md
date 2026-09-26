@@ -108,3 +108,12 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - HQ PAUSE는 새 WorkItem 시작만 동결하고 이미 RUNNING인 WORK 결과를 수확한 뒤 PAUSED로 전환한다.
 - WorkGraph 병렬 실행은 유지하되 UI의 별도 병렬 WORK 상태 목록은 제거한다.
 - WORK History 카드는 WorkItem createdOrder 기반의 `작업 (#N)` 표기로 같은 작업의 진행과 응답을 식별한다.
+
+
+## 2026-09-26 Integration 실행 기준점과 landing 진단 보강
+
+- 새 INTEGRATION WorkItem은 첫 실행 직전에 primary workspace의 현재 branch/HEAD를 기계적으로 읽어 그 HEAD를 실제 baseRef로 사용한다.
+- INTEGRATION WORK는 자신의 integration worktree만 수정하며 primary workspace/target branch를 직접 수정하지 않는다.
+- integration 준비와 ff-only landing은 repository primary mutation gate로 직렬화한다.
+- landing 실패의 실제 기계 오류는 `blockDetailCode`로 WorkGraph/HQ 이벤트에 구조화해 보존한다.
+- 과거 INTEGRATION_LANDING 결과의 errorCode도 snapshot 복구 시 세부 코드로 마이그레이션한다.

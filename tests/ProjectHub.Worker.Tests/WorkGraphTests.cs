@@ -43,6 +43,74 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
+    public void BlockDetailCodePersistsAcrossSnapshotRestore()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("I1", "통합", Kind: WorkItemKind.Integration))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("I1"));
+        Assert.True(graph.TryMarkBlocked(
+            "I1",
+            "INTEGRATION_LANDING_FAILED",
+            "INTEGRATION_LANDING\nerrorCode: INTEGRATION_NOT_FAST_FORWARD",
+            "ref-I1",
+            "INTEGRATION_NOT_FAST_FORWARD"));
+
+        var restored = WorkGraph.Restore(graph.Snapshot(), markRunningAsRecoveryBlocked: false);
+        var item = restored.Find("I1")!;
+
+        Assert.Equal("INTEGRATION_LANDING_FAILED", item.BlockCode);
+        Assert.Equal("INTEGRATION_NOT_FAST_FORWARD", item.BlockDetailCode);
+    }
+
+    [Fact]
+    public void LegacyLandingSummaryMigratesToStructuredBlockDetail()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("I1", "통합", Kind: WorkItemKind.Integration))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("I1"));
+        Assert.True(graph.TryMarkBlocked(
+            "I1",
+            "INTEGRATION_LANDING_FAILED",
+            "WORK 보고\n\nINTEGRATION_LANDING\nstatus: BLOCKED\nerrorCode: INTEGRATION_NOT_FAST_FORWARD",
+            "ref-I1"));
+
+        var restored = WorkGraph.Restore(graph.Snapshot(), markRunningAsRecoveryBlocked: false);
+        Assert.Equal(
+            "INTEGRATION_NOT_FAST_FORWARD",
+            restored.Find("I1")!.BlockDetailCode);
+    }
+
+    [Fact]
+    public void RunningContextCanPersistEffectiveIntegrationBaseRef()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                "I1",
+                "통합",
+                Kind: WorkItemKind.Integration,
+                BaseRef: "stale"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("I1"));
+
+        Assert.True(graph.TryUpdateExecutionContext(
+            "I1",
+            branch: "projecthub/job/I1",
+            worktreePath: "C:/wt/I1",
+            sessionId: null,
+            baseRef: "primary999"));
+
+        Assert.Equal("primary999", graph.Find("I1")!.BaseRef);
+    }
+
+    [Fact]
     public void NoOpPatchKeepsRevisionAndCurrentGraph()
     {
         var graph = new WorkGraph("job");

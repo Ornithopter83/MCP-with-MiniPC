@@ -119,6 +119,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         string? branch = null,
         string? worktreePath = null,
         string? sessionId = null,
+        string? baseRef = null,
         CancellationToken cancellationToken = default)
     {
         if (_disposed)
@@ -129,6 +130,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             branch,
             worktreePath,
             sessionId,
+            baseRef,
             cancellationToken);
     }
 
@@ -359,7 +361,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             }
             else if (item.State == WorkItemState.Blocked && !string.IsNullOrWhiteSpace(item.BlockCode))
             {
-                signal = $"{item.Id}|BLOCKED|{item.BlockCode}|{item.FinishedAtUtc:O}";
+                signal = $"{item.Id}|BLOCKED|{item.BlockCode}|{item.BlockDetailCode}|{item.FinishedAtUtc:O}";
                 if (IsExternalBlockCode(item.BlockCode))
                 {
                     if (_reportedSignals.Add(signal))
@@ -446,6 +448,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 builder.Append(" failureCode=").Append(item.FailureCode);
             if (!string.IsNullOrWhiteSpace(item.BlockCode))
                 builder.Append(" blockCode=").Append(item.BlockCode);
+            if (!string.IsNullOrWhiteSpace(item.BlockDetailCode))
+                builder.Append(" blockDetailCode=").Append(item.BlockDetailCode);
             if (!string.IsNullOrWhiteSpace(item.ResultSummary))
                 builder.Append(" report=").Append(SingleLine(item.ResultSummary));
             builder.AppendLine();
@@ -470,6 +474,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 .Append(" state=").Append(item.State.ToString().ToUpperInvariant());
             if (!string.IsNullOrWhiteSpace(item.BlockCode))
                 builder.Append(" blockCode=").Append(item.BlockCode);
+            if (!string.IsNullOrWhiteSpace(item.BlockDetailCode))
+                builder.Append(" blockDetailCode=").Append(item.BlockDetailCode);
             if (!string.IsNullOrWhiteSpace(item.FailureCode))
                 builder.Append(" failureCode=").Append(item.FailureCode);
             builder.AppendLine();
@@ -483,7 +489,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             "|",
             new[] { snapshot.Graph.Revision.ToString() }
                 .Concat(snapshot.Graph.Items.Select(item =>
-                    $"{item.Id}:{item.State}:{item.BlockCode}:{item.FailureCode}:{item.FinishedAtUtc:O}")));
+                    $"{item.Id}:{item.State}:{item.BlockCode}:{item.BlockDetailCode}:{item.FailureCode}:{item.FinishedAtUtc:O}")));
 
     private static string SingleLine(string value)
     {

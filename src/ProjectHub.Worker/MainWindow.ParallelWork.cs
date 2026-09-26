@@ -314,6 +314,7 @@ public partial class MainWindow
                     context.Branch,
                     context.WorktreePath,
                     null,
+                    context.BaseRef,
                     cts.Token);
             };
 
@@ -328,6 +329,7 @@ public partial class MainWindow
                     null,
                     null,
                     started.SessionId,
+                    null,
                     cts.Token);
             };
 
@@ -671,6 +673,7 @@ public partial class MainWindow
         string? branch,
         string? worktreePath,
         string? sessionId,
+        string? baseRef,
         CancellationToken cancellationToken)
     {
         try
@@ -680,6 +683,7 @@ public partial class MainWindow
                 branch,
                 worktreePath,
                 sessionId,
+                baseRef,
                 cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

@@ -304,6 +304,69 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task IntegrationPreparationUsesCurrentPrimaryHeadAsBase()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "primary999");
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "primary999");
+        runner.Enqueue(0, "");
+        runner.Enqueue(1, "");
+        runner.Enqueue(0, "Preparing worktree");
+        runner.Enqueue(0, "primary999");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.PrepareIntegrationAsync(
+                root,
+                "job",
+                "I1",
+                "main");
+
+            Assert.True(result.Success);
+            Assert.Equal("primary999", result.BaseRef);
+            Assert.Equal("primary999", result.BaseCommit);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "rev-parse", "--verify", "primary999^{commit}" }));
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task IntegrationLandingSerializesPrimaryMutationAcrossManagers()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new ConcurrentLandingGitRunner(root);
+
+        try
+        {
+            var first = new GitWorktreeManager(runner);
+            var second = new GitWorktreeManager(runner);
+
+            var results = await Task.WhenAll(
+                first.LandIntegrationAsync(root, "integrated-a", "main"),
+                second.LandIntegrationAsync(root, "integrated-b", "main"));
+
+            Assert.All(results, result => Assert.True(result.Success));
+            Assert.Equal(1, runner.MaxConcurrentMerges);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task IntegrationLandingFastForwardsOnlyCleanTargetBranch()
     {
         var root = CreateTempRepositoryDirectory();
@@ -477,6 +540,74 @@ public sealed class GitWorktreeManagerTests
         var parent = Directory.GetParent(repository)?.FullName;
         if (!string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent))
             Directory.Delete(parent, true);
+    }
+
+    private sealed class ConcurrentLandingGitRunner : IGitWorktreeCommandRunner
+    {
+        private readonly string _root;
+        private readonly object _sync = new();
+        private string _head = "base123";
+        private int _activeMerges;
+
+        public ConcurrentLandingGitRunner(string root)
+        {
+            _root = root;
+        }
+
+        public int MaxConcurrentMerges { get; private set; }
+
+        public async Task<GitCommandResult> RunAsync(
+            string workingDirectory,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken cancellationToken = default)
+        {
+            if (arguments.SequenceEqual(new[] { "rev-parse", "--show-toplevel" }))
+                return new(0, _root, string.Empty);
+            if (arguments.Count > 0 && arguments[0] == "status")
+                return new(0, string.Empty, string.Empty);
+            if (arguments.SequenceEqual(new[] { "symbolic-ref", "--quiet", "--short", "HEAD" }))
+                return new(0, "main", string.Empty);
+            if (arguments.SequenceEqual(new[] { "rev-parse", "--verify", "HEAD" }))
+            {
+                lock (_sync)
+                    return new(0, _head, string.Empty);
+            }
+            if (arguments.Count == 3 &&
+                arguments[0] == "rev-parse" &&
+                arguments[1] == "--verify" &&
+                arguments[2].EndsWith("^{commit}", StringComparison.Ordinal))
+            {
+                return new(0, arguments[2][..^9], string.Empty);
+            }
+            if (arguments.Count > 0 && arguments[0] == "merge-base")
+                return new(0, string.Empty, string.Empty);
+            if (arguments.Count == 3 &&
+                arguments[0] == "merge" &&
+                arguments[1] == "--ff-only")
+            {
+                lock (_sync)
+                {
+                    _activeMerges++;
+                    MaxConcurrentMerges = Math.Max(MaxConcurrentMerges, _activeMerges);
+                }
+
+                try
+                {
+                    await Task.Delay(80, cancellationToken);
+                    lock (_sync)
+                        _head = arguments[2];
+                    return new(0, "Fast-forward", string.Empty);
+                }
+                finally
+                {
+                    lock (_sync)
+                        _activeMerges--;
+                }
+            }
+
+            throw new InvalidOperationException("예상하지 않은 Git 호출입니다: " + string.Join(" ", arguments));
+        }
     }
 
     private sealed class ConcurrentPrepareGitRunner : IGitWorktreeCommandRunner

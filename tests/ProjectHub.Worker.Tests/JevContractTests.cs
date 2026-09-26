@@ -43,6 +43,7 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[GOTO : RESOURCE]", work);
         Assert.Contains("관측 사실 확인이 아니라", work);
         Assert.Contains("JUDGE용 Form", work);
+        Assert.Contains("INTEGRATION WorkItem은 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다.", work);
         Assert.DoesNotContain("JUDGE_ON", work);
         Assert.DoesNotContain("JUDGE_OFF", work);
         Assert.DoesNotContain("사용 가능", work);

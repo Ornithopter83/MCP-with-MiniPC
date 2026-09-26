@@ -223,6 +223,80 @@ public sealed class CodexWorkItemExecutorTests
 
 
     [Fact]
+    public async Task FirstIntegrationUsesCurrentPrimaryHeadInsteadOfStoredGraphBase()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "projecthub-integration-base-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(parent, "repo");
+        Directory.CreateDirectory(root);
+
+        var git = new FakeGitRunner();
+        git.Enqueue(0, root);
+        git.Enqueue(0, "");
+        git.Enqueue(0, "main");
+        git.Enqueue(0, "primary999");
+        git.Enqueue(0, root);
+        git.Enqueue(0, "primary999");
+        git.Enqueue(0, "");
+        git.Enqueue(1, "");
+        git.Enqueue(0, "Preparing worktree");
+        git.Enqueue(0, "primary999");
+
+        var ai = new FakeAiRoleRunner("""
+            [GOTO : RESOURCE]
+            RESOURCE_TYPE: FILE
+            통합 검증용 파일을 생성해줘.
+            """);
+        var executor = new CodexWorkItemExecutor(
+            "job",
+            root,
+            new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
+            ai,
+            new GitWorktreeManager(git),
+            expectedPrimaryBranch: "main");
+
+        var item = new WorkItemSnapshot(
+            "I1",
+            "선행 결과를 통합하세요.",
+            Array.Empty<string>(),
+            WorkItemKind.Integration,
+            WorkItemState.Running,
+            0,
+            "stale-base",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null);
+
+        try
+        {
+            var result = await executor.ExecuteAsync(
+                new WorkItemExecutionRequest(
+                    item,
+                    1,
+                    Array.Empty<WorkItemDependencyResult>(),
+                    "WORK_ITEM",
+                    item.Goal),
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("RESOURCE_REQUEST", result.BlockCode);
+            Assert.Contains("기준 ref: primary999", ai.LastRequest!.Prompt);
+        }
+        finally
+        {
+            Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
     public async Task CompletedIntegrationFastForwardsPrimaryWorkspaceBeforeCompletion()
     {
         var fixture = CreateFixture(
@@ -284,7 +358,9 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
             Assert.Equal("INTEGRATION_LANDING_FAILED", result.BlockCode);
+            Assert.Equal("INTEGRATION_TARGET_BRANCH_CHANGED", result.BlockDetailCode);
             Assert.Equal("head123", result.ResultRef);
+            Assert.StartsWith("INTEGRATION_LANDING", result.ResultSummary);
             Assert.Contains("errorCode: INTEGRATION_TARGET_BRANCH_CHANGED", result.ResultSummary);
             Assert.Contains("targetBranch: feature", result.ResultSummary);
         }
@@ -316,7 +392,9 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
             Assert.Equal("INTEGRATION_LANDING_FAILED", result.BlockCode);
+            Assert.Equal("INTEGRATION_TARGET_DIRTY", result.BlockDetailCode);
             Assert.Equal("head123", result.ResultRef);
+            Assert.StartsWith("INTEGRATION_LANDING", result.ResultSummary);
             Assert.Contains("errorCode: INTEGRATION_TARGET_DIRTY", result.ResultSummary);
             Assert.Contains("integrationRef: head123", result.ResultSummary);
         }

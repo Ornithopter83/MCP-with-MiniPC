@@ -14,7 +14,8 @@ public sealed record CodexWorkItemSessionStarted(
 public sealed record CodexWorkItemContextPrepared(
     string WorkItemId,
     string Branch,
-    string WorktreePath);
+    string WorktreePath,
+    string BaseRef);
 
 public sealed record CodexWorkItemCallCompleted(
     string WorkItemId,
@@ -75,15 +76,28 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         CancellationToken cancellationToken)
     {
         var item = request.Item;
-        if (string.IsNullOrWhiteSpace(item.BaseRef))
+        var firstIntegrationPreparation =
+            item.Kind == WorkItemKind.Integration &&
+            string.IsNullOrWhiteSpace(item.WorktreePath) &&
+            string.IsNullOrWhiteSpace(item.Branch) &&
+            string.IsNullOrWhiteSpace(item.SessionId);
+
+        if (!firstIntegrationPreparation && string.IsNullOrWhiteSpace(item.BaseRef))
             return WorkItemExecutionResult.Blocked("WORKTREE_BASE_REF_MISSING", "WorkItem baseRef가 없습니다.");
 
-        var preparation = await _worktrees.PrepareAsync(
-            _workspace,
-            _jobId,
-            item.Id,
-            item.BaseRef,
-            cancellationToken).ConfigureAwait(false);
+        var preparation = firstIntegrationPreparation
+            ? await _worktrees.PrepareIntegrationAsync(
+                _workspace,
+                _jobId,
+                item.Id,
+                _expectedPrimaryBranch,
+                cancellationToken).ConfigureAwait(false)
+            : await _worktrees.PrepareAsync(
+                _workspace,
+                _jobId,
+                item.Id,
+                item.BaseRef!,
+                cancellationToken).ConfigureAwait(false);
 
         if (!preparation.Success)
         {
@@ -103,7 +117,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         ContextPrepared?.Invoke(new CodexWorkItemContextPrepared(
             item.Id,
             preparation.Branch,
-            preparation.WorktreePath));
+            preparation.WorktreePath,
+            preparation.BaseRef));
 
         var dependencyResults = request.Dependencies
             .Select(result => new WorkItemDependencyPromptContext(
@@ -130,7 +145,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     item.Kind,
                     item.Goal,
                     item.Dependencies,
-                    item.BaseRef,
+                    preparation.BaseRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     item.ResultSummary,
@@ -302,7 +317,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     checkpoint.HeadCommit,
                     checkpoint.Branch ?? preparation.Branch,
                     checkpoint.WorktreePath,
-                    sessionId);
+                    sessionId,
+                    blockDetailCode: "INTEGRATION_RESULT_REF_MISSING");
             }
 
             var landing = await _worktrees.LandIntegrationAsync(
@@ -313,17 +329,19 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             if (!landing.Success)
             {
+                var landingErrorCode = landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED";
                 return WorkItemExecutionResult.Blocked(
                     "INTEGRATION_LANDING_FAILED",
                     BuildIntegrationLandingFailure(
                         report.Body,
-                        landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED",
+                        landingErrorCode,
                         checkpoint.HeadCommit,
                         landing),
                     checkpoint.HeadCommit,
                     checkpoint.Branch ?? preparation.Branch,
                     checkpoint.WorktreePath,
-                    sessionId);
+                    sessionId,
+                    blockDetailCode: landingErrorCode);
             }
 
             return WorkItemExecutionResult.Completed(
@@ -390,8 +408,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     {
         var lines = new List<string>
         {
-            reportBody.Trim(),
-            string.Empty,
             "INTEGRATION_LANDING",
             "status: BLOCKED",
             "errorCode: " + errorCode,
@@ -405,6 +421,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             lines.Add("afterHead: " + (landing.AfterHead ?? "없음"));
         }
 
+        lines.Add(string.Empty);
+        lines.Add(reportBody.Trim());
         return string.Join(Environment.NewLine, lines);
     }
 

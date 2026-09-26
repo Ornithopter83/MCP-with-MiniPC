@@ -453,8 +453,12 @@ Integration:
 - Integration WorkItem은 통합 대상 WorkItem을 명시적 dependency로 가진다.
 - 서로 다른 완료 WorkItem의 resultRef를 최종 코드 상태에 함께 반영해야 하는지는 HQ가 판단하며, 필요하면 END 전에 kind=INTEGRATION WorkItem을 추가한다.
 - Integration WORK는 각 결과 ref/branch를 바탕으로 병합, 충돌 해결, 전체 빌드·테스트를 수행하고 통합 결과를 HQ에 보고한다.
+- 새 INTEGRATION WorkItem의 첫 실행은 Graph에 저장된 과거 baseRef보다 실행 시점 주 작업공간의 현재 branch/HEAD를 Worker가 기계적으로 우선해 해당 HEAD에서 integration worktree를 만든다. 실제 사용한 baseRef는 WorkItem 실행 문맥에 다시 기록한다.
+- INTEGRATION WORK는 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다.
 - Integration WORK가 COMPLETED를 보고하면 Worker는 해당 checkpoint commit을 주 작업공간의 현재 branch에 fast-forward만 허용하는 방식으로 기계적으로 반영한다.
 - 주 작업공간이 dirty 상태이거나 detached HEAD이거나 integration commit이 현재 HEAD의 fast-forward 대상이 아니면 Worker는 force/reset/push로 해결하지 않고 INTEGRATION_LANDING_FAILED로 해당 WorkItem을 BLOCKED 처리한다.
+- Integration landing 실패는 blockCode와 별도로 기계적 세부 코드(blockDetailCode)를 WorkGraph snapshot과 HQ 상태 이벤트에 보존한다. 과거 snapshot의 Worker 생성 INTEGRATION_LANDING 블록에 errorCode가 있으면 복구 시 세부 코드로 승격한다.
+- Integration worktree 첫 준비와 주 작업공간 ff-only landing은 같은 repository의 primary mutation gate로 직렬화해 primary HEAD 기준과 landing 사이의 경쟁을 막는다.
 - Integration landing 실패의 의미적 해결 방법과 사용자 개입 필요 여부는 HQ가 판단한다.
 - Worker는 merge 충돌의 의미적 해결책을 선택하지 않는다.
 - 성공한 Integration resultRef를 이후 새 WorkItem의 기본 baseRef로 기계적으로 사용할 수 있다. dependency가 있다는 사실만으로 Worker가 임의의 dependency resultRef를 baseRef로 선택하지는 않는다.

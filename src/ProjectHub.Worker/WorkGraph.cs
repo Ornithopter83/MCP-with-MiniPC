@@ -46,7 +46,8 @@ public sealed record WorkItemSnapshot(
     string? ResumeBody,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? StartedAtUtc,
-    DateTimeOffset? FinishedAtUtc);
+    DateTimeOffset? FinishedAtUtc,
+    string? BlockDetailCode = null);
 
 public sealed record WorkGraphSnapshot(
     string JobId,
@@ -94,12 +95,20 @@ public sealed class WorkGraph
 
             var state = source.State;
             var blockCode = source.BlockCode;
+            var blockDetailCode = source.BlockDetailCode;
             var finishedAt = source.FinishedAtUtc;
             if (markRunningAsRecoveryBlocked && state == WorkItemState.Running)
             {
                 state = WorkItemState.Blocked;
                 blockCode = "RECOVERY_REQUIRED";
+                blockDetailCode = null;
                 finishedAt = DateTimeOffset.UtcNow;
+            }
+
+            if (string.IsNullOrWhiteSpace(blockDetailCode) &&
+                string.Equals(blockCode, "INTEGRATION_LANDING_FAILED", StringComparison.Ordinal))
+            {
+                blockDetailCode = ExtractIntegrationLandingErrorCode(source.ResultSummary);
             }
 
             graph._items[source.Id] = new WorkItemEntry
@@ -118,6 +127,7 @@ public sealed class WorkGraph
                 ResultSummary = NullIfWhiteSpace(source.ResultSummary),
                 FailureCode = NullIfWhiteSpace(source.FailureCode),
                 BlockCode = NullIfWhiteSpace(blockCode),
+                BlockDetailCode = NullIfWhiteSpace(blockDetailCode),
                 ResumeInputType = NullIfWhiteSpace(source.ResumeInputType),
                 ResumeBody = NullIfWhiteSpace(source.ResumeBody),
                 CreatedAtUtc = source.CreatedAtUtc,
@@ -214,6 +224,7 @@ public sealed class WorkGraph
 
         item.State = WorkItemState.Running;
         item.BlockCode = null;
+        item.BlockDetailCode = null;
         if (!string.IsNullOrWhiteSpace(branch))
             item.Branch = branch.Trim();
         if (!string.IsNullOrWhiteSpace(worktreePath))
@@ -225,7 +236,12 @@ public sealed class WorkGraph
         return true;
     }
 
-    public bool TryUpdateExecutionContext(string id, string? branch = null, string? worktreePath = null, string? sessionId = null)
+    public bool TryUpdateExecutionContext(
+        string id,
+        string? branch = null,
+        string? worktreePath = null,
+        string? sessionId = null,
+        string? baseRef = null)
     {
         if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
             return false;
@@ -236,6 +252,8 @@ public sealed class WorkGraph
             item.WorktreePath = worktreePath.Trim();
         if (!string.IsNullOrWhiteSpace(sessionId))
             item.SessionId = sessionId.Trim();
+        if (!string.IsNullOrWhiteSpace(baseRef))
+            item.BaseRef = baseRef.Trim();
         return true;
     }
 
@@ -249,6 +267,7 @@ public sealed class WorkGraph
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.FailureCode = null;
         item.BlockCode = null;
+        item.BlockDetailCode = null;
         item.ResumeInputType = null;
         item.ResumeBody = null;
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
@@ -266,6 +285,7 @@ public sealed class WorkGraph
         item.State = WorkItemState.Failed;
         item.FailureCode = failureCode.Trim();
         item.BlockCode = null;
+        item.BlockDetailCode = null;
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.ResumeInputType = null;
         item.ResumeBody = null;
@@ -284,6 +304,7 @@ public sealed class WorkGraph
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.FailureCode = null;
         item.BlockCode = null;
+        item.BlockDetailCode = null;
         item.ResumeInputType = null;
         item.ResumeBody = null;
         item.FinishedAtUtc = DateTimeOffset.UtcNow;
@@ -291,7 +312,12 @@ public sealed class WorkGraph
         return true;
     }
 
-    public bool TryMarkBlocked(string id, string blockCode, string? resultSummary = null, string? resultRef = null)
+    public bool TryMarkBlocked(
+        string id,
+        string blockCode,
+        string? resultSummary = null,
+        string? resultRef = null,
+        string? blockDetailCode = null)
     {
         if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
             return false;
@@ -300,6 +326,7 @@ public sealed class WorkGraph
 
         item.State = WorkItemState.Blocked;
         item.BlockCode = blockCode.Trim();
+        item.BlockDetailCode = NullIfWhiteSpace(blockDetailCode);
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.ResultRef = NullIfWhiteSpace(resultRef) ?? item.ResultRef;
         item.FailureCode = null;
@@ -318,6 +345,7 @@ public sealed class WorkGraph
             return false;
 
         item.BlockCode = null;
+        item.BlockDetailCode = null;
         item.ResumeInputType = NullIfWhiteSpace(inputType) ?? "WORK_RESULT";
         item.ResumeBody = NullIfWhiteSpace(body);
         item.State = WorkItemState.Planned;
@@ -364,6 +392,7 @@ public sealed class WorkGraph
             item.ResultSummary = null;
             item.FailureCode = null;
             item.BlockCode = null;
+            item.BlockDetailCode = null;
             item.ResumeInputType = null;
             item.ResumeBody = null;
             item.StartedAtUtc = null;
@@ -586,6 +615,35 @@ public sealed class WorkGraph
         return true;
     }
 
+    private static string? ExtractIntegrationLandingErrorCode(string? resultSummary)
+    {
+        if (string.IsNullOrWhiteSpace(resultSummary))
+            return null;
+
+        var inLandingBlock = false;
+        foreach (var line in resultSummary
+                     .Replace("\r\n", "\n")
+                     .Replace('\r', '\n')
+                     .Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (string.Equals(trimmed, "INTEGRATION_LANDING", StringComparison.Ordinal))
+            {
+                inLandingBlock = true;
+                continue;
+            }
+
+            if (!inLandingBlock)
+                continue;
+
+            const string prefix = "errorCode:";
+            if (trimmed.StartsWith(prefix, StringComparison.Ordinal))
+                return NullIfWhiteSpace(trimmed[prefix.Length..]);
+        }
+
+        return null;
+    }
+
     private static string? NullIfWhiteSpace(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -609,7 +667,8 @@ public sealed class WorkGraph
             item.ResumeBody,
             item.CreatedAtUtc,
             item.StartedAtUtc,
-            item.FinishedAtUtc);
+            item.FinishedAtUtc,
+            item.BlockDetailCode);
 
     private static void ValidateConcurrency(int value)
     {
@@ -639,6 +698,7 @@ public sealed class WorkGraph
         public string? ResultSummary { get; set; }
         public string? FailureCode { get; set; }
         public string? BlockCode { get; set; }
+        public string? BlockDetailCode { get; set; }
         public string? ResumeInputType { get; set; }
         public string? ResumeBody { get; set; }
         public DateTimeOffset CreatedAtUtc { get; set; }
@@ -662,6 +722,7 @@ public sealed class WorkGraph
                 ResultSummary = ResultSummary,
                 FailureCode = FailureCode,
                 BlockCode = BlockCode,
+                BlockDetailCode = BlockDetailCode,
                 ResumeInputType = ResumeInputType,
                 ResumeBody = ResumeBody,
                 CreatedAtUtc = CreatedAtUtc,

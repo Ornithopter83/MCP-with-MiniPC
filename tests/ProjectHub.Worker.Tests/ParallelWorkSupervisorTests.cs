@@ -6,6 +6,35 @@ namespace ProjectHub.Worker.Tests;
 public sealed class ParallelWorkSupervisorTests
 {
     [Fact]
+    public void MechanicalGraphEventExposesIntegrationLandingDetailCode()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("I1", "통합", Kind: WorkItemKind.Integration))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("I1"));
+        Assert.True(graph.TryMarkBlocked(
+            "I1",
+            "INTEGRATION_LANDING_FAILED",
+            new string('x', 1500),
+            "ref-I1",
+            "INTEGRATION_NOT_FAST_FORWARD"));
+
+        var text = ParallelWorkSupervisor.FormatMechanicalGraphEvent(
+            new[] { "통합 landing이 차단되었습니다." },
+            new ParallelWorkSchedulerSnapshot(
+                graph.Snapshot(),
+                Array.Empty<RunningWorkItemSnapshot>()));
+
+        Assert.Contains("blockCode=INTEGRATION_LANDING_FAILED", text);
+        Assert.Contains("blockDetailCode=INTEGRATION_NOT_FAST_FORWARD", text);
+        Assert.True(
+            text.IndexOf("blockDetailCode=INTEGRATION_NOT_FAST_FORWARD", StringComparison.Ordinal) <
+            text.IndexOf("report=", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task IndependentWorkRunsToQuiescenceBeforeHqEndTurn()
     {
         var graph = new WorkGraph("job", 2);

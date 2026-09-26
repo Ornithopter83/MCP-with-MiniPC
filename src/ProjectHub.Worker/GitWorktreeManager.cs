@@ -155,6 +155,8 @@ public sealed class GitWorktreeManager
     private static readonly TimeSpan RemoveTimeout = TimeSpan.FromMinutes(1);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPreparationGates =
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPrimaryMutationGates =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
     private readonly IGitWorktreeCommandRunner _runner;
 
@@ -445,6 +447,119 @@ public sealed class GitWorktreeManager
         }
     }
 
+    public async Task<GitWorktreePreparationResult> PrepareIntegrationAsync(
+        string workspace,
+        string jobId,
+        string workItemId,
+        string? expectedTargetBranch,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+            return Failure("WORKTREE_WORKSPACE_MISSING", workspace, jobId, workItemId, null);
+        if (string.IsNullOrWhiteSpace(jobId) || string.IsNullOrWhiteSpace(workItemId))
+            return Failure("WORKTREE_ID_MISSING", workspace, jobId, workItemId, null);
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+            return Failure("WORKTREE_GIT_REPOSITORY_REQUIRED", workspace, jobId, workItemId, null);
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var primaryGate = GetRepositoryPrimaryMutationGate(repositoryRoot);
+        await primaryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var statusResult = await ReadPrimaryWorkspaceStatusAsync(
+                repositoryRoot,
+                workspace,
+                cancellationToken).ConfigureAwait(false);
+
+            if (statusResult.ExitCode != 0)
+                return Failure(
+                    "INTEGRATION_BASE_STATUS_UNAVAILABLE",
+                    repositoryRoot,
+                    jobId,
+                    workItemId,
+                    null);
+            if (!string.IsNullOrWhiteSpace(statusResult.StandardOutput))
+                return Failure(
+                    "INTEGRATION_BASE_TARGET_DIRTY",
+                    repositoryRoot,
+                    jobId,
+                    workItemId,
+                    null);
+
+            var branchResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+
+            var targetBranch = branchResult.ExitCode == 0
+                ? FirstLine(branchResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(targetBranch))
+                return Failure(
+                    "INTEGRATION_BASE_BRANCH_REQUIRED",
+                    repositoryRoot,
+                    jobId,
+                    workItemId,
+                    null);
+
+            var expectedBranch = string.IsNullOrWhiteSpace(expectedTargetBranch)
+                ? null
+                : expectedTargetBranch.Trim();
+            if (expectedBranch is not null &&
+                !string.Equals(targetBranch, expectedBranch, StringComparison.Ordinal))
+            {
+                return Failure(
+                    "INTEGRATION_BASE_BRANCH_CHANGED",
+                    repositoryRoot,
+                    jobId,
+                    workItemId,
+                    null);
+            }
+
+            var headResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+
+            var primaryHead = headResult.ExitCode == 0
+                ? FirstLine(headResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(primaryHead))
+                return Failure(
+                    "INTEGRATION_BASE_HEAD_UNAVAILABLE",
+                    repositoryRoot,
+                    jobId,
+                    workItemId,
+                    null);
+
+            return await PrepareAsync(
+                repositoryRoot,
+                jobId,
+                workItemId,
+                primaryHead,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            primaryGate.Release();
+        }
+    }
+
     public async Task<GitWorktreeInspectionResult> InspectAsync(
         string worktreePath,
         CancellationToken cancellationToken = default)
@@ -599,8 +714,11 @@ public sealed class GitWorktreeManager
             return new(false, "INTEGRATION_TARGET_REPOSITORY_REQUIRED", Path.GetFullPath(workspace), normalizedRef, null, null, null, null, false);
 
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
-
-        var statusBefore = await ReadPrimaryWorkspaceStatusAsync(
+        var primaryGate = GetRepositoryPrimaryMutationGate(repositoryRoot);
+        await primaryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var statusBefore = await ReadPrimaryWorkspaceStatusAsync(
             repositoryRoot,
             workspace,
             cancellationToken).ConfigureAwait(false);
@@ -818,16 +936,21 @@ public sealed class GitWorktreeManager
                 true);
         }
 
-        return new(
-            true,
-            null,
-            repositoryRoot,
-            normalizedRef,
-            integrationCommit,
-            targetBranch,
-            beforeHead,
-            afterHead,
-            true);
+            return new(
+                true,
+                null,
+                repositoryRoot,
+                normalizedRef,
+                integrationCommit,
+                targetBranch,
+                beforeHead,
+                afterHead,
+                true);
+        }
+        finally
+        {
+            primaryGate.Release();
+        }
     }
 
     public async Task<GitWorktreeRemovalResult> RemoveAsync(
@@ -836,7 +959,12 @@ public sealed class GitWorktreeManager
         string branch,
         CancellationToken cancellationToken = default)
     {
-        var inspection = await InspectAsync(worktreePath, cancellationToken).ConfigureAwait(false);
+        var normalizedRoot = Path.GetFullPath(repositoryRoot);
+        var preparationGate = GetRepositoryPreparationGate(normalizedRoot);
+        await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var inspection = await InspectAsync(worktreePath, cancellationToken).ConfigureAwait(false);
         if (!inspection.Success)
             return new(false, inspection.ErrorCode, worktreePath, branch);
         if (!inspection.IsClean)
@@ -852,15 +980,20 @@ public sealed class GitWorktreeManager
             "remove",
             Path.GetFullPath(worktreePath)).ConfigureAwait(false);
 
-        return removeResult.ExitCode == 0
-            ? new(true, null, worktreePath, branch)
-            : new(
-                false,
-                removeResult.TimedOut ? "WORKTREE_REMOVE_TIMEOUT"
-                    : removeResult.Canceled ? "WORKTREE_REMOVE_CANCELED"
-                    : "WORKTREE_REMOVE_FAILED",
-                worktreePath,
-                branch);
+            return removeResult.ExitCode == 0
+                ? new(true, null, worktreePath, branch)
+                : new(
+                    false,
+                    removeResult.TimedOut ? "WORKTREE_REMOVE_TIMEOUT"
+                        : removeResult.Canceled ? "WORKTREE_REMOVE_CANCELED"
+                        : "WORKTREE_REMOVE_FAILED",
+                    worktreePath,
+                    branch);
+        }
+        finally
+        {
+            preparationGate.Release();
+        }
     }
 
     public static string BuildBranchName(string jobId, string workItemId)
@@ -933,6 +1066,13 @@ public sealed class GitWorktreeManager
         var key = Path.GetFullPath(repositoryRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         return RepositoryPreparationGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+    }
+
+    private static SemaphoreSlim GetRepositoryPrimaryMutationGate(string repositoryRoot)
+    {
+        var key = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return RepositoryPrimaryMutationGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
     }
 
     private static string BuildGitFailureDetail(string command, GitCommandResult result)

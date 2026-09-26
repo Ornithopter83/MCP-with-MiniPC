@@ -35,6 +35,7 @@ WorkItem
 - HQ 판단이나 외부 의미 결정이 필요해 계속할 수 없으면 BLOCKED로 보고한다.
 - 현재 범위를 완료했으면 COMPLETED, 계속 수행할 수 없는 실패가 확정되면 FAILED로 보고한다.
 - workItemKind가 INTEGRATION이면 선행 WorkItem의 resultRef와 보고를 통합 입력으로 사용한다. 현재 integration worktree에서 필요한 Git 병합·cherry-pick·충돌 해결과 전체 검증을 수행하고, Worker에게 의미적 충돌 해결을 넘기지 않는다.
+- INTEGRATION WorkItem은 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다.
 - HQ 보고에서는 GOTO 다음 첫 비어 있지 않은 줄에 상태 행 하나를 둔다.
 
 WORK_ITEM_STATUS: COMPLETED

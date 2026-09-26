@@ -744,3 +744,16 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 원격 `main` `c756233b9f1cbc5b7be66ee6f15625fb7167378a` Release 빌드 성공: 경고 0, 오류 0.
 - self-contained win-x64 단일 파일 하나를 게시해 Worker 배포 경로로 복사했고 SHA-256 일치.
 - 자동 테스트와 Explorer E2E는 실행하지 않았다.
+
+
+### 2026-09-26 Integration stale base와 landing 구조화 오류 수정
+
+- 실제 통합 결과가 생성됐지만 오래된 Integration baseRef 때문에 primary HEAD와 `INTEGRATION_NOT_FAST_FORWARD`가 된 사례를 반영했다.
+- 새 INTEGRATION WorkItem의 첫 준비는 실행 시점 primary branch/HEAD를 읽고, Graph에 저장된 과거 baseRef 대신 현재 HEAD를 worktree base로 사용한다.
+- 준비 성공 시 실제 baseRef를 running WorkItem 문맥에 저장한다.
+- INTEGRATION WORK는 현재 integration worktree 안에서만 merge/cherry-pick/충돌 해결/검증을 수행하고 primary workspace나 target branch를 직접 수정하지 않는다.
+- Integration 준비와 landing은 repository primary mutation gate를 공유해 primary HEAD 변경과 landing의 경쟁을 줄인다.
+- `INTEGRATION_LANDING_FAILED` 결과에는 `blockDetailCode`를 추가해 `INTEGRATION_NOT_FAST_FORWARD` 같은 실제 기계 오류를 snapshot과 HQ prompt에 직접 노출한다.
+- `BuildIntegrationLandingFailure`는 기계적 INTEGRATION_LANDING 블록을 WORK 자연어 보고보다 앞에 둔다.
+- 구버전 snapshot의 landing summary는 INTEGRATION_LANDING 블록 뒤 errorCode만 읽어 blockDetailCode로 승격한다.
+- 회귀 테스트는 현재 primary HEAD 기반 Integration 준비, primary landing 직렬화, structured detail persistence/migration, HQ 상태 이벤트 노출을 포함한다.
