@@ -4,7 +4,7 @@
 
 이 문서는 기존 GPT Web ↔ Codex ↔ JEV 레거시 모드의 공개 ACTION/NEXT wire만 보존한다.
 
-신규 CLI-to-CLI 정책은 Master-Polish.md의 ACTION + GOTO 계약을 따른다.
+신규 CLI-to-CLI 정책은 Worker-Polish.md와 현재 HQ/WORK 라우팅 계약을 따른다.
 
 제1조 (핵심 규칙)
 
