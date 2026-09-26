@@ -446,7 +446,7 @@ Integration:
 ④ 브라우저를 시작할 때 이전 탭 복원 정보만 제거하고 로그인 데이터는 유지한다.
 ⑤ 각 슬롯은 일반 탭 브라우저가 아니라 `--app=<ChatGPT URL>` 형태의 ProjectHub 전용 app window 하나로 시작한다.
 ⑥ 로그인·표시와 숨김 실행은 기존 Chromium 창을 재사용하지 않는다. 기존 슬롯 프로세스를 UI thread 밖에서 종료한 뒤 세션 복원 정보를 정리하고 새 app window를 시작한다.
-⑦ 숨김 app window는 화면 밖에서 시작해 숨기며, 로그인·표시는 처음부터 visible 상태의 새 app window를 시작한다.
+⑦ 숨김 app window는 최소화하거나 Win32 SW_HIDE 상태로 만들지 않고 화면 밖 위치에 정상 렌더링 상태로 유지한다. Chromium background timer, renderer, occluded-window throttling을 비활성화해 숨김 상태에서도 bridge heartbeat와 Web 작업이 계속 실행되게 한다. 로그인·표시는 처음부터 visible 상태의 새 app window를 시작한다.
 ⑧ 관리형 브라우저 역할은 Worker가 HQ 또는 RESOURCE로 기계적으로 지정하며 사용자가 확장 UI에서 역할을 다시 지정하지 않는다.
 ⑨ 관리형 확장은 Worker가 해당 실행에 발급한 runtime token이 있을 때만 로컬 bridge를 사용한다.
 ⑩ 일반 Chrome, 외부 브라우저 또는 runtime token이 없는 ChatGPT 페이지는 Worker bridge 클라이언트로 취급하지 않는다.
@@ -455,6 +455,7 @@ Integration:
 ⑬ 관리형 브라우저는 unpacked extension 자동 로드를 지원하는 호환 런타임을 사용한다. 명시된 BrowserRuntime 또는 PROJECTHUB_CHROMIUM_PATH가 없으면 Worker는 공식 Chrome for Testing Stable win64 런타임을 사용자 로컬 데이터 영역에 자동 준비할 수 있다.
 ⑭ Worker 시작 시 ProjectHub가 소유한 관리형 브라우저 런타임의 잔존 프로세스를 정리한 뒤 HQ와 RESOURCE 슬롯을 시작한다. 외부 시스템 Chrome이나 ProjectHub 관리 경로 밖의 브라우저 프로세스는 자동 종료하지 않는다.
 ⑮ 역할별 heartbeat의 실제 확장 version/build와 Worker가 요구하는 version/build가 다르면 해당 불일치를 기계적 상태로 표시한다.
+⑯ heartbeat 생존 판정은 일시적인 renderer stall에 흔들리지 않도록 30초 허용 구간을 사용한다.
 
 제14조 (본문 구조 마커)
 
