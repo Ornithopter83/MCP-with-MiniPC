@@ -58,3 +58,14 @@
 ④ Web으로 전달하는 프롬프트에는 실제 첨부 파일과 함께 downstream WORK가 참조할 workspace staging 경로와 SHA-256 메타데이터를 제공할 수 있다.
 ⑤ 확장은 첨부 파일의 내용 의미나 적합성을 판정하지 않고 실제 bytes 전달과 hash 검증만 수행한다.
 
+제8조 (숨김 전송 확인)
+
+① 관리형 app window가 화면 밖에서 실행되는 동안 Send 확인은 주기 polling 하나에만 의존하지 않는다.
+② 전송 전에 현재 conversation의 user/assistant turn을 role, message key와 정규화 text fingerprint로 baseline 저장한다.
+③ 새 user turn 판정은 DOM의 총 메시지 개수 증가를 필수 조건으로 사용하지 않고 baseline에 없던 동일 prompt user turn을 기계적으로 찾는다.
+④ assistant turn 증거는 현재 작업의 Send가 trigger되었거나 현재 user turn이 확인된 뒤에만 인정한다.
+⑤ MutationObserver는 SEND_BUTTON_FIND와 SEND_CONFIRM 동안 conversation DOM 변화를 관측하고 발견한 전송 증거를 latch해 이후 DOM virtualization, renderer 지연 또는 polling 지연이 있어도 잃지 않는다.
+⑥ 일반 conversation article을 무조건 user 메시지로 취급하지 않고 실제 role 속성 또는 role이 명시된 turn만 user/assistant로 분류한다.
+⑦ SEND_CONFIRM 제한시간 직전에는 현재 DOM에서 이번 prompt user turn과 그 뒤 assistant turn을 다시 reconciliation하고 증거가 있으면 실패 대신 WAIT_RESPONSE로 복구한다.
+⑧ latch, mutation 확인과 timeout 복구는 SEND_EVIDENCE_LATCHED, SEND_MUTATION_CONFIRMED, SEND_TIMEOUT_RECOVERED 진행 단계로 기록한다.
+
