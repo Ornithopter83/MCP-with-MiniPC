@@ -55,12 +55,6 @@ public partial class App : System.Windows.Application
         try
         {
             _managedWebRuntimeManager = new ManagedWebRuntimeManager(WorkerPaths.Extension);
-            _managedWebRuntimeManager.StartHidden(
-                ManagedWebRole.Hq,
-                _bridgeServer?.GetRoleConversationId("HQ"));
-            _managedWebRuntimeManager.StartHidden(
-                ManagedWebRole.Resource,
-                _bridgeServer?.GetRoleConversationId("RESOURCE"));
         }
         catch (Exception ex)
         {
