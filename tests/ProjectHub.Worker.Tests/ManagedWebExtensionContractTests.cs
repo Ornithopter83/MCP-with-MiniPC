@@ -13,7 +13,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.3.2", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.3.3", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -79,6 +79,23 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("TEXT_WITH_FILES", StringComparison.Ordinal));
         Assert.True(source.Contains("pdf|zip|json|txt|md|csv|docx|xlsx|pptx", StringComparison.Ordinal));
         Assert.True(source.Contains("extension='+EXTENSION_VERSION+' / '+EXTENSION_BUILD", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void EmbeddedContent_WaitsForAttachmentReadinessBeforeSend()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.True(source.Contains("ATTACHMENT_BYTES_VERIFIED", StringComparison.Ordinal));
+        Assert.True(source.Contains("ATTACHMENT_INPUT_SET", StringComparison.Ordinal));
+        Assert.True(source.Contains("ATTACHMENT_UI_DETECTED", StringComparison.Ordinal));
+        Assert.True(source.Contains("ATTACHMENT_PROCESSING", StringComparison.Ordinal));
+        Assert.True(source.Contains("ATTACHMENT_READY", StringComparison.Ordinal));
+        Assert.True(source.Contains("ATTACHMENT_READY_TIMEOUT", StringComparison.Ordinal));
+        Assert.True(source.Contains("waitForAttachmentReady", StringComparison.Ordinal));
+        Assert.True(source.Contains("monitorSendReady(prompt,attachmentState.count)", StringComparison.Ordinal));
+        Assert.True(source.Contains("if(attachmentCount>0)", StringComparison.Ordinal));
+        Assert.True(source.Contains("첨부 처리/Send 활성화를 계속 기다리는 중", StringComparison.Ordinal));
     }
 
     [Fact]
