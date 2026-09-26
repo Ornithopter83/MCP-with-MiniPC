@@ -1772,9 +1772,35 @@ public partial class MainWindow : Window
             Math.Max(0, (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds),
             success ? null : completed.FinishReason,
             false, null, null, DateTimeOffset.UtcNow));
+        var resultFiles = (completed.SavedPaths ?? new List<string>())
+            .Where(File.Exists)
+            .Select(path =>
+            {
+                var info = new FileInfo(path);
+                return new CodexCliFile(
+                    path,
+                    info.Name,
+                    GetResourceMimeType(info.Extension),
+                    info.Length);
+            })
+            .ToArray();
+
+        if (resultFiles.Length > 0)
+        {
+            AddTaskMessage(
+                $"{roleName} WEB FILES",
+                string.Join(
+                    Environment.NewLine,
+                    resultFiles.Select(file =>
+                        $"{file.FileName} · {file.Size} bytes · {file.Path}")),
+                fileCount: resultFiles.Length,
+                status: "RECEIVED",
+                includeHistory: false);
+        }
+
         _lastActivityAt = DateTimeOffset.UtcNow;
         return new AiRoleRunResult("web", "chatgpt-web", string.Empty, null, success ? 0 : 1,
-            message, success ? string.Empty : message, message, Array.Empty<CodexCliFile>(), CodexUsage.Empty, Array.Empty<CodexCommandExecution>());
+            message, success ? string.Empty : message, message, resultFiles, CodexUsage.Empty, Array.Empty<CodexCommandExecution>());
     }
 
     private static string GetResourceFailureCode(BridgeTask? task) => task?.FinishReason switch
