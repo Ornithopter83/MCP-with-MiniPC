@@ -46,9 +46,7 @@ public partial class MainWindow
                 includeHistory: false);
         }
 
-        var coordinatorSession =
-            continuation?.CoordinatorSessionId ??
-            CodexCliRunner.NormalizeSessionId(coordinator.ThreadSessionId);
+        var coordinatorSession = continuation?.CoordinatorSessionId;
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
         var mechanicalWork = new MechanicalWorkRegistry();
         var resourceQueue = new ResourceSidecarQueue(
