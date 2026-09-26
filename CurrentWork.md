@@ -8,8 +8,8 @@
 
 ~~~text
 HQ       -> WORK
-WORK     -> HQ | JUDGE | RESOURCE_QUEUE
-JUDGE    -> WORK
+WORK     -> HQ | JUDGE_REQUEST | RESOURCE_QUEUE
+JUDGE_REQUEST -> Worker/JEV raw 결과 -> 요청한 같은 WORK 세션
 RESOURCE_QUEUE 접수 -> HQ
 RESOURCE_QUEUE 실행 -> RESOURCE Web -> 완료 알림 queue
 HQ ACTION=END -> 현재 실행 구간 의미 흐름 종료 고정 -> Worker 기계적 대기 작업 확인
@@ -41,7 +41,7 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 병렬 HQ GraphPatch transport와 병렬 WORK_ITEM_STATUS 보고 계약 기반 구현
 - Worktree + Codex 역할 runner를 결합하는 CodexWorkItemExecutor 구현
 - WorkItem checkpoint/resultRef와 dependency 결과 프롬프트 전달 구현
-- MainWindow 병렬 관제 루프 연결 완료: 새 Job은 maxConcurrentWork 값과 무관하게 WorkGraph/Scheduler 경로를 사용하고, 저장 WorkGraph가 없는 과거 max=1 continuation만 레거시 직렬 경로를 유지
+- MainWindow WorkGraph 관제 루프 연결 완료: 새 Job과 continuation은 maxConcurrentWork 값과 저장 WorkGraph 유무와 관계없이 WorkGraph/Scheduler 경로를 사용
 - RESOURCE/JUDGE/OBSERVATION 결과를 workItemId 기준으로 원래 WorkItem에 복귀
 - WorkGraph snapshot persistence/recovery와 실행 중 session/branch/worktree 문맥 보존
 - 설정 UI의 최대 동시 WORK 1~8, Pipeline 작업 카드에 RUN/READY/BLOCKED/COMPLETED/FAILED 집계와 WorkItem ID ToolTip 표시
