@@ -30,8 +30,24 @@ public static class LegacyWebJevContract
     {
         if (directive.Route == NextRoute.Invalid) return directive.Error ?? "NEXT_INVALID";
         var body = Normalize(directive.Body);
-        if (directive.Route == NextRoute.Web && !FirstContentLine(body).Equals("[REPORT]", StringComparison.OrdinalIgnoreCase)) return "REPORT_MISSING";
-        if (directive.Route == NextRoute.Jev && !FirstContentLine(body).Equals("[VALIDATION REQUEST]", StringComparison.OrdinalIgnoreCase)) return "VALIDATION_REQUEST_MISSING";
+        if (directive.Route == NextRoute.Web)
+            return ValidateUniqueBodyMarker(body, "[REPORT]", "REPORT_MISSING", "REPORT_DUPLICATE");
+        if (directive.Route == NextRoute.Jev)
+            return ValidateUniqueBodyMarker(body, "[VALIDATION REQUEST]", "VALIDATION_REQUEST_MISSING", "VALIDATION_REQUEST_DUPLICATE");
+        return null;
+    }
+
+    private static string? ValidateUniqueBodyMarker(
+        string body,
+        string marker,
+        string missingError,
+        string duplicateError)
+    {
+        var matches = body
+            .Split('\n')
+            .Count(line => line.Trim().Equals(marker, StringComparison.OrdinalIgnoreCase));
+        if (matches == 0) return missingError;
+        if (matches > 1) return duplicateError;
         return null;
     }
 
@@ -44,5 +60,4 @@ public static class LegacyWebJevContract
     }
 
     private static string Normalize(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');
-    private static string FirstContentLine(string text) => text.Split('\n').Select(line => line.Trim()).FirstOrDefault(line => line.Length > 0) ?? string.Empty;
 }
