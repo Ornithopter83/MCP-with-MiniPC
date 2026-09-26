@@ -44,3 +44,16 @@
 ⑬ Send 버튼 실행과 실제 전송 확인을 분리해 composer clear만으로 전송 성공을 확정하지 않는다.
 ⑭ Windows Worker 실제 빌드·실행 및 ChatGPT 로그인/E2E는 아직 수행하지 않았다.
 
+제5조 (본문 구조 마커 방어)
+
+① 수정 전 로그에서 HQ가 ACTION/GOTO 뒤에 설계 설명을 먼저 출력하고 이후 WORK_GRAPH_PATCH를 정상 출력했지만 WorkGraphTransportContract가 본문의 첫 비어 있지 않은 행만 검사해 WORK_GRAPH_PATCH_MARKER_MISSING으로 종료된 사실을 확인했다.
+② WORK_GRAPH_PATCH는 본문 전체 행에서 정확히 하나의 마커를 찾도록 변경했다.
+③ WORK_GRAPH_PATCH 뒤에서는 첫 번째 완전한 JSON 객체 하나만 추출해 파싱하므로 JSON 뒤의 설명은 WORK_GRAPH_PATCH_JSON_INVALID 원인이 되지 않는다.
+④ 같은 마커가 두 번 나오면 WORK_GRAPH_PATCH_MARKER_DUPLICATE로 거부한다.
+⑤ WORK_ITEM_STATUS와 RESOURCE_TYPE도 본문 내 위치를 독립적으로 탐색하고 중복 마커를 각각 WORK_ITEM_STATUS_DUPLICATE, RESOURCE_TYPE_DUPLICATE로 거부한다.
+⑥ RESOURCE_TYPE 앞의 설명은 RESOURCE 생성 프롬프트에 포함하지 않고 마커 뒤의 자연어 요청만 전달한다.
+⑦ 레거시 NEXT 자체는 첫 제어행 규칙을 유지하되 NEXT 뒤 REPORT와 VALIDATION REQUEST 구조 마커도 본문 내 위치 독립·중복 거부 방식으로 맞췄다.
+⑧ ACTION, GOTO, NEXT 등 라우팅 제어행의 기존 위치 규칙은 완화하지 않았다.
+⑨ 수정 전 로그 형태, JSON 뒤 설명, inline WORK_GRAPH_PATCH JSON, 중복 WorkGraph/WorkItem/RESOURCE/레거시 마커에 대한 회귀 테스트를 추가했다.
+⑩ 이 환경에서는 저장소 Windows .NET 빌드와 테스트를 실제 실행하지 못해 정적 검증까지만 완료했다.
+
