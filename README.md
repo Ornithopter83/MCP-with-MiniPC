@@ -1,16 +1,29 @@
 # ProjectHub
 
-Mini PC를 중앙 프로젝트 상태 서버로 사용하는 ProjectHub v0.2 초기 골격이다.
+ProjectHub는 개발 PC, Mini PC 중앙 서비스, 공통 도메인·인프라, AI Worker와 ChatGPT Web 브리지를 분리해 구성하는 프로젝트다.
 
 ## 구성
 
-- `src/ProjectHub.Core`: 도메인 모델과 핵심 로직
-- `src/ProjectHub.Infrastructure`: Supabase·Git·파일시스템 연동
-- `src/ProjectHub.Server`: ASP.NET Core Minimal API
-- `src/ProjectHub.Agent`: 개발 PC 상태 수집 Agent
-- `tests/`: Core와 Server 테스트
+- `src/ProjectHub.Core`: 공통 도메인 모델과 계약
+- `src/ProjectHub.Infrastructure`: Supabase·파일시스템·NAS 등 외부 인프라 구현
+- `src/ProjectHub.Server`: Mini PC의 ASP.NET Core 중앙 HTTP 서비스
+- `src/ProjectHub.Agent`: 개발 PC 상태 수집 및 Server 통신
+- `src/ProjectHub.Worker`: AI 관제와 로컬 작업 실행용 Windows Worker
+- `extension/gptweb-hub`: ChatGPT Web과 Worker 사이의 브라우저 확장 브리지
+- `tests/`: 각 프로젝트의 자동 테스트
 
-## 실행
+## 정책 문서
+
+- `Master-Polish.md`: ProjectHub 전체 공통 영구 정책
+- `Core-Polish.md`
+- `Infrastructure-Polish.md`
+- `Server-Polish.md`
+- `Agent-Polish.md`
+- `Worker-Polish.md`
+- `Web-Polish.md`
+- `CurrentWork.md`: 프로젝트별 현재 상태 표지판
+
+## Server 실행
 
 ```powershell
 dotnet run --project src/ProjectHub.Server
@@ -18,23 +31,10 @@ dotnet run --project src/ProjectHub.Server
 
 상태 확인: `GET /api/status`
 
-구현 로드맵과 작업 순서는 [ProjectHub_IMPLEMENTATION_PLAN.md](ProjectHub_IMPLEMENTATION_PLAN.md)를 참고한다.
+## Worker와 Web 확장
 
-## GPTWeb-Hub Worker 최신 상태
+Worker는 HQ, WORK, RESOURCE, JUDGE와 기계 계측 흐름을 관리한다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
 
-Worker는 하나의 작업 안에서 Codex CLI 결과를 GPT Web으로 전달하고, Web 응답의 ACTION에 따라 다음 Codex 라운드를 진행하거나 PAUSE/END로 종료한다. 후속 Web 라운드에는 최초 COMMAND를 중복해서 보내지 않고, 현재 라운드 결과를 전달한다.
+Web 확장은 사용자가 연결한 ChatGPT Web 대화와 로컬 Worker의 루프백 브리지를 제공한다. 세부 정책은 `Web-Polish.md`에 둔다.
 
-작업 메시지는 실행 중에도 실시간 이벤트로 기록된다. Coordinator-first 작업은 작업 폴더 아래의 `.projecthub`에 상태와 로그를 남긴다.
-
-<작업 폴더>\.projecthub\session-state.json
-<작업 폴더>\.projecthub\last-handoff.md
-<작업 폴더>\.projecthub\events\<jobId>.jsonl
-<작업 폴더>\.projecthub\transcripts\<jobId>.txt
-
-`events/<jobId>.jsonl`은 이벤트 발생 시마다 한 줄 JSON으로 append되며 Full Message를 보존한다. 재개 가능한 작업은 Worker 재시작 후 `session-state.json`에서 복구할 수 있다.
-
-### 알려진 제약
-
-- 빌드·테스트와 함께 빌드된 Worker 실행파일 및 연결된 GPT Web의 스무고개 다중 왕복 E2E를 확인했다. ACTION=CONTINUE 반복과 ACTION=END 종료가 정상 동작했다.
-- 확장이 응답 완료/Stop 상태를 보고하지 않으면 Worker가 GPT Web 응답 완료를 확정할 수 없다.
-- CLI 사용량가 제공되지 않는 경우 누적 토큰은 정확한 계정 한도 조회값이 아니라 CLI 응답에서 추출 가능한 값의 합계다.
+과거 실행 기록과 작업 계획은 정책 원본으로 사용하지 않는다.
