@@ -57,3 +57,14 @@
 ⑨ 수정 전 로그 형태, JSON 뒤 설명, inline WORK_GRAPH_PATCH JSON, 중복 WorkGraph/WorkItem/RESOURCE/레거시 마커에 대한 회귀 테스트를 추가했다.
 ⑩ 이 환경에서는 저장소 Windows .NET 빌드와 테스트를 실제 실행하지 못해 정적 검증까지만 완료했다.
 
+제6조 (관리형 Chromium 확장 동기화)
+
+① HQ와 RESOURCE를 서로 다른 persistent profile로 로그인한 상태에서 HQ만 확장 업데이트 필요, RESOURCE는 연결됨으로 표시되는 현상을 확인했다.
+② Worker는 시작 시 내장 확장 파일을 최신 상태로 배포하지만 이전 Worker가 남긴 Chrome for Testing 프로세스가 살아 있으면 해당 profile이 예전 content script heartbeat를 계속 보낼 수 있다.
+③ Worker 시작 직후 HQ/RESOURCE 슬롯을 열기 전에 ProjectHub 관리 BrowserRuntime 경로의 chrome.exe 프로세스만 찾아 종료하도록 보강했다.
+④ 시스템 Chrome, 외부 PROJECTHUB_CHROMIUM_PATH 등 ProjectHub 소유 경로 밖의 브라우저는 자동 종료 대상에서 제외한다.
+⑤ 역할별 Web 상태에 실제 ExtensionVersion/ExtensionBuild와 ExpectedExtensionVersion/ExpectedExtensionBuild를 포함하고 UI에서 불일치 값을 직접 표시한다.
+⑥ 이전 로컬 재게시에서 확인된 MainWindow.ManagedWeb.cs의 System.Drawing 대 WPF Brush/Brushes 모호성은 System.Windows.Media 형식을 명시하는 방식으로 저장소에 정식 반영했다.
+⑦ 확장 자체의 version/build는 0.2.0 / 2026-09-26.5를 유지한다. 이번 수정은 동일 build를 새 브라우저 프로세스가 확실히 다시 로드하게 하는 Worker 수명주기 보강이다.
+⑧ 새 Worker 빌드·게시 후 실제 HQ/RESOURCE 로그인 profile 유지와 두 역할의 heartbeat build 동기화 E2E가 필요하다.
+
