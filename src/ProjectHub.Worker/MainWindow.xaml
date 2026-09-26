@@ -437,12 +437,36 @@
         </Grid>
       </Grid>
     </Border>
-    <Grid Grid.Row="3" Margin="0,8,18,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/><ColumnDefinition Width="18"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
-      <TextBlock x:Name="DashboardPreflightText" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="6,0,12,0"/>
-      <Button x:Name="AddWorkButton" Grid.Column="1" Content="＋   작업 추가" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#168A4A" Foreground="White" BorderBrush="#168A4A" FontSize="25" FontWeight="Bold" IsEnabled="False" Visibility="Collapsed" Click="AddWorkButton_Click">
+    <Grid Grid.Row="3" Margin="0,8,18,14">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="148"/>
+        <ColumnDefinition Width="12"/>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="18"/>
+        <ColumnDefinition Width="270"/>
+      </Grid.ColumnDefinitions>
+      <TextBlock x:Name="DashboardPreflightText" Grid.Column="0" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource Muted}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="6,0,12,0"/>
+      <StackPanel x:Name="DirectWorkOptionsPanel" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,0,10,0">
+        <StackPanel Margin="0,0,6,0">
+          <TextBlock Text="서비스 제공사" FontSize="11" Foreground="{StaticResource Muted}" Margin="2,0,0,2"/>
+          <ComboBox x:Name="DirectWorkProviderCombo" Width="108" Height="34" DisplayMemberPath="DisplayName" SelectionChanged="DirectWorkProviderCombo_SelectionChanged"/>
+        </StackPanel>
+        <StackPanel Margin="0,0,6,0">
+          <TextBlock Text="모델" FontSize="11" Foreground="{StaticResource Muted}" Margin="2,0,0,2"/>
+          <ComboBox x:Name="DirectWorkModelCombo" Width="148" Height="34" DisplayMemberPath="DisplayName" SelectionChanged="DirectWorkModelCombo_SelectionChanged"/>
+        </StackPanel>
+        <StackPanel>
+          <TextBlock Text="추론 깊이" FontSize="11" Foreground="{StaticResource Muted}" Margin="2,0,0,2"/>
+          <ComboBox x:Name="DirectWorkReasoningCombo" Width="94" Height="34" SelectionChanged="DirectWorkReasoningCombo_SelectionChanged"/>
+        </StackPanel>
+      </StackPanel>
+      <CheckBox x:Name="DirectWorkModeCheckBox" Grid.Column="2" Content="계약문서 무시" IsChecked="False" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Checked="DirectWorkModeCheckBox_Changed" Unchecked="DirectWorkModeCheckBox_Changed" ToolTip="ProjectHub 역할 계약과 프로젝트 AGENTS 지침 주입 없이 현재 작업 폴더에서 선택한 모델을 직접 실행합니다."/>
+      <Button x:Name="AddWorkButton" Grid.Column="4" Content="＋   작업 추가" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#168A4A" Foreground="White" BorderBrush="#168A4A" FontSize="25" FontWeight="Bold" IsEnabled="False" Visibility="Collapsed" Click="AddWorkButton_Click">
         <Button.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.22" Color="#168A4A"/></Button.Effect>
       </Button>
-      <Button x:Name="RunButton" Grid.Column="3" Content="▶   실행" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#1477E8" Foreground="White" BorderBrush="#1477E8" FontSize="27" FontWeight="Bold" IsEnabled="False" Click="RunTask_Click" Effect="{StaticResource RunButtonShadow}"/>
+      <Button x:Name="RunButton" Grid.Column="6" Content="▶   실행" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#1477E8" Foreground="White" BorderBrush="#1477E8" FontSize="27" FontWeight="Bold" IsEnabled="False" Click="RunTask_Click" Effect="{StaticResource RunButtonShadow}"/>
     </Grid>
 
     <Grid Visibility="Collapsed">
