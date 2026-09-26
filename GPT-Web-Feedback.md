@@ -122,3 +122,19 @@
 ⑨ 숨김 실행 인자 테스트를 갱신해 최소화 플래그 부재와 세 가지 background throttling 비활성화 플래그를 검증한다.
 ⑩ Windows 실제 빌드·게시와 장시간 숨김 heartbeat E2E는 아직 수행하지 않았다.
 
+제11조 (사용자 파일과 화면 캡처 첨부)
+
+① 메시지 및 작업 이력의 신규 작업과 작업 추가 입력에 파일 drag-and-drop과 화면 캡처 Ctrl+V 첨부 UI를 추가했다.
+② 첨부는 본문 텍스트에 원본 bytes를 삽입하지 않고 UserAttachmentInput으로 분리해 Worker attachment 캐시에 복사하고 파일명, MIME, byte 크기, SHA-256과 입력 출처를 관리한다.
+③ 한 메시지 최대 20개, 파일당 50MB이며 폴더와 exe/com/scr/msi/msp/cpl/lnk 실행 계열은 거부한다. 소스·스크립트 파일은 개발 입력으로 허용한다.
+④ 클립보드 이미지 Ctrl+V는 PNG로 인코딩해 일반 첨부와 같은 캐시·hash 경로를 사용하며 Clipboard 잠금 예외도 UI 오류로 방어한다.
+⑤ CLI 대상 파일은 작업공간 `.projecthub/attachments/<batch>/`에 staging하고 SHA-256을 재검증한다. Git info exclude에도 해당 런타임 경로를 추가하도록 시도한다.
+⑥ AiRoleRunRequest에 InputAttachments를 추가했고 OpenAI Codex 역할 runner는 USER_ATTACHMENTS 블록으로 실제 local path, MIME, 크기, SHA-256을 전달한다. 이미지 파일은 해당 local path의 이미지를 확인한 뒤 판단하도록 지시한다.
+⑦ coordinator-first 첫 HQ 호출은 사용자 첨부를 받는다. HQ가 Web transport이면 기존 BridgeAttachment로 실제 ChatGPT file input에 파일 bytes가 첨부되며, HQ가 CLI이면 staged local path를 받는다.
+⑧ WORK WorkItem은 각 독립 worktree에 동일 사용자 첨부를 별도로 staging해 구현 AI가 읽을 수 있다.
+⑨ legacy 흐름은 최초 Codex 입력에 staged attachment context를 넣고 첫 HQ Web 전달에 실제 파일을 함께 첨부한다.
+⑩ `계약문서 무시` 직통 모드는 IgnoreProjectInstructions=true를 유지하면서도 같은 attachment staging과 InputAttachments 전달을 사용한다. 따라서 계약/AGENTS 자동 주입만 우회하고 사용자가 첨부한 자료는 선택한 AI에 전달된다.
+⑪ Web content script는 기존처럼 인증된 downloadUrl을 fetchWithTimeout으로 받고 실제 bytes SHA-256을 계산해 ATTACH_HASH_MISMATCH를 거부한 뒤 ChatGPT file input에 File 객체를 넣는다. 확장 자체의 추가 버전 증가는 필요하지 않았다.
+⑫ UserAttachmentTransport 회귀 테스트를 추가해 cache/hash, 실행 바이너리 차단과 source script 허용, workspace staging, AI prompt metadata, Bridge attachment ID/hash를 검증하도록 했다.
+⑬ 이 환경에서는 실제 Windows Worker 빌드와 UI/Web E2E를 아직 실행하지 못했다.
+
