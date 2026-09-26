@@ -152,6 +152,78 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         return arguments;
     }
 
+    public int TerminateStaleOwnedBrowserProcesses()
+    {
+        var executable = ResolveBrowserExecutable();
+        if (string.IsNullOrWhiteSpace(executable) || !IsWorkerOwnedBrowserExecutable(executable))
+            return 0;
+
+        var terminated = 0;
+        var processName = Path.GetFileNameWithoutExtension(executable);
+        foreach (var process in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                string? processPath = null;
+                try
+                {
+                    processPath = process.MainModule?.FileName;
+                }
+                catch
+                {
+                }
+
+                if (string.IsNullOrWhiteSpace(processPath) ||
+                    !Path.GetFullPath(processPath).Equals(
+                        Path.GetFullPath(executable),
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(5000);
+                    terminated++;
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        return terminated;
+    }
+
+    public static bool IsWorkerOwnedBrowserExecutable(string? executable)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+            return false;
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(executable);
+        }
+        catch
+        {
+            return false;
+        }
+
+        var managedRoot = Path.GetFullPath(WorkerPaths.ManagedWebBrowserRuntime)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var bundledRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "BrowserRuntime"))
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        return fullPath.StartsWith(managedRoot, StringComparison.OrdinalIgnoreCase) ||
+               fullPath.StartsWith(bundledRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string? ResolveBrowserExecutable()
     {
         var configured = Environment.GetEnvironmentVariable("PROJECTHUB_CHROMIUM_PATH");
