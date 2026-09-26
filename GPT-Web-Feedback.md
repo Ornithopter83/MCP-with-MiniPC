@@ -173,3 +173,17 @@
 ⑮ 내장 확장 회귀 테스트와 WebResultFileStorageTests를 추가해 assistant fallback, 일반 파일 탐지, non-image 파일 저장과 SHA mismatch 거부를 고정했다.
 ⑯ JavaScript 문법과 주요 연결은 정적으로 확인했으며 실제 Windows Worker 빌드·게시 및 숨김 HQ 응답/파일 E2E는 후속 확인 대상이다.
 
+제14조 (첨부 처리 중 Voice-only 조기 실패 방어)
+
+① 실제 실패 로그에서 사용자 첨부 파일의 bytes 다운로드와 SHA-256 검증은 성공했지만 ChatGPT file input 설정 직후 Send 버튼 대신 Voice 버튼만 표시됐고 약 2.25초 뒤 Web 작업이 실패했다.
+② 기존 ATTACHMENT_VERIFIED는 Worker attachment bytes가 정확하다는 뜻일 뿐 ChatGPT가 해당 첨부를 업로드·처리 완료했다는 뜻이 아니었다.
+③ 첨부 단계명을 ATTACHMENT_BYTES_VERIFIED로 분리하고 file input에 전체 파일 수가 설정된 뒤 ATTACHMENT_INPUT_SET을 기록하도록 변경했다.
+④ composer 영역에서 파일명 또는 attachment/file UI가 확인되면 ATTACHMENT_UI_DETECTED를 기록하고 aria-busy, progressbar, upload 표시가 있으면 ATTACHMENT_PROCESSING을 기록한다.
+⑤ 첨부 관련 alert/error UI를 탐지해 명시적인 업로드/파일 오류는 ATTACHMENT_UI_ERROR로 조기 실패할 수 있다.
+⑥ 첨부 처리 완료의 최종 기계 증거는 활성 Send 버튼이다. 이를 확인하면 ATTACHMENT_READY를 기록한 뒤에만 일반 Send 감시로 넘어간다.
+⑦ 첨부가 있는 요청에서 Voice 버튼만 표시될 때는 기존 2.25초 조기 실패 규칙을 적용하지 않고 5분 ATTACHMENT_READY_TIMEOUT 안에서 Send 활성화를 계속 기다린다.
+⑧ 첨부 준비 뒤 monitorSendReady에도 attachmentCount를 전달해 Send 버튼이 일시적으로 다시 사라져도 Voice-only를 즉시 실패시키지 않는다.
+⑨ 확장 version/build는 0.3.3 / 2026-09-27.2로 올리고 Worker Bridge 기대 버전도 동일하게 동기화했다.
+⑩ ManagedWebExtensionContractTests에 첨부 bytes/input/UI/processing/ready 단계와 attachmentCount 기반 Voice-only 대기 계약을 추가했다.
+⑪ JavaScript 문법은 정적으로 확인했고 실제 Windows Worker 빌드·게시 및 숨김 Chromium의 첨부 HQ Web E2E는 후속 확인 대상으로 남겼다.
+
