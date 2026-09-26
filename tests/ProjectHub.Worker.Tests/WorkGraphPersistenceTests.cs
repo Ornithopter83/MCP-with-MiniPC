@@ -122,6 +122,48 @@ public sealed class WorkGraphPersistenceTests
     }
 
     [Fact]
+    public void CommandTranscriptLivePersistenceSurvivesBeforeFinalExport()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-live-transcript-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            var path = Path.Combine(directory, "live.txt");
+            var startedAt = new DateTimeOffset(
+                2026, 9, 27, 8, 10, 0, TimeSpan.FromHours(9));
+
+            Assert.True(ProjectWorkspacePersistence.InitializeCommandTranscript(
+                path,
+                "Worker",
+                "NewThread",
+                startedAt));
+            Assert.True(ProjectWorkspacePersistence.AppendCommandTranscript(
+                path,
+                startedAt.AddSeconds(1),
+                "WEB EXTENSION",
+                "SEND_CONFIRM · 실제 전송 증거 확인 중"));
+            Assert.True(ProjectWorkspacePersistence.AppendCommandTranscript(
+                path,
+                startedAt.AddSeconds(2),
+                "SYSTEM",
+                "사용자가 실행 중 작업을 취소했습니다."));
+
+            var text = File.ReadAllText(path);
+            Assert.Contains("Status: RUNNING", text);
+            Assert.Contains("WEB EXTENSION", text);
+            Assert.Contains("SEND_CONFIRM", text);
+            Assert.Contains("사용자가 실행 중 작업을 취소했습니다.", text);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void ClearWorkGraphRemovesOnlyActiveGraphSnapshot()
     {
         var directory = Path.Combine(

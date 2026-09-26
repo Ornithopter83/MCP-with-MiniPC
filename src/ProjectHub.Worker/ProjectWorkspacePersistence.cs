@@ -48,6 +48,7 @@ public sealed record ProjectEventLogEntry(
 public static class ProjectWorkspacePersistence
 {
     private static readonly object EventSync = new();
+    private static readonly object TranscriptSync = new();
     private static readonly JsonSerializerOptions StateJsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -108,6 +109,72 @@ public static class ProjectWorkspacePersistence
 
         var shortId = Guid.NewGuid().ToString("N")[..4];
         return Path.Combine(directory, $"{stem}-{shortId}.txt");
+    }
+
+    public static bool InitializeCommandTranscript(
+        string path,
+        string projectName,
+        string threadName,
+        DateTimeOffset startedAt)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        try
+        {
+            var lines = new[]
+            {
+                $"Project: {projectName}",
+                $"Thread: {threadName}",
+                $"Started: {startedAt:O}",
+                "Status: RUNNING",
+                string.Empty
+            };
+            lock (TranscriptSync)
+            {
+                WriteAtomic(
+                    Path.GetFullPath(path),
+                    string.Join(Environment.NewLine, lines));
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool AppendCommandTranscript(
+        string path,
+        DateTimeOffset timestamp,
+        string source,
+        string content)
+    {
+        if (string.IsNullOrWhiteSpace(path) ||
+            string.IsNullOrWhiteSpace(source) ||
+            string.IsNullOrWhiteSpace(content))
+            return false;
+
+        try
+        {
+            var block =
+                $"[{timestamp:yyyy-MM-dd HH:mm:ss}] {source.Trim()}{Environment.NewLine}" +
+                content.Trim() +
+                Environment.NewLine +
+                Environment.NewLine;
+            lock (TranscriptSync)
+            {
+                File.AppendAllText(
+                    Path.GetFullPath(path),
+                    block,
+                    new UTF8Encoding(false));
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static string MechanicalWorkDirectory(string workingDirectory, string jobId)

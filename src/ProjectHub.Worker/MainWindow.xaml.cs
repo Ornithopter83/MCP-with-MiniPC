@@ -290,6 +290,9 @@ public partial class MainWindow : Window
 
         if (_allowClose)
         {
+            if (_activeTaskCts is not null || _awaitingWebResult)
+                AddTaskMessage("SYSTEM", "Worker 종료 요청으로 실행 중 작업을 중단합니다.", status: "CANCELED");
+            ExportTaskTranscript();
             SaveWindowPosition();
             _activeTaskCts?.Cancel();
             _flowTimer.Stop();
@@ -969,6 +972,8 @@ public partial class MainWindow : Window
             _activeTaskCts?.Cancel();
             if (_bridgeServer is not null && _bridgeServer.CancelActiveTask(out var canceledTaskId) && canceledTaskId is not null)
                 _userCanceledBridgeTaskIds.Add(canceledTaskId);
+            AddTaskMessage("SYSTEM", "사용자가 실행 중 작업을 취소했습니다.", status: "CANCELED");
+            ExportTaskTranscript();
             ResetTaskState();
             ApplyConnectionStatus();
             return;
@@ -2977,6 +2982,15 @@ public partial class MainWindow : Window
         _taskTranscriptPath = null;
         _taskStartedAt = DateTimeOffset.Now;
         _taskTranscriptStartIndex = _taskMessages.Count;
+        _taskTranscriptPath = CreateTaskTranscriptPath();
+        if (!string.IsNullOrWhiteSpace(_taskTranscriptPath))
+        {
+            ProjectWorkspacePersistence.InitializeCommandTranscript(
+                _taskTranscriptPath,
+                _taskProjectName,
+                _taskThreadName,
+                _taskStartedAt);
+        }
     }
 
     private string BuildTaskStartInfo(string model, string reasoning, string workingDirectory, string? sessionId)
@@ -3016,6 +3030,8 @@ public partial class MainWindow : Window
         var effectiveReferenceId = referenceId ?? eventId;
         _taskExported = false;
         _taskMessages.Add(new TaskMessage(timestamp, source, trimmed));
+        if (!string.IsNullOrWhiteSpace(_taskTranscriptPath))
+            ProjectWorkspacePersistence.AppendCommandTranscript(_taskTranscriptPath, timestamp, source, trimmed);
         _messageLogItems.Add($"[{timestamp:HH:mm:ss}] {source}{Environment.NewLine}{trimmed}");
         MessageLogEmptyText.Visibility = Visibility.Collapsed;
         if (includeHistory)
@@ -3223,14 +3239,8 @@ public partial class MainWindow : Window
                 DashboardHistoryList.ScrollIntoView(DashboardHistoryList.Items[DashboardHistoryList.Items.Count - 1]);
         }), DispatcherPriority.Background);
     }
-    private string? ExportTaskTranscript()
+    private string? CreateTaskTranscriptPath()
     {
-        if (_taskExported) return _taskTranscriptPath;
-        var commandMessages = _taskMessages
-            .Skip(Math.Clamp(_taskTranscriptStartIndex, 0, _taskMessages.Count))
-            .ToArray();
-        if (commandMessages.Length == 0) return null;
-
         try
         {
             var hasProjectTranscript = !string.IsNullOrWhiteSpace(_activeWorkingDirectory) &&
@@ -3241,15 +3251,29 @@ public partial class MainWindow : Window
                 ? ProjectWorkspacePersistence.TranscriptDirectory(_activeWorkingDirectory!)
                 : Path.Combine(WorkerPaths.Task, folderName);
             Directory.CreateDirectory(directory);
+            return hasProjectTranscript
+                ? ProjectWorkspacePersistence.CommandTranscriptPath(_activeWorkingDirectory!, _taskStartedAt)
+                : CreateStandaloneCommandTranscriptPath(directory, _taskStartedAt);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
-            var path = _taskTranscriptPath ??
-                       (hasProjectTranscript
-                           ? ProjectWorkspacePersistence.CommandTranscriptPath(
-                               _activeWorkingDirectory!,
-                               _taskStartedAt)
-                           : CreateStandaloneCommandTranscriptPath(
-                               directory,
-                               _taskStartedAt));
+    private string? ExportTaskTranscript()
+    {
+        if (_taskExported) return _taskTranscriptPath;
+        var commandMessages = _taskMessages
+            .Skip(Math.Clamp(_taskTranscriptStartIndex, 0, _taskMessages.Count))
+            .ToArray();
+        if (commandMessages.Length == 0) return null;
+
+        try
+        {
+            var path = _taskTranscriptPath ?? CreateTaskTranscriptPath();
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
 
             var lines = new List<string>
             {
