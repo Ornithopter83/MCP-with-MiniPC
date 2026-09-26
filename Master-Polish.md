@@ -266,6 +266,7 @@ Worker는 자연어 본문을 해석하지 않고 명시된 RESOURCE_TYPE과 본
 - SavedPath
 
 RESOURCE 범위는 특정 파일 형식으로 제한하지 않는다. ChatGPT Web이 생성 결과를 실제 파일로 반환할 수 있고 확장이 이를 기계적으로 수집할 수 있으면 동일 RESOURCE 파이프라인을 사용한다. 형식별 차이는 RESOURCE 역할 분리가 아니라 확장의 파일 탐지·수집 어댑터 차이로 처리한다.
+Web 확장의 사용자 작업형 제한시간은 5분 미만으로 두지 않는다. 메시지 전달 준비, composer 준비, send confirm, RESOURCE 다운로드 가능 결과 대기, 개별 첨부·리소스 다운로드, 결과 POST의 기본 제한시간은 5분으로 통일한다. heartbeat·상태 조회·진행 보고·응답 안정화처럼 짧은 기계 계측 지연은 이 규칙의 대상이 아니다. Worker의 RESOURCE transport 전체 제한은 30분을 유지한다.
 
 RESOURCE가 하지 않는 것:
 - 자동 코드 연결

@@ -299,3 +299,13 @@ RESOURCE:
 - 확장 패널에 현재 결과 다시 수집 기능을 추가해 현재 CLAIMED RESOURCE 결과만 재탐색·다운로드할 수 있게 한다.
 - Worker RESOURCE Pipeline은 확장의 실제 progress stage를 표시한다.
 - 확장 0.1.9 / 빌드 2026-09-25.3.
+
+
+## W — Web/RESOURCE 작업형 timeout 최소 5분
+
+- 확장 내부의 사용자 작업형 timeout은 5분 미만으로 두지 않는다.
+- DELIVERY_TIMEOUT, COMPOSER_TIMEOUT, SEND_CONFIRM_TIMEOUT, RESOURCE_WAIT_TIMEOUT 기본값을 300000ms로 통일한다.
+- 개별 Web 첨부 다운로드, RESOURCE 파일 다운로드, 결과 POST도 300000ms를 사용한다.
+- heartbeat/상태 조회/진행 보고처럼 빠른 실패 감지가 필요한 내부 네트워크 timeout과 RESOURCE_SETTLE_DELAY는 변경하지 않는다.
+- Worker RESOURCE transport 전체 제한은 30분을 유지한다.
+- 확장 0.1.10 / 빌드 2026-09-26.1.

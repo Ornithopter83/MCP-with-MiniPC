@@ -511,3 +511,13 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 과거 snapshot은 Worker가 생성한 `INTEGRATION_LANDING` 블록 뒤의 `errorCode:`만 읽어 구조화된 세부 코드로 마이그레이션한다.
 - force/reset/push 자동 복구는 추가하지 않았다. 기존 차단 Integration의 의미적 재시도/새 Integration 생성 여부는 HQ가 현재 graph 사실을 보고 판단한다.
 - 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 검증이 필요하다.
+
+
+## 2026-09-26 Web/RESOURCE 5분 미만 제한시간 통일
+
+- GPTWeb-Hub 확장의 사용자 작업형 timeout 중 5분 미만이던 값을 5분(300000ms)으로 통일했다.
+- 대상은 메시지 전달 준비, composer 준비, send confirm, RESOURCE 다운로드 가능 파일 대기, 개별 첨부/리소스 다운로드, Worker 결과 POST다.
+- 기존 RESOURCE_WAIT_TIMEOUT 120초, 개별 다운로드 120초, 결과 POST 120초, DELIVERY 180초, COMPOSER 120초, SEND_CONFIRM 45초를 모두 5분으로 올렸다.
+- heartbeat/상태 조회/진행 보고 같은 4~8초 네트워크 timeout과 5~15초 응답 안정화 지연은 장애 감지용이므로 유지한다.
+- Worker의 RESOURCE transport 전체 제한 30분은 변경하지 않았다.
+- 확장 호환 버전은 0.1.10 / build 2026-09-26.1로 올리고 Worker 기대 버전도 함께 갱신했다.
