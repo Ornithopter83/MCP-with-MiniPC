@@ -132,6 +132,8 @@ public partial class MainWindow
 
         var conversationId = _bridgeServer?.GetRoleConversationId(bindingRole);
         var status = await _managedWebRuntimeManager.ShowForLoginAsync(role, conversationId);
+        if (string.IsNullOrWhiteSpace(status.Error))
+            _bridgeServer?.RequestManagedTabCleanup(bindingRole);
         RefreshManagedWebRuntimePresentation();
         ReportManagedWebStartFailure(bindingRole, status);
     }
