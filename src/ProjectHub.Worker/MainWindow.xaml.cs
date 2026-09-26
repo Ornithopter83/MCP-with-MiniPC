@@ -104,6 +104,7 @@ public partial class MainWindow : Window
     private string _taskThreadName = "NewThread";
     private bool _taskExported;
     private string? _taskTranscriptPath;
+    private int _taskTranscriptStartIndex;
     private string? _activeProjectJobId;
     private CoordinatorContinuationState? _continuationState;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
@@ -1639,6 +1640,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            StartCommandTranscript();
             AddTaskMessage("USER FOLLOWUP", request, sizeBytes: Encoding.UTF8.GetByteCount(request), itemCount: 1, includeHistory: false);
         }
         var coordinatorSession = continuation?.CoordinatorSessionId ?? CodexCliRunner.NormalizeSessionId(coordinator.ThreadSessionId);
@@ -2370,8 +2372,9 @@ public partial class MainWindow : Window
         _taskStartedAt = snapshot.UpdatedAtUtc.ToLocalTime();
         _taskProjectName = new DirectoryInfo(workingDirectory).Name;
         _taskThreadName = "ProjectMemory";
-        _taskTranscriptPath = ProjectWorkspacePersistence.TranscriptPath(workingDirectory, snapshot.JobId);
-        _taskExported = false;
+        _taskTranscriptPath = null;
+        _taskExported = true;
+        _taskTranscriptStartIndex = 0;
 
         _taskMessages.Clear();
         _messageLogItems.Clear();
@@ -2382,6 +2385,7 @@ public partial class MainWindow : Window
             _messageLogItems.Add($"[{entry.Timestamp.LocalDateTime:HH:mm:ss}] {entry.Source}{Environment.NewLine}{entry.FullMessage}");
         }
         MessageLogEmptyText.Visibility = priorEvents.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        _taskTranscriptStartIndex = _taskMessages.Count;
 
         _historyEvents.Clear();
         foreach (var entry in priorEvents)
@@ -3410,9 +3414,6 @@ public partial class MainWindow : Window
         _taskMessages.Clear();
         _messageLogItems.Clear();
         MessageLogEmptyText.Visibility = Visibility.Visible;
-        _taskExported = false;
-        _taskTranscriptPath = null;
-        _taskStartedAt = DateTimeOffset.Now;
         var projectPath = !string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
             ? selectedThread.ProjectPath
             : _activeWorkingDirectory;
@@ -3422,8 +3423,17 @@ public partial class MainWindow : Window
         _taskThreadName = string.IsNullOrWhiteSpace(selectedThread?.SessionId)
             ? "NewThread"
             : selectedThread.Label;
+        StartCommandTranscript();
         AddTaskMessage("USER COMMAND", command);
         AddTaskMessage("GPT WEB INSTRUCTION", webInstruction);
+    }
+
+    private void StartCommandTranscript()
+    {
+        _taskExported = false;
+        _taskTranscriptPath = null;
+        _taskStartedAt = DateTimeOffset.Now;
+        _taskTranscriptStartIndex = _taskMessages.Count;
     }
 
     private string BuildTaskStartInfo(string model, string reasoning, string workingDirectory, string? sessionId)
@@ -3663,8 +3673,12 @@ public partial class MainWindow : Window
     }
     private string? ExportTaskTranscript()
     {
-        if (_taskMessages.Count == 0) return null;
         if (_taskExported) return _taskTranscriptPath;
+        var commandMessages = _taskMessages
+            .Skip(Math.Clamp(_taskTranscriptStartIndex, 0, _taskMessages.Count))
+            .ToArray();
+        if (commandMessages.Length == 0) return null;
+
         try
         {
             var hasProjectTranscript = !string.IsNullOrWhiteSpace(_activeWorkingDirectory) &&
@@ -3675,41 +3689,36 @@ public partial class MainWindow : Window
                 ? ProjectWorkspacePersistence.TranscriptDirectory(_activeWorkingDirectory!)
                 : Path.Combine(WorkerPaths.Task, folderName);
             Directory.CreateDirectory(directory);
+
             var path = _taskTranscriptPath ??
                        (hasProjectTranscript
-                           ? ProjectWorkspacePersistence.TranscriptPath(_activeWorkingDirectory!, _activeProjectJobId!)
-                           : Path.Combine(directory, $"_{_taskStartedAt:yyyyMMdd_HHmmss}.txt"));
-            var projectEvents = hasProjectTranscript
-                ? ProjectWorkspacePersistence.ReadAllEvents(_activeWorkingDirectory!, _activeProjectJobId!)
-                : Array.Empty<ProjectEventLogEntry>();
-            var startedAt = projectEvents.Count > 0 ? projectEvents[0].Timestamp : _taskStartedAt;
+                           ? ProjectWorkspacePersistence.CommandTranscriptPath(
+                               _activeWorkingDirectory!,
+                               _taskStartedAt)
+                           : CreateStandaloneCommandTranscriptPath(
+                               directory,
+                               _taskStartedAt));
+
             var lines = new List<string>
             {
                 $"Project: {_taskProjectName}",
                 $"Thread: {_taskThreadName}",
-                $"Started: {startedAt:O}",
+                $"Started: {_taskStartedAt:O}",
                 $"Finished: {DateTimeOffset.Now:O}",
                 string.Empty
             };
-            if (projectEvents.Count > 0)
+
+            foreach (var message in commandMessages)
             {
-                foreach (var entry in projectEvents)
-                {
-                    lines.Add($"[{entry.Timestamp:yyyy-MM-dd HH:mm:ss}] {entry.Source}");
-                    lines.Add(entry.FullMessage);
-                    lines.Add(string.Empty);
-                }
+                lines.Add($"[{message.Timestamp:yyyy-MM-dd HH:mm:ss}] {message.Source}");
+                lines.Add(message.Content);
+                lines.Add(string.Empty);
             }
-            else
-            {
-                foreach (var message in _taskMessages)
-                {
-                    lines.Add($"[{message.Timestamp:yyyy-MM-dd HH:mm:ss}] {message.Source}");
-                    lines.Add(message.Content);
-                    lines.Add(string.Empty);
-                }
-            }
-            File.WriteAllText(path, string.Join(Environment.NewLine, lines), new UTF8Encoding(false));
+
+            File.WriteAllText(
+                path,
+                string.Join(Environment.NewLine, lines),
+                new UTF8Encoding(false));
             _taskTranscriptPath = path;
             _taskExported = true;
             return path;
@@ -3718,6 +3727,29 @@ public partial class MainWindow : Window
         {
             return null;
         }
+    }
+
+    private static string CreateStandaloneCommandTranscriptPath(
+        string directory,
+        DateTimeOffset startedAt)
+    {
+        var stem = startedAt.ToLocalTime().ToString(
+            "yyMMdd-HHmmss",
+            System.Globalization.CultureInfo.InvariantCulture);
+        var candidate = Path.Combine(directory, stem + ".txt");
+        if (!File.Exists(candidate))
+            return candidate;
+
+        for (var suffix = 2; suffix <= 99; suffix++)
+        {
+            candidate = Path.Combine(directory, $"{stem}-{suffix:00}.txt");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+
+        return Path.Combine(
+            directory,
+            $"{stem}-{Guid.NewGuid():N}"[..(stem.Length + 5)] + ".txt");
     }
 
     private static string SanitizeFilePart(string value)

@@ -37,6 +37,7 @@ public partial class MainWindow
         }
         else
         {
+            StartCommandTranscript();
             AddTaskMessage(
                 "USER FOLLOWUP",
                 request,

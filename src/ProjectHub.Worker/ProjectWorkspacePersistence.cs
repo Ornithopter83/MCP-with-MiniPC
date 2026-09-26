@@ -86,6 +86,30 @@ public static class ProjectWorkspacePersistence
     public static string TranscriptPath(string workingDirectory, string jobId)
         => Path.Combine(TranscriptDirectory(workingDirectory), SanitizeId(jobId) + ".txt");
 
+    public static string CommandTranscriptPath(
+        string workingDirectory,
+        DateTimeOffset startedAt)
+    {
+        var directory = TranscriptDirectory(workingDirectory);
+        Directory.CreateDirectory(directory);
+        var stem = startedAt.ToLocalTime().ToString(
+            "yyMMdd-HHmmss",
+            System.Globalization.CultureInfo.InvariantCulture);
+        var candidate = Path.Combine(directory, stem + ".txt");
+        if (!File.Exists(candidate))
+            return candidate;
+
+        for (var suffix = 2; suffix <= 99; suffix++)
+        {
+            candidate = Path.Combine(directory, $"{stem}-{suffix:00}.txt");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+
+        var shortId = Guid.NewGuid().ToString("N")[..4];
+        return Path.Combine(directory, $"{stem}-{shortId}.txt");
+    }
+
     public static string MechanicalWorkDirectory(string workingDirectory, string jobId)
         => Path.Combine(RootDirectory(workingDirectory), "mechanical", SanitizeId(jobId));
 

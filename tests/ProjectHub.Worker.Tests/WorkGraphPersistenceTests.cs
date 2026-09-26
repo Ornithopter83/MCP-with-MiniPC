@@ -91,6 +91,37 @@ public sealed class WorkGraphPersistenceTests
     }
 
     [Fact]
+    public void CommandTranscriptPathUsesShortTimestampAndAvoidsOverwrite()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-transcript-path-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            var startedAt = new DateTimeOffset(
+                2026, 9, 26, 0, 39, 22, TimeSpan.Zero);
+
+            var first = ProjectWorkspacePersistence.CommandTranscriptPath(
+                directory,
+                startedAt);
+            File.WriteAllText(first, "first");
+            var second = ProjectWorkspacePersistence.CommandTranscriptPath(
+                directory,
+                startedAt);
+
+            Assert.Equal("260926-003922.txt", Path.GetFileName(first));
+            Assert.Equal("260926-003922-02.txt", Path.GetFileName(second));
+            Assert.NotEqual(first, second);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void ClearWorkGraphRemovesOnlyActiveGraphSnapshot()
     {
         var directory = Path.Combine(
