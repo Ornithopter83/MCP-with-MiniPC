@@ -41,6 +41,6 @@ HQ와 RESOURCE는 서로 다른 persistent profile의 Chrome for Testing을 사�
 
 GPTWeb-Hub는 관리형 Chromium 전용 bridge다. Worker가 발급한 runtime token이 없는 일반 Chrome과 임의의 ChatGPT 페이지는 Worker bridge에 연결할 수 없다. 세부 정책은 `Web-Polish.md`에 둔다.
 
-Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. 첨부는 최초 작업과 작업 추가, coordinator-first, HQ Web, WORK worktree와 `계약문서 무시` 직통 AI 실행에서 공통 attachment 흐름으로 전달된다.
+Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. Web 전달에서는 로컬 파일 hash 검증 뒤 ChatGPT의 활성 Send 버튼까지 확인한 후 전송해 첨부 처리 중 Voice-only 상태를 실패로 오인하지 않는다. 첨부는 최초 작업과 작업 추가, coordinator-first, HQ Web, WORK worktree와 `계약문서 무시` 직통 AI 실행에서 공통 attachment 흐름으로 전달된다.
 
 HQ Web 응답은 assistant 텍스트뿐 아니라 응답 turn에 포함된 다운로드 파일도 회수한다. 일반 Web 결과 파일은 SHA-256을 검증한 뒤 `Worker/web-results/<taskId>/`에 저장하며 저장 경로는 Web 역할 결과 Files에도 포함된다.
