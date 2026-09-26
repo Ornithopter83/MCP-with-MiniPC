@@ -22,7 +22,37 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal("session-1", result.SessionId);
             Assert.Equal(fixture.Branch, result.Branch);
             Assert.Contains("workItemId: W1", fixture.Runner.LastRequest!.Prompt);
+            Assert.Contains("당신은 WORK다.", fixture.Runner.LastRequest.Prompt);
             Assert.Contains("WORK_ITEM_STATUS: COMPLETED", fixture.Runner.LastRequest.Prompt);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task ExistingWorkSessionDoesNotRepeatRoutingContract()
+    {
+        var fixture = CreateFixture("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            재개 완료
+            """);
+
+        try
+        {
+            var resumed = fixture.Request with
+            {
+                Item = fixture.Request.Item with { SessionId = "existing-session" },
+                InboundType = "RESOURCE_RESULT",
+                InboundBody = "requestId=R1 status=SAVED"
+            };
+
+            await fixture.Executor.ExecuteAsync(resumed, CancellationToken.None);
+
+            Assert.Contains("입력 유형: RESOURCE_RESULT", fixture.Runner.LastRequest!.Prompt);
+            Assert.DoesNotContain("당신은 WORK다.", fixture.Runner.LastRequest.Prompt);
         }
         finally
         {
