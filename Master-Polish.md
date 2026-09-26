@@ -227,6 +227,7 @@ Worker -> WORK  JEV raw 결과를 같은 세션에 반환
 ## 8. RESOURCE 흐름
 
 RESOURCE는 ChatGPT Web이 생성해 파일로 반환할 수 있는 모든 생성 리소스를 생성 → 수집/다운로드 → 저장 → 기록하는 사이드카 FIFO 대기열로 수행한다. 이미지·오디오·문서 등 구체 형식은 역할 의미가 아니라 반환 파일의 MIME 형식과 파일 정보로 구분한다.
+생성 리소스의 제작·수급은 RESOURCE 경로만 사용한다. RESOURCE 실패 시 HQ는 직접 생성하거나 외부 사이트에서 대체 리소스를 수급하도록 지시하지 않고, WORK도 자체 생성 도구나 외부 사이트로 우회하지 않는다. 후속 선택지는 RESOURCE 재요청, 요청 범위 조정, HQ 보고 또는 필요한 경우 PAUSE다.
 
 ~~~text
 WORK -> GOTO:RESOURCE + 자연어 요청

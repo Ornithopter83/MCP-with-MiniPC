@@ -309,3 +309,11 @@ RESOURCE:
 - heartbeat/상태 조회/진행 보고처럼 빠른 실패 감지가 필요한 내부 네트워크 timeout과 RESOURCE_SETTLE_DELAY는 변경하지 않는다.
 - Worker RESOURCE transport 전체 제한은 30분을 유지한다.
 - 확장 0.1.10 / 빌드 2026-09-26.1.
+
+
+## X — RESOURCE 우회 금지
+
+- 생성 리소스의 제작·수급은 RESOURCE 경로만 사용한다.
+- HQ는 RESOURCE 실패 시 직접 생성하거나 외부 사이트에서 대체 리소스를 수급하도록 지시하지 않는다.
+- WORK는 RESOURCE 실패 시 자체 생성 도구나 외부 사이트로 우회하지 않는다.
+- 실패 후에는 RESOURCE 재요청, 범위 조정, HQ 보고, 필요한 경우 PAUSE로 처리한다.

@@ -20,6 +20,7 @@ JUDGE
 - 계측 결과의 의미 해석과 후속 수정 여부는 WORK가 결정한다.
 
 RESOURCE
+- 생성 리소스의 제작·수급은 반드시 RESOURCE 경로만 사용하며, RESOURCE 실패 시 자체 생성 도구나 외부 사이트로 우회하지 않는다.
 - 요청 첫 줄에는 RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE 중 하나를 쓴다.
 - 한 요청에는 한 종류의 새로운 생성 리소스만 포함한다.
 - 그 아래에는 자연어 생성 지시만 넣고 상태 조회·저장 지시·Worker 운영 지시는 넣지 않는다.

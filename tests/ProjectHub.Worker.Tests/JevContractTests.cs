@@ -16,6 +16,7 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[ACTION=END]", hq);
         Assert.Contains("[GOTO : WORK]", hq);
         Assert.Contains("사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다", hq);
+        Assert.Contains("생성 리소스의 제작·수급은 반드시 RESOURCE 경로만 사용하며, RESOURCE 실패 시 직접 생성하거나 외부 사이트에서 대체 리소스를 수급하도록 지시하지 않는다.", hq);
         Assert.DoesNotContain("[GOTO : RESOURCE]", hq);
         Assert.DoesNotContain("[GOTO : JUDGE]", hq);
         Assert.Contains("Worker의 기계적 사실은 관측값이며 의미 판단이 아니다.", hq);
@@ -73,6 +74,7 @@ public sealed class RoleContractBoundaryTests
     public void WorkResourceContractStatesGeneralTransportBoundary()
     {
         var work = RoleContractLoader.LoadWorkFooter();
+        Assert.Contains("생성 리소스의 제작·수급은 반드시 RESOURCE 경로만 사용하며, RESOURCE 실패 시 자체 생성 도구나 외부 사이트로 우회하지 않는다.", work);
         Assert.Contains("한 요청에는 한 종류의 새로운 생성 리소스만 포함한다.", work);
         Assert.Contains("상태 조회·저장 지시·Worker 운영 지시는 넣지 않는다.", work);
         Assert.Contains("유효한 GOTO 제어행만 라우팅을 변경", work);
