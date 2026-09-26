@@ -265,7 +265,12 @@
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                           <TextBlock Text="ChatGPT Web" FontSize="14" FontWeight="Bold"/>
                           <TextBlock x:Name="CoordinatorWebBindingStatusText" Text="HQ Web 미연결" FontSize="12" FontWeight="SemiBold" Foreground="OrangeRed" Margin="0,3,0,0"/>
-                          <TextBlock x:Name="CoordinatorWebBindingDetailText" Text="브라우저 확장에서 HQ 역할로 연결하세요." FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="270" Margin="0,2,0,0"/>
+                          <TextBlock x:Name="CoordinatorWebBindingDetailText" Text="Worker 관리 브라우저에서 로그인 후 대화를 선택하세요." FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="270" Margin="0,2,0,0"/>
+                          <TextBlock x:Name="CoordinatorManagedWebRuntimeStatusText" Text="HQ 브라우저 상태 확인 중" FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="270" Margin="0,4,0,0"/>
+                          <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button x:Name="CoordinatorManagedWebShowButton" Content="로그인/표시" Padding="9,4" FontSize="11" Click="ShowManagedHqWeb_Click"/>
+                            <Button x:Name="CoordinatorManagedWebHideButton" Content="숨김 실행" Padding="9,4" FontSize="11" Margin="6,0,0,0" Click="HideManagedHqWeb_Click"/>
+                          </StackPanel>
                         </StackPanel>
                       </Grid>
                     </Border>
@@ -329,7 +334,12 @@
                   <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Text="RESOURCE Web" FontSize="14" FontWeight="Bold"/>
                     <TextBlock x:Name="ResourceWebBindingStatusText" Text="RESOURCE Web 미연결" FontSize="12" FontWeight="SemiBold" Foreground="OrangeRed" Margin="0,3,0,0"/>
-                    <TextBlock x:Name="ResourceWebBindingDetailText" Text="브라우저 확장에서 RESOURCE 역할로 연결하세요." FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="270" Margin="0,2,0,0"/>
+                    <TextBlock x:Name="ResourceWebBindingDetailText" Text="Worker 관리 브라우저에서 로그인 후 대화를 선택하세요." FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="270" Margin="0,2,0,0"/>
+                    <TextBlock x:Name="ResourceManagedWebRuntimeStatusText" Text="RESOURCE 브라우저 상태 확인 중" FontSize="11" Foreground="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="270" Margin="0,4,0,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                      <Button x:Name="ResourceManagedWebShowButton" Content="로그인/표시" Padding="9,4" FontSize="11" Click="ShowManagedResourceWeb_Click"/>
+                      <Button x:Name="ResourceManagedWebHideButton" Content="숨김 실행" Padding="9,4" FontSize="11" Margin="6,0,0,0" Click="HideManagedResourceWeb_Click"/>
+                    </StackPanel>
                   </StackPanel>
                 </Grid>
               </Border>
