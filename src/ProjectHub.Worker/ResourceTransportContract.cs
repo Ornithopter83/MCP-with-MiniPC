@@ -26,22 +26,37 @@ public static class ResourceTransportContract
         request = null;
         error = null;
 
-        var normalized = (body ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();
-        if (normalized.Length == 0)
+        var normalized = (body ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        if (!lines.Any(line => !string.IsNullOrWhiteSpace(line)))
         {
             error = "RESOURCE_REQUEST_EMPTY";
             return false;
         }
 
-        var newline = normalized.IndexOf('\n');
-        var header = (newline < 0 ? normalized : normalized[..newline]).Trim();
         const string prefix = "RESOURCE_TYPE:";
-        if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        var headerIndexes = lines
+            .Select((line, index) => (Line: line.Trim(), Index: index))
+            .Where(item => item.Line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(item => item.Index)
+            .ToArray();
+
+        if (headerIndexes.Length == 0)
         {
             error = "RESOURCE_TYPE_MISSING";
             return false;
         }
 
+        if (headerIndexes.Length > 1)
+        {
+            error = "RESOURCE_TYPE_DUPLICATE";
+            return false;
+        }
+
+        var headerIndex = headerIndexes[0];
+        var header = lines[headerIndex].Trim();
         var type = header[prefix.Length..].Trim().ToUpperInvariant();
         if (!IsSupportedType(type))
         {
@@ -49,7 +64,7 @@ public static class ResourceTransportContract
             return false;
         }
 
-        var prompt = newline < 0 ? string.Empty : normalized[(newline + 1)..].Trim();
+        var prompt = string.Join("\n", lines.Skip(headerIndex + 1)).Trim();
         if (prompt.Length == 0)
         {
             error = "RESOURCE_REQUEST_EMPTY";
