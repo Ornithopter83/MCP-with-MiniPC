@@ -90,7 +90,8 @@ public partial class MainWindow
         CoordinatorManagedWebRuntimeStatusText.Text = "HQ 브라우저 런타임 준비 중…";
         ResourceManagedWebRuntimeStatusText.Text = "RESOURCE 브라우저 런타임 준비 중…";
 
-        var terminated = _managedWebRuntimeManager.TerminateStaleOwnedBrowserProcesses();
+        var terminated = await Task.Run(
+            _managedWebRuntimeManager.TerminateStaleOwnedBrowserProcesses);
         if (terminated > 0)
         {
             AddTaskMessage(
