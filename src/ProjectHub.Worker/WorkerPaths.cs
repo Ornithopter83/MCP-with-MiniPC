@@ -12,10 +12,29 @@ public static class WorkerPaths
     public static string Attachments => Path.Combine(Root, "attachments");
     public static string Logs => Path.Combine(Root, "logs");
     public static string Extension => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "GPTWeb-Hub", "extension");
+    public static string ManagedWebRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "ManagedWeb");
+    public static string ManagedWebBrowserRuntime => Path.Combine(ManagedWebRoot, "BrowserRuntime");
+    public static string ManagedWebProfiles => Path.Combine(ManagedWebRoot, "Profiles");
+    public static string ManagedWebHqProfile => Path.Combine(ManagedWebProfiles, "HQ");
+    public static string ManagedWebResourceProfile => Path.Combine(ManagedWebProfiles, "RESOURCE");
 
     public static void EnsureCreated()
     {
-        foreach (var directory in new[] { Root, State, Config, Task, Attachments, Logs, Extension })
+        foreach (var directory in new[]
+        {
+            Root,
+            State,
+            Config,
+            Task,
+            Attachments,
+            Logs,
+            Extension,
+            ManagedWebRoot,
+            ManagedWebBrowserRuntime,
+            ManagedWebProfiles,
+            ManagedWebHqProfile,
+            ManagedWebResourceProfile
+        })
             Directory.CreateDirectory(directory);
     }
 }
