@@ -64,7 +64,38 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(2, hq.Prompts.Count);
         Assert.Contains("WorkGraph revision: 0", hq.Prompts[0]);
         Assert.Contains("입력 유형: WORK_GRAPH_QUIESCENT", hq.Prompts[1]);
+        Assert.Contains("병렬 WorkGraph 변경 이벤트", hq.Prompts[1]);
+        Assert.Contains("changedItems:", hq.Prompts[1]);
         Assert.Contains("state=COMPLETED", hq.Prompts[1]);
+    }
+
+    [Fact]
+    public void MechanicalGraphDeltaOmitsUnchangedCompletedItems()
+    {
+        var graph = new WorkGraph("job", 2);
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("W1", "완료 작업")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("W2", "진행 작업"))
+        })).Success);
+
+        Assert.True(graph.TryMarkRunning("W1"));
+        Assert.True(graph.TryMarkCompleted("W1", "ref-W1", "이미 HQ가 받은 완료 결과"));
+        var previous = graph.Snapshot();
+
+        Assert.True(graph.TryMarkRunning("W2"));
+        var current = new ParallelWorkSchedulerSnapshot(
+            graph.Snapshot(),
+            Array.Empty<RunningWorkItemSnapshot>());
+
+        var text = ParallelWorkSupervisor.FormatMechanicalGraphDeltaEvent(
+            new[] { "W2 상태가 변경되었습니다." },
+            previous,
+            current);
+
+        Assert.DoesNotContain("id=W1", text);
+        Assert.Contains("id=W2", text);
+        Assert.Contains("state=RUNNING", text);
     }
 
     [Fact]
