@@ -2424,7 +2424,7 @@ public partial class MainWindow : Window
         {
             statusText.Text = $"{role} Web 미연결";
             statusText.Foreground = System.Windows.Media.Brushes.OrangeRed;
-            detailText.Text = $"브라우저 확장에서 {role} 역할로 연결하세요.";
+            detailText.Text = $"Worker 관리 브라우저에서 로그인 후 {role} 대화를 선택하세요.";
             return;
         }
 
@@ -2455,12 +2455,13 @@ public partial class MainWindow : Window
     private void ApplyConnectionStatus()
     {
         UpdateWebRoleBindingStatusPresentation();
+        RefreshManagedWebRuntimePresentation();
         var webOnline = _bridgeServer?.WebConnected == true;
         var webExtensionReady = _bridgeServer?.WebExtensionSynchronized == true;
         var webConversationBound = _bridgeServer?.WebConversationBound == true;
         SetConnectionStatus(ProjectStatusText, _codexAuthenticated ? "READY" : "LOGIN NEEDED", _codexAuthenticated, ProjectStatusDot);
         SetConnectionStatus(WebStatusText, !webOnline ? "WAITING" : !webExtensionReady ? "UPDATE REQUIRED" : !webConversationBound ? "BIND REQUIRED" : "READY", webOnline && webExtensionReady && webConversationBound, waiting: !webOnline, indicator: WebStatusDot);
-        WebDescriptionText.Text = !webOnline ? "MCP 프로젝트 진척도 확인" : !webExtensionReady ? "확장 업데이트 필요" : !webConversationBound ? "현재 GPT Web 대화를 연결하세요" : !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
+        WebDescriptionText.Text = !webOnline ? "관리형 ChatGPT Web 연결 대기" : !webExtensionReady ? "내장 Web bridge 업데이트 필요" : !webConversationBound ? "Worker 관리 브라우저에서 대화를 선택하세요" : !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
         UpdateDashboardRunButtonState();
         SetConnectionStatus(ServerStatusText, _serverOnline ? "온라인" : "오프라인", _serverOnline, indicator: ServerStatusDot);
         SetConnectionStatus(ServerStatusTextSettings, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDotSettings);
