@@ -11,8 +11,8 @@ public sealed class ManagedWebRuntimeManagerTests
         var resource = ManagedWebRuntimeManager.ProfilePathFor(ManagedWebRole.Resource);
 
         Assert.NotEqual(hq, resource);
-        Assert.EndsWith("HQ", hq, StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith("RESOURCE", resource, StringComparison.OrdinalIgnoreCase);
+        Assert.True(hq.EndsWith("HQ", StringComparison.OrdinalIgnoreCase));
+        Assert.True(resource.EndsWith("RESOURCE", StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -22,8 +22,8 @@ public sealed class ManagedWebRuntimeManagerTests
     {
         var url = ManagedWebRuntimeManager.ResolveLaunchUrl(role, null);
 
-        Assert.StartsWith("https://chatgpt.com/", url, StringComparison.Ordinal);
-        Assert.Contains("projecthub-managed-role=" + expectedRole, url, StringComparison.Ordinal);
+        Assert.True(url.StartsWith("https://chatgpt.com/", StringComparison.Ordinal));
+        Assert.True(url.Contains("projecthub-managed-role=" + expectedRole, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -33,11 +33,10 @@ public sealed class ManagedWebRuntimeManagerTests
             ManagedWebRole.Hq,
             "abc-123");
 
-        Assert.StartsWith(
+        Assert.True(url.StartsWith(
             "https://chatgpt.com/c/abc-123?",
-            url,
-            StringComparison.Ordinal);
-        Assert.Contains("projecthub-managed-role=HQ", url, StringComparison.Ordinal);
+            StringComparison.Ordinal));
+        Assert.True(url.Contains("projecthub-managed-role=HQ", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -53,14 +52,13 @@ public sealed class ManagedWebRuntimeManagerTests
             profile,
             "resource-conversation");
 
-        Assert.Contains(arguments, item => item.StartsWith("--user-data-dir=", StringComparison.Ordinal));
-        Assert.Contains(arguments, item => item.StartsWith("--load-extension=", StringComparison.Ordinal));
-        Assert.Contains(arguments, item => item.StartsWith("--disable-extensions-except=", StringComparison.Ordinal));
+        Assert.True(arguments.Any(item => item.StartsWith("--user-data-dir=", StringComparison.Ordinal)));
+        Assert.True(arguments.Any(item => item.StartsWith("--load-extension=", StringComparison.Ordinal)));
+        Assert.True(arguments.Any(item => item.StartsWith("--disable-extensions-except=", StringComparison.Ordinal)));
         Assert.Contains("--window-position=-32000,-32000", arguments);
         Assert.Contains("--start-minimized", arguments);
-        Assert.Contains(
-            arguments,
-            item => item.Contains("projecthub-managed-role=RESOURCE", StringComparison.Ordinal));
+        Assert.True(arguments.Any(
+            item => item.Contains("projecthub-managed-role=RESOURCE", StringComparison.Ordinal)));
     }
 
     [Fact]
