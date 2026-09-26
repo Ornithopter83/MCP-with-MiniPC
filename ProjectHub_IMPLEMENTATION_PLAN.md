@@ -4,7 +4,7 @@
 
 정책 원본: Master-Polish.md
 
-## 현재 구조
+제1조 (현재 구조)
 
 ~~~text
                          ┌─ WORK Item A ─┐
@@ -23,7 +23,7 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 
 미확인은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.
 
-## 활성 작업 — 16 동적 WorkGraph
+제2조 (활성 작업 — 16 동적 WorkGraph)
 
 목표:
 - 모든 WORK 실행을 maxConcurrentWork 1~8의 동일한 DAG WorkGraph로 통합
@@ -48,7 +48,7 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 
 상세 계획과 복구 기준은 tasks/16-parallel-work-graph.md를 따른다.
 
-## 보류 항목
+제3조 (보류 항목)
 
 - RESOURCE Web 동시 병렬 실행
 - 자동 리소스 품질 판정
@@ -57,18 +57,18 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - 실행 중 프로세스 강제 종료 시점의 세부 checkpoint 복구 고도화
 - 비용 기반 자동 정책
 
-## 검증 기준
+제4조 (검증 기준)
 
 코드 변경 후 Windows 환경에서 solution test/빌드와 Explorer 실제 Web 왕복 검증을 완료하기 전까지 runtime 완료로 간주하지 않는다.
 
 
 
-## 계약 유지 규칙
+제5조 (계약 유지 규칙)
 
 역할 계약에는 장기 역할 책임, ACTION/GOTO 문법, 전송 형식, 기계적 경계만 둔다. 특정 테스트·도메인·횟수·파일·장애 사례는 계약에 넣지 않고 tests/fixtures/작업 history에 둔다.
 
 
-## 현재 종료와 후속 작업 정책
+제6조 (현재 종료와 후속 작업 정책)
 
 - HQ의 ACTION=END는 현재 실행 구간의 의미 작업 종료를 확정한다.
 - Worker는 END 이후 현재 실행 구간에서 HQ/WORK/JUDGE 의미 흐름을 자동으로 다시 열지 않는다.
@@ -86,7 +86,7 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - RESOURCE 성공/실패 completion은 HQ END 전 다음 WORK 입력의 `RESOURCE_RESULT`로 전달하고, RESOURCE 실패를 UNKNOWN으로 승격하지 않는다.
 
 
-## 2026-09-26 WorkGraph 단일 실행 경로
+제7조 (2026-09-26 WorkGraph 단일 실행 경로)
 
 - 신규 작업과 기존 continuation을 모두 WorkGraph/Scheduler로 실행한다.
 - 저장 WorkGraph가 없는 과거 continuation도 빈 WorkGraph로 시작하며 레거시 직렬 runtime으로 돌아가지 않는다.
@@ -94,7 +94,7 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - 역할 프롬프트에는 JUDGE 활성 여부나 직렬/병렬 모드 여부를 별도로 주입하지 않는다.
 
 
-## 2026-09-26 Git 준비 위생 보강
+제8조 (2026-09-26 Git 준비 위생 보강)
 
 - WorkGraph 실행 전 Git 준비는 repository local `core.longpaths=true`를 적용한다.
 - ProjectHub 관리 `.gitignore` 블록과 이미 추적된 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/` index 정리는 baseline 사용자 승인 뒤 수행한다.
@@ -102,7 +102,7 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - worktree 파일시스템 경로는 짧은 안정 segment를 사용해 Windows 경로 길이 위험을 낮춘다.
 
 
-## 2026-09-26 HQ 설계 책임과 WorkItem History 단순화
+제9조 (2026-09-26 HQ 설계 책임과 WorkItem History 단순화)
 
 - 설계·기획 결정은 HQ가 직접 수행해 구체화한 뒤 실행 가능한 WorkItem으로 전달한다.
 - HQ PAUSE는 새 WorkItem 시작만 동결하고 이미 RUNNING인 WORK 결과를 수확한 뒤 PAUSED로 전환한다.
@@ -110,7 +110,7 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - WORK History 카드는 WorkItem createdOrder 기반의 `작업 (#N)` 표기로 같은 작업의 진행과 응답을 식별한다.
 
 
-## 2026-09-26 Integration 실행 기준점과 landing 진단 보강
+제10조 (2026-09-26 Integration 실행 기준점과 landing 진단 보강)
 
 - 새 INTEGRATION WorkItem은 첫 실행 직전에 primary workspace의 현재 branch/HEAD를 기계적으로 읽어 그 HEAD를 실제 baseRef로 사용한다.
 - INTEGRATION WORK는 자신의 integration worktree만 수정하며 primary workspace/target branch를 직접 수정하지 않는다.
