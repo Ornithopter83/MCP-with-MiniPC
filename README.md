@@ -40,3 +40,5 @@ HQ와 RESOURCE는 서로 다른 persistent profile의 Chrome for Testing을 사�
 각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 `--app` window로 실행된다. `로그인/표시`와 `숨김 실행`은 기존 창을 복원하지 않고 기존 슬롯 프로세스를 비동기로 종료한 뒤 새 visible/hidden app window를 시작한다.
 
 GPTWeb-Hub는 관리형 Chromium 전용 bridge다. Worker가 발급한 runtime token이 없는 일반 Chrome과 임의의 ChatGPT 페이지는 Worker bridge에 연결할 수 없다. 세부 정책은 `Web-Polish.md`에 둔다.
+
+Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. 첨부는 최초 작업과 작업 추가, coordinator-first, HQ Web, WORK worktree와 `계약문서 무시` 직통 AI 실행에서 공통 attachment 흐름으로 전달된다.
