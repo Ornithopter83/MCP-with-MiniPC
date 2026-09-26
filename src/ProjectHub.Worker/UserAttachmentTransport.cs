@@ -34,8 +34,7 @@ public static class UserAttachmentTransport
 
     private static readonly HashSet<string> BlockedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".exe", ".com", ".scr", ".msi", ".msp", ".bat", ".cmd", ".ps1", ".psm1",
-        ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta", ".cpl", ".lnk"
+        ".exe", ".com", ".scr", ".msi", ".msp", ".cpl", ".lnk"
     };
 
     public static UserAttachmentInput CacheFile(
