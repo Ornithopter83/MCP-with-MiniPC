@@ -16,6 +16,7 @@ public sealed class BridgeServer : IDisposable
     private const string RepositoryName = "MCP-with-MiniPC";
     private const string ExpectedExtensionVersion = "0.3.0";
     private const string ExpectedExtensionBuild = "2026-09-26.9";
+    private static readonly TimeSpan WebHeartbeatTimeout = TimeSpan.FromSeconds(30);
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
     private readonly string _managedRuntimeToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -41,7 +42,7 @@ public sealed class BridgeServer : IDisposable
     private readonly Dictionary<string, string> _webExtensionBuilds = new(StringComparer.OrdinalIgnoreCase);
     public bool WebConnected
     {
-        get { lock (_gate) return _lastWebHeartbeat is not null && DateTimeOffset.UtcNow - _lastWebHeartbeat < TimeSpan.FromSeconds(10); }
+        get { lock (_gate) return _lastWebHeartbeat is not null && DateTimeOffset.UtcNow - _lastWebHeartbeat < WebHeartbeatTimeout; }
     }
 
     public bool WebExtensionSynchronized
@@ -85,7 +86,7 @@ public sealed class BridgeServer : IDisposable
         {
             return _state.RoleBindings.TryGetValue(NormalizeRole(role), out var conversationId) &&
                    _webHeartbeats.TryGetValue(conversationId, out var seen) &&
-                   DateTimeOffset.UtcNow - seen < TimeSpan.FromSeconds(10);
+                   DateTimeOffset.UtcNow - seen < WebHeartbeatTimeout;
         }
     }
 
@@ -113,7 +114,7 @@ public sealed class BridgeServer : IDisposable
                     ExpectedExtensionBuild);
 
             var connected = _webHeartbeats.TryGetValue(conversationId, out var seen) &&
-                            DateTimeOffset.UtcNow - seen < TimeSpan.FromSeconds(10);
+                            DateTimeOffset.UtcNow - seen < WebHeartbeatTimeout;
             _webConversationTitles.TryGetValue(conversationId, out var title);
             _webExtensionVersions.TryGetValue(conversationId, out var version);
             _webExtensionBuilds.TryGetValue(conversationId, out var build);
