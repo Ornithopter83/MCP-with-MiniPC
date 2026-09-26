@@ -1,6 +1,6 @@
 # ProjectHub Managed Web Bridge
 
-버전: 0.3.2 / build 2026-09-27.1
+버전: 0.3.3 / build 2026-09-27.2
 
 ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로컬 Worker를 연결한다.
 
@@ -63,4 +63,15 @@ ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로�
 ⑤ 검증된 일반 Web 파일은 Worker의 `Worker/web-results/<taskId>/`에 저장하고 path·size·SHA-256 receipt를 남긴다.
 ⑥ 파일 다운로드나 hash 검증이 실패하면 텍스트만 성공 처리하지 않고 해당 Web 작업을 파일 회수 실패로 처리한다.
 ⑦ HQ Web 역할 결과는 저장된 파일 경로를 AiRoleRunResult.Files에도 포함해 후속 실행에서 결과 파일을 잃지 않는다.
+
+제8조 (첨부 준비 확인)
+
+① Worker attachment bytes의 SHA-256 검증과 ChatGPT의 실제 첨부 처리 완료를 같은 단계로 취급하지 않는다.
+② bytes 검증 뒤 ATTACHMENT_BYTES_VERIFIED를 기록하고 file input 설정 뒤 ATTACHMENT_INPUT_SET을 기록한다.
+③ ChatGPT composer 영역에서 첨부 카드/파일 표시가 확인되면 ATTACHMENT_UI_DETECTED를 기록할 수 있다.
+④ 업로드 또는 파일 처리 UI가 확인되면 ATTACHMENT_PROCESSING을 기록하고 Send 버튼이 활성화될 때까지 기다린다.
+⑤ 활성 Send 버튼을 확인한 뒤에만 ATTACHMENT_READY를 기록하고 일반 Send 감시 단계로 진행한다.
+⑥ 첨부가 있는 요청에서 Voice 버튼만 보이는 상태는 조기 실패 조건으로 사용하지 않고 전체 첨부 준비 제한시간 안에서 Send 활성화를 계속 기다린다.
+⑦ 명시적인 첨부 오류 UI가 확인되면 ATTACHMENT_UI_ERROR로 실패 처리한다.
+⑧ 첨부 준비 제한시간은 일반 장기 Web 작업 제한시간과 동일한 5분을 사용한다.
 
