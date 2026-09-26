@@ -21,7 +21,11 @@ public static class RoleContractLoader
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
 
-    public static string BuildHqPrompt(string inboundType,string body,WorkGraphPromptContext workGraph)
+    public static string BuildHqPrompt(
+        string inboundType,
+        string body,
+        WorkGraphPromptContext workGraph,
+        bool includeContract = true)
     {
         ArgumentNullException.ThrowIfNull(workGraph);
         var header =
@@ -29,14 +33,18 @@ public static class RoleContractLoader
             $"WorkGraph revision: {workGraph.Revision}\n" +
             $"최대 동시 WORK: {workGraph.MaxConcurrentWork}\n" +
             $"기준 ref: {workGraph.BaseRef}\n입력 본문:\n";
-        return header + body + "\n\n" + LoadHqFooter();
+        var prompt = header + body;
+        return includeContract
+            ? prompt + "\n\n" + LoadHqFooter()
+            : prompt;
     }
 
     public static string BuildWorkPrompt(
         string inboundType,
         string body,
         WorkItemPromptContext workItem,
-        string? observationRequestDirectory = null)
+        string? observationRequestDirectory = null,
+        bool includeContract = true)
     {
         ArgumentNullException.ThrowIfNull(workItem);
         var observationHeader = string.IsNullOrWhiteSpace(observationRequestDirectory)
@@ -47,7 +55,10 @@ public static class RoleContractLoader
             BuildWorkItemHeader(workItem) +
             observationHeader +
             "\n입력 본문:\n";
-        return header + body + "\n\n" + LoadWorkFooter();
+        var prompt = header + body;
+        return includeContract
+            ? prompt + "\n\n" + LoadWorkFooter()
+            : prompt;
     }
 
     private static string BuildWorkItemHeader(WorkItemPromptContext workItem)
