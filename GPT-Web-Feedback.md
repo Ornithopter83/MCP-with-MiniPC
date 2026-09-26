@@ -80,3 +80,17 @@
 ⑧ Worker EXE에 내장되는 manifest/background/content에 단일 탭 계약이 실제 포함되는지 확인하는 테스트를 추가했다.
 ⑨ 실제 Windows Worker 빌드·게시와 세션 복원 환경의 HQ/RESOURCE 단일 탭 E2E는 아직 수행하지 않았다.
 
+제8조 (중복 탭과 표시 프리징 방어)
+
+① 실제 관리형 Chromium에서 같은 ChatGPT 대화 제목의 탭이 여러 개 열리고 `로그인/표시` 버튼 클릭 시 Worker UI가 프리징되는 현상을 확인했다.
+② 실제 ChatGPT 대화 URL이 `/g/<project-or-gpt>/c/<conversationId>` 형태였지만 background의 conversationId 파서는 `^/c/<id>`만 인식해 같은 대화를 식별하지 못했다.
+③ conversationId 파서를 경로 어디의 `/c/<id>`도 인식하도록 변경해 일반 대화와 Project/GPT 대화 URL을 동일 conversation으로 취급한다.
+④ 저장된 conversationId와 일치하는 기존 Project/GPT 대화 탭이 있으면 Worker가 임시로 연 canonical `/c/<id>` launch 탭보다 기존 대화 탭을 우선 유지한다.
+⑤ 기존 대화 탭에 관리 역할 marker를 붙여 다시 로드한 뒤 canonical launch 탭을 지연 제거해 content script 교체 중 응답 채널이 끊기는 경쟁을 줄였다.
+⑥ `로그인/표시`는 더 이상 기존 브라우저를 종료·재시작하지 않는다. 실행 중인 브라우저의 top-level window를 Win32 ShowWindow/SetWindowPos로 복원·활성화한다.
+⑦ `숨김 실행`도 브라우저 재시작 대신 기존 window를 숨겨 profile, 로그인 상태와 대화 탭을 유지한다.
+⑧ 기존 프로세스가 없을 때만 새 관리형 Chromium을 시작한다.
+⑨ `로그인/표시` 요청은 BridgeServer의 역할별 managedTabCleanupGeneration을 증가시키고, content script가 이를 관측하면 background에 단일 탭 정리를 다시 요청한다.
+⑩ 확장은 0.2.2 / build 2026-09-26.8이며 Worker Bridge의 기대 version/build도 동일하다.
+⑪ JavaScript 문법, manifest tabs 권한, version/build 일치는 정적으로 확인했고 실제 Windows Worker 빌드·게시 및 중복 탭/프리징 E2E는 아직 수행하지 않았다.
+
