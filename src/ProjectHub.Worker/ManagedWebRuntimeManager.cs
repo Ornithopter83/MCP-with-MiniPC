@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
+using System.Net.Http;
+using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
@@ -21,6 +24,15 @@ public sealed record ManagedWebRuntimeStatus(
 
 public sealed class ManagedWebRuntimeManager : IDisposable
 {
+    private const string ChromeForTestingMetadataUrl =
+        "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json";
+
+    private static readonly SemaphoreSlim RuntimeProvisionGate = new(1, 1);
+    private static readonly HttpClient RuntimeClient = new()
+    {
+        Timeout = TimeSpan.FromMinutes(10)
+    };
+
     private sealed class Slot
     {
         public Process? Process { get; set; }
@@ -54,16 +66,25 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         }
     }
 
-    public ManagedWebRuntimeStatus StartHidden(ManagedWebRole role, string? conversationId = null)
-        => Start(role, hidden: true, conversationId);
+    public Task<ManagedWebRuntimeStatus> StartHiddenAsync(
+        ManagedWebRole role,
+        string? conversationId = null,
+        CancellationToken cancellationToken = default)
+        => StartAsync(role, hidden: true, conversationId, cancellationToken);
 
-    public ManagedWebRuntimeStatus ShowForLogin(ManagedWebRole role, string? conversationId = null)
-        => Start(role, hidden: false, conversationId);
+    public Task<ManagedWebRuntimeStatus> ShowForLoginAsync(
+        ManagedWebRole role,
+        string? conversationId = null,
+        CancellationToken cancellationToken = default)
+        => StartAsync(role, hidden: false, conversationId, cancellationToken);
 
-    public ManagedWebRuntimeStatus RestartHidden(ManagedWebRole role, string? conversationId = null)
+    public async Task<ManagedWebRuntimeStatus> RestartHiddenAsync(
+        ManagedWebRole role,
+        string? conversationId = null,
+        CancellationToken cancellationToken = default)
     {
         Stop(role);
-        return StartHidden(role, conversationId);
+        return await StartHiddenAsync(role, conversationId, cancellationToken);
     }
 
     public void Stop(ManagedWebRole role)
@@ -133,8 +154,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
             Path.Combine(AppContext.BaseDirectory, "BrowserRuntime", "chrome.exe"),
             Path.Combine(AppContext.BaseDirectory, "BrowserRuntime", "chrome-win64", "chrome.exe"),
             Path.Combine(WorkerPaths.ManagedWebBrowserRuntime, "chrome.exe"),
-            Path.Combine(WorkerPaths.ManagedWebBrowserRuntime, "chrome-win64", "chrome.exe"),
-            RuntimeDiagnostics.FindChrome()
+            Path.Combine(WorkerPaths.ManagedWebBrowserRuntime, "chrome-win64", "chrome.exe")
         };
 
         return candidates
@@ -143,7 +163,170 @@ public sealed class ManagedWebRuntimeManager : IDisposable
             .FirstOrDefault(File.Exists);
     }
 
-    private ManagedWebRuntimeStatus Start(ManagedWebRole role, bool hidden, string? conversationId)
+    public static async Task<string> EnsureBrowserRuntimeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var existing = ResolveBrowserExecutable();
+        if (!string.IsNullOrWhiteSpace(existing))
+            return existing;
+
+        await RuntimeProvisionGate.WaitAsync(cancellationToken);
+        try
+        {
+            existing = ResolveBrowserExecutable();
+            if (!string.IsNullOrWhiteSpace(existing))
+                return existing;
+
+            WorkerPaths.EnsureCreated();
+
+            using var metadataResponse = await RuntimeClient.GetAsync(
+                ChromeForTestingMetadataUrl,
+                cancellationToken);
+            metadataResponse.EnsureSuccessStatusCode();
+
+            var metadataJson = await metadataResponse.Content.ReadAsStringAsync(cancellationToken);
+            using var metadata = JsonDocument.Parse(metadataJson);
+            var stable = metadata.RootElement
+                .GetProperty("channels")
+                .GetProperty("Stable");
+            var version = stable.GetProperty("version").GetString()
+                ?? throw new InvalidOperationException("Chrome for Testing Stable version을 확인할 수 없습니다.");
+            var download = stable
+                .GetProperty("downloads")
+                .GetProperty("chrome")
+                .EnumerateArray()
+                .FirstOrDefault(item =>
+                    string.Equals(
+                        item.GetProperty("platform").GetString(),
+                        "win64",
+                        StringComparison.OrdinalIgnoreCase));
+            if (download.ValueKind == JsonValueKind.Undefined)
+                throw new InvalidOperationException("Chrome for Testing win64 다운로드를 찾을 수 없습니다.");
+
+            var downloadUrl = download.GetProperty("url").GetString()
+                ?? throw new InvalidOperationException("Chrome for Testing 다운로드 URL이 없습니다.");
+            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var uri) ||
+                uri.Scheme != Uri.UriSchemeHttps ||
+                !uri.Host.Equals("storage.googleapis.com", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Chrome for Testing 다운로드 URL이 허용된 공식 호스트가 아닙니다.");
+
+            var installParent = WorkerPaths.ManagedWebRoot;
+            var tempRoot = Path.Combine(
+                installParent,
+                "BrowserRuntime.installing." + Guid.NewGuid().ToString("N"));
+            var zipPath = Path.Combine(
+                installParent,
+                "chrome-for-testing." + Guid.NewGuid().ToString("N") + ".zip");
+
+            Directory.CreateDirectory(tempRoot);
+            try
+            {
+                using (var response = await RuntimeClient.GetAsync(
+                           uri,
+                           HttpCompletionOption.ResponseHeadersRead,
+                           cancellationToken))
+                {
+                    response.EnsureSuccessStatusCode();
+                    await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+                    await using var target = new FileStream(
+                        zipPath,
+                        FileMode.CreateNew,
+                        FileAccess.Write,
+                        FileShare.None,
+                        1024 * 1024,
+                        useAsync: true);
+                    await source.CopyToAsync(target, cancellationToken);
+                }
+
+                var zipLength = new FileInfo(zipPath).Length;
+                if (zipLength < 1024 * 1024)
+                    throw new InvalidOperationException("Chrome for Testing 다운로드 파일이 비정상적으로 작습니다.");
+
+                ZipFile.ExtractToDirectory(zipPath, tempRoot);
+                var extractedExecutable = Path.Combine(tempRoot, "chrome-win64", "chrome.exe");
+                if (!File.Exists(extractedExecutable))
+                    throw new InvalidOperationException("Chrome for Testing chrome.exe를 추출하지 못했습니다.");
+
+                if (Directory.Exists(WorkerPaths.ManagedWebBrowserRuntime))
+                    Directory.Delete(WorkerPaths.ManagedWebBrowserRuntime, recursive: true);
+                Directory.Move(tempRoot, WorkerPaths.ManagedWebBrowserRuntime);
+
+                File.WriteAllText(
+                    Path.Combine(WorkerPaths.ManagedWebBrowserRuntime, "runtime.json"),
+                    JsonSerializer.Serialize(
+                        new
+                        {
+                            product = "Chrome for Testing",
+                            version,
+                            platform = "win64",
+                            source = downloadUrl,
+                            installedAtUtc = DateTimeOffset.UtcNow
+                        },
+                        new JsonSerializerOptions { WriteIndented = true }));
+
+                return ResolveBrowserExecutable()
+                    ?? throw new InvalidOperationException("설치한 Chrome for Testing 실행 파일을 찾을 수 없습니다.");
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(zipPath))
+                        File.Delete(zipPath);
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    if (Directory.Exists(tempRoot))
+                        Directory.Delete(tempRoot, recursive: true);
+                }
+                catch
+                {
+                }
+            }
+        }
+        finally
+        {
+            RuntimeProvisionGate.Release();
+        }
+    }
+
+    private async Task<ManagedWebRuntimeStatus> StartAsync(
+        ManagedWebRole role,
+        bool hidden,
+        string? conversationId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await EnsureBrowserRuntimeAsync(cancellationToken);
+            return Start(role, hidden, conversationId);
+        }
+        catch (Exception exception)
+        {
+            ManagedWebRuntimeStatus status;
+            lock (_gate)
+            {
+                var slot = _slots[role];
+                StopProcess(slot);
+                slot.Hidden = hidden;
+                slot.ExecutablePath = null;
+                slot.Error = exception.Message;
+                status = Snapshot(role, slot);
+            }
+
+            StatusChanged?.Invoke(status);
+            return status;
+        }
+    }
+
+    private ManagedWebRuntimeStatus Start(
+        ManagedWebRole role,
+        bool hidden,
+        string? conversationId)
     {
         ManagedWebRuntimeStatus status;
         lock (_gate)
@@ -162,8 +345,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                     throw new DirectoryNotFoundException("GPTWeb-Hub 확장 배포 폴더를 찾을 수 없습니다.");
 
                 var executable = ResolveBrowserExecutable()
-                    ?? throw new FileNotFoundException(
-                        "관리형 Chromium 런타임을 찾을 수 없습니다. BrowserRuntime 폴더 또는 PROJECTHUB_CHROMIUM_PATH를 확인하세요.");
+                    ?? throw new FileNotFoundException("관리형 Chrome for Testing 런타임을 찾을 수 없습니다.");
 
                 var startInfo = new ProcessStartInfo
                 {
@@ -183,7 +365,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                 }
 
                 var process = Process.Start(startInfo)
-                    ?? throw new InvalidOperationException("Chromium 프로세스를 시작하지 못했습니다.");
+                    ?? throw new InvalidOperationException("관리형 Web 브라우저 프로세스를 시작하지 못했습니다.");
                 process.EnableRaisingEvents = true;
                 process.Exited += (_, _) => OnProcessExited(role, process);
 
@@ -218,7 +400,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         }
 
         process.Dispose();
-        StatusChanged?.Invoke(status);
+        if (status is not null)
+            StatusChanged?.Invoke(status);
     }
 
     private static void RefreshExitedProcess(Slot slot)
