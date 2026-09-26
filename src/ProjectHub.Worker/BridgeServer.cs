@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -195,7 +196,15 @@ public sealed class BridgeServer : IDisposable
             extension = ".bin";
         var path = Path.Combine(directory, id + extension.ToLowerInvariant());
         File.Copy(file.Path, path, false);
-        return new BridgeAttachment(id, Path.GetFileName(file.FileName), file.MimeType, new FileInfo(path).Length, "http://127.0.0.1:43821/bridge/attachment/" + id);
+        var bytes = File.ReadAllBytes(path);
+        var sha256 = Convert.ToHexString(SHA256.HashData(bytes));
+        return new BridgeAttachment(
+            id,
+            Path.GetFileName(file.FileName),
+            file.MimeType,
+            bytes.LongLength,
+            "http://127.0.0.1:43821/bridge/attachment/" + id,
+            sha256);
     }
 
     public BridgeServer()
@@ -470,12 +479,14 @@ public sealed class BridgeServer : IDisposable
             var resource = task.Resource;
             string? savedPath = resource?.SavedPath;
             List<string>? savedPaths = task.SavedPaths;
+            List<BridgeFileReceipt>? savedFileReceipts = task.SavedFileReceipts;
             if (request.Success && resource is not null)
             {
                 try
                 {
                     savedPaths = SaveResourceResults(resource, request);
                     savedPath = savedPaths.FirstOrDefault();
+                    savedFileReceipts = savedPaths.Select(CreateFileReceipt).ToList();
                     resource = resource with { Status = "SAVED", SavedPath = savedPath };
                 }
                 catch (Exception exception)
@@ -489,7 +500,11 @@ public sealed class BridgeServer : IDisposable
                         CompletedAt = DateTimeOffset.UtcNow,
                         Resource = resource,
                         SavedPath = null,
-                        SavedPaths = null
+                        SavedPaths = null,
+                        SavedFileReceipts = null,
+                        LastStage = "RESOURCE_SAVE_FAILED",
+                        LastStageDetail = exception.Message,
+                        LastProgressAt = DateTimeOffset.UtcNow
                     };
                     ReplaceTask(failed);
                     SaveState();
@@ -510,7 +525,11 @@ public sealed class BridgeServer : IDisposable
                 CompletedAt = DateTimeOffset.UtcNow,
                 Resource = resource,
                 SavedPath = savedPath,
-                SavedPaths = savedPaths
+                SavedPaths = savedPaths,
+                SavedFileReceipts = savedFileReceipts,
+                LastStage = request.Success ? "RESULT_STORED" : "RESULT_FAILED",
+                LastStageDetail = request.FinishReason,
+                LastProgressAt = DateTimeOffset.UtcNow
             };
             ReplaceTask(completed);
             SaveState();
@@ -583,7 +602,19 @@ public sealed class BridgeServer : IDisposable
             if (task.Status != "CLAIMED") return new(false, new { error = "task_not_claimed" });
             if (string.IsNullOrWhiteSpace(request.LeaseId) || !string.Equals(task.LeaseId, request.LeaseId, StringComparison.Ordinal))
                 return new(false, new { error = "lease_mismatch" });
-            var progress = new ExtensionProgress(task.Id, task.ConversationId, request.Stage.Trim(), request.Detail?.Trim(), request.Attempt, DateTimeOffset.UtcNow);
+            var updatedAt = DateTimeOffset.UtcNow;
+            var stage = request.Stage.Trim();
+            var detail = request.Detail?.Trim();
+            var progress = new ExtensionProgress(task.Id, task.ConversationId, stage, detail, request.Attempt, updatedAt);
+            var checkpoint = task with
+            {
+                LastStage = stage,
+                LastStageDetail = detail,
+                LastAttempt = request.Attempt,
+                LastProgressAt = updatedAt
+            };
+            ReplaceTask(checkpoint);
+            SaveState();
             _extensionProgress = progress;
             ExtensionProgressChanged?.Invoke(progress);
             return new BridgeResponse(true, progress);
@@ -627,6 +658,10 @@ public sealed class BridgeServer : IDisposable
             var bytes = Convert.FromBase64String(payload.Base64);
             if (bytes.Length == 0 || bytes.Length > 25 * 1024 * 1024)
                 throw new InvalidOperationException("RESOURCE_FILE_SIZE_INVALID");
+            var actualSha256 = Convert.ToHexString(SHA256.HashData(bytes));
+            if (!string.IsNullOrWhiteSpace(payload.Sha256) &&
+                !string.Equals(actualSha256, payload.Sha256.Trim(), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("RESOURCE_HASH_MISMATCH");
             totalBytes += bytes.Length;
             if (totalBytes > 128L * 1024 * 1024)
                 throw new InvalidOperationException("RESOURCE_TOTAL_SIZE_INVALID");
@@ -658,6 +693,13 @@ public sealed class BridgeServer : IDisposable
             }
             throw;
         }
+    }
+
+    private static BridgeFileReceipt CreateFileReceipt(string path)
+    {
+        using var stream = File.OpenRead(path);
+        var sha256 = Convert.ToHexString(SHA256.HashData(stream));
+        return new BridgeFileReceipt(path, stream.Length, sha256);
     }
 
     private static string ResourceFileName(string? candidate, string extension, int index, ISet<string> usedNames)
@@ -835,14 +877,15 @@ public sealed class BridgeState
 public sealed record BindingState(string ConversationId, string ProjectId, DateTimeOffset UpdatedAt);
 public sealed record WebRoleBindingStatus(string Role, bool Bound, bool Connected, bool ExtensionSynchronized, string? ConversationId, string? ConversationTitle);
 public sealed record ResourceRequest(string Id, string Type, string Prompt, string TargetDirectory, string TargetFileName, string RequestedBy, string Status, string? SavedPath, string WorkspaceRoot);
-public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null, List<string>? SavedPaths = null);
-public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null);
+public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null, List<string>? SavedPaths = null, List<BridgeFileReceipt>? SavedFileReceipts = null, string? LastStage = null, string? LastStageDetail = null, int LastAttempt = 0, DateTimeOffset? LastProgressAt = null);
+public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null, string? Sha256 = null);
+public sealed record BridgeFileReceipt(string Path, long Size, string Sha256);
 public sealed record BridgeResponse(bool Ok, object Data);
 public sealed record BindRequest(string ConversationId, string? ProjectId, string? Role = null);
 public sealed record ClaimRequest(string ConversationId);
 public sealed record ResetRequest(string? ConversationId = null, string? TaskId = null);
 public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null, string? Role = null, ResourceRequest? Resource = null);
-public sealed record ResourceResultFile(string Base64, string MimeType, string? FileName = null);
+public sealed record ResourceResultFile(string Base64, string MimeType, string? FileName = null, string? Sha256 = null);
 public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null, string? ResultFileBase64 = null, string? ResultFileMimeType = null, string? ResultFileName = null, List<ResourceResultFile>? ResultFiles = null);
 public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null, string? ExtensionVersion = null, string? ExtensionBuild = null);
 public sealed record ProgressRequest(string TaskId, string ConversationId, string LeaseId, string Stage, string? Detail = null, int Attempt = 0);
