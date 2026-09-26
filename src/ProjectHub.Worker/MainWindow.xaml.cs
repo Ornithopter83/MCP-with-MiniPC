@@ -760,7 +760,6 @@ public partial class MainWindow : Window
         var selectedName = colored ? iconAsset : iconAsset.Replace(".png", "-gray.png", StringComparison.OrdinalIgnoreCase);
         icon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/ProjectHub.Worker;component/Assets/{selectedName}"));
         if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
-        else if (card == PipelineImplementerCard) ImplementerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineResourceCard) ResourceStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineJudgeCard) JudgeStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         card.BorderBrush = System.Windows.Media.Brushes.Transparent;
@@ -1775,7 +1774,7 @@ public partial class MainWindow : Window
         var coordinator = _targetSettings.EffectiveCoordinator;
         var implementer = _targetSettings.EffectiveImplementer;
         CoordinatorStageModelText.Text = IsWebTransport(coordinator.Transport) ? "ChatGPT Web" : AiProviderCatalog.FormatModel(coordinator.Provider, coordinator.Model);
-        ImplementerStageModelText.Text = AiProviderCatalog.FormatModel(implementer.Provider, implementer.Model);
+        ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(0);
         ResourceStageModelText.Text = "ChatGPT Web";
         JudgeStageModelText.Text = "JEV";
 
@@ -1787,6 +1786,13 @@ public partial class MainWindow : Window
         CoordinatorStageIcon.Source = LoadProviderAsset(_coordinatorStageIconAsset);
         ImplementerStageIcon.Source = LoadProviderAsset(_implementerStageIconAsset);
         ResourceStageIcon.Source = LoadProviderAsset(_resourceStageIconAsset);
+    }
+
+    private static string FormatActiveWorkItemGauge(int activeCount)
+    {
+        const int gaugeSlots = 8;
+        var active = Math.Clamp(activeCount, 0, gaugeSlots);
+        return new string('■', active) + new string('□', gaugeSlots - active);
     }
 
     private static bool IsWebTransport(string transport) => string.Equals(transport, "web", StringComparison.OrdinalIgnoreCase);

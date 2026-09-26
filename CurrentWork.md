@@ -475,3 +475,11 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - WORK 응답도 WorkItem 번호가 붙은 History 카드로 기록하고, 진행 본문 앞의 `[workItemId]` 반복 노출은 제거했다.
 - WorkGraph 병렬 실행 기능과 maxConcurrentWork 1~8 설정은 그대로 유지한다.
 - 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 빌드에서 검증이 필요하다.
+
+
+## 2026-09-26 작업 카드 활성 WorkItem 게이지
+
+- 현재 작업의 `3. 작업` 카드 하단에서 흰색 RUN/R/B/C/F 요약 표현과 모델명 표시를 사용하지 않는다.
+- RUNNING WorkItem 수를 8칸 고정 녹색 문자 게이지로 표시한다.
+- 기본은 `□□□□□□□□`, 4개 실행 중이면 `■■■■□□□□`이며 8개를 초과하는 값은 8칸으로 제한한다.
+- WorkGraph 상태 변경 때 RunningCount만 반영하고 실행 구간 종료 시 `□□□□□□□□`로 초기화한다.

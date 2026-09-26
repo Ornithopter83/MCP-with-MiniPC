@@ -351,10 +351,8 @@ public partial class MainWindow
                 RunOnUi(() =>
                 {
                     _lastActivityAt = DateTimeOffset.UtcNow;
-                    var implementerModel = AiProviderCatalog.FormatModel(
-                        implementer.Provider,
-                        implementer.Model);
-                    ImplementerStageModelText.Text = implementerModel;
+                    ImplementerWorkGaugeText.Text =
+                        FormatActiveWorkItemGauge(snapshot.RunningCount);
                     PipelineImplementerCard.ToolTip = null;
                     TaskDirection.Text = "작업 AI";
                     TaskTitle.Text = snapshot.RunningCount > 0
@@ -654,6 +652,7 @@ public partial class MainWindow
             _resourceSidecarStatus = "ChatGPT Web";
             RunOnUi(() =>
             {
+                ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(0);
                 PipelineImplementerCard.ToolTip = null;
                 UpdateDashboardSummary();
             });
