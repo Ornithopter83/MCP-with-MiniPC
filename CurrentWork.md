@@ -1,6 +1,6 @@
 # 현재 작업
 
-갱신일: 2026-09-26
+갱신일: 2026-09-27
 
 제1조 (CORE)
 
@@ -29,11 +29,11 @@
 제5조 (WORKER)
 
 ① 상태는 중단이다.
-② 완료하려 한 작업은 숨김 HQ/RESOURCE Web에서 실제 ChatGPT 응답이 생성됐는데 확장이 SEND_CONFIRM을 놓쳐 Worker가 PARALLEL_HQ_EXECUTION_FAILED로 종료하는 false negative를 방어하고 Worker의 기대 확장 version/build를 새 Web 감지 버전과 동기화하는 것이다.
-③ 중단 지점은 Worker 기대 확장을 0.3.1 / 2026-09-26.10으로 맞췄고 새 Worker 빌드·게시 후 숨김 HQ 전송·응답 회수 E2E 확인이 남은 상태다.
+② 완료하려 한 작업은 숨김 HQ Web에서 실제 assistant 응답이 생성됐는데 Worker가 회수하지 못하는 문제를 응답 회수 단계 기준으로 보강하고, 일반 HQ 응답의 비이미지 다운로드 파일도 로컬에 저장·검증·결과 Files로 노출하는 것이다.
+③ 중단 지점은 Worker 기대 확장 0.3.2 / 2026-09-27.1, 일반 Web 결과 저장 경로 `Worker/web-results/<taskId>/`, SHA-256 저장 검증, AiRoleRunResult.Files 연결과 회귀 테스트를 반영했고 새 Worker 빌드·게시 후 숨김 HQ 응답/파일 회수 E2E 확인이 남은 상태다.
 
 제6조 (WEB)
 
 ① 상태는 중단이다.
-② 완료하려 한 작업은 숨김 app window에서 polling과 DOM virtualization이 엇갈려 성공한 Send/assistant 응답을 놓치는 문제를 막기 위해 role-aware turn fingerprint baseline, MutationObserver send-evidence latch와 timeout 직전 DOM reconciliation을 추가하는 것이다.
-③ 중단 지점은 GPTWeb-Hub 0.3.1 / build 2026-09-26.10, user/assistant role 분리, 현재 Send 이후 assistant 증거 제한, SEND_EVIDENCE_LATCHED·SEND_MUTATION_CONFIRMED·SEND_TIMEOUT_RECOVERED 계측과 회귀 테스트 반영까지 완료했고 실제 숨김 상태에서 같은 유형의 HQ 응답을 Worker가 정상 수집하는지 확인해야 한다.
+② 완료하려 한 작업은 role selector가 실제 ChatGPT assistant turn을 놓쳐도 현재 prompt 다음 conversation turn으로 응답을 회수하고, HQ 일반 응답에 PDF·ZIP·문서 등 다운로드 파일이 있으면 assistant turn 범위에서 탐지해 bytes와 SHA-256을 Worker에 함께 제출하는 것이다.
+③ 중단 지점은 GPTWeb-Hub 0.3.2 / build 2026-09-27.1, ASSISTANT_TURN_DETECTED·ASSISTANT_TEXT_EXTRACTED·WEB_FILE_*·RESULT_POSTING 계측, prompt-container fallback, 일반 파일 TEXT_WITH_FILES 제출과 정적 JavaScript 검증까지 완료했고 실제 숨김 상태에서 응답 텍스트와 비이미지 파일을 함께 회수하는지 확인해야 한다.
