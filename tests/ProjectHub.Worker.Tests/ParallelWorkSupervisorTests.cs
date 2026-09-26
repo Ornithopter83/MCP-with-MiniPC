@@ -63,7 +63,9 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(2, result.Graph.Items.Count(item => item.State == WorkItemState.Completed));
         Assert.Equal(2, hq.Prompts.Count);
         Assert.Contains("WorkGraph revision: 0", hq.Prompts[0]);
+        Assert.Contains("당신은 HQ이며 설계·관제 AI다.", hq.Prompts[0]);
         Assert.Contains("입력 유형: WORK_GRAPH_QUIESCENT", hq.Prompts[1]);
+        Assert.DoesNotContain("당신은 HQ이며 설계·관제 AI다.", hq.Prompts[1]);
         Assert.Contains("병렬 WorkGraph 변경 이벤트", hq.Prompts[1]);
         Assert.Contains("changedItems:", hq.Prompts[1]);
         Assert.Contains("state=COMPLETED", hq.Prompts[1]);
