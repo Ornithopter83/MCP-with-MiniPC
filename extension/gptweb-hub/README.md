@@ -1,6 +1,6 @@
 # ProjectHub Managed Web Bridge
 
-버전: 0.3.0 / build 2026-09-26.9
+버전: 0.3.1 / build 2026-09-26.10
 
 ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로컬 Worker를 연결한다.
 
@@ -40,8 +40,12 @@ ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로�
 ① 작업 조회, claim, 진행 보고과 결과 반환은 taskId, conversationId와 leaseId를 사용한다.
 ② HQ Web 작업은 assistant 텍스트를 수집해 반환한다.
 ③ Send 클릭과 실제 메시지 전송 확인을 구분한다.
-④ 기존 assistant DOM이 재사용될 때는 현재 Worker 메시지의 전송이 확인된 뒤 텍스트 변화도 새 응답 증거로 사용할 수 있다.
-⑤ 진행 단계는 Worker에 보고하고 Worker는 마지막 기계 체크포인트를 저장한다.
+④ 숨김 app window에서는 polling만 신뢰하지 않고 MutationObserver가 user/assistant turn 변화를 관측하는 즉시 전송 증거를 latch해 이후 DOM virtualization이나 timer 지연이 있어도 잃지 않는다.
+⑤ 전송 전 conversation turn의 role·message key·text fingerprint를 baseline으로 저장하고, 메시지 개수 증가가 없어도 baseline에 없던 turn을 새 전송/응답 증거로 인정한다.
+⑥ user turn 수집은 실제 user role만 사용하며 일반 conversation article을 user 메시지로 혼합하지 않는다.
+⑦ SEND_CONFIRM 제한시간 직전에는 현재 DOM을 다시 reconciliation해 이번 prompt user turn과 뒤따른 assistant turn이 있으면 실패 대신 WAIT_RESPONSE로 복구한다.
+⑧ 기존 assistant DOM이 재사용될 때는 현재 Worker 메시지의 전송이 확인된 뒤 텍스트 변화도 새 응답 증거로 사용할 수 있다.
+⑨ 진행 단계는 Worker에 보고하고 Worker는 마지막 기계 체크포인트를 저장한다.
 
 제6조 (파일 검증)
 
