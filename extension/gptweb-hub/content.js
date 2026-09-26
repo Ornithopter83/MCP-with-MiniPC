@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
-  const EXTENSION_VERSION = '0.3.2';
-  const EXTENSION_BUILD = '2026-09-27.1';
+  const EXTENSION_VERSION = '0.3.3';
+  const EXTENSION_BUILD = '2026-09-27.2';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -33,7 +33,7 @@
     '<div class="status-list">'+statusRow('web','GPT Web','—','')+statusRow('worker','Worker','—','')+statusRow('status','Status','Disconnected','')+'</div>'+
     '<div class="role-bind"><span class="role-binding">역할 미연결</span><button class="status-action bind-hq" type="button">HQ 연결</button><button class="status-action bind-resource" type="button">RESOURCE 연결</button></div>'+
     '<main class="task-section"><div class="section-label">TASK</div><article class="task-card" data-state="IDLE"><div class="task-main"><div class="task-icon">'+icon(icons.idle)+'</div><div class="task-copy"><h2 class="task-title">작업 없음</h2><p class="task-detail">현재 처리할 요청이 없습니다.</p></div><div class="spinner"></div></div><div class="task-meta"><span>Task</span><strong class="task-id">—</strong><span>|</span><span>From</span><strong class="task-from">—</strong></div><div class="message-block worker-message-block"><h3>Worker Message</h3><div class="worker-message">대기 중</div></div><div class="message-block response-block hidden"><h3>Web Response</h3><div class="web-response">응답을 기다리고 있습니다.</div></div><button class="secondary-button resource-rescan hidden" type="button">현재 결과 다시 수집</button></article></main>'+
-    '<footer class="hub-footer">GPTWeb-Hub <span>v0.3.2</span></footer></section>'+
+    '<footer class="hub-footer">GPTWeb-Hub <span>v0.3.3</span></footer></section>'+
     '<section class="settings-modal hidden"><div class="settings-dialog"><div class="settings-title-row"><h2>GPTWeb-Hub Settings</h2><button class="settings-close">'+icon(icons.close)+'</button></div><form class="settings-form"><label>Host<input name="bridgeHost"></label><label>Port<input name="bridgePort" type="number"></label><label>Base Path<input name="bridgeBasePath"></label><div class="settings-test-row"><button class="secondary-button test-connection" type="button">Test Connection</button><span class="test-status">Not tested</span></div><div class="settings-actions"><button class="secondary-button settings-cancel" type="button">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></section>'+
         '<button class="reopen" aria-label="Open GPTWeb-Hub">'+icon(icons.info)+'</button>';
   function statusRow(kind,label,value,action) { return '<div class="status-row" data-kind="'+kind+'"><strong>'+label+'</strong><span class="status-value status-pending">'+value+'</span>'+(action?'<button class="status-action web-connect" type="button">연결</button>':'')+'</div>'; }
@@ -41,7 +41,7 @@
   style.textContent = ':host{all:initial;font-family:Inter,system-ui,sans-serif;color:#101828}*{box-sizing:border-box}.hub-panel{position:fixed;top:88px;right:24px;width:428px;max-height:calc(100vh - 106px);overflow:hidden;background:#fff;border:9px solid #26323a;border-radius:19px;box-shadow:0 16px 40px #0f172a38;z-index:2147483646}.hub-panel.hidden{display:none}.hub-header{padding:20px 21px 14px}.title-row{display:flex;justify-content:space-between;align-items:center}h1,h2,h3,p{margin:0}h1{font-size:26px;font-weight:800}.header-actions{display:flex;gap:10px;align-items:center}.header-update{border:1px solid #cbd7e3;border-radius:7px;padding:5px 9px;color:#24364d;background:#fff;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.header-update:hover{background:#f3f7fb}.icon-button{border:0;background:transparent;color:#637183;width:23px;height:23px;padding:0;cursor:pointer}.icon-button svg{width:100%;height:100%;fill:currentColor}.system-line{display:flex;gap:9px;align-items:center;margin-top:14px;color:#617084;font-size:15px}.system-icon{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#3288e8;color:#fff;font-weight:800}.status-list{border-top:1px solid #d8e0e7;padding:5px 21px 7px}.status-row{min-height:48px;display:grid;grid-template-columns:75px 1fr auto;align-items:center;gap:7px;border-bottom:1px solid #d8e0e7;font-size:16px}.status-row:last-child{border:0}.status-row[data-kind=web]{min-height:60px}.status-row strong{font-weight:800}.role-bind{display:flex;gap:7px;align-items:center;padding:8px 21px 10px;border-top:1px solid #d8e0e7}.role-binding{margin-right:auto;color:#617084;font-size:12px;font-weight:700}.status-value{white-space:pre-line;line-height:1.2;overflow:hidden;text-overflow:ellipsis}.status-ok{color:#078443;font-weight:700}.status-offline{color:#c53b3b;font-weight:700}.status-pending{color:#111827;font-weight:700}.status-action{border:1px solid #d5a34b;border-radius:6px;padding:4px 8px;color:#9a5b00;background:#fff8e8;font:inherit;font-size:12px;font-weight:700}.task-section{border-top:1px solid #d8e0e7;padding:19px 21px 20px}.section-label{color:#617084;font-size:14px;font-weight:800;margin-bottom:14px}.task-card{min-height:390px;border-radius:12px;padding:20px 18px 15px;background:#edf1f5}.task-card[data-tone=green]{background:#e6f7ee}.task-card[data-tone=blue]{background:#e5f1fe}.task-card[data-tone=amber]{background:#fff6d9}.task-main{display:flex;align-items:center;gap:15px;min-height:74px}.task-icon{width:56px;height:56px;flex:0 0 56px;padding:13px;border-radius:50%;color:#fff;background:#8b99a7}.task-icon svg{width:100%;height:100%;fill:currentColor}.task-card[data-tone=green] .task-icon{background:#0b9b5c}.task-card[data-tone=blue] .task-icon{background:#247bd4}.task-card[data-tone=amber] .task-icon{background:#f0ad00}.task-title{font-size:21px;font-weight:800}.task-detail{margin-top:8px;color:#536274;font-size:15px}.spinner{display:none;margin-left:auto;width:23px;height:23px;border:3px dotted #29445c;border-radius:50%;animation:spin 1.3s linear infinite}.spinner.visible{display:block}.task-meta{display:flex;gap:10px;margin-top:15px;color:#56687c;font-size:13px}.task-meta strong{font-weight:500}.message-block{margin-top:18px}.message-block h3{color:#617084;font-size:13px;font-weight:800;margin-bottom:7px}.worker-message,.web-response{max-height:140px;overflow-y:auto;padding:10px 12px;border-radius:8px;background:#fff8;white-space:pre-wrap;overflow-wrap:anywhere;color:#24364d;font-size:14px;line-height:1.45}.web-response{max-height:220px}.response-block{border-top:1px solid #ffffffaa;padding-top:14px}.resource-rescan{width:100%;margin-top:12px;border-color:#8bb7df;background:#eef7ff;color:#1f5f99;cursor:pointer}.resource-rescan:hover{background:#e2f1ff}.hidden{display:none!important}.hub-footer{text-align:center;padding:0 21px 10px;color:#91a0b0;font-size:11px}.settings-modal{position:fixed;inset:0;display:grid;place-items:center;background:#0f172a47;z-index:2147483647;padding:16px}.settings-modal.hidden{display:none}.settings-dialog{width:380px;max-width:100%;background:#fff;border:3px solid #26323a;border-radius:14px;padding:18px}.settings-title-row{display:flex;justify-content:space-between}.settings-close{border:0;background:transparent;width:24px;height:24px}.settings-form{display:grid;gap:11px;margin-top:16px}.settings-form label{display:grid;gap:5px;font-size:13px;font-weight:700}.settings-form input{min-height:34px;border:1px solid #bdcad7;border-radius:7px;padding:6px 9px;font:inherit}.settings-test-row,.settings-actions{display:flex;justify-content:flex-end;gap:10px;align-items:center}.secondary-button,.primary-button{min-height:34px;border-radius:7px;padding:6px 12px;font:inherit;font-size:13px;font-weight:700}.secondary-button{border:1px solid #cbd7e3;background:#fff}.primary-button{border:1px solid #1475de;background:#1475de;color:#fff}.test-status{font-size:12px}.test-status.success{color:#078443}.test-status.error{color:#c53b3b}.reopen{display:none;position:fixed;top:100px;right:24px;z-index:2147483646;width:42px;height:42px;border:0;border-radius:50%;color:#fff;background:#26323a;padding:10px}.reopen.visible{display:block}@keyframes spin{to{transform:rotate(360deg)}}';
   const panel=root.querySelector('.hub-panel'), systemText=root.querySelector('.system-text'), systemIcon=root.querySelector('.system-icon'), card=root.querySelector('.task-card'), taskIcon=root.querySelector('.task-icon'), taskTitle=root.querySelector('.task-title'), taskDetail=root.querySelector('.task-detail'), taskId=root.querySelector('.task-id'), taskFrom=root.querySelector('.task-from'), spinner=root.querySelector('.spinner'), workerMessage=root.querySelector('.worker-message'), responseBlock=root.querySelector('.response-block'), webResponse=root.querySelector('.web-response'), resourceRescan=root.querySelector('.resource-rescan'), settingsModal=root.querySelector('.settings-modal'), settingsForm=root.querySelector('.settings-form'), testStatus=root.querySelector('.test-status');
   const DEFAULT={bridgeHost:'127.0.0.1',bridgePort:43821,bridgeBasePath:'/bridge'};
-  let settings=Object.assign({},DEFAULT), managedRole=preflightManagedRole, managedRuntimeToken=preflightRuntimeToken, currentConversationId=null, lastBoundConversationId=null, currentProjectId='', activeTaskId=null, sentTaskId=null, activeLeaseId=null, activeResource=null, phase='IDLE', baselineAssistant='', baselineAssistantElement=null, baselineAssistantKey='', baselineAssistantCount=-1, baselineUserMessages=[], baselineTurnFingerprints=new Set(), baselineContainerFingerprints=new Set(), latchedSendEvidence='', baselineImageSources=new Set(), baselineFileUrls=new Set(), pendingResult=null, lastProgressKey='', activeTaskOwner=null, sendTriggeredForActiveTask=false, responseStarted=false, responseStartedAt=0, responseDeadlineTimer=0, responseTurnLogged=false, responseTextLogged=false, lastResourceProgressKey='', lastWebFileProgressKey='', stableSnapshot='', progressQueue=Promise.resolve(); let resetGeneration=0, navigationGeneration=0; const LONG_OPERATION_TIMEOUT=300000, DELIVERY_TIMEOUT=LONG_OPERATION_TIMEOUT, COMPOSER_TIMEOUT=LONG_OPERATION_TIMEOUT, SEND_CONFIRM_TIMEOUT=LONG_OPERATION_TIMEOUT, RESOURCE_WAIT_TIMEOUT=LONG_OPERATION_TIMEOUT, RESOURCE_SETTLE_DELAY=5000;
+  let settings=Object.assign({},DEFAULT), managedRole=preflightManagedRole, managedRuntimeToken=preflightRuntimeToken, currentConversationId=null, lastBoundConversationId=null, currentProjectId='', activeTaskId=null, sentTaskId=null, activeLeaseId=null, activeResource=null, phase='IDLE', baselineAssistant='', baselineAssistantElement=null, baselineAssistantKey='', baselineAssistantCount=-1, baselineUserMessages=[], baselineTurnFingerprints=new Set(), baselineContainerFingerprints=new Set(), latchedSendEvidence='', baselineImageSources=new Set(), baselineFileUrls=new Set(), pendingResult=null, lastProgressKey='', activeTaskOwner=null, sendTriggeredForActiveTask=false, responseStarted=false, responseStartedAt=0, responseDeadlineTimer=0, responseTurnLogged=false, responseTextLogged=false, lastResourceProgressKey='', lastWebFileProgressKey='', stableSnapshot='', progressQueue=Promise.resolve(); let resetGeneration=0, navigationGeneration=0; const LONG_OPERATION_TIMEOUT=300000, DELIVERY_TIMEOUT=LONG_OPERATION_TIMEOUT, COMPOSER_TIMEOUT=LONG_OPERATION_TIMEOUT, ATTACHMENT_READY_TIMEOUT=LONG_OPERATION_TIMEOUT, SEND_CONFIRM_TIMEOUT=LONG_OPERATION_TIMEOUT, RESOURCE_WAIT_TIMEOUT=LONG_OPERATION_TIMEOUT, RESOURCE_SETTLE_DELAY=5000;
   function validate(c){if(c.bridgeHost!=='127.0.0.1'&&c.bridgeHost!=='localhost')throw new Error('Loopback host only');if(!Number.isInteger(Number(c.bridgePort))||Number(c.bridgePort)<1||Number(c.bridgePort)>65535)throw new Error('Invalid port');return {bridgeHost:String(c.bridgeHost),bridgePort:Number(c.bridgePort),bridgeBasePath:'/'+String(c.bridgeBasePath||'/bridge').replace(/^\/|\/$/g,'')};}
   function normalizeManagedRole(value){const role=String(value||'').trim().toUpperCase();return role==='HQ'||role==='RESOURCE'?role:'';}
   function managedRoleFromUrl(){try{return normalizeManagedRole(new URL(location.href).searchParams.get('projecthub-managed-role'));}catch{return '';}}
@@ -105,8 +105,43 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
   function hasNewUserMessage(prompt,beforeMessages=[]){const matching=userTurnRecords().filter(turn=>promptMatchesText(turn.text,prompt));if(matching.some(turn=>!baselineTurnFingerprints.has(turnFingerprint(turn))))return true;if(baselineTurnFingerprints.size)return false;const messages=matching.map(turn=>turn.text);return messages.length>beforeMessages.filter(message=>promptMatchesText(message,prompt)).length;}
   function userMessageMatches(prompt){return promptMatchesText(latestUserMessage(),prompt);}
   function fileInput(){return [...document.querySelectorAll('input[type="file"]')].find(element=>visible(element)&&!element.disabled)||[...document.querySelectorAll('input[type="file"]')].find(element=>!element.disabled)||null;}
+  function composerScope(){const input=composer();return input?.closest('form')||input?.parentElement||document.querySelector('main')||document.body;}
+  function attachmentUiText(){const scope=composerScope();return normalizeText(scope?.innerText||scope?.textContent||'');}
+  function attachmentErrorText(){const scope=composerScope();if(!scope)return '';const selectors=['[role="alert"]','[data-testid*="error"]','[aria-live="assertive"]','[aria-invalid="true"]'];for(const node of scope.querySelectorAll(selectors.join(','))){const text=normalizeText(node.innerText||node.textContent||'');if(text&&/(upload|attach|file|document|업로드|첨부|파일).*(fail|error|unsupported|too large|실패|오류|지원|초과)|(?:fail|error|실패|오류).*(upload|attach|file|document|업로드|첨부|파일)/i.test(text))return text;}return '';}
+  function attachmentVisualEvidence(fileNames){if(!fileNames?.length)return false;const scope=composerScope();if(!scope)return false;const text=normalizeText(scope.innerText||scope.textContent||'').toLowerCase();let matched=0;for(const name of fileNames){const normalized=normalizeText(name).toLowerCase();if(normalized&&text.includes(normalized))matched++;}if(matched===fileNames.length)return true;const nodes=[...scope.querySelectorAll('[data-testid*="attachment"],[data-testid*="file"],[aria-label*="attachment" i],[aria-label*="file" i]')].filter(visible);return nodes.length>=fileNames.length;}
+  function attachmentBusy(){const scope=composerScope();if(!scope)return false;for(const node of scope.querySelectorAll('[aria-busy="true"],[role="progressbar"],[data-testid*="progress"],[data-testid*="upload"]')){if(visible(node))return true;}const text=attachmentUiText();return /(uploading|processing file|processing document|업로드 중|파일 처리 중|문서 처리 중)/i.test(text);}
+  async function waitForAttachmentReady(fileNames){
+    const started=Date.now();
+    let visualLogged=false,busyLogged=false;
+    while(activeTaskId&&Date.now()-started<ATTACHMENT_READY_TIMEOUT){
+      const error=attachmentErrorText();
+      if(error)throw new Error('ATTACHMENT_UI_ERROR: '+error);
+      const visual=attachmentVisualEvidence(fileNames);
+      if(visual&&!visualLogged){
+        visualLogged=true;
+        reportProgress('ATTACHMENT_UI_DETECTED',fileNames.length+'개 첨부 카드/파일 표시를 확인했습니다.');
+      }
+      const send=sendButton();
+      if(send){
+        reportProgress('ATTACHMENT_READY',fileNames.length+'개 첨부 처리 완료 · Send 버튼 활성화 확인');
+        return send;
+      }
+      if(attachmentBusy()){
+        if(!busyLogged){
+          busyLogged=true;
+          reportProgress('ATTACHMENT_PROCESSING','ChatGPT가 첨부 파일을 업로드/처리하는 중입니다.');
+        }
+      }else if(!visual){
+        reportProgress('ATTACHMENT_WAIT','file input 설정 후 ChatGPT 첨부 UI 반영을 기다리는 중입니다.');
+      }else{
+        reportProgress('ATTACHMENT_WAIT','첨부 UI는 확인됐지만 Send 버튼 활성화를 기다리는 중입니다.');
+      }
+      await new Promise(resolve=>setTimeout(resolve,500));
+    }
+    throw new Error('ATTACHMENT_READY_TIMEOUT: ChatGPT가 제한시간 내 첨부 파일 전송 준비 상태가 되지 않았습니다.');
+  }
   async function attachFiles(composerInput,attachments){
-    if(!attachments?.length)return;
+    if(!attachments?.length)return {count:0,fileNames:[]};
     let input=fileInput();
     if(!input){
       const attachButton=[...document.querySelectorAll('button,[role="button"]')].find(element=>visible(element)&&/attach|upload|파일|첨부/i.test([element.getAttribute('aria-label'),element.getAttribute('data-testid'),element.getAttribute('title')].filter(Boolean).join(' ')));
@@ -114,7 +149,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
       input=await waitFor(fileInput,15000);
     }
     if(!input)throw new Error('ATTACH_INPUT: ChatGPT file input not found');
-    const transfer=new DataTransfer();
+    const transfer=new DataTransfer(),fileNames=[];
     for(const attachment of attachments){
       if(!attachment.downloadUrl)throw new Error('ATTACH_URL: attachment download URL missing');
       const response=await fetchWithTimeout(attachment.downloadUrl,{},LONG_OPERATION_TIMEOUT);
@@ -123,14 +158,33 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
       const buffer=await blob.arrayBuffer();
       const actualSha256=await sha256Hex(buffer);
       if(attachment.sha256&&actualSha256.toLowerCase()!==String(attachment.sha256).trim().toLowerCase())throw new Error('ATTACH_HASH_MISMATCH: '+(attachment.fileName||'attachment'));
-      reportProgress('ATTACHMENT_VERIFIED',(attachment.fileName||'attachment')+' · sha256='+actualSha256);
-      const file=new File([buffer],attachment.fileName||'attachment',{type:attachment.mimeType||blob.type||'application/octet-stream'});
+      reportProgress('ATTACHMENT_BYTES_VERIFIED',(attachment.fileName||'attachment')+' · sha256='+actualSha256);
+      const fileName=attachment.fileName||'attachment';
+      const file=new File([buffer],fileName,{type:attachment.mimeType||blob.type||'application/octet-stream'});
       transfer.items.add(file);
+      fileNames.push(fileName);
     }
     input.files=transfer.files;
     input.dispatchEvent(new Event('input',{bubbles:true,composed:true}));
     input.dispatchEvent(new Event('change',{bubbles:true,composed:true}));
-  }  async function sendToChatGPT(prompt,attachments){const input=await waitFor(composer,COMPOSER_TIMEOUT);if(!input)throw new Error('ChatGPT composer not found');setPhase('TEXT_INSERT','composer 대상 확인 · '+(input.id||input.getAttribute('data-testid')||input.tagName));input.focus({preventScroll:true});setText(input,prompt);if(!composerHasPrompt(input,prompt))throw new Error('COMPOSER_TEXT_INSERT_FAILED: 실제 ChatGPT 입력창에서 전달 문구를 확인하지 못했습니다.');if(attachments?.length){setPhase('TEXT_INSERT','첨부 파일을 준비하는 중');await attachFiles(input,attachments);}setPhase('SEND_BUTTON_FIND','입력 완료 · 전송 버튼 감시 중');void monitorSendReady(prompt);}
+    if(input.files?.length!==attachments.length)throw new Error('ATTACH_INPUT_SET_FAILED: file input count mismatch');
+    reportProgress('ATTACHMENT_INPUT_SET',attachments.length+'개 파일을 ChatGPT file input에 설정했습니다.');
+    await waitForAttachmentReady(fileNames);
+    return {count:attachments.length,fileNames};
+  }
+  async function sendToChatGPT(prompt,attachments){
+    const input=await waitFor(composer,COMPOSER_TIMEOUT);
+    if(!input)throw new Error('ChatGPT composer not found');
+    setPhase('TEXT_INSERT','composer 대상 확인 · '+(input.id||input.getAttribute('data-testid')||input.tagName));
+    input.focus({preventScroll:true});
+    setText(input,prompt);
+    if(!composerHasPrompt(input,prompt))throw new Error('COMPOSER_TEXT_INSERT_FAILED: 실제 ChatGPT 입력창에서 전달 문구를 확인하지 못했습니다.');
+    const attachmentState=attachments?.length
+      ? await (async()=>{setPhase('TEXT_INSERT','첨부 파일을 준비하는 중');return await attachFiles(input,attachments);})()
+      : {count:0,fileNames:[]};
+    setPhase('SEND_BUTTON_FIND',attachmentState.count?'첨부 준비 완료 · 전송 버튼 감시 중':'입력 완료 · 전송 버튼 감시 중');
+    void monitorSendReady(prompt,attachmentState.count);
+  }
   function sendConfirmationEvidence(prompt){
     if(latchedSendEvidence)return latchedSendEvidence;
     let evidence='';
@@ -150,7 +204,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     if(activeResource)scheduleResponseDeadline();
     observeResponse();
   }
-  async function monitorSendReady(prompt){
+  async function monitorSendReady(prompt,attachmentCount=0){
     const deadline=Date.now()+DELIVERY_TIMEOUT;
     let attempt=0,voiceOnlySince=0;
     while((phase==='WAIT_SEND_READY'||phase==='SEND_BUTTON_FIND'||phase==='SEND_CONFIRM')&&activeTaskId&&Date.now()<deadline){
@@ -181,12 +235,23 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
             return;
           }
           if(!voiceOnlySince)voiceOnlySince=Date.now();
-          setPhase('SEND_BUTTON_FIND','입력은 되었지만 Voice 버튼만 표시됨 · 메시지는 아직 전송되지 않았습니다.',attempt);
-          if(Date.now()-voiceOnlySince>=2250){
-            const reason='Send 버튼이 없어 Worker 메시지를 전송하지 못했습니다. Voice 버튼만 표시되었습니다.';
-            reportProgress('FAILED',reason,attempt);
-            await failTask(reason);
-            return;
+          if(attachmentCount>0){
+            const error=attachmentErrorText();
+            if(error){
+              const reason='첨부 파일 처리 중 ChatGPT 오류가 확인되었습니다: '+error;
+              reportProgress('FAILED',reason,attempt);
+              await failTask(reason,'attachment_ui_error');
+              return;
+            }
+            setPhase('SEND_BUTTON_FIND','첨부가 있는 요청에서 Voice 버튼만 표시됨 · 첨부 처리/Send 활성화를 계속 기다리는 중',attempt);
+          }else{
+            setPhase('SEND_BUTTON_FIND','입력은 되었지만 Voice 버튼만 표시됨 · 메시지는 아직 전송되지 않았습니다.',attempt);
+            if(Date.now()-voiceOnlySince>=2250){
+              const reason='Send 버튼이 없어 Worker 메시지를 전송하지 못했습니다. Voice 버튼만 표시되었습니다.';
+              reportProgress('FAILED',reason,attempt);
+              await failTask(reason);
+              return;
+            }
           }
         }else{
           const evidence=sendConfirmationEvidence(prompt);
