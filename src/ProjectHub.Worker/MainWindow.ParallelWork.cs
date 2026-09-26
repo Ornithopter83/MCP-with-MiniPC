@@ -8,7 +8,8 @@ public partial class MainWindow
         string workingDirectory,
         WorkerAiRoleSettings coordinator,
         WorkerAiRoleSettings implementer,
-        CoordinatorContinuationState? continuation = null)
+        CoordinatorContinuationState? continuation = null,
+        IReadOnlyList<UserAttachmentInput>? attachments = null)
     {
         var continuing = continuation is not null;
         var jobId = continuation?.JobId ?? Guid.NewGuid().ToString("N");
@@ -98,6 +99,13 @@ public partial class MainWindow
                 throw new InvalidOperationException(
                     gitPreflight.ErrorCode + ": " + gitPreflight.Message);
 
+            var stagedHqAttachments = StageUserAttachments(
+                attachments,
+                workingDirectory,
+                jobId + "-hq-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            var webUserAttachments = BuildUserWebAttachments(attachments);
+            var deliverUserAttachmentsToHq = stagedHqAttachments.Count > 0;
+
             if (continuing)
                 graph.RecoverPreparationFailuresForContinuation();
 
@@ -129,7 +137,8 @@ public partial class MainWindow
                 runner,
                 judgeAvailable: _targetSettings.EffectiveJudge.Enabled,
                 observationGate: observationGate,
-                expectedPrimaryBranch: currentGitTarget.Branch);
+                expectedPrimaryBranch: currentGitTarget.Branch,
+                userAttachments: attachments);
 
             async Task<string> RunParallelHqAsync(
                 string prompt,
@@ -147,6 +156,14 @@ public partial class MainWindow
                         explicitStage: TaskStage.Coordinator);
                 });
 
+                var turnInputAttachments = deliverUserAttachmentsToHq
+                    ? stagedHqAttachments
+                    : Array.Empty<AiInputAttachment>();
+                var turnWebAttachments = deliverUserAttachmentsToHq
+                    ? webUserAttachments
+                    : new List<BridgeAttachment>();
+                deliverUserAttachmentsToHq = false;
+
                 AiRoleRunResult result;
                 if (Dispatcher.CheckAccess())
                 {
@@ -163,7 +180,9 @@ public partial class MainWindow
                             var normalized = CodexCliRunner.NormalizeSessionId(started);
                             if (!string.IsNullOrWhiteSpace(normalized))
                                 coordinatorSession = normalized;
-                        });
+                        },
+                        turnInputAttachments,
+                        turnWebAttachments);
                 }
                 else
                 {
@@ -181,7 +200,9 @@ public partial class MainWindow
                                 var normalized = CodexCliRunner.NormalizeSessionId(started);
                                 if (!string.IsNullOrWhiteSpace(normalized))
                                     coordinatorSession = normalized;
-                            }));
+                            },
+                            turnInputAttachments,
+                            turnWebAttachments));
                     result = await (await operation.Task);
                 }
 
