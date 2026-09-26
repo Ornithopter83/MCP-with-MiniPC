@@ -29,8 +29,8 @@
 제5조 (WORKER)
 
 ① 상태는 중단이다.
-② 완료하려 한 작업은 HQ와 RESOURCE용 관리형 Web 브라우저 슬롯 두 개, 분리된 persistent profile, Chrome for Testing 자동 준비, 숨김 실행·로그인 표시 제어, Web 진행 체크포인트와 파일 SHA-256 검증 기반을 Worker에 추가하는 것이다.
-③ 중단 지점은 코드 반영과 정적 연결 검증까지 완료했고 Windows Worker 실제 빌드·게시와 관리형 브라우저 실행 E2E가 남은 상태다.
+② 완료하려 한 작업은 HQ/WORK 본문에서 구조 마커가 설명문 뒤에 나타나도 안전하게 처리하도록 WORK_GRAPH_PATCH, WORK_ITEM_STATUS, RESOURCE_TYPE와 레거시 REPORT/VALIDATION REQUEST 파서를 위치 독립 방식으로 보강하는 것이다.
+③ 중단 지점은 수정 전 실패 로그와 동일한 설명문 선행 형식, 중복 마커, JSON 뒤 설명을 방어하는 코드·회귀 테스트·계약 반영까지 완료했고 실제 .NET Worker 빌드·테스트 실행이 남은 상태다.
 
 제6조 (WEB)
 
