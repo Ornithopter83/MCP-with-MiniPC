@@ -24,8 +24,9 @@ ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로�
 
 ① `로그인/표시`는 기존 hidden window를 복원하지 않는다.
 ② 기존 슬롯 Chromium을 UI thread 밖에서 종료한 뒤 clean session 상태의 visible app window를 새로 시작한다.
-③ `숨김 실행`도 같은 방식으로 새 hidden app window를 시작한다.
-④ 이 전환은 로그인 profile을 유지하면서 브라우저 프로세스와 화면 상태만 새로 만든다.
+③ `숨김 실행`도 같은 방식으로 새 app window를 시작하되 창을 최소화하거나 SW_HIDE하지 않고 화면 밖 위치에 유지한다.
+④ 숨김 app window는 background timer, renderer, occluded-window throttling을 끈 상태로 실행해 heartbeat와 Web 자동화를 계속 수행한다.
+⑤ 이 전환은 로그인 profile을 유지하면서 브라우저 프로세스와 화면 상태만 새로 만든다.
 
 제4조 (Bridge 인증)
 
