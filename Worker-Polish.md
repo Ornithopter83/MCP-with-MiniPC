@@ -449,5 +449,5 @@ Integration:
 ⑦ 브라우저 프로세스 생존, heartbeat, 대화 연결, 메시지 전송 단계, 응답 시작·안정화, 파일 byte·크기·SHA-256, 저장 완료는 Worker가 기계적 사실로 기록할 수 있다.
 ⑧ Worker는 Web 응답의 의미적 정확성이나 RESOURCE 결과의 미적·기능적 품질을 판단하지 않는다.
 ⑨ Web 작업의 진행 단계는 taskId, conversationId와 leaseId에 귀속하며 재시도 시 이미 확정된 기계 단계와 새 시도를 구분할 수 있게 보존한다.
-⑩ 관리형 브라우저 실행 파일은 Worker가 지정한 BrowserRuntime, 명시적 환경 설정 또는 사용 가능한 호환 브라우저에서 찾을 수 있다. 실행 파일의 공급 방식은 역할 의미와 분리한다.
+⑩ 관리형 브라우저는 unpacked extension 자동 로드를 지원하는 호환 런타임을 사용한다. 명시된 BrowserRuntime 또는 PROJECTHUB_CHROMIUM_PATH가 없으면 Worker는 공식 Chrome for Testing Stable win64 런타임을 사용자 로컬 데이터 영역에 자동 준비할 수 있다.
 
