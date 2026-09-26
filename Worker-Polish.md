@@ -450,6 +450,8 @@ Integration:
 ⑧ Worker는 Web 응답의 의미적 정확성이나 RESOURCE 결과의 미적·기능적 품질을 판단하지 않는다.
 ⑨ Web 작업의 진행 단계는 taskId, conversationId와 leaseId에 귀속하며 재시도 시 이미 확정된 기계 단계와 새 시도를 구분할 수 있게 보존한다.
 ⑩ 관리형 브라우저는 unpacked extension 자동 로드를 지원하는 호환 런타임을 사용한다. 명시된 BrowserRuntime 또는 PROJECTHUB_CHROMIUM_PATH가 없으면 Worker는 공식 Chrome for Testing Stable win64 런타임을 사용자 로컬 데이터 영역에 자동 준비할 수 있다.
+⑪ Worker 시작 시 ProjectHub가 소유한 관리형 브라우저 런타임의 잔존 프로세스를 정리한 뒤 HQ와 RESOURCE 슬롯을 시작한다. 외부 시스템 Chrome이나 ProjectHub 관리 경로 밖의 브라우저 프로세스는 자동 종료하지 않는다.
+⑫ 역할별 heartbeat의 실제 확장 version/build와 Worker가 요구하는 version/build가 다르면 해당 불일치를 기계적 상태로 표시한다.
 
 제14조 (본문 구조 마커)
 
