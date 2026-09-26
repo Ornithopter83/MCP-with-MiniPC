@@ -511,26 +511,26 @@ public partial class MainWindow : Window
             continuation.WorkingDirectory,
             continuation.Coordinator,
             continuation.Implementer);
-        if (preflightError is null)
-        {
-            var hasPersistedGraph =
-                ProjectWorkspacePersistence.TryLoadWorkGraph(
-                    continuation.WorkingDirectory,
-                    continuation.JobId) is not null;
-            if (ParallelWorkActivationPolicy.ShouldUseParallel(
-                    isContinuation: true,
-                    _targetSettings.EffectiveMaxConcurrentWork,
-                    hasPersistedGraph))
-            {
-                preflightError = GetParallelGitPreflightError(
-                    continuation.WorkingDirectory);
-            }
-        }
         if (preflightError is not null)
         {
             DashboardPreflightText.Text = preflightError;
             DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
             return;
+        }
+
+        var hasPersistedGraph =
+            ProjectWorkspacePersistence.TryLoadWorkGraph(
+                continuation.WorkingDirectory,
+                continuation.JobId) is not null;
+        if (ParallelWorkActivationPolicy.ShouldUseParallel(
+                isContinuation: true,
+                _targetSettings.EffectiveMaxConcurrentWork,
+                hasPersistedGraph))
+        {
+            var gitReady = await PrepareParallelGitForLaunchAsync(
+                continuation.WorkingDirectory);
+            if (!gitReady)
+                return;
         }
 
         AddUserFollowupHistory(followup);
@@ -612,11 +612,10 @@ public partial class MainWindow : Window
         {
             var workingDirectory =
                 ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption);
-            var roleError = GetCoordinatorFirstPreflightError(
+            return GetCoordinatorFirstPreflightError(
                 workingDirectory,
                 _targetSettings.EffectiveCoordinator,
                 _targetSettings.EffectiveImplementer);
-            return roleError ?? GetParallelGitPreflightError(workingDirectory);
         }
 
         if (!_codexAuthenticated) return "Codex 로그인이 필요합니다.";
@@ -928,6 +927,18 @@ public partial class MainWindow : Window
                 SetFlowState(false, false, false);
                 return;
             }
+
+            if (ParallelWorkActivationPolicy.ShouldUseParallel(
+                    isContinuation: false,
+                    _targetSettings.EffectiveMaxConcurrentWork,
+                    hasPersistedWorkGraph: false))
+            {
+                var gitReady = await PrepareParallelGitForLaunchAsync(
+                    cliWorkingDirectory);
+                if (!gitReady)
+                    return;
+            }
+
             _historyEvents.Clear();
             SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
             await RunCoordinatorFirstJobAsync(launchRequest.Prompt, selectedThreadForLaunch, cliWorkingDirectory, coordinator, implementer);
