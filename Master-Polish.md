@@ -7,7 +7,7 @@
 - ACTION, GOTO, QID, 상태 코드, 클래스명, 파일명, 명령어, API 필드명, 외부 제품명처럼 상호 운용이나 코드 식별에 필요한 고유 토큰만 원형을 유지할 수 있다.
 
 
-갱신일: 2026-09-25 (KST)
+갱신일: 2026-09-26 (KST)
 
 이 문서는 ProjectHub의 현재 최상위 정책 원본이다.
 
@@ -417,6 +417,11 @@ WorkItem 기본 상태:
 - worktree와 branch 생성·삭제·경로 검증은 Worker가 기계적으로 수행한다.
 - WorkItem의 시작 기준 ref는 WorkGraph에 명시적으로 기록한다.
 - Worker는 충돌의 의미를 자동 해결하지 않는다.
+- 새 병렬 실행을 시작할 때 작업 폴더가 Git 저장소가 아니면 Worker는 AI를 호출하기 전에 해당 작업 폴더에서 `git init`을 기계적으로 수행할 수 있다.
+- Git HEAD가 없거나 현재 저장소에 commit되지 않은 변경이 있으면 Worker는 실제 repository root와 현재 branch를 사용자에게 보여주고 기준점 생성 승인을 요청한다.
+- 사용자가 승인한 경우에만 Worker가 `git add --all`과 로컬 ProjectHub identity를 사용한 baseline commit을 생성한다. 사용자가 취소하면 AI 의미 작업을 시작하지 않는다.
+- 이 자동 준비 단계는 `.gitignore`, `.git/info/exclude`, 프로젝트별 ignore preset을 생성·수정하지 않고 현재 Git 규칙을 그대로 사용한다.
+- 원격 저장소는 기존처럼 `origin` URL이 있으면 기계적으로 확인만 하며 자동 remote 생성, pull, push는 수행하지 않는다.
 
 동적 확장:
 - HQ는 실행 중에도 GraphPatch로 WorkItem을 추가·변경·취소하거나 의존성을 변경할 수 있다.

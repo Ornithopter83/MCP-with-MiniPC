@@ -629,3 +629,16 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - Explorer 실제 실행에서 max=1, max=4, SPLIT_REQUEST, Integration landing, sidecar 귀속, 취소/복구, END gate를 확인하지 못했다.
 
 따라서 tasks/16은 코드 구현 단계는 종료하고 Windows 실검증 단계로 유지한다. 실검증 결과에 따라 회귀 수정이 생기면 이 작업 문서에 이어서 기록한다.
+
+
+### 2026-09-26 최소 Git 준비 자동화
+
+- `f7a4ef4820865901880d7e99d4f4b737400eb0e0`: `GitWorkspaceBootstrapper`를 추가했다. 작업 폴더가 Git 저장소가 아니면 `git init`을 기계적으로 수행하고, repository root / branch / HEAD / dirty 상태를 확인한다.
+- `3ba2909987a243208254a28661d21625ac665e52`: 새 작업 실행과 병렬 USER_FOLLOWUP의 실제 시작 직전에 Git 준비 단계를 연결했다.
+- 실행 버튼의 일반 사전 점검에서는 Git 미준비를 더 이상 클릭 불가 오류로 취급하지 않는다. 사용자가 실제 실행을 누른 뒤 Worker가 Git 준비를 먼저 처리한다.
+- HEAD가 없거나 commit되지 않은 변경사항이 있으면 기준점 생성 경로(repository root)와 현재 branch를 사용자에게 표시하고 승인을 받는다.
+- 승인 시에만 `git add --all` 후 `ProjectHub <projecthub@local>` 로컬 identity로 baseline commit을 생성한다. 전역 Git 사용자 설정은 변경하지 않는다.
+- 사용자가 취소하면 HQ/WORK를 호출하지 않고 현재 입력 상태에 머문다.
+- `.gitignore`, `.git/info/exclude`, .NET/Godot 등 프로젝트별 ignore preset은 이번 범위에서 전혀 생성·수정하지 않는다.
+- 기존 `origin` 자동 확인은 유지한다. remote가 없어도 로컬 Git + HEAD + attached branch 조건만 충족하면 병렬 WORK를 사용할 수 있고, 자동 push/pull/remote 생성은 하지 않는다.
+- Windows 핵심 검증에 `GitWorkspaceBootstrapperTests`를 추가한다.
