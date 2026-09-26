@@ -133,10 +133,10 @@ public sealed class UserAttachmentTransportTests
             Assert.Equal(attachment.FileName, bridge.FileName);
             Assert.Equal(attachment.Sha256, bridge.Sha256);
             Assert.Equal(attachment.Size, bridge.Size);
-            Assert.EndsWith(
-                "/bridge/attachment/" + attachment.Id,
-                bridge.DownloadUrl,
-                StringComparison.Ordinal);
+            Assert.True(
+                bridge.DownloadUrl?.EndsWith(
+                    "/bridge/attachment/" + attachment.Id,
+                    StringComparison.Ordinal) == true);
         }
         finally
         {
