@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.3.5", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.3.6", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -102,6 +102,10 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("GENERATION_STARTED_", StringComparison.Ordinal));
         Assert.True(source.Contains("SEND_FALLBACK", StringComparison.Ordinal));
         Assert.True(source.Contains("SEND_CONFIRM_DIAGNOSTIC", StringComparison.Ordinal));
+        Assert.True(source.Contains("genericResponseCandidates", StringComparison.Ordinal));
+        Assert.True(source.Contains("latestGenericResponseFallback", StringComparison.Ordinal));
+        Assert.True(source.Contains("baselineGenericResponseFingerprints", StringComparison.Ordinal));
+        Assert.True(source.Contains("role 속성 없이 새 Markdown/본문 영역", StringComparison.Ordinal));
         Assert.True(source.Contains("fallbackSubmitComposer", StringComparison.Ordinal));
         Assert.True(source.Contains("form.requestSubmit()", StringComparison.Ordinal));
         Assert.False(source.Contains("new PointerEvent('pointerdown'", StringComparison.Ordinal));
