@@ -10,6 +10,11 @@ public partial class MainWindow
     private bool _loadingDirectWorkControls;
     private bool _directWorkRunning;
 
+    private sealed record DirectWorkChoice<T>(T Value, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
     private bool IsDirectWorkMode =>
         DirectWorkModeCheckBox?.IsChecked == true;
 
@@ -23,10 +28,13 @@ public partial class MainWindow
         _loadingDirectWorkControls = true;
         try
         {
-            DirectWorkProviderCombo.ItemsSource = AiProviderCatalog.Current;
+            var providers = AiProviderCatalog.Current
+                .Select(provider => new DirectWorkChoice<AiProviderDescriptor>(provider, provider.DisplayName))
+                .ToArray();
+            DirectWorkProviderCombo.ItemsSource = providers;
             DirectWorkProviderCombo.SelectedItem =
-                AiProviderCatalog.Current.FirstOrDefault(provider => provider.Provider == AiServiceProvider.OpenAI) ??
-                AiProviderCatalog.Current.FirstOrDefault();
+                providers.FirstOrDefault(option => option.Value.Provider == AiServiceProvider.OpenAI) ??
+                providers.FirstOrDefault();
             RefreshDirectWorkModels(preferDefault: true);
         }
         finally
@@ -105,11 +113,13 @@ public partial class MainWindow
 
     private void RefreshDirectWorkModels(bool preferDefault)
     {
-        var provider = DirectWorkProviderCombo.SelectedItem as AiProviderDescriptor;
-        var models = provider?.Models ?? Array.Empty<AiModelDescriptor>();
+        var provider = (DirectWorkProviderCombo.SelectedItem as DirectWorkChoice<AiProviderDescriptor>)?.Value;
+        var models = (provider?.Models ?? Array.Empty<AiModelDescriptor>())
+            .Select(model => new DirectWorkChoice<AiModelDescriptor>(model, model.DisplayName))
+            .ToArray();
         DirectWorkModelCombo.ItemsSource = models;
 
-        if (models.Count == 0)
+        if (models.Length == 0)
         {
             DirectWorkModelCombo.SelectedItem = null;
             DirectWorkReasoningCombo.ItemsSource = null;
@@ -118,8 +128,8 @@ public partial class MainWindow
         }
 
         var selected = preferDefault
-            ? models.FirstOrDefault(model =>
-                string.Equals(model.Id, "gpt-6-luna", StringComparison.OrdinalIgnoreCase))
+            ? models.FirstOrDefault(option =>
+                string.Equals(option.Value.Id, "gpt-6-luna", StringComparison.OrdinalIgnoreCase))
             : null;
         DirectWorkModelCombo.SelectedItem = selected ?? models[0];
         RefreshDirectWorkReasoning(preferDefault);
@@ -127,24 +137,30 @@ public partial class MainWindow
 
     private void RefreshDirectWorkReasoning(bool preferDefault)
     {
-        var model = DirectWorkModelCombo.SelectedItem as AiModelDescriptor;
-        var options = model?.ReasoningOptions ?? Array.Empty<string>();
+        var model = (DirectWorkModelCombo.SelectedItem as DirectWorkChoice<AiModelDescriptor>)?.Value;
+        var options = (model?.ReasoningOptions ?? Array.Empty<string>())
+            .Select(value => new DirectWorkChoice<string>(
+                value,
+                string.IsNullOrWhiteSpace(value)
+                    ? value
+                    : char.ToUpperInvariant(value[0]) + value[1..].ToLowerInvariant()))
+            .ToArray();
         DirectWorkReasoningCombo.ItemsSource = options;
 
-        if (options.Count == 0)
+        if (options.Length == 0)
         {
             DirectWorkReasoningCombo.SelectedItem = null;
             return;
         }
 
         var preferred = preferDefault
-            ? options.FirstOrDefault(value =>
-                string.Equals(value, "medium", StringComparison.OrdinalIgnoreCase))
+            ? options.FirstOrDefault(option =>
+                string.Equals(option.Value, "medium", StringComparison.OrdinalIgnoreCase))
             : null;
         DirectWorkReasoningCombo.SelectedItem =
             preferred ??
-            options.FirstOrDefault(value =>
-                string.Equals(value, model?.DefaultReasoning, StringComparison.OrdinalIgnoreCase)) ??
+            options.FirstOrDefault(option =>
+                string.Equals(option.Value, model?.DefaultReasoning, StringComparison.OrdinalIgnoreCase)) ??
             options[0];
     }
 
@@ -164,15 +180,17 @@ public partial class MainWindow
 
     private WorkerAiRoleSettings? GetDirectWorkRole()
     {
-        if (DirectWorkProviderCombo.SelectedItem is not AiProviderDescriptor provider ||
-            DirectWorkModelCombo.SelectedItem is not AiModelDescriptor model ||
-            DirectWorkReasoningCombo.SelectedItem is not string reasoning)
+        if (DirectWorkProviderCombo.SelectedItem is not DirectWorkChoice<AiProviderDescriptor> providerOption ||
+            DirectWorkModelCombo.SelectedItem is not DirectWorkChoice<AiModelDescriptor> modelOption ||
+            DirectWorkReasoningCombo.SelectedItem is not DirectWorkChoice<string> reasoningOption)
             return null;
 
+        var provider = providerOption.Value;
+        var model = modelOption.Value;
         return new WorkerAiRoleSettings(
             provider.WireId,
             model.Id,
-            reasoning,
+            reasoningOption.Value,
             provider.DefaultTransport);
     }
 
