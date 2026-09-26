@@ -18,3 +18,12 @@
 ② 각 `*-Polish.md`는 해당 프로젝트의 장기 책임과 경계만 담는다.
 ③ 역할·API·전송 계약은 프로젝트 정책보다 세부적인 프로토콜 경계를 정의한다.
 ④ CurrentWork의 과거 상태는 누적하지 않고 Git 이력으로 보존한다.
+
+제3조 (Web assistant 응답 수집 보강)
+
+① ChatGPT Web이 새 assistant DOM을 추가하지 않고 기존 assistant DOM의 텍스트만 갱신하는 경우를 새 응답 후보로 감지하도록 확장했다.
+② 텍스트 변화 fallback은 현재 Worker 메시지가 실제 사용자 메시지로 대화에 나타난 것이 확인된 경우에만 허용한다.
+③ 응답 감지 근거가 텍스트 변화인 경우 `RESPONSE_TEXT_CHANGED` 진행 상태를 기록한다.
+④ 확장 버전은 0.1.11, 빌드는 2026-09-26.2로 갱신했다.
+⑤ Web 확장 파일은 Worker 실행파일의 EmbeddedResource이므로 Worker 관리 배포본을 갱신하려면 새 Worker 빌드가 필요하다.
+
