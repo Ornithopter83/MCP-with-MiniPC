@@ -14,10 +14,11 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
-    private const string ExpectedExtensionVersion = "0.2.2";
-    private const string ExpectedExtensionBuild = "2026-09-26.8";
+    private const string ExpectedExtensionVersion = "0.3.0";
+    private const string ExpectedExtensionBuild = "2026-09-26.9";
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
+    private readonly string _managedRuntimeToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string _statePath;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -38,11 +39,6 @@ public sealed class BridgeServer : IDisposable
     private readonly Dictionary<string, string> _webConversationTitles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _webExtensionVersions = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _webExtensionBuilds = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, int> _managedTabCleanupGenerations = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["HQ"] = 0,
-        ["RESOURCE"] = 0
-    };
     public bool WebConnected
     {
         get { lock (_gate) return _lastWebHeartbeat is not null && DateTimeOffset.UtcNow - _lastWebHeartbeat < TimeSpan.FromSeconds(10); }
@@ -76,6 +72,8 @@ public sealed class BridgeServer : IDisposable
     public event Action<BridgeTask>? TaskChanged;
     public event Action<ExtensionProgress>? ExtensionProgressChanged;
 
+    public string ManagedRuntimeToken => _managedRuntimeToken;
+
     public bool IsRoleBound(string role)
     {
         lock (_gate) return _state.RoleBindings.ContainsKey(NormalizeRole(role));
@@ -94,22 +92,6 @@ public sealed class BridgeServer : IDisposable
     public string? GetRoleConversationId(string role)
     {
         lock (_gate) return _state.RoleBindings.TryGetValue(NormalizeRole(role), out var value) ? value : null;
-    }
-
-    public int RequestManagedTabCleanup(string role)
-    {
-        lock (_gate)
-        {
-            var normalizedRole = NormalizeRole(role);
-            if (normalizedRole is not ("HQ" or "RESOURCE"))
-                throw new ArgumentOutOfRangeException(nameof(role), role, "관리형 Web 역할은 HQ 또는 RESOURCE여야 합니다.");
-
-            var next = _managedTabCleanupGenerations.TryGetValue(normalizedRole, out var current)
-                ? current + 1
-                : 1;
-            _managedTabCleanupGenerations[normalizedRole] = next;
-            return next;
-        }
     }
 
     public WebRoleBindingStatus GetRoleBindingStatus(string role)
@@ -310,13 +292,21 @@ public sealed class BridgeServer : IDisposable
         var response = context.Response;
         response.Headers["Access-Control-Allow-Origin"] = "*";
         response.Headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS";
-        response.Headers["Access-Control-Allow-Headers"] = "Content-Type";
+        response.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-ProjectHub-Managed-Token";
 
         try
         {
             if (context.Request.HttpMethod == "OPTIONS")
             {
                 response.StatusCode = 204;
+                return;
+            }
+
+            var suppliedRuntimeToken = context.Request.Headers["X-ProjectHub-Managed-Token"];
+            if (!string.Equals(suppliedRuntimeToken, _managedRuntimeToken, StringComparison.Ordinal))
+            {
+                response.StatusCode = 401;
+                await WriteJsonAsync(response, new { error = "managed_runtime_required" });
                 return;
             }
 
@@ -386,7 +376,6 @@ public sealed class BridgeServer : IDisposable
                 webProjectId = _webProjectId,
                 webConversationBound = WebConversationBound,
                 roleBindings = _state.RoleBindings,
-                managedTabCleanupGenerations = _managedTabCleanupGenerations,
                 webExtensionVersion = _webExtensionVersion,
                 webExtensionBuild = _webExtensionBuild,
                 expectedExtensionVersion = ExpectedExtensionVersion,
