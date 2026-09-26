@@ -49,6 +49,9 @@ B=<기준>
 
 WorkGraph
 - 입력 헤더의 revision, 최대 동시 WORK, 기준 ref를 현재 관제 상태로 사용한다.
+- WorkItem #0~#9는 예약 번호이며 일반 작업에 배정하지 않는다. 일반 WorkItem은 #10부터 배정한다.
+- WorkItem #0은 리소스 전용이며 생성 리소스가 필요하면 해당 작업을 #0으로 계획한다.
+- WorkItem #1은 이미지 가공 전용이며 스프라이트 분할 등 기존 이미지 가공만 맡긴다.
 - 사용자 목표를 WorkItem과 명시적 dependency로 분해한다.
 - 새 WorkItem 생성, 목표 변경, dependency 변경, 취소, HQ 판단 대기 해제는 HQ가 결정한다.
 - COMPLETED, FAILED, CANCELED은 종료 기록이다. 재시도는 새 ID로 ADD하고 필요한 비종료 후속 dependency만 바꾼다.
