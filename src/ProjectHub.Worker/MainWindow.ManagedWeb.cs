@@ -53,6 +53,15 @@ public partial class MainWindow
             return;
         }
 
+        if (status.State == "PROVISIONING")
+        {
+            statusText.Text = $"{role} Chrome for Testing 런타임 준비 중…";
+            statusText.Foreground = Brushes.DarkOrange;
+            showButton.IsEnabled = false;
+            hideButton.IsEnabled = false;
+            return;
+        }
+
         statusText.ToolTip =
             $"프로필: {status.ProfilePath}" +
             (string.IsNullOrWhiteSpace(status.ExecutablePath)
