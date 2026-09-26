@@ -267,10 +267,6 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             if (!patchResult.Success)
                 return Failure(patchResult.ErrorCode ?? "WORK_GRAPH_PATCH_REJECTED", turn.Body);
 
-            // HQ가 방금 요청한 GraphPatch 결과는 이미 HQ가 알고 있는 정의 상태다.
-            // 이후 HQ 입력에는 이 기준점 이후의 기계적 상태 변화만 전달한다.
-            _hqKnownSnapshot = _graph.Snapshot();
-
             if (!_schedulerStarted)
             {
                 _schedulerStarted = true;
