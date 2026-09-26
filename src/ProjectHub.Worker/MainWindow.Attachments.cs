@@ -115,20 +115,22 @@ public partial class MainWindow
         ObservableCollection<UserAttachmentInput> target)
     {
         if (e.Key != Key.V ||
-            (Keyboard.Modifiers & ModifierKeys.Control) == 0 ||
-            !System.Windows.Clipboard.ContainsImage())
+            (Keyboard.Modifiers & ModifierKeys.Control) == 0)
             return false;
-
-        if (target.Count >= UserAttachmentTransport.MaxFilesPerMessage)
-        {
-            ShowAttachmentFeedback(
-                0,
-                new[] { $"최대 {UserAttachmentTransport.MaxFilesPerMessage}개까지 첨부할 수 있습니다." });
-            return true;
-        }
 
         try
         {
+            if (!System.Windows.Clipboard.ContainsImage())
+                return false;
+
+            if (target.Count >= UserAttachmentTransport.MaxFilesPerMessage)
+            {
+                ShowAttachmentFeedback(
+                    0,
+                    new[] { $"최대 {UserAttachmentTransport.MaxFilesPerMessage}개까지 첨부할 수 있습니다." });
+                return true;
+            }
+
             var bitmap = System.Windows.Clipboard.GetImage();
             if (bitmap is null)
                 return false;
