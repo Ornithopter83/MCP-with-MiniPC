@@ -34,7 +34,8 @@ public partial class MainWindow
                 "TASK REQUEST",
                 request,
                 sizeBytes: System.Text.Encoding.UTF8.GetByteCount(request),
-                itemCount: 1);
+                itemCount: 1,
+                fileCount: attachments?.Count);
         }
         else
         {
@@ -44,6 +45,7 @@ public partial class MainWindow
                 request,
                 sizeBytes: System.Text.Encoding.UTF8.GetByteCount(request),
                 itemCount: 1,
+                fileCount: attachments?.Count,
                 includeHistory: false);
         }
 
@@ -105,6 +107,7 @@ public partial class MainWindow
                 jobId + "-hq-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             var webUserAttachments = BuildUserWebAttachments(attachments);
             var deliverUserAttachmentsToHq = stagedHqAttachments.Count > 0;
+            RunOnUi(() => ConsumePendingAttachments(attachments));
 
             if (continuing)
                 graph.RecoverPreparationFailuresForContinuation();
