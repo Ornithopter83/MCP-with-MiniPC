@@ -109,3 +109,16 @@
 ⑪ Worker의 app mode/session cleanup 테스트와 내장 확장의 managed-only/no-tabs 계약 테스트를 갱신했다.
 ⑫ JavaScript 문법과 extension/Bridge version-build 일치는 정적으로 확인했으며 Windows Worker 실제 빌드·게시와 ChatGPT 로그인/E2E는 아직 수행하지 않았다.
 
+제10조 (숨김 상태 heartbeat 유지)
+
+① clean app window 전환 뒤 숨김 상태에서 일정 시간이 지나면 Worker UI가 Web heartbeat 대기 상태로 떨어지는 현상을 확인했다.
+② 당시 숨김 실행은 `--start-minimized`와 화면 밖 위치를 함께 사용한 뒤 Win32 `SW_HIDE`까지 적용했고, Worker는 heartbeat가 10초만 끊겨도 연결 끊김으로 판정했다.
+③ 숨김 Chromium은 더 이상 `--start-minimized`를 사용하지 않고 Win32 `SW_HIDE`도 적용하지 않는다.
+④ 숨김 창은 `--window-position=-32000,-32000`로 화면 밖에 두되 정상 렌더링 window 상태를 유지한다.
+⑤ Chrome for Testing 실행 인자에 `--disable-background-timer-throttling`, `--disable-renderer-backgrounding`, `--disable-backgrounding-occluded-windows`를 추가했다.
+⑥ Worker의 전역 및 역할별 Web heartbeat 생존 판정을 10초에서 30초로 완화했다.
+⑦ content script에는 별도의 document.hidden 또는 visibilityState 기반 전송 차단이 없음을 확인했다.
+⑧ 확장 version/build는 0.3.0 / 2026-09-26.9를 유지한다. 이번 수정은 Worker Chromium 실행 및 연결 판정 변경이다.
+⑨ 숨김 실행 인자 테스트를 갱신해 최소화 플래그 부재와 세 가지 background throttling 비활성화 플래그를 검증한다.
+⑩ Windows 실제 빌드·게시와 장시간 숨김 heartbeat E2E는 아직 수행하지 않았다.
+
