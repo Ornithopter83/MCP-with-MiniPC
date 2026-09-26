@@ -1,7 +1,7 @@
 (() => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.2.0';
-  const EXTENSION_BUILD = '2026-09-26.4';
+  const EXTENSION_BUILD = '2026-09-26.5';
   if (document.getElementById(HOST_ID)) return;
   const host = document.createElement('div');
   host.id = HOST_ID;
