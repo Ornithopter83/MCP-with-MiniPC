@@ -35,10 +35,8 @@ dotnet run --project src/ProjectHub.Server
 
 Worker는 HQ, WORK, RESOURCE, JUDGE와 기계 계측 흐름을 관리한다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
 
-Worker는 HQ와 RESOURCE용 Web 브라우저 슬롯을 최대 두 개 관리할 수 있다. 두 슬롯은 서로 다른 persistent profile을 사용하고 평상시에는 화면 밖에서 실행하며, 사용자가 로그인하거나 대화를 선택해야 할 때 Worker UI에서 해당 브라우저를 표시할 수 있다. 호환 브라우저 런타임이 없으면 Worker는 공식 Chrome for Testing Stable win64를 사용자 로컬 데이터 영역에 자동 준비한다.
+HQ와 RESOURCE는 서로 다른 persistent profile의 Chrome for Testing을 사용한다. 로그인 정보는 profile에 유지하지만 브라우저를 시작할 때 이전 탭 복원 정보는 제거한다.
 
-관리형 브라우저에서 GPTWeb-Hub 확장은 시각 패널 없이 bridge 기능만 실행하고 현재 대화를 슬롯의 HQ 또는 RESOURCE 역할에 자동 연결한다. 수동 브라우저 연결 방식은 호환용으로 유지한다. 세부 정책은 `Web-Polish.md`에 둔다.
+각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 `--app` window로 실행된다. `로그인/표시`와 `숨김 실행`은 기존 창을 복원하지 않고 기존 슬롯 프로세스를 비동기로 종료한 뒤 새 visible/hidden app window를 시작한다.
 
-관리형 HQ/RESOURCE browser profile은 시작 또는 `로그인/표시` 시 해당 역할의 ChatGPT 대화 탭 하나만 활성 상태로 유지하고 같은 profile의 다른 ChatGPT 탭을 정리한다. 실행 중인 브라우저가 있으면 표시/숨김은 프로세스를 재시작하지 않고 기존 창 상태만 전환한다.
-
-과거 실행 기록과 작업 계획은 정책 원본으로 사용하지 않는다.
+GPTWeb-Hub는 관리형 Chromium 전용 bridge다. Worker가 발급한 runtime token이 없는 일반 Chrome과 임의의 ChatGPT 페이지는 Worker bridge에 연결할 수 없다. 세부 정책은 `Web-Polish.md`에 둔다.
