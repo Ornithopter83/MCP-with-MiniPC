@@ -60,6 +60,15 @@ function withManagedRoleMarker(value, role) {
   }
 }
 
+function isCanonicalConversationTab(value, conversationId) {
+  try {
+    const url = new URL(value);
+    return url.pathname === "/c/" + conversationId;
+  } catch {
+    return false;
+  }
+}
+
 function managedConversationUrl(conversationId, role) {
   const suffix = "?projecthub-managed-role=" + encodeURIComponent(role);
   return conversationId
@@ -81,14 +90,31 @@ async function ensureSingleManagedChatGptTab(message, sender) {
 
   let target = null;
   if (requestedConversationId) {
-    target = chatTabs.find(tab =>
-      tab.id !== senderTab?.id &&
-      conversationIdFromTabUrl(tab.url || "") === requestedConversationId) || null;
+    const senderMatches =
+      senderTab &&
+      conversationIdFromTabUrl(senderTab.url || "") === requestedConversationId;
+    const senderIsCanonical =
+      senderMatches &&
+      isCanonicalConversationTab(senderTab.url || "", requestedConversationId);
 
-    if (!target &&
-        senderTab &&
-        conversationIdFromTabUrl(senderTab.url || "") === requestedConversationId) {
+    if (senderMatches && !senderIsCanonical) {
       target = senderTab;
+    }
+
+    if (!target) {
+      target = chatTabs.find(tab =>
+        tab.id !== senderTab?.id &&
+        conversationIdFromTabUrl(tab.url || "") === requestedConversationId &&
+        !isCanonicalConversationTab(tab.url || "", requestedConversationId)) || null;
+    }
+
+    if (!target && senderMatches)
+      target = senderTab;
+
+    if (!target) {
+      target = chatTabs.find(tab =>
+        tab.id !== senderTab?.id &&
+        conversationIdFromTabUrl(tab.url || "") === requestedConversationId) || null;
     }
   }
 
