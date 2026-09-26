@@ -60,17 +60,18 @@ Worker가 하지 않는 것:
 
 ~~~text
 HQ       -> WORK
-WORK     -> HQ | JUDGE | RESOURCE_QUEUE
+일반 WORK -> HQ | JUDGE
+WORKITEM #0 -> RESOURCE_QUEUE
 WORK 실행 중 -> 기계 계측 요청 파일 등록 -> OBSERVATION sidecar
 OBSERVATION WORK_RESULT_REQUIRED -> 현재 WORK 응답 보류 -> 완료 후 같은 WORK 세션 OBSERVATION_RESULT
 OBSERVATION FINALIZE_ONLY -> 메인 의미 흐름 비차단 -> HQ END 시 기계적 대기 대상
 JUDGE 요청 -> Worker가 JEV raw 결과를 요청한 같은 WORK 세션에 반환
-RESOURCE_QUEUE 접수 -> HQ (RESOURCE_QUEUED)
-RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 알림 queue
+RESOURCE_QUEUE 접수 -> WORKITEM #0
+RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 결과 WORKITEM #0
 HQ ACTION=END -> 의미 작업 종료 고정 -> Worker가 기계적 대기 작업 확인
 기계적 대기 작업 있음 -> 대기 -> 모두 종료 -> DONE / DONE_WITH_ERROR
 PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ (기존 HQ/WORK 세션 유지)
-HQ END 전 RESOURCE 성공/실패 결과 -> 다음 WORK 입력에 기계적으로 전달
+HQ END 전 RESOURCE 성공/실패 결과 -> WORKITEM #0에 기계적으로 반환
 UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
 UNKNOWN 재발 -> 로그 기록 후 종료
 ~~~
@@ -160,9 +161,11 @@ RESOURCE_TYPE: IMAGE
 <자연어 리소스 생성 요청>
 ~~~
 
+[GOTO : RESOURCE]는 WORKITEM #0에서만 허용한다. 다른 WorkItem의 RESOURCE 직접 요청은 허용하지 않는다.
+
 JUDGE는 ACTION/GOTO를 만들지 않는다. Worker가 JEV raw 결과를 요청한 같은 WORK 세션에 JUDGMENT 입력으로 반환한다.
 
-RESOURCE는 메인 역할 상태와 분리된 사이드카 대기열로 실행한다. WORK가 RESOURCE를 요청하면 Worker는 명시된 종류와 자연어 요청을 FIFO 대기열에 넣고 접수 사실을 HQ에 전달한다. 이후 의미적 다음 단계는 HQ가 현재 사용자 목표와 관측된 실행 사실을 바탕으로 결정한다. HQ가 아직 END하지 않은 동안 RESOURCE 완료가 성공이든 실패든 Worker는 해당 requestId, 종류, 결과/오류를 다음 WORK 입력에 기계적으로 함께 전달한다. RESOURCE 실패는 UNKNOWN으로 승격해 HQ에 우회 전달하지 않는다. HQ가 END한 뒤에는 RESOURCE 완료 때문에 HQ나 WORK를 다시 호출하지 않는다. Worker는 HQ 종료 상태를 고정하고 남은 기계적 대기 작업만 추적한다.
+RESOURCE는 메인 역할 상태와 분리된 사이드카 대기열로 실행한다. 생성 리소스 요청은 WORKITEM #0에서만 FIFO 대기열에 넣을 수 있다. RESOURCE 완료가 성공이든 실패든 Worker는 해당 requestId, 종류, 결과/오류를 WORKITEM #0에 기계적으로 반환한다. 다른 WorkItem은 RESOURCE를 직접 요청하거나 RESOURCE 완료 결과를 직접 받지 않는다. RESOURCE 실패는 UNKNOWN으로 승격해 HQ에 우회 전달하지 않는다. HQ가 END한 뒤에는 RESOURCE 완료 때문에 HQ나 일반 WORK를 다시 호출하지 않는다. Worker는 HQ 종료 상태를 고정하고 남은 기계적 대기 작업만 추적한다.
 
 비동기 계측은 새로운 GOTO 목적지나 AI 역할이 아니다. WORK는 현재 호출 중 헤더에 제공된 기계 작업 요청 폴더에 OBSERVATION JSON을 원자적으로 게시할 수 있다. Worker는 요청된 명령을 별도 프로세스로 실행하고 시간 초과·종료 코드·표준 출력/오류·명시된 결과 경로를 기계적으로 수집한다. WORK_RESULT_REQUIRED 요청이 있으면 현재 WORK 응답의 의미 라우팅을 보류하고 AI를 호출하지 않은 채 완료를 기다린 뒤 같은 WORK 세션에 OBSERVATION_RESULT를 전달한다. FINALIZE_ONLY 요청은 의미 흐름을 막지 않으며 HQ END 뒤 최종 DONE 전환 전에 Worker가 완료만 확인한다.
 
@@ -226,17 +229,19 @@ Worker -> WORK  JEV raw 결과를 같은 세션에 반환
 
 ## 8. RESOURCE 흐름
 
+WORKITEM #0은 리소스 전용 예약 WorkItem이다. 생성 리소스의 요청과 완료 결과는 반드시 WORKITEM #0을 통과한다. WORKITEM #0은 리소스 관련 작업만 다루며, 다른 WorkItem은 RESOURCE를 직접 호출할 수 없다.
+
 RESOURCE는 ChatGPT Web이 생성해 파일로 반환할 수 있는 모든 생성 리소스를 생성 → 수집/다운로드 → 저장 → 기록하는 사이드카 FIFO 대기열로 수행한다. 이미지·오디오·문서 등 구체 형식은 역할 의미가 아니라 반환 파일의 MIME 형식과 파일 정보로 구분한다.
 생성 리소스의 제작·수급은 RESOURCE 경로만 사용한다. RESOURCE 실패 시 HQ는 직접 생성하거나 외부 사이트에서 대체 리소스를 수급하도록 지시하지 않고, WORK도 자체 생성 도구나 외부 사이트로 우회하지 않는다. 후속 선택지는 RESOURCE 재요청, 요청 범위 조정, HQ 보고 또는 필요한 경우 PAUSE다.
 
 ~~~text
-WORK -> GOTO:RESOURCE + 자연어 요청
+WORKITEM #0 -> GOTO:RESOURCE + 자연어 요청
   └─ Worker RESOURCE FIFO queue
        ├─ 현재 1건만 RESOURCE Web 실행
        ├─ 추가 요청은 QUEUED
        ├─ 생성 파일 전부 수집/다운로드
        ├─ assets/resources/<requestId>/ 아래에 안전한 파일명으로 저장
-       └─ 완료 결과 queue -> HQ END 전 필요할 때 다음 WORK 호출에 전달
+       └─ 완료 결과 -> WORKITEM #0
 
 HQ ACTION=END
   -> Worker가 현재 실행 구간의 HQ 의미 작업 종료 상태를 고정
@@ -247,7 +252,7 @@ HQ ACTION=END
   -> 사용자 작업 추가가 들어오면 기존 HQ/WORK 세션을 유지한 USER_FOLLOWUP 새 실행 구간 시작
 ~~~
 
-WORK의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤 첫 줄에는 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE` 중 하나를 명시하고, 그 아래에는 ChatGPT Web에 그대로 보낼 새로운 리소스 생성 요청 한 건의 자연어 지시만 둔다. 한 요청에는 한 종류만 포함하며 서로 다른 생성 종류는 별도 요청으로 분리한다. Worker는 이 분류를 추론하지 않고 명시된 토큰만 기계적으로 읽으며, RESOURCE Web에는 분류 헤더를 제거한 자연어 본문만 전달한다. 기존 요청의 상태 조회·취소·추적·확인·보고는 RESOURCE 라우팅으로 보내지 않는다.
+WORKITEM #0의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤 첫 줄에는 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE` 중 하나를 명시하고, 그 아래에는 ChatGPT Web에 그대로 보낼 새로운 리소스 생성 요청 한 건의 자연어 지시만 둔다. 한 요청에는 한 종류만 포함하며 서로 다른 생성 종류는 별도 요청으로 분리한다. Worker는 이 분류를 추론하지 않고 명시된 토큰만 기계적으로 읽으며, RESOURCE Web에는 분류 헤더를 제거한 자연어 본문만 전달한다. 기존 요청의 상태 조회·취소·추적·확인·보고는 RESOURCE 라우팅으로 보내지 않는다.
 
 ~~~text
 [GOTO : RESOURCE]
@@ -298,7 +303,7 @@ RESOURCE가 하지 않는 것:
 대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold 활성 border/orbit은 사용하지 않는다. 실행 중에는 현재 메인 역할이 gold 활성 border/orbit으로 강조된다. RESOURCE 사이드카가 실행/대기 중이면 메인 역할과 별개로 RESOURCE 카드의 gold orbit도 독립 동작하며 상태와 대기 건수를 표시한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
 
 메시지 및 작업 이력 그룹의 전체 크기는 고정한다. PAUSE, CANCELED 또는 DONE / DONE_WITH_ERROR 상태에서는 기존 이력을 위쪽에 유지하고 목록 아래에 이력 카드 약 두 개 높이의 후속 메시지 입력 영역을 표시한다. 하단에는 기존 실행/새 작업 버튼 왼쪽에 녹색 계열의 작업 추가 버튼을 표시한다. 작업 추가는 기존 이력과 HQ/WORK 세션을 유지한 채 USER_FOLLOWUP을 시작하며, 새 작업 버튼만 기존 세션과 이력을 명시적으로 초기화한다.
-WorkGraph 상태를 별도의 `병렬 WORK` 패널로 표시하지 않는다. WORK 진행·응답 History 카드는 WorkItem 생성 순서를 기준으로 안정적인 `작업 (#N)` 표기를 사용하고, 내부 workItemId는 Full Message와 이벤트 로그의 참조 정보로 보존한다.
+WorkGraph 상태를 별도의 `병렬 WORK` 패널로 표시하지 않는다. 메시지 및 작업 이력 카드는 예약 WorkItem을 `작업 (#0, 리소스)`, `작업 (#1, 이미지 가공)`으로 표시하고, 일반 WorkItem은 `작업 (#N)` 형식을 사용한다. 내부 workItemId는 Full Message와 이벤트 로그의 참조 정보로 보존한다.
 WORK 진행(`ROLE_PROGRESS`) History 카드는 제목 1줄과 본문 4줄, 총 5줄 높이로 고정한다. 본문은 18px line height의 4줄 영역을 사용하고 초과 내용은 잘라내며 전체 원문은 Full Message에서 확인한다. 짧은 본문도 같은 카드 높이를 유지한다.
 현재 작업의 `3. 작업` 카드 하단에는 RUN/READY/BLOCKED/COMPLETED/FAILED 문자열 요약을 표시하지 않고, RUNNING WorkItem 수만 8칸 고정 녹색 게이지로 표시한다. 0건은 `□□□□□□□□`, 4건은 `■■■■□□□□`로 표시한다.
 
@@ -400,6 +405,11 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 
 ## 15. 동적 병렬 WORK Graph
 
+WorkItem 번호 #0~#9는 시스템 예약 영역이며 HQ가 일반 작업에 임의 배정하지 않는다. 일반 WorkItem은 #10부터 배정한다.
+- WORKITEM #0: 리소스 전용. RESOURCE 요청과 완료 결과의 유일한 WorkItem 경로다.
+- WORKITEM #1: 이미지 가공 전용. 스프라이트 분할 등 기존 이미지의 가공만 담당한다.
+- WORKITEM #2~#9: 예약 상태로 유지한다.
+
 병렬 WORK는 고정된 WORK-1, WORK-2 같은 새 역할을 만들지 않는다. WORK 역할은 동일하며 Worker가 설정된 최대 동시 실행 수 안에서 HQ가 승인한 WorkItem을 독립 실행 슬롯에 배정한다.
 
 의미 판단 경계:
@@ -469,7 +479,8 @@ Integration:
 
 기존 사이드카:
 - RESOURCE, JUDGE, OBSERVATION은 기존 역할과 책임을 유지한다.
-- 병렬 실행에서는 모든 요청·완료·결과에 workItemId를 연결해 원래 WORK 세션으로 기계적으로 귀속한다.
+- RESOURCE 요청과 완료 결과의 workItemId는 WORKITEM #0으로 귀속한다.
+- JUDGE와 OBSERVATION은 요청한 WorkItem에 귀속한다.
 - WORK_RESULT_REQUIRED OBSERVATION은 해당 WorkItem만 대기시키며 다른 READY WorkItem의 실행을 막지 않는다.
 
 종료:
