@@ -60,6 +60,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("reconcileConversationAfterSend", StringComparison.Ordinal));
         Assert.True(source.Contains("observeConversationMutation", StringComparison.Ordinal));
         Assert.True(source.Contains("conversationTurns()", StringComparison.Ordinal));
+        Assert.True(source.Contains("currentSendConfirmed=taskUserMessageConfirmed()||sendTriggeredForActiveTask", StringComparison.Ordinal));
         Assert.False(source.Contains("messages.length<=beforeMessages.length", StringComparison.Ordinal));
     }
 
