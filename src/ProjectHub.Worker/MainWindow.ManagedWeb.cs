@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Media;
 
 namespace ProjectHub.Worker;
 
@@ -36,7 +35,7 @@ public partial class MainWindow
         if (status is null)
         {
             statusText.Text = $"{role} 브라우저 관리 사용 안 함";
-            statusText.Foreground = Brushes.DarkOrange;
+            statusText.Foreground = System.Windows.Media.Brushes.DarkOrange;
             showButton.IsEnabled = false;
             hideButton.IsEnabled = false;
             return;
@@ -48,7 +47,7 @@ public partial class MainWindow
         if (!string.IsNullOrWhiteSpace(status.Error))
         {
             statusText.Text = $"{role} 브라우저 오류 · {status.Error}";
-            statusText.Foreground = Brushes.OrangeRed;
+            statusText.Foreground = System.Windows.Media.Brushes.OrangeRed;
             statusText.ToolTip = status.Error;
             return;
         }
@@ -56,7 +55,7 @@ public partial class MainWindow
         if (status.State == "PROVISIONING")
         {
             statusText.Text = $"{role} Chrome for Testing 런타임 준비 중…";
-            statusText.Foreground = Brushes.DarkOrange;
+            statusText.Foreground = System.Windows.Media.Brushes.DarkOrange;
             showButton.IsEnabled = false;
             hideButton.IsEnabled = false;
             return;
@@ -71,7 +70,7 @@ public partial class MainWindow
         if (!status.Running)
         {
             statusText.Text = $"{role} 브라우저 중지됨";
-            statusText.Foreground = Brushes.DarkOrange;
+            statusText.Foreground = System.Windows.Media.Brushes.DarkOrange;
             return;
         }
 
@@ -79,8 +78,8 @@ public partial class MainWindow
             ? $"{role} 브라우저 숨김 실행 중"
             : $"{role} 브라우저 표시 중 · 로그인/대화 선택 가능";
         statusText.Foreground = status.Hidden
-            ? Brushes.ForestGreen
-            : (Brush)new BrushConverter().ConvertFromString("#1477E8")!;
+            ? System.Windows.Media.Brushes.ForestGreen
+            : (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#1477E8")!;
     }
 
     private async Task EnsureManagedWebRuntimesStartedAsync()
@@ -90,6 +89,17 @@ public partial class MainWindow
 
         CoordinatorManagedWebRuntimeStatusText.Text = "HQ 브라우저 런타임 준비 중…";
         ResourceManagedWebRuntimeStatusText.Text = "RESOURCE 브라우저 런타임 준비 중…";
+
+        var terminated = _managedWebRuntimeManager.TerminateStaleOwnedBrowserProcesses();
+        if (terminated > 0)
+        {
+            AddTaskMessage(
+                "WEB RUNTIME",
+                $"이전 Worker가 남긴 관리형 Chromium 프로세스 {terminated}개를 정리했습니다.",
+                status: "RECOVERED",
+                includeHistory: false);
+            await Task.Delay(500);
+        }
 
         var hq = await _managedWebRuntimeManager.StartHiddenAsync(
             ManagedWebRole.Hq,
