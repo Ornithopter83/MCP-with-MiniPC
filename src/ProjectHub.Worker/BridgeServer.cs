@@ -38,6 +38,11 @@ public sealed class BridgeServer : IDisposable
     private readonly Dictionary<string, string> _webConversationTitles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _webExtensionVersions = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _webExtensionBuilds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _managedTabCleanupGenerations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["HQ"] = 0,
+        ["RESOURCE"] = 0
+    };
     public bool WebConnected
     {
         get { lock (_gate) return _lastWebHeartbeat is not null && DateTimeOffset.UtcNow - _lastWebHeartbeat < TimeSpan.FromSeconds(10); }
@@ -89,6 +94,22 @@ public sealed class BridgeServer : IDisposable
     public string? GetRoleConversationId(string role)
     {
         lock (_gate) return _state.RoleBindings.TryGetValue(NormalizeRole(role), out var value) ? value : null;
+    }
+
+    public int RequestManagedTabCleanup(string role)
+    {
+        lock (_gate)
+        {
+            var normalizedRole = NormalizeRole(role);
+            if (normalizedRole is not ("HQ" or "RESOURCE"))
+                throw new ArgumentOutOfRangeException(nameof(role), role, "관리형 Web 역할은 HQ 또는 RESOURCE여야 합니다.");
+
+            var next = _managedTabCleanupGenerations.TryGetValue(normalizedRole, out var current)
+                ? current + 1
+                : 1;
+            _managedTabCleanupGenerations[normalizedRole] = next;
+            return next;
+        }
     }
 
     public WebRoleBindingStatus GetRoleBindingStatus(string role)
@@ -365,6 +386,7 @@ public sealed class BridgeServer : IDisposable
                 webProjectId = _webProjectId,
                 webConversationBound = WebConversationBound,
                 roleBindings = _state.RoleBindings,
+                managedTabCleanupGenerations = _managedTabCleanupGenerations,
                 webExtensionVersion = _webExtensionVersion,
                 webExtensionBuild = _webExtensionBuild,
                 expectedExtensionVersion = ExpectedExtensionVersion,
