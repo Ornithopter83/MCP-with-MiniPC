@@ -250,8 +250,23 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         {
             if (!process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
+                var closedGracefully = false;
+                try
+                {
+                    closedGracefully = process.CloseMainWindow();
+                    if (closedGracefully)
+                        closedGracefully = process.WaitForExit(3000);
+                }
+                catch
+                {
+                    closedGracefully = false;
+                }
+
+                if (!closedGracefully && !process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(5000);
+                }
             }
         }
         catch
