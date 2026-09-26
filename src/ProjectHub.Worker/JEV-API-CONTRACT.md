@@ -2,7 +2,7 @@
 
 갱신일: 2026-09-24
 
-정책 원본은 Master-Polish.md다.
+상위 공통 정책은 Master-Polish.md이며 Worker 세부 정책은 Worker-Polish.md다.
 
 이 문서는 Worker/Judge 어댑터가 JEV API와 통신할 때의 **전송 계약**만 정의한다.
 
