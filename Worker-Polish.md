@@ -451,3 +451,12 @@ Integration:
 ⑨ Web 작업의 진행 단계는 taskId, conversationId와 leaseId에 귀속하며 재시도 시 이미 확정된 기계 단계와 새 시도를 구분할 수 있게 보존한다.
 ⑩ 관리형 브라우저는 unpacked extension 자동 로드를 지원하는 호환 런타임을 사용한다. 명시된 BrowserRuntime 또는 PROJECTHUB_CHROMIUM_PATH가 없으면 Worker는 공식 Chrome for Testing Stable win64 런타임을 사용자 로컬 데이터 영역에 자동 준비할 수 있다.
 
+제14조 (본문 구조 마커)
+
+① ACTION, GOTO, NEXT처럼 라우팅 목적지를 결정하는 제어행의 위치 규칙은 각 라우팅 계약이 정한 순서를 엄격히 유지한다.
+② WORK_GRAPH_PATCH, WORK_ITEM_STATUS, RESOURCE_TYPE, REPORT, VALIDATION REQUEST처럼 라우팅 뒤 본문 내부의 구조 마커는 본문의 첫 줄에 고정하지 않고 해당 마커 행을 기계적으로 탐색할 수 있다.
+③ 본문 구조 마커는 한 요청 또는 한 보고에 정확히 하나만 허용하며 중복 발견 시 기계적 오류로 처리한다.
+④ WORK_GRAPH_PATCH는 마커 뒤에서 첫 번째 완전한 JSON 객체 하나만 읽고 그 뒤 설명을 JSON 일부로 해석하지 않는다.
+⑤ RESOURCE_TYPE 앞의 설명은 생성 프롬프트로 전달하지 않고 RESOURCE_TYPE 행 뒤의 자연어 요청만 전달한다.
+⑥ Worker는 마커의 위치와 구조만 판단하며 마커 앞뒤 설명의 의미를 해석해 라우팅 또는 작업 결과를 결정하지 않는다.
+
