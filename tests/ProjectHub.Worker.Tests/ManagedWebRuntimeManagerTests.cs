@@ -80,7 +80,10 @@ public sealed class ManagedWebRuntimeManagerTests
         Assert.True(arguments.Any(item => item.StartsWith("--load-extension=", StringComparison.Ordinal)));
         Assert.True(arguments.Any(item => item.StartsWith("--disable-extensions-except=", StringComparison.Ordinal)));
         Assert.Contains("--window-position=-32000,-32000", arguments);
-        Assert.Contains("--start-minimized", arguments);
+        Assert.DoesNotContain("--start-minimized", arguments);
+        Assert.Contains("--disable-background-timer-throttling", arguments);
+        Assert.Contains("--disable-renderer-backgrounding", arguments);
+        Assert.Contains("--disable-backgrounding-occluded-windows", arguments);
         Assert.True(arguments.Any(item =>
             item.StartsWith("--app=https://chatgpt.com/c/resource-conversation?", StringComparison.Ordinal)));
         Assert.True(arguments.Any(item =>
@@ -102,6 +105,9 @@ public sealed class ManagedWebRuntimeManagerTests
 
         Assert.DoesNotContain("--window-position=-32000,-32000", arguments);
         Assert.DoesNotContain("--start-minimized", arguments);
+        Assert.Contains("--disable-background-timer-throttling", arguments);
+        Assert.Contains("--disable-renderer-backgrounding", arguments);
+        Assert.Contains("--disable-backgrounding-occluded-windows", arguments);
         Assert.Single(arguments.Where(item => item.StartsWith("--app=", StringComparison.Ordinal)));
     }
 
