@@ -441,6 +441,29 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         return builder.ToString().TrimEnd();
     }
 
+    private static string FormatEndRejected(
+        IReadOnlyList<WorkItemSnapshot> openItems,
+        WorkGraphSnapshot snapshot)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("HQ의 END 요청 시 완료되지 않은 WorkItem이 남아 있어 종료를 보류했습니다.");
+        builder.AppendLine($"revision={snapshot.Revision}");
+        builder.AppendLine($"openItemCount={openItems.Count}");
+        builder.AppendLine("openItems:");
+        foreach (var item in openItems.OrderBy(value => value.CreatedOrder))
+        {
+            builder.Append("- id=").Append(item.Id)
+                .Append(" state=").Append(item.State.ToString().ToUpperInvariant());
+            if (!string.IsNullOrWhiteSpace(item.BlockCode))
+                builder.Append(" blockCode=").Append(item.BlockCode);
+            if (!string.IsNullOrWhiteSpace(item.FailureCode))
+                builder.Append(" failureCode=").Append(item.FailureCode);
+            builder.AppendLine();
+        }
+        builder.Append("위 항목은 기계적 상태이며 작업 의미에 대한 판정이 아닙니다.");
+        return builder.ToString().TrimEnd();
+    }
+
     private static string BuildQuiescentSignature(ParallelWorkSchedulerSnapshot snapshot)
         => string.Join(
             "|",

@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace ProjectHub.Worker;
 
 public sealed record GitWorkspaceBootstrapState(

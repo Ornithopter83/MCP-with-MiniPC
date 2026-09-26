@@ -43,7 +43,7 @@ public partial class MainWindow
                 (state.Branch ?? "unknown") + Environment.NewLine + Environment.NewLine +
                 "확인을 누르면 기준점을 생성하고, 취소를 누르면 작업을 시작하지 않습니다.";
 
-                var answer = MessageBox.Show(
+                var answer = System.Windows.MessageBox.Show(
                 this,
                 prompt,
                 "Git 기준점 생성",

@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace ProjectHub.Worker;
 
 public interface IParallelJudgeTransport
@@ -137,7 +139,7 @@ public sealed class ParallelJudgeWorkItemRouter : IAsyncDisposable
                 ? $"WorkItem {block.WorkItemId}"
                 : block.Goal!,
             1,
-            block.WorktreePath,
+            block.WorktreePath!,
             block.Body,
             block.Body,
             Array.Empty<CodexCliFile>(),

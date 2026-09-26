@@ -59,6 +59,15 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - 최소 Git 준비 자동화까지 소스 구현 완료 상태이며 작업 16은 Windows 실검증 대기 상태
 - 다음 우선순위는 Windows dotnet test/build와 실제 max=1 동일-runtime 회귀, max=4 병렬 E2E, Integration landing E2E
 
+## 2026-09-26 원격 main 빌드 및 복사
+
+- 원격 `main` `4b43568715791bd720c979aa9078dced75aa0ed6` 기준으로 작업 트리를 맞췄다.
+- Git 준비 화면의 WPF `MessageBox` 참조를 명시해 WinForms와의 이름 충돌을 해결했다.
+- Release 빌드에서 추가 확인된 `System.IO` using 누락 및 END 거부 메시지 formatter 누락을 수정했다.
+- `dotnet build ProjectHub.sln -c Release --no-restore -v:q` 성공: 경고 0, 오류 0.
+- win-x64 Release publish 성공. Worker 프로세스가 종료 상태임을 확인한 뒤 `C:\AI-AGENT\Worker\ProjectHub.Worker.exe`로 복사했고 SHA-256 일치.
+- 자동 테스트와 Explorer 실사용 검증은 실행하지 않았다.
+
 착수 commit:
 - 정책/계획: `0c87a0021643efc00e147fead82ed45cb1bf4c91`
 - WorkGraph 기반: `49a51cbd0e259dd43f7bd3fffe2484f2117dd0d8`

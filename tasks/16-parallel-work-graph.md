@@ -662,3 +662,12 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `events/<jobId>.jsonl`은 세션 복구와 실시간 관측을 위한 Job 단위 원시 이벤트 스트림으로 그대로 유지한다.
 - `6c8b7f649566e3b855756dbf62ea94e8f7314a5d`: transcript 파일명의 시각 문자열이 호출 시각의 offset을 그대로 사용하도록 고정해 환경 timezone에 따른 이름 변화를 없앴다.
 - `CommandTranscriptPathUsesShortTimestampAndAvoidsOverwrite` 테스트를 추가했다.
+
+
+### 2026-09-26 원격 최신 소스 Release 검증
+
+- 원격 `main` `4b43568715791bd720c979aa9078dced75aa0ed6`를 기준으로 동기화했다.
+- Git 준비 화면에서 `System.Windows.MessageBox`를 명시해 참조 모호성을 해결했다.
+- Release 컴파일에서 확인된 파일 시스템 using 누락과 END 거부 보고 formatter 누락을 보완했다.
+- Release solution build는 경고 0, 오류 0으로 성공했고 win-x64 publish와 배포 폴더 복사를 완료했다.
+- 자동 테스트와 Explorer E2E는 이번에 실행하지 않았으며 계속 실검증 대기다.

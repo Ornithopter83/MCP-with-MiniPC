@@ -341,8 +341,6 @@ public sealed class ParallelWorkSchedulerTests
         })).Success);
 
         var executor = new ControlledExecutor();
-        executor.SetControlled("W1");
-
         await using var scheduler = new ParallelWorkScheduler(graph, executor);
         await scheduler.StartAsync();
 
@@ -360,7 +358,7 @@ public sealed class ParallelWorkSchedulerTests
         Assert.Equal("worktree-W1", item.WorktreePath);
         Assert.Equal("session-W1", item.SessionId);
 
-        executor.Release("W1");
+        executor.Complete("W1");
         await scheduler.WaitForQuiescenceAsync();
     }
 
