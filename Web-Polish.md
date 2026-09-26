@@ -49,3 +49,12 @@
 ② runtime token과 HQ 또는 RESOURCE 역할을 확인하지 못하면 content script는 bridge 초기화를 시작하지 않는다.
 ③ manifest는 필요한 저장소와 ChatGPT/OpenAI 파일 접근 권한만 유지하며 browser tabs 권한을 요구하지 않는다.
 ④ 일반 Chrome에 같은 unpacked extension 경로가 남아 있더라도 runtime token이 없으면 Worker와 연결되지 않는다.
+
+제7조 (사용자 입력 첨부)
+
+① HQ Web 작업에 사용자 첨부가 있으면 Worker는 BridgeTask의 attachments에 파일명, MIME, 크기, downloadUrl과 SHA-256을 포함한다.
+② content script는 Worker의 인증된 loopback attachment URL에서 bytes를 가져와 SHA-256을 다시 계산하고 일치할 때만 ChatGPT file input에 File 객체로 추가한다.
+③ 첨부 다운로드는 일반 bridge 요청과 같은 managed runtime token 헤더를 사용한다.
+④ Web으로 전달하는 프롬프트에는 실제 첨부 파일과 함께 downstream WORK가 참조할 workspace staging 경로와 SHA-256 메타데이터를 제공할 수 있다.
+⑤ 확장은 첨부 파일의 내용 의미나 적합성을 판정하지 않고 실제 bytes 전달과 hash 검증만 수행한다.
+
