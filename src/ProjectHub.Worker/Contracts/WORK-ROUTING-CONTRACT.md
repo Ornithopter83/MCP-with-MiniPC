@@ -20,6 +20,8 @@ JUDGE
 - 계측 결과의 의미 해석과 후속 수정 여부는 WORK가 결정한다.
 
 RESOURCE
+- [GOTO : RESOURCE]는 WorkItem #0에서만 사용한다. 다른 WorkItem은 RESOURCE를 직접 요청하지 않는다.
+- WorkItem #0은 리소스 관련 작업만 수행한다.
 - 생성 리소스의 제작·수급은 반드시 RESOURCE 경로만 사용하며, RESOURCE 실패 시 자체 생성 도구나 외부 사이트로 우회하지 않는다.
 - 요청 첫 줄에는 RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE 중 하나를 쓴다.
 - 한 요청에는 한 종류의 새로운 생성 리소스만 포함한다.
@@ -31,6 +33,7 @@ RESOURCE
 - GOTO 뒤의 내용은 불투명 본문이며 JUDGE만 기계적 전송 구조를 사용한다.
 
 WorkItem
+- WorkItem #1은 이미지 가공 전용이며 스프라이트 분할 등 기존 이미지의 가공만 수행한다. 새 생성 리소스는 만들지 않는다.
 - 현재 WorkItem의 목표와 선행 결과 범위를 벗어난 새 독립 작업을 직접 시작하지 않는다.
 - 새 독립 작업이 필요하면 HQ에 SPLIT_REQUEST로 보고한다.
 - HQ 판단이나 외부 의미 결정이 필요해 계속할 수 없으면 BLOCKED로 보고한다.
