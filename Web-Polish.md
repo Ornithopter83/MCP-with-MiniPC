@@ -1,6 +1,6 @@
 # Web-Polish — ProjectHub Web 확장 정책
 
-갱신일: 2026-09-26 (KST)
+갱신일: 2026-09-27 (KST)
 
 이 문서는 `extension/gptweb-hub`의 장기 정책을 정의한다.
 
@@ -68,4 +68,16 @@
 ⑥ 일반 conversation article을 무조건 user 메시지로 취급하지 않고 실제 role 속성 또는 role이 명시된 turn만 user/assistant로 분류한다.
 ⑦ SEND_CONFIRM 제한시간 직전에는 현재 DOM에서 이번 prompt user turn과 그 뒤 assistant turn을 다시 reconciliation하고 증거가 있으면 실패 대신 WAIT_RESPONSE로 복구한다.
 ⑧ latch, mutation 확인과 timeout 복구는 SEND_EVIDENCE_LATCHED, SEND_MUTATION_CONFIRMED, SEND_TIMEOUT_RECOVERED 진행 단계로 기록한다.
+
+제9조 (assistant 결과 회수)
+
+① Send 확인 뒤에는 assistant turn 감지와 assistant text 추출을 각각 ASSISTANT_TURN_DETECTED, ASSISTANT_TEXT_EXTRACTED 기계 단계로 기록한다.
+② role-aware turn 탐지가 실패하면 현재 prompt를 포함하는 새 conversation turn과 그 다음 conversation turn의 순서를 사용해 assistant 결과를 회수할 수 있다.
+③ 일반 HQ 응답의 다운로드 파일은 현재 assistant 응답 turn 내부에서만 탐지해 같은 요청의 user 첨부나 다른 과거 turn 파일을 결과로 오인하지 않는다.
+④ 응답 파일 후보가 새로 나타나면 response snapshot을 변경해 텍스트 안정화 타이머를 다시 시작하고 파일이 안정된 뒤 텍스트와 함께 제출한다.
+⑤ 일반 Web 파일은 WEB_FILE_DETECTED, WEB_FILE_DOWNLOAD_START/PROGRESS, WEB_FILE_DOWNLOAD_VERIFIED, WEB_FILES_CAPTURED 단계로 계측한다.
+⑥ Content script 직접 fetch가 실패한 허용된 ChatGPT/OpenAI URL은 background service worker의 fetch-resource-file 경로로 재시도한다.
+⑦ 일반 응답 파일 payload는 RESOURCE와 같은 base64, MIME, fileName, SHA-256 형식을 사용하되 ResultType은 TEXT_WITH_FILES로 구분할 수 있다.
+⑧ Worker result endpoint 제출 직전 RESULT_POSTING을 기록하고 Worker는 일반 결과 파일을 별도 web-results 경로에 저장한다.
+⑨ CLAIMED 진행 상세에는 현재 extension version/build를 포함한다.
 
