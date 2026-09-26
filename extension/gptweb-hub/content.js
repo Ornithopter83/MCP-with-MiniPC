@@ -375,19 +375,22 @@ function observeResponse(){
   const prompt=normalizeText(workerMessage?.textContent||'');
   const assistantEvidence=assistantTurnEvidence();
   const fallbackResponse=responseTurnAfterPrompt(prompt);
+  const genericResponse=latestGenericResponseFallback(prompt);
   const text=currentResponseText(prompt);
   const candidates=isResource?latestGeneratedResourceCandidates():readyResponseFileCandidates();
   const ready=isResource?readyResourceCandidates():readyResponseFileCandidates();
-  const responseTurnDetected=!!assistantEvidence||!!fallbackResponse;
+  const responseTurnDetected=!!assistantEvidence||!!fallbackResponse||!!genericResponse;
   if(!responseTurnDetected&&!text&&!candidates.length)return;
 
   if(responseTurnDetected&&!responseTurnLogged){
     responseTurnLogged=true;
     reportProgress(
       'ASSISTANT_TURN_DETECTED',
-      fallbackResponse&&!assistantEvidence
-        ? 'prompt 다음 conversation turn fallback으로 assistant 응답을 확인했습니다.'
-        : 'assistant turn을 확인했습니다. evidence='+(assistantEvidence||'CONTAINER'));
+      genericResponse&&!assistantEvidence&&!fallbackResponse
+        ? 'role 속성 없이 새 Markdown/본문 영역으로 assistant 응답을 확인했습니다.'
+        : fallbackResponse&&!assistantEvidence
+          ? 'prompt 다음 conversation turn fallback으로 assistant 응답을 확인했습니다.'
+          : 'assistant turn을 확인했습니다. evidence='+(assistantEvidence||'CONTAINER'));
   }
   if(text&&!responseTextLogged){
     responseTextLogged=true;
@@ -590,6 +593,6 @@ function observeResponse(){
     }catch{}
     resetExtensionState();
   }  settingsForm.onsubmit=async e=>{e.preventDefault();try{settings=validate(Object.fromEntries(new FormData(settingsForm)));if(globalThis.chrome?.storage?.local)await chrome.storage.local.set(settings);settingsModal.classList.add('hidden');refresh();}catch(e){testStatus.textContent=e.message;testStatus.className='test-status error';}}; root.querySelector('.reload-extension').onclick=async()=>{const button=root.querySelector('.reload-extension');button.disabled=true;systemText.textContent='업데이트 적용 중...';await resetWorkerTask();if(globalThis.chrome?.runtime?.sendMessage){chrome.runtime.sendMessage({type:'reload-extension'},()=>{if(chrome.runtime.lastError){systemText.textContent=chrome.runtime.lastError.message;button.disabled=false;return;}setTimeout(()=>location.reload(),500);});}else{location.reload();}};
-  let last=location.href;const nav=()=>{if(location.href===last)return;const followBinding=!!currentConversationId&&lastBoundConversationId===currentConversationId;navigationGeneration++;last=location.href;activeTaskId=null;sentTaskId=null;activeLeaseId=null;activeResource=null;activeTaskOwner=null;resetResponseTracking();baselineAssistant='';baselineAssistantElement=null;baselineAssistantKey='';baselineAssistantCount=-1;baselineImageSources=new Set();baselineFileUrls=new Set();pendingResult=null;phase='IDLE';setTask('IDLE');refresh(followBinding)};const push=history.pushState;history.pushState=function(){const r=push.apply(this,arguments);nav();return r};const replace=history.replaceState;history.replaceState=function(){const r=replace.apply(this,arguments);nav();return r};addEventListener('popstate',nav);addEventListener('hashchange',nav);function observeConversationMutation(){if(activeTaskId&&['WAIT_SEND_READY','SEND_BUTTON_FIND','SEND_CONFIRM'].includes(phase)){const prompt=normalizeText(workerMessage?.textContent||'');const evidence=prompt?sendConfirmationEvidence(prompt):'';if(evidence&&['SEND_BUTTON_FIND','SEND_CONFIRM'].includes(phase)){reportProgress('SEND_MUTATION_CONFIRMED','DOM mutation에서 전송 증거를 즉시 확인했습니다. evidence='+evidence);enterWaitResponse('숨김 상태 DOM mutation에서 전송 확인 · '+evidence);return;}}if(phase==='WAIT_RESPONSE')observeResponse();}
-new MutationObserver(observeConversationMutation).observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-message-author-role','data-message-id','data-testid','data-is-streaming','data-streaming','aria-label','aria-busy','disabled']});loadSettings();setInterval(()=>refresh(),1500);setInterval(()=>{if(phase==='WAIT_RESPONSE')observeResponse();},1000);
+  let last=location.href;const nav=()=>{if(location.href===last)return;const followBinding=!!currentConversationId&&lastBoundConversationId===currentConversationId;navigationGeneration++;last=location.href;activeTaskId=null;sentTaskId=null;activeLeaseId=null;activeResource=null;activeTaskOwner=null;resetResponseTracking();baselineAssistant='';baselineAssistantElement=null;baselineAssistantKey='';baselineAssistantCount=-1;baselineGenericResponseFingerprints=new Set();baselineImageSources=new Set();baselineFileUrls=new Set();pendingResult=null;phase='IDLE';setTask('IDLE');refresh(followBinding)};const push=history.pushState;history.pushState=function(){const r=push.apply(this,arguments);nav();return r};const replace=history.replaceState;history.replaceState=function(){const r=replace.apply(this,arguments);nav();return r};addEventListener('popstate',nav);addEventListener('hashchange',nav);function observeConversationMutation(){if(activeTaskId&&['WAIT_SEND_READY','SEND_BUTTON_FIND','SEND_CONFIRM'].includes(phase)){const prompt=normalizeText(workerMessage?.textContent||'');const evidence=prompt?sendConfirmationEvidence(prompt):'';if(evidence&&['SEND_BUTTON_FIND','SEND_CONFIRM'].includes(phase)){reportProgress('SEND_MUTATION_CONFIRMED','DOM mutation에서 전송 증거를 즉시 확인했습니다. evidence='+evidence);enterWaitResponse('숨김 상태 DOM mutation에서 전송 확인 · '+evidence);return;}}if(phase==='WAIT_RESPONSE')observeResponse();}
+new MutationObserver(observeConversationMutation).observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-message-author-role','data-message-id','data-testid','data-is-streaming','data-streaming','aria-label','aria-busy','disabled','class']});loadSettings();setInterval(()=>refresh(),1500);setInterval(()=>{if(phase==='WAIT_RESPONSE')observeResponse();},1000);
 })();
