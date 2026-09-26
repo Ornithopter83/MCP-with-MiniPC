@@ -58,7 +58,7 @@ public sealed class CodexCliRunner
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
     }
 
-    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null, IReadOnlyList<string>? additionalWritableDirectories = null)
+    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null, IReadOnlyList<string>? additionalWritableDirectories = null, bool ignoreProjectInstructions = false)
     {
         sessionId = NormalizeSessionId(sessionId);
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
@@ -104,6 +104,11 @@ public sealed class CodexCliRunner
         process.StartInfo.ArgumentList.Add("--json");
         foreach (var argument in modelRequest.ToCliArguments())
             process.StartInfo.ArgumentList.Add(argument);
+        if (ignoreProjectInstructions)
+        {
+            process.StartInfo.ArgumentList.Add("-c");
+            process.StartInfo.ArgumentList.Add("project_doc_max_bytes=0");
+        }
         if (string.IsNullOrWhiteSpace(sessionId))
         {
             process.StartInfo.ArgumentList.Add("-C");
