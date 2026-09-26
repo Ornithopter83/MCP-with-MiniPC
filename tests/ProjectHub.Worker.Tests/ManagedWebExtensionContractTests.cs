@@ -14,7 +14,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.2.1", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.2.2", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -34,6 +34,8 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("chrome.tabs.query", StringComparison.Ordinal));
         Assert.True(source.Contains("chrome.tabs.remove", StringComparison.Ordinal));
         Assert.True(source.Contains("chrome.tabs.update", StringComparison.Ordinal));
+        Assert.True(source.Contains("pathname.match(/\\/c\\/", StringComparison.Ordinal));
+        Assert.True(source.Contains("isCanonicalConversationTab", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -43,7 +45,8 @@ public sealed class ManagedWebExtensionContractTests
 
         Assert.True(source.Contains("projecthub-managed-role", StringComparison.Ordinal));
         Assert.True(source.Contains("ensureManagedSingleChatTab", StringComparison.Ordinal));
-        Assert.Contains("ensure-single-chatgpt-tab", source, StringComparison.Ordinal);
+        Assert.True(source.Contains("ensure-single-chatgpt-tab", StringComparison.Ordinal));
+        Assert.True(source.Contains("managedTabCleanupGenerations", StringComparison.Ordinal));
     }
 
     private static string ReadEmbeddedText(string name)
