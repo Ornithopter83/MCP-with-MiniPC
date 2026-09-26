@@ -142,7 +142,7 @@ public partial class MainWindow
             return;
 
         var conversationId = _bridgeServer?.GetRoleConversationId(bindingRole);
-        var status = await _managedWebRuntimeManager.RestartHiddenAsync(role, conversationId);
+        var status = await _managedWebRuntimeManager.HideAsync(role, conversationId);
         RefreshManagedWebRuntimePresentation();
         ReportManagedWebStartFailure(bindingRole, status);
     }
