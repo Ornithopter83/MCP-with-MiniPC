@@ -1702,7 +1702,9 @@ public partial class MainWindow : Window
         string workingDirectory,
         string? sessionId,
         CancellationToken cancellationToken,
-        Action<string>? sessionStarted = null)
+        Action<string>? sessionStarted = null,
+        IReadOnlyList<AiInputAttachment>? inputAttachments = null,
+        List<BridgeAttachment>? webAttachments = null)
     {
         if (!IsWebTransport(role.Transport))
             return await RunCoordinatorRoleAsync(
@@ -1715,20 +1717,49 @@ public partial class MainWindow : Window
                 null,
                 cancellationToken,
                 CodexSandboxMode.ReadOnly,
-                sessionStarted);
-        return await RunWebRoleAsync(jobId, "HQ", purpose, prompt, cancellationToken);
+                sessionStarted,
+                inputAttachments);
+        return await RunWebRoleAsync(
+            jobId,
+            "HQ",
+            purpose,
+            prompt,
+            cancellationToken,
+            inputAttachments,
+            webAttachments);
     }
 
-    private async Task<AiRoleRunResult> RunWebRoleAsync(string jobId, string roleName, string purpose, string prompt, CancellationToken cancellationToken)
+    private async Task<AiRoleRunResult> RunWebRoleAsync(
+        string jobId,
+        string roleName,
+        string purpose,
+        string prompt,
+        CancellationToken cancellationToken,
+        IReadOnlyList<AiInputAttachment>? inputAttachments = null,
+        List<BridgeAttachment>? webAttachments = null)
     {
         var bridgeServer = _bridgeServer;
         var webStatus = bridgeServer?.GetRoleBindingStatus(roleName);
         if (bridgeServer is null || webStatus is null || !webStatus.Bound || !webStatus.Connected || !webStatus.ExtensionSynchronized)
             throw new InvalidOperationException($"{roleName}_WEB_UNAVAILABLE");
 
+        var effectivePrompt = UserAttachmentTransport.AppendWebPrompt(
+            prompt,
+            inputAttachments);
+        var effectiveAttachments = webAttachments ?? new List<BridgeAttachment>();
+
         var started = DateTimeOffset.UtcNow;
-        AddTaskMessage($"WORKER → {roleName} WEB", prompt, sizeBytes: Encoding.UTF8.GetByteCount(prompt), status: "SENDING", includeHistory: false);
-        var task = bridgeServer.CreateTaskForRole(roleName, prompt)
+        AddTaskMessage(
+            $"WORKER → {roleName} WEB",
+            effectivePrompt,
+            sizeBytes: Encoding.UTF8.GetByteCount(effectivePrompt),
+            fileCount: effectiveAttachments.Count,
+            status: "SENDING",
+            includeHistory: false);
+        var task = bridgeServer.CreateTaskForRole(
+            roleName,
+            effectivePrompt,
+            effectiveAttachments)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_CREATE_FAILED");
         var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
@@ -1737,7 +1768,7 @@ public partial class MainWindow : Window
         UsageTelemetryStore.Append(new ModelCallTelemetry(
             jobId, null, roleName, "chatgpt-web", null, purpose,
             null, null, null, null, null,
-            Encoding.UTF8.GetByteCount(prompt), Encoding.UTF8.GetByteCount(prompt), 0,
+            Encoding.UTF8.GetByteCount(effectivePrompt), Encoding.UTF8.GetByteCount(prompt), 0,
             completed.Attachments?.Sum(item => item.Size) ?? 0,
             Encoding.UTF8.GetByteCount(message),
             Math.Max(0, (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds),
@@ -1785,7 +1816,18 @@ public partial class MainWindow : Window
         _ => "application/octet-stream"
     };
 
-    private async Task<AiRoleRunResult> RunCoordinatorRoleAsync(string jobId, string purpose, string prompt, WorkerAiRoleSettings role, string workingDirectory, string? sessionId, string? schema, CancellationToken cancellationToken, CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly, Action<string>? sessionStarted = null)
+    private async Task<AiRoleRunResult> RunCoordinatorRoleAsync(
+        string jobId,
+        string purpose,
+        string prompt,
+        WorkerAiRoleSettings role,
+        string workingDirectory,
+        string? sessionId,
+        string? schema,
+        CancellationToken cancellationToken,
+        CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly,
+        Action<string>? sessionStarted = null,
+        IReadOnlyList<AiInputAttachment>? inputAttachments = null)
     {
         var started = DateTimeOffset.UtcNow;
         var roleName = purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) || purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) || purpose == "WORK" ? "WORK" : "COORDINATOR";
@@ -1801,7 +1843,17 @@ public partial class MainWindow : Window
                 AddRoleProgressHistory(progressRole, message, role.Provider);
             })
             : null;
-        var result = await runner.RunAsync(new AiRoleRunRequest(prompt, role, workingDirectory, sessionId, sandbox, cancellationToken, schema, progress, sessionStarted));
+        var result = await runner.RunAsync(new AiRoleRunRequest(
+            prompt,
+            role,
+            workingDirectory,
+            sessionId,
+            sandbox,
+            cancellationToken,
+            schema,
+            progress,
+            sessionStarted,
+            InputAttachments: inputAttachments));
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
