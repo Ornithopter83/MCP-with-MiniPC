@@ -78,10 +78,10 @@ public sealed class WebResultFileStorageTests
         var exception = Assert.Throws<TargetInvocationException>(
             () => method!.Invoke(null, new object[] { taskId, request }));
         Assert.IsType<InvalidOperationException>(exception.InnerException);
-        Assert.Contains(
-            "WEB_RESULT_HASH_MISMATCH",
-            exception.InnerException!.Message,
-            StringComparison.Ordinal);
+        Assert.True(
+            exception.InnerException!.Message.Contains(
+                "WEB_RESULT_HASH_MISMATCH",
+                StringComparison.Ordinal));
     }
 
     [Fact]
