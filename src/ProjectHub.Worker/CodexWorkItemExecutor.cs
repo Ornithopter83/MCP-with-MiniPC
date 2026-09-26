@@ -4,7 +4,8 @@ namespace ProjectHub.Worker;
 
 public sealed record CodexWorkItemProgress(
     string WorkItemId,
-    string Message);
+    string Message,
+    long? WorkNumber = null);
 
 public sealed record CodexWorkItemSessionStarted(
     string WorkItemId,
@@ -20,7 +21,8 @@ public sealed record CodexWorkItemCallCompleted(
     string InboundType,
     int PromptBytes,
     long LatencyMs,
-    AiRoleRunResult Result);
+    AiRoleRunResult Result,
+    long? WorkNumber = null);
 
 public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 {
@@ -145,7 +147,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 CodexSandboxMode.WorkspaceWrite,
                 cancellationToken,
                 null,
-                message => Progress?.Invoke(new CodexWorkItemProgress(item.Id, message)),
+                message => Progress?.Invoke(new CodexWorkItemProgress(item.Id, message, item.CreatedOrder + 1)),
                 started =>
                 {
                     var normalized = CodexCliRunner.NormalizeSessionId(started);
@@ -164,7 +166,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 inboundType,
                 System.Text.Encoding.UTF8.GetByteCount(prompt),
                 Math.Max(0, (long)(DateTimeOffset.UtcNow - callStartedAt).TotalMilliseconds),
-                runResult));
+                runResult,
+                item.CreatedOrder + 1));
 
             sessionId = CodexCliRunner.NormalizeSessionId(runResult.SessionId) ??
                         startedSession ??

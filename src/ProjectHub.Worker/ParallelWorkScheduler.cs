@@ -86,6 +86,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
     private readonly Dictionary<string, RunningWork> _running = new(StringComparer.Ordinal);
     private TaskCompletionSource<bool> _quiescent = CompletedSignal();
     private bool _started;
+    private bool _launchPaused;
     private bool _disposed;
 
     public ParallelWorkScheduler(
@@ -249,6 +250,26 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         await waitTask.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task PauseLaunchingAsync(CancellationToken cancellationToken = default)
+    {
+        ParallelWorkSchedulerSnapshot snapshot;
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            _launchPaused = true;
+            UpdateQuiescenceLocked();
+            snapshot = CreateSnapshotLocked();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        StateChanged?.Invoke(snapshot);
+    }
+
     public async Task CancelAllAsync(CancellationToken cancellationToken = default)
     {
         ParallelWorkSchedulerSnapshot snapshot;
@@ -277,6 +298,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
     private void LaunchReadyLocked()
     {
         while (_started &&
+               !_launchPaused &&
                !_lifetimeCts.IsCancellationRequested &&
                _running.Count < _graph.MaxConcurrentWork)
         {
@@ -441,7 +463,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
     {
         var hasRunnableOrRunning =
             _running.Count > 0 ||
-            (_started && _graph.GetReadyItems().Count > 0);
+            (_started && !_launchPaused && _graph.GetReadyItems().Count > 0);
 
         if (hasRunnableOrRunning)
         {

@@ -44,13 +44,13 @@ UNKNOWN  -> HQ 요약 1회 -> 재발 시 종료
 - MainWindow WorkGraph 관제 루프 연결 완료: 새 Job과 continuation은 maxConcurrentWork 값과 저장 WorkGraph 유무와 관계없이 WorkGraph/Scheduler 경로를 사용
 - RESOURCE/JUDGE/OBSERVATION 결과를 workItemId 기준으로 원래 WorkItem에 복귀
 - WorkGraph snapshot persistence/recovery와 실행 중 session/branch/worktree 문맥 보존
-- 설정 UI의 최대 동시 WORK 1~8, Pipeline 작업 카드에 RUN/READY/BLOCKED/COMPLETED/FAILED 집계와 WorkItem ID ToolTip 표시
+- 설정 UI의 최대 동시 WORK 1~8은 유지하되 별도 병렬 상태 UI는 제거하고 WORK History 카드에 안정적인 작업 번호를 표시
 - Integration COMPLETED 결과를 clean 주 작업공간 branch에 fast-forward로 landing하고 위험 상태에서는 INTEGRATION_LANDING_FAILED로 차단
 - USER_FOLLOWUP 복구 시 WorkGraph 현재 상태를 HQ 본문에 직접 제공
 - 성공한 Integration resultRef를 이후 WorkItem의 기본 baseRef로 승격하되 dependency만으로 의미적 base를 추론하지 않음
 - 새 병렬 실행 구간에서는 현재 작업공간 Git HEAD를 다시 읽어 stale 기준 ref를 피함
 - 새 Job과 모든 continuation은 maxConcurrentWork=1을 포함해 WorkGraph/Scheduler runtime만 사용
-- 메시지/작업 이력 상단에 WorkItem 상태 목록을 직접 표시하고 Integration/CANCELED/BLOCKED/FAILED 세부 상태를 노출
+- 메시지/작업 이력은 별도 WorkItem 상태 패널 없이 각 WORK 진행·응답 카드를 `작업 (#N)`으로 식별하고 내부 ID/상태는 Full Message·event log에 보존
 - 병렬 runtime 시작 전 Git 저장소/HEAD/attached branch 사전 검사를 유지하되, 실제 실행/작업 추가 시 Git이 없으면 Worker가 먼저 git init을 수행하고 기준점 필요 시 repository root/branch를 표시해 사용자 승인을 받은 뒤 baseline commit을 생성
 - Git 준비 자동화는 ProjectHub 관리 `.gitignore` 블록, repository local `core.longpaths=true`, ProjectHub 런타임/검증 캐시의 index 정리를 지원하며 기존 origin URL 확인만 유지하고 remote 생성/push/pull은 하지 않음
 - Git 기준점 준비 중에는 실행/작업 추가 버튼을 비활성화하고 `Git 준비 중...` 상태를 표시해 중복 실행을 차단
@@ -463,3 +463,15 @@ Windows 빌드 및 실제 화면/E2E 검증은 여전히 필요하다.
 - 이미 Git이 추적 중인 ProjectHub 런타임/검증 캐시는 사용자가 baseline을 승인한 경우에만 `git rm -r --cached --ignore-unmatch`로 index에서 제거하고 로컬 파일은 유지한다.
 - WorkItem worktree 경로의 repository/job/item segment 길이를 축소해 Windows path-length 여유를 늘린다. branch 이름은 변경하지 않는다.
 - HQ/WORK 프롬프트에는 Git hygiene 지시를 추가하지 않는다.
+
+
+## 2026-09-26 HQ 설계 책임·PAUSE 수명주기·History 작업 번호
+
+- HQ 계약에 사용자 지정 문장 `사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다`를 한 줄만 추가했다. WORK 계약에는 같은 의미를 중복 주입하지 않았다.
+- HQ PAUSE가 실행 중 WorkItem을 즉시 버리지 않도록 Scheduler에 새 READY 시작 동결을 추가했다. 이미 RUNNING인 WORK는 정상 완료까지 기다리고 결과를 graph에 반영한 뒤 PAUSED로 반환한다.
+- 정상 PAUSE 결과에는 RUNNING WorkItem이 남지 않는 회귀 테스트를 추가했다. 실제 프로세스 재시작 복구에서만 저장된 RUNNING이 RECOVERY_REQUIRED로 변환되는 기존 경계는 유지한다.
+- 메시지 및 작업 이력 상단의 별도 `병렬 WORK` 상태 패널과 Pipeline의 병렬 요약 문자열을 제거했다.
+- WorkItem의 createdOrder+1을 표시 번호로 사용해 WORK 진행·응답 카드를 `작업 (#N)`으로 표시한다. 같은 WorkItem의 재개 호출은 같은 번호를 유지하고 내부 workItemId는 ReferenceId/Full Message/event log에 남긴다.
+- WORK 응답도 WorkItem 번호가 붙은 History 카드로 기록하고, 진행 본문 앞의 `[workItemId]` 반복 노출은 제거했다.
+- WorkGraph 병렬 실행 기능과 maxConcurrentWork 1~8 설정은 그대로 유지한다.
+- 현재 Web 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 빌드에서 검증이 필요하다.

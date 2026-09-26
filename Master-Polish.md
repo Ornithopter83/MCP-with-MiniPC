@@ -174,6 +174,8 @@ RESOURCE는 메인 역할 상태와 분리된 사이드카 대기열로 실행�
 
 새 사용자 요청 또는 목표가 크게 바뀐 요청에서 HQ는 단순 전달자가 아니다. 필요한 만큼 구현 방향을 설계해 WORK에 전달한다.
 
+사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다.
+
 설계에 필요할 수 있는 항목:
 - 목표
 - 주요 구조
@@ -189,6 +191,7 @@ ACTION 사용 예:
 - PAUSE: 화면 인상, 조작감, 음질, 취향, 외부 로그인/권한, 사용자 전용 선택 등 사람 개입 없이는 다음 판단이 의미 없음
 - END: 현재 실행 구간의 의미 작업 목표가 충족됐고 사용자 확인을 기다릴 이유도 없음. Worker가 추적하는 기계적 대기 작업이 남아 있어도 END 판단을 미루지 않음
 - PAUSE, 사용자 취소, END는 HQ/WORK 세션 폐기를 뜻하지 않는다. 사용자가 명시적으로 새 작업을 시작하기 전까지 현재 세션과 작업공간을 유지한다.
+- HQ가 PAUSE를 반환하면 Worker는 새 READY WorkItem 시작을 중지하고 이미 RUNNING인 WORK를 취소하지 않은 채 완료 결과를 수확한다. RUNNING이 모두 정리된 뒤 PAUSED snapshot을 저장하며, 정상 PAUSE snapshot에는 RUNNING WorkItem이 남지 않는다.
 - 사용자가 실행 중 취소하면 Worker는 현재 실행 프로세스와 해당 실행 구간의 대기 작업을 중단하고 상태를 CANCELED로 보존한다. 실행 중 `thread.started`에서 확보한 CLI session ID도 즉시 보존한다.
 - 사용자가 작업 추가를 실행하면 Worker는 USER_FOLLOWUP으로 기존 HQ 세션부터 새 실행 구간을 시작한다. Worker가 후속 요청의 의미를 판단하거나 자동으로 재개하지 않는다.
 
@@ -293,6 +296,7 @@ RESOURCE가 하지 않는 것:
 대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold 활성 border/orbit은 사용하지 않는다. 실행 중에는 현재 메인 역할이 gold 활성 border/orbit으로 강조된다. RESOURCE 사이드카가 실행/대기 중이면 메인 역할과 별개로 RESOURCE 카드의 gold orbit도 독립 동작하며 상태와 대기 건수를 표시한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
 
 메시지 및 작업 이력 그룹의 전체 크기는 고정한다. PAUSE, CANCELED 또는 DONE / DONE_WITH_ERROR 상태에서는 기존 이력을 위쪽에 유지하고 목록 아래에 이력 카드 약 두 개 높이의 후속 메시지 입력 영역을 표시한다. 하단에는 기존 실행/새 작업 버튼 왼쪽에 녹색 계열의 작업 추가 버튼을 표시한다. 작업 추가는 기존 이력과 HQ/WORK 세션을 유지한 채 USER_FOLLOWUP을 시작하며, 새 작업 버튼만 기존 세션과 이력을 명시적으로 초기화한다.
+WorkGraph 상태를 별도의 `병렬 WORK` 패널로 표시하지 않는다. WORK 진행·응답 History 카드는 WorkItem 생성 순서를 기준으로 안정적인 `작업 (#N)` 표기를 사용하고, 내부 workItemId는 Full Message와 이벤트 로그의 참조 정보로 보존한다.
 
 CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent_message`가 발생하면 Worker는 본문 의미를 해석하지 않고 `작업 진행` 이력 카드로 그대로 추가한다. 진행 카드는 제목과 다중 줄 본문만 표시하고 토큰/파일 행은 표시하지 않는다. 진행 카드의 발생 횟수나 이력 개수에 별도 제한을 두지 않으며, 최종 역할 응답 카드는 기존 작업 요청/수행 결과/리소스 요청 형식을 유지한다.
 
@@ -340,7 +344,7 @@ CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent
 6. Integration WorkItem을 통한 병렬 결과 통합·충돌 해결·전체 검증
 7. RESOURCE / JUDGE / OBSERVATION의 workItemId 귀속
 8. WorkGraph와 WorkItem 세션/branch/worktree/result 상태 영속화 및 재시작 복구
-9. Pipeline의 병렬 WORK 상태와 세부 WorkItem 표시
+9. History 카드의 WorkItem 번호 표시와 실행 상태 귀속
 10. 병렬 실행 진입 전 로컬 Git 자동 초기화와 사용자 승인 기반 baseline commit
 11. 단일 WORK 대비 병렬 WORK 실제 E2E 비교 검증
 

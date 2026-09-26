@@ -274,6 +274,22 @@ public partial class MainWindow
                     $"workItemId={call.WorkItemId} · inboundType={call.InboundType} · exitCode={call.Result.ExitCode}",
                     call.Result.ExitCode == 0 ? "COMPLETED" : "FAILED",
                     workItemId: call.WorkItemId);
+
+                if (!string.IsNullOrWhiteSpace(call.Result.FinalMessage))
+                {
+                    RunOnUi(() =>
+                        AddRoleResponseHistory(
+                            WorkerRoleState.Work,
+                            "작업 응답",
+                            call.Result.FinalMessage,
+                            usage: call.Result.Usage,
+                            files: call.Result.Files,
+                            status: call.Result.ExitCode == 0 ? "RECEIVED" : "FAILED",
+                            providerWireId: implementer.Provider,
+                            fullMessage: call.Result.FinalMessage,
+                            workNumber: call.WorkNumber,
+                            referenceId: call.WorkItemId));
+                }
             };
 
             executor.Progress += progress => RunOnUi(() =>
@@ -281,8 +297,10 @@ public partial class MainWindow
                 _lastActivityAt = DateTimeOffset.UtcNow;
                 AddRoleProgressHistory(
                     WorkerRoleState.Work,
-                    $"[{progress.WorkItemId}] {progress.Message}",
-                    implementer.Provider);
+                    progress.Message,
+                    implementer.Provider,
+                    workNumber: progress.WorkNumber,
+                    referenceId: progress.WorkItemId);
             });
 
             executor.ContextPrepared += context =>
@@ -337,16 +355,13 @@ public partial class MainWindow
                         implementer.Provider,
                         implementer.Model);
                     ImplementerStageModelText.Text = implementerModel;
-                    var parallelUi = ParallelWorkUiFormatter.Format(snapshot);
-                    ImplementerParallelStateText.Text = parallelUi.Summary;
-                    ImplementerParallelStateText.Visibility = System.Windows.Visibility.Visible;
-                    PipelineImplementerCard.ToolTip = parallelUi.Detail;
-                    ParallelWorkDetailText.Text = parallelUi.Detail;
-                    ParallelWorkDetailPanel.Visibility = System.Windows.Visibility.Visible;
+                    PipelineImplementerCard.ToolTip = null;
                     TaskDirection.Text = "작업 AI";
-                    TaskTitle.Text =
-                        $"병렬 WORK · {snapshot.RunningCount}/{snapshot.Graph.MaxConcurrentWork} 실행 중 · " +
-                        $"READY {snapshot.ReadyCount} · BLOCKED {snapshot.BlockedCount}";
+                    TaskTitle.Text = snapshot.RunningCount > 0
+                        ? $"작업 진행 · {snapshot.RunningCount}건 실행 중"
+                        : snapshot.ReadyCount > 0
+                            ? $"작업 대기 · {snapshot.ReadyCount}건"
+                            : "작업 상태 갱신";
                     if (snapshot.RunningCount > 0)
                     {
                         SetFlowState(
@@ -362,7 +377,7 @@ public partial class MainWindow
             {
                 _lastActivityAt = DateTimeOffset.UtcNow;
                 AddTaskMessage(
-                    "PARALLEL RESOURCE",
+                    "RESOURCE",
                     $"workItemId={routing.WorkItemId} · stage={routing.Stage}" +
                     (string.IsNullOrWhiteSpace(routing.RequestId)
                         ? string.Empty
@@ -527,7 +542,7 @@ public partial class MainWindow
                 ? "DONE · 오류 기록 있음"
                 : "DONE";
             ResultBody.Text = result.HqBody;
-            TaskTitle.Text = "병렬 WORK와 기계적 대기 작업을 모두 확인했습니다.";
+            TaskTitle.Text = "WORK와 기계적 대기 작업을 모두 확인했습니다.";
             AddTaskMessage(
                 "TASK RESULT",
                 result.HqBody,
@@ -639,11 +654,7 @@ public partial class MainWindow
             _resourceSidecarStatus = "ChatGPT Web";
             RunOnUi(() =>
             {
-                ImplementerParallelStateText.Text = string.Empty;
-                ImplementerParallelStateText.Visibility = System.Windows.Visibility.Collapsed;
                 PipelineImplementerCard.ToolTip = null;
-                ParallelWorkDetailText.Text = string.Empty;
-                ParallelWorkDetailPanel.Visibility = System.Windows.Visibility.Collapsed;
                 UpdateDashboardSummary();
             });
             _activeCoordinatorFirst = false;

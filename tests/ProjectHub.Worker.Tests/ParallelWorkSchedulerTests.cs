@@ -179,6 +179,27 @@ public sealed class ParallelWorkSchedulerTests
     }
 
     [Fact]
+    public async Task PauseLaunchingLetsRunningWorkFinishWithoutStartingQueuedWork()
+    {
+        var graph = CreateGraph(1, "W1", "W2");
+        var executor = new ControlledExecutor();
+
+        await using var scheduler = new ParallelWorkScheduler(graph, executor);
+        await scheduler.StartAsync();
+        await executor.WhenStarted("W1");
+
+        await scheduler.PauseLaunchingAsync();
+        executor.Complete("W1");
+        await scheduler.WaitForQuiescenceAsync();
+
+        var snapshot = await scheduler.GetSnapshotAsync();
+        Assert.Equal(0, snapshot.RunningCount);
+        Assert.Equal(WorkItemState.Completed, snapshot.Graph.Items.Single(item => item.Id == "W1").State);
+        Assert.Equal(WorkItemState.Ready, snapshot.Graph.Items.Single(item => item.Id == "W2").State);
+        Assert.False(executor.IsStarted("W2"));
+    }
+
+    [Fact]
     public async Task SchedulerUsesStableCreationOrderWhenOnlyOneSlotExists()
     {
         var graph = CreateGraph(1, "B", "A", "C");

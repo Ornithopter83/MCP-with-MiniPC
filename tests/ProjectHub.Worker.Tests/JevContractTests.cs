@@ -15,6 +15,7 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[ACTION=PAUSE]", hq);
         Assert.Contains("[ACTION=END]", hq);
         Assert.Contains("[GOTO : WORK]", hq);
+        Assert.Contains("사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다", hq);
         Assert.DoesNotContain("[GOTO : RESOURCE]", hq);
         Assert.DoesNotContain("[GOTO : JUDGE]", hq);
         Assert.Contains("Worker의 기계적 사실은 관측값이며 의미 판단이 아니다.", hq);

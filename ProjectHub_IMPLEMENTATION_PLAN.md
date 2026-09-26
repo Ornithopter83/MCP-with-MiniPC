@@ -100,3 +100,11 @@ PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOL
 - ProjectHub 관리 `.gitignore` 블록과 이미 추적된 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/` index 정리는 baseline 사용자 승인 뒤 수행한다.
 - 기존 사용자 ignore 규칙은 보존하고, 새 Git 저장소에만 파일 존재로 기계적으로 판별 가능한 안전한 Godot/Unity/.NET/Node preset을 추가한다.
 - worktree 파일시스템 경로는 짧은 안정 segment를 사용해 Windows 경로 길이 위험을 낮춘다.
+
+
+## 2026-09-26 HQ 설계 책임과 WorkItem History 단순화
+
+- 설계·기획 결정은 HQ가 직접 수행해 구체화한 뒤 실행 가능한 WorkItem으로 전달한다.
+- HQ PAUSE는 새 WorkItem 시작만 동결하고 이미 RUNNING인 WORK 결과를 수확한 뒤 PAUSED로 전환한다.
+- WorkGraph 병렬 실행은 유지하되 UI의 별도 병렬 WORK 상태 목록은 제거한다.
+- WORK History 카드는 WorkItem createdOrder 기반의 `작업 (#N)` 표기로 같은 작업의 진행과 응답을 식별한다.

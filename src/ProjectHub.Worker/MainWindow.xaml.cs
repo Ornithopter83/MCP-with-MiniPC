@@ -64,10 +64,20 @@ public partial class MainWindow : Window
     public sealed record WorkerHistoryEvent(DateTimeOffset Timestamp, string StageKey, string EventType, string Title, string? Summary, long? SizeBytes, int? ItemCount, int? FileCount, string? Status, string? ReferenceId)
     {
         public string? IconAssetOverride { get; init; }
+        public long? WorkNumber { get; init; }
         public string FullMessage { get; init; } = string.Empty;
         public string TokenDetails { get; init; } = "토큰 · 해당 없음";
         public string FileDetails { get; init; } = "파일 · 해당 없음";
-        public string Role => StageKey switch { "Coordinator" => "설계·관제", "Implementer" => "작업", "Resource" => "리소스", "Judge" => "판정", "Message" => "메시지", _ => "시스템" };
+        public string Role => StageKey switch
+        {
+            "Coordinator" => "설계·관제",
+            "Implementer" when WorkNumber.HasValue => $"작업 (#{WorkNumber.Value})",
+            "Implementer" => "작업",
+            "Resource" => "리소스",
+            "Judge" => "판정",
+            "Message" => "메시지",
+            _ => "시스템"
+        };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
         public Visibility MetricsVisibility => EventType == "ROLE_PROGRESS" ? Visibility.Collapsed : Visibility.Visible;
         public TextWrapping SummaryWrapping => EventType == "ROLE_PROGRESS" ? TextWrapping.Wrap : TextWrapping.NoWrap;
@@ -2934,7 +2944,12 @@ public partial class MainWindow : Window
         RefreshMessageLog();
     }
 
-    private void AddRoleProgressHistory(WorkerRoleState role, string? body, string? providerWireId = null)
+    private void AddRoleProgressHistory(
+        WorkerRoleState role,
+        string? body,
+        string? providerWireId = null,
+        long? workNumber = null,
+        string? referenceId = null)
     {
         var text = body?.Trim() ?? string.Empty;
         if (text.Length == 0) return;
@@ -2955,8 +2970,9 @@ public partial class MainWindow : Window
             null,
             null,
             "RUNNING",
-            null)
+            referenceId)
         {
+            WorkNumber = workNumber,
             FullMessage = text,
             TokenDetails = string.Empty,
             FileDetails = string.Empty
@@ -2982,7 +2998,9 @@ public partial class MainWindow : Window
         JevCallTelemetry? judgeTelemetry = null,
         string? status = null,
         string? providerWireId = null,
-        string? fullMessage = null)
+        string? fullMessage = null,
+        long? workNumber = null,
+        string? referenceId = null)
     {
         var stage = role switch
         {
@@ -3004,8 +3022,9 @@ public partial class MainWindow : Window
             null,
             files?.Count,
             status,
-            null)
+            referenceId)
         {
+            WorkNumber = workNumber,
             FullMessage = fullText,
             TokenDetails = judgeTelemetry is not null
                 ? WorkerHistoryCardFormatter.TokenLine(judgeTelemetry)

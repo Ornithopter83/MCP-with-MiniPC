@@ -96,6 +96,7 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.NotNull(observed);
             Assert.Equal("W1", observed!.WorkItemId);
+            Assert.Equal(fixture.Request.Item.CreatedOrder + 1, observed.WorkNumber);
             Assert.Equal("WORK_ITEM", observed.InboundType);
             Assert.True(observed.PromptBytes > 0);
             Assert.Equal(0, observed.Result.ExitCode);

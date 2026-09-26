@@ -720,3 +720,14 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 신규 또는 아직 HEAD가 없는 저장소에는 Godot/Unity/.NET/Node 안전 preset을 파일 존재 기준으로 추가하고, 기존 저장소에는 프로젝트 preset을 새로 주입하지 않는다.
 - 기존 사용자 `.gitignore` 내용은 보존하고 `# >>> ProjectHub managed` / `# <<< ProjectHub managed` 블록만 멱등 갱신한다.
 - WorkItem worktree 경로 segment를 축소해 긴 경로 위험을 추가로 줄였다.
+
+
+### 2026-09-26 HQ 설계 책임·PAUSE drain·History 작업 번호
+
+- HQ 계약에는 `사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다` 한 문장만 추가했다.
+- PAUSE 수신 시 Scheduler는 새 READY 실행을 동결하고 현재 RUNNING WorkItem만 완료시킨다. RUNNING 결과가 graph에 반영된 뒤 Supervisor가 PAUSED snapshot을 반환한다.
+- PAUSE 중 선행 WORK 완료로 새 WorkItem이 READY가 되어도 해당 실행 구간에서는 새로 시작하지 않는 회귀 테스트를 추가했다.
+- 메시지 및 작업 이력 상단의 별도 병렬 WORK 상세 패널과 Pipeline 병렬 집계/ToolTip 노출을 제거했다.
+- WORK 진행·응답 History 이벤트에 createdOrder+1 기반 WorkNumber를 전달해 왼쪽 역할명을 `작업 (#N)`으로 표시한다.
+- 내부 WorkItem ID는 화면의 주 식별자로 반복 노출하지 않고 event log, ReferenceId, Full Message에서 추적한다.
+- WorkGraph의 동시 실행 기능과 maxConcurrentWork는 변경하지 않았다.

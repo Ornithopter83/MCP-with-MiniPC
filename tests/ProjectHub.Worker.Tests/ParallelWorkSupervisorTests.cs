@@ -140,6 +140,58 @@ public sealed class ParallelWorkSupervisorTests
 
 
     [Fact]
+    public async Task HqPauseDrainsRunningWorkAndDoesNotStartNewReadyWork()
+    {
+        var graph = new WorkGraph("job", 2);
+        var executor = new SupervisorExecutor();
+        executor.SetSplitOnceThenComplete("W1");
+        executor.SetControlled("W2");
+
+        var secondHqCalled = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var hq = new QueueHqRunner(
+            ContinuePatch(
+                0,
+                Add("W1", "HQ 판단이 필요한 작업"),
+                Add("W2", "이미 실행 중인 작업"),
+                """
+                {"type":"ADD","workItemId":"W3","goal":"W2 이후 작업","dependencies":["W2"],"kind":"NORMAL","baseRef":"base123"}
+                """),
+            Pause("사용자 판단을 기다립니다."));
+
+        hq.OnTurn = turn =>
+        {
+            if (turn == 2)
+                secondHqCalled.TrySetResult(true);
+        };
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var runTask = supervisor.RunAsync(
+            "USER_REQUEST",
+            "작업을 실행하세요.");
+
+        await secondHqCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(executor.IsRunning("W2"));
+        Assert.False(executor.IsRunning("W3"));
+
+        executor.Release("W2");
+
+        var result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ParallelWorkSupervisorExit.Paused, result.Exit);
+        Assert.DoesNotContain(result.Graph.Items, item => item.State == WorkItemState.Running);
+        Assert.Equal(WorkItemState.Completed, result.Graph.Items.Single(item => item.Id == "W2").State);
+        Assert.Equal(WorkItemState.Ready, result.Graph.Items.Single(item => item.Id == "W3").State);
+        Assert.Equal(WorkItemState.Blocked, result.Graph.Items.Single(item => item.Id == "W1").State);
+        Assert.False(executor.IsRunning("W3"));
+    }
+
+    [Fact]
     public async Task ResourceBlockWaitsForSidecarResumeWithoutWakingHq()
     {
         var graph = new WorkGraph("job", 1);
@@ -307,6 +359,9 @@ public sealed class ParallelWorkSupervisorTests
 
     private static string End(string body)
         => "[ACTION=END]\n" + body;
+
+    private static string Pause(string body)
+        => "[ACTION=PAUSE]\n" + body;
 
     private sealed class QueueHqRunner
     {

@@ -226,11 +226,25 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
             if (turn.Action == WorkerAction.Pause)
             {
+                if (_schedulerStarted)
+                {
+                    await _scheduler.PauseLaunchingAsync(cancellationToken).ConfigureAwait(false);
+                    await _scheduler.WaitForQuiescenceAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                var pauseSnapshot = _graph.Snapshot();
+                if (pauseSnapshot.Items.Any(item => item.State == WorkItemState.Running))
+                {
+                    return Failure(
+                        "WORK_GRAPH_PAUSE_RUNNING_REMAINS",
+                        turn.Body);
+                }
+
                 return new(
                     ParallelWorkSupervisorExit.Paused,
                     turn.Body,
                     null,
-                    _graph.Snapshot());
+                    pauseSnapshot);
             }
 
             var normalizedPatch = ApplyDefaultBaseRef(
