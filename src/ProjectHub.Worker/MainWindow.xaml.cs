@@ -515,7 +515,9 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
-    private void AddUserFollowupHistory(string followup)
+    private void AddUserFollowupHistory(
+        string followup,
+        IReadOnlyList<UserAttachmentInput>? attachments = null)
     {
         var text = followup.Trim();
         var item = new WorkerHistoryEvent(
@@ -526,13 +528,13 @@ public partial class MainWindow : Window
             WorkerHistoryCardFormatter.Preview(text),
             Encoding.UTF8.GetByteCount(text),
             1,
-            null,
+            attachments?.Count,
             "USER_FOLLOWUP",
             null)
         {
             FullMessage = text,
             TokenDetails = "토큰 · 사용자 입력",
-            FileDetails = "파일 · 해당 없음"
+            FileDetails = FormatAttachmentHistory(attachments)
         };
         _historyEvents.Add(item);
         RefreshMessageLog();
@@ -546,8 +548,12 @@ public partial class MainWindow : Window
         {
             var directPrompt = DashboardFollowupInput.Text ?? string.Empty;
             if (string.IsNullOrWhiteSpace(directPrompt) || directPrompt == FollowupPromptPlaceholder) return;
+            var directAttachments = SnapshotFollowupAttachments();
             await InitializeStartupConfigurationAsync();
-            await RunDirectWorkAsync(directPrompt, appendToHistory: true);
+            await RunDirectWorkAsync(
+                directPrompt,
+                appendToHistory: true,
+                directAttachments);
             return;
         }
 
@@ -556,6 +562,7 @@ public partial class MainWindow : Window
 
         var followup = DashboardFollowupInput.Text?.Trim() ?? string.Empty;
         if (followup.Length == 0 || followup == FollowupPromptPlaceholder) return;
+        var followupAttachments = SnapshotFollowupAttachments();
 
         var preflightError = GetCoordinatorFirstPreflightError(
             continuation.WorkingDirectory,
@@ -573,7 +580,8 @@ public partial class MainWindow : Window
         if (!gitReady)
             return;
 
-        AddUserFollowupHistory(followup);
+        ConsumePendingAttachments(followupAttachments);
+        AddUserFollowupHistory(followup, followupAttachments);
         DashboardFollowupInput.Text = FollowupPromptPlaceholder;
         DashboardFollowupInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
         SetFollowupComposerVisible(false);
@@ -583,7 +591,8 @@ public partial class MainWindow : Window
             continuation.WorkingDirectory,
             continuation.Coordinator,
             continuation.Implementer,
-            continuation);
+            continuation,
+            followupAttachments);
     }
 
     private void UpdateDashboardRunButtonState()
