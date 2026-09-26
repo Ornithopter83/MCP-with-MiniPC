@@ -26,35 +26,9 @@ public sealed record ManagedWebRuntimeStatus(
 public sealed class ManagedWebRuntimeManager : IDisposable
 {
     private const int SwHide = 0;
-    private const int SwRestore = 9;
-    private const uint SwpNoZOrder = 0x0004;
-    private const uint SwpShowWindow = 0x0040;
-
-    private delegate bool EnumWindowsProc(IntPtr windowHandle, IntPtr parameter);
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr windowHandle, int command);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetWindowPos(
-        IntPtr windowHandle,
-        IntPtr insertAfter,
-        int x,
-        int y,
-        int width,
-        int height,
-        uint flags);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr windowHandle);
-
-    [DllImport("user32.dll")]
-    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(
-        IntPtr windowHandle,
-        out uint processId);
     private const string ChromeForTestingMetadataUrl =
         "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json";
 
@@ -500,115 +474,6 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         }
     }
 
-    private Process? GetRunningProcess(ManagedWebRole role)
-    {
-        lock (_gate)
-        {
-            var slot = _slots[role];
-            RefreshExitedProcess(slot);
-            return slot.Process;
-        }
-    }
-
-    private async Task<ManagedWebRuntimeStatus> SetVisibilityAsync(
-        ManagedWebRole role,
-        Process process,
-        bool hidden,
-        CancellationToken cancellationToken)
-    {
-        var changed = await TrySetProcessWindowVisibilityAsync(
-            process,
-            visible: !hidden,
-            cancellationToken);
-
-        ManagedWebRuntimeStatus status;
-        lock (_gate)
-        {
-            var slot = _slots[role];
-            if (!ReferenceEquals(slot.Process, process))
-                return Snapshot(role, slot);
-
-            if (changed)
-            {
-                slot.Hidden = hidden;
-                slot.Error = null;
-            }
-            else
-            {
-                slot.Error = "BROWSER_WINDOW_NOT_FOUND";
-            }
-
-            status = Snapshot(role, slot);
-        }
-
-        StatusChanged?.Invoke(status);
-        return status;
-    }
-
-    private static async Task<bool> TrySetProcessWindowVisibilityAsync(
-        Process process,
-        bool visible,
-        CancellationToken cancellationToken)
-    {
-        for (var attempt = 0; attempt < 30; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                if (process.HasExited)
-                    return false;
-
-                var handle = FindTopLevelWindow(process.Id);
-                if (handle != IntPtr.Zero)
-                {
-                    if (visible)
-                    {
-                        ShowWindow(handle, SwRestore);
-                        SetWindowPos(
-                            handle,
-                            IntPtr.Zero,
-                            120,
-                            80,
-                            1280,
-                            900,
-                            SwpNoZOrder | SwpShowWindow);
-                        SetForegroundWindow(handle);
-                    }
-                    else
-                    {
-                        ShowWindow(handle, SwHide);
-                    }
-
-                    return true;
-                }
-            }
-            catch
-            {
-                return false;
-            }
-
-            await Task.Delay(100, cancellationToken);
-        }
-
-        return false;
-    }
-
-    private static IntPtr FindTopLevelWindow(int processId)
-    {
-        var result = IntPtr.Zero;
-        EnumWindows((windowHandle, _) =>
-        {
-            GetWindowThreadProcessId(windowHandle, out var ownerProcessId);
-            if (ownerProcessId != (uint)processId)
-                return true;
-
-            result = windowHandle;
-            return false;
-        }, IntPtr.Zero);
-        return result;
-    }
-
     private ManagedWebRuntimeStatus Start(
         ManagedWebRole role,
         bool hidden,
@@ -677,15 +542,27 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
     private static async Task HideProcessWindowWhenReadyAsync(Process process)
     {
-        try
+        for (var attempt = 0; attempt < 40; attempt++)
         {
-            await TrySetProcessWindowVisibilityAsync(
-                process,
-                visible: false,
-                CancellationToken.None);
-        }
-        catch
-        {
+            try
+            {
+                if (process.HasExited)
+                    return;
+
+                process.Refresh();
+                var handle = process.MainWindowHandle;
+                if (handle != IntPtr.Zero)
+                {
+                    ShowWindow(handle, SwHide);
+                    return;
+                }
+            }
+            catch
+            {
+                return;
+            }
+
+            await Task.Delay(250);
         }
     }
 
