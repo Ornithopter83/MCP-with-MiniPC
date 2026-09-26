@@ -4,7 +4,7 @@
 
 정책 원본은 Master-Polish.md다.
 
-## 1. 목표
+제1조 (목표)
 
 ProjectHub의 단일 WORK 직렬 흐름을 동적 DAG 기반의 병렬 WORK 실행 구조로 확장한다.
 
@@ -12,7 +12,7 @@ ProjectHub의 단일 WORK 직렬 흐름을 동적 DAG 기반의 병렬 WORK 실�
 
 병렬화 여부, 작업 분해, 의존성, 새 작업 추가·취소는 HQ가 의미적으로 판단한다. Worker는 의미 판단 없이 WorkGraph 상태, 실행 슬롯, 세션, 프로세스, Git branch/worktree, 기계적 완료 사실만 관리한다.
 
-## 2. 복구 지점
+제2조 (복구 지점)
 
 구현 시작 전 원격 main의 다음 commit을 복구 기준으로 고정한다.
 
@@ -22,7 +22,7 @@ ProjectHub의 단일 WORK 직렬 흐름을 동적 DAG 기반의 병렬 WORK 실�
 
 복구가 필요하면 해당 branch 또는 commit을 기준으로 새 branch를 만들고 이후 병렬화 commit을 폐기한다. 강제 reset은 사용자가 명시적으로 지시하지 않는 한 수행하지 않는다.
 
-## 3. 최종 구조
+제3조 (최종 구조)
 
 ~~~text
                                ┌─ WORK A ───────────┐
@@ -44,7 +44,7 @@ Slot 3 -> WorkItem W31
 Slot 4 -> 비어 있음
 ~~~
 
-## 4. 핵심 불변식
+제4조 (핵심 불변식)
 
 - HQ만 WorkGraph의 의미를 설계한다.
 - Worker는 의미적으로 새 WorkItem을 만들지 않는다.
@@ -56,7 +56,7 @@ Slot 4 -> 비어 있음
 - RESOURCE/JUDGE/OBSERVATION은 기존 책임을 유지하며 workItemId로 귀속한다.
 - 모든 상태와 이벤트는 재시작 후 복구 가능하도록 작업공간 .projecthub 아래에 기계적으로 저장한다.
 
-## 5. WorkItem 모델
+제5조 (WorkItem 모델)
 
 초기 필드:
 
@@ -81,7 +81,7 @@ finishedAtUtc
 
 `goal`과 dependency 의미는 HQ가 정한다. Worker는 문자열 의미를 해석하지 않는다.
 
-### 상태
+① 상태
 
 ~~~text
 PLANNED
@@ -106,7 +106,7 @@ READY 계산은 명시된 dependency 상태만 사용한다.
 - dependency가 FAILED/CANCELED이면 자동 성공 추론을 하지 않고 BLOCKED 유지
 - HQ가 dependency 또는 상태를 변경하면 다시 기계적으로 계산
 
-## 6. WorkGraph와 GraphPatch
+제6조 (WorkGraph와 GraphPatch)
 
 WorkGraph는 현재 Job의 전체 WorkItem과 revision을 가진다.
 
@@ -131,7 +131,7 @@ Worker가 확인하는 것은 ID 중복, dependency 존재, self dependency, cyc
 
 작업 적합성, dependency가 의미적으로 맞는지, 분해 품질은 검사하지 않는다.
 
-## 7. Scheduler
+제7조 (Scheduler)
 
 `ParallelWorkScheduler`를 MainWindow에서 분리된 실행 엔진으로 둔다.
 
@@ -152,7 +152,7 @@ Worker가 확인하는 것은 ID 중복, dependency 존재, self dependency, cyc
 - 결과 품질 평가
 - merge 충돌 자동 의미 해결
 
-## 8. Git worktree
+제8조 (Git worktree)
 
 `GitWorktreeManager`를 신규 구성요소로 둔다.
 
@@ -179,7 +179,7 @@ projecthub/<jobId>/<workItemId>
 - 완료 branch/result ref는 Integration까지 유지
 - 정리는 Integration과 Job 종료 정책에 따라 명시적으로 수행
 
-## 9. WORK 실행 계약
+제9조 (WORK 실행 계약)
 
 WORK 프롬프트에는 최소 다음 실행 컨텍스트를 기계적으로 제공한다.
 
@@ -204,7 +204,7 @@ WORK는 프로젝트 전체의 유일한 실행자가 아니라 WorkGraph의 한
 - SPLIT_REQUEST 필요 여부
 - Integration 주의사항
 
-## 10. SPLIT_REQUEST
+제10조 (SPLIT_REQUEST)
 
 WORK가 실행 중 새 독립 작업을 발견해도 직접 새 Codex WORK를 시작하지 않는다.
 
@@ -221,7 +221,7 @@ WORK W17
 
 Worker는 SPLIT_REQUEST가 타당한지 판단하지 않는다.
 
-## 11. Integration WorkItem
+제11조 (Integration WorkItem)
 
 여러 병렬 branch를 최종 작업공간으로 합치는 의미 판단은 Integration WORK가 맡는다.
 
@@ -238,7 +238,7 @@ Integration WorkItem:
 
 Worker는 Git 명령 실행 환경과 안전 경계를 제공하지만 충돌 해결 내용을 선택하지 않는다. 주 작업공간이 dirty, detached HEAD, non-fast-forward 상태이면 force/reset/push를 사용하지 않고 `INTEGRATION_LANDING_FAILED`로 BLOCKED 처리한다.
 
-## 12. RESOURCE / JUDGE / OBSERVATION
+제12조 (RESOURCE / JUDGE / OBSERVATION)
 
 병렬화 후에도 역할 의미는 바꾸지 않는다.
 
@@ -251,7 +251,7 @@ Worker는 Git 명령 실행 환경과 안전 경계를 제공하지만 충돌 �
 
 WORK_RESULT_REQUIRED는 해당 WorkItem만 WAIT한다. 다른 슬롯의 WorkItem은 계속 실행한다.
 
-## 13. 프로젝트 기억과 이벤트
+제13조 (프로젝트 기억과 이벤트)
 
 `.projecthub/session-state.json`을 단일 WorkSessionId 중심 구조에서 WorkGraph snapshot 중심으로 확장한다.
 
@@ -277,7 +277,7 @@ WORK_RESULT_REQUIRED는 해당 WorkItem만 WAIT한다. 다른 슬롯의 WorkItem
 
 재시작 시 Worker는 저장 상태를 기계적으로 복원한다. RUNNING이었다는 기록만으로 자동 AI 재호출하지 않고, 실제 프로세스/세션/작업공간 상태를 확인한 뒤 사용자 또는 HQ의 명시적 재개 흐름을 따른다.
 
-## 14. UI
+제14조 (UI)
 
 Pipeline의 WORK 카드는 하나를 유지한다.
 
@@ -299,7 +299,7 @@ History는 WorkItem 이벤트를 기존 카드 체계에 추가하며 workItemId
 
 첫 구현에서는 복잡한 그래프 시각화를 만들지 않는다. 텍스트/목록 기반 상태부터 검증한다.
 
-## 15. 설정
+제15조 (설정)
 
 WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 
@@ -312,15 +312,15 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 
 모델/추론은 기존 WORK 설정을 모든 WorkItem에 공통 적용한다. WorkItem별 모델 선택은 이번 작업 범위에 넣지 않는다.
 
-## 16. 구현 단계
+제16조 (구현 단계)
 
-### 단계 0 — 기준선과 문서
+① 단계 0 — 기준선과 문서
 - 복구 branch 생성
 - Master-Polish.md 목표 정책 반영
 - 본 작업 계획 문서 활성화
 - CurrentWork/구현 로드맵 동기화
 
-### 단계 1 — WorkGraph 도메인
+② 단계 1 — WorkGraph 도메인
 - WorkItem 상태/종류 모델
 - WorkGraph snapshot
 - GraphPatch 기본 연산
@@ -334,7 +334,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - cycle/unknown dependency/self dependency 거부
 - GraphPatch revision mismatch 거부
 
-### 단계 2 — 병렬 Scheduler
+③ 단계 2 — 병렬 Scheduler
 - maxConcurrentWork
 - READY queue
 - slot 배정
@@ -348,7 +348,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 한 작업 실패가 독립 READY 작업을 막지 않음
 - 의미 판단 코드가 scheduler에 없음
 
-### 단계 3 — Git worktree
+④ 단계 3 — Git worktree
 - GitWorktreeManager
 - WorkItem별 branch/worktree
 - baseRef/checkpoint
@@ -361,7 +361,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - branch/ref 기록
 - 충돌을 Worker가 자동 해결하지 않음
 
-### 단계 4 — 실제 Codex WORK 병렬 실행
+⑤ 단계 4 — 실제 Codex WORK 병렬 실행
 - CodexCliRunner 연결
 - WorkItem별 sessionId
 - progress/event 귀속
@@ -373,7 +373,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - WorkItem별 독립 session/worktree
 - 종료 코드/usage/result 귀속
 
-### 단계 5 — HQ GraphPatch와 동적 분할
+⑥ 단계 5 — HQ GraphPatch와 동적 분할
 - HQ 계약 확장
 - GraphPatch transport
 - SPLIT_REQUEST
@@ -385,7 +385,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - HQ가 승인하면 빈 슬롯에서 실행
 - HQ가 승인하지 않으면 Worker가 생성하지 않음
 
-### 단계 6 — Integration
+⑦ 단계 6 — Integration
 - Integration WorkItem 생성
 - dependency result 전달
 - integration worktree
@@ -397,7 +397,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 충돌 시 Integration WORK가 해결
 - Worker가 의미적 conflict resolution을 하지 않음
 
-### 단계 7 — 사이드카와 영속화
+⑧ 단계 7 — 사이드카와 영속화
 - RESOURCE workItemId
 - JUDGE workItemId
 - OBSERVATION workItemId
@@ -405,7 +405,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - restart recovery
 - USER_FOLLOWUP 회귀
 
-### 단계 8 — UI와 E2E
+⑨ 단계 8 — UI와 E2E
 - maxConcurrentWork 설정
 - WORK 카드 N/M
 - WorkItem 목록
@@ -413,7 +413,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 실제 프로젝트 병렬 E2E
 - max=1 회귀 비교
 
-## 17. 예상 영향 파일
+제17조 (예상 영향 파일)
 
 신규 예상:
 - `WorkGraph.cs`
@@ -441,7 +441,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 
 전체 예상은 약 15~25개 파일, 신규·수정 코드 약 2,500~4,000줄 범위다. 실제 리팩터링 결과에 따라 달라질 수 있다.
 
-## 18. 커밋 전략
+제18조 (커밋 전략)
 
 큰 일괄 commit을 피하고 다음 단위로 원자화한다.
 - 정책/계획
@@ -460,7 +460,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 
 각 단계에서 이전 commit으로 되돌릴 수 있게 한다.
 
-## 19. 검증 전략
+제19조 (검증 전략)
 
 가능한 환경에서는 각 단계마다:
 - `dotnet test ProjectHub.sln`
@@ -482,7 +482,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 7. 취소/재시작/USER_FOLLOWUP
 8. HQ END와 outstanding 종료
 
-## 20. 완료 기준
+제20조 (완료 기준)
 
 다음이 모두 만족되어야 작업 16을 완료로 본다.
 - HQ가 동적 WorkGraph를 생성·변경할 수 있음
@@ -496,9 +496,9 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - max=1 회귀와 max=4 실제 병렬 E2E가 모두 통과
 
 
-## 21. 진행 기록
+제21조 (진행 기록)
 
-### 2026-09-25 착수
+① 2026-09-25 착수
 
 - 구현 전 복구 branch `recovery/pre-parallel-work-graph-20260925`를 commit `000a478f6e21c25e8d89020137e93abed1cab5e2`에 생성했다.
 - 정책/종합 계획 commit: `0c87a0021643efc00e147fead82ed45cb1bf4c91`
@@ -511,7 +511,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 현재 실행 환경에는 .NET SDK가 없어 `dotnet test`와 빌드는 실행하지 못했다. 다음 Windows 검증에서 단계 1 테스트를 우선 실행한다.
 
 
-### 2026-09-25 단계 2~3 기반
+② 2026-09-25 단계 2~3 기반
 
 - ParallelWorkScheduler commit: `f084cbf7c20f7a1150042c14d60c0f74290f6704`
 - GitWorktreeManager commit: `b2ade9b4bc4f52c4cdfb6e8009dc107477fdf376`
@@ -527,7 +527,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 현재 환경에는 .NET SDK가 없어 추가 단위 테스트는 아직 실행하지 못했다.
 
 
-### 2026-09-25 병렬 전송 계약 기반
+③ 2026-09-25 병렬 전송 계약 기반
 
 - 병렬 HQ 프롬프트에는 WorkGraph revision, 사용자 maxConcurrentWork, 기준 ref를 제공한다.
 - HQ의 병렬 CONTINUE 본문은 `WORK_GRAPH_PATCH:` 뒤 JSON 한 건으로 제한하고 Worker가 전용 transport parser로 기계 검증한다.
@@ -538,7 +538,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 레거시 단일 HQ/WORK 프롬프트에는 병렬 계약을 노출하지 않아 현재 직렬 흐름을 깨지 않는다.
 
 
-### 2026-09-25 실제 WORK 실행 어댑터 기반
+④ 2026-09-25 실제 WORK 실행 어댑터 기반
 
 - 사용자 병렬도 설정 commit: `2af057b40fe905d4f3e4c9d98c9f4834d21d88a9`
 - WorkItem checkpoint commit: `2ce5a6880fe116de1c53f891fadfaf9374389faf`
@@ -553,7 +553,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 아직 MainWindow 관제 루프와 실제 병렬 scheduler를 연결하지 않았으므로 현재 사용자 실행 경로는 기존 직렬 WORK 흐름을 유지한다.
 
 
-### 2026-09-26 병렬 runtime 연결 이후 보강
+⑤ 2026-09-26 병렬 runtime 연결 이후 보강
 
 - 중단된 이전 실행 중 main은 이미 병렬 관제 runtime 연결, RESOURCE/JUDGE/OBSERVATION WorkItem 귀속, WorkGraph persistence, 최대 동시 WORK 설정 UI, pipeline 점유 표시까지 구현된 상태였다.
 - `63e0bdab51b84eb35d79a3fc778ca0145c673d13`: `GitWorktreeManager.LandIntegrationAsync`를 추가했다. 주 작업공간이 clean branch이고 Integration result가 현재 HEAD의 후손일 때만 `git merge --ff-only`로 반영한다. dirty/detached/non-fast-forward에서는 변경하지 않는다.
@@ -562,7 +562,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 현재 실행 환경에는 .NET SDK가 없어 신규 테스트와 전체 solution 빌드는 아직 실행하지 못했다. Windows 환경 실검증이 필요하다.
 
 
-### 2026-09-26 Integration 이후 기준 ref 연속성
+⑥ 2026-09-26 Integration 이후 기준 ref 연속성
 
 - `3e3e1a461092d72935e99fd53cb64e3542495e61`: 주 작업공간 landing의 clean 검사에서 ProjectHub 자체 런타임 상태 폴더 `.projecthub`를 제외했다. 내부 기억/event 파일 때문에 Integration이 항상 dirty로 오판되는 경로를 막았다.
 - `21dc6ac0ec7a6a9cd2b64b6bb064ef7b2675ec6a`: 성공한 Integration resultRef를 이후 새 WorkItem의 기계적 기본 baseRef로 승격했다. dependency 자체만으로 Worker가 의미적 base를 추론하지는 않는다.
@@ -570,14 +570,14 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 특정 dependency 결과에서 직접 이어야 하는 WorkItem은 HQ가 `baseRef`를 명시한다. 생략 시 현재 주 작업공간 HEAD 또는 가장 최근 성공 Integration resultRef가 기본값이다.
 
 
-### 2026-09-26 Windows 검증 실행 스크립트
+⑦ 2026-09-26 Windows 검증 실행 스크립트
 
 - `bin/ProjectHub_Worker_Parallel_Test.ps1`를 추가해 병렬 WorkGraph 관련 Worker 테스트, 전체 solution 테스트, Debug/Release 빌드, `git diff --check`를 한 번에 실행할 수 있게 한다.
 - 자동 검증 뒤 실제 Explorer에서 max=1 회귀, max=4 병렬, 동적 SPLIT_REQUEST, Integration landing, sidecar 귀속, 취소/복구, END gate를 확인하는 수동 E2E 체크 항목을 출력한다.
 - 이 Web 실행 환경에는 .NET SDK가 없어 스크립트 자체의 실제 dotnet 실행 결과는 아직 없다.
 
 
-### 2026-09-26 병렬 상태 UI
+⑧ 2026-09-26 병렬 상태 UI
 
 - `1ac715f5b8e1d45b02eb980fce1c3379fb3b91af`: Pipeline의 작업 카드에 병렬 상태 요약을 추가했다.
 - 표시 요약은 `RUN N/M · R <READY> · B <BLOCKED> · C <COMPLETED> · F <FAILED>` 형식이며 의미 요약 없이 WorkGraph의 기계 상태만 사용한다.
@@ -586,7 +586,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `ParallelWorkUiFormatterTests`를 Windows 병렬 검증 스크립트 대상에 포함했다.
 
 
-### 2026-09-26 max=1 동일 runtime 정리
+⑨ 2026-09-26 max=1 동일 runtime 정리
 
 - `d446365a17debaf3f9b2ba3102e7c2377389738c`: 새 Job은 `maxConcurrentWork=1`이어도 WorkGraph/Scheduler runtime을 사용하도록 전환했다.
 - 따라서 max=1과 max=4의 차이는 실행 엔진이 아니라 슬롯 수뿐이며, max=1 회귀 검증도 동일 병렬 구조의 직렬 모드 검증이 된다.
@@ -595,7 +595,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `ParallelWorkActivationPolicyTests`를 추가했고 Windows 검증 스크립트의 핵심 테스트 필터에도 포함했다.
 
 
-### 2026-09-26 UI 상세 목록과 Git 사전 차단
+⑩ 2026-09-26 UI 상세 목록과 Git 사전 차단
 
 - `2469627236ab6f8a484cbc27588ff29ec1d0a20a`: 메시지/작업 이력 상단에 현재 WorkItem 상태 목록을 직접 표시하도록 추가했다. 기존 Pipeline 요약과 ToolTip도 유지한다.
 - `993ed64c33f94fc92d633eae3159a3876bfb37d2`: 상태 목록에 CANCELED를 포함하고, Integration WorkItem은 `[I]`, BLOCKED/FAILED는 기계적 코드도 함께 표시한다.
@@ -606,7 +606,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - Windows 핵심 검증 스크립트에 `ParallelWorkGitPreflightTests`를 추가했다.
 
 
-## 22. 현재 구현 판정
+제22조 (현재 구현 판정)
 
 소스 기준으로 계획한 핵심 구조는 모두 연결된 상태다.
 
@@ -631,7 +631,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 따라서 tasks/16은 코드 구현 단계는 종료하고 Windows 실검증 단계로 유지한다. 실검증 결과에 따라 회귀 수정이 생기면 이 작업 문서에 이어서 기록한다.
 
 
-### 2026-09-26 최소 Git 준비 자동화
+① 2026-09-26 최소 Git 준비 자동화
 
 - `f7a4ef4820865901880d7e99d4f4b737400eb0e0`: `GitWorkspaceBootstrapper`를 추가했다. 작업 폴더가 Git 저장소가 아니면 `git init`을 기계적으로 수행하고, repository root / branch / HEAD / dirty 상태를 확인한다.
 - `3ba2909987a243208254a28661d21625ac665e52`: 새 작업 실행과 병렬 USER_FOLLOWUP의 실제 시작 직전에 Git 준비 단계를 연결했다.
@@ -644,7 +644,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - Windows 핵심 검증에 `GitWorkspaceBootstrapperTests`를 추가한다.
 
 
-### 2026-09-26 Git 기준점 준비 중 중복 입력 차단
+② 2026-09-26 Git 기준점 준비 중 중복 입력 차단
 
 - `421d58781c238fc290cd0a496cc79390ae7bce2d`: Git 준비 시작부터 완료·취소까지 `_gitPreparationInProgress` 게이트를 추가했다.
 - 기준점 확인창에서 사용자가 확인한 뒤 `git add --all` / baseline commit / HEAD 재확인이 끝날 때까지 실행 버튼과 작업 추가 버튼을 비활성화한다.
@@ -653,7 +653,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 기준점 생성 취소·실패·성공 어느 경로에서도 `finally`에서 게이트를 해제하고 버튼 상태를 다시 계산한다.
 
 
-### 2026-09-26 명령 단위 transcript 복원
+③ 2026-09-26 명령 단위 transcript 복원
 
 - `3ba67341de15d5ea7b8d0aa3671af9cdfc8c6cae`: 프로젝트 transcript를 Job 전체 통합 파일에서 사용자 명령 실행 구간별 파일로 되돌렸다.
 - 최초 `실행`과 각 `작업 추가`는 transcript 시작 지점을 새로 잡고, 종료 시 그 구간에서 추가된 메시지만 별도 파일로 저장한다.
@@ -664,7 +664,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - `CommandTranscriptPathUsesShortTimestampAndAvoidsOverwrite` 테스트를 추가했다.
 
 
-### 2026-09-26 원격 최신 소스 Release 검증
+④ 2026-09-26 원격 최신 소스 Release 검증
 
 - 원격 `main` `4b43568715791bd720c979aa9078dced75aa0ed6`를 기준으로 동기화했다.
 - Git 준비 화면에서 `System.Windows.MessageBox`를 명시해 참조 모호성을 해결했다.
@@ -673,7 +673,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 자동 테스트와 Explorer E2E는 이번에 실행하지 않았으며 계속 실검증 대기다.
 
 
-### 2026-09-26 terminal WorkItem 재시도 패치 보강
+⑤ 2026-09-26 terminal WorkItem 재시도 패치 보강
 
 - FAILED/COMPLETED/CANCELED WorkItem은 종료 기록으로 유지한다.
 - 종료 항목에 대한 CANCEL은 멱등 no-op으로 수용해 동일 GraphPatch 안의 retry ADD와 dependency 교체가 불필요하게 원자 거부되지 않게 했다.
@@ -682,7 +682,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 현재 Web 실행 환경에는 .NET SDK가 없어 실제 dotnet test/build는 미실행이며 Windows 실검증이 필요하다.
 
 
-### 2026-09-26 WorkGraph 단일 실행 경로와 JUDGE 반환 단순화
+⑥ 2026-09-26 WorkGraph 단일 실행 경로와 JUDGE 반환 단순화
 
 - maxConcurrentWork=1~8을 모두 동일 WorkGraph/Scheduler 실행으로 통합했다.
 - 저장 WorkGraph가 없는 과거 continuation도 새 빈 WorkGraph에서 HQ 후속 GraphPatch로 이어지며 레거시 직렬 runtime을 사용하지 않는다.
@@ -692,7 +692,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 현재 Web 환경에는 .NET SDK가 없어 자동 테스트/빌드는 미실행이며 Windows 검증 대상이다.
 
 
-### 2026-09-26 repository 단위 worktree 준비 직렬화
+⑦ 2026-09-26 repository 단위 worktree 준비 직렬화
 
 - WorkGraph 슬롯은 계속 병렬 실행하지만 동일 repository의 `GitWorktreeManager.PrepareAsync` 준비 구간은 repository root 기준으로 직렬화한다.
 - 공유 `.git/worktrees` 및 branch metadata를 변경하는 `git worktree add`가 동시에 실행되지 않게 한다.
@@ -700,7 +700,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 동시 Prepare 직렬화와 오류 상세 전파 회귀 테스트를 추가한다.
 
 
-### 2026-09-26 WORK 시작 전 준비 실패 복구
+⑧ 2026-09-26 WORK 시작 전 준비 실패 복구
 
 - `WORKTREE_*`는 Codex WORK 세션 시작 전 실패이므로 새 실행부터 `FAILED`가 아니라 `BLOCKED`로 저장한다.
 - USER_FOLLOWUP의 현재 Git preflight가 성공하면 preparation BLOCKED를 같은 WorkItem으로 재활성화한다.
@@ -711,7 +711,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - 회귀 테스트는 legacy preparation failure 선택 복구, current preparation block 복구, no-op patch, residue branch 재사용, worktree 실패 BLOCKED 귀속을 포함한다.
 
 
-### 2026-09-26 범용 Git ignore와 longpaths 보강
+⑨ 2026-09-26 범용 Git ignore와 longpaths 보강
 
 - `.verification-appdata/.../shader_cache/... `가 추적된 상태에서 Windows `Filename too long`으로 worktree checkout이 실패한 실사용 사례를 기준으로 Git 준비 계층을 보강했다.
 - `PrepareAsync`는 repository local `core.longpaths=true`를 적용하고, ProjectHub 관리 ignore 갱신 필요 여부와 관리 경로의 현재 추적 여부만 검사한다.
@@ -722,7 +722,7 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - WorkItem worktree 경로 segment를 축소해 긴 경로 위험을 추가로 줄였다.
 
 
-### 2026-09-26 HQ 설계 책임·PAUSE drain·History 작업 번호
+⑩ 2026-09-26 HQ 설계 책임·PAUSE drain·History 작업 번호
 
 - HQ 계약에는 `사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다` 한 문장만 추가했다.
 - PAUSE 수신 시 Scheduler는 새 READY 실행을 동결하고 현재 RUNNING WorkItem만 완료시킨다. RUNNING 결과가 graph에 반영된 뒤 Supervisor가 PAUSED snapshot을 반환한다.
@@ -733,20 +733,20 @@ WORK 설정에 정수 `maxConcurrentWork`를 추가한다.
 - WorkGraph의 동시 실행 기능과 maxConcurrentWork는 변경하지 않았다.
 
 
-### 2026-09-26 활성 WorkItem 게이지 크기
+⑪ 2026-09-26 활성 WorkItem 게이지 크기
 
 - `ImplementerWorkGaugeText` 네모 게이지의 `FontSize`를 24로 조정했다.
 - Release 빌드 성공: 경고 0, 오류 0.
 
 
-### 2026-09-26 단일 파일 빌드·복사
+⑫ 2026-09-26 단일 파일 빌드·복사
 
 - 원격 `main` `c756233b9f1cbc5b7be66ee6f15625fb7167378a` Release 빌드 성공: 경고 0, 오류 0.
 - self-contained win-x64 단일 파일 하나를 게시해 Worker 배포 경로로 복사했고 SHA-256 일치.
 - 자동 테스트와 Explorer E2E는 실행하지 않았다.
 
 
-### 2026-09-26 Integration stale base와 landing 구조화 오류 수정
+⑬ 2026-09-26 Integration stale base와 landing 구조화 오류 수정
 
 - 실제 통합 결과가 생성됐지만 오래된 Integration baseRef 때문에 primary HEAD와 `INTEGRATION_NOT_FAST_FORWARD`가 된 사례를 반영했다.
 - 새 INTEGRATION WorkItem의 첫 준비는 실행 시점 primary branch/HEAD를 읽고, Graph에 저장된 과거 baseRef 대신 현재 HEAD를 worktree base로 사용한다.
