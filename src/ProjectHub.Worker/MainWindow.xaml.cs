@@ -202,6 +202,7 @@ public partial class MainWindow : Window
         {
             RestoreWindowPosition();
             await InitializeStartupConfigurationAsync();
+            await EnsureManagedWebRuntimesStartedAsync();
             RefreshManagedWebRuntimePresentation();
         };
         ProjectStatusText.Text = "CHECKING";
