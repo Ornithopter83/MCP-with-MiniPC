@@ -31,10 +31,12 @@ dotnet run --project src/ProjectHub.Server
 
 상태 확인: `GET /api/status`
 
-## Worker와 Web 확장
+## Worker와 Web 런타임
 
 Worker는 HQ, WORK, RESOURCE, JUDGE와 기계 계측 흐름을 관리한다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
 
-Web 확장은 사용자가 연결한 ChatGPT Web 대화와 로컬 Worker의 루프백 브리지를 제공한다. 세부 정책은 `Web-Polish.md`에 둔다.
+Worker는 HQ와 RESOURCE용 Web 브라우저 슬롯을 최대 두 개 관리할 수 있다. 두 슬롯은 서로 다른 persistent profile을 사용하고 평상시에는 화면 밖에서 실행하며, 사용자가 로그인하거나 대화를 선택해야 할 때 Worker UI에서 해당 브라우저를 표시할 수 있다.
+
+관리형 브라우저에서 GPTWeb-Hub 확장은 시각 패널 없이 bridge 기능만 실행하고 현재 대화를 슬롯의 HQ 또는 RESOURCE 역할에 자동 연결한다. 수동 브라우저 연결 방식은 호환용으로 유지한다. 세부 정책은 `Web-Polish.md`에 둔다.
 
 과거 실행 기록과 작업 계획은 정책 원본으로 사용하지 않는다.
