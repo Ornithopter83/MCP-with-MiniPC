@@ -405,11 +405,14 @@ public partial class MainWindow : Window
     private void UpdateFollowupButtonState()
     {
         if (AddWorkButton is null || DashboardFollowupInput is null) return;
-        var inactive = _activeTaskCts is null && !_awaitingWebResult;
+        var inactive = !_gitPreparationInProgress &&
+                       _activeTaskCts is null &&
+                       !_awaitingWebResult;
         var hasContinuation = _continuationState is not null &&
                               TaskContinuationContract.IsResumableStatus(_continuationState.Status);
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
                         DashboardFollowupInput.Text != FollowupPromptPlaceholder;
+        AddWorkButton.Content = _gitPreparationInProgress ? "Git 준비 중..." : "＋   작업 추가";
         AddWorkButton.IsEnabled = inactive && hasContinuation && hasPrompt;
         AddWorkButton.Opacity = AddWorkButton.IsEnabled ? 1 : 0.72;
     }
@@ -500,7 +503,7 @@ public partial class MainWindow : Window
 
     private async void AddWorkButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_activeTaskCts is not null || _awaitingWebResult) return;
+        if (_gitPreparationInProgress || _activeTaskCts is not null || _awaitingWebResult) return;
         var continuation = _continuationState;
         if (continuation is null || !TaskContinuationContract.IsResumableStatus(continuation.Status)) return;
 
@@ -549,6 +552,18 @@ public partial class MainWindow : Window
     private void UpdateDashboardRunButtonState()
     {
         if (RunButton is null || DashboardTaskInput is null) return;
+
+        if (_gitPreparationInProgress)
+        {
+            RunButton.Content = "Git 준비 중...";
+            ApplyRunButtonVisualState(false);
+            DashboardPreflightText.Text = "Git 기준점을 준비하는 중입니다.";
+            DashboardPreflightText.Foreground =
+                (System.Windows.Media.Brush)FindResource("Muted");
+            UpdateFollowupButtonState();
+            return;
+        }
+
         var active = _activeTaskCts is not null || _awaitingWebResult;
         var preflightError = GetDashboardPreflightError();
         var executionReady = preflightError is null;
@@ -892,6 +907,9 @@ public partial class MainWindow : Window
     }
     private async void RunTask_Click(object sender, RoutedEventArgs e)
     {
+        if (_gitPreparationInProgress)
+            return;
+
         if (_activeTaskCts is not null || _awaitingWebResult)
         {
             _userCanceledTask = true;

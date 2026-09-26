@@ -5,51 +5,22 @@ namespace ProjectHub.Worker;
 public partial class MainWindow
 {
     private readonly GitWorkspaceBootstrapper _gitWorkspaceBootstrapper = new();
+    private bool _gitPreparationInProgress;
 
     private async Task<bool> PrepareParallelGitForLaunchAsync(
         string workingDirectory)
     {
-        var state = await _gitWorkspaceBootstrapper.PrepareAsync(
-            workingDirectory,
-            CancellationToken.None);
-
-        if (!state.Success)
-        {
-            ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
+        if (_gitPreparationInProgress)
             return false;
-        }
 
-        if (state.NeedsBaseline)
+        _gitPreparationInProgress = true;
+        UpdateDashboardRunButtonState();
+        UpdateFollowupButtonState();
+
+        try
         {
-            var reason = state.HasHead
-                ? "현재 작업 폴더에 commit되지 않은 변경사항이 있습니다.\n현재 변경사항을 새 Git 기준점에 포함합니다."
-                : "병렬 WORK를 위한 최초 Git 기준점이 필요합니다.\n현재 폴더의 내용을 Git 기준점으로 생성합니다.";
-
-            var prompt =
-                reason + Environment.NewLine + Environment.NewLine +
-                "기준점 생성 경로" + Environment.NewLine +
-                state.RepositoryRoot + Environment.NewLine + Environment.NewLine +
-                "현재 Branch" + Environment.NewLine +
-                (state.Branch ?? "unknown") + Environment.NewLine + Environment.NewLine +
-                "확인을 누르면 기준점을 생성하고, 취소를 누르면 작업을 시작하지 않습니다.";
-
-            var answer = MessageBox.Show(
-                this,
-                prompt,
-                "Git 기준점 생성",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Question);
-
-            if (answer != MessageBoxResult.OK)
-            {
-                DashboardPreflightText.Text = "Git 기준점 생성을 취소했습니다.";
-                DashboardPreflightText.Foreground =
-                    (System.Windows.Media.Brush)FindResource("Muted");
-                return false;
-            }
-
-            state = await _gitWorkspaceBootstrapper.CreateBaselineAsync(
-                state,
+            var state = await _gitWorkspaceBootstrapper.PrepareAsync(
+                workingDirectory,
                 CancellationToken.None);
 
             if (!state.Success)
@@ -57,21 +28,71 @@ public partial class MainWindow
                 ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
                 return false;
             }
-        }
 
-        var target = WorkerTargetConfiguration.ResolveGit(
-            workingDirectory,
-            _targetSettings);
-        var preflight = ParallelWorkGitPreflight.Validate(target);
-        if (!preflight.Success)
+            if (state.NeedsBaseline)
+            {
+                var reason = state.HasHead
+                ? "현재 작업 폴더에 commit되지 않은 변경사항이 있습니다.\n현재 변경사항을 새 Git 기준점에 포함합니다."
+                : "병렬 WORK를 위한 최초 Git 기준점이 필요합니다.\n현재 폴더의 내용을 Git 기준점으로 생성합니다.";
+
+                var prompt =
+                reason + Environment.NewLine + Environment.NewLine +
+                "기준점 생성 경로" + Environment.NewLine +
+                state.RepositoryRoot + Environment.NewLine + Environment.NewLine +
+                "현재 Branch" + Environment.NewLine +
+                (state.Branch ?? "unknown") + Environment.NewLine + Environment.NewLine +
+                "확인을 누르면 기준점을 생성하고, 취소를 누르면 작업을 시작하지 않습니다.";
+
+                var answer = MessageBox.Show(
+                this,
+                prompt,
+                "Git 기준점 생성",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Question);
+
+                if (answer != MessageBoxResult.OK)
+                {
+                    DashboardPreflightText.Text = "Git 기준점 생성을 취소했습니다.";
+                    DashboardPreflightText.Foreground =
+                        (System.Windows.Media.Brush)FindResource("Muted");
+                    return false;
+                }
+
+                DashboardPreflightText.Text = "Git 기준점을 생성하는 중입니다.";
+                DashboardPreflightText.Foreground =
+                    (System.Windows.Media.Brush)FindResource("Muted");
+
+                state = await _gitWorkspaceBootstrapper.CreateBaselineAsync(
+                    state,
+                    CancellationToken.None);
+
+                if (!state.Success)
+                {
+                    ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
+                    return false;
+                }
+            }
+
+            var target = WorkerTargetConfiguration.ResolveGit(
+                workingDirectory,
+                _targetSettings);
+            var preflight = ParallelWorkGitPreflight.Validate(target);
+            if (!preflight.Success)
+            {
+                ShowGitPreparationError(preflight.ErrorCode, target.ProjectPath);
+                return false;
+            }
+
+            RefreshGitTargetPresentation(target);
+            DashboardPreflightText.Text = string.Empty;
+            return true;
+        }
+        finally
         {
-            ShowGitPreparationError(preflight.ErrorCode, target.ProjectPath);
-            return false;
+            _gitPreparationInProgress = false;
+            UpdateDashboardRunButtonState();
+            UpdateFollowupButtonState();
         }
-
-        RefreshGitTargetPresentation(target);
-        DashboardPreflightText.Text = string.Empty;
-        return true;
     }
 
     private void RefreshGitTargetPresentation(GitTargetSnapshot target)
