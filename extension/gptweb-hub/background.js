@@ -70,7 +70,13 @@ async function ensureSingleManagedChatGptTab(message, sender) {
   const chatTabs = tabs.filter(tab => isChatGptPageUrl(tab.url || ""));
 
   let target = null;
-  if (requestedConversationId) {
+  if (requestedConversationId &&
+      senderTab &&
+      conversationIdFromTabUrl(senderTab.url || "") === requestedConversationId) {
+    target = senderTab;
+  }
+
+  if (!target && requestedConversationId) {
     target = chatTabs.find(tab =>
       conversationIdFromTabUrl(tab.url || "") === requestedConversationId) || null;
   }
