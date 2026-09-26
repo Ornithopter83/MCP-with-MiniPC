@@ -7,7 +7,7 @@ public partial class MainWindow
 {
     private void OnManagedWebRuntimeStatusChanged(ManagedWebRuntimeStatus status)
     {
-        Dispatcher.BeginInvoke(RefreshManagedWebRuntimePresentation);
+        Dispatcher.BeginInvoke(new Action(RefreshManagedWebRuntimePresentation));
     }
 
     private void RefreshManagedWebRuntimePresentation()
