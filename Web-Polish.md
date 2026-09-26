@@ -17,6 +17,7 @@
 ③ bridge 요청은 127.0.0.1 또는 localhost에만 보내며 runtime token을 전용 요청 헤더로 전달한다.
 ④ Worker는 올바른 runtime token이 없는 bridge HTTP 요청을 거부한다.
 ⑤ heartbeat는 연결 생존과 확장 상태 확인에 사용하며 작업 목적지의 의미를 결정하지 않는다.
+⑥ Worker는 관리형 Web heartbeat에 30초의 생존 허용 구간을 사용한다.
 
 제3조 (app window)
 
@@ -25,6 +26,7 @@
 ③ 이전 브라우저 세션의 탭 복원 정보는 Worker가 새 app window 시작 전에 제거한다.
 ④ persistent profile의 로그인 쿠키와 계정 상태는 유지한다.
 ⑤ 로그인·표시 또는 숨김 전환은 기존 window 복원이 아니라 새 app window 실행으로 처리한다.
+⑥ 숨김 app window는 최소화 또는 실제 window hide 상태를 사용하지 않고 화면 밖에서 정상 렌더링 상태를 유지하며, Chromium background timer·renderer·occluded-window throttling을 비활성화한다.
 
 제4조 (작업 전달)
 
