@@ -13,7 +13,8 @@ public sealed record AiRoleRunRequest(
     Action<string>? Progress = null,
     Action<string>? SessionStarted = null,
     IReadOnlyList<string>? AdditionalWritableDirectories = null,
-    bool IgnoreProjectInstructions = false);
+    bool IgnoreProjectInstructions = false,
+    IReadOnlyList<AiInputAttachment>? InputAttachments = null);
 
 public sealed record AiRoleRunResult(
     string Provider,
@@ -55,8 +56,12 @@ public sealed class OpenAiCodexRoleRunner(CodexCliRunner codexRunner) : IAiRoleR
 
     public async Task<AiRoleRunResult> RunAsync(AiRoleRunRequest request)
     {
-        var result = await codexRunner.RunAsync(
+        var effectivePrompt = UserAttachmentTransport.AppendPrompt(
             request.Prompt,
+            request.InputAttachments);
+
+        var result = await codexRunner.RunAsync(
+            effectivePrompt,
             request.Role.Model,
             request.Role.Reasoning,
             request.WorkingDirectory,
