@@ -70,12 +70,14 @@ B=<기준>
 
 제6조 (CONTINUE 본문)
 
-① CONTINUE 본문에는 다음 WORK_GRAPH_PATCH를 사용한다.
+① CONTINUE 본문에는 다음 WORK_GRAPH_PATCH를 정확히 하나 포함한다. 설계 설명이 먼저 와도 되며 Worker는 본문에서 마커 행을 기계적으로 찾는다.
 
 WORK_GRAPH_PATCH:
 {"expectedRevision":<현재 revision>,"operations":[...]}
 
-② operations에는 다음 항목을 사용할 수 있다.
+② WORK_GRAPH_PATCH 뒤에는 JSON 객체 하나를 둔다. 같은 마커를 두 번 쓰지 않는다. Worker는 마커 뒤에서 첫 번째 JSON 객체 하나만 패치로 읽으며 그 뒤의 설명은 패치 JSON에 포함하지 않는다.
+
+③ operations에는 다음 항목을 사용할 수 있다.
 
 1. ADD: workItemId, goal, 선택적 dependencies, kind=NORMAL|INTEGRATION, 선택적 baseRef
 2. CANCEL: workItemId
@@ -84,4 +86,4 @@ WORK_GRAPH_PATCH:
 5. SET_BASE_REF: workItemId, value
 6. RELEASE: workItemId, 선택적 inputType, 선택적 value
 
-③ Worker는 JSON 구조, revision, ID, dependency 존재, self dependency, cycle 같은 기계적 유효성만 검사한다.
+④ Worker는 JSON 구조, revision, ID, dependency 존재, self dependency, cycle 같은 기계적 유효성만 검사한다.
