@@ -29,11 +29,11 @@
 제5조 (WORKER)
 
 ① 상태는 완료다.
-② 방금 완료한 작업은 기존 Master의 Worker 세부 정책을 `Worker-Polish.md`로 분리하고 Master를 공통 영구 정책으로 축소한 것이다.
+② 방금 완료한 작업은 HQ와 RESOURCE용 관리형 Web 브라우저 슬롯 두 개, 분리된 persistent profile, 숨김 실행·로그인 표시 제어, Web 진행 체크포인트와 파일 SHA-256 검증 기반을 Worker에 추가한 것이다.
 ③ 다음 작업은 미지정이다.
 
 제6조 (WEB)
 
 ① 상태는 완료다.
-② 방금 완료한 작업은 ChatGPT Web이 기존 assistant DOM을 재사용해 텍스트만 갱신하는 경우에도 Worker 메시지 전송이 확인된 뒤 새 응답을 수집할 수 있도록 감지 조건을 보강한 것이다.
+② 방금 완료한 작업은 관리형 HQ/RESOURCE 브라우저에서 확장 UI를 숨기고 역할을 자동 연결하며, 응답 수집과 첨부·RESOURCE 파일의 SHA-256 검증을 수행하도록 Web bridge를 확장한 것이다.
 ③ 다음 작업은 미지정이다.
