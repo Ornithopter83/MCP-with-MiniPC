@@ -1,23 +1,23 @@
-# GPT Web 피드백 — 예약 WorkItem #0/#1
+# GPT Web 피드백 — 계약문서 무시 직통 작업
 
 갱신일: 2026-09-26
 기준 정책: Master-Polish.md
 
-## 확정 정책
+## 구현
 
-- WorkItem #0~#9는 시스템 예약 번호다. HQ는 일반 작업을 #10부터 배정한다.
-- WorkItem #0은 리소스 전용이다. RESOURCE 요청과 완료 결과는 반드시 #0을 통과하며 다른 WorkItem은 RESOURCE를 직접 호출할 수 없다.
-- WorkItem #1은 이미지 가공 전용이다. 스프라이트 분할 등 기존 이미지 가공만 담당한다.
-- 메시지 및 작업 이력에서는 #0을 `작업 (#0, 리소스)`, #1을 `작업 (#1, 이미지 가공)`, 일반 작업을 `작업 (#N)`으로 표시한다.
+- 하단 `계약문서 무시` 체크박스는 기본 해제다.
+- 체크 시 왼쪽에 서비스 제공사 / 모델 / 추론 깊이 선택 항목을 표시한다.
+- 실행과 작업 추가에서 체크 상태이면 정상 HQ/WorkGraph 경로 대신 선택한 모델을 현재 작업 폴더에서 직접 실행한다.
+- 사용자 입력은 HQ/WORK 계약 포맷으로 가공하지 않는다.
+- Codex CLI에는 직통 모드에서 `project_doc_max_bytes=0`을 전달해 프로젝트 AGENTS 지침 자동 주입을 막는다.
+- 직통 모드의 요청, 진행, 결과는 모두 작업 History 카드로 기록한다.
+- 실행 중 Pipeline은 작업 카드만 활성화한다.
+- 정상 실행 경로의 기본 동작과 runner 기본 옵션은 변경하지 않는다.
 
-## 구현 변경
+## 변경 파일
 
-- WorkGraph/GraphPatch에서 #0~#9를 일반 ADD 대상에서 제외하고 일반 WorkItem 번호를 #10부터 사용한다.
-- RESOURCE 라우터는 #0의 요청만 수락하고 RESOURCE 완료도 #0으로 반환한다.
-- #0에는 리소스 외 일반 구현 작업을 배정하지 않고, #1에는 새 리소스 생성을 배정하지 않는다.
-- 기존 ResourceSidecarQueue의 FIFO 1건 실행과 Web transport 구조는 유지한다.
-- 현재 createdOrder 기반 History 번호 계산은 예약 번호 정책과 맞도록 수정한다.
-
-## 범위
-
-이번 변경에 RESOURCE 의미 중복 판정, JEV preflight, 새 AI 역할 추가는 포함하지 않는다.
+- `MainWindow.xaml`
+- `MainWindow.xaml.cs`
+- `MainWindow.DirectWork.cs`
+- `AiRoleRunner.cs`
+- `CodexCliRunner.cs`
