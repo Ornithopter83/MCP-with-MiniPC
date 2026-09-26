@@ -45,7 +45,7 @@ CONTINUE는 본문이 있어야 한다. Legacy Web은 HQ 역할 라우팅을 수
 ...
 ~~~
 
-Worker는 REPORT를 GPT Web에 전달한다.
+Worker는 NEXT 뒤 본문에서 [REPORT] 행을 기계적으로 찾고 REPORT를 GPT Web에 전달한다. 설명이 먼저 와도 되지만 [REPORT]는 정확히 하나만 둔다.
 
 REPORT의 사실 여부를 Worker가 판단하지 않는다.
 
@@ -58,7 +58,7 @@ REPORT의 사실 여부를 Worker가 판단하지 않는다.
 ...
 ~~~
 
-Worker는 VALIDATION REQUEST를 JEV 어댑터에 전달한다.
+Worker는 NEXT 뒤 본문에서 [VALIDATION REQUEST] 행을 기계적으로 찾고 JEV 어댑터에 전달한다. 설명이 먼저 와도 되지만 해당 마커는 정확히 하나만 둔다.
 
 질문 안의 PASS/임계값/criteria는 **JUDGE가 해석할 요청 내용**이며 Worker 완료 gate가 아니다.
 
