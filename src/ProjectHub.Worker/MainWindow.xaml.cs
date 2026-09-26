@@ -679,8 +679,7 @@ public partial class MainWindow : Window
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var workingDirectory = ResolveWorkingDirectory(selectedThread);
         if (string.IsNullOrWhiteSpace(workingDirectory)) return null;
-        var sessionId = string.IsNullOrWhiteSpace(selectedThread?.SessionId) ? null : selectedThread.SessionId;
-        return new TaskLaunchRequest(prompt, null, workingDirectory, sessionId);
+        return new TaskLaunchRequest(prompt, null, workingDirectory, null);
     }
 
     private void ResetDashboardTaskInput()
@@ -1833,7 +1832,6 @@ public partial class MainWindow : Window
             : "Git: UNCONFIGURED";
         TargetPathText.Text = !string.IsNullOrWhiteSpace(selected?.SessionId) ? $"Codex ProjectPath: {selected.ProjectPath}" : $"New thread folder: {workingDirectory}";
         RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
-        TryRestoreProjectContinuation(workingDirectory);
     }
 
     private void TryRestoreProjectContinuation(string workingDirectory)
