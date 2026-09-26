@@ -36,6 +36,9 @@ public partial class MainWindow : Window
     private string? _activeSessionId;
     private string? _activeCliModel;
     private string? _activeReasoning;
+    private IReadOnlyList<UserAttachmentInput> _activeUserAttachments = Array.Empty<UserAttachmentInput>();
+    private IReadOnlyList<AiInputAttachment> _activeStagedUserAttachments = Array.Empty<AiInputAttachment>();
+    private bool _activeUserAttachmentsSentToWeb;
     private bool _webFollowupStarted;
     private bool _actionProtocolEnabled;
     private bool _activeReadOnly;
@@ -165,7 +168,12 @@ public partial class MainWindow : Window
 
     private enum FlowNode { Codex, Worker, Web, Judge }
     private sealed record CodexProjectOption(string Name, string Path);
-    private sealed record TaskLaunchRequest(string Prompt, string? WebInstruction, string WorkingDirectory, string? SessionId);
+    private sealed record TaskLaunchRequest(
+        string Prompt,
+        string? WebInstruction,
+        string WorkingDirectory,
+        string? SessionId,
+        IReadOnlyList<UserAttachmentInput> Attachments);
     private sealed record CodexThreadOption(string Label, string SessionId, string ProjectPath)
     {
         public override string ToString() => Label;
@@ -680,6 +688,7 @@ public partial class MainWindow : Window
         _activeProjectJobId = null;
         SetFollowupComposerVisible(false);
         _historyEvents.Clear();
+        ClearPendingAttachments(deleteCachedFiles: true);
         DashboardTaskInput.Text = DashboardPromptPlaceholder;
         DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
         SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
@@ -693,7 +702,12 @@ public partial class MainWindow : Window
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var workingDirectory = ResolveWorkingDirectory(selectedThread);
         if (string.IsNullOrWhiteSpace(workingDirectory)) return null;
-        return new TaskLaunchRequest(prompt, null, workingDirectory, null);
+        return new TaskLaunchRequest(
+            prompt,
+            null,
+            workingDirectory,
+            null,
+            SnapshotInitialAttachments());
     }
 
     private void ResetDashboardTaskInput()
@@ -729,6 +743,7 @@ public partial class MainWindow : Window
     {
         if (_activeTaskCts is not null) return;
         ResetDashboardTaskInput();
+        ClearPendingAttachments(deleteCachedFiles: true);
         CommandInput.Text = Placeholder;
         CommandInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
         WebInstructionInput.Text = WebInstructionPlaceholder;
@@ -988,8 +1003,15 @@ public partial class MainWindow : Window
                 return;
 
             _historyEvents.Clear();
+            ConsumePendingAttachments(launchRequest.Attachments);
             SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
-            await RunCoordinatorFirstJobAsync(launchRequest.Prompt, selectedThreadForLaunch, cliWorkingDirectory, coordinator, implementer);
+            await RunCoordinatorFirstJobAsync(
+                launchRequest.Prompt,
+                selectedThreadForLaunch,
+                cliWorkingDirectory,
+                coordinator,
+                implementer,
+                attachments: launchRequest.Attachments);
             return;
         }
         var legacyHqWeb = _bridgeServer?.GetRoleBindingStatus("HQ");
@@ -1025,7 +1047,16 @@ public partial class MainWindow : Window
         var sessionId = launchRequest.SessionId;
         var initialGitReference = await GitReviewGate.CheckAsync(workingDirectory, _targetSettings);
         _initialGitReferenceHeader = BuildGitReferenceHeader(initialGitReference);
-        var initialCliPrompt = _initialGitReferenceHeader + Environment.NewLine + Environment.NewLine + cliPrompt;
+        _activeUserAttachments = launchRequest.Attachments;
+        _activeStagedUserAttachments = StageUserAttachments(
+            launchRequest.Attachments,
+            workingDirectory,
+            _activeJevJobId + "-legacy");
+        _activeUserAttachmentsSentToWeb = false;
+        ConsumePendingAttachments(launchRequest.Attachments);
+        var initialCliPrompt = UserAttachmentTransport.AppendPrompt(
+            _initialGitReferenceHeader + Environment.NewLine + Environment.NewLine + cliPrompt,
+            _activeStagedUserAttachments);
         _activePrompt = cliPrompt;
         _activeWebInstruction = webInstruction;
         _actionProtocolEnabled = true;
@@ -1173,6 +1204,16 @@ public partial class MainWindow : Window
         }
         var prompt = BuildWebPrompt(result with { FinalMessage = report }, webInstruction, includeControlInstructions: true, includeWebInstruction);
         var attachments = BuildWebAttachments(_bridgeServer, result.Files);
+        if (!_activeUserAttachmentsSentToWeb && _activeUserAttachments.Count > 0)
+        {
+            prompt = UserAttachmentTransport.AppendWebPrompt(
+                prompt,
+                _activeStagedUserAttachments);
+            attachments.InsertRange(
+                0,
+                BuildUserWebAttachments(_activeUserAttachments));
+            _activeUserAttachmentsSentToWeb = true;
+        }
         return await CreateWebTaskAsync(prompt, attachments, gitReferenceHeader);
     }
     private string AppendJevFooter(string prompt)
@@ -1271,6 +1312,9 @@ public partial class MainWindow : Window
         _activeSessionId = null;
         _activeCliModel = null;
         _activeReasoning = null;
+        _activeUserAttachments = Array.Empty<UserAttachmentInput>();
+        _activeStagedUserAttachments = Array.Empty<AiInputAttachment>();
+        _activeUserAttachmentsSentToWeb = false;
         _lastWebTask = null;
         TaskDirection.Text = "IDLE";
         TaskTitle.Text = "작업 없음";
