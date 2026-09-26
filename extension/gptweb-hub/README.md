@@ -1,6 +1,6 @@
 # GPTWeb-Hub 확장
 
-버전: 0.2.1 / build 2026-09-26.6
+버전: 0.2.2 / build 2026-09-26.8
 
 ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 
@@ -58,7 +58,15 @@ ProjectHub Worker와 ChatGPT Web 대화를 루프백 브리지로 연결한다.
 ② 해당 profile 안의 `chatgpt.com` 및 `www.chatgpt.com` 탭만 정리 대상으로 삼는다.
 ③ 저장된 conversationId가 있으면 해당 대화 탭을 하나만 유지하고 활성 탭으로 만든다.
 ④ 저장된 conversationId가 없으면 Worker가 연 ChatGPT 탭 하나만 유지해 사용자가 로그인하고 대화를 선택할 수 있게 한다.
-⑤ 동일 대화의 복원 탭이 이미 있어도 Worker launch 탭이 해당 대화를 열고 있으면 launch 탭을 우선 유지한다.
+⑤ 저장된 conversationId와 같은 실제 Project/GPT 대화 탭(`/g/.../c/<id>` 포함)이 이미 있으면 해당 기존 대화 탭을 canonical `/c/<id>` launch 탭보다 우선 유지한다.
 ⑥ 다른 사이트 탭, 인증용 외부 페이지와 다른 browser profile의 탭은 닫지 않는다.
 ⑦ 탭 정리 명령은 background service worker에서 직렬화해 동시에 여러 content script가 정리 요청을 보내더라도 중복 제거 경쟁을 줄인다.
+
+제8조 (표시와 숨김)
+
+① Worker의 `로그인/표시`와 `숨김 실행`은 이미 실행 중인 관리형 브라우저 프로세스를 종료·재시작하지 않고 기존 top-level window의 표시 상태만 전환한다.
+② 표시 시 기존 창을 복원하고 화면 안으로 이동한 뒤 활성화한다.
+③ 숨김 시 같은 창을 숨기며 브라우저 profile과 열린 대화 상태를 유지한다.
+④ 실행 중인 브라우저가 없을 때만 새 브라우저 프로세스를 시작한다.
+⑤ `로그인/표시` 요청은 역할별 탭 정리 generation을 증가시켜 같은 profile의 content script가 단일 ChatGPT 탭 정리를 다시 요청하도록 한다.
 
