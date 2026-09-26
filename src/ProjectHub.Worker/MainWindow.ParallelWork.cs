@@ -98,9 +98,8 @@ public partial class MainWindow
                 throw new InvalidOperationException(
                     gitPreflight.ErrorCode + ": " + gitPreflight.Message);
 
-            IReadOnlyList<string> recoveredPreparationItems = Array.Empty<string>();
             if (continuing)
-                recoveredPreparationItems = graph.RecoverPreparationFailuresForContinuation();
+                graph.RecoverPreparationFailuresForContinuation();
 
             ProjectWorkspacePersistence.SaveWorkGraph(workingDirectory, graph.Snapshot());
 
@@ -415,30 +414,11 @@ public partial class MainWindow
             }
 
             var inboundType = continuing ? "USER_FOLLOWUP" : "USER_REQUEST";
-            var restoredGraphSummary = continuing
-                ? ParallelWorkSupervisor.FormatMechanicalGraphEvent(
-                    recoveredPreparationItems.Count == 0
-                        ? new[] { "저장된 WorkGraph를 복구했습니다." }
-                        : new[]
-                        {
-                            "저장된 WorkGraph를 복구했습니다.",
-                            "현재 Git 사전 검사를 통과해 WORK 시작 전 준비 실패 항목을 재활성화했습니다: " +
-                            string.Join(",", recoveredPreparationItems)
-                        },
-                    new ParallelWorkSchedulerSnapshot(
-                        graph.Snapshot(),
-                        Array.Empty<RunningWorkItemSnapshot>()))
-                : null;
             var inboundBody = continuing
                 ? TaskContinuationContract.BuildHqFollowupInput(
                     continuation!.Status,
                     continuation.LastHqMessage,
-                    request,
-                    ProjectWorkspacePersistence.HandoffPath(workingDirectory),
-                    ProjectWorkspacePersistence.EventLogPath(workingDirectory, jobId),
-                    restoredGraphSummary) +
-                  Environment.NewLine +
-                  $"WorkGraph snapshot 파일: {ProjectWorkspacePersistence.WorkGraphPath(workingDirectory, jobId)}"
+                    request)
                 : request;
 
             var result = await supervisor.RunAsync(
