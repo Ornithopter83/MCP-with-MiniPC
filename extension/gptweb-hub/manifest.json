@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ProjectHub Managed Web Bridge",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Bridge for ProjectHub-managed ChatGPT app windows.",
   "background": {
     "service_worker": "background.js"
