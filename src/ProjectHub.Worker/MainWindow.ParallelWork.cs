@@ -464,7 +464,7 @@ public partial class MainWindow
                     status: result.ErrorCode ?? "WORK_GRAPH_FAILED");
                 ResultTitle.Text = "DONE · 오류 기록 있음";
                 ResultBody.Text = errorBody;
-                TaskTitle.Text = "병렬 WORK 관제 오류";
+                TaskTitle.Text = "WorkGraph 관제 오류";
                 SaveParallelContinuation(
                     "DONE_WITH_ERROR",
                     result.HqBody,
