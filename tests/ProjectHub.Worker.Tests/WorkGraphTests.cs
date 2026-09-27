@@ -49,6 +49,44 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
+    public void CodeChangeProvenanceSurvivesBlockedResumeWithoutNewCommit()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("A", "구현 작업"))
+        })).Success);
+
+        Assert.True(graph.TryMarkRunning("A"));
+        Assert.True(graph.TryMarkBlocked(
+            "A",
+            "HQ_BLOCKED",
+            "빌드 환경 확인이 필요합니다.",
+            "checkpoint-a",
+            resultType: WorkItemResultType.CodeChange,
+            commitManifestPath: "manifest-a.json"));
+
+        var blocked = graph.Find("A")!;
+        Assert.Equal(WorkItemResultType.CodeChange, blocked.ResultType);
+        Assert.Equal("checkpoint-a", blocked.ResultRef);
+        Assert.Equal("manifest-a.json", blocked.CommitManifestPath);
+
+        Assert.True(graph.TryReleaseBlocked("A", "WORK_RESULT", "계속 진행하세요."));
+        Assert.True(graph.TryMarkRunning("A"));
+        Assert.True(graph.TryMarkCompleted(
+            "A",
+            "checkpoint-a",
+            "검증 완료",
+            WorkItemResultType.Analysis));
+
+        var completed = graph.Find("A")!;
+        Assert.Equal(WorkItemState.Completed, completed.State);
+        Assert.Equal(WorkItemResultType.CodeChange, completed.ResultType);
+        Assert.Equal("checkpoint-a", completed.ResultRef);
+        Assert.Equal("manifest-a.json", completed.CommitManifestPath);
+    }
+
+    [Fact]
     public void BlockDetailCodePersistsAcrossSnapshotRestore()
     {
         var graph = new WorkGraph("job");

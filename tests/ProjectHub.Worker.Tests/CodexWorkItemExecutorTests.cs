@@ -283,6 +283,71 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public void DependencyManifestIsSummarizedWithoutInliningFileContent()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-manifest-summary-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var manifestPath = Path.Combine(directory, "manifest.json");
+
+        try
+        {
+            File.WriteAllText(
+                manifestPath,
+                """
+                {
+                  "workItemId": "W0",
+                  "commit": "abcdef123456",
+                  "parentCommit": "parent",
+                  "tree": "tree",
+                  "changedFiles": [
+                    {
+                      "path": "src/large.cs",
+                      "changeType": "MODIFY",
+                      "previousPath": null,
+                      "size": 999999,
+                      "sha256": "deadbeef",
+                      "isText": true,
+                      "content": "THIS_LARGE_INLINE_CONTENT_MUST_NOT_APPEAR"
+                    }
+                  ]
+                }
+                """);
+
+            var prompt = RoleContractLoader.BuildWorkPrompt(
+                "WORK_ITEM",
+                "후속 작업",
+                new WorkItemPromptContext(
+                    "W1",
+                    WorkItemKind.Normal,
+                    "후속 작업",
+                    new[] { "W0" },
+                    "main",
+                    "branch",
+                    "worktree",
+                    DependencyResults: new[]
+                    {
+                        new WorkItemDependencyPromptContext(
+                            "W0",
+                            "abcdef123456",
+                            "선행 완료",
+                            WorkItemResultType.CodeChange,
+                            manifestPath)
+                    }),
+                includeContract: false);
+
+            Assert.Contains("commitManifestSummary: commit=abcdef123456 changedFiles=1", prompt);
+            Assert.Contains("- MODIFY src/large.cs", prompt);
+            Assert.DoesNotContain("THIS_LARGE_INLINE_CONTENT_MUST_NOT_APPEAR", prompt);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public async Task DependencyResultsAreIncludedInWorkItemPrompt()
     {
         var fixture = CreateFixture("""

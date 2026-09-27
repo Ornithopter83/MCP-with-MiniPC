@@ -289,11 +289,15 @@ public sealed class WorkGraph
         if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
             return false;
 
+        var priorResultType = item.ResultType;
         item.State = WorkItemState.Completed;
-        item.ResultRef = NullIfWhiteSpace(resultRef);
+        item.ResultRef = NullIfWhiteSpace(resultRef) ?? item.ResultRef;
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
-        item.ResultType = resultType;
-        item.CommitManifestPath = NullIfWhiteSpace(commitManifestPath);
+        item.ResultType = priorResultType == WorkItemResultType.CodeChange &&
+                          resultType != WorkItemResultType.CodeChange
+            ? WorkItemResultType.CodeChange
+            : resultType;
+        item.CommitManifestPath = NullIfWhiteSpace(commitManifestPath) ?? item.CommitManifestPath;
         item.FailureCode = null;
         item.BlockCode = null;
         item.BlockDetailCode = null;
@@ -346,7 +350,9 @@ public sealed class WorkGraph
         string blockCode,
         string? resultSummary = null,
         string? resultRef = null,
-        string? blockDetailCode = null)
+        string? blockDetailCode = null,
+        WorkItemResultType resultType = WorkItemResultType.None,
+        string? commitManifestPath = null)
     {
         if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
             return false;
@@ -358,6 +364,10 @@ public sealed class WorkGraph
         item.BlockDetailCode = NullIfWhiteSpace(blockDetailCode);
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.ResultRef = NullIfWhiteSpace(resultRef) ?? item.ResultRef;
+        if (resultType == WorkItemResultType.CodeChange ||
+            (resultType != WorkItemResultType.None && item.ResultType != WorkItemResultType.CodeChange))
+            item.ResultType = resultType;
+        item.CommitManifestPath = NullIfWhiteSpace(commitManifestPath) ?? item.CommitManifestPath;
         item.FailureCode = null;
         item.ResumeInputType = null;
         item.ResumeBody = null;

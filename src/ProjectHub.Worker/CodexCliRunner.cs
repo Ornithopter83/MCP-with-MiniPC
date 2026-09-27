@@ -78,7 +78,7 @@ public sealed class CodexCliRunner
             StartInfo = new ProcessStartInfo
             {
                 FileName = executable, WorkingDirectory = workingDirectory, UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
+                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
             },
             EnableRaisingEvents = true
         };
@@ -135,7 +135,7 @@ public sealed class CodexCliRunner
             process.StartInfo.ArgumentList.Add(outputSchemaFile);
         }
         if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add(sessionId);
-        process.StartInfo.ArgumentList.Add(prompt);
+        process.StartInfo.ArgumentList.Add("-");
         try
         {
             if (!process.Start()) throw new InvalidOperationException("Codex CLI 프로세스를 시작하지 못했습니다.");
@@ -160,6 +160,28 @@ public sealed class CodexCliRunner
                 }
             }, CancellationToken.None);
             var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            try
+            {
+                await process.StandardInput.WriteAsync(prompt.AsMemory(), cancellationToken).ConfigureAwait(false);
+                await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+                throw;
+            }
+            finally
+            {
+                process.StandardInput.Close();
+            }
+
             try { await process.WaitForExitAsync(cancellationToken); }
             catch (OperationCanceledException) { try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } throw; }
             await stdoutTask;

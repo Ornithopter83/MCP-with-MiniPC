@@ -138,13 +138,13 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ④ NORMAL WorkItem은 독립 Git branch와 linked worktree를 Worker가 준비하며, AI 실행 중 Git 접근 경계는 제19조를 따른다.
 ⑤ WorkItem 시작 전 Git 준비 실패는 의미적 실행 실패와 구분해 BLOCKED로 보존할 수 있으며, Worker는 충돌의 의미를 자동 해결하지 않는다.
 ⑥ COMPLETED, FAILED, CANCELED은 종료 기록이다. 의미 작업 재시도는 새 WorkItem ID를 사용한다.
-⑦ COMPLETED 결과에는 Worker가 기계적으로 측정한 resultType을 기록한다. checkpoint에서 새 commit이 생성됐으면 CODE_CHANGE, 새 commit이 없으면 ANALYSIS다. ANALYSIS의 resultRef는 코드 통합 대상이라는 의미가 아니다.
+⑦ COMPLETED 결과에는 Worker가 기계적으로 측정한 resultType을 기록한다. WorkItem 생애 동안 checkpoint commit이 하나라도 생성됐거나 이전 BLOCKED 단계에서 CODE_CHANGE provenance가 보존된 경우 CODE_CHANGE이고, 그렇지 않으면 ANALYSIS다. 마지막 재개 실행에서 새 commit이 없다는 이유만으로 기존 CODE_CHANGE를 ANALYSIS로 낮추지 않는다. ANALYSIS의 resultRef는 코드 통합 대상이라는 의미가 아니다.
 ⑧ 여러 CODE_CHANGE 결과를 결합해야 하면 HQ는 kind=INTEGRATION WorkItem을 추가한다. 통합을 위한 linked-worktree 권한 probe용 NORMAL WorkItem을 선행하지 않는다.
 ⑨ INTEGRATION의 작업공간과 Git 경계는 제24조와 제19조를 따른다.
 ⑩ Integration WORK는 일반 파일 내용 기준으로 의미적 통합·충돌 해결·검증을 수행한다.
 ⑪ RESOURCE, JUDGE, OBSERVATION은 WorkGraph의 별도 일반 WorkItem으로 자동 변환하지 않고 기존 사이드카 귀속 규칙을 유지한다.
 ⑫ HQ END 전에 의미 WorkItem의 완료 상태를 HQ가 판단하며, 최종 DONE/DONE_WITH_ERROR 전에는 Worker가 추적하는 기계적 outstanding이 모두 종료되어야 한다.
-⑬ CODE_CHANGE가 생성되면 Worker는 Commit Manifest를 기계적으로 생성해 WorkGraph 결과와 선행 결과 문맥에 연결하며, 세부 생성·전달 경계는 제19조를 따른다.
+⑬ CODE_CHANGE가 생성되면 Worker는 Commit Manifest를 기계적으로 생성해 WorkGraph 결과와 선행 결과 문맥에 연결한다. 선행 WORK 프롬프트에는 manifest 전체 본문을 인라인하지 않고 manifest 경로와 변경 파일 요약처럼 크기가 제한된 기계 메타데이터만 전달하며, 상세 파일 내용은 manifest 파일 또는 Integration snapshot을 통해 접근한다. 세부 생성·전달 경계는 제19조를 따른다.
 
 ---
 

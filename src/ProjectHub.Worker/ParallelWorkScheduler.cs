@@ -59,8 +59,10 @@ public sealed record WorkItemExecutionResult(
         string? branch = null,
         string? worktreePath = null,
         string? sessionId = null,
-        string? blockDetailCode = null)
-        => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId, blockDetailCode);
+        string? blockDetailCode = null,
+        WorkItemResultType resultType = WorkItemResultType.None,
+        string? commitManifestPath = null)
+        => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId, blockDetailCode, resultType, commitManifestPath);
 }
 
 public interface IWorkItemExecutor
@@ -427,7 +429,9 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                                 : result.BlockCode,
                             result.ResultSummary,
                             result.ResultRef,
-                            result.BlockDetailCode);
+                            result.BlockDetailCode,
+                            result.ResultType,
+                            result.CommitManifestPath);
                         break;
                     default:
                         _graph.TryMarkFailed(

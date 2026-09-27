@@ -208,9 +208,9 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             workTempPath = WorkerPaths.BuildWorkTempPath(runtimePaths, _jobId, item.Id);
             WorkerPaths.EnsureWorkToolDirectories(runtimePaths, workTempPath);
 
-            var environment = new Dictionary<string, string>(
-                GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment(),
-                StringComparer.OrdinalIgnoreCase);
+            var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment())
+                environment[pair.Key] = pair.Value;
             foreach (var pair in WorkerPaths.BuildWorkToolEnvironment(runtimePaths, workTempPath))
                 environment[pair.Key] = pair.Value;
             workEnvironment = environment;
@@ -455,17 +455,22 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId);
         }
 
-        string? commitManifestPath = null;
-        if (report!.Status == WorkItemReportStatus.Completed &&
-            checkpoint.CreatedCommit &&
-            !string.IsNullOrWhiteSpace(checkpoint.HeadCommit))
+        var lifecycleResultRef = checkpoint.HeadCommit ?? item.ResultRef;
+        var lifecycleHasCodeChange =
+            item.ResultType == WorkItemResultType.CodeChange ||
+            checkpoint.CreatedCommit;
+        string? commitManifestPath = item.CommitManifestPath;
+
+        if (report!.Status != WorkItemReportStatus.Failed &&
+            lifecycleHasCodeChange &&
+            !string.IsNullOrWhiteSpace(lifecycleResultRef))
         {
             var manifest = await _worktrees.CreateCommitManifestAsync(
                 checkpoint.WorktreePath,
                 _workspace,
                 _jobId,
                 item.Id,
-                checkpoint.HeadCommit,
+                lifecycleResultRef,
                 cancellationToken).ConfigureAwait(false);
 
             if (!manifest.Success)
@@ -477,15 +482,24 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     "status: BLOCKED" + Environment.NewLine +
                     "errorCode: " + (manifest.ErrorCode ?? "COMMIT_MANIFEST_FAILED") + Environment.NewLine +
                     "detail: " + (manifest.ErrorDetail ?? "없음"),
-                    checkpoint.HeadCommit,
+                    lifecycleResultRef,
                     checkpoint.Branch ?? preparation.Branch,
                     checkpoint.WorktreePath,
                     sessionId,
-                    blockDetailCode: manifest.ErrorCode ?? "COMMIT_MANIFEST_FAILED");
+                    blockDetailCode: manifest.ErrorCode ?? "COMMIT_MANIFEST_FAILED",
+                    resultType: WorkItemResultType.CodeChange,
+                    commitManifestPath: commitManifestPath);
             }
 
             commitManifestPath = manifest.ManifestPath;
         }
+
+        var completedResultType = lifecycleHasCodeChange
+            ? WorkItemResultType.CodeChange
+            : WorkItemResultType.Analysis;
+        var blockedResultType = lifecycleHasCodeChange
+            ? WorkItemResultType.CodeChange
+            : item.ResultType;
 
         if (report.Status == WorkItemReportStatus.Completed &&
             item.Kind == WorkItemKind.Integration)
@@ -503,7 +517,9 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     checkpoint.Branch ?? preparation.Branch,
                     checkpoint.WorktreePath,
                     sessionId,
-                    blockDetailCode: "INTEGRATION_RESULT_REF_MISSING");
+                    blockDetailCode: "INTEGRATION_RESULT_REF_MISSING",
+                    resultType: completedResultType,
+                    commitManifestPath: commitManifestPath);
             }
 
             var sourceBranch = checkpoint.Branch ?? preparation.Branch;
@@ -520,7 +536,9 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     preparation.Branch,
                     checkpoint.WorktreePath,
                     sessionId,
-                    blockDetailCode: "INTEGRATION_SOURCE_BRANCH_UNAVAILABLE");
+                    blockDetailCode: "INTEGRATION_SOURCE_BRANCH_UNAVAILABLE",
+                    resultType: completedResultType,
+                    commitManifestPath: commitManifestPath);
             }
 
             if (!string.Equals(sourceBranch, preparation.Branch, StringComparison.Ordinal))
@@ -536,7 +554,9 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     sourceBranch,
                     checkpoint.WorktreePath,
                     sessionId,
-                    blockDetailCode: "INTEGRATION_SOURCE_BRANCH_CHANGED");
+                    blockDetailCode: "INTEGRATION_SOURCE_BRANCH_CHANGED",
+                    resultType: completedResultType,
+                    commitManifestPath: commitManifestPath);
             }
 
             var landing = await _worktrees.LandIntegrationCloneAsync(
@@ -561,7 +581,9 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     checkpoint.Branch ?? preparation.Branch,
                     checkpoint.WorktreePath,
                     sessionId,
-                    blockDetailCode: landingErrorCode);
+                    blockDetailCode: landingErrorCode,
+                    resultType: completedResultType,
+                    commitManifestPath: commitManifestPath);
             }
 
             return WorkItemExecutionResult.Completed(
@@ -570,34 +592,38 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
-                checkpoint.CreatedCommit ? WorkItemResultType.CodeChange : WorkItemResultType.Analysis,
+                completedResultType,
                 commitManifestPath);
         }
 
         return report.Status switch
         {
             WorkItemReportStatus.Completed => WorkItemExecutionResult.Completed(
-                checkpoint.HeadCommit,
+                lifecycleResultRef,
                 report.Body,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
-                checkpoint.CreatedCommit ? WorkItemResultType.CodeChange : WorkItemResultType.Analysis,
+                completedResultType,
                 commitManifestPath),
             WorkItemReportStatus.SplitRequest => WorkItemExecutionResult.Blocked(
                 "SPLIT_REQUEST",
                 report.Body,
-                checkpoint.HeadCommit,
+                lifecycleResultRef,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
-                sessionId),
+                sessionId,
+                resultType: blockedResultType,
+                commitManifestPath: commitManifestPath),
             WorkItemReportStatus.Blocked => WorkItemExecutionResult.Blocked(
                 "HQ_BLOCKED",
                 report.Body,
-                checkpoint.HeadCommit,
+                lifecycleResultRef,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
-                sessionId),
+                sessionId,
+                resultType: blockedResultType,
+                commitManifestPath: commitManifestPath),
             _ => WorkItemExecutionResult.Failed(
                 "WORK_ITEM_REPORTED_FAILED",
                 report.Body,
