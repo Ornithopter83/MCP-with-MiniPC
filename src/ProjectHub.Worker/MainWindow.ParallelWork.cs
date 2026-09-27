@@ -310,7 +310,8 @@ public partial class MainWindow
                             providerWireId: implementer.Provider,
                             fullMessage: call.Result.FinalMessage,
                             workNumber: call.WorkNumber,
-                            referenceId: call.WorkItemId));
+                            referenceId: call.WorkItemId,
+                            workItemId: call.WorkItemId));
                 }
             };
 
@@ -322,7 +323,8 @@ public partial class MainWindow
                     progress.Message,
                     implementer.Provider,
                     workNumber: progress.WorkNumber,
-                    referenceId: progress.WorkItemId);
+                    referenceId: progress.WorkItemId,
+                    workItemId: progress.WorkItemId);
             });
 
             executor.ContextPrepared += context =>

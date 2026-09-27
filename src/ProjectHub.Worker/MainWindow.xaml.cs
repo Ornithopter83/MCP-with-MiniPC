@@ -68,12 +68,16 @@ public partial class MainWindow : Window
     {
         public string? IconAssetOverride { get; init; }
         public long? WorkNumber { get; init; }
+        public string? WorkItemId { get; init; }
         public string FullMessage { get; init; } = string.Empty;
         public string TokenDetails { get; init; } = "토큰 · 해당 없음";
         public string FileDetails { get; init; } = "파일 · 해당 없음";
         public string Role => StageKey switch
         {
             "Coordinator" => "설계·관제",
+            "Implementer" when string.Equals(WorkItemId, "0", StringComparison.Ordinal) => "작업 (#0, 리소스)",
+            "Implementer" when string.Equals(WorkItemId, "1", StringComparison.Ordinal) => "작업 (#1, 이미지 가공)",
+            "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"작업 (#{WorkItemId})",
             "Implementer" when WorkNumber.HasValue => $"작업 (#{WorkNumber.Value})",
             "Implementer" => "작업",
             "Resource" => "리소스",
@@ -3053,7 +3057,8 @@ public partial class MainWindow : Window
         string? body,
         string? providerWireId = null,
         long? workNumber = null,
-        string? referenceId = null)
+        string? referenceId = null,
+        string? workItemId = null)
     {
         var text = body?.Trim() ?? string.Empty;
         if (text.Length == 0) return;
@@ -3077,6 +3082,7 @@ public partial class MainWindow : Window
             referenceId)
         {
             WorkNumber = workNumber,
+            WorkItemId = workItemId,
             FullMessage = text,
             TokenDetails = string.Empty,
             FileDetails = string.Empty
@@ -3104,7 +3110,8 @@ public partial class MainWindow : Window
         string? providerWireId = null,
         string? fullMessage = null,
         long? workNumber = null,
-        string? referenceId = null)
+        string? referenceId = null,
+        string? workItemId = null)
     {
         var stage = role switch
         {
@@ -3129,6 +3136,7 @@ public partial class MainWindow : Window
             referenceId)
         {
             WorkNumber = workNumber,
+            WorkItemId = workItemId,
             FullMessage = fullText,
             TokenDetails = judgeTelemetry is not null
                 ? WorkerHistoryCardFormatter.TokenLine(judgeTelemetry)
