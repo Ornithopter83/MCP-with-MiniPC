@@ -10,6 +10,8 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
@@ -191,6 +193,7 @@ public partial class MainWindow : Window
         _aiRoleRunners = AiRoleRunnerRegistry.CreateDefault(_codexRunner);
         _structuredPayloadHelper = new WorkerStructuredPayloadHelper(_aiRoleRunners);
         InitializeComponent();
+        ApplyWindowIconFromExecutable();
         InitializeDirectWorkControls();
         _bridgeServer = bridgeServer;
         _managedWebRuntimeManager = managedWebRuntimeManager;
@@ -268,6 +271,45 @@ public partial class MainWindow : Window
         {
         }
     }
+    private void ApplyWindowIconFromExecutable()
+    {
+        try
+        {
+            var executable = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(executable) || !File.Exists(executable))
+                return;
+
+            using var icon = Drawing.Icon.ExtractAssociatedIcon(executable);
+            if (icon is null)
+                return;
+
+            var imageSource = Imaging.CreateBitmapSourceFromHIcon(
+                icon.Handle,
+                Int32Rect.Empty,
+                BitmapSizeOptions.FromEmptyOptions());
+            imageSource.Freeze();
+            Icon = imageSource;
+        }
+        catch (Exception exception)
+        {
+            LogWindowIconFailure(exception);
+        }
+    }
+
+    private static void LogWindowIconFailure(Exception exception)
+    {
+        try
+        {
+            Directory.CreateDirectory(WorkerPaths.Logs);
+            File.AppendAllText(
+                Path.Combine(WorkerPaths.Logs, "startup-errors.log"),
+                $"{DateTimeOffset.Now:O} Window icon load failed: {exception}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
+    }
+
     private static Drawing.Icon CreateTrayIcon()
     {
         try

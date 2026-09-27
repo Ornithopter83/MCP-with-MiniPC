@@ -25,7 +25,6 @@
 
   <ItemGroup>
     <Resource Include="Assets\worker-icon.png" />
-    <Resource Include="Assets\worker-icon.ico" />
     <Resource Include="Assets\current-openai.png" />
     <Resource Include="Assets\current-console.png" />
     <Resource Include="Assets\current-web.png" />
