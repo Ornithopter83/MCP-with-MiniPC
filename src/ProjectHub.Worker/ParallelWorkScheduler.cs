@@ -4,7 +4,8 @@ public sealed record WorkItemDependencyResult(
     string WorkItemId,
     string? ResultRef,
     string? ResultSummary,
-    WorkItemResultType ResultType = WorkItemResultType.None);
+    WorkItemResultType ResultType = WorkItemResultType.None,
+    string? CommitManifestPath = null);
 
 public sealed record WorkItemExecutionRequest(
     WorkItemSnapshot Item,
@@ -30,7 +31,8 @@ public sealed record WorkItemExecutionResult(
     string? WorktreePath = null,
     string? SessionId = null,
     string? BlockDetailCode = null,
-    WorkItemResultType ResultType = WorkItemResultType.None)
+    WorkItemResultType ResultType = WorkItemResultType.None,
+    string? CommitManifestPath = null)
 {
     public static WorkItemExecutionResult Completed(
         string? resultRef = null,
@@ -38,8 +40,9 @@ public sealed record WorkItemExecutionResult(
         string? branch = null,
         string? worktreePath = null,
         string? sessionId = null,
-        WorkItemResultType resultType = WorkItemResultType.None)
-        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary, null, null, branch, worktreePath, sessionId, null, resultType);
+        WorkItemResultType resultType = WorkItemResultType.None,
+        string? commitManifestPath = null)
+        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary, null, null, branch, worktreePath, sessionId, null, resultType, commitManifestPath);
 
     public static WorkItemExecutionResult Failed(
         string failureCode,
@@ -332,7 +335,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             var dependencyResults = runningSnapshot.Dependencies
                 .Select(id => _graph.Find(id))
                 .Where(item => item is not null)
-                .Select(item => new WorkItemDependencyResult(item!.Id, item.ResultRef, item.ResultSummary, item.ResultType))
+                .Select(item => new WorkItemDependencyResult(item!.Id, item.ResultRef, item.ResultSummary, item.ResultType, item.CommitManifestPath))
                 .ToArray();
             var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
             var running = new RunningWork(next.Id, slot.Value, itemCancellation);
@@ -414,7 +417,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                 switch (result.Outcome)
                 {
                     case WorkItemExecutionOutcome.Completed:
-                        _graph.TryMarkCompleted(item.Id, result.ResultRef, result.ResultSummary, result.ResultType);
+                        _graph.TryMarkCompleted(item.Id, result.ResultRef, result.ResultSummary, result.ResultType, result.CommitManifestPath);
                         break;
                     case WorkItemExecutionOutcome.Blocked:
                         _graph.TryMarkBlocked(

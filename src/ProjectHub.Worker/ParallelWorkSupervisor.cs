@@ -616,6 +616,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         {
             foreach (var item in changedItems)
                 AppendMechanicalItem(builder, item);
+
+            AppendCommitManifestBodies(builder, changedItems);
         }
 
         builder.AppendLine("전체 WorkGraph는 Worker 내부 상태로 유지되며, HQ에는 직전 전달 이후 변경된 항목만 제공됩니다.");
@@ -631,6 +633,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
            !string.Equals(previous.BaseRef, current.BaseRef, StringComparison.Ordinal) ||
            !string.Equals(previous.ResultRef, current.ResultRef, StringComparison.Ordinal) ||
            previous.ResultType != current.ResultType ||
+           !string.Equals(previous.CommitManifestPath, current.CommitManifestPath, StringComparison.Ordinal) ||
            !string.Equals(previous.ResultSummary, current.ResultSummary, StringComparison.Ordinal) ||
            !string.Equals(previous.FailureCode, current.FailureCode, StringComparison.Ordinal) ||
            !string.Equals(previous.BlockCode, current.BlockCode, StringComparison.Ordinal) ||
@@ -648,6 +651,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             builder.Append(" resultType=").Append(WorkItemResultTypeContract.ToToken(item.ResultType));
         if (!string.IsNullOrWhiteSpace(item.ResultRef))
             builder.Append(" resultRef=").Append(item.ResultRef);
+        if (!string.IsNullOrWhiteSpace(item.CommitManifestPath))
+            builder.Append(" commitManifest=").Append(item.CommitManifestPath);
         if (!string.IsNullOrWhiteSpace(item.FailureCode))
             builder.Append(" failureCode=").Append(item.FailureCode);
         if (!string.IsNullOrWhiteSpace(item.BlockCode))
@@ -657,6 +662,38 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         if (!string.IsNullOrWhiteSpace(item.ResultSummary))
             builder.Append(" report=").Append(SingleLine(item.ResultSummary));
         builder.AppendLine();
+    }
+
+    private static void AppendCommitManifestBodies(
+        StringBuilder builder,
+        IReadOnlyList<WorkItemSnapshot> items)
+    {
+        var withManifest = items
+            .Where(item => !string.IsNullOrWhiteSpace(item.CommitManifestPath))
+            .ToArray();
+        if (withManifest.Length == 0)
+            return;
+
+        builder.AppendLine("commitManifests:");
+        foreach (var item in withManifest)
+        {
+            builder.AppendLine($"--- workItemId={item.Id} path={item.CommitManifestPath} ---");
+            try
+            {
+                if (!File.Exists(item.CommitManifestPath))
+                {
+                    builder.AppendLine("[파일 없음]");
+                    continue;
+                }
+
+                builder.AppendLine(File.ReadAllText(item.CommitManifestPath).TrimEnd());
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                builder.AppendLine("[읽기 실패: " + exception.Message + "]");
+            }
+        }
     }
 
     public static string FormatMechanicalGraphEvent(

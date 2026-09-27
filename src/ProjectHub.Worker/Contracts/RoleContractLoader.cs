@@ -8,7 +8,9 @@ public sealed record WorkItemDependencyPromptContext(
     string WorkItemId,
     string? ResultRef,
     string? ResultSummary,
-    WorkItemResultType ResultType = WorkItemResultType.None);
+    WorkItemResultType ResultType = WorkItemResultType.None,
+    string? CommitManifestPath = null,
+    string? IntegrationSnapshotPath = null);
 public sealed record WorkItemPromptContext(
     string WorkItemId,
     WorkItemKind Kind,
@@ -71,8 +73,7 @@ public static class RoleContractLoader
         var previous = string.IsNullOrWhiteSpace(workItem.PreviousReport) ? string.Empty : $"이전 WorkItem 보고:\n{workItem.PreviousReport}\n";
         var dependencyResults = workItem.DependencyResults is null || workItem.DependencyResults.Count == 0
             ? string.Empty
-            : "선행 WorkItem 결과:\n" + string.Join("\n", workItem.DependencyResults.Select(result =>
-                $"- {result.WorkItemId} | resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} | ref={result.ResultRef ?? "없음"} | report={result.ResultSummary ?? "없음"}")) + "\n";
+            : "선행 WorkItem 결과:\n" + string.Join("\n", workItem.DependencyResults.Select(FormatDependencyResult)) + "\n";
         return
             $"workItemId: {workItem.WorkItemId}\n" +
             $"workItemKind: {workItem.Kind.ToString().ToUpperInvariant()}\n" +
@@ -82,6 +83,32 @@ public static class RoleContractLoader
             $"branch: {workItem.Branch ?? "미배정"}\n" +
             $"worktree: {workItem.WorktreePath ?? "미배정"}\n" +
             dependencyResults + previous;
+    }
+
+    private static string FormatDependencyResult(WorkItemDependencyPromptContext result)
+    {
+        var header =
+            $"- {result.WorkItemId} | resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} | ref={result.ResultRef ?? "없음"} | commitManifest={result.CommitManifestPath ?? "없음"} | snapshot={result.IntegrationSnapshotPath ?? "없음"} | report={result.ResultSummary ?? "없음"}";
+
+        if (string.IsNullOrWhiteSpace(result.CommitManifestPath))
+            return header;
+
+        try
+        {
+            if (!File.Exists(result.CommitManifestPath))
+                return header + "\n  commitManifestBody: [파일 없음]";
+
+            var body = File.ReadAllText(result.CommitManifestPath)
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n');
+            return header + "\n  commitManifestBody:\n" +
+                   string.Join("\n", body.Split('\n').Select(line => "    " + line));
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return header + "\n  commitManifestBody: [읽기 실패: " + exception.Message + "]";
+        }
     }
 
     private static string Load(string fileName)

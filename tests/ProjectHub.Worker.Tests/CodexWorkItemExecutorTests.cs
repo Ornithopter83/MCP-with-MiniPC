@@ -25,6 +25,10 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Contains("workItemId: W1", fixture.Runner.LastRequest!.Prompt);
             Assert.Contains("당신은 WORK다.", fixture.Runner.LastRequest.Prompt);
             Assert.Contains("WORK_ITEM_STATUS: COMPLETED", fixture.Runner.LastRequest.Prompt);
+            Assert.NotNull(fixture.Runner.LastRequest.EnvironmentVariables);
+            Assert.Equal(
+                "never",
+                fixture.Runner.LastRequest.EnvironmentVariables!["GIT_CONFIG_VALUE_1"]);
         }
         finally
         {
@@ -236,7 +240,7 @@ public sealed class CodexWorkItemExecutorTests
             """,
             dependencies: new[]
             {
-                new WorkItemDependencyResult("W0", "dep-ref", "선행 완료", WorkItemResultType.CodeChange)
+                new WorkItemDependencyResult("W0", "dep-ref", "선행 완료", WorkItemResultType.CodeChange, "manifest-W0.json")
             });
 
         try
@@ -244,7 +248,7 @@ public sealed class CodexWorkItemExecutorTests
             await fixture.Executor.ExecuteAsync(fixture.Request, CancellationToken.None);
 
             Assert.Contains("선행 WorkItem 결과:", fixture.Runner.LastRequest!.Prompt);
-            Assert.Contains("W0 | resultType=CODE_CHANGE | ref=dep-ref | report=선행 완료", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("W0 | resultType=CODE_CHANGE | ref=dep-ref | commitManifest=manifest-W0.json | snapshot=없음 | report=선행 완료", fixture.Runner.LastRequest.Prompt);
         }
         finally
         {

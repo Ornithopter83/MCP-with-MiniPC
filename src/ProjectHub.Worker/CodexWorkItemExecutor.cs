@@ -154,12 +154,44 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId: item.SessionId);
         }
 
+        IReadOnlyDictionary<string, string> integrationSnapshots =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+        if (item.Kind == WorkItemKind.Integration)
+        {
+            var stagedDependencies = await _worktrees.StageIntegrationDependenciesAsync(
+                preparation.WorktreePath,
+                request.Dependencies,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!stagedDependencies.Success)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "INTEGRATION_INPUT_STAGE_FAILED",
+                    "Integration 선행 결과 snapshot 준비에 실패했습니다." +
+                    Environment.NewLine +
+                    "errorCode=" + (stagedDependencies.ErrorCode ?? "INTEGRATION_INPUT_STAGE_FAILED") +
+                    Environment.NewLine +
+                    (stagedDependencies.ErrorDetail ?? "추가 정보 없음"),
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    item.SessionId,
+                    blockDetailCode: stagedDependencies.ErrorCode ?? "INTEGRATION_INPUT_STAGE_FAILED");
+            }
+
+            integrationSnapshots = stagedDependencies.SnapshotPaths;
+        }
+
         var dependencyResults = request.Dependencies
             .Select(result => new WorkItemDependencyPromptContext(
                 result.WorkItemId,
                 result.ResultRef,
                 result.ResultSummary,
-                result.ResultType))
+                result.ResultType,
+                result.CommitManifestPath,
+                integrationSnapshots.TryGetValue(result.WorkItemId, out var snapshotPath)
+                    ? snapshotPath
+                    : null))
             .ToArray();
 
         var observationRequestDirectory = _observationGate is not null
@@ -190,28 +222,71 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
-            runResult = await _runner.RunAsync(new AiRoleRunRequest(
-                prompt,
-                _role,
-                preparation.WorktreePath,
-                sessionId,
-                CodexSandboxMode.WorkspaceWrite,
-                cancellationToken,
-                null,
-                message => Progress?.Invoke(new CodexWorkItemProgress(item.Id, message, item.CreatedOrder + 1)),
-                started =>
-                {
-                    var normalized = CodexCliRunner.NormalizeSessionId(started);
-                    if (!string.IsNullOrWhiteSpace(normalized))
+            GitMetadataIsolationLease gitIsolation;
+            try
+            {
+                gitIsolation = GitMetadataIsolationLease.Detach(
+                    preparation.WorktreePath,
+                    _jobId,
+                    item.Id);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "WORK_GIT_METADATA_ISOLATION_FAILED",
+                    exception.Message,
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId,
+                    blockDetailCode: "WORK_GIT_METADATA_ISOLATION_FAILED");
+            }
+
+            var gitRestore = new GitMetadataRestoreResult(true);
+            try
+            {
+                runResult = await _runner.RunAsync(new AiRoleRunRequest(
+                    prompt,
+                    _role,
+                    preparation.WorktreePath,
+                    sessionId,
+                    CodexSandboxMode.WorkspaceWrite,
+                    cancellationToken,
+                    null,
+                    message => Progress?.Invoke(new CodexWorkItemProgress(item.Id, message, item.CreatedOrder + 1)),
+                    started =>
                     {
-                        startedSession = normalized;
-                        SessionStarted?.Invoke(new CodexWorkItemSessionStarted(item.Id, normalized));
-                    }
-                },
-                string.IsNullOrWhiteSpace(observationRequestDirectory)
-                    ? null
-                    : new[] { observationRequestDirectory },
-                InputAttachments: stagedUserAttachments)).ConfigureAwait(false);
+                        var normalized = CodexCliRunner.NormalizeSessionId(started);
+                        if (!string.IsNullOrWhiteSpace(normalized))
+                        {
+                            startedSession = normalized;
+                            SessionStarted?.Invoke(new CodexWorkItemSessionStarted(item.Id, normalized));
+                        }
+                    },
+                    string.IsNullOrWhiteSpace(observationRequestDirectory)
+                        ? null
+                        : new[] { observationRequestDirectory },
+                    InputAttachments: stagedUserAttachments,
+                    EnvironmentVariables: GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment())).ConfigureAwait(false);
+            }
+            finally
+            {
+                gitRestore = gitIsolation.Restore();
+            }
+
+            if (!gitRestore.Success)
+            {
+                return WorkItemExecutionResult.Failed(
+                    gitRestore.ErrorCode ?? "WORK_GIT_METADATA_RESTORE_FAILED",
+                    (gitRestore.ErrorDetail ?? "Git metadata 복원에 실패했습니다.") +
+                    (string.IsNullOrWhiteSpace(gitRestore.QuarantinePath)
+                        ? string.Empty
+                        : Environment.NewLine + "quarantine=" + gitRestore.QuarantinePath),
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId);
+            }
 
             CallCompleted?.Invoke(new CodexWorkItemCallCompleted(
                 item.Id,
@@ -339,7 +414,39 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId);
         }
 
+        string? commitManifestPath = null;
         if (report!.Status == WorkItemReportStatus.Completed &&
+            checkpoint.CreatedCommit &&
+            !string.IsNullOrWhiteSpace(checkpoint.HeadCommit))
+        {
+            var manifest = await _worktrees.CreateCommitManifestAsync(
+                checkpoint.WorktreePath,
+                _workspace,
+                _jobId,
+                item.Id,
+                checkpoint.HeadCommit,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!manifest.Success)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "COMMIT_MANIFEST_FAILED",
+                    report.Body + Environment.NewLine + Environment.NewLine +
+                    "COMMIT_MANIFEST" + Environment.NewLine +
+                    "status: BLOCKED" + Environment.NewLine +
+                    "errorCode: " + (manifest.ErrorCode ?? "COMMIT_MANIFEST_FAILED") + Environment.NewLine +
+                    "detail: " + (manifest.ErrorDetail ?? "없음"),
+                    checkpoint.HeadCommit,
+                    checkpoint.Branch ?? preparation.Branch,
+                    checkpoint.WorktreePath,
+                    sessionId,
+                    blockDetailCode: manifest.ErrorCode ?? "COMMIT_MANIFEST_FAILED");
+            }
+
+            commitManifestPath = manifest.ManifestPath;
+        }
+
+        if (report.Status == WorkItemReportStatus.Completed &&
             item.Kind == WorkItemKind.Integration)
         {
             if (string.IsNullOrWhiteSpace(checkpoint.HeadCommit))
@@ -422,7 +529,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
-                checkpoint.CreatedCommit ? WorkItemResultType.CodeChange : WorkItemResultType.Analysis);
+                checkpoint.CreatedCommit ? WorkItemResultType.CodeChange : WorkItemResultType.Analysis,
+                commitManifestPath);
         }
 
         return report.Status switch
@@ -433,7 +541,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
-                checkpoint.CreatedCommit ? WorkItemResultType.CodeChange : WorkItemResultType.Analysis),
+                checkpoint.CreatedCommit ? WorkItemResultType.CodeChange : WorkItemResultType.Analysis,
+                commitManifestPath),
             WorkItemReportStatus.SplitRequest => WorkItemExecutionResult.Blocked(
                 "SPLIT_REQUEST",
                 report.Body,

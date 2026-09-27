@@ -69,6 +69,7 @@ B=<기준>
 ⑫ 여러 CODE_CHANGE 결과를 최종 코드 상태에 함께 반영해야 하면 INTEGRATION WorkItem을 END 전에 추가한다.
 ⑬ 실제 통합을 위해 일반 NORMAL WorkItem으로 linked-worktree Git 쓰기 권한을 사전 시험하지 않는다. INTEGRATION 작업공간 준비와 Git metadata 격리는 Worker의 기계 책임이다.
 ⑭ Integration COMPLETED 뒤 Worker는 fast-forward만 허용한다. INTEGRATION_LANDING_FAILED가 발생하면 force/reset을 요구하지 않고 현재 사실을 기준으로 다음 동작을 결정한다.
+⑮ CODE_CHANGE 결과에 commitManifest가 제공되면 변경 경로·삭제 목록·인라인 텍스트 내용을 다시 수집하기 위한 ANALYSIS WorkItem을 만들지 않고 해당 manifest를 기계적 사실로 우선 사용한다.
 
 제6조 (CONTINUE 본문)
 

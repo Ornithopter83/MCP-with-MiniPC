@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -136,6 +137,12 @@ public sealed record GitWorktreeCheckpointResult(
     string? Branch,
     string? HeadCommit,
     bool CreatedCommit);
+
+public sealed record GitIntegrationDependencyStageResult(
+    bool Success,
+    string? ErrorCode,
+    IReadOnlyDictionary<string, string> SnapshotPaths,
+    string? ErrorDetail = null);
 
 public sealed record GitIntegrationLandingResult(
     bool Success,
@@ -1019,6 +1026,153 @@ public sealed class GitWorktreeManager
         return new(true, null, after.WorktreePath, after.Branch, after.HeadCommit, true);
     }
 
+    public Task<GitCommitManifestResult> CreateCommitManifestAsync(
+        string worktreePath,
+        string workspace,
+        string jobId,
+        string workItemId,
+        string commit,
+        CancellationToken cancellationToken = default)
+        => new GitCommitManifestBuilder(_runner).BuildAsync(
+            worktreePath,
+            workspace,
+            jobId,
+            workItemId,
+            commit,
+            cancellationToken);
+
+    public async Task<GitIntegrationDependencyStageResult> StageIntegrationDependenciesAsync(
+        string clonePath,
+        IReadOnlyList<WorkItemDependencyResult> dependencies,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(clonePath) || !Directory.Exists(clonePath))
+        {
+            return new(
+                false,
+                "INTEGRATION_INPUT_CLONE_MISSING",
+                new Dictionary<string, string>(),
+                "Integration clone을 찾을 수 없습니다.");
+        }
+
+        var codeDependencies = (dependencies ?? Array.Empty<WorkItemDependencyResult>())
+            .Where(dependency => dependency.ResultType == WorkItemResultType.CodeChange)
+            .ToArray();
+        if (codeDependencies.Length == 0)
+        {
+            return new(
+                true,
+                null,
+                new Dictionary<string, string>(StringComparer.Ordinal));
+        }
+
+        var normalizedClone = Path.GetFullPath(clonePath);
+        var gitDirectory = Path.Combine(normalizedClone, ".git");
+        if (!Directory.Exists(gitDirectory))
+        {
+            return new(
+                false,
+                "INTEGRATION_INPUT_GIT_METADATA_MISSING",
+                new Dictionary<string, string>(),
+                gitDirectory);
+        }
+
+        try
+        {
+            EnsureIntegrationInputExclude(gitDirectory);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return new(
+                false,
+                "INTEGRATION_INPUT_EXCLUDE_FAILED",
+                new Dictionary<string, string>(),
+                exception.Message);
+        }
+
+        var inputRoot = Path.Combine(
+            normalizedClone,
+            ".projecthub-integration-inputs");
+        Directory.CreateDirectory(inputRoot);
+
+        var paths = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var dependency in codeDependencies)
+        {
+            if (string.IsNullOrWhiteSpace(dependency.ResultRef))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_INPUT_RESULT_REF_MISSING",
+                    paths,
+                    $"WorkItem {dependency.WorkItemId}의 CODE_CHANGE resultRef가 없습니다.");
+            }
+
+            var safeId = SafeCommitLabel(dependency.WorkItemId);
+            var target = Path.Combine(inputRoot, safeId);
+            var archive = Path.Combine(
+                inputRoot,
+                "." + safeId + "-" + Guid.NewGuid().ToString("N") + ".tar");
+
+            try
+            {
+                if (Directory.Exists(target))
+                    Directory.Delete(target, true);
+                Directory.CreateDirectory(target);
+
+                var archiveResult = await RunAsync(
+                    normalizedClone,
+                    CreateTimeout,
+                    cancellationToken,
+                    "archive",
+                    "--format=tar",
+                    "--output=" + archive,
+                    dependency.ResultRef.Trim()).ConfigureAwait(false);
+
+                if (archiveResult.ExitCode != 0 || !File.Exists(archive))
+                {
+                    return new(
+                        false,
+                        archiveResult.TimedOut ? "INTEGRATION_INPUT_ARCHIVE_TIMEOUT"
+                            : archiveResult.Canceled ? "INTEGRATION_INPUT_ARCHIVE_CANCELED"
+                            : "INTEGRATION_INPUT_ARCHIVE_FAILED",
+                        paths,
+                        BuildGitFailureDetail(
+                            "git archive " + dependency.ResultRef.Trim(),
+                            archiveResult));
+                }
+
+                TarFile.ExtractToDirectory(
+                    archive,
+                    target,
+                    overwriteFiles: true);
+                paths[dependency.WorkItemId] = target;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                return new(
+                    false,
+                    "INTEGRATION_INPUT_EXTRACT_FAILED",
+                    paths,
+                    $"{dependency.WorkItemId}: {exception.Message}");
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(archive))
+                        File.Delete(archive);
+                }
+                catch (IOException)
+                {
+                }
+            }
+        }
+
+        return new(true, null, paths);
+    }
+
     public Task<GitIntegrationLandingResult> LandIntegrationAsync(
         string workspace,
         string integrationRef,
@@ -1722,6 +1876,30 @@ public sealed class GitWorktreeManager
 
         Flush();
         return result;
+    }
+
+    private static void EnsureIntegrationInputExclude(string gitDirectory)
+    {
+        var infoDirectory = Path.Combine(gitDirectory, "info");
+        Directory.CreateDirectory(infoDirectory);
+        var excludePath = Path.Combine(infoDirectory, "exclude");
+        var existing = File.Exists(excludePath)
+            ? File.ReadAllText(excludePath)
+            : string.Empty;
+        const string rule = ".projecthub-integration-inputs/";
+        var lines = existing
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        if (lines.Any(line => string.Equals(line.Trim(), rule, StringComparison.Ordinal)))
+            return;
+
+        var updated = existing.TrimEnd('\r', '\n');
+        if (updated.Length > 0)
+            updated += Environment.NewLine;
+        updated += rule + Environment.NewLine;
+        File.WriteAllText(excludePath, updated, new UTF8Encoding(false));
     }
 
     private static string SafeCommitLabel(string value)

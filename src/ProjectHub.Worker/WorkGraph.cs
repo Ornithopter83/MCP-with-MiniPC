@@ -66,7 +66,8 @@ public sealed record WorkItemSnapshot(
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? FinishedAtUtc,
     string? BlockDetailCode = null,
-    WorkItemResultType ResultType = WorkItemResultType.None);
+    WorkItemResultType ResultType = WorkItemResultType.None,
+    string? CommitManifestPath = null);
 
 public sealed record WorkGraphSnapshot(
     string JobId,
@@ -145,6 +146,7 @@ public sealed class WorkGraph
                 ResultRef = NullIfWhiteSpace(source.ResultRef),
                 ResultSummary = NullIfWhiteSpace(source.ResultSummary),
                 ResultType = source.ResultType,
+                CommitManifestPath = NullIfWhiteSpace(source.CommitManifestPath),
                 FailureCode = NullIfWhiteSpace(source.FailureCode),
                 BlockCode = NullIfWhiteSpace(blockCode),
                 BlockDetailCode = NullIfWhiteSpace(blockDetailCode),
@@ -281,7 +283,8 @@ public sealed class WorkGraph
         string id,
         string? resultRef = null,
         string? resultSummary = null,
-        WorkItemResultType resultType = WorkItemResultType.None)
+        WorkItemResultType resultType = WorkItemResultType.None,
+        string? commitManifestPath = null)
     {
         if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
             return false;
@@ -290,6 +293,7 @@ public sealed class WorkGraph
         item.ResultRef = NullIfWhiteSpace(resultRef);
         item.ResultSummary = NullIfWhiteSpace(resultSummary);
         item.ResultType = resultType;
+        item.CommitManifestPath = NullIfWhiteSpace(commitManifestPath);
         item.FailureCode = null;
         item.BlockCode = null;
         item.BlockDetailCode = null;
@@ -694,7 +698,8 @@ public sealed class WorkGraph
             item.StartedAtUtc,
             item.FinishedAtUtc,
             item.BlockDetailCode,
-            item.ResultType);
+            item.ResultType,
+            item.CommitManifestPath);
 
     private static void ValidateConcurrency(int value)
     {
@@ -723,6 +728,7 @@ public sealed class WorkGraph
         public string? ResultRef { get; set; }
         public string? ResultSummary { get; set; }
         public WorkItemResultType ResultType { get; set; }
+        public string? CommitManifestPath { get; set; }
         public string? FailureCode { get; set; }
         public string? BlockCode { get; set; }
         public string? BlockDetailCode { get; set; }
@@ -748,6 +754,7 @@ public sealed class WorkGraph
                 ResultRef = ResultRef,
                 ResultSummary = ResultSummary,
                 ResultType = ResultType,
+                CommitManifestPath = CommitManifestPath,
                 FailureCode = FailureCode,
                 BlockCode = BlockCode,
                 BlockDetailCode = BlockDetailCode,

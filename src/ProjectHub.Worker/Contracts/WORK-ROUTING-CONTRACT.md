@@ -47,12 +47,13 @@
 ③ 새 독립 작업이 필요하면 HQ에 SPLIT_REQUEST로 보고한다.
 ④ HQ 판단이나 외부 의미 결정이 필요해 계속할 수 없으면 BLOCKED로 보고한다.
 ⑤ 현재 범위를 완료했으면 COMPLETED, 계속 수행할 수 없는 실패가 확정되면 FAILED로 보고한다.
-⑥ workItemKind가 INTEGRATION이면 선행 WorkItem의 resultRef와 보고를 통합 입력으로 사용한다. Worker가 만든 Integration 전용 독립 Git clone 작업공간에서 필요한 Git 병합·cherry-pick·충돌 해결과 전체 검증을 수행하고, Worker에게 의미적 충돌 해결을 넘기지 않는다.
-⑦ INTEGRATION WorkItem은 현재 독립 clone 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다.
-⑧ Integration clone의 `.git`은 clone 내부에 있어야 하며 주 저장소의 `.git` 또는 다른 WorkItem Git metadata를 직접 수정하지 않는다.
-⑨ 통합 완료 commit을 주 작업공간에 가져오고 target branch에 fast-forward하는 작업은 Worker가 수행한다.
-⑩ clone의 origin은 선행 source ref를 읽기 위한 용도로만 사용하며 INTEGRATION WORK가 origin 또는 다른 remote로 push하지 않는다.
+⑥ workItemKind가 INTEGRATION이면 선행 WorkItem의 resultRef, commitManifest, Worker가 펼친 dependency snapshot과 보고를 통합 입력으로 사용하고 격리 작업공간의 일반 파일을 기준으로 의미적 병합·충돌 해결과 전체 검증을 수행한다.
+⑦ NORMAL과 INTEGRATION WORK는 현재 작업공간의 일반 파일만 수정하며 Git metadata를 작업 수단으로 사용하지 않는다.
+⑧ WORK는 `.git`을 직접 읽거나 수정하지 않고 `git add`, `git commit`, `git fetch`, `git push`, `git merge`, `git cherry-pick`, `git ls-remote` 등 Git metadata 또는 원격을 사용하는 명령을 실행하지 않는다.
+⑨ checkpoint commit 생성, Integration 완료 commit 검증·import와 target branch fast-forward는 Worker가 수행한다.
+⑩ Git remote 접근과 인증은 Worker의 기계 책임이며 WORK가 GitHub 등 원격 저장소 연결을 직접 시험하거나 우회하지 않는다.
 ⑪ COMPLETED 결과의 resultType은 WORK가 선언하지 않는다. Worker가 checkpoint의 실제 commit 생성 여부를 기준으로 CODE_CHANGE 또는 ANALYSIS를 기계적으로 기록한다.
+⑫ CODE_CHANGE가 생성되면 Worker가 Commit Manifest를 생성하므로 commit 내부 변경 경로와 텍스트 내용을 재수집하기 위한 별도 작업을 요청하지 않는다.
 
 제7조 (HQ 보고)
 

@@ -1,6 +1,6 @@
 # ProjectHub Managed Web Bridge
 
-버전: 0.3.3 / build 2026-09-27.2
+버전: 0.4.1 / build 2026-09-27.10
 
 ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로컬 Worker를 연결한다.
 
@@ -75,3 +75,11 @@ ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로�
 ⑦ 명시적인 첨부 오류 UI가 확인되면 ATTACHMENT_UI_ERROR로 실패 처리한다.
 ⑧ 첨부 준비 제한시간은 일반 장기 Web 작업 제한시간과 동일한 5분을 사용한다.
 
+
+
+제9조 (Web UI 이상 관측)
+
+① assistant 응답과 별개인 오류·한도·timeout·첨부 실패 UI를 현재 task의 진단 관측으로 기록할 수 있다.
+② 관측된 이상은 WEB_UI_ANOMALY_OBSERVED 진행 이벤트로 Worker 통합로그에 전달한다.
+③ 동일 task의 동일 관측은 중복 억제할 수 있다.
+④ 관측만으로 task 실패, 대화방 이동, 재전송, role binding, lease 또는 correlation KEY를 변경하지 않는다.
