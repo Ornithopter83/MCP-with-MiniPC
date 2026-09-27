@@ -559,3 +559,16 @@ Integration:
 ③ 자동 대화방 롤오버와 동일 요청 재전송은 사용하지 않는다.
 ④ 동일 task의 동일 이상 문구는 fingerprint로 중복 억제한다.
 ⑤ 향후 실제 실패 로그가 충분히 축적된 뒤 관측 유형별 개입 여부를 별도로 검토한다.
+
+
+제24조 (Integration 독립 Git clone)
+
+① 일반 WorkItem은 기존 linked worktree 격리를 유지하고 INTEGRATION WorkItem만 별도의 독립 Git clone을 사용한다.
+② Integration clone은 주 저장소 밖의 `.projecthub-integration-clones/<repository>/<job>/<workItem>` 경로에 두고 clone 내부에 독립 `.git` 디렉터리를 가진다.
+③ Integration clone 생성에는 로컬 객체 공유에 의한 Git metadata 결합을 피하기 위해 `git clone --no-hardlinks --no-checkout`을 사용한다.
+④ clone은 생성 직후 현재 주 작업공간 HEAD에서 Integration 전용 branch를 만들고 clone-local Git identity를 설정한다. `origin`은 생성 시점의 source ref를 읽기 위한 remote로 유지하되 INTEGRATION WORK가 push하지 않는다.
+⑤ WORK AI는 WorkspaceWrite sandbox에서 Integration clone 내부 파일과 clone 내부 Git metadata만 수정하며 주 저장소의 `.git`을 writable 경로로 추가하지 않는다.
+⑥ Integration 완료 시 Worker가 clone branch를 주 저장소 object database로 fetch하되 `--no-write-fetch-head`를 사용해 임시 remote/ref를 만들지 않는다.
+⑦ import한 commit은 clone HEAD와 동일한지 확인한 뒤 기존 target branch·clean 상태·fast-forward 가능 조건을 모두 통과한 경우에만 `merge --ff-only`로 반영한다.
+⑧ Integration clone의 source branch, clone root 또는 local git-dir이 준비 시점과 달라지면 자동 landing하지 않고 INTEGRATION_LANDING_FAILED로 HQ 판단을 요청한다.
+⑨ clone 작업공간과 주 저장소 사이의 의미적 충돌 해결은 Integration WORK가 clone 내부에서 수행하고, 주 저장소 변경은 Worker의 기계적 landing 단계만 수행한다.

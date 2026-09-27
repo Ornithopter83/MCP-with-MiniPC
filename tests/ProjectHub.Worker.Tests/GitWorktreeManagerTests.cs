@@ -38,6 +38,36 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public void IntegrationClonePathIsOutsideRepositoryAndSeparateFromLinkedWorktrees()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "projecthub-integration-clone-path-" + Guid.NewGuid().ToString("N"));
+        var repository = Path.Combine(parent, "repo");
+        Directory.CreateDirectory(repository);
+
+        try
+        {
+            var clone = GitWorktreeManager.BuildIntegrationClonePath(repository, "job-1", "I1");
+            var worktree = GitWorktreeManager.BuildWorktreePath(repository, "job-1", "I1");
+
+            Assert.StartsWith(
+                Path.Combine(parent, ".projecthub-integration-clones") + Path.DirectorySeparatorChar,
+                clone,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            Assert.NotEqual(
+                Path.GetFullPath(worktree),
+                Path.GetFullPath(clone));
+            Assert.False(
+                Path.GetFullPath(clone).StartsWith(
+                    Path.GetFullPath(repository) + Path.DirectorySeparatorChar,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
     public async Task PrepareCreatesBranchAndWorktreeFromResolvedCommit()
     {
         var root = CreateTempRepositoryDirectory();
@@ -304,19 +334,21 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task IntegrationPreparationUsesCurrentPrimaryHeadAsBase()
+    public async Task IntegrationPreparationCreatesIndependentCloneFromCurrentPrimaryHead()
     {
         var root = CreateTempRepositoryDirectory();
+        var clonePath = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
+        var branch = GitWorktreeManager.BuildBranchName("job", "I1");
         var runner = new FakeGitRunner(root);
         runner.Enqueue(0, root);
         runner.Enqueue(0, "");
         runner.Enqueue(0, "main");
         runner.Enqueue(0, "primary999");
-        runner.Enqueue(0, root);
-        runner.Enqueue(0, "primary999");
+        runner.Enqueue(0, "Cloning");
+        runner.Enqueue(0, "Switched");
         runner.Enqueue(0, "");
-        runner.Enqueue(1, "");
-        runner.Enqueue(0, "Preparing worktree");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, Path.Combine(clonePath, ".git"));
         runner.Enqueue(0, "primary999");
 
         try
@@ -331,10 +363,133 @@ public sealed class GitWorktreeManagerTests
             Assert.True(result.Success);
             Assert.Equal("primary999", result.BaseRef);
             Assert.Equal("primary999", result.BaseCommit);
+            Assert.Equal(clonePath, result.WorktreePath);
+            Assert.Equal(branch, result.Branch);
+
+            var clone = runner.Calls.Single(call =>
+                call.Arguments.Count > 0 &&
+                call.Arguments[0] == "clone");
+            Assert.Equal(
+                new[] { "clone", "--no-hardlinks", "--no-checkout", root, clonePath },
+                clone.Arguments);
+
+            var checkout = runner.Calls.Single(call =>
+                call.Arguments.Count > 0 &&
+                call.Arguments[0] == "checkout");
+            Assert.Equal(
+                new[] { "checkout", "-b", branch, "primary999" },
+                checkout.Arguments);
+
             Assert.Contains(
                 runner.Calls,
                 call => call.Arguments.SequenceEqual(
-                    new[] { "rev-parse", "--verify", "primary999^{commit}" }));
+                    new[] { "config", "user.name", "ProjectHub" }));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "config", "user.email", "projecthub@local" }));
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 1 &&
+                        call.Arguments[0] == "worktree" &&
+                        call.Arguments[1] == "add");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task ResumeIntegrationRejectsLinkedWorktreeGitDirOutsideClone()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clonePath = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
+        var branch = GitWorktreeManager.BuildBranchName("job", "I1");
+        Directory.CreateDirectory(clonePath);
+        var externalGitDir = Path.Combine(root, ".git", "worktrees", "I1");
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, clonePath);
+        runner.Enqueue(0, externalGitDir);
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.ResumeIntegrationAsync(
+                root,
+                clonePath,
+                branch,
+                "base123");
+
+            Assert.False(result.Success);
+            Assert.Equal("INTEGRATION_CLONE_GITDIR_NOT_LOCAL", result.ErrorCode);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task IntegrationCloneLandingImportsCommitBeforeFastForward()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clonePath = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
+        var branch = GitWorktreeManager.BuildBranchName("job", "I1");
+        Directory.CreateDirectory(Path.Combine(clonePath, ".git"));
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, clonePath);
+        runner.Enqueue(0, Path.Combine(clonePath, ".git"));
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, "integrated456");
+        runner.Enqueue(0, "Imported");
+        runner.Enqueue(0, "integrated456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "Fast-forward");
+        runner.Enqueue(0, "integrated456");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.LandIntegrationCloneAsync(
+                root,
+                clonePath,
+                branch,
+                "integrated456",
+                "main");
+
+            Assert.True(result.Success);
+            Assert.True(result.FastForwarded);
+            Assert.Equal("integrated456", result.AfterHead);
+
+            var fetch = runner.Calls.Single(call =>
+                call.Arguments.Count > 0 &&
+                call.Arguments[0] == "fetch");
+            Assert.Equal(
+                new[]
+                {
+                    "fetch",
+                    "--no-tags",
+                    "--no-write-fetch-head",
+                    clonePath,
+                    "refs/heads/" + branch
+                },
+                fetch.Arguments);
+
+            var fetchIndex = runner.Calls.IndexOf(fetch);
+            var merge = runner.Calls.Single(call =>
+                call.Arguments.Count > 0 &&
+                call.Arguments[0] == "merge");
+            Assert.True(fetchIndex < runner.Calls.IndexOf(merge));
+            Assert.Equal(
+                new[] { "merge", "--ff-only", "integrated456" },
+                merge.Arguments);
         }
         finally
         {

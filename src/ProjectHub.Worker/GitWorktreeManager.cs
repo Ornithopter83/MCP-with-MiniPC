@@ -455,9 +455,9 @@ public sealed class GitWorktreeManager
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
-            return Failure("WORKTREE_WORKSPACE_MISSING", workspace, jobId, workItemId, null);
+            return IntegrationFailure("WORKTREE_WORKSPACE_MISSING", workspace, jobId, workItemId, null);
         if (string.IsNullOrWhiteSpace(jobId) || string.IsNullOrWhiteSpace(workItemId))
-            return Failure("WORKTREE_ID_MISSING", workspace, jobId, workItemId, null);
+            return IntegrationFailure("WORKTREE_ID_MISSING", workspace, jobId, workItemId, null);
 
         var rootResult = await RunAsync(
             workspace,
@@ -467,9 +467,11 @@ public sealed class GitWorktreeManager
             "--show-toplevel").ConfigureAwait(false);
 
         if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
-            return Failure("WORKTREE_GIT_REPOSITORY_REQUIRED", workspace, jobId, workItemId, null);
+            return IntegrationFailure("WORKTREE_GIT_REPOSITORY_REQUIRED", workspace, jobId, workItemId, null);
 
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var branch = BuildBranchName(jobId, workItemId);
+        var clonePath = BuildIntegrationClonePath(repositoryRoot, jobId, workItemId);
         var primaryGate = GetRepositoryPrimaryMutationGate(repositoryRoot);
         await primaryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -480,14 +482,14 @@ public sealed class GitWorktreeManager
                 cancellationToken).ConfigureAwait(false);
 
             if (statusResult.ExitCode != 0)
-                return Failure(
+                return IntegrationFailure(
                     "INTEGRATION_BASE_STATUS_UNAVAILABLE",
                     repositoryRoot,
                     jobId,
                     workItemId,
                     null);
             if (!string.IsNullOrWhiteSpace(statusResult.StandardOutput))
-                return Failure(
+                return IntegrationFailure(
                     "INTEGRATION_BASE_TARGET_DIRTY",
                     repositoryRoot,
                     jobId,
@@ -507,7 +509,7 @@ public sealed class GitWorktreeManager
                 ? FirstLine(branchResult.StandardOutput)
                 : null;
             if (string.IsNullOrWhiteSpace(targetBranch))
-                return Failure(
+                return IntegrationFailure(
                     "INTEGRATION_BASE_BRANCH_REQUIRED",
                     repositoryRoot,
                     jobId,
@@ -520,7 +522,7 @@ public sealed class GitWorktreeManager
             if (expectedBranch is not null &&
                 !string.Equals(targetBranch, expectedBranch, StringComparison.Ordinal))
             {
-                return Failure(
+                return IntegrationFailure(
                     "INTEGRATION_BASE_BRANCH_CHANGED",
                     repositoryRoot,
                     jobId,
@@ -540,24 +542,360 @@ public sealed class GitWorktreeManager
                 ? FirstLine(headResult.StandardOutput)
                 : null;
             if (string.IsNullOrWhiteSpace(primaryHead))
-                return Failure(
+                return IntegrationFailure(
                     "INTEGRATION_BASE_HEAD_UNAVAILABLE",
                     repositoryRoot,
                     jobId,
                     workItemId,
                     null);
 
-            return await PrepareAsync(
+            if (Directory.Exists(clonePath) || File.Exists(clonePath))
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    "INTEGRATION_CLONE_PATH_OCCUPIED",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    primaryHead,
+                    primaryHead,
+                    null,
+                    false);
+            }
+
+            var parent = Directory.GetParent(clonePath)?.FullName;
+            if (string.IsNullOrWhiteSpace(parent))
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    "INTEGRATION_CLONE_PARENT_INVALID",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    primaryHead,
+                    primaryHead,
+                    null,
+                    false);
+            }
+
+            Directory.CreateDirectory(parent);
+
+            var cloneResult = await RunAsync(
                 repositoryRoot,
-                jobId,
-                workItemId,
+                CreateTimeout,
+                cancellationToken,
+                "clone",
+                "--no-hardlinks",
+                "--no-checkout",
+                repositoryRoot,
+                clonePath).ConfigureAwait(false);
+
+            if (cloneResult.ExitCode != 0)
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    cloneResult.TimedOut ? "INTEGRATION_CLONE_CREATE_TIMEOUT"
+                        : cloneResult.Canceled ? "INTEGRATION_CLONE_CREATE_CANCELED"
+                        : "INTEGRATION_CLONE_CREATE_FAILED",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    primaryHead,
+                    primaryHead,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git clone --no-hardlinks --no-checkout", cloneResult));
+            }
+
+            var checkoutResult = await RunAsync(
+                clonePath,
+                CreateTimeout,
+                cancellationToken,
+                "checkout",
+                "-b",
+                branch,
+                primaryHead).ConfigureAwait(false);
+
+            if (checkoutResult.ExitCode != 0)
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    "INTEGRATION_CLONE_CHECKOUT_FAILED",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    primaryHead,
+                    primaryHead,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git checkout -b", checkoutResult));
+            }
+
+            var userNameResult = await RunAsync(
+                clonePath,
+                ReadTimeout,
+                cancellationToken,
+                "config",
+                "user.name",
+                "ProjectHub").ConfigureAwait(false);
+            if (userNameResult.ExitCode != 0)
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    "INTEGRATION_CLONE_GIT_IDENTITY_FAILED",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    primaryHead,
+                    primaryHead,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git config user.name", userNameResult));
+            }
+
+            var userEmailResult = await RunAsync(
+                clonePath,
+                ReadTimeout,
+                cancellationToken,
+                "config",
+                "user.email",
+                "projecthub@local").ConfigureAwait(false);
+            if (userEmailResult.ExitCode != 0)
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    "INTEGRATION_CLONE_GIT_IDENTITY_FAILED",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    primaryHead,
+                    primaryHead,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git config user.email", userEmailResult));
+            }
+
+            var gitDirResult = await RunAsync(
+                clonePath,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--absolute-git-dir").ConfigureAwait(false);
+
+            var expectedGitDir = Path.GetFullPath(Path.Combine(clonePath, ".git"));
+            var actualGitDir = gitDirResult.ExitCode == 0 &&
+                               !string.IsNullOrWhiteSpace(gitDirResult.StandardOutput)
+                ? Path.GetFullPath(FirstLine(gitDirResult.StandardOutput))
+                : null;
+            if (actualGitDir is null ||
+                !PathsEqual(actualGitDir, expectedGitDir))
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    "INTEGRATION_CLONE_GITDIR_NOT_LOCAL",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    primaryHead,
+                    primaryHead,
+                    null,
+                    false);
+            }
+
+            var cloneHeadResult = await RunAsync(
+                clonePath,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+
+            var cloneHead = cloneHeadResult.ExitCode == 0
+                ? FirstLine(cloneHeadResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(cloneHead) ||
+                !string.Equals(cloneHead, primaryHead, StringComparison.OrdinalIgnoreCase))
+            {
+                return new GitWorktreePreparationResult(
+                    false,
+                    "INTEGRATION_CLONE_HEAD_MISMATCH",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    primaryHead,
+                    primaryHead,
+                    cloneHead,
+                    false);
+            }
+
+            return new GitWorktreePreparationResult(
+                true,
+                null,
+                repositoryRoot,
+                clonePath,
+                branch,
                 primaryHead,
-                cancellationToken).ConfigureAwait(false);
+                primaryHead,
+                cloneHead,
+                false);
         }
         finally
         {
             primaryGate.Release();
         }
+    }
+
+    public async Task<GitWorktreePreparationResult> ResumeIntegrationAsync(
+        string workspace,
+        string clonePath,
+        string? expectedBranch,
+        string? baseRef,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+            return Failure("WORKTREE_WORKSPACE_MISSING", workspace, string.Empty, string.Empty, baseRef);
+        if (string.IsNullOrWhiteSpace(clonePath) || !Directory.Exists(clonePath))
+            return Failure("INTEGRATION_CLONE_PATH_MISSING", workspace, string.Empty, string.Empty, baseRef);
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+            return Failure("WORKTREE_GIT_REPOSITORY_REQUIRED", workspace, string.Empty, string.Empty, baseRef);
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var normalizedClone = Path.GetFullPath(clonePath);
+
+        var cloneRootResult = await RunAsync(
+            normalizedClone,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        var cloneRoot = cloneRootResult.ExitCode == 0 &&
+                        !string.IsNullOrWhiteSpace(cloneRootResult.StandardOutput)
+            ? Path.GetFullPath(FirstLine(cloneRootResult.StandardOutput))
+            : null;
+        if (cloneRoot is null || !PathsEqual(cloneRoot, normalizedClone))
+        {
+            return new GitWorktreePreparationResult(
+                false,
+                "INTEGRATION_CLONE_REPOSITORY_INVALID",
+                repositoryRoot,
+                normalizedClone,
+                expectedBranch ?? string.Empty,
+                baseRef ?? string.Empty,
+                null,
+                null,
+                true);
+        }
+
+        var gitDirResult = await RunAsync(
+            normalizedClone,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--absolute-git-dir").ConfigureAwait(false);
+        var expectedGitDir = Path.GetFullPath(Path.Combine(normalizedClone, ".git"));
+        var actualGitDir = gitDirResult.ExitCode == 0 &&
+                           !string.IsNullOrWhiteSpace(gitDirResult.StandardOutput)
+            ? Path.GetFullPath(FirstLine(gitDirResult.StandardOutput))
+            : null;
+        if (actualGitDir is null || !PathsEqual(actualGitDir, expectedGitDir))
+        {
+            return new GitWorktreePreparationResult(
+                false,
+                "INTEGRATION_CLONE_GITDIR_NOT_LOCAL",
+                repositoryRoot,
+                normalizedClone,
+                expectedBranch ?? string.Empty,
+                baseRef ?? string.Empty,
+                null,
+                null,
+                true);
+        }
+
+        var branchResult = await RunAsync(
+            normalizedClone,
+            ReadTimeout,
+            cancellationToken,
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "HEAD").ConfigureAwait(false);
+        var branch = branchResult.ExitCode == 0
+            ? FirstLine(branchResult.StandardOutput)
+            : null;
+        if (string.IsNullOrWhiteSpace(branch))
+        {
+            return new GitWorktreePreparationResult(
+                false,
+                "INTEGRATION_CLONE_BRANCH_UNAVAILABLE",
+                repositoryRoot,
+                normalizedClone,
+                expectedBranch ?? string.Empty,
+                baseRef ?? string.Empty,
+                null,
+                null,
+                true);
+        }
+
+        if (!string.IsNullOrWhiteSpace(expectedBranch) &&
+            !string.Equals(branch, expectedBranch.Trim(), StringComparison.Ordinal))
+        {
+            return new GitWorktreePreparationResult(
+                false,
+                "INTEGRATION_CLONE_BRANCH_CHANGED",
+                repositoryRoot,
+                normalizedClone,
+                branch,
+                baseRef ?? string.Empty,
+                null,
+                null,
+                true);
+        }
+
+        var headResult = await RunAsync(
+            normalizedClone,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--verify",
+            "HEAD").ConfigureAwait(false);
+        var head = headResult.ExitCode == 0
+            ? FirstLine(headResult.StandardOutput)
+            : null;
+        if (string.IsNullOrWhiteSpace(head))
+        {
+            return new GitWorktreePreparationResult(
+                false,
+                "INTEGRATION_CLONE_HEAD_UNAVAILABLE",
+                repositoryRoot,
+                normalizedClone,
+                branch,
+                baseRef ?? string.Empty,
+                null,
+                null,
+                true);
+        }
+
+        var normalizedBase = string.IsNullOrWhiteSpace(baseRef)
+            ? head
+            : baseRef.Trim();
+
+        return new GitWorktreePreparationResult(
+            true,
+            null,
+            repositoryRoot,
+            normalizedClone,
+            branch,
+            normalizedBase,
+            normalizedBase,
+            head,
+            true);
     }
 
     public async Task<GitWorktreeInspectionResult> InspectAsync(
@@ -691,17 +1029,66 @@ public sealed class GitWorktreeManager
             expectedTargetBranch: null,
             cancellationToken);
 
-    public async Task<GitIntegrationLandingResult> LandIntegrationAsync(
+    public Task<GitIntegrationLandingResult> LandIntegrationAsync(
         string workspace,
         string integrationRef,
         string? expectedTargetBranch,
         CancellationToken cancellationToken = default)
+        => LandIntegrationCoreAsync(
+            workspace,
+            integrationRef,
+            expectedTargetBranch,
+            sourceClonePath: null,
+            sourceBranch: null,
+            cancellationToken);
+
+    public Task<GitIntegrationLandingResult> LandIntegrationCloneAsync(
+        string workspace,
+        string sourceClonePath,
+        string sourceBranch,
+        string integrationRef,
+        string? expectedTargetBranch,
+        CancellationToken cancellationToken = default)
+        => LandIntegrationCoreAsync(
+            workspace,
+            integrationRef,
+            expectedTargetBranch,
+            sourceClonePath,
+            sourceBranch,
+            cancellationToken);
+
+    private async Task<GitIntegrationLandingResult> LandIntegrationCoreAsync(
+        string workspace,
+        string integrationRef,
+        string? expectedTargetBranch,
+        string? sourceClonePath,
+        string? sourceBranch,
+        CancellationToken cancellationToken)
     {
         var normalizedRef = integrationRef?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
             return new(false, "INTEGRATION_TARGET_WORKSPACE_MISSING", string.Empty, normalizedRef, null, null, null, null, false);
         if (string.IsNullOrWhiteSpace(normalizedRef))
             return new(false, "INTEGRATION_RESULT_REF_MISSING", Path.GetFullPath(workspace), normalizedRef, null, null, null, null, false);
+
+        var importingClone = !string.IsNullOrWhiteSpace(sourceClonePath);
+        var normalizedClone = importingClone
+            ? Path.GetFullPath(sourceClonePath!)
+            : null;
+        var normalizedSourceBranch = string.IsNullOrWhiteSpace(sourceBranch)
+            ? null
+            : sourceBranch.Trim();
+
+        if (importingClone &&
+            (normalizedClone is null || !Directory.Exists(normalizedClone)))
+        {
+            return new(false, "INTEGRATION_SOURCE_CLONE_MISSING", Path.GetFullPath(workspace), normalizedRef, null, null, null, null, false);
+        }
+
+        if (importingClone && string.IsNullOrWhiteSpace(normalizedSourceBranch))
+        {
+            return new(false, "INTEGRATION_SOURCE_BRANCH_REQUIRED", Path.GetFullPath(workspace), normalizedRef, null, null, null, null, false);
+        }
 
         var rootResult = await RunAsync(
             workspace,
@@ -719,222 +1106,314 @@ public sealed class GitWorktreeManager
         try
         {
             var statusBefore = await ReadPrimaryWorkspaceStatusAsync(
-            repositoryRoot,
-            workspace,
-            cancellationToken).ConfigureAwait(false);
-
-        if (statusBefore.ExitCode != 0)
-            return new(false, "INTEGRATION_TARGET_STATUS_UNAVAILABLE", repositoryRoot, normalizedRef, null, null, null, null, false);
-        if (!string.IsNullOrWhiteSpace(statusBefore.StandardOutput))
-            return new(false, "INTEGRATION_TARGET_DIRTY", repositoryRoot, normalizedRef, null, null, null, null, false);
-
-        var branchResult = await RunAsync(
-            repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "symbolic-ref",
-            "--quiet",
-            "--short",
-            "HEAD").ConfigureAwait(false);
-
-        var targetBranch = branchResult.ExitCode == 0
-            ? FirstLine(branchResult.StandardOutput)
-            : null;
-        if (string.IsNullOrWhiteSpace(targetBranch))
-            return new(false, "INTEGRATION_TARGET_BRANCH_REQUIRED", repositoryRoot, normalizedRef, null, null, null, null, false);
-
-        var expectedBranch = string.IsNullOrWhiteSpace(expectedTargetBranch)
-            ? null
-            : expectedTargetBranch.Trim();
-        if (expectedBranch is not null &&
-            !string.Equals(targetBranch, expectedBranch, StringComparison.Ordinal))
-        {
-            return new(
-                false,
-                "INTEGRATION_TARGET_BRANCH_CHANGED",
                 repositoryRoot,
-                normalizedRef,
-                null,
-                targetBranch,
-                null,
-                null,
-                false);
-        }
+                workspace,
+                cancellationToken).ConfigureAwait(false);
 
-        var headBeforeResult = await RunAsync(
-            repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "rev-parse",
-            "--verify",
-            "HEAD").ConfigureAwait(false);
+            if (statusBefore.ExitCode != 0)
+                return new(false, "INTEGRATION_TARGET_STATUS_UNAVAILABLE", repositoryRoot, normalizedRef, null, null, null, null, false);
+            if (!string.IsNullOrWhiteSpace(statusBefore.StandardOutput))
+                return new(false, "INTEGRATION_TARGET_DIRTY", repositoryRoot, normalizedRef, null, null, null, null, false);
 
-        var beforeHead = headBeforeResult.ExitCode == 0
-            ? FirstLine(headBeforeResult.StandardOutput)
-            : null;
-        if (string.IsNullOrWhiteSpace(beforeHead))
-            return new(false, "INTEGRATION_TARGET_HEAD_UNAVAILABLE", repositoryRoot, normalizedRef, null, targetBranch, null, null, false);
-
-        var integrationResult = await RunAsync(
-            repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "rev-parse",
-            "--verify",
-            normalizedRef + "^{commit}").ConfigureAwait(false);
-
-        var integrationCommit = integrationResult.ExitCode == 0
-            ? FirstLine(integrationResult.StandardOutput)
-            : null;
-        if (string.IsNullOrWhiteSpace(integrationCommit))
-            return new(false, "INTEGRATION_RESULT_REF_INVALID", repositoryRoot, normalizedRef, null, targetBranch, beforeHead, null, false);
-
-        if (string.Equals(beforeHead, integrationCommit, StringComparison.OrdinalIgnoreCase))
-        {
-            return new(
-                true,
-                null,
+            var branchResult = await RunAsync(
                 repositoryRoot,
-                normalizedRef,
-                integrationCommit,
-                targetBranch,
-                beforeHead,
-                beforeHead,
-                false);
-        }
+                ReadTimeout,
+                cancellationToken,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD").ConfigureAwait(false);
 
-        var ancestorResult = await RunAsync(
-            repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "merge-base",
-            "--is-ancestor",
-            beforeHead,
-            integrationCommit).ConfigureAwait(false);
+            var targetBranch = branchResult.ExitCode == 0
+                ? FirstLine(branchResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(targetBranch))
+                return new(false, "INTEGRATION_TARGET_BRANCH_REQUIRED", repositoryRoot, normalizedRef, null, null, null, null, false);
 
-        if (ancestorResult.ExitCode == 1)
-        {
-            return new(
-                false,
-                "INTEGRATION_NOT_FAST_FORWARD",
+            var expectedBranch = string.IsNullOrWhiteSpace(expectedTargetBranch)
+                ? null
+                : expectedTargetBranch.Trim();
+            if (expectedBranch is not null &&
+                !string.Equals(targetBranch, expectedBranch, StringComparison.Ordinal))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_TARGET_BRANCH_CHANGED",
+                    repositoryRoot,
+                    normalizedRef,
+                    null,
+                    targetBranch,
+                    null,
+                    null,
+                    false);
+            }
+
+            var headBeforeResult = await RunAsync(
                 repositoryRoot,
-                normalizedRef,
-                integrationCommit,
-                targetBranch,
-                beforeHead,
-                beforeHead,
-                false);
-        }
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
 
-        if (ancestorResult.ExitCode != 0)
-        {
-            return new(
-                false,
-                "INTEGRATION_ANCESTRY_CHECK_FAILED",
+            var beforeHead = headBeforeResult.ExitCode == 0
+                ? FirstLine(headBeforeResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(beforeHead))
+                return new(false, "INTEGRATION_TARGET_HEAD_UNAVAILABLE", repositoryRoot, normalizedRef, null, targetBranch, null, null, false);
+
+            if (importingClone)
+            {
+                var sourceRootResult = await RunAsync(
+                    normalizedClone!,
+                    ReadTimeout,
+                    cancellationToken,
+                    "rev-parse",
+                    "--show-toplevel").ConfigureAwait(false);
+                var sourceRoot = sourceRootResult.ExitCode == 0 &&
+                                 !string.IsNullOrWhiteSpace(sourceRootResult.StandardOutput)
+                    ? Path.GetFullPath(FirstLine(sourceRootResult.StandardOutput))
+                    : null;
+                if (sourceRoot is null || !PathsEqual(sourceRoot, normalizedClone!))
+                {
+                    return new(false, "INTEGRATION_SOURCE_REPOSITORY_INVALID", repositoryRoot, normalizedRef, null, targetBranch, beforeHead, beforeHead, false);
+                }
+
+                var sourceGitDirResult = await RunAsync(
+                    normalizedClone!,
+                    ReadTimeout,
+                    cancellationToken,
+                    "rev-parse",
+                    "--absolute-git-dir").ConfigureAwait(false);
+                var expectedSourceGitDir = Path.GetFullPath(Path.Combine(normalizedClone!, ".git"));
+                var sourceGitDir = sourceGitDirResult.ExitCode == 0 &&
+                                   !string.IsNullOrWhiteSpace(sourceGitDirResult.StandardOutput)
+                    ? Path.GetFullPath(FirstLine(sourceGitDirResult.StandardOutput))
+                    : null;
+                if (sourceGitDir is null || !PathsEqual(sourceGitDir, expectedSourceGitDir))
+                {
+                    return new(false, "INTEGRATION_SOURCE_GITDIR_NOT_LOCAL", repositoryRoot, normalizedRef, null, targetBranch, beforeHead, beforeHead, false);
+                }
+
+                var sourceBranchResult = await RunAsync(
+                    normalizedClone!,
+                    ReadTimeout,
+                    cancellationToken,
+                    "symbolic-ref",
+                    "--quiet",
+                    "--short",
+                    "HEAD").ConfigureAwait(false);
+                var actualSourceBranch = sourceBranchResult.ExitCode == 0
+                    ? FirstLine(sourceBranchResult.StandardOutput)
+                    : null;
+                if (string.IsNullOrWhiteSpace(actualSourceBranch) ||
+                    !string.Equals(actualSourceBranch, normalizedSourceBranch, StringComparison.Ordinal))
+                {
+                    return new(false, "INTEGRATION_SOURCE_BRANCH_CHANGED", repositoryRoot, normalizedRef, null, targetBranch, beforeHead, beforeHead, false);
+                }
+
+                var sourceHeadResult = await RunAsync(
+                    normalizedClone!,
+                    ReadTimeout,
+                    cancellationToken,
+                    "rev-parse",
+                    "--verify",
+                    "HEAD").ConfigureAwait(false);
+                var sourceHead = sourceHeadResult.ExitCode == 0
+                    ? FirstLine(sourceHeadResult.StandardOutput)
+                    : null;
+                if (string.IsNullOrWhiteSpace(sourceHead) ||
+                    !string.Equals(sourceHead, normalizedRef, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new(false, "INTEGRATION_SOURCE_HEAD_CHANGED", repositoryRoot, normalizedRef, sourceHead, targetBranch, beforeHead, beforeHead, false);
+                }
+
+                var fetchResult = await RunAsync(
+                    repositoryRoot,
+                    CreateTimeout,
+                    cancellationToken,
+                    "fetch",
+                    "--no-tags",
+                    "--no-write-fetch-head",
+                    normalizedClone!,
+                    "refs/heads/" + normalizedSourceBranch).ConfigureAwait(false);
+                if (fetchResult.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        fetchResult.TimedOut ? "INTEGRATION_IMPORT_TIMEOUT"
+                            : fetchResult.Canceled ? "INTEGRATION_IMPORT_CANCELED"
+                            : "INTEGRATION_IMPORT_FAILED",
+                        repositoryRoot,
+                        normalizedRef,
+                        null,
+                        targetBranch,
+                        beforeHead,
+                        beforeHead,
+                        false);
+                }
+            }
+
+            var integrationResult = await RunAsync(
                 repositoryRoot,
-                normalizedRef,
-                integrationCommit,
-                targetBranch,
-                beforeHead,
-                beforeHead,
-                false);
-        }
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                normalizedRef + "^{commit}").ConfigureAwait(false);
 
-        var mergeResult = await RunAsync(
-            repositoryRoot,
-            CreateTimeout,
-            cancellationToken,
-            "merge",
-            "--ff-only",
-            integrationCommit).ConfigureAwait(false);
+            var integrationCommit = integrationResult.ExitCode == 0
+                ? FirstLine(integrationResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(integrationCommit))
+                return new(false, "INTEGRATION_RESULT_REF_INVALID", repositoryRoot, normalizedRef, null, targetBranch, beforeHead, null, false);
 
-        if (mergeResult.ExitCode != 0)
-        {
-            return new(
-                false,
-                mergeResult.TimedOut ? "INTEGRATION_FAST_FORWARD_TIMEOUT"
-                    : mergeResult.Canceled ? "INTEGRATION_FAST_FORWARD_CANCELED"
-                    : "INTEGRATION_FAST_FORWARD_FAILED",
+            if (string.Equals(beforeHead, integrationCommit, StringComparison.OrdinalIgnoreCase))
+            {
+                return new(
+                    true,
+                    null,
+                    repositoryRoot,
+                    normalizedRef,
+                    integrationCommit,
+                    targetBranch,
+                    beforeHead,
+                    beforeHead,
+                    false);
+            }
+
+            var ancestorResult = await RunAsync(
                 repositoryRoot,
-                normalizedRef,
-                integrationCommit,
-                targetBranch,
+                ReadTimeout,
+                cancellationToken,
+                "merge-base",
+                "--is-ancestor",
                 beforeHead,
-                beforeHead,
-                false);
-        }
+                integrationCommit).ConfigureAwait(false);
 
-        var headAfterResult = await RunAsync(
-            repositoryRoot,
-            ReadTimeout,
-            cancellationToken,
-            "rev-parse",
-            "--verify",
-            "HEAD").ConfigureAwait(false);
+            if (ancestorResult.ExitCode == 1)
+            {
+                return new(
+                    false,
+                    "INTEGRATION_NOT_FAST_FORWARD",
+                    repositoryRoot,
+                    normalizedRef,
+                    integrationCommit,
+                    targetBranch,
+                    beforeHead,
+                    beforeHead,
+                    false);
+            }
 
-        var afterHead = headAfterResult.ExitCode == 0
-            ? FirstLine(headAfterResult.StandardOutput)
-            : null;
-        if (string.IsNullOrWhiteSpace(afterHead))
-        {
-            return new(
-                false,
-                "INTEGRATION_TARGET_HEAD_UNAVAILABLE",
+            if (ancestorResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INTEGRATION_ANCESTRY_CHECK_FAILED",
+                    repositoryRoot,
+                    normalizedRef,
+                    integrationCommit,
+                    targetBranch,
+                    beforeHead,
+                    beforeHead,
+                    false);
+            }
+
+            var mergeResult = await RunAsync(
                 repositoryRoot,
-                normalizedRef,
-                integrationCommit,
-                targetBranch,
-                beforeHead,
-                null,
-                true);
-        }
+                CreateTimeout,
+                cancellationToken,
+                "merge",
+                "--ff-only",
+                integrationCommit).ConfigureAwait(false);
 
-        if (!string.Equals(afterHead, integrationCommit, StringComparison.OrdinalIgnoreCase))
-        {
-            return new(
-                false,
-                "INTEGRATION_TARGET_HEAD_MISMATCH",
+            if (mergeResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    mergeResult.TimedOut ? "INTEGRATION_FAST_FORWARD_TIMEOUT"
+                        : mergeResult.Canceled ? "INTEGRATION_FAST_FORWARD_CANCELED"
+                        : "INTEGRATION_FAST_FORWARD_FAILED",
+                    repositoryRoot,
+                    normalizedRef,
+                    integrationCommit,
+                    targetBranch,
+                    beforeHead,
+                    beforeHead,
+                    false);
+            }
+
+            var headAfterResult = await RunAsync(
                 repositoryRoot,
-                normalizedRef,
-                integrationCommit,
-                targetBranch,
-                beforeHead,
-                afterHead,
-                true);
-        }
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
 
-        var statusAfter = await ReadPrimaryWorkspaceStatusAsync(
-            repositoryRoot,
-            workspace,
-            cancellationToken).ConfigureAwait(false);
+            var afterHead = headAfterResult.ExitCode == 0
+                ? FirstLine(headAfterResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(afterHead))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_TARGET_HEAD_UNAVAILABLE",
+                    repositoryRoot,
+                    normalizedRef,
+                    integrationCommit,
+                    targetBranch,
+                    beforeHead,
+                    null,
+                    true);
+            }
 
-        if (statusAfter.ExitCode != 0)
-        {
-            return new(
-                false,
-                "INTEGRATION_TARGET_STATUS_UNAVAILABLE",
+            if (!string.Equals(afterHead, integrationCommit, StringComparison.OrdinalIgnoreCase))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_TARGET_HEAD_MISMATCH",
+                    repositoryRoot,
+                    normalizedRef,
+                    integrationCommit,
+                    targetBranch,
+                    beforeHead,
+                    afterHead,
+                    true);
+            }
+
+            var statusAfter = await ReadPrimaryWorkspaceStatusAsync(
                 repositoryRoot,
-                normalizedRef,
-                integrationCommit,
-                targetBranch,
-                beforeHead,
-                afterHead,
-                true);
-        }
+                workspace,
+                cancellationToken).ConfigureAwait(false);
 
-        if (!string.IsNullOrWhiteSpace(statusAfter.StandardOutput))
-        {
-            return new(
-                false,
-                "INTEGRATION_TARGET_NOT_CLEAN",
-                repositoryRoot,
-                normalizedRef,
-                integrationCommit,
-                targetBranch,
-                beforeHead,
-                afterHead,
-                true);
-        }
+            if (statusAfter.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INTEGRATION_TARGET_STATUS_UNAVAILABLE",
+                    repositoryRoot,
+                    normalizedRef,
+                    integrationCommit,
+                    targetBranch,
+                    beforeHead,
+                    afterHead,
+                    true);
+            }
+
+            if (!string.IsNullOrWhiteSpace(statusAfter.StandardOutput))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_TARGET_NOT_CLEAN",
+                    repositoryRoot,
+                    normalizedRef,
+                    integrationCommit,
+                    targetBranch,
+                    beforeHead,
+                    afterHead,
+                    true);
+            }
 
             return new(
                 true,
@@ -998,6 +1477,23 @@ public sealed class GitWorktreeManager
 
     public static string BuildBranchName(string jobId, string workItemId)
         => "projecthub/" + StableSegment(jobId, 36) + "/" + StableSegment(workItemId, 36);
+
+    public static string BuildIntegrationClonePath(string repositoryRoot, string jobId, string workItemId)
+    {
+        var root = Path.GetFullPath(repositoryRoot);
+        var parent = Directory.GetParent(root)?.FullName
+            ?? throw new InvalidOperationException("저장소 상위 경로를 계산할 수 없습니다.");
+        var repository = StableSegment(
+            Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+            12);
+
+        return Path.Combine(
+            parent,
+            ".projecthub-integration-clones",
+            repository,
+            StableSegment(jobId, 8),
+            StableSegment(workItemId, 18));
+    }
 
     public static string BuildWorktreePath(string repositoryRoot, string jobId, string workItemId)
     {
@@ -1096,6 +1592,44 @@ public sealed class GitWorktreeManager
         return normalized.Length <= limit
             ? normalized
             : normalized[..limit] + Environment.NewLine + "...(truncated)";
+    }
+
+    private static GitWorktreePreparationResult IntegrationFailure(
+        string errorCode,
+        string workspace,
+        string jobId,
+        string workItemId,
+        string? baseRef)
+    {
+        var fallbackRoot = string.IsNullOrWhiteSpace(workspace)
+            ? string.Empty
+            : Path.GetFullPath(workspace);
+        var branch = string.IsNullOrWhiteSpace(jobId) || string.IsNullOrWhiteSpace(workItemId)
+            ? string.Empty
+            : BuildBranchName(jobId, workItemId);
+
+        string clonePath;
+        try
+        {
+            clonePath = string.IsNullOrWhiteSpace(fallbackRoot) || string.IsNullOrWhiteSpace(branch)
+                ? string.Empty
+                : BuildIntegrationClonePath(fallbackRoot, jobId, workItemId);
+        }
+        catch
+        {
+            clonePath = string.Empty;
+        }
+
+        return new(
+            false,
+            errorCode,
+            fallbackRoot,
+            clonePath,
+            branch,
+            baseRef ?? string.Empty,
+            null,
+            null,
+            false);
     }
 
     private static GitWorktreePreparationResult Failure(

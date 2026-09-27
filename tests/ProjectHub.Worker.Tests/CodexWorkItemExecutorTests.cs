@@ -259,16 +259,18 @@ public sealed class CodexWorkItemExecutorTests
         var root = Path.Combine(parent, "repo");
         Directory.CreateDirectory(root);
 
+        var integrationClone = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
+        var integrationBranch = GitWorktreeManager.BuildBranchName("job", "I1");
         var git = new FakeGitRunner();
         git.Enqueue(0, root);
         git.Enqueue(0, "");
         git.Enqueue(0, "main");
         git.Enqueue(0, "primary999");
-        git.Enqueue(0, root);
-        git.Enqueue(0, "primary999");
+        git.Enqueue(0, "Cloning");
+        git.Enqueue(0, "Switched");
         git.Enqueue(0, "");
-        git.Enqueue(1, "");
-        git.Enqueue(0, "Preparing worktree");
+        git.Enqueue(0, "");
+        git.Enqueue(0, Path.Combine(integrationClone, ".git"));
         git.Enqueue(0, "primary999");
 
         var ai = new FakeAiRoleRunner("""
@@ -319,6 +321,9 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
             Assert.Equal("RESOURCE_REQUEST", result.BlockCode);
             Assert.Contains("기준 ref: primary999", ai.LastRequest!.Prompt);
+            Assert.Equal(integrationClone, ai.LastRequest.WorkingDirectory);
+            Assert.Equal(CodexSandboxMode.WorkspaceWrite, ai.LastRequest.Sandbox);
+            Assert.Contains("branch: " + integrationBranch, ai.LastRequest.Prompt);
         }
         finally
         {
@@ -337,10 +342,16 @@ public sealed class CodexWorkItemExecutorTests
             """,
             kind: WorkItemKind.Integration);
 
+        var integrationClone = fixture.Request.Item.WorktreePath!;
         fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
         fixture.Git.Enqueue(0, "");
         fixture.Git.Enqueue(0, "main");
         fixture.Git.Enqueue(0, "base123");
+        fixture.Git.Enqueue(0, integrationClone);
+        fixture.Git.Enqueue(0, Path.Combine(integrationClone, ".git"));
+        fixture.Git.Enqueue(0, fixture.Branch);
+        fixture.Git.Enqueue(0, "head123");
+        fixture.Git.Enqueue(0, "Imported");
         fixture.Git.Enqueue(0, "head123");
         fixture.Git.Enqueue(0, "");
         fixture.Git.Enqueue(0, "Fast-forward");
@@ -474,16 +485,34 @@ public sealed class CodexWorkItemExecutorTests
         const string jobId = "job";
         const string workItemId = "W1";
         var branch = GitWorktreeManager.BuildBranchName(jobId, workItemId);
-        var worktree = GitWorktreeManager.BuildWorktreePath(root, jobId, workItemId);
+        var worktree = kind == WorkItemKind.Integration
+            ? GitWorktreeManager.BuildIntegrationClonePath(root, jobId, workItemId)
+            : GitWorktreeManager.BuildWorktreePath(root, jobId, workItemId);
         Directory.CreateDirectory(worktree);
+        if (kind == WorkItemKind.Integration)
+            Directory.CreateDirectory(Path.Combine(worktree, ".git"));
 
         var git = new FakeGitRunner();
-        git.Enqueue(0, root);
-        git.Enqueue(0, "base123");
-        git.Enqueue(0, $"worktree {worktree}\nHEAD head123\nbranch refs/heads/{branch}\n");
-        git.Enqueue(0, "head123");
-        git.Enqueue(0, branch);
-        git.Enqueue(0, "");
+        if (kind == WorkItemKind.Integration)
+        {
+            git.Enqueue(0, root);
+            git.Enqueue(0, worktree);
+            git.Enqueue(0, Path.Combine(worktree, ".git"));
+            git.Enqueue(0, branch);
+            git.Enqueue(0, "head123");
+            git.Enqueue(0, "head123");
+            git.Enqueue(0, branch);
+            git.Enqueue(0, "");
+        }
+        else
+        {
+            git.Enqueue(0, root);
+            git.Enqueue(0, "base123");
+            git.Enqueue(0, $"worktree {worktree}\nHEAD head123\nbranch refs/heads/{branch}\n");
+            git.Enqueue(0, "head123");
+            git.Enqueue(0, branch);
+            git.Enqueue(0, "");
+        }
 
         var ai = new FakeAiRoleRunner(finalMessage);
         var executor = new CodexWorkItemExecutor(

@@ -79,28 +79,40 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         CancellationToken cancellationToken)
     {
         var item = request.Item;
-        var firstIntegrationPreparation =
+        var integrationNeedsPreparation =
             item.Kind == WorkItemKind.Integration &&
-            string.IsNullOrWhiteSpace(item.WorktreePath) &&
-            string.IsNullOrWhiteSpace(item.Branch) &&
-            string.IsNullOrWhiteSpace(item.SessionId);
+            string.IsNullOrWhiteSpace(item.WorktreePath);
 
-        if (!firstIntegrationPreparation && string.IsNullOrWhiteSpace(item.BaseRef))
+        if (item.Kind != WorkItemKind.Integration &&
+            string.IsNullOrWhiteSpace(item.BaseRef))
             return WorkItemExecutionResult.Blocked("WORKTREE_BASE_REF_MISSING", "WorkItem baseRef가 없습니다.");
 
-        var preparation = firstIntegrationPreparation
-            ? await _worktrees.PrepareIntegrationAsync(
-                _workspace,
-                _jobId,
-                item.Id,
-                _expectedPrimaryBranch,
-                cancellationToken).ConfigureAwait(false)
-            : await _worktrees.PrepareAsync(
+        GitWorktreePreparationResult preparation;
+        if (item.Kind == WorkItemKind.Integration)
+        {
+            preparation = integrationNeedsPreparation
+                ? await _worktrees.PrepareIntegrationAsync(
+                    _workspace,
+                    _jobId,
+                    item.Id,
+                    _expectedPrimaryBranch,
+                    cancellationToken).ConfigureAwait(false)
+                : await _worktrees.ResumeIntegrationAsync(
+                    _workspace,
+                    item.WorktreePath!,
+                    item.Branch,
+                    item.BaseRef,
+                    cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            preparation = await _worktrees.PrepareAsync(
                 _workspace,
                 _jobId,
                 item.Id,
                 item.BaseRef!,
                 cancellationToken).ConfigureAwait(false);
+        }
 
         if (!preparation.Success)
         {
@@ -345,8 +357,43 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     blockDetailCode: "INTEGRATION_RESULT_REF_MISSING");
             }
 
-            var landing = await _worktrees.LandIntegrationAsync(
+            var sourceBranch = checkpoint.Branch ?? preparation.Branch;
+            if (string.IsNullOrWhiteSpace(sourceBranch))
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "INTEGRATION_LANDING_FAILED",
+                    BuildIntegrationLandingFailure(
+                        report.Body,
+                        "INTEGRATION_SOURCE_BRANCH_UNAVAILABLE",
+                        checkpoint.HeadCommit,
+                        null),
+                    checkpoint.HeadCommit,
+                    preparation.Branch,
+                    checkpoint.WorktreePath,
+                    sessionId,
+                    blockDetailCode: "INTEGRATION_SOURCE_BRANCH_UNAVAILABLE");
+            }
+
+            if (!string.Equals(sourceBranch, preparation.Branch, StringComparison.Ordinal))
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "INTEGRATION_LANDING_FAILED",
+                    BuildIntegrationLandingFailure(
+                        report.Body,
+                        "INTEGRATION_SOURCE_BRANCH_CHANGED",
+                        checkpoint.HeadCommit,
+                        null),
+                    checkpoint.HeadCommit,
+                    sourceBranch,
+                    checkpoint.WorktreePath,
+                    sessionId,
+                    blockDetailCode: "INTEGRATION_SOURCE_BRANCH_CHANGED");
+            }
+
+            var landing = await _worktrees.LandIntegrationCloneAsync(
                 _workspace,
+                checkpoint.WorktreePath,
+                sourceBranch,
                 checkpoint.HeadCommit,
                 _expectedPrimaryBranch,
                 cancellationToken).ConfigureAwait(false);
