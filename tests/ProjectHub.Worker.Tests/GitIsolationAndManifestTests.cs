@@ -83,6 +83,12 @@ public sealed class GitIsolationAndManifestTests
             Assert.True(File.Exists(result.ManifestPath));
             Assert.Equal("parent456", result.Manifest!.ParentCommit);
             Assert.Equal("tree789", result.Manifest.Tree);
+            Assert.Contains(
+                git.Calls,
+                call => call.Count >= 3 &&
+                        call[0] == "-c" &&
+                        call[1] == "core.quotepath=false" &&
+                        call[2] == "diff-tree");
 
             var readme = result.Manifest.ChangedFiles.Single(
                 file => file.Path == "README.md");
@@ -276,6 +282,8 @@ public sealed class GitIsolationAndManifestTests
     {
         private readonly Queue<GitCommandResult> _results = new();
 
+        public List<IReadOnlyList<string>> Calls { get; } = new();
+
         public void Enqueue(int exitCode, string stdout, string stderr = "")
             => _results.Enqueue(new GitCommandResult(exitCode, stdout, stderr));
 
@@ -285,6 +293,7 @@ public sealed class GitIsolationAndManifestTests
             TimeSpan timeout,
             CancellationToken cancellationToken = default)
         {
+            Calls.Add(arguments.ToArray());
             if (_results.Count == 0)
             {
                 throw new InvalidOperationException(

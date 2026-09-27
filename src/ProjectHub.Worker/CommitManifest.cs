@@ -92,6 +92,8 @@ public sealed class GitCommitManifestBuilder
         var changedResult = await RunAsync(
             worktreePath,
             cancellationToken,
+            "-c",
+            "core.quotepath=false",
             "diff-tree",
             "--root",
             "--no-commit-id",

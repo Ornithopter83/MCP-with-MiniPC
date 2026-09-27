@@ -31,6 +31,7 @@
 ② 명시적 승인 없이 commit, push, 배포 또는 외부 시스템 변경을 수행하지 않는다.
 ③ 비밀키, 자격증명, 토큰, 결제정보와 민감한 URL을 코드·문서·로그에 남기지 않는다.
 ④ Supabase 서비스 역할 키는 서버 환경 변수에만 둔다.
+⑤ ProjectHub WORK 실행에서 Git metadata와 Git 원격 접근은 Worker의 기계 책임으로 둔다. WORK AI는 `.git`과 Git 원격을 직접 사용하지 않는다.
 
 제5조 (문서)
 
