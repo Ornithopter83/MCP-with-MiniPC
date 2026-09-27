@@ -1,5 +1,10 @@
 # ProjectHub 대화 인계
 
+> 문서 상태: **HISTORICAL / SUPERSEDED**
+> 이 문서는 2026-09-18 당시 대화 인계 기록이다. 현재 작업 시작 지침이나 현재 구조 원본으로 사용하지 않는다.
+> 현재 기준은 `Master-Polish.md`, 프로젝트별 `*-Polish.md`, 전용 계약, `ProjectHub_IMPLEMENTATION_PLAN.md` 순으로 확인한다. 아래의 `현재`, 활성 task, 경로, `pull --rebase`와 배포 구조 표현은 당시 이력이다.
+
+
 갱신일: 2026-09-18
 
 ## 목적

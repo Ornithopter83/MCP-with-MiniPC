@@ -1,120 +1,74 @@
 # ProjectHub 구현 로드맵
 
-갱신일: 2026-09-25
+갱신일: 2026-09-28
 
-상위 공통 정책: Master-Polish.md
-Worker 정책: Worker-Polish.md
+상위 공통 정책은 `Master-Polish.md`이며 프로젝트별 장기 정책과 전용 계약이 이 문서보다 우선한다. 날짜별 변경 이력과 과거 구현 경로는 `tasks/*.md`, 전용 기록 문서와 Git 이력에 둔다.
 
-제1조 (현재 구조)
+제1조 (현재 정책 기준 구조)
 
-~~~text
-                         ┌─ WORK Item A ─┐
-                         ├─ WORK Item B ─┤
-USER -> HQ -> WorkGraph ─┼─ WORK Item C ─┼─> Integration WORK -> HQ
-                         └─ WORK Item D ─┘
+① 사용자 목표의 의미 해석과 작업 분해는 HQ가 담당하고 Worker는 승인된 WorkGraph를 기계적으로 실행한다.
+
+```text
+                         ┌─ NORMAL WORK ───────┐
+USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEGRATION WORK -> HQ
+                         └─ NORMAL WORK ───────┘
                                │
-                               ├─ RESOURCE_QUEUE (FIFO sidecar)
-                               ├─ JUDGE
+                               ├─ RESOURCE sidecar
+                               ├─ JUDGE sidecar
                                └─ OBSERVATION sidecar
+```
 
-Worker: 승인된 READY WorkItem의 슬롯/세션/worktree/전송/계측만 기계적으로 관리
-HQ ACTION=END -> 열린 WorkItem이 없을 때 의미 종료 -> 기계적 outstanding 대기 -> DONE / DONE_WITH_ERROR
-PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ
-~~~
+② 일반 WorkItem은 #10부터 사용하고 #0은 RESOURCE, #1은 기존 이미지 가공 전용이며 #2~#9는 예약 영역으로 둔다.
+③ maxConcurrentWork 1~8은 같은 Scheduler 실행 경로를 사용하며 차이는 동시 슬롯 수뿐이다.
+④ RESOURCE, JUDGE, OBSERVATION은 일반 WorkItem으로 자동 승격하지 않고 현재 요청 문맥에 귀속되는 sidecar로 유지한다.
+⑤ HQ와 WORK의 정확한 ACTION, GOTO, WORK_GRAPH_PATCH, WORK_ITEM_STATUS 및 RESOURCE_TYPE 문법은 전용 역할 계약을 원본으로 사용한다.
 
-미확인은 기계적 오류 상태이며 HQ에 한글 요약을 Job당 한 번 전달한다.
+제2조 (WORK 실행과 결과)
 
-제2조 (활성 작업 — 16 동적 WorkGraph)
+① NORMAL WORK는 Worker가 준비한 독립 branch와 linked worktree의 일반 파일을 대상으로 실행한다.
+② WORK AI는 Git metadata와 Git 원격을 작업 수단으로 사용하지 않는다.
+③ Worker가 checkpoint commit, CODE_CHANGE provenance, Commit Manifest와 후속 전달 메타데이터를 기계적으로 관리한다.
+④ WorkItem 생애 동안 checkpoint commit이 생성됐거나 이전 BLOCKED 단계의 CODE_CHANGE provenance가 보존된 경우 최종 재개 실행에서 새 commit이 없어도 CODE_CHANGE를 ANALYSIS로 낮추지 않는다.
+⑤ 여러 CODE_CHANGE 결과를 함께 반영해야 하면 HQ가 INTEGRATION WorkItem을 추가한다.
+⑥ INTEGRATION은 주 저장소와 분리된 독립 clone에서 일반 파일 기준으로 의미적 통합과 검증을 수행하고 Worker만 완료 commit import와 target branch fast-forward를 수행한다.
 
-목표:
-- 모든 WORK 실행을 maxConcurrentWork 1~8의 동일한 DAG WorkGraph로 통합
-- HQ가 작업 분해·의존성·추가·취소를 의미적으로 결정
-- Worker가 maxConcurrentWork 안에서 승인된 READY WorkItem을 기계적으로 실행하며 1도 동일한 WorkGraph 경로를 사용
-- WorkItem별 Codex session과 Git branch/worktree를 격리
-- SPLIT_REQUEST와 GraphPatch로 실행 중 동적 작업 추가
-- Integration WorkItem으로 병렬 결과를 통합
-- RESOURCE/JUDGE/OBSERVATION과 프로젝트 기억을 workItemId 기준으로 확장
+제3조 (continuation과 기록)
 
-구현 단위:
-1. WorkItem / WorkGraph / GraphPatch
-2. dependency/cycle/revision 검증과 READY 계산
-3. ParallelWorkScheduler와 maxConcurrentWork
-4. GitWorktreeManager
-5. WorkItem별 Codex session/progress/result 귀속
-6. HQ GraphPatch transport와 WORK SPLIT_REQUEST
-7. Integration WorkItem
-8. RESOURCE/JUDGE/OBSERVATION workItemId 귀속
-9. WorkGraph persistence/recovery
-10. 병렬 상태 UI와 E2E
+① PAUSE, CANCELED, DONE 또는 DONE_WITH_ERROR 뒤 사용자가 같은 프로그램 실행 안에서 `작업 추가`를 선택하면 기존 HQ/WORK 세션과 WorkGraph를 USER_FOLLOWUP 문맥으로 유지할 수 있다.
+② 프로그램 시작 시 과거 `session-state`, HQ/WORK 세션, WorkGraph, event log를 자동 복구해 새 작업의 의미 문맥으로 사용하지 않는다.
+③ 사용자가 `새 작업`을 시작하면 활성 continuation을 제거하고 과거 상태와 transcript는 진단·이력으로만 남긴다.
+④ event log, transcript, handoff와 저장 상태는 정책 원본이 아니다.
 
-상세 계획과 복구 기준은 tasks/16-parallel-work-graph.md를 따른다.
+제4조 (RESOURCE, JUDGE, OBSERVATION)
 
-제3조 (보류 항목)
+① 생성 리소스의 요청과 완료 결과는 WorkItem #0 경로에서만 처리하고 다른 일반 WorkItem이 RESOURCE를 직접 호출하거나 완료 결과를 직접 수신하지 않는다.
+② RESOURCE의 현재 요청 문법은 `WORK-ROUTING-CONTRACT.md`를 따르며 Worker는 생성 결과의 품질이나 코드 연결 위치를 판단하지 않는다.
+③ JUDGE는 HQ가 정리한 비기계적 판단 질문을 JEV에 전달하는 경로이고 Worker는 전송·스키마 수준만 처리한다.
+④ OBSERVATION은 별도 AI 역할이 아니라 WORK가 요청하는 기계 계측 sidecar다.
+⑤ FINALIZE_ONLY 등 남은 기계 작업은 HQ의 의미 종료 이후에도 최종 DONE/DONE_WITH_ERROR 전에 완료 여부를 확인할 수 있다.
 
-- RESOURCE Web 동시 병렬 실행
-- 자동 리소스 품질 판정
-- 자동 코드/CSS/HTML 연결
-- Claude/Muse 실제 CLI 연결
-- 실행 중 프로세스 강제 종료 시점의 세부 checkpoint 복구 고도화
-- 비용 기반 자동 정책
+제5조 (Git과 안전 경계)
 
-제4조 (검증 기준)
+① Worker는 WORK 실행 전에 Git metadata를 AI 실행 경계 밖으로 격리하고 원격 프로토콜 접근을 차단한다.
+② Git 충돌, detached HEAD, dirty 상태, non-fast-forward와 같은 위험 상태를 Worker가 의미적으로 자동 해결하지 않는다.
+③ 파괴적 reset, force, 외부 push 또는 배포는 별도 명시적 승인 없이 수행하지 않는다.
+④ 정확한 worktree/clone 경로, 환경 변수와 Git 명령행 옵션은 현재 구현과 테스트를 원본으로 사용한다.
 
-코드 변경 후 Windows 환경에서 solution test/빌드와 Explorer 실제 Web 왕복 검증을 완료하기 전까지 runtime 완료로 간주하지 않는다.
+제6조 (Web 런타임)
 
+① HQ와 RESOURCE는 서로 다른 persistent profile, conversationId와 runtime token을 사용하는 관리형 app window 슬롯으로 운영한다.
+② 일반 Chrome이나 runtime token이 없는 페이지는 Worker Web 작업 대상으로 사용하지 않는다.
+③ Web 응답 회수, 첨부 준비, 파일 수집, UI 이상 관측과 숨김 실행의 세부 규칙은 `Web-Polish.md`와 현재 구현·테스트를 원본으로 사용한다.
 
+제7조 (검증 기준)
 
-제5조 (계약 유지 규칙)
+① 코드 변경은 변경 범위에 맞는 자동 테스트와 빌드를 수행하고 실제 결과만 기록한다.
+② Windows Worker의 runtime 완료 판정에는 solution build/test만으로 충분하지 않으며 필요한 경우 publish 후 실제 Worker 시작과 관리형 Web 왕복을 별도로 확인한다.
+③ GitHub Actions의 Windows CI는 clean runner에서 restore, build, test의 기본 회귀를 잡는 독립 검증으로 사용하되 로컬 Chromium/profile/UI 동작을 대체하지 않는다.
+④ 테스트가 취소, timeout 또는 미실행이면 성공으로 기록하지 않는다.
 
-역할 계약에는 장기 역할 책임, ACTION/GOTO 문법, 전송 형식, 기계적 경계만 둔다. 특정 테스트·도메인·횟수·파일·장애 사례는 계약에 넣지 않고 tests/fixtures/작업 history에 둔다.
+제8조 (후속 개선)
 
-
-제6조 (현재 종료와 후속 작업 정책)
-
-- HQ의 ACTION=END는 현재 실행 구간의 의미 작업 종료를 확정한다.
-- Worker는 END 이후 현재 실행 구간에서 HQ/WORK/JUDGE 의미 흐름을 자동으로 다시 열지 않는다.
-- 남은 RESOURCE 대기열을 포함한 기계적 대기 작업이 있으면 Worker가 대기 상태에서 완료만 기다린다.
-- 대기 작업이 모두 끝나면 Worker가 DONE 또는 DONE_WITH_ERROR로 전환한다.
-- RESOURCE 완료 이벤트는 HQ를 깨우지 않는다.
-- PAUSE, CANCELED, DONE / DONE_WITH_ERROR 이후에도 HQ/WORK 세션과 작업공간은 유지한다.
-- 실행 중 사용자 취소는 현재 프로세스를 중단하되 `thread.started`에서 확보한 CLI session ID를 보존한다.
-- 사용자가 `작업 추가`를 실행할 때만 USER_FOLLOWUP으로 기존 HQ 세션에서 새 실행 구간을 시작한다.
-- `새 작업`을 선택하면 이전 연속 세션과 이력을 명시적으로 초기화한다.
-- 재개 가능한 상태는 작업공간 `.projecthub/session-state.json`에 저장하고 Worker 재시작 시 복구한다.
-- 로컬 Codex 세션이 사라졌으면 저장된 session ID를 사용하지 않고 프로젝트 기억 파일과 이벤트 로그 경로를 새 HQ 세션에 전달한다.
-- Worker 관측 메시지는 `.projecthub/events/<jobId>.jsonl`에 실시간 append하고 transcript는 `.projecthub/transcripts/<jobId>.txt`에 저장한다.
-
-- RESOURCE 성공/실패 completion은 HQ END 전 다음 WORK 입력의 `RESOURCE_RESULT`로 전달하고, RESOURCE 실패를 UNKNOWN으로 승격하지 않는다.
-
-
-제7조 (2026-09-26 WorkGraph 단일 실행 경로)
-
-- 신규 작업과 기존 continuation을 모두 WorkGraph/Scheduler로 실행한다.
-- 저장 WorkGraph가 없는 과거 continuation도 빈 WorkGraph로 시작하며 레거시 직렬 runtime으로 돌아가지 않는다.
-- JUDGE는 라우팅 역할이 아니며 JEV raw 결과를 Worker가 요청한 같은 WORK 세션에 직접 반환한다.
-- 역할 프롬프트에는 JUDGE 활성 여부나 직렬/병렬 모드 여부를 별도로 주입하지 않는다.
-
-
-제8조 (2026-09-26 Git 준비 위생 보강)
-
-- WorkGraph 실행 전 Git 준비는 repository local `core.longpaths=true`를 적용한다.
-- ProjectHub 관리 `.gitignore` 블록과 이미 추적된 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/` index 정리는 baseline 사용자 승인 뒤 수행한다.
-- 기존 사용자 ignore 규칙은 보존하고, 새 Git 저장소에만 파일 존재로 기계적으로 판별 가능한 안전한 Godot/Unity/.NET/Node preset을 추가한다.
-- worktree 파일시스템 경로는 짧은 안정 segment를 사용해 Windows 경로 길이 위험을 낮춘다.
-
-
-제9조 (2026-09-26 HQ 설계 책임과 WorkItem History 단순화)
-
-- 설계·기획 결정은 HQ가 직접 수행해 구체화한 뒤 실행 가능한 WorkItem으로 전달한다.
-- HQ PAUSE는 새 WorkItem 시작만 동결하고 이미 RUNNING인 WORK 결과를 수확한 뒤 PAUSED로 전환한다.
-- WorkGraph 병렬 실행은 유지하되 UI의 별도 병렬 WORK 상태 목록은 제거한다.
-- WORK History 카드는 WorkItem createdOrder 기반의 `작업 (#N)` 표기로 같은 작업의 진행과 응답을 식별한다.
-
-
-제10조 (2026-09-26 Integration 실행 기준점과 landing 진단 보강)
-
-- 새 INTEGRATION WorkItem은 첫 실행 직전에 primary workspace의 현재 branch/HEAD를 기계적으로 읽어 그 HEAD를 실제 baseRef로 사용한다.
-- INTEGRATION WORK는 자신의 integration worktree만 수정하며 primary workspace/target branch를 직접 수정하지 않는다.
-- integration 준비와 ff-only landing은 repository primary mutation gate로 직렬화한다.
-- landing 실패의 실제 기계 오류는 `blockDetailCode`로 WorkGraph/HQ 이벤트에 구조화해 보존한다.
-- 과거 INTEGRATION_LANDING 결과의 errorCode도 snapshot 복구 시 세부 코드로 마이그레이션한다.
+① 외부 제공자 연결은 실제 인증·모델·세션 규격이 준비된 경우에만 현재 runner 경계 안에서 추가한다.
+② RESOURCE 병렬화, Web 자동 복구, 프로그램 재시작 후 의미 continuation 복원처럼 현재 정책을 바꾸는 기능은 기존 기록을 근거로 자동 활성화하지 않고 별도 정책 변경으로 다룬다.
+③ 반복되는 실제 장애는 재현 근거와 회귀 테스트를 확보한 뒤 현재 정책 또는 구현 원본에 최소 범위로 반영한다.

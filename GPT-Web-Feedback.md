@@ -1,5 +1,10 @@
 # GPT Web 피드백 — 정책 문서 계층 분리
 
+> 문서 상태: **IMPLEMENTATION HISTORY**
+> 이 문서는 Web/Worker 변경 과정을 날짜순으로 누적한 이력이다. 서로 다른 시점의 version/build와 브라우저 실행 방식이 함께 존재하므로 개별 조항을 현재 정책으로 사용하지 않는다.
+> 현재 Web 정책은 `Web-Polish.md`, Worker 경계는 `Worker-Polish.md`, 현재 확장 세부는 `extension/gptweb-hub/README.md`와 구현·테스트를 원본으로 사용한다.
+
+
 갱신일: 2026-09-26
 
 제1조 (반영 완료)

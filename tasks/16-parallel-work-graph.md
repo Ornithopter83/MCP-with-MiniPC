@@ -1,5 +1,10 @@
 # 16 동적 병렬 WORK Graph
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 병렬 WorkGraph 도입 과정과 당시 완료 기준을 누적한 기록이다. 본문의 `현재`, 재시작 복구, persistence 완료 조건은 현재 장기 정책을 덮어쓰지 않는다.
+> 현재 정책에서는 프로그램 시작 시 과거 session-state/HQ·WORK 세션/WorkGraph를 새 작업 문맥으로 자동 복구하지 않는다. 같은 프로그램 실행 안의 USER_FOLLOWUP만 기존 continuation을 유지할 수 있다.
+
+
 갱신일: 2026-09-25
 
 상위 공통 정책은 Master-Polish.md이며 Worker 세부 정책은 Worker-Polish.md다.

@@ -1,5 +1,10 @@
 # 14 RESOURCE Web 역할 + HQ Web 복원
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 HIGH 제거와 RESOURCE 도입 과정의 구현 이력이다. 본문 중 `[GOTO : RESOURCE]` 뒤 자연어만 전달한다는 초기 설명은 현재 wire 계약으로 사용하지 않는다.
+> 현재 RESOURCE 요청은 `WORK-ROUTING-CONTRACT.md`가 원본이며 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE` 구조를 포함한다.
+
+
 갱신일: 2026-09-25
 
 정책 원본은 Master-Polish.md다.

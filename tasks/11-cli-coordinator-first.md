@@ -1,5 +1,10 @@
 # 11 관제 우선 CLI 간 실행
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서의 `현재 활성 범위`, HIGH 역할, HIGH permit, HIGH 라우팅 설명은 작성 당시 이력이며 현재 계약이 아니다.
+> 현재 정책에서는 HIGH 역할/GOTO/일회성 고수준 허가를 사용하지 않는다. 현재 역할 구조와 wire 문법은 `Worker-Polish.md` 및 HQ/WORK 전용 계약을 따른다.
+
+
 갱신일: 2026-09-24
 
 정책 원본은 Master-Polish.md다.

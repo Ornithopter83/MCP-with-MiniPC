@@ -1,5 +1,10 @@
 # 12 제공자 추상화
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서의 HQ/WORK/HIGH 제공자 UI와 HIGH 실행기 설명은 당시 설계 기록이며 현재 역할 구조를 정의하지 않는다.
+> 현재 HIGH 역할은 제거되어 있으며 제공자·모델·추론·세션의 실제 지원 범위는 `Worker-Polish.md`와 현재 runner/설정을 원본으로 사용한다.
+
+
 갱신일: 2026-09-24
 
 정책 원본은 `Master-Polish.md`다.

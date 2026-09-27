@@ -14,14 +14,15 @@ ProjectHub는 개발 PC, Mini PC 중앙 서비스, 공통 도메인·인프라, 
 
 ## 정책 문서
 
-- `Master-Polish.md`: ProjectHub 전체 공통 영구 정책
-- `Core-Polish.md`
-- `Infrastructure-Polish.md`
-- `Server-Polish.md`
-- `Agent-Polish.md`
-- `Worker-Polish.md`
-- `Web-Polish.md`
-- `CurrentWork.md`: 프로젝트별 현재 상태 표지판
+현재 의미 원본은 다음 순서로 해석한다.
+
+1. `Master-Polish.md`: ProjectHub 전체 공통 영구 정책
+2. 프로젝트별 `*-Polish.md`: Core / Infrastructure / Server / Agent / Worker / Web 장기 정책
+3. 역할·API·전송 계약: 해당 프로젝트의 세부 프로토콜
+4. `ProjectHub_IMPLEMENTATION_PLAN.md`: 현재 정책 기준 구현 로드맵
+5. `CurrentWork.md`: 사용자가 현재 상태를 확인할 때 보는 프로젝트별 표지판
+
+`tasks/*.md`, `Conversation-Handoff.md`, `NewThreadHandoff.md`, `GPT-Web-Feedback.md`와 E2E 기록은 구현 과정과 검증 이력을 보존하는 자료다. 이 문서 안의 `현재`, `활성`, 버전, 경로, 복구 방식과 역할 구조는 작성 시점의 사실일 수 있으므로 현재 정책이나 현재 런타임 계약을 덮어쓰지 않는다.
 
 ## Server 실행
 
@@ -35,12 +36,6 @@ dotnet run --project src/ProjectHub.Server
 
 Worker는 HQ, WORK, RESOURCE, JUDGE와 기계 계측 흐름을 관리한다. WORK가 일반 파일을 수정하는 동안 Git metadata와 Git 원격 접근은 AI 실행 경계에서 분리하고, checkpoint commit과 CODE_CHANGE Commit Manifest 생성은 Worker가 담당한다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
 
-HQ와 RESOURCE는 서로 다른 persistent profile의 Chrome for Testing을 사용한다. 로그인 정보는 profile에 유지하지만 브라우저를 시작할 때 이전 탭 복원 정보는 제거한다.
+HQ와 RESOURCE는 서로 다른 persistent profile의 관리형 Chromium을 사용한다. 각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 app window로 실행되며, runtime token이 없는 일반 Chrome과 임의 ChatGPT 페이지는 Worker bridge에 연결하지 않는다. 세부 정책은 `Web-Polish.md`에 둔다.
 
-각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 `--app` window로 실행된다. `로그인/표시`와 `숨김 실행`은 기존 창을 복원하지 않고 기존 슬롯 프로세스를 비동기로 종료한 뒤 새 visible/hidden app window를 시작한다.
-
-GPTWeb-Hub는 관리형 Chromium 전용 bridge다. Worker가 발급한 runtime token이 없는 일반 Chrome과 임의의 ChatGPT 페이지는 Worker bridge에 연결할 수 없다. 세부 정책은 `Web-Polish.md`에 둔다.
-
-Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. Web 전달에서는 로컬 파일 hash 검증 뒤 ChatGPT의 활성 Send 버튼까지 확인한 후 전송해 첨부 처리 중 Voice-only 상태를 실패로 오인하지 않는다. 첨부는 최초 작업과 작업 추가, coordinator-first, HQ Web, WORK worktree와 `하네스 없음` 직통 AI 실행에서 공통 attachment 흐름으로 전달된다.
-
-HQ Web 응답은 assistant 텍스트뿐 아니라 응답 turn에 포함된 다운로드 파일도 회수한다. 일반 Web 결과 파일은 SHA-256을 검증한 뒤 `Worker/web-results/<taskId>/`에 저장하며 저장 경로는 Web 역할 결과 Files에도 포함된다.
+Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. Web 전달에서는 로컬 파일 hash 검증과 ChatGPT UI의 기계적 준비 상태를 구분하고, 일반 Web 결과 파일은 Worker가 안전한 결과 경로에 저장한다.

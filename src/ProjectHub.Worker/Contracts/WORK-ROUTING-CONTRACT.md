@@ -52,7 +52,7 @@
 ⑧ WORK는 `.git`을 직접 읽거나 수정하지 않고 `git add`, `git commit`, `git fetch`, `git push`, `git merge`, `git cherry-pick`, `git ls-remote` 등 Git metadata 또는 원격을 사용하는 명령을 실행하지 않는다.
 ⑨ checkpoint commit 생성, Integration 완료 commit 검증·import와 target branch fast-forward는 Worker가 수행한다.
 ⑩ Git remote 접근과 인증은 Worker의 기계 책임이며 WORK가 GitHub 등 원격 저장소 연결을 직접 시험하거나 우회하지 않는다.
-⑪ COMPLETED 결과의 resultType은 WORK가 선언하지 않는다. Worker가 checkpoint의 실제 commit 생성 여부를 기준으로 CODE_CHANGE 또는 ANALYSIS를 기계적으로 기록한다.
+⑪ COMPLETED 결과의 resultType은 WORK가 선언하지 않는다. Worker는 WorkItem 생애 전체의 checkpoint 및 이전 BLOCKED 단계에서 보존된 provenance를 기준으로 CODE_CHANGE 또는 ANALYSIS를 기계적으로 기록하며, 마지막 재개 실행에서 새 commit이 없다는 이유만으로 기존 CODE_CHANGE를 ANALYSIS로 낮추지 않는다.
 ⑫ CODE_CHANGE가 생성되면 Worker가 Commit Manifest를 생성하므로 commit 내부 변경 경로와 텍스트 내용을 재수집하기 위한 별도 작업을 요청하지 않는다.
 ⑬ WORK는 Computer Use를 사용하지 않는다.
 

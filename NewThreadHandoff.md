@@ -1,5 +1,10 @@
 # ProjectHub 새 스레드 인계
 
+> 문서 상태: **HISTORICAL / SUPERSEDED**
+> 이 문서는 과거 스레드 인계 스냅샷이다. 절대 경로, 활성 task, 최신 commit과 검증 대기 항목을 현재 사실로 사용하지 않는다.
+> 현재 작업 문맥은 과거 handoff를 자동 복구하지 않으며 현재 정책과 사용자의 명시적 요청을 기준으로 다시 구성한다.
+
+
 - 프로젝트 경로: `C:\Projects\AI-AGENTS\MCP\Server`
 - 먼저 읽을 파일: `AGENTS.md`, `ProjectHub_IMPLEMENTATION_PLAN.md`, `CurrentWork.md`, 활성 작업 파일
 - 현재 구조: `src/ProjectHub.Core`, `Infrastructure`, `Server`, `Agent`; `tests/ProjectHub.Core.Tests`, `Server.Tests`
