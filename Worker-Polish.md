@@ -518,3 +518,10 @@ Integration:
 ④ 첨부 UI 오류가 없으면 장기 Web 작업 제한시간 안에서 업로드·처리와 Send 활성화를 기다린다.
 ⑤ 첨부 준비 단계와 실패 원인은 Worker 진행 로그에 별도 stage로 남긴다.
 
+
+
+제20조 (WorkGraph ID 입력 정규화)
+
+① HQ의 WORK_GRAPH_PATCH 입력에서 workItemId와 dependencies의 WorkItem ID는 JSON 숫자 또는 문자열을 모두 허용한다.
+② Worker는 숫자 ID를 해당 숫자의 문자열 표현으로 정규화한 뒤 기존 WorkGraph ID 검증을 적용한다.
+③ JSON 타입 차이만으로 유효한 WorkGraph 요청을 WORK_GRAPH_PATCH_JSON_INVALID로 실패시키지 않는다.

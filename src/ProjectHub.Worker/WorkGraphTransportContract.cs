@@ -132,7 +132,7 @@ public static class WorkGraphTransportContract
         }
 
         var type = operation.Type.Trim().ToUpperInvariant();
-        var id = operation.WorkItemId?.Trim() ?? string.Empty;
+        var id = NormalizeId(operation.WorkItemId);
 
         switch (type)
         {
@@ -212,12 +212,25 @@ public static class WorkGraphTransportContract
         }
     }
 
-    private static IReadOnlyList<string> NormalizeDependencies(IReadOnlyList<string>? values)
-        => (values ?? Array.Empty<string>())
+    private static IReadOnlyList<string> NormalizeDependencies(IReadOnlyList<JsonElement>? values)
+        => (values ?? Array.Empty<JsonElement>())
+            .Select(value => NormalizeId(value))
             .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value.Trim())
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+
+    private static string NormalizeId(JsonElement? value)
+    {
+        if (value is null)
+            return string.Empty;
+
+        return value.Value.ValueKind switch
+        {
+            JsonValueKind.String => value.Value.GetString()?.Trim() ?? string.Empty,
+            JsonValueKind.Number => value.Value.GetRawText().Trim(),
+            _ => string.Empty
+        };
+    }
 
     private static bool IsSafeId(string? value)
     {
@@ -254,9 +267,9 @@ public static class WorkGraphTransportContract
         public OperationDto() { }
 
         public string? Type { get; init; }
-        public string? WorkItemId { get; init; }
+        public JsonElement? WorkItemId { get; init; }
         public string? Goal { get; init; }
-        public List<string>? Dependencies { get; init; }
+        public List<JsonElement>? Dependencies { get; init; }
         public string? Kind { get; init; }
         public string? BaseRef { get; init; }
         public string? Value { get; init; }

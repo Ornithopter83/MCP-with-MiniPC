@@ -54,6 +54,42 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
+    public void WorkGraphTransportAcceptsNumericWorkItemIdsAndDependencies()
+    {
+        const string body = """
+            WORK_GRAPH_PATCH:
+            {
+              "expectedRevision": 0,
+              "operations": [
+                {
+                  "type": "ADD",
+                  "workItemId": 10,
+                  "goal": "파일 저장",
+                  "dependencies": [],
+                  "kind": "NORMAL",
+                  "baseRef": "abc123"
+                },
+                {
+                  "type": "ADD",
+                  "workItemId": "11",
+                  "goal": "후속 작업",
+                  "dependencies": [10],
+                  "kind": "NORMAL",
+                  "baseRef": "abc123"
+                }
+              ]
+            }
+            """;
+
+        Assert.True(WorkGraphTransportContract.TryParse(body, out var patch, out var error), error);
+        Assert.Null(error);
+        Assert.NotNull(patch);
+        Assert.Equal("10", patch!.Operations[0].WorkItemId);
+        Assert.Equal("11", patch.Operations[1].WorkItemId);
+        Assert.Equal(new[] { "10" }, patch.Operations[1].Item!.Dependencies);
+    }
+
+    [Fact]
     public void WorkGraphTransportFindsPatchAfterExplanatoryTextAndIgnoresTrailingText()
     {
         const string body = """

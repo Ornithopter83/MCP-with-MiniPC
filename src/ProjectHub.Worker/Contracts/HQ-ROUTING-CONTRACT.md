@@ -77,7 +77,7 @@ WORK_GRAPH_PATCH:
 
 ② WORK_GRAPH_PATCH 뒤에는 JSON 객체 하나를 둔다. 같은 마커를 두 번 쓰지 않는다. Worker는 마커 뒤에서 첫 번째 JSON 객체 하나만 패치로 읽으며 그 뒤의 설명은 패치 JSON에 포함하지 않는다.
 
-③ operations에는 다음 항목을 사용할 수 있다.
+③ operations에는 다음 항목을 사용할 수 있다. workItemId와 dependencies의 ID는 JSON 숫자 또는 문자열로 표현할 수 있으며 Worker는 내부 문자열 ID로 정규화한다.
 
 1. ADD: workItemId, goal, 선택적 dependencies, kind=NORMAL|INTEGRATION, 선택적 baseRef
 2. CANCEL: workItemId
