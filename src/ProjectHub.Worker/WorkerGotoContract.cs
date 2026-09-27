@@ -41,11 +41,11 @@ public static class WorkerGotoContract
             return new(target, JoinBody(gotoLine, gotoEnd, lines, nextIndex), action);
         }
 
-        var control = lines[first].Trim().TrimStart('\uFEFF');
-        if (IsActionCandidate(control))
-            return TryParseAction(control, out _, out _) ? Invalid("ACTION_NOT_ALLOWED") : Invalid("ACTION_INVALID");
-        if (!IsGotoCandidate(control)) return Invalid("GOTO_INVALID_FIRST_LINE");
-        if (!TryParseTarget(control, out var destination, out var controlEnd)) return Invalid("GOTO_INVALID");
+        var routeControl = lines[first].Trim().TrimStart('\uFEFF');
+        if (IsActionCandidate(routeControl))
+            return TryParseAction(routeControl, out _, out _) ? Invalid("ACTION_NOT_ALLOWED") : Invalid("ACTION_INVALID");
+        if (!IsGotoCandidate(routeControl)) return Invalid("GOTO_INVALID_FIRST_LINE");
+        if (!TryParseTarget(routeControl, out var destination, out var controlEnd)) return Invalid("GOTO_INVALID");
         var allowed = source switch
         {
             WorkerRoleState.Work => destination is WorkerRoleState.Hq or WorkerRoleState.Judge or WorkerRoleState.Resource,
@@ -53,7 +53,7 @@ public static class WorkerGotoContract
             _ => false
         };
         if (!allowed) return Invalid("GOTO_NOT_ALLOWED");
-        return new(destination, JoinBody(control, controlEnd, lines, first));
+        return new(destination, JoinBody(routeControl, controlEnd, lines, first));
     }
 
     private static int FindFirstActionStart(string[] lines)
