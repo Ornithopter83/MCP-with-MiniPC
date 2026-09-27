@@ -18,7 +18,7 @@ public sealed class GitWorktreeManagerTests
             var branchB = GitWorktreeManager.BuildBranchName("job-1", "W1");
 
             Assert.StartsWith(
-                Path.Combine(parent, ".projecthub-worktrees") + Path.DirectorySeparatorChar,
+                Path.Combine(parent, "repo.projecthub", "worktrees") + Path.DirectorySeparatorChar,
                 path,
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
             Assert.True(
@@ -50,7 +50,7 @@ public sealed class GitWorktreeManagerTests
             var worktree = GitWorktreeManager.BuildWorktreePath(repository, "job-1", "I1");
 
             Assert.StartsWith(
-                Path.Combine(parent, ".projecthub-integration-clones") + Path.DirectorySeparatorChar,
+                Path.Combine(parent, "repo.projecthub", "integration-clones") + Path.DirectorySeparatorChar,
                 clone,
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
             Assert.NotEqual(

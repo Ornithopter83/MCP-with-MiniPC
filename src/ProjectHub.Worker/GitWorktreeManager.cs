@@ -288,6 +288,25 @@ public sealed class GitWorktreeManager
                     true);
             }
 
+            var legacyWorktreePath = BuildLegacyWorktreePath(repositoryRoot, jobId, workItemId);
+            var legacyExisting = ParseWorktrees(listResult.StandardOutput)
+                .FirstOrDefault(entry =>
+                    PathsEqual(entry.Path, legacyWorktreePath) &&
+                    string.Equals(entry.Branch, branch, StringComparison.Ordinal));
+            if (legacyExisting is not null && Directory.Exists(legacyWorktreePath))
+            {
+                return new GitWorktreePreparationResult(
+                    true,
+                    null,
+                    repositoryRoot,
+                    legacyWorktreePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    legacyExisting.Head,
+                    true);
+            }
+
             if (Directory.Exists(worktreePath) || File.Exists(worktreePath))
                 return new GitWorktreePreparationResult(
                     false,
@@ -1634,22 +1653,23 @@ public sealed class GitWorktreeManager
 
     public static string BuildIntegrationClonePath(string repositoryRoot, string jobId, string workItemId)
     {
-        var root = Path.GetFullPath(repositoryRoot);
-        var parent = Directory.GetParent(root)?.FullName
-            ?? throw new InvalidOperationException("저장소 상위 경로를 계산할 수 없습니다.");
-        var repository = StableSegment(
-            Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
-            12);
-
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
         return Path.Combine(
-            parent,
-            ".projecthub-integration-clones",
-            repository,
+            runtime.IntegrationClones,
             StableSegment(jobId, 8),
             StableSegment(workItemId, 18));
     }
 
     public static string BuildWorktreePath(string repositoryRoot, string jobId, string workItemId)
+    {
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
+        return Path.Combine(
+            runtime.Worktrees,
+            StableSegment(jobId, 8),
+            StableSegment(workItemId, 18));
+    }
+
+    private static string BuildLegacyWorktreePath(string repositoryRoot, string jobId, string workItemId)
     {
         var root = Path.GetFullPath(repositoryRoot);
         var parent = Directory.GetParent(root)?.FullName

@@ -58,7 +58,7 @@ public sealed class CodexCliRunner
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
     }
 
-    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null, IReadOnlyList<string>? additionalWritableDirectories = null, bool ignoreProjectInstructions = false, IReadOnlyDictionary<string, string>? environmentVariables = null, bool disableComputerUse = false)
+    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null, IReadOnlyList<string>? additionalWritableDirectories = null, bool ignoreProjectInstructions = false, IReadOnlyDictionary<string, string>? environmentVariables = null, bool disableComputerUse = false, bool includeAppBaseWritable = true)
     {
         sessionId = NormalizeSessionId(sessionId);
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
@@ -100,7 +100,7 @@ public sealed class CodexCliRunner
         foreach (var directory in ResolveAdditionalWritableDirectories(
                      effectiveSandbox,
                      workingDirectory,
-                     AppContext.BaseDirectory,
+                     includeAppBaseWritable ? AppContext.BaseDirectory : null,
                      additionalWritableDirectories))
         {
             process.StartInfo.ArgumentList.Add("--add-dir");
@@ -187,7 +187,7 @@ public sealed class CodexCliRunner
     public static IReadOnlyList<string> ResolveAdditionalWritableDirectories(
         CodexSandboxMode sandboxMode,
         string workingDirectory,
-        string appBaseDirectory,
+        string? appBaseDirectory,
         IReadOnlyList<string>? requestedDirectories = null)
     {
         if (sandboxMode != CodexSandboxMode.WorkspaceWrite ||

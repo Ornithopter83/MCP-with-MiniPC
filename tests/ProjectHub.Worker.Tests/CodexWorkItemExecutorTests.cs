@@ -29,10 +29,61 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(
                 "never",
                 fixture.Runner.LastRequest.EnvironmentVariables!["GIT_CONFIG_VALUE_1"]);
+
+            var repositoryRoot = Path.Combine(fixture.Parent, "repo");
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
+            var workTemp = WorkerPaths.BuildWorkTempPath(runtime, "job", "W1");
+            Assert.Equal(runtime.NuGetPackages, fixture.Runner.LastRequest.EnvironmentVariables["NUGET_PACKAGES"]);
+            Assert.Equal(runtime.NuGetPackages, fixture.Runner.LastRequest.EnvironmentVariables["RestorePackagesPath"]);
+            Assert.Equal(runtime.NuGetHttpCache, fixture.Runner.LastRequest.EnvironmentVariables["NUGET_HTTP_CACHE_PATH"]);
+            Assert.Equal(runtime.NuGetPluginsCache, fixture.Runner.LastRequest.EnvironmentVariables["NUGET_PLUGINS_CACHE_PATH"]);
+            Assert.Equal(runtime.NuGetScratch, fixture.Runner.LastRequest.EnvironmentVariables["NUGET_SCRATCH"]);
+            Assert.Equal(runtime.DotNetHome, fixture.Runner.LastRequest.EnvironmentVariables["DOTNET_CLI_HOME"]);
+            Assert.Equal(workTemp, fixture.Runner.LastRequest.EnvironmentVariables["TEMP"]);
+            Assert.Equal(workTemp, fixture.Runner.LastRequest.EnvironmentVariables["TMP"]);
+            Assert.False(fixture.Runner.LastRequest.IncludeAppBaseWritable);
+            Assert.Contains(runtime.NuGetRoot, fixture.Runner.LastRequest.AdditionalWritableDirectories!);
+            Assert.Contains(runtime.DotNetHome, fixture.Runner.LastRequest.AdditionalWritableDirectories!);
+            Assert.Contains(workTemp, fixture.Runner.LastRequest.AdditionalWritableDirectories!);
+            Assert.True(Directory.Exists(runtime.NuGetPackages));
+            Assert.True(Directory.Exists(runtime.DotNetHome));
+            Assert.True(Directory.Exists(workTemp));
         }
         finally
         {
             fixture.Dispose();
+        }
+    }
+
+    [Fact]
+    public void WorkspaceWritableRootsCanExcludeWorkerExecutableDirectory()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "projecthub-writable-roots-" + Guid.NewGuid().ToString("N"));
+        var workspace = Path.Combine(parent, "workspace");
+        var runtime = Path.Combine(parent, "repo.projecthub", "nuget");
+        Directory.CreateDirectory(workspace);
+        Directory.CreateDirectory(runtime);
+
+        try
+        {
+            var resolved = CodexCliRunner.ResolveAdditionalWritableDirectories(
+                CodexSandboxMode.WorkspaceWrite,
+                workspace,
+                null,
+                new[] { runtime });
+
+            Assert.Single(resolved);
+            Assert.Equal(Path.GetFullPath(runtime), resolved[0]);
+            Assert.DoesNotContain(
+                resolved,
+                path => string.Equals(
+                    Path.GetFullPath(path),
+                    Path.GetFullPath(AppContext.BaseDirectory),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(parent, true);
         }
     }
 

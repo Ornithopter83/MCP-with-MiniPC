@@ -197,6 +197,47 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         var observationRequestDirectory = _observationGate is not null
             ? _observationGate.GetRequestDirectory(item.Id)
             : _observationRequestDirectory?.Invoke(item.Id);
+
+        RepositoryRuntimePaths runtimePaths;
+        string workTempPath;
+        IReadOnlyDictionary<string, string> workEnvironment;
+        IReadOnlyList<string> workWritableDirectories;
+        try
+        {
+            runtimePaths = WorkerPaths.GetRepositoryRuntimePaths(preparation.RepositoryRoot);
+            workTempPath = WorkerPaths.BuildWorkTempPath(runtimePaths, _jobId, item.Id);
+            WorkerPaths.EnsureWorkToolDirectories(runtimePaths, workTempPath);
+
+            var environment = new Dictionary<string, string>(
+                GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment(),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in WorkerPaths.BuildWorkToolEnvironment(runtimePaths, workTempPath))
+                environment[pair.Key] = pair.Value;
+            workEnvironment = environment;
+
+            var writableDirectories = new List<string>
+            {
+                runtimePaths.NuGetRoot,
+                runtimePaths.DotNetHome,
+                workTempPath
+            };
+            if (!string.IsNullOrWhiteSpace(observationRequestDirectory))
+                writableDirectories.Add(observationRequestDirectory);
+            workWritableDirectories = writableDirectories;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+        {
+            return WorkItemExecutionResult.Blocked(
+                "WORK_TOOL_RUNTIME_PREPARE_FAILED",
+                exception.Message,
+                preparation.HeadCommit,
+                preparation.Branch,
+                preparation.WorktreePath,
+                item.SessionId,
+                blockDetailCode: "WORK_TOOL_RUNTIME_PREPARE_FAILED");
+        }
+
         var inboundType = request.InboundType;
         var inboundBody = request.InboundBody;
         var sessionId = item.SessionId;
@@ -264,12 +305,11 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                             SessionStarted?.Invoke(new CodexWorkItemSessionStarted(item.Id, normalized));
                         }
                     },
-                    string.IsNullOrWhiteSpace(observationRequestDirectory)
-                        ? null
-                        : new[] { observationRequestDirectory },
+                    workWritableDirectories,
                     InputAttachments: stagedUserAttachments,
-                    EnvironmentVariables: GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment(),
-                    DisableComputerUse: true)).ConfigureAwait(false);
+                    EnvironmentVariables: workEnvironment,
+                    DisableComputerUse: true,
+                    IncludeAppBaseWritable: false)).ConfigureAwait(false);
             }
             finally
             {
