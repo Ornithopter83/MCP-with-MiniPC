@@ -35,10 +35,11 @@ public sealed class WorkGraphTests
         Assert.Equal(WorkItemState.Blocked, graph.Find("B")!.State);
 
         Assert.True(graph.TryMarkRunning("A", "branch-a", "worktree-a"));
-        Assert.True(graph.TryMarkCompleted("A", "commit-a"));
+        Assert.True(graph.TryMarkCompleted("A", "commit-a", resultType: WorkItemResultType.CodeChange));
 
         Assert.Equal(WorkItemState.Completed, graph.Find("A")!.State);
         Assert.Equal("commit-a", graph.Find("A")!.ResultRef);
+        Assert.Equal(WorkItemResultType.CodeChange, graph.Find("A")!.ResultType);
         Assert.Equal(WorkItemState.Ready, graph.Find("B")!.State);
     }
 

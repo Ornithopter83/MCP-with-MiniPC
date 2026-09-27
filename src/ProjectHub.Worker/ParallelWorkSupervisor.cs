@@ -540,7 +540,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             else if (_enableCompletionReview &&
                      item.State == WorkItemState.Completed)
             {
-                signal = $"{item.Id}|COMPLETED|{item.ResultRef}|{item.FinishedAtUtc:O}";
+                signal = $"{item.Id}|COMPLETED|{item.ResultType}|{item.ResultRef}|{item.FinishedAtUtc:O}";
                 reason = $"WorkItem {item.Id}가 COMPLETED 상태가 되었습니다.";
                 completion = true;
             }
@@ -630,6 +630,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
            !previous.Dependencies.SequenceEqual(current.Dependencies) ||
            !string.Equals(previous.BaseRef, current.BaseRef, StringComparison.Ordinal) ||
            !string.Equals(previous.ResultRef, current.ResultRef, StringComparison.Ordinal) ||
+           previous.ResultType != current.ResultType ||
            !string.Equals(previous.ResultSummary, current.ResultSummary, StringComparison.Ordinal) ||
            !string.Equals(previous.FailureCode, current.FailureCode, StringComparison.Ordinal) ||
            !string.Equals(previous.BlockCode, current.BlockCode, StringComparison.Ordinal) ||
@@ -643,6 +644,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
         if (item.Dependencies.Count > 0)
             builder.Append(" dependencies=").Append(string.Join(",", item.Dependencies));
+        if (item.State == WorkItemState.Completed)
+            builder.Append(" resultType=").Append(WorkItemResultTypeContract.ToToken(item.ResultType));
         if (!string.IsNullOrWhiteSpace(item.ResultRef))
             builder.Append(" resultRef=").Append(item.ResultRef);
         if (!string.IsNullOrWhiteSpace(item.FailureCode))

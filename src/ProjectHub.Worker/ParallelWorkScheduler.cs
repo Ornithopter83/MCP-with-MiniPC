@@ -3,7 +3,8 @@ namespace ProjectHub.Worker;
 public sealed record WorkItemDependencyResult(
     string WorkItemId,
     string? ResultRef,
-    string? ResultSummary);
+    string? ResultSummary,
+    WorkItemResultType ResultType = WorkItemResultType.None);
 
 public sealed record WorkItemExecutionRequest(
     WorkItemSnapshot Item,
@@ -28,15 +29,17 @@ public sealed record WorkItemExecutionResult(
     string? Branch = null,
     string? WorktreePath = null,
     string? SessionId = null,
-    string? BlockDetailCode = null)
+    string? BlockDetailCode = null,
+    WorkItemResultType ResultType = WorkItemResultType.None)
 {
     public static WorkItemExecutionResult Completed(
         string? resultRef = null,
         string? resultSummary = null,
         string? branch = null,
         string? worktreePath = null,
-        string? sessionId = null)
-        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary, null, null, branch, worktreePath, sessionId);
+        string? sessionId = null,
+        WorkItemResultType resultType = WorkItemResultType.None)
+        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary, null, null, branch, worktreePath, sessionId, null, resultType);
 
     public static WorkItemExecutionResult Failed(
         string failureCode,
@@ -329,7 +332,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             var dependencyResults = runningSnapshot.Dependencies
                 .Select(id => _graph.Find(id))
                 .Where(item => item is not null)
-                .Select(item => new WorkItemDependencyResult(item!.Id, item.ResultRef, item.ResultSummary))
+                .Select(item => new WorkItemDependencyResult(item!.Id, item.ResultRef, item.ResultSummary, item.ResultType))
                 .ToArray();
             var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
             var running = new RunningWork(next.Id, slot.Value, itemCancellation);
@@ -411,7 +414,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                 switch (result.Outcome)
                 {
                     case WorkItemExecutionOutcome.Completed:
-                        _graph.TryMarkCompleted(item.Id, result.ResultRef, result.ResultSummary);
+                        _graph.TryMarkCompleted(item.Id, result.ResultRef, result.ResultSummary, result.ResultType);
                         break;
                     case WorkItemExecutionOutcome.Blocked:
                         _graph.TryMarkBlocked(

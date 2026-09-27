@@ -158,7 +158,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             .Select(result => new WorkItemDependencyPromptContext(
                 result.WorkItemId,
                 result.ResultRef,
-                result.ResultSummary))
+                result.ResultSummary,
+                result.ResultType))
             .ToArray();
 
         var observationRequestDirectory = _observationGate is not null
@@ -420,7 +421,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 BuildIntegrationLandingSuccess(report.Body, landing),
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
-                sessionId);
+                sessionId,
+                checkpoint.CreatedCommit ? WorkItemResultType.CodeChange : WorkItemResultType.Analysis);
         }
 
         return report.Status switch
@@ -430,7 +432,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 report.Body,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
-                sessionId),
+                sessionId,
+                checkpoint.CreatedCommit ? WorkItemResultType.CodeChange : WorkItemResultType.Analysis),
             WorkItemReportStatus.SplitRequest => WorkItemExecutionResult.Blocked(
                 "SPLIT_REQUEST",
                 report.Body,

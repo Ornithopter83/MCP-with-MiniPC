@@ -22,7 +22,7 @@ public sealed class WorkGraphPersistenceTests
             })).Success);
 
             Assert.True(graph.TryMarkRunning("A", "branch-a", "worktree-a", "session-a"));
-            Assert.True(graph.TryMarkCompleted("A", "commit-a", "A 완료"));
+            Assert.True(graph.TryMarkCompleted("A", "commit-a", "A 완료", WorkItemResultType.CodeChange));
             Assert.True(graph.TryMarkRunning("B", "branch-b", "worktree-b", "session-b"));
 
             Assert.True(ProjectWorkspacePersistence.SaveWorkGraph(directory, graph.Snapshot()));
@@ -36,6 +36,7 @@ public sealed class WorkGraphPersistenceTests
             var restored = WorkGraph.Restore(loaded);
             Assert.Equal(loaded.Revision, restored.Revision);
             Assert.Equal(WorkItemState.Completed, restored.Find("A")!.State);
+            Assert.Equal(WorkItemResultType.CodeChange, restored.Find("A")!.ResultType);
 
             var interrupted = restored.Find("B")!;
             Assert.Equal(WorkItemState.Blocked, interrupted.State);

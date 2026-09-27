@@ -52,6 +52,7 @@
 ⑧ Integration clone의 `.git`은 clone 내부에 있어야 하며 주 저장소의 `.git` 또는 다른 WorkItem Git metadata를 직접 수정하지 않는다.
 ⑨ 통합 완료 commit을 주 작업공간에 가져오고 target branch에 fast-forward하는 작업은 Worker가 수행한다.
 ⑩ clone의 origin은 선행 source ref를 읽기 위한 용도로만 사용하며 INTEGRATION WORK가 origin 또는 다른 remote로 push하지 않는다.
+⑪ COMPLETED 결과의 resultType은 WORK가 선언하지 않는다. Worker가 checkpoint의 실제 commit 생성 여부를 기준으로 CODE_CHANGE 또는 ANALYSIS를 기계적으로 기록한다.
 
 제7조 (HQ 보고)
 

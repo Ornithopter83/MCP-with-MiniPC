@@ -19,6 +19,7 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal("head123", result.ResultRef);
+            Assert.Equal(WorkItemResultType.Analysis, result.ResultType);
             Assert.Equal("session-1", result.SessionId);
             Assert.Equal(fixture.Branch, result.Branch);
             Assert.Contains("workItemId: W1", fixture.Runner.LastRequest!.Prompt);
@@ -235,7 +236,7 @@ public sealed class CodexWorkItemExecutorTests
             """,
             dependencies: new[]
             {
-                new WorkItemDependencyResult("W0", "dep-ref", "선행 완료")
+                new WorkItemDependencyResult("W0", "dep-ref", "선행 완료", WorkItemResultType.CodeChange)
             });
 
         try
@@ -243,7 +244,7 @@ public sealed class CodexWorkItemExecutorTests
             await fixture.Executor.ExecuteAsync(fixture.Request, CancellationToken.None);
 
             Assert.Contains("선행 WorkItem 결과:", fixture.Runner.LastRequest!.Prompt);
-            Assert.Contains("W0 | ref=dep-ref | report=선행 완료", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("W0 | resultType=CODE_CHANGE | ref=dep-ref | report=선행 완료", fixture.Runner.LastRequest.Prompt);
         }
         finally
         {

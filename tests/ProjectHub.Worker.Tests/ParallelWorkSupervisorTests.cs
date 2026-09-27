@@ -35,6 +35,30 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public void MechanicalGraphEventIncludesMeasuredResultType()
+    {
+        var graph = new WorkGraph("job", 1);
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("W10", "코드 변경"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("W10"));
+        Assert.True(graph.TryMarkCompleted(
+            "W10",
+            "ref-W10",
+            "구현 완료",
+            WorkItemResultType.CodeChange));
+
+        var text = ParallelWorkSupervisor.FormatMechanicalGraphEvent(
+            new[] { "WorkItem W10가 COMPLETED 상태가 되었습니다." },
+            new ParallelWorkSchedulerSnapshot(
+                graph.Snapshot(),
+                Array.Empty<RunningWorkItemSnapshot>()));
+
+        Assert.Contains("id=W10 kind=NORMAL state=COMPLETED resultType=CODE_CHANGE resultRef=ref-W10", text);
+    }
+
+    [Fact]
     public async Task IndependentWorkRunsToQuiescenceBeforeHqEndTurn()
     {
         var graph = new WorkGraph("job", 2);
@@ -69,6 +93,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Contains("병렬 WorkGraph 변경 이벤트", hq.Prompts[1]);
         Assert.Contains("changedItems:", hq.Prompts[1]);
         Assert.Contains("state=COMPLETED", hq.Prompts[1]);
+        Assert.Contains("resultType=", hq.Prompts[1]);
     }
 
     [Fact]
@@ -82,7 +107,7 @@ public sealed class ParallelWorkSupervisorTests
         })).Success);
 
         Assert.True(graph.TryMarkRunning("W1"));
-        Assert.True(graph.TryMarkCompleted("W1", "ref-W1", "이미 HQ가 받은 완료 결과"));
+        Assert.True(graph.TryMarkCompleted("W1", "ref-W1", "이미 HQ가 받은 완료 결과", WorkItemResultType.CodeChange));
         var previous = graph.Snapshot();
 
         Assert.True(graph.TryMarkRunning("W2"));

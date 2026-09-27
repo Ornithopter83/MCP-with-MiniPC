@@ -1,6 +1,6 @@
 # Worker-Polish — ProjectHub Worker 정책
 
-갱신일: 2026-09-26 (KST)
+갱신일: 2026-09-27 (KST)
 
 이 문서는 `src/ProjectHub.Worker`와 Worker가 직접 포함·운영하는 HQ, WORK, RESOURCE, JUDGE, OBSERVATION, Web Bridge 실행 경계의 장기 정책을 정의한다.
 ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다.
@@ -8,567 +8,241 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 제1조 (Worker 비판단 원칙)
 
-Worker는 의미 판단 주체가 아니다.
-
-Worker가 처리할 수 있는 것:
-- 현재 역할 상태 저장 및 허용 상태 전이 검사
-- ACTION/GOTO 제어행 문법 파싱
-- 역할별 세션/전송/프로세스 실행
-- WORK가 등록한 비동기 기계 작업의 실행, 시간 초과, 결과 경로 수집과 완료 상태 관리
-- WORK_RESULT_REQUIRED 계측 완료까지 AI 호출 없이 대기하고 같은 WORK 세션에 결과 재주입
-- 시간 초과/취소/인증/스키마/경로 안전성 오류 처리
-- Web 대화 연결 및 생존 신호 생존 확인
-- 기록/사용량/file 계측 기록
-- Worker가 실제로 생성·전달한 HQ/RESOURCE Web 송신 내용과 RESOURCE 생명주기 기록
-- JUDGE 전송 스키마와 RESOURCE 자연어 본문의 기계적 전달
-- 미확인 원문 로그와 HQ용 한글 오류 요약
-- 이미 알고 있는 실행 사실을 History UI에 표시
-- 작업공간의 `.projecthub` 아래에 세션 상태, 관제 인수인계, 실시간 이벤트 로그, transcript를 기계적으로 저장하고 기록
-
-Worker가 하지 않는 것:
-- 요청 난이도·의도·우선순위 판단
-- 다음 역할을 본문 의미로 추론
-- 요구사항/AC/테스트/근거 충족 여부 판정
-- JUDGE 결과 의미 해석 후 자동 PASS/FAIL 생성
-- RESOURCE 생성 파일의 미적/기능적 품질 또는 용도 판정
-- 생성 리소스가 어느 컴포넌트에 맞는지 판단
-- 사용자의 후속 명령 없이 저장 리소스를 코드에 자동 연결
-- 비동기 계측 결과의 의미·품질·요구사항 충족 여부 판단
+① Worker는 의미 판단 주체가 아니다.
+② Worker는 역할 상태 저장, 허용 상태 전이, 구조화 제어 토큰 파싱, 역할별 세션·전송·프로세스 실행과 기계 작업 생명주기를 관리한다.
+③ Worker는 시간 초과, 취소, 인증, 스키마, 경로 안전성, Git 준비와 Web 연결 같은 기계적 실패를 기록하고 전달할 수 있다.
+④ Worker는 작업공간의 ProjectHub 상태·이벤트·transcript를 진단과 이력 목적으로 기계적으로 저장할 수 있다.
+⑤ Worker는 요청 난이도·의도·우선순위, 요구사항 충족 여부, JUDGE 판정 의미, RESOURCE 품질 또는 저장 리소스의 사용 위치를 스스로 결정하지 않는다.
+⑥ Worker는 일반 본문 의미를 근거로 다음 역할을 추론하거나 사용자 후속 명령 없이 저장 리소스를 코드에 자동 연결하지 않는다.
+⑦ 비동기 계측 결과의 프로세스 성공과 제품 요구 충족을 같은 의미로 취급하지 않는다.
 
 ---
 
 제2조 (역할과 상태)
 
-| 상태 | UI 역할명 | 책임 | 실행 |
-| --- | --- | --- | --- |
-| HQ | 설계·관제 AI | 사용자 요청 해석, 구현 방향 설계, WORK 지시, JUDGE 질문 검토, CONTINUE/PAUSE/END | ChatGPT Web 또는 CLI 제공자 |
-| WORK | 작업 AI | 코드 구현·수정·빌드·테스트·보고, RESOURCE/JUDGE 요청 | CLI 제공자 |
-| RESOURCE | 리소스 AI | ChatGPT Web 생성 리소스 제작·생성 파일 수집·다운로드·지정 경로 저장 | 별도 ChatGPT Web 고정 |
-| JUDGE | 작업 판단 AI | HQ 검토를 거친 WORK 질문 판정 | JEV |
-| 미확인 | 오류 상태 | 기계적 오류 기록 및 HQ 요약 복귀 | Worker 내부 |
-
-상태 전이:
-
-~~~text
-HQ       -> WORK
-일반 WORK -> HQ | JUDGE
-WORKITEM #0 -> RESOURCE_QUEUE
-WORK 실행 중 -> 기계 계측 요청 파일 등록 -> OBSERVATION sidecar
-OBSERVATION WORK_RESULT_REQUIRED -> 현재 WORK 응답 보류 -> 완료 후 같은 WORK 세션 OBSERVATION_RESULT
-OBSERVATION FINALIZE_ONLY -> 메인 의미 흐름 비차단 -> HQ END 시 기계적 대기 대상
-JUDGE 요청 -> Worker가 JEV raw 결과를 요청한 같은 WORK 세션에 반환
-RESOURCE_QUEUE 접수 -> WORKITEM #0
-RESOURCE_QUEUE 실행 -> RESOURCE Web (FIFO 1건) -> 완료 결과 WORKITEM #0
-HQ ACTION=END -> 의미 작업 종료 고정 -> Worker가 기계적 대기 작업 확인
-기계적 대기 작업 있음 -> 대기 -> 모두 종료 -> DONE / DONE_WITH_ERROR
-PAUSED / CANCELED / DONE / DONE_WITH_ERROR + 사용자 작업 추가 -> USER_FOLLOWUP -> HQ (기존 HQ/WORK 세션 유지)
-HQ END 전 RESOURCE 성공/실패 결과 -> WORKITEM #0에 기계적으로 반환
-UNKNOWN  -> HQ 요약 복귀 (Job당 1회)
-UNKNOWN 재발 -> 로그 기록 후 종료
-~~~
-
-HIGH 역할, HIGH GOTO, HIGH 일회성 허가, high_uses_remaining, 고수준 작업 허용 UI는 현재 정책에 존재하지 않는다.
+① HQ는 사용자 목표 해석, 설계·관제, WorkGraph 변경과 CONTINUE/PAUSE/END 판단을 담당한다.
+② WORK는 현재 WorkItem 범위의 구현·수정·검증과 필요한 JUDGE/RESOURCE 요청을 담당한다.
+③ RESOURCE는 생성 리소스의 Web 요청·수집 경로이며 의미 품질을 판정하지 않는다.
+④ JUDGE는 HQ가 정리한 비기계적 판단 질문을 JEV에 전달하는 경로다.
+⑤ OBSERVATION은 별도 AI 역할이 아니라 WORK가 요청하는 기계 계측 sidecar다.
+⑥ RESOURCE, JUDGE, OBSERVATION의 완료 사실은 요청한 관제 문맥에 기계적으로 귀속한다.
+⑦ PAUSE, CANCELED, DONE 또는 DONE_WITH_ERROR 뒤 사용자가 작업을 추가하면 기존 세션을 유지한 USER_FOLLOWUP으로 HQ에 전달할 수 있다.
+⑧ HIGH 역할, HIGH GOTO 또는 일회성 고수준 허가 개념은 현재 정책에 두지 않는다.
 
 ---
 
 제3조 (HQ 실행 대상)
 
-HQ 대상은 두 종류다.
-
-~~~text
-HQ
-├─ ChatGPT Web
-└─ CLI
-   ├─ OpenAI
-   ├─ Claude
-   └─ Muse
-~~~
-
-- ChatGPT Web 선택 시 제공자/모델/추론/CLI 세션 UI를 숨긴다.
-- CLI 선택 시 제공자 → 모델 → 추론 → 세션 구조를 사용한다.
-- OpenAI Codex CLI는 실제 실행이 연결되어 있다.
-- Claude/Muse는 기존 제공자 abstraction을 유지하되 실제 runner가 연결되기 전에는 미연결 오류를 반환한다.
-- 과거 transport=web을 CLI_TO_CLI에서 자동으로 codex_cli로 바꾸지 않는다.
-- WORK에는 ChatGPT Web 대상을 추가하지 않는다.
+① HQ는 ChatGPT Web 또는 연결된 CLI 실행기를 사용할 수 있다.
+② HQ의 transport 선택은 실행 경로만 바꾸며 HQ 역할 계약과 WorkGraph 의미를 바꾸지 않는다.
+③ WORK는 CLI 실행 계층으로 유지하고 일반 WORK를 ChatGPT Web 역할로 확장하지 않는다.
+④ 제공자·모델·추론·세션 UI의 구체 항목과 지원 여부는 현재 runner 구현과 설정을 따른다.
 
 ---
 
 제4조 (Web 연결)
 
-HQ Web과 RESOURCE Web은 반드시 서로 다른 ChatGPT 대화를 사용한다.
-
-Bridge는 다음 역할 연결을 명시적으로 저장한다.
-
-~~~text
-HQ       -> conversationId A
-RESOURCE -> conversationId B
-~~~
-
-- 사용자가 각 ChatGPT 대화의 확장 패널에서 HQ 또는 RESOURCE 역할을 명시적으로 연결한다.
-- 하나의 conversationId를 HQ와 RESOURCE에 동시에 연결하지 않는다.
-- 생존 신호는 대화가 살아 있는지/확장 버전이 맞는지 확인하는 용도다.
-- 마지막 생존 신호 대화을 작업 목적지로 사용하지 않는다.
-- Worker는 역할 연결에서 얻은 conversationId로 작업를 명시적으로 생성한다.
+① HQ Web과 RESOURCE Web은 Worker가 관리하는 서로 다른 역할 슬롯과 서로 다른 conversationId를 사용한다.
+② 역할 슬롯, runtime token, conversation binding의 생성·검증은 Worker와 관리형 Web 확장의 기계 책임이다.
+③ heartbeat는 생존과 확장 동기화 확인에 사용하며 작업 목적지를 의미적으로 결정하지 않는다.
+④ 일반 Chrome이나 runtime token이 없는 페이지를 Worker의 Web 작업 대상으로 사용하지 않는다.
+⑤ Web 확장의 세부 연결·전송 정책은 `Web-Polish.md`를 단일 원본으로 사용한다.
 
 ---
 
 제5조 (출력 계약)
 
-HQ만 ACTION을 사용한다.
-
-~~~text
-[ACTION=CONTINUE]
-[GOTO : WORK]
-<opaque body>
-~~~
-
-또는:
-
-~~~text
-[ACTION=PAUSE]
-<opaque body>
-~~~
-
-~~~text
-[ACTION=END]
-<opaque body>
-~~~
-
-WORK:
-
-~~~text
-[GOTO : HQ]
-<opaque body>
-~~~
-
-~~~text
-[GOTO : JUDGE]
-<JUDGE transport body>
-~~~
-
-~~~text
-[GOTO : RESOURCE]
-RESOURCE_TYPE: IMAGE
-<자연어 리소스 생성 요청>
-~~~
-
-[GOTO : RESOURCE]는 WORKITEM #0에서만 허용한다. 다른 WorkItem의 RESOURCE 직접 요청은 허용하지 않는다.
-
-JUDGE는 ACTION/GOTO를 만들지 않는다. Worker가 JEV raw 결과를 요청한 같은 WORK 세션에 JUDGMENT 입력으로 반환한다.
-
-RESOURCE는 메인 역할 상태와 분리된 사이드카 대기열로 실행한다. 생성 리소스 요청은 WORKITEM #0에서만 FIFO 대기열에 넣을 수 있다. RESOURCE 완료가 성공이든 실패든 Worker는 해당 requestId, 종류, 결과/오류를 WORKITEM #0에 기계적으로 반환한다. 다른 WorkItem은 RESOURCE를 직접 요청하거나 RESOURCE 완료 결과를 직접 받지 않는다. RESOURCE 실패는 UNKNOWN으로 승격해 HQ에 우회 전달하지 않는다. HQ가 END한 뒤에는 RESOURCE 완료 때문에 HQ나 일반 WORK를 다시 호출하지 않는다. Worker는 HQ 종료 상태를 고정하고 남은 기계적 대기 작업만 추적한다.
-
-비동기 계측은 새로운 GOTO 목적지나 AI 역할이 아니다. WORK는 현재 호출 중 헤더에 제공된 기계 작업 요청 폴더에 OBSERVATION JSON을 원자적으로 게시할 수 있다. Worker는 요청된 명령을 별도 프로세스로 실행하고 시간 초과·종료 코드·표준 출력/오류·명시된 결과 경로를 기계적으로 수집한다. WORK_RESULT_REQUIRED 요청이 있으면 현재 WORK 응답의 의미 라우팅을 보류하고 AI를 호출하지 않은 채 완료를 기다린 뒤 같은 WORK 세션에 OBSERVATION_RESULT를 전달한다. FINALIZE_ONLY 요청은 의미 흐름을 막지 않으며 HQ END 뒤 최종 DONE 전환 전에 Worker가 완료만 확인한다.
-
-일반 본문는 불투명다. JUDGE 목적지의 스키마 검사와 RESOURCE 자연어 본문의 비어 있음 검사는 전송 계층의 기계적 유효성 검사이며 작업 의미 판단이 아니다.
+① HQ와 WORK의 실제 ACTION, GOTO, WORK_GRAPH_PATCH, WORK_ITEM_STATUS 문법은 각각 `HQ-ROUTING-CONTRACT.md`와 `WORK-ROUTING-CONTRACT.md`를 단일 원본으로 사용한다.
+② Worker는 계약에 정의된 제어 토큰과 구조만 기계적으로 해석하고 일반 본문의 의미를 라우팅 근거로 추론하지 않는다.
+③ RESOURCE, JUDGE, OBSERVATION은 일반 WORK와 다른 사이드카 경로이며 각 전송 계약의 기계적 유효성만 검사한다.
+④ 역할 계약과 Worker 정책에 같은 문법을 중복 정의하지 않는다.
 
 ---
 
 제6조 (HQ 설계와 ACTION 의미)
 
-새 사용자 요청 또는 목표가 크게 바뀐 요청에서 HQ는 단순 전달자가 아니다. 필요한 만큼 구현 방향을 설계해 WORK에 전달한다.
-
-사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다.
-
-설계에 필요할 수 있는 항목:
-- 목표
-- 주요 구조
-- 핵심 제약
-- 검증 방향
-- 필요한 리소스
-- 사용자만 결정할 수 있는 부분
-
-작은 후속 수정에는 전체 설계를 반복하지 않고 영향 범위만 갱신한다.
-
-ACTION 사용 예:
-- CONTINUE: AI/Worker가 스스로 다음 의미 있는 진전을 만들 수 있음
-- PAUSE: 화면 인상, 조작감, 음질, 취향, 외부 로그인/권한, 사용자 전용 선택 등 사람 개입 없이는 다음 판단이 의미 없음
-- END: 현재 실행 구간의 의미 작업 목표가 충족됐고 사용자 확인을 기다릴 이유도 없음. Worker가 추적하는 기계적 대기 작업이 남아 있어도 END 판단을 미루지 않음
-- PAUSE, 사용자 취소, END는 HQ/WORK 세션 폐기를 뜻하지 않는다. 사용자가 명시적으로 새 작업을 시작하기 전까지 현재 세션과 작업공간을 유지한다.
-- HQ가 PAUSE를 반환하면 Worker는 새 READY WorkItem 시작을 중지하고 이미 RUNNING인 WORK를 취소하지 않은 채 완료 결과를 수확한다. RUNNING이 모두 정리된 뒤 PAUSED snapshot을 저장하며, 정상 PAUSE snapshot에는 RUNNING WorkItem이 남지 않는다.
-- 사용자가 실행 중 취소하면 Worker는 현재 실행 프로세스와 해당 실행 구간의 대기 작업을 중단하고 상태를 CANCELED로 보존한다. 실행 중 `thread.started`에서 확보한 CLI session ID도 즉시 보존한다.
-- 사용자가 작업 추가를 실행하면 Worker는 USER_FOLLOWUP으로 기존 HQ 세션부터 새 실행 구간을 시작한다. Worker가 후속 요청의 의미를 판단하거나 자동으로 재개하지 않는다.
-
-HQ가 Web이든 CLI든 같은 역할 계약을 사용한다.
+① HQ는 새 사용자 목표나 의미 있게 바뀐 목표를 단순 전달하지 않고 WORK가 실행 가능한 수준으로 구체화한다.
+② 작은 후속 수정에서는 전체 설계를 반복하지 않고 변경된 영향 범위만 갱신할 수 있다.
+③ CONTINUE는 Worker와 AI가 사용자 입력 없이 다음 의미 있는 진전을 만들 수 있을 때 사용한다.
+④ PAUSE는 사용자 전용 선택, 외부 권한, 취향 판단 등 사람 입력 없이는 다음 의미 판단을 진행할 수 없을 때 사용한다.
+⑤ END는 현재 의미 목표가 완료됐다고 HQ가 판단할 때 사용하며 남은 기계적 outstanding 때문에 의미 종료 판단을 임의로 미루지 않는다.
+⑥ HQ가 PAUSE를 반환하면 Worker는 새 READY WorkItem 시작을 중지하고 이미 RUNNING인 WorkItem은 완료 결과를 수확한 뒤 PAUSED 상태로 정리한다.
+⑦ 사용자가 실행 중 취소하면 현재 실행 프로세스와 해당 실행 구간의 대기 작업을 중단하고 기계 상태를 CANCELED로 보존한다.
+⑧ HQ가 Web이든 CLI든 같은 HQ 역할 계약을 사용한다.
 
 ---
 
 제7조 (JUDGE 흐름)
 
-~~~text
-WORK -> HQ      검증 질문 목록 + evidence + JUDGE용 Form 생성 요청
-HQ   -> WORK    JUDGE용 Form
-WORK -> JUDGE   Form 전송
-Worker -> WORK  JEV raw 결과를 같은 세션에 반환
-~~~
-
-- JUDGE는 관측 가능한 사실 자체를 다시 확인하는 용도가 아니라, 현재 근거만으로 기계적으로 확정할 수 없는 판단에 사용한다.
-- JUDGE에게 이미지·오디오·비디오 등 비텍스트 리소스 자체의 시각적·청각적·미적 품질이나 내용 적합성을 평가시키지 않는다.
-- 그런 판단이 다음 작업이나 완료 결과에 영향을 주면 WORK는 질문 목록과 현재 근거를 정리해 HQ에 JUDGE용 Form 생성을 요청한다.
-- 이미 판정한 판단의 근거가 의미 있게 바뀌면 WORK는 새 근거로 다시 요청한다.
-- HQ는 WORK가 이미 관측 사실로 확정한 항목 자체를 JUDGE 문항으로 반복하지 않고, 그 사실로부터 추가 해석이 필요한 판단만 독립 판단 단위로 정리한다.
-- WORK가 명시적으로 Form을 요청하지 않았더라도 WORK 보고에 다음 작업이나 완료 결과에 영향을 주는 비기계적 판단이 아직 남아 있으면 HQ는 그 판단만 JUDGE용 Form으로 작성해 WORK에 돌려준다.
-- HQ가 만드는 Form은 필요한 범위, evidence, 응답 형태, 기준을 포함하고 Worker의 JUDGE 전송 파서가 읽을 수 있는 NOUL/SCORE/CHOICE 문법을 사용한다.
-- 질문 식별자는 QID:<id> 형식을 사용한다. SCORE에는 정수=기준 항목이 하나 이상 필요하고, CHOICE에는 선택지=기준 항목이 하나 이상 필요하다.
-- CHOICE 선택지 키는 영문자로 시작하고 영문자, 숫자, 밑줄, 하이픈만 사용한다. 한글 선택지 키는 전송 문법으로 인정하지 않는다.
-- WORK는 받은 JUDGE용 Form을 JUDGE로 전송한다.
-- Worker는 질문이나 Form의 의미적 적합성을 검사하지 않고 전송 문법만 기계적으로 확인한다.
-- JEV 원본 응답은 Worker가 같은 WORK 세션으로 직접 반환하며 JUDGE는 별도 라우팅 출력을 만들지 않는다.
-- JUDGE가 비활성인데 WORK가 JUDGE를 요청하면 Worker는 해당 WorkItem을 JUDGE_UNAVAILABLE로 BLOCKED 처리하고 현재 상태를 HQ에 전달한다.
+① JUDGE는 관측 가능한 사실의 재확인이 아니라 현재 근거만으로 기계적으로 확정할 수 없는 판단에 사용한다.
+② WORK는 판단 필요성과 근거를 HQ에 보고하고, HQ는 필요한 경우 JUDGE용 Form을 작성한다.
+③ JUDGE에게 이미지·오디오·비디오 등 비텍스트 리소스 자체의 시각적·청각적·미적 품질이나 내용 적합성을 평가시키지 않는다.
+④ Worker는 JUDGE 요청의 전송 문법만 검증하고 판정 의미를 해석하지 않는다.
+⑤ JUDGE가 비활성인 상태에서 요청되면 해당 WorkItem을 기계적으로 BLOCKED 처리해 HQ에 알린다.
+⑥ Form의 정확한 문법은 역할 계약을 단일 원본으로 사용한다.
 
 ---
 
 제8조 (RESOURCE 흐름)
 
-WORKITEM #0은 리소스 전용 예약 WorkItem이다. 생성 리소스의 요청과 완료 결과는 반드시 WORKITEM #0을 통과한다. WORKITEM #0은 리소스 관련 작업만 다루며, 다른 WorkItem은 RESOURCE를 직접 호출할 수 없다.
-
-RESOURCE는 ChatGPT Web이 생성해 파일로 반환할 수 있는 모든 생성 리소스를 생성 → 수집/다운로드 → 저장 → 기록하는 사이드카 FIFO 대기열로 수행한다. 이미지·오디오·문서 등 구체 형식은 역할 의미가 아니라 반환 파일의 MIME 형식과 파일 정보로 구분한다.
-생성 리소스의 제작·수급은 RESOURCE 경로만 사용한다. RESOURCE 실패 시 HQ는 직접 생성하거나 외부 사이트에서 대체 리소스를 수급하도록 지시하지 않고, WORK도 자체 생성 도구나 외부 사이트로 우회하지 않는다. 후속 선택지는 RESOURCE 재요청, 요청 범위 조정, HQ 보고 또는 필요한 경우 PAUSE다.
-
-~~~text
-WORKITEM #0 -> GOTO:RESOURCE + 자연어 요청
-  └─ Worker RESOURCE FIFO queue
-       ├─ 현재 1건만 RESOURCE Web 실행
-       ├─ 추가 요청은 QUEUED
-       ├─ 생성 파일 전부 수집/다운로드
-       ├─ assets/resources/<requestId>/ 아래에 안전한 파일명으로 저장
-       └─ 완료 결과 -> WORKITEM #0
-
-HQ ACTION=END
-  -> Worker가 현재 실행 구간의 HQ 의미 작업 종료 상태를 고정
-  -> 현재 실행 구간에서 이후 WORK 보고가 HQ로 향하면 "HQ의 작업은 종료되었습니다."로 차단
-  -> Worker가 모든 기계적 대기 작업을 확인
-  -> 남아 있으면 대기 상태에서 AI 호출 없이 완료만 기다림
-  -> 모두 종료되면 Worker가 DONE / DONE_WITH_ERROR로 전환
-  -> 사용자 작업 추가가 들어오면 기존 HQ/WORK 세션을 유지한 USER_FOLLOWUP 새 실행 구간 시작
-~~~
-
-WORKITEM #0의 RESOURCE 요청은 JSON이나 전용 역할 프롬프트를 사용하지 않는다. [GOTO : RESOURCE] 뒤 첫 줄에는 `RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE` 중 하나를 명시하고, 그 아래에는 ChatGPT Web에 그대로 보낼 새로운 리소스 생성 요청 한 건의 자연어 지시만 둔다. 한 요청에는 한 종류만 포함하며 서로 다른 생성 종류는 별도 요청으로 분리한다. Worker는 이 분류를 추론하지 않고 명시된 토큰만 기계적으로 읽으며, RESOURCE Web에는 분류 헤더를 제거한 자연어 본문만 전달한다. 기존 요청의 상태 조회·취소·추적·확인·보고는 RESOURCE 라우팅으로 보내지 않는다.
-
-~~~text
-[GOTO : RESOURCE]
-<자연어 리소스 생성 요청>
-~~~
-
-Worker는 자연어 본문을 해석하지 않고 명시된 RESOURCE_TYPE과 본문을 RESOURCE 대기열에 넣는다. RESOURCE Web에는 자연어 본문만 전달한다. RESOURCE Web은 생성 결과를 공통 `resultFiles[]`로 반환하며 각 항목은 파일 bytes, MIME 형식, 파일명을 포함한다. Worker는 작업공간 하위 `assets/resources/<requestId>/`에 저장한다. 반환 파일명이 안전하면 이를 정규화해 사용하고, 없거나 사용할 수 없으면 `resource-NN.<확장자>` 형식으로 기계적으로 이름을 만든다.
-
-기계적 ResourceRequest 기록:
-- Id
-- Type: IMAGE / AUDIO / VIDEO / DOCUMENT / FILE
-- 프롬프트
-- TargetDirectory
-- TargetFileName
-- RequestedBy
-- Status: REQUESTED / GENERATING / SAVED / FAILED
-- SavedPath
-
-RESOURCE 범위는 특정 파일 형식으로 제한하지 않는다. ChatGPT Web이 생성 결과를 실제 파일로 반환할 수 있고 확장이 이를 기계적으로 수집할 수 있으면 동일 RESOURCE 파이프라인을 사용한다. 형식별 차이는 RESOURCE 역할 분리가 아니라 확장의 파일 탐지·수집 어댑터 차이로 처리한다.
-Web 확장의 사용자 작업형 제한시간은 5분 미만으로 두지 않는다. 메시지 전달 준비, composer 준비, send confirm, RESOURCE 다운로드 가능 결과 대기, 개별 첨부·리소스 다운로드, 결과 POST의 기본 제한시간은 5분으로 통일한다. heartbeat·상태 조회·진행 보고·응답 안정화처럼 짧은 기계 계측 지연은 이 규칙의 대상이 아니다. Worker의 RESOURCE transport 전체 제한은 30분을 유지한다.
-
-RESOURCE가 하지 않는 것:
-- 자동 코드 연결
-- 자동 CSS/HTML 반영
-- 생성 결과의 사용 컴포넌트 의미 판단
-- 자동 빌드 반영
-- RESOURCE Web 동시 병렬 실행(항상 1건씩 FIFO)
-- 자동 품질 판정
-
-사용자가 이후 별도 명령으로 "연결 대상인 리소스를 연결해줘"라고 요청하면 현재 세션의 USER_FOLLOWUP 또는 명시적으로 시작한 새 USER -> HQ -> WORK 흐름에서 저장된 리소스를 통합한다.
+① WORKITEM #0은 생성 리소스 전용 예약 WorkItem이며 RESOURCE 요청과 완료 결과의 유일한 WorkItem 경로다.
+② RESOURCE는 ChatGPT Web 기반 단일 FIFO 사이드카로 실행하며 Worker는 요청·상태·파일 수집·저장 사실만 기계적으로 관리한다.
+③ 다른 일반 WorkItem은 RESOURCE를 직접 호출하거나 RESOURCE 완료 결과를 직접 수신하지 않는다.
+④ 생성 결과의 의미적 품질, 사용 위치와 코드 연결 여부는 Worker나 RESOURCE가 판단하지 않는다.
+⑤ RESOURCE 실패를 다른 생성 경로로 자동 우회하지 않는다.
+⑥ RESOURCE의 실제 요청 문법은 WORK 역할 계약, Web 파일 수집 세부는 `Web-Polish.md`를 단일 원본으로 사용한다.
 
 ---
 
 제9조 (UI)
 
-상단 Pipeline:
-
-~~~text
-대기 / 설계·관제 / 작업 / 리소스 / 판정
-~~~
-
-표시:
-- 설계·관제: ChatGPT Web 또는 선택된 CLI 모델
-- 작업: 선택된 WORK 모델
-- 리소스: ChatGPT Web
-- 판정: JEV
-
-대기 상태에서는 다섯 Pipeline 카드를 모두 역할 컬러로 표시하고 gold 활성 border/orbit은 사용하지 않는다. 실행 중에는 현재 메인 역할이 gold 활성 border/orbit으로 강조된다. RESOURCE 사이드카가 실행/대기 중이면 메인 역할과 별개로 RESOURCE 카드의 gold orbit도 독립 동작하며 상태와 대기 건수를 표시한다. RESOURCE는 기존 네 번째 카드 위치를 사용하지만 의미는 HIGH와 완전히 다르다.
-
-메시지 및 작업 이력 그룹의 전체 크기는 고정한다. PAUSE, CANCELED 또는 DONE / DONE_WITH_ERROR 상태에서는 기존 이력을 위쪽에 유지하고 목록 아래에 이력 카드 약 두 개 높이의 후속 메시지 입력 영역을 표시한다. 하단에는 기존 실행/새 작업 버튼 왼쪽에 녹색 계열의 작업 추가 버튼을 표시한다. 작업 추가는 기존 이력과 HQ/WORK 세션을 유지한 채 USER_FOLLOWUP을 시작하며, 새 작업 버튼만 기존 세션과 이력을 명시적으로 초기화한다.
-WorkGraph 상태를 별도의 `병렬 WORK` 패널로 표시하지 않는다. 메시지 및 작업 이력 카드는 예약 WorkItem을 `작업 (#0, 리소스)`, `작업 (#1, 이미지 가공)`으로 표시하고, 일반 WorkItem은 `작업 (#N)` 형식을 사용한다. 내부 workItemId는 Full Message와 이벤트 로그의 참조 정보로 보존한다.
-WORK 진행(`ROLE_PROGRESS`) History 카드는 제목 1줄과 본문 4줄, 총 5줄 높이로 고정한다. 본문은 18px line height의 4줄 영역을 사용하고 초과 내용은 잘라내며 전체 원문은 Full Message에서 확인한다. 짧은 본문도 같은 카드 높이를 유지한다.
-현재 작업의 `3. 작업` 카드 하단에는 RUN/READY/BLOCKED/COMPLETED/FAILED 문자열 요약을 표시하지 않고, RUNNING WorkItem 수만 8칸 고정 녹색 게이지로 표시한다. 0건은 `□□□□□□□□`, 4건은 `■■■■□□□□`로 표시한다.
-
-CLI 역할 실행 중 Codex의 주 응답 채널에서 `item.completed` / `agent_message`가 발생하면 Worker는 본문 의미를 해석하지 않고 `작업 진행` 이력 카드로 그대로 추가한다. 진행 카드는 제목과 다중 줄 본문만 표시하고 토큰/파일 행은 표시하지 않는다. 진행 카드의 발생 횟수나 이력 개수에 별도 제한을 두지 않으며, 최종 역할 응답 카드는 기존 작업 요청/수행 결과/리소스 요청 형식을 유지한다.
-
-모든 Worker 관측 메시지는 작업 중 즉시 `.projecthub/events/<jobId>.jsonl`에 한 이벤트 한 줄로 append한다. 이벤트에는 시각, 출처, 상태, 참조 정보와 실제 Full Message를 저장한다. History 카드는 요약 표시를 유지하되 사용자가 항목을 두 번 클릭하면 해당 Full Message를 별도 창에서 확인할 수 있다.
-
-직통 작업:
-- 하단 `계약문서 무시` 체크박스는 기본 해제 상태다.
-- 체크하면 왼쪽에 서비스 제공사, 모델, 추론 깊이 선택 항목을 표시한다.
-- 직통 작업은 HQ, WorkGraph, JUDGE, RESOURCE 라우팅과 역할 계약 프롬프트를 사용하지 않고 현재 작업 폴더에서 사용자 입력을 선택한 모델에 직접 전달한다.
-- Codex CLI 직통 작업은 프로젝트 `AGENTS.md` 자동 지침 주입도 사용하지 않는다.
-- 직통 작업 실행 중에는 Pipeline의 작업 카드만 활성화하고 요청·진행·결과를 모두 작업 History 카드로 기록한다.
-- 체크를 해제하면 기존 ProjectHub 실행 흐름을 그대로 사용한다.
-
-설정:
-- HQ: 실행 대상 Web/CLI + CLI일 때 제공자/모델/추론/세션
-- WORK: 제공자/모델/추론/세션. 기본값은 OpenAI / GPT-6 Luna / Medium이며 저장 모델을 임의 변환하는 마이그레이션은 하지 않는다.
-- RESOURCE: ChatGPT Web 고정
-- JUDGE: JEV 설정
-- HQ/RESOURCE Web 카드는 각각 명시적 역할 연결의 연결/생존 신호/확장 동기화 상태와 연결된 대화 정보를 보여준다.
-- 설정 본문은 작은 화면에서도 세로 스크롤되며 하단 닫기/적용 버튼은 항상 별도 footer에 남는다.
-- 역할 표기는 설계·관제 / 작업 / 리소스 / 판정으로 통일한다.
+① Worker UI는 사용자 요청, 역할별 진행, WorkItem 상태와 실제 실행 결과를 서로 구분해 표시한다.
+② History 카드는 내부 실행 순번보다 WorkItem ID를 우선 표시하고 예약 WorkItem은 용도를 함께 표시한다.
+③ WorkGraph의 상세 상태는 내부 snapshot과 Full Message에 보존하며 UI 요약이 의미 판단 원본이 되지 않는다.
+④ 사용자가 PAUSE, CANCELED, DONE 또는 DONE_WITH_ERROR 상태에서 작업을 추가하면 기존 관제 문맥을 유지한 USER_FOLLOWUP으로 시작한다. 새 작업은 기존 실행 문맥을 초기화한다.
+⑤ `계약문서 무시` 직통 작업은 HQ, WorkGraph, JUDGE, RESOURCE 역할 계약을 우회하되 사용자 첨부의 안전한 staging과 선택된 AI 실행은 유지한다.
+⑥ UI의 픽셀, 줄 수, 게이지 칸 수, 기본 모델 문자열과 같은 표현 세부는 장기 정책으로 고정하지 않고 현재 UI 구현과 테스트를 따른다.
 
 ---
 
 제10조 (프로젝트 기억과 실시간 이벤트 로그)
 
-- 현재 구현의 `.projecthub/session-state.json`, `last-handoff.md`, `events/<jobId>.jsonl`, `transcripts/` 기록은 기존 진단·이력 저장 형식으로 유지한다.
-- 프로그램 시작 시 과거 session-state, HQ/WORK 세션, WorkGraph, 이벤트 이력을 자동 로드하거나 화면에 복구하지 않는다. 시작 상태는 항상 새 작업이다.
-- 새 작업은 설정이나 선택 항목에 남아 있는 과거 CLI session ID를 실행 세션으로 사용하지 않고 HQ와 신규 WorkItem을 새 세션으로 시작한다.
-- 과거 작업 맥락, 로그, 계획 문서는 사용자가 명시적으로 파악·조사를 요청했을 때만 AI가 확인한다.
-- 현재 프로그램 실행 안에서 사용자가 `작업 추가`로 같은 작업을 이어갈 때는 기존 HQ/WORK 세션과 WorkGraph를 사용할 수 있다. 이때 이벤트 로그 경로, handoff 파일, 전체 WorkGraph snapshot을 HQ 입력에 자동 재주입하지 않는다.
-- HQ에는 직전 HQ 입력 이후 상태가 바뀐 WorkItem만 WorkGraph 변경 이벤트로 전달한다. 전체 WorkGraph는 Worker 내부 상태와 기록 용도로 유지한다.
-- HQ/WORK 역할 계약 전문은 해당 AI 세션의 첫 호출에만 주입한다. 같은 세션의 후속 호출에는 현재 입력과 필요한 기계적 사실만 전달한다.
-- 사용자가 `새 작업`을 선택하면 활성 continuation을 제거하고 과거 기록 파일은 이력으로만 남긴다.
-- Worker는 저장된 기억이나 로그의 의미를 해석해 자동 작업을 시작하지 않는다.
+① Worker의 저장 상태, handoff, event log와 transcript는 진단·이력 형식이며 장기 정책 원본이 아니다.
+② 프로그램 시작 시 과거 session-state, HQ/WORK 세션, WorkGraph와 이벤트 이력을 자동 복구해 새 작업 문맥으로 사용하지 않는다.
+③ 현재 프로그램 실행 안에서 사용자가 작업 추가로 같은 작업을 이어갈 때는 기존 HQ/WORK 세션과 WorkGraph를 유지할 수 있다.
+④ HQ에는 전체 WorkGraph를 매번 반복하지 않고 직전 HQ 입력 이후 의미 있는 상태 변화만 기계 이벤트로 전달할 수 있다.
+⑤ 역할 계약 전문은 같은 AI 세션의 첫 호출에 주입하고 후속 호출에는 현재 입력과 필요한 기계 사실만 전달할 수 있다.
+⑥ 사용자가 새 작업을 시작하면 활성 continuation을 제거하고 과거 기록은 이력으로만 남긴다.
+⑦ 저장된 기억·로그·계획 문서는 사용자가 명시적으로 조사·파악을 요청한 경우가 아니면 Worker가 의미를 해석해 자동 작업을 시작하는 근거로 사용하지 않는다.
 
 ---
 
 제11조 (비동기 기계 작업과 계측)
 
-- 비동기 기계 작업의 공통 생명주기는 Worker의 `MechanicalWorkRegistry`가 관리한다.
-- 현재 종류는 RESOURCE와 OBSERVATION이며 새 종류가 추가돼도 Worker가 작업 의미를 추론하지 않는다.
-- OBSERVATION 요청은 작업별 `.projecthub/mechanical/<jobId>/requests` 폴더를 사용하고, active/result 기록도 같은 jobId 아래에 보존한다.
-- WORK는 완성된 요청 JSON을 임시 파일에 쓴 뒤 `.json`으로 원자적으로 게시한다.
-- OBSERVATION은 직접 실행할 command/arguments, 실행 폴더, 시간 제한, 결과 경로, 환경 변수와 completionMode를 기계적으로 명시한다.
-- 실행 폴더와 결과 경로는 현재 작업공간 또는 ProjectHub 실행 디렉터리 하위만 허용한다.
-- WORK_RESULT_REQUIRED는 현재 WORK 응답을 보류하는 안전 게이트다. Worker는 완료까지 AI 호출 없이 대기하고 결과를 같은 WORK 세션에 `OBSERVATION_RESULT`로 재주입한 뒤 새 WORK 응답을 받아야 의미 라우팅을 계속한다.
-- FINALIZE_ONLY는 결과 의미 해석이 필요 없는 작업에만 사용한다. 의미 흐름은 계속되며 HQ가 END한 뒤에도 남아 있으면 Worker가 완료까지 기다린 후 DONE 또는 DONE_WITH_ERROR를 기록한다.
-- RESOURCE도 같은 공통 기계 작업 레지스트리에 FINALIZE_ONLY로 등록해 전체 outstanding 집계와 최종 대기 게이트에 포함한다.
-- 계측 결과의 성공 여부는 프로세스 종료 코드, 시간 초과, 결과 경로 존재 같은 기계 사실만 뜻한다. 결과가 제품 요구를 만족하는지는 WORK/HQ가 판단한다.
-
+① 비동기 기계 작업은 Worker의 공통 registry에서 생명주기와 outstanding 상태를 관리한다.
+② OBSERVATION 요청은 실행 명령, 작업 폴더, 시간 제한, 결과 경로와 completion mode를 기계적으로 명시해야 한다.
+③ 실행 폴더와 결과 경로는 승인된 ProjectHub 작업 경계 안에서만 허용한다.
+④ WORK_RESULT_REQUIRED는 현재 WORK 의미 라우팅을 보류하고 계측 완료 뒤 같은 WORK 세션에 결과를 재주입하는 안전 게이트다.
+⑤ FINALIZE_ONLY는 의미 흐름을 막지 않으며 HQ END 뒤에도 남아 있으면 Worker가 최종 DONE/DONE_WITH_ERROR 전에 완료 여부를 확인한다.
+⑥ RESOURCE도 전체 outstanding 집계와 최종 대기 게이트에 포함할 수 있다.
+⑦ 계측 성공은 종료 코드, 시간 초과, 결과 경로 존재 같은 기계 사실만 의미하며 제품 요구 충족 여부는 WORK 또는 HQ가 판단한다.
+⑧ 요청 파일명, 저장 디렉터리와 원자 게시 방식 같은 구현 세부는 현재 코드와 테스트를 원본으로 사용한다.
 
 ---
 
 제12조 (동적 병렬 WORK Graph)
 
-WorkItem 번호 #0~#9는 시스템 예약 영역이며 HQ가 일반 작업에 임의 배정하지 않는다. 일반 WorkItem은 #10부터 배정한다.
-- WORKITEM #0: 리소스 전용. RESOURCE 요청과 완료 결과의 유일한 WorkItem 경로다.
-- WORKITEM #1: 이미지 가공 전용. 스프라이트 분할 등 기존 이미지의 가공만 담당한다.
-- WORKITEM #2~#9: 예약 상태로 유지한다.
+① WorkItem #0~#9는 시스템 예약 영역이며 일반 WorkItem은 #10부터 사용한다. #0은 RESOURCE, #1은 기존 이미지 가공 전용이고 #2~#9는 예약 상태로 둔다.
+② HQ는 WorkItem의 생성·목표·dependency·취소와 의미적 재시도를 결정한다. WORK와 Worker는 승인되지 않은 새 의미 작업을 직접 생성하지 않는다.
+③ Worker는 최대 동시 실행 수 안에서 dependency가 충족된 READY WorkItem을 기계적으로 슬롯에 배정한다. maxConcurrentWork=1도 같은 Scheduler의 단일 슬롯 동작이다.
+④ NORMAL WorkItem은 독립 Git branch와 linked worktree에서 실행한다. 공유 Git metadata를 변경하는 Worker 준비 구간은 저장소 단위로 직렬화한다.
+⑤ WorkItem 시작 전 Git 준비 실패는 의미적 실행 실패와 구분해 BLOCKED로 보존할 수 있으며, Worker는 충돌의 의미를 자동 해결하지 않는다.
+⑥ COMPLETED, FAILED, CANCELED은 종료 기록이다. 의미 작업 재시도는 새 WorkItem ID를 사용한다.
+⑦ COMPLETED 결과에는 Worker가 기계적으로 측정한 resultType을 기록한다. checkpoint에서 새 commit이 생성됐으면 CODE_CHANGE, 새 commit이 없으면 ANALYSIS다. ANALYSIS의 resultRef는 코드 통합 대상이라는 의미가 아니다.
+⑧ 여러 CODE_CHANGE 결과를 결합해야 하면 HQ는 kind=INTEGRATION WorkItem을 추가한다. 통합을 위한 linked-worktree 권한 probe용 NORMAL WorkItem을 선행하지 않는다.
+⑨ INTEGRATION은 Worker가 준비한 독립 Git clone에서 실행하고 주 저장소 Git metadata를 WORK sandbox에 writable로 노출하지 않는다.
+⑩ Integration WORK는 clone 내부에서 의미적 병합·충돌 해결·검증을 수행하고, 완료 commit의 import와 target branch fast-forward landing은 Worker만 수행한다.
+⑪ RESOURCE, JUDGE, OBSERVATION은 WorkGraph의 별도 일반 WorkItem으로 자동 변환하지 않고 기존 사이드카 귀속 규칙을 유지한다.
+⑫ HQ END 전에 의미 WorkItem의 완료 상태를 HQ가 판단하며, 최종 DONE/DONE_WITH_ERROR 전에는 Worker가 추적하는 기계적 outstanding이 모두 종료되어야 한다.
 
-병렬 WORK는 고정된 WORK-1, WORK-2 같은 새 역할을 만들지 않는다. WORK 역할은 동일하며 Worker가 설정된 최대 동시 실행 수 안에서 HQ가 승인한 WorkItem을 독립 실행 슬롯에 배정한다.
-
-의미 판단 경계:
-- HQ는 사용자 목표를 WorkItem으로 분해하고 각 WorkItem의 목표, 의존성, 추가·변경·취소를 결정한다.
-- WORK는 자신에게 배정된 WorkItem 범위 안에서 구현·검증하고, 새 독립 작업이 필요하다고 판단하면 직접 새 WORK를 시작하지 않고 SPLIT_REQUEST를 HQ에 보고한다.
-- Worker는 WorkItem의 의미를 판단하지 않는다. 이미 HQ가 승인한 WorkGraph에서 상태와 의존성을 기계적으로 계산하고 READY WorkItem을 빈 슬롯에 배정한다.
-- 여러 READY WorkItem 중 별도 의미 우선순위가 없으면 Worker는 HQ가 제공한 명시적 순서 또는 안정적인 생성 순서를 기계적으로 사용한다.
-- 새 Job과 USER_FOLLOWUP은 maxConcurrentWork 값과 기존 WorkGraph 유무와 관계없이 동일한 WorkGraph/Scheduler 경로를 사용한다.
-- maxConcurrentWork=1은 별도 직렬 엔진이 아니라 실행 슬롯이 1개인 WorkGraph다.
-- 프로그램 시작 시 과거 WorkGraph를 자동 복구하지 않는다. 현재 프로그램 실행 안의 USER_FOLLOWUP만 현재 작업의 WorkGraph를 이어갈 수 있다.
-- HQ 상태 통지는 전체 WorkGraph 반복 전송이 아니라 직전 HQ 전달 이후 바뀐 WorkItem만 포함한다.
-
-WorkItem 기본 상태:
-- PLANNED: HQ가 정의했지만 아직 실행 조건을 평가하지 않은 상태
-- READY: 모든 명시적 선행 의존성이 완료되어 실행 가능한 상태
-- RUNNING: Worker가 실행 슬롯, 세션, 작업공간을 배정해 실행 중인 상태
-- COMPLETED: 해당 WorkItem 실행이 정상적으로 끝나 결과 참조가 기록된 상태
-- FAILED: WORK 프로세스가 실제로 시작된 뒤 복구할 수 없는 실행 실패가 발생했거나 WORK가 실패 결과로 종료한 상태
-- BLOCKED: 미완료·실패 의존성, HQ 판단 대기, 또는 WORK 시작 전의 기계적 실행 준비 실패 때문에 현재 실행할 수 없는 상태
-- CANCELED: HQ 또는 사용자의 명시적 취소가 적용된 상태
-
-동시 쓰기 격리:
-- 동시 실행 WorkItem은 각각 독립 Git branch와 worktree를 사용한다.
-- worktree와 branch 생성·삭제·경로 검증은 Worker가 기계적으로 수행한다.
-- worktree 파일시스템 경로는 Windows와 외부 도구의 경로 길이 위험을 줄이기 위해 repository/job/workItem 식별자를 짧은 안정 해시가 포함된 segment로 축약한다. Git branch 이름은 기존의 식별 가능한 형식을 유지한다.
-- 같은 Git 저장소의 worktree 준비처럼 공유 Git metadata를 변경하는 짧은 구간은 Worker가 저장소 단위로 직렬화하고, 준비가 끝난 WORK 실행은 설정된 슬롯 수대로 병렬 수행한다.
-- Git 준비 명령이 실패하면 Worker는 오류 코드뿐 아니라 실제 exit code와 stderr를 WorkItem 기계 보고에 보존한다.
-- WORK 세션이 시작되기 전의 WORKTREE_* 준비 실패는 의미적 FAILED로 확정하지 않고 BLOCKED로 보존한다. USER_FOLLOWUP의 현재 Git 사전 검사가 성공하면 같은 WorkItem을 다시 실행 가능한 상태로 되돌린다.
-- 구버전 snapshot에 WORKTREE_*가 FAILED로 저장되어 있으면, 현재 열린 WorkItem의 dependency가 직접 참조하고 sessionId/resultRef가 없는 항목만 준비 실패로 마이그레이션해 재활성화한다. 참조되지 않는 과거 FAILED 항목은 기록으로 유지한다.
-- 실패한 worktree add가 동일 WorkItem branch만 남겼다면 그 branch가 다른 worktree에서 사용 중이지 않고 정확히 원래 base commit을 가리킬 때만 새 worktree에 안전하게 재사용한다.
-- WorkItem의 시작 기준 ref는 WorkGraph에 명시적으로 기록한다.
-- Worker는 충돌의 의미를 자동 해결하지 않는다.
-- 새 병렬 실행을 시작할 때 작업 폴더가 Git 저장소가 아니면 Worker는 AI를 호출하기 전에 해당 작업 폴더에서 `git init`을 기계적으로 수행할 수 있다.
-- Git HEAD가 없거나 현재 저장소에 commit되지 않은 변경이 있으면 Worker는 실제 repository root와 현재 branch를 사용자에게 보여주고 기준점 생성 승인을 요청한다.
-- 사용자가 승인한 경우에만 Worker가 `git add --all`과 로컬 ProjectHub identity를 사용한 baseline commit을 생성한다. 사용자가 취소하면 AI 의미 작업을 시작하지 않는다.
-- Git 준비 단계는 사용자 승인 전에는 source/index를 변경하지 않고, baseline 승인을 받은 뒤에만 ProjectHub 관리 `.gitignore` 블록을 생성·갱신하고 ProjectHub 런타임/검증 캐시의 index 추적을 해제한다.
-- ProjectHub 관리 ignore 기본값은 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/`와 명백한 OS·편집기 임시 파일만 포함한다. 기존 사용자 규칙은 보존한다.
-- Worker가 새로 `git init`한 저장소 또는 아직 HEAD가 없는 초기 저장소에는 파일/폴더 존재만으로 기계적으로 식별 가능한 안전 preset을 추가할 수 있다. Godot은 `.godot/`, Unity는 `Library/`, `Temp/`, `Logs/`, `Obj/`, `UserSettings/`, .NET은 `bin/`, `obj/`, Node는 `node_modules/`만 자동 제외한다.
-- 이미 존재하던 Git 저장소에는 프로젝트별 preset을 새로 주입하지 않고 ProjectHub 관리 블록만 보장한다.
-- Git 준비 시 repository local `core.longpaths=true`를 기계적으로 설정하며 전역 Git 설정은 변경하지 않는다.
-- 이미 추적 중인 `.projecthub/`, `.verification-appdata/`, `.projecthub-worktrees/`는 사용자가 baseline 생성을 승인한 경우에만 `git rm --cached`로 index에서 제거하고 로컬 파일은 보존한다.
-- 원격 저장소는 기존처럼 `origin` URL이 있으면 기계적으로 확인만 하며 자동 remote 생성, pull, push는 수행하지 않는다.
-
-동적 확장:
-- HQ는 실행 중에도 GraphPatch로 WorkItem을 추가·변경·취소하거나 의존성을 변경할 수 있다.
-- COMPLETED, FAILED, CANCELED WorkItem은 종료 기록으로 유지한다. WORK가 실제로 시작된 뒤의 FAILED 재시도는 기존 종료 항목을 재작성하지 않고 새 ID WorkItem을 추가한 뒤 필요한 비종료 후속 항목의 dependency를 새 작업으로 바꾼다.
-- WORK 시작 전 준비 실패의 재실행은 의미 작업 재시도가 아니라 Worker 실행 준비 재개이므로 같은 WorkItem을 사용할 수 있다.
-- 현재 Graph를 변경하지 않고 이미 READY인 WorkItem을 계속 실행할 때 HQ의 operations=[] GraphPatch는 revision을 바꾸지 않는 no-op CONTINUE로 처리한다.
-- 이미 종료된 WorkItem에 대한 CANCEL은 상태를 바꾸지 않는 멱등 요청으로 기계적으로 수용한다. 목표·dependency·baseRef처럼 종료 기록을 변경하는 수정은 계속 금지한다.
-- WORK가 SPLIT_REQUEST를 보고해도 새 WorkItem 생성 여부와 의존성은 HQ가 결정한다.
-- Worker는 승인되지 않은 작업을 의미적으로 생성하지 않는다.
-
-Integration:
-- 병렬 결과의 통합도 별도 새 AI 역할이 아니라 WORK 역할의 Integration WorkItem으로 표현한다.
-- Integration WorkItem은 통합 대상 WorkItem을 명시적 dependency로 가진다.
-- 서로 다른 완료 WorkItem의 resultRef를 최종 코드 상태에 함께 반영해야 하는지는 HQ가 판단하며, 필요하면 END 전에 kind=INTEGRATION WorkItem을 추가한다.
-- Integration WORK는 각 결과 ref/branch를 바탕으로 병합, 충돌 해결, 전체 빌드·테스트를 수행하고 통합 결과를 HQ에 보고한다.
-- 새 INTEGRATION WorkItem의 첫 실행은 Graph에 저장된 과거 baseRef보다 실행 시점 주 작업공간의 현재 branch/HEAD를 Worker가 기계적으로 우선해 해당 HEAD에서 integration worktree를 만든다. 실제 사용한 baseRef는 WorkItem 실행 문맥에 다시 기록한다.
-- INTEGRATION WORK는 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다.
-- Integration WORK가 COMPLETED를 보고하면 Worker는 해당 checkpoint commit을 주 작업공간의 현재 branch에 fast-forward만 허용하는 방식으로 기계적으로 반영한다.
-- 주 작업공간이 dirty 상태이거나 detached HEAD이거나 integration commit이 현재 HEAD의 fast-forward 대상이 아니면 Worker는 force/reset/push로 해결하지 않고 INTEGRATION_LANDING_FAILED로 해당 WorkItem을 BLOCKED 처리한다.
-- Integration landing 실패는 blockCode와 별도로 기계적 세부 코드(blockDetailCode)를 WorkGraph snapshot과 HQ 상태 이벤트에 보존한다. 과거 snapshot의 Worker 생성 INTEGRATION_LANDING 블록에 errorCode가 있으면 복구 시 세부 코드로 승격한다.
-- Integration worktree 첫 준비와 주 작업공간 ff-only landing은 같은 repository의 primary mutation gate로 직렬화해 primary HEAD 기준과 landing 사이의 경쟁을 막는다.
-- Integration landing 실패의 의미적 해결 방법과 사용자 개입 필요 여부는 HQ가 판단한다.
-- Worker는 merge 충돌의 의미적 해결책을 선택하지 않는다.
-- 성공한 Integration resultRef를 이후 새 WorkItem의 기본 baseRef로 기계적으로 사용할 수 있다. dependency가 있다는 사실만으로 Worker가 임의의 dependency resultRef를 baseRef로 선택하지는 않는다.
-- HQ가 특정 선행 결과에서 직접 이어서 구현해야 한다고 판단하면 해당 WorkItem의 baseRef를 GraphPatch에 명시한다. baseRef가 생략된 새 WorkItem은 현재 주 작업공간 HEAD 또는 가장 최근 성공 Integration resultRef를 기계적 기본값으로 사용한다.
-
-기존 사이드카:
-- RESOURCE, JUDGE, OBSERVATION은 기존 역할과 책임을 유지한다.
-- RESOURCE 요청과 완료 결과의 workItemId는 WORKITEM #0으로 귀속한다.
-- JUDGE와 OBSERVATION은 요청한 WorkItem에 귀속한다.
-- WORK_RESULT_REQUIRED OBSERVATION은 해당 WorkItem만 대기시키며 다른 READY WorkItem의 실행을 막지 않는다.
-
-종료:
-- HQ ACTION=END는 더 이상 실행 중인 의미 WorkItem을 암묵적으로 폐기하지 않는다. END를 수용하려면 현재 WorkGraph가 HQ가 완료로 판단한 상태여야 하며, Worker는 그 판단 자체를 검증하지 않고 명시된 제어와 기계적 outstanding만 처리한다.
-- 최종 DONE / DONE_WITH_ERROR 전에는 실행 중 WorkItem, Integration WorkItem, RESOURCE, OBSERVATION 등 Worker가 추적하는 기계적 outstanding이 모두 종료되어야 한다.
+---
 
 제13조 (관리형 Web 런타임)
 
-① Worker는 ChatGPT Web 실행 환경을 HQ와 RESOURCE 두 개의 고정 관리형 Chromium 슬롯으로 운영한다.
-1. HQ 슬롯은 설계·관제 Web 전용이다.
-2. RESOURCE 슬롯은 생성 리소스 Web 전용이다.
-② HQ와 RESOURCE는 서로 다른 persistent profile을 사용해 로그인 쿠키와 ChatGPT 계정 상태를 보존한다.
-③ 관리형 profile은 Git 작업공간 밖의 사용자 로컬 데이터 영역에 두며 로그인 쿠키·세션·브라우저 저장소를 코드, Git, 로그 또는 AI 프롬프트에 복사하지 않는다.
-④ 브라우저를 시작할 때 이전 탭 복원 정보만 제거하고 로그인 데이터는 유지한다.
-⑤ 각 슬롯은 일반 탭 브라우저가 아니라 `--app=<ChatGPT URL>` 형태의 ProjectHub 전용 app window 하나로 시작한다.
-⑥ 로그인·표시와 숨김 실행은 기존 Chromium 창을 재사용하지 않는다. 기존 슬롯 프로세스를 UI thread 밖에서 종료한 뒤 세션 복원 정보를 정리하고 새 app window를 시작한다.
-⑦ 숨김 app window는 최소화하거나 Win32 SW_HIDE 상태로 만들지 않고 화면 밖 위치에 정상 렌더링 상태로 유지한다. Chromium background timer, renderer, occluded-window throttling을 비활성화해 숨김 상태에서도 bridge heartbeat와 Web 작업이 계속 실행되게 한다. 로그인·표시는 처음부터 visible 상태의 새 app window를 시작한다.
-⑧ 관리형 브라우저 역할은 Worker가 HQ 또는 RESOURCE로 기계적으로 지정하며 사용자가 확장 UI에서 역할을 다시 지정하지 않는다.
-⑨ 관리형 확장은 Worker가 해당 실행에 발급한 runtime token이 있을 때만 로컬 bridge를 사용한다.
-⑩ 일반 Chrome, 외부 브라우저 또는 runtime token이 없는 ChatGPT 페이지는 Worker bridge 클라이언트로 취급하지 않는다.
-⑪ 브라우저 프로세스 생존, heartbeat, 대화 연결, 메시지 전송 단계, 응답 시작·안정화, 파일 byte·크기·SHA-256, 저장 완료는 Worker가 기계적 사실로 기록할 수 있다.
-⑫ Worker는 Web 응답의 의미적 정확성이나 RESOURCE 결과의 미적·기능적 품질을 판단하지 않는다.
-⑬ 관리형 브라우저는 unpacked extension 자동 로드를 지원하는 호환 런타임을 사용한다. 명시된 BrowserRuntime 또는 PROJECTHUB_CHROMIUM_PATH가 없으면 Worker는 공식 Chrome for Testing Stable win64 런타임을 사용자 로컬 데이터 영역에 자동 준비할 수 있다.
-⑭ Worker 시작 시 ProjectHub가 소유한 관리형 브라우저 런타임의 잔존 프로세스를 정리한 뒤 HQ와 RESOURCE 슬롯을 시작한다. 외부 시스템 Chrome이나 ProjectHub 관리 경로 밖의 브라우저 프로세스는 자동 종료하지 않는다.
-⑮ 역할별 heartbeat의 실제 확장 version/build와 Worker가 요구하는 version/build가 다르면 해당 불일치를 기계적 상태로 표시한다.
-⑯ heartbeat 생존 판정은 일시적인 renderer stall에 흔들리지 않도록 30초 허용 구간을 사용한다.
+① Worker는 HQ와 RESOURCE를 서로 분리된 관리형 Chromium 역할 슬롯으로 운영한다.
+② 역할별 persistent profile의 로그인 상태는 보존하되 브라우저 세션·자격정보를 Git, 로그 또는 AI 프롬프트에 복사하지 않는다.
+③ Worker는 관리형 런타임의 시작·종료·생존·확장 버전 동기화를 기계적으로 관리한다.
+④ 관리형 Web의 창 형태, runtime token, background throttling 대응과 세부 브라우저 동작은 `Web-Polish.md`와 현재 런타임 구현을 따른다.
+⑤ Worker는 Web 응답의 의미적 정확성이나 RESOURCE 결과의 미적·기능적 품질을 판단하지 않는다.
+
+---
 
 제14조 (본문 구조 마커)
 
-① ACTION, GOTO, NEXT처럼 라우팅 목적지를 결정하는 제어행의 위치 규칙은 각 라우팅 계약이 정한 순서를 엄격히 유지한다.
-② WORK_GRAPH_PATCH, WORK_ITEM_STATUS, RESOURCE_TYPE, REPORT, VALIDATION REQUEST처럼 라우팅 뒤 본문 내부의 구조 마커는 본문의 첫 줄에 고정하지 않고 해당 마커 행을 기계적으로 탐색할 수 있다.
-③ 본문 구조 마커는 한 요청 또는 한 보고에 정확히 하나만 허용하며 중복 발견 시 기계적 오류로 처리한다.
-④ WORK_GRAPH_PATCH는 마커 뒤에서 첫 번째 완전한 JSON 객체 하나만 읽고 그 뒤 설명을 JSON 일부로 해석하지 않는다.
-⑤ RESOURCE_TYPE 앞의 설명은 생성 프롬프트로 전달하지 않고 RESOURCE_TYPE 행 뒤의 자연어 요청만 전달한다.
-⑥ Worker는 마커의 위치와 구조만 판단하며 마커 앞뒤 설명의 의미를 해석해 라우팅 또는 작업 결과를 결정하지 않는다.
+① ACTION, GOTO 등 라우팅 제어 토큰의 정확한 위치와 형식은 역할 계약을 따른다.
+② WORK_GRAPH_PATCH, WORK_ITEM_STATUS, RESOURCE_TYPE 등 본문 구조 마커는 계약이 허용한 범위에서 기계적으로 탐색한다.
+③ 동일 의미의 구조 마커가 중복되면 전송 계층은 기계 오류로 처리할 수 있다.
+④ Worker는 구조 마커의 위치·형식만 검사하고 마커 주변 일반 설명의 의미를 추론해 라우팅하지 않는다.
+⑤ JSON 객체 추출과 RESOURCE 본문 절단 등 구체 파싱 규칙은 해당 역할 계약과 parser 테스트를 단일 원본으로 사용한다.
+
+---
 
 제15조 (관리형 Web app window)
 
-① HQ와 RESOURCE 슬롯은 각각 Chromium app window 하나와 ChatGPT 페이지 하나만 실행하는 것을 정상 상태로 사용한다.
-② 이전 browser session의 탭 목록은 새 실행 전에 제거하며 tab restore 결과를 정리하는 사후 로직에 의존하지 않는다.
-③ 확장은 browser tab 생성·조회·제거 권한을 사용하지 않는다.
-④ app window에 저장된 conversationId가 있으면 해당 ChatGPT 대화를 시작 URL로 사용하고, 없으면 ChatGPT 시작 화면을 사용한다.
-⑤ 로그인·표시를 누르면 숨겨진 기존 창을 복원하지 않고 새 visible app window를 시작한다.
-⑥ 숨김 실행을 누르면 기존 visible 창을 숨기는 대신 새 hidden app window를 시작한다.
-⑦ 브라우저 재시작과 종료 대기는 UI thread 밖에서 수행한다.
+① HQ와 RESOURCE는 각각 하나의 관리형 app window 역할 슬롯을 사용한다.
+② Worker는 슬롯 시작 URL과 conversation binding을 관리하며 확장이 일반 browser tab 생성·삭제 권한에 의존하지 않게 한다.
+③ 로그인·표시·숨김·재시작의 구체 창 제어는 Web 정책과 런타임 구현을 따른다.
+
+---
 
 제16조 (사용자 첨부 입력)
 
-① 메시지 및 작업 이력의 신규 작업 입력과 작업 추가 입력은 사용자 파일 drag-and-drop과 클립보드 이미지 붙여넣기를 공통 입력 방식으로 지원한다.
-② 첨부는 사용자 자연어 본문과 분리된 기계적 attachment 객체로 관리하며 파일명, MIME 형식, byte 크기, SHA-256, 캐시 경로와 입력 출처를 기록한다.
-③ 한 메시지는 최대 20개, 파일 하나는 최대 50MB로 제한한다. 폴더와 실행 바이너리·설치 패키지·바로가기 형식은 사용자 입력 첨부로 받지 않는다.
-④ 클립보드 이미지가 있으면 Ctrl+V를 PNG 파일로 캐시해 일반 파일 첨부와 같은 경로로 처리한다. 클립보드에 이미지가 없으면 기존 텍스트 붙여넣기 동작을 방해하지 않는다.
-⑤ CLI AI에 전달할 첨부는 현재 작업공간의 `.projecthub/attachments/<batch>/`에 복사하고 복사 뒤 SHA-256을 재검증한다. 이 staging 경로는 ProjectHub 런타임 입력이며 Git 결과물로 취급하지 않는다.
-⑥ CLI 프롬프트에는 첨부 파일의 실제 경로, MIME, byte 크기와 SHA-256을 구조화된 USER_ATTACHMENTS 블록으로 전달하고 파일 내용을 확인한 뒤 작업하도록 명시한다.
-⑦ coordinator-first의 첫 HQ 호출에는 현재 사용자 메시지의 첨부를 전달하고, HQ가 만든 WORK WorkItem에도 각 독립 worktree에 같은 첨부를 staging해 읽을 수 있게 한다.
-⑧ HQ가 ChatGPT Web transport이면 파일 bytes를 기존 BridgeAttachment 경로로 실제 ChatGPT turn에 첨부하고 Web에는 downstream WORK가 사용할 workspace 경로 메타데이터도 함께 제공한다.
-⑨ legacy Web 왕복에서도 사용자 첨부는 최초 CLI 입력과 첫 HQ Web 전달에 포함한다.
-⑩ `계약문서 무시` 직통 작업은 ProjectHub 역할 계약과 프로젝트 자동 지침만 우회한다. 사용자 첨부의 캐시, SHA-256 검증, workspace staging과 선택된 AI로의 전달은 동일하게 유지한다.
-⑪ preflight 또는 attachment staging이 실패하면 해당 입력의 첨부를 자동 소비하지 않는다. 실제 실행에 사용할 준비가 완료된 뒤에만 입력 UI의 대기 첨부에서 제거한다.
-⑫ Worker는 첨부 내용의 의미를 판정해 라우팅하지 않고 사용자가 명시한 작업 입력의 기계적 자료로만 전달한다.
+① 사용자 첨부는 자연어 본문과 분리된 기계 객체로 관리하고 파일명, MIME, 크기, hash와 안전한 staging 경로를 보존한다.
+② Worker는 CLI 및 Web 역할로 첨부 bytes를 전달할 때 경로 안전성과 가능한 경우 SHA-256 일치를 검증한다.
+③ 첨부 내용의 의미를 Worker가 판정해 라우팅하지 않는다.
+④ 첨부 개수·크기·금지 형식·캐시 경로 같은 구체 제한은 현재 구현과 테스트를 원본으로 사용한다.
+
+---
 
 제17조 (Web 응답 회수와 일반 결과 파일)
 
-① Web 요청 송신 성공과 Web 응답 회수 성공은 별도 기계 단계로 관리한다.
-② 일반 HQ Web 응답은 assistant turn 감지, assistant text 추출, 다운로드 파일 탐지, 파일 bytes/hash 검증, Worker result 저장을 분리 계측한다.
-③ role 속성 기반 assistant 탐지가 실패해도 현재 Worker prompt가 들어 있는 conversation turn을 찾고 그 다음 conversation turn을 assistant 응답 후보로 회수할 수 있다.
-④ prompt 다음 turn fallback은 전송 전 conversation container fingerprint baseline에 없던 현재 prompt turn에만 적용하며 이전 assistant 응답을 새 결과로 재사용하지 않는다.
-⑤ 일반 Web 응답에 다운로드 가능한 파일이 있으면 RESOURCE 여부와 무관하게 bytes를 회수한다. 일반 HQ 결과 파일 탐지는 현재 assistant 응답 turn 범위로 제한해 사용자 입력 첨부를 결과 파일로 오인하지 않는다.
-⑥ 일반 Web 결과 파일은 `Worker/web-results/<taskId>/`에 저장하며 파일별 path, byte 크기와 SHA-256 receipt를 BridgeTask에 기록한다.
-⑦ 파일명과 MIME은 응답 링크, Content-Disposition과 실제 response metadata를 사용하고 PDF, ZIP, JSON, TXT, Markdown, CSV, DOCX, XLSX, PPTX 및 허용된 오디오·비디오를 포함한 비이미지 파일을 처리할 수 있다.
-⑧ 일반 Web 결과 파일도 저장 전에 base64 decode, 개별 크기, 전체 크기와 SHA-256을 검증한다.
-⑨ assistant 응답에 파일이 명시적으로 존재하는데 다운로드 또는 hash 검증이 실패하면 텍스트만 성공 처리하지 않고 Web 결과 회수 실패로 처리한다.
-⑩ 저장된 일반 HQ Web 파일은 AiRoleRunResult.Files에 포함해 후속 관제 코드에서 경로를 잃지 않는다.
-⑪ 확장의 실제 version/build는 CLAIMED 진행 로그에 기록해 실패 로그만으로 테스트에 사용된 확장 빌드를 확인할 수 있게 한다.
-⑫ HQ Web 요청마다 Worker가 13자리 영숫자 correlation KEY를 새로 발급하고 BridgeTask에 저장한다.
-⑬ HQ Web 전송 prompt에는 `[KEY=<key>]`를 포함하고 동일 KEY를 응답에 그대로 반환하도록 요구한다.
-⑭ HQ Web 결과의 엄격한 요청·응답 상관 검사는 KEY 일치만 사용한다. KEY의 물리적 첫 줄 위치는 요구하지 않으며 응답 전체에서 현재 KEY를 찾은 뒤 KEY 이전 내용을 폐기한다.
-⑮ KEY 이후로 걸러진 데이터 안에서 ACTION과 GOTO를 탐색한다. 권장 출력 순서는 KEY → ACTION → GOTO이나 ACTION/GOTO 앞의 설명·공백 때문에 상관 검사를 실패시키지 않는다.
-⑯ 일반 HQ Web 다운로드 파일은 동일 KEY가 확인된 assistant 응답 scope에서만 수집해 과거 turn이나 사용자 첨부 파일과 섞이지 않게 한다.
+① Web 요청 송신 성공과 응답 회수 성공은 별도 기계 단계로 기록한다.
+② HQ Web 응답은 correlation KEY가 있는 경우 현재 KEY가 확인된 응답 범위만 현재 task 결과로 인정한다.
+③ 일반 응답 파일은 현재 응답 범위에서 수집하고 Worker가 안전한 별도 결과 경로에 저장한다.
+④ assistant DOM 탐지, 파일 다운로드 fallback, 안정화 시간 같은 Web 구현 세부는 `Web-Polish.md`를 단일 원본으로 사용한다.
+
+---
 
 제18조 (Web 첨부 전송 준비)
 
-① Worker가 Web에 첨부를 전달할 때 로컬 bytes/hash 검증 완료와 ChatGPT 측 첨부 준비 완료를 구분한다.
-② Web 확장은 file input 설정 뒤 ChatGPT의 활성 Send 버튼을 확인한 후에만 첨부 준비 완료로 간주한다.
-③ 첨부 요청은 Voice 버튼만 보인다는 이유로 2.25초 안에 실패시키지 않는다.
-④ 첨부 UI 오류가 없으면 장기 Web 작업 제한시간 안에서 업로드·처리와 Send 활성화를 기다린다.
-⑤ 첨부 준비 단계와 실패 원인은 Worker 진행 로그에 별도 stage로 남긴다.
+① Worker attachment bytes 검증과 ChatGPT UI에서의 첨부 준비 완료는 서로 다른 단계로 취급한다.
+② Worker는 확장이 보고한 첨부 준비·전송·실패 상태를 기계 사실로 기록하며 UI 의미를 추론하지 않는다.
+③ 첨부 UI의 구체 timeout과 DOM 판정 규칙은 `Web-Polish.md`와 확장 테스트를 원본으로 사용한다.
 
-
+---
 
 제20조 (WorkGraph ID 입력 정규화)
 
-① HQ의 WORK_GRAPH_PATCH 입력에서 workItemId와 dependencies의 WorkItem ID는 JSON 숫자 또는 문자열을 모두 허용한다.
-② Worker는 숫자 ID를 해당 숫자의 문자열 표현으로 정규화한 뒤 기존 WorkGraph ID 검증을 적용한다.
-③ JSON 타입 차이만으로 유효한 WorkGraph 요청을 WORK_GRAPH_PATCH_JSON_INVALID로 실패시키지 않는다.
+① WorkGraph 전송 경계는 계약에서 허용한 숫자 또는 문자열 ID 입력을 내부 문자열 ID로 정규화할 수 있다.
+② 정규화 뒤 ID 안전성, dependency 존재, self dependency와 cycle 등 기계적 유효성 검사를 동일하게 적용한다.
+③ 구체 JSON 스키마와 허용 operation은 HQ 역할 계약을 단일 원본으로 사용한다.
 
+---
 
 제21조 (구조화 AI 출력 Helper)
 
-① Worker가 직접 소비하는 AI 구조화 문자열은 지원되는 계약에 대해 공용 Structured Payload Helper를 우선 진입점으로 사용한다.
-② Helper는 입력을 받으면 먼저 기존 기계 파서를 실행하며 정상 입력은 AI 호출 없이 원래 파싱 결과를 반환한다.
-③ 최초 기계 파싱이 실패하면 Helper 내부에서 현재 WORK 제공자·모델을 사용해 형식 복구를 최대 1회 수행한다.
-④ 형식 복구 호출은 일반 WorkItem을 생성하지 않고 새 AI 세션, read-only sandbox, 프로젝트 지침 무시 조건으로 실행한다.
-⑤ 복구 AI는 원문의 작업 의미를 추가·삭제·재설계하지 않고 구조 형식만 보정하도록 지시한다.
-⑥ 복구 AI의 자기 선언은 성공 근거가 아니다. Helper는 복구 결과를 동일한 기계 계약 파서로 다시 검증하고 최종 통과한 경우에만 성공을 반환한다.
-⑦ Helper 결과에는 최종 파싱 객체, 최종 문자열, 최초 오류, 최종 오류, 복구 시도 여부와 복구 성공 여부를 포함한다.
-⑧ 호출부는 Helper가 반환한 최종 결과를 사용하며 최초 파싱 실패를 별도의 AI 복구 분기로 다시 구현하지 않는다.
-⑨ 첫 적용 계약은 HQ의 WORK_GRAPH_PATCH이며 다른 구조화 AI 계약은 명시적으로 Helper 적용 대상으로 추가한다.
+① Worker가 AI 구조화 문자열을 소비하는 경우 지원 payload는 공용 Structured Helper를 먼저 통과시킨다.
+② Helper는 결정론 파서를 먼저 적용하고, 성공하면 AI 복구를 호출하지 않는다.
+③ 최초 파싱 실패 시에만 현재 WORK 실행 설정을 사용한 격리된 일회 복구를 허용하고, 복구 결과도 같은 결정론 파서로 다시 검증한다.
+④ 호출자는 Helper의 최종 성공·실패만 소비하고 별도의 중복 복구 분기를 만들지 않는다.
+⑤ Helper의 복구는 구조 복원만 수행하며 새 의미 값의 생성 근거로 사용하지 않는다.
 
+---
 
 제22조 (Web HQ 병렬 완료 점검)
 
-① coordinator transport가 Web일 때 각 WorkItem의 COMPLETED 전이는 HQ 진행 점검 후보로 기록한다.
-② Web HQ가 다른 요청을 처리 중이면 새 HQ 요청을 병렬 생성하지 않고 완료 전이를 누적하며, 현재 HQ 응답 처리가 끝난 뒤 최신 WorkGraph snapshot에서 직전 관제 이후 완료 항목을 한 번에 묶어 전달한다.
-③ 완료 점검 입력 유형은 WORK_GRAPH_PROGRESS_REVIEW를 사용하고, HQ는 완료 결과와 현재 그래프를 바탕으로 추가·보완·통합 WorkItem 필요 여부를 판단한다.
-④ 추가 변경이 없으면 expectedRevision이 현재 revision과 같은 빈 operations patch를 반환할 수 있으며 빈 patch는 revision을 증가시키지 않는다.
-⑤ FAILED 또는 일반 BLOCKED 관제 신호가 같은 시점에 있으면 WORK_GRAPH_EVENT가 완료 점검보다 우선하며 완료 항목도 같은 변경 이벤트에 포함한다.
-⑥ running=0, ready=0이고 외부 RESOURCE/JUDGE 대기가 없으면 WORK_GRAPH_QUIESCENT가 완료 점검보다 우선하며 별도 중복 완료 점검을 만들지 않는다.
-⑦ RESOURCE_REQUEST와 JUDGE_REQUEST 자체는 완료 점검 트리거가 아니며 해당 WorkItem이 최종 COMPLETED 상태가 된 뒤 점검 후보가 된다.
-⑧ CLI coordinator에는 이 완료 점검을 자동 적용하지 않는다.
+① HQ transport가 Web인 경우 개별 WorkItem COMPLETED는 다른 작업이 계속 실행 중일 때도 다음 HQ 관제 기회가 될 수 있다.
+② HQ 호출이 이미 진행 중이면 새 동시 HQ 호출을 만들지 않고 상태 변경을 기존 Scheduler 이벤트 흐름에 합친다.
+③ FAILED 또는 비외부 BLOCKED와 QUIESCENT 같은 더 강한 상태 이벤트가 동시에 있으면 별도 완료 점검을 중복 생성하지 않는다.
+④ 완료 점검에서 HQ는 추가 작업이 없으면 no-op CONTINUE를 사용할 수 있다.
 
+---
 
 제23조 (관리형 Web UI 이상 관측)
 
-① Web 확장이 현재 task 중 오류·한도·timeout·첨부 실패 UI를 발견하면 WEB_UI_ANOMALY_OBSERVED 이벤트로 통합로그에 남긴다.
-② 해당 관측은 진단 정보일 뿐 task 상태, conversationId, role binding, lease, correlation KEY, 전송 흐름을 변경하지 않는다.
-③ 자동 대화방 롤오버와 동일 요청 재전송은 사용하지 않는다.
-④ 동일 task의 동일 이상 문구는 fingerprint로 중복 억제한다.
-⑤ 향후 실제 실패 로그가 충분히 축적된 뒤 관측 유형별 개입 여부를 별도로 검토한다.
+① Web 확장이 현재 task 중 오류·한도·timeout·첨부 실패 UI를 관측하면 WEB_UI_ANOMALY_OBSERVED로 통합로그에 남길 수 있다.
+② 해당 관측은 진단 정보일 뿐 task 상태, conversationId, role binding, lease, correlation KEY 또는 전송 흐름을 변경하지 않는다.
+③ 동일 task의 동일 관측은 기계적으로 중복 억제할 수 있다.
+④ 자동 대화방 이동이나 동일 요청 재전송은 실제 증거와 별도 정책 변경 없이 수행하지 않는다.
 
+---
 
 제24조 (Integration 독립 Git clone)
 
-① 일반 WorkItem은 기존 linked worktree 격리를 유지하고 INTEGRATION WorkItem만 별도의 독립 Git clone을 사용한다.
-② Integration clone은 주 저장소 밖의 `.projecthub-integration-clones/<repository>/<job>/<workItem>` 경로에 두고 clone 내부에 독립 `.git` 디렉터리를 가진다.
-③ Integration clone 생성에는 로컬 객체 공유에 의한 Git metadata 결합을 피하기 위해 `git clone --no-hardlinks --no-checkout`을 사용한다.
-④ clone은 생성 직후 현재 주 작업공간 HEAD에서 Integration 전용 branch를 만들고 clone-local Git identity를 설정한다. `origin`은 생성 시점의 source ref를 읽기 위한 remote로 유지하되 INTEGRATION WORK가 push하지 않는다.
-⑤ WORK AI는 WorkspaceWrite sandbox에서 Integration clone 내부 파일과 clone 내부 Git metadata만 수정하며 주 저장소의 `.git`을 writable 경로로 추가하지 않는다.
-⑥ Integration 완료 시 Worker가 clone branch를 주 저장소 object database로 fetch하되 `--no-write-fetch-head`를 사용해 임시 remote/ref를 만들지 않는다.
-⑦ import한 commit은 clone HEAD와 동일한지 확인한 뒤 기존 target branch·clean 상태·fast-forward 가능 조건을 모두 통과한 경우에만 `merge --ff-only`로 반영한다.
-⑧ Integration clone의 source branch, clone root 또는 local git-dir이 준비 시점과 달라지면 자동 landing하지 않고 INTEGRATION_LANDING_FAILED로 HQ 판단을 요청한다.
-⑨ clone 작업공간과 주 저장소 사이의 의미적 충돌 해결은 Integration WORK가 clone 내부에서 수행하고, 주 저장소 변경은 Worker의 기계적 landing 단계만 수행한다.
+① 일반 WorkItem은 linked worktree 격리를 유지하고 INTEGRATION WorkItem은 주 저장소와 Git metadata가 분리된 독립 clone을 사용한다.
+② Integration WORK의 writable 범위는 독립 clone 내부로 제한하며 주 저장소의 `.git`을 sandbox writable 경로로 추가하지 않는다.
+③ Integration WORK는 dependency의 CODE_CHANGE 결과와 보고를 입력으로 사용해 clone 내부에서 의미적 통합과 검증을 수행한다.
+④ clone 준비, local Git identity, source ref 접근과 완료 commit 검증은 Worker가 기계적으로 관리한다.
+⑤ 완료 commit을 주 저장소로 가져오고 target branch에 fast-forward하는 작업은 Worker만 수행한다.
+⑥ clone root, Git metadata, source branch 또는 target branch 상태가 예상과 다르면 자동 force/reset으로 해결하지 않고 기계 오류로 HQ에 보고한다.
+⑦ 정확한 clone 경로와 Git 명령행 옵션은 장기 정책으로 고정하지 않고 현재 구현과 테스트를 원본으로 사용한다.

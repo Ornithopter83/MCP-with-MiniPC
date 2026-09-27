@@ -4,7 +4,11 @@ using System.Reflection;
 namespace ProjectHub.Worker;
 
 public sealed record WorkGraphPromptContext(long Revision,int MaxConcurrentWork,string BaseRef);
-public sealed record WorkItemDependencyPromptContext(string WorkItemId,string? ResultRef,string? ResultSummary);
+public sealed record WorkItemDependencyPromptContext(
+    string WorkItemId,
+    string? ResultRef,
+    string? ResultSummary,
+    WorkItemResultType ResultType = WorkItemResultType.None);
 public sealed record WorkItemPromptContext(
     string WorkItemId,
     WorkItemKind Kind,
@@ -68,7 +72,7 @@ public static class RoleContractLoader
         var dependencyResults = workItem.DependencyResults is null || workItem.DependencyResults.Count == 0
             ? string.Empty
             : "선행 WorkItem 결과:\n" + string.Join("\n", workItem.DependencyResults.Select(result =>
-                $"- {result.WorkItemId} | ref={result.ResultRef ?? "없음"} | report={result.ResultSummary ?? "없음"}")) + "\n";
+                $"- {result.WorkItemId} | resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} | ref={result.ResultRef ?? "없음"} | report={result.ResultSummary ?? "없음"}")) + "\n";
         return
             $"workItemId: {workItem.WorkItemId}\n" +
             $"workItemKind: {workItem.Kind.ToString().ToUpperInvariant()}\n" +

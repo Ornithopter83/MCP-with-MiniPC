@@ -14,19 +14,20 @@
 
 ① HQ와 RESOURCE는 서로 다른 persistent profile과 서로 다른 conversationId를 사용한다.
 ② Worker가 app window 실행마다 발급한 runtime token이 없는 페이지는 로컬 bridge를 사용하지 않는다.
-③ bridge 요청은 127.0.0.1 또는 localhost에만 보내며 runtime token을 전용 요청 헤더로 전달한다.
-④ Worker는 올바른 runtime token이 없는 bridge HTTP 요청을 거부한다.
-⑤ heartbeat는 연결 생존과 확장 상태 확인에 사용하며 작업 목적지의 의미를 결정하지 않는다.
-⑥ Worker는 관리형 Web heartbeat에 30초의 생존 허용 구간을 사용한다.
+③ bridge 요청은 loopback 주소에만 보내고 runtime token을 인증 경계로 사용한다.
+④ heartbeat는 연결 생존과 확장 상태 확인에 사용하며 작업 목적지의 의미를 결정하지 않는다.
+⑤ heartbeat 허용 시간과 polling 주기 같은 수치는 현재 구현과 테스트를 원본으로 사용한다.
+
+---
 
 제3조 (app window)
 
-① 관리형 Chromium은 `--app=<ChatGPT URL>`로 실행하며 일반 탭 UI를 운영하지 않는다.
+① 관리형 Chromium은 HQ 또는 RESOURCE 역할별 app window로 실행하며 일반 탭 브라우저 운영을 확장 책임으로 두지 않는다.
 ② 확장은 탭 조회·생성·삭제를 담당하지 않는다.
-③ 이전 브라우저 세션의 탭 복원 정보는 Worker가 새 app window 시작 전에 제거한다.
-④ persistent profile의 로그인 쿠키와 계정 상태는 유지한다.
-⑤ 로그인·표시 또는 숨김 전환은 기존 window 복원이 아니라 새 app window 실행으로 처리한다.
-⑥ 숨김 app window는 최소화 또는 실제 window hide 상태를 사용하지 않고 화면 밖에서 정상 렌더링 상태를 유지하며, Chromium background timer·renderer·occluded-window throttling을 비활성화한다.
+③ Worker는 로그인 상태를 보존하면서 세션 복원과 창 재시작을 관리한다.
+④ 숨김 실행에서도 정상 렌더링과 bridge 진행이 유지되어야 하며 구체 Chromium 플래그와 창 위치는 런타임 구현을 원본으로 사용한다.
+
+---
 
 제4조 (작업 전달)
 
@@ -52,55 +53,44 @@
 
 제7조 (사용자 입력 첨부)
 
-① HQ Web 작업에 사용자 첨부가 있으면 Worker는 BridgeTask의 attachments에 파일명, MIME, 크기, downloadUrl과 SHA-256을 포함한다.
-② content script는 Worker의 인증된 loopback attachment URL에서 bytes를 가져와 SHA-256을 다시 계산하고 일치할 때만 ChatGPT file input에 File 객체로 추가한다.
-③ 첨부 다운로드는 일반 bridge 요청과 같은 managed runtime token 헤더를 사용한다.
-④ Web으로 전달하는 프롬프트에는 실제 첨부 파일과 함께 downstream WORK가 참조할 workspace staging 경로와 SHA-256 메타데이터를 제공할 수 있다.
-⑤ 확장은 첨부 파일의 내용 의미나 적합성을 판정하지 않고 실제 bytes 전달과 hash 검증만 수행한다.
+① HQ Web 첨부는 Worker가 제공한 인증된 attachment bytes와 메타데이터를 사용한다.
+② content script는 가능한 경우 SHA-256을 다시 계산해 Worker가 제공한 값과 일치할 때만 ChatGPT 입력에 전달한다.
+③ 첨부 내용의 의미·적합성은 확장이 판단하지 않는다.
+④ file input, composer staging과 준비 판정의 DOM 세부는 현재 확장 구현과 테스트를 원본으로 사용한다.
+
+---
 
 제8조 (숨김 전송 확인)
 
-① 관리형 app window가 화면 밖에서 실행되는 동안 Send 확인은 주기 polling 하나에만 의존하지 않는다.
-② 전송 전에 현재 conversation의 user/assistant turn을 role, message key와 정규화 text fingerprint로 baseline 저장한다.
-③ 새 user turn 판정은 DOM의 총 메시지 개수 증가를 필수 조건으로 사용하지 않고 baseline에 없던 동일 prompt user turn을 기계적으로 찾는다.
-④ assistant turn 증거는 현재 작업의 Send가 trigger되었거나 현재 user turn이 확인된 뒤에만 인정한다.
-⑤ MutationObserver는 SEND_BUTTON_FIND와 SEND_CONFIRM 동안 conversation DOM 변화를 관측하고 발견한 전송 증거를 latch해 이후 DOM virtualization, renderer 지연 또는 polling 지연이 있어도 잃지 않는다.
-⑥ 일반 conversation article을 무조건 user 메시지로 취급하지 않고 실제 role 속성 또는 role이 명시된 turn만 user/assistant로 분류한다.
-⑦ SEND_CONFIRM 제한시간 직전에는 현재 DOM에서 이번 prompt user turn과 그 뒤 assistant turn을 다시 reconciliation하고 증거가 있으면 실패 대신 WAIT_RESPONSE로 복구한다.
-⑧ latch, mutation 확인과 timeout 복구는 SEND_EVIDENCE_LATCHED, SEND_MUTATION_CONFIRMED, SEND_TIMEOUT_RECOVERED 진행 단계로 기록한다.
+① Send 제어 실행과 실제 메시지 전송 확인을 구분한다.
+② 숨김 app window의 전송 확인은 단일 polling 신호에만 의존하지 않고 현재 conversation의 기계적 증거를 사용한다.
+③ 이전 turn과 현재 turn을 구분하기 위한 baseline·mutation 증거는 현재 task 범위 안에서만 사용한다.
+④ 전송 확인의 DOM selector, heuristic, 제한시간과 진행 단계 세부는 확장 구현과 테스트를 원본으로 사용한다.
+
+---
 
 제9조 (assistant 결과 회수)
 
-① Send 확인 뒤에는 assistant turn 감지와 assistant text 추출을 각각 ASSISTANT_TURN_DETECTED, ASSISTANT_TEXT_EXTRACTED 기계 단계로 기록한다.
-② role-aware turn 탐지가 실패하면 현재 prompt를 포함하는 새 conversation turn과 그 다음 conversation turn의 순서를 사용해 assistant 결과를 회수할 수 있다.
-③ 일반 HQ 응답의 다운로드 파일은 현재 assistant 응답 turn 내부에서만 탐지해 같은 요청의 user 첨부나 다른 과거 turn 파일을 결과로 오인하지 않는다.
-④ 응답 파일 후보가 새로 나타나면 response snapshot을 변경해 텍스트 안정화 타이머를 다시 시작하고 파일이 안정된 뒤 텍스트와 함께 제출한다.
-⑤ 일반 Web 파일은 WEB_FILE_DETECTED, WEB_FILE_DOWNLOAD_START/PROGRESS, WEB_FILE_DOWNLOAD_VERIFIED, WEB_FILES_CAPTURED 단계로 계측한다.
-⑥ Content script 직접 fetch가 실패한 허용된 ChatGPT/OpenAI URL은 background service worker의 fetch-resource-file 경로로 재시도한다.
-⑦ 일반 응답 파일 payload는 RESOURCE와 같은 base64, MIME, fileName, SHA-256 형식을 사용하되 ResultType은 TEXT_WITH_FILES로 구분할 수 있다.
-⑧ Worker result endpoint 제출 직전 RESULT_POSTING을 기록하고 Worker는 일반 결과 파일을 별도 web-results 경로에 저장한다.
-⑨ CLAIMED 진행 상세에는 현재 extension version/build를 포함한다.
-⑩ HQ Web task에 correlation KEY가 있으면 assistant 응답 판정은 현재 KEY가 포함된 응답 영역에 한정한다.
-⑪ KEY는 응답의 첫 줄일 필요가 없다. 확장은 응답 영역 전체에서 정확한 현재 KEY를 찾고 KEY 이전 텍스트를 결과 의미 범위에서 제외한다.
-⑫ ACTION/GOTO는 KEY 확인 뒤 남은 데이터에서 Worker가 탐색하며, 확장은 ACTION/GOTO의 물리적 위치를 응답 동일성 근거로 사용하지 않는다.
-⑬ 일반 HQ Web 응답 파일은 현재 KEY가 확인된 동일 응답 root 내부에서만 탐지·다운로드한다.
-⑭ 현재 KEY가 없는 assistant 텍스트나 과거 turn은 현재 HQ task 결과로 제출하지 않는다.
+① Send 확인 뒤 assistant turn 감지와 결과 추출을 별도 기계 단계로 관리한다.
+② HQ Web task에 correlation KEY가 있으면 현재 KEY가 확인된 응답 영역만 현재 task 결과로 제출한다.
+③ KEY 이전 텍스트와 KEY가 없는 과거 turn은 현재 HQ 결과 의미 범위에서 제외한다.
+④ 일반 응답 파일은 현재 응답 root 안에서만 수집해 사용자 첨부나 과거 turn 파일과 섞이지 않게 한다.
+⑤ 파일 fetch fallback, response 안정화와 DOM 탐지 세부는 현재 확장 구현과 테스트를 원본으로 사용한다.
+
+---
 
 제10조 (첨부 준비 상태)
 
-① Worker에서 전달받은 attachment bytes/hash 검증 성공은 ChatGPT 첨부 업로드·처리 완료를 의미하지 않는다.
-② attachment 전달은 ATTACHMENT_BYTES_VERIFIED, ATTACHMENT_INPUT_SET, ATTACHMENT_UI_DETECTED/ATTACHMENT_PROCESSING, ATTACHMENT_READY 단계로 구분한다.
-③ content script는 file input에 파일을 설정한 뒤 ChatGPT composer 영역의 첨부 UI와 활성 Send 버튼을 관찰한다.
-④ 첨부가 있는 동안 Voice-only 상태는 2.25초 조기 실패 규칙을 적용하지 않고 전체 첨부 준비 제한시간 동안 대기한다.
-⑤ 활성 Send 버튼 확인을 attachment ready의 최종 기계 증거로 사용한다.
-⑥ 첨부 관련 alert/error UI가 명시적으로 나타나면 조기 실패할 수 있다.
+① Worker에서 attachment bytes/hash 검증이 성공한 사실과 ChatGPT UI에서 첨부 업로드·처리가 준비된 사실을 구분한다.
+② 확장은 첨부 UI와 실제 Send 가능 상태를 기계적으로 관찰해 준비 여부를 보고한다.
+③ 명시적 첨부 오류는 실패 사실로 보고할 수 있으나 구체 조기 실패 시간과 DOM 판정 규칙은 구현·테스트를 원본으로 사용한다.
 
-
+---
 
 제11조 (Web UI 이상 수동 관측)
 
-① 관리형 HQ/RESOURCE 대화에서 assistant 응답과 별개인 오류·한도·timeout·첨부 실패 UI는 확장이 DOM에서 수동 관측할 수 있다.
-② 관측된 이상은 WEB_UI_ANOMALY_OBSERVED 진행 이벤트로 기존 Worker 통합로그에 기록한다.
-③ 동일 task에서 동일한 정규화 오류 문구는 중복 기록하지 않는다.
+① 관리형 HQ/RESOURCE 대화에서 assistant 응답과 별개인 오류·한도·timeout·첨부 실패 UI를 수동 관측할 수 있다.
+② 관측된 이상은 WEB_UI_ANOMALY_OBSERVED 진행 이벤트로 Worker 통합로그에 기록한다.
+③ 동일 task의 동일 이상은 기계적으로 중복 억제할 수 있다.
 ④ UI 이상 관측만으로 task 실패, 대화방 이동, 재전송, role binding 변경, lease/KEY 변경 또는 자동 복구를 수행하지 않는다.
-⑤ 실제 반복 증거와 재현 로그가 확보된 뒤 별도 변경으로 개입 정책을 결정한다.
+⑤ 실제 반복 증거와 재현 로그가 확보된 뒤 별도 정책 변경으로 개입 여부를 결정한다.
