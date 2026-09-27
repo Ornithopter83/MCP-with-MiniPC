@@ -333,7 +333,7 @@ public partial class MainWindow
         _lastActivityAt = DateTimeOffset.UtcNow;
 
         TaskDirection.Text = "작업";
-        TaskTitle.Text = "계약문서 무시 · 직접 실행";
+        TaskTitle.Text = "하네스 없음 · 직접 실행";
         ResultTitle.Text = "직접 작업";
         ResultBody.Text = "선택한 모델의 응답을 기다리는 중입니다.";
         SetFlowState(

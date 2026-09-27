@@ -100,7 +100,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ② History 카드는 내부 실행 순번보다 WorkItem ID를 우선 표시하고 예약 WorkItem은 용도를 함께 표시한다.
 ③ WorkGraph의 상세 상태는 내부 snapshot과 Full Message에 보존하며 UI 요약이 의미 판단 원본이 되지 않는다.
 ④ 사용자가 PAUSE, CANCELED, DONE 또는 DONE_WITH_ERROR 상태에서 작업을 추가하면 기존 관제 문맥을 유지한 USER_FOLLOWUP으로 시작한다. 새 작업은 기존 실행 문맥을 초기화한다.
-⑤ `계약문서 무시` 직통 작업은 HQ, WorkGraph, JUDGE, RESOURCE 역할 계약을 우회하되 사용자 첨부의 안전한 staging과 선택된 AI 실행은 유지한다.
+⑤ `하네스 없음` 직통 작업은 HQ, WorkGraph, JUDGE, RESOURCE 역할 계약을 우회하되 사용자 첨부의 안전한 staging과 선택된 AI 실행은 유지한다.
 ⑥ UI의 픽셀, 줄 수, 게이지 칸 수, 기본 모델 문자열과 같은 표현 세부는 장기 정책으로 고정하지 않고 현재 UI 구현과 테스트를 따른다.
 
 ---

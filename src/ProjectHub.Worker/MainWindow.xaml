@@ -506,7 +506,7 @@
           <ComboBox x:Name="DirectWorkReasoningCombo" Width="110" Height="34" SelectionChanged="DirectWorkReasoningCombo_SelectionChanged"/>
         </StackPanel>
       </StackPanel>
-      <CheckBox x:Name="DirectWorkModeCheckBox" Grid.Column="2" Content="계약문서 무시" IsChecked="False" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Checked="DirectWorkModeCheckBox_Changed" Unchecked="DirectWorkModeCheckBox_Changed" ToolTip="ProjectHub 역할 계약과 프로젝트 AGENTS 지침 주입 없이 현재 작업 폴더에서 선택한 모델을 직접 실행합니다."/>
+      <CheckBox x:Name="DirectWorkModeCheckBox" Grid.Column="2" Content="하네스 없음" IsChecked="False" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold" Checked="DirectWorkModeCheckBox_Changed" Unchecked="DirectWorkModeCheckBox_Changed" ToolTip="ProjectHub 역할 계약과 프로젝트 AGENTS 지침 주입 없이 현재 작업 폴더에서 선택한 모델을 직접 실행합니다."/>
       <Button x:Name="AddWorkButton" Grid.Column="4" Content="＋   작업 추가" Width="266" Height="70" HorizontalAlignment="Right" VerticalAlignment="Center" Background="#168A4A" Foreground="White" BorderBrush="#168A4A" FontSize="25" FontWeight="Bold" IsEnabled="False" Visibility="Collapsed" Click="AddWorkButton_Click">
         <Button.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.22" Color="#168A4A"/></Button.Effect>
       </Button>
