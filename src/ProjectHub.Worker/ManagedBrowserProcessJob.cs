@@ -8,7 +8,7 @@ namespace ProjectHub.Worker;
 internal sealed class ManagedBrowserProcessJob : IDisposable
 {
     internal const uint KillOnJobCloseLimitFlag = 0x00002000;
-    private const int JobObjectExtendedLimitInformation = 9;
+    private const int JobObjectExtendedLimitInformationClass = 9;
     private readonly SafeJobHandle? _handle;
 
     public ManagedBrowserProcessJob()
@@ -37,7 +37,7 @@ internal sealed class ManagedBrowserProcessJob : IDisposable
                 Marshal.StructureToPtr(information, buffer, false);
                 if (!SetInformationJobObject(
                         handle.DangerousGetHandle(),
-                        JobObjectExtendedLimitInformation,
+                        JobObjectExtendedLimitInformationClass,
                         buffer,
                         (uint)size))
                 {
