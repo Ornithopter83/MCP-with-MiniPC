@@ -135,16 +135,16 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ① WorkItem #0~#9는 시스템 예약 영역이며 일반 WorkItem은 #10부터 사용한다. #0은 RESOURCE, #1은 기존 이미지 가공 전용이고 #2~#9는 예약 상태로 둔다.
 ② HQ는 WorkItem의 생성·목표·dependency·취소와 의미적 재시도를 결정한다. WORK와 Worker는 승인되지 않은 새 의미 작업을 직접 생성하지 않는다.
 ③ Worker는 최대 동시 실행 수 안에서 dependency가 충족된 READY WorkItem을 기계적으로 슬롯에 배정한다. maxConcurrentWork=1도 같은 Scheduler의 단일 슬롯 동작이다.
-④ NORMAL WorkItem은 독립 Git branch와 linked worktree를 Worker가 준비하되, AI 실행 중에는 작업공간의 Git metadata를 분리하고 Git 원격 프로토콜을 차단한다.
+④ NORMAL WorkItem은 독립 Git branch와 linked worktree를 Worker가 준비하며, AI 실행 중 Git 접근 경계는 제19조를 따른다.
 ⑤ WorkItem 시작 전 Git 준비 실패는 의미적 실행 실패와 구분해 BLOCKED로 보존할 수 있으며, Worker는 충돌의 의미를 자동 해결하지 않는다.
 ⑥ COMPLETED, FAILED, CANCELED은 종료 기록이다. 의미 작업 재시도는 새 WorkItem ID를 사용한다.
 ⑦ COMPLETED 결과에는 Worker가 기계적으로 측정한 resultType을 기록한다. checkpoint에서 새 commit이 생성됐으면 CODE_CHANGE, 새 commit이 없으면 ANALYSIS다. ANALYSIS의 resultRef는 코드 통합 대상이라는 의미가 아니다.
 ⑧ 여러 CODE_CHANGE 결과를 결합해야 하면 HQ는 kind=INTEGRATION WorkItem을 추가한다. 통합을 위한 linked-worktree 권한 probe용 NORMAL WorkItem을 선행하지 않는다.
-⑨ INTEGRATION은 Worker가 독립 clone을 준비하되 AI 실행 중에는 clone의 Git metadata를 분리하고 원격 Git 접근을 허용하지 않는다.
-⑩ Integration WORK는 일반 파일 내용 기준으로 의미적 통합·충돌 해결·검증을 수행하고, Git checkpoint·완료 commit import·target branch fast-forward landing은 Worker만 수행한다.
+⑨ INTEGRATION의 작업공간과 Git 경계는 제24조와 제19조를 따른다.
+⑩ Integration WORK는 일반 파일 내용 기준으로 의미적 통합·충돌 해결·검증을 수행한다.
 ⑪ RESOURCE, JUDGE, OBSERVATION은 WorkGraph의 별도 일반 WorkItem으로 자동 변환하지 않고 기존 사이드카 귀속 규칙을 유지한다.
 ⑫ HQ END 전에 의미 WorkItem의 완료 상태를 HQ가 판단하며, 최종 DONE/DONE_WITH_ERROR 전에는 Worker가 추적하는 기계적 outstanding이 모두 종료되어야 한다.
-⑬ CODE_CHANGE가 생성되면 Worker는 commit, parent, tree, 변경 경로, 삭제 경로, 파일 hash와 인라인 가능한 텍스트 최종 내용을 담은 Commit Manifest를 기계적으로 생성해 WorkGraph 결과와 선행 결과 문맥에 연결한다.
+⑬ CODE_CHANGE가 생성되면 Worker는 Commit Manifest를 기계적으로 생성해 WorkGraph 결과와 선행 결과 문맥에 연결하며, 세부 생성·전달 경계는 제19조를 따른다.
 
 ---
 
@@ -202,6 +202,16 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 ---
 
+제19조 (WORK Git 실행 경계)
+
+① NORMAL과 INTEGRATION WORK의 AI 실행은 작업공간의 일반 파일을 대상으로 하며 Git metadata와 Git 원격 연결을 작업 수단으로 사용하지 않는다.
+② Worker는 AI 실행 전에 해당 작업공간의 Git metadata를 실행 경계 밖으로 격리하고 Git 원격 프로토콜을 차단하며, AI 실행이 끝나면 checkpoint 전에 Git metadata를 기계적으로 복원한다.
+③ checkpoint commit 생성, Commit Manifest 생성, Integration 선행 commit snapshot 준비, 완료 commit import와 target branch fast-forward 같은 Git metadata 작업은 Worker가 수행한다.
+④ CODE_CHANGE의 Commit Manifest에는 commit, parent, tree, 변경·삭제 경로, 파일 hash와 인라인 가능한 텍스트 최종 내용을 담고 HQ와 후속 WORK가 commit 내용을 별도 ANALYSIS 작업으로 다시 수집하지 않게 한다.
+⑤ Git metadata 임시 격리 경로, 원격 프로토콜 차단 환경 변수, 인라인 크기 제한과 Git 명령행 옵션은 장기 정책으로 고정하지 않고 현재 구현과 테스트를 원본으로 사용한다.
+
+---
+
 제20조 (WorkGraph ID 입력 정규화)
 
 ① WorkGraph 전송 경계는 계약에서 허용한 숫자 또는 문자열 ID 입력을 내부 문자열 ID로 정규화할 수 있다.
@@ -241,9 +251,9 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 제24조 (Integration 독립 Git clone)
 
 ① 일반 WorkItem은 linked worktree 격리를 유지하고 INTEGRATION WorkItem의 파일 기준점은 주 저장소와 분리된 독립 clone으로 Worker가 준비한다.
-② Integration AI 실행 중에는 clone의 `.git`을 작업공간 밖으로 임시 격리하며 AI가 Git metadata를 읽거나 수정하는 것을 실행 경계에서 차단한다.
+② Integration AI의 Git metadata·원격 접근 경계는 제19조를 동일하게 적용한다.
 ③ Worker는 dependency의 CODE_CHANGE commit을 Integration 작업공간의 무시된 일반 파일 snapshot으로 기계적으로 펼치며, Integration WORK는 해당 snapshot·Commit Manifest·보고를 입력으로 사용해 일반 파일 기준으로 의미적 통합과 검증을 수행한다.
-④ clone 준비, Git metadata 격리·복원, checkpoint commit과 완료 commit 검증은 Worker가 기계적으로 관리한다.
+④ clone 준비, 선행 snapshot 준비, checkpoint commit과 완료 commit 검증은 Worker가 기계적으로 관리한다.
 ⑤ 완료 commit을 주 저장소로 가져오고 target branch에 fast-forward하는 작업은 Worker만 수행한다.
 ⑥ clone root, Git metadata, source branch 또는 target branch 상태가 예상과 다르면 자동 force/reset으로 해결하지 않고 기계 오류로 HQ에 보고한다.
-⑦ 정확한 clone 경로, Git metadata 임시 경로와 Git 명령행 옵션은 장기 정책으로 고정하지 않고 현재 구현과 테스트를 원본으로 사용한다.
+⑦ 정확한 clone 경로와 Git 명령행 옵션은 장기 정책으로 고정하지 않고 현재 구현과 테스트를 원본으로 사용한다.
