@@ -144,7 +144,7 @@ public sealed class ParallelJudgeWorkItemRouter : IAsyncDisposable
             block.Body,
             Array.Empty<CodexCliFile>(),
             "GIT",
-            block.ResultRef,
+            null,
             _jobId,
             Array.Empty<CodexCommandExecution>());
 

@@ -43,7 +43,7 @@ public sealed class ParallelJudgeWorkItemRouterTests
             Assert.Equal("{\"answer\":\"raw\"}", resume.Body);
             Assert.NotNull(transport.LastRequest);
             Assert.Equal(root, transport.LastRequest!.WorkingDirectory);
-            Assert.Equal("commit-W4", transport.LastRequest.ReviewCommitSha);
+            Assert.Null(transport.LastRequest.ReviewCommitSha);
             Assert.Equal("job-1", transport.LastRequest.JobId);
         }
         finally
