@@ -95,3 +95,14 @@
 ⑤ 활성 Send 버튼 확인을 attachment ready의 최종 기계 증거로 사용한다.
 ⑥ 첨부 관련 alert/error UI가 명시적으로 나타나면 조기 실패할 수 있다.
 
+
+
+제11조 (대화방 오류 롤오버)
+
+① 관리형 HQ/RESOURCE 대화에서 assistant 응답과 별개인 ChatGPT UI 오류가 현재 작업의 정상 전송·응답 회수를 막는 경우 확장은 이를 기계적으로 감지할 수 있다.
+② 대화 길이/한도 안내, stream recovery timeout, 명시적 응답 생성 오류, 첨부·업로드 실패처럼 현재 대화에서 재시도 지속보다 새 대화 재개가 적합한 UI 오류를 CONVERSATION_ROLLOVER 대상으로 구분한다.
+③ 롤오버는 현재 BridgeTask를 FAILED로 종료하지 않고 동일 task id, lease, correlation KEY와 첨부를 유지한다.
+④ 새 ChatGPT 대화의 첫 메시지는 role별 rollover prompt를 사용한다. HQ rollover prompt에는 HQ 계약을 다시 포함한다.
+⑤ 새 대화가 /c/<conversationId>를 획득하면 확장은 동일 task를 새 conversationId에 재귀속하고 역할 binding도 함께 갱신한다.
+⑥ 사용자에게만 보이는 오류 배너·toast·retry UI도 assistant 응답 수신 여부와 무관하게 DOM에서 직접 검사한다.
+⑦ 동일 task의 자동 롤오버는 최대 3회로 제한하고 초과 시 정상 실패 경로로 전환한다.

@@ -14,8 +14,8 @@ public sealed class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
-    private const string ExpectedExtensionVersion = "0.3.9";
-    private const string ExpectedExtensionBuild = "2026-09-27.8";
+    private const string ExpectedExtensionVersion = "0.4.0";
+    private const string ExpectedExtensionBuild = "2026-09-27.9";
     private static readonly TimeSpan WebHeartbeatTimeout = TimeSpan.FromSeconds(30);
     private readonly HttpListener _listener = new();
     private readonly object _gate = new();
@@ -135,13 +135,24 @@ public sealed class BridgeServer : IDisposable
         }
     }
 
-    public BridgeTask? CreateTaskForRole(string role, string prompt, List<BridgeAttachment>? attachments = null, ResourceRequest? resource = null)
+    public BridgeTask? CreateTaskForRole(
+        string role,
+        string prompt,
+        List<BridgeAttachment>? attachments = null,
+        ResourceRequest? resource = null,
+        string? rolloverPrompt = null)
     {
         lock (_gate)
         {
             var normalizedRole = NormalizeRole(role);
             if (!_state.RoleBindings.TryGetValue(normalizedRole, out var conversationId)) return null;
-            return CreateTaskLocked(conversationId, prompt, attachments, normalizedRole, resource);
+            return CreateTaskLocked(
+                conversationId,
+                prompt,
+                attachments,
+                normalizedRole,
+                resource,
+                rolloverPrompt);
         }
     }
 
@@ -327,6 +338,12 @@ public sealed class BridgeServer : IDisposable
             else if (method == "POST" && path == "/bridge/bind") payload = Bind(await ReadJsonAsync<BindRequest>(context.Request));
             else if (method == "GET" && path == "/bridge/task") payload = PendingTask(context.Request.QueryString["conversationId"]);
             else if (method == "POST" && path == "/bridge/task") payload = CreateTask(await ReadJsonAsync<CreateTaskRequest>(context.Request));
+            else if (method == "GET" && path == "/bridge/rollover")
+                payload = PendingRollover(context.Request.QueryString["role"]);
+            else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/rollover/attach", StringComparison.Ordinal))
+                payload = AttachRollover(path["/bridge/task/".Length..^"/rollover/attach".Length], await ReadJsonAsync<RolloverAttachRequest>(context.Request));
+            else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/rollover", StringComparison.Ordinal))
+                payload = BeginRollover(path["/bridge/task/".Length..^"/rollover".Length], await ReadJsonAsync<RolloverRequest>(context.Request));
             else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/claim", StringComparison.Ordinal))
                 payload = Claim(path["/bridge/task/".Length..^"/claim".Length], await ReadJsonAsync<ClaimRequest>(context.Request));
             else if (method == "POST" && path.StartsWith("/bridge/task/", StringComparison.Ordinal) && path.EndsWith("/result", StringComparison.Ordinal))
@@ -445,14 +462,26 @@ public sealed class BridgeServer : IDisposable
             return new(false, new { error = "conversation_id_and_prompt_required" });
         lock (_gate)
         {
-            var task = CreateTaskLocked(request.ConversationId, request.Prompt, request.Attachments, request.Role ?? "WEB", request.Resource);
+            var task = CreateTaskLocked(
+                request.ConversationId,
+                request.Prompt,
+                request.Attachments,
+                request.Role ?? "WEB",
+                request.Resource,
+                request.RolloverPrompt);
             return task is null
                 ? new(false, new { error = "conversation_not_bound_or_task_conflict" })
                 : new(true, task);
         }
     }
 
-    private BridgeTask? CreateTaskLocked(string conversationId, string prompt, List<BridgeAttachment>? attachments, string role, ResourceRequest? resource)
+    private BridgeTask? CreateTaskLocked(
+        string conversationId,
+        string prompt,
+        List<BridgeAttachment>? attachments,
+        string role,
+        ResourceRequest? resource,
+        string? rolloverPrompt = null)
     {
         if (!_state.Bindings.TryGetValue(conversationId, out var binding)) return null;
         var active = _state.Tasks.FirstOrDefault(item => item.ConversationId.Equals(conversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
@@ -463,6 +492,12 @@ public sealed class BridgeServer : IDisposable
         var transportPrompt = correlationKey is null
             ? prompt
             : WebCorrelationContract.WrapPrompt(prompt, correlationKey);
+        var rawRolloverPrompt = string.IsNullOrWhiteSpace(rolloverPrompt)
+            ? prompt
+            : rolloverPrompt;
+        var transportRolloverPrompt = correlationKey is null
+            ? rawRolloverPrompt
+            : WebCorrelationContract.WrapPrompt(rawRolloverPrompt, correlationKey);
         var task = new BridgeTask(
             Guid.NewGuid().ToString("N"),
             conversationId,
@@ -479,11 +514,114 @@ public sealed class BridgeServer : IDisposable
             null,
             attachments ?? new(),
             resource,
-            CorrelationKey: correlationKey);
+            CorrelationKey: correlationKey,
+            RolloverPrompt: transportRolloverPrompt);
         _state.Tasks.Add(task);
         SaveState();
         TaskChanged?.Invoke(task);
         return task;
+    }
+
+
+    private BridgeResponse PendingRollover(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+            return new(false, new { error = "rollover_role_required" });
+        var normalizedRole = NormalizeRole(role);
+        if (normalizedRole is not ("HQ" or "RESOURCE"))
+            return new(false, new { error = "rollover_role_invalid" });
+
+        lock (_gate)
+        {
+            var task = _state.Tasks
+                .Where(item =>
+                    item.Status == "CLAIMED" &&
+                    item.RolloverPending &&
+                    NormalizeRole(item.Owner) == normalizedRole)
+                .OrderByDescending(item => item.LastProgressAt ?? item.StartedAt ?? item.CreatedAt)
+                .FirstOrDefault();
+            return new BridgeResponse(true, new { task });
+        }
+    }
+
+    private BridgeResponse BeginRollover(string id, RolloverRequest request)
+    {
+        lock (_gate)
+        {
+            var task = _state.Tasks.FirstOrDefault(item => item.Id == id);
+            if (task is null) return new(false, new { error = "task_not_found" });
+            if (task.Status != "CLAIMED") return new(false, new { error = "task_not_claimed" });
+            if (!string.Equals(task.ConversationId, request.ConversationId, StringComparison.OrdinalIgnoreCase))
+                return new(false, new { error = "conversation_mismatch" });
+            if (string.IsNullOrWhiteSpace(request.LeaseId) ||
+                !string.Equals(task.LeaseId, request.LeaseId, StringComparison.Ordinal))
+                return new(false, new { error = "lease_mismatch" });
+            if (task.RolloverCount >= 3)
+                return new(false, new { error = "rollover_limit_reached" });
+
+            var updated = task with
+            {
+                RolloverPending = true,
+                RolloverReason = string.IsNullOrWhiteSpace(request.Reason)
+                    ? "chatgpt_ui_failure"
+                    : request.Reason.Trim(),
+                RolloverCount = task.RolloverCount + 1,
+                LastStage = "CONVERSATION_ROLLOVER_PENDING",
+                LastStageDetail = request.Reason,
+                LastProgressAt = DateTimeOffset.UtcNow
+            };
+            ReplaceTask(updated);
+            SaveState();
+            TaskChanged?.Invoke(updated);
+            return new BridgeResponse(true, updated);
+        }
+    }
+
+    private BridgeResponse AttachRollover(string id, RolloverAttachRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewConversationId))
+            return new(false, new { error = "conversation_id_required" });
+
+        lock (_gate)
+        {
+            var task = _state.Tasks.FirstOrDefault(item => item.Id == id);
+            if (task is null) return new(false, new { error = "task_not_found" });
+            if (task.Status != "CLAIMED" || !task.RolloverPending)
+                return new(false, new { error = "rollover_not_pending" });
+            if (string.IsNullOrWhiteSpace(request.LeaseId) ||
+                !string.Equals(task.LeaseId, request.LeaseId, StringComparison.Ordinal))
+                return new(false, new { error = "lease_mismatch" });
+
+            var normalizedRole = NormalizeRole(task.Owner);
+            if (normalizedRole is not ("HQ" or "RESOURCE"))
+                return new(false, new { error = "rollover_role_invalid" });
+
+            var newConversationId = request.NewConversationId.Trim();
+            var conflict = _state.RoleBindings.FirstOrDefault(pair =>
+                !pair.Key.Equals(normalizedRole, StringComparison.OrdinalIgnoreCase) &&
+                pair.Value.Equals(newConversationId, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(conflict.Key))
+                return new(false, new { error = "role_requires_distinct_conversation", boundRole = conflict.Key });
+
+            _state.RoleBindings[normalizedRole] = newConversationId;
+            _state.Bindings[newConversationId] = new BindingState(
+                newConversationId,
+                task.ProjectId,
+                DateTimeOffset.UtcNow);
+
+            var updated = task with
+            {
+                ConversationId = newConversationId,
+                RolloverPending = false,
+                LastStage = "CONVERSATION_ROLLOVER_ATTACHED",
+                LastStageDetail = task.RolloverReason,
+                LastProgressAt = DateTimeOffset.UtcNow
+            };
+            ReplaceTask(updated);
+            SaveState();
+            TaskChanged?.Invoke(updated);
+            return new BridgeResponse(true, updated);
+        }
     }
 
     private BridgeResponse Claim(string id, ClaimRequest request)
@@ -1044,14 +1182,16 @@ public sealed record WebRoleBindingStatus(
     string? ExpectedExtensionVersion = null,
     string? ExpectedExtensionBuild = null);
 public sealed record ResourceRequest(string Id, string Type, string Prompt, string TargetDirectory, string TargetFileName, string RequestedBy, string Status, string? SavedPath, string WorkspaceRoot);
-public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null, List<string>? SavedPaths = null, List<BridgeFileReceipt>? SavedFileReceipts = null, string? LastStage = null, string? LastStageDetail = null, int LastAttempt = 0, DateTimeOffset? LastProgressAt = null, string? CorrelationKey = null);
+public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null, List<string>? SavedPaths = null, List<BridgeFileReceipt>? SavedFileReceipts = null, string? LastStage = null, string? LastStageDetail = null, int LastAttempt = 0, DateTimeOffset? LastProgressAt = null, string? CorrelationKey = null, string? RolloverPrompt = null, bool RolloverPending = false, string? RolloverReason = null, int RolloverCount = 0);
 public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null, string? Sha256 = null);
 public sealed record BridgeFileReceipt(string Path, long Size, string Sha256);
 public sealed record BridgeResponse(bool Ok, object Data);
 public sealed record BindRequest(string ConversationId, string? ProjectId, string? Role = null);
 public sealed record ClaimRequest(string ConversationId);
 public sealed record ResetRequest(string? ConversationId = null, string? TaskId = null);
-public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null, string? Role = null, ResourceRequest? Resource = null);
+public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null, string? Role = null, ResourceRequest? Resource = null, string? RolloverPrompt = null);
+public sealed record RolloverRequest(string ConversationId, string LeaseId, string? Reason = null);
+public sealed record RolloverAttachRequest(string NewConversationId, string LeaseId);
 public sealed record ResourceResultFile(string Base64, string MimeType, string? FileName = null, string? Sha256 = null);
 public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null, string? ResultFileBase64 = null, string? ResultFileMimeType = null, string? ResultFileName = null, List<ResourceResultFile>? ResultFiles = null, string? CorrelationKey = null);
 public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null, string? ExtensionVersion = null, string? ExtensionBuild = null);

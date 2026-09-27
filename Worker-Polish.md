@@ -550,3 +550,14 @@ Integration:
 ⑥ running=0, ready=0이고 외부 RESOURCE/JUDGE 대기가 없으면 WORK_GRAPH_QUIESCENT가 완료 점검보다 우선하며 별도 중복 완료 점검을 만들지 않는다.
 ⑦ RESOURCE_REQUEST와 JUDGE_REQUEST 자체는 완료 점검 트리거가 아니며 해당 WorkItem이 최종 COMPLETED 상태가 된 뒤 점검 후보가 된다.
 ⑧ CLI coordinator에는 이 완료 점검을 자동 적용하지 않는다.
+
+
+제23조 (관리형 Web 대화방 롤오버)
+
+① HQ/RESOURCE Web의 현재 대화가 UI 오류, 대화 길이 한계, stream recovery timeout 또는 첨부·업로드 실패로 현재 BridgeTask를 정상 완료할 수 없다고 확장이 기계 판정하면 새 대화 롤오버를 허용한다.
+② 롤오버 동안 기존 BridgeTask의 id, lease, correlation KEY, 역할, 첨부와 작업 목적을 유지하며 task를 실패 완료하지 않는다.
+③ Worker Bridge는 role별 pending rollover task를 제공하고 새 conversationId가 생성되면 동일 task를 그 대화로 원자적으로 재귀속한다.
+④ HQ task의 rollover prompt에는 현재 요청과 HQ 역할 계약을 다시 포함해 새 대화에서도 관제 출력 규약을 잃지 않게 한다.
+⑤ RESOURCE task는 동일 요청과 첨부를 새 대화에서 재전송한다.
+⑥ 같은 task의 자동 롤오버는 최대 3회이며 무한 대화 전환을 허용하지 않는다.
+⑦ UI 오류 탐지는 assistant 응답 텍스트 전달에 의존하지 않고 관리형 확장의 실제 DOM 관측을 사용한다.
