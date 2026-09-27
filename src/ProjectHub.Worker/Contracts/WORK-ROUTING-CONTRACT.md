@@ -54,6 +54,7 @@
 ⑩ Git remote 접근과 인증은 Worker의 기계 책임이며 WORK가 GitHub 등 원격 저장소 연결을 직접 시험하거나 우회하지 않는다.
 ⑪ COMPLETED 결과의 resultType은 WORK가 선언하지 않는다. Worker가 checkpoint의 실제 commit 생성 여부를 기준으로 CODE_CHANGE 또는 ANALYSIS를 기계적으로 기록한다.
 ⑫ CODE_CHANGE가 생성되면 Worker가 Commit Manifest를 생성하므로 commit 내부 변경 경로와 텍스트 내용을 재수집하기 위한 별도 작업을 요청하지 않는다.
+⑬ WORK는 Computer Use를 사용하지 않는다.
 
 제7조 (HQ 보고)
 

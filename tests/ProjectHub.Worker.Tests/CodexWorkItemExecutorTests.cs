@@ -135,6 +135,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal("WORK_ITEM", observed.InboundType);
             Assert.True(observed.PromptBytes > 0);
             Assert.Equal(0, observed.Result.ExitCode);
+            Assert.True(fixture.Runner.LastRequest!.DisableComputerUse);
         }
         finally
         {

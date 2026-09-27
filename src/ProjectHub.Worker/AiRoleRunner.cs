@@ -15,7 +15,8 @@ public sealed record AiRoleRunRequest(
     IReadOnlyList<string>? AdditionalWritableDirectories = null,
     bool IgnoreProjectInstructions = false,
     IReadOnlyList<AiInputAttachment>? InputAttachments = null,
-    IReadOnlyDictionary<string, string>? EnvironmentVariables = null);
+    IReadOnlyDictionary<string, string>? EnvironmentVariables = null,
+    bool DisableComputerUse = false);
 
 public sealed record AiRoleRunResult(
     string Provider,
@@ -75,7 +76,8 @@ public sealed class OpenAiCodexRoleRunner(CodexCliRunner codexRunner) : IAiRoleR
             request.SessionStarted,
             request.AdditionalWritableDirectories,
             request.IgnoreProjectInstructions,
-            request.EnvironmentVariables);
+            request.EnvironmentVariables,
+            request.DisableComputerUse);
 
         return new(
             AiProviderCatalog.ToWireId(Provider),

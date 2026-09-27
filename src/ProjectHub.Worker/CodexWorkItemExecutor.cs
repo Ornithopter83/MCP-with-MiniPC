@@ -268,7 +268,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                         ? null
                         : new[] { observationRequestDirectory },
                     InputAttachments: stagedUserAttachments,
-                    EnvironmentVariables: GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment())).ConfigureAwait(false);
+                    EnvironmentVariables: GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment(),
+                    DisableComputerUse: true)).ConfigureAwait(false);
             }
             finally
             {
