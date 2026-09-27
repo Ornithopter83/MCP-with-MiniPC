@@ -43,6 +43,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
     }
 
     private readonly object _gate = new();
+    private readonly ManagedBrowserProcessJob _processJob;
     private readonly string _extensionDirectory;
     private readonly string _managedRuntimeToken;
     private readonly Dictionary<ManagedWebRole, Slot> _slots = new()
@@ -55,6 +56,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
     public ManagedWebRuntimeManager(string extensionDirectory, string managedRuntimeToken)
     {
+        _processJob = new ManagedBrowserProcessJob();
         _extensionDirectory = Path.GetFullPath(extensionDirectory);
         _managedRuntimeToken = string.IsNullOrWhiteSpace(managedRuntimeToken)
             ? throw new ArgumentException("관리형 Web 런타임 토큰이 필요합니다.", nameof(managedRuntimeToken))
@@ -513,6 +515,30 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
                 var process = Process.Start(startInfo)
                     ?? throw new InvalidOperationException("관리형 Web 브라우저 프로세스를 시작하지 못했습니다.");
+                try
+                {
+                    _processJob.Assign(process);
+                }
+                catch
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                        {
+                            process.Kill(entireProcessTree: true);
+                            process.WaitForExit(5000);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                    finally
+                    {
+                        process.Dispose();
+                    }
+                    throw;
+                }
+
                 process.EnableRaisingEvents = true;
                 process.Exited += (_, _) => OnProcessExited(role, process);
 
@@ -624,7 +650,14 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
     public void Dispose()
     {
-        Stop(ManagedWebRole.Hq);
-        Stop(ManagedWebRole.Resource);
+        try
+        {
+            Stop(ManagedWebRole.Hq);
+            Stop(ManagedWebRole.Resource);
+        }
+        finally
+        {
+            _processJob.Dispose();
+        }
     }
 }

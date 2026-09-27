@@ -1,3 +1,4 @@
+using System.Reflection;
 using ProjectHub.Worker;
 
 namespace ProjectHub.Worker.Tests;
@@ -60,6 +61,30 @@ public sealed class ManagedWebRuntimeManagerTests
         Assert.True(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(managed));
         Assert.False(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(arbitrary));
         Assert.False(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(null));
+    }
+
+    [Fact]
+    public void ManagedBrowserLifetime_UsesKillOnJobCloseJobObject()
+    {
+        var jobType = typeof(ManagedWebRuntimeManager).Assembly
+            .GetType("ProjectHub.Worker.ManagedBrowserProcessJob");
+        Assert.NotNull(jobType);
+
+        var flag = jobType!.GetField(
+            "KillOnJobCloseLimitFlag",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(flag);
+        Assert.Equal(0x00002000u, flag!.GetRawConstantValue());
+
+        var field = typeof(ManagedWebRuntimeManager).GetField(
+            "_processJob",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+
+        var assign = jobType.GetMethod(
+            "Assign",
+            BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(assign);
     }
 
     [Fact]
