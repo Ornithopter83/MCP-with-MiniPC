@@ -66,6 +66,60 @@ public sealed class CoordinatorFirstContractTests
         Assert.NotEmpty(result.Body);
     }
 
+    [Fact]
+    public void WorkerGoto_HqStartsAtFirstCanonicalActionLineAndIgnoresEarlierOutput()
+    {
+        const string text = """
+            Python
+            /mnt/data/HQ_response_time.txt
+
+            파일 생성이 완료되었습니다.
+
+            [ACTION=END]
+            응답 시각: 2026-09-27 09:18 KST
+            HQ_response_time.txt 다운로드
+            """;
+
+        var result = WorkerGotoContract.Parse(WorkerRoleState.Hq, text);
+
+        Assert.Null(result.Error);
+        Assert.Equal(WorkerAction.End, result.Action);
+        Assert.Null(result.Target);
+        Assert.StartsWith("응답 시각:", result.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Python", result.Body);
+        Assert.DoesNotContain("/mnt/data/HQ_response_time.txt", result.Body);
+    }
+
+    [Fact]
+    public void WorkerGoto_HqUsesFirstActionLineWhenMultipleActionsAppear()
+    {
+        const string text = """
+            설명문
+            [ACTION=PAUSE]
+            첫 번째 ACTION 뒤의 본문
+            [ACTION=END]
+            이후 문자열
+            """;
+
+        var result = WorkerGotoContract.Parse(WorkerRoleState.Hq, text);
+
+        Assert.Null(result.Error);
+        Assert.Equal(WorkerAction.Pause, result.Action);
+        Assert.Contains("[ACTION=END]", result.Body);
+    }
+
+    [Fact]
+    public void WorkerGoto_HqAllowsIndentedCanonicalActionStart()
+    {
+        const string text = "도구 출력\n   [ACTION=END]\n완료";
+
+        var result = WorkerGotoContract.Parse(WorkerRoleState.Hq, text);
+
+        Assert.Null(result.Error);
+        Assert.Equal(WorkerAction.End, result.Action);
+        Assert.Equal("완료", result.Body);
+    }
+
     [Theory]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO=WORK\nbody", "GOTO_INVALID")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\nGOTO=WORK\nbody", "GOTO_INVALID")]

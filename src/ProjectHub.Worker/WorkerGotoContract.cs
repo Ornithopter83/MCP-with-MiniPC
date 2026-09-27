@@ -12,12 +12,18 @@ public static class WorkerGotoContract
         var lines = (response ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var first = Array.FindIndex(lines, line => !string.IsNullOrWhiteSpace(line));
         if (first < 0) return Invalid("CONTROL_MISSING");
-        var control = lines[first].Trim().TrimStart('\uFEFF');
 
         if (source == WorkerRoleState.Hq)
         {
-            if (!IsActionCandidate(control))
-                return IsGotoCandidate(control) ? Invalid("ACTION_MISSING") : Invalid("CONTROL_INVALID_FIRST_LINE");
+            var actionStart = FindFirstActionStart(lines);
+            if (actionStart < 0)
+            {
+                var firstControl = lines[first].Trim().TrimStart('\uFEFF');
+                return IsGotoCandidate(firstControl) ? Invalid("ACTION_MISSING") : Invalid("CONTROL_INVALID_FIRST_LINE");
+            }
+
+            first = actionStart;
+            var control = lines[first].Trim().TrimStart('\uFEFF');
             if (!TryParseAction(control, out var action, out var actionEnd)) return Invalid("ACTION_INVALID");
 
             var nextIndex = NextContentLine(lines, first + 1);
@@ -35,6 +41,7 @@ public static class WorkerGotoContract
             return new(target, JoinBody(gotoLine, gotoEnd, lines, nextIndex), action);
         }
 
+        var control = lines[first].Trim().TrimStart('\uFEFF');
         if (IsActionCandidate(control))
             return TryParseAction(control, out _, out _) ? Invalid("ACTION_NOT_ALLOWED") : Invalid("ACTION_INVALID");
         if (!IsGotoCandidate(control)) return Invalid("GOTO_INVALID_FIRST_LINE");
@@ -47,6 +54,18 @@ public static class WorkerGotoContract
         };
         if (!allowed) return Invalid("GOTO_NOT_ALLOWED");
         return new(destination, JoinBody(control, controlEnd, lines, first));
+    }
+
+    private static int FindFirstActionStart(string[] lines)
+    {
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var candidate = lines[i].TrimStart().TrimStart('\uFEFF');
+            if (candidate.StartsWith("[ACTION=", StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+
+        return -1;
     }
 
     private static int NextContentLine(string[] lines, int start)
