@@ -120,6 +120,27 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("완료", result.Body);
     }
 
+    [Fact]
+    public void WorkerGoto_HqFindsGotoAfterExplanatoryLines()
+    {
+        const string text = """
+            설명
+            [ACTION=CONTINUE]
+            중간 설명도 허용한다.
+            [GOTO : WORK]
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":0,"operations":[]}
+            """;
+
+        var result = WorkerGotoContract.Parse(WorkerRoleState.Hq, text);
+
+        Assert.Null(result.Error);
+        Assert.Equal(WorkerAction.Continue, result.Action);
+        Assert.Equal(WorkerRoleState.Work, result.Target);
+        Assert.StartsWith("WORK_GRAPH_PATCH:", result.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("중간 설명도 허용한다.", result.Body);
+    }
+
     [Theory]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO=WORK\nbody", "GOTO_INVALID")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\nGOTO=WORK\nbody", "GOTO_INVALID")]

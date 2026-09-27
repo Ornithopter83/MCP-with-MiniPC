@@ -80,6 +80,11 @@
 ⑦ 일반 응답 파일 payload는 RESOURCE와 같은 base64, MIME, fileName, SHA-256 형식을 사용하되 ResultType은 TEXT_WITH_FILES로 구분할 수 있다.
 ⑧ Worker result endpoint 제출 직전 RESULT_POSTING을 기록하고 Worker는 일반 결과 파일을 별도 web-results 경로에 저장한다.
 ⑨ CLAIMED 진행 상세에는 현재 extension version/build를 포함한다.
+⑩ HQ Web task에 correlation KEY가 있으면 assistant 응답 판정은 현재 KEY가 포함된 응답 영역에 한정한다.
+⑪ KEY는 응답의 첫 줄일 필요가 없다. 확장은 응답 영역 전체에서 정확한 현재 KEY를 찾고 KEY 이전 텍스트를 결과 의미 범위에서 제외한다.
+⑫ ACTION/GOTO는 KEY 확인 뒤 남은 데이터에서 Worker가 탐색하며, 확장은 ACTION/GOTO의 물리적 위치를 응답 동일성 근거로 사용하지 않는다.
+⑬ 일반 HQ Web 응답 파일은 현재 KEY가 확인된 동일 응답 root 내부에서만 탐지·다운로드한다.
+⑭ 현재 KEY가 없는 assistant 텍스트나 과거 turn은 현재 HQ task 결과로 제출하지 않는다.
 
 제10조 (첨부 준비 상태)
 

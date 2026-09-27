@@ -504,6 +504,11 @@ Integration:
 ⑨ assistant 응답에 파일이 명시적으로 존재하는데 다운로드 또는 hash 검증이 실패하면 텍스트만 성공 처리하지 않고 Web 결과 회수 실패로 처리한다.
 ⑩ 저장된 일반 HQ Web 파일은 AiRoleRunResult.Files에 포함해 후속 관제 코드에서 경로를 잃지 않는다.
 ⑪ 확장의 실제 version/build는 CLAIMED 진행 로그에 기록해 실패 로그만으로 테스트에 사용된 확장 빌드를 확인할 수 있게 한다.
+⑫ HQ Web 요청마다 Worker가 13자리 영숫자 correlation KEY를 새로 발급하고 BridgeTask에 저장한다.
+⑬ HQ Web 전송 prompt에는 `[KEY=<key>]`를 포함하고 동일 KEY를 응답에 그대로 반환하도록 요구한다.
+⑭ HQ Web 결과의 엄격한 요청·응답 상관 검사는 KEY 일치만 사용한다. KEY의 물리적 첫 줄 위치는 요구하지 않으며 응답 전체에서 현재 KEY를 찾은 뒤 KEY 이전 내용을 폐기한다.
+⑮ KEY 이후로 걸러진 데이터 안에서 ACTION과 GOTO를 탐색한다. 권장 출력 순서는 KEY → ACTION → GOTO이나 ACTION/GOTO 앞의 설명·공백 때문에 상관 검사를 실패시키지 않는다.
+⑯ 일반 HQ Web 다운로드 파일은 동일 KEY가 확인된 assistant 응답 scope에서만 수집해 과거 turn이나 사용자 첨부 파일과 섞이지 않게 한다.
 
 제18조 (Web 첨부 전송 준비)
 

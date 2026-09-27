@@ -26,19 +26,19 @@ public static class WorkerGotoContract
             var control = lines[first].Trim().TrimStart('\uFEFF');
             if (!TryParseAction(control, out var action, out var actionEnd)) return Invalid("ACTION_INVALID");
 
-            var nextIndex = NextContentLine(lines, first + 1);
+            var gotoIndex = FindFirstGotoStart(lines, first + 1);
             if (action is WorkerAction.Pause or WorkerAction.End)
             {
-                if (nextIndex >= 0 && IsGotoCandidate(lines[nextIndex].Trim())) return Invalid("GOTO_NOT_ALLOWED_WITH_ACTION");
+                if (gotoIndex >= 0) return Invalid("GOTO_NOT_ALLOWED_WITH_ACTION");
                 return new(null, JoinBody(control, actionEnd, lines, first), action);
             }
 
-            if (nextIndex < 0) return Invalid("GOTO_MISSING");
-            var gotoLine = lines[nextIndex].Trim();
+            if (gotoIndex < 0) return Invalid("GOTO_MISSING");
+            var gotoLine = lines[gotoIndex].Trim();
             if (!IsGotoCandidate(gotoLine)) return Invalid("GOTO_INVALID");
             if (!TryParseTarget(gotoLine, out var target, out var gotoEnd)) return Invalid("GOTO_INVALID");
             if (target != WorkerRoleState.Work) return Invalid("GOTO_NOT_ALLOWED");
-            return new(target, JoinBody(gotoLine, gotoEnd, lines, nextIndex), action);
+            return new(target, JoinBody(gotoLine, gotoEnd, lines, gotoIndex), action);
         }
 
         var routeControl = lines[first].Trim().TrimStart('\uFEFF');
@@ -68,9 +68,16 @@ public static class WorkerGotoContract
         return -1;
     }
 
-    private static int NextContentLine(string[] lines, int start)
+    private static int FindFirstGotoStart(string[] lines, int start)
     {
-        for (var i = start; i < lines.Length; i++) if (!string.IsNullOrWhiteSpace(lines[i])) return i;
+        for (var i = start; i < lines.Length; i++)
+        {
+            var candidate = lines[i].TrimStart().TrimStart('\uFEFF');
+            if (candidate.StartsWith("[GOTO", StringComparison.OrdinalIgnoreCase) ||
+                candidate.StartsWith("GOTO", StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+
         return -1;
     }
 

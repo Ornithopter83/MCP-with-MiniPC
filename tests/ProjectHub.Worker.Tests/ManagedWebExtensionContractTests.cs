@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.3.8", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.3.9", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -116,6 +116,13 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("responseText(assistantElement?.innerText", StringComparison.Ordinal));
         Assert.True(source.Contains("responseText(genericItem.element?.innerText", StringComparison.Ordinal));
         Assert.True(source.Contains("let best=responseText(mutationResponseText)", StringComparison.Ordinal));
+        Assert.True(source.Contains("activeCorrelationKey", StringComparison.Ordinal));
+        Assert.True(source.Contains("activeKeyMarker", StringComparison.Ordinal));
+        Assert.True(source.Contains("correlationResponseRoot", StringComparison.Ordinal));
+        Assert.True(source.Contains("currentCorrelatedResponseText", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESPONSE_KEY_MATCHED", StringComparison.Ordinal));
+        Assert.True(source.Contains("correlationKey:activeCorrelationKey||null", StringComparison.Ordinal));
+        Assert.True(source.Contains("activeCorrelationKey?correlationResponseRoot()", StringComparison.Ordinal));
         Assert.True(source.Contains("fallbackSubmitComposer", StringComparison.Ordinal));
         Assert.True(source.Contains("form.requestSubmit()", StringComparison.Ordinal));
         Assert.False(source.Contains("new PointerEvent('pointerdown'", StringComparison.Ordinal));

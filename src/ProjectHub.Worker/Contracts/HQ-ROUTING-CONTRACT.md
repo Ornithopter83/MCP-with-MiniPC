@@ -87,3 +87,11 @@ WORK_GRAPH_PATCH:
 6. RELEASE: workItemId, 선택적 inputType, 선택적 value
 
 ④ Worker는 JSON 구조, revision, ID, dependency 존재, self dependency, cycle 같은 기계적 유효성만 검사한다.
+
+
+제7조 (Web 요청 상관 KEY)
+
+① Web 입력에 `[KEY=<13자리 영숫자>]`가 포함되어 있으면 최종 응답 전체에 동일한 KEY 행을 정확히 그대로 포함한다.
+② 기본 출력 순서는 KEY, ACTION, 필요한 경우 GOTO, 본문이다.
+③ KEY는 요청·응답 상관을 위한 기계 표식이며 의미 판단이나 라우팅 내용이 아니다.
+④ Worker는 응답 전체에서 현재 KEY를 먼저 찾고 KEY 이전 내용을 버린 뒤, KEY 이후 범위에서 ACTION과 GOTO를 찾는다.
