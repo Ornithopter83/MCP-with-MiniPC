@@ -189,36 +189,36 @@
         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="48" Height="48" Background="#F0F6FF" CornerRadius="12"><TextBlock Text="▰" FontSize="28" Foreground="#40536E" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="Server" FontSize="16" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse x:Name="LegacyServerStatusDot" Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock x:Name="LegacyServerStatusText" Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
       </Border>
     </Grid>
-      <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="10,4" Margin="0,4,0,0">
+      <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8,3" Margin="0,4,0,0">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
-          <TextBlock Text="저장소 및 폴더" FontSize="16" FontWeight="Bold" Foreground="{StaticResource Ink}"/>
-          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,2,0,0">
-            <TextBlock Text="Git 저장소" Width="140" FontSize="15" VerticalAlignment="Center"/>
-            <TextBox x:Name="RepositoryUrlInput" Width="652" Height="36" FontSize="16" Padding="9,5" IsReadOnly="True" IsEnabled="False" IsTabStop="False" ToolTip="작업 폴더의 Git origin에서 자동으로 확인됩니다."/>
-            <Button Content="자동 확인" Width="104" Margin="8,0,0,0" Padding="0,6" FontSize="15" Click="AutoDetectTargets_Click"/>
+          <TextBlock Text="저장소 및 폴더" FontSize="15" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="0,0,0,1"/>
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0">
+            <TextBlock Text="Git 저장소" Width="140" FontSize="14" VerticalAlignment="Center"/>
+            <TextBox x:Name="RepositoryUrlInput" Width="652" Height="32" FontSize="15" Padding="8,3" IsReadOnly="True" IsEnabled="False" IsTabStop="False" ToolTip="작업 폴더의 Git origin에서 자동으로 확인됩니다."/>
+            <Button Content="자동 확인" Width="104" Height="32" Margin="8,0,0,0" Padding="0,3" FontSize="14" Click="AutoDetectTargets_Click"/>
           </StackPanel>
-          <StackPanel Grid.Row="2" Margin="140,2,0,0" Visibility="Collapsed">
+          <StackPanel Grid.Row="2" Margin="140,0,0,0" Visibility="Collapsed">
             <TextBlock x:Name="TargetGitStateText" FontSize="15" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
             <TextBlock x:Name="TargetPathText" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap"/>
           </StackPanel>
-          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,2,0,0">
-            <TextBlock Text="서버 주소" Width="140" FontSize="15" VerticalAlignment="Center"/>
-            <TextBox x:Name="ServerUrlInput" Width="780" Height="36" FontSize="16" Padding="9,5"/>
-            <Border Width="390" Height="84" Margin="10,0,0,0" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="14,6" Background="#F8FBFF">
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="60" Height="60" Background="#EAF4FF" CornerRadius="10" VerticalAlignment="Center" Padding="8"><Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Grid.Row="0" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border><Border Grid.Row="1" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border><Border Grid.Row="2" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border></Grid></Border><StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"><TextBlock Text="서버" FontSize="17" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,5,0,0"/><StackPanel Orientation="Horizontal" Margin="0,7,0,0"><Ellipse x:Name="ServerStatusDotSettings" Width="11" Height="11" Fill="#20C65A" Margin="0,0,7,0"/><TextBlock x:Name="ServerStatusTextSettings" Text="READY" FontSize="13" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
+          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0">
+            <TextBlock Text="서버 주소" Width="140" FontSize="14" VerticalAlignment="Center"/>
+            <TextBox x:Name="ServerUrlInput" Width="780" Height="32" FontSize="15" Padding="8,3"/>
+            <Border Width="390" Height="60" Margin="10,0,0,0" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="10,4" Background="#F8FBFF">
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="46" Height="46" Background="#EAF4FF" CornerRadius="9" VerticalAlignment="Center" Padding="6"><Grid><Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Grid.Row="0" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border><Border Grid.Row="1" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border><Border Grid.Row="2" Margin="0,1" Background="#334A68" CornerRadius="3"><Grid Margin="5,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse Width="4" Height="4" Fill="#20C65A" VerticalAlignment="Center"/><Ellipse Grid.Column="1" Width="4" Height="4" Fill="#4DABFF" VerticalAlignment="Center"/><Border Grid.Column="2" Width="15" Height="2" Background="#DCEBFA" VerticalAlignment="Center"/></Grid></Border></Grid></Border><StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"><TextBlock Text="서버" FontSize="15" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,1,0,0"/><StackPanel Orientation="Horizontal" Margin="0,2,0,0"><Ellipse x:Name="ServerStatusDotSettings" Width="9" Height="9" Fill="#20C65A" Margin="0,0,5,0"/><TextBlock x:Name="ServerStatusTextSettings" Text="READY" FontSize="12" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
             </Border>
           </StackPanel>
-          <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,2,0,0">
-            <TextBlock Text="작업 폴더" Width="140" FontSize="15" VerticalAlignment="Center"/>
-            <TextBox x:Name="WorkingDirectoryInput" Width="652" Height="36" FontSize="16" Padding="9,5"/>
-            <Button x:Name="WorkingDirectoryBrowseButton" Content="폴더 선택…" Width="104" Margin="8,0,0,0" Padding="0,6" FontSize="15" Click="BrowseWorkingDirectory_Click"/>
+          <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0">
+            <TextBlock Text="작업 폴더" Width="140" FontSize="14" VerticalAlignment="Center"/>
+            <TextBox x:Name="WorkingDirectoryInput" Width="652" Height="32" FontSize="15" Padding="8,3"/>
+            <Button x:Name="WorkingDirectoryBrowseButton" Content="폴더 선택…" Width="104" Height="32" Margin="8,0,0,0" Padding="0,3" FontSize="14" Click="BrowseWorkingDirectory_Click"/>
           </StackPanel>
-          <Border Grid.Row="5" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,2,0,0">
+          <Border Grid.Row="5" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,0,0,0">
             <StackPanel>
               <TextBlock Text="AI모델 설정" FontSize="16" FontWeight="Bold"/>
               <StackPanel Orientation="Horizontal" Margin="0,12,0,0" Visibility="Collapsed">
