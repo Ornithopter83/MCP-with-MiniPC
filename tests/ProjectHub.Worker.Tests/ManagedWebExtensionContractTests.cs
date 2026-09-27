@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.4.0", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.4.1", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -141,34 +141,21 @@ public sealed class ManagedWebExtensionContractTests
     }
 
     [Fact]
-    public void EmbeddedContent_RollsOverFatalChatUiAndReattachesSameTask()
+    public void EmbeddedContent_ObservesChatUiAnomalyWithoutIntervention()
     {
         var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
 
-        Assert.True(source.Contains("pageFatalUiFailure", StringComparison.Ordinal));
+        Assert.True(source.Contains("pageUiAnomaly", StringComparison.Ordinal));
+        Assert.True(source.Contains("observePassiveUiAnomaly", StringComparison.Ordinal));
+        Assert.True(source.Contains("WEB_UI_ANOMALY_OBSERVED", StringComparison.Ordinal));
         Assert.True(source.Contains("stream recovery polling timed out", StringComparison.Ordinal));
-        Assert.True(source.Contains("CONVERSATION_ROLLOVER_TRIGGER", StringComparison.Ordinal));
-        Assert.True(source.Contains("/rollover')", StringComparison.Ordinal));
-        Assert.True(source.Contains("rollover?role=", StringComparison.Ordinal));
-        Assert.True(source.Contains("/rollover/attach", StringComparison.Ordinal));
-        Assert.True(source.Contains("bootstrapRolloverTask", StringComparison.Ordinal));
-        Assert.True(source.Contains("resumeRolloverClaimedResponse", StringComparison.Ordinal));
-        Assert.True(source.Contains("rolloverBootstrapTaskId", StringComparison.Ordinal));
-        Assert.True(source.Contains("value.pathname=value.pathname.replace", StringComparison.Ordinal));
-    }
+        Assert.True(source.Contains("lastUiAnomalyFingerprint", StringComparison.Ordinal));
 
-    [Fact]
-    public void BridgeTask_ExposesConversationRolloverState()
-    {
-        var properties = typeof(BridgeTask)
-            .GetProperties()
-            .Select(property => property.Name)
-            .ToHashSet(StringComparer.Ordinal);
-
-        Assert.Contains("RolloverPrompt", properties);
-        Assert.Contains("RolloverPending", properties);
-        Assert.Contains("RolloverReason", properties);
-        Assert.Contains("RolloverCount", properties);
+        Assert.False(source.Contains("CONVERSATION_ROLLOVER_TRIGGER", StringComparison.Ordinal));
+        Assert.False(source.Contains("requestConversationRollover", StringComparison.Ordinal));
+        Assert.False(source.Contains("bootstrapRolloverTask", StringComparison.Ordinal));
+        Assert.False(source.Contains("/rollover/attach", StringComparison.Ordinal));
+        Assert.False(source.Contains("location.assign(newConversationUrl())", StringComparison.Ordinal));
     }
 
     [Fact]

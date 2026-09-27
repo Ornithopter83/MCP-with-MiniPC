@@ -1765,17 +1765,10 @@ public partial class MainWindow : Window
             fileCount: effectiveAttachments.Count,
             status: "SENDING",
             includeHistory: false);
-        var rolloverPrompt = roleName.Equals("HQ", StringComparison.OrdinalIgnoreCase)
-            ? effectivePrompt + Environment.NewLine + Environment.NewLine +
-              "Web 대화방이 오류 또는 대화 한계로 교체되었습니다. 동일한 현재 요청을 새 대화에서 이어서 처리하세요." +
-              Environment.NewLine + Environment.NewLine +
-              RoleContractLoader.LoadHqFooter()
-            : effectivePrompt;
         var task = bridgeServer.CreateTaskForRole(
             roleName,
             effectivePrompt,
-            effectiveAttachments,
-            rolloverPrompt: rolloverPrompt)
+            effectiveAttachments)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_CREATE_FAILED");
         var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
