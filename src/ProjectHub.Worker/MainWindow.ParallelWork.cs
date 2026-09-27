@@ -241,7 +241,7 @@ public partial class MainWindow
                 string payload,
                 CancellationToken cancellationToken)
             {
-                var structuredResult = await _structuredPayloadHelper.ProcessAsync(
+                var structuredResult = await _structuredPayloadHelper.ProcessAsync<WorkGraphPatch>(
                     new StructuredPayloadRequest(
                         ContractType: "WORK_GRAPH_PATCH",
                         RawPayload: payload,

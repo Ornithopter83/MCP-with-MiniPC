@@ -12,7 +12,7 @@ public sealed class WorkerStructuredPayloadHelperTests
         var helper = new WorkerStructuredPayloadHelper(
             new AiRoleRunnerRegistry(new[] { runner }));
 
-        var result = await helper.ProcessAsync(
+        var result = await helper.ProcessAsync<WorkGraphPatch>(
             Request(
                 """
                 WORK_GRAPH_PATCH:
@@ -36,7 +36,7 @@ public sealed class WorkerStructuredPayloadHelperTests
         var helper = new WorkerStructuredPayloadHelper(
             new AiRoleRunnerRegistry(new[] { runner }));
 
-        var result = await helper.ProcessAsync(
+        var result = await helper.ProcessAsync<WorkGraphPatch>(
             Request(
                 """
                 WORK_GRAPH_PATCH:
@@ -65,7 +65,7 @@ public sealed class WorkerStructuredPayloadHelperTests
         var helper = new WorkerStructuredPayloadHelper(
             new AiRoleRunnerRegistry(new[] { runner }));
 
-        var result = await helper.ProcessAsync(
+        var result = await helper.ProcessAsync<WorkGraphPatch>(
             Request("WORK_GRAPH_PATCH:\n{"),
             WorkGraphTransportContract.TryParse,
             WorkGraphTransportContract.TryParseJsonPayload);

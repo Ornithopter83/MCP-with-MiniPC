@@ -461,7 +461,7 @@ public sealed class ParallelWorkSupervisorTests
             {
                 helperCalls++;
                 return Task.FromResult(
-                    WorkerStructuredPayloadHelper.ProcessDeterministically(
+                    WorkerStructuredPayloadHelper.ProcessDeterministically<WorkGraphPatch>(
                         payload,
                         WorkGraphTransportContract.TryParse));
             });

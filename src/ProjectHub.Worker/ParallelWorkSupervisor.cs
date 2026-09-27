@@ -87,7 +87,7 @@ public static class ParallelHqTurnContract
         if (envelope!.Action == WorkerAction.Continue)
         {
             var structuredResult =
-                WorkerStructuredPayloadHelper.ProcessDeterministically(
+                WorkerStructuredPayloadHelper.ProcessDeterministically<WorkGraphPatch>(
                     envelope.Body,
                     WorkGraphTransportContract.TryParse);
             if (!structuredResult.Success || structuredResult.Value is null)
@@ -154,10 +154,11 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         _initialBaseRef = baseRef.Trim();
         _runHqAsync = runHqAsync ?? throw new ArgumentNullException(nameof(runHqAsync));
         _processWorkGraphPayloadAsync = processWorkGraphPayloadAsync ??
-            ((payload, _) => Task.FromResult(
-                WorkerStructuredPayloadHelper.ProcessDeterministically(
-                    payload,
-                    WorkGraphTransportContract.TryParse)));
+            new Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>(
+                (payload, _) => Task.FromResult(
+                    WorkerStructuredPayloadHelper.ProcessDeterministically<WorkGraphPatch>(
+                        payload,
+                        WorkGraphTransportContract.TryParse)));
         _includeContractOnFirstHqTurn = includeContractOnFirstHqTurn;
         _enableCompletionReview = enableCompletionReview;
         _hqKnownSnapshot = graph.Snapshot();
