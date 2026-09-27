@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly Forms.NotifyIcon _trayIcon;
     private readonly CodexCliRunner _codexRunner = new();
     private readonly AiRoleRunnerRegistry _aiRoleRunners;
+    private readonly WorkerStructuredPayloadHelper _structuredPayloadHelper;
     private readonly JevJudgeRunner _jevJudgeRunner = new();
     private CodexModelCatalogResult _codexModelCatalog = new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_NOT_LOADED");
     private bool _loadingRoleControls;
@@ -188,6 +189,7 @@ public partial class MainWindow : Window
         ManagedWebRuntimeManager? managedWebRuntimeManager = null)
     {
         _aiRoleRunners = AiRoleRunnerRegistry.CreateDefault(_codexRunner);
+        _structuredPayloadHelper = new WorkerStructuredPayloadHelper(_aiRoleRunners);
         InitializeComponent();
         InitializeDirectWorkControls();
         _bridgeServer = bridgeServer;

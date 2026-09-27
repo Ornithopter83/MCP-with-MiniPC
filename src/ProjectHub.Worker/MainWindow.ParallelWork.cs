@@ -237,13 +237,50 @@ public partial class MainWindow
                 return result.FinalMessage;
             }
 
+            async Task<StructuredPayloadResult<WorkGraphPatch>> ProcessWorkGraphPayloadAsync(
+                string payload,
+                CancellationToken cancellationToken)
+            {
+                var structuredResult = await _structuredPayloadHelper.ProcessAsync(
+                    new StructuredPayloadRequest(
+                        ContractType: "WORK_GRAPH_PATCH",
+                        RawPayload: payload,
+                        RepairRole: implementer,
+                        WorkingDirectory: workingDirectory,
+                        RepairInstruction:
+                            """
+                            JSON 객체 하나만 반환한다.
+                            최상위에는 expectedRevision과 operations를 유지한다.
+                            WorkItem, operation, dependency, goal, baseRef 등 원문의 의미 값은 추가·삭제·변경하지 않는다.
+                            따옴표, 쉼표, 괄호, JSON 타입, 코드펜스와 같은 구조 문제만 복구한다.
+                            """),
+                    WorkGraphTransportContract.TryParse,
+                    WorkGraphTransportContract.TryParseJsonPayload,
+                    cancellationToken);
+
+                if (structuredResult.RepairAttempted)
+                {
+                    RunOnUi(() =>
+                        AddTaskMessage(
+                            "STRUCTURED HELPER",
+                            $"contract=WORK_GRAPH_PATCH · repaired={structuredResult.Repaired} · initialError={structuredResult.InitialErrorCode ?? "none"} · finalError={structuredResult.FinalErrorCode ?? "none"}",
+                            status: structuredResult.Success
+                                ? "STRUCTURED_REPAIRED"
+                                : "STRUCTURED_REPAIR_FAILED",
+                            includeHistory: false));
+                }
+
+                return structuredResult;
+            }
+
             supervisor = new ParallelWorkSupervisor(
                 graph,
                 executor,
                 baseRef,
                 RunParallelHqAsync,
                 cts.Token,
-                includeContractOnFirstHqTurn: string.IsNullOrWhiteSpace(coordinatorSession));
+                includeContractOnFirstHqTurn: string.IsNullOrWhiteSpace(coordinatorSession),
+                processWorkGraphPayloadAsync: ProcessWorkGraphPayloadAsync);
 
             resourceRouter = new ParallelResourceWorkItemRouter(
                 supervisor,

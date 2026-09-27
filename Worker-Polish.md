@@ -525,3 +525,16 @@ Integration:
 ① HQ의 WORK_GRAPH_PATCH 입력에서 workItemId와 dependencies의 WorkItem ID는 JSON 숫자 또는 문자열을 모두 허용한다.
 ② Worker는 숫자 ID를 해당 숫자의 문자열 표현으로 정규화한 뒤 기존 WorkGraph ID 검증을 적용한다.
 ③ JSON 타입 차이만으로 유효한 WorkGraph 요청을 WORK_GRAPH_PATCH_JSON_INVALID로 실패시키지 않는다.
+
+
+제21조 (구조화 AI 출력 Helper)
+
+① Worker가 직접 소비하는 AI 구조화 문자열은 지원되는 계약에 대해 공용 Structured Payload Helper를 우선 진입점으로 사용한다.
+② Helper는 입력을 받으면 먼저 기존 기계 파서를 실행하며 정상 입력은 AI 호출 없이 원래 파싱 결과를 반환한다.
+③ 최초 기계 파싱이 실패하면 Helper 내부에서 현재 WORK 제공자·모델을 사용해 형식 복구를 최대 1회 수행한다.
+④ 형식 복구 호출은 일반 WorkItem을 생성하지 않고 새 AI 세션, read-only sandbox, 프로젝트 지침 무시 조건으로 실행한다.
+⑤ 복구 AI는 원문의 작업 의미를 추가·삭제·재설계하지 않고 구조 형식만 보정하도록 지시한다.
+⑥ 복구 AI의 자기 선언은 성공 근거가 아니다. Helper는 복구 결과를 동일한 기계 계약 파서로 다시 검증하고 최종 통과한 경우에만 성공을 반환한다.
+⑦ Helper 결과에는 최종 파싱 객체, 최종 문자열, 최초 오류, 최종 오류, 복구 시도 여부와 복구 성공 여부를 포함한다.
+⑧ 호출부는 Helper가 반환한 최종 결과를 사용하며 최초 파싱 실패를 별도의 AI 복구 분기로 다시 구현하지 않는다.
+⑨ 첫 적용 계약은 HQ의 WORK_GRAPH_PATCH이며 다른 구조화 AI 계약은 명시적으로 Helper 적용 대상으로 추가한다.

@@ -17,6 +17,11 @@ public sealed record ParallelHqTurn(
     WorkGraphPatch? Patch,
     string RawMessage);
 
+public sealed record ParallelHqEnvelope(
+    WorkerAction Action,
+    string Body,
+    string RawMessage);
+
 public sealed record ParallelWorkSupervisorResult(
     ParallelWorkSupervisorExit Exit,
     string HqBody,
@@ -35,9 +40,12 @@ public sealed record ParallelWorkExternalBlock(
 
 public static class ParallelHqTurnContract
 {
-    public static bool TryParse(string? rawMessage, out ParallelHqTurn? turn, out string? error)
+    public static bool TryParseEnvelope(
+        string? rawMessage,
+        out ParallelHqEnvelope? envelope,
+        out string? error)
     {
-        turn = null;
+        envelope = null;
         error = null;
 
         var route = WorkerGotoContract.Parse(WorkerRoleState.Hq, rawMessage);
@@ -53,25 +61,56 @@ public static class ParallelHqTurnContract
             return false;
         }
 
-        if (route.Action == WorkerAction.Continue)
+        if (route.Action == WorkerAction.Continue &&
+            route.Target != WorkerRoleState.Work)
         {
-            if (route.Target != WorkerRoleState.Work)
+            error = "PARALLEL_HQ_WORK_TARGET_REQUIRED";
+            return false;
+        }
+
+        envelope = new(
+            route.Action.Value,
+            route.Body,
+            rawMessage ?? string.Empty);
+        return true;
+    }
+
+    public static bool TryParse(
+        string? rawMessage,
+        out ParallelHqTurn? turn,
+        out string? error)
+    {
+        turn = null;
+        if (!TryParseEnvelope(rawMessage, out var envelope, out error))
+            return false;
+
+        if (envelope!.Action == WorkerAction.Continue)
+        {
+            var structuredResult =
+                WorkerStructuredPayloadHelper.ProcessDeterministically(
+                    envelope.Body,
+                    WorkGraphTransportContract.TryParse);
+            if (!structuredResult.Success || structuredResult.Value is null)
             {
-                error = "PARALLEL_HQ_WORK_TARGET_REQUIRED";
+                error = structuredResult.FinalErrorCode ??
+                        structuredResult.InitialErrorCode ??
+                        "WORK_GRAPH_PATCH_INVALID";
                 return false;
             }
 
-            if (!WorkGraphTransportContract.TryParse(route.Body, out var patch, out var patchError))
-            {
-                error = patchError ?? "WORK_GRAPH_PATCH_INVALID";
-                return false;
-            }
-
-            turn = new ParallelHqTurn(route.Action.Value, route.Body, patch, rawMessage ?? string.Empty);
+            turn = new(
+                envelope.Action,
+                envelope.Body,
+                structuredResult.Value,
+                envelope.RawMessage);
             return true;
         }
 
-        turn = new ParallelHqTurn(route.Action.Value, route.Body, null, rawMessage ?? string.Empty);
+        turn = new(
+            envelope.Action,
+            envelope.Body,
+            null,
+            envelope.RawMessage);
         return true;
     }
 }
@@ -81,6 +120,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private readonly WorkGraph _graph;
     private readonly ParallelWorkScheduler _scheduler;
     private readonly Func<string, CancellationToken, Task<string>> _runHqAsync;
+    private readonly Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>> _processWorkGraphPayloadAsync;
     private readonly string _initialBaseRef;
     private readonly bool _includeContractOnFirstHqTurn;
     private readonly Channel<ParallelWorkSchedulerSnapshot> _stateChanges =
@@ -103,13 +143,19 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         string baseRef,
         Func<string, CancellationToken, Task<string>> runHqAsync,
         CancellationToken cancellationToken = default,
-        bool includeContractOnFirstHqTurn = true)
+        bool includeContractOnFirstHqTurn = true,
+        Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>? processWorkGraphPayloadAsync = null)
     {
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         if (string.IsNullOrWhiteSpace(baseRef))
             throw new ArgumentException("병렬 WorkGraph 기준 ref가 비어 있습니다.", nameof(baseRef));
         _initialBaseRef = baseRef.Trim();
         _runHqAsync = runHqAsync ?? throw new ArgumentNullException(nameof(runHqAsync));
+        _processWorkGraphPayloadAsync = processWorkGraphPayloadAsync ??
+            ((payload, _) => Task.FromResult(
+                WorkerStructuredPayloadHelper.ProcessDeterministically(
+                    payload,
+                    WorkGraphTransportContract.TryParse)));
         _includeContractOnFirstHqTurn = includeContractOnFirstHqTurn;
         _hqKnownSnapshot = graph.Snapshot();
         _scheduler = new ParallelWorkScheduler(graph, executor, cancellationToken);
@@ -203,10 +249,62 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     ex.GetType().Name + ": " + ex.Message);
             }
 
-            if (!ParallelHqTurnContract.TryParse(rawHqMessage, out var turn, out var turnError))
-                return Failure(turnError ?? "PARALLEL_HQ_RESPONSE_INVALID", rawHqMessage);
+            if (!ParallelHqTurnContract.TryParseEnvelope(
+                    rawHqMessage,
+                    out var envelope,
+                    out var turnError))
+            {
+                return Failure(
+                    turnError ?? "PARALLEL_HQ_RESPONSE_INVALID",
+                    rawHqMessage);
+            }
 
-            if (turn!.Action == WorkerAction.End)
+            ParallelHqTurn turn;
+            if (envelope!.Action == WorkerAction.Continue)
+            {
+                StructuredPayloadResult<WorkGraphPatch> structuredResult;
+                try
+                {
+                    structuredResult = await _processWorkGraphPayloadAsync(
+                        envelope.Body,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    return Failure(
+                        "WORK_GRAPH_STRUCTURED_HELPER_FAILED",
+                        exception.GetType().Name + ": " + exception.Message);
+                }
+
+                if (!structuredResult.Success || structuredResult.Value is null)
+                {
+                    return Failure(
+                        structuredResult.FinalErrorCode ??
+                        structuredResult.InitialErrorCode ??
+                        "WORK_GRAPH_PATCH_INVALID",
+                        structuredResult.FinalPayload);
+                }
+
+                turn = new(
+                    envelope.Action,
+                    envelope.Body,
+                    structuredResult.Value,
+                    envelope.RawMessage);
+            }
+            else
+            {
+                turn = new(
+                    envelope.Action,
+                    envelope.Body,
+                    null,
+                    envelope.RawMessage);
+            }
+
+            if (turn.Action == WorkerAction.End)
             {
                 if (_schedulerStarted)
                     await _scheduler.WaitForQuiescenceAsync(cancellationToken).ConfigureAwait(false);

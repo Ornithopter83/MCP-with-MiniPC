@@ -397,6 +397,39 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task SupervisorAlwaysPassesContinuePayloadThroughStructuredHelper()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var hq = new QueueHqRunner(
+            ContinuePatch(0, Add("W10", "정상 JSON 작업")),
+            End("완료"));
+        var helperCalls = 0;
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync,
+            processWorkGraphPayloadAsync: (payload, _) =>
+            {
+                helperCalls++;
+                return Task.FromResult(
+                    WorkerStructuredPayloadHelper.ProcessDeterministically(
+                        payload,
+                        WorkGraphTransportContract.TryParse));
+            });
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "정상 JSON도 Helper를 통과시킨다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(1, helperCalls);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+    }
+
+    [Fact]
     public void ParallelHqTurnRequiresGraphPatchOnlyForContinue()
     {
         var end = End("완료");

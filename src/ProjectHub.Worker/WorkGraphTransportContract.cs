@@ -42,13 +42,35 @@ public static class WorkGraphTransportContract
             string.Join("\n", lines.Skip(markerIndex + 1))
         }.Where(value => value.Length > 0));
 
-        if (!TryExtractFirstJsonObject(payload, out var json, out var jsonFound))
+        return TryParseJsonPayload(payload, out patch, out error);
+    }
+
+    public static bool TryParseJsonPayload(
+        string? payload,
+        out WorkGraphPatch? patch,
+        out string? error)
+    {
+        patch = null;
+        error = null;
+
+        if (!TryExtractFirstJsonObject(payload ?? string.Empty, out var json, out var jsonFound))
         {
             error = jsonFound
                 ? "WORK_GRAPH_PATCH_JSON_INVALID"
                 : "WORK_GRAPH_PATCH_JSON_MISSING";
             return false;
         }
+
+        return TryParseJsonObject(json, out patch, out error);
+    }
+
+    private static bool TryParseJsonObject(
+        string json,
+        out WorkGraphPatch? patch,
+        out string? error)
+    {
+        patch = null;
+        error = null;
 
         PatchDto? dto;
         try
