@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.3.7", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.3.8", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -110,6 +110,12 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("RESPONSE_MUTATION_LATCHED", StringComparison.Ordinal));
         Assert.True(source.Contains("currentMutationResponseText", StringComparison.Ordinal));
         Assert.True(source.Contains("WAIT_RESPONSE 이후 실제 텍스트 DOM mutation", StringComparison.Ordinal));
+        Assert.True(source.Contains("function responseText(value)", StringComparison.Ordinal));
+        Assert.True(source.Contains("replace(/\\r\\n?/g,'\\n')", StringComparison.Ordinal));
+        Assert.True(source.Contains("responseText(response.element?.innerText", StringComparison.Ordinal));
+        Assert.True(source.Contains("responseText(assistantElement?.innerText", StringComparison.Ordinal));
+        Assert.True(source.Contains("responseText(genericItem.element?.innerText", StringComparison.Ordinal));
+        Assert.True(source.Contains("let best=responseText(mutationResponseText)", StringComparison.Ordinal));
         Assert.True(source.Contains("fallbackSubmitComposer", StringComparison.Ordinal));
         Assert.True(source.Contains("form.requestSubmit()", StringComparison.Ordinal));
         Assert.False(source.Contains("new PointerEvent('pointerdown'", StringComparison.Ordinal));

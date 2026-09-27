@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
-  const EXTENSION_VERSION = '0.3.7';
-  const EXTENSION_BUILD = '2026-09-27.6';
+  const EXTENSION_VERSION = '0.3.8';
+  const EXTENSION_BUILD = '2026-09-27.7';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -33,7 +33,7 @@
     '<div class="status-list">'+statusRow('web','GPT Web','—','')+statusRow('worker','Worker','—','')+statusRow('status','Status','Disconnected','')+'</div>'+
     '<div class="role-bind"><span class="role-binding">역할 미연결</span><button class="status-action bind-hq" type="button">HQ 연결</button><button class="status-action bind-resource" type="button">RESOURCE 연결</button></div>'+
     '<main class="task-section"><div class="section-label">TASK</div><article class="task-card" data-state="IDLE"><div class="task-main"><div class="task-icon">'+icon(icons.idle)+'</div><div class="task-copy"><h2 class="task-title">작업 없음</h2><p class="task-detail">현재 처리할 요청이 없습니다.</p></div><div class="spinner"></div></div><div class="task-meta"><span>Task</span><strong class="task-id">—</strong><span>|</span><span>From</span><strong class="task-from">—</strong></div><div class="message-block worker-message-block"><h3>Worker Message</h3><div class="worker-message">대기 중</div></div><div class="message-block response-block hidden"><h3>Web Response</h3><div class="web-response">응답을 기다리고 있습니다.</div></div><button class="secondary-button resource-rescan hidden" type="button">현재 결과 다시 수집</button></article></main>'+
-    '<footer class="hub-footer">GPTWeb-Hub <span>v0.3.7</span></footer></section>'+
+    '<footer class="hub-footer">GPTWeb-Hub <span>v0.3.8</span></footer></section>'+
     '<section class="settings-modal hidden"><div class="settings-dialog"><div class="settings-title-row"><h2>GPTWeb-Hub Settings</h2><button class="settings-close">'+icon(icons.close)+'</button></div><form class="settings-form"><label>Host<input name="bridgeHost"></label><label>Port<input name="bridgePort" type="number"></label><label>Base Path<input name="bridgeBasePath"></label><div class="settings-test-row"><button class="secondary-button test-connection" type="button">Test Connection</button><span class="test-status">Not tested</span></div><div class="settings-actions"><button class="secondary-button settings-cancel" type="button">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></section>'+
         '<button class="reopen" aria-label="Open GPTWeb-Hub">'+icon(icons.info)+'</button>';
   function statusRow(kind,label,value,action) { return '<div class="status-row" data-kind="'+kind+'"><strong>'+label+'</strong><span class="status-value status-pending">'+value+'</span>'+(action?'<button class="status-action web-connect" type="button">연결</button>':'')+'</div>'; }
@@ -89,7 +89,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
    }
    async function waitFor(predicate,timeout=10000){const end=Date.now()+timeout;while(Date.now()<end){const value=predicate();if(value)return value;await new Promise(resolve=>setTimeout(resolve,150));}return null;}
   function setText(el,text){el.focus();if(el.isContentEditable){document.execCommand('selectAll',false,null);document.execCommand('insertText',false,text);el.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,inputType:'insertText',data:text}));el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));}else{const proto=Object.getPrototypeOf(el);const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;if(setter)setter.call(el,text);else el.value=text;el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));}el.dispatchEvent(new Event('change',{bubbles:true}));}
-  function composerText(el){return el?.isContentEditable?(el.innerText||el.textContent||'').trim():(el?.value||'').trim();} function normalizeText(value){return String(value||'').replace(/\s+/g,' ').trim();} function composerHasPrompt(el,prompt){const actual=normalizeText(composerText(el));const expected=normalizeText(prompt);if(!actual||!expected)return false;const probe=expected.slice(0,Math.min(80,expected.length));return actual.includes(probe)||actual.length>=Math.floor(expected.length*0.85);} function skyEnter(input){input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',which:13,keyCode:13,bubbles:true,cancelable:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',which:13,keyCode:13,bubbles:true}));}
+  function composerText(el){return el?.isContentEditable?(el.innerText||el.textContent||'').trim():(el?.value||'').trim();} function normalizeText(value){return String(value||'').replace(/\s+/g,' ').trim();} function responseText(value){return String(value||'').replace(/\r\n?/g,'\n').replace(/[ \t]+\n/g,'\n').replace(/\n[ \t]+/g,'\n').replace(/\n{3,}/g,'\n\n').trim();} function composerHasPrompt(el,prompt){const actual=normalizeText(composerText(el));const expected=normalizeText(prompt);if(!actual||!expected)return false;const probe=expected.slice(0,Math.min(80,expected.length));return actual.includes(probe)||actual.length>=Math.floor(expected.length*0.85);} function skyEnter(input){input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',which:13,keyCode:13,bubbles:true,cancelable:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',which:13,keyCode:13,bubbles:true}));}
   function turnRole(node){if(!node)return '';const direct=String(node.getAttribute?.('data-message-author-role')||'').toLowerCase();if(direct==='user'||direct==='assistant')return direct;const nested=node.querySelector?.('[data-message-author-role="user"],[data-message-author-role="assistant"]');const nestedRole=String(nested?.getAttribute?.('data-message-author-role')||'').toLowerCase();if(nestedRole==='user'||nestedRole==='assistant')return nestedRole;const testId=String(node.getAttribute?.('data-testid')||'').toLowerCase();if(/(?:^|[-_])user(?:[-_]|$)/.test(testId))return 'user';if(/(?:^|[-_])assistant(?:[-_]|$)/.test(testId))return 'assistant';return '';}
   function turnContainer(node){return node?.closest?.('[data-testid*="conversation-turn"],article')||node;}
   function conversationTurns(){const root=document.querySelector('main')||document.body;const candidates=[...root.querySelectorAll('[data-message-author-role="user"],[data-message-author-role="assistant"],[data-testid*="conversation-turn"],article,[data-message-id]')],seen=new Set(),result=[];for(const candidate of candidates){const container=turnContainer(candidate);if(!container||seen.has(container))continue;const role=turnRole(container)||turnRole(candidate);if(role!=='user'&&role!=='assistant')continue;const roleNode=container.querySelector?.('[data-message-author-role="'+role+'"]')||candidate;const text=normalizeText(roleNode?.innerText||roleNode?.textContent||container.innerText||container.textContent||'');if(!text)continue;seen.add(container);const key=roleNode?.getAttribute?.('data-message-id')||container.getAttribute?.('data-message-id')||roleNode?.id||container.id||container.getAttribute?.('data-testid')||'';result.push({role,element:roleNode||container,container,key:String(key||''),text});}return result;}
@@ -130,17 +130,18 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
   }
   function currentMutationResponseText(prompt){
     let element=mutationResponseElement;
-    let best=normalizeText(mutationResponseText);
+    let best=responseText(mutationResponseText);
     if(!element?.isConnected)return best;
     const main=document.querySelector('main'),expected=normalizeText(prompt),probe=expected.slice(0,Math.min(80,expected.length));
     for(let depth=0;element&&depth<10;depth++,element=element.parentElement){
       if(element===main)break;
       if(element.matches?.('form,nav,aside,header,footer,[role="navigation"]'))break;
       if(element.closest?.('[data-message-author-role="user"]'))break;
-      const text=normalizeText(element.innerText||element.textContent||'');
-      if(!text||text.length<2||text.length>50000)continue;
+      const raw=responseText(element.innerText||element.textContent||'');
+      const text=normalizeText(raw);
+      if(!text||text.length<2||raw.length>50000)continue;
       if(promptMatchesText(text,expected)||promptContainerMatches(text,expected)||(probe&&text.includes(probe)))break;
-      if(text.length>=best.length)best=text;
+      if(raw.length>=best.length)best=raw;
     }
     if(best)mutationResponseText=best;
     return best;
@@ -171,7 +172,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
   function promptContainerMatches(text,prompt){const actual=normalizeText(text),expected=normalizeText(prompt);if(!actual||!expected)return false;if(actual===expected)return true;if(actual.startsWith(expected))return true;if(expected.startsWith(actual)&&actual.length>=Math.floor(expected.length*0.8))return true;return false;}
   function promptConversationPosition(prompt){const turns=conversationTurnContainers();for(let index=turns.length-1;index>=0;index--){const turn=turns[index];if(turn.role==='assistant'||!promptContainerMatches(turn.text,prompt))continue;const fingerprint=containerFingerprint(turn);if(baselineContainerFingerprints.has(fingerprint))continue;return {turns,index,user:turn,response:turns.slice(index+1).find(candidate=>normalizeText(candidate.text))||null};}return null;}
   function responseTurnAfterPrompt(prompt){return promptConversationPosition(prompt)?.response||null;}
-  function currentResponseText(prompt){const response=responseTurnAfterPrompt(prompt);if(response?.text)return normalizeText(response.text);const assistant=assistantTurnEvidence()?latestAssistant():'';if(assistant)return assistant;const generic=normalizeText(latestGenericResponseFallback(prompt)?.text||'');if(generic)return generic;return currentMutationResponseText(prompt);}
+  function currentResponseText(prompt){const response=responseTurnAfterPrompt(prompt);if(response){const raw=responseText(response.element?.innerText||response.element?.textContent||response.text||'');if(raw)return raw;}if(assistantTurnEvidence()){const assistantElement=latestAssistantElement();const raw=responseText(assistantElement?.innerText||assistantElement?.textContent||latestAssistant());if(raw)return raw;}const genericItem=latestGenericResponseFallback(prompt);if(genericItem){const raw=responseText(genericItem.element?.innerText||genericItem.element?.textContent||genericItem.text||'');if(raw)return raw;}return currentMutationResponseText(prompt);}
   function turnFingerprint(turn){if(!turn)return '';const text=normalizeText(turn.text||'');const head=text.slice(0,240),tail=text.length>240?text.slice(-120):'';return [turn.role||'',turn.key||'',text.length,head,tail].join('|');}
   function promptMatchesText(text,prompt){const actual=normalizeText(text),expected=normalizeText(prompt);if(!actual||!expected)return false;const probe=expected.slice(0,Math.min(120,expected.length));return actual===expected||actual.includes(probe)||(expected.includes(actual)&&actual.length>=Math.floor(expected.length*0.6));}
   function userTurnRecords(){return conversationTurns().filter(turn=>turn.role==='user');}
