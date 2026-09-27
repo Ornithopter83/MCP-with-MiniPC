@@ -397,6 +397,52 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task WebCompletionReviewWakesHqWhileOtherWorkIsStillRunning()
+    {
+        var graph = new WorkGraph("job", 2);
+        var executor = new SupervisorExecutor();
+        executor.SetControlled("W11");
+        var hq = new QueueHqRunner(
+            ContinuePatch(
+                0,
+                Add("W10", "먼저 완료"),
+                Add("W11", "계속 실행")),
+            ContinuePatch(1),
+            End("완료"));
+        hq.OnTurn = turn =>
+        {
+            if (turn == 2)
+                executor.Release("W11");
+        };
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync,
+            enableCompletionReview: true);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "Web HQ 완료 점검을 확인한다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(3, hq.Prompts.Count);
+        Assert.Contains(
+            "입력 유형: WORK_GRAPH_PROGRESS_REVIEW",
+            hq.Prompts[1]);
+        Assert.Contains(
+            "WorkItem W10가 COMPLETED 상태가 되었습니다.",
+            hq.Prompts[1]);
+        Assert.Contains(
+            "id=W10 kind=NORMAL state=COMPLETED",
+            hq.Prompts[1]);
+        Assert.Contains(
+            "입력 유형: WORK_GRAPH_QUIESCENT",
+            hq.Prompts[2]);
+    }
+
+    [Fact]
     public async Task SupervisorAlwaysPassesContinuePayloadThroughStructuredHelper()
     {
         var graph = new WorkGraph("job", 1);

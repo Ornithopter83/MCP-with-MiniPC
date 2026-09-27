@@ -280,7 +280,8 @@ public partial class MainWindow
                 RunParallelHqAsync,
                 cts.Token,
                 includeContractOnFirstHqTurn: string.IsNullOrWhiteSpace(coordinatorSession),
-                processWorkGraphPayloadAsync: ProcessWorkGraphPayloadAsync);
+                processWorkGraphPayloadAsync: ProcessWorkGraphPayloadAsync,
+                enableCompletionReview: IsWebTransport(coordinator.Transport));
 
             resourceRouter = new ParallelResourceWorkItemRouter(
                 supervisor,

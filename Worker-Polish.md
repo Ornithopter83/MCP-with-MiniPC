@@ -538,3 +538,15 @@ Integration:
 ⑦ Helper 결과에는 최종 파싱 객체, 최종 문자열, 최초 오류, 최종 오류, 복구 시도 여부와 복구 성공 여부를 포함한다.
 ⑧ 호출부는 Helper가 반환한 최종 결과를 사용하며 최초 파싱 실패를 별도의 AI 복구 분기로 다시 구현하지 않는다.
 ⑨ 첫 적용 계약은 HQ의 WORK_GRAPH_PATCH이며 다른 구조화 AI 계약은 명시적으로 Helper 적용 대상으로 추가한다.
+
+
+제22조 (Web HQ 병렬 완료 점검)
+
+① coordinator transport가 Web일 때 각 WorkItem의 COMPLETED 전이는 HQ 진행 점검 후보로 기록한다.
+② Web HQ가 다른 요청을 처리 중이면 새 HQ 요청을 병렬 생성하지 않고 완료 전이를 누적하며, 현재 HQ 응답 처리가 끝난 뒤 최신 WorkGraph snapshot에서 직전 관제 이후 완료 항목을 한 번에 묶어 전달한다.
+③ 완료 점검 입력 유형은 WORK_GRAPH_PROGRESS_REVIEW를 사용하고, HQ는 완료 결과와 현재 그래프를 바탕으로 추가·보완·통합 WorkItem 필요 여부를 판단한다.
+④ 추가 변경이 없으면 expectedRevision이 현재 revision과 같은 빈 operations patch를 반환할 수 있으며 빈 patch는 revision을 증가시키지 않는다.
+⑤ FAILED 또는 일반 BLOCKED 관제 신호가 같은 시점에 있으면 WORK_GRAPH_EVENT가 완료 점검보다 우선하며 완료 항목도 같은 변경 이벤트에 포함한다.
+⑥ running=0, ready=0이고 외부 RESOURCE/JUDGE 대기가 없으면 WORK_GRAPH_QUIESCENT가 완료 점검보다 우선하며 별도 중복 완료 점검을 만들지 않는다.
+⑦ RESOURCE_REQUEST와 JUDGE_REQUEST 자체는 완료 점검 트리거가 아니며 해당 WorkItem이 최종 COMPLETED 상태가 된 뒤 점검 후보가 된다.
+⑧ CLI coordinator에는 이 완료 점검을 자동 적용하지 않는다.

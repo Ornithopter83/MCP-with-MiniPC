@@ -123,6 +123,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private readonly Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>> _processWorkGraphPayloadAsync;
     private readonly string _initialBaseRef;
     private readonly bool _includeContractOnFirstHqTurn;
+    private readonly bool _enableCompletionReview;
     private readonly Channel<ParallelWorkSchedulerSnapshot> _stateChanges =
         Channel.CreateUnbounded<ParallelWorkSchedulerSnapshot>(new UnboundedChannelOptions
         {
@@ -144,7 +145,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         Func<string, CancellationToken, Task<string>> runHqAsync,
         CancellationToken cancellationToken = default,
         bool includeContractOnFirstHqTurn = true,
-        Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>? processWorkGraphPayloadAsync = null)
+        Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>? processWorkGraphPayloadAsync = null,
+        bool enableCompletionReview = false)
     {
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         if (string.IsNullOrWhiteSpace(baseRef))
@@ -157,6 +159,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     payload,
                     WorkGraphTransportContract.TryParse)));
         _includeContractOnFirstHqTurn = includeContractOnFirstHqTurn;
+        _enableCompletionReview = enableCompletionReview;
         _hqKnownSnapshot = graph.Snapshot();
         _scheduler = new ParallelWorkScheduler(graph, executor, cancellationToken);
         _scheduler.StateChanged += OnSchedulerStateChanged;
@@ -425,9 +428,12 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 snapshot = newer;
 
             RefreshExternalBlocks(snapshot);
-            var reasons = CollectNewSemanticSignals(snapshot);
-            if (reasons.Count > 0)
+            var signals = CollectNewHqSignals(snapshot);
+            if (signals.UrgentReasons.Count > 0)
             {
+                var reasons = signals.UrgentReasons
+                    .Concat(signals.CompletionReasons)
+                    .ToArray();
                 var body = FormatMechanicalGraphDeltaEvent(
                     reasons,
                     _hqKnownSnapshot,
@@ -446,8 +452,13 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 if (!string.Equals(signature, _lastQuiescentSignature, StringComparison.Ordinal))
                 {
                     _lastQuiescentSignature = signature;
+                    var reasons = new List<string>
+                    {
+                        "실행 가능한 WORK와 실행 중 WORK가 없습니다."
+                    };
+                    reasons.AddRange(signals.CompletionReasons);
                     var body = FormatMechanicalGraphDeltaEvent(
-                        new[] { "실행 가능한 WORK와 실행 중 WORK가 없습니다." },
+                        reasons,
                         _hqKnownSnapshot,
                         snapshot);
                     _hqKnownSnapshot = snapshot.Graph;
@@ -456,24 +467,46 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                         body);
                 }
             }
+
+            if (_enableCompletionReview &&
+                signals.CompletionReasons.Count > 0)
+            {
+                var reasons = new List<string>(
+                    signals.CompletionReasons)
+                {
+                    "Web HQ가 유휴 상태이므로 직전 관제 이후 완료된 WorkItem을 점검하고 추가·보완·통합 작업 필요 여부를 판단합니다."
+                };
+                var body = FormatMechanicalGraphDeltaEvent(
+                    reasons,
+                    _hqKnownSnapshot,
+                    snapshot);
+                _hqKnownSnapshot = snapshot.Graph;
+                return new SupervisorWake(
+                    "WORK_GRAPH_PROGRESS_REVIEW",
+                    body);
+            }
         }
     }
 
-    private List<string> CollectNewSemanticSignals(ParallelWorkSchedulerSnapshot snapshot)
+    private HqSignalBatch CollectNewHqSignals(
+        ParallelWorkSchedulerSnapshot snapshot)
     {
-        var reasons = new List<string>();
+        var urgentReasons = new List<string>();
+        var completionReasons = new List<string>();
 
         foreach (var item in snapshot.Graph.Items)
         {
             string? signal = null;
             string? reason = null;
+            var completion = false;
 
             if (item.State == WorkItemState.Failed)
             {
                 signal = $"{item.Id}|FAILED|{item.FailureCode}|{item.FinishedAtUtc:O}";
                 reason = $"WorkItem {item.Id}가 FAILED 상태가 되었습니다.";
             }
-            else if (item.State == WorkItemState.Blocked && !string.IsNullOrWhiteSpace(item.BlockCode))
+            else if (item.State == WorkItemState.Blocked &&
+                     !string.IsNullOrWhiteSpace(item.BlockCode))
             {
                 signal = $"{item.Id}|BLOCKED|{item.BlockCode}|{item.BlockDetailCode}|{item.FinishedAtUtc:O}";
                 if (IsExternalBlockCode(item.BlockCode))
@@ -483,15 +516,16 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                         _pendingExternalBlocks[item.Id] = signal;
                         try
                         {
-                            ExternalBlockAvailable?.Invoke(new ParallelWorkExternalBlock(
-                                item.Id,
-                                item.BlockCode,
-                                item.ResultSummary ?? string.Empty,
-                                item.ResultRef,
-                                item.Branch,
-                                item.WorktreePath,
-                                item.SessionId,
-                                item.Goal));
+                            ExternalBlockAvailable?.Invoke(
+                                new ParallelWorkExternalBlock(
+                                    item.Id,
+                                    item.BlockCode,
+                                    item.ResultSummary ?? string.Empty,
+                                    item.ResultRef,
+                                    item.Branch,
+                                    item.WorktreePath,
+                                    item.SessionId,
+                                    item.Goal));
                         }
                         catch
                         {
@@ -502,12 +536,26 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
                 reason = $"WorkItem {item.Id}가 {item.BlockCode} 상태로 HQ 판단을 기다립니다.";
             }
+            else if (_enableCompletionReview &&
+                     item.State == WorkItemState.Completed)
+            {
+                signal = $"{item.Id}|COMPLETED|{item.ResultRef}|{item.FinishedAtUtc:O}";
+                reason = $"WorkItem {item.Id}가 COMPLETED 상태가 되었습니다.";
+                completion = true;
+            }
 
-            if (signal is not null && _reportedSignals.Add(signal))
-                reasons.Add(reason!);
+            if (signal is null || !_reportedSignals.Add(signal))
+                continue;
+
+            if (completion)
+                completionReasons.Add(reason!);
+            else
+                urgentReasons.Add(reason!);
         }
 
-        return reasons;
+        return new HqSignalBatch(
+            urgentReasons,
+            completionReasons);
     }
 
     private void RefreshExternalBlocks(ParallelWorkSchedulerSnapshot snapshot)
@@ -697,6 +745,10 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         _stateChanges.Writer.TryComplete();
         await _scheduler.DisposeAsync().ConfigureAwait(false);
     }
+
+    private sealed record HqSignalBatch(
+        IReadOnlyList<string> UrgentReasons,
+        IReadOnlyList<string> CompletionReasons);
 
     private sealed record SupervisorWake(
         string InboundType,
