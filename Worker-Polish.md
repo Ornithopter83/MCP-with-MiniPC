@@ -155,6 +155,10 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑰ 미반영 NORMAL CODE_CHANGE가 둘 이상이면 Worker는 임의 병합하지 않고 END를 보류해 HQ가 INTEGRATION WorkItem을 추가할 수 있게 한다.
 ⑱ target branch 변경, dirty 상태, non-fast-forward 또는 검증 실패가 있으면 force/reset으로 해결하지 않고 기계 사실을 HQ에 반환한다.
 ⑲ 최종 반영이 완료된 뒤 같은 프로그램 실행에서 USER_FOLLOWUP이 이어지면 현재 target workspace HEAD를 새 실행 구간의 기본 기준 ref로 사용한다.
+⑳ NORMAL WorkItem을 시작할 때 Worker는 선언된 기준 ref와 완료된 CODE_CHANGE dependency의 resultRef를 Git ancestry로 기계적으로 축약해 실제 코드 기준점을 정한다. 하나의 tip으로 축약되지 않는 독립 CODE_CHANGE 계보는 NORMAL에 자동 결합하지 않고 INTEGRATION 필요 상태로 보존한다.
+㉑ WORK가 의미 결과를 보고한 뒤 checkpoint에 실패하면 Worker는 의미 작업을 곧바로 실패로 바꾸지 않고 worktree와 보고를 보존한 채 checkpoint 재시도 상태로 BLOCKED 처리할 수 있다. 해당 재개에서는 WORK AI를 다시 실행하지 않고 checkpoint 이후 기계 단계를 재개한다.
+㉒ 빌드 로그, self-test 보고서, 임시 내보내기 파일과 분석 결과처럼 최종 납품물이 아닌 검증 산출물은 WorkItem별 runtime temp에 기록하며 NORMAL worktree의 코드 변경 provenance에 포함하지 않는다.
+㉓ 실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 최종 CODE_CHANGE는 종료 판단 전에 해당 코드 결과를 기준으로 하는 독립 검증 WorkItem에서 다시 확인한다. 검증 WorkItem은 발견한 결함을 직접 수정하지 않고 사실을 보고하며 필요한 수정은 별도 후속 WorkItem으로 분리한다.
 
 ---
 
