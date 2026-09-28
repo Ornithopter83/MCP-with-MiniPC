@@ -74,6 +74,7 @@ B=<기준>
 ⑯ END 뒤 Worker가 WORKSPACE_FINALIZATION_REQUIRED를 반환하면 현재 WorkGraph가 종료되지 않은 것으로 보고 해당 기계 사실을 기준으로 다음 동작을 결정한다.
 ⑰ TARGET_INTEGRATION_REQUIRED가 보고되면 미반영 CODE_CHANGE를 함께 반영할 INTEGRATION WorkItem을 추가하고, dirty·branch 변경·non-fast-forward 같은 다른 오류는 force/reset을 요구하지 않는다.
 ⑱ 다른 WorkItem의 결과가 작업 후반의 연결·통합 단계에서만 필요한 경우에는 먼저 실행하는 WorkItem 사이에 dependency를 두지 않는다. 해당 결과들을 함께 소비하는 후속 WorkItem을 별도로 만들고 그 후속 WorkItem에 필요한 dependency를 둔다.
+⑲ SET_GOAL, SET_DEPENDENCIES, SET_BASE_REF는 PLANNED, READY, BLOCKED 상태의 WorkItem에만 사용한다. RUNNING, COMPLETED, FAILED, CANCELED 상태의 WorkItem에는 사용하지 않는다.
 
 제6조 (CONTINUE 본문)
 
