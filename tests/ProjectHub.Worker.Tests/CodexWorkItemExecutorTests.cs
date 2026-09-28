@@ -41,6 +41,8 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(runtime.DotNetHome, fixture.Runner.LastRequest.EnvironmentVariables["DOTNET_CLI_HOME"]);
             Assert.Equal(workTemp, fixture.Runner.LastRequest.EnvironmentVariables["TEMP"]);
             Assert.Equal(workTemp, fixture.Runner.LastRequest.EnvironmentVariables["TMP"]);
+            Assert.Equal(workTemp, fixture.Runner.LastRequest.EnvironmentVariables["PROJECTHUB_WORK_TEMP"]);
+            Assert.Contains("WORK 임시 산출물 루트: " + workTemp, fixture.Runner.LastRequest.Prompt);
             Assert.False(fixture.Runner.LastRequest.IncludeAppBaseWritable);
             Assert.Contains(runtime.NuGetRoot, fixture.Runner.LastRequest.AdditionalWritableDirectories!);
             Assert.Contains(runtime.DotNetHome, fixture.Runner.LastRequest.AdditionalWritableDirectories!);
@@ -348,6 +350,34 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task MissingCodeDependencyResultRefBlocksBeforeAiExecution()
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            실행되면 안 됩니다.
+            """,
+            dependencies: new[]
+            {
+                new WorkItemDependencyResult("W0", null, "선행 코드", WorkItemResultType.CodeChange, "manifest-W0.json")
+            });
+
+        try
+        {
+            var result = await fixture.Executor.ExecuteAsync(fixture.Request, CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("WORKTREE_DEPENDENCY_RESULT_REF_MISSING", result.BlockCode);
+            Assert.Null(fixture.Runner.LastRequest);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task DependencyResultsAreIncludedInWorkItemPrompt()
     {
         var fixture = CreateFixture("""
@@ -357,7 +387,7 @@ public sealed class CodexWorkItemExecutorTests
             """,
             dependencies: new[]
             {
-                new WorkItemDependencyResult("W0", "dep-ref", "선행 완료", WorkItemResultType.CodeChange, "manifest-W0.json")
+                new WorkItemDependencyResult("W0", "dep-ref", "선행 완료", WorkItemResultType.Analysis, "manifest-W0.json")
             });
 
         try
@@ -365,7 +395,7 @@ public sealed class CodexWorkItemExecutorTests
             await fixture.Executor.ExecuteAsync(fixture.Request, CancellationToken.None);
 
             Assert.Contains("선행 WorkItem 결과:", fixture.Runner.LastRequest!.Prompt);
-            Assert.Contains("W0 | resultType=CODE_CHANGE | ref=dep-ref | commitManifest=manifest-W0.json | snapshot=없음 | report=선행 완료", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("W0 | resultType=ANALYSIS | ref=dep-ref | commitManifest=manifest-W0.json | snapshot=없음 | report=선행 완료", fixture.Runner.LastRequest.Prompt);
         }
         finally
         {
@@ -722,6 +752,7 @@ public sealed class CodexWorkItemExecutorTests
         }
 
         public AiRoleRunRequest? LastRequest { get; private set; }
+        public int RunCount { get; private set; }
 
         public AiServiceProvider Provider => AiServiceProvider.OpenAI;
         public bool SupportsSessions => true;
@@ -731,6 +762,7 @@ public sealed class CodexWorkItemExecutorTests
 
         public Task<AiRoleRunResult> RunAsync(AiRoleRunRequest request)
         {
+            RunCount++;
             LastRequest = request;
             request.SessionStarted?.Invoke("session-1");
             return Task.FromResult(new AiRoleRunResult(
