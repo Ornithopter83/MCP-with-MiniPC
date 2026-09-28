@@ -152,7 +152,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑭ HQ END 시점에 완료된 CODE_CHANGE가 사용자 target workspace에 아직 반영되지 않았다면 Worker는 WorkGraph가 유휴 상태인 종료 게이트에서만 최종 반영을 시도한다.
 ⑮ 완료된 INTEGRATION이 dependency로 소비한 NORMAL CODE_CHANGE는 별도 반영 대상으로 다시 취급하지 않는다.
 ⑯ 미반영 NORMAL CODE_CHANGE가 하나이면 Worker는 target branch가 예상 상태이고 clean이며 fast-forward 가능한 경우에만 해당 commit을 target workspace에 기계적으로 반영한다.
-⑰ 미반영 NORMAL CODE_CHANGE가 둘 이상이면 Worker는 임의 병합하지 않고 END를 보류해 HQ가 INTEGRATION WorkItem을 추가할 수 있게 한다.
+⑰ 미반영 NORMAL CODE_CHANGE가 둘 이상이면 Worker는 Git ancestry로 하나의 최종 tip으로 축약되는 경우 그 tip만 반영하며, 서로 독립된 tip이 둘 이상 남는 경우에만 임의 병합하지 않고 END를 보류해 HQ가 INTEGRATION WorkItem을 추가할 수 있게 한다.
 ⑱ target branch 변경, dirty 상태, non-fast-forward 또는 검증 실패가 있으면 force/reset으로 해결하지 않고 기계 사실을 HQ에 반환한다.
 ⑲ 최종 반영이 완료된 뒤 같은 프로그램 실행에서 USER_FOLLOWUP이 이어지면 현재 target workspace HEAD를 새 실행 구간의 기본 기준 ref로 사용한다.
 ⑳ NORMAL WorkItem을 시작할 때 Worker는 선언된 기준 ref와 완료된 CODE_CHANGE dependency의 resultRef를 Git ancestry로 기계적으로 축약해 실제 코드 기준점을 정한다. 하나의 tip으로 축약되지 않는 독립 CODE_CHANGE 계보는 NORMAL에 자동 결합하지 않고 INTEGRATION 필요 상태로 보존한다.
