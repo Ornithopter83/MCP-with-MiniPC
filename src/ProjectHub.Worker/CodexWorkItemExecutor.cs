@@ -751,6 +751,16 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 commitManifestPath);
         }
 
+        if (reportStatus == WorkItemReportStatus.Completed &&
+            item.Kind == WorkItemKind.Normal)
+        {
+            await TryRemoveCompletedNormalWorktreeAsync(
+                item,
+                preparation,
+                checkpoint,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         return reportStatus switch
         {
             WorkItemReportStatus.Completed => WorkItemExecutionResult.Completed(
@@ -786,6 +796,49 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 sessionId)
         };
+    }
+
+    private async Task TryRemoveCompletedNormalWorktreeAsync(
+        WorkItemSnapshot item,
+        GitWorktreePreparationResult preparation,
+        GitWorktreeCheckpointResult checkpoint,
+        CancellationToken cancellationToken)
+    {
+        var branch = checkpoint.Branch ?? preparation.Branch;
+        if (string.IsNullOrWhiteSpace(branch) ||
+            string.IsNullOrWhiteSpace(checkpoint.WorktreePath))
+            return;
+
+        try
+        {
+            var removal = await _worktrees.RemoveAsync(
+                preparation.RepositoryRoot,
+                checkpoint.WorktreePath,
+                branch,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!removal.Success)
+            {
+                Progress?.Invoke(new CodexWorkItemProgress(
+                    item.Id,
+                    "완료 WorkItem의 linked worktree 정리를 보류했습니다. " +
+                    (removal.ErrorCode ?? "WORKTREE_REMOVE_FAILED"),
+                    item.CreatedOrder + 1));
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            Progress?.Invoke(new CodexWorkItemProgress(
+                item.Id,
+                "완료 WorkItem의 linked worktree 정리 중 기계 오류가 발생해 최종 runtime 정리로 넘깁니다. " +
+                exception.GetType().Name,
+                item.CreatedOrder + 1));
+        }
     }
 
     private static string BuildCheckpointPendingSummary(
