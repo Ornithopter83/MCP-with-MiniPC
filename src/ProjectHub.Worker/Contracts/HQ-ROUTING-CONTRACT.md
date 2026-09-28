@@ -60,10 +60,10 @@ B=<기준>
 ② WorkItem #0~#9는 예약 번호이며 일반 작업에 배정하지 않는다. 일반 WorkItem은 #10부터 배정한다.
 ③ WorkItem #0은 리소스 전용이며 생성 리소스가 필요하면 해당 작업을 #0으로 계획한다. 새로 ADD한 #0은 별도 RELEASE 없이 실행 대상으로 진행한다.
 ④ WorkItem #1은 이미지 가공 전용이며 스프라이트 분할 등 기존 이미지 가공만 맡긴다.
-⑤ 사용자 목표를 WorkItem과 명시적 dependency로 분해한다.
+⑤ 사용자 목표를 독립적으로 시작할 수 있는 WorkItem으로 우선 분해한다. 서로 독립적으로 시작할 수 있는 WorkItem 사이에는 dependency를 두지 않는다. dependency는 해당 WorkItem을 시작하기 전에 선행 WorkItem의 결과가 반드시 필요한 경우에만 둔다.
 ⑥ 새 WorkItem 생성, 목표 변경, dependency 변경, 취소, HQ 판단 대기 해제는 HQ가 결정한다.
 ⑦ COMPLETED, FAILED, CANCELED은 종료 기록이다. 재시도는 새 ID로 ADD하고 필요한 비종료 후속 dependency만 바꾼다.
-⑧ WORK가 SPLIT_REQUEST를 보고해도 Worker나 WORK가 직접 새 WorkItem을 만들지 않는다.
+⑧ WORK가 SPLIT_REQUEST를 보고해도 Worker나 WORK가 직접 새 WorkItem을 만들지 않는다. HQ는 보고된 근거와 현재 WorkGraph를 기준으로 새 WorkItem 추가 여부와 dependency를 결정한다.
 ⑨ 최대 동시 WORK 수는 사용자 설정이며 HQ가 변경하지 않는다.
 ⑩ Integration은 kind=INTEGRATION인 WorkItem으로 만들고 필요한 완료 WorkItem을 dependency로 둔다.
 ⑪ Worker가 완료 항목에 resultType=CODE_CHANGE를 보고한 경우에만 해당 resultRef를 새 코드 결과로 취급한다. resultType=ANALYSIS의 resultRef는 실행 기준점일 수 있으므로 통합 대상 commit으로 간주하지 않는다.
@@ -73,6 +73,7 @@ B=<기준>
 ⑮ CODE_CHANGE 결과에 commitManifest가 제공되면 변경 경로·삭제 목록·인라인 텍스트 내용을 다시 수집하기 위한 ANALYSIS WorkItem을 만들지 않고 해당 manifest를 기계적 사실로 우선 사용한다.
 ⑯ END 뒤 Worker가 WORKSPACE_FINALIZATION_REQUIRED를 반환하면 현재 WorkGraph가 종료되지 않은 것으로 보고 해당 기계 사실을 기준으로 다음 동작을 결정한다.
 ⑰ TARGET_INTEGRATION_REQUIRED가 보고되면 미반영 CODE_CHANGE를 함께 반영할 INTEGRATION WorkItem을 추가하고, dirty·branch 변경·non-fast-forward 같은 다른 오류는 force/reset을 요구하지 않는다.
+⑱ 다른 WorkItem의 결과가 작업 후반의 연결·통합 단계에서만 필요한 경우에는 먼저 실행하는 WorkItem 사이에 dependency를 두지 않는다. 해당 결과들을 함께 소비하는 후속 WorkItem을 별도로 만들고 그 후속 WorkItem에 필요한 dependency를 둔다.
 
 제6조 (CONTINUE 본문)
 
