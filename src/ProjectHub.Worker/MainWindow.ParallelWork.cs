@@ -132,6 +132,9 @@ public partial class MainWindow
             var observationGate = new WorkItemObservationGate(
                 observationQueue,
                 mechanicalWork);
+            var targetWorkspaceFinalizer = new TargetWorkspaceFinalizer(
+                workingDirectory,
+                currentGitTarget.Branch);
 
             executor = new CodexWorkItemExecutor(
                 jobId,
@@ -309,7 +312,50 @@ public partial class MainWindow
                 cts.Token,
                 includeContractOnFirstHqTurn: string.IsNullOrWhiteSpace(coordinatorSession),
                 processWorkGraphPayloadAsync: ProcessWorkGraphPayloadAsync,
-                enableCompletionReview: IsWebTransport(coordinator.Transport));
+                enableCompletionReview: IsWebTransport(coordinator.Transport),
+                finalizeEndAsync: async (snapshot, cancellationToken) =>
+                {
+                    var finalization = await targetWorkspaceFinalizer
+                        .FinalizeAsync(snapshot, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    ProjectWorkspacePersistence.AppendEvent(
+                        workingDirectory,
+                        jobId,
+                        DateTimeOffset.UtcNow,
+                        "TARGET WORKSPACE",
+                        finalization.Message +
+                        (string.IsNullOrWhiteSpace(finalization.ErrorCode)
+                            ? string.Empty
+                            : Environment.NewLine + "errorCode=" + finalization.ErrorCode) +
+                        (string.IsNullOrWhiteSpace(finalization.LandedWorkItemId)
+                            ? string.Empty
+                            : Environment.NewLine + "workItemId=" + finalization.LandedWorkItemId) +
+                        (string.IsNullOrWhiteSpace(finalization.LandedResultRef)
+                            ? string.Empty
+                            : Environment.NewLine + "resultRef=" + finalization.LandedResultRef),
+                        finalization.Success ? "COMPLETED" : finalization.ErrorCode ?? "WORKSPACE_FINALIZATION_REQUIRED");
+
+                    RunOnUi(() =>
+                        AddTaskMessage(
+                            "TARGET WORKSPACE",
+                            finalization.Message +
+                            (string.IsNullOrWhiteSpace(finalization.LandedWorkItemId)
+                                ? string.Empty
+                                : Environment.NewLine + $"workItemId={finalization.LandedWorkItemId}") +
+                            (string.IsNullOrWhiteSpace(finalization.LandedResultRef)
+                                ? string.Empty
+                                : Environment.NewLine + $"resultRef={finalization.LandedResultRef}"),
+                            status: finalization.Success
+                                ? "COMPLETED"
+                                : finalization.ErrorCode ?? "WORKSPACE_FINALIZATION_REQUIRED",
+                            includeHistory: false));
+
+                    return new ParallelEndFinalizationResult(
+                        finalization.Success,
+                        finalization.ErrorCode,
+                        finalization.Message);
+                });
 
             resourceRouter = new ParallelResourceWorkItemRouter(
                 supervisor,

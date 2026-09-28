@@ -29,6 +29,11 @@ public sealed record ParallelWorkSupervisorResult(
     string? ErrorCode,
     WorkGraphSnapshot Graph);
 
+public sealed record ParallelEndFinalizationResult(
+    bool Success,
+    string? ErrorCode = null,
+    string? Body = null);
+
 public sealed record ParallelWorkExternalBlock(
     string WorkItemId,
     string BlockCode,
@@ -125,6 +130,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private readonly string _initialBaseRef;
     private readonly bool _includeContractOnFirstHqTurn;
     private readonly bool _enableCompletionReview;
+    private readonly Func<WorkGraphSnapshot, CancellationToken, Task<ParallelEndFinalizationResult>>? _finalizeEndAsync;
     private readonly Channel<ParallelWorkSchedulerSnapshot> _stateChanges =
         Channel.CreateUnbounded<ParallelWorkSchedulerSnapshot>(new UnboundedChannelOptions
         {
@@ -147,7 +153,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         CancellationToken cancellationToken = default,
         bool includeContractOnFirstHqTurn = true,
         Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>? processWorkGraphPayloadAsync = null,
-        bool enableCompletionReview = false)
+        bool enableCompletionReview = false,
+        Func<WorkGraphSnapshot, CancellationToken, Task<ParallelEndFinalizationResult>>? finalizeEndAsync = null)
     {
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         if (string.IsNullOrWhiteSpace(baseRef))
@@ -162,6 +169,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                         WorkGraphTransportContract.TryParse)));
         _includeContractOnFirstHqTurn = includeContractOnFirstHqTurn;
         _enableCompletionReview = enableCompletionReview;
+        _finalizeEndAsync = finalizeEndAsync;
         _hqKnownSnapshot = graph.Snapshot();
         _scheduler = new ParallelWorkScheduler(graph, executor, cancellationToken);
         _scheduler.StateChanged += OnSchedulerStateChanged;
@@ -338,6 +346,34 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     inboundType = "WORK_GRAPH_END_REJECTED";
                     inboundBody = FormatEndRejected(openItems, endSnapshot);
                     continue;
+                }
+
+                if (_finalizeEndAsync is not null)
+                {
+                    ParallelEndFinalizationResult finalization;
+                    try
+                    {
+                        finalization = await _finalizeEndAsync(
+                            endSnapshot,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        return Failure(
+                            "WORKSPACE_FINALIZATION_FAILED",
+                            exception.GetType().Name + ": " + exception.Message);
+                    }
+
+                    if (!finalization.Success)
+                    {
+                        inboundType = "WORKSPACE_FINALIZATION_REQUIRED";
+                        inboundBody = FormatEndFinalizationRejected(finalization, endSnapshot);
+                        continue;
+                    }
                 }
 
                 return new(
@@ -733,6 +769,20 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             AppendMechanicalItem(builder, item);
 
         builder.AppendLine("위 값은 Worker가 관측한 기계적 상태이며 작업 의미 판단 결과가 아닙니다.");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string FormatEndFinalizationRejected(
+        ParallelEndFinalizationResult finalization,
+        WorkGraphSnapshot snapshot)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("HQ의 END 요청 뒤 사용자 작업 폴더 최종 반영이 완료되지 않아 종료를 보류했습니다.");
+        builder.AppendLine($"revision={snapshot.Revision}");
+        builder.AppendLine("errorCode=" + (finalization.ErrorCode ?? "WORKSPACE_FINALIZATION_REQUIRED"));
+        if (!string.IsNullOrWhiteSpace(finalization.Body))
+            builder.AppendLine(finalization.Body.Trim());
+        builder.Append("WorkGraph는 그대로 유지됩니다. 필요한 경우 INTEGRATION WorkItem을 추가하거나 현재 기계 오류에 맞는 다음 동작을 결정하세요.");
         return builder.ToString().TrimEnd();
     }
 
