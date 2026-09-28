@@ -113,30 +113,33 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     commitManifestPath: item.CommitManifestPath);
             }
 
-            var baseResolution = await _worktrees.ResolveNormalBaseRefAsync(
-                _workspace,
-                item.BaseRef!,
-                codeDependencies
-                    .Select(dependency => dependency.ResultRef!)
-                    .ToArray(),
-                cancellationToken).ConfigureAwait(false);
-
-            if (!baseResolution.Success || string.IsNullOrWhiteSpace(baseResolution.EffectiveBaseRef))
+            if (codeDependencies.Length > 0)
             {
-                var errorCode = baseResolution.ErrorCode ?? "WORKTREE_DEPENDENCY_BASE_RESOLUTION_FAILED";
-                return WorkItemExecutionResult.Blocked(
-                    errorCode,
-                    baseResolution.ErrorDetail ?? "NORMAL WorkItem의 실제 코드 기준점을 계산하지 못했습니다.",
-                    item.ResultRef,
-                    item.Branch,
-                    item.WorktreePath,
-                    item.SessionId,
-                    blockDetailCode: errorCode,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
-            }
+                var baseResolution = await _worktrees.ResolveNormalBaseRefAsync(
+                    _workspace,
+                    item.BaseRef!,
+                    codeDependencies
+                        .Select(dependency => dependency.ResultRef!)
+                        .ToArray(),
+                    cancellationToken).ConfigureAwait(false);
 
-            effectiveBaseRef = baseResolution.EffectiveBaseRef;
+                if (!baseResolution.Success || string.IsNullOrWhiteSpace(baseResolution.EffectiveBaseRef))
+                {
+                    var errorCode = baseResolution.ErrorCode ?? "WORKTREE_DEPENDENCY_BASE_RESOLUTION_FAILED";
+                    return WorkItemExecutionResult.Blocked(
+                        errorCode,
+                        baseResolution.ErrorDetail ?? "NORMAL WorkItem의 실제 코드 기준점을 계산하지 못했습니다.",
+                        item.ResultRef,
+                        item.Branch,
+                        item.WorktreePath,
+                        item.SessionId,
+                        blockDetailCode: errorCode,
+                        resultType: item.ResultType,
+                        commitManifestPath: item.CommitManifestPath);
+                }
+
+                effectiveBaseRef = baseResolution.EffectiveBaseRef;
+            }
         }
 
         GitWorktreePreparationResult preparation;
