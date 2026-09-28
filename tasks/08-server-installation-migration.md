@@ -1,5 +1,10 @@
 # 08 Server 설치·이전 가이드
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 작성 당시의 목표·구현·검증 기록이다. 현재 정책·계약·런타임 상태의 원본으로 사용하지 않는다.
+> 현재 기준은 `Master-Polish.md`, 프로젝트별 `*-Polish.md`, 전용 계약을 따른다.
+
+
 Windows 11 이상, Git, 요구 .NET SDK, PowerShell, 기존 Supabase 및 NAS 게이트웨이를 사용한다. 비밀값은 환경 변수 또는 Windows 보안 저장소에만 둔다.
 
 설치 순서: `git clone https://github.com/Ornithopter83/MCP-with-MiniPC.git C:\ProjectHub`, `dotnet --info`, `dotnet build ProjectHub.sln --no-restore`, `dotnet test ProjectHub.sln --no-restore`.

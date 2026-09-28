@@ -1,5 +1,10 @@
 # 15 비동기 기계 작업과 계측
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 작성 당시의 목표·구현·검증 기록이다. 현재 정책·계약·런타임 상태의 원본으로 사용하지 않는다.
+> 현재 기준은 `Master-Polish.md`, 프로젝트별 `*-Polish.md`, 전용 계약을 따른다.
+
+
 갱신일: 2026-09-25
 
 정책 원본은 Master-Polish.md다.

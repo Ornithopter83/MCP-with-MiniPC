@@ -1,5 +1,10 @@
 # 07 프로젝트 배포 패키지
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 작성 당시의 목표·구현·검증 기록이다. 현재 정책·계약·런타임 상태의 원본으로 사용하지 않는다.
+> 현재 기준은 `Master-Polish.md`, 프로젝트별 `*-Polish.md`, 전용 계약을 따른다.
+
+
 독립 Git 저장소를 ProjectHub 관리 대상으로 비파괴 등록하고 Setup, Sync, Restore를 사용할 수 있게 한다.
 
 구현 진행(2026-09-17): `ProjectHub_Setup.cmd` 단일 진입점, 작업 PC heartbeat 선등록, `.projecthub/project.json`, 기존 문서 조건부 생성, `bin` 배포 디렉터리, Sync/Restore 런처, 체크포인트 조회 API, NAS download endpoint를 구현했다. Sync는 이전/current manifest를 비교해 `ADDED`, `CHANGED`, `UNCHANGED`, `REMOVED`, `FAILED`를 분류하고, Windows GUI 승인 후에만 tombstone API를 호출한다. Restore는 현재 프로젝트 폴더를 기준으로 관리 파일을 갱신하며 `LOCAL_ONLY` 파일은 보존하고, 관리된 REMOVED 경로만 GUI 승인 후 삭제한다.
