@@ -4,6 +4,44 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class ParallelWorkSidecarTests
 {
+    [Theory]
+    [InlineData("IMAGE", "image")]
+    [InlineData("AUDIO", "audio")]
+    [InlineData("VIDEO", "video")]
+    [InlineData("DOCUMENT", "document")]
+    [InlineData("FILE", "file")]
+    public void ResourceStagingUsesSharedTypedTempFolder(string resourceType, string expectedSegment)
+    {
+        var repository = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-resource-staging-" + Guid.NewGuid().ToString("N"),
+            "sample");
+        Directory.CreateDirectory(repository);
+
+        try
+        {
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(repository);
+            var path = WorkerPaths.BuildResourceStagingDirectory(
+                runtime,
+                resourceType,
+                "abc123");
+
+            Assert.Equal(
+                Path.Combine(runtime.TempRoot, expectedSegment, "abc123"),
+                path);
+            Assert.DoesNotContain(
+                Path.DirectorySeparatorChar + "worktrees" + Path.DirectorySeparatorChar,
+                path,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            var parent = Directory.GetParent(repository)!.FullName;
+            if (Directory.Exists(parent))
+                Directory.Delete(parent, true);
+        }
+    }
+
     [Fact]
     public async Task ResourceQueuePreservesWorkItemOwnerThroughCompletionAndRegistry()
     {
