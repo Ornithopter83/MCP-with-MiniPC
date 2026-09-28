@@ -73,6 +73,38 @@ public static class WorkerPaths
             StableRuntimeSegment(workItemId));
     }
 
+    public static string BuildResourceStagingRoot(
+        RepositoryRuntimePaths runtime,
+        string resourceType)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        var segment = (resourceType ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "IMAGE" => "image",
+            "AUDIO" => "audio",
+            "VIDEO" => "video",
+            "DOCUMENT" => "document",
+            "FILE" => "file",
+            _ => throw new ArgumentException("지원되지 않는 RESOURCE 타입입니다.", nameof(resourceType))
+        };
+        return Path.Combine(runtime.TempRoot, segment);
+    }
+
+    public static string BuildResourceStagingDirectory(
+        RepositoryRuntimePaths runtime,
+        string resourceType,
+        string requestId)
+    {
+        if (string.IsNullOrWhiteSpace(requestId) ||
+            requestId.Any(character => !char.IsAsciiLetterOrDigit(character)))
+            throw new ArgumentException("RESOURCE request ID가 안전한 형식이 아닙니다.", nameof(requestId));
+
+        return Path.Combine(
+            BuildResourceStagingRoot(runtime, resourceType),
+            requestId.Trim());
+    }
+
+
     public static void EnsureWorkToolDirectories(
         RepositoryRuntimePaths runtime,
         string workTempPath)
