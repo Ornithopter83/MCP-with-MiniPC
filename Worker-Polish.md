@@ -159,6 +159,9 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ㉑ WORK가 의미 결과를 보고한 뒤 checkpoint에 실패하면 Worker는 의미 작업을 곧바로 실패로 바꾸지 않고 worktree와 보고를 보존한 채 checkpoint 재시도 상태로 BLOCKED 처리할 수 있다. 해당 재개에서는 WORK AI를 다시 실행하지 않고 checkpoint 이후 기계 단계를 재개한다.
 ㉒ 빌드 로그, self-test 보고서, 임시 내보내기 파일과 분석 결과처럼 최종 납품물이 아닌 검증 산출물은 WorkItem별 runtime temp에 기록하며 NORMAL worktree의 코드 변경 provenance에 포함하지 않는다.
 ㉓ 실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 최종 CODE_CHANGE는 종료 판단 전에 해당 코드 결과를 기준으로 하는 독립 검증 WorkItem에서 다시 확인한다. 검증 WorkItem은 발견한 결함을 직접 수정하지 않고 사실을 보고하며 필요한 수정은 별도 후속 WorkItem으로 분리한다.
+㉔ HQ의 WORK_GRAPH_PATCH가 JSON 또는 operation별 기계 스키마 검증에 실패하면 Worker는 WorkGraph를 변경하지 않고 오류 코드와 가능한 path/hint를 HQ에 반환해 같은 관제 흐름에서 제한된 횟수만 재작성하게 한다. 반복 한계를 넘긴 경우에만 관제를 기계 오류로 종료할 수 있다.
+㉕ 새 작업을 시작할 때 Worker는 이전 작업의 sibling `<project>.projecthub` runtime 정리를 기계적으로 시도한다. 등록된 linked worktree에 미커밋 변경이 있으면 해당 worktree는 보존하되 제거 가능한 clean worktree와 integration clone, temp, NuGet·dotnet runtime cache는 정리할 수 있다.
+㉖ runtime 디렉터리 삭제는 읽기 전용 속성과 짧은 파일 핸들 해제 지연을 고려해 유한 횟수 재시도하며, 반복 실패 시 삭제되지 않은 경로와 기계 오류를 기록한다.
 
 ---
 
