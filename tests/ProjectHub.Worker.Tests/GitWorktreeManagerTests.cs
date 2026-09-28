@@ -334,6 +334,120 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task RuntimeCleanupRemovesOwnedWorktreesPrunesAndDeletesRuntimeRoot()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
+        var ownedWorktree = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        var unrelatedWorktree = Path.Combine(
+            Directory.GetParent(root)!.FullName,
+            "manual-worktree");
+        Directory.CreateDirectory(ownedWorktree);
+        Directory.CreateDirectory(unrelatedWorktree);
+        Directory.CreateDirectory(runtime.NuGetPackages);
+        File.WriteAllText(Path.Combine(runtime.NuGetPackages, "cache.txt"), "cache");
+
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(
+            0,
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n\n" +
+            $"worktree {ownedWorktree}\nHEAD work123\nbranch refs/heads/projecthub/job/W1\n\n" +
+            $"worktree {unrelatedWorktree}\nHEAD other123\nbranch refs/heads/feature/manual\n");
+        runner.Enqueue(0, "work123");
+        runner.Enqueue(0, "projecthub/job/W1");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "removed");
+        runner.Enqueue(0, "pruned");
+        runner.Enqueue(
+            0,
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n\n" +
+            $"worktree {unrelatedWorktree}\nHEAD other123\nbranch refs/heads/feature/manual\n");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.CleanupRepositoryRuntimeAsync(root);
+
+            Assert.True(result.Success);
+            Assert.True(result.RuntimeDeleted);
+            Assert.Equal(runtime.Root, result.RuntimeRoot);
+            Assert.Contains(Path.GetFullPath(ownedWorktree), result.RemovedWorktrees);
+            Assert.False(Directory.Exists(runtime.Root));
+
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "worktree", "remove", Path.GetFullPath(ownedWorktree) }));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "worktree", "prune", "--expire", "now" }));
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 2 &&
+                        call.Arguments[0] == "worktree" &&
+                        call.Arguments[1] == "remove" &&
+                        string.Equals(
+                            Path.GetFullPath(call.Arguments[2]),
+                            Path.GetFullPath(unrelatedWorktree),
+                            OperatingSystem.IsWindows()
+                                ? StringComparison.OrdinalIgnoreCase
+                                : StringComparison.Ordinal));
+            Assert.DoesNotContain(
+                runner.Calls.SelectMany(call => call.Arguments),
+                argument => argument is "--force" or "-f");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task RuntimeCleanupPreservesRuntimeWhenOwnedWorktreeIsDirty()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
+        var ownedWorktree = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        Directory.CreateDirectory(ownedWorktree);
+
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(
+            0,
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n\n" +
+            $"worktree {ownedWorktree}\nHEAD work123\nbranch refs/heads/projecthub/job/W1\n");
+        runner.Enqueue(0, "work123");
+        runner.Enqueue(0, "projecthub/job/W1");
+        runner.Enqueue(0, " M changed.cs");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.CleanupRepositoryRuntimeAsync(root);
+
+            Assert.False(result.Success);
+            Assert.Equal("RUNTIME_CLEANUP_WORKTREE_DIRTY", result.ErrorCode);
+            Assert.True(Directory.Exists(runtime.Root));
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 1 &&
+                        call.Arguments[0] == "worktree" &&
+                        call.Arguments[1] == "remove");
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 1 &&
+                        call.Arguments[0] == "worktree" &&
+                        call.Arguments[1] == "prune");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task IntegrationPreparationCreatesIndependentCloneFromCurrentPrimaryHead()
     {
         var root = CreateTempRepositoryDirectory();
