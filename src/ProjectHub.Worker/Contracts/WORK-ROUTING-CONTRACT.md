@@ -75,6 +75,7 @@
 ⑮ NORMAL worktree는 실행 격리 공간이며 사용자에게 보이는 최종 작업 폴더가 아니다. WORK는 주 작업공간으로 직접 복사하거나 Git으로 반영하지 않고, 최종 target workspace 반영은 Worker의 종료 게이트에 맡긴다.
 ⑯ 헤더의 공용 생성 리소스 임시 루트는 RESOURCE 결과 파일의 공용 staging 경로다. RESOURCE 타입별 하위 폴더는 IMAGE=image, AUDIO=audio, VIDEO=video, DOCUMENT=document, FILE=file을 사용한다.
 ⑰ 선행 RESOURCE 파일이 필요한 WorkItem은 dependency snapshot에 해당 파일이 직접 포함되어 있다고 가정하지 않는다. RESOURCE_RESULT 또는 선행 보고의 실제 파일 경로와 공용 생성 리소스 임시 루트를 확인해 필요한 파일을 현재 worktree의 최종 사용 위치로 복사한 뒤 사용하며, 공용 임시 경로 자체를 최종 산출물의 런타임 참조로 남기지 않는다.
+⑱ 헤더의 WORK 임시 산출물 루트와 `PROJECTHUB_WORK_TEMP`는 빌드 로그, self-test 보고서, 임시 내보내기 파일과 분석 결과처럼 최종 납품물이 아닌 검증 산출물에 사용한다. 이러한 검증 산출물을 현재 worktree에 남겨 checkpoint 코드 변경을 만들지 않는다.
 
 제7조 (HQ 보고)
 
