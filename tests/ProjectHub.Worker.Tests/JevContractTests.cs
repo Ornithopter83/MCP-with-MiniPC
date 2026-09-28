@@ -51,6 +51,9 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("관측 사실 확인이 아니라", work);
         Assert.Contains("JUDGE용 Form", work);
         Assert.Contains("INTEGRATION WorkItem은 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다.", work);
+        Assert.Contains("공용 생성 리소스 임시 루트는 RESOURCE 결과 파일의 공용 staging 경로다.", work);
+        Assert.Contains("dependency snapshot에 해당 파일이 직접 포함되어 있다고 가정하지 않는다.", work);
+        Assert.Contains("공용 임시 경로 자체를 최종 산출물의 런타임 참조로 남기지 않는다.", work);
         Assert.DoesNotContain("JUDGE_ON", work);
         Assert.DoesNotContain("JUDGE_OFF", work);
         Assert.DoesNotContain("사용 가능", work);
@@ -118,7 +121,8 @@ public sealed class RoleContractBoundaryTests
                 Array.Empty<string>(),
                 "abc123",
                 "branch",
-                "worktree"));
+                "worktree"),
+            resourceStagingRoot: @"C:\work\sample.projecthub\temp");
 
         Assert.Contains("역할: WORK", prompt);
         Assert.Contains("입력 유형: RESOURCE_QUEUED", prompt);
@@ -126,6 +130,8 @@ public sealed class RoleContractBoundaryTests
         Assert.DoesNotContain("판정 사용 가능:", prompt);
         Assert.DoesNotContain("리소스 사용 가능:", prompt);
         Assert.DoesNotContain("병렬 WorkItem 사용:", prompt);
+        Assert.Contains(@"공용 생성 리소스 임시 루트: C:\work\sample.projecthub\temp", prompt);
+        Assert.Contains("RESOURCE 타입 하위 폴더: IMAGE=image, AUDIO=audio, VIDEO=video, DOCUMENT=document, FILE=file", prompt);
         Assert.DoesNotContain("[ROLE :", prompt);
     }
 
