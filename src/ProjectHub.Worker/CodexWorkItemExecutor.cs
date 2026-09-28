@@ -28,6 +28,7 @@ public sealed record CodexWorkItemCallCompleted(
 public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 {
     private const int MaximumCheckpointAttempts = 3;
+    private const int MaximumOutputContractCorrections = 2;
     private const string CheckpointRetryInboundType = "WORKTREE_CHECKPOINT_RETRY";
     private const string CheckpointPendingHeader = "WORKTREE_CHECKPOINT_PENDING";
 
@@ -323,6 +324,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         var inboundBody = request.InboundBody;
         var sessionId = item.SessionId;
         AiRoleRunResult runResult;
+        var outputContractCorrections = 0;
 
         while (true)
         {
@@ -444,38 +446,58 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     null);
             }
 
-            if (_observationGate is null)
-                break;
-
-            var requiredObservations = await _observationGate
-                .CollectRequiredAsync(item.Id, cancellationToken)
-                .ConfigureAwait(false);
-            if (requiredObservations.Count == 0)
-                break;
-
-            inboundType = "OBSERVATION_RESULT";
-            inboundBody = WorkItemObservationGate.FormatResultBody(
-                item.Id,
-                requiredObservations);
-        }
-
-        var route = WorkerGotoContract.Parse(WorkerRoleState.Work, runResult.FinalMessage);
-        if (route.Error is not null)
-        {
-            return WorkItemExecutionResult.Failed(
-                "WORK_ROUTE_" + route.Error,
-                runResult.FinalMessage,
-                preparation.Branch,
-                preparation.WorktreePath,
-                sessionId);
-        }
-
-        if (route.Target == WorkerRoleState.Judge)
-        {
-            if (!_judgeAvailable)
+            if (_observationGate is not null)
             {
+                var requiredObservations = await _observationGate
+                    .CollectRequiredAsync(item.Id, cancellationToken)
+                    .ConfigureAwait(false);
+                if (requiredObservations.Count > 0)
+                {
+                    inboundType = "OBSERVATION_RESULT";
+                    inboundBody = WorkItemObservationGate.FormatResultBody(
+                        item.Id,
+                        requiredObservations);
+                    continue;
+                }
+            }
+
+            var route = WorkerGotoContract.Parse(WorkerRoleState.Work, runResult.FinalMessage);
+            if (route.Error is not null)
+            {
+                if (outputContractCorrections >= MaximumOutputContractCorrections)
+                {
+                    return WorkItemExecutionResult.Failed(
+                        "WORK_ROUTE_" + route.Error,
+                        runResult.FinalMessage,
+                        preparation.Branch,
+                        preparation.WorktreePath,
+                        sessionId);
+                }
+
+                outputContractCorrections++;
+                inboundType = "WORK_OUTPUT_CONTRACT_REJECTED";
+                inboundBody =
+                    $"errorCode=WORK_ROUTE_{route.Error}{Environment.NewLine}" +
+                    $"correctionAttempt={outputContractCorrections}/{MaximumOutputContractCorrections}{Environment.NewLine}" +
+                    "의미 작업은 다시 수행하지 않는다. 직전 결과의 내용은 유지하고 WORK 출력 계약에 맞는 GOTO 제어행과 필요한 본문만 다시 반환한다.";
+                continue;
+            }
+
+            if (route.Target == WorkerRoleState.Judge)
+            {
+                if (!_judgeAvailable)
+                {
+                    return WorkItemExecutionResult.Blocked(
+                        "JUDGE_UNAVAILABLE",
+                        route.Body,
+                        preparation.HeadCommit,
+                        preparation.Branch,
+                        preparation.WorktreePath,
+                        sessionId);
+                }
+
                 return WorkItemExecutionResult.Blocked(
-                    "JUDGE_UNAVAILABLE",
+                    "JUDGE_REQUEST",
                     route.Body,
                     preparation.HeadCommit,
                     preparation.Branch,
@@ -483,53 +505,67 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     sessionId);
             }
 
-            return WorkItemExecutionResult.Blocked(
-                "JUDGE_REQUEST",
-                route.Body,
-                preparation.HeadCommit,
-                preparation.Branch,
-                preparation.WorktreePath,
-                sessionId);
-        }
+            if (route.Target == WorkerRoleState.Resource)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "RESOURCE_REQUEST",
+                    route.Body,
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId);
+            }
 
-        if (route.Target == WorkerRoleState.Resource)
-        {
-            return WorkItemExecutionResult.Blocked(
-                "RESOURCE_REQUEST",
-                route.Body,
-                preparation.HeadCommit,
-                preparation.Branch,
-                preparation.WorktreePath,
-                sessionId);
-        }
+            if (route.Target != WorkerRoleState.Hq)
+            {
+                if (outputContractCorrections >= MaximumOutputContractCorrections)
+                {
+                    return WorkItemExecutionResult.Failed(
+                        "WORK_ROUTE_UNSUPPORTED",
+                        runResult.FinalMessage,
+                        preparation.Branch,
+                        preparation.WorktreePath,
+                        sessionId);
+                }
 
-        if (route.Target != WorkerRoleState.Hq)
-        {
-            return WorkItemExecutionResult.Failed(
-                "WORK_ROUTE_UNSUPPORTED",
-                runResult.FinalMessage,
-                preparation.Branch,
-                preparation.WorktreePath,
-                sessionId);
-        }
+                outputContractCorrections++;
+                inboundType = "WORK_OUTPUT_CONTRACT_REJECTED";
+                inboundBody =
+                    $"errorCode=WORK_ROUTE_UNSUPPORTED{Environment.NewLine}" +
+                    $"correctionAttempt={outputContractCorrections}/{MaximumOutputContractCorrections}{Environment.NewLine}" +
+                    "의미 작업은 다시 수행하지 않는다. 직전 결과를 현재 WORK가 허용하는 목적지 하나로만 다시 보고한다.";
+                continue;
+            }
 
-        if (!WorkItemReportContract.TryParse(route.Body, out var report, out var reportError))
-        {
-            return WorkItemExecutionResult.Failed(
-                reportError ?? "WORK_ITEM_REPORT_INVALID",
-                route.Body,
-                preparation.Branch,
-                preparation.WorktreePath,
-                sessionId);
-        }
+            if (!WorkItemReportContract.TryParse(route.Body, out var report, out var reportError))
+            {
+                if (outputContractCorrections >= MaximumOutputContractCorrections)
+                {
+                    return WorkItemExecutionResult.Failed(
+                        reportError ?? "WORK_ITEM_REPORT_INVALID",
+                        route.Body,
+                        preparation.Branch,
+                        preparation.WorktreePath,
+                        sessionId);
+                }
 
-        return await FinalizeReportAsync(
-            item,
-            preparation,
-            sessionId,
-            report!.Status,
-            report.Body,
-            cancellationToken).ConfigureAwait(false);
+                outputContractCorrections++;
+                inboundType = "WORK_ITEM_REPORT_REJECTED";
+                inboundBody =
+                    $"errorCode={reportError ?? "WORK_ITEM_REPORT_INVALID"}{Environment.NewLine}" +
+                    $"correctionAttempt={outputContractCorrections}/{MaximumOutputContractCorrections}{Environment.NewLine}" +
+                    "의미 작업은 다시 수행하지 않는다. 직전 보고 내용은 유지하고 WORK_ITEM_STATUS 행을 정확히 하나만 포함한 [GOTO : HQ] 응답으로 다시 반환한다.";
+                continue;
+            }
+
+            return await FinalizeReportAsync(
+                item,
+                preparation,
+                sessionId,
+                report!.Status,
+                report.Body,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async Task<WorkItemExecutionResult> FinalizeReportAsync(
