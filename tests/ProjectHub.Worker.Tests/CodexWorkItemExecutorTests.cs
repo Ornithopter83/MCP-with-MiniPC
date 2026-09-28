@@ -58,6 +58,40 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task DuplicateWorkItemStatusIsCorrectedInSameSession()
+    {
+        var fixture = CreateFixture("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            구현 완료
+            WORK_ITEM_STATUS: COMPLETED
+            """);
+        fixture.Runner.EnqueueFinalMessage("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            구현 완료
+            """);
+
+        try
+        {
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
+            Assert.Equal(2, fixture.Runner.RunCount);
+            Assert.Contains("입력 유형: WORK_ITEM_REPORT_REJECTED", fixture.Runner.LastRequest!.Prompt);
+            Assert.Contains("errorCode=WORK_ITEM_STATUS_DUPLICATE", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("의미 작업은 다시 수행하지 않는다", fixture.Runner.LastRequest.Prompt);
+            Assert.DoesNotContain("당신은 WORK다.", fixture.Runner.LastRequest.Prompt);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public void WorkspaceWritableRootsCanExcludeWorkerExecutableDirectory()
     {
         var parent = Path.Combine(Path.GetTempPath(), "projecthub-writable-roots-" + Guid.NewGuid().ToString("N"));
@@ -911,15 +945,20 @@ public sealed class CodexWorkItemExecutorTests
 
     private sealed class FakeAiRoleRunner : IAiRoleRunner
     {
-        private readonly string _finalMessage;
+        private readonly Queue<string> _finalMessages = new();
+        private string _lastFinalMessage;
 
         public FakeAiRoleRunner(string finalMessage)
         {
-            _finalMessage = finalMessage;
+            _lastFinalMessage = finalMessage;
+            _finalMessages.Enqueue(finalMessage);
         }
 
         public AiRoleRunRequest? LastRequest { get; private set; }
         public int RunCount { get; private set; }
+
+        public void EnqueueFinalMessage(string finalMessage)
+            => _finalMessages.Enqueue(finalMessage);
 
         public AiServiceProvider Provider => AiServiceProvider.OpenAI;
         public bool SupportsSessions => true;
@@ -932,6 +971,9 @@ public sealed class CodexWorkItemExecutorTests
             RunCount++;
             LastRequest = request;
             request.SessionStarted?.Invoke("session-1");
+            if (_finalMessages.Count > 0)
+                _lastFinalMessage = _finalMessages.Dequeue();
+
             return Task.FromResult(new AiRoleRunResult(
                 "openai",
                 request.Role.Model,
@@ -940,7 +982,7 @@ public sealed class CodexWorkItemExecutorTests
                 0,
                 string.Empty,
                 string.Empty,
-                _finalMessage,
+                _lastFinalMessage,
                 Array.Empty<CodexCliFile>(),
                 CodexUsage.Empty,
                 Array.Empty<CodexCommandExecution>()));
