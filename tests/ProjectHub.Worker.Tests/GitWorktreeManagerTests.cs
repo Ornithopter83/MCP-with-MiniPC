@@ -127,7 +127,7 @@ public sealed class GitWorktreeManagerTests
 
             Assert.False(result.Success);
             Assert.Equal(
-                "WORKTREE_MULTIPLE_CODE_BASES_REQUIRE_INTEGRATION",
+                "NORMAL_MULTIPLE_CODE_BASES_REQUIRE_INTEGRATION",
                 result.ErrorCode);
             Assert.Contains("left456", result.ErrorDetail ?? string.Empty);
             Assert.Contains("right789", result.ErrorDetail ?? string.Empty);
