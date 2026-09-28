@@ -659,8 +659,7 @@ public partial class MainWindow
                 var runtimeCleanup = await new GitWorktreeManager()
                     .CleanupRepositoryRuntimeAsync(
                         workingDirectory,
-                        cts.Token)
-                    .ConfigureAwait(false);
+                        cts.Token);
                 var cleanupMessage = runtimeCleanup.Success
                     ? "최종 DONE 확정 전에 ProjectHub 임시 runtime 폴더를 정리했습니다."
                     : "ProjectHub 임시 runtime 폴더 정리에 실패하여 DONE_WITH_ERROR로 종료합니다.";
