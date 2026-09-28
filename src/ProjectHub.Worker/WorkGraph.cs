@@ -383,10 +383,16 @@ public sealed class WorkGraph
             string.IsNullOrWhiteSpace(item.BlockCode))
             return false;
 
+        var checkpointRetry = string.Equals(
+            item.BlockCode,
+            "WORKTREE_CHECKPOINT_PENDING",
+            StringComparison.Ordinal);
         item.BlockCode = null;
         item.BlockDetailCode = null;
-        item.ResumeInputType = NullIfWhiteSpace(inputType) ?? "WORK_RESULT";
-        item.ResumeBody = NullIfWhiteSpace(body);
+        item.ResumeInputType = checkpointRetry
+            ? "WORKTREE_CHECKPOINT_RETRY"
+            : NullIfWhiteSpace(inputType) ?? "WORK_RESULT";
+        item.ResumeBody = checkpointRetry ? null : NullIfWhiteSpace(body);
         item.State = WorkItemState.Planned;
         item.FinishedAtUtc = null;
         RecalculateStates();
@@ -541,9 +547,16 @@ public sealed class WorkGraph
                     return "WORK_GRAPH_ITEM_NOT_FOUND";
                 if (item.State != WorkItemState.Blocked || string.IsNullOrWhiteSpace(item.BlockCode))
                     return "WORK_GRAPH_ITEM_NOT_HELD";
+                var checkpointRetry = string.Equals(
+                    item.BlockCode,
+                    "WORKTREE_CHECKPOINT_PENDING",
+                    StringComparison.Ordinal);
                 item.BlockCode = null;
-                item.ResumeInputType = NullIfWhiteSpace(operation.InputType) ?? "HQ_RESUME";
-                item.ResumeBody = NullIfWhiteSpace(operation.Value);
+                item.BlockDetailCode = null;
+                item.ResumeInputType = checkpointRetry
+                    ? "WORKTREE_CHECKPOINT_RETRY"
+                    : NullIfWhiteSpace(operation.InputType) ?? "HQ_RESUME";
+                item.ResumeBody = checkpointRetry ? null : NullIfWhiteSpace(operation.Value);
                 item.State = WorkItemState.Planned;
                 item.FinishedAtUtc = null;
                 return null;
