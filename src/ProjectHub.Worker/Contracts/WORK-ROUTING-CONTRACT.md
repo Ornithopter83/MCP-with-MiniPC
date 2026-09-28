@@ -89,3 +89,4 @@ WORK_ITEM_STATUS: FAILED
 ② 상태 행을 제외한 나머지 본문에는 HQ가 다음 GraphPatch를 판단할 수 있는 사실만 필요한 범위에서 적는다.
 ③ 같은 응답에 WORK_ITEM_STATUS를 두 번 쓰지 않는다.
 ④ JUDGE와 RESOURCE 목적지에는 WORK_ITEM_STATUS를 붙이지 않는다.
+⑤ WORK_OUTPUT_CONTRACT_REJECTED 또는 WORK_ITEM_REPORT_REJECTED를 받으면 직전 의미 작업을 반복하지 않고 전달된 errorCode에 맞춰 GOTO와 WORK_ITEM_STATUS 형식만 교정해 다시 보고한다.
