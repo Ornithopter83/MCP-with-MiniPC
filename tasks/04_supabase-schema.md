@@ -1,5 +1,10 @@
 # Supabase 스키마와 저장소
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 작성 당시의 목표·구현·검증 기록이다. 현재 정책·계약·런타임 상태의 원본으로 사용하지 않는다.
+> 현재 기준은 `Master-Polish.md`, 프로젝트별 `*-Polish.md`, 전용 계약을 따른다.
+
+
 ## 목표
 
 Supabase `workstations` 최소 경로를 먼저 실제 E2E로 연결하고, 이후 Project 상태 저장으로 확장할 수 있는 기반을 마련한다.

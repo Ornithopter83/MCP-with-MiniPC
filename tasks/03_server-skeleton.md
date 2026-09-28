@@ -1,5 +1,10 @@
 # 서버 스켈레톤
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 작성 당시의 목표·구현·검증 기록이다. 현재 정책·계약·런타임 상태의 원본으로 사용하지 않는다.
+> 현재 기준은 `Master-Polish.md`, 프로젝트별 `*-Polish.md`, 전용 계약을 따른다.
+
+
 ## 목표
 
 ASP.NET Core Minimal API가 `/api/status`에 ProjectHub 상태를 응답한다.

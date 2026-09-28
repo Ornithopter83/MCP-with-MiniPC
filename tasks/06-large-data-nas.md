@@ -1,5 +1,10 @@
 # 대용량 데이터/NAS
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 작성 당시의 목표·구현·검증 기록이다. 현재 정책·계약·런타임 상태의 원본으로 사용하지 않는다.
+> 현재 기준은 `Master-Polish.md`, 프로젝트별 `*-Polish.md`, 전용 계약을 따른다.
+
+
 ## 목표
 
 ProjectHub-native 검증 토큰과 NAS Gateway 계약으로 대용량 파일을 서버가 중계하지 않고 안전하게 저장·검증한다.

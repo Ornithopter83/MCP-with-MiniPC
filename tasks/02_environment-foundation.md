@@ -1,5 +1,10 @@
 # 개발환경 기반구축
 
+> 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
+> 이 문서는 작성 당시의 목표·구현·검증 기록이다. 현재 정책·계약·런타임 상태의 원본으로 사용하지 않는다.
+> 현재 기준은 `Master-Polish.md`, 프로젝트별 `*-Polish.md`, 전용 계약을 따른다.
+
+
 ## 목표
 
 ProjectHub의 계층형 .NET 솔루션과 테스트 프로젝트를 준비한다.
