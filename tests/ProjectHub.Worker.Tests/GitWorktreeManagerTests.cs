@@ -405,6 +405,43 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task RuntimeCleanupDeletesRuntimeRootWhenNoOwnedWorktreesRemain()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
+        Directory.CreateDirectory(runtime.Root);
+
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(
+            0,
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n");
+        runner.Enqueue(0, "pruned");
+        runner.Enqueue(
+            0,
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.CleanupRepositoryRuntimeAsync(root);
+
+            Assert.True(result.Success);
+            Assert.True(result.RuntimeDeleted);
+            Assert.Empty(result.RemovedWorktrees);
+            Assert.False(Directory.Exists(runtime.Root));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "worktree", "prune", "--expire", "now" }));
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task RuntimeCleanupPreservesRuntimeWhenOwnedWorktreeIsDirty()
     {
         var root = CreateTempRepositoryDirectory();
