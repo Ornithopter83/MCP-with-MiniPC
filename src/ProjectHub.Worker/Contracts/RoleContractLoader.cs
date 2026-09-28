@@ -51,16 +51,22 @@ public static class RoleContractLoader
         string body,
         WorkItemPromptContext workItem,
         string? observationRequestDirectory = null,
-        bool includeContract = true)
+        bool includeContract = true,
+        string? resourceStagingRoot = null)
     {
         ArgumentNullException.ThrowIfNull(workItem);
         var observationHeader = string.IsNullOrWhiteSpace(observationRequestDirectory)
             ? string.Empty
             : $"비동기 계측 요청 폴더: {observationRequestDirectory}\n";
+        var resourceHeader = string.IsNullOrWhiteSpace(resourceStagingRoot)
+            ? string.Empty
+            : $"공용 생성 리소스 임시 루트: {resourceStagingRoot}\n" +
+              "RESOURCE 타입 하위 폴더: IMAGE=image, AUDIO=audio, VIDEO=video, DOCUMENT=document, FILE=file\n";
         var header =
             $"역할: WORK\n입력 유형: {inboundType}\n" +
             BuildWorkItemHeader(workItem) +
             observationHeader +
+            resourceHeader +
             "\n입력 본문:\n";
         var prompt = header + body;
         return includeContract
