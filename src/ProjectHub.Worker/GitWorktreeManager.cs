@@ -249,7 +249,7 @@ public sealed class GitWorktreeManager
             {
                 var errorCode = reference.Label == "baseRef"
                     ? "WORKTREE_BASE_REF_INVALID"
-                    : "WORKTREE_DEPENDENCY_REF_INVALID";
+                    : "NORMAL_CODE_DEPENDENCY_REF_INVALID";
                 return new(
                     false,
                     errorCode,
@@ -289,7 +289,7 @@ public sealed class GitWorktreeManager
                 {
                     return new(
                         false,
-                        "WORKTREE_DEPENDENCY_ANCESTRY_FAILED",
+                        "NORMAL_CODE_DEPENDENCY_ANCESTRY_FAILED",
                         null,
                         BuildGitFailureDetail("git merge-base --is-ancestor", existingAncestor));
                 }
@@ -313,7 +313,7 @@ public sealed class GitWorktreeManager
                 {
                     return new(
                         false,
-                        "WORKTREE_DEPENDENCY_ANCESTRY_FAILED",
+                        "NORMAL_CODE_DEPENDENCY_ANCESTRY_FAILED",
                         null,
                         BuildGitFailureDetail("git merge-base --is-ancestor", newAncestor));
                 }
@@ -327,7 +327,7 @@ public sealed class GitWorktreeManager
         {
             return new(
                 false,
-                "WORKTREE_MULTIPLE_CODE_BASES_REQUIRE_INTEGRATION",
+                "NORMAL_MULTIPLE_CODE_BASES_REQUIRE_INTEGRATION",
                 null,
                 "NORMAL WorkItem이 하나의 코드 기준점으로 축약할 수 없는 서로 독립된 CODE_CHANGE 계보를 참조합니다. tips=" +
                 string.Join(",", tips));
