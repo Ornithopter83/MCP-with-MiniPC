@@ -116,6 +116,7 @@ public partial class MainWindow
             "GIT_BOOTSTRAP_INIT_TIMEOUT" => "git init 실행 시간이 초과되었습니다.",
             "GIT_BOOTSTRAP_INIT_CANCELED" => "git init 실행이 취소되었습니다.",
             "GIT_BOOTSTRAP_INIT_FAILED" => "git init을 실행하지 못했습니다.",
+            "GIT_BOOTSTRAP_EXACT_ROOT_REQUIRED" => "화면의 작업 폴더 자체를 독립 Git 저장소 루트로 준비하지 못했습니다.",
             "GIT_BOOTSTRAP_LONGPATHS_CONFIG_TIMEOUT" => "Git 긴 경로 설정 시간이 초과되었습니다.",
             "GIT_BOOTSTRAP_LONGPATHS_CONFIG_CANCELED" => "Git 긴 경로 설정이 취소되었습니다.",
             "GIT_BOOTSTRAP_LONGPATHS_CONFIG_FAILED" => "저장소의 core.longpaths 설정을 적용하지 못했습니다.",
