@@ -637,6 +637,52 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task TargetWorkspaceFinalizerRequiresIntegrationForTwoIndependentChanges()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        for (var index = 0; index < 2; index++)
+        {
+            runner.Enqueue(0, root);
+            runner.Enqueue(0, "main");
+            runner.Enqueue(0, "result-" + index);
+            runner.Enqueue(0, "base123");
+            runner.Enqueue(1, "");
+        }
+
+        try
+        {
+            var graph = new WorkGraph("job", 2);
+            Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+            {
+                WorkGraphPatchOperation.Add(new WorkItemSpec("W10", "기능 A", Kind: WorkItemKind.Normal, BaseRef: "base123")),
+                WorkGraphPatchOperation.Add(new WorkItemSpec("W11", "기능 B", Kind: WorkItemKind.Normal, BaseRef: "base123"))
+            })).Success);
+            Assert.True(graph.TryMarkRunning("W10"));
+            Assert.True(graph.TryMarkCompleted("W10", "result-ref-0", "A 완료", WorkItemResultType.CodeChange));
+            Assert.True(graph.TryMarkRunning("W11"));
+            Assert.True(graph.TryMarkCompleted("W11", "result-ref-1", "B 완료", WorkItemResultType.CodeChange));
+
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
+
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.False(result.Success);
+            Assert.Equal("TARGET_INTEGRATION_REQUIRED", result.ErrorCode);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 && call.Arguments[0] == "merge");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task IntegrationLandingFastForwardsOnlyCleanTargetBranch()
     {
         var root = CreateTempRepositoryDirectory();
