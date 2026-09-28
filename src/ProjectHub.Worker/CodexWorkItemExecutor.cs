@@ -741,6 +741,12 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     commitManifestPath: commitManifestPath);
             }
 
+            await TryRemoveCompletedIntegrationCloneAsync(
+                item,
+                preparation,
+                checkpoint.WorktreePath,
+                cancellationToken).ConfigureAwait(false);
+
             return WorkItemExecutionResult.Completed(
                 checkpoint.HeadCommit,
                 BuildIntegrationLandingSuccess(reportBody, landing),
@@ -796,6 +802,43 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 sessionId)
         };
+    }
+
+    private async Task TryRemoveCompletedIntegrationCloneAsync(
+        WorkItemSnapshot item,
+        GitWorktreePreparationResult preparation,
+        string clonePath,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var cleanup = await _worktrees.CleanupIntegrationCloneAsync(
+                preparation.RepositoryRoot,
+                clonePath,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!cleanup.Success)
+            {
+                Progress?.Invoke(new CodexWorkItemProgress(
+                    item.Id,
+                    "완료 Integration clone 정리를 보류했습니다. " +
+                    (cleanup.ErrorCode ?? "INTEGRATION_CLONE_CLEANUP_FAILED"),
+                    item.CreatedOrder + 1));
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            Progress?.Invoke(new CodexWorkItemProgress(
+                item.Id,
+                "완료 Integration clone 정리 중 기계 오류가 발생해 최종 runtime 정리로 넘깁니다. " +
+                exception.GetType().Name,
+                item.CreatedOrder + 1));
+        }
     }
 
     private async Task TryRemoveCompletedNormalWorktreeAsync(
