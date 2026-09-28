@@ -102,13 +102,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             if (missingResultRef is not null)
             {
                 return WorkItemExecutionResult.Blocked(
-                    "WORKTREE_DEPENDENCY_RESULT_REF_MISSING",
+                    "NORMAL_CODE_DEPENDENCY_RESULT_REF_MISSING",
                     $"WorkItem {missingResultRef.WorkItemId}의 CODE_CHANGE resultRef가 없습니다.",
                     item.ResultRef,
                     item.Branch,
                     item.WorktreePath,
                     item.SessionId,
-                    blockDetailCode: "WORKTREE_DEPENDENCY_RESULT_REF_MISSING",
+                    blockDetailCode: "NORMAL_CODE_DEPENDENCY_RESULT_REF_MISSING",
                     resultType: item.ResultType,
                     commitManifestPath: item.CommitManifestPath);
             }
