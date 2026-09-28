@@ -501,6 +501,44 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task EndFinalizationCanRejectEndAndReturnControlToHq()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var hq = new QueueHqRunner(
+            End("첫 종료 시도"),
+            End("최종 종료"));
+        var calls = 0;
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync,
+            finalizeEndAsync: (_, _) =>
+            {
+                calls++;
+                return Task.FromResult(
+                    calls == 1
+                        ? new ParallelEndFinalizationResult(
+                            false,
+                            "TARGET_INTEGRATION_REQUIRED",
+                            "미반영 CODE_CHANGE가 둘 이상입니다.")
+                        : new ParallelEndFinalizationResult(true));
+            });
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "종료 전 target workspace finalization을 확인한다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(2, calls);
+        Assert.Equal(2, hq.Prompts.Count);
+        Assert.Contains("입력 유형: WORKSPACE_FINALIZATION_REQUIRED", hq.Prompts[1]);
+        Assert.Contains("TARGET_INTEGRATION_REQUIRED", hq.Prompts[1]);
+    }
+
+    [Fact]
     public void ParallelHqTurnRequiresGraphPatchOnlyForContinue()
     {
         var end = End("완료");

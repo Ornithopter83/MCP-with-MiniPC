@@ -522,6 +522,121 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task TargetContainmentReportsWhetherResultIsAlreadyInHead()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(0, "head789");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.InspectTargetContainmentAsync(
+                root,
+                "result-ref",
+                "main");
+
+            Assert.True(result.Success);
+            Assert.True(result.IsContained);
+            Assert.Equal("result456", result.ResultCommit);
+            Assert.Equal("head789", result.TargetHead);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task TargetWorkspaceFinalizerLeavesIntegratedDependenciesAlone()
+    {
+        var root = CreateTempRepositoryDirectory();
+        try
+        {
+            var graph = new WorkGraph("job", 1);
+            Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+            {
+                WorkGraphPatchOperation.Add(new WorkItemSpec("W10", "기능 구현", Kind: WorkItemKind.Normal, BaseRef: "base123")),
+                WorkGraphPatchOperation.Add(new WorkItemSpec("I10", "통합", new[] { "W10" }, WorkItemKind.Integration, "base123"))
+            })).Success);
+            Assert.True(graph.TryMarkRunning("W10"));
+            Assert.True(graph.TryMarkCompleted("W10", "normal-ref", "normal", WorkItemResultType.CodeChange));
+            Assert.True(graph.TryMarkRunning("I10"));
+            Assert.True(graph.TryMarkCompleted("I10", "integration-ref", "integration", WorkItemResultType.CodeChange));
+
+            var runner = new FakeGitRunner(root);
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
+
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.True(result.Success);
+            Assert.Empty(runner.Calls);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task TargetWorkspaceFinalizerFastForwardsSingleUnintegratedCodeChange()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(1, "");
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "Updating base123..result456");
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var graph = new WorkGraph("job", 1);
+            Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+            {
+                WorkGraphPatchOperation.Add(new WorkItemSpec("W10", "기능 구현", Kind: WorkItemKind.Normal, BaseRef: "base123"))
+            })).Success);
+            Assert.True(graph.TryMarkRunning("W10"));
+            Assert.True(graph.TryMarkCompleted("W10", "result-ref", "완료", WorkItemResultType.CodeChange));
+
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
+
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.True(result.Success);
+            Assert.True(result.FastForwarded);
+            Assert.Equal("W10", result.LandedWorkItemId);
+            Assert.Equal("result-ref", result.LandedResultRef);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(new[] { "merge", "--ff-only", "result456" }));
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task IntegrationLandingFastForwardsOnlyCleanTargetBranch()
     {
         var root = CreateTempRepositoryDirectory();
