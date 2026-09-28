@@ -173,6 +173,24 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
+    public void SetGoalSchemaDiagnosticPointsToValueAndExplainsGoalAlias()
+    {
+        const string body = """
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":4,"operations":[{"type":"SET_GOAL","workItemId":"W10","goal":"새 목표"}]}
+            """;
+
+        Assert.False(WorkGraphTransportContract.TryParse(body, out _, out var error));
+        Assert.Equal("WORK_GRAPH_SET_GOAL_SCHEMA_INVALID", error);
+
+        var detail = WorkGraphTransportContract.DescribeError(body, error);
+        Assert.NotNull(detail);
+        Assert.Contains("path=operations[0].value", detail);
+        Assert.Contains("requires a nonblank \"value\" field", detail);
+        Assert.Contains("\"goal\" field is used by ADD", detail);
+    }
+
+    [Fact]
     public void WorkGraphTransportRejectsDuplicateMarkers()
     {
         const string body = """
