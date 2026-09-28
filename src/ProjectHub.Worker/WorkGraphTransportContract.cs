@@ -244,6 +244,32 @@ public static class WorkGraphTransportContract
 
                 if (string.Equals(
                         errorCode,
+                        "WORK_GRAPH_SET_BASE_REF_SCHEMA_INVALID",
+                        StringComparison.Ordinal) &&
+                    string.Equals(type, "SET_BASE_REF", StringComparison.Ordinal))
+                {
+                    return
+                        $"path=operations[{index}].value" + Environment.NewLine +
+                        "message=SET_BASE_REF uses the \"value\" field for the new base ref." + Environment.NewLine +
+                        "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                        "hint=Do not use \"baseRef\" on SET_BASE_REF. Put that same ref in \"value\".";
+                }
+
+                if (string.Equals(
+                        errorCode,
+                        "WORK_GRAPH_RELEASE_SCHEMA_INVALID",
+                        StringComparison.Ordinal) &&
+                    string.Equals(type, "RELEASE", StringComparison.Ordinal))
+                {
+                    return
+                        $"path=operations[{index}].value" + Environment.NewLine +
+                        "message=RELEASE uses optional \"value\" for the resume body." + Environment.NewLine +
+                        "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                        "hint=Do not use \"body\" on RELEASE. Put the same resume body in \"value\".";
+                }
+
+                if (string.Equals(
+                        errorCode,
                         "WORK_GRAPH_OPERATION_UNSUPPORTED",
                         StringComparison.Ordinal) &&
                     !string.IsNullOrWhiteSpace(type))
@@ -282,6 +308,54 @@ public static class WorkGraphTransportContract
         return true;
     }
 
+    private static bool TryRejectMisleadingOperationFields(
+        string json,
+        out string? error)
+    {
+        error = null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("operations", out var operations) ||
+                operations.ValueKind != JsonValueKind.Array)
+                return true;
+
+            foreach (var operation in operations.EnumerateArray())
+            {
+                if (operation.ValueKind != JsonValueKind.Object ||
+                    !operation.TryGetProperty("type", out var typeElement) ||
+                    typeElement.ValueKind != JsonValueKind.String)
+                    continue;
+
+                var type = typeElement.GetString()?.Trim().ToUpperInvariant();
+                var hasValue = operation.TryGetProperty("value", out _);
+
+                if (string.Equals(type, "SET_BASE_REF", StringComparison.Ordinal) &&
+                    !hasValue &&
+                    operation.TryGetProperty("baseRef", out _))
+                {
+                    error = "WORK_GRAPH_SET_BASE_REF_SCHEMA_INVALID";
+                    return false;
+                }
+
+                if (string.Equals(type, "RELEASE", StringComparison.Ordinal) &&
+                    !hasValue &&
+                    operation.TryGetProperty("body", out _))
+                {
+                    error = "WORK_GRAPH_RELEASE_SCHEMA_INVALID";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            error = "WORK_GRAPH_PATCH_JSON_INVALID";
+            return false;
+        }
+    }
+
     private static bool TryParseJsonObject(
         string json,
         out WorkGraphPatch? patch,
@@ -289,6 +363,9 @@ public static class WorkGraphTransportContract
     {
         patch = null;
         error = null;
+
+        if (!TryRejectMisleadingOperationFields(json, out error))
+            return false;
 
         PatchDto? dto;
         try
