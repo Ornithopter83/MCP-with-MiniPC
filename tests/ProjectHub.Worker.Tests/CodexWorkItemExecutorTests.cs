@@ -350,6 +350,151 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task CodeDependencyBecomesEffectiveNormalBaseRef()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "projecthub-code-base-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(parent, "repo");
+        Directory.CreateDirectory(root);
+        const string jobId = "job";
+        const string workItemId = "W1";
+        var branch = GitWorktreeManager.BuildBranchName(jobId, workItemId);
+        var worktree = GitWorktreeManager.BuildWorktreePath(root, jobId, workItemId);
+        Directory.CreateDirectory(worktree);
+
+        var git = new FakeGitRunner();
+        git.Enqueue(0, root);
+        git.Enqueue(0, "base123");
+        git.Enqueue(0, "dep456");
+        git.Enqueue(0, "");
+        git.Enqueue(0, root);
+        git.Enqueue(0, "dep456");
+        git.Enqueue(0, $"worktree {worktree}\nHEAD dep456\nbranch refs/heads/{branch}\n");
+        git.Enqueue(0, "dep456");
+        git.Enqueue(0, branch);
+        git.Enqueue(0, "");
+
+        var ai = new FakeAiRoleRunner("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            선행 코드 위에서 검증했습니다.
+            """);
+        var executor = new CodexWorkItemExecutor(
+            jobId,
+            root,
+            new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
+            ai,
+            new GitWorktreeManager(git));
+
+        var item = new WorkItemSnapshot(
+            workItemId,
+            "선행 코드 검증",
+            new[] { "W0" },
+            WorkItemKind.Normal,
+            WorkItemState.Running,
+            0,
+            "main",
+            branch,
+            worktree,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null);
+
+        try
+        {
+            var result = await executor.ExecuteAsync(
+                new WorkItemExecutionRequest(
+                    item,
+                    1,
+                    new[]
+                    {
+                        new WorkItemDependencyResult(
+                            "W0",
+                            "dep-ref",
+                            "선행 구현",
+                            WorkItemResultType.CodeChange,
+                            "manifest-W0.json")
+                    },
+                    "WORK_ITEM",
+                    item.Goal),
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
+            Assert.Contains("기준 ref: dep456", ai.LastRequest!.Prompt);
+            Assert.Equal(worktree, ai.LastRequest.WorkingDirectory);
+        }
+        finally
+        {
+            if (Directory.Exists(parent))
+                Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
+    public async Task CheckpointPendingResumeDoesNotRunAiAgain()
+    {
+        var fixture = CreateFixture("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            의미 작업은 완료했습니다.
+            """);
+
+        try
+        {
+            fixture.Git.Clear();
+            EnqueueExistingWorktreePreparation(fixture);
+            EnqueueCheckpointAddFailure(fixture, attempts: 3);
+
+            var first = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, first.Outcome);
+            Assert.Equal("WORKTREE_CHECKPOINT_PENDING", first.BlockCode);
+            Assert.Equal("WORKTREE_CHECKPOINT_ADD_FAILED", first.BlockDetailCode);
+            Assert.Contains("의미 작업은 완료했습니다.", first.ResultSummary ?? string.Empty);
+            Assert.Equal(1, fixture.Runner.RunCount);
+
+            fixture.Git.Clear();
+            EnqueueExistingWorktreePreparation(fixture);
+            EnqueueCheckpointAddFailure(fixture, attempts: 3);
+
+            var retryItem = fixture.Request.Item with
+            {
+                ResultSummary = first.ResultSummary,
+                ResultRef = first.ResultRef,
+                SessionId = first.SessionId,
+                Branch = first.Branch,
+                WorktreePath = first.WorktreePath
+            };
+            var retry = fixture.Request with
+            {
+                Item = retryItem,
+                InboundType = "WORKTREE_CHECKPOINT_RETRY",
+                InboundBody = string.Empty
+            };
+
+            var second = await fixture.Executor.ExecuteAsync(
+                retry,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, second.Outcome);
+            Assert.Equal("WORKTREE_CHECKPOINT_PENDING", second.BlockCode);
+            Assert.Equal(1, fixture.Runner.RunCount);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task MissingCodeDependencyResultRefBlocksBeforeAiExecution()
     {
         var fixture = CreateFixture(
@@ -625,6 +770,28 @@ public sealed class CodexWorkItemExecutorTests
         }
     }
 
+    private static void EnqueueExistingWorktreePreparation(Fixture fixture)
+    {
+        var root = Path.Combine(fixture.Parent, "repo");
+        var worktree = fixture.Request.Item.WorktreePath!;
+        fixture.Git.Enqueue(0, root);
+        fixture.Git.Enqueue(0, "base123");
+        fixture.Git.Enqueue(
+            0,
+            $"worktree {worktree}\nHEAD head123\nbranch refs/heads/{fixture.Branch}\n");
+    }
+
+    private static void EnqueueCheckpointAddFailure(Fixture fixture, int attempts)
+    {
+        for (var index = 0; index < attempts; index++)
+        {
+            fixture.Git.Enqueue(0, "head123");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, " M changed.cs");
+            fixture.Git.Enqueue(128, "", "fatal: simulated checkpoint add lock");
+        }
+    }
+
     private static Fixture CreateFixture(
         string finalMessage,
         IReadOnlyList<WorkItemDependencyResult>? dependencies = null,
@@ -786,6 +953,8 @@ public sealed class CodexWorkItemExecutorTests
 
         public void Enqueue(int exitCode, string stdout, string stderr = "")
             => _results.Enqueue(new GitCommandResult(exitCode, stdout, stderr));
+
+        public void Clear() => _results.Clear();
 
         public Task<GitCommandResult> RunAsync(
             string workingDirectory,
