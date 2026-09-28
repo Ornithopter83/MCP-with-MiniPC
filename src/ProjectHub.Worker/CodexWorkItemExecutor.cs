@@ -213,6 +213,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 environment[pair.Key] = pair.Value;
             foreach (var pair in WorkerPaths.BuildWorkToolEnvironment(runtimePaths, workTempPath))
                 environment[pair.Key] = pair.Value;
+            environment["PROJECTHUB_RESOURCE_TEMP"] = runtimePaths.TempRoot;
             workEnvironment = environment;
 
             var writableDirectories = new List<string>
@@ -259,7 +260,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     item.ResultSummary,
                     dependencyResults),
                 observationRequestDirectory,
-                includeContract: string.IsNullOrWhiteSpace(sessionId));
+                includeContract: string.IsNullOrWhiteSpace(sessionId),
+                resourceStagingRoot: runtimePaths.TempRoot);
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
