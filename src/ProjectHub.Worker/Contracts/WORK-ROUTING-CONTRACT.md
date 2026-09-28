@@ -22,11 +22,11 @@
 ② 요청은 GOTO가 아니며 완성된 JSON 객체 하나를 `.json` 파일로 게시한다.
 ③ 요청 JSON은 다음 필드를 사용한다.
 1. `kind`: `OBSERVATION`
-2. `id`: 현재 요청 폴더 안에서 구분 가능한 안전한 식별자
+2. `id`: 96자 이하의 영문자·숫자·`-`·`_`만 사용하는 안전한 식별자
 3. `command`: 실행할 명령
 4. `arguments`: 선택적 문자열 배열
 5. `workingDirectory`: 선택적 실행 폴더
-6. `timeoutSeconds`: 선택적 양의 제한시간
+6. `timeoutSeconds`: 선택적 제한시간이며 지정할 경우 1~86400초 범위를 사용한다.
 7. `completionMode`: `WORK_RESULT_REQUIRED` 또는 `FINALIZE_ONLY`
 8. `resultPaths`: 선택적 결과 경로 배열
 9. `environment`: 선택적 문자열 key/value 환경 변수
