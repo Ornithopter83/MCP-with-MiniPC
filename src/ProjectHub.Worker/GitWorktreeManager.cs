@@ -138,6 +138,12 @@ public sealed record GitRepositoryRuntimeCleanupResult(
     bool RuntimeDeleted,
     string? ErrorDetail = null);
 
+public sealed record GitIntegrationCloneCleanupResult(
+    bool Success,
+    string? ErrorCode,
+    string ClonePath,
+    string? ErrorDetail = null);
+
 public sealed record GitWorktreeCheckpointResult(
     bool Success,
     string? ErrorCode,
@@ -1896,6 +1902,42 @@ public sealed class GitWorktreeManager
         {
             preparationGate.Release();
         }
+    }
+
+    public async Task<GitIntegrationCloneCleanupResult> CleanupIntegrationCloneAsync(
+        string repositoryRoot,
+        string clonePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryRoot) ||
+            string.IsNullOrWhiteSpace(clonePath))
+        {
+            return new(
+                false,
+                "INTEGRATION_CLONE_CLEANUP_PATH_MISSING",
+                clonePath ?? string.Empty);
+        }
+
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
+        var normalizedClone = Path.GetFullPath(clonePath);
+        if (!IsPathWithin(normalizedClone, runtime.IntegrationClones))
+        {
+            return new(
+                false,
+                "INTEGRATION_CLONE_CLEANUP_OUTSIDE_RUNTIME",
+                normalizedClone);
+        }
+
+        var error = await DeleteDirectoryTreeWithRetriesAsync(
+            normalizedClone,
+            cancellationToken).ConfigureAwait(false);
+        return error is null
+            ? new(true, null, normalizedClone)
+            : new(
+                false,
+                "INTEGRATION_CLONE_CLEANUP_DELETE_FAILED",
+                normalizedClone,
+                error);
     }
 
     public async Task<GitRepositoryRuntimeCleanupResult> CleanupRepositoryRuntimeAsync(
