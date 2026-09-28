@@ -146,6 +146,12 @@ public sealed record GitWorktreeCheckpointResult(
     string? HeadCommit,
     bool CreatedCommit);
 
+public sealed record GitNormalBaseResolutionResult(
+    bool Success,
+    string? ErrorCode,
+    string? EffectiveBaseRef,
+    string? ErrorDetail = null);
+
 public sealed record GitIntegrationDependencyStageResult(
     bool Success,
     string? ErrorCode,
@@ -188,6 +194,146 @@ public sealed class GitWorktreeManager
     public GitWorktreeManager(IGitWorktreeCommandRunner? runner = null)
     {
         _runner = runner ?? new ProcessGitWorktreeCommandRunner();
+    }
+
+    public async Task<GitNormalBaseResolutionResult> ResolveNormalBaseRefAsync(
+        string workspace,
+        string declaredBaseRef,
+        IReadOnlyList<string>? codeDependencyRefs,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+            return new(false, "WORKTREE_WORKSPACE_MISSING", null, "작업공간이 존재하지 않습니다.");
+        if (string.IsNullOrWhiteSpace(declaredBaseRef))
+            return new(false, "WORKTREE_BASE_REF_MISSING", null, "WorkItem baseRef가 없습니다.");
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+            return new(
+                false,
+                "WORKTREE_GIT_REPOSITORY_REQUIRED",
+                null,
+                BuildGitFailureDetail("git rev-parse --show-toplevel", rootResult));
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var references = new List<(string Label, string Value)>
+        {
+            ("baseRef", declaredBaseRef.Trim())
+        };
+        foreach (var dependencyRef in (codeDependencyRefs ?? Array.Empty<string>())
+                     .Where(value => !string.IsNullOrWhiteSpace(value))
+                     .Select(value => value.Trim())
+                     .Distinct(StringComparer.Ordinal))
+        {
+            references.Add(("dependency", dependencyRef));
+        }
+
+        var tips = new List<string>();
+        foreach (var reference in references)
+        {
+            var resolve = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                reference.Value + "^{commit}").ConfigureAwait(false);
+
+            if (resolve.ExitCode != 0 || string.IsNullOrWhiteSpace(resolve.StandardOutput))
+            {
+                var errorCode = reference.Label == "baseRef"
+                    ? "WORKTREE_BASE_REF_INVALID"
+                    : "WORKTREE_DEPENDENCY_REF_INVALID";
+                return new(
+                    false,
+                    errorCode,
+                    null,
+                    BuildGitFailureDetail(
+                        $"git rev-parse --verify {reference.Label}",
+                        resolve));
+            }
+
+            var commit = FirstLine(resolve.StandardOutput);
+            var coveredByExistingTip = false;
+            for (var index = tips.Count - 1; index >= 0; index--)
+            {
+                var existing = tips[index];
+                if (string.Equals(existing, commit, StringComparison.OrdinalIgnoreCase))
+                {
+                    coveredByExistingTip = true;
+                    break;
+                }
+
+                var existingAncestor = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "merge-base",
+                    "--is-ancestor",
+                    existing,
+                    commit).ConfigureAwait(false);
+
+                if (existingAncestor.ExitCode == 0)
+                {
+                    tips.RemoveAt(index);
+                    continue;
+                }
+
+                if (existingAncestor.ExitCode != 1)
+                {
+                    return new(
+                        false,
+                        "WORKTREE_DEPENDENCY_ANCESTRY_FAILED",
+                        null,
+                        BuildGitFailureDetail("git merge-base --is-ancestor", existingAncestor));
+                }
+
+                var newAncestor = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "merge-base",
+                    "--is-ancestor",
+                    commit,
+                    existing).ConfigureAwait(false);
+
+                if (newAncestor.ExitCode == 0)
+                {
+                    coveredByExistingTip = true;
+                    break;
+                }
+
+                if (newAncestor.ExitCode != 1)
+                {
+                    return new(
+                        false,
+                        "WORKTREE_DEPENDENCY_ANCESTRY_FAILED",
+                        null,
+                        BuildGitFailureDetail("git merge-base --is-ancestor", newAncestor));
+                }
+            }
+
+            if (!coveredByExistingTip)
+                tips.Add(commit);
+        }
+
+        if (tips.Count != 1)
+        {
+            return new(
+                false,
+                "WORKTREE_MULTIPLE_CODE_BASES_REQUIRE_INTEGRATION",
+                null,
+                "NORMAL WorkItem이 하나의 코드 기준점으로 축약할 수 없는 서로 독립된 CODE_CHANGE 계보를 참조합니다. tips=" +
+                string.Join(",", tips));
+        }
+
+        return new(true, null, tips[0]);
     }
 
     public async Task<GitWorktreePreparationResult> PrepareAsync(
