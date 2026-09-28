@@ -52,7 +52,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.True(Directory.Exists(workTemp));
             Assert.Contains(
                 fixture.Git.Calls,
-                call => call.Arguments.SequenceEqual(
+                call => call.SequenceEqual(
                     new[] { "worktree", "remove", Path.GetFullPath(fixture.Request.Item.WorktreePath!) }));
         }
         finally
@@ -1002,6 +1002,8 @@ public sealed class CodexWorkItemExecutorTests
     {
         private readonly Queue<GitCommandResult> _results = new();
 
+        public List<IReadOnlyList<string>> Calls { get; } = new();
+
         public void Enqueue(int exitCode, string stdout, string stderr = "")
             => _results.Enqueue(new GitCommandResult(exitCode, stdout, stderr));
 
@@ -1013,6 +1015,7 @@ public sealed class CodexWorkItemExecutorTests
             TimeSpan timeout,
             CancellationToken cancellationToken = default)
         {
+            Calls.Add(arguments.ToArray());
             if (_results.Count == 0)
                 throw new InvalidOperationException("예상하지 않은 Git 호출입니다: " + string.Join(" ", arguments));
             return Task.FromResult(_results.Dequeue());
