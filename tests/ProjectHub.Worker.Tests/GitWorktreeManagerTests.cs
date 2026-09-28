@@ -68,6 +68,77 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task ResolveNormalBaseRefUsesNewestLinearCodeDependency()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "dep456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "dep789");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.ResolveNormalBaseRefAsync(
+                root,
+                "main",
+                new[] { "dep-one", "dep-two" });
+
+            Assert.True(result.Success);
+            Assert.Equal("dep789", result.EffectiveBaseRef);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "merge-base", "--is-ancestor", "base123", "dep456" }));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "merge-base", "--is-ancestor", "dep456", "dep789" }));
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task ResolveNormalBaseRefRequiresIntegrationForDivergentCodeDependencies()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "left456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "right789");
+        runner.Enqueue(1, "");
+        runner.Enqueue(1, "");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.ResolveNormalBaseRefAsync(
+                root,
+                "main",
+                new[] { "left-ref", "right-ref" });
+
+            Assert.False(result.Success);
+            Assert.Equal(
+                "WORKTREE_MULTIPLE_CODE_BASES_REQUIRE_INTEGRATION",
+                result.ErrorCode);
+            Assert.Contains("left456", result.ErrorDetail ?? string.Empty);
+            Assert.Contains("right789", result.ErrorDetail ?? string.Empty);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task PrepareCreatesBranchAndWorktreeFromResolvedCommit()
     {
         var root = CreateTempRepositoryDirectory();
