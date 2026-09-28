@@ -155,6 +155,16 @@ public sealed record GitIntegrationLandingResult(
     string? AfterHead,
     bool FastForwarded);
 
+public sealed record GitTargetContainmentResult(
+    bool Success,
+    string? ErrorCode,
+    string RepositoryRoot,
+    string ResultRef,
+    string? ResultCommit,
+    string? TargetBranch,
+    string? TargetHead,
+    bool IsContained);
+
 public sealed class GitWorktreeManager
 {
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
@@ -1190,6 +1200,92 @@ public sealed class GitWorktreeManager
         }
 
         return new(true, null, paths);
+    }
+
+    public async Task<GitTargetContainmentResult> InspectTargetContainmentAsync(
+        string workspace,
+        string resultRef,
+        string? expectedTargetBranch = null,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedRef = resultRef?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+            return new(false, "TARGET_WORKSPACE_MISSING", string.Empty, normalizedRef, null, null, null, false);
+        if (string.IsNullOrWhiteSpace(normalizedRef))
+            return new(false, "TARGET_RESULT_REF_MISSING", Path.GetFullPath(workspace), normalizedRef, null, null, null, false);
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+            return new(false, "TARGET_REPOSITORY_REQUIRED", Path.GetFullPath(workspace), normalizedRef, null, null, null, false);
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var branchResult = await RunAsync(
+            repositoryRoot,
+            ReadTimeout,
+            cancellationToken,
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "HEAD").ConfigureAwait(false);
+        var targetBranch = branchResult.ExitCode == 0
+            ? FirstLine(branchResult.StandardOutput)
+            : null;
+        if (string.IsNullOrWhiteSpace(targetBranch))
+            return new(false, "TARGET_BRANCH_REQUIRED", repositoryRoot, normalizedRef, null, null, null, false);
+
+        var expectedBranch = string.IsNullOrWhiteSpace(expectedTargetBranch)
+            ? null
+            : expectedTargetBranch.Trim();
+        if (expectedBranch is not null &&
+            !string.Equals(targetBranch, expectedBranch, StringComparison.Ordinal))
+            return new(false, "TARGET_BRANCH_CHANGED", repositoryRoot, normalizedRef, null, targetBranch, null, false);
+
+        var resultCommitResult = await RunAsync(
+            repositoryRoot,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--verify",
+            normalizedRef + "^{commit}").ConfigureAwait(false);
+        var resultCommit = resultCommitResult.ExitCode == 0
+            ? FirstLine(resultCommitResult.StandardOutput)
+            : null;
+        if (string.IsNullOrWhiteSpace(resultCommit))
+            return new(false, "TARGET_RESULT_REF_INVALID", repositoryRoot, normalizedRef, null, targetBranch, null, false);
+
+        var headResult = await RunAsync(
+            repositoryRoot,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--verify",
+            "HEAD").ConfigureAwait(false);
+        var targetHead = headResult.ExitCode == 0
+            ? FirstLine(headResult.StandardOutput)
+            : null;
+        if (string.IsNullOrWhiteSpace(targetHead))
+            return new(false, "TARGET_HEAD_UNAVAILABLE", repositoryRoot, normalizedRef, resultCommit, targetBranch, null, false);
+
+        var ancestorResult = await RunAsync(
+            repositoryRoot,
+            ReadTimeout,
+            cancellationToken,
+            "merge-base",
+            "--is-ancestor",
+            resultCommit,
+            targetHead).ConfigureAwait(false);
+
+        if (ancestorResult.ExitCode == 0)
+            return new(true, null, repositoryRoot, normalizedRef, resultCommit, targetBranch, targetHead, true);
+        if (ancestorResult.ExitCode == 1)
+            return new(true, null, repositoryRoot, normalizedRef, resultCommit, targetBranch, targetHead, false);
+
+        return new(false, "TARGET_ANCESTRY_CHECK_FAILED", repositoryRoot, normalizedRef, resultCommit, targetBranch, targetHead, false);
     }
 
     public Task<GitIntegrationLandingResult> LandIntegrationAsync(
