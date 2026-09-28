@@ -123,6 +123,8 @@ public static class ParallelHqTurnContract
 
 public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncDisposable
 {
+    private const int MaximumConsecutivePatchRejections = 3;
+
     private readonly WorkGraph _graph;
     private readonly ParallelWorkScheduler _scheduler;
     private readonly Func<string, CancellationToken, Task<string>> _runHqAsync;
@@ -231,6 +233,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         var inboundType = initialInboundType.Trim();
         var inboundBody = initialBody ?? string.Empty;
         var firstHqTurn = true;
+        var consecutivePatchRejections = 0;
 
         while (true)
         {
@@ -414,7 +417,29 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 cancellationToken).ConfigureAwait(false);
 
             if (!patchResult.Success)
-                return Failure(patchResult.ErrorCode ?? "WORK_GRAPH_PATCH_REJECTED", turn.Body);
+            {
+                consecutivePatchRejections++;
+                var rejectionCode = patchResult.ErrorCode ?? "WORK_GRAPH_PATCH_REJECTED";
+                var rejectionBody = FormatPatchRejected(
+                    rejectionCode,
+                    _graph.Snapshot(),
+                    consecutivePatchRejections);
+
+                if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
+                {
+                    return Failure(
+                        "WORK_GRAPH_PATCH_RETRY_LIMIT",
+                        rejectionBody +
+                        Environment.NewLine +
+                        $"같은 관제 흐름에서 WorkGraph patch가 {MaximumConsecutivePatchRejections}회 연속 거부되어 종료합니다.");
+                }
+
+                inboundType = "WORK_GRAPH_PATCH_REJECTED";
+                inboundBody = rejectionBody;
+                continue;
+            }
+
+            consecutivePatchRejections = 0;
 
             if (!_schedulerStarted)
             {
@@ -769,6 +794,24 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             AppendMechanicalItem(builder, item);
 
         builder.AppendLine("위 값은 Worker가 관측한 기계적 상태이며 작업 의미 판단 결과가 아닙니다.");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string FormatPatchRejected(
+        string errorCode,
+        WorkGraphSnapshot snapshot,
+        int consecutiveRejections)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("HQ가 보낸 WORK_GRAPH_PATCH가 현재 WorkGraph 상태에 적용되지 않아 거부되었습니다.");
+        builder.AppendLine($"revision={snapshot.Revision}");
+        builder.AppendLine("errorCode=" + errorCode);
+        builder.AppendLine($"consecutiveRejectedPatches={consecutiveRejections}");
+        builder.AppendLine("WorkGraph는 변경되지 않았습니다.");
+        builder.AppendLine("items:");
+        foreach (var item in snapshot.Items.OrderBy(value => value.CreatedOrder))
+            AppendMechanicalItem(builder, item);
+        builder.Append("현재 revision과 WorkItem 상태에 맞는 새 WORK_GRAPH_PATCH를 반환하세요.");
         return builder.ToString().TrimEnd();
     }
 
