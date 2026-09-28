@@ -162,6 +162,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ㉔ HQ의 WORK_GRAPH_PATCH가 JSON 또는 operation별 기계 스키마 검증에 실패하면 Worker는 WorkGraph를 변경하지 않고 오류 코드와 가능한 path/hint를 HQ에 반환해 같은 관제 흐름에서 제한된 횟수만 재작성하게 한다. 반복 한계를 넘긴 경우에만 관제를 기계 오류로 종료할 수 있다.
 ㉕ 새 작업을 시작할 때 Worker는 이전 작업의 sibling `<project>.projecthub` runtime 정리를 기계적으로 시도한다. 등록된 linked worktree에 미커밋 변경이 있으면 해당 worktree는 보존하되 제거 가능한 clean worktree와 integration clone, temp, NuGet·dotnet runtime cache는 정리할 수 있다.
 ㉖ runtime 디렉터리 삭제는 읽기 전용 속성과 짧은 파일 핸들 해제 지연을 고려해 유한 횟수 재시도하며, 반복 실패 시 삭제되지 않은 경로와 기계 오류를 기록한다.
+㉗ WORK의 GOTO 또는 WORK_ITEM_STATUS 형식이 기계 계약에 맞지 않으면 Worker는 같은 WORK 세션에 오류 코드를 돌려 제한된 횟수만 형식 교정을 요청할 수 있다. 형식 교정 입력은 완료한 의미 작업을 다시 수행하라는 요청으로 취급하지 않는다.
 
 ---
 
