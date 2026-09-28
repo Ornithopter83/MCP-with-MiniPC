@@ -704,6 +704,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Contains("INTEGRATION_LANDING", result.ResultSummary);
             Assert.Contains("status: FAST_FORWARDED", result.ResultSummary);
             Assert.Contains("targetBranch: main", result.ResultSummary);
+            Assert.False(Directory.Exists(integrationClone));
         }
         finally
         {
