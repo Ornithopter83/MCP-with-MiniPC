@@ -1563,14 +1563,9 @@ public partial class MainWindow : Window
     private string ResolveCoordinatorTargetWorkingDirectory()
     {
         var displayed = WorkingDirectoryInput?.Text?.Trim();
-        if (!string.IsNullOrWhiteSpace(displayed) && Directory.Exists(displayed))
-            return Path.GetFullPath(displayed);
-
-        var configured = _targetSettings.ManualWorkingDirectory;
-        if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
-            return Path.GetFullPath(configured);
-
-        return string.Empty;
+        return !string.IsNullOrWhiteSpace(displayed) && Directory.Exists(displayed)
+            ? Path.GetFullPath(displayed)
+            : string.Empty;
     }
 
     private static WorkerAiRoleSettings NormalizeRoleSessionForWorkspace(
@@ -1619,11 +1614,15 @@ public partial class MainWindow : Window
     {
         if (_targetSettings.IsCoordinatorFirst)
         {
-            var configured = _targetSettings.ManualWorkingDirectory;
-            WorkingDirectoryInput.Text =
-                !string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured)
-                    ? Path.GetFullPath(configured)
-                    : string.Empty;
+            if (string.IsNullOrWhiteSpace(WorkingDirectoryInput.Text))
+            {
+                var configured = _targetSettings.ManualWorkingDirectory;
+                WorkingDirectoryInput.Text =
+                    !string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured)
+                        ? Path.GetFullPath(configured)
+                        : string.Empty;
+            }
+
             WorkingDirectoryInput.IsReadOnly = false;
             WorkingDirectoryBrowseButton.IsEnabled = true;
             return;
