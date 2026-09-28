@@ -513,22 +513,30 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task RuntimeCleanupPreservesRuntimeWhenOwnedWorktreeIsDirty()
+    public async Task RuntimeCleanupPreservesDirtyWorktreeButRemovesDisposableRuntimeData()
     {
         var root = CreateTempRepositoryDirectory();
         var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
         var ownedWorktree = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
         Directory.CreateDirectory(ownedWorktree);
+        Directory.CreateDirectory(runtime.IntegrationClones);
+        Directory.CreateDirectory(runtime.NuGetPackages);
+        Directory.CreateDirectory(runtime.TempRoot);
+        File.WriteAllText(Path.Combine(runtime.IntegrationClones, "clone.tmp"), "clone");
+        File.WriteAllText(Path.Combine(runtime.NuGetPackages, "cache.tmp"), "cache");
+        File.WriteAllText(Path.Combine(runtime.TempRoot, "work.tmp"), "temp");
 
+        var listing =
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n\n" +
+            $"worktree {ownedWorktree}\nHEAD work123\nbranch refs/heads/projecthub/job/W1\n";
         var runner = new FakeGitRunner(root);
         runner.Enqueue(0, root);
-        runner.Enqueue(
-            0,
-            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n\n" +
-            $"worktree {ownedWorktree}\nHEAD work123\nbranch refs/heads/projecthub/job/W1\n");
+        runner.Enqueue(0, listing);
         runner.Enqueue(0, "work123");
         runner.Enqueue(0, "projecthub/job/W1");
         runner.Enqueue(0, " M changed.cs");
+        runner.Enqueue(0, "pruned");
+        runner.Enqueue(0, listing);
 
         try
         {
@@ -538,19 +546,63 @@ public sealed class GitWorktreeManagerTests
             Assert.False(result.Success);
             Assert.Equal("RUNTIME_CLEANUP_WORKTREE_DIRTY", result.ErrorCode);
             Assert.True(Directory.Exists(runtime.Root));
+            Assert.True(Directory.Exists(ownedWorktree));
+            Assert.False(Directory.Exists(runtime.IntegrationClones));
+            Assert.False(Directory.Exists(runtime.NuGetRoot));
+            Assert.False(Directory.Exists(runtime.TempRoot));
+            Assert.Contains(ownedWorktree, result.ErrorDetail ?? string.Empty);
             Assert.DoesNotContain(
                 runner.Calls,
                 call => call.Arguments.Count > 1 &&
                         call.Arguments[0] == "worktree" &&
                         call.Arguments[1] == "remove");
-            Assert.DoesNotContain(
+            Assert.Contains(
                 runner.Calls,
-                call => call.Arguments.Count > 1 &&
-                        call.Arguments[0] == "worktree" &&
-                        call.Arguments[1] == "prune");
+                call => call.Arguments.SequenceEqual(
+                    new[] { "worktree", "prune", "--expire", "now" }));
         }
         finally
         {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task RuntimeCleanupClearsReadOnlyFilesBeforeDeletingRuntimeRoot()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
+        var cloneDirectory = Path.Combine(runtime.IntegrationClones, "clone");
+        Directory.CreateDirectory(cloneDirectory);
+        var readOnlyFile = Path.Combine(cloneDirectory, "readonly.pack");
+        File.WriteAllText(readOnlyFile, "data");
+        File.SetAttributes(
+            readOnlyFile,
+            File.GetAttributes(readOnlyFile) | FileAttributes.ReadOnly);
+
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(
+            0,
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n");
+        runner.Enqueue(0, "pruned");
+        runner.Enqueue(
+            0,
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.CleanupRepositoryRuntimeAsync(root);
+
+            Assert.True(result.Success);
+            Assert.True(result.RuntimeDeleted);
+            Assert.False(Directory.Exists(runtime.Root));
+        }
+        finally
+        {
+            if (File.Exists(readOnlyFile))
+                File.SetAttributes(readOnlyFile, FileAttributes.Normal);
             DeleteTempTree(root);
         }
     }
