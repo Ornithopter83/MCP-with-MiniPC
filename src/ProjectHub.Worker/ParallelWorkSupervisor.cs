@@ -270,9 +270,25 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     out var envelope,
                     out var turnError))
             {
-                return Failure(
-                    turnError ?? "PARALLEL_HQ_RESPONSE_INVALID",
-                    rawHqMessage);
+                consecutivePatchRejections++;
+                var rejectionCode = turnError ?? "PARALLEL_HQ_RESPONSE_INVALID";
+                var rejectionBody = FormatHqResponseRejected(
+                    rejectionCode,
+                    _graph.Snapshot(),
+                    consecutivePatchRejections);
+
+                if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
+                {
+                    return Failure(
+                        "WORK_GRAPH_PATCH_RETRY_LIMIT",
+                        rejectionBody +
+                        Environment.NewLine +
+                        $"같은 관제 흐름에서 HQ 제어 응답이 {MaximumConsecutivePatchRejections}회 연속 기계적으로 거부되어 종료합니다.");
+                }
+
+                inboundType = "HQ_RESPONSE_CONTRACT_REJECTED";
+                inboundBody = rejectionBody;
+                continue;
             }
 
             ParallelHqTurn turn;
@@ -810,6 +826,21 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             AppendMechanicalItem(builder, item);
 
         builder.AppendLine("위 값은 Worker가 관측한 기계적 상태이며 작업 의미 판단 결과가 아닙니다.");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string FormatHqResponseRejected(
+        string errorCode,
+        WorkGraphSnapshot snapshot,
+        int consecutiveRejections)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("HQ 응답의 ACTION/GOTO 제어 형식이 유효하지 않아 적용하지 않았습니다.");
+        builder.AppendLine($"revision={snapshot.Revision}");
+        builder.AppendLine("errorCode=" + errorCode);
+        builder.AppendLine($"consecutiveRejectedPatches={consecutiveRejections}");
+        builder.AppendLine("WorkGraph는 변경되지 않았습니다.");
+        builder.Append("현재 revision을 유지하고 HQ 출력 계약에 맞는 ACTION/GOTO와 필요한 WORK_GRAPH_PATCH를 다시 반환하세요.");
         return builder.ToString().TrimEnd();
     }
 
