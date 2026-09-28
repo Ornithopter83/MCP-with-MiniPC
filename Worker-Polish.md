@@ -1,6 +1,6 @@
 # Worker-Polish — ProjectHub Worker 정책
 
-갱신일: 2026-09-27 (KST)
+갱신일: 2026-09-28 (KST)
 
 이 문서는 `src/ProjectHub.Worker`와 Worker가 직접 포함·운영하는 HQ, WORK, RESOURCE, JUDGE, OBSERVATION, Web Bridge 실행 경계의 장기 정책을 정의한다.
 ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다.
@@ -42,11 +42,11 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 제4조 (Web 연결)
 
-① HQ Web과 RESOURCE Web은 Worker가 관리하는 서로 다른 역할 슬롯과 서로 다른 conversationId를 사용한다.
-② 역할 슬롯, runtime token, conversation binding의 생성·검증은 Worker와 관리형 Web 확장의 기계 책임이다.
-③ heartbeat는 생존과 확장 동기화 확인에 사용하며 작업 목적지를 의미적으로 결정하지 않는다.
-④ 일반 Chrome이나 runtime token이 없는 페이지를 Worker의 Web 작업 대상으로 사용하지 않는다.
-⑤ Web 확장의 세부 연결·전송 정책은 `Web-Polish.md`를 단일 원본으로 사용한다.
+① Worker는 HQ Web과 RESOURCE Web을 서로 다른 역할 슬롯과 conversation binding으로 관리한다.
+② Worker는 관리형 runtime token을 발급하고 로컬 bridge 요청의 인증 경계를 검증한다.
+③ heartbeat는 생존과 확장 동기화 확인에 사용하는 기계 신호이며 작업 목적지를 의미적으로 결정하지 않는다.
+④ Worker는 일반 Chrome이나 현재 runtime token이 없는 페이지를 Web 작업 대상으로 사용하지 않는다.
+⑤ content script의 연결, 전송 확인, DOM 관측과 결과 수집 책임은 `Web-Polish.md`의 확장 경계를 따른다.
 
 ---
 
@@ -150,10 +150,10 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 제13조 (관리형 Web 런타임)
 
-① Worker는 HQ와 RESOURCE를 서로 분리된 관리형 Chromium 역할 슬롯으로 운영한다.
-② 역할별 persistent profile의 로그인 상태는 보존하되 브라우저 세션·자격정보를 Git, 로그 또는 AI 프롬프트에 복사하지 않는다.
-③ Worker는 관리형 런타임의 시작·종료·생존·확장 버전 동기화를 기계적으로 관리한다.
-④ 관리형 Web의 창 형태, runtime token, background throttling 대응과 세부 브라우저 동작은 `Web-Polish.md`와 현재 런타임 구현을 따른다.
+① Worker는 HQ와 RESOURCE 관리형 Chromium 슬롯의 시작·종료·생존과 역할별 profile 선택을 관리한다.
+② Worker는 역할별 로그인 profile을 보존하되 브라우저 자격정보를 Git, 로그 또는 AI 프롬프트에 복사하지 않는다.
+③ 확장의 페이지 동작, DOM 관측과 Web UI 처리 규칙은 `Web-Polish.md` 책임으로 두고 Worker 정책에 중복 정의하지 않는다.
+④ runtime 실행 파일, 창 배치, throttling 대응과 같은 기계 세부는 현재 런타임 구현과 테스트를 따른다.
 ⑤ Worker는 Web 응답의 의미적 정확성이나 RESOURCE 결과의 미적·기능적 품질을 판단하지 않는다.
 
 ---
@@ -170,9 +170,9 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 제15조 (관리형 Web app window)
 
-① HQ와 RESOURCE는 각각 하나의 관리형 app window 역할 슬롯을 사용한다.
-② Worker는 슬롯 시작 URL과 conversation binding을 관리하며 확장이 일반 browser tab 생성·삭제 권한에 의존하지 않게 한다.
-③ 로그인·표시·숨김·재시작의 구체 창 제어는 Web 정책과 런타임 구현을 따른다.
+① Worker는 HQ와 RESOURCE에 각각 하나의 관리형 app window 역할 슬롯을 제공한다.
+② Worker는 슬롯의 시작 URL과 conversation binding을 관리한다.
+③ 확장의 tab 권한, 페이지 초기화와 표시 상태에서의 동작은 `Web-Polish.md`를 따르며, 창 프로세스의 표시·숨김·재시작 세부는 현재 런타임 구현과 테스트를 따른다.
 
 ---
 
@@ -187,18 +187,18 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 제17조 (Web 응답 회수와 일반 결과 파일)
 
-① Web 요청 송신 성공과 응답 회수 성공은 별도 기계 단계로 기록한다.
-② HQ Web 응답은 correlation KEY가 있는 경우 현재 KEY가 확인된 응답 범위만 현재 task 결과로 인정한다.
-③ 일반 응답 파일은 현재 응답 범위에서 수집하고 Worker가 안전한 별도 결과 경로에 저장한다.
-④ assistant DOM 탐지, 파일 다운로드 fallback, 안정화 시간 같은 Web 구현 세부는 `Web-Polish.md`를 단일 원본으로 사용한다.
+① Worker는 Web 요청 송신 성공과 응답 회수 성공을 서로 다른 기계 단계로 기록한다.
+② Worker는 correlation KEY가 있는 HQ 응답에서 현재 KEY로 검증된 결과만 현재 task 결과로 수락한다.
+③ Worker는 확장이 반환한 일반 결과 파일의 bytes·hash·경로 안전성을 검증하고 별도 결과 경로에 저장한다.
+④ assistant DOM 탐지, 다운로드 후보 판정, fallback과 응답 안정화는 `Web-Polish.md`의 확장 책임이며 구체 selector와 시간값은 구현·테스트를 따른다.
 
 ---
 
 제18조 (Web 첨부 전송 준비)
 
-① Worker attachment bytes 검증과 ChatGPT UI에서의 첨부 준비 완료는 서로 다른 단계로 취급한다.
-② Worker는 확장이 보고한 첨부 준비·전송·실패 상태를 기계 사실로 기록하며 UI 의미를 추론하지 않는다.
-③ 첨부 UI의 구체 timeout과 DOM 판정 규칙은 `Web-Polish.md`와 확장 테스트를 원본으로 사용한다.
+① Worker는 attachment bytes 검증과 확장이 보고하는 ChatGPT UI 준비 상태를 서로 다른 기계 단계로 취급한다.
+② Worker는 확장이 보고한 준비·전송·실패 상태를 기록하되 UI 의미를 추론하지 않는다.
+③ 첨부 UI 탐지와 Send 가능 상태 판정은 `Web-Polish.md`의 확장 책임이며 구체 timeout과 DOM 규칙은 구현·테스트를 따른다.
 
 ---
 
@@ -241,9 +241,9 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 제23조 (관리형 Web UI 이상 관측)
 
-① Web 확장이 현재 task 중 오류·한도·timeout·첨부 실패 UI를 관측하면 WEB_UI_ANOMALY_OBSERVED로 통합로그에 남길 수 있다.
-② 해당 관측은 진단 정보일 뿐 task 상태, conversationId, role binding, lease, correlation KEY 또는 전송 흐름을 변경하지 않는다.
-③ 동일 task의 동일 관측은 기계적으로 중복 억제할 수 있다.
+① Worker는 확장이 보고한 WEB_UI_ANOMALY_OBSERVED를 현재 task의 진단 사실로 기록할 수 있다.
+② 해당 관측은 task 상태, conversationId, role binding, lease, correlation KEY 또는 전송 흐름을 직접 변경하지 않는다.
+③ 확장이 어떤 Web UI를 어떻게 관측하는지는 `Web-Polish.md`의 책임이며 Worker는 동일 task의 동일 관측을 기계적으로 중복 억제할 수 있다.
 ④ 자동 대화방 이동이나 동일 요청 재전송은 실제 증거와 별도 정책 변경 없이 수행하지 않는다.
 
 ---

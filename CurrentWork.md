@@ -28,12 +28,12 @@
 
 제5조 (WORKER)
 
-① 상태는 중단이다.
-② 완료하려 한 작업은 Worker 작업 표시줄 아이콘을 적용하면서도 MainWindow 시작 경로가 XAML 이미지 디코딩 실패로 중단되지 않게 하는 것이다.
-③ 중단 지점은 XAML의 직접 ICO 로딩을 제거하고 실행 파일 아이콘을 `InitializeComponent()` 이후 안전하게 적용하도록 수정했으며 Windows CI에서 Restore와 Build는 통과했다. 전체 Test 완료와 실제 배포본 publish 후 Worker 시작 확인은 아직 끝나지 않았다.
+① 상태는 완료다.
+② 방금 완료한 작업은 Master 형식, HQ/WORK/JEV 활성 계약과 Worker/Web 책임 경계를 현재 단일 원본 원칙에 맞게 정리한 것이다.
+③ 다음 작업은 미지정이다.
 
 제6조 (WEB)
 
 ① 상태는 완료다.
-② 방금 완료한 작업은 관리형 HQ/RESOURCE Web 런타임의 현재 정책과 확장 전송 경계를 `Web-Polish.md` 및 전용 구현에 정리한 것이다.
+② 방금 완료한 작업은 Worker 정책과 중복되던 관리형 Web 책임을 줄이고 확장의 페이지 연결·전송·관측·수집 경계를 `Web-Polish.md`에 명확히 한 것이다.
 ③ 다음 작업은 미지정이다.

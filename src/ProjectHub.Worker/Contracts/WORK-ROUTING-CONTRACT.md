@@ -19,10 +19,26 @@
 제3조 (비동기 계측)
 
 ① 장시간 실행·계측을 현재 WORK 호출과 분리할 필요가 있을 때만 헤더의 비동기 계측 요청 폴더에 요청 JSON을 생성한다.
-② 요청은 GOTO가 아니다.
-③ completionMode는 WORK_RESULT_REQUIRED 또는 FINALIZE_ONLY다.
-④ WORK_RESULT_REQUIRED 결과는 같은 WORK 세션에 OBSERVATION_RESULT로 돌아온다.
-⑤ 계측 결과의 의미 해석과 후속 수정 여부는 WORK가 결정한다.
+② 요청은 GOTO가 아니며 완성된 JSON 객체 하나를 `.json` 파일로 게시한다.
+③ 요청 JSON은 다음 필드를 사용한다.
+1. `kind`: `OBSERVATION`
+2. `id`: 현재 요청 폴더 안에서 구분 가능한 안전한 식별자
+3. `command`: 실행할 명령
+4. `arguments`: 선택적 문자열 배열
+5. `workingDirectory`: 선택적 실행 폴더
+6. `timeoutSeconds`: 선택적 양의 제한시간
+7. `completionMode`: `WORK_RESULT_REQUIRED` 또는 `FINALIZE_ONLY`
+8. `resultPaths`: 선택적 결과 경로 배열
+9. `environment`: 선택적 문자열 key/value 환경 변수
+
+```json
+{"kind":"OBSERVATION","id":"<id>","command":"<command>","arguments":[],"workingDirectory":"<optional>","timeoutSeconds":300,"completionMode":"WORK_RESULT_REQUIRED","resultPaths":[],"environment":{}}
+```
+
+④ Worker가 요청 JSON을 기계적으로 검증하므로 WORK는 필드 의미를 다른 이름으로 바꾸거나 자연어만 기록하지 않는다.
+⑤ WORK_RESULT_REQUIRED 결과는 같은 WORK 세션에 OBSERVATION_RESULT로 돌아온다.
+⑥ FINALIZE_ONLY는 현재 WORK의 의미 라우팅을 막지 않으며 최종 완료 전에 Worker가 outstanding으로 추적할 수 있다.
+⑦ 계측 결과의 의미 해석과 후속 수정 여부는 WORK가 결정한다.
 
 제4조 (RESOURCE)
 
@@ -55,6 +71,7 @@
 ⑪ COMPLETED 결과의 resultType은 WORK가 선언하지 않는다. Worker는 WorkItem 생애 전체의 checkpoint 및 이전 BLOCKED 단계에서 보존된 provenance를 기준으로 CODE_CHANGE 또는 ANALYSIS를 기계적으로 기록하며, 마지막 재개 실행에서 새 commit이 없다는 이유만으로 기존 CODE_CHANGE를 ANALYSIS로 낮추지 않는다.
 ⑫ CODE_CHANGE가 생성되면 Worker가 Commit Manifest를 생성하므로 commit 내부 변경 경로와 텍스트 내용을 재수집하기 위한 별도 작업을 요청하지 않는다.
 ⑬ WORK는 Computer Use를 사용하지 않는다.
+⑭ INTEGRATION WorkItem은 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다. 이 항의 `integration worktree`는 WORK가 보는 격리 Integration 작업공간을 뜻하며, 실제 준비 방식은 Worker 정책 제24조의 독립 clone을 따른다.
 
 제7조 (HQ 보고)
 
