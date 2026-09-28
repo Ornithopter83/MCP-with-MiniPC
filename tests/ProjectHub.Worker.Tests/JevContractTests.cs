@@ -41,6 +41,8 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("독립 CODE_CHANGE가 둘 이상이면 NORMAL에 임의로 합치지 않고 INTEGRATION WorkItem으로 결합한다.", hq);
         Assert.Contains("실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 최종 CODE_CHANGE 뒤에는", hq);
         Assert.Contains("검증 WorkItem은 결함 수정까지 겸하지 않고 발견 사실을 보고", hq);
+        Assert.Contains("WORKTREE_CHECKPOINT_PENDING이 보고되면", hq);
+        Assert.Contains("checkpoint 기계 재시도로 처리한다.", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
