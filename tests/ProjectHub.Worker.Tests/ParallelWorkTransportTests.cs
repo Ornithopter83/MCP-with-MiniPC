@@ -190,6 +190,31 @@ public sealed class ParallelWorkTransportTests
         Assert.Contains("\"goal\" field is used by ADD", detail);
     }
 
+    [Theory]
+    [InlineData(
+        "{\"expectedRevision\":2,\"operations\":[{\"type\":\"SET_BASE_REF\",\"workItemId\":\"W10\",\"baseRef\":\"abc123\"}]}",
+        "WORK_GRAPH_SET_BASE_REF_SCHEMA_INVALID",
+        "Do not use \"baseRef\"")]
+    [InlineData(
+        "{\"expectedRevision\":2,\"operations\":[{\"type\":\"RELEASE\",\"workItemId\":\"W10\",\"body\":\"continue\"}]}",
+        "WORK_GRAPH_RELEASE_SCHEMA_INVALID",
+        "Do not use \"body\"")]
+    public void MisleadingOperationFieldAliasesAreRejectedInsteadOfSilentlyIgnored(
+        string json,
+        string expectedError,
+        string expectedHint)
+    {
+        var body = "WORK_GRAPH_PATCH:" + Environment.NewLine + json;
+
+        Assert.False(WorkGraphTransportContract.TryParse(body, out _, out var error));
+        Assert.Equal(expectedError, error);
+
+        var detail = WorkGraphTransportContract.DescribeError(body, error);
+        Assert.NotNull(detail);
+        Assert.Contains("path=operations[0].value", detail);
+        Assert.Contains(expectedHint, detail);
+    }
+
     [Fact]
     public void WorkGraphTransportRejectsDuplicateMarkers()
     {
