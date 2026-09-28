@@ -138,17 +138,15 @@ public static class WorkGraphTransportContract
         string? payload,
         string? errorCode)
     {
-        if (!string.Equals(
-                errorCode,
-                "WORK_GRAPH_OPERATION_TYPE_MISSING",
-                StringComparison.Ordinal))
-            return null;
-
         if (!TryExtractFirstJsonObject(payload ?? string.Empty, out var json, out _))
         {
-            return
-                "path=operations[*].type" + Environment.NewLine +
-                "message=Required field \"type\" is missing, but the WorkGraph JSON object could not be inspected.";
+            return string.Equals(
+                    errorCode,
+                    "WORK_GRAPH_OPERATION_TYPE_MISSING",
+                    StringComparison.Ordinal)
+                ? "path=operations[*].type" + Environment.NewLine +
+                  "message=Required field \"type\" is missing, but the WorkGraph JSON object could not be inspected."
+                : null;
         }
 
         try
@@ -167,41 +165,97 @@ public static class WorkGraphTransportContract
                     continue;
                 }
 
-                var hasType =
-                    operation.TryGetProperty("type", out var typeElement) &&
-                    typeElement.ValueKind == JsonValueKind.String &&
-                    !string.IsNullOrWhiteSpace(typeElement.GetString());
-                if (hasType)
-                {
-                    index++;
-                    continue;
-                }
-
                 var keys = operation
                     .EnumerateObject()
                     .Select(property => property.Name)
                     .ToArray();
 
-                string hint;
-                if (operation.TryGetProperty("operation", out var aliasElement) &&
-                    aliasElement.ValueKind == JsonValueKind.String &&
-                    !string.IsNullOrWhiteSpace(aliasElement.GetString()))
+                var type = operation.TryGetProperty("type", out var typeElement) &&
+                           typeElement.ValueKind == JsonValueKind.String
+                    ? typeElement.GetString()?.Trim().ToUpperInvariant()
+                    : null;
+
+                if (string.Equals(
+                        errorCode,
+                        "WORK_GRAPH_OPERATION_TYPE_MISSING",
+                        StringComparison.Ordinal) &&
+                    string.IsNullOrWhiteSpace(type))
                 {
-                    var alias = aliasElement.GetString()!.Trim();
-                    hint = SupportedHqOperationAliases.Contains(alias)
-                        ? $"Use \"type\":\"{alias}\". The received \"operation\" key is only a compatibility alias and should be normalized to \"type\"."
-                        : $"Use the \"type\" field with a supported operation name. Received unsupported alias value \"{alias}\" in \"operation\".";
-                }
-                else
-                {
-                    hint = "Use the \"type\" field with one of ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE.";
+                    string hint;
+                    if (operation.TryGetProperty("operation", out var aliasElement) &&
+                        aliasElement.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(aliasElement.GetString()))
+                    {
+                        var alias = aliasElement.GetString()!.Trim();
+                        hint = SupportedHqOperationAliases.Contains(alias)
+                            ? $"Use \"type\":\"{alias}\". The received \"operation\" key is only a compatibility alias and should be normalized to \"type\"."
+                            : $"Use the \"type\" field with a supported operation name. Received unsupported alias value \"{alias}\" in \"operation\".";
+                    }
+                    else
+                    {
+                        hint = "Use the \"type\" field with one of ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE.";
+                    }
+
+                    return
+                        $"path=operations[{index}].type" + Environment.NewLine +
+                        "message=Required field \"type\" is missing." + Environment.NewLine +
+                        "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                        "hint=" + hint;
                 }
 
-                return
-                    $"path=operations[{index}].type" + Environment.NewLine +
-                    "message=Required field \"type\" is missing." + Environment.NewLine +
-                    "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
-                    "hint=" + hint;
+                if (string.Equals(
+                        errorCode,
+                        "WORK_GRAPH_SET_GOAL_SCHEMA_INVALID",
+                        StringComparison.Ordinal) &&
+                    string.Equals(type, "SET_GOAL", StringComparison.Ordinal))
+                {
+                    return
+                        $"path=operations[{index}].value" + Environment.NewLine +
+                        "message=SET_GOAL requires a nonblank \"value\" field." + Environment.NewLine +
+                        "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                        "hint=For SET_GOAL put the new goal text in \"value\". The \"goal\" field is used by ADD, not SET_GOAL.";
+                }
+
+                if (string.Equals(
+                        errorCode,
+                        "WORK_GRAPH_ADD_SCHEMA_INVALID",
+                        StringComparison.Ordinal) &&
+                    string.Equals(type, "ADD", StringComparison.Ordinal))
+                {
+                    return
+                        $"path=operations[{index}]" + Environment.NewLine +
+                        "message=ADD requires a safe workItemId and a nonblank \"goal\" field." + Environment.NewLine +
+                        "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                        "hint=For ADD use \"goal\" for the WorkItem goal; \"value\" is not the ADD goal field.";
+                }
+
+                if (string.Equals(
+                        errorCode,
+                        "WORK_GRAPH_KIND_INVALID",
+                        StringComparison.Ordinal) &&
+                    string.Equals(type, "ADD", StringComparison.Ordinal))
+                {
+                    return
+                        $"path=operations[{index}].kind" + Environment.NewLine +
+                        "message=ADD kind must be NORMAL or INTEGRATION." + Environment.NewLine +
+                        "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                        "hint=Use \"kind\":\"NORMAL\" or \"kind\":\"INTEGRATION\".";
+                }
+
+                if (string.Equals(
+                        errorCode,
+                        "WORK_GRAPH_OPERATION_UNSUPPORTED",
+                        StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(type))
+                {
+                    return
+                        $"path=operations[{index}].type" + Environment.NewLine +
+                        $"message=Unsupported WorkGraph operation \"{type}\"." + Environment.NewLine +
+                        "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                        "hint=Use one of ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE.";
+                }
+
+                index++;
             }
         }
         catch (JsonException)
