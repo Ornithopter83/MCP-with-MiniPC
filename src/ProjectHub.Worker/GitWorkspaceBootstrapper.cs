@@ -50,7 +50,10 @@ public sealed class GitWorkspaceBootstrapper
             "--show-toplevel").ConfigureAwait(false);
 
         var initializedNow = false;
-        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+        var detectedRoot = rootResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(rootResult.StandardOutput)
+            ? Path.GetFullPath(FirstLine(rootResult.StandardOutput))
+            : null;
+        if (detectedRoot is null || !PathsEqual(detectedRoot, workspace))
         {
             var initResult = await RunAsync(
                 workspace,
@@ -80,6 +83,8 @@ public sealed class GitWorkspaceBootstrapper
             return Failure("GIT_BOOTSTRAP_ROOT_UNAVAILABLE", workspace);
 
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        if (!PathsEqual(repositoryRoot, workspace))
+            return Failure("GIT_BOOTSTRAP_EXACT_ROOT_REQUIRED", workspace);
 
         var longPathsResult = await RunAsync(
             repositoryRoot,
@@ -356,6 +361,18 @@ public sealed class GitWorkspaceBootstrapper
             NeedsManagedIgnoreUpdate = false,
             NeedsManagedIndexCleanup = false
         };
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        static string Normalize(string value)
+            => Path.GetFullPath(value)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        return string.Equals(
+            Normalize(left),
+            Normalize(right),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static string[] BuildManagedPathScanArguments()

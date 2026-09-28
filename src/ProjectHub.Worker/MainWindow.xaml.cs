@@ -2085,7 +2085,10 @@ public partial class MainWindow : Window
         var gitFolder = _targetSettings.IsCoordinatorFirst
             ? effectiveWorkingDirectory
             : ResolveConfiguredGitFolder(selected) ?? string.Empty;
-        _gitTarget = WorkerTargetConfiguration.ResolveGit(gitFolder, _targetSettings);
+        _gitTarget = WorkerTargetConfiguration.ResolveGit(
+            gitFolder,
+            _targetSettings,
+            requireExactRoot: _targetSettings.IsCoordinatorFirst);
         RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
         TargetGitStateText.Text = _gitTarget.IsRepository
             ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
@@ -2406,7 +2409,8 @@ public partial class MainWindow : Window
         var result = ParallelWorkGitPreflight.Validate(
             WorkerTargetConfiguration.ResolveGit(
                 workingDirectory,
-                _targetSettings));
+                _targetSettings,
+                requireExactRoot: true));
         return result.Success ? null : result.Message;
     }
 

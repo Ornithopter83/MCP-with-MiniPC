@@ -77,7 +77,8 @@ public partial class MainWindow
 
             var target = WorkerTargetConfiguration.ResolveGit(
                 workingDirectory,
-                _targetSettings);
+                _targetSettings,
+                requireExactRoot: true);
             var preflight = ParallelWorkGitPreflight.Validate(target);
             if (!preflight.Success)
             {

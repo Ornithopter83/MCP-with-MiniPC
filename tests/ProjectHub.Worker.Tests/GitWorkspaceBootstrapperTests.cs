@@ -41,6 +41,37 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
+    public async Task ParentRepositoryIsNotAdoptedAsTargetWorkspaceRepository()
+    {
+        var workspace = CreateWorkspace();
+        var parent = Directory.GetParent(workspace)!.FullName;
+
+        try
+        {
+            var runner = new ScriptedRunner();
+            runner.Enqueue("rev-parse --show-toplevel", Ok(parent));
+            runner.Enqueue("init", Ok());
+            runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
+            runner.Enqueue("config --local core.longpaths true", Ok());
+            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees", Ok());
+            runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
+            runner.Enqueue("rev-parse --verify HEAD", Fail());
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+
+            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
+
+            Assert.True(state.Success);
+            Assert.True(state.InitializedNow);
+            Assert.Equal(Path.GetFullPath(workspace), state.RepositoryRoot);
+            Assert.Contains(runner.Calls, call => call.Arguments.SequenceEqual(new[] { "init" }));
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
     public async Task ExistingCleanRepositoryWithManagedIgnoreNeedsNoBaseline()
     {
         var workspace = CreateWorkspace();

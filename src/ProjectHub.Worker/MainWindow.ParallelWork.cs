@@ -95,7 +95,8 @@ public partial class MainWindow
 
             var currentGitTarget = WorkerTargetConfiguration.ResolveGit(
                 workingDirectory,
-                _targetSettings);
+                _targetSettings,
+                requireExactRoot: true);
             var gitPreflight = ParallelWorkGitPreflight.Validate(currentGitTarget);
             if (!gitPreflight.Success)
                 throw new InvalidOperationException(
