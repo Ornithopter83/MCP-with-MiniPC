@@ -468,6 +468,88 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task RejectedPatchReturnsControlToHqWithoutEndingRunningWork()
+    {
+        var graph = new WorkGraph("job", 2);
+        var executor = new SupervisorExecutor();
+        executor.SetImmediate("W10");
+        executor.SetControlled("W11");
+
+        var hq = new QueueHqRunner(
+            ContinuePatch(
+                0,
+                Add("W10", "환경 조사"),
+                Add("W11", "계속 실행되는 구현 작업")),
+            ContinuePatch(
+                1,
+                """
+                {"type":"SET_GOAL","workItemId":"W11","value":"실행 중 목표 변경 시도"}
+                """),
+            ContinuePatch(1),
+            End("완료"));
+
+        hq.OnTurn = turn =>
+        {
+            if (turn == 3)
+                executor.Release("W11");
+        };
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync,
+            enableCompletionReview: true);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "실행 중 WorkItem 수정 거부 뒤 HQ 재판단을 확인한다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Null(result.ErrorCode);
+        Assert.Equal(4, hq.Prompts.Count);
+        Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[2]);
+        Assert.Contains("errorCode=WORK_GRAPH_RUNNING_OR_TERMINAL_ITEM_IMMUTABLE", hq.Prompts[2]);
+        Assert.Contains("consecutiveRejectedPatches=1", hq.Prompts[2]);
+        Assert.Contains("id=W11 kind=NORMAL state=RUNNING", hq.Prompts[2]);
+        Assert.Equal(WorkItemState.Completed, result.Graph.Items.Single(item => item.Id == "W11").State);
+    }
+
+    [Fact]
+    public async Task ConsecutiveRejectedPatchesStopAtRetryLimit()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var invalid = ContinuePatch(
+            0,
+            """
+            {"type":"SET_GOAL","workItemId":"W404","value":"없는 작업 변경"}
+            """);
+        var hq = new QueueHqRunner(
+            invalid,
+            invalid,
+            invalid);
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "잘못된 patch 반복 한계를 확인한다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Failed, result.Exit);
+        Assert.Equal("WORK_GRAPH_PATCH_RETRY_LIMIT", result.ErrorCode);
+        Assert.Equal(3, hq.Prompts.Count);
+        Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[1]);
+        Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[2]);
+        Assert.Contains("consecutiveRejectedPatches=3", result.HqBody);
+        Assert.Empty(result.Graph.Items);
+    }
+
+    [Fact]
     public async Task SupervisorAlwaysPassesContinuePayloadThroughStructuredHelper()
     {
         var graph = new WorkGraph("job", 1);
