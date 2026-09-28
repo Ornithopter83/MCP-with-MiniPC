@@ -72,6 +72,7 @@
 ⑫ CODE_CHANGE가 생성되면 Worker가 Commit Manifest를 생성하므로 commit 내부 변경 경로와 텍스트 내용을 재수집하기 위한 별도 작업을 요청하지 않는다.
 ⑬ WORK는 Computer Use를 사용하지 않는다.
 ⑭ INTEGRATION WorkItem은 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다. 이 항의 `integration worktree`는 WORK가 보는 격리 Integration 작업공간을 뜻하며, 실제 준비 방식은 Worker 정책 제24조의 독립 clone을 따른다.
+⑮ NORMAL worktree는 실행 격리 공간이며 사용자에게 보이는 최종 작업 폴더가 아니다. WORK는 주 작업공간으로 직접 복사하거나 Git으로 반영하지 않고, 최종 target workspace 반영은 Worker의 종료 게이트에 맡긴다.
 
 제7조 (HQ 보고)
 

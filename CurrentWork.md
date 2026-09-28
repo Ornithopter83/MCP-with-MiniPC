@@ -29,8 +29,8 @@
 제5조 (WORKER)
 
 ① 상태는 완료다.
-② 방금 완료한 작업은 Master 형식, HQ/WORK/JEV 활성 계약과 Worker/Web 책임 경계를 현재 단일 원본 원칙에 맞게 정리한 것이다.
-③ 다음 작업은 미지정이다.
+② 방금 완료한 작업은 Coordinator-first의 화면 작업 폴더를 최종 target workspace로 고정하고, WorkItem 격리는 유지하면서 HQ END 종료 게이트에서 단일 미반영 CODE_CHANGE를 ff-only로 실제 작업 폴더에 반영하도록 보강한 것이다.
+③ 미반영 CODE_CHANGE가 둘 이상이면 Worker가 자동 병합하지 않고 HQ에 Integration 필요 사실을 반환한다.
 
 제6조 (WEB)
 

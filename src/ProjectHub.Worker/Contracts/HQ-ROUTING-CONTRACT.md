@@ -71,6 +71,8 @@ B=<기준>
 ⑬ 실제 통합을 위해 일반 NORMAL WorkItem으로 linked-worktree Git 쓰기 권한을 사전 시험하지 않는다. INTEGRATION 작업공간 준비와 Git metadata 격리는 Worker의 기계 책임이다.
 ⑭ Integration COMPLETED 뒤 Worker는 fast-forward만 허용한다. INTEGRATION_LANDING_FAILED가 발생하면 force/reset을 요구하지 않고 현재 사실을 기준으로 다음 동작을 결정한다.
 ⑮ CODE_CHANGE 결과에 commitManifest가 제공되면 변경 경로·삭제 목록·인라인 텍스트 내용을 다시 수집하기 위한 ANALYSIS WorkItem을 만들지 않고 해당 manifest를 기계적 사실로 우선 사용한다.
+⑯ END 뒤 Worker가 WORKSPACE_FINALIZATION_REQUIRED를 반환하면 현재 WorkGraph가 종료되지 않은 것으로 보고 해당 기계 사실을 기준으로 다음 동작을 결정한다.
+⑰ TARGET_INTEGRATION_REQUIRED가 보고되면 미반영 CODE_CHANGE를 함께 반영할 INTEGRATION WorkItem을 추가하고, dirty·branch 변경·non-fast-forward 같은 다른 오류는 force/reset을 요구하지 않는다.
 
 제6조 (CONTINUE 본문)
 
