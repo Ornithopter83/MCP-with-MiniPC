@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.4.1", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.4.2", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -123,6 +123,10 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("RESPONSE_KEY_MATCHED", StringComparison.Ordinal));
         Assert.True(source.Contains("correlationKey:activeCorrelationKey||null", StringComparison.Ordinal));
         Assert.True(source.Contains("activeCorrelationKey?correlationResponseRoot()", StringComparison.Ordinal));
+        Assert.True(source.Contains("hasMeaningfulResponseText", StringComparison.Ordinal));
+        Assert.True(source.Contains("scheduleResponseRecheck", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESPONSE_DEADLINE_RECOVERY", StringComparison.Ordinal));
+        Assert.False(source.Contains("[aria-busy=\"true\"]", StringComparison.Ordinal));
         Assert.True(source.Contains("fallbackSubmitComposer", StringComparison.Ordinal));
         Assert.True(source.Contains("form.requestSubmit()", StringComparison.Ordinal));
         Assert.False(source.Contains("new PointerEvent('pointerdown'", StringComparison.Ordinal));

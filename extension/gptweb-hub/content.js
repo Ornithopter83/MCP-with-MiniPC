@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
-  const EXTENSION_VERSION = '0.4.1';
-  const EXTENSION_BUILD = '2026-09-27.10';
+  const EXTENSION_VERSION = '0.4.2';
+  const EXTENSION_BUILD = '2026-09-28.1';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -33,7 +33,7 @@
     '<div class="status-list">'+statusRow('web','GPT Web','—','')+statusRow('worker','Worker','—','')+statusRow('status','Status','Disconnected','')+'</div>'+
     '<div class="role-bind"><span class="role-binding">역할 미연결</span><button class="status-action bind-hq" type="button">HQ 연결</button><button class="status-action bind-resource" type="button">RESOURCE 연결</button></div>'+
     '<main class="task-section"><div class="section-label">TASK</div><article class="task-card" data-state="IDLE"><div class="task-main"><div class="task-icon">'+icon(icons.idle)+'</div><div class="task-copy"><h2 class="task-title">작업 없음</h2><p class="task-detail">현재 처리할 요청이 없습니다.</p></div><div class="spinner"></div></div><div class="task-meta"><span>Task</span><strong class="task-id">—</strong><span>|</span><span>From</span><strong class="task-from">—</strong></div><div class="message-block worker-message-block"><h3>Worker Message</h3><div class="worker-message">대기 중</div></div><div class="message-block response-block hidden"><h3>Web Response</h3><div class="web-response">응답을 기다리고 있습니다.</div></div><button class="secondary-button resource-rescan hidden" type="button">현재 결과 다시 수집</button></article></main>'+
-    '<footer class="hub-footer">GPTWeb-Hub <span>v0.4.1</span></footer></section>'+
+    '<footer class="hub-footer">GPTWeb-Hub <span>v0.4.2</span></footer></section>'+
     '<section class="settings-modal hidden"><div class="settings-dialog"><div class="settings-title-row"><h2>GPTWeb-Hub Settings</h2><button class="settings-close">'+icon(icons.close)+'</button></div><form class="settings-form"><label>Host<input name="bridgeHost"></label><label>Port<input name="bridgePort" type="number"></label><label>Base Path<input name="bridgeBasePath"></label><div class="settings-test-row"><button class="secondary-button test-connection" type="button">Test Connection</button><span class="test-status">Not tested</span></div><div class="settings-actions"><button class="secondary-button settings-cancel" type="button">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></section>'+
         '<button class="reopen" aria-label="Open GPTWeb-Hub">'+icon(icons.info)+'</button>';
   function statusRow(kind,label,value,action) { return '<div class="status-row" data-kind="'+kind+'"><strong>'+label+'</strong><span class="status-value status-pending">'+value+'</span>'+(action?'<button class="status-action web-connect" type="button">연결</button>':'')+'</div>'; }
@@ -184,6 +184,13 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     const raw=responseText(root.innerText||root.textContent||'');
     const index=raw.lastIndexOf(marker);
     return index<0?'':raw.slice(index).trim();
+  }
+  function hasMeaningfulResponseText(value){
+    const text=responseText(value);
+    if(!text)return false;
+    if(!activeCorrelationKey)return true;
+    const marker=activeKeyMarker(),index=text.lastIndexOf(marker);
+    return index>=0&&text.slice(index+marker.length).trim().length>0;
   }
   function mutationResponseCandidate(node,prompt){
     let element=node?.nodeType===Node.TEXT_NODE?node.parentElement:(node?.nodeType===Node.ELEMENT_NODE?node:null);
@@ -373,7 +380,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
   }
   function enterWaitResponse(detail,attempt=0){
     setPhase('WAIT_RESPONSE',detail,attempt);
-    if(activeResource)scheduleResponseDeadline();
+    scheduleResponseDeadline();
     observeResponse();
   }
   async function monitorSendReady(prompt,attachmentCount=0){
@@ -505,10 +512,20 @@ function assistantTurnEvidence(){const turns=assistantTurnRecords();if(!turns.le
 function reconcileConversationAfterSend(prompt){const turns=conversationTurns();let userIndex=-1;for(let index=turns.length-1;index>=0;index--){const turn=turns[index];if(turn.role!=='user'||!promptMatchesText(turn.text,prompt))continue;if(!baselineTurnFingerprints.has(turnFingerprint(turn))||!baselineTurnFingerprints.size){userIndex=index;break;}}if(userIndex>=0){for(let index=userIndex+1;index<turns.length;index++){const turn=turns[index];if(turn.role==='assistant'&&normalizeText(turn.text))return 'ASSISTANT_RECONCILED';}return 'USER_MESSAGE_RECONCILED';}const generic=promptConversationPosition(prompt);if(generic){if(generic.response&&normalizeText(generic.response.text))return 'ASSISTANT_CONTAINER_RECONCILED';return 'USER_CONTAINER_RECONCILED';}const assistantEvidence=assistantTurnEvidence();if(assistantEvidence)return assistantEvidence==='TEXT'?'ASSISTANT_TEXT_CHANGED':'ASSISTANT_RESPONSE';return '';}
 function hasNewAssistantTurn(){return !!assistantTurnEvidence();}
 async function failTask(reason,finishReason='send_failed'){clearResponseTimers();const body={success:false,taskId:activeTaskId,conversationId:currentConversationId,leaseId:activeLeaseId,correlationKey:activeCorrelationKey||null,responseText:reason,resultType:activeResource?'RESOURCE_ERROR':'TEXT_RESULT',finishReason};try{const r=await fetchWithTimeout(url('task/'+activeTaskId+'/result'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},10000);const p=await r.json();if(p.ok){phase='FINISHED';setTask('FAILED',p.data);return;}}catch{}phase='WAIT_WORKER';systemText.textContent='Worker 결과 전달 실패: '+reason;}
-function assistantStreaming(){return [...document.querySelectorAll('button,[role="button"],[data-is-streaming="true"],[data-streaming="true"],[aria-busy="true"]')].some(e=>{const state=e.getAttribute('data-is-streaming')||e.getAttribute('data-streaming')||e.getAttribute('aria-busy');if(state==='true')return true;if(!visible(e)||e.disabled||e.getAttribute('aria-disabled')==='true')return false;const label=[e.getAttribute('aria-label'),e.getAttribute('data-testid'),e.getAttribute('title')].filter(Boolean).join(' ');return /stop|중지|생성 중단/i.test(label);});}
+function assistantStreaming(){
+  const responseRoot=activeCorrelationKey?correlationResponseRoot():latestAssistantElement();
+  if(responseRoot&&[...responseRoot.querySelectorAll('[data-is-streaming="true"],[data-streaming="true"]')].some(e=>e.getAttribute('data-is-streaming')==='true'||e.getAttribute('data-streaming')==='true'))return true;
+  const scope=document.querySelector('main')||document.body;
+  return [...scope.querySelectorAll('button,[role="button"]')].some(e=>{
+    if(!visible(e)||e.disabled||e.getAttribute('aria-disabled')==='true')return false;
+    const label=[e.getAttribute('aria-label'),e.getAttribute('data-testid'),e.getAttribute('title')].filter(Boolean).join(' ');
+    return /stop|중지|생성 중단/i.test(label);
+  });
+}
 let stableTimer=0;
-function scheduleStableCheck(snapshot,delay,callback,allowStreaming=false){if(stableSnapshot===snapshot&&stableTimer)return;clearTimeout(stableTimer);stableSnapshot=snapshot;stableTimer=setTimeout(async()=>{stableTimer=0;const prompt=normalizeText(workerMessage?.textContent||''),responseText=currentResponseText(prompt),candidates=activeResource?latestGeneratedResourceCandidates():readyResponseFileCandidates();if(phase!=='WAIT_RESPONSE'||!activeTaskId||responseSnapshot()!==snapshot||(!responseText&&!candidates.length)||(!allowStreaming&&assistantStreaming()))return;await callback();},delay);}
-function scheduleResponseDeadline(){if(responseDeadlineTimer||!activeTaskId||!activeResource)return;if(!responseStartedAt)responseStartedAt=Date.now();const remaining=Math.max(1000,RESOURCE_WAIT_TIMEOUT-(Date.now()-responseStartedAt));responseDeadlineTimer=setTimeout(async()=>{responseDeadlineTimer=0;if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;const ready=readyResourceCandidates(),prompt=normalizeText(workerMessage?.textContent||''),responseText=currentResponseText(prompt);if(ready.length){reportProgress('RESOURCE_READY',ready.length+'개 생성 파일 확인 · deadline');await submitResult(responseText||('RESOURCE files generated: '+ready.length));return;}const reason='RESOURCE_NOT_GENERATED: response deadline exceeded without downloadable files.\n'+responseText;reportProgress('RESOURCE_NO_FILE','시간 내 다운로드 가능한 생성 파일을 확인하지 못했습니다.');await failTask(reason,'resource_not_generated');},remaining);}
+function scheduleResponseRecheck(delay=1000){clearTimeout(stableTimer);stableTimer=0;stableSnapshot='';stableTimer=setTimeout(()=>{stableTimer=0;if(phase==='WAIT_RESPONSE'&&activeTaskId)observeResponse();},delay);}
+function scheduleStableCheck(snapshot,delay,callback,allowStreaming=false){if(stableSnapshot===snapshot&&stableTimer)return;clearTimeout(stableTimer);stableSnapshot=snapshot;stableTimer=setTimeout(async()=>{stableTimer=0;if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;const prompt=normalizeText(workerMessage?.textContent||''),responseText=currentResponseText(prompt),candidates=activeResource?latestGeneratedResourceCandidates():readyResponseFileCandidates(),currentSnapshot=responseSnapshot();if(currentSnapshot!==snapshot){scheduleResponseRecheck(250);return;}if(!hasMeaningfulResponseText(responseText)&&!candidates.length){scheduleResponseRecheck(1000);return;}if(!allowStreaming&&assistantStreaming()){scheduleResponseRecheck(1000);return;}await callback();},delay);}
+function scheduleResponseDeadline(){if(responseDeadlineTimer||!activeTaskId)return;if(!responseStartedAt)responseStartedAt=Date.now();const remaining=Math.max(1000,RESOURCE_WAIT_TIMEOUT-(Date.now()-responseStartedAt));responseDeadlineTimer=setTimeout(async()=>{responseDeadlineTimer=0;if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;const prompt=normalizeText(workerMessage?.textContent||''),responseText=currentResponseText(prompt);if(activeResource){const ready=readyResourceCandidates();if(ready.length){reportProgress('RESOURCE_READY',ready.length+'개 생성 파일 확인 · deadline');await submitResult(responseText||('RESOURCE files generated: '+ready.length));return;}const reason='RESOURCE_NOT_GENERATED: response deadline exceeded without downloadable files.\n'+responseText;reportProgress('RESOURCE_NO_FILE','시간 내 다운로드 가능한 생성 파일을 확인하지 못했습니다.');await failTask(reason,'resource_not_generated');return;}const files=readyResponseFileCandidates();if(!assistantStreaming()&&(hasMeaningfulResponseText(responseText)||files.length)){reportProgress('RESPONSE_DEADLINE_RECOVERY','일반 Web 응답의 완료 신호 재확인 후 결과 전달을 복구합니다.');await submitResult(responseText||('Web response files generated: '+files.length));return;}reportProgress('RESPONSE_TIMEOUT','일반 Web 응답이 제한시간 안에 안정화되지 않았습니다.');await failTask('WEB_RESPONSE_TIMEOUT: response did not stabilize before deadline.\n'+responseText,'response_timeout');},remaining);}
 function observeResponse(){
   if(phase!=='WAIT_RESPONSE'||!activeTaskId)return;
   const isResource=!!activeResource;
@@ -538,10 +555,10 @@ function observeResponse(){
             ? 'prompt 다음 conversation turn fallback으로 assistant 응답을 확인했습니다.'
             : 'assistant turn을 확인했습니다. evidence='+(assistantEvidence||'CONTAINER'));
   }
-  if(text&&!responseTextLogged){
+  if(hasMeaningfulResponseText(text)&&!responseTextLogged){
     responseTextLogged=true;
-    if(activeCorrelationKey)reportProgress('RESPONSE_KEY_MATCHED','응답 전체에서 현재 KEY를 확인하고 KEY 이후 범위를 현재 응답으로 고정했습니다. key='+activeCorrelationKey);
-    reportProgress('ASSISTANT_TEXT_EXTRACTED','assistant 응답 텍스트 추출 완료 · chars='+text.length);
+    if(activeCorrelationKey)reportProgress('RESPONSE_KEY_MATCHED','응답 전체에서 현재 KEY와 KEY 뒤의 실제 응답 본문을 확인했습니다. key='+activeCorrelationKey);
+    reportProgress('ASSISTANT_TEXT_EXTRACTED','assistant 응답 본문 추출 완료 · chars='+text.length);
   }
 
   responseBlock.classList.remove('hidden');
@@ -551,7 +568,7 @@ function observeResponse(){
     if(!responseStartedAt)responseStartedAt=Date.now();
     reportProgress('RESPONSE_START',isResource?'RESOURCE 생성 결과 응답을 확인했습니다.':'Web assistant 응답 회수를 시작했습니다.');
     if(assistantEvidence==='TEXT')reportProgress('RESPONSE_TEXT_CHANGED','기존 assistant DOM의 텍스트 변화로 새 응답을 확인했습니다.');
-    if(isResource)scheduleResponseDeadline();
+    scheduleResponseDeadline();
   }
 
   if(isResource){
@@ -587,9 +604,7 @@ function observeResponse(){
   }
 
   if(assistantStreaming()){
-    clearTimeout(stableTimer);
-    stableTimer=0;
-    stableSnapshot='';
+    scheduleResponseRecheck(1000);
     return;
   }
 
@@ -597,7 +612,7 @@ function observeResponse(){
   scheduleStableCheck(snapshot,5000,async()=>{
     const settledText=currentResponseText(prompt);
     const settledFiles=readyResponseFileCandidates();
-    if(!settledText&&!settledFiles.length)return;
+    if(!hasMeaningfulResponseText(settledText)&&!settledFiles.length){scheduleResponseRecheck(1000);return;}
     reportProgress('RESPONSE_STABLE','응답이 안정되어 텍스트와 파일 결과를 Worker에 전달합니다.');
     await submitResult(settledText||('Web response files generated: '+settledFiles.length));
   });
