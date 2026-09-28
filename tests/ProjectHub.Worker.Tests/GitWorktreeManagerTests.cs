@@ -941,6 +941,14 @@ public sealed class GitWorktreeManagerTests
             runner.Enqueue(1, "");
         }
 
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "result-0");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "result-1");
+        runner.Enqueue(1, "");
+        runner.Enqueue(1, "");
+
         try
         {
             var graph = new WorkGraph("job", 2);
