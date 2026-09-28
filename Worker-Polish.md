@@ -102,9 +102,9 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ③ WorkGraph의 상세 상태는 내부 snapshot과 Full Message에 보존하며 UI 요약이 의미 판단 원본이 되지 않는다.
 ④ 사용자가 PAUSE, CANCELED, DONE 또는 DONE_WITH_ERROR 상태에서 작업을 추가하면 기존 관제 문맥을 유지한 USER_FOLLOWUP으로 시작한다. 새 작업은 기존 실행 문맥을 초기화한다.
 ⑤ `하네스 없음` 직통 작업은 HQ, WorkGraph, JUDGE, RESOURCE 역할 계약을 우회하되 사용자 첨부의 안전한 staging과 선택된 AI 실행은 유지한다.
-⑥ Coordinator-first에서 화면의 작업 폴더는 사용자에게 보이는 최종 target workspace의 원본이다. 기존 AI session의 ProjectPath나 Worker 실행 폴더가 이를 자동 대체하지 않는다.
-⑦ target workspace가 지정되지 않았거나 존재하지 않으면 새 Coordinator-first 작업을 시작하지 않는다.
-⑧ UI의 픽셀, 줄 수, 게이지 칸 수, 기본 모델 문자열과 같은 표현 세부는 장기 정책으로 고정하지 않고 현재 UI 구현과 테스트를 따른다.
+⑥ UI의 픽셀, 줄 수, 게이지 칸 수, 기본 모델 문자열과 같은 표현 세부는 장기 정책으로 고정하지 않고 현재 UI 구현과 테스트를 따른다.
+⑦ Coordinator-first에서 화면의 작업 폴더는 사용자에게 보이는 최종 target workspace의 원본이다. 기존 AI session의 ProjectPath나 Worker 실행 폴더가 이를 자동 대체하지 않는다.
+⑧ target workspace가 지정되지 않았거나 존재하지 않으면 새 Coordinator-first 작업을 시작하지 않는다.
 
 ---
 
@@ -147,13 +147,13 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑩ Integration WORK는 일반 파일 내용 기준으로 의미적 통합·충돌 해결·검증을 수행한다.
 ⑪ RESOURCE, JUDGE, OBSERVATION은 WorkGraph의 별도 일반 WorkItem으로 자동 변환하지 않고 기존 사이드카 귀속 규칙을 유지한다.
 ⑫ HQ END 전에 의미 WorkItem의 완료 상태를 HQ가 판단하며, 최종 DONE/DONE_WITH_ERROR 전에는 Worker가 추적하는 기계적 outstanding이 모두 종료되어야 한다.
-⑬ HQ END 시점에 완료된 CODE_CHANGE가 사용자 target workspace에 아직 반영되지 않았다면 Worker는 WorkGraph가 유휴 상태인 종료 게이트에서만 최종 반영을 시도한다.
-⑭ 완료된 INTEGRATION이 dependency로 소비한 NORMAL CODE_CHANGE는 별도 반영 대상으로 다시 취급하지 않는다.
-⑮ 미반영 NORMAL CODE_CHANGE가 하나이면 Worker는 target branch가 예상 상태이고 clean이며 fast-forward 가능한 경우에만 해당 commit을 target workspace에 기계적으로 반영한다.
-⑯ 미반영 NORMAL CODE_CHANGE가 둘 이상이면 Worker는 임의 병합하지 않고 END를 보류해 HQ가 INTEGRATION WorkItem을 추가할 수 있게 한다.
-⑰ target branch 변경, dirty 상태, non-fast-forward 또는 검증 실패가 있으면 force/reset으로 해결하지 않고 기계 사실을 HQ에 반환한다.
-⑱ 최종 반영이 완료된 뒤 같은 프로그램 실행에서 USER_FOLLOWUP이 이어지면 현재 target workspace HEAD를 새 실행 구간의 기본 기준 ref로 사용한다.
-⑲ CODE_CHANGE가 생성되면 Worker는 Commit Manifest를 기계적으로 생성해 WorkGraph 결과와 선행 결과 문맥에 연결한다. 선행 WORK 프롬프트에는 manifest 전체 본문을 인라인하지 않고 manifest 경로와 변경 파일 요약처럼 크기가 제한된 기계 메타데이터만 전달하며, 상세 파일 내용은 manifest 파일 또는 Integration snapshot을 통해 접근한다. 세부 생성·전달 경계는 제19조를 따른다.
+⑬ CODE_CHANGE가 생성되면 Worker는 Commit Manifest를 기계적으로 생성해 WorkGraph 결과와 선행 결과 문맥에 연결한다. 선행 WORK 프롬프트에는 manifest 전체 본문을 인라인하지 않고 manifest 경로와 변경 파일 요약처럼 크기가 제한된 기계 메타데이터만 전달하며, 상세 파일 내용은 manifest 파일 또는 Integration snapshot을 통해 접근한다. 세부 생성·전달 경계는 제19조를 따른다.
+⑭ HQ END 시점에 완료된 CODE_CHANGE가 사용자 target workspace에 아직 반영되지 않았다면 Worker는 WorkGraph가 유휴 상태인 종료 게이트에서만 최종 반영을 시도한다.
+⑮ 완료된 INTEGRATION이 dependency로 소비한 NORMAL CODE_CHANGE는 별도 반영 대상으로 다시 취급하지 않는다.
+⑯ 미반영 NORMAL CODE_CHANGE가 하나이면 Worker는 target branch가 예상 상태이고 clean이며 fast-forward 가능한 경우에만 해당 commit을 target workspace에 기계적으로 반영한다.
+⑰ 미반영 NORMAL CODE_CHANGE가 둘 이상이면 Worker는 임의 병합하지 않고 END를 보류해 HQ가 INTEGRATION WorkItem을 추가할 수 있게 한다.
+⑱ target branch 변경, dirty 상태, non-fast-forward 또는 검증 실패가 있으면 force/reset으로 해결하지 않고 기계 사실을 HQ에 반환한다.
+⑲ 최종 반영이 완료된 뒤 같은 프로그램 실행에서 USER_FOLLOWUP이 이어지면 현재 target workspace HEAD를 새 실행 구간의 기본 기준 ref로 사용한다.
 
 ---
 
