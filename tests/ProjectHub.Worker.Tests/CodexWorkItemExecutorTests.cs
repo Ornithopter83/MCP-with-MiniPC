@@ -50,6 +50,10 @@ public sealed class CodexWorkItemExecutorTests
             Assert.True(Directory.Exists(runtime.NuGetPackages));
             Assert.True(Directory.Exists(runtime.DotNetHome));
             Assert.True(Directory.Exists(workTemp));
+            Assert.Contains(
+                fixture.Git.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "worktree", "remove", Path.GetFullPath(fixture.Request.Item.WorktreePath!) }));
         }
         finally
         {
@@ -865,6 +869,10 @@ public sealed class CodexWorkItemExecutorTests
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
+            git.Enqueue(0, "head123");
+            git.Enqueue(0, branch);
+            git.Enqueue(0, "");
+            git.Enqueue(0, "removed");
         }
 
         var ai = new FakeAiRoleRunner(finalMessage);
