@@ -513,7 +513,7 @@ public sealed class CodexWorkItemExecutorTests
             var result = await fixture.Executor.ExecuteAsync(fixture.Request, CancellationToken.None);
 
             Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("WORKTREE_DEPENDENCY_RESULT_REF_MISSING", result.BlockCode);
+            Assert.Equal("NORMAL_CODE_DEPENDENCY_RESULT_REF_MISSING", result.BlockCode);
             Assert.Null(fixture.Runner.LastRequest);
         }
         finally
