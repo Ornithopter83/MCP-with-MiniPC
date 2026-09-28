@@ -859,6 +859,75 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task TargetWorkspaceFinalizerCollapsesLinearCodeChangeChainToLatestTip()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner(root);
+
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "first456");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(1, "");
+
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "second789");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(1, "");
+
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "first456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "second789");
+        runner.Enqueue(0, "");
+
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "second789");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "Updating base123..second789");
+        runner.Enqueue(0, "second789");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var graph = new WorkGraph("job", 2);
+            Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+            {
+                WorkGraphPatchOperation.Add(new WorkItemSpec("W10", "기능 구현", Kind: WorkItemKind.Normal, BaseRef: "base123")),
+                WorkGraphPatchOperation.Add(new WorkItemSpec("W11", "후속 수정", new[] { "W10" }, WorkItemKind.Normal, "base123"))
+            })).Success);
+            Assert.True(graph.TryMarkRunning("W10"));
+            Assert.True(graph.TryMarkCompleted("W10", "first-ref", "1차 완료", WorkItemResultType.CodeChange));
+            Assert.True(graph.TryMarkRunning("W11"));
+            Assert.True(graph.TryMarkCompleted("W11", "second-ref", "2차 완료", WorkItemResultType.CodeChange));
+
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
+
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.True(result.Success);
+            Assert.True(result.FastForwarded);
+            Assert.Equal("W11", result.LandedWorkItemId);
+            Assert.Equal("second789", result.LandedResultRef);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(new[] { "merge", "--ff-only", "second789" }));
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task TargetWorkspaceFinalizerRequiresIntegrationForTwoIndependentChanges()
     {
         var root = CreateTempRepositoryDirectory();
