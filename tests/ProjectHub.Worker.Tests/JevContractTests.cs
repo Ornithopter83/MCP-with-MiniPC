@@ -37,6 +37,10 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("작업 후반의 연결·통합 단계에서만 필요한 경우에는 먼저 실행하는 WorkItem 사이에 dependency를 두지 않는다.", hq);
         Assert.Contains("SET_GOAL, SET_DEPENDENCIES, SET_BASE_REF는 PLANNED, READY, BLOCKED 상태의 WorkItem에만 사용한다.", hq);
         Assert.Contains("RUNNING, COMPLETED, FAILED, CANCELED 상태의 WorkItem에는 사용하지 않는다.", hq);
+        Assert.Contains("Git ancestry를 기계적으로 축약해 실제 코드 기준점을 정한다.", hq);
+        Assert.Contains("독립 CODE_CHANGE가 둘 이상이면 NORMAL에 임의로 합치지 않고 INTEGRATION WorkItem으로 결합한다.", hq);
+        Assert.Contains("실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 최종 CODE_CHANGE 뒤에는", hq);
+        Assert.Contains("검증 WorkItem은 결함 수정까지 겸하지 않고 발견 사실을 보고", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
@@ -54,6 +58,9 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("공용 생성 리소스 임시 루트는 RESOURCE 결과 파일의 공용 staging 경로다.", work);
         Assert.Contains("dependency snapshot에 해당 파일이 직접 포함되어 있다고 가정하지 않는다.", work);
         Assert.Contains("공용 임시 경로 자체를 최종 산출물의 런타임 참조로 남기지 않는다.", work);
+        Assert.Contains("WORK 임시 산출물 루트", work);
+        Assert.Contains("PROJECTHUB_WORK_TEMP", work);
+        Assert.Contains("checkpoint 코드 변경을 만들지 않는다.", work);
         Assert.DoesNotContain("JUDGE_ON", work);
         Assert.DoesNotContain("JUDGE_OFF", work);
         Assert.DoesNotContain("사용 가능", work);
@@ -122,7 +129,8 @@ public sealed class RoleContractBoundaryTests
                 "abc123",
                 "branch",
                 "worktree"),
-            resourceStagingRoot: @"C:\work\sample.projecthub\temp");
+            resourceStagingRoot: @"C:\work\sample.projecthub\temp",
+            workTempRoot: @"C:\work\sample.projecthub\temp\job\W1");
 
         Assert.Contains("역할: WORK", prompt);
         Assert.Contains("입력 유형: RESOURCE_QUEUED", prompt);
@@ -132,6 +140,7 @@ public sealed class RoleContractBoundaryTests
         Assert.DoesNotContain("병렬 WorkItem 사용:", prompt);
         Assert.Contains(@"공용 생성 리소스 임시 루트: C:\work\sample.projecthub\temp", prompt);
         Assert.Contains("RESOURCE 타입 하위 폴더: IMAGE=image, AUDIO=audio, VIDEO=video, DOCUMENT=document, FILE=file", prompt);
+        Assert.Contains(@"WORK 임시 산출물 루트: C:\work\sample.projecthub\temp\job\W1", prompt);
         Assert.DoesNotContain("[ROLE :", prompt);
     }
 
