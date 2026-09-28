@@ -740,9 +740,21 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void BeginNewDashboardTask()
+    private async Task BeginNewDashboardTaskAsync()
     {
         ExportTaskTranscript();
+
+        GitRepositoryRuntimeCleanupResult? runtimeCleanup = null;
+        var cleanupWorkspace = _activeWorkingDirectory;
+        if (!string.IsNullOrWhiteSpace(cleanupWorkspace) &&
+            Directory.Exists(cleanupWorkspace))
+        {
+            runtimeCleanup = await new GitWorktreeManager()
+                .CleanupRepositoryRuntimeAsync(
+                    cleanupWorkspace,
+                    CancellationToken.None);
+        }
+
         ProjectWorkspacePersistence.ClearContinuation(_activeWorkingDirectory);
         _continuationState = null;
         _activeProjectJobId = null;
@@ -752,6 +764,15 @@ public partial class MainWindow : Window
         DashboardTaskInput.Text = DashboardPromptPlaceholder;
         DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
         SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
+
+        if (runtimeCleanup is { Success: false })
+        {
+            DashboardPreflightText.Text =
+                "이전 작업의 ProjectHub 임시 runtime 폴더를 완전히 정리하지 못했습니다. " +
+                (runtimeCleanup.ErrorDetail ?? runtimeCleanup.ErrorCode ?? "RUNTIME_CLEANUP_FAILED");
+            DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
+        }
+
         DashboardTaskInput.Focus();
     }
 
@@ -1031,7 +1052,7 @@ public partial class MainWindow : Window
         }
         if (_dashboardBodyMode == DashboardBodyMode.TaskHistory)
         {
-            BeginNewDashboardTask();
+            await BeginNewDashboardTaskAsync();
             return;
         }
         await InitializeStartupConfigurationAsync();
