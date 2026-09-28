@@ -164,6 +164,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ㉖ runtime 디렉터리 삭제는 읽기 전용 속성과 짧은 파일 핸들 해제 지연을 고려해 유한 횟수 재시도하며, 반복 실패 시 삭제되지 않은 경로와 기계 오류를 기록한다.
 ㉗ WORK의 GOTO 또는 WORK_ITEM_STATUS 형식이 기계 계약에 맞지 않으면 Worker는 같은 WORK 세션에 오류 코드를 돌려 제한된 횟수만 형식 교정을 요청할 수 있다. 형식 교정 입력은 완료한 의미 작업을 다시 수행하라는 요청으로 취급하지 않는다.
 ㉘ COMPLETED NORMAL WorkItem의 checkpoint와 필요한 Commit Manifest 생성이 끝나면 Worker는 해당 resultRef를 보존한 채 clean linked worktree를 즉시 제거할 수 있다. 제거에 실패해도 완료 의미 결과를 실패로 바꾸지 않고 최종 runtime 정리 대상으로 남긴다.
+㉙ COMPLETED INTEGRATION WorkItem의 결과가 target workspace에 정상 반영된 뒤에는 해당 resultRef를 보존한 채 독립 integration clone을 즉시 제거할 수 있다. clone 정리 실패는 완료 의미 결과를 되돌리지 않고 최종 runtime 정리 대상으로 남긴다.
 
 ---
 
