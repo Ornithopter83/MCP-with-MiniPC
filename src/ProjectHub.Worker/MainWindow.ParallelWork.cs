@@ -653,6 +653,46 @@ public partial class MainWindow
             var hadGraphErrors = result.Graph.Items.Any(
                 item => item.State == WorkItemState.Failed);
             var finalHasErrors = hadMechanicalErrors || hadGraphErrors;
+
+            if (!finalHasErrors)
+            {
+                var runtimeCleanup = await new GitWorktreeManager()
+                    .CleanupRepositoryRuntimeAsync(
+                        workingDirectory,
+                        cts.Token)
+                    .ConfigureAwait(false);
+                var cleanupMessage = runtimeCleanup.Success
+                    ? "최종 DONE 확정 전에 ProjectHub 임시 runtime 폴더를 정리했습니다."
+                    : "ProjectHub 임시 runtime 폴더 정리에 실패하여 DONE_WITH_ERROR로 종료합니다.";
+                if (!string.IsNullOrWhiteSpace(runtimeCleanup.ErrorDetail))
+                    cleanupMessage += Environment.NewLine + runtimeCleanup.ErrorDetail;
+
+                ProjectWorkspacePersistence.AppendEvent(
+                    workingDirectory,
+                    jobId,
+                    DateTimeOffset.UtcNow,
+                    "RUNTIME CLEANUP",
+                    cleanupMessage +
+                    Environment.NewLine +
+                    $"runtimeRoot={runtimeCleanup.RuntimeRoot}" +
+                    Environment.NewLine +
+                    $"removedWorktrees={runtimeCleanup.RemovedWorktrees.Count}",
+                    runtimeCleanup.Success
+                        ? "COMPLETED"
+                        : runtimeCleanup.ErrorCode ?? "RUNTIME_CLEANUP_FAILED");
+
+                AddTaskMessage(
+                    "RUNTIME CLEANUP",
+                    cleanupMessage,
+                    status: runtimeCleanup.Success
+                        ? "COMPLETED"
+                        : runtimeCleanup.ErrorCode ?? "RUNTIME_CLEANUP_FAILED",
+                    includeHistory: false);
+
+                if (!runtimeCleanup.Success)
+                    finalHasErrors = true;
+            }
+
             var finalStatus = finalHasErrors
                 ? "DONE_WITH_ERROR"
                 : "DONE";
