@@ -27,6 +27,10 @@ public sealed record CodexWorkItemCallCompleted(
 
 public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 {
+    private const int MaximumCheckpointAttempts = 3;
+    private const string CheckpointRetryInboundType = "WORKTREE_CHECKPOINT_RETRY";
+    private const string CheckpointPendingHeader = "WORKTREE_CHECKPOINT_PENDING";
+
     private readonly string _jobId;
     private readonly string _workspace;
     private readonly WorkerAiRoleSettings _role;
@@ -87,6 +91,54 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             string.IsNullOrWhiteSpace(item.BaseRef))
             return WorkItemExecutionResult.Blocked("WORKTREE_BASE_REF_MISSING", "WorkItem baseRef가 없습니다.");
 
+        var effectiveBaseRef = item.BaseRef;
+        if (item.Kind == WorkItemKind.Normal)
+        {
+            var codeDependencies = request.Dependencies
+                .Where(dependency => dependency.ResultType == WorkItemResultType.CodeChange)
+                .ToArray();
+            var missingResultRef = codeDependencies
+                .FirstOrDefault(dependency => string.IsNullOrWhiteSpace(dependency.ResultRef));
+            if (missingResultRef is not null)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "WORKTREE_DEPENDENCY_RESULT_REF_MISSING",
+                    $"WorkItem {missingResultRef.WorkItemId}의 CODE_CHANGE resultRef가 없습니다.",
+                    item.ResultRef,
+                    item.Branch,
+                    item.WorktreePath,
+                    item.SessionId,
+                    blockDetailCode: "WORKTREE_DEPENDENCY_RESULT_REF_MISSING",
+                    resultType: item.ResultType,
+                    commitManifestPath: item.CommitManifestPath);
+            }
+
+            var baseResolution = await _worktrees.ResolveNormalBaseRefAsync(
+                _workspace,
+                item.BaseRef!,
+                codeDependencies
+                    .Select(dependency => dependency.ResultRef!)
+                    .ToArray(),
+                cancellationToken).ConfigureAwait(false);
+
+            if (!baseResolution.Success || string.IsNullOrWhiteSpace(baseResolution.EffectiveBaseRef))
+            {
+                var errorCode = baseResolution.ErrorCode ?? "WORKTREE_DEPENDENCY_BASE_RESOLUTION_FAILED";
+                return WorkItemExecutionResult.Blocked(
+                    errorCode,
+                    baseResolution.ErrorDetail ?? "NORMAL WorkItem의 실제 코드 기준점을 계산하지 못했습니다.",
+                    item.ResultRef,
+                    item.Branch,
+                    item.WorktreePath,
+                    item.SessionId,
+                    blockDetailCode: errorCode,
+                    resultType: item.ResultType,
+                    commitManifestPath: item.CommitManifestPath);
+            }
+
+            effectiveBaseRef = baseResolution.EffectiveBaseRef;
+        }
+
         GitWorktreePreparationResult preparation;
         if (item.Kind == WorkItemKind.Integration)
         {
@@ -110,7 +162,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 _workspace,
                 _jobId,
                 item.Id,
-                item.BaseRef!,
+                effectiveBaseRef!,
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -134,6 +186,30 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             preparation.Branch,
             preparation.WorktreePath,
             preparation.BaseRef));
+
+        if (string.Equals(request.InboundType, CheckpointRetryInboundType, StringComparison.Ordinal))
+        {
+            if (!TryParseCheckpointPendingSummary(
+                    item.ResultSummary,
+                    out var pendingStatus,
+                    out var pendingBody))
+            {
+                return WorkItemExecutionResult.Failed(
+                    "WORKTREE_CHECKPOINT_PENDING_STATE_INVALID",
+                    item.ResultSummary,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    item.SessionId);
+            }
+
+            return await FinalizeReportAsync(
+                item,
+                preparation,
+                item.SessionId,
+                pendingStatus,
+                pendingBody,
+                cancellationToken).ConfigureAwait(false);
+        }
 
         IReadOnlyList<AiInputAttachment> stagedUserAttachments;
         try
@@ -214,6 +290,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             foreach (var pair in WorkerPaths.BuildWorkToolEnvironment(runtimePaths, workTempPath))
                 environment[pair.Key] = pair.Value;
             environment["PROJECTHUB_RESOURCE_TEMP"] = runtimePaths.TempRoot;
+            environment["PROJECTHUB_WORK_TEMP"] = workTempPath;
             workEnvironment = environment;
 
             var writableDirectories = new List<string>
@@ -261,7 +338,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     dependencyResults),
                 observationRequestDirectory,
                 includeContract: string.IsNullOrWhiteSpace(sessionId),
-                resourceStagingRoot: runtimePaths.TempRoot);
+                resourceStagingRoot: runtimePaths.TempRoot,
+                workTempRoot: workTempPath);
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
@@ -442,19 +520,55 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId);
         }
 
-        var checkpoint = await _worktrees.CreateCheckpointAsync(
-            preparation.WorktreePath,
-            item.Id,
+        return await FinalizeReportAsync(
+            item,
+            preparation,
+            sessionId,
+            report!.Status,
+            report.Body,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WorkItemExecutionResult> FinalizeReportAsync(
+        WorkItemSnapshot item,
+        GitWorktreePreparationResult preparation,
+        string? sessionId,
+        WorkItemReportStatus reportStatus,
+        string reportBody,
+        CancellationToken cancellationToken)
+    {
+        GitWorktreeCheckpointResult checkpoint = default!;
+        for (var attempt = 1; attempt <= MaximumCheckpointAttempts; attempt++)
+        {
+            checkpoint = await _worktrees.CreateCheckpointAsync(
+                preparation.WorktreePath,
+                item.Id,
+                cancellationToken).ConfigureAwait(false);
+
+            if (checkpoint.Success)
+                break;
+
+            if (attempt < MaximumCheckpointAttempts)
+            {
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(attempt * 150),
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
 
         if (!checkpoint.Success)
         {
-            return WorkItemExecutionResult.Failed(
-                checkpoint.ErrorCode ?? "WORKTREE_CHECKPOINT_FAILED",
-                report!.Body,
-                preparation.Branch,
-                preparation.WorktreePath,
-                sessionId);
+            var errorCode = checkpoint.ErrorCode ?? "WORKTREE_CHECKPOINT_FAILED";
+            return WorkItemExecutionResult.Blocked(
+                "WORKTREE_CHECKPOINT_PENDING",
+                BuildCheckpointPendingSummary(reportStatus, reportBody),
+                checkpoint.HeadCommit ?? item.ResultRef ?? preparation.HeadCommit,
+                checkpoint.Branch ?? preparation.Branch,
+                checkpoint.WorktreePath,
+                sessionId,
+                blockDetailCode: errorCode,
+                resultType: item.ResultType,
+                commitManifestPath: item.CommitManifestPath);
         }
 
         var lifecycleResultRef = checkpoint.HeadCommit ?? item.ResultRef;
@@ -463,7 +577,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             checkpoint.CreatedCommit;
         string? commitManifestPath = item.CommitManifestPath;
 
-        if (report!.Status != WorkItemReportStatus.Failed &&
+        if (reportStatus != WorkItemReportStatus.Failed &&
             lifecycleHasCodeChange &&
             !string.IsNullOrWhiteSpace(lifecycleResultRef))
         {
@@ -479,7 +593,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             {
                 return WorkItemExecutionResult.Blocked(
                     "COMMIT_MANIFEST_FAILED",
-                    report.Body + Environment.NewLine + Environment.NewLine +
+                    reportBody + Environment.NewLine + Environment.NewLine +
                     "COMMIT_MANIFEST" + Environment.NewLine +
                     "status: BLOCKED" + Environment.NewLine +
                     "errorCode: " + (manifest.ErrorCode ?? "COMMIT_MANIFEST_FAILED") + Environment.NewLine +
@@ -503,7 +617,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             ? WorkItemResultType.CodeChange
             : item.ResultType;
 
-        if (report.Status == WorkItemReportStatus.Completed &&
+        if (reportStatus == WorkItemReportStatus.Completed &&
             item.Kind == WorkItemKind.Integration)
         {
             if (string.IsNullOrWhiteSpace(checkpoint.HeadCommit))
@@ -511,7 +625,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 return WorkItemExecutionResult.Blocked(
                     "INTEGRATION_LANDING_FAILED",
                     BuildIntegrationLandingFailure(
-                        report.Body,
+                        reportBody,
                         "INTEGRATION_RESULT_REF_MISSING",
                         checkpoint.HeadCommit,
                         null),
@@ -530,7 +644,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 return WorkItemExecutionResult.Blocked(
                     "INTEGRATION_LANDING_FAILED",
                     BuildIntegrationLandingFailure(
-                        report.Body,
+                        reportBody,
                         "INTEGRATION_SOURCE_BRANCH_UNAVAILABLE",
                         checkpoint.HeadCommit,
                         null),
@@ -548,7 +662,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 return WorkItemExecutionResult.Blocked(
                     "INTEGRATION_LANDING_FAILED",
                     BuildIntegrationLandingFailure(
-                        report.Body,
+                        reportBody,
                         "INTEGRATION_SOURCE_BRANCH_CHANGED",
                         checkpoint.HeadCommit,
                         null),
@@ -575,7 +689,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 return WorkItemExecutionResult.Blocked(
                     "INTEGRATION_LANDING_FAILED",
                     BuildIntegrationLandingFailure(
-                        report.Body,
+                        reportBody,
                         landingErrorCode,
                         checkpoint.HeadCommit,
                         landing),
@@ -590,7 +704,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             return WorkItemExecutionResult.Completed(
                 checkpoint.HeadCommit,
-                BuildIntegrationLandingSuccess(report.Body, landing),
+                BuildIntegrationLandingSuccess(reportBody, landing),
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
@@ -598,11 +712,11 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 commitManifestPath);
         }
 
-        return report.Status switch
+        return reportStatus switch
         {
             WorkItemReportStatus.Completed => WorkItemExecutionResult.Completed(
                 lifecycleResultRef,
-                report.Body,
+                reportBody,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
@@ -610,7 +724,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 commitManifestPath),
             WorkItemReportStatus.SplitRequest => WorkItemExecutionResult.Blocked(
                 "SPLIT_REQUEST",
-                report.Body,
+                reportBody,
                 lifecycleResultRef,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
@@ -619,7 +733,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 commitManifestPath: commitManifestPath),
             WorkItemReportStatus.Blocked => WorkItemExecutionResult.Blocked(
                 "HQ_BLOCKED",
-                report.Body,
+                reportBody,
                 lifecycleResultRef,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
@@ -628,11 +742,51 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 commitManifestPath: commitManifestPath),
             _ => WorkItemExecutionResult.Failed(
                 "WORK_ITEM_REPORTED_FAILED",
-                report.Body,
+                reportBody,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId)
         };
+    }
+
+    private static string BuildCheckpointPendingSummary(
+        WorkItemReportStatus status,
+        string reportBody)
+        => string.Join(
+            Environment.NewLine,
+            CheckpointPendingHeader,
+            "reportStatus: " + status,
+            string.Empty,
+            reportBody.Trim());
+
+    private static bool TryParseCheckpointPendingSummary(
+        string? summary,
+        out WorkItemReportStatus status,
+        out string reportBody)
+    {
+        status = default;
+        reportBody = string.Empty;
+        var normalized = (summary ?? string.Empty)
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        if (lines.Length < 3 ||
+            !string.Equals(lines[0].Trim(), CheckpointPendingHeader, StringComparison.Ordinal))
+            return false;
+
+        const string prefix = "reportStatus:";
+        var statusLine = lines[1].Trim();
+        if (!statusLine.StartsWith(prefix, StringComparison.Ordinal) ||
+            !Enum.TryParse<WorkItemReportStatus>(
+                statusLine[prefix.Length..].Trim(),
+                ignoreCase: true,
+                out status))
+            return false;
+
+        reportBody = string.Join(
+            Environment.NewLine,
+            lines.Skip(2)).TrimStart();
+        return true;
     }
 
     private static string BuildIntegrationLandingSuccess(
