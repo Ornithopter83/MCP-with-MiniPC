@@ -105,6 +105,7 @@ WORK_GRAPH_PATCH:
 ⑤ RELEASE는 이미 존재하며 BLOCKED 상태인 WorkItem을 HQ 판단으로 재개할 때만 사용한다. 같은 WORK_GRAPH_PATCH에서 새로 ADD한 WorkItem에 RELEASE를 함께 사용하지 않는다.
 
 ⑥ Worker는 JSON 구조, revision, ID, dependency 존재, self dependency, cycle 같은 기계적 유효성만 검사한다.
+⑦ Worker가 WORK_GRAPH_PATCH_SCHEMA_REJECTED 또는 WORK_GRAPH_PATCH_REJECTED를 반환하면 errorCode와 path/hint 및 현재 revision을 기준으로 새 WORK_GRAPH_PATCH를 반환한다. 같은 잘못된 필드 구성을 반복하지 않는다.
 
 
 제7조 (Web 요청 상관 KEY)
