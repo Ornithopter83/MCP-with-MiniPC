@@ -31,6 +31,10 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("B=<기준>", hq);
         Assert.Contains("이미 관측 사실로 확정된 항목은 다시 JUDGE 문항으로 만들지 않는다.", hq);
         Assert.Contains("이전 판정 뒤 근거가 의미 있게 바뀌면", hq);
+        Assert.Contains("서로 독립적으로 시작할 수 있는 WorkItem 사이에는 dependency를 두지 않는다.", hq);
+        Assert.Contains("dependency는 해당 WorkItem을 시작하기 전에 선행 WorkItem의 결과가 반드시 필요한 경우에만 둔다.", hq);
+        Assert.Contains("HQ는 보고된 근거와 현재 WorkGraph를 기준으로 새 WorkItem 추가 여부와 dependency를 결정한다.", hq);
+        Assert.Contains("작업 후반의 연결·통합 단계에서만 필요한 경우에는 먼저 실행하는 WorkItem 사이에 dependency를 두지 않는다.", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
