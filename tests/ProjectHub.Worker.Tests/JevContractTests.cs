@@ -35,6 +35,8 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("dependency는 해당 WorkItem을 시작하기 전에 선행 WorkItem의 결과가 반드시 필요한 경우에만 둔다.", hq);
         Assert.Contains("HQ는 보고된 근거와 현재 WorkGraph를 기준으로 새 WorkItem 추가 여부와 dependency를 결정한다.", hq);
         Assert.Contains("작업 후반의 연결·통합 단계에서만 필요한 경우에는 먼저 실행하는 WorkItem 사이에 dependency를 두지 않는다.", hq);
+        Assert.Contains("SET_GOAL, SET_DEPENDENCIES, SET_BASE_REF는 PLANNED, READY, BLOCKED 상태의 WorkItem에만 사용한다.", hq);
+        Assert.Contains("RUNNING, COMPLETED, FAILED, CANCELED 상태의 WorkItem에는 사용하지 않는다.", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
