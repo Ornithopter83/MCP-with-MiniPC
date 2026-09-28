@@ -1969,6 +1969,7 @@ public sealed class GitWorktreeManager
                 .Where(entry => IsPathWithin(entry.Path, runtime.Worktrees))
                 .ToArray();
             var removed = new List<string>();
+            var dirty = new List<string>();
 
             foreach (var entry in ownedWorktrees)
             {
@@ -1995,15 +1996,8 @@ public sealed class GitWorktreeManager
 
                 if (!inspection.IsClean)
                 {
-                    return new(
-                        false,
-                        "RUNTIME_CLEANUP_WORKTREE_DIRTY",
-                        runtime.Root,
-                        removed,
-                        false,
-                        "정리 대상 ProjectHub worktree에 미커밋 변경이 남아 있어 삭제하지 않았습니다." +
-                        Environment.NewLine +
-                        $"worktree={worktreePath}");
+                    dirty.Add(worktreePath);
+                    continue;
                 }
 
                 var removeResult = await RunAsync(
@@ -2073,27 +2067,48 @@ public sealed class GitWorktreeManager
 
             var remaining = ParseWorktrees(verifyResult.StandardOutput)
                 .Where(entry => IsPathWithin(entry.Path, runtime.Worktrees))
-                .Select(entry => entry.Path)
+                .Select(entry => Path.GetFullPath(entry.Path))
                 .ToArray();
+
             if (remaining.Length > 0)
             {
+                var disposableCleanupErrors = await CleanupDisposableRuntimeDirectoriesAsync(
+                    runtime,
+                    cancellationToken).ConfigureAwait(false);
+                var remainingDirty = remaining
+                    .Where(path => dirty.Any(
+                        candidate => PathsEqual(candidate, path)))
+                    .ToArray();
+                var errorCode = remainingDirty.Length == remaining.Length
+                    ? "RUNTIME_CLEANUP_WORKTREE_DIRTY"
+                    : "RUNTIME_CLEANUP_WORKTREE_STILL_REGISTERED";
+                var detail = new StringBuilder();
+                detail.AppendLine(
+                    errorCode == "RUNTIME_CLEANUP_WORKTREE_DIRTY"
+                        ? "정리 대상 ProjectHub worktree에 미커밋 변경이 남아 해당 worktree는 보존했습니다."
+                        : "ProjectHub runtime 아래에 등록된 linked worktree가 남아 runtime 루트를 삭제하지 않았습니다.");
+                foreach (var path in remaining)
+                    detail.AppendLine("- " + path);
+                if (disposableCleanupErrors.Count > 0)
+                {
+                    detail.AppendLine("disposableCleanupErrors:");
+                    foreach (var error in disposableCleanupErrors)
+                        detail.AppendLine("- " + error);
+                }
+
                 return new(
                     false,
-                    "RUNTIME_CLEANUP_WORKTREE_STILL_REGISTERED",
+                    errorCode,
                     runtime.Root,
                     removed,
                     false,
-                    "ProjectHub runtime 아래에 등록된 linked worktree가 남아 있어 runtime 폴더를 삭제하지 않았습니다." +
-                    Environment.NewLine +
-                    string.Join(Environment.NewLine, remaining.Select(path => "- " + path)));
+                    detail.ToString().TrimEnd());
             }
 
-            try
-            {
-                if (Directory.Exists(runtime.Root))
-                    Directory.Delete(runtime.Root, recursive: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
+                runtime.Root,
+                cancellationToken).ConfigureAwait(false);
+            if (deleteError is not null)
             {
                 return new(
                     false,
@@ -2101,7 +2116,7 @@ public sealed class GitWorktreeManager
                     runtime.Root,
                     removed,
                     false,
-                    ex.GetType().Name + ": " + ex.Message);
+                    deleteError);
             }
 
             return new(
@@ -2115,6 +2130,84 @@ public sealed class GitWorktreeManager
         {
             preparationGate.Release();
         }
+    }
+
+    private static async Task<IReadOnlyList<string>> CleanupDisposableRuntimeDirectoriesAsync(
+        RepositoryRuntimePaths runtime,
+        CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+        foreach (var path in new[]
+        {
+            runtime.IntegrationClones,
+            runtime.TempRoot,
+            runtime.NuGetRoot,
+            runtime.DotNetHome
+        })
+        {
+            var error = await DeleteDirectoryTreeWithRetriesAsync(
+                path,
+                cancellationToken).ConfigureAwait(false);
+            if (error is not null)
+                errors.Add(Path.GetFileName(path) + ": " + error);
+        }
+
+        return errors;
+    }
+
+    private static async Task<string?> DeleteDirectoryTreeWithRetriesAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            return null;
+
+        Exception? lastException = null;
+        const int attempts = 4;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                ClearDeleteBlockingAttributes(new DirectoryInfo(path));
+                Directory.Delete(path, recursive: true);
+                return null;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                lastException = exception;
+                if (attempt < attempts)
+                {
+                    await Task.Delay(
+                        TimeSpan.FromMilliseconds(150 * attempt),
+                        cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        return lastException is null
+            ? "runtime directory deletion failed"
+            : lastException.GetType().Name + ": " + lastException.Message;
+    }
+
+    private static void ClearDeleteBlockingAttributes(DirectoryInfo directory)
+    {
+        if (!directory.Exists)
+            return;
+
+        foreach (var entry in directory.EnumerateFileSystemInfos())
+        {
+            if (entry is DirectoryInfo child &&
+                !entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                ClearDeleteBlockingAttributes(child);
+            }
+
+            entry.Attributes &= ~(FileAttributes.ReadOnly | FileAttributes.System);
+        }
+
+        directory.Attributes &= ~(FileAttributes.ReadOnly | FileAttributes.System);
     }
 
     public static string BuildBranchName(string jobId, string workItemId)
