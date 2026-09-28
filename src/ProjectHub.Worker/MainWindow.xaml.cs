@@ -746,6 +746,9 @@ public partial class MainWindow : Window
 
         GitRepositoryRuntimeCleanupResult? runtimeCleanup = null;
         var cleanupWorkspace = _activeWorkingDirectory;
+        _activeWorkingDirectory = null;
+        ClearCoordinatorGitTargetPresentation();
+
         if (!string.IsNullOrWhiteSpace(cleanupWorkspace) &&
             Directory.Exists(cleanupWorkspace))
         {
@@ -755,7 +758,7 @@ public partial class MainWindow : Window
                     CancellationToken.None);
         }
 
-        ProjectWorkspacePersistence.ClearContinuation(_activeWorkingDirectory);
+        ProjectWorkspacePersistence.ClearContinuation(cleanupWorkspace);
         _continuationState = null;
         _activeProjectJobId = null;
         SetFollowupComposerVisible(false);
@@ -764,6 +767,7 @@ public partial class MainWindow : Window
         DashboardTaskInput.Text = DashboardPromptPlaceholder;
         DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
         SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
+        UpdateDashboardSummary();
 
         if (runtimeCleanup is { Success: false })
         {
@@ -2103,23 +2107,45 @@ public partial class MainWindow : Window
         var effectiveWorkingDirectory = _targetSettings.IsCoordinatorFirst
             ? ResolveCoordinatorTargetWorkingDirectory()
             : workingDirectory;
-        var gitFolder = _targetSettings.IsCoordinatorFirst
-            ? effectiveWorkingDirectory
-            : ResolveConfiguredGitFolder(selected) ?? string.Empty;
-        _gitTarget = WorkerTargetConfiguration.ResolveGit(
-            gitFolder,
-            _targetSettings,
-            requireExactRoot: _targetSettings.IsCoordinatorFirst);
-        RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
-        TargetGitStateText.Text = _gitTarget.IsRepository
-            ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
-            : "Git: UNCONFIGURED";
+        var deferCoordinatorGitBinding =
+            _targetSettings.IsCoordinatorFirst &&
+            _dashboardBodyMode == DashboardBodyMode.NewTaskInput &&
+            _activeTaskCts is null &&
+            !_awaitingWebResult;
+
+        if (deferCoordinatorGitBinding)
+        {
+            ClearCoordinatorGitTargetPresentation();
+        }
+        else
+        {
+            var gitFolder = _targetSettings.IsCoordinatorFirst
+                ? effectiveWorkingDirectory
+                : ResolveConfiguredGitFolder(selected) ?? string.Empty;
+            _gitTarget = WorkerTargetConfiguration.ResolveGit(
+                gitFolder,
+                _targetSettings,
+                requireExactRoot: _targetSettings.IsCoordinatorFirst);
+            RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
+            TargetGitStateText.Text = _gitTarget.IsRepository
+                ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
+                : "Git: UNCONFIGURED";
+            RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
+        }
+
         TargetPathText.Text = _targetSettings.IsCoordinatorFirst
             ? $"Target workspace: {(string.IsNullOrWhiteSpace(effectiveWorkingDirectory) ? "미설정" : effectiveWorkingDirectory)}"
             : !string.IsNullOrWhiteSpace(selected?.SessionId)
                 ? $"Codex ProjectPath: {selected.ProjectPath}"
                 : $"New thread folder: {workingDirectory}";
-        RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
+    }
+
+    private void ClearCoordinatorGitTargetPresentation()
+    {
+        _gitTarget = null;
+        RepositoryUrlInput.Text = string.Empty;
+        TargetGitStateText.Text = "Git: 실행 시 준비";
+        RepositoryNameText.Text = " · LOCAL_GIT";
     }
 
     private async Task RefreshCodexModelCatalogAsync()
