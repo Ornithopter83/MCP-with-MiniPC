@@ -298,21 +298,37 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
                 if (!structuredResult.Success || structuredResult.Value is null)
                 {
-                    var failureDetail = structuredResult.FinalPayload;
-                    if (!string.IsNullOrWhiteSpace(structuredResult.ErrorDetail))
-                    {
-                        failureDetail =
-                            structuredResult.ErrorDetail +
-                            Environment.NewLine +
-                            "payload=" +
-                            structuredResult.FinalPayload;
-                    }
-
-                    return Failure(
+                    consecutivePatchRejections++;
+                    var rejectionCode =
                         structuredResult.FinalErrorCode ??
                         structuredResult.InitialErrorCode ??
-                        "WORK_GRAPH_PATCH_INVALID",
-                        failureDetail);
+                        "WORK_GRAPH_PATCH_INVALID";
+                    var errorDetail =
+                        structuredResult.ErrorDetail ??
+                        WorkGraphTransportContract.DescribeError(
+                            structuredResult.FinalPayload,
+                            rejectionCode) ??
+                        WorkGraphTransportContract.DescribeError(
+                            envelope.Body,
+                            rejectionCode);
+                    var rejectionBody = FormatStructuredPatchRejected(
+                        rejectionCode,
+                        errorDetail,
+                        _graph.Snapshot(),
+                        consecutivePatchRejections);
+
+                    if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
+                    {
+                        return Failure(
+                            "WORK_GRAPH_PATCH_RETRY_LIMIT",
+                            rejectionBody +
+                            Environment.NewLine +
+                            $"같은 관제 흐름에서 WorkGraph patch가 {MaximumConsecutivePatchRejections}회 연속 기계적으로 거부되어 종료합니다.");
+                    }
+
+                    inboundType = "WORK_GRAPH_PATCH_SCHEMA_REJECTED";
+                    inboundBody = rejectionBody;
+                    continue;
                 }
 
                 turn = new(
@@ -794,6 +810,24 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             AppendMechanicalItem(builder, item);
 
         builder.AppendLine("위 값은 Worker가 관측한 기계적 상태이며 작업 의미 판단 결과가 아닙니다.");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string FormatStructuredPatchRejected(
+        string errorCode,
+        string? errorDetail,
+        WorkGraphSnapshot snapshot,
+        int consecutiveRejections)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("HQ가 보낸 WORK_GRAPH_PATCH의 기계 스키마가 유효하지 않아 적용하지 않았습니다.");
+        builder.AppendLine($"revision={snapshot.Revision}");
+        builder.AppendLine("errorCode=" + errorCode);
+        builder.AppendLine($"consecutiveRejectedPatches={consecutiveRejections}");
+        if (!string.IsNullOrWhiteSpace(errorDetail))
+            builder.AppendLine(errorDetail.Trim());
+        builder.AppendLine("WorkGraph는 변경되지 않았습니다.");
+        builder.Append("위 errorCode와 path/hint를 반영해 현재 revision 기준의 새 WORK_GRAPH_PATCH를 반환하세요.");
         return builder.ToString().TrimEnd();
     }
 
