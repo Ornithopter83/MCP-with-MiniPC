@@ -399,6 +399,36 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
+    public void CheckpointPendingReleaseUsesMechanicalRetryInput()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("A", "구현 작업", BaseRef: "base123"))
+        })).Success);
+
+        Assert.True(graph.TryMarkRunning("A", sessionId: "session-a"));
+        Assert.True(graph.TryMarkBlocked(
+            "A",
+            "WORKTREE_CHECKPOINT_PENDING",
+            "WORKTREE_CHECKPOINT_PENDING\nreportStatus: Completed\n\n구현 완료",
+            "base123",
+            blockDetailCode: "WORKTREE_CHECKPOINT_ADD_FAILED"));
+
+        var release = graph.ApplyPatch(new WorkGraphPatch(
+            graph.Revision,
+            new[] { WorkGraphPatchOperation.Release("A", "HQ_RESUME", "다시 실행") }));
+
+        Assert.True(release.Success);
+        var item = graph.Find("A")!;
+        Assert.Equal(WorkItemState.Ready, item.State);
+        Assert.Equal("WORKTREE_CHECKPOINT_RETRY", item.ResumeInputType);
+        Assert.Null(item.ResumeBody);
+        Assert.Equal("session-a", item.SessionId);
+        Assert.Contains("구현 완료", item.ResultSummary);
+    }
+
+    [Fact]
     public void HqHoldRemainsBlockedUntilExplicitRelease()
     {
         var graph = new WorkGraph("job");
