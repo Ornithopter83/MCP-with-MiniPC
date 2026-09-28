@@ -90,25 +90,63 @@ public sealed class TargetWorkspaceFinalizer
         if (pending.Count == 0)
             return new(true, null, "최종 CODE_CHANGE가 이미 사용자 작업 폴더의 현재 HEAD에 포함되어 있습니다.");
 
+        WorkItemSnapshot target;
+        string landingRef;
         if (pending.Count > 1)
         {
-            var detail = string.Join(
-                Environment.NewLine,
-                pending.Select(item => $"- workItemId={item.Id} resultRef={item.ResultRef}"));
-            return new(
-                false,
-                "TARGET_INTEGRATION_REQUIRED",
-                "서로 독립적으로 완료된 미반영 NORMAL CODE_CHANGE가 둘 이상 남아 있습니다." +
-                Environment.NewLine +
-                "Worker는 결과를 임의 병합하지 않습니다. HQ가 필요한 결과를 dependency로 둔 INTEGRATION WorkItem을 추가해야 합니다." +
-                Environment.NewLine +
-                detail);
+            var reduced = await _worktrees.ResolveNormalBaseRefAsync(
+                _workspace,
+                "HEAD",
+                pending.Select(item => item.ResultRef!).ToArray(),
+                cancellationToken).ConfigureAwait(false);
+
+            if (!reduced.Success || string.IsNullOrWhiteSpace(reduced.EffectiveBaseRef))
+            {
+                if (string.Equals(
+                        reduced.ErrorCode,
+                        "NORMAL_MULTIPLE_CODE_BASES_REQUIRE_INTEGRATION",
+                        StringComparison.Ordinal))
+                {
+                    var detail = string.Join(
+                        Environment.NewLine,
+                        pending.Select(item => $"- workItemId={item.Id} resultRef={item.ResultRef}"));
+                    return new(
+                        false,
+                        "TARGET_INTEGRATION_REQUIRED",
+                        "서로 독립적으로 완료된 미반영 NORMAL CODE_CHANGE가 둘 이상 남아 있습니다." +
+                        Environment.NewLine +
+                        "Worker는 결과를 임의 병합하지 않습니다. HQ가 필요한 결과를 dependency로 둔 INTEGRATION WorkItem을 추가해야 합니다." +
+                        Environment.NewLine +
+                        detail);
+                }
+
+                return new(
+                    false,
+                    "TARGET_CODE_LINEAGE_CHECK_FAILED",
+                    "미반영 NORMAL CODE_CHANGE의 Git 계보를 하나의 최종 tip으로 축약하지 못했습니다." +
+                    Environment.NewLine +
+                    $"gitError={reduced.ErrorCode ?? "NORMAL_CODE_LINEAGE_CHECK_FAILED"}" +
+                    Environment.NewLine +
+                    (reduced.ErrorDetail ?? "추가 정보 없음"));
+            }
+
+            landingRef = reduced.EffectiveBaseRef;
+            target = pending.FirstOrDefault(item =>
+                         string.Equals(
+                             item.ResultRef,
+                             landingRef,
+                             StringComparison.OrdinalIgnoreCase))
+                     ?? pending.OrderByDescending(item => item.CreatedOrder).First();
+        }
+        else
+        {
+            target = pending[0];
+            landingRef = target.ResultRef!;
         }
 
-        var target = pending[0];
         var landing = await _worktrees.LandIntegrationAsync(
             _workspace,
-            target.ResultRef!,
+            landingRef,
             _expectedPrimaryBranch,
             cancellationToken).ConfigureAwait(false);
 
@@ -120,7 +158,7 @@ public sealed class TargetWorkspaceFinalizer
                 "단일 CODE_CHANGE를 사용자 작업 폴더에 ff-only로 반영하지 못했습니다." +
                 Environment.NewLine +
                 $"workItemId={target.Id}" + Environment.NewLine +
-                $"resultRef={target.ResultRef}" + Environment.NewLine +
+                $"resultRef={landingRef}" + Environment.NewLine +
                 $"targetWorkspace={_workspace}" + Environment.NewLine +
                 $"gitError={landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED"}");
         }
@@ -132,7 +170,7 @@ public sealed class TargetWorkspaceFinalizer
                 ? "단일 CODE_CHANGE를 사용자 작업 폴더에 ff-only로 반영했습니다."
                 : "단일 CODE_CHANGE가 사용자 작업 폴더에 이미 반영되어 있습니다.",
             target.Id,
-            target.ResultRef,
+            landingRef,
             landing.FastForwarded);
     }
 
