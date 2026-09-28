@@ -219,8 +219,15 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         if (!status.Bound || !status.Connected || !status.ExtensionSynchronized)
             return Failure(request, "RESOURCE_WEB_UNAVAILABLE", "RESOURCE 역할로 연결된 ChatGPT Web 대화가 활성 상태가 아니거나 확장 버전이 맞지 않습니다.");
 
-        var targetWorkspace = request.TargetWorkingDirectory ?? _workingDirectory;
-        var targetDirectory = $"assets/resources/{request.Id}";
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(_workingDirectory);
+        var stagingDirectory = WorkerPaths.BuildResourceStagingDirectory(
+            runtime,
+            request.Type,
+            request.Id);
+        Directory.CreateDirectory(runtime.TempRoot);
+        var targetWorkspace = runtime.TempRoot;
+        var targetDirectory = Path.GetRelativePath(runtime.TempRoot, stagingDirectory)
+            .Replace('\\', '/');
         var trackedResource = new ResourceRequest(
             request.Id,
             request.Type,
@@ -239,7 +246,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
 
         TransportEvent?.Invoke(new ResourceSidecarTransportEvent(
             "RESOURCE WEB TASK",
-            $"task {bridgeTask.Id} · type {request.Type} · assets/resources/{request.Id}",
+            $"task {bridgeTask.Id} · type {request.Type} · temp/{targetDirectory}",
             "GENERATING"));
 
         BridgeTask? completed;
@@ -274,9 +281,9 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         var relative = paths
             .Select(path => Path.GetRelativePath(_workingDirectory, path).Replace('\\', '/'))
             .ToArray();
-        var message = $"RESOURCE 저장 완료 · type={request.Type} · {relative.Length}개:\n" +
+        var message = $"RESOURCE 저장 완료 · type={request.Type} · 공용 임시 폴더 temp/{targetDirectory} · {relative.Length}개:\n" +
                       string.Join("\n", relative.Select(path => "- " + path)) +
-                      "\n자동 코드 연결은 수행하지 않았습니다.";
+                      "\n후속 WORK는 이 공용 임시 파일을 현재 worktree의 최종 위치로 복사해 사용하며, 자동 코드 연결은 수행하지 않았습니다.";
         return new ResourceSidecarCompletion(request.Id, request.Type, true, message, null, paths, request.WorkItemId);
     }
 
