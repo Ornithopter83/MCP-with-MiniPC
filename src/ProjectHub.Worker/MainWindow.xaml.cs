@@ -722,8 +722,9 @@ public partial class MainWindow : Window
     {
         if (_targetSettings.IsCoordinatorFirst)
         {
-            var workingDirectory =
-                ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption);
+            var workingDirectory = ResolveCoordinatorTargetWorkingDirectory();
+            if (string.IsNullOrWhiteSpace(workingDirectory))
+                return "작업 폴더를 먼저 지정하세요. Coordinator-first 작업은 Worker 실행 폴더를 자동 작업 폴더로 사용하지 않습니다.";
             return GetCoordinatorFirstPreflightError(
                 workingDirectory,
                 _targetSettings.EffectiveCoordinator,
@@ -759,7 +760,9 @@ public partial class MainWindow : Window
         var prompt = DashboardTaskInput.Text?.Trim();
         if (string.IsNullOrWhiteSpace(prompt) || prompt == DashboardPromptPlaceholder) return null;
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
-        var workingDirectory = ResolveWorkingDirectory(selectedThread);
+        var workingDirectory = _targetSettings.IsCoordinatorFirst
+            ? ResolveCoordinatorTargetWorkingDirectory()
+            : ResolveWorkingDirectory(selectedThread);
         if (string.IsNullOrWhiteSpace(workingDirectory)) return null;
         return new TaskLaunchRequest(
             prompt,
@@ -1044,8 +1047,12 @@ public partial class MainWindow : Window
         if (_targetSettings.IsCoordinatorFirst)
         {
             var cliWorkingDirectory = launchRequest.WorkingDirectory;
-            var coordinator = _targetSettings.EffectiveCoordinator;
-            var implementer = _targetSettings.EffectiveImplementer;
+            var coordinator = NormalizeRoleSessionForWorkspace(
+                _targetSettings.EffectiveCoordinator,
+                cliWorkingDirectory);
+            var implementer = NormalizeRoleSessionForWorkspace(
+                _targetSettings.EffectiveImplementer,
+                cliWorkingDirectory);
             var roleError = GetCoordinatorFirstPreflightError(cliWorkingDirectory, coordinator, implementer);
             if (roleError is not null)
             {
@@ -1553,6 +1560,36 @@ public partial class MainWindow : Window
         var projectName = new DirectoryInfo(projectPath).Name;
         return matchedNames.Select(pair => new CodexThreadOption("(" + projectName + ") " + pair.Value, pair.Key, projectPath)).ToList();
     }
+    private string ResolveCoordinatorTargetWorkingDirectory()
+    {
+        var displayed = WorkingDirectoryInput?.Text?.Trim();
+        if (!string.IsNullOrWhiteSpace(displayed) && Directory.Exists(displayed))
+            return Path.GetFullPath(displayed);
+
+        var configured = _targetSettings.ManualWorkingDirectory;
+        if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
+            return Path.GetFullPath(configured);
+
+        return string.Empty;
+    }
+
+    private static WorkerAiRoleSettings NormalizeRoleSessionForWorkspace(
+        WorkerAiRoleSettings settings,
+        string workingDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(settings.ThreadSessionId))
+            return settings;
+        if (!string.IsNullOrWhiteSpace(settings.ThreadProjectPath) &&
+            PathsEqual(settings.ThreadProjectPath, workingDirectory))
+            return settings;
+
+        return settings with
+        {
+            ThreadSessionId = null,
+            ThreadProjectPath = null
+        };
+    }
+
     private string ResolveWorkingDirectory(CodexThreadOption? selectedThread)
     {
         if (!string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !string.IsNullOrWhiteSpace(selectedThread.ProjectPath) && Directory.Exists(selectedThread.ProjectPath))
@@ -1580,6 +1617,18 @@ public partial class MainWindow : Window
 
     private void UpdateWorkingDirectoryControls(CodexThreadOption? selectedThread, string workingDirectory)
     {
+        if (_targetSettings.IsCoordinatorFirst)
+        {
+            var configured = _targetSettings.ManualWorkingDirectory;
+            WorkingDirectoryInput.Text =
+                !string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured)
+                    ? Path.GetFullPath(configured)
+                    : string.Empty;
+            WorkingDirectoryInput.IsReadOnly = false;
+            WorkingDirectoryBrowseButton.IsEnabled = true;
+            return;
+        }
+
         var lockedToThread = !string.IsNullOrWhiteSpace(selectedThread?.SessionId);
         WorkingDirectoryInput.Text = lockedToThread || !string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory) || !string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
             ? workingDirectory
@@ -1604,8 +1653,11 @@ public partial class MainWindow : Window
         try { CodexThreadCombo.SelectedItem = mainSelection; }
         finally { _syncingRoleThreadSelection = false; }
 
-        _targetSettings = _targetSettings with { ManualWorkingDirectory = selected.ProjectPath };
-        var workingDirectory = ResolveWorkingDirectory(mainSelection);
+        if (!_targetSettings.IsCoordinatorFirst)
+            _targetSettings = _targetSettings with { ManualWorkingDirectory = selected.ProjectPath };
+        var workingDirectory = _targetSettings.IsCoordinatorFirst
+            ? ResolveCoordinatorTargetWorkingDirectory()
+            : ResolveWorkingDirectory(mainSelection);
         _loadingRoleControls = true;
         try
         {
@@ -1968,7 +2020,9 @@ public partial class MainWindow : Window
         _serverBaseUrl = server.Url;
         _serverBaseUrlSource = server.Source;
         var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
-        var workingDirectory = ResolveWorkingDirectory(selected);
+        var workingDirectory = _targetSettings.IsCoordinatorFirst
+            ? ResolveCoordinatorTargetWorkingDirectory()
+            : ResolveWorkingDirectory(selected);
         UpdateWorkspaceControls(selected, workingDirectory);
         ServerUrlInput.Text = _serverBaseUrl;
         ApplyJudgeConfigurationToControls();
@@ -1981,8 +2035,11 @@ public partial class MainWindow : Window
 
     private void UpdateDashboardSummary()
     {
-        var configuredFolder = _targetSettings.ManualWorkingDirectory;
-        var folder = string.IsNullOrWhiteSpace(configuredFolder) ? WorkingDirectoryInput.Text : configuredFolder;
+        var folder = _targetSettings.IsCoordinatorFirst
+            ? ResolveCoordinatorTargetWorkingDirectory()
+            : (!string.IsNullOrWhiteSpace(_targetSettings.ManualWorkingDirectory)
+                ? _targetSettings.ManualWorkingDirectory
+                : WorkingDirectoryInput.Text);
         DashboardFolderText.Text = string.IsNullOrWhiteSpace(folder) ? "작업 폴더 미설정" : folder;
         DashboardServerUrlText.Text = _serverBaseUrl;
         var repository = _gitTarget?.RepositoryUrl;
@@ -2022,13 +2079,23 @@ public partial class MainWindow : Window
 
     private void UpdateWorkspaceControls(CodexThreadOption? selected, string workingDirectory)
     {
-        _gitTarget = WorkerTargetConfiguration.ResolveGit(ResolveConfiguredGitFolder(selected) ?? string.Empty, _targetSettings);
         UpdateWorkingDirectoryControls(selected, workingDirectory);
+        var effectiveWorkingDirectory = _targetSettings.IsCoordinatorFirst
+            ? ResolveCoordinatorTargetWorkingDirectory()
+            : workingDirectory;
+        var gitFolder = _targetSettings.IsCoordinatorFirst
+            ? effectiveWorkingDirectory
+            : ResolveConfiguredGitFolder(selected) ?? string.Empty;
+        _gitTarget = WorkerTargetConfiguration.ResolveGit(gitFolder, _targetSettings);
         RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
         TargetGitStateText.Text = _gitTarget.IsRepository
             ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
             : "Git: UNCONFIGURED";
-        TargetPathText.Text = !string.IsNullOrWhiteSpace(selected?.SessionId) ? $"Codex ProjectPath: {selected.ProjectPath}" : $"New thread folder: {workingDirectory}";
+        TargetPathText.Text = _targetSettings.IsCoordinatorFirst
+            ? $"Target workspace: {(string.IsNullOrWhiteSpace(effectiveWorkingDirectory) ? "미설정" : effectiveWorkingDirectory)}"
+            : !string.IsNullOrWhiteSpace(selected?.SessionId)
+                ? $"Codex ProjectPath: {selected.ProjectPath}"
+                : $"New thread folder: {workingDirectory}";
         RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
     }
 
@@ -2523,10 +2590,14 @@ public partial class MainWindow : Window
     {
         var server = string.IsNullOrWhiteSpace(ServerUrlInput.Text) ? WorkerTargetConfiguration.DefaultServerBaseUrl : ServerUrlInput.Text.Trim();
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
-        var workingDirectory = !string.IsNullOrWhiteSpace(selectedThread?.SessionId)
-            ? ResolveWorkingDirectory(selectedThread)
-            : WorkingDirectoryInput.Text.Trim();
-        if (string.IsNullOrWhiteSpace(selectedThread?.SessionId) && !Directory.Exists(workingDirectory))
+        var executionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI");
+        var coordinatorFirst = string.Equals(executionMode, "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
+        var workingDirectory = coordinatorFirst
+            ? WorkingDirectoryInput.Text.Trim()
+            : !string.IsNullOrWhiteSpace(selectedThread?.SessionId)
+                ? ResolveWorkingDirectory(selectedThread)
+                : WorkingDirectoryInput.Text.Trim();
+        if (!Directory.Exists(workingDirectory))
         {
             WorkingDirectoryInput.ToolTip = "Choose an existing folder before applying settings.";
             return;
@@ -2547,7 +2618,7 @@ public partial class MainWindow : Window
             RepositoryUrlSource = null, ServerBaseUrlSource = "MANUAL",
             ManualWorkingDirectory = workingDirectory,
             Judge = judgeSettings,
-            ExecutionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"),
+            ExecutionMode = executionMode,
             Coordinator = ReadCoordinatorSettings(),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo),
             MaxConcurrentWork = maxConcurrentWork
@@ -3010,9 +3081,9 @@ public partial class MainWindow : Window
         _taskMessages.Clear();
         _messageLogItems.Clear();
         MessageLogEmptyText.Visibility = Visibility.Visible;
-        var projectPath = !string.IsNullOrWhiteSpace(selectedThread?.ProjectPath)
-            ? selectedThread.ProjectPath
-            : _activeWorkingDirectory;
+        var projectPath = !string.IsNullOrWhiteSpace(_activeWorkingDirectory)
+            ? _activeWorkingDirectory
+            : selectedThread?.ProjectPath;
         _taskProjectName = string.IsNullOrWhiteSpace(projectPath)
             ? "UnknownProject"
             : new DirectoryInfo(projectPath).Name;
