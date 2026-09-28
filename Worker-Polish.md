@@ -105,6 +105,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑥ UI의 픽셀, 줄 수, 게이지 칸 수, 기본 모델 문자열과 같은 표현 세부는 장기 정책으로 고정하지 않고 현재 UI 구현과 테스트를 따른다.
 ⑦ Coordinator-first에서 화면의 작업 폴더는 사용자에게 보이는 최종 target workspace의 원본이다. 기존 AI session의 ProjectPath나 Worker 실행 폴더가 이를 자동 대체하지 않는다.
 ⑧ target workspace가 지정되지 않았거나 존재하지 않으면 새 Coordinator-first 작업을 시작하지 않는다.
+⑨ Coordinator-first의 Git bootstrap은 화면의 target workspace 자체를 저장소 루트로 사용한다. 상위 디렉터리에서 발견된 Git 저장소를 target workspace의 저장소로 승계하지 않으며, 필요한 경우 target workspace에 독립 저장소를 초기화한다.
 
 ---
 

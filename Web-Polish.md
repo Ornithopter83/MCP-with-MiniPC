@@ -75,7 +75,9 @@
 ② HQ Web task에 correlation KEY가 있으면 현재 KEY가 확인된 응답 영역만 현재 task 결과로 제출한다.
 ③ KEY 이전 텍스트와 KEY가 없는 과거 turn은 현재 HQ 결과 의미 범위에서 제외한다.
 ④ 일반 응답 파일은 현재 응답 root 안에서만 수집해 사용자 첨부나 과거 turn 파일과 섞이지 않게 한다.
-⑤ 파일 fetch fallback, response 안정화와 DOM 탐지 세부는 현재 확장 구현과 테스트를 원본으로 사용한다.
+⑤ correlation KEY 한 줄만 확인된 상태는 완성된 HQ 응답 본문으로 취급하지 않고 KEY 뒤의 실제 본문이 생길 때까지 대기한다.
+⑥ streaming 종료 판정이 새 DOM mutation에만 의존하지 않도록 응답 대기 중 기계적 재확인을 수행하며, 일반 HQ 응답도 제한시간 안에 안정화되지 않으면 무기한 대기하지 않고 기술 실패로 종료한다.
+⑦ 파일 fetch fallback, response 안정화 주기와 DOM 탐지 세부는 현재 확장 구현과 테스트를 원본으로 사용한다.
 
 ---
 

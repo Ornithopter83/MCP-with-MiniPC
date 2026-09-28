@@ -29,11 +29,11 @@
 제5조 (WORKER)
 
 ① 상태는 완료다.
-② 방금 완료한 작업은 Coordinator-first의 화면 작업 폴더를 최종 target workspace로 고정하고, WorkItem 격리는 유지하면서 HQ END 종료 게이트에서 단일 미반영 CODE_CHANGE를 ff-only로 실제 작업 폴더에 반영하도록 보강한 것이다.
-③ 미반영 CODE_CHANGE가 둘 이상이면 Worker가 자동 병합하지 않고 HQ에 Integration 필요 사실을 반환한다.
+② 방금 완료한 작업은 Coordinator-first의 화면 작업 폴더를 최종 target workspace이자 독립 Git root로 고정하고, 상위 Git 저장소를 잘못 승계해 .gitignore가 상위 배포 폴더에 생성되는 경로를 차단한 것이다.
+③ WorkItem 격리와 END 종료 게이트의 안전한 ff-only landing 규칙은 유지한다.
 
 제6조 (WEB)
 
 ① 상태는 완료다.
-② 방금 완료한 작업은 Worker 정책과 중복되던 관리형 Web 책임을 줄이고 확장의 페이지 연결·전송·관측·수집 경계를 `Web-Polish.md`에 명확히 한 것이다.
-③ 다음 작업은 미지정이다.
+② 방금 완료한 작업은 HQ 응답에서 correlation KEY 한 줄만 먼저 보인 상태를 완성 응답으로 오인하지 않게 하고, streaming 종료를 주기적으로 재확인해 Worker result 제출이 무기한 멈추는 경로를 보강한 것이다.
+③ 확장 식별자는 0.4.2 / 2026-09-28.1이다.
