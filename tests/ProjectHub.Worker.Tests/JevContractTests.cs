@@ -43,6 +43,8 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("검증 WorkItem은 결함 수정까지 겸하지 않고 발견 사실을 보고", hq);
         Assert.Contains("WORKTREE_CHECKPOINT_PENDING이 보고되면", hq);
         Assert.Contains("checkpoint 기계 재시도로 처리한다.", hq);
+        Assert.Contains("WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq);
+        Assert.Contains("같은 잘못된 필드 구성을 반복하지 않는다.", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
     }
 
@@ -63,6 +65,9 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("WORK 임시 산출물 루트", work);
         Assert.Contains("PROJECTHUB_WORK_TEMP", work);
         Assert.Contains("checkpoint 코드 변경을 만들지 않는다.", work);
+        Assert.Contains("WORK_OUTPUT_CONTRACT_REJECTED", work);
+        Assert.Contains("WORK_ITEM_REPORT_REJECTED", work);
+        Assert.Contains("직전 의미 작업을 반복하지 않고", work);
         Assert.DoesNotContain("JUDGE_ON", work);
         Assert.DoesNotContain("JUDGE_OFF", work);
         Assert.DoesNotContain("사용 가능", work);
