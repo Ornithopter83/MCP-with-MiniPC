@@ -516,6 +516,69 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task StructuredSchemaErrorReturnsControlToHqWithFieldHint()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        executor.SetImmediate("W10");
+
+        var hq = new QueueHqRunner(
+            ContinuePatch(0, Add("W10", "초기 조사")),
+            ContinuePatch(
+                1,
+                """
+                {"type":"SET_GOAL","workItemId":"W10","goal":"잘못된 필드명"}
+                """),
+            End("완료"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "SET_GOAL 스키마 오류를 HQ에 되돌린다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Null(result.ErrorCode);
+        Assert.Equal(3, hq.Prompts.Count);
+        Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[2]);
+        Assert.Contains("errorCode=WORK_GRAPH_SET_GOAL_SCHEMA_INVALID", hq.Prompts[2]);
+        Assert.Contains("path=operations[0].value", hq.Prompts[2]);
+        Assert.Contains("The \"goal\" field is used by ADD, not SET_GOAL.", hq.Prompts[2]);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+    }
+
+    [Fact]
+    public async Task InvalidHqEnvelopeReturnsControlToSameHqFlow()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var hq = new QueueHqRunner(
+            "형식이 잘못된 HQ 응답",
+            End("완료"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "HQ 제어 형식 오류를 되돌린다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Null(result.ErrorCode);
+        Assert.Equal(2, hq.Prompts.Count);
+        Assert.Contains("입력 유형: HQ_RESPONSE_CONTRACT_REJECTED", hq.Prompts[1]);
+        Assert.Contains("errorCode=PARALLEL_HQ_", hq.Prompts[1]);
+        Assert.Empty(result.Graph.Items);
+    }
+
+    [Fact]
     public async Task ConsecutiveRejectedPatchesStopAtRetryLimit()
     {
         var graph = new WorkGraph("job", 1);
