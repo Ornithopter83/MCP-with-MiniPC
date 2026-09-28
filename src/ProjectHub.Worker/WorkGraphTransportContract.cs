@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ProjectHub.Worker;
 
@@ -7,6 +8,17 @@ public static class WorkGraphTransportContract
 {
     private const string Marker = "WORK_GRAPH_PATCH:";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly HashSet<string> SupportedHqOperationAliases = new(
+        new[]
+        {
+            "ADD",
+            "CANCEL",
+            "SET_DEPENDENCIES",
+            "SET_GOAL",
+            "SET_BASE_REF",
+            "RELEASE"
+        },
+        StringComparer.OrdinalIgnoreCase);
 
     public static bool TryParse(string? body, out WorkGraphPatch? patch, out string? error)
     {
@@ -62,6 +74,158 @@ public static class WorkGraphTransportContract
         }
 
         return TryParseJsonObject(json, out patch, out error);
+    }
+
+    public static bool TryRepairOperationTypeAliases(
+        string rawPayload,
+        out string repairedPayload,
+        out string? repairSummary)
+    {
+        repairedPayload = rawPayload ?? string.Empty;
+        repairSummary = null;
+
+        if (!TryExtractFirstJsonObject(repairedPayload, out var json, out _))
+            return false;
+
+        JsonNode? parsed;
+        try
+        {
+            parsed = JsonNode.Parse(json);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (parsed is not JsonObject root ||
+            root["operations"] is not JsonArray operations)
+            return false;
+
+        var repairs = new List<(JsonObject Operation, int Index, string Alias)>();
+        for (var index = 0; index < operations.Count; index++)
+        {
+            if (operations[index] is not JsonObject operation)
+                return false;
+
+            if (TryGetNonBlankString(operation, "type", out _))
+                continue;
+
+            if (!TryGetNonBlankString(operation, "operation", out var alias) ||
+                !SupportedHqOperationAliases.Contains(alias))
+                return false;
+
+            repairs.Add((operation, index, alias));
+        }
+
+        if (repairs.Count == 0)
+            return false;
+
+        foreach (var repair in repairs)
+        {
+            repair.Operation["type"] = repair.Alias;
+            repair.Operation.Remove("operation");
+        }
+
+        repairedPayload = root.ToJsonString();
+        repairSummary = string.Join(
+            "; ",
+            repairs.Select(repair =>
+                $"operations[{repair.Index}].operation -> operations[{repair.Index}].type"));
+        return true;
+    }
+
+    public static string? DescribeError(
+        string? payload,
+        string? errorCode)
+    {
+        if (!string.Equals(
+                errorCode,
+                "WORK_GRAPH_OPERATION_TYPE_MISSING",
+                StringComparison.Ordinal))
+            return null;
+
+        if (!TryExtractFirstJsonObject(payload ?? string.Empty, out var json, out _))
+        {
+            return
+                "path=operations[*].type" + Environment.NewLine +
+                "message=Required field \"type\" is missing, but the WorkGraph JSON object could not be inspected.";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("operations", out var operations) ||
+                operations.ValueKind != JsonValueKind.Array)
+                return null;
+
+            var index = 0;
+            foreach (var operation in operations.EnumerateArray())
+            {
+                if (operation.ValueKind != JsonValueKind.Object)
+                {
+                    index++;
+                    continue;
+                }
+
+                var hasType =
+                    operation.TryGetProperty("type", out var typeElement) &&
+                    typeElement.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(typeElement.GetString());
+                if (hasType)
+                {
+                    index++;
+                    continue;
+                }
+
+                var keys = operation
+                    .EnumerateObject()
+                    .Select(property => property.Name)
+                    .ToArray();
+
+                string hint;
+                if (operation.TryGetProperty("operation", out var aliasElement) &&
+                    aliasElement.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(aliasElement.GetString()))
+                {
+                    var alias = aliasElement.GetString()!.Trim();
+                    hint = SupportedHqOperationAliases.Contains(alias)
+                        ? $"Use \"type\":\"{alias}\". The received \"operation\" key is only a compatibility alias and should be normalized to \"type\"."
+                        : $"Use the \"type\" field with a supported operation name. Received unsupported alias value \"{alias}\" in \"operation\".";
+                }
+                else
+                {
+                    hint = "Use the \"type\" field with one of ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE.";
+                }
+
+                return
+                    $"path=operations[{index}].type" + Environment.NewLine +
+                    "message=Required field \"type\" is missing." + Environment.NewLine +
+                    "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                    "hint=" + hint;
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static bool TryGetNonBlankString(
+        JsonObject value,
+        string propertyName,
+        out string result)
+    {
+        result = string.Empty;
+        if (!value.TryGetPropertyValue(propertyName, out var node) ||
+            node is not JsonValue jsonValue ||
+            !jsonValue.TryGetValue<string>(out var text) ||
+            string.IsNullOrWhiteSpace(text))
+            return false;
+
+        result = text.Trim();
+        return true;
     }
 
     private static bool TryParseJsonObject(

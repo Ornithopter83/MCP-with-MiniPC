@@ -251,23 +251,51 @@ public partial class MainWindow
                             """
                             JSON 객체 하나만 반환한다.
                             최상위에는 expectedRevision과 operations를 유지한다.
-                            WorkItem, operation, dependency, goal, baseRef 등 원문의 의미 값은 추가·삭제·변경하지 않는다.
+                            operations 각 객체의 operation 종류 판별자 필드는 정확히 type이다.
+                            type이 없고 operation 값이 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE 중 하나이면 그 동일 값을 type으로 옮기고 operation 키만 제거할 수 있다.
+                            WorkItem ID, operation 종류 값, dependency, goal, baseRef 등 원문의 의미 값은 추가·삭제·변경하지 않는다.
                             따옴표, 쉼표, 괄호, JSON 타입, 코드펜스와 같은 구조 문제만 복구한다.
                             """),
                     WorkGraphTransportContract.TryParse,
                     WorkGraphTransportContract.TryParseJsonPayload,
-                    cancellationToken);
+                    cancellationToken,
+                    deterministicRepair: WorkGraphTransportContract.TryRepairOperationTypeAliases);
+
+                var structuredErrorCode =
+                    structuredResult.FinalErrorCode ??
+                    structuredResult.InitialErrorCode;
+                if (!structuredResult.Success)
+                {
+                    var errorDetail =
+                        WorkGraphTransportContract.DescribeError(
+                            structuredResult.FinalPayload,
+                            structuredErrorCode) ??
+                        WorkGraphTransportContract.DescribeError(
+                            payload,
+                            structuredErrorCode);
+                    if (!string.IsNullOrWhiteSpace(errorDetail))
+                        structuredResult = structuredResult with { ErrorDetail = errorDetail };
+                }
 
                 if (structuredResult.RepairAttempted)
                 {
                     RunOnUi(() =>
+                    {
+                        var detail =
+                            $"contract=WORK_GRAPH_PATCH · repaired={structuredResult.Repaired} · initialError={structuredResult.InitialErrorCode ?? "none"} · finalError={structuredResult.FinalErrorCode ?? "none"}";
+                        if (!string.IsNullOrWhiteSpace(structuredResult.RepairSummary))
+                            detail += Environment.NewLine + "repair=" + structuredResult.RepairSummary;
+                        if (!string.IsNullOrWhiteSpace(structuredResult.ErrorDetail))
+                            detail += Environment.NewLine + structuredResult.ErrorDetail;
+
                         AddTaskMessage(
                             "STRUCTURED HELPER",
-                            $"contract=WORK_GRAPH_PATCH · repaired={structuredResult.Repaired} · initialError={structuredResult.InitialErrorCode ?? "none"} · finalError={structuredResult.FinalErrorCode ?? "none"}",
+                            detail,
                             status: structuredResult.Success
                                 ? "STRUCTURED_REPAIRED"
                                 : "STRUCTURED_REPAIR_FAILED",
-                            includeHistory: false));
+                            includeHistory: false);
+                    });
                 }
 
                 return structuredResult;

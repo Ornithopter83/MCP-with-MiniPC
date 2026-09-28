@@ -89,6 +89,13 @@ WORK_GRAPH_PATCH:
 5. SET_BASE_REF: workItemId, value
 6. RELEASE: workItemId, 선택적 inputType, 선택적 value
 
+③의2 operations의 각 객체는 operation 종류를 반드시 `type` 필드에 기록한다. `operation` 또는 `action`을 operation 종류의 필드명으로 사용하지 않는다. `kind`는 ADD 대상 WorkItem의 NORMAL 또는 INTEGRATION 종류에만 사용한다.
+
+WORK_GRAPH_PATCH:
+{"expectedRevision":0,"operations":[{"type":"ADD","workItemId":0,"kind":"NORMAL","goal":"RESOURCE 경로로 이미지 1장을 생성하고 결과 파일을 저장한다.","baseRef":"<현재 기준 ref>"}]}
+
+③의3 RELEASE는 이미 존재하며 BLOCKED 상태인 WorkItem을 HQ 판단으로 재개할 때만 사용한다. 같은 WORK_GRAPH_PATCH에서 새로 ADD한 WorkItem에 RELEASE를 함께 사용하지 않는다.
+
 ④ Worker는 JSON 구조, revision, ID, dependency 존재, self dependency, cycle 같은 기계적 유효성만 검사한다.
 
 

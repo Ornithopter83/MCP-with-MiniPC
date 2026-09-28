@@ -287,11 +287,21 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
                 if (!structuredResult.Success || structuredResult.Value is null)
                 {
+                    var failureDetail = structuredResult.FinalPayload;
+                    if (!string.IsNullOrWhiteSpace(structuredResult.ErrorDetail))
+                    {
+                        failureDetail =
+                            structuredResult.ErrorDetail +
+                            Environment.NewLine +
+                            "payload=" +
+                            structuredResult.FinalPayload;
+                    }
+
                     return Failure(
                         structuredResult.FinalErrorCode ??
                         structuredResult.InitialErrorCode ??
                         "WORK_GRAPH_PATCH_INVALID",
-                        structuredResult.FinalPayload);
+                        failureDetail);
                 }
 
                 turn = new(

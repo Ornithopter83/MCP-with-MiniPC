@@ -6,6 +6,11 @@ public delegate bool StructuredPayloadParser<T>(
     out string? error)
     where T : class;
 
+public delegate bool StructuredPayloadDeterministicRepair(
+    string rawPayload,
+    out string repairedPayload,
+    out string? repairSummary);
+
 public sealed record StructuredPayloadRequest(
     string ContractType,
     string RawPayload,
@@ -23,7 +28,9 @@ public sealed record StructuredPayloadResult<T>(
     string? InitialErrorCode,
     string? FinalErrorCode,
     string? RepairRawOutput = null,
-    AiRoleRunResult? RepairRunResult = null)
+    AiRoleRunResult? RepairRunResult = null,
+    string? RepairSummary = null,
+    string? ErrorDetail = null)
     where T : class;
 
 public sealed class WorkerStructuredPayloadHelper
@@ -68,7 +75,8 @@ public sealed class WorkerStructuredPayloadHelper
         StructuredPayloadRequest request,
         StructuredPayloadParser<T> initialParser,
         StructuredPayloadParser<T>? repairedParser = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        StructuredPayloadDeterministicRepair? deterministicRepair = null)
         where T : class
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -87,20 +95,56 @@ public sealed class WorkerStructuredPayloadHelper
                 null);
         }
 
+        var repairInputPayload = rawPayload;
+        var repairInputError = initialError;
+        string? deterministicRepairSummary = null;
+
+        if (deterministicRepair is not null &&
+            deterministicRepair(
+                rawPayload,
+                out var deterministicPayload,
+                out deterministicRepairSummary) &&
+            !string.IsNullOrWhiteSpace(deterministicPayload))
+        {
+            var deterministicParser = repairedParser ?? initialParser;
+            if (deterministicParser(
+                    deterministicPayload,
+                    out var deterministicValue,
+                    out var deterministicError))
+            {
+                return new(
+                    true,
+                    deterministicValue,
+                    deterministicPayload,
+                    true,
+                    true,
+                    initialError,
+                    null,
+                    deterministicPayload,
+                    null,
+                    deterministicRepairSummary);
+            }
+
+            repairInputPayload = deterministicPayload;
+            repairInputError = deterministicError ?? initialError;
+        }
+
         var runner = _runners.Resolve(request.RepairRole);
         if (runner is null)
         {
             return new(
                 false,
                 null,
-                rawPayload,
+                repairInputPayload,
                 true,
                 false,
                 initialError,
-                "STRUCTURED_REPAIR_RUNNER_UNAVAILABLE");
+                "STRUCTURED_REPAIR_RUNNER_UNAVAILABLE",
+                RepairSummary: deterministicRepairSummary);
         }
 
-        var prompt = BuildRepairPrompt(request, initialError);
+        var repairRequest = request with { RawPayload = repairInputPayload };
+        var prompt = BuildRepairPrompt(repairRequest, repairInputError);
         AiRoleRunResult repairRun;
         try
         {
@@ -123,12 +167,13 @@ public sealed class WorkerStructuredPayloadHelper
             return new(
                 false,
                 null,
-                rawPayload,
+                repairInputPayload,
                 true,
                 false,
                 initialError,
                 "STRUCTURED_REPAIR_EXECUTION_FAILED",
-                exception.GetType().Name + ": " + exception.Message);
+                exception.GetType().Name + ": " + exception.Message,
+                RepairSummary: deterministicRepairSummary);
         }
 
         if (repairRun.ExitCode != 0)
@@ -136,13 +181,14 @@ public sealed class WorkerStructuredPayloadHelper
             return new(
                 false,
                 null,
-                rawPayload,
+                repairInputPayload,
                 true,
                 false,
                 initialError,
                 "STRUCTURED_REPAIR_PROCESS_EXIT",
                 repairRun.FinalMessage,
-                repairRun);
+                repairRun,
+                deterministicRepairSummary);
         }
 
         var repairedPayload = repairRun.FinalMessage?.Trim() ?? string.Empty;
@@ -151,13 +197,14 @@ public sealed class WorkerStructuredPayloadHelper
             return new(
                 false,
                 null,
-                rawPayload,
+                repairInputPayload,
                 true,
                 false,
                 initialError,
                 "STRUCTURED_REPAIR_EMPTY",
                 repairedPayload,
-                repairRun);
+                repairRun,
+                deterministicRepairSummary);
         }
 
         var finalParser = repairedParser ?? initialParser;
@@ -172,7 +219,8 @@ public sealed class WorkerStructuredPayloadHelper
                 initialError,
                 repairedError ?? "STRUCTURED_REPAIR_INVALID",
                 repairedPayload,
-                repairRun);
+                repairRun,
+                deterministicRepairSummary);
         }
 
         return new(
@@ -184,7 +232,8 @@ public sealed class WorkerStructuredPayloadHelper
             initialError,
             null,
             repairedPayload,
-            repairRun);
+            repairRun,
+            deterministicRepairSummary);
     }
 
     private static string BuildRepairPrompt(

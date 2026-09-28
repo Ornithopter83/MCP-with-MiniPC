@@ -127,6 +127,52 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
+    public void WorkGraphTransportRepairsOperationAliasToType()
+    {
+        const string body = """
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":0,"operations":[{"operation":"ADD","workItemId":0,"goal":"RESOURCE 이미지 생성","kind":"NORMAL","baseRef":"abc123"}]}
+            """;
+
+        Assert.True(
+            WorkGraphTransportContract.TryRepairOperationTypeAliases(
+                body,
+                out var repaired,
+                out var summary));
+        Assert.Equal(
+            "operations[0].operation -> operations[0].type",
+            summary);
+        Assert.DoesNotContain("\"operation\"", repaired);
+        Assert.Contains("\"type\":\"ADD\"", repaired);
+        Assert.True(
+            WorkGraphTransportContract.TryParseJsonPayload(
+                repaired,
+                out var patch,
+                out var error),
+            error);
+        Assert.Equal(WorkGraphPatchOperationType.Add, Assert.Single(patch!.Operations).Type);
+    }
+
+    [Fact]
+    public void WorkGraphTypeMissingDiagnosticIncludesPathKeysAndHint()
+    {
+        const string body = """
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":0,"operations":[{"operation":"BOGUS","workItemId":0,"kind":"NORMAL","goal":"test"}]}
+            """;
+
+        Assert.False(WorkGraphTransportContract.TryParse(body, out _, out var error));
+        Assert.Equal("WORK_GRAPH_OPERATION_TYPE_MISSING", error);
+
+        var detail = WorkGraphTransportContract.DescribeError(body, error);
+        Assert.NotNull(detail);
+        Assert.Contains("path=operations[0].type", detail);
+        Assert.Contains("receivedKeys=", detail);
+        Assert.Contains("\"operation\"", detail);
+        Assert.Contains("unsupported alias value \"BOGUS\"", detail);
+    }
+
+    [Fact]
     public void WorkGraphTransportRejectsDuplicateMarkers()
     {
         const string body = """
@@ -272,6 +318,16 @@ public sealed class ParallelWorkTransportTests
         Assert.Contains("INTEGRATION_LANDING_FAILED", footer);
         Assert.Contains("fast-forward", footer);
         Assert.Contains("force/reset", footer);
+    }
+
+    [Fact]
+    public void HqContractDefinesTypeDiscriminatorAndReleaseScope()
+    {
+        var footer = RoleContractLoader.LoadHqFooter();
+
+        Assert.Contains("반드시 `type` 필드", footer);
+        Assert.Contains("\"type\":\"ADD\"", footer);
+        Assert.Contains("같은 WORK_GRAPH_PATCH에서 새로 ADD한 WorkItem에 RELEASE를 함께 사용하지 않는다", footer);
     }
 
     [Fact]

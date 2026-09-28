@@ -59,6 +59,39 @@ public sealed class WorkerStructuredPayloadHelperTests
     }
 
     [Fact]
+    public async Task OperationAliasIsRepairedDeterministicallyWithoutAiCall()
+    {
+        var runner = new FakeRunner("unused");
+        var helper = new WorkerStructuredPayloadHelper(
+            new AiRoleRunnerRegistry(new[] { runner }));
+
+        var result = await helper.ProcessAsync<WorkGraphPatch>(
+            Request(
+                """
+                WORK_GRAPH_PATCH:
+                {"expectedRevision":0,"operations":[{"operation":"ADD","workItemId":0,"goal":"RESOURCE 이미지 생성","kind":"NORMAL","baseRef":"abc123"}]}
+                """),
+            WorkGraphTransportContract.TryParse,
+            WorkGraphTransportContract.TryParseJsonPayload,
+            deterministicRepair: WorkGraphTransportContract.TryRepairOperationTypeAliases);
+
+        Assert.True(result.Success);
+        Assert.True(result.RepairAttempted);
+        Assert.True(result.Repaired);
+        Assert.Equal(0, runner.CallCount);
+        Assert.Equal("WORK_GRAPH_OPERATION_TYPE_MISSING", result.InitialErrorCode);
+        Assert.Null(result.FinalErrorCode);
+        Assert.Equal(
+            "operations[0].operation -> operations[0].type",
+            result.RepairSummary);
+        var operation = Assert.Single(result.Value!.Operations);
+        Assert.Equal(WorkGraphPatchOperationType.Add, operation.Type);
+        Assert.Equal("0", operation.WorkItemId);
+        Assert.DoesNotContain("\"operation\"", result.FinalPayload);
+        Assert.Contains("\"type\":\"ADD\"", result.FinalPayload);
+    }
+
+    [Fact]
     public async Task InvalidRepairReturnsFinalFailureWithoutSecondAiAttempt()
     {
         var runner = new FakeRunner("not-json");
