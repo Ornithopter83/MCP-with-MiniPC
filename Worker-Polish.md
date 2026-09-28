@@ -47,6 +47,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ③ heartbeat는 생존과 확장 동기화 확인에 사용하는 기계 신호이며 작업 목적지를 의미적으로 결정하지 않는다.
 ④ Worker는 일반 Chrome이나 현재 runtime token이 없는 페이지를 Web 작업 대상으로 사용하지 않는다.
 ⑤ content script의 연결, 전송 확인, DOM 관측과 결과 수집 책임은 `Web-Polish.md`의 확장 경계를 따른다.
+⑥ Worker와 관리형 Web 확장 사이의 loopback HTTP wire는 `src/ProjectHub.Worker/Contracts/WEB-BRIDGE-CONTRACT.md`를 전용 원본으로 사용한다.
 
 ---
 

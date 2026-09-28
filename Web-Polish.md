@@ -2,7 +2,7 @@
 
 갱신일: 2026-09-28 (KST)
 
-이 문서는 `extension/gptweb-hub`의 장기 정책을 정의한다. Worker의 슬롯·task·runtime 생명주기 책임은 `Worker-Polish.md`에 두고, 이 문서는 관리형 Web 확장의 페이지 연결·전송·관측·수집 경계를 원본으로 둔다.
+이 문서는 `extension/gptweb-hub`의 장기 정책을 정의한다. Worker의 슬롯·task·runtime 생명주기 책임은 `Worker-Polish.md`에 두고, 이 문서는 관리형 Web 확장의 페이지 연결·전송·관측·수집 경계를 원본으로 둔다. Worker와 확장 사이의 loopback HTTP wire는 `src/ProjectHub.Worker/Contracts/WEB-BRIDGE-CONTRACT.md`를 전용 원본으로 사용한다.
 
 제1조 (책임)
 
