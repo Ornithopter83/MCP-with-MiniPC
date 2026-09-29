@@ -80,7 +80,7 @@
 ⑤ correlation KEY 한 줄만 확인된 상태는 완성된 HQ 응답 본문으로 취급하지 않고 KEY 뒤의 실제 본문이 생길 때까지 대기한다.
 ⑥ streaming 종료 판정이 새 DOM mutation에만 의존하지 않도록 응답 대기 중 기계적 재확인을 수행하며, 일반 HQ 응답도 제한시간 안에 안정화되지 않으면 무기한 대기하지 않고 기술 실패로 종료한다.
 ⑦ 파일 fetch fallback, response 안정화 주기와 DOM 탐지 세부는 현재 확장 구현과 테스트를 원본으로 사용한다.
-⑧ HQ correlation KEY 탐지는 role·turn selector 결과에만 의존하지 않고 현재 conversation 본문에서 동일 KEY를 직접 찾는 기계 fallback을 가질 수 있으며, 요청 prompt 자체에 포함된 KEY는 응답 증거에서 제외한다.
+⑧ HQ correlation KEY 탐지는 role·turn selector 결과에만 의존하지 않고 현재 conversation 본문에서 동일 KEY를 직접 찾는 기계 fallback을 사용하며, 요청 prompt 자체에 포함된 KEY는 응답 증거에서 제외한다.
 ⑨ 이미 claim된 HQ task에서 이전 turn baseline을 복구할 수 없더라도 현재 task의 correlation KEY가 있으면 같은 KEY만을 기준으로 응답 수신을 재개할 수 있다. 이 복구는 기존 prompt를 다시 전송하지 않는다.
 
 ---
