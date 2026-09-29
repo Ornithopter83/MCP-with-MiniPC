@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.4.2';
-  const EXTENSION_BUILD = '2026-09-28.1';
+  const EXTENSION_BUILD = '2026-09-29.1';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -164,6 +164,26 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     }
     return best;
   }
+  function directCorrelationResponseRoot(){
+    const marker=activeKeyMarker();
+    if(!marker)return null;
+    const main=document.querySelector('main')||document.body;
+    const matches=[];
+    const walker=document.createTreeWalker(main,NodeFilter.SHOW_TEXT);
+    while(walker.nextNode()){
+      const node=walker.currentNode;
+      if(!String(node.nodeValue||'').includes(marker))continue;
+      const element=node.parentElement;
+      if(!element||!element.isConnected)continue;
+      if(element.closest('form,nav,aside,header,footer,[role="navigation"],[data-message-author-role="user"],button,[role="button"],input,textarea,script,style,noscript,template'))continue;
+      matches.push(node);
+    }
+    for(let index=matches.length-1;index>=0;index--){
+      const root=correlationRootFromElement(matches[index]);
+      if(root)return root;
+    }
+    return null;
+  }
   function correlationResponseRoot(){
     if(!activeCorrelationKey)return null;
     const candidates=[];
@@ -176,7 +196,17 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
       const root=correlationRootFromElement(candidate);
       if(root)return root;
     }
-    return null;
+    return directCorrelationResponseRoot();
+  }
+  function correlationSendEvidence(){
+    const marker=activeKeyMarker(),root=correlationResponseRoot();
+    if(!marker||!root)return '';
+    const raw=responseText(root.innerText||root.textContent||'');
+    const index=raw.lastIndexOf(marker);
+    if(index<0)return '';
+    return raw.slice(index+marker.length).trim().length
+      ? 'CORRELATION_KEY_RESPONSE'
+      : 'CORRELATION_KEY';
   }
   function currentCorrelatedResponseText(){
     const marker=activeKeyMarker(),root=correlationResponseRoot();
@@ -366,7 +396,8 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
   function sendConfirmationEvidence(prompt){
     if(latchedSendEvidence)return latchedSendEvidence;
     let evidence='';
-    if(hasNewUserMessage(prompt,baselineUserMessages))evidence='USER_MESSAGE';
+    if(activeCorrelationKey)evidence=correlationSendEvidence();
+    if(!evidence&&hasNewUserMessage(prompt,baselineUserMessages))evidence='USER_MESSAGE';
     if(!evidence){const assistantEvidence=assistantTurnEvidence();if(assistantEvidence)evidence=assistantEvidence==='TEXT'?'ASSISTANT_TEXT_CHANGED':'ASSISTANT_RESPONSE';}
     if(!evidence&&sendTriggeredForActiveTask){const generation=generationStartEvidence();if(generation)evidence='GENERATION_STARTED_'+generation;}
     if(!evidence&&activeResource&&latestGeneratedResourceCandidates().length)evidence='RESOURCE_RESULT';
