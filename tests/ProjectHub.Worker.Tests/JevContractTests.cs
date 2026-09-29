@@ -43,6 +43,8 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("검증 WorkItem은 결함 수정까지 겸하지 않고 발견 사실을 보고", hq);
         Assert.Contains("WORKTREE_CHECKPOINT_PENDING이 보고되면", hq);
         Assert.Contains("checkpoint 기계 재시도로 처리한다.", hq);
+        Assert.Contains("PAUSE와 END에 따른 ProjectHub runtime 정리", hq);
+        Assert.Contains("runtime 삭제만을 위한 별도 WorkItem을 만들거나 WORK에 삭제를 지시하지 않는다.", hq);
         Assert.Contains("WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq);
         Assert.Contains("같은 잘못된 필드 구성을 반복하지 않는다.", hq);
         Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
