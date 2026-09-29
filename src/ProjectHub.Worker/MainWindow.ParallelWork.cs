@@ -79,7 +79,7 @@ public partial class MainWindow
             if (!continuing)
             {
                 var staleRuntimeCleanup = await new GitWorktreeManager()
-                    .CleanupRepositoryRuntimeAsync(
+                    .ResetRepositoryRuntimeAsync(
                         workingDirectory,
                         cts.Token);
 
@@ -89,7 +89,7 @@ public partial class MainWindow
                 {
                     var staleCleanupMessage = staleRuntimeCleanup.Success
                         ? "새 작업 시작 전에 이전 ProjectHub runtime을 정리했습니다."
-                        : "새 작업 시작 전에 이전 ProjectHub runtime을 부분 정리했지만 보존해야 할 항목이 남았습니다.";
+                        : "새 작업 시작 전에 이전 ProjectHub runtime을 완전히 초기화하지 못했습니다.";
                     if (!string.IsNullOrWhiteSpace(staleRuntimeCleanup.ErrorDetail))
                         staleCleanupMessage += Environment.NewLine + staleRuntimeCleanup.ErrorDetail;
 
