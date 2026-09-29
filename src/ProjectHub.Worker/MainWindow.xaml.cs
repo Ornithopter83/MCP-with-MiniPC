@@ -428,6 +428,25 @@ public partial class MainWindow : Window
             }
         }
 
+        if (!WorkerPaths.TryResetEphemeralDirectories(out var ephemeralResetError))
+        {
+            _shutdownCleanupInProgress = false;
+            var detail =
+                "Worker 전역 임시 폴더를 완전히 제거하지 못해 종료를 보류했습니다." +
+                Environment.NewLine +
+                (ephemeralResetError ?? "EPHEMERAL_RESET_FAILED");
+            DashboardPreflightText.Text = detail;
+            DashboardPreflightText.Foreground =
+                System.Windows.Media.Brushes.Firebrick;
+            System.Windows.MessageBox.Show(
+                this,
+                detail,
+                "ProjectHub 종료 정리 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return;
+        }
+
         _activeWorkingDirectory = null;
         _activeProjectJobId = null;
         _continuationState = null;
@@ -828,17 +847,31 @@ public partial class MainWindow : Window
         SetFollowupComposerVisible(false);
         _historyEvents.Clear();
         ClearPendingAttachments(deleteCachedFiles: true);
+        var ephemeralResetSucceeded = WorkerPaths.TryResetEphemeralDirectories(
+            out var ephemeralResetError);
         DashboardTaskInput.Text = DashboardPromptPlaceholder;
         DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
         SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
         UpdateDashboardSummary();
 
-        if (runtimeCleanup is { Success: false })
+        if (runtimeCleanup is { Success: false } || !ephemeralResetSucceeded)
         {
+            var details = new List<string>();
+            if (runtimeCleanup is { Success: false })
+            {
+                details.Add(
+                    runtimeCleanup.ErrorDetail ??
+                    runtimeCleanup.ErrorCode ??
+                    "RUNTIME_RESET_FAILED");
+            }
+            if (!ephemeralResetSucceeded && !string.IsNullOrWhiteSpace(ephemeralResetError))
+                details.Add(ephemeralResetError);
+
             DashboardPreflightText.Text =
-                "이전 작업의 ProjectHub runtime을 강제 초기화하지 못했습니다. " +
-                (runtimeCleanup.ErrorDetail ?? runtimeCleanup.ErrorCode ?? "RUNTIME_CLEANUP_FAILED");
-            DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
+                "이전 작업의 ProjectHub 임시 영역을 완전히 초기화하지 못했습니다. " +
+                string.Join(" | ", details);
+            DashboardPreflightText.Foreground =
+                System.Windows.Media.Brushes.Firebrick;
         }
 
         DashboardTaskInput.Focus();
