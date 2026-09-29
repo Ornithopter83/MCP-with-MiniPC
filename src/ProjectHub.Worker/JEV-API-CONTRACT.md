@@ -39,6 +39,8 @@ A=<choice criterion>
 B=<choice criterion>
 ```
 
+⑦ parser는 레거시 입력의 부가 instruction 행을 호환상 수용할 수 있으나 새 HQ Form의 canonical 출력은 제1항부터 제6항의 문법만 사용한다.
+
 제4조 (제공자 요청)
 
 ① 제공자 요청은 JUDGE Form의 구조를 전송 가능한 provider schema로 변환한 값이다.
