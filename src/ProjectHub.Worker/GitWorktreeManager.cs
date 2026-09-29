@@ -82,6 +82,15 @@ public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
                 {
                 }
 
+                try
+                {
+                    using var waitCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await process.WaitForExitAsync(waitCts.Token).ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+
                 var stdout = await stdoutTask.ConfigureAwait(false);
                 var stderr = await stderrTask.ConfigureAwait(false);
                 return new GitCommandResult(
@@ -2518,7 +2527,7 @@ public sealed class GitWorktreeManager
             return null;
 
         Exception? lastException = null;
-        const int attempts = 4;
+        const int attempts = 12;
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -2535,7 +2544,7 @@ public sealed class GitWorktreeManager
                 if (attempt < attempts)
                 {
                     await Task.Delay(
-                        TimeSpan.FromMilliseconds(150 * attempt),
+                        TimeSpan.FromMilliseconds(Math.Min(500, 100 * attempt)),
                         cancellationToken).ConfigureAwait(false);
                 }
             }
