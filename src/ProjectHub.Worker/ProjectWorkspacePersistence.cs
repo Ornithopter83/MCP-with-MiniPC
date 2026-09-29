@@ -178,7 +178,10 @@ public static class ProjectWorkspacePersistence
     }
 
     public static string MechanicalWorkDirectory(string workingDirectory, string jobId)
-        => Path.Combine(RootDirectory(workingDirectory), "mechanical", SanitizeId(jobId));
+        => Path.Combine(
+            WorkerPaths.GetRepositoryRuntimePaths(workingDirectory).Root,
+            "mechanical",
+            SanitizeId(jobId));
 
     public static string MechanicalRequestDirectory(string workingDirectory, string jobId)
         => Path.Combine(MechanicalWorkDirectory(workingDirectory, jobId), "requests");
