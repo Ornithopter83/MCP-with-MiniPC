@@ -1,6 +1,6 @@
 # JEV API 전송 계약
 
-갱신일: 2026-09-28 (KST)
+갱신일: 2026-09-30 (KST)
 
 상위 공통 정책은 `Master-Polish.md`이며 Worker 세부 정책은 `Worker-Polish.md`다.
 이 문서는 Worker/Judge 어댑터와 JEV API 사이의 현재 전송 계약만 정의한다. JUDGE Form의 의미와 canonical 문법은 HQ/WORK 역할 계약을 원본으로 사용하며, 레거시 wire는 `Legacy/LEGACY-WEB-JEV-FOOTER-CONTRACT.md`에 둔다.
@@ -22,23 +22,19 @@
 ① WORK에서 JUDGE로 전달되는 본문은 HQ/WORK 역할 계약이 정의한 JUDGE Form을 사용한다.
 ② canonical QID 표기는 `QID:<id>`다.
 ③ 현재 parser가 이전 형식 `[QID:<id>]`을 호환 입력으로 수용할 수 있으나 새 Form의 canonical 출력에는 사용하지 않는다.
-④ NOUL, SCORE, CHOICE의 질문 의미, criteria, PASS, EVIDENCE, SCOPE와 COUNTEREXAMPLE은 어댑터가 새로 작성하거나 보완하지 않는다.
+④ NOUL, SCORE, CHOICE의 질문 의미와 SCORE 기준 또는 CHOICE 선택지는 어댑터가 새로 작성하거나 보완하지 않는다.
 ⑤ 어댑터는 제공자 API에 필요한 구조 변환만 수행하고 필요한 제공자 필드가 없으면 스키마 또는 프로토콜 오류로 처리한다.
 
 현재 Form 예시는 다음과 같다.
 
 ```text
-NOUL | QID:IMPLEMENTED <question and response instructions>
-PASS: YES >= 0.90
-EVIDENCE: src/implementation.cs
-SCOPE: the requested behavior only
-COUNTEREXAMPLE: one concrete failure condition
+NOUL | QID:IMPLEMENTED <question>
 
-SCORE | QID:QUALITY <question and response instructions>
+SCORE | QID:QUALITY <question>
 1=<score criterion>
 2=<score criterion>
 
-CHOICE | QID:FORMAT <question and response instructions>
+CHOICE | QID:FORMAT <question>
 A=<choice criterion>
 B=<choice criterion>
 ```
