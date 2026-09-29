@@ -753,7 +753,7 @@ public partial class MainWindow : Window
             Directory.Exists(cleanupWorkspace))
         {
             runtimeCleanup = await new GitWorktreeManager()
-                .CleanupRepositoryRuntimeAsync(
+                .ResetRepositoryRuntimeAsync(
                     cleanupWorkspace,
                     CancellationToken.None);
         }
@@ -772,7 +772,7 @@ public partial class MainWindow : Window
         if (runtimeCleanup is { Success: false })
         {
             DashboardPreflightText.Text =
-                "이전 작업의 ProjectHub 임시 runtime 폴더를 완전히 정리하지 못했습니다. " +
+                "이전 작업의 ProjectHub runtime을 강제 초기화하지 못했습니다. " +
                 (runtimeCleanup.ErrorDetail ?? runtimeCleanup.ErrorCode ?? "RUNTIME_CLEANUP_FAILED");
             DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
         }
