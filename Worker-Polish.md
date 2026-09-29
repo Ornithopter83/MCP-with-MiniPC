@@ -1,6 +1,6 @@
 # Worker-Polish — ProjectHub Worker 정책
 
-갱신일: 2026-09-28 (KST)
+갱신일: 2026-09-30 (KST)
 
 이 문서는 `src/ProjectHub.Worker`와 Worker가 직접 포함·운영하는 HQ, WORK, RESOURCE, JUDGE, OBSERVATION, Web Bridge 실행 경계의 장기 정책을 정의한다.
 ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다.
