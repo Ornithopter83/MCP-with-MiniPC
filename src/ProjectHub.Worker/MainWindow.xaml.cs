@@ -858,6 +858,7 @@ public partial class MainWindow : Window
 
         _newTaskCleanupInProgress = true;
         UpdateDashboardRunButtonState();
+        string? cleanupFailureMessage = null;
 
         try
         {
@@ -903,9 +904,10 @@ public partial class MainWindow : Window
                 if (!ephemeralResetSucceeded && !string.IsNullOrWhiteSpace(ephemeralResetError))
                     details.Add(ephemeralResetError);
 
-                DashboardPreflightText.Text =
+                cleanupFailureMessage =
                     "이전 작업의 ProjectHub 임시 영역을 완전히 초기화하지 못했습니다. " +
                     string.Join(" | ", details);
+                DashboardPreflightText.Text = cleanupFailureMessage;
                 DashboardPreflightText.Foreground =
                     System.Windows.Media.Brushes.Firebrick;
             }
@@ -916,6 +918,12 @@ public partial class MainWindow : Window
         {
             _newTaskCleanupInProgress = false;
             UpdateDashboardRunButtonState();
+            if (!string.IsNullOrWhiteSpace(cleanupFailureMessage))
+            {
+                DashboardPreflightText.Text = cleanupFailureMessage;
+                DashboardPreflightText.Foreground =
+                    System.Windows.Media.Brushes.Firebrick;
+            }
         }
     }
 
