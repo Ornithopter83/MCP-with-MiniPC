@@ -66,6 +66,7 @@
 ② 숨김 app window의 전송 확인은 단일 polling 신호에만 의존하지 않고 현재 conversation의 기계적 증거를 사용한다.
 ③ 이전 turn과 현재 turn을 구분하기 위한 baseline·mutation 증거는 현재 task 범위 안에서만 사용한다.
 ④ 전송 확인의 DOM selector, heuristic, 제한시간과 진행 단계 세부는 확장 구현과 테스트를 원본으로 사용한다.
+⑤ HQ task의 현재 correlation KEY가 응답 영역에서 확인되면 해당 task 전송의 직접 기계 증거로 사용할 수 있으며 user/assistant turn selector가 현재 DOM을 인식하지 못했다는 이유만으로 SEND_CONFIRM 상태에 머물지 않는다.
 
 ---
 
@@ -78,6 +79,7 @@
 ⑤ correlation KEY 한 줄만 확인된 상태는 완성된 HQ 응답 본문으로 취급하지 않고 KEY 뒤의 실제 본문이 생길 때까지 대기한다.
 ⑥ streaming 종료 판정이 새 DOM mutation에만 의존하지 않도록 응답 대기 중 기계적 재확인을 수행하며, 일반 HQ 응답도 제한시간 안에 안정화되지 않으면 무기한 대기하지 않고 기술 실패로 종료한다.
 ⑦ 파일 fetch fallback, response 안정화 주기와 DOM 탐지 세부는 현재 확장 구현과 테스트를 원본으로 사용한다.
+⑧ HQ correlation KEY 탐지는 role·turn selector 결과에만 의존하지 않고 현재 conversation 본문에서 동일 KEY를 직접 찾는 기계 fallback을 가질 수 있으며, 요청 prompt 자체에 포함된 KEY는 응답 증거에서 제외한다.
 
 ---
 
