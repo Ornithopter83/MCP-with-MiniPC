@@ -461,9 +461,14 @@ public sealed class CoordinatorFirstContractTests
     [Fact]
     public void CurrentServedModels_AreEnumsAndComposeTheActualCliRequest()
     {
-        Assert.Equal(7, CodexServedModels.Current.Count);
+        Assert.Equal(8, CodexServedModels.Current.Count);
         // The settings combo offers this exact pair; it must remain a valid CLI request
         // even when the independently refreshed `codex debug models` cache disagrees.
+        Assert.True(CodexModelRequest.TryCreate("gpt-6.1-sol", "max", out var sol61Request));
+        Assert.Equal("gpt-6.1-sol", sol61Request.ToCliArguments()[1]);
+        Assert.Equal("max", sol61Request.ReasoningId);
+        Assert.False(CodexModelRequest.TryCreate("gpt-6.1-sol", "ultra", out _));
+
         Assert.True(CodexModelRequest.TryCreate("gpt-6-sol", "high", out var coordinatorRequest));
         Assert.Equal("--model", coordinatorRequest.ToCliArguments()[0]);
         Assert.Equal("gpt-6-sol", coordinatorRequest.ToCliArguments()[1]);
@@ -543,6 +548,12 @@ public sealed class CoordinatorFirstContractTests
 
         var openAiDescriptor = AiProviderCatalog.Get(AiServiceProvider.OpenAI);
         Assert.True(openAiDescriptor.ExecutionConfigured);
+        var sol61 = openAiDescriptor.FindModel("gpt-6.1-sol");
+        Assert.NotNull(sol61);
+        Assert.True(sol61!.SupportsReasoning("high"));
+        Assert.True(sol61.SupportsReasoning("max"));
+        Assert.False(sol61.SupportsReasoning("ultra"));
+
         var sol = openAiDescriptor.FindModel("gpt-6-sol");
         Assert.NotNull(sol);
         Assert.True(sol!.SupportsReasoning("high"));
