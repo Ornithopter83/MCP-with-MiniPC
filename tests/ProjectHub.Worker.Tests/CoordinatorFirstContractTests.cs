@@ -955,6 +955,34 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void RoleContracts_PrioritizeFinalImplementationAndAvoidRepeatedHeavyVerification()
+    {
+        var hqPrompt = RoleContractLoader.BuildHqPrompt(
+            "USER_REQUEST",
+            "기능을 완성하라.",
+            new WorkGraphPromptContext(0, 4, "abc123"),
+            includeContract: true);
+        var workPrompt = RoleContractLoader.BuildWorkPrompt(
+            "HQ_INSTRUCTION",
+            "기능을 완성하라.",
+            new WorkItemPromptContext(
+                "W10",
+                WorkItemKind.Normal,
+                "기능을 완성하라.",
+                Array.Empty<string>(),
+                "abc123",
+                "branch",
+                "worktree"),
+            @"C:\work\.projecthub\runtime\temp\job\W10");
+
+        Assert.Contains("사용자 최종 목표가 아직 남아 있으면", hqPrompt);
+        Assert.Contains("동일 상태를 다시 증명하기 위한", hqPrompt);
+        Assert.Contains("종료 직전 단일 검증 WorkItem", hqPrompt);
+        Assert.Contains("목표 구현이 남아 있으면", workPrompt);
+        Assert.Contains("재빌드·publish·export·대용량 임시 검증 산출물을 반복 생성하지 않는다", workPrompt);
+    }
+
+    [Fact]
     public async Task ResourceSidecar_RegistersResourceAsFinalizeOnlyMechanicalWork()
     {
         var directory = Path.Combine(Path.GetTempPath(), "projecthub-resource-mechanical-" + Guid.NewGuid().ToString("N"));
