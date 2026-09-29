@@ -6,6 +6,7 @@ namespace ProjectHub.Worker;
 public enum CodexServedModel
 {
     Gpt6Astra,
+    Gpt61Sol,
     Gpt6Sol,
     Gpt6Luna,
     Gpt56Sol,
@@ -59,6 +60,7 @@ public static class CodexServedModels
     public static IReadOnlyList<CodexServedModelOption> Current { get; } = new[]
     {
         Create(CodexServedModel.Gpt6Astra, "gpt-6-astra", "GPT-6 Astra", CodexReasoningDepth.Low, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max, CodexReasoningDepth.Ultra),
+        Create(CodexServedModel.Gpt61Sol, "gpt-6.1-sol", "GPT-6.1 Sol", CodexReasoningDepth.Medium, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max),
         Create(CodexServedModel.Gpt6Sol, "gpt-6-sol", "GPT-6 Sol", CodexReasoningDepth.Medium, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max, CodexReasoningDepth.Ultra),
         Create(CodexServedModel.Gpt6Luna, "gpt-6-luna", "GPT-6 Luna", CodexReasoningDepth.Medium, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max),
         Create(CodexServedModel.Gpt56Sol, "gpt-5.6-sol", "GPT-5.6 Sol", CodexReasoningDepth.Low, CodexReasoningDepth.Low, CodexReasoningDepth.Medium, CodexReasoningDepth.High, CodexReasoningDepth.XHigh, CodexReasoningDepth.Max, CodexReasoningDepth.Ultra),
