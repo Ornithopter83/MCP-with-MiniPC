@@ -49,6 +49,49 @@ public partial class MainWindow
                 includeHistory: false);
         }
 
+        if (!continuing)
+        {
+            var staleRuntimeCleanup = await new GitWorktreeManager()
+                .ResetRepositoryRuntimeAsync(
+                    workingDirectory,
+                    cts.Token);
+
+            var staleCleanupMessage = staleRuntimeCleanup.Success
+                ? "새 작업 시작 전에 이전 ProjectHub runtime을 초기화했습니다."
+                : "새 작업 시작 전에 이전 ProjectHub runtime을 완전히 초기화하지 못했습니다.";
+            if (!string.IsNullOrWhiteSpace(staleRuntimeCleanup.ErrorDetail))
+                staleCleanupMessage += Environment.NewLine + staleRuntimeCleanup.ErrorDetail;
+
+            if (staleRuntimeCleanup.RuntimeDeleted ||
+                staleRuntimeCleanup.RemovedWorktrees.Count > 0 ||
+                !staleRuntimeCleanup.Success)
+            {
+                AddTaskMessage(
+                    "STALE RUNTIME RESET",
+                    staleCleanupMessage +
+                    Environment.NewLine +
+                    $"runtimeRoot={staleRuntimeCleanup.RuntimeRoot}" +
+                    Environment.NewLine +
+                    $"removedWorktrees={staleRuntimeCleanup.RemovedWorktrees.Count}",
+                    status: staleRuntimeCleanup.Success
+                        ? "COMPLETED"
+                        : staleRuntimeCleanup.ErrorCode ?? "RUNTIME_RESET_FAILED",
+                    includeHistory: false);
+            }
+
+            if (!staleRuntimeCleanup.Success)
+            {
+                ResultTitle.Text = "RUNTIME BLOCKED";
+                ResultBody.Text = staleCleanupMessage;
+                TaskTitle.Text = "이전 runtime 정리 실패";
+                _activeCoordinatorFirst = false;
+                _activeTaskCts = null;
+                SetFlowState(false, false, false);
+                ApplyConnectionStatus();
+                return;
+            }
+        }
+
         var coordinatorSession = continuation?.CoordinatorSessionId;
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
         var mechanicalWork = new MechanicalWorkRegistry();
@@ -76,64 +119,6 @@ public partial class MainWindow
 
         try
         {
-            if (!continuing)
-            {
-                var staleRuntimeCleanup = await new GitWorktreeManager()
-                    .ResetRepositoryRuntimeAsync(
-                        workingDirectory,
-                        cts.Token);
-
-                if (staleRuntimeCleanup.RuntimeDeleted ||
-                    staleRuntimeCleanup.RemovedWorktrees.Count > 0 ||
-                    !staleRuntimeCleanup.Success)
-                {
-                    var staleCleanupMessage = staleRuntimeCleanup.Success
-                        ? "새 작업 시작 전에 이전 ProjectHub runtime을 정리했습니다."
-                        : "새 작업 시작 전에 이전 ProjectHub runtime을 완전히 초기화하지 못했습니다.";
-                    if (!string.IsNullOrWhiteSpace(staleRuntimeCleanup.ErrorDetail))
-                        staleCleanupMessage += Environment.NewLine + staleRuntimeCleanup.ErrorDetail;
-
-                    AddTaskMessage(
-                        "STALE RUNTIME CLEANUP",
-                        staleCleanupMessage +
-                        Environment.NewLine +
-                        $"runtimeRoot={staleRuntimeCleanup.RuntimeRoot}" +
-                        Environment.NewLine +
-                        $"removedWorktrees={staleRuntimeCleanup.RemovedWorktrees.Count}",
-                        status: staleRuntimeCleanup.Success
-                            ? "COMPLETED"
-                            : staleRuntimeCleanup.ErrorCode ?? "RUNTIME_CLEANUP_PARTIAL",
-                        includeHistory: false);
-                }
-            }
-
-            if (!continuing)
-            {
-                var staleRuntimeCleanupCheck = await new GitWorktreeManager()
-                    .ResetRepositoryRuntimeAsync(
-                        workingDirectory,
-                        cts.Token);
-                if (!staleRuntimeCleanupCheck.Success)
-                {
-                    var detail =
-                        "새 작업 실행 전에 ProjectHub runtime을 초기화하지 못해 실행을 시작하지 않습니다." +
-                        Environment.NewLine +
-                        (staleRuntimeCleanupCheck.ErrorDetail ??
-                         staleRuntimeCleanupCheck.ErrorCode ??
-                         "RUNTIME_RESET_FAILED");
-                    AddTaskMessage(
-                        "STALE RUNTIME RESET",
-                        detail,
-                        status: staleRuntimeCleanupCheck.ErrorCode ?? "RUNTIME_RESET_FAILED",
-                        includeHistory: false);
-                    ResultTitle.Text = "RUNTIME BLOCKED";
-                    ResultBody.Text = detail;
-                    TaskTitle.Text = "이전 runtime 정리 실패";
-                    SetFlowState(false, false, false);
-                    return;
-                }
-            }
-
             var restored = continuing
                 ? ProjectWorkspacePersistence.TryLoadWorkGraph(workingDirectory, jobId)
                 : null;
