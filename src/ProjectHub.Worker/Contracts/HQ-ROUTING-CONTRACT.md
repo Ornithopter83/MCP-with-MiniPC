@@ -76,9 +76,12 @@ B=<기준>
 ⑱ 다른 WorkItem의 결과가 작업 후반의 연결·통합 단계에서만 필요한 경우에는 먼저 실행하는 WorkItem 사이에 dependency를 두지 않는다. 해당 결과들을 함께 소비하는 후속 WorkItem을 별도로 만들고 그 후속 WorkItem에 필요한 dependency를 둔다.
 ⑲ SET_GOAL, SET_DEPENDENCIES, SET_BASE_REF는 PLANNED, READY, BLOCKED 상태의 WorkItem에만 사용한다. RUNNING, COMPLETED, FAILED, CANCELED 상태의 WorkItem에는 사용하지 않는다.
 ⑳ NORMAL WorkItem이 완료된 CODE_CHANGE를 dependency로 가지면 Worker가 해당 resultRef와 선언된 기준 ref의 Git ancestry를 기계적으로 축약해 실제 코드 기준점을 정한다. 하나의 계보로 축약되지 않는 독립 CODE_CHANGE가 둘 이상이면 NORMAL에 임의로 합치지 않고 INTEGRATION WorkItem으로 결합한다.
-㉑ 실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 최종 CODE_CHANGE 뒤에는 해당 코드 결과를 dependency로 갖는 독립 검증 NORMAL WorkItem을 두어 빌드·실행 산출물과 이전에 요구된 주요 기능의 존재를 다시 확인한 뒤 END를 판단한다. 검증 WorkItem은 결함 수정까지 겸하지 않고 발견 사실을 보고하며, 수정이 필요하면 별도 후속 WorkItem을 추가한다.
+㉑ 실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 경우 독립 검증은 최종 통합 상태를 기준으로 한 번만 계획한다. 동일 목표의 중간 CODE_CHANGE마다 검증 NORMAL WorkItem을 반복 추가하지 않으며, 최종 검증에서 실제 결함이 발견된 경우에만 별도 후속 수정 WorkItem을 추가한다.
 ㉒ WORKTREE_CHECKPOINT_PENDING이 보고되면 같은 의미 작업을 새 WorkItem으로 재시도하지 않고 해당 BLOCKED WorkItem을 RELEASE한다. Worker는 이 RELEASE를 WORK AI 재실행이 아닌 checkpoint 기계 재시도로 처리한다.
 ㉓ PAUSE와 END에 따른 ProjectHub runtime 정리와 새 작업 초기화는 Worker의 기계 생명주기 책임이다. HQ는 runtime 삭제만을 위한 별도 WorkItem을 만들거나 WORK에 삭제를 지시하지 않는다.
+㉔ 코드 변경 WorkItem이 해당 범위의 빌드 성공을 보고했고 사용자 최종 목표가 아직 남아 있으면, 동일 상태를 다시 증명하기 위한 ANALYSIS·재빌드·publish·export 전용 WorkItem을 추가하지 않고 남은 구현·통합을 계속 진행한다.
+㉕ 대용량 publish, export, 전체 end-to-end 실행과 clean-environment 검증은 사용자 요구 또는 최종 품질 확인에 필요한 경우 최종 INTEGRATION 또는 종료 직전 단일 검증 WorkItem에 집중한다. 이미 성공한 동일 입력·동일 결과의 검증은 재실행하지 않는다.
+㉖ 최종 목표 구현과 비례적인 최종 검증이 완료되면 추가 확신 확보만을 위한 WorkItem을 만들지 않고 END로 사용자 검토에 넘긴다. 사용자 전용 선택, 외부 권한 또는 실제 차단 조건이 없는 한 중간 검토를 위해 PAUSE하지 않는다.
 
 제6조 (CONTINUE 본문)
 
