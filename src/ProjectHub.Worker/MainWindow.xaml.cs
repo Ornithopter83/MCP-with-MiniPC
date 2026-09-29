@@ -780,6 +780,59 @@ public partial class MainWindow : Window
         DashboardTaskInput.Focus();
     }
 
+    private bool TryPassSynchronousWorkspaceLaunchGate()
+    {
+        var executionMode = GetSelectedTag(
+            ExecutionModeCombo,
+            _targetSettings.IsCoordinatorFirst ? "CLI_TO_CLI" : string.Empty);
+        var requiresExplicitWorkspace =
+            IsDirectWorkMode ||
+            string.Equals(
+                executionMode,
+                "CLI_TO_CLI",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (!requiresExplicitWorkspace)
+            return true;
+
+        var displayed = WorkingDirectoryInput?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(displayed))
+        {
+            ShowSynchronousWorkspaceLaunchError(
+                "WORKSPACE_NOT_SELECTED",
+                "작업 폴더를 먼저 지정하세요.");
+            return false;
+        }
+
+        if (!Directory.Exists(displayed))
+        {
+            ShowSynchronousWorkspaceLaunchError(
+                "WORKSPACE_NOT_FOUND",
+                "지정한 작업 폴더가 존재하지 않거나 접근할 수 없습니다.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void ShowSynchronousWorkspaceLaunchError(
+        string errorCode,
+        string message)
+    {
+        DashboardPreflightText.Text = message;
+        DashboardPreflightText.Foreground =
+            System.Windows.Media.Brushes.Firebrick;
+        TaskDirection.Text = "PREFLIGHT";
+        TaskTitle.Text = "작업 폴더를 확인하세요";
+        ResultTitle.Text = "WORKSPACE BLOCKED";
+        ResultBody.Text =
+            message +
+            Environment.NewLine +
+            "코드: " +
+            errorCode;
+        SetFlowState(false, false, false);
+    }
+
     private TaskLaunchRequest? BuildTaskLaunchRequest()
     {
         var prompt = DashboardTaskInput.Text?.Trim();
@@ -1059,6 +1112,9 @@ public partial class MainWindow : Window
             await BeginNewDashboardTaskAsync();
             return;
         }
+        if (!TryPassSynchronousWorkspaceLaunchGate())
+            return;
+
         await InitializeStartupConfigurationAsync();
         if (IsDirectWorkMode)
         {
