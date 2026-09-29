@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.4.2';
-  const EXTENSION_BUILD = '2026-09-29.1';
+  const EXTENSION_BUILD = '2026-09-29.2';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -164,25 +164,40 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     }
     return best;
   }
+  function correlationKeyOccurrenceCount(){
+    const marker=activeKeyMarker();
+    if(!marker)return 0;
+    const bodyText=responseText(document.body?.innerText||document.body?.textContent||'');
+    let count=0,index=0;
+    while((index=bodyText.indexOf(marker,index))>=0){
+      count++;
+      index+=marker.length;
+    }
+    return count;
+  }
   function directCorrelationResponseRoot(){
     const marker=activeKeyMarker();
-    if(!marker)return null;
-    const main=document.querySelector('main')||document.body;
-    const matches=[];
-    const walker=document.createTreeWalker(main,NodeFilter.SHOW_TEXT);
-    while(walker.nextNode()){
-      const node=walker.currentNode;
-      if(!String(node.nodeValue||'').includes(marker))continue;
-      const element=node.parentElement;
-      if(!element||!element.isConnected)continue;
-      if(element.closest('form,nav,aside,header,footer,[role="navigation"],[data-message-author-role="user"],button,[role="button"],input,textarea,script,style,noscript,template'))continue;
-      matches.push(node);
+    if(!marker||!document.body)return null;
+    const bodyText=responseText(document.body.innerText||document.body.textContent||'');
+    if(!bodyText.includes(marker))return null;
+    const selectors='article,[data-message-author-role="assistant"],[data-testid*="conversation-turn"],[data-testid*="assistant"],.markdown,.prose,p,pre,code,section,div';
+    const candidates=[...document.body.querySelectorAll(selectors)].filter(element=>{
+      if(!element.isConnected||!visible(element))return false;
+      if(element.closest('form,nav,aside,header,footer,[role="navigation"],[data-message-author-role="user"],button,[role="button"],input,textarea,script,style,noscript,template'))return false;
+      const raw=responseText(element.innerText||element.textContent||'');
+      return raw.includes(marker);
+    });
+    let markerOnly=null;
+    for(let index=candidates.length-1;index>=0;index--){
+      const root=correlationRootFromElement(candidates[index]);
+      if(!root)continue;
+      const raw=responseText(root.innerText||root.textContent||'');
+      const markerIndex=raw.lastIndexOf(marker);
+      if(markerIndex<0)continue;
+      if(raw.slice(markerIndex+marker.length).trim().length)return root;
+      markerOnly??=root;
     }
-    for(let index=matches.length-1;index>=0;index--){
-      const root=correlationRootFromElement(matches[index]);
-      if(root)return root;
-    }
-    return null;
+    return markerOnly;
   }
   function correlationResponseRoot(){
     if(!activeCorrelationKey)return null;
@@ -200,13 +215,18 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
   }
   function correlationSendEvidence(){
     const marker=activeKeyMarker(),root=correlationResponseRoot();
-    if(!marker||!root)return '';
-    const raw=responseText(root.innerText||root.textContent||'');
-    const index=raw.lastIndexOf(marker);
-    if(index<0)return '';
-    return raw.slice(index+marker.length).trim().length
-      ? 'CORRELATION_KEY_RESPONSE'
-      : 'CORRELATION_KEY';
+    if(marker&&root){
+      const raw=responseText(root.innerText||root.textContent||'');
+      const index=raw.lastIndexOf(marker);
+      if(index>=0){
+        return raw.slice(index+marker.length).trim().length
+          ? 'CORRELATION_KEY_RESPONSE'
+          : 'CORRELATION_KEY';
+      }
+    }
+    if(sendTriggeredForActiveTask&&correlationKeyOccurrenceCount()>=2)
+      return 'CORRELATION_KEY_BODY';
+    return '';
   }
   function currentCorrelatedResponseText(){
     const marker=activeKeyMarker(),root=correlationResponseRoot();
@@ -493,6 +513,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
         ', send='+(!!sendButton())+
         ', voice='+(!!voiceButton())+
         ', generation='+(generationStartEvidence()||'none')+
+        ', keyOccurrences='+correlationKeyOccurrenceCount()+
         ', userTurns='+userTurnRecords().length+
         ', assistantTurns='+assistantTurnRecords().length+
         ', fallback='+fallbackAttempted;
