@@ -252,7 +252,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     const index=marker?raw.lastIndexOf(marker):-1;
     const bodyChars=index>=0?raw.slice(index+marker.length).trim().length:0;
     const streaming=assistantStreaming();
-    const watchState=[phase,occurrences,root?'1':'0',bodyChars,streaming?'1':'0'].join('|');
+    const watchState=[phase,occurrences,root?'1':'0',bodyChars>0?'1':'0',streaming?'1':'0'].join('|');
     if(watchState!==lastCorrelationWatchState){
       lastCorrelationWatchState=watchState;
       reportProgress(
