@@ -6,7 +6,7 @@ public enum JudgeTransportQuestionType { Noul, Score, Choice }
 public sealed record JudgeTransportQuestion(string Id, JudgeTransportQuestionType Type, string Instructions, IReadOnlyList<string> Criteria, IReadOnlyDictionary<string, string> ChoiceCriteria);
 public sealed record JudgeTransportRequest(IReadOnlyList<JudgeTransportQuestion> Questions);
 
-/// <summary>Parses only the structure required to serialize a provider request; PASS rules remain opaque instructions.</summary>
+/// <summary>Parses only the canonical JUDGE Form structure required to serialize a provider request; question text remains opaque instructions.</summary>
 public static class JudgeTransportContract
 {
     private static readonly Regex QuestionLine = new(@"^-?\s*(NOUL|SCORE|CHOICE)\s*\|\s*(.*)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
