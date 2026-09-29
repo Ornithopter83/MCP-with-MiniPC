@@ -1940,6 +1940,147 @@ public sealed class GitWorktreeManager
                 error);
     }
 
+    public async Task<GitRepositoryRuntimeCleanupResult> CompactRepositoryRuntimeAsync(
+        string workspace,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+        {
+            return new(
+                false,
+                "RUNTIME_COMPACT_WORKSPACE_MISSING",
+                string.Empty,
+                Array.Empty<string>(),
+                false);
+        }
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+        {
+            return new(
+                false,
+                "RUNTIME_COMPACT_REPOSITORY_REQUIRED",
+                string.Empty,
+                Array.Empty<string>(),
+                false,
+                BuildGitFailureDetail("git rev-parse --show-toplevel", rootResult));
+        }
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
+        if (!Directory.Exists(runtime.Root))
+        {
+            return new(
+                true,
+                null,
+                runtime.Root,
+                Array.Empty<string>(),
+                false);
+        }
+
+        var removed = new List<string>();
+        var errors = new List<string>();
+        var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
+        await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var listResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "worktree",
+                "list",
+                "--porcelain").ConfigureAwait(false);
+
+            if (listResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "RUNTIME_COMPACT_WORKTREE_LIST_FAILED",
+                    runtime.Root,
+                    removed,
+                    false,
+                    BuildGitFailureDetail("git worktree list --porcelain", listResult));
+            }
+
+            foreach (var entry in ParseWorktrees(listResult.StandardOutput)
+                         .Where(entry => IsPathWithin(entry.Path, runtime.Worktrees)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var worktreePath = Path.GetFullPath(entry.Path);
+                if (!Directory.Exists(worktreePath))
+                    continue;
+
+                var inspection = await InspectAsync(
+                    worktreePath,
+                    cancellationToken).ConfigureAwait(false);
+                if (!inspection.Success)
+                {
+                    errors.Add(
+                        $"worktree={worktreePath}: " +
+                        (inspection.ErrorCode ?? "WORKTREE_INSPECTION_FAILED"));
+                    continue;
+                }
+
+                if (!inspection.IsClean)
+                    continue;
+
+                var removeResult = await RunAsync(
+                    repositoryRoot,
+                    RemoveTimeout,
+                    cancellationToken,
+                    "worktree",
+                    "remove",
+                    worktreePath).ConfigureAwait(false);
+                if (removeResult.ExitCode == 0)
+                    removed.Add(worktreePath);
+                else
+                    errors.Add(BuildGitFailureDetail("git worktree remove", removeResult));
+            }
+
+            var pruneResult = await RunAsync(
+                repositoryRoot,
+                RemoveTimeout,
+                cancellationToken,
+                "worktree",
+                "prune",
+                "--expire",
+                "now").ConfigureAwait(false);
+            if (pruneResult.ExitCode != 0)
+                errors.Add(BuildGitFailureDetail("git worktree prune --expire now", pruneResult));
+
+            foreach (var path in new[]
+            {
+                runtime.NuGetRoot,
+                runtime.DotNetHome
+            })
+            {
+                var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
+                    path,
+                    cancellationToken).ConfigureAwait(false);
+                if (deleteError is not null)
+                    errors.Add(path + ": " + deleteError);
+            }
+
+            return new(
+                errors.Count == 0,
+                errors.Count == 0 ? null : "RUNTIME_COMPACT_FAILED",
+                runtime.Root,
+                removed,
+                false,
+                errors.Count == 0 ? null : string.Join(Environment.NewLine, errors));
+        }
+        finally
+        {
+            preparationGate.Release();
+        }
+    }
+
     public async Task<GitRepositoryRuntimeCleanupResult> ResetRepositoryRuntimeAsync(
         string workspace,
         CancellationToken cancellationToken = default)
