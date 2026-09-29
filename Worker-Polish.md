@@ -160,11 +160,16 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ㉒ 빌드 로그, self-test 보고서, 임시 내보내기 파일과 분석 결과처럼 최종 납품물이 아닌 검증 산출물은 WorkItem별 runtime temp에 기록하며 NORMAL worktree의 코드 변경 provenance에 포함하지 않는다.
 ㉓ 실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 최종 CODE_CHANGE는 종료 판단 전에 해당 코드 결과를 기준으로 하는 독립 검증 WorkItem에서 다시 확인한다. 검증 WorkItem은 발견한 결함을 직접 수정하지 않고 사실을 보고하며 필요한 수정은 별도 후속 WorkItem으로 분리한다.
 ㉔ HQ의 WORK_GRAPH_PATCH가 JSON 또는 operation별 기계 스키마 검증에 실패하면 Worker는 WorkGraph를 변경하지 않고 오류 코드와 가능한 path/hint를 HQ에 반환해 같은 관제 흐름에서 제한된 횟수만 재작성하게 한다. 반복 한계를 넘긴 경우에만 관제를 기계 오류로 종료할 수 있다.
-㉕ 새 작업을 시작할 때 Worker는 이전 작업의 sibling `<project>.projecthub` runtime 정리를 기계적으로 시도한다. 등록된 linked worktree에 미커밋 변경이 있으면 해당 worktree는 보존하되 제거 가능한 clean worktree와 integration clone, temp, NuGet·dotnet runtime cache는 정리할 수 있다.
+㉕ ProjectHub의 저장소별 runtime은 target workspace 내부 `.projecthub/runtime` 아래에만 생성한다. sibling `<project>.projecthub`와 저장소 루트 외부의 새 ProjectHub worktree runtime을 생성하지 않으며, 과거 버전의 legacy 외부 runtime은 새 작업 또는 새 실행의 초기화 단계에서 회수한다.
 ㉖ runtime 디렉터리 삭제는 읽기 전용 속성과 짧은 파일 핸들 해제 지연을 고려해 유한 횟수 재시도하며, 반복 실패 시 삭제되지 않은 경로와 기계 오류를 기록한다.
 ㉗ WORK의 GOTO 또는 WORK_ITEM_STATUS 형식이 기계 계약에 맞지 않으면 Worker는 같은 WORK 세션에 오류 코드를 돌려 제한된 횟수만 형식 교정을 요청할 수 있다. 형식 교정 입력은 완료한 의미 작업을 다시 수행하라는 요청으로 취급하지 않는다.
 ㉘ COMPLETED NORMAL WorkItem의 checkpoint와 필요한 Commit Manifest 생성이 끝나면 Worker는 해당 resultRef를 보존한 채 clean linked worktree를 즉시 제거할 수 있다. 제거에 실패해도 완료 의미 결과를 실패로 바꾸지 않고 최종 runtime 정리 대상으로 남긴다.
 ㉙ COMPLETED INTEGRATION WorkItem의 결과가 target workspace에 정상 반영된 뒤에는 해당 resultRef를 보존한 채 독립 integration clone을 즉시 제거할 수 있다. clone 정리 실패는 완료 의미 결과를 되돌리지 않고 최종 runtime 정리 대상으로 남긴다.
+㉚ 사용자가 새 작업을 시작하면 Worker는 이전 실행의 ProjectHub 소유 linked worktree를 dirty 여부와 무관하게 제거하고 worktree metadata를 prune한 뒤 `.projecthub/runtime`과 legacy 외부 runtime을 완전히 초기화한다.
+㉛ 새 Coordinator-first 실행은 target workspace가 지정되고 실제 디렉터리로 존재하는지 어떤 비동기 초기화, Git bootstrap, Web 전송 또는 AI 실행보다 먼저 동기적으로 확인하며, 조건을 만족하지 않으면 즉시 차단한다.
+㉜ HQ가 PAUSE를 반환하면 Worker는 실행기와 sidecar가 정지한 뒤 재개에 필요하지 않은 clean worktree와 재생성 가능한 도구 cache를 정리하되 dirty 재개 상태와 RESOURCE staging은 보존한다.
+㉝ HQ가 END를 반환하고 target finalization이 끝나면 Worker는 의미 결과의 성공 여부와 무관하게 ProjectHub runtime을 완전 초기화하고 legacy 외부 runtime도 함께 제거한다.
+㉞ 정상 Worker 종료는 실행 중 작업과 Web 요청을 취소하고 실행기 종료를 기다린 뒤 ProjectHub runtime 초기화와 Git target 참조 해제를 완료한 경우에만 애플리케이션 종료를 진행한다. 정상 종료 경로는 cleanup 완료 전에 `Environment.Exit`로 프로세스를 강제 종료하지 않는다.
 
 ---
 
