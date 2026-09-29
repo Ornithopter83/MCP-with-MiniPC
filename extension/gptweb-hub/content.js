@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.4.2';
-  const EXTENSION_BUILD = '2026-09-30.1';
+  const EXTENSION_BUILD = '2026-09-30.2';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
