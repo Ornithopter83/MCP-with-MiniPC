@@ -67,6 +67,35 @@ public sealed class ManagedWebExtensionContractTests
     }
 
     [Fact]
+    public void EmbeddedContent_UsesCorrelationKeyToEscapeSendConfirmWithoutTurnSelectors()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.True(source.Contains("directCorrelationResponseRoot", StringComparison.Ordinal));
+        Assert.True(source.Contains("document.createTreeWalker(main,NodeFilter.SHOW_TEXT)", StringComparison.Ordinal));
+        Assert.True(source.Contains("correlationSendEvidence", StringComparison.Ordinal));
+        Assert.True(source.Contains("CORRELATION_KEY_RESPONSE", StringComparison.Ordinal));
+        Assert.True(source.Contains("CORRELATION_KEY", StringComparison.Ordinal));
+        Assert.True(source.Contains("return directCorrelationResponseRoot();", StringComparison.Ordinal));
+
+        var functionIndex = source.IndexOf(
+            "function sendConfirmationEvidence(prompt)",
+            StringComparison.Ordinal);
+        var keyIndex = source.IndexOf(
+            "if(activeCorrelationKey)evidence=correlationSendEvidence();",
+            functionIndex,
+            StringComparison.Ordinal);
+        var userTurnIndex = source.IndexOf(
+            "hasNewUserMessage(prompt,baselineUserMessages)",
+            functionIndex,
+            StringComparison.Ordinal);
+
+        Assert.True(functionIndex >= 0);
+        Assert.True(keyIndex > functionIndex);
+        Assert.True(userTurnIndex > keyIndex);
+    }
+
+    [Fact]
     public void EmbeddedContent_RecoversAssistantTextAndGeneralDownloadFiles()
     {
         var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
