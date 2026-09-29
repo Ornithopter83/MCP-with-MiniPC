@@ -579,7 +579,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 var reasons = new List<string>(
                     signals.CompletionReasons)
                 {
-                    "Web HQ가 유휴 상태이므로 직전 관제 이후 완료된 WorkItem을 점검하고 추가·보완·통합 작업 필요 여부를 판단합니다."
+                    "HQ가 직전 관제 이후 완료된 WorkItem을 즉시 점검하고 추가·보완·통합·검증 작업 필요 여부를 판단합니다."
                 };
                 var body = FormatMechanicalGraphDeltaEvent(
                     reasons,
