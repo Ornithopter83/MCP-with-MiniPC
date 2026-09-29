@@ -150,6 +150,7 @@ public partial class MainWindow : Window
     private string _activeJevJobId = Guid.NewGuid().ToString("N");
     private bool _allowClose;
     private bool _shutdownCleanupInProgress;
+    private bool _newTaskCleanupInProgress;
     private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
     private const string DashboardPromptPlaceholder = "작업 내용을 입력하세요...";
@@ -748,6 +749,17 @@ public partial class MainWindow : Window
     {
         if (RunButton is null || DashboardTaskInput is null) return;
 
+        if (_newTaskCleanupInProgress)
+        {
+            RunButton.Content = "정리 중...";
+            ApplyRunButtonVisualState(false);
+            DashboardPreflightText.Text = "이전 작업을 정리하고 새 작업을 준비하는 중입니다.";
+            DashboardPreflightText.Foreground =
+                (System.Windows.Media.Brush)FindResource("Muted");
+            UpdateFollowupButtonState();
+            return;
+        }
+
         if (_gitPreparationInProgress)
         {
             RunButton.Content = "Git 준비 중...";
@@ -841,56 +853,70 @@ public partial class MainWindow : Window
 
     private async Task BeginNewDashboardTaskAsync()
     {
-        ExportTaskTranscript();
+        if (_newTaskCleanupInProgress)
+            return;
 
-        GitRepositoryRuntimeCleanupResult? runtimeCleanup = null;
-        var cleanupWorkspace = _activeWorkingDirectory;
-        _activeWorkingDirectory = null;
-        ClearCoordinatorGitTargetPresentation();
+        _newTaskCleanupInProgress = true;
+        UpdateDashboardRunButtonState();
 
-        if (!string.IsNullOrWhiteSpace(cleanupWorkspace) &&
-            Directory.Exists(cleanupWorkspace))
+        try
         {
-            runtimeCleanup = await new GitWorktreeManager()
-                .ResetRepositoryRuntimeAsync(
-                    cleanupWorkspace,
-                    CancellationToken.None);
-        }
+            ExportTaskTranscript();
 
-        ProjectWorkspacePersistence.ClearContinuation(cleanupWorkspace);
-        _continuationState = null;
-        _activeProjectJobId = null;
-        SetFollowupComposerVisible(false);
-        _historyEvents.Clear();
-        ClearPendingAttachments(deleteCachedFiles: true);
-        var ephemeralResetSucceeded = WorkerPaths.TryResetEphemeralDirectories(
-            out var ephemeralResetError);
-        DashboardTaskInput.Text = DashboardPromptPlaceholder;
-        DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
-        SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
-        UpdateDashboardSummary();
+            GitRepositoryRuntimeCleanupResult? runtimeCleanup = null;
+            var cleanupWorkspace = _activeWorkingDirectory;
+            _activeWorkingDirectory = null;
+            ClearCoordinatorGitTargetPresentation();
 
-        if (runtimeCleanup is { Success: false } || !ephemeralResetSucceeded)
-        {
-            var details = new List<string>();
-            if (runtimeCleanup is { Success: false })
+            if (!string.IsNullOrWhiteSpace(cleanupWorkspace) &&
+                Directory.Exists(cleanupWorkspace))
             {
-                details.Add(
-                    runtimeCleanup.ErrorDetail ??
-                    runtimeCleanup.ErrorCode ??
-                    "RUNTIME_RESET_FAILED");
+                runtimeCleanup = await new GitWorktreeManager()
+                    .ResetRepositoryRuntimeAsync(
+                        cleanupWorkspace,
+                        CancellationToken.None);
             }
-            if (!ephemeralResetSucceeded && !string.IsNullOrWhiteSpace(ephemeralResetError))
-                details.Add(ephemeralResetError);
 
-            DashboardPreflightText.Text =
-                "이전 작업의 ProjectHub 임시 영역을 완전히 초기화하지 못했습니다. " +
-                string.Join(" | ", details);
-            DashboardPreflightText.Foreground =
-                System.Windows.Media.Brushes.Firebrick;
+            ProjectWorkspacePersistence.ClearContinuation(cleanupWorkspace);
+            _continuationState = null;
+            _activeProjectJobId = null;
+            SetFollowupComposerVisible(false);
+            _historyEvents.Clear();
+            ClearPendingAttachments(deleteCachedFiles: true);
+            var ephemeralResetSucceeded = WorkerPaths.TryResetEphemeralDirectories(
+                out var ephemeralResetError);
+            DashboardTaskInput.Text = DashboardPromptPlaceholder;
+            DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
+            SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
+            UpdateDashboardSummary();
+
+            if (runtimeCleanup is { Success: false } || !ephemeralResetSucceeded)
+            {
+                var details = new List<string>();
+                if (runtimeCleanup is { Success: false })
+                {
+                    details.Add(
+                        runtimeCleanup.ErrorDetail ??
+                        runtimeCleanup.ErrorCode ??
+                        "RUNTIME_RESET_FAILED");
+                }
+                if (!ephemeralResetSucceeded && !string.IsNullOrWhiteSpace(ephemeralResetError))
+                    details.Add(ephemeralResetError);
+
+                DashboardPreflightText.Text =
+                    "이전 작업의 ProjectHub 임시 영역을 완전히 초기화하지 못했습니다. " +
+                    string.Join(" | ", details);
+                DashboardPreflightText.Foreground =
+                    System.Windows.Media.Brushes.Firebrick;
+            }
+
+            DashboardTaskInput.Focus();
         }
-
-        DashboardTaskInput.Focus();
+        finally
+        {
+            _newTaskCleanupInProgress = false;
+            UpdateDashboardRunButtonState();
+        }
     }
 
     private bool TryPassSynchronousWorkspaceLaunchGate()
@@ -1201,7 +1227,7 @@ public partial class MainWindow : Window
     }
     private async void RunTask_Click(object sender, RoutedEventArgs e)
     {
-        if (_gitPreparationInProgress)
+        if (_newTaskCleanupInProgress || _gitPreparationInProgress)
             return;
 
         if (_activeTaskCts is not null || _awaitingWebResult)
