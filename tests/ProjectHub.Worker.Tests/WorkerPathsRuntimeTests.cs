@@ -47,6 +47,35 @@ public sealed class WorkerPathsRuntimeTests
     }
 
     [Fact]
+    public void GlobalEphemeralDirectoriesAreRecreatedEmpty()
+    {
+        WorkerPaths.EnsureCreated();
+        var attachment = Path.Combine(
+            WorkerPaths.Attachments,
+            "test-" + Guid.NewGuid().ToString("N") + ".tmp");
+        var result = Path.Combine(
+            WorkerPaths.WebResults,
+            "test-" + Guid.NewGuid().ToString("N") + ".tmp");
+        var task = Path.Combine(
+            WorkerPaths.Task,
+            "test-" + Guid.NewGuid().ToString("N") + ".tmp");
+
+        File.WriteAllText(attachment, "attachment");
+        File.WriteAllText(result, "result");
+        File.WriteAllText(task, "task");
+
+        Assert.True(
+            WorkerPaths.TryResetEphemeralDirectories(out var error),
+            error);
+        Assert.True(Directory.Exists(WorkerPaths.Attachments));
+        Assert.True(Directory.Exists(WorkerPaths.WebResults));
+        Assert.True(Directory.Exists(WorkerPaths.Task));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(WorkerPaths.Attachments));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(WorkerPaths.WebResults));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(WorkerPaths.Task));
+    }
+
+    [Fact]
     public void WorkItemRuntimePathsStayUnderInternalRuntime()
     {
         var parent = Path.Combine(
