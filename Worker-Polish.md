@@ -255,12 +255,12 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 ---
 
-제22조 (Web HQ 병렬 완료 점검)
+제22조 (HQ 병렬 완료 점검)
 
-① HQ transport가 Web인 경우 개별 WorkItem COMPLETED는 다른 작업이 계속 실행 중일 때도 다음 HQ 관제 기회가 될 수 있다.
+① HQ transport 종류와 무관하게 개별 WorkItem COMPLETED는 다른 작업이 계속 실행 중일 때도 다음 HQ 관제 기회가 된다.
 ② HQ 호출이 이미 진행 중이면 새 동시 HQ 호출을 만들지 않고 상태 변경을 기존 Scheduler 이벤트 흐름에 합친다.
 ③ FAILED 또는 비외부 BLOCKED와 QUIESCENT 같은 더 강한 상태 이벤트가 동시에 있으면 별도 완료 점검을 중복 생성하지 않는다.
-④ 완료 점검에서 HQ는 추가 작업이 없으면 no-op CONTINUE를 사용할 수 있다.
+④ 완료 점검에서 HQ는 추가 작업이 없으면 no-op CONTINUE를 사용할 수 있으며, 필요한 경우 즉시 보완·통합·검증 WorkItem을 추가해 실행 중인 병렬 흐름에 개입할 수 있다.
 
 ---
 
