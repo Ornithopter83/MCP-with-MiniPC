@@ -40,13 +40,10 @@ public static class WorkerPaths
 
         var root = Path.GetFullPath(repositoryRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var parent = Directory.GetParent(root)?.FullName
-            ?? throw new InvalidOperationException("저장소 상위 경로를 계산할 수 없습니다.");
-        var repositoryName = Path.GetFileName(root);
-        if (string.IsNullOrWhiteSpace(repositoryName))
+        if (string.IsNullOrWhiteSpace(Path.GetFileName(root)))
             throw new InvalidOperationException("저장소 이름을 계산할 수 없습니다.");
 
-        var runtimeRoot = Path.Combine(parent, repositoryName + ".projecthub");
+        var runtimeRoot = Path.Combine(root, ".projecthub", "runtime");
         var nugetRoot = Path.Combine(runtimeRoot, "nuget");
         return new RepositoryRuntimePaths(
             runtimeRoot,
@@ -59,6 +56,22 @@ public static class WorkerPaths
             Path.Combine(nugetRoot, "scratch"),
             Path.Combine(runtimeRoot, "dotnet"),
             Path.Combine(runtimeRoot, "temp"));
+    }
+
+    public static string GetLegacyRepositoryRuntimeRoot(string repositoryRoot)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryRoot))
+            throw new ArgumentException("저장소 경로가 비어 있습니다.", nameof(repositoryRoot));
+
+        var root = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parent = Directory.GetParent(root)?.FullName
+            ?? throw new InvalidOperationException("저장소 상위 경로를 계산할 수 없습니다.");
+        var repositoryName = Path.GetFileName(root);
+        if (string.IsNullOrWhiteSpace(repositoryName))
+            throw new InvalidOperationException("저장소 이름을 계산할 수 없습니다.");
+
+        return Path.Combine(parent, repositoryName + ".projecthub");
     }
 
     public static string BuildWorkTempPath(
