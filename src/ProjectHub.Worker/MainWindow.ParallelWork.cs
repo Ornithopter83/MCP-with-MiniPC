@@ -117,6 +117,7 @@ public partial class MainWindow
         CodexWorkItemExecutor? executor = null;
         WorkGraph? graph = null;
         var compactRuntimeOnPause = false;
+        var forceRuntimeResetAfterDispose = false;
 
         try
         {
@@ -699,6 +700,7 @@ public partial class MainWindow
                 item => item.State == WorkItemState.Failed);
             var finalHasErrors = hadMechanicalErrors || hadGraphErrors;
 
+            forceRuntimeResetAfterDispose = true;
             var runtimeCleanup = await new GitWorktreeManager()
                 .ResetRepositoryRuntimeAsync(
                     workingDirectory,
@@ -843,6 +845,26 @@ public partial class MainWindow
             catch (OperationCanceledException) { }
             try { await resourceQueue.DisposeAsync(); }
             catch (OperationCanceledException) { }
+
+            if (forceRuntimeResetAfterDispose)
+            {
+                var finalReset = await new GitWorktreeManager()
+                    .ResetRepositoryRuntimeAsync(
+                        workingDirectory,
+                        CancellationToken.None);
+                if (!finalReset.Success)
+                {
+                    AddTaskMessage(
+                        "RUNTIME RESET RETRY",
+                        "실행기 dispose 뒤 runtime 초기화를 다시 시도했지만 완료하지 못했습니다." +
+                        Environment.NewLine +
+                        (finalReset.ErrorDetail ??
+                         finalReset.ErrorCode ??
+                         "RUNTIME_RESET_FAILED"),
+                        status: finalReset.ErrorCode ?? "RUNTIME_RESET_FAILED",
+                        includeHistory: false);
+                }
+            }
 
             if (compactRuntimeOnPause)
             {
