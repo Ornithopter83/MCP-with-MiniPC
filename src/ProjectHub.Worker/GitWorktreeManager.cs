@@ -1940,6 +1940,178 @@ public sealed class GitWorktreeManager
                 error);
     }
 
+    public async Task<GitRepositoryRuntimeCleanupResult> ResetRepositoryRuntimeAsync(
+        string workspace,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+        {
+            return new(
+                false,
+                "RUNTIME_RESET_WORKSPACE_MISSING",
+                string.Empty,
+                Array.Empty<string>(),
+                false);
+        }
+
+        var repositoryRoot = Path.GetFullPath(workspace);
+        var rootResult = await RunAsync(
+            repositoryRoot,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        var gitRepositoryAvailable =
+            rootResult.ExitCode == 0 &&
+            !string.IsNullOrWhiteSpace(rootResult.StandardOutput);
+        if (gitRepositoryAvailable)
+            repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
+        var legacyRuntimeRoot = WorkerPaths.GetLegacyRepositoryRuntimeRoot(repositoryRoot);
+        var legacyWorktreeRoot = BuildLegacyWorktreeRoot(repositoryRoot);
+        var removed = new List<string>();
+        var errors = new List<string>();
+
+        var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
+        await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (gitRepositoryAvailable)
+            {
+                var listResult = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "worktree",
+                    "list",
+                    "--porcelain").ConfigureAwait(false);
+
+                if (listResult.ExitCode == 0)
+                {
+                    var ownedWorktrees = ParseWorktrees(listResult.StandardOutput)
+                        .Where(entry =>
+                            IsPathWithin(entry.Path, runtime.Worktrees) ||
+                            IsPathWithin(entry.Path, Path.Combine(legacyRuntimeRoot, "worktrees")) ||
+                            IsPathWithin(entry.Path, legacyWorktreeRoot))
+                        .Select(entry => Path.GetFullPath(entry.Path))
+                        .Distinct(OperatingSystem.IsWindows()
+                            ? StringComparer.OrdinalIgnoreCase
+                            : StringComparer.Ordinal)
+                        .ToArray();
+
+                    foreach (var worktreePath in ownedWorktrees)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        var removeResult = await RunAsync(
+                            repositoryRoot,
+                            RemoveTimeout,
+                            cancellationToken,
+                            "worktree",
+                            "remove",
+                            "--force",
+                            worktreePath).ConfigureAwait(false);
+
+                        if (removeResult.ExitCode != 0 && Directory.Exists(worktreePath))
+                        {
+                            var directDeleteError = await DeleteDirectoryTreeWithRetriesAsync(
+                                worktreePath,
+                                cancellationToken).ConfigureAwait(false);
+                            if (directDeleteError is not null)
+                            {
+                                errors.Add(
+                                    $"worktree={worktreePath}: " +
+                                    (removeResult.StandardError.Trim().Length > 0
+                                        ? removeResult.StandardError.Trim()
+                                        : $"exitCode={removeResult.ExitCode}") +
+                                    " / directDelete=" +
+                                    directDeleteError);
+                                continue;
+                            }
+                        }
+
+                        if (!Directory.Exists(worktreePath))
+                            removed.Add(worktreePath);
+                    }
+
+                    var pruneResult = await RunAsync(
+                        repositoryRoot,
+                        RemoveTimeout,
+                        cancellationToken,
+                        "worktree",
+                        "prune",
+                        "--expire",
+                        "now").ConfigureAwait(false);
+                    if (pruneResult.ExitCode != 0)
+                    {
+                        errors.Add(
+                            BuildGitFailureDetail(
+                                "git worktree prune --expire now",
+                                pruneResult));
+                    }
+                }
+                else
+                {
+                    errors.Add(
+                        BuildGitFailureDetail(
+                            "git worktree list --porcelain",
+                            listResult));
+                }
+            }
+
+            foreach (var path in new[]
+            {
+                runtime.Root,
+                legacyRuntimeRoot,
+                legacyWorktreeRoot
+            }.Distinct(OperatingSystem.IsWindows()
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal))
+            {
+                var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
+                    path,
+                    cancellationToken).ConfigureAwait(false);
+                if (deleteError is not null)
+                    errors.Add(path + ": " + deleteError);
+            }
+
+            var remainingPaths = new[]
+            {
+                runtime.Root,
+                legacyRuntimeRoot,
+                legacyWorktreeRoot
+            }
+            .Where(Directory.Exists)
+            .Distinct(OperatingSystem.IsWindows()
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal)
+            .ToArray();
+
+            if (remainingPaths.Length > 0)
+            {
+                foreach (var path in remainingPaths)
+                    errors.Add("remaining=" + path);
+            }
+
+            return new(
+                errors.Count == 0,
+                errors.Count == 0 ? null : "RUNTIME_RESET_FAILED",
+                runtime.Root,
+                removed,
+                !Directory.Exists(runtime.Root) &&
+                !Directory.Exists(legacyRuntimeRoot) &&
+                !Directory.Exists(legacyWorktreeRoot),
+                errors.Count == 0
+                    ? null
+                    : string.Join(Environment.NewLine, errors));
+        }
+        finally
+        {
+            preparationGate.Release();
+        }
+    }
+
     public async Task<GitRepositoryRuntimeCleanupResult> CleanupRepositoryRuntimeAsync(
         string workspace,
         CancellationToken cancellationToken = default)
@@ -2273,7 +2445,7 @@ public sealed class GitWorktreeManager
             StableSegment(workItemId, 18));
     }
 
-    private static string BuildLegacyWorktreePath(string repositoryRoot, string jobId, string workItemId)
+    private static string BuildLegacyWorktreeRoot(string repositoryRoot)
     {
         var root = Path.GetFullPath(repositoryRoot);
         var parent = Directory.GetParent(root)?.FullName
@@ -2285,7 +2457,13 @@ public sealed class GitWorktreeManager
         return Path.Combine(
             parent,
             ".projecthub-worktrees",
-            repository,
+            repository);
+    }
+
+    private static string BuildLegacyWorktreePath(string repositoryRoot, string jobId, string workItemId)
+    {
+        return Path.Combine(
+            BuildLegacyWorktreeRoot(repositoryRoot),
             StableSegment(jobId, 8),
             StableSegment(workItemId, 18));
     }
