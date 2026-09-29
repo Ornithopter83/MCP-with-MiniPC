@@ -78,6 +78,7 @@ B=<기준>
 ⑳ NORMAL WorkItem이 완료된 CODE_CHANGE를 dependency로 가지면 Worker가 해당 resultRef와 선언된 기준 ref의 Git ancestry를 기계적으로 축약해 실제 코드 기준점을 정한다. 하나의 계보로 축약되지 않는 독립 CODE_CHANGE가 둘 이상이면 NORMAL에 임의로 합치지 않고 INTEGRATION WorkItem으로 결합한다.
 ㉑ 실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 최종 CODE_CHANGE 뒤에는 해당 코드 결과를 dependency로 갖는 독립 검증 NORMAL WorkItem을 두어 빌드·실행 산출물과 이전에 요구된 주요 기능의 존재를 다시 확인한 뒤 END를 판단한다. 검증 WorkItem은 결함 수정까지 겸하지 않고 발견 사실을 보고하며, 수정이 필요하면 별도 후속 WorkItem을 추가한다.
 ㉒ WORKTREE_CHECKPOINT_PENDING이 보고되면 같은 의미 작업을 새 WorkItem으로 재시도하지 않고 해당 BLOCKED WorkItem을 RELEASE한다. Worker는 이 RELEASE를 WORK AI 재실행이 아닌 checkpoint 기계 재시도로 처리한다.
+㉓ PAUSE와 END에 따른 ProjectHub runtime 정리와 새 작업 초기화는 Worker의 기계 생명주기 책임이다. HQ는 runtime 삭제만을 위한 별도 WorkItem을 만들거나 WORK에 삭제를 지시하지 않는다.
 
 제6조 (CONTINUE 본문)
 
