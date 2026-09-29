@@ -7,11 +7,11 @@ public sealed class ProjectHubExitCleanupTests
     [Fact]
     public void ImmediateCleanupDeletesEntireProjectHubRootButKeepsWorkspace()
     {
-        var workspace = Path.Combine(
+        var root = Path.Combine(
             Path.GetTempPath(),
             "ProjectHubExitCleanupTests",
-            Guid.NewGuid().ToString("N"),
-            "workspace");
+            Guid.NewGuid().ToString("N"));
+        var workspace = Path.Combine(root, "workspace");
         var projectHub = Path.Combine(workspace, ".projecthub");
         var runtime = Path.Combine(projectHub, "runtime", "integration-clones", "job", "W10");
 
@@ -31,9 +31,8 @@ public sealed class ProjectHubExitCleanupTests
         }
         finally
         {
-            var parent = Directory.GetParent(workspace)?.Parent?.FullName;
-            if (!string.IsNullOrWhiteSpace(parent) && Directory.Exists(parent))
-                Directory.Delete(parent, recursive: true);
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
         }
     }
 
