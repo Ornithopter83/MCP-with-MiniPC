@@ -387,21 +387,21 @@ public partial class MainWindow : Window
             _userCanceledBridgeTaskIds.Add(canceledTaskId);
         }
 
+        var shutdownWarnings = new List<string>();
         var deadline = DateTimeOffset.UtcNow.AddSeconds(15);
         while (_activeTaskCts is not null && DateTimeOffset.UtcNow < deadline)
             await Task.Delay(100);
 
-        if (_activeTaskCts is not null)
+        var taskStillStopping = _activeTaskCts is not null;
+        if (taskStillStopping)
         {
-            _shutdownCleanupInProgress = false;
-            DashboardPreflightText.Text =
-                "실행 중 작업이 아직 종료되지 않아 Worker를 종료하지 않았습니다. 잠시 후 다시 시도하세요.";
-            DashboardPreflightText.Foreground =
-                System.Windows.Media.Brushes.Firebrick;
-            return;
+            shutdownWarnings.Add(
+                "실행 중 작업이 제한시간 안에 완전히 종료되지 않아 ProjectHub 폴더 정리를 프로세스 종료 뒤 helper에 넘깁니다.");
         }
 
-        if (!string.IsNullOrWhiteSpace(cleanupWorkspace) &&
+        var needsDeferredProjectCleanup = taskStillStopping;
+        if (!taskStillStopping &&
+            !string.IsNullOrWhiteSpace(cleanupWorkspace) &&
             Directory.Exists(cleanupWorkspace))
         {
             var reset = await new GitWorktreeManager()
@@ -410,41 +410,57 @@ public partial class MainWindow : Window
                     CancellationToken.None);
             if (!reset.Success)
             {
-                _shutdownCleanupInProgress = false;
-                var detail =
-                    "ProjectHub runtime을 완전히 제거하지 못해 Worker 종료를 보류했습니다." +
-                    Environment.NewLine +
-                    (reset.ErrorDetail ?? reset.ErrorCode ?? "RUNTIME_RESET_FAILED");
-                DashboardPreflightText.Text = detail;
-                DashboardPreflightText.Foreground =
-                    System.Windows.Media.Brushes.Firebrick;
-                System.Windows.MessageBox.Show(
-                    this,
-                    detail,
-                    "ProjectHub 종료 정리 실패",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-                return;
+                needsDeferredProjectCleanup = true;
+                shutdownWarnings.Add(
+                    "ProjectHub runtime 즉시 정리에 실패했습니다: " +
+                    (reset.ErrorDetail ?? reset.ErrorCode ?? "RUNTIME_RESET_FAILED"));
+            }
+
+            if (!ProjectHubExitCleanup.TryDeleteWorkspaceProjectHubRoot(
+                    cleanupWorkspace,
+                    out var projectCleanupError))
+            {
+                needsDeferredProjectCleanup = true;
+                shutdownWarnings.Add(
+                    "ProjectHub 폴더 즉시 삭제에 실패했습니다: " +
+                    (projectCleanupError ?? "PROJECTHUB_ROOT_DELETE_FAILED"));
             }
         }
 
         if (!WorkerPaths.TryResetEphemeralDirectories(out var ephemeralResetError))
         {
-            _shutdownCleanupInProgress = false;
-            var detail =
-                "Worker 전역 임시 폴더를 완전히 제거하지 못해 종료를 보류했습니다." +
-                Environment.NewLine +
-                (ephemeralResetError ?? "EPHEMERAL_RESET_FAILED");
-            DashboardPreflightText.Text = detail;
+            shutdownWarnings.Add(
+                "Worker 전역 임시 폴더 정리에 실패했습니다: " +
+                (ephemeralResetError ?? "EPHEMERAL_RESET_FAILED"));
+        }
+
+        if (needsDeferredProjectCleanup &&
+            !string.IsNullOrWhiteSpace(cleanupWorkspace) &&
+            Directory.Exists(cleanupWorkspace))
+        {
+            if (!ProjectHubExitCleanup.TryScheduleAfterExit(
+                    cleanupWorkspace,
+                    Environment.ProcessId,
+                    out var scheduleError))
+            {
+                shutdownWarnings.Add(
+                    "종료 후 ProjectHub 정리 helper를 시작하지 못했습니다: " +
+                    (scheduleError ?? "PROJECTHUB_EXIT_CLEANUP_HELPER_FAILED"));
+            }
+        }
+
+        if (shutdownWarnings.Count > 0)
+        {
+            DashboardPreflightText.Text = string.Join(
+                Environment.NewLine,
+                shutdownWarnings);
             DashboardPreflightText.Foreground =
-                System.Windows.Media.Brushes.Firebrick;
-            System.Windows.MessageBox.Show(
-                this,
-                detail,
-                "ProjectHub 종료 정리 실패",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            return;
+                System.Windows.Media.Brushes.DarkGoldenrod;
+            AddTaskMessage(
+                "SHUTDOWN CLEANUP",
+                DashboardPreflightText.Text,
+                status: "DEFERRED",
+                includeHistory: false);
         }
 
         _activeWorkingDirectory = null;
