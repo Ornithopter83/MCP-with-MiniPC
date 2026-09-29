@@ -405,6 +405,105 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task RuntimeResetForceRemovesOwnedWorktreeAndLegacySibling()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
+        var legacyRuntime = WorkerPaths.GetLegacyRepositoryRuntimeRoot(root);
+        var ownedWorktree = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+
+        Directory.CreateDirectory(runtime.NuGetPackages);
+        File.WriteAllText(Path.Combine(runtime.NuGetPackages, "cache.txt"), "cache");
+        Directory.CreateDirectory(legacyRuntime);
+        File.WriteAllText(Path.Combine(legacyRuntime, "legacy.txt"), "legacy");
+
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(
+            0,
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n\n" +
+            $"worktree {ownedWorktree}\nHEAD work123\nbranch refs/heads/projecthub/job/W1\n");
+        runner.Enqueue(0, "removed");
+        runner.Enqueue(0, "pruned");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.ResetRepositoryRuntimeAsync(root);
+
+            Assert.True(result.Success, result.ErrorDetail);
+            Assert.True(result.RuntimeDeleted);
+            Assert.Contains(Path.GetFullPath(ownedWorktree), result.RemovedWorktrees);
+            Assert.False(Directory.Exists(runtime.Root));
+            Assert.False(Directory.Exists(legacyRuntime));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[]
+                    {
+                        "worktree",
+                        "remove",
+                        "--force",
+                        Path.GetFullPath(ownedWorktree)
+                    }));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "worktree", "prune", "--expire", "now" }));
+        }
+        finally
+        {
+            DeleteTempTree(root);
+            if (Directory.Exists(legacyRuntime))
+                Directory.Delete(legacyRuntime, true);
+        }
+    }
+
+    [Fact]
+    public async Task RuntimeCompactKeepsDirtyWorktreeAndRemovesToolCaches()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
+        var ownedWorktree = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        Directory.CreateDirectory(ownedWorktree);
+        Directory.CreateDirectory(runtime.NuGetPackages);
+        Directory.CreateDirectory(runtime.DotNetHome);
+        File.WriteAllText(Path.Combine(runtime.NuGetPackages, "cache.txt"), "cache");
+        File.WriteAllText(Path.Combine(runtime.DotNetHome, "state.txt"), "dotnet");
+
+        var listing =
+            $"worktree {root}\nHEAD main123\nbranch refs/heads/main\n\n" +
+            $"worktree {ownedWorktree}\nHEAD work123\nbranch refs/heads/projecthub/job/W1\n";
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, listing);
+        runner.Enqueue(0, "work123");
+        runner.Enqueue(0, "projecthub/job/W1");
+        runner.Enqueue(0, " M changed.cs");
+        runner.Enqueue(0, "pruned");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.CompactRepositoryRuntimeAsync(root);
+
+            Assert.True(result.Success, result.ErrorDetail);
+            Assert.True(Directory.Exists(ownedWorktree));
+            Assert.False(Directory.Exists(runtime.NuGetRoot));
+            Assert.False(Directory.Exists(runtime.DotNetHome));
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 1 &&
+                        call.Arguments[0] == "worktree" &&
+                        call.Arguments[1] == "remove");
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
     public async Task RuntimeCleanupRemovesOwnedWorktreesPrunesAndDeletesRuntimeRoot()
     {
         var root = CreateTempRepositoryDirectory();
