@@ -128,7 +128,11 @@ public static class UserAttachmentTransport
 
         EnsureGitInfoExclude(workingDirectory);
 
-        var relativeRoot = Path.Combine(".projecthub", "attachments", safeBatch);
+        var relativeRoot = Path.Combine(
+            ".projecthub",
+            "runtime",
+            "attachments",
+            safeBatch);
         var targetRoot = Path.Combine(workingDirectory, relativeRoot);
         Directory.CreateDirectory(targetRoot);
 
@@ -370,7 +374,7 @@ public static class UserAttachmentTransport
                     var infoDirectory = Path.Combine(gitCommonDirectory, "info");
                     Directory.CreateDirectory(infoDirectory);
                     var excludePath = Path.Combine(infoDirectory, "exclude");
-                    const string pattern = ".projecthub/attachments/";
+                    const string pattern = ".projecthub/runtime/";
                     var existing = File.Exists(excludePath)
                         ? File.ReadAllLines(excludePath)
                         : Array.Empty<string>();
