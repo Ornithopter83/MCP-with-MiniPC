@@ -697,43 +697,40 @@ public partial class MainWindow
                 item => item.State == WorkItemState.Failed);
             var finalHasErrors = hadMechanicalErrors || hadGraphErrors;
 
-            if (!finalHasErrors)
-            {
-                var runtimeCleanup = await new GitWorktreeManager()
-                    .CleanupRepositoryRuntimeAsync(
-                        workingDirectory,
-                        cts.Token);
-                var cleanupMessage = runtimeCleanup.Success
-                    ? "최종 DONE 확정 전에 ProjectHub 임시 runtime 폴더를 정리했습니다."
-                    : "ProjectHub 임시 runtime 폴더 정리에 실패하여 DONE_WITH_ERROR로 종료합니다.";
-                if (!string.IsNullOrWhiteSpace(runtimeCleanup.ErrorDetail))
-                    cleanupMessage += Environment.NewLine + runtimeCleanup.ErrorDetail;
-
-                ProjectWorkspacePersistence.AppendEvent(
+            var runtimeCleanup = await new GitWorktreeManager()
+                .ResetRepositoryRuntimeAsync(
                     workingDirectory,
-                    jobId,
-                    DateTimeOffset.UtcNow,
-                    "RUNTIME CLEANUP",
-                    cleanupMessage +
-                    Environment.NewLine +
-                    $"runtimeRoot={runtimeCleanup.RuntimeRoot}" +
-                    Environment.NewLine +
-                    $"removedWorktrees={runtimeCleanup.RemovedWorktrees.Count}",
-                    runtimeCleanup.Success
-                        ? "COMPLETED"
-                        : runtimeCleanup.ErrorCode ?? "RUNTIME_CLEANUP_FAILED");
+                    cts.Token);
+            var cleanupMessage = runtimeCleanup.Success
+                ? "최종 DONE 확정 전에 ProjectHub runtime을 완전히 초기화했습니다."
+                : "ProjectHub runtime 초기화에 실패하여 DONE_WITH_ERROR로 종료합니다.";
+            if (!string.IsNullOrWhiteSpace(runtimeCleanup.ErrorDetail))
+                cleanupMessage += Environment.NewLine + runtimeCleanup.ErrorDetail;
 
-                AddTaskMessage(
-                    "RUNTIME CLEANUP",
-                    cleanupMessage,
-                    status: runtimeCleanup.Success
-                        ? "COMPLETED"
-                        : runtimeCleanup.ErrorCode ?? "RUNTIME_CLEANUP_FAILED",
-                    includeHistory: false);
+            ProjectWorkspacePersistence.AppendEvent(
+                workingDirectory,
+                jobId,
+                DateTimeOffset.UtcNow,
+                "RUNTIME RESET",
+                cleanupMessage +
+                Environment.NewLine +
+                $"runtimeRoot={runtimeCleanup.RuntimeRoot}" +
+                Environment.NewLine +
+                $"removedWorktrees={runtimeCleanup.RemovedWorktrees.Count}",
+                runtimeCleanup.Success
+                    ? "COMPLETED"
+                    : runtimeCleanup.ErrorCode ?? "RUNTIME_RESET_FAILED");
 
-                if (!runtimeCleanup.Success)
-                    finalHasErrors = true;
-            }
+            AddTaskMessage(
+                "RUNTIME RESET",
+                cleanupMessage,
+                status: runtimeCleanup.Success
+                    ? "COMPLETED"
+                    : runtimeCleanup.ErrorCode ?? "RUNTIME_RESET_FAILED",
+                includeHistory: false);
+
+            if (!runtimeCleanup.Success)
+                finalHasErrors = true;
 
             var finalStatus = finalHasErrors
                 ? "DONE_WITH_ERROR"
