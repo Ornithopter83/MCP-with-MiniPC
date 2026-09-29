@@ -158,7 +158,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑳ NORMAL WorkItem을 시작할 때 Worker는 선언된 기준 ref와 완료된 CODE_CHANGE dependency의 resultRef를 Git ancestry로 기계적으로 축약해 실제 코드 기준점을 정한다. 하나의 tip으로 축약되지 않는 독립 CODE_CHANGE 계보는 NORMAL에 자동 결합하지 않고 INTEGRATION 필요 상태로 보존한다.
 ㉑ WORK가 의미 결과를 보고한 뒤 checkpoint에 실패하면 Worker는 의미 작업을 곧바로 실패로 바꾸지 않고 worktree와 보고를 보존한 채 checkpoint 재시도 상태로 BLOCKED 처리할 수 있다. 해당 재개에서는 WORK AI를 다시 실행하지 않고 checkpoint 이후 기계 단계를 재개한다.
 ㉒ 빌드 로그, self-test 보고서, 임시 내보내기 파일과 분석 결과처럼 최종 납품물이 아닌 검증 산출물은 WorkItem별 runtime temp에 기록하며 NORMAL worktree의 코드 변경 provenance에 포함하지 않는다.
-㉓ 실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 최종 CODE_CHANGE는 종료 판단 전에 해당 코드 결과를 기준으로 하는 독립 검증 WorkItem에서 다시 확인한다. 검증 WorkItem은 발견한 결함을 직접 수정하지 않고 사실을 보고하며 필요한 수정은 별도 후속 WorkItem으로 분리한다.
+㉓ 실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 경우 독립 검증은 최종 통합 상태를 기준으로 한 번만 수행하는 것을 원칙으로 한다. 동일 목표의 중간 CODE_CHANGE마다 별도 검증 WorkItem을 반복 생성하지 않으며, 최종 검증에서 발견한 결함만 후속 수정 대상으로 분리한다.
 ㉔ HQ의 WORK_GRAPH_PATCH가 JSON 또는 operation별 기계 스키마 검증에 실패하면 Worker는 WorkGraph를 변경하지 않고 오류 코드와 가능한 path/hint를 HQ에 반환해 같은 관제 흐름에서 제한된 횟수만 재작성하게 한다. 반복 한계를 넘긴 경우에만 관제를 기계 오류로 종료할 수 있다.
 ㉕ ProjectHub의 저장소별 runtime은 target workspace 내부 `.projecthub/runtime` 아래에만 생성한다. sibling `<project>.projecthub`와 저장소 루트 외부의 새 ProjectHub worktree runtime을 생성하지 않으며, 과거 버전의 legacy 외부 runtime은 새 작업 또는 새 실행의 초기화 단계에서 회수한다.
 ㉖ runtime 디렉터리 삭제는 읽기 전용 속성과 짧은 파일 핸들 해제 지연을 고려해 유한 횟수 재시도하며, 반복 실패 시 삭제되지 않은 경로와 기계 오류를 기록한다.
@@ -169,7 +169,12 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ㉛ 새 Coordinator-first 실행은 target workspace가 지정되고 실제 디렉터리로 존재하는지 어떤 비동기 초기화, Git bootstrap, Web 전송 또는 AI 실행보다 먼저 동기적으로 확인하며, 조건을 만족하지 않으면 즉시 차단한다.
 ㉜ HQ가 PAUSE를 반환하면 Worker는 실행기와 sidecar가 정지한 뒤 재개에 필요하지 않은 clean worktree와 재생성 가능한 도구 cache를 정리하되 dirty 재개 상태와 RESOURCE staging은 보존한다.
 ㉝ HQ가 END를 반환하고 target finalization이 끝나면 Worker는 의미 결과의 성공 여부와 무관하게 ProjectHub runtime을 완전 초기화하고 legacy 외부 runtime도 함께 제거한다.
-㉞ 정상 Worker 종료는 실행 중 작업과 Web 요청을 취소하고 실행기 종료를 기다린 뒤 ProjectHub runtime 초기화와 Git target 참조 해제를 완료한 경우에만 애플리케이션 종료를 진행한다. 정상 종료 경로는 cleanup 완료 전에 `Environment.Exit`로 프로세스를 강제 종료하지 않는다.
+㉞ 정상 Worker 종료는 실행 중 작업과 Web 요청을 취소하고 실행기 종료를 유한 시간 기다린 뒤 ProjectHub 정리를 시도한다. 파일 잠금이나 정리 실패는 애플리케이션 종료 자체를 보류하지 않으며, 즉시 삭제할 수 없는 ProjectHub 소유 경로는 현재 Worker 프로세스 종료 뒤 별도 기계 cleanup helper가 재시도한다. 정상 종료 경로는 `Environment.Exit`로 의미 흐름을 우회하지 않는다.
+㉟ Worker 프로세스 정상 종료 뒤 target workspace 아래 `.projecthub`는 persistent 기록을 포함해 남기지 않는 것을 원칙으로 한다. 현재 프로세스나 자식 프로세스의 짧은 파일 잠금 때문에 즉시 삭제되지 않으면 종료 후 cleanup helper가 유한 횟수 재시도하며, 다음 Worker 실행의 의미 문맥 원본으로 사용하지 않는다.
+㊱ 코드 변경 WorkItem에서 해당 범위의 빌드가 성공하면 빌드 성공을 중간 구현 게이트로 사용하고, 사용자 최종 목표가 남아 있는 동안 동일 상태를 다시 입증하기 위한 ANALYSIS·재빌드·publish·export 전용 WorkItem을 추가하지 않는다. 기계적 BLOCKED나 실제 실패가 없으면 HQ는 남은 구현·통합을 계속 진행한다.
+㊲ 대용량 publish, export, 전체 end-to-end 실행과 별도 clean-environment 검증은 사용자 요구 또는 최종 품질 확인에 필요한 경우 최종 INTEGRATION 또는 종료 직전 단일 검증 단계로 집중한다. 이미 성공한 동일 입력·동일 결과의 빌드와 검증 산출물은 다시 생성하지 않고 재사용 가능한 기계 사실을 우선한다.
+㊳ 최종 목표 구현과 비례적인 최종 검증이 끝나면 HQ는 추가 확신 확보만을 위한 WorkItem을 만들지 않고 END로 사용자 검토 단계에 넘긴다. 사용자 전용 선택·외부 권한·실제 차단 조건이 없는 한 중간 검토를 위해 PAUSE하지 않는다.
+
 
 ---
 
