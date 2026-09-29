@@ -116,6 +116,7 @@ public partial class MainWindow
         ParallelJudgeWorkItemRouter? judgeRouter = null;
         CodexWorkItemExecutor? executor = null;
         WorkGraph? graph = null;
+        var compactRuntimeOnPause = false;
 
         try
         {
@@ -658,6 +659,7 @@ public partial class MainWindow
                     implementer,
                     coordinatorSession,
                     result.Graph);
+                compactRuntimeOnPause = true;
                 SetFlowState(false, false, false);
                 return;
             }
@@ -841,6 +843,41 @@ public partial class MainWindow
             catch (OperationCanceledException) { }
             try { await resourceQueue.DisposeAsync(); }
             catch (OperationCanceledException) { }
+
+            if (compactRuntimeOnPause)
+            {
+                var pauseCleanup = await new GitWorktreeManager()
+                    .CompactRepositoryRuntimeAsync(
+                        workingDirectory,
+                        CancellationToken.None);
+                var pauseCleanupMessage = pauseCleanup.Success
+                    ? "PAUSE 전환 뒤 재개에 불필요한 clean worktree와 도구 cache를 정리했습니다."
+                    : "PAUSE runtime 압축 중 일부 항목을 정리하지 못했습니다.";
+                if (!string.IsNullOrWhiteSpace(pauseCleanup.ErrorDetail))
+                    pauseCleanupMessage += Environment.NewLine + pauseCleanup.ErrorDetail;
+
+                ProjectWorkspacePersistence.AppendEvent(
+                    workingDirectory,
+                    jobId,
+                    DateTimeOffset.UtcNow,
+                    "PAUSE RUNTIME COMPACT",
+                    pauseCleanupMessage +
+                    Environment.NewLine +
+                    $"runtimeRoot={pauseCleanup.RuntimeRoot}" +
+                    Environment.NewLine +
+                    $"removedWorktrees={pauseCleanup.RemovedWorktrees.Count}",
+                    pauseCleanup.Success
+                        ? "COMPLETED"
+                        : pauseCleanup.ErrorCode ?? "RUNTIME_COMPACT_FAILED");
+
+                AddTaskMessage(
+                    "PAUSE RUNTIME COMPACT",
+                    pauseCleanupMessage,
+                    status: pauseCleanup.Success
+                        ? "COMPLETED"
+                        : pauseCleanup.ErrorCode ?? "RUNTIME_COMPACT_FAILED",
+                    includeHistory: false);
+            }
 
             observationQueue.TransportEvent -= OnObservationSidecarEvent;
             resourceQueue.StateChanged -= OnResourceSidecarStateChanged;
