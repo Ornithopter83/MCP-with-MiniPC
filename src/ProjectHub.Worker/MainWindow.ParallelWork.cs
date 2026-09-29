@@ -358,7 +358,7 @@ public partial class MainWindow
                 cts.Token,
                 includeContractOnFirstHqTurn: string.IsNullOrWhiteSpace(coordinatorSession),
                 processWorkGraphPayloadAsync: ProcessWorkGraphPayloadAsync,
-                enableCompletionReview: IsWebTransport(coordinator.Transport),
+                enableCompletionReview: true,
                 finalizeEndAsync: async (snapshot, cancellationToken) =>
                 {
                     var finalization = await targetWorkspaceFinalizer
