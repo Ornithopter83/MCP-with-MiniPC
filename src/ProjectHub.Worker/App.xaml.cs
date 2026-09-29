@@ -13,7 +13,6 @@ public partial class App : System.Windows.Application
     {
         ShutdownRequested = true;
         Shutdown();
-        Environment.Exit(0);
     }
     private const string InstanceMutexName = @"Local\ProjectHub.Worker.SingleInstance";
     private const string ActivateEventName = @"Local\ProjectHub.Worker.Activate";
@@ -95,7 +94,6 @@ public partial class App : System.Windows.Application
             _instanceMutex?.Dispose();
         }
         base.OnExit(e);
-        Environment.Exit(e.ApplicationExitCode);
     }
 
     private static void SignalExistingInstance()
