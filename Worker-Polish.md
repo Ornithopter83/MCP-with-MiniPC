@@ -106,6 +106,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑦ Coordinator-first에서 화면의 작업 폴더는 사용자에게 보이는 최종 target workspace의 원본이다. 기존 AI session의 ProjectPath나 Worker 실행 폴더가 이를 자동 대체하지 않는다.
 ⑧ target workspace가 지정되지 않았거나 존재하지 않으면 새 Coordinator-first 작업을 시작하지 않는다.
 ⑨ Coordinator-first의 Git bootstrap은 화면의 target workspace 자체를 저장소 루트로 사용한다. 상위 디렉터리에서 발견된 Git 저장소를 target workspace의 저장소로 승계하지 않으며, 필요한 경우 target workspace에 독립 저장소를 초기화한다.
+⑩ 사용자가 `새 작업` 전환을 시작하면 Worker는 이전 작업의 runtime·continuation·임시 상태 정리가 끝날 때까지 해당 전환을 단일 실행으로 잠그고 `새 작업` 버튼을 즉시 비활성화하며 정리 진행 상태를 표시한다. 정리 중 추가 클릭은 새 초기화 작업을 중복 시작하지 않는다.
 
 ---
 
