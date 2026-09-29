@@ -1,6 +1,6 @@
 # ProjectHub Managed Web Bridge
 
-버전: 0.4.2 / build 2026-09-30.1
+버전: 0.4.2 / build 2026-09-30.2
 
 ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로컬 Worker를 연결한다.
 
