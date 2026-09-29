@@ -1,6 +1,6 @@
 # Web-Polish — ProjectHub Web 확장 정책
 
-갱신일: 2026-09-28 (KST)
+갱신일: 2026-09-30 (KST)
 
 이 문서는 `extension/gptweb-hub`의 장기 정책을 정의한다. Worker의 슬롯·task·runtime 생명주기 책임은 `Worker-Polish.md`에 두고, 이 문서는 관리형 Web 확장의 페이지 연결·전송·관측·수집 경계를 원본으로 둔다. Worker와 확장 사이의 loopback HTTP wire는 `src/ProjectHub.Worker/Contracts/WEB-BRIDGE-CONTRACT.md`를 전용 원본으로 사용한다.
 
@@ -33,7 +33,7 @@
 
 ① 일반 HQ Web 작업은 Worker가 지정한 대화에서 텍스트 결과를 수집해 반환한다.
 ② RESOURCE 작업은 Worker가 전달한 자연어 요청을 ChatGPT Web에 보내고 생성된 파일 결과를 기계적으로 수집한다.
-③ Send 제어 실행과 실제 메시지 전송 확인을 구분한다. composer가 비워졌다는 사실만으로 전송 완료를 확정하지 않는다.
+③ 메시지 전송 확인은 제8조의 숨김 전송 확인 규칙을 따른다.
 ④ 기존 assistant DOM이 재사용되는 경우 현재 Worker 메시지 전송이 확인된 뒤 assistant 텍스트 변화도 새 응답의 기계적 증거로 사용할 수 있다.
 ⑤ 확장은 Web 응답이나 생성 리소스의 의미적 품질을 판단하지 않는다.
 
@@ -67,6 +67,7 @@
 ③ 이전 turn과 현재 turn을 구분하기 위한 baseline·mutation 증거는 현재 task 범위 안에서만 사용한다.
 ④ 전송 확인의 DOM selector, heuristic, 제한시간과 진행 단계 세부는 확장 구현과 테스트를 원본으로 사용한다.
 ⑤ HQ task의 현재 correlation KEY가 응답 영역에서 확인되면 해당 task 전송의 직접 기계 증거로 사용할 수 있으며 user/assistant turn selector가 현재 DOM을 인식하지 못했다는 이유만으로 SEND_CONFIRM 상태에 머물지 않는다.
+⑥ HQ correlation KEY 감시는 DOM mutation 이벤트나 role·turn selector 한 종류에만 의존하지 않고 SEND_CONFIRM과 WAIT_RESPONSE 동안 주기적으로 현재 conversation을 재확인한다.
 
 ---
 
@@ -80,6 +81,7 @@
 ⑥ streaming 종료 판정이 새 DOM mutation에만 의존하지 않도록 응답 대기 중 기계적 재확인을 수행하며, 일반 HQ 응답도 제한시간 안에 안정화되지 않으면 무기한 대기하지 않고 기술 실패로 종료한다.
 ⑦ 파일 fetch fallback, response 안정화 주기와 DOM 탐지 세부는 현재 확장 구현과 테스트를 원본으로 사용한다.
 ⑧ HQ correlation KEY 탐지는 role·turn selector 결과에만 의존하지 않고 현재 conversation 본문에서 동일 KEY를 직접 찾는 기계 fallback을 가질 수 있으며, 요청 prompt 자체에 포함된 KEY는 응답 증거에서 제외한다.
+⑨ 이미 claim된 HQ task에서 이전 turn baseline을 복구할 수 없더라도 현재 task의 correlation KEY가 있으면 같은 KEY만을 기준으로 응답 수신을 재개할 수 있다. 이 복구는 기존 prompt를 다시 전송하지 않는다.
 
 ---
 
@@ -91,9 +93,9 @@
 
 ---
 
-제11조 (Web UI 이상 수동 관측)
+제11조 (Web UI 이상 관측)
 
-① 관리형 HQ/RESOURCE 대화에서 assistant 응답과 별개인 오류·한도·timeout·첨부 실패 UI를 수동 관측할 수 있다.
+① 관리형 HQ/RESOURCE 대화에서 assistant 응답과 별개인 오류·한도·timeout·첨부 실패 UI를 기계적으로 관측할 수 있다.
 ② 관측된 이상은 WEB_UI_ANOMALY_OBSERVED 진행 이벤트로 Worker 통합로그에 기록한다.
 ③ 동일 task의 동일 이상은 기계적으로 중복 억제할 수 있다.
 ④ UI 이상 관측만으로 task 실패, 대화방 이동, 재전송, role binding 변경, lease/KEY 변경 또는 자동 복구를 수행하지 않는다.
