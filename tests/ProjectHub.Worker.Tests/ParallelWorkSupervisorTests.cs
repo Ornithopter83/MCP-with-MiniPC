@@ -422,7 +422,7 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
-    public async Task WebCompletionReviewWakesHqWhileOtherWorkIsStillRunning()
+    public async Task CompletionReviewWakesHqWhileOtherWorkIsStillRunning()
     {
         var graph = new WorkGraph("job", 2);
         var executor = new SupervisorExecutor();
@@ -449,7 +449,7 @@ public sealed class ParallelWorkSupervisorTests
 
         var result = await supervisor.RunAsync(
             "USER_REQUEST",
-            "Web HQ 완료 점검을 확인한다.");
+            "transport 종류와 무관한 HQ 완료 점검을 확인한다.");
 
         Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
         Assert.Equal(3, hq.Prompts.Count);
@@ -458,6 +458,9 @@ public sealed class ParallelWorkSupervisorTests
             hq.Prompts[1]);
         Assert.Contains(
             "WorkItem W10가 COMPLETED 상태가 되었습니다.",
+            hq.Prompts[1]);
+        Assert.Contains(
+            "HQ가 직전 관제 이후 완료된 WorkItem을 즉시 점검하고 추가·보완·통합·검증 작업 필요 여부를 판단합니다.",
             hq.Prompts[1]);
         Assert.Contains(
             "id=W10 kind=NORMAL state=COMPLETED",
