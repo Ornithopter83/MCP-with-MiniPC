@@ -860,23 +860,19 @@ public partial class MainWindow : Window
             return true;
 
         var displayed = WorkingDirectoryInput?.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(displayed))
-        {
-            ShowSynchronousWorkspaceLaunchError(
+        var workspaceError = WorkspaceLaunchGate.Validate(displayed);
+        if (workspaceError is null)
+            return true;
+
+        ShowSynchronousWorkspaceLaunchError(
+            workspaceError,
+            string.Equals(
+                workspaceError,
                 "WORKSPACE_NOT_SELECTED",
-                "작업 폴더를 먼저 지정하세요.");
-            return false;
-        }
-
-        if (!Directory.Exists(displayed))
-        {
-            ShowSynchronousWorkspaceLaunchError(
-                "WORKSPACE_NOT_FOUND",
-                "지정한 작업 폴더가 존재하지 않거나 접근할 수 없습니다.");
-            return false;
-        }
-
-        return true;
+                StringComparison.Ordinal)
+                ? "작업 폴더를 먼저 지정하세요."
+                : "지정한 작업 폴더가 존재하지 않거나 접근할 수 없습니다.");
+        return false;
     }
 
     private void ShowSynchronousWorkspaceLaunchError(
