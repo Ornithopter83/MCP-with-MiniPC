@@ -92,6 +92,36 @@ public sealed class WorkGraphPersistenceTests
     }
 
     [Fact]
+    public void MechanicalWorkDirectoryLivesUnderDisposableRuntime()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-mechanical-path-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(directory);
+            var mechanical = ProjectWorkspacePersistence.MechanicalWorkDirectory(
+                directory,
+                "job-mechanical");
+
+            Assert.StartsWith(
+                runtime.Root,
+                mechanical,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                Path.Combine("runtime", "mechanical"),
+                mechanical,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void CommandTranscriptPathUsesShortTimestampAndAvoidsOverwrite()
     {
         var directory = Path.Combine(
