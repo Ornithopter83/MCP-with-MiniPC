@@ -107,6 +107,33 @@ public partial class MainWindow
                 }
             }
 
+            if (!continuing)
+            {
+                var staleRuntimeCleanupCheck = await new GitWorktreeManager()
+                    .ResetRepositoryRuntimeAsync(
+                        workingDirectory,
+                        cts.Token);
+                if (!staleRuntimeCleanupCheck.Success)
+                {
+                    var detail =
+                        "새 작업 실행 전에 ProjectHub runtime을 초기화하지 못해 실행을 시작하지 않습니다." +
+                        Environment.NewLine +
+                        (staleRuntimeCleanupCheck.ErrorDetail ??
+                         staleRuntimeCleanupCheck.ErrorCode ??
+                         "RUNTIME_RESET_FAILED");
+                    AddTaskMessage(
+                        "STALE RUNTIME RESET",
+                        detail,
+                        status: staleRuntimeCleanupCheck.ErrorCode ?? "RUNTIME_RESET_FAILED",
+                        includeHistory: false);
+                    ResultTitle.Text = "RUNTIME BLOCKED";
+                    ResultBody.Text = detail;
+                    TaskTitle.Text = "이전 runtime 정리 실패";
+                    SetFlowState(false, false, false);
+                    return;
+                }
+            }
+
             var restored = continuing
                 ? ProjectWorkspacePersistence.TryLoadWorkGraph(workingDirectory, jobId)
                 : null;
