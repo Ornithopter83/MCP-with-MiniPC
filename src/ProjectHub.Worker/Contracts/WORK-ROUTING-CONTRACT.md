@@ -76,6 +76,9 @@
 ⑯ 헤더의 공용 생성 리소스 임시 루트는 RESOURCE 결과 파일의 공용 staging 경로다. RESOURCE 타입별 하위 폴더는 IMAGE=image, AUDIO=audio, VIDEO=video, DOCUMENT=document, FILE=file을 사용한다.
 ⑰ 선행 RESOURCE 파일이 필요한 WorkItem은 dependency snapshot에 해당 파일이 직접 포함되어 있다고 가정하지 않는다. RESOURCE_RESULT 또는 선행 보고의 실제 파일 경로와 공용 생성 리소스 임시 루트를 확인해 필요한 파일을 현재 worktree의 최종 사용 위치로 복사한 뒤 사용하며, 공용 임시 경로 자체를 최종 산출물의 런타임 참조로 남기지 않는다.
 ⑱ 헤더의 WORK 임시 산출물 루트와 `PROJECTHUB_WORK_TEMP`는 빌드 로그, self-test 보고서, 임시 내보내기 파일과 분석 결과처럼 최종 납품물이 아닌 검증 산출물에 사용한다. 이러한 검증 산출물을 현재 worktree에 남겨 checkpoint 코드 변경을 만들지 않는다.
+⑲ 현재 WorkItem 범위의 빌드가 성공했더라도 목표 구현이 남아 있으면 빌드 성공만으로 COMPLETED를 보고하지 않고 남은 구현을 계속한다. 반대로 빌드가 성공한 동일 상태를 다시 확인하기 위한 재빌드·publish·export·대용량 임시 검증 산출물을 반복 생성하지 않는다.
+⑳ 전체 publish, export, clean-environment 실행과 장시간 end-to-end 검증은 현재 WorkItem 목표가 그 검증 자체이거나 최종 INTEGRATION/검증 단계인 경우에만 수행한다. 이미 제공된 성공 결과와 기계적 사실을 같은 입력으로 다시 생성하지 않는다.
+㉑ 임시 검증 산출물은 필요한 최소 범위만 만들고 결과를 보고한 뒤 재사용 가치가 없는 대용량 staging·cache·export 복사본을 제품 변경으로 보존하지 않는다.
 
 제7조 (HQ 보고)
 
