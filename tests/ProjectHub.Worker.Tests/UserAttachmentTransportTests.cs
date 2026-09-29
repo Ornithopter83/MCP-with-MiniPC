@@ -93,7 +93,7 @@ public sealed class UserAttachmentTransportTests
             Assert.True(File.Exists(item.Path));
             Assert.Equal(attachment.Sha256, item.Sha256);
             Assert.True(item.RelativePath.Contains(
-                Path.Combine(".projecthub", "attachments", "batch1"),
+                Path.Combine(".projecthub", "runtime", "attachments", "batch1"),
                 StringComparison.OrdinalIgnoreCase));
 
             var prompt = UserAttachmentTransport.AppendPrompt(
