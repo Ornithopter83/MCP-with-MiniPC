@@ -156,6 +156,63 @@ public static class WorkerPaths
         };
     }
 
+    public static bool TryResetEphemeralDirectories(out string? errorDetail)
+    {
+        var errors = new List<string>();
+        foreach (var directory in new[]
+        {
+            Task,
+            Attachments,
+            WebResults
+        })
+        {
+            try
+            {
+                if (Directory.Exists(directory))
+                {
+                    ClearDeleteBlockingAttributes(new DirectoryInfo(directory));
+                    Directory.Delete(directory, recursive: true);
+                }
+
+                Directory.CreateDirectory(directory);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                errors.Add(
+                    Path.GetFileName(directory) +
+                    ": " +
+                    exception.GetType().Name +
+                    ": " +
+                    exception.Message);
+            }
+        }
+
+        errorDetail = errors.Count == 0
+            ? null
+            : string.Join(Environment.NewLine, errors);
+        return errors.Count == 0;
+    }
+
+    private static void ClearDeleteBlockingAttributes(DirectoryInfo directory)
+    {
+        if (!directory.Exists)
+            return;
+
+        foreach (var entry in directory.EnumerateFileSystemInfos())
+        {
+            if (entry is DirectoryInfo child &&
+                !entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                ClearDeleteBlockingAttributes(child);
+            }
+
+            entry.Attributes &= ~(FileAttributes.ReadOnly | FileAttributes.System);
+        }
+
+        directory.Attributes &= ~(FileAttributes.ReadOnly | FileAttributes.System);
+    }
+
     public static void EnsureCreated()
     {
         foreach (var directory in new[]
