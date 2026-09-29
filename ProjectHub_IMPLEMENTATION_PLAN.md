@@ -1,6 +1,6 @@
 # ProjectHub 구현 로드맵
 
-갱신일: 2026-09-28
+갱신일: 2026-09-30
 
 상위 공통 정책은 `Master-Polish.md`이며 프로젝트별 장기 정책과 전용 계약이 이 문서보다 우선한다. 날짜별 변경 이력과 과거 구현 경로는 `tasks/*.md`, 전용 기록 문서와 Git 이력에 둔다.
 
@@ -38,6 +38,7 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 ② 프로그램 시작 시 과거 `session-state`, HQ/WORK 세션, WorkGraph, event log를 자동 복구해 새 작업의 의미 문맥으로 사용하지 않는다.
 ③ 사용자가 `새 작업`을 시작하면 활성 continuation을 제거하고 과거 상태와 transcript는 진단·이력으로만 남긴다.
 ④ event log, transcript, handoff와 저장 상태는 정책 원본이 아니다.
+⑤ 정상 Worker 종료 시 target workspace의 `.projecthub`는 남기지 않는 것을 원칙으로 하며, 즉시 삭제를 막는 짧은 파일 잠금은 종료 후 기계 cleanup helper가 유한 횟수 재시도한다.
 
 제4조 (RESOURCE, JUDGE, OBSERVATION)
 
@@ -59,6 +60,7 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 ① HQ와 RESOURCE는 서로 다른 persistent profile, conversationId와 runtime token을 사용하는 관리형 app window 슬롯으로 운영한다.
 ② 일반 Chrome이나 runtime token이 없는 페이지는 Worker Web 작업 대상으로 사용하지 않는다.
 ③ Web 응답 회수, 첨부 준비, 파일 수집, UI 이상 관측과 숨김 실행의 세부 규칙은 `Web-Polish.md`와 현재 구현·테스트를 원본으로 사용한다.
+④ HQ Web correlation KEY는 SEND_CONFIRM과 WAIT_RESPONSE에서 DOM mutation과 독립된 주기 감시를 함께 사용하며, 현재 KEY 응답이 확인되면 role·turn selector가 실패해도 결과 회수 경로를 계속 진행한다.
 
 제7조 (검증 기준)
 
@@ -66,9 +68,10 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 ② Windows Worker의 runtime 완료 판정에는 solution build/test만으로 충분하지 않으며 필요한 경우 publish 후 실제 Worker 시작과 관리형 Web 왕복을 별도로 확인한다.
 ③ GitHub Actions의 Windows CI는 clean runner에서 restore, build, test의 기본 회귀를 잡는 독립 검증으로 사용하되 로컬 Chromium/profile/UI 동작을 대체하지 않는다.
 ④ 테스트가 취소, timeout 또는 미실행이면 성공으로 기록하지 않는다.
+⑤ 대용량 publish·export·clean-environment·end-to-end 검증은 같은 입력으로 중복 수행하지 않고 최종 통합 상태에서 필요한 경우 한 번으로 집중한다.
 
 제8조 (후속 개선)
 
 ① 외부 제공자 연결은 실제 인증·모델·세션 규격이 준비된 경우에만 현재 runner 경계 안에서 추가한다.
-② RESOURCE 병렬화, Web 자동 복구, 프로그램 재시작 후 의미 continuation 복원처럼 현재 정책을 바꾸는 기능은 기존 기록을 근거로 자동 활성화하지 않고 별도 정책 변경으로 다룬다.
+② RESOURCE 병렬화, 자동 대화방 교체·동일 요청 재전송 같은 적극적 Web 복구, 프로그램 재시작 후 의미 continuation 복원처럼 현재 정책을 바꾸는 기능은 기존 기록을 근거로 자동 활성화하지 않고 별도 정책 변경으로 다룬다.
 ③ 반복되는 실제 장애는 재현 근거와 회귀 테스트를 확보한 뒤 현재 정책 또는 구현 원본에 최소 범위로 반영한다.
