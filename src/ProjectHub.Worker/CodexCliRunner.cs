@@ -167,14 +167,7 @@ public sealed class CodexCliRunner
             }
             catch
             {
-                try
-                {
-                    if (!process.HasExited)
-                        process.Kill(entireProcessTree: true);
-                }
-                catch
-                {
-                }
+                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                 throw;
             }
             finally
@@ -182,8 +175,15 @@ public sealed class CodexCliRunner
                 process.StandardInput.Close();
             }
 
-            try { await process.WaitForExitAsync(cancellationToken); }
-            catch (OperationCanceledException) { try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } throw; }
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+                throw;
+            }
             await stdoutTask;
             var stdout = stdoutBuilder.ToString();
             var stderr = await stderrTask;
@@ -442,6 +442,31 @@ public sealed class CodexCliRunner
             catch (JsonException) { }
         }
         return string.Join(Environment.NewLine, messages);
+    }
+
+    private static async Task TerminateProcessTreeAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            using var waitCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await process.WaitForExitAsync(waitCts.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+        }
+
+        // Kill(entireProcessTree) 완료 직후에도 Windows가 자식 프로세스의 cwd/file handle을
+        // 짧게 유지할 수 있으므로 runtime 삭제 전에 해제 시간을 준다.
+        await Task.Delay(150).ConfigureAwait(false);
     }
 
     private static IReadOnlyList<CodexCliFile> ExtractFiles(string stdout, string workingDirectory)
