@@ -149,6 +149,7 @@ public partial class MainWindow : Window
     private int _judgeRound;
     private string _activeJevJobId = Guid.NewGuid().ToString("N");
     private bool _allowClose;
+    private bool _shutdownCleanupInProgress;
     private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
     private const string DashboardPromptPlaceholder = "작업 내용을 입력하세요...";
@@ -365,9 +366,72 @@ public partial class MainWindow : Window
         Activate();
     }
 
-    private void ExitWorker()
+    private async void ExitWorker()
     {
+        if (_shutdownCleanupInProgress)
+            return;
+
+        _shutdownCleanupInProgress = true;
         SaveWindowPosition();
+
+        var cleanupWorkspace = _activeWorkingDirectory;
+        if (string.IsNullOrWhiteSpace(cleanupWorkspace))
+            cleanupWorkspace = ResolveCoordinatorTargetWorkingDirectory();
+
+        _userCanceledTask = true;
+        _activeTaskCts?.Cancel();
+        if (_bridgeServer is not null &&
+            _bridgeServer.CancelActiveTask(out var canceledTaskId) &&
+            canceledTaskId is not null)
+        {
+            _userCanceledBridgeTaskIds.Add(canceledTaskId);
+        }
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(15);
+        while (_activeTaskCts is not null && DateTimeOffset.UtcNow < deadline)
+            await Task.Delay(100);
+
+        if (_activeTaskCts is not null)
+        {
+            _shutdownCleanupInProgress = false;
+            DashboardPreflightText.Text =
+                "실행 중 작업이 아직 종료되지 않아 Worker를 종료하지 않았습니다. 잠시 후 다시 시도하세요.";
+            DashboardPreflightText.Foreground =
+                System.Windows.Media.Brushes.Firebrick;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(cleanupWorkspace) &&
+            Directory.Exists(cleanupWorkspace))
+        {
+            var reset = await new GitWorktreeManager()
+                .ResetRepositoryRuntimeAsync(
+                    cleanupWorkspace,
+                    CancellationToken.None);
+            if (!reset.Success)
+            {
+                _shutdownCleanupInProgress = false;
+                var detail =
+                    "ProjectHub runtime을 완전히 제거하지 못해 Worker 종료를 보류했습니다." +
+                    Environment.NewLine +
+                    (reset.ErrorDetail ?? reset.ErrorCode ?? "RUNTIME_RESET_FAILED");
+                DashboardPreflightText.Text = detail;
+                DashboardPreflightText.Foreground =
+                    System.Windows.Media.Brushes.Firebrick;
+                System.Windows.MessageBox.Show(
+                    this,
+                    detail,
+                    "ProjectHub 종료 정리 실패",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+        }
+
+        _activeWorkingDirectory = null;
+        _activeProjectJobId = null;
+        _continuationState = null;
+        ClearCoordinatorGitTargetPresentation();
         _allowClose = true;
         ((App)System.Windows.Application.Current).RequestShutdown();
     }
