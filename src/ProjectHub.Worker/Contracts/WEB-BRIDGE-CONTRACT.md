@@ -1,6 +1,6 @@
 # WEB Bridge 전송 계약
 
-갱신일: 2026-09-28 (KST)
+갱신일: 2026-09-30 (KST)
 
 상위 공통 정책은 `Master-Polish.md`, Worker 책임은 `Worker-Polish.md`, 관리형 Web 확장 책임은 `Web-Polish.md`를 따른다.
 이 문서는 ProjectHub Worker와 관리형 HQ/RESOURCE Web 확장 사이의 loopback HTTP wire만 정의한다.
@@ -59,6 +59,7 @@
 ② Worker는 제출된 correlation KEY와 task의 KEY가 일치하지 않으면 결과를 수락하지 않는다.
 ③ 성공 응답 본문에서 현재 KEY를 찾을 수 없으면 결과를 수락하지 않는다.
 ④ KEY의 생성 길이와 응답 범위 절단 규칙은 현재 `WebCorrelationContract` 구현과 테스트를 따른다.
+⑤ KEY 감시 진행 이벤트는 기계 관측으로만 사용하며, 최종 성공은 현재 task의 KEY가 포함된 result가 제2항과 제3항 검증을 통과한 경우에만 확정한다.
 
 제7조 (첨부와 결과 파일)
 
