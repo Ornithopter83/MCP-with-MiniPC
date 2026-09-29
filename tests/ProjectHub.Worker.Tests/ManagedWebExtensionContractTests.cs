@@ -72,7 +72,10 @@ public sealed class ManagedWebExtensionContractTests
         var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
 
         Assert.True(source.Contains("directCorrelationResponseRoot", StringComparison.Ordinal));
-        Assert.True(source.Contains("document.createTreeWalker(main,NodeFilter.SHOW_TEXT)", StringComparison.Ordinal));
+        Assert.True(source.Contains("correlationKeyOccurrenceCount", StringComparison.Ordinal));
+        Assert.True(source.Contains("document.body.querySelectorAll(selectors)", StringComparison.Ordinal));
+        Assert.True(source.Contains("CORRELATION_KEY_BODY", StringComparison.Ordinal));
+        Assert.True(source.Contains("keyOccurrences=", StringComparison.Ordinal));
         Assert.True(source.Contains("correlationSendEvidence", StringComparison.Ordinal));
         Assert.True(source.Contains("CORRELATION_KEY_RESPONSE", StringComparison.Ordinal));
         Assert.True(source.Contains("CORRELATION_KEY", StringComparison.Ordinal));
