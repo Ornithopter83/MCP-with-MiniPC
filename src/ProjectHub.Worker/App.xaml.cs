@@ -24,6 +24,13 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (ProjectHubExitCleanup.IsHelperInvocation(e.Args))
+        {
+            base.OnStartup(e);
+            Shutdown(ProjectHubExitCleanup.RunHelper(e.Args));
+            return;
+        }
+
         WorkerPaths.EnsureCreated();
         var extension = ExtensionDeployment.EnsureDeployed();
         if (extension.Error is not null)
