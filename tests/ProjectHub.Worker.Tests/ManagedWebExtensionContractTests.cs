@@ -80,6 +80,15 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("CORRELATION_KEY_RESPONSE", StringComparison.Ordinal));
         Assert.True(source.Contains("CORRELATION_KEY", StringComparison.Ordinal));
         Assert.True(source.Contains("return directCorrelationResponseRoot();", StringComparison.Ordinal));
+        Assert.True(source.Contains("observeCorrelationKeyWatch", StringComparison.Ordinal));
+        Assert.True(source.Contains("HQ_KEY_WATCH", StringComparison.Ordinal));
+        Assert.True(source.Contains("HQ_KEY_SEND_RECOVERED", StringComparison.Ordinal));
+        Assert.True(source.Contains("HQ_KEY_CLAIM_RECOVERED", StringComparison.Ordinal));
+        Assert.True(source.Contains("HQ_KEY_BASELINE_FALLBACK", StringComparison.Ordinal));
+        Assert.True(source.Contains("directFallbackLength", StringComparison.Ordinal));
+        Assert.True(source.Contains("if(activeCorrelationKey)observeCorrelationKeyWatch();", StringComparison.Ordinal));
+        Assert.True(source.Contains("enterWaitResponse('기존 turn baseline 없이 현재 HQ KEY를 독립 감시합니다.')", StringComparison.Ordinal));
+        Assert.True(source.Contains("activeCorrelationKey=null;activeResource=null", StringComparison.Ordinal));
 
         var functionIndex = source.IndexOf(
             "function sendConfirmationEvidence(prompt)",
