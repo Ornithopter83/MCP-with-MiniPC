@@ -124,6 +124,7 @@ public static class ParallelHqTurnContract
 public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncDisposable
 {
     private const int MaximumConsecutivePatchRejections = 3;
+    private const int MaximumRecoverableHqTransportRetries = 2;
 
     private readonly WorkGraph _graph;
     private readonly ParallelWorkScheduler _scheduler;
@@ -250,19 +251,33 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             firstHqTurn = false;
 
             string rawHqMessage;
-            try
+            var hqTransportRetry = 0;
+            while (true)
             {
-                rawHqMessage = await _runHqAsync(prompt, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                return Failure(
-                    "PARALLEL_HQ_EXECUTION_FAILED",
-                    ex.GetType().Name + ": " + ex.Message);
+                try
+                {
+                    rawHqMessage = await _runHqAsync(prompt, cancellationToken).ConfigureAwait(false);
+                    break;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (
+                    IsRecoverableHqTransportFailure(ex) &&
+                    hqTransportRetry < MaximumRecoverableHqTransportRetries)
+                {
+                    hqTransportRetry++;
+                    await Task.Delay(
+                        TimeSpan.FromMilliseconds(750 * hqTransportRetry),
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    return Failure(
+                        "PARALLEL_HQ_EXECUTION_FAILED",
+                        ex.GetType().Name + ": " + ex.Message);
+                }
             }
 
             if (!ParallelHqTurnContract.TryParseEnvelope(
