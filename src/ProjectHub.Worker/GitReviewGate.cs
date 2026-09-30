@@ -58,6 +58,7 @@ public static class GitReviewGate
     {
         try
         {
+            using var processJob = new WorkerChildProcessJob("Git review");
             using var process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -74,6 +75,7 @@ public static class GitReviewGate
             process.StartInfo.ArgumentList.Add("safe.directory=" + workingDirectory);
             foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return null;
+            processJob.Assign(process);
             var output = process.StandardOutput.ReadToEnd().Trim();
             if (!process.WaitForExit(8000) || cancellationToken.IsCancellationRequested)
             {
