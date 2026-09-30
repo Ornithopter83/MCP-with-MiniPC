@@ -323,5 +323,6 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ④ 실제 빌드는 Worker가 격리 BUILD_CONTEXT를 적용해 수행하고 BUILD_RESULT를 동일 WorkItem 세션에 반환한다.
 ⑤ BUILD_CONTEXT는 DOTNET_CLI_HOME, APPDATA, LOCALAPPDATA, NuGet cache/package, temp와 build artifact 경로를 ProjectHub runtime으로 격리한다.
 ⑥ HQ 승인 Worker BUILD 실행 중에는 HQ control-plane이 진행 중인 것으로 보고 Coordinator 애니메이션과 상태를 유지한다.
+⑥-1 Worker가 직접 생성하는 장수 외부 프로세스는 가능한 경우 KILL_ON_JOB_CLOSE Job Object에 연결한다. 관리형 Chromium과 Codex CLI 및 그 하위 프로세스는 Worker 종료 시 함께 종료되어야 하며, cancellation 성공 여부에만 수명 정리를 의존하지 않는다.
 ⑦ RESOURCE capture·download 실패는 RESOURCE 의미 결과를 폐기하거나 생성 프롬프트를 재실행하지 않는다. Web transport 계층이 이미 생성된 candidate의 capture만 유한 재시도하며, 재시도 소진 뒤에만 기계 실패 사실을 반환한다.
 ⑧ CODE_CHANGE/checkpoint가 존재하는 WORK 또는 INTEGRATION의 FAILED 보고는 해당 결과를 폐기하지 않고 RESULT_CHECKPOINT_BLOCKED로 보존해 HQ가 같은 WorkItem을 재개할 수 있게 한다.
