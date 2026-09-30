@@ -8,6 +8,7 @@ namespace ProjectHub.Worker;
 internal sealed class WorkerChildProcessJob : IDisposable
 {
     internal const uint KillOnJobCloseLimitFlag = 0x00002000;
+    private const int JobObjectBasicProcessIdListClass = 3;
     private const int JobObjectExtendedLimitInformationClass = 9;
 
     private readonly object _gate = new();
@@ -93,6 +94,48 @@ internal sealed class WorkerChildProcessJob : IDisposable
         }
     }
 
+    public IReadOnlyList<int> SnapshotProcessIds()
+    {
+        lock (_gate)
+        {
+            if (_disposed || _handle is null || _handle.IsInvalid || _handle.IsClosed)
+                return Array.Empty<int>();
+
+            const int capacity = 256;
+            var headerSize = sizeof(uint) * 2;
+            var size = headerSize + (IntPtr.Size * capacity);
+            var buffer = Marshal.AllocHGlobal(size);
+            try
+            {
+                if (!QueryInformationJobObject(
+                        _handle.DangerousGetHandle(),
+                        JobObjectBasicProcessIdListClass,
+                        buffer,
+                        (uint)size,
+                        out _))
+                    return Array.Empty<int>();
+
+                var count = Math.Min(Marshal.ReadInt32(buffer, sizeof(uint)), capacity);
+                var result = new List<int>(count);
+                for (var index = 0; index < count; index++)
+                {
+                    var processId = Marshal.ReadIntPtr(buffer, headerSize + (index * IntPtr.Size)).ToInt64();
+                    if (processId is > 0 and <= int.MaxValue)
+                        result.Add((int)processId);
+                }
+                return result;
+            }
+            catch
+            {
+                return Array.Empty<int>();
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+    }
+
     public void Dispose()
     {
         SafeJobHandle? handle;
@@ -123,6 +166,15 @@ internal sealed class WorkerChildProcessJob : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryInformationJobObject(
+        IntPtr job,
+        int jobObjectInformationClass,
+        IntPtr jobObjectInformation,
+        uint jobObjectInformationLength,
+        out uint returnLength);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
