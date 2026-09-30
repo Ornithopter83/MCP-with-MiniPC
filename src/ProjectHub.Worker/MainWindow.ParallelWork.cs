@@ -304,7 +304,8 @@ public partial class MainWindow
                             type이 없고 operation 값이 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE 중 하나이면 그 동일 값을 type으로 옮기고 operation 키만 제거할 수 있다.
                             WorkItem ID, operation 종류 값, dependency, goal, baseRef 등 원문의 의미 값은 추가·삭제·변경하지 않는다.
                             따옴표, 쉼표, 괄호, JSON 타입, 코드펜스와 같은 구조 문제만 복구한다.
-                            """),
+                            """,
+                        AllowAiRepair: false),
                     WorkGraphTransportContract.TryParse,
                     WorkGraphTransportContract.TryParseJsonPayload,
                     cancellationToken,
