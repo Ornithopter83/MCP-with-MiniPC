@@ -153,6 +153,21 @@ public sealed class ManagedWebExtensionContractTests
     }
 
     [Fact]
+    public void EmbeddedContent_RecoversImmediatelyAfterStreamingEndsWithoutCorrelationResult()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.True(source.Contains("POST_STREAM_RECOVERY_DELAY=5000", StringComparison.Ordinal));
+        Assert.True(source.Contains("schedulePostStreamRecovery", StringComparison.Ordinal));
+        Assert.True(source.Contains("previousStreaming===true&&!streaming", StringComparison.Ordinal));
+        Assert.True(source.Contains("POST_STREAM_CHECK", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESPONSE_KEY_MISSING", StringComparison.Ordinal));
+        Assert.True(source.Contains("response_key_missing", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESPONSE_LOST_AFTER_STREAM_END", StringComparison.Ordinal));
+        Assert.True(source.Contains("response_lost_after_stream_end", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void EmbeddedContent_WaitsForAttachmentReadinessBeforeSend()
     {
         var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");

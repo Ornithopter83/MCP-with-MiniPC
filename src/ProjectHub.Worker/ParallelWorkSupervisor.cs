@@ -124,6 +124,7 @@ public static class ParallelHqTurnContract
 public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncDisposable
 {
     private const int MaximumConsecutivePatchRejections = 3;
+    private const int MaximumHqTransportAttempts = 3;
 
     private readonly WorkGraph _graph;
     private readonly ParallelWorkScheduler _scheduler;
@@ -250,19 +251,37 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             firstHqTurn = false;
 
             string rawHqMessage;
-            try
+            var hqTransportAttempt = 0;
+            while (true)
             {
-                rawHqMessage = await _runHqAsync(prompt, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                return Failure(
-                    "PARALLEL_HQ_EXECUTION_FAILED",
-                    ex.GetType().Name + ": " + ex.Message);
+                hqTransportAttempt++;
+                try
+                {
+                    rawHqMessage = await _runHqAsync(prompt, cancellationToken).ConfigureAwait(false);
+                    break;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (
+                    IsRecoverableHqTransportFailure(ex) &&
+                    hqTransportAttempt < MaximumHqTransportAttempts)
+                {
+                    continue;
+                }
+                catch (Exception ex)
+                {
+                    var recoverable = IsRecoverableHqTransportFailure(ex);
+                    return Failure(
+                        recoverable
+                            ? "HQ_WEB_RESPONSE_UNRECOVERABLE"
+                            : "PARALLEL_HQ_EXECUTION_FAILED",
+                        ex.GetType().Name + ": " + ex.Message +
+                        (recoverable
+                            ? Environment.NewLine + $"transportAttempts={hqTransportAttempt}"
+                            : string.Empty));
+                }
             }
 
             if (!ParallelHqTurnContract.TryParseEnvelope(
@@ -936,6 +955,17 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     {
         StateChanged?.Invoke(snapshot);
         _stateChanges.Writer.TryWrite(snapshot);
+    }
+
+    private static bool IsRecoverableHqTransportFailure(Exception exception)
+    {
+        var message = exception.Message ?? string.Empty;
+        return message.Contains("WEB_RESPONSE_TIMEOUT", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("response_timeout", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("RESPONSE_LOST_AFTER_STREAM_END", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("response_lost_after_stream_end", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("RESPONSE_KEY_MISSING", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("response_key_missing", StringComparison.OrdinalIgnoreCase);
     }
 
     private ParallelWorkSupervisorResult Failure(string errorCode, string detail)

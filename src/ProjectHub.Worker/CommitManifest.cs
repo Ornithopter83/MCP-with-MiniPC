@@ -113,6 +113,13 @@ public sealed class GitCommitManifestBuilder
             if (parsed is null)
                 return Failure("COMMIT_MANIFEST_DIFF_PARSE_FAILED", "변경 경로를 해석할 수 없습니다: " + line);
 
+            if (GeneratedArtifactPolicy.IsGeneratedArtifactPath(worktreePath, parsed.Value.Path) ||
+                (!string.IsNullOrWhiteSpace(parsed.Value.PreviousPath) &&
+                 GeneratedArtifactPolicy.IsGeneratedArtifactPath(worktreePath, parsed.Value.PreviousPath)))
+            {
+                continue;
+            }
+
             long? size = null;
             string? sha256 = null;
             var isText = false;

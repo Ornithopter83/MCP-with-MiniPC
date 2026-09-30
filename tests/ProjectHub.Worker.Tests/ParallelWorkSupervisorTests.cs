@@ -649,6 +649,45 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task RecoverableHqWebFailureRetriesSameGraphTurn()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var prompts = new List<string>();
+        var attempts = 0;
+
+        Task<string> RunHqAsync(string prompt, CancellationToken _)
+        {
+            prompts.Add(prompt);
+            attempts++;
+            if (attempts < 3)
+                throw new InvalidOperationException(
+                    attempts == 1
+                        ? "WEB_RESPONSE_TIMEOUT: response did not stabilize before deadline."
+                        : "RESPONSE_LOST_AFTER_STREAM_END: streaming ended without a recoverable assistant response.");
+
+            return Task.FromResult(End("복구 완료"));
+        }
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            RunHqAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "동일 관제 turn transport retry를 확인한다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Null(result.ErrorCode);
+        Assert.Equal(3, attempts);
+        Assert.Equal(3, prompts.Count);
+        Assert.All(prompts, prompt => Assert.Equal(prompts[0], prompt));
+        Assert.Equal(0, result.Graph.Revision);
+    }
+
+    [Fact]
     public async Task EndFinalizationCanRejectEndAndReturnControlToHq()
     {
         var graph = new WorkGraph("job", 1);

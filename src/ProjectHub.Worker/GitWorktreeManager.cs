@@ -1161,6 +1161,20 @@ public sealed class GitWorktreeManager
         if (string.IsNullOrWhiteSpace(workItemId))
             return new(false, "WORKTREE_CHECKPOINT_ID_MISSING", worktreePath, null, null, false);
 
+        var artifactCleanupError = await PruneGeneratedArtifactsAsync(
+            worktreePath,
+            cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(artifactCleanupError))
+        {
+            return new(
+                false,
+                artifactCleanupError,
+                worktreePath,
+                null,
+                null,
+                false);
+        }
+
         var before = await InspectAsync(worktreePath, cancellationToken).ConfigureAwait(false);
         if (!before.Success)
             return new(false, before.ErrorCode, worktreePath, before.Branch, before.HeadCommit, false);
@@ -1222,6 +1236,62 @@ public sealed class GitWorktreeManager
             return new(false, "WORKTREE_CHECKPOINT_NOT_CLEAN", worktreePath, after.Branch, after.HeadCommit, true);
 
         return new(true, null, after.WorktreePath, after.Branch, after.HeadCommit, true);
+    }
+
+    private async Task<string?> PruneGeneratedArtifactsAsync(
+        string worktreePath,
+        CancellationToken cancellationToken)
+    {
+        foreach (var directory in GeneratedArtifactPolicy.EnumerateGeneratedDirectories(worktreePath))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = GeneratedArtifactPolicy.ToRepositoryRelativePath(
+                worktreePath,
+                directory);
+            if (string.IsNullOrWhiteSpace(relativePath) || relativePath == ".")
+                continue;
+
+            var trackedResult = await RunAsync(
+                worktreePath,
+                ReadTimeout,
+                cancellationToken,
+                "ls-files",
+                "--",
+                relativePath).ConfigureAwait(false);
+            if (trackedResult.ExitCode != 0)
+                return "WORKTREE_GENERATED_ARTIFACT_SCAN_FAILED";
+
+            try
+            {
+                if (Directory.Exists(directory))
+                {
+                    ClearDeleteBlockingAttributes(new DirectoryInfo(directory));
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                return "WORKTREE_GENERATED_ARTIFACT_CLEANUP_FAILED";
+            }
+
+            if (string.IsNullOrWhiteSpace(trackedResult.StandardOutput))
+                continue;
+
+            var restoreResult = await RunAsync(
+                worktreePath,
+                ReadTimeout,
+                cancellationToken,
+                "restore",
+                "--source=HEAD",
+                "--worktree",
+                "--",
+                relativePath).ConfigureAwait(false);
+            if (restoreResult.ExitCode != 0)
+                return "WORKTREE_GENERATED_ARTIFACT_RESTORE_FAILED";
+        }
+
+        return null;
     }
 
     public Task<GitCommitManifestResult> CreateCommitManifestAsync(

@@ -14,3 +14,13 @@ forUpload.z01
 src/ProjectHub.Server/log/
 
 .worker-dotnet-home*/
+# Regenerable ProjectHub/build artifacts
+dist-temp/
+.nuget/
+.dotnet/
+.dotnet-cli/
+**/TestResults/
+coverage/
+verification-output/
+visual-captures/
+
