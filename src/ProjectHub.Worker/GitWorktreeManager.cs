@@ -1167,6 +1167,8 @@ public sealed class GitWorktreeManager
 
         if (before.IsClean)
             return new(true, null, before.WorktreePath, before.Branch, before.HeadCommit, false);
+        if (!await HasMeaningfulCheckpointChangesAsync(worktreePath, cancellationToken).ConfigureAwait(false))
+            return new(true, null, before.WorktreePath, before.Branch, before.HeadCommit, false);
 
         var addResult = await RunAsync(
             worktreePath,
@@ -1217,12 +1219,71 @@ public sealed class GitWorktreeManager
         var after = await InspectAsync(worktreePath, cancellationToken).ConfigureAwait(false);
         if (!after.Success)
             return new(false, after.ErrorCode, worktreePath, after.Branch, after.HeadCommit, true);
-        if (!after.IsClean)
+        if (!after.IsClean &&
+            await HasMeaningfulCheckpointChangesAsync(worktreePath, cancellationToken).ConfigureAwait(false))
             return new(false, "WORKTREE_CHECKPOINT_NOT_CLEAN", worktreePath, after.Branch, after.HeadCommit, true);
 
         return new(true, null, after.WorktreePath, after.Branch, after.HeadCommit, true);
     }
 
+    private async Task<bool> HasMeaningfulCheckpointChangesAsync(
+        string worktreePath,
+        CancellationToken cancellationToken)
+    {
+        var status = await RunAsync(
+            worktreePath,
+            ReadTimeout,
+            cancellationToken,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all").ConfigureAwait(false);
+
+        if (status.ExitCode != 0)
+            return true;
+
+        foreach (var rawLine in NormalizeNewlines(status.StandardOutput)
+                     .Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (rawLine.Length < 4)
+                return true;
+
+            var path = rawLine[3..].Trim();
+            var renameSeparator = path.LastIndexOf(" -> ", StringComparison.Ordinal);
+            if (renameSeparator >= 0)
+                path = path[(renameSeparator + 4)..].Trim();
+
+            path = path.Trim('"');
+            if (!IsRegenerableCheckpointPath(path))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsRegenerableCheckpointPath(string path)
+    {
+        var normalized = (path ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        if (normalized.Length == 0)
+            return false;
+
+        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Any(segment =>
+                segment.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("dist-temp", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("NuGet", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("TestResults", StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        return normalized.StartsWith(".projecthub/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".dotnet/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".dotnet-cli/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".nuget/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("coverage/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("verification-output/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("visual-captures/", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string[] BuildCheckpointAddArguments()
         => new[]
