@@ -500,6 +500,16 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         }
     }
 
+
+    internal static bool IsRecoverableHqTransportFailure(Exception exception)
+    {
+        var message = exception?.Message ?? string.Empty;
+        return message.Contains("WEB_RESPONSE_TIMEOUT", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("WEB_RESPONSE_LOST_AFTER_STREAM_END", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("response_timeout", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("response_lost_after_stream_end", StringComparison.OrdinalIgnoreCase);
+    }
+
     private string GetCurrentDefaultBaseRef()
     {
         var latestIntegration = _graph.Items
