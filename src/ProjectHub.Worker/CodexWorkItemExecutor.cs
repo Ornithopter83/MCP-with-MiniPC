@@ -354,6 +354,25 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     authorization,
                     cancellationToken).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                var logPath = Path.Combine(workTempPath, "build", "build.log");
+                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+                var detail = exception.GetType().Name + ": " + exception.Message;
+                try { await File.WriteAllTextAsync(logPath, detail, cancellationToken).ConfigureAwait(false); }
+                catch { }
+                buildResult = new MechanicalBuildResult(
+                    false,
+                    -1,
+                    "FULL",
+                    logPath,
+                    detail,
+                    authorization.FallbackToFull);
+            }
             finally
             {
                 MechanicalProgress?.Invoke(new CodexWorkItemMechanicalProgress(
