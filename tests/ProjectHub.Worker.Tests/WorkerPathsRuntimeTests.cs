@@ -112,6 +112,10 @@ public sealed class WorkerPathsRuntimeTests
             Assert.Equal(Path.Combine(workTemp, "build", "obj"), environment["PROJECTHUB_BUILD_OBJ"]);
             Assert.True(Directory.Exists(environment["PROJECTHUB_BUILD_BIN"]));
             Assert.True(Directory.Exists(environment["PROJECTHUB_BUILD_OBJ"]));
+            Assert.Equal(Path.Combine(workTemp, "appdata"), environment["APPDATA"]);
+            Assert.Equal(Path.Combine(workTemp, "localappdata"), environment["LOCALAPPDATA"]);
+            Assert.Equal("1", environment["DOTNET_CLI_TELEMETRY_OPTOUT"]);
+            Assert.True(File.Exists(Path.Combine(environment["APPDATA"], "NuGet", "NuGet.Config")));
         }
         finally
         {
