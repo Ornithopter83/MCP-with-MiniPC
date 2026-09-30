@@ -22,6 +22,23 @@ public sealed class WorkerChildProcessJobTests
             field.FieldType.GetGenericArguments()[1]);
     }
 
+
+    [Fact]
+    public void ChildProcessJobProvidesPostExitDescendantCleanupFallback()
+    {
+        var terminateDescendants = typeof(WorkerChildProcessJob).GetMethod(
+            "TerminateDescendants",
+            BindingFlags.Static | BindingFlags.NonPublic);
+
+        Assert.NotNull(terminateDescendants);
+        Assert.Equal(typeof(int), terminateDescendants!.ReturnType);
+
+        var parameters = terminateDescendants.GetParameters();
+        Assert.Equal(2, parameters.Length);
+        Assert.Equal(typeof(int), parameters[0].ParameterType);
+        Assert.Equal(typeof(DateTimeOffset), parameters[1].ParameterType);
+    }
+
     [Fact]
     public void DisposingJobTerminatesAssignedProcess()
     {
