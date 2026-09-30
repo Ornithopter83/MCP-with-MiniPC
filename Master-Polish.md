@@ -101,3 +101,13 @@
 ② 관리자 권한 상승, 신규 SDK·runtime 설치, Registry 수정, 시스템 환경변수 영구 변경, 인증서 설치와 TargetFramework 자체 변경은 제1항의 자동 승인 범위에 포함하지 않는다.
 ③ `bin/`, `obj/`, `dist-temp/`, SDK·package restore cache와 그 밖의 재생성 가능한 build artifact는 CODE_CHANGE와 Commit Manifest의 의미 변경 대상으로 취급하지 않는다.
 ④ Web transport 또는 응답 회수 실패는 의미 작업 실패와 구분한다. HQ Web turn의 일시적 응답 회수 실패만으로 WorkGraph 전체를 종료하지 않고 현재 revision과 실행 결과를 보존한 채 기계적 복구를 우선한다.
+
+---
+
+제10조 (종료와 정리의 분리)
+
+① Worker 종료는 실행 중 작업 취소, 소유한 자식 프로세스 종료와 통신 자원 해제만을 필수 종료 경로로 삼는다.
+② `.projecthub`, runtime cache와 임시 산출물의 완전 삭제는 Worker 프로세스 종료의 선행조건으로 삼지 않는다.
+③ 종료 후 Worker 자신의 실행 파일을 cleanup helper로 다시 실행하지 않는다.
+④ 남은 임시 상태는 다음 시작 시 정리하거나 명시적 유지보수 절차에서 처리한다.
+⑤ 설정 UI는 Worker 메인 Window의 수명과 소유권 안에 두며 다른 애플리케이션 Window 위에 독립 top-level 창으로 상주시키지 않는다.
