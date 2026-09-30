@@ -410,9 +410,11 @@ public sealed class ParallelWorkSupervisorTests
             "base123",
             hq.RunAsync);
 
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var result = await supervisor.RunAsync(
             "USER_REQUEST",
-            "작업을 수행하세요.");
+            "작업을 수행하세요.",
+            timeout.Token);
 
         Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
         Assert.Equal(4, hq.Prompts.Count);
