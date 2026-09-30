@@ -283,6 +283,37 @@ public sealed class ParallelWorkTransportTests
         Assert.Contains("기존 작업", operation.Value);
     }
 
+    [Fact]
+    public void ReleasePatchPreservesJsonObjectValueForBuildAuthorization()
+    {
+        const string body = """
+            WORK_GRAPH_PATCH:
+            {
+              "expectedRevision": 5,
+              "operations": [
+                {
+                  "type": "RELEASE",
+                  "workItemId": "W1",
+                  "inputType": "BUILD_AUTHORIZED",
+                  "value": {
+                    "scope": "TARGET",
+                    "target": "src/App/App.csproj",
+                    "configuration": "Release",
+                    "noRestore": true
+                  }
+                }
+              ]
+            }
+            """;
+
+        Assert.True(WorkGraphTransportContract.TryParse(body, out var patch, out var error), error);
+        Assert.Null(error);
+        var operation = Assert.Single(patch!.Operations);
+        Assert.Equal("BUILD_AUTHORIZED", operation.InputType);
+        Assert.Contains("\"scope\":\"TARGET\"", operation.Value);
+        Assert.Contains("\"target\":\"src/App/App.csproj\"", operation.Value);
+    }
+
     [Theory]
     [InlineData("COMPLETED", WorkItemReportStatus.Completed)]
     [InlineData("BLOCKED", WorkItemReportStatus.Blocked)]
