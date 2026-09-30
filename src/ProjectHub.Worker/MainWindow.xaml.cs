@@ -342,6 +342,7 @@ public partial class MainWindow : Window
             ExportTaskTranscript();
             SaveWindowPosition();
             _activeTaskCts?.Cancel();
+            _codexRunner.Dispose();
             _flowTimer.Stop();
             _connectionTimer.Stop();
             _jobWatchdogTimer.Stop();
