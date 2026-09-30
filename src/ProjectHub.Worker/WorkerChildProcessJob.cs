@@ -148,7 +148,9 @@ internal sealed class WorkerChildProcessJob : IDisposable
         if (descendants.Count == 0)
             return 0;
 
-        var minimumStartUtc = notBefore.UtcDateTime.AddSeconds(-2);
+        var minimumStartUtc = notBefore <= DateTimeOffset.MinValue.AddSeconds(2)
+            ? DateTime.MinValue
+            : notBefore.UtcDateTime.AddSeconds(-2);
         var terminated = 0;
 
         // 깊은 후손부터 정리해 새 helper가 다시 파생될 가능성을 줄인다.
@@ -336,7 +338,7 @@ internal sealed class WorkerChildProcessJob : IDisposable
         public uint Flags;
 
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-        public string ExecutableFile;
+        public string? ExecutableFile;
     }
 
     [StructLayout(LayoutKind.Sequential)]
