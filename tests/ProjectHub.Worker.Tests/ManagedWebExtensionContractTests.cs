@@ -86,6 +86,10 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("HQ_KEY_CLAIM_RECOVERED", StringComparison.Ordinal));
         Assert.True(source.Contains("HQ_KEY_BASELINE_FALLBACK", StringComparison.Ordinal));
         Assert.True(source.Contains("directFallbackLength", StringComparison.Ordinal));
+        Assert.True(source.Contains("correlationBodyTextFallback", StringComparison.Ordinal));
+        Assert.True(source.Contains("keyBodyFallback", StringComparison.Ordinal));
+        Assert.True(source.Contains("role·turn selector와 응답 root 없이 현재 KEY와 ACTION이 포함된 body fallback", StringComparison.Ordinal));
+        Assert.True(source.Contains("keyBodyFallback=", StringComparison.Ordinal));
         Assert.True(source.Contains("if(activeCorrelationKey)observeCorrelationKeyWatch();", StringComparison.Ordinal));
         Assert.True(source.Contains("enterWaitResponse('기존 turn baseline 없이 현재 HQ KEY를 독립 감시합니다.')", StringComparison.Ordinal));
         Assert.True(source.Contains("activeCorrelationKey=null;activeResource=null", StringComparison.Ordinal));
@@ -105,6 +109,30 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(functionIndex >= 0);
         Assert.True(keyIndex > functionIndex);
         Assert.True(userTurnIndex > keyIndex);
+
+        var fallbackFunctionIndex = source.IndexOf(
+            "function correlationBodyTextFallback()",
+            StringComparison.Ordinal);
+        var actionGuardIndex = source.IndexOf(
+            "[ACTION=(?:CONTINUE|PAUSE|END)",
+            fallbackFunctionIndex,
+            StringComparison.Ordinal);
+        var promptGuardIndex = source.IndexOf(
+            "normalizeText(body).includes(probe)",
+            fallbackFunctionIndex,
+            StringComparison.Ordinal);
+        var currentTextIndex = source.IndexOf(
+            "function currentCorrelatedResponseText()",
+            StringComparison.Ordinal);
+        var currentFallbackIndex = source.IndexOf(
+            "return correlationBodyTextFallback();",
+            currentTextIndex,
+            StringComparison.Ordinal);
+
+        Assert.True(fallbackFunctionIndex >= 0);
+        Assert.True(actionGuardIndex > fallbackFunctionIndex);
+        Assert.True(promptGuardIndex > actionGuardIndex);
+        Assert.True(currentFallbackIndex > currentTextIndex);
     }
 
     [Fact]
