@@ -113,12 +113,15 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(keyIndex > functionIndex);
         Assert.True(userTurnIndex > keyIndex);
 
+        var correlatedSliceIndex = source.IndexOf(
+            "function correlatedResponseSlice(value)",
+            StringComparison.Ordinal);
         var fallbackFunctionIndex = source.IndexOf(
             "function correlationBodyTextFallback()",
             StringComparison.Ordinal);
         var actionGuardIndex = source.IndexOf(
             "[ACTION=(?:CONTINUE|PAUSE|END)",
-            fallbackFunctionIndex,
+            correlatedSliceIndex,
             StringComparison.Ordinal);
         var promptGuardIndex = source.IndexOf(
             "normalizeText(body).includes(probe)",
@@ -139,9 +142,11 @@ public sealed class ManagedWebExtensionContractTests
             "const keyBodyFallback=activeCorrelationKey?correlationBodyTextFallback():'';",
             StringComparison.Ordinal);
 
-        Assert.True(fallbackFunctionIndex >= 0);
-        Assert.True(actionGuardIndex > fallbackFunctionIndex);
-        Assert.True(promptGuardIndex > actionGuardIndex);
+        Assert.True(correlatedSliceIndex >= 0);
+        Assert.True(fallbackFunctionIndex > correlatedSliceIndex);
+        Assert.True(actionGuardIndex > correlatedSliceIndex);
+        Assert.True(actionGuardIndex < fallbackFunctionIndex);
+        Assert.True(promptGuardIndex > fallbackFunctionIndex);
         Assert.True(bodyCandidateIndex > currentTextIndex);
         Assert.True(longestCandidateIndex > bodyCandidateIndex);
         Assert.True(unconditionalBodyFallbackIndex > currentTextIndex);
@@ -198,6 +203,8 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("ASSISTANT_CONTAINER_RECONCILED", StringComparison.Ordinal));
         Assert.True(source.Contains("ASSISTANT_TURN_DETECTED", StringComparison.Ordinal));
         Assert.True(source.Contains("ASSISTANT_TEXT_EXTRACTED", StringComparison.Ordinal));
+        Assert.True(source.Contains("ASSISTANT_TEXT_EXPANDED", StringComparison.Ordinal));
+        Assert.True(source.Contains("lastResponseTextLength", StringComparison.Ordinal));
         Assert.True(source.Contains("readyResponseFileCandidates", StringComparison.Ordinal));
         Assert.True(source.Contains("WEB_FILE_DETECTED", StringComparison.Ordinal));
         Assert.True(source.Contains("WEB_FILE_DOWNLOAD_VERIFIED", StringComparison.Ordinal));
