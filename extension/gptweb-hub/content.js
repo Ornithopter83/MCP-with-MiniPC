@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.4.2';
-  const EXTENSION_BUILD = '2026-09-30.5';
+  const EXTENSION_BUILD = '2026-09-30.6';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -625,6 +625,7 @@ function extensionForMime(mime=''){const type=String(mime).split(';')[0].trim().
 async function fetchResourceBytes(src){try{const response=await fetchWithTimeout(src,{credentials:'include'},LONG_OPERATION_TIMEOUT);if(!response.ok)throw new Error('RESOURCE_DOWNLOAD_HTTP_'+response.status);const blob=await response.blob();if(!blob.size)throw new Error('RESOURCE_FILE_EMPTY');const buffer=await blob.arrayBuffer();return {base64:bytesToBase64(buffer),sha256:await sha256Hex(buffer),mimeType:blob.type||response.headers.get('content-type')||'application/octet-stream',contentDisposition:response.headers.get('content-disposition')||''};}catch(error){if(!/^https?:/i.test(src)||!globalThis.chrome?.runtime?.sendMessage)throw error;return await new Promise((resolve,reject)=>chrome.runtime.sendMessage({type:'fetch-resource-file',url:src},response=>{if(chrome.runtime.lastError){reject(new Error(chrome.runtime.lastError.message));return;}if(!response?.ok){reject(new Error(response?.error||String(error.message||error)));return;}resolve({base64:response.base64,sha256:response.sha256||'',mimeType:response.mimeType||'application/octet-stream',contentDisposition:response.contentDisposition||''});}));}}
 async function fetchResourcePayload(item,index,total,mode='RESOURCE'){const webFile=mode==='WEB_FILE';const startStage=webFile?'WEB_FILE_DOWNLOAD_START':'DOWNLOAD_START',progressStage=webFile?'WEB_FILE_DOWNLOAD_PROGRESS':'DOWNLOAD_PROGRESS',verifiedStage=webFile?'WEB_FILE_DOWNLOAD_VERIFIED':'DOWNLOAD_VERIFIED';reportProgress(index===0?startStage:progressStage,(index+1)+'/'+total+' '+(webFile?'Web 응답 파일':'리소스 파일')+' 다운로드 중');const payload=await fetchResourceBytes(item.url);let fileName=item.fileName||contentDispositionFileName(payload.contentDisposition);if(!fileName){const prefix=item.kind==='image'?'image':(webFile?'web-result':'resource');fileName=prefix+'-'+String(index+1).padStart(2,'0')+extensionForMime(payload.mimeType);}reportProgress(verifiedStage,(index+1)+'/'+total+' 다운로드 검증 완료 · '+fileName+' · sha256='+payload.sha256);return {base64:payload.base64,mimeType:payload.mimeType,fileName,sha256:payload.sha256};}
 async function resourcePayloads(){const candidates=readyResourceCandidates();if(!candidates.length)throw new Error('RESOURCE_NOT_FOUND');const files=[];for(let i=0;i<candidates.length;i++)files.push(await fetchResourcePayload(candidates[i],i,candidates.length,'RESOURCE'));return files;}
+async function resourcePayloadsWithRetry(maxAttempts=3){let lastError=null;for(let attempt=0;attempt<maxAttempts;attempt++){try{return await resourcePayloads();}catch(error){lastError=error;if(attempt>=maxAttempts-1)break;reportProgress('RESOURCE_CAPTURE_RETRY','이미 생성된 리소스 candidate capture 재시도 '+(attempt+2)+'/'+maxAttempts+' · '+String(error.message||error),attempt+1);await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));}}throw lastError||new Error('RESOURCE_CAPTURE_FAILED');}
 async function webResultPayloads(){const candidates=readyResponseFileCandidates();const files=[];for(let i=0;i<candidates.length;i++)files.push(await fetchResourcePayload(candidates[i],i,candidates.length,'WEB_FILE'));return files;}
 
 function clearResponseTimers(){clearTimeout(stableTimer);stableTimer=0;stableSnapshot='';clearTimeout(responseDeadlineTimer);responseDeadlineTimer=0;clearTimeout(postStreamRecoveryTimer);postStreamRecoveryTimer=0;}
@@ -791,7 +792,7 @@ function observeResponse(){
 
     if(activeResource){
       try{
-        body.resultFiles=await resourcePayloads();
+        body.resultFiles=await resourcePayloadsWithRetry();
         body.resultType='RESOURCE_FILES';
       }catch(error){
         const message=String(error.message||error);
