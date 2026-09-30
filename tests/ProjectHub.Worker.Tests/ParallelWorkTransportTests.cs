@@ -13,7 +13,7 @@ public sealed class ParallelWorkTransportTests
         Assert.Contains("workItemKind가 INTEGRATION", footer);
         Assert.Contains("resultRef", footer);
         Assert.Contains("의미적 병합·충돌 해결", footer);
-        Assert.Contains("Worker에게 의미적 충돌 해결을 넘기지 않는다", footer);
+        Assert.Contains("일반 파일을 기준으로 의미적 병합·충돌 해결과 전체 검증을 수행한다", footer);
     }
 
     [Fact]
