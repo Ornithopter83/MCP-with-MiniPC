@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.4.2';
-  const EXTENSION_BUILD = '2026-09-30.4';
+  const EXTENSION_BUILD = '2026-09-30.5';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -662,9 +662,20 @@ function schedulePostStreamRecovery(){
     const files=readyResponseFileCandidates();
     const responseRoot=activeCorrelationKey?correlationResponseRoot():latestAssistantElement();
     const bodyFallback=activeCorrelationKey&&!responseRoot?correlationBodyTextFallback():'';
-    if(hasMeaningfulResponseText(responseText)||files.length||responseRoot||bodyFallback){
+    if(hasMeaningfulResponseText(responseText)||files.length||bodyFallback){
       reportProgress('POST_STREAM_RECOVERED','streaming 종료 뒤 응답 증거를 다시 확인했습니다.');
       observeResponse();
+      return;
+    }
+    const uncorrelatedAssistant=activeCorrelationKey&&assistantTurnEvidence();
+    if(uncorrelatedAssistant){
+      reportProgress('RESPONSE_KEY_MISSING','assistant 응답은 확인됐지만 현재 correlation KEY를 찾지 못했습니다.');
+      await failTask('WEB_RESPONSE_KEY_MISSING: assistant response exists without the current correlation key.','response_key_missing');
+      return;
+    }
+    if(responseRoot){
+      reportProgress('RESPONSE_BODY_MISSING_AFTER_STREAM_END','현재 KEY가 포함된 응답 root는 있으나 실제 응답 본문이 없습니다.');
+      await failTask('WEB_RESPONSE_BODY_MISSING_AFTER_STREAM_END: response root contains the key but no response body.','response_body_missing_after_stream_end');
       return;
     }
     reportProgress('RESPONSE_LOST_AFTER_STREAM_END','streaming은 종료됐지만 현재 요청의 응답 KEY/root/body를 확인하지 못했습니다.');
