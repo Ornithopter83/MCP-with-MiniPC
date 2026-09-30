@@ -1,4 +1,5 @@
 using System.IO;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -43,8 +44,15 @@ public enum CodexSandboxMode
 
 public sealed record CodexCliFile(string Path, string FileName, string MimeType, long Size);
 
-public sealed class CodexCliRunner
+public sealed class CodexCliRunner : IDisposable
 {
+    private readonly WorkerChildProcessJob _processJob = new("Codex CLI");
+    private readonly ConcurrentDictionary<int, Process> _activeProcesses = new();
+    private int _disposed;
+
+    internal IReadOnlyCollection<int> ActiveProcessIds
+        => _activeProcesses.Keys.OrderBy(value => value).ToArray();
+
     public string? FindExecutable()
     {
         var candidates = new List<string>();
@@ -60,6 +68,9 @@ public sealed class CodexCliRunner
 
     public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null, IReadOnlyList<string>? additionalWritableDirectories = null, bool ignoreProjectInstructions = false, IReadOnlyDictionary<string, string>? environmentVariables = null, bool disableComputerUse = false, bool includeAppBaseWritable = true)
     {
+        if (Volatile.Read(ref _disposed) != 0)
+            throw new ObjectDisposedException(nameof(CodexCliRunner));
+
         sessionId = NormalizeSessionId(sessionId);
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
             throw new DirectoryNotFoundException($"Codex 작업 폴더를 찾을 수 없습니다: {workingDirectory}");
@@ -73,6 +84,7 @@ public sealed class CodexCliRunner
         var sessionSnapshot = string.IsNullOrWhiteSpace(sessionId)
             ? CodexSessionLocator.CaptureSnapshot(workingDirectory, startedAt)
             : null;
+        int? activeProcessId = null;
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
@@ -138,7 +150,21 @@ public sealed class CodexCliRunner
         process.StartInfo.ArgumentList.Add("-");
         try
         {
-            if (!process.Start()) throw new InvalidOperationException("Codex CLI 프로세스를 시작하지 못했습니다.");
+            if (!process.Start())
+                throw new InvalidOperationException("Codex CLI 프로세스를 시작하지 못했습니다.");
+
+            try
+            {
+                _processJob.Assign(process);
+                activeProcessId = process.Id;
+                _activeProcesses[activeProcessId.Value] = process;
+            }
+            catch
+            {
+                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+                throw;
+            }
+
             var stdoutBuilder = new StringBuilder();
             var stdoutTask = Task.Run(async () =>
             {
@@ -201,9 +227,37 @@ public sealed class CodexCliRunner
         }
         finally
         {
+            if (activeProcessId is { } processId)
+                _activeProcesses.TryRemove(processId, out _);
             try { if (File.Exists(outputFile)) File.Delete(outputFile); } catch (IOException) { }
             try { if (outputSchemaFile is not null && File.Exists(outputSchemaFile)) File.Delete(outputSchemaFile); } catch (IOException) { }
         }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        // Job Object를 먼저 닫아 정상/비정상 종료 모두에서 Codex 하위 tree를 OS가 정리하게 한다.
+        _processJob.Dispose();
+
+        foreach (var process in _activeProcesses.Values.ToArray())
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(2000);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        _activeProcesses.Clear();
     }
 
     public static IReadOnlyList<string> ResolveAdditionalWritableDirectories(
