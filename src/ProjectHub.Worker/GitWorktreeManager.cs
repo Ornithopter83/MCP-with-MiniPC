@@ -1223,6 +1223,31 @@ public sealed class GitWorktreeManager
         return new(true, null, after.WorktreePath, after.Branch, after.HeadCommit, true);
     }
 
+
+    private static string[] BuildCheckpointAddArguments()
+        => new[]
+        {
+            "add",
+            "--all",
+            "--",
+            ".",
+            ":(exclude,glob)**/bin/**",
+            ":(exclude,glob)**/obj/**",
+            ":(exclude,glob)dist-temp/**",
+            ":(exclude,glob)**/dist-temp/**",
+            ":(exclude,glob).projecthub/**",
+            ":(exclude,glob).dotnet/**",
+            ":(exclude,glob).dotnet-cli/**",
+            ":(exclude,glob).nuget/**",
+            ":(exclude,glob)NuGet/**",
+            ":(exclude,glob)**/NuGet/**",
+            ":(exclude,glob)TestResults/**",
+            ":(exclude,glob)**/TestResults/**",
+            ":(exclude,glob)coverage/**",
+            ":(exclude,glob)verification-output/**",
+            ":(exclude,glob)visual-captures/**"
+        };
+
     public Task<GitCommitManifestResult> CreateCommitManifestAsync(
         string worktreePath,
         string workspace,
