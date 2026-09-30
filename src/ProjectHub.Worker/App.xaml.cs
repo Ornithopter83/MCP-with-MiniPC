@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Windows;
@@ -21,6 +22,9 @@ public partial class App : System.Windows.Application
     private DispatcherTimer? _activationTimer;
     private BridgeServer? _bridgeServer;
     private ManagedWebRuntimeManager? _managedWebRuntimeManager;
+    // 이 Job은 Worker 자신을 포함하므로 정상 종료 중 Dispose하지 않는다.
+    // OS가 Worker 프로세스를 종료하며 마지막 handle을 닫을 때 남은 모든 자식 tree가 정리된다.
+    private WorkerChildProcessJob? _rootProcessJob;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -41,6 +45,19 @@ public partial class App : System.Windows.Application
         }
 
         _activateEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateEventName);
+
+        try
+        {
+            _rootProcessJob = new WorkerChildProcessJob("ProjectHub Worker root");
+            _rootProcessJob.Assign(Process.GetCurrentProcess());
+        }
+        catch (Exception ex)
+        {
+            // Root Job이 불가능한 환경에서도 개별 child Job/kill-tree fallback은 계속 동작한다.
+            LogStartupFailure(ex);
+            _rootProcessJob = null;
+        }
+
         try
         {
             _bridgeServer = new BridgeServer();
