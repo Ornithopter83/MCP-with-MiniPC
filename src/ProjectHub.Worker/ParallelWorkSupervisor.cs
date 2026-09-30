@@ -506,8 +506,12 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         var message = exception?.Message ?? string.Empty;
         return message.Contains("WEB_RESPONSE_TIMEOUT", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("WEB_RESPONSE_LOST_AFTER_STREAM_END", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("WEB_RESPONSE_KEY_MISSING", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("WEB_RESPONSE_BODY_MISSING_AFTER_STREAM_END", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("response_timeout", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("response_lost_after_stream_end", StringComparison.OrdinalIgnoreCase);
+               message.Contains("response_lost_after_stream_end", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("response_key_missing", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("response_body_missing_after_stream_end", StringComparison.OrdinalIgnoreCase);
     }
 
     private string GetCurrentDefaultBaseRef()
