@@ -617,8 +617,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             checkpoint.CreatedCommit;
         string? commitManifestPath = item.CommitManifestPath;
 
-        if (reportStatus != WorkItemReportStatus.Failed &&
-            lifecycleHasCodeChange &&
+        if (lifecycleHasCodeChange &&
             !string.IsNullOrWhiteSpace(lifecycleResultRef))
         {
             var manifest = await _worktrees.CreateCommitManifestAsync(
@@ -788,7 +787,18 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 resultType: blockedResultType,
                 commitManifestPath: commitManifestPath),
             WorkItemReportStatus.Blocked => WorkItemExecutionResult.Blocked(
-                "HQ_BLOCKED",
+                BuildRequestContract.ContainsRequest(reportBody)
+                    ? "BUILD_REQUEST"
+                    : "HQ_BLOCKED",
+                reportBody,
+                lifecycleResultRef,
+                checkpoint.Branch ?? preparation.Branch,
+                checkpoint.WorktreePath,
+                sessionId,
+                resultType: blockedResultType,
+                commitManifestPath: commitManifestPath),
+            WorkItemReportStatus.Failed when lifecycleHasCodeChange => WorkItemExecutionResult.Blocked(
+                "RESULT_CHECKPOINT_BLOCKED",
                 reportBody,
                 lifecycleResultRef,
                 checkpoint.Branch ?? preparation.Branch,
