@@ -559,11 +559,19 @@ public sealed class WorkGraph
                     item.BlockCode,
                     "WORKTREE_CHECKPOINT_PENDING",
                     StringComparison.Ordinal);
+                var buildRequest = string.Equals(
+                    item.BlockCode,
+                    "BUILD_REQUEST",
+                    StringComparison.Ordinal);
+                var normalizedInputType = NullIfWhiteSpace(operation.InputType);
                 item.BlockCode = null;
                 item.BlockDetailCode = null;
                 item.ResumeInputType = checkpointRetry
                     ? "WORKTREE_CHECKPOINT_RETRY"
-                    : NullIfWhiteSpace(operation.InputType) ?? "HQ_RESUME";
+                    : buildRequest &&
+                      !string.Equals(normalizedInputType, "BUILD_DENIED", StringComparison.Ordinal)
+                        ? "BUILD_AUTHORIZED"
+                        : normalizedInputType ?? "HQ_RESUME";
                 item.ResumeBody = checkpointRetry ? null : NullIfWhiteSpace(operation.Value);
                 item.State = WorkItemState.Planned;
                 item.FinishedAtUtc = null;
