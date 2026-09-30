@@ -485,6 +485,41 @@ public partial class MainWindow
                     workItemId: progress.WorkItemId);
             });
 
+            executor.MechanicalProgress += progress =>
+            {
+                ProjectWorkspacePersistence.AppendEvent(
+                    workingDirectory,
+                    jobId,
+                    DateTimeOffset.UtcNow,
+                    "HQ MECHANICAL",
+                    $"workItemId={progress.WorkItemId} · stage={progress.Stage} · {progress.Message}",
+                    progress.Active ? "RUNNING" : "COMPLETED",
+                    workItemId: progress.WorkItemId);
+
+                RunOnUi(() =>
+                {
+                    _lastActivityAt = DateTimeOffset.UtcNow;
+                    TaskDirection.Text = "설계·관제 AI";
+                    TaskTitle.Text = progress.Active
+                        ? $"HQ Worker {progress.Stage} 실행 중"
+                        : $"HQ Worker {progress.Stage} 완료";
+                    AddRoleProgressHistory(
+                        WorkerRoleState.Hq,
+                        progress.Message,
+                        coordinator.Provider,
+                        workNumber: progress.WorkNumber,
+                        referenceId: progress.WorkItemId,
+                        workItemId: progress.WorkItemId);
+                    SetFlowState(
+                        codexActive: progress.Active,
+                        workerActive: !progress.Active,
+                        webActive: false,
+                        explicitStage: progress.Active
+                            ? TaskStage.Coordinator
+                            : TaskStage.Implementer);
+                });
+            };
+
             executor.ContextPrepared += context =>
             {
                 var activeSupervisor = supervisor;
