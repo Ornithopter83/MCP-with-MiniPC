@@ -96,12 +96,14 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _activationTimer?.Stop();
+        WriteShutdownProcessAudit("before-dispose");
         try
         {
             _managedWebRuntimeManager?.Dispose();
             _managedWebRuntimeManager = null;
             _bridgeServer?.Dispose();
             _activateEvent?.Dispose();
+            WriteShutdownProcessAudit("after-dispose");
         }
         catch (Exception ex)
         {
@@ -113,6 +115,23 @@ public partial class App : System.Windows.Application
             _instanceMutex?.Dispose();
         }
         base.OnExit(e);
+    }
+
+    private void WriteShutdownProcessAudit(string stage)
+    {
+        try
+        {
+            Directory.CreateDirectory(WorkerPaths.Logs);
+            var ids = _rootProcessJob?.SnapshotProcessIds() ?? Array.Empty<int>();
+            var line =
+                $"{DateTimeOffset.Now:O}\tstage={stage}\tworkerPid={Environment.ProcessId}\tjobPids=[{string.Join(",", ids.OrderBy(value => value))}]";
+            File.AppendAllText(
+                Path.Combine(WorkerPaths.Logs, "shutdown-process-audit.log"),
+                line + Environment.NewLine);
+        }
+        catch
+        {
+        }
     }
 
     private static void SignalExistingInstance()
