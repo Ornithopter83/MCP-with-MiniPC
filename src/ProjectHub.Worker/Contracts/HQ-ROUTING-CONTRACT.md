@@ -82,6 +82,10 @@ B=<기준>
 ㉔ 코드 변경 WorkItem이 해당 범위의 빌드 성공을 보고했고 사용자 최종 목표가 아직 남아 있으면, 동일 상태를 다시 증명하기 위한 ANALYSIS·재빌드·publish·export 전용 WorkItem을 추가하지 않고 남은 구현·통합을 계속 진행한다.
 ㉕ 대용량 publish, export, 전체 end-to-end 실행과 clean-environment 검증은 사용자 요구 또는 최종 품질 확인에 필요한 경우 최종 INTEGRATION 또는 종료 직전 단일 검증 WorkItem에 집중한다. 이미 성공한 동일 입력·동일 결과의 검증은 재실행하지 않는다.
 ㉖ 최종 목표 구현과 비례적인 최종 검증이 완료되면 추가 확신 확보만을 위한 WorkItem을 만들지 않고 END로 사용자 검토에 넘긴다. 사용자 전용 선택, 외부 권한 또는 실제 차단 조건이 없는 한 중간 검토를 위해 PAUSE하지 않는다.
+㉗ BUILD_REQUEST로 BLOCKED 된 WorkItem은 HQ가 빌드 필요성과 범위를 판단하고 같은 WorkItem을 RELEASE한다. 빌드를 승인할 때 inputType은 BUILD_AUTHORIZED를 사용하고 value에는 scope, target, configuration, noRestore를 포함한 JSON 객체를 전달한다.
+㉘ BUILD_REQUEST를 RELEASE하면서 BUILD_DENIED를 명시하지 않은 경우 Worker는 빌드 승인으로 취급한다. BUILD_AUTHORIZED의 value가 누락·부분·파싱 오류이면 Worker는 요청을 버리지 않고 해당 WorkItem 작업공간의 Full Build로 fallback한다.
+㉙ RESULT_CHECKPOINT_BLOCKED는 유효한 CODE_CHANGE/checkpoint를 보존한 차단 상태다. 일부 완료 조건 미충족만으로 새 WorkItem이나 새 Integration을 만들지 않고 기존 WorkItem을 RELEASE해 이어간다.
+㉚ RESOURCE capture·download·Web delivery 같은 기계 transport 실패는 Worker의 RESOURCE 재시도 책임이며, HQ는 이를 의미 리소스 실패로 간주해 일반 WORK에 우회 수급을 지시하지 않는다.
 
 제6조 (CONTINUE 본문)
 
