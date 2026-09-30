@@ -92,3 +92,12 @@
 ⑥ 과거 상태 보존은 Git 이력에 맡긴다.
 ⑦ CurrentWork는 정책 원본, 런타임 상태 원본 또는 자동 문맥 복구 원본으로 사용하지 않는다.
 ⑧ 사용자가 명시적으로 현재 상태 확인을 요청하지 않는 한 CurrentWork를 AI 입력에 자동 주입하지 않는다.
+---
+
+제9조 (실행환경과 기계 복구 경계)
+
+① 설치되어 있는 SDK, reference pack, targeting 도구와 build cache의 접근·격리는 Worker의 기계 실행 책임으로 두고 개별 WORK가 같은 권한·경로 문제를 반복 해결하게 하지 않는다.
+② `bin`, `obj`, 임시 배포 staging, restore cache와 같이 재생성 가능한 build artifact는 제품 CODE_CHANGE로 취급하지 않으며 Worker가 Git 경계에서 기계적으로 제외한다.
+③ Web transport의 응답 유실·correlation 실패는 의미 작업 실패와 구분하고, 복구 가능한 경우 기존 WorkGraph와 현재 관제 입력을 보존한 채 전송 계층에서 재시도한다.
+④ 관리자 권한 상승, 신규 SDK 설치, registry 수정, 시스템 환경변수 영구 변경, 인증서 설치와 target framework 의미 변경은 build 환경 자동 승인 범위에 포함하지 않는다.
+
