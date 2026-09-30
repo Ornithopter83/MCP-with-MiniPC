@@ -203,6 +203,7 @@ public sealed class CodexCliRunner : IDisposable
             }
             catch
             {
+                processJob.Dispose();
                 await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                 throw;
             }
