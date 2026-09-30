@@ -163,10 +163,8 @@ public partial class MainWindow : Window
     private bool _messageExpanded;
     private bool _startupConfigurationInitialized;
     private Task? _startupConfigurationTask;
-    private UIElement? _settingsPopupDragSurface;
-    private System.Windows.Point _settingsPopupDragStartScreen;
-    private double _settingsPopupDragStartHorizontalOffset;
-    private double _settingsPopupDragStartVerticalOffset;
+    private bool IsSettingsOverlayOpen
+        => SettingsOverlayHost.Visibility == Visibility.Visible;
     private string _serverBaseUrl = WorkerTargetConfiguration.DefaultServerBaseUrl;
     private string _serverBaseUrlSource = "DEFAULT";
     private WorkerTargetSettings _targetSettings = new(null, null, null, null);
@@ -328,18 +326,12 @@ public partial class MainWindow : Window
     }
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (StatusPopup.IsOpen)
-        {
-            e.Cancel = true;
-            SetSettingsPopupOpen(false);
-            return;
-        }
-
         if (!_allowClose && (((App)System.Windows.Application.Current).ShutdownRequested || Dispatcher.HasShutdownStarted))
             _allowClose = true;
 
         if (_allowClose)
         {
+            SetSettingsPopupOpen(false);
             if (_activeTaskCts is not null || _awaitingWebResult)
                 AddTaskMessage("SYSTEM", "Worker 종료 요청으로 실행 중 작업을 중단합니다.", status: "CANCELED");
             ExportTaskTranscript();
@@ -347,6 +339,7 @@ public partial class MainWindow : Window
             _activeTaskCts?.Cancel();
             _flowTimer.Stop();
             _connectionTimer.Stop();
+            _jobWatchdogTimer.Stop();
             if (_managedWebRuntimeManager is not null)
                 _managedWebRuntimeManager.StatusChanged -= OnManagedWebRuntimeStatusChanged;
             _trayIcon.Visible = false;
@@ -356,12 +349,22 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (IsSettingsOverlayOpen)
+        {
+            e.Cancel = true;
+            SetSettingsPopupOpen(false);
+            return;
+        }
+
         e.Cancel = true;
         Hide();
     }
 
     private void ShowFromTray()
     {
+        if (_shutdownCleanupInProgress || ((App)System.Windows.Application.Current).ShutdownRequested)
+            return;
+
         Show();
         WindowState = WindowState.Normal;
         Activate();
@@ -374,10 +377,7 @@ public partial class MainWindow : Window
 
         _shutdownCleanupInProgress = true;
         SaveWindowPosition();
-
-        var cleanupWorkspace = _activeWorkingDirectory;
-        if (string.IsNullOrWhiteSpace(cleanupWorkspace))
-            cleanupWorkspace = ResolveCoordinatorTargetWorkingDirectory();
+        SetSettingsPopupOpen(false);
 
         _userCanceledTask = true;
         _activeTaskCts?.Cancel();
@@ -388,79 +388,18 @@ public partial class MainWindow : Window
             _userCanceledBridgeTaskIds.Add(canceledTaskId);
         }
 
-        var shutdownWarnings = new List<string>();
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(15);
+        // 종료는 파일 cleanup 완료에 종속되지 않는다. 실행 중 호출에 취소를 전달하고
+        // 짧은 유예 뒤 앱 종료로 진행한다. 남은 runtime 파일은 다음 시작/명시적 정리에서 다룬다.
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(6);
         while (_activeTaskCts is not null && DateTimeOffset.UtcNow < deadline)
             await Task.Delay(100);
 
-        var taskStillStopping = _activeTaskCts is not null;
-        if (taskStillStopping)
+        if (_activeTaskCts is not null)
         {
-            shutdownWarnings.Add(
-                "실행 중 작업이 제한시간 안에 완전히 종료되지 않아 ProjectHub 폴더 정리를 프로세스 종료 뒤 helper에 넘깁니다.");
-        }
-
-        var needsDeferredProjectCleanup = taskStillStopping;
-        if (!taskStillStopping &&
-            !string.IsNullOrWhiteSpace(cleanupWorkspace) &&
-            Directory.Exists(cleanupWorkspace))
-        {
-            var reset = await new GitWorktreeManager()
-                .ResetRepositoryRuntimeAsync(
-                    cleanupWorkspace,
-                    CancellationToken.None);
-            if (!reset.Success)
-            {
-                needsDeferredProjectCleanup = true;
-                shutdownWarnings.Add(
-                    "ProjectHub runtime 즉시 정리에 실패했습니다: " +
-                    (reset.ErrorDetail ?? reset.ErrorCode ?? "RUNTIME_RESET_FAILED"));
-            }
-
-            if (!ProjectHubExitCleanup.TryDeleteWorkspaceProjectHubRoot(
-                    cleanupWorkspace,
-                    out var projectCleanupError))
-            {
-                needsDeferredProjectCleanup = true;
-                shutdownWarnings.Add(
-                    "ProjectHub 폴더 즉시 삭제에 실패했습니다: " +
-                    (projectCleanupError ?? "PROJECTHUB_ROOT_DELETE_FAILED"));
-            }
-        }
-
-        if (!WorkerPaths.TryResetEphemeralDirectories(out var ephemeralResetError))
-        {
-            shutdownWarnings.Add(
-                "Worker 전역 임시 폴더 정리에 실패했습니다: " +
-                (ephemeralResetError ?? "EPHEMERAL_RESET_FAILED"));
-        }
-
-        if (needsDeferredProjectCleanup &&
-            !string.IsNullOrWhiteSpace(cleanupWorkspace) &&
-            Directory.Exists(cleanupWorkspace))
-        {
-            if (!ProjectHubExitCleanup.TryScheduleAfterExit(
-                    cleanupWorkspace,
-                    Environment.ProcessId,
-                    out var scheduleError))
-            {
-                shutdownWarnings.Add(
-                    "종료 후 ProjectHub 정리 helper를 시작하지 못했습니다: " +
-                    (scheduleError ?? "PROJECTHUB_EXIT_CLEANUP_HELPER_FAILED"));
-            }
-        }
-
-        if (shutdownWarnings.Count > 0)
-        {
-            DashboardPreflightText.Text = string.Join(
-                Environment.NewLine,
-                shutdownWarnings);
-            DashboardPreflightText.Foreground =
-                System.Windows.Media.Brushes.DarkGoldenrod;
             AddTaskMessage(
-                "SHUTDOWN CLEANUP",
-                DashboardPreflightText.Text,
-                status: "DEFERRED",
+                "SHUTDOWN",
+                "실행 중 작업에 취소를 전달했지만 유예 시간 안에 완료되지 않았습니다. cleanup을 기다리지 않고 Worker 종료를 계속합니다.",
+                status: "CANCELED",
                 includeHistory: false);
         }
 
@@ -474,12 +413,12 @@ public partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
-        if (!StatusPopup.IsOpen)
+        if (!IsSettingsOverlayOpen)
         {
             await InitializeStartupConfigurationAsync();
             ApplyRoleSettingsToControls();
         }
-        SetSettingsPopupOpen(!StatusPopup.IsOpen);
+        SetSettingsPopupOpen(!IsSettingsOverlayOpen);
     }
 
     private void CloseSettings_Click(object sender, RoutedEventArgs e)
@@ -490,23 +429,23 @@ public partial class MainWindow : Window
 
     private void SetSettingsPopupOpen(bool open)
     {
-        SettingsDimOverlay.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        StatusPopup.IsOpen = open;
+        SettingsOverlayHost.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         if (open)
         {
-            var workArea = SystemParameters.WorkArea;
-            SettingsPopupBorder.Height = Math.Clamp(workArea.Height - 90, 560, 850);
+            var availableWidth = Math.Max(320, ActualWidth - 96);
+            var availableHeight = Math.Max(320, ActualHeight - 96);
+            SettingsPopupBorder.Width = Math.Min(1320, availableWidth);
+            SettingsPopupBorder.Height = Math.Min(820, availableHeight);
             SettingsPopupBorder.MaxHeight = SettingsPopupBorder.Height;
-            SettingsPopupBorder.Width = Math.Clamp(workArea.Width - 40, 1040, 1400);
             UpdateWebRoleBindingStatusPresentation();
             Dispatcher.BeginInvoke(() =>
             {
-                if (!StatusPopup.IsOpen) return;
+                if (!IsSettingsOverlayOpen || _shutdownCleanupInProgress) return;
                 CoordinatorTargetCombo.Focus();
                 Keyboard.Focus(CoordinatorTargetCombo);
             }, DispatcherPriority.Input);
         }
-        else if (IsVisible)
+        else if (IsVisible && !_shutdownCleanupInProgress)
         {
             Dispatcher.BeginInvoke(() => SettingsButton.Focus(), DispatcherPriority.Input);
         }
@@ -514,43 +453,13 @@ public partial class MainWindow : Window
 
     private void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (!StatusPopup.IsOpen) return;
-        e.Handled = true;
-    }
+        if (!IsSettingsOverlayOpen || e.Key != Key.Escape)
+            return;
 
-    private void SettingsPopup_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if (e.Key != Key.Escape) return;
         e.Handled = true;
         SetSettingsPopupOpen(false);
     }
 
-    private void SettingsPopupHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (!StatusPopup.IsOpen || sender is not UIElement surface) return;
-        _settingsPopupDragSurface = surface;
-        _settingsPopupDragStartScreen = surface.PointToScreen(e.GetPosition(surface));
-        _settingsPopupDragStartHorizontalOffset = StatusPopup.HorizontalOffset;
-        _settingsPopupDragStartVerticalOffset = StatusPopup.VerticalOffset;
-        surface.CaptureMouse();
-        e.Handled = true;
-    }
-
-    private void SettingsPopupHeader_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        if (_settingsPopupDragSurface is not { IsMouseCaptured: true } surface || e.LeftButton != MouseButtonState.Pressed) return;
-        var currentScreenPoint = surface.PointToScreen(e.GetPosition(surface));
-        StatusPopup.HorizontalOffset = _settingsPopupDragStartHorizontalOffset + currentScreenPoint.X - _settingsPopupDragStartScreen.X;
-        StatusPopup.VerticalOffset = _settingsPopupDragStartVerticalOffset + currentScreenPoint.Y - _settingsPopupDragStartScreen.Y;
-    }
-
-    private void SettingsPopupHeader_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (_settingsPopupDragSurface is not { } surface) return;
-        surface.ReleaseMouseCapture();
-        _settingsPopupDragSurface = null;
-        e.Handled = true;
-    }
     private void CommandInput_GotFocus(object sender, RoutedEventArgs e)
     {
         SetInputFocusState(CommandInput, Placeholder, focused: true);
@@ -1902,7 +1811,7 @@ public partial class MainWindow : Window
     private void BrowseWorkingDirectory_Click(object sender, RoutedEventArgs e)
     {
         if (WorkingDirectoryInput.IsReadOnly) return;
-        var settingsWasOpen = StatusPopup.IsOpen;
+        var settingsWasOpen = IsSettingsOverlayOpen;
         SetSettingsPopupOpen(false);
         try
         {
