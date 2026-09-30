@@ -696,6 +696,50 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task MalformedJsonBypassesStructuredHelperAndReturnsCorrectionToHq()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        executor.SetImmediate("W10");
+        var malformed =
+            "[ACTION=CONTINUE]\n[GOTO : WORK]\nWORK_GRAPH_PATCH:\n" +
+            "{\"expectedRevision\":0,\"operations\":[";
+        var hq = new QueueHqRunner(
+            malformed,
+            ContinuePatch(0, Add("W10", "JSON 재작성 뒤 실행")),
+            End("완료"));
+        var helperCalls = 0;
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync,
+            processWorkGraphPayloadAsync: (payload, _) =>
+            {
+                helperCalls++;
+                return Task.FromResult(
+                    WorkerStructuredPayloadHelper.ProcessDeterministically<WorkGraphPatch>(
+                        payload,
+                        WorkGraphTransportContract.TryParse));
+            });
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "깨진 JSON이면 Helper 없이 HQ가 다시 작성하게 한다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Null(result.ErrorCode);
+        Assert.Equal(3, hq.Prompts.Count);
+        Assert.Equal(1, helperCalls);
+        Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[1]);
+        Assert.Contains("errorCode=WORK_GRAPH_PATCH_JSON_INVALID", hq.Prompts[1]);
+        Assert.Contains("Structured Helper를 호출하지 않았습니다", hq.Prompts[1]);
+        Assert.Contains("완성된 JSON 객체 하나", hq.Prompts[1]);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+    }
+
+    [Fact]
     public async Task SupervisorAlwaysPassesContinuePayloadThroughStructuredHelper()
     {
         var graph = new WorkGraph("job", 1);
