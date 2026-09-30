@@ -124,6 +124,9 @@ public static class WorkerPaths
     {
         ArgumentNullException.ThrowIfNull(runtime);
         var buildRoot = Path.Combine(workTempPath, "build");
+        var appData = Path.Combine(workTempPath, "appdata");
+        var localAppData = Path.Combine(workTempPath, "localappdata");
+        var nuGetConfigDirectory = Path.Combine(appData, "NuGet");
         foreach (var directory in new[]
         {
             runtime.NuGetPackages,
@@ -134,10 +137,21 @@ public static class WorkerPaths
             workTempPath,
             buildRoot,
             Path.Combine(buildRoot, "bin"),
-            Path.Combine(buildRoot, "obj")
+            Path.Combine(buildRoot, "obj"),
+            appData,
+            localAppData,
+            nuGetConfigDirectory
         })
         {
             Directory.CreateDirectory(directory);
+        }
+
+        var isolatedNuGetConfig = Path.Combine(nuGetConfigDirectory, "NuGet.Config");
+        if (!File.Exists(isolatedNuGetConfig))
+        {
+            File.WriteAllText(
+                isolatedNuGetConfig,
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?><configuration></configuration>");
         }
     }
 
@@ -147,6 +161,8 @@ public static class WorkerPaths
     {
         ArgumentNullException.ThrowIfNull(runtime);
         var buildRoot = Path.Combine(workTempPath, "build");
+        var appData = Path.Combine(workTempPath, "appdata");
+        var localAppData = Path.Combine(workTempPath, "localappdata");
         return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["PROJECTHUB_BUILD_ROOT"] = buildRoot,
@@ -159,6 +175,10 @@ public static class WorkerPaths
             ["NUGET_SCRATCH"] = runtime.NuGetScratch,
             ["DOTNET_CLI_HOME"] = runtime.DotNetHome,
             ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1",
+            ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
+            ["DOTNET_NOLOGO"] = "1",
+            ["APPDATA"] = appData,
+            ["LOCALAPPDATA"] = localAppData,
             ["TEMP"] = workTempPath,
             ["TMP"] = workTempPath
         };
