@@ -24,6 +24,11 @@ public partial class MainWindow
             ResourceManagedWebShowButton,
             ResourceManagedWebHideButton,
             "RESOURCE");
+
+        if (_managedWebTransitions.Contains(ManagedWebRole.Hq))
+            SetManagedWebTransitionButtons(ManagedWebRole.Hq, enabled: false);
+        if (_managedWebTransitions.Contains(ManagedWebRole.Resource))
+            SetManagedWebTransitionButtons(ManagedWebRole.Resource, enabled: false);
     }
 
     private static void ApplyManagedWebRuntimeStatus(
