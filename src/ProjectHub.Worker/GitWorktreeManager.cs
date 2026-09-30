@@ -1241,7 +1241,9 @@ public sealed class GitWorktreeManager
         if (status.ExitCode != 0)
             return true;
 
-        foreach (var rawLine in NormalizeNewlines(status.StandardOutput)
+        foreach (var rawLine in (status.StandardOutput ?? string.Empty)
+                     .Replace("\r\n", "\n")
+                     .Replace('\r', '\n')
                      .Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             if (rawLine.Length < 4)
