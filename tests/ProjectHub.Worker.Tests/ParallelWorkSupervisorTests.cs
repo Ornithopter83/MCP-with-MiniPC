@@ -181,6 +181,9 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(3, hq.Prompts.Count);
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[1]);
         Assert.Contains("WORK_GRAPH_EMPTY_CONTINUE", hq.Prompts[1]);
+        Assert.Contains("WORK_GRAPH_PATCH:", hq.Prompts[1]);
+        Assert.Contains("{\"expectedRevision\":0,\"operations\":[...]}", hq.Prompts[1]);
+        Assert.Contains("[ACTION=PAUSE]", hq.Prompts[1]);
         Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
     }
 
