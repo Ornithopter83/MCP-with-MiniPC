@@ -47,6 +47,40 @@ public sealed class WorkerPathsRuntimeTests
     }
 
     [Fact]
+    public void WorkBuildContextUsesInternalRuntimeAndSuppressesDotNetFirstRunSideEffects()
+    {
+        var parent = Path.Combine(
+            Path.GetTempPath(),
+            "ProjectHubWorkerPathsTests",
+            Guid.NewGuid().ToString("N"));
+        var workspace = Path.Combine(parent, "SampleProject");
+        Directory.CreateDirectory(workspace);
+
+        try
+        {
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(workspace);
+            var workTemp = WorkerPaths.BuildWorkTempPath(runtime, "job-alpha", "W10");
+            var buildRoot = WorkerPaths.BuildWorkBuildPath(runtime, "job-alpha", "W10");
+
+            WorkerPaths.EnsureWorkToolDirectories(runtime, workTemp, buildRoot);
+            var environment = WorkerPaths.BuildWorkToolEnvironment(runtime, workTemp, buildRoot);
+
+            Assert.StartsWith(runtime.Root, buildRoot, StringComparison.OrdinalIgnoreCase);
+            Assert.True(Directory.Exists(buildRoot));
+            Assert.Equal(buildRoot, environment["PROJECTHUB_BUILD_ROOT"]);
+            Assert.Equal("1", environment["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"]);
+            Assert.Equal("1", environment["DOTNET_CLI_TELEMETRY_OPTOUT"]);
+            Assert.Equal("1", environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"]);
+            Assert.Equal("1", environment["MSBUILDDISABLENODEREUSE"]);
+        }
+        finally
+        {
+            if (Directory.Exists(parent))
+                Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
     public void GlobalEphemeralDirectoriesAreRecreatedEmpty()
     {
         WorkerPaths.EnsureCreated();
