@@ -429,6 +429,35 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
+    public void BuildRequestReleaseWithoutParsableInputStillAuthorizesBuild()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("A", "구현", BaseRef: "base"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("A", sessionId: "session-a"));
+        Assert.True(graph.TryMarkBlocked(
+            "A",
+            "BUILD_REQUEST",
+            "BUILD_REQUEST\n빌드 필요",
+            "checkpoint-a",
+            resultType: WorkItemResultType.CodeChange));
+
+        var release = graph.ApplyPatch(new WorkGraphPatch(
+            graph.Revision,
+            new[] { WorkGraphPatchOperation.Release("A", null, "구조화되지 않은 BUILD 승인") }));
+
+        Assert.True(release.Success);
+        var item = graph.Find("A")!;
+        Assert.Equal(WorkItemState.Ready, item.State);
+        Assert.Equal("BUILD_AUTHORIZED", item.ResumeInputType);
+        Assert.Equal("구조화되지 않은 BUILD 승인", item.ResumeBody);
+        Assert.Equal("checkpoint-a", item.ResultRef);
+        Assert.Equal(WorkItemResultType.CodeChange, item.ResultType);
+    }
+
+    [Fact]
     public void HqHoldRemainsBlockedUntilExplicitRelease()
     {
         var graph = new WorkGraph("job");
