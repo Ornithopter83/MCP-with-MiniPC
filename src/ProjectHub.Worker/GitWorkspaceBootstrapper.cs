@@ -493,6 +493,22 @@ public sealed class GitWorkspaceBootstrapper
             ".verification-appdata/",
             ".projecthub-worktrees/",
             "",
+            "# 재생성 가능한 build / restore 산출물",
+            "**/bin/",
+            "**/obj/",
+            "dist-temp/",
+            "**/dist-temp/",
+            ".dotnet/",
+            ".dotnet-cli/",
+            ".nuget/",
+            "NuGet/",
+            "**/NuGet/",
+            "TestResults/",
+            "**/TestResults/",
+            "coverage/",
+            "verification-output/",
+            "visual-captures/",
+            "",
             "# OS 임시 파일",
             ".DS_Store",
             "Thumbs.db",
@@ -536,7 +552,7 @@ public sealed class GitWorkspaceBootstrapper
         if (Directory.EnumerateFiles(repositoryRoot, "*.sln", SearchOption.TopDirectoryOnly).Any() ||
             Directory.EnumerateFiles(repositoryRoot, "*.csproj", SearchOption.TopDirectoryOnly).Any())
         {
-            presets.Add(new(".NET", new[] { "bin/", "obj/" }));
+            presets.Add(new(".NET", new[] { "**/bin/", "**/obj/" }));
         }
 
         if (File.Exists(Path.Combine(repositoryRoot, "package.json")))
