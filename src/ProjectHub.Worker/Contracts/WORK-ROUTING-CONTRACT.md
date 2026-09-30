@@ -79,6 +79,9 @@
 ⑲ 현재 WorkItem 범위의 빌드가 성공했더라도 목표 구현이 남아 있으면 빌드 성공만으로 COMPLETED를 보고하지 않고 남은 구현을 계속한다. 반대로 빌드가 성공한 동일 상태를 다시 확인하기 위한 재빌드·publish·export·대용량 임시 검증 산출물을 반복 생성하지 않는다.
 ⑳ 전체 publish, export, clean-environment 실행과 장시간 end-to-end 검증은 현재 WorkItem 목표가 그 검증 자체이거나 최종 INTEGRATION/검증 단계인 경우에만 수행한다. 이미 제공된 성공 결과와 기계적 사실을 같은 입력으로 다시 생성하지 않는다.
 ㉑ 임시 검증 산출물은 필요한 최소 범위만 만들고 결과를 보고한 뒤 재사용 가치가 없는 대용량 staging·cache·export 복사본을 제품 변경으로 보존하지 않는다.
+㉒ WORK는 build 또는 restore를 자체 반복 실행하지 않는다. 현재 구현 상태의 빌드가 필요하면 HQ에 BLOCKED로 보고하고 본문에 BUILD_REQUEST 마커와 필요한 범위·대상·구성·restore 필요성·이유를 기록한다.
+㉓ BUILD_RESULT를 받으면 Worker가 수행한 기계 빌드 결과를 관측 사실로 사용해 같은 WorkItem을 계속한다. 동일 상태를 확인하기 위해 WORK가 빌드를 다시 직접 실행하지 않는다.
+㉔ BUILD_REQUEST는 의미 결과를 폐기하는 FAILED가 아니다. 이미 작성한 코드가 있으면 그대로 보존한 채 HQ 판단을 기다린다.
 
 제7조 (HQ 보고)
 
