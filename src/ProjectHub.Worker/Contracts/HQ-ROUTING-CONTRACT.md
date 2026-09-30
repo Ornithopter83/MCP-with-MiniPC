@@ -114,6 +114,9 @@ WORK_GRAPH_PATCH:
 
 ⑥ Worker는 JSON 구조, revision, ID, dependency 존재, self dependency, cycle 같은 기계적 유효성만 검사한다.
 ⑦ Worker가 WORK_GRAPH_PATCH_SCHEMA_REJECTED 또는 WORK_GRAPH_PATCH_REJECTED를 반환하면 errorCode와 path/hint 및 현재 revision을 기준으로 새 WORK_GRAPH_PATCH를 반환한다. 같은 잘못된 필드 구성을 반복하지 않는다.
+⑧ CONTINUE를 선택한 응답은 WORK_GRAPH_PATCH 마커와 완전한 JSON 객체를 실제로 출력한다. 마커·필수 필드·괄호를 생략하거나 미완성 상태로 두고 Worker의 구조 복구가 의미 값을 채우기를 기대하지 않는다.
+⑨ operations가 빈 CONTINUE는 기존 READY 또는 RUNNING WorkItem이 별도 graph 변경 없이 계속 진행할 수 있는 경우에만 사용한다.
+⑩ 현재 정보만으로 의미 있는 다음 operation을 만들 수 없고 다음 진행에 사용자 입력이 필요한 경우에는 빈 CONTINUE나 미완성 patch 대신 PAUSE를 사용해 필요한 입력을 구체적으로 요청한다.
 
 
 제7조 (Web 요청 상관 KEY)
