@@ -48,22 +48,35 @@ public static class GeneratedArtifactPolicy
             : StringComparer.Ordinal;
         var result = new HashSet<string>(comparer);
 
-        foreach (var name in RegenerableDirectoryNames)
+        foreach (var sourceDirectory in EnumerateSourceDirectories(root))
         {
-            var candidate = Path.Combine(root, name);
-            if (Directory.Exists(candidate))
-                result.Add(Path.GetFullPath(candidate));
-        }
+            foreach (var name in RegenerableDirectoryNames)
+            {
+                var candidate = Path.Combine(sourceDirectory, name);
+                if (Directory.Exists(candidate))
+                    result.Add(Path.GetFullPath(candidate));
+            }
 
-        foreach (var projectFile in EnumerateProjectFiles(root))
-        {
-            var projectDirectory = Path.GetDirectoryName(projectFile);
-            if (string.IsNullOrWhiteSpace(projectDirectory))
+            bool hasProject;
+            try
+            {
+                hasProject = Directory.EnumerateFiles(
+                    sourceDirectory,
+                    "*.csproj",
+                    SearchOption.TopDirectoryOnly).Any();
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                hasProject = false;
+            }
+
+            if (!hasProject)
                 continue;
 
             foreach (var name in new[] { "bin", "obj" })
             {
-                var candidate = Path.Combine(projectDirectory, name);
+                var candidate = Path.Combine(sourceDirectory, name);
                 if (Directory.Exists(candidate))
                     result.Add(Path.GetFullPath(candidate));
             }
@@ -134,7 +147,7 @@ public static class GeneratedArtifactPolicy
             .Replace('\\', '/')
             .Trim('/');
 
-    private static IEnumerable<string> EnumerateProjectFiles(string root)
+    private static IEnumerable<string> EnumerateSourceDirectories(string root)
     {
         var pending = new Stack<string>();
         pending.Push(root);
@@ -142,23 +155,7 @@ public static class GeneratedArtifactPolicy
         while (pending.Count > 0)
         {
             var current = pending.Pop();
-
-            IEnumerable<string> projectFiles;
-            try
-            {
-                projectFiles = Directory.EnumerateFiles(
-                    current,
-                    "*.csproj",
-                    SearchOption.TopDirectoryOnly).ToArray();
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
-            {
-                continue;
-            }
-
-            foreach (var projectFile in projectFiles)
-                yield return projectFile;
+            yield return current;
 
             IEnumerable<string> children;
             try
@@ -176,9 +173,18 @@ public static class GeneratedArtifactPolicy
 
             foreach (var child in children)
             {
-                var info = new DirectoryInfo(child);
-                if (info.Attributes.HasFlag(FileAttributes.ReparsePoint) ||
-                    TraversalSkipNames.Contains(info.Name))
+                DirectoryInfo info;
+                try
+                {
+                    info = new DirectoryInfo(child);
+                    if (info.Attributes.HasFlag(FileAttributes.ReparsePoint) ||
+                        TraversalSkipNames.Contains(info.Name))
+                    {
+                        continue;
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is IOException or UnauthorizedAccessException)
                 {
                     continue;
                 }
@@ -187,4 +193,5 @@ public static class GeneratedArtifactPolicy
             }
         }
     }
+
 }
