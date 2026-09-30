@@ -53,12 +53,18 @@ public sealed class ManagedWebRuntimeManagerTests
             WorkerPaths.ManagedWebBrowserRuntime,
             "chrome-win64",
             "chrome.exe");
+        var bundled = Path.Combine(
+            AppContext.BaseDirectory,
+            "BrowserRuntime",
+            "chrome-win64",
+            "chrome.exe");
         var arbitrary = Path.Combine(
             Path.GetTempPath(),
             "external-chrome",
             "chrome.exe");
 
         Assert.True(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(managed));
+        Assert.True(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(bundled));
         Assert.False(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(arbitrary));
         Assert.False(ManagedWebRuntimeManager.IsWorkerOwnedBrowserExecutable(null));
     }
@@ -87,6 +93,12 @@ public sealed class ManagedWebRuntimeManagerTests
             BindingFlags.Instance | BindingFlags.Public);
         Assert.NotNull(processJob);
         Assert.Equal(jobType, processJob!.PropertyType);
+
+        var processStartedAt = slotType.GetProperty(
+            "ProcessStartedAt",
+            BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(processStartedAt);
+        Assert.Equal(typeof(DateTimeOffset?), processStartedAt!.PropertyType);
 
         var sharedJobField = managerType.GetField(
             "_processJob",
