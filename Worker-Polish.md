@@ -170,8 +170,8 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ㉛ 새 Coordinator-first 실행은 target workspace가 지정되고 실제 디렉터리로 존재하는지 어떤 비동기 초기화, Git bootstrap, Web 전송 또는 AI 실행보다 먼저 동기적으로 확인하며, 조건을 만족하지 않으면 즉시 차단한다.
 ㉜ HQ가 PAUSE를 반환하면 Worker는 실행기와 sidecar가 정지한 뒤 재개에 필요하지 않은 clean worktree와 재생성 가능한 도구 cache를 정리하되 dirty 재개 상태와 RESOURCE staging은 보존한다.
 ㉝ HQ가 END를 반환하고 target finalization이 끝나면 Worker는 의미 결과의 성공 여부와 무관하게 ProjectHub runtime을 완전 초기화하고 legacy 외부 runtime도 함께 제거한다.
-㉞ 정상 Worker 종료는 실행 중 작업과 Web 요청을 취소하고 실행기 종료를 유한 시간 기다린 뒤 ProjectHub 정리를 시도한다. 파일 잠금이나 정리 실패는 애플리케이션 종료 자체를 보류하지 않으며, 즉시 삭제할 수 없는 ProjectHub 소유 경로는 현재 Worker 프로세스 종료 뒤 별도 기계 cleanup helper가 재시도한다. 정상 종료 경로는 `Environment.Exit`로 의미 흐름을 우회하지 않는다.
-㉟ Worker 프로세스 정상 종료 뒤 target workspace 아래 `.projecthub`는 persistent 기록을 포함해 남기지 않는 것을 원칙으로 한다. 현재 프로세스나 자식 프로세스의 짧은 파일 잠금 때문에 즉시 삭제되지 않으면 종료 후 cleanup helper가 유한 횟수 재시도하며, 다음 Worker 실행의 의미 문맥 원본으로 사용하지 않는다.
+㉞ 정상 Worker 종료는 실행 중 작업과 Web 요청에 취소를 전달하고 실행기 종료를 유한 시간 기다린 뒤 프로세스 종료를 계속한다. 파일 cleanup 완료를 애플리케이션 종료의 선행조건으로 삼지 않으며 종료 후 Worker EXE cleanup helper를 실행하지 않는다.
+㉟ target workspace의 재생성 가능한 ProjectHub runtime 잔여물은 다음 시작 또는 명시적 runtime 정리 단계에서 회수하며 다음 Worker 실행의 의미 문맥 원본으로 사용하지 않는다.
 ㊱ 코드 변경 WorkItem에서 해당 범위의 빌드가 성공하면 빌드 성공을 중간 구현 게이트로 사용하고, 사용자 최종 목표가 남아 있는 동안 동일 상태를 다시 입증하기 위한 ANALYSIS·재빌드·publish·export 전용 WorkItem을 추가하지 않는다. 기계적 BLOCKED나 실제 실패가 없으면 HQ는 남은 구현·통합을 계속 진행한다.
 ㊲ 대용량 publish, export, 전체 end-to-end 실행과 별도 clean-environment 검증은 사용자 요구 또는 최종 품질 확인에 필요한 경우 최종 INTEGRATION 또는 종료 직전 단일 검증 단계로 집중한다. 이미 성공한 동일 입력·동일 결과의 빌드와 검증 산출물은 다시 생성하지 않고 재사용 가능한 기계 사실을 우선한다.
 ㊳ 최종 목표 구현과 비례적인 최종 검증이 끝나면 HQ는 추가 확신 확보만을 위한 WorkItem을 만들지 않고 END로 사용자 검토 단계에 넘긴다. 사용자 전용 선택·외부 권한·실제 차단 조건이 없는 한 중간 검토를 위해 PAUSE하지 않는다.
@@ -312,3 +312,16 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑤ 설정 화면은 WPF Popup 같은 별도 top-level HWND가 아니라 메인 Window 내부 overlay로 구현한다.
 ⑥ 설정 화면이 열린 동안 메인 Window의 모든 key event를 일괄 소비하지 않는다. Escape 등 설정 UI가 직접 처리해야 하는 입력만 가로챈다.
 ⑦ 관리형 Web 표시·숨김 전환은 같은 role에 대해 중복 실행하지 않는다.
+
+---
+
+제27조 (HQ BUILD 요청과 기계 실행)
+
+① WORK의 BUILD_REQUEST는 HQ 판단 대기 BLOCKED로 보존한다.
+② HQ가 BUILD_REQUEST를 RELEASE하고 BUILD_DENIED를 명시하지 않으면 Worker는 BUILD_AUTHORIZED로 정규화한다.
+③ BUILD_AUTHORIZED의 구조화 value 파싱에 실패하거나 일부 필드만 유효하면 명령을 유실하지 않고 Full Build로 fallback한다.
+④ 실제 빌드는 Worker가 격리 BUILD_CONTEXT를 적용해 수행하고 BUILD_RESULT를 동일 WorkItem 세션에 반환한다.
+⑤ BUILD_CONTEXT는 DOTNET_CLI_HOME, APPDATA, LOCALAPPDATA, NuGet cache/package, temp와 build artifact 경로를 ProjectHub runtime으로 격리한다.
+⑥ HQ 승인 Worker BUILD 실행 중에는 HQ control-plane이 진행 중인 것으로 보고 Coordinator 애니메이션과 상태를 유지한다.
+⑦ RESOURCE capture·download·Web delivery transport 실패는 RESOURCE WorkItem을 즉시 실패시키지 않고 Worker 내부에서 유한 재시도한다.
+⑧ CODE_CHANGE/checkpoint가 존재하는 WORK 또는 INTEGRATION의 FAILED 보고는 해당 결과를 폐기하지 않고 RESULT_CHECKPOINT_BLOCKED로 보존해 HQ가 같은 WorkItem을 재개할 수 있게 한다.
