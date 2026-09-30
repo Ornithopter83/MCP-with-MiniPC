@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ProjectHub.Worker;
 
 namespace ProjectHub.Worker.Tests;
@@ -11,7 +12,7 @@ public sealed class ParallelWorkTransportTests
 
         Assert.Contains("workItemKind가 INTEGRATION", footer);
         Assert.Contains("resultRef", footer);
-        Assert.Contains("Git 병합", footer);
+        Assert.Contains("의미적 병합·충돌 해결", footer);
         Assert.Contains("Worker에게 의미적 충돌 해결을 넘기지 않는다", footer);
     }
 
@@ -310,8 +311,9 @@ public sealed class ParallelWorkTransportTests
         Assert.Null(error);
         var operation = Assert.Single(patch!.Operations);
         Assert.Equal("BUILD_AUTHORIZED", operation.InputType);
-        Assert.Contains("\"scope\":\"TARGET\"", operation.Value);
-        Assert.Contains("\"target\":\"src/App/App.csproj\"", operation.Value);
+        using var document = JsonDocument.Parse(operation.Value!);
+        Assert.Equal("TARGET", document.RootElement.GetProperty("scope").GetString());
+        Assert.Equal("src/App/App.csproj", document.RootElement.GetProperty("target").GetString());
     }
 
     [Theory]
