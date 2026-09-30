@@ -288,3 +288,15 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑤ 완료 commit을 주 저장소로 가져오고 target branch에 fast-forward하는 작업은 Worker만 수행한다.
 ⑥ clone root, Git metadata, source branch 또는 target branch 상태가 예상과 다르면 자동 force/reset으로 해결하지 않고 기계 오류로 HQ에 보고한다.
 ⑦ 정확한 clone 경로와 Git 명령행 옵션은 장기 정책으로 고정하지 않고 현재 구현과 테스트를 원본으로 사용한다.
+
+---
+
+제25조 (BUILD_CONTEXT와 재생성 산출물)
+
+① Worker는 WORK 실행 전에 저장소 내부 ProjectHub runtime에 SDK·restore cache·작업 임시 경로와 WorkItem별 build 출력 경로를 준비하고 해당 경로를 실행 환경과 writable root로 제공한다.
+② 설치되어 있는 SDK와 reference pack을 사용하는 데 필요한 읽기 접근, ProjectHub runtime 내부 cache 쓰기, WorkItem별 build 출력과 process-local 환경 설정은 별도 사용자 승인 없이 기계적으로 허용한다.
+③ 관리자 권한 상승, 신규 SDK·runtime 설치, Registry 수정, 시스템 환경변수 영구 변경, 인증서 설치와 TargetFramework 자체 변경은 자동 승인하지 않는다.
+④ `bin/`, `obj/`, `dist-temp/`, `.projecthub/`, restore/package cache, test·coverage·verification 임시 출력과 그 밖의 재생성 가능한 build artifact는 checkpoint staging과 Commit Manifest에서 제외한다.
+⑤ Worker는 target workspace의 `.gitignore`에 ProjectHub managed block을 유지하고 제4항의 대표 재생성 경로를 기본 제외 규칙으로 둔다. `.gitignore` 누락 여부와 무관하게 checkpoint와 Commit Manifest에도 별도 hard filter를 적용한다.
+⑥ Web HQ 실행에서 `WEB_RESPONSE_TIMEOUT`, stream 종료 뒤 응답 유실 등 복구 가능한 transport 실패가 발생하면 같은 WorkGraph revision과 같은 HQ 입력을 보존한 채 제한된 횟수만 기계 재시도한다.
+⑦ 제6항의 재시도는 새 의미 WorkItem을 생성하지 않으며, 재시도 한도를 초과한 경우에만 기존 기계 오류 경로로 종료한다.
