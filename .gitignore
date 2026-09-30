@@ -14,3 +14,21 @@ forUpload.z01
 src/ProjectHub.Server/log/
 
 .worker-dotnet-home*/
+
+# ProjectHub generated/runtime output
+.projecthub/
+.projecthub-worktrees/
+.verification-appdata/
+.verification-tmp/
+dist-temp/
+**/dist-temp/
+.dotnet/
+.dotnet-cli/
+.nuget/
+NuGet/
+**/NuGet/
+TestResults/
+**/TestResults/
+coverage/
+verification-output/
+visual-captures/
