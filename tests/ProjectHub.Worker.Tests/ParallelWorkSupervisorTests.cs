@@ -715,6 +715,24 @@ public sealed class ParallelWorkSupervisorTests
     private static string Pause(string body)
         => "[ACTION=PAUSE]\n" + body;
 
+    [Theory]
+    [InlineData("WEB_RESPONSE_TIMEOUT: response did not stabilize before deadline.")]
+    [InlineData("WEB_RESPONSE_LOST_AFTER_STREAM_END: streaming ended without a recoverable response.")]
+    [InlineData("response_timeout")]
+    [InlineData("response_lost_after_stream_end")]
+    public void RecoverableHqTransportFailure_IsRecognized(string message)
+    {
+        Assert.True(ParallelWorkSupervisor.IsRecoverableHqTransportFailure(
+            new InvalidOperationException(message)));
+    }
+
+    [Fact]
+    public void NonTransportHqFailure_IsNotRecoverable()
+    {
+        Assert.False(ParallelWorkSupervisor.IsRecoverableHqTransportFailure(
+            new InvalidOperationException("WORK_GRAPH_PATCH_INVALID")));
+    }
+
     private sealed class QueueHqRunner
     {
         private readonly Queue<string> _responses;
