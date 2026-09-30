@@ -7,18 +7,19 @@ namespace ProjectHub.Worker.Tests;
 public sealed class WorkerChildProcessJobTests
 {
     [Fact]
-    public void CodexRunnerOwnsKillOnCloseJob()
+    public void CodexRunnerTracksKillOnCloseJobPerActiveRun()
     {
         Assert.True(typeof(IDisposable).IsAssignableFrom(typeof(CodexCliRunner)));
 
         var field = typeof(CodexCliRunner).GetField(
-            "_processJob",
+            "_activeProcessJobs",
             BindingFlags.Instance | BindingFlags.NonPublic);
 
         Assert.NotNull(field);
+        Assert.True(field!.FieldType.IsGenericType);
         Assert.Equal(
-            "ProjectHub.Worker.WorkerChildProcessJob",
-            field!.FieldType.FullName);
+            typeof(WorkerChildProcessJob),
+            field.FieldType.GetGenericArguments()[1]);
     }
 
     [Fact]
