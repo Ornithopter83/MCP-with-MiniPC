@@ -362,10 +362,41 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     continue;
                 }
 
+                var structuredPatch = structuredResult.Value;
+                if (structuredPatch.Operations.Count == 0 &&
+                    (structuredResult.Repaired || !HasRunnableOrRunningWork(_graph.Snapshot())))
+                {
+                    consecutivePatchRejections++;
+                    var rejectionCode = structuredResult.Repaired
+                        ? "WORK_GRAPH_REPAIRED_EMPTY_PATCH"
+                        : "WORK_GRAPH_EMPTY_CONTINUE";
+                    var errorDetail = structuredResult.Repaired
+                        ? "구조 복구 결과 operations가 비어 있습니다. 불완전한 HQ 응답을 no-op patch로 간주하지 않습니다."
+                        : "READY 또는 RUNNING WorkItem이 없는 상태에서 operations가 빈 CONTINUE는 진행을 만들 수 없습니다.";
+                    var rejectionBody = FormatStructuredPatchRejected(
+                        rejectionCode,
+                        errorDetail,
+                        _graph.Snapshot(),
+                        consecutivePatchRejections);
+
+                    if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
+                    {
+                        return Failure(
+                            "WORK_GRAPH_PATCH_RETRY_LIMIT",
+                            rejectionBody +
+                            Environment.NewLine +
+                            $"같은 관제 흐름에서 WorkGraph patch가 {MaximumConsecutivePatchRejections}회 연속 기계적으로 거부되어 종료합니다.");
+                    }
+
+                    inboundType = "WORK_GRAPH_PATCH_SCHEMA_REJECTED";
+                    inboundBody = rejectionBody;
+                    continue;
+                }
+
                 turn = new(
                     envelope.Action,
                     envelope.Body,
-                    structuredResult.Value,
+                    structuredPatch,
                     envelope.RawMessage);
             }
             else
@@ -513,6 +544,10 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                message.Contains("response_key_missing", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("response_body_missing_after_stream_end", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool HasRunnableOrRunningWork(WorkGraphSnapshot snapshot)
+        => snapshot.Items.Any(item =>
+            item.State is WorkItemState.Ready or WorkItemState.Running);
 
     private string GetCurrentDefaultBaseRef()
     {
