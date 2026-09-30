@@ -280,18 +280,20 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
         RepositoryRuntimePaths runtimePaths;
         string workTempPath;
+        string workBuildPath;
         IReadOnlyDictionary<string, string> workEnvironment;
         IReadOnlyList<string> workWritableDirectories;
         try
         {
             runtimePaths = WorkerPaths.GetRepositoryRuntimePaths(preparation.RepositoryRoot);
             workTempPath = WorkerPaths.BuildWorkTempPath(runtimePaths, _jobId, item.Id);
-            WorkerPaths.EnsureWorkToolDirectories(runtimePaths, workTempPath);
+            workBuildPath = WorkerPaths.BuildWorkBuildPath(runtimePaths, _jobId, item.Id);
+            WorkerPaths.EnsureWorkToolDirectories(runtimePaths, workTempPath, workBuildPath);
 
             var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pair in GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment())
                 environment[pair.Key] = pair.Value;
-            foreach (var pair in WorkerPaths.BuildWorkToolEnvironment(runtimePaths, workTempPath))
+            foreach (var pair in WorkerPaths.BuildWorkToolEnvironment(runtimePaths, workTempPath, workBuildPath))
                 environment[pair.Key] = pair.Value;
             environment["PROJECTHUB_RESOURCE_TEMP"] = runtimePaths.TempRoot;
             environment["PROJECTHUB_WORK_TEMP"] = workTempPath;
@@ -301,8 +303,10 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             {
                 runtimePaths.NuGetRoot,
                 runtimePaths.DotNetHome,
-                workTempPath
+                workTempPath,
+                workBuildPath
             };
+            writableDirectories.AddRange(WorkerPaths.GetApprovedBuildToolDirectories());
             if (!string.IsNullOrWhiteSpace(observationRequestDirectory))
                 writableDirectories.Add(observationRequestDirectory);
             workWritableDirectories = writableDirectories;
