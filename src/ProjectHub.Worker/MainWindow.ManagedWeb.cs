@@ -4,6 +4,7 @@ namespace ProjectHub.Worker;
 
 public partial class MainWindow
 {
+    private readonly HashSet<ManagedWebRole> _managedWebTransitions = new();
     private void OnManagedWebRuntimeStatusChanged(ManagedWebRuntimeStatus status)
     {
         Dispatcher.BeginInvoke(new Action(RefreshManagedWebRuntimePresentation));
@@ -127,25 +128,67 @@ public partial class MainWindow
         => await HideManagedWebAsync(ManagedWebRole.Resource, "RESOURCE");
 
     private async Task ShowManagedWebAsync(ManagedWebRole role, string bindingRole)
-    {
-        if (_managedWebRuntimeManager is null)
-            return;
-
-        var conversationId = _bridgeServer?.GetRoleConversationId(bindingRole);
-        var status = await _managedWebRuntimeManager.ShowForLoginAsync(role, conversationId);
-        RefreshManagedWebRuntimePresentation();
-        ReportManagedWebStartFailure(bindingRole, status);
-    }
+        => await TransitionManagedWebAsync(
+            role,
+            bindingRole,
+            conversationId => _managedWebRuntimeManager!.ShowForLoginAsync(role, conversationId));
 
     private async Task HideManagedWebAsync(ManagedWebRole role, string bindingRole)
+        => await TransitionManagedWebAsync(
+            role,
+            bindingRole,
+            conversationId => _managedWebRuntimeManager!.HideAsync(role, conversationId));
+
+    private async Task TransitionManagedWebAsync(
+        ManagedWebRole role,
+        string bindingRole,
+        Func<string?, Task<ManagedWebRuntimeStatus>> transition)
     {
-        if (_managedWebRuntimeManager is null)
+        if (_managedWebRuntimeManager is null ||
+            _shutdownCleanupInProgress ||
+            !_managedWebTransitions.Add(role))
             return;
 
-        var conversationId = _bridgeServer?.GetRoleConversationId(bindingRole);
-        var status = await _managedWebRuntimeManager.HideAsync(role, conversationId);
-        RefreshManagedWebRuntimePresentation();
-        ReportManagedWebStartFailure(bindingRole, status);
+        SetManagedWebTransitionButtons(role, enabled: false);
+        try
+        {
+            var conversationId = _bridgeServer?.GetRoleConversationId(bindingRole);
+            var status = await transition(conversationId);
+            RefreshManagedWebRuntimePresentation();
+            ReportManagedWebStartFailure(bindingRole, status);
+        }
+        catch (Exception exception)
+        {
+            AddTaskMessage(
+                "WEB RUNTIME",
+                $"{bindingRole} 브라우저 전환 실패: {exception.GetType().Name}: {exception.Message}",
+                status: "ERROR",
+                includeHistory: false);
+        }
+        finally
+        {
+            _managedWebTransitions.Remove(role);
+            if (!_shutdownCleanupInProgress)
+            {
+                RefreshManagedWebRuntimePresentation();
+                SetManagedWebTransitionButtons(role, enabled: true);
+            }
+        }
+    }
+
+    private void SetManagedWebTransitionButtons(ManagedWebRole role, bool enabled)
+    {
+        if (role == ManagedWebRole.Hq)
+        {
+            CoordinatorManagedWebShowButton.IsEnabled = enabled;
+            CoordinatorManagedWebHideButton.IsEnabled = enabled &&
+                _managedWebRuntimeManager?.GetStatus(role) is { Running: true, Hidden: false };
+            return;
+        }
+
+        ResourceManagedWebShowButton.IsEnabled = enabled;
+        ResourceManagedWebHideButton.IsEnabled = enabled &&
+            _managedWebRuntimeManager?.GetStatus(role) is { Running: true, Hidden: false };
     }
 
     private void ReportManagedWebStartFailure(string role, ManagedWebRuntimeStatus status)
