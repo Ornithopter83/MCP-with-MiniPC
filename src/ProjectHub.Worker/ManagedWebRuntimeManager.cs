@@ -187,10 +187,10 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                 {
                 }
 
-                if (string.IsNullOrWhiteSpace(processPath) ||
-                    !Path.GetFullPath(processPath).Equals(
-                        Path.GetFullPath(executable),
-                        StringComparison.OrdinalIgnoreCase))
+                // 현재 선택된 chrome.exe 한 파일만 비교하지 않는다.
+                // Worker 관리 BrowserRuntime의 이전/대체 경로에서 남은 프로세스도
+                // 모두 Worker 소유 stale Chromium으로 취급한다.
+                if (!IsWorkerOwnedBrowserExecutable(processPath))
                     continue;
 
                 if (!process.HasExited)
