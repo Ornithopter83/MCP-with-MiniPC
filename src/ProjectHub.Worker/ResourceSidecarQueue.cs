@@ -20,7 +20,6 @@ public sealed record ResourceSidecarTransportEvent(string Source, string Content
 public sealed class ResourceSidecarQueue : IAsyncDisposable
 {
     private static readonly TimeSpan ResourceTransportTimeout = TimeSpan.FromMinutes(30);
-    private const int MaximumCaptureTransportRetries = 2;
     private readonly BridgeServer? _bridgeServer;
     private readonly string _workingDirectory;
     private readonly MechanicalWorkRegistry _mechanicalWork;
@@ -164,42 +163,24 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
                 StateChanged?.Invoke(started);
 
                 ResourceSidecarCompletion completion;
-                var transportAttempt = 0;
-                while (true)
+                try
                 {
-                    try
-                    {
-                        completion = await ExecuteAsync(request, _cts.Token);
-                    }
-                    catch (OperationCanceledException) when (_cts.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception exception)
-                    {
-                        completion = new ResourceSidecarCompletion(
-                            request.Id,
-                            request.Type,
-                            false,
-                            exception.Message,
-                            "RESOURCE_TRANSPORT_ERROR",
-                            Array.Empty<string>(),
-                            request.WorkItemId);
-                    }
-
-                    if (completion.Success ||
-                        !IsRetryableCaptureTransportFailure(completion) ||
-                        transportAttempt >= MaximumCaptureTransportRetries)
-                        break;
-
-                    transportAttempt++;
-                    TransportEvent?.Invoke(new ResourceSidecarTransportEvent(
-                        "RESOURCE CAPTURE RETRY",
-                        $"request {request.Id} · attempt {transportAttempt}/{MaximumCaptureTransportRetries} · {completion.ErrorCode}: {completion.Message}",
-                        "RETRYING"));
-                    await Task.Delay(
-                        TimeSpan.FromMilliseconds(500 * transportAttempt),
-                        _cts.Token).ConfigureAwait(false);
+                    completion = await ExecuteAsync(request, _cts.Token);
+                }
+                catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    completion = new ResourceSidecarCompletion(
+                        request.Id,
+                        request.Type,
+                        false,
+                        exception.Message,
+                        "RESOURCE_TRANSPORT_ERROR",
+                        Array.Empty<string>(),
+                        request.WorkItemId);
                 }
 
                 _completions.Enqueue(completion);
@@ -305,13 +286,6 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
                       "\n후속 WORK는 이 공용 임시 파일을 현재 worktree의 최종 위치로 복사해 사용하며, 자동 코드 연결은 수행하지 않았습니다.";
         return new ResourceSidecarCompletion(request.Id, request.Type, true, message, null, paths, request.WorkItemId);
     }
-
-    internal static bool IsRetryableCaptureTransportFailure(ResourceSidecarCompletion completion)
-        => !completion.Success &&
-           (string.Equals(completion.ErrorCode, "RESOURCE_CAPTURE_FAILED", StringComparison.Ordinal) ||
-            string.Equals(completion.ErrorCode, "RESOURCE_DOWNLOAD_FAILED", StringComparison.Ordinal) ||
-            string.Equals(completion.ErrorCode, "RESOURCE_WEB_DELIVERY_FAILED", StringComparison.Ordinal) ||
-            (completion.Message?.Contains("RESOURCE_URL_NOT_ALLOWED", StringComparison.OrdinalIgnoreCase) ?? false));
 
     private static ResourceSidecarCompletion Failure(ResourceSidecarRequest request, string code, string message)
         => new(request.Id, request.Type, false, message, code, Array.Empty<string>(), request.WorkItemId);
