@@ -709,8 +709,12 @@ public partial class MainWindow
                     ResultTitle.Text = "WAITING";
                     ResultBody.Text = result.HqBody;
                     TaskTitle.Text =
-                        $"기계적 대기 작업 완료 대기 · {pendingMechanical}건";
-                    SetFlowState(false, false, false);
+                        $"HQ 기계 작업 완료 대기 · {pendingMechanical}건";
+                    SetFlowState(
+                        codexActive: true,
+                        workerActive: false,
+                        webActive: false,
+                        explicitStage: TaskStage.Coordinator);
                 });
 
                 await WaitForParallelMechanicalWorkAsync(
