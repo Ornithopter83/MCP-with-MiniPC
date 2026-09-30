@@ -253,12 +253,12 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 
 제21조 (구조화 AI 출력 Helper)
 
-① Worker가 AI 구조화 문자열을 소비하는 경우 지원 payload는 공용 Structured Helper를 먼저 통과시킨다.
+① Worker가 AI 구조화 문자열을 소비하는 경우 지원 payload는 공용 Structured Helper를 먼저 통과시킨다. 다만 HQ WORK_GRAPH_PATCH에서 JSON 객체가 없거나 JSON 문법 자체를 파싱할 수 없는 경우에는 Helper를 호출하지 않고 같은 HQ 관제 문맥에 JSON 파싱 오류와 재작성 요구를 직접 반환한다.
 ② Helper는 결정론 파서를 먼저 적용하고, 성공하면 AI 복구를 호출하지 않는다.
-③ 최초 파싱 실패 시에만 현재 WORK 실행 설정을 사용한 격리된 일회 복구를 허용하고, 복구 결과도 같은 결정론 파서로 다시 검증한다.
-④ 호출자는 Helper의 최종 성공·실패만 소비하고 별도의 중복 복구 분기를 만들지 않는다.
+③ 최초 파싱 실패 시에만 현재 WORK 실행 설정을 사용한 격리된 일회 복구를 허용하고, 복구 결과도 같은 결정론 파서로 다시 검증한다. 제1항의 WorkGraph JSON 파싱 실패는 이 복구 대상에 포함하지 않는다.
+④ 호출자는 Helper를 사용하는 payload에서는 Helper의 최종 성공·실패만 소비하고 별도의 중복 복구 분기를 만들지 않는다. 제1항의 WorkGraph JSON 파싱 실패는 Helper 진입 전 기계 거부 경로로 처리한다.
 ⑤ Helper의 복구는 구조 복원만 수행하며 새 의미 값의 생성 근거로 사용하지 않는다.
-⑥ WorkGraph patch는 결정론적으로 보존 가능한 field alias 정규화 외에는 AI 복구로 expectedRevision, operations, workItemId, goal, dependency, baseRef 같은 의미 값을 새로 채우지 않는다. 결정론 파싱이 실패하면 같은 HQ 관제 문맥에 기계 오류를 돌려 새 patch를 다시 작성하게 한다.
+⑥ WorkGraph patch는 결정론적으로 보존 가능한 field alias 정규화 외에는 AI 복구로 expectedRevision, operations, workItemId, goal, dependency, baseRef 같은 의미 값을 새로 채우지 않는다. JSON 객체 누락 또는 JSON 문법 파싱 실패는 구조 복구를 시도하지 않고 같은 HQ 관제 문맥에 돌려 HQ가 완전한 JSON을 새로 작성하게 하며, 그 밖의 결정론 파싱 실패도 같은 관제 문맥에 기계 오류를 반환한다.
 
 ---
 
