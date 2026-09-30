@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.4.2';
-  const EXTENSION_BUILD = '2026-09-30.6';
+  const EXTENSION_BUILD = '2026-10-01.1';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -141,28 +141,39 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
   function genericResponseFingerprint(item){const text=normalizeText(item?.text||'');return [text.length,text.slice(0,240),text.length>240?text.slice(-120):''].join('|');}
   function latestGenericResponseFallback(prompt){const expected=normalizeText(prompt),items=genericResponseCandidates();for(let i=items.length-1;i>=0;i--){const item=items[i],text=normalizeText(item.text||'');if(!text||promptMatchesText(text,expected)||promptContainerMatches(text,expected))continue;const fp=genericResponseFingerprint(item);if(baselineGenericResponseFingerprints.has(fp))continue;return item;}return null;}
   function activeKeyMarker(){return activeCorrelationKey?'[KEY='+activeCorrelationKey+']':'';}
+  function correlatedResponseSlice(value){
+    const marker=activeKeyMarker(),text=responseText(value);
+    if(!marker||!text)return '';
+    const index=text.lastIndexOf(marker);
+    if(index<0)return '';
+    const correlated=text.slice(index).trim();
+    const after=correlated.slice(marker.length).trim();
+    if(!after||!/^[\\\s]*\[ACTION=(?:CONTINUE|PAUSE|END)\](?:\s|$)/.test(after))return '';
+    return correlated;
+  }
   function correlationRootFromElement(element){
     const marker=activeKeyMarker();
     if(!marker||!element)return null;
     let node=element.nodeType===Node.TEXT_NODE?element.parentElement:element;
     if(!node?.isConnected)return null;
     const main=document.querySelector('main')||document.body;
-    const prompt=normalizeText(workerMessage?.textContent||'');
-    let best=null,bestRaw='';
-    for(let depth=0;node&&depth<10;depth++,node=node.parentElement){
+    let best=null,bestLength=-1,markerOnly=null;
+    for(let depth=0;node&&depth<12;depth++,node=node.parentElement){
       if(node===main)break;
       if(node.matches?.('form,nav,aside,header,footer,[role="navigation"]'))break;
       const raw=responseText(node.innerText||node.textContent||'');
-      if(!raw||raw.length>50000)continue;
-      if(!raw.includes(marker))continue;
-      if(prompt&&promptMatchesText(raw,prompt)){
-        const bestText=normalizeText(bestRaw);
-        return best&&bestText&&!prompt.includes(bestText)?best:null;
+      if(!raw||raw.length>100000||!raw.includes(marker))continue;
+      const correlated=correlatedResponseSlice(raw);
+      if(correlated&&correlated.length>bestLength){
+        best=node;
+        bestLength=correlated.length;
+        continue;
       }
-      best=node;
-      bestRaw=raw;
+      const markerIndex=raw.lastIndexOf(marker);
+      if(markerIndex>=0&&!raw.slice(markerIndex+marker.length).trim())
+        markerOnly??=node;
     }
-    return best;
+    return best||markerOnly;
   }
   function correlationKeyOccurrenceCount(){
     const marker=activeKeyMarker();
@@ -180,7 +191,6 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     if(!marker||!document.body)return null;
     const bodyText=responseText(document.body.innerText||document.body.textContent||'');
     if(!bodyText.includes(marker))return null;
-    const prompt=normalizeText(workerMessage?.textContent||'');
     const selectors='article,[data-message-author-role="assistant"],[data-testid*="conversation-turn"],[data-testid*="assistant"],.markdown,.prose,p,pre,code,section,div';
     const candidates=[...document.body.querySelectorAll(selectors)].filter(element=>{
       if(!element.isConnected||!visible(element))return false;
@@ -188,29 +198,21 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
       const raw=responseText(element.innerText||element.textContent||'');
       return raw.includes(marker);
     });
-    let markerOnly=null,directFallback=null,directFallbackLength=-1;
+    let best=null,bestLength=-1,markerOnly=null;
     for(let index=candidates.length-1;index>=0;index--){
-      const candidate=candidates[index];
-      const candidateRaw=responseText(candidate.innerText||candidate.textContent||'');
-      const candidateMarkerIndex=candidateRaw.lastIndexOf(marker);
-      if(candidateMarkerIndex<0)continue;
-      const candidateBody=candidateRaw.slice(candidateMarkerIndex+marker.length).trim();
-      const containsPrompt=!!prompt&&(promptMatchesText(candidateRaw,prompt)||promptContainerMatches(candidateRaw,prompt));
-      if(!containsPrompt&&candidateBody&&candidateRaw.length<=50000&&candidateRaw.length>directFallbackLength){
-        directFallback=candidate;
-        directFallbackLength=candidateRaw.length;
-      }else if(!containsPrompt&&!candidateBody){
-        markerOnly??=candidate;
-      }
-      const root=correlationRootFromElement(candidate);
-      if(!root)continue;
+      const root=correlationRootFromElement(candidates[index])||candidates[index];
       const raw=responseText(root.innerText||root.textContent||'');
+      const correlated=correlatedResponseSlice(raw);
+      if(correlated&&correlated.length>bestLength){
+        best=root;
+        bestLength=correlated.length;
+        continue;
+      }
       const markerIndex=raw.lastIndexOf(marker);
-      if(markerIndex<0)continue;
-      if(raw.slice(markerIndex+marker.length).trim().length)return root;
-      markerOnly??=root;
+      if(markerIndex>=0&&!raw.slice(markerIndex+marker.length).trim())
+        markerOnly??=root;
     }
-    return directFallback||markerOnly;
+    return best||markerOnly;
   }
   function correlationResponseRoot(){
     if(!activeCorrelationKey)return null;
@@ -220,39 +222,49 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     for(let i=assistants.length-1;i>=0;i--)candidates.push(assistants[i].element);
     const generic=genericResponseCandidates();
     for(let i=generic.length-1;i>=0;i--)candidates.push(generic[i].element);
+    const direct=directCorrelationResponseRoot();
+    if(direct)candidates.push(direct);
+    let best=null,bestLength=-1,markerOnly=null;
     for(const candidate of candidates){
-      const root=correlationRootFromElement(candidate);
-      if(root)return root;
+      const root=correlationRootFromElement(candidate)||candidate;
+      if(!root?.isConnected)continue;
+      const raw=responseText(root.innerText||root.textContent||'');
+      const correlated=correlatedResponseSlice(raw);
+      if(correlated&&correlated.length>bestLength){
+        best=root;
+        bestLength=correlated.length;
+        continue;
+      }
+      const marker=activeKeyMarker(),markerIndex=raw.lastIndexOf(marker);
+      if(markerIndex>=0&&!raw.slice(markerIndex+marker.length).trim())
+        markerOnly??=root;
     }
-    return directCorrelationResponseRoot();
+    return best||markerOnly;
   }
   function correlationBodyTextFallback(){
     const marker=activeKeyMarker();
     if(!marker||!document.body)return '';
     const body=responseText(document.body.innerText||document.body.textContent||'');
+    const correlated=correlatedResponseSlice(body);
+    if(!correlated)return '';
     const index=body.lastIndexOf(marker);
-    if(index<0)return '';
     const before=body.slice(0,index);
     const occurrences=1+(before.split(marker).length-1);
-    const after=body.slice(index+marker.length).trim();
-    if(!after||!/^[\\\s]*\[ACTION=(?:CONTINUE|PAUSE|END)\](?:\s|$)/.test(after))return '';
     if(occurrences===1){
       const prompt=normalizeText(workerMessage?.textContent||'');
       const probe=prompt.slice(0,Math.min(120,prompt.length));
       if(probe&&normalizeText(body).includes(probe))return '';
     }
-    return (marker+'\n'+after).trim();
+    return correlated;
   }
   function correlationSendEvidence(){
     const marker=activeKeyMarker(),root=correlationResponseRoot();
     if(marker&&root){
       const raw=responseText(root.innerText||root.textContent||'');
+      const correlated=correlatedResponseSlice(raw);
+      if(correlated)return 'CORRELATION_KEY_RESPONSE';
       const index=raw.lastIndexOf(marker);
-      if(index>=0){
-        return raw.slice(index+marker.length).trim().length
-          ? 'CORRELATION_KEY_RESPONSE'
-          : 'CORRELATION_KEY';
-      }
+      if(index>=0)return 'CORRELATION_KEY';
     }
     if(sendTriggeredForActiveTask&&correlationBodyTextFallback())
       return 'CORRELATION_KEY_BODY';
@@ -262,16 +274,14 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     if(!activeTaskId||!activeCorrelationKey)return false;
     const watchedPhases=['WAIT_SEND_READY','SEND_BUTTON_FIND','SEND_CONFIRM','WAIT_RESPONSE'];
     if(!watchedPhases.includes(phase))return false;
-    const marker=activeKeyMarker();
     const occurrences=correlationKeyOccurrenceCount();
     const root=correlationResponseRoot();
-    const raw=root?responseText(root.innerText||root.textContent||''):'';
-    const bodyFallback=!root?correlationBodyTextFallback():'';
-    const correlatedText=raw||bodyFallback;
-    const index=marker?correlatedText.lastIndexOf(marker):-1;
+    const bodyFallback=correlationBodyTextFallback();
+    const correlatedText=currentCorrelatedResponseText();
+    const marker=activeKeyMarker(),index=marker?correlatedText.lastIndexOf(marker):-1;
     const bodyChars=index>=0?correlatedText.slice(index+marker.length).trim().length:0;
     const streaming=assistantStreaming();
-    const watchState=[phase,occurrences,root?'1':'0',bodyFallback?'1':'0',bodyChars>0?'1':'0',streaming?'1':'0'].join('|');
+    const watchState=[phase,occurrences,root?'1':'0',bodyFallback?'1':'0',bodyChars,streaming?'1':'0'].join('|');
     if(watchState!==lastCorrelationWatchState){
       lastCorrelationWatchState=watchState;
       reportProgress(
@@ -296,14 +306,24 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     return false;
   }
   function currentCorrelatedResponseText(){
-    const marker=activeKeyMarker(),root=correlationResponseRoot();
+    const marker=activeKeyMarker();
     if(!marker)return '';
-    if(root){
-      const raw=responseText(root.innerText||root.textContent||'');
-      const index=raw.lastIndexOf(marker);
-      if(index>=0)return raw.slice(index).trim();
-    }
-    return correlationBodyTextFallback();
+    const values=[];
+    const add=value=>{
+      const correlated=correlatedResponseSlice(value);
+      if(correlated)values.push(correlated);
+    };
+    const root=correlationResponseRoot();
+    if(root)add(root.innerText||root.textContent||'');
+    if(mutationResponseElement?.isConnected)add(mutationResponseElement.innerText||mutationResponseElement.textContent||'');
+    const assistants=assistantTurnRecords();
+    for(let i=assistants.length-1;i>=0;i--)add(assistants[i].element?.innerText||assistants[i].element?.textContent||assistants[i].text||'');
+    const generic=genericResponseCandidates();
+    for(let i=generic.length-1;i>=0;i--)add(generic[i].element?.innerText||generic[i].element?.textContent||generic[i].text||'');
+    add(correlationBodyTextFallback());
+    if(!values.length)return '';
+    values.sort((a,b)=>b.length-a.length);
+    return values[0];
   }
   function hasMeaningfulResponseText(value){
     const text=responseText(value);
@@ -692,7 +712,7 @@ function observeResponse(){
   const genericResponse=latestGenericResponseFallback(prompt);
   const mutationResponse=currentMutationResponseText(prompt);
   const keyResponse=activeCorrelationKey?correlationResponseRoot():null;
-  const keyBodyFallback=activeCorrelationKey&&!keyResponse?correlationBodyTextFallback():'';
+  const keyBodyFallback=activeCorrelationKey?correlationBodyTextFallback():'';
   const text=currentResponseText(prompt);
   const candidates=isResource?latestGeneratedResourceCandidates():readyResponseFileCandidates();
   const ready=isResource?readyResourceCandidates():readyResponseFileCandidates();
