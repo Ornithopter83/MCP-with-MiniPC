@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.4.2';
-  const EXTENSION_BUILD = '2026-09-30.2';
+  const EXTENSION_BUILD = '2026-09-30.3';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -226,6 +226,23 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     }
     return directCorrelationResponseRoot();
   }
+  function correlationBodyTextFallback(){
+    const marker=activeKeyMarker();
+    if(!marker||!document.body)return '';
+    const body=responseText(document.body.innerText||document.body.textContent||'');
+    const index=body.lastIndexOf(marker);
+    if(index<0)return '';
+    const before=body.slice(0,index);
+    const occurrences=1+(before.split(marker).length-1);
+    const after=body.slice(index+marker.length).trim();
+    if(!after||!/^[\\\s]*\[ACTION=(?:CONTINUE|PAUSE|END)\](?:\s|$)/.test(after))return '';
+    if(occurrences===1){
+      const prompt=normalizeText(workerMessage?.textContent||'');
+      const probe=prompt.slice(0,Math.min(120,prompt.length));
+      if(probe&&normalizeText(body).includes(probe))return '';
+    }
+    return (marker+'\n'+after).trim();
+  }
   function correlationSendEvidence(){
     const marker=activeKeyMarker(),root=correlationResponseRoot();
     if(marker&&root){
@@ -237,7 +254,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
           : 'CORRELATION_KEY';
       }
     }
-    if(sendTriggeredForActiveTask&&correlationKeyOccurrenceCount()>=2)
+    if(sendTriggeredForActiveTask&&correlationBodyTextFallback())
       return 'CORRELATION_KEY_BODY';
     return '';
   }
@@ -249,10 +266,12 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     const occurrences=correlationKeyOccurrenceCount();
     const root=correlationResponseRoot();
     const raw=root?responseText(root.innerText||root.textContent||''):'';
-    const index=marker?raw.lastIndexOf(marker):-1;
-    const bodyChars=index>=0?raw.slice(index+marker.length).trim().length:0;
+    const bodyFallback=!root?correlationBodyTextFallback():'';
+    const correlatedText=raw||bodyFallback;
+    const index=marker?correlatedText.lastIndexOf(marker):-1;
+    const bodyChars=index>=0?correlatedText.slice(index+marker.length).trim().length:0;
     const streaming=assistantStreaming();
-    const watchState=[phase,occurrences,root?'1':'0',bodyChars>0?'1':'0',streaming?'1':'0'].join('|');
+    const watchState=[phase,occurrences,root?'1':'0',bodyFallback?'1':'0',bodyChars>0?'1':'0',streaming?'1':'0'].join('|');
     if(watchState!==lastCorrelationWatchState){
       lastCorrelationWatchState=watchState;
       reportProgress(
@@ -260,6 +279,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
         'phase='+phase+
         ' · keyOccurrences='+occurrences+
         ' · responseRoot='+(root?'found':'missing')+
+        ' · bodyFallback='+(bodyFallback?'found':'missing')+
         ' · bodyChars='+bodyChars+
         ' · streaming='+(streaming?'true':'false'));
     }
@@ -277,10 +297,13 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
   }
   function currentCorrelatedResponseText(){
     const marker=activeKeyMarker(),root=correlationResponseRoot();
-    if(!marker||!root)return '';
-    const raw=responseText(root.innerText||root.textContent||'');
-    const index=raw.lastIndexOf(marker);
-    return index<0?'':raw.slice(index).trim();
+    if(!marker)return '';
+    if(root){
+      const raw=responseText(root.innerText||root.textContent||'');
+      const index=raw.lastIndexOf(marker);
+      if(index>=0)return raw.slice(index).trim();
+    }
+    return correlationBodyTextFallback();
   }
   function hasMeaningfulResponseText(value){
     const text=responseText(value);
@@ -561,6 +584,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
         ', voice='+(!!voiceButton())+
         ', generation='+(generationStartEvidence()||'none')+
         ', keyOccurrences='+correlationKeyOccurrenceCount()+
+        ', keyBodyFallback='+(!!correlationBodyTextFallback())+
         ', userTurns='+userTurnRecords().length+
         ', assistantTurns='+assistantTurnRecords().length+
         ', fallback='+fallbackAttempted;
@@ -634,10 +658,11 @@ function observeResponse(){
   const genericResponse=latestGenericResponseFallback(prompt);
   const mutationResponse=currentMutationResponseText(prompt);
   const keyResponse=activeCorrelationKey?correlationResponseRoot():null;
+  const keyBodyFallback=activeCorrelationKey&&!keyResponse?correlationBodyTextFallback():'';
   const text=currentResponseText(prompt);
   const candidates=isResource?latestGeneratedResourceCandidates():readyResponseFileCandidates();
   const ready=isResource?readyResourceCandidates():readyResponseFileCandidates();
-  const responseTurnDetected=activeCorrelationKey?!!keyResponse:(!!assistantEvidence||!!fallbackResponse||!!genericResponse||!!mutationResponse);
+  const responseTurnDetected=activeCorrelationKey?(!!keyResponse||!!keyBodyFallback):((!!assistantEvidence||!!fallbackResponse||!!genericResponse||!!mutationResponse));
   if(!responseTurnDetected&&!text&&!candidates.length)return;
 
   if(responseTurnDetected&&!responseTurnLogged){
@@ -645,7 +670,9 @@ function observeResponse(){
     reportProgress(
       'ASSISTANT_TURN_DETECTED',
       activeCorrelationKey
-        ? '현재 요청 KEY가 포함된 assistant 응답 영역을 확인했습니다. key='+activeCorrelationKey
+        ? keyResponse
+          ? '현재 요청 KEY가 포함된 assistant 응답 영역을 확인했습니다. key='+activeCorrelationKey
+          : 'role·turn selector와 응답 root 없이 현재 KEY와 ACTION이 포함된 body fallback을 확인했습니다. key='+activeCorrelationKey
         : mutationResponse&&!assistantEvidence&&!fallbackResponse&&!genericResponse
           ? 'WAIT_RESPONSE 이후 실제 텍스트 DOM mutation으로 assistant 응답을 확인했습니다.'
           : genericResponse&&!assistantEvidence&&!fallbackResponse
