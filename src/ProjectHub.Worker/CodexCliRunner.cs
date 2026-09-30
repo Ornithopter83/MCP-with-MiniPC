@@ -170,6 +170,7 @@ public sealed class CodexCliRunner : IDisposable
             }
             catch
             {
+                processJob.Dispose();
                 await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                 throw;
             }
@@ -216,9 +217,18 @@ public sealed class CodexCliRunner : IDisposable
             }
             catch (OperationCanceledException)
             {
+                // 취소에서는 실행 전용 Job을 먼저 닫아 Codex가 시작한 모든 후손을 끊고
+                // Process tree kill/wait는 fallback으로 사용한다.
+                processJob.Dispose();
                 await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                 throw;
             }
+
+            // Codex launcher가 종료된 뒤에도 하위 프로세스가 stdout/stderr handle을 상속한 채
+            // 남아 있으면 stream drain이 끝나지 않는다. 출력 대기 전에 실행 전용 Job을 닫아
+            // 해당 실행의 잔존 후손과 pipe handle을 먼저 정리한다.
+            processJob.Dispose();
+
             await stdoutTask;
             var stdout = stdoutBuilder.ToString();
             var stderr = await stderrTask;
