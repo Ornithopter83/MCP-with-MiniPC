@@ -1024,6 +1024,12 @@ public sealed class CodexWorkItemExecutorTests
                 Directory.CreateDirectory(arguments[^1]);
                 Directory.CreateDirectory(Path.Combine(arguments[^1], ".git"));
             }
+            if (_results.Count == 0 &&
+                arguments.Count > 0 &&
+                string.Equals(arguments[0], "add", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new GitCommandResult(0, string.Empty, string.Empty));
+            }
             if (_results.Count == 0)
                 throw new InvalidOperationException("예상하지 않은 Git 호출입니다: " + string.Join(" ", arguments));
             return Task.FromResult(_results.Dequeue());
