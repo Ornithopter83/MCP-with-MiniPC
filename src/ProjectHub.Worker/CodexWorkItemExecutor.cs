@@ -301,7 +301,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             {
                 runtimePaths.NuGetRoot,
                 runtimePaths.DotNetHome,
-                workTempPath
+                workTempPath,
+                Path.Combine(workTempPath, "build")
             };
             if (!string.IsNullOrWhiteSpace(observationRequestDirectory))
                 writableDirectories.Add(observationRequestDirectory);
