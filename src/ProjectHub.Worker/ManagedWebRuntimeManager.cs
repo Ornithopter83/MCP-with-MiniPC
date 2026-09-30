@@ -37,6 +37,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
     {
         public Process? Process { get; set; }
         public ManagedBrowserProcessJob? ProcessJob { get; set; }
+        public DateTimeOffset? ProcessStartedAt { get; set; }
         public bool Hidden { get; set; }
         public string? ExecutablePath { get; set; }
         public string? Error { get; set; }
@@ -514,17 +515,20 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
                 var processJob = new ManagedBrowserProcessJob();
                 Process? process = null;
+                var processStartedAt = DateTimeOffset.UtcNow;
                 try
                 {
-                    process = Process.Start(startInfo)
+                    var startedProcess = Process.Start(startInfo)
                         ?? throw new InvalidOperationException("관리형 Web 브라우저 프로세스를 시작하지 못했습니다.");
-                    processJob.Assign(process);
+                    process = startedProcess;
+                    processJob.Assign(startedProcess);
 
-                    process.Exited += (_, _) => OnProcessExited(role, process);
-                    slot.Process = process;
+                    startedProcess.Exited += (_, _) => OnProcessExited(role, startedProcess);
+                    slot.Process = startedProcess;
                     slot.ProcessJob = processJob;
+                    slot.ProcessStartedAt = processStartedAt;
                     slot.ExecutablePath = executable;
-                    process.EnableRaisingEvents = true;
+                    startedProcess.EnableRaisingEvents = true;
                 }
                 catch
                 {
@@ -555,6 +559,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
             catch (Exception exception)
             {
                 slot.Process = null;
+                slot.ProcessJob = null;
+                slot.ProcessStartedAt = null;
                 slot.ExecutablePath = null;
                 slot.Error = exception.Message;
             }
@@ -570,6 +576,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
     {
         ManagedWebRuntimeStatus? status = null;
         ManagedBrowserProcessJob? processJob = null;
+        DateTimeOffset startedAt = DateTimeOffset.MinValue;
         lock (_gate)
         {
             var slot = _slots[role];
@@ -579,6 +586,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
             slot.Process = null;
             processJob = slot.ProcessJob;
             slot.ProcessJob = null;
+            startedAt = slot.ProcessStartedAt ?? DateTimeOffset.MinValue;
+            slot.ProcessStartedAt = null;
             status = Snapshot(role, slot);
         }
 
@@ -586,6 +595,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         // 남지 않도록 slot 전용 Job을 즉시 닫는다.
         try { processJob?.Dispose(); }
         catch { }
+        TryTerminateEscapedDescendants(process, startedAt);
         process.Dispose();
 
         if (status is not null)
@@ -608,11 +618,14 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
         var process = slot.Process;
         var processJob = slot.ProcessJob;
+        var startedAt = slot.ProcessStartedAt ?? DateTimeOffset.MinValue;
         slot.Process = null;
         slot.ProcessJob = null;
+        slot.ProcessStartedAt = null;
 
         try { processJob?.Dispose(); }
         catch { }
+        TryTerminateEscapedDescendants(process, startedAt);
         process.Dispose();
     }
 
@@ -620,8 +633,10 @@ public sealed class ManagedWebRuntimeManager : IDisposable
     {
         var process = slot.Process;
         var processJob = slot.ProcessJob;
+        var startedAt = slot.ProcessStartedAt ?? DateTimeOffset.MinValue;
         slot.Process = null;
         slot.ProcessJob = null;
+        slot.ProcessStartedAt = null;
 
         if (process is null)
         {
@@ -652,6 +667,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
             catch { }
         }
 
+        TryTerminateEscapedDescendants(process, startedAt);
+
         try
         {
             if (!process.HasExited)
@@ -666,6 +683,19 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         finally
         {
             process.Dispose();
+        }
+    }
+
+    private static void TryTerminateEscapedDescendants(
+        Process process,
+        DateTimeOffset startedAt)
+    {
+        try
+        {
+            WorkerChildProcessJob.TerminateDescendants(process.Id, startedAt);
+        }
+        catch
+        {
         }
     }
 
@@ -685,40 +715,38 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
     public void Dispose()
     {
-        Process[] processes;
-        ManagedBrowserProcessJob[] processJobs;
+        (Process Process, ManagedBrowserProcessJob? ProcessJob, DateTimeOffset StartedAt)[] active;
         lock (_gate)
         {
-            processes = _slots.Values
-                .Select(slot => slot.Process)
-                .Where(process => process is not null)
-                .Cast<Process>()
-                .Distinct()
-                .ToArray();
-            processJobs = _slots.Values
-                .Select(slot => slot.ProcessJob)
-                .Where(processJob => processJob is not null)
-                .Cast<ManagedBrowserProcessJob>()
-                .Distinct()
+            active = _slots.Values
+                .Where(slot => slot.Process is not null)
+                .Select(slot => (
+                    slot.Process!,
+                    slot.ProcessJob,
+                    slot.ProcessStartedAt ?? DateTimeOffset.MinValue))
+                .DistinctBy(item => item.Item1)
                 .ToArray();
 
             foreach (var slot in _slots.Values)
             {
                 slot.Process = null;
                 slot.ProcessJob = null;
+                slot.ProcessStartedAt = null;
                 slot.Provisioning = false;
             }
         }
 
         // HQ/RESOURCE 각각의 Job을 먼저 닫아 role별 Chromium tree를 독립적으로 정리한다.
-        foreach (var processJob in processJobs)
+        foreach (var item in active)
         {
-            try { processJob.Dispose(); }
+            try { item.ProcessJob?.Dispose(); }
             catch { }
+            TryTerminateEscapedDescendants(item.Process, item.StartedAt);
         }
 
-        foreach (var process in processes)
+        foreach (var item in active)
         {
+            var process = item.Process;
             try
             {
                 if (!process.HasExited)
