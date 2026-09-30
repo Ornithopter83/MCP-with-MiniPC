@@ -1,6 +1,6 @@
 # ProjectHub Managed Web Bridge
 
-버전: 0.4.2 / build 2026-09-30.2
+버전: 0.4.2 / build 2026-09-30.3
 
 ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로컬 Worker를 연결한다.
 
@@ -49,7 +49,8 @@ ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로�
 ⑩ HQ task에 correlation KEY가 있으면 SEND_CONFIRM과 WAIT_RESPONSE에서 현재 KEY를 독립적으로 감시하며 role·turn selector가 현재 DOM을 놓쳐도 KEY 응답을 전송·응답 증거로 사용할 수 있다.
 ⑪ KEY 감시는 MutationObserver에만 의존하지 않고 주기적 재확인을 함께 사용하며, 관측 상태는 `HQ_KEY_WATCH` 진행 이벤트로 보고한다.
 ⑫ 요청 prompt 안의 동일 KEY는 응답으로 오인하지 않고, prompt와 분리된 현재 응답 후보에서 KEY 뒤 실제 본문을 찾아 결과를 회수한다.
-⑬ 이미 claim된 HQ task에서 이전 turn baseline을 복구할 수 없더라도 현재 task의 KEY가 있으면 prompt를 재전송하지 않고 KEY 기준 WAIT_RESPONSE로 복구한다.
+⑬ assistant 응답 root를 식별하지 못해도 현재 KEY 뒤에 HQ 계약의 ACTION이 이어지고 요청 prompt와 구분되는 경우에는 conversation body fallback으로 결과 회수를 계속한다.
+⑭ 이미 claim된 HQ task에서 이전 turn baseline을 복구할 수 없더라도 현재 task의 KEY가 있으면 prompt를 재전송하지 않고 KEY 기준 WAIT_RESPONSE로 복구한다.
 
 제6조 (파일 검증)
 
