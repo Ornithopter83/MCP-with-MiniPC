@@ -44,4 +44,4 @@ jobs:
         run: dotnet build ProjectHub.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test ProjectHub.sln --configuration Release --no-build --verbosity normal
+        run: dotnet test ProjectHub.sln --configuration Release --no-build --verbosity normal --blame-hang --blame-hang-timeout 60s --blame-hang-dump-type none
