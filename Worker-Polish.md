@@ -258,6 +258,7 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ③ 최초 파싱 실패 시에만 현재 WORK 실행 설정을 사용한 격리된 일회 복구를 허용하고, 복구 결과도 같은 결정론 파서로 다시 검증한다.
 ④ 호출자는 Helper의 최종 성공·실패만 소비하고 별도의 중복 복구 분기를 만들지 않는다.
 ⑤ Helper의 복구는 구조 복원만 수행하며 새 의미 값의 생성 근거로 사용하지 않는다.
+⑥ WorkGraph patch는 결정론적으로 보존 가능한 field alias 정규화 외에는 AI 복구로 expectedRevision, operations, workItemId, goal, dependency, baseRef 같은 의미 값을 새로 채우지 않는다. 결정론 파싱이 실패하면 같은 HQ 관제 문맥에 기계 오류를 돌려 새 patch를 다시 작성하게 한다.
 
 ---
 
