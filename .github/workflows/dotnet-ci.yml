@@ -45,3 +45,16 @@ jobs:
 
       - name: Test
         run: dotnet test ProjectHub.sln --configuration Release --no-build --verbosity normal --blame-hang --blame-hang-timeout 60s --blame-hang-dump-type none
+
+      - name: Print blame hang sequence
+        if: always()
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path . -Filter 'Sequence_*.xml' -Recurse -ErrorAction SilentlyContinue
+          if (-not $files) {
+            Write-Host 'No blame sequence files found.'
+          }
+          foreach ($file in $files) {
+            Write-Host "===== $($file.FullName) ====="
+            Get-Content -Raw $file.FullName
+          }
