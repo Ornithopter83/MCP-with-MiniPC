@@ -10,6 +10,7 @@ internal sealed class WorkerChildProcessJob : IDisposable
     internal const uint KillOnJobCloseLimitFlag = 0x00002000;
     private const int JobObjectBasicProcessIdListClass = 3;
     private const int JobObjectExtendedLimitInformationClass = 9;
+    private const uint Th32csSnapProcess = 0x00000002;
 
     private readonly object _gate = new();
     private readonly string _ownerLabel;
@@ -136,6 +137,130 @@ internal sealed class WorkerChildProcessJob : IDisposable
         }
     }
 
+    internal static int TerminateDescendants(
+        int rootProcessId,
+        DateTimeOffset notBefore)
+    {
+        if (!OperatingSystem.IsWindows() || rootProcessId <= 0)
+            return 0;
+
+        var descendants = SnapshotDescendantProcessIds(rootProcessId);
+        if (descendants.Count == 0)
+            return 0;
+
+        var minimumStartUtc = notBefore.UtcDateTime.AddSeconds(-2);
+        var terminated = 0;
+
+        // 깊은 후손부터 정리해 새 helper가 다시 파생될 가능성을 줄인다.
+        foreach (var processId in descendants
+                     .OrderByDescending(entry => entry.Depth)
+                     .Select(entry => entry.ProcessId))
+        {
+            try
+            {
+                using var process = Process.GetProcessById(processId);
+                DateTime startedUtc;
+                try
+                {
+                    startedUtc = process.StartTime.ToUniversalTime();
+                }
+                catch
+                {
+                    // PID 재사용 가능성을 배제할 수 없으면 건드리지 않는다.
+                    continue;
+                }
+
+                if (startedUtc < minimumStartUtc || process.HasExited)
+                    continue;
+
+                process.Kill(entireProcessTree: true);
+                terminated++;
+            }
+            catch (ArgumentException)
+            {
+                // 이미 종료된 PID.
+            }
+            catch (InvalidOperationException)
+            {
+            }
+            catch (Win32Exception)
+            {
+            }
+        }
+
+        return terminated;
+    }
+
+    private static IReadOnlyList<(int ProcessId, int Depth)> SnapshotDescendantProcessIds(
+        int rootProcessId)
+    {
+        var snapshot = CreateToolhelp32Snapshot(Th32csSnapProcess, 0);
+        if (snapshot == new IntPtr(-1))
+            return Array.Empty<(int, int)>();
+
+        try
+        {
+            var childrenByParent = new Dictionary<int, List<int>>();
+            var entry = new ProcessEntry32
+            {
+                Size = (uint)Marshal.SizeOf<ProcessEntry32>()
+            };
+
+            if (!Process32FirstW(snapshot, ref entry))
+                return Array.Empty<(int, int)>();
+
+            do
+            {
+                if (entry.ProcessId is > 0 and <= int.MaxValue &&
+                    entry.ParentProcessId is > 0 and <= int.MaxValue)
+                {
+                    var parentId = (int)entry.ParentProcessId;
+                    if (!childrenByParent.TryGetValue(parentId, out var children))
+                    {
+                        children = new List<int>();
+                        childrenByParent[parentId] = children;
+                    }
+                    children.Add((int)entry.ProcessId);
+                }
+
+                entry.Size = (uint)Marshal.SizeOf<ProcessEntry32>();
+            }
+            while (Process32NextW(snapshot, ref entry));
+
+            var result = new List<(int ProcessId, int Depth)>();
+            var pending = new Queue<(int ProcessId, int Depth)>();
+            var seen = new HashSet<int> { rootProcessId };
+            pending.Enqueue((rootProcessId, 0));
+
+            while (pending.Count > 0)
+            {
+                var current = pending.Dequeue();
+                if (!childrenByParent.TryGetValue(current.ProcessId, out var children))
+                    continue;
+
+                foreach (var childId in children)
+                {
+                    if (!seen.Add(childId))
+                        continue;
+
+                    var depth = current.Depth + 1;
+                    result.Add((childId, depth));
+                    pending.Enqueue((childId, depth));
+                }
+            }
+
+            return result;
+        }
+        catch
+        {
+            return Array.Empty<(int, int)>();
+        }
+        finally
+        {
+            CloseHandle(snapshot);
+        }
+    }
+
     public void Dispose()
     {
         SafeJobHandle? handle;
@@ -177,8 +302,42 @@ internal sealed class WorkerChildProcessJob : IDisposable
         out uint returnLength);
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(
+        uint flags,
+        uint processId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32FirstW(
+        IntPtr snapshot,
+        ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32NextW(
+        IntPtr snapshot,
+        ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr handle);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry32
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public UIntPtr DefaultHeapId;
+        public uint ModuleId;
+        public uint Threads;
+        public uint ParentProcessId;
+        public int PriorityClassBase;
+        public uint Flags;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string ExecutableFile;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct JobObjectBasicLimitInformation
