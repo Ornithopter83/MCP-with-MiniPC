@@ -41,3 +41,9 @@ HQ와 RESOURCE는 서로 다른 persistent profile의 관리형 Chromium을 사�
 Worker의 저장소별 실행 격리와 기계 상태는 target workspace의 `.projecthub` 아래에 두며 정상 Worker 종료 뒤에는 해당 폴더를 남기지 않는 것을 원칙으로 한다. 짧은 파일 잠금 때문에 즉시 삭제할 수 없는 경우 종료 후 cleanup helper가 정리를 재시도한다.
 
 Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. Web 전달에서는 로컬 파일 hash 검증과 ChatGPT UI의 기계적 준비 상태를 구분하고, 일반 Web 결과 파일은 Worker가 안전한 결과 경로에 저장한다.
+
+### JEV 설정
+
+JUDGE의 JEV API 호출을 사용하려면 Worker 프로세스 환경에 `TYPESAFE_API_KEY`를 설정한다. 값이 없으면 Worker는 제공자 호출을 시도하지 않고 `JEV_API_KEY_MISSING` 기술 오류로 처리한다.
+
+JEV endpoint는 Worker의 JUDGE 설정에서 HTTPS 주소로 지정할 수 있으며, 별도 지정이 없으면 현재 어댑터 기본 endpoint를 사용한다. API 키 원문은 저장소, AI 프롬프트 또는 운영 로그에 기록하지 않는다.
