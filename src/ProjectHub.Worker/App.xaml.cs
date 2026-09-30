@@ -24,14 +24,9 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        if (ProjectHubExitCleanup.IsHelperInvocation(e.Args))
-        {
-            base.OnStartup(e);
-            Shutdown(ProjectHubExitCleanup.RunHelper(e.Args));
-            return;
-        }
-
         WorkerPaths.EnsureCreated();
+        if (!WorkerPaths.TryResetEphemeralDirectories(out var startupCleanupError))
+            LogStartupFailure(new IOException("Startup ephemeral cleanup failed: " + (startupCleanupError ?? "unknown")));
         var extension = ExtensionDeployment.EnsureDeployed();
         if (extension.Error is not null)
             LogStartupFailure(new InvalidOperationException("Extension deployment failed: " + extension.Error));
