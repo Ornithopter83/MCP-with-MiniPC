@@ -25,6 +25,13 @@ public sealed record CodexWorkItemCallCompleted(
     AiRoleRunResult Result,
     long? WorkNumber = null);
 
+public sealed record CodexWorkItemMechanicalProgress(
+    string WorkItemId,
+    string Stage,
+    string Message,
+    bool Active,
+    long? WorkNumber = null);
+
 public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 {
     private const int MaximumCheckpointAttempts = 3;
@@ -78,6 +85,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     public event Action<CodexWorkItemSessionStarted>? SessionStarted;
     public event Action<CodexWorkItemContextPrepared>? ContextPrepared;
     public event Action<CodexWorkItemCallCompleted>? CallCompleted;
+    public event Action<CodexWorkItemMechanicalProgress>? MechanicalProgress;
 
     public async Task<WorkItemExecutionResult> ExecuteAsync(
         WorkItemExecutionRequest request,
@@ -324,6 +332,51 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         var inboundType = request.InboundType;
         var inboundBody = request.InboundBody;
         var sessionId = item.SessionId;
+
+        if (string.Equals(inboundType, "BUILD_AUTHORIZED", StringComparison.Ordinal))
+        {
+            var authorization = BuildRequestContract.ParseAuthorizationOrFullFallback(inboundBody);
+            MechanicalProgress?.Invoke(new CodexWorkItemMechanicalProgress(
+                item.Id,
+                "BUILD",
+                authorization.FallbackToFull
+                    ? "HQ BUILD 지시 파싱에 실패해 Full Build fallback을 실행합니다."
+                    : "HQ 승인 BUILD를 Worker가 기계 실행합니다.",
+                true,
+                item.CreatedOrder + 1));
+            MechanicalBuildResult buildResult;
+            try
+            {
+                buildResult = await MechanicalBuildExecutor.ExecuteAsync(
+                    preparation.WorktreePath,
+                    workTempPath,
+                    workEnvironment,
+                    authorization,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                MechanicalProgress?.Invoke(new CodexWorkItemMechanicalProgress(
+                    item.Id,
+                    "BUILD",
+                    "HQ 승인 BUILD 기계 실행을 종료했습니다.",
+                    false,
+                    item.CreatedOrder + 1));
+            }
+
+            inboundType = "BUILD_RESULT";
+            inboundBody = string.Join(
+                Environment.NewLine,
+                "BUILD_RESULT",
+                "success: " + buildResult.Success.ToString().ToLowerInvariant(),
+                "exitCode: " + buildResult.ExitCode,
+                "target: " + buildResult.Target,
+                "fallbackFull: " + buildResult.FallbackToFull.ToString().ToLowerInvariant(),
+                "logPath: " + buildResult.LogPath,
+                string.Empty,
+                buildResult.Summary);
+        }
+
         AiRoleRunResult runResult;
         var outputContractCorrections = 0;
 
