@@ -326,11 +326,16 @@ public partial class MainWindow : Window
     }
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (!_allowClose && (((App)System.Windows.Application.Current).ShutdownRequested || Dispatcher.HasShutdownStarted))
-            _allowClose = true;
+        var app = (App)System.Windows.Application.Current;
+        var action = WorkerWindowClosePolicy.Resolve(
+            _allowClose,
+            app.ShutdownRequested,
+            Dispatcher.HasShutdownStarted,
+            IsSettingsOverlayOpen);
 
-        if (_allowClose)
+        if (action == WorkerWindowCloseAction.Shutdown)
         {
+            _allowClose = true;
             SetSettingsPopupOpen(false);
             if (_activeTaskCts is not null || _awaitingWebResult)
                 AddTaskMessage("SYSTEM", "Worker 종료 요청으로 실행 중 작업을 중단합니다.", status: "CANCELED");
@@ -349,14 +354,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (IsSettingsOverlayOpen)
+        e.Cancel = true;
+        if (action == WorkerWindowCloseAction.CloseSettings)
         {
-            e.Cancel = true;
             SetSettingsPopupOpen(false);
             return;
         }
 
-        e.Cancel = true;
         Hide();
     }
 
