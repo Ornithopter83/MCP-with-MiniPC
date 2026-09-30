@@ -152,6 +152,7 @@ public static class CodexModelCatalog
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        using var processJob = new WorkerChildProcessJob("Codex model catalog");
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
@@ -169,6 +170,7 @@ public static class CodexModelCatalog
         try
         {
             if (!process.Start()) return new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_UNAVAILABLE");
+            processJob.Assign(process);
             var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
             var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
             await process.WaitForExitAsync(timeout.Token);
