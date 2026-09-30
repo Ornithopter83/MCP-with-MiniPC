@@ -92,3 +92,12 @@
 ⑥ 과거 상태 보존은 Git 이력에 맡긴다.
 ⑦ CurrentWork는 정책 원본, 런타임 상태 원본 또는 자동 문맥 복구 원본으로 사용하지 않는다.
 ⑧ 사용자가 명시적으로 현재 상태 확인을 요청하지 않는 한 CurrentWork를 AI 입력에 자동 주입하지 않는다.
+
+---
+
+제9조 (실행 인프라의 기계 책임)
+
+① 설치되어 있는 SDK, runtime, reference pack, restore cache와 작업별 build 경로의 접근·격리는 Worker가 기계적으로 준비하고 WORK가 같은 환경 문제를 반복 해결하게 하지 않는다.
+② 관리자 권한 상승, 신규 SDK·runtime 설치, Registry 수정, 시스템 환경변수 영구 변경, 인증서 설치와 TargetFramework 자체 변경은 제1항의 자동 승인 범위에 포함하지 않는다.
+③ `bin/`, `obj/`, `dist-temp/`, SDK·package restore cache와 그 밖의 재생성 가능한 build artifact는 CODE_CHANGE와 Commit Manifest의 의미 변경 대상으로 취급하지 않는다.
+④ Web transport 또는 응답 회수 실패는 의미 작업 실패와 구분한다. HQ Web turn의 일시적 응답 회수 실패만으로 WorkGraph 전체를 종료하지 않고 현재 revision과 실행 결과를 보존한 채 기계적 복구를 우선한다.
