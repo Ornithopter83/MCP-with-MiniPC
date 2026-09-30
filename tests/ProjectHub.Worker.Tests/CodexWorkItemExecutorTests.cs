@@ -596,6 +596,7 @@ public sealed class CodexWorkItemExecutorTests
 
         var integrationClone = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
         var integrationBranch = GitWorktreeManager.BuildBranchName("job", "I1");
+        Directory.CreateDirectory(integrationClone);
         var git = new FakeGitRunner();
         git.Enqueue(0, root);
         git.Enqueue(0, "");
@@ -826,6 +827,7 @@ public sealed class CodexWorkItemExecutorTests
         {
             fixture.Git.Enqueue(0, "head123");
             fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, " M changed.cs");
             fixture.Git.Enqueue(0, " M changed.cs");
             fixture.Git.Enqueue(128, "", "fatal: simulated checkpoint add lock");
         }
