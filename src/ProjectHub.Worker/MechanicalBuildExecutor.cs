@@ -145,6 +145,7 @@ internal static class MechanicalBuildExecutor
             startInfo.Environment[pair.Key] = pair.Value;
         startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
+        using var processJob = new WorkerChildProcessJob("dotnet build");
         using var process = new Process { StartInfo = startInfo };
         var output = new StringBuilder();
         var error = new StringBuilder();
@@ -154,6 +155,7 @@ internal static class MechanicalBuildExecutor
         if (!process.Start())
             throw new InvalidOperationException("BUILD_PROCESS_START_FAILED");
 
+        processJob.Assign(process);
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         try
