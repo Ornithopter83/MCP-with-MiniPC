@@ -38,6 +38,7 @@ public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
 
         try
         {
+            using var processJob = new WorkerChildProcessJob("Git worktree");
             using var process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -59,6 +60,7 @@ public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
             if (!process.Start())
                 return new GitCommandResult(-1, string.Empty, "GIT_PROCESS_START_FAILED");
 
+            processJob.Assign(process);
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
