@@ -332,3 +332,5 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑪ Codex CLI의 병렬 실행은 하나의 child Job Object를 공유하지 않는다. 각 실행은 별도 KILL_ON_JOB_CLOSE Job을 소유하고 정상 완료·취소·오류 시 해당 Job을 닫아 그 실행에서 파생된 하위 프로세스를 함께 종료한다.
 ⑫ 관리형 Chromium은 HQ와 RESOURCE 역할 슬롯이 서로 다른 KILL_ON_JOB_CLOSE Job을 소유한다. 역할 브라우저의 종료·재시작 또는 launcher 종료 시 해당 슬롯 Job을 닫아 renderer·helper를 함께 종료하며 다른 역할 브라우저의 수명에는 영향을 주지 않는다.
 ⑬ Worker root Job Object는 비정상 종료를 포함한 프로세스 전체 수명의 최후 안전망이며, 실행 단위 Job 정리를 대신해 장시간 하위 프로세스를 보존하는 용도로 사용하지 않는다.
+⑭ Process 시작 직후 실행·역할 Job 연결 전에 자식이 먼저 생성되는 race를 고려해, 실행 또는 역할 종료 시 launcher PID와 시작 시각을 기준으로 남아 있는 후손을 기계적으로 재확인해 정리한다. PID 재사용 가능성을 배제할 수 없는 프로세스는 임의 종료하지 않는다.
+⑮ Worker 시작 시 이전 실행의 관리형 Chromium을 회수할 때는 현재 선택된 chrome.exe 한 경로에 한정하지 않고 Worker가 소유하는 BrowserRuntime 경로 아래의 프로세스를 대상으로 한다. Worker 소유 경로 밖의 일반 사용자·시스템 Chrome은 자동 종료하지 않는다.
