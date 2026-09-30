@@ -195,6 +195,9 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("hasMeaningfulResponseText", StringComparison.Ordinal));
         Assert.True(source.Contains("scheduleResponseRecheck", StringComparison.Ordinal));
         Assert.True(source.Contains("RESPONSE_DEADLINE_RECOVERY", StringComparison.Ordinal));
+        Assert.True(source.Contains("POST_STREAM_CHECK", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESPONSE_LOST_AFTER_STREAM_END", StringComparison.Ordinal));
+        Assert.True(source.Contains("response_lost_after_stream_end", StringComparison.Ordinal));
         Assert.False(source.Contains("button,[role=\"button\"],[data-is-streaming=\"true\"],[data-streaming=\"true\"],[aria-busy=\"true\"]", StringComparison.Ordinal));
         Assert.True(source.Contains("fallbackSubmitComposer", StringComparison.Ordinal));
         Assert.True(source.Contains("form.requestSubmit()", StringComparison.Ordinal));
