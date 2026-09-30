@@ -101,3 +101,13 @@
 ③ 동일 task의 동일 이상은 기계적으로 중복 억제할 수 있다.
 ④ UI 이상 관측만으로 task 실패, 대화방 이동, 재전송, role binding 변경, lease/KEY 변경 또는 자동 복구를 수행하지 않는다.
 ⑤ 실제 반복 증거와 재현 로그가 확보된 뒤 별도 정책 변경으로 개입 여부를 결정한다.
+
+---
+
+제12조 (stream 종료 후 응답 복구)
+
+① 확장은 WAIT_RESPONSE 중 `streaming=true`에서 `streaming=false`로 바뀌는 전이를 응답 생성 종료의 직접 기계 신호로 기록한다.
+② 제1항의 전이 뒤 현재 correlation KEY가 포함된 assistant 응답 root, body fallback, 응답 텍스트 또는 결과 파일이 아직 없으면 장시간 absolute timeout을 기다리지 않고 짧은 POST_STREAM_CHECK를 수행한다.
+③ POST_STREAM_CHECK 뒤에도 응답 자체를 찾지 못하면 `RESPONSE_LOST_AFTER_STREAM_END`로 분류하고, 응답은 있으나 현재 KEY를 확인하지 못한 경우에는 KEY 누락 상태로 구분한다.
+④ 제3항의 실패는 의미 작업 실패와 동일시하지 않는다. HQ task에서는 Worker가 동일 WorkGraph revision의 같은 관제 입력을 transport-level로 재시도할 수 있도록 기계 실패 사실을 반환한다.
+⑤ 정상 streaming 또는 DOM/text activity가 계속되는 동안에는 idle 관측을 갱신하며 absolute timeout은 최후의 watchdog으로만 사용한다.
