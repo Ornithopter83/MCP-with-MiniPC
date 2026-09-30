@@ -83,6 +83,9 @@
 ⑧ HQ correlation KEY 탐지는 role·turn selector 결과에만 의존하지 않고 현재 conversation 본문에서 동일 KEY를 직접 찾는 기계 fallback을 사용하며, 요청 prompt 자체에 포함된 KEY는 응답 증거에서 제외한다.
 ⑨ 응답 root를 식별하지 못한 경우에도 현재 KEY 뒤에 HQ 계약의 ACTION이 이어지는 현재 conversation 본문을 보조 결과로 사용할 수 있다. 이 fallback은 같은 KEY가 포함된 요청 prompt와 구분되는 경우에만 사용한다.
 ⑩ 이미 claim된 HQ task에서 이전 turn baseline을 복구할 수 없더라도 현재 task의 correlation KEY가 있으면 같은 KEY만을 기준으로 응답 수신을 재개할 수 있다. 이 복구는 기존 prompt를 다시 전송하지 않는다.
+⑪ correlation KEY가 포함된 응답이 여러 DOM 조각·assistant turn·generic response·body fallback에서 동시에 관측되면 최초로 발견된 조각을 고정하지 않는다. KEY 뒤에 ACTION이 이어지는 유효 후보들 가운데 현재 가장 완전한 응답 텍스트를 선택하고, 이후 더 긴 후보가 나타나면 그 후보로 갱신한다.
+⑫ body fallback은 response root를 찾지 못했을 때만 쓰는 최후 수단으로 제한하지 않는다. response root가 존재해도 더 완전한 KEY+ACTION 본문을 제공하면 안정화 snapshot과 최종 제출 텍스트의 후보로 함께 사용한다.
+⑬ 일반 HQ 응답의 RESPONSE_STABLE 판정은 제11항·제12항으로 선택된 현재 최장 correlation 응답과 파일 snapshot이 안정된 경우에만 수행한다. 스트리밍 초기에 latch된 짧은 DOM fragment가 변하지 않는다는 사실만으로 응답 완료를 확정하지 않는다.
 
 ---
 
