@@ -119,5 +119,5 @@
 ① WORK는 빌드를 자체 반복하지 않고 필요 시 HQ에 요청하며, HQ는 빌드 필요성과 범위를 판단한다. 실제 build/restore 실행은 Worker의 기계 책임이다.
 ② HQ의 BUILD 승인 구조를 정상 파싱하지 못해도 빌드 지시를 유실하지 않고 Full Build로 fallback한다.
 ③ Worker가 수행하는 HQ 승인 빌드와 RESOURCE transport 복구 등 control-plane 기계 작업도 HQ 관제가 진행 중인 상태로 표시한다.
-④ RESOURCE capture·download transport 실패는 의미 WorkItem 실패와 분리해 Worker 내부에서 유한 재시도한다.
+④ RESOURCE capture·download transport 실패는 의미 WorkItem 실패와 분리한다. 이미 생성된 결과가 있으면 Web transport 계층이 해당 candidate의 capture만 유한 재시도하며 같은 RESOURCE 생성 프롬프트를 다시 실행하지 않는다.
 ⑤ 유효한 CODE_CHANGE/checkpoint가 있는 WorkItem이 일부 조건 때문에 중단되면 결과를 폐기하지 않고 BLOCKED로 보존해 같은 WorkItem에서 재개한다.
