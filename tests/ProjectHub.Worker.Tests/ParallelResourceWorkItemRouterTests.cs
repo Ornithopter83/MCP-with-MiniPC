@@ -121,7 +121,7 @@ public sealed class ParallelResourceWorkItemRouterTests
                 "형식 없는 요청",
                 null,
                 null,
-                null,
+                root,
                 "session-W2"));
 
             var resume = await host.Resume.Task.WaitAsync(cts.Token);
