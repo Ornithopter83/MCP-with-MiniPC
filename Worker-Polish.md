@@ -288,3 +288,25 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑤ 완료 commit을 주 저장소로 가져오고 target branch에 fast-forward하는 작업은 Worker만 수행한다.
 ⑥ clone root, Git metadata, source branch 또는 target branch 상태가 예상과 다르면 자동 force/reset으로 해결하지 않고 기계 오류로 HQ에 보고한다.
 ⑦ 정확한 clone 경로와 Git 명령행 옵션은 장기 정책으로 고정하지 않고 현재 구현과 테스트를 원본으로 사용한다.
+---
+
+제25조 (WORK build context와 재생성 산출물)
+
+① Worker는 WORK 실행 전에 현재 머신에 이미 설치된 SDK, reference pack, targeting 도구와 package cache의 사용 가능한 경로를 기계적으로 확인하고 해당 WORK의 sandbox 접근 범위에 선제적으로 포함할 수 있다.
+② Worker는 NuGet cache, .NET CLI home, TEMP와 WORK별 build root를 ProjectHub runtime 아래에 격리하고 first-run·telemetry·build server와 같이 결과에 불필요한 부작용을 억제하는 환경을 주입한다.
+③ 제1항의 자동 접근 허용은 기존 build 도구 사용에 한정하며 관리자 권한 상승, 신규 SDK·runtime 설치, registry 수정, 시스템 환경변수 영구 변경, 인증서 설치 또는 target framework 의미 변경 권한을 뜻하지 않는다.
+④ Worker는 checkpoint 전에 프로젝트별 `bin`·`obj`, `dist-temp`, restore cache, test 임시 산출물과 그 밖의 명시된 재생성 artifact를 기계적으로 제거하고, 기존에 추적된 파일이 있으면 현재 HEAD 상태로 복원한다.
+⑤ Worker가 관리하는 `.gitignore`에는 재생성 artifact 기본 규칙을 포함하며, ignore 규칙의 유무와 별개로 checkpoint와 Commit Manifest 경계에서 동일한 hard filter를 적용한다.
+⑥ Commit Manifest에는 재생성 가능한 build artifact를 포함하지 않는다.
+⑦ 실제 SDK 경로 탐색 목록, runtime 디렉터리 이름과 build 환경 변수의 세부 값은 현재 구현과 테스트를 원본으로 사용한다.
+
+---
+
+제26조 (HQ Web transport 복구)
+
+① HQ Web 호출의 timeout, streaming 종료 후 응답 유실 또는 correlation KEY 누락은 WorkGraph의 의미 실패와 구분한다.
+② 복구 가능한 HQ Web transport 실패가 발생하면 Worker는 WorkGraph revision과 동일 HQ 입력을 변경하지 않고 같은 관제 turn을 기계적으로 다시 요청할 수 있다.
+③ transport 재요청 때문에 새 WorkItem을 만들거나 완료된 WorkItem 결과를 폐기하지 않는다.
+④ 늦게 도착한 이전 응답과 재요청 응답의 중복 적용은 task correlation과 WorkGraph revision 검증으로 차단한다.
+⑤ 반복된 transport 복구가 끝내 실패한 경우에만 별도 기계 오류로 종료하며, 구체 재시도 횟수와 backoff는 구현·테스트를 원본으로 사용한다.
+
