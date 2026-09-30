@@ -2908,6 +2908,7 @@ public partial class MainWindow : Window
     {
         var executable = _codexRunner.FindExecutable();
         if (executable is null) return false;
+        using var processJob = new WorkerChildProcessJob("Codex login status");
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
@@ -2924,6 +2925,7 @@ public partial class MainWindow : Window
         try
         {
             if (!process.Start()) return false;
+            processJob.Assign(process);
             await process.WaitForExitAsync();
             return process.ExitCode == 0;
         }
