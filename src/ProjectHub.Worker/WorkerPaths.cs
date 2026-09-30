@@ -86,6 +86,19 @@ public static class WorkerPaths
             StableRuntimeSegment(workItemId));
     }
 
+    public static string BuildWorkBuildPath(
+        RepositoryRuntimePaths runtime,
+        string jobId,
+        string workItemId)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        return Path.Combine(
+            runtime.Root,
+            "build",
+            StableRuntimeSegment(jobId),
+            StableRuntimeSegment(workItemId));
+    }
+
     public static string BuildResourceStagingRoot(
         RepositoryRuntimePaths runtime,
         string resourceType)
@@ -120,7 +133,8 @@ public static class WorkerPaths
 
     public static void EnsureWorkToolDirectories(
         RepositoryRuntimePaths runtime,
-        string workTempPath)
+        string workTempPath,
+        string? workBuildPath = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         foreach (var directory in new[]
@@ -130,8 +144,9 @@ public static class WorkerPaths
             runtime.NuGetPluginsCache,
             runtime.NuGetScratch,
             runtime.DotNetHome,
-            workTempPath
-        })
+            workTempPath,
+            workBuildPath
+        }.Where(path => !string.IsNullOrWhiteSpace(path)).Cast<string>())
         {
             Directory.CreateDirectory(directory);
         }
@@ -139,10 +154,11 @@ public static class WorkerPaths
 
     public static IReadOnlyDictionary<string, string> BuildWorkToolEnvironment(
         RepositoryRuntimePaths runtime,
-        string workTempPath)
+        string workTempPath,
+        string? workBuildPath = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["NUGET_PACKAGES"] = runtime.NuGetPackages,
             ["RestorePackagesPath"] = runtime.NuGetPackages,
@@ -151,9 +167,91 @@ public static class WorkerPaths
             ["NUGET_SCRATCH"] = runtime.NuGetScratch,
             ["DOTNET_CLI_HOME"] = runtime.DotNetHome,
             ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1",
+            ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
+            ["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "1",
+            ["DOTNET_NOLOGO"] = "1",
+            ["MSBUILDDISABLENODEREUSE"] = "1",
             ["TEMP"] = workTempPath,
             ["TMP"] = workTempPath
         };
+
+        if (!string.IsNullOrWhiteSpace(workBuildPath))
+            environment["PROJECTHUB_BUILD_ROOT"] = Path.GetFullPath(workBuildPath);
+
+        var approvedBuildRoots = GetApprovedBuildToolDirectories();
+        if (approvedBuildRoots.Count > 0)
+            environment["PROJECTHUB_APPROVED_BUILD_ROOTS"] = string.Join(Path.PathSeparator, approvedBuildRoots);
+
+        return environment;
+    }
+
+    public static IReadOnlyList<string> GetApprovedBuildToolDirectories()
+    {
+        var comparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var result = new HashSet<string>(comparer);
+
+        void AddDirectory(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            try
+            {
+                var fullPath = Path.GetFullPath(value.Trim().Trim('"'));
+                if (Directory.Exists(fullPath))
+                    result.Add(fullPath);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+            }
+        }
+
+        foreach (var variable in new[]
+        {
+            "DOTNET_ROOT",
+            "DOTNET_ROOT(x86)",
+            "MSBuildSDKsPath",
+            "WindowsSdkDir",
+            "WindowsSDKDir",
+            "WindowsSdkVerBinPath",
+            "VSINSTALLDIR",
+            "VisualStudioInstallDir",
+            "VCToolsInstallDir",
+            "VCINSTALLDIR",
+            "UniversalCRTSdkDir",
+            "ExtensionSdkDir"
+        })
+        {
+            AddDirectory(Environment.GetEnvironmentVariable(variable));
+        }
+
+        foreach (var segment in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+                     .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var directory = segment.Trim().Trim('"');
+            if (directory.Length == 0 || !Directory.Exists(directory))
+                continue;
+
+            if (File.Exists(Path.Combine(directory, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet")) ||
+                File.Exists(Path.Combine(directory, OperatingSystem.IsWindows() ? "MSBuild.exe" : "msbuild")))
+            {
+                AddDirectory(directory);
+            }
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            AddDirectory(Path.Combine(programFiles, "dotnet"));
+            AddDirectory(Path.Combine(programFilesX86, "dotnet"));
+            AddDirectory(Path.Combine(programFilesX86, "Windows Kits"));
+        }
+
+        return result.OrderBy(path => path, comparer).ToArray();
     }
 
     public static bool TryResetEphemeralDirectories(out string? errorDetail)
