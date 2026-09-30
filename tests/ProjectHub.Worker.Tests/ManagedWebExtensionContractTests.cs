@@ -79,13 +79,16 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("correlationSendEvidence", StringComparison.Ordinal));
         Assert.True(source.Contains("CORRELATION_KEY_RESPONSE", StringComparison.Ordinal));
         Assert.True(source.Contains("CORRELATION_KEY", StringComparison.Ordinal));
-        Assert.True(source.Contains("return directCorrelationResponseRoot();", StringComparison.Ordinal));
+        Assert.True(source.Contains("correlatedResponseSlice", StringComparison.Ordinal));
+        Assert.True(source.Contains("bestLength", StringComparison.Ordinal));
+        Assert.True(source.Contains("values.sort((a,b)=>b.length-a.length)", StringComparison.Ordinal));
         Assert.True(source.Contains("observeCorrelationKeyWatch", StringComparison.Ordinal));
         Assert.True(source.Contains("HQ_KEY_WATCH", StringComparison.Ordinal));
         Assert.True(source.Contains("HQ_KEY_SEND_RECOVERED", StringComparison.Ordinal));
         Assert.True(source.Contains("HQ_KEY_CLAIM_RECOVERED", StringComparison.Ordinal));
         Assert.True(source.Contains("HQ_KEY_BASELINE_FALLBACK", StringComparison.Ordinal));
-        Assert.True(source.Contains("directFallbackLength", StringComparison.Ordinal));
+        Assert.True(source.Contains("const bodyFallback=correlationBodyTextFallback();", StringComparison.Ordinal));
+        Assert.True(source.Contains("const correlatedText=currentCorrelatedResponseText();", StringComparison.Ordinal));
         Assert.True(source.Contains("correlationBodyTextFallback", StringComparison.Ordinal));
         Assert.True(source.Contains("keyBodyFallback", StringComparison.Ordinal));
         Assert.True(source.Contains("role·turn selector와 응답 root 없이 현재 KEY와 ACTION이 포함된 body fallback", StringComparison.Ordinal));
@@ -124,15 +127,66 @@ public sealed class ManagedWebExtensionContractTests
         var currentTextIndex = source.IndexOf(
             "function currentCorrelatedResponseText()",
             StringComparison.Ordinal);
-        var currentFallbackIndex = source.IndexOf(
-            "return correlationBodyTextFallback();",
+        var bodyCandidateIndex = source.IndexOf(
+            "add(correlationBodyTextFallback());",
             currentTextIndex,
+            StringComparison.Ordinal);
+        var longestCandidateIndex = source.IndexOf(
+            "values.sort((a,b)=>b.length-a.length)",
+            currentTextIndex,
+            StringComparison.Ordinal);
+        var unconditionalBodyFallbackIndex = source.IndexOf(
+            "const keyBodyFallback=activeCorrelationKey?correlationBodyTextFallback():'';",
             StringComparison.Ordinal);
 
         Assert.True(fallbackFunctionIndex >= 0);
         Assert.True(actionGuardIndex > fallbackFunctionIndex);
         Assert.True(promptGuardIndex > actionGuardIndex);
-        Assert.True(currentFallbackIndex > currentTextIndex);
+        Assert.True(bodyCandidateIndex > currentTextIndex);
+        Assert.True(longestCandidateIndex > bodyCandidateIndex);
+        Assert.True(unconditionalBodyFallbackIndex > currentTextIndex);
+    }
+
+    [Fact]
+    public void EmbeddedContent_DoesNotFreezeCorrelationOnFirstMutationFragment()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        var rootFunction = source.IndexOf(
+            "function correlationResponseRoot()",
+            StringComparison.Ordinal);
+        var mutationCandidate = source.IndexOf(
+            "if(mutationResponseElement?.isConnected)candidates.push(mutationResponseElement);",
+            rootFunction,
+            StringComparison.Ordinal);
+        var bestLength = source.IndexOf(
+            "let best=null,bestLength=-1,markerOnly=null;",
+            rootFunction,
+            StringComparison.Ordinal);
+        var currentText = source.IndexOf(
+            "function currentCorrelatedResponseText()",
+            StringComparison.Ordinal);
+        var bodyFallback = source.IndexOf(
+            "add(correlationBodyTextFallback());",
+            currentText,
+            StringComparison.Ordinal);
+        var longest = source.IndexOf(
+            "values.sort((a,b)=>b.length-a.length)",
+            currentText,
+            StringComparison.Ordinal);
+
+        Assert.True(rootFunction >= 0);
+        Assert.True(mutationCandidate > rootFunction);
+        Assert.True(bestLength > mutationCandidate);
+        Assert.True(currentText > rootFunction);
+        Assert.True(bodyFallback > currentText);
+        Assert.True(longest > bodyFallback);
+        Assert.False(source.Contains(
+            "for(const candidate of candidates){\n      const root=correlationRootFromElement(candidate);\n      if(root)return root;",
+            StringComparison.Ordinal));
+        Assert.False(source.Contains(
+            "const keyBodyFallback=activeCorrelationKey&&!keyResponse?correlationBodyTextFallback():'';",
+            StringComparison.Ordinal));
     }
 
     [Fact]
