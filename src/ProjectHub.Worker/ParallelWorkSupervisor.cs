@@ -926,8 +926,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         builder.AppendLine("[ACTION=CONTINUE]");
         builder.AppendLine("[GOTO : WORK]");
         builder.AppendLine("WORK_GRAPH_PATCH:");
-        builder.AppendLine($"{{\"expectedRevision\":{snapshot.Revision},\"operations\":[...]}}");
-        builder.AppendLine("operations를 생략하거나 미완성 JSON을 구조 복구에 맡기지 마세요.");
+        builder.AppendLine($"expectedRevision은 {snapshot.Revision}을 사용하고 operations에는 현재 판단에 따른 실제 operation 객체를 넣은 유효 JSON 객체를 작성하세요.");
+        builder.AppendLine("operations를 생략하거나 placeholder·미완성 JSON을 구조 복구에 맡기지 마세요.");
         builder.Append("현재 정보만으로 의미 있는 다음 operation을 만들 수 없고 사용자 입력이 필요한 경우에는 빈 CONTINUE 대신 [ACTION=PAUSE]와 필요한 입력을 반환하세요.");
         return builder.ToString().TrimEnd();
     }
