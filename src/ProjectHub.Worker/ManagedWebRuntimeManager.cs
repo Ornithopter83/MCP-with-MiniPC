@@ -650,14 +650,44 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
     public void Dispose()
     {
-        try
+        Process[] processes;
+        lock (_gate)
         {
-            Stop(ManagedWebRole.Hq);
-            Stop(ManagedWebRole.Resource);
+            processes = _slots.Values
+                .Select(slot => slot.Process)
+                .Where(process => process is not null)
+                .Cast<Process>()
+                .Distinct()
+                .ToArray();
+
+            foreach (var slot in _slots.Values)
+            {
+                slot.Process = null;
+                slot.Provisioning = false;
+            }
         }
-        finally
+
+        // 앱 종료에서는 브라우저별 graceful close를 기다리지 않는다.
+        // Job Object의 KILL_ON_JOB_CLOSE로 Worker 소유 Chromium tree를 먼저 종료한다.
+        _processJob.Dispose();
+
+        foreach (var process in processes)
         {
-            _processJob.Dispose();
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(2000);
+                }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                process.Dispose();
+            }
         }
     }
 }
