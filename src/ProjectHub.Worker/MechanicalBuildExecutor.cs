@@ -34,50 +34,80 @@ internal static class BuildRequestContract
             .Any(line => line.Trim().StartsWith(Marker, StringComparison.Ordinal));
 
     public static BuildAuthorization ParseAuthorizationOrFullFallback(string? body)
+        => ParseAuthorizationOrFullFallback(body, out _);
+
+    public static BuildAuthorization ParseAuthorizationOrFullFallback(
+        string? body,
+        out string? fallbackReason)
     {
+        fallbackReason = null;
         try
         {
             var json = ExtractJson(body);
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
-                return FullFallback();
+                return FullFallback("BUILD_AUTHORIZATION_ROOT_NOT_OBJECT", out fallbackReason);
 
-            var scope = root.TryGetProperty("scope", out var scopeElement)
-                ? (scopeElement.GetString() ?? string.Empty).Trim().ToUpperInvariant()
-                : string.Empty;
+            if (!root.TryGetProperty("scope", out var scopeElement) ||
+                scopeElement.ValueKind != JsonValueKind.String)
+            {
+                return FullFallback("BUILD_AUTHORIZATION_SCOPE_MISSING", out fallbackReason);
+            }
+
+            var scope = (scopeElement.GetString() ?? string.Empty).Trim().ToUpperInvariant();
             if (scope is not ("TARGET" or "FULL"))
-                return FullFallback();
+                return FullFallback("BUILD_AUTHORIZATION_SCOPE_INVALID", out fallbackReason);
 
-            var target = root.TryGetProperty("target", out var targetElement)
-                ? targetElement.GetString()
-                : null;
+            string? target = null;
+            if (root.TryGetProperty("target", out var targetElement) &&
+                targetElement.ValueKind != JsonValueKind.Null)
+            {
+                if (targetElement.ValueKind != JsonValueKind.String)
+                    return FullFallback("BUILD_AUTHORIZATION_TARGET_INVALID", out fallbackReason);
+                target = targetElement.GetString();
+            }
             if (scope == "TARGET" && string.IsNullOrWhiteSpace(target))
-                return FullFallback();
+                return FullFallback("BUILD_AUTHORIZATION_TARGET_MISSING", out fallbackReason);
 
-            var configuration = root.TryGetProperty("configuration", out var configurationElement)
-                ? configurationElement.GetString()
-                : "Debug";
+            var configuration = "Debug";
+            if (root.TryGetProperty("configuration", out var configurationElement) &&
+                configurationElement.ValueKind != JsonValueKind.Null)
+            {
+                if (configurationElement.ValueKind != JsonValueKind.String)
+                    return FullFallback("BUILD_AUTHORIZATION_CONFIGURATION_INVALID", out fallbackReason);
+                configuration = configurationElement.GetString() ?? string.Empty;
+            }
             configuration = string.IsNullOrWhiteSpace(configuration) ? "Debug" : configuration.Trim();
 
-            var noRestore = root.TryGetProperty("noRestore", out var noRestoreElement) &&
-                            noRestoreElement.ValueKind is JsonValueKind.True or JsonValueKind.False &&
-                            noRestoreElement.GetBoolean();
+            var noRestore = false;
+            if (root.TryGetProperty("noRestore", out var noRestoreElement) &&
+                noRestoreElement.ValueKind != JsonValueKind.Null)
+            {
+                if (noRestoreElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    return FullFallback("BUILD_AUTHORIZATION_NO_RESTORE_INVALID", out fallbackReason);
+                noRestore = noRestoreElement.GetBoolean();
+            }
 
             return new BuildAuthorization(scope, target?.Trim(), configuration, noRestore, false);
         }
         catch (JsonException)
         {
-            return FullFallback();
+            return FullFallback("BUILD_AUTHORIZATION_JSON_INVALID", out fallbackReason);
         }
         catch (InvalidOperationException)
         {
-            return FullFallback();
+            return FullFallback("BUILD_AUTHORIZATION_VALUE_INVALID", out fallbackReason);
         }
     }
 
-    private static BuildAuthorization FullFallback()
-        => new("FULL", null, "Debug", false, true);
+    private static BuildAuthorization FullFallback(
+        string reason,
+        out string? fallbackReason)
+    {
+        fallbackReason = reason;
+        return new("FULL", null, "Debug", false, true);
+    }
 
     private static string ExtractJson(string? body)
     {
@@ -187,30 +217,52 @@ internal static class MechanicalBuildExecutor
             effectiveAuthorization.FallbackToFull);
     }
 
-    private static (string? Target, bool Fallback) ResolveTarget(
+    internal static (string? Target, bool Fallback) ResolveTarget(
         string worktreePath,
         BuildAuthorization authorization)
     {
+        var normalizedWorktree = Path.GetFullPath(worktreePath);
+
         if (authorization.Scope == "TARGET" && !string.IsNullOrWhiteSpace(authorization.Target))
         {
-            var candidate = Path.GetFullPath(Path.Combine(worktreePath, authorization.Target));
-            if (IsInside(worktreePath, candidate) &&
+            var candidate = Path.GetFullPath(Path.Combine(normalizedWorktree, authorization.Target));
+            if (IsInside(normalizedWorktree, candidate) &&
+                !IsManagedIntegrationInput(normalizedWorktree, candidate) &&
                 File.Exists(candidate) &&
                 IsSupported(candidate))
+            {
                 return (candidate, false);
+            }
         }
 
-        var solution = Directory.EnumerateFiles(worktreePath, "*.slnx", SearchOption.TopDirectoryOnly)
-            .Concat(Directory.EnumerateFiles(worktreePath, "*.sln", SearchOption.TopDirectoryOnly))
+        var solution = Directory.EnumerateFiles(normalizedWorktree, "*.slnx", SearchOption.TopDirectoryOnly)
+            .Concat(Directory.EnumerateFiles(normalizedWorktree, "*.sln", SearchOption.TopDirectoryOnly))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
         if (solution is not null)
             return (solution, authorization.Scope == "TARGET");
 
-        var project = Directory.EnumerateFiles(worktreePath, "*.csproj", SearchOption.AllDirectories)
+        var project = Directory.EnumerateFiles(normalizedWorktree, "*.csproj", SearchOption.AllDirectories)
+            .Where(path => !IsManagedIntegrationInput(normalizedWorktree, path))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
         return (project, authorization.Scope == "TARGET");
+    }
+
+    private static bool IsManagedIntegrationInput(string worktreePath, string path)
+    {
+        var relative = Path.GetRelativePath(worktreePath, path);
+        if (Path.IsPathRooted(relative))
+            return false;
+
+        return relative
+            .Split(
+                new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                StringSplitOptions.RemoveEmptyEntries)
+            .Any(segment => string.Equals(
+                segment,
+                ".projecthub-integration-inputs",
+                StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsSupported(string path)
