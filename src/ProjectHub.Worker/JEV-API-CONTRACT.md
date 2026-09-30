@@ -25,7 +25,7 @@
 ④ NOUL, SCORE, CHOICE의 질문 의미와 SCORE 기준 또는 CHOICE 선택지는 어댑터가 새로 작성하거나 보완하지 않는다.
 ⑤ 어댑터는 제공자 API에 필요한 구조 변환만 수행하고 필요한 제공자 필드가 없으면 스키마 또는 프로토콜 오류로 처리한다.
 
-⑥ ⑥ 현재 canonical Form 예시는 다음과 같다.
+⑥ 현재 canonical Form 예시는 다음과 같다.
 
 ```text
 NOUL | QID:IMPLEMENTED <question>
