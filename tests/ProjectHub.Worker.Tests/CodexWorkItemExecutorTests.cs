@@ -596,7 +596,6 @@ public sealed class CodexWorkItemExecutorTests
 
         var integrationClone = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
         var integrationBranch = GitWorktreeManager.BuildBranchName("job", "I1");
-        Directory.CreateDirectory(integrationClone);
         var git = new FakeGitRunner();
         git.Enqueue(0, root);
         git.Enqueue(0, "");
@@ -1018,6 +1017,13 @@ public sealed class CodexWorkItemExecutorTests
             CancellationToken cancellationToken = default)
         {
             Calls.Add(arguments.ToArray());
+            if (arguments.Count >= 3 &&
+                string.Equals(arguments[0], "clone", StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(arguments[^1]))
+            {
+                Directory.CreateDirectory(arguments[^1]);
+                Directory.CreateDirectory(Path.Combine(arguments[^1], ".git"));
+            }
             if (_results.Count == 0)
                 throw new InvalidOperationException("예상하지 않은 Git 호출입니다: " + string.Join(" ", arguments));
             return Task.FromResult(_results.Dequeue());
