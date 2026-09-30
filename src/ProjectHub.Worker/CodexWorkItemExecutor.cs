@@ -335,12 +335,16 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
         if (string.Equals(inboundType, "BUILD_AUTHORIZED", StringComparison.Ordinal))
         {
-            var authorization = BuildRequestContract.ParseAuthorizationOrFullFallback(inboundBody);
+            var authorization = BuildRequestContract.ParseAuthorizationOrFullFallback(
+                inboundBody,
+                out var buildAuthorizationFallbackReason);
             MechanicalProgress?.Invoke(new CodexWorkItemMechanicalProgress(
                 item.Id,
                 "BUILD",
                 authorization.FallbackToFull
-                    ? "HQ BUILD 지시 파싱에 실패해 Full Build fallback을 실행합니다."
+                    ? "HQ BUILD 지시 파싱 실패(" +
+                      (buildAuthorizationFallbackReason ?? "BUILD_AUTHORIZATION_UNKNOWN") +
+                      ") · 현재 WorkItem 작업공간에서 Full Build fallback을 실행합니다."
                     : "HQ 승인 BUILD를 Worker가 기계 실행합니다.",
                 true,
                 item.CreatedOrder + 1));
