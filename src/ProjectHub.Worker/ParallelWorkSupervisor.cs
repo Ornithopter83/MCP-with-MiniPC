@@ -922,7 +922,13 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         if (!string.IsNullOrWhiteSpace(errorDetail))
             builder.AppendLine(errorDetail.Trim());
         builder.AppendLine("WorkGraph는 변경되지 않았습니다.");
-        builder.Append("위 errorCode와 path/hint를 반영해 현재 revision 기준의 새 WORK_GRAPH_PATCH를 반환하세요.");
+        builder.AppendLine("CONTINUE를 선택한다면 다음 응답에 ACTION, GOTO, WORK_GRAPH_PATCH와 완전한 JSON 객체를 모두 실제로 출력하세요.");
+        builder.AppendLine("[ACTION=CONTINUE]");
+        builder.AppendLine("[GOTO : WORK]");
+        builder.AppendLine("WORK_GRAPH_PATCH:");
+        builder.AppendLine($"{{\"expectedRevision\":{snapshot.Revision},\"operations\":[...]}}");
+        builder.AppendLine("operations를 생략하거나 미완성 JSON을 구조 복구에 맡기지 마세요.");
+        builder.Append("현재 정보만으로 의미 있는 다음 operation을 만들 수 없고 사용자 입력이 필요한 경우에는 빈 CONTINUE 대신 [ACTION=PAUSE]와 필요한 입력을 반환하세요.");
         return builder.ToString().TrimEnd();
     }
 
