@@ -483,16 +483,21 @@ public static class WorkGraphTransportContract
                 return true;
 
             case "SET_GOAL":
-                if (!IsSafeId(id) || string.IsNullOrWhiteSpace(operation.Value))
+            {
+                var value = StringOperationValue(operation.Value);
+                if (!IsSafeId(id) || string.IsNullOrWhiteSpace(value))
                     return Fail("WORK_GRAPH_SET_GOAL_SCHEMA_INVALID", out mapped, out error);
-                mapped = WorkGraphPatchOperation.SetGoal(id, operation.Value.Trim());
+                mapped = WorkGraphPatchOperation.SetGoal(id, value.Trim());
                 return true;
+            }
 
             case "SET_BASE_REF":
+            {
                 if (!IsSafeId(id))
                     return Fail("WORK_GRAPH_WORK_ITEM_ID_INVALID", out mapped, out error);
-                mapped = WorkGraphPatchOperation.SetBaseRef(id, NullIfWhiteSpace(operation.Value));
+                mapped = WorkGraphPatchOperation.SetBaseRef(id, NullIfWhiteSpace(StringOperationValue(operation.Value)));
                 return true;
+            }
 
             case "RELEASE":
                 if (!IsSafeId(id))
@@ -500,7 +505,7 @@ public static class WorkGraphTransportContract
                 mapped = WorkGraphPatchOperation.Release(
                     id,
                     NullIfWhiteSpace(operation.InputType),
-                    NullIfWhiteSpace(operation.Value));
+                    NullIfWhiteSpace(ReleaseOperationValue(operation.Value)));
                 return true;
 
             case "SET_MAX_CONCURRENCY":
@@ -527,6 +532,24 @@ public static class WorkGraphTransportContract
                 kind = default;
                 return false;
         }
+    }
+
+    private static string? StringOperationValue(JsonElement? value)
+    {
+        if (value is null || value.Value.ValueKind == JsonValueKind.Null)
+            return null;
+        return value.Value.ValueKind == JsonValueKind.String
+            ? value.Value.GetString()
+            : null;
+    }
+
+    private static string? ReleaseOperationValue(JsonElement? value)
+    {
+        if (value is null || value.Value.ValueKind == JsonValueKind.Null)
+            return null;
+        return value.Value.ValueKind == JsonValueKind.String
+            ? value.Value.GetString()
+            : value.Value.GetRawText();
     }
 
     private static IReadOnlyList<string> NormalizeDependencies(IReadOnlyList<JsonElement>? values)
@@ -589,7 +612,7 @@ public static class WorkGraphTransportContract
         public List<JsonElement>? Dependencies { get; init; }
         public string? Kind { get; init; }
         public string? BaseRef { get; init; }
-        public string? Value { get; init; }
+        public JsonElement? Value { get; init; }
         public string? InputType { get; init; }
     }
 }
