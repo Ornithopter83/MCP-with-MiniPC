@@ -40,7 +40,7 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("Git ancestry를 기계적으로 축약해 실제 코드 기준점을 정한다.", hq);
         Assert.Contains("독립 CODE_CHANGE가 둘 이상이면 NORMAL에 임의로 합치지 않고 INTEGRATION WorkItem으로 결합한다.", hq);
         Assert.Contains("실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 경우 독립 검증은 최종 통합 상태를 기준으로 한 번만 계획한다.", hq);
-        Assert.Contains("검증 WorkItem은 결함 수정까지 겸하지 않고 발견 사실을 보고", hq);
+        Assert.Contains("최종 검증에서 실제 결함이 발견된 경우에만 별도 후속 수정 WorkItem을 추가한다.", hq);
         Assert.Contains("WORKTREE_CHECKPOINT_PENDING이 보고되면", hq);
         Assert.Contains("checkpoint 기계 재시도로 처리한다.", hq);
         Assert.Contains("PAUSE와 END에 따른 ProjectHub runtime 정리", hq);
