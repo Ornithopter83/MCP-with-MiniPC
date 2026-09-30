@@ -720,6 +720,9 @@ public sealed class ParallelWorkSupervisorTests
     [InlineData("WEB_RESPONSE_LOST_AFTER_STREAM_END: streaming ended without a recoverable response.")]
     [InlineData("response_timeout")]
     [InlineData("response_lost_after_stream_end")]
+    [InlineData("WEB_RESPONSE_KEY_MISSING")]
+    [InlineData("response_key_missing")]
+    [InlineData("WEB_RESPONSE_BODY_MISSING_AFTER_STREAM_END")]
     public void RecoverableHqTransportFailure_IsRecognized(string message)
     {
         Assert.True(ParallelWorkSupervisor.IsRecoverableHqTransportFailure(
