@@ -46,8 +46,8 @@ public sealed record CodexCliFile(string Path, string FileName, string MimeType,
 
 public sealed class CodexCliRunner : IDisposable
 {
-    private readonly WorkerChildProcessJob _processJob = new("Codex CLI");
     private readonly ConcurrentDictionary<int, Process> _activeProcesses = new();
+    private readonly ConcurrentDictionary<int, WorkerChildProcessJob> _activeProcessJobs = new();
     private int _disposed;
 
     internal IReadOnlyCollection<int> ActiveProcessIds
@@ -85,6 +85,7 @@ public sealed class CodexCliRunner : IDisposable
             ? CodexSessionLocator.CaptureSnapshot(workingDirectory, startedAt)
             : null;
         int? activeProcessId = null;
+        using var processJob = new WorkerChildProcessJob("Codex CLI run");
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
@@ -155,9 +156,17 @@ public sealed class CodexCliRunner : IDisposable
 
             try
             {
-                _processJob.Assign(process);
+                processJob.Assign(process);
                 activeProcessId = process.Id;
                 _activeProcesses[activeProcessId.Value] = process;
+                _activeProcessJobs[activeProcessId.Value] = processJob;
+
+                if (Volatile.Read(ref _disposed) != 0)
+                {
+                    processJob.Dispose();
+                    await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+                    throw new ObjectDisposedException(nameof(CodexCliRunner));
+                }
             }
             catch
             {
@@ -228,7 +237,10 @@ public sealed class CodexCliRunner : IDisposable
         finally
         {
             if (activeProcessId is { } processId)
+            {
+                _activeProcessJobs.TryRemove(processId, out _);
                 _activeProcesses.TryRemove(processId, out _);
+            }
             try { if (File.Exists(outputFile)) File.Delete(outputFile); } catch (IOException) { }
             try { if (outputSchemaFile is not null && File.Exists(outputSchemaFile)) File.Delete(outputSchemaFile); } catch (IOException) { }
         }
@@ -239,8 +251,14 @@ public sealed class CodexCliRunner : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
-        // Job Object를 먼저 닫아 정상/비정상 종료 모두에서 Codex 하위 tree를 OS가 정리하게 한다.
-        _processJob.Dispose();
+        // 병렬 Codex 실행마다 별도 Job을 닫는다.
+        // 한 실행이 끝났거나 Worker가 종료될 때 그 실행이 만든 하위 프로세스만 정리하고
+        // 다른 병렬 WORK의 프로세스 수명에는 영향을 주지 않는다.
+        foreach (var processJob in _activeProcessJobs.Values.ToArray())
+        {
+            try { processJob.Dispose(); }
+            catch { }
+        }
 
         foreach (var process in _activeProcesses.Values.ToArray())
         {
@@ -257,6 +275,7 @@ public sealed class CodexCliRunner : IDisposable
             }
         }
 
+        _activeProcessJobs.Clear();
         _activeProcesses.Clear();
     }
 
