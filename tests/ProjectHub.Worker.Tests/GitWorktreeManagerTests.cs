@@ -18,13 +18,13 @@ public sealed class GitWorktreeManagerTests
             var branchB = GitWorktreeManager.BuildBranchName("job-1", "W1");
 
             Assert.StartsWith(
-                Path.Combine(parent, "repo.projecthub", "worktrees") + Path.DirectorySeparatorChar,
+                WorkerPaths.GetRepositoryRuntimePaths(repository).Worktrees + Path.DirectorySeparatorChar,
                 path,
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
             Assert.True(
                 Path.GetRelativePath(parent, path).Length < 100,
                 "Worktree 상대 경로는 Windows 도구 호환성을 위해 짧게 유지해야 합니다.");
-            Assert.False(
+            Assert.True(
                 Path.GetFullPath(path).StartsWith(
                     Path.GetFullPath(repository) + Path.DirectorySeparatorChar,
                     OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
@@ -50,13 +50,13 @@ public sealed class GitWorktreeManagerTests
             var worktree = GitWorktreeManager.BuildWorktreePath(repository, "job-1", "I1");
 
             Assert.StartsWith(
-                Path.Combine(parent, "repo.projecthub", "integration-clones") + Path.DirectorySeparatorChar,
+                WorkerPaths.GetRepositoryRuntimePaths(repository).IntegrationClones + Path.DirectorySeparatorChar,
                 clone,
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
             Assert.NotEqual(
                 Path.GetFullPath(worktree),
                 Path.GetFullPath(clone));
-            Assert.False(
+            Assert.True(
                 Path.GetFullPath(clone).StartsWith(
                     Path.GetFullPath(repository) + Path.DirectorySeparatorChar,
                     OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
@@ -179,6 +179,7 @@ public sealed class GitWorktreeManagerTests
         var root = CreateTempRepositoryDirectory();
         var expectedPath = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
         var expectedBranch = GitWorktreeManager.BuildBranchName("job", "W1");
+        Directory.CreateDirectory(expectedPath);
         var runner = new FakeGitRunner(root);
         runner.Enqueue(0, root);
         runner.Enqueue(0, "base123");
@@ -322,6 +323,7 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "base123");
         runner.Enqueue(0, "projecthub/job/W1");
         runner.Enqueue(0, " M changed.cs");
+        runner.Enqueue(0, " M changed.cs");
         runner.Enqueue(0, "");
         runner.Enqueue(0, "[projecthub/job/W1 new456] checkpoint");
         runner.Enqueue(0, "new456");
@@ -336,7 +338,11 @@ public sealed class GitWorktreeManagerTests
             Assert.True(result.Success);
             Assert.True(result.CreatedCommit);
             Assert.Equal("new456", result.HeadCommit);
-            Assert.Contains(runner.Calls, call => call.Arguments.SequenceEqual(new[] { "add", "--all" }));
+            Assert.Contains(runner.Calls, call =>
+                call.Arguments.Count > 2 &&
+                call.Arguments[0] == "add" &&
+                call.Arguments[1] == "--all" &&
+                call.Arguments.Contains(":(exclude,glob)**/bin/**"));
             Assert.Contains(runner.Calls, call => call.Arguments.Contains("commit"));
             Assert.DoesNotContain(runner.Calls.SelectMany(call => call.Arguments), argument => argument == "push");
             Assert.DoesNotContain(runner.Calls.SelectMany(call => call.Arguments), argument => argument == "--force" || argument == "-f");
