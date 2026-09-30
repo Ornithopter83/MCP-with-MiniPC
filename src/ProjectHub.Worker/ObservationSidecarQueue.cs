@@ -315,6 +315,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
     {
         var startedAt = DateTimeOffset.UtcNow;
         Process? process = null;
+        using var processJob = new WorkerChildProcessJob("Observation sidecar");
         try
         {
             var processWorkingDirectory = ResolveAllowedDirectory(request.WorkingDirectory, workItemId);
@@ -348,6 +349,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             if (!process.Start())
                 throw new InvalidOperationException("OBSERVATION_PROCESS_START_FAILED");
 
+            processJob.Assign(process);
             TransportEvent?.Invoke(new ObservationSidecarEvent(
                 "OBSERVATION STARTED",
                 $"observation {request.Id} · pid {process.Id} · {request.Command.Trim()}",
