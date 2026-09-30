@@ -164,14 +164,14 @@ public sealed class CodexCliRunner : IDisposable
                 if (Volatile.Read(ref _disposed) != 0)
                 {
                     processJob.Dispose();
-                    await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+                    await TerminateProcessTreeAsync(process, startedAt).ConfigureAwait(false);
                     throw new ObjectDisposedException(nameof(CodexCliRunner));
                 }
             }
             catch
             {
                 processJob.Dispose();
-                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+                await TerminateProcessTreeAsync(process, startedAt).ConfigureAwait(false);
                 throw;
             }
 
@@ -204,7 +204,7 @@ public sealed class CodexCliRunner : IDisposable
             catch
             {
                 processJob.Dispose();
-                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+                await TerminateProcessTreeAsync(process, startedAt).ConfigureAwait(false);
                 throw;
             }
             finally
@@ -221,7 +221,7 @@ public sealed class CodexCliRunner : IDisposable
                 // 취소에서는 실행 전용 Job을 먼저 닫아 Codex가 시작한 모든 후손을 끊고
                 // Process tree kill/wait는 fallback으로 사용한다.
                 processJob.Dispose();
-                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+                await TerminateProcessTreeAsync(process, startedAt).ConfigureAwait(false);
                 throw;
             }
 
@@ -229,6 +229,7 @@ public sealed class CodexCliRunner : IDisposable
             // 남아 있으면 stream drain이 끝나지 않는다. 출력 대기 전에 실행 전용 Job을 닫아
             // 해당 실행의 잔존 후손과 pipe handle을 먼저 정리한다.
             processJob.Dispose();
+            WorkerChildProcessJob.TerminateDescendants(process.Id, startedAt);
 
             await stdoutTask;
             var stdout = stdoutBuilder.ToString();
@@ -528,7 +529,9 @@ public sealed class CodexCliRunner : IDisposable
         return string.Join(Environment.NewLine, messages);
     }
 
-    private static async Task TerminateProcessTreeAsync(Process process)
+    private static async Task TerminateProcessTreeAsync(
+        Process process,
+        DateTimeOffset startedAt)
     {
         try
         {
@@ -547,6 +550,11 @@ public sealed class CodexCliRunner : IDisposable
         catch
         {
         }
+
+        // Process.Start 직후 run Job에 들어가기 전에 먼저 생성된 후손이 있으면
+        // launcher 종료 뒤에도 root Job에만 남을 수 있다. parent PID lineage로 한 번 더 정리한다.
+        try { WorkerChildProcessJob.TerminateDescendants(process.Id, startedAt); }
+        catch { }
 
         // Kill(entireProcessTree) 완료 직후에도 Windows가 자식 프로세스의 cwd/file handle을
         // 짧게 유지할 수 있으므로 runtime 삭제 전에 해제 시간을 준다.
