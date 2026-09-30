@@ -327,42 +327,34 @@ public partial class MainWindow : Window
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         var app = (App)System.Windows.Application.Current;
-        var action = WorkerWindowClosePolicy.Resolve(
-            _allowClose,
-            app.ShutdownRequested,
-            Dispatcher.HasShutdownStarted,
-            IsSettingsOverlayOpen);
 
-        if (action == WorkerWindowCloseAction.Shutdown)
+        if (!_allowClose &&
+            !app.ShutdownRequested &&
+            !Dispatcher.HasShutdownStarted)
         {
-            _allowClose = true;
-            SetSettingsPopupOpen(false);
-            if (_activeTaskCts is not null || _awaitingWebResult)
-                AddTaskMessage("SYSTEM", "Worker 종료 요청으로 실행 중 작업을 중단합니다.", status: "CANCELED");
-            ExportTaskTranscript();
-            SaveWindowPosition();
-            _activeTaskCts?.Cancel();
-            _codexRunner.Dispose();
-            _flowTimer.Stop();
-            _connectionTimer.Stop();
-            _jobWatchdogTimer.Stop();
-            if (_managedWebRuntimeManager is not null)
-                _managedWebRuntimeManager.StatusChanged -= OnManagedWebRuntimeStatusChanged;
-            _trayIcon.Visible = false;
-            _trayIcon.ContextMenuStrip?.Dispose();
-            _trayIcon.Dispose();
-            _connectionClient.Dispose();
+            // X 버튼도 tray hide가 아니라 실제 Worker 종료 경로를 탄다.
+            e.Cancel = true;
+            ExitWorker();
             return;
         }
 
-        e.Cancel = true;
-        if (action == WorkerWindowCloseAction.CloseSettings)
-        {
-            SetSettingsPopupOpen(false);
-            return;
-        }
-
-        Hide();
+        _allowClose = true;
+        SetSettingsPopupOpen(false);
+        if (_activeTaskCts is not null || _awaitingWebResult)
+            AddTaskMessage("SYSTEM", "Worker 종료 요청으로 실행 중 작업을 중단합니다.", status: "CANCELED");
+        ExportTaskTranscript();
+        SaveWindowPosition();
+        _activeTaskCts?.Cancel();
+        _codexRunner.Dispose();
+        _flowTimer.Stop();
+        _connectionTimer.Stop();
+        _jobWatchdogTimer.Stop();
+        if (_managedWebRuntimeManager is not null)
+            _managedWebRuntimeManager.StatusChanged -= OnManagedWebRuntimeStatusChanged;
+        _trayIcon.Visible = false;
+        _trayIcon.ContextMenuStrip?.Dispose();
+        _trayIcon.Dispose();
+        _connectionClient.Dispose();
     }
 
     private void ShowFromTray()
