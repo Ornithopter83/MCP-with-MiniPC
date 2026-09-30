@@ -300,3 +300,15 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑤ Worker는 target workspace의 `.gitignore`에 ProjectHub managed block을 유지하고 제4항의 대표 재생성 경로를 기본 제외 규칙으로 둔다. `.gitignore` 누락 여부와 무관하게 checkpoint와 Commit Manifest에도 별도 hard filter를 적용한다.
 ⑥ Web HQ 실행에서 `WEB_RESPONSE_TIMEOUT`, stream 종료 뒤 응답 유실 등 복구 가능한 transport 실패가 발생하면 같은 WorkGraph revision과 같은 HQ 입력을 보존한 채 제한된 횟수만 기계 재시도한다.
 ⑦ 제6항의 재시도는 새 의미 WorkItem을 생성하지 않으며, 재시도 한도를 초과한 경우에만 기존 기계 오류 경로로 종료한다.
+
+---
+
+제26조 (종료와 설정 UI 수명)
+
+① 명시적 종료 요청은 설정 UI가 열려 있다는 이유로 취소하지 않는다.
+② Worker는 종료 요청 시 실행 중 호출에 cancellation을 전달하고 짧은 유예 뒤 종료를 계속한다. 파일 cleanup 완료를 기다리기 위해 종료를 장시간 지연하지 않는다.
+③ 종료 경로에서 Worker EXE를 cleanup helper 모드로 재실행하지 않는다.
+④ 관리형 Chromium은 Worker 종료 시 Job Object의 KILL_ON_JOB_CLOSE를 우선 사용해 소유 프로세스 tree를 종료한다.
+⑤ 설정 화면은 WPF Popup 같은 별도 top-level HWND가 아니라 메인 Window 내부 overlay로 구현한다.
+⑥ 설정 화면이 열린 동안 메인 Window의 모든 key event를 일괄 소비하지 않는다. Escape 등 설정 UI가 직접 처리해야 하는 입력만 가로챈다.
+⑦ 관리형 Web 표시·숨김 전환은 같은 role에 대해 중복 실행하지 않는다.
