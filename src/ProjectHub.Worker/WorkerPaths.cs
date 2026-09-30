@@ -123,6 +123,7 @@ public static class WorkerPaths
         string workTempPath)
     {
         ArgumentNullException.ThrowIfNull(runtime);
+        var buildRoot = Path.Combine(workTempPath, "build");
         foreach (var directory in new[]
         {
             runtime.NuGetPackages,
@@ -130,7 +131,10 @@ public static class WorkerPaths
             runtime.NuGetPluginsCache,
             runtime.NuGetScratch,
             runtime.DotNetHome,
-            workTempPath
+            workTempPath,
+            buildRoot,
+            Path.Combine(buildRoot, "bin"),
+            Path.Combine(buildRoot, "obj")
         })
         {
             Directory.CreateDirectory(directory);
@@ -142,8 +146,12 @@ public static class WorkerPaths
         string workTempPath)
     {
         ArgumentNullException.ThrowIfNull(runtime);
+        var buildRoot = Path.Combine(workTempPath, "build");
         return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
+            ["PROJECTHUB_BUILD_ROOT"] = buildRoot,
+            ["PROJECTHUB_BUILD_BIN"] = Path.Combine(buildRoot, "bin"),
+            ["PROJECTHUB_BUILD_OBJ"] = Path.Combine(buildRoot, "obj"),
             ["NUGET_PACKAGES"] = runtime.NuGetPackages,
             ["RestorePackagesPath"] = runtime.NuGetPackages,
             ["NUGET_HTTP_CACHE_PATH"] = runtime.NuGetHttpCache,
