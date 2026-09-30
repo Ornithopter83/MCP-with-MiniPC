@@ -104,6 +104,14 @@ public sealed class WorkerPathsRuntimeTests
             Assert.StartsWith(runtime.Worktrees, worktree, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.IntegrationClones, integration, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.TempRoot, workTemp, StringComparison.OrdinalIgnoreCase);
+
+            WorkerPaths.EnsureWorkToolDirectories(runtime, workTemp);
+            var environment = WorkerPaths.BuildWorkToolEnvironment(runtime, workTemp);
+            Assert.Equal(Path.Combine(workTemp, "build"), environment["PROJECTHUB_BUILD_ROOT"]);
+            Assert.Equal(Path.Combine(workTemp, "build", "bin"), environment["PROJECTHUB_BUILD_BIN"]);
+            Assert.Equal(Path.Combine(workTemp, "build", "obj"), environment["PROJECTHUB_BUILD_OBJ"]);
+            Assert.True(Directory.Exists(environment["PROJECTHUB_BUILD_BIN"]));
+            Assert.True(Directory.Exists(environment["PROJECTHUB_BUILD_OBJ"]));
         }
         finally
         {
