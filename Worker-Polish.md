@@ -329,3 +329,6 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑧ CODE_CHANGE/checkpoint가 존재하는 WORK 또는 INTEGRATION의 FAILED 보고는 해당 결과를 폐기하지 않고 RESULT_CHECKPOINT_BLOCKED로 보존해 HQ가 같은 WorkItem을 재개할 수 있게 한다.
 ⑨ Full Build fallback의 대상 탐색에서 Integration dependency staging 경로인 `.projecthub-integration-inputs` 아래의 solution·project 파일은 현재 WorkItem의 빌드 대상으로 선택하지 않는다. 명시 TARGET도 이 staging 경로를 가리키면 현재 WorkItem 작업공간의 실제 빌드 대상으로 fallback한다.
 ⑩ BUILD_AUTHORIZED 구조 파싱이 Full Build fallback으로 전환되면 Worker는 원문 의미를 추론하지 않고 JSON·scope·target·configuration·noRestore 중 어느 기계 조건 때문에 fallback했는지 원인 코드를 진행 로그에 기록한다.
+⑪ Codex CLI의 병렬 실행은 하나의 child Job Object를 공유하지 않는다. 각 실행은 별도 KILL_ON_JOB_CLOSE Job을 소유하고 정상 완료·취소·오류 시 해당 Job을 닫아 그 실행에서 파생된 하위 프로세스를 함께 종료한다.
+⑫ 관리형 Chromium은 HQ와 RESOURCE 역할 슬롯이 서로 다른 KILL_ON_JOB_CLOSE Job을 소유한다. 역할 브라우저의 종료·재시작 또는 launcher 종료 시 해당 슬롯 Job을 닫아 renderer·helper를 함께 종료하며 다른 역할 브라우저의 수명에는 영향을 주지 않는다.
+⑬ Worker root Job Object는 비정상 종료를 포함한 프로세스 전체 수명의 최후 안전망이며, 실행 단위 Job 정리를 대신해 장시간 하위 프로세스를 보존하는 용도로 사용하지 않는다.
