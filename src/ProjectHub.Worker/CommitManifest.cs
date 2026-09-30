@@ -112,6 +112,9 @@ public sealed class GitCommitManifestBuilder
             var parsed = ParseChangedPath(line);
             if (parsed is null)
                 return Failure("COMMIT_MANIFEST_DIFF_PARSE_FAILED", "변경 경로를 해석할 수 없습니다: " + line);
+            if (IsRegenerableArtifactPath(parsed.Value.Path) ||
+                (parsed.Value.PreviousPath is not null && IsRegenerableArtifactPath(parsed.Value.PreviousPath)))
+                continue;
 
             long? size = null;
             string? sha256 = null;
@@ -245,6 +248,32 @@ public sealed class GitCommitManifestBuilder
             'C' when parts.Length >= 3 => ("COPY", parts[2], parts[1]),
             _ => ("OTHER", parts[^1], parts.Length >= 3 ? parts[^2] : null)
         };
+    }
+
+
+    private static bool IsRegenerableArtifactPath(string path)
+    {
+        var normalized = (path ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        if (normalized.Length == 0)
+            return false;
+
+        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Any(segment =>
+                segment.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("dist-temp", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("NuGet", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("TestResults", StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        return normalized.StartsWith(".projecthub/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".dotnet/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".dotnet-cli/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(".nuget/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("coverage/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("verification-output/", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("visual-captures/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveInside(string root, string relativePath)
