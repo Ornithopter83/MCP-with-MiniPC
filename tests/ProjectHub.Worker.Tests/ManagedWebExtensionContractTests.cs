@@ -147,6 +147,8 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("readyResponseFileCandidates", StringComparison.Ordinal));
         Assert.True(source.Contains("WEB_FILE_DETECTED", StringComparison.Ordinal));
         Assert.True(source.Contains("WEB_FILE_DOWNLOAD_VERIFIED", StringComparison.Ordinal));
+        Assert.True(source.Contains("resourcePayloadsWithRetry", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESOURCE_CAPTURE_RETRY", StringComparison.Ordinal));
         Assert.True(source.Contains("TEXT_WITH_FILES", StringComparison.Ordinal));
         Assert.True(source.Contains("pdf|zip|json|txt|md|csv|docx|xlsx|pptx", StringComparison.Ordinal));
         Assert.True(source.Contains("extension='+EXTENSION_VERSION+' / '+EXTENSION_BUILD", StringComparison.Ordinal));
