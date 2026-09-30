@@ -17,7 +17,8 @@ public sealed record StructuredPayloadRequest(
     WorkerAiRoleSettings RepairRole,
     string WorkingDirectory,
     string RepairInstruction,
-    string? OutputSchemaJson = null);
+    string? OutputSchemaJson = null,
+    bool AllowAiRepair = true);
 
 public sealed record StructuredPayloadResult<T>(
     bool Success,
@@ -127,6 +128,19 @@ public sealed class WorkerStructuredPayloadHelper
 
             repairInputPayload = deterministicPayload;
             repairInputError = deterministicError ?? initialError;
+        }
+
+        if (!request.AllowAiRepair)
+        {
+            return new(
+                false,
+                null,
+                repairInputPayload,
+                deterministicRepair is not null,
+                false,
+                initialError,
+                repairInputError ?? initialError,
+                RepairSummary: deterministicRepairSummary);
         }
 
         var runner = _runners.Resolve(request.RepairRole);
