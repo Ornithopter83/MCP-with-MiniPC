@@ -101,3 +101,14 @@
 ③ 동일 task의 동일 이상은 기계적으로 중복 억제할 수 있다.
 ④ UI 이상 관측만으로 task 실패, 대화방 이동, 재전송, role binding 변경, lease/KEY 변경 또는 자동 복구를 수행하지 않는다.
 ⑤ 실제 반복 증거와 재현 로그가 확보된 뒤 별도 정책 변경으로 개입 여부를 결정한다.
+---
+
+제12조 (streaming 종료 후 응답 복구)
+
+① 확장은 WAIT_RESPONSE 중 assistant streaming의 시작과 종료를 기계적으로 관찰하고 `streaming=true`에서 `streaming=false`로 전환되면 장시간 absolute timeout을 기다리기 전에 짧은 post-stream 재확인을 시작한다.
+② post-stream 재확인에서 현재 correlation KEY와 실제 응답 본문 또는 결과 파일이 확인되면 정상 응답 안정화 흐름으로 복귀한다.
+③ assistant 응답 증거는 있으나 현재 correlation KEY를 확인하지 못하면 `RESPONSE_KEY_MISSING`으로 분류해 Worker에 기술 실패로 반환한다.
+④ streaming은 종료됐지만 현재 응답 root, KEY 본문과 복구 가능한 assistant 응답 증거를 모두 확인하지 못하면 `RESPONSE_LOST_AFTER_STREAM_END`로 분류해 Worker에 기술 실패로 반환한다.
+⑤ 확장은 제3항과 제4항의 실패를 이유로 같은 prompt를 스스로 재전송하지 않으며 HQ transport 재요청 여부는 Worker가 결정한다.
+⑥ 기존 response deadline은 streaming 종료 복구로 판별할 수 없는 상황의 최종 watchdog으로 유지하며, post-stream grace 시간과 DOM 탐지 세부는 현재 구현과 테스트를 원본으로 사용한다.
+
