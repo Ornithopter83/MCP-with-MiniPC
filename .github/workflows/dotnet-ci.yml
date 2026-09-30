@@ -32,6 +32,11 @@ jobs:
       - name: Show .NET environment
         run: dotnet --info
 
+      - name: Validate managed Web extension JavaScript
+        run: |
+          node --check extension/gptweb-hub/content.js
+          node --check extension/gptweb-hub/background.js
+
       - name: Restore
         run: dotnet restore ProjectHub.sln
 
