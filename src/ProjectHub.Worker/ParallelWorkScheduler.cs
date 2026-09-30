@@ -93,6 +93,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
     private readonly IWorkItemExecutor _executor;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCts;
+    private readonly CancellationTokenRegistration _lifetimeRegistration;
     private readonly Dictionary<string, RunningWork> _running = new(StringComparer.Ordinal);
     private TaskCompletionSource<bool> _quiescent = CompletedSignal();
     private bool _started;
@@ -107,6 +108,9 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         _lifetimeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _lifetimeRegistration = _lifetimeCts.Token.Register(
+            static state => _ = ((ParallelWorkScheduler)state!).HandleLifetimeCancellationAsync(),
+            this);
     }
 
     public event Action<ParallelWorkSchedulerSnapshot>? StateChanged;
@@ -456,6 +460,39 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         StateChanged?.Invoke(snapshot);
     }
 
+
+    private async Task HandleLifetimeCancellationAsync()
+    {
+        ParallelWorkSchedulerSnapshot? snapshot = null;
+        try
+        {
+            await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                if (_disposed)
+                    return;
+
+                CancelRemainingLocked("SCHEDULER_LIFETIME_CANCELED");
+                foreach (var running in _running.Values)
+                    running.Cancellation.Cancel();
+
+                UpdateQuiescenceLocked();
+                snapshot = CreateSnapshotLocked();
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        if (snapshot is not null)
+            StateChanged?.Invoke(snapshot);
+    }
+
     private void CancelGraphCanceledRunningItemsLocked()
     {
         foreach (var running in _running.Values)
@@ -478,7 +515,10 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
     {
         var hasRunnableOrRunning =
             _running.Count > 0 ||
-            (_started && !_launchPaused && _graph.GetReadyItems().Count > 0);
+            (_started &&
+             !_launchPaused &&
+             !_lifetimeCts.IsCancellationRequested &&
+             _graph.GetReadyItems().Count > 0);
 
         if (hasRunnableOrRunning)
         {
@@ -561,6 +601,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             }
         }
 
+        _lifetimeRegistration.Dispose();
         _lifetimeCts.Dispose();
         _gate.Dispose();
     }
