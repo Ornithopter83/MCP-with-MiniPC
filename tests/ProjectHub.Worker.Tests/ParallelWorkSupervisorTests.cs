@@ -158,6 +158,80 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task EmptyContinueOnEmptyGraphIsRejectedAndHqCanRecoverWithAdd()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var hq = new QueueHqRunner(
+            ContinuePatch(0),
+            ContinuePatch(0, Add("W10", "실제 작업")),
+            End("완료"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "작업을 시작하세요.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(3, hq.Prompts.Count);
+        Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[1]);
+        Assert.Contains("WORK_GRAPH_EMPTY_CONTINUE", hq.Prompts[1]);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+    }
+
+    [Fact]
+    public async Task RepairedEmptyPatchIsRejectedInsteadOfBecomingQuiescentNoOp()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var hq = new QueueHqRunner(
+            "[ACTION=CONTINUE]\n[GOTO : WORK]\n손상된 patch",
+            ContinuePatch(0, Add("W10", "복구된 실제 작업")),
+            End("완료"));
+        var helperCalls = 0;
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync,
+            processWorkGraphPayloadAsync: (payload, _) =>
+            {
+                helperCalls++;
+                if (helperCalls == 1)
+                {
+                    return Task.FromResult(new StructuredPayloadResult<WorkGraphPatch>(
+                        Success: true,
+                        Value: new WorkGraphPatch(0, Array.Empty<WorkGraphPatchOperation>()),
+                        FinalPayload: """{"expectedRevision":0,"operations":[]}""",
+                        RepairAttempted: true,
+                        Repaired: true,
+                        InitialErrorCode: "WORK_GRAPH_PATCH_JSON_INVALID",
+                        FinalErrorCode: null));
+                }
+
+                return Task.FromResult(
+                    WorkerStructuredPayloadHelper.ProcessDeterministically<WorkGraphPatch>(
+                        payload,
+                        WorkGraphTransportContract.TryParse));
+            });
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "작업을 시작하세요.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(3, hq.Prompts.Count);
+        Assert.Contains("WORK_GRAPH_REPAIRED_EMPTY_PATCH", hq.Prompts[1]);
+        Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
+    }
+
+    [Fact]
     public async Task SplitRequestWakesHqWhileIndependentWorkIsStillRunning()
     {
         var graph = new WorkGraph("job", 2);
