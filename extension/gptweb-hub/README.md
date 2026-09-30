@@ -1,6 +1,6 @@
 # ProjectHub Managed Web Bridge
 
-버전: 0.4.2 / build 2026-09-30.3
+버전: 0.4.2 / build 2026-10-01.1
 
 ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로컬 Worker를 연결한다.
 
@@ -51,6 +51,8 @@ ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로�
 ⑫ 요청 prompt 안의 동일 KEY는 응답으로 오인하지 않고, prompt와 분리된 현재 응답 후보에서 KEY 뒤 실제 본문을 찾아 결과를 회수한다.
 ⑬ assistant 응답 root를 식별하지 못해도 현재 KEY 뒤에 HQ 계약의 ACTION이 이어지고 요청 prompt와 구분되는 경우에는 conversation body fallback으로 결과 회수를 계속한다.
 ⑭ 이미 claim된 HQ task에서 이전 turn baseline을 복구할 수 없더라도 현재 task의 KEY가 있으면 prompt를 재전송하지 않고 KEY 기준 WAIT_RESPONSE로 복구한다.
+⑮ HQ 응답의 KEY가 스트리밍 초기에 작은 DOM fragment에서 먼저 잡혀도 그 fragment를 최종 response root로 고정하지 않는다. assistant turn, generic response, mutation root, body fallback에서 KEY 뒤 ACTION이 확인되는 후보를 계속 비교해 현재 가장 완전한 본문을 사용한다.
+⑯ response root가 존재해도 body fallback이 더 긴 KEY+ACTION 본문을 제공하면 response snapshot과 최종 제출 텍스트는 더 긴 본문을 사용한다. 짧은 초기 fragment가 5초간 변하지 않는 것만으로 RESPONSE_STABLE을 확정하지 않는다.
 
 제6조 (파일 검증)
 
