@@ -327,3 +327,5 @@ ProjectHub 전체 공통 원칙과 문서 형식은 `Master-Polish.md`에 둔다
 ⑥-1 Worker 자신을 KILL_ON_JOB_CLOSE root Job Object에 연결해 Worker가 생성하는 외부 프로세스가 태어날 때부터 Worker 수명에 종속되게 한다. 관리형 Chromium, Codex CLI, Git, dotnet build, observation 등 직접 실행하는 프로세스는 개별 Job/kill-tree도 보조 안전장치로 사용하며 cancellation 성공 여부에만 수명 정리를 의존하지 않는다.
 ⑦ RESOURCE capture·download 실패는 RESOURCE 의미 결과를 폐기하거나 생성 프롬프트를 재실행하지 않는다. Web transport 계층이 이미 생성된 candidate의 capture만 유한 재시도하며, 재시도 소진 뒤에만 기계 실패 사실을 반환한다.
 ⑧ CODE_CHANGE/checkpoint가 존재하는 WORK 또는 INTEGRATION의 FAILED 보고는 해당 결과를 폐기하지 않고 RESULT_CHECKPOINT_BLOCKED로 보존해 HQ가 같은 WorkItem을 재개할 수 있게 한다.
+⑨ Full Build fallback의 대상 탐색에서 Integration dependency staging 경로인 `.projecthub-integration-inputs` 아래의 solution·project 파일은 현재 WorkItem의 빌드 대상으로 선택하지 않는다. 명시 TARGET도 이 staging 경로를 가리키면 현재 WorkItem 작업공간의 실제 빌드 대상으로 fallback한다.
+⑩ BUILD_AUTHORIZED 구조 파싱이 Full Build fallback으로 전환되면 Worker는 원문 의미를 추론하지 않고 JSON·scope·target·configuration·noRestore 중 어느 기계 조건 때문에 fallback했는지 원인 코드를 진행 로그에 기록한다.
