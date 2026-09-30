@@ -1172,8 +1172,7 @@ public sealed class GitWorktreeManager
             worktreePath,
             ReadTimeout,
             cancellationToken,
-            "add",
-            "--all").ConfigureAwait(false);
+            BuildCheckpointAddArguments()).ConfigureAwait(false);
 
         if (addResult.ExitCode != 0)
         {
