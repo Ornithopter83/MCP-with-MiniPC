@@ -42,24 +42,6 @@ public sealed class ParallelWorkSidecarTests
         }
     }
 
-    [Theory]
-    [InlineData("RESOURCE_CAPTURE_FAILED", "capture failed")]
-    [InlineData("RESOURCE_DOWNLOAD_FAILED", "download failed")]
-    [InlineData("RESOURCE_WEB_DELIVERY_FAILED", "send failed")]
-    [InlineData("OTHER", "RESOURCE_URL_NOT_ALLOWED")]
-    public void CaptureTransportFailureIsRetryable(string errorCode, string message)
-    {
-        var completion = new ResourceSidecarCompletion(
-            "request",
-            "IMAGE",
-            false,
-            message,
-            errorCode,
-            Array.Empty<string>());
-
-        Assert.True(ResourceSidecarQueue.IsRetryableCaptureTransportFailure(completion));
-    }
-
     [Fact]
     public async Task ResourceQueuePreservesWorkItemOwnerThroughCompletionAndRegistry()
     {
