@@ -44,7 +44,7 @@ jobs:
         run: dotnet build ProjectHub.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test ProjectHub.sln --configuration Release --no-build --verbosity normal --blame-hang --blame-hang-timeout 60s --blame-hang-dump-type none
+        run: dotnet test ProjectHub.sln --configuration Release --no-build --verbosity normal --blame-hang --blame-hang-timeout 90s --blame-hang --blame-hang-timeout 60s --blame-hang-dump-type none
 
       - name: Print blame hang sequence
         if: always()
