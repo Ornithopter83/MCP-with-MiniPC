@@ -92,6 +92,28 @@ public sealed class WorkerStructuredPayloadHelperTests
     }
 
     [Fact]
+    public async Task AiRepairCanBeDisabledAfterDeterministicFailure()
+    {
+        var runner = new FakeRunner(
+            """{"expectedRevision":0,"operations":[{"type":"ADD","workItemId":10,"goal":"추측된 작업","kind":"NORMAL"}]}""");
+        var helper = new WorkerStructuredPayloadHelper(
+            new AiRoleRunnerRegistry(new[] { runner }));
+
+        var result = await helper.ProcessAsync<WorkGraphPatch>(
+            Request("WORK_GRAPH_PATCH:\n{", allowAiRepair: false),
+            WorkGraphTransportContract.TryParse,
+            WorkGraphTransportContract.TryParseJsonPayload,
+            deterministicRepair: WorkGraphTransportContract.TryRepairOperationTypeAliases);
+
+        Assert.False(result.Success);
+        Assert.True(result.RepairAttempted);
+        Assert.False(result.Repaired);
+        Assert.Equal(0, runner.CallCount);
+        Assert.Equal("WORK_GRAPH_PATCH_JSON_INVALID", result.InitialErrorCode);
+        Assert.Equal("WORK_GRAPH_PATCH_JSON_INVALID", result.FinalErrorCode);
+    }
+
+    [Fact]
     public async Task InvalidRepairReturnsFinalFailureWithoutSecondAiAttempt()
     {
         var runner = new FakeRunner("not-json");
@@ -110,7 +132,9 @@ public sealed class WorkerStructuredPayloadHelperTests
         Assert.Equal("WORK_GRAPH_PATCH_JSON_MISSING", result.FinalErrorCode);
     }
 
-    private static StructuredPayloadRequest Request(string rawPayload)
+    private static StructuredPayloadRequest Request(
+        string rawPayload,
+        bool allowAiRepair = true)
         => new(
             "WORK_GRAPH_PATCH",
             rawPayload,
@@ -120,7 +144,8 @@ public sealed class WorkerStructuredPayloadHelperTests
                 Reasoning: "medium",
                 Transport: "codex_cli"),
             Directory.GetCurrentDirectory(),
-            "JSON 객체 하나만 반환한다.");
+            "JSON 객체 하나만 반환한다.",
+            AllowAiRepair: allowAiRepair);
 
     private sealed class FakeRunner(string response) : IAiRoleRunner
     {
