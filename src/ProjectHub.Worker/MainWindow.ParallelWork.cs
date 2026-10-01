@@ -122,6 +122,18 @@ public partial class MainWindow
 
         try
         {
+            var gitReady = await PrepareParallelGitForLaunchAsync(
+                workingDirectory,
+                cts.Token);
+            if (!gitReady)
+                return;
+
+            AddTaskMessage(
+                "GIT READY",
+                "Git 기준점 준비를 완료했습니다. HQ를 시작합니다.",
+                status: "COMPLETED",
+                includeHistory: false);
+
             var restored = continuing
                 ? ProjectWorkspacePersistence.TryLoadWorkGraph(workingDirectory, jobId)
                 : null;
