@@ -332,9 +332,11 @@ public partial class MainWindow : Window
             !app.ShutdownRequested &&
             !Dispatcher.HasShutdownStarted)
         {
-            // X 버튼도 tray hide가 아니라 실제 Worker 종료 경로를 탄다.
+            // X 버튼은 종료 명령이 아니다. 실행 상태를 유지한 채 트레이로 숨긴다.
             e.Cancel = true;
-            ExitWorker();
+            SaveWindowPosition();
+            SetSettingsPopupOpen(false);
+            Hide();
             return;
         }
 
