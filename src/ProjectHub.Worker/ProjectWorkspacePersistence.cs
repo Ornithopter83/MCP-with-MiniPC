@@ -15,7 +15,9 @@ public sealed record ProjectMemorySnapshot(
     string Status,
     string LastHqMessage,
     string EventLogPath,
-    DateTimeOffset UpdatedAtUtc)
+    DateTimeOffset UpdatedAtUtc,
+    long HqSessionTextBytes = 0,
+    int HqSessionGeneration = 1)
 {
     public CoordinatorContinuationState ToContinuation()
         => new(
@@ -26,7 +28,9 @@ public sealed record ProjectMemorySnapshot(
             CoordinatorSessionId,
             WorkSessionId,
             Status,
-            LastHqMessage);
+            LastHqMessage,
+            HqSessionTextBytes,
+            HqSessionGeneration);
 }
 
 public sealed record ProjectEventLogEntry(
@@ -78,8 +82,19 @@ public static class ProjectWorkspacePersistence
     public static string WorkGraphDirectory(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "work-graphs");
 
+    public static string HqHandoffDirectory(string workingDirectory)
+        => Path.Combine(RootDirectory(workingDirectory), "hq-handoffs");
+
     public static string WorkGraphPath(string workingDirectory, string jobId)
         => Path.Combine(WorkGraphDirectory(workingDirectory), SanitizeId(jobId) + ".json");
+
+    public static string HqHandoffPath(
+        string workingDirectory,
+        string jobId,
+        int generation)
+        => Path.Combine(
+            HqHandoffDirectory(workingDirectory),
+            $"{SanitizeId(jobId)}-{Math.Max(1, generation):000}.md");
 
     public static string EventLogPath(string workingDirectory, string jobId)
         => Path.Combine(EventDirectory(workingDirectory), SanitizeId(jobId) + ".jsonl");
@@ -273,6 +288,34 @@ public static class ProjectWorkspacePersistence
         }
     }
 
+    public static string? SaveHqHandoff(
+        string workingDirectory,
+        string jobId,
+        int generation,
+        string content)
+    {
+        if (string.IsNullOrWhiteSpace(workingDirectory) ||
+            !Directory.Exists(workingDirectory) ||
+            string.IsNullOrWhiteSpace(jobId) ||
+            string.IsNullOrWhiteSpace(content))
+            return null;
+
+        try
+        {
+            var path = HqHandoffPath(
+                workingDirectory,
+                jobId,
+                generation);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            WriteAtomic(path, content.Trim() + Environment.NewLine);
+            return path;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static WorkGraphSnapshot? TryLoadWorkGraph(
         string workingDirectory,
         string jobId)
@@ -343,7 +386,9 @@ public static class ProjectWorkspacePersistence
                 state.Status,
                 state.LastHqMessage ?? string.Empty,
                 eventLogPath,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                state.HqSessionTextBytes,
+                state.HqSessionGeneration);
 
             WriteAtomic(
                 StatePath(state.WorkingDirectory),
@@ -475,6 +520,8 @@ public static class ProjectWorkspacePersistence
                $"갱신 시각(UTC): {snapshot.UpdatedAtUtc:O}{Environment.NewLine}" +
                $"HQ 세션: {coordinatorSession}{Environment.NewLine}" +
                $"WORK 세션: {workSession}{Environment.NewLine}" +
+               $"HQ 세션 세대: {snapshot.HqSessionGeneration}{Environment.NewLine}" +
+               $"HQ 세션 누적 텍스트 바이트: {snapshot.HqSessionTextBytes}{Environment.NewLine}" +
                $"이벤트 로그: {snapshot.EventLogPath}{Environment.NewLine}{Environment.NewLine}" +
                $"## 마지막 HQ 메시지{Environment.NewLine}{Environment.NewLine}" +
                (string.IsNullOrWhiteSpace(snapshot.LastHqMessage) ? "이전 HQ 메시지 없음" : snapshot.LastHqMessage.Trim()) +
