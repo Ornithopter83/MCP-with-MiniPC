@@ -1075,29 +1075,16 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task TargetWorkspaceFinalizerCollapsesLinearCodeChangeChainToLatestTip()
+    public async Task TargetWorkspaceFinalizerUsesOnlyTerminalCodeChangeInLinearChain()
     {
         var root = CreateTempRepositoryDirectory();
         var runner = new FakeGitRunner(root);
 
         runner.Enqueue(0, root);
         runner.Enqueue(0, "main");
-        runner.Enqueue(0, "first456");
-        runner.Enqueue(0, "base123");
-        runner.Enqueue(1, "");
-
-        runner.Enqueue(0, root);
-        runner.Enqueue(0, "main");
         runner.Enqueue(0, "second789");
         runner.Enqueue(0, "base123");
         runner.Enqueue(1, "");
-
-        runner.Enqueue(0, root);
-        runner.Enqueue(0, "base123");
-        runner.Enqueue(0, "first456");
-        runner.Enqueue(0, "");
-        runner.Enqueue(0, "second789");
-        runner.Enqueue(0, "");
 
         runner.Enqueue(0, root);
         runner.Enqueue(0, "");
