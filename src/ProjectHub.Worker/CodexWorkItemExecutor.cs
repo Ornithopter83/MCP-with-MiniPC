@@ -92,6 +92,9 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         CancellationToken cancellationToken)
     {
         var item = request.Item;
+        var executionWorkItemId = FixedWorkItemSlots.BuildExecutionKey(
+            item.Id,
+            item.CreatedOrder);
         var integrationNeedsPreparation =
             item.Kind == WorkItemKind.Integration &&
             string.IsNullOrWhiteSpace(item.WorktreePath);
@@ -173,7 +176,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             preparation = await _worktrees.PrepareAsync(
                 _workspace,
                 _jobId,
-                item.Id,
+                executionWorkItemId,
                 effectiveBaseRef!,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -229,7 +232,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             stagedUserAttachments = UserAttachmentTransport.StageForWorkspace(
                 _userAttachments,
                 preparation.WorktreePath,
-                _jobId + "-" + item.Id);
+                _jobId + "-" + executionWorkItemId);
         }
         catch (Exception exception)
         {
@@ -293,7 +296,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         try
         {
             runtimePaths = WorkerPaths.GetRepositoryRuntimePaths(preparation.RepositoryRoot);
-            workTempPath = WorkerPaths.BuildWorkTempPath(runtimePaths, _jobId, item.Id);
+            workTempPath = WorkerPaths.BuildWorkTempPath(runtimePaths, _jobId, executionWorkItemId);
             WorkerPaths.EnsureWorkToolDirectories(runtimePaths, workTempPath);
 
             var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -314,6 +317,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             };
             if (!string.IsNullOrWhiteSpace(observationRequestDirectory))
                 writableDirectories.Add(observationRequestDirectory);
+            if (FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id))
+                writableDirectories.Add(_workspace);
             workWritableDirectories = writableDirectories;
         }
         catch (Exception exception) when (
@@ -422,7 +427,10 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 observationRequestDirectory,
                 includeContract: string.IsNullOrWhiteSpace(sessionId),
                 resourceStagingRoot: runtimePaths.TempRoot,
-                workTempRoot: workTempPath);
+                workTempRoot: workTempPath,
+                targetWorkspace: FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id)
+                    ? _workspace
+                    : null);
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
@@ -432,7 +440,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 gitIsolation = GitMetadataIsolationLease.Detach(
                     preparation.WorktreePath,
                     _jobId,
-                    item.Id);
+                    executionWorkItemId);
             }
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException)
