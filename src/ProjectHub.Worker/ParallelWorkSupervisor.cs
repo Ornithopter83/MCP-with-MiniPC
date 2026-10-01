@@ -142,6 +142,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             AllowSynchronousContinuations = false
         });
     private readonly HashSet<string> _reportedSignals = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _hqReportedChecklistItems = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _pendingExternalBlocks = new(StringComparer.Ordinal);
     private string? _lastQuiescentSignature;
     private WorkGraphSnapshot _hqKnownSnapshot;
@@ -633,7 +634,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 var body = FormatMechanicalGraphDeltaEvent(
                     reasons,
                     _hqKnownSnapshot,
-                    snapshot);
+                    snapshot,
+                    _hqReportedChecklistItems);
                 _hqKnownSnapshot = snapshot.Graph;
                 return new SupervisorWake(
                     "WORK_GRAPH_EVENT",
@@ -675,7 +677,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 var body = FormatMechanicalGraphDeltaEvent(
                     reasons,
                     _hqKnownSnapshot,
-                    snapshot);
+                    snapshot,
+                    _hqReportedChecklistItems);
                 _hqKnownSnapshot = snapshot.Graph;
                 return new SupervisorWake(
                     "WORK_GRAPH_PROGRESS_REVIEW",
@@ -772,7 +775,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     public static string FormatMechanicalGraphDeltaEvent(
         IReadOnlyList<string> reasons,
         WorkGraphSnapshot previous,
-        ParallelWorkSchedulerSnapshot snapshot)
+        ParallelWorkSchedulerSnapshot snapshot,
+        ISet<string>? hqReportedChecklistItems = null)
     {
         ArgumentNullException.ThrowIfNull(previous);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -800,7 +804,20 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         else
         {
             foreach (var item in changedItems)
-                AppendMechanicalItem(builder, item);
+            {
+                var includeChecklist =
+                    item.Checklist is { Count: > 0 } &&
+                    (hqReportedChecklistItems is null ||
+                     !hqReportedChecklistItems.Contains(item.Id));
+
+                AppendMechanicalItem(
+                    builder,
+                    item,
+                    includeChecklist: includeChecklist);
+
+                if (includeChecklist)
+                    hqReportedChecklistItems?.Add(item.Id);
+            }
         }
 
         return builder.ToString().TrimEnd();
@@ -820,7 +837,10 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
            !string.Equals(previous.BlockCode, current.BlockCode, StringComparison.Ordinal) ||
            !string.Equals(previous.BlockDetailCode, current.BlockDetailCode, StringComparison.Ordinal);
 
-    private static void AppendMechanicalItem(StringBuilder builder, WorkItemSnapshot item)
+    private static void AppendMechanicalItem(
+        StringBuilder builder,
+        WorkItemSnapshot item,
+        bool includeChecklist = true)
     {
         builder.Append("workItemId=").Append(item.Id)
             .Append(" kind=").Append(item.Kind.ToString().ToUpperInvariant())
@@ -838,7 +858,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             builder.Append(" blockDetailCode=").Append(item.BlockDetailCode);
         builder.AppendLine();
 
-        if (item.Checklist is { Count: > 0 })
+        if (includeChecklist && item.Checklist is { Count: > 0 })
         {
             builder.AppendLine("WORK_CHECKLIST_BEGIN");
             for (var index = 0; index < item.Checklist.Count; index++)
