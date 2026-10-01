@@ -39,13 +39,13 @@ public partial class MainWindow
                         TryResetGitMetadataForRetry(
                             workingDirectory,
                             state.ErrorCode,
-                            out var resetHandled))
+                            out var prepareResetHandled))
                     {
                         gitResetAttempted = true;
                         continue;
                     }
 
-                    if (resetHandled)
+                    if (prepareResetHandled)
                         return null;
 
                     ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
@@ -101,13 +101,13 @@ public partial class MainWindow
                             TryResetGitMetadataForRetry(
                                 workingDirectory,
                                 state.ErrorCode,
-                                out var resetHandled))
+                                out var baselineResetHandled))
                         {
                             gitResetAttempted = true;
                             continue;
                         }
 
-                        if (resetHandled)
+                        if (baselineResetHandled)
                             return null;
 
                         ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
@@ -138,13 +138,13 @@ public partial class MainWindow
                         TryResetGitMetadataForRetry(
                             workingDirectory,
                             preflight.ErrorCode,
-                            out var resetHandled))
+                            out var preflightResetHandled))
                     {
                         gitResetAttempted = true;
                         continue;
                     }
 
-                    if (resetHandled)
+                    if (preflightResetHandled)
                         return null;
 
                     ShowGitPreparationError(preflight.ErrorCode, target.ProjectPath);
