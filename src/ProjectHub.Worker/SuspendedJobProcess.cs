@@ -337,7 +337,7 @@ internal static class SuspendedJobProcessLauncher
             .Select(pair => pair.Key + "=" + pair.Value)
             .ToArray();
 
-        var block = string.Join('\0', entries) + "\0\0";
+        var block = string.Join("\0", entries) + "\0\0";
         return Marshal.StringToHGlobalUni(block);
     }
 
