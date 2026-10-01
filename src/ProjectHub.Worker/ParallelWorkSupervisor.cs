@@ -838,6 +838,14 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             builder.Append(" blockDetailCode=").Append(item.BlockDetailCode);
         builder.AppendLine();
 
+        if (item.Checklist is { Count: > 0 })
+        {
+            builder.AppendLine("WORK_CHECKLIST_BEGIN");
+            for (var index = 0; index < item.Checklist.Count; index++)
+                builder.Append('[').Append(index + 1).Append("] ").AppendLine(item.Checklist[index]);
+            builder.AppendLine("WORK_CHECKLIST_END");
+        }
+
         if (!string.IsNullOrWhiteSpace(item.ResultSummary))
         {
             builder.AppendLine("WORK_REPORT_BEGIN");
