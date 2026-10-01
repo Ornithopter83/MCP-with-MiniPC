@@ -18,10 +18,11 @@
 
 제3조 (WorkGraph)
 
-① WorkGraph는 Worker가 기계 상태로 보존한다.
+① WorkGraph는 Worker가 기계 상태로 보존하며 HQ 장기 관제 문맥의 원본으로 사용한다.
 ② HQ가 반환한 WORK_GRAPH_PATCH만 WorkGraph 의미 변경에 사용한다.
 ③ Worker는 revision, JSON 구조, dependency와 상태 전이처럼 기계적으로 확인 가능한 조건만 검사한다.
 ④ 서로 독립적인 READY WorkItem은 설정된 동시성 범위에서 병렬 실행할 수 있다.
+⑤ HQ 세션의 누적 문맥이 기계 예산을 넘으면 Worker는 현재 WorkGraph에서 상태 handoff를 생성해 새 HQ 세션으로 교대할 수 있으며, 과거 HQ 자연어 대화 자체를 장기 상태 원본으로 사용하지 않는다.
 
 제4조 (WORK 실행)
 
