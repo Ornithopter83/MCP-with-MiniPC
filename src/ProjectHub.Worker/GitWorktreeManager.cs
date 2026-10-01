@@ -100,8 +100,10 @@ public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
                     Canceled: cancellationToken.IsCancellationRequested);
             }
 
+            var exitCode = process.ExitCode;
+            processJob.Dispose();
             return new GitCommandResult(
-                process.ExitCode,
+                exitCode,
                 (await stdoutTask.ConfigureAwait(false)).Trim(),
                 (await stderrTask.ConfigureAwait(false)).Trim());
         }
