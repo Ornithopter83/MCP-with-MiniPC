@@ -82,6 +82,69 @@ public sealed class MaterializationLedgerTests
     }
 
     [Fact]
+    public async Task VerifiedLedgerStopsMatchingAfterTargetFileChangesAgain()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var target = Path.Combine(root, "src", "sample.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            await File.WriteAllTextAsync(target, "old");
+
+            var ledger = new TargetWorkspaceMaterializationLedger(root, "job");
+            var before = ledger.CaptureSnapshot();
+            Assert.True(before.Success);
+
+            var expectedBytes = Encoding.UTF8.GetBytes("new");
+            var expectedSha = Convert.ToHexString(SHA256.HashData(expectedBytes)).ToLowerInvariant();
+            var manifestPath = await WriteManifestAsync(
+                root,
+                "job",
+                new CommitManifest(
+                    "10",
+                    "result-10",
+                    "base",
+                    "tree",
+                    new[]
+                    {
+                        new CommitManifestFile(
+                            "src/sample.txt",
+                            "MODIFY",
+                            null,
+                            expectedBytes.LongLength,
+                            expectedSha,
+                            true,
+                            "new")
+                    }));
+
+            await File.WriteAllBytesAsync(target, expectedBytes);
+            var verified = await ledger.VerifyAndRecordAsync(
+                CreateMaterializeItem(7, new[] { "10" }),
+                new[]
+                {
+                    new WorkItemDependencyResult(
+                        "10",
+                        "result-10",
+                        "완료",
+                        WorkItemResultType.CodeChange,
+                        manifestPath)
+                },
+                before.Snapshot!);
+
+            Assert.True(verified.Success);
+            Assert.True(ledger.IsResultVerified("result-10"));
+
+            await File.WriteAllTextAsync(target, "changed-later");
+
+            Assert.False(ledger.IsResultVerified("result-10"));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task HashMismatchBlocksVerificationAndIsNotAcceptedByFinalizerLookup()
     {
         var root = CreateRoot();
