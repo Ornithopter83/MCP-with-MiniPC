@@ -345,7 +345,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             foreach (var pair in request.Environment ?? new Dictionary<string, string>())
                 startInfo.Environment[pair.Key] = pair.Value;
 
-            using var launched = processJob.Start(startInfo);
+            using var launched = processJob.Start(startInfo, cancellationToken);
             process = launched.Process;
             process.EnableRaisingEvents = true;
 
