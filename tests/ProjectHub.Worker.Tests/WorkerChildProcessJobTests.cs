@@ -62,6 +62,31 @@ public sealed class WorkerChildProcessJobTests
     }
 
     [Fact]
+    public void ChildJobsAreRegisteredAndRemovedOnDispose()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var before = WorkerChildProcessJob.ActiveJobCount;
+        var job = new WorkerChildProcessJob("registry-test");
+        Assert.Equal(before + 1, WorkerChildProcessJob.ActiveJobCount);
+
+        job.Dispose();
+
+        Assert.Equal(before, WorkerChildProcessJob.ActiveJobCount);
+    }
+
+    [Fact]
+    public void ChildJobTypeExposesGlobalShutdownDrain()
+    {
+        var method = typeof(WorkerChildProcessJob).GetMethod(
+            "TerminateAllActiveJobs",
+            BindingFlags.Static | BindingFlags.NonPublic);
+
+        Assert.NotNull(method);
+    }
+
+    [Fact]
     public void DisposingJobTerminatesStartedProcess()
     {
         if (!OperatingSystem.IsWindows())
