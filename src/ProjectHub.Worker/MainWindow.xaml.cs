@@ -378,6 +378,7 @@ public partial class MainWindow : Window
 
         _userCanceledTask = true;
         _activeTaskCts?.Cancel();
+        _codexRunner.Dispose();
         if (_bridgeServer is not null &&
             _bridgeServer.CancelActiveTask(out var canceledTaskId) &&
             canceledTaskId is not null)
@@ -385,21 +386,8 @@ public partial class MainWindow : Window
             _userCanceledBridgeTaskIds.Add(canceledTaskId);
         }
 
-        // 종료는 파일 cleanup 완료에 종속되지 않는다. 실행 중 호출에 취소를 전달하고
-        // 짧은 유예 뒤 앱 종료로 진행한다. 남은 runtime 파일은 다음 시작/명시적 정리에서 다룬다.
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(6);
-        while (_activeTaskCts is not null && DateTimeOffset.UtcNow < deadline)
-            await Task.Delay(100);
-
-        if (_activeTaskCts is not null)
-        {
-            AddTaskMessage(
-                "SHUTDOWN",
-                "실행 중 작업에 취소를 전달했지만 유예 시간 안에 완료되지 않았습니다. cleanup을 기다리지 않고 Worker 종료를 계속합니다.",
-                status: "CANCELED",
-                includeHistory: false);
-        }
-
+        // 자식 프로세스 정리는 각 Job handle close가 담당한다.
+        // 파일 cleanup이나 비동기 작업 완료를 기다리지 않고 ProjectHub 종료를 진행한다.
         _activeWorkingDirectory = null;
         _activeProjectJobId = null;
         _continuationState = null;
