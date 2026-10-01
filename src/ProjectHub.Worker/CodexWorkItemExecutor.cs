@@ -640,7 +640,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 preparation,
                 sessionId,
                 report!.Status,
-                report.Body,
+                route.Body,
                 cancellationToken).ConfigureAwait(false);
         }
     }
