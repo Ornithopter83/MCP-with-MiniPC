@@ -1119,7 +1119,7 @@ public sealed class GitWorktreeManagerTests
             Assert.True(result.Success);
             Assert.True(result.FastForwarded);
             Assert.Equal("W11", result.LandedWorkItemId);
-            Assert.Equal("second789", result.LandedResultRef);
+            Assert.Equal("second-ref", result.LandedResultRef);
             Assert.Contains(
                 runner.Calls,
                 call => call.Arguments.SequenceEqual(new[] { "merge", "--ff-only", "second789" }));
