@@ -9,9 +9,9 @@ public static class HqSessionRollover
     private const int ResultSummaryCharacterLimit = 3000;
 
     public static bool ShouldRollover(
-        string? sessionId,
+        bool sessionEstablished,
         long accumulatedTextBytes)
-        => !string.IsNullOrWhiteSpace(sessionId) &&
+        => sessionEstablished &&
            accumulatedTextBytes >= MaxAccumulatedTextBytes;
 
     public static long AddTurnBytes(
