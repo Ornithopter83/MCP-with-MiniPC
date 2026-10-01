@@ -48,6 +48,8 @@
 
 제7조 (관제)
 
-① HQ는 사용자 목표와 WORK 보고를 해석하고 다음 WorkGraph 변경, PAUSE 또는 END를 결정한다.
-② Worker는 WORK 보고를 가능한 한 원문 그대로 HQ에 전달한다.
-③ 오류 복구는 transport, protocol, work 오류를 구분하되 오류별 영구 계약을 증식시키지 않는다.
+① HQ는 사용자 목표를 관련성 높은 작업 목록으로 분해해 WorkItem에 배정하고, WORK 보고를 바탕으로 다음 WorkGraph 변경, PAUSE 또는 END를 결정한다.
+② WORK는 배정된 목표와 작업 목록을 수행하고 목록별 실제 결과를 보고하며, 작업 분해나 새 WorkItem 필요 여부를 판단하지 않는다.
+③ 연관성이 낮은 일은 HQ가 별도 WorkItem으로 분리하고 중간 관제를 계속한다.
+④ Worker는 WORK 보고를 가능한 한 원문 그대로 HQ에 전달한다.
+⑤ 오류 복구는 transport, protocol, work 오류를 구분하되 오류별 영구 계약을 증식시키지 않는다.
