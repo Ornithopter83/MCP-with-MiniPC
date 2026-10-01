@@ -101,6 +101,20 @@ public partial class MainWindow
                 (System.Windows.Media.Brush)FindResource("Muted");
             return true;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            ShowGitPreparationError("GIT_PREPARATION_EXCEPTION", workingDirectory);
+            AddTaskMessage(
+                "GIT PREP EXCEPTION",
+                exception.GetType().Name + ": " + exception.Message,
+                status: "GIT_PREPARATION_EXCEPTION",
+                includeHistory: false);
+            return false;
+        }
         finally
         {
             _gitPreparationInProgress = false;
