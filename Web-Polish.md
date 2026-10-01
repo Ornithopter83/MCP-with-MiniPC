@@ -33,6 +33,8 @@
 ① RESOURCE 결과 파일은 현재 RESOURCE 요청에서 실제 생성된 candidate만 수집한다.
 ② 이미 생성된 candidate의 capture가 실패하면 같은 생성 요청을 의미적으로 다시 만들지 않고 capture만 유한 재시도할 수 있다.
 ③ capture 실패는 RESOURCE 의미 품질 판단이 아니다.
+④ RESOURCE에는 HQ용 `[RESPONSE=OK]` 텍스트 완료 표식을 요구하지 않는다.
+⑤ 이미지 생성처럼 별도 문자열 응답이 보장되지 않는 경우에도 텍스트 유무만으로 RESOURCE 완료나 실패를 판정하지 않는다.
 
 제6조 (완료)
 
