@@ -126,6 +126,56 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public void MechanicalGraphDeltaReportsChecklistOnceAndKeepsLaterUpdatesCompact()
+    {
+        var graph = new WorkGraph("job", 1);
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                "W1",
+                "작업",
+                Checklist: new[] { "첫 단계", "둘째 단계" }))
+        })).Success);
+
+        var beforeRunning = graph.Snapshot();
+        Assert.True(graph.TryMarkRunning("W1"));
+        var running = new ParallelWorkSchedulerSnapshot(
+            graph.Snapshot(),
+            Array.Empty<RunningWorkItemSnapshot>());
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+
+        var first = ParallelWorkSupervisor.FormatMechanicalGraphDeltaEvent(
+            new[] { "W1 실행" },
+            beforeRunning,
+            running,
+            reported);
+
+        Assert.Contains("WORK_CHECKLIST_BEGIN", first);
+        Assert.Contains("[1] 첫 단계", first);
+        Assert.Contains("W1", reported);
+
+        var beforeBlocked = graph.Snapshot();
+        Assert.True(graph.TryMarkBlocked(
+            "W1",
+            "HQ_BLOCKED",
+            "추가 판단 필요"));
+        var blocked = new ParallelWorkSchedulerSnapshot(
+            graph.Snapshot(),
+            Array.Empty<RunningWorkItemSnapshot>());
+
+        var second = ParallelWorkSupervisor.FormatMechanicalGraphDeltaEvent(
+            new[] { "W1 차단" },
+            beforeBlocked,
+            blocked,
+            reported);
+
+        Assert.DoesNotContain("WORK_CHECKLIST_BEGIN", second);
+        Assert.DoesNotContain("[1] 첫 단계", second);
+        Assert.Contains("WORK_REPORT_BEGIN", second);
+        Assert.Contains("추가 판단 필요", second);
+    }
+
+    [Fact]
     public async Task NoOpContinueStartsExistingReadyGraphWithoutRevisionChange()
     {
         var graph = new WorkGraph("job", 1);
