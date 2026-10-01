@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 
 namespace ProjectHub.Worker;
@@ -20,98 +21,142 @@ public partial class MainWindow
 
         try
         {
-            DashboardPreflightText.Text = "Git 기준점을 확인하는 중입니다.";
-            DashboardPreflightText.Foreground =
-                (System.Windows.Media.Brush)FindResource("Muted");
+            var gitResetAttempted = false;
 
-            var state = await _gitWorkspaceBootstrapper.PrepareAsync(
-                workingDirectory,
-                cancellationToken);
-
-            if (!state.Success)
+            while (true)
             {
-                ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
-                return null;
-            }
-
-            if (state.NeedsBaseline)
-            {
-                var freshWorkspace = state.InitializedNow || !state.HasHead;
-                if (!freshWorkspace)
-                {
-                    var reason = state.NeedsManagedIgnoreUpdate || state.NeedsManagedIndexCleanup
-                        ? "ProjectHub의 Git 관리 규칙을 적용해야 합니다.\n.projecthub와 검증 캐시는 소스 추적에서 제외하고 현재 변경사항과 함께 새 기준점에 반영합니다."
-                        : "현재 작업 폴더에 commit되지 않은 변경사항이 있습니다.\n현재 변경사항을 새 Git 기준점에 포함합니다.";
-
-                    var prompt =
-                        reason + Environment.NewLine + Environment.NewLine +
-                        "기준점 생성 경로" + Environment.NewLine +
-                        state.RepositoryRoot + Environment.NewLine + Environment.NewLine +
-                        "현재 Branch" + Environment.NewLine +
-                        (state.Branch ?? "unknown") + Environment.NewLine + Environment.NewLine +
-                        "확인을 누르면 기준점을 생성하고, 취소를 누르면 작업을 시작하지 않습니다.";
-
-                    var answer = System.Windows.MessageBox.Show(
-                        this,
-                        prompt,
-                        "Git 기준점 생성",
-                        MessageBoxButton.OKCancel,
-                        MessageBoxImage.Question);
-
-                    if (answer != MessageBoxResult.OK)
-                    {
-                        DashboardPreflightText.Text = "Git 기준점 생성을 취소했습니다.";
-                        DashboardPreflightText.Foreground =
-                            (System.Windows.Media.Brush)FindResource("Muted");
-                        return null;
-                    }
-                }
-
-                DashboardPreflightText.Text = freshWorkspace
-                    ? "새 작업 폴더의 최초 Git 기준점을 자동 생성하는 중입니다."
-                    : "Git 기준점을 생성하는 중입니다.";
+                DashboardPreflightText.Text = "Git 기준점을 확인하는 중입니다.";
                 DashboardPreflightText.Foreground =
                     (System.Windows.Media.Brush)FindResource("Muted");
 
-                state = await _gitWorkspaceBootstrapper.CreateBaselineAsync(
-                    state,
+                var state = await _gitWorkspaceBootstrapper.PrepareAsync(
+                    workingDirectory,
                     cancellationToken);
 
                 if (!state.Success)
                 {
+                    if (!gitResetAttempted &&
+                        TryResetGitMetadataForRetry(
+                            workingDirectory,
+                            state.ErrorCode,
+                            out var resetHandled))
+                    {
+                        gitResetAttempted = true;
+                        continue;
+                    }
+
+                    if (resetHandled)
+                        return null;
+
                     ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
                     return null;
                 }
+
+                if (state.NeedsBaseline)
+                {
+                    var freshWorkspace = state.InitializedNow || !state.HasHead;
+                    if (!freshWorkspace)
+                    {
+                        var reason = state.NeedsManagedIgnoreUpdate || state.NeedsManagedIndexCleanup
+                            ? "ProjectHub의 Git 관리 규칙을 적용해야 합니다.\n.projecthub, .vs와 검증 캐시는 소스 추적에서 제외하고 현재 변경사항과 함께 새 기준점에 반영합니다."
+                            : "현재 작업 폴더에 commit되지 않은 변경사항이 있습니다.\n현재 파일 상태를 새 Git 기준점으로 사용합니다.";
+
+                        var prompt =
+                            reason + Environment.NewLine + Environment.NewLine +
+                            "기준점 생성 경로" + Environment.NewLine +
+                            state.RepositoryRoot + Environment.NewLine + Environment.NewLine +
+                            "현재 Branch" + Environment.NewLine +
+                            (state.Branch ?? "unknown") + Environment.NewLine + Environment.NewLine +
+                            "확인을 누르면 현재 파일을 기준점으로 만들고, 취소를 누르면 작업을 시작하지 않습니다.";
+
+                        var answer = System.Windows.MessageBox.Show(
+                            this,
+                            prompt,
+                            "Git 기준점 생성",
+                            MessageBoxButton.OKCancel,
+                            MessageBoxImage.Question);
+
+                        if (answer != MessageBoxResult.OK)
+                        {
+                            DashboardPreflightText.Text = "Git 기준점 생성을 취소했습니다.";
+                            DashboardPreflightText.Foreground =
+                                (System.Windows.Media.Brush)FindResource("Muted");
+                            return null;
+                        }
+                    }
+
+                    DashboardPreflightText.Text = freshWorkspace
+                        ? "현재 파일에서 새 Git 기준점을 자동 생성하는 중입니다."
+                        : "현재 파일을 Git 기준점으로 만드는 중입니다.";
+                    DashboardPreflightText.Foreground =
+                        (System.Windows.Media.Brush)FindResource("Muted");
+
+                    state = await _gitWorkspaceBootstrapper.CreateBaselineAsync(
+                        state,
+                        cancellationToken);
+
+                    if (!state.Success)
+                    {
+                        if (!gitResetAttempted &&
+                            TryResetGitMetadataForRetry(
+                                workingDirectory,
+                                state.ErrorCode,
+                                out var resetHandled))
+                        {
+                            gitResetAttempted = true;
+                            continue;
+                        }
+
+                        if (resetHandled)
+                            return null;
+
+                        ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
+                        return null;
+                    }
+                }
+
+                var resolvedTarget = WorkerTargetConfiguration.ResolveGit(
+                    workingDirectory,
+                    _targetSettings,
+                    requireExactRoot: true);
+
+                // Bootstrapper가 방금 검증한 branch/HEAD를 우선한다.
+                // fresh repository의 최초 commit 직후 재조회가 일시적으로 비어도
+                // 이미 검증된 baseline HEAD를 다시 실패로 취급하지 않는다.
+                var target = resolvedTarget with
+                {
+                    ProjectPath = state.RepositoryRoot,
+                    Branch = resolvedTarget.Branch ?? state.Branch,
+                    HeadSha = resolvedTarget.HeadSha ?? state.HeadCommit,
+                    IsRepository = true
+                };
+
+                var preflight = ParallelWorkGitPreflight.Validate(target);
+                if (!preflight.Success)
+                {
+                    if (!gitResetAttempted &&
+                        TryResetGitMetadataForRetry(
+                            workingDirectory,
+                            preflight.ErrorCode,
+                            out var resetHandled))
+                    {
+                        gitResetAttempted = true;
+                        continue;
+                    }
+
+                    if (resetHandled)
+                        return null;
+
+                    ShowGitPreparationError(preflight.ErrorCode, target.ProjectPath);
+                    return null;
+                }
+
+                RefreshGitTargetPresentation(target);
+                DashboardPreflightText.Text = "Git 준비 완료 · HQ 시작 준비";
+                DashboardPreflightText.Foreground =
+                    (System.Windows.Media.Brush)FindResource("Muted");
+                return target;
             }
-
-            var resolvedTarget = WorkerTargetConfiguration.ResolveGit(
-                workingDirectory,
-                _targetSettings,
-                requireExactRoot: true);
-
-            // Bootstrapper가 방금 검증한 branch/HEAD를 우선한다.
-            // fresh repository의 최초 commit 직후 재조회가 일시적으로 비어도
-            // 이미 검증된 baseline HEAD를 다시 실패로 취급하지 않는다.
-            var target = resolvedTarget with
-            {
-                ProjectPath = state.RepositoryRoot,
-                Branch = resolvedTarget.Branch ?? state.Branch,
-                HeadSha = resolvedTarget.HeadSha ?? state.HeadCommit,
-                IsRepository = true
-            };
-
-            var preflight = ParallelWorkGitPreflight.Validate(target);
-            if (!preflight.Success)
-            {
-                ShowGitPreparationError(preflight.ErrorCode, target.ProjectPath);
-                return null;
-            }
-
-            RefreshGitTargetPresentation(target);
-            DashboardPreflightText.Text = "Git 준비 완료 · HQ 시작 준비";
-            DashboardPreflightText.Foreground =
-                (System.Windows.Media.Brush)FindResource("Muted");
-            return target;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -133,6 +178,97 @@ public partial class MainWindow
             UpdateDashboardRunButtonState();
             UpdateFollowupButtonState();
         }
+    }
+
+    private bool TryResetGitMetadataForRetry(
+        string workingDirectory,
+        string? errorCode,
+        out bool handled)
+    {
+        handled = false;
+
+        if (string.IsNullOrWhiteSpace(workingDirectory) ||
+            !Directory.Exists(workingDirectory))
+            return false;
+
+        var workspace = Path.GetFullPath(workingDirectory);
+        var gitMetadata = Path.Combine(workspace, ".git");
+        if (!Directory.Exists(gitMetadata) && !File.Exists(gitMetadata))
+            return false;
+
+        var prompt =
+            "Git 준비에 실패했습니다." + Environment.NewLine +
+            $"코드: {errorCode ?? "GIT_PREPARATION_FAILED"}" +
+            Environment.NewLine + Environment.NewLine +
+            "현재 작업 파일과 .gitignore는 그대로 보존하고 .git 메타데이터만 삭제한 뒤 " +
+            "현재 파일 상태에서 새 로컬 Git 기준점을 만들 수 있습니다." +
+            Environment.NewLine + Environment.NewLine +
+            "기존 local commit, branch, tag, remote 설정은 삭제됩니다." +
+            Environment.NewLine +
+            "계속하시겠습니까?";
+
+        var answer = MessageBox.Show(
+            this,
+            prompt,
+            "Git 재초기화",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+
+        if (answer != MessageBoxResult.OK)
+            return false;
+
+        handled = true;
+
+        try
+        {
+            if (Directory.Exists(gitMetadata))
+            {
+                ClearGitMetadataAttributes(new DirectoryInfo(gitMetadata));
+                Directory.Delete(gitMetadata, recursive: true);
+            }
+            else
+            {
+                File.SetAttributes(gitMetadata, FileAttributes.Normal);
+                File.Delete(gitMetadata);
+            }
+
+            AddTaskMessage(
+                "GIT RESET",
+                "사용자 승인으로 .git 메타데이터를 삭제했습니다. 작업 파일과 .gitignore는 보존합니다.",
+                status: "COMPLETED",
+                includeHistory: false);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            ShowGitPreparationError("GIT_METADATA_RESET_FAILED", workspace);
+            AddTaskMessage(
+                "GIT RESET ERROR",
+                exception.GetType().Name + ": " + exception.Message,
+                status: "GIT_METADATA_RESET_FAILED",
+                includeHistory: false);
+            return false;
+        }
+    }
+
+    private static void ClearGitMetadataAttributes(DirectoryInfo directory)
+    {
+        if (!directory.Exists)
+            return;
+
+        foreach (var entry in directory.EnumerateFileSystemInfos())
+        {
+            if (entry is DirectoryInfo child &&
+                !entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                ClearGitMetadataAttributes(child);
+            }
+
+            entry.Attributes &= ~(FileAttributes.ReadOnly | FileAttributes.System);
+        }
+
+        directory.Attributes &= ~(FileAttributes.ReadOnly | FileAttributes.System);
     }
 
     private void RefreshGitTargetPresentation(GitTargetSnapshot target)
@@ -171,6 +307,7 @@ public partial class MainWindow
             "GIT_BASELINE_COMMIT_CANCELED" => "기준점 commit이 취소되었습니다.",
             "GIT_BASELINE_COMMIT_FAILED" => "Git 기준점 commit을 생성하지 못했습니다.",
             "GIT_BASELINE_NOT_CLEAN" => "기준점 commit 뒤에도 commit되지 않은 변경사항이 남아 있습니다.",
+            "GIT_METADATA_RESET_FAILED" => ".git 메타데이터를 삭제하지 못했습니다. 작업 파일은 변경하지 않았습니다.",
             "PARALLEL_GIT_HEAD_REQUIRED" => "병렬 WORK 기준으로 사용할 Git HEAD commit을 확인할 수 없습니다.",
             "PARALLEL_GIT_ATTACHED_BRANCH_REQUIRED" => "Integration 결과를 반영하려면 현재 작업공간이 branch에 연결되어 있어야 합니다.",
             _ => "병렬 WORK를 위한 Git 준비에 실패했습니다."
