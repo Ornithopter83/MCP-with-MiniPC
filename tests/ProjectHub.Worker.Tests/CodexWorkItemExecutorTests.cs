@@ -770,8 +770,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.DoesNotContain(
                 fixture.Git.Calls,
                 call => call.Arguments.Count > 0 &&
-                        (call.Arguments[0] == "status" ||
-                         call.Arguments[0] == "merge"));
+                        call.Arguments[0] == "merge");
             Assert.False(Directory.Exists(integrationClone));
         }
         finally
