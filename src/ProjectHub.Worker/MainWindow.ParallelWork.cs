@@ -209,6 +209,67 @@ public partial class MainWindow
                 string prompt,
                 CancellationToken cancellationToken)
             {
+                var effectivePrompt = prompt;
+                if (HqSessionRollover.ShouldRollover(
+                        coordinatorSession,
+                        hqSessionTextBytes))
+                {
+                    hqSessionGeneration++;
+                    var handoff = HqSessionRollover.BuildHandoff(
+                        request,
+                        graph!.Snapshot(),
+                        baseRef);
+                    var handoffPath = ProjectWorkspacePersistence.SaveHqHandoff(
+                        workingDirectory,
+                        jobId,
+                        hqSessionGeneration,
+                        handoff);
+
+                    coordinatorSession = null;
+                    hqSessionTextBytes = 0;
+
+                    effectivePrompt =
+                        prompt +
+                        Environment.NewLine + Environment.NewLine +
+                        "HQ 세션 컨텍스트 예산을 초과해 새 세션으로 교대합니다." +
+                        Environment.NewLine +
+                        "아래 HQ_SESSION_HANDOFF는 Worker가 현재 WorkGraph에서 기계적으로 생성한 상태 요약입니다." +
+                        (string.IsNullOrWhiteSpace(handoffPath)
+                            ? string.Empty
+                            : Environment.NewLine + "로컬 handoff snapshot: " + handoffPath) +
+                        Environment.NewLine +
+                        "HQ_SESSION_HANDOFF_BEGIN" +
+                        Environment.NewLine +
+                        handoff +
+                        Environment.NewLine +
+                        "HQ_SESSION_HANDOFF_END" +
+                        Environment.NewLine + Environment.NewLine +
+                        RoleContractLoader.LoadHqFooter();
+
+                    ProjectWorkspacePersistence.AppendEvent(
+                        workingDirectory,
+                        jobId,
+                        DateTimeOffset.UtcNow,
+                        "HQ SESSION ROLLOVER",
+                        $"generation={hqSessionGeneration}" +
+                        Environment.NewLine +
+                        $"budgetBytes={HqSessionRollover.MaxAccumulatedTextBytes}" +
+                        Environment.NewLine +
+                        $"handoffPath={handoffPath ?? "none"}",
+                        "COMPLETED",
+                        graphRevision: graph.Revision);
+
+                    RunOnUi(() =>
+                        AddTaskMessage(
+                            "HQ SESSION ROLLOVER",
+                            $"HQ 관제 세션을 {hqSessionGeneration}세대로 교대했습니다." +
+                            (string.IsNullOrWhiteSpace(handoffPath)
+                                ? string.Empty
+                                : Environment.NewLine + handoffPath),
+                            status: "COMPLETED",
+                            includeHistory: false));
+                }
+
                 RunOnUi(() =>
                 {
                     TaskDirection.Text = "설계·관제 AI";
