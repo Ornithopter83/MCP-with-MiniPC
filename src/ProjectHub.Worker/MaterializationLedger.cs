@@ -536,7 +536,8 @@ public sealed class TargetWorkspaceMaterializationLedger
                     _workspace,
                     normalizedRelative.Replace('/', Path.DirectorySeparatorChar)));
             if (!IsPathWithin(candidate, _workspace) ||
-                string.Equals(candidate, _workspace, PathComparison))
+                string.Equals(candidate, _workspace, PathComparison) ||
+                ContainsReparsePoint(candidate))
                 return false;
             fullPath = candidate;
             return true;
@@ -577,6 +578,33 @@ public sealed class TargetWorkspaceMaterializationLedger
             .FirstOrDefault();
         return string.Equals(first, ".git", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(first, ".projecthub", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ContainsReparsePoint(string path)
+    {
+        var relative = Path.GetRelativePath(_workspace, path);
+        var current = _workspace;
+        foreach (var segment in relative.Split(
+                     new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            if (!Directory.Exists(current) && !File.Exists(current))
+                continue;
+
+            try
+            {
+                if (File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint))
+                    return true;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsPathWithin(string path, string root)
