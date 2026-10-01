@@ -296,7 +296,7 @@ public partial class MainWindow
                     result = await RunHqRoleAsync(
                         jobId,
                         "HQ_WORK_GRAPH",
-                        prompt,
+                        effectivePrompt,
                         coordinator,
                         workingDirectory,
                         coordinatorSession,
@@ -316,7 +316,7 @@ public partial class MainWindow
                         RunHqRoleAsync(
                             jobId,
                             "HQ_WORK_GRAPH",
-                            prompt,
+                            effectivePrompt,
                             coordinator,
                             workingDirectory,
                             coordinatorSession,
