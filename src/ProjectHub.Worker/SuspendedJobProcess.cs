@@ -226,6 +226,11 @@ internal static class SuspendedJobProcessLauncher
         }
         catch
         {
+            if (processInfo.Process != IntPtr.Zero)
+            {
+                try { TerminateProcess(processInfo.Process, 1); }
+                catch { }
+            }
             try { standardInput?.Dispose(); } catch { }
             try { standardOutput?.Dispose(); } catch { }
             try { standardError?.Dispose(); } catch { }
