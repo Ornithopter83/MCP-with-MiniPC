@@ -382,7 +382,8 @@ public sealed class GitWorkspaceBootstrapper
             "--",
             ".projecthub",
             ".verification-appdata",
-            ".projecthub-worktrees"
+            ".projecthub-worktrees",
+            ".vs"
         };
 
     private static string[] BuildManagedIndexCleanupArguments()
@@ -395,7 +396,8 @@ public sealed class GitWorkspaceBootstrapper
             "--",
             ".projecthub",
             ".verification-appdata",
-            ".projecthub-worktrees"
+            ".projecthub-worktrees",
+            ".vs"
         };
 
     private static bool NeedsManagedGitIgnoreUpdate(
@@ -515,6 +517,7 @@ public sealed class GitWorkspaceBootstrapper
             "Desktop.ini",
             "",
             "# 편집기 임시 파일",
+            ".vs/",
             "*.swp",
             "*.swo",
             "*~"
