@@ -712,7 +712,9 @@ public partial class MainWindow
                     coordinator,
                     implementer,
                     coordinatorSession,
-                    result.Graph);
+                    result.Graph,
+                    hqSessionTextBytes,
+                    hqSessionGeneration);
                 SetFlowState(false, false, false);
                 return;
             }
@@ -735,7 +737,9 @@ public partial class MainWindow
                     coordinator,
                     implementer,
                     coordinatorSession,
-                    result.Graph);
+                    result.Graph,
+                    hqSessionTextBytes,
+                    hqSessionGeneration);
                 compactRuntimeOnPause = true;
                 SetFlowState(false, false, false);
                 return;
@@ -858,7 +862,9 @@ public partial class MainWindow
                     coordinator,
                     implementer,
                     coordinatorSession,
-                    snapshot);
+                    snapshot,
+                    hqSessionTextBytes,
+                    hqSessionGeneration);
                 AddTaskMessage(
                     "TASK CANCELED",
                     "사용자가 실행 구간을 중단했습니다. WorkGraph와 확보된 세션 정보를 보존합니다.",
