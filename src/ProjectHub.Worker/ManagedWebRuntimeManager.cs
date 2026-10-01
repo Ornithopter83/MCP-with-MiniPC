@@ -36,8 +36,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
     private sealed class Slot
     {
         public Process? Process { get; set; }
-        public ManagedBrowserProcessJob? ProcessJob { get; set; }
-        public DateTimeOffset? ProcessStartedAt { get; set; }
+        public SuspendedJobProcess? Launch { get; set; }
+        public WorkerChildProcessJob? ProcessJob { get; set; }
         public bool Hidden { get; set; }
         public string? ExecutablePath { get; set; }
         public string? Error { get; set; }
@@ -513,20 +513,17 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                     startInfo.ArgumentList.Add(argument);
                 }
 
-                var processJob = new ManagedBrowserProcessJob();
-                Process? process = null;
-                var processStartedAt = DateTimeOffset.UtcNow;
+                var processJob = new WorkerChildProcessJob("Managed Chromium " + RoleToken(role));
+                SuspendedJobProcess? launch = null;
                 try
                 {
-                    var startedProcess = Process.Start(startInfo)
-                        ?? throw new InvalidOperationException("관리형 Web 브라우저 프로세스를 시작하지 못했습니다.");
-                    process = startedProcess;
-                    processJob.Assign(startedProcess);
+                    launch = processJob.Start(startInfo);
+                    var startedProcess = launch.Process;
 
                     startedProcess.Exited += (_, _) => OnProcessExited(role, startedProcess);
                     slot.Process = startedProcess;
+                    slot.Launch = launch;
                     slot.ProcessJob = processJob;
-                    slot.ProcessStartedAt = processStartedAt;
                     slot.ExecutablePath = executable;
                     startedProcess.EnableRaisingEvents = true;
                 }
@@ -534,33 +531,16 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                 {
                     try { processJob.Dispose(); }
                     catch { }
-
-                    if (process is not null)
-                    {
-                        try
-                        {
-                            if (!process.HasExited)
-                            {
-                                process.Kill(entireProcessTree: true);
-                                process.WaitForExit(5000);
-                            }
-                        }
-                        catch
-                        {
-                        }
-                        finally
-                        {
-                            process.Dispose();
-                        }
-                    }
+                    try { launch?.Dispose(); }
+                    catch { }
                     throw;
                 }
             }
             catch (Exception exception)
             {
                 slot.Process = null;
+                slot.Launch = null;
                 slot.ProcessJob = null;
-                slot.ProcessStartedAt = null;
                 slot.ExecutablePath = null;
                 slot.Error = exception.Message;
             }
@@ -575,8 +555,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
     private void OnProcessExited(ManagedWebRole role, Process process)
     {
         ManagedWebRuntimeStatus? status = null;
-        ManagedBrowserProcessJob? processJob = null;
-        DateTimeOffset startedAt = DateTimeOffset.MinValue;
+        WorkerChildProcessJob? processJob = null;
+        SuspendedJobProcess? launch = null;
         lock (_gate)
         {
             var slot = _slots[role];
@@ -584,19 +564,18 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                 return;
 
             slot.Process = null;
+            launch = slot.Launch;
+            slot.Launch = null;
             processJob = slot.ProcessJob;
             slot.ProcessJob = null;
-            startedAt = slot.ProcessStartedAt ?? DateTimeOffset.MinValue;
-            slot.ProcessStartedAt = null;
             status = Snapshot(role, slot);
         }
 
-        // 브라우저 launcher가 먼저 끝나도 동일 role에서 파생된 renderer/helper가
-        // 남지 않도록 slot 전용 Job을 즉시 닫는다.
+        // launcher가 끝났을 때 role Job을 닫아 renderer/helper를 함께 끝낸다.
         try { processJob?.Dispose(); }
         catch { }
-        TryTerminateEscapedDescendants(process, startedAt);
-        process.Dispose();
+        try { launch?.Dispose(); }
+        catch { }
 
         if (status is not null)
             StatusChanged?.Invoke(status);
@@ -616,31 +595,32 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         {
         }
 
-        var process = slot.Process;
+        var launch = slot.Launch;
         var processJob = slot.ProcessJob;
-        var startedAt = slot.ProcessStartedAt ?? DateTimeOffset.MinValue;
         slot.Process = null;
+        slot.Launch = null;
         slot.ProcessJob = null;
-        slot.ProcessStartedAt = null;
 
         try { processJob?.Dispose(); }
         catch { }
-        TryTerminateEscapedDescendants(process, startedAt);
-        process.Dispose();
+        try { launch?.Dispose(); }
+        catch { }
     }
 
     private static void StopProcess(Slot slot)
     {
         var process = slot.Process;
+        var launch = slot.Launch;
         var processJob = slot.ProcessJob;
-        var startedAt = slot.ProcessStartedAt ?? DateTimeOffset.MinValue;
         slot.Process = null;
+        slot.Launch = null;
         slot.ProcessJob = null;
-        slot.ProcessStartedAt = null;
 
         if (process is null)
         {
             try { processJob?.Dispose(); }
+            catch { }
+            try { launch?.Dispose(); }
             catch { }
             return;
         }
@@ -652,7 +632,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                 try
                 {
                     if (process.CloseMainWindow())
-                        process.WaitForExit(3000);
+                        process.WaitForExit(1500);
                 }
                 catch
                 {
@@ -661,20 +641,17 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         }
         finally
         {
-            // role별 Job close가 실제 종료 기준이다. launcher만 종료되고 renderer/helper가
-            // 남는 경우까지 여기서 함께 제거한다.
+            // 실제 종료 기준은 role Job close다.
             try { processJob?.Dispose(); }
             catch { }
         }
-
-        TryTerminateEscapedDescendants(process, startedAt);
 
         try
         {
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
+                process.WaitForExit(2000);
             }
         }
         catch
@@ -682,20 +659,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         }
         finally
         {
-            process.Dispose();
-        }
-    }
-
-    private static void TryTerminateEscapedDescendants(
-        Process process,
-        DateTimeOffset startedAt)
-    {
-        try
-        {
-            WorkerChildProcessJob.TerminateDescendants(process.Id, startedAt);
-        }
-        catch
-        {
+            try { launch?.Dispose(); }
+            catch { }
         }
     }
 
@@ -715,53 +680,46 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
     public void Dispose()
     {
-        (Process Process, ManagedBrowserProcessJob? ProcessJob, DateTimeOffset StartedAt)[] active;
+        (Process? Process, SuspendedJobProcess? Launch, WorkerChildProcessJob? ProcessJob)[] active;
         lock (_gate)
         {
             active = _slots.Values
-                .Where(slot => slot.Process is not null)
-                .Select(slot => (
-                    slot.Process!,
-                    slot.ProcessJob,
-                    slot.ProcessStartedAt ?? DateTimeOffset.MinValue))
-                .DistinctBy(item => item.Item1)
+                .Select(slot => (slot.Process, slot.Launch, slot.ProcessJob))
                 .ToArray();
 
             foreach (var slot in _slots.Values)
             {
                 slot.Process = null;
+                slot.Launch = null;
                 slot.ProcessJob = null;
-                slot.ProcessStartedAt = null;
                 slot.Provisioning = false;
             }
         }
 
-        // HQ/RESOURCE 각각의 Job을 먼저 닫아 role별 Chromium tree를 독립적으로 정리한다.
         foreach (var item in active)
         {
             try { item.ProcessJob?.Dispose(); }
             catch { }
-            TryTerminateEscapedDescendants(item.Process, item.StartedAt);
         }
 
         foreach (var item in active)
         {
-            var process = item.Process;
             try
             {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    process.WaitForExit(2000);
-                }
+                if (item.Process is not null && !item.Process.HasExited)
+                    item.Process.WaitForExit(2000);
             }
             catch
             {
+                try { item.Process?.Kill(entireProcessTree: true); }
+                catch { }
             }
             finally
             {
-                process.Dispose();
+                try { item.Launch?.Dispose(); }
+                catch { }
             }
         }
     }
+
 }
