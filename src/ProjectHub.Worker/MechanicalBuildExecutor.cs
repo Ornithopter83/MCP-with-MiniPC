@@ -176,24 +176,18 @@ internal static class MechanicalBuildExecutor
         startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var processJob = new WorkerChildProcessJob("dotnet build");
-        using var process = new Process { StartInfo = startInfo };
-        var output = new StringBuilder();
-        var error = new StringBuilder();
-        process.OutputDataReceived += (_, e) => { if (e.Data is not null) output.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) error.AppendLine(e.Data); };
+        using var launched = processJob.Start(startInfo);
+        var process = launched.Process;
+        var outputTask = launched.StandardOutput!.ReadToEndAsync(cancellationToken);
+        var errorTask = launched.StandardError!.ReadToEndAsync(cancellationToken);
 
-        if (!process.Start())
-            throw new InvalidOperationException("BUILD_PROCESS_START_FAILED");
-
-        processJob.Assign(process);
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
         try
         {
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
+            processJob.Dispose();
             try
             {
                 if (!process.HasExited)
@@ -205,7 +199,9 @@ internal static class MechanicalBuildExecutor
             throw;
         }
 
-        var combined = output.ToString() + (error.Length > 0 ? Environment.NewLine + error : string.Empty);
+        var output = await outputTask.ConfigureAwait(false);
+        var error = await errorTask.ConfigureAwait(false);
+        var combined = output + (!string.IsNullOrEmpty(error) ? Environment.NewLine + error : string.Empty);
         await File.WriteAllTextAsync(logPath, combined, cancellationToken).ConfigureAwait(false);
         var summaryText = Limit(combined, 12000);
         return new MechanicalBuildResult(
