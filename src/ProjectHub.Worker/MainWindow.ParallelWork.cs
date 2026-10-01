@@ -345,6 +345,10 @@ public partial class MainWindow
                 }
 
                 lastHqMessage = result.FinalMessage;
+                hqSessionTextBytes = HqSessionRollover.AddTurnBytes(
+                    hqSessionTextBytes,
+                    effectivePrompt,
+                    result.FinalMessage);
                 RunOnUi(() =>
                 {
                     AddRoleResponseHistory(
