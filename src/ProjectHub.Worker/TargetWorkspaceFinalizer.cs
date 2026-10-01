@@ -52,19 +52,26 @@ public sealed class TargetWorkspaceFinalizer
             .SelectMany(item => item.Dependencies)
             .ToHashSet(StringComparer.Ordinal);
 
-        var normalCandidates = completedCodeChanges
+        var candidates = completedCodeChanges
             .Where(item =>
-                item.Kind == WorkItemKind.Normal &&
-                !consumedByCompletedIntegration.Contains(item.Id))
+                item.Kind == WorkItemKind.Integration ||
+                (item.Kind == WorkItemKind.Normal &&
+                 !consumedByCompletedIntegration.Contains(item.Id)))
             .OrderBy(item => item.CreatedOrder)
             .ToArray();
 
-        if (normalCandidates.Length == 0)
-            return new(true, null, "모든 NORMAL CODE_CHANGE가 완료된 INTEGRATION에 귀속되어 별도 반영 대상이 없습니다.");
+        if (candidates.Length == 0)
+            return new(true, null, "사용자 작업 폴더에 별도 반영할 CODE_CHANGE가 없습니다.");
 
+        var ledger = new TargetWorkspaceMaterializationLedger(
+            _workspace,
+            graph.JobId);
         var pending = new List<WorkItemSnapshot>();
-        foreach (var item in normalCandidates)
+        foreach (var item in candidates)
         {
+            if (ledger.IsResultVerified(item.ResultRef))
+                continue;
+
             var containment = await _worktrees.InspectTargetContainmentAsync(
                 _workspace,
                 item.ResultRef!,
@@ -88,7 +95,7 @@ public sealed class TargetWorkspaceFinalizer
         }
 
         if (pending.Count == 0)
-            return new(true, null, "최종 CODE_CHANGE가 이미 사용자 작업 폴더의 현재 HEAD에 포함되어 있습니다.");
+            return new(true, null, "최종 CODE_CHANGE가 사용자 작업 폴더에 검증 반영되었거나 현재 HEAD에 포함되어 있습니다.");
 
         WorkItemSnapshot target;
         string landingRef;
@@ -152,6 +159,23 @@ public sealed class TargetWorkspaceFinalizer
 
         if (!landing.Success)
         {
+            if (string.Equals(
+                    landing.ErrorCode,
+                    "INTEGRATION_TARGET_DIRTY",
+                    StringComparison.Ordinal))
+            {
+                return new(
+                    false,
+                    "TARGET_MATERIALIZATION_REQUIRED",
+                    "사용자 작업 폴더에는 확정된 중간 결과가 누적될 수 있으므로 dirty 상태를 오류로 정리하지 않습니다." +
+                    Environment.NewLine +
+                    "남은 CODE_CHANGE를 고정 materialize 작업으로 검증 반영해야 합니다." +
+                    Environment.NewLine +
+                    $"workItemId={target.Id}" + Environment.NewLine +
+                    $"resultRef={landingRef}" + Environment.NewLine +
+                    $"targetWorkspace={_workspace}");
+            }
+
             return new(
                 false,
                 MapLandingError(landing.ErrorCode),
