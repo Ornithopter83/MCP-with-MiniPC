@@ -207,13 +207,20 @@ public static class WorkerTargetConfiguration
             foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
             using var launched = processJob.Start(startInfo);
             var process = launched.Process;
-            var output = launched.StandardOutput!.ReadToEnd().Trim();
+            var stdoutTask = launched.StandardOutput!.ReadToEndAsync();
+            var stderrTask = launched.StandardError!.ReadToEndAsync();
             if (!process.WaitForExit(5000))
             {
+                processJob.Dispose();
                 try { process.Kill(entireProcessTree: true); } catch { }
                 return null;
             }
-            return process.ExitCode == 0 ? output : null;
+
+            var exitCode = process.ExitCode;
+            processJob.Dispose();
+            var output = stdoutTask.GetAwaiter().GetResult().Trim();
+            _ = stderrTask.GetAwaiter().GetResult();
+            return exitCode == 0 ? output : null;
         }
         catch
         {
