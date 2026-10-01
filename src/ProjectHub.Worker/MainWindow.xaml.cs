@@ -1929,7 +1929,8 @@ public partial class MainWindow : Window
         CancellationToken cancellationToken,
         Action<string>? sessionStarted = null,
         IReadOnlyList<AiInputAttachment>? inputAttachments = null,
-        List<BridgeAttachment>? webAttachments = null)
+        List<BridgeAttachment>? webAttachments = null,
+        bool startNewWebConversation = false)
     {
         if (!IsWebTransport(role.Transport))
             return await RunCoordinatorRoleAsync(
@@ -1951,7 +1952,8 @@ public partial class MainWindow : Window
             prompt,
             cancellationToken,
             inputAttachments,
-            webAttachments);
+            webAttachments,
+            startNewWebConversation);
     }
 
     private async Task<AiRoleRunResult> RunWebRoleAsync(
@@ -1961,7 +1963,8 @@ public partial class MainWindow : Window
         string prompt,
         CancellationToken cancellationToken,
         IReadOnlyList<AiInputAttachment>? inputAttachments = null,
-        List<BridgeAttachment>? webAttachments = null)
+        List<BridgeAttachment>? webAttachments = null,
+        bool startNewConversation = false)
     {
         var bridgeServer = _bridgeServer;
         var webStatus = bridgeServer?.GetRoleBindingStatus(roleName);
@@ -1984,7 +1987,8 @@ public partial class MainWindow : Window
         var task = bridgeServer.CreateTaskForRole(
             roleName,
             effectivePrompt,
-            effectiveAttachments)
+            effectiveAttachments,
+            startNewConversation: startNewConversation)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_CREATE_FAILED");
         var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
