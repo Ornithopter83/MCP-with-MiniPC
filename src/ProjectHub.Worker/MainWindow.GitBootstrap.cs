@@ -7,12 +7,12 @@ public partial class MainWindow
     private readonly GitWorkspaceBootstrapper _gitWorkspaceBootstrapper = new();
     private bool _gitPreparationInProgress;
 
-    private async Task<bool> PrepareParallelGitForLaunchAsync(
+    private async Task<GitTargetSnapshot?> PrepareParallelGitForLaunchAsync(
         string workingDirectory,
         CancellationToken cancellationToken = default)
     {
         if (_gitPreparationInProgress)
-            return false;
+            return null;
 
         _gitPreparationInProgress = true;
         UpdateDashboardRunButtonState();
@@ -31,7 +31,7 @@ public partial class MainWindow
             if (!state.Success)
             {
                 ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
-                return false;
+                return null;
             }
 
             if (state.NeedsBaseline)
@@ -63,7 +63,7 @@ public partial class MainWindow
                         DashboardPreflightText.Text = "Git 기준점 생성을 취소했습니다.";
                         DashboardPreflightText.Foreground =
                             (System.Windows.Media.Brush)FindResource("Muted");
-                        return false;
+                        return null;
                     }
                 }
 
@@ -80,26 +80,38 @@ public partial class MainWindow
                 if (!state.Success)
                 {
                     ShowGitPreparationError(state.ErrorCode, state.RepositoryRoot);
-                    return false;
+                    return null;
                 }
             }
 
-            var target = WorkerTargetConfiguration.ResolveGit(
+            var resolvedTarget = WorkerTargetConfiguration.ResolveGit(
                 workingDirectory,
                 _targetSettings,
                 requireExactRoot: true);
+
+            // Bootstrapper가 방금 검증한 branch/HEAD를 우선한다.
+            // fresh repository의 최초 commit 직후 재조회가 일시적으로 비어도
+            // 이미 검증된 baseline HEAD를 다시 실패로 취급하지 않는다.
+            var target = resolvedTarget with
+            {
+                ProjectPath = state.RepositoryRoot,
+                Branch = resolvedTarget.Branch ?? state.Branch,
+                HeadSha = resolvedTarget.HeadSha ?? state.HeadCommit,
+                IsRepository = true
+            };
+
             var preflight = ParallelWorkGitPreflight.Validate(target);
             if (!preflight.Success)
             {
                 ShowGitPreparationError(preflight.ErrorCode, target.ProjectPath);
-                return false;
+                return null;
             }
 
             RefreshGitTargetPresentation(target);
             DashboardPreflightText.Text = "Git 준비 완료 · HQ 시작 준비";
             DashboardPreflightText.Foreground =
                 (System.Windows.Media.Brush)FindResource("Muted");
-            return true;
+            return target;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -113,7 +125,7 @@ public partial class MainWindow
                 exception.GetType().Name + ": " + exception.Message,
                 status: "GIT_PREPARATION_EXCEPTION",
                 includeHistory: false);
-            return false;
+            return null;
         }
         finally
         {
