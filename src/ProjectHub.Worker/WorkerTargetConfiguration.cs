@@ -45,7 +45,7 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null,
     [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = 1)
 {
-    public JudgeSettings EffectiveJudge => Judge ?? new JudgeSettings();
+    public JudgeSettings EffectiveJudge => new(false);
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
     public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
     public int EffectiveMaxConcurrentWork => MaxConcurrentWork is >= WorkGraph.MinimumConcurrency and <= WorkGraph.MaximumConcurrency ? MaxConcurrentWork : 1;
@@ -97,6 +97,8 @@ public static class WorkerTargetConfiguration
 
         return settings with
         {
+            Judge = null,
+            JudgeEndpointValidation = null,
             Coordinator = NormalizeRole(settings.Coordinator),
             Implementer = NormalizeRole(settings.Implementer)
         };
