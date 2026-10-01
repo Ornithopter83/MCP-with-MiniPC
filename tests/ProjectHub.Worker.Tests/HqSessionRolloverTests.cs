@@ -70,14 +70,12 @@ public sealed class HqSessionRolloverTests
 
             Assert.NotNull(path);
             Assert.True(File.Exists(path));
-            Assert.StartsWith(
+            Assert.True(path!.StartsWith(
                 ProjectWorkspacePersistence.RootDirectory(directory),
-                path!,
-                StringComparison.OrdinalIgnoreCase);
-            Assert.Contains(
+                StringComparison.OrdinalIgnoreCase));
+            Assert.True(path.Contains(
                 Path.Combine(".projecthub", "hq-handoffs"),
-                path!,
-                StringComparison.OrdinalIgnoreCase);
+                StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
