@@ -1169,8 +1169,6 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _historyEvents.Clear();
-            SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
             await RunCoordinatorFirstJobAsync(
                 launchRequest.Prompt,
                 selectedThreadForLaunch,
