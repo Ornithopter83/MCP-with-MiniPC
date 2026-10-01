@@ -1004,6 +1004,7 @@ public sealed class GitWorktreeManagerTests
             Assert.True(graph.TryMarkCompleted("W10", "normal-ref", "normal", WorkItemResultType.CodeChange));
             Assert.True(graph.TryMarkRunning("I10"));
             Assert.True(graph.TryMarkCompleted("I10", "integration-ref", "integration", WorkItemResultType.CodeChange));
+            WriteVerifiedMaterializationLedger(root, "job", "integration-ref");
 
             var runner = new FakeGitRunner(root);
             var finalizer = new TargetWorkspaceFinalizer(
@@ -1356,6 +1357,39 @@ public sealed class GitWorktreeManagerTests
         {
             DeleteTempTree(root);
         }
+    }
+
+    private static void WriteVerifiedMaterializationLedger(
+        string root,
+        string jobId,
+        string resultRef)
+    {
+        var directory = Path.Combine(
+            root,
+            ".projecthub",
+            "materialization-ledger",
+            jobId);
+        Directory.CreateDirectory(directory);
+        var entry = new MaterializationLedgerEntry(
+            jobId,
+            FixedWorkItemSlots.Materialize,
+            1,
+            DateTimeOffset.UtcNow,
+            true,
+            null,
+            new[] { resultRef },
+            Array.Empty<MaterializationFileRecord>(),
+            Array.Empty<string>(),
+            "verified");
+        File.WriteAllText(
+            Path.Combine(directory, "000000000001-8.json"),
+            System.Text.Json.JsonSerializer.Serialize(
+                entry,
+                new System.Text.Json.JsonSerializerOptions(
+                    System.Text.Json.JsonSerializerDefaults.Web)
+                {
+                    WriteIndented = true
+                }));
     }
 
     private static string CreateTempRepositoryDirectory()
