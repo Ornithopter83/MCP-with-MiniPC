@@ -555,8 +555,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 inboundType = "WORK_OUTPUT_CONTRACT_REJECTED";
                 inboundBody =
                     $"errorCode=WORK_ROUTE_{route.Error}{Environment.NewLine}" +
-                    $"correctionAttempt={outputContractCorrections}/{MaximumOutputContractCorrections}{Environment.NewLine}" +
-                    "의미 작업은 다시 수행하지 않는다. 직전 결과의 내용은 유지하고 WORK 출력 계약에 맞는 GOTO 제어행과 필요한 본문만 다시 반환한다.";
+                    "직전 의미는 유지하고 GOTO 형식만 수정하세요.";
                 continue;
             }
 
@@ -609,8 +608,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 inboundType = "WORK_OUTPUT_CONTRACT_REJECTED";
                 inboundBody =
                     $"errorCode=WORK_ROUTE_UNSUPPORTED{Environment.NewLine}" +
-                    $"correctionAttempt={outputContractCorrections}/{MaximumOutputContractCorrections}{Environment.NewLine}" +
-                    "의미 작업은 다시 수행하지 않는다. 직전 결과를 현재 WORK가 허용하는 목적지 하나로만 다시 보고한다.";
+                    "직전 의미는 유지하고 허용된 GOTO로만 다시 보고하세요.";
                 continue;
             }
 
@@ -630,8 +628,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 inboundType = "WORK_ITEM_REPORT_REJECTED";
                 inboundBody =
                     $"errorCode={reportError ?? "WORK_ITEM_REPORT_INVALID"}{Environment.NewLine}" +
-                    $"correctionAttempt={outputContractCorrections}/{MaximumOutputContractCorrections}{Environment.NewLine}" +
-                    "의미 작업은 다시 수행하지 않는다. 직전 보고 내용은 유지하고 WORK_ITEM_STATUS 행을 정확히 하나만 포함한 [GOTO : HQ] 응답으로 다시 반환한다.";
+                    "직전 의미는 유지하고 WORK_ITEM_STATUS 형식만 수정하세요.";
                 continue;
             }
 
