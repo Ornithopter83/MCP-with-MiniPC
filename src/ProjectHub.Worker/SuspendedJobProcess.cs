@@ -8,6 +8,9 @@ namespace ProjectHub.Worker;
 
 internal sealed class SuspendedJobProcess : IDisposable
 {
+    private CancellationTokenRegistration _cancellationRegistration;
+    private bool _hasCancellationRegistration;
+
     public SuspendedJobProcess(
         Process process,
         StreamWriter? standardInput,
@@ -25,8 +28,22 @@ internal sealed class SuspendedJobProcess : IDisposable
     public StreamReader? StandardOutput { get; }
     public StreamReader? StandardError { get; }
 
+    internal void AttachCancellation(CancellationTokenRegistration registration)
+    {
+        if (_hasCancellationRegistration)
+            throw new InvalidOperationException("Cancellation registration is already attached.");
+
+        _cancellationRegistration = registration;
+        _hasCancellationRegistration = true;
+    }
+
     public void Dispose()
     {
+        if (_hasCancellationRegistration)
+        {
+            try { _cancellationRegistration.Dispose(); } catch { }
+            _hasCancellationRegistration = false;
+        }
         try { StandardInput?.Dispose(); } catch { }
         try { StandardOutput?.Dispose(); } catch { }
         try { StandardError?.Dispose(); } catch { }
