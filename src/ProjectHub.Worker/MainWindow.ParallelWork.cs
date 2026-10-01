@@ -51,6 +51,8 @@ public partial class MainWindow
 
         var coordinatorSession = continuation?.CoordinatorSessionId;
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
+        var hqSessionTextBytes = Math.Max(0, continuation?.HqSessionTextBytes ?? 0);
+        var hqSessionGeneration = Math.Max(1, continuation?.HqSessionGeneration ?? 1);
         var mechanicalWork = new MechanicalWorkRegistry();
         var resourceQueue = new ResourceSidecarQueue(
             _bridgeServer,
