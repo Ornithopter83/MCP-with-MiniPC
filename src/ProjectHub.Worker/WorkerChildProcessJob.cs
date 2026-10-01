@@ -76,6 +76,22 @@ internal sealed class WorkerChildProcessJob : IDisposable
         }
     }
 
+    public SuspendedJobProcess Start(ProcessStartInfo startInfo)
+    {
+        ArgumentNullException.ThrowIfNull(startInfo);
+
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_handle is null || _handle.IsInvalid || _handle.IsClosed)
+                throw new InvalidOperationException($"{_ownerLabel} Job Object가 준비되지 않았습니다.");
+
+            return SuspendedJobProcessLauncher.Start(
+                startInfo,
+                _handle.DangerousGetHandle());
+        }
+    }
+
     public void Assign(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
