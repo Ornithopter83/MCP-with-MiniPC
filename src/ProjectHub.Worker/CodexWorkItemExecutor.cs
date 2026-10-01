@@ -987,12 +987,22 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
         const string prefix = "reportStatus:";
         var statusLine = lines[1].Trim();
-        if (!statusLine.StartsWith(prefix, StringComparison.Ordinal) ||
-            !Enum.TryParse<WorkItemReportStatus>(
-                statusLine[prefix.Length..].Trim(),
-                ignoreCase: true,
-                out status))
+        if (!statusLine.StartsWith(prefix, StringComparison.Ordinal))
             return false;
+
+        var statusToken = statusLine[prefix.Length..].Trim();
+        if (string.Equals(statusToken, "SplitRequest", StringComparison.OrdinalIgnoreCase))
+        {
+            // 구버전 checkpoint 호환용이다. 새 WORK 출력에서는 SPLIT_REQUEST를 허용하지 않는다.
+            status = WorkItemReportStatus.Blocked;
+        }
+        else if (!Enum.TryParse<WorkItemReportStatus>(
+                     statusToken,
+                     ignoreCase: true,
+                     out status))
+        {
+            return false;
+        }
 
         reportBody = string.Join(
             Environment.NewLine,
