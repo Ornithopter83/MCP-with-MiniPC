@@ -6,7 +6,7 @@
 
 ① HQ는 사용자 목표 해석, WorkItem 작업 목록 구성, WorkGraph 관제와 CONTINUE·PAUSE·END 판단을 담당한다.
 ② WORK는 현재 WorkItem의 목표와 작업 목록을 수행하고 목록별 결과를 HQ에 보고한다. WORK는 작업 분할이나 새 WorkItem 필요 여부를 판단하지 않는다.
-③ RESOURCE는 WorkItem #0의 생성 리소스를 Web으로 요청하고 수집한다.
+③ RESOURCE는 생성 리소스를 Web으로 요청하고 수집한다.
 ④ Worker는 의미 판단 대신 상태, 전송, 프로세스, Git과 기계 작업을 관리한다.
 
 제2조 (보고)
@@ -33,9 +33,8 @@
 
 제5조 (RESOURCE)
 
-① WorkItem #0만 RESOURCE를 요청할 수 있다.
-② RESOURCE Web 전송·수집 실패는 의미 작업 실패와 구분한다.
-③ RESOURCE 실패를 일반 WORK의 다른 생성 경로로 자동 우회하지 않는다.
+① RESOURCE Web 전송·수집 실패는 의미 작업 실패와 구분한다.
+② RESOURCE 실패를 일반 WORK의 다른 생성 경로로 자동 우회하지 않는다.
 
 제6조 (Web)
 
