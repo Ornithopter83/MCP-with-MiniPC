@@ -228,10 +228,18 @@ public sealed class CoordinatorFirstContractTests
     [Theory]
     [InlineData("PAUSED")]
     [InlineData("CANCELED")]
+    public void TaskContinuation_AllowsInterruptedSegments(string status)
+        => Assert.True(TaskContinuationContract.IsResumableStatus(status));
+
+    [Theory]
     [InlineData("DONE")]
     [InlineData("DONE_WITH_ERROR")]
-    public void TaskContinuation_AllowsInterruptedAndCompletedSegments(string status)
-        => Assert.True(TaskContinuationContract.IsResumableStatus(status));
+    public void TaskContinuation_CompletedSegmentsRequireFreshStart(string status)
+    {
+        Assert.False(TaskContinuationContract.IsResumableStatus(status));
+        Assert.True(TaskContinuationContract.IsFreshStartStatus(status));
+        Assert.True(TaskContinuationContract.CanAcceptFollowupStatus(status));
+    }
 
     [Theory]
     [InlineData("RUNNING")]
@@ -243,7 +251,7 @@ public sealed class CoordinatorFirstContractTests
     public void TaskContinuation_BuildsUserFollowupForSameHqContext()
     {
         var input = TaskContinuationContract.BuildHqFollowupInput(
-            "DONE",
+            "PAUSED",
             "이전 작업을 완료했습니다.",
             "효과음을 추가하고 계속 다듬어줘.");
 
@@ -293,7 +301,7 @@ public sealed class CoordinatorFirstContractTests
     public void TaskContinuation_IncludesProjectMemoryPathsForRecoveredSession()
     {
         var input = TaskContinuationContract.BuildHqFollowupInput(
-            "DONE",
+            "CANCELED",
             "이전 작업 완료",
             "계속 진행해줘.",
             "C:/work/.projecthub/last-handoff.md",
@@ -950,8 +958,8 @@ public sealed class CoordinatorFirstContractTests
             @"C:\work\.projecthub\mechanical\job\requests");
 
         Assert.Contains("비동기 계측 요청 폴더:", prompt);
-        Assert.Contains("WORK_RESULT_REQUIRED", prompt);
-        Assert.Contains("FINALIZE_ONLY", prompt);
+        Assert.Contains("WORK_ITEM_STATUS: COMPLETED", prompt);
+        Assert.Contains("WORK_ITEM_STATUS: BLOCKED", prompt);
         Assert.DoesNotContain("[GOTO : OBSERVATION]", prompt);
     }
 
