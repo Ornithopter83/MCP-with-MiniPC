@@ -43,7 +43,8 @@ public sealed record WorkItemSpec(
     string Goal,
     IReadOnlyList<string>? Dependencies = null,
     WorkItemKind Kind = WorkItemKind.Normal,
-    string? BaseRef = null);
+    string? BaseRef = null,
+    IReadOnlyList<string>? Checklist = null);
 
 public sealed record WorkItemSnapshot(
     string Id,
@@ -67,7 +68,8 @@ public sealed record WorkItemSnapshot(
     DateTimeOffset? FinishedAtUtc,
     string? BlockDetailCode = null,
     WorkItemResultType ResultType = WorkItemResultType.None,
-    string? CommitManifestPath = null);
+    string? CommitManifestPath = null,
+    IReadOnlyList<string>? Checklist = null);
 
 public sealed record WorkGraphSnapshot(
     string JobId,
@@ -135,6 +137,7 @@ public sealed class WorkGraph
             {
                 Id = source.Id,
                 Goal = source.Goal,
+                Checklist = NormalizeChecklist(source.Checklist, source.Goal),
                 Dependencies = NormalizeDependencies(source.Dependencies),
                 Kind = source.Kind,
                 State = state,
@@ -496,6 +499,9 @@ public sealed class WorkGraph
                 {
                     Id = operation.Item.Id,
                     Goal = operation.Item.Goal.Trim(),
+                    Checklist = NormalizeChecklist(
+                        operation.Item.Checklist,
+                        operation.Item.Goal),
                     Dependencies = dependencies,
                     Kind = operation.Item.Kind,
                     State = WorkItemState.Planned,
@@ -669,6 +675,22 @@ public sealed class WorkGraph
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
+    private static List<string> NormalizeChecklist(
+        IReadOnlyList<string>? checklist,
+        string fallbackGoal)
+    {
+        var normalized = (checklist ?? Array.Empty<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (normalized.Count == 0 && !string.IsNullOrWhiteSpace(fallbackGoal))
+            normalized.Add(fallbackGoal.Trim());
+
+        return normalized;
+    }
+
     private static bool IsSafeId(string? value)
     {
         if (string.IsNullOrWhiteSpace(value) || value.Length > 96)
@@ -738,7 +760,8 @@ public sealed class WorkGraph
             item.FinishedAtUtc,
             item.BlockDetailCode,
             item.ResultType,
-            item.CommitManifestPath);
+            item.CommitManifestPath,
+            new ReadOnlyCollection<string>(item.Checklist.ToArray()));
 
     private static void ValidateConcurrency(int value)
     {
@@ -756,6 +779,7 @@ public sealed class WorkGraph
     {
         public string Id { get; set; } = string.Empty;
         public string Goal { get; set; } = string.Empty;
+        public List<string> Checklist { get; set; } = new();
         public List<string> Dependencies { get; set; } = new();
         public WorkItemKind Kind { get; set; }
         public WorkItemState State { get; set; }
@@ -782,6 +806,7 @@ public sealed class WorkGraph
             {
                 Id = Id,
                 Goal = Goal,
+                Checklist = Checklist.ToList(),
                 Dependencies = Dependencies.ToList(),
                 Kind = Kind,
                 State = State,
