@@ -70,19 +70,9 @@ public sealed class ManagedWebRuntimeManagerTests
     }
 
     [Fact]
-    public void ManagedBrowserLifetime_UsesKillOnJobCloseJobPerRoleSlot()
+    public void ManagedBrowserLifetime_UsesPreResumeJobPerRoleSlot()
     {
         var managerType = typeof(ManagedWebRuntimeManager);
-        var jobType = managerType.Assembly
-            .GetType("ProjectHub.Worker.ManagedBrowserProcessJob");
-        Assert.NotNull(jobType);
-
-        var flag = jobType!.GetField(
-            "KillOnJobCloseLimitFlag",
-            BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(flag);
-        Assert.Equal(0x00002000u, flag!.GetRawConstantValue());
-
         var slotType = managerType.GetNestedType(
             "Slot",
             BindingFlags.NonPublic);
@@ -92,18 +82,17 @@ public sealed class ManagedWebRuntimeManagerTests
             "ProcessJob",
             BindingFlags.Instance | BindingFlags.Public);
         Assert.NotNull(processJob);
-        Assert.Equal(jobType, processJob!.PropertyType);
+        Assert.Equal(typeof(WorkerChildProcessJob), processJob!.PropertyType);
 
-        var processStartedAt = slotType.GetProperty(
-            "ProcessStartedAt",
+        var launch = slotType.GetProperty(
+            "Launch",
             BindingFlags.Instance | BindingFlags.Public);
-        Assert.NotNull(processStartedAt);
-        Assert.Equal(typeof(DateTimeOffset?), processStartedAt!.PropertyType);
+        Assert.NotNull(launch);
+        Assert.Equal(typeof(SuspendedJobProcess), launch!.PropertyType);
 
-        var sharedJobField = managerType.GetField(
-            "_processJob",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.Null(sharedJobField);
+        Assert.Null(slotType.GetProperty(
+            "ProcessStartedAt",
+            BindingFlags.Instance | BindingFlags.Public));
     }
 
     [Fact]
