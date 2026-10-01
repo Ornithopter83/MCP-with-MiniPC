@@ -22,10 +22,12 @@ public sealed class WebCorrelationContractTests
         Assert.StartsWith("[KEY=1234ABCDabcde]", prompt, StringComparison.Ordinal);
         Assert.Contains("원래 요청", prompt);
         Assert.Contains("KEY → ACTION → GOTO", prompt);
+        Assert.Contains(WebCorrelationContract.ResponseOkMarker, prompt);
+        Assert.Contains("보이는 줄까지", prompt);
     }
 
     [Fact]
-    public void ExtractResponse_SearchesWholeAnswerAndKeepsOnlyContentAfterMatchingKey()
+    public void ExtractResponse_SearchesWholeAnswerAndKeepsOnlyContentBeforeCompletionLine()
     {
         const string key = "1234ABCDabcde";
         const string raw = """
@@ -36,16 +38,20 @@ public sealed class WebCorrelationContractTests
             설명이 먼저 있어도 된다.
             [ACTION=END]
             완료
+            [RESPONSE=OK]
+            ChatGPT UI footer
             """;
 
         Assert.True(WebCorrelationContract.TryExtractResponse(raw, key, out var response));
         Assert.StartsWith("설명이 먼저 있어도 된다.", response, StringComparison.Ordinal);
         Assert.Contains("[ACTION=END]", response);
         Assert.DoesNotContain("도구 출력", response);
+        Assert.DoesNotContain("[RESPONSE=OK]", response);
+        Assert.DoesNotContain("ChatGPT UI footer", response);
     }
 
     [Fact]
-    public void ExtractResponse_UsesLastMatchingKeyWhenBroadScopeContainsRequestAndResponse()
+    public void ExtractResponse_UsesLastMatchingKeyAndStopsAtFirstCompletionLineAfterIt()
     {
         const string key = "1234ABCDabcde";
         const string raw = """
@@ -55,6 +61,8 @@ public sealed class WebCorrelationContractTests
             [KEY=1234ABCDabcde]
             [ACTION=END]
             실제 응답
+            [RESPONSE=OK]
+            이후 UI 텍스트
             """;
 
         Assert.True(WebCorrelationContract.TryExtractResponse(raw, key, out var response));
@@ -62,10 +70,28 @@ public sealed class WebCorrelationContractTests
     }
 
     [Fact]
+    public void ExtractResponse_RejectsMatchingKeyUntilCompletionLineAppears()
+    {
+        Assert.False(WebCorrelationContract.TryExtractResponse(
+            "[KEY=1234ABCDabcde]\n[ACTION=END]\n아직 작성 중",
+            "1234ABCDabcde",
+            out _));
+    }
+
+    [Fact]
+    public void ExtractResponse_RequiresCompletionMarkerOnItsOwnLine()
+    {
+        Assert.False(WebCorrelationContract.TryExtractResponse(
+            "[KEY=1234ABCDabcde]\n[ACTION=END]\n본문 [RESPONSE=OK] 계속",
+            "1234ABCDabcde",
+            out _));
+    }
+
+    [Fact]
     public void ExtractResponse_RejectsDifferentOrMissingKey()
     {
         Assert.False(WebCorrelationContract.TryExtractResponse(
-            "[KEY=ZZZZZZZZZZZZZ]\n[ACTION=END]",
+            "[KEY=ZZZZZZZZZZZZZ]\n[ACTION=END]\n[RESPONSE=OK]",
             "1234ABCDabcde",
             out _));
     }
