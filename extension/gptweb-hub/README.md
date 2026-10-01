@@ -1,6 +1,6 @@
 # ProjectHub Managed Web Bridge
 
-버전: 0.4.2 / build 2026-10-01.1
+버전: 0.4.3 / build 2026-10-01.2
 
 ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로컬 Worker를 연결한다.
 
@@ -46,13 +46,12 @@ ProjectHub Worker가 직접 실행하는 HQ/RESOURCE ChatGPT app window와 로�
 ⑦ SEND_CONFIRM 제한시간 직전에는 현재 DOM을 다시 reconciliation해 이번 prompt user turn과 뒤따른 assistant turn이 있으면 실패 대신 WAIT_RESPONSE로 복구한다.
 ⑧ 기존 assistant DOM이 재사용될 때는 현재 Worker 메시지의 전송이 확인된 뒤 텍스트 변화도 새 응답 증거로 사용할 수 있다.
 ⑨ 진행 단계는 Worker에 보고하고 Worker는 마지막 기계 체크포인트를 저장한다.
-⑩ HQ task에 correlation KEY가 있으면 SEND_CONFIRM과 WAIT_RESPONSE에서 현재 KEY를 독립적으로 감시하며 role·turn selector가 현재 DOM을 놓쳐도 KEY 응답을 전송·응답 증거로 사용할 수 있다.
-⑪ KEY 감시는 MutationObserver에만 의존하지 않고 주기적 재확인을 함께 사용하며, 관측 상태는 `HQ_KEY_WATCH` 진행 이벤트로 보고한다.
-⑫ 요청 prompt 안의 동일 KEY는 응답으로 오인하지 않고, prompt와 분리된 현재 응답 후보에서 KEY 뒤 실제 본문을 찾아 결과를 회수한다.
-⑬ assistant 응답 root를 식별하지 못해도 현재 KEY 뒤에 HQ 계약의 ACTION이 이어지고 요청 prompt와 구분되는 경우에는 conversation body fallback으로 결과 회수를 계속한다.
+⑩ HQ task에 correlation KEY가 있으면 SEND_CONFIRM과 WAIT_RESPONSE에서 현재 KEY를 주기적으로 확인한다.
+⑪ HQ 응답은 현재 KEY 뒤에서 별도 줄의 `[RESPONSE=OK]`가 보일 때까지 기다리며, streaming 상태나 본문 길이 안정화로 완료를 추정하지 않는다.
+⑫ 요청 prompt 안의 동일 KEY는 응답으로 오인하지 않고, prompt와 분리된 assistant 응답 후보에서 현재 KEY 뒤 실제 본문을 읽는다.
+⑬ `[RESPONSE=OK]` 줄이 확인되면 현재 KEY부터 그 완료 줄까지를 한 응답으로 확정하고, 완료 줄 뒤의 페이지 UI나 다른 텍스트는 결과에 포함하지 않는다.
 ⑭ 이미 claim된 HQ task에서 이전 turn baseline을 복구할 수 없더라도 현재 task의 KEY가 있으면 prompt를 재전송하지 않고 KEY 기준 WAIT_RESPONSE로 복구한다.
-⑮ HQ 응답의 KEY가 스트리밍 초기에 작은 DOM fragment에서 먼저 잡혀도 그 fragment를 최종 response root로 고정하지 않는다. assistant turn, generic response, mutation root, body fallback에서 KEY 뒤 ACTION이 확인되는 후보를 계속 비교해 현재 가장 완전한 본문을 사용한다.
-⑯ response root가 존재해도 body fallback이 더 긴 KEY+ACTION 본문을 제공하면 response snapshot과 최종 제출 텍스트는 더 긴 본문을 사용한다. 짧은 초기 fragment가 5초간 변하지 않는 것만으로 RESPONSE_STABLE을 확정하지 않는다.
+⑮ HQ 응답 제한시간 안에 완료 줄이 보이지 않으면 직전 답변 완료 여부를 한 번만 다시 묻고, 다시 제한시간이 지나도 완료 줄이 없으면 `WEB_RESPONSE_TIMEOUT`으로 종료한다.
 
 제6조 (파일 검증)
 
