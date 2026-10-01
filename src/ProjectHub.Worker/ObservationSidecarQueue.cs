@@ -373,6 +373,8 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                 }
             }
 
+            var exitCode = TryGetExitCode(process);
+            processJob.Dispose();
             var stdout = await stdoutTask;
             var stderr = await stderrTask;
 
@@ -388,7 +390,6 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             await File.WriteAllTextAsync(stderrPath, stderr, new UTF8Encoding(false), cancellationToken);
 
             var resultPaths = requestedResults.Concat(new[] { stdoutPath, stderrPath }).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var exitCode = TryGetExitCode(process);
             var success = !timedOut && exitCode == 0 && missingOrInvalid.Count == 0;
             var errorCode = timedOut
                 ? "OBSERVATION_TIMEOUT"
