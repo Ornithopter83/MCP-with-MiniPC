@@ -21,7 +21,6 @@ public partial class MainWindow
         _activeTaskCts = cts;
         _activeCoordinatorFirst = true;
         SetFollowupComposerVisible(false);
-        ResetDashboardTaskInput();
         RunButton.Content = "■   취소";
         _userCanceledTask = false;
         _jobTimedOut = false;
@@ -29,6 +28,7 @@ public partial class MainWindow
 
         if (!continuing)
         {
+            _historyEvents.Clear();
             StartTaskTranscript(selectedThread, request, string.Empty);
             AddTaskMessage(
                 "TASK REQUEST",
@@ -123,11 +123,17 @@ public partial class MainWindow
             }
 
 
-            var gitReady = await PrepareParallelGitForLaunchAsync(
+            var currentGitTarget = await PrepareParallelGitForLaunchAsync(
                 workingDirectory,
                 cts.Token);
-            if (!gitReady)
+            if (currentGitTarget is null)
                 return;
+
+            if (!continuing)
+            {
+                SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
+                ResetDashboardTaskInput();
+            }
 
             AddTaskMessage(
                 "GIT READY",
@@ -151,15 +157,6 @@ public partial class MainWindow
                     throw new InvalidOperationException(
                         concurrencyPatch.ErrorCode ?? "WORK_GRAPH_CONCURRENCY_UPDATE_FAILED");
             }
-
-            var currentGitTarget = WorkerTargetConfiguration.ResolveGit(
-                workingDirectory,
-                _targetSettings,
-                requireExactRoot: true);
-            var gitPreflight = ParallelWorkGitPreflight.Validate(currentGitTarget);
-            if (!gitPreflight.Success)
-                throw new InvalidOperationException(
-                    gitPreflight.ErrorCode + ": " + gitPreflight.Message);
 
             var stagedHqAttachments = StageUserAttachments(
                 attachments,
