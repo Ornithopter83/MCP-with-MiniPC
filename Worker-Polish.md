@@ -46,9 +46,11 @@
 
 ① 병렬 WORK의 작업공간 준비, checkpoint와 최종 반영은 Worker가 기계적으로 관리할 수 있다.
 ② CODE_CHANGE의 Git 정보와 Commit Manifest는 내부 기계 사실로 보존할 수 있다.
-③ PAUSE·CANCELED는 작업 폴더가 그대로인 경우에만 같은 WorkGraph를 이어가고, DONE·DONE_WITH_ERROR 뒤의 추가 작업이나 외부 파일 변경이 확인된 경우에는 현재 파일에서 새 Job을 시작한다.
-④ 사용자 작업 폴더의 위험한 병합이나 강제 reset을 자동 수행하지 않는다.
-⑤ Git 준비 실패 복구에서 `.git` 삭제는 사용자 승인 뒤에만 수행하고 작업 파일과 `.gitignore`는 보존한다.
+③ 사용자 작업 폴더에는 확정된 중간 결과가 누적될 수 있으므로 작업 중 clean 상태를 항상 전제로 하지 않는다.
+④ 병렬 결과의 Integration은 사용자 작업 폴더의 dirty 상태와 분리된 Worker 소유 작업공간에서 수행하고 검증된 결과만 기계적으로 반영한다.
+⑤ PAUSE·CANCELED는 작업 폴더가 그대로인 경우에만 같은 WorkGraph를 이어가고, DONE·DONE_WITH_ERROR 뒤의 추가 작업이나 외부 파일 변경이 확인된 경우에는 현재 파일에서 새 Job을 시작한다.
+⑥ 사용자 작업 폴더의 위험한 병합이나 강제 reset을 자동 수행하지 않는다.
+⑦ Git 준비 실패 복구에서 `.git` 삭제는 사용자 승인 뒤에만 수행하고 작업 파일과 `.gitignore`는 보존한다.
 
 제8조 (프로세스)
 
