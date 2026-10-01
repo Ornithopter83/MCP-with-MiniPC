@@ -176,7 +176,7 @@ internal static class MechanicalBuildExecutor
         startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var processJob = new WorkerChildProcessJob("dotnet build");
-        using var launched = processJob.Start(startInfo);
+        using var launched = processJob.Start(startInfo, cancellationToken);
         var process = launched.Process;
         var outputTask = launched.StandardOutput!.ReadToEndAsync(cancellationToken);
         var errorTask = launched.StandardError!.ReadToEndAsync(cancellationToken);
