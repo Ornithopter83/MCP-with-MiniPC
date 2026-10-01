@@ -7,6 +7,7 @@
 ① 확장은 Worker가 준 요청을 Web에 입력하고 실제 Web 응답을 수집한다.
 ② 확장은 응답 의미, WorkGraph 또는 작업 성공 여부를 판단하지 않는다.
 ③ HQ와 RESOURCE는 서로 다른 conversation binding을 사용한다.
+④ HQ conversation 교대는 Worker가 기계적으로 요청한 경우에만 수행하며, 확장이 문맥의 의미나 길이를 자체 판단해 대화를 교체하지 않는다.
 
 제2조 (상관)
 
