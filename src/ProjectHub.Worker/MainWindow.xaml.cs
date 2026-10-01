@@ -2736,23 +2736,20 @@ public partial class MainWindow : Window
         var executable = _codexRunner.FindExecutable();
         if (executable is null) return false;
         using var processJob = new WorkerChildProcessJob("Codex login status");
-        using var process = new Process
+        var startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = executable,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            }
+            FileName = executable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
         };
-        process.StartInfo.ArgumentList.Add("login");
-        process.StartInfo.ArgumentList.Add("status");
+        startInfo.ArgumentList.Add("login");
+        startInfo.ArgumentList.Add("status");
         try
         {
-            if (!process.Start()) return false;
-            processJob.Assign(process);
+            using var launched = processJob.Start(startInfo);
+            var process = launched.Process;
             await process.WaitForExitAsync();
             return process.ExitCode == 0;
         }
