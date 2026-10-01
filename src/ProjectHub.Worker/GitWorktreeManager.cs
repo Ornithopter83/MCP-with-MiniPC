@@ -54,7 +54,7 @@ public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
             foreach (var argument in arguments)
                 startInfo.ArgumentList.Add(argument);
 
-            using var launched = processJob.Start(startInfo);
+            using var launched = processJob.Start(startInfo, cancellationToken);
             var process = launched.Process;
             var stdoutTask = launched.StandardOutput!.ReadToEndAsync();
             var stderrTask = launched.StandardError!.ReadToEndAsync();
