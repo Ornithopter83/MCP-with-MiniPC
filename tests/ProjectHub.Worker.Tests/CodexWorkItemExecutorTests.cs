@@ -62,11 +62,10 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Theory]
-    [InlineData("8", "MATERIALIZE / COPY")]
-    [InlineData("9", "BUILD / PUBLISH")]
+    [InlineData("8")]
+    [InlineData("9")]
     public async Task FixedRootSlotsReceiveTargetWorkspaceWriteAccess(
-        string workItemId,
-        string missionLabel)
+        string workItemId)
     {
         var fixture = CreateFixture(
             """
@@ -96,8 +95,9 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Contains(
                 Path.GetFullPath(root),
                 fixture.Runner.LastRequest!.AdditionalWritableDirectories!);
-            Assert.Contains("고정 임무: #" + workItemId + " " + missionLabel, fixture.Runner.LastRequest.Prompt);
             Assert.Contains("대상 프로젝트 루트: " + Path.GetFullPath(root), fixture.Runner.LastRequest.Prompt);
+            Assert.DoesNotContain("MATERIALIZE / COPY", fixture.Runner.LastRequest.Prompt);
+            Assert.DoesNotContain("BUILD / PUBLISH", fixture.Runner.LastRequest.Prompt);
             Assert.Equal(
                 workTemp,
                 fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_WORK_TEMP"]);
@@ -113,7 +113,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public void MaterializePromptCarriesDependencyManifestAndPreservesPathMission()
+    public void RootWritablePromptCarriesDependencyManifestWithoutFixedRoleText()
     {
         var prompt = RoleContractLoader.BuildWorkPrompt(
             "WORK_ITEM",
@@ -140,8 +140,9 @@ public sealed class CodexWorkItemExecutorTests
             targetWorkspace: "C:/repo");
 
         Assert.Contains("manifest=C:/repo/.projecthub/commit-manifests/job/12.json", prompt);
-        Assert.Contains("같은 상대경로를 그대로 유지해 복사", prompt);
         Assert.Contains("대상 프로젝트 루트: C:/repo", prompt);
+        Assert.DoesNotContain("MATERIALIZE / COPY", prompt);
+        Assert.DoesNotContain("BUILD / PUBLISH", prompt);
     }
 
     [Fact]
