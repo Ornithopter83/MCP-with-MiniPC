@@ -407,6 +407,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            processJob.Dispose();
             if (process is not null)
                 TryKill(process);
             var completion = _registry.Complete(
@@ -419,6 +420,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         }
         catch (Exception exception)
         {
+            processJob.Dispose();
             if (process is not null)
                 TryKill(process);
             try
