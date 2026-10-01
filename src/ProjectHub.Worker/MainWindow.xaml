@@ -344,35 +344,6 @@
               </Border>
             </Grid>
           </Border>
-          <Border Grid.Row="7" Visibility="Collapsed" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="14,12" Margin="0,6,0,0">
-            <Grid Background="White">
-              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-              <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock Text="판정 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
-                <Image Source="Assets/current-jev.png" Width="42" Height="42"/>
-              </StackPanel>
-              <TextBlock Grid.Row="0" Grid.Column="1" Text="서비스 제공자" VerticalAlignment="Center"/>
-              <ComboBox x:Name="JudgeProviderCombo" Grid.Row="0" Grid.Column="2" Height="32" FontSize="14"><ComboBoxItem Content="Typesafe" Tag="jev"/></ComboBox>
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="모델" VerticalAlignment="Center" Margin="0,4,0,0"/>
-              <ComboBox x:Name="JudgeModelCombo" Grid.Row="1" Grid.Column="2" Height="32" FontSize="14" Margin="0,4,0,0" SelectedIndex="0"><ComboBoxItem Content="JEV"/></ComboBox>
-              <TextBlock Grid.Row="0" Grid.Column="3" Text="사용 여부" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-              <CheckBox x:Name="EnableJudgeCheckBox" Grid.Row="0" Grid.Column="4" Content="사용" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Left"/>
-              <TextBlock x:Name="JudgeEndpointTestStatusText" Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="2" Text="" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
-              <Button x:Name="JudgeEndpointTestButton" Grid.Row="0" Grid.Column="5" Grid.RowSpan="2" Content="JSON 설정 테스트" Width="350" HorizontalAlignment="Right" Padding="18,10" MinHeight="44" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource Blue}" Background="#EAF4FF" BorderBrush="{StaticResource Blue}" BorderThickness="1" Click="TestJudge_Click"/>
-              <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
-                <TextBlock Text="서비스 제공자" Width="140" FontSize="15" VerticalAlignment="Center"/>
-                <TextBlock Text="제한 시간" Margin="26,0,0,0" Width="82" FontSize="15" VerticalAlignment="Center"/>
-                <TextBox x:Name="JudgeTimeoutInput" Width="80" Height="32" FontSize="15" Padding="8,4" IsReadOnly="False" IsEnabled="True" IsHitTestVisible="True" Focusable="True" IsTabStop="True" MaxLength="3" Background="White" Foreground="{StaticResource Ink}" HorizontalContentAlignment="Right" PreviewTextInput="JudgeTimeoutInput_PreviewTextInput" GotFocus="JudgeTimeoutInput_GotFocus" LostFocus="JudgeTimeoutInput_LostFocus" ToolTip="10~600초"/>
-                <TextBlock Text="sec" Margin="8,0,0,0" FontSize="15" VerticalAlignment="Center"/>
-              </StackPanel>
-              <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0" Visibility="Collapsed">
-                <TextBlock Text="접속 주소" Width="140" FontSize="15" VerticalAlignment="Center"/>
-                <TextBox x:Name="JudgeExecutableInput" Width="620" Height="32" FontSize="15" Padding="8,4" ToolTip="기본값: https://api.typesafe.ai/v1/systemone"/>
-                <Button Content="Test" Margin="10,0,0,0" Padding="18,5" FontSize="14" Click="TestJudge_Click"/>
-              </StackPanel>
-            </Grid>
-          </Border>
         </Grid>
       </Border>
         </StackPanel>
@@ -389,7 +360,7 @@
       <Grid><Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <TextBlock Text="현재 작업" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Margin="5,0"/>
         <Grid Grid.Row="1" Margin="0,7,0,0">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="0"/><ColumnDefinition Width="0"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
           <Border x:Name="PipelineIdleCard" Grid.Column="0" Background="#7A8797" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineIdleTitle" Text="1. 대기" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="PipelineIdleIconCircle" Grid.Row="1" Width="82" Height="82" Background="#667487" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Grid><Ellipse Width="46" Height="46" Stroke="White" StrokeThickness="5"/><Path Data="M 41,20 L 41,41 L 55,49" Stroke="White" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Width="7" Height="7" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border><TextBlock Grid.Row="2" Text=" " FontSize="19" HorizontalAlignment="Center"/></Grid></Border>
           <Border x:Name="PipelineCoordinatorCard" Grid.Column="2" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineCoordinatorTitle" Text="2. 설계·관제" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="CoordinatorStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="CoordinatorStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="CoordinatorStageModelText" Grid.Row="2" Text="GPT-6 Sol" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
           <Rectangle x:Name="PipelineCoordinatorActiveBase" Grid.Column="2" Style="{StaticResource PipelineActiveOutline}"/>
@@ -400,9 +371,6 @@
           <Border x:Name="PipelineResourceCard" Grid.Column="6" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineResourceTitle" Text="4. 리소스" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="ResourceStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="ResourceStageIcon" Source="Assets/current-web-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="ResourceStageModelText" Grid.Row="2" Text="ChatGPT Web" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
           <Rectangle x:Name="PipelineResourceActiveBase" Grid.Column="6" Style="{StaticResource PipelineActiveOutline}"/>
           <Rectangle x:Name="PipelineResourceActiveOrbit" Grid.Column="6" Style="{StaticResource PipelineActiveOrbit}"/>
-          <Border x:Name="PipelineJudgeCard" Visibility="Collapsed" Grid.Column="8" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineJudgeTitle" Text="5. 판정" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="JudgeStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="JudgeStageIcon" Source="Assets/current-jev-gray.png" Width="64" Height="64" Stretch="Uniform"><Image.Clip><EllipseGeometry Center="32,32" RadiusX="32" RadiusY="32"/></Image.Clip></Image></Border><TextBlock x:Name="JudgeStageModelText" Grid.Row="2" Text="JEV" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
-          <Rectangle x:Name="PipelineJudgeActiveBase" Visibility="Collapsed" Grid.Column="8" Style="{StaticResource PipelineActiveOutline}"/>
-          <Rectangle x:Name="PipelineJudgeActiveOrbit" Visibility="Collapsed" Grid.Column="8" Style="{StaticResource PipelineActiveOrbit}"/>
         </Grid>
       </Grid>
     </Border>
