@@ -345,18 +345,17 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             foreach (var pair in request.Environment ?? new Dictionary<string, string>())
                 startInfo.Environment[pair.Key] = pair.Value;
 
-            process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-            if (!process.Start())
-                throw new InvalidOperationException("OBSERVATION_PROCESS_START_FAILED");
+            using var launched = processJob.Start(startInfo);
+            process = launched.Process;
+            process.EnableRaisingEvents = true;
 
-            processJob.Assign(process);
             TransportEvent?.Invoke(new ObservationSidecarEvent(
                 "OBSERVATION STARTED",
                 $"observation {request.Id} · pid {process.Id} · {request.Command.Trim()}",
                 "RUNNING"));
 
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
+            var stdoutTask = launched.StandardOutput!.ReadToEndAsync();
+            var stderrTask = launched.StandardError!.ReadToEndAsync();
             var timedOut = false;
             using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
