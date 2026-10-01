@@ -27,9 +27,13 @@ WORK_GRAPH_PATCH:
 ③ patch는 완전한 JSON 객체여야 한다.
 ④ operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용할 수 있다.
 ⑤ WorkItem #0은 RESOURCE 전용이며 일반 WorkItem은 #10부터 사용한다.
+⑥ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
+⑦ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
+⑧ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
 
-제3조 (WORK 보고)
+제3조 (관제)
 
-① Worker가 전달한 WORK 보고 본문은 해당 WorkItem의 보고 원문으로 취급한다.
-② 보고 내용과 현재 WorkGraph를 바탕으로 다음 patch, PAUSE 또는 END를 결정한다.
-③ 기계 오류가 보고되면 현재 사실을 기준으로 다음 동작만 결정하며 오류 사례를 새 영구 계약으로 확장하지 않는다.
+① WORK는 배정된 목표와 checklist를 수행하고 결과만 보고하므로 작업 분해와 추가 WorkItem 판단은 HQ가 담당한다.
+② 각 WORK 보고에서 checklist별 결과와 현재 WorkGraph를 확인하고 필요한 다음 patch를 결정한다.
+③ 기존 WorkItem의 범위를 다른 성격의 일로 넓히기보다 별도 WorkItem을 추가해 중간 관제를 계속한다.
+④ 기계 오류가 보고되면 현재 사실을 기준으로 다음 동작만 결정하며 오류 사례를 새 영구 계약으로 확장하지 않는다.
