@@ -167,7 +167,7 @@ public static class CodexModelCatalog
         Process? process = null;
         try
         {
-            using var launched = processJob.Start(startInfo);
+            using var launched = processJob.Start(startInfo, timeout.Token);
             process = launched.Process;
             var stdoutTask = launched.StandardOutput!.ReadToEndAsync(timeout.Token);
             var stderrTask = launched.StandardError!.ReadToEndAsync(timeout.Token);
