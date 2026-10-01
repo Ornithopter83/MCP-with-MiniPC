@@ -1041,7 +1041,9 @@ public partial class MainWindow
         WorkerAiRoleSettings coordinator,
         WorkerAiRoleSettings implementer,
         string? coordinatorSession,
-        WorkGraphSnapshot? graph)
+        WorkGraphSnapshot? graph,
+        long hqSessionTextBytes,
+        int hqSessionGeneration)
     {
         if (graph is not null)
             ProjectWorkspacePersistence.SaveWorkGraph(
@@ -1056,7 +1058,9 @@ public partial class MainWindow
             coordinatorSession,
             null,
             status,
-            lastHqMessage ?? string.Empty);
+            lastHqMessage ?? string.Empty,
+            hqSessionTextBytes,
+            hqSessionGeneration);
 
         if (TaskContinuationContract.IsResumableStatus(status))
             ProjectWorkspacePersistence.SaveContinuation(_continuationState);
