@@ -147,7 +147,7 @@ public sealed class CodexCliRunner : IDisposable
         startInfo.ArgumentList.Add("-");
         try
         {
-            using var launched = processJob.Start(startInfo);
+            using var launched = processJob.Start(startInfo, cancellationToken);
             var process = launched.Process;
             process.EnableRaisingEvents = true;
 
