@@ -82,6 +82,7 @@ public partial class App : System.Windows.Application
     {
         _activationTimer?.Stop();
         WriteShutdownProcessAudit("before-dispose");
+        WorkerChildProcessJob.TerminateAllActiveJobs();
         try
         {
             _managedWebRuntimeManager?.Dispose();
