@@ -47,16 +47,12 @@ public sealed class TargetWorkspaceFinalizer
         if (completedCodeChanges.Length == 0)
             return new(true, null, "사용자 작업 폴더에 반영할 CODE_CHANGE가 없습니다.");
 
-        var consumedByCompletedIntegration = completedCodeChanges
-            .Where(item => item.Kind == WorkItemKind.Integration)
+        var consumedByCompletedCodeChange = completedCodeChanges
             .SelectMany(item => item.Dependencies)
             .ToHashSet(StringComparer.Ordinal);
 
         var candidates = completedCodeChanges
-            .Where(item =>
-                item.Kind == WorkItemKind.Integration ||
-                (item.Kind == WorkItemKind.Normal &&
-                 !consumedByCompletedIntegration.Contains(item.Id)))
+            .Where(item => !consumedByCompletedCodeChange.Contains(item.Id))
             .OrderBy(item => item.CreatedOrder)
             .ToArray();
 
