@@ -199,14 +199,16 @@ internal static class MechanicalBuildExecutor
             throw;
         }
 
+        var exitCode = process.ExitCode;
+        processJob.Dispose();
         var output = await outputTask.ConfigureAwait(false);
         var error = await errorTask.ConfigureAwait(false);
         var combined = output + (!string.IsNullOrEmpty(error) ? Environment.NewLine + error : string.Empty);
         await File.WriteAllTextAsync(logPath, combined, cancellationToken).ConfigureAwait(false);
         var summaryText = Limit(combined, 12000);
         return new MechanicalBuildResult(
-            process.ExitCode == 0,
-            process.ExitCode,
+            exitCode == 0,
+            exitCode,
             target,
             logPath,
             summaryText,
