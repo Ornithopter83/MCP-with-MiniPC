@@ -23,7 +23,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal("session-1", result.SessionId);
             Assert.Equal(fixture.Branch, result.Branch);
             Assert.Contains("workItemId: W1", fixture.Runner.LastRequest!.Prompt);
-            Assert.Contains("당신은 WORK다.", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("현재 WorkItem을 수행하는 WORK", fixture.Runner.LastRequest.Prompt);
             Assert.Contains("WORK_ITEM_STATUS: COMPLETED", fixture.Runner.LastRequest.Prompt);
             Assert.NotNull(fixture.Runner.LastRequest.EnvironmentVariables);
             Assert.Equal(
@@ -170,7 +170,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(2, fixture.Runner.RunCount);
             Assert.Contains("입력 유형: WORK_ITEM_REPORT_REJECTED", fixture.Runner.LastRequest!.Prompt);
             Assert.Contains("errorCode=WORK_ITEM_STATUS_DUPLICATE", fixture.Runner.LastRequest.Prompt);
-            Assert.Contains("의미 작업은 다시 수행하지 않는다", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("직전 의미는 유지하고 WORK_ITEM_STATUS 형식만 수정하세요.", fixture.Runner.LastRequest.Prompt);
             Assert.DoesNotContain("당신은 WORK다.", fixture.Runner.LastRequest.Prompt);
         }
         finally
@@ -448,8 +448,9 @@ public sealed class CodexWorkItemExecutorTests
                     }),
                 includeContract: false);
 
-            Assert.Contains("commitManifestSummary: commit=abcdef123456 changedFiles=1", prompt);
-            Assert.Contains("- MODIFY src/large.cs", prompt);
+            Assert.Contains("manifest=" + manifestPath, prompt);
+            Assert.Contains("resultRef=abcdef123456", prompt);
+            Assert.DoesNotContain("- MODIFY src/large.cs", prompt);
             Assert.DoesNotContain("THIS_LARGE_INLINE_CONTENT_MUST_NOT_APPEAR", prompt);
         }
         finally
@@ -649,7 +650,8 @@ public sealed class CodexWorkItemExecutorTests
             await fixture.Executor.ExecuteAsync(fixture.Request, CancellationToken.None);
 
             Assert.Contains("선행 WorkItem 결과:", fixture.Runner.LastRequest!.Prompt);
-            Assert.Contains("W0 | resultType=ANALYSIS | ref=dep-ref | commitManifest=manifest-W0.json | snapshot=없음 | report=선행 완료", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("- workItemId=W0 resultType=ANALYSIS resultRef=dep-ref manifest=manifest-W0.json snapshot=없음", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("report:" + Environment.NewLine + "선행 완료", fixture.Runner.LastRequest.Prompt);
         }
         finally
         {
@@ -766,7 +768,9 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal("head123", result.ResultRef);
             Assert.Contains("INTEGRATION_IMPORT", result.ResultSummary);
             Assert.Contains("status: IMPORTED", result.ResultSummary);
-            Assert.Contains("refs/projecthub/integration-results/job/I1", result.ResultSummary);
+            Assert.Contains(
+                "refs/projecthub/integration-results/job/" + fixture.Request.Item.Id,
+                result.ResultSummary);
             Assert.DoesNotContain(
                 fixture.Git.Calls,
                 call => call.Count > 0 &&
