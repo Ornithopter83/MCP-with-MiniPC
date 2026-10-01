@@ -54,7 +54,6 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Work, "[GOTO : HQ]\nreport", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO : HQ] report on the same line", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", null, WorkerRoleState.Hq)]
-    [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nvalidation", null, WorkerRoleState.Judge)]
     [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\nRESOURCE_TYPE: AUDIO\n게임용 효과음을 짧고 선명하게 만들어줘.", null, WorkerRoleState.Resource)]
     [InlineData(WorkerRoleState.Resource, "[GOTO : WORK]\nsaved", null, WorkerRoleState.Work)]
     public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, WorkerAction? action, WorkerRoleState? target)
@@ -149,6 +148,7 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : JUDGE]\nbody", "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\n[GOTO : WORK]\nbody", "GOTO_NOT_ALLOWED_WITH_ACTION")]
     [InlineData(WorkerRoleState.Work, "[ACTION=END]\nbody", "ACTION_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nbody", "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Resource, "[GOTO : HQ]\nbody", "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Judge, "[GOTO : HQ]\nbody", "GOTO_NOT_ALLOWED")]
@@ -839,31 +839,21 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void JudgeEndpointTest_IsPersistableAndBoundToTheTestedConfiguration()
+    public void RemovedJudgeConfigurationIsIgnoredAtRuntime()
     {
-        var settings = new JudgeSettings(true, "jev", "https://example.test/v1", 30);
-        var fingerprint = WorkerTargetConfiguration.GetJudgeEndpointFingerprint(settings);
-        var validation = new JudgeEndpointValidation(fingerprint, true, "PASS", DateTimeOffset.Parse("2026-09-24T00:00:00Z"));
-        var storedJson = JsonSerializer.Serialize(new WorkerTargetSettings(null, null, null, null, Judge: settings, JudgeEndpointValidation: validation));
-        var loaded = JsonSerializer.Deserialize<WorkerTargetSettings>(storedJson)!;
+        var settings = new WorkerTargetSettings(
+            null,
+            null,
+            null,
+            null,
+            Judge: new JudgeSettings(true, "jev", "https://example.test/v1", 30),
+            JudgeEndpointValidation: new JudgeEndpointValidation("legacy", true, "PASS", DateTimeOffset.UtcNow));
 
-        Assert.True(WorkerTargetConfiguration.IsJudgeEndpointValidationCurrent(loaded.JudgeEndpointValidation, settings));
-        Assert.Equal("설정 테스트가 수행되지 않았습니다. 현재 설정으로 JSON 설정 테스트를 다시 실행해 주세요. 계속 적용합니다.",
-            WorkerTargetConfiguration.GetJudgeApplyWarning(settings with { ManualExecutableOrEndpoint = "https://example.test/changed" }, loaded.JudgeEndpointValidation));
-        Assert.Null(WorkerTargetConfiguration.GetJudgeApplyWarning(settings, loaded.JudgeEndpointValidation));
-        Assert.DoesNotContain("example.test", JsonSerializer.Serialize(loaded.JudgeEndpointValidation), StringComparison.OrdinalIgnoreCase);
-    }
+        var normalized = WorkerTargetConfiguration.NormalizeForRuntime(settings);
 
-    [Fact]
-    public void JudgeEndpointTest_FailureWarnsButDoesNotCreateRunConfigurationBlock()
-    {
-        var settings = new JudgeSettings(true, "jev", "https://example.test/v1", 30);
-        var validation = new JudgeEndpointValidation(
-            WorkerTargetConfiguration.GetJudgeEndpointFingerprint(settings), false, "ERROR_TIMEOUT", DateTimeOffset.UtcNow);
-
-        Assert.Equal("설정 테스트가 실패했습니다. 환경을 확인한 뒤 직접 재검증해 주세요. 설정은 계속 적용합니다.",
-            WorkerTargetConfiguration.GetJudgeApplyWarning(settings, validation));
-        Assert.Null(WorkerTargetConfiguration.GetJudgeApplyWarning(settings with { Enabled = false }, validation));
+        Assert.False(normalized.EffectiveJudge.Enabled);
+        Assert.Null(normalized.Judge);
+        Assert.Null(normalized.JudgeEndpointValidation);
     }
 
     [Fact]
