@@ -171,9 +171,11 @@ public static class CodexModelCatalog
             var stdoutTask = launched.StandardOutput!.ReadToEndAsync(timeout.Token);
             var stderrTask = launched.StandardError!.ReadToEndAsync(timeout.Token);
             await process.WaitForExitAsync(timeout.Token);
+            var exitCode = process.ExitCode;
+            processJob.Dispose();
             var stdout = await stdoutTask;
             _ = await stderrTask;
-            if (process.ExitCode != 0) return new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_UNAVAILABLE");
+            if (exitCode != 0) return new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_UNAVAILABLE");
             return Parse(stdout);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
