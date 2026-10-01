@@ -500,7 +500,7 @@ public sealed class CodexWorkItemExecutorTests
             new[] { "W0" },
             WorkItemKind.Normal,
             WorkItemState.Running,
-            createdOrder,
+            0,
             "main",
             branch,
             worktree,
@@ -769,8 +769,8 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Contains("refs/projecthub/integration-results/job/I1", result.ResultSummary);
             Assert.DoesNotContain(
                 fixture.Git.Calls,
-                call => call.Arguments.Count > 0 &&
-                        call.Arguments[0] == "merge");
+                call => call.Count > 0 &&
+                        call[0] == "merge");
             Assert.False(Directory.Exists(integrationClone));
         }
         finally
