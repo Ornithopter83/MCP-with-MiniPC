@@ -334,6 +334,29 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 blockDetailCode: "WORK_TOOL_RUNTIME_PREPARE_FAILED");
         }
 
+        TargetWorkspaceMaterializationLedger? materializationLedger = null;
+        TargetWorkspaceMaterializationSnapshot? materializationBefore = null;
+        if (string.Equals(item.Id, FixedWorkItemSlots.Materialize, StringComparison.Ordinal))
+        {
+            materializationLedger = new TargetWorkspaceMaterializationLedger(
+                _workspace,
+                _jobId);
+            var snapshot = materializationLedger.CaptureSnapshot();
+            if (!snapshot.Success || snapshot.Snapshot is null)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "MATERIALIZATION_SNAPSHOT_FAILED",
+                    snapshot.ErrorDetail ?? "대상 프로젝트 루트의 반영 전 상태를 읽지 못했습니다.",
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    item.SessionId,
+                    blockDetailCode: snapshot.ErrorCode ?? "MATERIALIZATION_TARGET_SNAPSHOT_FAILED");
+            }
+
+            materializationBefore = snapshot.Snapshot;
+        }
+
         var inboundType = request.InboundType;
         var inboundBody = request.InboundBody;
         var sessionId = item.SessionId;
@@ -641,12 +664,48 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 continue;
             }
 
+            var reportBody = route.Body;
+            if (report!.Status == WorkItemReportStatus.Completed &&
+                materializationLedger is not null &&
+                materializationBefore is not null)
+            {
+                var verification = await materializationLedger
+                    .VerifyAndRecordAsync(
+                        item,
+                        request.Dependencies,
+                        materializationBefore,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (!verification.Success)
+                {
+                    return WorkItemExecutionResult.Blocked(
+                        "MATERIALIZATION_VERIFICATION_FAILED",
+                        reportBody + Environment.NewLine + Environment.NewLine +
+                        "MATERIALIZATION_VERIFICATION" + Environment.NewLine +
+                        "status: BLOCKED" + Environment.NewLine +
+                        "errorCode: " + (verification.ErrorCode ?? "MATERIALIZATION_VERIFICATION_FAILED") + Environment.NewLine +
+                        "ledger: " + verification.LedgerPath + Environment.NewLine +
+                        "detail: " + verification.Message,
+                        preparation.HeadCommit,
+                        preparation.Branch,
+                        preparation.WorktreePath,
+                        sessionId,
+                        blockDetailCode: verification.ErrorCode ?? "MATERIALIZATION_VERIFICATION_FAILED");
+                }
+
+                reportBody += Environment.NewLine + Environment.NewLine +
+                    "MATERIALIZATION_VERIFICATION" + Environment.NewLine +
+                    "status: VERIFIED" + Environment.NewLine +
+                    "ledger: " + verification.LedgerPath;
+            }
+
             return await FinalizeReportAsync(
                 item,
                 preparation,
                 sessionId,
-                report!.Status,
-                route.Body,
+                report.Status,
+                reportBody,
                 cancellationToken).ConfigureAwait(false);
         }
     }
@@ -744,8 +803,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             if (string.IsNullOrWhiteSpace(checkpoint.HeadCommit))
             {
                 return WorkItemExecutionResult.Blocked(
-                    "INTEGRATION_LANDING_FAILED",
-                    BuildIntegrationLandingFailure(
+                    "INTEGRATION_IMPORT_FAILED",
+                    BuildIntegrationImportFailure(
                         reportBody,
                         "INTEGRATION_RESULT_REF_MISSING",
                         checkpoint.HeadCommit,
@@ -763,8 +822,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             if (string.IsNullOrWhiteSpace(sourceBranch))
             {
                 return WorkItemExecutionResult.Blocked(
-                    "INTEGRATION_LANDING_FAILED",
-                    BuildIntegrationLandingFailure(
+                    "INTEGRATION_IMPORT_FAILED",
+                    BuildIntegrationImportFailure(
                         reportBody,
                         "INTEGRATION_SOURCE_BRANCH_UNAVAILABLE",
                         checkpoint.HeadCommit,
@@ -781,8 +840,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             if (!string.Equals(sourceBranch, preparation.Branch, StringComparison.Ordinal))
             {
                 return WorkItemExecutionResult.Blocked(
-                    "INTEGRATION_LANDING_FAILED",
-                    BuildIntegrationLandingFailure(
+                    "INTEGRATION_IMPORT_FAILED",
+                    BuildIntegrationImportFailure(
                         reportBody,
                         "INTEGRATION_SOURCE_BRANCH_CHANGED",
                         checkpoint.HeadCommit,
@@ -796,29 +855,30 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     commitManifestPath: commitManifestPath);
             }
 
-            var landing = await _worktrees.LandIntegrationCloneAsync(
+            var imported = await _worktrees.ImportIntegrationCloneAsync(
                 _workspace,
                 checkpoint.WorktreePath,
                 sourceBranch,
                 checkpoint.HeadCommit,
-                _expectedPrimaryBranch,
+                _jobId,
+                item.Id,
                 cancellationToken).ConfigureAwait(false);
 
-            if (!landing.Success)
+            if (!imported.Success)
             {
-                var landingErrorCode = landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED";
+                var importErrorCode = imported.ErrorCode ?? "INTEGRATION_IMPORT_FAILED";
                 return WorkItemExecutionResult.Blocked(
-                    "INTEGRATION_LANDING_FAILED",
-                    BuildIntegrationLandingFailure(
+                    "INTEGRATION_IMPORT_FAILED",
+                    BuildIntegrationImportFailure(
                         reportBody,
-                        landingErrorCode,
+                        importErrorCode,
                         checkpoint.HeadCommit,
-                        landing),
+                        imported),
                     checkpoint.HeadCommit,
                     checkpoint.Branch ?? preparation.Branch,
                     checkpoint.WorktreePath,
                     sessionId,
-                    blockDetailCode: landingErrorCode,
+                    blockDetailCode: importErrorCode,
                     resultType: completedResultType,
                     commitManifestPath: commitManifestPath);
             }
@@ -831,7 +891,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             return WorkItemExecutionResult.Completed(
                 checkpoint.HeadCommit,
-                BuildIntegrationLandingSuccess(reportBody, landing),
+                BuildIntegrationImportSuccess(reportBody, imported),
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
@@ -1018,42 +1078,41 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         return true;
     }
 
-    private static string BuildIntegrationLandingSuccess(
+    private static string BuildIntegrationImportSuccess(
         string reportBody,
-        GitIntegrationLandingResult landing)
+        GitIntegrationImportResult imported)
     {
         var lines = new List<string>
         {
             reportBody.Trim(),
             string.Empty,
-            "INTEGRATION_LANDING",
-            "status: " + (landing.FastForwarded ? "FAST_FORWARDED" : "ALREADY_APPLIED"),
-            "targetBranch: " + (landing.TargetBranch ?? "없음"),
-            "beforeHead: " + (landing.BeforeHead ?? "없음"),
-            "afterHead: " + (landing.AfterHead ?? "없음")
+            "INTEGRATION_IMPORT",
+            "status: IMPORTED",
+            "integrationRef: " + imported.IntegrationRef,
+            "importedRef: " + (imported.ImportedRef ?? "없음")
         };
         return string.Join(Environment.NewLine, lines);
     }
 
-    private static string BuildIntegrationLandingFailure(
+    private static string BuildIntegrationImportFailure(
         string reportBody,
         string errorCode,
         string? integrationRef,
-        GitIntegrationLandingResult? landing)
+        GitIntegrationImportResult? imported)
     {
         var lines = new List<string>
         {
-            "INTEGRATION_LANDING",
+            "INTEGRATION_IMPORT",
             "status: BLOCKED",
             "errorCode: " + errorCode,
             "integrationRef: " + (integrationRef ?? "없음")
         };
 
-        if (landing is not null)
+        if (imported is not null)
         {
-            lines.Add("targetBranch: " + (landing.TargetBranch ?? "없음"));
-            lines.Add("beforeHead: " + (landing.BeforeHead ?? "없음"));
-            lines.Add("afterHead: " + (landing.AfterHead ?? "없음"));
+            lines.Add("importedRef: " + (imported.ImportedRef ?? "없음"));
+            if (!string.IsNullOrWhiteSpace(imported.ErrorDetail))
+                lines.Add("detail: " + imported.ErrorDetail);
         }
 
         lines.Add(string.Empty);
