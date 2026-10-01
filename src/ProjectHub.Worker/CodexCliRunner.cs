@@ -124,11 +124,10 @@ public sealed class CodexCliRunner : IDisposable
             startInfo.ArgumentList.Add("-c");
             startInfo.ArgumentList.Add("project_doc_max_bytes=0");
         }
-        if (disableComputerUse)
-        {
-            startInfo.ArgumentList.Add("-c");
-            startInfo.ArgumentList.Add("features.computer_use=false");
-        }
+        // ProjectHub의 Codex 역할은 GUI computer-use를 사용하지 않는다.
+        // 역할별 prompt 판단에 맡기지 않고 CLI capability 자체를 항상 비활성화한다.
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add("features.computer_use=false");
         if (string.IsNullOrWhiteSpace(sessionId))
         {
             startInfo.ArgumentList.Add("-C");
