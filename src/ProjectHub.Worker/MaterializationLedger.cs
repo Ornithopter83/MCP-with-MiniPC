@@ -414,6 +414,7 @@ public sealed class TargetWorkspaceMaterializationLedger
         var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
 
         var sourceRefs = (dependencies ?? Array.Empty<WorkItemDependencyResult>())
+            .Where(value => value.ResultType == WorkItemResultType.CodeChange)
             .Select(value => value.ResultRef)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value!.Trim())
