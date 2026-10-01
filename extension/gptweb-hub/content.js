@@ -671,7 +671,7 @@ function taskUserMessageConfirmed(){const prompt=normalizeText(workerMessage?.te
 function assistantTurnEvidence(){const turns=assistantTurnRecords();if(!turns.length)return '';const currentSendConfirmed=taskUserMessageConfirmed()||sendTriggeredForActiveTask;if(!currentSendConfirmed)return '';const latest=turns[turns.length-1],fingerprint=turnFingerprint(latest);if(fingerprint&&!baselineTurnFingerprints.has(fingerprint))return latest.key?'TURN':'TEXT';if(baselineAssistantCount>=0&&turns.length>baselineAssistantCount)return 'COUNT';const latestElement=latest.element,key=latest.key||assistantMessageKey(latestElement);if(!!baselineAssistantElement&&latestElement!==baselineAssistantElement)return 'ELEMENT';if(!!baselineAssistantKey&&!!key&&key!==baselineAssistantKey)return 'KEY';const latestText=normalizeText(latest.text||''),baselineText=normalizeText(baselineAssistant);if(latestElement===baselineAssistantElement&&latestText&&latestText!==baselineText)return 'TEXT';return '';}
 function reconcileConversationAfterSend(prompt){const turns=conversationTurns();let userIndex=-1;for(let index=turns.length-1;index>=0;index--){const turn=turns[index];if(turn.role!=='user'||!promptMatchesText(turn.text,prompt))continue;if(!baselineTurnFingerprints.has(turnFingerprint(turn))||!baselineTurnFingerprints.size){userIndex=index;break;}}if(userIndex>=0){for(let index=userIndex+1;index<turns.length;index++){const turn=turns[index];if(turn.role==='assistant'&&normalizeText(turn.text))return 'ASSISTANT_RECONCILED';}return 'USER_MESSAGE_RECONCILED';}const generic=promptConversationPosition(prompt);if(generic){if(generic.response&&normalizeText(generic.response.text))return 'ASSISTANT_CONTAINER_RECONCILED';return 'USER_CONTAINER_RECONCILED';}const assistantEvidence=assistantTurnEvidence();if(assistantEvidence)return assistantEvidence==='TEXT'?'ASSISTANT_TEXT_CHANGED':'ASSISTANT_RESPONSE';return '';}
 function hasNewAssistantTurn(){return !!assistantTurnEvidence();}
-async function failTask(reason,finishReason='send_failed'){clearResponseTimers();const body={success:false,taskId:activeTaskId,conversationId:currentConversationId,leaseId:activeLeaseId,correlationKey:activeCorrelationKey||null,responseText:reason,resultType:activeResource?'RESOURCE_ERROR':'TEXT_RESULT',finishReason};try{const r=await fetchWithTimeout(url('task/'+activeTaskId+'/result'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},10000);const p=await r.json();if(p.ok){phase='FINISHED';setTask('FAILED',p.data);return;}}catch{}phase='WAIT_WORKER';systemText.textContent='Worker 결과 전달 실패: '+reason;}
+async function failTask(reason,finishReason='send_failed'){clearResponseTimers();const body={success:false,taskId:activeTaskId,conversationId:bridgeConversationId(),leaseId:activeLeaseId,correlationKey:activeCorrelationKey||null,responseText:reason,resultType:activeResource?'RESOURCE_ERROR':'TEXT_RESULT',finishReason};try{const r=await fetchWithTimeout(url('task/'+activeTaskId+'/result'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},10000);const p=await r.json();if(p.ok){clearPendingRollover();phase='FINISHED';setTask('FAILED',p.data);return;}}catch{}phase='WAIT_WORKER';systemText.textContent='Worker 결과 전달 실패: '+reason;}
 function assistantStreaming(){
   const responseRoot=activeCorrelationKey?correlationResponseRoot():latestAssistantElement();
   if(responseRoot&&[...responseRoot.querySelectorAll('[data-is-streaming="true"],[data-streaming="true"]')].some(e=>e.getAttribute('data-is-streaming')==='true'||e.getAttribute('data-streaming')==='true'))return true;
@@ -877,7 +877,7 @@ function observeResponse(){
     setPhase('RESULT_POST','Worker에 Web 결과를 전달하는 중');
     pendingResult=text;
     setTask('CLAIMED',{id:activeTaskId,owner:activeTaskOwner||'WEB',prompt:workerMessage.textContent,result:text});
-    const body={success:true,taskId:activeTaskId,conversationId:currentConversationId,leaseId:activeLeaseId,correlationKey:activeCorrelationKey||null,responseText:text,resultType:'TEXT_RESULT'};
+    const body={success:true,taskId:activeTaskId,conversationId:bridgeConversationId(),leaseId:activeLeaseId,correlationKey:activeCorrelationKey||null,responseText:text,resultType:'TEXT_RESULT'};
 
     if(activeResource){
       try{
@@ -913,6 +913,7 @@ function observeResponse(){
         if(!p.ok)throw new Error(p.data?.error||'result rejected');
         pendingResult=null;
         activeResource=null;
+        clearPendingRollover();
         setPhase('FINISHED','Worker 결과 전달 완료');
         setTask(p.data?.status==='FAILED'?'FAILED':'COMPLETED',p.data);
         return;
