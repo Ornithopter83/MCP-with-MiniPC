@@ -49,51 +49,6 @@ public partial class MainWindow
                 includeHistory: false);
         }
 
-        if (!continuing)
-        {
-            var staleRuntimeCleanup = await new GitWorktreeManager()
-                .ResetRepositoryRuntimeAsync(
-                    workingDirectory,
-                    cts.Token);
-
-            var staleCleanupMessage = staleRuntimeCleanup.Success
-                ? "새 작업 시작 전에 이전 ProjectHub runtime을 초기화했습니다."
-                : "새 작업 시작 전에 이전 ProjectHub runtime을 완전히 초기화하지 못했습니다.";
-            if (!string.IsNullOrWhiteSpace(staleRuntimeCleanup.ErrorDetail))
-                staleCleanupMessage += Environment.NewLine + staleRuntimeCleanup.ErrorDetail;
-
-            if (staleRuntimeCleanup.RuntimeDeleted ||
-                staleRuntimeCleanup.RemovedWorktrees.Count > 0 ||
-                !staleRuntimeCleanup.Success)
-            {
-                AddTaskMessage(
-                    "STALE RUNTIME RESET",
-                    staleCleanupMessage +
-                    Environment.NewLine +
-                    $"runtimeRoot={staleRuntimeCleanup.RuntimeRoot}" +
-                    Environment.NewLine +
-                    $"removedWorktrees={staleRuntimeCleanup.RemovedWorktrees.Count}",
-                    status: staleRuntimeCleanup.Success
-                        ? "COMPLETED"
-                        : staleRuntimeCleanup.ErrorCode ?? "RUNTIME_RESET_FAILED",
-                    includeHistory: false);
-            }
-
-            if (!staleRuntimeCleanup.Success)
-            {
-                // 이전 runtime 정리는 새 작업의 의미 실행을 막는 선행조건이 아니다.
-                // 잠긴 cache/worktree가 남아 있어도 새 jobId의 작업은 계속 시작한다.
-                ResultTitle.Text = "RUNTIME WARNING";
-                ResultBody.Text = staleCleanupMessage;
-                TaskTitle.Text = "이전 runtime 일부 정리 실패 · HQ 시작 계속";
-                AddTaskMessage(
-                    "RUNTIME WARNING",
-                    staleCleanupMessage,
-                    status: staleRuntimeCleanup.ErrorCode ?? "RUNTIME_RESET_FAILED",
-                    includeHistory: false);
-            }
-        }
-
         var coordinatorSession = continuation?.CoordinatorSessionId;
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
         var mechanicalWork = new MechanicalWorkRegistry();
@@ -122,6 +77,52 @@ public partial class MainWindow
 
         try
         {
+            if (!continuing)
+            {
+                var staleRuntimeCleanup = await new GitWorktreeManager()
+                    .ResetRepositoryRuntimeAsync(
+                        workingDirectory,
+                        cts.Token);
+
+                var staleCleanupMessage = staleRuntimeCleanup.Success
+                    ? "새 작업 시작 전에 이전 ProjectHub runtime을 초기화했습니다."
+                    : "새 작업 시작 전에 이전 ProjectHub runtime을 완전히 초기화하지 못했습니다.";
+                if (!string.IsNullOrWhiteSpace(staleRuntimeCleanup.ErrorDetail))
+                    staleCleanupMessage += Environment.NewLine + staleRuntimeCleanup.ErrorDetail;
+
+                if (staleRuntimeCleanup.RuntimeDeleted ||
+                    staleRuntimeCleanup.RemovedWorktrees.Count > 0 ||
+                    !staleRuntimeCleanup.Success)
+                {
+                    AddTaskMessage(
+                        "STALE RUNTIME RESET",
+                        staleCleanupMessage +
+                        Environment.NewLine +
+                        $"runtimeRoot={staleRuntimeCleanup.RuntimeRoot}" +
+                        Environment.NewLine +
+                        $"removedWorktrees={staleRuntimeCleanup.RemovedWorktrees.Count}",
+                        status: staleRuntimeCleanup.Success
+                            ? "COMPLETED"
+                            : staleRuntimeCleanup.ErrorCode ?? "RUNTIME_RESET_FAILED",
+                        includeHistory: false);
+                }
+
+                if (!staleRuntimeCleanup.Success)
+                {
+                    // 이전 runtime 정리는 새 작업의 의미 실행을 막는 선행조건이 아니다.
+                    // 잠긴 cache/worktree가 남아 있어도 새 jobId의 작업은 계속 시작한다.
+                    ResultTitle.Text = "RUNTIME WARNING";
+                    ResultBody.Text = staleCleanupMessage;
+                    TaskTitle.Text = "이전 runtime 일부 정리 실패 · HQ 시작 계속";
+                    AddTaskMessage(
+                        "RUNTIME WARNING",
+                        staleCleanupMessage,
+                        status: staleRuntimeCleanup.ErrorCode ?? "RUNTIME_RESET_FAILED",
+                        includeHistory: false);
+                }
+            }
+
+
             var gitReady = await PrepareParallelGitForLaunchAsync(
                 workingDirectory,
                 cts.Token);
