@@ -966,7 +966,7 @@ public sealed class CodexWorkItemExecutorTests
             dependencies?.Select(value => value.WorkItemId).ToArray() ?? Array.Empty<string>(),
             kind,
             WorkItemState.Running,
-            0,
+            createdOrder,
             "main",
             branch,
             worktree,
