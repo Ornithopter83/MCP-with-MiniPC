@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.4.2", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.4.3", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -280,6 +280,27 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(inputEventIndex > countValidationIndex);
         Assert.True(changeEventIndex > inputEventIndex);
         Assert.False(source.Contains("file input count mismatch", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void EmbeddedContent_UsesExplicitHqCompletionMarkerAndOnlyOneCompletionCheck()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.Contains("RESPONSE_OK_MARKER='[RESPONSE=OK]'", source, StringComparison.Ordinal);
+        Assert.Contains("responseThroughCompletionMarker", source, StringComparison.Ordinal);
+        Assert.Contains("line.trim()===RESPONSE_OK_MARKER", source, StringComparison.Ordinal);
+        Assert.Contains("lines.slice(0,index+1).join('\\n')", source, StringComparison.Ordinal);
+        Assert.Contains("RESPONSE_OK_MATCHED", source, StringComparison.Ordinal);
+        Assert.Contains("responseCompletionCheckSent", source, StringComparison.Ordinal);
+        Assert.Contains("RESPONSE_COMPLETION_CHECK", source, StringComparison.Ordinal);
+        Assert.Contains("RESPONSE_COMPLETION_CHECK_SENT", source, StringComparison.Ordinal);
+        Assert.Contains("completion marker was not observed after one completion check", source, StringComparison.Ordinal);
+
+        var hqBranch = source.IndexOf("if(activeCorrelationKey&&!isResource)", StringComparison.Ordinal);
+        var stableBranch = source.IndexOf("scheduleStableCheck(snapshot,5000", StringComparison.Ordinal);
+        Assert.True(hqBranch >= 0);
+        Assert.True(stableBranch > hqBranch);
     }
 
     [Fact]
