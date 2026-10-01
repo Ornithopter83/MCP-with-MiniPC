@@ -128,9 +128,10 @@ public sealed class WorkGraph
             }
 
             if (string.IsNullOrWhiteSpace(blockDetailCode) &&
-                string.Equals(blockCode, "INTEGRATION_LANDING_FAILED", StringComparison.Ordinal))
+                (string.Equals(blockCode, "INTEGRATION_LANDING_FAILED", StringComparison.Ordinal) ||
+                 string.Equals(blockCode, "INTEGRATION_IMPORT_FAILED", StringComparison.Ordinal)))
             {
-                blockDetailCode = ExtractIntegrationLandingErrorCode(source.ResultSummary);
+                blockDetailCode = ExtractIntegrationErrorCode(source.ResultSummary);
             }
 
             graph._items[source.Id] = new WorkItemEntry
@@ -724,7 +725,7 @@ public sealed class WorkGraph
         return true;
     }
 
-    private static string? ExtractIntegrationLandingErrorCode(string? resultSummary)
+    private static string? ExtractIntegrationErrorCode(string? resultSummary)
     {
         if (string.IsNullOrWhiteSpace(resultSummary))
             return null;
@@ -736,7 +737,8 @@ public sealed class WorkGraph
                      .Split('\n'))
         {
             var trimmed = line.Trim();
-            if (string.Equals(trimmed, "INTEGRATION_LANDING", StringComparison.Ordinal))
+            if (string.Equals(trimmed, "INTEGRATION_LANDING", StringComparison.Ordinal) ||
+                string.Equals(trimmed, "INTEGRATION_IMPORT", StringComparison.Ordinal))
             {
                 inLandingBlock = true;
                 continue;
