@@ -87,8 +87,8 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("HQ_KEY_SEND_RECOVERED", StringComparison.Ordinal));
         Assert.True(source.Contains("HQ_KEY_CLAIM_RECOVERED", StringComparison.Ordinal));
         Assert.True(source.Contains("HQ_KEY_BASELINE_FALLBACK", StringComparison.Ordinal));
-        Assert.True(source.Contains("const bodyFallback=correlationBodyTextFallback();", StringComparison.Ordinal));
         Assert.True(source.Contains("const correlatedText=currentCorrelatedResponseText();", StringComparison.Ordinal));
+        Assert.True(source.Contains("responseOk=", StringComparison.Ordinal));
         Assert.True(source.Contains("correlationBodyTextFallback", StringComparison.Ordinal));
         Assert.True(source.Contains("keyBodyFallback", StringComparison.Ordinal));
         Assert.True(source.Contains("role·turn selector와 응답 root 없이 현재 KEY와 ACTION이 포함된 body fallback", StringComparison.Ordinal));
@@ -287,15 +287,15 @@ public sealed class ManagedWebExtensionContractTests
     {
         var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
 
-        Assert.Contains("RESPONSE_OK_MARKER='[RESPONSE=OK]'", source, StringComparison.Ordinal);
-        Assert.Contains("responseThroughCompletionMarker", source, StringComparison.Ordinal);
-        Assert.Contains("line.trim()===RESPONSE_OK_MARKER", source, StringComparison.Ordinal);
-        Assert.Contains("lines.slice(0,index+1).join('\\n')", source, StringComparison.Ordinal);
-        Assert.Contains("RESPONSE_OK_MATCHED", source, StringComparison.Ordinal);
-        Assert.Contains("responseCompletionCheckSent", source, StringComparison.Ordinal);
-        Assert.Contains("RESPONSE_COMPLETION_CHECK", source, StringComparison.Ordinal);
-        Assert.Contains("RESPONSE_COMPLETION_CHECK_SENT", source, StringComparison.Ordinal);
-        Assert.Contains("completion marker was not observed after one completion check", source, StringComparison.Ordinal);
+        Assert.True(source.Contains("RESPONSE_OK_MARKER='[RESPONSE=OK]'", StringComparison.Ordinal));
+        Assert.True(source.Contains("responseThroughCompletionMarker", StringComparison.Ordinal));
+        Assert.True(source.Contains("line.trim()===RESPONSE_OK_MARKER", StringComparison.Ordinal));
+        Assert.True(source.Contains("lines.slice(0,index+1).join('\\n')", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESPONSE_OK_MATCHED", StringComparison.Ordinal));
+        Assert.True(source.Contains("responseCompletionCheckSent", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESPONSE_COMPLETION_CHECK", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESPONSE_COMPLETION_CHECK_SENT", StringComparison.Ordinal));
+        Assert.True(source.Contains("completion marker was not observed after one completion check", StringComparison.Ordinal));
 
         var hqBranch = source.IndexOf("if(activeCorrelationKey&&!isResource)", StringComparison.Ordinal);
         var stableBranch = source.IndexOf("scheduleStableCheck(snapshot,5000", StringComparison.Ordinal);
