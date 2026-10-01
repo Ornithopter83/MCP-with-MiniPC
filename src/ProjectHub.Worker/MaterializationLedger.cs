@@ -163,7 +163,7 @@ public sealed class TargetWorkspaceMaterializationLedger
         }
 
         var changedPaths = FindChangedPaths(before, afterResult.Snapshot);
-        var codeDependencies = (dependencies ?? Array.Empty<WorkItemDependencyResult>())
+        var codeDependencies = dependencies
             .Where(dependency => dependency.ResultType == WorkItemResultType.CodeChange)
             .ToArray();
 
@@ -304,7 +304,7 @@ public sealed class TargetWorkspaceMaterializationLedger
 
         if (codeDependencies.Length == 0)
         {
-            if ((dependencies?.Count ?? 0) > 0 && changedPaths.Count == 0)
+            if (dependencies.Count > 0 && changedPaths.Count == 0)
                 errors.Add("대상 프로젝트 루트에서 실제 파일 변경을 확인할 수 없습니다.");
 
             foreach (var path in changedPaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
@@ -481,7 +481,7 @@ public sealed class TargetWorkspaceMaterializationLedger
         var path = Path.Combine(_ledgerDirectory, fileName);
         var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
 
-        var sourceRefs = (dependencies ?? Array.Empty<WorkItemDependencyResult>())
+        var sourceRefs = dependencies
             .Where(value => value.ResultType == WorkItemResultType.CodeChange)
             .Select(value => value.ResultRef)
             .Where(value => !string.IsNullOrWhiteSpace(value))
