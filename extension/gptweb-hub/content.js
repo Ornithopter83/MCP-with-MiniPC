@@ -275,7 +275,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     const watchedPhases=['WAIT_SEND_READY','SEND_BUTTON_FIND','SEND_CONFIRM','WAIT_RESPONSE'];
     if(!watchedPhases.includes(phase))return false;
     const correlatedText=currentCorrelatedResponseText();
-    const completed=responseThroughCompletionMarker(correlatedText);
+    const completed=completedCorrelatedResponseText();
     const watchState=[phase,correlatedText?'1':'0',completed?'1':'0'].join('|');
     if(watchState!==lastCorrelationWatchState){
       lastCorrelationWatchState=watchState;
@@ -326,6 +326,19 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     return lines.slice(0,index+1).join('\n').trimEnd();
   }
   function completedCorrelatedResponseText(){
+    const read=value=>responseThroughCompletionMarker(correlatedResponseSlice(value));
+    const assistants=assistantTurnRecords();
+    for(let i=assistants.length-1;i>=0;i--){
+      const completed=read(assistants[i].element?.innerText||assistants[i].element?.textContent||assistants[i].text||'');
+      if(completed)return completed;
+    }
+    const generic=genericResponseCandidates();
+    for(let i=generic.length-1;i>=0;i--){
+      const completed=read(generic[i].element?.innerText||generic[i].element?.textContent||generic[i].text||'');
+      if(completed)return completed;
+    }
+    const mutation=mutationResponseElement?.isConnected?read(mutationResponseElement.innerText||mutationResponseElement.textContent||''):'';
+    if(mutation)return mutation;
     return responseThroughCompletionMarker(currentCorrelatedResponseText());
   }
   function hasMeaningfulResponseText(value){
@@ -734,7 +747,7 @@ function observeResponse(){
   const prompt=normalizeText(workerMessage?.textContent||'');
   if(activeCorrelationKey&&!isResource){
     const text=currentCorrelatedResponseText();
-    const completed=responseThroughCompletionMarker(text);
+    const completed=completedCorrelatedResponseText();
     responseBlock.classList.remove('hidden');
     webResponse.textContent=completed||text||'응답을 기다리고 있습니다.';
     if(text&&!responseTextLogged){
