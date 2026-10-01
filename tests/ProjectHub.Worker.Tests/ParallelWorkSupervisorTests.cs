@@ -599,6 +599,61 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public void WorkGraphTransportAcceptsCommonHqAliasesInInitialPatch()
+    {
+        const string response = """
+            [ACTION=CONTINUE]
+            [GOTO : WORK]
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":0,"operations":[
+              {"op":"SET_GOAL","goal":"전체 사용자 목표"},
+              {"op":"ADD","id":10,"title":"콘텐츠 준비","dependencies":[],"goal":"실제 콘텐츠를 준비한다."},
+              {"op":"ADD","id":11,"title":"GUI 구현","dependencies":[],"goal":"GUI를 구현한다."}
+            ]}
+            """;
+
+        Assert.True(
+            WorkGraphTransportContract.TryParse(
+                response,
+                out var patch,
+                out var error),
+            error);
+
+        Assert.NotNull(patch);
+        Assert.Equal(2, patch!.Operations.Count);
+        Assert.All(
+            patch.Operations,
+            operation => Assert.Equal(WorkGraphPatchOperationType.Add, operation.Type));
+        Assert.Equal(new[] { "10", "11" }, patch.Operations.Select(operation => operation.WorkItemId));
+    }
+
+    [Fact]
+    public void WorkGraphTransportIgnoresIdlessGlobalSetGoalWhenPatchAddsWork()
+    {
+        const string response = """
+            [ACTION=CONTINUE]
+            [GOTO : WORK]
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":0,"operations":[
+              {"type":"SET_GOAL","value":"전체 사용자 목표"},
+              {"type":"ADD","id":10,"dependencies":[],"goal":"실제 작업"}
+            ]}
+            """;
+
+        Assert.True(
+            WorkGraphTransportContract.TryParse(
+                response,
+                out var patch,
+                out var error),
+            error);
+
+        var operation = Assert.Single(patch!.Operations);
+        Assert.Equal(WorkGraphPatchOperationType.Add, operation.Type);
+        Assert.Equal("10", operation.WorkItemId);
+        Assert.Equal("실제 작업", operation.Item!.Goal);
+    }
+
+    [Fact]
     public async Task StructuredSchemaErrorReturnsControlToHqWithFieldHint()
     {
         var graph = new WorkGraph("job", 1);
