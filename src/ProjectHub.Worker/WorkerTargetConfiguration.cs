@@ -195,22 +195,19 @@ public static class WorkerTargetConfiguration
         try
         {
             using var processJob = new WorkerChildProcessJob("Git target config");
-            using var process = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    WorkingDirectory = workingDirectory,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                }
+                FileName = "git",
+                WorkingDirectory = workingDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             };
-            foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
-            if (!process.Start()) return null;
-            processJob.Assign(process);
-            var output = process.StandardOutput.ReadToEnd().Trim();
+            foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+            using var launched = processJob.Start(startInfo);
+            var process = launched.Process;
+            var output = launched.StandardOutput!.ReadToEnd().Trim();
             if (!process.WaitForExit(5000))
             {
                 try { process.Kill(entireProcessTree: true); } catch { }
