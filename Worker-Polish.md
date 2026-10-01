@@ -52,8 +52,10 @@
 
 ① ProjectHub/Worker 프로세스 자신은 child Job Object에 넣지 않는다.
 ② Worker가 관리하는 외부 프로세스는 suspended 상태로 생성하고, 해당 작업·역할의 KILL_ON_JOB_CLOSE Job Object에 연결한 뒤에만 실행을 재개한다.
-③ WORK 취소, 역할 재시작 또는 Worker 종료 신호는 해당 Job close에 직접 연결하며 그 Job에서 파생된 전체 프로세스 tree를 즉시 종료한다.
-④ 프로세스 수명 문제는 AI 계약이나 PID 후손 추적 규칙을 추가하지 않고 실행 계층에서 해결한다.
+③ WORK 취소, 역할 재시작 또는 Worker 종료 신호는 해당 Job 종료에 직접 연결하며 그 Job에서 파생된 전체 프로세스 tree를 즉시 종료한다.
+④ 명시적 Worker Exit에서는 등록된 모든 활성 child Job을 강제 종료한 뒤 애플리케이션 종료를 진행한다.
+⑤ bridge와 background listener 종료는 WPF Dispatcher continuation에 의존하지 않는다.
+⑥ 프로세스 수명 문제는 AI 계약이나 PID 후손 추적 규칙을 추가하지 않고 실행 계층에서 해결한다.
 
 제9조 (UI와 설정)
 
@@ -62,3 +64,4 @@
 ③ 사용하지 않는 역할이나 transport의 설정 UI를 유지하지 않는다.
 ④ 메인 창의 X 버튼은 Worker 종료가 아니라 트레이 숨김으로 동작하며, 명시적 Exit만 Worker 종료를 요청한다.
 ⑤ 새 작업 시작 전 이전 runtime 정리는 최선 노력으로 수행하며, 정리 실패만으로 HQ 시작을 차단하지 않는다.
+⑥ 새 작업 입력은 Git 기준점 준비가 성공하기 전까지 유지하며, 성공한 뒤에만 작업 이력 화면으로 전환한다.
