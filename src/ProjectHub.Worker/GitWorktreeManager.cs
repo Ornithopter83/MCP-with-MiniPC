@@ -185,6 +185,15 @@ public sealed record GitIntegrationLandingResult(
     string? AfterHead,
     bool FastForwarded);
 
+public sealed record GitIntegrationImportResult(
+    bool Success,
+    string? ErrorCode,
+    string RepositoryRoot,
+    string IntegrationRef,
+    string? ImportedCommit,
+    string? ImportedRef,
+    string? ErrorDetail = null);
+
 public sealed record GitTargetContainmentResult(
     bool Success,
     string? ErrorCode,
@@ -682,26 +691,6 @@ public sealed class GitWorktreeManager
         await primaryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var statusResult = await ReadPrimaryWorkspaceStatusAsync(
-                repositoryRoot,
-                workspace,
-                cancellationToken).ConfigureAwait(false);
-
-            if (statusResult.ExitCode != 0)
-                return IntegrationFailure(
-                    "INTEGRATION_BASE_STATUS_UNAVAILABLE",
-                    repositoryRoot,
-                    jobId,
-                    workItemId,
-                    null);
-            if (!string.IsNullOrWhiteSpace(statusResult.StandardOutput))
-                return IntegrationFailure(
-                    "INTEGRATION_BASE_TARGET_DIRTY",
-                    repositoryRoot,
-                    jobId,
-                    workItemId,
-                    null);
-
             var branchResult = await RunAsync(
                 repositoryRoot,
                 ReadTimeout,
@@ -1102,6 +1091,203 @@ public sealed class GitWorktreeManager
             normalizedBase,
             head,
             true);
+    }
+
+    public async Task<GitIntegrationImportResult> ImportIntegrationCloneAsync(
+        string workspace,
+        string sourceClonePath,
+        string sourceBranch,
+        string integrationRef,
+        string jobId,
+        string workItemId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedRef = integrationRef?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+            return new(false, "INTEGRATION_IMPORT_WORKSPACE_MISSING", string.Empty, normalizedRef, null, null);
+        if (string.IsNullOrWhiteSpace(sourceClonePath) || !Directory.Exists(sourceClonePath))
+            return new(false, "INTEGRATION_IMPORT_SOURCE_MISSING", Path.GetFullPath(workspace), normalizedRef, null, null);
+        if (string.IsNullOrWhiteSpace(sourceBranch) ||
+            string.IsNullOrWhiteSpace(jobId) ||
+            string.IsNullOrWhiteSpace(workItemId) ||
+            string.IsNullOrWhiteSpace(normalizedRef))
+            return new(false, "INTEGRATION_IMPORT_INPUT_MISSING", Path.GetFullPath(workspace), normalizedRef, null, null);
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+        {
+            return new(
+                false,
+                "INTEGRATION_IMPORT_REPOSITORY_REQUIRED",
+                Path.GetFullPath(workspace),
+                normalizedRef,
+                null,
+                null,
+                BuildGitFailureDetail("git rev-parse --show-toplevel", rootResult));
+        }
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var normalizedClone = Path.GetFullPath(sourceClonePath);
+        var normalizedBranch = sourceBranch.Trim();
+        var importedRef =
+            "refs/projecthub/integration-results/" +
+            SafeCommitLabel(jobId) + "/" +
+            SafeCommitLabel(workItemId);
+
+        var primaryGate = GetRepositoryPrimaryMutationGate(repositoryRoot);
+        await primaryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var sourceRootResult = await RunAsync(
+                normalizedClone,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--show-toplevel").ConfigureAwait(false);
+            var sourceRoot = sourceRootResult.ExitCode == 0 &&
+                             !string.IsNullOrWhiteSpace(sourceRootResult.StandardOutput)
+                ? Path.GetFullPath(FirstLine(sourceRootResult.StandardOutput))
+                : null;
+            if (sourceRoot is null || !PathsEqual(sourceRoot, normalizedClone))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_IMPORT_SOURCE_REPOSITORY_INVALID",
+                    repositoryRoot,
+                    normalizedRef,
+                    null,
+                    importedRef);
+            }
+
+            var sourceGitDirResult = await RunAsync(
+                normalizedClone,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--absolute-git-dir").ConfigureAwait(false);
+            var expectedSourceGitDir = Path.GetFullPath(Path.Combine(normalizedClone, ".git"));
+            var sourceGitDir = sourceGitDirResult.ExitCode == 0 &&
+                               !string.IsNullOrWhiteSpace(sourceGitDirResult.StandardOutput)
+                ? Path.GetFullPath(FirstLine(sourceGitDirResult.StandardOutput))
+                : null;
+            if (sourceGitDir is null || !PathsEqual(sourceGitDir, expectedSourceGitDir))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_IMPORT_SOURCE_GITDIR_NOT_LOCAL",
+                    repositoryRoot,
+                    normalizedRef,
+                    null,
+                    importedRef);
+            }
+
+            var sourceBranchResult = await RunAsync(
+                normalizedClone,
+                ReadTimeout,
+                cancellationToken,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+            var actualSourceBranch = sourceBranchResult.ExitCode == 0
+                ? FirstLine(sourceBranchResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(actualSourceBranch) ||
+                !string.Equals(actualSourceBranch, normalizedBranch, StringComparison.Ordinal))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED",
+                    repositoryRoot,
+                    normalizedRef,
+                    null,
+                    importedRef);
+            }
+
+            var sourceHeadResult = await RunAsync(
+                normalizedClone,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+            var sourceHead = sourceHeadResult.ExitCode == 0
+                ? FirstLine(sourceHeadResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(sourceHead) ||
+                !string.Equals(sourceHead, normalizedRef, StringComparison.OrdinalIgnoreCase))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_IMPORT_SOURCE_HEAD_CHANGED",
+                    repositoryRoot,
+                    normalizedRef,
+                    sourceHead,
+                    importedRef);
+            }
+
+            var fetchResult = await RunAsync(
+                repositoryRoot,
+                CreateTimeout,
+                cancellationToken,
+                "fetch",
+                "--no-tags",
+                "--no-write-fetch-head",
+                normalizedClone,
+                "+refs/heads/" + normalizedBranch + ":" + importedRef).ConfigureAwait(false);
+            if (fetchResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    fetchResult.TimedOut ? "INTEGRATION_IMPORT_TIMEOUT"
+                        : fetchResult.Canceled ? "INTEGRATION_IMPORT_CANCELED"
+                        : "INTEGRATION_IMPORT_FAILED",
+                    repositoryRoot,
+                    normalizedRef,
+                    null,
+                    importedRef,
+                    BuildGitFailureDetail("git fetch integration result", fetchResult));
+            }
+
+            var importedResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                importedRef + "^{commit}").ConfigureAwait(false);
+            var importedCommit = importedResult.ExitCode == 0
+                ? FirstLine(importedResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(importedCommit) ||
+                !string.Equals(importedCommit, normalizedRef, StringComparison.OrdinalIgnoreCase))
+            {
+                return new(
+                    false,
+                    "INTEGRATION_IMPORT_REF_MISMATCH",
+                    repositoryRoot,
+                    normalizedRef,
+                    importedCommit,
+                    importedRef);
+            }
+
+            return new(
+                true,
+                null,
+                repositoryRoot,
+                normalizedRef,
+                importedCommit,
+                importedRef);
+        }
+        finally
+        {
+            primaryGate.Release();
+        }
     }
 
     public async Task<GitWorktreeInspectionResult> InspectAsync(
