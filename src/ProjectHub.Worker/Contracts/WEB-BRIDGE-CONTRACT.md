@@ -25,6 +25,7 @@
 ② HQ와 RESOURCE는 서로 다른 conversationId와 역할 binding을 사용한다.
 ③ binding은 conversationId, 선택적 projectId와 role을 기계적으로 연결하며 일반 본문 의미로 role을 추론하지 않는다.
 ④ 현재 binding이 없는 임의 ChatGPT 페이지를 Worker 작업 대상으로 간주하지 않는다.
+⑤ Worker가 HQ task에 새 conversation 시작을 기계적으로 지정한 경우 확장은 해당 task를 먼저 claim한 뒤 새 ChatGPT conversation으로 이동해 같은 task의 prompt를 첫 요청으로 전송하고 새 conversation을 HQ 역할에 다시 binding한다.
 
 제4조 (Bridge endpoint)
 
@@ -50,8 +51,9 @@
 ② claim은 task의 conversationId와 요청 conversationId가 일치하는 경우에만 허용한다.
 ③ Worker는 성공한 claim에 leaseId를 발급한다.
 ④ result와 progress는 현재 task의 taskId, conversationId와 leaseId를 사용해 현재 실행 구간을 상관한다.
-⑤ 완료 또는 실패한 task의 결과를 새 task로 해석하지 않는다.
-⑥ 동일 conversation에서 서로 충돌하는 활성 task는 동시에 claim하지 않는다.
+⑤ HQ conversation 교대 중에도 이미 claim한 task는 claim 시점의 taskId, conversationId와 leaseId를 유지하며, 새 conversationId는 후속 HQ 역할 binding에 사용한다.
+⑥ 완료 또는 실패한 task의 결과를 새 task로 해석하지 않는다.
+⑦ 동일 conversation에서 서로 충돌하는 활성 task는 동시에 claim하지 않는다.
 
 제6조 (HQ correlation KEY와 완료 표식)
 
