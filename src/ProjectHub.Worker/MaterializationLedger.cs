@@ -223,9 +223,20 @@ public sealed class TargetWorkspaceMaterializationLedger
                     {
                         errors.Add($"안전하지 않은 이전 경로입니다: {file.PreviousPath}");
                     }
-                    else if (File.Exists(previousPath) || Directory.Exists(previousPath))
+                    else
                     {
-                        errors.Add($"이전 경로가 대상 프로젝트에 남아 있습니다: {previous}");
+                        if (File.Exists(previousPath) || Directory.Exists(previousPath))
+                            errors.Add($"이전 경로가 대상 프로젝트에 남아 있습니다: {previous}");
+
+                        records.Add(new MaterializationFileRecord(
+                            previous,
+                            "DELETE_PREVIOUS",
+                            dependency.WorkItemId,
+                            dependency.ResultRef,
+                            null,
+                            null,
+                            null,
+                            changedPaths.Contains(previous)));
                     }
                 }
 
@@ -353,32 +364,86 @@ public sealed class TargetWorkspaceMaterializationLedger
             !Directory.Exists(_ledgerDirectory))
             return false;
 
-        foreach (var path in Directory.EnumerateFiles(
-                     _ledgerDirectory,
-                     "*.json",
-                     SearchOption.TopDirectoryOnly))
+        try
         {
-            try
+            foreach (var path in Directory.EnumerateFiles(
+                         _ledgerDirectory,
+                         "*.json",
+                         SearchOption.TopDirectoryOnly))
             {
-                var entry = JsonSerializer.Deserialize<MaterializationLedgerEntry>(
-                    File.ReadAllText(path),
-                    JsonOptions);
-                if (entry is null || !entry.Success)
+                MaterializationLedgerEntry? entry;
+                try
+                {
+                    entry = JsonSerializer.Deserialize<MaterializationLedgerEntry>(
+                        File.ReadAllText(path),
+                        JsonOptions);
+                }
+                catch (Exception exception) when (
+                    exception is IOException or UnauthorizedAccessException or JsonException)
+                {
                     continue;
-                if (entry.SourceResultRefs.Any(value =>
+                }
+
+                if (entry is null ||
+                    !entry.Success ||
+                    !entry.SourceResultRefs.Any(value =>
                         string.Equals(
                             value,
                             resultRef.Trim(),
                             StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                if (EntryStillMatchesTarget(entry))
                     return true;
             }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException or JsonException)
-            {
-            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
 
         return false;
+    }
+
+    private bool EntryStillMatchesTarget(MaterializationLedgerEntry entry)
+    {
+        foreach (var file in entry.Files)
+        {
+            if (!TryResolveTarget(file.Path, out var targetPath))
+                return false;
+
+            if (string.Equals(file.Operation, "DELETE", StringComparison.Ordinal) ||
+                string.Equals(file.Operation, "DELETE_PREVIOUS", StringComparison.Ordinal))
+            {
+                if (File.Exists(targetPath) || Directory.Exists(targetPath))
+                    return false;
+                continue;
+            }
+
+            if (!File.Exists(targetPath) ||
+                string.IsNullOrWhiteSpace(file.ExpectedSha256))
+                return false;
+
+            try
+            {
+                var actual = HashFile(targetPath);
+                if (file.Size is not null && actual.Size != file.Size.Value)
+                    return false;
+                if (!string.Equals(
+                        actual.Sha256,
+                        file.ExpectedSha256,
+                        StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private async Task<MaterializationVerificationResult> RecordFailureAsync(
@@ -547,6 +612,20 @@ public sealed class TargetWorkspaceMaterializationLedger
         {
             return false;
         }
+    }
+
+    private static (long Size, string Sha256) HashFile(string path)
+    {
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            1024 * 64,
+            FileOptions.SequentialScan);
+        using var sha = SHA256.Create();
+        var hash = sha.ComputeHash(stream);
+        return (stream.Length, Convert.ToHexString(hash).ToLowerInvariant());
     }
 
     private static async Task<(long Size, string Sha256)> HashFileAsync(
