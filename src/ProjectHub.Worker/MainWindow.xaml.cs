@@ -367,7 +367,7 @@ public partial class MainWindow : Window
         Activate();
     }
 
-    private async void ExitWorker()
+    private void ExitWorker()
     {
         if (_shutdownCleanupInProgress)
             return;
