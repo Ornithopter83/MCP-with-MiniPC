@@ -1,6 +1,6 @@
 # ProjectHub 구현 로드맵
 
-갱신일: 2026-09-30
+갱신일: 2026-10-01
 
 상위 공통 정책은 `Master-Polish.md`이며 프로젝트별 장기 정책과 전용 계약이 이 문서보다 우선한다. 날짜별 변경 이력과 과거 구현 경로는 `tasks/*.md`, 전용 기록 문서와 Git 이력에 둔다.
 
@@ -18,7 +18,7 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
                                └─ OBSERVATION sidecar
 ```
 
-② 일반 WorkItem은 #10부터 사용하고 #0은 RESOURCE, #1은 기존 이미지 가공 전용이며 #2~#9는 예약 영역으로 둔다.
+② 일반 WorkItem은 #10부터 사용하고 #0은 RESOURCE 전용으로 사용하며 #1~#9는 예약 영역으로 둔다.
 ③ maxConcurrentWork 1~8은 같은 Scheduler 실행 경로를 사용하며 차이는 동시 슬롯 수뿐이다.
 ④ RESOURCE, JUDGE, OBSERVATION은 일반 WorkItem으로 자동 승격하지 않고 현재 요청 문맥에 귀속되는 sidecar로 유지한다.
 ⑤ HQ와 WORK의 정확한 ACTION, GOTO, WORK_GRAPH_PATCH, WORK_ITEM_STATUS 및 RESOURCE_TYPE 문법은 전용 역할 계약을 원본으로 사용한다.
@@ -61,6 +61,8 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 ② 일반 Chrome이나 runtime token이 없는 페이지는 Worker Web 작업 대상으로 사용하지 않는다.
 ③ Web 응답 회수, 첨부 준비, 파일 수집, UI 이상 관측과 숨김 실행의 세부 규칙은 `Web-Polish.md`와 현재 구현·테스트를 원본으로 사용한다.
 ④ HQ Web correlation KEY는 SEND_CONFIRM과 WAIT_RESPONSE에서 DOM mutation과 독립된 주기 감시를 함께 사용하며, 현재 KEY 응답이 확인되면 role·turn selector가 실패해도 결과 회수 경로를 계속 진행한다.
+⑤ HQ Web 성공 응답은 현재 KEY 뒤의 별도 줄 `[RESPONSE=OK]`까지 확인한 경우에만 완료로 취급하며, 제한시간 초과 시 직전 답변 완료 여부를 한 번만 다시 요청한 뒤 실패하면 transport 오류로 종료한다.
+⑥ RESOURCE Web 완료는 `[RESPONSE=OK]` 같은 텍스트 표식을 요구하지 않고 현재 요청의 생성 파일 준비와 capture 상태를 기준으로 처리한다.
 
 제7조 (검증 기준)
 
