@@ -8,7 +8,8 @@ public partial class MainWindow
     private bool _gitPreparationInProgress;
 
     private async Task<bool> PrepareParallelGitForLaunchAsync(
-        string workingDirectory)
+        string workingDirectory,
+        CancellationToken cancellationToken = default)
     {
         if (_gitPreparationInProgress)
             return false;
@@ -19,9 +20,13 @@ public partial class MainWindow
 
         try
         {
+            DashboardPreflightText.Text = "Git 기준점을 확인하는 중입니다.";
+            DashboardPreflightText.Foreground =
+                (System.Windows.Media.Brush)FindResource("Muted");
+
             var state = await _gitWorkspaceBootstrapper.PrepareAsync(
                 workingDirectory,
-                CancellationToken.None);
+                cancellationToken);
 
             if (!state.Success)
             {
@@ -31,42 +36,46 @@ public partial class MainWindow
 
             if (state.NeedsBaseline)
             {
-                var reason = !state.HasHead
-                    ? "WorkGraph를 위한 최초 Git 기준점이 필요합니다.\n현재 폴더의 내용을 Git 기준점으로 생성합니다."
-                    : state.NeedsManagedIgnoreUpdate || state.NeedsManagedIndexCleanup
+                var freshWorkspace = state.InitializedNow || !state.HasHead;
+                if (!freshWorkspace)
+                {
+                    var reason = state.NeedsManagedIgnoreUpdate || state.NeedsManagedIndexCleanup
                         ? "ProjectHub의 Git 관리 규칙을 적용해야 합니다.\n.projecthub와 검증 캐시는 소스 추적에서 제외하고 현재 변경사항과 함께 새 기준점에 반영합니다."
                         : "현재 작업 폴더에 commit되지 않은 변경사항이 있습니다.\n현재 변경사항을 새 Git 기준점에 포함합니다.";
 
-                var prompt =
-                reason + Environment.NewLine + Environment.NewLine +
-                "기준점 생성 경로" + Environment.NewLine +
-                state.RepositoryRoot + Environment.NewLine + Environment.NewLine +
-                "현재 Branch" + Environment.NewLine +
-                (state.Branch ?? "unknown") + Environment.NewLine + Environment.NewLine +
-                "확인을 누르면 기준점을 생성하고, 취소를 누르면 작업을 시작하지 않습니다.";
+                    var prompt =
+                        reason + Environment.NewLine + Environment.NewLine +
+                        "기준점 생성 경로" + Environment.NewLine +
+                        state.RepositoryRoot + Environment.NewLine + Environment.NewLine +
+                        "현재 Branch" + Environment.NewLine +
+                        (state.Branch ?? "unknown") + Environment.NewLine + Environment.NewLine +
+                        "확인을 누르면 기준점을 생성하고, 취소를 누르면 작업을 시작하지 않습니다.";
 
-                var answer = System.Windows.MessageBox.Show(
-                this,
-                prompt,
-                "Git 기준점 생성",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Question);
+                    var answer = System.Windows.MessageBox.Show(
+                        this,
+                        prompt,
+                        "Git 기준점 생성",
+                        MessageBoxButton.OKCancel,
+                        MessageBoxImage.Question);
 
-                if (answer != MessageBoxResult.OK)
-                {
-                    DashboardPreflightText.Text = "Git 기준점 생성을 취소했습니다.";
-                    DashboardPreflightText.Foreground =
-                        (System.Windows.Media.Brush)FindResource("Muted");
-                    return false;
+                    if (answer != MessageBoxResult.OK)
+                    {
+                        DashboardPreflightText.Text = "Git 기준점 생성을 취소했습니다.";
+                        DashboardPreflightText.Foreground =
+                            (System.Windows.Media.Brush)FindResource("Muted");
+                        return false;
+                    }
                 }
 
-                DashboardPreflightText.Text = "Git 기준점을 생성하는 중입니다.";
+                DashboardPreflightText.Text = freshWorkspace
+                    ? "새 작업 폴더의 최초 Git 기준점을 자동 생성하는 중입니다."
+                    : "Git 기준점을 생성하는 중입니다.";
                 DashboardPreflightText.Foreground =
                     (System.Windows.Media.Brush)FindResource("Muted");
 
                 state = await _gitWorkspaceBootstrapper.CreateBaselineAsync(
                     state,
-                    CancellationToken.None);
+                    cancellationToken);
 
                 if (!state.Success)
                 {
@@ -87,7 +96,9 @@ public partial class MainWindow
             }
 
             RefreshGitTargetPresentation(target);
-            DashboardPreflightText.Text = string.Empty;
+            DashboardPreflightText.Text = "Git 준비 완료 · HQ 시작 준비";
+            DashboardPreflightText.Foreground =
+                (System.Windows.Media.Brush)FindResource("Muted");
             return true;
         }
         finally
