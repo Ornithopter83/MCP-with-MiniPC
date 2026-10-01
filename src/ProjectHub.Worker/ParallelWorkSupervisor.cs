@@ -879,16 +879,13 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         string errorCode,
         WorkGraphSnapshot snapshot,
         int consecutiveRejections)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine("HQ 응답의 ACTION/GOTO 제어 형식이 유효하지 않아 적용하지 않았습니다.");
-        builder.AppendLine($"revision={snapshot.Revision}");
-        builder.AppendLine("errorCode=" + errorCode);
-        builder.AppendLine($"consecutiveRejectedPatches={consecutiveRejections}");
-        builder.AppendLine("WorkGraph는 변경되지 않았습니다.");
-        builder.Append("현재 revision을 유지하고 HQ 출력 계약에 맞는 ACTION/GOTO와 필요한 WORK_GRAPH_PATCH를 다시 반환하세요.");
-        return builder.ToString().TrimEnd();
-    }
+        => string.Join(
+            Environment.NewLine,
+            "HQ_RESPONSE_REJECTED",
+            $"revision={snapshot.Revision}",
+            "errorCode=" + errorCode,
+            $"attempt={consecutiveRejections}",
+            "직전 의미는 유지하고 ACTION/GOTO 형식만 수정해 다시 응답하세요.");
 
     private static bool IsWorkGraphJsonParseError(string? errorCode)
         => string.Equals(
@@ -904,67 +901,40 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         string errorCode,
         WorkGraphSnapshot snapshot,
         int consecutiveRejections)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine("HQ가 보낸 WORK_GRAPH_PATCH의 JSON을 기계적으로 파싱할 수 없어 적용하지 않았습니다.");
-        builder.AppendLine($"revision={snapshot.Revision}");
-        builder.AppendLine("errorCode=" + errorCode);
-        builder.AppendLine($"consecutiveRejectedPatches={consecutiveRejections}");
-        builder.AppendLine("WorkGraph는 변경되지 않았습니다.");
-        builder.AppendLine("이번 JSON 파싱 실패에는 Structured Helper를 호출하지 않았습니다. 같은 HQ 관제 문맥에서 올바른 JSON을 직접 다시 작성하세요.");
-        builder.AppendLine("CONTINUE를 선택한다면 ACTION, GOTO, WORK_GRAPH_PATCH를 다시 출력하고 WORK_GRAPH_PATCH 바로 뒤에 완성된 JSON 객체 하나를 실제로 출력하세요.");
-        builder.AppendLine("[ACTION=CONTINUE]");
-        builder.AppendLine("[GOTO : WORK]");
-        builder.AppendLine("WORK_GRAPH_PATCH:");
-        builder.AppendLine($"JSON 최상위 expectedRevision은 숫자 {snapshot.Revision}, operations는 JSON 배열이어야 합니다.");
-        builder.AppendLine("각 operation은 JSON 객체이며 operation 종류는 \"type\" 필드에 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE 중 하나로 기록하세요.");
-        builder.AppendLine("따옴표, 쉼표, 대괄호와 중괄호를 모두 닫고 Markdown 코드펜스, 설명문, ellipsis(...), placeholder를 JSON 객체 안에 넣지 마세요.");
-        builder.AppendLine("operations에는 현재 판단에 따른 실제 operation 객체를 넣으세요. 불완전한 JSON을 구조 복구에 맡기지 마세요.");
-        builder.Append("현재 정보만으로 의미 있는 다음 operation을 만들 수 없고 사용자 입력이 필요한 경우에는 빈 CONTINUE 대신 [ACTION=PAUSE]와 필요한 입력을 반환하세요.");
-        return builder.ToString().TrimEnd();
-    }
+        => string.Join(
+            Environment.NewLine,
+            "WORK_GRAPH_PATCH_REJECTED",
+            $"revision={snapshot.Revision}",
+            "errorCode=" + errorCode,
+            $"attempt={consecutiveRejections}",
+            "직전 의미는 유지하고 완전한 WORK_GRAPH_PATCH JSON만 다시 출력하세요.");
 
     private static string FormatStructuredPatchRejected(
         string errorCode,
         string? errorDetail,
         WorkGraphSnapshot snapshot,
         int consecutiveRejections)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine("HQ가 보낸 WORK_GRAPH_PATCH의 기계 스키마가 유효하지 않아 적용하지 않았습니다.");
-        builder.AppendLine($"revision={snapshot.Revision}");
-        builder.AppendLine("errorCode=" + errorCode);
-        builder.AppendLine($"consecutiveRejectedPatches={consecutiveRejections}");
-        if (!string.IsNullOrWhiteSpace(errorDetail))
-            builder.AppendLine(errorDetail.Trim());
-        builder.AppendLine("WorkGraph는 변경되지 않았습니다.");
-        builder.AppendLine("CONTINUE를 선택한다면 다음 응답에 ACTION, GOTO, WORK_GRAPH_PATCH와 완전한 JSON 객체를 모두 실제로 출력하세요.");
-        builder.AppendLine("[ACTION=CONTINUE]");
-        builder.AppendLine("[GOTO : WORK]");
-        builder.AppendLine("WORK_GRAPH_PATCH:");
-        builder.AppendLine($"expectedRevision은 {snapshot.Revision}을 사용하고 operations에는 현재 판단에 따른 실제 operation 객체를 넣은 유효 JSON 객체를 작성하세요.");
-        builder.AppendLine("operations를 생략하거나 placeholder·미완성 JSON을 구조 복구에 맡기지 마세요.");
-        builder.Append("현재 정보만으로 의미 있는 다음 operation을 만들 수 없고 사용자 입력이 필요한 경우에는 빈 CONTINUE 대신 [ACTION=PAUSE]와 필요한 입력을 반환하세요.");
-        return builder.ToString().TrimEnd();
-    }
+        => string.Join(
+            Environment.NewLine,
+            "WORK_GRAPH_PATCH_REJECTED",
+            $"revision={snapshot.Revision}",
+            "errorCode=" + errorCode,
+            string.IsNullOrWhiteSpace(errorDetail) ? string.Empty : errorDetail.Trim(),
+            $"attempt={consecutiveRejections}",
+            "현재 revision에 맞는 patch 형식만 수정해 다시 응답하세요.")
+            .Replace(Environment.NewLine + Environment.NewLine, Environment.NewLine);
 
     private static string FormatPatchRejected(
         string errorCode,
         WorkGraphSnapshot snapshot,
         int consecutiveRejections)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine("HQ가 보낸 WORK_GRAPH_PATCH가 현재 WorkGraph 상태에 적용되지 않아 거부되었습니다.");
-        builder.AppendLine($"revision={snapshot.Revision}");
-        builder.AppendLine("errorCode=" + errorCode);
-        builder.AppendLine($"consecutiveRejectedPatches={consecutiveRejections}");
-        builder.AppendLine("WorkGraph는 변경되지 않았습니다.");
-        builder.AppendLine("items:");
-        foreach (var item in snapshot.Items.OrderBy(value => value.CreatedOrder))
-            AppendMechanicalItem(builder, item);
-        builder.Append("현재 revision과 WorkItem 상태에 맞는 새 WORK_GRAPH_PATCH를 반환하세요.");
-        return builder.ToString().TrimEnd();
-    }
+        => string.Join(
+            Environment.NewLine,
+            "WORK_GRAPH_PATCH_REJECTED",
+            $"revision={snapshot.Revision}",
+            "errorCode=" + errorCode,
+            $"attempt={consecutiveRejections}",
+            "현재 WorkGraph 상태에 맞는 patch를 다시 응답하세요.");
 
     private static string FormatEndFinalizationRejected(
         ParallelEndFinalizationResult finalization,
