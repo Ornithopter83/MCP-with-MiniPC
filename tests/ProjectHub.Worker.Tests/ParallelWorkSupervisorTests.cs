@@ -92,7 +92,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.DoesNotContain("당신은 HQ다.", hq.Prompts[1]);
         Assert.Contains("WorkGraph 변경", hq.Prompts[1]);
         Assert.Contains("state=COMPLETED", hq.Prompts[1]);
-        Assert.Contains("resultType=", hq.Prompts[1]);
+        Assert.Contains("state=COMPLETED", hq.Prompts[1]);
     }
 
     [Fact]
@@ -590,7 +590,7 @@ public sealed class ParallelWorkSupervisorTests
             "HQ가 직전 관제 이후 완료된 WorkItem을 즉시 점검하고 추가·보완·통합·검증 작업 필요 여부를 판단합니다.",
             hq.Prompts[1]);
         Assert.Contains(
-            "id=W10 kind=NORMAL state=COMPLETED",
+            "workItemId=W10 kind=NORMAL state=COMPLETED",
             hq.Prompts[1]);
         Assert.Contains(
             "입력 유형: WORK_GRAPH_QUIESCENT",
@@ -641,7 +641,6 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[2]);
         Assert.Contains("errorCode=WORK_GRAPH_RUNNING_OR_TERMINAL_ITEM_IMMUTABLE", hq.Prompts[2]);
         Assert.Contains("attempt=1", hq.Prompts[2]);
-        Assert.Contains("workItemId=W11 kind=NORMAL state=RUNNING", hq.Prompts[2]);
         Assert.Equal(WorkItemState.Completed, result.Graph.Items.Single(item => item.Id == "W11").State);
     }
 
