@@ -622,11 +622,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        var gitReady = await PrepareParallelGitForLaunchAsync(
-            continuation.WorkingDirectory);
-        if (!gitReady)
-            return;
-
         AddUserFollowupHistory(followup, followupAttachments);
         DashboardFollowupInput.Text = FollowupPromptPlaceholder;
         DashboardFollowupInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
@@ -658,9 +653,12 @@ public partial class MainWindow : Window
 
         if (_gitPreparationInProgress)
         {
-            RunButton.Content = "Git 준비 중...";
-            ApplyRunButtonVisualState(false);
-            DashboardPreflightText.Text = "Git 기준점을 준비하는 중입니다.";
+            var cancelable = _activeTaskCts is not null;
+            RunButton.Content = cancelable ? "■   취소" : "Git 준비 중...";
+            ApplyRunButtonVisualState(cancelable && !_userCanceledTask);
+            DashboardPreflightText.Text = cancelable
+                ? "Git 기준점을 준비하는 중입니다. 취소할 수 있습니다."
+                : "Git 기준점을 준비하는 중입니다.";
             DashboardPreflightText.Foreground =
                 (System.Windows.Media.Brush)FindResource("Muted");
             UpdateFollowupButtonState();
@@ -1109,8 +1107,15 @@ public partial class MainWindow : Window
     }
     private async void RunTask_Click(object sender, RoutedEventArgs e)
     {
-        if (_newTaskCleanupInProgress || _gitPreparationInProgress)
+        if (_newTaskCleanupInProgress)
             return;
+
+        if (_gitPreparationInProgress)
+        {
+            _userCanceledTask = true;
+            _activeTaskCts?.Cancel();
+            return;
+        }
 
         if (_activeTaskCts is not null || _awaitingWebResult)
         {
@@ -1162,11 +1167,6 @@ public partial class MainWindow : Window
                 SetFlowState(false, false, false);
                 return;
             }
-
-            var gitReady = await PrepareParallelGitForLaunchAsync(
-                cliWorkingDirectory);
-            if (!gitReady)
-                return;
 
             _historyEvents.Clear();
             SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
