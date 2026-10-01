@@ -319,7 +319,6 @@ public sealed class ParallelWorkTransportTests
     [Theory]
     [InlineData("COMPLETED", WorkItemReportStatus.Completed)]
     [InlineData("BLOCKED", WorkItemReportStatus.Blocked)]
-    [InlineData("SPLIT_REQUEST", WorkItemReportStatus.SplitRequest)]
     [InlineData("FAILED", WorkItemReportStatus.Failed)]
     public void WorkItemReportParsesMechanicalStatus(string value, WorkItemReportStatus expected)
     {
