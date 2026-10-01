@@ -1106,15 +1106,6 @@ public partial class MainWindow : Window
         var activeIndex = _flowFrame++ % 5;
         var opacities = new[] { 1.0, 0.32, 0.32 };
         SetArrowFrame(new[] { FlowArrow1, FlowArrow2, FlowArrow3 }, _pairArrowActive, activeIndex, opacities);
-        UpdateJudgeVisual();
-    }
-    private void UpdateJudgeVisual()
-    {
-        var enabled = _targetSettings.EffectiveJudge.Enabled;
-        JudgeFlowText.Text = _judgeStatus switch { "REVIEWING" => "JUDGE · REVIEWING", "FALLBACK" => "JUDGE · WEB FALLBACK", "READY" => "JUDGE · READY", _ => "JUDGE · OFF" };
-        JudgeFlowText.Foreground = _judgeReviewing ? System.Windows.Media.Brushes.DarkViolet : enabled ? System.Windows.Media.Brushes.SlateBlue : System.Windows.Media.Brushes.SlateGray;
-        JudgePulseDot.Fill = _judgeReviewing ? System.Windows.Media.Brushes.MediumPurple : enabled ? System.Windows.Media.Brushes.SlateBlue : System.Windows.Media.Brushes.SlateGray;
-        JudgePulseDot.Opacity = _judgeReviewing ? 0.45 + ((_flowFrame % 5) * 0.11) : 1;
     }
     private static void SetArrowFrame(TextBlock[] arrows, bool active, int frame, double[] opacities)
     {
