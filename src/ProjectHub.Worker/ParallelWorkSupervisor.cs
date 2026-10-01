@@ -806,10 +806,11 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         {
             foreach (var item in changedItems)
             {
+                var checklistKey = item.Id + "|" + item.CreatedOrder;
                 var includeChecklist =
                     item.Checklist is { Count: > 0 } &&
                     (hqReportedChecklistItems is null ||
-                     !hqReportedChecklistItems.Contains(item.Id));
+                     !hqReportedChecklistItems.Contains(checklistKey));
 
                 AppendMechanicalItem(
                     builder,
@@ -817,7 +818,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     includeChecklist: includeChecklist);
 
                 if (includeChecklist)
-                    hqReportedChecklistItems?.Add(item.Id);
+                    hqReportedChecklistItems?.Add(checklistKey);
             }
         }
 
