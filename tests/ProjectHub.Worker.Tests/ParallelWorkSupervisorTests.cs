@@ -152,7 +152,7 @@ public sealed class ParallelWorkSupervisorTests
 
         Assert.Contains("WORK_CHECKLIST_BEGIN", first);
         Assert.Contains("[1] 첫 단계", first);
-        Assert.Contains("W1", reported);
+        Assert.Contains("W1|" + running.Graph.Items.Single(item => item.Id == "W1").CreatedOrder, reported);
 
         var beforeBlocked = graph.Snapshot();
         Assert.True(graph.TryMarkBlocked(
