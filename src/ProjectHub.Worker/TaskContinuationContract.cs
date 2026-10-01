@@ -13,7 +13,13 @@ public sealed record CoordinatorContinuationState(
 public static class TaskContinuationContract
 {
     public static bool IsResumableStatus(string? status)
-        => status is "PAUSED" or "CANCELED" or "DONE" or "DONE_WITH_ERROR";
+        => status is "PAUSED" or "CANCELED";
+
+    public static bool IsFreshStartStatus(string? status)
+        => status is "DONE" or "DONE_WITH_ERROR";
+
+    public static bool CanAcceptFollowupStatus(string? status)
+        => IsResumableStatus(status) || IsFreshStartStatus(status);
 
     public static string BuildHqFollowupInput(
         string status,
