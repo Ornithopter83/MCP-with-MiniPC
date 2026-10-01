@@ -236,11 +236,11 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
-    public async Task SplitRequestWakesHqWhileIndependentWorkIsStillRunning()
+    public async Task BlockedWorkWakesHqWhileIndependentWorkIsStillRunning()
     {
         var graph = new WorkGraph("job", 2);
         var executor = new SupervisorExecutor();
-        executor.SetSplitOnceThenComplete("W1");
+        executor.SetBlockedOnceThenComplete("W1");
         executor.SetControlled("W2");
         executor.SetImmediate("W3");
 
@@ -281,7 +281,7 @@ public sealed class ParallelWorkSupervisorTests
 
         Assert.True(executor.IsRunning("W2"));
         Assert.False(executor.IsCompleted("W2"));
-        Assert.Contains("blockCode=SPLIT_REQUEST", hq.Prompts[1]);
+        Assert.Contains("blockCode=HQ_BLOCKED", hq.Prompts[1]);
         Assert.Contains("id=W2", hq.Prompts[1]);
         Assert.Contains("state=RUNNING", hq.Prompts[1]);
 
@@ -309,7 +309,7 @@ public sealed class ParallelWorkSupervisorTests
     {
         var graph = new WorkGraph("job", 2);
         var executor = new SupervisorExecutor();
-        executor.SetSplitOnceThenComplete("W1");
+        executor.SetBlockedOnceThenComplete("W1");
         executor.SetControlled("W2");
 
         var secondHqCalled = new TaskCompletionSource<bool>(
@@ -470,7 +470,7 @@ public sealed class ParallelWorkSupervisorTests
     {
         var graph = new WorkGraph("job", 1);
         var executor = new SupervisorExecutor();
-        executor.SetSplitOnceThenComplete("W1");
+        executor.SetBlockedOnceThenComplete("W1");
 
         var hq = new QueueHqRunner(
             ContinuePatch(0, Add("W1", "분할 제안이 필요한 작업")),
@@ -952,7 +952,7 @@ public sealed class ParallelWorkSupervisorTests
 
         public void SetImmediate(string id) => _modes[id] = "IMMEDIATE";
         public void SetControlled(string id) => _modes[id] = "CONTROLLED";
-        public void SetSplitOnceThenComplete(string id) => _modes[id] = "SPLIT_ONCE";
+        public void SetBlockedOnceThenComplete(string id) => _modes[id] = "BLOCK_ONCE";
         public void SetResourceOnceThenComplete(string id) => _modes[id] = "RESOURCE_ONCE";
 
         public bool IsRunning(string id)
@@ -994,11 +994,11 @@ public sealed class ParallelWorkSupervisorTests
                 if (mode == "CONTROLLED")
                     await ReleaseSignal(request.Item.Id).Task.WaitAsync(cancellationToken);
 
-                if (mode == "SPLIT_ONCE" && count == 1)
+                if (mode == "BLOCK_ONCE" && count == 1)
                 {
                     return WorkItemExecutionResult.Blocked(
-                        "SPLIT_REQUEST",
-                        "W3라는 독립 WorkItem을 추가해 주세요.",
+                        "HQ_BLOCKED",
+                        "현재 배정 작업에서 확인한 차단 사실입니다.",
                         "checkpoint-" + request.Item.Id,
                         "branch-" + request.Item.Id,
                         "worktree-" + request.Item.Id,
