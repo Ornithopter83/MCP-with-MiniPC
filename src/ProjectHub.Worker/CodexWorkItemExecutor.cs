@@ -417,7 +417,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     preparation.Branch,
                     preparation.WorktreePath,
                     item.ResultSummary,
-                    dependencyResults),
+                    dependencyResults,
+                    Checklist: item.Checklist),
                 observationRequestDirectory,
                 includeContract: string.IsNullOrWhiteSpace(sessionId),
                 resourceStagingRoot: runtimePaths.TempRoot,
@@ -850,15 +851,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId,
                 completedResultType,
                 commitManifestPath),
-            WorkItemReportStatus.SplitRequest => WorkItemExecutionResult.Blocked(
-                "SPLIT_REQUEST",
-                reportBody,
-                lifecycleResultRef,
-                checkpoint.Branch ?? preparation.Branch,
-                checkpoint.WorktreePath,
-                sessionId,
-                resultType: blockedResultType,
-                commitManifestPath: commitManifestPath),
             WorkItemReportStatus.Blocked => WorkItemExecutionResult.Blocked(
                 BuildRequestContract.ContainsRequest(reportBody)
                     ? "BUILD_REQUEST"
