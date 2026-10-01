@@ -948,8 +948,7 @@ public partial class MainWindow : Window
         UpdateArrowAnimation();
         var running = codexActive || workerActive || webActive || (!_userCanceledTask && (_activeTaskCts is not null || _awaitingWebResult));
         _currentTaskStage = !running ? TaskStage.Idle
-            : explicitStage ?? (_judgeReviewing ? TaskStage.Judge
-            : _activeCoordinatorFirst && codexActive ? TaskStage.Coordinator
+            : explicitStage ?? (_activeCoordinatorFirst && codexActive ? TaskStage.Coordinator
             : webActive ? TaskStage.Coordinator
             : workerActive || codexActive ? TaskStage.Implementer
             : TaskStage.Idle);
@@ -1036,8 +1035,6 @@ public partial class MainWindow : Window
         "WORKER → GPT WEB" => (FlowNode.Worker, FlowNode.Web),
         "GPT WEB → WORKER" => (FlowNode.Web, FlowNode.Worker),
         "GPT WEB → CODEX" => (FlowNode.Web, FlowNode.Codex),
-        "WORKER → JUDGE" => (FlowNode.Worker, FlowNode.Judge),
-        "JUDGE → CODEX" => (FlowNode.Judge, FlowNode.Codex),
         _ => (FlowNode.Codex, FlowNode.Worker)
     };
 
@@ -1046,7 +1043,6 @@ public partial class MainWindow : Window
         FlowNode.Codex => codexActive,
         FlowNode.Worker => workerActive,
         FlowNode.Web => webActive,
-        FlowNode.Judge => _judgeReviewing,
         _ => false
     };
 
@@ -1059,32 +1055,26 @@ public partial class MainWindow : Window
         var workerColor = isLeft ? LeftWorkerColorIcon : RightWorkerColorIcon;
         var webGray = isLeft ? LeftWebGrayIcon : RightWebGrayIcon;
         var webColor = isLeft ? LeftWebColorIcon : RightWebColorIcon;
-        var judgeGray = isLeft ? LeftJudgeGrayIcon : RightJudgeGrayIcon;
-        var judgeColor = isLeft ? LeftJudgeColorIcon : RightJudgeColorIcon;
         var label = isLeft ? FlowLeftLabel : FlowRightLabel;
         var stage = isLeft ? FlowLeftStage : FlowRightStage;
         SetNodeIcon(codexGray, codexColor, node == FlowNode.Codex, isActive);
         SetNodeIcon(workerGray, workerColor, node == FlowNode.Worker, isActive);
         SetNodeIcon(webGray, webColor, node == FlowNode.Web, isActive);
-        judgeGray.Visibility = node == FlowNode.Judge && !isActive ? Visibility.Visible : Visibility.Collapsed;
-        judgeColor.Visibility = node == FlowNode.Judge && isActive ? Visibility.Visible : Visibility.Collapsed;
         var (defaultName, brush) = node switch
         {
             FlowNode.Codex => ("CODEX", System.Windows.Media.Brushes.MidnightBlue),
             FlowNode.Worker => ("WORKER", System.Windows.Media.Brushes.SeaGreen),
             FlowNode.Web => ("GPT WEB", System.Windows.Media.Brushes.RoyalBlue),
-            _ => ("JUDGE", System.Windows.Media.Brushes.DarkViolet)
+            _ => ("WORKER", System.Windows.Media.Brushes.SeaGreen)
         };
         var name = _activeCoordinatorFirst && node == FlowNode.Codex ? "SOL · 관제" :
             _activeCoordinatorFirst && node == FlowNode.Worker ? "LUNA · 작업" : defaultName;
-        background.Visibility = node == FlowNode.Judge ? Visibility.Collapsed : Visibility.Visible;
+        background.Visibility = Visibility.Visible;
         background.Background = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
         label.Text = name;
         label.Foreground = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
         stage.Text = isActive ? "진행 중" : "대기 중";
         stage.Foreground = isActive ? brush : System.Windows.Media.Brushes.SlateGray;
-        judgeGray.Opacity = 0.72;
-        judgeColor.Opacity = 1;
     }
 
     private static void SetNodeIcon(System.Windows.Controls.Image gray, System.Windows.Controls.Image color, bool selected, bool active)
