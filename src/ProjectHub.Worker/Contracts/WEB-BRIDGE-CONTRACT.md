@@ -1,6 +1,6 @@
 # WEB Bridge 전송 계약
 
-갱신일: 2026-09-30 (KST)
+갱신일: 2026-10-01 (KST)
 
 상위 공통 정책은 `Master-Polish.md`, Worker 책임은 `Worker-Polish.md`, 관리형 Web 확장 책임은 `Web-Polish.md`를 따른다.
 이 문서는 ProjectHub Worker와 관리형 HQ/RESOURCE Web 확장 사이의 loopback HTTP wire만 정의한다.
@@ -53,13 +53,16 @@
 ⑤ 완료 또는 실패한 task의 결과를 새 task로 해석하지 않는다.
 ⑥ 동일 conversation에서 서로 충돌하는 활성 task는 동시에 claim하지 않는다.
 
-제6조 (HQ correlation KEY)
+제6조 (HQ correlation KEY와 완료 표식)
 
 ① HQ task에 correlation KEY가 발급된 경우 확장은 result 제출 시 동일한 KEY를 함께 반환한다.
 ② Worker는 제출된 correlation KEY와 task의 KEY가 일치하지 않으면 결과를 수락하지 않는다.
-③ 성공 응답 본문에서 현재 KEY를 찾을 수 없으면 결과를 수락하지 않는다.
-④ KEY의 생성 길이와 응답 범위 절단 규칙은 현재 `WebCorrelationContract` 구현과 테스트를 따른다.
-⑤ KEY 감시 진행 이벤트는 기계 관측으로만 사용하며, 최종 성공은 현재 task의 KEY가 포함된 result가 제2항과 제3항 검증을 통과한 경우에만 확정한다.
+③ 성공 HQ 응답은 현재 KEY 뒤에서 별도 줄의 `[RESPONSE=OK]`가 확인되어야 하며, 확장과 Worker는 그 줄까지를 현재 응답 범위로 취급한다.
+④ Worker는 `[RESPONSE=OK]` 줄 이전의 의미 본문만 역할 결과로 전달하고, 완료 줄 뒤의 페이지 UI나 다른 텍스트는 현재 응답 결과에 포함하지 않는다.
+⑤ KEY가 있어도 완료 줄이 아직 보이지 않으면 성공 결과로 제출하지 않는다.
+⑥ HQ 응답 timeout 시 확장은 직전 답변 완료 여부를 한 번만 다시 요청할 수 있으며, 두 번째 timeout은 transport 오류로 종료한다.
+⑦ KEY 생성 길이와 응답 범위 절단 규칙은 현재 `WebCorrelationContract` 구현과 테스트를 따른다.
+⑧ KEY/완료 표식 감시 진행 이벤트는 기계 관측으로만 사용하며 응답 의미를 판단하지 않는다.
 
 제7조 (첨부와 결과 파일)
 
