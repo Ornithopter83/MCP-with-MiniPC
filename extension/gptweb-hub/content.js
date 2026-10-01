@@ -274,18 +274,15 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     if(!activeTaskId||!activeCorrelationKey)return false;
     const watchedPhases=['WAIT_SEND_READY','SEND_BUTTON_FIND','SEND_CONFIRM','WAIT_RESPONSE'];
     if(!watchedPhases.includes(phase))return false;
-    const occurrences=correlationKeyOccurrenceCount();
-    const root=correlationResponseRoot();
     const correlatedText=currentCorrelatedResponseText();
     const completed=responseThroughCompletionMarker(correlatedText);
-    const watchState=[phase,occurrences,root?'1':'0',completed?'1':'0'].join('|');
+    const watchState=[phase,correlatedText?'1':'0',completed?'1':'0'].join('|');
     if(watchState!==lastCorrelationWatchState){
       lastCorrelationWatchState=watchState;
       reportProgress(
         'HQ_KEY_WATCH',
         'phase='+phase+
-        ' · keyOccurrences='+occurrences+
-        ' · responseRoot='+(root?'found':'missing')+
+        ' · key='+(correlatedText?'found':'missing')+
         ' · responseOk='+(completed?'found':'missing'));
     }
     if(['WAIT_SEND_READY','SEND_BUTTON_FIND','SEND_CONFIRM'].includes(phase)){
@@ -683,7 +680,7 @@ async function requestResponseCompletionOnce(){
     await submitResult(completed);
     return;
   }
-  const prompt=activeKeyMarker()+'\n직전 답변이 완료되었는지 확인하세요.\n완료되지 않았다면 직전 요청에 대한 완성된 응답 전체를 다시 출력하세요.\n응답을 모두 작성한 뒤 별도 줄에 '+RESPONSE_OK_MARKER+'를 출력하세요.';
+  const prompt=activeKeyMarker()+'\n직전 답변이 완료되었는지 확인하세요.\n완료 여부와 관계없이 직전 요청에 대한 완성된 응답 전체를 다시 출력하세요.\n응답을 모두 작성한 뒤 별도 줄에 '+RESPONSE_OK_MARKER+'를 출력하세요.';
   const input=await waitFor(composer,COMPOSER_TIMEOUT);
   if(!input)throw new Error('WEB_RESPONSE_COMPLETION_CHECK_COMPOSER_NOT_FOUND');
   input.focus({preventScroll:true});
