@@ -39,8 +39,9 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 ③ DONE 또는 DONE_WITH_ERROR 뒤의 `작업 추가`는 이전 WorkGraph continuation이 아니라 현재 작업 폴더를 기준으로 한 새 Job이다.
 ④ 프로그램 시작 시 과거 `session-state`, HQ/WORK 세션, WorkGraph, event log를 자동 복구해 새 작업의 의미 문맥으로 사용하지 않는다.
 ⑤ 사용자가 `새 작업`을 시작하면 활성 continuation을 제거하고 과거 상태와 transcript는 진단·이력으로만 남긴다.
-⑥ event log, transcript, handoff와 저장 상태는 정책 원본이 아니다.
-⑦ 정상 Worker 종료 시 target workspace의 `.projecthub`는 남기지 않는 것을 원칙으로 하며, 즉시 삭제를 막는 짧은 파일 잠금은 종료 후 기계 cleanup helper가 유한 횟수 재시도한다.
+⑥ event log, transcript와 handoff 파일은 정책 원본이 아니며, HQ 세션 교대용 handoff는 현재 WorkGraph에서 기계적으로 재생성한다.
+⑦ HQ 관제 세션은 누적 입력·출력의 기계 예산을 넘으면 새 세션으로 교대하고, 새 세션 첫 입력에는 현재 요청과 열린 WorkItem, 최근 완료 결과 및 오래된 완료 항목의 축약 상태를 전달한다.
+⑧ 정상 Worker 종료 시 target workspace의 `.projecthub`는 남기지 않는 것을 원칙으로 하며, 즉시 삭제를 막는 짧은 파일 잠금은 종료 후 기계 cleanup helper가 유한 횟수 재시도한다.
 
 제4조 (RESOURCE, JUDGE, OBSERVATION)
 
