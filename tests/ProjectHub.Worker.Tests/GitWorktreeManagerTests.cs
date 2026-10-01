@@ -720,7 +720,6 @@ public sealed class GitWorktreeManagerTests
         var branch = GitWorktreeManager.BuildBranchName("job", "I1");
         var runner = new FakeGitRunner(root);
         runner.Enqueue(0, root);
-        runner.Enqueue(0, "");
         runner.Enqueue(0, "main");
         runner.Enqueue(0, "primary999");
         runner.Enqueue(0, "Cloning");
@@ -772,6 +771,10 @@ public sealed class GitWorktreeManagerTests
                 call => call.Arguments.Count > 1 &&
                         call.Arguments[0] == "worktree" &&
                         call.Arguments[1] == "add");
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "status");
         }
         finally
         {
@@ -803,6 +806,61 @@ public sealed class GitWorktreeManagerTests
 
             Assert.False(result.Success);
             Assert.Equal("INTEGRATION_CLONE_GITDIR_NOT_LOCAL", result.ErrorCode);
+        }
+        finally
+        {
+            DeleteTempTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task IntegrationCloneImportDoesNotInspectOrMergeDirtyTargetWorkspace()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clonePath = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
+        var branch = GitWorktreeManager.BuildBranchName("job", "I1");
+        Directory.CreateDirectory(Path.Combine(clonePath, ".git"));
+        var runner = new FakeGitRunner(root);
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, clonePath);
+        runner.Enqueue(0, Path.Combine(clonePath, ".git"));
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, "integrated456");
+        runner.Enqueue(0, "Imported");
+        runner.Enqueue(0, "integrated456");
+
+        try
+        {
+            var manager = new GitWorktreeManager(runner);
+            var result = await manager.ImportIntegrationCloneAsync(
+                root,
+                clonePath,
+                branch,
+                "integrated456",
+                "job",
+                "I1");
+
+            Assert.True(result.Success);
+            Assert.Equal("integrated456", result.ImportedCommit);
+            Assert.Equal(
+                "refs/projecthub/integration-results/job/I1",
+                result.ImportedRef);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[]
+                    {
+                        "fetch",
+                        "--no-tags",
+                        "--no-write-fetch-head",
+                        clonePath,
+                        "+refs/heads/" + branch + ":refs/projecthub/integration-results/job/I1"
+                    }));
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        (call.Arguments[0] == "status" ||
+                         call.Arguments[0] == "merge"));
         }
         finally
         {
