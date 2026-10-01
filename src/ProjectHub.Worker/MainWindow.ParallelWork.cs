@@ -113,7 +113,6 @@ public partial class MainWindow
 
         ParallelWorkSupervisor? supervisor = null;
         ParallelResourceWorkItemRouter? resourceRouter = null;
-        ParallelJudgeWorkItemRouter? judgeRouter = null;
         CodexWorkItemExecutor? executor = null;
         WorkGraph? graph = null;
         var compactRuntimeOnPause = false;
@@ -187,7 +186,7 @@ public partial class MainWindow
                 workingDirectory,
                 implementer,
                 runner,
-                judgeAvailable: _targetSettings.EffectiveJudge.Enabled,
+                judgeAvailable: false,
                 observationGate: observationGate,
                 expectedPrimaryBranch: currentGitTarget.Branch,
                 userAttachments: attachments);
@@ -409,17 +408,6 @@ public partial class MainWindow
                 resourceQueue,
                 cts.Token);
 
-            if (_targetSettings.EffectiveJudge.Enabled)
-            {
-                judgeRouter = new ParallelJudgeWorkItemRouter(
-                    supervisor,
-                    new JevParallelJudgeTransport(
-                        _jevJudgeRunner,
-                        _targetSettings.EffectiveJudge),
-                    jobId,
-                    cts.Token);
-            }
-
             executor.CallCompleted += call =>
             {
                 var usage = call.Result.Usage;
@@ -605,33 +593,6 @@ public partial class MainWindow
                     status: routing.ErrorCode ?? routing.Stage,
                     includeHistory: false);
             });
-
-            if (judgeRouter is not null)
-            {
-                judgeRouter.RoutingEvent += routing => RunOnUi(() =>
-                {
-                    _lastActivityAt = DateTimeOffset.UtcNow;
-                    if (routing.Telemetry is not null)
-                        RecordJevTransportTelemetry(jobId, routing.Telemetry, "JUDGE_PARALLEL");
-
-                    AddTaskMessage(
-                        "JUDGE",
-                        $"workItemId={routing.WorkItemId} · stage={routing.Stage}" +
-                        Environment.NewLine +
-                        routing.Message,
-                        status: routing.ErrorCode ?? routing.Stage,
-                        includeHistory: false);
-
-                    if (string.Equals(routing.Stage, "SENDING", StringComparison.Ordinal))
-                    {
-                        SetFlowState(
-                            codexActive: false,
-                            workerActive: true,
-                            webActive: false,
-                            explicitStage: TaskStage.Judge);
-                    }
-                });
-            }
 
             var inboundType = continuing ? "USER_FOLLOWUP" : "USER_REQUEST";
             var inboundBody = continuing
@@ -863,12 +824,6 @@ public partial class MainWindow
         }
         finally
         {
-            if (judgeRouter is not null)
-            {
-                try { await judgeRouter.DisposeAsync(); }
-                catch (OperationCanceledException) { }
-            }
-
             if (resourceRouter is not null)
             {
                 try { await resourceRouter.DisposeAsync(); }
