@@ -61,6 +61,89 @@ public sealed class CodexWorkItemExecutorTests
         }
     }
 
+    [Theory]
+    [InlineData("8", "MATERIALIZE / COPY")]
+    [InlineData("9", "BUILD / PUBLISH")]
+    public async Task FixedRootSlotsReceiveTargetWorkspaceWriteAccess(
+        string workItemId,
+        string missionLabel)
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            고정 임무 완료
+            """,
+            workItemId: workItemId,
+            createdOrder: 4);
+
+        try
+        {
+            await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            var root = Path.Combine(fixture.Parent, "repo");
+            var executionKey = FixedWorkItemSlots.BuildExecutionKey(
+                workItemId,
+                fixture.Request.Item.CreatedOrder);
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
+            var workTemp = WorkerPaths.BuildWorkTempPath(
+                runtime,
+                "job",
+                executionKey);
+
+            Assert.Contains(
+                Path.GetFullPath(root),
+                fixture.Runner.LastRequest!.AdditionalWritableDirectories!);
+            Assert.Contains("고정 임무: #" + workItemId + " " + missionLabel, fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("대상 프로젝트 루트: " + Path.GetFullPath(root), fixture.Runner.LastRequest.Prompt);
+            Assert.Equal(
+                workTemp,
+                fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_WORK_TEMP"]);
+            Assert.Contains(
+                fixture.Git.Calls,
+                call => call.Any(argument =>
+                    argument.Contains(executionKey, StringComparison.Ordinal)));
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
+    public void MaterializePromptCarriesDependencyManifestAndPreservesPathMission()
+    {
+        var prompt = RoleContractLoader.BuildWorkPrompt(
+            "WORK_ITEM",
+            "반영하세요.",
+            new WorkItemPromptContext(
+                "8",
+                WorkItemKind.Normal,
+                "완료 결과 반영",
+                new[] { "12" },
+                "base",
+                "branch",
+                "worktree",
+                DependencyResults: new[]
+                {
+                    new WorkItemDependencyPromptContext(
+                        "12",
+                        "ref-12",
+                        "완료",
+                        WorkItemResultType.CodeChange,
+                        "C:/repo/.projecthub/commit-manifests/job/12.json")
+                }),
+            includeContract: false,
+            workTempRoot: "C:/repo/.projecthub/runtime/temp/job/8",
+            targetWorkspace: "C:/repo");
+
+        Assert.Contains("manifest=C:/repo/.projecthub/commit-manifests/job/12.json", prompt);
+        Assert.Contains("같은 상대경로를 그대로 유지해 복사", prompt);
+        Assert.Contains("대상 프로젝트 루트: C:/repo", prompt);
+    }
+
     [Fact]
     public async Task DuplicateWorkItemStatusIsCorrectedInSameSession()
     {
@@ -416,7 +499,7 @@ public sealed class CodexWorkItemExecutorTests
             new[] { "W0" },
             WorkItemKind.Normal,
             WorkItemState.Running,
-            0,
+            createdOrder,
             "main",
             branch,
             worktree,
@@ -822,18 +905,22 @@ public sealed class CodexWorkItemExecutorTests
     private static Fixture CreateFixture(
         string finalMessage,
         IReadOnlyList<WorkItemDependencyResult>? dependencies = null,
-        WorkItemKind kind = WorkItemKind.Normal)
+        WorkItemKind kind = WorkItemKind.Normal,
+        string workItemId = "W1",
+        long createdOrder = 0)
     {
         var parent = Path.Combine(Path.GetTempPath(), "projecthub-codex-workitem-" + Guid.NewGuid().ToString("N"));
         var root = Path.Combine(parent, "repo");
         Directory.CreateDirectory(root);
 
         const string jobId = "job";
-        const string workItemId = "W1";
-        var branch = GitWorktreeManager.BuildBranchName(jobId, workItemId);
+        var executionWorkItemId = FixedWorkItemSlots.BuildExecutionKey(
+            workItemId,
+            createdOrder);
+        var branch = GitWorktreeManager.BuildBranchName(jobId, executionWorkItemId);
         var worktree = kind == WorkItemKind.Integration
             ? GitWorktreeManager.BuildIntegrationClonePath(root, jobId, workItemId)
-            : GitWorktreeManager.BuildWorktreePath(root, jobId, workItemId);
+            : GitWorktreeManager.BuildWorktreePath(root, jobId, executionWorkItemId);
         Directory.CreateDirectory(worktree);
         if (kind == WorkItemKind.Integration)
             Directory.CreateDirectory(Path.Combine(worktree, ".git"));
