@@ -235,11 +235,11 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task JudgeRequestBlocksForHqWhenJudgeIsDisabled()
+    public async Task JudgeRouteIsRejectedByWorkProtocol()
     {
         var fixture = CreateFixture("""
             [GOTO : JUDGE]
-            NOUL | QID:q1 판단이 필요한가?
+            legacy judge request
             """);
 
         try
@@ -248,9 +248,8 @@ public sealed class CodexWorkItemExecutorTests
                 fixture.Request,
                 CancellationToken.None);
 
-            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("JUDGE_UNAVAILABLE", result.BlockCode);
-            Assert.Contains("QID:q1", result.ResultSummary ?? string.Empty);
+            Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
+            Assert.Equal("WORK_ROUTE_GOTO_NOT_ALLOWED", result.FailureCode);
         }
         finally
         {
