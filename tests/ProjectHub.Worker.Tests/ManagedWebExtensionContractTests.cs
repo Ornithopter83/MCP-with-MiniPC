@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.4.3", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.4.4", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -301,6 +301,20 @@ public sealed class ManagedWebExtensionContractTests
         var stableBranch = source.IndexOf("scheduleStableCheck(snapshot,5000", StringComparison.Ordinal);
         Assert.True(hqBranch >= 0);
         Assert.True(stableBranch > hqBranch);
+    }
+
+    [Fact]
+    public void EmbeddedContent_RollsHqTaskIntoFreshConversationWhenRequested()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.True(source.Contains("claimed.startNewConversation&&managedRole==='HQ'", StringComparison.Ordinal));
+        Assert.True(source.Contains("gptweb-hub-hq-rollover-task", StringComparison.Ordinal));
+        Assert.True(source.Contains("location.replace('https://chatgpt.com/?'", StringComparison.Ordinal));
+        Assert.True(source.Contains("resumePendingRolloverTask", StringComparison.Ordinal));
+        Assert.True(source.Contains("activeTaskConversationId", StringComparison.Ordinal));
+        Assert.True(source.Contains("ensureRolloverBinding", StringComparison.Ordinal));
+        Assert.True(source.Contains("conversationId:bridgeConversationId()", StringComparison.Ordinal));
     }
 
     [Fact]
