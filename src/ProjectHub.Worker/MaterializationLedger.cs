@@ -293,6 +293,9 @@ public sealed class TargetWorkspaceMaterializationLedger
 
         if (codeDependencies.Length == 0)
         {
+            if (changedPaths.Count == 0)
+                errors.Add("대상 프로젝트 루트에서 실제 파일 변경을 확인할 수 없습니다.");
+
             foreach (var path in changedPaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
                 cancellationToken.ThrowIfCancellationRequested();
