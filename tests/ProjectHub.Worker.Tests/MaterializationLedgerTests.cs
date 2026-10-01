@@ -1,0 +1,257 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using ProjectHub.Worker;
+
+namespace ProjectHub.Worker.Tests;
+
+public sealed class MaterializationLedgerTests
+{
+    [Fact]
+    public async Task ManifestBackedMaterializationVerifiesTargetAndPersistsLedger()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var target = Path.Combine(root, "src", "sample.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            await File.WriteAllTextAsync(target, "old");
+
+            var ledger = new TargetWorkspaceMaterializationLedger(root, "job");
+            var before = ledger.CaptureSnapshot();
+            Assert.True(before.Success);
+            Assert.NotNull(before.Snapshot);
+
+            var expectedBytes = Encoding.UTF8.GetBytes("new");
+            var expectedSha = Convert.ToHexString(SHA256.HashData(expectedBytes)).ToLowerInvariant();
+            var manifestPath = await WriteManifestAsync(
+                root,
+                "job",
+                new CommitManifest(
+                    "10",
+                    "result-10",
+                    "base",
+                    "tree",
+                    new[]
+                    {
+                        new CommitManifestFile(
+                            "src/sample.txt",
+                            "MODIFY",
+                            null,
+                            expectedBytes.LongLength,
+                            expectedSha,
+                            true,
+                            "new")
+                    }));
+
+            await File.WriteAllBytesAsync(target, expectedBytes);
+
+            var item = CreateMaterializeItem(createdOrder: 7, dependencies: new[] { "10" });
+            var result = await ledger.VerifyAndRecordAsync(
+                item,
+                new[]
+                {
+                    new WorkItemDependencyResult(
+                        "10",
+                        "result-10",
+                        "완료",
+                        WorkItemResultType.CodeChange,
+                        manifestPath)
+                },
+                before.Snapshot!);
+
+            Assert.True(result.Success, result.Message);
+            Assert.True(File.Exists(result.LedgerPath));
+            Assert.True(ledger.IsResultVerified("result-10"));
+
+            var json = await File.ReadAllTextAsync(result.LedgerPath);
+            var entry = JsonSerializer.Deserialize<MaterializationLedgerEntry>(
+                json,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Assert.NotNull(entry);
+            Assert.True(entry!.Success);
+            var file = Assert.Single(entry.Files);
+            Assert.Equal("src/sample.txt", file.Path);
+            Assert.Equal(expectedSha, file.ExpectedSha256);
+            Assert.Equal(expectedSha, file.ActualSha256);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task HashMismatchBlocksVerificationAndIsNotAcceptedByFinalizerLookup()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var target = Path.Combine(root, "src", "sample.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            await File.WriteAllTextAsync(target, "old");
+
+            var ledger = new TargetWorkspaceMaterializationLedger(root, "job");
+            var before = ledger.CaptureSnapshot();
+            Assert.True(before.Success);
+
+            var expectedBytes = Encoding.UTF8.GetBytes("expected");
+            var expectedSha = Convert.ToHexString(SHA256.HashData(expectedBytes)).ToLowerInvariant();
+            var manifestPath = await WriteManifestAsync(
+                root,
+                "job",
+                new CommitManifest(
+                    "10",
+                    "result-10",
+                    "base",
+                    "tree",
+                    new[]
+                    {
+                        new CommitManifestFile(
+                            "src/sample.txt",
+                            "MODIFY",
+                            null,
+                            expectedBytes.LongLength,
+                            expectedSha,
+                            true,
+                            "expected")
+                    }));
+
+            await File.WriteAllTextAsync(target, "wrong");
+
+            var result = await ledger.VerifyAndRecordAsync(
+                CreateMaterializeItem(8, new[] { "10" }),
+                new[]
+                {
+                    new WorkItemDependencyResult(
+                        "10",
+                        "result-10",
+                        "완료",
+                        WorkItemResultType.CodeChange,
+                        manifestPath)
+                },
+                before.Snapshot!);
+
+            Assert.False(result.Success);
+            Assert.Equal("MATERIALIZATION_VERIFICATION_FAILED", result.ErrorCode);
+            Assert.False(ledger.IsResultVerified("result-10"));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task ManifestBackedMaterializationRejectsUnexpectedTargetChanges()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var target = Path.Combine(root, "src", "sample.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            await File.WriteAllTextAsync(target, "old");
+
+            var ledger = new TargetWorkspaceMaterializationLedger(root, "job");
+            var before = ledger.CaptureSnapshot();
+            Assert.True(before.Success);
+
+            var expectedBytes = Encoding.UTF8.GetBytes("new");
+            var expectedSha = Convert.ToHexString(SHA256.HashData(expectedBytes)).ToLowerInvariant();
+            var manifestPath = await WriteManifestAsync(
+                root,
+                "job",
+                new CommitManifest(
+                    "10",
+                    "result-10",
+                    "base",
+                    "tree",
+                    new[]
+                    {
+                        new CommitManifestFile(
+                            "src/sample.txt",
+                            "MODIFY",
+                            null,
+                            expectedBytes.LongLength,
+                            expectedSha,
+                            true,
+                            "new")
+                    }));
+
+            await File.WriteAllBytesAsync(target, expectedBytes);
+            await File.WriteAllTextAsync(Path.Combine(root, "unexpected.txt"), "unexpected");
+
+            var result = await ledger.VerifyAndRecordAsync(
+                CreateMaterializeItem(9, new[] { "10" }),
+                new[]
+                {
+                    new WorkItemDependencyResult(
+                        "10",
+                        "result-10",
+                        "완료",
+                        WorkItemResultType.CodeChange,
+                        manifestPath)
+                },
+                before.Snapshot!);
+
+            Assert.False(result.Success);
+            Assert.Contains("manifest에 없는", result.Message);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    private static WorkItemSnapshot CreateMaterializeItem(
+        long createdOrder,
+        IReadOnlyList<string> dependencies)
+        => new(
+            FixedWorkItemSlots.Materialize,
+            "완료 결과를 반영한다.",
+            dependencies,
+            WorkItemKind.Normal,
+            WorkItemState.Running,
+            createdOrder,
+            "base",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null);
+
+    private static async Task<string> WriteManifestAsync(
+        string root,
+        string job,
+        CommitManifest manifest)
+    {
+        var directory = Path.Combine(root, ".projecthub", "commit-manifests", job);
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, manifest.WorkItemId + ".json");
+        await File.WriteAllTextAsync(
+            path,
+            JsonSerializer.Serialize(
+                manifest,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                {
+                    WriteIndented = true
+                }));
+        return path;
+    }
+
+    private static string CreateRoot()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-materialization-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        return root;
+    }
+}
