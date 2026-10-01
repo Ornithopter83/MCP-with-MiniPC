@@ -210,11 +210,18 @@ public partial class MainWindow
                 CancellationToken cancellationToken)
             {
                 var effectivePrompt = prompt;
+                var startNewWebConversation = false;
+                var hqSessionEstablished =
+                    IsWebTransport(coordinator.Transport)
+                        ? hqSessionTextBytes > 0
+                        : !string.IsNullOrWhiteSpace(coordinatorSession);
+
                 if (HqSessionRollover.ShouldRollover(
-                        coordinatorSession,
+                        hqSessionEstablished,
                         hqSessionTextBytes))
                 {
                     hqSessionGeneration++;
+                    startNewWebConversation = IsWebTransport(coordinator.Transport);
                     var handoff = HqSessionRollover.BuildHandoff(
                         request,
                         graph!.Snapshot(),
@@ -225,7 +232,8 @@ public partial class MainWindow
                         hqSessionGeneration,
                         handoff);
 
-                    coordinatorSession = null;
+                    if (!startNewWebConversation)
+                        coordinatorSession = null;
                     hqSessionTextBytes = 0;
 
                     effectivePrompt =
@@ -308,7 +316,8 @@ public partial class MainWindow
                                 coordinatorSession = normalized;
                         },
                         turnInputAttachments,
-                        turnWebAttachments);
+                        turnWebAttachments,
+                        startNewWebConversation);
                 }
                 else
                 {
@@ -328,7 +337,8 @@ public partial class MainWindow
                                     coordinatorSession = normalized;
                             },
                             turnInputAttachments,
-                            turnWebAttachments));
+                            turnWebAttachments,
+                            startNewWebConversation));
                     result = await (await operation.Task);
                 }
 
