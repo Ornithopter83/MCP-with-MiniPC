@@ -850,8 +850,12 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
         if (item.Dependencies.Count > 0)
             builder.Append(" dependencies=").Append(string.Join(",", item.Dependencies));
+        if (item.ResultType != WorkItemResultType.None)
+            builder.Append(" resultType=").Append(WorkItemResultTypeContract.ToToken(item.ResultType));
         if (!string.IsNullOrWhiteSpace(item.ResultRef))
             builder.Append(" resultRef=").Append(item.ResultRef);
+        if (!string.IsNullOrWhiteSpace(item.CommitManifestPath))
+            builder.Append(" commitManifest=").Append(item.CommitManifestPath);
         if (!string.IsNullOrWhiteSpace(item.FailureCode))
             builder.Append(" failureCode=").Append(item.FailureCode);
         if (!string.IsNullOrWhiteSpace(item.BlockCode))
