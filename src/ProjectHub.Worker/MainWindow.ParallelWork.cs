@@ -984,7 +984,12 @@ public partial class MainWindow
             null,
             status,
             lastHqMessage ?? string.Empty);
-        ProjectWorkspacePersistence.SaveContinuation(_continuationState);
+
+        if (TaskContinuationContract.IsResumableStatus(status))
+            ProjectWorkspacePersistence.SaveContinuation(_continuationState);
+        else
+            ProjectWorkspacePersistence.ClearContinuation(workingDirectory);
+
         SetFollowupComposerVisible(true);
     }
 
