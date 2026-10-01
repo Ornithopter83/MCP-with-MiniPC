@@ -21,7 +21,8 @@ public sealed record WorkItemPromptContext(
     string? Branch,
     string? WorktreePath,
     string? PreviousReport = null,
-    IReadOnlyList<WorkItemDependencyPromptContext>? DependencyResults = null);
+    IReadOnlyList<WorkItemDependencyPromptContext>? DependencyResults = null,
+    IReadOnlyList<string>? Checklist = null);
 
 public static class RoleContractLoader
 {
@@ -39,7 +40,8 @@ public static class RoleContractLoader
             $"역할: HQ\n입력 유형: {inboundType}\n" +
             $"WorkGraph revision: {workGraph.Revision}\n" +
             $"최대 동시 WORK: {workGraph.MaxConcurrentWork}\n" +
-            $"기준 ref: {workGraph.BaseRef}\n입력 본문:\n";
+            $"기준 ref: {workGraph.BaseRef}\n" +
+            "computerUse: disabled\n입력 본문:\n";
         var prompt = header + body;
         return includeContract
             ? prompt + "\n\n" + LoadHqFooter()
@@ -83,6 +85,9 @@ public static class RoleContractLoader
     {
         var dependencies = workItem.Dependencies.Count == 0 ? "없음" : string.Join(", ", workItem.Dependencies);
         var previous = string.IsNullOrWhiteSpace(workItem.PreviousReport) ? string.Empty : $"이전 WorkItem 보고:\n{workItem.PreviousReport}\n";
+        var checklist = workItem.Checklist is null || workItem.Checklist.Count == 0
+            ? $"[1] {workItem.Goal}\n"
+            : string.Join("\n", workItem.Checklist.Select((item, index) => $"[{index + 1}] {item}")) + "\n";
         var dependencyResults = workItem.DependencyResults is null || workItem.DependencyResults.Count == 0
             ? string.Empty
             : "선행 WorkItem 결과:\n" + string.Join("\n", workItem.DependencyResults.Select(FormatDependencyResult)) + "\n";
@@ -90,6 +95,8 @@ public static class RoleContractLoader
             $"workItemId: {workItem.WorkItemId}\n" +
             $"workItemKind: {workItem.Kind.ToString().ToUpperInvariant()}\n" +
             $"WorkItem 목표: {workItem.Goal}\n" +
+            "WorkItem 작업 목록:\n" + checklist +
+            "computerUse: disabled\n" +
             $"선행 WorkItem: {dependencies}\n" +
             $"기준 ref: {workItem.BaseRef ?? "없음"}\n" +
             $"branch: {workItem.Branch ?? "미배정"}\n" +
