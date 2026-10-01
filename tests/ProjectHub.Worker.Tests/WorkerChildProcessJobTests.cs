@@ -47,6 +47,21 @@ public sealed class WorkerChildProcessJobTests
     }
 
     [Fact]
+    public void ChildProcessStartAcceptsCancellationToken()
+    {
+        var method = typeof(WorkerChildProcessJob).GetMethod(
+            "Start",
+            BindingFlags.Instance | BindingFlags.Public);
+
+        Assert.NotNull(method);
+        var parameters = method!.GetParameters();
+        Assert.Equal(2, parameters.Length);
+        Assert.Equal(typeof(ProcessStartInfo), parameters[0].ParameterType);
+        Assert.Equal(typeof(CancellationToken), parameters[1].ParameterType);
+        Assert.True(parameters[1].HasDefaultValue);
+    }
+
+    [Fact]
     public void DisposingJobTerminatesStartedProcess()
     {
         if (!OperatingSystem.IsWindows())
