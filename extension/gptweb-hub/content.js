@@ -935,7 +935,29 @@ function observeResponse(){
     try{return await refreshNow(autoBind);}
     finally{refreshInFlight=false;if(refreshQueued){const queued=refreshQueued;refreshQueued=false;void refresh(queued);}}
   }
-  async function loadSettings(){let saved=Object.assign({},DEFAULT,{managedRole:preflightManagedRole,managedRuntimeToken:preflightRuntimeToken});if(globalThis.chrome?.storage?.local)saved=await chrome.storage.local.get(Object.assign({},DEFAULT,{managedRole:preflightManagedRole,managedRuntimeToken:preflightRuntimeToken}));settings=validate(Object.assign({},DEFAULT,saved));const launchRole=managedRoleFromUrl();const launchToken=managedRuntimeTokenFromUrl();managedRole=launchRole||normalizeManagedRole(saved.managedRole)||preflightManagedRole;managedRuntimeToken=launchToken||String(saved.managedRuntimeToken||'').trim()||preflightRuntimeToken;if(!managedRole||!managedRuntimeToken)return;if(globalThis.chrome?.storage?.local&&(launchRole||launchToken))await chrome.storage.local.set({managedRole,managedRuntimeToken});host.style.display='none';stripManagedLaunchMarker();refresh();}
+  async function resumePendingRolloverTask(){
+    const pending=readPendingRollover(),task=pending?.task;
+    if(!task||managedRole!=='HQ')return false;
+    activeTaskConversationId=task.conversationId||activeTaskConversationId||null;
+    activeTaskId=task.id;
+    activeLeaseId=task.leaseId||activeLeaseId||null;
+    activeCorrelationKey=task.correlationKey||activeCorrelationKey||null;
+    activeTaskOwner=task.owner||'HQ';
+    currentConversationId=conversation();
+    workerMessage.textContent=task.prompt;
+    setTask('PENDING',task);
+    if(currentConversationId&&pending.sent){
+      resumeClaimedResponse(task);
+      void refresh(true);
+      return true;
+    }
+    captureAssistantBaseline();
+    baselineUserMessages=userMessages();
+    writePendingRollover({task,sent:true});
+    await deliverClaimedTask(task,false);
+    return true;
+  }
+  async function loadSettings(){let saved=Object.assign({},DEFAULT,{managedRole:preflightManagedRole,managedRuntimeToken:preflightRuntimeToken});if(globalThis.chrome?.storage?.local)saved=await chrome.storage.local.get(Object.assign({},DEFAULT,{managedRole:preflightManagedRole,managedRuntimeToken:preflightRuntimeToken}));settings=validate(Object.assign({},DEFAULT,saved));const launchRole=managedRoleFromUrl();const launchToken=managedRuntimeTokenFromUrl();managedRole=launchRole||normalizeManagedRole(saved.managedRole)||preflightManagedRole;managedRuntimeToken=launchToken||String(saved.managedRuntimeToken||'').trim()||preflightRuntimeToken;if(!managedRole||!managedRuntimeToken)return;if(globalThis.chrome?.storage?.local&&(launchRole||launchToken))await chrome.storage.local.set({managedRole,managedRuntimeToken});host.style.display='none';stripManagedLaunchMarker();if(await resumePendingRolloverTask())return;refresh();}
   function openSettings(){settingsForm.elements.bridgeHost.value=settings.bridgeHost;settingsForm.elements.bridgePort.value=settings.bridgePort;settingsForm.elements.bridgeBasePath.value=settings.bridgeBasePath;settingsModal.classList.remove('hidden');}
   root.querySelector('.settings').onclick=openSettings;root.querySelector('.settings-close').onclick=()=>settingsModal.classList.add('hidden');root.querySelector('.settings-cancel').onclick=()=>settingsModal.classList.add('hidden');root.querySelector('.bind-hq').onclick=()=>bind('HQ');root.querySelector('.bind-resource').onclick=()=>bind('RESOURCE');root.querySelector('.close').onclick=()=>{panel.classList.add('hidden');root.querySelector('.reopen').classList.add('visible')};root.querySelector('.reopen').onclick=()=>{panel.classList.remove('hidden');root.querySelector('.reopen').classList.remove('visible')};
   resourceRescan.onclick=()=>{if(!activeTaskId||!activeResource||phase==='RESULT_POST')return;reportProgress('RESOURCE_RESCAN','사용자가 현재 생성 결과 다시 수집을 요청했습니다.');enterWaitResponse('현재 RESOURCE 결과를 다시 수집합니다.');systemText.textContent='현재 생성 결과를 다시 확인하고 다운로드를 시도합니다.';};
@@ -973,6 +995,7 @@ function observeResponse(){
     activeTaskOwner=null;
     currentProjectId='';
     activeTaskId=null;
+    activeTaskConversationId=null;
     sentTaskId=null;
     activeLeaseId=null;
     activeCorrelationKey=null;
@@ -993,6 +1016,7 @@ function observeResponse(){
     baselineImageSources=new Set();
     baselineFileUrls=new Set();
     pendingResult=null;
+    clearPendingRollover();
     lastProgressKey='';
     progressQueue=Promise.resolve();
     responseBlock.classList.add('hidden');
