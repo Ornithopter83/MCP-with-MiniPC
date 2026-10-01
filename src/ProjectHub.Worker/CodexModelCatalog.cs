@@ -164,10 +164,11 @@ public static class CodexModelCatalog
         startInfo.ArgumentList.Add("debug");
         startInfo.ArgumentList.Add("models");
 
+        Process? process = null;
         try
         {
             using var launched = processJob.Start(startInfo);
-            var process = launched.Process;
+            process = launched.Process;
             var stdoutTask = launched.StandardOutput!.ReadToEndAsync(timeout.Token);
             var stderrTask = launched.StandardError!.ReadToEndAsync(timeout.Token);
             await process.WaitForExitAsync(timeout.Token);
@@ -180,7 +181,13 @@ public static class CodexModelCatalog
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            processJob.Dispose();
+            try
+            {
+                if (process is not null && !process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException) { }
             return new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_TIMEOUT");
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -191,7 +198,8 @@ public static class CodexModelCatalog
         {
             try
             {
-                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                if (process is not null && !process.HasExited)
+                    process.Kill(entireProcessTree: true);
             }
             catch (InvalidOperationException) { }
         }
