@@ -168,9 +168,10 @@ public sealed class GitIsolationAndManifestTests
                 previous,
                 snapshot);
 
+            Assert.Contains("resultType=CODE_CHANGE", body);
             Assert.Contains("commitManifest=" + manifestPath, body);
-            Assert.Contains("commitManifests:", body);
-            Assert.Contains("\"commit\":\"abc123\"", body);
+            Assert.DoesNotContain("commitManifests:", body);
+            Assert.DoesNotContain("\"commit\":\"abc123\"", body);
         }
         finally
         {
