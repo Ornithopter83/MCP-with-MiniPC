@@ -39,30 +39,25 @@ public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
         try
         {
             using var processJob = new WorkerChildProcessJob("Git worktree");
-            using var process = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    WorkingDirectory = workingDirectory,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                }
+                FileName = "git",
+                WorkingDirectory = workingDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             };
 
-            process.StartInfo.ArgumentList.Add("-c");
-            process.StartInfo.ArgumentList.Add("safe.directory=" + workingDirectory);
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("safe.directory=" + workingDirectory);
             foreach (var argument in arguments)
-                process.StartInfo.ArgumentList.Add(argument);
+                startInfo.ArgumentList.Add(argument);
 
-            if (!process.Start())
-                return new GitCommandResult(-1, string.Empty, "GIT_PROCESS_START_FAILED");
-
-            processJob.Assign(process);
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
+            using var launched = processJob.Start(startInfo);
+            var process = launched.Process;
+            var stdoutTask = launched.StandardOutput!.ReadToEndAsync();
+            var stderrTask = launched.StandardError!.ReadToEndAsync();
 
             using var timeoutCts = new CancellationTokenSource(timeout);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(
