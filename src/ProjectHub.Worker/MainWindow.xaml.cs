@@ -335,8 +335,8 @@ public partial class MainWindow : Window
             // X 버튼은 종료 명령이 아니다. 실행 상태를 유지한 채 트레이로 숨긴다.
             e.Cancel = true;
             SaveWindowPosition();
-            SetSettingsPopupOpen(false);
             Hide();
+            SetSettingsPopupOpen(false);
             return;
         }
 
