@@ -135,13 +135,24 @@ public sealed class BridgeServer : IDisposable
         }
     }
 
-    public BridgeTask? CreateTaskForRole(string role, string prompt, List<BridgeAttachment>? attachments = null, ResourceRequest? resource = null)
+    public BridgeTask? CreateTaskForRole(
+        string role,
+        string prompt,
+        List<BridgeAttachment>? attachments = null,
+        ResourceRequest? resource = null,
+        bool startNewConversation = false)
     {
         lock (_gate)
         {
             var normalizedRole = NormalizeRole(role);
             if (!_state.RoleBindings.TryGetValue(normalizedRole, out var conversationId)) return null;
-            return CreateTaskLocked(conversationId, prompt, attachments, normalizedRole, resource);
+            return CreateTaskLocked(
+                conversationId,
+                prompt,
+                attachments,
+                normalizedRole,
+                resource,
+                startNewConversation);
         }
     }
 
@@ -448,14 +459,26 @@ public sealed class BridgeServer : IDisposable
             return new(false, new { error = "conversation_id_and_prompt_required" });
         lock (_gate)
         {
-            var task = CreateTaskLocked(request.ConversationId, request.Prompt, request.Attachments, request.Role ?? "WEB", request.Resource);
+            var task = CreateTaskLocked(
+                request.ConversationId,
+                request.Prompt,
+                request.Attachments,
+                request.Role ?? "WEB",
+                request.Resource,
+                request.StartNewConversation);
             return task is null
                 ? new(false, new { error = "conversation_not_bound_or_task_conflict" })
                 : new(true, task);
         }
     }
 
-    private BridgeTask? CreateTaskLocked(string conversationId, string prompt, List<BridgeAttachment>? attachments, string role, ResourceRequest? resource)
+    private BridgeTask? CreateTaskLocked(
+        string conversationId,
+        string prompt,
+        List<BridgeAttachment>? attachments,
+        string role,
+        ResourceRequest? resource,
+        bool startNewConversation = false)
     {
         if (!_state.Bindings.TryGetValue(conversationId, out var binding)) return null;
         var active = _state.Tasks.FirstOrDefault(item => item.ConversationId.Equals(conversationId, StringComparison.OrdinalIgnoreCase) && (item.Status is "PENDING" or "CLAIMED"));
@@ -482,7 +505,8 @@ public sealed class BridgeServer : IDisposable
             null,
             attachments ?? new(),
             resource,
-            CorrelationKey: correlationKey);
+            CorrelationKey: correlationKey,
+            StartNewConversation: startNewConversation);
         _state.Tasks.Add(task);
         SaveState();
         TaskChanged?.Invoke(task);
@@ -1047,14 +1071,14 @@ public sealed record WebRoleBindingStatus(
     string? ExpectedExtensionVersion = null,
     string? ExpectedExtensionBuild = null);
 public sealed record ResourceRequest(string Id, string Type, string Prompt, string TargetDirectory, string TargetFileName, string RequestedBy, string Status, string? SavedPath, string WorkspaceRoot);
-public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null, List<string>? SavedPaths = null, List<BridgeFileReceipt>? SavedFileReceipts = null, string? LastStage = null, string? LastStageDetail = null, int LastAttempt = 0, DateTimeOffset? LastProgressAt = null, string? CorrelationKey = null);
+public sealed record BridgeTask(string Id, string ConversationId, string ProjectId, string Prompt, string Status, string? Result, DateTimeOffset? ClaimedAt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string Owner = "WEB", string? LeaseId = null, DateTimeOffset? StartedAt = null, string? FinishReason = null, List<BridgeAttachment>? Attachments = null, ResourceRequest? Resource = null, string? SavedPath = null, string? ClaimedBy = null, List<string>? SavedPaths = null, List<BridgeFileReceipt>? SavedFileReceipts = null, string? LastStage = null, string? LastStageDetail = null, int LastAttempt = 0, DateTimeOffset? LastProgressAt = null, string? CorrelationKey = null, bool StartNewConversation = false);
 public sealed record BridgeAttachment(string Id, string FileName, string MimeType, long Size, string? DownloadUrl = null, string? Sha256 = null);
 public sealed record BridgeFileReceipt(string Path, long Size, string Sha256);
 public sealed record BridgeResponse(bool Ok, object Data);
 public sealed record BindRequest(string ConversationId, string? ProjectId, string? Role = null);
 public sealed record ClaimRequest(string ConversationId);
 public sealed record ResetRequest(string? ConversationId = null, string? TaskId = null);
-public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null, string? Role = null, ResourceRequest? Resource = null);
+public sealed record CreateTaskRequest(string ConversationId, string Prompt, string? ProjectId, List<BridgeAttachment>? Attachments = null, string? Role = null, ResourceRequest? Resource = null, bool StartNewConversation = false);
 public sealed record ResourceResultFile(string Base64, string MimeType, string? FileName = null, string? Sha256 = null);
 public sealed record ResultRequest(bool Success = true, string? Result = null, string? TaskId = null, string? ConversationId = null, string? ResponseText = null, string? ResultType = "TEXT_RESULT", DateTimeOffset? CompletedAt = null, string? LeaseId = null, string? FinishReason = null, string? ResultFileBase64 = null, string? ResultFileMimeType = null, string? ResultFileName = null, List<ResourceResultFile>? ResultFiles = null, string? CorrelationKey = null);
 public sealed record HeartbeatRequest(string? Client, string? ConversationId = null, string? ProjectId = null, string? ConversationTitle = null, string? ExtensionVersion = null, string? ExtensionBuild = null);
