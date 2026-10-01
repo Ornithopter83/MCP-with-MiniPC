@@ -7,9 +7,9 @@ public sealed class HqSessionRolloverTests
     [Fact]
     public void RolloverRequiresExistingSessionAndBudget()
     {
-        Assert.False(HqSessionRollover.ShouldRollover(null, HqSessionRollover.MaxAccumulatedTextBytes));
-        Assert.False(HqSessionRollover.ShouldRollover("session", HqSessionRollover.MaxAccumulatedTextBytes - 1));
-        Assert.True(HqSessionRollover.ShouldRollover("session", HqSessionRollover.MaxAccumulatedTextBytes));
+        Assert.False(HqSessionRollover.ShouldRollover(false, HqSessionRollover.MaxAccumulatedTextBytes));
+        Assert.False(HqSessionRollover.ShouldRollover(true, HqSessionRollover.MaxAccumulatedTextBytes - 1));
+        Assert.True(HqSessionRollover.ShouldRollover(true, HqSessionRollover.MaxAccumulatedTextBytes));
     }
 
     [Fact]
