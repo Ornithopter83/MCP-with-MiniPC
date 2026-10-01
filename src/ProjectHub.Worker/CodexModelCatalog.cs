@@ -153,26 +153,23 @@ public static class CodexModelCatalog
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
         using var processJob = new WorkerChildProcessJob("Codex model catalog");
-        using var process = new Process
+        var startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = executablePath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            }
+            FileName = executablePath,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
         };
-        process.StartInfo.ArgumentList.Add("debug");
-        process.StartInfo.ArgumentList.Add("models");
+        startInfo.ArgumentList.Add("debug");
+        startInfo.ArgumentList.Add("models");
 
         try
         {
-            if (!process.Start()) return new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_UNAVAILABLE");
-            processJob.Assign(process);
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+            using var launched = processJob.Start(startInfo);
+            var process = launched.Process;
+            var stdoutTask = launched.StandardOutput!.ReadToEndAsync(timeout.Token);
+            var stderrTask = launched.StandardError!.ReadToEndAsync(timeout.Token);
             await process.WaitForExitAsync(timeout.Token);
             var stdout = await stdoutTask;
             _ = await stderrTask;
