@@ -463,27 +463,27 @@ public sealed class WorkGraphTests
         var graph = new WorkGraph("job");
         Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
         {
-            WorkGraphPatchOperation.Add(new WorkItemSpec("A", "분할 판단이 필요한 작업"))
+            WorkGraphPatchOperation.Add(new WorkItemSpec("A", "HQ 확인이 필요한 작업"))
         })).Success);
 
         Assert.True(graph.TryMarkRunning("A", sessionId: "session-a"));
-        Assert.True(graph.TryMarkBlocked("A", "SPLIT_REQUEST", "새 독립 작업이 필요합니다."));
+        Assert.True(graph.TryMarkBlocked("A", "HQ_BLOCKED", "현재 작업의 차단 사실입니다."));
 
         var held = graph.Find("A")!;
         Assert.Equal(WorkItemState.Blocked, held.State);
-        Assert.Equal("SPLIT_REQUEST", held.BlockCode);
+        Assert.Equal("HQ_BLOCKED", held.BlockCode);
         Assert.Equal("session-a", held.SessionId);
         Assert.Empty(graph.GetReadyItems());
 
         var release = graph.ApplyPatch(new WorkGraphPatch(
             graph.Revision,
-            new[] { WorkGraphPatchOperation.Release("A", "HQ_RESUME", "분할 작업을 추가했으니 계속 진행하세요.") }));
+            new[] { WorkGraphPatchOperation.Release("A", "HQ_RESUME", "HQ 확인 후 계속 진행하세요.") }));
 
         Assert.True(release.Success);
         Assert.Equal(WorkItemState.Ready, graph.Find("A")!.State);
         Assert.Null(graph.Find("A")!.BlockCode);
         Assert.Equal("HQ_RESUME", graph.Find("A")!.ResumeInputType);
-        Assert.Equal("분할 작업을 추가했으니 계속 진행하세요.", graph.Find("A")!.ResumeBody);
+        Assert.Equal("HQ 확인 후 계속 진행하세요.", graph.Find("A")!.ResumeBody);
         Assert.Equal("session-a", graph.Find("A")!.SessionId);
     }
 
