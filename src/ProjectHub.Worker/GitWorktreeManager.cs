@@ -70,6 +70,8 @@ public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
             }
             catch (OperationCanceledException)
             {
+                // Job close is the cancellation boundary for the full Git descendant tree.
+                processJob.Dispose();
                 try
                 {
                     if (!process.HasExited)
