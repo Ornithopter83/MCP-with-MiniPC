@@ -380,6 +380,7 @@ public partial class MainWindow : Window
 
         _userCanceledTask = true;
         _activeTaskCts?.Cancel();
+        WorkerChildProcessJob.TerminateAllActiveJobs();
         _codexRunner.Dispose();
         if (_bridgeServer is not null &&
             _bridgeServer.CancelActiveTask(out var canceledTaskId) &&
