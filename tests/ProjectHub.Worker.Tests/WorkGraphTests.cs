@@ -21,6 +21,117 @@ public sealed class WorkGraphTests
         Assert.Equal(new[] { "W2", "W1", "W3" }, graph.GetReadyItems().Select(item => item.Id));
     }
 
+    [Theory]
+    [InlineData("0")]
+    [InlineData("8")]
+    [InlineData("9")]
+    public void FixedSlotsCanBeAddedAgainAfterTerminalCompletion(string id)
+    {
+        var graph = new WorkGraph("job");
+
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                id,
+                "첫 실행",
+                BaseRef: "base-a",
+                Checklist: new[] { "첫 실행 작업" }))
+        })).Success);
+
+        var first = graph.Find(id)!;
+        Assert.True(graph.TryMarkRunning(id, "branch-a", "worktree-a", "session-a"));
+        Assert.True(graph.TryMarkCompleted(
+            id,
+            "result-a",
+            "첫 실행 완료",
+            WorkItemResultType.Analysis));
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                id,
+                "두 번째 실행",
+                BaseRef: "base-b",
+                Checklist: new[] { "두 번째 실행 작업" }))
+        }));
+
+        Assert.True(result.Success);
+        var second = graph.Find(id)!;
+        Assert.Equal(WorkItemState.Ready, second.State);
+        Assert.True(second.CreatedOrder > first.CreatedOrder);
+        Assert.Equal("두 번째 실행", second.Goal);
+        Assert.Equal("base-b", second.BaseRef);
+        Assert.Null(second.Branch);
+        Assert.Null(second.WorktreePath);
+        Assert.Null(second.SessionId);
+        Assert.Null(second.ResultRef);
+        Assert.Null(second.ResultSummary);
+    }
+
+    [Fact]
+    public void ReusableFixedSlotCannotReplaceInvocationWhileActiveDependentExists()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("8", "소스 반영", BaseRef: "base")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("10", "후속 작업", new[] { "8" }, BaseRef: "base"))
+        })).Success);
+
+        Assert.True(graph.TryMarkRunning("8"));
+        Assert.True(graph.TryMarkCompleted("8", "result-8", resultType: WorkItemResultType.Analysis));
+        Assert.Equal(WorkItemState.Ready, graph.Find("10")!.State);
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("8", "다음 반영", BaseRef: "base"))
+        }));
+
+        Assert.False(result.Success);
+        Assert.Equal("WORK_GRAPH_FIXED_SLOT_DEPENDENT_ACTIVE", result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("2")]
+    [InlineData("3")]
+    [InlineData("4")]
+    [InlineData("5")]
+    [InlineData("6")]
+    [InlineData("7")]
+    public void UnassignedLowNumberSlotsAreRejected(string id)
+    {
+        var graph = new WorkGraph("job");
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(id, "예약 슬롯 오사용"))
+        }));
+
+        Assert.False(result.Success);
+        Assert.Equal("WORK_GRAPH_RESERVED_SLOT_UNASSIGNED", result.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("8")]
+    [InlineData("9")]
+    public void FixedSlotsMustUseNormalKind(string id)
+    {
+        var graph = new WorkGraph("job");
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                id,
+                "고정 슬롯",
+                Kind: WorkItemKind.Integration))
+        }));
+
+        Assert.False(result.Success);
+        Assert.Equal("WORK_GRAPH_FIXED_SLOT_KIND_INVALID", result.ErrorCode);
+    }
+
     [Fact]
     public void DependencyStaysBlockedUntilPredecessorCompletes()
     {
