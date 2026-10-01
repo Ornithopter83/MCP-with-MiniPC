@@ -35,7 +35,9 @@
 ⑤ WorkItem 격리, CODE_CHANGE provenance, END 종료 게이트와 안전한 fast-forward landing 규칙을 유지한다.
 ⑥ DONE·DONE_WITH_ERROR 뒤의 추가 작업은 이전 WorkGraph를 이어 붙이지 않고 현재 작업 폴더에서 새 Job으로 시작하며, PAUSE·CANCELED도 작업 폴더가 바뀌었으면 같은 원칙을 적용한다.
 ⑦ Git 준비 실패 시 사용자 승인으로 .git만 재초기화하고 작업 파일과 .gitignore는 보존하는 단순 복구 경로를 둔다.
-⑧ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
+⑧ HQ 상태 통지는 WorkItem checklist를 첫 보고에 포함한 뒤 같은 관제 세션의 후속 상태 변화에서는 동일 checklist 전문을 반복하지 않고 새 WORK 보고와 변경 상태를 중심으로 전달한다.
+⑨ 최종 landing 뒤 사용자 결과에 남은 runtime worktree 파일 경로는 같은 상대 경로의 파일이 사용자 작업 폴더에 실제 존재하는 경우에만 target workspace 경로로 정규화한다.
+⑩ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
 
 제6조 (WEB)
 
