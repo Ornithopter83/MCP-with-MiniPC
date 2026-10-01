@@ -35,11 +35,12 @@ public partial class MainWindow
 
                 if (!state.Success)
                 {
+                    var prepareResetHandled = false;
                     if (!gitResetAttempted &&
                         TryResetGitMetadataForRetry(
                             workingDirectory,
                             state.ErrorCode,
-                            out var prepareResetHandled))
+                            out prepareResetHandled))
                     {
                         gitResetAttempted = true;
                         continue;
@@ -97,11 +98,12 @@ public partial class MainWindow
 
                     if (!state.Success)
                     {
+                        var baselineResetHandled = false;
                         if (!gitResetAttempted &&
                             TryResetGitMetadataForRetry(
                                 workingDirectory,
                                 state.ErrorCode,
-                                out var baselineResetHandled))
+                                out baselineResetHandled))
                         {
                             gitResetAttempted = true;
                             continue;
@@ -134,11 +136,12 @@ public partial class MainWindow
                 var preflight = ParallelWorkGitPreflight.Validate(target);
                 if (!preflight.Success)
                 {
+                    var preflightResetHandled = false;
                     if (!gitResetAttempted &&
                         TryResetGitMetadataForRetry(
                             workingDirectory,
                             preflight.ErrorCode,
-                            out var preflightResetHandled))
+                            out preflightResetHandled))
                     {
                         gitResetAttempted = true;
                         continue;
