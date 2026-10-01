@@ -616,52 +616,27 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         slot.Launch = null;
         slot.ProcessJob = null;
 
-        if (process is null)
-        {
-            try { processJob?.Dispose(); }
-            catch { }
-            try { launch?.Dispose(); }
-            catch { }
-            return;
-        }
+        // 역할 종료/재시작 명령의 경계는 Job close다.
+        // 브라우저 UI의 graceful close를 기다리지 않고 renderer/helper까지 즉시 종료한다.
+        try { processJob?.Dispose(); }
+        catch { }
 
-        try
+        if (process is not null)
         {
-            if (!process.HasExited)
+            try
             {
-                try
-                {
-                    if (process.CloseMainWindow())
-                        process.WaitForExit(1500);
-                }
-                catch
-                {
-                }
+                if (!process.HasExited && !process.WaitForExit(2000))
+                    process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                try { process.Kill(entireProcessTree: true); }
+                catch { }
             }
         }
-        finally
-        {
-            // 실제 종료 기준은 role Job close다.
-            try { processJob?.Dispose(); }
-            catch { }
-        }
 
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(2000);
-            }
-        }
-        catch
-        {
-        }
-        finally
-        {
-            try { launch?.Dispose(); }
-            catch { }
-        }
+        try { launch?.Dispose(); }
+        catch { }
     }
 
     private static ManagedWebRuntimeStatus Snapshot(ManagedWebRole role, Slot slot)
