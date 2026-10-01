@@ -27,12 +27,13 @@ WORK_GRAPH_PATCH:
 ③ patch는 완전한 JSON 객체여야 한다.
 ④ operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용할 수 있다.
 ⑤ WorkItem #0은 RESOURCE, #8은 MATERIALIZE/COPY, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. #1~#7은 미배정 예약 슬롯이며 일반 WorkItem은 #10부터 사용한다.
-⑥ #0·#8·#9는 각각 한 번의 임무가 끝난 뒤 필요하면 같은 번호로 다시 ADD할 수 있는 단발 슬롯이며, 이전 AI 세션의 저장된 맥락을 전제로 하지 않는다.
-⑦ #8은 완료된 선행 WorkItem의 변경 파일이나 검증된 게시 산출물을 대상 프로젝트 루트에 상대경로와 폴더 구조를 그대로 유지해 반영하는 데만 사용한다.
-⑧ #9는 대상 프로젝트 루트에 현재 반영된 상태를 기준으로 빌드·export·publish하는 데만 사용한다.
-⑨ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
-⑩ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
-⑪ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
+⑥ #0·#8·#9도 WorkGraph operation은 ADD를 사용하며 고정 임무는 workItemId로 구분한다.
+⑦ #0·#8·#9는 각각 한 번의 임무가 끝난 뒤 필요하면 같은 번호로 다시 ADD할 수 있는 단발 슬롯이며, 이전 AI 세션의 저장된 맥락을 전제로 하지 않는다.
+⑧ #8은 완료된 선행 WorkItem의 변경 파일이나 검증된 게시 산출물을 대상 프로젝트 루트에 상대경로와 폴더 구조를 그대로 유지해 반영하는 데만 사용한다.
+⑨ #9는 대상 프로젝트 루트에 현재 반영된 상태를 기준으로 빌드·export·publish하는 데만 사용한다.
+⑩ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
+⑪ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
+⑫ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
 
 제3조 (관제)
 
