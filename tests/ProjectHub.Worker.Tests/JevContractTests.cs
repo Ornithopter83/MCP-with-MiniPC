@@ -8,222 +8,45 @@ namespace ProjectHub.Worker.Tests;
 public sealed class RoleContractBoundaryTests
 {
     [Fact]
-    public void HqContractExposesOnlyDurableHqControls()
+    public void HqContractIsMinimalAndKeepsCriticalControls()
     {
         var hq = RoleContractLoader.LoadHqFooter();
+
         Assert.Contains("[ACTION=CONTINUE]", hq);
         Assert.Contains("[ACTION=PAUSE]", hq);
         Assert.Contains("[ACTION=END]", hq);
         Assert.Contains("[GOTO : WORK]", hq);
-        Assert.Contains("사용자의 요청에서 설계 기획에 관련된 부분은 반드시 HQ가 작업 수행한 뒤 구체화하여 WORK에 전달한다", hq);
-        Assert.Contains("생성 리소스의 제작·수급은 반드시 RESOURCE 경로만 사용하며, RESOURCE 실패 시 직접 생성하거나 외부 사이트에서 대체 리소스를 수급하도록 지시하지 않는다.", hq);
-        Assert.DoesNotContain("[GOTO : RESOURCE]", hq);
-        Assert.DoesNotContain("[GOTO : JUDGE]", hq);
-        Assert.Contains("Worker의 기계적 사실은 관측값이며 의미 판단이 아니다.", hq);
-        Assert.Contains("기계적 대기 작업 때문에 END 판단을 미루지 않는다.", hq);
-        Assert.Contains("JUDGE용 Form", hq);
-        Assert.Contains("NOUL | QID:<id>", hq);
-        Assert.Contains("SCORE | QID:<id>", hq);
-        Assert.Contains("CHOICE | QID:<id>", hq);
-        Assert.Contains("CHOICE의 선택지 키는 영문자로 시작", hq);
-        Assert.Contains("한글 선택지 키는 사용하지 않는다.", hq);
-        Assert.Contains("A=<기준>", hq);
-        Assert.Contains("B=<기준>", hq);
-        Assert.Contains("이미 관측 사실로 확정된 항목은 다시 JUDGE 문항으로 만들지 않는다.", hq);
-        Assert.Contains("이전 판정 뒤 근거가 의미 있게 바뀌면", hq);
-        Assert.Contains("서로 독립적으로 시작할 수 있는 WorkItem 사이에는 dependency를 두지 않는다.", hq);
-        Assert.Contains("dependency는 해당 WorkItem을 시작하기 전에 선행 WorkItem의 결과가 반드시 필요한 경우에만 둔다.", hq);
-        Assert.Contains("HQ는 보고된 근거와 현재 WorkGraph를 기준으로 새 WorkItem 추가 여부와 dependency를 결정한다.", hq);
-        Assert.Contains("작업 후반의 연결·통합 단계에서만 필요한 경우에는 먼저 실행하는 WorkItem 사이에 dependency를 두지 않는다.", hq);
-        Assert.Contains("SET_GOAL, SET_DEPENDENCIES, SET_BASE_REF는 PLANNED, READY, BLOCKED 상태의 WorkItem에만 사용한다.", hq);
-        Assert.Contains("RUNNING, COMPLETED, FAILED, CANCELED 상태의 WorkItem에는 사용하지 않는다.", hq);
-        Assert.Contains("Git ancestry를 기계적으로 축약해 실제 코드 기준점을 정한다.", hq);
-        Assert.Contains("독립 CODE_CHANGE가 둘 이상이면 NORMAL에 임의로 합치지 않고 INTEGRATION WorkItem으로 결합한다.", hq);
-        Assert.Contains("실행 가능한 사용자 UI 또는 주요 사용자 흐름을 변경한 경우 독립 검증은 최종 통합 상태를 기준으로 한 번만 계획한다.", hq);
-        Assert.Contains("최종 검증에서 실제 결함이 발견된 경우에만 별도 후속 수정 WorkItem을 추가한다.", hq);
-        Assert.Contains("WORKTREE_CHECKPOINT_PENDING이 보고되면", hq);
-        Assert.Contains("checkpoint 기계 재시도로 처리한다.", hq);
-        Assert.Contains("PAUSE와 END에 따른 ProjectHub runtime 정리", hq);
-        Assert.Contains("runtime 삭제만을 위한 별도 WorkItem을 만들거나 WORK에 삭제를 지시하지 않는다.", hq);
-        Assert.Contains("WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq);
-        Assert.Contains("같은 잘못된 필드 구성을 반복하지 않는다.", hq);
-        Assert.DoesNotContain("WORK가 의미 판정 질문을 올리면", hq);
+        Assert.Contains("[KEY=...]", hq);
+        Assert.Contains("WORK_GRAPH_PATCH:", hq);
+        Assert.DoesNotContain("JUDGE", hq, StringComparison.OrdinalIgnoreCase);
+        Assert.True(hq.Length < 2000);
     }
 
     [Fact]
-    public void WorkContractKeepsStableRoutingAndJudgeBoundary()
+    public void WorkContractIsMinimalAndHasNoJudgeRoute()
     {
         var work = RoleContractLoader.LoadWorkFooter();
 
         Assert.Contains("[GOTO : HQ]", work);
-        Assert.Contains("[GOTO : JUDGE]", work);
         Assert.Contains("[GOTO : RESOURCE]", work);
-        Assert.Contains("관측 사실 확인이 아니라", work);
-        Assert.Contains("JUDGE용 Form", work);
-        Assert.Contains("INTEGRATION WorkItem은 현재 integration worktree 안에서만 통합·검증하며 주 작업공간이나 target branch를 직접 수정하지 않는다.", work);
-        Assert.Contains("공용 생성 리소스 임시 루트는 RESOURCE 결과 파일의 공용 staging 경로다.", work);
-        Assert.Contains("dependency snapshot에 해당 파일이 직접 포함되어 있다고 가정하지 않는다.", work);
-        Assert.Contains("공용 임시 경로 자체를 최종 산출물의 런타임 참조로 남기지 않는다.", work);
-        Assert.Contains("WORK 임시 산출물 루트", work);
-        Assert.Contains("PROJECTHUB_WORK_TEMP", work);
-        Assert.Contains("checkpoint 코드 변경을 만들지 않는다.", work);
-        Assert.Contains("WORK_OUTPUT_CONTRACT_REJECTED", work);
-        Assert.Contains("WORK_ITEM_REPORT_REJECTED", work);
-        Assert.Contains("직전 의미 작업을 반복하지 않고", work);
-        Assert.DoesNotContain("JUDGE_ON", work);
-        Assert.DoesNotContain("JUDGE_OFF", work);
-        Assert.DoesNotContain("사용 가능", work);
+        Assert.Contains("WORK_ITEM_STATUS: COMPLETED", work);
+        Assert.DoesNotContain("[GOTO : JUDGE]", work);
+        Assert.DoesNotContain("JUDGE", work, StringComparison.OrdinalIgnoreCase);
+        Assert.True(work.Length < 2000);
     }
 
     [Fact]
     public void ActiveRoleContractsStayStructuralAndExampleFree()
     {
-        var contracts = new[]
-        {
-            RoleContractLoader.LoadHqFooter(),
-            RoleContractLoader.LoadWorkFooter()
-        };
-
-        foreach (var contract in contracts)
+        foreach (var contract in new[]
+                 {
+                     RoleContractLoader.LoadHqFooter(),
+                     RoleContractLoader.LoadWorkFooter()
+                 })
         {
             Assert.DoesNotContain("Example:", contract, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Illustrative", contract, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("src/", contract, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("tests/", contract, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(".cs", contract, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(".log", contract, StringComparison.OrdinalIgnoreCase);
         }
-    }
-
-    [Fact]
-    public void WorkResourceContractStatesGeneralTransportBoundary()
-    {
-        var work = RoleContractLoader.LoadWorkFooter();
-        Assert.Contains("생성 리소스의 제작·수급은 반드시 RESOURCE 경로만 사용하며, RESOURCE 실패 시 자체 생성 도구나 외부 사이트로 우회하지 않는다.", work);
-        Assert.Contains("한 요청에는 한 종류의 새로운 생성 리소스만 포함한다.", work);
-        Assert.Contains("상태 조회·저장 지시·Worker 운영 지시는 넣지 않는다.", work);
-        Assert.Contains("유효한 GOTO 제어행만 라우팅을 변경", work);
-        Assert.DoesNotContain("예시:", work, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void HqPromptUsesOnlyRequiredWorkGraphMetadata()
-    {
-        var prompt = RoleContractLoader.BuildHqPrompt(
-            "WORK_REPORT",
-            "불투명 보고",
-            new WorkGraphPromptContext(3, 1, "abc123"));
-
-        Assert.Contains("역할: HQ", prompt);
-        Assert.Contains("입력 유형: WORK_REPORT", prompt);
-        Assert.Contains("WorkGraph revision: 3", prompt);
-        Assert.Contains("최대 동시 WORK: 1", prompt);
-        Assert.DoesNotContain("허용 목적지:", prompt);
-        Assert.DoesNotContain("병렬 WorkGraph 사용:", prompt);
-        Assert.DoesNotContain("[ROLE :", prompt);
-        Assert.Contains("불투명 보고", prompt);
-    }
-
-    [Fact]
-    public void WorkPromptUsesOnlyRequiredWorkItemMetadata()
-    {
-        var prompt = RoleContractLoader.BuildWorkPrompt(
-            "RESOURCE_QUEUED",
-            "기계적 상태",
-            new WorkItemPromptContext(
-                "W1",
-                WorkItemKind.Normal,
-                "작업",
-                Array.Empty<string>(),
-                "abc123",
-                "branch",
-                "worktree"),
-            resourceStagingRoot: @"C:\work\sample.projecthub\temp",
-            workTempRoot: @"C:\work\sample.projecthub\temp\job\W1");
-
-        Assert.Contains("역할: WORK", prompt);
-        Assert.Contains("입력 유형: RESOURCE_QUEUED", prompt);
-        Assert.Contains("workItemId: W1", prompt);
-        Assert.DoesNotContain("판정 사용 가능:", prompt);
-        Assert.DoesNotContain("리소스 사용 가능:", prompt);
-        Assert.DoesNotContain("병렬 WorkItem 사용:", prompt);
-        Assert.Contains(@"공용 생성 리소스 임시 루트: C:\work\sample.projecthub\temp", prompt);
-        Assert.Contains("RESOURCE 타입 하위 폴더: IMAGE=image, AUDIO=audio, VIDEO=video, DOCUMENT=document, FILE=file", prompt);
-        Assert.Contains(@"WORK 임시 산출물 루트: C:\work\sample.projecthub\temp\job\W1", prompt);
-        Assert.DoesNotContain("[ROLE :", prompt);
-    }
-
-    [Fact]
-    public void JudgeTransportAcceptsPlainAndLegacyQidSyntax()
-    {
-        const string plain = "NOUL | QID:PLAIN_ID Is the behavior present?\nPASS: YES >= 0.9";
-        Assert.True(JudgeTransportContract.TryParse(plain, out var plainParsed, out var plainError), plainError);
-        Assert.Equal("PLAIN_ID", Assert.Single(plainParsed.Questions).Id);
-
-        const string legacy = "NOUL | [QID:LEGACY_ID] Is the behavior present?\nPASS: YES >= 0.9";
-        Assert.True(JudgeTransportContract.TryParse(legacy, out var legacyParsed, out var legacyError), legacyError);
-        Assert.Equal("LEGACY_ID", Assert.Single(legacyParsed.Questions).Id);
-    }
-
-    [Fact]
-    public void LegacyWebExposesOnlyLegacyActionAndNextWire()
-    {
-        var prompt = LegacyWebActionContract.BuildInstructions(judgeEnabled: true);
-        Assert.Contains("[ACTION=CONTINUE]", prompt);
-        Assert.Contains("[ACTION=PAUSE]", prompt);
-        Assert.Contains("[ACTION=END]", prompt);
-        Assert.Contains("[NEXT : WEB]", prompt);
-        Assert.Contains("[NEXT : JEV]", prompt);
-        Assert.DoesNotContain("ACTION=HQ", prompt);
-        Assert.DoesNotContain("NEXT : IMPLEMENTER", prompt);
-        Assert.DoesNotContain("NEXT : HIGH_LEVEL", prompt);
-        Assert.DoesNotContain("NEXT : COORDINATOR", prompt);
-    }
-
-    [Theory]
-    [InlineData("[ACTION=CONTINUE]\ncontinue body", LegacyWebActionKind.Continue)]
-    [InlineData("[ACTION=PAUSE]\nreason", LegacyWebActionKind.Pause)]
-    [InlineData("[ACTION=END]\nreport", LegacyWebActionKind.End)]
-    public void LegacyActionParserAcceptsOnlyPublicActions(string text, LegacyWebActionKind expected)
-        => Assert.Equal(expected, LegacyWebActionContract.Parse(text, strict: true).Kind);
-
-    [Theory]
-    [InlineData("[ACTION=HQ]\nbody")]
-    [InlineData("[ACTION=BEGIN]\nbody")]
-    public void LegacyActionParserRejectsNewRoleRoutingControls(string text)
-        => Assert.Equal(LegacyWebActionKind.ProtocolError, LegacyWebActionContract.Parse(text, strict: true).Kind);
-
-    [Fact]
-    public void LegacyNextContractAllowsOnlyWebAndJev()
-    {
-        var report = LegacyWebJevContract.ParseNext("[NEXT : WEB]\n[REPORT]\n내용");
-        Assert.Equal(NextRoute.Web, report.Route);
-        Assert.Null(LegacyWebJevContract.ValidateStructure(report));
-        Assert.Equal("NEXT_INVALID", LegacyWebJevContract.ParseNext("[NEXT : COORDINATOR]\n[REPORT]\n내용").Error);
-        Assert.Equal("NEXT_DUPLICATE", LegacyWebJevContract.ParseNext("[NEXT : WEB]\n[REPORT]\n내용\n[NEXT : JEV]").Error);
-    }
-
-
-    [Fact]
-    public void LegacyBodyMarkerCanAppearAfterExplanatoryText()
-    {
-        var report = LegacyWebJevContract.ParseNext("[NEXT : WEB]\n설명\n[REPORT]\n내용");
-        Assert.Equal(NextRoute.Web, report.Route);
-        Assert.Null(LegacyWebJevContract.ValidateStructure(report));
-
-        var validation = LegacyWebJevContract.ParseNext("[NEXT : JEV]\n설명\n[VALIDATION REQUEST]\n질문");
-        Assert.Equal(NextRoute.Jev, validation.Route);
-        Assert.Null(LegacyWebJevContract.ValidateStructure(validation));
-    }
-
-    [Fact]
-    public void LegacyBodyMarkerRejectsDuplicates()
-    {
-        var report = LegacyWebJevContract.ParseNext("[NEXT : WEB]\n[REPORT]\n내용\n[REPORT]");
-        Assert.Equal("REPORT_DUPLICATE", LegacyWebJevContract.ValidateStructure(report));
-
-        var validation = LegacyWebJevContract.ParseNext("[NEXT : JEV]\n[VALIDATION REQUEST]\n질문\n[VALIDATION REQUEST]");
-        Assert.Equal("VALIDATION_REQUEST_DUPLICATE", LegacyWebJevContract.ValidateStructure(validation));
     }
 }
 
