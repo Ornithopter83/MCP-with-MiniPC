@@ -48,7 +48,7 @@ public static class WorkerGotoContract
         if (!TryParseTarget(routeControl, out var destination, out var controlEnd)) return Invalid("GOTO_INVALID");
         var allowed = source switch
         {
-            WorkerRoleState.Work => destination is WorkerRoleState.Hq or WorkerRoleState.Judge or WorkerRoleState.Resource,
+            WorkerRoleState.Work => destination is WorkerRoleState.Hq or WorkerRoleState.Resource,
             WorkerRoleState.Resource => destination == WorkerRoleState.Work,
             _ => false
         };
