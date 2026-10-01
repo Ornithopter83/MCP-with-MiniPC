@@ -34,9 +34,9 @@ dotnet run --project src/ProjectHub.Server
 
 ## Worker와 Web 런타임
 
-Worker는 HQ, WORK, RESOURCE, JUDGE와 기계 계측 흐름을 관리한다. WORK가 일반 파일을 수정하는 동안 Git metadata와 Git 원격 접근은 AI 실행 경계에서 분리하고, checkpoint commit과 CODE_CHANGE Commit Manifest 생성은 Worker가 담당한다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
+Worker는 HQ가 WorkGraph와 작업 분해를 관제하고 WORK가 배정된 WorkItem checklist를 수행하는 실행 흐름을 관리한다. RESOURCE, JUDGE, OBSERVATION은 일반 WorkItem과 분리된 sidecar로 현재 요청 문맥에 귀속된다. WORK가 일반 파일을 수정하는 동안 Git metadata와 Git 원격 접근은 AI 실행 경계에서 분리하고, checkpoint commit과 CODE_CHANGE Commit Manifest 생성은 Worker가 담당한다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
 
-HQ와 RESOURCE는 서로 다른 persistent profile의 관리형 Chromium을 사용한다. 각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 app window로 실행되며, runtime token이 없는 일반 Chrome과 임의 ChatGPT 페이지는 Worker bridge에 연결하지 않는다. HQ Web 응답은 task별 correlation KEY를 사용하고 SEND_CONFIRM과 WAIT_RESPONSE 동안 독립적인 주기 감시를 병행해 DOM role·turn selector가 실패해도 현재 응답을 회수할 수 있게 한다. 세부 정책은 `Web-Polish.md`에 둔다.
+HQ와 RESOURCE는 서로 다른 persistent profile의 관리형 Chromium을 사용한다. 각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 app window로 실행되며, runtime token이 없는 일반 Chrome과 임의 ChatGPT 페이지는 Worker bridge에 연결하지 않는다. HQ Web 응답은 task별 correlation KEY와 `[RESPONSE=OK]` 완료 표식을 사용하고, RESOURCE 완료는 생성 파일 준비와 capture 상태를 별도로 사용한다. 세부 상관·완료 계약은 `Web-Polish.md`와 Worker의 Web 전송 계약에 둔다.
 
 Worker의 저장소별 실행 격리와 기계 상태는 target workspace의 `.projecthub` 아래에 두며 정상 Worker 종료 뒤에는 해당 폴더를 남기지 않는 것을 원칙으로 한다. 짧은 파일 잠금 때문에 즉시 삭제할 수 없는 경우 종료 후 cleanup helper가 정리를 재시도한다.
 
