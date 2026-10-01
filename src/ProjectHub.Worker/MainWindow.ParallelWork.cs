@@ -752,19 +752,25 @@ public partial class MainWindow
             var finalStatus = finalHasErrors
                 ? "DONE_WITH_ERROR"
                 : "DONE";
+            var finalResultBody = FinalResultPathNormalizer.NormalizeLandedPaths(
+                result.HqBody,
+                workingDirectory,
+                result.Graph);
+            lastHqMessage = finalResultBody;
+
             ResultTitle.Text = finalHasErrors
                 ? "DONE · 오류 기록 있음"
                 : "DONE";
-            ResultBody.Text = result.HqBody;
+            ResultBody.Text = finalResultBody;
             TaskTitle.Text = "WORK와 기계적 대기 작업을 모두 확인했습니다.";
             AddTaskMessage(
                 "TASK RESULT",
-                result.HqBody,
+                finalResultBody,
                 status: finalStatus,
                 includeHistory: false);
             SaveParallelContinuation(
                 finalStatus,
-                result.HqBody,
+                finalResultBody,
                 jobId,
                 workingDirectory,
                 coordinator,
