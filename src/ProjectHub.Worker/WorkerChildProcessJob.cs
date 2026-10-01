@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -11,8 +12,12 @@ internal sealed class WorkerChildProcessJob : IDisposable
     private const int JobObjectBasicProcessIdListClass = 3;
     private const int JobObjectExtendedLimitInformationClass = 9;
 
+    private static readonly ConcurrentDictionary<long, WorkerChildProcessJob> ActiveJobs = new();
+    private static long _nextJobId;
+
     private readonly object _gate = new();
     private readonly string _ownerLabel;
+    private readonly long _jobId;
     private SafeJobHandle? _handle;
     private bool _disposed;
 
@@ -63,6 +68,8 @@ internal sealed class WorkerChildProcessJob : IDisposable
             }
 
             _handle = handle;
+            _jobId = Interlocked.Increment(ref _nextJobId);
+            ActiveJobs[_jobId] = this;
         }
         catch
         {
@@ -184,9 +191,29 @@ internal sealed class WorkerChildProcessJob : IDisposable
             _handle = null;
         }
 
-        // KILL_ON_JOB_CLOSE가 이 Job에 속한 전체 process tree를 종료한다.
+        ActiveJobs.TryRemove(_jobId, out _);
+
+        if (handle is not null && !handle.IsInvalid && !handle.IsClosed)
+        {
+            // 마지막 handle close 여부에만 의존하지 않는다.
+            // 명시적으로 Job 전체를 종료한 뒤 handle을 닫는다.
+            try { TerminateJobObject(handle.DangerousGetHandle(), 1); }
+            catch { }
+        }
+
         handle?.Dispose();
     }
+
+    internal static void TerminateAllActiveJobs()
+    {
+        foreach (var job in ActiveJobs.Values.ToArray())
+        {
+            try { job.Dispose(); }
+            catch { }
+        }
+    }
+
+    internal static int ActiveJobCount => ActiveJobs.Count;
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr CreateJobObjectW(
@@ -200,6 +227,12 @@ internal sealed class WorkerChildProcessJob : IDisposable
         int informationClass,
         IntPtr jobObjectInformation,
         uint jobObjectInformationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TerminateJobObject(
+        IntPtr job,
+        uint exitCode);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
