@@ -35,7 +35,8 @@
 ⑤ WorkItem 격리, CODE_CHANGE provenance, END 종료 게이트와 안전한 fast-forward landing 규칙을 유지한다.
 ⑥ DONE·DONE_WITH_ERROR 뒤의 추가 작업은 이전 WorkGraph를 이어 붙이지 않고 현재 작업 폴더에서 새 Job으로 시작하며, PAUSE·CANCELED도 작업 폴더가 바뀌었으면 같은 원칙을 적용한다.
 ⑦ Git 준비 실패 시 사용자 승인으로 .git만 재초기화하고 작업 파일과 .gitignore는 보존하는 단순 복구 경로를 둔다.
-⑧ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
+⑧ HQ 관제는 누적 문맥이 기계 예산을 넘으면 현재 WorkGraph에서 handoff를 만들어 새 세션으로 교대하고, 과거 HQ 대화 대신 WorkGraph를 장기 상태 원본으로 사용한다.
+⑨ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
 
 제6조 (WEB)
 
@@ -43,5 +44,5 @@
 ② HQ Web은 correlation KEY와 별도 줄의 `[RESPONSE=OK]` 완료 표식을 함께 확인하고, 완료 표식이 보이는 줄까지를 현재 응답 범위로 취급한다.
 ③ HQ 응답 제한시간 안에 완료 표식이 없으면 직전 답변의 완료 여부를 한 번만 다시 요청하고, 다시 완료 표식을 확인하지 못하면 `WEB_RESPONSE_TIMEOUT`으로 종료한다.
 ④ RESOURCE는 HQ의 텍스트 완료 표식을 사용하지 않고 현재 요청에서 생성된 파일 candidate의 준비와 capture 결과를 기준으로 완료를 판정한다.
-⑤ 관리형 Web 확장 식별자는 0.4.3 / 2026-10-01.2다.
+⑤ 관리형 Web 확장 식별자는 0.4.4 / 2026-10-01.3이다.
 ⑥ 현재는 명령 왕복이 정상 수행되는 상태를 유지하면서, 이미지 생성처럼 별도 문자열 응답이 보장되지 않는 RESOURCE의 장기 실행 상관관계를 실제 사용으로 관찰한다.
