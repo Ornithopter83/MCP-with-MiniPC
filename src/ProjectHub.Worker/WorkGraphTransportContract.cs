@@ -176,6 +176,19 @@ public static class WorkGraphTransportContract
                            typeElement.ValueKind == JsonValueKind.String
                     ? typeElement.GetString()?.Trim().ToUpperInvariant()
                     : null;
+                if (string.IsNullOrWhiteSpace(type))
+                {
+                    foreach (var aliasName in new[] { "operation", "op" })
+                    {
+                        if (!operation.TryGetProperty(aliasName, out var aliasElement) ||
+                            aliasElement.ValueKind != JsonValueKind.String ||
+                            string.IsNullOrWhiteSpace(aliasElement.GetString()))
+                            continue;
+
+                        type = aliasElement.GetString()!.Trim().ToUpperInvariant();
+                        break;
+                    }
+                }
 
                 if (string.Equals(
                         errorCode,
