@@ -2154,7 +2154,6 @@ public partial class MainWindow : Window
             : ResolveWorkingDirectory(selected);
         UpdateWorkspaceControls(selected, workingDirectory);
         ServerUrlInput.Text = _serverBaseUrl;
-        ApplyJudgeConfigurationToControls();
         ApplyRoleSettingsToControls();
         ApplyExecutionModePresentation(_targetSettings.IsCoordinatorFirst);
         UpdateDashboardSummary();
@@ -2182,7 +2181,6 @@ public partial class MainWindow : Window
         CoordinatorStageModelText.Text = IsWebTransport(coordinator.Transport) ? "ChatGPT Web" : AiProviderCatalog.FormatModel(coordinator.Provider, coordinator.Model);
         ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(0);
         ResourceStageModelText.Text = "ChatGPT Web";
-        JudgeStageModelText.Text = "JEV";
 
         _coordinatorStageIconAsset = IsWebTransport(coordinator.Transport)
             ? "current-web.png"
