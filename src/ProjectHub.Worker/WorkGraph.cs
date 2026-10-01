@@ -489,10 +489,26 @@ public sealed class WorkGraph
                     return "WORK_GRAPH_ADD_ITEM_MISSING";
                 if (!IsSafeId(operation.Item.Id))
                     return "WORK_GRAPH_ITEM_ID_INVALID";
-                if (items.ContainsKey(operation.Item.Id))
-                    return "WORK_GRAPH_ITEM_DUPLICATE";
+                if (FixedWorkItemSlots.IsUnassignedReservedSlot(operation.Item.Id))
+                    return "WORK_GRAPH_RESERVED_SLOT_UNASSIGNED";
+                if (FixedWorkItemSlots.IsReusable(operation.Item.Id) &&
+                    operation.Item.Kind != WorkItemKind.Normal)
+                    return "WORK_GRAPH_FIXED_SLOT_KIND_INVALID";
                 if (string.IsNullOrWhiteSpace(operation.Item.Goal))
                     return "WORK_GRAPH_GOAL_MISSING";
+
+                if (items.TryGetValue(operation.Item.Id, out var existing))
+                {
+                    if (!FixedWorkItemSlots.IsReusable(operation.Item.Id))
+                        return "WORK_GRAPH_ITEM_DUPLICATE";
+                    if (!IsTerminal(existing.State))
+                        return "WORK_GRAPH_FIXED_SLOT_ACTIVE";
+                    if (items.Values.Any(item =>
+                            !string.Equals(item.Id, operation.Item.Id, StringComparison.Ordinal) &&
+                            !IsTerminal(item.State) &&
+                            item.Dependencies.Contains(operation.Item.Id, StringComparer.Ordinal)))
+                        return "WORK_GRAPH_FIXED_SLOT_DEPENDENT_ACTIVE";
+                }
 
                 var dependencies = NormalizeDependencies(operation.Item.Dependencies);
                 items[operation.Item.Id] = new WorkItemEntry
@@ -664,6 +680,9 @@ public sealed class WorkGraph
                 : WorkItemState.Blocked;
         }
     }
+
+    private static bool IsTerminal(WorkItemState state)
+        => state is WorkItemState.Completed or WorkItemState.Failed or WorkItemState.Canceled;
 
     private static bool CanEditDefinition(WorkItemState state)
         => state is WorkItemState.Planned or WorkItemState.Ready or WorkItemState.Blocked;
