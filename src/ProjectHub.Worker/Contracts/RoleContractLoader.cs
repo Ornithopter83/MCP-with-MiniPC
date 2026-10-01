@@ -100,65 +100,14 @@ public static class RoleContractLoader
     private static string FormatDependencyResult(WorkItemDependencyPromptContext result)
     {
         var header =
-            $"- {result.WorkItemId} | resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} | ref={result.ResultRef ?? "없음"} | commitManifest={result.CommitManifestPath ?? "없음"} | snapshot={result.IntegrationSnapshotPath ?? "없음"} | report={result.ResultSummary ?? "없음"}";
+            $"- workItemId={result.WorkItemId} resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} resultRef={result.ResultRef ?? "없음"} snapshot={result.IntegrationSnapshotPath ?? "없음"}";
 
-        if (string.IsNullOrWhiteSpace(result.CommitManifestPath))
+        if (string.IsNullOrWhiteSpace(result.ResultSummary))
             return header;
 
-        try
-        {
-            if (!File.Exists(result.CommitManifestPath))
-                return header + "\n  commitManifestSummary: [파일 없음]";
-
-            using var stream = File.OpenRead(result.CommitManifestPath);
-            using var document = JsonDocument.Parse(stream);
-            var root = document.RootElement;
-            var commit = root.TryGetProperty("commit", out var commitElement)
-                ? LimitManifestValue(commitElement.GetString())
-                : "없음";
-            if (!root.TryGetProperty("changedFiles", out var changedFiles) ||
-                changedFiles.ValueKind != JsonValueKind.Array)
-                return header + $"\n  commitManifestSummary: commit={commit} changedFiles=알 수 없음";
-
-            const int maxFiles = 40;
-            var count = changedFiles.GetArrayLength();
-            var summaryLines = new List<string>
-            {
-                $"  commitManifestSummary: commit={commit} changedFiles={count}"
-            };
-
-            for (var index = 0; index < Math.Min(count, maxFiles); index++)
-            {
-                var file = changedFiles[index];
-                var changeType = file.TryGetProperty("changeType", out var changeTypeElement)
-                    ? LimitManifestValue(changeTypeElement.GetString(), 32)
-                    : "UNKNOWN";
-                var path = file.TryGetProperty("path", out var pathElement)
-                    ? LimitManifestValue(pathElement.GetString())
-                    : "경로 없음";
-                summaryLines.Add($"    - {changeType} {path}");
-            }
-
-            if (count > maxFiles)
-                summaryLines.Add($"    - ... +{count - maxFiles} files");
-
-            return header + "\n" + string.Join("\n", summaryLines);
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return header + "\n  commitManifestSummary: [읽기 실패: " + exception.Message + "]";
-        }
-    }
-
-    private static string LimitManifestValue(string? value, int maxLength = 180)
-    {
-        var normalized = string.IsNullOrWhiteSpace(value)
-            ? "없음"
-            : value.Replace("\r", " ").Replace("\n", " ").Trim();
-        return normalized.Length <= maxLength
-            ? normalized
-            : normalized[..maxLength] + "…";
+        return header + Environment.NewLine +
+               "  report:" + Environment.NewLine +
+               result.ResultSummary.Trim();
     }
 
     private static string Load(string fileName)
