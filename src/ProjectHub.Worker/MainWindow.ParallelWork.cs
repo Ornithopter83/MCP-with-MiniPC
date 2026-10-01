@@ -81,14 +81,16 @@ public partial class MainWindow
 
             if (!staleRuntimeCleanup.Success)
             {
-                ResultTitle.Text = "RUNTIME BLOCKED";
+                // 이전 runtime 정리는 새 작업의 의미 실행을 막는 선행조건이 아니다.
+                // 잠긴 cache/worktree가 남아 있어도 새 jobId의 작업은 계속 시작한다.
+                ResultTitle.Text = "RUNTIME WARNING";
                 ResultBody.Text = staleCleanupMessage;
-                TaskTitle.Text = "이전 runtime 정리 실패";
-                _activeCoordinatorFirst = false;
-                _activeTaskCts = null;
-                SetFlowState(false, false, false);
-                ApplyConnectionStatus();
-                return;
+                TaskTitle.Text = "이전 runtime 일부 정리 실패 · HQ 시작 계속";
+                AddTaskMessage(
+                    "RUNTIME WARNING",
+                    staleCleanupMessage,
+                    status: staleRuntimeCleanup.ErrorCode ?? "RUNTIME_RESET_FAILED",
+                    includeHistory: false);
             }
         }
 
