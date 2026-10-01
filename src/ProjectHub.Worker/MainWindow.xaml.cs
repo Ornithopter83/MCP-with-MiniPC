@@ -494,7 +494,7 @@ public partial class MainWindow : Window
                        !_awaitingWebResult;
         var hasContinuation = IsDirectWorkMode ||
                               (_continuationState is not null &&
-                               TaskContinuationContract.IsResumableStatus(_continuationState.Status));
+                               TaskContinuationContract.CanAcceptFollowupStatus(_continuationState.Status));
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
                         DashboardFollowupInput.Text != FollowupPromptPlaceholder;
         AddWorkButton.Content = _gitPreparationInProgress ? "Git 준비 중..." : "＋   작업 추가";
@@ -606,7 +606,9 @@ public partial class MainWindow : Window
         }
 
         var continuation = _continuationState;
-        if (continuation is null || !TaskContinuationContract.IsResumableStatus(continuation.Status)) return;
+        if (continuation is null ||
+            !TaskContinuationContract.CanAcceptFollowupStatus(continuation.Status))
+            return;
 
         var followup = DashboardFollowupInput.Text?.Trim() ?? string.Empty;
         if (followup.Length == 0 || followup == FollowupPromptPlaceholder) return;
@@ -623,10 +625,34 @@ public partial class MainWindow : Window
             return;
         }
 
-        AddUserFollowupHistory(followup, followupAttachments);
+        var startFresh = TaskContinuationContract.IsFreshStartStatus(continuation.Status);
+        if (!startFresh)
+        {
+            var inspection = await new GitWorktreeManager()
+                .InspectAsync(continuation.WorkingDirectory, CancellationToken.None);
+            startFresh = !inspection.Success || !inspection.IsClean;
+        }
+
         DashboardFollowupInput.Text = FollowupPromptPlaceholder;
         DashboardFollowupInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
         SetFollowupComposerVisible(false);
+
+        if (startFresh)
+        {
+            ProjectWorkspacePersistence.ClearContinuation(continuation.WorkingDirectory);
+            _continuationState = null;
+            await RunCoordinatorFirstJobAsync(
+                followup,
+                null,
+                continuation.WorkingDirectory,
+                continuation.Coordinator,
+                continuation.Implementer,
+                continuation: null,
+                attachments: followupAttachments);
+            return;
+        }
+
+        AddUserFollowupHistory(followup, followupAttachments);
         await RunCoordinatorFirstJobAsync(
             followup,
             null,
