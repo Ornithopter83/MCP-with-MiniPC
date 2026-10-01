@@ -15,7 +15,7 @@ public sealed class GitWorkspaceBootstrapperTests
             runner.Enqueue("init", Ok());
             runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
             runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees", Ok());
+            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
             runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
             runner.Enqueue("rev-parse --verify HEAD", Fail());
             runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok("?? app.cs"));
@@ -53,7 +53,7 @@ public sealed class GitWorkspaceBootstrapperTests
             runner.Enqueue("init", Ok());
             runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
             runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees", Ok());
+            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
             runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
             runner.Enqueue("rev-parse --verify HEAD", Fail());
             runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
@@ -82,7 +82,7 @@ public sealed class GitWorkspaceBootstrapperTests
             var runner = new ScriptedRunner();
             runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
             runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees", Ok());
+            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
             runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
             runner.Enqueue("rev-parse --verify HEAD", Ok("abc123"));
             runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
@@ -116,7 +116,7 @@ public sealed class GitWorkspaceBootstrapperTests
             runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
             runner.Enqueue("config --local core.longpaths true", Ok());
             runner.Enqueue(
-                "ls-files -- .projecthub .verification-appdata .projecthub-worktrees",
+                "ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs",
                 Ok(".projecthub/session-state.json"));
             runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
             runner.Enqueue("rev-parse --verify HEAD", Ok("abc123"));
@@ -147,7 +147,7 @@ public sealed class GitWorkspaceBootstrapperTests
             var runner = new ScriptedRunner();
             runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
             runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees", Ok());
+            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
             runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
             runner.Enqueue("rev-parse --verify HEAD", Ok("abc123"));
             runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok(" M app.cs"));
@@ -205,6 +205,7 @@ public sealed class GitWorkspaceBootstrapperTests
             Assert.Contains(".projecthub/", ignore);
             Assert.Contains(".verification-appdata/", ignore);
             Assert.Contains(".projecthub-worktrees/", ignore);
+            Assert.Contains(".vs/", ignore);
             Assert.Contains("# ProjectHub preset: Godot", ignore);
             Assert.Contains(".godot/", ignore);
             Assert.Contains("# ProjectHub preset: Node", ignore);
@@ -227,7 +228,7 @@ public sealed class GitWorkspaceBootstrapperTests
         {
             var runner = new ScriptedRunner();
             runner.Enqueue(
-                "rm -r --cached --ignore-unmatch -- .projecthub .verification-appdata .projecthub-worktrees",
+                "rm -r --cached --ignore-unmatch -- .projecthub .verification-appdata .projecthub-worktrees .vs",
                 Ok());
             runner.Enqueue("add --all", Ok());
             runner.Enqueue(
@@ -256,13 +257,14 @@ public sealed class GitWorkspaceBootstrapperTests
             Assert.True(runner.Calls[0].Arguments.SequenceEqual(new[]
             {
                 "rm", "-r", "--cached", "--ignore-unmatch", "--",
-                ".projecthub", ".verification-appdata", ".projecthub-worktrees"
+                ".projecthub", ".verification-appdata", ".projecthub-worktrees", ".vs"
             }));
 
             var ignore = File.ReadAllText(Path.Combine(workspace, ".gitignore"));
             Assert.Contains("custom-cache/", ignore);
             Assert.Contains(".projecthub/", ignore);
             Assert.Contains(".verification-appdata/", ignore);
+            Assert.Contains(".vs/", ignore);
             Assert.DoesNotContain("# ProjectHub preset: Godot", ignore);
             Assert.DoesNotContain(".godot/", ignore);
         }
@@ -321,7 +323,7 @@ public sealed class GitWorkspaceBootstrapperTests
             var runner = new ScriptedRunner();
             runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
             runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees", Ok());
+            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
             runner.Enqueue("symbolic-ref --quiet --short HEAD", Fail());
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
@@ -386,6 +388,7 @@ public sealed class GitWorkspaceBootstrapperTests
                 "Desktop.ini",
                 "",
                 "# 편집기 임시 파일",
+                ".vs/",
                 "*.swp",
                 "*.swo",
                 "*~",
