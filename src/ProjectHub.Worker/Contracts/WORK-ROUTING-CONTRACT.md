@@ -17,7 +17,7 @@ WORK_ITEM_STATUS: FAILED
 
 제2조 (RESOURCE)
 
-① 새 생성 리소스 요청은 WorkItem #0에서만 다음 형식을 사용한다.
+① 현재 작업에서 새 생성 리소스 요청이 배정된 경우 다음 형식을 사용한다.
 
 [GOTO : RESOURCE]
 RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE
