@@ -59,7 +59,7 @@ public sealed class WorkerStructuredPayloadHelperTests
     }
 
     [Fact]
-    public async Task OperationAliasIsRepairedDeterministicallyWithoutAiCall()
+    public async Task OperationAliasParsesWithoutRepairOrAiCall()
     {
         var runner = new FakeRunner("unused");
         var helper = new WorkerStructuredPayloadHelper(
@@ -76,19 +76,16 @@ public sealed class WorkerStructuredPayloadHelperTests
             deterministicRepair: WorkGraphTransportContract.TryRepairOperationTypeAliases);
 
         Assert.True(result.Success);
-        Assert.True(result.RepairAttempted);
-        Assert.True(result.Repaired);
+        Assert.False(result.RepairAttempted);
+        Assert.False(result.Repaired);
         Assert.Equal(0, runner.CallCount);
-        Assert.Equal("WORK_GRAPH_OPERATION_TYPE_MISSING", result.InitialErrorCode);
+        Assert.Null(result.InitialErrorCode);
         Assert.Null(result.FinalErrorCode);
-        Assert.Equal(
-            "operations[0].operation -> operations[0].type",
-            result.RepairSummary);
+        Assert.Null(result.RepairSummary);
         var operation = Assert.Single(result.Value!.Operations);
         Assert.Equal(WorkGraphPatchOperationType.Add, operation.Type);
         Assert.Equal("0", operation.WorkItemId);
-        Assert.DoesNotContain("\"operation\"", result.FinalPayload);
-        Assert.Contains("\"type\":\"ADD\"", result.FinalPayload);
+        Assert.Contains("\"operation\":\"ADD\"", result.FinalPayload);
     }
 
     [Fact]
