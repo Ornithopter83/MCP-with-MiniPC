@@ -340,6 +340,7 @@ public static class WorkGraphTransportContract
 
             CopyAliasIfMissing(operation, "type", "operation", "op");
             CopyAliasIfMissing(operation, "workItemId", "id");
+            CopyAliasIfMissing(operation, "checklist", "tasks");
 
             if (!TryGetNonBlankString(operation, "type", out var type))
                 continue;
@@ -517,7 +518,8 @@ public static class WorkGraphTransportContract
                     operation.Goal.Trim(),
                     NormalizeDependencies(operation.Dependencies),
                     kind,
-                    NullIfWhiteSpace(operation.BaseRef)));
+                    NullIfWhiteSpace(operation.BaseRef),
+                    NormalizeChecklist(operation.Checklist, operation.Goal)));
                 return true;
 
             case "CANCEL":
@@ -609,6 +611,22 @@ public static class WorkGraphTransportContract
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
+    private static IReadOnlyList<string> NormalizeChecklist(
+        IReadOnlyList<string>? values,
+        string? fallbackGoal)
+    {
+        var normalized = (values ?? Array.Empty<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (normalized.Count == 0 && !string.IsNullOrWhiteSpace(fallbackGoal))
+            normalized.Add(fallbackGoal.Trim());
+
+        return normalized;
+    }
+
     private static string NormalizeId(JsonElement? value)
     {
         if (value is null)
@@ -659,6 +677,7 @@ public static class WorkGraphTransportContract
         public string? Type { get; init; }
         public JsonElement? WorkItemId { get; init; }
         public string? Goal { get; init; }
+        public List<string>? Checklist { get; init; }
         public List<JsonElement>? Dependencies { get; init; }
         public string? Kind { get; init; }
         public string? BaseRef { get; init; }
@@ -671,7 +690,6 @@ public enum WorkItemReportStatus
 {
     Completed,
     Blocked,
-    SplitRequest,
     Failed
 }
 
@@ -723,7 +741,6 @@ public static class WorkItemReportContract
         {
             "COMPLETED" => WorkItemReportStatus.Completed,
             "BLOCKED" => WorkItemReportStatus.Blocked,
-            "SPLIT_REQUEST" => WorkItemReportStatus.SplitRequest,
             "FAILED" => WorkItemReportStatus.Failed,
             _ => (WorkItemReportStatus?)null
         };
