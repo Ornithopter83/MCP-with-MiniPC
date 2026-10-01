@@ -149,7 +149,7 @@ public sealed class ParallelWorkSchedulerTests
     {
         var graph = CreateGraph(1, "W1", "W2");
         var executor = new ControlledExecutor();
-        executor.Block("W1", "SPLIT_REQUEST");
+        executor.Block("W1", "HQ_BLOCKED");
 
         await using var scheduler = new ParallelWorkScheduler(graph, executor);
         await scheduler.StartAsync();
@@ -160,7 +160,7 @@ public sealed class ParallelWorkSchedulerTests
 
         var blocked = await scheduler.GetSnapshotAsync();
         Assert.Equal(WorkItemState.Blocked, blocked.Graph.Items.Single(item => item.Id == "W1").State);
-        Assert.Equal("SPLIT_REQUEST", blocked.Graph.Items.Single(item => item.Id == "W1").BlockCode);
+        Assert.Equal("HQ_BLOCKED", blocked.Graph.Items.Single(item => item.Id == "W1").BlockCode);
 
         executor.Complete("W2");
         await scheduler.WaitForQuiescenceAsync();
