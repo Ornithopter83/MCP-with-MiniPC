@@ -55,7 +55,8 @@ public static class RoleContractLoader
         string? observationRequestDirectory = null,
         bool includeContract = true,
         string? resourceStagingRoot = null,
-        string? workTempRoot = null)
+        string? workTempRoot = null,
+        string? targetWorkspace = null)
     {
         ArgumentNullException.ThrowIfNull(workItem);
         var observationHeader = string.IsNullOrWhiteSpace(observationRequestDirectory)
@@ -68,12 +69,17 @@ public static class RoleContractLoader
         var workTempHeader = string.IsNullOrWhiteSpace(workTempRoot)
             ? string.Empty
             : $"WORK 임시 산출물 루트: {workTempRoot}\n";
+        var fixedMissionHeader = BuildFixedMissionHeader(
+            workItem.WorkItemId,
+            targetWorkspace,
+            workTempRoot);
         var header =
             $"역할: WORK\n입력 유형: {inboundType}\n" +
             BuildWorkItemHeader(workItem) +
             observationHeader +
             resourceHeader +
             workTempHeader +
+            fixedMissionHeader +
             "\n입력 본문:\n";
         var prompt = header + body;
         return includeContract
@@ -107,7 +113,7 @@ public static class RoleContractLoader
     private static string FormatDependencyResult(WorkItemDependencyPromptContext result)
     {
         var header =
-            $"- workItemId={result.WorkItemId} resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} resultRef={result.ResultRef ?? "없음"} snapshot={result.IntegrationSnapshotPath ?? "없음"}";
+            $"- workItemId={result.WorkItemId} resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} resultRef={result.ResultRef ?? "없음"} manifest={result.CommitManifestPath ?? "없음"} snapshot={result.IntegrationSnapshotPath ?? "없음"}";
 
         if (string.IsNullOrWhiteSpace(result.ResultSummary))
             return header;
@@ -115,6 +121,36 @@ public static class RoleContractLoader
         return header + Environment.NewLine +
                "  report:" + Environment.NewLine +
                result.ResultSummary.Trim();
+    }
+
+    private static string BuildFixedMissionHeader(
+        string workItemId,
+        string? targetWorkspace,
+        string? workTempRoot)
+    {
+        if (string.Equals(workItemId, FixedWorkItemSlots.Materialize, StringComparison.Ordinal))
+        {
+            return
+                "고정 임무: #8 MATERIALIZE / COPY\n" +
+                $"대상 프로젝트 루트: {targetWorkspace ?? "미지정"}\n" +
+                "이 WorkItem은 완료된 선행 WorkItem의 결과를 대상 프로젝트 루트에 반영하는 단발 작업이다.\n" +
+                "Commit Manifest가 있으면 변경 상대경로를 기준으로 부모 폴더를 만들고 같은 상대경로를 그대로 유지해 복사한다. 경로를 평탄화하거나 임의로 이름을 바꾸지 않는다.\n" +
+                "DELETE 항목은 같은 상대경로의 대상 파일만 제거한다. 선행 결과에서 명시된 게시 산출물도 HQ가 지정한 상대경로 그대로 옮긴다.\n" +
+                "파일 내용의 의미 수정, 기능 구현, 빌드, .git 또는 .projecthub 조작은 하지 않는다.\n";
+        }
+
+        if (string.Equals(workItemId, FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal))
+        {
+            return
+                "고정 임무: #9 BUILD / PUBLISH\n" +
+                $"대상 프로젝트 루트: {targetWorkspace ?? "미지정"}\n" +
+                $"게시 임시 루트: {(string.IsNullOrWhiteSpace(workTempRoot) ? "미지정" : Path.Combine(workTempRoot, "publish"))}\n" +
+                "이 WorkItem은 대상 프로젝트 루트에 현재 반영된 파일을 기준으로 빌드·export·publish를 수행하는 단발 작업이다.\n" +
+                "빌드 도구가 요구하는 cache와 생성 파일은 대상 프로젝트 루트에 만들 수 있지만 기능 구현이나 소스 의미 변경은 하지 않는다. .git은 수정하지 않는다.\n" +
+                "배포 산출물은 작업 목록에서 다른 위치를 명시하지 않았다면 게시 임시 루트에 두고, 정확한 경로·크기·가능한 경우 SHA-256을 보고해 후속 검증과 #8 이동에 사용한다.\n";
+        }
+
+        return string.Empty;
     }
 
     private static string Load(string fileName)
