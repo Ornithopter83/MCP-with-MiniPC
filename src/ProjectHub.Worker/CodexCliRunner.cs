@@ -86,25 +86,21 @@ public sealed class CodexCliRunner : IDisposable
             : null;
         int? activeProcessId = null;
         using var processJob = new WorkerChildProcessJob("Codex CLI run");
-        using var process = new Process
+        var startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = executable, WorkingDirectory = workingDirectory, UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardInputEncoding = Encoding.UTF8, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
-            },
-            EnableRaisingEvents = true
+            FileName = executable, WorkingDirectory = workingDirectory, UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardInputEncoding = Encoding.UTF8, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
         };
         if (environmentVariables is not null)
         {
             foreach (var pair in environmentVariables)
-                process.StartInfo.Environment[pair.Key] = pair.Value;
+                startInfo.Environment[pair.Key] = pair.Value;
         }
 
         var effectiveSandbox = sandboxMode ?? (readOnly ? CodexSandboxMode.ReadOnly : CodexSandboxMode.DangerFullAccess);
-        process.StartInfo.ArgumentList.Add("exec");
-        process.StartInfo.ArgumentList.Add("--sandbox");
-        process.StartInfo.ArgumentList.Add(effectiveSandbox switch
+        startInfo.ArgumentList.Add("exec");
+        startInfo.ArgumentList.Add("--sandbox");
+        startInfo.ArgumentList.Add(effectiveSandbox switch
         {
             CodexSandboxMode.ReadOnly => "read-only",
             CodexSandboxMode.WorkspaceWrite => "workspace-write",
@@ -116,47 +112,47 @@ public sealed class CodexCliRunner : IDisposable
                      includeAppBaseWritable ? AppContext.BaseDirectory : null,
                      additionalWritableDirectories))
         {
-            process.StartInfo.ArgumentList.Add("--add-dir");
-            process.StartInfo.ArgumentList.Add(directory);
+            startInfo.ArgumentList.Add("--add-dir");
+            startInfo.ArgumentList.Add(directory);
         }
-        if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add("resume");
-        process.StartInfo.ArgumentList.Add("--json");
+        if (!string.IsNullOrWhiteSpace(sessionId)) startInfo.ArgumentList.Add("resume");
+        startInfo.ArgumentList.Add("--json");
         foreach (var argument in modelRequest.ToCliArguments())
-            process.StartInfo.ArgumentList.Add(argument);
+            startInfo.ArgumentList.Add(argument);
         if (ignoreProjectInstructions)
         {
-            process.StartInfo.ArgumentList.Add("-c");
-            process.StartInfo.ArgumentList.Add("project_doc_max_bytes=0");
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("project_doc_max_bytes=0");
         }
         if (disableComputerUse)
         {
-            process.StartInfo.ArgumentList.Add("-c");
-            process.StartInfo.ArgumentList.Add("features.computer_use=false");
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("features.computer_use=false");
         }
         if (string.IsNullOrWhiteSpace(sessionId))
         {
-            process.StartInfo.ArgumentList.Add("-C");
-            process.StartInfo.ArgumentList.Add(workingDirectory);
+            startInfo.ArgumentList.Add("-C");
+            startInfo.ArgumentList.Add(workingDirectory);
         }
         if (!IsGitRepository(workingDirectory))
-            process.StartInfo.ArgumentList.Add("--skip-git-repo-check");
-        process.StartInfo.ArgumentList.Add("--output-last-message");
-        process.StartInfo.ArgumentList.Add(outputFile);
+            startInfo.ArgumentList.Add("--skip-git-repo-check");
+        startInfo.ArgumentList.Add("--output-last-message");
+        startInfo.ArgumentList.Add(outputFile);
         if (outputSchemaFile is not null)
         {
-            process.StartInfo.ArgumentList.Add("--output-schema");
-            process.StartInfo.ArgumentList.Add(outputSchemaFile);
+            startInfo.ArgumentList.Add("--output-schema");
+            startInfo.ArgumentList.Add(outputSchemaFile);
         }
-        if (!string.IsNullOrWhiteSpace(sessionId)) process.StartInfo.ArgumentList.Add(sessionId);
-        process.StartInfo.ArgumentList.Add("-");
+        if (!string.IsNullOrWhiteSpace(sessionId)) startInfo.ArgumentList.Add(sessionId);
+        startInfo.ArgumentList.Add("-");
         try
         {
-            if (!process.Start())
-                throw new InvalidOperationException("Codex CLI 프로세스를 시작하지 못했습니다.");
+            using var launched = processJob.Start(startInfo);
+            var process = launched.Process;
+            process.EnableRaisingEvents = true;
 
             try
             {
-                processJob.Assign(process);
                 activeProcessId = process.Id;
                 _activeProcesses[activeProcessId.Value] = process;
                 _activeProcessJobs[activeProcessId.Value] = processJob;
@@ -164,14 +160,14 @@ public sealed class CodexCliRunner : IDisposable
                 if (Volatile.Read(ref _disposed) != 0)
                 {
                     processJob.Dispose();
-                    await TerminateProcessTreeAsync(process, startedAt).ConfigureAwait(false);
+                    await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                     throw new ObjectDisposedException(nameof(CodexCliRunner));
                 }
             }
             catch
             {
                 processJob.Dispose();
-                await TerminateProcessTreeAsync(process, startedAt).ConfigureAwait(false);
+                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                 throw;
             }
 
@@ -180,7 +176,7 @@ public sealed class CodexCliRunner : IDisposable
             {
                 while (true)
                 {
-                    var line = await process.StandardOutput.ReadLineAsync(cancellationToken);
+                    var line = await launched.StandardOutput!.ReadLineAsync(cancellationToken);
                     if (line is null) break;
                     stdoutBuilder.AppendLine(line);
                     if (sessionStarted is not null && TryExtractThreadStarted(line, out var startedSessionId))
@@ -195,21 +191,21 @@ public sealed class CodexCliRunner : IDisposable
                     }
                 }
             }, CancellationToken.None);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            var stderrTask = launched.StandardError!.ReadToEndAsync(cancellationToken);
             try
             {
-                await process.StandardInput.WriteAsync(prompt.AsMemory(), cancellationToken).ConfigureAwait(false);
-                await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await launched.StandardInput!.WriteAsync(prompt.AsMemory(), cancellationToken).ConfigureAwait(false);
+                await launched.StandardInput!.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
             catch
             {
                 processJob.Dispose();
-                await TerminateProcessTreeAsync(process, startedAt).ConfigureAwait(false);
+                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                 throw;
             }
             finally
             {
-                process.StandardInput.Close();
+                launched.StandardInput!.Close();
             }
 
             try
@@ -221,7 +217,7 @@ public sealed class CodexCliRunner : IDisposable
                 // 취소에서는 실행 전용 Job을 먼저 닫아 Codex가 시작한 모든 후손을 끊고
                 // Process tree kill/wait는 fallback으로 사용한다.
                 processJob.Dispose();
-                await TerminateProcessTreeAsync(process, startedAt).ConfigureAwait(false);
+                await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                 throw;
             }
 
@@ -229,7 +225,6 @@ public sealed class CodexCliRunner : IDisposable
             // 남아 있으면 stream drain이 끝나지 않는다. 출력 대기 전에 실행 전용 Job을 닫아
             // 해당 실행의 잔존 후손과 pipe handle을 먼저 정리한다.
             processJob.Dispose();
-            WorkerChildProcessJob.TerminateDescendants(process.Id, startedAt);
 
             await stdoutTask;
             var stdout = stdoutBuilder.ToString();
@@ -530,8 +525,7 @@ public sealed class CodexCliRunner : IDisposable
     }
 
     private static async Task TerminateProcessTreeAsync(
-        Process process,
-        DateTimeOffset startedAt)
+        Process process)
     {
         try
         {
@@ -550,11 +544,6 @@ public sealed class CodexCliRunner : IDisposable
         catch
         {
         }
-
-        // Process.Start 직후 run Job에 들어가기 전에 먼저 생성된 후손이 있으면
-        // launcher 종료 뒤에도 root Job에만 남을 수 있다. parent PID lineage로 한 번 더 정리한다.
-        try { WorkerChildProcessJob.TerminateDescendants(process.Id, startedAt); }
-        catch { }
 
         // Kill(entireProcessTree) 완료 직후에도 Windows가 자식 프로세스의 cwd/file handle을
         // 짧게 유지할 수 있으므로 runtime 삭제 전에 해제 시간을 준다.
