@@ -841,7 +841,9 @@ public partial class MainWindow
                 coordinator,
                 implementer,
                 coordinatorSession,
-                result.Graph);
+                result.Graph,
+                hqSessionTextBytes,
+                hqSessionGeneration);
             SetFlowState(false, false, false);
         }
         catch (OperationCanceledException)
