@@ -669,7 +669,6 @@ public sealed class CodexWorkItemExecutorTests
         var integrationBranch = GitWorktreeManager.BuildBranchName("job", "I1");
         var git = new FakeGitRunner();
         git.Enqueue(0, root);
-        git.Enqueue(0, "");
         git.Enqueue(0, "main");
         git.Enqueue(0, "primary999");
         git.Enqueue(0, "Cloning");
@@ -738,7 +737,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task CompletedIntegrationFastForwardsPrimaryWorkspaceBeforeCompletion()
+    public async Task CompletedIntegrationImportsResultWithoutTouchingPrimaryWorkspace()
     {
         var fixture = CreateFixture(
             """
@@ -750,19 +749,12 @@ public sealed class CodexWorkItemExecutorTests
 
         var integrationClone = fixture.Request.Item.WorktreePath!;
         fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
-        fixture.Git.Enqueue(0, "");
-        fixture.Git.Enqueue(0, "main");
-        fixture.Git.Enqueue(0, "base123");
         fixture.Git.Enqueue(0, integrationClone);
         fixture.Git.Enqueue(0, Path.Combine(integrationClone, ".git"));
         fixture.Git.Enqueue(0, fixture.Branch);
         fixture.Git.Enqueue(0, "head123");
         fixture.Git.Enqueue(0, "Imported");
         fixture.Git.Enqueue(0, "head123");
-        fixture.Git.Enqueue(0, "");
-        fixture.Git.Enqueue(0, "Fast-forward");
-        fixture.Git.Enqueue(0, "head123");
-        fixture.Git.Enqueue(0, "");
 
         try
         {
@@ -772,9 +764,14 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal("head123", result.ResultRef);
-            Assert.Contains("INTEGRATION_LANDING", result.ResultSummary);
-            Assert.Contains("status: FAST_FORWARDED", result.ResultSummary);
-            Assert.Contains("targetBranch: main", result.ResultSummary);
+            Assert.Contains("INTEGRATION_IMPORT", result.ResultSummary);
+            Assert.Contains("status: IMPORTED", result.ResultSummary);
+            Assert.Contains("refs/projecthub/integration-results/job/I1", result.ResultSummary);
+            Assert.DoesNotContain(
+                fixture.Git.Calls,
+                call => call.Arguments.Count > 0 &&
+                        (call.Arguments[0] == "status" ||
+                         call.Arguments[0] == "merge"));
             Assert.False(Directory.Exists(integrationClone));
         }
         finally
@@ -784,7 +781,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task IntegrationBranchChangeBlocksWithCheckpointForHqRecovery()
+    public async Task IntegrationImportSourceBranchChangeBlocksWithCheckpoint()
     {
         var fixture = CreateFixture(
             """
@@ -794,8 +791,10 @@ public sealed class CodexWorkItemExecutorTests
             """,
             kind: WorkItemKind.Integration);
 
+        var integrationClone = fixture.Request.Item.WorktreePath!;
         fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
-        fixture.Git.Enqueue(0, "");
+        fixture.Git.Enqueue(0, integrationClone);
+        fixture.Git.Enqueue(0, Path.Combine(integrationClone, ".git"));
         fixture.Git.Enqueue(0, "feature");
 
         try
@@ -805,46 +804,11 @@ public sealed class CodexWorkItemExecutorTests
                 CancellationToken.None);
 
             Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("INTEGRATION_LANDING_FAILED", result.BlockCode);
-            Assert.Equal("INTEGRATION_TARGET_BRANCH_CHANGED", result.BlockDetailCode);
+            Assert.Equal("INTEGRATION_IMPORT_FAILED", result.BlockCode);
+            Assert.Equal("INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED", result.BlockDetailCode);
             Assert.Equal("head123", result.ResultRef);
-            Assert.StartsWith("INTEGRATION_LANDING", result.ResultSummary);
-            Assert.Contains("errorCode: INTEGRATION_TARGET_BRANCH_CHANGED", result.ResultSummary);
-            Assert.Contains("targetBranch: feature", result.ResultSummary);
-        }
-        finally
-        {
-            fixture.Dispose();
-        }
-    }
-
-    [Fact]
-    public async Task IntegrationLandingFailureBlocksWithCheckpointForHqRecovery()
-    {
-        var fixture = CreateFixture(
-            """
-            [GOTO : HQ]
-            WORK_ITEM_STATUS: COMPLETED
-            통합 worktree 검증은 완료했습니다.
-            """,
-            kind: WorkItemKind.Integration);
-
-        fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
-        fixture.Git.Enqueue(0, " M local-change.cs");
-
-        try
-        {
-            var result = await fixture.Executor.ExecuteAsync(
-                fixture.Request,
-                CancellationToken.None);
-
-            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("INTEGRATION_LANDING_FAILED", result.BlockCode);
-            Assert.Equal("INTEGRATION_TARGET_DIRTY", result.BlockDetailCode);
-            Assert.Equal("head123", result.ResultRef);
-            Assert.StartsWith("INTEGRATION_LANDING", result.ResultSummary);
-            Assert.Contains("errorCode: INTEGRATION_TARGET_DIRTY", result.ResultSummary);
-            Assert.Contains("integrationRef: head123", result.ResultSummary);
+            Assert.StartsWith("INTEGRATION_IMPORT", result.ResultSummary);
+            Assert.Contains("errorCode: INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED", result.ResultSummary);
         }
         finally
         {
