@@ -176,7 +176,7 @@ internal static class SuspendedJobProcessLauncher
 
             if (parentStdIn is not null)
             {
-                var stream = new FileStream(parentStdIn, FileAccess.Write, 4096, isAsync: true);
+                var stream = new FileStream(parentStdIn, FileAccess.Write, 4096, isAsync: false);
                 parentStdIn = null;
                 standardInput = new StreamWriter(
                     stream,
@@ -187,7 +187,7 @@ internal static class SuspendedJobProcessLauncher
 
             if (parentStdOut is not null)
             {
-                var stream = new FileStream(parentStdOut, FileAccess.Read, 4096, isAsync: true);
+                var stream = new FileStream(parentStdOut, FileAccess.Read, 4096, isAsync: false);
                 parentStdOut = null;
                 standardOutput = new StreamReader(
                     stream,
@@ -199,7 +199,7 @@ internal static class SuspendedJobProcessLauncher
 
             if (parentStdErr is not null)
             {
-                var stream = new FileStream(parentStdErr, FileAccess.Read, 4096, isAsync: true);
+                var stream = new FileStream(parentStdErr, FileAccess.Read, 4096, isAsync: false);
                 parentStdErr = null;
                 standardError = new StreamReader(
                     stream,
