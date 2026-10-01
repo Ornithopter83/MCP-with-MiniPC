@@ -6,7 +6,7 @@ namespace ProjectHub.Worker.Tests;
 public sealed class ParallelWorkSupervisorTests
 {
     [Fact]
-    public void MechanicalGraphEventExposesIntegrationLandingDetailCode()
+    public void MechanicalGraphEventExposesIntegrationImportDetailCode()
     {
         var graph = new WorkGraph("job");
         Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
@@ -16,22 +16,22 @@ public sealed class ParallelWorkSupervisorTests
         Assert.True(graph.TryMarkRunning("I1"));
         Assert.True(graph.TryMarkBlocked(
             "I1",
-            "INTEGRATION_LANDING_FAILED",
+            "INTEGRATION_IMPORT_FAILED",
             new string('x', 1500),
             "ref-I1",
-            "INTEGRATION_NOT_FAST_FORWARD"));
+            "INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED"));
 
         var text = ParallelWorkSupervisor.FormatMechanicalGraphEvent(
-            new[] { "통합 landing이 차단되었습니다." },
+            new[] { "통합 import가 차단되었습니다." },
             new ParallelWorkSchedulerSnapshot(
                 graph.Snapshot(),
                 Array.Empty<RunningWorkItemSnapshot>()));
 
-        Assert.Contains("blockCode=INTEGRATION_LANDING_FAILED", text);
-        Assert.Contains("blockDetailCode=INTEGRATION_NOT_FAST_FORWARD", text);
+        Assert.Contains("blockCode=INTEGRATION_IMPORT_FAILED", text);
+        Assert.Contains("blockDetailCode=INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED", text);
         Assert.True(
-            text.IndexOf("blockDetailCode=INTEGRATION_NOT_FAST_FORWARD", StringComparison.Ordinal) <
-            text.IndexOf("report=", StringComparison.Ordinal));
+            text.IndexOf("blockDetailCode=INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED", StringComparison.Ordinal) <
+            text.IndexOf("WORK_REPORT_BEGIN", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public sealed class ParallelWorkSupervisorTests
                 graph.Snapshot(),
                 Array.Empty<RunningWorkItemSnapshot>()));
 
-        Assert.Contains("id=W10 kind=NORMAL state=COMPLETED resultType=CODE_CHANGE resultRef=ref-W10", text);
+        Assert.Contains("workItemId=W10 kind=NORMAL state=COMPLETED resultType=CODE_CHANGE resultRef=ref-W10", text);
     }
 
     [Fact]
@@ -87,11 +87,10 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(2, result.Graph.Items.Count(item => item.State == WorkItemState.Completed));
         Assert.Equal(2, hq.Prompts.Count);
         Assert.Contains("WorkGraph revision: 0", hq.Prompts[0]);
-        Assert.Contains("당신은 HQ이며 설계·관제 AI다.", hq.Prompts[0]);
+        Assert.Contains("당신은 HQ다.", hq.Prompts[0]);
         Assert.Contains("입력 유형: WORK_GRAPH_QUIESCENT", hq.Prompts[1]);
-        Assert.DoesNotContain("당신은 HQ이며 설계·관제 AI다.", hq.Prompts[1]);
-        Assert.Contains("병렬 WorkGraph 변경 이벤트", hq.Prompts[1]);
-        Assert.Contains("changedItems:", hq.Prompts[1]);
+        Assert.DoesNotContain("당신은 HQ다.", hq.Prompts[1]);
+        Assert.Contains("WorkGraph 변경", hq.Prompts[1]);
         Assert.Contains("state=COMPLETED", hq.Prompts[1]);
         Assert.Contains("resultType=", hq.Prompts[1]);
     }
@@ -120,8 +119,8 @@ public sealed class ParallelWorkSupervisorTests
             previous,
             current);
 
-        Assert.DoesNotContain("id=W1", text);
-        Assert.Contains("id=W2", text);
+        Assert.DoesNotContain("workItemId=W1", text);
+        Assert.Contains("workItemId=W2", text);
         Assert.Contains("state=RUNNING", text);
     }
 
@@ -231,10 +230,8 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(3, hq.Prompts.Count);
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[1]);
         Assert.Contains("WORK_GRAPH_EMPTY_CONTINUE", hq.Prompts[1]);
-        Assert.Contains("WORK_GRAPH_PATCH:", hq.Prompts[1]);
-        Assert.Contains("expectedRevision은 0을 사용", hq.Prompts[1]);
-        Assert.Contains("실제 operation 객체", hq.Prompts[1]);
-        Assert.Contains("[ACTION=PAUSE]", hq.Prompts[1]);
+        Assert.Contains("attempt=1", hq.Prompts[1]);
+        Assert.Contains("현재 revision에 맞는 patch 형식만 수정해 다시 응답하세요.", hq.Prompts[1]);
         Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
     }
 
@@ -332,7 +329,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.True(executor.IsRunning("W2"));
         Assert.False(executor.IsCompleted("W2"));
         Assert.Contains("blockCode=HQ_BLOCKED", hq.Prompts[1]);
-        Assert.Contains("id=W2", hq.Prompts[1]);
+        Assert.Contains("workItemId=W2", hq.Prompts[1]);
         Assert.Contains("state=RUNNING", hq.Prompts[1]);
 
         await executor.WhenStartedCount("W1", 2);
@@ -643,8 +640,8 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(4, hq.Prompts.Count);
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[2]);
         Assert.Contains("errorCode=WORK_GRAPH_RUNNING_OR_TERMINAL_ITEM_IMMUTABLE", hq.Prompts[2]);
-        Assert.Contains("consecutiveRejectedPatches=1", hq.Prompts[2]);
-        Assert.Contains("id=W11 kind=NORMAL state=RUNNING", hq.Prompts[2]);
+        Assert.Contains("attempt=1", hq.Prompts[2]);
+        Assert.Contains("workItemId=W11 kind=NORMAL state=RUNNING", hq.Prompts[2]);
         Assert.Equal(WorkItemState.Completed, result.Graph.Items.Single(item => item.Id == "W11").State);
     }
 
@@ -715,7 +712,7 @@ public sealed class ParallelWorkSupervisorTests
             ContinuePatch(
                 1,
                 """
-                {"type":"SET_GOAL","workItemId":"W10","goal":"잘못된 필드명"}
+                {"type":"SET_GOAL","workItemId":"W10"}
                 """),
             End("완료"));
 
@@ -735,7 +732,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[2]);
         Assert.Contains("errorCode=WORK_GRAPH_SET_GOAL_SCHEMA_INVALID", hq.Prompts[2]);
         Assert.Contains("path=operations[0].value", hq.Prompts[2]);
-        Assert.Contains("The \"goal\" field is used by ADD, not SET_GOAL.", hq.Prompts[2]);
+        Assert.Contains("requires a nonblank \"value\" field", hq.Prompts[2]);
         Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
     }
 
@@ -796,7 +793,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(3, hq.Prompts.Count);
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[1]);
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[2]);
-        Assert.Contains("consecutiveRejectedPatches=3", result.HqBody);
+        Assert.Contains("attempt=3", result.HqBody);
         Assert.Empty(result.Graph.Items);
     }
 
@@ -839,8 +836,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(1, helperCalls);
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[1]);
         Assert.Contains("errorCode=WORK_GRAPH_PATCH_JSON_INVALID", hq.Prompts[1]);
-        Assert.Contains("Structured Helper를 호출하지 않았습니다", hq.Prompts[1]);
-        Assert.Contains("완성된 JSON 객체 하나", hq.Prompts[1]);
+        Assert.Contains("직전 의미는 유지하고 완전한 WORK_GRAPH_PATCH JSON만 다시 출력하세요.", hq.Prompts[1]);
         Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
     }
 
