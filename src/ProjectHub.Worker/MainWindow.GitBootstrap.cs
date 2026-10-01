@@ -210,14 +210,14 @@ public partial class MainWindow
             Environment.NewLine +
             "계속하시겠습니까?";
 
-        var answer = MessageBox.Show(
+        var answer = System.Windows.MessageBox.Show(
             this,
             prompt,
             "Git 재초기화",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
+            System.Windows.MessageBoxButton.OKCancel,
+            System.Windows.MessageBoxImage.Warning);
 
-        if (answer != MessageBoxResult.OK)
+        if (answer != System.Windows.MessageBoxResult.OK)
             return false;
 
         handled = true;
