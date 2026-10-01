@@ -367,6 +367,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
                     timedOut = true;
+                    processJob.Dispose();
                     TryKill(process);
                     try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
                 }
