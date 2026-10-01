@@ -8,7 +8,9 @@ public sealed record CoordinatorContinuationState(
     string? CoordinatorSessionId,
     string? WorkSessionId,
     string Status,
-    string LastHqMessage);
+    string LastHqMessage,
+    long HqSessionTextBytes = 0,
+    int HqSessionGeneration = 1);
 
 public static class TaskContinuationContract
 {
