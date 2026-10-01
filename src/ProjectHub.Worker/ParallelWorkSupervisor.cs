@@ -767,8 +767,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     }
 
     private static bool IsExternalBlockCode(string? blockCode)
-        => string.Equals(blockCode, "JUDGE_REQUEST", StringComparison.Ordinal) ||
-           string.Equals(blockCode, "RESOURCE_REQUEST", StringComparison.Ordinal);
+        => string.Equals(blockCode, "RESOURCE_REQUEST", StringComparison.Ordinal);
 
     public static string FormatMechanicalGraphDeltaEvent(
         IReadOnlyList<string> reasons,
@@ -787,35 +786,23 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             .ToArray();
 
         var builder = new StringBuilder();
-        builder.AppendLine("병렬 WorkGraph 변경 이벤트");
+        builder.AppendLine("WorkGraph 변경");
         builder.AppendLine($"revision={snapshot.Graph.Revision}");
-        builder.AppendLine($"running={snapshot.RunningCount}");
-        builder.AppendLine($"ready={snapshot.ReadyCount}");
-        builder.AppendLine($"blocked={snapshot.BlockedCount}");
-        builder.AppendLine($"completed={snapshot.CompletedCount}");
-        builder.AppendLine($"failed={snapshot.FailedCount}");
+        builder.AppendLine($"running={snapshot.RunningCount} ready={snapshot.ReadyCount} blocked={snapshot.BlockedCount} completed={snapshot.CompletedCount} failed={snapshot.FailedCount}");
 
         if (reasons.Count > 0)
-        {
-            builder.AppendLine("eventReasons:");
-            foreach (var reason in reasons)
-                builder.AppendLine("- " + reason);
-        }
+            builder.AppendLine("event=" + string.Join(" | ", reasons));
 
-        builder.AppendLine("changedItems:");
         if (changedItems.Length == 0)
         {
-            builder.AppendLine("- 없음");
+            builder.AppendLine("changedItems=없음");
         }
         else
         {
             foreach (var item in changedItems)
                 AppendMechanicalItem(builder, item);
-
-            AppendCommitManifestBodies(builder, changedItems);
         }
 
-        builder.AppendLine("전체 WorkGraph는 Worker 내부 상태로 유지되며, HQ에는 직전 전달 이후 변경된 항목만 제공됩니다.");
         return builder.ToString().TrimEnd();
     }
 
@@ -828,7 +815,6 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
            !string.Equals(previous.BaseRef, current.BaseRef, StringComparison.Ordinal) ||
            !string.Equals(previous.ResultRef, current.ResultRef, StringComparison.Ordinal) ||
            previous.ResultType != current.ResultType ||
-           !string.Equals(previous.CommitManifestPath, current.CommitManifestPath, StringComparison.Ordinal) ||
            !string.Equals(previous.ResultSummary, current.ResultSummary, StringComparison.Ordinal) ||
            !string.Equals(previous.FailureCode, current.FailureCode, StringComparison.Ordinal) ||
            !string.Equals(previous.BlockCode, current.BlockCode, StringComparison.Ordinal) ||
@@ -836,58 +822,27 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
     private static void AppendMechanicalItem(StringBuilder builder, WorkItemSnapshot item)
     {
-        builder.Append("- id=").Append(item.Id)
+        builder.Append("workItemId=").Append(item.Id)
             .Append(" kind=").Append(item.Kind.ToString().ToUpperInvariant())
             .Append(" state=").Append(item.State.ToString().ToUpperInvariant());
 
         if (item.Dependencies.Count > 0)
             builder.Append(" dependencies=").Append(string.Join(",", item.Dependencies));
-        if (item.State == WorkItemState.Completed)
-            builder.Append(" resultType=").Append(WorkItemResultTypeContract.ToToken(item.ResultType));
         if (!string.IsNullOrWhiteSpace(item.ResultRef))
             builder.Append(" resultRef=").Append(item.ResultRef);
-        if (!string.IsNullOrWhiteSpace(item.CommitManifestPath))
-            builder.Append(" commitManifest=").Append(item.CommitManifestPath);
         if (!string.IsNullOrWhiteSpace(item.FailureCode))
             builder.Append(" failureCode=").Append(item.FailureCode);
         if (!string.IsNullOrWhiteSpace(item.BlockCode))
             builder.Append(" blockCode=").Append(item.BlockCode);
         if (!string.IsNullOrWhiteSpace(item.BlockDetailCode))
             builder.Append(" blockDetailCode=").Append(item.BlockDetailCode);
-        if (!string.IsNullOrWhiteSpace(item.ResultSummary))
-            builder.Append(" report=").Append(SingleLine(item.ResultSummary));
         builder.AppendLine();
-    }
 
-    private static void AppendCommitManifestBodies(
-        StringBuilder builder,
-        IReadOnlyList<WorkItemSnapshot> items)
-    {
-        var withManifest = items
-            .Where(item => !string.IsNullOrWhiteSpace(item.CommitManifestPath))
-            .ToArray();
-        if (withManifest.Length == 0)
-            return;
-
-        builder.AppendLine("commitManifests:");
-        foreach (var item in withManifest)
+        if (!string.IsNullOrWhiteSpace(item.ResultSummary))
         {
-            builder.AppendLine($"--- workItemId={item.Id} path={item.CommitManifestPath} ---");
-            try
-            {
-                if (!File.Exists(item.CommitManifestPath))
-                {
-                    builder.AppendLine("[파일 없음]");
-                    continue;
-                }
-
-                builder.AppendLine(File.ReadAllText(item.CommitManifestPath).TrimEnd());
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
-            {
-                builder.AppendLine("[읽기 실패: " + exception.Message + "]");
-            }
+            builder.AppendLine("WORK_REPORT_BEGIN");
+            builder.AppendLine(item.ResultSummary.TrimEnd());
+            builder.AppendLine("WORK_REPORT_END");
         }
     }
 
