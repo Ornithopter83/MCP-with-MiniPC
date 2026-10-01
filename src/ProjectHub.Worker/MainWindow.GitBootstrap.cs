@@ -163,6 +163,12 @@ public partial class MainWindow
         TaskTitle.Text = "Git 준비를 확인하세요";
         ResultTitle.Text = "GIT BLOCKED";
         ResultBody.Text = detail + pathLine + codeLine;
+        AddTaskMessage(
+            "GIT PREP ERROR",
+            detail + pathLine + codeLine,
+            status: errorCode ?? "GIT_PREPARATION_FAILED",
+            includeHistory: false);
+        ActivateResultTab(web: false);
         SetFlowState(false, false, false);
     }
 }
