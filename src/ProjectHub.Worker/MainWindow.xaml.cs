@@ -969,7 +969,6 @@ public partial class MainWindow : Window
         ResourceStageModelText.Text = _resourceSidecarActive
             ? (_resourceSidecarQueued > 0 ? $"{_resourceSidecarStatus} · 대기 {_resourceSidecarQueued}" : _resourceSidecarStatus)
             : "ChatGPT Web";
-        SetPipelineCard(PipelineJudgeCard, PipelineJudgeTitle, JudgeStageCircle, JudgeStageIcon, RoleVisuals["Judge"].IconAsset, TaskStage.Judge, RoleVisuals["Judge"], !_targetSettings.EffectiveJudge.Enabled, initialInputIdle);
 
         var idleVisual = PipelineIdleCardVisualPolicy.Resolve(idle);
         SetColor(PipelineIdleCard, idleVisual.Background);
@@ -995,7 +994,6 @@ public partial class MainWindow : Window
         icon.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/ProjectHub.Worker;component/Assets/{selectedName}"));
         if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineResourceCard) ResourceStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
-        else if (card == PipelineJudgeCard) JudgeStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         card.BorderBrush = System.Windows.Media.Brushes.Transparent;
         card.BorderThickness = new Thickness(1);
         card.Effect = null;
@@ -1009,7 +1007,6 @@ public partial class MainWindow : Window
             TaskStage.Coordinator => (PipelineCoordinatorActiveBase, PipelineCoordinatorActiveOrbit),
             TaskStage.Implementer => (PipelineImplementerActiveBase, PipelineImplementerActiveOrbit),
             TaskStage.Resource => (PipelineResourceActiveBase, PipelineResourceActiveOrbit),
-            TaskStage.Judge => (PipelineJudgeActiveBase, PipelineJudgeActiveOrbit),
             _ => throw new ArgumentOutOfRangeException(nameof(stage))
         };
 
@@ -2593,143 +2590,6 @@ public partial class MainWindow : Window
         if (_startupConfigurationInitialized) ApplyConnectionStatus();
     }
 
-    private void ApplyJudgeConfigurationToControls()
-    {
-        var judge = _targetSettings.EffectiveJudge;
-        EnableJudgeCheckBox.IsChecked = judge.Enabled;
-        JudgeProviderCombo.SelectedIndex = 0;
-        JudgeExecutableInput.Text = judge.ManualExecutableOrEndpoint ?? JevJudgeRunner.DefaultEndpoint;
-        JudgeTimeoutInput.Text = judge.TimeoutSeconds.ToString();
-        var testSettings = ReadJudgeSettingsFromControls(judge.Enabled);
-        var validation = _targetSettings.JudgeEndpointValidation;
-        if (WorkerTargetConfiguration.IsJudgeEndpointValidationCurrent(validation, testSettings))
-        {
-            SetJudgeEndpointTestStatus(
-                validation!.Succeeded ? "Endpoint 응답 확인 완료" : "Endpoint 확인 실패",
-                validation.Succeeded,
-                $"저장된 테스트 결과: {validation.Outcome} ({validation.TestedAtUtc.LocalDateTime:g})");
-        }
-        else
-        {
-            JudgeEndpointTestStatusText.Text = string.Empty;
-            JudgeEndpointTestStatusText.Foreground = (System.Windows.Media.Brush)FindResource("Muted");
-            JudgeEndpointTestStatusText.ToolTip = null;
-        }
-        if (!_judgeReviewing) _judgeStatus = judge.Enabled ? "READY" : "OFF";
-        UpdateJudgeVisual();
-    }
-
-    private void JudgeTimeoutInput_GotFocus(object sender, RoutedEventArgs e)
-    {
-        JudgeTimeoutInput.SelectAll();
-    }
-
-    private void JudgeTimeoutInput_LostFocus(object sender, RoutedEventArgs e)
-    {
-        JudgeTimeoutInput.Text = ReadJudgeTimeout().ToString();
-    }
-
-    private void JudgeTimeoutInput_PreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        e.Handled = e.Text.Any(character => !char.IsDigit(character));
-    }
-
-    private int ReadJudgeTimeout()
-    {
-        return int.TryParse(JudgeTimeoutInput.Text.Trim(), out var value)
-            ? Math.Clamp(value, 10, 600)
-            : 120;
-    }
-
-    private JudgeSettings ReadJudgeSettingsFromControls(bool enabled)
-    {
-        var provider = (JudgeProviderCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString()
-            ?? GetSelectedContent(JudgeProviderCombo, "Jev").ToLowerInvariant();
-        var endpoint = string.IsNullOrWhiteSpace(JudgeExecutableInput.Text)
-            ? JevJudgeRunner.DefaultEndpoint
-            : JudgeExecutableInput.Text.Trim();
-        return new JudgeSettings(enabled, provider, endpoint, ReadJudgeTimeout());
-    }
-
-    private bool PersistJudgeEndpointValidation(JudgeSettings testedSettings, bool succeeded, string outcome)
-    {
-        var validation = new JudgeEndpointValidation(
-            WorkerTargetConfiguration.GetJudgeEndpointFingerprint(testedSettings),
-            succeeded,
-            outcome,
-            DateTimeOffset.UtcNow);
-        try
-        {
-            WorkerTargetConfiguration.SaveJudgeEndpointValidation(validation);
-            _targetSettings = _targetSettings with { JudgeEndpointValidation = validation };
-            return true;
-        }
-        catch (Exception exception)
-        {
-            _targetSettings = _targetSettings with { JudgeEndpointValidation = null };
-            AddTaskMessage("JEV TEST", $"테스트 결과 저장 실패: {exception.GetType().Name}");
-            return false;
-        }
-    }
-
-    private async void TestJudge_Click(object sender, RoutedEventArgs e)
-    {
-        var testSettings = ReadJudgeSettingsFromControls(enabled: true);
-        var endpoint = testSettings.ManualExecutableOrEndpoint!;
-        JudgeExecutableInput.Text = endpoint;
-        JudgeEndpointTestButton.IsEnabled = false;
-        SetJudgeEndpointTestStatus("Endpoint 확인 중…", null);
-        try
-        {
-            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) || endpointUri.Scheme != Uri.UriSchemeHttps)
-            {
-                AddTaskMessage("JEV TEST", "Endpoint 확인 실패: HTTPS 주소가 아닙니다.");
-                var invalidEndpointSaved = PersistJudgeEndpointValidation(testSettings, false, "INVALID_ENDPOINT");
-                SetJudgeEndpointTestStatus(invalidEndpointSaved ? "Endpoint 확인 실패" : "테스트 결과 저장 실패", false, "HTTPS endpoint 주소를 확인하세요.");
-                return;
-            }
-
-            var request = new JudgeRequest(
-                "ProjectHub JEV Endpoint test",
-                1,
-                AppContext.BaseDirectory,
-                "[NEXT : JEV]" + Environment.NewLine + Environment.NewLine + "[VALIDATION REQUEST]" + Environment.NewLine + Environment.NewLine + "- NOUL | 오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐" + Environment.NewLine + "  PASS: YES >= 0.5",
-                "- NOUL | 오늘 비가 올 확률은 몇 퍼센트나 될지 1.00으로 정규화해봐" + Environment.NewLine + "  PASS: YES >= 0.5",
-                Array.Empty<CodexCliFile>(),
-                "LOCAL",
-                null);
-            var result = await _jevJudgeRunner.ReviewRawAsync(request, testSettings, CancellationToken.None);
-            AddTaskMessage("JEV TEST", result.ErrorCode is null ? "Endpoint 응답 확인 완료" : $"Endpoint 확인 실패: {result.ErrorCode}");
-            var succeeded = result.ErrorCode is null && result.RawResponse is not null;
-            var testResultSaved = PersistJudgeEndpointValidation(testSettings, succeeded, succeeded ? "RESPONSE_RECEIVED" : result.ErrorCode ?? "RESPONSE_MISSING");
-            SetJudgeEndpointTestStatus(
-                testResultSaved ? succeeded ? "Endpoint 응답 확인 완료" : "Endpoint 확인 실패" : "테스트 결과 저장 실패",
-                testResultSaved && succeeded,
-                succeeded ? "JEV 응답을 받았습니다." : result.ErrorCode ?? "응답을 받지 못했습니다.");
-        }
-        catch (Exception exception)
-        {
-            AddTaskMessage("JEV TEST", $"ERROR: {exception.GetType().Name}");
-            var exceptionResultSaved = PersistJudgeEndpointValidation(testSettings, false, $"ERROR_{exception.GetType().Name}");
-            SetJudgeEndpointTestStatus(exceptionResultSaved ? "Endpoint 확인 실패" : "테스트 결과 저장 실패", false, exception.GetType().Name);
-        }
-        finally
-        {
-            JudgeEndpointTestButton.IsEnabled = true;
-        }
-    }
-
-    private void SetJudgeEndpointTestStatus(string message, bool? succeeded, string? detail = null)
-    {
-        JudgeEndpointTestStatusText.Text = message;
-        JudgeEndpointTestStatusText.Foreground = succeeded switch
-        {
-            true => (System.Windows.Media.Brush)FindResource("Blue"),
-            false => System.Windows.Media.Brushes.Red,
-            _ => (System.Windows.Media.Brush)FindResource("Muted")
-        };
-        JudgeEndpointTestStatusText.ToolTip = detail;
-    }
     private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
     {
         _targetSettings = _targetSettings with { ManualRepositoryUrl = null, RepositoryUrlSource = null };
@@ -2755,22 +2615,18 @@ public partial class MainWindow : Window
             WorkingDirectoryInput.ToolTip = "Choose an existing folder before applying settings.";
             return;
         }
-        var timeout = ReadJudgeTimeout();
-        var judgeSettings = ReadJudgeSettingsFromControls(EnableJudgeCheckBox.IsChecked == true) with { TimeoutSeconds = timeout };
-        var judgeWarning = WorkerTargetConfiguration.GetJudgeApplyWarning(judgeSettings, _targetSettings.JudgeEndpointValidation);
         var maxConcurrentWork = int.TryParse(
             GetSelectedTag(MaxConcurrentWorkCombo, "1"),
             out var parsedMaxConcurrentWork)
             ? Math.Clamp(parsedMaxConcurrentWork, WorkGraph.MinimumConcurrency, WorkGraph.MaximumConcurrency)
             : 1;
-        if (judgeWarning is not null)
-            System.Windows.MessageBox.Show(this, judgeWarning, "판정 AI 설정 확인", MessageBoxButton.OK, MessageBoxImage.Warning);
         _targetSettings = _targetSettings with
         {
             ManualRepositoryUrl = null, ManualServerBaseUrl = server,
             RepositoryUrlSource = null, ServerBaseUrlSource = "MANUAL",
             ManualWorkingDirectory = workingDirectory,
-            Judge = judgeSettings,
+            Judge = null,
+            JudgeEndpointValidation = null,
             ExecutionMode = executionMode,
             Coordinator = ReadCoordinatorSettings(),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo),
