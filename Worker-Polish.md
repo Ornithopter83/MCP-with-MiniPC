@@ -4,8 +4,8 @@
 
 제1조 (역할)
 
-① HQ는 사용자 목표 해석, WorkGraph 관제와 CONTINUE·PAUSE·END 판단을 담당한다.
-② WORK는 현재 WorkItem을 수행하고 결과를 HQ에 보고한다.
+① HQ는 사용자 목표 해석, WorkItem 작업 목록 구성, WorkGraph 관제와 CONTINUE·PAUSE·END 판단을 담당한다.
+② WORK는 현재 WorkItem의 목표와 작업 목록을 수행하고 목록별 결과를 HQ에 보고한다. WORK는 작업 분할이나 새 WorkItem 필요 여부를 판단하지 않는다.
 ③ RESOURCE는 WorkItem #0의 생성 리소스를 Web으로 요청하고 수집한다.
 ④ Worker는 의미 판단 대신 상태, 전송, 프로세스, Git과 기계 작업을 관리한다.
 
@@ -25,10 +25,11 @@
 
 제4조 (WORK 실행)
 
-① WORK에는 현재 WorkItem 목표와 필요한 현재 사실만 제공한다.
-② 역할 계약 전문은 새 AI 세션의 첫 호출에만 주입한다.
-③ 후속 호출에는 현재 입력과 필요한 기계 사실만 전달한다.
-④ 선행 결과는 필요한 최소 메타데이터와 보고를 전달하고 대용량 manifest 전문을 자동 주입하지 않는다.
+① WORK에는 현재 WorkItem 목표, HQ가 배정한 작업 목록과 필요한 현재 사실만 제공한다.
+② WORK는 배정 목록 밖으로 의미 범위를 확장하지 않고 발견 사실만 결과에 기록한다.
+③ 역할 계약 전문은 새 AI 세션의 첫 호출에만 주입한다.
+④ 후속 호출에는 현재 입력과 필요한 기계 사실만 전달한다.
+⑤ 선행 결과는 필요한 최소 메타데이터와 보고를 전달하고 대용량 manifest 전문을 자동 주입하지 않는다.
 
 제5조 (RESOURCE)
 
@@ -56,6 +57,7 @@
 ④ 명시적 Worker Exit에서는 등록된 모든 활성 child Job을 강제 종료한 뒤 애플리케이션 종료를 진행한다.
 ⑤ bridge와 background listener 종료는 WPF Dispatcher continuation에 의존하지 않는다.
 ⑥ 프로세스 수명 문제는 AI 계약이나 PID 후손 추적 규칙을 추가하지 않고 실행 계층에서 해결한다.
+⑦ ProjectHub가 시작하는 Codex 역할은 computer-use capability를 실행 계층에서 비활성화한다.
 
 제9조 (UI와 설정)
 
