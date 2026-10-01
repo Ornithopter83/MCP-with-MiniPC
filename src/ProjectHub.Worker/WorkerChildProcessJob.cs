@@ -83,10 +83,14 @@ internal sealed class WorkerChildProcessJob : IDisposable
         }
     }
 
-    public SuspendedJobProcess Start(ProcessStartInfo startInfo)
+    public SuspendedJobProcess Start(
+        ProcessStartInfo startInfo,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
+        cancellationToken.ThrowIfCancellationRequested();
 
+        SuspendedJobProcess launched;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -95,9 +99,28 @@ internal sealed class WorkerChildProcessJob : IDisposable
                     $"{_ownerLabel} Job Object가 준비되지 않았습니다.");
 
             // 프로세스는 suspended 상태로 생성되고 Job 연결에 성공한 뒤에만 실행된다.
-            return SuspendedJobProcessLauncher.Start(
+            launched = SuspendedJobProcessLauncher.Start(
                 startInfo,
                 _handle.DangerousGetHandle());
+        }
+
+        if (!cancellationToken.CanBeCanceled)
+            return launched;
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            launched.AttachCancellation(
+                cancellationToken.Register(
+                    static state => ((WorkerChildProcessJob)state!).Dispose(),
+                    this));
+            return launched;
+        }
+        catch
+        {
+            Dispose();
+            launched.Dispose();
+            throw;
         }
     }
 
