@@ -658,7 +658,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     var body = FormatMechanicalGraphDeltaEvent(
                         reasons,
                         _hqKnownSnapshot,
-                        snapshot);
+                        snapshot,
+                        _hqReportedChecklistItems);
                     _hqKnownSnapshot = snapshot.Graph;
                     return new SupervisorWake(
                         "WORK_GRAPH_QUIESCENT",
