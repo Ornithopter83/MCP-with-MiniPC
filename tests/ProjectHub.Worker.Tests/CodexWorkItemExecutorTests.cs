@@ -157,27 +157,15 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task SplitRequestReturnsBlockedOutcomeWithCheckpoint()
+    public void SplitRequestStatusIsNotPartOfWorkReportContract()
     {
-        var fixture = CreateFixture("""
-            [GOTO : HQ]
+        const string body = """
             WORK_ITEM_STATUS: SPLIT_REQUEST
-            별도 WorkItem이 필요합니다.
-            """);
+            별도 작업이 필요하다는 판단
+            """;
 
-        try
-        {
-            var result = await fixture.Executor.ExecuteAsync(fixture.Request, CancellationToken.None);
-
-            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("SPLIT_REQUEST", result.BlockCode);
-            Assert.Equal("head123", result.ResultRef);
-            Assert.Contains("별도 WorkItem", result.ResultSummary);
-        }
-        finally
-        {
-            fixture.Dispose();
-        }
+        Assert.False(WorkItemReportContract.TryParse(body, out _, out var error));
+        Assert.Equal("WORK_ITEM_STATUS_INVALID", error);
     }
 
     [Fact]
