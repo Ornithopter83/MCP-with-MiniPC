@@ -956,7 +956,7 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void RoleContracts_PrioritizeFinalImplementationAndAvoidRepeatedHeavyVerification()
+    public void RoleContracts_KeepDecompositionInHqAndExposeWorkChecklist()
     {
         var hqPrompt = RoleContractLoader.BuildHqPrompt(
             "USER_REQUEST",
@@ -964,23 +964,27 @@ public sealed class CoordinatorFirstContractTests
             new WorkGraphPromptContext(0, 4, "abc123"),
             includeContract: true);
         var workPrompt = RoleContractLoader.BuildWorkPrompt(
-            "HQ_INSTRUCTION",
+            "WORK_ITEM",
             "기능을 완성하라.",
             new WorkItemPromptContext(
                 "W10",
                 WorkItemKind.Normal,
-                "기능을 완성하라.",
+                "검색 기능 구현",
                 Array.Empty<string>(),
                 "abc123",
                 "branch",
-                "worktree"),
-            @"C:\work\.projecthub\runtime\temp\job\W10");
+                "worktree",
+                Checklist: new[] { "검색 모델 구현", "필터 결과 검증" }));
 
-        Assert.Contains("사용자 최종 목표가 아직 남아 있으면", hqPrompt);
-        Assert.Contains("동일 상태를 다시 증명하기 위한", hqPrompt);
-        Assert.Contains("종료 직전 단일 검증 WorkItem", hqPrompt);
-        Assert.Contains("목표 구현이 남아 있으면", workPrompt);
-        Assert.Contains("재빌드·publish·export·대용량 임시 검증 산출물을 반복 생성하지 않는다", workPrompt);
+        Assert.Contains("`checklist` 문자열 배열", hqPrompt);
+        Assert.Contains("작업 분해와 추가 WorkItem 판단은 HQ", hqPrompt);
+        Assert.Contains("WorkItem 작업 목록:", workPrompt);
+        Assert.Contains("[1] 검색 모델 구현", workPrompt);
+        Assert.Contains("[2] 필터 결과 검증", workPrompt);
+        Assert.Contains("새 WorkItem이 필요한지 판단하거나 작업 분할을 요청하지 않는다", workPrompt);
+        Assert.DoesNotContain("WORK_ITEM_STATUS: SPLIT_REQUEST", workPrompt);
+        Assert.Contains("computerUse: disabled", hqPrompt);
+        Assert.Contains("computerUse: disabled", workPrompt);
     }
 
     [Fact]
