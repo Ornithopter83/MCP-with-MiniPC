@@ -706,8 +706,12 @@ public sealed class ManagedWebRuntimeManager : IDisposable
         {
             try
             {
-                if (item.Process is not null && !item.Process.HasExited)
-                    item.Process.WaitForExit(2000);
+                if (item.Process is not null &&
+                    !item.Process.HasExited &&
+                    !item.Process.WaitForExit(2000))
+                {
+                    item.Process.Kill(entireProcessTree: true);
+                }
             }
             catch
             {
