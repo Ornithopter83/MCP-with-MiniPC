@@ -34,11 +34,13 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 
 제3조 (continuation과 기록)
 
-① PAUSE, CANCELED, DONE 또는 DONE_WITH_ERROR 뒤 사용자가 같은 프로그램 실행 안에서 `작업 추가`를 선택하면 기존 HQ/WORK 세션과 WorkGraph를 USER_FOLLOWUP 문맥으로 유지할 수 있다.
-② 프로그램 시작 시 과거 `session-state`, HQ/WORK 세션, WorkGraph, event log를 자동 복구해 새 작업의 의미 문맥으로 사용하지 않는다.
-③ 사용자가 `새 작업`을 시작하면 활성 continuation을 제거하고 과거 상태와 transcript는 진단·이력으로만 남긴다.
-④ event log, transcript, handoff와 저장 상태는 정책 원본이 아니다.
-⑤ 정상 Worker 종료 시 target workspace의 `.projecthub`는 남기지 않는 것을 원칙으로 하며, 즉시 삭제를 막는 짧은 파일 잠금은 종료 후 기계 cleanup helper가 유한 횟수 재시도한다.
+① PAUSE 또는 CANCELED 뒤 작업 폴더가 그대로이면 `작업 추가`는 기존 HQ/WORK 세션과 WorkGraph를 USER_FOLLOWUP 문맥으로 이어갈 수 있다.
+② PAUSE 또는 CANCELED 뒤 작업 폴더가 외부에서 변경됐거나 Git 상태를 정상 확인할 수 없으면 기존 WorkGraph를 이어 붙이지 않고 현재 파일을 기준으로 새 Job과 새 WorkGraph를 시작한다.
+③ DONE 또는 DONE_WITH_ERROR 뒤의 `작업 추가`는 이전 WorkGraph continuation이 아니라 현재 작업 폴더를 기준으로 한 새 Job이다.
+④ 프로그램 시작 시 과거 `session-state`, HQ/WORK 세션, WorkGraph, event log를 자동 복구해 새 작업의 의미 문맥으로 사용하지 않는다.
+⑤ 사용자가 `새 작업`을 시작하면 활성 continuation을 제거하고 과거 상태와 transcript는 진단·이력으로만 남긴다.
+⑥ event log, transcript, handoff와 저장 상태는 정책 원본이 아니다.
+⑦ 정상 Worker 종료 시 target workspace의 `.projecthub`는 남기지 않는 것을 원칙으로 하며, 즉시 삭제를 막는 짧은 파일 잠금은 종료 후 기계 cleanup helper가 유한 횟수 재시도한다.
 
 제4조 (RESOURCE, JUDGE, OBSERVATION)
 
@@ -51,9 +53,10 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 제5조 (Git과 안전 경계)
 
 ① Worker는 WORK 실행 전에 Git metadata를 AI 실행 경계 밖으로 격리하고 원격 프로토콜 접근을 차단한다.
-② Git 충돌, detached HEAD, dirty 상태, non-fast-forward와 같은 위험 상태를 Worker가 의미적으로 자동 해결하지 않는다.
-③ 파괴적 reset, force, 외부 push 또는 배포는 별도 명시적 승인 없이 수행하지 않는다.
-④ 정확한 worktree/clone 경로, 환경 변수와 Git 명령행 옵션은 현재 구현과 테스트를 원본으로 사용한다.
+② 실행 중 사용자 작업 폴더가 바뀌면 그 변경을 자동 merge하지 않고 사용자 파일을 보존한 채 기존 결과 반영을 중단한다.
+③ Git 준비가 실패하면 사용자 승인 후 `.git` metadata만 삭제하고 작업 파일과 `.gitignore`를 보존한 채 현재 파일에서 새 local baseline을 만들 수 있다.
+④ 파괴적 reset, force, 외부 push 또는 배포는 별도 명시적 승인 없이 수행하지 않는다.
+⑤ 정확한 worktree/clone 경로, 환경 변수와 Git 명령행 옵션은 현재 구현과 테스트를 원본으로 사용한다.
 
 제6조 (Web 런타임)
 
