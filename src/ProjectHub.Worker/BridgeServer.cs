@@ -245,7 +245,10 @@ public sealed class BridgeServer : IDisposable
         if (_loop is not null) return;
         _cts = new CancellationTokenSource();
         _listener.Start();
-        _loop = RunAsync(_cts.Token);
+
+        // WPF Dispatcher 문맥에서 직접 async loop를 시작하지 않는다.
+        // 종료 시 UI thread가 StopAsync를 동기 대기해도 loop continuation이 Dispatcher를 요구하지 않게 한다.
+        _loop = Task.Run(() => RunAsync(_cts.Token));
     }
 
     public async Task StopAsync()
@@ -259,7 +262,7 @@ public sealed class BridgeServer : IDisposable
             _listener.Stop();
         if (_loop is not null)
         {
-            try { await _loop; } catch (HttpListenerException) { } catch (ObjectDisposedException) { }
+            try { await _loop.ConfigureAwait(false); } catch (HttpListenerException) { } catch (ObjectDisposedException) { }
         }
         _loop = null;
         _cts.Dispose();
@@ -273,7 +276,7 @@ public sealed class BridgeServer : IDisposable
             HttpListenerContext context;
             try
             {
-                context = await _listener.GetContextAsync();
+                context = await _listener.GetContextAsync().ConfigureAwait(false);
             }
             catch (HttpListenerException) when (cancellationToken.IsCancellationRequested)
             {
