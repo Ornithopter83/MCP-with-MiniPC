@@ -110,8 +110,10 @@ public static class WorkGraphTransportContract
             if (TryGetNonBlankString(operation, "type", out _))
                 continue;
 
-            if (!TryGetNonBlankString(operation, "operation", out var alias) ||
-                !SupportedHqOperationAliases.Contains(alias))
+            var hasAlias =
+                TryGetNonBlankString(operation, "operation", out var alias) ||
+                TryGetNonBlankString(operation, "op", out alias);
+            if (!hasAlias || !SupportedHqOperationAliases.Contains(alias))
                 return false;
 
             repairs.Add((operation, index, alias));
@@ -308,51 +310,97 @@ public static class WorkGraphTransportContract
         return true;
     }
 
-    private static bool TryRejectMisleadingOperationFields(
+    private static bool TryNormalizeOperationAliases(
         string json,
+        out string normalizedJson,
         out string? error)
     {
+        normalizedJson = json;
         error = null;
+
+        JsonNode? parsed;
         try
         {
-            using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("operations", out var operations) ||
-                operations.ValueKind != JsonValueKind.Array)
-                return true;
-
-            foreach (var operation in operations.EnumerateArray())
-            {
-                if (operation.ValueKind != JsonValueKind.Object ||
-                    !operation.TryGetProperty("type", out var typeElement) ||
-                    typeElement.ValueKind != JsonValueKind.String)
-                    continue;
-
-                var type = typeElement.GetString()?.Trim().ToUpperInvariant();
-                var hasValue = operation.TryGetProperty("value", out _);
-
-                if (string.Equals(type, "SET_BASE_REF", StringComparison.Ordinal) &&
-                    !hasValue &&
-                    operation.TryGetProperty("baseRef", out _))
-                {
-                    error = "WORK_GRAPH_SET_BASE_REF_SCHEMA_INVALID";
-                    return false;
-                }
-
-                if (string.Equals(type, "RELEASE", StringComparison.Ordinal) &&
-                    !hasValue &&
-                    operation.TryGetProperty("body", out _))
-                {
-                    error = "WORK_GRAPH_RELEASE_SCHEMA_INVALID";
-                    return false;
-                }
-            }
-
-            return true;
+            parsed = JsonNode.Parse(json);
         }
         catch (JsonException)
         {
             error = "WORK_GRAPH_PATCH_JSON_INVALID";
             return false;
+        }
+
+        if (parsed is not JsonObject root ||
+            root["operations"] is not JsonArray operations)
+            return true;
+
+        foreach (var node in operations)
+        {
+            if (node is not JsonObject operation)
+                continue;
+
+            CopyAliasIfMissing(operation, "type", "operation", "op");
+            CopyAliasIfMissing(operation, "workItemId", "id");
+
+            if (!TryGetNonBlankString(operation, "type", out var type))
+                continue;
+
+            switch (type.Trim().ToUpperInvariant())
+            {
+                case "SET_GOAL":
+                    CopyAliasIfMissing(operation, "value", "goal");
+                    break;
+                case "SET_BASE_REF":
+                    CopyAliasIfMissing(operation, "value", "baseRef");
+                    break;
+                case "RELEASE":
+                    CopyAliasIfMissing(operation, "value", "body");
+                    break;
+            }
+        }
+
+        // HQ가 사용자 전체 목표를 별도 SET_GOAL로 먼저 적는 패턴은
+        // WorkGraph에 대응하는 전역 goal 필드가 없으므로 의미 없는 metadata다.
+        // 같은 patch에 실제 ADD가 있을 때에만 id 없는 SET_GOAL을 기계적으로 제거한다.
+        var hasAdd = operations
+            .OfType<JsonObject>()
+            .Any(operation =>
+                TryGetNonBlankString(operation, "type", out var type) &&
+                string.Equals(type, "ADD", StringComparison.OrdinalIgnoreCase));
+
+        if (hasAdd)
+        {
+            for (var index = operations.Count - 1; index >= 0; index--)
+            {
+                if (operations[index] is not JsonObject operation ||
+                    !TryGetNonBlankString(operation, "type", out var type) ||
+                    !string.Equals(type, "SET_GOAL", StringComparison.OrdinalIgnoreCase) ||
+                    operation.ContainsKey("workItemId") ||
+                    !TryGetNonBlankString(operation, "value", out _))
+                    continue;
+
+                operations.RemoveAt(index);
+            }
+        }
+
+        normalizedJson = root.ToJsonString();
+        return true;
+    }
+
+    private static void CopyAliasIfMissing(
+        JsonObject operation,
+        string target,
+        params string[] aliases)
+    {
+        if (operation.ContainsKey(target))
+            return;
+
+        foreach (var alias in aliases)
+        {
+            if (!operation.TryGetPropertyValue(alias, out var node) || node is null)
+                continue;
+
+            operation[target] = node.DeepClone();
+            return;
         }
     }
 
@@ -364,13 +412,13 @@ public static class WorkGraphTransportContract
         patch = null;
         error = null;
 
-        if (!TryRejectMisleadingOperationFields(json, out error))
+        if (!TryNormalizeOperationAliases(json, out var normalizedJson, out error))
             return false;
 
         PatchDto? dto;
         try
         {
-            dto = JsonSerializer.Deserialize<PatchDto>(json, JsonOptions);
+            dto = JsonSerializer.Deserialize<PatchDto>(normalizedJson, JsonOptions);
         }
         catch (JsonException)
         {
@@ -484,8 +532,10 @@ public static class WorkGraphTransportContract
 
             case "SET_GOAL":
             {
+                if (!IsSafeId(id))
+                    return Fail("WORK_GRAPH_WORK_ITEM_ID_INVALID", out mapped, out error);
                 var value = StringOperationValue(operation.Value);
-                if (!IsSafeId(id) || string.IsNullOrWhiteSpace(value))
+                if (string.IsNullOrWhiteSpace(value))
                     return Fail("WORK_GRAPH_SET_GOAL_SCHEMA_INVALID", out mapped, out error);
                 mapped = WorkGraphPatchOperation.SetGoal(id, value.Trim());
                 return true;
