@@ -6,14 +6,16 @@ namespace ProjectHub.Worker.Tests;
 public sealed class ParallelWorkTransportTests
 {
     [Fact]
-    public void ParallelWorkContractDefinesIntegrationAsSameWorkRole()
+    public void WorkContractStaysGenericAcrossWorkItemKinds()
     {
         var footer = RoleContractLoader.LoadWorkFooter();
 
-        Assert.Contains("workItemKind가 INTEGRATION", footer);
-        Assert.Contains("resultRef", footer);
-        Assert.Contains("의미적 병합·충돌 해결", footer);
-        Assert.Contains("일반 파일을 기준으로 의미적 병합·충돌 해결과 전체 검증을 수행한다", footer);
+        Assert.Contains("현재 WorkItem을 수행하는 WORK", footer);
+        Assert.Contains("WORK_ITEM_STATUS: COMPLETED", footer);
+        Assert.Contains("WORK_ITEM_STATUS: BLOCKED", footer);
+        Assert.Contains("WORK_ITEM_STATUS: FAILED", footer);
+        Assert.DoesNotContain("MATERIALIZE / COPY", footer);
+        Assert.DoesNotContain("BUILD / PUBLISH", footer);
     }
 
     [Fact]
@@ -155,7 +157,7 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
-    public void WorkGraphTypeMissingDiagnosticIncludesPathKeysAndHint()
+    public void WorkGraphUnsupportedOperationAliasIsNormalizedThenRejected()
     {
         const string body = """
             WORK_GRAPH_PATCH:
@@ -163,22 +165,20 @@ public sealed class ParallelWorkTransportTests
             """;
 
         Assert.False(WorkGraphTransportContract.TryParse(body, out _, out var error));
-        Assert.Equal("WORK_GRAPH_OPERATION_TYPE_MISSING", error);
+        Assert.Equal("WORK_GRAPH_OPERATION_UNSUPPORTED", error);
 
         var detail = WorkGraphTransportContract.DescribeError(body, error);
         Assert.NotNull(detail);
         Assert.Contains("path=operations[0].type", detail);
-        Assert.Contains("receivedKeys=", detail);
-        Assert.Contains("\"operation\"", detail);
-        Assert.Contains("unsupported alias value \"BOGUS\"", detail);
+        Assert.Contains("Unsupported WorkGraph operation \"BOGUS\"", detail);
     }
 
     [Fact]
-    public void SetGoalSchemaDiagnosticPointsToValueAndExplainsGoalAlias()
+    public void SetGoalSchemaDiagnosticPointsToMissingValue()
     {
         const string body = """
             WORK_GRAPH_PATCH:
-            {"expectedRevision":4,"operations":[{"type":"SET_GOAL","workItemId":"W10","goal":"새 목표"}]}
+            {"expectedRevision":4,"operations":[{"type":"SET_GOAL","workItemId":"W10"}]}
             """;
 
         Assert.False(WorkGraphTransportContract.TryParse(body, out _, out var error));
@@ -188,32 +188,29 @@ public sealed class ParallelWorkTransportTests
         Assert.NotNull(detail);
         Assert.Contains("path=operations[0].value", detail);
         Assert.Contains("requires a nonblank \"value\" field", detail);
-        Assert.Contains("\"goal\" field is used by ADD", detail);
     }
 
     [Theory]
     [InlineData(
         "{\"expectedRevision\":2,\"operations\":[{\"type\":\"SET_BASE_REF\",\"workItemId\":\"W10\",\"baseRef\":\"abc123\"}]}",
-        "WORK_GRAPH_SET_BASE_REF_SCHEMA_INVALID",
-        "Do not use \"baseRef\"")]
+        WorkGraphPatchOperationType.SetBaseRef,
+        "abc123")]
     [InlineData(
         "{\"expectedRevision\":2,\"operations\":[{\"type\":\"RELEASE\",\"workItemId\":\"W10\",\"body\":\"continue\"}]}",
-        "WORK_GRAPH_RELEASE_SCHEMA_INVALID",
-        "Do not use \"body\"")]
-    public void MisleadingOperationFieldAliasesAreRejectedInsteadOfSilentlyIgnored(
+        WorkGraphPatchOperationType.Release,
+        "continue")]
+    public void CommonOperationValueAliasesAreNormalized(
         string json,
-        string expectedError,
-        string expectedHint)
+        WorkGraphPatchOperationType expectedType,
+        string expectedValue)
     {
         var body = "WORK_GRAPH_PATCH:" + Environment.NewLine + json;
 
-        Assert.False(WorkGraphTransportContract.TryParse(body, out _, out var error));
-        Assert.Equal(expectedError, error);
-
-        var detail = WorkGraphTransportContract.DescribeError(body, error);
-        Assert.NotNull(detail);
-        Assert.Contains("path=operations[0].value", detail);
-        Assert.Contains(expectedHint, detail);
+        Assert.True(WorkGraphTransportContract.TryParse(body, out var patch, out var error), error);
+        Assert.Null(error);
+        var operation = Assert.Single(patch!.Operations);
+        Assert.Equal(expectedType, operation.Type);
+        Assert.Equal(expectedValue, operation.Value);
     }
 
     [Fact]
@@ -385,24 +382,24 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
-    public void ParallelHqContractRequiresIntegrationBeforeEndWhenFinalCodeNeedsMultipleResults()
+    public void HqContractAssignsIntegrationAndFixedSlots()
     {
         var footer = RoleContractLoader.LoadHqFooter();
 
-        Assert.Contains("INTEGRATION WorkItem을 END 전에 추가", footer);
-        Assert.Contains("INTEGRATION_LANDING_FAILED", footer);
-        Assert.Contains("fast-forward", footer);
-        Assert.Contains("force/reset", footer);
+        Assert.Contains("#8은 MATERIALIZE/COPY", footer);
+        Assert.Contains("#9는 BUILD/PUBLISH", footer);
+        Assert.Contains("여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem", footer);
+        Assert.Contains("#0·#8·#9도 WorkGraph operation은 ADD", footer);
     }
 
     [Fact]
-    public void HqContractDefinesTypeDiscriminatorAndReleaseScope()
+    public void HqContractDefinesSupportedOperationsAndFixedSlotAddRule()
     {
         var footer = RoleContractLoader.LoadHqFooter();
 
-        Assert.Contains("반드시 `type` 필드", footer);
-        Assert.Contains("\"type\":\"ADD\"", footer);
-        Assert.Contains("같은 WORK_GRAPH_PATCH에서 새로 ADD한 WorkItem에 RELEASE를 함께 사용하지 않는다", footer);
+        Assert.Contains("operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE", footer);
+        Assert.Contains("#0·#8·#9도 WorkGraph operation은 ADD", footer);
+        Assert.Contains("CONTINUE에는 WORK_GRAPH_PATCH를 정확히 하나 출력", footer);
     }
 
     [Fact]
