@@ -261,6 +261,8 @@ public sealed class GitCommitManifestBuilder
         if (segments.Any(segment =>
                 segment.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
                 segment.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("publish", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("artifacts", StringComparison.OrdinalIgnoreCase) ||
                 segment.Equals("dist-temp", StringComparison.OrdinalIgnoreCase) ||
                 segment.Equals("NuGet", StringComparison.OrdinalIgnoreCase) ||
                 segment.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
