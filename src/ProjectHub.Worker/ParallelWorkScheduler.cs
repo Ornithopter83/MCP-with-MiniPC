@@ -12,7 +12,8 @@ public sealed record WorkItemExecutionRequest(
     int Slot,
     IReadOnlyList<WorkItemDependencyResult> Dependencies,
     string InboundType,
-    string InboundBody);
+    string InboundBody,
+    IReadOnlyList<WorkItemDependencyResult>? MaterializationCandidates = null);
 
 public enum WorkItemExecutionOutcome
 {
@@ -343,11 +344,51 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                 .Where(item => item is not null)
                 .Select(item => new WorkItemDependencyResult(item!.Id, item.ResultRef, item.ResultSummary, item.ResultType, item.CommitManifestPath))
                 .ToArray();
+            var materializationCandidates = string.Equals(
+                    runningSnapshot.Id,
+                    FixedWorkItemSlots.Materialize,
+                    StringComparison.Ordinal)
+                ? BuildMaterializationCandidatesLocked()
+                : Array.Empty<WorkItemDependencyResult>();
             var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
             var running = new RunningWork(next.Id, slot.Value, itemCancellation);
             _running.Add(next.Id, running);
-            running.Task = ExecuteOneAsync(runningSnapshot, dependencyResults, inboundType, inboundBody, slot.Value, itemCancellation.Token);
+            running.Task = ExecuteOneAsync(
+                runningSnapshot,
+                dependencyResults,
+                materializationCandidates,
+                inboundType,
+                inboundBody,
+                slot.Value,
+                itemCancellation.Token);
         }
+    }
+
+    private IReadOnlyList<WorkItemDependencyResult> BuildMaterializationCandidatesLocked()
+    {
+        var completedCodeChanges = _graph.Items
+            .Where(item =>
+                item.State == WorkItemState.Completed &&
+                item.ResultType == WorkItemResultType.CodeChange &&
+                !string.IsNullOrWhiteSpace(item.ResultRef) &&
+                !string.IsNullOrWhiteSpace(item.CommitManifestPath))
+            .ToArray();
+
+        var consumedIds = completedCodeChanges
+            .SelectMany(item => item.Dependencies)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return completedCodeChanges
+            .Where(item => !consumedIds.Contains(item.Id))
+            .OrderBy(item => item.FinishedAtUtc ?? item.CreatedAtUtc)
+            .ThenBy(item => item.CreatedOrder)
+            .Select(item => new WorkItemDependencyResult(
+                item.Id,
+                item.ResultRef,
+                item.ResultSummary,
+                item.ResultType,
+                item.CommitManifestPath))
+            .ToArray();
     }
 
     private int? FindAvailableSlotLocked()
@@ -365,6 +406,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
     private async Task ExecuteOneAsync(
         WorkItemSnapshot item,
         IReadOnlyList<WorkItemDependencyResult> dependencies,
+        IReadOnlyList<WorkItemDependencyResult> materializationCandidates,
         string inboundType,
         string inboundBody,
         int slot,
@@ -377,7 +419,13 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         try
         {
             result = await _executor.ExecuteAsync(
-                new WorkItemExecutionRequest(item, slot, dependencies, inboundType, inboundBody),
+                new WorkItemExecutionRequest(
+                    item,
+                    slot,
+                    dependencies,
+                    inboundType,
+                    inboundBody,
+                    materializationCandidates),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
