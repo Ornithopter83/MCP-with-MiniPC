@@ -139,7 +139,7 @@ public sealed class WorkGraph
                 Id = source.Id,
                 Goal = source.Goal,
                 Checklist = NormalizeChecklist(source.Checklist, source.Goal),
-                Dependencies = NormalizeDependencies(source.Dependencies),
+                Dependencies = NormalizeDependenciesForRestore(source.Id, source.Dependencies),
                 Kind = source.Kind,
                 State = state,
                 CreatedOrder = source.CreatedOrder,
@@ -504,14 +504,12 @@ public sealed class WorkGraph
                         return "WORK_GRAPH_ITEM_DUPLICATE";
                     if (!IsTerminal(existing.State))
                         return "WORK_GRAPH_FIXED_SLOT_ACTIVE";
-                    if (items.Values.Any(item =>
-                            !string.Equals(item.Id, operation.Item.Id, StringComparison.Ordinal) &&
-                            !IsTerminal(item.State) &&
-                            item.Dependencies.Contains(operation.Item.Id, StringComparer.Ordinal)))
-                        return "WORK_GRAPH_FIXED_SLOT_DEPENDENT_ACTIVE";
                 }
 
                 var dependencies = NormalizeDependencies(operation.Item.Dependencies);
+                if (HasFixedSlotDependency(operation.Item.Id, dependencies))
+                    return "WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED";
+
                 items[operation.Item.Id] = new WorkItemEntry
                 {
                     Id = operation.Item.Id,
@@ -546,7 +544,10 @@ public sealed class WorkGraph
                     return "WORK_GRAPH_ITEM_NOT_FOUND";
                 if (!CanEditDefinition(item.State))
                     return "WORK_GRAPH_RUNNING_OR_TERMINAL_ITEM_IMMUTABLE";
-                item.Dependencies = NormalizeDependencies(operation.Dependencies);
+                var dependencies = NormalizeDependencies(operation.Dependencies);
+                if (HasFixedSlotDependency(item.Id, dependencies))
+                    return "WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED";
+                item.Dependencies = dependencies;
                 return null;
             }
 
@@ -620,6 +621,9 @@ public sealed class WorkGraph
     {
         foreach (var item in items.Values)
         {
+            if (HasFixedSlotDependency(item.Id, item.Dependencies))
+                return "WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED";
+
             foreach (var dependency in item.Dependencies)
             {
                 if (string.Equals(item.Id, dependency, StringComparison.Ordinal))
@@ -694,6 +698,25 @@ public sealed class WorkGraph
             .Select(value => value.Trim())
             .Distinct(StringComparer.Ordinal)
             .ToList();
+
+    private static List<string> NormalizeDependenciesForRestore(
+        string itemId,
+        IReadOnlyList<string>? dependencies)
+    {
+        if (FixedWorkItemSlots.IsReusable(itemId))
+            return new List<string>();
+
+        return NormalizeDependencies(dependencies)
+            .Where(dependency => !FixedWorkItemSlots.IsReusable(dependency))
+            .ToList();
+    }
+
+    private static bool HasFixedSlotDependency(
+        string itemId,
+        IReadOnlyList<string> dependencies)
+        => FixedWorkItemSlots.IsReusable(itemId)
+            ? dependencies.Count > 0
+            : dependencies.Any(FixedWorkItemSlots.IsReusable);
 
     private static List<string> NormalizeChecklist(
         IReadOnlyList<string>? checklist,
