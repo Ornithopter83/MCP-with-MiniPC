@@ -41,6 +41,20 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        try
+        {
+            TemporaryWerPolicyLease.RecoverStaleLease();
+        }
+        catch (Exception ex)
+        {
+            LogStartupFailure(ex);
+            try { _instanceMutex.ReleaseMutex(); } catch (ApplicationException) { }
+            _instanceMutex.Dispose();
+            _instanceMutex = null;
+            Shutdown();
+            return;
+        }
+
         _activateEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateEventName);
 
         try
@@ -85,6 +99,7 @@ public partial class App : System.Windows.Application
         WorkerChildProcessJob.TerminateAllActiveJobs();
         try
         {
+            TemporaryWerPolicyLease.RestoreActiveLeaseForShutdown();
             _managedWebRuntimeManager?.Dispose();
             _managedWebRuntimeManager = null;
             _bridgeServer?.Dispose();
