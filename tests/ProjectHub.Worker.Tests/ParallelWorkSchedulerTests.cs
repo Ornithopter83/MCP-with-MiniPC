@@ -76,6 +76,25 @@ public sealed class ParallelWorkSchedulerTests
     }
 
     [Fact]
+    public async Task WorkItemTimeoutReturnsDecisionToHq()
+    {
+        var graph = CreateGraph(1, "W1");
+        await using var scheduler = new ParallelWorkScheduler(
+            graph,
+            new ThrowingExecutor(new TimeoutException("simulated timeout")));
+
+        await scheduler.StartAsync();
+        await scheduler.WaitForQuiescenceAsync();
+
+        var item = Assert.Single((await scheduler.GetSnapshotAsync()).Graph.Items);
+        Assert.Equal(WorkItemState.Blocked, item.State);
+        Assert.Equal("HQ_DECISION_REQUIRED", item.BlockCode);
+        Assert.Equal("WORK_EXECUTOR_EXCEPTION", item.BlockDetailCode);
+        Assert.Contains("exceptionType=TimeoutException", item.ResultSummary);
+        Assert.Contains("stage=EXECUTOR_EXCEPTION", item.ResultSummary);
+    }
+
+    [Fact]
     public async Task IncreasingConcurrencyStartsAdditionalReadyItemsWithoutRestart()
     {
         var graph = CreateGraph(1, "W1", "W2", "W3");
@@ -232,6 +251,19 @@ public sealed class ParallelWorkSchedulerTests
             0,
             ids.Select(id => WorkGraphPatchOperation.Add(new WorkItemSpec(id, id))).ToArray())).Success);
         return graph;
+    }
+
+    private sealed class ThrowingExecutor : IWorkItemExecutor
+    {
+        private readonly Exception _exception;
+
+        public ThrowingExecutor(Exception exception)
+            => _exception = exception;
+
+        public Task<WorkItemExecutionResult> ExecuteAsync(
+            WorkItemExecutionRequest request,
+            CancellationToken cancellationToken)
+            => Task.FromException<WorkItemExecutionResult>(_exception);
     }
 
     private sealed class ControlledExecutor : IWorkItemExecutor
