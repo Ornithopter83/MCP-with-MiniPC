@@ -551,19 +551,20 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
     {
         var sessionId = result.SessionId ?? item.SessionId;
         var worktree = result.WorktreePath ?? item.WorktreePath;
-        return string.Join(
-            Environment.NewLine,
-            $"명령 처리를 실패하여 #{item.Id}의 작업 판단을 HQ에 위임합니다. 중지가 필요할 경우 작업을 중단해주세요.",
-            $"workItemId={item.Id}",
-            $"stage={stage}",
-            $"errorCode={result.FailureCode ?? "WORK_EXECUTOR_FAILED"}",
-            $"exceptionType={exceptionType ?? "none"}",
-            $"sessionPreserved={!string.IsNullOrWhiteSpace(sessionId)}",
-            "worktreeState=" + (string.IsNullOrWhiteSpace(worktree)
-                ? "UNKNOWN"
-                : Directory.Exists(worktree) ? "AVAILABLE" : "MISSING"),
-            "worktree=" + (worktree ?? "none"),
-            "detail=" + (result.ResultSummary?.Trim() ?? "none"));
+        var worktreeState = string.IsNullOrWhiteSpace(worktree)
+            ? "UNKNOWN"
+            : Directory.Exists(worktree) ? "AVAILABLE" : "MISSING";
+        return $"""
+            명령 처리를 실패하여 #{item.Id}의 작업 판단을 HQ에 위임합니다. 중지가 필요할 경우 작업을 중단해주세요.
+            workItemId={item.Id}
+            stage={stage}
+            errorCode={result.FailureCode ?? "WORK_EXECUTOR_FAILED"}
+            exceptionType={exceptionType ?? "none"}
+            sessionPreserved={!string.IsNullOrWhiteSpace(sessionId)}
+            worktreeState={worktreeState}
+            worktree={worktree ?? "none"}
+            detail={result.ResultSummary?.Trim() ?? "none"}
+            """;
     }
 
     private async Task HandleLifetimeCancellationAsync()
