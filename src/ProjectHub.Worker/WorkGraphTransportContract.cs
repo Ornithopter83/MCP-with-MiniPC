@@ -754,7 +754,6 @@ public static class WorkItemReportContract
         {
             "COMPLETED" => WorkItemReportStatus.Completed,
             "BLOCKED" => WorkItemReportStatus.Blocked,
-            "FAILED" => WorkItemReportStatus.Failed,
             _ => (WorkItemReportStatus?)null
         };
 
