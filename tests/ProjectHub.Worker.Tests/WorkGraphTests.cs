@@ -68,27 +68,81 @@ public sealed class WorkGraphTests
         Assert.Null(second.ResultSummary);
     }
 
-    [Fact]
-    public void ReusableFixedSlotCannotReplaceInvocationWhileActiveDependentExists()
+    [Theory]
+    [InlineData("0")]
+    [InlineData("8")]
+    [InlineData("9")]
+    public void FixedSlotsCannotDeclareDependencies(string id)
     {
         var graph = new WorkGraph("job");
         Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
         {
-            WorkGraphPatchOperation.Add(new WorkItemSpec("8", "소스 반영", BaseRef: "base")),
-            WorkGraphPatchOperation.Add(new WorkItemSpec("10", "후속 작업", new[] { "8" }, BaseRef: "base"))
+            WorkGraphPatchOperation.Add(new WorkItemSpec("10", "일반 작업"))
         })).Success);
-
-        Assert.True(graph.TryMarkRunning("8"));
-        Assert.True(graph.TryMarkCompleted("8", "result-8", resultType: WorkItemResultType.Analysis));
-        Assert.Equal(WorkItemState.Ready, graph.Find("10")!.State);
 
         var result = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
         {
-            WorkGraphPatchOperation.Add(new WorkItemSpec("8", "다음 반영", BaseRef: "base"))
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                id,
+                "고정 슬롯",
+                new[] { "10" }))
         }));
 
         Assert.False(result.Success);
-        Assert.Equal("WORK_GRAPH_FIXED_SLOT_DEPENDENT_ACTIVE", result.ErrorCode);
+        Assert.Equal("WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED", result.ErrorCode);
+        Assert.Null(graph.Find(id));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("8")]
+    [InlineData("9")]
+    public void GeneralWorkCannotDependOnFixedSlots(string id)
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(id, "고정 슬롯"))
+        })).Success);
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                "10",
+                "일반 작업",
+                new[] { id }))
+        }));
+
+        Assert.False(result.Success);
+        Assert.Equal("WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED", result.ErrorCode);
+        Assert.Null(graph.Find("10"));
+    }
+
+    [Fact]
+    public void SetDependenciesCannotConnectFixedSlots()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("8", "고정 슬롯")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("10", "일반 작업"))
+        })).Success);
+
+        var fixedToGeneral = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.SetDependencies("8", "10")
+        }));
+        Assert.False(fixedToGeneral.Success);
+        Assert.Equal("WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED", fixedToGeneral.ErrorCode);
+
+        var generalToFixed = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.SetDependencies("10", "8")
+        }));
+        Assert.False(generalToFixed.Success);
+        Assert.Equal("WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED", generalToFixed.ErrorCode);
+        Assert.Empty(graph.Find("8")!.Dependencies);
+        Assert.Empty(graph.Find("10")!.Dependencies);
     }
 
     [Theory]
