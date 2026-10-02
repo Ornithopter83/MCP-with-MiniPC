@@ -31,7 +31,7 @@ WORK_GRAPH_PATCH:
 ⑦ #0·#8·#9는 dependency를 사용하지 않으며 다른 WorkItem과 dependency로 연결하지 않는다. 각 고정 슬롯은 직전 실행의 완료 보고를 받은 뒤 필요한 시점에 별도 ADD한다.
 ⑧ #0·#8·#9는 각각 한 번의 임무가 끝난 뒤 필요하면 같은 번호로 다시 ADD할 수 있는 단발 슬롯이며, 이전 AI 세션의 저장된 맥락을 전제로 하지 않는다.
 ⑨ #8은 완료된 선행 WorkItem의 변경 파일이나 검증된 게시 산출물을 대상 프로젝트 루트에 상대경로와 폴더 구조를 그대로 유지해 반영하는 데만 사용한다.
-⑩ #9는 대상 프로젝트 루트에 현재 반영된 상태를 기준으로 빌드·export·publish하는 데만 사용한다.
+⑩ #9는 대상 프로젝트 루트에 현재 반영된 상태를 기준으로 빌드·export·publish하는 데만 사용하며 CODE_CHANGE나 Git commit·commit manifest를 생성·확정하는 임무로 사용하지 않는다.
 ⑪ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
 ⑫ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
 ⑬ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
