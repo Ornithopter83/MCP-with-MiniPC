@@ -11,16 +11,14 @@ internal sealed record BuildAuthorization(
     string Scope,
     string? Target,
     string Configuration,
-    bool NoRestore,
-    bool FallbackToFull);
+    bool NoRestore);
 
 internal sealed record MechanicalBuildResult(
     bool Success,
     int ExitCode,
     string Target,
     string LogPath,
-    string Summary,
-    bool FallbackToFull);
+    string Summary);
 
 internal static class BuildRequestContract
 {
@@ -33,49 +31,48 @@ internal static class BuildRequestContract
             .Split('\n')
             .Any(line => line.Trim().StartsWith(Marker, StringComparison.Ordinal));
 
-    public static BuildAuthorization ParseAuthorizationOrFullFallback(string? body)
-        => ParseAuthorizationOrFullFallback(body, out _);
-
-    public static BuildAuthorization ParseAuthorizationOrFullFallback(
+    public static bool TryParseAuthorization(
         string? body,
-        out string? fallbackReason)
+        out BuildAuthorization? authorization,
+        out string? errorCode)
     {
-        fallbackReason = null;
+        authorization = null;
+        errorCode = null;
         try
         {
             var json = ExtractJson(body);
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
-                return FullFallback("BUILD_AUTHORIZATION_ROOT_NOT_OBJECT", out fallbackReason);
+                return Fail("BUILD_AUTHORIZATION_ROOT_NOT_OBJECT", out authorization, out errorCode);
 
             if (!root.TryGetProperty("scope", out var scopeElement) ||
                 scopeElement.ValueKind != JsonValueKind.String)
             {
-                return FullFallback("BUILD_AUTHORIZATION_SCOPE_MISSING", out fallbackReason);
+                return Fail("BUILD_AUTHORIZATION_SCOPE_MISSING", out authorization, out errorCode);
             }
 
             var scope = (scopeElement.GetString() ?? string.Empty).Trim().ToUpperInvariant();
             if (scope is not ("TARGET" or "FULL"))
-                return FullFallback("BUILD_AUTHORIZATION_SCOPE_INVALID", out fallbackReason);
+                return Fail("BUILD_AUTHORIZATION_SCOPE_INVALID", out authorization, out errorCode);
 
             string? target = null;
             if (root.TryGetProperty("target", out var targetElement) &&
                 targetElement.ValueKind != JsonValueKind.Null)
             {
                 if (targetElement.ValueKind != JsonValueKind.String)
-                    return FullFallback("BUILD_AUTHORIZATION_TARGET_INVALID", out fallbackReason);
+                    return Fail("BUILD_AUTHORIZATION_TARGET_INVALID", out authorization, out errorCode);
                 target = targetElement.GetString();
             }
             if (scope == "TARGET" && string.IsNullOrWhiteSpace(target))
-                return FullFallback("BUILD_AUTHORIZATION_TARGET_MISSING", out fallbackReason);
+                return Fail("BUILD_AUTHORIZATION_TARGET_MISSING", out authorization, out errorCode);
 
             var configuration = "Debug";
             if (root.TryGetProperty("configuration", out var configurationElement) &&
                 configurationElement.ValueKind != JsonValueKind.Null)
             {
                 if (configurationElement.ValueKind != JsonValueKind.String)
-                    return FullFallback("BUILD_AUTHORIZATION_CONFIGURATION_INVALID", out fallbackReason);
+                    return Fail("BUILD_AUTHORIZATION_CONFIGURATION_INVALID", out authorization, out errorCode);
                 configuration = configurationElement.GetString() ?? string.Empty;
             }
             configuration = string.IsNullOrWhiteSpace(configuration) ? "Debug" : configuration.Trim();
@@ -85,28 +82,31 @@ internal static class BuildRequestContract
                 noRestoreElement.ValueKind != JsonValueKind.Null)
             {
                 if (noRestoreElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                    return FullFallback("BUILD_AUTHORIZATION_NO_RESTORE_INVALID", out fallbackReason);
+                    return Fail("BUILD_AUTHORIZATION_NO_RESTORE_INVALID", out authorization, out errorCode);
                 noRestore = noRestoreElement.GetBoolean();
             }
 
-            return new BuildAuthorization(scope, target?.Trim(), configuration, noRestore, false);
+            authorization = new BuildAuthorization(scope, target?.Trim(), configuration, noRestore);
+            return true;
         }
         catch (JsonException)
         {
-            return FullFallback("BUILD_AUTHORIZATION_JSON_INVALID", out fallbackReason);
+            return Fail("BUILD_AUTHORIZATION_JSON_INVALID", out authorization, out errorCode);
         }
         catch (InvalidOperationException)
         {
-            return FullFallback("BUILD_AUTHORIZATION_VALUE_INVALID", out fallbackReason);
+            return Fail("BUILD_AUTHORIZATION_VALUE_INVALID", out authorization, out errorCode);
         }
     }
 
-    private static BuildAuthorization FullFallback(
-        string reason,
-        out string? fallbackReason)
+    private static bool Fail(
+        string error,
+        out BuildAuthorization? authorization,
+        out string? errorCode)
     {
-        fallbackReason = reason;
-        return new("FULL", null, "Debug", false, true);
+        authorization = null;
+        errorCode = error;
+        return false;
     }
 
     private static string ExtractJson(string? body)
@@ -133,17 +133,12 @@ internal static class MechanicalBuildExecutor
         Directory.CreateDirectory(buildRoot);
         var logPath = Path.Combine(buildRoot, "build.log");
 
-        var resolved = ResolveTarget(worktreePath, authorization);
-        var effectiveAuthorization = resolved.Fallback
-            ? authorization with { Scope = "FULL", Target = null, FallbackToFull = true }
-            : authorization;
-
-        var target = resolved.Target;
+        var target = ResolveTarget(worktreePath, authorization);
         if (string.IsNullOrWhiteSpace(target))
         {
-            var summary = "BUILD_TARGET_NOT_FOUND: 빌드 가능한 .sln/.slnx/.csproj 대상을 찾지 못했습니다.";
+            var summary = "BUILD_TARGET_NOT_FOUND: 지정한 빌드 대상을 확인하지 못했습니다.";
             await File.WriteAllTextAsync(logPath, summary, cancellationToken).ConfigureAwait(false);
-            return new MechanicalBuildResult(false, -1, "없음", logPath, summary, effectiveAuthorization.FallbackToFull);
+            return new MechanicalBuildResult(false, -1, "없음", logPath, summary);
         }
 
         var arguments = new List<string>
@@ -151,13 +146,13 @@ internal static class MechanicalBuildExecutor
             "build",
             target,
             "--configuration",
-            effectiveAuthorization.Configuration,
+            authorization.Configuration,
             "--nologo",
             "--property:UseArtifactsOutput=true",
             "--property:ArtifactsPath=" + Path.Combine(buildRoot, "artifacts"),
             "--property:UseSharedCompilation=false"
         };
-        if (effectiveAuthorization.NoRestore)
+        if (authorization.NoRestore)
             arguments.Add("--no-restore");
 
         var startInfo = new ProcessStartInfo
@@ -211,26 +206,27 @@ internal static class MechanicalBuildExecutor
             exitCode,
             target,
             logPath,
-            summaryText,
-            effectiveAuthorization.FallbackToFull);
+            summaryText);
     }
 
-    internal static (string? Target, bool Fallback) ResolveTarget(
+    internal static string? ResolveTarget(
         string worktreePath,
         BuildAuthorization authorization)
     {
         var normalizedWorktree = Path.GetFullPath(worktreePath);
 
-        if (authorization.Scope == "TARGET" && !string.IsNullOrWhiteSpace(authorization.Target))
+        if (authorization.Scope == "TARGET")
         {
+            if (string.IsNullOrWhiteSpace(authorization.Target))
+                return null;
+
             var candidate = Path.GetFullPath(Path.Combine(normalizedWorktree, authorization.Target));
-            if (IsInside(normalizedWorktree, candidate) &&
-                !IsManagedIntegrationInput(normalizedWorktree, candidate) &&
-                File.Exists(candidate) &&
-                IsSupported(candidate))
-            {
-                return (candidate, false);
-            }
+            return IsInside(normalizedWorktree, candidate) &&
+                   !IsManagedIntegrationInput(normalizedWorktree, candidate) &&
+                   File.Exists(candidate) &&
+                   IsSupported(candidate)
+                ? candidate
+                : null;
         }
 
         var solution = Directory.EnumerateFiles(normalizedWorktree, "*.slnx", SearchOption.TopDirectoryOnly)
@@ -238,13 +234,12 @@ internal static class MechanicalBuildExecutor
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
         if (solution is not null)
-            return (solution, authorization.Scope == "TARGET");
+            return solution;
 
-        var project = Directory.EnumerateFiles(normalizedWorktree, "*.csproj", SearchOption.AllDirectories)
+        return Directory.EnumerateFiles(normalizedWorktree, "*.csproj", SearchOption.AllDirectories)
             .Where(path => !IsManagedIntegrationInput(normalizedWorktree, path))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
-        return (project, authorization.Scope == "TARGET");
     }
 
     private static bool IsManagedIntegrationInput(string worktreePath, string path)
