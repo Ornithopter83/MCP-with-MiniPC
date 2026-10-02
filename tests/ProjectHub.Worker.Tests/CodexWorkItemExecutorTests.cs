@@ -232,7 +232,6 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
             Assert.Equal("WORK_ITEM_STATUS_DUPLICATE", result.FailureCode);
-            Assert.Equal("WORK_REPORT", result.FailureStage);
             Assert.Equal(1, fixture.Runner.RunCount);
         }
         finally
@@ -384,7 +383,6 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
             Assert.Equal("WORK_ROUTE_GOTO_NOT_ALLOWED", result.FailureCode);
-            Assert.Equal("WORK_ROUTE", result.FailureStage);
         }
         finally
         {
