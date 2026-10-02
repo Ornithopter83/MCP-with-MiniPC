@@ -384,15 +384,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 environment[pair.Key] = pair.Value;
             environment["PROJECTHUB_RESOURCE_TEMP"] = runtimePaths.TempRoot;
             environment["PROJECTHUB_WORK_TEMP"] = workTempPath;
-            if (string.Equals(
-                    item.Id,
-                    FixedWorkItemSlots.BuildPublish,
-                    StringComparison.Ordinal))
-            {
-                environment[BlockingDialogMonitor.ExternalScopeEnabledEnvironment] = "1";
-                environment[BlockingDialogMonitor.ExternalScopeRootEnvironment] =
-                    Path.GetFullPath(_workspace);
-            }
             workEnvironment = environment;
 
             var writableDirectories = new List<string>
