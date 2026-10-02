@@ -64,6 +64,17 @@ internal static class SuspendedJobProcessLauncher
     private const uint FileShareWrite = 0x00000002;
     private const uint OpenExisting = 3;
     private const uint FileAttributeNormal = 0x00000080;
+    private const uint SemFailCriticalErrors = 0x00000001;
+    private const uint SemNoGpFaultErrorBox = 0x00000002;
+    private const uint SemNoOpenFileErrorBox = 0x00008000;
+    private const uint ChildErrorMode =
+        SemFailCriticalErrors |
+        SemNoGpFaultErrorBox |
+        SemNoOpenFileErrorBox;
+
+    // Windows error mode is process-wide. Serialize only the CreateProcess inheritance window
+    // so parallel WORK launches cannot restore each other's temporary mode.
+    private static readonly object ProcessCreationGate = new();
 
     internal static SuspendedJobProcess Start(
         ProcessStartInfo startInfo,
@@ -155,22 +166,42 @@ internal static class SuspendedJobProcessLauncher
             if (startInfo.CreateNoWindow)
                 creationFlags |= CreateNoWindow;
 
-            if (!CreateProcessW(
-                    null,
-                    commandLine,
-                    IntPtr.Zero,
-                    IntPtr.Zero,
-                    inheritHandles,
-                    creationFlags,
-                    environmentBlock,
-                    string.IsNullOrWhiteSpace(startInfo.WorkingDirectory)
-                        ? null
-                        : startInfo.WorkingDirectory,
-                    ref startupInfo,
-                    out processInfo))
+            var processCreated = false;
+            var processCreateError = 0;
+            lock (ProcessCreationGate)
+            {
+                var previousErrorMode = GetErrorMode();
+                SetErrorMode(previousErrorMode | ChildErrorMode);
+                try
+                {
+                    // Child processes inherit the Worker's error mode at CreateProcess time.
+                    // Suppress blocking Windows error UI, then restore the Worker immediately.
+                    processCreated = CreateProcessW(
+                        null,
+                        commandLine,
+                        IntPtr.Zero,
+                        IntPtr.Zero,
+                        inheritHandles,
+                        creationFlags,
+                        environmentBlock,
+                        string.IsNullOrWhiteSpace(startInfo.WorkingDirectory)
+                            ? null
+                            : startInfo.WorkingDirectory,
+                        ref startupInfo,
+                        out processInfo);
+                    if (!processCreated)
+                        processCreateError = Marshal.GetLastWin32Error();
+                }
+                finally
+                {
+                    SetErrorMode(previousErrorMode);
+                }
+            }
+
+            if (!processCreated)
             {
                 throw new Win32Exception(
-                    Marshal.GetLastWin32Error(),
+                    processCreateError,
                     $"Managed child process start failed: {startInfo.FileName}");
             }
 
@@ -432,6 +463,12 @@ internal static class SuspendedJobProcessLauncher
             return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         return selected;
     }
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetErrorMode();
+
+    [DllImport("kernel32.dll")]
+    private static extern uint SetErrorMode(uint mode);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
