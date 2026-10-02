@@ -266,6 +266,100 @@ public sealed class MaterializationLedgerTests
         }
     }
 
+    [Fact]
+    public async Task InvalidLedgerEntriesAreIgnoredAndDoNotHideLaterValidVerification()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var target = Path.Combine(root, "src", "sample.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            await File.WriteAllTextAsync(target, "verified");
+
+            var directory = Path.Combine(
+                root,
+                ".projecthub",
+                "materialization-ledger",
+                "job");
+            Directory.CreateDirectory(directory);
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "000000000001-8.json"),
+                """
+                {
+                  "jobId": "job",
+                  "workItemId": "8",
+                  "invocation": 1,
+                  "recordedAtUtc": "2026-10-02T00:00:00Z",
+                  "success": true,
+                  "errorCode": null,
+                  "files": [],
+                  "unexpectedChangedPaths": [],
+                  "detail": "missing sourceResultRefs"
+                }
+                """);
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "000000000002-8.json"),
+                """
+                {
+                  "jobId": "job",
+                  "workItemId": "8",
+                  "invocation": 2,
+                  "recordedAtUtc": "2026-10-02T00:00:01Z",
+                  "success": true,
+                  "errorCode": null,
+                  "sourceResultRefs": ["result-10"],
+                  "unexpectedChangedPaths": [],
+                  "detail": "missing files"
+                }
+                """);
+
+            var ledger = new TargetWorkspaceMaterializationLedger(root, "job");
+            Assert.False(ledger.IsResultVerified("result-10"));
+
+            var bytes = Encoding.UTF8.GetBytes("verified");
+            var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            var valid = new MaterializationLedgerEntry(
+                "job",
+                FixedWorkItemSlots.Materialize,
+                3,
+                DateTimeOffset.UtcNow,
+                true,
+                null,
+                new[] { "result-10" },
+                new[]
+                {
+                    new MaterializationFileRecord(
+                        "src/sample.txt",
+                        "MODIFY",
+                        "10",
+                        "result-10",
+                        sha,
+                        sha,
+                        bytes.LongLength,
+                        true)
+                },
+                Array.Empty<string>(),
+                "verified");
+
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, "000000000003-8.json"),
+                JsonSerializer.Serialize(
+                    valid,
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web)
+                    {
+                        WriteIndented = true
+                    }));
+
+            Assert.True(ledger.IsResultVerified("result-10"));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
     private static WorkItemSnapshot CreateMaterializeItem(
         long createdOrder,
         IReadOnlyList<string> dependencies)
