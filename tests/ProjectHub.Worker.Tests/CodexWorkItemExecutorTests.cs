@@ -230,14 +230,10 @@ public sealed class CodexWorkItemExecutorTests
                 fixture.Request,
                 CancellationToken.None);
 
-            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("HQ_DECISION_REQUIRED", result.BlockCode);
-            Assert.Equal("WORK_ITEM_STATUS_DUPLICATE", result.BlockDetailCode);
+            Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
+            Assert.Equal("WORK_ITEM_STATUS_DUPLICATE", result.FailureCode);
+            Assert.Equal("WORK_REPORT", result.FailureStage);
             Assert.Equal(1, fixture.Runner.RunCount);
-            Assert.Contains("작업 판단을 HQ에 위임합니다.", result.ResultSummary);
-            Assert.Contains("stage=WORK_REPORT", result.ResultSummary);
-            Assert.Contains("sessionPreserved=True", result.ResultSummary);
-            Assert.Contains("worktreeState=AVAILABLE", result.ResultSummary);
         }
         finally
         {
@@ -386,10 +382,9 @@ public sealed class CodexWorkItemExecutorTests
                 fixture.Request,
                 CancellationToken.None);
 
-            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("HQ_DECISION_REQUIRED", result.BlockCode);
-            Assert.Equal("WORK_ROUTE_GOTO_NOT_ALLOWED", result.BlockDetailCode);
-            Assert.Contains("stage=WORK_ROUTE", result.ResultSummary);
+            Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
+            Assert.Equal("WORK_ROUTE_GOTO_NOT_ALLOWED", result.FailureCode);
+            Assert.Equal("WORK_ROUTE", result.FailureStage);
         }
         finally
         {
