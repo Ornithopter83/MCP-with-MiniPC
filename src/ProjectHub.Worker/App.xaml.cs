@@ -22,6 +22,7 @@ public partial class App : System.Windows.Application
     private DispatcherTimer? _activationTimer;
     private BridgeServer? _bridgeServer;
     private ManagedWebRuntimeManager? _managedWebRuntimeManager;
+    private IDisposable? _werPolicyLease;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -44,6 +45,7 @@ public partial class App : System.Windows.Application
         try
         {
             TemporaryWerPolicyLease.RecoverStaleLease();
+            _werPolicyLease = TemporaryWerPolicyLease.Acquire("Worker process");
         }
         catch (Exception ex)
         {
@@ -99,11 +101,25 @@ public partial class App : System.Windows.Application
         WorkerChildProcessJob.TerminateAllActiveJobs();
         try
         {
+            _werPolicyLease?.Dispose();
+            _werPolicyLease = null;
             TemporaryWerPolicyLease.RestoreActiveLeaseForShutdown();
         }
         catch (Exception ex)
         {
             LogStartupFailure(ex);
+            try
+            {
+                TemporaryWerPolicyLease.RestoreActiveLeaseForShutdown();
+            }
+            catch (Exception restoreException)
+            {
+                LogStartupFailure(restoreException);
+            }
+            finally
+            {
+                _werPolicyLease = null;
+            }
         }
 
         try
