@@ -182,74 +182,6 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task BuildPublishSlotAcquiresAndReleasesWerPolicyLease()
-    {
-        var acquired = 0;
-        var released = 0;
-        string? owner = null;
-        var fixture = CreateFixture(
-            """
-            [GOTO : HQ]
-            WORK_ITEM_STATUS: COMPLETED
-            빌드 게시 완료
-            """,
-            workItemId: FixedWorkItemSlots.BuildPublish,
-            createdOrder: 7,
-            werPolicyLeaseFactory: value =>
-            {
-                acquired++;
-                owner = value;
-                return new CallbackDisposable(() => released++);
-            });
-
-        try
-        {
-            var result = await fixture.Executor.ExecuteAsync(
-                fixture.Request,
-                CancellationToken.None);
-
-            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
-            Assert.Equal(1, acquired);
-            Assert.Equal(1, released);
-            Assert.Equal("job:7", owner);
-        }
-        finally
-        {
-            fixture.Dispose();
-        }
-    }
-
-    [Fact]
-    public async Task OrdinaryWorkItemDoesNotAcquireWerPolicyLease()
-    {
-        var acquired = 0;
-        var fixture = CreateFixture(
-            """
-            [GOTO : HQ]
-            WORK_ITEM_STATUS: COMPLETED
-            일반 작업 완료
-            """,
-            werPolicyLeaseFactory: _ =>
-            {
-                acquired++;
-                return new CallbackDisposable(() => { });
-            });
-
-        try
-        {
-            await fixture.Executor.ExecuteAsync(
-                fixture.Request,
-                CancellationToken.None);
-
-            Assert.Equal(0, acquired);
-        }
-        finally
-        {
-            fixture.Dispose();
-        }
-    }
-
-    [Fact]
     public void RootWritablePromptCarriesMechanicalMaterializationSourceWithoutDependency()
     {
         var prompt = RoleContractLoader.BuildWorkPrompt(
@@ -1013,8 +945,7 @@ public sealed class CodexWorkItemExecutorTests
         WorkItemKind kind = WorkItemKind.Normal,
         string workItemId = "W1",
         long createdOrder = 0,
-        IReadOnlyList<WorkItemDependencyResult>? materializationCandidates = null,
-        Func<string, IDisposable?>? werPolicyLeaseFactory = null)
+        IReadOnlyList<WorkItemDependencyResult>? materializationCandidates = null)
     {
         var parent = Path.Combine(Path.GetTempPath(), "projecthub-codex-workitem-" + Guid.NewGuid().ToString("N"));
         var root = Path.Combine(parent, "repo");
@@ -1065,8 +996,7 @@ public sealed class CodexWorkItemExecutorTests
             new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
             ai,
             new GitWorktreeManager(git),
-            expectedPrimaryBranch: "main",
-            werPolicyLeaseFactory: werPolicyLeaseFactory);
+            expectedPrimaryBranch: "main");
 
         var item = new WorkItemSnapshot(
             workItemId,
@@ -1133,23 +1063,6 @@ public sealed class CodexWorkItemExecutorTests
         {
             if (Directory.Exists(Parent))
                 Directory.Delete(Parent, true);
-        }
-    }
-
-    private sealed class CallbackDisposable : IDisposable
-    {
-        private readonly Action _onDispose;
-        private int _disposed;
-
-        public CallbackDisposable(Action onDispose)
-        {
-            _onDispose = onDispose;
-        }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0)
-                _onDispose();
         }
     }
 
