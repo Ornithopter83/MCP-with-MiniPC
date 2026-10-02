@@ -88,100 +88,12 @@ public sealed class WorkerChildProcessJobTests
 
 
     [Fact]
-    public void BlockingDialogMonitorOnlyTargetsHeadlessRuns()
+    public void ChildJobForcesUnhandledExceptionUiSuppression()
     {
-        var headless = new ProcessStartInfo
-        {
-            FileName = "cmd.exe",
-            CreateNoWindow = true
-        };
-        var visible = new ProcessStartInfo
-        {
-            FileName = "chrome.exe",
-            CreateNoWindow = false
-        };
-
-        Assert.True(BlockingDialogMonitor.ShouldMonitor("Codex CLI run", headless));
-        Assert.False(BlockingDialogMonitor.ShouldMonitor("Managed Chromium HQ", headless));
-        Assert.False(BlockingDialogMonitor.ShouldMonitor("Codex CLI run", visible));
-    }
-
-    [Theory]
-    [InlineData("sample.exe - Application Error")]
-    [InlineData("Warning")]
-    [InlineData("처리 오류")]
-    [InlineData("실행 실패")]
-    public void BlockingDialogMonitorRecognizesFaultTitles(string title)
-    {
-        Assert.True(BlockingDialogMonitor.LooksLikeFaultTitle(title));
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("Open File")]
-    [InlineData("Settings")]
-    [InlineData("ProjectHub")]
-    public void BlockingDialogMonitorIgnoresOrdinaryDialogTitles(string title)
-    {
-        Assert.False(BlockingDialogMonitor.LooksLikeFaultTitle(title));
-    }
-
-    [Theory]
-    [InlineData("Smoke.exe - 응용 프로그램 오류", "Smoke.exe")]
-    [InlineData("LayerLab.exe - Application Error", "LayerLab.exe")]
-    public void BlockingDialogMonitorExtractsExecutableFromApplicationErrorTitle(
-        string title,
-        string expectedExecutable)
-    {
-        Assert.True(BlockingDialogMonitor.TryExtractExecutableNameFromFaultTitle(
-            title,
-            out var executableName));
-        Assert.Equal(expectedExecutable, executableName);
-    }
-
-    [Theory]
-    [InlineData("Application Error")]
-    [InlineData(@"C:\Temp\Smoke.exe - Application Error")]
-    [InlineData("Smoke.dll - Application Error")]
-    public void BlockingDialogMonitorRejectsUnscopedExecutableTitles(string title)
-    {
-        Assert.False(BlockingDialogMonitor.TryExtractExecutableNameFromFaultTitle(
-            title,
-            out _));
-    }
-
-    [Fact]
-    public void BlockingDialogMonitorExternalScopeRequiresExplicitSlotPolicy()
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "codex.exe",
-            CreateNoWindow = true
-        };
-        startInfo.Environment[
-            BlockingDialogMonitor.ExternalScopeEnabledEnvironment] = "1";
-        startInfo.Environment[
-            BlockingDialogMonitor.ExternalScopeRootEnvironment] =
-            Path.GetTempPath();
-
-        Assert.True(BlockingDialogMonitor.TryGetExternalWorkspaceScope(
-            startInfo,
-            out var scopeRoot));
-        Assert.False(string.IsNullOrWhiteSpace(scopeRoot));
-    }
-
-    [Fact]
-    public void BlockingDialogMonitorPathScopeRejectsSiblingDirectory()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "ProjectHubScope");
-        var inside = Path.Combine(root, "publish", "Smoke.exe");
-        var sibling = Path.Combine(
-            Path.GetDirectoryName(root)!,
-            Path.GetFileName(root) + "-other",
-            "Smoke.exe");
-
-        Assert.True(BlockingDialogMonitor.IsPathWithinRoot(root, inside));
-        Assert.False(BlockingDialogMonitor.IsPathWithinRoot(root, sibling));
+        Assert.Equal(
+            WorkerChildProcessJob.KillOnJobCloseLimitFlag |
+            WorkerChildProcessJob.DieOnUnhandledExceptionLimitFlag,
+            WorkerChildProcessJob.ProcessLimitFlags);
     }
 
     [Fact]
