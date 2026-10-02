@@ -13,7 +13,7 @@ public sealed class ParallelWorkTransportTests
         Assert.Contains("현재 WorkItem을 수행하는 WORK", footer);
         Assert.Contains("WORK_ITEM_STATUS: COMPLETED", footer);
         Assert.Contains("WORK_ITEM_STATUS: BLOCKED", footer);
-        Assert.Contains("WORK_ITEM_STATUS: FAILED", footer);
+        Assert.DoesNotContain("WORK_ITEM_STATUS: FAILED", footer);
         Assert.DoesNotContain("MATERIALIZE / COPY", footer);
         Assert.DoesNotContain("BUILD / PUBLISH", footer);
     }
@@ -316,7 +316,6 @@ public sealed class ParallelWorkTransportTests
     [Theory]
     [InlineData("COMPLETED", WorkItemReportStatus.Completed)]
     [InlineData("BLOCKED", WorkItemReportStatus.Blocked)]
-    [InlineData("FAILED", WorkItemReportStatus.Failed)]
     public void WorkItemReportParsesMechanicalStatus(string value, WorkItemReportStatus expected)
     {
         var body = $"WORK_ITEM_STATUS: {value}\n보고 본문";
@@ -325,6 +324,16 @@ public sealed class ParallelWorkTransportTests
         Assert.Null(error);
         Assert.Equal(expected, report!.Status);
         Assert.Equal("보고 본문", report.Body);
+    }
+
+    [Fact]
+    public void WorkItemReportRejectsFailedAsAWorkDecision()
+    {
+        Assert.False(WorkItemReportContract.TryParse(
+            "WORK_ITEM_STATUS: FAILED\n실패",
+            out _,
+            out var error));
+        Assert.Equal("WORK_ITEM_STATUS_INVALID", error);
     }
 
     [Fact]
