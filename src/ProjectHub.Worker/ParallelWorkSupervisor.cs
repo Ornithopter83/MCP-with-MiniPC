@@ -472,9 +472,14 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     }
                     catch (Exception exception)
                     {
-                        return Failure(
-                            "WORKSPACE_FINALIZATION_FAILED",
-                            exception.GetType().Name + ": " + exception.Message);
+                        finalization = new ParallelEndFinalizationResult(
+                            false,
+                            "WORKSPACE_FINALIZATION_EXCEPTION",
+                            string.Join(
+                                Environment.NewLine,
+                                "stage=WORKSPACE_FINALIZATION",
+                                "exceptionType=" + exception.GetType().Name,
+                                "detail=" + exception.Message));
                     }
 
                     if (!finalization.Success)
@@ -980,7 +985,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         builder.AppendLine("errorCode=" + (finalization.ErrorCode ?? "WORKSPACE_FINALIZATION_REQUIRED"));
         if (!string.IsNullOrWhiteSpace(finalization.Body))
             builder.AppendLine(finalization.Body.Trim());
-        builder.Append("WorkGraph는 그대로 유지됩니다. 필요한 경우 INTEGRATION WorkItem을 추가하거나 현재 기계 오류에 맞는 다음 동작을 결정하세요.");
+        builder.Append("WorkGraph는 그대로 유지됩니다. 전달된 기계 사실을 기준으로 필요한 복구 WorkItem 또는 다음 동작을 HQ가 결정하세요.");
         return builder.ToString().TrimEnd();
     }
 
