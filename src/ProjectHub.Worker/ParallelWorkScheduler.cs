@@ -18,6 +18,7 @@ public sealed record WorkItemExecutionRequest(
 public enum WorkItemExecutionOutcome
 {
     Completed,
+    // Executor handoff signal only; scheduler converts this to HQ_DECISION_REQUIRED.
     Failed,
     Blocked
 }
