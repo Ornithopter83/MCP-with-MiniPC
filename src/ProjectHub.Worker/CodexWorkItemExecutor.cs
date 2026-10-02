@@ -49,6 +49,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     private readonly IWorkItemObservationGate? _observationGate;
     private readonly string? _expectedPrimaryBranch;
     private readonly IReadOnlyList<UserAttachmentInput> _userAttachments;
+    private readonly WorkspacePublishState _publishState;
 
     public CodexWorkItemExecutor(
         string jobId,
@@ -79,6 +80,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             ? null
             : expectedPrimaryBranch.Trim();
         _userAttachments = userAttachments?.ToArray() ?? Array.Empty<UserAttachmentInput>();
+        _publishState = new WorkspacePublishState(_workspace, _jobId);
     }
 
     public event Action<CodexWorkItemProgress>? Progress;
@@ -285,6 +287,82 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     : null))
             .ToArray();
 
+        TargetWorkspaceMaterializationLedger? materializationLedger = null;
+        TargetWorkspaceMaterializationSnapshot? materializationBefore = null;
+        WorkItemDependencyResult? materializationSource = null;
+        WorkItemDependencyPromptContext? materializationSourcePrompt = null;
+        if (string.Equals(item.Id, FixedWorkItemSlots.Materialize, StringComparison.Ordinal))
+        {
+            materializationLedger = new TargetWorkspaceMaterializationLedger(
+                _workspace,
+                _jobId);
+
+            WorkspacePublishStateSnapshot publishState;
+            try
+            {
+                publishState = await _publishState.ReadAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "MATERIALIZATION_SOURCE_STATE_UNAVAILABLE",
+                    exception.Message,
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    item.SessionId,
+                    blockDetailCode: "MATERIALIZATION_SOURCE_STATE_UNAVAILABLE");
+            }
+
+            var alreadyTrackedRefs = publishState.MaterializedCodeResultRefs ??
+                                     Array.Empty<string>();
+            materializationSource = (request.MaterializationCandidates ??
+                                     Array.Empty<WorkItemDependencyResult>())
+                .FirstOrDefault(candidate =>
+                    !string.IsNullOrWhiteSpace(candidate.ResultRef) &&
+                    (!materializationLedger.IsResultVerified(candidate.ResultRef) ||
+                     !alreadyTrackedRefs.Any(value =>
+                         string.Equals(
+                             value,
+                             candidate.ResultRef,
+                             StringComparison.OrdinalIgnoreCase))));
+
+            if (materializationSource is null)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "MATERIALIZATION_SOURCE_UNAVAILABLE",
+                    "현재 WorkGraph과 materialization ledger에서 반영 대기 중인 CODE_CHANGE를 찾지 못했습니다.",
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    item.SessionId,
+                    blockDetailCode: "MATERIALIZATION_SOURCE_UNAVAILABLE");
+            }
+
+            materializationSourcePrompt = new WorkItemDependencyPromptContext(
+                materializationSource.WorkItemId,
+                materializationSource.ResultRef,
+                materializationSource.ResultSummary,
+                materializationSource.ResultType,
+                materializationSource.CommitManifestPath);
+
+            var snapshot = materializationLedger.CaptureSnapshot();
+            if (!snapshot.Success || snapshot.Snapshot is null)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "MATERIALIZATION_SNAPSHOT_FAILED",
+                    snapshot.ErrorDetail ?? "대상 프로젝트 루트의 반영 전 상태를 읽지 못했습니다.",
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    item.SessionId,
+                    blockDetailCode: snapshot.ErrorCode ?? "MATERIALIZATION_TARGET_SNAPSHOT_FAILED");
+            }
+
+            materializationBefore = snapshot.Snapshot;
+        }
+
         var observationRequestDirectory = _observationGate is not null
             ? _observationGate.GetRequestDirectory(item.Id)
             : _observationRequestDirectory?.Invoke(item.Id);
@@ -332,29 +410,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 preparation.WorktreePath,
                 item.SessionId,
                 blockDetailCode: "WORK_TOOL_RUNTIME_PREPARE_FAILED");
-        }
-
-        TargetWorkspaceMaterializationLedger? materializationLedger = null;
-        TargetWorkspaceMaterializationSnapshot? materializationBefore = null;
-        if (string.Equals(item.Id, FixedWorkItemSlots.Materialize, StringComparison.Ordinal))
-        {
-            materializationLedger = new TargetWorkspaceMaterializationLedger(
-                _workspace,
-                _jobId);
-            var snapshot = materializationLedger.CaptureSnapshot();
-            if (!snapshot.Success || snapshot.Snapshot is null)
-            {
-                return WorkItemExecutionResult.Blocked(
-                    "MATERIALIZATION_SNAPSHOT_FAILED",
-                    snapshot.ErrorDetail ?? "대상 프로젝트 루트의 반영 전 상태를 읽지 못했습니다.",
-                    preparation.HeadCommit,
-                    preparation.Branch,
-                    preparation.WorktreePath,
-                    item.SessionId,
-                    blockDetailCode: snapshot.ErrorCode ?? "MATERIALIZATION_TARGET_SNAPSHOT_FAILED");
-            }
-
-            materializationBefore = snapshot.Snapshot;
         }
 
         var inboundType = request.InboundType;
@@ -446,7 +501,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     preparation.WorktreePath,
                     item.ResultSummary,
                     dependencyResults,
-                    Checklist: item.Checklist),
+                    Checklist: item.Checklist,
+                    MaterializationSource: materializationSourcePrompt),
                 observationRequestDirectory,
                 includeContract: string.IsNullOrWhiteSpace(sessionId),
                 resourceStagingRoot: runtimePaths.TempRoot,
@@ -669,10 +725,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 materializationLedger is not null &&
                 materializationBefore is not null)
             {
+                var verificationInputs = materializationSource is null
+                    ? Array.Empty<WorkItemDependencyResult>()
+                    : new[] { materializationSource };
                 var verification = await materializationLedger
                     .VerifyAndRecordAsync(
                         item,
-                        request.Dependencies,
+                        verificationInputs,
                         materializationBefore,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -692,6 +751,33 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                         preparation.WorktreePath,
                         sessionId,
                         blockDetailCode: verification.ErrorCode ?? "MATERIALIZATION_VERIFICATION_FAILED");
+                }
+
+                if (materializationSource?.ResultType == WorkItemResultType.CodeChange &&
+                    !string.IsNullOrWhiteSpace(materializationSource.ResultRef))
+                {
+                    try
+                    {
+                        await _publishState.MarkCodeMaterializedAsync(
+                            materializationSource.ResultRef!,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (
+                        exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                    {
+                        return WorkItemExecutionResult.Blocked(
+                            "MATERIALIZATION_PUBLISH_STATE_FAILED",
+                            reportBody + Environment.NewLine + Environment.NewLine +
+                            "MATERIALIZATION_VERIFICATION" + Environment.NewLine +
+                            "status: VERIFIED" + Environment.NewLine +
+                            "ledger: " + verification.LedgerPath + Environment.NewLine +
+                            "publishStateError: " + exception.Message,
+                            preparation.HeadCommit,
+                            preparation.Branch,
+                            preparation.WorktreePath,
+                            sessionId,
+                            blockDetailCode: "MATERIALIZATION_PUBLISH_STATE_FAILED");
+                    }
                 }
 
                 reportBody += Environment.NewLine + Environment.NewLine +
@@ -718,6 +804,17 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         string reportBody,
         CancellationToken cancellationToken)
     {
+        if (string.Equals(item.Id, FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal))
+        {
+            return await FinalizeBuildPublishReportAsync(
+                item,
+                preparation,
+                sessionId,
+                reportStatus,
+                reportBody,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         GitWorktreeCheckpointResult checkpoint = default!;
         for (var attempt = 1; attempt <= MaximumCheckpointAttempts; attempt++)
         {
@@ -946,6 +1043,67 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 sessionId)
         };
+    }
+
+    private async Task<WorkItemExecutionResult> FinalizeBuildPublishReportAsync(
+        WorkItemSnapshot item,
+        GitWorktreePreparationResult preparation,
+        string? sessionId,
+        WorkItemReportStatus reportStatus,
+        string reportBody,
+        CancellationToken cancellationToken)
+    {
+        if (reportStatus == WorkItemReportStatus.Completed)
+        {
+            try
+            {
+                await _publishState.MarkPublishedAsync(
+                    item.CreatedOrder,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "PUBLISH_STATE_WRITE_FAILED",
+                    reportBody + Environment.NewLine + Environment.NewLine +
+                    "publishStateError: " + exception.Message,
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId,
+                    blockDetailCode: "PUBLISH_STATE_WRITE_FAILED");
+            }
+
+            return WorkItemExecutionResult.Completed(
+                "artifact-run-" + item.CreatedOrder.ToString("D12"),
+                reportBody,
+                preparation.Branch,
+                preparation.WorktreePath,
+                sessionId,
+                WorkItemResultType.Artifact);
+        }
+
+        if (reportStatus == WorkItemReportStatus.Blocked)
+        {
+            return WorkItemExecutionResult.Blocked(
+                BuildRequestContract.ContainsRequest(reportBody)
+                    ? "BUILD_REQUEST"
+                    : "HQ_BLOCKED",
+                reportBody,
+                item.ResultRef,
+                preparation.Branch,
+                preparation.WorktreePath,
+                sessionId,
+                resultType: item.ResultType);
+        }
+
+        return WorkItemExecutionResult.Failed(
+            "WORK_REPORTED_FAILED",
+            reportBody,
+            preparation.Branch,
+            preparation.WorktreePath,
+            sessionId);
     }
 
     private async Task TryRemoveCompletedIntegrationCloneAsync(
