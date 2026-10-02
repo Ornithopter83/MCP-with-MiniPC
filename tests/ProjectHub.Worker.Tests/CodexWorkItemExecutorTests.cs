@@ -828,8 +828,7 @@ public sealed class CodexWorkItemExecutorTests
             new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
             ai,
             new GitWorktreeManager(git),
-            expectedPrimaryBranch: "main",
-            werPolicyLeaseFactory: werPolicyLeaseFactory);
+            expectedPrimaryBranch: "main");
 
         var item = new WorkItemSnapshot(
             "I1",
@@ -1066,7 +1065,8 @@ public sealed class CodexWorkItemExecutorTests
             new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
             ai,
             new GitWorktreeManager(git),
-            expectedPrimaryBranch: "main");
+            expectedPrimaryBranch: "main",
+            werPolicyLeaseFactory: werPolicyLeaseFactory);
 
         var item = new WorkItemSnapshot(
             workItemId,
