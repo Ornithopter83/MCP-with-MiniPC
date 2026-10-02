@@ -215,8 +215,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     item.ResultSummary,
                     preparation.Branch,
                     preparation.WorktreePath,
-                    item.SessionId,
-                    "CHECKPOINT_RETRY_STATE");
+                    item.SessionId);
             }
 
             return await FinalizeReportAsync(
@@ -428,8 +427,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     inboundBody,
                     preparation.Branch,
                     preparation.WorktreePath,
-                    sessionId,
-                    "BUILD_AUTHORIZATION");
+                    sessionId);
             }
 
             MechanicalProgress?.Invoke(new CodexWorkItemMechanicalProgress(
@@ -466,8 +464,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     detail + Environment.NewLine + "logPath=" + logPath,
                     preparation.Branch,
                     preparation.WorktreePath,
-                    sessionId,
-                    "BUILD_EXECUTION");
+                    sessionId);
             }
             finally
             {
@@ -583,8 +580,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                         : Environment.NewLine + "quarantine=" + gitRestore.QuarantinePath),
                     preparation.Branch,
                     preparation.WorktreePath,
-                    sessionId,
-                    "GIT_METADATA_RESTORE");
+                    sessionId);
             }
 
             CallCompleted?.Invoke(new CodexWorkItemCallCompleted(
@@ -607,8 +603,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     BuildFailureSummary(runResult.StandardError, runResult.FinalMessage),
                     preparation.Branch,
                     preparation.WorktreePath,
-                    sessionId,
-                    "WORK_PROCESS");
+                    sessionId);
             }
 
             if (string.IsNullOrWhiteSpace(sessionId))
@@ -618,8 +613,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     "WORK 실행 후 이어갈 session ID가 없습니다.",
                     preparation.Branch,
                     preparation.WorktreePath,
-                    null,
-                    "WORK_SESSION");
+                    null);
             }
 
             if (_observationGate is not null)
@@ -645,8 +639,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     runResult.FinalMessage,
                     preparation.Branch,
                     preparation.WorktreePath,
-                    sessionId,
-                    "WORK_ROUTE");
+                    sessionId);
             }
 
             if (route.Target == WorkerRoleState.Judge)
@@ -689,8 +682,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     runResult.FinalMessage,
                     preparation.Branch,
                     preparation.WorktreePath,
-                    sessionId,
-                    "WORK_ROUTE");
+                    sessionId);
             }
 
             if (!WorkItemReportContract.TryParse(route.Body, out var report, out var reportError))
@@ -700,8 +692,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     route.Body,
                     preparation.Branch,
                     preparation.WorktreePath,
-                    sessionId,
-                    "WORK_REPORT");
+                    sessionId);
             }
 
             var reportBody = route.Body;
@@ -1016,8 +1007,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 reportBody,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
-                sessionId,
-                "WORK_REPORT")
+                sessionId)
         };
     }
 
@@ -1079,8 +1069,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             reportBody,
             preparation.Branch,
             preparation.WorktreePath,
-            sessionId,
-            "WORK_REPORT");
+            sessionId);
     }
 
     private async Task TryRemoveCompletedIntegrationCloneAsync(
