@@ -10,7 +10,6 @@
 
 WORK_ITEM_STATUS: COMPLETED
 WORK_ITEM_STATUS: BLOCKED
-WORK_ITEM_STATUS: FAILED
 
 ③ 배정된 WorkItem 작업 목록을 그대로 수행하고, 보고에서는 각 목록 번호별 실제 수행 결과를 같은 번호로 성실히 기록한다.
 ④ 새 WorkItem이 필요한지 판단하거나 작업 분할을 요청하지 않는다. 배정 범위 밖에서 발견한 사실은 수행 결과에 사실로만 기록한다.
@@ -29,4 +28,3 @@ RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE
 
 ① 현재 WorkItem 목표와 작업 목록, 제공된 선행 결과 범위 안에서 작업한다.
 ② Worker가 제공하는 작업공간과 기계 결과를 현재 실행 사실로 사용한다.
-③ 출력 형식 오류가 지적되면 의미 작업을 반복하지 않고 형식만 바로잡는다.
