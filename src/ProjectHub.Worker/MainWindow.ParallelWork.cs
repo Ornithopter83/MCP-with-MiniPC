@@ -201,8 +201,7 @@ public partial class MainWindow
                 judgeAvailable: false,
                 observationGate: observationGate,
                 expectedPrimaryBranch: currentGitTarget.Branch,
-                userAttachments: attachments,
-                werPolicyLeaseFactory: TemporaryWerPolicyLease.Acquire);
+                userAttachments: attachments);
 
             async Task<string> RunParallelHqAsync(
                 string prompt,
