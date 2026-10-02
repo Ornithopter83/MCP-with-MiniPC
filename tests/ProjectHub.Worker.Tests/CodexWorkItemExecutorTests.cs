@@ -215,18 +215,13 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task DuplicateWorkItemStatusIsCorrectedInSameSession()
+    public async Task DuplicateWorkItemStatusReturnsDecisionToHqWithoutCorrectionRetry()
     {
         var fixture = CreateFixture("""
             [GOTO : HQ]
             WORK_ITEM_STATUS: COMPLETED
             구현 완료
             WORK_ITEM_STATUS: COMPLETED
-            """);
-        fixture.Runner.EnqueueFinalMessage("""
-            [GOTO : HQ]
-            WORK_ITEM_STATUS: COMPLETED
-            구현 완료
             """);
 
         try
@@ -235,12 +230,14 @@ public sealed class CodexWorkItemExecutorTests
                 fixture.Request,
                 CancellationToken.None);
 
-            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
-            Assert.Equal(2, fixture.Runner.RunCount);
-            Assert.Contains("입력 유형: WORK_ITEM_REPORT_REJECTED", fixture.Runner.LastRequest!.Prompt);
-            Assert.Contains("errorCode=WORK_ITEM_STATUS_DUPLICATE", fixture.Runner.LastRequest.Prompt);
-            Assert.Contains("직전 의미는 유지하고 WORK_ITEM_STATUS 형식만 수정하세요.", fixture.Runner.LastRequest.Prompt);
-            Assert.DoesNotContain("당신은 WORK다.", fixture.Runner.LastRequest.Prompt);
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("HQ_DECISION_REQUIRED", result.BlockCode);
+            Assert.Equal("WORK_ITEM_STATUS_DUPLICATE", result.BlockDetailCode);
+            Assert.Equal(1, fixture.Runner.RunCount);
+            Assert.Contains("작업 판단을 HQ에 위임합니다.", result.ResultSummary);
+            Assert.Contains("stage=WORK_REPORT", result.ResultSummary);
+            Assert.Contains("sessionPreserved=True", result.ResultSummary);
+            Assert.Contains("worktreeState=AVAILABLE", result.ResultSummary);
         }
         finally
         {
@@ -389,8 +386,10 @@ public sealed class CodexWorkItemExecutorTests
                 fixture.Request,
                 CancellationToken.None);
 
-            Assert.Equal(WorkItemExecutionOutcome.Failed, result.Outcome);
-            Assert.Equal("WORK_ROUTE_GOTO_NOT_ALLOWED", result.FailureCode);
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("HQ_DECISION_REQUIRED", result.BlockCode);
+            Assert.Equal("WORK_ROUTE_GOTO_NOT_ALLOWED", result.BlockDetailCode);
+            Assert.Contains("stage=WORK_ROUTE", result.ResultSummary);
         }
         finally
         {
