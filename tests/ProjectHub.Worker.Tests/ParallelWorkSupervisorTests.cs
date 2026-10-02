@@ -911,6 +911,45 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task EndFinalizationExceptionReturnsControlToHqInsteadOfFailingTask()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var hq = new QueueHqRunner(
+            End("첫 종료 시도"),
+            End("최종 종료"));
+        var calls = 0;
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync,
+            finalizeEndAsync: (_, _) =>
+            {
+                calls++;
+                if (calls == 1)
+                    throw new ArgumentNullException("source");
+
+                return Task.FromResult(new ParallelEndFinalizationResult(true));
+            });
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "종료 후처리 예외를 HQ에 되돌린다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Null(result.ErrorCode);
+        Assert.Equal(2, calls);
+        Assert.Equal(2, hq.Prompts.Count);
+        Assert.Contains("입력 유형: WORKSPACE_FINALIZATION_REQUIRED", hq.Prompts[1]);
+        Assert.Contains("errorCode=WORKSPACE_FINALIZATION_EXCEPTION", hq.Prompts[1]);
+        Assert.Contains("stage=WORKSPACE_FINALIZATION", hq.Prompts[1]);
+        Assert.Contains("exceptionType=ArgumentNullException", hq.Prompts[1]);
+        Assert.Contains("Parameter 'source'", hq.Prompts[1]);
+    }
+
+    [Fact]
     public void ParallelHqTurnRequiresGraphPatchOnlyForContinue()
     {
         var end = End("완료");
