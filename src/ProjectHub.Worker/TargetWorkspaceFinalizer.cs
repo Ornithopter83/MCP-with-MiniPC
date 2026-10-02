@@ -91,7 +91,15 @@ public sealed class TargetWorkspaceFinalizer
         }
 
         if (pending.Count == 0)
+        {
+            var freshness = await CheckPublishFreshnessAsync(
+                graph.JobId,
+                cancellationToken).ConfigureAwait(false);
+            if (freshness is not null)
+                return freshness;
+
             return new(true, null, "최종 CODE_CHANGE가 사용자 작업 폴더에 검증 반영되었거나 현재 HEAD에 포함되어 있습니다.");
+        }
 
         WorkItemSnapshot target;
         string landingRef;
@@ -183,6 +191,43 @@ public sealed class TargetWorkspaceFinalizer
                 $"gitError={landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED"}");
         }
 
+        if (landing.FastForwarded)
+        {
+            try
+            {
+                var publishState = new WorkspacePublishState(_workspace, graph.JobId);
+                await publishState.MarkCodeMaterializedAsync(
+                    landingRef,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                return new(
+                    false,
+                    "TARGET_PUBLISH_STATE_UNAVAILABLE",
+                    "사용자 작업 폴더 반영은 완료했지만 publish freshness 상태를 기록하지 못했습니다." +
+                    Environment.NewLine +
+                    exception.Message,
+                    target.Id,
+                    landingRef,
+                    true);
+            }
+        }
+
+        var postLandingFreshness = await CheckPublishFreshnessAsync(
+            graph.JobId,
+            cancellationToken).ConfigureAwait(false);
+        if (postLandingFreshness is not null)
+        {
+            return postLandingFreshness with
+            {
+                LandedWorkItemId = target.Id,
+                LandedResultRef = landingRef,
+                FastForwarded = landing.FastForwarded
+            };
+        }
+
         return new(
             true,
             null,
@@ -192,6 +237,40 @@ public sealed class TargetWorkspaceFinalizer
             target.Id,
             landingRef,
             landing.FastForwarded);
+    }
+
+    private async Task<TargetWorkspaceFinalizationResult?> CheckPublishFreshnessAsync(
+        string jobId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var state = await new WorkspacePublishState(_workspace, jobId)
+                .ReadAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (!state.IsStale)
+                return null;
+
+            return new(
+                false,
+                "TARGET_PUBLISH_STALE",
+                "마지막 성공 #9 이후 CODE_CHANGE가 사용자 작업 폴더에 반영되었습니다." +
+                Environment.NewLine +
+                "현재 소스 기준으로 #9 BUILD/PUBLISH를 다시 완료해야 합니다." +
+                Environment.NewLine +
+                $"codeGeneration={state.CodeGeneration}" + Environment.NewLine +
+                $"publishedCodeGeneration={state.PublishedCodeGeneration}");
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return new(
+                false,
+                "TARGET_PUBLISH_STATE_UNAVAILABLE",
+                "publish freshness 상태를 확인하지 못했습니다." +
+                Environment.NewLine +
+                exception.Message);
+        }
     }
 
     private static string MapLandingError(string? errorCode)
