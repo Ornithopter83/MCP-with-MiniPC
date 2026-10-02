@@ -27,11 +27,6 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         WorkerPaths.EnsureCreated();
-        if (!WorkerPaths.TryResetEphemeralDirectories(out var startupCleanupError))
-            LogStartupFailure(new IOException("Startup ephemeral cleanup failed: " + (startupCleanupError ?? "unknown")));
-        var extension = ExtensionDeployment.EnsureDeployed();
-        if (extension.Error is not null)
-            LogStartupFailure(new InvalidOperationException("Extension deployment failed: " + extension.Error));
         _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var createdNew);
         if (!createdNew)
         {
@@ -56,6 +51,12 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
+
+        if (!WorkerPaths.TryResetEphemeralDirectories(out var startupCleanupError))
+            LogStartupFailure(new IOException("Startup ephemeral cleanup failed: " + (startupCleanupError ?? "unknown")));
+        var extension = ExtensionDeployment.EnsureDeployed();
+        if (extension.Error is not null)
+            LogStartupFailure(new InvalidOperationException("Extension deployment failed: " + extension.Error));
 
         _activateEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivateEventName);
 
