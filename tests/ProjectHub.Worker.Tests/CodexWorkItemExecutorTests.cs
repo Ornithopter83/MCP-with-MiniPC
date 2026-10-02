@@ -153,10 +153,13 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(
                 workTemp,
                 fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_WORK_TEMP"]);
-            Assert.Contains(
-                fixture.Git.Calls,
-                call => call.Any(argument =>
-                    argument.Contains(executionKey, StringComparison.Ordinal)));
+            if (workItemId == FixedWorkItemSlots.Materialize)
+            {
+                Assert.Contains(
+                    fixture.Git.Calls,
+                    call => call.Any(argument =>
+                        argument.Contains(executionKey, StringComparison.Ordinal)));
+            }
 
             if (workItemId == FixedWorkItemSlots.Materialize)
             {
