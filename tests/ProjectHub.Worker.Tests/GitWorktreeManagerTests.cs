@@ -342,7 +342,9 @@ public sealed class GitWorktreeManagerTests
                 call.Arguments.Count > 2 &&
                 call.Arguments[0] == "add" &&
                 call.Arguments[1] == "--all" &&
-                call.Arguments.Contains(":(exclude,glob)**/bin/**"));
+                call.Arguments.Contains(":(exclude,glob)**/bin/**") &&
+                call.Arguments.Contains(":(exclude,glob)**/publish/**") &&
+                call.Arguments.Contains(":(exclude,glob)**/artifacts/**"));
             Assert.Contains(runner.Calls, call => call.Arguments.Contains("commit"));
             Assert.DoesNotContain(runner.Calls.SelectMany(call => call.Arguments), argument => argument == "push");
             Assert.DoesNotContain(runner.Calls.SelectMany(call => call.Arguments), argument => argument == "--force" || argument == "-f");
