@@ -49,7 +49,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     private readonly IWorkItemObservationGate? _observationGate;
     private readonly string? _expectedPrimaryBranch;
     private readonly IReadOnlyList<UserAttachmentInput> _userAttachments;
-    private readonly Func<string, IDisposable?>? _werPolicyLeaseFactory;
     private readonly WorkspacePublishState _publishState;
 
     public CodexWorkItemExecutor(
@@ -62,8 +61,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         Func<string, string?>? observationRequestDirectory = null,
         IWorkItemObservationGate? observationGate = null,
         string? expectedPrimaryBranch = null,
-        IReadOnlyList<UserAttachmentInput>? userAttachments = null,
-        Func<string, IDisposable?>? werPolicyLeaseFactory = null)
+        IReadOnlyList<UserAttachmentInput>? userAttachments = null)
     {
         if (string.IsNullOrWhiteSpace(jobId))
             throw new ArgumentException("Job ID가 비어 있습니다.", nameof(jobId));
@@ -82,7 +80,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             ? null
             : expectedPrimaryBranch.Trim();
         _userAttachments = userAttachments?.ToArray() ?? Array.Empty<UserAttachmentInput>();
-        _werPolicyLeaseFactory = werPolicyLeaseFactory;
         _publishState = new WorkspacePublishState(_workspace, _jobId);
     }
 
@@ -97,15 +94,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         CancellationToken cancellationToken)
     {
         var item = request.Item;
-        using var werPolicyLease =
-            string.Equals(
-                item.Id,
-                FixedWorkItemSlots.BuildPublish,
-                StringComparison.Ordinal)
-                ? _werPolicyLeaseFactory?.Invoke(
-                    _jobId + ":" + item.CreatedOrder.ToString())
-                : null;
-
         var executionWorkItemId = FixedWorkItemSlots.BuildExecutionKey(
             item.Id,
             item.CreatedOrder);
