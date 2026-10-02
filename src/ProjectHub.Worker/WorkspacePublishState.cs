@@ -9,6 +9,7 @@ public sealed record WorkspacePublishStateSnapshot(
     long PublishedCodeGeneration,
     bool HasSuccessfulPublish,
     string? LastCodeResultRef,
+    IReadOnlyList<string> MaterializedCodeResultRefs,
     long? LastPublishInvocation,
     DateTimeOffset? LastPublishedAtUtc)
 {
@@ -66,16 +67,26 @@ public sealed class WorkspacePublishState
         {
             var current = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
             var normalized = resultRef.Trim();
-            if (string.Equals(
-                    current.LastCodeResultRef,
-                    normalized,
-                    StringComparison.OrdinalIgnoreCase))
-                return current;
+            if (current.MaterializedCodeResultRefs.Any(value =>
+                    string.Equals(value, normalized, StringComparison.OrdinalIgnoreCase)))
+            {
+                return string.Equals(
+                        current.LastCodeResultRef,
+                        normalized,
+                        StringComparison.OrdinalIgnoreCase)
+                    ? current
+                    : current with { LastCodeResultRef = normalized };
+            }
 
+            var refs = current.MaterializedCodeResultRefs
+                .Concat(new[] { normalized })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
             var next = current with
             {
                 CodeGeneration = checked(current.CodeGeneration + 1),
-                LastCodeResultRef = normalized
+                LastCodeResultRef = normalized,
+                MaterializedCodeResultRefs = refs
             };
             await WriteCoreAsync(next, cancellationToken).ConfigureAwait(false);
             return next;
@@ -173,6 +184,7 @@ public sealed class WorkspacePublishState
             PublishedCodeGeneration: 0,
             HasSuccessfulPublish: false,
             LastCodeResultRef: null,
+            MaterializedCodeResultRefs: Array.Empty<string>(),
             LastPublishInvocation: null,
             LastPublishedAtUtc: null);
 
