@@ -137,6 +137,7 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly ConcurrentDictionary<string, Task> _running = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _workItemRoots = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> _ignoredUnrelatedJson = new(StringComparer.OrdinalIgnoreCase);
     private readonly Task _pump;
 
     public ObservationSidecarQueue(
@@ -196,6 +197,11 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                          .OrderBy(File.GetCreationTimeUtc))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var lastWriteTicks = File.GetLastWriteTimeUtc(path).Ticks;
+                if (_ignoredUnrelatedJson.TryGetValue(path, out var ignoredTicks) &&
+                    ignoredTicks == lastWriteTicks)
+                    continue;
+
                 try
                 {
                     await TryStartRequestAsync(path, cancellationToken);
@@ -234,6 +240,35 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
         }
     }
 
+    private static bool IsUnrelatedJson(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                return false;
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.Name.Equals("kind", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("command", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("arguments", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("workingDirectory", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("timeoutSeconds", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("completionMode", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("resultPaths", StringComparison.OrdinalIgnoreCase) ||
+                    property.Name.Equals("environment", StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private async Task TryStartRequestAsync(string requestPath, CancellationToken cancellationToken)
     {
         var workItemId = ResolveWorkItemId(requestPath);
@@ -247,6 +282,13 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
             return;
         }
 
+        if (IsUnrelatedJson(json))
+        {
+            _ignoredUnrelatedJson[requestPath] = File.GetLastWriteTimeUtc(requestPath).Ticks;
+            return;
+        }
+
+        _ignoredUnrelatedJson.TryRemove(requestPath, out _);
         if (!ObservationRequestContract.TryParse(json, out var request, out var completionMode, out var error))
         {
             if (DateTime.UtcNow - File.GetLastWriteTimeUtc(requestPath) < TimeSpan.FromSeconds(1))
