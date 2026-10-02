@@ -145,10 +145,17 @@ internal sealed class WorkerChildProcessJob : IDisposable
             if (_disposed || _blockingDialogMonitor is not null)
                 return;
 
+            var scopedExternalDialogMonitoring =
+                BlockingDialogMonitor.TryGetExternalWorkspaceScope(
+                    startInfo,
+                    out var externalScopeRoot);
+
             monitor = new BlockingDialogMonitor(
                 _ownerLabel,
                 SnapshotProcessIds,
-                _ => Dispose());
+                _ => Dispose(),
+                scopedExternalDialogMonitoring,
+                externalScopeRoot);
             _blockingDialogMonitor = monitor;
         }
 
