@@ -386,7 +386,13 @@ public sealed class TargetWorkspaceMaterializationLedger
 
                 if (entry is null ||
                     !entry.Success ||
+                    !string.Equals(entry.JobId, _jobId, StringComparison.Ordinal) ||
+                    string.IsNullOrWhiteSpace(entry.WorkItemId) ||
+                    entry.SourceResultRefs is null ||
+                    entry.Files is null ||
+                    entry.UnexpectedChangedPaths is null ||
                     !entry.SourceResultRefs.Any(value =>
+                        !string.IsNullOrWhiteSpace(value) &&
                         string.Equals(
                             value,
                             resultRef.Trim(),
@@ -408,9 +414,13 @@ public sealed class TargetWorkspaceMaterializationLedger
 
     private bool EntryStillMatchesTarget(MaterializationLedgerEntry entry)
     {
+        if (entry.Files is null)
+            return false;
+
         foreach (var file in entry.Files)
         {
-            if (!TryResolveTarget(file.Path, out var targetPath))
+            if (file is null ||
+                !TryResolveTarget(file.Path, out var targetPath))
                 return false;
 
             if (string.Equals(file.Operation, "DELETE", StringComparison.Ordinal) ||
