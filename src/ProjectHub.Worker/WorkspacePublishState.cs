@@ -67,18 +67,13 @@ public sealed class WorkspacePublishState
         {
             var current = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
             var normalized = resultRef.Trim();
-            if (current.MaterializedCodeResultRefs.Any(value =>
+            var materializedRefs = current.MaterializedCodeResultRefs ??
+                                   Array.Empty<string>();
+            if (materializedRefs.Any(value =>
                     string.Equals(value, normalized, StringComparison.OrdinalIgnoreCase)))
-            {
-                return string.Equals(
-                        current.LastCodeResultRef,
-                        normalized,
-                        StringComparison.OrdinalIgnoreCase)
-                    ? current
-                    : current with { LastCodeResultRef = normalized };
-            }
+                return current;
 
-            var refs = current.MaterializedCodeResultRefs
+            var refs = materializedRefs
                 .Concat(new[] { normalized })
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
