@@ -86,6 +86,46 @@ public sealed class WorkerChildProcessJobTests
         Assert.NotNull(method);
     }
 
+
+    [Fact]
+    public void BlockingDialogMonitorOnlyTargetsHeadlessRuns()
+    {
+        var headless = new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            CreateNoWindow = true
+        };
+        var visible = new ProcessStartInfo
+        {
+            FileName = "chrome.exe",
+            CreateNoWindow = false
+        };
+
+        Assert.True(BlockingDialogMonitor.ShouldMonitor("Codex CLI run", headless));
+        Assert.False(BlockingDialogMonitor.ShouldMonitor("Managed Chromium HQ", headless));
+        Assert.False(BlockingDialogMonitor.ShouldMonitor("Codex CLI run", visible));
+    }
+
+    [Theory]
+    [InlineData("sample.exe - Application Error")]
+    [InlineData("Warning")]
+    [InlineData("처리 오류")]
+    [InlineData("실행 실패")]
+    public void BlockingDialogMonitorRecognizesFaultTitles(string title)
+    {
+        Assert.True(BlockingDialogMonitor.LooksLikeFaultTitle(title));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Open File")]
+    [InlineData("Settings")]
+    [InlineData("ProjectHub")]
+    public void BlockingDialogMonitorIgnoresOrdinaryDialogTitles(string title)
+    {
+        Assert.False(BlockingDialogMonitor.LooksLikeFaultTitle(title));
+    }
+
     [Fact]
     public void DisposingJobTerminatesStartedProcess()
     {
