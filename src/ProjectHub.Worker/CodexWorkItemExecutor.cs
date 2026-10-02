@@ -210,17 +210,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     out var pendingStatus,
                     out var pendingBody))
             {
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "CHECKPOINT_RETRY_STATE",
+                return WorkItemExecutionResult.Failed(
                     "WORKTREE_CHECKPOINT_PENDING_STATE_INVALID",
                     item.ResultSummary,
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     item.SessionId,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "CHECKPOINT_RETRY_STATE");
             }
 
             return await FinalizeReportAsync(
@@ -427,17 +423,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     out var authorization,
                     out var authorizationError))
             {
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "BUILD_AUTHORIZATION",
+                return WorkItemExecutionResult.Failed(
                     authorizationError ?? "BUILD_AUTHORIZATION_INVALID",
                     inboundBody,
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "BUILD_AUTHORIZATION");
             }
 
             MechanicalProgress?.Invoke(new CodexWorkItemMechanicalProgress(
@@ -468,18 +460,14 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 try { await File.WriteAllTextAsync(logPath, detail, cancellationToken).ConfigureAwait(false); }
                 catch { }
 
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "BUILD_EXECUTION",
+                return WorkItemExecutionResult.Failed(
                     "WORK_BUILD_EXECUTION_EXCEPTION",
+                    "exceptionType=" + exception.GetType().Name + Environment.NewLine +
                     detail + Environment.NewLine + "logPath=" + logPath,
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    exception.GetType().Name,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "BUILD_EXECUTION");
             }
             finally
             {
@@ -587,20 +575,16 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             if (!gitRestore.Success)
             {
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "GIT_METADATA_RESTORE",
+                return WorkItemExecutionResult.Failed(
                     gitRestore.ErrorCode ?? "WORK_GIT_METADATA_RESTORE_FAILED",
                     (gitRestore.ErrorDetail ?? "Git metadata 복원에 실패했습니다.") +
                     (string.IsNullOrWhiteSpace(gitRestore.QuarantinePath)
                         ? string.Empty
                         : Environment.NewLine + "quarantine=" + gitRestore.QuarantinePath),
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "GIT_METADATA_RESTORE");
             }
 
             CallCompleted?.Invoke(new CodexWorkItemCallCompleted(
@@ -617,33 +601,25 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             if (runResult.ExitCode != 0)
             {
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "WORK_PROCESS",
+                return WorkItemExecutionResult.Failed(
                     "WORK_PROCESS_EXIT",
+                    "processExitCode=" + runResult.ExitCode + Environment.NewLine +
                     BuildFailureSummary(runResult.StandardError, runResult.FinalMessage),
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    processExitCode: runResult.ExitCode,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "WORK_PROCESS");
             }
 
             if (string.IsNullOrWhiteSpace(sessionId))
             {
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "WORK_SESSION",
+                return WorkItemExecutionResult.Failed(
                     "WORK_SESSION_RESUME_FAILED",
                     "WORK 실행 후 이어갈 session ID가 없습니다.",
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     null,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "WORK_SESSION");
             }
 
             if (_observationGate is not null)
@@ -664,17 +640,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             var route = WorkerGotoContract.Parse(WorkerRoleState.Work, runResult.FinalMessage);
             if (route.Error is not null)
             {
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "WORK_ROUTE",
+                return WorkItemExecutionResult.Failed(
                     "WORK_ROUTE_" + route.Error,
                     runResult.FinalMessage,
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "WORK_ROUTE");
             }
 
             if (route.Target == WorkerRoleState.Judge)
@@ -712,32 +684,24 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             if (route.Target != WorkerRoleState.Hq)
             {
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "WORK_ROUTE",
+                return WorkItemExecutionResult.Failed(
                     "WORK_ROUTE_UNSUPPORTED",
                     runResult.FinalMessage,
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "WORK_ROUTE");
             }
 
             if (!WorkItemReportContract.TryParse(route.Body, out var report, out var reportError))
             {
-                return WorkItemExecutionResult.HqDecisionRequired(
-                    item.Id,
-                    "WORK_REPORT",
+                return WorkItemExecutionResult.Failed(
                     reportError ?? "WORK_ITEM_REPORT_INVALID",
                     route.Body,
-                    item.ResultRef,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    "WORK_REPORT");
             }
 
             var reportBody = route.Body;
@@ -1047,17 +1011,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId,
                 resultType: blockedResultType,
                 commitManifestPath: commitManifestPath),
-            _ => WorkItemExecutionResult.HqDecisionRequired(
-                item.Id,
-                "WORK_REPORT",
+            _ => WorkItemExecutionResult.Failed(
                 "WORK_ITEM_REPORTED_FAILED",
                 reportBody,
-                lifecycleResultRef,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
-                resultType: blockedResultType,
-                commitManifestPath: commitManifestPath)
+                "WORK_REPORT")
         };
     }
 
@@ -1114,17 +1074,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 resultType: item.ResultType);
         }
 
-        return WorkItemExecutionResult.HqDecisionRequired(
-            item.Id,
-            "WORK_REPORT",
+        return WorkItemExecutionResult.Failed(
             "WORK_REPORTED_FAILED",
             reportBody,
-            item.ResultRef,
             preparation.Branch,
             preparation.WorktreePath,
             sessionId,
-            resultType: item.ResultType,
-            commitManifestPath: item.CommitManifestPath);
+            "WORK_REPORT");
     }
 
     private async Task TryRemoveCompletedIntegrationCloneAsync(
