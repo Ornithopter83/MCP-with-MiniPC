@@ -43,7 +43,7 @@ public sealed class ParallelWorkSchedulerTests
     }
 
     [Fact]
-    public async Task FailedWorkDoesNotPreventIndependentReadyWorkFromCompleting()
+    public async Task FailedExecutorResultReturnsWorkItemDecisionToHqAndKeepsIndependentWorkRunning()
     {
         var graph = new WorkGraph("job", 2);
         Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
@@ -65,7 +65,11 @@ public sealed class ParallelWorkSchedulerTests
         await scheduler.WaitForQuiescenceAsync();
 
         var snapshot = await scheduler.GetSnapshotAsync();
-        Assert.Equal(WorkItemState.Failed, snapshot.Graph.Items.Single(item => item.Id == "A").State);
+        var failed = snapshot.Graph.Items.Single(item => item.Id == "A");
+        Assert.Equal(WorkItemState.Blocked, failed.State);
+        Assert.Equal("HQ_DECISION_REQUIRED", failed.BlockCode);
+        Assert.Equal("EXPECTED_FAILURE", failed.BlockDetailCode);
+        Assert.Contains("작업 판단을 HQ에 위임합니다.", failed.ResultSummary);
         Assert.Equal(WorkItemState.Blocked, snapshot.Graph.Items.Single(item => item.Id == "B").State);
         Assert.Equal(WorkItemState.Completed, snapshot.Graph.Items.Single(item => item.Id == "C").State);
         Assert.False(executor.IsStarted("B"));
