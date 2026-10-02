@@ -14,7 +14,7 @@ public sealed class ObservationSidecarQueueTests
         Directory.CreateDirectory(root);
         using var cancellation = new CancellationTokenSource();
         var registry = new MechanicalWorkRegistry();
-        await using var queue = new ObservationSidecarQueue(
+        var queue = new ObservationSidecarQueue(
             root,
             "job",
             registry,
@@ -52,6 +52,7 @@ public sealed class ObservationSidecarQueueTests
         finally
         {
             cancellation.Cancel();
+            await queue.DisposeAsync();
             if (Directory.Exists(root))
                 Directory.Delete(root, true);
         }
