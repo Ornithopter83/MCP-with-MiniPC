@@ -59,6 +59,32 @@ public sealed class TargetWorkspaceFinalizerPublishTests
         }
     }
 
+    [Fact]
+    public async Task FinalizerSkipsInvalidLedgerAndUsesLaterValidVerification()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var graph = CreateCompletedGraph("code-new");
+            WriteInvalidLedgerMissingSourceRefs(root, "job", 1);
+            WriteVerifiedLedger(root, "job", "code-new", 2);
+
+            var publish = new WorkspacePublishState(root, "job");
+            await publish.MarkCodeMaterializedAsync("code-new");
+            await publish.MarkPublishedAsync(1);
+
+            var finalizer = new TargetWorkspaceFinalizer(root, null);
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.True(result.Success);
+            Assert.Null(result.ErrorCode);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
     private static WorkGraph CreateCompletedGraph(string resultRef)
     {
         var graph = new WorkGraph("job");
@@ -80,7 +106,8 @@ public sealed class TargetWorkspaceFinalizerPublishTests
     private static void WriteVerifiedLedger(
         string root,
         string jobId,
-        string resultRef)
+        string resultRef,
+        long invocation = 1)
     {
         var directory = Path.Combine(
             root,
@@ -91,7 +118,7 @@ public sealed class TargetWorkspaceFinalizerPublishTests
         var entry = new MaterializationLedgerEntry(
             jobId,
             FixedWorkItemSlots.Materialize,
-            1,
+            invocation,
             DateTimeOffset.UtcNow,
             true,
             null,
@@ -100,13 +127,41 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             Array.Empty<string>(),
             "verified");
         File.WriteAllText(
-            Path.Combine(directory, "000000000001-8.json"),
+            Path.Combine(directory, $"{invocation:D12}-8.json"),
             JsonSerializer.Serialize(
                 entry,
                 new JsonSerializerOptions(JsonSerializerDefaults.Web)
                 {
                     WriteIndented = true
                 }));
+    }
+
+    private static void WriteInvalidLedgerMissingSourceRefs(
+        string root,
+        string jobId,
+        long invocation)
+    {
+        var directory = Path.Combine(
+            root,
+            ".projecthub",
+            "materialization-ledger",
+            jobId);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(
+            Path.Combine(directory, $"{invocation:D12}-8.json"),
+            """
+            {
+              "jobId": "job",
+              "workItemId": "8",
+              "invocation": 1,
+              "recordedAtUtc": "2026-10-02T00:00:00Z",
+              "success": true,
+              "errorCode": null,
+              "files": [],
+              "unexpectedChangedPaths": [],
+              "detail": "missing sourceResultRefs"
+            }
+            """);
     }
 
     private static string CreateRoot()
