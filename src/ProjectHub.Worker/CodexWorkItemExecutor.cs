@@ -467,12 +467,19 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 var detail = exception.GetType().Name + ": " + exception.Message;
                 try { await File.WriteAllTextAsync(logPath, detail, cancellationToken).ConfigureAwait(false); }
                 catch { }
-                buildResult = new MechanicalBuildResult(
-                    false,
-                    -1,
-                    authorization!.Scope,
-                    logPath,
-                    detail);
+
+                return WorkItemExecutionResult.HqDecisionRequired(
+                    item.Id,
+                    "BUILD_EXECUTION",
+                    "WORK_BUILD_EXECUTION_EXCEPTION",
+                    detail + Environment.NewLine + "logPath=" + logPath,
+                    item.ResultRef,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId,
+                    exception.GetType().Name,
+                    resultType: item.ResultType,
+                    commitManifestPath: item.CommitManifestPath);
             }
             finally
             {
