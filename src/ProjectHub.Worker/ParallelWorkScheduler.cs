@@ -34,7 +34,8 @@ public sealed record WorkItemExecutionResult(
     string? SessionId = null,
     string? BlockDetailCode = null,
     WorkItemResultType ResultType = WorkItemResultType.None,
-    string? CommitManifestPath = null)
+    string? CommitManifestPath = null,
+    string? FailureStage = null)
 {
     public static WorkItemExecutionResult Completed(
         string? resultRef = null,
@@ -51,8 +52,18 @@ public sealed record WorkItemExecutionResult(
         string? resultSummary = null,
         string? branch = null,
         string? worktreePath = null,
-        string? sessionId = null)
-        => new(WorkItemExecutionOutcome.Failed, null, resultSummary, failureCode, null, branch, worktreePath, sessionId);
+        string? sessionId = null,
+        string? failureStage = null)
+        => new(
+            WorkItemExecutionOutcome.Failed,
+            null,
+            resultSummary,
+            failureCode,
+            null,
+            branch,
+            worktreePath,
+            sessionId,
+            FailureStage: failureStage);
 
     public static WorkItemExecutionResult Blocked(
         string blockCode,
@@ -482,7 +493,9 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                         FormatHqDecisionRequired(
                             item,
                             result,
-                            exception is null ? "WORK_ITEM_EXECUTION" : "EXECUTOR_EXCEPTION",
+                            exception is null
+                                ? result.FailureStage ?? "WORK_ITEM_EXECUTION"
+                                : "EXECUTOR_EXCEPTION",
                             exception?.GetType().Name),
                         result.ResultRef ?? item.ResultRef,
                         string.IsNullOrWhiteSpace(result.FailureCode)
