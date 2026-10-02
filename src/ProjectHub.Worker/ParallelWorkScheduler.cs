@@ -33,7 +33,8 @@ public sealed record WorkItemExecutionResult(
     string? SessionId = null,
     string? BlockDetailCode = null,
     WorkItemResultType ResultType = WorkItemResultType.None,
-    string? CommitManifestPath = null)
+    string? CommitManifestPath = null,
+    string? FailureStage = null)
 {
     public static WorkItemExecutionResult Completed(
         string? resultRef = null,
@@ -50,8 +51,18 @@ public sealed record WorkItemExecutionResult(
         string? resultSummary = null,
         string? branch = null,
         string? worktreePath = null,
-        string? sessionId = null)
-        => new(WorkItemExecutionOutcome.Failed, null, resultSummary, failureCode, null, branch, worktreePath, sessionId);
+        string? sessionId = null,
+        string? failureStage = null)
+        => new(
+            WorkItemExecutionOutcome.Failed,
+            null,
+            resultSummary,
+            failureCode,
+            null,
+            branch,
+            worktreePath,
+            sessionId,
+            FailureStage: failureStage);
 
     public static WorkItemExecutionResult Blocked(
         string blockCode,
@@ -64,58 +75,6 @@ public sealed record WorkItemExecutionResult(
         WorkItemResultType resultType = WorkItemResultType.None,
         string? commitManifestPath = null)
         => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId, blockDetailCode, resultType, commitManifestPath);
-
-    public static WorkItemExecutionResult HqDecisionRequired(
-        string workItemId,
-        string stage,
-        string errorCode,
-        string? detail = null,
-        string? resultRef = null,
-        string? branch = null,
-        string? worktreePath = null,
-        string? sessionId = null,
-        string? exceptionType = null,
-        int? processExitCode = null,
-        WorkItemResultType resultType = WorkItemResultType.None,
-        string? commitManifestPath = null)
-    {
-        var lines = new List<string>
-        {
-            $"명령 처리를 실패하여 #{workItemId}의 작업 판단을 HQ에 위임합니다. 중지가 필요할 경우 작업을 중단해주세요.",
-            $"workItemId={workItemId}",
-            $"stage={stage}",
-            $"errorCode={errorCode}",
-            $"sessionPreserved={!string.IsNullOrWhiteSpace(sessionId)}",
-            "worktreeState=" + (
-                string.IsNullOrWhiteSpace(worktreePath)
-                    ? "UNKNOWN"
-                    : Directory.Exists(worktreePath) ? "AVAILABLE" : "MISSING")
-        };
-
-        if (!string.IsNullOrWhiteSpace(exceptionType))
-            lines.Add("exceptionType=" + exceptionType);
-        if (processExitCode is not null)
-            lines.Add("processExitCode=" + processExitCode.Value);
-        if (!string.IsNullOrWhiteSpace(branch))
-            lines.Add("branch=" + branch);
-        if (!string.IsNullOrWhiteSpace(worktreePath))
-            lines.Add("worktree=" + worktreePath);
-        if (!string.IsNullOrWhiteSpace(resultRef))
-            lines.Add("resultRef=" + resultRef);
-        if (!string.IsNullOrWhiteSpace(detail))
-            lines.Add("detail=" + detail.Trim());
-
-        return Blocked(
-            "HQ_DECISION_REQUIRED",
-            string.Join(Environment.NewLine, lines),
-            resultRef,
-            branch,
-            worktreePath,
-            sessionId,
-            errorCode,
-            resultType,
-            commitManifestPath);
-    }
 }
 
 public interface IWorkItemExecutor
@@ -507,72 +466,64 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             }
             else
             {
+                result ??= WorkItemExecutionResult.Failed(
+                    "WORK_EXECUTOR_NO_RESULT",
+                    failureStage: "EXECUTOR_RESULT");
+
                 if (exception is not null)
                 {
-                    result = WorkItemExecutionResult.HqDecisionRequired(
-                        item.Id,
-                        "EXECUTOR_EXCEPTION",
+                    result = WorkItemExecutionResult.Failed(
                         "WORK_EXECUTOR_EXCEPTION",
+                        "exceptionType=" + exception.GetType().Name + Environment.NewLine +
                         exception.Message,
-                        item.ResultRef,
                         item.Branch,
                         item.WorktreePath,
                         item.SessionId,
-                        exception.GetType().Name,
-                        resultType: item.ResultType,
-                        commitManifestPath: item.CommitManifestPath);
+                        "EXECUTOR_EXCEPTION");
                 }
-                else if (result is null)
+
+                _graph.TryUpdateExecutionContext(
+                    item.Id,
+                    result.Branch ?? item.Branch,
+                    result.WorktreePath ?? item.WorktreePath,
+                    result.SessionId ?? item.SessionId);
+
+                if (result.Outcome == WorkItemExecutionOutcome.Failed)
                 {
-                    result = WorkItemExecutionResult.HqDecisionRequired(
+                    _graph.TryMarkBlocked(
                         item.Id,
-                        "EXECUTOR_RESULT",
-                        "WORK_EXECUTOR_NO_RESULT",
-                        resultRef: item.ResultRef,
-                        branch: item.Branch,
-                        worktreePath: item.WorktreePath,
-                        sessionId: item.SessionId,
-                        resultType: item.ResultType,
-                        commitManifestPath: item.CommitManifestPath);
-                }
-                else if (result.Outcome == WorkItemExecutionOutcome.Failed)
-                {
-                    result = WorkItemExecutionResult.HqDecisionRequired(
-                        item.Id,
-                        "EXECUTOR_RESULT",
+                        "HQ_DECISION_REQUIRED",
+                        FormatHqDecisionRequired(item, result),
+                        result.ResultRef ?? item.ResultRef,
                         string.IsNullOrWhiteSpace(result.FailureCode)
                             ? "WORK_EXECUTOR_FAILED"
                             : result.FailureCode,
-                        result.ResultSummary,
-                        result.ResultRef ?? item.ResultRef,
-                        result.Branch ?? item.Branch,
-                        result.WorktreePath ?? item.WorktreePath,
-                        result.SessionId ?? item.SessionId,
-                        resultType: result.ResultType == WorkItemResultType.None
+                        result.ResultType == WorkItemResultType.None
                             ? item.ResultType
                             : result.ResultType,
-                        commitManifestPath: result.CommitManifestPath ?? item.CommitManifestPath);
+                        result.CommitManifestPath ?? item.CommitManifestPath);
                 }
-
-                _graph.TryUpdateExecutionContext(item.Id, result.Branch, result.WorktreePath, result.SessionId);
-
-                switch (result.Outcome)
+                else if (result.Outcome == WorkItemExecutionOutcome.Completed)
                 {
-                    case WorkItemExecutionOutcome.Completed:
-                        _graph.TryMarkCompleted(item.Id, result.ResultRef, result.ResultSummary, result.ResultType, result.CommitManifestPath);
-                        break;
-                    case WorkItemExecutionOutcome.Blocked:
-                        _graph.TryMarkBlocked(
-                            item.Id,
-                            string.IsNullOrWhiteSpace(result.BlockCode)
-                                ? "WORK_EXECUTOR_BLOCKED"
-                                : result.BlockCode,
-                            result.ResultSummary,
-                            result.ResultRef,
-                            result.BlockDetailCode,
-                            result.ResultType,
-                            result.CommitManifestPath);
-                        break;
+                    _graph.TryMarkCompleted(
+                        item.Id,
+                        result.ResultRef,
+                        result.ResultSummary,
+                        result.ResultType,
+                        result.CommitManifestPath);
+                }
+                else
+                {
+                    _graph.TryMarkBlocked(
+                        item.Id,
+                        string.IsNullOrWhiteSpace(result.BlockCode)
+                            ? "WORK_EXECUTOR_BLOCKED"
+                            : result.BlockCode,
+                        result.ResultSummary,
+                        result.ResultRef,
+                        result.BlockDetailCode,
+                        result.ResultType,
+                        result.CommitManifestPath);
                 }
             }
 
@@ -588,6 +539,33 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
         StateChanged?.Invoke(snapshot);
     }
 
+
+    private static string FormatHqDecisionRequired(
+        WorkItemSnapshot item,
+        WorkItemExecutionResult result)
+    {
+        var sessionId = result.SessionId ?? item.SessionId;
+        var worktree = result.WorktreePath ?? item.WorktreePath;
+        var lines = new List<string>
+        {
+            $"명령 처리를 실패하여 #{item.Id}의 작업 판단을 HQ에 위임합니다. 중지가 필요할 경우 작업을 중단해주세요.",
+            $"workItemId={item.Id}",
+            $"stage={result.FailureStage ?? "EXECUTOR_RESULT"}",
+            $"errorCode={result.FailureCode ?? "WORK_EXECUTOR_FAILED"}",
+            $"sessionPreserved={!string.IsNullOrWhiteSpace(sessionId)}",
+            "worktreeState=" + (
+                string.IsNullOrWhiteSpace(worktree)
+                    ? "UNKNOWN"
+                    : Directory.Exists(worktree) ? "AVAILABLE" : "MISSING")
+        };
+
+        if (!string.IsNullOrWhiteSpace(worktree))
+            lines.Add("worktree=" + worktree);
+        if (!string.IsNullOrWhiteSpace(result.ResultSummary))
+            lines.Add("detail=" + result.ResultSummary.Trim());
+
+        return string.Join(Environment.NewLine, lines);
+    }
 
     private async Task HandleLifetimeCancellationAsync()
     {
