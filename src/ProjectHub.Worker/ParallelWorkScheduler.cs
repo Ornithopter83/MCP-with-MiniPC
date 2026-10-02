@@ -34,8 +34,7 @@ public sealed record WorkItemExecutionResult(
     string? SessionId = null,
     string? BlockDetailCode = null,
     WorkItemResultType ResultType = WorkItemResultType.None,
-    string? CommitManifestPath = null,
-    string? FailureStage = null)
+    string? CommitManifestPath = null)
 {
     public static WorkItemExecutionResult Completed(
         string? resultRef = null,
@@ -52,18 +51,8 @@ public sealed record WorkItemExecutionResult(
         string? resultSummary = null,
         string? branch = null,
         string? worktreePath = null,
-        string? sessionId = null,
-        string? failureStage = null)
-        => new(
-            WorkItemExecutionOutcome.Failed,
-            null,
-            resultSummary,
-            failureCode,
-            null,
-            branch,
-            worktreePath,
-            sessionId,
-            FailureStage: failureStage);
+        string? sessionId = null)
+        => new(WorkItemExecutionOutcome.Failed, null, resultSummary, failureCode, null, branch, worktreePath, sessionId);
 
     public static WorkItemExecutionResult Blocked(
         string blockCode,
@@ -467,20 +456,16 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             }
             else
             {
-                result ??= WorkItemExecutionResult.Failed(
-                    "WORK_EXECUTOR_NO_RESULT",
-                    failureStage: "EXECUTOR_RESULT");
+                result ??= WorkItemExecutionResult.Failed("WORK_EXECUTOR_NO_RESULT");
 
                 if (exception is not null)
                 {
                     result = WorkItemExecutionResult.Failed(
                         "WORK_EXECUTOR_EXCEPTION",
-                        "exceptionType=" + exception.GetType().Name + Environment.NewLine +
                         exception.Message,
                         item.Branch,
                         item.WorktreePath,
-                        item.SessionId,
-                        "EXECUTOR_EXCEPTION");
+                        item.SessionId);
                 }
 
                 _graph.TryUpdateExecutionContext(
@@ -494,7 +479,11 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                     _graph.TryMarkBlocked(
                         item.Id,
                         "HQ_DECISION_REQUIRED",
-                        FormatHqDecisionRequired(item, result),
+                        FormatHqDecisionRequired(
+                            item,
+                            result,
+                            exception is null ? "WORK_ITEM_EXECUTION" : "EXECUTOR_EXCEPTION",
+                            exception?.GetType().Name),
                         result.ResultRef ?? item.ResultRef,
                         string.IsNullOrWhiteSpace(result.FailureCode)
                             ? "WORK_EXECUTOR_FAILED"
@@ -543,29 +532,25 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
 
     private static string FormatHqDecisionRequired(
         WorkItemSnapshot item,
-        WorkItemExecutionResult result)
+        WorkItemExecutionResult result,
+        string stage,
+        string? exceptionType)
     {
         var sessionId = result.SessionId ?? item.SessionId;
         var worktree = result.WorktreePath ?? item.WorktreePath;
-        var lines = new List<string>
-        {
+        return string.Join(
+            Environment.NewLine,
             $"명령 처리를 실패하여 #{item.Id}의 작업 판단을 HQ에 위임합니다. 중지가 필요할 경우 작업을 중단해주세요.",
             $"workItemId={item.Id}",
-            $"stage={result.FailureStage ?? "EXECUTOR_RESULT"}",
+            $"stage={stage}",
             $"errorCode={result.FailureCode ?? "WORK_EXECUTOR_FAILED"}",
+            $"exceptionType={exceptionType ?? "none"}",
             $"sessionPreserved={!string.IsNullOrWhiteSpace(sessionId)}",
-            "worktreeState=" + (
-                string.IsNullOrWhiteSpace(worktree)
-                    ? "UNKNOWN"
-                    : Directory.Exists(worktree) ? "AVAILABLE" : "MISSING")
-        };
-
-        if (!string.IsNullOrWhiteSpace(worktree))
-            lines.Add("worktree=" + worktree);
-        if (!string.IsNullOrWhiteSpace(result.ResultSummary))
-            lines.Add("detail=" + result.ResultSummary.Trim());
-
-        return string.Join(Environment.NewLine, lines);
+            "worktreeState=" + (string.IsNullOrWhiteSpace(worktree)
+                ? "UNKNOWN"
+                : Directory.Exists(worktree) ? "AVAILABLE" : "MISSING"),
+            "worktree=" + (worktree ?? "none"),
+            "detail=" + (result.ResultSummary?.Trim() ?? "none"));
     }
 
     private async Task HandleLifetimeCancellationAsync()
