@@ -64,6 +64,58 @@ public sealed record WorkItemExecutionResult(
         WorkItemResultType resultType = WorkItemResultType.None,
         string? commitManifestPath = null)
         => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId, blockDetailCode, resultType, commitManifestPath);
+
+    public static WorkItemExecutionResult HqDecisionRequired(
+        string workItemId,
+        string stage,
+        string errorCode,
+        string? detail = null,
+        string? resultRef = null,
+        string? branch = null,
+        string? worktreePath = null,
+        string? sessionId = null,
+        string? exceptionType = null,
+        int? processExitCode = null,
+        WorkItemResultType resultType = WorkItemResultType.None,
+        string? commitManifestPath = null)
+    {
+        var lines = new List<string>
+        {
+            $"명령 처리를 실패하여 #{workItemId}의 작업 판단을 HQ에 위임합니다. 중지가 필요할 경우 작업을 중단해주세요.",
+            $"workItemId={workItemId}",
+            $"stage={stage}",
+            $"errorCode={errorCode}",
+            $"sessionPreserved={!string.IsNullOrWhiteSpace(sessionId)}",
+            "worktreeState=" + (
+                string.IsNullOrWhiteSpace(worktreePath)
+                    ? "UNKNOWN"
+                    : Directory.Exists(worktreePath) ? "AVAILABLE" : "MISSING")
+        };
+
+        if (!string.IsNullOrWhiteSpace(exceptionType))
+            lines.Add("exceptionType=" + exceptionType);
+        if (processExitCode is not null)
+            lines.Add("processExitCode=" + processExitCode.Value);
+        if (!string.IsNullOrWhiteSpace(branch))
+            lines.Add("branch=" + branch);
+        if (!string.IsNullOrWhiteSpace(worktreePath))
+            lines.Add("worktree=" + worktreePath);
+        if (!string.IsNullOrWhiteSpace(resultRef))
+            lines.Add("resultRef=" + resultRef);
+        if (!string.IsNullOrWhiteSpace(detail))
+            lines.Add("detail=" + detail.Trim());
+
+        return Blocked(
+            "HQ_DECISION_REQUIRED",
+            string.Join(Environment.NewLine, lines),
+            resultRef,
+            branch,
+            worktreePath,
+            sessionId,
+            errorCode,
+            resultType,
+            commitManifestPath);
+    }
 }
 
 public interface IWorkItemExecutor
@@ -453,19 +505,55 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                 if (current?.State != WorkItemState.Canceled)
                     _graph.TryMarkCanceled(item.Id, "WORK_EXECUTION_CANCELED");
             }
-            else if (exception is not null)
-            {
-                _graph.TryMarkFailed(
-                    item.Id,
-                    "WORK_EXECUTOR_EXCEPTION",
-                    $"{exception.GetType().Name}: {exception.Message}");
-            }
-            else if (result is null)
-            {
-                _graph.TryMarkFailed(item.Id, "WORK_EXECUTOR_NO_RESULT");
-            }
             else
             {
+                if (exception is not null)
+                {
+                    result = WorkItemExecutionResult.HqDecisionRequired(
+                        item.Id,
+                        "EXECUTOR_EXCEPTION",
+                        "WORK_EXECUTOR_EXCEPTION",
+                        exception.Message,
+                        item.ResultRef,
+                        item.Branch,
+                        item.WorktreePath,
+                        item.SessionId,
+                        exception.GetType().Name,
+                        resultType: item.ResultType,
+                        commitManifestPath: item.CommitManifestPath);
+                }
+                else if (result is null)
+                {
+                    result = WorkItemExecutionResult.HqDecisionRequired(
+                        item.Id,
+                        "EXECUTOR_RESULT",
+                        "WORK_EXECUTOR_NO_RESULT",
+                        resultRef: item.ResultRef,
+                        branch: item.Branch,
+                        worktreePath: item.WorktreePath,
+                        sessionId: item.SessionId,
+                        resultType: item.ResultType,
+                        commitManifestPath: item.CommitManifestPath);
+                }
+                else if (result.Outcome == WorkItemExecutionOutcome.Failed)
+                {
+                    result = WorkItemExecutionResult.HqDecisionRequired(
+                        item.Id,
+                        "EXECUTOR_RESULT",
+                        string.IsNullOrWhiteSpace(result.FailureCode)
+                            ? "WORK_EXECUTOR_FAILED"
+                            : result.FailureCode,
+                        result.ResultSummary,
+                        result.ResultRef ?? item.ResultRef,
+                        result.Branch ?? item.Branch,
+                        result.WorktreePath ?? item.WorktreePath,
+                        result.SessionId ?? item.SessionId,
+                        resultType: result.ResultType == WorkItemResultType.None
+                            ? item.ResultType
+                            : result.ResultType,
+                        commitManifestPath: result.CommitManifestPath ?? item.CommitManifestPath);
+                }
+
                 _graph.TryUpdateExecutionContext(item.Id, result.Branch, result.WorktreePath, result.SessionId);
 
                 switch (result.Outcome)
@@ -484,14 +572,6 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                             result.BlockDetailCode,
                             result.ResultType,
                             result.CommitManifestPath);
-                        break;
-                    default:
-                        _graph.TryMarkFailed(
-                            item.Id,
-                            string.IsNullOrWhiteSpace(result.FailureCode)
-                                ? "WORK_EXECUTOR_FAILED"
-                                : result.FailureCode,
-                            result.ResultSummary);
                         break;
                 }
             }
