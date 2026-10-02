@@ -5,38 +5,46 @@ namespace ProjectHub.Worker.Tests;
 public sealed class MechanicalBuildExecutorTests
 {
     [Fact]
-    public void MalformedAuthorizationFallsBackToFullBuild()
+    public void MalformedAuthorizationIsRejected()
     {
-        var authorization = BuildRequestContract.ParseAuthorizationOrFullFallback(
-            "BUILD_AUTHORIZATION: not-json");
+        var parsed = BuildRequestContract.TryParseAuthorization(
+            "BUILD_AUTHORIZATION: not-json",
+            out var authorization,
+            out var errorCode);
 
-        Assert.Equal("FULL", authorization.Scope);
-        Assert.Null(authorization.Target);
-        Assert.True(authorization.FallbackToFull);
-        Assert.False(authorization.NoRestore);
+        Assert.False(parsed);
+        Assert.Null(authorization);
+        Assert.Equal("BUILD_AUTHORIZATION_JSON_INVALID", errorCode);
     }
 
     [Fact]
-    public void PartialAuthorizationFallsBackToFullBuild()
+    public void PartialTargetAuthorizationIsRejected()
     {
-        var authorization = BuildRequestContract.ParseAuthorizationOrFullFallback(
-            """{"scope":"TARGET","configuration":"Release"}""");
+        var parsed = BuildRequestContract.TryParseAuthorization(
+            """{"scope":"TARGET","configuration":"Release"}""",
+            out var authorization,
+            out var errorCode);
 
-        Assert.Equal("FULL", authorization.Scope);
-        Assert.True(authorization.FallbackToFull);
+        Assert.False(parsed);
+        Assert.Null(authorization);
+        Assert.Equal("BUILD_AUTHORIZATION_TARGET_MISSING", errorCode);
     }
 
     [Fact]
     public void ValidTargetAuthorizationIsPreserved()
     {
-        var authorization = BuildRequestContract.ParseAuthorizationOrFullFallback(
-            """{"scope":"TARGET","target":"src/App/App.csproj","configuration":"Release","noRestore":true}""");
+        var parsed = BuildRequestContract.TryParseAuthorization(
+            """{"scope":"TARGET","target":"src/App/App.csproj","configuration":"Release","noRestore":true}""",
+            out var authorization,
+            out var errorCode);
 
-        Assert.Equal("TARGET", authorization.Scope);
+        Assert.True(parsed);
+        Assert.Null(errorCode);
+        Assert.NotNull(authorization);
+        Assert.Equal("TARGET", authorization!.Scope);
         Assert.Equal("src/App/App.csproj", authorization.Target);
         Assert.Equal("Release", authorization.Configuration);
         Assert.True(authorization.NoRestore);
-        Assert.False(authorization.FallbackToFull);
     }
 
     [Fact]
@@ -45,23 +53,13 @@ public sealed class MechanicalBuildExecutorTests
         Assert.True(BuildRequestContract.ContainsRequest(
             "WORK_ITEM_STATUS: BLOCKED\nBUILD_REQUEST\n빌드가 필요합니다."));
     }
-    [Fact]
-    public void MalformedAuthorizationReportsFallbackReason()
-    {
-        var authorization = BuildRequestContract.ParseAuthorizationOrFullFallback(
-            "BUILD_AUTHORIZATION: not-json",
-            out var fallbackReason);
-
-        Assert.True(authorization.FallbackToFull);
-        Assert.Equal("BUILD_AUTHORIZATION_JSON_INVALID", fallbackReason);
-    }
 
     [Fact]
-    public void FullBuildFallbackSkipsIntegrationInputSnapshots()
+    public void FullBuildSkipsIntegrationInputSnapshots()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
-            "projecthub-build-fallback-" + Guid.NewGuid().ToString("N"));
+            "projecthub-build-full-" + Guid.NewGuid().ToString("N"));
         var realProject = Path.Combine(root, "LocalLens.Studio", "LocalLens.Studio.csproj");
         var snapshotProject = Path.Combine(
             root,
@@ -77,12 +75,14 @@ public sealed class MechanicalBuildExecutorTests
 
         try
         {
-            var authorization = BuildRequestContract.ParseAuthorizationOrFullFallback(
-                "BUILD_AUTHORIZATION: not-json");
+            var authorization = new BuildAuthorization(
+                "FULL",
+                null,
+                "Debug",
+                NoRestore: false);
             var resolved = MechanicalBuildExecutor.ResolveTarget(root, authorization);
 
-            Assert.Equal(Path.GetFullPath(realProject), resolved.Target);
-            Assert.False(resolved.Fallback);
+            Assert.Equal(Path.GetFullPath(realProject), resolved);
         }
         finally
         {
@@ -91,7 +91,7 @@ public sealed class MechanicalBuildExecutorTests
     }
 
     [Fact]
-    public void ExplicitIntegrationInputTargetFallsBackToRealProject()
+    public void ExplicitIntegrationInputTargetIsRejectedWithoutFallback()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -115,17 +115,14 @@ public sealed class MechanicalBuildExecutorTests
                 "TARGET",
                 snapshotRelative,
                 "Debug",
-                NoRestore: false,
-                FallbackToFull: false);
+                NoRestore: false);
             var resolved = MechanicalBuildExecutor.ResolveTarget(root, authorization);
 
-            Assert.Equal(Path.GetFullPath(realProject), resolved.Target);
-            Assert.True(resolved.Fallback);
+            Assert.Null(resolved);
         }
         finally
         {
             Directory.Delete(root, true);
         }
     }
-
 }
