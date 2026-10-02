@@ -100,6 +100,14 @@ public partial class App : System.Windows.Application
         try
         {
             TemporaryWerPolicyLease.RestoreActiveLeaseForShutdown();
+        }
+        catch (Exception ex)
+        {
+            LogStartupFailure(ex);
+        }
+
+        try
+        {
             _managedWebRuntimeManager?.Dispose();
             _managedWebRuntimeManager = null;
             _bridgeServer?.Dispose();
