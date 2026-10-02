@@ -126,6 +126,64 @@ public sealed class WorkerChildProcessJobTests
         Assert.False(BlockingDialogMonitor.LooksLikeFaultTitle(title));
     }
 
+    [Theory]
+    [InlineData("Smoke.exe - 응용 프로그램 오류", "Smoke.exe")]
+    [InlineData("LayerLab.exe - Application Error", "LayerLab.exe")]
+    public void BlockingDialogMonitorExtractsExecutableFromApplicationErrorTitle(
+        string title,
+        string expectedExecutable)
+    {
+        Assert.True(BlockingDialogMonitor.TryExtractExecutableNameFromFaultTitle(
+            title,
+            out var executableName));
+        Assert.Equal(expectedExecutable, executableName);
+    }
+
+    [Theory]
+    [InlineData("Application Error")]
+    [InlineData(@"C:\Temp\Smoke.exe - Application Error")]
+    [InlineData("Smoke.dll - Application Error")]
+    public void BlockingDialogMonitorRejectsUnscopedExecutableTitles(string title)
+    {
+        Assert.False(BlockingDialogMonitor.TryExtractExecutableNameFromFaultTitle(
+            title,
+            out _));
+    }
+
+    [Fact]
+    public void BlockingDialogMonitorExternalScopeRequiresExplicitSlotPolicy()
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "codex.exe",
+            CreateNoWindow = true
+        };
+        startInfo.Environment[
+            BlockingDialogMonitor.ExternalScopeEnabledEnvironment] = "1";
+        startInfo.Environment[
+            BlockingDialogMonitor.ExternalScopeRootEnvironment] =
+            Path.GetTempPath();
+
+        Assert.True(BlockingDialogMonitor.TryGetExternalWorkspaceScope(
+            startInfo,
+            out var scopeRoot));
+        Assert.False(string.IsNullOrWhiteSpace(scopeRoot));
+    }
+
+    [Fact]
+    public void BlockingDialogMonitorPathScopeRejectsSiblingDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ProjectHubScope");
+        var inside = Path.Combine(root, "publish", "Smoke.exe");
+        var sibling = Path.Combine(
+            Path.GetDirectoryName(root)!,
+            Path.GetFileName(root) + "-other",
+            "Smoke.exe");
+
+        Assert.True(BlockingDialogMonitor.IsPathWithinRoot(root, inside));
+        Assert.False(BlockingDialogMonitor.IsPathWithinRoot(root, sibling));
+    }
+
     [Fact]
     public void DisposingJobTerminatesStartedProcess()
     {
