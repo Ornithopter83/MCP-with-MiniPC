@@ -9,6 +9,10 @@ namespace ProjectHub.Worker;
 internal sealed class WorkerChildProcessJob : IDisposable
 {
     internal const uint KillOnJobCloseLimitFlag = 0x00002000;
+    internal const uint DieOnUnhandledExceptionLimitFlag = 0x00000400;
+    internal const uint ProcessLimitFlags =
+        KillOnJobCloseLimitFlag |
+        DieOnUnhandledExceptionLimitFlag;
     private const int JobObjectBasicProcessIdListClass = 3;
     private const int JobObjectExtendedLimitInformationClass = 9;
 
@@ -19,7 +23,6 @@ internal sealed class WorkerChildProcessJob : IDisposable
     private readonly string _ownerLabel;
     private readonly long _jobId;
     private SafeJobHandle? _handle;
-    private BlockingDialogMonitor? _blockingDialogMonitor;
     private bool _disposed;
 
     public WorkerChildProcessJob(string ownerLabel)
@@ -44,7 +47,7 @@ internal sealed class WorkerChildProcessJob : IDisposable
             {
                 BasicLimitInformation = new JobObjectBasicLimitInformation
                 {
-                    LimitFlags = KillOnJobCloseLimitFlag
+                    LimitFlags = ProcessLimitFlags
                 }
             };
             var size = Marshal.SizeOf<JobObjectExtendedLimitInformation>();
@@ -60,7 +63,7 @@ internal sealed class WorkerChildProcessJob : IDisposable
                 {
                     throw new Win32Exception(
                         Marshal.GetLastWin32Error(),
-                        $"{_ownerLabel} Job Object에 KILL_ON_JOB_CLOSE를 설정하지 못했습니다.");
+                        $"{_ownerLabel} Job Object에 프로세스 오류/종료 정책을 설정하지 못했습니다.");
                 }
             }
             finally
@@ -123,7 +126,6 @@ internal sealed class WorkerChildProcessJob : IDisposable
                         this));
             }
 
-            AttachBlockingDialogMonitor(startInfo);
             return launched;
         }
         catch
@@ -132,34 +134,6 @@ internal sealed class WorkerChildProcessJob : IDisposable
             launched.Dispose();
             throw;
         }
-    }
-
-    private void AttachBlockingDialogMonitor(ProcessStartInfo startInfo)
-    {
-        if (!BlockingDialogMonitor.ShouldMonitor(_ownerLabel, startInfo))
-            return;
-
-        BlockingDialogMonitor? monitor = null;
-        lock (_gate)
-        {
-            if (_disposed || _blockingDialogMonitor is not null)
-                return;
-
-            var scopedExternalDialogMonitoring =
-                BlockingDialogMonitor.TryGetExternalWorkspaceScope(
-                    startInfo,
-                    out var externalScopeRoot);
-
-            monitor = new BlockingDialogMonitor(
-                _ownerLabel,
-                SnapshotProcessIds,
-                _ => Dispose(),
-                scopedExternalDialogMonitoring,
-                externalScopeRoot);
-            _blockingDialogMonitor = monitor;
-        }
-
-        monitor.Start();
     }
 
     public IReadOnlyList<int> SnapshotProcessIds()
@@ -212,7 +186,6 @@ internal sealed class WorkerChildProcessJob : IDisposable
     public void Dispose()
     {
         SafeJobHandle? handle;
-        BlockingDialogMonitor? blockingDialogMonitor;
         lock (_gate)
         {
             if (_disposed)
@@ -221,11 +194,8 @@ internal sealed class WorkerChildProcessJob : IDisposable
             _disposed = true;
             handle = _handle;
             _handle = null;
-            blockingDialogMonitor = _blockingDialogMonitor;
-            _blockingDialogMonitor = null;
         }
 
-        try { blockingDialogMonitor?.Dispose(); } catch { }
         ActiveJobs.TryRemove(_jobId, out _);
 
         if (handle is not null && !handle.IsInvalid && !handle.IsClosed)
