@@ -65,7 +65,9 @@ public sealed class GitIsolationAndManifestTests
             0,
             "M\tREADME.md\n" +
             "D\told.bin\n" +
-            "R100\told.txt\trenamed.txt\n");
+            "R100\told.txt\trenamed.txt\n" +
+            "M\tpublish/DesignTool.exe\n" +
+            "M\tartifacts/package.zip\n");
 
         try
         {
@@ -106,6 +108,12 @@ public sealed class GitIsolationAndManifestTests
                 file => file.Path == "renamed.txt");
             Assert.Equal("RENAME", renamed.ChangeType);
             Assert.Equal("old.txt", renamed.PreviousPath);
+            Assert.DoesNotContain(
+                result.Manifest.ChangedFiles,
+                file => file.Path.StartsWith("publish/", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(
+                result.Manifest.ChangedFiles,
+                file => file.Path.StartsWith("artifacts/", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
