@@ -11,7 +11,7 @@ internal sealed record BlockingDialogObservation(
 
 internal sealed class BlockingDialogMonitor : IDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ConfirmationWindow = TimeSpan.FromSeconds(3);
     private static readonly string[] FaultTitleMarkers =
     {
