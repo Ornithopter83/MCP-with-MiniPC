@@ -24,7 +24,8 @@ public enum WorkItemResultType
 {
     None,
     Analysis,
-    CodeChange
+    CodeChange,
+    Artifact
 }
 
 public static class WorkItemResultTypeContract
@@ -34,6 +35,7 @@ public static class WorkItemResultTypeContract
         {
             WorkItemResultType.Analysis => "ANALYSIS",
             WorkItemResultType.CodeChange => "CODE_CHANGE",
+            WorkItemResultType.Artifact => "ARTIFACT",
             _ => "NONE"
         };
 }
