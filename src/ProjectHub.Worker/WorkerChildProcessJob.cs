@@ -19,6 +19,7 @@ internal sealed class WorkerChildProcessJob : IDisposable
     private readonly string _ownerLabel;
     private readonly long _jobId;
     private SafeJobHandle? _handle;
+    private BlockingDialogMonitor? _blockingDialogMonitor;
     private bool _disposed;
 
     public WorkerChildProcessJob(string ownerLabel)
@@ -111,16 +112,18 @@ internal sealed class WorkerChildProcessJob : IDisposable
                 _handle.DangerousGetHandle());
         }
 
-        if (!cancellationToken.CanBeCanceled)
-            return launched;
-
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            launched.AttachCancellation(
-                cancellationToken.Register(
-                    static state => ((WorkerChildProcessJob)state!).Dispose(),
-                    this));
+            if (cancellationToken.CanBeCanceled)
+            {
+                launched.AttachCancellation(
+                    cancellationToken.Register(
+                        static state => ((WorkerChildProcessJob)state!).Dispose(),
+                        this));
+            }
+
+            AttachBlockingDialogMonitor(startInfo);
             return launched;
         }
         catch
@@ -129,6 +132,27 @@ internal sealed class WorkerChildProcessJob : IDisposable
             launched.Dispose();
             throw;
         }
+    }
+
+    private void AttachBlockingDialogMonitor(ProcessStartInfo startInfo)
+    {
+        if (!BlockingDialogMonitor.ShouldMonitor(_ownerLabel, startInfo))
+            return;
+
+        BlockingDialogMonitor? monitor = null;
+        lock (_gate)
+        {
+            if (_disposed || _blockingDialogMonitor is not null)
+                return;
+
+            monitor = new BlockingDialogMonitor(
+                _ownerLabel,
+                SnapshotProcessIds,
+                _ => Dispose());
+            _blockingDialogMonitor = monitor;
+        }
+
+        monitor.Start();
     }
 
     public IReadOnlyList<int> SnapshotProcessIds()
@@ -181,6 +205,7 @@ internal sealed class WorkerChildProcessJob : IDisposable
     public void Dispose()
     {
         SafeJobHandle? handle;
+        BlockingDialogMonitor? blockingDialogMonitor;
         lock (_gate)
         {
             if (_disposed)
@@ -189,8 +214,11 @@ internal sealed class WorkerChildProcessJob : IDisposable
             _disposed = true;
             handle = _handle;
             _handle = null;
+            blockingDialogMonitor = _blockingDialogMonitor;
+            _blockingDialogMonitor = null;
         }
 
+        try { blockingDialogMonitor?.Dispose(); } catch { }
         ActiveJobs.TryRemove(_jobId, out _);
 
         if (handle is not null && !handle.IsInvalid && !handle.IsClosed)
