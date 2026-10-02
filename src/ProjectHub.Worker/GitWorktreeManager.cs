@@ -1459,6 +1459,8 @@ public sealed class GitWorktreeManager
         if (segments.Any(segment =>
                 segment.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
                 segment.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("publish", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("artifacts", StringComparison.OrdinalIgnoreCase) ||
                 segment.Equals("dist-temp", StringComparison.OrdinalIgnoreCase) ||
                 segment.Equals("NuGet", StringComparison.OrdinalIgnoreCase) ||
                 segment.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
@@ -1483,6 +1485,10 @@ public sealed class GitWorktreeManager
             ".",
             ":(exclude,glob)**/bin/**",
             ":(exclude,glob)**/obj/**",
+            ":(exclude,glob)publish/**",
+            ":(exclude,glob)**/publish/**",
+            ":(exclude,glob)artifacts/**",
+            ":(exclude,glob)**/artifacts/**",
             ":(exclude,glob)dist-temp/**",
             ":(exclude,glob)**/dist-temp/**",
             ":(exclude,glob).projecthub/**",
