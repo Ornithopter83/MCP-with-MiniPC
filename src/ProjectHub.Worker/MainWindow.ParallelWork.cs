@@ -282,17 +282,37 @@ public partial class MainWindow
                 }
 
                 lastHqMessage = result.FinalMessage;
+                var hqRequestedEnd =
+                    ParallelHqTurnContract.TryParse(
+                        result.FinalMessage,
+                        out var parsedHqTurn,
+                        out _) &&
+                    parsedHqTurn?.Action == WorkerAction.End;
                 RunOnUi(() =>
                 {
                     AddRoleResponseHistory(
                         WorkerRoleState.Hq,
-                        "WorkGraph 관제",
+                        hqRequestedEnd
+                            ? "WorkGraph 관제 · 종료 요청"
+                            : "WorkGraph 관제",
                         result.FinalMessage,
                         usage: result.Usage,
                         files: result.Files,
-                        status: "WORK_GRAPH",
+                        status: hqRequestedEnd
+                            ? "END_REQUESTED"
+                            : "WORK_GRAPH",
                         providerWireId: coordinator.Provider,
                         fullMessage: result.FinalMessage);
+
+                    if (hqRequestedEnd)
+                    {
+                        TaskTitle.Text = "HQ 종료 요청 · 사용자 작업 폴더 최종 확인 중";
+                        AddTaskMessage(
+                            "WORKSPACE FINALIZATION",
+                            "HQ가 END를 요청했습니다. 최종 반영 검증이 성공하기 전에는 작업 완료로 확정하지 않습니다.",
+                            status: "FINALIZING",
+                            includeHistory: false);
+                    }
                 });
                 return result.FinalMessage;
             }
