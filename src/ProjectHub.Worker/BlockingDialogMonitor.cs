@@ -8,11 +8,16 @@ namespace ProjectHub.Worker;
 internal sealed record BlockingDialogObservation(
     IntPtr WindowHandle,
     int ProcessId,
-    string Title);
+    string Title,
+    bool ExternalOwner,
+    IReadOnlyList<int> RelatedProcessIds);
 
 internal sealed class BlockingDialogMonitor : IDisposable
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    internal const string ExternalScopeEnabledEnvironment = "PROJECTHUB_BLOCKING_DIALOG_EXTERNAL";
+    internal const string ExternalScopeRootEnvironment = "PROJECTHUB_BLOCKING_DIALOG_SCOPE_ROOT";
+
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan ConfirmationWindow = TimeSpan.FromSeconds(3);
     private static readonly string[] FaultTitleMarkers =
     {
@@ -26,6 +31,7 @@ internal sealed class BlockingDialogMonitor : IDisposable
         "assertion",
         "not responding",
         "runtime library",
+        "응용 프로그램 오류",
         "오류",
         "에러",
         "경고",
@@ -38,6 +44,8 @@ internal sealed class BlockingDialogMonitor : IDisposable
     private readonly string _ownerLabel;
     private readonly Func<IReadOnlyList<int>> _snapshotProcessIds;
     private readonly Action<BlockingDialogObservation> _onConfirmed;
+    private readonly bool _allowExternalWorkspaceDialogs;
+    private readonly string? _externalScopeRoot;
     private readonly CancellationTokenSource _cancellation = new();
     private Task? _monitorTask;
     private int _started;
@@ -46,11 +54,15 @@ internal sealed class BlockingDialogMonitor : IDisposable
     public BlockingDialogMonitor(
         string ownerLabel,
         Func<IReadOnlyList<int>> snapshotProcessIds,
-        Action<BlockingDialogObservation> onConfirmed)
+        Action<BlockingDialogObservation> onConfirmed,
+        bool allowExternalWorkspaceDialogs = false,
+        string? externalScopeRoot = null)
     {
         _ownerLabel = ownerLabel;
         _snapshotProcessIds = snapshotProcessIds;
         _onConfirmed = onConfirmed;
+        _allowExternalWorkspaceDialogs = allowExternalWorkspaceDialogs;
+        _externalScopeRoot = NormalizeScopeRoot(externalScopeRoot);
     }
 
     internal static bool ShouldMonitor(string ownerLabel, ProcessStartInfo startInfo)
@@ -63,6 +75,29 @@ internal sealed class BlockingDialogMonitor : IDisposable
         return !ownerLabel.StartsWith(
             "Managed Chromium",
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool TryGetExternalWorkspaceScope(
+        ProcessStartInfo startInfo,
+        out string? scopeRoot)
+    {
+        ArgumentNullException.ThrowIfNull(startInfo);
+        scopeRoot = null;
+
+        if (!startInfo.Environment.TryGetValue(
+                ExternalScopeEnabledEnvironment,
+                out var enabled) ||
+            !string.Equals(enabled, "1", StringComparison.Ordinal))
+            return false;
+
+        if (!startInfo.Environment.TryGetValue(
+                ExternalScopeRootEnvironment,
+                out var configuredRoot) ||
+            string.IsNullOrWhiteSpace(configuredRoot))
+            return false;
+
+        scopeRoot = NormalizeScopeRoot(configuredRoot);
+        return scopeRoot is not null;
     }
 
     public void Start()
@@ -93,7 +128,10 @@ internal sealed class BlockingDialogMonitor : IDisposable
             while (!cancellationToken.IsCancellationRequested)
             {
                 var now = DateTimeOffset.UtcNow;
-                var observations = ScanOwnedFaultDialogs(_snapshotProcessIds());
+                var observations = ScanFaultDialogs(
+                    _snapshotProcessIds(),
+                    _allowExternalWorkspaceDialogs,
+                    _externalScopeRoot);
                 var visibleHandles = observations
                     .Select(observation => observation.WindowHandle)
                     .ToHashSet();
@@ -117,6 +155,9 @@ internal sealed class BlockingDialogMonitor : IDisposable
                         continue;
 
                     BlockingDialogLog.Write(_ownerLabel, observation, now - since);
+                    if (observation.ExternalOwner)
+                        RemediateExternalDialog(observation);
+
                     _onConfirmed(observation);
                     return;
                 }
@@ -138,11 +179,25 @@ internal sealed class BlockingDialogMonitor : IDisposable
 
     internal static IReadOnlyList<BlockingDialogObservation> ScanOwnedFaultDialogs(
         IReadOnlyList<int> processIds)
+        => ScanFaultDialogs(
+            processIds,
+            allowExternalWorkspaceDialogs: false,
+            externalScopeRoot: null);
+
+    internal static IReadOnlyList<BlockingDialogObservation> ScanFaultDialogs(
+        IReadOnlyList<int> processIds,
+        bool allowExternalWorkspaceDialogs,
+        string? externalScopeRoot)
     {
-        if (!OperatingSystem.IsWindows() || processIds.Count == 0)
+        if (!OperatingSystem.IsWindows())
+            return Array.Empty<BlockingDialogObservation>();
+        if (processIds.Count == 0 && !allowExternalWorkspaceDialogs)
             return Array.Empty<BlockingDialogObservation>();
 
         var owned = processIds.ToHashSet();
+        var normalizedScopeRoot = allowExternalWorkspaceDialogs
+            ? NormalizeScopeRoot(externalScopeRoot)
+            : null;
         var result = new List<BlockingDialogObservation>();
 
         EnumWindows(
@@ -151,22 +206,52 @@ internal sealed class BlockingDialogMonitor : IDisposable
                 if (!IsWindowVisible(windowHandle))
                     return true;
 
-                GetWindowThreadProcessId(windowHandle, out var processId);
-                if (processId == 0 || !owned.Contains(unchecked((int)processId)))
-                    return true;
-
-                var className = ReadClassName(windowHandle);
-                if (!string.Equals(className, "#32770", StringComparison.Ordinal))
-                    return true;
-
                 var title = ReadWindowTitle(windowHandle);
                 if (!LooksLikeFaultTitle(title))
                     return true;
 
+                GetWindowThreadProcessId(windowHandle, out var rawProcessId);
+                if (rawProcessId == 0)
+                    return true;
+
+                var processId = unchecked((int)rawProcessId);
+                var className = ReadClassName(windowHandle);
+
+                if (owned.Contains(processId))
+                {
+                    if (!IsDialogLikeClass(className) &&
+                        !TryExtractExecutableNameFromFaultTitle(title, out _))
+                        return true;
+
+                    result.Add(new BlockingDialogObservation(
+                        windowHandle,
+                        processId,
+                        title,
+                        ExternalOwner: false,
+                        RelatedProcessIds: new[] { processId }));
+                    return true;
+                }
+
+                if (normalizedScopeRoot is null ||
+                    !TryExtractExecutableNameFromFaultTitle(title, out var executableName))
+                    return true;
+
+                var relatedProcessIds = FindWorkspaceProcesses(
+                    executableName,
+                    normalizedScopeRoot);
+                if (relatedProcessIds.Count == 0)
+                    return true;
+
+                if (!IsDialogLikeClass(className) &&
+                    !LooksLikeApplicationErrorTitle(title, executableName))
+                    return true;
+
                 result.Add(new BlockingDialogObservation(
                     windowHandle,
-                    unchecked((int)processId),
-                    title));
+                    processId,
+                    title,
+                    ExternalOwner: true,
+                    RelatedProcessIds: relatedProcessIds));
                 return true;
             },
             IntPtr.Zero);
@@ -181,6 +266,178 @@ internal sealed class BlockingDialogMonitor : IDisposable
 
         return FaultTitleMarkers.Any(marker =>
             title.Contains(marker, StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal static bool TryExtractExecutableNameFromFaultTitle(
+        string? title,
+        out string executableName)
+    {
+        executableName = string.Empty;
+        if (string.IsNullOrWhiteSpace(title))
+            return false;
+
+        foreach (var separator in new[] { " - ", " – ", " — " })
+        {
+            var separatorIndex = title.IndexOf(
+                separator,
+                StringComparison.Ordinal);
+            if (separatorIndex <= 0)
+                continue;
+
+            var candidate = title[..separatorIndex].Trim();
+            if (!candidate.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (candidate.IndexOfAny(
+                    new[]
+                    {
+                        Path.DirectorySeparatorChar,
+                        Path.AltDirectorySeparatorChar,
+                        ':'
+                    }) >= 0)
+                continue;
+            if (candidate.Length > 260)
+                continue;
+
+            executableName = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeApplicationErrorTitle(
+        string title,
+        string executableName)
+    {
+        if (!title.StartsWith(executableName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var suffix = title[executableName.Length..].TrimStart();
+        return suffix.StartsWith("-", StringComparison.Ordinal) ||
+               suffix.StartsWith("–", StringComparison.Ordinal) ||
+               suffix.StartsWith("—", StringComparison.Ordinal);
+    }
+
+    private static IReadOnlyList<int> FindWorkspaceProcesses(
+        string executableName,
+        string scopeRoot)
+    {
+        var processName = Path.GetFileNameWithoutExtension(executableName);
+        if (string.IsNullOrWhiteSpace(processName))
+            return Array.Empty<int>();
+
+        var result = new List<int>();
+        Process[] processes;
+        try
+        {
+            processes = Process.GetProcessesByName(processName);
+        }
+        catch
+        {
+            return result;
+        }
+
+        foreach (var process in processes)
+        {
+            using (process)
+            {
+                try
+                {
+                    var executablePath = process.MainModule?.FileName;
+                    if (string.IsNullOrWhiteSpace(executablePath) ||
+                        !IsPathWithinRoot(scopeRoot, executablePath))
+                        continue;
+
+                    result.Add(process.Id);
+                }
+                catch (Exception exception) when (
+                    exception is InvalidOperationException or
+                    Win32Exception or
+                    NotSupportedException)
+                {
+                }
+            }
+        }
+
+        return result;
+    }
+
+    internal static bool IsPathWithinRoot(string root, string path)
+    {
+        try
+        {
+            var normalizedRoot = Path.GetFullPath(root)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var normalizedPath = Path.GetFullPath(path);
+
+            return normalizedPath.StartsWith(
+                normalizedRoot,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or
+            NotSupportedException or
+            PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsDialogLikeClass(string className)
+        => string.Equals(className, "#32770", StringComparison.Ordinal) ||
+           className.Contains("dialog", StringComparison.OrdinalIgnoreCase);
+
+    private static string? NormalizeScopeRoot(string? scopeRoot)
+    {
+        if (string.IsNullOrWhiteSpace(scopeRoot))
+            return null;
+
+        try
+        {
+            return Path.GetFullPath(scopeRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or
+            NotSupportedException or
+            PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    private static void RemediateExternalDialog(
+        BlockingDialogObservation observation)
+    {
+        foreach (var processId in observation.RelatedProcessIds.Distinct())
+        {
+            try
+            {
+                using var process = Process.GetProcessById(processId);
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or
+                InvalidOperationException or
+                NotSupportedException or
+                Win32Exception)
+            {
+            }
+        }
+
+        try
+        {
+            PostMessageW(
+                observation.WindowHandle,
+                WmClose,
+                IntPtr.Zero,
+                IntPtr.Zero);
+        }
+        catch
+        {
+        }
     }
 
     private static string ReadClassName(IntPtr windowHandle)
@@ -202,6 +459,8 @@ internal sealed class BlockingDialogMonitor : IDisposable
             ? buffer.ToString()
             : string.Empty;
     }
+
+    private const uint WmClose = 0x0010;
 
     private delegate bool EnumWindowsCallback(IntPtr windowHandle, IntPtr parameter);
 
@@ -234,6 +493,14 @@ internal sealed class BlockingDialogMonitor : IDisposable
         IntPtr windowHandle,
         StringBuilder text,
         int maxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessageW(
+        IntPtr windowHandle,
+        uint message,
+        IntPtr wParam,
+        IntPtr lParam);
 }
 
 internal static class BlockingDialogLog
@@ -249,6 +516,8 @@ internal static class BlockingDialogLog
             $"{DateTimeOffset.UtcNow:O}\tBLOCKING_DIALOG_DETECTED" +
             $"\towner={Sanitize(ownerLabel)}" +
             $"\tpid={observation.ProcessId}" +
+            $"\texternalOwner={observation.ExternalOwner}" +
+            $"\trelatedPids={string.Join(",", observation.RelatedProcessIds)}" +
             $"\tvisibleMs={(long)visibleFor.TotalMilliseconds}" +
             $"\ttitle={Sanitize(observation.Title)}");
     }
