@@ -209,6 +209,7 @@ public sealed record GitTargetCheckoutResult(
 
 public sealed class GitWorktreeManager
 {
+    private const int MaximumCheckpointAttempts = 3;
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CreateTimeout = TimeSpan.FromMinutes(2);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPreparationGates =
@@ -1525,6 +1526,52 @@ public sealed class GitWorktreeManager
         }
     }
 
+    public async Task<GitWorktreePreparationResult> EnsureIntegrationWorkspaceAsync(
+        string workspace,
+        string jobId,
+        string workItemId,
+        string? baseRef,
+        string? existingClonePath,
+        string? existingBranch,
+        string? expectedTargetBranch,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(existingClonePath) ||
+            !Directory.Exists(existingClonePath))
+        {
+            return await PrepareIntegrationAsync(
+                workspace,
+                jobId,
+                workItemId,
+                baseRef,
+                expectedTargetBranch,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        var resumed = await ResumeIntegrationAsync(
+            workspace,
+            existingClonePath,
+            existingBranch,
+            baseRef,
+            cancellationToken).ConfigureAwait(false);
+        if (resumed.Success ||
+            !string.Equals(
+                resumed.ErrorCode,
+                "INTEGRATION_CLONE_PATH_MISSING",
+                StringComparison.Ordinal))
+        {
+            return resumed;
+        }
+
+        return await PrepareIntegrationAsync(
+            workspace,
+            jobId,
+            workItemId,
+            baseRef,
+            expectedTargetBranch,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<GitWorktreePreparationResult> ResumeIntegrationAsync(
         string workspace,
         string clonePath,
@@ -1740,6 +1787,103 @@ public sealed class GitWorktreeManager
             workItemId,
             publishCleanHead: false,
             cancellationToken);
+
+    public Task<GitWorktreeCheckpointResult> EnsureCheckpointAsync(
+        string worktreePath,
+        string workItemId,
+        CancellationToken cancellationToken = default)
+        => EnsureCheckpointAsync(
+            worktreePath,
+            workItemId,
+            publishCleanHead: false,
+            cancellationToken);
+
+    public async Task<GitWorktreeCheckpointResult> EnsureCheckpointAsync(
+        string worktreePath,
+        string workItemId,
+        bool publishCleanHead,
+        CancellationToken cancellationToken = default)
+    {
+        GitWorktreeCheckpointResult? last = null;
+        var createdCommit = false;
+        var requireCleanHeadPublish = publishCleanHead;
+
+        for (var attempt = 1; attempt <= MaximumCheckpointAttempts; attempt++)
+        {
+            last = await CreateCheckpointAsync(
+                worktreePath,
+                workItemId,
+                requireCleanHeadPublish,
+                cancellationToken).ConfigureAwait(false);
+
+            createdCommit |= last.CreatedCommit;
+            requireCleanHeadPublish |= last.CreatedCommit;
+
+            if (last.Success)
+                return createdCommit && !last.CreatedCommit
+                    ? last with { CreatedCommit = true }
+                    : last;
+
+            if (!IsRetryableCheckpointFailure(last.ErrorCode) ||
+                attempt == MaximumCheckpointAttempts)
+                return last;
+
+            await Task.Delay(
+                TimeSpan.FromMilliseconds(attempt * 150),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return last ?? new(
+            false,
+            "WORKTREE_CHECKPOINT_FAILED",
+            worktreePath,
+            null,
+            null,
+            createdCommit);
+    }
+
+    public async Task<GitWorktreeCheckpointResult> EnsureTargetWorkspaceCheckpointAsync(
+        string workspace,
+        string baseRef,
+        string managedBranch,
+        string workItemId,
+        CancellationToken cancellationToken = default)
+    {
+        GitWorktreeCheckpointResult? last = null;
+        var createdCommit = false;
+
+        for (var attempt = 1; attempt <= MaximumCheckpointAttempts; attempt++)
+        {
+            last = await CreateTargetWorkspaceCheckpointAsync(
+                workspace,
+                baseRef,
+                managedBranch,
+                workItemId,
+                cancellationToken).ConfigureAwait(false);
+
+            createdCommit |= last.CreatedCommit;
+            if (last.Success)
+                return createdCommit && !last.CreatedCommit
+                    ? last with { CreatedCommit = true }
+                    : last;
+
+            if (!IsRetryableCheckpointFailure(last.ErrorCode) ||
+                attempt == MaximumCheckpointAttempts)
+                return last;
+
+            await Task.Delay(
+                TimeSpan.FromMilliseconds(attempt * 150),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return last ?? new(
+            false,
+            "TARGET_WORKSPACE_CHECKPOINT_FAILED",
+            workspace,
+            managedBranch,
+            null,
+            createdCommit);
+    }
 
     public async Task<GitWorktreeCheckpointResult> CreateTargetWorkspaceCheckpointAsync(
         string workspace,
@@ -1962,6 +2106,13 @@ public sealed class GitWorktreeManager
         if (!before.Success)
             return new(false, before.ErrorCode, worktreePath, before.Branch, before.HeadCommit, false);
 
+        var managedPathSafety = await ValidateCheckpointManagedPathAsync(
+            worktreePath,
+            before,
+            cancellationToken).ConfigureAwait(false);
+        if (managedPathSafety is not null)
+            return managedPathSafety;
+
         if (before.IsClean)
         {
             if (string.IsNullOrWhiteSpace(before.HeadCommit))
@@ -2002,7 +2153,42 @@ public sealed class GitWorktreeManager
                 before.Branch,
                 before.HeadCommit,
                 false,
-                BuildGitFailureDetail("git add --all -- .", addResult));
+                BuildGitFailureDetail("git add --all", addResult));
+        }
+
+        var stagedManagedPath = await RunAsync(
+            worktreePath,
+            ReadTimeout,
+            cancellationToken,
+            "diff",
+            "--cached",
+            "--name-only",
+            "-z",
+            "--",
+            ".projecthub").ConfigureAwait(false);
+        if (stagedManagedPath.ExitCode != 0)
+        {
+            return new(
+                false,
+                "WORKTREE_CHECKPOINT_MANAGED_PATH_VERIFY_FAILED",
+                worktreePath,
+                before.Branch,
+                before.HeadCommit,
+                false,
+                BuildGitFailureDetail(
+                    "git diff --cached --name-only -- .projecthub",
+                    stagedManagedPath));
+        }
+        if (!string.IsNullOrWhiteSpace(stagedManagedPath.StandardOutput))
+        {
+            return new(
+                false,
+                "WORKTREE_CHECKPOINT_MANAGED_PATH_STAGED",
+                worktreePath,
+                before.Branch,
+                before.HeadCommit,
+                false,
+                "checkpoint staging에 .projecthub 경로가 포함되었습니다.");
         }
 
         var message = "ProjectHub WorkItem " + SafeCommitLabel(workItemId) + " checkpoint";
@@ -2134,14 +2320,78 @@ public sealed class GitWorktreeManager
         return new(true, null, after.WorktreePath, after.Branch, resultCommit, createdCommit);
     }
 
+    private async Task<GitWorktreeCheckpointResult?> ValidateCheckpointManagedPathAsync(
+        string worktreePath,
+        GitWorktreeInspectionResult before,
+        CancellationToken cancellationToken)
+    {
+        var trackedManagedPath = await RunAsync(
+            worktreePath,
+            ReadTimeout,
+            cancellationToken,
+            "ls-files",
+            "--",
+            ".projecthub").ConfigureAwait(false);
+        if (trackedManagedPath.ExitCode != 0)
+        {
+            return new(
+                false,
+                "WORKTREE_CHECKPOINT_MANAGED_PATH_TRACK_CHECK_FAILED",
+                worktreePath,
+                before.Branch,
+                before.HeadCommit,
+                false,
+                BuildGitFailureDetail("git ls-files -- .projecthub", trackedManagedPath));
+        }
+        if (!string.IsNullOrWhiteSpace(trackedManagedPath.StandardOutput))
+        {
+            return new(
+                false,
+                "WORKTREE_CHECKPOINT_MANAGED_PATH_TRACKED",
+                worktreePath,
+                before.Branch,
+                before.HeadCommit,
+                false,
+                ".projecthub 아래에 tracked 파일이 있어 자동 checkpoint를 중단했습니다.");
+        }
+
+        var ignoredManagedPath = await RunAsync(
+            worktreePath,
+            ReadTimeout,
+            cancellationToken,
+            "check-ignore",
+            "-q",
+            "--no-index",
+            "--",
+            ".projecthub/projecthub-checkpoint-probe").ConfigureAwait(false);
+        if (ignoredManagedPath.ExitCode != 0)
+        {
+            return new(
+                false,
+                "WORKTREE_CHECKPOINT_MANAGED_PATH_NOT_IGNORED",
+                worktreePath,
+                before.Branch,
+                before.HeadCommit,
+                false,
+                ".projecthub가 현재 저장소 ignore 규칙으로 보호되지 않습니다.");
+        }
+
+        return null;
+    }
+
+    private static bool IsRetryableCheckpointFailure(string? errorCode)
+        => errorCode is
+            "WORKTREE_CHECKPOINT_ADD_FAILED" or
+            "WORKTREE_CHECKPOINT_ADD_TIMEOUT" or
+            "WORKTREE_CHECKPOINT_PUSH_FAILED" or
+            "WORKTREE_CHECKPOINT_PUSH_TIMEOUT" or
+            "WORKTREE_CHECKPOINT_REMOTE_VERIFY_FAILED";
+
     private static string[] BuildCheckpointAddArguments()
         => new[]
         {
             "add",
-            "--all",
-            "--",
-            ".",
-            ":(exclude,glob).projecthub/**"
+            "--all"
         };
 
     public async Task<GitIntegrationDependencyStageResult> StageIntegrationDependenciesAsync(

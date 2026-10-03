@@ -169,6 +169,8 @@ internal static class MechanicalBuildExecutor
         foreach (var pair in environment)
             startInfo.Environment[pair.Key] = pair.Value;
         startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        startInfo.Environment["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
+        startInfo.Environment["UseSharedCompilation"] = "false";
 
         using var processJob = new WorkerChildProcessJob("dotnet build");
         using var launched = processJob.Start(startInfo, cancellationToken);

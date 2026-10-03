@@ -34,7 +34,6 @@ public sealed record CodexWorkItemMechanicalProgress(
 
 public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 {
-    private const int MaximumCheckpointAttempts = 3;
     private const string CheckpointRetryInboundType = "WORKTREE_CHECKPOINT_RETRY";
     private const string CheckpointPendingHeader = "WORKTREE_CHECKPOINT_PENDING";
 
@@ -96,10 +95,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         var executionWorkItemId = FixedWorkItemSlots.BuildExecutionKey(
             item.Id,
             item.CreatedOrder);
-        var integrationNeedsPreparation =
-            item.Kind == WorkItemKind.Integration &&
-            string.IsNullOrWhiteSpace(item.WorktreePath);
-
         if (string.IsNullOrWhiteSpace(item.BaseRef))
             return WorkItemExecutionResult.Blocked("WORKTREE_BASE_REF_MISSING", "WorkItem baseRef가 없습니다.");
 
@@ -155,40 +150,15 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         GitWorktreePreparationResult preparation;
         if (item.Kind == WorkItemKind.Integration)
         {
-            if (integrationNeedsPreparation)
-            {
-                preparation = await _worktrees.PrepareIntegrationAsync(
-                    _workspace,
-                    _jobId,
-                    item.Id,
-                    item.BaseRef,
-                    _expectedPrimaryBranch,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                preparation = await _worktrees.ResumeIntegrationAsync(
-                    _workspace,
-                    item.WorktreePath!,
-                    item.Branch,
-                    item.BaseRef,
-                    cancellationToken).ConfigureAwait(false);
-
-                if (!preparation.Success &&
-                    string.Equals(
-                        preparation.ErrorCode,
-                        "INTEGRATION_CLONE_PATH_MISSING",
-                        StringComparison.Ordinal))
-                {
-                    preparation = await _worktrees.PrepareIntegrationAsync(
-                        _workspace,
-                        _jobId,
-                        item.Id,
-                        item.BaseRef,
-                        _expectedPrimaryBranch,
-                        cancellationToken).ConfigureAwait(false);
-                }
-            }
+            preparation = await _worktrees.EnsureIntegrationWorkspaceAsync(
+                _workspace,
+                _jobId,
+                item.Id,
+                item.BaseRef,
+                item.WorktreePath,
+                item.Branch,
+                _expectedPrimaryBranch,
+                cancellationToken).ConfigureAwait(false);
         }
         else
         {
@@ -759,31 +729,11 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 cancellationToken).ConfigureAwait(false);
         }
 
-        GitWorktreeCheckpointResult checkpoint = default!;
-        var checkpointCreatedCommit = false;
-        var requireCleanCheckpointPublish = publishCleanCheckpoint;
-        for (var attempt = 1; attempt <= MaximumCheckpointAttempts; attempt++)
-        {
-            checkpoint = await _worktrees.CreateCheckpointAsync(
-                preparation.WorktreePath,
-                item.Id,
-                requireCleanCheckpointPublish,
-                cancellationToken).ConfigureAwait(false);
-
-            checkpointCreatedCommit |= checkpoint.CreatedCommit;
-            if (checkpoint.CreatedCommit)
-                requireCleanCheckpointPublish = true;
-
-            if (checkpoint.Success)
-                break;
-
-            if (attempt < MaximumCheckpointAttempts)
-            {
-                await Task.Delay(
-                    TimeSpan.FromMilliseconds(attempt * 150),
-                    cancellationToken).ConfigureAwait(false);
-            }
-        }
+        var checkpoint = await _worktrees.EnsureCheckpointAsync(
+            preparation.WorktreePath,
+            item.Id,
+            publishCleanCheckpoint,
+            cancellationToken).ConfigureAwait(false);
 
         if (!checkpoint.Success)
         {
@@ -813,7 +763,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 StringComparison.OrdinalIgnoreCase);
         var lifecycleHasCodeChange =
             item.ResultType == WorkItemResultType.CodeChange ||
-            checkpointCreatedCommit ||
+            checkpoint.CreatedCommit ||
             recoveredCheckpointCommit;
         var completedResultType = lifecycleHasCodeChange
             ? WorkItemResultType.CodeChange
@@ -908,26 +858,12 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         string reportBody,
         CancellationToken cancellationToken)
     {
-        GitWorktreeCheckpointResult checkpoint = default!;
-        for (var attempt = 1; attempt <= MaximumCheckpointAttempts; attempt++)
-        {
-            checkpoint = await _worktrees.CreateTargetWorkspaceCheckpointAsync(
-                _workspace,
-                preparation.BaseCommit ?? item.BaseRef ?? preparation.BaseRef,
-                preparation.Branch,
-                item.Id,
-                cancellationToken).ConfigureAwait(false);
-
-            if (checkpoint.Success)
-                break;
-
-            if (attempt < MaximumCheckpointAttempts)
-            {
-                await Task.Delay(
-                    TimeSpan.FromMilliseconds(attempt * 150),
-                    cancellationToken).ConfigureAwait(false);
-            }
-        }
+        var checkpoint = await _worktrees.EnsureTargetWorkspaceCheckpointAsync(
+            _workspace,
+            preparation.BaseCommit ?? item.BaseRef ?? preparation.BaseRef,
+            preparation.Branch,
+            item.Id,
+            cancellationToken).ConfigureAwait(false);
 
         if (!checkpoint.Success)
         {

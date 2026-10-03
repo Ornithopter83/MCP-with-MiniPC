@@ -33,7 +33,7 @@
 ③ 역할 계약 전문은 새 AI 세션의 첫 호출에만 주입한다.
 ④ 후속 호출에는 현재 입력과 필요한 기계 사실만 전달한다.
 ⑤ 선행 결과는 필요한 최소 메타데이터와 보고를 전달하고 대용량 manifest 전문을 자동 주입하지 않는다.
-⑥ WORK 실행의 명령 처리 실패, 비정상 종료, timeout 또는 계약 불일치는 Worker가 의미 복구를 선택하지 않고 기계 사실과 함께 BLOCKED로 HQ에 전달하며, 이후 RELEASE·CANCEL·후속 WorkItem 판단은 HQ가 담당한다.
+⑥ Worker 소유 disposable 상태는 각 실행·Git 인프라 작업이 안전하게 확인 가능한 invariant까지 기계적으로 준비·정상화한다. 그 범위를 벗어난 명령 처리 실패, 비정상 종료, timeout 또는 계약 불일치는 Worker가 의미 복구를 선택하지 않고 기계 사실과 함께 BLOCKED로 HQ에 전달하며, 이후 RELEASE·CANCEL·후속 WorkItem 판단은 HQ가 담당한다.
 ⑦ 설치된 SDK, runtime, build 도구와 작업 경로 준비는 Worker의 기계 책임이다.
 ⑧ 임시 build artifact와 cache는 의미 코드 변경으로 취급하지 않는다.
 ⑨ #9 BUILD/PUBLISH를 제외한 WorkItem은 프로젝트 restore·compile·build·build를 수반하는 test/run·pack·export·publish를 실행하지 않는다. 일반 WORK와 INTEGRATION, #8은 구현과 정적 검토까지만 수행하고 실행형 빌드 검증은 #9에 맡긴다.
