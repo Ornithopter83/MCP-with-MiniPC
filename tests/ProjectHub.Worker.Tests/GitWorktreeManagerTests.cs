@@ -320,20 +320,16 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task RuntimeResetDeletesExternalRuntimeAndOnlyPrunesLegacyWorktreeMetadata()
+    public async Task RuntimeResetDeletesOnlyExternalProjectHubRuntime()
     {
         var root = CreateTempRepositoryDirectory();
         var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
         var clone = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
         Directory.CreateDirectory(Path.Combine(clone, ".git"));
         File.WriteAllText(Path.Combine(clone, "dirty.tmp"), "data");
-        var legacy = WorkerPaths.GetLegacyRepositoryRuntimeRoot(root);
-        Directory.CreateDirectory(legacy);
-        File.WriteAllText(Path.Combine(legacy, "legacy.tmp"), "data");
 
         var runner = new FakeGitRunner();
         runner.Enqueue(0, root);
-        runner.Enqueue(0, "");
 
         try
         {
@@ -343,17 +339,11 @@ public sealed class GitWorktreeManagerTests
             Assert.True(result.Success, result.ErrorDetail);
             Assert.True(result.RuntimeDeleted);
             Assert.False(Directory.Exists(runtime.Root));
-            Assert.False(Directory.Exists(legacy));
             Assert.Contains(Path.GetFullPath(clone), result.RemovedWorktrees);
-            Assert.Contains(
-                runner.Calls,
-                call => call.Arguments.SequenceEqual(
-                    new[] { "worktree", "prune", "--expire", "now" }));
             Assert.DoesNotContain(
                 runner.Calls,
-                call => call.Arguments.Count > 1 &&
-                        call.Arguments[0] == "worktree" &&
-                        call.Arguments[1] == "remove");
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "worktree");
         }
         finally
         {
