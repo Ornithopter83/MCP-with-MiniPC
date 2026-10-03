@@ -2462,9 +2462,49 @@ public partial class MainWindow : Window
     {
         _targetSettings = _targetSettings with { ManualRepositoryUrl = null, RepositoryUrlSource = null };
         WorkerTargetConfiguration.Save(_targetSettings);
-        ApplyTargetConfiguration();
+
+        var workingDirectory = WorkingDirectoryInput?.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
+        {
+            ClearCoordinatorGitTargetPresentation();
+            RepositoryNameText.Text = " · GIT_NOT_FOUND";
+            DashboardPreflightText.Text = "Git 저장소를 확인할 작업 폴더를 먼저 지정하세요.";
+            DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
+        }
+        else
+        {
+            var target = WorkerTargetConfiguration.ResolveGit(
+                workingDirectory,
+                _targetSettings,
+                requireExactRoot: _targetSettings.IsCoordinatorFirst);
+
+            _gitTarget = target;
+            RepositoryUrlInput.Text = target.RepositoryUrl ?? string.Empty;
+            TargetGitStateText.Text = target.IsRepository
+                ? $"Branch: {target.Branch ?? "unknown"} · Local HEAD: {target.HeadSha?[..Math.Min(12, target.HeadSha.Length)] ?? "unknown"}"
+                : "Git: UNCONFIGURED";
+            RepositoryNameText.Text = " · " + (target.RepositoryUrl ?? "GIT_NOT_FOUND");
+
+            if (target.IsRepository && !string.IsNullOrWhiteSpace(target.RepositoryUrl))
+            {
+                DashboardPreflightText.Text = "작업 폴더의 Git origin을 확인했습니다.";
+                DashboardPreflightText.Foreground =
+                    (System.Windows.Media.Brush)FindResource("Muted");
+            }
+            else
+            {
+                DashboardPreflightText.Text = target.IsRepository
+                    ? "Git 저장소는 확인했지만 origin 원격이 설정되어 있지 않습니다."
+                    : _targetSettings.IsCoordinatorFirst
+                        ? "선택한 작업 폴더 자체가 Git 저장소 루트가 아닙니다."
+                        : "작업 폴더에서 Git 저장소를 확인하지 못했습니다.";
+                DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            }
+        }
+
         _serverOnline = await CheckServerAsync();
         ApplyConnectionStatus();
+        UpdateDashboardRunButtonState();
     }
 
     private async void SaveTargetSettings_Click(object sender, RoutedEventArgs e)
