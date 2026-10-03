@@ -9,7 +9,7 @@ public sealed record GitWorkspaceBootstrapState(
     string RepositoryRoot,
     string? Branch,
     string? HeadCommit,
-    bool IsDirty)
+    bool IsDirty);
 
 public sealed class GitWorkspaceBootstrapper
 {
