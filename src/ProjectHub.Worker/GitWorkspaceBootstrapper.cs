@@ -67,10 +67,10 @@ public sealed class GitWorkspaceBootstrapper
             "--verify",
             "HEAD").ConfigureAwait(false);
 
-        if (headResult.ExitCode != 0 || string.IsNullOrWhiteSpace(headResult.StandardOutput))
-            return RepositoryFailure("GIT_REMOTE_HEAD_REQUIRED", workspace, repositoryRoot, branch);
-
-        var headCommit = FirstLine(headResult.StandardOutput);
+        var headCommit = headResult.ExitCode == 0 &&
+                         !string.IsNullOrWhiteSpace(headResult.StandardOutput)
+            ? FirstLine(headResult.StandardOutput)
+            : null;
 
         var remoteResult = await RunAsync(
             repositoryRoot,
@@ -115,7 +115,8 @@ public sealed class GitWorkspaceBootstrapper
                 branch,
                 headCommit);
 
-        if (!string.IsNullOrWhiteSpace(statusResult.StandardOutput))
+        var isDirty = !string.IsNullOrWhiteSpace(statusResult.StandardOutput);
+        if (headCommit is not null && isDirty)
         {
             return new GitWorkspaceBootstrapState(
                 false,
@@ -146,6 +147,19 @@ public sealed class GitWorkspaceBootstrapper
                 repositoryRoot,
                 branch,
                 headCommit);
+        }
+
+        if (headCommit is null)
+        {
+            return new GitWorkspaceBootstrapState(
+                true,
+                null,
+                workspace,
+                repositoryRoot,
+                branch,
+                null,
+                isDirty,
+                displayOrigin);
         }
 
         var remoteHeadResult = await RunAsync(
