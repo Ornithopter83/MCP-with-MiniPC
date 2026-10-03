@@ -222,7 +222,6 @@ internal static class MechanicalBuildExecutor
 
             var candidate = Path.GetFullPath(Path.Combine(normalizedWorktree, authorization.Target));
             return IsInside(normalizedWorktree, candidate) &&
-                   !IsManagedIntegrationInput(normalizedWorktree, candidate) &&
                    File.Exists(candidate) &&
                    IsSupported(candidate)
                 ? candidate
@@ -237,25 +236,8 @@ internal static class MechanicalBuildExecutor
             return solution;
 
         return Directory.EnumerateFiles(normalizedWorktree, "*.csproj", SearchOption.AllDirectories)
-            .Where(path => !IsManagedIntegrationInput(normalizedWorktree, path))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
-    }
-
-    private static bool IsManagedIntegrationInput(string worktreePath, string path)
-    {
-        var relative = Path.GetRelativePath(worktreePath, path);
-        if (Path.IsPathRooted(relative))
-            return false;
-
-        return relative
-            .Split(
-                new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
-                StringSplitOptions.RemoveEmptyEntries)
-            .Any(segment => string.Equals(
-                segment,
-                ".projecthub-integration-inputs",
-                StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsSupported(string path)
