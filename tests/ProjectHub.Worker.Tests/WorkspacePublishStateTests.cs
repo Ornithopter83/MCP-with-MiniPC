@@ -5,65 +5,53 @@ namespace ProjectHub.Worker.Tests;
 public sealed class WorkspacePublishStateTests
 {
     [Fact]
-    public async Task PublishBecomesStaleOnlyAfterLaterCodeLanding()
+    public async Task PublishFreshnessIsBoundToExactRemoteSourceCommit()
     {
         var root = CreateRoot();
         try
         {
             var state = new WorkspacePublishState(root, "job");
 
-            var first = await state.MarkCodeLandedAsync("code-a");
-            Assert.False(first.IsStale);
-            Assert.Equal(1, first.CodeGeneration);
-
-            var published = await state.MarkPublishedAsync(4);
-            Assert.False(published.IsStale);
+            var published = await state.MarkPublishedAsync("code-a", 4);
             Assert.True(published.HasSuccessfulPublish);
-            Assert.Equal(published.CodeGeneration, published.PublishedCodeGeneration);
+            Assert.Equal("code-a", published.PublishedSourceRef);
+            Assert.Equal(4, published.LastPublishInvocation);
+            Assert.False(published.IsStaleFor("code-a"));
+            Assert.True(published.IsStaleFor("code-b"));
 
-            var later = await state.MarkCodeLandedAsync("code-b");
-            Assert.True(later.IsStale);
-            Assert.Equal(2, later.CodeGeneration);
-            Assert.Equal(1, later.PublishedCodeGeneration);
-
-            var duplicate = await state.MarkCodeLandedAsync("code-b");
-            Assert.Equal(2, duplicate.CodeGeneration);
-            Assert.True(duplicate.IsStale);
-
-            var republished = await state.MarkPublishedAsync(7);
-            Assert.False(republished.IsStale);
-            Assert.Equal(2, republished.PublishedCodeGeneration);
+            var republished = await state.MarkPublishedAsync("code-b", 7);
+            Assert.Equal("code-b", republished.PublishedSourceRef);
             Assert.Equal(7, republished.LastPublishInvocation);
+            Assert.False(republished.IsStaleFor("code-b"));
+            Assert.True(republished.IsStaleFor("code-a"));
         }
         finally
         {
-            Directory.Delete(root, true);
+            CleanupRoot(root);
         }
     }
 
     [Fact]
-    public async Task LandedResultRefsArePersistedAcrossInstances()
+    public async Task PublishedSourceRefIsPersistedAcrossInstances()
     {
         var root = CreateRoot();
         try
         {
             var first = new WorkspacePublishState(root, "job");
-            await first.MarkCodeLandedAsync("code-a");
-            await first.MarkPublishedAsync(3);
+            await first.MarkPublishedAsync("code-a", 3);
 
             var second = new WorkspacePublishState(root, "job");
             var restored = await second.ReadAsync();
 
-            Assert.Contains(
-                restored.LandedCodeResultRefs,
-                value => string.Equals(value, "code-a", StringComparison.OrdinalIgnoreCase));
-            Assert.Equal("code-a", restored.LastCodeResultRef);
             Assert.True(restored.HasSuccessfulPublish);
-            Assert.False(restored.IsStale);
+            Assert.Equal("code-a", restored.PublishedSourceRef);
+            Assert.Equal(3, restored.LastPublishInvocation);
+            Assert.False(restored.IsStaleFor("code-a"));
+            Assert.True(restored.IsStaleFor("code-b"));
         }
         finally
         {
-            Directory.Delete(root, true);
+            CleanupRoot(root);
         }
     }
 
@@ -74,5 +62,14 @@ public sealed class WorkspacePublishStateTests
             "projecthub-publish-state-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static void CleanupRoot(string root)
+    {
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root).Root;
+        if (Directory.Exists(runtime))
+            Directory.Delete(runtime, true);
+        if (Directory.Exists(root))
+            Directory.Delete(root, true);
     }
 }
