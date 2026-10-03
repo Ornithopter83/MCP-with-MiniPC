@@ -5,14 +5,14 @@ namespace ProjectHub.Worker.Tests;
 public sealed class ParallelWorkGitPreflightTests
 {
     [Fact]
-    public void RepositoryWithAttachedBranchAndHeadPasses()
+    public void RemoteRepositoryWithAttachedBranchAndHeadPasses()
     {
         var result = ParallelWorkGitPreflight.Validate(new GitTargetSnapshot(
             "C:/repo",
-            null,
+            "https://example.invalid/repo.git",
             "main",
             "abc123",
-            "UNCONFIGURED",
+            "AUTO_GIT_REMOTE",
             true));
 
         Assert.True(result.Success);
@@ -36,14 +36,29 @@ public sealed class ParallelWorkGitPreflightTests
     }
 
     [Fact]
-    public void MissingHeadIsRejected()
+    public void MissingOriginRemoteIsRejected()
     {
         var result = ParallelWorkGitPreflight.Validate(new GitTargetSnapshot(
             "C:/repo",
             null,
             "main",
-            null,
+            "abc123",
             "UNCONFIGURED",
+            true));
+
+        Assert.False(result.Success);
+        Assert.Equal("PARALLEL_GIT_REMOTE_REQUIRED", result.ErrorCode);
+    }
+
+    [Fact]
+    public void MissingHeadIsRejected()
+    {
+        var result = ParallelWorkGitPreflight.Validate(new GitTargetSnapshot(
+            "C:/repo",
+            "https://example.invalid/repo.git",
+            "main",
+            null,
+            "AUTO_GIT_REMOTE",
             true));
 
         Assert.False(result.Success);
@@ -58,10 +73,10 @@ public sealed class ParallelWorkGitPreflightTests
     {
         var result = ParallelWorkGitPreflight.Validate(new GitTargetSnapshot(
             "C:/repo",
-            null,
+            "https://example.invalid/repo.git",
             branch,
             "abc123",
-            "UNCONFIGURED",
+            "AUTO_GIT_REMOTE",
             true));
 
         Assert.False(result.Success);
