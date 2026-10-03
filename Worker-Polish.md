@@ -45,7 +45,7 @@
 
 제7조 (Git과 결과)
 
-① 병렬 WorkGraph는 `origin` 원격 저장소가 존재하고 현재 branch와 로컬 HEAD가 원격 branch HEAD와 일치하는 clean 작업 폴더에서만 시작한다.
+① 병렬 WorkGraph는 선택한 작업 폴더 자체가 Git 저장소 root이고, `origin` 원격 저장소가 존재하며 현재 branch와 로컬 HEAD가 원격 branch HEAD와 일치하는 clean 상태에서만 시작한다. 작업 폴더의 상위 디렉터리에 있는 다른 Git 저장소를 자동 채택하지 않는다.
 ② CODE_CHANGE의 `resultRef`는 Worker가 `projecthub/*` branch에 push하고 원격에서 같은 commit을 확인한 Git commit SHA다.
 ③ WORK는 Git 저장소를 생성·복구·stage·commit·push하지 않으며, checkpoint와 원격 게시를 Worker가 기계적으로 수행한다.
 ④ checkpoint 대상은 프로젝트의 `.gitignore`가 결정한다. Worker는 build·cache·runtime 경로에 대한 별도 exclude pathspec이나 재생성 파일 목록을 유지하지 않는다.
