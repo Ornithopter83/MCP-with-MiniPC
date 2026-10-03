@@ -41,7 +41,7 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 ④ 프로그램 시작 시 과거 `session-state`, HQ/WORK 세션, WorkGraph, event log를 자동 복구해 새 작업의 의미 문맥으로 사용하지 않는다.
 ⑤ 사용자가 `새 작업`을 시작하면 활성 continuation을 제거하고 과거 상태와 transcript는 진단·이력으로만 남긴다.
 ⑥ event log, transcript, handoff와 저장 상태는 정책 원본이 아니다.
-⑦ 정상 Worker 종료 시 target workspace의 `.projecthub`는 남기지 않는 것을 원칙으로 하며, 즉시 삭제를 막는 짧은 파일 잠금은 종료 후 기계 cleanup helper가 유한 횟수 재시도한다.
+⑦ WorkGraph, event log, transcript와 continuation 상태는 프로젝트 checkout 밖의 Worker 소유 `WorkspaceState`에 두고 진단·이력으로 보존할 수 있다. disposable clone·tool cache·임시 실행 파일은 별도 `RepositoryRuntime`에 두며 종료·DONE·PAUSE 시 기계 cleanup을 최선 노력으로 수행하되, runtime cache·임시 파일 완전 삭제를 의미 작업 완료의 선행조건으로 삼지 않는다.
 
 제4조 (RESOURCE, JUDGE, OBSERVATION)
 
