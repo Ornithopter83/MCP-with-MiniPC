@@ -328,7 +328,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                !_lifetimeCts.IsCancellationRequested &&
                _running.Count < _graph.MaxConcurrentWork)
         {
-            var next = _graph.GetReadyItems().FirstOrDefault();
+            var next = SelectNextReadyLocked();
             if (next is null)
                 break;
 
@@ -364,6 +364,29 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                 slot.Value,
                 itemCancellation.Token);
         }
+    }
+
+    private WorkItemSnapshot? SelectNextReadyLocked()
+    {
+        if (_running.ContainsKey(FixedWorkItemSlots.BuildPublish))
+            return null;
+
+        var ready = _graph.GetReadyItems();
+        var implementation = ready.FirstOrDefault(
+            item => !BuildExecutionPolicy.AllowsBuildExecution(item.Id));
+        if (implementation is not null)
+            return implementation;
+
+        var build = ready.FirstOrDefault(
+            item => BuildExecutionPolicy.AllowsBuildExecution(item.Id));
+        if (build is null || _running.Count > 0)
+            return null;
+
+        var graph = _graph.Snapshot();
+        var unresolvedImplementation = graph.Items.Any(item =>
+            !BuildExecutionPolicy.AllowsBuildExecution(item.Id) &&
+            item.State is WorkItemState.Planned or WorkItemState.Ready or WorkItemState.Running);
+        return unresolvedImplementation ? null : build;
     }
 
     private int? FindAvailableSlotLocked()
@@ -582,7 +605,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             (_started &&
              !_launchPaused &&
              !_lifetimeCts.IsCancellationRequested &&
-             _graph.GetReadyItems().Count > 0);
+             SelectNextReadyLocked() is not null);
 
         if (hasRunnableOrRunning)
         {

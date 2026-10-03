@@ -21,3 +21,5 @@ RESOURCE_TYPE: IMAGE
 ① 제공된 작업공간과 기계 결과를 현재 실행 사실로 사용한다.
 ② 필요하면 `git ls-remote` 같은 비대화형 read-only 원격 조회를 사용할 수 있다.
 ③ Git 저장소 생성·복구·clone·stage·commit·push와 원격 branch 변경은 하지 않는다. Git metadata, checkpoint와 원격 게시는 Worker가 관리한다.
+④ workItemId가 9가 아니면 restore·compile·build·build를 수반하는 test/run·pack·export·publish 명령을 실행하지 않는다. checklist에 그런 실행이 포함되어 있어도 수행하지 않고 #9 BUILD/PUBLISH가 검증할 수 있도록 구현 결과와 정적 사실만 HQ에 보고한다.
+⑤ workItemId 9는 HQ가 선택한 기준 ref를 검증·게시하는 전용 슬롯이며 제품 기능 코드를 구현하거나 CODE_CHANGE를 만들지 않는다.

@@ -36,6 +36,8 @@
 ⑥ WORK 실행의 명령 처리 실패, 비정상 종료, timeout 또는 계약 불일치는 Worker가 의미 복구를 선택하지 않고 기계 사실과 함께 BLOCKED로 HQ에 전달하며, 이후 RELEASE·CANCEL·후속 WorkItem 판단은 HQ가 담당한다.
 ⑦ 설치된 SDK, runtime, build 도구와 작업 경로 준비는 Worker의 기계 책임이다.
 ⑧ 임시 build artifact와 cache는 의미 코드 변경으로 취급하지 않는다.
+⑨ #9 BUILD/PUBLISH를 제외한 WorkItem은 프로젝트 restore·compile·build·build를 수반하는 test/run·pack·export·publish를 실행하지 않는다. 일반 WORK와 INTEGRATION, #8은 구현과 정적 검토까지만 수행하고 실행형 빌드 검증은 #9에 맡긴다.
+⑩ #9는 HQ가 하나 이상의 의미 있는 중간 목표 묶음과 필요한 Integration 결과를 확인한 뒤 명시적으로 배정하는 검증·게시 게이트다. 개별 WorkItem 직후마다 반복 호출하지 않고 다음 구현 묶음과 동시에 실행하지 않는다.
 
 제5조 (RESOURCE)
 

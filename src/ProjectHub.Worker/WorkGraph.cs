@@ -224,6 +224,10 @@ public sealed class WorkGraph
         if (validationError is not null)
             return WorkGraphPatchResult.Fail(validationError, Revision);
 
+        var buildGateError = ValidateBuildPublishGate(staged);
+        if (buildGateError is not null)
+            return WorkGraphPatchResult.Fail(buildGateError, Revision);
+
         _items.Clear();
         foreach (var pair in staged)
             _items[pair.Key] = pair.Value;
@@ -495,6 +499,11 @@ public sealed class WorkGraph
                     return "WORK_GRAPH_FIXED_SLOT_KIND_INVALID";
                 if (string.IsNullOrWhiteSpace(operation.Item.Goal))
                     return "WORK_GRAPH_GOAL_MISSING";
+                if (!BuildExecutionPolicy.AllowsBuildExecution(operation.Item.Id) &&
+                    (BuildExecutionPolicy.ContainsBuildExecutionInstruction(operation.Item.Goal) ||
+                     (operation.Item.Checklist ?? Array.Empty<string>())
+                        .Any(BuildExecutionPolicy.ContainsBuildExecutionInstruction)))
+                    return "WORK_GRAPH_BUILD_STEP_REQUIRES_SLOT_9";
 
                 if (items.TryGetValue(operation.Item.Id, out var existing))
                 {
@@ -557,6 +566,9 @@ public sealed class WorkGraph
                     return "WORK_GRAPH_RUNNING_OR_TERMINAL_ITEM_IMMUTABLE";
                 if (string.IsNullOrWhiteSpace(operation.Value))
                     return "WORK_GRAPH_GOAL_MISSING";
+                if (!BuildExecutionPolicy.AllowsBuildExecution(item.Id) &&
+                    BuildExecutionPolicy.ContainsBuildExecutionInstruction(operation.Value))
+                    return "WORK_GRAPH_BUILD_STEP_REQUIRES_SLOT_9";
                 item.Goal = operation.Value.Trim();
                 return null;
             }
@@ -585,6 +597,8 @@ public sealed class WorkGraph
                     item.BlockCode,
                     "BUILD_REQUEST",
                     StringComparison.Ordinal);
+                if (buildRequest && !BuildExecutionPolicy.AllowsBuildExecution(item.Id))
+                    return "WORK_GRAPH_BUILD_SLOT_REQUIRED";
                 var normalizedInputType = NullIfWhiteSpace(operation.InputType);
                 item.BlockCode = null;
                 item.BlockDetailCode = null;
@@ -636,6 +650,33 @@ public sealed class WorkGraph
         {
             if (HasCycle(id, items, marks))
                 return "WORK_GRAPH_CYCLE_DETECTED";
+        }
+
+        return null;
+    }
+
+    private static string? ValidateBuildPublishGate(
+        IReadOnlyDictionary<string, WorkItemEntry> items)
+    {
+        if (!items.TryGetValue(FixedWorkItemSlots.BuildPublish, out var buildItem) ||
+            IsTerminal(buildItem.State))
+            return null;
+
+        foreach (var item in items.Values)
+        {
+            if (string.Equals(item.Id, FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal) ||
+                IsTerminal(item.State))
+                continue;
+
+            if (item.State is WorkItemState.Planned or WorkItemState.Ready or WorkItemState.Running)
+                return "WORK_GRAPH_BUILD_SLOT_REQUIRES_MILESTONE";
+
+            if (item.State == WorkItemState.Blocked &&
+                (!string.IsNullOrWhiteSpace(item.BlockCode) ||
+                 item.Dependencies.All(dependency =>
+                     items.TryGetValue(dependency, out var dependencyItem) &&
+                     dependencyItem.State == WorkItemState.Completed)))
+                return "WORK_GRAPH_BUILD_SLOT_REQUIRES_MILESTONE";
         }
 
         return null;

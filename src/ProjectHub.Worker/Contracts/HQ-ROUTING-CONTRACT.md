@@ -24,9 +24,10 @@ WORK_GRAPH_PATCH:
 ② operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용한다. ADD는 `workItemId`, `goal`과 필요한 `dependencies`, `kind`, `baseRef`, `checklist`를 사용한다. baseRef를 생략하면 Worker가 현재 기준 ref를 채운다.
 ③ 일반 WorkItem은 WORK 하나가 한 실행 흐름에서 완료 여부를 판정할 수 있는 작은 단위로 만든다. 하나의 응집된 목표와 checklist만 넣고, 독립적으로 구현·검증·실패할 수 있는 일은 별도 WorkItem으로 분리한다.
 ④ 고정 슬롯은 #0 RESOURCE MAKE, #1 RESOURCE PROCESSING, #8 FILE MANAGER, #9 BUILD/PUBLISH다. 모두 NORMAL이며 dependency 없이 HQ가 순서를 관제하고 완료 뒤 재사용할 수 있다.
-⑤ 역할은 고정한다. #0은 이미지 생성만 하며 프로젝트 저장 경로·Git·패키징·통합 계약을 넘기지 않는다. #1은 기존 이미지 가공만 한다. #8은 실제 루트 구조·파일 CRUD만 하며 초기 scaffold는 최소 골격만 만든다. #9는 최종 코드의 build·export·publish만 한다.
+⑤ 역할은 고정한다. #0은 이미지 생성만 하며 프로젝트 저장 경로·Git·패키징·통합 계약을 넘기지 않는다. #1은 기존 이미지 가공만 한다. #8은 실제 루트 구조·파일 CRUD만 하며 초기 scaffold는 최소 골격만 만든다. #9만 restore·compile·build·build를 수반하는 test/run·pack·export·publish를 수행한다.
 ⑥ 초기 구조가 필요하면 #8을 먼저 실행하고 그 CODE_CHANGE resultRef를 후속 작은 일반 WorkItem들의 baseRef로 사용한다.
-⑦ 여러 독립 CODE_CHANGE를 합칠 때는 별도 INTEGRATION WorkItem으로 하나의 resultRef를 만든다. #9는 그 최종 resultRef를 baseRef로 사용하며 CODE_CHANGE나 Git commit을 만들지 않는다.
+⑦ 여러 독립 CODE_CHANGE를 합칠 때는 별도 INTEGRATION WorkItem으로 하나의 resultRef를 만든다. #9는 검증할 최종 또는 중간 milestone resultRef를 baseRef로 사용하며 CODE_CHANGE나 Git commit을 만들지 않는다.
+⑧ #9 외 WorkItem의 goal/checklist에 restore·compile·build·publish 실행이나 그 성공을 완료 조건으로 넣지 않는다. 일반 WORK와 INTEGRATION은 구현과 정적 검토 결과를 보고하고 실행형 빌드 검증은 #9로 모은다.
 
 제3조 (관제)
 
@@ -35,3 +36,4 @@ WORK_GRAPH_PATCH:
 ③ 기계 오류는 현재 사실에 따라 RELEASE, CANCEL, 후속 WorkItem, PAUSE 중 필요한 동작만 결정하고 오류별 영구 규칙을 만들지 않는다.
 ④ HIGH_REPORT는 복구 결과로만 사용한다. 같은 원인에 대한 근거 없이 HIGH를 반복 호출하거나 일반 구현·생성·RESOURCE 대체로 사용하지 않는다.
 ⑤ END finalization이 거부되면 전달된 기계 사실에 따라 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.
+⑥ #9는 개별 WorkItem 완료 때마다 추가하지 않는다. HQ가 여러 관련 CODE_CHANGE와 필요한 Integration을 검토해 하나의 의미 있는 중간 목표가 완성되고 현재 구현 wave와 겹치지 않는 시점에만 #9를 추가하거나 재사용한다. #9 결과를 확인한 뒤 다음 구현 wave를 진행한다.

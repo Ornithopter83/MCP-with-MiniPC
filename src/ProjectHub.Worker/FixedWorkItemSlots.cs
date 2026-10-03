@@ -14,6 +14,9 @@ public static class FixedWorkItemSlots
     public static bool AllowsTargetWorkspaceWrite(string? workItemId)
         => string.Equals(workItemId, FileManager, StringComparison.Ordinal);
 
+    public static bool AllowsBuildExecution(string? workItemId)
+        => string.Equals(workItemId, BuildPublish, StringComparison.Ordinal);
+
     public static string BuildExecutionKey(string workItemId, long createdOrder)
     {
         if (string.IsNullOrWhiteSpace(workItemId))
