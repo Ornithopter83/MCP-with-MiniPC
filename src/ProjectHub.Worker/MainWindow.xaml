@@ -224,7 +224,6 @@
                 <TextBlock Text="실행 방식" Width="140" FontSize="15" VerticalAlignment="Center"/>
                 <ComboBox x:Name="ExecutionModeCombo" Style="{x:Null}" Width="300" Height="34" FontSize="15" SelectionChanged="ExecutionModeCombo_SelectionChanged">
                   <ComboBoxItem Content="관제 우선 CLI → CLI" Tag="CLI_TO_CLI"/>
-                  <ComboBoxItem Content="기존 Codex → GPT Web" Tag="LEGACY_WEB"/>
                 </ComboBox>
                 <TextBlock x:Name="AiRolesStatusText" Margin="16,0,0,0" FontSize="14" Foreground="{StaticResource Muted}" VerticalAlignment="Center" TextWrapping="Wrap"/>
               </StackPanel>
