@@ -122,8 +122,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     item.WorktreePath,
                     item.SessionId,
                     blockDetailCode: "NORMAL_CODE_DEPENDENCY_RESULT_REF_MISSING",
-                    resultType: item.ResultType,
-                    commitManifestPath: item.CommitManifestPath);
+                    resultType: item.ResultType);
             }
 
             if (codeDependencies.Length > 0)
@@ -147,8 +146,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                         item.WorktreePath,
                         item.SessionId,
                         blockDetailCode: errorCode,
-                        resultType: item.ResultType,
-                        commitManifestPath: item.CommitManifestPath);
+                        resultType: item.ResultType);
                 }
 
                 effectiveBaseRef = baseResolution.EffectiveBaseRef;
@@ -720,16 +718,13 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 sessionId,
                 blockDetailCode: errorCode,
-                resultType: item.ResultType,
-                commitManifestPath: item.CommitManifestPath);
+                resultType: item.ResultType);
         }
 
         var lifecycleResultRef = checkpoint.HeadCommit ?? item.ResultRef;
         var lifecycleHasCodeChange =
             item.ResultType == WorkItemResultType.CodeChange ||
             checkpointCreatedCommit;
-        string? commitManifestPath = null;
-
         var completedResultType = lifecycleHasCodeChange
             ? WorkItemResultType.CodeChange
             : WorkItemResultType.Analysis;
@@ -751,8 +746,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     checkpoint.WorktreePath,
                     sessionId,
                     blockDetailCode: "INTEGRATION_REMOTE_RESULT_MISSING",
-                    resultType: completedResultType,
-                    commitManifestPath: commitManifestPath);
+                    resultType: completedResultType);
             }
 
             await TryRemoveCompletedIntegrationCloneAsync(
@@ -774,8 +768,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
-                completedResultType,
-                commitManifestPath);
+                completedResultType);
         }
 
         if (reportStatus == WorkItemReportStatus.Completed &&
@@ -796,8 +789,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
-                completedResultType,
-                commitManifestPath),
+                completedResultType),
             WorkItemReportStatus.Blocked => WorkItemExecutionResult.Blocked(
                 BuildRequestContract.ContainsRequest(reportBody)
                     ? "BUILD_REQUEST"
@@ -807,8 +799,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
-                resultType: blockedResultType,
-                commitManifestPath: commitManifestPath),
+                resultType: blockedResultType),
             _ => WorkItemExecutionResult.Failed(
                 "WORK_ITEM_REPORTED_FAILED",
                 reportBody,
