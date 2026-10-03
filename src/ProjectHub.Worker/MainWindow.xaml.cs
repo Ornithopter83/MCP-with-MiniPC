@@ -716,7 +716,9 @@ public partial class MainWindow : Window
         }
 
         RunButton.Content = "▶   실행";
-        ApplyRunButtonVisualState(executionReady && hasPrompt);
+        // Direct Work는 preflight 오류가 있어도 클릭 자체는 허용한다.
+        // 클릭 시 구체적인 차단 사유를 결과 영역에 표시해 "무반응"처럼 보이지 않게 한다.
+        ApplyRunButtonVisualState(hasPrompt && (executionReady || IsDirectWorkMode));
         DashboardPreflightText.Text = preflightError ?? (hasPrompt ? string.Empty : "작업 내용을 입력하세요.");
         DashboardPreflightText.Foreground = preflightError is null ? (System.Windows.Media.Brush)FindResource("Muted") : System.Windows.Media.Brushes.Firebrick;
         UpdateFollowupButtonState();
