@@ -109,15 +109,12 @@ public static class UserAttachmentTransport
             string.IsNullOrWhiteSpace(sourceKind) ? "FILE" : sourceKind.Trim().ToUpperInvariant());
     }
 
-    public static IReadOnlyList<AiInputAttachment> StageForWorkspace(
+    public static IReadOnlyList<AiInputAttachment> StageForWorkerRuntime(
         IReadOnlyList<UserAttachmentInput>? inputs,
-        string workingDirectory,
         string batchId)
     {
         if (inputs is null || inputs.Count == 0)
             return Array.Empty<AiInputAttachment>();
-        if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
-            throw new DirectoryNotFoundException($"첨부 작업 폴더를 찾을 수 없습니다: {workingDirectory}");
 
         var safeBatch = new string((batchId ?? string.Empty)
             .Where(char.IsLetterOrDigit)
@@ -126,14 +123,9 @@ public static class UserAttachmentTransport
         if (string.IsNullOrWhiteSpace(safeBatch))
             safeBatch = Guid.NewGuid().ToString("N");
 
-        EnsureGitInfoExclude(workingDirectory);
-
-        var relativeRoot = Path.Combine(
-            ".projecthub",
-            "runtime",
-            "attachments",
-            safeBatch);
-        var targetRoot = Path.Combine(workingDirectory, relativeRoot);
+        WorkerPaths.EnsureCreated();
+        var relativeRoot = Path.Combine("staged", safeBatch);
+        var targetRoot = Path.Combine(WorkerPaths.Attachments, relativeRoot);
         Directory.CreateDirectory(targetRoot);
 
         var result = new List<AiInputAttachment>();
@@ -155,7 +147,7 @@ public static class UserAttachmentTransport
             result.Add(new AiInputAttachment(
                 input.FileName,
                 destination,
-                Path.GetRelativePath(workingDirectory, destination),
+                Path.Combine(relativeRoot, fileName),
                 input.MimeType,
                 input.Size,
                 input.Sha256));
@@ -331,64 +323,4 @@ public static class UserAttachmentTransport
         return extension.ToLowerInvariant();
     }
 
-    private static void EnsureGitInfoExclude(string workingDirectory)
-    {
-        try
-        {
-            var current = new DirectoryInfo(Path.GetFullPath(workingDirectory));
-            while (current is not null)
-            {
-                var dotGit = Path.Combine(current.FullName, ".git");
-                string? gitCommonDirectory = null;
-                if (Directory.Exists(dotGit))
-                {
-                    gitCommonDirectory = dotGit;
-                }
-                else if (File.Exists(dotGit))
-                {
-                    var pointer = File.ReadAllText(dotGit).Trim();
-                    const string prefix = "gitdir:";
-                    if (pointer.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    {
-                        var gitDirText = pointer[prefix.Length..].Trim();
-                        var gitDirectory = Path.GetFullPath(Path.IsPathRooted(gitDirText)
-                            ? gitDirText
-                            : Path.Combine(current.FullName, gitDirText));
-                        var commonFile = Path.Combine(gitDirectory, "commondir");
-                        if (File.Exists(commonFile))
-                        {
-                            var commonText = File.ReadAllText(commonFile).Trim();
-                            gitCommonDirectory = Path.GetFullPath(Path.IsPathRooted(commonText)
-                                ? commonText
-                                : Path.Combine(gitDirectory, commonText));
-                        }
-                        else
-                        {
-                            gitCommonDirectory = gitDirectory;
-                        }
-                    }
-                }
-
-                if (!string.IsNullOrWhiteSpace(gitCommonDirectory))
-                {
-                    var infoDirectory = Path.Combine(gitCommonDirectory, "info");
-                    Directory.CreateDirectory(infoDirectory);
-                    var excludePath = Path.Combine(infoDirectory, "exclude");
-                    const string pattern = ".projecthub/runtime/";
-                    var existing = File.Exists(excludePath)
-                        ? File.ReadAllLines(excludePath)
-                        : Array.Empty<string>();
-                    if (!existing.Any(line => string.Equals(line.Trim(), pattern, StringComparison.OrdinalIgnoreCase)))
-                        File.AppendAllText(excludePath, Environment.NewLine + pattern + Environment.NewLine, new UTF8Encoding(false));
-                    return;
-                }
-
-                current = current.Parent;
-            }
-        }
-        catch
-        {
-            // Attachment staging still works outside Git or when local Git metadata is unavailable.
-        }
-    }
 }
