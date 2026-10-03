@@ -733,7 +733,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task CompletedIntegrationPublishesRemoteResultWithoutLocalImport()
+    public async Task CompletedIntegrationWithoutChangesRemainsAnalysis()
     {
         var fixture = CreateFixture(
             """
@@ -753,9 +753,8 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal("head123", result.ResultRef);
-            Assert.Contains("REMOTE_CODE_RESULT", result.ResultSummary);
-            Assert.Contains("resultRef: head123", result.ResultSummary);
-            Assert.Contains("branch: " + fixture.Branch, result.ResultSummary);
+            Assert.Equal(WorkItemResultType.Analysis, result.ResultType);
+            Assert.DoesNotContain("REMOTE_CODE_RESULT", result.ResultSummary);
             Assert.DoesNotContain(
                 fixture.Git.Calls,
                 call => call.Count > 0 &&
@@ -885,12 +884,7 @@ public sealed class CodexWorkItemExecutorTests
             git.Enqueue(0, Path.Combine(worktree, ".git"));
             git.Enqueue(0, branch);
             git.Enqueue(0, "head123");
-            // Checkpoint publishes even a clean integration HEAD.
-            git.Enqueue(0, "head123");
-            git.Enqueue(0, branch);
-            git.Enqueue(0, "");
-            git.Enqueue(0, "");
-            git.Enqueue(0, $"head123\trefs/heads/{branch}");
+            // Clean integration analysis checkpoint does not create a remote branch.
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
@@ -907,12 +901,7 @@ public sealed class CodexWorkItemExecutorTests
             git.Enqueue(0, branch);
             git.Enqueue(0, "head123");
             git.Enqueue(0, "");
-            // Checkpoint publishes even a clean HEAD to the WorkItem remote branch.
-            git.Enqueue(0, "head123");
-            git.Enqueue(0, branch);
-            git.Enqueue(0, "");
-            git.Enqueue(0, "");
-            git.Enqueue(0, $"head123\trefs/heads/{branch}");
+            // Clean analysis checkpoint stays local to the disposable clone.
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
