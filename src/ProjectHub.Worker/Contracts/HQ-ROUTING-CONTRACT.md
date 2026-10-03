@@ -26,7 +26,7 @@ WORK_GRAPH_PATCH:
 ② CONTINUE에는 WORK_GRAPH_PATCH를 정확히 하나 출력한다.
 ③ patch는 완전한 JSON 객체여야 한다.
 ④ operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용할 수 있다.
-⑤ WorkItem #0은 RESOURCE, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. #1~#8은 미배정 예약 슬롯이며 일반 WorkItem은 #10부터 사용한다.
+⑤ WorkItem #0은 RESOURCE, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. 그 외 ID는 일반 WorkItem에 사용할 수 있다.
 ⑥ #0·#9도 WorkGraph operation은 ADD를 사용하며 고정 임무는 workItemId로 구분한다.
 ⑦ #0·#9는 dependency를 사용하지 않으며 직전 실행 완료 뒤 필요한 시점에 같은 번호로 다시 ADD할 수 있다.
 ⑧ #9는 빌드·export·publish할 CODE_CHANGE의 원격 resultRef를 baseRef로 사용한다. 서로 독립된 CODE_CHANGE가 둘 이상이면 먼저 INTEGRATION WorkItem으로 하나의 resultRef를 만든다.
