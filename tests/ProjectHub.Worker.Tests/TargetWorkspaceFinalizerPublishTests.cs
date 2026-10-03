@@ -103,6 +103,7 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             Assert.True(result.Success);
             Assert.Null(result.ErrorCode);
             Assert.Equal("code-new", result.FinalResultRef);
+            Assert.True(result.CheckoutSwitched);
             Assert.Contains("checkout을 전환", result.Message);
         }
         finally
