@@ -165,7 +165,7 @@ public static class WorkerTargetConfiguration
         if (root is null)
             return new(path, null, null, null, "UNCONFIGURED", false);
 
-        var remote = RunGit(root, "remote", "get-url", "origin");
+        var remote = ResolvePreferredRemote(root);
         var branch = RunGit(root, "rev-parse", "--abbrev-ref", "HEAD");
         var head = RunGit(root, "rev-parse", "HEAD");
         var source = !string.IsNullOrWhiteSpace(remote) ? "AUTO_GIT_REMOTE" : "UNCONFIGURED";
@@ -175,6 +175,34 @@ public static class WorkerTargetConfiguration
     private static bool HasGitMetadata(string path)
         => Directory.Exists(Path.Combine(path, ".git")) ||
            File.Exists(Path.Combine(path, ".git"));
+
+    private static string? ResolvePreferredRemote(string workingDirectory)
+    {
+        var verbose = RunGit(workingDirectory, "remote", "-v");
+        if (string.IsNullOrWhiteSpace(verbose))
+            return null;
+
+        string? firstFetch = null;
+        foreach (var rawLine in verbose.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = rawLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+                continue;
+
+            var name = parts[0];
+            var url = parts[1];
+            var isFetch = parts.Length < 3 ||
+                          string.Equals(parts[^1], "(fetch)", StringComparison.OrdinalIgnoreCase);
+            if (!isFetch)
+                continue;
+
+            firstFetch ??= url;
+            if (string.Equals(name, "origin", StringComparison.OrdinalIgnoreCase))
+                return url;
+        }
+
+        return firstFetch;
+    }
 
     private static string? RunGit(string workingDirectory, params string[] arguments)
     {
