@@ -444,6 +444,75 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task RuntimeCompactPreservesCleanCloneUntilHeadExistsOnRemote()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root);
+        var clone = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        Directory.CreateDirectory(Path.Combine(clone, ".git"));
+        Directory.CreateDirectory(runtime.TempRoot);
+        var branch = GitWorktreeManager.BuildBranchName("job", "W1");
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "head123");
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, "");
+        runner.Enqueue(1, "", "remote branch missing");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .CompactRepositoryRuntimeAsync(root);
+
+            Assert.True(result.Success, result.ErrorDetail);
+            Assert.True(Directory.Exists(clone));
+            Assert.Empty(result.RemovedWorktrees);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(new[]
+                {
+                    "ls-remote",
+                    "--exit-code",
+                    "origin",
+                    "refs/heads/" + branch
+                }));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
+    public async Task RuntimeCompactDeletesCleanCloneAfterRemoteHeadVerification()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clone = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        Directory.CreateDirectory(Path.Combine(clone, ".git"));
+        var branch = GitWorktreeManager.BuildBranchName("job", "W1");
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "head123");
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, $"head123\trefs/heads/{branch}");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .CompactRepositoryRuntimeAsync(root);
+
+            Assert.True(result.Success, result.ErrorDetail);
+            Assert.False(Directory.Exists(clone));
+            Assert.Contains(Path.GetFullPath(clone), result.RemovedWorktrees);
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
     public async Task RuntimeResetDeletesOnlyExternalProjectHubRuntime()
     {
         var root = CreateTempRepositoryDirectory();
