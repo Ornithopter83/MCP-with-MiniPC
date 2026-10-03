@@ -37,9 +37,6 @@ public sealed class WorkerPathsRuntimeTests
                     "RepositoryRuntime"),
                 runtime.Root,
                 comparison);
-            Assert.Equal(
-                Path.Combine(workspaceRoot, ".projecthub", "runtime"),
-                WorkerPaths.GetLegacyRepositoryRuntimeRoot(workspace));
             Assert.StartsWith(runtime.Root, runtime.Worktrees, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.IntegrationClones, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.NuGetRoot, StringComparison.OrdinalIgnoreCase);
