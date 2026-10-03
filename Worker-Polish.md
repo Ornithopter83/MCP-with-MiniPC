@@ -45,7 +45,7 @@
 
 제7조 (Git과 결과)
 
-① 병렬 WorkGraph는 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin` 원격 저장소가 존재해야 한다. 기존 HEAD가 있으면 현재 branch와 로컬 HEAD가 원격 branch HEAD와 일치하는 clean 상태에서 시작한다. 최초 commit이 없는 unborn 저장소는 작업 폴더의 `.gitignore` 기준 파일로 Worker가 격리된 `projecthub/*` 초기 baseline commit을 만들어 원격에 게시한 뒤 그 SHA를 공통 기준점으로 사용해 시작하며, 사용자가 최초 commit을 미리 만들 필요는 없다. 작업 폴더의 상위 디렉터리에 있는 다른 Git 저장소를 자동 채택하지 않는다.
+① 병렬 WorkGraph는 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin` 원격 저장소가 존재해야 한다. 기존 HEAD가 있으면 현재 branch와 로컬 HEAD가 원격 branch HEAD와 일치하는 clean 상태에서 시작한다. 최초 commit이 없는 unborn 저장소는 작업 폴더의 `.gitignore` 기준 파일로 Worker가 격리된 `projecthub/*` 초기 baseline commit을 만들어 원격에 게시한 뒤 그 SHA를 공통 기준점으로 사용해 시작하며, 사용자 작업 폴더의 현재 branch도 파일 내용을 바꾸지 않고 같은 baseline commit에 로컬로 연결한다. 기본·보호 branch를 원격에 자동 push하지 않으며 사용자가 최초 commit을 미리 만들 필요는 없다. 작업 폴더의 상위 디렉터리에 있는 다른 Git 저장소를 자동 채택하지 않는다.
 ② CODE_CHANGE의 `resultRef`는 Worker가 `projecthub/*` branch에 push하고 원격에서 같은 commit을 확인한 Git commit SHA다.
 ③ WORK는 Git 저장소를 생성·복구·stage·commit·push하지 않으며, checkpoint와 원격 게시를 Worker가 기계적으로 수행한다.
 ④ checkpoint 대상은 프로젝트의 `.gitignore`가 결정한다. Worker는 build·cache·runtime 경로에 대한 별도 exclude pathspec이나 재생성 파일 목록을 유지하지 않는다.
