@@ -61,9 +61,7 @@ public static class ProjectWorkspacePersistence
     };
 
     public static string RootDirectory(string workingDirectory)
-        => Path.Combine(
-            WorkerPaths.GetRepositoryRuntimePaths(workingDirectory).Root,
-            "workspace-state");
+        => WorkerPaths.GetWorkspaceStateDirectory(workingDirectory);
 
     public static string StatePath(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "session-state.json");
