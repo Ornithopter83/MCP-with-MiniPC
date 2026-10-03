@@ -60,7 +60,60 @@ public sealed class TargetWorkspaceFinalizerPublishTests
         }
     }
 
-    private static WorkGraph CreateCompletedGraph(string resultRef)
+    [Fact]
+    public async Task FinalizerSwitchesCleanCheckoutToRemoteResultBranch()
+    {
+        var root = CreateRoot();
+        var resultBranch = GitWorktreeManager.BuildBranchName("job", "10");
+        try
+        {
+            var graph = CreateCompletedGraph("code-new", resultBranch);
+            var runner = new SequenceRunner();
+
+            // InspectTargetContainmentAsync: current main is remote-synced, result is not contained.
+            runner.Enqueue(0, root);
+            runner.Enqueue(0, "main");
+            runner.Enqueue(0, string.Empty);
+            runner.Enqueue(0, "base123");
+            runner.Enqueue(0, "base123");
+            runner.Enqueue(0, "code-new");
+            runner.Enqueue(1, string.Empty);
+
+            // SwitchTargetToRemoteResultAsync.
+            runner.Enqueue(0, root);
+            runner.Enqueue(0, string.Empty);
+            runner.Enqueue(0, "main");
+            runner.Enqueue(0, "base123");
+            runner.Enqueue(0, string.Empty);
+            runner.Enqueue(0, "base123");
+            runner.Enqueue(0, "code-new");
+            runner.Enqueue(0, "code-new");
+            runner.Enqueue(1, string.Empty);
+            runner.Enqueue(0, string.Empty);
+            runner.Enqueue(0, resultBranch);
+            runner.Enqueue(0, "code-new");
+            runner.Enqueue(0, string.Empty);
+
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.True(result.Success);
+            Assert.Null(result.ErrorCode);
+            Assert.Equal("code-new", result.LandedResultRef);
+            Assert.Contains("checkout을 전환", result.Message);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    private static WorkGraph CreateCompletedGraph(
+        string resultRef,
+        string? branch = null)
     {
         var graph = new WorkGraph("job");
         Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
@@ -68,7 +121,7 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             WorkGraphPatchOperation.Add(
                 new WorkItemSpec("10", "code", Kind: WorkItemKind.Normal, BaseRef: "base"))
         })).Success);
-        Assert.True(graph.TryMarkRunning("10"));
+        Assert.True(graph.TryMarkRunning("10", branch));
         Assert.True(graph.TryMarkCompleted(
             "10",
             resultRef,
