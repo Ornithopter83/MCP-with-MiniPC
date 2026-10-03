@@ -9,6 +9,7 @@ public partial class MainWindow
 {
     private bool _loadingDirectWorkControls;
     private bool _directWorkRunning;
+    private bool _directWorkHistoryActive;
 
     private sealed record DirectWorkChoice<T>(T Value, string Label)
     {
@@ -310,6 +311,7 @@ public partial class MainWindow
         if (!appendToHistory)
             _historyEvents.Clear();
 
+        _directWorkHistoryActive = true;
         SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
         SetFollowupComposerVisible(false);
         if (appendToHistory)
