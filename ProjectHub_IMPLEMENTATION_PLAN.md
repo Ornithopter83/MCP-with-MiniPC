@@ -41,7 +41,7 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 ④ 프로그램 시작 시 과거 `session-state`, HQ/WORK 세션, WorkGraph, event log를 자동 복구해 새 작업의 의미 문맥으로 사용하지 않는다.
 ⑤ 사용자가 `새 작업`을 시작하면 활성 continuation을 제거하고 과거 상태와 transcript는 진단·이력으로만 남긴다.
 ⑥ event log, transcript, handoff와 저장 상태는 정책 원본이 아니다.
-⑦ WorkGraph, event log, transcript와 continuation 상태는 작업 루트의 `.projecthub`에 저장한다. disposable clone·tool cache·임시 실행 파일은 `.projecthub/runtime`에 두고 #9 게시 산출물은 `.projecthub/artifacts`에 둔다. `.projecthub`는 Git status·baseline·checkpoint·CODE_CHANGE 결과에서 기계적으로 제외하며, 종료·DONE·PAUSE 시 runtime cleanup을 최선 노력으로 수행하되 runtime cache·임시 파일 완전 삭제를 의미 작업 완료의 선행조건으로 삼지 않는다.
+⑦ WorkGraph, event log, transcript와 continuation 상태는 작업 루트의 `.projecthub`에 저장한다. 해당 저장소의 disposable clone·tool cache·WORK/RESOURCE runtime은 `.projecthub/runtime`에 두고 #9 게시 산출물은 `.projecthub/artifacts`에 둔다. `.projecthub`는 Git status·baseline·checkpoint·CODE_CHANGE 결과에서 기계적으로 제외한다. DONE에서는 repository runtime reset을, PAUSE에서는 불필요한 clean runtime 압축을, 새 작업 전에는 이전 repository runtime reset을 최선 노력으로 수행하며 runtime cache·임시 파일 완전 삭제를 의미 작업 완료의 선행조건으로 삼지 않는다.
 
 제4조 (RESOURCE, JUDGE, OBSERVATION)
 
