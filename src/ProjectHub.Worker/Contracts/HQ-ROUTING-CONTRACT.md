@@ -26,15 +26,14 @@ WORK_GRAPH_PATCH:
 ② CONTINUE에는 WORK_GRAPH_PATCH를 정확히 하나 출력한다.
 ③ patch는 완전한 JSON 객체여야 한다.
 ④ operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용할 수 있다.
-⑤ WorkItem #0은 RESOURCE, #8은 MATERIALIZE/COPY, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. #1~#7은 미배정 예약 슬롯이며 일반 WorkItem은 #10부터 사용한다.
-⑥ #0·#8·#9도 WorkGraph operation은 ADD를 사용하며 고정 임무는 workItemId로 구분한다.
-⑦ #0·#8·#9는 dependency를 사용하지 않으며 다른 WorkItem과 dependency로 연결하지 않는다. 각 고정 슬롯은 직전 실행의 완료 보고를 받은 뒤 필요한 시점에 별도 ADD한다.
-⑧ #0·#8·#9는 각각 한 번의 임무가 끝난 뒤 필요하면 같은 번호로 다시 ADD할 수 있는 단발 슬롯이며, 이전 AI 세션의 저장된 맥락을 전제로 하지 않는다.
-⑨ #8은 완료된 선행 WorkItem의 변경 파일이나 검증된 게시 산출물을 대상 프로젝트 루트에 상대경로와 폴더 구조를 그대로 유지해 반영하는 데만 사용한다.
-⑩ #9는 대상 프로젝트 루트에 현재 반영된 상태를 기준으로 빌드·export·publish하는 데만 사용하며 CODE_CHANGE나 Git commit·commit manifest를 생성·확정하는 임무로 사용하지 않는다.
-⑪ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
-⑫ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
-⑬ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
+⑤ WorkItem #0은 RESOURCE, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. #1~#8은 미배정 예약 슬롯이며 일반 WorkItem은 #10부터 사용한다.
+⑥ #0·#9도 WorkGraph operation은 ADD를 사용하며 고정 임무는 workItemId로 구분한다.
+⑦ #0·#9는 dependency를 사용하지 않으며 직전 실행 완료 뒤 필요한 시점에 같은 번호로 다시 ADD할 수 있다.
+⑧ #9는 빌드·export·publish할 CODE_CHANGE의 원격 resultRef를 baseRef로 사용한다. 서로 독립된 CODE_CHANGE가 둘 이상이면 먼저 INTEGRATION WorkItem으로 하나의 resultRef를 만든다.
+⑨ #9는 CODE_CHANGE나 Git commit·commit manifest를 생성·확정하는 임무로 사용하지 않는다.
+⑩ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
+⑪ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
+⑫ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
 
 제3조 (관제)
 
@@ -42,6 +41,7 @@ WORK_GRAPH_PATCH:
 ② 각 WORK 보고에서 checklist별 결과와 현재 WorkGraph를 확인하고 필요한 다음 patch를 결정한다.
 ③ 기존 WorkItem의 범위를 다른 성격의 일로 넓히기보다 별도 WorkItem을 추가해 중간 관제를 계속한다.
 ④ 기계 오류가 보고되면 현재 사실을 기준으로 다음 동작만 결정하며 오류 사례를 새 영구 계약으로 확장하지 않는다.
-⑤ 완료된 WorkItem 결과를 사용자 프로젝트 폴더에 보이게 해야 하면 HQ가 완료 보고를 받은 순서대로 dependency 없이 #8을 별도 ADD해 반영한다.
-⑥ 실제 프로젝트 루트가 빌드 가능한 시점이면 #9를 배정하고, 게시 산출물 검증은 필요한 일반 WorkItem에서 수행한 뒤 검증된 결과의 최종 이동은 다시 #8에 배정한다.
-⑦ `HQ_DECISION_REQUIRED`로 차단된 WorkItem은 전달된 기계 사실을 기준으로 RELEASE, CANCEL 또는 후속 WorkItem 필요 여부를 판단한다.
+⑤ CODE_CHANGE 반영 여부와 Git 동기화는 Worker의 commit/resultRef 기계 사실을 사용한다. 파일 복사를 위한 MATERIALIZE/COPY WorkItem은 만들지 않는다.
+⑥ 실제 빌드·export·publish가 필요하면 최종 코드 계보의 resultRef를 baseRef로 #9를 ADD한다.
+⑦ END finalization이 source landing 또는 publish freshness 때문에 거부되면 전달된 기계 사실을 기준으로 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.
+⑧ `HQ_DECISION_REQUIRED`로 차단된 WorkItem은 전달된 기계 사실을 기준으로 RELEASE, CANCEL 또는 후속 WorkItem 필요 여부를 판단한다.
