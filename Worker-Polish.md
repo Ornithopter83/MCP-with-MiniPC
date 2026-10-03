@@ -13,7 +13,7 @@
 
 ① WORK 보고는 Worker가 의미적으로 요약하거나 다시 작성하지 않는다.
 ② Worker는 workItemId, state, resultRef 등 필요한 최소 기계 메타데이터와 WORK 보고 본문을 HQ에 전달한다.
-③ Commit Manifest 전문이나 코드 내용을 HQ 프롬프트에 자동 주입하지 않는다.
+③ 코드 내용은 HQ 프롬프트에 자동 주입하지 않는다.
 ④ 오류가 발생해도 역할 계약에 해당 오류 전용 규칙을 추가하지 않는다.
 
 제3조 (WorkGraph)
