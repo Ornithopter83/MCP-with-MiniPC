@@ -213,6 +213,7 @@ public partial class MainWindow
     private void WorkingDirectoryInput_TextChanged(object sender, TextChangedEventArgs e)
     {
         _gitTarget = null;
+        _gitLaunchErrorMessage = null;
         if (RepositoryUrlInput is not null)
             RepositoryUrlInput.Text = string.Empty;
 
