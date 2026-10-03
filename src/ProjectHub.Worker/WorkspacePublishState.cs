@@ -5,16 +5,17 @@ using System.Text.Json;
 namespace ProjectHub.Worker;
 
 public sealed record WorkspacePublishStateSnapshot(
-    long CodeGeneration,
-    long PublishedCodeGeneration,
     bool HasSuccessfulPublish,
-    string? LastCodeResultRef,
-    IReadOnlyList<string> LandedCodeResultRefs,
+    string? PublishedSourceRef,
     long? LastPublishInvocation,
     DateTimeOffset? LastPublishedAtUtc)
 {
-    public bool IsStale
-        => HasSuccessfulPublish && PublishedCodeGeneration < CodeGeneration;
+    public bool IsStaleFor(string? resultRef)
+        => HasSuccessfulPublish &&
+           !string.Equals(
+               PublishedSourceRef,
+               resultRef?.Trim(),
+               StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class WorkspacePublishState
@@ -54,58 +55,22 @@ public sealed class WorkspacePublishState
         }
     }
 
-    public async Task<WorkspacePublishStateSnapshot> MarkCodeLandedAsync(
-        string resultRef,
-        CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(resultRef))
-            throw new ArgumentException("CODE_CHANGE resultRef가 비어 있습니다.", nameof(resultRef));
-
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var current = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
-            var normalized = resultRef.Trim();
-            var materializedRefs = current.LandedCodeResultRefs ??
-                                   Array.Empty<string>();
-            if (materializedRefs.Any(value =>
-                    string.Equals(value, normalized, StringComparison.OrdinalIgnoreCase)))
-                return current;
-
-            var refs = materializedRefs
-                .Concat(new[] { normalized })
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            var next = current with
-            {
-                CodeGeneration = checked(current.CodeGeneration + 1),
-                LastCodeResultRef = normalized,
-                LandedCodeResultRefs = refs
-            };
-            await WriteCoreAsync(next, cancellationToken).ConfigureAwait(false);
-            return next;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
     public async Task<WorkspacePublishStateSnapshot> MarkPublishedAsync(
+        string sourceResultRef,
         long invocation,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(sourceResultRef))
+            throw new ArgumentException("publish source resultRef가 비어 있습니다.", nameof(sourceResultRef));
+
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var current = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
-            var next = current with
-            {
-                PublishedCodeGeneration = current.CodeGeneration,
-                HasSuccessfulPublish = true,
-                LastPublishInvocation = invocation,
-                LastPublishedAtUtc = DateTimeOffset.UtcNow
-            };
+            var next = new WorkspacePublishStateSnapshot(
+                HasSuccessfulPublish: true,
+                PublishedSourceRef: sourceResultRef.Trim(),
+                LastPublishInvocation: invocation,
+                LastPublishedAtUtc: DateTimeOffset.UtcNow);
             await WriteCoreAsync(next, cancellationToken).ConfigureAwait(false);
             return next;
         }
@@ -174,11 +139,8 @@ public sealed class WorkspacePublishState
 
     private static WorkspacePublishStateSnapshot Empty()
         => new(
-            CodeGeneration: 0,
-            PublishedCodeGeneration: 0,
             HasSuccessfulPublish: false,
-            LastCodeResultRef: null,
-            LandedCodeResultRefs: Array.Empty<string>(),
+            PublishedSourceRef: null,
             LastPublishInvocation: null,
             LastPublishedAtUtc: null);
 
