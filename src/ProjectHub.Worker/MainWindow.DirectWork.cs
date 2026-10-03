@@ -225,6 +225,11 @@ public partial class MainWindow
             UpdateDashboardRunButtonState();
     }
 
+    private void WorkingDirectoryInput_LostFocus(object sender, RoutedEventArgs e)
+    {
+        RefreshWorkingDirectoryGitTargetPresentation(showFeedback: false);
+    }
+
     private void ShowDirectWorkPreflightError(string message)
     {
         DashboardPreflightText.Text = message;
