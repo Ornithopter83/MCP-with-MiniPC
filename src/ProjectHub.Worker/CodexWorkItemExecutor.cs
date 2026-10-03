@@ -295,6 +295,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         string workTempPath;
         IReadOnlyDictionary<string, string> workEnvironment;
         IReadOnlyList<string> workWritableDirectories;
+        string? publishOutputDirectory = null;
         try
         {
             runtimePaths = WorkerPaths.GetRepositoryRuntimePaths(preparation.RepositoryRoot);
@@ -308,6 +309,15 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 environment[pair.Key] = pair.Value;
             environment["PROJECTHUB_RESOURCE_TEMP"] = runtimePaths.TempRoot;
             environment["PROJECTHUB_WORK_TEMP"] = workTempPath;
+            if (string.Equals(item.Id, FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal))
+            {
+                publishOutputDirectory = WorkerPaths.GetPublishedArtifactDirectory(
+                    preparation.RepositoryRoot,
+                    _jobId,
+                    item.CreatedOrder);
+                Directory.CreateDirectory(publishOutputDirectory);
+                environment["PROJECTHUB_PUBLISH_ROOT"] = publishOutputDirectory;
+            }
             workEnvironment = environment;
 
             var writableDirectories = new List<string>
@@ -317,6 +327,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 workTempPath,
                 Path.Combine(workTempPath, "build")
             };
+            if (!string.IsNullOrWhiteSpace(publishOutputDirectory))
+                writableDirectories.Add(publishOutputDirectory);
             if (!string.IsNullOrWhiteSpace(observationRequestDirectory))
                 writableDirectories.Add(observationRequestDirectory);
             if (FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id))
@@ -439,7 +451,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 workTempRoot: workTempPath,
                 targetWorkspace: FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id)
                     ? _workspace
-                    : null);
+                    : null,
+                publishOutputDirectory: publishOutputDirectory);
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
