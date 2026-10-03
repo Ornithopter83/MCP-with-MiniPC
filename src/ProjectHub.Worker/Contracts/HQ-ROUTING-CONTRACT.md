@@ -10,7 +10,7 @@
 WORK_GRAPH_PATCH:
 {"expectedRevision":<현재 revision>,"operations":[...]}
 
-③ 입력 헤더의 `HIGH one-shot`이 `available`이고 일반 WORK 권한으로 해결하기 어려운 시스템·도구체인·runtime·Git 인프라 복구가 필요할 때만 다음 형식으로 HIGH를 1회 호출한다. 이때 WORK_GRAPH_PATCH는 출력하지 않는다.
+③ 일반 WORK가 동일·유사 원인으로 반복 실패했고 일반 권한으로 해결하기 어려운 시스템·도구체인·runtime·Git 인프라 복구가 필요할 때만 다음 형식으로 HIGH를 호출한다. 이때 WORK_GRAPH_PATCH는 출력하지 않는다.
 
 [ACTION=CONTINUE]
 [GOTO : HIGH]
@@ -33,5 +33,5 @@ WORK_GRAPH_PATCH:
 ① 작업 분해, 추가 WorkItem과 다음 patch 판단은 HQ가 담당한다. WORK는 배정 범위의 결과만 보고한다.
 ② WORK 보고의 checklist 결과와 Worker가 제공한 commit/resultRef·상태를 사실로 사용한다. MATERIALIZE/COPY WorkItem으로 Git 계보를 대신하지 않는다.
 ③ 기계 오류는 현재 사실에 따라 RELEASE, CANCEL, 후속 WorkItem, PAUSE 중 필요한 동작만 결정하고 오류별 영구 규칙을 만들지 않는다.
-④ HIGH_REPORT는 복구 결과로만 사용한다. HIGH를 연속 호출하거나 일반 구현·생성·RESOURCE 대체로 사용하지 않는다.
+④ HIGH_REPORT는 복구 결과로만 사용한다. 같은 원인에 대한 근거 없이 HIGH를 반복 호출하거나 일반 구현·생성·RESOURCE 대체로 사용하지 않는다.
 ⑤ END finalization이 거부되면 전달된 기계 사실에 따라 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.

@@ -33,8 +33,7 @@ public static class RoleContractLoader
         string inboundType,
         string body,
         WorkGraphPromptContext workGraph,
-        bool includeContract = true,
-        bool highPermitAvailable = false)
+        bool includeContract = true)
     {
         ArgumentNullException.ThrowIfNull(workGraph);
         var header =
@@ -42,7 +41,6 @@ public static class RoleContractLoader
             $"WorkGraph revision: {workGraph.Revision}\n" +
             $"최대 동시 WORK: {workGraph.MaxConcurrentWork}\n" +
             $"기준 ref: {workGraph.BaseRef}\n" +
-            $"HIGH one-shot: {(highPermitAvailable ? "available" : "unavailable")}\n" +
             "computerUse: disabled\n입력 본문:\n";
         var prompt = header + body;
         return includeContract
@@ -97,7 +95,7 @@ public static class RoleContractLoader
     }
 
     public static string BuildHighPrompt(string body) =>
-        "역할: HIGH\n호출 유형: USER_AUTHORIZED_ONE_SHOT\ncomputerUse: disabled\n입력 본문:\n" +
+        "역할: HIGH\n호출 유형: HQ_RECOVERY\ncomputerUse: disabled\n입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadHighFooter();
 
     private static string BuildWorkItemHeader(
