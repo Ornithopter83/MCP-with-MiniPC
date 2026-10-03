@@ -198,7 +198,7 @@
           <TextBlock Text="저장소 및 폴더" FontSize="15" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="0,0,0,1"/>
           <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0">
             <TextBlock Text="Git 저장소" Width="140" FontSize="14" VerticalAlignment="Center"/>
-            <TextBox x:Name="RepositoryUrlInput" Width="652" Height="32" FontSize="15" Padding="8,3" IsReadOnly="True" IsEnabled="False" IsTabStop="False" ToolTip="작업 폴더의 Git origin에서 자동으로 확인됩니다."/>
+            <TextBox x:Name="RepositoryUrlInput" Width="652" Height="32" FontSize="15" Padding="8,3" IsReadOnly="True" IsTabStop="False" ToolTip="작업 폴더의 Git origin에서 자동으로 확인됩니다."/>
             <Button Content="자동 확인" Width="104" Height="32" Margin="8,0,0,0" Padding="0,3" FontSize="14" Click="AutoDetectTargets_Click"/>
           </StackPanel>
           <StackPanel Grid.Row="2" Margin="140,4,0,4">
@@ -214,7 +214,7 @@
           </StackPanel>
           <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0">
             <TextBlock Text="작업 폴더" Width="140" FontSize="14" VerticalAlignment="Center"/>
-            <TextBox x:Name="WorkingDirectoryInput" Width="652" Height="32" FontSize="15" Padding="8,3" TextChanged="WorkingDirectoryInput_TextChanged" LostFocus="WorkingDirectoryInput_LostFocus"/>
+            <TextBox x:Name="WorkingDirectoryInput" Width="652" Height="32" FontSize="15" Padding="8,3" TextChanged="WorkingDirectoryInput_TextChanged"/>
             <Button x:Name="WorkingDirectoryBrowseButton" Content="폴더 선택…" Width="104" Height="32" Margin="8,0,0,0" Padding="0,3" FontSize="14" Click="BrowseWorkingDirectory_Click"/>
           </StackPanel>
           <Border Grid.Row="5" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,0,0,0">
