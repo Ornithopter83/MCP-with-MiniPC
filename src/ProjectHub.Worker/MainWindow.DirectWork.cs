@@ -307,6 +307,7 @@ public partial class MainWindow
             "-" +
             Guid.NewGuid().ToString("N")[..8];
         const string directWorkItemId = "direct";
+        var gitManager = new GitWorktreeManager();
         GitWorkspaceBootstrapState gitState;
         GitWorktreePreparationResult preparation;
 
@@ -327,7 +328,6 @@ public partial class MainWindow
                 return;
             }
 
-            var gitManager = new GitWorktreeManager();
             preparation = await gitManager.PrepareAsync(
                 gitState.RepositoryRoot,
                 directJobId,
