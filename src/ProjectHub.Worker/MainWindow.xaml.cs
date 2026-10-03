@@ -790,10 +790,13 @@ public partial class MainWindow : Window
 
             GitRepositoryRuntimeCleanupResult? runtimeCleanup = null;
             var cleanupWorkspace = _activeWorkingDirectory;
+            var wasDirectWork = _directWorkHistoryActive;
+            _directWorkHistoryActive = false;
             _activeWorkingDirectory = null;
             ClearCoordinatorGitTargetPresentation();
 
-            if (!string.IsNullOrWhiteSpace(cleanupWorkspace) &&
+            if (!wasDirectWork &&
+                !string.IsNullOrWhiteSpace(cleanupWorkspace) &&
                 Directory.Exists(cleanupWorkspace))
             {
                 runtimeCleanup = await new GitWorktreeManager()
@@ -802,7 +805,8 @@ public partial class MainWindow : Window
                         CancellationToken.None);
             }
 
-            ProjectWorkspacePersistence.ClearContinuation(cleanupWorkspace);
+            if (!wasDirectWork)
+                ProjectWorkspacePersistence.ClearContinuation(cleanupWorkspace);
             _continuationState = null;
             _activeProjectJobId = null;
             SetFollowupComposerVisible(false);
@@ -1174,6 +1178,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        _directWorkHistoryActive = false;
         var launchRequest = BuildTaskLaunchRequest();
         if (launchRequest is null) return;
         var selectedThreadForLaunch = CodexThreadCombo.SelectedItem as CodexThreadOption;
