@@ -45,64 +45,30 @@ public sealed class TargetWorkspaceFinalizer
             .ToArray();
 
         if (completedCodeChanges.Length == 0)
-            return new(true, null, "사용자 작업 폴더에 반영할 CODE_CHANGE가 없습니다.");
+            return new(true, null, "최종 반영할 CODE_CHANGE가 없습니다.");
 
-        var consumedByCompletedCodeChange = completedCodeChanges
+        var consumedIds = completedCodeChanges
             .SelectMany(item => item.Dependencies)
             .ToHashSet(StringComparer.Ordinal);
-
-        var candidates = completedCodeChanges
-            .Where(item => !consumedByCompletedCodeChange.Contains(item.Id))
+        var tips = completedCodeChanges
+            .Where(item => !consumedIds.Contains(item.Id))
             .OrderBy(item => item.CreatedOrder)
             .ToArray();
 
-        if (candidates.Length == 0)
-            return new(true, null, "사용자 작업 폴더에 별도 반영할 CODE_CHANGE가 없습니다.");
+        if (tips.Length == 0)
+            return new(true, null, "최종 반영할 CODE_CHANGE tip이 없습니다.");
 
-        var pending = new List<WorkItemSnapshot>();
-        foreach (var item in candidates)
+        string finalResultRef;
+        if (tips.Length == 1)
         {
-            var containment = await _worktrees.InspectTargetContainmentAsync(
-                _workspace,
-                item.ResultRef!,
-                _expectedPrimaryBranch,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!containment.Success)
-            {
-                return new(
-                    false,
-                    containment.ErrorCode ?? "TARGET_CONTAINMENT_CHECK_FAILED",
-                    "사용자 작업 폴더의 현재 HEAD와 WorkItem 결과 포함 여부를 확인하지 못했습니다." +
-                    Environment.NewLine +
-                    $"workItemId={item.Id}" + Environment.NewLine +
-                    $"resultRef={item.ResultRef}" + Environment.NewLine +
-                    $"targetWorkspace={_workspace}");
-            }
-
-            if (!containment.IsContained)
-                pending.Add(item);
+            finalResultRef = tips[0].ResultRef!;
         }
-
-        if (pending.Count == 0)
-        {
-            var freshness = await CheckPublishFreshnessAsync(
-                graph.JobId,
-                cancellationToken).ConfigureAwait(false);
-            if (freshness is not null)
-                return freshness;
-
-            return new(true, null, "최종 CODE_CHANGE가 사용자 작업 폴더의 현재 HEAD에 이미 포함되어 있습니다.");
-        }
-
-        WorkItemSnapshot target;
-        string landingRef;
-        if (pending.Count > 1)
+        else
         {
             var reduced = await _worktrees.ResolveNormalBaseRefAsync(
                 _workspace,
-                "HEAD",
-                pending.Select(item => item.ResultRef!).ToArray(),
+                tips[0].ResultRef!,
+                tips.Skip(1).Select(item => item.ResultRef!).ToArray(),
                 cancellationToken).ConfigureAwait(false);
 
             if (!reduced.Success || string.IsNullOrWhiteSpace(reduced.EffectiveBaseRef))
@@ -112,129 +78,129 @@ public sealed class TargetWorkspaceFinalizer
                         "NORMAL_MULTIPLE_CODE_BASES_REQUIRE_INTEGRATION",
                         StringComparison.Ordinal))
                 {
-                    var detail = string.Join(
-                        Environment.NewLine,
-                        pending.Select(item => $"- workItemId={item.Id} resultRef={item.ResultRef}"));
                     return new(
                         false,
                         "TARGET_INTEGRATION_REQUIRED",
-                        "서로 독립적으로 완료된 미반영 NORMAL CODE_CHANGE가 둘 이상 남아 있습니다." +
+                        "서로 독립된 원격 CODE_CHANGE tip이 둘 이상 남아 있습니다." +
                         Environment.NewLine +
-                        "Worker는 결과를 임의 병합하지 않습니다. HQ가 필요한 결과를 dependency로 둔 INTEGRATION WorkItem을 추가해야 합니다." +
+                        "HQ가 해당 결과들을 dependency로 둔 INTEGRATION WorkItem을 먼저 완료해야 합니다." +
                         Environment.NewLine +
-                        detail);
+                        string.Join(
+                            Environment.NewLine,
+                            tips.Select(item => $"- workItemId={item.Id} resultRef={item.ResultRef}")));
                 }
 
                 return new(
                     false,
                     "TARGET_CODE_LINEAGE_CHECK_FAILED",
-                    "미반영 NORMAL CODE_CHANGE의 Git 계보를 하나의 최종 tip으로 축약하지 못했습니다." +
+                    "최종 원격 CODE_CHANGE 계보를 하나의 commit으로 축약하지 못했습니다." +
                     Environment.NewLine +
                     $"gitError={reduced.ErrorCode ?? "NORMAL_CODE_LINEAGE_CHECK_FAILED"}" +
                     Environment.NewLine +
                     (reduced.ErrorDetail ?? "추가 정보 없음"));
             }
 
-            landingRef = reduced.EffectiveBaseRef;
-            target = pending.FirstOrDefault(item =>
-                         string.Equals(
-                             item.ResultRef,
-                             landingRef,
-                             StringComparison.OrdinalIgnoreCase))
-                     ?? pending.OrderByDescending(item => item.CreatedOrder).First();
-        }
-        else
-        {
-            target = pending[0];
-            landingRef = target.ResultRef!;
+            finalResultRef = reduced.EffectiveBaseRef;
         }
 
-        var landing = await _worktrees.LandIntegrationAsync(
+        var target = tips.FirstOrDefault(item =>
+                         string.Equals(
+                             item.ResultRef,
+                             finalResultRef,
+                             StringComparison.OrdinalIgnoreCase))
+                     ?? tips.OrderByDescending(item => item.CreatedOrder).First();
+
+        var containment = await _worktrees.InspectTargetContainmentAsync(
             _workspace,
-            landingRef,
+            finalResultRef,
             _expectedPrimaryBranch,
             cancellationToken).ConfigureAwait(false);
 
-        if (!landing.Success)
+        if (!containment.Success)
         {
-            if (string.Equals(
-                    landing.ErrorCode,
-                    "INTEGRATION_TARGET_DIRTY",
-                    StringComparison.Ordinal))
-            {
-                return new(
-                    false,
-                    "TARGET_WORKSPACE_DIRTY",
-                    "원격 commit을 최종 반영하기 전에 사용자 작업 폴더가 변경되었습니다." +
-                    Environment.NewLine +
-                    "ProjectHub는 파일 단위 materialize 우회를 사용하지 않습니다. 로컬 변경을 commit·push하거나 정리한 뒤 다시 진행해야 합니다." +
-                    Environment.NewLine +
-                    $"workItemId={target.Id}" + Environment.NewLine +
-                    $"resultRef={landingRef}" + Environment.NewLine +
-                    $"targetWorkspace={_workspace}");
-            }
-
             return new(
                 false,
-                MapLandingError(landing.ErrorCode),
-                "단일 CODE_CHANGE를 사용자 작업 폴더에 ff-only로 반영하지 못했습니다." +
+                containment.ErrorCode ?? "TARGET_CONTAINMENT_CHECK_FAILED",
+                "사용자 작업 폴더와 최종 원격 CODE_CHANGE의 포함 관계를 확인하지 못했습니다." +
                 Environment.NewLine +
-                $"workItemId={target.Id}" + Environment.NewLine +
-                $"resultRef={landingRef}" + Environment.NewLine +
-                $"targetWorkspace={_workspace}" + Environment.NewLine +
-                $"gitError={landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED"}");
+                $"resultRef={finalResultRef}" +
+                Environment.NewLine +
+                $"targetWorkspace={_workspace}");
         }
 
-        if (landing.FastForwarded)
+        var fastForwarded = false;
+        if (!containment.IsContained)
         {
-            try
+            var landing = await _worktrees.LandIntegrationAsync(
+                _workspace,
+                finalResultRef,
+                _expectedPrimaryBranch,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!landing.Success)
             {
-                var publishState = new WorkspacePublishState(_workspace, graph.JobId);
-                await publishState.MarkCodeLandedAsync(
-                    landingRef,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException or InvalidDataException)
-            {
+                if (string.Equals(
+                        landing.ErrorCode,
+                        "INTEGRATION_TARGET_DIRTY",
+                        StringComparison.Ordinal))
+                {
+                    return new(
+                        false,
+                        "TARGET_WORKSPACE_DIRTY",
+                        "원격 commit을 최종 반영하기 전에 사용자 작업 폴더가 변경되었습니다." +
+                        Environment.NewLine +
+                        "ProjectHub는 파일 단위 materialize나 강제 reset으로 우회하지 않습니다." +
+                        Environment.NewLine +
+                        "로컬 변경을 commit·push하거나 정리한 뒤 다시 진행해야 합니다." +
+                        Environment.NewLine +
+                        $"resultRef={finalResultRef}" +
+                        Environment.NewLine +
+                        $"targetWorkspace={_workspace}");
+                }
+
                 return new(
                     false,
-                    "TARGET_PUBLISH_STATE_UNAVAILABLE",
-                    "원격 CODE_CHANGE의 로컬 ff-only 반영은 완료했지만 publish freshness 상태를 기록하지 못했습니다." +
+                    MapLandingError(landing.ErrorCode),
+                    "최종 원격 CODE_CHANGE를 사용자 branch에 ff-only로 반영하지 못했습니다." +
                     Environment.NewLine +
-                    exception.Message,
-                    target.Id,
-                    landingRef,
-                    true);
+                    $"resultRef={finalResultRef}" +
+                    Environment.NewLine +
+                    $"targetWorkspace={_workspace}" +
+                    Environment.NewLine +
+                    $"gitError={landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED"}");
             }
+
+            fastForwarded = landing.FastForwarded;
         }
 
-        var postLandingFreshness = await CheckPublishFreshnessAsync(
+        var freshness = await CheckPublishFreshnessAsync(
             graph.JobId,
+            finalResultRef,
             cancellationToken).ConfigureAwait(false);
-        if (postLandingFreshness is not null)
+        if (freshness is not null)
         {
-            return postLandingFreshness with
+            return freshness with
             {
                 LandedWorkItemId = target.Id,
-                LandedResultRef = landingRef,
-                FastForwarded = landing.FastForwarded
+                LandedResultRef = finalResultRef,
+                FastForwarded = fastForwarded
             };
         }
 
         return new(
             true,
             null,
-            landing.FastForwarded
-                ? "원격 CODE_CHANGE를 사용자 작업 폴더에 ff-only로 반영했습니다."
-                : "원격 CODE_CHANGE가 사용자 작업 폴더에 이미 반영되어 있습니다.",
+            fastForwarded
+                ? "최종 원격 CODE_CHANGE를 사용자 branch에 ff-only로 반영했습니다."
+                : "최종 원격 CODE_CHANGE가 사용자 branch에 이미 포함되어 있습니다.",
             target.Id,
-            landingRef,
-            landing.FastForwarded);
+            finalResultRef,
+            fastForwarded);
     }
 
     private async Task<TargetWorkspaceFinalizationResult?> CheckPublishFreshnessAsync(
         string jobId,
+        string finalResultRef,
         CancellationToken cancellationToken)
     {
         try
@@ -242,18 +208,19 @@ public sealed class TargetWorkspaceFinalizer
             var state = await new WorkspacePublishState(_workspace, jobId)
                 .ReadAsync(cancellationToken)
                 .ConfigureAwait(false);
-            if (!state.IsStale)
+            if (!state.IsStaleFor(finalResultRef))
                 return null;
 
             return new(
                 false,
                 "TARGET_PUBLISH_STALE",
-                "마지막 성공 #9 이후 CODE_CHANGE가 사용자 작업 폴더에 반영되었습니다." +
+                "마지막 성공 #9 BUILD/PUBLISH가 최종 원격 CODE_CHANGE와 다른 commit을 사용했습니다." +
                 Environment.NewLine +
-                "현재 소스 기준으로 #9 BUILD/PUBLISH를 다시 완료해야 합니다." +
+                "최종 resultRef를 baseRef로 #9를 다시 완료해야 합니다." +
                 Environment.NewLine +
-                $"codeGeneration={state.CodeGeneration}" + Environment.NewLine +
-                $"publishedCodeGeneration={state.PublishedCodeGeneration}");
+                $"finalResultRef={finalResultRef}" +
+                Environment.NewLine +
+                $"publishedSourceRef={state.PublishedSourceRef ?? "없음"}");
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or InvalidDataException)
