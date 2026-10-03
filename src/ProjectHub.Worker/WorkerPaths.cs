@@ -32,6 +32,41 @@ public static class WorkerPaths
     public static string ManagedWebProfiles => Path.Combine(ManagedWebRoot, "Profiles");
     public static string ManagedWebHqProfile => Path.Combine(ManagedWebProfiles, "HQ");
     public static string ManagedWebResourceProfile => Path.Combine(ManagedWebProfiles, "RESOURCE");
+    public static string PublishedArtifactsRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ProjectHub",
+        "PublishedArtifacts");
+
+    public static string GetPublishedArtifactDirectory(
+        string repositoryRoot,
+        string jobId,
+        long invocation)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryRoot))
+            throw new ArgumentException("저장소 경로가 비어 있습니다.", nameof(repositoryRoot));
+        if (string.IsNullOrWhiteSpace(jobId))
+            throw new ArgumentException("Job ID가 비어 있습니다.", nameof(jobId));
+
+        var root = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var repositoryName = new string(
+            Path.GetFileName(root)
+                .Select(character => char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '-')
+                .ToArray())
+            .Trim('-');
+        if (string.IsNullOrWhiteSpace(repositoryName))
+            repositoryName = "repository";
+
+        var repositoryKey = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(root)))
+            .ToLowerInvariant()[..12];
+
+        return Path.Combine(
+            PublishedArtifactsRoot,
+            repositoryName + "-" + repositoryKey,
+            StableRuntimeSegment(jobId),
+            "run-" + invocation.ToString("D12", System.Globalization.CultureInfo.InvariantCulture));
+    }
 
     public static RepositoryRuntimePaths GetRepositoryRuntimePaths(string repositoryRoot)
     {
@@ -267,7 +302,8 @@ public static class WorkerPaths
             ManagedWebBrowserRuntime,
             ManagedWebProfiles,
             ManagedWebHqProfile,
-            ManagedWebResourceProfile
+            ManagedWebResourceProfile,
+            PublishedArtifactsRoot
         })
             Directory.CreateDirectory(directory);
     }
