@@ -61,6 +61,9 @@ public sealed class TargetWorkspaceFinalizer
         {
             if (graph.Items.Any(item =>
                     !string.Equals(item.Id, bootstrap.Id, StringComparison.Ordinal) &&
+                    item.State == WorkItemState.Completed &&
+                    item.ResultType == WorkItemResultType.CodeChange &&
+                    !string.IsNullOrWhiteSpace(item.ResultRef) &&
                     !string.IsNullOrWhiteSpace(item.BaseRef) &&
                     string.Equals(
                         item.BaseRef,

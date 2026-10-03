@@ -767,6 +767,7 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "base123");
         runner.Enqueue(0, "main");
         runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "?? src/player.gd");
         runner.Enqueue(0, "");
         runner.Enqueue(0, "base123");
         runner.Enqueue(0, branch);
@@ -825,6 +826,43 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task TargetWorkspaceCheckpointLeavesOriginalBranchWhenRootIsClean()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var branch = GitWorktreeManager.BuildBranchName("job", "8-run-3");
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .CreateTargetWorkspaceCheckpointAsync(
+                    root,
+                    "base123",
+                    branch,
+                    FixedWorkItemSlots.FileManager);
+
+            Assert.True(result.Success);
+            Assert.False(result.CreatedCommit);
+            Assert.Equal("base123", result.HeadCommit);
+            Assert.Equal("main", result.Branch);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] is "switch" or "push" or "add");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
     public async Task TargetWorkspaceCheckpointRejectsDivergedManagedRetry()
     {
         var root = CreateTempRepositoryDirectory();
@@ -835,6 +873,7 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "base123");
         runner.Enqueue(0, branch);
         runner.Enqueue(0, "other999");
+        runner.Enqueue(0, "");
         runner.Enqueue(1, "");
 
         try

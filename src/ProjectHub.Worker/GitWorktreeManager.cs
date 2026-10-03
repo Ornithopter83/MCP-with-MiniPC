@@ -1773,6 +1773,34 @@ public sealed class GitWorktreeManager
             if (string.IsNullOrWhiteSpace(currentHead))
                 return new(false, "TARGET_WORKSPACE_CHECKPOINT_CURRENT_HEAD_REQUIRED", repositoryRoot, managedBranch, null, false);
 
+            var workspaceStatus = await ReadPrimaryWorkspaceStatusAsync(
+                repositoryRoot,
+                workspace,
+                cancellationToken).ConfigureAwait(false);
+            if (workspaceStatus.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "TARGET_WORKSPACE_CHECKPOINT_STATUS_UNAVAILABLE",
+                    repositoryRoot,
+                    managedBranch,
+                    currentHead,
+                    false,
+                    BuildGitFailureDetail("git status", workspaceStatus));
+            }
+
+            if (!string.Equals(currentBranch, managedBranch, StringComparison.Ordinal) &&
+                string.IsNullOrWhiteSpace(workspaceStatus.StandardOutput))
+            {
+                return new(
+                    true,
+                    null,
+                    repositoryRoot,
+                    currentBranch,
+                    currentHead,
+                    false);
+            }
+
             if (!string.Equals(currentBranch, managedBranch, StringComparison.Ordinal))
             {
                 if (!string.Equals(currentHead, baseCommit, StringComparison.OrdinalIgnoreCase))

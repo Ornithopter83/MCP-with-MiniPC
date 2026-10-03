@@ -81,7 +81,9 @@ public static class RoleContractLoader
             : $"최종 게시 산출물 루트(게시·export 결과는 이 경로에 저장): {publishOutputDirectory}\n";
         var header =
             $"역할: WORK\n입력 유형: {inboundType}\n" +
-            BuildWorkItemHeader(workItem) +
+            BuildWorkItemHeader(
+                workItem,
+                includeWorktree: string.IsNullOrWhiteSpace(targetWorkspace)) +
             observationHeader +
             resourceHeader +
             workTempHeader +
@@ -98,7 +100,9 @@ public static class RoleContractLoader
         "역할: HIGH\n호출 유형: USER_AUTHORIZED_ONE_SHOT\ncomputerUse: disabled\n입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadHighFooter();
 
-    private static string BuildWorkItemHeader(WorkItemPromptContext workItem)
+    private static string BuildWorkItemHeader(
+        WorkItemPromptContext workItem,
+        bool includeWorktree = true)
     {
         var dependencies = workItem.Dependencies.Count == 0 ? "없음" : string.Join(", ", workItem.Dependencies);
         var previous = string.IsNullOrWhiteSpace(workItem.PreviousReport) ? string.Empty : $"이전 WorkItem 보고:\n{workItem.PreviousReport}\n";
@@ -117,7 +121,9 @@ public static class RoleContractLoader
             $"선행 WorkItem: {dependencies}\n" +
             $"기준 ref: {workItem.BaseRef ?? "없음"}\n" +
             $"branch: {workItem.Branch ?? "미배정"}\n" +
-            $"worktree: {workItem.WorktreePath ?? "미배정"}\n" +
+            (includeWorktree
+                ? $"worktree: {workItem.WorktreePath ?? "미배정"}\n"
+                : string.Empty) +
             dependencyResults + previous;
     }
 

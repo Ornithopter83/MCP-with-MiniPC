@@ -151,6 +151,66 @@ public sealed class TargetWorkspaceFinalizerPublishTests
     }
 
     [Fact]
+    public async Task FinalizerKeepsFileManagerTipWhenOnlyDownstreamWorkWasCanceled()
+    {
+        var root = CreateRoot();
+        var bootstrapBranch = GitWorktreeManager.BuildBranchName("job", "8-run-1");
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                FixedWorkItemSlots.FileManager,
+                "초기 구조 생성",
+                BaseRef: "base123"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning(
+            FixedWorkItemSlots.FileManager,
+            bootstrapBranch));
+        Assert.True(graph.TryMarkCompleted(
+            FixedWorkItemSlots.FileManager,
+            "bootstrap456",
+            "scaffold",
+            WorkItemResultType.CodeChange));
+
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                "10",
+                "후속 구현",
+                BaseRef: "bootstrap456"))
+        })).Success);
+        Assert.True(graph.TryMarkCanceled("10", "canceled"));
+
+        var runner = new SequenceRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, bootstrapBranch);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.True(result.Success);
+            Assert.Null(result.ErrorCode);
+            Assert.Equal(FixedWorkItemSlots.FileManager, result.FinalWorkItemId);
+            Assert.Equal("bootstrap456", result.FinalResultRef);
+            Assert.False(result.CheckoutSwitched);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task FinalizerSwitchesCleanCheckoutToRemoteResultBranch()
     {
         var root = CreateRoot();

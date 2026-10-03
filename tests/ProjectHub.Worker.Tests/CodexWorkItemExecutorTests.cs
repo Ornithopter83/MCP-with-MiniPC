@@ -108,6 +108,7 @@ public sealed class CodexWorkItemExecutorTests
             fixture.Git.Enqueue(0, "base123");
             fixture.Git.Enqueue(0, "main");
             fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, "?? src/player.gd");
             fixture.Git.Enqueue(0, "");
             fixture.Git.Enqueue(0, "base123");
             fixture.Git.Enqueue(0, fixture.Branch);
@@ -134,6 +135,9 @@ public sealed class CodexWorkItemExecutorTests
                 fixture.Runner.LastRequest.AdditionalWritableDirectories!);
             Assert.Contains(
                 "대상 프로젝트 루트: " + rootPath,
+                fixture.Runner.LastRequest.Prompt);
+            Assert.DoesNotContain(
+                "worktree: " + fixture.Request.Item.WorktreePath,
                 fixture.Runner.LastRequest.Prompt);
             Assert.Equal(
                 rootPath,
