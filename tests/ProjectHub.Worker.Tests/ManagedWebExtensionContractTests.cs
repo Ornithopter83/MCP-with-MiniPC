@@ -15,7 +15,7 @@ public sealed class ManagedWebExtensionContractTests
         Assert.NotNull(stream);
         using var document = JsonDocument.Parse(stream!);
 
-        Assert.Equal("0.4.3", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("0.4.4", document.RootElement.GetProperty("version").GetString());
         var permissions = document.RootElement
             .GetProperty("permissions")
             .EnumerateArray()
@@ -234,6 +234,10 @@ public sealed class ManagedWebExtensionContractTests
         Assert.True(source.Contains("GENERATION_STARTED_", StringComparison.Ordinal));
         Assert.True(source.Contains("SEND_FALLBACK", StringComparison.Ordinal));
         Assert.True(source.Contains("SEND_CONFIRM_DIAGNOSTIC", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESOURCE_PROMPT_CONSUMED_GRACE=2250", StringComparison.Ordinal));
+        Assert.True(source.Contains("activeResource&&Date.now()-promptConsumedSince>=RESOURCE_PROMPT_CONSUMED_GRACE", StringComparison.Ordinal));
+        Assert.True(source.Contains("latchedSendEvidence='RESOURCE_PROMPT_CONSUMED'", StringComparison.Ordinal));
+        Assert.True(source.Contains("RESOURCE_SEND_ACCEPTED", StringComparison.Ordinal));
         Assert.True(source.Contains("genericResponseCandidates", StringComparison.Ordinal));
         Assert.True(source.Contains("latestGenericResponseFallback", StringComparison.Ordinal));
         Assert.True(source.Contains("baselineGenericResponseFingerprints", StringComparison.Ordinal));
