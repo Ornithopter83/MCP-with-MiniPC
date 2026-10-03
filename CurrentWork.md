@@ -34,7 +34,7 @@
 ④ WorkGraph patch의 JSON·스키마 오류는 현재 revision과 오류 정보를 HQ에 돌려 형식 수정 응답을 요구하며, 기계 오류 때문에 WORK 의미 작업을 다시 수행하지 않는다.
 ⑤ WorkItem 격리, CODE_CHANGE provenance, END 종료 게이트와 안전한 fast-forward landing 규칙을 유지한다.
 ⑥ DONE·DONE_WITH_ERROR 뒤의 추가 작업은 이전 WorkGraph를 이어 붙이지 않고 현재 작업 폴더에서 새 Job으로 시작하며, PAUSE·CANCELED도 작업 폴더가 바뀌었으면 같은 원칙을 적용한다.
-⑦ WorkGraph 새 작업은 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin`이 존재하며 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 상태에서만 시작한다. 상위 폴더의 Git 저장소를 자동 채택하지 않고, 불일치·dirty·원격 부재 상태를 Worker가 임의 재초기화·merge·reset하지 않는다. 하네스 없음 Direct Work는 이 조건과 별개다.
+⑦ WorkGraph 새 작업은 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin`이 존재해야 한다. 기존 HEAD가 있으면 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 상태를 요구한다. 최초 commit이 없는 unborn 저장소는 `.gitignore` 기준 현재 파일로 Worker가 `projecthub/*` 초기 baseline을 만들어 원격에 게시한 뒤 그 SHA에서 시작한다. 상위 폴더의 Git 저장소를 자동 채택하지 않고, 기존 HEAD의 불일치·dirty·원격 부재 상태를 Worker가 임의 merge·reset·재초기화로 우회하지 않는다. 하네스 없음 Direct Work는 이 조건과 별개다.
 ⑧ HQ 상태 통지는 WorkItem checklist를 첫 보고에 포함한 뒤 같은 관제 세션의 후속 상태 변화에서는 동일 checklist 전문을 반복하지 않고 새 WORK 보고와 변경 상태를 중심으로 전달한다.
 ⑨ NORMAL WORK는 원격 기준 disposable clone과 `projecthub/*` checkpoint 정책을 유지한다. 하네스 없음 Direct Work는 이 관제 경로와 분리되어 사용자가 선택한 작업 폴더에서 직접 실행한다.
 ⑩ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
