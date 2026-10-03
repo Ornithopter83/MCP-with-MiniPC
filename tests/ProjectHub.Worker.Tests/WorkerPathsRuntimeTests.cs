@@ -108,8 +108,9 @@ public sealed class WorkerPathsRuntimeTests
             Assert.StartsWith(runtime.IntegrationClones, integration, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.TempRoot, workTemp, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(
-                WorkerPaths.PublishedArtifactsRoot,
-                publishRoot,
+                Path.GetFullPath(Path.Combine(workspace, ".projecthub", "artifacts")) +
+                    Path.DirectorySeparatorChar,
+                Path.GetFullPath(publishRoot),
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
             Assert.False(
                 Path.GetFullPath(publishRoot).StartsWith(
@@ -137,22 +138,9 @@ public sealed class WorkerPathsRuntimeTests
     }
     private static void CleanupWorkspacePaths(string workspace)
     {
-        var publishedRun = WorkerPaths.GetPublishedArtifactDirectory(
-            workspace,
-            "job-alpha",
-            12);
-        var publishedRepositoryRoot = Directory.GetParent(
-            Directory.GetParent(publishedRun)!.FullName)!.FullName;
-
-        foreach (var path in new[]
-        {
-            ProjectWorkspacePersistence.RootDirectory(workspace),
-            publishedRepositoryRoot
-        })
-        {
-            if (Directory.Exists(path))
-                Directory.Delete(path, true);
-        }
+        var projectHubRoot = ProjectWorkspacePersistence.RootDirectory(workspace);
+        if (Directory.Exists(projectHubRoot))
+            Directory.Delete(projectHubRoot, true);
     }
 
 }
