@@ -173,6 +173,38 @@ public sealed class GitWorkspaceBootstrapper
         if (remoteHeadResult.ExitCode != 0 ||
             string.IsNullOrWhiteSpace(remoteHeadResult.StandardOutput))
         {
+            var managedRemoteResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "ls-remote",
+                "origin",
+                "refs/heads/projecthub/*").ConfigureAwait(false);
+
+            var managedRemoteContainsHead =
+                managedRemoteResult.ExitCode == 0 &&
+                managedRemoteResult.StandardOutput
+                    .Replace("\r\n", "\n")
+                    .Replace('\r', '\n')
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+                    .Any(parts =>
+                        parts.Length >= 2 &&
+                        string.Equals(parts[0], headCommit, StringComparison.OrdinalIgnoreCase));
+
+            if (managedRemoteContainsHead)
+            {
+                return new GitWorkspaceBootstrapState(
+                    true,
+                    null,
+                    workspace,
+                    repositoryRoot,
+                    branch,
+                    headCommit,
+                    false,
+                    displayOrigin);
+            }
+
             return RepositoryFailure(
                 "GIT_REMOTE_BRANCH_REQUIRED",
                 workspace,
