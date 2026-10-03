@@ -22,8 +22,7 @@ public sealed record WorkItemPromptContext(
     string? WorktreePath,
     string? PreviousReport = null,
     IReadOnlyList<WorkItemDependencyPromptContext>? DependencyResults = null,
-    IReadOnlyList<string>? Checklist = null,
-    WorkItemDependencyPromptContext? MaterializationSource = null);
+    IReadOnlyList<string>? Checklist = null);
 
 public static class RoleContractLoader
 {
@@ -97,9 +96,6 @@ public static class RoleContractLoader
         var dependencyResults = workItem.DependencyResults is null || workItem.DependencyResults.Count == 0
             ? string.Empty
             : "선행 WorkItem 결과:\n" + string.Join("\n", workItem.DependencyResults.Select(FormatDependencyResult)) + "\n";
-        var materializationSource = workItem.MaterializationSource is null
-            ? string.Empty
-            : "MATERIALIZE source:\n" + FormatDependencyResult(workItem.MaterializationSource) + "\n";
         return
             $"workItemId: {workItem.WorkItemId}\n" +
             $"workItemKind: {workItem.Kind.ToString().ToUpperInvariant()}\n" +
@@ -110,7 +106,7 @@ public static class RoleContractLoader
             $"기준 ref: {workItem.BaseRef ?? "없음"}\n" +
             $"branch: {workItem.Branch ?? "미배정"}\n" +
             $"worktree: {workItem.WorktreePath ?? "미배정"}\n" +
-            dependencyResults + materializationSource + previous;
+            dependencyResults + previous;
     }
 
     private static string FormatDependencyResult(WorkItemDependencyPromptContext result)
