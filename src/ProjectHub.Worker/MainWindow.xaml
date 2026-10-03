@@ -214,7 +214,7 @@
           </StackPanel>
           <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0">
             <TextBlock Text="작업 폴더" Width="140" FontSize="14" VerticalAlignment="Center"/>
-            <TextBox x:Name="WorkingDirectoryInput" Width="652" Height="32" FontSize="15" Padding="8,3"/>
+            <TextBox x:Name="WorkingDirectoryInput" Width="652" Height="32" FontSize="15" Padding="8,3" TextChanged="WorkingDirectoryInput_TextChanged"/>
             <Button x:Name="WorkingDirectoryBrowseButton" Content="폴더 선택…" Width="104" Height="32" Margin="8,0,0,0" Padding="0,3" FontSize="14" Click="BrowseWorkingDirectory_Click"/>
           </StackPanel>
           <Border Grid.Row="5" BorderBrush="#C9DBF5" BorderThickness="1" CornerRadius="7" Background="#F5F9FF" Padding="12,10" Margin="0,0,0,0">
