@@ -313,7 +313,7 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task CheckpointCommitsDirtyWorktreeWithoutPushOrForce()
+    public async Task CheckpointCommitsDirtyWorktreeAndPublishesRemoteBranch()
     {
         var root = CreateTempRepositoryDirectory();
         var worktree = Path.Combine(Directory.GetParent(root)!.FullName, "worktree");
@@ -323,9 +323,11 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "base123");
         runner.Enqueue(0, "projecthub/job/W1");
         runner.Enqueue(0, " M changed.cs");
-        runner.Enqueue(0, " M changed.cs");
         runner.Enqueue(0, "");
         runner.Enqueue(0, "[projecthub/job/W1 new456] checkpoint");
+        runner.Enqueue(0, "new456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "new456\trefs/heads/projecthub/job/W1");
         runner.Enqueue(0, "new456");
         runner.Enqueue(0, "projecthub/job/W1");
         runner.Enqueue(0, "");
@@ -339,15 +341,26 @@ public sealed class GitWorktreeManagerTests
             Assert.True(result.CreatedCommit);
             Assert.Equal("new456", result.HeadCommit);
             Assert.Contains(runner.Calls, call =>
-                call.Arguments.Count > 2 &&
-                call.Arguments[0] == "add" &&
-                call.Arguments[1] == "--all" &&
-                call.Arguments.Contains(":(exclude,glob)**/bin/**") &&
-                call.Arguments.Contains(":(exclude,glob)**/publish/**") &&
-                call.Arguments.Contains(":(exclude,glob)**/artifacts/**"));
+                call.Arguments.SequenceEqual(new[] { "add", "--all", "--", "." }));
             Assert.Contains(runner.Calls, call => call.Arguments.Contains("commit"));
-            Assert.DoesNotContain(runner.Calls.SelectMany(call => call.Arguments), argument => argument == "push");
-            Assert.DoesNotContain(runner.Calls.SelectMany(call => call.Arguments), argument => argument == "--force" || argument == "-f");
+            Assert.Contains(runner.Calls, call =>
+                call.Arguments.SequenceEqual(new[]
+                {
+                    "push",
+                    "origin",
+                    "HEAD:refs/heads/projecthub/job/W1"
+                }));
+            Assert.Contains(runner.Calls, call =>
+                call.Arguments.SequenceEqual(new[]
+                {
+                    "ls-remote",
+                    "--exit-code",
+                    "origin",
+                    "refs/heads/projecthub/job/W1"
+                }));
+            Assert.DoesNotContain(
+                runner.Calls.SelectMany(call => call.Arguments),
+                argument => argument == "--force" || argument == "-f");
         }
         finally
         {
@@ -1006,9 +1019,14 @@ public sealed class GitWorktreeManagerTests
             Assert.True(graph.TryMarkCompleted("W10", "normal-ref", "normal", WorkItemResultType.CodeChange));
             Assert.True(graph.TryMarkRunning("I10"));
             Assert.True(graph.TryMarkCompleted("I10", "integration-ref", "integration", WorkItemResultType.CodeChange));
-            WriteVerifiedMaterializationLedger(root, "job", "integration-ref");
 
             var runner = new FakeGitRunner(root);
+            runner.Enqueue(0, root);
+            runner.Enqueue(0, "main");
+            runner.Enqueue(0, "integration-ref");
+            runner.Enqueue(0, "head789");
+            runner.Enqueue(0, "");
+
             var finalizer = new TargetWorkspaceFinalizer(
                 root,
                 "main",
@@ -1017,7 +1035,7 @@ public sealed class GitWorktreeManagerTests
             var result = await finalizer.FinalizeAsync(graph.Snapshot());
 
             Assert.True(result.Success);
-            Assert.Empty(runner.Calls);
+            Assert.Equal(5, runner.Calls.Count);
         }
         finally
         {
@@ -1346,39 +1364,6 @@ public sealed class GitWorktreeManagerTests
         {
             DeleteTempTree(root);
         }
-    }
-
-    private static void WriteVerifiedMaterializationLedger(
-        string root,
-        string jobId,
-        string resultRef)
-    {
-        var directory = Path.Combine(
-            root,
-            ".projecthub",
-            "materialization-ledger",
-            jobId);
-        Directory.CreateDirectory(directory);
-        var entry = new MaterializationLedgerEntry(
-            jobId,
-            FixedWorkItemSlots.Materialize,
-            1,
-            DateTimeOffset.UtcNow,
-            true,
-            null,
-            new[] { resultRef },
-            Array.Empty<MaterializationFileRecord>(),
-            Array.Empty<string>(),
-            "verified");
-        File.WriteAllText(
-            Path.Combine(directory, "000000000001-8.json"),
-            System.Text.Json.JsonSerializer.Serialize(
-                entry,
-                new System.Text.Json.JsonSerializerOptions(
-                    System.Text.Json.JsonSerializerDefaults.Web)
-                {
-                    WriteIndented = true
-                }));
     }
 
     private static string CreateTempRepositoryDirectory()
