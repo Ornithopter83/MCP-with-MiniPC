@@ -21,6 +21,11 @@ public static class ParallelWorkGitPreflight
                 "PARALLEL_GIT_REMOTE_REQUIRED",
                 "ProjectHub 병렬 WORK는 origin 원격 저장소를 필수로 사용합니다.");
 
+        if (!GitRemoteAddressPolicy.IsNetworkRemote(target.RepositoryUrl))
+            return Fail(
+                "PARALLEL_GIT_NETWORK_REMOTE_REQUIRED",
+                "ProjectHub 병렬 WORK는 로컬 경로가 아닌 네트워크 Git origin을 요구합니다.");
+
         if (string.IsNullOrWhiteSpace(target.HeadSha))
             return Fail(
                 "PARALLEL_GIT_HEAD_REQUIRED",
