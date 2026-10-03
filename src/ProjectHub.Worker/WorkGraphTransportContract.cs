@@ -221,6 +221,27 @@ public static class WorkGraphTransportContract
 
                 if (string.Equals(
                         errorCode,
+                        "WORK_GRAPH_WORK_ITEM_ID_INVALID",
+                        StringComparison.Ordinal))
+                {
+                    var id = operation.TryGetProperty("workItemId", out var idElement)
+                        ? NormalizeId(idElement)
+                        : string.Empty;
+                    if (!IsSafeId(id))
+                    {
+                        var hint = string.Equals(type, "SET_BASE_REF", StringComparison.Ordinal)
+                            ? "SET_BASE_REF targets one existing WorkItem. For a patch-wide baseRef, put baseRef on each ADD item or omit it and let Worker apply the current default baseRef."
+                            : "Provide a nonblank workItemId using letters, digits, '-', '_' or '.'.";
+                        return
+                            $"path=operations[{index}].workItemId" + Environment.NewLine +
+                            $"message={type} requires a valid workItemId." + Environment.NewLine +
+                            "receivedKeys=" + JsonSerializer.Serialize(keys, JsonOptions) + Environment.NewLine +
+                            "hint=" + hint;
+                    }
+                }
+
+                if (string.Equals(
+                        errorCode,
                         "WORK_GRAPH_SET_GOAL_SCHEMA_INVALID",
                         StringComparison.Ordinal) &&
                     string.Equals(type, "SET_GOAL", StringComparison.Ordinal))
@@ -373,16 +394,18 @@ public static class WorkGraphTransportContract
             }
         }
 
-        // HQ가 사용자 전체 목표를 별도 SET_GOAL로 먼저 적는 패턴은
-        // WorkGraph에 대응하는 전역 goal 필드가 없으므로 의미 없는 metadata다.
-        // 같은 patch에 실제 ADD가 있을 때에만 id 없는 SET_GOAL을 기계적으로 제거한다.
-        var hasAdd = operations
+        // HQ가 전역 metadata처럼 SET_GOAL/SET_BASE_REF를 먼저 적는 패턴을
+        // 실제 WorkItem operation으로 오해하지 않는다.
+        // SET_GOAL은 WorkGraph 전역 goal 필드가 없으므로 ADD가 있을 때 제거한다.
+        // id 없는 SET_BASE_REF는 하나의 공통 값일 때 ADD의 baseRef로 보존한 뒤 제거한다.
+        var addOperations = operations
             .OfType<JsonObject>()
-            .Any(operation =>
+            .Where(operation =>
                 TryGetNonBlankString(operation, "type", out var type) &&
-                string.Equals(type, "ADD", StringComparison.OrdinalIgnoreCase));
+                string.Equals(type, "ADD", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
 
-        if (hasAdd)
+        if (addOperations.Length > 0)
         {
             for (var index = operations.Count - 1; index >= 0; index--)
             {
@@ -394,6 +417,51 @@ public static class WorkGraphTransportContract
                     continue;
 
                 operations.RemoveAt(index);
+            }
+
+            var globalBaseRefs = operations
+                .OfType<JsonObject>()
+                .Where(operation =>
+                    TryGetNonBlankString(operation, "type", out var type) &&
+                    string.Equals(type, "SET_BASE_REF", StringComparison.OrdinalIgnoreCase) &&
+                    !operation.ContainsKey("workItemId") &&
+                    TryGetNonBlankString(operation, "value", out _))
+                .Select(operation =>
+                {
+                    _ = TryGetNonBlankString(operation, "value", out var value);
+                    return value.Trim();
+                })
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            if (globalBaseRefs.Length == 1)
+            {
+                var globalBaseRef = globalBaseRefs[0];
+                var conflicts = addOperations.Any(operation =>
+                    TryGetNonBlankString(operation, "baseRef", out var existing) &&
+                    !string.Equals(existing.Trim(), globalBaseRef, StringComparison.Ordinal));
+
+                if (!conflicts)
+                {
+                    foreach (var add in addOperations)
+                    {
+                        if (!TryGetNonBlankString(add, "baseRef", out _))
+                            add["baseRef"] = globalBaseRef;
+                    }
+
+                    for (var index = operations.Count - 1; index >= 0; index--)
+                    {
+                        if (operations[index] is not JsonObject operation ||
+                            !TryGetNonBlankString(operation, "type", out var type) ||
+                            !string.Equals(type, "SET_BASE_REF", StringComparison.OrdinalIgnoreCase) ||
+                            operation.ContainsKey("workItemId") ||
+                            !TryGetNonBlankString(operation, "value", out var value) ||
+                            !string.Equals(value.Trim(), globalBaseRef, StringComparison.Ordinal))
+                            continue;
+
+                        operations.RemoveAt(index);
+                    }
+                }
             }
         }
 
