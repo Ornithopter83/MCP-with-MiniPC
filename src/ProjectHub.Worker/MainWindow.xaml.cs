@@ -405,7 +405,6 @@ public partial class MainWindow : Window
         {
             await InitializeStartupConfigurationAsync();
             ApplyRoleSettingsToControls();
-            RefreshWorkingDirectoryGitTargetPresentation();
         }
         SetSettingsPopupOpen(!IsSettingsOverlayOpen);
     }
@@ -2078,17 +2077,6 @@ public partial class MainWindow : Window
     private void UpdateWorkspaceControls(CodexThreadOption? selected, string workingDirectory)
     {
         UpdateWorkingDirectoryControls(selected, workingDirectory);
-        var effectiveWorkingDirectory = _targetSettings.IsCoordinatorFirst
-            ? ResolveCoordinatorTargetWorkingDirectory()
-            : workingDirectory;
-        var gitFolder = _targetSettings.IsCoordinatorFirst
-            ? effectiveWorkingDirectory
-            : ResolveConfiguredGitFolder(selected) ?? string.Empty;
-        _gitTarget = WorkerTargetConfiguration.ResolveGit(
-            gitFolder,
-            _targetSettings,
-            requireExactRoot: true);
-        RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
     }
 
     private void ClearCoordinatorGitTargetPresentation()
@@ -2398,16 +2386,6 @@ public partial class MainWindow : Window
     {
         if (!Directory.Exists(workingDirectory)) return "Working Folder가 없거나 접근할 수 없습니다.";
         return null;
-    }
-
-    private string? GetParallelGitPreflightError(string workingDirectory)
-    {
-        var result = ParallelWorkGitPreflight.Validate(
-            WorkerTargetConfiguration.ResolveGit(
-                workingDirectory,
-                _targetSettings,
-                requireExactRoot: true));
-        return result.Success ? null : result.Message;
     }
 
     private string? GetCoordinatorFirstPreflightError(string workingDirectory, WorkerAiRoleSettings coordinator, WorkerAiRoleSettings implementer)
