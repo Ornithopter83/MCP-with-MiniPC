@@ -494,12 +494,7 @@ public sealed class CodexWorkItemExecutorTests
         git.Enqueue(0, branch);
         git.Enqueue(0, "dep456");
         git.Enqueue(0, "");
-        // Checkpoint publishes the clean HEAD to origin and verifies it.
-        git.Enqueue(0, "dep456");
-        git.Enqueue(0, branch);
-        git.Enqueue(0, "");
-        git.Enqueue(0, "");
-        git.Enqueue(0, $"dep456\trefs/heads/{branch}");
+        // Clean analysis checkpoint stays local to the disposable clone.
         git.Enqueue(0, "dep456");
         git.Enqueue(0, branch);
         git.Enqueue(0, "");
