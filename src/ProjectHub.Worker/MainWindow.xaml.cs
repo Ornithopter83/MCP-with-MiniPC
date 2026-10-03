@@ -45,7 +45,6 @@ public partial class MainWindow : Window
     private bool _webFollowupStarted;
     private bool _actionProtocolEnabled;
     private bool _activeReadOnly;
-    private string? _initialGitReferenceHeader;
     private DateTimeOffset _lastActivityAt;
     private bool _jobTimedOut;
     private bool _userCanceledTask;
@@ -144,7 +143,6 @@ public partial class MainWindow : Window
     private bool _resourceSidecarActive;
     private int _resourceSidecarQueued;
     private string _resourceSidecarStatus = "ChatGPT Web";
-    private bool _judgeReviewing;
     private string _judgeStatus = "OFF";
     private int _judgeRound;
     private string _activeJevJobId = Guid.NewGuid().ToString("N");
@@ -1248,7 +1246,6 @@ public partial class MainWindow : Window
             else
             {
                 var request = new JudgeRequest(_activePrompt ?? "Current task", 1, _activeWorkingDirectory ?? AppContext.BaseDirectory, output, validation, result.Files, "GIT", _gitTarget?.HeadSha, _activeJevJobId);
-                _judgeReviewing = true;
                 _judgeStatus = "REVIEWING";
                 TaskDirection.Text = "WORKER → JEV";
                 TaskTitle.Text = "JEV 응답을 같은 Codex 세션으로 전달 중";
@@ -1256,7 +1253,6 @@ public partial class MainWindow : Window
                 AddTaskMessage("JEV REQUEST", validation);
                 JudgeTransportResult judgment;
                 try { judgment = await _jevJudgeRunner.ReviewRawAsync(request, _targetSettings.EffectiveJudge, cancellationToken); }
-                finally { _judgeReviewing = false; }
                 RecordJevTransportTelemetry(_activeJevJobId ?? Guid.NewGuid().ToString("N"), judgment.Telemetry, "LEGACY_JEV");
                 report = judgment.ErrorCode is null && judgment.RawResponse is not null
                     ? $"[NEXT: WEB]\n[JEV RAW RESPONSE — SAME CODEX SESSION]\n{judgment.RawResponse}"
@@ -1375,7 +1371,6 @@ public partial class MainWindow : Window
         _webFollowupStarted = false;
         _actionProtocolEnabled = false;
         _activeReadOnly = false;
-        _initialGitReferenceHeader = null;
         _jobTimedOut = false;
         _lastWebTaskId = null;
         _activePrompt = null;
