@@ -95,6 +95,19 @@ public sealed class CodexWorkItemExecutorTests
             Assert.DoesNotContain(
                 "대상 프로젝트 루트: " + Path.GetFullPath(rootPath),
                 fixture.Runner.LastRequest.Prompt);
+            var publishRoot = WorkerPaths.GetPublishedArtifactDirectory(
+                rootPath,
+                "job",
+                fixture.Request.Item.CreatedOrder);
+            Assert.Contains(
+                Path.GetFullPath(publishRoot),
+                fixture.Runner.LastRequest.AdditionalWritableDirectories!);
+            Assert.Equal(
+                Path.GetFullPath(publishRoot),
+                Path.GetFullPath(fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_PUBLISH_ROOT"]));
+            Assert.Contains(
+                "최종 게시 산출물 루트(게시·export 결과는 이 경로에 저장): " + publishRoot,
+                fixture.Runner.LastRequest.Prompt);
             Assert.Equal(
                 workTemp,
                 fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_WORK_TEMP"]);
@@ -982,10 +995,18 @@ public sealed class CodexWorkItemExecutorTests
         {
             var root = Path.Combine(Parent, "repo");
             var runtime = WorkerPaths.GetRepositoryRuntimePaths(root).Root;
+            var publishRun = WorkerPaths.GetPublishedArtifactDirectory(
+                root,
+                "job",
+                Request.Item.CreatedOrder);
+            var publishRepositoryRoot = Directory.GetParent(
+                Directory.GetParent(publishRun)!.FullName)!.FullName;
             if (Directory.Exists(Parent))
                 Directory.Delete(Parent, true);
             if (Directory.Exists(runtime))
                 Directory.Delete(runtime, true);
+            if (Directory.Exists(publishRepositoryRoot))
+                Directory.Delete(publishRepositoryRoot, true);
         }
     }
 
