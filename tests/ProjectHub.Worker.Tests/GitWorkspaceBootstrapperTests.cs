@@ -193,6 +193,33 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
+    public async Task LocalBaselineWithoutPrimaryRemoteBranchIsAcceptedWhenManagedRemoteContainsHead()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var runner = BaseRepositoryRunner(workspace, "baseline123");
+            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("fetch --prune origin", Ok());
+            runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Fail());
+            runner.Enqueue(
+                "ls-remote origin refs/heads/projecthub/*",
+                Ok("baseline123\trefs/heads/projecthub/job/base"));
+
+            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
+
+            Assert.True(state.Success);
+            Assert.Equal("baseline123", state.HeadCommit);
+            Assert.Equal("main", state.Branch);
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
     public async Task LocalHeadMustExactlyMatchFetchedRemoteHead()
     {
         var workspace = CreateWorkspace();
