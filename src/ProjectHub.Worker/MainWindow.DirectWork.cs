@@ -301,37 +301,51 @@ public partial class MainWindow
             return;
         }
 
-        var gitState = await _gitWorkspaceBootstrapper.PrepareAsync(
-            workingDirectory,
-            CancellationToken.None);
-        if (!gitState.Success ||
-            string.IsNullOrWhiteSpace(gitState.HeadCommit))
-        {
-            ShowGitPreparationError(gitState.ErrorCode, gitState.RepositoryRoot);
-            return;
-        }
-
         var directJobId =
             "direct-" +
             DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss") +
             "-" +
             Guid.NewGuid().ToString("N")[..8];
         const string directWorkItemId = "direct";
-        var gitManager = new GitWorktreeManager();
-        var preparation = await gitManager.PrepareAsync(
-            gitState.RepositoryRoot,
-            directJobId,
-            directWorkItemId,
-            gitState.HeadCommit,
-            CancellationToken.None);
-        if (!preparation.Success)
+        GitWorkspaceBootstrapState gitState;
+        GitWorktreePreparationResult preparation;
+
+        _gitPreparationInProgress = true;
+        DashboardPreflightText.Text = "작업 폴더의 원격 Git 기준점을 확인하는 중입니다.";
+        DashboardPreflightText.Foreground =
+            (System.Windows.Media.Brush)FindResource("Muted");
+        UpdateDashboardRunButtonState();
+        try
         {
-            DashboardPreflightText.Text =
-                "직접 작업용 원격 clone 준비 실패: " +
-                (preparation.ErrorCode ?? "WORK_CLONE_PREPARE_FAILED");
-            DashboardPreflightText.Foreground =
-                System.Windows.Media.Brushes.Firebrick;
-            return;
+            gitState = await _gitWorkspaceBootstrapper.PrepareAsync(
+                workingDirectory,
+                CancellationToken.None);
+            if (!gitState.Success ||
+                string.IsNullOrWhiteSpace(gitState.HeadCommit))
+            {
+                ShowGitPreparationError(gitState.ErrorCode, gitState.RepositoryRoot);
+                return;
+            }
+
+            var gitManager = new GitWorktreeManager();
+            preparation = await gitManager.PrepareAsync(
+                gitState.RepositoryRoot,
+                directJobId,
+                directWorkItemId,
+                gitState.HeadCommit,
+                CancellationToken.None);
+            if (!preparation.Success)
+            {
+                ShowDirectWorkPreflightError(
+                    "직접 작업용 원격 clone 준비 실패: " +
+                    (preparation.ErrorCode ?? "WORK_CLONE_PREPARE_FAILED"));
+                return;
+            }
+        }
+        finally
+        {
+            _gitPreparationInProgress = false;
+            UpdateDashboardRunButtonState();
         }
 
         var relativeWorkingDirectory = Path.GetRelativePath(
