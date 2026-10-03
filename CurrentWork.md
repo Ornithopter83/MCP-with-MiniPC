@@ -45,6 +45,7 @@
 ⑮ managed CLI 역할의 Codex 내부 output/schema 임시파일은 작업 폴더의 `.projecthub/runtime/temp` 아래 role/work 전용 경로를 우선 사용한다. PAUSE compact와 DONE runtime reset이 이 경로를 정리하며, RESOURCE staging은 IMAGE만 허용한다.
 ⑯ WorkGraph 기계 상태의 `kind`는 NORMAL/INTEGRATION 실행 방식을 나타낸다. 고정 임무는 `slot=RESOURCE_MAKE`, `RESOURCE_PROCESSING`, `FILE_MANAGER`, `BUILD_PUBLISH`로 별도 표시한다.
 ⑰ #8 FILE MANAGER는 실제 루트를 작업 대상으로 사용하고, 완료된 루트 구조를 전용 `projecthub/*/8-run-*` branch의 CODE_CHANGE resultRef로 확정한다. HQ는 초기 scaffold가 필요한 경우 이 resultRef를 후속 작은 일반 WorkItem들의 baseRef로 사용하며, finalizer는 그 #8 branch를 소비된 bootstrap checkout으로 인정한다.
+⑱ 활성 역할 계약은 판단·라우팅에 필요한 최소 규칙만 유지하도록 정리했다. 현재 HQ/WORK/HIGH 계약 크기는 각각 약 1.9k/0.7k/0.35k 문자이며, revision·JSON·상태 전이·RESOURCE 타입·HIGH one-shot 같은 기계 검증은 Worker 코드와 테스트가 강제한다.
 
 제6조 (WEB)
 
