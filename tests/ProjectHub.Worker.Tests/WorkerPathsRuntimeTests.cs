@@ -5,7 +5,7 @@ namespace ProjectHub.Worker.Tests;
 public sealed class WorkerPathsRuntimeTests
 {
     [Fact]
-    public void RepositoryRuntimeLivesOutsideProjectRoot()
+    public void RepositoryRuntimeLivesUnderProjectHubRoot()
     {
         var parent = Path.Combine(
             Path.GetTempPath(),
@@ -16,41 +16,26 @@ public sealed class WorkerPathsRuntimeTests
 
         try
         {
+            var projectHubRoot = ProjectWorkspacePersistence.RootDirectory(workspace);
             var runtime = WorkerPaths.GetRepositoryRuntimePaths(workspace);
-            var workspaceRoot = Path.GetFullPath(workspace)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var runtimeRoot = Path.GetFullPath(runtime.Root)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var comparison = OperatingSystem.IsWindows()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal;
+            var expectedProjectHubRoot = Path.Combine(
+                Path.GetFullPath(workspace),
+                ".projecthub");
+            var expectedRuntimeRoot = Path.Combine(
+                expectedProjectHubRoot,
+                "runtime");
 
-            Assert.False(
-                string.Equals(runtimeRoot, workspaceRoot, comparison) ||
-                runtimeRoot.StartsWith(
-                    workspaceRoot + Path.DirectorySeparatorChar,
-                    comparison));
-            Assert.StartsWith(
-                Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "ProjectHub",
-                    "RepositoryRuntime"),
-                runtime.Root,
-                comparison);
+            Assert.Equal(
+                Path.GetFullPath(expectedProjectHubRoot),
+                Path.GetFullPath(projectHubRoot));
+            Assert.Equal(
+                Path.GetFullPath(expectedRuntimeRoot),
+                Path.GetFullPath(runtime.Root));
             Assert.StartsWith(runtime.Root, runtime.Worktrees, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.IntegrationClones, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.NuGetRoot, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.DotNetHome, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.TempRoot, StringComparison.OrdinalIgnoreCase);
-            var stateRoot = WorkerPaths.GetWorkspaceStateDirectory(workspace);
-            Assert.StartsWith(
-                WorkerPaths.WorkspaceStateRoot,
-                stateRoot,
-                comparison);
-            Assert.False(
-                Path.GetFullPath(stateRoot).StartsWith(
-                    runtimeRoot + Path.DirectorySeparatorChar,
-                    comparison));
         }
         finally
         {
@@ -161,8 +146,7 @@ public sealed class WorkerPathsRuntimeTests
 
         foreach (var path in new[]
         {
-            WorkerPaths.GetRepositoryRuntimePaths(workspace).Root,
-            WorkerPaths.GetWorkspaceStateDirectory(workspace),
+            ProjectWorkspacePersistence.RootDirectory(workspace),
             publishedRepositoryRoot
         })
         {
