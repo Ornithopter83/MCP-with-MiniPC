@@ -135,60 +135,62 @@ public sealed class TargetWorkspaceFinalizer
                 $"targetWorkspace={_workspace}");
         }
 
-        var fastForwarded = false;
-        if (!containment.IsContained)
+        if (containment.IsContained)
         {
-            var landing = await _worktrees.LandIntegrationAsync(
-                _workspace,
+            return new(
+                true,
+                null,
+                "현재 원격 동기화 branch가 최종 CODE_CHANGE를 이미 포함하고 있습니다.",
+                target.Id,
                 finalResultRef,
-                _expectedPrimaryBranch,
-                cancellationToken).ConfigureAwait(false);
+                false);
+        }
 
-            if (!landing.Success)
-            {
-                if (string.Equals(
-                        landing.ErrorCode,
-                        "INTEGRATION_TARGET_DIRTY",
-                        StringComparison.Ordinal))
-                {
-                    return new(
-                        false,
-                        "TARGET_WORKSPACE_DIRTY",
-                        "원격 commit을 최종 반영하기 전에 사용자 작업 폴더가 변경되었습니다." +
-                        Environment.NewLine +
-                        "ProjectHub는 파일 단위 materialize나 강제 reset으로 우회하지 않습니다." +
-                        Environment.NewLine +
-                        "로컬 변경을 commit·push하거나 정리한 뒤 다시 진행해야 합니다." +
-                        Environment.NewLine +
-                        $"resultRef={finalResultRef}" +
-                        Environment.NewLine +
-                        $"targetWorkspace={_workspace}");
-                }
+        if (string.IsNullOrWhiteSpace(target.Branch))
+        {
+            return new(
+                false,
+                "TARGET_RESULT_BRANCH_MISSING",
+                "최종 CODE_CHANGE의 원격 projecthub branch를 확인할 수 없습니다." +
+                Environment.NewLine +
+                $"workItemId={target.Id}" +
+                Environment.NewLine +
+                $"resultRef={finalResultRef}");
+        }
 
-                return new(
-                    false,
-                    MapLandingError(landing.ErrorCode),
-                    "최종 원격 CODE_CHANGE를 사용자 branch에 ff-only로 반영하지 못했습니다." +
-                    Environment.NewLine +
-                    $"resultRef={finalResultRef}" +
-                    Environment.NewLine +
-                    $"targetWorkspace={_workspace}" +
-                    Environment.NewLine +
-                    $"gitError={landing.ErrorCode ?? "INTEGRATION_LANDING_FAILED"}");
-            }
+        var checkout = await _worktrees.SwitchTargetToRemoteResultAsync(
+            _workspace,
+            finalResultRef,
+            target.Branch,
+            _expectedPrimaryBranch,
+            cancellationToken).ConfigureAwait(false);
 
-            fastForwarded = landing.FastForwarded;
+        if (!checkout.Success)
+        {
+            return new(
+                false,
+                checkout.ErrorCode ?? "TARGET_RESULT_CHECKOUT_FAILED",
+                "최종 원격 CODE_CHANGE branch로 사용자 checkout을 전환하지 못했습니다." +
+                Environment.NewLine +
+                $"workItemId={target.Id}" +
+                Environment.NewLine +
+                $"resultRef={finalResultRef}" +
+                Environment.NewLine +
+                $"resultBranch={target.Branch}" +
+                (string.IsNullOrWhiteSpace(checkout.ErrorDetail)
+                    ? string.Empty
+                    : Environment.NewLine + checkout.ErrorDetail));
         }
 
         return new(
             true,
             null,
-            fastForwarded
-                ? "최종 원격 CODE_CHANGE를 사용자 branch에 ff-only로 반영했습니다."
-                : "최종 원격 CODE_CHANGE가 사용자 branch에 이미 포함되어 있습니다.",
+            checkout.Switched
+                ? "최종 원격 CODE_CHANGE branch로 사용자 checkout을 전환했습니다."
+                : "사용자 checkout이 이미 최종 원격 CODE_CHANGE branch와 일치합니다.",
             target.Id,
             finalResultRef,
-            fastForwarded);
+            false);
     }
 
     private async Task<TargetWorkspaceFinalizationResult?> CheckPublishFreshnessAsync(
@@ -227,26 +229,4 @@ public sealed class TargetWorkspaceFinalizer
         }
     }
 
-    private static string MapLandingError(string? errorCode)
-        => errorCode switch
-        {
-            "INTEGRATION_TARGET_WORKSPACE_MISSING" => "TARGET_WORKSPACE_MISSING",
-            "INTEGRATION_RESULT_REF_MISSING" => "TARGET_RESULT_REF_MISSING",
-            "INTEGRATION_TARGET_REPOSITORY_REQUIRED" => "TARGET_REPOSITORY_REQUIRED",
-            "INTEGRATION_TARGET_STATUS_UNAVAILABLE" => "TARGET_STATUS_UNAVAILABLE",
-            "INTEGRATION_TARGET_DIRTY" => "TARGET_DIRTY",
-            "INTEGRATION_TARGET_BRANCH_REQUIRED" => "TARGET_BRANCH_REQUIRED",
-            "INTEGRATION_TARGET_BRANCH_CHANGED" => "TARGET_BRANCH_CHANGED",
-            "INTEGRATION_TARGET_HEAD_UNAVAILABLE" => "TARGET_HEAD_UNAVAILABLE",
-            "INTEGRATION_RESULT_REF_INVALID" => "TARGET_RESULT_REF_INVALID",
-            "INTEGRATION_NOT_FAST_FORWARD" => "TARGET_NOT_FAST_FORWARD",
-            "INTEGRATION_ANCESTRY_CHECK_FAILED" => "TARGET_ANCESTRY_CHECK_FAILED",
-            "INTEGRATION_FAST_FORWARD_TIMEOUT" => "TARGET_FAST_FORWARD_TIMEOUT",
-            "INTEGRATION_FAST_FORWARD_CANCELED" => "TARGET_FAST_FORWARD_CANCELED",
-            "INTEGRATION_FAST_FORWARD_FAILED" => "TARGET_FAST_FORWARD_FAILED",
-            "INTEGRATION_TARGET_HEAD_MISMATCH" => "TARGET_HEAD_MISMATCH",
-            "INTEGRATION_TARGET_NOT_CLEAN" => "TARGET_NOT_CLEAN",
-            null or "" => "TARGET_LANDING_FAILED",
-            _ => "TARGET_LANDING_FAILED"
-        };
 }
