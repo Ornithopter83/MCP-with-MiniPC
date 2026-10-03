@@ -5,14 +5,14 @@ namespace ProjectHub.Worker.Tests;
 public sealed class WorkspacePublishStateTests
 {
     [Fact]
-    public async Task PublishBecomesStaleOnlyAfterLaterCodeMaterialization()
+    public async Task PublishBecomesStaleOnlyAfterLaterCodeLanding()
     {
         var root = CreateRoot();
         try
         {
             var state = new WorkspacePublishState(root, "job");
 
-            var first = await state.MarkCodeMaterializedAsync("code-a");
+            var first = await state.MarkCodeLandedAsync("code-a");
             Assert.False(first.IsStale);
             Assert.Equal(1, first.CodeGeneration);
 
@@ -21,12 +21,12 @@ public sealed class WorkspacePublishStateTests
             Assert.True(published.HasSuccessfulPublish);
             Assert.Equal(published.CodeGeneration, published.PublishedCodeGeneration);
 
-            var later = await state.MarkCodeMaterializedAsync("code-b");
+            var later = await state.MarkCodeLandedAsync("code-b");
             Assert.True(later.IsStale);
             Assert.Equal(2, later.CodeGeneration);
             Assert.Equal(1, later.PublishedCodeGeneration);
 
-            var duplicate = await state.MarkCodeMaterializedAsync("code-b");
+            var duplicate = await state.MarkCodeLandedAsync("code-b");
             Assert.Equal(2, duplicate.CodeGeneration);
             Assert.True(duplicate.IsStale);
 
@@ -42,20 +42,20 @@ public sealed class WorkspacePublishStateTests
     }
 
     [Fact]
-    public async Task MaterializedResultRefsArePersistedAcrossInstances()
+    public async Task LandedResultRefsArePersistedAcrossInstances()
     {
         var root = CreateRoot();
         try
         {
             var first = new WorkspacePublishState(root, "job");
-            await first.MarkCodeMaterializedAsync("code-a");
+            await first.MarkCodeLandedAsync("code-a");
             await first.MarkPublishedAsync(3);
 
             var second = new WorkspacePublishState(root, "job");
             var restored = await second.ReadAsync();
 
             Assert.Contains(
-                restored.MaterializedCodeResultRefs,
+                restored.LandedCodeResultRefs,
                 value => string.Equals(value, "code-a", StringComparison.OrdinalIgnoreCase));
             Assert.Equal("code-a", restored.LastCodeResultRef);
             Assert.True(restored.HasSuccessfulPublish);
