@@ -14,7 +14,7 @@ public sealed record GitCommandResult(
     bool TimedOut = false,
     bool Canceled = false);
 
-public interface IGitWorktreeCommandRunner
+public interface IGitCommandRunner
 {
     Task<GitCommandResult> RunAsync(
         string workingDirectory,
@@ -23,7 +23,7 @@ public interface IGitWorktreeCommandRunner
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
+public sealed class ProcessGitCommandRunner : IGitCommandRunner
 {
     public async Task<GitCommandResult> RunAsync(
         string workingDirectory,
@@ -38,7 +38,7 @@ public sealed class ProcessGitWorktreeCommandRunner : IGitWorktreeCommandRunner
 
         try
         {
-            using var processJob = new WorkerChildProcessJob("Git worktree");
+            using var processJob = new WorkerChildProcessJob("Git command");
             var startInfo = new ProcessStartInfo
             {
                 FileName = "git",
@@ -210,11 +210,11 @@ public sealed class GitWorktreeManager
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPrimaryMutationGates =
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
-    private readonly IGitWorktreeCommandRunner _runner;
+    private readonly IGitCommandRunner _runner;
 
-    public GitWorktreeManager(IGitWorktreeCommandRunner? runner = null)
+    public GitWorktreeManager(IGitCommandRunner? runner = null)
     {
-        _runner = runner ?? new ProcessGitWorktreeCommandRunner();
+        _runner = runner ?? new ProcessGitCommandRunner();
     }
 
     public async Task<GitNormalBaseResolutionResult> ResolveNormalBaseRefAsync(
