@@ -567,6 +567,82 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task CheckpointPushRetryPreservesCodeChangeClassification()
+    {
+        var fixture = CreateFixture("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            코드 변경을 완료했습니다.
+            """);
+
+        var worktree = fixture.Request.Item.WorktreePath!;
+        File.WriteAllText(Path.Combine(worktree, "changed.cs"), "changed");
+
+        try
+        {
+            fixture.Git.Clear();
+
+            // PrepareAsync reuses the isolated clone.
+            fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
+            fixture.Git.Enqueue(0, "https://example.invalid/repo.git");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, worktree);
+            fixture.Git.Enqueue(0, Path.Combine(worktree, ".git"));
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "head123");
+            fixture.Git.Enqueue(0, "");
+
+            // First checkpoint creates the commit, but the remote push fails.
+            fixture.Git.Enqueue(0, "head123");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, " M changed.cs");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "committed");
+            fixture.Git.Enqueue(0, "new456");
+            fixture.Git.Enqueue(1, "", "simulated push failure");
+
+            // Retry sees a clean clone and republishes the already-created commit.
+            fixture.Git.Enqueue(0, "new456");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, $"new456\trefs/heads/{fixture.Branch}");
+            fixture.Git.Enqueue(0, "new456");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "");
+
+            // Commit manifest.
+            fixture.Git.Enqueue(0, "new456 head123");
+            fixture.Git.Enqueue(0, "tree789");
+            fixture.Git.Enqueue(0, "M\tchanged.cs");
+
+            // Completed clone cleanup inspection.
+            fixture.Git.Enqueue(0, "new456");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "");
+
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
+            Assert.Equal(WorkItemResultType.CodeChange, result.ResultType);
+            Assert.Equal("new456", result.ResultRef);
+            Assert.NotNull(result.CommitManifestPath);
+            Assert.Equal(
+                2,
+                fixture.Git.Calls.Count(call =>
+                    call.Count > 0 &&
+                    string.Equals(call[0], "push", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task CheckpointPendingResumeDoesNotRunAiAgain()
     {
         var fixture = CreateFixture("""
