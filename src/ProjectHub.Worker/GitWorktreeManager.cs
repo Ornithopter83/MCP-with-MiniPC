@@ -1760,15 +1760,6 @@ public sealed class GitWorktreeManager
             if (string.IsNullOrWhiteSpace(currentBranch))
                 return new(false, "TARGET_CHECKOUT_CURRENT_BRANCH_REQUIRED", repositoryRoot, normalizedRef, normalizedResultBranch, null, null, null, null, null, false);
 
-            var expectedBranch = string.IsNullOrWhiteSpace(expectedCurrentBranch)
-                ? null
-                : expectedCurrentBranch.Trim();
-            if (expectedBranch is not null &&
-                !string.Equals(currentBranch, expectedBranch, StringComparison.Ordinal))
-            {
-                return new(false, "TARGET_CHECKOUT_CURRENT_BRANCH_CHANGED", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, null, currentBranch, null, false);
-            }
-
             var headResult = await RunAsync(
                 repositoryRoot,
                 ReadTimeout,
@@ -1851,6 +1842,15 @@ public sealed class GitWorktreeManager
                 string.Equals(currentHead, resultCommit, StringComparison.OrdinalIgnoreCase))
             {
                 return new(true, null, repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, currentBranch, currentHead, false);
+            }
+
+            var expectedBranch = string.IsNullOrWhiteSpace(expectedCurrentBranch)
+                ? null
+                : expectedCurrentBranch.Trim();
+            if (expectedBranch is not null &&
+                !string.Equals(currentBranch, expectedBranch, StringComparison.Ordinal))
+            {
+                return new(false, "TARGET_CHECKOUT_CURRENT_BRANCH_CHANGED", repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, currentBranch, currentHead, false);
             }
 
             var localBranchResult = await RunAsync(
