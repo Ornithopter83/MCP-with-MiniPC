@@ -85,7 +85,7 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
-    public async Task AuthorizedHighRunsOnceAndReturnsReportToSameHqLoop()
+    public async Task HighRecoveryRunsAndReturnsReportToSameHqLoop()
     {
         var graph = new WorkGraph("job", 1);
         var executor = new SupervisorExecutor();
@@ -104,8 +104,7 @@ public sealed class ParallelWorkSupervisorTests
                 highCalls++;
                 Assert.Contains("Git 인프라", body);
                 return Task.FromResult("원격 기준점 복구 완료");
-            },
-            highPermitAvailable: true);
+            });
 
         var result = await supervisor.RunAsync(
             "USER_REQUEST",
@@ -114,14 +113,13 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
         Assert.Equal(1, highCalls);
         Assert.Equal(2, hq.Prompts.Count);
-        Assert.Contains("HIGH one-shot: available", hq.Prompts[0]);
+        Assert.DoesNotContain("HIGH one-shot", hq.Prompts[0]);
         Assert.Contains("입력 유형: HIGH_REPORT", hq.Prompts[1]);
         Assert.Contains("원격 기준점 복구 완료", hq.Prompts[1]);
-        Assert.Contains("HIGH one-shot: unavailable", hq.Prompts[1]);
     }
 
     [Fact]
-    public async Task UnauthorizedHighIsRejectedWithoutExecutingCallback()
+    public async Task HighWithoutRunnerIsRejectedAsUnavailable()
     {
         var graph = new WorkGraph("job", 1);
         var executor = new SupervisorExecutor();
@@ -137,11 +135,11 @@ public sealed class ParallelWorkSupervisorTests
 
         var result = await supervisor.RunAsync(
             "USER_REQUEST",
-            "HIGH 허용 없음");
+            "HIGH runner 없음");
 
         Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
         Assert.Equal(2, hq.Prompts.Count);
-        Assert.Contains("PARALLEL_HQ_HIGH_NOT_AUTHORIZED", hq.Prompts[1]);
+        Assert.Contains("PARALLEL_HQ_HIGH_RUNNER_UNAVAILABLE", hq.Prompts[1]);
     }
 
     [Fact]

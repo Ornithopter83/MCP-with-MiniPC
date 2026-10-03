@@ -37,7 +37,7 @@ public sealed class RoleContractBoundaryTests
         var high = RoleContractLoader.LoadHighFooter();
 
         Assert.Contains("[GOTO : HQ]", high);
-        Assert.Contains("one-shot", high);
+        Assert.Contains("반복 실패", high);
         Assert.Contains("복구", high);
         Assert.Contains("제품 기능·산출물", high);
         Assert.DoesNotContain("[GOTO : WORK]", high);

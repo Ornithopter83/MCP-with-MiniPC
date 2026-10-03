@@ -2400,7 +2400,7 @@ public partial class MainWindow : Window
         if (_loadingRoleControls) return;
         var cliMode = string.Equals(GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"), "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
         AiRolesStatusText.Text = cliMode
-            ? "Coordinator-first 실행: HQ는 Web/CLI, WORK는 CLI, HIGH는 사용자 one-shot CLI, RESOURCE는 IMAGE Web 고정입니다."
+            ? "Coordinator-first 실행: HQ는 Web/CLI, WORK는 CLI, HIGH는 HQ 복구 판단 시 CLI, RESOURCE는 IMAGE Web 고정입니다."
             : "Legacy 실행: 기존 Codex → GPT Web 경로를 사용합니다.";
     }
 
