@@ -159,6 +159,48 @@ public static class UserAttachmentTransport
         return result;
     }
 
+    public static void CleanupStagedWorkerRuntime(
+        IReadOnlyList<AiInputAttachment>? attachments,
+        string repositoryRoot)
+    {
+        if (attachments is null || attachments.Count == 0 ||
+            string.IsNullOrWhiteSpace(repositoryRoot))
+            return;
+
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
+        var stagingRoot = Path.GetFullPath(
+                Path.Combine(runtime.Root, "attachments"))
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        foreach (var directory in attachments
+                     .Select(item => Path.GetDirectoryName(item.Path))
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Select(path => Path.GetFullPath(path!))
+                     .Distinct(comparison == StringComparison.OrdinalIgnoreCase
+                         ? StringComparer.OrdinalIgnoreCase
+                         : StringComparer.Ordinal))
+        {
+            var prefix = directory
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            if (!prefix.StartsWith(stagingRoot, comparison))
+                continue;
+
+            try
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     public static string AppendPrompt(
         string prompt,
         IReadOnlyList<AiInputAttachment>? attachments)
