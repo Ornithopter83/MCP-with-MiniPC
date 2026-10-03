@@ -48,7 +48,7 @@ public sealed class WorkGraphPersistenceTests
         }
         finally
         {
-            Directory.Delete(directory, true);
+            CleanupWorkspace(directory);
         }
     }
 
@@ -87,7 +87,7 @@ public sealed class WorkGraphPersistenceTests
         }
         finally
         {
-            Directory.Delete(directory, true);
+            CleanupWorkspace(directory);
         }
     }
 
@@ -110,14 +110,13 @@ public sealed class WorkGraphPersistenceTests
                 runtime.Root,
                 mechanical,
                 StringComparison.OrdinalIgnoreCase);
-            Assert.Contains(
-                Path.Combine("runtime", "mechanical"),
-                mechanical,
-                StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(
+                Path.Combine(runtime.Root, "mechanical", "job-mechanical"),
+                mechanical);
         }
         finally
         {
-            Directory.Delete(directory, true);
+            CleanupWorkspace(directory);
         }
     }
 
@@ -148,7 +147,7 @@ public sealed class WorkGraphPersistenceTests
         }
         finally
         {
-            Directory.Delete(directory, true);
+            CleanupWorkspace(directory);
         }
     }
 
@@ -190,7 +189,7 @@ public sealed class WorkGraphPersistenceTests
         }
         finally
         {
-            Directory.Delete(directory, true);
+            CleanupWorkspace(directory);
         }
     }
 
@@ -225,7 +224,23 @@ public sealed class WorkGraphPersistenceTests
         }
         finally
         {
-            Directory.Delete(directory, true);
+            CleanupWorkspace(directory);
         }
     }
+    private static void CleanupWorkspace(string directory)
+    {
+        foreach (var path in new[]
+        {
+            ProjectWorkspacePersistence.RootDirectory(directory),
+            WorkerPaths.GetRepositoryRuntimePaths(directory).Root
+        })
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, true);
+        }
+
+        if (Directory.Exists(directory))
+            Directory.Delete(directory, true);
+    }
+
 }
