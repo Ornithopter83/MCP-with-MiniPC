@@ -52,5 +52,8 @@
     <EmbeddedResource Include="Contracts\WORK-ROUTING-CONTRACT.md">
       <LogicalName>ProjectHub.Worker.Contracts.WORK-ROUTING-CONTRACT.md</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Contracts\HIGH-ROUTING-CONTRACT.md">
+      <LogicalName>ProjectHub.Worker.Contracts.HIGH-ROUTING-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

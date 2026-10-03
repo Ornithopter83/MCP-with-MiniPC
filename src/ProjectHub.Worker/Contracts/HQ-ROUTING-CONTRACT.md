@@ -3,19 +3,27 @@
 제1조 (응답)
 
 ① Web 입력에 `[KEY=...]`가 있으면 같은 KEY 행을 그대로 첫 줄에 출력한다.
-② 계속 진행할 때는 다음 형식을 사용한다.
+② 일반 WORK를 계속 진행할 때는 다음 형식을 사용한다.
 
 [ACTION=CONTINUE]
 [GOTO : WORK]
 WORK_GRAPH_PATCH:
 {"expectedRevision":<현재 revision>,"operations":[...]}
 
-③ 사용자 입력이 필요하면 다음 형식을 사용한다.
+③ 입력 헤더의 `HIGH one-shot`이 `available`이고 일반 WORK 권한으로 해결하기 어려운 시스템·도구체인·runtime·Git 인프라 차단을 복구해야 할 때만 다음 형식으로 HIGH를 1회 호출할 수 있다.
+
+[ACTION=CONTINUE]
+[GOTO : HIGH]
+고권한 진단·복구 지시
+
+④ HIGH 호출에는 WORK_GRAPH_PATCH를 출력하지 않는다. 일반 구현, 이미지·파일·콘텐츠 생성, 단순 코드 작성은 HIGH로 보내지 않는다.
+
+⑤ 사용자 입력이 필요하면 다음 형식을 사용한다.
 
 [ACTION=PAUSE]
 본문
 
-④ 목표가 끝났으면 다음 형식을 사용한다.
+⑥ 목표가 끝났으면 다음 형식을 사용한다.
 
 [ACTION=END]
 본문
@@ -23,7 +31,7 @@ WORK_GRAPH_PATCH:
 제2조 (WorkGraph)
 
 ① 입력 헤더의 revision, 최대 동시 WORK, 기준 ref와 현재 WorkItem 상태를 사실로 사용한다.
-② CONTINUE에는 WORK_GRAPH_PATCH를 정확히 하나 출력한다.
+② [GOTO : WORK]인 CONTINUE에는 WORK_GRAPH_PATCH를 정확히 하나 출력한다.
 ③ patch는 완전한 JSON 객체여야 한다.
 ④ operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용할 수 있다.
 ⑤ ADD는 `workItemId`와 `goal`을 사용하고 필요하면 `dependencies`, `kind`, `baseRef`, `checklist`를 함께 둔다. 입력 헤더의 기준 ref를 전역 SET_BASE_REF operation으로 반복하지 않는다. ADD에서 baseRef를 생략하면 Worker가 현재 기준 ref를 기계적으로 채운다.
@@ -47,3 +55,4 @@ WORK_GRAPH_PATCH:
 ⑥ 실제 빌드·export·publish가 필요하면 최종 코드 계보의 resultRef를 baseRef로 #9를 ADD한다.
 ⑦ END finalization이 최종 remote result checkout 또는 publish freshness 때문에 거부되면 전달된 기계 사실을 기준으로 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.
 ⑧ `HQ_DECISION_REQUIRED`로 차단된 WorkItem은 전달된 기계 사실을 기준으로 RELEASE, CANCEL 또는 후속 WorkItem 필요 여부를 판단한다.
+⑨ HIGH_REPORT를 받으면 고권한 실행 결과를 사실로 사용해 WORK_GRAPH_PATCH, PAUSE 또는 END를 결정한다. HIGH를 연속 호출하거나 RESOURCE 대체로 사용하지 않는다.

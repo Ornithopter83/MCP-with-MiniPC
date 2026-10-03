@@ -9,7 +9,8 @@ public partial class MainWindow
         WorkerAiRoleSettings coordinator,
         WorkerAiRoleSettings implementer,
         CoordinatorContinuationState? continuation = null,
-        IReadOnlyList<UserAttachmentInput>? attachments = null)
+        IReadOnlyList<UserAttachmentInput>? attachments = null,
+        bool highLevelAuthorizedAtLaunch = false)
     {
         var continuing = continuation is not null;
         var jobId = continuation?.JobId ?? Guid.NewGuid().ToString("N");
@@ -50,6 +51,11 @@ public partial class MainWindow
         }
 
         var coordinatorSession = continuation?.CoordinatorSessionId;
+        var highLevel = NormalizeRoleSessionForWorkspace(
+            _targetSettings.EffectiveHighLevel,
+            workingDirectory);
+        var highLevelSession = CodexCliRunner.NormalizeSessionId(
+            highLevel.ThreadSessionId);
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
         var mechanicalWork = new MechanicalWorkRegistry();
         var resourceQueue = new ResourceSidecarQueue(
@@ -318,6 +324,101 @@ public partial class MainWindow
                 return result.FinalMessage;
             }
 
+            async Task<string> RunParallelHighAsync(
+                string highBody,
+                CancellationToken cancellationToken)
+            {
+                RunOnUi(() =>
+                {
+                    TaskDirection.Text = "고수준 작업 AI";
+                    TaskTitle.Text = "HIGH one-shot 고권한 작업";
+                    ResultTitle.Text = "HIGH";
+                    SetFlowState(
+                        codexActive: true,
+                        workerActive: false,
+                        webActive: false,
+                        explicitStage: TaskStage.HighLevel);
+                });
+
+                var highPrompt = RoleContractLoader.BuildHighPrompt(highBody);
+                AiRoleRunResult result;
+                if (Dispatcher.CheckAccess())
+                {
+                    result = await RunCoordinatorRoleAsync(
+                        jobId,
+                        "HIGH_ONE_SHOT",
+                        highPrompt,
+                        highLevel,
+                        workingDirectory,
+                        highLevelSession,
+                        null,
+                        cancellationToken,
+                        CodexSandboxMode.DangerFullAccess,
+                        started =>
+                        {
+                            var normalized = CodexCliRunner.NormalizeSessionId(started);
+                            if (!string.IsNullOrWhiteSpace(normalized))
+                                highLevelSession = normalized;
+                        });
+                }
+                else
+                {
+                    var operation = Dispatcher.InvokeAsync(() =>
+                        RunCoordinatorRoleAsync(
+                            jobId,
+                            "HIGH_ONE_SHOT",
+                            highPrompt,
+                            highLevel,
+                            workingDirectory,
+                            highLevelSession,
+                            null,
+                            cancellationToken,
+                            CodexSandboxMode.DangerFullAccess,
+                            started =>
+                            {
+                                var normalized = CodexCliRunner.NormalizeSessionId(started);
+                                if (!string.IsNullOrWhiteSpace(normalized))
+                                    highLevelSession = normalized;
+                            }));
+                    result = await (await operation.Task);
+                }
+
+                highLevelSession =
+                    CodexCliRunner.NormalizeSessionId(result.SessionId) ??
+                    highLevelSession;
+
+                if (result.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        string.IsNullOrWhiteSpace(result.StandardError)
+                            ? "HIGH_PROCESS_EXIT"
+                            : result.StandardError);
+                }
+
+                var route = WorkerGotoContract.Parse(
+                    WorkerRoleState.High,
+                    result.FinalMessage);
+                if (route.Error is not null ||
+                    route.Target != WorkerRoleState.Hq)
+                {
+                    throw new InvalidOperationException(
+                        route.Error ?? "HIGH_RETURN_TARGET_INVALID");
+                }
+
+                RunOnUi(() =>
+                    AddRoleResponseHistory(
+                        WorkerRoleState.High,
+                        "고수준 작업 결과",
+                        route.Body,
+                        usage: result.Usage,
+                        files: result.Files,
+                        status: "RETURNED_TO_HQ",
+                        providerWireId: highLevel.Provider,
+                        fullMessage: result.FinalMessage));
+
+                return route.Body;
+            }
+
             async Task<StructuredPayloadResult<WorkGraphPatch>> ProcessWorkGraphPayloadAsync(
                 string payload,
                 CancellationToken cancellationToken)
@@ -449,7 +550,11 @@ public partial class MainWindow
                         finalization.Success,
                         finalization.ErrorCode,
                         finalization.Message);
-                });
+                },
+                runHighAsync: highLevelAuthorizedAtLaunch
+                    ? RunParallelHighAsync
+                    : null,
+                highPermitAvailable: highLevelAuthorizedAtLaunch);
 
             resourceRouter = new ParallelResourceWorkItemRouter(
                 supervisor,

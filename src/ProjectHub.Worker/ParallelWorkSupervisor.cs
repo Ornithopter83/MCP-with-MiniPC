@@ -14,12 +14,14 @@ public enum ParallelWorkSupervisorExit
 
 public sealed record ParallelHqTurn(
     WorkerAction Action,
+    WorkerRoleState? Target,
     string Body,
     WorkGraphPatch? Patch,
     string RawMessage);
 
 public sealed record ParallelHqEnvelope(
     WorkerAction Action,
+    WorkerRoleState? Target,
     string Body,
     string RawMessage);
 
@@ -68,14 +70,15 @@ public static class ParallelHqTurnContract
         }
 
         if (route.Action == WorkerAction.Continue &&
-            route.Target != WorkerRoleState.Work)
+            route.Target is not (WorkerRoleState.Work or WorkerRoleState.High))
         {
-            error = "PARALLEL_HQ_WORK_TARGET_REQUIRED";
+            error = "PARALLEL_HQ_TARGET_INVALID";
             return false;
         }
 
         envelope = new(
             route.Action.Value,
+            route.Target,
             route.Body,
             rawMessage ?? string.Empty);
         return true;
@@ -90,7 +93,8 @@ public static class ParallelHqTurnContract
         if (!TryParseEnvelope(rawMessage, out var envelope, out error))
             return false;
 
-        if (envelope!.Action == WorkerAction.Continue)
+        if (envelope!.Action == WorkerAction.Continue &&
+            envelope.Target == WorkerRoleState.Work)
         {
             var structuredResult =
                 WorkerStructuredPayloadHelper.ProcessDeterministically<WorkGraphPatch>(
@@ -106,6 +110,7 @@ public static class ParallelHqTurnContract
 
             turn = new(
                 envelope.Action,
+                envelope.Target,
                 envelope.Body,
                 structuredResult.Value,
                 envelope.RawMessage);
@@ -114,6 +119,7 @@ public static class ParallelHqTurnContract
 
         turn = new(
             envelope.Action,
+            envelope.Target,
             envelope.Body,
             null,
             envelope.RawMessage);
@@ -129,6 +135,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private readonly WorkGraph _graph;
     private readonly ParallelWorkScheduler _scheduler;
     private readonly Func<string, CancellationToken, Task<string>> _runHqAsync;
+    private readonly Func<string, CancellationToken, Task<string>>? _runHighAsync;
     private readonly Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>> _processWorkGraphPayloadAsync;
     private readonly string _initialBaseRef;
     private readonly bool _includeContractOnFirstHqTurn;
@@ -147,6 +154,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private string? _lastQuiescentSignature;
     private WorkGraphSnapshot _hqKnownSnapshot;
     private bool _schedulerStarted;
+    private readonly bool _highPermitAvailable;
+    private bool _highPermitConsumed;
     private bool _disposed;
 
     public ParallelWorkSupervisor(
@@ -158,13 +167,17 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         bool includeContractOnFirstHqTurn = true,
         Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>? processWorkGraphPayloadAsync = null,
         bool enableCompletionReview = false,
-        Func<WorkGraphSnapshot, CancellationToken, Task<ParallelEndFinalizationResult>>? finalizeEndAsync = null)
+        Func<WorkGraphSnapshot, CancellationToken, Task<ParallelEndFinalizationResult>>? finalizeEndAsync = null,
+        Func<string, CancellationToken, Task<string>>? runHighAsync = null,
+        bool highPermitAvailable = false)
     {
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         if (string.IsNullOrWhiteSpace(baseRef))
             throw new ArgumentException("병렬 WorkGraph 기준 ref가 비어 있습니다.", nameof(baseRef));
         _initialBaseRef = baseRef.Trim();
         _runHqAsync = runHqAsync ?? throw new ArgumentNullException(nameof(runHqAsync));
+        _runHighAsync = runHighAsync;
+        _highPermitAvailable = highPermitAvailable;
         _processWorkGraphPayloadAsync = processWorkGraphPayloadAsync ??
             new Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>(
                 (payload, _) => Task.FromResult(
@@ -249,7 +262,11 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     _graph.Revision,
                     _graph.MaxConcurrentWork,
                     GetCurrentDefaultBaseRef()),
-                includeContract: firstHqTurn && _includeContractOnFirstHqTurn);
+                includeContract: firstHqTurn && _includeContractOnFirstHqTurn,
+                highPermitAvailable:
+                    _highPermitAvailable &&
+                    !_highPermitConsumed &&
+                    _runHighAsync is not null);
             firstHqTurn = false;
 
             string rawHqMessage;
@@ -309,8 +326,64 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 continue;
             }
 
+            if (envelope!.Action == WorkerAction.Continue &&
+                envelope.Target == WorkerRoleState.High)
+            {
+                if (!_highPermitAvailable ||
+                    _highPermitConsumed ||
+                    _runHighAsync is null)
+                {
+                    consecutivePatchRejections++;
+                    const string rejectionCode = "PARALLEL_HQ_HIGH_NOT_AUTHORIZED";
+                    var rejectionBody = FormatHqResponseRejected(
+                        rejectionCode,
+                        _graph.Snapshot(),
+                        consecutivePatchRejections);
+                    ObservePatchRejected(rejectionCode, rejectionBody);
+
+                    if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
+                    {
+                        return Failure(
+                            "WORK_GRAPH_PATCH_RETRY_LIMIT",
+                            rejectionBody);
+                    }
+
+                    inboundType = "HQ_RESPONSE_CONTRACT_REJECTED";
+                    inboundBody = rejectionBody;
+                    continue;
+                }
+
+                _highPermitConsumed = true;
+                try
+                {
+                    inboundBody = await _runHighAsync(
+                        envelope.Body,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    inboundType = "HIGH_EXECUTION_FAILED";
+                    inboundBody =
+                        "HIGH one-shot 실행이 기계적으로 실패했습니다." +
+                        Environment.NewLine +
+                        "exceptionType=" + exception.GetType().Name +
+                        Environment.NewLine +
+                        "detail=" + exception.Message;
+                    consecutivePatchRejections = 0;
+                    continue;
+                }
+
+                inboundType = "HIGH_REPORT";
+                consecutivePatchRejections = 0;
+                continue;
+            }
+
             ParallelHqTurn turn;
-            if (envelope!.Action == WorkerAction.Continue)
+            if (envelope.Action == WorkerAction.Continue)
             {
                 if (!WorkGraphTransportContract.TryParse(
                         envelope.Body,
@@ -428,6 +501,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
                 turn = new(
                     envelope.Action,
+                    envelope.Target,
                     envelope.Body,
                     structuredPatch,
                     envelope.RawMessage);
@@ -436,6 +510,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             {
                 turn = new(
                     envelope.Action,
+                    envelope.Target,
                     envelope.Body,
                     null,
                     envelope.RawMessage);

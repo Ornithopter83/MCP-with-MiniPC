@@ -19,10 +19,11 @@ WORK_ITEM_STATUS: BLOCKED
 ① 현재 작업에서 새 생성 리소스 요청이 배정된 경우 다음 형식을 사용한다.
 
 [GOTO : RESOURCE]
-RESOURCE_TYPE: IMAGE|AUDIO|VIDEO|DOCUMENT|FILE
-생성 지시
+RESOURCE_TYPE: IMAGE
+이미지 생성 지시
 
-② RESOURCE 실패를 다른 생성 경로로 임의 우회하지 않는다.
+② AUDIO·VIDEO·DOCUMENT·FILE 등 IMAGE 외 RESOURCE_TYPE은 사용하지 않는다.
+③ RESOURCE 실패를 다른 생성 경로로 임의 우회하지 않는다.
 
 제3조 (범위)
 
