@@ -85,6 +85,46 @@ public static class ProjectWorkspacePersistence
     public static string EventLogPath(string workingDirectory, string jobId)
         => Path.Combine(EventDirectory(workingDirectory), SanitizeId(jobId) + ".jsonl");
 
+    public static string WorkerLogPath(string? jobId)
+        => Path.Combine(
+            WorkerPaths.Logs,
+            "worker-" + SanitizeId(string.IsNullOrWhiteSpace(jobId) ? "session" : jobId) + ".log");
+
+    public static bool AppendWorkerLog(
+        string? jobId,
+        DateTimeOffset timestamp,
+        string source,
+        string content)
+    {
+        if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(content))
+            return false;
+
+        var path = WorkerLogPath(jobId);
+        try
+        {
+            Directory.CreateDirectory(WorkerPaths.Logs);
+            var block =
+                $"[{timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] {source.Trim()}" +
+                Environment.NewLine +
+                content.Trim() +
+                Environment.NewLine +
+                Environment.NewLine;
+            lock (TranscriptSync)
+            {
+                File.AppendAllText(
+                    path,
+                    block,
+                    new UTF8Encoding(false));
+            }
+            return true;
+        }
+        catch (Exception exception)
+        {
+            WritePersistenceFailure("AppendWorkerLog", path, exception);
+            return false;
+        }
+    }
+
     public static string TranscriptPath(string workingDirectory, string jobId)
         => Path.Combine(TranscriptDirectory(workingDirectory), SanitizeId(jobId) + ".txt");
 
