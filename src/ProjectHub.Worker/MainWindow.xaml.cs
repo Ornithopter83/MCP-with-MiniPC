@@ -169,6 +169,7 @@ public partial class MainWindow : Window
     private string _serverBaseUrlSource = "DEFAULT";
     private WorkerTargetSettings _targetSettings = new(null, null, null, null);
     private GitTargetSnapshot? _gitTarget;
+    private string? _gitValidationMessage;
     private List<CodexProjectOption> _codexProjects = new();
     private bool _loadingCodexSelections;
     private static string WindowPlacementPath => Path.Combine(WorkerPaths.Config, "window-placement.json");
@@ -719,8 +720,11 @@ public partial class MainWindow : Window
         // Direct Work는 preflight 오류가 있어도 클릭 자체는 허용한다.
         // 클릭 시 구체적인 차단 사유를 결과 영역에 표시해 "무반응"처럼 보이지 않게 한다.
         ApplyRunButtonVisualState(hasPrompt && (executionReady || IsDirectWorkMode));
-        DashboardPreflightText.Text = preflightError ?? (hasPrompt ? string.Empty : "작업 내용을 입력하세요.");
-        DashboardPreflightText.Foreground = preflightError is null ? (System.Windows.Media.Brush)FindResource("Muted") : System.Windows.Media.Brushes.Firebrick;
+        var visibleError = _gitValidationMessage ?? preflightError;
+        DashboardPreflightText.Text = visibleError ?? (hasPrompt ? string.Empty : "작업 내용을 입력하세요.");
+        DashboardPreflightText.Foreground = visibleError is null
+            ? (System.Windows.Media.Brush)FindResource("Muted")
+            : System.Windows.Media.Brushes.Firebrick;
         UpdateFollowupButtonState();
     }
 
@@ -2023,6 +2027,7 @@ public partial class MainWindow : Window
             ? ResolveCoordinatorTargetWorkingDirectory()
             : ResolveWorkingDirectory(selected);
         UpdateWorkspaceControls(selected, workingDirectory);
+        RepositoryUrlInput.Text = _targetSettings.ManualRepositoryUrl ?? string.Empty;
         ServerUrlInput.Text = _serverBaseUrl;
         ApplyRoleSettingsToControls();
         ApplyExecutionModePresentation(_targetSettings.IsCoordinatorFirst);
@@ -2417,37 +2422,90 @@ public partial class MainWindow : Window
         if (_startupConfigurationInitialized) ApplyConnectionStatus();
     }
 
-    private void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
+    private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
     {
-        _targetSettings = _targetSettings with { ManualRepositoryUrl = null, RepositoryUrlSource = null };
-        WorkerTargetConfiguration.Save(_targetSettings);
-        RefreshWorkingDirectoryGitTargetPresentation();
+        await RefreshWorkingDirectoryGitTargetPresentationAsync();
         UpdateDashboardRunButtonState();
     }
 
-    private void RefreshWorkingDirectoryGitTargetPresentation()
+    private async Task RefreshWorkingDirectoryGitTargetPresentationAsync()
     {
         var workingDirectory = WorkingDirectoryInput?.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
         {
-            ClearCoordinatorGitTargetPresentation();
+            RepositoryUrlInput.Text = string.Empty;
             return;
         }
 
-        var target = WorkerTargetConfiguration.ResolveGit(
-            workingDirectory,
-            _targetSettings,
-            requireExactRoot: true);
+        var target = await Task.Run(() =>
+            WorkerTargetConfiguration.ResolveGit(
+                workingDirectory,
+                _targetSettings,
+                requireExactRoot: true));
 
-        _gitTarget = target;
         RepositoryUrlInput.Text =
             target.IsRepository && !string.IsNullOrWhiteSpace(target.RepositoryUrl)
                 ? target.RepositoryUrl
                 : string.Empty;
     }
 
+    private async Task ValidateSavedGitConfigurationAsync()
+    {
+        _gitValidationMessage = null;
+        _gitTarget = null;
+
+        var savedRepository = _targetSettings.ManualRepositoryUrl?.Trim();
+        if (string.IsNullOrWhiteSpace(savedRepository))
+        {
+            UpdateDashboardRunButtonState();
+            return;
+        }
+
+        var savedWorkingDirectory = _targetSettings.ManualWorkingDirectory?.Trim();
+        if (string.IsNullOrWhiteSpace(savedWorkingDirectory) ||
+            !Directory.Exists(savedWorkingDirectory))
+        {
+            _gitValidationMessage = "Git 주소가 유효하지 않습니다";
+            UpdateDashboardRunButtonState();
+            return;
+        }
+
+        var actual = await Task.Run(() =>
+            WorkerTargetConfiguration.ResolveGit(
+                savedWorkingDirectory,
+                _targetSettings,
+                requireExactRoot: true));
+
+        if (!actual.IsRepository ||
+            string.IsNullOrWhiteSpace(actual.RepositoryUrl) ||
+            !RepositoryAddressesEqual(savedRepository, actual.RepositoryUrl))
+        {
+            _gitValidationMessage = "Git 주소가 유효하지 않습니다";
+            UpdateDashboardRunButtonState();
+            return;
+        }
+
+        _gitTarget = actual;
+        UpdateDashboardSummary();
+        UpdateDashboardRunButtonState();
+    }
+
+    private static bool RepositoryAddressesEqual(string left, string right)
+    {
+        static string Normalize(string value)
+            => value.Trim().TrimEnd('/');
+
+        return string.Equals(
+            Normalize(left),
+            Normalize(right),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     private async void SaveTargetSettings_Click(object sender, RoutedEventArgs e)
     {
+        var repository = string.IsNullOrWhiteSpace(RepositoryUrlInput.Text)
+            ? null
+            : RepositoryUrlInput.Text.Trim();
         var server = string.IsNullOrWhiteSpace(ServerUrlInput.Text) ? WorkerTargetConfiguration.DefaultServerBaseUrl : ServerUrlInput.Text.Trim();
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var executionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI");
@@ -2469,8 +2527,8 @@ public partial class MainWindow : Window
             : 1;
         _targetSettings = _targetSettings with
         {
-            ManualRepositoryUrl = null, ManualServerBaseUrl = server,
-            RepositoryUrlSource = null, ServerBaseUrlSource = "MANUAL",
+            ManualRepositoryUrl = repository, ManualServerBaseUrl = server,
+            RepositoryUrlSource = repository is null ? null : "AUTO_GIT_REMOTE", ServerBaseUrlSource = "MANUAL",
             ManualWorkingDirectory = workingDirectory,
             Judge = null,
             JudgeEndpointValidation = null,
@@ -2482,6 +2540,7 @@ public partial class MainWindow : Window
         SaveCodexSelection();
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();
+        await ValidateSavedGitConfigurationAsync();
         _serverOnline = await CheckServerAsync();
         ApplyConnectionStatus();
         SetSettingsPopupOpen(false);
@@ -2503,6 +2562,7 @@ public partial class MainWindow : Window
         LoadCodexSelections();
         await RefreshCodexModelCatalogAsync();
         ApplyTargetConfiguration();
+        await ValidateSavedGitConfigurationAsync();
         _codexAuthenticated = await CheckCodexAuthenticationAsync();
         _serverOnline = await CheckServerAsync();
         ApplyConnectionStatus();
