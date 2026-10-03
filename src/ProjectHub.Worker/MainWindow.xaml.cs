@@ -1174,165 +1174,35 @@ public partial class MainWindow : Window
         var launchRequest = BuildTaskLaunchRequest();
         if (launchRequest is null) return;
         var selectedThreadForLaunch = CodexThreadCombo.SelectedItem as CodexThreadOption;
-        if (_targetSettings.IsCoordinatorFirst)
-        {
-            var cliWorkingDirectory = launchRequest.WorkingDirectory;
-            var coordinator = NormalizeRoleSessionForWorkspace(
-                _targetSettings.EffectiveCoordinator,
-                cliWorkingDirectory);
-            var implementer = NormalizeRoleSessionForWorkspace(
-                _targetSettings.EffectiveImplementer,
-                cliWorkingDirectory);
-            var roleError = GetCoordinatorFirstPreflightError(cliWorkingDirectory, coordinator, implementer);
-            if (roleError is not null)
-            {
-                TaskDirection.Text = "PREFLIGHT";
-                TaskTitle.Text = "AI 역할 설정을 확인하세요";
-                ResultTitle.Text = "CLI-TO-CLI BLOCKED";
-                ResultBody.Text = roleError;
-                AiRolesStatusText.Text = roleError;
-                SetFlowState(false, false, false);
-                return;
-            }
-
-            await RunCoordinatorFirstJobAsync(
-                launchRequest.Prompt,
-                selectedThreadForLaunch,
-                cliWorkingDirectory,
-                coordinator,
-                implementer,
-                attachments: launchRequest.Attachments);
-            return;
-        }
-        var legacyHqWeb = _bridgeServer?.GetRoleBindingStatus("HQ");
-        if (!_codexAuthenticated || legacyHqWeb is null || !legacyHqWeb.Bound || !legacyHqWeb.Connected || !legacyHqWeb.ExtensionSynchronized)
+        var cliWorkingDirectory = launchRequest.WorkingDirectory;
+        var coordinator = NormalizeRoleSessionForWorkspace(
+            _targetSettings.EffectiveCoordinator,
+            cliWorkingDirectory);
+        var implementer = NormalizeRoleSessionForWorkspace(
+            _targetSettings.EffectiveImplementer,
+            cliWorkingDirectory);
+        var roleError = GetCoordinatorFirstPreflightError(
+            cliWorkingDirectory,
+            coordinator,
+            implementer);
+        if (roleError is not null)
         {
             TaskDirection.Text = "PREFLIGHT";
-            TaskTitle.Text = legacyHqWeb is null || !legacyHqWeb.Bound ? "HQ GPT Web 대화 연결 필요" : "HQ GPT Web 연결 상태 확인 필요";
+            TaskTitle.Text = "AI 역할 설정을 확인하세요";
+            ResultTitle.Text = "CLI-TO-CLI BLOCKED";
+            ResultBody.Text = roleError;
+            AiRolesStatusText.Text = roleError;
             SetFlowState(false, false, false);
             return;
         }
 
-        var prompt = launchRequest.Prompt;
-        var webInstruction = launchRequest.WebInstruction ?? string.Empty;
-        var seedAction = LegacyWebActionContract.Parse(prompt);
-        if (seedAction.Kind is LegacyWebActionKind.ProtocolError or LegacyWebActionKind.Continue or LegacyWebActionKind.Pause or LegacyWebActionKind.End)
-        {
-            TaskTitle.Text = "잘못된 ACTION 시작 형식";
-            ResultBody.Text = seedAction.Error ?? "[ACTION=BEGIN] 뒤에 작업 지시를 입력해야 합니다.";
-            return;
-        }
-        var cliPrompt = prompt;
-        var model = GetSelectedContent(ModelCombo, "GPT-6 Luna");
-        var reasoning = GetSelectedContent(ReasoningCombo, "Medium").ToLowerInvariant();
-        var cliModel = ToCliModel(model);
-        var selectedThread = selectedThreadForLaunch;
-        var workingDirectory = launchRequest.WorkingDirectory;
-        _activeWorkingDirectory = workingDirectory;
-        _activeJevJobId = Guid.NewGuid().ToString("N");
-        _activeProjectJobId = _activeJevJobId;
-        _historyEvents.Clear();
-        SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
-        StartTaskTranscript(selectedThread, cliPrompt, webInstruction);
-        var sessionId = launchRequest.SessionId;
-        var initialGitReference = await GitReviewGate.CheckAsync(workingDirectory, _targetSettings);
-        _initialGitReferenceHeader = BuildGitReferenceHeader(initialGitReference);
-        _activeUserAttachments = launchRequest.Attachments;
-        _activeStagedUserAttachments = StageUserAttachments(
-            launchRequest.Attachments,
-            workingDirectory,
-            _activeJevJobId + "-legacy");
-        _activeUserAttachmentsSentToWeb = false;
-        ConsumePendingAttachments(launchRequest.Attachments);
-        var initialCliPrompt = UserAttachmentTransport.AppendPrompt(
-            _initialGitReferenceHeader + Environment.NewLine + Environment.NewLine + cliPrompt,
-            _activeStagedUserAttachments);
-        _activePrompt = cliPrompt;
-        _activeWebInstruction = webInstruction;
-        _actionProtocolEnabled = true;
-        _activeReadOnly = IsExplicitReadOnlyRequest(cliPrompt);
-        _jobTimedOut = false;
-        _userCanceledTask = false;
-        _lastActivityAt = DateTimeOffset.UtcNow;
-        _lastWebTaskId = null;
-        _activeSessionId = sessionId;
-        _activeCliModel = cliModel;
-        _activeReasoning = reasoning;
-        AddTaskMessage("TASK START", BuildTaskStartInfo(cliModel, reasoning, workingDirectory, sessionId));
-        AddTaskMessage("TASK REQUEST", cliPrompt, sizeBytes: Encoding.UTF8.GetByteCount(cliPrompt), itemCount: 1);
-        _judgeRound = 0;
-        _judgeStatus = _targetSettings.EffectiveJudge.Enabled ? "READY" : "OFF";
-        _webFollowupStarted = false;
-        _commandUsage = CodexUsage.Empty;
-        UpdateUsage(_commandUsage);
-        var cts = new CancellationTokenSource();
-        _activeTaskCts = cts;
-        ResetDashboardTaskInput();
-        UpdateDashboardRunButtonState();
-        TaskDirection.Text = "CODEX → WORKER";
-        TaskTitle.Text = "Codex 작업 실행 중";
-        SetFlowState(codexActive: true, workerActive: false, webActive: false);
-
-        try
-        {
-            var result = await RunCodexWithJevFooterAsync(initialCliPrompt, cliModel, reasoning, workingDirectory, sessionId, _activeReadOnly, cts.Token, "INITIAL_IMPLEMENTATION");
-            if (_userCanceledTask) return;
-            _lastActivityAt = DateTimeOffset.UtcNow;
-            _lastCodexResult = result;
-            AddCliRoundStatus(result);
-            _activeSessionId = result.SessionId ?? _activeSessionId;
-            CodexThreadArchive.Save(result, cliPrompt, workingDirectory);
-            await RefreshCodexSelectionsAfterCliAsync(result.SessionId, workingDirectory);
-            UpdateCodexSelectionDisplay();
-            SetFlowState(codexActive: false, workerActive: true, webActive: false);
-            TaskDirection.Text = "CODEX → WORKER";
-            TaskTitle.Text = result.ExitCode == 0 ? "Codex 결과 수신 완료" : "Codex 실행 실패";
-            ResultTitle.Text = result.ExitCode == 0 ? $"Codex PASS · {cliModel}" : $"Codex FAIL · exit {result.ExitCode}";
-            ResultBody.Text = BuildResultBody(result);
-            _commandUsage = result.Usage;
-            UpdateUsage(_commandUsage);
-            ActivateResultTab(web: false);
-
-            if (result.ExitCode == 0 && _bridgeServer is not null)
-            {
-                var task = await RouteCodexResultAsync(result, webInstruction, includeWebInstruction: true, gitReferenceHeader: _initialGitReferenceHeader, cancellationToken: cts.Token);
-                if (_userCanceledTask) return;
-                if (task is not null)
-                {
-                    _awaitingWebResult = true;
-                    RunButton.Content = "■   취소";
-                    TaskDirection.Text = "WORKER → GPT WEB";
-                    TaskTitle.Text = "GPT Web 전달 대기 중";
-                    SetFlowState(false, true, true);
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            if (_jobTimedOut || _userCanceledTask) return;
-            _awaitingWebResult = false;
-            TaskTitle.Text = "Codex 실행 취소";
-            ResultTitle.Text = "Codex CANCELED";
-            ResultBody.Text = "Codex CLI 실행이 취소되었습니다.";
-            SetFlowState(codexActive: false, workerActive: false, webActive: false);
-        }
-        catch (Exception ex)
-        {
-            _awaitingWebResult = false;
-            TaskTitle.Text = "Codex 실행을 시작하지 못했습니다";
-            ResultTitle.Text = "Codex ERROR";
-            ResultBody.Text = ex.ToString();
-            SetFlowState(codexActive: false, workerActive: false, webActive: false);
-        }
-        finally
-        {
-            _activeTaskCts.Dispose();
-            _activeTaskCts = null;
-            _userCanceledTask = false;
-            UpdatePanelLayout(_awaitingWebResult);
-            ApplyConnectionStatus();
-            UpdateDashboardRunButtonState();
-        }
+        await RunCoordinatorFirstJobAsync(
+            launchRequest.Prompt,
+            selectedThreadForLaunch,
+            cliWorkingDirectory,
+            coordinator,
+            implementer,
+            attachments: launchRequest.Attachments);
     }
 
     private Task<BridgeTask?> CreateWebTaskAsync(string webPrompt, List<BridgeAttachment> attachments, string? gitReferenceHeader = null)
