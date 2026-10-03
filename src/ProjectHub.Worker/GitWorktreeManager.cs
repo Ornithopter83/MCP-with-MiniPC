@@ -1675,23 +1675,19 @@ public sealed class GitWorktreeManager
                 gitDirectory);
         }
 
-        try
-        {
-            EnsureIntegrationInputExclude(gitDirectory);
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException)
+        var cloneParent = Directory.GetParent(normalizedClone)?.FullName;
+        if (string.IsNullOrWhiteSpace(cloneParent))
         {
             return new(
                 false,
-                "INTEGRATION_INPUT_EXCLUDE_FAILED",
+                "INTEGRATION_INPUT_ROOT_UNAVAILABLE",
                 new Dictionary<string, string>(),
-                exception.Message);
+                normalizedClone);
         }
 
         var inputRoot = Path.Combine(
-            normalizedClone,
-            ".projecthub-integration-inputs");
+            cloneParent,
+            ".inputs-" + Path.GetFileName(normalizedClone));
         Directory.CreateDirectory(inputRoot);
 
         var paths = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -3023,35 +3019,15 @@ public sealed class GitWorktreeManager
         string workspace,
         CancellationToken cancellationToken)
     {
-        var arguments = new List<string>
-        {
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=all",
-            "--",
-            "."
-        };
-
-        var stateDirectory = Path.Combine(
-            Path.GetFullPath(workspace),
-            ".projecthub");
-        var relativeState = Path.GetRelativePath(
-                Path.GetFullPath(repositoryRoot),
-                stateDirectory)
-            .Replace(Path.DirectorySeparatorChar, '/')
-            .Replace(Path.AltDirectorySeparatorChar, '/');
-
-        if (!string.Equals(relativeState, "..", StringComparison.Ordinal) &&
-            !relativeState.StartsWith("../", StringComparison.Ordinal) &&
-            !Path.IsPathRooted(relativeState))
-        {
-            arguments.Add(":(exclude)" + relativeState);
-            arguments.Add(":(exclude)" + relativeState.TrimEnd('/') + "/**");
-        }
-
+        _ = workspace;
         return _runner.RunAsync(
             repositoryRoot,
-            arguments,
+            new[]
+            {
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all"
+            },
             ReadTimeout,
             cancellationToken);
     }
@@ -3253,30 +3229,6 @@ public sealed class GitWorktreeManager
 
         Flush();
         return result;
-    }
-
-    private static void EnsureIntegrationInputExclude(string gitDirectory)
-    {
-        var infoDirectory = Path.Combine(gitDirectory, "info");
-        Directory.CreateDirectory(infoDirectory);
-        var excludePath = Path.Combine(infoDirectory, "exclude");
-        var existing = File.Exists(excludePath)
-            ? File.ReadAllText(excludePath)
-            : string.Empty;
-        const string rule = ".projecthub-integration-inputs/";
-        var lines = existing
-            .Replace("\r\n", "\n")
-            .Replace('\r', '\n')
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-        if (lines.Any(line => string.Equals(line.Trim(), rule, StringComparison.Ordinal)))
-            return;
-
-        var updated = existing.TrimEnd('\r', '\n');
-        if (updated.Length > 0)
-            updated += Environment.NewLine;
-        updated += rule + Environment.NewLine;
-        File.WriteAllText(excludePath, updated, new UTF8Encoding(false));
     }
 
     private static string SafeCommitLabel(string value)
