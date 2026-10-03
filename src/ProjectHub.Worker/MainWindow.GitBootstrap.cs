@@ -100,6 +100,7 @@ public partial class MainWindow
             "GIT_REMOTE_ATTACHED_BRANCH_REQUIRED" => "원격 기준점을 사용하려면 detached HEAD가 아닌 branch가 필요합니다.",
             "GIT_REMOTE_HEAD_REQUIRED" => "현재 Git HEAD commit을 확인할 수 없습니다.",
             "GIT_REMOTE_ORIGIN_REQUIRED" => "origin 원격 저장소가 반드시 설정되어 있어야 합니다.",
+            "GIT_REMOTE_ORIGIN_NETWORK_REQUIRED" => "origin은 로컬 경로가 아닌 네트워크 Git 원격이어야 합니다.",
             "GIT_REMOTE_STATUS_UNAVAILABLE" => "작업 폴더의 Git 상태를 확인할 수 없습니다.",
             "GIT_REMOTE_WORKSPACE_DIRTY" => "작업 폴더에 commit되지 않은 변경이 있습니다. 먼저 commit·push하여 원격과 동기화한 뒤 다시 실행하세요.",
             "GIT_REMOTE_FETCH_TIMEOUT" => "origin fetch 시간이 초과되었습니다.",
@@ -108,6 +109,7 @@ public partial class MainWindow
             "GIT_REMOTE_BRANCH_REQUIRED" => "현재 로컬 branch와 같은 origin 원격 branch를 찾을 수 없습니다.",
             "GIT_REMOTE_HEAD_MISMATCH" => "로컬 HEAD와 origin 원격 branch HEAD가 다릅니다. 원격과 완전히 동기화한 뒤 다시 실행하세요.",
             "PARALLEL_GIT_REMOTE_REQUIRED" => "ProjectHub 병렬 작업에는 origin 원격 저장소가 필요합니다.",
+            "PARALLEL_GIT_NETWORK_REMOTE_REQUIRED" => "ProjectHub 병렬 작업에는 로컬 경로가 아닌 네트워크 Git origin이 필요합니다.",
             "PARALLEL_GIT_HEAD_REQUIRED" => "WORK 기준으로 사용할 원격 동기화 HEAD를 확인할 수 없습니다.",
             "PARALLEL_GIT_ATTACHED_BRANCH_REQUIRED" => "현재 작업공간이 branch에 연결되어 있어야 합니다.",
             _ => "원격 Git 준비에 실패했습니다."
