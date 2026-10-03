@@ -31,17 +31,21 @@ public sealed class GitWorkspaceBootstrapper
             return Failure("GIT_REMOTE_WORKSPACE_MISSING", workingDirectory);
 
         var workspace = Path.GetFullPath(workingDirectory);
-        var rootResult = await RunAsync(
-            workspace,
-            ReadTimeout,
-            cancellationToken,
-            "rev-parse",
-            "--show-toplevel").ConfigureAwait(false);
+        var repositoryRoot = FindRepositoryRoot(workspace);
+        if (repositoryRoot is null)
+        {
+            var rootResult = await RunAsync(
+                workspace,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--show-toplevel").ConfigureAwait(false);
 
-        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
-            return Failure("GIT_REMOTE_REPOSITORY_REQUIRED", workspace);
+            if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+                return Failure("GIT_REMOTE_REPOSITORY_REQUIRED", workspace);
 
-        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+            repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        }
 
         var branchResult = await RunAsync(
             repositoryRoot,
@@ -185,6 +189,23 @@ public sealed class GitWorkspaceBootstrapper
             headCommit,
             false,
             displayOrigin);
+    }
+
+    private static string? FindRepositoryRoot(string path)
+    {
+        var directory = new DirectoryInfo(path);
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, ".git")) ||
+                File.Exists(Path.Combine(directory.FullName, ".git")))
+            {
+                return Path.GetFullPath(directory.FullName);
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
     }
 
     private Task<GitCommandResult> RunAsync(
