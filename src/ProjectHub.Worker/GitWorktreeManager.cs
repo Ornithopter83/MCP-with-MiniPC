@@ -1782,13 +1782,9 @@ public sealed class GitWorktreeManager
             if (string.IsNullOrWhiteSpace(currentHead))
                 return new(false, "TARGET_CHECKOUT_CURRENT_HEAD_UNAVAILABLE", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, null, currentBranch, null, false);
 
-            var fetchResult = await RunAsync(
+            var fetchResult = await FetchOriginAsync(
                 repositoryRoot,
-                CreateTimeout,
-                cancellationToken,
-                "fetch",
-                "--prune",
-                "origin").ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
             if (fetchResult.ExitCode != 0)
             {
                 return new(
