@@ -196,6 +196,20 @@ public sealed record GitTargetContainmentResult(
     string? TargetHead,
     bool IsContained);
 
+public sealed record GitTargetCheckoutResult(
+    bool Success,
+    string? ErrorCode,
+    string RepositoryRoot,
+    string ResultRef,
+    string ResultBranch,
+    string? ResultCommit,
+    string? PreviousBranch,
+    string? PreviousHead,
+    string? CurrentBranch,
+    string? CurrentHead,
+    bool Switched,
+    string? ErrorDetail = null);
+
 public sealed class GitWorktreeManager
 {
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
@@ -1699,6 +1713,255 @@ public sealed class GitWorktreeManager
             return new(true, null, repositoryRoot, normalizedRef, resultCommit, targetBranch, targetHead, false);
 
         return new(false, "TARGET_ANCESTRY_CHECK_FAILED", repositoryRoot, normalizedRef, resultCommit, targetBranch, targetHead, false);
+    }
+
+    public async Task<GitTargetCheckoutResult> SwitchTargetToRemoteResultAsync(
+        string workspace,
+        string resultRef,
+        string resultBranch,
+        string? expectedCurrentBranch = null,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedRef = resultRef?.Trim() ?? string.Empty;
+        var normalizedResultBranch = resultBranch?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+            return new(false, "TARGET_CHECKOUT_WORKSPACE_MISSING", string.Empty, normalizedRef, normalizedResultBranch, null, null, null, null, null, false);
+        if (string.IsNullOrWhiteSpace(normalizedRef))
+            return new(false, "TARGET_CHECKOUT_RESULT_REF_MISSING", Path.GetFullPath(workspace), normalizedRef, normalizedResultBranch, null, null, null, null, null, false);
+        if (string.IsNullOrWhiteSpace(normalizedResultBranch) ||
+            !normalizedResultBranch.StartsWith("projecthub/", StringComparison.Ordinal))
+        {
+            return new(false, "TARGET_CHECKOUT_MANAGED_BRANCH_REQUIRED", Path.GetFullPath(workspace), normalizedRef, normalizedResultBranch, null, null, null, null, null, false);
+        }
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+            return new(false, "TARGET_CHECKOUT_REPOSITORY_REQUIRED", Path.GetFullPath(workspace), normalizedRef, normalizedResultBranch, null, null, null, null, null, false, BuildGitFailureDetail("git rev-parse --show-toplevel", rootResult));
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var primaryGate = GetRepositoryPrimaryMutationGate(repositoryRoot);
+        await primaryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var status = await ReadPrimaryWorkspaceStatusAsync(
+                repositoryRoot,
+                workspace,
+                cancellationToken).ConfigureAwait(false);
+            if (status.ExitCode != 0)
+                return new(false, "TARGET_CHECKOUT_STATUS_UNAVAILABLE", repositoryRoot, normalizedRef, normalizedResultBranch, null, null, null, null, null, false, BuildGitFailureDetail("git status", status));
+            if (!string.IsNullOrWhiteSpace(status.StandardOutput))
+                return new(false, "TARGET_CHECKOUT_WORKSPACE_DIRTY", repositoryRoot, normalizedRef, normalizedResultBranch, null, null, null, null, null, false);
+
+            var branchResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+            var currentBranch = branchResult.ExitCode == 0
+                ? FirstLine(branchResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(currentBranch))
+                return new(false, "TARGET_CHECKOUT_CURRENT_BRANCH_REQUIRED", repositoryRoot, normalizedRef, normalizedResultBranch, null, null, null, null, null, false);
+
+            var expectedBranch = string.IsNullOrWhiteSpace(expectedCurrentBranch)
+                ? null
+                : expectedCurrentBranch.Trim();
+            if (expectedBranch is not null &&
+                !string.Equals(currentBranch, expectedBranch, StringComparison.Ordinal))
+            {
+                return new(false, "TARGET_CHECKOUT_CURRENT_BRANCH_CHANGED", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, null, currentBranch, null, false);
+            }
+
+            var headResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+            var currentHead = headResult.ExitCode == 0
+                ? FirstLine(headResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(currentHead))
+                return new(false, "TARGET_CHECKOUT_CURRENT_HEAD_UNAVAILABLE", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, null, currentBranch, null, false);
+
+            var fetchResult = await RunAsync(
+                repositoryRoot,
+                CreateTimeout,
+                cancellationToken,
+                "fetch",
+                "--prune",
+                "origin").ConfigureAwait(false);
+            if (fetchResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    fetchResult.TimedOut ? "TARGET_CHECKOUT_FETCH_TIMEOUT"
+                        : fetchResult.Canceled ? "TARGET_CHECKOUT_FETCH_CANCELED"
+                        : "TARGET_CHECKOUT_FETCH_FAILED",
+                    repositoryRoot,
+                    normalizedRef,
+                    normalizedResultBranch,
+                    null,
+                    currentBranch,
+                    currentHead,
+                    currentBranch,
+                    currentHead,
+                    false,
+                    BuildGitFailureDetail("git fetch --prune origin", fetchResult));
+            }
+
+            var currentRemoteResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                $"refs/remotes/origin/{currentBranch}^{{commit}}").ConfigureAwait(false);
+            var currentRemoteHead = currentRemoteResult.ExitCode == 0
+                ? FirstLine(currentRemoteResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(currentRemoteHead))
+                return new(false, "TARGET_CHECKOUT_CURRENT_REMOTE_BRANCH_REQUIRED", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, currentHead, currentBranch, currentHead, false);
+            if (!string.Equals(currentHead, currentRemoteHead, StringComparison.OrdinalIgnoreCase))
+                return new(false, "TARGET_CHECKOUT_CURRENT_REMOTE_CHANGED", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, currentHead, currentBranch, currentHead, false);
+
+            var resultCommitResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                normalizedRef + "^{commit}").ConfigureAwait(false);
+            var resultCommit = resultCommitResult.ExitCode == 0
+                ? FirstLine(resultCommitResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(resultCommit))
+                return new(false, "TARGET_CHECKOUT_RESULT_REF_INVALID", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, currentHead, currentBranch, currentHead, false);
+
+            var remoteResultBranchResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                $"refs/remotes/origin/{normalizedResultBranch}^{{commit}}").ConfigureAwait(false);
+            var remoteResultHead = remoteResultBranchResult.ExitCode == 0
+                ? FirstLine(remoteResultBranchResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(remoteResultHead))
+                return new(false, "TARGET_CHECKOUT_RESULT_REMOTE_BRANCH_REQUIRED", repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, currentBranch, currentHead, false);
+            if (!string.Equals(remoteResultHead, resultCommit, StringComparison.OrdinalIgnoreCase))
+                return new(false, "TARGET_CHECKOUT_RESULT_REMOTE_MISMATCH", repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, currentBranch, currentHead, false);
+
+            if (string.Equals(currentBranch, normalizedResultBranch, StringComparison.Ordinal) &&
+                string.Equals(currentHead, resultCommit, StringComparison.OrdinalIgnoreCase))
+            {
+                return new(true, null, repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, currentBranch, currentHead, false);
+            }
+
+            var localBranchResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/heads/" + normalizedResultBranch).ConfigureAwait(false);
+
+            GitCommandResult switchResult;
+            if (localBranchResult.ExitCode == 0)
+            {
+                var localBranchCommitResult = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "rev-parse",
+                    "--verify",
+                    "refs/heads/" + normalizedResultBranch + "^{commit}").ConfigureAwait(false);
+                var localBranchCommit = localBranchCommitResult.ExitCode == 0
+                    ? FirstLine(localBranchCommitResult.StandardOutput)
+                    : null;
+                if (!string.Equals(localBranchCommit, resultCommit, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new(false, "TARGET_CHECKOUT_LOCAL_BRANCH_CONFLICT", repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, currentBranch, currentHead, false);
+                }
+
+                switchResult = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "switch",
+                    normalizedResultBranch).ConfigureAwait(false);
+            }
+            else if (localBranchResult.ExitCode == 1)
+            {
+                switchResult = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "switch",
+                    "-c",
+                    normalizedResultBranch,
+                    "--track",
+                    "origin/" + normalizedResultBranch).ConfigureAwait(false);
+            }
+            else
+            {
+                return new(false, "TARGET_CHECKOUT_LOCAL_BRANCH_CHECK_FAILED", repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, currentBranch, currentHead, false, BuildGitFailureDetail("git show-ref --verify", localBranchResult));
+            }
+
+            if (switchResult.ExitCode != 0)
+                return new(false, "TARGET_CHECKOUT_SWITCH_FAILED", repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, currentBranch, currentHead, false, BuildGitFailureDetail("git switch", switchResult));
+
+            var afterBranchResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+            var afterBranch = afterBranchResult.ExitCode == 0
+                ? FirstLine(afterBranchResult.StandardOutput)
+                : null;
+            var afterHeadResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+            var afterHead = afterHeadResult.ExitCode == 0
+                ? FirstLine(afterHeadResult.StandardOutput)
+                : null;
+            var afterStatus = await ReadPrimaryWorkspaceStatusAsync(
+                repositoryRoot,
+                workspace,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!string.Equals(afterBranch, normalizedResultBranch, StringComparison.Ordinal) ||
+                !string.Equals(afterHead, resultCommit, StringComparison.OrdinalIgnoreCase) ||
+                afterStatus.ExitCode != 0 ||
+                !string.IsNullOrWhiteSpace(afterStatus.StandardOutput))
+            {
+                return new(false, "TARGET_CHECKOUT_VERIFY_FAILED", repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, afterBranch, afterHead, true);
+            }
+
+            return new(true, null, repositoryRoot, normalizedRef, normalizedResultBranch, resultCommit, currentBranch, currentHead, afterBranch, afterHead, true);
+        }
+        finally
+        {
+            primaryGate.Release();
+        }
     }
 
     public Task<GitIntegrationLandingResult> LandIntegrationAsync(
