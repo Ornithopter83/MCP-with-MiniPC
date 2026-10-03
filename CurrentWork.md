@@ -38,14 +38,14 @@
 ⑧ HQ 상태 통지는 WorkItem checklist를 첫 보고에 포함한 뒤 같은 관제 세션의 후속 상태 변화에서는 동일 checklist 전문을 반복하지 않고 새 WORK 보고와 변경 상태를 중심으로 전달한다.
 ⑨ NORMAL WORK는 원격 기준 disposable clone과 `projecthub/*` checkpoint 정책을 유지한다. 하네스 없음 Direct Work는 이 관제 경로와 분리되어 사용자가 선택한 작업 폴더에서 직접 실행한다.
 ⑩ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
-⑪ HIGH는 Job별 사용자 one-shot 허용이 있을 때 HQ가 직접 호출하고 결과를 같은 HQ 관제 루프로 반환하는 구조로 복원한다. HIGH는 danger-full-access 실행을 사용하되 일반 WorkItem·RESOURCE 대체로 사용하지 않는다.
+⑪ HIGH는 일반 WORK가 동일·유사 원인으로 반복 실패한 차단 문제의 대안으로 HQ가 직접 호출하고 결과를 같은 HQ 관제 루프로 반환한다. HIGH는 danger-full-access 실행을 사용하되 일반 WorkItem·RESOURCE 대체로 사용하지 않는다.
 ⑫ RESOURCE는 IMAGE 전용으로 제한하며 AUDIO·VIDEO·DOCUMENT·FILE 요청은 Web 전송 전에 기계적으로 거부한다.
 ⑬ Integration 준비는 로컬 branch 이름에 대응하는 origin branch를 추론하지 않고, fetch된 origin ref 중 현재 로컬 HEAD와 정확히 같은 commit을 가리키는 ref가 있는지 검증한다.
-⑭ WORK의 Git 환경은 terminal/GCM 상호작용만 비활성화하고 HTTPS/SSH protocol 자체를 막지 않는다. `git ls-remote` 같은 read-only 원격 사실 확인은 허용하되, WORK 실행 중 현재 worktree의 Git metadata는 계속 분리·복원하며 clone·stage·commit·push와 원격 branch 변경은 역할 계약상 금지한다. 원격 Git 상태 변경이 필요한 인프라 복구는 사용자 one-shot 허용이 있는 HIGH 경로를 사용한다.
+⑭ WORK의 Git 환경은 terminal/GCM 상호작용만 비활성화하고 HTTPS/SSH protocol 자체를 막지 않는다. `git ls-remote` 같은 read-only 원격 사실 확인은 허용하되, WORK 실행 중 현재 worktree의 Git metadata는 계속 분리·복원하며 clone·stage·commit·push와 원격 branch 변경은 역할 계약상 금지한다. 반복 실패 후 원격 Git 상태 변경이 필요한 인프라 복구는 HQ가 HIGH 경로로 처리할 수 있다.
 ⑮ managed CLI 역할의 Codex 내부 output/schema 임시파일은 작업 폴더의 `.projecthub/runtime/temp` 아래 role/work 전용 경로를 우선 사용한다. PAUSE compact와 DONE runtime reset이 이 경로를 정리하며, RESOURCE staging은 IMAGE만 허용한다.
 ⑯ WorkGraph 기계 상태의 `kind`는 NORMAL/INTEGRATION 실행 방식을 나타낸다. 고정 임무는 `slot=RESOURCE_MAKE`, `RESOURCE_PROCESSING`, `FILE_MANAGER`, `BUILD_PUBLISH`로 별도 표시한다.
 ⑰ #8 FILE MANAGER는 실제 루트를 작업 대상으로 사용하고, 완료된 루트 구조를 전용 `projecthub/*/8-run-*` branch의 CODE_CHANGE resultRef로 확정한다. HQ는 초기 scaffold가 필요한 경우 이 resultRef를 후속 작은 일반 WorkItem들의 baseRef로 사용하며, finalizer는 그 #8 branch를 소비된 bootstrap checkout으로 인정한다.
-⑱ 활성 역할 계약은 판단·라우팅에 필요한 최소 규칙만 유지하도록 정리했다. 현재 HQ/WORK/HIGH 계약 크기는 각각 약 1.9k/0.7k/0.35k 문자이며, revision·JSON·상태 전이·RESOURCE 타입·HIGH one-shot 같은 기계 검증은 Worker 코드와 테스트가 강제한다.
+⑱ 활성 역할 계약은 판단·라우팅에 필요한 최소 규칙만 유지하도록 정리했다. revision·JSON·상태 전이·RESOURCE 타입과 HIGH sandbox·라우팅 경계 같은 기계 검증은 Worker 코드와 테스트가 강제한다.
 
 제6조 (WEB)
 
