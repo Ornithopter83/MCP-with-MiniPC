@@ -87,6 +87,14 @@ public sealed class GitWorkspaceBootstrapper
                 branch,
                 headCommit);
 
+        if (!GitRemoteAddressPolicy.IsNetworkRemote(FirstLine(remoteResult.StandardOutput)))
+            return RepositoryFailure(
+                "GIT_REMOTE_ORIGIN_NETWORK_REQUIRED",
+                workspace,
+                repositoryRoot,
+                branch,
+                headCommit);
+
         var statusResult = await RunAsync(
             repositoryRoot,
             ReadTimeout,
