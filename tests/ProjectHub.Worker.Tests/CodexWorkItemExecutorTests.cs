@@ -598,6 +598,64 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task UnpublishedCheckpointCommitRemainsCodeChangeWhenAllPushAttemptsFail()
+    {
+        var fixture = CreateFixture("""
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            코드 변경을 완료했습니다.
+            """);
+
+        var worktree = fixture.Request.Item.WorktreePath!;
+        File.WriteAllText(Path.Combine(worktree, "changed.cs"), "changed");
+
+        try
+        {
+            fixture.Git.Clear();
+
+            fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
+            fixture.Git.Enqueue(0, "https://example.invalid/repo.git");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, worktree);
+            fixture.Git.Enqueue(0, Path.Combine(worktree, ".git"));
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "head123");
+            fixture.Git.Enqueue(0, "");
+
+            fixture.Git.Enqueue(0, "head123");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, " M changed.cs");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "committed");
+            fixture.Git.Enqueue(0, "new456");
+            fixture.Git.Enqueue(1, "", "push failed 1");
+
+            for (var attempt = 2; attempt <= 3; attempt++)
+            {
+                fixture.Git.Enqueue(0, "new456");
+                fixture.Git.Enqueue(0, fixture.Branch);
+                fixture.Git.Enqueue(0, "");
+                fixture.Git.Enqueue(1, "", "push failed " + attempt);
+            }
+
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("WORKTREE_CHECKPOINT_PENDING", result.BlockCode);
+            Assert.Equal("WORKTREE_CHECKPOINT_PUSH_FAILED", result.BlockDetailCode);
+            Assert.Equal(WorkItemResultType.CodeChange, result.ResultType);
+            Assert.Equal("new456", result.ResultRef);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task CheckpointPendingResumeDoesNotRunAiAgain()
     {
         var fixture = CreateFixture("""
