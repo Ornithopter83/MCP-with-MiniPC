@@ -163,6 +163,14 @@ public sealed record GitWorktreeCheckpointResult(
     bool CreatedCommit,
     string? ErrorDetail = null);
 
+public sealed record GitInitialBaselineResult(
+    bool Success,
+    string? ErrorCode,
+    string RepositoryRoot,
+    string Branch,
+    string? HeadCommit,
+    string? ErrorDetail = null);
+
 public sealed record GitNormalBaseResolutionResult(
     bool Success,
     string? ErrorCode,
@@ -215,6 +223,323 @@ public sealed class GitWorktreeManager
     public GitWorktreeManager(IGitCommandRunner? runner = null)
     {
         _runner = runner ?? new ProcessGitCommandRunner();
+    }
+
+    public async Task<GitInitialBaselineResult> PrepareInitialBaselineAsync(
+        string workspace,
+        string jobId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+            return new(false, "INITIAL_BASE_WORKSPACE_MISSING", workspace ?? string.Empty, string.Empty, null);
+        if (string.IsNullOrWhiteSpace(jobId))
+            return new(false, "INITIAL_BASE_JOB_ID_MISSING", Path.GetFullPath(workspace), string.Empty, null);
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+        {
+            return new(
+                false,
+                "INITIAL_BASE_REPOSITORY_REQUIRED",
+                Path.GetFullPath(workspace),
+                string.Empty,
+                null,
+                BuildGitFailureDetail("git rev-parse --show-toplevel", rootResult));
+        }
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var branch = BuildBranchName(jobId, "base");
+        var clonePath = BuildWorktreePath(repositoryRoot, jobId, "base");
+
+        var remoteResult = await RunAsync(
+            repositoryRoot,
+            ReadTimeout,
+            cancellationToken,
+            "remote",
+            "get-url",
+            "origin").ConfigureAwait(false);
+        if (remoteResult.ExitCode != 0 || string.IsNullOrWhiteSpace(remoteResult.StandardOutput))
+        {
+            return new(
+                false,
+                "INITIAL_BASE_REMOTE_REQUIRED",
+                repositoryRoot,
+                branch,
+                null,
+                BuildGitFailureDetail("git remote get-url origin", remoteResult));
+        }
+
+        var originUrl = FirstLine(remoteResult.StandardOutput);
+        if (!GitRemoteAddressPolicy.IsNetworkRemote(originUrl))
+        {
+            return new(
+                false,
+                "INITIAL_BASE_NETWORK_REMOTE_REQUIRED",
+                repositoryRoot,
+                branch,
+                null,
+                "origin은 로컬 경로가 아닌 네트워크 Git 원격이어야 합니다.");
+        }
+
+        var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
+        await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var existingRemote = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "ls-remote",
+                "--exit-code",
+                "origin",
+                "refs/heads/" + branch).ConfigureAwait(false);
+            if (existingRemote.ExitCode == 0 &&
+                !string.IsNullOrWhiteSpace(existingRemote.StandardOutput))
+            {
+                var remoteHead = FirstLine(existingRemote.StandardOutput)
+                    .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(remoteHead))
+                    return new(true, null, repositoryRoot, branch, remoteHead);
+            }
+
+            var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
+                clonePath,
+                cancellationToken).ConfigureAwait(false);
+            if (deleteError is not null)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_CLONE_DELETE_FAILED",
+                    repositoryRoot,
+                    branch,
+                    null,
+                    deleteError);
+            }
+
+            var parent = Directory.GetParent(clonePath)?.FullName;
+            if (string.IsNullOrWhiteSpace(parent))
+                return new(false, "INITIAL_BASE_CLONE_PARENT_INVALID", repositoryRoot, branch, null);
+            Directory.CreateDirectory(parent);
+
+            var cloneResult = await RunAsync(
+                repositoryRoot,
+                CreateTimeout,
+                cancellationToken,
+                "clone",
+                "--no-checkout",
+                originUrl,
+                clonePath).ConfigureAwait(false);
+            if (cloneResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_CLONE_FAILED",
+                    repositoryRoot,
+                    branch,
+                    null,
+                    BuildGitFailureDetail("git clone --no-checkout origin", cloneResult));
+            }
+
+            var orphanResult = await RunAsync(
+                clonePath,
+                ReadTimeout,
+                cancellationToken,
+                "switch",
+                "--orphan",
+                branch).ConfigureAwait(false);
+            if (orphanResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_ORPHAN_BRANCH_FAILED",
+                    repositoryRoot,
+                    branch,
+                    null,
+                    BuildGitFailureDetail("git switch --orphan", orphanResult));
+            }
+
+            var filesResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z").ConfigureAwait(false);
+            if (filesResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_FILE_LIST_FAILED",
+                    repositoryRoot,
+                    branch,
+                    null,
+                    BuildGitFailureDetail("git ls-files", filesResult));
+            }
+
+            foreach (var relative in filesResult.StandardOutput
+                         .Split('\0', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var normalizedRelative = relative
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Trim();
+                if (string.IsNullOrWhiteSpace(normalizedRelative))
+                    continue;
+
+                var source = Path.GetFullPath(Path.Combine(repositoryRoot, normalizedRelative));
+                var destination = Path.GetFullPath(Path.Combine(clonePath, normalizedRelative));
+                if (!IsPathWithin(source, repositoryRoot) ||
+                    !IsPathWithin(destination, clonePath) ||
+                    !File.Exists(source))
+                {
+                    return new(
+                        false,
+                        "INITIAL_BASE_FILE_PATH_INVALID",
+                        repositoryRoot,
+                        branch,
+                        null,
+                        normalizedRelative);
+                }
+
+                var destinationDirectory = Path.GetDirectoryName(destination);
+                if (!string.IsNullOrWhiteSpace(destinationDirectory))
+                    Directory.CreateDirectory(destinationDirectory);
+                File.Copy(source, destination, overwrite: true);
+            }
+
+            var addResult = await RunAsync(
+                clonePath,
+                ReadTimeout,
+                cancellationToken,
+                "add",
+                "--all",
+                "--",
+                ".").ConfigureAwait(false);
+            if (addResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_ADD_FAILED",
+                    repositoryRoot,
+                    branch,
+                    null,
+                    BuildGitFailureDetail("git add --all -- .", addResult));
+            }
+
+            var commitResult = await RunAsync(
+                clonePath,
+                CreateTimeout,
+                cancellationToken,
+                "-c",
+                "user.name=ProjectHub",
+                "-c",
+                "user.email=projecthub@local",
+                "commit",
+                "--allow-empty",
+                "--no-gpg-sign",
+                "-m",
+                "ProjectHub initial repository baseline").ConfigureAwait(false);
+            if (commitResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_COMMIT_FAILED",
+                    repositoryRoot,
+                    branch,
+                    null,
+                    BuildGitFailureDetail("git commit --allow-empty", commitResult));
+            }
+
+            var headResult = await RunAsync(
+                clonePath,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+            if (headResult.ExitCode != 0 || string.IsNullOrWhiteSpace(headResult.StandardOutput))
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_HEAD_UNAVAILABLE",
+                    repositoryRoot,
+                    branch,
+                    null,
+                    BuildGitFailureDetail("git rev-parse HEAD", headResult));
+            }
+
+            var head = FirstLine(headResult.StandardOutput);
+            var pushResult = await RunAsync(
+                clonePath,
+                CreateTimeout,
+                cancellationToken,
+                "push",
+                "origin",
+                "HEAD:refs/heads/" + branch).ConfigureAwait(false);
+            if (pushResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_PUSH_FAILED",
+                    repositoryRoot,
+                    branch,
+                    head,
+                    BuildGitFailureDetail("git push origin initial baseline", pushResult));
+            }
+
+            var verifyResult = await RunAsync(
+                clonePath,
+                ReadTimeout,
+                cancellationToken,
+                "ls-remote",
+                "--exit-code",
+                "origin",
+                "refs/heads/" + branch).ConfigureAwait(false);
+            var verifiedHead = verifyResult.ExitCode == 0 &&
+                               !string.IsNullOrWhiteSpace(verifyResult.StandardOutput)
+                ? FirstLine(verifyResult.StandardOutput)
+                    .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault()
+                : null;
+            if (!string.Equals(head, verifiedHead, StringComparison.OrdinalIgnoreCase))
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_REMOTE_VERIFY_FAILED",
+                    repositoryRoot,
+                    branch,
+                    head,
+                    BuildGitFailureDetail("git ls-remote initial baseline", verifyResult));
+            }
+
+            _ = await DeleteDirectoryTreeWithRetriesAsync(
+                clonePath,
+                CancellationToken.None).ConfigureAwait(false);
+
+            return new(true, null, repositoryRoot, branch, head);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return new(
+                false,
+                "INITIAL_BASE_COPY_FAILED",
+                repositoryRoot,
+                branch,
+                null,
+                exception.GetType().Name + ": " + exception.Message);
+        }
+        finally
+        {
+            preparationGate.Release();
+        }
     }
 
     public async Task<GitNormalBaseResolutionResult> ResolveNormalBaseRefAsync(
