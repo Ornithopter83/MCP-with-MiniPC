@@ -201,7 +201,7 @@
             <TextBox x:Name="RepositoryUrlInput" Width="652" Height="32" FontSize="15" Padding="8,3" IsReadOnly="True" IsEnabled="False" IsTabStop="False" ToolTip="작업 폴더의 Git origin에서 자동으로 확인됩니다."/>
             <Button Content="자동 확인" Width="104" Height="32" Margin="8,0,0,0" Padding="0,3" FontSize="14" Click="AutoDetectTargets_Click"/>
           </StackPanel>
-          <StackPanel Grid.Row="2" Margin="140,0,0,0" Visibility="Collapsed">
+          <StackPanel Grid.Row="2" Margin="140,4,0,4">
             <TextBlock x:Name="TargetGitStateText" FontSize="15" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
             <TextBlock x:Name="TargetPathText" FontSize="14" Foreground="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap"/>
           </StackPanel>
