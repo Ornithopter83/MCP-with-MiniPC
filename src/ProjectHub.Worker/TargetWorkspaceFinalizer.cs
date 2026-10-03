@@ -110,6 +110,13 @@ public sealed class TargetWorkspaceFinalizer
                              StringComparison.OrdinalIgnoreCase))
                      ?? tips.OrderByDescending(item => item.CreatedOrder).First();
 
+        var freshness = await CheckPublishFreshnessAsync(
+            graph.JobId,
+            finalResultRef,
+            cancellationToken).ConfigureAwait(false);
+        if (freshness is not null)
+            return freshness;
+
         var containment = await _worktrees.InspectTargetContainmentAsync(
             _workspace,
             finalResultRef,
@@ -171,20 +178,6 @@ public sealed class TargetWorkspaceFinalizer
             }
 
             fastForwarded = landing.FastForwarded;
-        }
-
-        var freshness = await CheckPublishFreshnessAsync(
-            graph.JobId,
-            finalResultRef,
-            cancellationToken).ConfigureAwait(false);
-        if (freshness is not null)
-        {
-            return freshness with
-            {
-                LandedWorkItemId = target.Id,
-                LandedResultRef = finalResultRef,
-                FastForwarded = fastForwarded
-            };
         }
 
         return new(
