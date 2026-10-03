@@ -75,11 +75,20 @@ public sealed class CodexWorkItemExecutorTests
 
         try
         {
+            var rootPath = Path.Combine(fixture.Parent, "repo");
+            var publishRoot = WorkerPaths.GetPublishedArtifactDirectory(
+                rootPath,
+                "job",
+                fixture.Request.Item.CreatedOrder);
+            Directory.CreateDirectory(publishRoot);
+            File.WriteAllText(
+                Path.Combine(publishRoot, "artifact.txt"),
+                "published");
+
             var result = await fixture.Executor.ExecuteAsync(
                 fixture.Request,
                 CancellationToken.None);
 
-            var rootPath = Path.Combine(fixture.Parent, "repo");
             var executionKey = FixedWorkItemSlots.BuildExecutionKey(
                 FixedWorkItemSlots.BuildPublish,
                 fixture.Request.Item.CreatedOrder);
@@ -95,10 +104,6 @@ public sealed class CodexWorkItemExecutorTests
             Assert.DoesNotContain(
                 "대상 프로젝트 루트: " + Path.GetFullPath(rootPath),
                 fixture.Runner.LastRequest.Prompt);
-            var publishRoot = WorkerPaths.GetPublishedArtifactDirectory(
-                rootPath,
-                "job",
-                fixture.Request.Item.CreatedOrder);
             Assert.Contains(
                 Path.GetFullPath(publishRoot),
                 fixture.Runner.LastRequest.AdditionalWritableDirectories!);
@@ -115,6 +120,35 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(WorkItemResultType.Artifact, result.ResultType);
             Assert.StartsWith("artifact-run-", result.ResultRef);
             Assert.Null(result.CommitManifestPath);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task BuildPublishCompletionBlocksWhenPersistentOutputIsEmpty()
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            BUILD / PUBLISH 완료
+            """,
+            workItemId: FixedWorkItemSlots.BuildPublish,
+            createdOrder: 5);
+
+        try
+        {
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("PUBLISH_OUTPUT_EMPTY", result.BlockCode);
+            Assert.Equal("PUBLISH_OUTPUT_EMPTY", result.BlockDetailCode);
+            Assert.Contains("publishOutputDirectory:", result.ResultSummary ?? string.Empty);
         }
         finally
         {
