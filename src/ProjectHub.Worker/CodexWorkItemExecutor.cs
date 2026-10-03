@@ -331,9 +331,18 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 writableDirectories.Add(publishOutputDirectory);
             if (!string.IsNullOrWhiteSpace(observationRequestDirectory))
                 writableDirectories.Add(observationRequestDirectory);
+            foreach (var snapshotPath in integrationSnapshots.Values)
+            {
+                if (!string.IsNullOrWhiteSpace(snapshotPath))
+                    writableDirectories.Add(snapshotPath);
+            }
             if (FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id))
                 writableDirectories.Add(_workspace);
-            workWritableDirectories = writableDirectories;
+            workWritableDirectories = writableDirectories
+                .Distinct(OperatingSystem.IsWindows()
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal)
+                .ToArray();
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
