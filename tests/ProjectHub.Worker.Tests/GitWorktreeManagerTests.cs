@@ -361,6 +361,32 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task IntegrationCloneCleanupRemovesExternalDependencySnapshots()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clone = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
+        Directory.CreateDirectory(Path.Combine(clone, ".git"));
+        var parent = Directory.GetParent(clone)!.FullName;
+        var inputRoot = Path.Combine(parent, ".inputs-" + Path.GetFileName(clone));
+        Directory.CreateDirectory(inputRoot);
+        File.WriteAllText(Path.Combine(inputRoot, "snapshot.txt"), "dependency");
+
+        try
+        {
+            var result = await new GitWorktreeManager(new FakeGitRunner())
+                .CleanupIntegrationCloneAsync(root, clone);
+
+            Assert.True(result.Success, result.ErrorDetail);
+            Assert.False(Directory.Exists(clone));
+            Assert.False(Directory.Exists(inputRoot));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
     public async Task RuntimeResetDeletesOnlyExternalProjectHubRuntime()
     {
         var root = CreateTempRepositoryDirectory();
