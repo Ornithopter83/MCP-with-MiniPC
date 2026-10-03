@@ -155,15 +155,13 @@ public static class WorkerTargetConfiguration
     public static GitTargetSnapshot ResolveGit(
         string projectPath,
         WorkerTargetSettings settings,
-        bool requireExactRoot = false)
+        bool requireExactRoot = true)
     {
         if (string.IsNullOrWhiteSpace(projectPath) || !Directory.Exists(projectPath))
             return new(projectPath ?? string.Empty, null, null, null, "UNCONFIGURED", false);
 
         var path = Path.GetFullPath(projectPath);
-        var root = requireExactRoot
-            ? HasGitMetadata(path) ? path : null
-            : FindRepositoryRoot(path);
+        var root = HasGitMetadata(path) ? path : null;
         if (root is null)
             return new(path, null, null, null, "UNCONFIGURED", false);
 
@@ -177,19 +175,6 @@ public static class WorkerTargetConfiguration
     private static bool HasGitMetadata(string path)
         => Directory.Exists(Path.Combine(path, ".git")) ||
            File.Exists(Path.Combine(path, ".git"));
-
-    private static string? FindRepositoryRoot(string path)
-    {
-        var directory = new DirectoryInfo(path);
-        while (directory is not null)
-        {
-            if (HasGitMetadata(directory.FullName))
-                return directory.FullName;
-            directory = directory.Parent;
-        }
-
-        return null;
-    }
 
     private static string? RunGit(string workingDirectory, params string[] arguments)
     {
