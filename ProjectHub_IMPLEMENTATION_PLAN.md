@@ -1,6 +1,6 @@
 # ProjectHub 구현 로드맵
 
-갱신일: 2026-10-01
+갱신일: 2026-10-03
 
 상위 공통 정책은 `Master-Polish.md`이며 프로젝트별 장기 정책과 전용 계약이 이 문서보다 우선한다. 날짜별 변경 이력과 과거 구현 경로는 `tasks/*.md`, 전용 기록 문서와 Git 이력에 둔다.
 
@@ -25,12 +25,12 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 
 제2조 (WORK 실행과 결과)
 
-① NORMAL WORK는 Worker가 준비한 독립 branch와 linked worktree의 일반 파일을 대상으로 실행한다.
+① NORMAL WORK는 `origin` 원격에서 만든 독립 `projecthub/*` branch와 Worker 소유 disposable clone의 일반 파일을 대상으로 실행한다.
 ② WORK AI는 Git metadata와 Git 원격을 작업 수단으로 사용하지 않는다.
-③ Worker가 checkpoint commit, CODE_CHANGE provenance, Commit Manifest와 후속 전달 메타데이터를 기계적으로 관리한다.
+③ Worker가 checkpoint commit, 원격 `projecthub/*` 게시 확인, CODE_CHANGE `resultRef`와 후속 전달 메타데이터를 기계적으로 관리한다. 별도 Commit Manifest나 materialization ledger를 두지 않는다.
 ④ WorkItem 생애 동안 checkpoint commit이 생성됐거나 이전 BLOCKED 단계의 CODE_CHANGE provenance가 보존된 경우 최종 재개 실행에서 새 commit이 없어도 CODE_CHANGE를 ANALYSIS로 낮추지 않는다.
 ⑤ 여러 CODE_CHANGE 결과를 함께 반영해야 하면 HQ가 INTEGRATION WorkItem을 추가한다.
-⑥ INTEGRATION은 주 저장소와 분리된 독립 clone에서 일반 파일 기준으로 의미적 통합과 검증을 수행하고 Worker만 완료 commit import와 target branch fast-forward를 수행한다.
+⑥ INTEGRATION은 주 저장소와 분리된 독립 clone에서 일반 파일 기준으로 의미적 통합과 검증을 수행하고, Worker가 완료 결과를 새 `projecthub/*` 원격 CODE_CHANGE로 게시한다.
 
 제3조 (continuation과 기록)
 
@@ -54,9 +54,9 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 
 ① Worker는 WORK 실행 전에 Git metadata를 AI 실행 경계 밖으로 격리하고 원격 프로토콜 접근을 차단한다.
 ② 실행 중 사용자 작업 폴더가 바뀌면 그 변경을 자동 merge하지 않고 사용자 파일을 보존한 채 기존 결과 반영을 중단한다.
-③ Git 준비가 실패하면 사용자 승인 후 `.git` metadata만 삭제하고 작업 파일과 `.gitignore`를 보존한 채 현재 파일에서 새 local baseline을 만들 수 있다.
-④ 파괴적 reset, force, 외부 push 또는 배포는 별도 명시적 승인 없이 수행하지 않는다.
-⑤ 정확한 worktree/clone 경로, 환경 변수와 Git 명령행 옵션은 현재 구현과 테스트를 원본으로 사용한다.
+③ Git 준비는 `origin`이 존재하고 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 작업 폴더에서만 성공한다. 조건이 맞지 않으면 Worker가 `.git` 재초기화·자동 merge·reset으로 우회하지 않고 기계 오류로 차단한다.
+④ 연결 프로젝트의 `projecthub/*` 작업 branch checkpoint push는 Worker가 수행할 수 있지만, 기본·보호 branch push, force push, 파괴적 reset과 배포는 별도 명시적 승인 없이 수행하지 않는다.
+⑤ 정확한 disposable clone 경로, 환경 변수와 Git 명령행 옵션은 현재 구현과 테스트를 원본으로 사용한다.
 
 제6조 (Web 런타임)
 
