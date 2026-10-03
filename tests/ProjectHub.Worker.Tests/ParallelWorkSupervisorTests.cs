@@ -809,6 +809,9 @@ public sealed class ParallelWorkSupervisorTests
             executor,
             "base123",
             hq.RunAsync);
+        var rejected = new List<(string ErrorCode, string Body)>();
+        supervisor.PatchRejected += (errorCode, body) =>
+            rejected.Add((errorCode, body));
 
         var result = await supervisor.RunAsync(
             "USER_REQUEST",
@@ -820,6 +823,13 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[1]);
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_REJECTED", hq.Prompts[2]);
         Assert.Contains("attempt=3", result.HqBody);
+        Assert.Equal(3, rejected.Count);
+        Assert.All(
+            rejected,
+            item => Assert.Equal(
+                "WORK_GRAPH_WORK_ITEM_NOT_FOUND",
+                item.ErrorCode));
+        Assert.Contains("attempt=3", rejected[2].Body);
         Assert.Empty(result.Graph.Items);
     }
 
