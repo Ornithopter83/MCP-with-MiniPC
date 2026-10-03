@@ -200,7 +200,7 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             Directory.Delete(runtime, true);
     }
 
-    private sealed class SequenceRunner : IGitWorktreeCommandRunner
+    private sealed class SequenceRunner : IGitCommandRunner
     {
         private readonly Queue<GitCommandResult> _results = new();
 
