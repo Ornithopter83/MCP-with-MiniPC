@@ -372,7 +372,10 @@ public sealed class GitWorktreeManager
                 "--cached",
                 "--others",
                 "--exclude-standard",
-                "-z").ConfigureAwait(false);
+                "-z",
+                "--",
+                ".",
+                ":(exclude,glob).projecthub/**").ConfigureAwait(false);
             if (filesResult.ExitCode != 0)
             {
                 return new(
@@ -2947,7 +2950,10 @@ public sealed class GitWorktreeManager
             {
                 "status",
                 "--porcelain=v1",
-                "--untracked-files=all"
+                "--untracked-files=all",
+                "--",
+                ".",
+                ":(exclude,glob).projecthub/**"
             },
             ReadTimeout,
             cancellationToken);
