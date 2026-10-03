@@ -405,6 +405,7 @@ public partial class MainWindow : Window
         {
             await InitializeStartupConfigurationAsync();
             ApplyRoleSettingsToControls();
+            RefreshWorkingDirectoryGitTargetPresentation(showFeedback: false);
         }
         SetSettingsPopupOpen(!IsSettingsOverlayOpen);
     }
@@ -2084,12 +2085,10 @@ public partial class MainWindow : Window
         _gitTarget = WorkerTargetConfiguration.ResolveGit(
             gitFolder,
             _targetSettings,
-            requireExactRoot: false);
+            requireExactRoot: true);
         RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
-        TargetGitStateText.Text = _gitTarget.IsRepository
-            ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
-            : "Git: UNCONFIGURED";
-        RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
+        TargetGitStateText.Text = FormatGitTargetStatus(_gitTarget);
+        RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? (_gitTarget.IsRepository ? "LOCAL_GIT" : "GIT_NOT_FOUND"));
 
         TargetPathText.Text = _targetSettings.IsCoordinatorFirst
             ? $"Target workspace: {(string.IsNullOrWhiteSpace(effectiveWorkingDirectory) ? "미설정" : effectiveWorkingDirectory)}"
@@ -2415,7 +2414,7 @@ public partial class MainWindow : Window
             WorkerTargetConfiguration.ResolveGit(
                 workingDirectory,
                 _targetSettings,
-                requireExactRoot: false));
+                requireExactRoot: true));
         return result.Success ? null : result.Message;
     }
 
@@ -2448,6 +2447,18 @@ public partial class MainWindow : Window
         if (_startupConfigurationInitialized) ApplyConnectionStatus();
     }
 
+    private static string FormatGitTargetStatus(GitTargetSnapshot target)
+    {
+        if (!target.IsRepository)
+            return "Git: NOT FOUND · 작업 폴더 자체에 저장소가 없습니다.";
+
+        var branch = target.Branch ?? "unknown";
+        var head = target.HeadSha?[..Math.Min(12, target.HeadSha.Length)] ?? "unknown";
+        return string.IsNullOrWhiteSpace(target.RepositoryUrl)
+            ? $"Git: LOCAL ONLY · origin 없음 · Branch: {branch} · Local HEAD: {head}"
+            : $"Git: CONNECTED · origin 설정됨 · Branch: {branch} · Local HEAD: {head}";
+    }
+
     private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
     {
         _targetSettings = _targetSettings with { ManualRepositoryUrl = null, RepositoryUrlSource = null };
@@ -2478,14 +2489,12 @@ public partial class MainWindow : Window
         var target = WorkerTargetConfiguration.ResolveGit(
             workingDirectory,
             _targetSettings,
-            requireExactRoot: false);
+            requireExactRoot: true);
 
         _gitTarget = target;
         RepositoryUrlInput.Text = target.RepositoryUrl ?? string.Empty;
-        TargetGitStateText.Text = target.IsRepository
-            ? $"Branch: {target.Branch ?? "unknown"} · Local HEAD: {target.HeadSha?[..Math.Min(12, target.HeadSha.Length)] ?? "unknown"}"
-            : "Git: UNCONFIGURED";
-        RepositoryNameText.Text = " · " + (target.RepositoryUrl ?? "GIT_NOT_FOUND");
+        TargetGitStateText.Text = FormatGitTargetStatus(target);
+        RepositoryNameText.Text = " · " + (target.RepositoryUrl ?? (target.IsRepository ? "LOCAL_GIT" : "GIT_NOT_FOUND"));
 
         if (target.IsRepository && !string.IsNullOrWhiteSpace(target.RepositoryUrl))
         {
@@ -2501,8 +2510,8 @@ public partial class MainWindow : Window
         if (showFeedback)
         {
             DashboardPreflightText.Text = target.IsRepository
-                ? "Git 저장소는 확인했지만 origin 원격이 설정되어 있지 않습니다."
-                : "작업 폴더 또는 상위 경로에서 Git 저장소를 확인하지 못했습니다.";
+                ? "작업 폴더의 Git 저장소에는 origin 원격이 설정되어 있지 않습니다."
+                : "작업 폴더 자체에서 Git 저장소를 확인하지 못했습니다.";
             DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
         }
     }
