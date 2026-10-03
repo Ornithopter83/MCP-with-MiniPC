@@ -200,7 +200,6 @@ public sealed class GitWorktreeManager
 {
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CreateTimeout = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan RemoveTimeout = TimeSpan.FromMinutes(1);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPreparationGates =
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPrimaryMutationGates =
