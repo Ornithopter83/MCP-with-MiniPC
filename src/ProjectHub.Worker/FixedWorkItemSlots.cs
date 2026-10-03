@@ -8,9 +8,6 @@ public static class FixedWorkItemSlots
     public static bool IsReusable(string? workItemId)
         => workItemId is Resource or BuildPublish;
 
-    public static bool AllowsTargetWorkspaceWrite(string? workItemId)
-        => false;
-
     public static string BuildExecutionKey(string workItemId, long createdOrder)
     {
         if (string.IsNullOrWhiteSpace(workItemId))
