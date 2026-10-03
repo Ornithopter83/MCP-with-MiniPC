@@ -250,37 +250,16 @@ public sealed class WorkGraphTests
         Assert.True(graph.TryMarkRunning("I1"));
         Assert.True(graph.TryMarkBlocked(
             "I1",
-            "INTEGRATION_LANDING_FAILED",
-            "INTEGRATION_LANDING\nerrorCode: INTEGRATION_NOT_FAST_FORWARD",
+            "INTEGRATION_REMOTE_FETCH_FAILED",
+            "원격 Git 접근 실패",
             "ref-I1",
-            "INTEGRATION_NOT_FAST_FORWARD"));
+            "INTEGRATION_REMOTE_FETCH_TIMEOUT"));
 
         var restored = WorkGraph.Restore(graph.Snapshot(), markRunningAsRecoveryBlocked: false);
         var item = restored.Find("I1")!;
 
-        Assert.Equal("INTEGRATION_LANDING_FAILED", item.BlockCode);
-        Assert.Equal("INTEGRATION_NOT_FAST_FORWARD", item.BlockDetailCode);
-    }
-
-    [Fact]
-    public void LegacyLandingSummaryMigratesToStructuredBlockDetail()
-    {
-        var graph = new WorkGraph("job");
-        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
-        {
-            WorkGraphPatchOperation.Add(new WorkItemSpec("I1", "통합", Kind: WorkItemKind.Integration))
-        })).Success);
-        Assert.True(graph.TryMarkRunning("I1"));
-        Assert.True(graph.TryMarkBlocked(
-            "I1",
-            "INTEGRATION_LANDING_FAILED",
-            "WORK 보고\n\nINTEGRATION_LANDING\nstatus: BLOCKED\nerrorCode: INTEGRATION_NOT_FAST_FORWARD",
-            "ref-I1"));
-
-        var restored = WorkGraph.Restore(graph.Snapshot(), markRunningAsRecoveryBlocked: false);
-        Assert.Equal(
-            "INTEGRATION_NOT_FAST_FORWARD",
-            restored.Find("I1")!.BlockDetailCode);
+        Assert.Equal("INTEGRATION_REMOTE_FETCH_FAILED", item.BlockCode);
+        Assert.Equal("INTEGRATION_REMOTE_FETCH_TIMEOUT", item.BlockDetailCode);
     }
 
     [Fact]
