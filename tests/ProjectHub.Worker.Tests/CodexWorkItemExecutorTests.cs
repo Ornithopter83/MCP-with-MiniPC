@@ -399,69 +399,32 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public void DependencyManifestIsSummarizedWithoutInliningFileContent()
+    public void DependencyPromptUsesRemoteResultRefWithoutManifestMetadata()
     {
-        var directory = Path.Combine(
-            Path.GetTempPath(),
-            "projecthub-manifest-summary-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        var manifestPath = Path.Combine(directory, "manifest.json");
-
-        try
-        {
-            File.WriteAllText(
-                manifestPath,
-                """
-                {
-                  "workItemId": "W0",
-                  "commit": "abcdef123456",
-                  "parentCommit": "parent",
-                  "tree": "tree",
-                  "changedFiles": [
-                    {
-                      "path": "src/large.cs",
-                      "changeType": "MODIFY",
-                      "previousPath": null,
-                      "size": 999999,
-                      "sha256": "deadbeef",
-                      "isText": true,
-                      "content": "THIS_LARGE_INLINE_CONTENT_MUST_NOT_APPEAR"
-                    }
-                  ]
-                }
-                """);
-
-            var prompt = RoleContractLoader.BuildWorkPrompt(
-                "WORK_ITEM",
+        var prompt = RoleContractLoader.BuildWorkPrompt(
+            "WORK_ITEM",
+            "후속 작업",
+            new WorkItemPromptContext(
+                "W1",
+                WorkItemKind.Normal,
                 "후속 작업",
-                new WorkItemPromptContext(
-                    "W1",
-                    WorkItemKind.Normal,
-                    "후속 작업",
-                    new[] { "W0" },
-                    "main",
-                    "branch",
-                    "worktree",
-                    DependencyResults: new[]
-                    {
-                        new WorkItemDependencyPromptContext(
-                            "W0",
-                            "abcdef123456",
-                            "선행 완료",
-                            WorkItemResultType.CodeChange,
-                            manifestPath)
-                    }),
-                includeContract: false);
+                new[] { "W0" },
+                "main",
+                "branch",
+                "worktree",
+                DependencyResults: new[]
+                {
+                    new WorkItemDependencyPromptContext(
+                        "W0",
+                        "abcdef123456",
+                        "선행 완료",
+                        WorkItemResultType.CodeChange)
+                }),
+            includeContract: false);
 
-            Assert.Contains("manifest=" + manifestPath, prompt);
-            Assert.Contains("resultRef=abcdef123456", prompt);
-            Assert.DoesNotContain("- MODIFY src/large.cs", prompt);
-            Assert.DoesNotContain("THIS_LARGE_INLINE_CONTENT_MUST_NOT_APPEAR", prompt);
-        }
-        finally
-        {
-            Directory.Delete(directory, true);
-        }
+        Assert.Contains("resultRef=abcdef123456", prompt);
+        Assert.DoesNotContain("manifest=", prompt);
+        Assert.Contains("report:" + Environment.NewLine + "선행 완료", prompt);
     }
 
     [Fact]
@@ -612,11 +575,6 @@ public sealed class CodexWorkItemExecutorTests
             fixture.Git.Enqueue(0, fixture.Branch);
             fixture.Git.Enqueue(0, "");
 
-            // Commit manifest.
-            fixture.Git.Enqueue(0, "new456 head123");
-            fixture.Git.Enqueue(0, "tree789");
-            fixture.Git.Enqueue(0, "M\tchanged.cs");
-
             // Completed clone cleanup inspection.
             fixture.Git.Enqueue(0, "new456");
             fixture.Git.Enqueue(0, fixture.Branch);
@@ -629,7 +587,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal(WorkItemResultType.CodeChange, result.ResultType);
             Assert.Equal("new456", result.ResultRef);
-            Assert.NotNull(result.CommitManifestPath);
+            Assert.Null(result.CommitManifestPath);
             Assert.Equal(
                 2,
                 fixture.Git.Calls.Count(call =>
@@ -746,7 +704,8 @@ public sealed class CodexWorkItemExecutorTests
             await fixture.Executor.ExecuteAsync(fixture.Request, CancellationToken.None);
 
             Assert.Contains("선행 WorkItem 결과:", fixture.Runner.LastRequest!.Prompt);
-            Assert.Contains("- workItemId=W0 resultType=ANALYSIS resultRef=dep-ref manifest=manifest-W0.json snapshot=없음", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains("- workItemId=W0 resultType=ANALYSIS resultRef=dep-ref snapshot=없음", fixture.Runner.LastRequest.Prompt);
+            Assert.DoesNotContain("manifest=", fixture.Runner.LastRequest.Prompt);
             Assert.Contains("report:" + Environment.NewLine + "선행 완료", fixture.Runner.LastRequest.Prompt);
         }
         finally
