@@ -53,10 +53,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.True(Directory.Exists(runtime.NuGetPackages));
             Assert.True(Directory.Exists(runtime.DotNetHome));
             Assert.True(Directory.Exists(workTemp));
-            Assert.Contains(
-                fixture.Git.Calls,
-                call => call.SequenceEqual(
-                    new[] { "worktree", "remove", Path.GetFullPath(fixture.Request.Item.WorktreePath!) }));
+            Assert.False(Directory.Exists(fixture.Request.Item.WorktreePath!));
         }
         finally
         {
@@ -65,7 +62,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task BuildPublishSlotReceivesTargetWorkspaceWriteAccess()
+    public async Task BuildPublishSlotStaysInsideRemoteSourceClone()
     {
         var fixture = CreateFixture(
             """
@@ -92,10 +89,10 @@ public sealed class CodexWorkItemExecutorTests
                 "job",
                 executionKey);
 
-            Assert.Contains(
+            Assert.DoesNotContain(
                 Path.GetFullPath(rootPath),
                 fixture.Runner.LastRequest!.AdditionalWritableDirectories!);
-            Assert.Contains(
+            Assert.DoesNotContain(
                 "대상 프로젝트 루트: " + Path.GetFullPath(rootPath),
                 fixture.Runner.LastRequest.Prompt);
             Assert.Equal(
@@ -291,17 +288,17 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task WorktreeCreateFailureDetailReachesWorkItemResult()
+    public async Task RemoteCloneCreateFailureDetailReachesWorkItemResult()
     {
         var parent = Path.Combine(Path.GetTempPath(), "projecthub-worktree-failure-" + Guid.NewGuid().ToString("N"));
         var root = Path.Combine(parent, "repo");
         Directory.CreateDirectory(root);
         var git = new FakeGitRunner();
         git.Enqueue(0, root);
-        git.Enqueue(0, "base123");
+        git.Enqueue(0, "https://example.invalid/repo.git");
         git.Enqueue(0, "");
-        git.Enqueue(1, "");
-        git.Enqueue(128, "", "fatal: simulated concurrent worktree failure");
+        git.Enqueue(0, "base123");
+        git.Enqueue(128, "", "fatal: simulated remote clone failure");
 
         try
         {
@@ -343,10 +340,10 @@ public sealed class CodexWorkItemExecutorTests
                 CancellationToken.None);
 
             Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("WORKTREE_CREATE_FAILED", result.BlockCode);
+            Assert.Equal("WORK_CLONE_CREATE_FAILED", result.BlockCode);
             Assert.Null(result.FailureCode);
             Assert.Contains("exitCode=128", result.ResultSummary ?? string.Empty);
-            Assert.Contains("fatal: simulated concurrent worktree failure", result.ResultSummary ?? string.Empty);
+            Assert.Contains("fatal: simulated remote clone failure", result.ResultSummary ?? string.Empty);
         }
         finally
         {
@@ -431,15 +428,29 @@ public sealed class CodexWorkItemExecutorTests
         var branch = GitWorktreeManager.BuildBranchName(jobId, workItemId);
         var worktree = GitWorktreeManager.BuildWorktreePath(root, jobId, workItemId);
         Directory.CreateDirectory(worktree);
+        Directory.CreateDirectory(Path.Combine(worktree, ".git"));
 
         var git = new FakeGitRunner();
+        // ResolveNormalBaseRefAsync
         git.Enqueue(0, root);
+        git.Enqueue(0, "");
         git.Enqueue(0, "base123");
         git.Enqueue(0, "dep456");
         git.Enqueue(0, "");
+        // PrepareAsync reuses the isolated clone.
         git.Enqueue(0, root);
+        git.Enqueue(0, "https://example.invalid/repo.git");
+        git.Enqueue(0, "");
         git.Enqueue(0, "dep456");
-        git.Enqueue(0, $"worktree {worktree}\nHEAD dep456\nbranch refs/heads/{branch}\n");
+        git.Enqueue(0, worktree);
+        git.Enqueue(0, Path.Combine(worktree, ".git"));
+        git.Enqueue(0, branch);
+        git.Enqueue(0, "dep456");
+        git.Enqueue(0, "");
+        // Checkpoint and cleanup inspect the clean clone.
+        git.Enqueue(0, "dep456");
+        git.Enqueue(0, branch);
+        git.Enqueue(0, "");
         git.Enqueue(0, "dep456");
         git.Enqueue(0, branch);
         git.Enqueue(0, "");
@@ -634,6 +645,9 @@ public sealed class CodexWorkItemExecutorTests
         git.Enqueue(0, root);
         git.Enqueue(0, "main");
         git.Enqueue(0, "primary999");
+        git.Enqueue(0, "https://example.invalid/repo.git");
+        git.Enqueue(0, "");
+        git.Enqueue(0, "primary999");
         git.Enqueue(0, "Cloning");
         git.Enqueue(0, "Switched");
         git.Enqueue(0, "");
@@ -700,7 +714,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task CompletedIntegrationImportsResultWithoutTouchingPrimaryWorkspace()
+    public async Task CompletedIntegrationPublishesRemoteResultWithoutLocalImport()
     {
         var fixture = CreateFixture(
             """
@@ -711,13 +725,6 @@ public sealed class CodexWorkItemExecutorTests
             kind: WorkItemKind.Integration);
 
         var integrationClone = fixture.Request.Item.WorktreePath!;
-        fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
-        fixture.Git.Enqueue(0, integrationClone);
-        fixture.Git.Enqueue(0, Path.Combine(integrationClone, ".git"));
-        fixture.Git.Enqueue(0, fixture.Branch);
-        fixture.Git.Enqueue(0, "head123");
-        fixture.Git.Enqueue(0, "Imported");
-        fixture.Git.Enqueue(0, "head123");
 
         try
         {
@@ -727,11 +734,9 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal("head123", result.ResultRef);
-            Assert.Contains("INTEGRATION_IMPORT", result.ResultSummary);
-            Assert.Contains("status: IMPORTED", result.ResultSummary);
-            Assert.Contains(
-                "refs/projecthub/integration-results/job/" + fixture.Request.Item.Id,
-                result.ResultSummary);
+            Assert.Contains("REMOTE_CODE_RESULT", result.ResultSummary);
+            Assert.Contains("resultRef: head123", result.ResultSummary);
+            Assert.Contains("branch: " + fixture.Branch, result.ResultSummary);
             Assert.DoesNotContain(
                 fixture.Git.Calls,
                 call => call.Count > 0 &&
@@ -745,21 +750,15 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task IntegrationImportSourceBranchChangeBlocksWithCheckpoint()
+    public async Task CompletedIntegrationDoesNotImportFromCloneIntoPrimaryRepository()
     {
         var fixture = CreateFixture(
             """
             [GOTO : HQ]
             WORK_ITEM_STATUS: COMPLETED
-            통합 worktree 검증은 완료했습니다.
+            통합 검증을 완료했습니다.
             """,
             kind: WorkItemKind.Integration);
-
-        var integrationClone = fixture.Request.Item.WorktreePath!;
-        fixture.Git.Enqueue(0, Path.Combine(fixture.Parent, "repo"));
-        fixture.Git.Enqueue(0, integrationClone);
-        fixture.Git.Enqueue(0, Path.Combine(integrationClone, ".git"));
-        fixture.Git.Enqueue(0, "feature");
 
         try
         {
@@ -767,12 +766,13 @@ public sealed class CodexWorkItemExecutorTests
                 fixture.Request,
                 CancellationToken.None);
 
-            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
-            Assert.Equal("INTEGRATION_IMPORT_FAILED", result.BlockCode);
-            Assert.Equal("INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED", result.BlockDetailCode);
+            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal("head123", result.ResultRef);
-            Assert.StartsWith("INTEGRATION_IMPORT", result.ResultSummary);
-            Assert.Contains("errorCode: INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED", result.ResultSummary);
+            Assert.DoesNotContain(
+                fixture.Git.Calls,
+                call => call.Count > 0 &&
+                        call[0] == "fetch" &&
+                        call.Any(argument => argument.Contains(fixture.Request.Item.WorktreePath!, StringComparison.Ordinal)));
         }
         finally
         {
@@ -812,11 +812,16 @@ public sealed class CodexWorkItemExecutorTests
     {
         var root = Path.Combine(fixture.Parent, "repo");
         var worktree = fixture.Request.Item.WorktreePath!;
+        Directory.CreateDirectory(Path.Combine(worktree, ".git"));
         fixture.Git.Enqueue(0, root);
+        fixture.Git.Enqueue(0, "https://example.invalid/repo.git");
+        fixture.Git.Enqueue(0, "");
         fixture.Git.Enqueue(0, "base123");
-        fixture.Git.Enqueue(
-            0,
-            $"worktree {worktree}\nHEAD head123\nbranch refs/heads/{fixture.Branch}\n");
+        fixture.Git.Enqueue(0, worktree);
+        fixture.Git.Enqueue(0, Path.Combine(worktree, ".git"));
+        fixture.Git.Enqueue(0, fixture.Branch);
+        fixture.Git.Enqueue(0, "head123");
+        fixture.Git.Enqueue(0, "");
     }
 
     private static void EnqueueCheckpointAddFailure(Fixture fixture, int attempts)
@@ -825,7 +830,6 @@ public sealed class CodexWorkItemExecutorTests
         {
             fixture.Git.Enqueue(0, "head123");
             fixture.Git.Enqueue(0, fixture.Branch);
-            fixture.Git.Enqueue(0, " M changed.cs");
             fixture.Git.Enqueue(0, " M changed.cs");
             fixture.Git.Enqueue(128, "", "fatal: simulated checkpoint add lock");
         }
@@ -836,8 +840,7 @@ public sealed class CodexWorkItemExecutorTests
         IReadOnlyList<WorkItemDependencyResult>? dependencies = null,
         WorkItemKind kind = WorkItemKind.Normal,
         string workItemId = "W1",
-        long createdOrder = 0,
-        IReadOnlyList<WorkItemDependencyResult>? materializationCandidates = null)
+        long createdOrder = 0)
     {
         var parent = Path.Combine(Path.GetTempPath(), "projecthub-codex-workitem-" + Guid.NewGuid().ToString("N"));
         var root = Path.Combine(parent, "repo");
@@ -852,33 +855,42 @@ public sealed class CodexWorkItemExecutorTests
             ? GitWorktreeManager.BuildIntegrationClonePath(root, jobId, workItemId)
             : GitWorktreeManager.BuildWorktreePath(root, jobId, executionWorkItemId);
         Directory.CreateDirectory(worktree);
-        if (kind == WorkItemKind.Integration)
-            Directory.CreateDirectory(Path.Combine(worktree, ".git"));
+        Directory.CreateDirectory(Path.Combine(worktree, ".git"));
 
         var git = new FakeGitRunner();
         if (kind == WorkItemKind.Integration)
         {
+            // ResumeIntegrationAsync
             git.Enqueue(0, root);
             git.Enqueue(0, worktree);
             git.Enqueue(0, Path.Combine(worktree, ".git"));
             git.Enqueue(0, branch);
             git.Enqueue(0, "head123");
+            // Checkpoint inspect
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
         }
         else
         {
+            // PrepareAsync reuses the isolated remote clone.
             git.Enqueue(0, root);
+            git.Enqueue(0, "https://example.invalid/repo.git");
+            git.Enqueue(0, "");
             git.Enqueue(0, "base123");
-            git.Enqueue(0, $"worktree {worktree}\nHEAD head123\nbranch refs/heads/{branch}\n");
+            git.Enqueue(0, worktree);
+            git.Enqueue(0, Path.Combine(worktree, ".git"));
+            git.Enqueue(0, branch);
+            git.Enqueue(0, "head123");
+            git.Enqueue(0, "");
+            // Checkpoint inspect
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
+            // Completed normal clone cleanup inspect
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
-            git.Enqueue(0, "removed");
         }
 
         var ai = new FakeAiRoleRunner(finalMessage);
@@ -922,8 +934,7 @@ public sealed class CodexWorkItemExecutorTests
                 1,
                 dependencies ?? Array.Empty<WorkItemDependencyResult>(),
                 "WORK_ITEM",
-                "기능을 구현하세요.",
-                materializationCandidates));
+                "기능을 구현하세요."));
     }
 
     private sealed class Fixture : IDisposable
@@ -953,8 +964,12 @@ public sealed class CodexWorkItemExecutorTests
 
         public void Dispose()
         {
+            var root = Path.Combine(Parent, "repo");
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(root).Root;
             if (Directory.Exists(Parent))
                 Directory.Delete(Parent, true);
+            if (Directory.Exists(runtime))
+                Directory.Delete(runtime, true);
         }
     }
 
