@@ -23,7 +23,6 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("0")]
-    [InlineData("8")]
     [InlineData("9")]
     public void FixedSlotsCanBeAddedAgainAfterTerminalCompletion(string id)
     {
@@ -70,7 +69,6 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("0")]
-    [InlineData("8")]
     [InlineData("9")]
     public void FixedSlotsCannotDeclareDependencies(string id)
     {
@@ -95,7 +93,6 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("0")]
-    [InlineData("8")]
     [InlineData("9")]
     public void GeneralWorkCannotDependOnFixedSlots(string id)
     {
@@ -124,24 +121,24 @@ public sealed class WorkGraphTests
         var graph = new WorkGraph("job");
         Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
         {
-            WorkGraphPatchOperation.Add(new WorkItemSpec("8", "고정 슬롯")),
+            WorkGraphPatchOperation.Add(new WorkItemSpec("9", "고정 슬롯")),
             WorkGraphPatchOperation.Add(new WorkItemSpec("10", "일반 작업"))
         })).Success);
 
         var fixedToGeneral = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
         {
-            WorkGraphPatchOperation.SetDependencies("8", "10")
+            WorkGraphPatchOperation.SetDependencies("9", "10")
         }));
         Assert.False(fixedToGeneral.Success);
         Assert.Equal("WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED", fixedToGeneral.ErrorCode);
 
         var generalToFixed = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
         {
-            WorkGraphPatchOperation.SetDependencies("10", "8")
+            WorkGraphPatchOperation.SetDependencies("10", "9")
         }));
         Assert.False(generalToFixed.Success);
         Assert.Equal("WORK_GRAPH_FIXED_SLOT_DEPENDENCY_UNSUPPORTED", generalToFixed.ErrorCode);
-        Assert.Empty(graph.Find("8")!.Dependencies);
+        Assert.Empty(graph.Find("9")!.Dependencies);
         Assert.Empty(graph.Find("10")!.Dependencies);
     }
 
@@ -153,6 +150,7 @@ public sealed class WorkGraphTests
     [InlineData("5")]
     [InlineData("6")]
     [InlineData("7")]
+    [InlineData("8")]
     public void UnassignedLowNumberSlotsAreRejected(string id)
     {
         var graph = new WorkGraph("job");
@@ -168,7 +166,6 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("0")]
-    [InlineData("8")]
     [InlineData("9")]
     public void FixedSlotsMustUseNormalKind(string id)
     {
