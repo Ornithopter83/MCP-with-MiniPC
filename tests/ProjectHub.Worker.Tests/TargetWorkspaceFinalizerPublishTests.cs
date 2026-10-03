@@ -14,7 +14,7 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             var publish = new WorkspacePublishState(root, "job");
             await publish.MarkPublishedAsync("code-old", 3);
 
-            var runner = CreateContainedResultRunner(root, "code-new");
+            var runner = new SequenceRunner();
             var finalizer = new TargetWorkspaceFinalizer(
                 root,
                 "main",
@@ -26,6 +26,7 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             Assert.Contains("#9 BUILD/PUBLISH", result.Message);
             Assert.Contains("code-new", result.Message);
             Assert.Contains("code-old", result.Message);
+            Assert.Empty(runner.Calls);
         }
         finally
         {
@@ -114,6 +115,8 @@ public sealed class TargetWorkspaceFinalizerPublishTests
     {
         private readonly Queue<GitCommandResult> _results = new();
 
+        public List<IReadOnlyList<string>> Calls { get; } = new();
+
         public void Enqueue(int exitCode, string stdout, string stderr = "")
             => _results.Enqueue(new GitCommandResult(exitCode, stdout, stderr));
 
@@ -123,6 +126,7 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             TimeSpan timeout,
             CancellationToken cancellationToken = default)
         {
+            Calls.Add(arguments.ToArray());
             if (_results.Count == 0)
                 throw new InvalidOperationException(
                     "예상하지 않은 Git 호출입니다: " + string.Join(" ", arguments));
