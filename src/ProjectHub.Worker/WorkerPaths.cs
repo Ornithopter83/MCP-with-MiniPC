@@ -78,6 +78,47 @@ public static class WorkerPaths
             Path.Combine(runtimeRoot, "temp"));
     }
 
+    public static void EnsureProjectHubGitIgnore(string repositoryRoot)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryRoot) || !Directory.Exists(repositoryRoot))
+            throw new ArgumentException("저장소 경로가 존재하지 않습니다.", nameof(repositoryRoot));
+
+        var root = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var gitIgnorePath = Path.Combine(root, ".gitignore");
+        const string entry = ".projecthub/";
+
+        if (!File.Exists(gitIgnorePath))
+        {
+            File.WriteAllText(
+                gitIgnorePath,
+                entry + Environment.NewLine,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            return;
+        }
+
+        var lines = File.ReadAllLines(gitIgnorePath);
+        if (lines.Any(line =>
+                string.Equals(line.Trim(), entry, StringComparison.Ordinal) ||
+                string.Equals(line.Trim(), "/.projecthub/", StringComparison.Ordinal) ||
+                string.Equals(line.Trim(), ".projecthub", StringComparison.Ordinal) ||
+                string.Equals(line.Trim(), "/.projecthub", StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        var existing = File.ReadAllText(gitIgnorePath);
+        var separator = existing.Length == 0 ||
+                        existing.EndsWith("\n", StringComparison.Ordinal) ||
+                        existing.EndsWith("\r", StringComparison.Ordinal)
+            ? string.Empty
+            : Environment.NewLine;
+        File.AppendAllText(
+            gitIgnorePath,
+            separator + entry + Environment.NewLine,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+    }
+
     public static string BuildWorkTempPath(
         RepositoryRuntimePaths runtime,
         string jobId,

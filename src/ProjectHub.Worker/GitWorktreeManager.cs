@@ -253,6 +253,7 @@ public sealed class GitWorktreeManager
         }
 
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        WorkerPaths.EnsureProjectHubGitIgnore(repositoryRoot);
         var branch = BuildBranchName(jobId, "base");
         var clonePath = BuildWorktreePath(repositoryRoot, jobId, "base");
 

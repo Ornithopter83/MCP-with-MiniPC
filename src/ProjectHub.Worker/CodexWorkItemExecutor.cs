@@ -305,7 +305,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             WorkerPaths.EnsureWorkToolDirectories(runtimePaths, workTempPath);
 
             var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var pair in GitMetadataIsolationLease.BuildGitNonInteractiveEnvironment())
+            foreach (var pair in GitMetadataGuard.BuildGitNonInteractiveEnvironment())
                 environment[pair.Key] = pair.Value;
             foreach (var pair in WorkerPaths.BuildWorkToolEnvironment(runtimePaths, workTempPath))
                 environment[pair.Key] = pair.Value;
@@ -340,6 +340,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             }
             if (usesTargetWorkspace)
             {
+                WorkerPaths.EnsureProjectHubGitIgnore(_workspace);
                 writableDirectories.Add(_workspace);
                 environment["PROJECTHUB_TARGET_WORKSPACE"] = _workspace;
             }
@@ -470,42 +471,25 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
-            GitMetadataIsolationLease? gitIsolation = null;
-            GitMetadataIsolationLease? targetWorkspaceGitIsolation = null;
+            GitMetadataSnapshot gitMetadataBefore;
             try
             {
-                gitIsolation = GitMetadataIsolationLease.Detach(
-                    preparation.WorktreePath,
-                    _jobId,
-                    executionWorkItemId);
-                if (usesTargetWorkspace)
-                {
-                    targetWorkspaceGitIsolation = GitMetadataIsolationLease.Detach(
-                        _workspace,
-                        _jobId,
-                        executionWorkItemId + "-target");
-                }
+                gitMetadataBefore = GitMetadataGuard.Capture(executionWorkingDirectory);
             }
             catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
+                exception is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
-                try { targetWorkspaceGitIsolation?.Restore(); } catch { }
-                try { gitIsolation?.Restore(); } catch { }
                 return WorkItemExecutionResult.Blocked(
-                    "WORK_GIT_METADATA_ISOLATION_FAILED",
-                    exception.Message,
+                    "WORK_GIT_METADATA_GUARD_PREPARE_FAILED",
+                    exception.GetType().Name + ": " + exception.Message,
                     preparation.HeadCommit,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    blockDetailCode: "WORK_GIT_METADATA_ISOLATION_FAILED");
+                    blockDetailCode: "WORK_GIT_METADATA_GUARD_PREPARE_FAILED");
             }
 
-            var gitRestore = new GitMetadataRestoreResult(true);
-            var targetWorkspaceGitRestore = new GitMetadataRestoreResult(true);
-            try
-            {
-                runResult = await _runner.RunAsync(new AiRoleRunRequest(
+            runResult = await _runner.RunAsync(new AiRoleRunRequest(
                     prompt,
                     _role,
                     executionWorkingDirectory,
@@ -528,43 +512,19 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     EnvironmentVariables: workEnvironment,
                     DisableComputerUse: true,
                     IncludeAppBaseWritable: false)).ConfigureAwait(false);
-            }
-            finally
-            {
-                targetWorkspaceGitRestore =
-                    targetWorkspaceGitIsolation?.Restore() ??
-                    new GitMetadataRestoreResult(true);
-                gitRestore =
-                    gitIsolation?.Restore() ??
-                    new GitMetadataRestoreResult(true);
-            }
 
-            if (!targetWorkspaceGitRestore.Success)
+            var gitMetadataValidation = GitMetadataGuard.Validate(
+                executionWorkingDirectory,
+                gitMetadataBefore);
+            if (!gitMetadataValidation.Success)
             {
                 return WorkItemExecutionResult.Failed(
-                    targetWorkspaceGitRestore.ErrorCode ?? "TARGET_WORKSPACE_GIT_METADATA_RESTORE_FAILED",
-                    (targetWorkspaceGitRestore.ErrorDetail ?? "대상 프로젝트 Git metadata 복원에 실패했습니다.") +
-                    (string.IsNullOrWhiteSpace(targetWorkspaceGitRestore.QuarantinePath)
-                        ? string.Empty
-                        : Environment.NewLine + "quarantine=" + targetWorkspaceGitRestore.QuarantinePath),
+                    gitMetadataValidation.ErrorCode ?? "WORK_GIT_METADATA_CHANGED",
+                    gitMetadataValidation.ErrorDetail,
                     preparation.Branch,
                     preparation.WorktreePath,
                     sessionId,
-                    "TARGET_WORKSPACE_GIT_METADATA_RESTORE");
-            }
-
-            if (!gitRestore.Success)
-            {
-                return WorkItemExecutionResult.Failed(
-                    gitRestore.ErrorCode ?? "WORK_GIT_METADATA_RESTORE_FAILED",
-                    (gitRestore.ErrorDetail ?? "Git metadata 복원에 실패했습니다.") +
-                    (string.IsNullOrWhiteSpace(gitRestore.QuarantinePath)
-                        ? string.Empty
-                        : Environment.NewLine + "quarantine=" + gitRestore.QuarantinePath),
-                    preparation.Branch,
-                    preparation.WorktreePath,
-                    sessionId,
-                    "GIT_METADATA_RESTORE");
+                    "GIT_METADATA_GUARD");
             }
 
             CallCompleted?.Invoke(new CodexWorkItemCallCompleted(
