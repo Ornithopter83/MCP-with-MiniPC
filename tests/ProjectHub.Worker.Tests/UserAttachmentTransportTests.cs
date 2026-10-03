@@ -68,14 +68,18 @@ public sealed class UserAttachmentTransportTests
     }
 
     [Fact]
-    public void StageForWorkspace_PreservesHashAndBuildsAiPrompt()
+    public void StageForWorkerRuntimePreservesHashWithoutMutatingProjectGitState()
     {
         var root = CreateTempDirectory();
         var workspace = Path.Combine(root, "workspace");
-        Directory.CreateDirectory(workspace);
+        var gitInfo = Path.Combine(workspace, ".git", "info");
+        Directory.CreateDirectory(gitInfo);
+        var excludePath = Path.Combine(gitInfo, "exclude");
+        File.WriteAllText(excludePath, "existing-rule" + Environment.NewLine);
         var source = Path.Combine(root, "screen.png");
         File.WriteAllBytes(source, new byte[] { 1, 2, 3, 4, 5, 6 });
         UserAttachmentInput? attachment = null;
+        AiInputAttachment? stagedItem = null;
 
         try
         {
@@ -84,28 +88,44 @@ public sealed class UserAttachmentTransportTests
                 "CLIPBOARD",
                 "clipboard-test.png");
 
-            var staged = UserAttachmentTransport.StageForWorkspace(
+            var staged = UserAttachmentTransport.StageForWorkerRuntime(
                 new[] { attachment },
-                workspace,
-                "batch-1");
+                "batch-" + Guid.NewGuid().ToString("N"));
 
-            var item = Assert.Single(staged);
-            Assert.True(File.Exists(item.Path));
-            Assert.Equal(attachment.Sha256, item.Sha256);
-            Assert.True(item.RelativePath.Contains(
-                Path.Combine(".projecthub", "runtime", "attachments", "batch1"),
-                StringComparison.OrdinalIgnoreCase));
+            stagedItem = Assert.Single(staged);
+            Assert.True(File.Exists(stagedItem.Path));
+            Assert.Equal(attachment.Sha256, stagedItem.Sha256);
+            Assert.StartsWith(
+                Path.GetFullPath(WorkerPaths.Attachments) + Path.DirectorySeparatorChar,
+                Path.GetFullPath(stagedItem.Path),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            Assert.False(
+                Path.GetFullPath(stagedItem.Path).StartsWith(
+                    Path.GetFullPath(workspace) + Path.DirectorySeparatorChar,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+            Assert.Equal(
+                "existing-rule" + Environment.NewLine,
+                File.ReadAllText(excludePath));
 
             var prompt = UserAttachmentTransport.AppendPrompt(
                 "Inspect this screenshot.",
                 staged);
             Assert.Contains("[USER_ATTACHMENTS]", prompt);
-            Assert.Contains(item.Path, prompt);
+            Assert.Contains(stagedItem.Path, prompt);
             Assert.Contains("viewing capability", prompt);
             Assert.Contains(attachment.Sha256, prompt);
         }
         finally
         {
+            if (stagedItem is not null)
+            {
+                var stagedDirectory = Path.GetDirectoryName(stagedItem.Path);
+                if (!string.IsNullOrWhiteSpace(stagedDirectory) &&
+                    Directory.Exists(stagedDirectory))
+                {
+                    Directory.Delete(stagedDirectory, recursive: true);
+                }
+            }
             if (attachment is not null && File.Exists(attachment.StoredPath))
                 File.Delete(attachment.StoredPath);
             Directory.Delete(root, recursive: true);
