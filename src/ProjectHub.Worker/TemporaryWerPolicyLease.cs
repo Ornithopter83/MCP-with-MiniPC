@@ -166,6 +166,8 @@ internal sealed class TemporaryWerPolicyLease : IDisposable
 
     private static void RecoverStaleLeaseCore()
     {
+        CleanupStaleJournalTemps();
+
         if (!File.Exists(JournalPath))
             return;
 
@@ -194,12 +196,49 @@ internal sealed class TemporaryWerPolicyLease : IDisposable
     private static void WriteJournal(WerPolicyJournal journal)
     {
         Directory.CreateDirectory(WorkerPaths.State);
+        CleanupStaleJournalTemps();
+
         var json = JsonSerializer.Serialize(
             journal,
             new JsonSerializerOptions { WriteIndented = true });
         var tempPath = JournalPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllText(tempPath, json, new UTF8Encoding(false));
-        File.Move(tempPath, JournalPath, overwrite: true);
+        try
+        {
+            File.WriteAllText(tempPath, json, new UTF8Encoding(false));
+            File.Move(tempPath, JournalPath, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static void CleanupStaleJournalTemps()
+    {
+        try
+        {
+            if (!Directory.Exists(WorkerPaths.State))
+                return;
+
+            foreach (var path in Directory.EnumerateFiles(
+                         WorkerPaths.State,
+                         "wer-policy-lease.json.*.tmp",
+                         SearchOption.TopDirectoryOnly))
+            {
+                try { File.Delete(path); }
+                catch { }
+            }
+        }
+        catch
+        {
+        }
     }
 
     private static void DeleteJournal()
