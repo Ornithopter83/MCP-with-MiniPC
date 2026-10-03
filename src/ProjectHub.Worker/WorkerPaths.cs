@@ -108,17 +108,6 @@ public static class WorkerPaths
             Path.Combine(runtimeRoot, "temp"));
     }
 
-    public static string GetLegacyRepositoryRuntimeRoot(string repositoryRoot)
-    {
-        if (string.IsNullOrWhiteSpace(repositoryRoot))
-            throw new ArgumentException("저장소 경로가 비어 있습니다.", nameof(repositoryRoot));
-
-        var root = Path.GetFullPath(repositoryRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        // 2026-10-03 이전에는 runtime이 저장소 내부 .projecthub/runtime에 있었습니다.
-        return Path.Combine(root, ".projecthub", "runtime");
-    }
-
     public static string BuildWorkTempPath(
         RepositoryRuntimePaths runtime,
         string jobId,
