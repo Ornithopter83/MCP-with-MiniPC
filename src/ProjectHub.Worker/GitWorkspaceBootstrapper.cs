@@ -105,7 +105,10 @@ public sealed class GitWorkspaceBootstrapper
             cancellationToken,
             "status",
             "--porcelain=v1",
-            "--untracked-files=all").ConfigureAwait(false);
+            "--untracked-files=all",
+            "--",
+            ".",
+            ":(exclude,glob).projecthub/**").ConfigureAwait(false);
 
         if (statusResult.ExitCode != 0)
             return RepositoryFailure(
