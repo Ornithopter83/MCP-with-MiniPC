@@ -128,12 +128,6 @@ public sealed class WorkGraph
                 finishedAt = DateTimeOffset.UtcNow;
             }
 
-            if (string.IsNullOrWhiteSpace(blockDetailCode) &&
-                string.Equals(blockCode, "INTEGRATION_LANDING_FAILED", StringComparison.Ordinal))
-            {
-                blockDetailCode = ExtractIntegrationErrorCode(source.ResultSummary);
-            }
-
             graph._items[source.Id] = new WorkItemEntry
             {
                 Id = source.Id,
@@ -750,35 +744,6 @@ public sealed class WorkGraph
         }
 
         return true;
-    }
-
-    private static string? ExtractIntegrationErrorCode(string? resultSummary)
-    {
-        if (string.IsNullOrWhiteSpace(resultSummary))
-            return null;
-
-        var inLandingBlock = false;
-        foreach (var line in resultSummary
-                     .Replace("\r\n", "\n")
-                     .Replace('\r', '\n')
-                     .Split('\n'))
-        {
-            var trimmed = line.Trim();
-            if (string.Equals(trimmed, "INTEGRATION_LANDING", StringComparison.Ordinal))
-            {
-                inLandingBlock = true;
-                continue;
-            }
-
-            if (!inLandingBlock)
-                continue;
-
-            const string prefix = "errorCode:";
-            if (trimmed.StartsWith(prefix, StringComparison.Ordinal))
-                return NullIfWhiteSpace(trimmed[prefix.Length..]);
-        }
-
-        return null;
     }
 
     private static string? NullIfWhiteSpace(string? value)
