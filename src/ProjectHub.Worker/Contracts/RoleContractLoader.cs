@@ -10,7 +10,6 @@ public sealed record WorkItemDependencyPromptContext(
     string? ResultRef,
     string? ResultSummary,
     WorkItemResultType ResultType = WorkItemResultType.None,
-    string? CommitManifestPath = null,
     string? IntegrationSnapshotPath = null);
 public sealed record WorkItemPromptContext(
     string WorkItemId,
@@ -117,7 +116,7 @@ public static class RoleContractLoader
     private static string FormatDependencyResult(WorkItemDependencyPromptContext result)
     {
         var header =
-            $"- workItemId={result.WorkItemId} resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} resultRef={result.ResultRef ?? "없음"} manifest={result.CommitManifestPath ?? "없음"} snapshot={result.IntegrationSnapshotPath ?? "없음"}";
+            $"- workItemId={result.WorkItemId} resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} resultRef={result.ResultRef ?? "없음"} snapshot={result.IntegrationSnapshotPath ?? "없음"}";
 
         if (string.IsNullOrWhiteSpace(result.ResultSummary))
             return header;
