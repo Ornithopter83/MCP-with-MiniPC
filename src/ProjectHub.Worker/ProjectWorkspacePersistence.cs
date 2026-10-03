@@ -61,7 +61,9 @@ public static class ProjectWorkspacePersistence
     };
 
     public static string RootDirectory(string workingDirectory)
-        => Path.Combine(Path.GetFullPath(workingDirectory), ".projecthub");
+        => Path.Combine(
+            WorkerPaths.GetRepositoryRuntimePaths(workingDirectory).Root,
+            "workspace-state");
 
     public static string StatePath(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "session-state.json");
