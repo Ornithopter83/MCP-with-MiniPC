@@ -25,7 +25,7 @@ public sealed class TaskContinuationContractTests
     }
 
     [Fact]
-    public void ContinuationCarriesRemainingHighOneShotPermission()
+    public void ContinuationCarriesHighRoleSettings()
     {
         var state = new CoordinatorContinuationState(
             "job-high",
@@ -36,10 +36,8 @@ public sealed class TaskContinuationContractTests
             null,
             "PAUSED",
             "사용자 입력 대기",
-            new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high"),
-            HighLevelPermitAvailable: true);
+            new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high"));
 
-        Assert.True(state.HighLevelPermitAvailable);
         Assert.Equal("gpt-6-astra", state.HighLevel?.Model);
     }
 
