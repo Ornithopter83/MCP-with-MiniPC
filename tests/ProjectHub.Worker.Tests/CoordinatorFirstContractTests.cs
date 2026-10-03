@@ -358,8 +358,7 @@ public sealed class CoordinatorFirstContractTests
                 null,
                 "PAUSED",
                 "마지막 HQ 메시지",
-                new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high"),
-                HighLevelPermitAvailable: true);
+                new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high"));
 
             Assert.True(ProjectWorkspacePersistence.SaveContinuation(state));
             Assert.True(File.Exists(ProjectWorkspacePersistence.StatePath(directory)));
@@ -370,10 +369,8 @@ public sealed class CoordinatorFirstContractTests
             Assert.Equal(jobId, restored!.JobId);
             Assert.Equal("PAUSED", restored.Status);
             Assert.Equal("마지막 HQ 메시지", restored.LastHqMessage);
-            Assert.True(restored.HighLevelPermitAvailable);
             Assert.Equal("gpt-6-astra", restored.HighLevel?.Model);
             var continuation = restored.ToContinuation();
-            Assert.True(continuation.HighLevelPermitAvailable);
             Assert.Equal("gpt-6-astra", continuation.HighLevel?.Model);
             Assert.Equal("한글 Full Message", Assert.Single(ProjectWorkspacePersistence.ReadRecentEvents(directory, jobId)).FullMessage);
 

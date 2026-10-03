@@ -322,7 +322,7 @@
                   <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
                   <ComboBox x:Name="HighLevelReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
                   <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#FFF5FA" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
-                    <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="#82194B" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#FBEAF2"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="#82194B" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="#82194B" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="세션 선택 · one-shot" FontWeight="Bold"/><ComboBox x:Name="HighLevelRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label" SelectionChanged="RoleThreadCombo_SelectionChanged"/></StackPanel></StackPanel>
+                    <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="#82194B" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#FBEAF2"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="#82194B" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="#82194B" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="세션 선택" FontWeight="Bold"/><ComboBox x:Name="HighLevelRoleThreadCombo" Width="260" Height="30" DisplayMemberPath="Label" SelectionChanged="RoleThreadCombo_SelectionChanged"/></StackPanel></StackPanel>
                   </Border>
                 </Grid>
               </Border>
@@ -415,11 +415,7 @@
                   </Border>
                 </DataTemplate></ItemsControl.ItemTemplate>
               </ItemsControl>
-              <Grid Grid.Row="2" Margin="2,1,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock Text="파일 드롭 · 화면 캡처 후 Ctrl+V · 최대 20개 / 파일당 50MB" FontSize="11" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
-                <CheckBox x:Name="HighLevelPermitCheckBox" Grid.Column="1" Content="고수준 작업 1회 허용" IsChecked="False" FontSize="12" FontWeight="SemiBold" Foreground="#74133F" Margin="16,0,4,0" VerticalAlignment="Center" ToolTip="이 Job에서 HQ가 HIGH를 최대 1회 호출하도록 명시적으로 허용합니다. HIGH는 danger-full-access로 실행됩니다." Checked="HighLevelPermitCheckBox_Changed" Unchecked="HighLevelPermitCheckBox_Changed"/>
-              </Grid>
+              <TextBlock Grid.Row="2" Text="파일 드롭 · 화면 캡처 후 Ctrl+V · 최대 20개 / 파일당 50MB" FontSize="11" Foreground="{StaticResource Muted}" Margin="2,1,0,0" VerticalAlignment="Center"/>
             </Grid>
           </Border>
           <Border x:Name="DashboardHistoryView" Background="#FBFDFF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="8,5" Visibility="Collapsed">
