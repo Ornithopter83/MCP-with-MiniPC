@@ -803,6 +803,22 @@ public sealed class GitWorktreeManagerTests
                 runner.Calls,
                 call => call.Arguments.Count > 0 &&
                         call.Arguments[0] == "push");
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[]
+                    {
+                        "add",
+                        "--all",
+                        "--",
+                        ".",
+                        ":(exclude,glob).projecthub/**"
+                    }));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.Count >= 6 &&
+                        call.Arguments[0] == "status" &&
+                        call.Arguments.Contains(":(exclude,glob).projecthub/**"));
         }
         finally
         {
