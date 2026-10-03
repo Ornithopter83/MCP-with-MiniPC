@@ -36,6 +36,35 @@ public static class WorkerPaths
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ProjectHub",
         "PublishedArtifacts");
+    public static string WorkspaceStateRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ProjectHub",
+        "WorkspaceState");
+
+    public static string GetWorkspaceStateDirectory(string repositoryRoot)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryRoot))
+            throw new ArgumentException("저장소 경로가 비어 있습니다.", nameof(repositoryRoot));
+
+        var root = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var repositoryName = new string(
+            Path.GetFileName(root)
+                .Select(character => char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '-')
+                .ToArray())
+            .Trim('-');
+        if (string.IsNullOrWhiteSpace(repositoryName))
+            repositoryName = "repository";
+
+        var repositoryKey = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(root)))
+            .ToLowerInvariant()[..12];
+
+        return Path.Combine(
+            WorkspaceStateRoot,
+            repositoryName + "-" + repositoryKey);
+    }
+
 
     public static string GetPublishedArtifactDirectory(
         string repositoryRoot,
@@ -292,7 +321,8 @@ public static class WorkerPaths
             ManagedWebProfiles,
             ManagedWebHqProfile,
             ManagedWebResourceProfile,
-            PublishedArtifactsRoot
+            PublishedArtifactsRoot,
+            WorkspaceStateRoot
         })
             Directory.CreateDirectory(directory);
     }
