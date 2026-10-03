@@ -9,14 +9,7 @@ public sealed record GitWorkspaceBootstrapState(
     string RepositoryRoot,
     string? Branch,
     string? HeadCommit,
-    bool InitializedNow,
-    bool IsDirty,
-    bool NeedsManagedIgnoreUpdate = false,
-    bool NeedsManagedIndexCleanup = false)
-{
-    public bool HasHead => !string.IsNullOrWhiteSpace(HeadCommit);
-    public bool NeedsBaseline => false;
-}
+    bool IsDirty)
 
 public sealed class GitWorkspaceBootstrapper
 {
@@ -119,7 +112,6 @@ public sealed class GitWorkspaceBootstrapper
                 repositoryRoot,
                 branch,
                 headCommit,
-                false,
                 true);
         }
 
@@ -180,22 +172,7 @@ public sealed class GitWorkspaceBootstrapper
             repositoryRoot,
             branch,
             headCommit,
-            false,
             false);
-    }
-
-    // Local baseline creation is intentionally unsupported.
-    // The remote branch is the only accepted launch baseline.
-    public Task<GitWorkspaceBootstrapState> CreateBaselineAsync(
-        GitWorkspaceBootstrapState state,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        _ = cancellationToken;
-        return Task.FromResult(
-            state.Success
-                ? state
-                : state with { ErrorCode = state.ErrorCode ?? "GIT_REMOTE_BASELINE_REQUIRED" });
     }
 
     private Task<GitCommandResult> RunAsync(
@@ -231,7 +208,6 @@ public sealed class GitWorkspaceBootstrapper
             workspace,
             null,
             null,
-            false,
             false);
     }
 
@@ -248,7 +224,6 @@ public sealed class GitWorkspaceBootstrapper
             repositoryRoot,
             branch,
             headCommit,
-            false,
             false);
 
     private static string FirstLine(string value)
