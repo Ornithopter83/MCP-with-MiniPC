@@ -2272,10 +2272,10 @@ public sealed class GitWorktreeManager
                     continue;
                 }
 
-                var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
+                var cloneDeleteError = await DeleteDirectoryTreeWithRetriesAsync(
                     clonePath,
                     cancellationToken).ConfigureAwait(false);
-                if (deleteError is not null)
+                if (cloneDeleteError is not null)
                 {
                     return new(
                         false,
@@ -2283,7 +2283,7 @@ public sealed class GitWorktreeManager
                         runtime.Root,
                         removed,
                         false,
-                        clonePath + ": " + deleteError);
+                        clonePath + ": " + cloneDeleteError);
                 }
 
                 removed.Add(clonePath);
