@@ -56,7 +56,8 @@ public static class RoleContractLoader
         bool includeContract = true,
         string? resourceStagingRoot = null,
         string? workTempRoot = null,
-        string? targetWorkspace = null)
+        string? targetWorkspace = null,
+        string? publishOutputDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(workItem);
         var observationHeader = string.IsNullOrWhiteSpace(observationRequestDirectory)
@@ -72,6 +73,9 @@ public static class RoleContractLoader
         var targetWorkspaceHeader = string.IsNullOrWhiteSpace(targetWorkspace)
             ? string.Empty
             : $"대상 프로젝트 루트: {targetWorkspace}\n";
+        var publishOutputHeader = string.IsNullOrWhiteSpace(publishOutputDirectory)
+            ? string.Empty
+            : $"최종 게시 산출물 루트(게시·export 결과는 이 경로에 저장): {publishOutputDirectory}\n";
         var header =
             $"역할: WORK\n입력 유형: {inboundType}\n" +
             BuildWorkItemHeader(workItem) +
@@ -79,6 +83,7 @@ public static class RoleContractLoader
             resourceHeader +
             workTempHeader +
             targetWorkspaceHeader +
+            publishOutputHeader +
             "\n입력 본문:\n";
         var prompt = header + body;
         return includeContract
