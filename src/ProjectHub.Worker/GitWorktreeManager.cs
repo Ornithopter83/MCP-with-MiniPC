@@ -1789,18 +1789,6 @@ public sealed class GitWorktreeManager
                     BuildGitFailureDetail("git status", workspaceStatus));
             }
 
-            if (!string.Equals(currentBranch, managedBranch, StringComparison.Ordinal) &&
-                string.IsNullOrWhiteSpace(workspaceStatus.StandardOutput))
-            {
-                return new(
-                    true,
-                    null,
-                    repositoryRoot,
-                    currentBranch,
-                    currentHead,
-                    false);
-            }
-
             if (!string.Equals(currentBranch, managedBranch, StringComparison.Ordinal))
             {
                 if (!string.Equals(currentHead, baseCommit, StringComparison.OrdinalIgnoreCase))
@@ -1815,6 +1803,17 @@ public sealed class GitWorktreeManager
                         "현재 작업 폴더 HEAD가 #8 baseRef와 다릅니다." + Environment.NewLine +
                         "currentHead=" + currentHead + Environment.NewLine +
                         "baseCommit=" + baseCommit);
+                }
+
+                if (string.IsNullOrWhiteSpace(workspaceStatus.StandardOutput))
+                {
+                    return new(
+                        true,
+                        null,
+                        repositoryRoot,
+                        currentBranch,
+                        currentHead,
+                        false);
                 }
 
                 var switchResult = await RunAsync(
