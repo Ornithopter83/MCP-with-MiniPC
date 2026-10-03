@@ -72,11 +72,12 @@ public sealed class CodexWorkItemExecutorTests
     [Fact]
     public void WorkGitEnvironmentAllowsRemoteProtocolWithoutInteractivePrompts()
     {
-        var environment = GitMetadataIsolationLease.BuildGitNonInteractiveEnvironment();
+        var environment = GitMetadataGuard.BuildGitNonInteractiveEnvironment();
 
         Assert.Equal("0", environment["GIT_TERMINAL_PROMPT"]);
         Assert.Equal("Never", environment["GCM_INTERACTIVE"]);
         Assert.Equal("0", environment["GIT_PROTOCOL_FROM_USER"]);
+        Assert.Equal("0", environment["GIT_OPTIONAL_LOCKS"]);
         Assert.False(environment.ContainsKey("GIT_ALLOW_PROTOCOL"));
         Assert.DoesNotContain(
             environment.Keys,
@@ -144,6 +145,9 @@ public sealed class CodexWorkItemExecutorTests
                 Path.GetFullPath(
                     fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_TARGET_WORKSPACE"]));
             Assert.Equal(CodexSandboxMode.WorkspaceWrite, fixture.Runner.LastRequest.Sandbox);
+            Assert.True(Directory.Exists(Path.Combine(rootPath, ".git")));
+            Assert.True(File.Exists(Path.Combine(rootPath, ".gitignore")));
+            Assert.Contains(".projecthub/", File.ReadAllText(Path.Combine(rootPath, ".gitignore")));
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal(WorkItemResultType.CodeChange, result.ResultType);
             Assert.Equal("bootstrap456", result.ResultRef);
@@ -1121,6 +1125,7 @@ public sealed class CodexWorkItemExecutorTests
         var parent = Path.Combine(Path.GetTempPath(), "projecthub-codex-workitem-" + Guid.NewGuid().ToString("N"));
         var root = Path.Combine(parent, "repo");
         Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, ".git"));
 
         const string jobId = "job";
         var executionWorkItemId = FixedWorkItemSlots.BuildExecutionKey(

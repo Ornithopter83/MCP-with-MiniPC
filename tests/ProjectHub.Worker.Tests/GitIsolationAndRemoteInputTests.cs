@@ -6,35 +6,36 @@ namespace ProjectHub.Worker.Tests;
 public sealed class GitIsolationAndRemoteInputTests
 {
     [Fact]
-    public void GitMetadataIsDetachedDuringWorkAndRestoredAfterward()
+    public void GitMetadataStaysInPlaceAndGuardDetectsRefMutation()
     {
         var parent = Path.Combine(
             Path.GetTempPath(),
-            "projecthub-git-isolation-" + Guid.NewGuid().ToString("N"));
+            "projecthub-git-guard-" + Guid.NewGuid().ToString("N"));
         var workspace = Path.Combine(parent, "work");
-        Directory.CreateDirectory(workspace);
         var gitPath = Path.Combine(workspace, ".git");
-        File.WriteAllText(gitPath, "gitdir: ../metadata");
+        var refsHeads = Path.Combine(gitPath, "refs", "heads");
+        Directory.CreateDirectory(refsHeads);
+        File.WriteAllText(Path.Combine(gitPath, "HEAD"), "ref: refs/heads/main\n");
+        File.WriteAllText(Path.Combine(gitPath, "config"), "[core]\nrepositoryformatversion = 0\n");
+        File.WriteAllBytes(Path.Combine(gitPath, "index"), new byte[] { 1, 2, 3, 4 });
+        File.WriteAllText(Path.Combine(refsHeads, "main"), "base123\n");
 
         try
         {
-            var lease = GitMetadataIsolationLease.Detach(
-                workspace,
-                "job",
-                "W10");
+            var snapshot = GitMetadataGuard.Capture(workspace);
 
-            Assert.False(File.Exists(gitPath));
-            Assert.False(Directory.Exists(gitPath));
+            Assert.True(Directory.Exists(gitPath));
+            Assert.False(Directory.Exists(Path.Combine(parent, ".projecthub-git-metadata")));
 
-            var environment = GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment();
-            Assert.Equal("never", environment["GIT_CONFIG_VALUE_1"]);
-            Assert.Equal("protocol.https.allow", environment["GIT_CONFIG_KEY_1"]);
+            var environment = GitMetadataGuard.BuildGitNonInteractiveEnvironment();
+            Assert.Equal("0", environment["GIT_OPTIONAL_LOCKS"]);
 
-            var restored = lease.Restore();
+            File.WriteAllText(Path.Combine(refsHeads, "main"), "changed456\n");
+            var validation = GitMetadataGuard.Validate(workspace, snapshot);
 
-            Assert.True(restored.Success);
-            Assert.True(File.Exists(gitPath));
-            Assert.Equal("gitdir: ../metadata", File.ReadAllText(gitPath));
+            Assert.False(validation.Success);
+            Assert.Equal("WORK_GIT_REFS_CHANGED", validation.ErrorCode);
+            Assert.True(Directory.Exists(gitPath));
         }
         finally
         {

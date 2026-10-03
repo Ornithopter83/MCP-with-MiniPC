@@ -46,6 +46,34 @@ public sealed class WorkerPathsRuntimeTests
     }
 
     [Fact]
+    public void ProjectHubGitIgnoreIsCreatedAndPreservesExistingRules()
+    {
+        var parent = Path.Combine(
+            Path.GetTempPath(),
+            "ProjectHubWorkerPathsTests",
+            Guid.NewGuid().ToString("N"));
+        var workspace = Path.Combine(parent, "SampleProject");
+        Directory.CreateDirectory(workspace);
+
+        try
+        {
+            var gitIgnore = Path.Combine(workspace, ".gitignore");
+            File.WriteAllText(gitIgnore, "bin/\n");
+            WorkerPaths.EnsureProjectHubGitIgnore(workspace);
+            WorkerPaths.EnsureProjectHubGitIgnore(workspace);
+
+            var text = File.ReadAllText(gitIgnore);
+            Assert.Contains("bin/", text);
+            Assert.Equal(1, text.Split('\n').Count(line => line.Trim() == ".projecthub/"));
+        }
+        finally
+        {
+            if (Directory.Exists(parent))
+                Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
     public void GlobalEphemeralDirectoriesAreRecreatedEmpty()
     {
         WorkerPaths.EnsureCreated();
