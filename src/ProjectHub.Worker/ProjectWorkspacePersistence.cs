@@ -49,6 +49,7 @@ public static class ProjectWorkspacePersistence
 {
     private static readonly object EventSync = new();
     private static readonly object TranscriptSync = new();
+    private static readonly object PersistenceFailureSync = new();
     private static readonly JsonSerializerOptions StateJsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -138,8 +139,12 @@ public static class ProjectWorkspacePersistence
             }
             return true;
         }
-        catch
+        catch (Exception exception)
         {
+            WritePersistenceFailure(
+                "InitializeCommandTranscript",
+                path,
+                exception);
             return false;
         }
     }
@@ -171,8 +176,12 @@ public static class ProjectWorkspacePersistence
             }
             return true;
         }
-        catch
+        catch (Exception exception)
         {
+            WritePersistenceFailure(
+                "AppendCommandTranscript",
+                path,
+                exception);
             return false;
         }
     }
@@ -243,8 +252,14 @@ public static class ProjectWorkspacePersistence
             }
             return eventId;
         }
-        catch
+        catch (Exception exception)
         {
+            WritePersistenceFailure(
+                "AppendEvent",
+                string.IsNullOrWhiteSpace(workingDirectory) || string.IsNullOrWhiteSpace(jobId)
+                    ? null
+                    : EventLogPath(workingDirectory, jobId),
+                exception);
             return null;
         }
     }
@@ -267,8 +282,14 @@ public static class ProjectWorkspacePersistence
                 JsonSerializer.Serialize(snapshot, StateJsonOptions));
             return true;
         }
-        catch
+        catch (Exception exception)
         {
+            WritePersistenceFailure(
+                "SaveWorkGraph",
+                string.IsNullOrWhiteSpace(workingDirectory) || snapshot is null
+                    ? null
+                    : WorkGraphPath(workingDirectory, snapshot.JobId),
+                exception);
             return false;
         }
     }
@@ -544,6 +565,36 @@ public static class ProjectWorkspacePersistence
         var temp = path + ".tmp";
         File.WriteAllText(temp, content, new UTF8Encoding(false));
         File.Move(temp, path, true);
+    }
+
+    private static void WritePersistenceFailure(
+        string operation,
+        string? targetPath,
+        Exception exception)
+    {
+        try
+        {
+            Directory.CreateDirectory(WorkerPaths.Logs);
+            var path = Path.Combine(WorkerPaths.Logs, "persistence-errors.log");
+            var line =
+                $"[{DateTimeOffset.Now:O}] operation={operation}" +
+                (string.IsNullOrWhiteSpace(targetPath)
+                    ? string.Empty
+                    : " target=" + targetPath) +
+                $" exception={exception.GetType().Name}: {exception.Message}" +
+                Environment.NewLine;
+            lock (PersistenceFailureSync)
+            {
+                File.AppendAllText(
+                    path,
+                    line,
+                    new UTF8Encoding(false));
+            }
+        }
+        catch
+        {
+            // 마지막 fallback도 작업 흐름을 중단시키지 않는다.
+        }
     }
 
     private static string SanitizeId(string value)
