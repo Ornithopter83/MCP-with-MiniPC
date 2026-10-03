@@ -170,6 +170,7 @@ public partial class MainWindow : Window
     private WorkerTargetSettings _targetSettings = new(null, null, null, null);
     private GitTargetSnapshot? _gitTarget;
     private string? _gitValidationMessage;
+    private string? _gitLaunchErrorMessage;
     private List<CodexProjectOption> _codexProjects = new();
     private bool _loadingCodexSelections;
     private static string WindowPlacementPath => Path.Combine(WorkerPaths.Config, "window-placement.json");
@@ -720,7 +721,7 @@ public partial class MainWindow : Window
         // Direct Work는 preflight 오류가 있어도 클릭 자체는 허용한다.
         // 클릭 시 구체적인 차단 사유를 결과 영역에 표시해 "무반응"처럼 보이지 않게 한다.
         ApplyRunButtonVisualState(hasPrompt && (executionReady || IsDirectWorkMode));
-        var visibleError = _gitValidationMessage ?? preflightError;
+        var visibleError = _gitLaunchErrorMessage ?? _gitValidationMessage ?? preflightError;
         DashboardPreflightText.Text = visibleError ?? (hasPrompt ? string.Empty : "작업 내용을 입력하세요.");
         DashboardPreflightText.Foreground = visibleError is null
             ? (System.Windows.Media.Brush)FindResource("Muted")
@@ -2503,6 +2504,7 @@ public partial class MainWindow : Window
 
     private async void SaveTargetSettings_Click(object sender, RoutedEventArgs e)
     {
+        _gitLaunchErrorMessage = null;
         var repository = string.IsNullOrWhiteSpace(RepositoryUrlInput.Text)
             ? null
             : RepositoryUrlInput.Text.Trim();
