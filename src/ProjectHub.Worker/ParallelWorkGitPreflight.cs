@@ -14,25 +14,30 @@ public static class ParallelWorkGitPreflight
         if (!target.IsRepository)
             return Fail(
                 "PARALLEL_GIT_REPOSITORY_REQUIRED",
-                "병렬 WORK는 WorkItem별 Git worktree를 사용하므로 Git 저장소가 필요합니다.");
+                "ProjectHub 병렬 WORK는 기존 Git 저장소를 요구합니다.");
+
+        if (string.IsNullOrWhiteSpace(target.RepositoryUrl))
+            return Fail(
+                "PARALLEL_GIT_REMOTE_REQUIRED",
+                "ProjectHub 병렬 WORK는 origin 원격 저장소를 필수로 사용합니다.");
 
         if (string.IsNullOrWhiteSpace(target.HeadSha))
             return Fail(
                 "PARALLEL_GIT_HEAD_REQUIRED",
-                "병렬 WORK 기준으로 사용할 Git HEAD commit을 확인할 수 없습니다.");
+                "WORK 기준으로 사용할 원격 동기화 Git HEAD commit을 확인할 수 없습니다.");
 
         if (string.IsNullOrWhiteSpace(target.Branch) ||
             string.Equals(target.Branch.Trim(), "HEAD", StringComparison.OrdinalIgnoreCase))
         {
             return Fail(
                 "PARALLEL_GIT_ATTACHED_BRANCH_REQUIRED",
-                "Integration 결과를 안전하게 반영하려면 주 작업공간이 detached HEAD가 아닌 branch에 있어야 합니다.");
+                "원격 기준점을 사용하려면 현재 작업공간이 branch에 연결되어 있어야 합니다.");
         }
 
         return new ParallelWorkGitPreflightResult(
             true,
             null,
-            $"branch={target.Branch.Trim()} head={target.HeadSha.Trim()}");
+            $"remote={target.RepositoryUrl.Trim()} branch={target.Branch.Trim()} head={target.HeadSha.Trim()}");
     }
 
     private static ParallelWorkGitPreflightResult Fail(string errorCode, string message)
