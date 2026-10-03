@@ -225,6 +225,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 item.SessionId,
                 pendingStatus,
                 pendingBody,
+                publishCleanCheckpoint: true,
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -646,6 +647,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId,
                 report.Status,
                 reportBody,
+                publishCleanCheckpoint: item.ResultType == WorkItemResultType.CodeChange,
                 cancellationToken).ConfigureAwait(false);
         }
     }
@@ -656,6 +658,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         string? sessionId,
         WorkItemReportStatus reportStatus,
         string reportBody,
+        bool publishCleanCheckpoint,
         CancellationToken cancellationToken)
     {
         if (string.Equals(item.Id, FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal))
@@ -675,6 +678,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             checkpoint = await _worktrees.CreateCheckpointAsync(
                 preparation.WorktreePath,
                 item.Id,
+                publishCleanCheckpoint,
                 cancellationToken).ConfigureAwait(false);
 
             if (checkpoint.Success)
@@ -775,12 +779,16 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 cancellationToken).ConfigureAwait(false);
 
+            var completedSummary = completedResultType == WorkItemResultType.CodeChange
+                ? reportBody + Environment.NewLine + Environment.NewLine +
+                  "REMOTE_CODE_RESULT" + Environment.NewLine +
+                  "resultRef: " + checkpoint.HeadCommit + Environment.NewLine +
+                  "branch: " + (checkpoint.Branch ?? preparation.Branch)
+                : reportBody;
+
             return WorkItemExecutionResult.Completed(
                 checkpoint.HeadCommit,
-                reportBody + Environment.NewLine + Environment.NewLine +
-                "REMOTE_CODE_RESULT" + Environment.NewLine +
-                "resultRef: " + checkpoint.HeadCommit + Environment.NewLine +
-                "branch: " + (checkpoint.Branch ?? preparation.Branch),
+                completedSummary,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
