@@ -418,7 +418,7 @@
               <Grid Grid.Row="2" Margin="2,1,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <TextBlock Text="파일 드롭 · 화면 캡처 후 Ctrl+V · 최대 20개 / 파일당 50MB" FontSize="11" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
-                <CheckBox x:Name="HighLevelPermitCheckBox" Grid.Column="1" Content="HIGH 1회 허용" IsChecked="False" FontSize="12" FontWeight="SemiBold" Foreground="#74133F" Margin="16,0,4,0" VerticalAlignment="Center" ToolTip="이 Job에서 HQ가 HIGH를 최대 1회 호출하도록 명시적으로 허용합니다. HIGH는 danger-full-access로 실행됩니다."/>
+                <CheckBox x:Name="HighLevelPermitCheckBox" Grid.Column="1" Content="고수준 작업 1회 허용" IsChecked="False" FontSize="12" FontWeight="SemiBold" Foreground="#74133F" Margin="16,0,4,0" VerticalAlignment="Center" ToolTip="이 Job에서 HQ가 HIGH를 최대 1회 호출하도록 명시적으로 허용합니다. HIGH는 danger-full-access로 실행됩니다." Checked="HighLevelPermitCheckBox_Changed" Unchecked="HighLevelPermitCheckBox_Changed"/>
               </Grid>
             </Grid>
           </Border>

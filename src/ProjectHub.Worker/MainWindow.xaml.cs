@@ -705,6 +705,14 @@ public partial class MainWindow : Window
         UpdateDirectWorkControlState(active);
         var executionReady = preflightError is null;
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardTaskInput.Text) && DashboardTaskInput.Text != DashboardPromptPlaceholder;
+        var showHighPermit =
+            !IsDirectWorkMode &&
+            _targetSettings.IsCoordinatorFirst &&
+            _dashboardBodyMode == DashboardBodyMode.NewTaskInput;
+        HighLevelPermitCheckBox.Visibility =
+            showHighPermit ? Visibility.Visible : Visibility.Collapsed;
+        HighLevelPermitCheckBox.IsEnabled =
+            showHighPermit && !active && executionReady;
         if (active)
         {
             RunButton.Content = "■   취소";
@@ -770,10 +778,17 @@ public partial class MainWindow : Window
             var workingDirectory = ResolveCoordinatorTargetWorkingDirectory();
             if (string.IsNullOrWhiteSpace(workingDirectory))
                 return "작업 폴더를 먼저 지정하세요. Coordinator-first 작업은 Worker 실행 폴더를 자동 작업 폴더로 사용하지 않습니다.";
+            var highLevelAuthorizedAtLaunch =
+                HighLevelPermitCheckBox.IsChecked == true;
+            var highLevel = NormalizeRoleSessionForWorkspace(
+                _targetSettings.EffectiveHighLevel,
+                workingDirectory);
             return GetCoordinatorFirstPreflightError(
                 workingDirectory,
                 _targetSettings.EffectiveCoordinator,
-                _targetSettings.EffectiveImplementer);
+                _targetSettings.EffectiveImplementer,
+                highLevel,
+                highLevelAuthorizedAtLaunch);
         }
 
         if (!_codexAuthenticated) return "Codex 로그인이 필요합니다.";
@@ -784,6 +799,11 @@ public partial class MainWindow : Window
         if (!hqWeb.ExtensionSynchronized) return "HQ GPT Web 확장 동기화를 기다리고 있습니다.";
         return null;
     }
+
+    private void HighLevelPermitCheckBox_Changed(
+        object sender,
+        RoutedEventArgs e)
+        => UpdateDashboardRunButtonState();
 
     private async Task BeginNewDashboardTaskAsync()
     {
@@ -826,6 +846,7 @@ public partial class MainWindow : Window
                 out var ephemeralResetError);
             DashboardTaskInput.Text = DashboardPromptPlaceholder;
             DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
+            HighLevelPermitCheckBox.IsChecked = false;
             SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
             UpdateDashboardSummary();
 
