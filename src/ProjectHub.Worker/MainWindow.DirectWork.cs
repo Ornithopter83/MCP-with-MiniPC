@@ -432,6 +432,10 @@ public partial class MainWindow
         }
         finally
         {
+            UserAttachmentTransport.CleanupStagedWorkerRuntime(
+                stagedAttachments,
+                workingDirectory);
+
             _directWorkRunning = false;
             if (ReferenceEquals(_activeTaskCts, cts))
                 _activeTaskCts = null;
