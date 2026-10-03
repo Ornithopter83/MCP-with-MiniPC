@@ -196,11 +196,34 @@ public partial class MainWindow
 
     private string ResolveDirectWorkDirectory()
     {
+        // 하네스 없음은 현재 화면에서 사용자가 지정한 작업 폴더를 우선한다.
+        // 설정 팝업의 "적용" 여부 때문에 이전 ManualWorkingDirectory로 되돌아가지 않는다.
+        var displayed = WorkingDirectoryInput?.Text?.Trim();
+        if (!string.IsNullOrWhiteSpace(displayed))
+            return Directory.Exists(displayed) ? Path.GetFullPath(displayed) : displayed;
+
         var configured = _targetSettings.ManualWorkingDirectory;
         if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
             return Path.GetFullPath(configured);
 
         return ResolveWorkingDirectory(CodexThreadCombo.SelectedItem as CodexThreadOption);
+    }
+
+    private void WorkingDirectoryInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (RunButton is not null)
+            UpdateDashboardRunButtonState();
+    }
+
+    private void ShowDirectWorkPreflightError(string message)
+    {
+        DashboardPreflightText.Text = message;
+        DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
+        TaskDirection.Text = "PREFLIGHT";
+        TaskTitle.Text = "하네스 없음 실행 준비를 확인하세요";
+        ResultTitle.Text = "DIRECT WORK BLOCKED";
+        ResultBody.Text = message;
+        SetFlowState(false, false, false);
     }
 
     private string? GetDirectWorkPreflightError()
@@ -239,10 +262,8 @@ public partial class MainWindow
         var role = GetDirectWorkRole();
         if (role is null)
         {
-            DashboardPreflightText.Text =
-                "직접 작업에 사용할 제공사, 모델, 추론 깊이를 선택하세요.";
-            DashboardPreflightText.Foreground =
-                System.Windows.Media.Brushes.Firebrick;
+            ShowDirectWorkPreflightError(
+                "직접 작업에 사용할 제공사, 모델, 추론 깊이를 선택하세요.");
             return;
         }
 
@@ -253,19 +274,15 @@ public partial class MainWindow
             _codexAuthenticated);
         if (preflightError is not null)
         {
-            DashboardPreflightText.Text = preflightError;
-            DashboardPreflightText.Foreground =
-                System.Windows.Media.Brushes.Firebrick;
+            ShowDirectWorkPreflightError(preflightError);
             return;
         }
 
         var runner = _aiRoleRunners.Resolve(role);
         if (runner is null)
         {
-            DashboardPreflightText.Text =
-                $"Provider runner가 등록되지 않았습니다: {role.Provider}";
-            DashboardPreflightText.Foreground =
-                System.Windows.Media.Brushes.Firebrick;
+            ShowDirectWorkPreflightError(
+                $"Provider runner가 등록되지 않았습니다: {role.Provider}");
             return;
         }
 
