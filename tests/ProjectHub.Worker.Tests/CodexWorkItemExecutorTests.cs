@@ -447,10 +447,16 @@ public sealed class CodexWorkItemExecutorTests
         git.Enqueue(0, branch);
         git.Enqueue(0, "dep456");
         git.Enqueue(0, "");
-        // Checkpoint and cleanup inspect the clean clone.
+        // Checkpoint publishes the clean HEAD to origin and verifies it.
         git.Enqueue(0, "dep456");
         git.Enqueue(0, branch);
         git.Enqueue(0, "");
+        git.Enqueue(0, "");
+        git.Enqueue(0, $"dep456\trefs/heads/{branch}");
+        git.Enqueue(0, "dep456");
+        git.Enqueue(0, branch);
+        git.Enqueue(0, "");
+        // Completed normal clone cleanup inspect.
         git.Enqueue(0, "dep456");
         git.Enqueue(0, branch);
         git.Enqueue(0, "");
@@ -866,7 +872,12 @@ public sealed class CodexWorkItemExecutorTests
             git.Enqueue(0, Path.Combine(worktree, ".git"));
             git.Enqueue(0, branch);
             git.Enqueue(0, "head123");
-            // Checkpoint inspect
+            // Checkpoint publishes even a clean integration HEAD.
+            git.Enqueue(0, "head123");
+            git.Enqueue(0, branch);
+            git.Enqueue(0, "");
+            git.Enqueue(0, "");
+            git.Enqueue(0, $"head123\trefs/heads/{branch}");
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
@@ -883,7 +894,12 @@ public sealed class CodexWorkItemExecutorTests
             git.Enqueue(0, branch);
             git.Enqueue(0, "head123");
             git.Enqueue(0, "");
-            // Checkpoint inspect
+            // Checkpoint publishes even a clean HEAD to the WorkItem remote branch.
+            git.Enqueue(0, "head123");
+            git.Enqueue(0, branch);
+            git.Enqueue(0, "");
+            git.Enqueue(0, "");
+            git.Enqueue(0, $"head123\trefs/heads/{branch}");
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
