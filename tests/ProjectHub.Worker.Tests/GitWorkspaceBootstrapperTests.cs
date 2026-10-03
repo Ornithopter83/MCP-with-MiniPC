@@ -5,34 +5,19 @@ namespace ProjectHub.Worker.Tests;
 public sealed class GitWorkspaceBootstrapperTests
 {
     [Fact]
-    public async Task MissingRepositoryIsInitializedAndRequestsManagedBaseline()
+    public async Task MissingRepositoryIsRejectedWithoutLocalInit()
     {
         var workspace = CreateWorkspace();
         try
         {
             var runner = new ScriptedRunner();
             runner.Enqueue("rev-parse --show-toplevel", Fail());
-            runner.Enqueue("init", Ok());
-            runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
-            runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
-            runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
-            runner.Enqueue("rev-parse --verify HEAD", Fail());
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok("?? app.cs"));
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
-            Assert.True(state.Success);
-            Assert.True(state.InitializedNow);
-            Assert.False(state.HasHead);
-            Assert.True(state.IsDirty);
-            Assert.True(state.NeedsManagedIgnoreUpdate);
-            Assert.False(state.NeedsManagedIndexCleanup);
-            Assert.True(state.NeedsBaseline);
-            Assert.Equal("main", state.Branch);
-            Assert.Contains(runner.Calls, call => call.Arguments.SequenceEqual(new[] { "init" }));
-            Assert.Contains(runner.Calls, call => call.Arguments.SequenceEqual(
-                new[] { "config", "--local", "core.longpaths", "true" }));
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_REPOSITORY_REQUIRED", state.ErrorCode);
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("init"));
         }
         finally
         {
@@ -41,29 +26,20 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
-    public async Task ParentRepositoryIsNotAdoptedAsTargetWorkspaceRepository()
+    public async Task ParentRepositoryIsRejectedInsteadOfBeingAdopted()
     {
         var workspace = CreateWorkspace();
         var parent = Directory.GetParent(workspace)!.FullName;
-
         try
         {
             var runner = new ScriptedRunner();
             runner.Enqueue("rev-parse --show-toplevel", Ok(parent));
-            runner.Enqueue("init", Ok());
-            runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
-            runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
-            runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
-            runner.Enqueue("rev-parse --verify HEAD", Fail());
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
-            Assert.True(state.Success);
-            Assert.True(state.InitializedNow);
-            Assert.Equal(Path.GetFullPath(workspace), state.RepositoryRoot);
-            Assert.Contains(runner.Calls, call => call.Arguments.SequenceEqual(new[] { "init" }));
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_EXACT_ROOT_REQUIRED", state.ErrorCode);
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("init"));
         }
         finally
         {
@@ -72,31 +48,18 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
-    public async Task ExistingCleanRepositoryWithManagedIgnoreNeedsNoBaseline()
+    public async Task ExistingRepositoryWithoutOriginIsRejected()
     {
         var workspace = CreateWorkspace();
-        WriteManagedBaseIgnore(workspace);
-
         try
         {
-            var runner = new ScriptedRunner();
-            runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
-            runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
-            runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
-            runner.Enqueue("rev-parse --verify HEAD", Ok("abc123"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            var runner = BaseRepositoryRunner(workspace);
+            runner.Enqueue("remote get-url origin", Fail());
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
-            Assert.True(state.Success);
-            Assert.False(state.InitializedNow);
-            Assert.True(state.HasHead);
-            Assert.False(state.IsDirty);
-            Assert.False(state.NeedsManagedIgnoreUpdate);
-            Assert.False(state.NeedsManagedIndexCleanup);
-            Assert.False(state.NeedsBaseline);
-            Assert.Equal("abc123", state.HeadCommit);
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_ORIGIN_REQUIRED", state.ErrorCode);
         }
         finally
         {
@@ -105,59 +68,118 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
-    public async Task ExistingTrackedProjectHubRuntimeRequestsManagedCleanup()
+    public async Task DirtyWorkspaceIsRejectedBeforeRemoteFetch()
     {
         var workspace = CreateWorkspace();
-        WriteManagedBaseIgnore(workspace);
-
         try
         {
-            var runner = new ScriptedRunner();
-            runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
-            runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue(
-                "ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs",
-                Ok(".projecthub/session-state.json"));
-            runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
-            runner.Enqueue("rev-parse --verify HEAD", Ok("abc123"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
-
-            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
-
-            Assert.True(state.Success);
-            Assert.False(state.IsDirty);
-            Assert.False(state.NeedsManagedIgnoreUpdate);
-            Assert.True(state.NeedsManagedIndexCleanup);
-            Assert.True(state.NeedsBaseline);
-        }
-        finally
-        {
-            Directory.Delete(workspace, true);
-        }
-    }
-
-    [Fact]
-    public async Task ExistingDirtyRepositoryRequestsNewBaseline()
-    {
-        var workspace = CreateWorkspace();
-        WriteManagedBaseIgnore(workspace);
-
-        try
-        {
-            var runner = new ScriptedRunner();
-            runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
-            runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
-            runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
-            runner.Enqueue("rev-parse --verify HEAD", Ok("abc123"));
+            var runner = BaseRepositoryRunner(workspace);
+            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
             runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok(" M app.cs"));
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_WORKSPACE_DIRTY", state.ErrorCode);
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Count > 0 && call.Arguments[0] == "fetch");
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
+    public async Task RemoteFetchFailureBlocksLaunch()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var runner = BaseRepositoryRunner(workspace);
+            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("fetch --prune origin", Fail());
+
+            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
+
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_FETCH_FAILED", state.ErrorCode);
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
+    public async Task MissingMatchingRemoteBranchBlocksLaunch()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var runner = BaseRepositoryRunner(workspace);
+            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("fetch --prune origin", Ok());
+            runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Fail());
+
+            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
+
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_BRANCH_REQUIRED", state.ErrorCode);
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
+    public async Task LocalHeadMustExactlyMatchFetchedRemoteHead()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var runner = BaseRepositoryRunner(workspace, "local123");
+            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("fetch --prune origin", Ok());
+            runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Ok("remote456"));
+
+            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
+
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_HEAD_MISMATCH", state.ErrorCode);
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
+    public async Task CleanRepositorySyncedWithOriginIsAccepted()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var runner = BaseRepositoryRunner(workspace, "abc123");
+            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("fetch --prune origin", Ok());
+            runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Ok("abc123"));
+
+            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
+
             Assert.True(state.Success);
-            Assert.True(state.HasHead);
-            Assert.True(state.IsDirty);
-            Assert.True(state.NeedsBaseline);
+            Assert.Equal("main", state.Branch);
+            Assert.Equal("abc123", state.HeadCommit);
+            Assert.False(state.IsDirty);
+            Assert.False(state.InitializedNow);
+            Assert.False(state.NeedsBaseline);
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("init"));
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("add"));
+            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("commit"));
         }
         finally
         {
@@ -166,77 +188,12 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
-    public async Task NewRepositoryBaselineAddsSafeDetectedPresetsAndPreservesUserRules()
+    public async Task CreateBaselineDoesNotCreateLocalCommit()
     {
         var workspace = CreateWorkspace();
-        File.WriteAllText(Path.Combine(workspace, ".gitignore"), "custom-cache/" + Environment.NewLine);
-        File.WriteAllText(Path.Combine(workspace, "project.godot"), "[application]");
-        File.WriteAllText(Path.Combine(workspace, "package.json"), "{}");
-
         try
         {
             var runner = new ScriptedRunner();
-            runner.Enqueue("add --all", Ok());
-            runner.Enqueue(
-                "-c user.name=ProjectHub -c user.email=projecthub@local commit --allow-empty --no-gpg-sign -m ProjectHub initial baseline",
-                Ok());
-            runner.Enqueue("rev-parse --verify HEAD", Ok("def456"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
-
-            var state = new GitWorkspaceBootstrapState(
-                true,
-                null,
-                workspace,
-                workspace,
-                "main",
-                null,
-                true,
-                true,
-                NeedsManagedIgnoreUpdate: true);
-
-            var result = await new GitWorkspaceBootstrapper(runner).CreateBaselineAsync(state);
-
-            Assert.True(result.Success);
-            Assert.Equal("def456", result.HeadCommit);
-            Assert.False(result.NeedsManagedIgnoreUpdate);
-
-            var ignore = File.ReadAllText(Path.Combine(workspace, ".gitignore"));
-            Assert.Contains("custom-cache/", ignore);
-            Assert.Contains(".projecthub/", ignore);
-            Assert.Contains(".verification-appdata/", ignore);
-            Assert.Contains(".projecthub-worktrees/", ignore);
-            Assert.Contains(".vs/", ignore);
-            Assert.Contains("# ProjectHub preset: Godot", ignore);
-            Assert.Contains(".godot/", ignore);
-            Assert.Contains("# ProjectHub preset: Node", ignore);
-            Assert.Contains("node_modules/", ignore);
-        }
-        finally
-        {
-            Directory.Delete(workspace, true);
-        }
-    }
-
-    [Fact]
-    public async Task ExistingRepositoryCleanupUntracksManagedPathsBeforeBaseline()
-    {
-        var workspace = CreateWorkspace();
-        File.WriteAllText(Path.Combine(workspace, ".gitignore"), "custom-cache/" + Environment.NewLine);
-        File.WriteAllText(Path.Combine(workspace, "project.godot"), "[application]");
-
-        try
-        {
-            var runner = new ScriptedRunner();
-            runner.Enqueue(
-                "rm -r --cached --ignore-unmatch -- .projecthub .verification-appdata .projecthub-worktrees .vs",
-                Ok());
-            runner.Enqueue("add --all", Ok());
-            runner.Enqueue(
-                "-c user.name=ProjectHub -c user.email=projecthub@local commit --allow-empty --no-gpg-sign -m ProjectHub baseline before parallel work",
-                Ok());
-            runner.Enqueue("rev-parse --verify HEAD", Ok("def456"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
-
             var state = new GitWorkspaceBootstrapState(
                 true,
                 null,
@@ -245,28 +202,12 @@ public sealed class GitWorkspaceBootstrapperTests
                 "main",
                 "abc123",
                 false,
-                false,
-                NeedsManagedIgnoreUpdate: true,
-                NeedsManagedIndexCleanup: true);
+                false);
 
             var result = await new GitWorkspaceBootstrapper(runner).CreateBaselineAsync(state);
 
-            Assert.True(result.Success);
-            Assert.False(result.NeedsManagedIgnoreUpdate);
-            Assert.False(result.NeedsManagedIndexCleanup);
-            Assert.True(runner.Calls[0].Arguments.SequenceEqual(new[]
-            {
-                "rm", "-r", "--cached", "--ignore-unmatch", "--",
-                ".projecthub", ".verification-appdata", ".projecthub-worktrees", ".vs"
-            }));
-
-            var ignore = File.ReadAllText(Path.Combine(workspace, ".gitignore"));
-            Assert.Contains("custom-cache/", ignore);
-            Assert.Contains(".projecthub/", ignore);
-            Assert.Contains(".verification-appdata/", ignore);
-            Assert.Contains(".vs/", ignore);
-            Assert.DoesNotContain("# ProjectHub preset: Godot", ignore);
-            Assert.DoesNotContain(".godot/", ignore);
+            Assert.Same(state, result);
+            Assert.Empty(runner.Calls);
         }
         finally
         {
@@ -274,69 +215,15 @@ public sealed class GitWorkspaceBootstrapperTests
         }
     }
 
-    [Fact]
-    public async Task BaselineStagesEverythingAndCreatesLocalProjectHubCommit()
+    private static ScriptedRunner BaseRepositoryRunner(
+        string workspace,
+        string head = "abc123")
     {
-        var workspace = CreateWorkspace();
-        try
-        {
-            var runner = new ScriptedRunner();
-            runner.Enqueue("add --all", Ok());
-            runner.Enqueue(
-                "-c user.name=ProjectHub -c user.email=projecthub@local commit --allow-empty --no-gpg-sign -m ProjectHub initial baseline",
-                Ok());
-            runner.Enqueue("rev-parse --verify HEAD", Ok("def456"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
-
-            var state = new GitWorkspaceBootstrapState(
-                true,
-                null,
-                workspace,
-                workspace,
-                "main",
-                null,
-                true,
-                true);
-
-            var result = await new GitWorkspaceBootstrapper(runner).CreateBaselineAsync(state);
-
-            Assert.True(result.Success);
-            Assert.Equal("def456", result.HeadCommit);
-            Assert.False(result.IsDirty);
-            Assert.False(result.NeedsBaseline);
-            Assert.Contains(runner.Calls, call => call.Arguments.SequenceEqual(new[] { "add", "--all" }));
-        }
-        finally
-        {
-            Directory.Delete(workspace, true);
-        }
-    }
-
-    [Fact]
-    public async Task DetachedHeadIsRejectedWithoutBaselineMutation()
-    {
-        var workspace = CreateWorkspace();
-        WriteManagedBaseIgnore(workspace);
-
-        try
-        {
-            var runner = new ScriptedRunner();
-            runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
-            runner.Enqueue("config --local core.longpaths true", Ok());
-            runner.Enqueue("ls-files -- .projecthub .verification-appdata .projecthub-worktrees .vs", Ok());
-            runner.Enqueue("symbolic-ref --quiet --short HEAD", Fail());
-
-            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
-
-            Assert.False(state.Success);
-            Assert.Equal("GIT_BOOTSTRAP_ATTACHED_BRANCH_REQUIRED", state.ErrorCode);
-            Assert.DoesNotContain(runner.Calls, call => call.Arguments.SequenceEqual(new[] { "add", "--all" }));
-            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Count > 0 && call.Arguments[0] == "rm");
-        }
-        finally
-        {
-            Directory.Delete(workspace, true);
-        }
+        var runner = new ScriptedRunner();
+        runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
+        runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
+        runner.Enqueue("rev-parse --verify HEAD", Ok(head));
+        return runner;
     }
 
     private static GitCommandResult Ok(string output = "")
@@ -353,48 +240,6 @@ public sealed class GitWorkspaceBootstrapperTests
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
-    }
-
-    private static void WriteManagedBaseIgnore(string workspace)
-    {
-        File.WriteAllText(
-            Path.Combine(workspace, ".gitignore"),
-            string.Join(Environment.NewLine, new[]
-            {
-                "# >>> ProjectHub managed",
-                ".projecthub/",
-                ".verification-appdata/",
-                ".projecthub-worktrees/",
-                "",
-                "# 재생성 가능한 build / restore 산출물",
-                "**/bin/",
-                "**/obj/",
-                "dist-temp/",
-                "**/dist-temp/",
-                ".dotnet/",
-                ".dotnet-cli/",
-                ".nuget/",
-                "NuGet/",
-                "**/NuGet/",
-                "TestResults/",
-                "**/TestResults/",
-                "coverage/",
-                "verification-output/",
-                "visual-captures/",
-                "",
-                "# OS 임시 파일",
-                ".DS_Store",
-                "Thumbs.db",
-                "Desktop.ini",
-                "",
-                "# 편집기 임시 파일",
-                ".vs/",
-                "*.swp",
-                "*.swo",
-                "*~",
-                "# <<< ProjectHub managed",
-                ""
-            }));
     }
 
     private sealed class ScriptedRunner : IGitWorktreeCommandRunner
