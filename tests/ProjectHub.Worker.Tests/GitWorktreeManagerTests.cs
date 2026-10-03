@@ -612,9 +612,10 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task IntegrationLandingFastForwardsOnlyCleanRemoteSyncedTarget()
+    public async Task TargetCheckoutSwitchesToVerifiedRemoteResultBranchWithoutMergeOrPush()
     {
         var root = CreateTempRepositoryDirectory();
+        var resultBranch = GitWorktreeManager.BuildBranchName("job", "W1");
         var runner = new FakeGitRunner();
         runner.Enqueue(0, root);
         runner.Enqueue(0, "");
@@ -622,33 +623,43 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "base123");
         runner.Enqueue(0, "");
         runner.Enqueue(0, "base123");
-        runner.Enqueue(0, "integrated456");
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(1, "");
         runner.Enqueue(0, "");
-        runner.Enqueue(0, "Fast-forward");
-        runner.Enqueue(0, "integrated456");
+        runner.Enqueue(0, resultBranch);
+        runner.Enqueue(0, "result456");
         runner.Enqueue(0, "");
 
         try
         {
             var result = await new GitWorktreeManager(runner)
-                .LandIntegrationAsync(root, "integration-ref", "main");
+                .SwitchTargetToRemoteResultAsync(
+                    root,
+                    "result-ref",
+                    resultBranch,
+                    "main");
 
             Assert.True(result.Success);
-            Assert.True(result.FastForwarded);
-            Assert.Equal("integrated456", result.AfterHead);
-            var statusCalls = runner.Calls
-                .Where(call => call.Arguments.Count > 0 && call.Arguments[0] == "status")
-                .ToArray();
-            Assert.Equal(2, statusCalls.Length);
-            Assert.All(
-                statusCalls,
-                call => Assert.DoesNotContain(
-                    call.Arguments,
-                    argument => argument.StartsWith(":(exclude", StringComparison.Ordinal)));
+            Assert.True(result.Switched);
+            Assert.Equal("main", result.PreviousBranch);
+            Assert.Equal("base123", result.PreviousHead);
+            Assert.Equal(resultBranch, result.CurrentBranch);
+            Assert.Equal("result456", result.CurrentHead);
             Assert.Contains(
                 runner.Calls,
                 call => call.Arguments.SequenceEqual(
-                    new[] { "merge", "--ff-only", "integrated456" }));
+                    new[]
+                    {
+                        "switch",
+                        "-c",
+                        resultBranch,
+                        "--track",
+                        "origin/" + resultBranch
+                    }));
+            Assert.DoesNotContain(
+                runner.Calls.SelectMany(call => call.Arguments),
+                argument => argument is "merge" or "push" or "reset" or "--force" or "-f");
         }
         finally
         {
@@ -657,9 +668,10 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task IntegrationLandingRejectsRemoteTargetBranchDrift()
+    public async Task TargetCheckoutRejectsCurrentBranchRemoteDrift()
     {
         var root = CreateTempRepositoryDirectory();
+        var resultBranch = GitWorktreeManager.BuildBranchName("job", "W1");
         var runner = new FakeGitRunner();
         runner.Enqueue(0, root);
         runner.Enqueue(0, "");
@@ -671,13 +683,18 @@ public sealed class GitWorktreeManagerTests
         try
         {
             var result = await new GitWorktreeManager(runner)
-                .LandIntegrationAsync(root, "integration-ref", "main");
+                .SwitchTargetToRemoteResultAsync(
+                    root,
+                    "result-ref",
+                    resultBranch,
+                    "main");
 
             Assert.False(result.Success);
-            Assert.Equal("INTEGRATION_TARGET_REMOTE_CHANGED", result.ErrorCode);
+            Assert.Equal("TARGET_CHECKOUT_CURRENT_REMOTE_CHANGED", result.ErrorCode);
             Assert.DoesNotContain(
                 runner.Calls,
-                call => call.Arguments.Count > 0 && call.Arguments[0] == "merge");
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "switch");
         }
         finally
         {
