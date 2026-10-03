@@ -297,6 +297,7 @@ public partial class MainWindow
         {
             stagedAttachments = StageUserAttachments(
                 attachments,
+                workingDirectory,
                 "direct-" + Guid.NewGuid().ToString("N"));
         }
         catch (Exception exception)
