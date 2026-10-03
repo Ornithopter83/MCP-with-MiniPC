@@ -333,8 +333,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 if (!string.IsNullOrWhiteSpace(snapshotPath))
                     writableDirectories.Add(snapshotPath);
             }
-            if (FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id))
-                writableDirectories.Add(_workspace);
             workWritableDirectories = writableDirectories
                 .Distinct(OperatingSystem.IsWindows()
                     ? StringComparer.OrdinalIgnoreCase
@@ -455,9 +453,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 includeContract: string.IsNullOrWhiteSpace(sessionId),
                 resourceStagingRoot: runtimePaths.TempRoot,
                 workTempRoot: workTempPath,
-                targetWorkspace: FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id)
-                    ? _workspace
-                    : null,
                 publishOutputDirectory: publishOutputDirectory);
 
             string? startedSession = sessionId;
