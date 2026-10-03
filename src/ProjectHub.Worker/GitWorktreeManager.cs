@@ -160,7 +160,8 @@ public sealed record GitWorktreeCheckpointResult(
     string WorktreePath,
     string? Branch,
     string? HeadCommit,
-    bool CreatedCommit);
+    bool CreatedCommit,
+    string? ErrorDetail = null);
 
 public sealed record GitNormalBaseResolutionResult(
     bool Success,
@@ -1354,8 +1355,6 @@ public sealed class GitWorktreeManager
 
         if (before.IsClean)
             return new(true, null, before.WorktreePath, before.Branch, before.HeadCommit, false);
-        if (!await HasMeaningfulCheckpointChangesAsync(worktreePath, cancellationToken).ConfigureAwait(false))
-            return new(true, null, before.WorktreePath, before.Branch, before.HeadCommit, false);
 
         var addResult = await RunAsync(
             worktreePath,
@@ -1373,7 +1372,8 @@ public sealed class GitWorktreeManager
                 worktreePath,
                 before.Branch,
                 before.HeadCommit,
-                false);
+                false,
+                BuildGitFailureDetail("git add --all -- .", addResult));
         }
 
         var message = "ProjectHub WorkItem " + SafeCommitLabel(workItemId) + " checkpoint";
@@ -1400,80 +1400,96 @@ public sealed class GitWorktreeManager
                 worktreePath,
                 before.Branch,
                 before.HeadCommit,
-                false);
+                false,
+                BuildGitFailureDetail("git commit", commitResult));
+        }
+
+        var committedHead = await RunAsync(
+            worktreePath,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--verify",
+            "HEAD").ConfigureAwait(false);
+        if (committedHead.ExitCode != 0 || string.IsNullOrWhiteSpace(committedHead.StandardOutput))
+        {
+            return new(
+                false,
+                "WORKTREE_CHECKPOINT_HEAD_UNAVAILABLE",
+                worktreePath,
+                before.Branch,
+                before.HeadCommit,
+                true,
+                BuildGitFailureDetail("git rev-parse HEAD", committedHead));
+        }
+
+        var resultCommit = FirstLine(committedHead.StandardOutput);
+        if (string.IsNullOrWhiteSpace(before.Branch))
+        {
+            return new(
+                false,
+                "WORKTREE_CHECKPOINT_BRANCH_REQUIRED",
+                worktreePath,
+                before.Branch,
+                resultCommit,
+                true,
+                "원격 checkpoint를 게시할 branch를 확인하지 못했습니다.");
+        }
+
+        var pushResult = await RunAsync(
+            worktreePath,
+            CreateTimeout,
+            cancellationToken,
+            "push",
+            "origin",
+            "HEAD:refs/heads/" + before.Branch).ConfigureAwait(false);
+        if (pushResult.ExitCode != 0)
+        {
+            return new(
+                false,
+                pushResult.TimedOut ? "WORKTREE_CHECKPOINT_PUSH_TIMEOUT"
+                    : pushResult.Canceled ? "WORKTREE_CHECKPOINT_PUSH_CANCELED"
+                    : "WORKTREE_CHECKPOINT_PUSH_FAILED",
+                worktreePath,
+                before.Branch,
+                resultCommit,
+                true,
+                BuildGitFailureDetail("git push origin", pushResult));
+        }
+
+        var remoteResult = await RunAsync(
+            worktreePath,
+            ReadTimeout,
+            cancellationToken,
+            "ls-remote",
+            "--exit-code",
+            "origin",
+            "refs/heads/" + before.Branch).ConfigureAwait(false);
+        var remoteCommit = remoteResult.ExitCode == 0
+            ? remoteResult.StandardOutput
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault()
+            : null;
+        if (string.IsNullOrWhiteSpace(remoteCommit) ||
+            !string.Equals(remoteCommit, resultCommit, StringComparison.OrdinalIgnoreCase))
+        {
+            return new(
+                false,
+                "WORKTREE_CHECKPOINT_REMOTE_VERIFY_FAILED",
+                worktreePath,
+                before.Branch,
+                resultCommit,
+                true,
+                BuildGitFailureDetail("git ls-remote origin", remoteResult));
         }
 
         var after = await InspectAsync(worktreePath, cancellationToken).ConfigureAwait(false);
         if (!after.Success)
-            return new(false, after.ErrorCode, worktreePath, after.Branch, after.HeadCommit, true);
-        if (!after.IsClean &&
-            await HasMeaningfulCheckpointChangesAsync(worktreePath, cancellationToken).ConfigureAwait(false))
-            return new(false, "WORKTREE_CHECKPOINT_NOT_CLEAN", worktreePath, after.Branch, after.HeadCommit, true);
+            return new(false, after.ErrorCode, worktreePath, after.Branch, resultCommit, true);
+        if (!after.IsClean)
+            return new(false, "WORKTREE_CHECKPOINT_NOT_CLEAN", worktreePath, after.Branch, resultCommit, true);
 
-        return new(true, null, after.WorktreePath, after.Branch, after.HeadCommit, true);
-    }
-
-    private async Task<bool> HasMeaningfulCheckpointChangesAsync(
-        string worktreePath,
-        CancellationToken cancellationToken)
-    {
-        var status = await RunAsync(
-            worktreePath,
-            ReadTimeout,
-            cancellationToken,
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=all").ConfigureAwait(false);
-
-        if (status.ExitCode != 0)
-            return true;
-
-        foreach (var rawLine in (status.StandardOutput ?? string.Empty)
-                     .Replace("\r\n", "\n")
-                     .Replace('\r', '\n')
-                     .Split('\n', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (rawLine.Length < 4)
-                return true;
-
-            var path = rawLine[3..].Trim();
-            var renameSeparator = path.LastIndexOf(" -> ", StringComparison.Ordinal);
-            if (renameSeparator >= 0)
-                path = path[(renameSeparator + 4)..].Trim();
-
-            path = path.Trim('"');
-            if (!IsRegenerableCheckpointPath(path))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsRegenerableCheckpointPath(string path)
-    {
-        var normalized = (path ?? string.Empty).Replace('\\', '/').TrimStart('/');
-        if (normalized.Length == 0)
-            return false;
-
-        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Any(segment =>
-                segment.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("publish", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("artifacts", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("dist-temp", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("NuGet", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("TestResults", StringComparison.OrdinalIgnoreCase)))
-            return true;
-
-        return normalized.StartsWith(".projecthub/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith(".dotnet/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith(".dotnet-cli/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith(".nuget/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("coverage/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("verification-output/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("visual-captures/", StringComparison.OrdinalIgnoreCase);
+        return new(true, null, after.WorktreePath, after.Branch, resultCommit, true);
     }
 
     private static string[] BuildCheckpointAddArguments()
@@ -1482,26 +1498,7 @@ public sealed class GitWorktreeManager
             "add",
             "--all",
             "--",
-            ".",
-            ":(exclude,glob)**/bin/**",
-            ":(exclude,glob)**/obj/**",
-            ":(exclude,glob)publish/**",
-            ":(exclude,glob)**/publish/**",
-            ":(exclude,glob)artifacts/**",
-            ":(exclude,glob)**/artifacts/**",
-            ":(exclude,glob)dist-temp/**",
-            ":(exclude,glob)**/dist-temp/**",
-            ":(exclude,glob).projecthub/**",
-            ":(exclude,glob).dotnet/**",
-            ":(exclude,glob).dotnet-cli/**",
-            ":(exclude,glob).nuget/**",
-            ":(exclude,glob)NuGet/**",
-            ":(exclude,glob)**/NuGet/**",
-            ":(exclude,glob)TestResults/**",
-            ":(exclude,glob)**/TestResults/**",
-            ":(exclude,glob)coverage/**",
-            ":(exclude,glob)verification-output/**",
-            ":(exclude,glob)visual-captures/**"
+            "."
         };
 
     public Task<GitCommitManifestResult> CreateCommitManifestAsync(
