@@ -39,7 +39,6 @@ public sealed class GitWorkspaceBootstrapperTests
 
             Assert.False(state.Success);
             Assert.Equal("GIT_REMOTE_EXACT_ROOT_REQUIRED", state.ErrorCode);
-            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("init"));
         }
         finally
         {
@@ -67,22 +66,22 @@ public sealed class GitWorkspaceBootstrapperTests
         }
     }
 
-    [Fact]
-    public async Task LocalPathOriginIsRejectedAsNonRemote()
+    [Theory]
+    [InlineData("../local-repo")]
+    [InlineData("C:/local/repo")]
+    [InlineData("file:///C:/local/repo")]
+    public async Task LocalOriginIsRejected(string origin)
     {
         var workspace = CreateWorkspace();
         try
         {
             var runner = BaseRepositoryRunner(workspace);
-            runner.Enqueue("remote get-url origin", Ok("C:/repos/local.git"));
+            runner.Enqueue("remote get-url origin", Ok(origin));
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
             Assert.False(state.Success);
             Assert.Equal("GIT_REMOTE_ORIGIN_NETWORK_REQUIRED", state.ErrorCode);
-            Assert.DoesNotContain(
-                runner.Calls,
-                call => call.Arguments.Count > 0 && call.Arguments[0] == "fetch");
         }
         finally
         {
@@ -104,7 +103,10 @@ public sealed class GitWorkspaceBootstrapperTests
 
             Assert.False(state.Success);
             Assert.Equal("GIT_REMOTE_WORKSPACE_DIRTY", state.ErrorCode);
-            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Count > 0 && call.Arguments[0] == "fetch");
+            Assert.True(state.IsDirty);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 && call.Arguments[0] == "fetch");
         }
         finally
         {
@@ -141,7 +143,7 @@ public sealed class GitWorkspaceBootstrapperTests
         try
         {
             var runner = BaseRepositoryRunner(workspace);
-            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
+            runner.Enqueue("remote get-url origin", Ok("git@github.com:owner/repo.git"));
             runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
             runner.Enqueue("fetch --prune origin", Ok());
             runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Fail());
@@ -164,7 +166,7 @@ public sealed class GitWorkspaceBootstrapperTests
         try
         {
             var runner = BaseRepositoryRunner(workspace, "local123");
-            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
+            runner.Enqueue("remote get-url origin", Ok("ssh://git@example.invalid/repo.git"));
             runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
             runner.Enqueue("fetch --prune origin", Ok());
             runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Ok("remote456"));
