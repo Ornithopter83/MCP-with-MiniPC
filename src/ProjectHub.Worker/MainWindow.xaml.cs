@@ -2078,31 +2078,18 @@ public partial class MainWindow : Window
         var effectiveWorkingDirectory = _targetSettings.IsCoordinatorFirst
             ? ResolveCoordinatorTargetWorkingDirectory()
             : workingDirectory;
-        var deferCoordinatorGitBinding =
-            _targetSettings.IsCoordinatorFirst &&
-            _dashboardBodyMode == DashboardBodyMode.NewTaskInput &&
-            _activeTaskCts is null &&
-            !_awaitingWebResult;
-
-        if (deferCoordinatorGitBinding)
-        {
-            ClearCoordinatorGitTargetPresentation();
-        }
-        else
-        {
-            var gitFolder = _targetSettings.IsCoordinatorFirst
-                ? effectiveWorkingDirectory
-                : ResolveConfiguredGitFolder(selected) ?? string.Empty;
-            _gitTarget = WorkerTargetConfiguration.ResolveGit(
-                gitFolder,
-                _targetSettings,
-                requireExactRoot: _targetSettings.IsCoordinatorFirst);
-            RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
-            TargetGitStateText.Text = _gitTarget.IsRepository
-                ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
-                : "Git: UNCONFIGURED";
-            RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
-        }
+        var gitFolder = _targetSettings.IsCoordinatorFirst
+            ? effectiveWorkingDirectory
+            : ResolveConfiguredGitFolder(selected) ?? string.Empty;
+        _gitTarget = WorkerTargetConfiguration.ResolveGit(
+            gitFolder,
+            _targetSettings,
+            requireExactRoot: false);
+        RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
+        TargetGitStateText.Text = _gitTarget.IsRepository
+            ? $"Branch: {_gitTarget.Branch ?? "unknown"} · Local HEAD: {_gitTarget.HeadSha?[..Math.Min(12, _gitTarget.HeadSha.Length)] ?? "unknown"}"
+            : "Git: UNCONFIGURED";
+        RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? "MCP-with-MiniPC");
 
         TargetPathText.Text = _targetSettings.IsCoordinatorFirst
             ? $"Target workspace: {(string.IsNullOrWhiteSpace(effectiveWorkingDirectory) ? "미설정" : effectiveWorkingDirectory)}"
@@ -2428,7 +2415,7 @@ public partial class MainWindow : Window
             WorkerTargetConfiguration.ResolveGit(
                 workingDirectory,
                 _targetSettings,
-                requireExactRoot: true));
+                requireExactRoot: false));
         return result.Success ? null : result.Message;
     }
 
@@ -2491,7 +2478,7 @@ public partial class MainWindow : Window
         var target = WorkerTargetConfiguration.ResolveGit(
             workingDirectory,
             _targetSettings,
-            requireExactRoot: _targetSettings.IsCoordinatorFirst);
+            requireExactRoot: false);
 
         _gitTarget = target;
         RepositoryUrlInput.Text = target.RepositoryUrl ?? string.Empty;
