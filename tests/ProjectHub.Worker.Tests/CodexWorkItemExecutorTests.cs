@@ -598,7 +598,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task UnpublishedCheckpointCommitRemainsCodeChangeWhenAllPushAttemptsFail()
+    public async Task UnpublishedCheckpointCommitBecomesCodeChangeOnlyAfterRemoteRecovery()
     {
         var fixture = CreateFixture("""
             [GOTO : HQ]
@@ -646,8 +646,48 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
             Assert.Equal("WORKTREE_CHECKPOINT_PENDING", result.BlockCode);
             Assert.Equal("WORKTREE_CHECKPOINT_PUSH_FAILED", result.BlockDetailCode);
-            Assert.Equal(WorkItemResultType.CodeChange, result.ResultType);
+            Assert.Equal(WorkItemResultType.None, result.ResultType);
             Assert.Equal("new456", result.ResultRef);
+
+            fixture.Git.Clear();
+            EnqueueExistingWorktreePreparation(
+                fixture,
+                headCommit: "new456",
+                baseCommit: "base123");
+            fixture.Git.Enqueue(0, "new456");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, $"new456\trefs/heads/{fixture.Branch}");
+            fixture.Git.Enqueue(0, "new456");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "new456");
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "");
+
+            var retryItem = fixture.Request.Item with
+            {
+                ResultSummary = result.ResultSummary,
+                ResultRef = result.ResultRef,
+                SessionId = result.SessionId,
+                Branch = result.Branch,
+                WorktreePath = result.WorktreePath
+            };
+            var retry = fixture.Request with
+            {
+                Item = retryItem,
+                InboundType = "WORKTREE_CHECKPOINT_RETRY",
+                InboundBody = string.Empty
+            };
+
+            var recovered = await fixture.Executor.ExecuteAsync(
+                retry,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Completed, recovered.Outcome);
+            Assert.Equal(WorkItemResultType.CodeChange, recovered.ResultType);
+            Assert.Equal("new456", recovered.ResultRef);
         }
         finally
         {
@@ -945,7 +985,10 @@ public sealed class CodexWorkItemExecutorTests
         }
     }
 
-    private static void EnqueueExistingWorktreePreparation(Fixture fixture)
+    private static void EnqueueExistingWorktreePreparation(
+        Fixture fixture,
+        string headCommit = "head123",
+        string baseCommit = "base123")
     {
         var root = Path.Combine(fixture.Parent, "repo");
         var worktree = fixture.Request.Item.WorktreePath!;
@@ -953,11 +996,11 @@ public sealed class CodexWorkItemExecutorTests
         fixture.Git.Enqueue(0, root);
         fixture.Git.Enqueue(0, "https://example.invalid/repo.git");
         fixture.Git.Enqueue(0, "");
-        fixture.Git.Enqueue(0, "base123");
+        fixture.Git.Enqueue(0, baseCommit);
         fixture.Git.Enqueue(0, worktree);
         fixture.Git.Enqueue(0, Path.Combine(worktree, ".git"));
         fixture.Git.Enqueue(0, fixture.Branch);
-        fixture.Git.Enqueue(0, "head123");
+        fixture.Git.Enqueue(0, headCommit);
         fixture.Git.Enqueue(0, "");
     }
 
