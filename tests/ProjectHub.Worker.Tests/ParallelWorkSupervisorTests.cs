@@ -1103,8 +1103,8 @@ public sealed class ParallelWorkSupervisorTests
                 _completed[request.Item.Id] = true;
                 var summary = request.Item.Kind == WorkItemKind.Integration
                     ? "완료" + Environment.NewLine + Environment.NewLine +
-                      "INTEGRATION_LANDING" + Environment.NewLine +
-                      "status: FAST_FORWARDED"
+                      "REMOTE_CODE_RESULT" + Environment.NewLine +
+                      "resultRef: ref-" + request.Item.Id
                     : "완료";
                 return WorkItemExecutionResult.Completed(
                     "ref-" + request.Item.Id,
