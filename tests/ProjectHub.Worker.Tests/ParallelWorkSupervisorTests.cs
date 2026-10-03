@@ -6,7 +6,7 @@ namespace ProjectHub.Worker.Tests;
 public sealed class ParallelWorkSupervisorTests
 {
     [Fact]
-    public void MechanicalGraphEventExposesIntegrationImportDetailCode()
+    public void MechanicalGraphEventExposesIntegrationRemoteDetailCode()
     {
         var graph = new WorkGraph("job");
         Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
@@ -16,21 +16,21 @@ public sealed class ParallelWorkSupervisorTests
         Assert.True(graph.TryMarkRunning("I1"));
         Assert.True(graph.TryMarkBlocked(
             "I1",
-            "INTEGRATION_IMPORT_FAILED",
+            "INTEGRATION_REMOTE_FETCH_FAILED",
             new string('x', 1500),
             "ref-I1",
-            "INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED"));
+            "INTEGRATION_REMOTE_FETCH_TIMEOUT"));
 
         var text = ParallelWorkSupervisor.FormatMechanicalGraphEvent(
-            new[] { "통합 import가 차단되었습니다." },
+            new[] { "통합 원격 Git 준비가 차단되었습니다." },
             new ParallelWorkSchedulerSnapshot(
                 graph.Snapshot(),
                 Array.Empty<RunningWorkItemSnapshot>()));
 
-        Assert.Contains("blockCode=INTEGRATION_IMPORT_FAILED", text);
-        Assert.Contains("blockDetailCode=INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED", text);
+        Assert.Contains("blockCode=INTEGRATION_REMOTE_FETCH_FAILED", text);
+        Assert.Contains("blockDetailCode=INTEGRATION_REMOTE_FETCH_TIMEOUT", text);
         Assert.True(
-            text.IndexOf("blockDetailCode=INTEGRATION_IMPORT_SOURCE_BRANCH_CHANGED", StringComparison.Ordinal) <
+            text.IndexOf("blockDetailCode=INTEGRATION_REMOTE_FETCH_TIMEOUT", StringComparison.Ordinal) <
             text.IndexOf("WORK_REPORT_BEGIN", StringComparison.Ordinal));
     }
 
