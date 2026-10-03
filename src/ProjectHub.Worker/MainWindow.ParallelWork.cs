@@ -405,24 +405,24 @@ public partial class MainWindow
                         (string.IsNullOrWhiteSpace(finalization.ErrorCode)
                             ? string.Empty
                             : Environment.NewLine + "errorCode=" + finalization.ErrorCode) +
-                        (string.IsNullOrWhiteSpace(finalization.LandedWorkItemId)
+                        (string.IsNullOrWhiteSpace(finalization.FinalWorkItemId)
                             ? string.Empty
-                            : Environment.NewLine + "workItemId=" + finalization.LandedWorkItemId) +
-                        (string.IsNullOrWhiteSpace(finalization.LandedResultRef)
+                            : Environment.NewLine + "workItemId=" + finalization.FinalWorkItemId) +
+                        (string.IsNullOrWhiteSpace(finalization.FinalResultRef)
                             ? string.Empty
-                            : Environment.NewLine + "resultRef=" + finalization.LandedResultRef),
+                            : Environment.NewLine + "resultRef=" + finalization.FinalResultRef),
                         finalization.Success ? "COMPLETED" : finalization.ErrorCode ?? "WORKSPACE_FINALIZATION_REQUIRED");
 
                     RunOnUi(() =>
                         AddTaskMessage(
                             "TARGET WORKSPACE",
                             finalization.Message +
-                            (string.IsNullOrWhiteSpace(finalization.LandedWorkItemId)
+                            (string.IsNullOrWhiteSpace(finalization.FinalWorkItemId)
                                 ? string.Empty
-                                : Environment.NewLine + $"workItemId={finalization.LandedWorkItemId}") +
-                            (string.IsNullOrWhiteSpace(finalization.LandedResultRef)
+                                : Environment.NewLine + $"workItemId={finalization.FinalWorkItemId}") +
+                            (string.IsNullOrWhiteSpace(finalization.FinalResultRef)
                                 ? string.Empty
-                                : Environment.NewLine + $"resultRef={finalization.LandedResultRef}"),
+                                : Environment.NewLine + $"resultRef={finalization.FinalResultRef}"),
                             status: finalization.Success
                                 ? "COMPLETED"
                                 : finalization.ErrorCode ?? "WORKSPACE_FINALIZATION_REQUIRED",
