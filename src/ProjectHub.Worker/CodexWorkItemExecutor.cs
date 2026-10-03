@@ -745,82 +745,14 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             if (string.IsNullOrWhiteSpace(checkpoint.HeadCommit))
             {
                 return WorkItemExecutionResult.Blocked(
-                    "INTEGRATION_IMPORT_FAILED",
-                    BuildIntegrationImportFailure(
-                        reportBody,
-                        "INTEGRATION_RESULT_REF_MISSING",
-                        checkpoint.HeadCommit,
-                        null),
+                    "INTEGRATION_REMOTE_RESULT_MISSING",
+                    reportBody + Environment.NewLine + Environment.NewLine +
+                    "remoteResultError: checkpoint commit SHA가 없습니다.",
                     checkpoint.HeadCommit,
                     checkpoint.Branch ?? preparation.Branch,
                     checkpoint.WorktreePath,
                     sessionId,
-                    blockDetailCode: "INTEGRATION_RESULT_REF_MISSING",
-                    resultType: completedResultType,
-                    commitManifestPath: commitManifestPath);
-            }
-
-            var sourceBranch = checkpoint.Branch ?? preparation.Branch;
-            if (string.IsNullOrWhiteSpace(sourceBranch))
-            {
-                return WorkItemExecutionResult.Blocked(
-                    "INTEGRATION_IMPORT_FAILED",
-                    BuildIntegrationImportFailure(
-                        reportBody,
-                        "INTEGRATION_SOURCE_BRANCH_UNAVAILABLE",
-                        checkpoint.HeadCommit,
-                        null),
-                    checkpoint.HeadCommit,
-                    preparation.Branch,
-                    checkpoint.WorktreePath,
-                    sessionId,
-                    blockDetailCode: "INTEGRATION_SOURCE_BRANCH_UNAVAILABLE",
-                    resultType: completedResultType,
-                    commitManifestPath: commitManifestPath);
-            }
-
-            if (!string.Equals(sourceBranch, preparation.Branch, StringComparison.Ordinal))
-            {
-                return WorkItemExecutionResult.Blocked(
-                    "INTEGRATION_IMPORT_FAILED",
-                    BuildIntegrationImportFailure(
-                        reportBody,
-                        "INTEGRATION_SOURCE_BRANCH_CHANGED",
-                        checkpoint.HeadCommit,
-                        null),
-                    checkpoint.HeadCommit,
-                    sourceBranch,
-                    checkpoint.WorktreePath,
-                    sessionId,
-                    blockDetailCode: "INTEGRATION_SOURCE_BRANCH_CHANGED",
-                    resultType: completedResultType,
-                    commitManifestPath: commitManifestPath);
-            }
-
-            var imported = await _worktrees.ImportIntegrationCloneAsync(
-                _workspace,
-                checkpoint.WorktreePath,
-                sourceBranch,
-                checkpoint.HeadCommit,
-                _jobId,
-                item.Id,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!imported.Success)
-            {
-                var importErrorCode = imported.ErrorCode ?? "INTEGRATION_IMPORT_FAILED";
-                return WorkItemExecutionResult.Blocked(
-                    "INTEGRATION_IMPORT_FAILED",
-                    BuildIntegrationImportFailure(
-                        reportBody,
-                        importErrorCode,
-                        checkpoint.HeadCommit,
-                        imported),
-                    checkpoint.HeadCommit,
-                    checkpoint.Branch ?? preparation.Branch,
-                    checkpoint.WorktreePath,
-                    sessionId,
-                    blockDetailCode: importErrorCode,
+                    blockDetailCode: "INTEGRATION_REMOTE_RESULT_MISSING",
                     resultType: completedResultType,
                     commitManifestPath: commitManifestPath);
             }
@@ -833,7 +765,10 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             return WorkItemExecutionResult.Completed(
                 checkpoint.HeadCommit,
-                BuildIntegrationImportSuccess(reportBody, imported),
+                reportBody + Environment.NewLine + Environment.NewLine +
+                "REMOTE_CODE_RESULT" + Environment.NewLine +
+                "resultRef: " + checkpoint.HeadCommit + Environment.NewLine +
+                "branch: " + (checkpoint.Branch ?? preparation.Branch),
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
                 sessionId,
@@ -894,7 +829,25 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         {
             try
             {
+                var sourceResultRef =
+                    preparation.BaseCommit ??
+                    preparation.HeadCommit ??
+                    item.BaseRef;
+                if (string.IsNullOrWhiteSpace(sourceResultRef))
+                {
+                    return WorkItemExecutionResult.Blocked(
+                        "PUBLISH_SOURCE_REF_MISSING",
+                        reportBody + Environment.NewLine + Environment.NewLine +
+                        "publishSourceError: 원격 CODE_CHANGE 기준 commit을 확인할 수 없습니다.",
+                        preparation.HeadCommit,
+                        preparation.Branch,
+                        preparation.WorktreePath,
+                        sessionId,
+                        blockDetailCode: "PUBLISH_SOURCE_REF_MISSING");
+                }
+
                 await _publishState.MarkPublishedAsync(
+                    sourceResultRef,
                     item.CreatedOrder,
                     cancellationToken).ConfigureAwait(false);
             }
@@ -1076,22 +1029,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             Environment.NewLine,
             lines.Skip(2)).TrimStart();
         return true;
-    }
-
-    private static string BuildIntegrationImportSuccess(
-        string reportBody,
-        GitIntegrationImportResult imported)
-    {
-        var lines = new List<string>
-        {
-            reportBody.Trim(),
-            string.Empty,
-            "INTEGRATION_IMPORT",
-            "status: IMPORTED",
-            "integrationRef: " + imported.IntegrationRef,
-            "importedRef: " + (imported.ImportedRef ?? "없음")
-        };
-        return string.Join(Environment.NewLine, lines);
     }
 
     private static string BuildIntegrationImportFailure(
