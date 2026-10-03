@@ -1454,21 +1454,6 @@ public sealed class GitWorktreeManager
             "."
         };
 
-    public Task<GitCommitManifestResult> CreateCommitManifestAsync(
-        string worktreePath,
-        string workspace,
-        string jobId,
-        string workItemId,
-        string commit,
-        CancellationToken cancellationToken = default)
-        => new GitCommitManifestBuilder(_runner).BuildAsync(
-            worktreePath,
-            workspace,
-            jobId,
-            workItemId,
-            commit,
-            cancellationToken);
-
     public async Task<GitIntegrationDependencyStageResult> StageIntegrationDependenciesAsync(
         string clonePath,
         IReadOnlyList<WorkItemDependencyResult> dependencies,
