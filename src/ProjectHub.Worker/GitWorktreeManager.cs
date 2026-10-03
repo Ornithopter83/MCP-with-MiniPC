@@ -2046,9 +2046,8 @@ public sealed class GitWorktreeManager
         var remoteHead = remoteHeadResult.ExitCode == 0
             ? FirstLine(remoteHeadResult.StandardOutput)
             : null;
-        if (string.IsNullOrWhiteSpace(remoteHead))
-            return new(false, "TARGET_REMOTE_BRANCH_REQUIRED", repositoryRoot, normalizedRef, null, targetBranch, targetHead, false);
-        if (!string.Equals(targetHead, remoteHead, StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(remoteHead) &&
+            !string.Equals(targetHead, remoteHead, StringComparison.OrdinalIgnoreCase))
             return new(false, "TARGET_REMOTE_HEAD_MISMATCH", repositoryRoot, normalizedRef, null, targetBranch, targetHead, false);
 
         var resultCommitResult = await RunAsync(
@@ -2182,9 +2181,8 @@ public sealed class GitWorktreeManager
             var currentRemoteHead = currentRemoteResult.ExitCode == 0
                 ? FirstLine(currentRemoteResult.StandardOutput)
                 : null;
-            if (string.IsNullOrWhiteSpace(currentRemoteHead))
-                return new(false, "TARGET_CHECKOUT_CURRENT_REMOTE_BRANCH_REQUIRED", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, currentHead, currentBranch, currentHead, false);
-            if (!string.Equals(currentHead, currentRemoteHead, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(currentRemoteHead) &&
+                !string.Equals(currentHead, currentRemoteHead, StringComparison.OrdinalIgnoreCase))
                 return new(false, "TARGET_CHECKOUT_CURRENT_REMOTE_CHANGED", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, currentHead, currentBranch, currentHead, false);
 
             var resultCommitResult = await RunAsync(
@@ -2199,6 +2197,34 @@ public sealed class GitWorktreeManager
                 : null;
             if (string.IsNullOrWhiteSpace(resultCommit))
                 return new(false, "TARGET_CHECKOUT_RESULT_REF_INVALID", repositoryRoot, normalizedRef, normalizedResultBranch, null, currentBranch, currentHead, currentBranch, currentHead, false);
+
+            if (string.IsNullOrWhiteSpace(currentRemoteHead))
+            {
+                var localAncestor = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "merge-base",
+                    "--is-ancestor",
+                    currentHead,
+                    resultCommit).ConfigureAwait(false);
+                if (localAncestor.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        "TARGET_CHECKOUT_LOCAL_BASE_DIVERGED",
+                        repositoryRoot,
+                        normalizedRef,
+                        normalizedResultBranch,
+                        resultCommit,
+                        currentBranch,
+                        currentHead,
+                        currentBranch,
+                        currentHead,
+                        false,
+                        BuildGitFailureDetail("git merge-base --is-ancestor local baseline", localAncestor));
+                }
+            }
 
             var remoteResultBranchResult = await RunAsync(
                 repositoryRoot,
