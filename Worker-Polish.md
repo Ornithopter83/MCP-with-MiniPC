@@ -53,7 +53,7 @@
 ③ WORK는 필요한 원격 사실 확인을 위해 `git ls-remote` 같은 비대화형 read-only 조회를 사용할 수 있다. `.git`은 작업 루트와 disposable clone 내부의 원래 위치에 유지한다. AI 실행 전후 Worker가 HEAD·refs·index·config 지문을 비교하고 변경되면 결과 확정을 중단한다. Git 저장소 생성·복구·clone·stage·commit·push와 원격 branch 생성·변경은 WORK가 수행하지 않으며 checkpoint와 원격 게시는 Worker가 기계적으로 수행한다.
 ④ checkpoint 대상은 프로젝트의 `.gitignore`를 기준으로 하며 Worker는 초기 baseline 또는 #8 루트 scaffold에서 루트 `.gitignore`에 `.projecthub/` 항목을 보장한다. 작업 루트의 `.projecthub`는 Worker 기계 상태이므로 Git status, 초기 baseline, checkpoint와 CODE_CHANGE 결과에서 항상 제외한다.
 ⑤ WorkGraph, event log, transcript, continuation 상태와 repository runtime·tool cache는 작업 루트의 `.projecthub` 아래에 둔다. `.projecthub`는 사용자 코드 결과가 아니라 Worker 기계 상태다.
-⑥ 병렬 결과의 Integration은 Worker 소유 격리 공간에서 수행하고, 충돌 없이 확정된 결과만 새 remote CODE_CHANGE로 게시한다. Integration 기준점 검증은 fetch된 origin remote ref 중 현재 로컬 HEAD와 정확히 같은 commit을 가리키는 ref가 존재하는지 확인하며, 로컬 branch 이름과 같은 origin branch가 반드시 존재한다고 추론하지 않는다.
+⑥ 병렬 결과의 Integration은 Worker 소유 격리 공간에서 수행하고, 충돌 없이 확정된 결과만 새 remote CODE_CHANGE로 게시한다. Integration 기준점은 WorkItem의 baseRef를 fetch된 origin commit으로 해석해 사용하며, 사용자 작업 폴더의 현재 branch 이름이나 HEAD를 기준점 선택에 사용하지 않는다. 해당 baseRef commit을 정확히 가리키는 fetched origin ref가 없으면 기계 오류로 차단한다.
 ⑦ 완료된 CODE_CHANGE는 파일 단위 MATERIALIZE/COPY나 별도 materialization ledger 없이 commit 계보로 추적한다. 최종 result가 현재 원격 동기화 branch에 포함되지 않았으면 clean 사용자 checkout을 해당 `projecthub/*` 원격 result branch로 전환하며, 기본·보호 branch에 자동 merge·push하지 않는다.
 ⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나면 Worker가 임의 merge·reset·재초기화하지 않고 기계 오류로 차단한다.
 ⑨ PAUSE·CANCELED continuation은 보존된 WorkGraph와 원격 resultRef를 기준으로 하며, DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.

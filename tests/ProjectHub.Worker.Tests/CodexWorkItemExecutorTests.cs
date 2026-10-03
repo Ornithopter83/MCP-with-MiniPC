@@ -911,7 +911,7 @@ public sealed class CodexWorkItemExecutorTests
 
 
     [Fact]
-    public async Task FirstIntegrationUsesCurrentPrimaryHeadInsteadOfStoredGraphBase()
+    public async Task FirstIntegrationUsesStoredGraphBaseInsteadOfCurrentPrimaryHead()
     {
         var parent = Path.Combine(Path.GetTempPath(), "projecthub-integration-base-" + Guid.NewGuid().ToString("N"));
         var root = Path.Combine(parent, "repo");
@@ -921,17 +921,16 @@ public sealed class CodexWorkItemExecutorTests
         var integrationBranch = GitWorktreeManager.BuildBranchName("job", "I1");
         var git = new FakeGitRunner();
         git.Enqueue(0, root);
-        git.Enqueue(0, "main");
-        git.Enqueue(0, "primary999");
         git.Enqueue(0, "https://example.invalid/repo.git");
         git.Enqueue(0, "");
-        git.Enqueue(0, "primary999 refs/remotes/origin/projecthub/job/base");
+        git.Enqueue(0, "declared999");
+        git.Enqueue(0, "declared999 refs/remotes/origin/projecthub/job/base");
         git.Enqueue(0, "Cloning");
         git.Enqueue(0, "Switched");
         git.Enqueue(0, "");
         git.Enqueue(0, "");
         git.Enqueue(0, Path.Combine(integrationClone, ".git"));
-        git.Enqueue(0, "primary999");
+        git.Enqueue(0, "declared999");
 
         var ai = new FakeAiRoleRunner("""
             [GOTO : RESOURCE]
@@ -953,7 +952,7 @@ public sealed class CodexWorkItemExecutorTests
             WorkItemKind.Integration,
             WorkItemState.Running,
             0,
-            "stale-base",
+            "declared-base",
             null,
             null,
             null,
@@ -980,10 +979,94 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
             Assert.Equal("RESOURCE_REQUEST", result.BlockCode);
-            Assert.Contains("기준 ref: primary999", ai.LastRequest!.Prompt);
+            Assert.Contains("기준 ref: declared-base", ai.LastRequest!.Prompt);
             Assert.Equal(integrationClone, ai.LastRequest.WorkingDirectory);
             Assert.Equal(CodexSandboxMode.WorkspaceWrite, ai.LastRequest.Sandbox);
             Assert.Contains("branch: " + integrationBranch, ai.LastRequest.Prompt);
+            Assert.DoesNotContain(
+                git.Calls,
+                call => call.Count > 0 && call[0] == "symbolic-ref");
+        }
+        finally
+        {
+            Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
+    public async Task MissingIntegrationCloneIsRepreparedFromStoredBaseRef()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "projecthub-integration-missing-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(parent, "repo");
+        Directory.CreateDirectory(root);
+
+        var integrationClone = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
+        var integrationBranch = GitWorktreeManager.BuildBranchName("job", "I1");
+        var git = new FakeGitRunner();
+        git.Enqueue(0, root);
+        git.Enqueue(0, "https://example.invalid/repo.git");
+        git.Enqueue(0, "");
+        git.Enqueue(0, "declared999");
+        git.Enqueue(0, "declared999 refs/remotes/origin/projecthub/job/base");
+        git.Enqueue(0, "Cloning");
+        git.Enqueue(0, "Switched");
+        git.Enqueue(0, "");
+        git.Enqueue(0, "");
+        git.Enqueue(0, Path.Combine(integrationClone, ".git"));
+        git.Enqueue(0, "declared999");
+
+        var ai = new FakeAiRoleRunner("""
+            [GOTO : RESOURCE]
+            RESOURCE_TYPE: IMAGE
+            통합 검증용 이미지를 생성해줘.
+            """);
+        var executor = new CodexWorkItemExecutor(
+            "job",
+            root,
+            new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
+            ai,
+            new GitWorktreeManager(git),
+            expectedPrimaryBranch: "main");
+
+        var item = new WorkItemSnapshot(
+            "I1",
+            "선행 결과를 통합하세요.",
+            Array.Empty<string>(),
+            WorkItemKind.Integration,
+            WorkItemState.Running,
+            0,
+            "declared-base",
+            integrationBranch,
+            integrationClone,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null);
+
+        try
+        {
+            var result = await executor.ExecuteAsync(
+                new WorkItemExecutionRequest(
+                    item,
+                    1,
+                    Array.Empty<WorkItemDependencyResult>(),
+                    "WORK_ITEM",
+                    item.Goal),
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("RESOURCE_REQUEST", result.BlockCode);
+            Assert.Equal(integrationClone, ai.LastRequest!.WorkingDirectory);
+            Assert.Contains("기준 ref: declared-base", ai.LastRequest.Prompt);
+            Assert.Contains(
+                git.Calls,
+                call => call.Count > 0 && call[0] == "clone");
         }
         finally
         {

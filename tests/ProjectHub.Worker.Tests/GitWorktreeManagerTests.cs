@@ -637,6 +637,85 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task IntegrationPreparationUsesDeclaredBaseRefWithoutReadingPrimaryBranchOrHead()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clone = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
+        var branch = GitWorktreeManager.BuildBranchName("job", "I1");
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "https://example.invalid/repo.git");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "base999");
+        runner.Enqueue(0, "base999 refs/remotes/origin/projecthub/job/base");
+        runner.Enqueue(0, "cloned");
+        runner.Enqueue(0, "checked out");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, Path.Combine(clone, ".git"));
+        runner.Enqueue(0, "base999");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .PrepareIntegrationAsync(root, "job", "I1", "declared-base", "main");
+
+            Assert.True(result.Success);
+            Assert.Equal("declared-base", result.BaseRef);
+            Assert.Equal("base999", result.BaseCommit);
+            Assert.Equal("base999", result.HeadCommit);
+            Assert.Equal(clone, result.WorktreePath);
+            Assert.Equal(branch, result.Branch);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "symbolic-ref");
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(new[]
+                {
+                    "checkout",
+                    "-b",
+                    branch,
+                    "base999"
+                }));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
+    public async Task IntegrationPreparationWithDeclaredBaseRefRequiresExactFetchedRemoteRef()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "https://example.invalid/repo.git");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "base999");
+        runner.Enqueue(0, "newer999 refs/remotes/origin/projecthub/job/base");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .PrepareIntegrationAsync(root, "job", "I1", "declared-base", "main");
+
+            Assert.False(result.Success);
+            Assert.Equal("INTEGRATION_BASE_REMOTE_CHANGED", result.ErrorCode);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "clone");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
     public async Task IntegrationPreparationRejectsRemoteRefThatOnlyDescendsFromPrimaryHead()
     {
         var root = CreateTempRepositoryDirectory();

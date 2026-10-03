@@ -100,8 +100,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             item.Kind == WorkItemKind.Integration &&
             string.IsNullOrWhiteSpace(item.WorktreePath);
 
-        if (item.Kind != WorkItemKind.Integration &&
-            string.IsNullOrWhiteSpace(item.BaseRef))
+        if (string.IsNullOrWhiteSpace(item.BaseRef))
             return WorkItemExecutionResult.Blocked("WORKTREE_BASE_REF_MISSING", "WorkItem baseRef가 없습니다.");
 
         var effectiveBaseRef = item.BaseRef;
@@ -156,19 +155,40 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         GitWorktreePreparationResult preparation;
         if (item.Kind == WorkItemKind.Integration)
         {
-            preparation = integrationNeedsPreparation
-                ? await _worktrees.PrepareIntegrationAsync(
+            if (integrationNeedsPreparation)
+            {
+                preparation = await _worktrees.PrepareIntegrationAsync(
                     _workspace,
                     _jobId,
                     item.Id,
+                    item.BaseRef,
                     _expectedPrimaryBranch,
-                    cancellationToken).ConfigureAwait(false)
-                : await _worktrees.ResumeIntegrationAsync(
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                preparation = await _worktrees.ResumeIntegrationAsync(
                     _workspace,
                     item.WorktreePath!,
                     item.Branch,
                     item.BaseRef,
                     cancellationToken).ConfigureAwait(false);
+
+                if (!preparation.Success &&
+                    string.Equals(
+                        preparation.ErrorCode,
+                        "INTEGRATION_CLONE_PATH_MISSING",
+                        StringComparison.Ordinal))
+                {
+                    preparation = await _worktrees.PrepareIntegrationAsync(
+                        _workspace,
+                        _jobId,
+                        item.Id,
+                        item.BaseRef,
+                        _expectedPrimaryBranch,
+                        cancellationToken).ConfigureAwait(false);
+                }
+            }
         }
         else
         {
