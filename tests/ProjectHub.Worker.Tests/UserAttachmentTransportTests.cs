@@ -90,19 +90,21 @@ public sealed class UserAttachmentTransportTests
 
             var staged = UserAttachmentTransport.StageForWorkerRuntime(
                 new[] { attachment },
+                workspace,
                 "batch-" + Guid.NewGuid().ToString("N"));
 
             stagedItem = Assert.Single(staged);
             Assert.True(File.Exists(stagedItem.Path));
             Assert.Equal(attachment.Sha256, stagedItem.Sha256);
             Assert.StartsWith(
-                Path.GetFullPath(WorkerPaths.Attachments) + Path.DirectorySeparatorChar,
+                Path.GetFullPath(Path.Combine(workspace, ".projecthub", "runtime", "attachments")) +
+                    Path.DirectorySeparatorChar,
                 Path.GetFullPath(stagedItem.Path),
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
-            Assert.False(
-                Path.GetFullPath(stagedItem.Path).StartsWith(
-                    Path.GetFullPath(workspace) + Path.DirectorySeparatorChar,
-                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+            Assert.StartsWith(
+                Path.GetFullPath(workspace) + Path.DirectorySeparatorChar,
+                Path.GetFullPath(stagedItem.Path),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
             Assert.Equal(
                 "existing-rule" + Environment.NewLine,
                 File.ReadAllText(excludePath));
