@@ -847,6 +847,71 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
     {
         if (reportStatus == WorkItemReportStatus.Completed)
         {
+            var publishOutputDirectory = WorkerPaths.GetPublishedArtifactDirectory(
+                preparation.RepositoryRoot,
+                _jobId,
+                item.CreatedOrder);
+            string[] publishedFiles;
+            try
+            {
+                if (!Directory.Exists(publishOutputDirectory))
+                {
+                    return WorkItemExecutionResult.Blocked(
+                        "PUBLISH_OUTPUT_MISSING",
+                        reportBody + Environment.NewLine + Environment.NewLine +
+                        "publishOutputError: 영구 게시 산출물 폴더를 찾을 수 없습니다." + Environment.NewLine +
+                        "publishOutputDirectory: " + publishOutputDirectory,
+                        preparation.HeadCommit,
+                        preparation.Branch,
+                        preparation.WorktreePath,
+                        sessionId,
+                        blockDetailCode: "PUBLISH_OUTPUT_MISSING");
+                }
+
+                publishedFiles = Directory.EnumerateFiles(
+                        publishOutputDirectory,
+                        "*",
+                        new EnumerationOptions
+                        {
+                            RecurseSubdirectories = true,
+                            IgnoreInaccessible = false,
+                            AttributesToSkip = FileAttributes.ReparsePoint
+                        })
+                    .ToArray();
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "PUBLISH_OUTPUT_INSPECTION_FAILED",
+                    reportBody + Environment.NewLine + Environment.NewLine +
+                    "publishOutputError: " + exception.Message + Environment.NewLine +
+                    "publishOutputDirectory: " + publishOutputDirectory,
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId,
+                    blockDetailCode: "PUBLISH_OUTPUT_INSPECTION_FAILED");
+            }
+
+            if (publishedFiles.Length == 0)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "PUBLISH_OUTPUT_EMPTY",
+                    reportBody + Environment.NewLine + Environment.NewLine +
+                    "publishOutputError: 영구 게시 산출물 폴더에 파일이 없습니다." + Environment.NewLine +
+                    "publishOutputDirectory: " + publishOutputDirectory,
+                    preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId,
+                    blockDetailCode: "PUBLISH_OUTPUT_EMPTY");
+            }
+
+            long publishedBytes = 0;
+            foreach (var path in publishedFiles)
+                publishedBytes += new FileInfo(path).Length;
+
             try
             {
                 var sourceResultRef =
@@ -887,7 +952,11 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
             return WorkItemExecutionResult.Completed(
                 "artifact-run-" + item.CreatedOrder.ToString("D12"),
-                reportBody,
+                reportBody + Environment.NewLine + Environment.NewLine +
+                "PUBLISH_OUTPUT" + Environment.NewLine +
+                "path: " + publishOutputDirectory + Environment.NewLine +
+                "fileCount: " + publishedFiles.Length + Environment.NewLine +
+                "sizeBytes: " + publishedBytes,
                 preparation.Branch,
                 preparation.WorktreePath,
                 sessionId,
