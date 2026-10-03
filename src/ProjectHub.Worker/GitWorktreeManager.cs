@@ -1271,14 +1271,23 @@ public sealed class GitWorktreeManager
             return new(false, before.ErrorCode, worktreePath, before.Branch, before.HeadCommit, false);
 
         if (before.IsClean)
-            return new(true, null, before.WorktreePath, before.Branch, before.HeadCommit, false);
+        {
+            if (string.IsNullOrWhiteSpace(before.HeadCommit))
+                return new(false, "WORKTREE_CHECKPOINT_HEAD_UNAVAILABLE", worktreePath, before.Branch, null, false);
+
+            return await PublishCheckpointToRemoteAsync(
+                before.WorktreePath,
+                before.Branch,
+                before.HeadCommit,
+                createdCommit: false,
+                cancellationToken).ConfigureAwait(false);
+        }
 
         var addResult = await RunAsync(
             worktreePath,
             ReadTimeout,
             cancellationToken,
             BuildCheckpointAddArguments()).ConfigureAwait(false);
-
         if (addResult.ExitCode != 0)
         {
             return new(
@@ -1306,7 +1315,6 @@ public sealed class GitWorktreeManager
             "--no-gpg-sign",
             "-m",
             message).ConfigureAwait(false);
-
         if (commitResult.ExitCode != 0)
         {
             return new(
@@ -1340,16 +1348,30 @@ public sealed class GitWorktreeManager
                 BuildGitFailureDetail("git rev-parse HEAD", committedHead));
         }
 
-        var resultCommit = FirstLine(committedHead.StandardOutput);
-        if (string.IsNullOrWhiteSpace(before.Branch))
+        return await PublishCheckpointToRemoteAsync(
+            worktreePath,
+            before.Branch,
+            FirstLine(committedHead.StandardOutput),
+            createdCommit: true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<GitWorktreeCheckpointResult> PublishCheckpointToRemoteAsync(
+        string worktreePath,
+        string? branch,
+        string resultCommit,
+        bool createdCommit,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(branch))
         {
             return new(
                 false,
                 "WORKTREE_CHECKPOINT_BRANCH_REQUIRED",
                 worktreePath,
-                before.Branch,
+                branch,
                 resultCommit,
-                true,
+                createdCommit,
                 "원격 checkpoint를 게시할 branch를 확인하지 못했습니다.");
         }
 
@@ -1359,7 +1381,7 @@ public sealed class GitWorktreeManager
             cancellationToken,
             "push",
             "origin",
-            "HEAD:refs/heads/" + before.Branch).ConfigureAwait(false);
+            "HEAD:refs/heads/" + branch).ConfigureAwait(false);
         if (pushResult.ExitCode != 0)
         {
             return new(
@@ -1368,9 +1390,9 @@ public sealed class GitWorktreeManager
                     : pushResult.Canceled ? "WORKTREE_CHECKPOINT_PUSH_CANCELED"
                     : "WORKTREE_CHECKPOINT_PUSH_FAILED",
                 worktreePath,
-                before.Branch,
+                branch,
                 resultCommit,
-                true,
+                createdCommit,
                 BuildGitFailureDetail("git push origin", pushResult));
         }
 
@@ -1381,7 +1403,7 @@ public sealed class GitWorktreeManager
             "ls-remote",
             "--exit-code",
             "origin",
-            "refs/heads/" + before.Branch).ConfigureAwait(false);
+            "refs/heads/" + branch).ConfigureAwait(false);
         var remoteCommit = remoteResult.ExitCode == 0
             ? remoteResult.StandardOutput
                 .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
@@ -1394,19 +1416,19 @@ public sealed class GitWorktreeManager
                 false,
                 "WORKTREE_CHECKPOINT_REMOTE_VERIFY_FAILED",
                 worktreePath,
-                before.Branch,
+                branch,
                 resultCommit,
-                true,
+                createdCommit,
                 BuildGitFailureDetail("git ls-remote origin", remoteResult));
         }
 
         var after = await InspectAsync(worktreePath, cancellationToken).ConfigureAwait(false);
         if (!after.Success)
-            return new(false, after.ErrorCode, worktreePath, after.Branch, resultCommit, true);
+            return new(false, after.ErrorCode, worktreePath, after.Branch, resultCommit, createdCommit);
         if (!after.IsClean)
-            return new(false, "WORKTREE_CHECKPOINT_NOT_CLEAN", worktreePath, after.Branch, resultCommit, true);
+            return new(false, "WORKTREE_CHECKPOINT_NOT_CLEAN", worktreePath, after.Branch, resultCommit, createdCommit);
 
-        return new(true, null, after.WorktreePath, after.Branch, resultCommit, true);
+        return new(true, null, after.WorktreePath, after.Branch, resultCommit, createdCommit);
     }
 
     private static string[] BuildCheckpointAddArguments()
