@@ -281,7 +281,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 result.ResultRef,
                 result.ResultSummary,
                 result.ResultType,
-                result.CommitManifestPath,
                 integrationSnapshots.TryGetValue(result.WorkItemId, out var snapshotPath)
                     ? snapshotPath
                     : null))
@@ -729,39 +728,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         var lifecycleHasCodeChange =
             item.ResultType == WorkItemResultType.CodeChange ||
             checkpointCreatedCommit;
-        string? commitManifestPath = item.CommitManifestPath;
-
-        if (lifecycleHasCodeChange &&
-            !string.IsNullOrWhiteSpace(lifecycleResultRef))
-        {
-            var manifest = await _worktrees.CreateCommitManifestAsync(
-                checkpoint.WorktreePath,
-                _workspace,
-                _jobId,
-                item.Id,
-                lifecycleResultRef,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!manifest.Success)
-            {
-                return WorkItemExecutionResult.Blocked(
-                    "COMMIT_MANIFEST_FAILED",
-                    reportBody + Environment.NewLine + Environment.NewLine +
-                    "COMMIT_MANIFEST" + Environment.NewLine +
-                    "status: BLOCKED" + Environment.NewLine +
-                    "errorCode: " + (manifest.ErrorCode ?? "COMMIT_MANIFEST_FAILED") + Environment.NewLine +
-                    "detail: " + (manifest.ErrorDetail ?? "없음"),
-                    lifecycleResultRef,
-                    checkpoint.Branch ?? preparation.Branch,
-                    checkpoint.WorktreePath,
-                    sessionId,
-                    blockDetailCode: manifest.ErrorCode ?? "COMMIT_MANIFEST_FAILED",
-                    resultType: WorkItemResultType.CodeChange,
-                    commitManifestPath: commitManifestPath);
-            }
-
-            commitManifestPath = manifest.ManifestPath;
-        }
+        string? commitManifestPath = null;
 
         var completedResultType = lifecycleHasCodeChange
             ? WorkItemResultType.CodeChange
