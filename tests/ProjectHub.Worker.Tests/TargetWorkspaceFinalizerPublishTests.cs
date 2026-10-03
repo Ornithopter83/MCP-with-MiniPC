@@ -1,4 +1,3 @@
-using System.Text.Json;
 using ProjectHub.Worker;
 
 namespace ProjectHub.Worker.Tests;
@@ -6,20 +5,22 @@ namespace ProjectHub.Worker.Tests;
 public sealed class TargetWorkspaceFinalizerPublishTests
 {
     [Fact]
-    public async Task FinalizerRequiresRepublishWhenVerifiedCodeIsNewerThanLastPublish()
+    public async Task FinalizerRequiresRepublishWhenLandedCodeIsNewerThanLastPublish()
     {
         var root = CreateRoot();
         try
         {
             var graph = CreateCompletedGraph("code-new");
-            WriteVerifiedLedger(root, "job", "code-new");
-
             var publish = new WorkspacePublishState(root, "job");
-            await publish.MarkCodeMaterializedAsync("code-old");
+            await publish.MarkCodeLandedAsync("code-old");
             await publish.MarkPublishedAsync(3);
-            await publish.MarkCodeMaterializedAsync("code-new");
+            await publish.MarkCodeLandedAsync("code-new");
 
-            var finalizer = new TargetWorkspaceFinalizer(root, null);
+            var runner = CreateContainedResultRunner(root, "code-new");
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
             var result = await finalizer.FinalizeAsync(graph.Snapshot());
 
             Assert.False(result.Success);
@@ -28,26 +29,28 @@ public sealed class TargetWorkspaceFinalizerPublishTests
         }
         finally
         {
-            Directory.Delete(root, true);
+            DeleteRoot(root);
         }
     }
 
     [Fact]
-    public async Task FinalizerAllowsEndAfterRepublishOfLatestVerifiedCode()
+    public async Task FinalizerAllowsEndAfterRepublishOfLatestLandedCode()
     {
         var root = CreateRoot();
         try
         {
             var graph = CreateCompletedGraph("code-new");
-            WriteVerifiedLedger(root, "job", "code-new");
-
             var publish = new WorkspacePublishState(root, "job");
-            await publish.MarkCodeMaterializedAsync("code-old");
+            await publish.MarkCodeLandedAsync("code-old");
             await publish.MarkPublishedAsync(3);
-            await publish.MarkCodeMaterializedAsync("code-new");
+            await publish.MarkCodeLandedAsync("code-new");
             await publish.MarkPublishedAsync(5);
 
-            var finalizer = new TargetWorkspaceFinalizer(root, null);
+            var runner = CreateContainedResultRunner(root, "code-new");
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
             var result = await finalizer.FinalizeAsync(graph.Snapshot());
 
             Assert.True(result.Success);
@@ -55,33 +58,7 @@ public sealed class TargetWorkspaceFinalizerPublishTests
         }
         finally
         {
-            Directory.Delete(root, true);
-        }
-    }
-
-    [Fact]
-    public async Task FinalizerSkipsInvalidLedgerAndUsesLaterValidVerification()
-    {
-        var root = CreateRoot();
-        try
-        {
-            var graph = CreateCompletedGraph("code-new");
-            WriteInvalidLedgerMissingSourceRefs(root, "job", 1);
-            WriteVerifiedLedger(root, "job", "code-new", 2);
-
-            var publish = new WorkspacePublishState(root, "job");
-            await publish.MarkCodeMaterializedAsync("code-new");
-            await publish.MarkPublishedAsync(1);
-
-            var finalizer = new TargetWorkspaceFinalizer(root, null);
-            var result = await finalizer.FinalizeAsync(graph.Snapshot());
-
-            Assert.True(result.Success);
-            Assert.Null(result.ErrorCode);
-        }
-        finally
-        {
-            Directory.Delete(root, true);
+            DeleteRoot(root);
         }
     }
 
@@ -103,65 +80,17 @@ public sealed class TargetWorkspaceFinalizerPublishTests
         return graph;
     }
 
-    private static void WriteVerifiedLedger(
+    private static SequenceRunner CreateContainedResultRunner(
         string root,
-        string jobId,
-        string resultRef,
-        long invocation = 1)
+        string resultRef)
     {
-        var directory = Path.Combine(
-            root,
-            ".projecthub",
-            "materialization-ledger",
-            jobId);
-        Directory.CreateDirectory(directory);
-        var entry = new MaterializationLedgerEntry(
-            jobId,
-            FixedWorkItemSlots.Materialize,
-            invocation,
-            DateTimeOffset.UtcNow,
-            true,
-            null,
-            new[] { resultRef },
-            Array.Empty<MaterializationFileRecord>(),
-            Array.Empty<string>(),
-            "verified");
-        File.WriteAllText(
-            Path.Combine(directory, $"{invocation:D12}-8.json"),
-            JsonSerializer.Serialize(
-                entry,
-                new JsonSerializerOptions(JsonSerializerDefaults.Web)
-                {
-                    WriteIndented = true
-                }));
-    }
-
-    private static void WriteInvalidLedgerMissingSourceRefs(
-        string root,
-        string jobId,
-        long invocation)
-    {
-        var directory = Path.Combine(
-            root,
-            ".projecthub",
-            "materialization-ledger",
-            jobId);
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(
-            Path.Combine(directory, $"{invocation:D12}-8.json"),
-            """
-            {
-              "jobId": "job",
-              "workItemId": "8",
-              "invocation": 1,
-              "recordedAtUtc": "2026-10-02T00:00:00Z",
-              "success": true,
-              "errorCode": null,
-              "files": [],
-              "unexpectedChangedPaths": [],
-              "detail": "missing sourceResultRefs"
-            }
-            """);
+        var runner = new SequenceRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, resultRef);
+        runner.Enqueue(0, "head");
+        runner.Enqueue(0, string.Empty);
+        return runner;
     }
 
     private static string CreateRoot()
@@ -171,5 +100,34 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             "projecthub-finalizer-publish-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         return root;
+    }
+
+    private static void DeleteRoot(string root)
+    {
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(root).Root;
+        if (Directory.Exists(root))
+            Directory.Delete(root, true);
+        if (Directory.Exists(runtime))
+            Directory.Delete(runtime, true);
+    }
+
+    private sealed class SequenceRunner : IGitWorktreeCommandRunner
+    {
+        private readonly Queue<GitCommandResult> _results = new();
+
+        public void Enqueue(int exitCode, string stdout, string stderr = "")
+            => _results.Enqueue(new GitCommandResult(exitCode, stdout, stderr));
+
+        public Task<GitCommandResult> RunAsync(
+            string workingDirectory,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken cancellationToken = default)
+        {
+            if (_results.Count == 0)
+                throw new InvalidOperationException(
+                    "예상하지 않은 Git 호출입니다: " + string.Join(" ", arguments));
+            return Task.FromResult(_results.Dequeue());
+        }
     }
 }
