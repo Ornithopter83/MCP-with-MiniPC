@@ -68,6 +68,29 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
+    public async Task LocalPathOriginIsRejectedAsNonRemote()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var runner = BaseRepositoryRunner(workspace);
+            runner.Enqueue("remote get-url origin", Ok("C:/repos/local.git"));
+
+            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
+
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_ORIGIN_NETWORK_REQUIRED", state.ErrorCode);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 && call.Arguments[0] == "fetch");
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
     public async Task DirtyWorkspaceIsRejectedBeforeRemoteFetch()
     {
         var workspace = CreateWorkspace();
