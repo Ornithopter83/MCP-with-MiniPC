@@ -17,7 +17,6 @@ src/ProjectHub.Server/log/
 
 # ProjectHub generated/runtime output
 .projecthub/
-.projecthub-worktrees/
 .verification-appdata/
 .verification-tmp/
 dist-temp/
