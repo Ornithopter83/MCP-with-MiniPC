@@ -420,6 +420,21 @@ public sealed class GitWorktreeManager
                 BuildGitFailureDetail("git remote get-url origin", remoteResult));
         }
 
+        if (!GitRemoteAddressPolicy.IsNetworkRemote(FirstLine(remoteResult.StandardOutput)))
+        {
+            return new(
+                false,
+                "WORK_CLONE_NETWORK_REMOTE_REQUIRED",
+                repositoryRoot,
+                clonePath,
+                branch,
+                baseRef.Trim(),
+                null,
+                null,
+                false,
+                "origin은 로컬 경로가 아닌 네트워크 Git 원격이어야 합니다.");
+        }
+
         var fetchResult = await FetchOriginAsync(
             repositoryRoot,
             cancellationToken).ConfigureAwait(false);
@@ -826,6 +841,8 @@ public sealed class GitWorktreeManager
                 "origin").ConfigureAwait(false);
             if (remoteResult.ExitCode != 0 || string.IsNullOrWhiteSpace(remoteResult.StandardOutput))
                 return IntegrationFailure("INTEGRATION_REMOTE_ORIGIN_REQUIRED", repositoryRoot, jobId, workItemId, primaryHead);
+            if (!GitRemoteAddressPolicy.IsNetworkRemote(FirstLine(remoteResult.StandardOutput)))
+                return IntegrationFailure("INTEGRATION_NETWORK_REMOTE_REQUIRED", repositoryRoot, jobId, workItemId, primaryHead);
 
             var fetchResult = await FetchOriginAsync(
                 repositoryRoot,
