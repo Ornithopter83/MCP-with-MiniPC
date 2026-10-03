@@ -62,6 +62,17 @@ public sealed class OpenAiCodexRoleRunner(CodexCliRunner codexRunner) : IAiRoleR
         var effectivePrompt = UserAttachmentTransport.AppendPrompt(
             request.Prompt,
             request.InputAttachments);
+        var additionalWritableDirectories = (request.AdditionalWritableDirectories ??
+                Array.Empty<string>())
+            .Concat(
+                (request.InputAttachments ?? Array.Empty<AiInputAttachment>())
+                .Select(attachment => Path.GetDirectoryName(attachment.Path))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path => path!))
+            .Distinct(OperatingSystem.IsWindows()
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal)
+            .ToArray();
 
         var result = await codexRunner.RunAsync(
             effectivePrompt,
@@ -75,7 +86,7 @@ public sealed class OpenAiCodexRoleRunner(CodexCliRunner codexRunner) : IAiRoleR
             request.Sandbox,
             request.Progress,
             request.SessionStarted,
-            request.AdditionalWritableDirectories,
+            additionalWritableDirectories,
             request.IgnoreProjectInstructions,
             request.EnvironmentVariables,
             request.DisableComputerUse,
