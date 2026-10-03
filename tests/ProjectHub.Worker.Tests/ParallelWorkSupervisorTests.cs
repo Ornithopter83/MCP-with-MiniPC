@@ -59,7 +59,9 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Theory]
-    [InlineData("0", "RESOURCE")]
+    [InlineData("0", "RESOURCE_MAKE")]
+    [InlineData("1", "RESOURCE_PROCESSING")]
+    [InlineData("8", "FILE_MANAGER")]
     [InlineData("9", "BUILD_PUBLISH")]
     public void MechanicalGraphEventLabelsFixedSlotSeparatelyFromExecutionKind(
         string workItemId,

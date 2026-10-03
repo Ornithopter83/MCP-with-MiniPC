@@ -933,7 +933,9 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         builder.Append("workItemId=").Append(item.Id);
         var fixedSlot = item.Id switch
         {
-            FixedWorkItemSlots.Resource => "RESOURCE",
+            FixedWorkItemSlots.ResourceMake => "RESOURCE_MAKE",
+            FixedWorkItemSlots.ResourceProcessing => "RESOURCE_PROCESSING",
+            FixedWorkItemSlots.FileManager => "FILE_MANAGER",
             FixedWorkItemSlots.BuildPublish => "BUILD_PUBLISH",
             _ => null
         };

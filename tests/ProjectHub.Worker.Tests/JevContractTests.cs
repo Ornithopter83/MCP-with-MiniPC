@@ -21,6 +21,11 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("WORK_GRAPH_PATCH:", hq);
         Assert.Contains("작은 단위", hq);
         Assert.Contains("한 번의 실행 흐름에서 완료 여부를 명확히 판정", hq);
+        Assert.Contains("#0은 RESOURCE MAKE", hq);
+        Assert.Contains("#1은 RESOURCE PROCESSING", hq);
+        Assert.Contains("#8은 FILE MANAGER", hq);
+        Assert.Contains("#9는 BUILD/PUBLISH", hq);
+        Assert.Contains("프로젝트 저장 경로, Git/worktree 정보", hq);
         Assert.DoesNotContain("JUDGE", hq, StringComparison.OrdinalIgnoreCase);
         Assert.True(hq.Length < 3000);
     }

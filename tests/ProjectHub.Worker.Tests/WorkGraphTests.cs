@@ -23,6 +23,8 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("8")]
     [InlineData("9")]
     public void FixedSlotsCanBeAddedAgainAfterTerminalCompletion(string id)
     {
@@ -69,6 +71,8 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("8")]
     [InlineData("9")]
     public void FixedSlotsCannotDeclareDependencies(string id)
     {
@@ -93,6 +97,8 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("8")]
     [InlineData("9")]
     public void GeneralWorkCannotDependOnFixedSlots(string id)
     {
@@ -143,9 +149,9 @@ public sealed class WorkGraphTests
     }
 
     [Theory]
-    [InlineData("1")]
+    [InlineData("2")]
     [InlineData("4")]
-    [InlineData("8")]
+    [InlineData("7")]
     [InlineData("10")]
     public void NonFixedIdsCanBeUsedForOrdinaryWorkItems(string id)
     {
@@ -162,6 +168,8 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("8")]
     [InlineData("9")]
     public void FixedSlotsMustUseNormalKind(string id)
     {

@@ -36,9 +36,9 @@ WORK_GRAPH_PATCH:
 ④ operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용할 수 있다.
 ⑤ ADD는 `workItemId`와 `goal`을 사용하고 필요하면 `dependencies`, `kind`, `baseRef`, `checklist`를 함께 둔다. 입력 헤더의 기준 ref를 전역 SET_BASE_REF operation으로 반복하지 않는다. ADD에서 baseRef를 생략하면 Worker가 현재 기준 ref를 기계적으로 채운다.
 ⑥ SET_GOAL과 SET_BASE_REF는 이미 존재하는 하나의 WorkItem을 변경할 때만 사용한다. 둘 다 `workItemId`가 필수이고 새 값은 `value`에 둔다. 전역 goal이나 전역 baseRef를 나타내는 operation은 없다.
-⑦ WorkItem #0은 RESOURCE, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. 그 외 ID는 일반 WorkItem에 사용할 수 있다.
-⑧ #0·#9도 WorkGraph operation은 ADD를 사용하며 고정 임무는 workItemId로 구분한다. `kind`는 역할명이 아니라 실행 방식인 NORMAL/INTEGRATION을 뜻하므로 #0·#9의 `kind`도 NORMAL이다.
-⑨ #0·#9는 dependency를 사용하지 않으며 직전 실행 완료 뒤 필요한 시점에 같은 번호로 다시 ADD할 수 있다.
+⑦ WorkItem #0은 RESOURCE MAKE, #1은 RESOURCE PROCESSING, #8은 FILE MANAGER, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. 그 외 ID는 일반 WorkItem에 사용할 수 있다.
+⑧ #0·#1·#8·#9도 WorkGraph operation은 ADD를 사용하며 고정 임무는 workItemId로 구분한다. `kind`는 역할명이 아니라 실행 방식인 NORMAL/INTEGRATION을 뜻하므로 네 고정 슬롯의 `kind`는 NORMAL이다.
+⑨ #0·#1·#8·#9는 dependency를 사용하지 않는다. HQ가 현재 WorkGraph와 직전 결과를 기억해 필요한 순서에 맞춰 호출하며, 직전 실행 완료 뒤 같은 번호로 다시 ADD할 수 있다.
 ⑩ #9는 빌드·export·publish할 CODE_CHANGE의 원격 resultRef를 baseRef로 사용한다. 서로 독립된 CODE_CHANGE가 둘 이상이면 먼저 INTEGRATION WorkItem으로 하나의 resultRef를 만든다.
 ⑪ #9는 CODE_CHANGE나 Git commit을 생성·확정하는 임무로 사용하지 않는다.
 ⑫ 일반 WorkItem은 WORK 하나가 한 번의 실행 흐름에서 완료 여부를 명확히 판정할 수 있는 작은 단위로 만든다.
@@ -57,3 +57,4 @@ WORK_GRAPH_PATCH:
 ⑦ END finalization이 최종 remote result checkout 또는 publish freshness 때문에 거부되면 전달된 기계 사실을 기준으로 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.
 ⑧ `HQ_DECISION_REQUIRED`로 차단된 WorkItem은 전달된 기계 사실을 기준으로 RELEASE, CANCEL 또는 후속 WorkItem 필요 여부를 판단한다.
 ⑨ HIGH_REPORT를 받으면 고권한 실행 결과를 사실로 사용해 WORK_GRAPH_PATCH, PAUSE 또는 END를 결정한다. HIGH를 연속 호출하거나 RESOURCE 대체로 사용하지 않는다.
+⑩ HQ는 각 WorkItem이 맡은 순서와 역할을 관제 문맥에서 유지하고 고정 슬롯에 다른 성격의 일을 섞지 않는다. #0에는 이미지 생성 자체에 필요한 시각 지시만 전달하고 프로젝트 저장 경로, Git/worktree 정보, 패키징·manifest·코드 통합 계약을 넣지 않는다. #1에는 이미 생성되었거나 제공된 이미지의 분할·크롭·리사이즈·포맷 변환 등 이미지 가공만 맡긴다. #8에는 실제 작업 루트를 기준으로 필요한 파일·폴더 CRUD만 맡기며 프로젝트 루트 파일 권한을 사용한다. #9에는 최종 코드 계보를 기준으로 빌드·export·publish만 맡기며 일반 기능 구현을 섞지 않는다.
