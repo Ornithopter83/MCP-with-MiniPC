@@ -290,53 +290,6 @@ public partial class MainWindow
             return;
         }
 
-        var directJobId =
-            "direct-" +
-            DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss") +
-            "-" +
-            Guid.NewGuid().ToString("N")[..8];
-        const string directWorkItemId = "direct";
-        var gitManager = new GitWorktreeManager();
-        GitWorkspaceBootstrapState gitState;
-        GitWorktreePreparationResult preparation;
-
-        _gitPreparationInProgress = true;
-        DashboardPreflightText.Text = "작업 폴더의 원격 Git 기준점을 확인하는 중입니다.";
-        DashboardPreflightText.Foreground =
-            (System.Windows.Media.Brush)FindResource("Muted");
-        UpdateDashboardRunButtonState();
-        try
-        {
-            gitState = await _gitWorkspaceBootstrapper.PrepareAsync(
-                workingDirectory,
-                CancellationToken.None);
-            if (!gitState.Success ||
-                string.IsNullOrWhiteSpace(gitState.HeadCommit))
-            {
-                ShowGitPreparationError(gitState.ErrorCode, gitState.RepositoryRoot);
-                return;
-            }
-
-            preparation = await gitManager.PrepareAsync(
-                gitState.RepositoryRoot,
-                directJobId,
-                directWorkItemId,
-                gitState.HeadCommit,
-                CancellationToken.None);
-            if (!preparation.Success)
-            {
-                ShowDirectWorkPreflightError(
-                    "직접 작업용 원격 clone 준비 실패: " +
-                    (preparation.ErrorCode ?? "WORK_CLONE_PREPARE_FAILED"));
-                return;
-            }
-        }
-        finally
-        {
-            _gitPreparationInProgress = false;
-            UpdateDashboardRunButtonState();
-        }
-
         IReadOnlyList<AiInputAttachment> stagedAttachments;
         try
         {
@@ -389,7 +342,7 @@ public partial class MainWindow
 
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
-        _activeWorkingDirectory = preparation.WorktreePath;
+        _activeWorkingDirectory = workingDirectory;
         _activePrompt = prompt;
         _activeCliModel = role.Model;
         _activeReasoning = role.Reasoning;
@@ -400,7 +353,7 @@ public partial class MainWindow
         _lastActivityAt = DateTimeOffset.UtcNow;
 
         TaskDirection.Text = "작업";
-        TaskTitle.Text = "원격 Git 격리 · 직접 실행";
+        TaskTitle.Text = "하네스 없음 · 직접 실행";
         ResultTitle.Text = "직접 작업";
         ResultBody.Text = "선택한 모델의 응답을 기다리는 중입니다.";
         SetFlowState(
@@ -411,40 +364,26 @@ public partial class MainWindow
 
         try
         {
-            AiRoleRunResult result;
-            GitMetadataRestoreResult gitRestore;
-            var gitIsolation = GitMetadataIsolationLease.Detach(
-                preparation.WorktreePath,
-                directJobId,
-                directWorkItemId);
-            try
-            {
-                result = await runner.RunAsync(new AiRoleRunRequest(
-                    Prompt: prompt,
-                    Role: role,
-                    WorkingDirectory: preparation.WorktreePath,
-                    SessionId: null,
-                    Sandbox: CodexSandboxMode.WorkspaceWrite,
-                    CancellationToken: cts.Token,
-                    Progress: progress =>
+            var result = await runner.RunAsync(new AiRoleRunRequest(
+                Prompt: prompt,
+                Role: role,
+                WorkingDirectory: workingDirectory,
+                SessionId: null,
+                Sandbox: CodexSandboxMode.WorkspaceWrite,
+                CancellationToken: cts.Token,
+                Progress: progress =>
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            if (_directWorkRunning)
-                                AddRoleProgressHistory(
-                                    WorkerRoleState.Work,
-                                    progress,
-                                    role.Provider);
-                        }));
-                    },
-                    IgnoreProjectInstructions: true,
-                    InputAttachments: stagedAttachments,
-                    EnvironmentVariables: GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment()));
-            }
-            finally
-            {
-                gitRestore = gitIsolation.Restore();
-            }
+                        if (_directWorkRunning)
+                            AddRoleProgressHistory(
+                                WorkerRoleState.Work,
+                                progress,
+                                role.Provider);
+                    }));
+                },
+                IgnoreProjectInstructions: true,
+                InputAttachments: stagedAttachments));
 
             _lastActivityAt = DateTimeOffset.UtcNow;
             var response = string.IsNullOrWhiteSpace(result.FinalMessage)
@@ -453,67 +392,6 @@ public partial class MainWindow
                     : result.StandardError.Trim())
                 : result.FinalMessage;
 
-            var directStatus = result.ExitCode == 0 ? "COMPLETED" : "ERROR";
-            if (!gitRestore.Success)
-            {
-                directStatus = "ERROR";
-                response += Environment.NewLine + Environment.NewLine +
-                            "Git metadata restore 실패: " +
-                            (gitRestore.ErrorCode ?? "GIT_METADATA_RESTORE_FAILED");
-            }
-            else if (result.ExitCode == 0)
-            {
-                var checkpoint = await gitManager.CreateCheckpointAsync(
-                    preparation.WorktreePath,
-                    directWorkItemId,
-                    cts.Token);
-                if (!checkpoint.Success)
-                {
-                    directStatus = "ERROR";
-                    response += Environment.NewLine + Environment.NewLine +
-                                "Remote checkpoint 실패: " +
-                                (checkpoint.ErrorCode ?? "WORKTREE_CHECKPOINT_FAILED") +
-                                (string.IsNullOrWhiteSpace(checkpoint.ErrorDetail)
-                                    ? string.Empty
-                                    : Environment.NewLine + checkpoint.ErrorDetail);
-                }
-                else if (checkpoint.CreatedCommit &&
-                         !string.IsNullOrWhiteSpace(checkpoint.HeadCommit) &&
-                         !string.IsNullOrWhiteSpace(checkpoint.Branch))
-                {
-                    var checkout = await gitManager.SwitchTargetToRemoteResultAsync(
-                        workingDirectory,
-                        checkpoint.HeadCommit,
-                        checkpoint.Branch,
-                        gitState.Branch,
-                        cts.Token);
-                    if (!checkout.Success)
-                    {
-                        directStatus = "ERROR";
-                        response += Environment.NewLine + Environment.NewLine +
-                                    "최종 remote result checkout 실패: " +
-                                    (checkout.ErrorCode ?? "TARGET_CHECKOUT_FAILED");
-                    }
-                    else
-                    {
-                        response += Environment.NewLine + Environment.NewLine +
-                                    "REMOTE_CODE_RESULT" + Environment.NewLine +
-                                    "resultRef: " + checkpoint.HeadCommit + Environment.NewLine +
-                                    "branch: " + checkpoint.Branch;
-                    }
-                }
-
-                if (directStatus == "COMPLETED" &&
-                    !string.IsNullOrWhiteSpace(preparation.Branch))
-                {
-                    await gitManager.RemoveAsync(
-                        preparation.RepositoryRoot,
-                        preparation.WorktreePath,
-                        preparation.Branch,
-                        CancellationToken.None);
-                }
-            }
-
             ResultBody.Text = response;
             AddRoleResponseHistory(
                 WorkerRoleState.Work,
@@ -521,7 +399,7 @@ public partial class MainWindow
                 response,
                 usage: result.Usage,
                 files: result.Files,
-                status: directStatus,
+                status: result.ExitCode == 0 ? "COMPLETED" : "ERROR",
                 providerWireId: result.Provider,
                 fullMessage: response);
         }
