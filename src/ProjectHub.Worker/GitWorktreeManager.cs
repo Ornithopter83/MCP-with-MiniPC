@@ -2015,13 +2015,26 @@ public sealed class GitWorktreeManager
         var error = await DeleteDirectoryTreeWithRetriesAsync(
             normalizedClone,
             cancellationToken).ConfigureAwait(false);
-        return error is null
-            ? new(true, null, normalizedClone)
-            : new(
+        if (error is not null)
+        {
+            return new(
                 false,
                 "INTEGRATION_CLONE_CLEANUP_DELETE_FAILED",
                 normalizedClone,
                 error);
+        }
+
+        var inputError = await DeleteIntegrationInputSiblingAsync(
+            normalizedClone,
+            runtime,
+            cancellationToken).ConfigureAwait(false);
+        return inputError is null
+            ? new(true, null, normalizedClone)
+            : new(
+                false,
+                "INTEGRATION_INPUT_CLEANUP_DELETE_FAILED",
+                normalizedClone,
+                inputError);
     }
 
     public async Task<GitRepositoryRuntimeCleanupResult> CompactRepositoryRuntimeAsync(
@@ -2090,10 +2103,12 @@ public sealed class GitWorktreeManager
                 if (deleteError is null)
                 {
                     removed.Add(clonePath);
-                    await DeleteIntegrationInputSiblingAsync(
+                    var inputError = await DeleteIntegrationInputSiblingAsync(
                         clonePath,
                         runtime,
                         cancellationToken).ConfigureAwait(false);
+                    if (inputError is not null)
+                        errors.Add(clonePath + " inputs: " + inputError);
                 }
                 else
                 {
@@ -2246,7 +2261,35 @@ public sealed class GitWorktreeManager
                     continue;
                 }
 
+                var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
+                    clonePath,
+                    cancellationToken).ConfigureAwait(false);
+                if (deleteError is not null)
+                {
+                    return new(
+                        false,
+                        "RUNTIME_CLEANUP_CLONE_DELETE_FAILED",
+                        runtime.Root,
+                        removed,
+                        false,
+                        clonePath + ": " + deleteError);
+                }
+
                 removed.Add(clonePath);
+                var inputError = await DeleteIntegrationInputSiblingAsync(
+                    clonePath,
+                    runtime,
+                    cancellationToken).ConfigureAwait(false);
+                if (inputError is not null)
+                {
+                    return new(
+                        false,
+                        "RUNTIME_CLEANUP_INPUT_DELETE_FAILED",
+                        runtime.Root,
+                        removed,
+                        false,
+                        clonePath + " inputs: " + inputError);
+                }
             }
 
             if (dirty.Count > 0)
@@ -2320,22 +2363,22 @@ public sealed class GitWorktreeManager
         }
     }
 
-    private static async Task DeleteIntegrationInputSiblingAsync(
+    private static async Task<string?> DeleteIntegrationInputSiblingAsync(
         string clonePath,
         RepositoryRuntimePaths runtime,
         CancellationToken cancellationToken)
     {
         if (!IsPathWithin(clonePath, runtime.IntegrationClones))
-            return;
+            return null;
 
         var parent = Directory.GetParent(clonePath)?.FullName;
         if (string.IsNullOrWhiteSpace(parent))
-            return;
+            return null;
 
         var inputRoot = Path.Combine(
             parent,
             ".inputs-" + Path.GetFileName(clonePath));
-        await DeleteDirectoryTreeWithRetriesAsync(
+        return await DeleteDirectoryTreeWithRetriesAsync(
             inputRoot,
             cancellationToken).ConfigureAwait(false);
     }
