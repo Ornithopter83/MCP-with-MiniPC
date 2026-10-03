@@ -72,8 +72,7 @@ public sealed class GitIsolationAndRemoteInputTests
                         "W10",
                         "commit123",
                         "선행 변경",
-                        WorkItemResultType.CodeChange,
-                        "manifest.json")
+                        WorkItemResultType.CodeChange)
                 });
 
             Assert.True(result.Success);
