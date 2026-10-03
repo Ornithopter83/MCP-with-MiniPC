@@ -5,7 +5,7 @@ namespace ProjectHub.Worker.Tests;
 public sealed class WorkerPathsRuntimeTests
 {
     [Fact]
-    public void RepositoryRuntimeLivesOnlyInsideProjectRoot()
+    public void RepositoryRuntimeLivesOutsideProjectRoot()
     {
         var parent = Path.Combine(
             Path.GetTempPath(),
@@ -17,22 +17,29 @@ public sealed class WorkerPathsRuntimeTests
         try
         {
             var runtime = WorkerPaths.GetRepositoryRuntimePaths(workspace);
-            var expectedRoot = Path.Combine(
-                Path.GetFullPath(workspace),
-                ".projecthub",
-                "runtime");
-            var legacySibling = Path.Combine(
-                Path.GetFullPath(parent),
-                "SampleProject.projecthub");
+            var workspaceRoot = Path.GetFullPath(workspace)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var runtimeRoot = Path.GetFullPath(runtime.Root)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
 
-            Assert.Equal(expectedRoot, runtime.Root);
+            Assert.False(
+                string.Equals(runtimeRoot, workspaceRoot, comparison) ||
+                runtimeRoot.StartsWith(
+                    workspaceRoot + Path.DirectorySeparatorChar,
+                    comparison));
             Assert.StartsWith(
-                Path.GetFullPath(workspace) + Path.DirectorySeparatorChar,
-                runtime.Root + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase);
-            Assert.NotEqual(
-                Path.GetFullPath(legacySibling),
-                Path.GetFullPath(runtime.Root));
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ProjectHub",
+                    "RepositoryRuntime"),
+                runtime.Root,
+                comparison);
+            Assert.Equal(
+                Path.Combine(workspaceRoot, ".projecthub", "runtime"),
+                WorkerPaths.GetLegacyRepositoryRuntimeRoot(workspace));
             Assert.StartsWith(runtime.Root, runtime.Worktrees, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.IntegrationClones, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.NuGetRoot, StringComparison.OrdinalIgnoreCase);
