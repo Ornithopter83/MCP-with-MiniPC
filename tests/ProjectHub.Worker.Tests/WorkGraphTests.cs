@@ -144,24 +144,20 @@ public sealed class WorkGraphTests
 
     [Theory]
     [InlineData("1")]
-    [InlineData("2")]
-    [InlineData("3")]
     [InlineData("4")]
-    [InlineData("5")]
-    [InlineData("6")]
-    [InlineData("7")]
     [InlineData("8")]
-    public void UnassignedLowNumberSlotsAreRejected(string id)
+    [InlineData("10")]
+    public void NonFixedIdsCanBeUsedForOrdinaryWorkItems(string id)
     {
         var graph = new WorkGraph("job");
 
         var result = graph.ApplyPatch(new WorkGraphPatch(0, new[]
         {
-            WorkGraphPatchOperation.Add(new WorkItemSpec(id, "예약 슬롯 오사용"))
+            WorkGraphPatchOperation.Add(new WorkItemSpec(id, "일반 작업"))
         }));
 
-        Assert.False(result.Success);
-        Assert.Equal("WORK_GRAPH_RESERVED_SLOT_UNASSIGNED", result.ErrorCode);
+        Assert.True(result.Success);
+        Assert.NotNull(graph.Find(id));
     }
 
     [Theory]
