@@ -211,6 +211,16 @@ public partial class MainWindow
 
     private void WorkingDirectoryInput_TextChanged(object sender, TextChangedEventArgs e)
     {
+        // 작업 폴더가 바뀌면 이전 저장소 정보는 더 이상 신뢰할 수 없다.
+        // "자동 확인"이 현재 입력값을 다시 검사하기 전까지 stale Git 표시를 지운다.
+        _gitTarget = null;
+        if (RepositoryUrlInput is not null)
+            RepositoryUrlInput.Text = string.Empty;
+        if (TargetGitStateText is not null)
+            TargetGitStateText.Text = "Git: 자동 확인 필요";
+        if (RepositoryNameText is not null)
+            RepositoryNameText.Text = " · GIT_CHECK_REQUIRED";
+
         if (RunButton is not null)
             UpdateDashboardRunButtonState();
     }
