@@ -65,6 +65,37 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task OriginFetchIsSerializedAcrossManagersForSameRepository()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new ConcurrentFetchGitRunner(root);
+
+        try
+        {
+            var first = new GitWorktreeManager(runner);
+            var second = new GitWorktreeManager(runner);
+
+            var results = await Task.WhenAll(
+                first.ResolveNormalBaseRefAsync(
+                    root,
+                    "base-one",
+                    Array.Empty<string>()),
+                second.ResolveNormalBaseRefAsync(
+                    root,
+                    "base-two",
+                    Array.Empty<string>()));
+
+            Assert.All(results, result => Assert.True(result.Success));
+            Assert.Equal(1, runner.MaxConcurrentFetches);
+            Assert.Equal(2, runner.FetchCount);
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
     public async Task ResolveNormalBaseRefRequiresIntegrationForDivergentDependencies()
     {
         var root = CreateTempRepositoryDirectory();
@@ -688,6 +719,69 @@ public sealed class GitWorktreeManagerTests
                fullCandidate.StartsWith(
                    fullRoot + Path.DirectorySeparatorChar,
                    comparison);
+    }
+
+    private sealed class ConcurrentFetchGitRunner : IGitWorktreeCommandRunner
+    {
+        private readonly string _root;
+        private readonly object _sync = new();
+        private int _activeFetches;
+
+        public ConcurrentFetchGitRunner(string root)
+        {
+            _root = root;
+        }
+
+        public int MaxConcurrentFetches { get; private set; }
+        public int FetchCount { get; private set; }
+
+        public async Task<GitCommandResult> RunAsync(
+            string workingDirectory,
+            IReadOnlyList<string> arguments,
+            TimeSpan timeout,
+            CancellationToken cancellationToken = default)
+        {
+            if (arguments.SequenceEqual(new[] { "rev-parse", "--show-toplevel" }))
+                return new(0, _root, string.Empty);
+
+            if (arguments.SequenceEqual(new[] { "fetch", "--prune", "origin" }))
+            {
+                lock (_sync)
+                {
+                    _activeFetches++;
+                    FetchCount++;
+                    MaxConcurrentFetches = Math.Max(
+                        MaxConcurrentFetches,
+                        _activeFetches);
+                }
+
+                try
+                {
+                    await Task.Delay(80, cancellationToken);
+                    return new(0, string.Empty, string.Empty);
+                }
+                finally
+                {
+                    lock (_sync)
+                        _activeFetches--;
+                }
+            }
+
+            if (arguments.Count == 3 &&
+                arguments[0] == "rev-parse" &&
+                arguments[1] == "--verify" &&
+                arguments[2].EndsWith("^{commit}", StringComparison.Ordinal))
+            {
+                return new(
+                    0,
+                    arguments[2][..^9] + "-commit",
+                    string.Empty);
+            }
+
+            throw new InvalidOperationException(
+                "예상하지 않은 Git 호출입니다: " +
+                string.Join(" ", arguments));
+        }
     }
 
     private sealed class FakeGitRunner : IGitWorktreeCommandRunner
