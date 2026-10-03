@@ -590,7 +590,7 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "primary999");
         runner.Enqueue(0, "https://example.invalid/repo.git");
         runner.Enqueue(0, "");
-        runner.Enqueue(0, "refs/remotes/origin/projecthub/job/base");
+        runner.Enqueue(0, "primary999 refs/remotes/origin/projecthub/job/base");
         runner.Enqueue(0, "cloned");
         runner.Enqueue(0, "checked out");
         runner.Enqueue(0, "");
@@ -613,8 +613,7 @@ public sealed class GitWorktreeManagerTests
                 call => call.Arguments.SequenceEqual(new[]
                 {
                     "for-each-ref",
-                    "--format=%(refname)",
-                    "--contains=primary999",
+                    "--format=%(objectname) %(refname)",
                     "refs/remotes/origin"
                 }));
             Assert.DoesNotContain(
@@ -630,6 +629,44 @@ public sealed class GitWorktreeManagerTests
                     "https://example.invalid/repo.git",
                     clone
                 }));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
+    public async Task IntegrationPreparationRejectsRemoteRefThatOnlyDescendsFromPrimaryHead()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "primary999");
+        runner.Enqueue(0, "https://example.invalid/repo.git");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "newer999 refs/remotes/origin/projecthub/job/base");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .PrepareIntegrationAsync(root, "job", "I1", "main");
+
+            Assert.False(result.Success);
+            Assert.Equal("INTEGRATION_BASE_REMOTE_CHANGED", result.ErrorCode);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(new[]
+                {
+                    "for-each-ref",
+                    "--format=%(objectname) %(refname)",
+                    "refs/remotes/origin"
+                }));
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "clone");
         }
         finally
         {

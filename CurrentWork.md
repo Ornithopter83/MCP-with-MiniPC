@@ -40,7 +40,7 @@
 ⑩ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
 ⑪ HIGH는 Job별 사용자 one-shot 허용이 있을 때 HQ가 직접 호출하고 결과를 같은 HQ 관제 루프로 반환하는 구조로 복원한다. HIGH는 danger-full-access 실행을 사용하되 일반 WorkItem·RESOURCE 대체로 사용하지 않는다.
 ⑫ RESOURCE는 IMAGE 전용으로 제한하며 AUDIO·VIDEO·DOCUMENT·FILE 요청은 Web 전송 전에 기계적으로 거부한다.
-⑬ Integration 준비는 로컬 branch 이름에 대응하는 origin branch를 추론하지 않고, fetch된 origin ref에서 현재 로컬 HEAD commit의 원격 도달 가능성을 검증한다.
+⑬ Integration 준비는 로컬 branch 이름에 대응하는 origin branch를 추론하지 않고, fetch된 origin ref 중 현재 로컬 HEAD와 정확히 같은 commit을 가리키는 ref가 있는지 검증한다.
 
 제6조 (WEB)
 

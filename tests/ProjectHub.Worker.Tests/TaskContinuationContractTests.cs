@@ -25,6 +25,25 @@ public sealed class TaskContinuationContractTests
     }
 
     [Fact]
+    public void ContinuationCarriesRemainingHighOneShotPermission()
+    {
+        var state = new CoordinatorContinuationState(
+            "job-high",
+            "C:/work",
+            new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "medium"),
+            new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
+            null,
+            null,
+            "PAUSED",
+            "사용자 입력 대기",
+            new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high"),
+            HighLevelPermitAvailable: true);
+
+        Assert.True(state.HighLevelPermitAvailable);
+        Assert.Equal("gpt-6-astra", state.HighLevel?.Model);
+    }
+
+    [Fact]
     public void HqFollowupInputRejectsCompletedState()
     {
         var error = Assert.Throws<InvalidOperationException>(() =>
