@@ -757,6 +757,60 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task TargetWorkspaceCheckpointMovesDirtyRootToManagedBranchAndPublishes()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var branch = BuildBranchName("job", "8-run-3");
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "main");
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, "base123");
+        runner.Enqueue(0, "?? src/player.gd");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, $"bootstrap456\trefs/heads/{branch}");
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .CreateTargetWorkspaceCheckpointAsync(
+                    root,
+                    "base123",
+                    branch,
+                    FixedWorkItemSlots.FileManager);
+
+            Assert.True(result.Success);
+            Assert.True(result.CreatedCommit);
+            Assert.Equal("bootstrap456", result.HeadCommit);
+            Assert.Equal(branch, result.Branch);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "switch", "-c", branch, "base123" }));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "push");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
     public async Task TargetCheckoutSwitchesToVerifiedRemoteResultBranchWithoutMergeOrPush()
     {
         var root = CreateTempRepositoryDirectory();

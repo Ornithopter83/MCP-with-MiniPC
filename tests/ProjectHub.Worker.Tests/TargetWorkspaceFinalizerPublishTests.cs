@@ -61,6 +61,96 @@ public sealed class TargetWorkspaceFinalizerPublishTests
     }
 
     [Fact]
+    public async Task FinalizerTreatsConsumedFileManagerResultAsBootstrapBase()
+    {
+        var root = CreateRoot();
+        var bootstrapBranch = GitWorktreeManager.BuildBranchName("job", "8-run-1");
+        var resultBranch = GitWorktreeManager.BuildBranchName("job", "10");
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                FixedWorkItemSlots.FileManager,
+                "초기 구조 생성",
+                BaseRef: "base123"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning(
+            FixedWorkItemSlots.FileManager,
+            bootstrapBranch));
+        Assert.True(graph.TryMarkCompleted(
+            FixedWorkItemSlots.FileManager,
+            "bootstrap456",
+            "scaffold",
+            WorkItemResultType.CodeChange));
+
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                "10",
+                "player 구현",
+                BaseRef: "bootstrap456"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("10", resultBranch));
+        Assert.True(graph.TryMarkCompleted(
+            "10",
+            "code-new",
+            "done",
+            WorkItemResultType.CodeChange));
+
+        var runner = new SequenceRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, bootstrapBranch);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "code-new");
+        runner.Enqueue(1, "");
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, bootstrapBranch);
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, "code-new");
+        runner.Enqueue(0, "code-new");
+        runner.Enqueue(1, "");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, resultBranch);
+        runner.Enqueue(0, "code-new");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.True(result.Success);
+            Assert.Null(result.ErrorCode);
+            Assert.Equal("10", result.FinalWorkItemId);
+            Assert.Equal("code-new", result.FinalResultRef);
+            Assert.True(result.CheckoutSwitched);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[]
+                    {
+                        "switch",
+                        "-c",
+                        resultBranch,
+                        "--track",
+                        "origin/" + resultBranch
+                    }));
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task FinalizerSwitchesCleanCheckoutToRemoteResultBranch()
     {
         var root = CreateRoot();

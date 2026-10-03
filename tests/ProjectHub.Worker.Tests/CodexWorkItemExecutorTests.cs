@@ -98,13 +98,43 @@ public sealed class CodexWorkItemExecutorTests
         try
         {
             var rootPath = Path.GetFullPath(Path.Combine(fixture.Parent, "repo"));
+            fixture.Git.Clear();
+            EnqueueExistingWorktreePreparation(
+                fixture,
+                headCommit: "base123",
+                baseCommit: "base123");
+            fixture.Git.Enqueue(0, rootPath);
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, "main");
+            fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, rootPath);
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, "?? src/player.gd");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, "bootstrap456");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, $"bootstrap456\trefs/heads/{fixture.Branch}");
+            fixture.Git.Enqueue(0, rootPath);
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "bootstrap456");
+            fixture.Git.Enqueue(0, "");
+            fixture.Git.Enqueue(0, fixture.Request.Item.WorktreePath!);
+            fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, "");
+
             var result = await fixture.Executor.ExecuteAsync(
                 fixture.Request,
                 CancellationToken.None);
 
+            Assert.Equal(rootPath, fixture.Runner.LastRequest!.WorkingDirectory);
             Assert.Contains(
                 rootPath,
-                fixture.Runner.LastRequest!.AdditionalWritableDirectories!);
+                fixture.Runner.LastRequest.AdditionalWritableDirectories!);
             Assert.Contains(
                 "대상 프로젝트 루트: " + rootPath,
                 fixture.Runner.LastRequest.Prompt);
@@ -114,6 +144,10 @@ public sealed class CodexWorkItemExecutorTests
                     fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_TARGET_WORKSPACE"]));
             Assert.Equal(CodexSandboxMode.WorkspaceWrite, fixture.Runner.LastRequest.Sandbox);
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
+            Assert.Equal(WorkItemResultType.CodeChange, result.ResultType);
+            Assert.Equal("bootstrap456", result.ResultRef);
+            Assert.Contains("BOOTSTRAP_CODE_RESULT", result.ResultSummary ?? string.Empty);
+            Assert.Contains("nextBaseRef: bootstrap456", result.ResultSummary ?? string.Empty);
         }
         finally
         {
