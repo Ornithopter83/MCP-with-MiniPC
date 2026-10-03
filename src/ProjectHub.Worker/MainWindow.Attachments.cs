@@ -283,11 +283,9 @@ public partial class MainWindow
 
     private static IReadOnlyList<AiInputAttachment> StageUserAttachments(
         IReadOnlyList<UserAttachmentInput>? attachments,
-        string workingDirectory,
         string batchId)
-        => UserAttachmentTransport.StageForWorkspace(
+        => UserAttachmentTransport.StageForWorkerRuntime(
             attachments,
-            workingDirectory,
             batchId);
 
     private static List<BridgeAttachment> BuildUserWebAttachments(
