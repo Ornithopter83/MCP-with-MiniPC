@@ -48,8 +48,8 @@
 ① 병렬 WorkGraph는 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin` 원격 저장소가 존재해야 한다. 기존 HEAD가 있으면 현재 branch와 로컬 HEAD가 원격 branch HEAD와 일치하는 clean 상태에서 시작한다. 최초 commit이 없는 unborn 저장소는 작업 폴더의 `.gitignore` 기준 파일로 Worker가 격리된 `projecthub/*` 초기 baseline commit을 만들어 원격에 게시한 뒤 그 SHA를 공통 기준점으로 사용해 시작하며, 사용자 작업 폴더의 현재 branch도 파일 내용을 바꾸지 않고 같은 baseline commit에 로컬로 연결한다. 기본·보호 branch를 원격에 자동 push하지 않으며 사용자가 최초 commit을 미리 만들 필요는 없다. 작업 폴더의 상위 디렉터리에 있는 다른 Git 저장소를 자동 채택하지 않는다.
 ② CODE_CHANGE의 `resultRef`는 Worker가 `projecthub/*` branch에 push하고 원격에서 같은 commit을 확인한 Git commit SHA다.
 ③ WORK는 Git 저장소를 생성·복구·stage·commit·push하지 않으며, checkpoint와 원격 게시를 Worker가 기계적으로 수행한다.
-④ checkpoint 대상은 프로젝트의 `.gitignore`가 결정한다. Worker는 build·cache·runtime 경로에 대한 별도 exclude pathspec이나 재생성 파일 목록을 유지하지 않는다.
-⑤ ProjectHub runtime, WorkGraph, transcript와 tool cache는 프로젝트 checkout 밖의 Worker 소유 경로에 둔다.
+④ checkpoint 대상은 프로젝트의 `.gitignore`를 기준으로 하되, 작업 루트의 `.projecthub`는 Worker 기계 상태이므로 Git status, 초기 baseline, checkpoint와 CODE_CHANGE 결과에서 항상 제외한다. 그 외 일반 프로젝트 파일에 대해 별도 재생성 파일 목록을 유지하지 않는다.
+⑤ WorkGraph, event log, transcript, continuation 상태와 repository runtime·tool cache는 작업 루트의 `.projecthub` 아래에 둔다. `.projecthub`는 사용자 코드 결과가 아니라 Worker 기계 상태다.
 ⑥ 병렬 결과의 Integration은 Worker 소유 격리 공간에서 수행하고, 충돌 없이 확정된 결과만 새 remote CODE_CHANGE로 게시한다.
 ⑦ 완료된 CODE_CHANGE는 파일 단위 MATERIALIZE/COPY나 별도 materialization ledger 없이 commit 계보로 추적한다. 최종 result가 현재 원격 동기화 branch에 포함되지 않았으면 clean 사용자 checkout을 해당 `projecthub/*` 원격 result branch로 전환하며, 기본·보호 branch에 자동 merge·push하지 않는다.
 ⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나면 Worker가 임의 merge·reset·재초기화하지 않고 기계 오류로 차단한다.
