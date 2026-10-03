@@ -9,8 +9,7 @@ public partial class MainWindow
         WorkerAiRoleSettings coordinator,
         WorkerAiRoleSettings implementer,
         CoordinatorContinuationState? continuation = null,
-        IReadOnlyList<UserAttachmentInput>? attachments = null,
-        bool highLevelAuthorizedAtLaunch = false)
+        IReadOnlyList<UserAttachmentInput>? attachments = null)
     {
         var continuing = continuation is not null;
         var jobId = continuation?.JobId ?? Guid.NewGuid().ToString("N");
@@ -54,10 +53,6 @@ public partial class MainWindow
         var highLevel = NormalizeRoleSessionForWorkspace(
             continuation?.HighLevel ?? _targetSettings.EffectiveHighLevel,
             workingDirectory);
-        var highLevelPermitAvailable = continuing
-            ? continuation?.HighLevelPermitAvailable == true
-            : highLevelAuthorizedAtLaunch;
-        var highLevelPermitRemaining = highLevelPermitAvailable;
         var highLevelSession = CodexCliRunner.NormalizeSessionId(
             highLevel.ThreadSessionId);
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
@@ -332,11 +327,10 @@ public partial class MainWindow
                 string highBody,
                 CancellationToken cancellationToken)
             {
-                highLevelPermitRemaining = false;
                 RunOnUi(() =>
                 {
                     TaskDirection.Text = "고수준 작업 AI";
-                    TaskTitle.Text = "HIGH one-shot 고권한 작업";
+                    TaskTitle.Text = "HIGH 고권한 복구";
                     ResultTitle.Text = "HIGH";
                     SetFlowState(
                         codexActive: true,
@@ -351,7 +345,7 @@ public partial class MainWindow
                 {
                     result = await RunCoordinatorRoleAsync(
                         jobId,
-                        "HIGH_ONE_SHOT",
+                        "HIGH_RECOVERY",
                         highPrompt,
                         highLevel,
                         workingDirectory,
@@ -371,7 +365,7 @@ public partial class MainWindow
                     var operation = Dispatcher.InvokeAsync(() =>
                         RunCoordinatorRoleAsync(
                             jobId,
-                            "HIGH_ONE_SHOT",
+                            "HIGH_RECOVERY",
                             highPrompt,
                             highLevel,
                             workingDirectory,
@@ -556,10 +550,7 @@ public partial class MainWindow
                         finalization.ErrorCode,
                         finalization.Message);
                 },
-                runHighAsync: highLevelPermitAvailable
-                    ? RunParallelHighAsync
-                    : null,
-                highPermitAvailable: highLevelPermitAvailable);
+                runHighAsync: RunParallelHighAsync);
 
             resourceRouter = new ParallelResourceWorkItemRouter(
                 supervisor,
@@ -804,8 +795,7 @@ public partial class MainWindow
                     implementer,
                     coordinatorSession,
                     result.Graph,
-                    highLevel,
-                    highLevelPermitRemaining);
+                    highLevel);
                 SetFlowState(false, false, false);
                 return;
             }
@@ -829,8 +819,7 @@ public partial class MainWindow
                     implementer,
                     coordinatorSession,
                     result.Graph,
-                    highLevel,
-                    highLevelPermitRemaining);
+                    highLevel);
                 compactRuntimeOnPause = true;
                 SetFlowState(false, false, false);
                 return;
@@ -939,8 +928,7 @@ public partial class MainWindow
                 implementer,
                 coordinatorSession,
                 result.Graph,
-                highLevel,
-                highLevelPermitRemaining);
+                highLevel);
             SetFlowState(false, false, false);
         }
         catch (OperationCanceledException)
@@ -962,8 +950,7 @@ public partial class MainWindow
                     implementer,
                     coordinatorSession,
                     snapshot,
-                    highLevel,
-                    highLevelPermitRemaining);
+                    highLevel);
                 AddTaskMessage(
                     "TASK CANCELED",
                     "사용자가 실행 구간을 중단했습니다. WorkGraph와 확보된 세션 정보를 보존합니다.",
@@ -1141,8 +1128,7 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         string? coordinatorSession,
         WorkGraphSnapshot? graph,
-        WorkerAiRoleSettings highLevel,
-        bool highLevelPermitAvailable)
+        WorkerAiRoleSettings highLevel)
     {
         if (graph is not null)
             ProjectWorkspacePersistence.SaveWorkGraph(
@@ -1158,8 +1144,7 @@ public partial class MainWindow
             null,
             status,
             lastHqMessage ?? string.Empty,
-            highLevel,
-            highLevelPermitAvailable);
+            highLevel);
 
         if (TaskContinuationContract.IsResumableStatus(status))
             ProjectWorkspacePersistence.SaveContinuation(_continuationState);
