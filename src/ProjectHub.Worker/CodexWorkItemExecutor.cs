@@ -682,13 +682,19 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         }
 
         GitWorktreeCheckpointResult checkpoint = default!;
+        var checkpointCreatedCommit = false;
+        var requireCleanCheckpointPublish = publishCleanCheckpoint;
         for (var attempt = 1; attempt <= MaximumCheckpointAttempts; attempt++)
         {
             checkpoint = await _worktrees.CreateCheckpointAsync(
                 preparation.WorktreePath,
                 item.Id,
-                publishCleanCheckpoint,
+                requireCleanCheckpointPublish,
                 cancellationToken).ConfigureAwait(false);
+
+            checkpointCreatedCommit |= checkpoint.CreatedCommit;
+            if (checkpoint.CreatedCommit)
+                requireCleanCheckpointPublish = true;
 
             if (checkpoint.Success)
                 break;
@@ -715,14 +721,17 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 sessionId,
                 blockDetailCode: errorCode,
-                resultType: item.ResultType,
+                resultType: checkpointCreatedCommit ||
+                            item.ResultType == WorkItemResultType.CodeChange
+                    ? WorkItemResultType.CodeChange
+                    : item.ResultType,
                 commitManifestPath: item.CommitManifestPath);
         }
 
         var lifecycleResultRef = checkpoint.HeadCommit ?? item.ResultRef;
         var lifecycleHasCodeChange =
             item.ResultType == WorkItemResultType.CodeChange ||
-            checkpoint.CreatedCommit;
+            checkpointCreatedCommit;
         string? commitManifestPath = item.CommitManifestPath;
 
         if (lifecycleHasCodeChange &&
