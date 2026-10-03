@@ -702,6 +702,11 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         if (!checkpoint.Success)
         {
             var errorCode = checkpoint.ErrorCode ?? "WORKTREE_CHECKPOINT_FAILED";
+            var checkpointPendingResultType =
+                checkpointCreatedCommit ||
+                item.ResultType == WorkItemResultType.CodeChange
+                    ? WorkItemResultType.CodeChange
+                    : item.ResultType;
             return WorkItemExecutionResult.Blocked(
                 "WORKTREE_CHECKPOINT_PENDING",
                 BuildCheckpointPendingSummary(
@@ -713,7 +718,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 sessionId,
                 blockDetailCode: errorCode,
-                resultType: item.ResultType);
+                resultType: checkpointPendingResultType);
         }
 
         var lifecycleResultRef = checkpoint.HeadCommit ?? item.ResultRef;
