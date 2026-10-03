@@ -154,8 +154,6 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
     private string? _lastQuiescentSignature;
     private WorkGraphSnapshot _hqKnownSnapshot;
     private bool _schedulerStarted;
-    private readonly bool _highPermitAvailable;
-    private bool _highPermitConsumed;
     private bool _disposed;
 
     public ParallelWorkSupervisor(
@@ -168,8 +166,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>? processWorkGraphPayloadAsync = null,
         bool enableCompletionReview = false,
         Func<WorkGraphSnapshot, CancellationToken, Task<ParallelEndFinalizationResult>>? finalizeEndAsync = null,
-        Func<string, CancellationToken, Task<string>>? runHighAsync = null,
-        bool highPermitAvailable = false)
+        Func<string, CancellationToken, Task<string>>? runHighAsync = null)
     {
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         if (string.IsNullOrWhiteSpace(baseRef))
@@ -177,7 +174,6 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         _initialBaseRef = baseRef.Trim();
         _runHqAsync = runHqAsync ?? throw new ArgumentNullException(nameof(runHqAsync));
         _runHighAsync = runHighAsync;
-        _highPermitAvailable = highPermitAvailable;
         _processWorkGraphPayloadAsync = processWorkGraphPayloadAsync ??
             new Func<string, CancellationToken, Task<StructuredPayloadResult<WorkGraphPatch>>>(
                 (payload, _) => Task.FromResult(
@@ -262,11 +258,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     _graph.Revision,
                     _graph.MaxConcurrentWork,
                     GetCurrentDefaultBaseRef()),
-                includeContract: firstHqTurn && _includeContractOnFirstHqTurn,
-                highPermitAvailable:
-                    _highPermitAvailable &&
-                    !_highPermitConsumed &&
-                    _runHighAsync is not null);
+                includeContract: firstHqTurn && _includeContractOnFirstHqTurn);
             firstHqTurn = false;
 
             string rawHqMessage;
@@ -329,12 +321,10 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             if (envelope!.Action == WorkerAction.Continue &&
                 envelope.Target == WorkerRoleState.High)
             {
-                if (!_highPermitAvailable ||
-                    _highPermitConsumed ||
-                    _runHighAsync is null)
+                if (_runHighAsync is null)
                 {
                     consecutivePatchRejections++;
-                    const string rejectionCode = "PARALLEL_HQ_HIGH_NOT_AUTHORIZED";
+                    const string rejectionCode = "PARALLEL_HQ_HIGH_RUNNER_UNAVAILABLE";
                     var rejectionBody = FormatHqResponseRejected(
                         rejectionCode,
                         _graph.Snapshot(),
@@ -353,7 +343,6 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     continue;
                 }
 
-                _highPermitConsumed = true;
                 try
                 {
                     inboundBody = await _runHighAsync(
@@ -368,7 +357,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 {
                     inboundType = "HIGH_EXECUTION_FAILED";
                     inboundBody =
-                        "HIGH one-shot 실행이 기계적으로 실패했습니다." +
+                        "HIGH 실행이 기계적으로 실패했습니다." +
                         Environment.NewLine +
                         "exceptionType=" + exception.GetType().Name +
                         Environment.NewLine +
