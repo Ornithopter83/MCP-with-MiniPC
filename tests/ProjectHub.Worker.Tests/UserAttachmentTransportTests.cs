@@ -135,6 +135,49 @@ public sealed class UserAttachmentTransportTests
     }
 
     [Fact]
+    public void CleanupStagedWorkerRuntimeRemovesOnlyProjectRuntimeCopy()
+    {
+        var root = CreateTempDirectory();
+        var workspace = Path.Combine(root, "workspace");
+        Directory.CreateDirectory(workspace);
+        var source = Path.Combine(root, "notes.txt");
+        File.WriteAllText(source, "cleanup");
+        UserAttachmentInput? attachment = null;
+
+        try
+        {
+            attachment = UserAttachmentTransport.CacheFile(
+                source,
+                "DROP");
+
+            var staged = UserAttachmentTransport.StageForWorkerRuntime(
+                new[] { attachment },
+                workspace,
+                "cleanup-" + Guid.NewGuid().ToString("N"));
+            var stagedItem = Assert.Single(staged);
+
+            Assert.True(File.Exists(stagedItem.Path));
+            Assert.True(File.Exists(attachment.StoredPath));
+
+            UserAttachmentTransport.CleanupStagedWorkerRuntime(
+                staged,
+                workspace);
+
+            Assert.False(File.Exists(stagedItem.Path));
+            Assert.True(File.Exists(attachment.StoredPath));
+        }
+        finally
+        {
+            if (attachment is not null && File.Exists(attachment.StoredPath))
+                File.Delete(attachment.StoredPath);
+            var projectHubRoot = Path.Combine(workspace, ".projecthub");
+            if (Directory.Exists(projectHubRoot))
+                Directory.Delete(projectHubRoot, true);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void CreateBridgeAttachment_UsesCachedIdAndHash()
     {
         var root = CreateTempDirectory();
