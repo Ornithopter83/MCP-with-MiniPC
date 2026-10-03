@@ -6,16 +6,18 @@
 
 ① HQ는 사용자 목표 해석, WorkItem 작업 목록 구성, WorkGraph 관제와 CONTINUE·PAUSE·END 판단을 담당한다.
 ② WORK는 현재 WorkItem의 목표와 작업 목록을 수행하고 목록별 결과를 HQ에 보고한다. WORK는 작업 분할이나 새 WorkItem 필요 여부를 판단하지 않는다.
-③ HIGH는 일반 WORK가 동일·유사 원인으로 반복 실패한 차단 문제의 대안으로 HQ가 직접 호출하는 고권한 복구 역할이다. 일반 구현이나 생성 리소스 제작에 사용하지 않는다.
+③ HIGH는 일반 WORK가 동일·유사 원인으로 반복 실패하고 일반 권한으로 해결하기 어려운 system·toolchain·runtime·Git 인프라 차단이 남았을 때 HQ가 직접 호출하는 고권한 복구 역할이다. HIGH는 일반 WorkItem이나 RESOURCE를 대체하지 않고 일반 구현이나 생성 리소스 제작에 사용하지 않는다.
 ④ RESOURCE는 IMAGE 생성 요청을 별도 ChatGPT Web 대화로 보내고 생성 파일을 수집한다.
 ⑤ Worker는 의미 판단 대신 상태, 전송, 프로세스, Git과 기계 작업을 관리한다.
+⑥ HQ는 서로 연관성이 낮은 작업을 별도 WorkItem으로 분리하고 중간 관제를 계속한다.
+⑦ Worker는 HIGH의 sandbox·라우팅 경계와 RESOURCE 타입을 기계적으로 강제하고, 두 역할의 결과 의미를 대신 판단하지 않는다.
 
 제2조 (보고)
 
 ① WORK 보고는 Worker가 의미적으로 요약하거나 다시 작성하지 않는다.
 ② Worker는 workItemId, state, resultRef 등 필요한 최소 기계 메타데이터와 WORK 보고 본문을 HQ에 전달한다.
 ③ 코드 내용은 HQ 프롬프트에 자동 주입하지 않는다.
-④ 오류가 발생해도 역할 계약에 해당 오류 전용 규칙을 추가하지 않는다.
+④ 오류 복구는 transport, protocol, work 오류를 구분하되 오류별 영구 역할 계약을 추가하지 않는다.
 
 제3조 (WorkGraph)
 
@@ -24,7 +26,7 @@
 ③ Worker는 revision, JSON 구조, dependency와 상태 전이처럼 기계적으로 확인 가능한 조건만 검사한다.
 ④ 서로 독립적인 READY WorkItem은 설정된 동시성 범위에서 병렬 실행할 수 있다.
 
-제4조 (WORK 실행)
+제4조 (WORK 실행과 실행 인프라)
 
 ① WORK에는 현재 WorkItem 목표, HQ가 배정한 작업 목록과 필요한 현재 사실만 제공한다.
 ② WORK는 배정 목록 밖으로 의미 범위를 확장하지 않고 발견 사실만 결과에 기록한다.
@@ -32,19 +34,21 @@
 ④ 후속 호출에는 현재 입력과 필요한 기계 사실만 전달한다.
 ⑤ 선행 결과는 필요한 최소 메타데이터와 보고를 전달하고 대용량 manifest 전문을 자동 주입하지 않는다.
 ⑥ WORK 실행의 명령 처리 실패, 비정상 종료, timeout 또는 계약 불일치는 Worker가 의미 복구를 선택하지 않고 기계 사실과 함께 BLOCKED로 HQ에 전달하며, 이후 RELEASE·CANCEL·후속 WorkItem 판단은 HQ가 담당한다.
+⑦ 설치된 SDK, runtime, build 도구와 작업 경로 준비는 Worker의 기계 책임이다.
+⑧ 임시 build artifact와 cache는 의미 코드 변경으로 취급하지 않는다.
 
 제5조 (RESOURCE)
 
 ① RESOURCE Web transport는 현재 IMAGE만 지원한다.
-② RESOURCE Web 전송·수집 실패는 의미 작업 실패와 구분한다.
-③ RESOURCE 실패를 일반 WORK의 다른 생성 경로로 자동 우회하지 않는다.
-④ IMAGE 외 RESOURCE_TYPE은 Web 전송 전에 Worker가 기계적으로 거부한다.
+② RESOURCE 실패를 일반 WORK의 다른 생성 경로로 자동 우회하지 않는다.
+③ IMAGE 외 RESOURCE_TYPE은 Web 전송 전에 Worker가 기계적으로 거부한다.
 
 제6조 (Web)
 
 ① HQ Web과 RESOURCE Web은 별도 역할 슬롯으로 관리한다.
 ② KEY는 요청과 응답을 연결하는 기계 표식으로 사용한다.
 ③ Web 확장은 전송, DOM 관측과 결과 수집만 담당하고 작업 의미를 해석하지 않는다.
+④ Web transport 실패는 의미 작업 실패와 구분한다.
 
 제7조 (Git과 결과)
 
@@ -55,12 +59,13 @@
 ⑤ WorkGraph, event log, transcript, continuation 상태와 repository runtime·tool cache는 작업 루트의 `.projecthub` 아래에 둔다. `.projecthub`는 사용자 코드 결과가 아니라 Worker 기계 상태다.
 ⑥ 병렬 결과의 Integration은 Worker 소유 격리 공간에서 수행하고, 충돌 없이 확정된 결과만 새 remote CODE_CHANGE로 게시한다. Integration 기준점은 WorkItem의 baseRef를 fetch된 origin commit으로 해석해 사용하며, 사용자 작업 폴더의 현재 branch 이름이나 HEAD를 기준점 선택에 사용하지 않는다. 해당 baseRef commit을 정확히 가리키는 fetched origin ref가 없으면 기계 오류로 차단한다.
 ⑦ 완료된 CODE_CHANGE는 파일 단위 MATERIALIZE/COPY나 별도 materialization ledger 없이 commit 계보로 추적한다. 최종 result가 현재 원격 동기화 branch에 포함되지 않았으면 clean 사용자 checkout을 해당 `projecthub/*` 원격 result branch로 전환하며, 기본·보호 branch에 자동 merge·push하지 않는다.
-⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나면 Worker가 임의 merge·reset·재초기화하지 않고 기계 오류로 차단한다.
+⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나거나 Git 충돌·위험 상태가 있으면 Worker가 의미 판단으로 merge·reset·재초기화하거나 충돌을 자동 해결하지 않고 기계 오류로 차단한다.
 ⑨ PAUSE·CANCELED continuation은 보존된 WorkGraph와 원격 resultRef를 기준으로 하며, DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.
 ⑩ #8 FILE MANAGER가 실제 작업 루트에 구조·파일을 생성·수정하면 Worker가 작업 시작 HEAD와 같은 기준점에서 전용 `projecthub/*` branch로 checkout을 전환해 해당 루트 상태를 checkpoint·push하고 CODE_CHANGE resultRef로 확정한다. 사용자 기존 branch와 remote default branch는 변경하지 않는다. 후속 일반 WorkItem은 HQ가 이 resultRef를 baseRef로 지정하며 각자 격리 clone에서 수정한다.
 ⑪ 최종 CODE_CHANGE가 #8 bootstrap을 baseRef로 이어받으면 #8 결과는 별도 최종 tip이 아니라 소비된 기준점으로 취급하며, 사용자 checkout이 그 managed bootstrap branch에 있으면 최종 remote result branch로 안전하게 전환할 수 있다.
 ⑫ #9 게시 산출물은 작업 루트의 `.projecthub/artifacts` 아래 Worker 소유 artifact 경로에 저장하며 disposable runtime과 분리한다.
-⑬ 하네스 없음 Direct Work는 WorkGraph, HQ/WORK 역할 계약, Git baseline, disposable clone, checkpoint, resultRef와 landing 정책의 적용 대상이 아니다. 사용자가 선택한 작업 폴더를 직접 working directory로 사용하고 project instruction 주입 없이 선택한 Provider를 실행한다. 다만 Master-Polish.md 제3조의 변경·안전 경계와 Worker의 child-process 수명 책임은 그대로 적용한다.
+⑬ 하네스 없음 Direct Work는 WorkGraph, HQ/WORK 역할 계약, Git baseline, disposable clone, checkpoint, resultRef와 landing 정책의 적용 대상이 아니다. 사용자가 선택한 작업 폴더를 직접 working directory로 사용하고 project instruction 주입 없이 선택한 Provider를 실행한다. 다만 Master-Polish.md 제3조의 변경 범위와 이 문서의 Git·프로세스 안전 경계는 그대로 적용한다.
+⑭ 배포, 기본·보호 branch push, force push, 파괴적 Git 작업 또는 시스템 영구 변경은 명시적 승인 없이 수행하지 않는다.
 
 제8조 (프로세스)
 
@@ -71,6 +76,7 @@
 ⑤ bridge와 background listener 종료는 WPF Dispatcher continuation에 의존하지 않는다.
 ⑥ 프로세스 수명 문제는 AI 계약이나 PID 후손 추적 규칙을 추가하지 않고 실행 계층에서 해결한다.
 ⑦ ProjectHub가 시작하는 Codex 역할은 computer-use capability를 실행 계층에서 비활성화한다.
+⑧ runtime cache와 임시 파일의 완전 삭제를 Worker 종료의 선행조건으로 삼지 않는다.
 
 제9조 (UI와 설정)
 
