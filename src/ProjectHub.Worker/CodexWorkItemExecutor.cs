@@ -721,10 +721,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 checkpoint.WorktreePath,
                 sessionId,
                 blockDetailCode: errorCode,
-                resultType: checkpointCreatedCommit ||
-                            item.ResultType == WorkItemResultType.CodeChange
-                    ? WorkItemResultType.CodeChange
-                    : item.ResultType,
+                resultType: item.ResultType,
                 commitManifestPath: item.CommitManifestPath);
         }
 
