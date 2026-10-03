@@ -43,7 +43,7 @@
 ⑬ Integration 준비는 로컬 branch 이름에 대응하는 origin branch를 추론하지 않고, fetch된 origin ref 중 현재 로컬 HEAD와 정확히 같은 commit을 가리키는 ref가 있는지 검증한다.
 ⑭ WORK의 Git 환경은 terminal/GCM 상호작용만 비활성화하고 HTTPS/SSH protocol 자체를 막지 않는다. `git ls-remote` 같은 read-only 원격 사실 확인은 허용하되, WORK 실행 중 현재 worktree의 Git metadata는 계속 분리·복원하며 clone·stage·commit·push와 원격 branch 변경은 역할 계약상 금지한다. 원격 Git 상태 변경이 필요한 인프라 복구는 사용자 one-shot 허용이 있는 HIGH 경로를 사용한다.
 ⑮ managed CLI 역할의 Codex 내부 output/schema 임시파일은 작업 폴더의 `.projecthub/runtime/temp` 아래 role/work 전용 경로를 우선 사용한다. PAUSE compact와 DONE runtime reset이 이 경로를 정리하며, RESOURCE staging은 IMAGE만 허용한다.
-⑯ WorkGraph 기계 상태의 `kind`는 NORMAL/INTEGRATION 실행 방식을 나타내며 #0/#9 고정 임무는 별도 `slot=RESOURCE` / `slot=BUILD_PUBLISH`로 표시한다.
+⑯ WorkGraph 기계 상태의 `kind`는 NORMAL/INTEGRATION 실행 방식을 나타낸다. 고정 임무는 `slot=RESOURCE_MAKE`, `RESOURCE_PROCESSING`, `FILE_MANAGER`, `BUILD_PUBLISH`로 별도 표시한다.
 
 제6조 (WEB)
 
