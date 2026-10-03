@@ -1061,7 +1061,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             {
                 Progress?.Invoke(new CodexWorkItemProgress(
                     item.Id,
-                    "완료 WorkItem의 linked worktree 정리를 보류했습니다. " +
+                    "완료 WorkItem의 격리 clone 정리를 보류했습니다. " +
                     (removal.ErrorCode ?? "WORKTREE_REMOVE_FAILED"),
                     item.CreatedOrder + 1));
             }
@@ -1075,7 +1075,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         {
             Progress?.Invoke(new CodexWorkItemProgress(
                 item.Id,
-                "완료 WorkItem의 linked worktree 정리 중 기계 오류가 발생해 최종 runtime 정리로 넘깁니다. " +
+                "완료 WorkItem의 격리 clone 정리 중 기계 오류가 발생해 최종 runtime 정리로 넘깁니다. " +
                 exception.GetType().Name,
                 item.CreatedOrder + 1));
         }
