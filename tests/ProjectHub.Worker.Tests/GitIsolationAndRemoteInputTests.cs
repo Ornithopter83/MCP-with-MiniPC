@@ -102,7 +102,7 @@ public sealed class GitIsolationAndRemoteInputTests
     }
 
 
-    private sealed class ArchiveGitRunner : IGitWorktreeCommandRunner
+    private sealed class ArchiveGitRunner : IGitCommandRunner
     {
         private readonly string _source;
 
