@@ -55,23 +55,15 @@ public sealed class MechanicalBuildExecutorTests
     }
 
     [Fact]
-    public void FullBuildSkipsIntegrationInputSnapshots()
+    public void FullBuildResolvesProjectInsideClone()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
             "projecthub-build-full-" + Guid.NewGuid().ToString("N"));
-        var realProject = Path.Combine(root, "LocalLens.Studio", "LocalLens.Studio.csproj");
-        var snapshotProject = Path.Combine(
-            root,
-            ".projecthub-integration-inputs",
-            "11",
-            "LocalLens.Studio",
-            "LocalLens.Studio.csproj");
+        var project = Path.Combine(root, "LocalLens.Studio", "LocalLens.Studio.csproj");
 
-        Directory.CreateDirectory(Path.GetDirectoryName(realProject)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(snapshotProject)!);
-        File.WriteAllText(realProject, "<Project />");
-        File.WriteAllText(snapshotProject, "<Project />");
+        Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+        File.WriteAllText(project, "<Project />");
 
         try
         {
@@ -82,7 +74,7 @@ public sealed class MechanicalBuildExecutorTests
                 NoRestore: false);
             var resolved = MechanicalBuildExecutor.ResolveTarget(root, authorization);
 
-            Assert.Equal(Path.GetFullPath(realProject), resolved);
+            Assert.Equal(Path.GetFullPath(project), resolved);
         }
         finally
         {
@@ -91,29 +83,23 @@ public sealed class MechanicalBuildExecutorTests
     }
 
     [Fact]
-    public void ExplicitIntegrationInputTargetIsRejectedWithoutFallback()
+    public void ExplicitTargetOutsideCloneIsRejectedWithoutFallback()
     {
-        var root = Path.Combine(
+        var parent = Path.Combine(
             Path.GetTempPath(),
             "projecthub-build-target-" + Guid.NewGuid().ToString("N"));
-        var realProject = Path.Combine(root, "LocalLens.Studio", "LocalLens.Studio.csproj");
-        var snapshotRelative = Path.Combine(
-            ".projecthub-integration-inputs",
-            "11",
-            "LocalLens.Studio",
-            "LocalLens.Studio.csproj");
-        var snapshotProject = Path.Combine(root, snapshotRelative);
-
-        Directory.CreateDirectory(Path.GetDirectoryName(realProject)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(snapshotProject)!);
-        File.WriteAllText(realProject, "<Project />");
-        File.WriteAllText(snapshotProject, "<Project />");
+        var root = Path.Combine(parent, "clone");
+        var external = Path.Combine(parent, "inputs", "External.csproj");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.GetDirectoryName(external)!);
+        File.WriteAllText(external, "<Project />");
 
         try
         {
+            var relativeOutside = Path.GetRelativePath(root, external);
             var authorization = new BuildAuthorization(
                 "TARGET",
-                snapshotRelative,
+                relativeOutside,
                 "Debug",
                 NoRestore: false);
             var resolved = MechanicalBuildExecutor.ResolveTarget(root, authorization);
@@ -122,7 +108,8 @@ public sealed class MechanicalBuildExecutorTests
         }
         finally
         {
-            Directory.Delete(root, true);
+            Directory.Delete(parent, true);
         }
     }
+
 }
