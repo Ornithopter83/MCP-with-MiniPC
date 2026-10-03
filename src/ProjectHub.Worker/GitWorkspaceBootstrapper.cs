@@ -42,8 +42,6 @@ public sealed class GitWorkspaceBootstrapper
             return Failure("GIT_REMOTE_REPOSITORY_REQUIRED", workspace);
 
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
-        if (!PathsEqual(repositoryRoot, workspace))
-            return Failure("GIT_REMOTE_EXACT_ROOT_REQUIRED", workspace);
 
         var branchResult = await RunAsync(
             repositoryRoot,
@@ -195,18 +193,6 @@ public sealed class GitWorkspaceBootstrapper
         CancellationToken cancellationToken,
         params string[] arguments)
         => _runner.RunAsync(workingDirectory, arguments, timeout, cancellationToken);
-
-    private static bool PathsEqual(string left, string right)
-    {
-        static string Normalize(string value)
-            => Path.GetFullPath(value)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        return string.Equals(
-            Normalize(left),
-            Normalize(right),
-            StringComparison.OrdinalIgnoreCase);
-    }
 
     private static GitWorkspaceBootstrapState Failure(
         string errorCode,
