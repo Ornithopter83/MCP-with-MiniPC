@@ -97,7 +97,7 @@ public sealed class GitWorkspaceBootstrapperTests
         {
             var runner = BaseRepositoryRunner(workspace);
             runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok(" M app.cs"));
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**", Ok(" M app.cs"));
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
@@ -126,7 +126,7 @@ public sealed class GitWorkspaceBootstrapperTests
             runner.Enqueue("rev-parse --verify HEAD", Fail());
             runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
             runner.Enqueue(
-                "status --porcelain=v1 --untracked-files=all",
+                "status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**",
                 Ok("?? project.godot"));
             runner.Enqueue("fetch --prune origin", Ok());
 
@@ -155,7 +155,7 @@ public sealed class GitWorkspaceBootstrapperTests
         {
             var runner = BaseRepositoryRunner(workspace);
             runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**", Ok());
             runner.Enqueue("fetch --prune origin", Fail());
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
@@ -177,7 +177,7 @@ public sealed class GitWorkspaceBootstrapperTests
         {
             var runner = BaseRepositoryRunner(workspace);
             runner.Enqueue("remote get-url origin", Ok("git@github.com:owner/repo.git"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**", Ok());
             runner.Enqueue("fetch --prune origin", Ok());
             runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Fail());
 
@@ -200,7 +200,7 @@ public sealed class GitWorkspaceBootstrapperTests
         {
             var runner = BaseRepositoryRunner(workspace, "baseline123");
             runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**", Ok());
             runner.Enqueue("fetch --prune origin", Ok());
             runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Fail());
             runner.Enqueue(
@@ -227,7 +227,7 @@ public sealed class GitWorkspaceBootstrapperTests
         {
             var runner = BaseRepositoryRunner(workspace, "local123");
             runner.Enqueue("remote get-url origin", Ok("ssh://git@example.invalid/repo.git"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**", Ok());
             runner.Enqueue("fetch --prune origin", Ok());
             runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Ok("remote456"));
 
@@ -250,7 +250,7 @@ public sealed class GitWorkspaceBootstrapperTests
         {
             var runner = BaseRepositoryRunner(workspace, "abc123");
             runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**", Ok());
             runner.Enqueue("fetch --prune origin", Ok());
             runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Ok("abc123"));
 
@@ -281,7 +281,7 @@ public sealed class GitWorkspaceBootstrapperTests
             runner.Enqueue(
                 "remote get-url origin",
                 Ok("https://user:secret@example.invalid/repo.git"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**", Ok());
             runner.Enqueue("fetch --prune origin", Ok());
             runner.Enqueue(
                 "rev-parse --verify refs/remotes/origin/main^{commit}",
