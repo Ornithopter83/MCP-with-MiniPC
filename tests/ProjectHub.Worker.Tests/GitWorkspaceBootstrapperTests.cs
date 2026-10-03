@@ -175,39 +175,9 @@ public sealed class GitWorkspaceBootstrapperTests
             Assert.Equal("main", state.Branch);
             Assert.Equal("abc123", state.HeadCommit);
             Assert.False(state.IsDirty);
-            Assert.False(state.InitializedNow);
-            Assert.False(state.NeedsBaseline);
             Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("init"));
             Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("add"));
             Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("commit"));
-        }
-        finally
-        {
-            Directory.Delete(workspace, true);
-        }
-    }
-
-    [Fact]
-    public async Task CreateBaselineDoesNotCreateLocalCommit()
-    {
-        var workspace = CreateWorkspace();
-        try
-        {
-            var runner = new ScriptedRunner();
-            var state = new GitWorkspaceBootstrapState(
-                true,
-                null,
-                workspace,
-                workspace,
-                "main",
-                "abc123",
-                false,
-                false);
-
-            var result = await new GitWorkspaceBootstrapper(runner).CreateBaselineAsync(state);
-
-            Assert.Same(state, result);
-            Assert.Empty(runner.Calls);
         }
         finally
         {
