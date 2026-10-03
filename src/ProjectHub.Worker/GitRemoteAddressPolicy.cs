@@ -2,6 +2,29 @@ namespace ProjectHub.Worker;
 
 public static class GitRemoteAddressPolicy
 {
+    public static string? SanitizeForDisplay(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var remote = value.Trim();
+        if (Uri.TryCreate(remote, UriKind.Absolute, out var uri) &&
+            !string.IsNullOrWhiteSpace(uri.Host))
+        {
+            var builder = new UriBuilder(uri)
+            {
+                UserName = string.Empty,
+                Password = string.Empty
+            };
+            return builder.Uri.ToString().TrimEnd('/');
+        }
+
+        var at = remote.IndexOf('@');
+        return at >= 0 && at < remote.Length - 1
+            ? remote[(at + 1)..]
+            : remote;
+    }
+
     public static bool IsNetworkRemote(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
