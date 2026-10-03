@@ -700,6 +700,33 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public void WorkGraphTransportRepairsIdlessGlobalBaseRefOntoAddedWork()
+    {
+        const string response = """
+            [ACTION=CONTINUE]
+            [GOTO : WORK]
+            WORK_GRAPH_PATCH:
+            {"expectedRevision":0,"operations":[
+              {"op":"SET_GOAL","goal":"전체 사용자 목표"},
+              {"op":"SET_BASE_REF","baseRef":"90d18784c8c9e5600003c1600d16d633d69f3803"},
+              {"op":"ADD","workItemId":"10","goal":"실제 작업","dependencies":[]}
+            ]}
+            """;
+
+        Assert.True(
+            WorkGraphTransportContract.TryParse(
+                response,
+                out var patch,
+                out var error),
+            error);
+
+        var operation = Assert.Single(patch!.Operations);
+        Assert.Equal(WorkGraphPatchOperationType.Add, operation.Type);
+        Assert.Equal("10", operation.WorkItemId);
+        Assert.Equal("90d18784c8c9e5600003c1600d16d633d69f3803", operation.Item!.BaseRef);
+    }
+
+    [Fact]
     public async Task StructuredSchemaErrorReturnsControlToHqWithFieldHint()
     {
         var graph = new WorkGraph("job", 1);
