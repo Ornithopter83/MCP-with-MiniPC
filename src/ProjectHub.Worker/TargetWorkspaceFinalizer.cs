@@ -190,7 +190,7 @@ public sealed class TargetWorkspaceFinalizer
                 : "사용자 checkout이 이미 최종 원격 CODE_CHANGE branch와 일치합니다.",
             target.Id,
             finalResultRef,
-            false);
+            checkout.Switched);
     }
 
     private async Task<TargetWorkspaceFinalizationResult?> CheckPublishFreshnessAsync(
