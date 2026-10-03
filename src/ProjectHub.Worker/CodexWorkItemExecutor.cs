@@ -1031,32 +1031,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         return true;
     }
 
-    private static string BuildIntegrationImportFailure(
-        string reportBody,
-        string errorCode,
-        string? integrationRef,
-        GitIntegrationImportResult? imported)
-    {
-        var lines = new List<string>
-        {
-            "INTEGRATION_IMPORT",
-            "status: BLOCKED",
-            "errorCode: " + errorCode,
-            "integrationRef: " + (integrationRef ?? "없음")
-        };
-
-        if (imported is not null)
-        {
-            lines.Add("importedRef: " + (imported.ImportedRef ?? "없음"));
-            if (!string.IsNullOrWhiteSpace(imported.ErrorDetail))
-                lines.Add("detail: " + imported.ErrorDetail);
-        }
-
-        lines.Add(string.Empty);
-        lines.Add(reportBody.Trim());
-        return string.Join(Environment.NewLine, lines);
-    }
-
     private static string BuildFailureSummary(string standardError, string finalMessage)
     {
         var value = !string.IsNullOrWhiteSpace(standardError)
