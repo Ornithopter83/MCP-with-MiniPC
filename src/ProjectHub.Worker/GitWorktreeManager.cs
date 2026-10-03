@@ -1257,9 +1257,20 @@ public sealed class GitWorktreeManager
             string.IsNullOrWhiteSpace(statusResult.StandardOutput));
     }
 
+    public Task<GitWorktreeCheckpointResult> CreateCheckpointAsync(
+        string worktreePath,
+        string workItemId,
+        CancellationToken cancellationToken = default)
+        => CreateCheckpointAsync(
+            worktreePath,
+            workItemId,
+            publishCleanHead: false,
+            cancellationToken);
+
     public async Task<GitWorktreeCheckpointResult> CreateCheckpointAsync(
         string worktreePath,
         string workItemId,
+        bool publishCleanHead,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(workItemId))
@@ -1273,6 +1284,17 @@ public sealed class GitWorktreeManager
         {
             if (string.IsNullOrWhiteSpace(before.HeadCommit))
                 return new(false, "WORKTREE_CHECKPOINT_HEAD_UNAVAILABLE", worktreePath, before.Branch, null, false);
+
+            if (!publishCleanHead)
+            {
+                return new(
+                    true,
+                    null,
+                    before.WorktreePath,
+                    before.Branch,
+                    before.HeadCommit,
+                    false);
+            }
 
             return await PublishCheckpointToRemoteAsync(
                 before.WorktreePath,
