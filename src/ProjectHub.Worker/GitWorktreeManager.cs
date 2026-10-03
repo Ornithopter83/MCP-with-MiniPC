@@ -2129,62 +2129,29 @@ public sealed class GitWorktreeManager
             cancellationToken,
             "rev-parse",
             "--show-toplevel").ConfigureAwait(false);
-        var gitRepositoryAvailable =
-            rootResult.ExitCode == 0 &&
-            !string.IsNullOrWhiteSpace(rootResult.StandardOutput);
-        if (gitRepositoryAvailable)
+        if (rootResult.ExitCode == 0 &&
+            !string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+        {
             repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        }
 
         var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
-        var legacyRuntimeRoot = WorkerPaths.GetLegacyRepositoryRuntimeRoot(repositoryRoot);
-        var legacyWorktreeRoot = BuildLegacyWorktreeRoot(repositoryRoot);
         var removed = EnumerateOwnedCloneDirectories(runtime).ToList();
-        var errors = new List<string>();
-
         var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
         await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            foreach (var path in new[]
-            {
+            var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
                 runtime.Root,
-                legacyRuntimeRoot,
-                legacyWorktreeRoot
-            }.Distinct(OperatingSystem.IsWindows()
-                ? StringComparer.OrdinalIgnoreCase
-                : StringComparer.Ordinal))
-            {
-                var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
-                    path,
-                    cancellationToken).ConfigureAwait(false);
-                if (deleteError is not null)
-                    errors.Add(path + ": " + deleteError);
-            }
-
-            // 이전 LocalGit 버전이 등록한 linked worktree metadata만 일회성으로 정리한다.
-            if (gitRepositoryAvailable)
-            {
-                var pruneResult = await RunAsync(
-                    repositoryRoot,
-                    RemoveTimeout,
-                    cancellationToken,
-                    "worktree",
-                    "prune",
-                    "--expire",
-                    "now").ConfigureAwait(false);
-                if (pruneResult.ExitCode != 0)
-                    errors.Add(BuildGitFailureDetail("git worktree prune --expire now", pruneResult));
-            }
+                cancellationToken).ConfigureAwait(false);
 
             return new(
-                errors.Count == 0,
-                errors.Count == 0 ? null : "RUNTIME_RESET_FAILED",
+                deleteError is null,
+                deleteError is null ? null : "RUNTIME_RESET_FAILED",
                 runtime.Root,
                 removed,
-                !Directory.Exists(runtime.Root) &&
-                !Directory.Exists(legacyRuntimeRoot) &&
-                !Directory.Exists(legacyWorktreeRoot),
-                errors.Count == 0 ? null : string.Join(Environment.NewLine, errors));
+                !Directory.Exists(runtime.Root),
+                deleteError);
         }
         finally
         {
@@ -2448,21 +2415,6 @@ public sealed class GitWorktreeManager
             runtime.Worktrees,
             StableSegment(jobId, 8),
             StableSegment(workItemId, 18));
-    }
-
-    private static string BuildLegacyWorktreeRoot(string repositoryRoot)
-    {
-        var root = Path.GetFullPath(repositoryRoot);
-        var parent = Directory.GetParent(root)?.FullName
-            ?? throw new InvalidOperationException("저장소 상위 경로를 계산할 수 없습니다.");
-        var repository = StableSegment(
-            Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
-            12);
-
-        return Path.Combine(
-            parent,
-            ".projecthub-worktrees",
-            repository);
     }
 
     private Task<GitCommandResult> ReadPrimaryWorkspaceStatusAsync(
