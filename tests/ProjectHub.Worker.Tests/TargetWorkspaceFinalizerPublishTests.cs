@@ -112,6 +112,41 @@ public sealed class TargetWorkspaceFinalizerPublishTests
         }
     }
 
+    [Fact]
+    public async Task FinalizerRetryAcceptsAlreadySwitchedResultBranch()
+    {
+        var root = CreateRoot();
+        var resultBranch = GitWorktreeManager.BuildBranchName("job", "10");
+        try
+        {
+            var graph = CreateCompletedGraph("code-new", resultBranch);
+            var runner = new SequenceRunner();
+            runner.Enqueue(0, root);
+            runner.Enqueue(0, resultBranch);
+            runner.Enqueue(0, string.Empty);
+            runner.Enqueue(0, "code-new");
+            runner.Enqueue(0, "code-new");
+            runner.Enqueue(0, "code-new");
+            runner.Enqueue(0, string.Empty);
+
+            var finalizer = new TargetWorkspaceFinalizer(
+                root,
+                "main",
+                new GitWorktreeManager(runner));
+            var result = await finalizer.FinalizeAsync(graph.Snapshot());
+
+            Assert.True(result.Success);
+            Assert.Null(result.ErrorCode);
+            Assert.False(result.CheckoutSwitched);
+            Assert.Equal("code-new", result.FinalResultRef);
+            Assert.Contains("이미 최종 원격 CODE_CHANGE branch", result.Message);
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
     private static WorkGraph CreateCompletedGraph(
         string resultRef,
         string? branch = null)
