@@ -356,6 +356,21 @@ public partial class MainWindow
                             structuredErrorCode);
                     if (!string.IsNullOrWhiteSpace(errorDetail))
                         structuredResult = structuredResult with { ErrorDetail = errorDetail };
+
+                    ProjectWorkspacePersistence.AppendEvent(
+                        workingDirectory,
+                        jobId,
+                        DateTimeOffset.UtcNow,
+                        "WORK GRAPH STRUCTURED REJECTED",
+                        "errorCode=" + (structuredErrorCode ?? "WORK_GRAPH_PATCH_INVALID") +
+                        Environment.NewLine +
+                        (string.IsNullOrWhiteSpace(errorDetail)
+                            ? string.Empty
+                            : errorDetail.Trim() + Environment.NewLine) +
+                        "payload:" + Environment.NewLine +
+                        payload.Trim(),
+                        structuredErrorCode ?? "WORK_GRAPH_PATCH_INVALID",
+                        graphRevision: graph.Snapshot().Revision);
                 }
 
                 if (structuredResult.RepairAttempted)
@@ -569,6 +584,18 @@ public partial class MainWindow
                     started.SessionId,
                     null,
                     cts.Token);
+            };
+
+            supervisor.PatchRejected += (errorCode, body) =>
+            {
+                ProjectWorkspacePersistence.AppendEvent(
+                    workingDirectory,
+                    jobId,
+                    DateTimeOffset.UtcNow,
+                    "WORK GRAPH PATCH REJECTED",
+                    body,
+                    errorCode,
+                    graphRevision: graph.Snapshot().Revision);
             };
 
             supervisor.StateChanged += snapshot =>
