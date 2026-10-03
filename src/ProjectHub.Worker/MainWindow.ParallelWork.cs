@@ -160,7 +160,6 @@ public partial class MainWindow
 
             var stagedHqAttachments = StageUserAttachments(
                 attachments,
-                workingDirectory,
                 jobId + "-hq-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             var webUserAttachments = BuildUserWebAttachments(attachments);
             var deliverUserAttachmentsToHq = stagedHqAttachments.Count > 0;
