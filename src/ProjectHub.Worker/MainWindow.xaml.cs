@@ -1251,8 +1251,10 @@ public partial class MainWindow : Window
                 TaskTitle.Text = "JEV 응답을 같은 Codex 세션으로 전달 중";
                 SetFlowState(false, true, false, explicitStage: TaskStage.Judge);
                 AddTaskMessage("JEV REQUEST", validation);
-                JudgeTransportResult judgment;
-                try { judgment = await _jevJudgeRunner.ReviewRawAsync(request, _targetSettings.EffectiveJudge, cancellationToken); }
+                var judgment = await _jevJudgeRunner.ReviewRawAsync(
+                    request,
+                    _targetSettings.EffectiveJudge,
+                    cancellationToken);
                 RecordJevTransportTelemetry(_activeJevJobId ?? Guid.NewGuid().ToString("N"), judgment.Telemetry, "LEGACY_JEV");
                 report = judgment.ErrorCode is null && judgment.RawResponse is not null
                     ? $"[NEXT: WEB]\n[JEV RAW RESPONSE — SAME CODEX SESSION]\n{judgment.RawResponse}"
