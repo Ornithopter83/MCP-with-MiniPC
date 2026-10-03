@@ -199,10 +199,40 @@ public sealed class GitWorkspaceBootstrapperTests
             Assert.True(state.Success);
             Assert.Equal("main", state.Branch);
             Assert.Equal("abc123", state.HeadCommit);
+            Assert.Equal("https://example.invalid/repo.git", state.OriginUrl);
             Assert.False(state.IsDirty);
             Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("init"));
             Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("add"));
             Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("commit"));
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
+    public async Task AcceptedRemoteIsSanitizedBeforeItLeavesPreflight()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var runner = BaseRepositoryRunner(workspace, "abc123");
+            runner.Enqueue(
+                "remote get-url origin",
+                Ok("https://user:secret@example.invalid/repo.git"));
+            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
+            runner.Enqueue("fetch --prune origin", Ok());
+            runner.Enqueue(
+                "rev-parse --verify refs/remotes/origin/main^{commit}",
+                Ok("abc123"));
+
+            var state = await new GitWorkspaceBootstrapper(runner)
+                .PrepareAsync(workspace);
+
+            Assert.True(state.Success);
+            Assert.Equal("https://example.invalid/repo.git", state.OriginUrl);
+            Assert.DoesNotContain("secret", state.OriginUrl ?? string.Empty);
         }
         finally
         {
