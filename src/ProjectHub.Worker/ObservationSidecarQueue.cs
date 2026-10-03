@@ -371,6 +371,25 @@ public sealed class ObservationSidecarQueue : IAsyncDisposable
                 return;
             }
 
+            if (BuildExecutionPolicy.IsForbiddenForWorkItem(
+                    workItemId,
+                    request.Command,
+                    request.Arguments))
+            {
+                await FinishAsync(
+                    request,
+                    workItemId,
+                    completionMode,
+                    false,
+                    null,
+                    startedAt,
+                    "OBSERVATION_BUILD_SLOT_REQUIRED",
+                    "빌드 계열 기계 실행은 WorkItem #9 BUILD/PUBLISH에서만 허용됩니다.",
+                    Array.Empty<string>(),
+                    cancellationToken);
+                return;
+            }
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = request.Command.Trim(),

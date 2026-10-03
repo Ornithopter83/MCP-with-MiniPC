@@ -66,7 +66,7 @@ public sealed class CodexCliRunner : IDisposable
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault();
     }
 
-    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null, IReadOnlyList<string>? additionalWritableDirectories = null, bool ignoreProjectInstructions = false, IReadOnlyDictionary<string, string>? environmentVariables = null, bool disableComputerUse = false, bool includeAppBaseWritable = true)
+    public async Task<CodexCliResult> RunAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string? outputSchemaJson = null, CodexSandboxMode? sandboxMode = null, Action<string>? progress = null, Action<string>? sessionStarted = null, IReadOnlyList<string>? additionalWritableDirectories = null, bool ignoreProjectInstructions = false, IReadOnlyDictionary<string, string>? environmentVariables = null, bool disableComputerUse = false, bool includeAppBaseWritable = true, IReadOnlyList<string>? configOverrides = null, bool bypassHookTrust = false)
     {
         if (Volatile.Read(ref _disposed) != 0)
             throw new ObjectDisposedException(nameof(CodexCliRunner));
@@ -102,6 +102,8 @@ public sealed class CodexCliRunner : IDisposable
         }
 
         var effectiveSandbox = sandboxMode ?? (readOnly ? CodexSandboxMode.ReadOnly : CodexSandboxMode.DangerFullAccess);
+        if (bypassHookTrust)
+            startInfo.ArgumentList.Add("--dangerously-bypass-hook-trust");
         startInfo.ArgumentList.Add("exec");
         startInfo.ArgumentList.Add("--sandbox");
         startInfo.ArgumentList.Add(effectiveSandbox switch
@@ -127,6 +129,13 @@ public sealed class CodexCliRunner : IDisposable
         {
             startInfo.ArgumentList.Add("-c");
             startInfo.ArgumentList.Add("project_doc_max_bytes=0");
+        }
+        foreach (var configOverride in configOverrides ?? Array.Empty<string>())
+        {
+            if (string.IsNullOrWhiteSpace(configOverride))
+                continue;
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add(configOverride.Trim());
         }
         // ProjectHub의 Codex 역할은 GUI computer-use를 사용하지 않는다.
         // 역할별 prompt 판단에 맡기지 않고 CLI capability 자체를 항상 비활성화한다.

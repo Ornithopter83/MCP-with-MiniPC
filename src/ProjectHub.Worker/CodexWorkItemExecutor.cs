@@ -331,6 +331,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 environment[pair.Key] = pair.Value;
             environment["PROJECTHUB_RESOURCE_TEMP"] = runtimePaths.TempRoot;
             environment["PROJECTHUB_WORK_TEMP"] = workTempPath;
+            environment["PROJECTHUB_BUILD_EXECUTION_ALLOWED"] =
+                BuildExecutionPolicy.AllowsBuildExecution(item.Id) ? "1" : "0";
             if (string.Equals(item.Id, FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal))
             {
                 publishOutputDirectory = WorkerPaths.GetPublishedArtifactDirectory(
@@ -389,6 +391,19 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
         if (string.Equals(inboundType, "BUILD_AUTHORIZED", StringComparison.Ordinal))
         {
+            if (!BuildExecutionPolicy.AllowsBuildExecution(item.Id))
+            {
+                return WorkItemExecutionResult.Blocked(
+                    BuildExecutionPolicy.BuildSlotRequiredError,
+                    "BUILD_AUTHORIZED는 #9 BUILD/PUBLISH에서만 사용할 수 있습니다.",
+                    item.ResultRef ?? preparation.HeadCommit,
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId,
+                    blockDetailCode: BuildExecutionPolicy.BuildSlotRequiredError,
+                    resultType: item.ResultType);
+            }
+
             if (!BuildRequestContract.TryParseAuthorization(
                     inboundBody,
                     out var authorization,
@@ -463,6 +478,22 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         }
 
         AiRoleRunResult runResult;
+        IReadOnlyList<string>? codexConfigOverrides = null;
+        var bypassHookTrust = false;
+        if (!BuildExecutionPolicy.AllowsBuildExecution(item.Id))
+        {
+            var hookPath = Path.Combine(workTempPath, "projecthub-build-gate.ps1");
+            await File.WriteAllTextAsync(
+                hookPath,
+                BuildExecutionPolicy.CreateCodexPreToolHookScript(),
+                new System.Text.UTF8Encoding(false),
+                cancellationToken).ConfigureAwait(false);
+            codexConfigOverrides = new[]
+            {
+                BuildExecutionPolicy.BuildCodexPreToolHookOverride(hookPath)
+            };
+            bypassHookTrust = true;
+        }
 
         while (true)
         {
@@ -531,7 +562,28 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     InputAttachments: stagedUserAttachments,
                     EnvironmentVariables: workEnvironment,
                     DisableComputerUse: true,
-                    IncludeAppBaseWritable: false)).ConfigureAwait(false);
+                    IncludeAppBaseWritable: false,
+                    CodexConfigOverrides: codexConfigOverrides,
+                    BypassHookTrust: bypassHookTrust)).ConfigureAwait(false);
+
+            if (!BuildExecutionPolicy.AllowsBuildExecution(item.Id))
+            {
+                var forbiddenExecution = (runResult.CommandExecutions ?? Array.Empty<CodexCommandExecution>())
+                    .FirstOrDefault(execution => BuildExecutionPolicy.IsBuildCommand(execution.Command));
+                if (forbiddenExecution is not null)
+                {
+                    return WorkItemExecutionResult.Blocked(
+                        BuildExecutionPolicy.BuildCommandForbiddenError,
+                        "일반 WorkItem에서 #9 전용 빌드 명령 실행이 감지되었습니다." +
+                        Environment.NewLine + "command=" + forbiddenExecution.Command,
+                        item.ResultRef ?? preparation.HeadCommit,
+                        preparation.Branch,
+                        preparation.WorktreePath,
+                        sessionId,
+                        blockDetailCode: BuildExecutionPolicy.BuildCommandForbiddenError,
+                        resultType: item.ResultType);
+                }
+            }
 
             var gitMetadataValidation = GitMetadataGuard.Validate(
                 executionWorkingDirectory,
@@ -830,7 +882,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 completedResultType),
             WorkItemReportStatus.Blocked => WorkItemExecutionResult.Blocked(
                 BuildRequestContract.ContainsRequest(reportBody)
-                    ? "BUILD_REQUEST"
+                    ? BuildExecutionPolicy.BuildSlotRequiredError
                     : "HQ_BLOCKED",
                 reportBody,
                 lifecycleResultRef,
