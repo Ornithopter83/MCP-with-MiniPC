@@ -54,6 +54,7 @@
 ⑦ 완료된 CODE_CHANGE는 파일 단위 MATERIALIZE/COPY나 별도 materialization ledger 없이 commit 계보로 추적하며, 최종 사용자 branch 반영은 clean 상태에서 ff-only로만 수행한다.
 ⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나면 Worker가 임의 merge·reset·재초기화하지 않고 기계 오류로 차단한다.
 ⑨ PAUSE·CANCELED continuation은 보존된 WorkGraph와 원격 resultRef를 기준으로 하며, DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.
+⑩ #9 게시 산출물은 프로젝트 checkout과 disposable runtime 밖의 Worker 소유 영구 artifact 경로에 저장한다.
 
 제8조 (프로세스)
 
