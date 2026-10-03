@@ -466,8 +466,19 @@ public sealed class WorkGraph
     }
 
     private static bool IsPreparationFailureCode(string? code)
-        => !string.IsNullOrWhiteSpace(code) &&
-           code.StartsWith("WORKTREE_", StringComparison.Ordinal);
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return false;
+
+        return code.StartsWith("WORKTREE_", StringComparison.Ordinal) ||
+               code.StartsWith("WORK_CLONE_", StringComparison.Ordinal) ||
+               code.StartsWith("INTEGRATION_CLONE_", StringComparison.Ordinal) ||
+               code.StartsWith("INTEGRATION_REMOTE_", StringComparison.Ordinal) ||
+               code.StartsWith("INTEGRATION_BASE_", StringComparison.Ordinal) ||
+               string.Equals(code, "WORK_TOOL_RUNTIME_PREPARE_FAILED", StringComparison.Ordinal) ||
+               string.Equals(code, "USER_ATTACHMENT_STAGE_FAILED", StringComparison.Ordinal) ||
+               string.Equals(code, "INTEGRATION_INPUT_STAGE_FAILED", StringComparison.Ordinal);
+    }
 
     private static bool IsPreExecutionItem(WorkItemEntry item)
         => string.IsNullOrWhiteSpace(item.SessionId) &&
