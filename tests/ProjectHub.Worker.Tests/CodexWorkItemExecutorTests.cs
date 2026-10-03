@@ -109,22 +109,19 @@ public sealed class CodexWorkItemExecutorTests
             fixture.Git.Enqueue(0, "main");
             fixture.Git.Enqueue(0, "base123");
             fixture.Git.Enqueue(0, "");
-            fixture.Git.Enqueue(0, rootPath);
-            fixture.Git.Enqueue(0, fixture.Branch);
             fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, fixture.Branch);
             fixture.Git.Enqueue(0, "?? src/player.gd");
             fixture.Git.Enqueue(0, "");
             fixture.Git.Enqueue(0, "");
             fixture.Git.Enqueue(0, "bootstrap456");
             fixture.Git.Enqueue(0, "");
             fixture.Git.Enqueue(0, $"bootstrap456\trefs/heads/{fixture.Branch}");
-            fixture.Git.Enqueue(0, rootPath);
-            fixture.Git.Enqueue(0, fixture.Branch);
             fixture.Git.Enqueue(0, "bootstrap456");
-            fixture.Git.Enqueue(0, "");
-            fixture.Git.Enqueue(0, fixture.Request.Item.WorktreePath!);
             fixture.Git.Enqueue(0, fixture.Branch);
+            fixture.Git.Enqueue(0, "");
             fixture.Git.Enqueue(0, "base123");
+            fixture.Git.Enqueue(0, fixture.Branch);
             fixture.Git.Enqueue(0, "");
 
             var result = await fixture.Executor.ExecuteAsync(
@@ -146,6 +143,7 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal(WorkItemResultType.CodeChange, result.ResultType);
             Assert.Equal("bootstrap456", result.ResultRef);
+            Assert.Equal(fixture.Request.Item.WorktreePath, result.WorktreePath);
             Assert.Contains("BOOTSTRAP_CODE_RESULT", result.ResultSummary ?? string.Empty);
             Assert.Contains("nextBaseRef: bootstrap456", result.ResultSummary ?? string.Empty);
         }

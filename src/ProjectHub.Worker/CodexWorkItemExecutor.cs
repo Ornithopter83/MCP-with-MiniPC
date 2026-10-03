@@ -202,7 +202,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         ContextPrepared?.Invoke(new CodexWorkItemContextPrepared(
             item.Id,
             preparation.Branch,
-            executionWorkingDirectory,
+            preparation.WorktreePath,
             preparation.BaseRef));
 
         if (string.Equals(request.InboundType, CheckpointRetryInboundType, StringComparison.Ordinal))
@@ -908,7 +908,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     checkpoint.ErrorDetail),
                 checkpoint.HeadCommit ?? item.ResultRef ?? preparation.HeadCommit,
                 checkpoint.Branch ?? preparation.Branch,
-                _workspace,
+                preparation.WorktreePath,
                 sessionId,
                 blockDetailCode: errorCode,
                 resultType: item.ResultType);
@@ -966,7 +966,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 lifecycleResultRef,
                 completedSummary,
                 checkpoint.Branch ?? preparation.Branch,
-                _workspace,
+                preparation.WorktreePath,
                 sessionId,
                 completedResultType),
             WorkItemReportStatus.Blocked => WorkItemExecutionResult.Blocked(
@@ -974,14 +974,14 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 reportBody,
                 lifecycleResultRef,
                 checkpoint.Branch ?? preparation.Branch,
-                _workspace,
+                preparation.WorktreePath,
                 sessionId,
                 resultType: blockedResultType),
             _ => WorkItemExecutionResult.Failed(
                 "WORK_ITEM_REPORTED_FAILED",
                 reportBody,
                 checkpoint.Branch ?? preparation.Branch,
-                _workspace,
+                preparation.WorktreePath,
                 sessionId,
                 "WORK_REPORT")
         };

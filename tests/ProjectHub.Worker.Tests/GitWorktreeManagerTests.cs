@@ -760,7 +760,7 @@ public sealed class GitWorktreeManagerTests
     public async Task TargetWorkspaceCheckpointMovesDirtyRootToManagedBranchAndPublishes()
     {
         var root = CreateTempRepositoryDirectory();
-        var branch = BuildBranchName("job", "8-run-3");
+        var branch = GitWorktreeManager.BuildBranchName("job", "8-run-3");
         var runner = new FakeGitRunner();
         runner.Enqueue(0, root);
         runner.Enqueue(0, "");
@@ -768,18 +768,16 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "main");
         runner.Enqueue(0, "base123");
         runner.Enqueue(0, "");
-        runner.Enqueue(0, root);
-        runner.Enqueue(0, branch);
         runner.Enqueue(0, "base123");
+        runner.Enqueue(0, branch);
         runner.Enqueue(0, "?? src/player.gd");
         runner.Enqueue(0, "");
         runner.Enqueue(0, "");
         runner.Enqueue(0, "bootstrap456");
         runner.Enqueue(0, "");
         runner.Enqueue(0, $"bootstrap456\trefs/heads/{branch}");
-        runner.Enqueue(0, root);
-        runner.Enqueue(0, branch);
         runner.Enqueue(0, "bootstrap456");
+        runner.Enqueue(0, branch);
         runner.Enqueue(0, "");
 
         try
