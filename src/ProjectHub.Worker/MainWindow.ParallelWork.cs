@@ -125,6 +125,7 @@ public partial class MainWindow
 
             var currentGitTarget = await PrepareParallelGitForLaunchAsync(
                 workingDirectory,
+                jobId,
                 cts.Token);
             if (currentGitTarget is null)
                 return;
