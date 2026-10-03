@@ -5,16 +5,14 @@ namespace ProjectHub.Worker.Tests;
 public sealed class TargetWorkspaceFinalizerPublishTests
 {
     [Fact]
-    public async Task FinalizerRequiresRepublishWhenLandedCodeIsNewerThanLastPublish()
+    public async Task FinalizerRequiresRepublishWhenPublishedCommitDiffersFromFinalRemoteCommit()
     {
         var root = CreateRoot();
         try
         {
             var graph = CreateCompletedGraph("code-new");
             var publish = new WorkspacePublishState(root, "job");
-            await publish.MarkCodeLandedAsync("code-old");
-            await publish.MarkPublishedAsync(3);
-            await publish.MarkCodeLandedAsync("code-new");
+            await publish.MarkPublishedAsync("code-old", 3);
 
             var runner = CreateContainedResultRunner(root, "code-new");
             var finalizer = new TargetWorkspaceFinalizer(
@@ -26,6 +24,8 @@ public sealed class TargetWorkspaceFinalizerPublishTests
             Assert.False(result.Success);
             Assert.Equal("TARGET_PUBLISH_STALE", result.ErrorCode);
             Assert.Contains("#9 BUILD/PUBLISH", result.Message);
+            Assert.Contains("code-new", result.Message);
+            Assert.Contains("code-old", result.Message);
         }
         finally
         {
@@ -34,17 +34,14 @@ public sealed class TargetWorkspaceFinalizerPublishTests
     }
 
     [Fact]
-    public async Task FinalizerAllowsEndAfterRepublishOfLatestLandedCode()
+    public async Task FinalizerAllowsEndWhenPublishUsesFinalRemoteCommit()
     {
         var root = CreateRoot();
         try
         {
             var graph = CreateCompletedGraph("code-new");
             var publish = new WorkspacePublishState(root, "job");
-            await publish.MarkCodeLandedAsync("code-old");
-            await publish.MarkPublishedAsync(3);
-            await publish.MarkCodeLandedAsync("code-new");
-            await publish.MarkPublishedAsync(5);
+            await publish.MarkPublishedAsync("code-new", 5);
 
             var runner = CreateContainedResultRunner(root, "code-new");
             var finalizer = new TargetWorkspaceFinalizer(
@@ -85,11 +82,13 @@ public sealed class TargetWorkspaceFinalizerPublishTests
         string resultRef)
     {
         var runner = new SequenceRunner();
-        runner.Enqueue(0, root);
-        runner.Enqueue(0, "main");
-        runner.Enqueue(0, resultRef);
-        runner.Enqueue(0, "head");
-        runner.Enqueue(0, string.Empty);
+        runner.Enqueue(0, root);          // rev-parse --show-toplevel
+        runner.Enqueue(0, "main");       // symbolic-ref
+        runner.Enqueue(0, string.Empty); // fetch origin
+        runner.Enqueue(0, "head");       // local HEAD
+        runner.Enqueue(0, "head");       // origin/main HEAD
+        runner.Enqueue(0, resultRef);     // resultRef commit
+        runner.Enqueue(0, string.Empty); // resultRef is ancestor of HEAD
         return runner;
     }
 
