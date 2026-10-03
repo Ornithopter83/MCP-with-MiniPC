@@ -1207,7 +1207,7 @@ public sealed class CodexWorkItemExecutorTests
         }
     }
 
-    private sealed class FakeGitRunner : IGitWorktreeCommandRunner
+    private sealed class FakeGitRunner : IGitCommandRunner
     {
         private readonly Queue<GitCommandResult> _results = new();
 
