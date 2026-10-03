@@ -1,5 +1,4 @@
 using System.IO;
-using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -179,6 +178,15 @@ public static class WorkerTargetConfiguration
     private static string? ResolvePreferredRemote(string workingDirectory)
     {
         var verbose = RunGit(workingDirectory, "remote", "-v");
+        var parsed = ParsePreferredRemote(verbose);
+        if (!string.IsNullOrWhiteSpace(parsed))
+            return parsed;
+
+        return ReadPreferredRemoteFromGitConfig(workingDirectory);
+    }
+
+    private static string? ParsePreferredRemote(string? verbose)
+    {
         if (string.IsNullOrWhiteSpace(verbose))
             return null;
 
@@ -204,37 +212,73 @@ public static class WorkerTargetConfiguration
         return firstFetch;
     }
 
+    private static string? ReadPreferredRemoteFromGitConfig(string workingDirectory)
+    {
+        try
+        {
+            var gitDirectory = Path.Combine(workingDirectory, ".git");
+            if (!Directory.Exists(gitDirectory))
+                return null;
+
+            var configPath = Path.Combine(gitDirectory, "config");
+            if (!File.Exists(configPath))
+                return null;
+
+            string? currentRemote = null;
+            string? firstRemoteUrl = null;
+            string? originUrl = null;
+
+            foreach (var rawLine in File.ReadLines(configPath))
+            {
+                var line = rawLine.Trim();
+                if (line.StartsWith("[remote \"", StringComparison.OrdinalIgnoreCase) &&
+                    line.EndsWith("\"]", StringComparison.Ordinal))
+                {
+                    currentRemote = line[9..^2];
+                    continue;
+                }
+
+                if (currentRemote is null)
+                    continue;
+
+                var equals = line.IndexOf('=');
+                if (equals <= 0)
+                    continue;
+
+                var key = line[..equals].Trim();
+                if (!string.Equals(key, "url", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var url = line[(equals + 1)..].Trim();
+                if (string.IsNullOrWhiteSpace(url))
+                    continue;
+
+                firstRemoteUrl ??= url;
+                if (string.Equals(currentRemote, "origin", StringComparison.OrdinalIgnoreCase))
+                    originUrl = url;
+            }
+
+            return originUrl ?? firstRemoteUrl;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string? RunGit(string workingDirectory, params string[] arguments)
     {
         try
         {
-            using var processJob = new WorkerChildProcessJob("Git target config");
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                WorkingDirectory = workingDirectory,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
-            using var launched = processJob.Start(startInfo);
-            var process = launched.Process;
-            var stdoutTask = launched.StandardOutput!.ReadToEndAsync();
-            var stderrTask = launched.StandardError!.ReadToEndAsync();
-            if (!process.WaitForExit(5000))
-            {
-                processJob.Dispose();
-                try { process.Kill(entireProcessTree: true); } catch { }
-                return null;
-            }
-
-            var exitCode = process.ExitCode;
-            processJob.Dispose();
-            var output = stdoutTask.GetAwaiter().GetResult().Trim();
-            _ = stderrTask.GetAwaiter().GetResult();
-            return exitCode == 0 ? output : null;
+            var result = new ProcessGitCommandRunner()
+                .RunAsync(
+                    workingDirectory,
+                    arguments,
+                    TimeSpan.FromSeconds(5),
+                    CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            return result.ExitCode == 0 ? result.StandardOutput.Trim() : null;
         }
         catch
         {
