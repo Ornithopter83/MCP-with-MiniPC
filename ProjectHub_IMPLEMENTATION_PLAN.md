@@ -31,6 +31,7 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 ④ WorkItem 생애 동안 checkpoint commit이 생성됐거나 이전 BLOCKED 단계의 CODE_CHANGE provenance가 보존된 경우 최종 재개 실행에서 새 commit이 없어도 CODE_CHANGE를 ANALYSIS로 낮추지 않는다.
 ⑤ 여러 CODE_CHANGE 결과를 함께 반영해야 하면 HQ가 INTEGRATION WorkItem을 추가한다.
 ⑥ INTEGRATION은 주 저장소와 분리된 독립 clone에서 일반 파일 기준으로 의미적 통합과 검증을 수행하고, Worker가 완료 결과를 새 `projecthub/*` 원격 CODE_CHANGE로 게시한다.
+⑦ 하네스 없음 Direct Work는 위 NORMAL WORK/INTEGRATION 경로와 별도다. WorkGraph나 Git 준비·clone·checkpoint를 거치지 않고 사용자가 지정한 작업 폴더에서 선택한 Provider를 직접 실행한다.
 
 제3조 (continuation과 기록)
 
