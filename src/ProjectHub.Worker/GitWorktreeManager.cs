@@ -2337,7 +2337,6 @@ public sealed class GitWorktreeManager
         var errors = new List<string>();
         foreach (var path in new[]
         {
-            runtime.IntegrationClones,
             runtime.TempRoot,
             runtime.NuGetRoot,
             runtime.DotNetHome
