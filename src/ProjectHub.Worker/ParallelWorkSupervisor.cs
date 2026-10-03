@@ -181,6 +181,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
     public event Action<ParallelWorkSchedulerSnapshot>? StateChanged;
     public event Action<ParallelWorkExternalBlock>? ExternalBlockAvailable;
+    public event Action<string, string>? PatchRejected;
 
     public Task<bool> UpdateRunningContextAsync(
         string workItemId,
@@ -292,6 +293,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     rejectionCode,
                     _graph.Snapshot(),
                     consecutivePatchRejections);
+                ObservePatchRejected(rejectionCode, rejectionBody);
 
                 if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
                 {
@@ -322,6 +324,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                         rejectionCode,
                         _graph.Snapshot(),
                         consecutivePatchRejections);
+                    ObservePatchRejected(rejectionCode, rejectionBody);
 
                     if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
                     {
@@ -375,6 +378,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                         errorDetail,
                         _graph.Snapshot(),
                         consecutivePatchRejections);
+                    ObservePatchRejected(rejectionCode, rejectionBody);
 
                     if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
                     {
@@ -406,6 +410,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                         errorDetail,
                         _graph.Snapshot(),
                         consecutivePatchRejections);
+                    ObservePatchRejected(rejectionCode, rejectionBody);
 
                     if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
                     {
@@ -535,6 +540,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     rejectionCode,
                     _graph.Snapshot(),
                     consecutivePatchRejections);
+                ObservePatchRejected(rejectionCode, rejectionBody);
 
                 if (consecutivePatchRejections >= MaximumConsecutivePatchRejections)
                 {
@@ -910,6 +916,18 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
         builder.AppendLine("위 값은 Worker가 관측한 기계적 상태이며 작업 의미 판단 결과가 아닙니다.");
         return builder.ToString().TrimEnd();
+    }
+
+    private void ObservePatchRejected(string errorCode, string body)
+    {
+        try
+        {
+            PatchRejected?.Invoke(errorCode, body);
+        }
+        catch
+        {
+            // 관제 로깅 실패가 WorkGraph 상태 기계를 중단시키지 않게 한다.
+        }
     }
 
     private static string FormatHqResponseRejected(
