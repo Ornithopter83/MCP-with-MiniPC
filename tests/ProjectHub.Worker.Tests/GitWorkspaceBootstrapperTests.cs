@@ -267,7 +267,7 @@ public sealed class GitWorkspaceBootstrapperTests
         return path;
     }
 
-    private sealed class ScriptedRunner : IGitWorktreeCommandRunner
+    private sealed class ScriptedRunner : IGitCommandRunner
     {
         private readonly Dictionary<string, Queue<GitCommandResult>> _responses =
             new(StringComparer.Ordinal);
