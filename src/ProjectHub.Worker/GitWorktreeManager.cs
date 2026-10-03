@@ -519,6 +519,56 @@ public sealed class GitWorktreeManager
                     BuildGitFailureDetail("git ls-remote initial baseline", verifyResult));
             }
 
+            var sourceFetch = await FetchOriginAsync(
+                repositoryRoot,
+                cancellationToken).ConfigureAwait(false);
+            if (sourceFetch.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_SOURCE_FETCH_FAILED",
+                    repositoryRoot,
+                    branch,
+                    head,
+                    BuildGitFailureDetail("git fetch initial baseline", sourceFetch));
+            }
+
+            var adoptResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "reset",
+                "--mixed",
+                head).ConfigureAwait(false);
+            if (adoptResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_LOCAL_ADOPT_FAILED",
+                    repositoryRoot,
+                    branch,
+                    head,
+                    BuildGitFailureDetail("git reset --mixed initial baseline", adoptResult));
+            }
+
+            var adoptedStatus = await ReadPrimaryWorkspaceStatusAsync(
+                repositoryRoot,
+                workspace,
+                cancellationToken).ConfigureAwait(false);
+            if (adoptedStatus.ExitCode != 0 ||
+                !string.IsNullOrWhiteSpace(adoptedStatus.StandardOutput))
+            {
+                return new(
+                    false,
+                    "INITIAL_BASE_LOCAL_ADOPT_DIRTY",
+                    repositoryRoot,
+                    branch,
+                    head,
+                    adoptedStatus.ExitCode == 0
+                        ? adoptedStatus.StandardOutput
+                        : BuildGitFailureDetail("git status after initial baseline", adoptedStatus));
+            }
+
             _ = await DeleteDirectoryTreeWithRetriesAsync(
                 clonePath,
                 CancellationToken.None).ConfigureAwait(false);
