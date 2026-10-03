@@ -55,7 +55,7 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 
 ① Worker는 WORK 실행 전에 Git metadata를 AI 실행 경계 밖으로 격리하고 원격 프로토콜 접근을 차단한다.
 ② 실행 중 사용자 작업 폴더가 바뀌면 그 변경을 자동 merge하지 않고 사용자 파일을 보존한 채 기존 결과 반영을 중단한다.
-③ NORMAL WORK의 Git 준비는 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin`이 존재해야 한다. 기존 HEAD가 있으면 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 상태를 요구한다. 최초 commit이 없는 unborn 저장소는 `.gitignore` 기준 작업 폴더 파일을 Worker 소유 격리 clone에 옮겨 `projecthub/*` 초기 baseline commit으로 게시하고 그 SHA를 이후 WORK의 공통 기준점으로 사용한다. 상위 디렉터리의 다른 Git 저장소를 자동 채택하지 않으며 기존 HEAD가 있는 저장소의 불일치·dirty 상태를 `.git` 재초기화·자동 merge·reset으로 우회하지 않는다. 이 항목은 하네스 없음 Direct Work에 적용하지 않는다.
+③ NORMAL WORK의 Git 준비는 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin`이 존재해야 한다. 기존 HEAD가 있으면 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 상태를 요구한다. 최초 commit이 없는 unborn 저장소는 `.gitignore` 기준 작업 폴더 파일을 Worker 소유 격리 clone에 옮겨 `projecthub/*` 초기 baseline commit으로 게시하고 그 SHA를 이후 WORK의 공통 기준점으로 사용한다. 게시 확인 뒤 사용자 작업 폴더의 현재 branch도 파일 내용 변경 없이 같은 baseline commit을 로컬 HEAD로 사용하게 하며 기본 branch 원격 push는 하지 않는다. 상위 디렉터리의 다른 Git 저장소를 자동 채택하지 않으며 기존 HEAD가 있는 저장소의 불일치·dirty 상태를 `.git` 재초기화·자동 merge·reset으로 우회하지 않는다. 이 항목은 하네스 없음 Direct Work에 적용하지 않는다.
 ④ 연결 프로젝트의 `projecthub/*` 작업 branch checkpoint push는 Worker가 수행할 수 있지만, 기본·보호 branch push, force push, 파괴적 reset과 배포는 별도 명시적 승인 없이 수행하지 않는다.
 ⑤ 정확한 disposable clone 경로, 환경 변수와 Git 명령행 옵션은 현재 구현과 테스트를 원본으로 사용한다.
 
