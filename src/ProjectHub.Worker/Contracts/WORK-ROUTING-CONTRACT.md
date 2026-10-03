@@ -29,3 +29,5 @@ RESOURCE_TYPE: IMAGE
 
 ① 현재 WorkItem 목표와 작업 목록, 제공된 선행 결과 범위 안에서 작업한다.
 ② Worker가 제공하는 작업공간과 기계 결과를 현재 실행 사실로 사용한다.
+③ 필요한 원격 사실 확인에는 `git ls-remote`처럼 원격 상태를 바꾸지 않는 조회를 사용할 수 있다. Git 저장소 생성·복구·clone·stage·commit·push와 원격 branch 생성·변경은 수행하지 않는다.
+④ 현재 WorkItem의 Git metadata와 checkpoint·원격 게시는 Worker가 기계적으로 관리하므로 이를 우회하지 않는다.

@@ -67,22 +67,12 @@ public sealed class GitMetadataIsolationLease
             isolationDirectory);
     }
 
-    public static IReadOnlyDictionary<string, string> BuildGitNetworkDenyEnvironment()
+    public static IReadOnlyDictionary<string, string> BuildGitNonInteractiveEnvironment()
         => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["GIT_TERMINAL_PROMPT"] = "0",
             ["GCM_INTERACTIVE"] = "Never",
-            ["GIT_ALLOW_PROTOCOL"] = "file",
-            ["GIT_PROTOCOL_FROM_USER"] = "0",
-            ["GIT_CONFIG_COUNT"] = "4",
-            ["GIT_CONFIG_KEY_0"] = "protocol.http.allow",
-            ["GIT_CONFIG_VALUE_0"] = "never",
-            ["GIT_CONFIG_KEY_1"] = "protocol.https.allow",
-            ["GIT_CONFIG_VALUE_1"] = "never",
-            ["GIT_CONFIG_KEY_2"] = "protocol.ssh.allow",
-            ["GIT_CONFIG_VALUE_2"] = "never",
-            ["GIT_CONFIG_KEY_3"] = "protocol.git.allow",
-            ["GIT_CONFIG_VALUE_3"] = "never"
+            ["GIT_PROTOCOL_FROM_USER"] = "0"
         };
 
     public GitMetadataRestoreResult Restore()

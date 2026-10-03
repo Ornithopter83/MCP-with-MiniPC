@@ -301,7 +301,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             WorkerPaths.EnsureWorkToolDirectories(runtimePaths, workTempPath);
 
             var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var pair in GitMetadataIsolationLease.BuildGitNetworkDenyEnvironment())
+            foreach (var pair in GitMetadataIsolationLease.BuildGitNonInteractiveEnvironment())
                 environment[pair.Key] = pair.Value;
             foreach (var pair in WorkerPaths.BuildWorkToolEnvironment(runtimePaths, workTempPath))
                 environment[pair.Key] = pair.Value;

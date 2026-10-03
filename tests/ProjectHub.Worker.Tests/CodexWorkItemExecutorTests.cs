@@ -30,8 +30,16 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Contains("WORK_ITEM_STATUS: COMPLETED", fixture.Runner.LastRequest.Prompt);
             Assert.NotNull(fixture.Runner.LastRequest.EnvironmentVariables);
             Assert.Equal(
-                "never",
-                fixture.Runner.LastRequest.EnvironmentVariables!["GIT_CONFIG_VALUE_1"]);
+                "0",
+                fixture.Runner.LastRequest.EnvironmentVariables!["GIT_TERMINAL_PROMPT"]);
+            Assert.Equal(
+                "Never",
+                fixture.Runner.LastRequest.EnvironmentVariables["GCM_INTERACTIVE"]);
+            Assert.False(
+                fixture.Runner.LastRequest.EnvironmentVariables.ContainsKey("GIT_ALLOW_PROTOCOL"));
+            Assert.DoesNotContain(
+                fixture.Runner.LastRequest.EnvironmentVariables.Keys,
+                key => key.StartsWith("GIT_CONFIG_", StringComparison.OrdinalIgnoreCase));
 
             var repositoryRoot = Path.Combine(fixture.Parent, "repo");
             var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
@@ -59,6 +67,20 @@ public sealed class CodexWorkItemExecutorTests
         {
             fixture.Dispose();
         }
+    }
+
+    [Fact]
+    public void WorkGitEnvironmentAllowsRemoteProtocolWithoutInteractivePrompts()
+    {
+        var environment = GitMetadataIsolationLease.BuildGitNonInteractiveEnvironment();
+
+        Assert.Equal("0", environment["GIT_TERMINAL_PROMPT"]);
+        Assert.Equal("Never", environment["GCM_INTERACTIVE"]);
+        Assert.Equal("0", environment["GIT_PROTOCOL_FROM_USER"]);
+        Assert.False(environment.ContainsKey("GIT_ALLOW_PROTOCOL"));
+        Assert.DoesNotContain(
+            environment.Keys,
+            key => key.StartsWith("GIT_CONFIG_", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -825,7 +847,7 @@ public sealed class CodexWorkItemExecutorTests
         git.Enqueue(0, "primary999");
         git.Enqueue(0, "https://example.invalid/repo.git");
         git.Enqueue(0, "");
-        git.Enqueue(0, "primary999");
+        git.Enqueue(0, "primary999 refs/remotes/origin/projecthub/job/base");
         git.Enqueue(0, "Cloning");
         git.Enqueue(0, "Switched");
         git.Enqueue(0, "");
@@ -835,8 +857,8 @@ public sealed class CodexWorkItemExecutorTests
 
         var ai = new FakeAiRoleRunner("""
             [GOTO : RESOURCE]
-            RESOURCE_TYPE: FILE
-            통합 검증용 파일을 생성해줘.
+            RESOURCE_TYPE: IMAGE
+            통합 검증용 이미지를 생성해줘.
             """);
         var executor = new CodexWorkItemExecutor(
             "job",
