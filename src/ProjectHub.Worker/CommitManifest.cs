@@ -112,10 +112,6 @@ public sealed class GitCommitManifestBuilder
             var parsed = ParseChangedPath(line);
             if (parsed is null)
                 return Failure("COMMIT_MANIFEST_DIFF_PARSE_FAILED", "변경 경로를 해석할 수 없습니다: " + line);
-            if (IsRegenerableArtifactPath(parsed.Value.Path) ||
-                (parsed.Value.PreviousPath is not null && IsRegenerableArtifactPath(parsed.Value.PreviousPath)))
-                continue;
-
             long? size = null;
             string? sha256 = null;
             var isText = false;
@@ -178,8 +174,7 @@ public sealed class GitCommitManifestBuilder
             files);
 
         var directory = Path.Combine(
-            Path.GetFullPath(workspace),
-            ".projecthub",
+            WorkerPaths.GetRepositoryRuntimePaths(Path.GetFullPath(workspace)).Root,
             "commit-manifests",
             SafePathComponent(jobId));
         var shortCommit = normalizedCommit[..Math.Min(12, normalizedCommit.Length)];
@@ -250,33 +245,6 @@ public sealed class GitCommitManifestBuilder
         };
     }
 
-
-    private static bool IsRegenerableArtifactPath(string path)
-    {
-        var normalized = (path ?? string.Empty).Replace('\\', '/').TrimStart('/');
-        if (normalized.Length == 0)
-            return false;
-
-        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Any(segment =>
-                segment.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("publish", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("artifacts", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("dist-temp", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("NuGet", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
-                segment.Equals("TestResults", StringComparison.OrdinalIgnoreCase)))
-            return true;
-
-        return normalized.StartsWith(".projecthub/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith(".dotnet/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith(".dotnet-cli/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith(".nuget/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("coverage/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("verification-output/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("visual-captures/", StringComparison.OrdinalIgnoreCase);
-    }
 
     private static string? ResolveInside(string root, string relativePath)
     {
