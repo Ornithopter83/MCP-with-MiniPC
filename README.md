@@ -34,10 +34,10 @@ dotnet run --project src/ProjectHub.Server
 
 ## Worker와 Web 런타임
 
-Worker는 HQ가 WorkGraph와 작업 분해를 관제하고 WORK가 배정된 WorkItem checklist를 수행하는 실행 흐름을 관리한다. RESOURCE, JUDGE, OBSERVATION은 일반 WorkItem과 분리된 sidecar로 현재 요청 문맥에 귀속된다. WORK가 일반 파일을 수정하는 동안 Git metadata와 Git 원격 접근은 AI 실행 경계에서 분리하고, checkpoint commit과 CODE_CHANGE Commit Manifest 생성은 Worker가 담당한다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
+Worker는 HQ가 WorkGraph와 작업 분해를 관제하고 WORK가 배정된 WorkItem checklist를 수행하는 실행 흐름을 관리한다. RESOURCE, JUDGE, OBSERVATION은 일반 WorkItem과 분리된 sidecar로 현재 요청 문맥에 귀속된다. WORK가 일반 파일을 수정하는 동안 Git metadata와 Git 원격 접근은 AI 실행 경계에서 분리하고, checkpoint commit의 `projecthub/*` 원격 게시와 CODE_CHANGE `resultRef` 검증은 Worker가 담당한다. 별도 Commit Manifest나 materialization ledger는 사용하지 않는다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
 
 HQ와 RESOURCE는 서로 다른 persistent profile의 관리형 Chromium을 사용한다. 각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 app window로 실행되며, runtime token이 없는 일반 Chrome과 임의 ChatGPT 페이지는 Worker bridge에 연결하지 않는다. HQ Web 응답은 task별 correlation KEY와 `[RESPONSE=OK]` 완료 표식을 사용하고, RESOURCE 완료는 생성 파일 준비와 capture 상태를 별도로 사용한다. 세부 상관·완료 계약은 `Web-Polish.md`와 Worker의 Web 전송 계약에 둔다.
 
-Worker의 저장소별 실행 격리와 기계 상태는 target workspace의 `.projecthub` 아래에 두며 정상 Worker 종료 뒤에는 해당 폴더를 남기지 않는 것을 원칙으로 한다. 짧은 파일 잠금 때문에 즉시 삭제할 수 없는 경우 종료 후 cleanup helper가 정리를 재시도한다.
+Worker의 저장소별 기계 상태와 진단 이력은 프로젝트 checkout 밖의 `%LOCALAPPDATA%\ProjectHub\WorkspaceState\<저장소명-hash>`에 두고, disposable clone·tool cache·임시 실행 파일은 `%LOCALAPPDATA%\ProjectHub\RepositoryRuntime\<저장소명-hash>`에 둔다. WorkspaceState의 WorkGraph·event log·transcript는 진단·이력으로 보존할 수 있으며, RepositoryRuntime 정리는 최선 노력으로 수행하되 정리 실패만으로 의미 작업 완료를 무효화하지 않는다.
 
 Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. Web 전달에서는 로컬 파일 hash 검증과 ChatGPT UI의 기계적 준비 상태를 구분하고, 일반 Web 결과 파일은 Worker가 안전한 결과 경로에 저장한다.
