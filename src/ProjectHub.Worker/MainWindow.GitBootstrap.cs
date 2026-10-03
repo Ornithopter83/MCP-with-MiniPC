@@ -12,6 +12,7 @@ public partial class MainWindow
         if (_gitPreparationInProgress)
             return null;
 
+        _gitLaunchErrorMessage = null;
         _gitPreparationInProgress = true;
         UpdateDashboardRunButtonState();
         UpdateFollowupButtonState();
@@ -47,6 +48,7 @@ public partial class MainWindow
                 return null;
             }
 
+            _gitLaunchErrorMessage = null;
             RefreshGitTargetPresentation(target);
             DashboardPreflightText.Text = "원격 Git 준비 완료 · HQ 시작 준비";
             DashboardPreflightText.Foreground =
@@ -108,6 +110,8 @@ public partial class MainWindow
             "PARALLEL_GIT_ATTACHED_BRANCH_REQUIRED" => "현재 작업공간이 branch에 연결되어 있어야 합니다.",
             _ => "원격 Git 준비에 실패했습니다."
         };
+
+        _gitLaunchErrorMessage = detail;
 
         var pathLine = string.IsNullOrWhiteSpace(path)
             ? string.Empty
