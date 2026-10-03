@@ -44,7 +44,7 @@ public sealed class GitIsolationAndManifestTests
     }
 
     [Fact]
-    public async Task CommitManifestContainsChangedPathsAndInlineText()
+    public async Task CommitManifestContainsAllGitChangedPathsAndLivesOutsideCheckout()
     {
         var parent = Path.Combine(
             Path.GetTempPath(),
@@ -108,17 +108,31 @@ public sealed class GitIsolationAndManifestTests
                 file => file.Path == "renamed.txt");
             Assert.Equal("RENAME", renamed.ChangeType);
             Assert.Equal("old.txt", renamed.PreviousPath);
-            Assert.DoesNotContain(
+            Assert.Contains(
                 result.Manifest.ChangedFiles,
-                file => file.Path.StartsWith("publish/", StringComparison.OrdinalIgnoreCase));
-            Assert.DoesNotContain(
+                file => file.Path == "publish/DesignTool.exe");
+            Assert.Contains(
                 result.Manifest.ChangedFiles,
-                file => file.Path.StartsWith("artifacts/", StringComparison.OrdinalIgnoreCase));
+                file => file.Path == "artifacts/package.zip");
+
+            var runtimeRoot = WorkerPaths.GetRepositoryRuntimePaths(workspace).Root;
+            Assert.StartsWith(
+                Path.GetFullPath(runtimeRoot) + Path.DirectorySeparatorChar,
+                Path.GetFullPath(result.ManifestPath!),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            Assert.False(
+                Path.GetFullPath(result.ManifestPath!).StartsWith(
+                    Path.GetFullPath(workspace) + Path.DirectorySeparatorChar,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+            Assert.False(Directory.Exists(Path.Combine(workspace, ".projecthub")));
         }
         finally
         {
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(workspace).Root;
             if (Directory.Exists(parent))
                 Directory.Delete(parent, true);
+            if (Directory.Exists(runtime))
+                Directory.Delete(runtime, true);
         }
     }
 
@@ -189,7 +203,7 @@ public sealed class GitIsolationAndManifestTests
 
 
     [Fact]
-    public async Task IntegrationDependenciesAreExpandedAsIgnoredFileSnapshots()
+    public async Task IntegrationDependenciesAreExpandedOutsideCloneWithoutGitExcludeMutation()
     {
         var parent = Path.Combine(
             Path.GetTempPath(),
@@ -231,9 +245,11 @@ public sealed class GitIsolationAndManifestTests
                 new byte[] { 1, 2, 3, 4 },
                 await File.ReadAllBytesAsync(Path.Combine(snapshot!, "binary.dat")));
 
-            var exclude = await File.ReadAllTextAsync(
-                Path.Combine(clone, ".git", "info", "exclude"));
-            Assert.Contains(".projecthub-integration-inputs/", exclude);
+            Assert.False(
+                Path.GetFullPath(snapshot!).StartsWith(
+                    Path.GetFullPath(clone) + Path.DirectorySeparatorChar,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+            Assert.False(File.Exists(Path.Combine(clone, ".git", "info", "exclude")));
             Assert.Contains(
                 runner.Calls,
                 call => call.Count > 0 && call[0] == "archive");
