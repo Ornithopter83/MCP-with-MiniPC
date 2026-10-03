@@ -16,11 +16,11 @@ public sealed class GitWorkspaceBootstrapper
 {
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan NetworkTimeout = TimeSpan.FromMinutes(2);
-    private readonly IGitWorktreeCommandRunner _runner;
+    private readonly IGitCommandRunner _runner;
 
-    public GitWorkspaceBootstrapper(IGitWorktreeCommandRunner? runner = null)
+    public GitWorkspaceBootstrapper(IGitCommandRunner? runner = null)
     {
-        _runner = runner ?? new ProcessGitWorktreeCommandRunner();
+        _runner = runner ?? new ProcessGitCommandRunner();
     }
 
     public async Task<GitWorkspaceBootstrapState> PrepareAsync(
