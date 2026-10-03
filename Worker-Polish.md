@@ -45,13 +45,15 @@
 
 제7조 (Git과 결과)
 
-① 병렬 WORK의 작업공간 준비, checkpoint와 최종 반영은 Worker가 기계적으로 관리할 수 있다.
-② CODE_CHANGE의 Git 정보와 Commit Manifest는 내부 기계 사실로 보존할 수 있다.
-③ 사용자 작업 폴더에는 확정된 중간 결과가 누적될 수 있으므로 작업 중 clean 상태를 항상 전제로 하지 않는다.
-④ 병렬 결과의 Integration은 사용자 작업 폴더의 dirty 상태와 분리된 Worker 소유 작업공간에서 수행하고 검증된 결과만 기계적으로 반영한다.
-⑤ PAUSE·CANCELED는 작업 폴더가 그대로인 경우에만 같은 WorkGraph를 이어가고, DONE·DONE_WITH_ERROR 뒤의 추가 작업이나 외부 파일 변경이 확인된 경우에는 현재 파일에서 새 Job을 시작한다.
-⑥ 사용자 작업 폴더의 위험한 병합이나 강제 reset을 자동 수행하지 않는다.
-⑦ Git 준비 실패 복구에서 `.git` 삭제는 사용자 승인 뒤에만 수행하고 작업 파일과 `.gitignore`는 보존한다.
+① 병렬 WorkGraph는 `origin` 원격 저장소가 존재하고 현재 branch와 로컬 HEAD가 원격 branch HEAD와 일치하는 clean 작업 폴더에서만 시작한다.
+② CODE_CHANGE의 `resultRef`는 Worker가 `projecthub/*` branch에 push하고 원격에서 같은 commit을 확인한 Git commit SHA다.
+③ WORK는 Git 저장소를 생성·복구·stage·commit·push하지 않으며, checkpoint와 원격 게시를 Worker가 기계적으로 수행한다.
+④ checkpoint 대상은 프로젝트의 `.gitignore`가 결정한다. Worker는 build·cache·runtime 경로에 대한 별도 exclude pathspec이나 재생성 파일 목록을 유지하지 않는다.
+⑤ ProjectHub runtime, WorkGraph, transcript와 tool cache는 프로젝트 checkout 밖의 Worker 소유 경로에 둔다.
+⑥ 병렬 결과의 Integration은 Worker 소유 격리 공간에서 수행하고, 충돌 없이 확정된 결과만 새 remote CODE_CHANGE로 게시한다.
+⑦ 완료된 CODE_CHANGE는 파일 단위 MATERIALIZE/COPY나 별도 materialization ledger 없이 commit 계보로 추적하며, 최종 사용자 branch 반영은 clean 상태에서 ff-only로만 수행한다.
+⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나면 Worker가 임의 merge·reset·재초기화하지 않고 기계 오류로 차단한다.
+⑨ PAUSE·CANCELED continuation은 보존된 WorkGraph와 원격 resultRef를 기준으로 하며, DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.
 
 제8조 (프로세스)
 
