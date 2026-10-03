@@ -7,6 +7,7 @@ public partial class MainWindow
 
     private async Task<GitTargetSnapshot?> PrepareParallelGitForLaunchAsync(
         string workingDirectory,
+        string jobId,
         CancellationToken cancellationToken = default)
     {
         if (_gitPreparationInProgress)
@@ -33,11 +34,34 @@ public partial class MainWindow
                 return null;
             }
 
+            var headCommit = state.HeadCommit;
+            if (string.IsNullOrWhiteSpace(headCommit))
+            {
+                DashboardPreflightText.Text = "최초 Git baseline을 준비하는 중입니다.";
+                DashboardPreflightText.Foreground =
+                    (System.Windows.Media.Brush)FindResource("Muted");
+
+                var baseline = await new GitWorktreeManager()
+                    .PrepareInitialBaselineAsync(
+                        workingDirectory,
+                        jobId,
+                        cancellationToken);
+                if (!baseline.Success || string.IsNullOrWhiteSpace(baseline.HeadCommit))
+                {
+                    ShowGitPreparationError(
+                        baseline.ErrorCode ?? "INITIAL_BASE_PREPARATION_FAILED",
+                        baseline.RepositoryRoot);
+                    return null;
+                }
+
+                headCommit = baseline.HeadCommit;
+            }
+
             var target = new GitTargetSnapshot(
                 state.RepositoryRoot,
                 state.OriginUrl,
                 state.Branch,
-                state.HeadCommit,
+                headCommit,
                 "REMOTE_GIT_PREFLIGHT",
                 true);
 
@@ -95,6 +119,17 @@ public partial class MainWindow
             "GIT_REMOTE_EXACT_ROOT_REQUIRED" => "선택한 작업 폴더 자체가 Git 저장소 루트여야 합니다.",
             "GIT_REMOTE_ATTACHED_BRANCH_REQUIRED" => "원격 기준점을 사용하려면 detached HEAD가 아닌 branch가 필요합니다.",
             "GIT_REMOTE_HEAD_REQUIRED" => "현재 Git HEAD commit을 확인할 수 없습니다.",
+            "INITIAL_BASE_WORKSPACE_MISSING" => "최초 Git baseline을 만들 작업 폴더를 찾을 수 없습니다.",
+            "INITIAL_BASE_REPOSITORY_REQUIRED" => "최초 Git baseline을 만들 Git 저장소를 확인할 수 없습니다.",
+            "INITIAL_BASE_REMOTE_REQUIRED" => "최초 Git baseline을 게시할 origin 원격 저장소가 필요합니다.",
+            "INITIAL_BASE_NETWORK_REMOTE_REQUIRED" => "최초 Git baseline은 네트워크 origin 원격 저장소에 게시해야 합니다.",
+            "INITIAL_BASE_CLONE_FAILED" => "최초 Git baseline용 격리 clone을 만들지 못했습니다.",
+            "INITIAL_BASE_FILE_LIST_FAILED" => "최초 Git baseline에 포함할 파일을 확인하지 못했습니다.",
+            "INITIAL_BASE_COPY_FAILED" => "최초 Git baseline에 작업 폴더 파일을 복사하지 못했습니다.",
+            "INITIAL_BASE_COMMIT_FAILED" => "최초 Git baseline commit을 만들지 못했습니다.",
+            "INITIAL_BASE_PUSH_FAILED" => "최초 Git baseline을 projecthub 원격 branch에 게시하지 못했습니다.",
+            "INITIAL_BASE_REMOTE_VERIFY_FAILED" => "게시한 최초 Git baseline을 원격에서 확인하지 못했습니다.",
+            "INITIAL_BASE_PREPARATION_FAILED" => "최초 Git baseline 준비에 실패했습니다.",
             "GIT_REMOTE_ORIGIN_REQUIRED" => "origin 원격 저장소가 반드시 설정되어 있어야 합니다.",
             "GIT_REMOTE_ORIGIN_NETWORK_REQUIRED" => "origin은 로컬 경로가 아닌 네트워크 Git 원격이어야 합니다.",
             "GIT_REMOTE_STATUS_UNAVAILABLE" => "작업 폴더의 Git 상태를 확인할 수 없습니다.",
