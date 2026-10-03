@@ -2015,14 +2015,7 @@ public sealed class GitWorktreeManager
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
         var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
         if (!Directory.Exists(runtime.Root))
-        {
-            return new(
-                true,
-                null,
-                runtime.Root,
-                Array.Empty<string>(),
-                false);
-        }
+            return new(true, null, runtime.Root, Array.Empty<string>(), false);
 
         var removed = new List<string>();
         var errors = new List<string>();
@@ -2030,75 +2023,46 @@ public sealed class GitWorktreeManager
         await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var listResult = await RunAsync(
-                repositoryRoot,
-                ReadTimeout,
-                cancellationToken,
-                "worktree",
-                "list",
-                "--porcelain").ConfigureAwait(false);
-
-            if (listResult.ExitCode != 0)
-            {
-                return new(
-                    false,
-                    "RUNTIME_COMPACT_WORKTREE_LIST_FAILED",
-                    runtime.Root,
-                    removed,
-                    false,
-                    BuildGitFailureDetail("git worktree list --porcelain", listResult));
-            }
-
-            foreach (var entry in ParseWorktrees(listResult.StandardOutput)
-                         .Where(entry => IsPathWithin(entry.Path, runtime.Worktrees)))
+            foreach (var clonePath in EnumerateOwnedCloneDirectories(runtime))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var worktreePath = Path.GetFullPath(entry.Path);
-                if (!Directory.Exists(worktreePath))
-                    continue;
 
                 var inspection = await InspectAsync(
-                    worktreePath,
+                    clonePath,
                     cancellationToken).ConfigureAwait(false);
                 if (!inspection.Success)
                 {
                     errors.Add(
-                        $"worktree={worktreePath}: " +
-                        (inspection.ErrorCode ?? "WORKTREE_INSPECTION_FAILED"));
+                        $"clone={clonePath}: " +
+                        (inspection.ErrorCode ?? "WORK_CLONE_INSPECTION_FAILED"));
                     continue;
                 }
 
                 if (!inspection.IsClean)
                     continue;
 
-                var removeResult = await RunAsync(
-                    repositoryRoot,
-                    RemoveTimeout,
-                    cancellationToken,
-                    "worktree",
-                    "remove",
-                    worktreePath).ConfigureAwait(false);
-                if (removeResult.ExitCode == 0)
-                    removed.Add(worktreePath);
+                var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
+                    clonePath,
+                    cancellationToken).ConfigureAwait(false);
+                if (deleteError is null)
+                {
+                    removed.Add(clonePath);
+                    await DeleteIntegrationInputSiblingAsync(
+                        clonePath,
+                        runtime,
+                        cancellationToken).ConfigureAwait(false);
+                }
                 else
-                    errors.Add(BuildGitFailureDetail("git worktree remove", removeResult));
+                {
+                    errors.Add(clonePath + ": " + deleteError);
+                }
             }
-
-            var pruneResult = await RunAsync(
-                repositoryRoot,
-                RemoveTimeout,
-                cancellationToken,
-                "worktree",
-                "prune",
-                "--expire",
-                "now").ConfigureAwait(false);
-            if (pruneResult.ExitCode != 0)
-                errors.Add(BuildGitFailureDetail("git worktree prune --expire now", pruneResult));
 
             foreach (var path in new[]
             {
                 runtime.NuGetRoot,
-                runtime.DotNetHome
+                runtime.DotNetHome,
+                runtime.TempRoot
             })
             {
                 var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
@@ -2152,96 +2116,13 @@ public sealed class GitWorktreeManager
         var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
         var legacyRuntimeRoot = WorkerPaths.GetLegacyRepositoryRuntimeRoot(repositoryRoot);
         var legacyWorktreeRoot = BuildLegacyWorktreeRoot(repositoryRoot);
-        var removed = new List<string>();
+        var removed = EnumerateOwnedCloneDirectories(runtime).ToList();
         var errors = new List<string>();
 
         var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
         await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (gitRepositoryAvailable)
-            {
-                var listResult = await RunAsync(
-                    repositoryRoot,
-                    ReadTimeout,
-                    cancellationToken,
-                    "worktree",
-                    "list",
-                    "--porcelain").ConfigureAwait(false);
-
-                if (listResult.ExitCode == 0)
-                {
-                    var ownedWorktrees = ParseWorktrees(listResult.StandardOutput)
-                        .Where(entry =>
-                            IsPathWithin(entry.Path, runtime.Worktrees) ||
-                            IsPathWithin(entry.Path, Path.Combine(legacyRuntimeRoot, "worktrees")) ||
-                            IsPathWithin(entry.Path, legacyWorktreeRoot))
-                        .Select(entry => Path.GetFullPath(entry.Path))
-                        .Distinct(OperatingSystem.IsWindows()
-                            ? StringComparer.OrdinalIgnoreCase
-                            : StringComparer.Ordinal)
-                        .ToArray();
-
-                    foreach (var worktreePath in ownedWorktrees)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        var removeResult = await RunAsync(
-                            repositoryRoot,
-                            RemoveTimeout,
-                            cancellationToken,
-                            "worktree",
-                            "remove",
-                            "--force",
-                            worktreePath).ConfigureAwait(false);
-
-                        if (removeResult.ExitCode != 0 && Directory.Exists(worktreePath))
-                        {
-                            var directDeleteError = await DeleteDirectoryTreeWithRetriesAsync(
-                                worktreePath,
-                                cancellationToken).ConfigureAwait(false);
-                            if (directDeleteError is not null)
-                            {
-                                errors.Add(
-                                    $"worktree={worktreePath}: " +
-                                    (removeResult.StandardError.Trim().Length > 0
-                                        ? removeResult.StandardError.Trim()
-                                        : $"exitCode={removeResult.ExitCode}") +
-                                    " / directDelete=" +
-                                    directDeleteError);
-                                continue;
-                            }
-                        }
-
-                        if (!Directory.Exists(worktreePath))
-                            removed.Add(worktreePath);
-                    }
-
-                    var pruneResult = await RunAsync(
-                        repositoryRoot,
-                        RemoveTimeout,
-                        cancellationToken,
-                        "worktree",
-                        "prune",
-                        "--expire",
-                        "now").ConfigureAwait(false);
-                    if (pruneResult.ExitCode != 0)
-                    {
-                        errors.Add(
-                            BuildGitFailureDetail(
-                                "git worktree prune --expire now",
-                                pruneResult));
-                    }
-                }
-                else
-                {
-                    errors.Add(
-                        BuildGitFailureDetail(
-                            "git worktree list --porcelain",
-                            listResult));
-                }
-            }
-
             foreach (var path in new[]
             {
                 runtime.Root,
@@ -2258,22 +2139,19 @@ public sealed class GitWorktreeManager
                     errors.Add(path + ": " + deleteError);
             }
 
-            var remainingPaths = new[]
+            // 이전 LocalGit 버전이 등록한 linked worktree metadata만 일회성으로 정리한다.
+            if (gitRepositoryAvailable)
             {
-                runtime.Root,
-                legacyRuntimeRoot,
-                legacyWorktreeRoot
-            }
-            .Where(Directory.Exists)
-            .Distinct(OperatingSystem.IsWindows()
-                ? StringComparer.OrdinalIgnoreCase
-                : StringComparer.Ordinal)
-            .ToArray();
-
-            if (remainingPaths.Length > 0)
-            {
-                foreach (var path in remainingPaths)
-                    errors.Add("remaining=" + path);
+                var pruneResult = await RunAsync(
+                    repositoryRoot,
+                    RemoveTimeout,
+                    cancellationToken,
+                    "worktree",
+                    "prune",
+                    "--expire",
+                    "now").ConfigureAwait(false);
+                if (pruneResult.ExitCode != 0)
+                    errors.Add(BuildGitFailureDetail("git worktree prune --expire now", pruneResult));
             }
 
             return new(
@@ -2284,9 +2162,7 @@ public sealed class GitWorktreeManager
                 !Directory.Exists(runtime.Root) &&
                 !Directory.Exists(legacyRuntimeRoot) &&
                 !Directory.Exists(legacyWorktreeRoot),
-                errors.Count == 0
-                    ? null
-                    : string.Join(Environment.NewLine, errors));
+                errors.Count == 0 ? null : string.Join(Environment.NewLine, errors));
         }
         finally
         {
@@ -2314,7 +2190,6 @@ public sealed class GitWorktreeManager
             cancellationToken,
             "rev-parse",
             "--show-toplevel").ConfigureAwait(false);
-
         if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
         {
             return new(
@@ -2329,161 +2204,49 @@ public sealed class GitWorktreeManager
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
         var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
         if (!Directory.Exists(runtime.Root))
-        {
-            return new(
-                true,
-                null,
-                runtime.Root,
-                Array.Empty<string>(),
-                false);
-        }
+            return new(true, null, runtime.Root, Array.Empty<string>(), false);
 
+        var removed = new List<string>();
+        var dirty = new List<string>();
         var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
         await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var listResult = await RunAsync(
-                repositoryRoot,
-                ReadTimeout,
-                cancellationToken,
-                "worktree",
-                "list",
-                "--porcelain").ConfigureAwait(false);
-
-            if (listResult.ExitCode != 0)
-            {
-                return new(
-                    false,
-                    "RUNTIME_CLEANUP_WORKTREE_LIST_FAILED",
-                    runtime.Root,
-                    Array.Empty<string>(),
-                    false,
-                    BuildGitFailureDetail("git worktree list --porcelain", listResult));
-            }
-
-            var ownedWorktrees = ParseWorktrees(listResult.StandardOutput)
-                .Where(entry => IsPathWithin(entry.Path, runtime.Worktrees))
-                .ToArray();
-            var removed = new List<string>();
-            var dirty = new List<string>();
-
-            foreach (var entry in ownedWorktrees)
+            foreach (var clonePath in EnumerateOwnedCloneDirectories(runtime))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var worktreePath = Path.GetFullPath(entry.Path);
-                if (!Directory.Exists(worktreePath))
-                    continue;
-
                 var inspection = await InspectAsync(
-                    worktreePath,
+                    clonePath,
                     cancellationToken).ConfigureAwait(false);
-
                 if (!inspection.Success)
                 {
                     return new(
                         false,
-                        "RUNTIME_CLEANUP_WORKTREE_INSPECTION_FAILED",
+                        "RUNTIME_CLEANUP_CLONE_INSPECTION_FAILED",
                         runtime.Root,
                         removed,
                         false,
-                        $"worktree={worktreePath}{Environment.NewLine}gitError={inspection.ErrorCode ?? "WORKTREE_INSPECTION_FAILED"}");
+                        $"clone={clonePath}{Environment.NewLine}gitError={inspection.ErrorCode ?? "WORK_CLONE_INSPECTION_FAILED"}");
                 }
 
                 if (!inspection.IsClean)
                 {
-                    dirty.Add(worktreePath);
+                    dirty.Add(clonePath);
                     continue;
                 }
 
-                var removeResult = await RunAsync(
-                    repositoryRoot,
-                    RemoveTimeout,
-                    cancellationToken,
-                    "worktree",
-                    "remove",
-                    worktreePath).ConfigureAwait(false);
-
-                if (removeResult.ExitCode != 0)
-                {
-                    return new(
-                        false,
-                        removeResult.TimedOut ? "RUNTIME_CLEANUP_WORKTREE_REMOVE_TIMEOUT"
-                            : removeResult.Canceled ? "RUNTIME_CLEANUP_WORKTREE_REMOVE_CANCELED"
-                            : "RUNTIME_CLEANUP_WORKTREE_REMOVE_FAILED",
-                        runtime.Root,
-                        removed,
-                        false,
-                        BuildGitFailureDetail("git worktree remove", removeResult));
-                }
-
-                removed.Add(worktreePath);
+                removed.Add(clonePath);
             }
 
-            var pruneResult = await RunAsync(
-                repositoryRoot,
-                RemoveTimeout,
-                cancellationToken,
-                "worktree",
-                "prune",
-                "--expire",
-                "now").ConfigureAwait(false);
-
-            if (pruneResult.ExitCode != 0)
-            {
-                return new(
-                    false,
-                    pruneResult.TimedOut ? "RUNTIME_CLEANUP_PRUNE_TIMEOUT"
-                        : pruneResult.Canceled ? "RUNTIME_CLEANUP_PRUNE_CANCELED"
-                        : "RUNTIME_CLEANUP_PRUNE_FAILED",
-                    runtime.Root,
-                    removed,
-                    false,
-                    BuildGitFailureDetail("git worktree prune --expire now", pruneResult));
-            }
-
-            var verifyResult = await RunAsync(
-                repositoryRoot,
-                ReadTimeout,
-                cancellationToken,
-                "worktree",
-                "list",
-                "--porcelain").ConfigureAwait(false);
-
-            if (verifyResult.ExitCode != 0)
-            {
-                return new(
-                    false,
-                    "RUNTIME_CLEANUP_VERIFY_FAILED",
-                    runtime.Root,
-                    removed,
-                    false,
-                    BuildGitFailureDetail("git worktree list --porcelain", verifyResult));
-            }
-
-            var remaining = ParseWorktrees(verifyResult.StandardOutput)
-                .Where(entry => IsPathWithin(entry.Path, runtime.Worktrees))
-                .Select(entry => Path.GetFullPath(entry.Path))
-                .ToArray();
-
-            if (remaining.Length > 0)
+            if (dirty.Count > 0)
             {
                 var disposableCleanupErrors = await CleanupDisposableRuntimeDirectoriesAsync(
                     runtime,
                     cancellationToken).ConfigureAwait(false);
-                var remainingDirty = remaining
-                    .Where(path => dirty.Any(
-                        candidate => PathsEqual(candidate, path)))
-                    .ToArray();
-                var errorCode = remainingDirty.Length == remaining.Length
-                    ? "RUNTIME_CLEANUP_WORKTREE_DIRTY"
-                    : "RUNTIME_CLEANUP_WORKTREE_STILL_REGISTERED";
                 var detail = new StringBuilder();
-                detail.AppendLine(
-                    errorCode == "RUNTIME_CLEANUP_WORKTREE_DIRTY"
-                        ? "정리 대상 ProjectHub worktree에 미커밋 변경이 남아 해당 worktree는 보존했습니다."
-                        : "ProjectHub runtime 아래에 등록된 linked worktree가 남아 runtime 루트를 삭제하지 않았습니다.");
-                foreach (var path in remaining)
+                detail.AppendLine("ProjectHub 격리 clone에 미커밋 변경이 남아 runtime을 보존했습니다.");
+                foreach (var path in dirty)
                     detail.AppendLine("- " + path);
                 if (disposableCleanupErrors.Count > 0)
                 {
@@ -2494,9 +2257,9 @@ public sealed class GitWorktreeManager
 
                 return new(
                     false,
-                    errorCode,
+                    "RUNTIME_CLEANUP_CLONE_DIRTY",
                     runtime.Root,
-                    removed,
+                    Array.Empty<string>(),
                     false,
                     detail.ToString().TrimEnd());
             }
@@ -2510,7 +2273,7 @@ public sealed class GitWorktreeManager
                     false,
                     "RUNTIME_CLEANUP_DELETE_FAILED",
                     runtime.Root,
-                    removed,
+                    Array.Empty<string>(),
                     false,
                     deleteError);
             }
@@ -2526,6 +2289,45 @@ public sealed class GitWorktreeManager
         {
             preparationGate.Release();
         }
+    }
+
+    private static IEnumerable<string> EnumerateOwnedCloneDirectories(
+        RepositoryRuntimePaths runtime)
+    {
+        foreach (var root in new[] { runtime.Worktrees, runtime.IntegrationClones })
+        {
+            if (!Directory.Exists(root))
+                continue;
+
+            foreach (var jobDirectory in Directory.EnumerateDirectories(root))
+            {
+                foreach (var candidate in Directory.EnumerateDirectories(jobDirectory))
+                {
+                    if (Directory.Exists(Path.Combine(candidate, ".git")))
+                        yield return Path.GetFullPath(candidate);
+                }
+            }
+        }
+    }
+
+    private static async Task DeleteIntegrationInputSiblingAsync(
+        string clonePath,
+        RepositoryRuntimePaths runtime,
+        CancellationToken cancellationToken)
+    {
+        if (!IsPathWithin(clonePath, runtime.IntegrationClones))
+            return;
+
+        var parent = Directory.GetParent(clonePath)?.FullName;
+        if (string.IsNullOrWhiteSpace(parent))
+            return;
+
+        var inputRoot = Path.Combine(
+            parent,
+            ".inputs-" + Path.GetFileName(clonePath));
+        await DeleteDirectoryTreeWithRetriesAsync(
+            inputRoot,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<IReadOnlyList<string>> CleanupDisposableRuntimeDirectoriesAsync(
