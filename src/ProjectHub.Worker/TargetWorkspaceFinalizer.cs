@@ -59,15 +59,9 @@ public sealed class TargetWorkspaceFinalizer
         if (candidates.Length == 0)
             return new(true, null, "사용자 작업 폴더에 별도 반영할 CODE_CHANGE가 없습니다.");
 
-        var ledger = new TargetWorkspaceMaterializationLedger(
-            _workspace,
-            graph.JobId);
         var pending = new List<WorkItemSnapshot>();
         foreach (var item in candidates)
         {
-            if (ledger.IsResultVerified(item.ResultRef))
-                continue;
-
             var containment = await _worktrees.InspectTargetContainmentAsync(
                 _workspace,
                 item.ResultRef!,
@@ -98,7 +92,7 @@ public sealed class TargetWorkspaceFinalizer
             if (freshness is not null)
                 return freshness;
 
-            return new(true, null, "최종 CODE_CHANGE가 사용자 작업 폴더에 검증 반영되었거나 현재 HEAD에 포함되어 있습니다.");
+            return new(true, null, "최종 CODE_CHANGE가 사용자 작업 폴더의 현재 HEAD에 이미 포함되어 있습니다.");
         }
 
         WorkItemSnapshot target;
@@ -170,10 +164,10 @@ public sealed class TargetWorkspaceFinalizer
             {
                 return new(
                     false,
-                    "TARGET_MATERIALIZATION_REQUIRED",
-                    "사용자 작업 폴더에는 확정된 중간 결과가 누적될 수 있으므로 dirty 상태를 오류로 정리하지 않습니다." +
+                    "TARGET_WORKSPACE_DIRTY",
+                    "원격 commit을 최종 반영하기 전에 사용자 작업 폴더가 변경되었습니다." +
                     Environment.NewLine +
-                    "남은 CODE_CHANGE를 고정 materialize 작업으로 검증 반영해야 합니다." +
+                    "ProjectHub는 파일 단위 materialize 우회를 사용하지 않습니다. 로컬 변경을 commit·push하거나 정리한 뒤 다시 진행해야 합니다." +
                     Environment.NewLine +
                     $"workItemId={target.Id}" + Environment.NewLine +
                     $"resultRef={landingRef}" + Environment.NewLine +
@@ -196,7 +190,7 @@ public sealed class TargetWorkspaceFinalizer
             try
             {
                 var publishState = new WorkspacePublishState(_workspace, graph.JobId);
-                await publishState.MarkCodeMaterializedAsync(
+                await publishState.MarkCodeLandedAsync(
                     landingRef,
                     cancellationToken).ConfigureAwait(false);
             }
@@ -206,7 +200,7 @@ public sealed class TargetWorkspaceFinalizer
                 return new(
                     false,
                     "TARGET_PUBLISH_STATE_UNAVAILABLE",
-                    "사용자 작업 폴더 반영은 완료했지만 publish freshness 상태를 기록하지 못했습니다." +
+                    "원격 CODE_CHANGE의 로컬 ff-only 반영은 완료했지만 publish freshness 상태를 기록하지 못했습니다." +
                     Environment.NewLine +
                     exception.Message,
                     target.Id,
@@ -232,8 +226,8 @@ public sealed class TargetWorkspaceFinalizer
             true,
             null,
             landing.FastForwarded
-                ? "단일 CODE_CHANGE를 사용자 작업 폴더에 ff-only로 반영했습니다."
-                : "단일 CODE_CHANGE가 사용자 작업 폴더에 이미 반영되어 있습니다.",
+                ? "원격 CODE_CHANGE를 사용자 작업 폴더에 ff-only로 반영했습니다."
+                : "원격 CODE_CHANGE가 사용자 작업 폴더에 이미 반영되어 있습니다.",
             target.Id,
             landingRef,
             landing.FastForwarded);
