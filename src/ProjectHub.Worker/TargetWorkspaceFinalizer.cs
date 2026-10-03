@@ -6,9 +6,9 @@ public sealed record TargetWorkspaceFinalizationResult(
     bool Success,
     string? ErrorCode,
     string Message,
-    string? LandedWorkItemId = null,
-    string? LandedResultRef = null,
-    bool FastForwarded = false);
+    string? FinalWorkItemId = null,
+    string? FinalResultRef = null,
+    bool CheckoutSwitched = false);
 
 public sealed class TargetWorkspaceFinalizer
 {
