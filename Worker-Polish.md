@@ -55,7 +55,7 @@
 ⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나면 Worker가 임의 merge·reset·재초기화하지 않고 기계 오류로 차단한다.
 ⑨ PAUSE·CANCELED continuation은 보존된 WorkGraph와 원격 resultRef를 기준으로 하며, DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.
 ⑩ #9 게시 산출물은 프로젝트 checkout과 disposable runtime 밖의 Worker 소유 영구 artifact 경로에 저장한다.
-⑪ Direct Work도 사용자 checkout을 직접 수정하지 않고 원격 기준 disposable clone에서 실행하며, 코드 변경은 `projecthub/*` remote checkpoint로 확정한 뒤 안전 조건을 만족할 때만 사용자 checkout을 해당 result branch로 전환한다.
+⑪ 하네스 없음 Direct Work는 WorkGraph, HQ/WORK 역할 계약, Git baseline, disposable clone, checkpoint, resultRef와 landing 정책의 적용 대상이 아니다. 사용자가 선택한 작업 폴더를 직접 working directory로 사용하고 project instruction 주입 없이 선택한 Provider를 실행한다. 다만 Master-Polish.md 제3조의 변경·안전 경계와 Worker의 child-process 수명 책임은 그대로 적용한다.
 
 제8조 (프로세스)
 
