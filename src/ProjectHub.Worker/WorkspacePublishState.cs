@@ -9,7 +9,7 @@ public sealed record WorkspacePublishStateSnapshot(
     long PublishedCodeGeneration,
     bool HasSuccessfulPublish,
     string? LastCodeResultRef,
-    IReadOnlyList<string> MaterializedCodeResultRefs,
+    IReadOnlyList<string> LandedCodeResultRefs,
     long? LastPublishInvocation,
     DateTimeOffset? LastPublishedAtUtc)
 {
@@ -35,8 +35,7 @@ public sealed class WorkspacePublishState
             throw new ArgumentException("Job ID가 비어 있습니다.", nameof(jobId));
 
         var directory = Path.Combine(
-            Path.GetFullPath(workspace),
-            ".projecthub",
+            WorkerPaths.GetRepositoryRuntimePaths(Path.GetFullPath(workspace)).Root,
             "publish-state");
         _path = Path.Combine(directory, SafePathComponent(jobId.Trim()) + ".json");
     }
@@ -55,7 +54,7 @@ public sealed class WorkspacePublishState
         }
     }
 
-    public async Task<WorkspacePublishStateSnapshot> MarkCodeMaterializedAsync(
+    public async Task<WorkspacePublishStateSnapshot> MarkCodeLandedAsync(
         string resultRef,
         CancellationToken cancellationToken = default)
     {
@@ -67,7 +66,7 @@ public sealed class WorkspacePublishState
         {
             var current = await ReadCoreAsync(cancellationToken).ConfigureAwait(false);
             var normalized = resultRef.Trim();
-            var materializedRefs = current.MaterializedCodeResultRefs ??
+            var materializedRefs = current.LandedCodeResultRefs ??
                                    Array.Empty<string>();
             if (materializedRefs.Any(value =>
                     string.Equals(value, normalized, StringComparison.OrdinalIgnoreCase)))
@@ -81,7 +80,7 @@ public sealed class WorkspacePublishState
             {
                 CodeGeneration = checked(current.CodeGeneration + 1),
                 LastCodeResultRef = normalized,
-                MaterializedCodeResultRefs = refs
+                LandedCodeResultRefs = refs
             };
             await WriteCoreAsync(next, cancellationToken).ConfigureAwait(false);
             return next;
@@ -179,7 +178,7 @@ public sealed class WorkspacePublishState
             PublishedCodeGeneration: 0,
             HasSuccessfulPublish: false,
             LastCodeResultRef: null,
-            MaterializedCodeResultRefs: Array.Empty<string>(),
+            LandedCodeResultRefs: Array.Empty<string>(),
             LastPublishInvocation: null,
             LastPublishedAtUtc: null);
 
