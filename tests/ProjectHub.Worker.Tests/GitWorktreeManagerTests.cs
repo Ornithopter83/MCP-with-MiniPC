@@ -668,6 +668,45 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task TargetCheckoutRetryAcceptsAlreadySwitchedRemoteResultBranch()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var resultBranch = GitWorktreeManager.BuildBranchName("job", "W1");
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, resultBranch);
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(0, "");
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(0, "result456");
+        runner.Enqueue(0, "result456");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .SwitchTargetToRemoteResultAsync(
+                    root,
+                    "result-ref",
+                    resultBranch,
+                    "main");
+
+            Assert.True(result.Success);
+            Assert.False(result.Switched);
+            Assert.Equal(resultBranch, result.CurrentBranch);
+            Assert.Equal("result456", result.CurrentHead);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "switch");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
     public async Task TargetCheckoutRejectsCurrentBranchRemoteDrift()
     {
         var root = CreateTempRepositoryDirectory();
