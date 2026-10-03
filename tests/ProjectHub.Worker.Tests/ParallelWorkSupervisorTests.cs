@@ -58,6 +58,30 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Contains("workItemId=W10 kind=NORMAL state=COMPLETED resultType=CODE_CHANGE resultRef=ref-W10", text);
     }
 
+    [Theory]
+    [InlineData("0", "RESOURCE")]
+    [InlineData("9", "BUILD_PUBLISH")]
+    public void MechanicalGraphEventLabelsFixedSlotSeparatelyFromExecutionKind(
+        string workItemId,
+        string expectedSlot)
+    {
+        var graph = new WorkGraph("job", 1);
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(workItemId, "고정 슬롯 작업"))
+        })).Success);
+
+        var text = ParallelWorkSupervisor.FormatMechanicalGraphEvent(
+            Array.Empty<string>(),
+            new ParallelWorkSchedulerSnapshot(
+                graph.Snapshot(),
+                Array.Empty<RunningWorkItemSnapshot>()));
+
+        Assert.Contains(
+            $"workItemId={workItemId} slot={expectedSlot} kind=NORMAL state=READY",
+            text);
+    }
+
     [Fact]
     public async Task AuthorizedHighRunsOnceAndReturnsReportToSameHqLoop()
     {

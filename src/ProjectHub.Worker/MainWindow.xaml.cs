@@ -2033,6 +2033,18 @@ public partial class MainWindow : Window
                 AddRoleProgressHistory(progressRole, message, role.Provider);
             })
             : null;
+
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(workingDirectory);
+        var roleTempPath = WorkerPaths.BuildWorkTempPath(
+            runtime,
+            jobId,
+            "role-" + outboundRole.ToLowerInvariant());
+        Directory.CreateDirectory(roleTempPath);
+        var roleEnvironment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["PROJECTHUB_CODEX_TEMP"] = roleTempPath
+        };
+
         var result = await runner.RunAsync(new AiRoleRunRequest(
             prompt,
             role,
@@ -2043,7 +2055,8 @@ public partial class MainWindow : Window
             schema,
             progress,
             sessionStarted,
-            InputAttachments: inputAttachments));
+            InputAttachments: inputAttachments,
+            EnvironmentVariables: roleEnvironment));
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,

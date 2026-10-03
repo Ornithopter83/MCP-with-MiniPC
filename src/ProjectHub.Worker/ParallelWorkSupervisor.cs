@@ -930,8 +930,16 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         WorkItemSnapshot item,
         bool includeChecklist = true)
     {
-        builder.Append("workItemId=").Append(item.Id)
-            .Append(" kind=").Append(item.Kind.ToString().ToUpperInvariant())
+        builder.Append("workItemId=").Append(item.Id);
+        var fixedSlot = item.Id switch
+        {
+            FixedWorkItemSlots.Resource => "RESOURCE",
+            FixedWorkItemSlots.BuildPublish => "BUILD_PUBLISH",
+            _ => null
+        };
+        if (fixedSlot is not null)
+            builder.Append(" slot=").Append(fixedSlot);
+        builder.Append(" kind=").Append(item.Kind.ToString().ToUpperInvariant())
             .Append(" state=").Append(item.State.ToString().ToUpperInvariant());
 
         if (item.Dependencies.Count > 0)

@@ -98,10 +98,6 @@ public static class WorkerPaths
         var segment = (resourceType ?? string.Empty).Trim().ToUpperInvariant() switch
         {
             "IMAGE" => "image",
-            "AUDIO" => "audio",
-            "VIDEO" => "video",
-            "DOCUMENT" => "document",
-            "FILE" => "file",
             _ => throw new ArgumentException("지원되지 않는 RESOURCE 타입입니다.", nameof(resourceType))
         };
         return Path.Combine(runtime.TempRoot, segment);

@@ -4,13 +4,8 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class ParallelWorkSidecarTests
 {
-    [Theory]
-    [InlineData("IMAGE", "image")]
-    [InlineData("AUDIO", "audio")]
-    [InlineData("VIDEO", "video")]
-    [InlineData("DOCUMENT", "document")]
-    [InlineData("FILE", "file")]
-    public void ResourceStagingUsesSharedTypedTempFolder(string resourceType, string expectedSegment)
+    [Fact]
+    public void ImageResourceStagingUsesSharedTempFolder()
     {
         var repository = Path.Combine(
             Path.GetTempPath(),
@@ -23,16 +18,46 @@ public sealed class ParallelWorkSidecarTests
             var runtime = WorkerPaths.GetRepositoryRuntimePaths(repository);
             var path = WorkerPaths.BuildResourceStagingDirectory(
                 runtime,
-                resourceType,
+                "IMAGE",
                 "abc123");
 
             Assert.Equal(
-                Path.Combine(runtime.TempRoot, expectedSegment, "abc123"),
+                Path.Combine(runtime.TempRoot, "image", "abc123"),
                 path);
             Assert.DoesNotContain(
                 Path.DirectorySeparatorChar + "worktrees" + Path.DirectorySeparatorChar,
                 path,
                 StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            var parent = Directory.GetParent(repository)!.FullName;
+            if (Directory.Exists(parent))
+                Directory.Delete(parent, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("AUDIO")]
+    [InlineData("VIDEO")]
+    [InlineData("DOCUMENT")]
+    [InlineData("FILE")]
+    public void NonImageResourceStagingIsRejected(string resourceType)
+    {
+        var repository = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-resource-staging-" + Guid.NewGuid().ToString("N"),
+            "sample");
+        Directory.CreateDirectory(repository);
+
+        try
+        {
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(repository);
+            Assert.Throws<ArgumentException>(() =>
+                WorkerPaths.BuildResourceStagingDirectory(
+                    runtime,
+                    resourceType,
+                    "abc123"));
         }
         finally
         {

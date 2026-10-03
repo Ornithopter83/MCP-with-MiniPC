@@ -77,8 +77,12 @@ public sealed class CodexCliRunner : IDisposable
         if (!CodexModelRequest.TryCreate(model, reasoning, out var modelRequest))
             throw new ArgumentException($"현재 서비스 enum에 없는 모델/reasoning 조합입니다: {model} / {reasoning}");
         var executable = FindExecutable() ?? throw new FileNotFoundException("codex.exe를 찾을 수 없습니다.");
-        var outputFile = Path.Combine(Path.GetTempPath(), $"projecthub-codex-{Guid.NewGuid():N}.txt");
-        var outputSchemaFile = string.IsNullOrWhiteSpace(outputSchemaJson) ? null : Path.Combine(Path.GetTempPath(), $"projecthub-schema-{Guid.NewGuid():N}.json");
+        var outputDirectory = ResolveOutputTempDirectory(environmentVariables);
+        Directory.CreateDirectory(outputDirectory);
+        var outputFile = Path.Combine(outputDirectory, $"projecthub-codex-{Guid.NewGuid():N}.txt");
+        var outputSchemaFile = string.IsNullOrWhiteSpace(outputSchemaJson)
+            ? null
+            : Path.Combine(outputDirectory, $"projecthub-schema-{Guid.NewGuid():N}.json");
         if (outputSchemaFile is not null) await File.WriteAllTextAsync(outputSchemaFile, outputSchemaJson!, new UTF8Encoding(false), cancellationToken);
         var startedAt = DateTimeOffset.UtcNow;
         var sessionSnapshot = string.IsNullOrWhiteSpace(sessionId)
@@ -283,6 +287,28 @@ public sealed class CodexCliRunner : IDisposable
 
         _activeProcessJobs.Clear();
         _activeProcesses.Clear();
+    }
+
+    private static string ResolveOutputTempDirectory(
+        IReadOnlyDictionary<string, string>? environmentVariables)
+    {
+        foreach (var key in new[] { "PROJECTHUB_CODEX_TEMP", "TEMP", "TMP" })
+        {
+            if (environmentVariables is null ||
+                !environmentVariables.TryGetValue(key, out var candidate) ||
+                string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            try
+            {
+                return Path.GetFullPath(candidate.Trim());
+            }
+            catch
+            {
+            }
+        }
+
+        return Path.GetTempPath();
     }
 
     public static IReadOnlyList<string> ResolveAdditionalWritableDirectories(
