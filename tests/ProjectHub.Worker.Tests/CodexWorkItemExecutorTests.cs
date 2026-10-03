@@ -119,7 +119,6 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal(WorkItemResultType.Artifact, result.ResultType);
             Assert.StartsWith("artifact-run-", result.ResultRef);
-            Assert.Null(result.CommitManifestPath);
         }
         finally
         {
@@ -511,8 +510,7 @@ public sealed class CodexWorkItemExecutorTests
                             "W0",
                             "dep-ref",
                             "선행 구현",
-                            WorkItemResultType.CodeChange,
-                            "manifest-W0.json")
+                            WorkItemResultType.CodeChange)
                     },
                     "WORK_ITEM",
                     item.Goal),
@@ -669,7 +667,7 @@ public sealed class CodexWorkItemExecutorTests
             """,
             dependencies: new[]
             {
-                new WorkItemDependencyResult("W0", null, "선행 코드", WorkItemResultType.CodeChange, "manifest-W0.json")
+                new WorkItemDependencyResult("W0", null, "선행 코드", WorkItemResultType.CodeChange)
             });
 
         try
@@ -696,7 +694,7 @@ public sealed class CodexWorkItemExecutorTests
             """,
             dependencies: new[]
             {
-                new WorkItemDependencyResult("W0", "dep-ref", "선행 완료", WorkItemResultType.Analysis, "manifest-W0.json")
+                new WorkItemDependencyResult("W0", "dep-ref", "선행 완료", WorkItemResultType.Analysis)
             });
 
         try
