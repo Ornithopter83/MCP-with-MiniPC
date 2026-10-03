@@ -32,10 +32,6 @@ public static class WorkerPaths
     public static string ManagedWebProfiles => Path.Combine(ManagedWebRoot, "Profiles");
     public static string ManagedWebHqProfile => Path.Combine(ManagedWebProfiles, "HQ");
     public static string ManagedWebResourceProfile => Path.Combine(ManagedWebProfiles, "RESOURCE");
-    public static string PublishedArtifactsRoot => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "ProjectHub",
-        "PublishedArtifacts");
     public static string GetPublishedArtifactDirectory(
         string repositoryRoot,
         string jobId,
@@ -48,21 +44,11 @@ public static class WorkerPaths
 
         var root = Path.GetFullPath(repositoryRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var repositoryName = new string(
-            Path.GetFileName(root)
-                .Select(character => char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '-')
-                .ToArray())
-            .Trim('-');
-        if (string.IsNullOrWhiteSpace(repositoryName))
-            repositoryName = "repository";
-
-        var repositoryKey = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(root)))
-            .ToLowerInvariant()[..12];
 
         return Path.Combine(
-            PublishedArtifactsRoot,
-            repositoryName + "-" + repositoryKey,
+            root,
+            ".projecthub",
+            "artifacts",
             StableRuntimeSegment(jobId),
             "run-" + invocation.ToString("D12", System.Globalization.CultureInfo.InvariantCulture));
     }
@@ -275,8 +261,7 @@ public static class WorkerPaths
             ManagedWebBrowserRuntime,
             ManagedWebProfiles,
             ManagedWebHqProfile,
-            ManagedWebResourceProfile,
-            PublishedArtifactsRoot
+            ManagedWebResourceProfile
         })
             Directory.CreateDirectory(directory);
     }
