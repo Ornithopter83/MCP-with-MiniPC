@@ -2502,9 +2502,7 @@ public partial class MainWindow : Window
         {
             DashboardPreflightText.Text = target.IsRepository
                 ? "Git 저장소는 확인했지만 origin 원격이 설정되어 있지 않습니다."
-                : _targetSettings.IsCoordinatorFirst
-                    ? "선택한 작업 폴더 자체가 Git 저장소 루트가 아닙니다."
-                    : "작업 폴더에서 Git 저장소를 확인하지 못했습니다.";
+                : "작업 폴더 또는 상위 경로에서 Git 저장소를 확인하지 못했습니다.";
             DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
         }
     }
