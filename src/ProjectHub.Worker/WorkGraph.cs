@@ -70,7 +70,6 @@ public sealed record WorkItemSnapshot(
     DateTimeOffset? FinishedAtUtc,
     string? BlockDetailCode = null,
     WorkItemResultType ResultType = WorkItemResultType.None,
-    string? CommitManifestPath = null,
     IReadOnlyList<string>? Checklist = null);
 
 public sealed record WorkGraphSnapshot(
@@ -130,8 +129,7 @@ public sealed class WorkGraph
             }
 
             if (string.IsNullOrWhiteSpace(blockDetailCode) &&
-                (string.Equals(blockCode, "INTEGRATION_LANDING_FAILED", StringComparison.Ordinal) ||
-                 string.Equals(blockCode, "INTEGRATION_IMPORT_FAILED", StringComparison.Ordinal)))
+                string.Equals(blockCode, "INTEGRATION_LANDING_FAILED", StringComparison.Ordinal))
             {
                 blockDetailCode = ExtractIntegrationErrorCode(source.ResultSummary);
             }
@@ -152,7 +150,6 @@ public sealed class WorkGraph
                 ResultRef = NullIfWhiteSpace(source.ResultRef),
                 ResultSummary = NullIfWhiteSpace(source.ResultSummary),
                 ResultType = source.ResultType,
-                CommitManifestPath = NullIfWhiteSpace(source.CommitManifestPath),
                 FailureCode = NullIfWhiteSpace(source.FailureCode),
                 BlockCode = NullIfWhiteSpace(blockCode),
                 BlockDetailCode = NullIfWhiteSpace(blockDetailCode),
@@ -289,8 +286,7 @@ public sealed class WorkGraph
         string id,
         string? resultRef = null,
         string? resultSummary = null,
-        WorkItemResultType resultType = WorkItemResultType.None,
-        string? commitManifestPath = null)
+        WorkItemResultType resultType = WorkItemResultType.None)
     {
         if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
             return false;
@@ -303,7 +299,6 @@ public sealed class WorkGraph
                           resultType != WorkItemResultType.CodeChange
             ? WorkItemResultType.CodeChange
             : resultType;
-        item.CommitManifestPath = NullIfWhiteSpace(commitManifestPath) ?? item.CommitManifestPath;
         item.FailureCode = null;
         item.BlockCode = null;
         item.BlockDetailCode = null;
@@ -357,8 +352,7 @@ public sealed class WorkGraph
         string? resultSummary = null,
         string? resultRef = null,
         string? blockDetailCode = null,
-        WorkItemResultType resultType = WorkItemResultType.None,
-        string? commitManifestPath = null)
+        WorkItemResultType resultType = WorkItemResultType.None)
     {
         if (!_items.TryGetValue(id, out var item) || item.State != WorkItemState.Running)
             return false;
@@ -373,7 +367,6 @@ public sealed class WorkGraph
         if (resultType == WorkItemResultType.CodeChange ||
             (resultType != WorkItemResultType.None && item.ResultType != WorkItemResultType.CodeChange))
             item.ResultType = resultType;
-        item.CommitManifestPath = NullIfWhiteSpace(commitManifestPath) ?? item.CommitManifestPath;
         item.FailureCode = null;
         item.ResumeInputType = null;
         item.ResumeBody = null;
@@ -771,8 +764,7 @@ public sealed class WorkGraph
                      .Split('\n'))
         {
             var trimmed = line.Trim();
-            if (string.Equals(trimmed, "INTEGRATION_LANDING", StringComparison.Ordinal) ||
-                string.Equals(trimmed, "INTEGRATION_IMPORT", StringComparison.Ordinal))
+            if (string.Equals(trimmed, "INTEGRATION_LANDING", StringComparison.Ordinal))
             {
                 inLandingBlock = true;
                 continue;
@@ -815,7 +807,6 @@ public sealed class WorkGraph
             item.FinishedAtUtc,
             item.BlockDetailCode,
             item.ResultType,
-            item.CommitManifestPath,
             new ReadOnlyCollection<string>(item.Checklist.ToArray()));
 
     private static void ValidateConcurrency(int value)
@@ -846,7 +837,6 @@ public sealed class WorkGraph
         public string? ResultRef { get; set; }
         public string? ResultSummary { get; set; }
         public WorkItemResultType ResultType { get; set; }
-        public string? CommitManifestPath { get; set; }
         public string? FailureCode { get; set; }
         public string? BlockCode { get; set; }
         public string? BlockDetailCode { get; set; }
@@ -873,7 +863,6 @@ public sealed class WorkGraph
                 ResultRef = ResultRef,
                 ResultSummary = ResultSummary,
                 ResultType = ResultType,
-                CommitManifestPath = CommitManifestPath,
                 FailureCode = FailureCode,
                 BlockCode = BlockCode,
                 BlockDetailCode = BlockDetailCode,
