@@ -107,10 +107,22 @@ public sealed class WorkerPathsRuntimeTests
                 runtime,
                 "job-alpha",
                 "W10");
+            var publishRoot = WorkerPaths.GetPublishedArtifactDirectory(
+                workspace,
+                "job-alpha",
+                12);
 
             Assert.StartsWith(runtime.Worktrees, worktree, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.IntegrationClones, integration, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.TempRoot, workTemp, StringComparison.OrdinalIgnoreCase);
+            Assert.StartsWith(
+                WorkerPaths.PublishedArtifactsRoot,
+                publishRoot,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            Assert.False(
+                Path.GetFullPath(publishRoot).StartsWith(
+                    Path.GetFullPath(runtime.Root) + Path.DirectorySeparatorChar,
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
 
             WorkerPaths.EnsureWorkToolDirectories(runtime, workTemp);
             var environment = WorkerPaths.BuildWorkToolEnvironment(runtime, workTemp);
