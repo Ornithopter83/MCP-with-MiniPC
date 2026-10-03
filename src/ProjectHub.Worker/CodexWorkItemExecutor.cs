@@ -194,11 +194,15 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 sessionId: item.SessionId);
         }
 
-        _observationGate?.RegisterWorkItemRoot(item.Id, preparation.WorktreePath);
+        var usesTargetWorkspace = FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id);
+        var executionWorkingDirectory = usesTargetWorkspace
+            ? _workspace
+            : preparation.WorktreePath;
+        _observationGate?.RegisterWorkItemRoot(item.Id, executionWorkingDirectory);
         ContextPrepared?.Invoke(new CodexWorkItemContextPrepared(
             item.Id,
             preparation.Branch,
-            preparation.WorktreePath,
+            executionWorkingDirectory,
             preparation.BaseRef));
 
         if (string.Equals(request.InboundType, CheckpointRetryInboundType, StringComparison.Ordinal))
@@ -334,7 +338,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 if (!string.IsNullOrWhiteSpace(snapshotPath))
                     writableDirectories.Add(snapshotPath);
             }
-            if (FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id))
+            if (usesTargetWorkspace)
             {
                 writableDirectories.Add(_workspace);
                 environment["PROJECTHUB_TARGET_WORKSPACE"] = _workspace;
@@ -459,7 +463,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 includeContract: string.IsNullOrWhiteSpace(sessionId),
                 resourceStagingRoot: runtimePaths.TempRoot,
                 workTempRoot: workTempPath,
-                targetWorkspace: FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id)
+                targetWorkspace: usesTargetWorkspace
                     ? _workspace
                     : null,
                 publishOutputDirectory: publishOutputDirectory);
@@ -474,7 +478,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     preparation.WorktreePath,
                     _jobId,
                     executionWorkItemId);
-                if (FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id))
+                if (usesTargetWorkspace)
                 {
                     targetWorkspaceGitIsolation = GitMetadataIsolationLease.Detach(
                         _workspace,
@@ -504,7 +508,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 runResult = await _runner.RunAsync(new AiRoleRunRequest(
                     prompt,
                     _role,
-                    preparation.WorktreePath,
+                    executionWorkingDirectory,
                     sessionId,
                     CodexSandboxMode.WorkspaceWrite,
                     cancellationToken,
@@ -701,6 +705,17 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         bool publishCleanCheckpoint,
         CancellationToken cancellationToken)
     {
+        if (string.Equals(item.Id, FixedWorkItemSlots.FileManager, StringComparison.Ordinal))
+        {
+            return await FinalizeFileManagerReportAsync(
+                item,
+                preparation,
+                sessionId,
+                reportStatus,
+                reportBody,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         if (string.Equals(item.Id, FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal))
         {
             return await FinalizeBuildPublishReportAsync(
@@ -848,6 +863,125 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 reportBody,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
+                sessionId,
+                "WORK_REPORT")
+        };
+    }
+
+    private async Task<WorkItemExecutionResult> FinalizeFileManagerReportAsync(
+        WorkItemSnapshot item,
+        GitWorktreePreparationResult preparation,
+        string? sessionId,
+        WorkItemReportStatus reportStatus,
+        string reportBody,
+        CancellationToken cancellationToken)
+    {
+        GitWorktreeCheckpointResult checkpoint = default!;
+        for (var attempt = 1; attempt <= MaximumCheckpointAttempts; attempt++)
+        {
+            checkpoint = await _worktrees.CreateTargetWorkspaceCheckpointAsync(
+                _workspace,
+                preparation.BaseCommit ?? item.BaseRef ?? preparation.BaseRef,
+                preparation.Branch,
+                item.Id,
+                cancellationToken).ConfigureAwait(false);
+
+            if (checkpoint.Success)
+                break;
+
+            if (attempt < MaximumCheckpointAttempts)
+            {
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(attempt * 150),
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (!checkpoint.Success)
+        {
+            var errorCode = checkpoint.ErrorCode ?? "TARGET_WORKSPACE_CHECKPOINT_FAILED";
+            return WorkItemExecutionResult.Blocked(
+                "WORKTREE_CHECKPOINT_PENDING",
+                BuildCheckpointPendingSummary(
+                    reportStatus,
+                    reportBody,
+                    checkpoint.ErrorDetail),
+                checkpoint.HeadCommit ?? item.ResultRef ?? preparation.HeadCommit,
+                checkpoint.Branch ?? preparation.Branch,
+                _workspace,
+                sessionId,
+                blockDetailCode: errorCode,
+                resultType: item.ResultType);
+        }
+
+        var baseCommit = preparation.BaseCommit ?? preparation.HeadCommit;
+        var lifecycleResultRef = checkpoint.HeadCommit ?? item.ResultRef;
+        var lifecycleHasCodeChange =
+            item.ResultType == WorkItemResultType.CodeChange ||
+            checkpoint.CreatedCommit ||
+            (!string.IsNullOrWhiteSpace(checkpoint.HeadCommit) &&
+             !string.IsNullOrWhiteSpace(baseCommit) &&
+             !string.Equals(
+                 checkpoint.HeadCommit,
+                 baseCommit,
+                 StringComparison.OrdinalIgnoreCase));
+        var completedResultType = lifecycleHasCodeChange
+            ? WorkItemResultType.CodeChange
+            : WorkItemResultType.Analysis;
+        var blockedResultType = lifecycleHasCodeChange
+            ? WorkItemResultType.CodeChange
+            : item.ResultType;
+
+        if (reportStatus == WorkItemReportStatus.Completed)
+        {
+            await TryRemoveCompletedNormalWorktreeAsync(
+                item,
+                preparation,
+                new GitWorktreeCheckpointResult(
+                    true,
+                    null,
+                    preparation.WorktreePath,
+                    preparation.Branch,
+                    preparation.HeadCommit,
+                    false),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        var completedSummary = reportBody;
+        if (reportStatus == WorkItemReportStatus.Completed &&
+            completedResultType == WorkItemResultType.CodeChange &&
+            !string.IsNullOrWhiteSpace(lifecycleResultRef))
+        {
+            completedSummary =
+                reportBody + Environment.NewLine + Environment.NewLine +
+                "BOOTSTRAP_CODE_RESULT" + Environment.NewLine +
+                "resultRef: " + lifecycleResultRef + Environment.NewLine +
+                "branch: " + (checkpoint.Branch ?? preparation.Branch) + Environment.NewLine +
+                "nextBaseRef: " + lifecycleResultRef;
+        }
+
+        return reportStatus switch
+        {
+            WorkItemReportStatus.Completed => WorkItemExecutionResult.Completed(
+                lifecycleResultRef,
+                completedSummary,
+                checkpoint.Branch ?? preparation.Branch,
+                _workspace,
+                sessionId,
+                completedResultType),
+            WorkItemReportStatus.Blocked => WorkItemExecutionResult.Blocked(
+                "HQ_BLOCKED",
+                reportBody,
+                lifecycleResultRef,
+                checkpoint.Branch ?? preparation.Branch,
+                _workspace,
+                sessionId,
+                resultType: blockedResultType),
+            _ => WorkItemExecutionResult.Failed(
+                "WORK_ITEM_REPORTED_FAILED",
+                reportBody,
+                checkpoint.Branch ?? preparation.Branch,
+                _workspace,
                 sessionId,
                 "WORK_REPORT")
         };

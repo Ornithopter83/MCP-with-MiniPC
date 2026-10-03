@@ -1664,6 +1664,163 @@ public sealed class GitWorktreeManager
             publishCleanHead: false,
             cancellationToken);
 
+    public async Task<GitWorktreeCheckpointResult> CreateTargetWorkspaceCheckpointAsync(
+        string workspace,
+        string baseRef,
+        string managedBranch,
+        string workItemId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
+            return new(false, "TARGET_WORKSPACE_CHECKPOINT_MISSING", workspace ?? string.Empty, managedBranch, null, false);
+        if (string.IsNullOrWhiteSpace(baseRef))
+            return new(false, "TARGET_WORKSPACE_CHECKPOINT_BASE_MISSING", Path.GetFullPath(workspace), managedBranch, null, false);
+        if (string.IsNullOrWhiteSpace(managedBranch) ||
+            !managedBranch.StartsWith("projecthub/", StringComparison.Ordinal))
+            return new(false, "TARGET_WORKSPACE_CHECKPOINT_BRANCH_INVALID", Path.GetFullPath(workspace), managedBranch, null, false);
+        if (string.IsNullOrWhiteSpace(workItemId))
+            return new(false, "TARGET_WORKSPACE_CHECKPOINT_ID_MISSING", Path.GetFullPath(workspace), managedBranch, null, false);
+
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+        {
+            return new(
+                false,
+                "TARGET_WORKSPACE_CHECKPOINT_REPOSITORY_REQUIRED",
+                Path.GetFullPath(workspace),
+                managedBranch,
+                null,
+                false,
+                BuildGitFailureDetail("git rev-parse --show-toplevel", rootResult));
+        }
+
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var primaryGate = GetRepositoryPrimaryMutationGate(repositoryRoot);
+        await primaryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var fetchResult = await FetchOriginAsync(
+                repositoryRoot,
+                cancellationToken).ConfigureAwait(false);
+            if (fetchResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    fetchResult.TimedOut ? "TARGET_WORKSPACE_CHECKPOINT_FETCH_TIMEOUT"
+                        : fetchResult.Canceled ? "TARGET_WORKSPACE_CHECKPOINT_FETCH_CANCELED"
+                        : "TARGET_WORKSPACE_CHECKPOINT_FETCH_FAILED",
+                    repositoryRoot,
+                    managedBranch,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git fetch --prune origin", fetchResult));
+            }
+
+            var baseResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                baseRef.Trim() + "^{commit}").ConfigureAwait(false);
+            var baseCommit = baseResult.ExitCode == 0
+                ? FirstLine(baseResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(baseCommit))
+            {
+                return new(
+                    false,
+                    "TARGET_WORKSPACE_CHECKPOINT_BASE_INVALID",
+                    repositoryRoot,
+                    managedBranch,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git rev-parse --verify baseRef", baseResult));
+            }
+
+            var branchResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+            var currentBranch = branchResult.ExitCode == 0
+                ? FirstLine(branchResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(currentBranch))
+                return new(false, "TARGET_WORKSPACE_CHECKPOINT_CURRENT_BRANCH_REQUIRED", repositoryRoot, managedBranch, null, false);
+
+            var headResult = await RunAsync(
+                repositoryRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+            var currentHead = headResult.ExitCode == 0
+                ? FirstLine(headResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(currentHead))
+                return new(false, "TARGET_WORKSPACE_CHECKPOINT_CURRENT_HEAD_REQUIRED", repositoryRoot, managedBranch, null, false);
+
+            if (!string.Equals(currentBranch, managedBranch, StringComparison.Ordinal))
+            {
+                if (!string.Equals(currentHead, baseCommit, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new(
+                        false,
+                        "TARGET_WORKSPACE_CHECKPOINT_BASE_CHANGED",
+                        repositoryRoot,
+                        managedBranch,
+                        currentHead,
+                        false,
+                        "현재 작업 폴더 HEAD가 #8 baseRef와 다릅니다." + Environment.NewLine +
+                        "currentHead=" + currentHead + Environment.NewLine +
+                        "baseCommit=" + baseCommit);
+                }
+
+                var switchResult = await RunAsync(
+                    repositoryRoot,
+                    CreateTimeout,
+                    cancellationToken,
+                    "switch",
+                    "-c",
+                    managedBranch,
+                    baseCommit).ConfigureAwait(false);
+                if (switchResult.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        switchResult.TimedOut ? "TARGET_WORKSPACE_CHECKPOINT_SWITCH_TIMEOUT"
+                            : switchResult.Canceled ? "TARGET_WORKSPACE_CHECKPOINT_SWITCH_CANCELED"
+                            : "TARGET_WORKSPACE_CHECKPOINT_SWITCH_FAILED",
+                        repositoryRoot,
+                        managedBranch,
+                        currentHead,
+                        false,
+                        BuildGitFailureDetail("git switch -c managed branch", switchResult));
+                }
+            }
+
+            return await CreateCheckpointAsync(
+                repositoryRoot,
+                workItemId,
+                publishCleanHead: true,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            primaryGate.Release();
+        }
+    }
+
     public async Task<GitWorktreeCheckpointResult> CreateCheckpointAsync(
         string worktreePath,
         string workItemId,

@@ -74,7 +74,8 @@ public static class RoleContractLoader
             : $"WORK 임시 산출물 루트: {workTempRoot}\n";
         var targetWorkspaceHeader = string.IsNullOrWhiteSpace(targetWorkspace)
             ? string.Empty
-            : $"대상 프로젝트 루트: {targetWorkspace}\n";
+            : $"대상 프로젝트 루트: {targetWorkspace}\n" +
+              "FILE MANAGER 고정 슬롯: 파일·폴더 CRUD는 이 대상 프로젝트 루트에서만 수행한다. 격리 worktree는 checkpoint 준비용이며 파일 작업 대상으로 사용하지 않는다. Git 명령은 수행하지 않는다.\n";
         var publishOutputHeader = string.IsNullOrWhiteSpace(publishOutputDirectory)
             ? string.Empty
             : $"최종 게시 산출물 루트(게시·export 결과는 이 경로에 저장): {publishOutputDirectory}\n";

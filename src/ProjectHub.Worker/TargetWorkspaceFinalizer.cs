@@ -50,6 +50,27 @@ public sealed class TargetWorkspaceFinalizer
         var consumedIds = completedCodeChanges
             .SelectMany(item => item.Dependencies)
             .ToHashSet(StringComparer.Ordinal);
+        var bootstrapItems = completedCodeChanges
+            .Where(item =>
+                string.Equals(
+                    item.Id,
+                    FixedWorkItemSlots.FileManager,
+                    StringComparison.Ordinal))
+            .ToArray();
+        foreach (var bootstrap in bootstrapItems)
+        {
+            if (graph.Items.Any(item =>
+                    !string.Equals(item.Id, bootstrap.Id, StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(item.BaseRef) &&
+                    string.Equals(
+                        item.BaseRef,
+                        bootstrap.ResultRef,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                consumedIds.Add(bootstrap.Id);
+            }
+        }
+
         var tips = completedCodeChanges
             .Where(item => !consumedIds.Contains(item.Id))
             .OrderBy(item => item.CreatedOrder)
@@ -145,8 +166,17 @@ public sealed class TargetWorkspaceFinalizer
         var onResultBranch =
             !string.IsNullOrWhiteSpace(targetBranch) &&
             string.Equals(currentBranch, targetBranch, StringComparison.Ordinal);
+        var bootstrapBranches = bootstrapItems
+            .Where(item =>
+                consumedIds.Contains(item.Id) &&
+                !string.IsNullOrWhiteSpace(item.Branch))
+            .Select(item => item.Branch!.Trim())
+            .ToHashSet(StringComparer.Ordinal);
+        var onBootstrapBranch =
+            !string.IsNullOrWhiteSpace(currentBranch) &&
+            bootstrapBranches.Contains(currentBranch);
 
-        if (!onOriginalBranch && !onResultBranch)
+        if (!onOriginalBranch && !onResultBranch && !onBootstrapBranch)
         {
             return new(
                 false,
@@ -213,7 +243,7 @@ public sealed class TargetWorkspaceFinalizer
             _workspace,
             finalResultRef,
             target.Branch,
-            _expectedPrimaryBranch,
+            onBootstrapBranch ? currentBranch : _expectedPrimaryBranch,
             cancellationToken).ConfigureAwait(false);
 
         if (!checkout.Success)
