@@ -55,7 +55,7 @@ USER -> HQ -> WorkGraph ─┼─ NORMAL WORK ───────┼─> INTEG
 
 ① Worker는 WORK 실행 전에 Git metadata를 AI 실행 경계 밖으로 격리하고 원격 프로토콜 접근을 차단한다.
 ② 실행 중 사용자 작업 폴더가 바뀌면 그 변경을 자동 merge하지 않고 사용자 파일을 보존한 채 기존 결과 반영을 중단한다.
-③ Git 준비는 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin`이 존재하며 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 상태에서만 성공한다. 상위 디렉터리의 다른 Git 저장소를 자동 채택하지 않으며, 조건이 맞지 않으면 Worker가 `.git` 재초기화·자동 merge·reset으로 우회하지 않고 기계 오류로 차단한다.
+③ NORMAL WORK의 Git 준비는 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin`이 존재하며 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 상태에서만 성공한다. 상위 디렉터리의 다른 Git 저장소를 자동 채택하지 않으며, 조건이 맞지 않으면 Worker가 `.git` 재초기화·자동 merge·reset으로 우회하지 않고 기계 오류로 차단한다. 이 항목은 하네스 없음 Direct Work에 적용하지 않는다.
 ④ 연결 프로젝트의 `projecthub/*` 작업 branch checkpoint push는 Worker가 수행할 수 있지만, 기본·보호 branch push, force push, 파괴적 reset과 배포는 별도 명시적 승인 없이 수행하지 않는다.
 ⑤ 정확한 disposable clone 경로, 환경 변수와 Git 명령행 옵션은 현재 구현과 테스트를 원본으로 사용한다.
 
