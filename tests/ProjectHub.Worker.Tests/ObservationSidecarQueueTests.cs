@@ -36,6 +36,10 @@ public sealed class ObservationSidecarQueueTests
         Assert.False(BuildExecutionPolicy.ContainsBuildExecutionInstruction(
             "PSD export 기능을 구현한다."));
         Assert.False(BuildExecutionPolicy.ContainsBuildExecutionInstruction(
+            "MSBuild 설정과 Windows SDK 경로를 수정한다."));
+        Assert.False(BuildExecutionPolicy.ContainsBuildExecutionInstruction(
+            "빌드 설정을 확인하고 필요한 속성만 수정한다."));
+        Assert.False(BuildExecutionPolicy.ContainsBuildExecutionInstruction(
             "빌드는 수행하지 않고 정적 검토한다."));
     }
 

@@ -36,10 +36,11 @@ public static class BuildExecutionPolicy
             @"(?ix)(?:" +
             @"\bdotnet(?:\.exe)?\s+(?:restore|build|test|run|publish|pack|msbuild|vstest)\b|" +
             @"\bcmake(?:\.exe)?\s+--build\b|" +
-            @"(?:release|debug)\s*(?:build|빌드)\b|" +
-            @"(?:솔루션|프로젝트|전체).{0,24}(?:build|빌드)(?:를|을)?\s*(?:실행|수행|성공|통과|검증|확인|시도|재시도|완료)?|" +
-            @"(?:build|빌드)(?:를|을)?\s*(?:실행|수행|성공|통과|검증|확인|시도|재시도|완료)|" +
-            @"(?:restore|복원).{0,20}(?:build|빌드)|(?:build|빌드).{0,20}(?:restore|복원)" +
+            @"(?:release|debug)\s*(?:build|빌드).{0,24}(?:실행|수행|성공|통과|검증|시도|재시도|완료)|" +
+            @"(?:솔루션|프로젝트|전체).{0,24}(?:build|빌드).{0,24}(?:실행|수행|성공|통과|검증|시도|재시도|완료)|" +
+            @"(?:build|빌드).{0,24}(?:실행|수행|성공|통과|검증|시도|재시도|완료)|" +
+            @"(?:restore|복원).{0,24}(?:실행|수행|성공|통과|검증|시도|재시도|완료)|" +
+            @"(?:publish|게시).{0,24}(?:실행|수행|성공|통과|검증|시도|재시도|완료)" +
             @")",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
