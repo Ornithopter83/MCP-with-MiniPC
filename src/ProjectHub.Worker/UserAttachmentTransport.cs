@@ -111,10 +111,13 @@ public static class UserAttachmentTransport
 
     public static IReadOnlyList<AiInputAttachment> StageForWorkerRuntime(
         IReadOnlyList<UserAttachmentInput>? inputs,
+        string repositoryRoot,
         string batchId)
     {
         if (inputs is null || inputs.Count == 0)
             return Array.Empty<AiInputAttachment>();
+        if (string.IsNullOrWhiteSpace(repositoryRoot) || !Directory.Exists(repositoryRoot))
+            throw new DirectoryNotFoundException($"첨부 작업 루트를 찾을 수 없습니다: {repositoryRoot}");
 
         var safeBatch = new string((batchId ?? string.Empty)
             .Where(char.IsLetterOrDigit)
@@ -123,9 +126,9 @@ public static class UserAttachmentTransport
         if (string.IsNullOrWhiteSpace(safeBatch))
             safeBatch = Guid.NewGuid().ToString("N");
 
-        WorkerPaths.EnsureCreated();
-        var relativeRoot = Path.Combine("staged", safeBatch);
-        var targetRoot = Path.Combine(WorkerPaths.Attachments, relativeRoot);
+        var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
+        var relativeRoot = Path.Combine(".projecthub", "runtime", "attachments", safeBatch);
+        var targetRoot = Path.Combine(runtime.Root, "attachments", safeBatch);
         Directory.CreateDirectory(targetRoot);
 
         var result = new List<AiInputAttachment>();
