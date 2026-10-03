@@ -78,6 +78,17 @@ public sealed class WorkGraphPersistenceTests
                 worktreePath: "C:/worktrees/W7");
 
             Assert.False(string.IsNullOrWhiteSpace(eventId));
+            Assert.Equal(
+                Path.Combine(Path.GetFullPath(directory), ".projecthub"),
+                ProjectWorkspacePersistence.RootDirectory(directory));
+            Assert.Equal(
+                Path.Combine(
+                    Path.GetFullPath(directory),
+                    ".projecthub",
+                    "events",
+                    jobId + ".jsonl"),
+                ProjectWorkspacePersistence.EventLogPath(directory, jobId));
+            Assert.True(Directory.Exists(Path.Combine(directory, ".projecthub")));
             var entry = Assert.Single(ProjectWorkspacePersistence.ReadAllEvents(directory, jobId));
             Assert.Equal("W7", entry.WorkItemId);
             Assert.Equal(3, entry.GraphRevision);
