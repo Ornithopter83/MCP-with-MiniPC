@@ -51,6 +51,21 @@ public sealed class ParallelWorkGitPreflightTests
     }
 
     [Fact]
+    public void LocalPathOriginIsRejected()
+    {
+        var result = ParallelWorkGitPreflight.Validate(new GitTargetSnapshot(
+            "C:/repo",
+            "C:/repos/local.git",
+            "main",
+            "abc123",
+            "AUTO_GIT_REMOTE",
+            true));
+
+        Assert.False(result.Success);
+        Assert.Equal("PARALLEL_GIT_NETWORK_REMOTE_REQUIRED", result.ErrorCode);
+    }
+
+    [Fact]
     public void MissingHeadIsRejected()
     {
         var result = ParallelWorkGitPreflight.Validate(new GitTargetSnapshot(
