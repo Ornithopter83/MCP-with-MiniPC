@@ -115,6 +115,39 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
+    public async Task UnbornRepositoryIsAcceptedBeforeInitialBaselineCreation()
+    {
+        var workspace = CreateWorkspace();
+        try
+        {
+            var runner = new ScriptedRunner();
+            runner.Enqueue("rev-parse --show-toplevel", Ok(workspace));
+            runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("master"));
+            runner.Enqueue("rev-parse --verify HEAD", Fail());
+            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
+            runner.Enqueue(
+                "status --porcelain=v1 --untracked-files=all",
+                Ok("?? project.godot"));
+            runner.Enqueue("fetch --prune origin", Ok());
+
+            var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
+
+            Assert.True(state.Success);
+            Assert.Equal("master", state.Branch);
+            Assert.Null(state.HeadCommit);
+            Assert.True(state.IsDirty);
+            Assert.Equal("https://example.invalid/repo.git", state.OriginUrl);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Contains("refs/remotes/origin/master^{commit}"));
+        }
+        finally
+        {
+            Directory.Delete(workspace, true);
+        }
+    }
+
+    [Fact]
     public async Task RemoteFetchFailureBlocksLaunch()
     {
         var workspace = CreateWorkspace();
