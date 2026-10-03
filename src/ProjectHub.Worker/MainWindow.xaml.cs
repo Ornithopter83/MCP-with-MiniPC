@@ -2452,6 +2452,19 @@ public partial class MainWindow : Window
     private string? GetCoordinatorFirstPreflightError(
         string workingDirectory,
         WorkerAiRoleSettings coordinator,
+        WorkerAiRoleSettings implementer)
+        => GetCoordinatorFirstPreflightError(
+            workingDirectory,
+            coordinator,
+            implementer,
+            NormalizeRoleSessionForWorkspace(
+                _targetSettings.EffectiveHighLevel,
+                workingDirectory),
+            highLevelAuthorizedAtLaunch: false);
+
+    private string? GetCoordinatorFirstPreflightError(
+        string workingDirectory,
+        WorkerAiRoleSettings coordinator,
         WorkerAiRoleSettings implementer,
         WorkerAiRoleSettings highLevel,
         bool highLevelAuthorizedAtLaunch)
