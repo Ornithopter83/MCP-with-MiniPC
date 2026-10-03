@@ -617,15 +617,10 @@ public partial class MainWindow : Window
         if (followup.Length == 0 || followup == FollowupPromptPlaceholder) return;
         var followupAttachments = SnapshotFollowupAttachments();
 
-        var continuationHighLevel = NormalizeRoleSessionForWorkspace(
-            continuation.HighLevel ?? _targetSettings.EffectiveHighLevel,
-            continuation.WorkingDirectory);
         var preflightError = GetCoordinatorFirstPreflightError(
             continuation.WorkingDirectory,
             continuation.Coordinator,
-            continuation.Implementer,
-            continuationHighLevel,
-            continuation.HighLevelPermitAvailable);
+            continuation.Implementer);
         if (preflightError is not null)
         {
             DashboardPreflightText.Text = preflightError;
@@ -705,14 +700,6 @@ public partial class MainWindow : Window
         UpdateDirectWorkControlState(active);
         var executionReady = preflightError is null;
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardTaskInput.Text) && DashboardTaskInput.Text != DashboardPromptPlaceholder;
-        var showHighPermit =
-            !IsDirectWorkMode &&
-            _targetSettings.IsCoordinatorFirst &&
-            _dashboardBodyMode == DashboardBodyMode.NewTaskInput;
-        HighLevelPermitCheckBox.Visibility =
-            showHighPermit ? Visibility.Visible : Visibility.Collapsed;
-        HighLevelPermitCheckBox.IsEnabled =
-            showHighPermit && !active && executionReady;
         if (active)
         {
             RunButton.Content = "■   취소";
@@ -778,17 +765,10 @@ public partial class MainWindow : Window
             var workingDirectory = ResolveCoordinatorTargetWorkingDirectory();
             if (string.IsNullOrWhiteSpace(workingDirectory))
                 return "작업 폴더를 먼저 지정하세요. Coordinator-first 작업은 Worker 실행 폴더를 자동 작업 폴더로 사용하지 않습니다.";
-            var highLevelAuthorizedAtLaunch =
-                HighLevelPermitCheckBox.IsChecked == true;
-            var highLevel = NormalizeRoleSessionForWorkspace(
-                _targetSettings.EffectiveHighLevel,
-                workingDirectory);
             return GetCoordinatorFirstPreflightError(
                 workingDirectory,
                 _targetSettings.EffectiveCoordinator,
-                _targetSettings.EffectiveImplementer,
-                highLevel,
-                highLevelAuthorizedAtLaunch);
+                _targetSettings.EffectiveImplementer);
         }
 
         if (!_codexAuthenticated) return "Codex 로그인이 필요합니다.";
@@ -799,11 +779,6 @@ public partial class MainWindow : Window
         if (!hqWeb.ExtensionSynchronized) return "HQ GPT Web 확장 동기화를 기다리고 있습니다.";
         return null;
     }
-
-    private void HighLevelPermitCheckBox_Changed(
-        object sender,
-        RoutedEventArgs e)
-        => UpdateDashboardRunButtonState();
 
     private async Task BeginNewDashboardTaskAsync()
     {
@@ -846,7 +821,6 @@ public partial class MainWindow : Window
                 out var ephemeralResetError);
             DashboardTaskInput.Text = DashboardPromptPlaceholder;
             DashboardTaskInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
-            HighLevelPermitCheckBox.IsChecked = false;
             SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
             UpdateDashboardSummary();
 
@@ -1223,17 +1197,10 @@ public partial class MainWindow : Window
         var implementer = NormalizeRoleSessionForWorkspace(
             _targetSettings.EffectiveImplementer,
             cliWorkingDirectory);
-        var highLevelAuthorizedAtLaunch =
-            HighLevelPermitCheckBox.IsChecked == true;
-        var highLevel = NormalizeRoleSessionForWorkspace(
-            _targetSettings.EffectiveHighLevel,
-            cliWorkingDirectory);
         var roleError = GetCoordinatorFirstPreflightError(
             cliWorkingDirectory,
             coordinator,
-            implementer,
-            highLevel,
-            highLevelAuthorizedAtLaunch);
+            implementer);
         if (roleError is not null)
         {
             TaskDirection.Text = "PREFLIGHT";
@@ -1245,15 +1212,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        HighLevelPermitCheckBox.IsChecked = false;
         await RunCoordinatorFirstJobAsync(
             launchRequest.Prompt,
             selectedThreadForLaunch,
             cliWorkingDirectory,
             coordinator,
             implementer,
-            attachments: launchRequest.Attachments,
-            highLevelAuthorizedAtLaunch: highLevelAuthorizedAtLaunch);
+            attachments: launchRequest.Attachments);
     }
 
     private Task<BridgeTask?> CreateWebTaskAsync(string webPrompt, List<BridgeAttachment> attachments, string? gitReferenceHeader = null)
@@ -1830,8 +1795,7 @@ public partial class MainWindow : Window
         WorkerAiRoleSettings coordinator,
         WorkerAiRoleSettings implementer,
         CoordinatorContinuationState? continuation = null,
-        IReadOnlyList<UserAttachmentInput>? attachments = null,
-        bool highLevelAuthorizedAtLaunch = false)
+        IReadOnlyList<UserAttachmentInput>? attachments = null)
         => RunParallelCoordinatorFirstJobAsync(
             request,
             selectedThread,
@@ -1839,8 +1803,7 @@ public partial class MainWindow : Window
             coordinator,
             implementer,
             continuation,
-            attachments,
-            highLevelAuthorizedAtLaunch);
+            attachments);
 
     private async Task<AiRoleRunResult> RunHqRoleAsync(
         string jobId,
@@ -2492,21 +2455,6 @@ public partial class MainWindow : Window
         string workingDirectory,
         WorkerAiRoleSettings coordinator,
         WorkerAiRoleSettings implementer)
-        => GetCoordinatorFirstPreflightError(
-            workingDirectory,
-            coordinator,
-            implementer,
-            NormalizeRoleSessionForWorkspace(
-                _targetSettings.EffectiveHighLevel,
-                workingDirectory),
-            highLevelAuthorizedAtLaunch: false);
-
-    private string? GetCoordinatorFirstPreflightError(
-        string workingDirectory,
-        WorkerAiRoleSettings coordinator,
-        WorkerAiRoleSettings implementer,
-        WorkerAiRoleSettings highLevel,
-        bool highLevelAuthorizedAtLaunch)
     {
         var basic = GetExecutionModeConfigError(workingDirectory);
         if (basic is not null) return basic;
@@ -2524,19 +2472,10 @@ public partial class MainWindow : Window
             if (coordinatorError is not null) return coordinatorError;
         }
 
-        var implementerError = _aiRoleRunners.GetPreflightError(
+        return _aiRoleRunners.GetPreflightError(
             implementer,
             workingDirectory,
             _codexAuthenticated);
-        if (implementerError is not null)
-            return implementerError;
-
-        return highLevelAuthorizedAtLaunch
-            ? _aiRoleRunners.GetPreflightError(
-                highLevel,
-                workingDirectory,
-                _codexAuthenticated)
-            : null;
     }
 
     private void ApplyExecutionModePresentation(bool coordinatorFirst)
