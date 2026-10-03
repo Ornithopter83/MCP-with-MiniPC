@@ -41,9 +41,10 @@ WORK_GRAPH_PATCH:
 ⑨ #0·#9는 dependency를 사용하지 않으며 직전 실행 완료 뒤 필요한 시점에 같은 번호로 다시 ADD할 수 있다.
 ⑩ #9는 빌드·export·publish할 CODE_CHANGE의 원격 resultRef를 baseRef로 사용한다. 서로 독립된 CODE_CHANGE가 둘 이상이면 먼저 INTEGRATION WorkItem으로 하나의 resultRef를 만든다.
 ⑪ #9는 CODE_CHANGE나 Git commit을 생성·확정하는 임무로 사용하지 않는다.
-⑫ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
-⑬ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
-⑭ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
+⑫ 일반 WorkItem은 WORK 하나가 한 번의 실행 흐름에서 완료 여부를 명확히 판정할 수 있는 작은 단위로 만든다.
+⑬ ADD에는 그 작은 단위의 하나의 응집된 목표와 동일 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다. checklist를 여러 기능이나 서로 다른 문제를 한 WorkItem에 묶는 용도로 사용하지 않는다.
+⑭ 서로 독립적으로 구현·검증·실패할 수 있는 내용이나 연관성이 낮은 일은 별도 WorkItem으로 ADD한다.
+⑮ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
 
 제3조 (관제)
 

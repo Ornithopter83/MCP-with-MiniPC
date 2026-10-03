@@ -19,8 +19,10 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[GOTO : HIGH]", hq);
         Assert.Contains("[KEY=...]", hq);
         Assert.Contains("WORK_GRAPH_PATCH:", hq);
+        Assert.Contains("작은 단위", hq);
+        Assert.Contains("한 번의 실행 흐름에서 완료 여부를 명확히 판정", hq);
         Assert.DoesNotContain("JUDGE", hq, StringComparison.OrdinalIgnoreCase);
-        Assert.True(hq.Length < 2600);
+        Assert.True(hq.Length < 3000);
     }
 
     [Fact]
