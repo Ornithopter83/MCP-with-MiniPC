@@ -872,7 +872,7 @@ public sealed class GitWorktreeManagerTests
                    comparison);
     }
 
-    private sealed class ConcurrentFetchGitRunner : IGitWorktreeCommandRunner
+    private sealed class ConcurrentFetchGitRunner : IGitCommandRunner
     {
         private readonly string _root;
         private readonly object _sync = new();
@@ -935,7 +935,7 @@ public sealed class GitWorktreeManagerTests
         }
     }
 
-    private sealed class FakeGitRunner : IGitWorktreeCommandRunner
+    private sealed class FakeGitRunner : IGitCommandRunner
     {
         private readonly Queue<GitCommandResult> _results = new();
 
