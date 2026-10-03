@@ -2465,14 +2465,6 @@ public sealed class GitWorktreeManager
             repository);
     }
 
-    private static string BuildLegacyWorktreePath(string repositoryRoot, string jobId, string workItemId)
-    {
-        return Path.Combine(
-            BuildLegacyWorktreeRoot(repositoryRoot),
-            StableSegment(jobId, 8),
-            StableSegment(workItemId, 18));
-    }
-
     private Task<GitCommandResult> ReadPrimaryWorkspaceStatusAsync(
         string repositoryRoot,
         string workspace,
@@ -2654,42 +2646,6 @@ public sealed class GitWorktreeManager
         }
     }
 
-    private static IReadOnlyList<WorktreeEntry> ParseWorktrees(string text)
-    {
-        var result = new List<WorktreeEntry>();
-        string? path = null;
-        string? head = null;
-        string? branch = null;
-
-        void Flush()
-        {
-            if (!string.IsNullOrWhiteSpace(path))
-                result.Add(new WorktreeEntry(path, head, branch));
-            path = null;
-            head = null;
-            branch = null;
-        }
-
-        foreach (var line in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                Flush();
-                continue;
-            }
-
-            if (line.StartsWith("worktree ", StringComparison.Ordinal))
-                path = line["worktree ".Length..].Trim();
-            else if (line.StartsWith("HEAD ", StringComparison.Ordinal))
-                head = line["HEAD ".Length..].Trim();
-            else if (line.StartsWith("branch refs/heads/", StringComparison.Ordinal))
-                branch = line["branch refs/heads/".Length..].Trim();
-        }
-
-        Flush();
-        return result;
-    }
-
     private static string SafeCommitLabel(string value)
     {
         var builder = new StringBuilder();
@@ -2729,5 +2685,4 @@ public sealed class GitWorktreeManager
         return cleaned + "-" + hash;
     }
 
-    private sealed record WorktreeEntry(string Path, string? Head, string? Branch);
 }
