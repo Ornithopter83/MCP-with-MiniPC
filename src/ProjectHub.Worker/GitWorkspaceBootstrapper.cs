@@ -31,21 +31,19 @@ public sealed class GitWorkspaceBootstrapper
             return Failure("GIT_REMOTE_WORKSPACE_MISSING", workingDirectory);
 
         var workspace = Path.GetFullPath(workingDirectory);
-        var repositoryRoot = FindRepositoryRoot(workspace);
-        if (repositoryRoot is null)
-        {
-            var rootResult = await RunAsync(
-                workspace,
-                ReadTimeout,
-                cancellationToken,
-                "rev-parse",
-                "--show-toplevel").ConfigureAwait(false);
+        var rootResult = await RunAsync(
+            workspace,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--show-toplevel").ConfigureAwait(false);
 
-            if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
-                return Failure("GIT_REMOTE_REPOSITORY_REQUIRED", workspace);
+        if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
+            return Failure("GIT_REMOTE_REPOSITORY_REQUIRED", workspace);
 
-            repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
-        }
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        if (!PathsEqual(repositoryRoot, workspace))
+            return Failure("GIT_REMOTE_EXACT_ROOT_REQUIRED", workspace);
 
         var branchResult = await RunAsync(
             repositoryRoot,
@@ -191,21 +189,16 @@ public sealed class GitWorkspaceBootstrapper
             displayOrigin);
     }
 
-    private static string? FindRepositoryRoot(string path)
+    private static bool PathsEqual(string left, string right)
     {
-        var directory = new DirectoryInfo(path);
-        while (directory is not null)
-        {
-            if (Directory.Exists(Path.Combine(directory.FullName, ".git")) ||
-                File.Exists(Path.Combine(directory.FullName, ".git")))
-            {
-                return Path.GetFullPath(directory.FullName);
-            }
+        static string Normalize(string value)
+            => Path.GetFullPath(value)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-            directory = directory.Parent;
-        }
-
-        return null;
+        return string.Equals(
+            Normalize(left),
+            Normalize(right),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private Task<GitCommandResult> RunAsync(
