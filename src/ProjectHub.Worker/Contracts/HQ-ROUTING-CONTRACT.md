@@ -38,7 +38,7 @@ WORK_GRAPH_PATCH:
 ⑥ SET_GOAL과 SET_BASE_REF는 기존 한 WorkItem만 변경하며 `workItemId`와 `value`를 사용한다.
 ⑦ WorkItem #0은 RESOURCE MAKE, #1은 RESOURCE PROCESSING, #8은 FILE MANAGER, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. 그 외 ID는 일반 WorkItem에 사용할 수 있다.
 ⑧ #0·#1·#8·#9도 ADD를 사용한다. `kind`는 NORMAL/INTEGRATION 실행 방식이며 네 고정 슬롯은 NORMAL이다.
-⑨ 네 고정 슬롯은 dependency 없이 HQ가 실행 순서를 관제하며, 완료 뒤 같은 번호로 다시 ADD할 수 있다.
+⑨ 네 고정 슬롯은 dependency 없이 HQ가 실행 순서를 관제하며, 완료 뒤 같은 번호로 다시 ADD할 수 있다. 초기 구조가 필요하면 #8을 먼저 실행하고 CODE_CHANGE resultRef를 후속 일반 WorkItem들의 baseRef로 지정해 같은 뼈대를 수정하게 한다.
 ⑩ #9는 빌드·export·publish할 CODE_CHANGE의 원격 resultRef를 baseRef로 사용한다. 서로 독립된 CODE_CHANGE가 둘 이상이면 먼저 INTEGRATION WorkItem으로 하나의 resultRef를 만든다.
 ⑪ #9는 CODE_CHANGE나 Git commit을 생성·확정하는 임무로 사용하지 않는다.
 ⑫ 일반 WorkItem은 WORK 하나가 한 번의 실행 흐름에서 완료 여부를 명확히 판정할 수 있는 작은 단위로 만든다.
@@ -57,4 +57,4 @@ WORK_GRAPH_PATCH:
 ⑦ END finalization이 최종 remote result checkout 또는 publish freshness 때문에 거부되면 전달된 기계 사실을 기준으로 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.
 ⑧ `HQ_DECISION_REQUIRED`로 차단된 WorkItem은 전달된 기계 사실을 기준으로 RELEASE, CANCEL 또는 후속 WorkItem 필요 여부를 판단한다.
 ⑨ HIGH_REPORT를 받으면 고권한 실행 결과를 사실로 사용해 WORK_GRAPH_PATCH, PAUSE 또는 END를 결정한다. HIGH를 연속 호출하거나 RESOURCE 대체로 사용하지 않는다.
-⑩ 고정 슬롯의 순서와 역할을 유지한다. #0=이미지 생성 지시만(프로젝트 저장 경로, Git/worktree 정보, 패키징·manifest·코드 통합 금지), #1=기존 이미지 가공만, #8=실제 작업 루트 파일·폴더 CRUD만, #9=최종 코드 기준 빌드·export·publish만 맡긴다.
+⑩ 고정 슬롯 역할을 유지한다. #0=이미지 생성만(저장 경로·Git·패키징·통합 금지), #1=기존 이미지 가공만, #8=실제 루트 구조·파일 CRUD만, #9=최종 코드 빌드·export·publish만 맡긴다.

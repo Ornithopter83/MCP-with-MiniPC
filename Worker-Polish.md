@@ -57,8 +57,10 @@
 ⑦ 완료된 CODE_CHANGE는 파일 단위 MATERIALIZE/COPY나 별도 materialization ledger 없이 commit 계보로 추적한다. 최종 result가 현재 원격 동기화 branch에 포함되지 않았으면 clean 사용자 checkout을 해당 `projecthub/*` 원격 result branch로 전환하며, 기본·보호 branch에 자동 merge·push하지 않는다.
 ⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나면 Worker가 임의 merge·reset·재초기화하지 않고 기계 오류로 차단한다.
 ⑨ PAUSE·CANCELED continuation은 보존된 WorkGraph와 원격 resultRef를 기준으로 하며, DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.
-⑩ #9 게시 산출물은 작업 루트의 `.projecthub/artifacts` 아래 Worker 소유 artifact 경로에 저장하며 disposable runtime과 분리한다.
-⑪ 하네스 없음 Direct Work는 WorkGraph, HQ/WORK 역할 계약, Git baseline, disposable clone, checkpoint, resultRef와 landing 정책의 적용 대상이 아니다. 사용자가 선택한 작업 폴더를 직접 working directory로 사용하고 project instruction 주입 없이 선택한 Provider를 실행한다. 다만 Master-Polish.md 제3조의 변경·안전 경계와 Worker의 child-process 수명 책임은 그대로 적용한다.
+⑩ #8 FILE MANAGER가 실제 작업 루트에 구조·파일을 생성·수정하면 Worker가 작업 시작 HEAD와 같은 기준점에서 전용 `projecthub/*` branch로 checkout을 전환해 해당 루트 상태를 checkpoint·push하고 CODE_CHANGE resultRef로 확정한다. 사용자 기존 branch와 remote default branch는 변경하지 않는다. 후속 일반 WorkItem은 HQ가 이 resultRef를 baseRef로 지정하며 각자 격리 clone에서 수정한다.
+⑪ 최종 CODE_CHANGE가 #8 bootstrap을 baseRef로 이어받으면 #8 결과는 별도 최종 tip이 아니라 소비된 기준점으로 취급하며, 사용자 checkout이 그 managed bootstrap branch에 있으면 최종 remote result branch로 안전하게 전환할 수 있다.
+⑫ #9 게시 산출물은 작업 루트의 `.projecthub/artifacts` 아래 Worker 소유 artifact 경로에 저장하며 disposable runtime과 분리한다.
+⑬ 하네스 없음 Direct Work는 WorkGraph, HQ/WORK 역할 계약, Git baseline, disposable clone, checkpoint, resultRef와 landing 정책의 적용 대상이 아니다. 사용자가 선택한 작업 폴더를 직접 working directory로 사용하고 project instruction 주입 없이 선택한 Provider를 실행한다. 다만 Master-Polish.md 제3조의 변경·안전 경계와 Worker의 child-process 수명 책임은 그대로 적용한다.
 
 제8조 (프로세스)
 
