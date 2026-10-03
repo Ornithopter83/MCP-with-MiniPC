@@ -1685,10 +1685,7 @@ public partial class MainWindow : Window
                 InitialDirectory = Directory.Exists(WorkingDirectoryInput.Text) ? WorkingDirectoryInput.Text : AppContext.BaseDirectory
             };
             if (dialog.ShowDialog() == Forms.DialogResult.OK && Directory.Exists(dialog.SelectedPath))
-            {
                 WorkingDirectoryInput.Text = dialog.SelectedPath;
-                RefreshWorkingDirectoryGitTargetPresentation(showFeedback: false);
-            }
         }
         finally
         {
