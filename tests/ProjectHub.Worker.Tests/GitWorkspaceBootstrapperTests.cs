@@ -26,7 +26,7 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
-    public async Task ParentRepositoryIsAdoptedForSelectedWorkspace()
+    public async Task ParentRepositoryIsRejectedInsteadOfBeingAdopted()
     {
         var workspace = CreateWorkspace();
         var parent = Directory.GetParent(workspace)!.FullName;
@@ -34,22 +34,11 @@ public sealed class GitWorkspaceBootstrapperTests
         {
             var runner = new ScriptedRunner();
             runner.Enqueue("rev-parse --show-toplevel", Ok(parent));
-            runner.Enqueue("symbolic-ref --quiet --short HEAD", Ok("main"));
-            runner.Enqueue("rev-parse --verify HEAD", Ok("abc123"));
-            runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
-            runner.Enqueue("status --porcelain=v1 --untracked-files=all", Ok());
-            runner.Enqueue("fetch --prune origin", Ok());
-            runner.Enqueue(
-                "rev-parse --verify refs/remotes/origin/main^{commit}",
-                Ok("abc123"));
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
-            Assert.True(state.Success);
-            Assert.Equal(Path.GetFullPath(workspace), state.WorkingDirectory);
-            Assert.Equal(Path.GetFullPath(parent), state.RepositoryRoot);
-            Assert.Equal("main", state.Branch);
-            Assert.Equal("abc123", state.HeadCommit);
+            Assert.False(state.Success);
+            Assert.Equal("GIT_REMOTE_EXACT_ROOT_REQUIRED", state.ErrorCode);
         }
         finally
         {
