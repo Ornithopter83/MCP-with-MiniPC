@@ -42,9 +42,19 @@ public sealed class WorkerPathsRuntimeTests
             Assert.StartsWith(runtime.Root, runtime.NuGetRoot, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.DotNetHome, StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(runtime.Root, runtime.TempRoot, StringComparison.OrdinalIgnoreCase);
+            var stateRoot = WorkerPaths.GetWorkspaceStateDirectory(workspace);
+            Assert.StartsWith(
+                WorkerPaths.WorkspaceStateRoot,
+                stateRoot,
+                comparison);
+            Assert.False(
+                Path.GetFullPath(stateRoot).StartsWith(
+                    runtimeRoot + Path.DirectorySeparatorChar,
+                    comparison));
         }
         finally
         {
+            CleanupWorkspacePaths(workspace);
             if (Directory.Exists(parent))
                 Directory.Delete(parent, true);
         }
@@ -135,8 +145,30 @@ public sealed class WorkerPathsRuntimeTests
         }
         finally
         {
+            CleanupWorkspacePaths(workspace);
             if (Directory.Exists(parent))
                 Directory.Delete(parent, true);
         }
     }
+    private static void CleanupWorkspacePaths(string workspace)
+    {
+        var publishedRun = WorkerPaths.GetPublishedArtifactDirectory(
+            workspace,
+            "job-alpha",
+            12);
+        var publishedRepositoryRoot = Directory.GetParent(
+            Directory.GetParent(publishedRun)!.FullName)!.FullName;
+
+        foreach (var path in new[]
+        {
+            WorkerPaths.GetRepositoryRuntimePaths(workspace).Root,
+            WorkerPaths.GetWorkspaceStateDirectory(workspace),
+            publishedRepositoryRoot
+        })
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, true);
+        }
+    }
+
 }
