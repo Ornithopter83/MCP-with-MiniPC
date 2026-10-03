@@ -49,7 +49,6 @@ public static class ProjectWorkspacePersistence
 {
     private static readonly object EventSync = new();
     private static readonly object TranscriptSync = new();
-    private static readonly object PersistenceFailureSync = new();
     private static readonly JsonSerializerOptions StateJsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -62,7 +61,7 @@ public static class ProjectWorkspacePersistence
     };
 
     public static string RootDirectory(string workingDirectory)
-        => WorkerPaths.GetWorkspaceStateDirectory(workingDirectory);
+        => Path.Combine(Path.GetFullPath(workingDirectory), ".projecthub");
 
     public static string StatePath(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "session-state.json");
@@ -84,46 +83,6 @@ public static class ProjectWorkspacePersistence
 
     public static string EventLogPath(string workingDirectory, string jobId)
         => Path.Combine(EventDirectory(workingDirectory), SanitizeId(jobId) + ".jsonl");
-
-    public static string WorkerLogPath(string? jobId)
-        => Path.Combine(
-            WorkerPaths.Logs,
-            "worker-" + SanitizeId(string.IsNullOrWhiteSpace(jobId) ? "session" : jobId) + ".log");
-
-    public static bool AppendWorkerLog(
-        string? jobId,
-        DateTimeOffset timestamp,
-        string source,
-        string content)
-    {
-        if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(content))
-            return false;
-
-        var path = WorkerLogPath(jobId);
-        try
-        {
-            Directory.CreateDirectory(WorkerPaths.Logs);
-            var block =
-                $"[{timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] {source.Trim()}" +
-                Environment.NewLine +
-                content.Trim() +
-                Environment.NewLine +
-                Environment.NewLine;
-            lock (TranscriptSync)
-            {
-                File.AppendAllText(
-                    path,
-                    block,
-                    new UTF8Encoding(false));
-            }
-            return true;
-        }
-        catch (Exception exception)
-        {
-            WritePersistenceFailure("AppendWorkerLog", path, exception);
-            return false;
-        }
-    }
 
     public static string TranscriptPath(string workingDirectory, string jobId)
         => Path.Combine(TranscriptDirectory(workingDirectory), SanitizeId(jobId) + ".txt");
@@ -179,12 +138,8 @@ public static class ProjectWorkspacePersistence
             }
             return true;
         }
-        catch (Exception exception)
+        catch
         {
-            WritePersistenceFailure(
-                "InitializeCommandTranscript",
-                path,
-                exception);
             return false;
         }
     }
@@ -216,12 +171,8 @@ public static class ProjectWorkspacePersistence
             }
             return true;
         }
-        catch (Exception exception)
+        catch
         {
-            WritePersistenceFailure(
-                "AppendCommandTranscript",
-                path,
-                exception);
             return false;
         }
     }
@@ -292,14 +243,8 @@ public static class ProjectWorkspacePersistence
             }
             return eventId;
         }
-        catch (Exception exception)
+        catch
         {
-            WritePersistenceFailure(
-                "AppendEvent",
-                string.IsNullOrWhiteSpace(workingDirectory) || string.IsNullOrWhiteSpace(jobId)
-                    ? null
-                    : EventLogPath(workingDirectory, jobId),
-                exception);
             return null;
         }
     }
@@ -322,14 +267,8 @@ public static class ProjectWorkspacePersistence
                 JsonSerializer.Serialize(snapshot, StateJsonOptions));
             return true;
         }
-        catch (Exception exception)
+        catch
         {
-            WritePersistenceFailure(
-                "SaveWorkGraph",
-                string.IsNullOrWhiteSpace(workingDirectory) || snapshot is null
-                    ? null
-                    : WorkGraphPath(workingDirectory, snapshot.JobId),
-                exception);
             return false;
         }
     }
@@ -605,36 +544,6 @@ public static class ProjectWorkspacePersistence
         var temp = path + ".tmp";
         File.WriteAllText(temp, content, new UTF8Encoding(false));
         File.Move(temp, path, true);
-    }
-
-    private static void WritePersistenceFailure(
-        string operation,
-        string? targetPath,
-        Exception exception)
-    {
-        try
-        {
-            Directory.CreateDirectory(WorkerPaths.Logs);
-            var path = Path.Combine(WorkerPaths.Logs, "persistence-errors.log");
-            var line =
-                $"[{DateTimeOffset.Now:O}] operation={operation}" +
-                (string.IsNullOrWhiteSpace(targetPath)
-                    ? string.Empty
-                    : " target=" + targetPath) +
-                $" exception={exception.GetType().Name}: {exception.Message}" +
-                Environment.NewLine;
-            lock (PersistenceFailureSync)
-            {
-                File.AppendAllText(
-                    path,
-                    line,
-                    new UTF8Encoding(false));
-            }
-        }
-        catch
-        {
-            // 마지막 fallback도 작업 흐름을 중단시키지 않는다.
-        }
     }
 
     private static string SanitizeId(string value)
