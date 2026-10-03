@@ -1,6 +1,6 @@
 # 현재 작업
 
-갱신일: 2026-10-01
+갱신일: 2026-10-03
 
 제1조 (CORE)
 
@@ -34,9 +34,9 @@
 ④ WorkGraph patch의 JSON·스키마 오류는 현재 revision과 오류 정보를 HQ에 돌려 형식 수정 응답을 요구하며, 기계 오류 때문에 WORK 의미 작업을 다시 수행하지 않는다.
 ⑤ WorkItem 격리, CODE_CHANGE provenance, END 종료 게이트와 안전한 fast-forward landing 규칙을 유지한다.
 ⑥ DONE·DONE_WITH_ERROR 뒤의 추가 작업은 이전 WorkGraph를 이어 붙이지 않고 현재 작업 폴더에서 새 Job으로 시작하며, PAUSE·CANCELED도 작업 폴더가 바뀌었으면 같은 원칙을 적용한다.
-⑦ Git 준비 실패 시 사용자 승인으로 .git만 재초기화하고 작업 파일과 .gitignore는 보존하는 단순 복구 경로를 둔다.
+⑦ 새 작업은 `origin`이 존재하고 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 작업 폴더에서만 시작하며, 불일치·dirty·원격 부재 상태를 Worker가 임의 재초기화·merge·reset하지 않는다.
 ⑧ HQ 상태 통지는 WorkItem checklist를 첫 보고에 포함한 뒤 같은 관제 세션의 후속 상태 변화에서는 동일 checklist 전문을 반복하지 않고 새 WORK 보고와 변경 상태를 중심으로 전달한다.
-⑨ 최종 landing 뒤 사용자 결과에 남은 runtime worktree 파일 경로는 같은 상대 경로의 파일이 사용자 작업 폴더에 실제 존재하는 경우에만 target workspace 경로로 정규화한다.
+⑨ NORMAL WORK와 Direct Work는 원격 기준 disposable clone에서 실행하고 CODE_CHANGE는 `projecthub/*` 원격 checkpoint로 확정하며, 최종 landing 뒤 사용자 결과에 남은 runtime clone 파일 경로는 같은 상대 경로의 파일이 사용자 작업 폴더에 실제 존재하는 경우에만 target workspace 경로로 정규화한다.
 ⑩ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
 
 제6조 (WEB)
