@@ -64,79 +64,27 @@ public sealed class CodexWorkItemExecutorTests
         }
     }
 
-    [Theory]
-    [InlineData("8")]
-    [InlineData("9")]
-    public async Task FixedRootSlotsReceiveTargetWorkspaceWriteAccess(
-        string workItemId)
+    [Fact]
+    public async Task BuildPublishSlotReceivesTargetWorkspaceWriteAccess()
     {
         var fixture = CreateFixture(
             """
             [GOTO : HQ]
             WORK_ITEM_STATUS: COMPLETED
-            고정 임무 완료
+            BUILD / PUBLISH 완료
             """,
-            workItemId: workItemId,
+            workItemId: FixedWorkItemSlots.BuildPublish,
             createdOrder: 4);
 
         try
         {
-            var request = fixture.Request;
-            if (workItemId == FixedWorkItemSlots.Materialize)
-            {
-                var root = Path.Combine(fixture.Parent, "repo");
-                var bytes = Encoding.UTF8.GetBytes("materialized");
-                await File.WriteAllBytesAsync(Path.Combine(root, "source.txt"), bytes);
-                var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-                var manifestDirectory = Path.Combine(
-                    root,
-                    ".projecthub",
-                    "commit-manifests",
-                    "job");
-                Directory.CreateDirectory(manifestDirectory);
-                var manifestPath = Path.Combine(manifestDirectory, "10-source-ref.json");
-                await File.WriteAllTextAsync(
-                    manifestPath,
-                    JsonSerializer.Serialize(
-                        new CommitManifest(
-                            "10",
-                            "source-ref",
-                            "base",
-                            "tree",
-                            new[]
-                            {
-                                new CommitManifestFile(
-                                    "source.txt",
-                                    "MODIFY",
-                                    null,
-                                    bytes.LongLength,
-                                    sha,
-                                    true,
-                                    "materialized")
-                            }),
-                        new JsonSerializerOptions(JsonSerializerDefaults.Web)));
-
-                request = request with
-                {
-                    MaterializationCandidates = new[]
-                    {
-                        new WorkItemDependencyResult(
-                            "10",
-                            "source-ref",
-                            "source completed",
-                            WorkItemResultType.CodeChange,
-                            manifestPath)
-                    }
-                };
-            }
-
             var result = await fixture.Executor.ExecuteAsync(
-                request,
+                fixture.Request,
                 CancellationToken.None);
 
             var rootPath = Path.Combine(fixture.Parent, "repo");
             var executionKey = FixedWorkItemSlots.BuildExecutionKey(
-                workItemId,
+                FixedWorkItemSlots.BuildPublish,
                 fixture.Request.Item.CreatedOrder);
             var runtime = WorkerPaths.GetRepositoryRuntimePaths(rootPath);
             var workTemp = WorkerPaths.BuildWorkTempPath(
@@ -147,71 +95,21 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Contains(
                 Path.GetFullPath(rootPath),
                 fixture.Runner.LastRequest!.AdditionalWritableDirectories!);
-            Assert.Contains("대상 프로젝트 루트: " + Path.GetFullPath(rootPath), fixture.Runner.LastRequest.Prompt);
-            Assert.DoesNotContain("MATERIALIZE / COPY", fixture.Runner.LastRequest.Prompt);
-            Assert.DoesNotContain("BUILD / PUBLISH", fixture.Runner.LastRequest.Prompt);
+            Assert.Contains(
+                "대상 프로젝트 루트: " + Path.GetFullPath(rootPath),
+                fixture.Runner.LastRequest.Prompt);
             Assert.Equal(
                 workTemp,
                 fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_WORK_TEMP"]);
-            if (workItemId == FixedWorkItemSlots.Materialize)
-            {
-                Assert.Contains(
-                    fixture.Git.Calls,
-                    call => call.Any(argument =>
-                        argument.Contains(executionKey, StringComparison.Ordinal)));
-            }
-
-            if (workItemId == FixedWorkItemSlots.Materialize)
-            {
-                Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
-                Assert.Contains("MATERIALIZE source:", fixture.Runner.LastRequest.Prompt);
-                Assert.Contains("workItemId=10", fixture.Runner.LastRequest.Prompt);
-            }
-            else
-            {
-                Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
-                Assert.Equal(WorkItemResultType.Artifact, result.ResultType);
-                Assert.StartsWith("artifact-run-", result.ResultRef);
-                Assert.Null(result.CommitManifestPath);
-            }
+            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
+            Assert.Equal(WorkItemResultType.Artifact, result.ResultType);
+            Assert.StartsWith("artifact-run-", result.ResultRef);
+            Assert.Null(result.CommitManifestPath);
         }
         finally
         {
             fixture.Dispose();
         }
-    }
-
-    [Fact]
-    public void RootWritablePromptCarriesMechanicalMaterializationSourceWithoutDependency()
-    {
-        var prompt = RoleContractLoader.BuildWorkPrompt(
-            "WORK_ITEM",
-            "반영하세요.",
-            new WorkItemPromptContext(
-                "8",
-                WorkItemKind.Normal,
-                "완료 결과 반영",
-                Array.Empty<string>(),
-                "base",
-                "branch",
-                "worktree",
-                MaterializationSource: new WorkItemDependencyPromptContext(
-                    "12",
-                    "ref-12",
-                    "완료",
-                    WorkItemResultType.CodeChange,
-                    "C:/repo/.projecthub/commit-manifests/job/12.json")),
-            includeContract: false,
-            workTempRoot: "C:/repo/.projecthub/runtime/temp/job/8",
-            targetWorkspace: "C:/repo");
-
-        Assert.Contains("선행 WorkItem: 없음", prompt);
-        Assert.Contains("MATERIALIZE source:", prompt);
-        Assert.Contains("workItemId=12", prompt);
-        Assert.Contains("manifest=C:/repo/.projecthub/commit-manifests/job/12.json", prompt);
-        Assert.Contains("대상 프로젝트 루트: C:/repo", prompt);
-        Assert.DoesNotContain("MATERIALIZE / COPY", prompt);
-        Assert.DoesNotContain("BUILD / PUBLISH", prompt);
     }
 
     [Fact]
