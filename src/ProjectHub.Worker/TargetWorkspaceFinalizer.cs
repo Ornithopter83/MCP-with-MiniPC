@@ -120,7 +120,7 @@ public sealed class TargetWorkspaceFinalizer
         var containment = await _worktrees.InspectTargetContainmentAsync(
             _workspace,
             finalResultRef,
-            _expectedPrimaryBranch,
+            expectedTargetBranch: null,
             cancellationToken).ConfigureAwait(false);
 
         if (!containment.Success)
@@ -133,6 +133,57 @@ public sealed class TargetWorkspaceFinalizer
                 $"resultRef={finalResultRef}" +
                 Environment.NewLine +
                 $"targetWorkspace={_workspace}");
+        }
+
+        var targetBranch = target.Branch?.Trim();
+        var currentBranch = containment.TargetBranch?.Trim();
+        var originalBranch = _expectedPrimaryBranch?.Trim();
+
+        var onOriginalBranch =
+            !string.IsNullOrWhiteSpace(originalBranch) &&
+            string.Equals(currentBranch, originalBranch, StringComparison.Ordinal);
+        var onResultBranch =
+            !string.IsNullOrWhiteSpace(targetBranch) &&
+            string.Equals(currentBranch, targetBranch, StringComparison.Ordinal);
+
+        if (!onOriginalBranch && !onResultBranch)
+        {
+            return new(
+                false,
+                "TARGET_BRANCH_CHANGED",
+                "사용자 작업 폴더의 현재 branch가 작업 시작 branch나 최종 remote result branch와 일치하지 않습니다." +
+                Environment.NewLine +
+                $"currentBranch={currentBranch ?? "없음"}" +
+                Environment.NewLine +
+                $"expectedBranch={originalBranch ?? "없음"}" +
+                Environment.NewLine +
+                $"resultBranch={targetBranch ?? "없음"}");
+        }
+
+        if (onResultBranch)
+        {
+            if (!string.Equals(
+                    containment.TargetHead,
+                    containment.ResultCommit,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return new(
+                    false,
+                    "TARGET_RESULT_BRANCH_ADVANCED",
+                    "사용자 checkout은 최종 remote result branch에 있지만 HEAD가 확정 resultRef와 다릅니다." +
+                    Environment.NewLine +
+                    $"resultRef={finalResultRef}" +
+                    Environment.NewLine +
+                    $"currentHead={containment.TargetHead ?? "없음"}");
+            }
+
+            return new(
+                true,
+                null,
+                "사용자 checkout이 이미 최종 원격 CODE_CHANGE branch와 일치합니다.",
+                target.Id,
+                finalResultRef,
+                false);
         }
 
         if (containment.IsContained)
