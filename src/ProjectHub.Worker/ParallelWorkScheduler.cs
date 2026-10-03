@@ -6,8 +6,7 @@ public sealed record WorkItemDependencyResult(
     string WorkItemId,
     string? ResultRef,
     string? ResultSummary,
-    WorkItemResultType ResultType = WorkItemResultType.None,
-    string? CommitManifestPath = null);
+    WorkItemResultType ResultType = WorkItemResultType.None);
 
 public sealed record WorkItemExecutionRequest(
     WorkItemSnapshot Item,
@@ -35,7 +34,6 @@ public sealed record WorkItemExecutionResult(
     string? SessionId = null,
     string? BlockDetailCode = null,
     WorkItemResultType ResultType = WorkItemResultType.None,
-    string? CommitManifestPath = null,
     string? FailureStage = null)
 {
     public static WorkItemExecutionResult Completed(
@@ -44,9 +42,8 @@ public sealed record WorkItemExecutionResult(
         string? branch = null,
         string? worktreePath = null,
         string? sessionId = null,
-        WorkItemResultType resultType = WorkItemResultType.None,
-        string? commitManifestPath = null)
-        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary, null, null, branch, worktreePath, sessionId, null, resultType, commitManifestPath);
+        WorkItemResultType resultType = WorkItemResultType.None)
+        => new(WorkItemExecutionOutcome.Completed, resultRef, resultSummary, null, null, branch, worktreePath, sessionId, null, resultType);
 
     public static WorkItemExecutionResult Failed(
         string failureCode,
@@ -74,9 +71,8 @@ public sealed record WorkItemExecutionResult(
         string? worktreePath = null,
         string? sessionId = null,
         string? blockDetailCode = null,
-        WorkItemResultType resultType = WorkItemResultType.None,
-        string? commitManifestPath = null)
-        => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId, blockDetailCode, resultType, commitManifestPath);
+        WorkItemResultType resultType = WorkItemResultType.None)
+        => new(WorkItemExecutionOutcome.Blocked, resultRef, resultSummary, null, blockCode, branch, worktreePath, sessionId, blockDetailCode, resultType);
 }
 
 public interface IWorkItemExecutor
@@ -355,7 +351,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
             var dependencyResults = runningSnapshot.Dependencies
                 .Select(id => _graph.Find(id))
                 .Where(item => item is not null)
-                .Select(item => new WorkItemDependencyResult(item!.Id, item.ResultRef, item.ResultSummary, item.ResultType, item.CommitManifestPath))
+                .Select(item => new WorkItemDependencyResult(item!.Id, item.ResultRef, item.ResultSummary, item.ResultType))
                 .ToArray();
             var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
             var running = new RunningWork(next.Id, slot.Value, itemCancellation);
@@ -468,8 +464,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                             : result.FailureCode,
                         result.ResultType == WorkItemResultType.None
                             ? item.ResultType
-                            : result.ResultType,
-                        result.CommitManifestPath ?? item.CommitManifestPath);
+                            : result.ResultType);
                 }
                 else if (result.Outcome == WorkItemExecutionOutcome.Completed)
                 {
@@ -477,8 +472,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                         item.Id,
                         result.ResultRef,
                         result.ResultSummary,
-                        result.ResultType,
-                        result.CommitManifestPath);
+                        result.ResultType);
                 }
                 else
                 {
@@ -490,8 +484,7 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                         result.ResultSummary,
                         result.ResultRef,
                         result.BlockDetailCode,
-                        result.ResultType,
-                        result.CommitManifestPath);
+                        result.ResultType);
                 }
             }
 
