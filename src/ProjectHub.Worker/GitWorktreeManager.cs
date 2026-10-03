@@ -202,6 +202,8 @@ public sealed class GitWorktreeManager
     private static readonly TimeSpan CreateTimeout = TimeSpan.FromMinutes(2);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPreparationGates =
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryNetworkGates =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> RepositoryPrimaryMutationGates =
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
@@ -238,13 +240,9 @@ public sealed class GitWorktreeManager
                 BuildGitFailureDetail("git rev-parse --show-toplevel", rootResult));
 
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
-        var fetchResult = await RunAsync(
+        var fetchResult = await FetchOriginAsync(
             repositoryRoot,
-            CreateTimeout,
-            cancellationToken,
-            "fetch",
-            "--prune",
-            "origin").ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false);
         if (fetchResult.ExitCode != 0)
         {
             return new(
@@ -419,13 +417,9 @@ public sealed class GitWorktreeManager
                 BuildGitFailureDetail("git remote get-url origin", remoteResult));
         }
 
-        var fetchResult = await RunAsync(
+        var fetchResult = await FetchOriginAsync(
             repositoryRoot,
-            CreateTimeout,
-            cancellationToken,
-            "fetch",
-            "--prune",
-            "origin").ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false);
         if (fetchResult.ExitCode != 0)
         {
             return new(
@@ -830,13 +824,9 @@ public sealed class GitWorktreeManager
             if (remoteResult.ExitCode != 0 || string.IsNullOrWhiteSpace(remoteResult.StandardOutput))
                 return IntegrationFailure("INTEGRATION_REMOTE_ORIGIN_REQUIRED", repositoryRoot, jobId, workItemId, primaryHead);
 
-            var fetchResult = await RunAsync(
+            var fetchResult = await FetchOriginAsync(
                 repositoryRoot,
-                CreateTimeout,
-                cancellationToken,
-                "fetch",
-                "--prune",
-                "origin").ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
             if (fetchResult.ExitCode != 0)
             {
                 return new(
@@ -1647,13 +1637,9 @@ public sealed class GitWorktreeManager
             !string.Equals(targetBranch, expectedBranch, StringComparison.Ordinal))
             return new(false, "TARGET_BRANCH_CHANGED", repositoryRoot, normalizedRef, null, targetBranch, null, false);
 
-        var fetchResult = await RunAsync(
+        var fetchResult = await FetchOriginAsync(
             repositoryRoot,
-            CreateTimeout,
-            cancellationToken,
-            "fetch",
-            "--prune",
-            "origin").ConfigureAwait(false);
+            cancellationToken).ConfigureAwait(false);
         if (fetchResult.ExitCode != 0)
             return new(false, "TARGET_REMOTE_FETCH_FAILED", repositoryRoot, normalizedRef, null, targetBranch, null, false);
 
@@ -1816,13 +1802,9 @@ public sealed class GitWorktreeManager
             if (string.IsNullOrWhiteSpace(beforeHead))
                 return new(false, "INTEGRATION_TARGET_HEAD_UNAVAILABLE", repositoryRoot, normalizedRef, null, targetBranch, null, null, false);
 
-            var fetchResult = await RunAsync(
+            var fetchResult = await FetchOriginAsync(
                 repositoryRoot,
-                CreateTimeout,
-                cancellationToken,
-                "fetch",
-                "--prune",
-                "origin").ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
             if (fetchResult.ExitCode != 0)
             {
                 return new(
@@ -2499,12 +2481,41 @@ public sealed class GitWorktreeManager
             cancellationToken);
     }
 
+    private async Task<GitCommandResult> FetchOriginAsync(
+        string repositoryRoot,
+        CancellationToken cancellationToken)
+    {
+        var networkGate = GetRepositoryNetworkGate(repositoryRoot);
+        await networkGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await RunAsync(
+                repositoryRoot,
+                CreateTimeout,
+                cancellationToken,
+                "fetch",
+                "--prune",
+                "origin").ConfigureAwait(false);
+        }
+        finally
+        {
+            networkGate.Release();
+        }
+    }
+
     private Task<GitCommandResult> RunAsync(
         string workingDirectory,
         TimeSpan timeout,
         CancellationToken cancellationToken,
         params string[] arguments)
         => _runner.RunAsync(workingDirectory, arguments, timeout, cancellationToken);
+
+    private static SemaphoreSlim GetRepositoryNetworkGate(string repositoryRoot)
+    {
+        var key = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return RepositoryNetworkGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+    }
 
     private static SemaphoreSlim GetRepositoryPreparationGate(string repositoryRoot)
     {
