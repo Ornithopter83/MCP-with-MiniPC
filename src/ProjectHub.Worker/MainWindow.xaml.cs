@@ -405,7 +405,7 @@ public partial class MainWindow : Window
         {
             await InitializeStartupConfigurationAsync();
             ApplyRoleSettingsToControls();
-            RefreshWorkingDirectoryGitTargetPresentation(showFeedback: false);
+            RefreshWorkingDirectoryGitTargetPresentation();
         }
         SetSettingsPopupOpen(!IsSettingsOverlayOpen);
     }
@@ -2084,22 +2084,12 @@ public partial class MainWindow : Window
             _targetSettings,
             requireExactRoot: true);
         RepositoryUrlInput.Text = _gitTarget.RepositoryUrl ?? string.Empty;
-        TargetGitStateText.Text = FormatGitTargetStatus(_gitTarget);
-        RepositoryNameText.Text = " · " + (_gitTarget.RepositoryUrl ?? (_gitTarget.IsRepository ? "LOCAL_GIT" : "GIT_NOT_FOUND"));
-
-        TargetPathText.Text = _targetSettings.IsCoordinatorFirst
-            ? $"Target workspace: {(string.IsNullOrWhiteSpace(effectiveWorkingDirectory) ? "미설정" : effectiveWorkingDirectory)}"
-            : !string.IsNullOrWhiteSpace(selected?.SessionId)
-                ? $"Codex ProjectPath: {selected.ProjectPath}"
-                : $"New thread folder: {workingDirectory}";
     }
 
     private void ClearCoordinatorGitTargetPresentation()
     {
         _gitTarget = null;
         RepositoryUrlInput.Text = string.Empty;
-        TargetGitStateText.Text = "Git: 실행 시 준비";
-        RepositoryNameText.Text = " · LOCAL_GIT";
     }
 
     private async Task RefreshCodexModelCatalogAsync()
@@ -2444,42 +2434,20 @@ public partial class MainWindow : Window
         if (_startupConfigurationInitialized) ApplyConnectionStatus();
     }
 
-    private static string FormatGitTargetStatus(GitTargetSnapshot target)
-    {
-        if (!target.IsRepository)
-            return "Git: NOT FOUND · 작업 폴더 자체에 저장소가 없습니다.";
-
-        var branch = target.Branch ?? "unknown";
-        var head = target.HeadSha?[..Math.Min(12, target.HeadSha.Length)] ?? "unknown";
-        return string.IsNullOrWhiteSpace(target.RepositoryUrl)
-            ? $"Git: LOCAL ONLY · origin 없음 · Branch: {branch} · Local HEAD: {head}"
-            : $"Git: CONNECTED · origin 설정됨 · Branch: {branch} · Local HEAD: {head}";
-    }
-
-    private async void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
+    private void AutoDetectTargets_Click(object sender, RoutedEventArgs e)
     {
         _targetSettings = _targetSettings with { ManualRepositoryUrl = null, RepositoryUrlSource = null };
         WorkerTargetConfiguration.Save(_targetSettings);
-
-        RefreshWorkingDirectoryGitTargetPresentation(showFeedback: true);
-
-        _serverOnline = await CheckServerAsync();
-        ApplyConnectionStatus();
+        RefreshWorkingDirectoryGitTargetPresentation();
         UpdateDashboardRunButtonState();
     }
 
-    private void RefreshWorkingDirectoryGitTargetPresentation(bool showFeedback)
+    private void RefreshWorkingDirectoryGitTargetPresentation()
     {
         var workingDirectory = WorkingDirectoryInput?.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
         {
             ClearCoordinatorGitTargetPresentation();
-            RepositoryNameText.Text = " · GIT_NOT_FOUND";
-            if (showFeedback)
-            {
-                DashboardPreflightText.Text = "Git 저장소를 확인할 작업 폴더를 먼저 지정하세요.";
-                DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
-            }
             return;
         }
 
@@ -2489,28 +2457,10 @@ public partial class MainWindow : Window
             requireExactRoot: true);
 
         _gitTarget = target;
-        RepositoryUrlInput.Text = target.RepositoryUrl ?? string.Empty;
-        TargetGitStateText.Text = FormatGitTargetStatus(target);
-        RepositoryNameText.Text = " · " + (target.RepositoryUrl ?? (target.IsRepository ? "LOCAL_GIT" : "GIT_NOT_FOUND"));
-
-        if (target.IsRepository && !string.IsNullOrWhiteSpace(target.RepositoryUrl))
-        {
-            if (showFeedback)
-            {
-                DashboardPreflightText.Text = "작업 폴더의 Git origin을 확인했습니다.";
-                DashboardPreflightText.Foreground =
-                    (System.Windows.Media.Brush)FindResource("Muted");
-            }
-            return;
-        }
-
-        if (showFeedback)
-        {
-            DashboardPreflightText.Text = target.IsRepository
-                ? "작업 폴더의 Git 저장소에는 origin 원격이 설정되어 있지 않습니다."
-                : "작업 폴더 자체에서 Git 저장소를 확인하지 못했습니다.";
-            DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
-        }
+        RepositoryUrlInput.Text =
+            target.IsRepository && !string.IsNullOrWhiteSpace(target.RepositoryUrl)
+                ? target.RepositoryUrl
+                : string.Empty;
     }
 
     private async void SaveTargetSettings_Click(object sender, RoutedEventArgs e)
