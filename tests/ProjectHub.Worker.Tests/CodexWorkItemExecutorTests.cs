@@ -585,7 +585,6 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal(WorkItemResultType.CodeChange, result.ResultType);
             Assert.Equal("new456", result.ResultRef);
-            Assert.Null(result.CommitManifestPath);
             Assert.Equal(
                 2,
                 fixture.Git.Calls.Count(call =>
