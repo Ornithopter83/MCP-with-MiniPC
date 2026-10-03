@@ -32,18 +32,13 @@ public partial class MainWindow
                 return null;
             }
 
-            var resolvedTarget = WorkerTargetConfiguration.ResolveGit(
-                workingDirectory,
-                _targetSettings,
-                requireExactRoot: true);
-
-            var target = resolvedTarget with
-            {
-                ProjectPath = state.RepositoryRoot,
-                Branch = state.Branch,
-                HeadSha = state.HeadCommit,
-                IsRepository = true
-            };
+            var target = new GitTargetSnapshot(
+                state.RepositoryRoot,
+                state.OriginUrl,
+                state.Branch,
+                state.HeadCommit,
+                "REMOTE_GIT_PREFLIGHT",
+                true);
 
             var preflight = ParallelWorkGitPreflight.Validate(target);
             if (!preflight.Success)
