@@ -205,6 +205,8 @@ public static class WorkerTargetConfiguration
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("safe.directory=" + workingDirectory);
             foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
             using var launched = processJob.Start(startInfo);
             var process = launched.Process;
