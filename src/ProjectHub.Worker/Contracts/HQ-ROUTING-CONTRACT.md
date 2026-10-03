@@ -43,5 +43,5 @@ WORK_GRAPH_PATCH:
 ④ 기계 오류가 보고되면 현재 사실을 기준으로 다음 동작만 결정하며 오류 사례를 새 영구 계약으로 확장하지 않는다.
 ⑤ CODE_CHANGE 반영 여부와 Git 동기화는 Worker의 commit/resultRef 기계 사실을 사용한다. 파일 복사를 위한 MATERIALIZE/COPY WorkItem은 만들지 않는다.
 ⑥ 실제 빌드·export·publish가 필요하면 최종 코드 계보의 resultRef를 baseRef로 #9를 ADD한다.
-⑦ END finalization이 source landing 또는 publish freshness 때문에 거부되면 전달된 기계 사실을 기준으로 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.
+⑦ END finalization이 최종 remote result checkout 또는 publish freshness 때문에 거부되면 전달된 기계 사실을 기준으로 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.
 ⑧ `HQ_DECISION_REQUIRED`로 차단된 WorkItem은 전달된 기계 사실을 기준으로 RELEASE, CANCEL 또는 후속 WorkItem 필요 여부를 판단한다.
