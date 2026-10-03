@@ -78,11 +78,10 @@ public partial class MainWindow
     private void RefreshGitTargetPresentation(GitTargetSnapshot target)
     {
         _gitTarget = target;
-        RepositoryUrlInput.Text = target.RepositoryUrl ?? string.Empty;
-        TargetGitStateText.Text = target.IsRepository
-            ? $"Branch: {target.Branch ?? "unknown"} · Remote HEAD: {target.HeadSha?[..Math.Min(12, target.HeadSha.Length)] ?? "unknown"}"
-            : "Git: UNCONFIGURED";
-        RepositoryNameText.Text = " · " + (target.RepositoryUrl ?? "REMOTE_REQUIRED");
+        RepositoryUrlInput.Text =
+            target.IsRepository && !string.IsNullOrWhiteSpace(target.RepositoryUrl)
+                ? target.RepositoryUrl
+                : string.Empty;
     }
 
     private void ShowGitPreparationError(string? errorCode, string? path)
