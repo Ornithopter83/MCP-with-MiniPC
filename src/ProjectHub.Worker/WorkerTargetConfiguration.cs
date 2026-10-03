@@ -49,7 +49,7 @@ public sealed record WorkerTargetSettings(
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
     public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
     public int EffectiveMaxConcurrentWork => MaxConcurrentWork is >= WorkGraph.MinimumConcurrency and <= WorkGraph.MaximumConcurrency ? MaxConcurrentWork : 1;
-    public bool IsCoordinatorFirst => string.Equals(ExecutionMode, "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
+    public bool IsCoordinatorFirst => true;
 }
 public sealed record GitTargetSnapshot(
     string ProjectPath,
@@ -97,6 +97,7 @@ public static class WorkerTargetConfiguration
 
         return settings with
         {
+            ExecutionMode = "CLI_TO_CLI",
             Judge = null,
             JudgeEndpointValidation = null,
             Coordinator = NormalizeRole(settings.Coordinator),
