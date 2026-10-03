@@ -248,6 +248,24 @@ public sealed class GitWorktreeManager
                 BuildGitFailureDetail("git rev-parse --show-toplevel", rootResult));
 
         var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
+        var fetchResult = await RunAsync(
+            repositoryRoot,
+            CreateTimeout,
+            cancellationToken,
+            "fetch",
+            "--prune",
+            "origin").ConfigureAwait(false);
+        if (fetchResult.ExitCode != 0)
+        {
+            return new(
+                false,
+                fetchResult.TimedOut ? "REMOTE_BASE_FETCH_TIMEOUT"
+                    : fetchResult.Canceled ? "REMOTE_BASE_FETCH_CANCELED"
+                    : "REMOTE_BASE_FETCH_FAILED",
+                null,
+                BuildGitFailureDetail("git fetch --prune origin", fetchResult));
+        }
+
         var references = new List<(string Label, string Value)>
         {
             ("baseRef", declaredBaseRef.Trim())
@@ -370,11 +388,11 @@ public sealed class GitWorktreeManager
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
-            return Failure("WORKTREE_WORKSPACE_MISSING", workspace, jobId, workItemId, baseRef);
+            return Failure("WORK_CLONE_WORKSPACE_MISSING", workspace, jobId, workItemId, baseRef);
         if (string.IsNullOrWhiteSpace(baseRef))
-            return Failure("WORKTREE_BASE_REF_MISSING", workspace, jobId, workItemId, baseRef);
+            return Failure("WORK_CLONE_BASE_REF_MISSING", workspace, jobId, workItemId, baseRef);
         if (string.IsNullOrWhiteSpace(jobId) || string.IsNullOrWhiteSpace(workItemId))
-            return Failure("WORKTREE_ID_MISSING", workspace, jobId, workItemId, baseRef);
+            return Failure("WORK_CLONE_ID_MISSING", workspace, jobId, workItemId, baseRef);
 
         var rootResult = await RunAsync(
             workspace,
@@ -382,13 +400,58 @@ public sealed class GitWorktreeManager
             cancellationToken,
             "rev-parse",
             "--show-toplevel").ConfigureAwait(false);
-
         if (rootResult.ExitCode != 0 || string.IsNullOrWhiteSpace(rootResult.StandardOutput))
-            return Failure("WORKTREE_GIT_REPOSITORY_REQUIRED", workspace, jobId, workItemId, baseRef);
+            return Failure("WORK_CLONE_GIT_REPOSITORY_REQUIRED", workspace, jobId, workItemId, baseRef);
 
-        var repositoryRoot = Path.GetFullPath(rootResult.StandardOutput.Trim());
+        var repositoryRoot = Path.GetFullPath(FirstLine(rootResult.StandardOutput));
         var branch = BuildBranchName(jobId, workItemId);
-        var worktreePath = BuildWorktreePath(repositoryRoot, jobId, workItemId);
+        var clonePath = BuildWorktreePath(repositoryRoot, jobId, workItemId);
+
+        var remoteResult = await RunAsync(
+            repositoryRoot,
+            ReadTimeout,
+            cancellationToken,
+            "remote",
+            "get-url",
+            "origin").ConfigureAwait(false);
+        if (remoteResult.ExitCode != 0 || string.IsNullOrWhiteSpace(remoteResult.StandardOutput))
+        {
+            return new(
+                false,
+                "WORK_CLONE_REMOTE_REQUIRED",
+                repositoryRoot,
+                clonePath,
+                branch,
+                baseRef.Trim(),
+                null,
+                null,
+                false,
+                BuildGitFailureDetail("git remote get-url origin", remoteResult));
+        }
+
+        var fetchResult = await RunAsync(
+            repositoryRoot,
+            CreateTimeout,
+            cancellationToken,
+            "fetch",
+            "--prune",
+            "origin").ConfigureAwait(false);
+        if (fetchResult.ExitCode != 0)
+        {
+            return new(
+                false,
+                fetchResult.TimedOut ? "WORK_CLONE_FETCH_TIMEOUT"
+                    : fetchResult.Canceled ? "WORK_CLONE_FETCH_CANCELED"
+                    : "WORK_CLONE_FETCH_FAILED",
+                repositoryRoot,
+                clonePath,
+                branch,
+                baseRef.Trim(),
+                null,
+                null,
+                false,
+                BuildGitFailureDetail("git fetch --prune origin", fetchResult));
+        }
 
         var baseResult = await RunAsync(
             repositoryRoot,
@@ -397,264 +460,304 @@ public sealed class GitWorktreeManager
             "rev-parse",
             "--verify",
             baseRef.Trim() + "^{commit}").ConfigureAwait(false);
-
         if (baseResult.ExitCode != 0 || string.IsNullOrWhiteSpace(baseResult.StandardOutput))
-            return new GitWorktreePreparationResult(
+        {
+            return new(
                 false,
-                "WORKTREE_BASE_REF_INVALID",
+                "WORK_CLONE_BASE_REF_INVALID",
                 repositoryRoot,
-                worktreePath,
+                clonePath,
                 branch,
                 baseRef.Trim(),
                 null,
                 null,
                 false,
-                BuildGitFailureDetail("git rev-parse --verify", baseResult));
+                BuildGitFailureDetail("git rev-parse --verify baseRef", baseResult));
+        }
 
         var baseCommit = FirstLine(baseResult.StandardOutput);
         var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
         await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var listResult = await RunAsync(
-                repositoryRoot,
-                ReadTimeout,
-                cancellationToken,
-                "worktree",
-                "list",
-                "--porcelain").ConfigureAwait(false);
-
-            if (listResult.ExitCode != 0)
-                return new GitWorktreePreparationResult(
-                    false,
-                    "WORKTREE_LIST_FAILED",
-                    repositoryRoot,
-                    worktreePath,
-                    branch,
-                    baseRef.Trim(),
-                    baseCommit,
-                    null,
-                    false,
-                    BuildGitFailureDetail("git worktree list --porcelain", listResult));
-
-            var existing = ParseWorktrees(listResult.StandardOutput)
-                .FirstOrDefault(entry => PathsEqual(entry.Path, worktreePath));
-
-            if (existing is not null)
+            if (Directory.Exists(clonePath))
             {
-                if (!Directory.Exists(worktreePath))
-                    return new GitWorktreePreparationResult(
+                var cloneRootResult = await RunAsync(
+                    clonePath,
+                    ReadTimeout,
+                    cancellationToken,
+                    "rev-parse",
+                    "--show-toplevel").ConfigureAwait(false);
+                var cloneRoot = cloneRootResult.ExitCode == 0 &&
+                                !string.IsNullOrWhiteSpace(cloneRootResult.StandardOutput)
+                    ? Path.GetFullPath(FirstLine(cloneRootResult.StandardOutput))
+                    : null;
+                if (cloneRoot is null || !PathsEqual(cloneRoot, clonePath))
+                {
+                    return new(
                         false,
-                        "WORKTREE_REGISTERED_PATH_MISSING",
+                        "WORK_CLONE_REPOSITORY_INVALID",
                         repositoryRoot,
-                        worktreePath,
+                        clonePath,
                         branch,
                         baseRef.Trim(),
                         baseCommit,
-                        existing.Head,
-                        false);
+                        null,
+                        true,
+                        BuildGitFailureDetail("git rev-parse --show-toplevel", cloneRootResult));
+                }
 
-                if (!string.Equals(existing.Branch, branch, StringComparison.Ordinal))
-                    return new GitWorktreePreparationResult(
+                var gitDirResult = await RunAsync(
+                    clonePath,
+                    ReadTimeout,
+                    cancellationToken,
+                    "rev-parse",
+                    "--absolute-git-dir").ConfigureAwait(false);
+                var expectedGitDir = Path.GetFullPath(Path.Combine(clonePath, ".git"));
+                var actualGitDir = gitDirResult.ExitCode == 0 &&
+                                   !string.IsNullOrWhiteSpace(gitDirResult.StandardOutput)
+                    ? Path.GetFullPath(FirstLine(gitDirResult.StandardOutput))
+                    : null;
+                if (actualGitDir is null || !PathsEqual(actualGitDir, expectedGitDir))
+                {
+                    return new(
                         false,
-                        "WORKTREE_REGISTERED_BRANCH_MISMATCH",
+                        "WORK_CLONE_GITDIR_NOT_LOCAL",
                         repositoryRoot,
-                        worktreePath,
+                        clonePath,
                         branch,
                         baseRef.Trim(),
                         baseCommit,
-                        existing.Head,
-                        false);
+                        null,
+                        true);
+                }
 
-                return new GitWorktreePreparationResult(
+                var branchResult = await RunAsync(
+                    clonePath,
+                    ReadTimeout,
+                    cancellationToken,
+                    "symbolic-ref",
+                    "--quiet",
+                    "--short",
+                    "HEAD").ConfigureAwait(false);
+                var currentBranch = branchResult.ExitCode == 0
+                    ? FirstLine(branchResult.StandardOutput)
+                    : null;
+                if (!string.Equals(currentBranch, branch, StringComparison.Ordinal))
+                {
+                    return new(
+                        false,
+                        "WORK_CLONE_BRANCH_CHANGED",
+                        repositoryRoot,
+                        clonePath,
+                        branch,
+                        baseRef.Trim(),
+                        baseCommit,
+                        null,
+                        true);
+                }
+
+                var headResult = await RunAsync(
+                    clonePath,
+                    ReadTimeout,
+                    cancellationToken,
+                    "rev-parse",
+                    "--verify",
+                    "HEAD").ConfigureAwait(false);
+                var head = headResult.ExitCode == 0
+                    ? FirstLine(headResult.StandardOutput)
+                    : null;
+                if (string.IsNullOrWhiteSpace(head))
+                {
+                    return new(
+                        false,
+                        "WORK_CLONE_HEAD_UNAVAILABLE",
+                        repositoryRoot,
+                        clonePath,
+                        branch,
+                        baseRef.Trim(),
+                        baseCommit,
+                        null,
+                        true);
+                }
+
+                var ancestry = await RunAsync(
+                    clonePath,
+                    ReadTimeout,
+                    cancellationToken,
+                    "merge-base",
+                    "--is-ancestor",
+                    baseCommit,
+                    head).ConfigureAwait(false);
+                if (ancestry.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        "WORK_CLONE_BASE_MISMATCH",
+                        repositoryRoot,
+                        clonePath,
+                        branch,
+                        baseRef.Trim(),
+                        baseCommit,
+                        head,
+                        true,
+                        BuildGitFailureDetail("git merge-base --is-ancestor", ancestry));
+                }
+
+                return new(
                     true,
                     null,
                     repositoryRoot,
-                    worktreePath,
+                    clonePath,
                     branch,
                     baseRef.Trim(),
                     baseCommit,
-                    existing.Head,
+                    head,
                     true);
             }
 
-            var legacyWorktreePath = BuildLegacyWorktreePath(repositoryRoot, jobId, workItemId);
-            var legacyExisting = ParseWorktrees(listResult.StandardOutput)
-                .FirstOrDefault(entry =>
-                    PathsEqual(entry.Path, legacyWorktreePath) &&
-                    string.Equals(entry.Branch, branch, StringComparison.Ordinal));
-            if (legacyExisting is not null && Directory.Exists(legacyWorktreePath))
+            if (File.Exists(clonePath))
             {
-                return new GitWorktreePreparationResult(
-                    true,
-                    null,
-                    repositoryRoot,
-                    legacyWorktreePath,
-                    branch,
-                    baseRef.Trim(),
-                    baseCommit,
-                    legacyExisting.Head,
-                    true);
-            }
-
-            if (Directory.Exists(worktreePath) || File.Exists(worktreePath))
-                return new GitWorktreePreparationResult(
+                return new(
                     false,
-                    "WORKTREE_PATH_OCCUPIED",
+                    "WORK_CLONE_PATH_OCCUPIED",
                     repositoryRoot,
-                    worktreePath,
+                    clonePath,
                     branch,
                     baseRef.Trim(),
                     baseCommit,
                     null,
                     false);
+            }
 
-            var branchResult = await RunAsync(
-                repositoryRoot,
-                ReadTimeout,
-                cancellationToken,
-                "show-ref",
-                "--verify",
-                "--quiet",
-                "refs/heads/" + branch).ConfigureAwait(false);
-
-            var reuseExistingBranch = false;
-            if (branchResult.ExitCode == 0)
+            var parent = Directory.GetParent(clonePath)?.FullName;
+            if (string.IsNullOrWhiteSpace(parent))
             {
-                var branchOwner = ParseWorktrees(listResult.StandardOutput)
-                    .FirstOrDefault(entry =>
-                        string.Equals(entry.Branch, branch, StringComparison.Ordinal));
-                if (branchOwner is not null)
-                    return new GitWorktreePreparationResult(
-                        false,
-                        "WORKTREE_BRANCH_IN_USE",
-                        repositoryRoot,
-                        worktreePath,
-                        branch,
-                        baseRef.Trim(),
-                        baseCommit,
-                        branchOwner.Head,
-                        false);
-
-                var branchCommitResult = await RunAsync(
+                return new(
+                    false,
+                    "WORK_CLONE_PARENT_INVALID",
                     repositoryRoot,
+                    clonePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    null,
+                    false);
+            }
+
+            Directory.CreateDirectory(parent);
+            var originUrl = FirstLine(remoteResult.StandardOutput);
+            var cloneResult = await RunAsync(
+                repositoryRoot,
+                CreateTimeout,
+                cancellationToken,
+                "clone",
+                "--no-checkout",
+                originUrl,
+                clonePath).ConfigureAwait(false);
+            if (cloneResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    cloneResult.TimedOut ? "WORK_CLONE_CREATE_TIMEOUT"
+                        : cloneResult.Canceled ? "WORK_CLONE_CREATE_CANCELED"
+                        : "WORK_CLONE_CREATE_FAILED",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git clone --no-checkout origin", cloneResult));
+            }
+
+            var checkoutResult = await RunAsync(
+                clonePath,
+                CreateTimeout,
+                cancellationToken,
+                "checkout",
+                "-b",
+                branch,
+                baseCommit).ConfigureAwait(false);
+            if (checkoutResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    "WORK_CLONE_CHECKOUT_FAILED",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    null,
+                    false,
+                    BuildGitFailureDetail("git checkout -b", checkoutResult));
+            }
+
+            foreach (var pair in new[]
+            {
+                ("user.name", "ProjectHub"),
+                ("user.email", "projecthub@local")
+            })
+            {
+                var configResult = await RunAsync(
+                    clonePath,
                     ReadTimeout,
                     cancellationToken,
-                    "rev-parse",
-                    "--verify",
-                    "refs/heads/" + branch + "^{commit}").ConfigureAwait(false);
-                if (branchCommitResult.ExitCode != 0 ||
-                    string.IsNullOrWhiteSpace(branchCommitResult.StandardOutput))
-                    return new GitWorktreePreparationResult(
+                    "config",
+                    pair.Item1,
+                    pair.Item2).ConfigureAwait(false);
+                if (configResult.ExitCode != 0)
+                {
+                    return new(
                         false,
-                        "WORKTREE_BRANCH_CHECK_FAILED",
+                        "WORK_CLONE_GIT_IDENTITY_FAILED",
                         repositoryRoot,
-                        worktreePath,
+                        clonePath,
                         branch,
                         baseRef.Trim(),
                         baseCommit,
                         null,
                         false,
-                        BuildGitFailureDetail("git rev-parse existing WorkItem branch", branchCommitResult));
-
-                var branchCommit = FirstLine(branchCommitResult.StandardOutput);
-                if (!string.Equals(branchCommit, baseCommit, StringComparison.OrdinalIgnoreCase))
-                    return new GitWorktreePreparationResult(
-                        false,
-                        "WORKTREE_BRANCH_EXISTS",
-                        repositoryRoot,
-                        worktreePath,
-                        branch,
-                        baseRef.Trim(),
-                        baseCommit,
-                        branchCommit,
-                        false,
-                        $"기존 WorkItem branch가 현재 base와 다릅니다. branchCommit={branchCommit} baseCommit={baseCommit}");
-
-                reuseExistingBranch = true;
-            }
-            else if (branchResult.ExitCode != 1)
-            {
-                return new GitWorktreePreparationResult(
-                    false,
-                    "WORKTREE_BRANCH_CHECK_FAILED",
-                    repositoryRoot,
-                    worktreePath,
-                    branch,
-                    baseRef.Trim(),
-                    baseCommit,
-                    null,
-                    false,
-                    BuildGitFailureDetail("git show-ref --verify", branchResult));
+                        BuildGitFailureDetail("git config " + pair.Item1, configResult));
+                }
             }
 
-            var parent = Directory.GetParent(worktreePath)?.FullName;
-            if (string.IsNullOrWhiteSpace(parent))
-                return new GitWorktreePreparationResult(
-                    false,
-                    "WORKTREE_PARENT_INVALID",
-                    repositoryRoot,
-                    worktreePath,
-                    branch,
-                    baseRef.Trim(),
-                    baseCommit,
-                    null,
-                    false);
-
-            Directory.CreateDirectory(parent);
-
-            var addResult = reuseExistingBranch
-                ? await RunAsync(
-                    repositoryRoot,
-                    CreateTimeout,
-                    cancellationToken,
-                    "worktree",
-                    "add",
-                    worktreePath,
-                    branch).ConfigureAwait(false)
-                : await RunAsync(
-                    repositoryRoot,
-                    CreateTimeout,
-                    cancellationToken,
-                    "worktree",
-                    "add",
-                    "-b",
-                    branch,
-                    worktreePath,
-                    baseCommit).ConfigureAwait(false);
-
-            if (addResult.ExitCode != 0)
-                return new GitWorktreePreparationResult(
-                    false,
-                    addResult.TimedOut ? "WORKTREE_CREATE_TIMEOUT"
-                        : addResult.Canceled ? "WORKTREE_CREATE_CANCELED"
-                        : "WORKTREE_CREATE_FAILED",
-                    repositoryRoot,
-                    worktreePath,
-                    branch,
-                    baseRef.Trim(),
-                    baseCommit,
-                    null,
-                    false,
-                    BuildGitFailureDetail("git worktree add", addResult));
-
-            var headResult = await RunAsync(
-                worktreePath,
+            var headResultAfter = await RunAsync(
+                clonePath,
                 ReadTimeout,
                 cancellationToken,
                 "rev-parse",
                 "--verify",
                 "HEAD").ConfigureAwait(false);
+            var cloneHead = headResultAfter.ExitCode == 0
+                ? FirstLine(headResultAfter.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(cloneHead) ||
+                !string.Equals(cloneHead, baseCommit, StringComparison.OrdinalIgnoreCase))
+            {
+                return new(
+                    false,
+                    "WORK_CLONE_HEAD_MISMATCH",
+                    repositoryRoot,
+                    clonePath,
+                    branch,
+                    baseRef.Trim(),
+                    baseCommit,
+                    cloneHead,
+                    false);
+            }
 
-            return new GitWorktreePreparationResult(
+            return new(
                 true,
                 null,
                 repositoryRoot,
-                worktreePath,
+                clonePath,
                 branch,
                 baseRef.Trim(),
                 baseCommit,
-                headResult.ExitCode == 0 ? FirstLine(headResult.StandardOutput) : baseCommit,
+                cloneHead,
                 false);
         }
         finally
