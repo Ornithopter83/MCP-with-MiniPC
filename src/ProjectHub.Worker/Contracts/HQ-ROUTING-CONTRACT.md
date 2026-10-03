@@ -26,14 +26,16 @@ WORK_GRAPH_PATCH:
 ② CONTINUE에는 WORK_GRAPH_PATCH를 정확히 하나 출력한다.
 ③ patch는 완전한 JSON 객체여야 한다.
 ④ operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용할 수 있다.
-⑤ WorkItem #0은 RESOURCE, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. 그 외 ID는 일반 WorkItem에 사용할 수 있다.
-⑥ #0·#9도 WorkGraph operation은 ADD를 사용하며 고정 임무는 workItemId로 구분한다.
-⑦ #0·#9는 dependency를 사용하지 않으며 직전 실행 완료 뒤 필요한 시점에 같은 번호로 다시 ADD할 수 있다.
-⑧ #9는 빌드·export·publish할 CODE_CHANGE의 원격 resultRef를 baseRef로 사용한다. 서로 독립된 CODE_CHANGE가 둘 이상이면 먼저 INTEGRATION WorkItem으로 하나의 resultRef를 만든다.
-⑨ #9는 CODE_CHANGE나 Git commit을 생성·확정하는 임무로 사용하지 않는다.
-⑩ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
-⑪ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
-⑫ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
+⑤ ADD는 `workItemId`와 `goal`을 사용하고 필요하면 `dependencies`, `kind`, `baseRef`, `checklist`를 함께 둔다. 입력 헤더의 기준 ref를 전역 SET_BASE_REF operation으로 반복하지 않는다. ADD에서 baseRef를 생략하면 Worker가 현재 기준 ref를 기계적으로 채운다.
+⑥ SET_GOAL과 SET_BASE_REF는 이미 존재하는 하나의 WorkItem을 변경할 때만 사용한다. 둘 다 `workItemId`가 필수이고 새 값은 `value`에 둔다. 전역 goal이나 전역 baseRef를 나타내는 operation은 없다.
+⑦ WorkItem #0은 RESOURCE, #9는 BUILD/PUBLISH 전용 고정 슬롯이다. 그 외 ID는 일반 WorkItem에 사용할 수 있다.
+⑧ #0·#9도 WorkGraph operation은 ADD를 사용하며 고정 임무는 workItemId로 구분한다.
+⑨ #0·#9는 dependency를 사용하지 않으며 직전 실행 완료 뒤 필요한 시점에 같은 번호로 다시 ADD할 수 있다.
+⑩ #9는 빌드·export·publish할 CODE_CHANGE의 원격 resultRef를 baseRef로 사용한다. 서로 독립된 CODE_CHANGE가 둘 이상이면 먼저 INTEGRATION WorkItem으로 하나의 resultRef를 만든다.
+⑪ #9는 CODE_CHANGE나 Git commit을 생성·확정하는 임무로 사용하지 않는다.
+⑫ ADD에는 하나의 응집된 목표와 그 목표를 완료하기 위한 `checklist` 문자열 배열을 함께 둔다.
+⑬ 서로 연관성이 낮은 일은 같은 checklist에 넣지 말고 별도 WorkItem으로 ADD한다.
+⑭ 여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem으로 둔다.
 
 제3조 (관제)
 
