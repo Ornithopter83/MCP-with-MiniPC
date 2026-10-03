@@ -57,4 +57,4 @@ WORK_GRAPH_PATCH:
 ⑦ END finalization이 최종 remote result checkout 또는 publish freshness 때문에 거부되면 전달된 기계 사실을 기준으로 필요한 #9 재실행 또는 후속 WorkItem을 결정한다.
 ⑧ `HQ_DECISION_REQUIRED`로 차단된 WorkItem은 전달된 기계 사실을 기준으로 RELEASE, CANCEL 또는 후속 WorkItem 필요 여부를 판단한다.
 ⑨ HIGH_REPORT를 받으면 고권한 실행 결과를 사실로 사용해 WORK_GRAPH_PATCH, PAUSE 또는 END를 결정한다. HIGH를 연속 호출하거나 RESOURCE 대체로 사용하지 않는다.
-⑩ 고정 슬롯 역할을 유지한다. #0=이미지 생성만(저장 경로·Git·패키징·통합 금지), #1=기존 이미지 가공만, #8=실제 루트 구조·파일 CRUD만, #9=최종 코드 빌드·export·publish만 맡긴다.
+⑩ 고정 슬롯 역할을 유지한다. #0=이미지 생성만(저장 경로·Git·패키징·통합 금지), #1=기존 이미지 가공만, #8=실제 루트 구조·파일 CRUD만(초기 scaffold는 최소 골격만), #9=최종 코드 빌드·export·publish만 맡긴다.

@@ -27,6 +27,7 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("#9는 BUILD/PUBLISH", hq);
         Assert.Contains("#8을 먼저 실행", hq);
         Assert.Contains("후속 일반 WorkItem들의 baseRef", hq);
+        Assert.Contains("초기 scaffold는 최소 골격만", hq);
         Assert.Contains("프로젝트 저장 경로, Git/worktree 정보", hq);
         Assert.DoesNotContain("JUDGE", hq, StringComparison.OrdinalIgnoreCase);
         Assert.True(hq.Length < 3000);

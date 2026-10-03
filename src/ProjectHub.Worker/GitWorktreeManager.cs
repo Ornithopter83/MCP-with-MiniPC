@@ -1811,6 +1811,30 @@ public sealed class GitWorktreeManager
                         BuildGitFailureDetail("git switch -c managed branch", switchResult));
                 }
             }
+            else
+            {
+                var lineageResult = await RunAsync(
+                    repositoryRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "merge-base",
+                    "--is-ancestor",
+                    baseCommit,
+                    currentHead).ConfigureAwait(false);
+                if (lineageResult.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        "TARGET_WORKSPACE_CHECKPOINT_BASE_DIVERGED",
+                        repositoryRoot,
+                        managedBranch,
+                        currentHead,
+                        false,
+                        BuildGitFailureDetail(
+                            "git merge-base --is-ancestor bootstrap base",
+                            lineageResult));
+                }
+            }
 
             return await CreateCheckpointAsync(
                 repositoryRoot,
