@@ -287,82 +287,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     : null))
             .ToArray();
 
-        TargetWorkspaceMaterializationLedger? materializationLedger = null;
-        TargetWorkspaceMaterializationSnapshot? materializationBefore = null;
-        WorkItemDependencyResult? materializationSource = null;
-        WorkItemDependencyPromptContext? materializationSourcePrompt = null;
-        if (string.Equals(item.Id, FixedWorkItemSlots.Materialize, StringComparison.Ordinal))
-        {
-            materializationLedger = new TargetWorkspaceMaterializationLedger(
-                _workspace,
-                _jobId);
-
-            WorkspacePublishStateSnapshot publishState;
-            try
-            {
-                publishState = await _publishState.ReadAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException or InvalidDataException)
-            {
-                return WorkItemExecutionResult.Blocked(
-                    "MATERIALIZATION_SOURCE_STATE_UNAVAILABLE",
-                    exception.Message,
-                    preparation.HeadCommit,
-                    preparation.Branch,
-                    preparation.WorktreePath,
-                    item.SessionId,
-                    blockDetailCode: "MATERIALIZATION_SOURCE_STATE_UNAVAILABLE");
-            }
-
-            var alreadyTrackedRefs = publishState.MaterializedCodeResultRefs ??
-                                     Array.Empty<string>();
-            materializationSource = (request.MaterializationCandidates ??
-                                     Array.Empty<WorkItemDependencyResult>())
-                .FirstOrDefault(candidate =>
-                    !string.IsNullOrWhiteSpace(candidate.ResultRef) &&
-                    (!materializationLedger.IsResultVerified(candidate.ResultRef) ||
-                     !alreadyTrackedRefs.Any(value =>
-                         string.Equals(
-                             value,
-                             candidate.ResultRef,
-                             StringComparison.OrdinalIgnoreCase))));
-
-            if (materializationSource is null)
-            {
-                return WorkItemExecutionResult.Blocked(
-                    "MATERIALIZATION_SOURCE_UNAVAILABLE",
-                    "현재 WorkGraph과 materialization ledger에서 반영 대기 중인 CODE_CHANGE를 찾지 못했습니다.",
-                    preparation.HeadCommit,
-                    preparation.Branch,
-                    preparation.WorktreePath,
-                    item.SessionId,
-                    blockDetailCode: "MATERIALIZATION_SOURCE_UNAVAILABLE");
-            }
-
-            materializationSourcePrompt = new WorkItemDependencyPromptContext(
-                materializationSource.WorkItemId,
-                materializationSource.ResultRef,
-                materializationSource.ResultSummary,
-                materializationSource.ResultType,
-                materializationSource.CommitManifestPath);
-
-            var snapshot = materializationLedger.CaptureSnapshot();
-            if (!snapshot.Success || snapshot.Snapshot is null)
-            {
-                return WorkItemExecutionResult.Blocked(
-                    "MATERIALIZATION_SNAPSHOT_FAILED",
-                    snapshot.ErrorDetail ?? "대상 프로젝트 루트의 반영 전 상태를 읽지 못했습니다.",
-                    preparation.HeadCommit,
-                    preparation.Branch,
-                    preparation.WorktreePath,
-                    item.SessionId,
-                    blockDetailCode: snapshot.ErrorCode ?? "MATERIALIZATION_TARGET_SNAPSHOT_FAILED");
-            }
-
-            materializationBefore = snapshot.Snapshot;
-        }
-
         var observationRequestDirectory = _observationGate is not null
             ? _observationGate.GetRequestDirectory(item.Id)
             : _observationRequestDirectory?.Invoke(item.Id);
@@ -508,8 +432,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     preparation.WorktreePath,
                     item.ResultSummary,
                     dependencyResults,
-                    Checklist: item.Checklist,
-                    MaterializationSource: materializationSourcePrompt),
+                    Checklist: item.Checklist),
                 observationRequestDirectory,
                 includeContract: string.IsNullOrWhiteSpace(sessionId),
                 resourceStagingRoot: runtimePaths.TempRoot,
@@ -705,71 +628,6 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             }
 
             var reportBody = route.Body;
-            if (report!.Status == WorkItemReportStatus.Completed &&
-                materializationLedger is not null &&
-                materializationBefore is not null)
-            {
-                var verificationInputs = materializationSource is null
-                    ? Array.Empty<WorkItemDependencyResult>()
-                    : new[] { materializationSource };
-                var verification = await materializationLedger
-                    .VerifyAndRecordAsync(
-                        item,
-                        verificationInputs,
-                        materializationBefore,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (!verification.Success)
-                {
-                    return WorkItemExecutionResult.Blocked(
-                        "MATERIALIZATION_VERIFICATION_FAILED",
-                        reportBody + Environment.NewLine + Environment.NewLine +
-                        "MATERIALIZATION_VERIFICATION" + Environment.NewLine +
-                        "status: BLOCKED" + Environment.NewLine +
-                        "errorCode: " + (verification.ErrorCode ?? "MATERIALIZATION_VERIFICATION_FAILED") + Environment.NewLine +
-                        "ledger: " + verification.LedgerPath + Environment.NewLine +
-                        "detail: " + verification.Message,
-                        preparation.HeadCommit,
-                        preparation.Branch,
-                        preparation.WorktreePath,
-                        sessionId,
-                        blockDetailCode: verification.ErrorCode ?? "MATERIALIZATION_VERIFICATION_FAILED");
-                }
-
-                if (materializationSource?.ResultType == WorkItemResultType.CodeChange &&
-                    !string.IsNullOrWhiteSpace(materializationSource.ResultRef))
-                {
-                    try
-                    {
-                        await _publishState.MarkCodeMaterializedAsync(
-                            materializationSource.ResultRef!,
-                            cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (Exception exception) when (
-                        exception is IOException or UnauthorizedAccessException or InvalidDataException)
-                    {
-                        return WorkItemExecutionResult.Blocked(
-                            "MATERIALIZATION_PUBLISH_STATE_FAILED",
-                            reportBody + Environment.NewLine + Environment.NewLine +
-                            "MATERIALIZATION_VERIFICATION" + Environment.NewLine +
-                            "status: VERIFIED" + Environment.NewLine +
-                            "ledger: " + verification.LedgerPath + Environment.NewLine +
-                            "publishStateError: " + exception.Message,
-                            preparation.HeadCommit,
-                            preparation.Branch,
-                            preparation.WorktreePath,
-                            sessionId,
-                            blockDetailCode: "MATERIALIZATION_PUBLISH_STATE_FAILED");
-                    }
-                }
-
-                reportBody += Environment.NewLine + Environment.NewLine +
-                    "MATERIALIZATION_VERIFICATION" + Environment.NewLine +
-                    "status: VERIFIED" + Environment.NewLine +
-                    "ledger: " + verification.LedgerPath;
-            }
-
             return await FinalizeReportAsync(
                 item,
                 preparation,
@@ -823,7 +681,10 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             var errorCode = checkpoint.ErrorCode ?? "WORKTREE_CHECKPOINT_FAILED";
             return WorkItemExecutionResult.Blocked(
                 "WORKTREE_CHECKPOINT_PENDING",
-                BuildCheckpointPendingSummary(reportStatus, reportBody),
+                BuildCheckpointPendingSummary(
+                    reportStatus,
+                    reportBody,
+                    checkpoint.ErrorDetail),
                 checkpoint.HeadCommit ?? item.ResultRef ?? preparation.HeadCommit,
                 checkpoint.Branch ?? preparation.Branch,
                 checkpoint.WorktreePath,
@@ -1165,11 +1026,15 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
 
     private static string BuildCheckpointPendingSummary(
         WorkItemReportStatus status,
-        string reportBody)
+        string reportBody,
+        string? checkpointDetail = null)
         => string.Join(
             Environment.NewLine,
             CheckpointPendingHeader,
             "reportStatus: " + status,
+            string.IsNullOrWhiteSpace(checkpointDetail)
+                ? string.Empty
+                : "checkpointDetail: " + checkpointDetail.Trim(),
             string.Empty,
             reportBody.Trim());
 
