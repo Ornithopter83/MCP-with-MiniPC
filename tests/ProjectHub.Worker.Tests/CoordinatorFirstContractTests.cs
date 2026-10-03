@@ -34,7 +34,8 @@ public sealed class CoordinatorFirstContractTests
     [Theory]
     [InlineData("Coordinator", "#FFDDEEFF", "#FF1477E8", "#FF1267D5", "current-openai.png")]
     [InlineData("Implementer", "#FFDCF5E3", "#FF168A4A", "#FF116B39", "current-openai.png")]
-    [InlineData("Resource", "#FFECD8E4", "#FF82194B", "#FF74133F", "current-web.png")]
+    [InlineData("HighLevel", "#FFECD8E4", "#FF82194B", "#FF74133F", "current-openai.png")]
+    [InlineData("Resource", "#FFE4EEF9", "#FF326FA8", "#FF245B8D", "current-web.png")]
     [InlineData("Judge", "#FFFFF0B8", "#FFB87900", "#FF765000", "current-jev.png")]
     [InlineData("Message", "#FFEEF8F2", "#FF168A4A", "#FF116B39", "current-console.png")]
     public void HistoryRoleCard_UsesTheSameRolePaletteAsCurrentTask(string stage, string background, string iconBackground, string foreground, string icon)
@@ -49,12 +50,14 @@ public sealed class CoordinatorFirstContractTests
 
     [Theory]
     [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : WORK]\nopaque body", WorkerAction.Continue, WorkerRoleState.Work)]
+    [InlineData(WorkerRoleState.Hq, "[ACTION=CONTINUE]\n[GOTO : HIGH]\n고권한 복구", WorkerAction.Continue, WorkerRoleState.High)]
     [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\nreport", WorkerAction.Pause, null)]
     [InlineData(WorkerRoleState.Hq, "[ACTION=END]\nreport", WorkerAction.End, null)]
     [InlineData(WorkerRoleState.Work, "[GOTO : HQ]\nreport", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO : HQ] report on the same line", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Work, "[GOTO=HQ] report", null, WorkerRoleState.Hq)]
-    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\nRESOURCE_TYPE: AUDIO\n게임용 효과음을 짧고 선명하게 만들어줘.", null, WorkerRoleState.Resource)]
+    [InlineData(WorkerRoleState.Work, "[GOTO : RESOURCE]\nRESOURCE_TYPE: IMAGE\n게임용 포탑 이미지를 만들어줘.", null, WorkerRoleState.Resource)]
+    [InlineData(WorkerRoleState.High, "[GOTO : HQ]\n복구 완료", null, WorkerRoleState.Hq)]
     [InlineData(WorkerRoleState.Resource, "[GOTO : WORK]\nsaved", null, WorkerRoleState.Work)]
     public void WorkerGoto_ParsesAllowedRoutesAndLeavesBodyOpaque(WorkerRoleState source, string text, WorkerAction? action, WorkerRoleState? target)
     {
@@ -149,6 +152,8 @@ public sealed class CoordinatorFirstContractTests
     [InlineData(WorkerRoleState.Hq, "[ACTION=PAUSE]\n[GOTO : WORK]\nbody", "GOTO_NOT_ALLOWED_WITH_ACTION")]
     [InlineData(WorkerRoleState.Work, "[ACTION=END]\nbody", "ACTION_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Work, "[GOTO : JUDGE]\nbody", "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.Work, "[GOTO : HIGH]\nbody", "GOTO_NOT_ALLOWED")]
+    [InlineData(WorkerRoleState.High, "[GOTO : WORK]\nbody", "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Resource, "[GOTO : HQ]\nbody", "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Judge, "[GOTO : WORK]\nraw judgment", "GOTO_NOT_ALLOWED")]
     [InlineData(WorkerRoleState.Judge, "[GOTO : HQ]\nbody", "GOTO_NOT_ALLOWED")]
@@ -158,16 +163,19 @@ public sealed class CoordinatorFirstContractTests
     [Fact]
     public void ResourceTransport_RequiresExplicitTypeAndForwardsOnlyNaturalLanguagePrompt()
     {
-        const string prompt = "게임용 효과음을 짧고 선명하게 만들어줘.";
-        const string body = "RESOURCE_TYPE: AUDIO\n" + prompt;
+        const string prompt = "게임용 아이콘 이미지를 선명하게 만들어줘.";
+        const string body = "RESOURCE_TYPE: IMAGE\n" + prompt;
 
         Assert.True(ResourceTransportContract.TryParse(body, out var request, out var error));
         Assert.Null(error);
-        Assert.Equal("AUDIO", request!.Type);
+        Assert.Equal("IMAGE", request!.Type);
         Assert.Equal(prompt, request.Prompt);
 
         Assert.False(ResourceTransportContract.TryParse(prompt, out _, out var missingType));
         Assert.Equal("RESOURCE_TYPE_MISSING", missingType);
+
+        Assert.False(ResourceTransportContract.TryParse("RESOURCE_TYPE: AUDIO\n효과음 요청", out _, out var unsupportedAudio));
+        Assert.Equal("RESOURCE_TYPE_UNSUPPORTED", unsupportedAudio);
 
         Assert.False(ResourceTransportContract.TryParse("RESOURCE_TYPE: UNKNOWN\n요청", out _, out var unsupportedType));
         Assert.Equal("RESOURCE_TYPE_UNSUPPORTED", unsupportedType);
@@ -208,21 +216,26 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("RESOURCE_TYPE_DUPLICATE", error);
     }
 
-    [Theory]
-    [InlineData("IMAGE")]
-    [InlineData("AUDIO")]
-    [InlineData("VIDEO")]
-    [InlineData("DOCUMENT")]
-    [InlineData("FILE")]
-    public void ResourceTransport_AllowsSupportedGenerationTypes(string type)
+    [Fact]
+    public void ResourceTransport_AllowsOnlyImageGeneration()
     {
-        Assert.True(ResourceTransportContract.IsSupportedType(type));
+        Assert.True(ResourceTransportContract.IsSupportedType("IMAGE"));
         Assert.True(ResourceTransportContract.TryParse(
-            $"RESOURCE_TYPE: {type}\n테스트 생성 요청",
+            "RESOURCE_TYPE: IMAGE\n테스트 이미지 생성 요청",
             out var request,
             out var error));
         Assert.Null(error);
-        Assert.Equal(type, request!.Type);
+        Assert.Equal("IMAGE", request!.Type);
+
+        foreach (var unsupported in new[] { "AUDIO", "VIDEO", "DOCUMENT", "FILE" })
+        {
+            Assert.False(ResourceTransportContract.IsSupportedType(unsupported));
+            Assert.False(ResourceTransportContract.TryParse(
+                $"RESOURCE_TYPE: {unsupported}\n테스트 생성 요청",
+                out _,
+                out var unsupportedError));
+            Assert.Equal("RESOURCE_TYPE_UNSUPPORTED", unsupportedError);
+        }
     }
 
     [Theory]

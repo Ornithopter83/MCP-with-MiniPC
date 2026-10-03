@@ -16,10 +16,23 @@ public sealed class RoleContractBoundaryTests
         Assert.Contains("[ACTION=PAUSE]", hq);
         Assert.Contains("[ACTION=END]", hq);
         Assert.Contains("[GOTO : WORK]", hq);
+        Assert.Contains("[GOTO : HIGH]", hq);
         Assert.Contains("[KEY=...]", hq);
         Assert.Contains("WORK_GRAPH_PATCH:", hq);
         Assert.DoesNotContain("JUDGE", hq, StringComparison.OrdinalIgnoreCase);
-        Assert.True(hq.Length < 2000);
+        Assert.True(hq.Length < 2600);
+    }
+
+    [Fact]
+    public void HighContractReturnsOnlyToHq()
+    {
+        var high = RoleContractLoader.LoadHighFooter();
+
+        Assert.Contains("[GOTO : HQ]", high);
+        Assert.DoesNotContain("[GOTO : WORK]", high);
+        Assert.DoesNotContain("[GOTO : RESOURCE]", high);
+        Assert.DoesNotContain("[GOTO : JUDGE]", high);
+        Assert.DoesNotContain("[ACTION=", high);
     }
 
     [Fact]
@@ -29,6 +42,8 @@ public sealed class RoleContractBoundaryTests
 
         Assert.Contains("[GOTO : HQ]", work);
         Assert.Contains("[GOTO : RESOURCE]", work);
+        Assert.Contains("RESOURCE_TYPE: IMAGE", work);
+        Assert.DoesNotContain("IMAGE|AUDIO", work);
         Assert.Contains("WORK_ITEM_STATUS: COMPLETED", work);
         Assert.DoesNotContain("[GOTO : JUDGE]", work);
         Assert.DoesNotContain("JUDGE", work, StringComparison.OrdinalIgnoreCase);
@@ -41,7 +56,8 @@ public sealed class RoleContractBoundaryTests
         foreach (var contract in new[]
                  {
                      RoleContractLoader.LoadHqFooter(),
-                     RoleContractLoader.LoadWorkFooter()
+                     RoleContractLoader.LoadWorkFooter(),
+                     RoleContractLoader.LoadHighFooter()
                  })
         {
             Assert.DoesNotContain("Example:", contract, StringComparison.OrdinalIgnoreCase);

@@ -1242,18 +1242,23 @@ public sealed class GitWorktreeManager
                     BuildGitFailureDetail("git fetch --prune origin", fetchResult));
             }
 
-            var remoteHeadResult = await RunAsync(
+            var remoteContainmentResult = await RunAsync(
                 repositoryRoot,
                 ReadTimeout,
                 cancellationToken,
-                "rev-parse",
-                "--verify",
-                $"refs/remotes/origin/{targetBranch}^{{commit}}").ConfigureAwait(false);
-            var remoteHead = remoteHeadResult.ExitCode == 0
-                ? FirstLine(remoteHeadResult.StandardOutput)
-                : null;
-            if (string.IsNullOrWhiteSpace(remoteHead) ||
-                !string.Equals(remoteHead, primaryHead, StringComparison.OrdinalIgnoreCase))
+                "for-each-ref",
+                "--format=%(refname)",
+                "--contains=" + primaryHead,
+                "refs/remotes/origin").ConfigureAwait(false);
+            var containingRemoteRefs = remoteContainmentResult.ExitCode == 0
+                ? remoteContainmentResult.StandardOutput
+                    .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(value => value.Trim())
+                    .Where(value => value.StartsWith("refs/remotes/origin/", StringComparison.Ordinal))
+                    .ToArray()
+                : Array.Empty<string>();
+            if (remoteContainmentResult.ExitCode != 0 ||
+                containingRemoteRefs.Length == 0)
             {
                 return new(
                     false,
@@ -1263,9 +1268,11 @@ public sealed class GitWorktreeManager
                     branch,
                     primaryHead,
                     primaryHead,
-                    remoteHead,
+                    null,
                     false,
-                    BuildGitFailureDetail("git rev-parse origin branch", remoteHeadResult));
+                    BuildGitFailureDetail(
+                        "git for-each-ref --contains primary HEAD",
+                        remoteContainmentResult));
             }
 
             if (Directory.Exists(clonePath) || File.Exists(clonePath))

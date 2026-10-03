@@ -579,7 +579,7 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task IntegrationPreparationClonesOriginAtCurrentRemoteSyncedHead()
+    public async Task IntegrationPreparationAcceptsPrimaryHeadReachableFromAnyFetchedOriginBranch()
     {
         var root = CreateTempRepositoryDirectory();
         var clone = GitWorktreeManager.BuildIntegrationClonePath(root, "job", "I1");
@@ -590,7 +590,7 @@ public sealed class GitWorktreeManagerTests
         runner.Enqueue(0, "primary999");
         runner.Enqueue(0, "https://example.invalid/repo.git");
         runner.Enqueue(0, "");
-        runner.Enqueue(0, "primary999");
+        runner.Enqueue(0, "refs/remotes/origin/projecthub/job/base");
         runner.Enqueue(0, "cloned");
         runner.Enqueue(0, "checked out");
         runner.Enqueue(0, "");
@@ -608,6 +608,19 @@ public sealed class GitWorktreeManagerTests
             Assert.Equal("primary999", result.HeadCommit);
             Assert.Equal(clone, result.WorktreePath);
             Assert.Equal(branch, result.Branch);
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(new[]
+                {
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "--contains=primary999",
+                    "refs/remotes/origin"
+                }));
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Any(argument =>
+                    argument.Contains("refs/remotes/origin/main", StringComparison.Ordinal)));
             Assert.Contains(
                 runner.Calls,
                 call => call.Arguments.SequenceEqual(new[]

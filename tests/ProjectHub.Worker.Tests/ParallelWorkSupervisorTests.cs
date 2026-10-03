@@ -59,6 +59,66 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task AuthorizedHighRunsOnceAndReturnsReportToSameHqLoop()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var hq = new QueueHqRunner(
+            "[ACTION=CONTINUE]\n[GOTO : HIGH]\nGit 인프라 차단 원인을 복구하세요.",
+            End("HIGH 결과 확인 완료"));
+        var highCalls = 0;
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync,
+            runHighAsync: (body, _) =>
+            {
+                highCalls++;
+                Assert.Contains("Git 인프라", body);
+                return Task.FromResult("원격 기준점 복구 완료");
+            },
+            highPermitAvailable: true);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "차단 원인을 해결하세요.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(1, highCalls);
+        Assert.Equal(2, hq.Prompts.Count);
+        Assert.Contains("HIGH one-shot: available", hq.Prompts[0]);
+        Assert.Contains("입력 유형: HIGH_REPORT", hq.Prompts[1]);
+        Assert.Contains("원격 기준점 복구 완료", hq.Prompts[1]);
+        Assert.Contains("HIGH one-shot: unavailable", hq.Prompts[1]);
+    }
+
+    [Fact]
+    public async Task UnauthorizedHighIsRejectedWithoutExecutingCallback()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var hq = new QueueHqRunner(
+            "[ACTION=CONTINUE]\n[GOTO : HIGH]\n고권한 호출",
+            End("호출하지 않음"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "HIGH 허용 없음");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Equal(2, hq.Prompts.Count);
+        Assert.Contains("PARALLEL_HQ_HIGH_NOT_AUTHORIZED", hq.Prompts[1]);
+    }
+
+    [Fact]
     public async Task IndependentWorkRunsToQuiescenceBeforeHqEndTurn()
     {
         var graph = new WorkGraph("job", 2);
@@ -994,6 +1054,12 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Null(endError);
         Assert.Equal(WorkerAction.End, endTurn!.Action);
         Assert.Null(endTurn.Patch);
+
+        const string high = "[ACTION=CONTINUE]\n[GOTO : HIGH]\n고권한 복구";
+        Assert.True(ParallelHqTurnContract.TryParse(high, out var highTurn, out var highError));
+        Assert.Null(highError);
+        Assert.Equal(WorkerRoleState.High, highTurn!.Target);
+        Assert.Null(highTurn.Patch);
 
         const string invalid = "[ACTION=CONTINUE]\n[GOTO : WORK]\n일반 지시";
         Assert.False(ParallelHqTurnContract.TryParse(invalid, out _, out var error));

@@ -95,6 +95,49 @@ public sealed class ParallelResourceWorkItemRouterTests
     }
 
     [Fact]
+    public async Task NonImageResourceRequestIsRejectedBeforeQueueing()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-parallel-resource-non-image-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var host = new FakeHost();
+
+        try
+        {
+            await using var queue = new ResourceSidecarQueue(
+                bridgeServer: null,
+                workingDirectory: root,
+                jobCancellation: cts.Token);
+            await using var router = new ParallelResourceWorkItemRouter(
+                host,
+                queue,
+                cts.Token);
+
+            host.Publish(new ParallelWorkExternalBlock(
+                "W4",
+                "RESOURCE_REQUEST",
+                "RESOURCE_TYPE: AUDIO\n효과음을 생성해 주세요.",
+                null,
+                null,
+                root,
+                "session-W4"));
+
+            var resume = await host.Resume.Task.WaitAsync(cts.Token);
+
+            Assert.Equal("W4", resume.WorkItemId);
+            Assert.Contains("RESOURCE_TYPE_UNSUPPORTED", resume.Body);
+            Assert.Equal(0, queue.OutstandingCount);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task InvalidResourceRequestIsReturnedAsMechanicalFailureWithoutQueueing()
     {
         var root = Path.Combine(
