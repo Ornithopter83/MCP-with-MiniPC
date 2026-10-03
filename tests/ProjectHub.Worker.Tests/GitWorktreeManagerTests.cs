@@ -126,6 +126,32 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
+    public async Task PrepareRejectsLocalPathOriginBeforeFetchOrClone()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, root);
+        runner.Enqueue(0, "C:/repos/local.git");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .PrepareAsync(root, "job", "W1", "main");
+
+            Assert.False(result.Success);
+            Assert.Equal("WORK_CLONE_NETWORK_REMOTE_REQUIRED", result.ErrorCode);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        (call.Arguments[0] == "fetch" || call.Arguments[0] == "clone"));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
     public async Task PrepareCreatesDisposableCloneFromOrigin()
     {
         var root = CreateTempRepositoryDirectory();
