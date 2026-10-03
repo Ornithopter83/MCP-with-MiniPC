@@ -232,6 +232,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         {
             stagedUserAttachments = UserAttachmentTransport.StageForWorkerRuntime(
                 _userAttachments,
+                preparation.RepositoryRoot,
                 _jobId + "-" + executionWorkItemId);
         }
         catch (Exception exception)
