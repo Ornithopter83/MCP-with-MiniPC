@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -714,7 +715,7 @@ public static class WorkItemReportContract
 {
     private const string Prefix = "WORK_ITEM_STATUS:";
 
-    public static bool TryParse(string? body, out WorkItemReport? report, out string? error)
+    public static bool TryParse(string? body, [NotNullWhen(true)] out WorkItemReport? report, out string? error)
     {
         report = null;
         error = null;
