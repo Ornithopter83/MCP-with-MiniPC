@@ -503,8 +503,6 @@ public sealed class WorkGraph
                     return "WORK_GRAPH_ADD_ITEM_MISSING";
                 if (!IsSafeId(operation.Item.Id))
                     return "WORK_GRAPH_ITEM_ID_INVALID";
-                if (FixedWorkItemSlots.IsUnassignedReservedSlot(operation.Item.Id))
-                    return "WORK_GRAPH_RESERVED_SLOT_UNASSIGNED";
                 if (FixedWorkItemSlots.IsReusable(operation.Item.Id) &&
                     operation.Item.Kind != WorkItemKind.Normal)
                     return "WORK_GRAPH_FIXED_SLOT_KIND_INVALID";
