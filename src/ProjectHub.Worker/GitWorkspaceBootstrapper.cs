@@ -9,7 +9,8 @@ public sealed record GitWorkspaceBootstrapState(
     string RepositoryRoot,
     string? Branch,
     string? HeadCommit,
-    bool IsDirty);
+    bool IsDirty,
+    string? OriginUrl = null);
 
 public sealed class GitWorkspaceBootstrapper
 {
@@ -87,13 +88,16 @@ public sealed class GitWorkspaceBootstrapper
                 branch,
                 headCommit);
 
-        if (!GitRemoteAddressPolicy.IsNetworkRemote(FirstLine(remoteResult.StandardOutput)))
+        var originUrl = FirstLine(remoteResult.StandardOutput);
+        if (!GitRemoteAddressPolicy.IsNetworkRemote(originUrl))
             return RepositoryFailure(
                 "GIT_REMOTE_ORIGIN_NETWORK_REQUIRED",
                 workspace,
                 repositoryRoot,
                 branch,
                 headCommit);
+
+        var displayOrigin = GitRemoteAddressPolicy.SanitizeForDisplay(originUrl);
 
         var statusResult = await RunAsync(
             repositoryRoot,
@@ -120,7 +124,8 @@ public sealed class GitWorkspaceBootstrapper
                 repositoryRoot,
                 branch,
                 headCommit,
-                true);
+                true,
+                displayOrigin);
         }
 
         var fetchResult = await RunAsync(
@@ -180,7 +185,8 @@ public sealed class GitWorkspaceBootstrapper
             repositoryRoot,
             branch,
             headCommit,
-            false);
+            false,
+            displayOrigin);
     }
 
     private Task<GitCommandResult> RunAsync(
