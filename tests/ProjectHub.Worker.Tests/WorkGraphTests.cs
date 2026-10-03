@@ -196,13 +196,11 @@ public sealed class WorkGraphTests
         Assert.True(graph.TryMarkCompleted(
             "A",
             "commit-a",
-            resultType: WorkItemResultType.CodeChange,
-            commitManifestPath: "manifest-a.json"));
+            resultType: WorkItemResultType.CodeChange));
 
         Assert.Equal(WorkItemState.Completed, graph.Find("A")!.State);
         Assert.Equal("commit-a", graph.Find("A")!.ResultRef);
         Assert.Equal(WorkItemResultType.CodeChange, graph.Find("A")!.ResultType);
-        Assert.Equal("manifest-a.json", graph.Find("A")!.CommitManifestPath);
         Assert.Equal(WorkItemState.Ready, graph.Find("B")!.State);
     }
 
@@ -221,13 +219,11 @@ public sealed class WorkGraphTests
             "HQ_BLOCKED",
             "빌드 환경 확인이 필요합니다.",
             "checkpoint-a",
-            resultType: WorkItemResultType.CodeChange,
-            commitManifestPath: "manifest-a.json"));
+            resultType: WorkItemResultType.CodeChange));
 
         var blocked = graph.Find("A")!;
         Assert.Equal(WorkItemResultType.CodeChange, blocked.ResultType);
         Assert.Equal("checkpoint-a", blocked.ResultRef);
-        Assert.Equal("manifest-a.json", blocked.CommitManifestPath);
 
         Assert.True(graph.TryReleaseBlocked("A", "WORK_RESULT", "계속 진행하세요."));
         Assert.True(graph.TryMarkRunning("A"));
@@ -241,7 +237,6 @@ public sealed class WorkGraphTests
         Assert.Equal(WorkItemState.Completed, completed.State);
         Assert.Equal(WorkItemResultType.CodeChange, completed.ResultType);
         Assert.Equal("checkpoint-a", completed.ResultRef);
-        Assert.Equal("manifest-a.json", completed.CommitManifestPath);
     }
 
     [Fact]
