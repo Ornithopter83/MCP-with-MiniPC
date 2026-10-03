@@ -178,41 +178,35 @@ public static class WorkerTargetConfiguration
     private static string? ResolvePreferredRemote(string workingDirectory)
     {
         var verbose = RunGit(workingDirectory, "remote", "-v");
-        var parsed = ParsePreferredRemote(verbose);
-        if (!string.IsNullOrWhiteSpace(parsed))
-            return parsed;
+        var origin = ParseOriginRemote(verbose);
+        if (!string.IsNullOrWhiteSpace(origin))
+            return origin;
 
-        return ReadPreferredRemoteFromGitConfig(workingDirectory);
+        return ReadOriginRemoteFromGitConfig(workingDirectory);
     }
 
-    private static string? ParsePreferredRemote(string? verbose)
+    private static string? ParseOriginRemote(string? verbose)
     {
         if (string.IsNullOrWhiteSpace(verbose))
             return null;
 
-        string? firstFetch = null;
         foreach (var rawLine in verbose.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = rawLine.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2)
+            if (parts.Length < 2 ||
+                !string.Equals(parts[0], "origin", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var name = parts[0];
-            var url = parts[1];
             var isFetch = parts.Length < 3 ||
                           string.Equals(parts[^1], "(fetch)", StringComparison.OrdinalIgnoreCase);
-            if (!isFetch)
-                continue;
-
-            firstFetch ??= url;
-            if (string.Equals(name, "origin", StringComparison.OrdinalIgnoreCase))
-                return url;
+            if (isFetch)
+                return parts[1];
         }
 
-        return firstFetch;
+        return null;
     }
 
-    private static string? ReadPreferredRemoteFromGitConfig(string workingDirectory)
+    private static string? ReadOriginRemoteFromGitConfig(string workingDirectory)
     {
         try
         {
@@ -224,21 +218,21 @@ public static class WorkerTargetConfiguration
             if (!File.Exists(configPath))
                 return null;
 
-            string? currentRemote = null;
-            string? firstRemoteUrl = null;
-            string? originUrl = null;
-
+            var inOrigin = false;
             foreach (var rawLine in File.ReadLines(configPath))
             {
                 var line = rawLine.Trim();
                 if (line.StartsWith("[remote \"", StringComparison.OrdinalIgnoreCase) &&
                     line.EndsWith("\"]", StringComparison.Ordinal))
                 {
-                    currentRemote = line[9..^2];
+                    inOrigin = string.Equals(
+                        line[9..^2],
+                        "origin",
+                        StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
-                if (currentRemote is null)
+                if (!inOrigin)
                     continue;
 
                 var equals = line.IndexOf('=');
@@ -250,15 +244,10 @@ public static class WorkerTargetConfiguration
                     continue;
 
                 var url = line[(equals + 1)..].Trim();
-                if (string.IsNullOrWhiteSpace(url))
-                    continue;
-
-                firstRemoteUrl ??= url;
-                if (string.Equals(currentRemote, "origin", StringComparison.OrdinalIgnoreCase))
-                    originUrl = url;
+                return string.IsNullOrWhiteSpace(url) ? null : url;
             }
 
-            return originUrl ?? firstRemoteUrl;
+            return null;
         }
         catch
         {
