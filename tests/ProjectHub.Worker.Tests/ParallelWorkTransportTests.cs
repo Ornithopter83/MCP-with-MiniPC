@@ -391,14 +391,15 @@ public sealed class ParallelWorkTransportTests
     }
 
     [Fact]
-    public void HqContractAssignsIntegrationAndFixedSlots()
+    public void HqContractAssignsIntegrationAndRemoteFixedSlots()
     {
         var footer = RoleContractLoader.LoadHqFooter();
 
-        Assert.Contains("#8은 MATERIALIZE/COPY", footer);
+        Assert.DoesNotContain("MATERIALIZE/COPY", footer);
         Assert.Contains("#9는 BUILD/PUBLISH", footer);
+        Assert.Contains("원격 resultRef를 baseRef로 사용", footer);
         Assert.Contains("여러 독립 CODE_CHANGE 결과를 합치는 일은 별도 INTEGRATION WorkItem", footer);
-        Assert.Contains("#0·#8·#9도 WorkGraph operation은 ADD", footer);
+        Assert.Contains("#0·#9도 WorkGraph operation은 ADD", footer);
     }
 
     [Fact]
@@ -407,7 +408,7 @@ public sealed class ParallelWorkTransportTests
         var footer = RoleContractLoader.LoadHqFooter();
 
         Assert.Contains("operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE", footer);
-        Assert.Contains("#0·#8·#9도 WorkGraph operation은 ADD", footer);
+        Assert.Contains("#0·#9도 WorkGraph operation은 ADD", footer);
         Assert.Contains("CONTINUE에는 WORK_GRAPH_PATCH를 정확히 하나 출력", footer);
     }
 
