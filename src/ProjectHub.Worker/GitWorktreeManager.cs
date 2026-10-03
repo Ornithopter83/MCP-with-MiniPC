@@ -2092,6 +2092,12 @@ public sealed class GitWorktreeManager
                 if (!inspection.IsClean)
                     continue;
 
+                if (!await IsCloneHeadPublishedAsync(
+                        clonePath,
+                        inspection,
+                        cancellationToken).ConfigureAwait(false))
+                    continue;
+
                 var deleteError = await DeleteDirectoryTreeWithRetriesAsync(
                     clonePath,
                     cancellationToken).ConfigureAwait(false);
@@ -2228,6 +2234,7 @@ public sealed class GitWorktreeManager
 
         var removed = new List<string>();
         var dirty = new List<string>();
+        var unpublished = new List<string>();
         var preparationGate = GetRepositoryPreparationGate(repositoryRoot);
         await preparationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -2253,6 +2260,15 @@ public sealed class GitWorktreeManager
                 if (!inspection.IsClean)
                 {
                     dirty.Add(clonePath);
+                    continue;
+                }
+
+                if (!await IsCloneHeadPublishedAsync(
+                        clonePath,
+                        inspection,
+                        cancellationToken).ConfigureAwait(false))
+                {
+                    unpublished.Add(clonePath);
                     continue;
                 }
 
@@ -2287,15 +2303,24 @@ public sealed class GitWorktreeManager
                 }
             }
 
-            if (dirty.Count > 0)
+            if (dirty.Count > 0 || unpublished.Count > 0)
             {
                 var disposableCleanupErrors = await CleanupDisposableRuntimeDirectoriesAsync(
                     runtime,
                     cancellationToken).ConfigureAwait(false);
                 var detail = new StringBuilder();
-                detail.AppendLine("ProjectHub 격리 clone에 미커밋 변경이 남아 runtime을 보존했습니다.");
-                foreach (var path in dirty)
-                    detail.AppendLine("- " + path);
+                if (dirty.Count > 0)
+                {
+                    detail.AppendLine("ProjectHub 격리 clone에 미커밋 변경이 남아 runtime을 보존했습니다.");
+                    foreach (var path in dirty)
+                        detail.AppendLine("- " + path);
+                }
+                if (unpublished.Count > 0)
+                {
+                    detail.AppendLine("원격에서 HEAD가 확인되지 않은 clean clone을 보존했습니다.");
+                    foreach (var path in unpublished)
+                        detail.AppendLine("- " + path);
+                }
                 if (disposableCleanupErrors.Count > 0)
                 {
                     detail.AppendLine("disposableCleanupErrors:");
@@ -2305,9 +2330,11 @@ public sealed class GitWorktreeManager
 
                 return new(
                     false,
-                    "RUNTIME_CLEANUP_CLONE_DIRTY",
+                    dirty.Count > 0
+                        ? "RUNTIME_CLEANUP_CLONE_DIRTY"
+                        : "RUNTIME_CLEANUP_CLONE_UNPUBLISHED",
                     runtime.Root,
-                    Array.Empty<string>(),
+                    removed,
                     false,
                     detail.ToString().TrimEnd());
             }
@@ -2337,6 +2364,37 @@ public sealed class GitWorktreeManager
         {
             preparationGate.Release();
         }
+    }
+
+    private async Task<bool> IsCloneHeadPublishedAsync(
+        string clonePath,
+        GitWorktreeInspectionResult inspection,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(inspection.Branch) ||
+            string.IsNullOrWhiteSpace(inspection.HeadCommit) ||
+            !inspection.Branch.StartsWith("projecthub/", StringComparison.Ordinal))
+            return false;
+
+        var remoteResult = await RunAsync(
+            clonePath,
+            ReadTimeout,
+            cancellationToken,
+            "ls-remote",
+            "--exit-code",
+            "origin",
+            "refs/heads/" + inspection.Branch).ConfigureAwait(false);
+        if (remoteResult.ExitCode != 0)
+            return false;
+
+        var remoteHead = remoteResult.StandardOutput
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+        return !string.IsNullOrWhiteSpace(remoteHead) &&
+               string.Equals(
+                   remoteHead,
+                   inspection.HeadCommit,
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<string> EnumerateOwnedCloneDirectories(
