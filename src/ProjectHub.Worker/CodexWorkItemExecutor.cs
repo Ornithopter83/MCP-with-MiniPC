@@ -334,6 +334,11 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 if (!string.IsNullOrWhiteSpace(snapshotPath))
                     writableDirectories.Add(snapshotPath);
             }
+            if (FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id))
+            {
+                writableDirectories.Add(_workspace);
+                environment["PROJECTHUB_TARGET_WORKSPACE"] = _workspace;
+            }
             workWritableDirectories = writableDirectories
                 .Distinct(OperatingSystem.IsWindows()
                     ? StringComparer.OrdinalIgnoreCase
@@ -454,21 +459,34 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                 includeContract: string.IsNullOrWhiteSpace(sessionId),
                 resourceStagingRoot: runtimePaths.TempRoot,
                 workTempRoot: workTempPath,
+                targetWorkspace: FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id)
+                    ? _workspace
+                    : null,
                 publishOutputDirectory: publishOutputDirectory);
 
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
-            GitMetadataIsolationLease gitIsolation;
+            GitMetadataIsolationLease? gitIsolation = null;
+            GitMetadataIsolationLease? targetWorkspaceGitIsolation = null;
             try
             {
                 gitIsolation = GitMetadataIsolationLease.Detach(
                     preparation.WorktreePath,
                     _jobId,
                     executionWorkItemId);
+                if (FixedWorkItemSlots.AllowsTargetWorkspaceWrite(item.Id))
+                {
+                    targetWorkspaceGitIsolation = GitMetadataIsolationLease.Detach(
+                        _workspace,
+                        _jobId,
+                        executionWorkItemId + "-target");
+                }
             }
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException)
             {
+                try { targetWorkspaceGitIsolation?.Restore(); } catch { }
+                try { gitIsolation?.Restore(); } catch { }
                 return WorkItemExecutionResult.Blocked(
                     "WORK_GIT_METADATA_ISOLATION_FAILED",
                     exception.Message,
@@ -480,6 +498,7 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             }
 
             var gitRestore = new GitMetadataRestoreResult(true);
+            var targetWorkspaceGitRestore = new GitMetadataRestoreResult(true);
             try
             {
                 runResult = await _runner.RunAsync(new AiRoleRunRequest(
@@ -508,7 +527,26 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
             }
             finally
             {
-                gitRestore = gitIsolation.Restore();
+                targetWorkspaceGitRestore =
+                    targetWorkspaceGitIsolation?.Restore() ??
+                    new GitMetadataRestoreResult(true);
+                gitRestore =
+                    gitIsolation?.Restore() ??
+                    new GitMetadataRestoreResult(true);
+            }
+
+            if (!targetWorkspaceGitRestore.Success)
+            {
+                return WorkItemExecutionResult.Failed(
+                    targetWorkspaceGitRestore.ErrorCode ?? "TARGET_WORKSPACE_GIT_METADATA_RESTORE_FAILED",
+                    (targetWorkspaceGitRestore.ErrorDetail ?? "대상 프로젝트 Git metadata 복원에 실패했습니다.") +
+                    (string.IsNullOrWhiteSpace(targetWorkspaceGitRestore.QuarantinePath)
+                        ? string.Empty
+                        : Environment.NewLine + "quarantine=" + targetWorkspaceGitRestore.QuarantinePath),
+                    preparation.Branch,
+                    preparation.WorktreePath,
+                    sessionId,
+                    "TARGET_WORKSPACE_GIT_METADATA_RESTORE");
             }
 
             if (!gitRestore.Success)

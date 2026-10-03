@@ -84,6 +84,44 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task FileManagerSlotReceivesTargetWorkspaceCrudAccess()
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            파일 정리 완료
+            """,
+            workItemId: FixedWorkItemSlots.FileManager,
+            createdOrder: 3);
+
+        try
+        {
+            var rootPath = Path.GetFullPath(Path.Combine(fixture.Parent, "repo"));
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Contains(
+                rootPath,
+                fixture.Runner.LastRequest!.AdditionalWritableDirectories!);
+            Assert.Contains(
+                "대상 프로젝트 루트: " + rootPath,
+                fixture.Runner.LastRequest.Prompt);
+            Assert.Equal(
+                rootPath,
+                Path.GetFullPath(
+                    fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_TARGET_WORKSPACE"]));
+            Assert.Equal(CodexSandboxMode.WorkspaceWrite, fixture.Runner.LastRequest.Sandbox);
+            Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task BuildPublishSlotStaysInsideRemoteSourceClone()
     {
         var fixture = CreateFixture(
