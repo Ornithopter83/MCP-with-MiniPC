@@ -227,7 +227,39 @@ public sealed class GitWorktreeManagerTests
     }
 
     [Fact]
-    public async Task CleanCheckpointStillPublishesAndVerifiesRemoteHead()
+    public async Task CleanCheckpointDoesNotCreateRemoteBranchByDefault()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clone = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        Directory.CreateDirectory(clone);
+        var branch = GitWorktreeManager.BuildBranchName("job", "W1");
+        var runner = new FakeGitRunner();
+        runner.Enqueue(0, "head123");
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .CreateCheckpointAsync(clone, "W1");
+
+            Assert.True(result.Success);
+            Assert.False(result.CreatedCommit);
+            Assert.Equal("head123", result.HeadCommit);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        (call.Arguments[0] == "push" ||
+                         call.Arguments[0] == "ls-remote"));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
+    public async Task CleanCheckpointCanRepublishRemoteHeadForRecovery()
     {
         var root = CreateTempRepositoryDirectory();
         var clone = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
@@ -246,13 +278,22 @@ public sealed class GitWorktreeManagerTests
         try
         {
             var result = await new GitWorktreeManager(runner)
-                .CreateCheckpointAsync(clone, "W1");
+                .CreateCheckpointAsync(
+                    clone,
+                    "W1",
+                    publishCleanHead: true);
 
             Assert.True(result.Success);
             Assert.False(result.CreatedCommit);
             Assert.Equal("head123", result.HeadCommit);
-            Assert.DoesNotContain(runner.Calls, call => call.Arguments.Contains("commit"));
-            Assert.Contains(runner.Calls, call => call.Arguments.Count > 0 && call.Arguments[0] == "push");
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "push", "origin", "HEAD:refs/heads/" + branch }));
+            Assert.Contains(
+                runner.Calls,
+                call => call.Arguments.SequenceEqual(
+                    new[] { "ls-remote", "--exit-code", "origin", "refs/heads/" + branch }));
         }
         finally
         {
