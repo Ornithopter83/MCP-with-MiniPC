@@ -231,9 +231,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
         IReadOnlyList<AiInputAttachment> stagedUserAttachments;
         try
         {
-            stagedUserAttachments = UserAttachmentTransport.StageForWorkspace(
+            stagedUserAttachments = UserAttachmentTransport.StageForWorkerRuntime(
                 _userAttachments,
-                preparation.WorktreePath,
                 _jobId + "-" + executionWorkItemId);
         }
         catch (Exception exception)
