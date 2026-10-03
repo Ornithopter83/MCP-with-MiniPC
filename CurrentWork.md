@@ -36,7 +36,7 @@
 ⑥ DONE·DONE_WITH_ERROR 뒤의 추가 작업은 이전 WorkGraph를 이어 붙이지 않고 현재 작업 폴더에서 새 Job으로 시작하며, PAUSE·CANCELED도 작업 폴더가 바뀌었으면 같은 원칙을 적용한다.
 ⑦ 새 작업은 선택한 작업 폴더 자체가 Git 저장소 root이고 `origin`이 존재하며 현재 branch와 로컬 HEAD가 대응 원격 branch HEAD와 일치하는 clean 상태에서만 시작한다. 상위 폴더의 Git 저장소를 자동 채택하지 않고, 불일치·dirty·원격 부재 상태를 Worker가 임의 재초기화·merge·reset하지 않는다.
 ⑧ HQ 상태 통지는 WorkItem checklist를 첫 보고에 포함한 뒤 같은 관제 세션의 후속 상태 변화에서는 동일 checklist 전문을 반복하지 않고 새 WORK 보고와 변경 상태를 중심으로 전달한다.
-⑨ NORMAL WORK와 Direct Work는 원격 기준 disposable clone에서 실행하고 CODE_CHANGE는 `projecthub/*` 원격 checkpoint로 확정하며, 최종 landing 뒤 사용자 결과에 남은 runtime clone 파일 경로는 같은 상대 경로의 파일이 사용자 작업 폴더에 실제 존재하는 경우에만 target workspace 경로로 정규화한다.
+⑨ NORMAL WORK는 원격 기준 disposable clone과 `projecthub/*` checkpoint 정책을 유지한다. 하네스 없음 Direct Work는 이 관제 경로와 분리되어 사용자가 선택한 작업 폴더에서 직접 실행한다.
 ⑩ 현재는 실제 장기 작업에서 병렬 관제, 통합, RESOURCE/JUDGE/OBSERVATION sidecar 귀속이 안정적으로 이어지는지 관찰한다.
 
 제6조 (WEB)
