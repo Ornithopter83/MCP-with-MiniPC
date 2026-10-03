@@ -305,10 +305,10 @@ public partial class MainWindow
 
                     if (hqRequestedEnd)
                     {
-                        TaskTitle.Text = "HQ 종료 요청 · 사용자 작업 폴더 최종 확인 중";
+                        TaskTitle.Text = "HQ 종료 요청 · 최종 remote result 확인 중";
                         AddTaskMessage(
                             "WORKSPACE FINALIZATION",
-                            "HQ가 END를 요청했습니다. 최종 반영 검증이 성공하기 전에는 작업 완료로 확정하지 않습니다.",
+                            "HQ가 END를 요청했습니다. 최종 remote result와 publish 검증이 성공하기 전에는 작업 완료로 확정하지 않습니다.",
                             status: "FINALIZING",
                             includeHistory: false);
                     }
