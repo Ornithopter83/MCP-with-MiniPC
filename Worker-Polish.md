@@ -6,8 +6,9 @@
 
 ① HQ는 사용자 목표 해석, WorkItem 작업 목록 구성, WorkGraph 관제와 CONTINUE·PAUSE·END 판단을 담당한다.
 ② WORK는 현재 WorkItem의 목표와 작업 목록을 수행하고 목록별 결과를 HQ에 보고한다. WORK는 작업 분할이나 새 WorkItem 필요 여부를 판단하지 않는다.
-③ RESOURCE는 생성 리소스를 Web으로 요청하고 수집한다.
-④ Worker는 의미 판단 대신 상태, 전송, 프로세스, Git과 기계 작업을 관리한다.
+③ HIGH는 사용자 one-shot 허용이 있는 Job에서 HQ가 직접 호출하는 고권한 복구 역할이다. 일반 구현이나 생성 리소스 제작에 사용하지 않는다.
+④ RESOURCE는 IMAGE 생성 요청을 별도 ChatGPT Web 대화로 보내고 생성 파일을 수집한다.
+⑤ Worker는 의미 판단 대신 상태, 전송, 프로세스, Git과 기계 작업을 관리한다.
 
 제2조 (보고)
 
@@ -34,8 +35,10 @@
 
 제5조 (RESOURCE)
 
-① RESOURCE Web 전송·수집 실패는 의미 작업 실패와 구분한다.
-② RESOURCE 실패를 일반 WORK의 다른 생성 경로로 자동 우회하지 않는다.
+① RESOURCE Web transport는 현재 IMAGE만 지원한다.
+② RESOURCE Web 전송·수집 실패는 의미 작업 실패와 구분한다.
+③ RESOURCE 실패를 일반 WORK의 다른 생성 경로로 자동 우회하지 않는다.
+④ IMAGE 외 RESOURCE_TYPE은 Web 전송 전에 Worker가 기계적으로 거부한다.
 
 제6조 (Web)
 
@@ -50,7 +53,7 @@
 ③ WORK는 Git 저장소를 생성·복구·stage·commit·push하지 않으며, checkpoint와 원격 게시를 Worker가 기계적으로 수행한다.
 ④ checkpoint 대상은 프로젝트의 `.gitignore`를 기준으로 하되, 작업 루트의 `.projecthub`는 Worker 기계 상태이므로 Git status, 초기 baseline, checkpoint와 CODE_CHANGE 결과에서 항상 제외한다. 그 외 일반 프로젝트 파일에 대해 별도 재생성 파일 목록을 유지하지 않는다.
 ⑤ WorkGraph, event log, transcript, continuation 상태와 repository runtime·tool cache는 작업 루트의 `.projecthub` 아래에 둔다. `.projecthub`는 사용자 코드 결과가 아니라 Worker 기계 상태다.
-⑥ 병렬 결과의 Integration은 Worker 소유 격리 공간에서 수행하고, 충돌 없이 확정된 결과만 새 remote CODE_CHANGE로 게시한다.
+⑥ 병렬 결과의 Integration은 Worker 소유 격리 공간에서 수행하고, 충돌 없이 확정된 결과만 새 remote CODE_CHANGE로 게시한다. Integration 기준점 검증은 fetch된 origin remote ref 중 현재 로컬 HEAD commit을 포함하는 ref가 존재하는지 확인하며, 로컬 branch 이름과 같은 origin branch가 반드시 존재한다고 추론하지 않는다.
 ⑦ 완료된 CODE_CHANGE는 파일 단위 MATERIALIZE/COPY나 별도 materialization ledger 없이 commit 계보로 추적한다. 최종 result가 현재 원격 동기화 branch에 포함되지 않았으면 clean 사용자 checkout을 해당 `projecthub/*` 원격 result branch로 전환하며, 기본·보호 branch에 자동 merge·push하지 않는다.
 ⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나면 Worker가 임의 merge·reset·재초기화하지 않고 기계 오류로 차단한다.
 ⑨ PAUSE·CANCELED continuation은 보존된 WorkGraph와 원격 resultRef를 기준으로 하며, DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.
@@ -69,8 +72,8 @@
 
 제9조 (UI와 설정)
 
-① UI는 HQ, WORK, RESOURCE와 실제 실행 상태를 표시한다.
-② 설정은 실제 사용 중인 역할과 실행 옵션만 노출한다.
+① UI는 HQ, WORK, HIGH, RESOURCE와 실제 실행 상태를 표시한다.
+② 설정은 실제 사용 중인 역할과 실행 옵션만 노출한다. HIGH는 역할 설정과 Job별 one-shot 허용을 분리해 표시한다.
 ③ 사용하지 않는 역할이나 transport의 설정 UI를 유지하지 않는다.
 ④ 메인 창의 X 버튼은 Worker 종료가 아니라 트레이 숨김으로 동작하며, 명시적 Exit만 Worker 종료를 요청한다.
 ⑤ 새 작업 시작 전 이전 runtime 정리는 최선 노력으로 수행하며, 정리 실패만으로 HQ 시작을 차단하지 않는다.

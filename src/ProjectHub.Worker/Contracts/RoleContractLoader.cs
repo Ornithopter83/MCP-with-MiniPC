@@ -27,12 +27,14 @@ public static class RoleContractLoader
 {
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
+    public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");
 
     public static string BuildHqPrompt(
         string inboundType,
         string body,
         WorkGraphPromptContext workGraph,
-        bool includeContract = true)
+        bool includeContract = true,
+        bool highPermitAvailable = false)
     {
         ArgumentNullException.ThrowIfNull(workGraph);
         var header =
@@ -40,6 +42,7 @@ public static class RoleContractLoader
             $"WorkGraph revision: {workGraph.Revision}\n" +
             $"최대 동시 WORK: {workGraph.MaxConcurrentWork}\n" +
             $"기준 ref: {workGraph.BaseRef}\n" +
+            $"HIGH one-shot: {(highPermitAvailable ? "available" : "unavailable")}\n" +
             "computerUse: disabled\n입력 본문:\n";
         var prompt = header + body;
         return includeContract
@@ -64,8 +67,8 @@ public static class RoleContractLoader
             : $"비동기 계측 요청 폴더: {observationRequestDirectory}\n";
         var resourceHeader = string.IsNullOrWhiteSpace(resourceStagingRoot)
             ? string.Empty
-            : $"공용 생성 리소스 임시 루트: {resourceStagingRoot}\n" +
-              "RESOURCE 타입 하위 폴더: IMAGE=image, AUDIO=audio, VIDEO=video, DOCUMENT=document, FILE=file\n";
+            : $"공용 생성 이미지 리소스 임시 루트: {resourceStagingRoot}\n" +
+              "RESOURCE 타입: IMAGE만 지원\n";
         var workTempHeader = string.IsNullOrWhiteSpace(workTempRoot)
             ? string.Empty
             : $"WORK 임시 산출물 루트: {workTempRoot}\n";
@@ -89,6 +92,10 @@ public static class RoleContractLoader
             ? prompt + "\n\n" + LoadWorkFooter()
             : prompt;
     }
+
+    public static string BuildHighPrompt(string body) =>
+        "역할: HIGH\n호출 유형: USER_AUTHORIZED_ONE_SHOT\ncomputerUse: disabled\n입력 본문:\n" +
+        (body ?? string.Empty) + "\n\n" + LoadHighFooter();
 
     private static string BuildWorkItemHeader(WorkItemPromptContext workItem)
     {

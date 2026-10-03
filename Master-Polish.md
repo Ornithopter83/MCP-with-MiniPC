@@ -54,3 +54,6 @@
 ③ 연관성이 낮은 일은 HQ가 별도 WorkItem으로 분리하고 중간 관제를 계속한다.
 ④ Worker는 WORK 보고를 가능한 한 원문 그대로 HQ에 전달한다.
 ⑤ 오류 복구는 transport, protocol, work 오류를 구분하되 오류별 영구 계약을 증식시키지 않는다.
+⑥ HIGH는 사용자가 해당 Job에서 1회 호출을 명시적으로 허용했을 때만 HQ가 직접 호출하는 고권한 역할이다. HIGH는 일반 WorkItem이나 RESOURCE를 대체하지 않으며, 시스템·도구체인·runtime·Git 인프라처럼 일반 WORK 권한으로 해결하기 어려운 차단 원인의 진단·복구에만 사용한다.
+⑦ RESOURCE는 ChatGPT Web의 이미지 생성·수집 역할이며 현재 transport는 IMAGE만 허용한다. 오디오·비디오·문서·임의 파일 생성은 RESOURCE로 라우팅하지 않는다.
+⑧ Worker는 HIGH의 one-shot 허용 여부와 RESOURCE 타입을 기계적으로 강제하고, 두 역할의 결과 의미를 대신 판단하지 않는다.

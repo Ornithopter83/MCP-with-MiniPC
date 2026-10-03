@@ -1,6 +1,6 @@
 namespace ProjectHub.Worker;
 
-public enum WorkerRoleState { Hq, Work, Judge, Resource, Unknown }
+public enum WorkerRoleState { Hq, Work, Judge, High, Resource, Unknown }
 public enum WorkerAction { Continue, Pause, End }
 public sealed record WorkerGotoRoute(WorkerRoleState? Target, string Body, WorkerAction? Action = null, string? Error = null);
 
@@ -37,7 +37,7 @@ public static class WorkerGotoContract
             var gotoLine = lines[gotoIndex].Trim();
             if (!IsGotoCandidate(gotoLine)) return Invalid("GOTO_INVALID");
             if (!TryParseTarget(gotoLine, out var target, out var gotoEnd)) return Invalid("GOTO_INVALID");
-            if (target != WorkerRoleState.Work) return Invalid("GOTO_NOT_ALLOWED");
+            if (target is not (WorkerRoleState.Work or WorkerRoleState.High)) return Invalid("GOTO_NOT_ALLOWED");
             return new(target, JoinBody(gotoLine, gotoEnd, lines, gotoIndex), action);
         }
 
@@ -49,6 +49,7 @@ public static class WorkerGotoContract
         var allowed = source switch
         {
             WorkerRoleState.Work => destination is WorkerRoleState.Hq or WorkerRoleState.Resource,
+            WorkerRoleState.High => destination == WorkerRoleState.Hq,
             WorkerRoleState.Resource => destination == WorkerRoleState.Work,
             _ => false
         };
@@ -108,7 +109,7 @@ public static class WorkerGotoContract
         var close = line.IndexOf(']');
         if (close < 0) return false;
         var control = line[..(close + 1)];
-        var matches = new[] { "HQ", "WORK", "JUDGE", "RESOURCE", "UNKNOWN" }
+        var matches = new[] { "HQ", "WORK", "JUDGE", "HIGH", "RESOURCE", "UNKNOWN" }
             .Where(token => ContainsKeywordBeforeClose(control, token)).ToArray();
         if (matches.Length != 1) return false;
         target = ParseTarget(matches[0]);
@@ -138,6 +139,7 @@ public static class WorkerGotoContract
         "HQ" => WorkerRoleState.Hq,
         "WORK" => WorkerRoleState.Work,
         "JUDGE" => WorkerRoleState.Judge,
+        "HIGH" => WorkerRoleState.High,
         "RESOURCE" => WorkerRoleState.Resource,
         _ => WorkerRoleState.Unknown
     };

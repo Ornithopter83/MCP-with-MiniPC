@@ -11,11 +11,7 @@ public static class ResourceTransportContract
 {
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "IMAGE",
-        "AUDIO",
-        "VIDEO",
-        "DOCUMENT",
-        "FILE"
+        "IMAGE"
     };
 
     public static bool IsSupportedType(string? type)

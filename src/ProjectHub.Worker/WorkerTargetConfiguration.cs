@@ -42,11 +42,13 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
     [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null,
     [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null,
-    [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = 1)
+    [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = 1,
+    [property: JsonPropertyName("highLevel")] WorkerAiRoleSettings? HighLevel = null)
 {
     public JudgeSettings EffectiveJudge => new(false);
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
     public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
+    public WorkerAiRoleSettings EffectiveHighLevel => HighLevel ?? new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high", Transport: "codex_cli");
     public int EffectiveMaxConcurrentWork => MaxConcurrentWork is >= WorkGraph.MinimumConcurrency and <= WorkGraph.MaximumConcurrency ? MaxConcurrentWork : 1;
     public bool IsCoordinatorFirst => true;
 }
@@ -100,7 +102,8 @@ public static class WorkerTargetConfiguration
             Judge = null,
             JudgeEndpointValidation = null,
             Coordinator = NormalizeRole(settings.Coordinator),
-            Implementer = NormalizeRole(settings.Implementer)
+            Implementer = NormalizeRole(settings.Implementer),
+            HighLevel = NormalizeRole(settings.HighLevel)
         };
     }
 
