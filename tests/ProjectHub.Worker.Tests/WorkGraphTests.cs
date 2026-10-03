@@ -595,16 +595,19 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
-    public void BuildRequestReleaseWithoutParsableInputStillAuthorizesBuild()
+    public void BuildRequestReleaseWithoutParsableInputStillAuthorizesBuildForSlot9()
     {
         var graph = new WorkGraph("job");
         Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
         {
-            WorkGraphPatchOperation.Add(new WorkItemSpec("A", "구현", BaseRef: "base"))
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                FixedWorkItemSlots.BuildPublish,
+                "중간 milestone 빌드",
+                BaseRef: "base"))
         })).Success);
-        Assert.True(graph.TryMarkRunning("A", sessionId: "session-a"));
+        Assert.True(graph.TryMarkRunning(FixedWorkItemSlots.BuildPublish, sessionId: "session-a"));
         Assert.True(graph.TryMarkBlocked(
-            "A",
+            FixedWorkItemSlots.BuildPublish,
             "BUILD_REQUEST",
             "BUILD_REQUEST\n빌드 필요",
             "checkpoint-a",
@@ -612,15 +615,129 @@ public sealed class WorkGraphTests
 
         var release = graph.ApplyPatch(new WorkGraphPatch(
             graph.Revision,
-            new[] { WorkGraphPatchOperation.Release("A", null, "구조화되지 않은 BUILD 승인") }));
+            new[] { WorkGraphPatchOperation.Release(
+                FixedWorkItemSlots.BuildPublish,
+                null,
+                "구조화되지 않은 BUILD 승인") }));
 
         Assert.True(release.Success);
-        var item = graph.Find("A")!;
+        var item = graph.Find(FixedWorkItemSlots.BuildPublish)!;
         Assert.Equal(WorkItemState.Ready, item.State);
         Assert.Equal("BUILD_AUTHORIZED", item.ResumeInputType);
         Assert.Equal("구조화되지 않은 BUILD 승인", item.ResumeBody);
         Assert.Equal("checkpoint-a", item.ResultRef);
         Assert.Equal(WorkItemResultType.CodeChange, item.ResultType);
+    }
+
+    [Fact]
+    public void GeneralWorkCannotCarryBuildExecutionChecklist()
+    {
+        var graph = new WorkGraph("job");
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                "10",
+                "문서 모델 구현",
+                Checklist: new[]
+                {
+                    "Document 모델을 구현한다.",
+                    "Release 빌드를 실행해 성공을 확인한다."
+                }))
+        }));
+
+        Assert.False(result.Success);
+        Assert.Equal("WORK_GRAPH_BUILD_STEP_REQUIRES_SLOT_9", result.ErrorCode);
+        Assert.Null(graph.Find("10"));
+    }
+
+    [Fact]
+    public void StaticImplementationGoalDoesNotTripBuildGate()
+    {
+        var graph = new WorkGraph("job");
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                "10",
+                "PSD export 기능을 구현한다.",
+                Checklist: new[]
+                {
+                    "PSD exporter 코드를 구현한다.",
+                    "빌드는 수행하지 않고 정적 검토 결과를 보고한다."
+                }))
+        }));
+
+        Assert.True(result.Success);
+        Assert.Equal(WorkItemState.Ready, graph.Find("10")!.State);
+    }
+
+    [Fact]
+    public void BuildSlotCannotBeScheduledWhileImplementationWaveIsActive()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("10", "중간 구현"))
+        })).Success);
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                FixedWorkItemSlots.BuildPublish,
+                "중간 milestone 빌드",
+                BaseRef: "base"))
+        }));
+
+        Assert.False(result.Success);
+        Assert.Equal("WORK_GRAPH_BUILD_SLOT_REQUIRES_MILESTONE", result.ErrorCode);
+        Assert.Null(graph.Find(FixedWorkItemSlots.BuildPublish));
+    }
+
+    [Fact]
+    public void BuildSlotCanRunAfterCurrentMilestoneIsCompleted()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("10", "중간 구현"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("10"));
+        Assert.True(graph.TryMarkCompleted(
+            "10",
+            "milestone-ref",
+            resultType: WorkItemResultType.CodeChange));
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(graph.Revision, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                FixedWorkItemSlots.BuildPublish,
+                "중간 milestone 빌드",
+                BaseRef: "milestone-ref"))
+        }));
+
+        Assert.True(result.Success);
+        Assert.Equal(WorkItemState.Ready, graph.Find(FixedWorkItemSlots.BuildPublish)!.State);
+    }
+
+    [Fact]
+    public void GeneralLegacyBuildRequestCannotBeAuthorized()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec("10", "구현"))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("10"));
+        Assert.True(graph.TryMarkBlocked("10", "BUILD_REQUEST", "legacy"));
+
+        var result = graph.ApplyPatch(new WorkGraphPatch(
+            graph.Revision,
+            new[] { WorkGraphPatchOperation.Release("10", null, "승인") }));
+
+        Assert.False(result.Success);
+        Assert.Equal("WORK_GRAPH_BUILD_SLOT_REQUIRED", result.ErrorCode);
+        Assert.Equal(WorkItemState.Blocked, graph.Find("10")!.State);
     }
 
     [Fact]

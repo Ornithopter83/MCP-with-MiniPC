@@ -55,6 +55,14 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(workTemp, fixture.Runner.LastRequest.EnvironmentVariables["PROJECTHUB_WORK_TEMP"]);
             Assert.Contains("WORK 임시 산출물 루트: " + workTemp, fixture.Runner.LastRequest.Prompt);
             Assert.False(fixture.Runner.LastRequest.IncludeAppBaseWritable);
+            Assert.True(fixture.Runner.LastRequest.BypassHookTrust);
+            Assert.NotNull(fixture.Runner.LastRequest.CodexConfigOverrides);
+            Assert.Contains(
+                fixture.Runner.LastRequest.CodexConfigOverrides!,
+                value => value.Contains("hooks.PreToolUse", StringComparison.Ordinal));
+            Assert.Equal(
+                "0",
+                fixture.Runner.LastRequest.EnvironmentVariables["PROJECTHUB_BUILD_EXECUTION_ALLOWED"]);
             Assert.Contains(runtime.NuGetRoot, fixture.Runner.LastRequest.AdditionalWritableDirectories!);
             Assert.Contains(runtime.DotNetHome, fixture.Runner.LastRequest.AdditionalWritableDirectories!);
             Assert.Contains(workTemp, fixture.Runner.LastRequest.AdditionalWritableDirectories!);
@@ -207,6 +215,13 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Contains(
                 Path.GetFullPath(publishRoot),
                 fixture.Runner.LastRequest.AdditionalWritableDirectories!);
+            Assert.False(fixture.Runner.LastRequest.BypassHookTrust);
+            Assert.True(
+                fixture.Runner.LastRequest.CodexConfigOverrides is null ||
+                fixture.Runner.LastRequest.CodexConfigOverrides.Count == 0);
+            Assert.Equal(
+                "1",
+                fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_BUILD_EXECUTION_ALLOWED"]);
             Assert.Equal(
                 Path.GetFullPath(publishRoot),
                 Path.GetFullPath(fixture.Runner.LastRequest.EnvironmentVariables!["PROJECTHUB_PUBLISH_ROOT"]));
