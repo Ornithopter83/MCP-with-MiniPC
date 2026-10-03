@@ -38,6 +38,6 @@ Worker는 HQ가 WorkGraph와 작업 분해를 관제하고 WORK가 배정된 Wor
 
 HQ와 RESOURCE는 서로 다른 persistent profile의 관리형 Chromium을 사용한다. 각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 app window로 실행되며, runtime token이 없는 일반 Chrome과 임의 ChatGPT 페이지는 Worker bridge에 연결하지 않는다. HQ Web 응답은 task별 correlation KEY와 `[RESPONSE=OK]` 완료 표식을 사용하고, RESOURCE 완료는 생성 파일 준비와 capture 상태를 별도로 사용한다. 세부 상관·완료 계약은 `Web-Polish.md`와 Worker의 Web 전송 계약에 둔다.
 
-Worker의 저장소별 기계 상태는 작업 루트의 `.projecthub` 아래에 둔다. WorkGraph·event log·transcript·continuation은 `.projecthub`에 기록하고, disposable clone·tool cache·임시 실행 파일은 `.projecthub/runtime`에 둔다. `.projecthub`는 Worker 기계 상태이므로 Git status와 코드 결과에서 제외한다.
+Worker의 저장소별 기계 상태는 작업 루트의 `.projecthub` 아래에 둔다. WorkGraph·event log·transcript·continuation은 `.projecthub`에 기록하고, 해당 저장소의 disposable clone·tool cache·WORK/RESOURCE runtime은 `.projecthub/runtime`에 둔다. `.projecthub`는 Worker 기계 상태이므로 Git status와 코드 결과에서 제외한다.
 
 Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. Web 전달에서는 로컬 파일 hash 검증과 ChatGPT UI의 기계적 준비 상태를 구분하고, 일반 Web 결과 파일은 Worker가 안전한 결과 경로에 저장한다.
