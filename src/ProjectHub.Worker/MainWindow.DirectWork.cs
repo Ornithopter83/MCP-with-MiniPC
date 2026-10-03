@@ -334,6 +334,22 @@ public partial class MainWindow
             return;
         }
 
+        var relativeWorkingDirectory = Path.GetRelativePath(
+            gitState.RepositoryRoot,
+            workingDirectory);
+        var directExecutionDirectory =
+            string.Equals(relativeWorkingDirectory, ".", StringComparison.Ordinal)
+                ? preparation.WorktreePath
+                : Path.GetFullPath(Path.Combine(
+                    preparation.WorktreePath,
+                    relativeWorkingDirectory));
+        if (!Directory.Exists(directExecutionDirectory))
+        {
+            ShowDirectWorkPreflightError(
+                "선택한 작업 폴더의 상대 경로를 원격 clone에서 찾지 못했습니다.");
+            return;
+        }
+
         IReadOnlyList<AiInputAttachment> stagedAttachments;
         try
         {
@@ -419,7 +435,7 @@ public partial class MainWindow
                 result = await runner.RunAsync(new AiRoleRunRequest(
                     Prompt: prompt,
                     Role: role,
-                    WorkingDirectory: preparation.WorktreePath,
+                    WorkingDirectory: directExecutionDirectory,
                     SessionId: null,
                     Sandbox: CodexSandboxMode.WorkspaceWrite,
                     CancellationToken: cts.Token,
