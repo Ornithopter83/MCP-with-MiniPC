@@ -370,6 +370,32 @@ public sealed class WorkGraphTests
     }
 
     [Fact]
+    public void ContinuationRecoveryReleasesIntegrationClonePreparationBlock()
+    {
+        var graph = new WorkGraph("job");
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(
+                "I1",
+                "통합",
+                Kind: WorkItemKind.Integration))
+        })).Success);
+        Assert.True(graph.TryMarkRunning("I1"));
+        Assert.True(graph.TryMarkBlocked(
+            "I1",
+            "INTEGRATION_REMOTE_FETCH_FAILED",
+            "origin fetch 실패"));
+
+        var recovered = graph.RecoverPreparationFailuresForContinuation();
+
+        Assert.Equal(new[] { "I1" }, recovered);
+        var item = graph.Find("I1")!;
+        Assert.Equal(WorkItemState.Ready, item.State);
+        Assert.Null(item.BlockCode);
+        Assert.Null(item.ResultSummary);
+    }
+
+    [Fact]
     public void ContinuationRecoveryReleasesCurrentPreparationBlock()
     {
         var graph = new WorkGraph("job");
@@ -380,8 +406,8 @@ public sealed class WorkGraphTests
         Assert.True(graph.TryMarkRunning("W1"));
         Assert.True(graph.TryMarkBlocked(
             "W1",
-            "WORKTREE_CREATE_FAILED",
-            "git worktree add 실패"));
+            "WORK_CLONE_CREATE_FAILED",
+            "git clone 실패"));
 
         var recovered = graph.RecoverPreparationFailuresForContinuation();
 
