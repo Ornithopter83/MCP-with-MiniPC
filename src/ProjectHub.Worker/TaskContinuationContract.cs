@@ -8,7 +8,9 @@ public sealed record CoordinatorContinuationState(
     string? CoordinatorSessionId,
     string? WorkSessionId,
     string Status,
-    string LastHqMessage);
+    string LastHqMessage,
+    WorkerAiRoleSettings? HighLevel = null,
+    bool HighLevelPermitAvailable = false);
 
 public static class TaskContinuationContract
 {

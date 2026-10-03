@@ -15,7 +15,9 @@ public sealed record ProjectMemorySnapshot(
     string Status,
     string LastHqMessage,
     string EventLogPath,
-    DateTimeOffset UpdatedAtUtc)
+    DateTimeOffset UpdatedAtUtc,
+    WorkerAiRoleSettings? HighLevel = null,
+    bool HighLevelPermitAvailable = false)
 {
     public CoordinatorContinuationState ToContinuation()
         => new(
@@ -26,7 +28,9 @@ public sealed record ProjectMemorySnapshot(
             CoordinatorSessionId,
             WorkSessionId,
             Status,
-            LastHqMessage);
+            LastHqMessage,
+            HighLevel,
+            HighLevelPermitAvailable);
 }
 
 public sealed record ProjectEventLogEntry(
@@ -343,7 +347,9 @@ public static class ProjectWorkspacePersistence
                 state.Status,
                 state.LastHqMessage ?? string.Empty,
                 eventLogPath,
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                state.HighLevel,
+                state.HighLevelPermitAvailable);
 
             WriteAtomic(
                 StatePath(state.WorkingDirectory),
@@ -475,6 +481,8 @@ public static class ProjectWorkspacePersistence
                $"갱신 시각(UTC): {snapshot.UpdatedAtUtc:O}{Environment.NewLine}" +
                $"HQ 세션: {coordinatorSession}{Environment.NewLine}" +
                $"WORK 세션: {workSession}{Environment.NewLine}" +
+               $"HIGH 1회 잔여 권한: {(snapshot.HighLevelPermitAvailable ? "있음" : "없음")}{Environment.NewLine}" +
+               $"HIGH 모델: {(snapshot.HighLevel is null ? "없음" : AiProviderCatalog.FormatModel(snapshot.HighLevel.Provider, snapshot.HighLevel.Model))}{Environment.NewLine}" +
                $"이벤트 로그: {snapshot.EventLogPath}{Environment.NewLine}{Environment.NewLine}" +
                $"## 마지막 HQ 메시지{Environment.NewLine}{Environment.NewLine}" +
                (string.IsNullOrWhiteSpace(snapshot.LastHqMessage) ? "이전 HQ 메시지 없음" : snapshot.LastHqMessage.Trim()) +

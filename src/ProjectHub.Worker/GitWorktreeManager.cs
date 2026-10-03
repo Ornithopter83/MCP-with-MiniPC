@@ -1242,23 +1242,25 @@ public sealed class GitWorktreeManager
                     BuildGitFailureDetail("git fetch --prune origin", fetchResult));
             }
 
-            var remoteContainmentResult = await RunAsync(
+            var remoteRefsResult = await RunAsync(
                 repositoryRoot,
                 ReadTimeout,
                 cancellationToken,
                 "for-each-ref",
-                "--format=%(refname)",
-                "--contains=" + primaryHead,
+                "--format=%(objectname) %(refname)",
                 "refs/remotes/origin").ConfigureAwait(false);
-            var containingRemoteRefs = remoteContainmentResult.ExitCode == 0
-                ? remoteContainmentResult.StandardOutput
+            var matchingRemoteRefs = remoteRefsResult.ExitCode == 0
+                ? remoteRefsResult.StandardOutput
                     .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
                     .Select(value => value.Trim())
-                    .Where(value => value.StartsWith("refs/remotes/origin/", StringComparison.Ordinal))
+                    .Where(value =>
+                        value.StartsWith(
+                            primaryHead + " refs/remotes/origin/",
+                            StringComparison.OrdinalIgnoreCase))
                     .ToArray()
                 : Array.Empty<string>();
-            if (remoteContainmentResult.ExitCode != 0 ||
-                containingRemoteRefs.Length == 0)
+            if (remoteRefsResult.ExitCode != 0 ||
+                matchingRemoteRefs.Length == 0)
             {
                 return new(
                     false,
@@ -1271,8 +1273,8 @@ public sealed class GitWorktreeManager
                     null,
                     false,
                     BuildGitFailureDetail(
-                        "git for-each-ref --contains primary HEAD",
-                        remoteContainmentResult));
+                        "git for-each-ref exact remote HEAD",
+                        remoteRefsResult));
             }
 
             if (Directory.Exists(clonePath) || File.Exists(clonePath))

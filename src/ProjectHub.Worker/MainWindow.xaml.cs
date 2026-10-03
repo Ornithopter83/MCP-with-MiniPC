@@ -617,10 +617,15 @@ public partial class MainWindow : Window
         if (followup.Length == 0 || followup == FollowupPromptPlaceholder) return;
         var followupAttachments = SnapshotFollowupAttachments();
 
+        var continuationHighLevel = NormalizeRoleSessionForWorkspace(
+            continuation.HighLevel ?? _targetSettings.EffectiveHighLevel,
+            continuation.WorkingDirectory);
         var preflightError = GetCoordinatorFirstPreflightError(
             continuation.WorkingDirectory,
             continuation.Coordinator,
-            continuation.Implementer);
+            continuation.Implementer,
+            continuationHighLevel,
+            continuation.HighLevelPermitAvailable);
         if (preflightError is not null)
         {
             DashboardPreflightText.Text = preflightError;
@@ -1199,7 +1204,6 @@ public partial class MainWindow : Window
             cliWorkingDirectory);
         var highLevelAuthorizedAtLaunch =
             HighLevelPermitCheckBox.IsChecked == true;
-        HighLevelPermitCheckBox.IsChecked = false;
         var highLevel = NormalizeRoleSessionForWorkspace(
             _targetSettings.EffectiveHighLevel,
             cliWorkingDirectory);
@@ -1220,6 +1224,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        HighLevelPermitCheckBox.IsChecked = false;
         await RunCoordinatorFirstJobAsync(
             launchRequest.Prompt,
             selectedThreadForLaunch,
