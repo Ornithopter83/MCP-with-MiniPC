@@ -217,15 +217,6 @@ public sealed class GitWorkspaceBootstrapper
         }
 
         var remoteHead = FirstLine(remoteHeadResult.StandardOutput);
-        if (!string.Equals(headCommit, remoteHead, StringComparison.OrdinalIgnoreCase))
-        {
-            return RepositoryFailure(
-                "GIT_REMOTE_HEAD_MISMATCH",
-                workspace,
-                repositoryRoot,
-                branch,
-                headCommit);
-        }
 
         return new GitWorkspaceBootstrapState(
             true,
@@ -233,7 +224,7 @@ public sealed class GitWorkspaceBootstrapper
             workspace,
             repositoryRoot,
             branch,
-            headCommit,
+            remoteHead,
             false,
             displayOrigin);
     }
