@@ -246,6 +246,29 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
         var inboundBody = initialBody ?? string.Empty;
         var firstHqTurn = true;
         var consecutivePatchRejections = 0;
+        string? lastPatchRejectionCode = null;
+
+        void RegisterPatchRejection(string errorCode)
+        {
+            if (string.Equals(
+                    lastPatchRejectionCode,
+                    errorCode,
+                    StringComparison.Ordinal))
+            {
+                consecutivePatchRejections++;
+            }
+            else
+            {
+                lastPatchRejectionCode = errorCode;
+                consecutivePatchRejections = 1;
+            }
+        }
+
+        void ResetPatchRejections()
+        {
+            consecutivePatchRejections = 0;
+            lastPatchRejectionCode = null;
+        }
 
         while (true)
         {
@@ -296,8 +319,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                     out var envelope,
                     out var turnError))
             {
-                consecutivePatchRejections++;
                 var rejectionCode = turnError ?? "PARALLEL_HQ_RESPONSE_INVALID";
+                RegisterPatchRejection(rejectionCode);
                 var rejectionBody = FormatHqResponseRejected(
                     rejectionCode,
                     _graph.Snapshot(),
@@ -323,8 +346,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             {
                 if (_runHighAsync is null)
                 {
-                    consecutivePatchRejections++;
                     const string rejectionCode = "PARALLEL_HQ_HIGH_RUNNER_UNAVAILABLE";
+                    RegisterPatchRejection(rejectionCode);
                     var rejectionBody = FormatHqResponseRejected(
                         rejectionCode,
                         _graph.Snapshot(),
@@ -362,12 +385,12 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                         "exceptionType=" + exception.GetType().Name +
                         Environment.NewLine +
                         "detail=" + exception.Message;
-                    consecutivePatchRejections = 0;
+                    ResetPatchRejections();
                     continue;
                 }
 
                 inboundType = "HIGH_REPORT";
-                consecutivePatchRejections = 0;
+                ResetPatchRejections();
                 continue;
             }
 
@@ -380,8 +403,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                         out var preliminaryPatchError) &&
                     IsWorkGraphJsonParseError(preliminaryPatchError))
                 {
-                    consecutivePatchRejections++;
                     var rejectionCode = preliminaryPatchError!;
+                    RegisterPatchRejection(rejectionCode);
                     var rejectionBody = FormatJsonPatchRejected(
                         rejectionCode,
                         _graph.Snapshot(),
@@ -422,11 +445,11 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
                 if (!structuredResult.Success || structuredResult.Value is null)
                 {
-                    consecutivePatchRejections++;
                     var rejectionCode =
                         structuredResult.FinalErrorCode ??
                         structuredResult.InitialErrorCode ??
                         "WORK_GRAPH_PATCH_INVALID";
+                    RegisterPatchRejection(rejectionCode);
                     var errorDetail =
                         structuredResult.ErrorDetail ??
                         WorkGraphTransportContract.DescribeError(
@@ -460,10 +483,10 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 if (structuredPatch.Operations.Count == 0 &&
                     (structuredResult.Repaired || !HasRunnableOrRunningWork(_graph.Snapshot())))
                 {
-                    consecutivePatchRejections++;
                     var rejectionCode = structuredResult.Repaired
                         ? "WORK_GRAPH_REPAIRED_EMPTY_PATCH"
                         : "WORK_GRAPH_EMPTY_CONTINUE";
+                    RegisterPatchRejection(rejectionCode);
                     var errorDetail = structuredResult.Repaired
                         ? "구조 복구 결과 operations가 비어 있습니다. 불완전한 HQ 응답을 no-op patch로 간주하지 않습니다."
                         : "READY 또는 RUNNING WorkItem이 없는 상태에서 operations가 빈 CONTINUE는 진행을 만들 수 없습니다.";
@@ -598,8 +621,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
 
             if (!patchResult.Success)
             {
-                consecutivePatchRejections++;
                 var rejectionCode = patchResult.ErrorCode ?? "WORK_GRAPH_PATCH_REJECTED";
+                RegisterPatchRejection(rejectionCode);
                 var rejectionBody = FormatPatchRejected(
                     rejectionCode,
                     _graph.Snapshot(),
@@ -620,7 +643,7 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
                 continue;
             }
 
-            consecutivePatchRejections = 0;
+            ResetPatchRejections();
 
             if (!_schedulerStarted)
             {
@@ -1014,7 +1037,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             $"revision={snapshot.Revision}",
             "errorCode=" + errorCode,
             $"attempt={consecutiveRejections}",
-            "직전 의미는 유지하고 ACTION/GOTO 형식만 수정해 다시 응답하세요.");
+            "직전 의미는 유지하고 ACTION/GOTO 형식만 수정해 다시 응답하세요.",
+            "포맷 오류가 있으므로 계약을 확인하여 다시 전송해주세요.");
 
     private static bool IsWorkGraphJsonParseError(string? errorCode)
         => string.Equals(
@@ -1036,7 +1060,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             $"revision={snapshot.Revision}",
             "errorCode=" + errorCode,
             $"attempt={consecutiveRejections}",
-            "직전 의미는 유지하고 완전한 WORK_GRAPH_PATCH JSON만 다시 출력하세요.");
+            "직전 의미는 유지하고 완전한 WORK_GRAPH_PATCH JSON만 다시 출력하세요.",
+            "포맷 오류가 있으므로 계약을 확인하여 다시 전송해주세요.");
 
     private static string FormatStructuredPatchRejected(
         string errorCode,
@@ -1050,7 +1075,8 @@ public sealed class ParallelWorkSupervisor : IParallelExternalBlockHost, IAsyncD
             "errorCode=" + errorCode,
             string.IsNullOrWhiteSpace(errorDetail) ? string.Empty : errorDetail.Trim(),
             $"attempt={consecutiveRejections}",
-            "현재 revision에 맞는 patch 형식만 수정해 다시 응답하세요.")
+            "현재 revision에 맞는 patch 형식만 수정해 다시 응답하세요.",
+            "포맷 오류가 있으므로 계약을 확인하여 다시 전송해주세요.")
             .Replace(Environment.NewLine + Environment.NewLine, Environment.NewLine);
 
     private static string FormatPatchRejected(
