@@ -789,18 +789,42 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     resultType: completedResultType);
             }
 
+            var primaryPublish = await _worktrees.PublishIntegrationResultToPrimaryAsync(
+                preparation.RepositoryRoot,
+                checkpoint.WorktreePath,
+                checkpoint.HeadCommit,
+                _expectedPrimaryBranch,
+                cancellationToken).ConfigureAwait(false);
+            if (!primaryPublish.Success)
+            {
+                return WorkItemExecutionResult.Blocked(
+                    "INTEGRATION_PRIMARY_PUBLISH_PENDING",
+                    reportBody + Environment.NewLine + Environment.NewLine +
+                    "primaryPublishError: " +
+                    (primaryPublish.ErrorDetail ?? primaryPublish.ErrorCode ?? "INTEGRATION_PRIMARY_PUBLISH_FAILED"),
+                    checkpoint.HeadCommit,
+                    checkpoint.Branch ?? preparation.Branch,
+                    checkpoint.WorktreePath,
+                    sessionId,
+                    blockDetailCode: primaryPublish.ErrorCode ?? "INTEGRATION_PRIMARY_PUBLISH_FAILED",
+                    resultType: completedResultType);
+            }
+
             await TryRemoveCompletedIntegrationCloneAsync(
                 item,
                 preparation,
                 checkpoint.WorktreePath,
                 cancellationToken).ConfigureAwait(false);
 
-            var completedSummary = completedResultType == WorkItemResultType.CodeChange
-                ? reportBody + Environment.NewLine + Environment.NewLine +
-                  "REMOTE_CODE_RESULT" + Environment.NewLine +
-                  "resultRef: " + checkpoint.HeadCommit + Environment.NewLine +
-                  "branch: " + (checkpoint.Branch ?? preparation.Branch)
-                : reportBody;
+            var completedSummary = reportBody + Environment.NewLine + Environment.NewLine +
+                (completedResultType == WorkItemResultType.CodeChange
+                    ? "REMOTE_CODE_RESULT" + Environment.NewLine +
+                      "resultRef: " + checkpoint.HeadCommit + Environment.NewLine +
+                      "branch: " + (checkpoint.Branch ?? preparation.Branch) + Environment.NewLine
+                    : string.Empty) +
+                "PRIMARY_BRANCH_RESULT" + Environment.NewLine +
+                "resultRef: " + checkpoint.HeadCommit + Environment.NewLine +
+                "branch: " + primaryPublish.TargetBranch;
 
             return WorkItemExecutionResult.Completed(
                 checkpoint.HeadCommit,

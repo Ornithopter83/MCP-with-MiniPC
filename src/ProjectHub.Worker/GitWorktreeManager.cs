@@ -154,6 +154,16 @@ public sealed record GitIntegrationCloneCleanupResult(
     string ClonePath,
     string? ErrorDetail = null);
 
+public sealed record GitIntegrationPrimaryPublishResult(
+    bool Success,
+    string? ErrorCode,
+    string RepositoryRoot,
+    string IntegrationWorktreePath,
+    string ResultCommit,
+    string TargetBranch,
+    string? PreviousRemoteHead,
+    string? ErrorDetail = null);
+
 public sealed record GitWorktreeCheckpointResult(
     bool Success,
     string? ErrorCode,
@@ -2930,6 +2940,345 @@ public sealed class GitWorktreeManager
         return error is null
             ? new(true, null, normalizedPath, branch)
             : new(false, "WORK_CLONE_CLEANUP_DELETE_FAILED", normalizedPath, branch);
+    }
+
+    public async Task<GitIntegrationPrimaryPublishResult> PublishIntegrationResultToPrimaryAsync(
+        string repositoryRoot,
+        string integrationWorktreePath,
+        string resultRef,
+        string? targetBranch,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedRoot = string.IsNullOrWhiteSpace(repositoryRoot)
+            ? string.Empty
+            : Path.GetFullPath(repositoryRoot);
+        var normalizedWorktree = string.IsNullOrWhiteSpace(integrationWorktreePath)
+            ? string.Empty
+            : Path.GetFullPath(integrationWorktreePath);
+        var normalizedRef = resultRef?.Trim() ?? string.Empty;
+        var normalizedBranch = targetBranch?.Trim() ?? string.Empty;
+
+        GitIntegrationPrimaryPublishResult Fail(
+            string errorCode,
+            string? resultCommit = null,
+            string? previousRemoteHead = null,
+            string? detail = null)
+            => new(
+                false,
+                errorCode,
+                normalizedRoot,
+                normalizedWorktree,
+                resultCommit ?? normalizedRef,
+                normalizedBranch,
+                previousRemoteHead,
+                detail);
+
+        if (string.IsNullOrWhiteSpace(normalizedRoot) ||
+            !Directory.Exists(normalizedRoot))
+            return Fail("INTEGRATION_PRIMARY_WORKSPACE_MISSING");
+        if (string.IsNullOrWhiteSpace(normalizedWorktree) ||
+            !Directory.Exists(normalizedWorktree))
+            return Fail("INTEGRATION_PRIMARY_RESULT_WORKTREE_MISSING");
+        if (string.IsNullOrWhiteSpace(normalizedRef))
+            return Fail("INTEGRATION_PRIMARY_RESULT_REF_MISSING");
+        if (string.IsNullOrWhiteSpace(normalizedBranch))
+            return Fail("INTEGRATION_PRIMARY_BRANCH_REQUIRED");
+
+        var resultInspection = await InspectAsync(
+            normalizedWorktree,
+            cancellationToken).ConfigureAwait(false);
+        if (!resultInspection.Success)
+            return Fail(
+                resultInspection.ErrorCode ?? "INTEGRATION_PRIMARY_RESULT_INSPECTION_FAILED",
+                resultInspection.HeadCommit);
+        if (!resultInspection.IsClean)
+            return Fail(
+                "INTEGRATION_PRIMARY_RESULT_DIRTY",
+                resultInspection.HeadCommit,
+                detail: "Integration 결과 worktree가 clean 상태가 아닙니다.");
+
+        var resultCommitResult = await RunAsync(
+            normalizedWorktree,
+            ReadTimeout,
+            cancellationToken,
+            "rev-parse",
+            "--verify",
+            normalizedRef + "^{commit}").ConfigureAwait(false);
+        var resultCommit = resultCommitResult.ExitCode == 0
+            ? FirstLine(resultCommitResult.StandardOutput)
+            : null;
+        if (string.IsNullOrWhiteSpace(resultCommit))
+            return Fail(
+                "INTEGRATION_PRIMARY_RESULT_REF_INVALID",
+                detail: BuildGitFailureDetail(
+                    "git rev-parse --verify integration resultRef",
+                    resultCommitResult));
+        if (!string.Equals(
+                resultInspection.HeadCommit,
+                resultCommit,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail(
+                "INTEGRATION_PRIMARY_RESULT_HEAD_MISMATCH",
+                resultCommit,
+                detail:
+                    $"integrationHead={resultInspection.HeadCommit ?? "없음"}{Environment.NewLine}" +
+                    $"resultCommit={resultCommit}");
+        }
+
+        var primaryGate = GetRepositoryPrimaryMutationGate(normalizedRoot);
+        await primaryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var primaryStatus = await ReadPrimaryWorkspaceStatusAsync(
+                normalizedRoot,
+                normalizedRoot,
+                cancellationToken).ConfigureAwait(false);
+            if (primaryStatus.ExitCode != 0)
+                return Fail(
+                    "INTEGRATION_PRIMARY_STATUS_UNAVAILABLE",
+                    resultCommit,
+                    detail: BuildGitFailureDetail("git status", primaryStatus));
+            if (!string.IsNullOrWhiteSpace(primaryStatus.StandardOutput))
+                return Fail(
+                    "INTEGRATION_PRIMARY_WORKSPACE_DIRTY",
+                    resultCommit,
+                    detail: primaryStatus.StandardOutput.Trim());
+
+            var primaryBranchResult = await RunAsync(
+                normalizedRoot,
+                ReadTimeout,
+                cancellationToken,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+            var primaryBranch = primaryBranchResult.ExitCode == 0
+                ? FirstLine(primaryBranchResult.StandardOutput)
+                : null;
+            if (!string.Equals(
+                    primaryBranch,
+                    normalizedBranch,
+                    StringComparison.Ordinal))
+            {
+                return Fail(
+                    "INTEGRATION_PRIMARY_BRANCH_CHANGED",
+                    resultCommit,
+                    detail:
+                        $"currentBranch={primaryBranch ?? "없음"}{Environment.NewLine}" +
+                        $"expectedBranch={normalizedBranch}");
+            }
+
+            var localHeadResult = await RunAsync(
+                normalizedRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+            var localHead = localHeadResult.ExitCode == 0
+                ? FirstLine(localHeadResult.StandardOutput)
+                : null;
+            if (string.IsNullOrWhiteSpace(localHead))
+                return Fail(
+                    "INTEGRATION_PRIMARY_HEAD_UNAVAILABLE",
+                    resultCommit,
+                    detail: BuildGitFailureDetail("git rev-parse HEAD", localHeadResult));
+
+            var fetchResult = await FetchOriginAsync(
+                normalizedRoot,
+                cancellationToken).ConfigureAwait(false);
+            if (fetchResult.ExitCode != 0)
+            {
+                return Fail(
+                    fetchResult.TimedOut ? "INTEGRATION_PRIMARY_FETCH_TIMEOUT"
+                        : fetchResult.Canceled ? "INTEGRATION_PRIMARY_FETCH_CANCELED"
+                        : "INTEGRATION_PRIMARY_FETCH_FAILED",
+                    resultCommit,
+                    detail: BuildGitFailureDetail("git fetch --prune origin", fetchResult));
+            }
+
+            var remoteHeadResult = await RunAsync(
+                normalizedRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                $"refs/remotes/origin/{normalizedBranch}^{{commit}}").ConfigureAwait(false);
+            var previousRemoteHead = remoteHeadResult.ExitCode == 0
+                ? FirstLine(remoteHeadResult.StandardOutput)
+                : null;
+
+            if (!string.IsNullOrWhiteSpace(previousRemoteHead) &&
+                !string.Equals(previousRemoteHead, localHead, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(previousRemoteHead, resultCommit, StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail(
+                    "INTEGRATION_PRIMARY_REMOTE_CHANGED",
+                    resultCommit,
+                    previousRemoteHead,
+                    $"localHead={localHead}{Environment.NewLine}remoteHead={previousRemoteHead}");
+            }
+
+            var localAncestor = await RunAsync(
+                normalizedRoot,
+                ReadTimeout,
+                cancellationToken,
+                "merge-base",
+                "--is-ancestor",
+                localHead,
+                resultCommit).ConfigureAwait(false);
+            if (localAncestor.ExitCode == 1)
+            {
+                return Fail(
+                    "INTEGRATION_PRIMARY_DIVERGED",
+                    resultCommit,
+                    previousRemoteHead,
+                    $"primaryHead={localHead}{Environment.NewLine}integrationResult={resultCommit}");
+            }
+            if (localAncestor.ExitCode != 0)
+            {
+                return Fail(
+                    "INTEGRATION_PRIMARY_ANCESTRY_CHECK_FAILED",
+                    resultCommit,
+                    previousRemoteHead,
+                    BuildGitFailureDetail("git merge-base --is-ancestor", localAncestor));
+            }
+
+            if (!string.Equals(
+                    previousRemoteHead,
+                    resultCommit,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var networkGate = GetRepositoryNetworkGate(normalizedRoot);
+                await networkGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    var pushResult = await RunAsync(
+                        normalizedWorktree,
+                        CreateTimeout,
+                        cancellationToken,
+                        "push",
+                        "origin",
+                        resultCommit + ":refs/heads/" + normalizedBranch).ConfigureAwait(false);
+                    if (pushResult.ExitCode != 0)
+                    {
+                        return Fail(
+                            pushResult.TimedOut ? "INTEGRATION_PRIMARY_PUSH_TIMEOUT"
+                                : pushResult.Canceled ? "INTEGRATION_PRIMARY_PUSH_CANCELED"
+                                : "INTEGRATION_PRIMARY_PUSH_FAILED",
+                            resultCommit,
+                            previousRemoteHead,
+                            BuildGitFailureDetail(
+                                "git push origin integration result to primary",
+                                pushResult));
+                    }
+
+                    var verifyRemote = await RunAsync(
+                        normalizedWorktree,
+                        ReadTimeout,
+                        cancellationToken,
+                        "ls-remote",
+                        "--exit-code",
+                        "origin",
+                        "refs/heads/" + normalizedBranch).ConfigureAwait(false);
+                    var verifiedRemoteHead = verifyRemote.ExitCode == 0
+                        ? verifyRemote.StandardOutput
+                            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                            .FirstOrDefault()
+                        : null;
+                    if (!string.Equals(
+                            verifiedRemoteHead,
+                            resultCommit,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Fail(
+                            "INTEGRATION_PRIMARY_REMOTE_VERIFY_FAILED",
+                            resultCommit,
+                            previousRemoteHead,
+                            BuildGitFailureDetail(
+                                "git ls-remote integration primary",
+                                verifyRemote));
+                    }
+                }
+                finally
+                {
+                    networkGate.Release();
+                }
+            }
+
+            if (!string.Equals(localHead, resultCommit, StringComparison.OrdinalIgnoreCase))
+            {
+                var fastForward = await RunAsync(
+                    normalizedRoot,
+                    CreateTimeout,
+                    cancellationToken,
+                    "merge",
+                    "--ff-only",
+                    resultCommit).ConfigureAwait(false);
+                if (fastForward.ExitCode != 0)
+                {
+                    return Fail(
+                        "INTEGRATION_PRIMARY_FAST_FORWARD_FAILED",
+                        resultCommit,
+                        previousRemoteHead,
+                        BuildGitFailureDetail("git merge --ff-only", fastForward));
+                }
+            }
+
+            var afterBranchResult = await RunAsync(
+                normalizedRoot,
+                ReadTimeout,
+                cancellationToken,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+            var afterHeadResult = await RunAsync(
+                normalizedRoot,
+                ReadTimeout,
+                cancellationToken,
+                "rev-parse",
+                "--verify",
+                "HEAD").ConfigureAwait(false);
+            var afterStatus = await ReadPrimaryWorkspaceStatusAsync(
+                normalizedRoot,
+                normalizedRoot,
+                cancellationToken).ConfigureAwait(false);
+            var afterBranch = afterBranchResult.ExitCode == 0
+                ? FirstLine(afterBranchResult.StandardOutput)
+                : null;
+            var afterHead = afterHeadResult.ExitCode == 0
+                ? FirstLine(afterHeadResult.StandardOutput)
+                : null;
+
+            if (!string.Equals(afterBranch, normalizedBranch, StringComparison.Ordinal) ||
+                !string.Equals(afterHead, resultCommit, StringComparison.OrdinalIgnoreCase) ||
+                afterStatus.ExitCode != 0 ||
+                !string.IsNullOrWhiteSpace(afterStatus.StandardOutput))
+            {
+                return Fail(
+                    "INTEGRATION_PRIMARY_VERIFY_FAILED",
+                    resultCommit,
+                    previousRemoteHead,
+                    $"branch={afterBranch ?? "없음"}{Environment.NewLine}" +
+                    $"head={afterHead ?? "없음"}{Environment.NewLine}" +
+                    $"status={afterStatus.StandardOutput.Trim()}");
+            }
+
+            return new(
+                true,
+                null,
+                normalizedRoot,
+                normalizedWorktree,
+                resultCommit,
+                normalizedBranch,
+                previousRemoteHead);
+        }
+        finally
+        {
+            primaryGate.Release();
+        }
     }
 
     public async Task<GitIntegrationCloneCleanupResult> CleanupIntegrationCloneAsync(
