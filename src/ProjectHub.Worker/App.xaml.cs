@@ -26,6 +26,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
         WorkerPaths.EnsureCreated();
         _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var createdNew);
         if (!createdNew)
@@ -97,6 +98,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        DispatcherUnhandledException -= OnDispatcherUnhandledException;
         _activationTimer?.Stop();
         WriteShutdownProcessAudit("before-dispose");
         WorkerChildProcessJob.TerminateAllActiveJobs();
@@ -183,6 +185,30 @@ public partial class App : System.Windows.Application
         MainWindow.Topmost = true;
         MainWindow.Topmost = false;
         MainWindow.Focus();
+    }
+
+    private void OnDispatcherUnhandledException(
+        object sender,
+        DispatcherUnhandledExceptionEventArgs e)
+    {
+        LogRuntimeFailure("WPF_DISPATCHER_UNHANDLED", e.Exception);
+    }
+
+    internal static void LogRuntimeFailure(
+        string source,
+        Exception exception)
+    {
+        try
+        {
+            var directory = WorkerPaths.Logs;
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(
+                Path.Combine(directory, "runtime-errors.log"),
+                $"{DateTimeOffset.Now:O}\tsource={source}\tworkerPid={Environment.ProcessId}{Environment.NewLine}{exception}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
     }
 
     private static void LogStartupFailure(Exception exception)
