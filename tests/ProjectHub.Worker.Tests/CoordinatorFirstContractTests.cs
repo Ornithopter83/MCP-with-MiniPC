@@ -635,7 +635,10 @@ public sealed class CoordinatorFirstContractTests
         Assert.True(museDescriptor.SupportsSessions);
         var museModel = Assert.Single(museDescriptor.Models);
         Assert.Equal(OpenCodeCliRunner.MuseContributorFreeModel, museModel.Id);
-        Assert.Equal("default", museModel.DefaultReasoning);
+        Assert.Equal("high", museModel.DefaultReasoning);
+        Assert.Equal(
+            new[] { "minimal", "low", "medium", "high", "xhigh" },
+            museModel.ReasoningOptions);
     }
 
     [Fact]
@@ -703,7 +706,7 @@ public sealed class CoordinatorFirstContractTests
         var muse = new WorkerAiRoleSettings(
             "muse",
             OpenCodeCliRunner.MuseContributorFreeModel,
-            "default",
+            "high",
             "opencode_cli");
         var museRunner = registry.Resolve(muse);
         Assert.NotNull(museRunner);
@@ -737,7 +740,7 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Equal("opencode_cli", muse.Transport);
         Assert.Equal(OpenCodeCliRunner.MuseContributorFreeModel, muse.Model);
-        Assert.Equal("default", muse.Reasoning);
+        Assert.Equal("high", muse.Reasoning);
         Assert.Null(muse.ThreadSessionId);
         Assert.Null(muse.ThreadProjectPath);
     }
