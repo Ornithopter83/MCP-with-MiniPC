@@ -152,6 +152,7 @@ public partial class MainWindow : Window
     private bool _allowClose;
     private bool _shutdownCleanupInProgress;
     private bool _newTaskCleanupInProgress;
+    private bool _cancelCleanupInProgress;
     private const string Placeholder = "CLI에 즉시 전달할 작업 지시...";
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
     private const string DashboardPromptPlaceholder = "작업 내용을 입력하세요...";
@@ -404,6 +405,9 @@ public partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
+        if (!CanEditTaskConfiguration)
+            return;
+
         if (!IsSettingsOverlayOpen)
         {
             await InitializeStartupConfigurationAsync();
@@ -489,10 +493,91 @@ public partial class MainWindow : Window
     private void DashboardFollowupInput_TextChanged(object sender, TextChangedEventArgs e)
         => UpdateFollowupButtonState();
 
+    private bool CanEditTaskConfiguration
+        => TaskContinuationContract.CanEditTaskConfiguration(
+            executionActive:
+                _activeTaskCts is not null ||
+                _awaitingWebResult ||
+                _gitPreparationInProgress ||
+                _newTaskCleanupInProgress,
+            canceling: _cancelCleanupInProgress,
+            taskHistoryVisible:
+                _dashboardBodyMode == DashboardBodyMode.TaskHistory);
+
+    private void UpdateTaskConfigurationLockState()
+    {
+        if (SettingsButton is null)
+            return;
+
+        var editable = CanEditTaskConfiguration;
+        SettingsButton.IsEnabled = editable;
+        SettingsButton.Opacity = editable ? 1d : 0.55d;
+        SettingsButton.ToolTip = editable
+            ? "설정"
+            : _cancelCleanupInProgress
+                ? "기존 세션 종료가 끝나면 설정을 변경할 수 있습니다."
+                : "새 작업 상태에서만 설정을 변경할 수 있습니다.";
+
+        if (!editable && IsSettingsOverlayOpen)
+            SetSettingsPopupOpen(false);
+    }
+
+    private void BeginFullCancellationRequest()
+    {
+        if (_cancelCleanupInProgress)
+            return;
+
+        _cancelCleanupInProgress = true;
+        _userCanceledTask = true;
+        _activeTaskCts?.Cancel();
+
+        if (_bridgeServer is not null &&
+            _bridgeServer.CancelActiveTask(out var canceledTaskId) &&
+            canceledTaskId is not null)
+        {
+            _userCanceledBridgeTaskIds.Add(canceledTaskId);
+        }
+
+        AddTaskMessage(
+            "SYSTEM",
+            "사용자가 현재 작업을 완전히 취소했습니다. 기존 세션 종료와 실행기 정리를 기다립니다.",
+            status: "CANCELING");
+        SetFollowupComposerVisible(false);
+        DashboardPreflightText.Text = "기존 세션 종료를 기다리는 중입니다...";
+        DashboardPreflightText.Foreground = System.Windows.Media.Brushes.Firebrick;
+        UpdateDashboardRunButtonState();
+    }
+
+    private void CompleteFullCancellationUi()
+    {
+        _continuationState = null;
+        _activeProjectJobId = null;
+        _activeWorkingDirectory = null;
+        _directWorkHistoryActive = false;
+        SetFollowupComposerVisible(false);
+        ClearPendingAttachments(deleteCachedFiles: true);
+        ExportTaskTranscript();
+        ResetTaskState();
+
+        DashboardTaskInput.Text = DashboardPromptPlaceholder;
+        DashboardTaskInput.Foreground =
+            FindResource("Muted") as System.Windows.Media.Brush;
+
+        _cancelCleanupInProgress = false;
+        _userCanceledTask = false;
+        SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
+        DashboardPreflightText.Text = "작업 내용을 입력하세요.";
+        DashboardPreflightText.Foreground =
+            (System.Windows.Media.Brush)FindResource("Muted");
+        UpdateTaskConfigurationLockState();
+        UpdateDashboardRunButtonState();
+    }
+
     private void UpdateFollowupButtonState()
     {
         if (AddWorkButton is null || DashboardFollowupInput is null) return;
-        var inactive = !_gitPreparationInProgress &&
+        var inactive = !_cancelCleanupInProgress &&
+                       !_gitPreparationInProgress &&
                        _activeTaskCts is null &&
                        !_awaitingWebResult;
         var hasContinuation = IsDirectWorkMode ||
@@ -669,6 +754,19 @@ public partial class MainWindow : Window
     private void UpdateDashboardRunButtonState()
     {
         if (RunButton is null || DashboardTaskInput is null) return;
+
+        UpdateTaskConfigurationLockState();
+
+        if (_cancelCleanupInProgress)
+        {
+            RunButton.Content = "종료 중...";
+            ApplyRunButtonVisualState(false);
+            DashboardPreflightText.Text = "기존 세션 종료를 기다리는 중입니다...";
+            DashboardPreflightText.Foreground =
+                System.Windows.Media.Brushes.Firebrick;
+            UpdateFollowupButtonState();
+            return;
+        }
 
         if (_newTaskCleanupInProgress)
         {
@@ -1152,23 +1250,18 @@ public partial class MainWindow : Window
         if (_newTaskCleanupInProgress)
             return;
 
+        if (_cancelCleanupInProgress)
+            return;
+
         if (_gitPreparationInProgress)
         {
-            _userCanceledTask = true;
-            _activeTaskCts?.Cancel();
+            BeginFullCancellationRequest();
             return;
         }
 
         if (_activeTaskCts is not null || _awaitingWebResult)
         {
-            _userCanceledTask = true;
-            _activeTaskCts?.Cancel();
-            if (_bridgeServer is not null && _bridgeServer.CancelActiveTask(out var canceledTaskId) && canceledTaskId is not null)
-                _userCanceledBridgeTaskIds.Add(canceledTaskId);
-            AddTaskMessage("SYSTEM", "사용자가 실행 중 작업을 취소했습니다.", status: "CANCELED");
-            ExportTaskTranscript();
-            ResetTaskState();
-            ApplyConnectionStatus();
+            BeginFullCancellationRequest();
             return;
         }
         if (_dashboardBodyMode == DashboardBodyMode.TaskHistory)
@@ -2567,6 +2660,9 @@ public partial class MainWindow : Window
 
     private async void SaveTargetSettings_Click(object sender, RoutedEventArgs e)
     {
+        if (!CanEditTaskConfiguration)
+            return;
+
         _gitLaunchErrorMessage = null;
         var repository = string.IsNullOrWhiteSpace(RepositoryUrlInput.Text)
             ? null
@@ -2839,13 +2935,21 @@ public partial class MainWindow : Window
 
         if ((task.Status is "COMPLETED" or "FAILED") && _userCanceledBridgeTaskIds.Remove(task.Id))
         {
-            SetFlowState(false, false, false);
+            _awaitingWebResult = false;
+            if (_cancelCleanupInProgress && _activeTaskCts is null)
+                CompleteFullCancellationUi();
+            else
+                SetFlowState(false, false, false);
             return;
         }
 
         if (_userCanceledTask && (task.Status is "COMPLETED" or "FAILED"))
         {
-            SetFlowState(false, false, false);
+            _awaitingWebResult = false;
+            if (_cancelCleanupInProgress && _activeTaskCts is null)
+                CompleteFullCancellationUi();
+            else
+                SetFlowState(false, false, false);
             return;
         }
 
