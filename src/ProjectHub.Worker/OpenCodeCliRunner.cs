@@ -84,7 +84,9 @@ public sealed class OpenCodeCliRunner : IDisposable
             "--format",
             "json",
             "--model",
-            MuseContributorFreeModelSpecifier
+            MuseContributorFreeModelSpecifier,
+            "--agent",
+            "build"
         };
         if (!string.IsNullOrWhiteSpace(sessionId))
         {
