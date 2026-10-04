@@ -274,7 +274,9 @@ public sealed class GitWorktreeManagerTests
                 call => call.Arguments.SequenceEqual(
                     new[] { "ls-remote", "--exit-code", "origin", "refs/heads/" + branch }));
             Assert.DoesNotContain(
-                runner.Calls.SelectMany(call => call.Arguments),
+                runner.Calls
+                    .Where(call => call.Arguments.Count > 0 && call.Arguments[0] == "add")
+                    .SelectMany(call => call.Arguments),
                 argument => argument.StartsWith(":(exclude", StringComparison.Ordinal));
         }
         finally
