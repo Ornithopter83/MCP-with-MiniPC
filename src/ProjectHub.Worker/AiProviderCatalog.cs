@@ -90,8 +90,8 @@ public static class AiProviderCatalog
                 new AiModelDescriptor(
                     OpenCodeCliRunner.MuseContributorFreeModel,
                     "Muse Spark 1.3 Contributor Free",
-                    "default",
-                    new[] { "default" })
+                    "high",
+                    new[] { "minimal", "low", "medium", "high", "xhigh" })
             });
 
     private static AiProviderDescriptor CreateOpenAi()
