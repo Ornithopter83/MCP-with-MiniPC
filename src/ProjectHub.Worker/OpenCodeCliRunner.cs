@@ -440,7 +440,10 @@ public sealed class OpenCodeCliRunner : IDisposable
                      "git for-each-ref*",
                      "git branch --show-current*",
                      "git branch --contains*",
-                     "git remote*",
+                     "git remote",
+                     "git remote -v*",
+                     "git remote get-url*",
+                     "git remote show*",
                      "dir*",
                      "type *",
                      "where *",
@@ -456,6 +459,25 @@ public sealed class OpenCodeCliRunner : IDisposable
                  })
         {
             rules[pattern] = "allow";
+        }
+
+        foreach (var pattern in new[]
+                 {
+                     "*&*",
+                     "*|*",
+                     "*>*",
+                     "*<*",
+                     "*Remove-Item*",
+                     "*Set-Content*",
+                     "*Add-Content*",
+                     "*Out-File*",
+                     "*New-Item*",
+                     "*Copy-Item*",
+                     "*Move-Item*",
+                     "*Rename-Item*"
+                 })
+        {
+            rules[pattern] = "deny";
         }
 
         return rules;
@@ -487,9 +509,13 @@ public sealed class OpenCodeCliRunner : IDisposable
             "*git add*",
             "*git commit*",
             "*git push*",
+            "*git fetch*",
+            "*git pull*",
+            "*git clone*",
             "*git reset*",
             "*git checkout*",
             "*git switch*",
+            "*git restore*",
             "*git merge*",
             "*git rebase*",
             "*git cherry-pick*",
@@ -499,11 +525,21 @@ public sealed class OpenCodeCliRunner : IDisposable
             "*git mv*",
             "*git tag*",
             "*git update-ref*",
-            "*git worktree add*",
-            "*git worktree remove*",
+            "*git update-index*",
+            "*git read-tree*",
+            "*git write-tree*",
+            "*git worktree*",
             "*git init*",
-            "*git branch -d*",
-            "*git branch -D*"
+            "*git branch*",
+            "*git remote add*",
+            "*git remote set-url*",
+            "*git remote remove*",
+            "*git remote rename*",
+            "*git stash*",
+            "*git gc*",
+            "*git prune*",
+            "*git config*",
+            "*git submodule*"
         };
 
     private static async Task TerminateProcessTreeAsync(Process process)
