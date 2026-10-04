@@ -199,12 +199,12 @@ public sealed class AiRoleRunnerRegistry
 
     public static AiRoleRunnerRegistry CreateDefault(
         CodexCliRunner codexRunner,
-        OpenCodeCliRunner openCodeRunner) =>
+        OpenCodeCliRunner? openCodeRunner = null) =>
         new(new IAiRoleRunner[]
         {
             new OpenAiCodexRoleRunner(codexRunner),
             new UnconfiguredAiRoleRunner(AiServiceProvider.Claude),
-            new MuseOpenCodeRoleRunner(openCodeRunner)
+            new MuseOpenCodeRoleRunner(openCodeRunner ?? new OpenCodeCliRunner())
         });
 
     public IAiRoleRunner? Resolve(WorkerAiRoleSettings role) =>
