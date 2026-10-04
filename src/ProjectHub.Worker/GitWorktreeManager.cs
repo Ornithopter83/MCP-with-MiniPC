@@ -3119,40 +3119,65 @@ public sealed class GitWorktreeManager
                 ? FirstLine(remoteHeadResult.StandardOutput)
                 : null;
 
+            var effectivePrimaryHead = localHead;
             if (!string.IsNullOrWhiteSpace(previousRemoteHead) &&
-                !string.Equals(previousRemoteHead, localHead, StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(previousRemoteHead, resultCommit, StringComparison.OrdinalIgnoreCase))
+                !string.Equals(previousRemoteHead, localHead, StringComparison.OrdinalIgnoreCase))
             {
-                return Fail(
-                    "INTEGRATION_PRIMARY_REMOTE_CHANGED",
-                    resultCommit,
-                    previousRemoteHead,
-                    $"localHead={localHead}{Environment.NewLine}remoteHead={previousRemoteHead}");
+                var localBehindRemote = await RunAsync(
+                    normalizedRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "merge-base",
+                    "--is-ancestor",
+                    localHead,
+                    previousRemoteHead).ConfigureAwait(false);
+                if (localBehindRemote.ExitCode == 0)
+                {
+                    effectivePrimaryHead = previousRemoteHead;
+                }
+                else if (localBehindRemote.ExitCode == 1)
+                {
+                    return Fail(
+                        "INTEGRATION_PRIMARY_REMOTE_CHANGED",
+                        resultCommit,
+                        previousRemoteHead,
+                        $"localHead={localHead}{Environment.NewLine}remoteHead={previousRemoteHead}");
+                }
+                else
+                {
+                    return Fail(
+                        "INTEGRATION_PRIMARY_ANCESTRY_CHECK_FAILED",
+                        resultCommit,
+                        previousRemoteHead,
+                        BuildGitFailureDetail(
+                            "git merge-base --is-ancestor local primary remote primary",
+                            localBehindRemote));
+                }
             }
 
-            var localAncestor = await RunAsync(
+            var primaryAncestor = await RunAsync(
                 normalizedRoot,
                 ReadTimeout,
                 cancellationToken,
                 "merge-base",
                 "--is-ancestor",
-                localHead,
+                effectivePrimaryHead,
                 resultCommit).ConfigureAwait(false);
-            if (localAncestor.ExitCode == 1)
+            if (primaryAncestor.ExitCode == 1)
             {
                 return Fail(
                     "INTEGRATION_PRIMARY_DIVERGED",
                     resultCommit,
                     previousRemoteHead,
-                    $"primaryHead={localHead}{Environment.NewLine}integrationResult={resultCommit}");
+                    $"primaryHead={effectivePrimaryHead}{Environment.NewLine}integrationResult={resultCommit}");
             }
-            if (localAncestor.ExitCode != 0)
+            if (primaryAncestor.ExitCode != 0)
             {
                 return Fail(
                     "INTEGRATION_PRIMARY_ANCESTRY_CHECK_FAILED",
                     resultCommit,
                     previousRemoteHead,
-                    BuildGitFailureDetail("git merge-base --is-ancestor", localAncestor));
+                    BuildGitFailureDetail("git merge-base --is-ancestor", primaryAncestor));
             }
 
             var networkGate = GetRepositoryNetworkGate(normalizedRoot);
