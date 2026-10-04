@@ -324,7 +324,9 @@ public static class ProjectWorkspacePersistence
 
     public static bool SaveContinuation(CoordinatorContinuationState state)
     {
-        if (string.IsNullOrWhiteSpace(state.WorkingDirectory) || !Directory.Exists(state.WorkingDirectory))
+        if (!TaskContinuationContract.IsResumableStatus(state.Status) ||
+            string.IsNullOrWhiteSpace(state.WorkingDirectory) ||
+            !Directory.Exists(state.WorkingDirectory))
             return false;
 
         try
@@ -389,6 +391,7 @@ public static class ProjectWorkspacePersistence
                 File.ReadAllText(path, Encoding.UTF8),
                 StateJsonOptions);
             if (snapshot is null) return null;
+            if (!TaskContinuationContract.IsResumableStatus(snapshot.Status)) return null;
             if (!PathsEqual(snapshot.WorkingDirectory, workingDirectory)) return null;
 
             var coordinatorSession = IsCodexSessionAvailable(workingDirectory, snapshot.CoordinatorSessionId)
