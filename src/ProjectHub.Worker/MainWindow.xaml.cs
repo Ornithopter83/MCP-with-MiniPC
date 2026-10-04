@@ -685,7 +685,11 @@ public partial class MainWindow : Window
 
     private async void AddWorkButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_gitPreparationInProgress || _activeTaskCts is not null || _awaitingWebResult) return;
+        if (_cancelCleanupInProgress ||
+            _gitPreparationInProgress ||
+            _activeTaskCts is not null ||
+            _awaitingWebResult)
+            return;
 
         if (IsDirectWorkMode)
         {
