@@ -22,6 +22,7 @@ public partial class MainWindow : Window
 {
     private readonly Forms.NotifyIcon _trayIcon;
     private readonly CodexCliRunner _codexRunner = new();
+    private readonly OpenCodeCliRunner _openCodeRunner = new();
     private readonly AiRoleRunnerRegistry _aiRoleRunners;
     private readonly WorkerStructuredPayloadHelper _structuredPayloadHelper;
     private readonly JevJudgeRunner _jevJudgeRunner = new();
@@ -194,7 +195,9 @@ public partial class MainWindow : Window
         BridgeServer? bridgeServer = null,
         ManagedWebRuntimeManager? managedWebRuntimeManager = null)
     {
-        _aiRoleRunners = AiRoleRunnerRegistry.CreateDefault(_codexRunner);
+        _aiRoleRunners = AiRoleRunnerRegistry.CreateDefault(
+            _codexRunner,
+            _openCodeRunner);
         _structuredPayloadHelper = new WorkerStructuredPayloadHelper(_aiRoleRunners);
         InitializeComponent();
         ApplyWindowIconFromExecutable();
@@ -352,6 +355,7 @@ public partial class MainWindow : Window
         SaveWindowPosition();
         _activeTaskCts?.Cancel();
         _codexRunner.Dispose();
+        _openCodeRunner.Dispose();
         _flowTimer.Stop();
         _connectionTimer.Stop();
         _jobWatchdogTimer.Stop();
@@ -386,6 +390,7 @@ public partial class MainWindow : Window
         _activeTaskCts?.Cancel();
         WorkerChildProcessJob.TerminateAllActiveJobs();
         _codexRunner.Dispose();
+        _openCodeRunner.Dispose();
         if (_bridgeServer is not null &&
             _bridgeServer.CancelActiveTask(out var canceledTaskId) &&
             canceledTaskId is not null)
@@ -2093,13 +2098,11 @@ public partial class MainWindow : Window
             "HIGH" => WorkerRoleState.High,
             _ => WorkerRoleState.Hq
         };
-        Action<string>? progress = string.Equals(role.Transport, "codex_cli", StringComparison.OrdinalIgnoreCase)
-            ? message => RunOnUi(() =>
-            {
-                _lastActivityAt = DateTimeOffset.UtcNow;
-                AddRoleProgressHistory(progressRole, message, role.Provider);
-            })
-            : null;
+        Action<string>? progress = message => RunOnUi(() =>
+        {
+            _lastActivityAt = DateTimeOffset.UtcNow;
+            AddRoleProgressHistory(progressRole, message, role.Provider);
+        });
 
         var runtime = WorkerPaths.GetRepositoryRuntimePaths(workingDirectory);
         var roleTempPath = WorkerPaths.BuildWorkTempPath(
@@ -2369,8 +2372,15 @@ public partial class MainWindow : Window
     private void ApplyRoleSessionCapability(System.Windows.Controls.ComboBox providerCombo, System.Windows.Controls.ComboBox threadCombo)
     {
         var descriptor = AiProviderCatalog.Find(GetSelectedTag(providerCombo, string.Empty));
-        threadCombo.IsEnabled = descriptor?.SupportsSessions == true;
-        threadCombo.ToolTip = descriptor?.SupportsSessions == true ? null : "이 Provider의 session/resume 실행은 아직 연결되지 않았습니다.";
+        var supportsStoredThreadSelection =
+            descriptor?.Provider == AiServiceProvider.OpenAI &&
+            descriptor.SupportsSessions;
+        threadCombo.IsEnabled = supportsStoredThreadSelection;
+        threadCombo.ToolTip = supportsStoredThreadSelection
+            ? null
+            : descriptor?.SupportsSessions == true
+                ? "이 Provider의 session/resume은 작업 내부에서 자동으로 이어집니다. 저장된 Codex thread 직접 선택은 OpenAI에서만 지원합니다."
+                : "이 Provider의 session/resume 실행은 아직 연결되지 않았습니다.";
     }
 
     private void UpdateRoleProviderVisuals()
@@ -2402,7 +2412,12 @@ public partial class MainWindow : Window
         CoordinatorCliOptionsPanel.Visibility = web ? Visibility.Collapsed : Visibility.Visible;
         CoordinatorWebCard.Visibility = web ? Visibility.Visible : Visibility.Collapsed;
         CoordinatorCliCard.Visibility = web ? Visibility.Collapsed : Visibility.Visible;
-        CoordinatorRoleThreadCombo.IsEnabled = !web && AiProviderCatalog.Find(GetSelectedTag(CoordinatorProviderCombo, string.Empty))?.SupportsSessions == true;
+        var coordinatorDescriptor =
+            AiProviderCatalog.Find(GetSelectedTag(CoordinatorProviderCombo, string.Empty));
+        CoordinatorRoleThreadCombo.IsEnabled =
+            !web &&
+            coordinatorDescriptor?.Provider == AiServiceProvider.OpenAI &&
+            coordinatorDescriptor.SupportsSessions;
         if (web)
         {
             CoordinatorProviderIconCircle.Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#EAF4FF"));
@@ -2523,7 +2538,11 @@ public partial class MainWindow : Window
     {
         var providerId = GetSelectedTag(providerCombo, fallback.Provider);
         var descriptor = AiProviderCatalog.Find(providerId);
-        var thread = descriptor?.SupportsSessions == true ? threadCombo?.SelectedItem as CodexThreadOption : null;
+        var thread =
+            descriptor?.Provider == AiServiceProvider.OpenAI &&
+            descriptor.SupportsSessions
+                ? threadCombo?.SelectedItem as CodexThreadOption
+                : null;
         var transport = descriptor?.DefaultTransport ?? fallback.Transport;
         return new(providerId, GetSelectedTag(modelCombo, fallback.Model), GetSelectedTag(reasoningCombo, fallback.Reasoning), transport, thread?.SessionId, thread?.ProjectPath);
     }
@@ -2544,8 +2563,13 @@ public partial class MainWindow : Window
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var configuredSummary = string.Join(
+            " · ",
+            AiProviderCatalog.Current
+                .Where(provider => provider.ExecutionConfigured)
+                .Select(provider => $"{provider.DisplayName} 모델 {provider.Models.Count}개"));
         AiRolesStatusText.Text = unresolved.Length == 0
-            ? $"Provider 구조 준비 완료 · OpenAI 모델 {AiProviderCatalog.Get(AiServiceProvider.OpenAI).Models.Count}개"
+            ? $"Provider 실행 준비 완료 · {configuredSummary}"
             : $"Provider 구조 준비 완료 · 실행 미연결: {string.Join(", ", unresolved)}";
     }
 
