@@ -10,7 +10,7 @@
 WORK_GRAPH_PATCH:
 {"expectedRevision":<현재 revision>,"operations":[...]}
 
-③ 일반 WORK가 동일·유사 원인으로 반복 실패했고 일반 권한으로 해결하기 어려운 시스템·도구체인·runtime·Git 인프라 복구가 필요할 때만 다음 형식으로 HIGH를 호출한다. 이때 WORK_GRAPH_PATCH는 출력하지 않는다.
+③ 일반 WORK가 동일·유사 원인으로 반복 실패해 HIGH 후보가 되더라도 바로 HIGH를 호출하지 않는다. 먼저 WORK 보고, blockCode·blockDetailCode, resultRef와 원격 변경을 확인하고 현재 WorkGraph 수단으로 가능한 일반 복구를 시도한다. RELEASE, SET_GOAL, SET_BASE_REF, SET_DEPENDENCIES, 후속 복구 WorkItem 추가처럼 일반 권한 범위의 구체적인 복구를 적용했는데도 같은 차단이 남았거나, 현재 사실상 일반 권한으로 안전한 복구 수단이 없다고 확인한 경우에만 다음 형식으로 HIGH를 호출한다. 이때 WORK_GRAPH_PATCH는 출력하지 않는다.
 
 [ACTION=CONTINUE]
 [GOTO : HIGH]
@@ -37,6 +37,6 @@ WORK_GRAPH_PATCH:
 ④ BLOCKED WorkItem에 CODE_CHANGE resultRef가 있으면 RELEASE·CANCEL·후속 WorkItem·HIGH 여부를 정하기 전에 원격 코드를 확인하여 구현 문제와 인프라 차단을 구분한다.
 ⑤ INTEGRATION이 CODE_CHANGE를 반환하면 통합 보고만으로 판단하지 않고 통합 resultRef의 실제 원격 변경을 직접 확인하여 선행 변경의 누락·충돌·의도치 않은 덮어쓰기 여부를 점검한다.
 ⑥ 기계 오류는 현재 사실에 따라 RELEASE, CANCEL, 후속 WorkItem, PAUSE 중 필요한 동작만 결정하고 오류별 영구 규칙을 만들지 않는다.
-⑦ HIGH_REPORT는 복구 결과로만 사용한다. 같은 원인에 대한 근거 없이 HIGH를 반복 호출하거나 일반 구현·생성·RESOURCE 대체로 사용하지 않는다.
+⑦ HIGH는 HQ의 일반 복구보다 뒤의 escalation이다. HIGH 후보가 생기면 같은 입력을 그대로 재실행하는 대신 새 근거나 구체적인 복구 변경을 포함한 일반 복구를 먼저 적용한다. 그 복구 뒤에도 같은 차단이 남거나 일반 권한으로 안전한 복구 수단이 없다고 확인된 경우에만 HIGH를 호출한다. HIGH_REPORT는 복구 결과로만 사용하며, 같은 원인에 대한 근거 없이 HIGH를 반복 호출하거나 일반 구현·생성·RESOURCE 대체로 사용하지 않는다.
 ⑧ END finalization이 거부되면 전달된 기계 사실에 따라 필요한 #9 재실행 또는 후속 WorkItem을 결정한다. END 전에 목표에 필요한 모든 CODE_CHANGE가 완료된 INTEGRATION resultRef에 포함되어 primary branch에 반영됐는지 확인한다.
 ⑨ #9는 개별 WorkItem 완료 때마다 추가하지 않는다. HQ가 원격 코드와 필요한 Integration 결과를 직접 검토해 하나의 의미 있는 중간 목표가 실제로 완성되고 현재 구현 wave와 겹치지 않는 시점에만 #9를 추가하거나 재사용한다. #9 결과를 확인한 뒤 다음 구현 wave를 진행한다.

@@ -1013,6 +1013,19 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void HqAndHighContracts_RequireHqRecoveryBeforeHighEscalation()
+    {
+        var hqContract = RoleContractLoader.LoadHqFooter();
+        var highContract = RoleContractLoader.LoadHighFooter();
+
+        Assert.Contains("HIGH 후보가 되더라도 바로 HIGH를 호출하지 않는다", hqContract);
+        Assert.Contains("현재 WorkGraph 수단으로 가능한 일반 복구를 시도", hqContract);
+        Assert.Contains("HIGH는 HQ의 일반 복구보다 뒤의 escalation", hqContract);
+        Assert.Contains("같은 입력을 그대로 재실행하는 대신 새 근거나 구체적인 복구 변경", hqContract);
+        Assert.Contains("일반 권한 범위의 복구를 먼저 검토·시도", highContract);
+    }
+
+    [Fact]
     public void HqContract_ReviewsRemoteCodeAndRequiresIntegrationBeforeBuildOrEnd()
     {
         var contract = RoleContractLoader.LoadHqFooter();

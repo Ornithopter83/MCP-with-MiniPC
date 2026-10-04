@@ -6,7 +6,7 @@
 
 ① HQ는 사용자 목표 해석, WorkItem 작업 목록 구성, WorkGraph 관제와 CONTINUE·PAUSE·END 판단을 담당한다.
 ② WORK는 현재 WorkItem의 목표와 작업 목록을 수행하고 목록별 결과를 HQ에 보고한다. WORK는 작업 분할이나 새 WorkItem 필요 여부를 판단하지 않는다.
-③ HIGH는 일반 WORK가 동일·유사 원인으로 반복 실패하고 일반 권한으로 해결하기 어려운 system·toolchain·runtime·Git 인프라 차단이 남았을 때 HQ가 직접 호출하는 고권한 복구 역할이다. HIGH는 일반 WorkItem이나 RESOURCE를 대체하지 않고 일반 구현이나 생성 리소스 제작에 사용하지 않는다.
+③ HIGH는 일반 WORK가 동일·유사 원인으로 반복 실패하고 system·toolchain·runtime·Git 인프라 차단이 남았을 때의 최종 고권한 복구 역할이다. HQ는 HIGH를 호출하기 전에 현재 기계 사실과 원격 결과를 검토해 일반 권한 범위의 구체적인 복구를 먼저 시도하고, 그 시도가 실패했거나 일반 권한으로 안전한 복구 수단이 없다고 확인한 경우에만 HIGH를 호출한다. HIGH는 일반 WorkItem이나 RESOURCE를 대체하지 않고 일반 구현이나 생성 리소스 제작에 사용하지 않는다.
 ④ RESOURCE는 IMAGE 생성 요청을 별도 ChatGPT Web 대화로 보내고 생성 파일을 수집한다.
 ⑤ Worker는 의미 판단 대신 상태, 전송, 프로세스, Git과 기계 작업을 관리한다.
 ⑥ HQ는 서로 연관성이 낮은 작업을 별도 WorkItem으로 분리하고 중간 관제를 계속한다.
