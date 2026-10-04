@@ -240,10 +240,11 @@ public sealed class OpenCodeCliRunner : IDisposable
 
         if (isCommandScript)
         {
-            startInfo.ArgumentList.Add("/d");
-            startInfo.ArgumentList.Add("/s");
-            startInfo.ArgumentList.Add("/c");
-            startInfo.ArgumentList.Add(BuildCommandScriptInvocation(executable, arguments));
+            // SuspendedJobProcessLauncher quotes ArgumentList items for CreateProcess.
+            // cmd.exe /c needs its command string verbatim; otherwise embedded quotes
+            // become \"...\" and cmd treats them as literal command-name characters.
+            startInfo.Arguments =
+                "/d /s /c " + BuildCommandScriptInvocation(executable, arguments);
         }
         else
         {
