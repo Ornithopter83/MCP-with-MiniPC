@@ -255,7 +255,7 @@ public sealed class OpenCodeCliRunner : IDisposable
     {
         var builder = new StringBuilder();
         builder.Append('"')
-            .Append(executable.Replace(""", """", StringComparison.Ordinal))
+            .Append(executable.Replace("\"", "\"\"", StringComparison.Ordinal))
             .Append('"');
         foreach (var argument in arguments)
         {
@@ -276,9 +276,9 @@ public sealed class OpenCodeCliRunner : IDisposable
             return value;
         }
 
-        return """ +
-               value.Replace(""", """", StringComparison.Ordinal) +
-               """;
+        return "\"" +
+               value.Replace("\"", "\"\"", StringComparison.Ordinal) +
+               "\"";
     }
 
     private static void ApplyEnvironment(
