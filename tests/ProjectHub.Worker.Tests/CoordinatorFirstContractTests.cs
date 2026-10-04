@@ -238,11 +238,22 @@ public sealed class CoordinatorFirstContractTests
         }
     }
 
-    [Theory]
-    [InlineData("PAUSED")]
-    [InlineData("CANCELED")]
-    public void TaskContinuation_AllowsInterruptedSegments(string status)
-        => Assert.True(TaskContinuationContract.IsResumableStatus(status));
+    [Fact]
+    public void TaskContinuation_AllowsPausedSegmentOnly()
+        => Assert.True(TaskContinuationContract.IsResumableStatus("PAUSED"));
+
+    [Fact]
+    public void TaskContinuation_TreatsCanceledAsTerminalFullCancel()
+    {
+        Assert.False(TaskContinuationContract.IsResumableStatus("CANCELED"));
+        Assert.False(TaskContinuationContract.IsFreshStartStatus("CANCELED"));
+        Assert.False(TaskContinuationContract.CanAcceptFollowupStatus("CANCELED"));
+        Assert.Throws<InvalidOperationException>(() =>
+            TaskContinuationContract.BuildHqFollowupInput(
+                "CANCELED",
+                "취소됨",
+                "계속해줘."));
+    }
 
     [Theory]
     [InlineData("DONE")]
@@ -256,6 +267,7 @@ public sealed class CoordinatorFirstContractTests
 
     [Theory]
     [InlineData("RUNNING")]
+    [InlineData("CANCELED")]
     [InlineData("")]
     public void TaskContinuation_RejectsNonResumableStatuses(string status)
         => Assert.False(TaskContinuationContract.IsResumableStatus(status));
@@ -274,24 +286,28 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("효과음을 추가하고 계속 다듬어줘.", input);
     }
 
-    [Fact]
-    public void TaskContinuation_BuildsCanceledFollowupForSameHqContext()
-    {
-        var input = TaskContinuationContract.BuildHqFollowupInput(
-            "CANCELED",
-            "현재 구현을 진행하세요.",
-            "중단한 곳부터 계속해줘.");
-
-        Assert.DoesNotContain("이전 작업 상태:", input);
-        Assert.DoesNotContain("현재 구현을 진행하세요.", input);
-        Assert.Contains("중단한 곳부터 계속해줘.", input);
-    }
+    [Theory]
+    [InlineData(false, false, false, true)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, false, true, false)]
+    public void TaskConfiguration_EditabilityFollowsTaskLifecycle(
+        bool executionActive,
+        bool canceling,
+        bool taskHistoryVisible,
+        bool expected)
+        => Assert.Equal(
+            expected,
+            TaskContinuationContract.CanEditTaskConfiguration(
+                executionActive,
+                canceling,
+                taskHistoryVisible));
 
     [Fact]
     public void TaskContinuation_IncludesParallelWorkGraphStateForWebOrCliRecovery()
     {
         var input = TaskContinuationContract.BuildHqFollowupInput(
-            "CANCELED",
+            "PAUSED",
             "이전 병렬 관제",
             "계속 진행해줘.",
             "C:/work/.projecthub/last-handoff.md",
@@ -314,7 +330,7 @@ public sealed class CoordinatorFirstContractTests
     public void TaskContinuation_IncludesProjectMemoryPathsForRecoveredSession()
     {
         var input = TaskContinuationContract.BuildHqFollowupInput(
-            "CANCELED",
+            "PAUSED",
             "이전 작업 완료",
             "계속 진행해줘.",
             "C:/work/.projecthub/last-handoff.md",
