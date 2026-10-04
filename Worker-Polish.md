@@ -62,7 +62,7 @@
 ⑥ 병렬 결과의 Integration은 Worker 소유 격리 공간에서 수행하고, 충돌 없이 확정된 결과를 먼저 전용 `projecthub/*` remote CODE_CHANGE로 게시·검증한 뒤 같은 commit을 작업 시작 시 원격 동기화된 primary branch에 non-force fast-forward로 게시한다. Integration 기준점은 WorkItem의 baseRef를 fetch된 origin commit으로 해석해 사용하며, 사용자 작업 폴더의 현재 branch 이름이나 HEAD를 기준점 선택에 사용하지 않는다. 해당 baseRef commit을 정확히 가리키는 fetched origin ref가 없거나 primary branch가 결과 commit의 조상이 아니면 기계 오류로 차단한다.
 ⑦ 완료된 CODE_CHANGE는 파일 단위 MATERIALIZE/COPY나 별도 materialization ledger 없이 commit 계보로 추적한다. 일반 WORK와 #8의 결과는 `projecthub/*` branch에 격리하고, INTEGRATION만 검증된 resultRef를 primary branch에 반영한다. Integration 게시가 성공하면 clean 사용자 checkout이 Worker 관리 `projecthub/*` branch에 있더라도 작업 시작 primary branch로 안전하게 전환한 뒤 같은 commit으로 fast-forward하며, 최종 result가 primary branch에 포함되어 있으면 별도 result branch 전환을 하지 않는다.
 ⑧ 사용자 작업 폴더가 dirty이거나 원격과 어긋나거나 Git 충돌·위험 상태가 있으면 Worker가 의미 판단으로 merge·reset·재초기화하거나 충돌을 자동 해결하지 않고 기계 오류로 차단한다.
-⑨ PAUSE·CANCELED continuation은 보존된 WorkGraph와 원격 resultRef를 기준으로 하며, DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.
+⑨ PAUSE continuation만 보존된 WorkGraph와 원격 resultRef를 기준으로 재개한다. 사용자 CANCELED는 완전 취소로 처리해 재개용 continuation과 WorkGraph 상태를 제거하며, 이미 확정된 원격 commit/resultRef와 transcript·event log는 기록으로 보존한다. DONE 뒤 새 작업은 현재 원격 branch HEAD에서 새 Job을 시작한다.
 ⑩ #8 FILE MANAGER가 실제 작업 루트에 구조·파일을 생성·수정하면 Worker가 작업 시작 HEAD와 같은 기준점에서 전용 `projecthub/*` branch로 checkout을 전환해 해당 루트 상태를 checkpoint·push하고 CODE_CHANGE resultRef로 확정한다. 사용자 기존 branch와 remote default branch는 변경하지 않는다. 후속 일반 WorkItem은 HQ가 이 resultRef를 baseRef로 지정하며 각자 격리 clone에서 수정한다.
 ⑪ 최종 CODE_CHANGE가 #8 bootstrap을 baseRef로 이어받으면 #8 결과는 별도 최종 tip이 아니라 소비된 기준점으로 취급하며, 사용자 checkout이 그 managed bootstrap branch에 있으면 최종 remote result branch로 안전하게 전환할 수 있다.
 ⑫ #9 게시 산출물은 작업 루트의 `.projecthub/artifacts` 아래 Worker 소유 artifact 경로에 저장하며 disposable runtime과 분리한다.
@@ -73,7 +73,7 @@
 
 ① ProjectHub/Worker 프로세스 자신은 child Job Object에 넣지 않는다.
 ② Worker가 관리하는 외부 프로세스는 suspended 상태로 생성하고, 해당 작업·역할의 KILL_ON_JOB_CLOSE Job Object에 연결한 뒤에만 실행을 재개한다.
-③ WORK 취소, 역할 재시작 또는 Worker 종료 신호는 해당 Job 종료에 직접 연결하며 그 Job에서 파생된 전체 프로세스 tree를 즉시 종료한다.
+③ WORK 취소, 역할 재시작 또는 Worker 종료 신호는 해당 Job 종료에 직접 연결하며 그 Job에서 파생된 전체 프로세스 tree를 즉시 종료한다. 사용자 완전 취소는 UI thread를 동기 차단하지 않고 실행기·sidecar dispose가 끝날 때까지 비동기로 기다린 뒤 재개 상태를 제거한다.
 ④ 명시적 Worker Exit에서는 등록된 모든 활성 child Job을 강제 종료한 뒤 애플리케이션 종료를 진행한다.
 ⑤ bridge와 background listener 종료는 WPF Dispatcher continuation에 의존하지 않는다.
 ⑥ 프로세스 수명 문제는 AI 계약이나 PID 후손 추적 규칙을 추가하지 않고 실행 계층에서 해결한다.
@@ -88,3 +88,4 @@
 ④ 메인 창의 X 버튼은 Worker 종료가 아니라 트레이 숨김으로 동작하며, 명시적 Exit만 Worker 종료를 요청한다.
 ⑤ 새 작업 시작 전 이전 runtime 정리는 최선 노력으로 수행하며, 정리 실패만으로 HQ 시작을 차단하지 않는다.
 ⑥ WorkGraph 새 작업 입력은 Git 기준점 준비가 성공하기 전까지 유지하며, 성공한 뒤에만 작업 이력 화면으로 전환한다. 하네스 없음 Direct Work에는 이 Git 준비 gate를 적용하지 않는다.
+⑦ AI 역할·모델·추론·세션, 최대 동시 WORK와 작업 대상 설정은 새 작업 입력 상태에서만 변경할 수 있다. RUNNING·PAUSED·DONE/DONE_WITH_ERROR 결과 화면과 완전 취소 정리 중에는 설정을 잠그며, 사용자 완전 취소는 기존 세션 종료를 기다리는 상태를 표시하고 정리가 끝난 뒤 새 작업 상태에서 설정을 다시 활성화한다.
