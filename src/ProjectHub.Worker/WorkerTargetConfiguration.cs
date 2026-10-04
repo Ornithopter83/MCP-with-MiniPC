@@ -91,8 +91,33 @@ public static class WorkerTargetConfiguration
             var descriptor = AiProviderCatalog.Find(role.Provider);
             if (descriptor is null) return role;
             var transport = role.Transport;
-            if (string.IsNullOrWhiteSpace(transport))
+            if (string.IsNullOrWhiteSpace(transport) ||
+                (descriptor.Provider == AiServiceProvider.Muse &&
+                 string.Equals(
+                     transport,
+                     "muse_cli",
+                     StringComparison.OrdinalIgnoreCase)))
+            {
                 transport = descriptor.DefaultTransport;
+            }
+
+            if (descriptor.Provider == AiServiceProvider.Muse &&
+                descriptor.Models.Count > 0)
+            {
+                var model = descriptor.FindModel(role.Model) ?? descriptor.Models[0];
+                var reasoning = model.SupportsReasoning(role.Reasoning)
+                    ? role.Reasoning
+                    : model.DefaultReasoning;
+                return role with
+                {
+                    Model = model.Id,
+                    Reasoning = reasoning,
+                    Transport = transport,
+                    ThreadSessionId = null,
+                    ThreadProjectPath = null
+                };
+            }
+
             return role with { Transport = transport };
         }
 
