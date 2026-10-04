@@ -933,44 +933,36 @@ public partial class MainWindow
         }
         catch (OperationCanceledException)
         {
-            if (graph is not null)
-                ProjectWorkspacePersistence.SaveWorkGraph(
-                    workingDirectory,
-                    graph.Snapshot());
-
-            if (_userCanceledTask)
+            if (_cancelCleanupInProgress)
             {
-                var snapshot = graph?.Snapshot();
-                SaveParallelContinuation(
-                    "CANCELED",
-                    lastHqMessage,
-                    jobId,
-                    workingDirectory,
-                    coordinator,
-                    implementer,
-                    coordinatorSession,
-                    snapshot,
-                    highLevel);
+                forceRuntimeResetAfterDispose = true;
+                ProjectWorkspacePersistence.ClearContinuation(workingDirectory);
                 AddTaskMessage(
-                    "TASK CANCELED",
-                    "사용자가 실행 구간을 중단했습니다. WorkGraph와 확보된 세션 정보를 보존합니다.",
-                    status: "CANCELED");
-                ResultTitle.Text = "CANCELED";
-                ResultBody.Text =
-                    "현재 실행 구간을 중단했습니다. 작업 추가로 같은 WorkGraph에서 이어갈 수 있습니다.";
-                TaskTitle.Text = "WorkGraph 작업이 중단되었습니다. 후속 작업 입력 대기";
-                SetFollowupComposerVisible(true);
+                    "TASK CANCELING",
+                    "사용자 완전 취소 요청을 받았습니다. 실행기와 sidecar 종료 뒤 재개 상태를 제거합니다.",
+                    status: "CANCELING",
+                    includeHistory: false);
+                ResultTitle.Text = "CANCELING";
+                ResultBody.Text = "기존 세션 종료를 기다리는 중입니다...";
+                TaskTitle.Text = "완전 취소 정리 중";
+                DashboardPreflightText.Text = "기존 세션 종료를 기다리는 중입니다...";
+                DashboardPreflightText.Foreground =
+                    System.Windows.Media.Brushes.Firebrick;
             }
             else
             {
+                if (graph is not null)
+                    ProjectWorkspacePersistence.SaveWorkGraph(
+                        workingDirectory,
+                        graph.Snapshot());
+
                 AddTaskMessage(
                     "TASK CANCELED",
                     "WorkGraph 관제 작업이 취소되었습니다.");
                 ResultTitle.Text = "CANCELED";
                 TaskTitle.Text = "WorkGraph 작업이 취소되었습니다.";
+                SetFlowState(false, false, false);
             }
-
-            SetFlowState(false, false, false);
         }
         catch (Exception exception)
         {
@@ -1080,12 +1072,27 @@ public partial class MainWindow
                 PipelineImplementerCard.ToolTip = null;
                 UpdateDashboardSummary();
             });
+            var completedFullCancellation = _cancelCleanupInProgress;
+            if (completedFullCancellation)
+            {
+                ProjectWorkspacePersistence.ClearContinuation(workingDirectory);
+                ProjectWorkspacePersistence.ClearWorkGraph(workingDirectory, jobId);
+            }
+
             _activeCoordinatorFirst = false;
             _activeTaskCts = null;
-            _userCanceledTask = false;
             ExportTaskTranscript();
-            SetFlowState(false, false, false);
-            ApplyConnectionStatus();
+
+            if (completedFullCancellation)
+            {
+                CompleteFullCancellationUi();
+            }
+            else
+            {
+                _userCanceledTask = false;
+                SetFlowState(false, false, false);
+                ApplyConnectionStatus();
+            }
         }
     }
 
