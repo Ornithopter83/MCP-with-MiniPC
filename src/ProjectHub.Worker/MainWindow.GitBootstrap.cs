@@ -142,7 +142,6 @@ public partial class MainWindow
             "GIT_REMOTE_ORIGIN_REQUIRED" => "origin 원격 저장소가 반드시 설정되어 있어야 합니다.",
             "GIT_REMOTE_ORIGIN_NETWORK_REQUIRED" => "origin은 로컬 경로가 아닌 네트워크 Git 원격이어야 합니다.",
             "GIT_REMOTE_STATUS_UNAVAILABLE" => "작업 폴더의 Git 상태를 확인할 수 없습니다.",
-            "GIT_REMOTE_WORKSPACE_DIRTY" => "작업 폴더에 commit되지 않은 변경이 있습니다. 먼저 commit·push하여 원격과 동기화한 뒤 다시 실행하세요.",
             "GIT_REMOTE_FETCH_TIMEOUT" => "origin fetch 시간이 초과되었습니다.",
             "GIT_REMOTE_FETCH_CANCELED" => "origin fetch가 취소되었습니다.",
             "GIT_REMOTE_FETCH_FAILED" => "origin 원격 저장소에 접근하거나 fetch하지 못했습니다.",
