@@ -220,7 +220,7 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
-    public async Task LocalHeadMustExactlyMatchFetchedRemoteHead()
+    public async Task LocalHeadMismatchUsesFetchedRemoteHeadAsLaunchBase()
     {
         var workspace = CreateWorkspace();
         try
@@ -233,8 +233,10 @@ public sealed class GitWorkspaceBootstrapperTests
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
-            Assert.False(state.Success);
-            Assert.Equal("GIT_REMOTE_HEAD_MISMATCH", state.ErrorCode);
+            Assert.True(state.Success);
+            Assert.Null(state.ErrorCode);
+            Assert.Equal("remote456", state.HeadCommit);
+            Assert.Equal("main", state.Branch);
         }
         finally
         {
