@@ -342,6 +342,34 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void ProjectWorkspacePersistence_RejectsCanceledContinuation()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "projecthub-canceled-continuation-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var canceled = new CoordinatorContinuationState(
+                "job-canceled",
+                directory,
+                new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high"),
+                new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium"),
+                null,
+                null,
+                "CANCELED",
+                "완전 취소");
+
+            Assert.False(ProjectWorkspacePersistence.SaveContinuation(canceled));
+            Assert.False(File.Exists(ProjectWorkspacePersistence.StatePath(directory)));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public void ProjectWorkspacePersistence_WritesStateHandoffAndRealtimeJsonl()
     {
         var directory = Path.Combine(Path.GetTempPath(), "projecthub-memory-" + Guid.NewGuid().ToString("N"));
