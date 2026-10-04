@@ -258,7 +258,7 @@ public sealed class OpenCodeCliRunner : IDisposable
         string executable,
         IReadOnlyList<string> arguments)
     {
-        var builder = new StringBuilder();
+        var builder = new StringBuilder("chcp 65001>nul & call ");
         builder.Append('"')
             .Append(executable.Replace("\"", "\"\"", StringComparison.Ordinal))
             .Append('"');
