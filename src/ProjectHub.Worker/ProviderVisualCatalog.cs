@@ -23,4 +23,21 @@ public static class ProviderVisualCatalog
             return Visuals[provider];
         return new(null, string.IsNullOrWhiteSpace(providerWireId) ? "Unknown" : providerWireId.Trim(), "current-console.png", "current-console-gray.png", "?");
     }
+
+    public static string ResolveGrayAsset(string colorAsset)
+    {
+        var registered = Visuals.Values.FirstOrDefault(visual =>
+            string.Equals(
+                visual.ColorAsset,
+                colorAsset,
+                StringComparison.OrdinalIgnoreCase));
+        if (registered is not null)
+            return registered.GrayAsset;
+
+        return colorAsset.EndsWith(
+                ".png",
+                StringComparison.OrdinalIgnoreCase)
+            ? colorAsset[..^4] + "-gray.png"
+            : colorAsset;
+    }
 }
