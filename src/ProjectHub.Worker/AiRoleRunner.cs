@@ -19,7 +19,8 @@ public sealed record AiRoleRunRequest(
     bool DisableComputerUse = false,
     bool IncludeAppBaseWritable = true,
     IReadOnlyList<string>? CodexConfigOverrides = null,
-    bool BypassHookTrust = false);
+    bool BypassHookTrust = false,
+    bool BuildExecutionAllowed = false);
 
 public sealed record AiRoleRunResult(
     string Provider,
@@ -111,6 +112,67 @@ public sealed class OpenAiCodexRoleRunner(CodexCliRunner codexRunner) : IAiRoleR
     }
 }
 
+public sealed class MuseOpenCodeRoleRunner(OpenCodeCliRunner openCodeRunner) : IAiRoleRunner
+{
+    public AiServiceProvider Provider => AiServiceProvider.Muse;
+    public bool SupportsSessions => true;
+
+    public string? GetPreflightError(
+        WorkerAiRoleSettings role,
+        string workingDirectory,
+        bool openAiAuthenticated)
+    {
+        if (!Directory.Exists(workingDirectory))
+            return "Working Folder가 없거나 접근할 수 없습니다.";
+        if (role.ProviderKind != AiServiceProvider.Muse)
+            return "MUSE_PROVIDER_MISMATCH";
+        if (!string.Equals(
+                role.Transport,
+                "opencode_cli",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "Muse 역할의 실행 방식이 OpenCode CLI가 아닙니다.";
+        }
+
+        var descriptor = AiProviderCatalog.Get(AiServiceProvider.Muse);
+        var model = descriptor.FindModel(role.Model);
+        if (model is null || !model.SupportsReasoning(role.Reasoning))
+        {
+            return $"Muse 모델/추론 조합을 지원하지 않습니다: {role.Model} / {role.Reasoning}";
+        }
+
+        if (openCodeRunner.FindExecutable() is null)
+        {
+            return "OpenCode CLI를 찾을 수 없습니다. Windows에 OpenCode를 설치하고 PATH를 갱신한 뒤 ProjectHub를 다시 시작하세요.";
+        }
+
+        return null;
+    }
+
+    public async Task<AiRoleRunResult> RunAsync(AiRoleRunRequest request)
+    {
+        var effectivePrompt = UserAttachmentTransport.AppendPrompt(
+            request.Prompt,
+            request.InputAttachments);
+        var result = await openCodeRunner
+            .RunAsync(request, effectivePrompt)
+            .ConfigureAwait(false);
+
+        return new AiRoleRunResult(
+            AiProviderCatalog.ToWireId(Provider),
+            result.Model,
+            result.Reasoning,
+            result.SessionId,
+            result.ExitCode,
+            result.StandardOutput,
+            result.StandardError,
+            result.FinalMessage,
+            result.Files,
+            result.Usage,
+            result.CommandExecutions);
+    }
+}
+
 public sealed class UnconfiguredAiRoleRunner(AiServiceProvider provider) : IAiRoleRunner
 {
     public AiServiceProvider Provider { get; } = provider;
@@ -135,12 +197,14 @@ public sealed class AiRoleRunnerRegistry
         _runners = runners.ToDictionary(runner => runner.Provider);
     }
 
-    public static AiRoleRunnerRegistry CreateDefault(CodexCliRunner codexRunner) =>
+    public static AiRoleRunnerRegistry CreateDefault(
+        CodexCliRunner codexRunner,
+        OpenCodeCliRunner openCodeRunner) =>
         new(new IAiRoleRunner[]
         {
             new OpenAiCodexRoleRunner(codexRunner),
             new UnconfiguredAiRoleRunner(AiServiceProvider.Claude),
-            new UnconfiguredAiRoleRunner(AiServiceProvider.Muse)
+            new MuseOpenCodeRoleRunner(openCodeRunner)
         });
 
     public IAiRoleRunner? Resolve(WorkerAiRoleSettings role) =>
