@@ -170,13 +170,14 @@ public partial class MainWindow
         if (DirectWorkModeCheckBox is null)
             return;
 
-        DirectWorkModeCheckBox.IsEnabled = !active;
+        var enabled = !active && CanEditTaskConfiguration;
+        DirectWorkModeCheckBox.IsEnabled = enabled;
         if (DirectWorkProviderCombo is not null)
-            DirectWorkProviderCombo.IsEnabled = !active;
+            DirectWorkProviderCombo.IsEnabled = enabled;
         if (DirectWorkModelCombo is not null)
-            DirectWorkModelCombo.IsEnabled = !active;
+            DirectWorkModelCombo.IsEnabled = enabled;
         if (DirectWorkReasoningCombo is not null)
-            DirectWorkReasoningCombo.IsEnabled = !active;
+            DirectWorkReasoningCombo.IsEnabled = enabled;
     }
 
     private WorkerAiRoleSettings? GetDirectWorkRole()
@@ -440,10 +441,17 @@ public partial class MainWindow
             if (ReferenceEquals(_activeTaskCts, cts))
                 _activeTaskCts = null;
 
-            SetFlowState(false, false, false);
-            SetFollowupComposerVisible(true);
-            UpdateDirectWorkControlState(active: false);
-            UpdateDashboardRunButtonState();
+            if (_cancelCleanupInProgress)
+            {
+                CompleteFullCancellationUi();
+            }
+            else
+            {
+                SetFlowState(false, false, false);
+                SetFollowupComposerVisible(true);
+                UpdateDirectWorkControlState(active: false);
+                UpdateDashboardRunButtonState();
+            }
         }
     }
 }
