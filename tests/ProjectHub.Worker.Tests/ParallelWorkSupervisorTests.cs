@@ -841,6 +841,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(3, hq.Prompts.Count);
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[2]);
         Assert.Contains("errorCode=WORK_GRAPH_SET_GOAL_SCHEMA_INVALID", hq.Prompts[2]);
+        Assert.Contains("포맷 오류가 있으므로 계약을 확인하여 다시 전송해주세요.", hq.Prompts[2]);
         Assert.Contains("path=operations[0].value", hq.Prompts[2]);
         Assert.Contains("requires a nonblank \"value\" field", hq.Prompts[2]);
         Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
@@ -870,6 +871,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Equal(2, hq.Prompts.Count);
         Assert.Contains("입력 유형: HQ_RESPONSE_CONTRACT_REJECTED", hq.Prompts[1]);
         Assert.Contains("errorCode=PARALLEL_HQ_", hq.Prompts[1]);
+        Assert.Contains("포맷 오류가 있으므로 계약을 확인하여 다시 전송해주세요.", hq.Prompts[1]);
         Assert.Empty(result.Graph.Items);
     }
 
@@ -918,6 +920,45 @@ public sealed class ParallelWorkSupervisorTests
     }
 
     [Fact]
+    public async Task DifferentRejectedPatchCodesResetRetryCount()
+    {
+        var graph = new WorkGraph("job", 1);
+        var executor = new SupervisorExecutor();
+        var missingItem = ContinuePatch(
+            0,
+            """
+            {"type":"SET_GOAL","workItemId":"W404","value":"없는 작업 변경"}
+            """);
+        var malformed =
+            "[ACTION=CONTINUE]\n[GOTO : WORK]\nWORK_GRAPH_PATCH:\n" +
+            "{\"expectedRevision\":0,\"operations\":[";
+
+        var hq = new QueueHqRunner(
+            missingItem,
+            malformed,
+            missingItem,
+            End("완료"));
+
+        await using var supervisor = new ParallelWorkSupervisor(
+            graph,
+            executor,
+            "base123",
+            hq.RunAsync);
+
+        var result = await supervisor.RunAsync(
+            "USER_REQUEST",
+            "서로 다른 patch 오류는 반복 횟수를 공유하지 않는다.");
+
+        Assert.Equal(ParallelWorkSupervisorExit.Ended, result.Exit);
+        Assert.Null(result.ErrorCode);
+        Assert.Equal(4, hq.Prompts.Count);
+        Assert.Contains("attempt=1", hq.Prompts[1]);
+        Assert.Contains("attempt=1", hq.Prompts[2]);
+        Assert.Contains("attempt=1", hq.Prompts[3]);
+        Assert.Empty(result.Graph.Items);
+    }
+
+    [Fact]
     public async Task MalformedJsonBypassesStructuredHelperAndReturnsCorrectionToHq()
     {
         var graph = new WorkGraph("job", 1);
@@ -957,6 +998,7 @@ public sealed class ParallelWorkSupervisorTests
         Assert.Contains("입력 유형: WORK_GRAPH_PATCH_SCHEMA_REJECTED", hq.Prompts[1]);
         Assert.Contains("errorCode=WORK_GRAPH_PATCH_JSON_INVALID", hq.Prompts[1]);
         Assert.Contains("직전 의미는 유지하고 완전한 WORK_GRAPH_PATCH JSON만 다시 출력하세요.", hq.Prompts[1]);
+        Assert.Contains("포맷 오류가 있으므로 계약을 확인하여 다시 전송해주세요.", hq.Prompts[1]);
         Assert.Equal(WorkItemState.Completed, Assert.Single(result.Graph.Items).State);
     }
 
