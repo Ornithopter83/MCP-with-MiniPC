@@ -113,8 +113,8 @@ public partial class MainWindow : Window
         public System.Windows.Media.Brush IconBackground => GetRoleBrush(StageKey, p => p.IconBackground, System.Windows.Media.Color.FromRgb(126, 139, 155));
         public System.Windows.Media.Brush RoleForeground => GetRoleBrush(StageKey, p => p.Foreground, System.Windows.Media.Color.FromRgb(112, 128, 144));
         public string IconAssetName => IconAssetOverride ?? (RoleVisuals.TryGetValue(StageKey, out var palette) ? palette.IconAsset : "current-console.png");
-        public System.Windows.Media.ImageSource IconSource => new System.Windows.Media.Imaging.BitmapImage(new Uri(
-            "pack://application:,,,/ProjectHub.Worker;component/Assets/" + IconAssetName));
+        public System.Windows.Media.ImageSource IconSource =>
+            LoadProviderAsset(IconAssetName);
         private static System.Windows.Media.Brush GetRoleBrush(string stageKey, Func<RoleVisualPalette, string> selector, System.Windows.Media.Color fallback)
             => new System.Windows.Media.SolidColorBrush(RoleVisuals.TryGetValue(stageKey, out var palette)
                 ? (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(selector(palette))
@@ -2221,8 +2221,44 @@ public partial class MainWindow : Window
 
     private static bool IsWebTransport(string transport) => string.Equals(transport, "web", StringComparison.OrdinalIgnoreCase);
 
-    private static System.Windows.Media.ImageSource LoadProviderAsset(string asset) =>
-        new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/ProjectHub.Worker;component/Assets/{asset}"));
+    private static System.Windows.Media.ImageSource LoadProviderAsset(string asset)
+    {
+        const string fallbackAsset = "current-console.png";
+        foreach (var candidate in new[] { asset, fallbackAsset }
+                     .Where(value => !string.IsNullOrWhiteSpace(value))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption =
+                    System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bitmap.UriSource = new Uri(
+                    $"pack://application:,,,/ProjectHub.Worker;component/Assets/{candidate}",
+                    UriKind.Absolute);
+                bitmap.EndInit();
+                bitmap.Freeze();
+                return bitmap;
+            }
+            catch (Exception exception)
+            {
+                App.LogRuntimeFailure(
+                    $"PROVIDER_ICON_LOAD_FAILED asset={candidate}",
+                    exception);
+            }
+        }
+
+        var empty = new System.Windows.Media.Imaging.WriteableBitmap(
+            1,
+            1,
+            96,
+            96,
+            System.Windows.Media.PixelFormats.Bgra32,
+            null);
+        empty.Freeze();
+        return empty;
+    }
 
     private void UpdateWorkspaceControls(CodexThreadOption? selected, string workingDirectory)
     {
