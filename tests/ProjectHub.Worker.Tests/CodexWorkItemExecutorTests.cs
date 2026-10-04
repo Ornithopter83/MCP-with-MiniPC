@@ -1122,6 +1122,9 @@ public sealed class CodexWorkItemExecutorTests
                 call => call.SequenceEqual(new[] { "push", "origin", "head123:refs/heads/main" }));
             Assert.Contains(
                 fixture.Git.Calls,
+                call => call.SequenceEqual(new[] { "switch", "main" }));
+            Assert.Contains(
+                fixture.Git.Calls,
                 call => call.SequenceEqual(new[] { "merge", "--ff-only", "head123" }));
             Assert.False(Directory.Exists(integrationClone));
         }
@@ -1267,16 +1270,17 @@ public sealed class CodexWorkItemExecutorTests
             git.Enqueue(0, branch);
             git.Enqueue(0, "");
             git.Enqueue(0, "head123");
-            // Primary workspace starts clean and synchronized at base000.
+            // Primary workspace is clean but still on a managed bootstrap branch.
             git.Enqueue(0, "");
-            git.Enqueue(0, "main");
+            git.Enqueue(0, "projecthub/job/bootstrap");
             git.Enqueue(0, "base000");
             git.Enqueue(0, "");
             git.Enqueue(0, "base000");
             git.Enqueue(0, "");
-            // Non-force push + remote verification + local fast-forward.
+            // Non-force push + remote verification + primary checkout fast-forward.
             git.Enqueue(0, "");
             git.Enqueue(0, "head123\trefs/heads/main");
+            git.Enqueue(0, "Switched to branch 'main'");
             git.Enqueue(0, "Updating base000..head123");
             git.Enqueue(0, "main");
             git.Enqueue(0, "head123");

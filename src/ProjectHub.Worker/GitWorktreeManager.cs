@@ -3045,7 +3045,7 @@ public sealed class GitWorktreeManager
                     resultCommit,
                     detail: primaryStatus.StandardOutput.Trim());
 
-            var primaryBranchResult = await RunAsync(
+            var currentBranchResult = await RunAsync(
                 normalizedRoot,
                 ReadTimeout,
                 cancellationToken,
@@ -3053,37 +3053,47 @@ public sealed class GitWorktreeManager
                 "--quiet",
                 "--short",
                 "HEAD").ConfigureAwait(false);
-            var primaryBranch = primaryBranchResult.ExitCode == 0
-                ? FirstLine(primaryBranchResult.StandardOutput)
+            var currentBranch = currentBranchResult.ExitCode == 0
+                ? FirstLine(currentBranchResult.StandardOutput)
                 : null;
-            if (!string.Equals(
-                    primaryBranch,
-                    normalizedBranch,
-                    StringComparison.Ordinal))
+            var onPrimaryBranch = string.Equals(
+                currentBranch,
+                normalizedBranch,
+                StringComparison.Ordinal);
+            var onManagedResultBranch =
+                !string.IsNullOrWhiteSpace(currentBranch) &&
+                currentBranch.StartsWith("projecthub/", StringComparison.Ordinal);
+            if (!onPrimaryBranch && !onManagedResultBranch)
             {
                 return Fail(
                     "INTEGRATION_PRIMARY_BRANCH_CHANGED",
                     resultCommit,
                     detail:
-                        $"currentBranch={primaryBranch ?? "없음"}{Environment.NewLine}" +
+                        $"currentBranch={currentBranch ?? "없음"}{Environment.NewLine}" +
                         $"expectedBranch={normalizedBranch}");
             }
 
-            var localHeadResult = await RunAsync(
+            var localPrimaryHeadResult = await RunAsync(
                 normalizedRoot,
                 ReadTimeout,
                 cancellationToken,
                 "rev-parse",
                 "--verify",
-                "HEAD").ConfigureAwait(false);
-            var localHead = localHeadResult.ExitCode == 0
-                ? FirstLine(localHeadResult.StandardOutput)
+                onPrimaryBranch
+                    ? "HEAD"
+                    : $"refs/heads/{normalizedBranch}^{{commit}}").ConfigureAwait(false);
+            var localHead = localPrimaryHeadResult.ExitCode == 0
+                ? FirstLine(localPrimaryHeadResult.StandardOutput)
                 : null;
             if (string.IsNullOrWhiteSpace(localHead))
                 return Fail(
                     "INTEGRATION_PRIMARY_HEAD_UNAVAILABLE",
                     resultCommit,
-                    detail: BuildGitFailureDetail("git rev-parse HEAD", localHeadResult));
+                    detail: BuildGitFailureDetail(
+                        onPrimaryBranch
+                            ? "git rev-parse HEAD"
+                            : "git rev-parse primary branch",
+                        localPrimaryHeadResult));
 
             var fetchResult = await FetchOriginAsync(
                 normalizedRoot,
@@ -3205,6 +3215,24 @@ public sealed class GitWorktreeManager
             finally
             {
                 networkGate.Release();
+            }
+
+            if (!onPrimaryBranch)
+            {
+                var switchPrimary = await RunAsync(
+                    normalizedRoot,
+                    ReadTimeout,
+                    cancellationToken,
+                    "switch",
+                    normalizedBranch).ConfigureAwait(false);
+                if (switchPrimary.ExitCode != 0)
+                {
+                    return Fail(
+                        "INTEGRATION_PRIMARY_SWITCH_FAILED",
+                        resultCommit,
+                        previousRemoteHead,
+                        BuildGitFailureDetail("git switch primary branch", switchPrimary));
+                }
             }
 
             if (!string.Equals(localHead, resultCommit, StringComparison.OrdinalIgnoreCase))
