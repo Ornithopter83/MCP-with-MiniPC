@@ -629,8 +629,13 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.False(AiProviderCatalog.Get(AiServiceProvider.Claude).ExecutionConfigured);
         Assert.Empty(AiProviderCatalog.Get(AiServiceProvider.Claude).Models);
-        Assert.False(AiProviderCatalog.Get(AiServiceProvider.Muse).ExecutionConfigured);
-        Assert.Empty(AiProviderCatalog.Get(AiServiceProvider.Muse).Models);
+
+        var museDescriptor = AiProviderCatalog.Get(AiServiceProvider.Muse);
+        Assert.True(museDescriptor.ExecutionConfigured);
+        Assert.True(museDescriptor.SupportsSessions);
+        var museModel = Assert.Single(museDescriptor.Models);
+        Assert.Equal(OpenCodeCliRunner.MuseContributorFreeModel, museModel.Id);
+        Assert.Equal("default", museModel.DefaultReasoning);
     }
 
     [Fact]
@@ -664,10 +669,12 @@ public sealed class CoordinatorFirstContractTests
         Assert.Empty(claude.Models);
 
         var muse = AiProviderCatalog.Get(AiServiceProvider.Muse);
-        Assert.Equal("muse_cli", muse.DefaultTransport);
-        Assert.False(muse.ExecutionConfigured);
-        Assert.False(muse.SupportsSessions);
-        Assert.Empty(muse.Models);
+        Assert.Equal("opencode_cli", muse.DefaultTransport);
+        Assert.True(muse.ExecutionConfigured);
+        Assert.True(muse.SupportsSessions);
+        Assert.Equal(
+            OpenCodeCliRunner.MuseContributorFreeModel,
+            Assert.Single(muse.Models).Id);
 
         Assert.Equal("current-openai.png", ProviderVisualCatalog.Resolve("openai").ColorAsset);
         Assert.Equal("current-console.png", ProviderVisualCatalog.Resolve("claude").ColorAsset);
@@ -676,9 +683,12 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void RoleRunnerRegistry_UsesOpenAiAdapterAndBlocksUnconfiguredProvidersWithoutFallback()
+    public void RoleRunnerRegistry_UsesConfiguredOpenAiAndMuseAdaptersWithoutFallback()
     {
-        var registry = AiRoleRunnerRegistry.CreateDefault(new CodexCliRunner());
+        using var codexRunner = new CodexCliRunner();
+        using var openCodeRunner = new OpenCodeCliRunner();
+        var registry = AiRoleRunnerRegistry.CreateDefault(codexRunner, openCodeRunner);
+
         var openAi = new WorkerAiRoleSettings("openai", "gpt-6-luna", "medium", "codex_cli");
         Assert.Equal(AiServiceProvider.OpenAI, registry.Resolve(openAi)!.Provider);
         Assert.True(registry.Resolve(openAi)!.SupportsSessions);
@@ -690,12 +700,46 @@ public sealed class CoordinatorFirstContractTests
         Assert.False(claudeRunner.SupportsSessions);
         Assert.Contains("CLAUDE_NOT_CONFIGURED", registry.GetPreflightError(claude, Path.GetTempPath(), true));
 
-        var muse = new WorkerAiRoleSettings("muse", "", "", "muse_cli");
-        Assert.Contains("MUSE_NOT_CONFIGURED", registry.GetPreflightError(muse, Path.GetTempPath(), true));
+        var muse = new WorkerAiRoleSettings(
+            "muse",
+            OpenCodeCliRunner.MuseContributorFreeModel,
+            "default",
+            "opencode_cli");
+        var museRunner = registry.Resolve(muse);
+        Assert.NotNull(museRunner);
+        Assert.Equal(AiServiceProvider.Muse, museRunner!.Provider);
+        Assert.True(museRunner.SupportsSessions);
 
         var unknown = new WorkerAiRoleSettings("vendor-x", "", "", "vendor_cli");
         Assert.Null(registry.Resolve(unknown));
         Assert.Contains("지원되지 않는 AI Provider", registry.GetPreflightError(unknown, Path.GetTempPath(), true));
+    }
+
+    [Fact]
+    public void RuntimeNormalization_MigratesLegacyMusePlaceholderToOpenCode()
+    {
+        var settings = new WorkerTargetSettings(
+            null,
+            null,
+            null,
+            null,
+            ExecutionMode: "CLI_TO_CLI",
+            Implementer: new WorkerAiRoleSettings(
+                "muse",
+                "",
+                "",
+                "muse_cli",
+                "old-session",
+                Path.GetTempPath()));
+
+        var normalized = WorkerTargetConfiguration.NormalizeForRuntime(settings);
+        var muse = normalized.EffectiveImplementer;
+
+        Assert.Equal("opencode_cli", muse.Transport);
+        Assert.Equal(OpenCodeCliRunner.MuseContributorFreeModel, muse.Model);
+        Assert.Equal("default", muse.Reasoning);
+        Assert.Null(muse.ThreadSessionId);
+        Assert.Null(muse.ThreadProjectPath);
     }
 
     [Fact]
