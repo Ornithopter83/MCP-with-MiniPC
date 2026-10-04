@@ -19,6 +19,7 @@ public partial class MainWindow
         _activeProjectJobId = jobId;
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
+        UpdateTaskConfigurationLockState();
         _activeCoordinatorFirst = true;
         SetFollowupComposerVisible(false);
         RunButton.Content = "■   취소";
@@ -987,6 +988,9 @@ public partial class MainWindow
         }
         finally
         {
+            if (_cancelCleanupInProgress)
+                forceRuntimeResetAfterDispose = true;
+
             if (resourceRouter is not null)
             {
                 try { await resourceRouter.DisposeAsync(); }
