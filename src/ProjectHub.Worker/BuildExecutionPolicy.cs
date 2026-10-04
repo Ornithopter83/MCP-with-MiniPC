@@ -31,6 +31,49 @@ public static class BuildExecutionPolicy
     private static readonly Regex BuildCommandRegex =
         new(BuildCommandPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    public static IReadOnlyList<string> OpenCodeDeniedCommandPatterns { get; } =
+        new[]
+        {
+            "*dotnet*restore*",
+            "*dotnet*build*",
+            "*dotnet*test*",
+            "*dotnet*run*",
+            "*dotnet*publish*",
+            "*dotnet*pack*",
+            "*dotnet*msbuild*",
+            "*dotnet*vstest*",
+            "*msbuild*",
+            "*csc*",
+            "*vbc*",
+            "*clang*",
+            "*gcc*",
+            "*g++*",
+            "*rustc*",
+            "*javac*",
+            "*cmake*--build*",
+            "*ninja*",
+            "*make*",
+            "*cargo*build*",
+            "*cargo*test*",
+            "*cargo*run*",
+            "*go*build*",
+            "*go*test*",
+            "*go*run*",
+            "*npm*build*",
+            "*npm*test*",
+            "*pnpm*build*",
+            "*pnpm*test*",
+            "*yarn*build*",
+            "*yarn*test*",
+            "*bun*build*",
+            "*bun*test*",
+            "*gradle*",
+            "*gradlew*",
+            "*mvn*",
+            "*mvnw*",
+            "*python*-m*build*"
+        };
+
     private static readonly Regex BuildInstructionRegex =
         new(
             @"(?ix)(?:" +
