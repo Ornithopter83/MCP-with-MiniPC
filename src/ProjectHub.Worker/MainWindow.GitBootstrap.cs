@@ -74,7 +74,9 @@ public partial class MainWindow
 
             _gitLaunchErrorMessage = null;
             RefreshGitTargetPresentation(target);
-            DashboardPreflightText.Text = "원격 Git 준비 완료 · HQ 시작 준비";
+            DashboardPreflightText.Text = state.IsDirty
+                ? "원격 Git 준비 완료 · 로컬 미커밋 변경은 WORK 기준점에 포함하지 않음 · HQ 시작 준비"
+                : "원격 Git 준비 완료 · HQ 시작 준비";
             DashboardPreflightText.Foreground =
                 (System.Windows.Media.Brush)FindResource("Muted");
             return target;
