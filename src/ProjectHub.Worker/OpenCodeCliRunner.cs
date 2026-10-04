@@ -296,6 +296,8 @@ public sealed class OpenCodeCliRunner : IDisposable
         startInfo.Environment["OPENCODE_DISABLE_TERMINAL_TITLE"] = "true";
         startInfo.Environment["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "true";
         startInfo.Environment["OPENCODE_DISABLE_LSP_DOWNLOAD"] = "true";
+        startInfo.Environment["OPENCODE_DISABLE_PROJECT_CONFIG"] = "1";
+        startInfo.Environment["OPENCODE_DISABLE_CLAUDE_CODE"] = "1";
         startInfo.Environment["OPENCODE_CONFIG_CONTENT"] =
             BuildInlineConfig(request);
         startInfo.Environment["NO_COLOR"] = "1";
@@ -337,6 +339,9 @@ public sealed class OpenCodeCliRunner : IDisposable
         var config = new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["$schema"] = "https://opencode.ai/config.json",
+            ["share"] = "disabled",
+            ["enabled_providers"] = new[] { "opencode" },
+            ["disabled_providers"] = Array.Empty<string>(),
             ["permission"] = permission
         };
 
