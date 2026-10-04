@@ -1115,10 +1115,14 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal("head123", result.ResultRef);
             Assert.Equal(WorkItemResultType.Analysis, result.ResultType);
             Assert.DoesNotContain("REMOTE_CODE_RESULT", result.ResultSummary);
-            Assert.DoesNotContain(
+            Assert.Contains("PRIMARY_BRANCH_RESULT", result.ResultSummary);
+            Assert.Contains("branch: main", result.ResultSummary);
+            Assert.Contains(
                 fixture.Git.Calls,
-                call => call.Count > 0 &&
-                        call[0] == "merge");
+                call => call.SequenceEqual(new[] { "push", "origin", "head123:refs/heads/main" }));
+            Assert.Contains(
+                fixture.Git.Calls,
+                call => call.SequenceEqual(new[] { "merge", "--ff-only", "head123" }));
             Assert.False(Directory.Exists(integrationClone));
         }
         finally
@@ -1128,7 +1132,7 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
-    public async Task CompletedIntegrationDoesNotImportFromCloneIntoPrimaryRepository()
+    public async Task CompletedIntegrationPromotesVerifiedResultToPrimaryWithoutForce()
     {
         var fixture = CreateFixture(
             """
@@ -1146,11 +1150,17 @@ public sealed class CodexWorkItemExecutorTests
 
             Assert.Equal(WorkItemExecutionOutcome.Completed, result.Outcome);
             Assert.Equal("head123", result.ResultRef);
-            Assert.DoesNotContain(
+            Assert.Contains("PRIMARY_BRANCH_RESULT", result.ResultSummary);
+            Assert.Contains(
                 fixture.Git.Calls,
-                call => call.Count > 0 &&
-                        call[0] == "fetch" &&
-                        call.Any(argument => argument.Contains(fixture.Request.Item.WorktreePath!, StringComparison.Ordinal)));
+                call => call.SequenceEqual(new[] { "push", "origin", "head123:refs/heads/main" }));
+            Assert.Contains(
+                fixture.Git.Calls,
+                call => call.SequenceEqual(
+                    new[] { "ls-remote", "--exit-code", "origin", "refs/heads/main" }));
+            Assert.DoesNotContain(
+                fixture.Git.Calls.SelectMany(call => call),
+                argument => argument is "--force" or "-f");
         }
         finally
         {
@@ -1248,9 +1258,28 @@ public sealed class CodexWorkItemExecutorTests
             git.Enqueue(0, Path.Combine(worktree, ".git"));
             git.Enqueue(0, branch);
             git.Enqueue(0, "head123");
-            // Clean integration analysis checkpoint does not create a remote branch.
+            // Clean integration checkpoint.
             git.Enqueue(0, "head123");
             git.Enqueue(0, branch);
+            git.Enqueue(0, "");
+            // PublishIntegrationResultToPrimaryAsync: inspect integration result.
+            git.Enqueue(0, "head123");
+            git.Enqueue(0, branch);
+            git.Enqueue(0, "");
+            git.Enqueue(0, "head123");
+            // Primary workspace starts clean and synchronized at base000.
+            git.Enqueue(0, "");
+            git.Enqueue(0, "main");
+            git.Enqueue(0, "base000");
+            git.Enqueue(0, "");
+            git.Enqueue(0, "base000");
+            git.Enqueue(0, "");
+            // Non-force push + remote verification + local fast-forward.
+            git.Enqueue(0, "");
+            git.Enqueue(0, "head123\trefs/heads/main");
+            git.Enqueue(0, "Updating base000..head123");
+            git.Enqueue(0, "main");
+            git.Enqueue(0, "head123");
             git.Enqueue(0, "");
         }
         else

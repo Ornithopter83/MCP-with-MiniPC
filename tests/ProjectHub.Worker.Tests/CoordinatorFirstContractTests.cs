@@ -1013,6 +1013,20 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void HqContract_ReviewsRemoteCodeAndRequiresIntegrationBeforeBuildOrEnd()
+    {
+        var contract = RoleContractLoader.LoadHqFooter();
+
+        Assert.Contains("실제 코드 상태와 변경 범위는 원격 저장소의 해당 commit을 기준으로 판단", contract);
+        Assert.Contains("resultType=CODE_CHANGE", contract);
+        Assert.Contains("변경 파일과 diff를 직접 확인", contract);
+        Assert.Contains("BLOCKED WorkItem에 CODE_CHANGE resultRef", contract);
+        Assert.Contains("INTEGRATION이 CODE_CHANGE를 반환하면", contract);
+        Assert.Contains("primary branch에 아직 반영되지 않은 CODE_CHANGE", contract);
+        Assert.Contains("END 전에 목표에 필요한 모든 CODE_CHANGE", contract);
+    }
+
+    [Fact]
     public async Task ResourceSidecar_RegistersResourceAsFinalizeOnlyMechanicalWork()
     {
         var directory = Path.Combine(Path.GetTempPath(), "projecthub-resource-mechanical-" + Guid.NewGuid().ToString("N"));

@@ -3145,14 +3145,14 @@ public sealed class GitWorktreeManager
                     BuildGitFailureDetail("git merge-base --is-ancestor", localAncestor));
             }
 
-            if (!string.Equals(
-                    previousRemoteHead,
-                    resultCommit,
-                    StringComparison.OrdinalIgnoreCase))
+            var networkGate = GetRepositoryNetworkGate(normalizedRoot);
+            await networkGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                var networkGate = GetRepositoryNetworkGate(normalizedRoot);
-                await networkGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                try
+                if (!string.Equals(
+                        previousRemoteHead,
+                        resultCommit,
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     var pushResult = await RunAsync(
                         normalizedWorktree,
@@ -3173,38 +3173,38 @@ public sealed class GitWorktreeManager
                                 "git push origin integration result to primary",
                                 pushResult));
                     }
+                }
 
-                    var verifyRemote = await RunAsync(
-                        normalizedWorktree,
-                        ReadTimeout,
-                        cancellationToken,
-                        "ls-remote",
-                        "--exit-code",
-                        "origin",
-                        "refs/heads/" + normalizedBranch).ConfigureAwait(false);
-                    var verifiedRemoteHead = verifyRemote.ExitCode == 0
-                        ? verifyRemote.StandardOutput
-                            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-                            .FirstOrDefault()
-                        : null;
-                    if (!string.Equals(
-                            verifiedRemoteHead,
-                            resultCommit,
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        return Fail(
-                            "INTEGRATION_PRIMARY_REMOTE_VERIFY_FAILED",
-                            resultCommit,
-                            previousRemoteHead,
-                            BuildGitFailureDetail(
-                                "git ls-remote integration primary",
-                                verifyRemote));
-                    }
-                }
-                finally
+                var verifyRemote = await RunAsync(
+                    normalizedWorktree,
+                    ReadTimeout,
+                    cancellationToken,
+                    "ls-remote",
+                    "--exit-code",
+                    "origin",
+                    "refs/heads/" + normalizedBranch).ConfigureAwait(false);
+                var verifiedRemoteHead = verifyRemote.ExitCode == 0
+                    ? verifyRemote.StandardOutput
+                        .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                        .FirstOrDefault()
+                    : null;
+                if (!string.Equals(
+                        verifiedRemoteHead,
+                        resultCommit,
+                        StringComparison.OrdinalIgnoreCase))
                 {
-                    networkGate.Release();
+                    return Fail(
+                        "INTEGRATION_PRIMARY_REMOTE_VERIFY_FAILED",
+                        resultCommit,
+                        previousRemoteHead,
+                        BuildGitFailureDetail(
+                            "git ls-remote integration primary",
+                            verifyRemote));
                 }
+            }
+            finally
+            {
+                networkGate.Release();
             }
 
             if (!string.Equals(localHead, resultCommit, StringComparison.OrdinalIgnoreCase))
