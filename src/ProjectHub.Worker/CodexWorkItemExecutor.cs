@@ -534,7 +534,8 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     DisableComputerUse: true,
                     IncludeAppBaseWritable: false,
                     CodexConfigOverrides: codexConfigOverrides,
-                    BypassHookTrust: bypassHookTrust)).ConfigureAwait(false);
+                    BypassHookTrust: bypassHookTrust,
+                    BuildExecutionAllowed: BuildExecutionPolicy.AllowsBuildExecution(item.Id))).ConfigureAwait(false);
 
             if (!BuildExecutionPolicy.AllowsBuildExecution(item.Id))
             {
