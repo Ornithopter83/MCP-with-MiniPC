@@ -635,6 +635,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.True(museDescriptor.SupportsSessions);
         var museModel = Assert.Single(museDescriptor.Models);
         Assert.Equal(OpenCodeCliRunner.MuseContributorFreeModel, museModel.Id);
+        Assert.Equal("Muse Spark 1.3", museModel.DisplayName);
         Assert.Equal("high", museModel.DefaultReasoning);
         Assert.Equal(
             new[] { "minimal", "low", "medium", "high", "xhigh" },
@@ -681,7 +682,8 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Equal("current-openai.png", ProviderVisualCatalog.Resolve("openai").ColorAsset);
         Assert.Equal("current-console.png", ProviderVisualCatalog.Resolve("claude").ColorAsset);
-        Assert.Equal("current-console-gray.png", ProviderVisualCatalog.Resolve("muse").GrayAsset);
+        Assert.Equal("current-muse.png", ProviderVisualCatalog.Resolve("muse").ColorAsset);
+        Assert.Equal("current-muse.png", ProviderVisualCatalog.Resolve("muse").GrayAsset);
         Assert.Equal("?", ProviderVisualCatalog.Resolve("unknown").FallbackSymbol);
     }
 
