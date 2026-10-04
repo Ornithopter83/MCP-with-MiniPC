@@ -48,6 +48,9 @@ public sealed class CodexWorkItemExecutorTests
             Assert.Equal(runtime.NuGetPackages, fixture.Runner.LastRequest.EnvironmentVariables["RestorePackagesPath"]);
             Assert.Equal(runtime.NuGetHttpCache, fixture.Runner.LastRequest.EnvironmentVariables["NUGET_HTTP_CACHE_PATH"]);
             Assert.Equal(runtime.NuGetPluginsCache, fixture.Runner.LastRequest.EnvironmentVariables["NUGET_PLUGINS_CACHE_PATH"]);
+            Assert.Equal("1", fixture.Runner.LastRequest.EnvironmentVariables["MSBUILDDISABLENODEREUSE"]);
+            Assert.Equal("0", fixture.Runner.LastRequest.EnvironmentVariables["DOTNET_CLI_USE_MSBUILD_SERVER"]);
+            Assert.Equal("false", fixture.Runner.LastRequest.EnvironmentVariables["UseSharedCompilation"]);
             Assert.Equal(runtime.NuGetScratch, fixture.Runner.LastRequest.EnvironmentVariables["NUGET_SCRATCH"]);
             Assert.Equal(runtime.DotNetHome, fixture.Runner.LastRequest.EnvironmentVariables["DOTNET_CLI_HOME"]);
             Assert.Equal(workTemp, fixture.Runner.LastRequest.EnvironmentVariables["TEMP"]);
@@ -1424,6 +1427,25 @@ public sealed class CodexWorkItemExecutorTests
             CancellationToken cancellationToken = default)
         {
             Calls.Add(arguments.ToArray());
+
+            if (arguments.SequenceEqual(new[] { "ls-files", "--", ".projecthub" }))
+                return Task.FromResult(new GitCommandResult(0, string.Empty, string.Empty));
+
+            if (arguments.Count > 0 &&
+                arguments[0] == "check-ignore" &&
+                arguments.Contains(".projecthub/projecthub-checkpoint-probe"))
+            {
+                return Task.FromResult(new GitCommandResult(0, string.Empty, string.Empty));
+            }
+
+            if (arguments.Count > 0 &&
+                arguments[0] == "diff" &&
+                arguments.Contains("--cached") &&
+                arguments.Contains(".projecthub"))
+            {
+                return Task.FromResult(new GitCommandResult(0, string.Empty, string.Empty));
+            }
+
             if (arguments.Count >= 3 &&
                 string.Equals(arguments[0], "clone", StringComparison.Ordinal) &&
                 !string.IsNullOrWhiteSpace(arguments[^1]))

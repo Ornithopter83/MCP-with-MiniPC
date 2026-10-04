@@ -155,6 +155,9 @@ public sealed class WorkerPathsRuntimeTests
             Assert.Equal(Path.Combine(workTemp, "appdata"), environment["APPDATA"]);
             Assert.Equal(Path.Combine(workTemp, "localappdata"), environment["LOCALAPPDATA"]);
             Assert.Equal("1", environment["DOTNET_CLI_TELEMETRY_OPTOUT"]);
+            Assert.Equal("1", environment["MSBUILDDISABLENODEREUSE"]);
+            Assert.Equal("0", environment["DOTNET_CLI_USE_MSBUILD_SERVER"]);
+            Assert.Equal("false", environment["UseSharedCompilation"]);
             Assert.True(File.Exists(Path.Combine(environment["APPDATA"], "NuGet", "NuGet.Config")));
         }
         finally

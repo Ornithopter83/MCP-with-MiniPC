@@ -264,7 +264,7 @@ public sealed class GitWorktreeManagerTests
             Assert.Equal("new456", result.HeadCommit);
             Assert.Contains(
                 runner.Calls,
-                call => call.Arguments.SequenceEqual(new[] { "add", "--all", "--", "." }));
+                call => call.Arguments.SequenceEqual(new[] { "add", "--all" }));
             Assert.Contains(
                 runner.Calls,
                 call => call.Arguments.SequenceEqual(
@@ -276,6 +276,106 @@ public sealed class GitWorktreeManagerTests
             Assert.DoesNotContain(
                 runner.Calls.SelectMany(call => call.Arguments),
                 argument => argument.StartsWith(":(exclude", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
+    public async Task CheckpointRejectsTrackedProjectHubStateBeforeStaging()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clone = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        Directory.CreateDirectory(clone);
+        var branch = GitWorktreeManager.BuildBranchName("job", "W1");
+        var runner = new FakeGitRunner
+        {
+            ProjectHubTracked = true
+        };
+        runner.Enqueue(0, "head123");
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, " M changed.cs");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .CreateCheckpointAsync(clone, "W1");
+
+            Assert.False(result.Success);
+            Assert.Equal("WORKTREE_CHECKPOINT_MANAGED_PATH_TRACKED", result.ErrorCode);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "add");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
+    public async Task CheckpointRejectsProjectHubWhenIgnoreInvariantIsMissing()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clone = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        Directory.CreateDirectory(clone);
+        var branch = GitWorktreeManager.BuildBranchName("job", "W1");
+        var runner = new FakeGitRunner
+        {
+            ProjectHubIgnored = false
+        };
+        runner.Enqueue(0, "head123");
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, " M changed.cs");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .CreateCheckpointAsync(clone, "W1");
+
+            Assert.False(result.Success);
+            Assert.Equal("WORKTREE_CHECKPOINT_MANAGED_PATH_NOT_IGNORED", result.ErrorCode);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "add");
+        }
+        finally
+        {
+            Cleanup(root);
+        }
+    }
+
+    [Fact]
+    public async Task CheckpointStopsIfProjectHubAppearsInStagedSet()
+    {
+        var root = CreateTempRepositoryDirectory();
+        var clone = GitWorktreeManager.BuildWorktreePath(root, "job", "W1");
+        Directory.CreateDirectory(clone);
+        var branch = GitWorktreeManager.BuildBranchName("job", "W1");
+        var runner = new FakeGitRunner
+        {
+            ProjectHubStaged = true
+        };
+        runner.Enqueue(0, "head123");
+        runner.Enqueue(0, branch);
+        runner.Enqueue(0, " M changed.cs");
+        runner.Enqueue(0, "");
+
+        try
+        {
+            var result = await new GitWorktreeManager(runner)
+                .CreateCheckpointAsync(clone, "W1");
+
+            Assert.False(result.Success);
+            Assert.Equal("WORKTREE_CHECKPOINT_MANAGED_PATH_STAGED", result.ErrorCode);
+            Assert.DoesNotContain(
+                runner.Calls,
+                call => call.Arguments.Count > 0 &&
+                        call.Arguments[0] == "commit");
         }
         finally
         {
@@ -887,10 +987,7 @@ public sealed class GitWorktreeManagerTests
                     new[]
                     {
                         "add",
-                        "--all",
-                        "--",
-                        ".",
-                        ":(exclude,glob).projecthub/**"
+                        "--all"
                     }));
             Assert.Contains(
                 runner.Calls,
@@ -1250,6 +1347,9 @@ public sealed class GitWorktreeManagerTests
         private readonly Queue<GitCommandResult> _results = new();
 
         public List<GitCall> Calls { get; } = new();
+        public bool ProjectHubTracked { get; init; }
+        public bool ProjectHubIgnored { get; init; } = true;
+        public bool ProjectHubStaged { get; init; }
 
         public void Enqueue(int exitCode, string stdout, string stderr = "")
             => _results.Enqueue(new GitCommandResult(exitCode, stdout, stderr));
@@ -1261,6 +1361,35 @@ public sealed class GitWorktreeManagerTests
             CancellationToken cancellationToken = default)
         {
             Calls.Add(new GitCall(workingDirectory, arguments.ToArray()));
+
+            if (arguments.SequenceEqual(new[] { "ls-files", "--", ".projecthub" }))
+            {
+                return Task.FromResult(new GitCommandResult(
+                    0,
+                    ProjectHubTracked ? ".projecthub/state.json" : string.Empty,
+                    string.Empty));
+            }
+
+            if (arguments.Count > 0 &&
+                arguments[0] == "check-ignore" &&
+                arguments.Contains(".projecthub/projecthub-checkpoint-probe"))
+            {
+                return Task.FromResult(new GitCommandResult(
+                    ProjectHubIgnored ? 0 : 1,
+                    string.Empty,
+                    string.Empty));
+            }
+
+            if (arguments.Count > 0 &&
+                arguments[0] == "diff" &&
+                arguments.Contains("--cached") &&
+                arguments.Contains(".projecthub"))
+            {
+                return Task.FromResult(new GitCommandResult(
+                    0,
+                    ProjectHubStaged ? ".projecthub/state.json" : string.Empty,
+                    string.Empty));
+            }
 
             if (arguments.Count > 0 &&
                 arguments[0] == "clone" &&
