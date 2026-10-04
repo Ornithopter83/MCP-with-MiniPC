@@ -90,21 +90,24 @@ public sealed class GitWorkspaceBootstrapperTests
     }
 
     [Fact]
-    public async Task DirtyWorkspaceIsRejectedBeforeRemoteFetch()
+    public async Task DirtyWorkspaceIsAcceptedAndUsesFetchedRemoteHead()
     {
         var workspace = CreateWorkspace();
         try
         {
-            var runner = BaseRepositoryRunner(workspace);
+            var runner = BaseRepositoryRunner(workspace, "local123");
             runner.Enqueue("remote get-url origin", Ok("https://example.invalid/repo.git"));
             runner.Enqueue("status --porcelain=v1 --untracked-files=all -- . :(exclude,glob).projecthub/**", Ok(" M app.cs"));
+            runner.Enqueue("fetch --prune origin", Ok());
+            runner.Enqueue("rev-parse --verify refs/remotes/origin/main^{commit}", Ok("remote456"));
 
             var state = await new GitWorkspaceBootstrapper(runner).PrepareAsync(workspace);
 
-            Assert.False(state.Success);
-            Assert.Equal("GIT_REMOTE_WORKSPACE_DIRTY", state.ErrorCode);
+            Assert.True(state.Success);
+            Assert.Null(state.ErrorCode);
             Assert.True(state.IsDirty);
-            Assert.DoesNotContain(
+            Assert.Equal("remote456", state.HeadCommit);
+            Assert.Contains(
                 runner.Calls,
                 call => call.Arguments.Count > 0 && call.Arguments[0] == "fetch");
         }
