@@ -37,7 +37,7 @@ public static class AiProviderCatalog
     {
         CreateOpenAi(),
         new AiProviderDescriptor(AiServiceProvider.Claude, "claude", "Claude", "claude_cli", false, false, Array.Empty<AiModelDescriptor>()),
-        new AiProviderDescriptor(AiServiceProvider.Muse, "muse", "Muse", "muse_cli", false, false, Array.Empty<AiModelDescriptor>())
+        CreateMuse()
     };
 
     public static AiProviderDescriptor Get(AiServiceProvider provider) =>
@@ -76,6 +76,23 @@ public static class AiProviderCatalog
         if (model is not null) return model.DisplayName;
         return string.IsNullOrWhiteSpace(modelId) ? provider.DisplayName : modelId;
     }
+
+    private static AiProviderDescriptor CreateMuse() =>
+        new(
+            AiServiceProvider.Muse,
+            "muse",
+            "Muse",
+            "opencode_cli",
+            true,
+            true,
+            new[]
+            {
+                new AiModelDescriptor(
+                    OpenCodeCliRunner.MuseContributorFreeModel,
+                    "Muse Spark 1.3 Contributor Free",
+                    "default",
+                    new[] { "default" })
+            });
 
     private static AiProviderDescriptor CreateOpenAi()
     {
