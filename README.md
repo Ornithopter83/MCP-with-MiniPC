@@ -19,8 +19,7 @@ ProjectHub는 개발 PC, Mini PC 중앙 서비스, 공통 도메인·인프라, 
 1. `Master-Polish.md`: ProjectHub 전체 공통 영구 정책
 2. 프로젝트별 `*-Polish.md`: Core / Infrastructure / Server / Agent / Worker / Web 장기 정책
 3. 역할·API·전송 계약: 해당 프로젝트의 세부 프로토콜
-4. `ProjectHub_IMPLEMENTATION_PLAN.md`: 현재 정책 기준 구현 로드맵
-5. `CurrentWork.md`: 사용자가 현재 상태를 확인할 때 보는 프로젝트별 표지판
+4. `CurrentWork.md`: 사용자가 현재 진행 방향을 확인할 때 보는 간단한 상태 표지판
 
 `tasks/*.md`, `Conversation-Handoff.md`, `NewThreadHandoff.md`, `GPT-Web-Feedback.md`와 E2E 기록은 구현 과정과 검증 이력을 보존하는 자료다. 이 문서 안의 `현재`, `활성`, 버전, 경로, 복구 방식과 역할 구조는 작성 시점의 사실일 수 있으므로 현재 정책이나 현재 런타임 계약을 덮어쓰지 않는다.
 
