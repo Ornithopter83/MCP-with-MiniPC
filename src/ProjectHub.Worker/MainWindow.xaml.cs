@@ -550,13 +550,20 @@ public partial class MainWindow : Window
 
     private void CompleteFullCancellationUi()
     {
+        var canceledWorkingDirectory = _activeWorkingDirectory;
+        var canceledJobId = _activeProjectJobId;
+        ProjectWorkspacePersistence.ClearContinuation(canceledWorkingDirectory);
+        ProjectWorkspacePersistence.ClearWorkGraph(
+            canceledWorkingDirectory,
+            canceledJobId);
+        ExportTaskTranscript();
+
         _continuationState = null;
         _activeProjectJobId = null;
         _activeWorkingDirectory = null;
         _directWorkHistoryActive = false;
         SetFollowupComposerVisible(false);
         ClearPendingAttachments(deleteCachedFiles: true);
-        ExportTaskTranscript();
         ResetTaskState();
 
         DashboardTaskInput.Text = DashboardPromptPlaceholder;
