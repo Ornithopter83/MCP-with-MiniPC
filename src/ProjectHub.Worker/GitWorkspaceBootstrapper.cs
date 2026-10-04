@@ -119,18 +119,6 @@ public sealed class GitWorkspaceBootstrapper
                 headCommit);
 
         var isDirty = !string.IsNullOrWhiteSpace(statusResult.StandardOutput);
-        if (headCommit is not null && isDirty)
-        {
-            return new GitWorkspaceBootstrapState(
-                false,
-                "GIT_REMOTE_WORKSPACE_DIRTY",
-                workspace,
-                repositoryRoot,
-                branch,
-                headCommit,
-                true,
-                displayOrigin);
-        }
 
         var fetchResult = await RunAsync(
             repositoryRoot,
@@ -204,7 +192,7 @@ public sealed class GitWorkspaceBootstrapper
                     repositoryRoot,
                     branch,
                     headCommit,
-                    false,
+                    isDirty,
                     displayOrigin);
             }
 
@@ -225,7 +213,7 @@ public sealed class GitWorkspaceBootstrapper
             repositoryRoot,
             branch,
             remoteHead,
-            false,
+            isDirty,
             displayOrigin);
     }
 
