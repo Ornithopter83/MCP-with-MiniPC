@@ -14,7 +14,7 @@ public static class ProviderVisualCatalog
         {
             [AiServiceProvider.OpenAI] = new(AiServiceProvider.OpenAI, "OpenAI", "current-openai.png", "current-openai-gray.png", "O"),
             [AiServiceProvider.Claude] = new(AiServiceProvider.Claude, "Claude", "current-console.png", "current-console-gray.png", "C"),
-            [AiServiceProvider.Muse] = new(AiServiceProvider.Muse, "Muse", "current-console.png", "current-console-gray.png", "M")
+            [AiServiceProvider.Muse] = new(AiServiceProvider.Muse, "Muse", "current-muse.png", "current-muse.png", "M")
         };
 
     public static AiProviderVisual Resolve(string? providerWireId)
