@@ -499,6 +499,44 @@ public partial class MainWindow
             gitResult,
             "MILESTONE_START");
 
+        async Task<MilestoneManagerResult> BuildFailureReportAsync(
+            string failureDetail)
+        {
+            var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
+                jobId,
+                CancellationToken.None);
+            if (stoppedRun is not null)
+            {
+                mechanicalReports.Add(
+                    MilestoneDefinitionContract.FormatMechanicalResult(
+                        stoppedRun));
+            }
+
+            var currentLocalChanges =
+                await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
+                    workingDirectory,
+                    CancellationToken.None);
+
+            return new(
+                false,
+                MilestoneDefinitionContract.BuildHqReport(
+                    milestone,
+                    "MILESTONE_EXECUTION_ERROR" +
+                    Environment.NewLine +
+                    failureDetail,
+                    workReports,
+                    resourceReports,
+                    mechanicalReports,
+                    qaReport,
+                    highReport,
+                    gitResult,
+                    initialChangedPaths,
+                    milestoneChangedPaths,
+                    currentLocalChanges));
+        }
+
+        try
+        {
         for (var managerRound = 1;
              managerRound <= 48;
              managerRound++)
@@ -996,7 +1034,21 @@ public partial class MainWindow
                     feedback));
         }
 
-        throw new InvalidOperationException("MANAGER_ROUND_LIMIT_EXCEEDED");
+            return await BuildFailureReportAsync(
+                "MANAGER_ROUND_LIMIT_EXCEEDED");
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return await BuildFailureReportAsync(
+                exception.GetType().Name +
+                ": " +
+                exception.Message);
+        }
     }
 
     private async Task<WorkExecutionReport> ExecuteMilestoneWorkAsync(
