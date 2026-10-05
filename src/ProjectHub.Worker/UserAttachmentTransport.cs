@@ -136,7 +136,7 @@ public static class UserAttachmentTransport
             safeBatch = Guid.NewGuid().ToString("N");
 
         var runtime = WorkerPaths.GetRepositoryRuntimePaths(repositoryRoot);
-        var relativeRoot = Path.Combine(".projecthub", "runtime", "attachments", safeBatch);
+        var relativeRoot = Path.Combine("temp", "ProjectHub", "attachments", safeBatch);
         var targetRoot = Path.Combine(runtime.Root, "attachments", safeBatch);
         Directory.CreateDirectory(targetRoot);
 
