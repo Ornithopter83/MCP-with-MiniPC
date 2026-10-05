@@ -1736,8 +1736,23 @@ public partial class MainWindow : Window
             effectivePrompt,
             effectiveAttachments)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_CREATE_FAILED");
+        var webHistoryRole = string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase)
+            ? WorkerRoleState.Resource
+            : WorkerRoleState.Hq;
+        RunOnUi(() =>
+            AddRoleProgressHistory(
+                webHistoryRole,
+                $"{roleName} Web 전달 시작 · task={task.Id}",
+                referenceId: task.Id,
+                workItemId: string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase) ? "0" : null));
         var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
+        RunOnUi(() =>
+            AddRoleProgressHistory(
+                webHistoryRole,
+                $"{roleName} Web 응답 수신 완료 · {completed.Status}",
+                referenceId: task.Id,
+                workItemId: string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase) ? "0" : null));
         var message = completed.Result ?? string.Empty;
         var success = completed.Status == "COMPLETED";
         UsageTelemetryStore.Append(new ModelCallTelemetry(
@@ -1828,7 +1843,9 @@ public partial class MainWindow : Window
         CancellationToken cancellationToken,
         CodexSandboxMode sandbox = CodexSandboxMode.ReadOnly,
         Action<string>? sessionStarted = null,
-        IReadOnlyList<AiInputAttachment>? inputAttachments = null)
+        IReadOnlyList<AiInputAttachment>? inputAttachments = null,
+        string? historyWorkItemId = null,
+        string? historyReferenceId = null)
     {
         var started = DateTimeOffset.UtcNow;
         var roleName = purpose.Contains("MANAGER", StringComparison.OrdinalIgnoreCase)
@@ -1850,10 +1867,7 @@ public partial class MainWindow : Window
             "HIGH" => "HIGH",
             _ => "HQ"
         };
-        AddTaskMessage($"WORKER → {outboundRole} CLI", prompt, sizeBytes: Encoding.UTF8.GetByteCount(prompt), status: "SENDING", includeHistory: false);
-        var runner = _aiRoleRunners.Resolve(role)
-            ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
-        var progressRole = roleName switch
+        var historyRole = roleName switch
         {
             "MANAGER" => WorkerRoleState.Manager,
             "QA" => WorkerRoleState.Qa,
@@ -1861,10 +1875,25 @@ public partial class MainWindow : Window
             "HIGH" => WorkerRoleState.High,
             _ => WorkerRoleState.Hq
         };
+        RunOnUi(() =>
+            AddRoleProgressHistory(
+                historyRole,
+                $"{outboundRole} 호출 시작 · {role.Provider} / {role.Model}",
+                role.Provider,
+                referenceId: historyReferenceId,
+                workItemId: historyWorkItemId));
+        AddTaskMessage($"WORKER → {outboundRole} CLI", prompt, sizeBytes: Encoding.UTF8.GetByteCount(prompt), status: "SENDING", includeHistory: false);
+        var runner = _aiRoleRunners.Resolve(role)
+            ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
         Action<string>? progress = message => RunOnUi(() =>
         {
             _lastActivityAt = DateTimeOffset.UtcNow;
-            AddRoleProgressHistory(progressRole, message, role.Provider);
+            AddRoleProgressHistory(
+                historyRole,
+                message,
+                role.Provider,
+                referenceId: historyReferenceId,
+                workItemId: historyWorkItemId);
         });
 
         var roleTempPath = Path.Combine(
@@ -1913,6 +1942,13 @@ public partial class MainWindow : Window
             CodexConfigOverrides: codexConfigOverrides,
             BypassHookTrust: bypassHookTrust,
             BuildExecutionAllowed: roleName != "WORK"));
+        RunOnUi(() =>
+            AddRoleProgressHistory(
+                historyRole,
+                $"{outboundRole} 실행 종료 · exit {result.ExitCode}",
+                role.Provider,
+                referenceId: historyReferenceId,
+                workItemId: historyWorkItemId));
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
@@ -2776,8 +2812,39 @@ public partial class MainWindow : Window
             if (string.Equals(_lastExtensionProgressKey, key, StringComparison.Ordinal)) return;
             _lastExtensionProgressKey = key;
             var detail = string.IsNullOrWhiteSpace(progress.Detail) ? string.Empty : $" · {progress.Detail}";
-            AddTaskMessage("WEB EXTENSION", $"{progress.Stage}{detail}");
             var progressTask = _bridgeServer?.GetTaskSnapshot(progress.TaskId);
+            if (progressTask is not null)
+            {
+                var progressRole = progressTask.Owner.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase)
+                    ? WorkerRoleState.Resource
+                    : progressTask.Owner.Equals("HQ", StringComparison.OrdinalIgnoreCase)
+                        ? WorkerRoleState.Hq
+                        : WorkerRoleState.Unknown;
+                if (progressRole != WorkerRoleState.Unknown)
+                {
+                    AddRoleProgressHistory(
+                        progressRole,
+                        $"{progress.Stage}{detail}",
+                        referenceId: progress.TaskId,
+                        workItemId: progressRole == WorkerRoleState.Resource ? "0" : null);
+                }
+                else
+                {
+                    AddTaskMessage(
+                        "WEB EXTENSION",
+                        $"{progress.Stage}{detail}",
+                        status: "RUNNING",
+                        includeHistory: false);
+                }
+            }
+            else
+            {
+                AddTaskMessage(
+                    "WEB EXTENSION",
+                    $"{progress.Stage}{detail}",
+                    status: "RUNNING",
+                    includeHistory: false);
+            }
             if (progressTask is not null && progressTask.Owner.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase))
             {
                 _resourceSidecarStatus = progress.Stage switch
@@ -2923,6 +2990,7 @@ public partial class MainWindow : Window
             WorkerRoleState.Work => "Implementer",
             WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
+            WorkerRoleState.Resource => "Resource",
             _ => "System"
         };
         var item = new WorkerHistoryEvent(
@@ -2956,6 +3024,7 @@ public partial class MainWindow : Window
                 WorkerRoleState.Work => "WORK PROGRESS",
                 WorkerRoleState.Qa => "QA PROGRESS",
                 WorkerRoleState.High => "HIGH PROGRESS",
+                WorkerRoleState.Resource => "RESOURCE PROGRESS",
                 _ => "HQ PROGRESS"
             },
             text,
