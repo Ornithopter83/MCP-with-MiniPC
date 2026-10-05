@@ -12,7 +12,6 @@ namespace ProjectHub.Worker;
 /// </summary>
 public static class BuildExecutionPolicy
 {
-    public const string BuildSlotRequiredError = "WORK_BUILD_SLOT_REQUIRED";
     public const string BuildCommandForbiddenError = "WORK_BUILD_COMMAND_FORBIDDEN";
     public const string GeneralWorkCommandForbiddenError = "WORK_COMMAND_FORBIDDEN";
 
@@ -101,27 +100,6 @@ public static class BuildExecutionPolicy
             @"(?:build|빌드|restore|복원|compile|컴파일|publish|게시).{0,30}(?:하지\s*않|하지\s*말|금지|않는다|금한다)" +
             @")",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    public static bool AllowsBuildExecution(string? workItemId)
-        => string.Equals(workItemId?.Trim(), FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal);
-
-    public static bool ContainsBuildExecutionInstruction(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
-        var normalized = text.Trim();
-        if (ExplicitProhibitionRegex.IsMatch(normalized))
-            return false;
-        return BuildInstructionRegex.IsMatch(normalized) || BuildCommandRegex.IsMatch(normalized);
-    }
-
-    public static bool IsForbiddenForWorkItem(string? workItemId, string? command, IEnumerable<string>? arguments = null)
-    {
-        if (AllowsBuildExecution(workItemId))
-            return false;
-        var combined = string.Join(" ", new[] { command ?? string.Empty }.Concat(arguments ?? Array.Empty<string>()));
-        return IsBuildCommand(combined);
-    }
 
     public static bool IsBuildCommand(string? commandLine)
         => !string.IsNullOrWhiteSpace(commandLine) && BuildCommandRegex.IsMatch(commandLine);
