@@ -193,9 +193,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("HIGH_STATUS: MODIFIED", high);
         Assert.Equal(
             new[] { "src/Fix.cs" },
-            MilestoneDefinitionContract.ExtractReportPaths(
-                high,
-                "CHANGED_PATH"));
+            MilestoneDefinitionContract.ExtractHighChangedPaths(high));
     }
 
     [Fact]
@@ -208,6 +206,8 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Contains("HIGH_STATUS: INCOMPLETE", high);
         Assert.Contains("HIGH_REPORT_CONTRACT_INVALID", high);
+        Assert.Empty(
+            MilestoneDefinitionContract.ExtractHighChangedPaths(high));
     }
 
     [Fact]
@@ -249,6 +249,8 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("[GOTO : MANAGER]", work);
         Assert.Contains("코드나 프로젝트 파일을 수정하지 않는다", qa);
         Assert.Contains("[GOTO : MANAGER]", high);
+        Assert.Contains("CHANGED_PATH:", high);
+        Assert.Contains("managed process", manager, StringComparison.OrdinalIgnoreCase);
 
         Assert.DoesNotContain("WorkGraph", hq);
         Assert.DoesNotContain("projecthub/*", manager);
