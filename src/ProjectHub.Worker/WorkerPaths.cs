@@ -57,7 +57,33 @@ public static class WorkerPaths
             tempRoot);
     }
 
-    public static void EnsureProjectHubGitIgnore(
+    public static bool NeedsProjectHubGitIgnoreUpdate(
+        string repositoryRoot)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryRoot) ||
+            !Directory.Exists(repositoryRoot))
+        {
+            throw new ArgumentException(
+                "저장소 경로가 존재하지 않습니다.",
+                nameof(repositoryRoot));
+        }
+
+        var root = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+        var gitIgnorePath = Path.Combine(root, ".gitignore");
+        var normalized = File.Exists(gitIgnorePath)
+            ? File.ReadAllLines(gitIgnorePath)
+                .Select(line => line.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        return new[] { "bin/", "temp/" }
+            .Any(entry => !HasIgnoreEntry(normalized, entry));
+    }
+
+    public static bool EnsureProjectHubGitIgnore(
         string repositoryRoot)
     {
         if (string.IsNullOrWhiteSpace(repositoryRoot) ||
@@ -82,15 +108,11 @@ public static class WorkerPaths
             .Select(line => line.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var additions = requiredEntries
-            .Where(entry =>
-                !normalized.Contains(entry) &&
-                !normalized.Contains("/" + entry) &&
-                !normalized.Contains(entry.TrimEnd('/')) &&
-                !normalized.Contains("/" + entry.TrimEnd('/')))
+            .Where(entry => !HasIgnoreEntry(normalized, entry))
             .ToArray();
 
         if (additions.Length == 0)
-            return;
+            return false;
 
         var existing = File.Exists(gitIgnorePath)
             ? File.ReadAllText(gitIgnorePath)
@@ -108,6 +130,20 @@ public static class WorkerPaths
             string.Join(Environment.NewLine, additions) +
             Environment.NewLine,
             new UTF8Encoding(false));
+        return true;
+    }
+
+    private static bool HasIgnoreEntry(
+        IReadOnlySet<string> normalized,
+        string entry)
+    {
+        var bare = entry.TrimEnd('/');
+        return normalized.Contains(entry) ||
+               normalized.Contains("/" + entry) ||
+               normalized.Contains("**/" + entry) ||
+               normalized.Contains(bare) ||
+               normalized.Contains("/" + bare) ||
+               normalized.Contains("**/" + bare);
     }
 
     public static string BuildResourceStagingRoot(
