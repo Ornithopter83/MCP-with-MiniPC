@@ -1,6 +1,5 @@
 **/bin/
-!/bin/
-!/bin/*.ps1
+**/temp/
 **/obj/
 .vs/
 .idea/
@@ -16,7 +15,6 @@ src/ProjectHub.Server/log/
 .worker-dotnet-home*/
 
 # ProjectHub generated/runtime output
-.projecthub/
 .verification-appdata/
 .verification-tmp/
 dist-temp/
