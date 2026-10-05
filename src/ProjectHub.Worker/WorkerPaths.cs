@@ -1,19 +1,10 @@
 using System.IO;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace ProjectHub.Worker;
 
 public sealed record RepositoryRuntimePaths(
     string Root,
-    string Worktrees,
-    string IntegrationClones,
-    string NuGetRoot,
-    string NuGetPackages,
-    string NuGetHttpCache,
-    string NuGetPluginsCache,
-    string NuGetScratch,
-    string DotNetHome,
     string TempRoot);
 
 public static class WorkerPaths
@@ -26,63 +17,61 @@ public static class WorkerPaths
     public static string Attachments => Path.Combine(Root, "attachments");
     public static string WebResults => Path.Combine(Root, "web-results");
     public static string Logs => Path.Combine(Root, "logs");
-    public static string Extension => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "GPTWeb-Hub", "extension");
-    public static string ManagedWebRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProjectHub", "ManagedWeb");
-    public static string ManagedWebBrowserRuntime => Path.Combine(ManagedWebRoot, "BrowserRuntime");
-    public static string ManagedWebProfiles => Path.Combine(ManagedWebRoot, "Profiles");
-    public static string ManagedWebHqProfile => Path.Combine(ManagedWebProfiles, "HQ");
-    public static string ManagedWebResourceProfile => Path.Combine(ManagedWebProfiles, "RESOURCE");
-    public static string GetPublishedArtifactDirectory(
-        string repositoryRoot,
-        string jobId,
-        long invocation)
+    public static string Extension => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ProjectHub",
+        "GPTWeb-Hub",
+        "extension");
+    public static string ManagedWebRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ProjectHub",
+        "ManagedWeb");
+    public static string ManagedWebBrowserRuntime =>
+        Path.Combine(ManagedWebRoot, "BrowserRuntime");
+    public static string ManagedWebProfiles =>
+        Path.Combine(ManagedWebRoot, "Profiles");
+    public static string ManagedWebHqProfile =>
+        Path.Combine(ManagedWebProfiles, "HQ");
+    public static string ManagedWebResourceProfile =>
+        Path.Combine(ManagedWebProfiles, "RESOURCE");
+
+    public static RepositoryRuntimePaths GetRepositoryRuntimePaths(
+        string repositoryRoot)
     {
         if (string.IsNullOrWhiteSpace(repositoryRoot))
-            throw new ArgumentException("저장소 경로가 비어 있습니다.", nameof(repositoryRoot));
-        if (string.IsNullOrWhiteSpace(jobId))
-            throw new ArgumentException("Job ID가 비어 있습니다.", nameof(jobId));
+            throw new ArgumentException(
+                "저장소 경로가 비어 있습니다.",
+                nameof(repositoryRoot));
 
         var root = Path.GetFullPath(repositoryRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        _ = jobId;
-        _ = invocation;
-        return Path.Combine(root, "bin");
-    }
-
-    public static RepositoryRuntimePaths GetRepositoryRuntimePaths(string repositoryRoot)
-    {
-        if (string.IsNullOrWhiteSpace(repositoryRoot))
-            throw new ArgumentException("저장소 경로가 비어 있습니다.", nameof(repositoryRoot));
-
-        var root = Path.GetFullPath(repositoryRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
         if (string.IsNullOrWhiteSpace(Path.GetFileName(root)))
-            throw new InvalidOperationException("저장소 이름을 계산할 수 없습니다.");
+            throw new InvalidOperationException(
+                "저장소 이름을 계산할 수 없습니다.");
 
         var tempRoot = Path.Combine(root, "temp");
-        var runtimeRoot = Path.Combine(tempRoot, "ProjectHub");
-        var nugetRoot = Path.Combine(runtimeRoot, "nuget");
         return new RepositoryRuntimePaths(
-            runtimeRoot,
-            Path.Combine(runtimeRoot, "worktrees"),
-            Path.Combine(runtimeRoot, "integration-clones"),
-            nugetRoot,
-            Path.Combine(nugetRoot, "packages"),
-            Path.Combine(nugetRoot, "http-cache"),
-            Path.Combine(nugetRoot, "plugins-cache"),
-            Path.Combine(nugetRoot, "scratch"),
-            Path.Combine(runtimeRoot, "dotnet"),
+            Path.Combine(tempRoot, "ProjectHub"),
             tempRoot);
     }
 
-    public static void EnsureProjectHubGitIgnore(string repositoryRoot)
+    public static void EnsureProjectHubGitIgnore(
+        string repositoryRoot)
     {
-        if (string.IsNullOrWhiteSpace(repositoryRoot) || !Directory.Exists(repositoryRoot))
-            throw new ArgumentException("저장소 경로가 존재하지 않습니다.", nameof(repositoryRoot));
+        if (string.IsNullOrWhiteSpace(repositoryRoot) ||
+            !Directory.Exists(repositoryRoot))
+        {
+            throw new ArgumentException(
+                "저장소 경로가 존재하지 않습니다.",
+                nameof(repositoryRoot));
+        }
 
         var root = Path.GetFullPath(repositoryRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
         var gitIgnorePath = Path.Combine(root, ".gitignore");
         var requiredEntries = new[] { "bin/", "temp/" };
 
@@ -111,25 +100,14 @@ public static class WorkerPaths
                         existing.EndsWith("\r", StringComparison.Ordinal)
             ? string.Empty
             : Environment.NewLine;
+
         File.WriteAllText(
             gitIgnorePath,
             existing +
             separator +
             string.Join(Environment.NewLine, additions) +
             Environment.NewLine,
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-    }
-
-    public static string BuildWorkTempPath(
-        RepositoryRuntimePaths runtime,
-        string jobId,
-        string workItemId)
-    {
-        ArgumentNullException.ThrowIfNull(runtime);
-        return Path.Combine(
-            runtime.TempRoot,
-            StableRuntimeSegment(jobId),
-            StableRuntimeSegment(workItemId));
+            new UTF8Encoding(false));
     }
 
     public static string BuildResourceStagingRoot(
@@ -137,11 +115,17 @@ public static class WorkerPaths
         string resourceType)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        _ = (resourceType ?? string.Empty).Trim().ToUpperInvariant() switch
+
+        _ = (resourceType ?? string.Empty)
+            .Trim()
+            .ToUpperInvariant() switch
         {
             "IMAGE" => "IMAGE",
-            _ => throw new ArgumentException("지원되지 않는 RESOURCE 타입입니다.", nameof(resourceType))
+            _ => throw new ArgumentException(
+                "지원되지 않는 RESOURCE 타입입니다.",
+                nameof(resourceType))
         };
+
         return Path.Combine(runtime.TempRoot, "Resource");
     }
 
@@ -152,81 +136,15 @@ public static class WorkerPaths
     {
         if (string.IsNullOrWhiteSpace(requestId) ||
             requestId.Any(character => !char.IsAsciiLetterOrDigit(character)))
-            throw new ArgumentException("RESOURCE request ID가 안전한 형식이 아닙니다.", nameof(requestId));
+        {
+            throw new ArgumentException(
+                "RESOURCE request ID가 안전한 형식이 아닙니다.",
+                nameof(requestId));
+        }
 
         return Path.Combine(
             BuildResourceStagingRoot(runtime, resourceType),
             requestId.Trim());
-    }
-
-
-    public static void EnsureWorkToolDirectories(
-        RepositoryRuntimePaths runtime,
-        string workTempPath)
-    {
-        ArgumentNullException.ThrowIfNull(runtime);
-        var buildRoot = Path.Combine(workTempPath, "build");
-        var appData = Path.Combine(workTempPath, "appdata");
-        var localAppData = Path.Combine(workTempPath, "localappdata");
-        var nuGetConfigDirectory = Path.Combine(appData, "NuGet");
-        foreach (var directory in new[]
-        {
-            runtime.NuGetPackages,
-            runtime.NuGetHttpCache,
-            runtime.NuGetPluginsCache,
-            runtime.NuGetScratch,
-            runtime.DotNetHome,
-            workTempPath,
-            buildRoot,
-            Path.Combine(buildRoot, "bin"),
-            Path.Combine(buildRoot, "obj"),
-            appData,
-            localAppData,
-            nuGetConfigDirectory
-        })
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var isolatedNuGetConfig = Path.Combine(nuGetConfigDirectory, "NuGet.Config");
-        if (!File.Exists(isolatedNuGetConfig))
-        {
-            File.WriteAllText(
-                isolatedNuGetConfig,
-                "<?xml version=\"1.0\" encoding=\"utf-8\"?><configuration></configuration>");
-        }
-    }
-
-    public static IReadOnlyDictionary<string, string> BuildWorkToolEnvironment(
-        RepositoryRuntimePaths runtime,
-        string workTempPath)
-    {
-        ArgumentNullException.ThrowIfNull(runtime);
-        var buildRoot = Path.Combine(workTempPath, "build");
-        var appData = Path.Combine(workTempPath, "appdata");
-        var localAppData = Path.Combine(workTempPath, "localappdata");
-        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["PROJECTHUB_BUILD_ROOT"] = buildRoot,
-            ["PROJECTHUB_BUILD_BIN"] = Path.Combine(buildRoot, "bin"),
-            ["PROJECTHUB_BUILD_OBJ"] = Path.Combine(buildRoot, "obj"),
-            ["NUGET_PACKAGES"] = runtime.NuGetPackages,
-            ["RestorePackagesPath"] = runtime.NuGetPackages,
-            ["NUGET_HTTP_CACHE_PATH"] = runtime.NuGetHttpCache,
-            ["NUGET_PLUGINS_CACHE_PATH"] = runtime.NuGetPluginsCache,
-            ["NUGET_SCRATCH"] = runtime.NuGetScratch,
-            ["DOTNET_CLI_HOME"] = runtime.DotNetHome,
-            ["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1",
-            ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
-            ["DOTNET_NOLOGO"] = "1",
-            ["MSBUILDDISABLENODEREUSE"] = "1",
-            ["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0",
-            ["UseSharedCompilation"] = "false",
-            ["APPDATA"] = appData,
-            ["LOCALAPPDATA"] = localAppData,
-            ["TEMP"] = workTempPath,
-            ["TMP"] = workTempPath
-        };
     }
 
     public static bool TryResetProjectTemp(
@@ -248,7 +166,8 @@ public static class WorkerPaths
         {
             if (Directory.Exists(tempRoot))
             {
-                ClearDeleteBlockingAttributes(new DirectoryInfo(tempRoot));
+                ClearDeleteBlockingAttributes(
+                    new DirectoryInfo(tempRoot));
                 Directory.Delete(tempRoot, recursive: true);
             }
 
@@ -266,28 +185,31 @@ public static class WorkerPaths
         }
     }
 
-    public static bool TryResetEphemeralDirectories(out string? errorDetail)
+    public static bool TryResetEphemeralDirectories(
+        out string? errorDetail)
     {
         var errors = new List<string>();
+
         foreach (var directory in new[]
-        {
-            Task,
-            Attachments,
-            WebResults
-        })
+                 {
+                     Task,
+                     Attachments,
+                     WebResults
+                 })
         {
             try
             {
                 if (Directory.Exists(directory))
                 {
-                    ClearDeleteBlockingAttributes(new DirectoryInfo(directory));
+                    ClearDeleteBlockingAttributes(
+                        new DirectoryInfo(directory));
                     Directory.Delete(directory, recursive: true);
                 }
 
                 Directory.CreateDirectory(directory);
             }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
+            catch (Exception exception)
+                when (exception is IOException or UnauthorizedAccessException)
             {
                 errors.Add(
                     Path.GetFileName(directory) +
@@ -304,7 +226,8 @@ public static class WorkerPaths
         return errors.Count == 0;
     }
 
-    private static void ClearDeleteBlockingAttributes(DirectoryInfo directory)
+    private static void ClearDeleteBlockingAttributes(
+        DirectoryInfo directory)
     {
         if (!directory.Exists)
             return;
@@ -317,38 +240,34 @@ public static class WorkerPaths
                 ClearDeleteBlockingAttributes(child);
             }
 
-            entry.Attributes &= ~(FileAttributes.ReadOnly | FileAttributes.System);
+            entry.Attributes &=
+                ~(FileAttributes.ReadOnly | FileAttributes.System);
         }
 
-        directory.Attributes &= ~(FileAttributes.ReadOnly | FileAttributes.System);
+        directory.Attributes &=
+            ~(FileAttributes.ReadOnly | FileAttributes.System);
     }
 
     public static void EnsureCreated()
     {
         foreach (var directory in new[]
+                 {
+                     Root,
+                     State,
+                     Config,
+                     Task,
+                     Attachments,
+                     WebResults,
+                     Logs,
+                     Extension,
+                     ManagedWebRoot,
+                     ManagedWebBrowserRuntime,
+                     ManagedWebProfiles,
+                     ManagedWebHqProfile,
+                     ManagedWebResourceProfile
+                 })
         {
-            Root,
-            State,
-            Config,
-            Task,
-            Attachments,
-            WebResults,
-            Logs,
-            Extension,
-            ManagedWebRoot,
-            ManagedWebBrowserRuntime,
-            ManagedWebProfiles,
-            ManagedWebHqProfile,
-            ManagedWebResourceProfile
-        })
             Directory.CreateDirectory(directory);
-    }
-
-    private static string StableRuntimeSegment(string value)
-    {
-        var normalized = string.IsNullOrWhiteSpace(value) ? "empty" : value.Trim();
-        return Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(normalized)))
-            .ToLowerInvariant()[..12];
+        }
     }
 }
