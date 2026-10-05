@@ -517,9 +517,9 @@ public partial class MainWindow
             if (runnableWork.Length > 0)
             {
                 var maxConcurrency = Math.Clamp(
-                    _targetSettings.MaxConcurrentWork,
-                    1,
-                    8);
+                    _targetSettings.EffectiveMaxConcurrentWork,
+                    WorkerTargetConfiguration.MinimumConcurrentWork,
+                    WorkerTargetConfiguration.MaximumConcurrentWork);
                 using var gate = new SemaphoreSlim(maxConcurrency);
                 var workTasks = runnableWork.Select(async action =>
                 {
@@ -631,7 +631,9 @@ public partial class MainWindow
                         StringComparison.OrdinalIgnoreCase)))
             {
                 var missingWork = milestone.WorkItems.Keys
-                    .Where(id => !workReports.ContainsKey(id))
+                    .Where(id =>
+                        !workReports.TryGetValue(id, out var report) ||
+                        !MilestoneDefinitionContract.IsTerminalWorkReport(report))
                     .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
                 var missingResources = milestone.Resources.Keys
@@ -830,13 +832,10 @@ public partial class MainWindow
             cancellationToken,
             CodexSandboxMode.WorkspaceWrite);
 
-        var report = result.ExitCode == 0
-            ? result.FinalMessage
-            : "WORK_ITEM_STATUS: BLOCKED" +
-              Environment.NewLine +
-              (string.IsNullOrWhiteSpace(result.StandardError)
-                  ? "WORK 실행 프로세스 실패"
-                  : result.StandardError);
+        var report = MilestoneDefinitionContract.NormalizeWorkReport(
+            result.ExitCode,
+            result.FinalMessage,
+            result.StandardError);
 
         AddRoleResponseHistory(
             WorkerRoleState.Work,
@@ -1050,11 +1049,10 @@ public partial class MainWindow
             cancellationToken,
             CodexSandboxMode.DangerFullAccess);
 
-        var report = result.ExitCode == 0
-            ? result.FinalMessage
-            : "QA_STATUS: BLOCKED" +
-              Environment.NewLine +
-              result.StandardError;
+        var report = MilestoneDefinitionContract.NormalizeQaReport(
+            result.ExitCode,
+            result.FinalMessage,
+            result.StandardError);
 
         AddRoleResponseHistory(
             WorkerRoleState.Qa,
@@ -1111,13 +1109,10 @@ public partial class MainWindow
             cancellationToken,
             CodexSandboxMode.DangerFullAccess);
 
-        var report = result.ExitCode == 0
-            ? result.FinalMessage
-            : "[GOTO : MANAGER]" +
-              Environment.NewLine +
-              "HIGH_STATUS: INCOMPLETE" +
-              Environment.NewLine +
-              result.StandardError;
+        var report = MilestoneDefinitionContract.NormalizeHighReport(
+            result.ExitCode,
+            result.FinalMessage,
+            result.StandardError);
 
         AddRoleResponseHistory(
             WorkerRoleState.High,
