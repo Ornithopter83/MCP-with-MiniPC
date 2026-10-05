@@ -1,7 +1,7 @@
 (async () => {
   const HOST_ID = 'gptweb-hub-extension-preview';
   const EXTENSION_VERSION = '0.4.4';
-  const EXTENSION_BUILD = '2026-10-03.1';
+  const EXTENSION_BUILD = '2026-10-06.1';
   const launchUrl = new URL(location.href);
   const launchRoleRaw = String(launchUrl.searchParams.get('projecthub-managed-role')||'').trim().toUpperCase();
   const launchRuntimeToken = String(launchUrl.searchParams.get('projecthub-runtime-token')||'').trim();
@@ -148,7 +148,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     if(index<0)return '';
     const correlated=text.slice(index).trim();
     const after=correlated.slice(marker.length).trim();
-    if(!after||!/^[\\\s]*\[ACTION=(?:CONTINUE|PAUSE|END)\](?:\s|$)/.test(after))return '';
+    if(!after||!/^[\\\s]*\[ACTION=(?:WORK|PAUSE|END)\](?:\s|$)/.test(after))return '';
     return correlated;
   }
   function correlationRootFromElement(element){
