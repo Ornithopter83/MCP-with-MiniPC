@@ -371,7 +371,7 @@ public partial class MainWindow
         var validationRound = 0;
         var validationCompleted = false;
         var gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
-        var gitFinalized = false;
+        var gitFinalizeAttempted = false;
         string? managerSession =
             CodexCliRunner.NormalizeSessionId(manager.ThreadSessionId);
 
@@ -463,11 +463,11 @@ public partial class MainWindow
                     continue;
                 }
 
-                if (!gitFinalized)
+                if (!gitFinalizeAttempted)
                 {
                     managerInput =
                         "GIT_FINALIZE가 아직 수행되지 않았습니다. " +
-                        "마일스톤 성패와 관계없이 GIT_FINALIZE 후 HQ 최종 보고를 작성하세요." +
+                        "마일스톤 성패와 관계없이 GIT_FINALIZE를 한 번 이상 수행하고 실제 commit/push 결과를 포함해 HQ 최종 보고를 작성하세요." +
                         Environment.NewLine +
                         MilestoneDefinitionContract.BuildManagerInput(
                             milestone,
@@ -561,7 +561,7 @@ public partial class MainWindow
                 }
 
                 validationCompleted = false;
-                gitFinalized = false;
+                gitFinalizeAttempted = false;
             }
 
             foreach (var action in parsed.ValidActions.Where(action =>
@@ -581,7 +581,7 @@ public partial class MainWindow
                     Environment.NewLine +
                     resourceResult.Report);
                 validationCompleted = false;
-                gitFinalized = false;
+                gitFinalizeAttempted = false;
             }
 
             foreach (var action in parsed.ValidActions.Where(action =>
@@ -613,7 +613,7 @@ public partial class MainWindow
                 mechanicalReports.Add(report);
                 feedback.Add(report);
                 validationCompleted = false;
-                gitFinalized = false;
+                gitFinalizeAttempted = false;
             }
 
             var pause = parsed.ValidActions.FirstOrDefault(action =>
@@ -630,9 +630,33 @@ public partial class MainWindow
                         "READY_FOR_VALIDATION",
                         StringComparison.OrdinalIgnoreCase)))
             {
-                validationRound++;
+                var missingWork = milestone.WorkItems.Keys
+                    .Where(id => !workReports.ContainsKey(id))
+                    .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                var missingResources = milestone.Resources.Keys
+                    .Where(id => !resourceReports.ContainsKey(id))
+                    .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
 
-                if (milestone.QaReserved)
+                if (missingWork.Length > 0 || missingResources.Length > 0)
+                {
+                    var missing = new List<string>();
+                    if (missingWork.Length > 0)
+                        missing.Add("미종료 WORK: " + string.Join(", ", missingWork));
+                    if (missingResources.Length > 0)
+                        missing.Add("미종료 RESOURCE: " + string.Join(", ", missingResources));
+
+                    feedback.Add(
+                        "READY_FOR_VALIDATION_BLOCKED:" +
+                        Environment.NewLine +
+                        string.Join(Environment.NewLine, missing));
+                }
+                else
+                {
+                    validationRound++;
+
+                    if (milestone.QaReserved)
                 {
                     qaReport = await ExecuteMilestoneQaAsync(
                         jobId,
@@ -667,12 +691,13 @@ public partial class MainWindow
                     high,
                     validationRound,
                     cancellationToken);
-                feedback.Add(
-                    "HIGH_REPORT:" +
-                    Environment.NewLine +
-                    highReport);
-                validationCompleted = true;
-                gitFinalized = false;
+                    feedback.Add(
+                        "HIGH_REPORT:" +
+                        Environment.NewLine +
+                        highReport);
+                    validationCompleted = true;
+                    gitFinalizeAttempted = false;
+                }
             }
 
             if (parsed.ValidActions.Any(action =>
@@ -712,7 +737,7 @@ public partial class MainWindow
                     if (gitResult.PauseRequired)
                         return new(true, gitResult.Summary);
 
-                    gitFinalized = gitResult.Success;
+                    gitFinalizeAttempted = true;
                 }
             }
 
