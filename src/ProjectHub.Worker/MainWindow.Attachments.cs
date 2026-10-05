@@ -155,17 +155,20 @@ public partial class MainWindow
 
             var fileName =
                 $"clipboard-{DateTimeOffset.Now:yyMMdd-HHmmss}.png";
-            var attachment = UserAttachmentTransport.RegisterCachedFile(
-                id,
-                fileName,
-                storedPath,
-                "image/png",
-                "CLIPBOARD");
-
-            if (attachment.Size > UserAttachmentTransport.MaxFileBytes)
+            UserAttachmentInput attachment;
+            try
+            {
+                attachment = UserAttachmentTransport.RegisterCachedFile(
+                    id,
+                    fileName,
+                    storedPath,
+                    "image/png",
+                    "CLIPBOARD");
+            }
+            catch
             {
                 TryDeleteAttachmentCache(storedPath);
-                throw new InvalidOperationException("클립보드 이미지는 50MB를 초과할 수 없습니다.");
+                throw;
             }
 
             target.Add(attachment);
