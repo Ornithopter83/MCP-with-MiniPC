@@ -188,9 +188,26 @@ public sealed class CoordinatorFirstContractTests
 
         var high = MilestoneDefinitionContract.NormalizeHighReport(
             0,
-            "[GOTO : MANAGER]\nHIGH_STATUS: MODIFIED\n보완 완료",
+            "[GOTO : MANAGER]\nHIGH_STATUS: MODIFIED\nCHANGED_PATH: src/Fix.cs\n보완 완료",
             null);
         Assert.Contains("HIGH_STATUS: MODIFIED", high);
+        Assert.Equal(
+            new[] { "src/Fix.cs" },
+            MilestoneDefinitionContract.ExtractReportPaths(
+                high,
+                "CHANGED_PATH"));
+    }
+
+    [Fact]
+    public void HighModifiedReport_WithoutChangedPath_IsRejected()
+    {
+        var high = MilestoneDefinitionContract.NormalizeHighReport(
+            0,
+            "[GOTO : MANAGER]\nHIGH_STATUS: MODIFIED\n보완 완료",
+            null);
+
+        Assert.Contains("HIGH_STATUS: INCOMPLETE", high);
+        Assert.Contains("HIGH_REPORT_CONTRACT_INVALID", high);
     }
 
     [Fact]
