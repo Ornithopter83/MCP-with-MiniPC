@@ -2388,10 +2388,8 @@ public partial class MainWindow : Window
     private void ExecutionModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_loadingRoleControls) return;
-        var cliMode = string.Equals(GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI"), "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
-        AiRolesStatusText.Text = cliMode
-            ? "신규 역할 실행 설정: HQ·중간관리자·QA·검토·일반 WORK는 역할별 Provider/Model을 사용하고 RESOURCE는 GPT Web 고정입니다."
-            : "Legacy 실행: 기존 Codex → GPT Web 경로를 사용합니다.";
+        AiRolesStatusText.Text =
+            "신규 역할 실행 설정: HQ·중간관리자·QA·검토·일반 WORK는 역할별 Provider/Model을 사용하고 RESOURCE는 GPT Web 고정입니다.";
     }
 
     private static string GetSelectedTag(System.Windows.Controls.ComboBox combo, string fallback) =>
