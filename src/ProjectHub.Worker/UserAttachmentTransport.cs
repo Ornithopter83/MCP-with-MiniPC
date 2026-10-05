@@ -31,7 +31,9 @@ public sealed record AiInputAttachment(
 public static class UserAttachmentTransport
 {
     public const int MaxFilesPerMessage = 20;
-    public const long MaxFileBytes = 50L * 1024L * 1024L;
+    public const long MaxFileBytes = 512L * 1024L * 1024L;
+    public const long MaxImageBytes = 20L * 1024L * 1024L;
+    public const long MaxSpreadsheetBytes = 50L * 1024L * 1024L;
 
     private static readonly HashSet<string> BlockedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -51,8 +53,6 @@ public static class UserAttachmentTransport
         var info = new FileInfo(sourcePath);
         if (info.Length <= 0)
             throw new InvalidOperationException("빈 파일은 첨부할 수 없습니다.");
-        if (info.Length > MaxFileBytes)
-            throw new InvalidOperationException("첨부 파일은 50MB를 초과할 수 없습니다.");
 
         var fileName = SanitizeFileName(
             string.IsNullOrWhiteSpace(preferredFileName)
@@ -61,6 +61,9 @@ public static class UserAttachmentTransport
         var extension = Path.GetExtension(fileName);
         if (BlockedExtensions.Contains(extension))
             throw new InvalidOperationException($"실행 가능한 파일 형식은 첨부할 수 없습니다: {extension}");
+
+        var mimeType = GetMimeType(extension);
+        ValidateFileSize(fileName, mimeType, info.Length);
 
         WorkerPaths.EnsureCreated();
         var id = Guid.NewGuid().ToString("N");
@@ -76,7 +79,7 @@ public static class UserAttachmentTransport
             id,
             fileName,
             storedPath,
-            GetMimeType(extension),
+            mimeType,
             size,
             sha256,
             string.IsNullOrWhiteSpace(sourceKind) ? "FILE" : sourceKind.Trim().ToUpperInvariant());
@@ -96,14 +99,20 @@ public static class UserAttachmentTransport
             throw new FileNotFoundException("캐시된 첨부 파일을 찾을 수 없습니다.", storedPath);
 
         var info = new FileInfo(storedPath);
-        if (info.Length <= 0 || info.Length > MaxFileBytes)
-            throw new InvalidOperationException("첨부 파일 크기가 허용 범위를 벗어났습니다.");
+        if (info.Length <= 0)
+            throw new InvalidOperationException("빈 파일은 첨부할 수 없습니다.");
+
+        var safeFileName = SanitizeFileName(fileName);
+        var effectiveMimeType = string.IsNullOrWhiteSpace(mimeType)
+            ? GetMimeType(Path.GetExtension(safeFileName))
+            : mimeType;
+        ValidateFileSize(safeFileName, effectiveMimeType, info.Length);
 
         return new UserAttachmentInput(
             id,
-            SanitizeFileName(fileName),
+            safeFileName,
             Path.GetFullPath(storedPath),
-            string.IsNullOrWhiteSpace(mimeType) ? GetMimeType(Path.GetExtension(fileName)) : mimeType,
+            effectiveMimeType,
             info.Length,
             ComputeSha256(storedPath),
             string.IsNullOrWhiteSpace(sourceKind) ? "FILE" : sourceKind.Trim().ToUpperInvariant());
@@ -296,6 +305,48 @@ public static class UserAttachmentTransport
         if (bytes < 1024) return $"{bytes} B";
         if (bytes < 1024L * 1024L) return $"{bytes / 1024d:0.#} KB";
         return $"{bytes / (1024d * 1024d):0.#} MB";
+    }
+
+    public static long GetMaxFileBytes(string fileName, string? mimeType = null)
+    {
+        var extension = Path.GetExtension(fileName);
+        var effectiveMimeType = string.IsNullOrWhiteSpace(mimeType)
+            ? GetMimeType(extension)
+            : mimeType;
+
+        if (effectiveMimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return MaxImageBytes;
+
+        if (string.Equals(extension, ".csv", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(
+                effectiveMimeType,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(effectiveMimeType, "text/csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return MaxSpreadsheetBytes;
+        }
+
+        return MaxFileBytes;
+    }
+
+    public static void ValidateFileSize(string fileName, string? mimeType, long size)
+    {
+        if (size <= 0)
+            throw new InvalidOperationException("빈 파일은 첨부할 수 없습니다.");
+
+        var limit = GetMaxFileBytes(fileName, mimeType);
+        if (size <= limit)
+            return;
+
+        var label = limit == MaxImageBytes
+            ? "이미지는"
+            : limit == MaxSpreadsheetBytes
+                ? "CSV/스프레드시트는"
+                : "첨부 파일은";
+        throw new InvalidOperationException(
+            $"{label} {FormatSize(limit)}를 초과할 수 없습니다.");
     }
 
     public static string GetMimeType(string extension) => extension.ToLowerInvariant() switch
