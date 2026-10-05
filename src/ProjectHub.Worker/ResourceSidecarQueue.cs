@@ -281,9 +281,9 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         var relative = paths
             .Select(path => Path.GetRelativePath(_workingDirectory, path).Replace('\\', '/'))
             .ToArray();
-        var message = $"RESOURCE 저장 완료 · type={request.Type} · 공용 임시 폴더 temp/{targetDirectory} · {relative.Length}개:\n" +
+        var message = $"RESOURCE 저장 완료 · type={request.Type} · 임시 폴더 temp/{targetDirectory} · {relative.Length}개:\n" +
                       string.Join("\n", relative.Select(path => "- " + path)) +
-                      "\n후속 WORK는 이 공용 임시 파일을 현재 worktree의 최종 위치로 복사해 사용하며, 자동 코드 연결은 수행하지 않았습니다.";
+                      "\nWorker가 HQ 지정 TARGET_PATH로 move하기 전의 임시 결과입니다.";
         return new ResourceSidecarCompletion(request.Id, request.Type, true, message, null, paths, request.WorkItemId);
     }
 
