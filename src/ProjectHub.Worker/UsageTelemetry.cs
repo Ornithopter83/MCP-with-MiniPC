@@ -31,22 +31,6 @@ public sealed record ModelCallTelemetry(
     string? FooterDigest = null,
     string? PayloadDigest = null);
 
-public sealed record JevCallTelemetry(
-    string Model,
-    long RequestBytes,
-    long EvidenceBytes,
-    long ResponseBytes,
-    long LatencyMs,
-    bool UsageKnown,
-    long? InputTokens,
-    long? CachedInputTokens,
-    long? OutputTokens,
-    long? ReasoningTokens,
-    long? ProviderTotalTokens,
-    int QuestionCount,
-    string? ErrorCode,
-    string? PayloadDigest = null);
-
 public static class UsageTelemetryStore
 {
     private static readonly object Gate = new();
