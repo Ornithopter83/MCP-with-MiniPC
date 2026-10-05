@@ -1,6 +1,6 @@
 namespace ProjectHub.Worker;
 
-public enum WorkerRoleState { Hq, Work, Judge, High, Resource, Unknown }
+public enum WorkerRoleState { Hq, Manager, Work, Qa, Judge, High, Resource, Unknown }
 public enum WorkerAction { Continue, Pause, End }
 public sealed record WorkerGotoRoute(WorkerRoleState? Target, string Body, WorkerAction? Action = null, string? Error = null);
 
