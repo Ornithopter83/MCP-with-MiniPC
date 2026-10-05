@@ -131,7 +131,6 @@ public partial class MainWindow : Window
     private string _qaStageIconAsset = "current-openai.png";
     private string _highLevelStageIconAsset = "current-openai.png";
     private string _managerStageIconAsset = "current-openai.png";
-    private string _resourceStageIconAsset = "current-web.png";
     private bool _resourceSidecarActive;
     private int _resourceSidecarQueued;
     private string _resourceSidecarStatus = "ChatGPT Web";
@@ -485,7 +484,6 @@ public partial class MainWindow : Window
         => TaskContinuationContract.CanEditTaskConfiguration(
             executionActive:
                 _activeTaskCts is not null ||
-                _gitPreparationInProgress ||
                 _newTaskCleanupInProgress,
             canceling: _cancelCleanupInProgress,
             taskHistoryVisible:
@@ -576,14 +574,13 @@ public partial class MainWindow : Window
     {
         if (AddWorkButton is null || DashboardFollowupInput is null) return;
         var inactive = !_cancelCleanupInProgress &&
-                       !_gitPreparationInProgress &&
                        _activeTaskCts is null;
         var hasContinuation = IsDirectWorkMode ||
                               (_continuationState is not null &&
                                TaskContinuationContract.CanAcceptFollowupStatus(_continuationState.Status));
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
                         DashboardFollowupInput.Text != FollowupPromptPlaceholder;
-        AddWorkButton.Content = _gitPreparationInProgress ? "Git 준비 중..." : "＋   작업 추가";
+        AddWorkButton.Content = "＋   작업 추가";
         AddWorkButton.IsEnabled = inactive && hasContinuation && hasPrompt;
         AddWorkButton.Opacity = AddWorkButton.IsEnabled ? 1 : 0.72;
     }
@@ -677,7 +674,6 @@ public partial class MainWindow : Window
     private async void AddWorkButton_Click(object sender, RoutedEventArgs e)
     {
         if (_cancelCleanupInProgress ||
-            _gitPreparationInProgress ||
             _activeTaskCts is not null)
             return;
 
@@ -774,20 +770,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_gitPreparationInProgress)
-        {
-            var cancelable = _activeTaskCts is not null;
-            RunButton.Content = cancelable ? "■   취소" : "Git 준비 중...";
-            ApplyRunButtonVisualState(cancelable && !_userCanceledTask);
-            DashboardPreflightText.Text = cancelable
-                ? "Git 기준점을 준비하는 중입니다. 취소할 수 있습니다."
-                : "Git 기준점을 준비하는 중입니다.";
-            DashboardPreflightText.Foreground =
-                (System.Windows.Media.Brush)FindResource("Muted");
-            UpdateFollowupButtonState();
-            return;
-        }
-
         var active = _activeTaskCts is not null;
         var preflightError = IsDirectWorkMode ? GetDirectWorkPreflightError() : GetDashboardPreflightError();
         UpdateDirectWorkControlState(active);
@@ -873,10 +855,10 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private async Task BeginNewDashboardTaskAsync()
+    private Task BeginNewDashboardTaskAsync()
     {
         if (_newTaskCleanupInProgress)
-            return;
+            return Task.CompletedTask;
 
         _newTaskCleanupInProgress = true;
         UpdateDashboardRunButtonState();
@@ -941,6 +923,8 @@ public partial class MainWindow : Window
                     System.Windows.Media.Brushes.Firebrick;
             }
         }
+
+        return Task.CompletedTask;
     }
 
     private bool TryPassSynchronousWorkspaceLaunchGate()
@@ -1237,12 +1221,6 @@ public partial class MainWindow : Window
 
         if (_cancelCleanupInProgress)
             return;
-
-        if (_gitPreparationInProgress)
-        {
-            BeginFullCancellationRequest();
-            return;
-        }
 
         if (_activeTaskCts is not null)
         {
@@ -2009,7 +1987,6 @@ public partial class MainWindow : Window
         _qaStageIconAsset = ProviderVisualCatalog.Resolve(qa.Provider).ColorAsset;
         _highLevelStageIconAsset = ProviderVisualCatalog.Resolve(highLevel.Provider).ColorAsset;
         _managerStageIconAsset = ProviderVisualCatalog.Resolve(manager.Provider).ColorAsset;
-        _resourceStageIconAsset = "current-web.png";
         CoordinatorStageIcon.Source = LoadProviderAsset(_coordinatorStageIconAsset);
         ImplementerStageIcon.Source = LoadProviderAsset(_implementerStageIconAsset);
         QaStageIcon.Source = LoadProviderAsset(_qaStageIconAsset);
