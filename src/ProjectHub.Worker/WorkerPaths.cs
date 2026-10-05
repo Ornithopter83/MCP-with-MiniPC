@@ -229,6 +229,43 @@ public static class WorkerPaths
         };
     }
 
+    public static bool TryResetProjectTemp(
+        string? repositoryRoot,
+        out string? errorDetail)
+    {
+        errorDetail = null;
+        if (string.IsNullOrWhiteSpace(repositoryRoot) ||
+            !Directory.Exists(repositoryRoot))
+            return true;
+
+        var root = Path.GetFullPath(repositoryRoot)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+        var tempRoot = Path.Combine(root, "temp");
+
+        try
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                ClearDeleteBlockingAttributes(new DirectoryInfo(tempRoot));
+                Directory.Delete(tempRoot, recursive: true);
+            }
+
+            Directory.CreateDirectory(tempRoot);
+            return true;
+        }
+        catch (Exception exception)
+            when (exception is IOException or UnauthorizedAccessException)
+        {
+            errorDetail =
+                exception.GetType().Name +
+                ": " +
+                exception.Message;
+            return false;
+        }
+    }
+
     public static bool TryResetEphemeralDirectories(out string? errorDetail)
     {
         var errors = new List<string>();
