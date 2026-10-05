@@ -441,7 +441,16 @@ internal static class MilestoneDefinitionContract
             CountExactLine(raw, "HIGH_STATUS: MODIFIED") +
             CountExactLine(raw, "HIGH_STATUS: INCOMPLETE");
 
-        if (!HasFirstGoto(raw, "MANAGER") || statusCount != 1)
+        var modified =
+            CountExactLine(raw, "HIGH_STATUS: MODIFIED") == 1;
+        var changedPaths = ExtractReportPaths(raw, "CHANGED_PATH");
+        var changedPathsValid =
+            changedPaths.Count > 0 &&
+            changedPaths.All(IsSafeRelativePath);
+
+        if (!HasFirstGoto(raw, "MANAGER") ||
+            statusCount != 1 ||
+            (modified && !changedPathsValid))
         {
             return
                 "[GOTO : MANAGER]" +
@@ -456,6 +465,24 @@ internal static class MilestoneDefinitionContract
         }
 
         return raw;
+    }
+
+    public static IReadOnlyList<string> ExtractReportPaths(
+        string report,
+        string fieldName)
+    {
+        var prefix = fieldName.Trim() + ":";
+        return (report ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith(
+                prefix,
+                StringComparison.OrdinalIgnoreCase))
+            .Select(line => line[prefix.Length..].Trim())
+            .Where(path => path.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     public static bool IsTerminalWorkReport(string report) =>
