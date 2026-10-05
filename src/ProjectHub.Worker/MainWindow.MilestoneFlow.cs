@@ -336,8 +336,14 @@ public partial class MainWindow
             UserAttachmentTransport.CleanupStagedWorkerRuntime(
                 stagedAttachments,
                 normalizedRoot);
+            _activeCoordinatorFirst = false;
             _activeTaskCts = null;
             _activeProjectJobId = null;
+            RunOnUi(() =>
+            {
+                RunButton.Content = "▶   실행";
+                UpdatePipelineVisuals();
+            });
             UpdateTaskConfigurationLockState();
             UpdateDashboardRunButtonState();
         }
@@ -1060,7 +1066,7 @@ public partial class MainWindow
             CodexCliRunner.NormalizeSessionId(qa.ThreadSessionId),
             null,
             cancellationToken,
-            CodexSandboxMode.DangerFullAccess);
+            CodexSandboxMode.ReadOnly);
 
         var report = MilestoneDefinitionContract.NormalizeQaReport(
             result.ExitCode,
