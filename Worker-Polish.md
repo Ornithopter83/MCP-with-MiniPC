@@ -31,8 +31,8 @@
 
 제4조 (마일스톤 실행)
 
-① HQ는 전용 계약의 ACTION 블록으로 마일스톤 설계, WorkItem, 작업영역, QA 예약과 필요한 entrypoint 정보를 전달한다.
-② Worker는 ACTION을 블록 단위로 독립 파싱한다. 하나의 잘못된 ACTION 때문에 이미 정상 파싱된 다른 ACTION 전체를 폐기하지 않으며, 잘못된 블록은 계약 오류로 구분해 호출자에게 반환한다.
+① HQ는 전용 계약의 `[ACTION=...]` 다음 단일 JSON 객체로 마일스톤 설계, WorkItem, 작업영역, QA 예약, RESOURCE와 필요한 entrypoint 정보를 전달한다.
+② Worker는 ACTION과 JSON envelope를 기계적으로 파싱한다. HQ의 추가 설명과 세부 지시는 JSON 내부 필드에 포함하며 JSON 밖의 별도 BODY/END_ACTION 형식은 사용하지 않는다.
 ③ 중간관리자는 HQ 설계를 받아 GENERAL WORK와 RESOURCE를 실행시킨다.
 ④ 모든 계획된 작업은 성공·실패와 관계없이 terminal 상태가 되어야 현재 실행 묶음이 끝난 것으로 본다.
 ⑤ HQ가 QA를 예약했다면 Worker는 HQ 지시를 기계적으로 파싱하여 HIGH 호출 직전에 QA를 삽입한다. QA 필요 여부를 Worker, 중간관리자 또는 HIGH가 새로 판단하지 않는다.
