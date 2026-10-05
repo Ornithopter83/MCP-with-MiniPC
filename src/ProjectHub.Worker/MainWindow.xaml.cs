@@ -29,7 +29,6 @@ public partial class MainWindow : Window
     private bool _syncingRoleThreadSelection;
     private bool _activeCoordinatorFirst;
     private CancellationTokenSource? _activeTaskCts;
-    private bool _awaitingWebResult;
     private string? _activeWorkingDirectory;
     private DateTimeOffset _lastActivityAt;
     private bool _jobTimedOut;
@@ -333,7 +332,7 @@ public partial class MainWindow : Window
 
         _allowClose = true;
         SetSettingsPopupOpen(false);
-        if (_activeTaskCts is not null || _awaitingWebResult)
+        if (_activeTaskCts is not null)
             AddTaskMessage("SYSTEM", "Worker 종료 요청으로 실행 중 작업을 중단합니다.", status: "CANCELED");
         ExportTaskTranscript();
         SaveWindowPosition();
@@ -486,7 +485,6 @@ public partial class MainWindow : Window
         => TaskContinuationContract.CanEditTaskConfiguration(
             executionActive:
                 _activeTaskCts is not null ||
-                _awaitingWebResult ||
                 _gitPreparationInProgress ||
                 _newTaskCleanupInProgress,
             canceling: _cancelCleanupInProgress,
@@ -579,8 +577,7 @@ public partial class MainWindow : Window
         if (AddWorkButton is null || DashboardFollowupInput is null) return;
         var inactive = !_cancelCleanupInProgress &&
                        !_gitPreparationInProgress &&
-                       _activeTaskCts is null &&
-                       !_awaitingWebResult;
+                       _activeTaskCts is null;
         var hasContinuation = IsDirectWorkMode ||
                               (_continuationState is not null &&
                                TaskContinuationContract.CanAcceptFollowupStatus(_continuationState.Status));
@@ -681,8 +678,7 @@ public partial class MainWindow : Window
     {
         if (_cancelCleanupInProgress ||
             _gitPreparationInProgress ||
-            _activeTaskCts is not null ||
-            _awaitingWebResult)
+            _activeTaskCts is not null)
             return;
 
         if (IsDirectWorkMode)
@@ -792,7 +788,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var active = _activeTaskCts is not null || _awaitingWebResult;
+        var active = _activeTaskCts is not null;
         var preflightError = IsDirectWorkMode ? GetDirectWorkPreflightError() : GetDashboardPreflightError();
         UpdateDirectWorkControlState(active);
         var executionReady = preflightError is null;
@@ -1060,7 +1056,7 @@ public partial class MainWindow : Window
         _pairArrowActive = codexActive || workerActive || webActive;
         _flowFrame = 0;
         UpdateArrowAnimation();
-        var running = codexActive || workerActive || webActive || (!_userCanceledTask && (_activeTaskCts is not null || _awaitingWebResult));
+        var running = codexActive || workerActive || webActive || (!_userCanceledTask && _activeTaskCts is not null);
         _currentTaskStage = !running ? TaskStage.Idle
             : explicitStage ?? (_activeCoordinatorFirst && codexActive ? TaskStage.Coordinator
             : webActive ? TaskStage.Coordinator
@@ -1075,7 +1071,7 @@ public partial class MainWindow : Window
     private void UpdatePipelineVisuals()
     {
         var idle = _currentTaskStage == TaskStage.Idle;
-        var initialInputIdle = idle && _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _activeTaskCts is null && !_awaitingWebResult;
+        var initialInputIdle = idle && _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _activeTaskCts is null;
         SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, RoleVisuals["Coordinator"], false, initialInputIdle);
         SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, _implementerStageIconAsset, TaskStage.Implementer, RoleVisuals["Implementer"], false, initialInputIdle);
         var qaDisabled = _activeCoordinatorFirst && _currentMilestoneQaReserved == false;
@@ -1213,7 +1209,7 @@ public partial class MainWindow : Window
 
     private void MessageToggle_Click(object sender, RoutedEventArgs e)
     {
-        if (_activeTaskCts is not null || _awaitingWebResult) return;
+        if (_activeTaskCts is not null) return;
         _messageExpanded = !_messageExpanded;
         UpdatePanelLayout(false);
     }
@@ -1248,7 +1244,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_activeTaskCts is not null || _awaitingWebResult)
+        if (_activeTaskCts is not null)
         {
             BeginFullCancellationRequest();
             return;
@@ -1305,13 +1301,12 @@ public partial class MainWindow : Window
 
     private void CheckJobInactivity()
     {
-        if (_jobTimedOut || (!_awaitingWebResult && _activeTaskCts is null)) return;
+        if (_jobTimedOut || _activeTaskCts is null) return;
         if (DateTimeOffset.UtcNow - _lastActivityAt < JobInactivityTimeout) return;
 
         _jobTimedOut = true;
         _activeTaskCts?.Cancel();
         _bridgeServer?.CancelActiveTask();
-        _awaitingWebResult = false;
         AddTaskMessage("SYSTEM", "Web 또는 Codex 응답이 30분 동안 없어 작업을 종료했습니다.");
         TaskDirection.Text = "TIMEOUT";
         TaskTitle.Text = "30분 무응답으로 작업 종료";
@@ -1324,7 +1319,6 @@ public partial class MainWindow : Window
     {
         _activeCoordinatorFirst = false;
         _currentMilestoneQaReserved = null;
-        _awaitingWebResult = false;
         _jobTimedOut = false;
         _activeWorkingDirectory = null;
         TaskDirection.Text = "IDLE";
@@ -2872,12 +2866,6 @@ public partial class MainWindow : Window
                     TaskDirection.Text = "설계 관제";
                     TaskTitle.Text = $"HQ Web {progress.Stage}";
                     SetFlowState(true, false, true, explicitStage: TaskStage.Coordinator);
-                }
-                else if (_awaitingWebResult)
-                {
-                    TaskDirection.Text = "WORKER → GPT WEB";
-                    TaskTitle.Text = $"Web {progress.Stage}";
-                    SetFlowState(false, true, true);
                 }
             }
         }));
