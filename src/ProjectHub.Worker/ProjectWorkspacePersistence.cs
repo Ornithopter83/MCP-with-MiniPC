@@ -77,12 +77,6 @@ public static class ProjectWorkspacePersistence
     public static string TranscriptDirectory(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "transcripts");
 
-    public static string WorkGraphDirectory(string workingDirectory)
-        => Path.Combine(RootDirectory(workingDirectory), "work-graphs");
-
-    public static string WorkGraphPath(string workingDirectory, string jobId)
-        => Path.Combine(WorkGraphDirectory(workingDirectory), SanitizeId(jobId) + ".json");
-
     public static string EventLogPath(string workingDirectory, string jobId)
         => Path.Combine(EventDirectory(workingDirectory), SanitizeId(jobId) + ".jsonl");
 
@@ -248,77 +242,6 @@ public static class ProjectWorkspacePersistence
         catch
         {
             return null;
-        }
-    }
-
-    public static bool SaveWorkGraph(
-        string workingDirectory,
-        WorkGraphSnapshot snapshot)
-    {
-        if (string.IsNullOrWhiteSpace(workingDirectory) ||
-            !Directory.Exists(workingDirectory) ||
-            snapshot is null ||
-            string.IsNullOrWhiteSpace(snapshot.JobId))
-            return false;
-
-        try
-        {
-            Directory.CreateDirectory(WorkGraphDirectory(workingDirectory));
-            WriteAtomic(
-                WorkGraphPath(workingDirectory, snapshot.JobId),
-                JsonSerializer.Serialize(snapshot, StateJsonOptions));
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    public static WorkGraphSnapshot? TryLoadWorkGraph(
-        string workingDirectory,
-        string jobId)
-    {
-        if (string.IsNullOrWhiteSpace(workingDirectory) ||
-            !Directory.Exists(workingDirectory) ||
-            string.IsNullOrWhiteSpace(jobId))
-            return null;
-
-        try
-        {
-            var path = WorkGraphPath(workingDirectory, jobId);
-            if (!File.Exists(path))
-                return null;
-
-            var snapshot = JsonSerializer.Deserialize<WorkGraphSnapshot>(
-                File.ReadAllText(path, Encoding.UTF8),
-                StateJsonOptions);
-            if (snapshot is null ||
-                !string.Equals(snapshot.JobId, jobId, StringComparison.Ordinal))
-                return null;
-            return snapshot;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    public static void ClearWorkGraph(string? workingDirectory, string? jobId)
-    {
-        if (string.IsNullOrWhiteSpace(workingDirectory) ||
-            !Directory.Exists(workingDirectory) ||
-            string.IsNullOrWhiteSpace(jobId))
-            return;
-
-        try
-        {
-            var path = WorkGraphPath(workingDirectory, jobId);
-            if (File.Exists(path))
-                File.Delete(path);
-        }
-        catch
-        {
         }
     }
 
