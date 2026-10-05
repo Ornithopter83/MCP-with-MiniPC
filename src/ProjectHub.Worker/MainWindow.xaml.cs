@@ -1671,38 +1671,6 @@ public partial class MainWindow : Window
                 includeHistory: false));
     }
 
-    private void OnResourceSidecarCompletion(ResourceSidecarCompletion completion)
-    {
-        RunOnUi(() =>
-        {
-            if (!completion.Success)
-            {
-                AddTaskMessage(
-                    "RESOURCE FAILED",
-                    $"request {completion.RequestId} · type {completion.Type}\n{completion.Message}",
-                    status: completion.ErrorCode ?? "RESOURCE_FAILED",
-                    includeHistory: false);
-                return;
-            }
-
-            var files = completion.SavedPaths
-                .Where(File.Exists)
-                .Select(path =>
-                {
-                    var info = new FileInfo(path);
-                    return new CodexCliFile(info.FullName, info.Name, GetResourceMimeType(info.Extension), info.Length);
-                })
-                .ToArray();
-            AddTaskMessage(
-                "RESOURCE SAVED",
-                $"request {completion.RequestId} · type {completion.Type}\n{completion.Message}",
-                fileCount: files.Length,
-                status: "SAVED",
-                includeHistory: false);
-            AddRoleResponseHistory(WorkerRoleState.Resource, "리소스 저장", completion.Message, files: files, status: "SAVED");
-        });
-    }
-
     private static string FormatCompletionMode(MechanicalWorkCompletionMode mode)
         => mode == MechanicalWorkCompletionMode.WorkResultRequired ? "WORK_RESULT_REQUIRED" : "FINALIZE_ONLY";
 
