@@ -5,32 +5,33 @@ namespace ProjectHub.Worker.Tests;
 public sealed class WorkerHistoryEventTests
 {
     [Theory]
-    [InlineData("10", "작업 (#10, 일반 작업)")]
-    [InlineData("27", "작업 (#27, 일반 작업)")]
-    [InlineData("W17", "작업 (#W17)")]
-    [InlineData("0", "작업 (#0, 리소스)")]
-    [InlineData("1", "작업 (#1, 이미지 가공)")]
-    [InlineData("2", "작업 (#2, 예약 번호)")]
-    [InlineData("7", "작업 (#7, 예약 번호)")]
-    [InlineData("8", "작업 (#8, 파일 매니저)")]
-    [InlineData("9", "작업 (#9, 빌드 매니저)")]
-    public void WorkHistoryCard_UsesActualWorkItemIdInsteadOfExecutionNumber(
-        string workItemId,
+    [InlineData("Coordinator", null, "설계 관제")]
+    [InlineData("Qa", null, "QA")]
+    [InlineData("HighLevel", null, "검토")]
+    [InlineData("Manager", null, "통합")]
+    [InlineData("Resource", null, "작업 (#0, 리소스)")]
+    [InlineData("Implementer", "0", "작업 (#0, 리소스)")]
+    [InlineData("Implementer", "10", "작업 (#10, 일반 작업)")]
+    [InlineData("Implementer", "27", "작업 (#27, 일반 작업)")]
+    [InlineData("Implementer", "8", "작업 (#8)")]
+    [InlineData("Implementer", "9", "작업 (#9)")]
+    public void HistoryRole_UsesFiveRolePresentation(
+        string stage,
+        string? workItemId,
         string expectedRole)
     {
         var item = new MainWindow.WorkerHistoryEvent(
             DateTimeOffset.UtcNow,
-            "Implementer",
+            stage,
             "ROLE_RESPONSE",
-            "작업 응답",
+            "결과",
             "완료",
             null,
             null,
             null,
             "RECEIVED",
-            workItemId)
+            null)
         {
-            WorkNumber = 1,
             WorkItemId = workItemId
         };
 
@@ -38,7 +39,33 @@ public sealed class WorkerHistoryEventTests
     }
 
     [Fact]
-    public void WorkHistoryCard_FallsBackToExecutionNumberWhenNoWorkItemIdExists()
+    public void GeneralWorkHistory_DoesNotRestoreLegacyFixedSlotLabels()
+    {
+        var fileManagerNumber = new MainWindow.WorkerHistoryEvent(
+            DateTimeOffset.UtcNow,
+            "Implementer",
+            "ROLE_RESPONSE",
+            "결과",
+            "완료",
+            null,
+            null,
+            null,
+            "RECEIVED",
+            null)
+        {
+            WorkItemId = "8"
+        };
+        var buildManagerNumber = fileManagerNumber with
+        {
+            WorkItemId = "9"
+        };
+
+        Assert.DoesNotContain("파일 매니저", fileManagerNumber.Role);
+        Assert.DoesNotContain("빌드 매니저", buildManagerNumber.Role);
+    }
+
+    [Fact]
+    public void WorkHistory_FallsBackToExecutionNumberWhenIdIsMissing()
     {
         var item = new MainWindow.WorkerHistoryEvent(
             DateTimeOffset.UtcNow,
