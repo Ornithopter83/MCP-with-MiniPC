@@ -1920,7 +1920,7 @@ public partial class MainWindow : Window
         WorkerAiRoleSettings implementer,
         CoordinatorContinuationState? continuation = null,
         IReadOnlyList<UserAttachmentInput>? attachments = null)
-        => RunParallelCoordinatorFirstJobAsync(
+        => RunMilestoneCoordinatorFirstJobAsync(
             request,
             selectedThread,
             workingDirectory,
