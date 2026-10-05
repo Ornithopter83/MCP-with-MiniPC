@@ -1172,6 +1172,73 @@ public sealed class CodexWorkItemExecutorTests
     }
 
     [Fact]
+    public async Task ResourceMakeInitialWorkPromptRequiresResourceResponseOnly()
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : RESOURCE]
+            RESOURCE_TYPE: IMAGE
+            푸른 달 모양의 마법 아이콘을 생성해주세요.
+            """,
+            workItemId: FixedWorkItemSlots.ResourceMake);
+
+        try
+        {
+            var result = await fixture.Executor.ExecuteAsync(
+                fixture.Request,
+                CancellationToken.None);
+
+            Assert.Equal(WorkItemExecutionOutcome.Blocked, result.Outcome);
+            Assert.Equal("RESOURCE_REQUEST", result.BlockCode);
+            Assert.Contains(
+                """
+                첫 줄은 [GOTO : RESOURCE]
+                둘째 줄은 RESOURCE_TYPE: IMAGE
+                그 아래에는 이미지 생성 문구만 작성해주세요.
+                직접 이미지를 생성하거나 다른 생성 도구를 사용하지 마세요.
+                """.Trim(),
+                fixture.Runner.LastRequest!.Prompt);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task ResourceMakeResourceResultDoesNotRepeatInitialResourceInstruction()
+    {
+        var fixture = CreateFixture(
+            """
+            [GOTO : HQ]
+            WORK_ITEM_STATUS: COMPLETED
+            RESOURCE 결과 확인 완료
+            """,
+            workItemId: FixedWorkItemSlots.ResourceMake);
+
+        try
+        {
+            var resumeRequest = fixture.Request with
+            {
+                InboundType = "RESOURCE_RESULT",
+                InboundBody = "RESOURCE_RESULT\nworkItemId: 0\nstatus: SAVED"
+            };
+
+            await fixture.Executor.ExecuteAsync(
+                resumeRequest,
+                CancellationToken.None);
+
+            Assert.DoesNotContain(
+                "첫 줄은 [GOTO : RESOURCE]",
+                fixture.Runner.LastRequest!.Prompt);
+        }
+        finally
+        {
+            fixture.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task ResumeRequestUsesExplicitInboundBodyInsteadOfRepeatingGoal()
     {
         var fixture = CreateFixture("""
