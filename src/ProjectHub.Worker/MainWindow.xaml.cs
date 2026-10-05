@@ -565,9 +565,6 @@ public partial class MainWindow : Window
         var canceledWorkingDirectory = _activeWorkingDirectory;
         var canceledJobId = _activeProjectJobId;
         ProjectWorkspacePersistence.ClearContinuation(canceledWorkingDirectory);
-        ProjectWorkspacePersistence.ClearWorkGraph(
-            canceledWorkingDirectory,
-            canceledJobId);
 
         AddTaskMessage(
             "TASK CANCELED",
@@ -746,12 +743,6 @@ public partial class MainWindow : Window
         }
 
         var startFresh = TaskContinuationContract.IsFreshStartStatus(continuation.Status);
-        if (!startFresh)
-        {
-            var inspection = await new GitWorktreeManager()
-                .InspectAsync(continuation.WorkingDirectory, CancellationToken.None);
-            startFresh = !inspection.Success || !inspection.IsClean;
-        }
 
         DashboardFollowupInput.Text = FollowupPromptPlaceholder;
         DashboardFollowupInput.Foreground = FindResource("Muted") as System.Windows.Media.Brush;
@@ -923,22 +914,16 @@ public partial class MainWindow : Window
         {
             ExportTaskTranscript();
 
-            GitRepositoryRuntimeCleanupResult? runtimeCleanup = null;
             var cleanupWorkspace = _activeWorkingDirectory;
             var wasDirectWork = _directWorkHistoryActive;
             _directWorkHistoryActive = false;
             _activeWorkingDirectory = null;
             ClearCoordinatorGitTargetPresentation();
 
-            if (!wasDirectWork &&
-                !string.IsNullOrWhiteSpace(cleanupWorkspace) &&
-                Directory.Exists(cleanupWorkspace))
-            {
-                runtimeCleanup = await new GitWorktreeManager()
-                    .ResetRepositoryRuntimeAsync(
-                        cleanupWorkspace,
-                        CancellationToken.None);
-            }
+            var projectTempResetSucceeded =
+                WorkerPaths.TryResetProjectTemp(
+                    cleanupWorkspace,
+                    out var projectTempResetError);
 
             if (!wasDirectWork)
                 ProjectWorkspacePersistence.ClearContinuation(cleanupWorkspace);
@@ -954,16 +939,12 @@ public partial class MainWindow : Window
             SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
             UpdateDashboardSummary();
 
-            if (runtimeCleanup is { Success: false } || !ephemeralResetSucceeded)
+            if (!projectTempResetSucceeded || !ephemeralResetSucceeded)
             {
                 var details = new List<string>();
-                if (runtimeCleanup is { Success: false })
-                {
-                    details.Add(
-                        runtimeCleanup.ErrorDetail ??
-                        runtimeCleanup.ErrorCode ??
-                        "RUNTIME_RESET_FAILED");
-                }
+                if (!projectTempResetSucceeded &&
+                    !string.IsNullOrWhiteSpace(projectTempResetError))
+                    details.Add(projectTempResetError);
                 if (!ephemeralResetSucceeded && !string.IsNullOrWhiteSpace(ephemeralResetError))
                     details.Add(ephemeralResetError);
 
