@@ -2116,6 +2116,23 @@ public partial class MainWindow : Window
             ["PROJECTHUB_CODEX_TEMP"] = roleTempPath
         };
 
+        IReadOnlyList<string>? codexConfigOverrides = null;
+        var bypassHookTrust = false;
+        if (roleName == "WORK")
+        {
+            var hookPath = Path.Combine(roleTempPath, "projecthub-work-command-gate.ps1");
+            await File.WriteAllTextAsync(
+                hookPath,
+                BuildExecutionPolicy.CreateCodexPreToolHookScript(),
+                new UTF8Encoding(false),
+                cancellationToken);
+            codexConfigOverrides = new[]
+            {
+                BuildExecutionPolicy.BuildCodexPreToolHookOverride(hookPath)
+            };
+            bypassHookTrust = true;
+        }
+
         var result = await runner.RunAsync(new AiRoleRunRequest(
             prompt,
             role,
@@ -2127,7 +2144,12 @@ public partial class MainWindow : Window
             progress,
             sessionStarted,
             InputAttachments: inputAttachments,
-            EnvironmentVariables: roleEnvironment));
+            EnvironmentVariables: roleEnvironment,
+            DisableComputerUse: roleName == "WORK",
+            IncludeAppBaseWritable: roleName != "WORK",
+            CodexConfigOverrides: codexConfigOverrides,
+            BypassHookTrust: bypassHookTrust,
+            BuildExecutionAllowed: roleName != "WORK"));
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
