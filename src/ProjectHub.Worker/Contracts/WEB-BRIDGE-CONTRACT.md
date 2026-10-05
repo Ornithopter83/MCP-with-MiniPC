@@ -69,7 +69,7 @@
 ① Worker가 Web으로 전달하는 첨부는 파일명, MIME, 크기, download URL과 가능한 경우 SHA-256을 포함할 수 있다.
 ② 확장은 Worker가 제공한 attachment endpoint에서 인증된 bytes를 받아 ChatGPT 입력에 준비한다.
 ③ Web 결과 파일은 text result와 분리된 파일 payload로 반환할 수 있다.
-④ Worker는 RESOURCE 및 일반 Web 결과 파일의 bytes, SHA-256과 저장 경로 안전성을 검증한 뒤 로컬 결과 경로에 저장한다.
+④ Worker는 RESOURCE 결과 파일의 bytes, SHA-256과 저장 경로 안전성을 검증한 뒤 프로젝트 루트의 `temp/Resource`에 임시 저장한다. 최종 프로젝트 경로 반영은 Web transport가 아니라 마일스톤 실행 흐름에서 move로 처리한다.
 ⑤ 파일 탐지, ChatGPT/OpenAI URL fetch fallback과 DOM 판정 세부는 `Web-Polish.md` 및 현재 확장 구현·테스트를 따른다.
 
 제8조 (진행과 heartbeat)
