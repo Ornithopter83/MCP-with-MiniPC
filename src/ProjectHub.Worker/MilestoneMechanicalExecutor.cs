@@ -369,13 +369,18 @@ internal static class MilestoneMechanicalExecutor
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        foreach (var path in scopedPaths)
+        var scopedPathspecs = BuildScopedPathspecs(scopedPaths);
+        if (scopedPathspecs.Count > 0)
         {
-            var add = await Run(
+            var addArgs = new List<string>
+            {
                 "add",
                 "-A",
-                "--",
-                path).ConfigureAwait(false);
+                "--"
+            };
+            addArgs.AddRange(scopedPathspecs);
+
+            var add = await Run(addArgs.ToArray()).ConfigureAwait(false);
             if (add.ExitCode != 0)
             {
                 return new(
@@ -392,7 +397,7 @@ internal static class MilestoneMechanicalExecutor
         string? commitSha = null;
         var createdCommit = false;
 
-        if (scopedPaths.Length > 0)
+        if (scopedPathspecs.Count > 0)
         {
             var diffArgs = new List<string>
             {
@@ -401,7 +406,7 @@ internal static class MilestoneMechanicalExecutor
                 "--quiet",
                 "--"
             };
-            diffArgs.AddRange(scopedPaths);
+            diffArgs.AddRange(scopedPathspecs);
             var staged = await Run(diffArgs.ToArray())
                 .ConfigureAwait(false);
 
@@ -414,7 +419,7 @@ internal static class MilestoneMechanicalExecutor
                     $"ProjectHub milestone {milestone.Id}",
                     "--"
                 };
-                commitArgs.AddRange(scopedPaths);
+                commitArgs.AddRange(scopedPathspecs);
                 var commit = await Run(commitArgs.ToArray())
                     .ConfigureAwait(false);
 
@@ -563,6 +568,23 @@ internal static class MilestoneMechanicalExecutor
         }
 
         return null;
+    }
+
+    private static IReadOnlyList<string> BuildScopedPathspecs(
+        IReadOnlyList<string> scopedPaths)
+    {
+        if (scopedPaths.Count == 0)
+            return Array.Empty<string>();
+
+        var result = new List<string>(scopedPaths.Count + 6);
+        result.AddRange(scopedPaths);
+        result.Add(":(exclude)bin");
+        result.Add(":(exclude)bin/**");
+        result.Add(":(exclude)temp");
+        result.Add(":(exclude)temp/**");
+        result.Add(":(exclude).projecthub");
+        result.Add(":(exclude).projecthub/**");
+        return result;
     }
 
     private static string NormalizeGitPath(string path) =>
