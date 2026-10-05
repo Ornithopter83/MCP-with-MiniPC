@@ -23,10 +23,10 @@ public static class LegacyWebActionContract
         return new(kind, body);
     }
 
-    public static string BuildInstructions(bool judgeEnabled) =>
-        "답변 첫 줄에서 다음 ACTION 중 하나를 사용하세요: [ACTION=CONTINUE], [ACTION=PAUSE], [ACTION=END]." + Environment.NewLine
-        + "CONTINUE 뒤에는 Codex에 전달할 본문을 작성하세요. NEXT 경로는 [NEXT : WEB] 또는 [NEXT : JEV]만 허용됩니다." + Environment.NewLine
-        + (judgeEnabled ? "JEV 검증이 필요하면 [NEXT : JEV]를 사용하세요." : "JEV 검증 경로는 현재 사용할 수 없습니다.");
+    public static string BuildInstructions() =>
+        "답변 첫 줄에서 다음 ACTION 중 하나를 사용하세요: [ACTION=CONTINUE], [ACTION=PAUSE], [ACTION=END]." +
+        Environment.NewLine +
+        "CONTINUE 뒤에는 Codex에 전달할 본문을 작성하세요.";
 
     private static LegacyWebAction InvalidOrNone(string message, bool strict) => strict
         ? new(LegacyWebActionKind.ProtocolError, string.Empty, message)
