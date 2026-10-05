@@ -7,6 +7,7 @@ namespace ProjectHub.Worker;
 internal sealed record MilestoneWorkDefinition(
     string Id,
     IReadOnlyList<string> WritePaths,
+    bool ReadOnly,
     string Body,
     string RawText);
 
@@ -22,6 +23,7 @@ internal sealed record MilestoneDefinition(
     string TargetBranch,
     bool QaReserved,
     string? Entrypoint,
+    bool ReadOnlyNoFileChanges,
     string Body,
     string RawHqMessage,
     IReadOnlyDictionary<string, MilestoneWorkDefinition> WorkItems,
@@ -160,6 +162,22 @@ internal static class MilestoneDefinitionContract
             if (string.IsNullOrWhiteSpace(entrypoint))
                 entrypoint = null;
 
+            var projectPolicy = TryGetOptionalJsonString(
+                milestoneJson,
+                "projectPolicy");
+            var readOnlyNoFileChanges = string.Equals(
+                projectPolicy,
+                "READ_ONLY_NO_FILE_CHANGES",
+                StringComparison.OrdinalIgnoreCase);
+
+            if (readOnlyNoFileChanges &&
+                milestoneJson.TryGetProperty("resource", out var readOnlyResource) &&
+                readOnlyResource.ValueKind != JsonValueKind.Null)
+            {
+                error = "READ_ONLY_RESOURCE_FORBIDDEN";
+                return false;
+            }
+
             if (!milestoneJson.TryGetProperty("workItems", out var workItemsJson) ||
                 workItemsJson.ValueKind != JsonValueKind.Array)
             {
@@ -186,8 +204,34 @@ internal static class MilestoneDefinitionContract
                     return false;
                 }
 
+                var workReadOnly = readOnlyNoFileChanges;
+                if (workJson.TryGetProperty("readOnly", out var workReadOnlyJson))
+                {
+                    if (workReadOnlyJson.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    {
+                        error = $"WORK {workId}: READ_ONLY_INVALID";
+                        return false;
+                    }
+                    workReadOnly = workReadOnly || workReadOnlyJson.GetBoolean();
+                }
+
+                string[] writePaths;
                 if (!workJson.TryGetProperty("writePaths", out var writePathsJson) ||
-                    !TryGetNonEmptyStringArray(writePathsJson, out var writePaths))
+                    writePathsJson.ValueKind != JsonValueKind.Array ||
+                    !IsStringArray(writePathsJson))
+                {
+                    error = $"WORK {workId}: WRITE_PATH_REQUIRED";
+                    return false;
+                }
+
+                writePaths = writePathsJson
+                    .EnumerateArray()
+                    .Select(item => item.GetString()?.Trim() ?? string.Empty)
+                    .Where(item => item.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                if (!workReadOnly && writePaths.Length == 0)
                 {
                     error = $"WORK {workId}: WRITE_PATH_REQUIRED";
                     return false;
@@ -223,6 +267,7 @@ internal static class MilestoneDefinitionContract
                 workItems[workId] = new(
                     workId,
                     writePaths,
+                    workReadOnly,
                     body,
                     workJson.GetRawText());
             }
@@ -298,6 +343,7 @@ internal static class MilestoneDefinitionContract
                 targetBranch,
                 qaReserved,
                 entrypoint,
+                readOnlyNoFileChanges,
                 milestoneJson.GetRawText(),
                 rawMessage,
                 workItems,
@@ -443,6 +489,7 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine($"TARGET_BRANCH: {milestone.TargetBranch}");
         builder.AppendLine($"QA_RESERVED: {(milestone.QaReserved ? "YES" : "NO")}");
         builder.AppendLine($"ENTRYPOINT: {milestone.Entrypoint ?? "없음"}");
+        builder.AppendLine($"PROJECT_POLICY: {(milestone.ReadOnlyNoFileChanges ? "READ_ONLY_NO_FILE_CHANGES" : "DEFAULT")}");
         builder.AppendLine("HQ_MILESTONE_DESIGN:");
         builder.AppendLine(milestone.Body);
 
@@ -463,7 +510,7 @@ internal static class MilestoneDefinitionContract
             foreach (var work in milestone.WorkItems.Values)
             {
                 builder.AppendLine(
-                    $"- #{work.Id} WRITE_PATH={string.Join(", ", work.WritePaths)}");
+                    $"- #{work.Id} MODE={(work.ReadOnly ? "READ_ONLY" : "WRITE")} WRITE_PATH={(work.WritePaths.Count == 0 ? "없음" : string.Join(", ", work.WritePaths))}");
                 builder.AppendLine("  " + work.Body.Replace(
                     Environment.NewLine,
                     " "));
