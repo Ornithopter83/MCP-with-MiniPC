@@ -15,7 +15,8 @@ public partial class MainWindow
 
     private sealed record ResourceExecutionReport(
         string Id,
-        string Report);
+        string Report,
+        IReadOnlyList<string> ChangedPaths);
 
     private async Task RunMilestoneCoordinatorFirstJobAsync(
         string request,
@@ -372,6 +373,8 @@ public partial class MainWindow
         var resourceReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
+        var milestoneChangedPaths = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
         var qaReport = string.Empty;
         var highReport = string.Empty;
         var validationRound = 0;
@@ -487,6 +490,10 @@ public partial class MainWindow
                     continue;
                 }
 
+                var currentLocalChanges =
+                    await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
+                        workingDirectory,
+                        cancellationToken);
                 return new(
                     false,
                     MilestoneDefinitionContract.BuildHqReport(
@@ -497,7 +504,10 @@ public partial class MainWindow
                         mechanicalReports,
                         qaReport,
                         highReport,
-                        gitResult));
+                        gitResult,
+                        initialChangedPaths,
+                        milestoneChangedPaths,
+                        currentLocalChanges));
             }
 
             var parsed = ActionBlockContract.ParseManager(managerMessage);
@@ -522,10 +532,38 @@ public partial class MainWindow
 
             if (runnableWork.Length > 0)
             {
-                var maxConcurrency = Math.Clamp(
-                    _targetSettings.EffectiveMaxConcurrentWork,
-                    WorkerTargetConfiguration.MinimumConcurrentWork,
-                    WorkerTargetConfiguration.MaximumConcurrentWork);
+                var runnableScopes = runnableWork
+                    .Select(action =>
+                    {
+                        var id = action.GetSingle("WORK_ITEM_ID");
+                        return id is not null &&
+                               milestone.WorkItems.TryGetValue(id, out var definition)
+                            ? definition.WritePaths
+                            : (IReadOnlyList<string>)Array.Empty<string>();
+                    })
+                    .ToArray();
+                var allRunnableScopes = runnableScopes
+                    .SelectMany(scopes => scopes)
+                    .ToArray();
+                var overlappingScopes =
+                    MilestoneMechanicalExecutor.HasOverlappingScopes(
+                        runnableScopes);
+                var maxConcurrency = overlappingScopes
+                    ? 1
+                    : Math.Clamp(
+                        _targetSettings.EffectiveMaxConcurrentWork,
+                        WorkerTargetConfiguration.MinimumConcurrentWork,
+                        WorkerTargetConfiguration.MaximumConcurrentWork);
+                if (overlappingScopes)
+                {
+                    feedback.Add(
+                        "WORK_CONCURRENCY_REDUCED: 동일/상위·하위 WRITE_PATH가 겹치는 RUN_WORK 요청이 있어 동시에 실행하지 않고 순차 실행합니다.");
+                }
+
+                var workBatchBefore =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory,
+                        cancellationToken);
                 using var gate = new SemaphoreSlim(maxConcurrency);
                 var workTasks = runnableWork.Select(async action =>
                 {
@@ -566,6 +604,51 @@ public partial class MainWindow
                         item.Report);
                 }
 
+                var workBatchAfter =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory,
+                        cancellationToken);
+                var observedWorkChanges =
+                    MilestoneMechanicalExecutor.DiffChangeStates(
+                        workBatchBefore,
+                        workBatchAfter);
+                var outsideWritePaths = new List<string>();
+                foreach (var changedPath in observedWorkChanges)
+                {
+                    if (MilestoneMechanicalExecutor.IsPathWithinScopes(
+                            changedPath,
+                            allRunnableScopes))
+                    {
+                        milestoneChangedPaths.Add(changedPath);
+                    }
+                    else
+                    {
+                        outsideWritePaths.Add(changedPath);
+                    }
+                }
+
+                if (observedWorkChanges.Count > 0)
+                {
+                    feedback.Add(
+                        "WORK_BATCH_CHANGED_PATHS:" +
+                        Environment.NewLine +
+                        string.Join(
+                            Environment.NewLine,
+                            observedWorkChanges.Select(path => "- " + path)));
+                }
+
+                if (outsideWritePaths.Count > 0)
+                {
+                    feedback.Add(
+                        "OUTSIDE_WRITE_PATH_DIRTY_OBSERVED:" +
+                        Environment.NewLine +
+                        "작성자는 판정하지 않으며 이번 마일스톤 Git 대상에는 자동 포함하지 않습니다." +
+                        Environment.NewLine +
+                        string.Join(
+                            Environment.NewLine,
+                            outsideWritePaths.Select(path => "- " + path)));
+                }
+
                 validationCompleted = false;
                 gitFinalizeAttempted = false;
             }
@@ -582,6 +665,8 @@ public partial class MainWindow
                     action,
                     cancellationToken);
                 resourceReports[resourceResult.Id] = resourceResult.Report;
+                foreach (var changedPath in resourceResult.ChangedPaths)
+                    milestoneChangedPaths.Add(changedPath);
                 feedback.Add(
                     $"RESOURCE {resourceResult.Id}:" +
                     Environment.NewLine +
@@ -688,6 +773,10 @@ public partial class MainWindow
                         "QA_REPORT: HQ가 QA=NO로 예약하지 않아 실행하지 않음");
                 }
 
+                var highBefore =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory,
+                        cancellationToken);
                 highReport = await ExecuteMilestoneHighAsync(
                     jobId,
                     workingDirectory,
@@ -699,6 +788,25 @@ public partial class MainWindow
                     high,
                     validationRound,
                     cancellationToken);
+                var highAfter =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory,
+                        cancellationToken);
+                var highChangedPaths =
+                    MilestoneMechanicalExecutor.DiffChangeStates(
+                        highBefore,
+                        highAfter);
+                foreach (var changedPath in highChangedPaths)
+                    milestoneChangedPaths.Add(changedPath);
+                if (highChangedPaths.Count > 0)
+                {
+                    feedback.Add(
+                        "HIGH_CHANGED_PATHS:" +
+                        Environment.NewLine +
+                        string.Join(
+                            Environment.NewLine,
+                            highChangedPaths.Select(path => "- " + path)));
+                }
                     feedback.Add(
                         "HIGH_REPORT:" +
                         Environment.NewLine +
@@ -721,21 +829,11 @@ public partial class MainWindow
                 }
                 else
                 {
-                    var currentChangedPaths =
-                        await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
-                            workingDirectory,
-                            cancellationToken);
-                    var milestonePaths =
-                        MilestoneMechanicalExecutor.CollectGitPaths(
-                            milestone,
-                            currentChangedPaths,
-                            initialChangedPaths);
-
                     gitResult =
                         await MilestoneMechanicalExecutor.FinalizeGitAsync(
                             workingDirectory,
                             milestone,
-                            milestonePaths,
+                            milestoneChangedPaths,
                             cancellationToken);
                     feedback.Add(
                         "GIT_FINALIZE_RESULT:" +
@@ -884,7 +982,8 @@ public partial class MainWindow
                 resourceId,
                 "RESOURCE_STATUS: BLOCKED" +
                 Environment.NewLine +
-                "계획되지 않은 RESOURCE_ID입니다.");
+                "계획되지 않은 RESOURCE_ID입니다.",
+                Array.Empty<string>());
         }
 
         RunOnUi(() =>
@@ -927,7 +1026,7 @@ public partial class MainWindow
                 "리소스 반영 실패",
                 missingReport,
                 status: "BLOCKED");
-            return new(resource.Id, missingReport);
+            return new(resource.Id, missingReport, Array.Empty<string>());
         }
 
         if (!completion.Success)
@@ -943,36 +1042,41 @@ public partial class MainWindow
                 "리소스 반영 실패",
                 failedReport,
                 status: "BLOCKED");
-            return new(resource.Id, failedReport);
+            return new(resource.Id, failedReport, Array.Empty<string>());
         }
 
-        var moveReport = MoveResourceResults(
+        var moveResult = MoveResourceResults(
             workingDirectory,
             resource.TargetPath,
             completion.SavedPaths);
         AddRoleResponseHistory(
             WorkerRoleState.Resource,
             "리소스 반영",
-            moveReport,
-            status: moveReport.StartsWith(
+            moveResult.Report,
+            status: moveResult.Report.StartsWith(
                 "RESOURCE_STATUS: COMPLETED",
                 StringComparison.Ordinal)
                     ? "COMPLETED"
                     : "BLOCKED");
-        return new(resource.Id, moveReport);
+        return new(
+            resource.Id,
+            moveResult.Report,
+            moveResult.ChangedPaths);
     }
 
-    private static string MoveResourceResults(
-        string workingDirectory,
-        string targetPath,
-        IReadOnlyList<string> sources)
+    private static (string Report, IReadOnlyList<string> ChangedPaths)
+        MoveResourceResults(
+            string workingDirectory,
+            string targetPath,
+            IReadOnlyList<string> sources)
     {
         if (sources.Count == 0)
         {
-            return
+            return (
                 "RESOURCE_STATUS: BLOCKED" +
                 Environment.NewLine +
-                "RESOURCE_FILE_MISSING";
+                "RESOURCE_FILE_MISSING",
+                Array.Empty<string>());
         }
 
         var root = Path.GetFullPath(workingDirectory);
@@ -981,19 +1085,21 @@ public partial class MainWindow
 
         if (!MilestoneDefinitionContract.IsPathInsideRoot(root, destination))
         {
-            return
+            return (
                 "RESOURCE_STATUS: BLOCKED" +
                 Environment.NewLine +
-                "TARGET_PATH_OUTSIDE_PROJECT_ROOT";
+                "TARGET_PATH_OUTSIDE_PROJECT_ROOT",
+                Array.Empty<string>());
         }
 
         var targetLooksLikeFile = Path.HasExtension(destination);
         if (targetLooksLikeFile && sources.Count != 1)
         {
-            return
+            return (
                 "RESOURCE_STATUS: BLOCKED" +
                 Environment.NewLine +
-                "RESOURCE_TARGET_REQUIRES_SINGLE_FILE";
+                "RESOURCE_TARGET_REQUIRES_SINGLE_FILE",
+                Array.Empty<string>());
         }
 
         var moved = new List<string>();
@@ -1017,14 +1123,15 @@ public partial class MainWindow
             }
         }
 
-        return
+        return (
             "RESOURCE_STATUS: COMPLETED" +
             Environment.NewLine +
             "최종 경로로 move 완료:" +
             Environment.NewLine +
             string.Join(
                 Environment.NewLine,
-                moved.Select(path => "- " + path));
+                moved.Select(path => "- " + path)),
+            moved);
     }
 
     private async Task<string> ExecuteMilestoneQaAsync(
