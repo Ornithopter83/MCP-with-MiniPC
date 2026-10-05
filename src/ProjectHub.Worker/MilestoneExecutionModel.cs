@@ -335,6 +335,147 @@ internal static class MilestoneDefinitionContract
                    comparison);
     }
 
+    public static string NormalizeWorkReport(
+        int exitCode,
+        string? finalMessage,
+        string? standardError)
+    {
+        if (exitCode != 0)
+        {
+            return
+                "[GOTO : MANAGER]" +
+                Environment.NewLine +
+                "WORK_ITEM_STATUS: BLOCKED" +
+                Environment.NewLine +
+                (string.IsNullOrWhiteSpace(standardError)
+                    ? "WORK 실행 프로세스 실패"
+                    : standardError.Trim());
+        }
+
+        var raw = finalMessage?.Trim() ?? string.Empty;
+        var statusCount =
+            CountExactLine(raw, "WORK_ITEM_STATUS: COMPLETED") +
+            CountExactLine(raw, "WORK_ITEM_STATUS: BLOCKED");
+
+        if (!HasFirstGoto(raw, "MANAGER") || statusCount != 1)
+        {
+            return
+                "[GOTO : MANAGER]" +
+                Environment.NewLine +
+                "WORK_ITEM_STATUS: BLOCKED" +
+                Environment.NewLine +
+                "WORK_REPORT_CONTRACT_INVALID" +
+                Environment.NewLine +
+                "원본 응답:" +
+                Environment.NewLine +
+                raw;
+        }
+
+        return raw;
+    }
+
+    public static string NormalizeQaReport(
+        int exitCode,
+        string? finalMessage,
+        string? standardError)
+    {
+        if (exitCode != 0)
+        {
+            return
+                "QA_STATUS: BLOCKED" +
+                Environment.NewLine +
+                (string.IsNullOrWhiteSpace(standardError)
+                    ? "QA 실행 프로세스 실패"
+                    : standardError.Trim());
+        }
+
+        var raw = finalMessage?.Trim() ?? string.Empty;
+        var statusCount =
+            CountExactLine(raw, "QA_STATUS: COMPLETED") +
+            CountExactLine(raw, "QA_STATUS: BLOCKED");
+
+        if (statusCount != 1)
+        {
+            return
+                "QA_STATUS: BLOCKED" +
+                Environment.NewLine +
+                "QA_REPORT_CONTRACT_INVALID" +
+                Environment.NewLine +
+                "원본 응답:" +
+                Environment.NewLine +
+                raw;
+        }
+
+        return raw;
+    }
+
+    public static string NormalizeHighReport(
+        int exitCode,
+        string? finalMessage,
+        string? standardError)
+    {
+        if (exitCode != 0)
+        {
+            return
+                "[GOTO : MANAGER]" +
+                Environment.NewLine +
+                "HIGH_STATUS: INCOMPLETE" +
+                Environment.NewLine +
+                (string.IsNullOrWhiteSpace(standardError)
+                    ? "HIGH 실행 프로세스 실패"
+                    : standardError.Trim());
+        }
+
+        var raw = finalMessage?.Trim() ?? string.Empty;
+        var statusCount =
+            CountExactLine(raw, "HIGH_STATUS: VERIFIED") +
+            CountExactLine(raw, "HIGH_STATUS: MODIFIED") +
+            CountExactLine(raw, "HIGH_STATUS: INCOMPLETE");
+
+        if (!HasFirstGoto(raw, "MANAGER") || statusCount != 1)
+        {
+            return
+                "[GOTO : MANAGER]" +
+                Environment.NewLine +
+                "HIGH_STATUS: INCOMPLETE" +
+                Environment.NewLine +
+                "HIGH_REPORT_CONTRACT_INVALID" +
+                Environment.NewLine +
+                "원본 응답:" +
+                Environment.NewLine +
+                raw;
+        }
+
+        return raw;
+    }
+
+    public static bool IsTerminalWorkReport(string report) =>
+        CountExactLine(report, "WORK_ITEM_STATUS: COMPLETED") == 1 ||
+        CountExactLine(report, "WORK_ITEM_STATUS: BLOCKED") == 1;
+
+    private static bool HasFirstGoto(string text, string role)
+    {
+        var first = (text ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))
+            ?.Trim();
+
+        return string.Equals(
+            first,
+            "[GOTO : " + role + "]",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CountExactLine(string text, string expected) =>
+        (text ?? string.Empty)
+        .Replace("\r\n", "\n", StringComparison.Ordinal)
+        .Split('\n')
+        .Count(line => string.Equals(
+            line.Trim(),
+            expected,
+            StringComparison.Ordinal));
+
     public static string Limit(string value, int maxLength)
     {
         if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
