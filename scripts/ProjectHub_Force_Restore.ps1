@@ -63,7 +63,7 @@ if (-not (Confirm-ForceRestore)) { Write-Host 'Force restore cancelled. No repos
 
 $backupRoot = Join-Path ([IO.Path]::GetTempPath()) ('projecthub-force-restore-' + [guid]::NewGuid().ToString('N'))
 $backupManaged = Join-Path $backupRoot 'ProjectHub'
-$backupConfig = Join-Path $backupRoot '.projecthub'
+$backupConfig = Join-Path $backupRoot 'config'
 $backupCmd = Join-Path $backupRoot 'cmd'
 $backupScripts = Join-Path $backupRoot 'scripts'
 New-Item -ItemType Directory -Path $backupManaged,$backupConfig,$backupCmd,$backupScripts -Force | Out-Null
@@ -76,12 +76,11 @@ function Invoke-Git {
 
 try {
     $configPath = Join-Path $gitRoot 'ProjectHub\config\project.json'
-    if (-not (Test-Path -LiteralPath $configPath)) { $configPath = Join-Path $gitRoot '.projecthub\project.json' }
     if (Test-Path -LiteralPath $configPath) { Copy-Item -LiteralPath $configPath -Destination (Join-Path $backupConfig 'project.json') -Force }
     $managedPath = Join-Path $gitRoot 'ProjectHub'
     if (Test-Path -LiteralPath $managedPath) { Copy-Item -LiteralPath $managedPath -Destination $backupRoot -Recurse -Force }
     Get-ChildItem -LiteralPath $gitRoot -Filter 'ProjectHub_*.cmd' -File -Force -ErrorAction SilentlyContinue | Copy-Item -Destination $backupCmd -Force
-    $binPath = Join-Path $gitRoot 'scripts'
+    $scriptsPath = Join-Path $gitRoot 'scripts'
     if (Test-Path -LiteralPath $scriptsPath) { Get-ChildItem -LiteralPath $scriptsPath -Filter 'ProjectHub_*.ps1' -File -Force | Copy-Item -Destination $backupScripts -Force }
 
     Invoke-Git @('fetch', 'origin')
@@ -93,11 +92,10 @@ try {
     $restoredManaged = Join-Path $gitRoot 'ProjectHub'
     if (Test-Path -LiteralPath (Join-Path $backupRoot 'ProjectHub')) { Copy-Item -LiteralPath (Join-Path $backupRoot 'ProjectHub') -Destination $gitRoot -Recurse -Force }
     $restoredConfigDir = Join-Path $gitRoot 'ProjectHub\config'
-    if (-not (Test-Path -LiteralPath $restoredConfigDir)) { $restoredConfigDir = Join-Path $gitRoot '.projecthub' }
     New-Item -ItemType Directory -Path $restoredConfigDir -Force | Out-Null
     if (Test-Path -LiteralPath (Join-Path $backupConfig 'project.json')) { Copy-Item -LiteralPath (Join-Path $backupConfig 'project.json') -Destination (Join-Path $restoredConfigDir 'project.json') -Force }
     Get-ChildItem -LiteralPath $backupCmd -File -Force | Copy-Item -Destination $gitRoot -Force
-    $restoredBin = Join-Path $gitRoot 'scripts'
+    $restoredScripts = Join-Path $gitRoot 'scripts'
     New-Item -ItemType Directory -Path $restoredScripts -Force | Out-Null
     if (Test-Path -LiteralPath $backupScripts) { Get-ChildItem -LiteralPath $backupScripts -File -Force | Copy-Item -Destination $restoredScripts -Force }
 
@@ -111,7 +109,6 @@ try {
         }
         if ($LASTEXITCODE -ne 0) { throw "ProjectHub Large Data restore failed ($LASTEXITCODE)." }
         $restoreResultPath = Join-Path $gitRoot 'ProjectHub\state\restore-result.json'
-        if (-not (Test-Path -LiteralPath $restoreResultPath)) { $restoreResultPath = Join-Path $gitRoot '.projecthub\restore-result.json' }
         if (-not (Test-Path -LiteralPath $restoreResultPath)) { throw 'ProjectHub Restore verification result was not created.' }
         $restoreResult = Get-Content -Raw -LiteralPath $restoreResultPath | ConvertFrom-Json
         if ([int]$restoreResult.mismatched -ne 0 -or [int]$restoreResult.missing -ne 0) { throw 'ProjectHub Restore verification was not clean.' }
