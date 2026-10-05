@@ -24,7 +24,6 @@ public partial class MainWindow : Window
     private readonly CodexCliRunner _codexRunner = new();
     private readonly OpenCodeCliRunner _openCodeRunner = new();
     private readonly AiRoleRunnerRegistry _aiRoleRunners;
-    private readonly WorkerStructuredPayloadHelper _structuredPayloadHelper;
     private readonly JevJudgeRunner _jevJudgeRunner = new();
     private CodexModelCatalogResult _codexModelCatalog = new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_NOT_LOADED");
     private bool _loadingRoleControls;
@@ -204,7 +203,6 @@ public partial class MainWindow : Window
         _aiRoleRunners = AiRoleRunnerRegistry.CreateDefault(
             _codexRunner,
             _openCodeRunner);
-        _structuredPayloadHelper = new WorkerStructuredPayloadHelper(_aiRoleRunners);
         InitializeComponent();
         ApplyWindowIconFromExecutable();
         InitializeDirectWorkControls();
