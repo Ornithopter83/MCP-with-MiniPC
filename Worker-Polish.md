@@ -79,8 +79,8 @@
 ⑤ WorkItem별 projecthub/* branch, checkpoint branch, Integration branch와 별도 원격 result branch를 사용하지 않는다.
 ⑥ 마일스톤 종료 시 Worker는 현재 마일스톤 변경목록에 속한 생성·수정·삭제만 stage하여 하나의 마일스톤 commit을 만들고 대상 branch에 push한다. 프로젝트 전체를 무조건 stage하지 않는다.
 ⑦ 마일스톤이 기능적으로 성공했는지와 관계없이 Git 갱신이 물리적으로 가능한 경우에는 해당 현재 상태를 commit·push한다.
-⑧ commit 또는 push 문제가 있으면 중간관리자가 현재 Git 사실을 바탕으로 가능한 방법을 사용해 해결한다. force push를 포함한 파괴적 동작은 사용자의 명시적 지시가 없는 한 자동 선택하지 않는다.
-⑨ 물리적·외부 정책상 push가 불가능하거나 반복 해결에 실패하면 현재 commit SHA, 로컬/원격 상태와 실패 사실을 HQ에 보고한다.
+⑧ commit 또는 push 문제가 있으면 중간관리자가 현재 Git 사실을 바탕으로 merge, rebase, fetch/pull, 재시도와 필요한 Git 갱신 방법을 사용해 대상 branch를 최대한 갱신한다. 마일스톤의 현재 상태를 원격에 반영하는 것을 우선한다.
+⑨ 원격 서비스 정책, 권한, 네트워크 또는 실제 Git 제약 때문에 물리적으로 push가 불가능하거나 반복 해결에 실패한 경우에만 현재 commit SHA, 로컬/원격 상태와 실패 사실을 HQ에 보고한다.
 ⑩ push 성공 여부와 무관하게 마일스톤의 모든 작업이 끝났다면 HQ 최종 보고는 생략하지 않는다.
 
 제9조 (보고과 상태)
