@@ -3,10 +3,13 @@ param(
     [switch]$NoRestore
 )
 
+$ErrorActionPreference = 'Stop'
+
 function Find-ProjectHubRepositoryRoot {
     $directory = [IO.DirectoryInfo]$PSScriptRoot
     while ($null -ne $directory) {
-        if (Test-Path -LiteralPath (Join-Path $directory.FullName '.git')) {
+        if ((Test-Path -LiteralPath (Join-Path $directory.FullName '.git')) -and
+            (Test-Path -LiteralPath (Join-Path $directory.FullName 'src\ProjectHub.Worker\ProjectHub.Worker.csproj') -PathType Leaf)) {
             return $directory.FullName
         }
 
@@ -21,36 +24,58 @@ function Find-ProjectHubRepositoryRoot {
         $directory = $directory.Parent
     }
 
-    throw "ProjectHub 저장소 루트를 찾을 수 없습니다. 저장소 루트와 Worker 배포 폴더의 위치를 확인하세요."
+    throw "ProjectHub 저장소 루트를 찾을 수 없습니다. 저장소 루트 또는 Worker 배포 폴더에서 실행하세요."
 }
 
 $repositoryRoot = Find-ProjectHubRepositoryRoot
-$projectDirectory = Join-Path $repositoryRoot 'src\ProjectHub.Worker'
-$projectFile = Join-Path $projectDirectory 'ProjectHub.Worker.csproj'
+$projectFile = Join-Path $repositoryRoot 'src\ProjectHub.Worker\ProjectHub.Worker.csproj'
+$publishDirectory = Join-Path $repositoryRoot 'bin'
+$publishedExecutable = Join-Path $publishDirectory 'ProjectHub.Worker.exe'
 $deploymentDirectory = [IO.Path]::GetFullPath((Join-Path $repositoryRoot '..\Worker'))
-$arguments = @('publish', $projectFile, '--configuration', 'Release')
-if ($NoRestore) { $arguments += '--no-restore' }
 
-& dotnet @arguments
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Repository : $repositoryRoot"
+Write-Host "Project    : $projectFile"
+Write-Host "Publish    : $publishDirectory"
 
-$publishedExecutable = Join-Path $repositoryRoot 'bin\ProjectHub.Worker.exe'
-if (-not (Test-Path -LiteralPath $publishedExecutable -PathType Leaf)) {
-    Write-Error "Published Worker executable was not found: $publishedExecutable"
-    exit 1
+if (Test-Path -LiteralPath $publishDirectory) {
+    Remove-Item -LiteralPath $publishDirectory -Recurse -Force
 }
+New-Item -ItemType Directory -Path $publishDirectory -Force | Out-Null
+
+$arguments = @(
+    'publish',
+    $projectFile,
+    '--configuration', 'Release',
+    '--runtime', 'win-x64',
+    '--self-contained', 'true',
+    '--output', $publishDirectory,
+    '-p:PublishSingleFile=true'
+)
+if ($NoRestore) {
+    $arguments += '--no-restore'
+}
+
+Write-Host ('dotnet ' + ($arguments -join ' '))
+& dotnet @arguments
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet publish failed with exit code $LASTEXITCODE."
+}
+
+if (-not (Test-Path -LiteralPath $publishedExecutable -PathType Leaf)) {
+    $publishedFiles = @(Get-ChildItem -LiteralPath $publishDirectory -File -Force -ErrorAction SilentlyContinue |
+        Select-Object -ExpandProperty Name)
+    throw "Worker executable was not created: $publishedExecutable`nPublished files: $($publishedFiles -join ', ')"
+}
+
+$publishedInfo = Get-Item -LiteralPath $publishedExecutable
+Write-Host "Created    : $($publishedInfo.FullName)"
+Write-Host "Size       : $($publishedInfo.Length) bytes"
 
 New-Item -ItemType Directory -Path $deploymentDirectory -Force | Out-Null
 Copy-Item -LiteralPath $publishedExecutable -Destination (Join-Path $deploymentDirectory 'ProjectHub.Worker.exe') -Force
-$deploymentCommand = Join-Path $deploymentDirectory 'publish-worker.cmd'
-$deploymentScript = Join-Path $deploymentDirectory 'publish-worker.ps1'
-if (-not (Test-Path -LiteralPath $deploymentCommand -PathType Leaf)) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'publish-worker.cmd') -Destination $deploymentCommand
-    Write-Host "Publish wrapper copied to $deploymentCommand"
-}
-if (-not (Test-Path -LiteralPath $deploymentScript -PathType Leaf)) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'publish-worker.ps1') -Destination $deploymentScript
-    Write-Host "Publish script copied to $deploymentScript"
-}
-Write-Host "Worker deployment copied to $deploymentDirectory"
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'publish-worker.cmd') -Destination (Join-Path $deploymentDirectory 'publish-worker.cmd') -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'publish-worker.ps1') -Destination (Join-Path $deploymentDirectory 'publish-worker.ps1') -Force
+
+Write-Host "Deployment : $deploymentDirectory"
+Write-Host "Worker publish completed."
 exit 0
