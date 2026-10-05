@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
@@ -7,7 +8,8 @@ public sealed record ActionBlock(
     IReadOnlyDictionary<string, IReadOnlyList<string>> Fields,
     string Body,
     string RawText,
-    IReadOnlyList<string> Errors)
+    IReadOnlyList<string> Errors,
+    string? JsonPayload = null)
 {
     public bool IsValid => Errors.Count == 0;
 
@@ -37,7 +39,7 @@ public static class ActionBlockContract
 {
     private static readonly HashSet<string> HqActionNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "MILESTONE", "WORK", "RESOURCE", "PAUSE", "END"
+        "WORK", "PAUSE", "END"
     };
 
     private static readonly HashSet<string> ManagerActionNames = new(StringComparer.OrdinalIgnoreCase)
@@ -47,12 +49,116 @@ public static class ActionBlockContract
     };
 
     public static ActionBlockParseResult ParseHq(string? rawMessage) =>
-        Parse(rawMessage, HqActionNames, ValidateHqAction);
+        ParseHqJsonEnvelope(rawMessage);
 
     public static ActionBlockParseResult ParseManager(string? rawMessage) =>
-        Parse(rawMessage, ManagerActionNames, ValidateManagerAction);
+        ParseLegacyBlocks(rawMessage, ManagerActionNames, ValidateManagerAction);
 
-    private static ActionBlockParseResult Parse(
+    private static ActionBlockParseResult ParseHqJsonEnvelope(string? rawMessage)
+    {
+        if (string.IsNullOrWhiteSpace(rawMessage))
+            return new(Array.Empty<ActionBlock>(), new[] { "ACTION_OUTPUT_EMPTY" });
+
+        var normalized = rawMessage
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var firstLineIndex = Array.FindIndex(
+            lines,
+            line => !string.IsNullOrWhiteSpace(line));
+
+        if (firstLineIndex < 0 ||
+            !TryReadActionStart(lines[firstLineIndex], out var actionName))
+        {
+            return new(
+                Array.Empty<ActionBlock>(),
+                new[] { "ACTION_BLOCK_NOT_FOUND" });
+        }
+
+        var errors = new List<string>();
+        if (!HqActionNames.Contains(actionName))
+            errors.Add("ACTION_UNKNOWN");
+
+        var jsonPayload = string.Join(
+                Environment.NewLine,
+                lines[(firstLineIndex + 1)..])
+            .Trim();
+
+        if (string.IsNullOrWhiteSpace(jsonPayload))
+            errors.Add("JSON_REQUIRED");
+
+        var body = string.Empty;
+        if (errors.Count == 0)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(jsonPayload);
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    errors.Add("JSON_OBJECT_REQUIRED");
+                }
+                else
+                {
+                    if (!TryGetRequiredString(root, "action", out var jsonAction))
+                    {
+                        errors.Add("JSON_ACTION_REQUIRED");
+                    }
+                    else if (!string.Equals(
+                                 jsonAction,
+                                 actionName,
+                                 StringComparison.OrdinalIgnoreCase))
+                    {
+                        errors.Add("JSON_ACTION_MISMATCH");
+                    }
+
+                    switch (actionName.ToUpperInvariant())
+                    {
+                        case "WORK":
+                            if (!root.TryGetProperty("milestone", out var milestone) ||
+                                milestone.ValueKind != JsonValueKind.Object)
+                            {
+                                errors.Add("MILESTONE_OBJECT_REQUIRED");
+                            }
+                            else if (TryGetRequiredString(
+                                         milestone,
+                                         "goal",
+                                         out var milestoneGoal))
+                            {
+                                body = milestoneGoal;
+                            }
+                            break;
+
+                        case "PAUSE":
+                        case "END":
+                            if (!TryGetRequiredString(root, "message", out var message))
+                                errors.Add("MESSAGE_REQUIRED");
+                            else
+                                body = message;
+                            break;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                errors.Add("JSON_INVALID");
+            }
+        }
+
+        var action = new ActionBlock(
+            actionName.ToUpperInvariant(),
+            EmptyFields(),
+            body,
+            normalized.Trim(),
+            errors.Distinct(StringComparer.Ordinal).ToArray(),
+            jsonPayload);
+
+        return new(
+            new[] { action },
+            action.Errors.Select(error => $"{action.Name}:{error}").ToArray());
+    }
+
+    private static ActionBlockParseResult ParseLegacyBlocks(
         string? rawMessage,
         IReadOnlySet<string> allowedActions,
         Action<ActionBlock, List<string>> validator)
@@ -143,7 +249,7 @@ public static class ActionBlockContract
             }
 
             var blockLines = lines[start..(end + 1)];
-            var action = ParseBlock(
+            var action = ParseLegacyBlock(
                 actionName,
                 blockLines,
                 allowedActions,
@@ -162,7 +268,7 @@ public static class ActionBlockContract
         return new(actions, parseErrors);
     }
 
-    private static ActionBlock ParseBlock(
+    private static ActionBlock ParseLegacyBlock(
         string actionName,
         IReadOnlyList<string> blockLines,
         IReadOnlySet<string> allowedActions,
@@ -265,81 +371,6 @@ public static class ActionBlockContract
         };
     }
 
-    private static void ValidateHqAction(
-        ActionBlock action,
-        List<string> errors)
-    {
-        switch (action.Name)
-        {
-            case "MILESTONE":
-                Require(action, errors, "MILESTONE_ID");
-                Require(action, errors, "TARGET_BRANCH");
-                var qa = Require(action, errors, "QA");
-                if (qa is not null &&
-                    !string.Equals(
-                        qa,
-                        "YES",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(
-                        qa,
-                        "NO",
-                        StringComparison.OrdinalIgnoreCase))
-                    errors.Add("QA_INVALID");
-                RequireBody(action, errors);
-                break;
-
-            case "WORK":
-                var workId = Require(
-                    action,
-                    errors,
-                    "WORK_ITEM_ID");
-                if (workId is not null &&
-                    (!int.TryParse(workId, out var workNumber) ||
-                     workNumber < 10))
-                    errors.Add("WORK_ITEM_ID_INVALID");
-
-                if (action.GetMany("WRITE_PATH").Count == 0 ||
-                    action.GetMany("WRITE_PATH")
-                        .Any(string.IsNullOrWhiteSpace))
-                    errors.Add("WRITE_PATH_REQUIRED");
-
-                RequireBody(action, errors);
-                break;
-
-            case "RESOURCE":
-                var resourceId = Require(
-                    action,
-                    errors,
-                    "RESOURCE_ID");
-                if (resourceId is not null &&
-                    !string.Equals(
-                        resourceId,
-                        "0",
-                        StringComparison.Ordinal))
-                    errors.Add("RESOURCE_ID_INVALID");
-
-                var resourceType = Require(
-                    action,
-                    errors,
-                    "RESOURCE_TYPE");
-                if (resourceType is not null &&
-                    !string.Equals(
-                        resourceType,
-                        "IMAGE",
-                        StringComparison.OrdinalIgnoreCase))
-                    errors.Add("RESOURCE_TYPE_INVALID");
-
-                Require(action, errors, "TARGET_PATH");
-                RequireBody(action, errors);
-                break;
-
-            case "PAUSE":
-            case "END":
-                RequireBody(action, errors);
-                break;
-        }
-    }
-
     private static void ValidateManagerAction(
         ActionBlock action,
         List<string> errors)
@@ -404,6 +435,20 @@ public static class ActionBlockContract
     {
         if (string.IsNullOrWhiteSpace(action.Body))
             errors.Add("BODY_REQUIRED");
+    }
+
+    private static bool TryGetRequiredString(
+        JsonElement element,
+        string propertyName,
+        out string value)
+    {
+        value = string.Empty;
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+            return false;
+
+        value = property.GetString()?.Trim() ?? string.Empty;
+        return value.Length > 0;
     }
 
     private static bool TryReadActionStart(
