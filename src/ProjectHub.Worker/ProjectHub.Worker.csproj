@@ -27,8 +27,6 @@
     <Resource Include="Assets\current-openai-gray.png" />
     <Resource Include="Assets\current-console-gray.png" />
     <Resource Include="Assets\current-web-gray.png" />
-    <Resource Include="Assets\current-jev.png" />
-    <Resource Include="Assets\current-jev-gray.png" />
     <Content Include="Assets\worker-icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -40,12 +38,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="..\..\extension\gptweb-hub\background.js">
       <LogicalName>ProjectHub.Worker.Extension.background.js</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Legacy\LEGACY-WEB-JEV-FOOTER-CONTRACT.md">
-      <LogicalName>ProjectHub.Worker.Legacy.LEGACY-WEB-JEV-FOOTER-CONTRACT.md</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="JEV-API-CONTRACT.md">
-      <LogicalName>ProjectHub.Worker.JEV-API-CONTRACT.md</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="Contracts\HQ-ROUTING-CONTRACT.md">
       <LogicalName>ProjectHub.Worker.Contracts.HQ-ROUTING-CONTRACT.md</LogicalName>
