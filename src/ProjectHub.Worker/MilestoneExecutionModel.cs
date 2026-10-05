@@ -277,11 +277,19 @@ internal static class MilestoneDefinitionContract
                     return false;
                 }
 
+                var resourceBody =
+                    resourceInstructions +
+                    Environment.NewLine +
+                    Environment.NewLine +
+                    "HQ_RESOURCE_JSON:" +
+                    Environment.NewLine +
+                    resourceJson.GetRawText();
+
                 resources["0"] = new(
                     "0",
                     resourceType.ToUpperInvariant(),
                     targetPath,
-                    resourceInstructions,
+                    resourceBody,
                     resourceJson.GetRawText());
             }
 
@@ -412,6 +420,10 @@ internal static class MilestoneDefinitionContract
                     builder.AppendLine("- " + item);
             }
         }
+
+        builder.AppendLine();
+        builder.AppendLine("HQ_WORK_ITEM_JSON:");
+        builder.AppendLine(workJson.GetRawText());
 
         return builder.ToString().Trim();
     }
