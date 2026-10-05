@@ -887,7 +887,6 @@ public partial class MainWindow
             registry);
 
         queue.StateChanged += OnResourceSidecarStateChanged;
-        queue.CompletionAvailable += OnResourceSidecarCompletion;
         queue.TransportEvent += OnResourceSidecarTransportEvent;
 
         queue.Enqueue(
@@ -899,30 +898,48 @@ public partial class MainWindow
 
         if (!queue.TryDequeueCompletion(out var completion))
         {
-            return new(
-                resource.Id,
+            var missingReport =
                 "RESOURCE_STATUS: BLOCKED" +
                 Environment.NewLine +
-                "RESOURCE_RESULT_MISSING");
+                "RESOURCE_RESULT_MISSING";
+            AddRoleResponseHistory(
+                WorkerRoleState.Resource,
+                "리소스 반영 실패",
+                missingReport,
+                status: "BLOCKED");
+            return new(resource.Id, missingReport);
         }
 
         if (!completion.Success)
         {
-            return new(
-                resource.Id,
+            var failedReport =
                 "RESOURCE_STATUS: BLOCKED" +
                 Environment.NewLine +
                 (completion.ErrorCode ?? "RESOURCE_FAILED") +
                 Environment.NewLine +
-                completion.Message);
+                completion.Message;
+            AddRoleResponseHistory(
+                WorkerRoleState.Resource,
+                "리소스 반영 실패",
+                failedReport,
+                status: "BLOCKED");
+            return new(resource.Id, failedReport);
         }
 
-        return new(
-            resource.Id,
-            MoveResourceResults(
-                workingDirectory,
-                resource.TargetPath,
-                completion.SavedPaths));
+        var moveReport = MoveResourceResults(
+            workingDirectory,
+            resource.TargetPath,
+            completion.SavedPaths);
+        AddRoleResponseHistory(
+            WorkerRoleState.Resource,
+            "리소스 반영",
+            moveReport,
+            status: moveReport.StartsWith(
+                "RESOURCE_STATUS: COMPLETED",
+                StringComparison.Ordinal)
+                    ? "COMPLETED"
+                    : "BLOCKED");
+        return new(resource.Id, moveReport);
     }
 
     private static string MoveResourceResults(
