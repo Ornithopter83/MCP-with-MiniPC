@@ -126,6 +126,7 @@ public partial class MainWindow : Window
     private enum DashboardBodyMode { NewTaskInput, TaskHistory }
     private DashboardBodyMode _dashboardBodyMode = DashboardBodyMode.NewTaskInput;
     private TaskStage _currentTaskStage = TaskStage.Idle;
+    private bool? _currentMilestoneQaReserved;
     private string _coordinatorStageIconAsset = "current-openai.png";
     private string _implementerStageIconAsset = "current-openai.png";
     private string _qaStageIconAsset = "current-openai.png";
@@ -1077,7 +1078,13 @@ public partial class MainWindow : Window
         var initialInputIdle = idle && _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _activeTaskCts is null && !_awaitingWebResult;
         SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, RoleVisuals["Coordinator"], false, initialInputIdle);
         SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, _implementerStageIconAsset, TaskStage.Implementer, RoleVisuals["Implementer"], false, initialInputIdle);
-        SetPipelineCard(PipelineQaCard, PipelineQaTitle, QaStageCircle, QaStageIcon, _qaStageIconAsset, TaskStage.Qa, RoleVisuals["Qa"], false, initialInputIdle);
+        var qaDisabled = _activeCoordinatorFirst && _currentMilestoneQaReserved == false;
+        QaStageModelText.Text = qaDisabled
+            ? "미예약"
+            : AiProviderCatalog.FormatModel(
+                _targetSettings.EffectiveQa.Provider,
+                _targetSettings.EffectiveQa.Model);
+        SetPipelineCard(PipelineQaCard, PipelineQaTitle, QaStageCircle, QaStageIcon, _qaStageIconAsset, TaskStage.Qa, RoleVisuals["Qa"], qaDisabled, initialInputIdle);
         SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, _highLevelStageIconAsset, TaskStage.HighLevel, RoleVisuals["HighLevel"], false, initialInputIdle);
         SetPipelineCard(PipelineManagerCard, PipelineManagerTitle, ManagerStageCircle, ManagerStageIcon, _managerStageIconAsset, TaskStage.Manager, RoleVisuals["Manager"], false, initialInputIdle);
     }
@@ -1316,6 +1323,7 @@ public partial class MainWindow : Window
     private void ResetTaskState()
     {
         _activeCoordinatorFirst = false;
+        _currentMilestoneQaReserved = null;
         _awaitingWebResult = false;
         _jobTimedOut = false;
         _activeWorkingDirectory = null;
