@@ -238,6 +238,72 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void WorkScopes_DetectOverlapAndKeepDisjointPathsParallelSafe()
+    {
+        Assert.True(MilestoneMechanicalExecutor.HasOverlappingScopes(
+            new IReadOnlyList<string>[]
+            {
+                new[] { "src/Feature" },
+                new[] { "src/Feature/View.cs" }
+            }));
+
+        Assert.False(MilestoneMechanicalExecutor.HasOverlappingScopes(
+            new IReadOnlyList<string>[]
+            {
+                new[] { "src/FeatureA" },
+                new[] { "src/FeatureB" }
+            }));
+    }
+
+    [Fact]
+    public void WorkScopeFilter_MatchesOnlyDeclaredPathTree()
+    {
+        var scopes = new[] { "src/Feature", "README.md" };
+
+        Assert.True(MilestoneMechanicalExecutor.IsPathWithinScopes(
+            "src/Feature/View.cs",
+            scopes));
+        Assert.True(MilestoneMechanicalExecutor.IsPathWithinScopes(
+            "README.md",
+            scopes));
+        Assert.False(MilestoneMechanicalExecutor.IsPathWithinScopes(
+            "src/Other/File.cs",
+            scopes));
+    }
+
+    [Fact]
+    public void ChangeStateDiff_FindsNewRemovedAndModifiedDirtyPaths()
+    {
+        IReadOnlyDictionary<string, string> before =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["src/modified.cs"] = "FILE:10:1",
+                ["src/removed.cs"] = "FILE:20:1",
+                ["src/same.cs"] = "FILE:30:1"
+            };
+        IReadOnlyDictionary<string, string> after =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["src/modified.cs"] = "FILE:11:2",
+                ["src/new.cs"] = "FILE:5:2",
+                ["src/same.cs"] = "FILE:30:1"
+            };
+
+        var changed = MilestoneMechanicalExecutor.DiffChangeStates(
+            before,
+            after);
+
+        Assert.Equal(
+            new[]
+            {
+                "src/modified.cs",
+                "src/new.cs",
+                "src/removed.cs"
+            },
+            changed);
+    }
+
+    [Fact]
     public void PipelineRoleVisuals_ColorOnlyTheCurrentRoleAfterLaunch()
     {
         Assert.True(PipelineCardVisualPolicy.Resolve(
