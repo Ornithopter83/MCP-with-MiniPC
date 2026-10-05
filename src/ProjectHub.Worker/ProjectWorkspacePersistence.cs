@@ -41,11 +41,7 @@ public sealed record ProjectEventLogEntry(
     long? SizeBytes,
     int? ItemCount,
     int? FileCount,
-    string? WorkItemId = null,
-    long? GraphRevision = null,
-    int? Slot = null,
-    string? Branch = null,
-    string? WorktreePath = null);
+    string? WorkItemId = null);
 
 public static class ProjectWorkspacePersistence
 {
@@ -63,7 +59,11 @@ public static class ProjectWorkspacePersistence
     };
 
     public static string RootDirectory(string workingDirectory)
-        => Path.Combine(Path.GetFullPath(workingDirectory), ".projecthub");
+        => Path.Combine(
+            Path.GetFullPath(workingDirectory),
+            "temp",
+            "ProjectHub",
+            "state");
 
     public static string StatePath(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "session-state.json");
@@ -199,11 +199,7 @@ public static class ProjectWorkspacePersistence
         long? sizeBytes = null,
         int? itemCount = null,
         int? fileCount = null,
-        string? workItemId = null,
-        long? graphRevision = null,
-        int? slot = null,
-        string? branch = null,
-        string? worktreePath = null)
+        string? workItemId = null)
     {
         if (string.IsNullOrWhiteSpace(workingDirectory) ||
             string.IsNullOrWhiteSpace(jobId) ||
@@ -227,11 +223,7 @@ public static class ProjectWorkspacePersistence
                 sizeBytes,
                 itemCount,
                 fileCount,
-                workItemId,
-                graphRevision,
-                slot,
-                branch,
-                worktreePath);
+                workItemId);
             var line = JsonSerializer.Serialize(entry, EventJsonOptions) + Environment.NewLine;
             lock (EventSync)
             {
