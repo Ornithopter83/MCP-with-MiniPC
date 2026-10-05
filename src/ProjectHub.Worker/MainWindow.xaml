@@ -185,7 +185,7 @@
         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="48" Height="48" Background="#F0F6FF" CornerRadius="12"><Image Source="Assets/current-web.png" Width="38" Height="38" Stretch="Uniform"/></Border><StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="GPT Web" FontSize="16" FontWeight="Bold"/><TextBlock x:Name="WebDescriptionText" Text="MCP 프로젝트 진척도 확인" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse x:Name="WebStatusDot" Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock x:Name="WebStatusText" Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
       </Border>
       <Border Grid.Column="2" Style="{StaticResource CardBorder}" Margin="4,0,4,0">
-        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="48" Height="48" Background="#F0F6FF" CornerRadius="12"><TextBlock Text="▰" FontSize="28" Foreground="#40536E" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="Server" FontSize="16" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse x:Name="LegacyServerStatusDot" Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock x:Name="LegacyServerStatusText" Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="48" Height="48" Background="#F0F6FF" CornerRadius="12"><TextBlock Text="▰" FontSize="28" Foreground="#40536E" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="Server" FontSize="16" FontWeight="Bold"/><TextBlock Text="MINIPC_SERVER" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse x:Name="SettingsServerStatusDot" Width="14" Height="14" Fill="#20C65A" Margin="0,0,8,0"/><TextBlock x:Name="SettingsServerStatusText" Text="READY" FontWeight="Bold" Foreground="{StaticResource Green}"/></StackPanel></StackPanel></Grid>
       </Border>
     </Grid>
       <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8,3" Margin="0,4,0,0">
@@ -672,7 +672,7 @@
             <ComboBoxItem Content="High" />
           </ComboBox>
           <Button x:Name="ClearButton" Grid.Column="3" Content="▥  Clear" Height="34" Click="Clear_Click"/>
-          <Button x:Name="LegacyRunButton" Grid.Column="4" Content="▶  Run Task" Height="34" Margin="8,0,0,0" Background="{StaticResource Blue}" Foreground="White" BorderBrush="{StaticResource Blue}" FontWeight="Bold" Click="RunTask_Click"/>
+          <Button x:Name="CommandRunButton" Grid.Column="4" Content="▶  Run Task" Height="34" Margin="8,0,0,0" Background="{StaticResource Blue}" Foreground="White" BorderBrush="{StaticResource Blue}" FontWeight="Bold" Click="RunTask_Click"/>
         </Grid>
       </Grid>
     </Border>
