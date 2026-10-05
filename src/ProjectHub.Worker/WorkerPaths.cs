@@ -45,12 +45,9 @@ public static class WorkerPaths
         var root = Path.GetFullPath(repositoryRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-        return Path.Combine(
-            root,
-            ".projecthub",
-            "artifacts",
-            StableRuntimeSegment(jobId),
-            "run-" + invocation.ToString("D12", System.Globalization.CultureInfo.InvariantCulture));
+        _ = jobId;
+        _ = invocation;
+        return Path.Combine(root, "bin");
     }
 
     public static RepositoryRuntimePaths GetRepositoryRuntimePaths(string repositoryRoot)
@@ -63,7 +60,8 @@ public static class WorkerPaths
         if (string.IsNullOrWhiteSpace(Path.GetFileName(root)))
             throw new InvalidOperationException("저장소 이름을 계산할 수 없습니다.");
 
-        var runtimeRoot = Path.Combine(root, ".projecthub", "runtime");
+        var tempRoot = Path.Combine(root, "temp");
+        var runtimeRoot = Path.Combine(tempRoot, "ProjectHub");
         var nugetRoot = Path.Combine(runtimeRoot, "nuget");
         return new RepositoryRuntimePaths(
             runtimeRoot,
@@ -75,7 +73,7 @@ public static class WorkerPaths
             Path.Combine(nugetRoot, "plugins-cache"),
             Path.Combine(nugetRoot, "scratch"),
             Path.Combine(runtimeRoot, "dotnet"),
-            Path.Combine(runtimeRoot, "temp"));
+            tempRoot);
     }
 
     public static void EnsureProjectHubGitIgnore(string repositoryRoot)
@@ -86,36 +84,39 @@ public static class WorkerPaths
         var root = Path.GetFullPath(repositoryRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var gitIgnorePath = Path.Combine(root, ".gitignore");
-        const string entry = ".projecthub/";
+        var requiredEntries = new[] { "bin/", "temp/" };
 
-        if (!File.Exists(gitIgnorePath))
-        {
-            File.WriteAllText(
-                gitIgnorePath,
-                entry + Environment.NewLine,
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        var existingLines = File.Exists(gitIgnorePath)
+            ? File.ReadAllLines(gitIgnorePath).ToList()
+            : new List<string>();
+        var normalized = existingLines
+            .Select(line => line.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var additions = requiredEntries
+            .Where(entry =>
+                !normalized.Contains(entry) &&
+                !normalized.Contains("/" + entry) &&
+                !normalized.Contains(entry.TrimEnd('/')) &&
+                !normalized.Contains("/" + entry.TrimEnd('/')))
+            .ToArray();
+
+        if (additions.Length == 0)
             return;
-        }
 
-        var lines = File.ReadAllLines(gitIgnorePath);
-        if (lines.Any(line =>
-                string.Equals(line.Trim(), entry, StringComparison.Ordinal) ||
-                string.Equals(line.Trim(), "/.projecthub/", StringComparison.Ordinal) ||
-                string.Equals(line.Trim(), ".projecthub", StringComparison.Ordinal) ||
-                string.Equals(line.Trim(), "/.projecthub", StringComparison.Ordinal)))
-        {
-            return;
-        }
-
-        var existing = File.ReadAllText(gitIgnorePath);
+        var existing = File.Exists(gitIgnorePath)
+            ? File.ReadAllText(gitIgnorePath)
+            : string.Empty;
         var separator = existing.Length == 0 ||
                         existing.EndsWith("\n", StringComparison.Ordinal) ||
                         existing.EndsWith("\r", StringComparison.Ordinal)
             ? string.Empty
             : Environment.NewLine;
-        File.AppendAllText(
+        File.WriteAllText(
             gitIgnorePath,
-            separator + entry + Environment.NewLine,
+            existing +
+            separator +
+            string.Join(Environment.NewLine, additions) +
+            Environment.NewLine,
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
     }
 
@@ -136,12 +137,12 @@ public static class WorkerPaths
         string resourceType)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        var segment = (resourceType ?? string.Empty).Trim().ToUpperInvariant() switch
+        _ = (resourceType ?? string.Empty).Trim().ToUpperInvariant() switch
         {
-            "IMAGE" => "image",
+            "IMAGE" => "IMAGE",
             _ => throw new ArgumentException("지원되지 않는 RESOURCE 타입입니다.", nameof(resourceType))
         };
-        return Path.Combine(runtime.TempRoot, segment);
+        return Path.Combine(runtime.TempRoot, "Resource");
     }
 
     public static string BuildResourceStagingDirectory(
