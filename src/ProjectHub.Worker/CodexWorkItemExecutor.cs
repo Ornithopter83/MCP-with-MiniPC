@@ -490,6 +490,21 @@ public sealed class CodexWorkItemExecutor : IWorkItemExecutor
                     : null,
                 publishOutputDirectory: publishOutputDirectory);
 
+            if (string.Equals(item.Id, FixedWorkItemSlots.ResourceMake, StringComparison.Ordinal) &&
+                inboundType is "WORK_ITEM" or "WORK_ITEM_RESUME")
+            {
+                prompt +=
+                    Environment.NewLine +
+                    Environment.NewLine +
+                    "첫 줄은 [GOTO : RESOURCE]" +
+                    Environment.NewLine +
+                    "둘째 줄은 RESOURCE_TYPE: IMAGE" +
+                    Environment.NewLine +
+                    "그 아래에는 이미지 생성 문구만 작성해주세요." +
+                    Environment.NewLine +
+                    "직접 이미지를 생성하거나 다른 생성 도구를 사용하지 마세요.";
+            }
+
             string? startedSession = sessionId;
             var callStartedAt = DateTimeOffset.UtcNow;
             GitMetadataSnapshot gitMetadataBefore;
