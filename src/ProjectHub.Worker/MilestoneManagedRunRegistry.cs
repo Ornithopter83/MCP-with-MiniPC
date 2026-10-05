@@ -114,10 +114,7 @@ internal static class MilestoneManagedRunRegistry
         if (completed == exitTask)
         {
             await exitTask.ConfigureAwait(false);
-            Active.TryRemove(
-                new KeyValuePair<string, ManagedRunEntry>(
-                    jobId,
-                    entry));
+            Active.TryRemove(jobId, out _);
             return await FinishEntryAsync(
                 entry,
                 forced: false).ConfigureAwait(false);
