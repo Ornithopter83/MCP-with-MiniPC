@@ -34,11 +34,13 @@ internal static class WebCorrelationContract
             marker + Environment.NewLine +
             prompt.Trim() + Environment.NewLine + Environment.NewLine +
             "Web 요청 상관 규약:" + Environment.NewLine +
-            "- 최종 응답 전체에 요청의 KEY 행을 정확히 그대로 포함한다." + Environment.NewLine +
-            "- 기본 출력 순서는 KEY → ACTION → GOTO(필요한 경우) → 본문이다." + Environment.NewLine +
-            "- KEY의 앞에 다른 출력이 생겨도 되지만 실제 의미 응답은 KEY 뒤에 둔다." + Environment.NewLine +
-            "- 응답을 모두 작성한 뒤 별도 줄에 " + ResponseOkMarker + "를 출력한다." + Environment.NewLine +
-            "- 수신 측은 " + ResponseOkMarker + "가 보이는 줄까지를 현재 응답으로 읽으므로 완료 표시 뒤에 의미 본문을 이어 쓰지 않는다." + Environment.NewLine +
+            "- 최종 응답의 첫 줄에 요청의 KEY 행을 정확히 그대로 출력한다." + Environment.NewLine +
+            "- KEY 바로 다음 의미 행은 [ACTION=...]이어야 한다." + Environment.NewLine +
+            "- ACTION 바로 다음에는 완전한 JSON 객체 하나만 출력한다." + Environment.NewLine +
+            "- JSON 밖에 GOTO, BODY, 설명문, 코드펜스 또는 다른 의미 내용을 출력하지 않는다." + Environment.NewLine +
+            "- 응답을 모두 작성한 뒤 별도 마지막 줄에 " + ResponseOkMarker + "를 출력한다." + Environment.NewLine +
+            "- 수신 측은 현재 KEY부터 " + ResponseOkMarker + "까지를 하나의 응답으로 상관한다." + Environment.NewLine +
+            "- " + ResponseOkMarker + " 뒤에는 의미 내용을 이어 쓰지 않는다." + Environment.NewLine +
             "- KEY를 변경하거나 다른 KEY로 대체하지 않는다.";
     }
 
