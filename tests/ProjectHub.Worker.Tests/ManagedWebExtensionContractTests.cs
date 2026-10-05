@@ -120,7 +120,7 @@ public sealed class ManagedWebExtensionContractTests
             "function correlationBodyTextFallback()",
             StringComparison.Ordinal);
         var actionGuardIndex = source.IndexOf(
-            "[ACTION=(?:CONTINUE|PAUSE|END)",
+            "[ACTION=(?:WORK|PAUSE|END)",
             correlatedSliceIndex,
             StringComparison.Ordinal);
         var promptGuardIndex = source.IndexOf(
