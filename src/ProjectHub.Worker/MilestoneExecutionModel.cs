@@ -467,6 +467,21 @@ internal static class MilestoneDefinitionContract
         return raw;
     }
 
+    public static IReadOnlyList<string> ExtractHighChangedPaths(
+        string report)
+    {
+        if (CountExactLine(report, "HIGH_STATUS: MODIFIED") != 1 ||
+            CountExactLine(report, "HIGH_STATUS: VERIFIED") != 0 ||
+            CountExactLine(report, "HIGH_STATUS: INCOMPLETE") != 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        return ExtractReportPaths(report, "CHANGED_PATH")
+            .Where(IsSafeRelativePath)
+            .ToArray();
+    }
+
     public static IReadOnlyList<string> ExtractReportPaths(
         string report,
         string fieldName)
