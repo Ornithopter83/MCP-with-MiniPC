@@ -5,6 +5,92 @@ namespace ProjectHub.Worker;
 
 internal static class MilestoneMechanicalExecutor
 {
+    public static async Task<MilestoneGitResult> CheckGitReadyAsync(
+        string workingDirectory,
+        string configuredTargetBranch,
+        CancellationToken cancellationToken)
+    {
+        var git = new ProcessGitCommandRunner();
+
+        Task<GitCommandResult> Run(params string[] args) =>
+            git.RunAsync(
+                workingDirectory,
+                args,
+                TimeSpan.FromSeconds(30),
+                cancellationToken);
+
+        var inside = await Run(
+            "rev-parse",
+            "--is-inside-work-tree").ConfigureAwait(false);
+
+        if (inside.ExitCode != 0 ||
+            !string.Equals(
+                inside.StandardOutput.Trim(),
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return new(
+                false,
+                true,
+                configuredTargetBranch,
+                null,
+                "Git 저장소가 필수입니다. 현재 프로젝트 루트가 Git 저장소가 아니므로 PAUSE합니다.");
+        }
+
+        var targetBranch = await ResolveTargetBranchAsync(
+            configuredTargetBranch,
+            Run).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(targetBranch))
+        {
+            return new(
+                false,
+                true,
+                configuredTargetBranch,
+                null,
+                "main/master 대상 branch를 확인할 수 없어 PAUSE합니다.");
+        }
+
+        var current = await Run(
+            "rev-parse",
+            "--abbrev-ref",
+            "HEAD").ConfigureAwait(false);
+        var currentBranch = current.ExitCode == 0
+            ? current.StandardOutput.Trim()
+            : string.Empty;
+
+        if (!string.Equals(
+                currentBranch,
+                targetBranch,
+                StringComparison.Ordinal))
+        {
+            return new(
+                false,
+                true,
+                targetBranch,
+                null,
+                "현재 checkout branch가 대상 branch와 다릅니다." +
+                Environment.NewLine +
+                $"current={currentBranch}" +
+                Environment.NewLine +
+                $"target={targetBranch}" +
+                Environment.NewLine +
+                "자동 branch 전환 없이 PAUSE합니다.");
+        }
+
+        var head = await Run("rev-parse", "HEAD").ConfigureAwait(false);
+        return new(
+            true,
+            false,
+            targetBranch,
+            head.ExitCode == 0 ? head.StandardOutput.Trim() : null,
+            "Git preflight 완료" +
+            Environment.NewLine +
+            $"branch={targetBranch}" +
+            Environment.NewLine +
+            $"head={(head.ExitCode == 0 ? head.StandardOutput.Trim() : "확인 실패")}");
+    }
+
     public static async Task<MilestoneMechanicalResult> ExecuteAsync(
         string jobId,
         string workingDirectory,
