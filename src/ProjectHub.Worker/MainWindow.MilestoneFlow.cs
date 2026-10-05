@@ -261,16 +261,61 @@ public partial class MainWindow
                         normalizedRoot,
                         cts.Token);
 
-                var managerReport = await RunSingleMilestoneAsync(
-                    jobId,
-                    normalizedRoot,
-                    milestone!,
-                    implementer,
-                    manager,
-                    qa,
-                    high,
-                    initialChangedPaths,
-                    cts.Token);
+                MilestoneManagerResult managerReport;
+                try
+                {
+                    managerReport = await RunSingleMilestoneAsync(
+                        jobId,
+                        normalizedRoot,
+                        milestone!,
+                        implementer,
+                        manager,
+                        qa,
+                        high,
+                        initialChangedPaths,
+                        cts.Token);
+                }
+                catch (OperationCanceledException)
+                    when (cts.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception milestoneException)
+                {
+                    var currentLocalChanges =
+                        await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
+                            normalizedRoot,
+                            cts.Token);
+                    var failureMessage =
+                        milestoneException.GetType().Name +
+                        ": " +
+                        milestoneException.Message;
+
+                    managerReport = new(
+                        false,
+                        MilestoneDefinitionContract.BuildHqReport(
+                            milestone!,
+                            "MILESTONE_EXECUTION_ERROR" +
+                            Environment.NewLine +
+                            failureMessage,
+                            new Dictionary<string, string>(
+                                StringComparer.OrdinalIgnoreCase),
+                            new Dictionary<string, string>(
+                                StringComparer.OrdinalIgnoreCase),
+                            Array.Empty<string>(),
+                            string.Empty,
+                            string.Empty,
+                            MilestoneGitResult.NotStarted(
+                                milestone!.TargetBranch),
+                            initialChangedPaths,
+                            Array.Empty<string>(),
+                            currentLocalChanges));
+
+                    AddTaskMessage(
+                        "MILESTONE ERROR",
+                        failureMessage,
+                        status: "BLOCKED");
+                }
 
                 if (managerReport.PauseRequired)
                 {
