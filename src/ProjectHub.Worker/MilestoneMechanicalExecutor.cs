@@ -222,72 +222,160 @@ internal static class MilestoneMechanicalExecutor
         string workingDirectory,
         CancellationToken cancellationToken)
     {
-        var result = await new ProcessGitCommandRunner().RunAsync(
+        var state = await SnapshotChangeStateAsync(
             workingDirectory,
-            new[] { "status", "--porcelain=v1", "-z" },
-            TimeSpan.FromSeconds(30),
             cancellationToken).ConfigureAwait(false);
-
-        if (result.ExitCode != 0)
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var entries = result.StandardOutput.Split(
-            '\0',
-            StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var entry in entries)
-        {
-            if (entry.Length < 4)
-                continue;
-
-            var candidate = entry[3..].Trim();
-            if (candidate.Length == 0)
-                continue;
-
-            var arrow = candidate.LastIndexOf(
-                " -> ",
-                StringComparison.Ordinal);
-            if (arrow >= 0)
-                candidate = candidate[(arrow + 4)..];
-
-            candidate = candidate.Replace('\\', '/');
-            paths.Add(candidate);
-        }
-
-        return paths;
+        return state.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
-    public static IReadOnlyCollection<string> CollectGitPaths(
-        MilestoneDefinition milestone,
-        IReadOnlySet<string> currentChangedPaths,
-        IReadOnlySet<string> initialChangedPaths)
+    public static async Task<IReadOnlyDictionary<string, string>> SnapshotChangeStateAsync(
+        string workingDirectory,
+        CancellationToken cancellationToken)
     {
-        var result = new HashSet<string>(
+        var git = new ProcessGitCommandRunner();
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var args in new[]
+                 {
+                     new[] { "diff", "--name-only", "-z" },
+                     new[] { "diff", "--cached", "--name-only", "-z" },
+                     new[] { "ls-files", "--others", "--exclude-standard", "-z" }
+                 })
+        {
+            var result = await git.RunAsync(
+                workingDirectory,
+                args,
+                TimeSpan.FromSeconds(30),
+                cancellationToken).ConfigureAwait(false);
+
+            if (result.ExitCode != 0)
+                continue;
+
+            foreach (var rawPath in result.StandardOutput.Split(
+                         '\0',
+                         StringSplitOptions.RemoveEmptyEntries))
+            {
+                var normalized = NormalizeGitPath(rawPath);
+                if (!string.IsNullOrWhiteSpace(normalized) &&
+                    !IsRuntimeOutput(normalized))
+                {
+                    paths.Add(normalized);
+                }
+            }
+        }
+
+        var state = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
+        var root = Path.GetFullPath(workingDirectory);
 
-        foreach (var work in milestone.WorkItems.Values)
+        foreach (var path in paths)
         {
-            foreach (var path in work.WritePaths)
-                result.Add(NormalizeGitPath(path));
+            var fullPath = Path.GetFullPath(Path.Combine(root, path));
+            if (!MilestoneDefinitionContract.IsPathInsideRoot(root, fullPath))
+                continue;
+
+            if (File.Exists(fullPath))
+            {
+                var info = new FileInfo(fullPath);
+                state[path] =
+                    "FILE:" +
+                    info.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    ":" +
+                    info.LastWriteTimeUtc.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else if (Directory.Exists(fullPath))
+            {
+                var info = new DirectoryInfo(fullPath);
+                state[path] =
+                    "DIR:" +
+                    info.LastWriteTimeUtc.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                state[path] = "MISSING";
+            }
         }
 
-        foreach (var resource in milestone.Resources.Values)
-            result.Add(NormalizeGitPath(resource.TargetPath));
+        return state;
+    }
 
-        foreach (var path in currentChangedPaths)
-        {
-            var normalized = NormalizeGitPath(path);
-            if (!initialChangedPaths.Contains(path) &&
-                !IsRuntimeOutput(normalized))
-                result.Add(normalized);
-        }
+    public static IReadOnlyCollection<string> DiffChangeStates(
+        IReadOnlyDictionary<string, string> before,
+        IReadOnlyDictionary<string, string> after)
+    {
+        var allPaths = new HashSet<string>(
+            before.Keys,
+            StringComparer.OrdinalIgnoreCase);
+        allPaths.UnionWith(after.Keys);
 
-        return result
+        return allPaths
             .Where(path =>
-                !string.IsNullOrWhiteSpace(path) &&
-                !IsRuntimeOutput(path))
+                !before.TryGetValue(path, out var beforeValue) ||
+                !after.TryGetValue(path, out var afterValue) ||
+                !string.Equals(
+                    beforeValue,
+                    afterValue,
+                    StringComparison.Ordinal))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    public static bool IsPathWithinScopes(
+        string path,
+        IEnumerable<string> scopes)
+    {
+        var normalizedPath = NormalizeGitPath(path)
+            .Trim('/');
+        foreach (var scopeValue in scopes)
+        {
+            var scope = NormalizeGitPath(scopeValue)
+                .Trim('/');
+            if (scope is "" or ".")
+                return true;
+
+            if (string.Equals(
+                    normalizedPath,
+                    scope,
+                    StringComparison.OrdinalIgnoreCase) ||
+                normalizedPath.StartsWith(
+                    scope + "/",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool HasOverlappingScopes(
+        IEnumerable<IReadOnlyList<string>> workScopes)
+    {
+        var groups = workScopes
+            .Select(group => group
+                .Select(path => NormalizeGitPath(path).Trim('/'))
+                .Where(path => path.Length > 0)
+                .ToArray())
+            .ToArray();
+
+        for (var leftIndex = 0; leftIndex < groups.Length; leftIndex++)
+        {
+            for (var rightIndex = leftIndex + 1;
+                 rightIndex < groups.Length;
+                 rightIndex++)
+            {
+                foreach (var left in groups[leftIndex])
+                {
+                    foreach (var right in groups[rightIndex])
+                    {
+                        if (ScopesOverlap(left, right))
+                            return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     public static async Task<MilestoneGitResult> FinalizeGitAsync(
@@ -583,6 +671,23 @@ internal static class MilestoneMechanicalExecutor
         result.Add(":(exclude)temp");
         result.Add(":(exclude)temp/**");
         return result;
+    }
+
+    private static bool ScopesOverlap(string left, string right)
+    {
+        if (left is "" or "." || right is "" or ".")
+            return true;
+
+        return string.Equals(
+                   left,
+                   right,
+                   StringComparison.OrdinalIgnoreCase) ||
+               left.StartsWith(
+                   right + "/",
+                   StringComparison.OrdinalIgnoreCase) ||
+               right.StartsWith(
+                   left + "/",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeGitPath(string path) =>
