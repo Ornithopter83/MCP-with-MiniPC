@@ -74,11 +74,35 @@ public static class ActionBlockContract
             var start = index;
             var end = -1;
             var nextStart = -1;
+            var scanningBody = false;
 
             for (var cursor = index + 1; cursor < lines.Length; cursor++)
             {
+                var scanLine = lines[cursor].Trim();
+
                 if (string.Equals(
-                        lines[cursor].Trim(),
+                        scanLine,
+                        "BODY_BEGIN",
+                        StringComparison.Ordinal))
+                {
+                    scanningBody = true;
+                    continue;
+                }
+
+                if (string.Equals(
+                        scanLine,
+                        "BODY_END",
+                        StringComparison.Ordinal))
+                {
+                    scanningBody = false;
+                    continue;
+                }
+
+                if (scanningBody)
+                    continue;
+
+                if (string.Equals(
+                        scanLine,
                         "[END_ACTION]",
                         StringComparison.Ordinal))
                 {
