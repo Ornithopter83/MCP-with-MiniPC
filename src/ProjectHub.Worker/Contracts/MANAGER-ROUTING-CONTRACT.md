@@ -37,6 +37,7 @@ BODY_END
 [END_ACTION]
 
 MECHANICAL의 BODY에는 `COMMAND:` 한 줄을 반드시 포함한다. BUILD/PUBLISH 명령은 최신 결과가 프로젝트 루트의 `bin`에 만들어지도록 작성한다.
+RUN은 QA/HIGH가 접근해야 하는 실행 대상을 준비하는 용도로 사용할 수 있다. Worker는 RUN 프로세스를 managed process로 유지하고 READY_FOR_VALIDATION의 QA/HIGH가 끝나거나 PAUSE/마일스톤 종료 시 프로세스 트리를 강제 종료한다. 중간관리자는 별도 STOP ACTION을 만들지 않는다.
 
 ⑥ 현재 실행 묶음의 작업이 끝나 QA/HIGH 단계로 진행할 때:
 
