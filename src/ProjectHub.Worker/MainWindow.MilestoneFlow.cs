@@ -1263,7 +1263,7 @@ public partial class MainWindow
         Environment.NewLine +
         $"실제 프로젝트 루트: {workingDirectory}" +
         Environment.NewLine +
-        "WorkGraph, worktree, projecthub/* branch, Integration은 사용하지 않는다." +
+        "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH를 명확히 지정한다." +
         Environment.NewLine +
         "동시에 실행할 GENERAL WORK의 WRITE_PATH가 겹치지 않게 설계한다." +
         Environment.NewLine +
