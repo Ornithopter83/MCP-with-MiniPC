@@ -71,11 +71,28 @@ public static class ProjectWorkspacePersistence
     public static string HandoffPath(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "last-handoff.md");
 
+    public static string DurableLogDirectory(string workingDirectory)
+    {
+        var normalized = Path.GetFullPath(workingDirectory)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+        var projectName = SanitizeId(Path.GetFileName(normalized));
+        var hash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    Encoding.UTF8.GetBytes(normalized.ToUpperInvariant())))
+            .ToLowerInvariant()[..12];
+        return Path.Combine(
+            WorkerPaths.Logs,
+            "projects",
+            projectName + "-" + hash);
+    }
+
     public static string EventDirectory(string workingDirectory)
-        => Path.Combine(RootDirectory(workingDirectory), "events");
+        => Path.Combine(DurableLogDirectory(workingDirectory), "events");
 
     public static string TranscriptDirectory(string workingDirectory)
-        => Path.Combine(RootDirectory(workingDirectory), "transcripts");
+        => Path.Combine(DurableLogDirectory(workingDirectory), "transcripts");
 
     public static string EventLogPath(string workingDirectory, string jobId)
         => Path.Combine(EventDirectory(workingDirectory), SanitizeId(jobId) + ".jsonl");
