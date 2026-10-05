@@ -29,27 +29,13 @@ public partial class MainWindow : Window
     private bool _syncingRoleThreadSelection;
     private bool _activeCoordinatorFirst;
     private CancellationTokenSource? _activeTaskCts;
-    private CodexCliResult? _lastCodexResult;
-    private BridgeTask? _lastWebTask;
     private bool _awaitingWebResult;
-    private string? _activePrompt;
-    private string? _activeWebInstruction;
     private string? _activeWorkingDirectory;
-    private string? _activeSessionId;
-    private string? _activeCliModel;
-    private string? _activeReasoning;
-    private IReadOnlyList<UserAttachmentInput> _activeUserAttachments = Array.Empty<UserAttachmentInput>();
-    private IReadOnlyList<AiInputAttachment> _activeStagedUserAttachments = Array.Empty<AiInputAttachment>();
-    private bool _activeUserAttachmentsSentToWeb;
-    private bool _webFollowupStarted;
-    private bool _actionProtocolEnabled;
-    private bool _activeReadOnly;
     private DateTimeOffset _lastActivityAt;
     private bool _jobTimedOut;
     private bool _userCanceledTask;
     private readonly HashSet<string> _userCanceledBridgeTaskIds = new(StringComparer.Ordinal);
     private static readonly TimeSpan JobInactivityTimeout = TimeSpan.FromMinutes(30);
-    private string? _lastWebTaskId;
     private string? _lastExtensionProgressKey;
     private CodexUsage _commandUsage = CodexUsage.Empty;
     private sealed record TaskMessage(DateTimeOffset Timestamp, string Source, string Content);
@@ -204,7 +190,6 @@ public partial class MainWindow : Window
         _managedWebRuntimeManager = managedWebRuntimeManager;
         if (bridgeServer is not null)
         {
-            bridgeServer.TaskChanged += OnBridgeTaskChanged;
             bridgeServer.ExtensionProgressChanged += OnExtensionProgress;
         }
         if (managedWebRuntimeManager is not null)
@@ -1311,185 +1296,6 @@ public partial class MainWindow : Window
             attachments: launchRequest.Attachments);
     }
 
-    private Task<BridgeTask?> CreateWebTaskAsync(string webPrompt, List<BridgeAttachment> attachments, string? gitReferenceHeader = null)
-    {
-        var prompt = string.IsNullOrWhiteSpace(gitReferenceHeader)
-            ? webPrompt
-            : gitReferenceHeader + Environment.NewLine + Environment.NewLine + webPrompt;
-        AddTaskMessage("WORKER -> GPT WEB", prompt);
-        return Task.FromResult(_bridgeServer?.CreateTaskForRole("HQ", prompt, attachments));
-    }
-
-    private async Task<BridgeTask?> RouteCodexResultAsync(
-        CodexCliResult result,
-        string? webInstruction,
-        bool includeWebInstruction,
-        string? gitReferenceHeader,
-        CancellationToken cancellationToken)
-    {
-        if (result.ExitCode != 0 || _bridgeServer is null)
-            return null;
-
-        var output = string.IsNullOrWhiteSpace(result.FinalMessage)
-            ? result.StandardOutput
-            : result.FinalMessage;
-        var prompt = BuildWebPrompt(
-            result with { FinalMessage = output },
-            webInstruction,
-            includeControlInstructions: true,
-            includeWebInstruction);
-        var attachments = BuildWebAttachments(_bridgeServer, result.Files);
-
-        if (!_activeUserAttachmentsSentToWeb &&
-            _activeUserAttachments.Count > 0)
-        {
-            prompt = UserAttachmentTransport.AppendWebPrompt(
-                prompt,
-                _activeStagedUserAttachments);
-            attachments.InsertRange(
-                0,
-                BuildUserWebAttachments(_activeUserAttachments));
-            _activeUserAttachmentsSentToWeb = true;
-        }
-
-        return await CreateWebTaskAsync(
-            prompt,
-            attachments,
-            gitReferenceHeader);
-    }
-
-    private async Task<CodexCliResult> RunCodexFollowupAsync(
-        string prompt,
-        string model,
-        string reasoning,
-        string workingDirectory,
-        string? sessionId,
-        bool readOnly,
-        CancellationToken cancellationToken,
-        string purpose = "WEB_FOLLOWUP",
-        string? retryReason = null)
-    {
-        var startedAt = DateTimeOffset.UtcNow;
-        CodexCliResult result;
-
-        try
-        {
-            result = await _codexRunner.RunAsync(
-                prompt,
-                model,
-                reasoning,
-                workingDirectory,
-                sessionId,
-                readOnly,
-                cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            AppendCodexFailureTelemetry(
-                startedAt,
-                prompt,
-                model,
-                reasoning,
-                purpose,
-                retryReason,
-                "CANCELLED");
-            throw;
-        }
-        catch (Exception exception)
-        {
-            AppendCodexFailureTelemetry(
-                startedAt,
-                prompt,
-                model,
-                reasoning,
-                purpose,
-                retryReason,
-                "ERROR_" + exception.GetType().Name);
-            throw;
-        }
-
-        var promptBytes = Encoding.UTF8.GetByteCount(prompt);
-        UsageTelemetryStore.Append(new ModelCallTelemetry(
-            _activeProjectJobId ?? Guid.NewGuid().ToString("N"),
-            null,
-            "CODEX",
-            model,
-            reasoning,
-            purpose,
-            result.Usage.InputTokens,
-            result.Usage.CachedInputTokens,
-            result.Usage.OutputTokens,
-            result.Usage.ReasoningOutputTokens,
-            result.Usage.ProviderTotalTokens,
-            promptBytes,
-            promptBytes,
-            0,
-            null,
-            Encoding.UTF8.GetByteCount(result.StandardOutput),
-            Math.Max(
-                0,
-                (long)(result.FinishedAt - result.StartedAt).TotalMilliseconds),
-            retryReason ??
-                (result.ExitCode != 0
-                    ? "CLI_EXIT_" + result.ExitCode
-                    : null),
-            result.Usage.UsageKnown,
-            null,
-            null,
-            result.FinishedAt,
-            DigestText(prompt),
-            null,
-            DigestText(prompt)));
-
-        return result;
-    }
-
-    private void AppendCodexFailureTelemetry(
-        DateTimeOffset startedAt,
-        string prompt,
-        string model,
-        string reasoning,
-        string purpose,
-        string? retryReason,
-        string error)
-    {
-        var promptBytes = Encoding.UTF8.GetByteCount(prompt);
-        UsageTelemetryStore.Append(new ModelCallTelemetry(
-            _activeProjectJobId ?? Guid.NewGuid().ToString("N"),
-            null,
-            "CODEX",
-            model,
-            reasoning,
-            purpose,
-            null,
-            null,
-            null,
-            null,
-            null,
-            promptBytes,
-            promptBytes,
-            0,
-            null,
-            0,
-            Math.Max(
-                0,
-                (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds),
-            retryReason ?? error,
-            false,
-            null,
-            null,
-            DateTimeOffset.UtcNow,
-            DigestText(prompt),
-            null,
-            DigestText(prompt)));
-    }
-
-    private static string DigestText(string value) =>
-        "sha256:" +
-        Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(value)))
-        .ToLowerInvariant();
-
     private void CheckJobInactivity()
     {
         if (_jobTimedOut || (!_awaitingWebResult && _activeTaskCts is null)) return;
@@ -1511,21 +1317,8 @@ public partial class MainWindow : Window
     {
         _activeCoordinatorFirst = false;
         _awaitingWebResult = false;
-        _webFollowupStarted = false;
-        _actionProtocolEnabled = false;
-        _activeReadOnly = false;
         _jobTimedOut = false;
-        _lastWebTaskId = null;
-        _activePrompt = null;
-        _activeWebInstruction = null;
         _activeWorkingDirectory = null;
-        _activeSessionId = null;
-        _activeCliModel = null;
-        _activeReasoning = null;
-        _activeUserAttachments = Array.Empty<UserAttachmentInput>();
-        _activeStagedUserAttachments = Array.Empty<AiInputAttachment>();
-        _activeUserAttachmentsSentToWeb = false;
-        _lastWebTask = null;
         TaskDirection.Text = "IDLE";
         TaskTitle.Text = "작업 없음";
         ResultTitle.Text = "Codex 결과 대기 중";
@@ -3082,239 +2875,6 @@ public partial class MainWindow : Window
         }));
     }
 
-    private void OnBridgeTaskChanged(BridgeTask task)
-    {
-        Dispatcher.BeginInvoke(new Action(() => HandleBridgeTaskChanged(task)));
-    }
-
-    private async void HandleBridgeTaskChanged(BridgeTask task)
-    {
-        if (task.Owner.Equals("HQ", StringComparison.OrdinalIgnoreCase) || task.Owner.Equals("RESOURCE", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        if ((task.Status is "COMPLETED" or "FAILED") && _userCanceledBridgeTaskIds.Remove(task.Id))
-        {
-            _awaitingWebResult = false;
-            if (_cancelCleanupInProgress && _activeTaskCts is null)
-                CompleteFullCancellationUi();
-            else
-                SetFlowState(false, false, false);
-            return;
-        }
-
-        if (_userCanceledTask && (task.Status is "COMPLETED" or "FAILED"))
-        {
-            _awaitingWebResult = false;
-            if (_cancelCleanupInProgress && _activeTaskCts is null)
-                CompleteFullCancellationUi();
-            else
-                SetFlowState(false, false, false);
-            return;
-        }
-
-        if (task.Status is "PENDING" or "CLAIMED")
-        {
-            _lastActivityAt = DateTimeOffset.UtcNow;
-            _awaitingWebResult = true;
-            RunButton.Content = "■   취소";
-            TaskDirection.Text = "WORKER → GPT WEB";
-            TaskTitle.Text = task.Status == "PENDING" ? "Worker Message 대기 중" : "GPT Web에 메시지 전달 중";
-            SetFlowState(false, true, true);
-            return;
-        }
-
-        if (task.Status is not "COMPLETED" and not "FAILED") return;
-        _lastActivityAt = DateTimeOffset.UtcNow;
-        var duplicateTerminalEvent = _actionProtocolEnabled && _lastWebTaskId == task.Id;
-        _awaitingWebResult = false;
-        RunButton.Content = "▶   실행";
-        if (_jobTimedOut || duplicateTerminalEvent)
-        {
-            SetFlowState(false, false, false);
-            return;
-        }
-        _lastWebTaskId = task.Id;
-        _lastWebTask = task;
-        UsageTelemetryStore.Append(new ModelCallTelemetry(
-            _activeProjectJobId ?? Guid.NewGuid().ToString("N"), null, "GPT_WEB", "unknown", null, "COORDINATOR_RESPONSE",
-            null, null, null, null, null, Encoding.UTF8.GetByteCount(task.Prompt ?? string.Empty), Encoding.UTF8.GetByteCount(task.Prompt ?? string.Empty), 0,
-            task.Attachments?.Sum(x => x.Size) ?? 0, Encoding.UTF8.GetByteCount(task.Result ?? string.Empty),
-            task.StartedAt is not null && task.CompletedAt is not null ? Math.Max(0, (long)(task.CompletedAt.Value - task.StartedAt.Value).TotalMilliseconds) : 0,
-            task.FinishReason, false, null, null, DateTimeOffset.UtcNow));
-        AddTaskMessage("GPT WEB", task.Result, sizeBytes: task.Result is null ? null : Encoding.UTF8.GetByteCount(task.Result), status: task.Status == "COMPLETED" ? "RECEIVED" : "FAIL");
-        ResultTitle.Text = task.Status == "COMPLETED" ? "GPT Web 응답 수신 완료" : "GPT Web FAIL";
-        ResultBody.Text = task.Result ?? "응답 내용이 없습니다.";
-        ActivateResultTab(web: true);
-
-        if (task.Status == "COMPLETED" && (_actionProtocolEnabled || !_webFollowupStarted) && _activeWorkingDirectory is not null && _activeCliModel is not null && _activeReasoning is not null)
-        {
-            _webFollowupStarted = true;
-            await RunWebResponseThroughCodexAsync(task);
-            return;
-        }
-
-        _awaitingWebResult = false;
-        RunButton.Content = "▶   실행";
-        TaskDirection.Text = "GPT WEB → WORKER";
-        TaskTitle.Text = task.Status == "COMPLETED" ? "Web 응답 수신 완료" : "Web 응답 수신 실패";
-        SetFlowState(false, true, false);
-    }
-
-    private void FinishActionTask(LegacyWebAction action, string response)
-    {
-        _awaitingWebResult = false;
-        RunButton.Content = "▶   실행";
-        TaskDirection.Text = "GPT WEB → WORKER";
-        TaskTitle.Text = action.Kind switch
-        {
-            LegacyWebActionKind.End => "Web이 작업 완료를 알림",
-            LegacyWebActionKind.Pause => "Web이 사용자 판단을 요청함",
-            LegacyWebActionKind.ProtocolError => "ACTION 프로토콜 오류",
-            _ => "Web 결과 처리 종료"
-        };
-        ResultTitle.Text = action.Kind switch
-        {
-            LegacyWebActionKind.End => "FINISH_SUCCESS",
-            LegacyWebActionKind.Pause => "FINISH_PAUSED",
-            LegacyWebActionKind.ProtocolError => "FINISH_PROTOCOL_ERROR",
-            _ => "Web 결과"
-        };
-        ResultBody.Text = action.Kind == LegacyWebActionKind.ProtocolError ? (action.Error ?? "ACTION 프로토콜 오류") + Environment.NewLine + Environment.NewLine + response : response;
-        ActivateResultTab(web: true);
-        ExportTaskTranscript();
-        SetFlowState(false, false, false);
-    }
-
-    private async Task RunWebResponseThroughCodexAsync(BridgeTask task)
-    {
-        var workingDirectory = _activeWorkingDirectory;
-        var model = _activeCliModel;
-        var reasoning = _activeReasoning;
-        if (workingDirectory is null || model is null || reasoning is null)
-        {
-            _awaitingWebResult = false;
-            return;
-        }
-
-        _lastActivityAt = DateTimeOffset.UtcNow;
-        var webResponse = task.Result ?? string.Empty;
-        var action = LegacyWebActionContract.Parse(webResponse, strict: true);
-        string followupPrompt;
-        if (_actionProtocolEnabled)
-        {
-            if (action.Kind is LegacyWebActionKind.End or LegacyWebActionKind.Pause or LegacyWebActionKind.ProtocolError or LegacyWebActionKind.None)
-            {
-                FinishActionTask(action, webResponse);
-                return;
-            }
-            followupPrompt = action.Body;
-        }
-        else
-        {
-            followupPrompt = "GPT Web 응답을 전달합니다. 원래 작업을 계속 수행해줘." + Environment.NewLine + "작업이 완전히 끝났으면 응답 첫 줄을 [WORKER_DONE]로 시작해줘. 아직 다음 단계가 필요하면 GPT Web에 보낼 다음 요청만 출력해줘." + Environment.NewLine + Environment.NewLine + webResponse;
-        }
-        using var cts = new CancellationTokenSource();
-        _activeTaskCts = cts;
-        _awaitingWebResult = false;
-        RunButton.Content = "■   취소";
-        TaskDirection.Text = "GPT WEB → CODEX";
-        TaskTitle.Text = "Web 응답을 Codex에 전달하는 중";
-        SetFlowState(true, true, false);
-
-        try
-        {
-            AddTaskMessage("WORKER -> CODEX", followupPrompt);
-            var result = await RunCodexFollowupAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token, "WEB_FOLLOWUP");
-            if (_userCanceledTask) return;
-            _lastActivityAt = DateTimeOffset.UtcNow;
-            _activeSessionId = result.SessionId ?? _activeSessionId;
-            _lastCodexResult = result;
-            AddCliRoundStatus(result);
-            CodexThreadArchive.Save(result, followupPrompt, workingDirectory);
-            _commandUsage = _commandUsage.Add(result.Usage);
-            UpdateUsage(_commandUsage);
-            ResultTitle.Text = result.ExitCode == 0 ? $"Codex 중간 결과 · {model}" : $"Codex 후속 처리 실패 · exit {result.ExitCode}";
-            ResultBody.Text = BuildRoundtripResultBody(webResponse, result);
-            ActivateResultTab(web: false);
-
-            if (result.ExitCode == 0 && (_actionProtocolEnabled || ShouldContinueRoundtrip(result)) && _bridgeServer is not null)
-            {
-                var nextTask = await RouteCodexResultAsync(result, _activeWebInstruction, includeWebInstruction: false, gitReferenceHeader: null, cancellationToken: cts.Token);
-                if (nextTask is not null)
-                {
-                    _awaitingWebResult = true;
-                    RunButton.Content = "■   취소";
-                    TaskDirection.Text = "WORKER → GPT WEB";
-                    TaskTitle.Text = "Codex 결과를 GPT Web에 재전달하는 중";
-                    SetFlowState(false, true, true);
-                    return;
-                }
-                if (ResultTitle.Text == "FINISH_PAUSED") return;
-            }
-
-            _awaitingWebResult = false;
-            TaskDirection.Text = "GPT WEB → CODEX";
-            TaskTitle.Text = result.ExitCode == 0 ? "Worker 최종 처리 완료" : "Codex 후속 처리 실패";
-            SetFlowState(false, false, false);
-        }
-        catch (OperationCanceledException)
-        {
-            if (_jobTimedOut || _userCanceledTask) return;
-            TaskDirection.Text = "GPT WEB → CODEX";
-            TaskTitle.Text = "Codex 후속 처리 취소";
-            ResultTitle.Text = "Codex CANCELED";
-            ResultBody.Text = "Web 응답 후속 처리가 취소되었습니다."
- + Environment.NewLine + Environment.NewLine + webResponse;
-            SetFlowState(false, false, false);
-        }
-        catch (Exception ex)
-        {
-            TaskDirection.Text = "GPT WEB → CODEX";
-            TaskTitle.Text = "Codex 후속 처리 실패";
-            ResultTitle.Text = "Codex ERROR";
-            ResultBody.Text = ex.ToString();
-            SetFlowState(false, false, false);
-        }
-        finally
-        {
-            _activeTaskCts = null;
-            _userCanceledTask = false;
-            UpdatePanelLayout(_awaitingWebResult);
-            ApplyConnectionStatus();
-            UpdateDashboardRunButtonState();
-        }
-    }
-
-    private string BuildWebPrompt(
-        CodexCliResult result,
-        string? webInstruction,
-        bool includeControlInstructions,
-        bool includeWebInstruction)
-    {
-        var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
-        var control = includeControlInstructions
-            ? LegacyWebActionContract.BuildInstructions() + Environment.NewLine + Environment.NewLine
-            : string.Empty;
-        var instruction = includeWebInstruction && !string.IsNullOrWhiteSpace(webInstruction)
-            ? Environment.NewLine + Environment.NewLine + webInstruction
-            : string.Empty;
-        return control + output + instruction;
-    }
-    private bool ShouldContinueRoundtrip(CodexCliResult result)
-    {
-        var text = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
-        if (text.Contains("[WORKER_DONE]", StringComparison.OrdinalIgnoreCase)) return false;
-        var match = System.Text.RegularExpressions.Regex.Match(text, @"(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)");
-        return match.Success && int.TryParse(match.Groups[1].Value, out var current) && int.TryParse(match.Groups[2].Value, out var total) && current < total;
-    }
-
-    private string BuildNextWebPrompt(CodexCliResult result)
-    {
-        var original = string.IsNullOrWhiteSpace(_activePrompt) ? "원래 작업" : _activePrompt;
-        var codex = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
-        return original + Environment.NewLine + Environment.NewLine + "Codex 최신 결과를 반영해 다음 단계 작업을 계속 수행해줘." + Environment.NewLine + Environment.NewLine + "Codex 실행 결과:" + Environment.NewLine + codex;
-    }
-
     private void StartTaskTranscript(CodexThreadOption? selectedThread, string command, string webInstruction)
     {
         _taskMessages.Clear();
@@ -3704,19 +3264,6 @@ public partial class MainWindow : Window
         var invalid = new string(Path.GetInvalidFileNameChars());
         var sanitized = new string(value.Select(character => invalid.Contains(character) ? '_' : character).ToArray()).Trim();
         return string.IsNullOrWhiteSpace(sanitized) ? "Unnamed" : sanitized;
-    }
-
-    private static List<BridgeAttachment> BuildWebAttachments(BridgeServer bridge, IReadOnlyList<CodexCliFile> files)
-    {
-        return files
-            .Select(file =>
-            {
-                try { return bridge.CreateFileAttachment(file); }
-                catch { return null; }
-            })
-            .Where(file => file is not null)
-            .Select(file => file!)
-            .ToList();
     }
 
     private string BuildRoundtripResultBody(string webResponse, CodexCliResult result)
