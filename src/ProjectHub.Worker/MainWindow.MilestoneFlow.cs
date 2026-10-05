@@ -365,7 +365,8 @@ public partial class MainWindow
         var validationCompleted = false;
         var gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
         var gitFinalized = false;
-        string? managerSession = null;
+        string? managerSession =
+            CodexCliRunner.NormalizeSessionId(manager.ThreadSessionId);
 
         var managerInput = MilestoneDefinitionContract.BuildManagerInput(
             milestone,
@@ -1018,7 +1019,7 @@ public partial class MainWindow
             RoleContractLoader.BuildQaPrompt(body),
             qa,
             workingDirectory,
-            null,
+            CodexCliRunner.NormalizeSessionId(qa.ThreadSessionId),
             null,
             cancellationToken,
             CodexSandboxMode.DangerFullAccess);
@@ -1079,7 +1080,7 @@ public partial class MainWindow
             RoleContractLoader.BuildHighPrompt(body),
             high,
             workingDirectory,
-            null,
+            CodexCliRunner.NormalizeSessionId(high.ThreadSessionId),
             null,
             cancellationToken,
             CodexSandboxMode.DangerFullAccess);
