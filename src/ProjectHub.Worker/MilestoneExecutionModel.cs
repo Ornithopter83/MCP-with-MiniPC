@@ -120,10 +120,14 @@ internal static class MilestoneDefinitionContract
             }
 
             var qaReserved = qaRequiredJson.GetBoolean();
-            if (qaReserved &&
-                (!qaJson.TryGetProperty("instructions", out var qaInstructions) ||
-                 qaInstructions.ValueKind != JsonValueKind.String ||
-                 string.IsNullOrWhiteSpace(qaInstructions.GetString())))
+            if (!qaJson.TryGetProperty("instructions", out var qaInstructions) ||
+                qaInstructions.ValueKind != JsonValueKind.String)
+            {
+                error = "MILESTONE_QA_INSTRUCTIONS_REQUIRED";
+                return false;
+            }
+
+            if (qaReserved && string.IsNullOrWhiteSpace(qaInstructions.GetString()))
             {
                 error = "MILESTONE_QA_INSTRUCTIONS_REQUIRED";
                 return false;
@@ -143,9 +147,18 @@ internal static class MilestoneDefinitionContract
                 return false;
             }
 
-            var entrypoint = TryGetOptionalJsonString(
-                milestoneJson,
-                "entrypoint");
+            if (!milestoneJson.TryGetProperty("entrypoint", out var entrypointJson) ||
+                entrypointJson.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+            {
+                error = "MILESTONE_ENTRYPOINT_REQUIRED";
+                return false;
+            }
+
+            var entrypoint = entrypointJson.ValueKind == JsonValueKind.String
+                ? entrypointJson.GetString()?.Trim()
+                : null;
+            if (string.IsNullOrWhiteSpace(entrypoint))
+                entrypoint = null;
 
             if (!milestoneJson.TryGetProperty("workItems", out var workItemsJson) ||
                 workItemsJson.ValueKind != JsonValueKind.Array)
@@ -192,10 +205,17 @@ internal static class MilestoneDefinitionContract
                     return false;
                 }
 
-                if (workJson.TryGetProperty("completionCriteria", out var workCriteria) &&
+                if (!workJson.TryGetProperty("instructions", out var workInstructions) ||
+                    workInstructions.ValueKind != JsonValueKind.String)
+                {
+                    error = $"WORK {workId}: INSTRUCTIONS_REQUIRED";
+                    return false;
+                }
+
+                if (!workJson.TryGetProperty("completionCriteria", out var workCriteria) ||
                     !IsStringArray(workCriteria))
                 {
-                    error = $"WORK {workId}: COMPLETION_CRITERIA_INVALID";
+                    error = $"WORK {workId}: COMPLETION_CRITERIA_REQUIRED";
                     return false;
                 }
 
