@@ -43,6 +43,7 @@ public partial class MainWindow
 
         _activeWorkingDirectory = normalizedRoot;
         _activeProjectJobId = jobId;
+        RunOnUi(() => SetDashboardBodyMode(DashboardBodyMode.TaskHistory));
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         UpdateTaskConfigurationLockState();
@@ -820,6 +821,9 @@ public partial class MainWindow
                 });
 
                 var operation = action.GetSingle("OPERATION") ?? "UNKNOWN";
+                AddRoleProgressHistory(
+                    WorkerRoleState.Manager,
+                    $"기계 실행 시작 · {operation}");
                 var result = string.Equals(
                         operation,
                         "RUN",
@@ -997,6 +1001,9 @@ public partial class MainWindow
                 }
                 else
                 {
+                    AddRoleProgressHistory(
+                        WorkerRoleState.Manager,
+                        "Git finalize 시작");
                     gitResult =
                         await MilestoneMechanicalExecutor.FinalizeGitAsync(
                             workingDirectory,
@@ -1116,7 +1123,9 @@ public partial class MainWindow
             null,
             null,
             cancellationToken,
-            CodexSandboxMode.WorkspaceWrite);
+            CodexSandboxMode.WorkspaceWrite,
+            historyWorkItemId: work.Id,
+            historyReferenceId: work.Id);
 
         var forbiddenExecution = result.CommandExecutions
             .FirstOrDefault(execution =>
@@ -1179,6 +1188,12 @@ public partial class MainWindow
                 webActive: true,
                 explicitStage: TaskStage.Resource);
         });
+
+        AddRoleProgressHistory(
+            WorkerRoleState.Resource,
+            $"RESOURCE #{resource.Id} 생성 시작",
+            referenceId: resource.Id,
+            workItemId: "0");
 
         var registry = new MechanicalWorkRegistry();
         await using var queue = new ResourceSidecarQueue(
