@@ -425,6 +425,11 @@ public partial class MainWindow
         IReadOnlySet<string> initialChangedPaths,
         CancellationToken cancellationToken)
     {
+        AddRoleProgressHistory(
+            WorkerRoleState.Manager,
+            milestone.ReadOnlyNoFileChanges
+                ? "마일스톤 사전 점검 시작 · READ_ONLY_NO_FILE_CHANGES"
+                : "마일스톤 사전 점검 시작");
         var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
             workingDirectory,
             milestone.TargetBranch,
@@ -436,6 +441,7 @@ public partial class MainWindow
             StringComparer.OrdinalIgnoreCase);
 
         var milestoneWriteScopes = milestone.WorkItems.Values
+            .Where(work => !work.ReadOnly)
             .SelectMany(work => work.WritePaths)
             .Concat(milestone.Resources.Values.Select(resource => resource.TargetPath))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -461,6 +467,7 @@ public partial class MainWindow
         }
 
         var gitIgnoreNeedsUpdate =
+            !milestone.ReadOnlyNoFileChanges &&
             WorkerPaths.NeedsProjectHubGitIgnoreUpdate(workingDirectory);
         if (gitIgnoreNeedsUpdate &&
             initialChangedPaths.Contains(".gitignore"))
@@ -1123,7 +1130,9 @@ public partial class MainWindow
             null,
             null,
             cancellationToken,
-            CodexSandboxMode.WorkspaceWrite,
+            work.ReadOnly
+                ? CodexSandboxMode.ReadOnly
+                : CodexSandboxMode.WorkspaceWrite,
             historyWorkItemId: work.Id,
             historyReferenceId: work.Id);
 
@@ -1430,7 +1439,9 @@ public partial class MainWindow
             null,
             null,
             cancellationToken,
-            CodexSandboxMode.DangerFullAccess);
+            milestone.ReadOnlyNoFileChanges
+                ? CodexSandboxMode.ReadOnly
+                : CodexSandboxMode.DangerFullAccess);
 
         var report = MilestoneDefinitionContract.NormalizeHighReport(
             result.ExitCode,
