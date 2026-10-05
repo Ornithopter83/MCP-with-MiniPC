@@ -622,7 +622,6 @@ public partial class MainWindow
                     MilestoneMechanicalExecutor.DiffChangeStates(
                         workBatchBefore,
                         workBatchAfter);
-                var outsideWritePaths = new List<string>();
                 foreach (var changedPath in observedWorkChanges)
                 {
                     if (MilestoneMechanicalExecutor.IsPathWithinScopes(
@@ -630,10 +629,6 @@ public partial class MainWindow
                             allRunnableScopes))
                     {
                         milestoneChangedPaths.Add(changedPath);
-                    }
-                    else
-                    {
-                        outsideWritePaths.Add(changedPath);
                     }
                 }
 
@@ -645,18 +640,6 @@ public partial class MainWindow
                         string.Join(
                             Environment.NewLine,
                             observedWorkChanges.Select(path => "- " + path)));
-                }
-
-                if (outsideWritePaths.Count > 0)
-                {
-                    feedback.Add(
-                        "OUTSIDE_WRITE_PATH_DIRTY_OBSERVED:" +
-                        Environment.NewLine +
-                        "작성자는 판정하지 않으며 이번 마일스톤 Git 대상에는 자동 포함하지 않습니다." +
-                        Environment.NewLine +
-                        string.Join(
-                            Environment.NewLine,
-                            outsideWritePaths.Select(path => "- " + path)));
                 }
 
                 validationCompleted = false;
