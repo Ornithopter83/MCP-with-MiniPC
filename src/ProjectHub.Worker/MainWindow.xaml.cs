@@ -2091,15 +2091,21 @@ public partial class MainWindow : Window
         IReadOnlyList<AiInputAttachment>? inputAttachments = null)
     {
         var started = DateTimeOffset.UtcNow;
-        var roleName = purpose.Contains("HIGH", StringComparison.OrdinalIgnoreCase)
-            ? "HIGH"
-            : purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) ||
-              purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) ||
-              purpose == "WORK"
-                ? "WORK"
-                : "COORDINATOR";
+        var roleName = purpose.Contains("MANAGER", StringComparison.OrdinalIgnoreCase)
+            ? "MANAGER"
+            : purpose.Contains("QA", StringComparison.OrdinalIgnoreCase)
+                ? "QA"
+                : purpose.Contains("HIGH", StringComparison.OrdinalIgnoreCase)
+                    ? "HIGH"
+                    : purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) ||
+                      purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) ||
+                      purpose == "WORK"
+                        ? "WORK"
+                        : "COORDINATOR";
         var outboundRole = roleName switch
         {
+            "MANAGER" => "MANAGER",
+            "QA" => "QA",
             "WORK" => "WORK",
             "HIGH" => "HIGH",
             _ => "HQ"
@@ -2109,6 +2115,8 @@ public partial class MainWindow : Window
             ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
         var progressRole = roleName switch
         {
+            "MANAGER" => WorkerRoleState.Manager,
+            "QA" => WorkerRoleState.Qa,
             "WORK" => WorkerRoleState.Work,
             "HIGH" => WorkerRoleState.High,
             _ => WorkerRoleState.Hq
@@ -2119,9 +2127,10 @@ public partial class MainWindow : Window
             AddRoleProgressHistory(progressRole, message, role.Provider);
         });
 
-        var runtime = WorkerPaths.GetRepositoryRuntimePaths(workingDirectory);
-        var roleTempPath = WorkerPaths.BuildWorkTempPath(
-            runtime,
+        var roleTempPath = Path.Combine(
+            Path.GetFullPath(workingDirectory),
+            "temp",
+            "ProjectHub",
             jobId,
             "role-" + outboundRole.ToLowerInvariant());
         Directory.CreateDirectory(roleTempPath);
@@ -2689,10 +2698,24 @@ public partial class MainWindow : Window
             if (coordinatorError is not null) return coordinatorError;
         }
 
-        return _aiRoleRunners.GetPreflightError(
-            implementer,
-            workingDirectory,
-            _codexAuthenticated);
+        var roleChecks = new[]
+        {
+            (Name: "일반 WORK", Role: implementer),
+            (Name: "중간관리자", Role: _targetSettings.EffectiveManager),
+            (Name: "QA", Role: _targetSettings.EffectiveQa),
+            (Name: "검토", Role: _targetSettings.EffectiveHighLevel)
+        };
+        foreach (var check in roleChecks)
+        {
+            var error = _aiRoleRunners.GetPreflightError(
+                check.Role,
+                workingDirectory,
+                _codexAuthenticated);
+            if (error is not null)
+                return check.Name + ": " + error;
+        }
+
+        return null;
     }
 
     private void ApplyExecutionModePresentation(bool coordinatorFirst)
@@ -3392,7 +3415,9 @@ public partial class MainWindow : Window
         var stage = role switch
         {
             WorkerRoleState.Hq => "Coordinator",
+            WorkerRoleState.Manager => "Manager",
             WorkerRoleState.Work => "Implementer",
+            WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             _ => "System"
         };
@@ -3423,7 +3448,9 @@ public partial class MainWindow : Window
         AddTaskMessage(
             role switch
             {
+                WorkerRoleState.Manager => "MANAGER PROGRESS",
                 WorkerRoleState.Work => "WORK PROGRESS",
+                WorkerRoleState.Qa => "QA PROGRESS",
                 WorkerRoleState.High => "HIGH PROGRESS",
                 _ => "HQ PROGRESS"
             },
@@ -3452,7 +3479,9 @@ public partial class MainWindow : Window
         var stage = role switch
         {
             WorkerRoleState.Hq => "Coordinator",
+            WorkerRoleState.Manager => "Manager",
             WorkerRoleState.Work => "Implementer",
+            WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
             WorkerRoleState.Judge => "Judge",
@@ -3492,6 +3521,8 @@ public partial class MainWindow : Window
     {
         var normalized = source.Trim().ToUpperInvariant();
         string stage = normalized.Contains("JEV", StringComparison.Ordinal) || normalized.Contains("JUDGE", StringComparison.Ordinal) ? "Judge"
+            : normalized.Contains("MANAGER", StringComparison.Ordinal) ? "Manager"
+            : normalized.Contains("QA", StringComparison.Ordinal) ? "Qa"
             : normalized.Contains("HIGH", StringComparison.Ordinal) ? "HighLevel"
             : normalized.Contains("RESOURCE", StringComparison.Ordinal) ? "Resource"
             : normalized.Contains("LUNA", StringComparison.Ordinal) || normalized.Contains("IMPLEMENT", StringComparison.Ordinal) || normalized.Contains("WORKER", StringComparison.Ordinal) ? "Implementer"
