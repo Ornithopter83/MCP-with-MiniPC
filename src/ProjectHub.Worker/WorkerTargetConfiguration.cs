@@ -43,9 +43,9 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null,
     [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null,
     [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = 1,
+    [property: JsonPropertyName("highLevel")] WorkerAiRoleSettings? HighLevel = null,
     [property: JsonPropertyName("manager")] WorkerAiRoleSettings? Manager = null,
-    [property: JsonPropertyName("qa")] WorkerAiRoleSettings? Qa = null,
-    [property: JsonPropertyName("highLevel")] WorkerAiRoleSettings? HighLevel = null)
+    [property: JsonPropertyName("qa")] WorkerAiRoleSettings? Qa = null)
 {
     public JudgeSettings EffectiveJudge => new(false);
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
