@@ -209,13 +209,35 @@ internal static class MilestoneMechanicalExecutor
             new UTF8Encoding(false),
             cancellationToken).ConfigureAwait(false);
 
+        var outputRequired =
+            normalizedOperation is "BUILD" or "PUBLISH";
+        var outputPresent =
+            !outputRequired ||
+            Directory.Exists(outputRoot) &&
+            Directory.EnumerateFiles(
+                outputRoot,
+                "*",
+                SearchOption.AllDirectories).Any();
+        var success =
+            process.ExitCode == 0 &&
+            outputPresent;
+        var summary =
+            MilestoneDefinitionContract.Limit(combined, 16000);
+        if (process.ExitCode == 0 && !outputPresent)
+        {
+            summary =
+                "MECHANICAL_OUTPUT_MISSING: BUILD/PUBLISH 성공 exit code를 반환했지만 프로젝트 루트 bin에 결과 파일이 없습니다." +
+                Environment.NewLine +
+                summary;
+        }
+
         return new(
             normalizedOperation,
-            process.ExitCode == 0,
+            success,
             process.ExitCode,
             command,
             logPath,
-            MilestoneDefinitionContract.Limit(combined, 16000));
+            summary);
     }
 
     public static async Task<IReadOnlySet<string>> SnapshotChangedPathsAsync(
