@@ -73,6 +73,8 @@ HQ는 개별 WorkItem 완료마다 호출되지 않는다.
 
 QA 호출 여부와 조사 목적은 HQ만 결정한다. HQ는 마일스톤 설계·세부설계에 QA 수행 여부와 조사 지시를 명시한다. Worker는 그 내용을 기계적으로 파싱하여 QA가 예약된 경우 해당 호출을 HIGH 이전의 정해진 위치에 삽입한다. 중간관리자와 HIGH는 QA를 호출하거나 QA 실행을 요구하지 않는다.
 
+HQ의 기계 지시는 JSON 전체 객체에 의존하지 않고 `[ACTION=...]`으로 시작하는 독립 블록 계약을 사용한다. Worker는 블록별로 파싱하여 한 ACTION의 형식 오류가 정상적으로 파싱된 다른 ACTION 전체를 무효화하지 않도록 한다.
+
 ---
 
 ## 4. #1 중간관리자의 책임
@@ -172,12 +174,14 @@ HIGH는 개별 WorkItem마다 호출하지 않는다.
 QA 예약 없음:
 WorkItem 실행 묶음
 → 모든 WorkItem 종료
+→ 중간관리자 build·run·publish 및 실행 대상 준비
 → HIGH 검증 1회
 → 중간관리자 판단
 
 HQ가 QA 예약:
 WorkItem 실행 묶음
 → 모든 WorkItem 종료
+→ 중간관리자 build·run·publish 및 실행 대상 준비
 → QA 조사
 → QA 결과 저장
 → HIGH 검증 1회
@@ -198,7 +202,7 @@ QA의 호출 권한은 HQ에만 있다.
 
 HQ가 QA를 예약한 경우 Worker는 HQ 설계에 포함된 QA 지시를 기계적으로 파싱하고 해당 WorkItem 실행 묶음이 종료된 뒤 HIGH보다 먼저 QA를 실행한다. QA 호출 여부와 시기는 Worker가 새로 판단하는 것이 아니라 HQ 지시를 실행 흐름에 반영하는 것이다.
 
-QA는 HQ가 지정한 조사 대상과 범위에 따라 완료 단계의 프로그램 또는 웹에 직접 접근하여 실제 상태를 확인한다.
+QA는 HQ가 지정한 조사 대상과 범위에 따라 완료 단계의 프로그램 또는 웹에 직접 접근하여 실제 상태를 확인한다. 주로 HQ가 미리 지정한 실행파일 경로, URL 또는 프로젝트 entrypoint를 사용하며 중간관리자가 QA 전에 이를 실행 가능한 상태로 준비한다.
 
 주요 책임은 다음과 같다.
 
@@ -208,6 +212,7 @@ QA는 HQ가 지정한 조사 대상과 범위에 따라 완료 단계의 프로�
 - 재현 조건과 확인 결과 기록
 - 접근 실패나 조사 불가 상태도 사실 그대로 보고
 - 조사 결과를 Worker에 반환
+- QA가 시작한 Worker 관리 실행 프로세스는 보고 전에 종료
 
 QA는 다음 행동을 하지 않는다.
 
@@ -365,6 +370,10 @@ Worker Barrier
 │
 │ 실행 묶음의 모든 WorkItem 종료
 ▼
+#1 중간관리자
+│
+│ build·run·publish / HQ 지정 entrypoint 준비
+▼
 [HQ가 예약한 경우에만 QA]
 │
 │ 실제 프로그램/웹 조사 및 결과 저장
@@ -378,6 +387,7 @@ HIGH
 ├─ HQ 설계 안에서 보완 가능
 │    → 후속 WorkItem
 │    → Worker Barrier
+│    → 중간관리자 build·run·publish / 실행 대상 준비
 │    → [HQ가 예약한 경우 QA]
 │    → HIGH 재검증 1회
 │
@@ -510,7 +520,7 @@ Git 저장소는 ProjectHub 작업의 필수 전제다. 명시적인 branch 요�
 
 마일스톤 commit SHA는 해당 마일스톤의 Git 결과 참조로 사용할 수 있다.
 
-원격 branch의 외부 변경이나 branch protection 등으로 안전한 push를 할 수 없으면 Worker가 임의로 force push하거나 사용자 변경을 덮어쓰지 않는다. 실제 충돌이나 원격 정책으로 진행할 수 없는 사실을 중간관리자에게 전달한다.
+원격 branch가 변경되었거나 일반 push가 실패하면 중간관리자는 현재 Git 사실을 확인하고 merge, rebase, fetch/pull, 재시도와 필요한 Git 갱신 수단을 사용해 대상 branch를 최대한 갱신한다. 마일스톤은 원칙적으로 commit·push를 완료해야 하며, 원격 서비스 정책·권한·네트워크 등 실제로 갱신할 수 없는 조건에서만 미완료 상태를 HQ에 보고한다.
 
 Repository와 대상 branch처럼 명백히 잘못된 대상을 방지하기 위한 최소한의 기계 검증은 유지한다.
 
@@ -533,6 +543,7 @@ Repository와 대상 branch처럼 명백히 잘못된 대상을 방지하기 위
 - WorkItem 배정과 진행 관리
 - WorkItem 결과 취합
 - HIGH 검증 결과 수신
+- build·run·publish와 QA용 실행 대상 준비
 - HQ 설계 안에서 가능한 후속 보완 판단
 - 마일스톤 실행 종료 시 마일스톤 단위 commit·push 처리
 - commit·push 성공 여부와 관계없이 결과 통합 후 HQ 필수 보고
