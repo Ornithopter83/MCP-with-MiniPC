@@ -780,10 +780,6 @@ public partial class MainWindow
                         "QA_REPORT: HQ가 QA=NO로 예약하지 않아 실행하지 않음");
                 }
 
-                var highBefore =
-                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                        workingDirectory,
-                        cancellationToken);
                 highReport = await ExecuteMilestoneHighAsync(
                     jobId,
                     workingDirectory,
@@ -795,16 +791,15 @@ public partial class MainWindow
                     high,
                     validationRound,
                     cancellationToken);
-                var highAfter =
-                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                        workingDirectory,
-                        cancellationToken);
                 var highChangedPaths =
-                    MilestoneMechanicalExecutor.DiffChangeStates(
-                        highBefore,
-                        highAfter);
+                    MilestoneDefinitionContract.ExtractReportPaths(
+                        highReport,
+                        "CHANGED_PATH");
                 foreach (var changedPath in highChangedPaths)
-                    milestoneChangedPaths.Add(changedPath);
+                {
+                    if (MilestoneDefinitionContract.IsSafeRelativePath(changedPath))
+                        milestoneChangedPaths.Add(changedPath);
+                }
                 if (highChangedPaths.Count > 0)
                 {
                     feedback.Add(
