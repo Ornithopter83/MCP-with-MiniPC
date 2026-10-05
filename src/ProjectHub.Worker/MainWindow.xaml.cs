@@ -565,6 +565,11 @@ public partial class MainWindow : Window
         ProjectWorkspacePersistence.ClearWorkGraph(
             canceledWorkingDirectory,
             canceledJobId);
+
+        AddTaskMessage(
+            "TASK CANCELED",
+            "사용자 요청으로 작업을 취소했습니다. 중간 흐름은 작업 이력에서 확인할 수 있습니다.",
+            status: "CANCELED");
         ExportTaskTranscript();
 
         _continuationState = null;
@@ -581,10 +586,14 @@ public partial class MainWindow : Window
 
         _cancelCleanupInProgress = false;
         _userCanceledTask = false;
-        SetDashboardBodyMode(DashboardBodyMode.NewTaskInput);
-        DashboardPreflightText.Text = "작업 내용을 입력하세요.";
+        TaskDirection.Text = "CANCELED";
+        TaskTitle.Text = "사용자 요청으로 작업이 취소되었습니다.";
+        ResultTitle.Text = "CANCELED";
+        ResultBody.Text = "실행기와 sidecar 정리가 끝났습니다. 중간 흐름은 작업 이력에서 확인할 수 있습니다.";
+        SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
+        DashboardPreflightText.Text = "취소된 작업의 중간 흐름을 확인할 수 있습니다.";
         DashboardPreflightText.Foreground =
-            (System.Windows.Media.Brush)FindResource("Muted");
+            System.Windows.Media.Brushes.Firebrick;
         UpdateTaskConfigurationLockState();
         UpdateDashboardRunButtonState();
     }
