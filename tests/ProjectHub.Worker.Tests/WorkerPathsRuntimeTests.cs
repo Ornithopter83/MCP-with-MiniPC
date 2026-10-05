@@ -74,6 +74,65 @@ public sealed class WorkerPathsRuntimeTests
     }
 
     [Fact]
+    public void GitIgnoreNeedDetection_AcceptsRecursiveBinAndTempRules()
+    {
+        var parent = Path.Combine(
+            Path.GetTempPath(),
+            "ProjectHubWorkerPathsTests",
+            Guid.NewGuid().ToString("N"));
+        var workspace = Path.Combine(parent, "SampleProject");
+        Directory.CreateDirectory(workspace);
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(workspace, ".gitignore"),
+                "**/bin/\n**/temp/\n");
+
+            Assert.False(
+                WorkerPaths.NeedsProjectHubGitIgnoreUpdate(workspace));
+            Assert.False(
+                WorkerPaths.EnsureProjectHubGitIgnore(workspace));
+        }
+        finally
+        {
+            Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
+    public void GitIgnoreNeedDetection_ReportsMissingTempRule()
+    {
+        var parent = Path.Combine(
+            Path.GetTempPath(),
+            "ProjectHubWorkerPathsTests",
+            Guid.NewGuid().ToString("N"));
+        var workspace = Path.Combine(parent, "SampleProject");
+        Directory.CreateDirectory(workspace);
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(workspace, ".gitignore"),
+                "bin/\n");
+
+            Assert.True(
+                WorkerPaths.NeedsProjectHubGitIgnoreUpdate(workspace));
+            Assert.True(
+                WorkerPaths.EnsureProjectHubGitIgnore(workspace));
+            var lines = File.ReadAllLines(
+                Path.Combine(workspace, ".gitignore"));
+
+            Assert.Contains("bin/", lines);
+            Assert.Contains("temp/", lines);
+        }
+        finally
+        {
+            Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
     public void ResourceStagingUsesTempResource()
     {
         var parent = Path.Combine(
