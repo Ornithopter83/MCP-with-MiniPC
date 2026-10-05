@@ -19,10 +19,12 @@ public static class WorkerUnknownErrorLog
 
     private static string GetSourceName(WorkerRoleState source) => source switch
     {
-        WorkerRoleState.Hq => "설계·관제 AI",
-        WorkerRoleState.Work => "작업 AI",
-        WorkerRoleState.Judge => "판정 AI",
-        WorkerRoleState.Resource => "리소스 AI",
+        WorkerRoleState.Hq => "설계 관제",
+        WorkerRoleState.Manager => "통합",
+        WorkerRoleState.Work => "작업",
+        WorkerRoleState.Qa => "QA",
+        WorkerRoleState.High => "검토",
+        WorkerRoleState.Resource => "작업 (#0, 리소스)",
         _ => "시스템"
     };
 
@@ -32,9 +34,6 @@ public static class WorkerUnknownErrorLog
         "ACTION_INVALID" or "ACTION_MISSING" => "AI 응답에서 올바른 작업 동작을 확인하지 못했습니다.",
         "SESSION_RESUME_FAILED" => "이전 AI 대화를 이어갈 세션을 확인하지 못했습니다.",
         "PROCESS_EXIT" => "AI 실행 프로세스가 오류와 함께 종료됐습니다.",
-        "JUDGE_UNAVAILABLE" => "설정된 판단 AI를 사용할 수 없습니다.",
-        "JUDGE_REQUEST_INVALID" => "판단 AI에 전달할 요청을 확인하지 못했습니다.",
-        "JEV_RESPONSE_MISSING" => "판단 AI의 응답을 받지 못했습니다.",
         "RESOURCE_REQUEST_INVALID" => "리소스 AI에 전달할 자연어 요청을 확인하지 못했습니다.",
         "RESOURCE_WEB_UNAVAILABLE" => "리소스 전용 ChatGPT Web 대화가 연결되어 있지 않습니다.",
         "RESOURCE_WEB_DELIVERY_FAILED" => "리소스 요청을 ChatGPT Web에 전달하거나 결과를 회수하지 못했습니다.",
