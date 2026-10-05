@@ -832,10 +832,23 @@ public partial class MainWindow
             cancellationToken,
             CodexSandboxMode.WorkspaceWrite);
 
-        var report = MilestoneDefinitionContract.NormalizeWorkReport(
-            result.ExitCode,
-            result.FinalMessage,
-            result.StandardError);
+        var forbiddenExecution = result.CommandExecutions
+            .FirstOrDefault(execution =>
+                BuildExecutionPolicy.IsGeneralWorkForbiddenCommand(
+                    execution.Command));
+        var report = forbiddenExecution is null
+            ? MilestoneDefinitionContract.NormalizeWorkReport(
+                result.ExitCode,
+                result.FinalMessage,
+                result.StandardError)
+            : "[GOTO : MANAGER]" +
+              Environment.NewLine +
+              "WORK_ITEM_STATUS: BLOCKED" +
+              Environment.NewLine +
+              BuildExecutionPolicy.GeneralWorkCommandForbiddenError +
+              Environment.NewLine +
+              "command=" +
+              forbiddenExecution.Command;
 
         AddRoleResponseHistory(
             WorkerRoleState.Work,
