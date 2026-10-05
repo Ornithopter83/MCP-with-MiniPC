@@ -6,13 +6,15 @@ using System.Text.RegularExpressions;
 namespace ProjectHub.Worker;
 
 /// <summary>
-/// #9 BUILD/PUBLISH만 프로젝트 빌드 계열 명령을 실행하도록 강제하는 기계 정책입니다.
-/// 일반 WorkItem은 소스 구현은 할 수 있지만 restore/compile/build/test-run/package/publish는 실행하지 않습니다.
+/// GENERAL WORK가 build/run/publish 및 Git mutation을 직접 실행하지 않도록 하는 기계 정책입니다.
+/// build/run/publish와 Git finalize는 중간관리자/Worker의 별도 단계에서 수행합니다.
+/// legacy WorkItem API는 제거 마이그레이션 동안 호환을 위해 유지합니다.
 /// </summary>
 public static class BuildExecutionPolicy
 {
     public const string BuildSlotRequiredError = "WORK_BUILD_SLOT_REQUIRED";
     public const string BuildCommandForbiddenError = "WORK_BUILD_COMMAND_FORBIDDEN";
+    public const string GeneralWorkCommandForbiddenError = "WORK_COMMAND_FORBIDDEN";
 
     private const string BuildCommandPattern =
         @"(?ix)(?:" +
@@ -30,6 +32,11 @@ public static class BuildExecutionPolicy
 
     private static readonly Regex BuildCommandRegex =
         new(BuildCommandPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex GitMutationCommandRegex =
+        new(
+            @"(?ix)(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static IReadOnlyList<string> OpenCodeDeniedCommandPatterns { get; } =
         new[]
@@ -119,6 +126,11 @@ public static class BuildExecutionPolicy
     public static bool IsBuildCommand(string? commandLine)
         => !string.IsNullOrWhiteSpace(commandLine) && BuildCommandRegex.IsMatch(commandLine);
 
+    public static bool IsGeneralWorkForbiddenCommand(string? commandLine)
+        => !string.IsNullOrWhiteSpace(commandLine) &&
+           (BuildCommandRegex.IsMatch(commandLine) ||
+            GitMutationCommandRegex.IsMatch(commandLine));
+
     public static string CreateCodexPreToolHookScript()
         => """
            $ErrorActionPreference = 'Stop'
@@ -127,9 +139,9 @@ public static class BuildExecutionPolicy
            if ([string]$event.tool_name -ne 'Bash') { exit 0 }
            $command = [string]$event.tool_input.command
            if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
-           $pattern = '(?ix)(?:(?<![\w.-])dotnet(?:\.exe)?\s+(?:restore|build|test|run|publish|pack|msbuild|vstest)\b|(?<![\w.-])msbuild(?:\.exe)?\b|(?<![\w.-])(?:csc|vbc|cl|clang|clang\+\+|gcc|g\+\+|rustc|javac)(?:\.exe)?\b|(?<![\w.-])cmake(?:\.exe)?\s+--build\b|(?<![\w.-])(?:ninja|make)(?:\.exe)?\b|(?<![\w.-])cargo(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])go(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])(?:npm|pnpm|yarn|bun)(?:\.cmd|\.exe)?\s+(?:(?:run)\s+)?(?:build|test)\b|(?<![\w.-])(?:gradle|gradlew|mvn|mvnw)(?:\.bat|\.cmd|\.exe)?\b|(?<![\w.-])python(?:\.exe)?\s+-m\s+build\b)'
+           $pattern = '(?ix)(?:(?<![\w.-])dotnet(?:\.exe)?\s+(?:restore|build|test|run|publish|pack|msbuild|vstest)\b|(?<![\w.-])msbuild(?:\.exe)?\b|(?<![\w.-])(?:csc|vbc|cl|clang|clang\+\+|gcc|g\+\+|rustc|javac)(?:\.exe)?\b|(?<![\w.-])cmake(?:\.exe)?\s+--build\b|(?<![\w.-])(?:ninja|make)(?:\.exe)?\b|(?<![\w.-])cargo(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])go(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])(?:npm|pnpm|yarn|bun)(?:\.cmd|\.exe)?\s+(?:(?:run)\s+)?(?:build|test)\b|(?<![\w.-])(?:gradle|gradlew|mvn|mvnw)(?:\.bat|\.cmd|\.exe)?\b|(?<![\w.-])python(?:\.exe)?\s+-m\s+build\b|(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b)'
            if ($command -match $pattern) {
-             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: restore/compile/build/test-run/package/publish execution is reserved for WorkItem #9 BUILD/PUBLISH.' } } | ConvertTo-Json -Compress -Depth 6
+             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: GENERAL WORK cannot run build/run/publish or Git mutation commands. Use the manager/Worker stages.' } } | ConvertTo-Json -Compress -Depth 6
              [Console]::Out.WriteLine($payload)
            }
            exit 0
@@ -144,7 +156,7 @@ public static class BuildExecutionPolicy
                       normalizedPath.Replace("'", "''", StringComparison.Ordinal) + "'";
         return "hooks.PreToolUse=[{matcher=\"^Bash$\",hooks=[{type=\"command\",command=\"" +
                EscapeTomlBasicString(command) +
-               "\",timeout=5,statusMessage=\"ProjectHub build gate\"}]}]";
+               "\",timeout=5,statusMessage=\"ProjectHub WORK command gate\"}]}]";
     }
 
     private static string EscapeTomlBasicString(string value)
