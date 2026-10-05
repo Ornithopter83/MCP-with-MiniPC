@@ -239,8 +239,8 @@ public partial class MainWindow
                         out var milestoneError))
                 {
                     hqInbound =
-                        "HQ ACTION 계약 오류입니다. 정상 파싱된 ACTION은 폐기하지 않았지만 " +
-                        "실행 가능한 MILESTONE이 필요합니다." +
+                        "HQ ACTION/JSON 계약 오류입니다. " +
+                        "[ACTION=WORK] 바로 다음의 단일 JSON 객체에 실행 가능한 milestone 전체를 다시 작성하세요." +
                         Environment.NewLine +
                         milestoneError +
                         Environment.NewLine +
