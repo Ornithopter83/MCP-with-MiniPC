@@ -3,7 +3,7 @@ setlocal EnableExtensions
 title ProjectHub Fetch ^& Pull
 
 for %%I in ("%~dp0.") do set "PROJECT_ROOT=%%~fI"
-set "SCRIPT=%PROJECT_ROOT%\bin\ProjectHub_Fetch_Pull.ps1"
+set "SCRIPT=%PROJECT_ROOT%\scripts\ProjectHub_Fetch_Pull.ps1"
 
 if not exist "%SCRIPT%" (
     echo ERROR: Fetch/Pull engine was not found:
