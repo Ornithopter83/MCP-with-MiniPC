@@ -777,39 +777,16 @@ public partial class MainWindow
             "work-" + work.Id);
         Directory.CreateDirectory(workTempRoot);
 
-        var promptContext = new WorkItemPromptContext(
+        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
             work.Id,
-            WorkItemKind.Normal,
             work.Body,
-            Array.Empty<string>(),
-            null,
-            null,
-            null,
-            Checklist: work.WritePaths
-                .Select(path =>
-                    "WRITE_PATH " + path + " 범위에서 " + work.Body)
-                .ToArray());
-
-        var prompt = RoleContractLoader.BuildWorkPrompt(
-            "MILESTONE_WORK",
-            work.Body,
-            promptContext,
-            includeContract: true,
+            work.WritePaths,
+            workingDirectory,
             resourceStagingRoot: Path.Combine(
                 workingDirectory,
                 "temp",
                 "Resource"),
-            workTempRoot: workTempRoot,
-            targetWorkspace: workingDirectory);
-
-        prompt +=
-            Environment.NewLine +
-            Environment.NewLine +
-            "허용 WRITE_PATH:" +
-            Environment.NewLine +
-            string.Join(
-                Environment.NewLine,
-                work.WritePaths.Select(path => "- " + path));
+            workTempRoot: workTempRoot);
 
         var statelessRole = implementer with
         {
