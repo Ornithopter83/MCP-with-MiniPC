@@ -582,8 +582,6 @@ internal static class MilestoneMechanicalExecutor
         result.Add(":(exclude)bin/**");
         result.Add(":(exclude)temp");
         result.Add(":(exclude)temp/**");
-        result.Add(":(exclude).projecthub");
-        result.Add(":(exclude).projecthub/**");
         return result;
     }
 
@@ -596,7 +594,5 @@ internal static class MilestoneMechanicalExecutor
         path.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
         path.StartsWith("bin/", StringComparison.OrdinalIgnoreCase) ||
         path.Equals("temp", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("temp/", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals(".projecthub", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith(".projecthub/", StringComparison.OrdinalIgnoreCase);
+        path.StartsWith("temp/", StringComparison.OrdinalIgnoreCase);
 }
