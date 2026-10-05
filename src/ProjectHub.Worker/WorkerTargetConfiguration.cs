@@ -1,22 +1,9 @@
 using System.IO;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ProjectHub.Worker;
-
-public sealed record JudgeSettings(
-    [property: JsonPropertyName("enabled")] bool Enabled = false,
-    [property: JsonPropertyName("provider")] string Provider = "jev",
-    [property: JsonPropertyName("manualExecutableOrEndpoint")] string? ManualExecutableOrEndpoint = null,
-    [property: JsonPropertyName("timeoutSeconds")] int TimeoutSeconds = 120);
-
-public sealed record JudgeEndpointValidation(
-    [property: JsonPropertyName("configurationFingerprint")] string ConfigurationFingerprint,
-    [property: JsonPropertyName("succeeded")] bool Succeeded,
-    [property: JsonPropertyName("outcome")] string Outcome,
-    [property: JsonPropertyName("testedAtUtc")] DateTimeOffset TestedAtUtc);
 
 public sealed record WorkerAiRoleSettings(
     [property: JsonPropertyName("provider")] string Provider = "openai",
@@ -37,17 +24,14 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("repositoryUrlSource")] string? RepositoryUrlSource,
     [property: JsonPropertyName("serverBaseUrlSource")] string? ServerBaseUrlSource,
     [property: JsonPropertyName("manualWorkingDirectory")] string? ManualWorkingDirectory = null,
-    [property: JsonPropertyName("judge")] JudgeSettings? Judge = null,
     [property: JsonPropertyName("executionMode")] string ExecutionMode = "CLI_TO_CLI",
     [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
     [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null,
-    [property: JsonPropertyName("judgeEndpointValidation")] JudgeEndpointValidation? JudgeEndpointValidation = null,
     [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = 1,
     [property: JsonPropertyName("highLevel")] WorkerAiRoleSettings? HighLevel = null,
     [property: JsonPropertyName("manager")] WorkerAiRoleSettings? Manager = null,
     [property: JsonPropertyName("qa")] WorkerAiRoleSettings? Qa = null)
 {
-    public JudgeSettings EffectiveJudge => new(false);
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
     public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
     public WorkerAiRoleSettings EffectiveManager => Manager ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
@@ -133,8 +117,6 @@ public static class WorkerTargetConfiguration
         return settings with
         {
             ExecutionMode = "CLI_TO_CLI",
-            Judge = null,
-            JudgeEndpointValidation = null,
             Coordinator = NormalizeRole(settings.Coordinator),
             Implementer = NormalizeRole(settings.Implementer),
             Manager = NormalizeRole(settings.Manager),
@@ -147,34 +129,6 @@ public static class WorkerTargetConfiguration
     {
         Directory.CreateDirectory(WorkerPaths.Config);
         File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
-    }
-
-    public static void SaveJudgeEndpointValidation(JudgeEndpointValidation validation)
-    {
-        var settings = Load();
-        Save(settings with { JudgeEndpointValidation = validation });
-    }
-
-    public static string GetJudgeEndpointFingerprint(JudgeSettings settings)
-    {
-        var canonical = string.Join("\n",
-            settings.Provider.Trim().ToLowerInvariant(),
-            settings.ManualExecutableOrEndpoint?.Trim() ?? string.Empty,
-            Math.Clamp(settings.TimeoutSeconds, 10, 600).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
-    }
-
-    public static bool IsJudgeEndpointValidationCurrent(JudgeEndpointValidation? validation, JudgeSettings settings)
-        => validation is not null && string.Equals(validation.ConfigurationFingerprint, GetJudgeEndpointFingerprint(settings), StringComparison.Ordinal);
-
-    public static string? GetJudgeApplyWarning(JudgeSettings settings, JudgeEndpointValidation? validation)
-    {
-        if (!settings.Enabled) return null;
-        if (!IsJudgeEndpointValidationCurrent(validation, settings))
-            return "설정 테스트가 수행되지 않았습니다. 현재 설정으로 JSON 설정 테스트를 다시 실행해 주세요. 계속 적용합니다.";
-        if (!validation!.Succeeded)
-            return "설정 테스트가 실패했습니다. 환경을 확인한 뒤 직접 재검증해 주세요. 설정은 계속 적용합니다.";
-        return null;
     }
 
     public static (string Url, string Source) ResolveServer(WorkerTargetSettings settings)
