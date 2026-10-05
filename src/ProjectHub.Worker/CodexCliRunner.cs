@@ -201,6 +201,11 @@ public sealed class CodexCliRunner : IDisposable
                         try { progress(progressText); }
                         catch { }
                     }
+                    if (progress is not null && TryExtractCommandProgress(line, out var commandProgress))
+                    {
+                        try { progress(commandProgress); }
+                        catch { }
+                    }
                 }
             }, CancellationToken.None);
             var stderrTask = launched.StandardError!.ReadToEndAsync(cancellationToken);
@@ -422,6 +427,53 @@ public sealed class CodexCliRunner : IDisposable
                 return false;
 
             text = message.Trim();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    public static bool TryExtractCommandProgress(string jsonLine, out string text)
+    {
+        text = string.Empty;
+        if (string.IsNullOrWhiteSpace(jsonLine)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(jsonLine.TrimStart('\uFEFF'));
+            var root = document.RootElement;
+            if (!TryGetString(root, "type", out var eventType) ||
+                (eventType is not "item.started" and not "item.completed") ||
+                !TryGetPropertyIgnoreCase(root, "item", out var item) ||
+                item.ValueKind != JsonValueKind.Object ||
+                !TryGetString(item, "type", out var itemType) ||
+                (!itemType.Contains("command", StringComparison.OrdinalIgnoreCase) &&
+                 !itemType.Contains("exec", StringComparison.OrdinalIgnoreCase)) ||
+                !TryGetString(item, "command", out var command) ||
+                string.IsNullOrWhiteSpace(command))
+                return false;
+
+            var normalizedCommand = command.Trim();
+            if (normalizedCommand.Length > 500)
+                normalizedCommand = normalizedCommand[..500] + "…";
+
+            if (string.Equals(eventType, "item.started", StringComparison.OrdinalIgnoreCase))
+            {
+                text = "명령 실행 시작 · " + normalizedCommand;
+                return true;
+            }
+
+            var exitCodeText = string.Empty;
+            if ((TryGetPropertyIgnoreCase(item, "exit_code", out var exitCode) ||
+                 TryGetPropertyIgnoreCase(item, "exitCode", out exitCode)) &&
+                exitCode.ValueKind == JsonValueKind.Number &&
+                exitCode.TryGetInt32(out var parsedExitCode))
+            {
+                exitCodeText = $" · exit {parsedExitCode}";
+            }
+
+            text = "명령 실행 종료" + exitCodeText + " · " + normalizedCommand;
             return true;
         }
         catch (JsonException)
