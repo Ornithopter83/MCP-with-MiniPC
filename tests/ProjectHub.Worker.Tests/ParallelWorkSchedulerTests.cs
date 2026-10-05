@@ -43,6 +43,26 @@ public sealed class ParallelWorkSchedulerTests
     }
 
     [Fact]
+    public async Task ReservedWorkNumberCompletesThenReturnsReservationWarning()
+    {
+        var graph = CreateGraph(1, "2");
+        var executor = new ControlledExecutor();
+
+        await using var scheduler = new ParallelWorkScheduler(graph, executor);
+        await scheduler.StartAsync();
+        await executor.WhenStarted("2");
+
+        executor.Complete("2");
+        await scheduler.WaitForQuiescenceAsync();
+
+        var item = Assert.Single((await scheduler.GetSnapshotAsync()).Graph.Items);
+        Assert.Equal(WorkItemState.Completed, item.State);
+        Assert.Contains(
+            FixedWorkItemSlots.ReservedNumberWarning,
+            item.ResultSummary);
+    }
+
+    [Fact]
     public async Task FailedExecutorResultReturnsWorkItemDecisionToHqAndKeepsIndependentWorkRunning()
     {
         var graph = new WorkGraph("job", 2);
