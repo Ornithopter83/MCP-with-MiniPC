@@ -2852,10 +2852,10 @@ public partial class MainWindow : Window
             ManualWorkingDirectory = workingDirectory,
             ExecutionMode = executionMode,
             Coordinator = ReadCoordinatorSettings(),
-            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo),
-            Manager = ReadRoleSettings(ManagerProviderCombo, ManagerModelCombo, ManagerReasoningCombo, _targetSettings.EffectiveManager, ManagerRoleThreadCombo),
-            Qa = ReadRoleSettings(QaProviderCombo, QaModelCombo, QaReasoningCombo, _targetSettings.EffectiveQa, QaRoleThreadCombo),
-            HighLevel = ReadRoleSettings(HighLevelProviderCombo, HighLevelModelCombo, HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel, HighLevelRoleThreadCombo),
+            Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer),
+            Manager = ReadRoleSettings(ManagerProviderCombo, ManagerModelCombo, ManagerReasoningCombo, _targetSettings.EffectiveManager),
+            Qa = ReadRoleSettings(QaProviderCombo, QaModelCombo, QaReasoningCombo, _targetSettings.EffectiveQa),
+            HighLevel = ReadRoleSettings(HighLevelProviderCombo, HighLevelModelCombo, HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel),
             MaxConcurrentWork = maxConcurrentWork
         };
         SaveCodexSelection();
