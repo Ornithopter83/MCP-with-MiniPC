@@ -73,7 +73,7 @@ HQ는 개별 WorkItem 완료마다 호출되지 않는다.
 
 QA 호출 여부와 조사 목적은 HQ만 결정한다. HQ는 마일스톤 설계·세부설계에 QA 수행 여부와 조사 지시를 명시한다. Worker는 그 내용을 기계적으로 파싱하여 QA가 예약된 경우 해당 호출을 HIGH 이전의 정해진 위치에 삽입한다. 중간관리자와 HIGH는 QA를 호출하거나 QA 실행을 요구하지 않는다.
 
-HQ의 기계 지시는 JSON 전체 객체에 의존하지 않고 `[ACTION=...]`으로 시작하는 독립 블록 계약을 사용한다. Worker는 블록별로 파싱하여 한 ACTION의 형식 오류가 정상적으로 파싱된 다른 ACTION 전체를 무효화하지 않도록 한다.
+HQ의 기계 지시는 `[ACTION=...]`으로 시작하고 바로 뒤의 단일 JSON 객체에 현재 판단에 필요한 전체 내용을 담는다. Worker는 ACTION과 JSON envelope를 기계적으로 파싱하며, 마일스톤·WorkItem·QA·RESOURCE·완료 기준·검증 조건과 추가 설명은 모두 JSON 내부 필드로 전달한다. Web HQ 응답은 기존 KEY 상관 규약을 유지하여 `[KEY=...]` → `[ACTION=...]` → JSON → `[RESPONSE=OK]` 순서를 사용한다.
 
 ---
 
