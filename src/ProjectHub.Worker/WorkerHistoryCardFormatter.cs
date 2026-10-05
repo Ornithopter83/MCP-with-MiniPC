@@ -47,19 +47,6 @@ public static class WorkerHistoryCardFormatter
         return string.Join(" · ", parts);
     }
 
-    public static string TokenLine(JevCallTelemetry? telemetry)
-    {
-        if (telemetry is null || !telemetry.UsageKnown) return "토큰 · 미제공";
-        var total = telemetry.ProviderTotalTokens
-            ?? (telemetry.InputTokens.GetValueOrDefault() + telemetry.OutputTokens.GetValueOrDefault() + telemetry.ReasoningTokens.GetValueOrDefault());
-        var parts = new List<string> { "토큰", $"총 {total:N0}" };
-        if (telemetry.InputTokens.HasValue) parts.Add($"입력 {telemetry.InputTokens.Value:N0}");
-        if (telemetry.CachedInputTokens.HasValue) parts.Add($"캐시 {telemetry.CachedInputTokens.Value:N0}");
-        if (telemetry.OutputTokens.HasValue) parts.Add($"출력 {telemetry.OutputTokens.Value:N0}");
-        if (telemetry.ReasoningTokens.HasValue && telemetry.ReasoningTokens.Value > 0) parts.Add($"추론 {telemetry.ReasoningTokens.Value:N0}");
-        return string.Join(" · ", parts);
-    }
-
     public static string FileLine(IReadOnlyList<CodexCliFile>? files)
     {
         if (files is null || files.Count == 0) return "파일 · 감지 없음";
