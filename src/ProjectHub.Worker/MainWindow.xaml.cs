@@ -82,9 +82,6 @@ public partial class MainWindow : Window
         {
             "Coordinator" => "설계 관제",
             "Implementer" when string.Equals(WorkItemId, "0", StringComparison.Ordinal) => "작업 (#0, 리소스)",
-            "Implementer" when string.Equals(WorkItemId, "1", StringComparison.Ordinal) => "작업 (#1, 이미지 가공)",
-            "Implementer" when string.Equals(WorkItemId, FixedWorkItemSlots.FileManager, StringComparison.Ordinal) => "작업 (#8, 파일 매니저)",
-            "Implementer" when string.Equals(WorkItemId, FixedWorkItemSlots.BuildPublish, StringComparison.Ordinal) => "작업 (#9, 빌드 매니저)",
             "Implementer" when FixedWorkItemSlots.IsUnassignedReservedNumber(WorkItemId) => $"작업 (#{WorkItemId}, 예약 번호)",
             "Implementer" when FixedWorkItemSlots.IsGeneralWorkNumber(WorkItemId) => $"작업 (#{WorkItemId}, 일반 작업)",
             "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"작업 (#{WorkItemId})",
