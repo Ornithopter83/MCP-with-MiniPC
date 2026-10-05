@@ -126,6 +126,7 @@ public partial class MainWindow : Window
     private DashboardBodyMode _dashboardBodyMode = DashboardBodyMode.NewTaskInput;
     private TaskStage _currentTaskStage = TaskStage.Idle;
     private bool? _currentMilestoneQaReserved;
+    private bool? _currentMilestoneResourceReserved;
     private string _coordinatorStageIconAsset = "current-openai.png";
     private string _implementerStageIconAsset = "current-openai.png";
     private string _qaStageIconAsset = "current-openai.png";
@@ -1058,6 +1059,26 @@ public partial class MainWindow : Window
         var initialInputIdle = idle && _dashboardBodyMode == DashboardBodyMode.NewTaskInput && _activeTaskCts is null;
         SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, RoleVisuals["Coordinator"], false, initialInputIdle);
         SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, _implementerStageIconAsset, TaskStage.Implementer, RoleVisuals["Implementer"], false, initialInputIdle);
+
+        var resourceDisabled =
+            _activeCoordinatorFirst &&
+            _currentMilestoneResourceReserved == false;
+        ResourceStageModelText.Text = resourceDisabled
+            ? "미예약"
+            : _currentTaskStage == TaskStage.Resource || _resourceSidecarActive
+                ? _resourceSidecarStatus
+                : "ChatGPT Web";
+        SetPipelineCard(
+            PipelineResourceCard,
+            PipelineResourceTitle,
+            ResourceStageCircle,
+            ResourceStageIcon,
+            "current-web.png",
+            TaskStage.Resource,
+            RoleVisuals["Resource"],
+            resourceDisabled,
+            initialInputIdle);
+
         var qaDisabled = _activeCoordinatorFirst && _currentMilestoneQaReserved == false;
         QaStageModelText.Text = qaDisabled
             ? "미예약"
@@ -1073,7 +1094,9 @@ public partial class MainWindow : Window
     {
         var current = _directWorkRunning
             ? !disabled && stage == TaskStage.Implementer
-            : !disabled && (_currentTaskStage == stage || (stage == TaskStage.Implementer && (_currentTaskStage == TaskStage.Resource || _resourceSidecarActive)));
+            : !disabled &&
+              (_currentTaskStage == stage ||
+               (stage == TaskStage.Resource && _resourceSidecarActive));
         SetPipelineStageAnimation(stage, current);
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
         var colored = visual.IsColored;
@@ -1085,6 +1108,7 @@ public partial class MainWindow : Window
             : ProviderVisualCatalog.ResolveGrayAsset(iconAsset);
         icon.Source = LoadProviderAsset(selectedName);
         if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineResourceCard) ResourceStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineQaCard) QaStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineHighLevelCard) HighLevelStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineManagerCard) ManagerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
@@ -1100,6 +1124,7 @@ public partial class MainWindow : Window
         {
             TaskStage.Coordinator => (PipelineCoordinatorActiveBase, PipelineCoordinatorActiveOrbit),
             TaskStage.Implementer => (PipelineImplementerActiveBase, PipelineImplementerActiveOrbit),
+            TaskStage.Resource => (PipelineResourceActiveBase, PipelineResourceActiveOrbit),
             TaskStage.Qa => (PipelineQaActiveBase, PipelineQaActiveOrbit),
             TaskStage.HighLevel => (PipelineHighLevelActiveBase, PipelineHighLevelActiveOrbit),
             TaskStage.Manager => (PipelineManagerActiveBase, PipelineManagerActiveOrbit),
@@ -1297,6 +1322,8 @@ public partial class MainWindow : Window
     {
         _activeCoordinatorFirst = false;
         _currentMilestoneQaReserved = null;
+        _currentMilestoneResourceReserved = null;
+        _resourceSidecarStatus = "ChatGPT Web";
         _jobTimedOut = false;
         _activeWorkingDirectory = null;
         TaskDirection.Text = "IDLE";
