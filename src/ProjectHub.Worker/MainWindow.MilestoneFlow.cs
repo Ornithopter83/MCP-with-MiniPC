@@ -817,14 +817,32 @@ public partial class MainWindow
                     validationRound,
                     cancellationToken);
                 var highChangedPaths =
-                    MilestoneDefinitionContract.ExtractReportPaths(
-                        highReport,
-                        "CHANGED_PATH");
-                foreach (var changedPath in highChangedPaths)
+                    MilestoneDefinitionContract.ExtractHighChangedPaths(
+                        highReport);
+                var highWriteConflicts = highChangedPaths
+                    .Where(path =>
+                        initialChangedPaths.Contains(path))
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                if (highWriteConflicts.Length > 0)
                 {
-                    if (MilestoneDefinitionContract.IsSafeRelativePath(changedPath))
-                        milestoneChangedPaths.Add(changedPath);
+                    await MilestoneManagedRunRegistry.StopAsync(
+                        jobId,
+                        CancellationToken.None);
+                    return new(
+                        true,
+                        "HIGH가 마일스톤 시작 전에 이미 로컬 변경이 있던 동일 경로를 수정했다고 보고했습니다." +
+                        Environment.NewLine +
+                        "기존 변경 작성자는 판정하지 않으며 자동 병합·stage하지 않습니다. 사용자가 직접 정리한 뒤 재개하세요." +
+                        Environment.NewLine +
+                        string.Join(
+                            Environment.NewLine,
+                            highWriteConflicts.Select(path => "- " + path)));
                 }
+
+                foreach (var changedPath in highChangedPaths)
+                    milestoneChangedPaths.Add(changedPath);
+
                 if (highChangedPaths.Count > 0)
                 {
                     feedback.Add(
