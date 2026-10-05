@@ -5,11 +5,15 @@ namespace ProjectHub.Worker.Tests;
 public sealed class WorkerHistoryEventTests
 {
     [Theory]
-    [InlineData("10", "작업 (#10)")]
-    [InlineData("27", "작업 (#27)")]
+    [InlineData("10", "작업 (#10, 일반 작업)")]
+    [InlineData("27", "작업 (#27, 일반 작업)")]
     [InlineData("W17", "작업 (#W17)")]
     [InlineData("0", "작업 (#0, 리소스)")]
     [InlineData("1", "작업 (#1, 이미지 가공)")]
+    [InlineData("2", "작업 (#2, 예약 번호)")]
+    [InlineData("7", "작업 (#7, 예약 번호)")]
+    [InlineData("8", "작업 (#8, 파일 매니저)")]
+    [InlineData("9", "작업 (#9, 빌드 매니저)")]
     public void WorkHistoryCard_UsesActualWorkItemIdInsteadOfExecutionNumber(
         string workItemId,
         string expectedRole)
