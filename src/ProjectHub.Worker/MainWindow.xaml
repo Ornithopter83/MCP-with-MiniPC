@@ -227,7 +227,7 @@
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="설계·관제 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock Text="설계 관제 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                     <Border x:Name="CoordinatorProviderIconCircle" Width="52" Height="52" Background="#1477E8" CornerRadius="26">
                       <Image x:Name="CoordinatorProviderIcon" Source="Assets/current-openai.png" Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
