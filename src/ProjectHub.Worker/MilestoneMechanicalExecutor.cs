@@ -64,18 +64,68 @@ internal static class MilestoneMechanicalExecutor
                 targetBranch,
                 StringComparison.Ordinal))
         {
-            return new(
-                false,
-                true,
-                targetBranch,
-                null,
-                "현재 checkout branch가 대상 branch와 다릅니다." +
-                Environment.NewLine +
-                $"current={currentBranch}" +
-                Environment.NewLine +
-                $"target={targetBranch}" +
-                Environment.NewLine +
-                "자동 branch 전환 없이 PAUSE합니다.");
+            var status = await Run(
+                "status",
+                "--porcelain=v1").ConfigureAwait(false);
+            if (status.ExitCode != 0 ||
+                !string.IsNullOrWhiteSpace(status.StandardOutput))
+            {
+                return new(
+                    false,
+                    true,
+                    targetBranch,
+                    null,
+                    "현재 checkout branch가 대상 branch와 다르고 로컬 변경이 있어 안전하게 전환할 수 없습니다." +
+                    Environment.NewLine +
+                    $"current={currentBranch}" +
+                    Environment.NewLine +
+                    $"target={targetBranch}" +
+                    Environment.NewLine +
+                    "사용자가 직접 정리한 뒤 재개하세요.");
+            }
+
+            var switchResult = await Run(
+                "switch",
+                targetBranch).ConfigureAwait(false);
+            if (switchResult.ExitCode != 0)
+            {
+                var remoteTarget = await Run(
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    "refs/remotes/origin/" + targetBranch)
+                    .ConfigureAwait(false);
+                if (remoteTarget.ExitCode == 0)
+                {
+                    switchResult = await Run(
+                        "switch",
+                        "-c",
+                        targetBranch,
+                        "--track",
+                        "origin/" + targetBranch)
+                        .ConfigureAwait(false);
+                }
+            }
+
+            if (switchResult.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    true,
+                    targetBranch,
+                    null,
+                    "대상 branch로 안전하게 전환하지 못했습니다." +
+                    Environment.NewLine +
+                    $"current={currentBranch}" +
+                    Environment.NewLine +
+                    $"target={targetBranch}" +
+                    Environment.NewLine +
+                    (string.IsNullOrWhiteSpace(switchResult.StandardError)
+                        ? switchResult.StandardOutput
+                        : switchResult.StandardError));
+            }
+
+            currentBranch = targetBranch;
         }
 
         var head = await Run("rev-parse", "HEAD").ConfigureAwait(false);
