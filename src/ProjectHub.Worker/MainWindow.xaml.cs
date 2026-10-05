@@ -1320,57 +1320,28 @@ public partial class MainWindow : Window
         return Task.FromResult(_bridgeServer?.CreateTaskForRole("HQ", prompt, attachments));
     }
 
-    private async Task<BridgeTask?> RouteCodexResultAsync(CodexCliResult result, string? webInstruction, bool includeWebInstruction, string? gitReferenceHeader, CancellationToken cancellationToken)
+    private async Task<BridgeTask?> RouteCodexResultAsync(
+        CodexCliResult result,
+        string? webInstruction,
+        bool includeWebInstruction,
+        string? gitReferenceHeader,
+        CancellationToken cancellationToken)
     {
-        if (result.ExitCode != 0 || _bridgeServer is null) return null;
-        var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
-        var report = output;
-        var directive = _targetSettings.EffectiveJudge.Enabled ? LegacyWebJevContract.ParseNext(output) : new NextDirective(NextRoute.Web, output);
-        var protocolError = _targetSettings.EffectiveJudge.Enabled ? LegacyWebJevContract.ValidateStructure(directive) : null;
-        if (protocolError is not null)
-        {
-            AddTaskMessage("JEV ROUTE ERROR", protocolError, status: "UNKNOWN");
-            report = $"[JEV ROUTE ERROR]\nCODE: {protocolError}\n\n{output}";
-        }
-        else if (_targetSettings.EffectiveJudge.Enabled && directive.Route == NextRoute.Jev)
-        {
-            var validation = JudgeTransportContract.ExtractRequest(directive.Body);
-            if (!JudgeTransportContract.TryParse(validation, out _, out var validationError))
-            {
-                report = $"[JEV REQUEST ERROR]\nCODE: {validationError}\n\n{output}";
-            }
-            else
-            {
-                var request = new JudgeRequest(_activePrompt ?? "Current task", 1, _activeWorkingDirectory ?? AppContext.BaseDirectory, output, validation, result.Files, "GIT", _gitTarget?.HeadSha, _activeJevJobId);
-                _judgeStatus = "REVIEWING";
-                TaskDirection.Text = "WORKER → JEV";
-                TaskTitle.Text = "JEV 응답을 같은 Codex 세션으로 전달 중";
-                SetFlowState(false, true, false, explicitStage: TaskStage.Judge);
-                AddTaskMessage("JEV REQUEST", validation);
-                var judgment = await _jevJudgeRunner.ReviewRawAsync(
-                    request,
-                    _targetSettings.EffectiveJudge,
-                    cancellationToken);
-                RecordJevTransportTelemetry(_activeJevJobId ?? Guid.NewGuid().ToString("N"), judgment.Telemetry, "LEGACY_JEV");
-                report = judgment.ErrorCode is null && judgment.RawResponse is not null
-                    ? $"[NEXT: WEB]\n[JEV RAW RESPONSE — SAME CODEX SESSION]\n{judgment.RawResponse}"
-                    : $"[NEXT: WEB]\n[JEV TRANSPORT ERROR]\nCODE: {judgment.ErrorCode ?? "JEV_RESPONSE_MISSING"}";
-                _judgeStatus = judgment.ErrorCode is null ? "RESPONSE_RECEIVED" : "TRANSPORT_ERROR";
-                AddTaskMessage("JEV RAW RESULT → CODEX", report, status: _judgeStatus);
-                var followup = AppendJevFooter(report);
-                var resumed = await RunCodexWithJevFooterAsync(followup, _activeCliModel!, _activeReasoning!, _activeWorkingDirectory!, _activeSessionId, _activeReadOnly, cancellationToken, "LEGACY_JEV_RAW_RETURN");
-                _activeSessionId = resumed.SessionId ?? _activeSessionId;
-                _lastCodexResult = resumed;
-                AddCliRoundStatus(resumed);
-                CodexThreadArchive.Save(resumed, followup, _activeWorkingDirectory!);
-                _commandUsage = _commandUsage.Add(resumed.Usage);
-                UpdateUsage(_commandUsage);
-                return await RouteCodexResultAsync(resumed, webInstruction, includeWebInstruction, gitReferenceHeader, cancellationToken);
-            }
-        }
-        var prompt = BuildWebPrompt(result with { FinalMessage = report }, webInstruction, includeControlInstructions: true, includeWebInstruction);
+        if (result.ExitCode != 0 || _bridgeServer is null)
+            return null;
+
+        var output = string.IsNullOrWhiteSpace(result.FinalMessage)
+            ? result.StandardOutput
+            : result.FinalMessage;
+        var prompt = BuildWebPrompt(
+            result with { FinalMessage = output },
+            webInstruction,
+            includeControlInstructions: true,
+            includeWebInstruction);
         var attachments = BuildWebAttachments(_bridgeServer, result.Files);
-        if (!_activeUserAttachmentsSentToWeb && _activeUserAttachments.Count > 0)
+
+        if (!_activeUserAttachmentsSentToWeb &&
+            _activeUserAttachments.Count > 0)
         {
             prompt = UserAttachmentTransport.AppendWebPrompt(
                 prompt,
@@ -1380,71 +1351,145 @@ public partial class MainWindow : Window
                 BuildUserWebAttachments(_activeUserAttachments));
             _activeUserAttachmentsSentToWeb = true;
         }
-        return await CreateWebTaskAsync(prompt, attachments, gitReferenceHeader);
+
+        return await CreateWebTaskAsync(
+            prompt,
+            attachments,
+            gitReferenceHeader);
     }
-    private string AppendJevFooter(string prompt)
+
+    private async Task<CodexCliResult> RunCodexFollowupAsync(
+        string prompt,
+        string model,
+        string reasoning,
+        string workingDirectory,
+        string? sessionId,
+        bool readOnly,
+        CancellationToken cancellationToken,
+        string purpose = "WEB_FOLLOWUP",
+        string? retryReason = null)
     {
-        if (!_targetSettings.EffectiveJudge.Enabled) return prompt;
-        try { return prompt + Environment.NewLine + Environment.NewLine + LegacyWebJevContract.LoadFooter(); }
-        catch (Exception exception)
-        {
-            AddTaskMessage("JEV", "footer 로드 실패: " + exception.Message);
-            return prompt;
-        }
-    }
-    private async Task<CodexCliResult> RunCodexWithJevFooterAsync(string prompt, string model, string reasoning, string workingDirectory, string? sessionId, bool readOnly, CancellationToken cancellationToken, string purpose = "WEB_FOLLOWUP", string? retryReason = null)
-    {
-        var fullPrompt = AppendJevFooter(prompt);
         var startedAt = DateTimeOffset.UtcNow;
-        var footerBytes = Math.Max(0, Encoding.UTF8.GetByteCount(fullPrompt) - Encoding.UTF8.GetByteCount(prompt));
-        var footerText = fullPrompt.Length >= prompt.Length ? fullPrompt[prompt.Length..] : string.Empty;
         CodexCliResult result;
-        try { result = await _codexRunner.RunAsync(fullPrompt, model, reasoning, workingDirectory, sessionId, readOnly, cancellationToken); }
+
+        try
+        {
+            result = await _codexRunner.RunAsync(
+                prompt,
+                model,
+                reasoning,
+                workingDirectory,
+                sessionId,
+                readOnly,
+                cancellationToken);
+        }
         catch (OperationCanceledException)
         {
-            AppendCodexFailureTelemetry(startedAt, prompt, fullPrompt, footerText, model, reasoning, purpose, retryReason, "CANCELLED");
+            AppendCodexFailureTelemetry(
+                startedAt,
+                prompt,
+                model,
+                reasoning,
+                purpose,
+                retryReason,
+                "CANCELLED");
             throw;
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            AppendCodexFailureTelemetry(startedAt, prompt, fullPrompt, footerText, model, reasoning, purpose, retryReason, "ERROR_" + ex.GetType().Name);
+            AppendCodexFailureTelemetry(
+                startedAt,
+                prompt,
+                model,
+                reasoning,
+                purpose,
+                retryReason,
+                "ERROR_" + exception.GetType().Name);
             throw;
         }
+
+        var promptBytes = Encoding.UTF8.GetByteCount(prompt);
         UsageTelemetryStore.Append(new ModelCallTelemetry(
-            _activeJevJobId, _judgeRound, "CODEX", model, reasoning, purpose,
-            result.Usage.InputTokens, result.Usage.CachedInputTokens, result.Usage.OutputTokens, result.Usage.ReasoningOutputTokens, result.Usage.ProviderTotalTokens,
-            Encoding.UTF8.GetByteCount(fullPrompt), Encoding.UTF8.GetByteCount(prompt), footerBytes, null, Encoding.UTF8.GetByteCount(result.StandardOutput),
-            Math.Max(0, (long)(result.FinishedAt - result.StartedAt).TotalMilliseconds), retryReason ?? (result.ExitCode != 0 ? "CLI_EXIT_" + result.ExitCode : null), result.Usage.UsageKnown,
-            null, null, result.FinishedAt, DigestText(prompt), DigestText(footerText), DigestText(fullPrompt)));
+            _activeProjectJobId ?? Guid.NewGuid().ToString("N"),
+            null,
+            "CODEX",
+            model,
+            reasoning,
+            purpose,
+            result.Usage.InputTokens,
+            result.Usage.CachedInputTokens,
+            result.Usage.OutputTokens,
+            result.Usage.ReasoningOutputTokens,
+            result.Usage.ProviderTotalTokens,
+            promptBytes,
+            promptBytes,
+            0,
+            null,
+            Encoding.UTF8.GetByteCount(result.StandardOutput),
+            Math.Max(
+                0,
+                (long)(result.FinishedAt - result.StartedAt).TotalMilliseconds),
+            retryReason ??
+                (result.ExitCode != 0
+                    ? "CLI_EXIT_" + result.ExitCode
+                    : null),
+            result.Usage.UsageKnown,
+            null,
+            null,
+            result.FinishedAt,
+            DigestText(prompt),
+            null,
+            DigestText(prompt)));
+
         return result;
     }
 
-    private void AppendCodexFailureTelemetry(DateTimeOffset startedAt, string prompt, string fullPrompt, string footer, string model, string reasoning, string purpose, string? retryReason, string error)
+    private void AppendCodexFailureTelemetry(
+        DateTimeOffset startedAt,
+        string prompt,
+        string model,
+        string reasoning,
+        string purpose,
+        string? retryReason,
+        string error)
     {
+        var promptBytes = Encoding.UTF8.GetByteCount(prompt);
         UsageTelemetryStore.Append(new ModelCallTelemetry(
-            _activeJevJobId, _judgeRound, "CODEX", model, reasoning, purpose, null, null, null, null, null,
-            Encoding.UTF8.GetByteCount(fullPrompt), Encoding.UTF8.GetByteCount(prompt), Math.Max(0, Encoding.UTF8.GetByteCount(fullPrompt) - Encoding.UTF8.GetByteCount(prompt)), null, 0,
-            Math.Max(0, (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds), retryReason ?? error, false, null, null, DateTimeOffset.UtcNow,
-            DigestText(prompt), DigestText(footer), DigestText(fullPrompt)));
+            _activeProjectJobId ?? Guid.NewGuid().ToString("N"),
+            null,
+            "CODEX",
+            model,
+            reasoning,
+            purpose,
+            null,
+            null,
+            null,
+            null,
+            null,
+            promptBytes,
+            promptBytes,
+            0,
+            null,
+            0,
+            Math.Max(
+                0,
+                (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds),
+            retryReason ?? error,
+            false,
+            null,
+            null,
+            DateTimeOffset.UtcNow,
+            DigestText(prompt),
+            null,
+            DigestText(prompt)));
     }
 
-    private static string DigestText(string value) => "sha256:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+    private static string DigestText(string value) =>
+        "sha256:" +
+        Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(value)))
+        .ToLowerInvariant();
 
-    private static string BuildGitReferenceHeader(GitReviewCheckpoint checkpoint) =>
-        checkpoint.ReviewCommitSha is null
-            ? $"[REVIEW_SOURCE=LOCAL]{Environment.NewLine}[GIT_REFERENCE={checkpoint.SyncState}]"
-            : $"[REVIEW_SOURCE=GIT]{Environment.NewLine}[REVIEW_COMMIT_SHA={checkpoint.ReviewCommitSha}]{Environment.NewLine}[SYNC_STATE={checkpoint.SyncState}]";
-    private static string BuildGitReviewSummary(GitReviewCheckpoint checkpoint) =>
-        $"Git reference: {checkpoint.SyncState}{Environment.NewLine}" +
-        $"Repository: {checkpoint.RepositoryUrl ?? "unconfigured"}{Environment.NewLine}" +
-        $"Branch: {checkpoint.Branch ?? "unknown"}{Environment.NewLine}" +
-        $"Working tree: {checkpoint.SyncState switch { "LOCAL_DIRTY" => "DIRTY", "REMOTE_CONFIRMED" or "REMOTE_UNREACHABLE" or "REMOTE_BRANCH_UNKNOWN" or "SYNC_MISMATCH" => "CLEAN", _ => "UNKNOWN" }}{Environment.NewLine}" +
-        $"Local HEAD SHA: {checkpoint.LocalHeadSha ?? "unknown"}{Environment.NewLine}" +
-        $"Push confirmation: {checkpoint.PushConfirmation}{Environment.NewLine}" +
-        $"Remote HEAD SHA: {checkpoint.RemoteHeadSha ?? "unknown"}{Environment.NewLine}" +
-        $"Review commit SHA: {checkpoint.ReviewCommitSha ?? "not confirmed"}{Environment.NewLine}" +
-        $"Server observed SHA: {checkpoint.ServerObservation}" +
-        (string.IsNullOrWhiteSpace(checkpoint.PauseReason) ? string.Empty : $"{Environment.NewLine}{Environment.NewLine}Note: {checkpoint.PauseReason}");
     private void CheckJobInactivity()
     {
         if (_jobTimedOut || (!_awaitingWebResult && _activeTaskCts is null)) return;
@@ -1863,20 +1908,6 @@ public partial class MainWindow : Window
         });
     }
 
-    private void OnObservationSidecarEvent(ObservationSidecarEvent observation)
-    {
-        RunOnUi(() =>
-        {
-            _lastActivityAt = DateTimeOffset.UtcNow;
-            AddTaskMessage(
-                observation.Source,
-                observation.Content,
-                sizeBytes: Encoding.UTF8.GetByteCount(observation.Content),
-                status: observation.Status,
-                includeHistory: false);
-        });
-    }
-
     private static string FormatCompletionMode(MechanicalWorkCompletionMode mode)
         => mode == MechanicalWorkCompletionMode.WorkResultRequired ? "WORK_RESULT_REQUIRED" : "FINALIZE_ONLY";
 
@@ -2151,15 +2182,6 @@ public partial class MainWindow : Window
         AddTaskMessage(transcriptSource, $"exit {result.ExitCode} · provider {role.Provider} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
         _lastActivityAt = DateTimeOffset.UtcNow;
         return result;
-    }
-
-    private static void RecordJevTransportTelemetry(string jobId, JevCallTelemetry? telemetry, string purpose)
-    {
-        if (telemetry is null) return;
-        UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, "JEV", telemetry.Model, null, purpose,
-            telemetry.InputTokens, telemetry.CachedInputTokens, telemetry.OutputTokens, telemetry.ReasoningTokens, telemetry.ProviderTotalTokens,
-            telemetry.RequestBytes, 0, 0, telemetry.EvidenceBytes, telemetry.ResponseBytes, telemetry.LatencyMs,
-            telemetry.ErrorCode, telemetry.UsageKnown, telemetry.QuestionCount, telemetry.QuestionCount, DateTimeOffset.UtcNow, null, null, telemetry.PayloadDigest));
     }
 
     private void ShowCoordinatorFirstBlocked(string title, string detail)
@@ -2828,8 +2850,6 @@ public partial class MainWindow : Window
             ManualRepositoryUrl = repository, ManualServerBaseUrl = server,
             RepositoryUrlSource = repository is null ? null : "AUTO_GIT_REMOTE", ServerBaseUrlSource = "MANUAL",
             ManualWorkingDirectory = workingDirectory,
-            Judge = null,
-            JudgeEndpointValidation = null,
             ExecutionMode = executionMode,
             Coordinator = ReadCoordinatorSettings(),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer, ImplementerRoleThreadCombo),
@@ -3116,7 +3136,7 @@ public partial class MainWindow : Window
         _lastWebTaskId = task.Id;
         _lastWebTask = task;
         UsageTelemetryStore.Append(new ModelCallTelemetry(
-            _activeJevJobId, _judgeRound, "GPT_WEB", "unknown", null, "COORDINATOR_RESPONSE",
+            _activeProjectJobId ?? Guid.NewGuid().ToString("N"), null, "GPT_WEB", "unknown", null, "COORDINATOR_RESPONSE",
             null, null, null, null, null, Encoding.UTF8.GetByteCount(task.Prompt ?? string.Empty), Encoding.UTF8.GetByteCount(task.Prompt ?? string.Empty), 0,
             task.Attachments?.Sum(x => x.Size) ?? 0, Encoding.UTF8.GetByteCount(task.Result ?? string.Empty),
             task.StartedAt is not null && task.CompletedAt is not null ? Math.Max(0, (long)(task.CompletedAt.Value - task.StartedAt.Value).TotalMilliseconds) : 0,
@@ -3193,7 +3213,6 @@ public partial class MainWindow : Window
         {
             followupPrompt = "GPT Web 응답을 전달합니다. 원래 작업을 계속 수행해줘." + Environment.NewLine + "작업이 완전히 끝났으면 응답 첫 줄을 [WORKER_DONE]로 시작해줘. 아직 다음 단계가 필요하면 GPT Web에 보낼 다음 요청만 출력해줘." + Environment.NewLine + Environment.NewLine + webResponse;
         }
-        _judgeRound = 0;
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         _awaitingWebResult = false;
@@ -3205,7 +3224,7 @@ public partial class MainWindow : Window
         try
         {
             AddTaskMessage("WORKER -> CODEX", followupPrompt);
-            var result = await RunCodexWithJevFooterAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token, "WEB_FOLLOWUP");
+            var result = await RunCodexFollowupAsync(followupPrompt, model, reasoning, workingDirectory, _activeSessionId, _activeReadOnly, cts.Token, "WEB_FOLLOWUP");
             if (_userCanceledTask) return;
             _lastActivityAt = DateTimeOffset.UtcNow;
             _activeSessionId = result.SessionId ?? _activeSessionId;
@@ -3273,17 +3292,13 @@ public partial class MainWindow : Window
         bool includeWebInstruction)
     {
         var output = string.IsNullOrWhiteSpace(result.FinalMessage) ? result.StandardOutput : result.FinalMessage;
-        var control = includeControlInstructions ? LegacyWebActionContract.BuildInstructions(_targetSettings.EffectiveJudge.Enabled) + Environment.NewLine + Environment.NewLine : string.Empty;
+        var control = includeControlInstructions
+            ? LegacyWebActionContract.BuildInstructions() + Environment.NewLine + Environment.NewLine
+            : string.Empty;
         var instruction = includeWebInstruction && !string.IsNullOrWhiteSpace(webInstruction)
             ? Environment.NewLine + Environment.NewLine + webInstruction
             : string.Empty;
-        var jevGuidance = includeControlInstructions && _targetSettings.EffectiveJudge.Enabled
-            ? Environment.NewLine + Environment.NewLine
-                + "JEV 검증 지침: 관측 사실 자체를 다시 확인하지 말고, 현재 근거만으로 기계적으로 확정할 수 없는 판단이 다음 작업이나 완료 결과에 영향을 줄 때 JEV 판정을 요청하세요."
-                + Environment.NewLine
-                + "이미 판정한 판단의 근거가 의미 있게 바뀌면 새 근거로 다시 요청하고, 기계적으로 확인 가능한 사실만 남았으면 JEV 없이 보고하세요."
-            : string.Empty;
-        return control + output + instruction + jevGuidance;
+        return control + output + instruction;
     }
     private bool ShouldContinueRoundtrip(CodexCliResult result)
     {
@@ -3458,7 +3473,6 @@ public partial class MainWindow : Window
         string? body,
         CodexUsage? usage = null,
         IReadOnlyList<CodexCliFile>? files = null,
-        JevCallTelemetry? judgeTelemetry = null,
         string? status = null,
         string? providerWireId = null,
         string? fullMessage = null,
@@ -3474,7 +3488,6 @@ public partial class MainWindow : Window
             WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
-            WorkerRoleState.Judge => "Judge",
             _ => "System"
         };
         var text = body?.Trim() ?? string.Empty;
@@ -3494,9 +3507,7 @@ public partial class MainWindow : Window
             WorkNumber = workNumber,
             WorkItemId = workItemId,
             FullMessage = fullText,
-            TokenDetails = judgeTelemetry is not null
-                ? WorkerHistoryCardFormatter.TokenLine(judgeTelemetry)
-                : WorkerHistoryCardFormatter.TokenLine(usage),
+            TokenDetails = WorkerHistoryCardFormatter.TokenLine(usage),
             FileDetails = WorkerHistoryCardFormatter.FileLine(files)
         };
         if (!string.IsNullOrWhiteSpace(providerWireId))
@@ -3510,8 +3521,7 @@ public partial class MainWindow : Window
     private static WorkerHistoryEvent? CreateHistoryEvent(DateTimeOffset timestamp, string source, string content, long? sizeBytes, int? itemCount, int? fileCount, string? explicitStatus, string? referenceId, string? summary)
     {
         var normalized = source.Trim().ToUpperInvariant();
-        string stage = normalized.Contains("JEV", StringComparison.Ordinal) || normalized.Contains("JUDGE", StringComparison.Ordinal) ? "Judge"
-            : normalized.Contains("MANAGER", StringComparison.Ordinal) ? "Manager"
+        string stage = normalized.Contains("MANAGER", StringComparison.Ordinal) ? "Manager"
             : normalized.Contains("QA", StringComparison.Ordinal) ? "Qa"
             : normalized.Contains("HIGH", StringComparison.Ordinal) ? "HighLevel"
             : normalized.Contains("RESOURCE", StringComparison.Ordinal) ? "Resource"
@@ -3536,12 +3546,6 @@ public partial class MainWindow : Window
             return new(timestamp, "Coordinator", "WORK_PLANNED", "작업 계획", HistorySummary(summary ?? ReadJsonSummary(content, "goal", "title")), bytes, itemCount ?? 1, fileCount, statusText, referenceId);
         if (normalized.Contains("WORKER -> GPT WEB", StringComparison.Ordinal) || normalized.Contains("WORKER -> CODEX", StringComparison.Ordinal))
             return new(timestamp, stage, "REQUEST_RECEIVED", "단계 요청 전달", HistorySummary(summary ?? "구현 결과를 다음 단계에 전달했습니다."), bytes, itemCount ?? 1, fileCount, statusText, referenceId);
-        if (normalized.Contains("JEV REQUEST", StringComparison.Ordinal))
-            return new(timestamp, "Judge", "VALIDATION_REQUEST", "판정 요청", HistorySummary(summary ?? "원자 질문을 판정 AI에 전달했습니다."), bytes, itemCount ?? 1, fileCount, statusText, referenceId);
-        if (normalized.Contains("VALIDATION", StringComparison.Ordinal))
-            return new(timestamp, "Judge", "VALIDATION_RECEIVED", "검증 결과", HistorySummary(summary ?? (itemCount.HasValue ? $"{itemCount.Value}개 검증 항목의 실행 결과를 확인했습니다." : "검증 증거를 확인했습니다.")), bytes, itemCount, fileCount, statusText, referenceId);
-        if (normalized.Contains("JEV RESULT", StringComparison.Ordinal) || normalized.Contains("JEV TEST", StringComparison.Ordinal))
-            return new(timestamp, "Judge", "VALIDATION_RECEIVED", "판정 결과", HistorySummary(summary ?? content), bytes, itemCount, fileCount, statusText, referenceId);
         if (normalized.Contains("LUNA RESULT", StringComparison.Ordinal))
             return new(timestamp, "Implementer", "RESULT_RECEIVED", "구현 결과", HistorySummary(summary ?? ReadJsonSummary(content, "summary")), bytes, itemCount, fileCount, statusText, referenceId);
         if (normalized == "GPT WEB")
