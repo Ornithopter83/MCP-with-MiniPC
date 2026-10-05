@@ -250,6 +250,12 @@ public partial class MainWindow
                     continue;
                 }
 
+                RunOnUi(() =>
+                {
+                    _currentMilestoneQaReserved = milestone!.QaReserved;
+                    UpdatePipelineVisuals();
+                });
+
                 var initialChangedPaths =
                     await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
                         normalizedRoot,
