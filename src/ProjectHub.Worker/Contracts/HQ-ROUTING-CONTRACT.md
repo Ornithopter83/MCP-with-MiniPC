@@ -22,6 +22,7 @@ Web HQ의 정상 응답 골격은 다음과 같다.
     "branch": "AUTO",
     "goal": "현재 마일스톤 전체 목표",
     "entrypoint": null,
+    "projectPolicy": "DEFAULT",
     "qa": {
       "required": false,
       "instructions": ""
@@ -52,6 +53,8 @@ Web HQ의 정상 응답 골격은 다음과 같다.
 - `validation`: HIGH/QA에서 확인해야 할 핵심 조건 문자열 배열
 ④ 위 필드 외에 필요한 설계 근거, 제약, 구조, 주의사항이 있으면 반드시 `milestone` 내부의 추가 JSON 필드로 넣는다. JSON 밖에 적지 않는다.
 ⑤ `branch`가 `"AUTO"`이면 Worker가 main을 우선하고 main이 없으면 master를 사용한다.
+⑥ 프로젝트 파일을 생성·수정·삭제하지 않는 검증 전용 마일스톤이면 `projectPolicy`를 `"READ_ONLY_NO_FILE_CHANGES"`로 둔다. 일반 마일스톤은 `"DEFAULT"`를 사용하거나 이 필드를 생략할 수 있다.
+⑦ `READ_ONLY_NO_FILE_CHANGES` 마일스톤에서는 RESOURCE를 사용하지 않고 모든 GENERAL WORK를 읽기 전용으로 실행한다. Worker는 이 값을 기계적으로 강제한다.
 
 제3조 (QA)
 
@@ -72,6 +75,7 @@ Web HQ의 정상 응답 골격은 다음과 같다.
 
 {
   "id": 10,
+  "readOnly": false,
   "writePaths": ["src/Feature"],
   "goal": "이 WorkItem이 달성할 단일 목표",
   "instructions": "구체 구현 지시",
@@ -79,11 +83,12 @@ Web HQ의 정상 응답 골격은 다음과 같다.
 }
 
 ② `id`는 10 이상의 정수 또는 같은 값을 나타내는 문자열이어야 한다.
-③ `writePaths`는 프로젝트 루트 기준 상대 경로를 하나 이상 포함한다.
-④ 동시에 실행할 WorkItem의 생성·수정·삭제 영역은 서로 겹치지 않게 설계한다.
-⑤ 한 WorkItem은 지정된 writePaths 범위 안에서 독립적으로 수행할 수 있게 설계한다.
-⑥ 같은 마일스톤 내부 dependency는 최대한 만들지 않는다. 한 결과가 다른 작업의 전제가 되면 가능한 한 다음 마일스톤으로 분리한다.
-⑦ WorkItem에 필요한 추가 조건은 해당 WorkItem 객체 안의 추가 JSON 필드로 넣는다.
+③ 파일 변경이 필요한 WorkItem은 `readOnly`를 false로 두고 `writePaths`에 프로젝트 루트 기준 상대 경로를 하나 이상 포함한다.
+④ 파일을 변경하지 않는 WorkItem은 `readOnly`를 true로 두고 `writePaths`를 빈 배열로 사용할 수 있다. `projectPolicy`가 `READ_ONLY_NO_FILE_CHANGES`이면 Worker는 모든 WorkItem을 읽기 전용으로 취급한다.
+⑤ 동시에 실행할 쓰기 WorkItem의 생성·수정·삭제 영역은 서로 겹치지 않게 설계한다.
+⑥ 쓰기 WorkItem은 지정된 writePaths 범위 안에서 독립적으로 수행할 수 있게 설계한다.
+⑦ 같은 마일스톤 내부 dependency는 최대한 만들지 않는다. 한 결과가 다른 작업의 전제가 되면 가능한 한 다음 마일스톤으로 분리한다.
+⑧ WorkItem에 필요한 추가 조건은 해당 WorkItem 객체 안의 추가 JSON 필드로 넣는다.
 
 제5조 (RESOURCE)
 
