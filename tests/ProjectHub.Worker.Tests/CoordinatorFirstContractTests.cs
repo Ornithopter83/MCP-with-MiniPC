@@ -5,119 +5,150 @@ namespace ProjectHub.Worker.Tests;
 public sealed class CoordinatorFirstContractTests
 {
     [Fact]
-    public void HqActionParser_ParsesMilestoneAndWorkIndependently()
+    public void HqActionParser_ParsesCompleteMilestoneJson()
     {
         const string message = """
-            [ACTION=MILESTONE]
-            MILESTONE_ID: M1
-            TARGET_BRANCH: AUTO
-            QA: YES
-            ENTRYPOINT: bin/App.exe
-            BODY_BEGIN
-            첫 마일스톤
-            BODY_END
-            [END_ACTION]
-
             [ACTION=WORK]
-            WORK_ITEM_ID: 10
-            WRITE_PATH: src/A
-            WRITE_PATH: src/B.cs
-            BODY_BEGIN
-            구현한다.
-            BODY_END
-            [END_ACTION]
+            {
+              "action": "work",
+              "milestone": {
+                "id": "M1",
+                "branch": "AUTO",
+                "goal": "첫 마일스톤",
+                "entrypoint": "bin/App.exe",
+                "qa": {
+                  "required": true,
+                  "instructions": "앱 실행과 핵심 동작을 확인한다."
+                },
+                "resource": null,
+                "workItems": [
+                  {
+                    "id": 10,
+                    "writePaths": ["src/A", "src/B.cs"],
+                    "goal": "기능을 구현한다.",
+                    "instructions": "지정 경로 안에서 구현한다.",
+                    "completionCriteria": ["구현이 완료된다."]
+                  }
+                ],
+                "completionCriteria": ["마일스톤 목표가 충족된다."],
+                "validation": ["변경 결과를 검증한다."]
+              }
+            }
             """;
 
         var parsed = ActionBlockContract.ParseHq(message);
 
         Assert.False(parsed.HasErrors);
-        Assert.Equal(2, parsed.ValidActions.Count);
-        Assert.Equal("MILESTONE", parsed.ValidActions[0].Name);
-        Assert.Equal("YES", parsed.ValidActions[0].GetSingle("QA"));
-        Assert.Equal(new[] { "src/A", "src/B.cs" }, parsed.ValidActions[1].GetMany("WRITE_PATH"));
+        var action = Assert.Single(parsed.ValidActions);
+        Assert.Equal("WORK", action.Name);
+        Assert.NotNull(action.JsonPayload);
+
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            message,
+            parsed,
+            out var milestone,
+            out var error),
+            error);
+        Assert.NotNull(milestone);
+        Assert.Equal("M1", milestone!.Id);
+        Assert.Equal("AUTO", milestone.TargetBranch);
+        Assert.True(milestone.QaReserved);
+        Assert.Equal("bin/App.exe", milestone.Entrypoint);
+        var work = Assert.Single(milestone.WorkItems.Values);
+        Assert.Equal("10", work.Id);
+        Assert.Equal(new[] { "src/A", "src/B.cs" }, work.WritePaths);
     }
 
     [Fact]
-    public void HqActionParser_KeepsLaterValidBlockWhenEarlierBlockIsMalformed()
+    public void HqActionParser_RejectsMalformedJsonEnvelope()
     {
         const string message = """
             [ACTION=WORK]
-            WORK_ITEM_ID: 10
-            WRITE_PATH: src/Broken.cs
-            BODY_BEGIN
-            END_ACTION이 없다.
-
-            [ACTION=MILESTONE]
-            MILESTONE_ID: M2
-            TARGET_BRANCH: AUTO
-            QA: NO
-            BODY_BEGIN
-            정상 블록
-            BODY_END
-            [END_ACTION]
+            {
+              "action": "work",
+              "milestone":
             """;
 
         var parsed = ActionBlockContract.ParseHq(message);
 
-        Assert.Contains(parsed.Actions, action =>
-            action.Name == "WORK" &&
-            action.Errors.Contains("ACTION_END_MISSING"));
-        var milestone = Assert.Single(parsed.ValidActions);
-        Assert.Equal("MILESTONE", milestone.Name);
-        Assert.Equal("M2", milestone.GetSingle("MILESTONE_ID"));
+        Assert.True(parsed.HasErrors);
+        var action = Assert.Single(parsed.Actions);
+        Assert.Contains("JSON_INVALID", action.Errors);
+        Assert.Empty(parsed.ValidActions);
     }
 
     [Fact]
-    public void InvalidWorkBlock_DoesNotDiscardValidMilestone()
+    public void MilestoneDefinition_RejectsWorkItemBelowTen()
     {
         const string message = """
-            [ACTION=MILESTONE]
-            MILESTONE_ID: M3
-            TARGET_BRANCH: main
-            QA: NO
-            BODY_BEGIN
-            목표
-            BODY_END
-            [END_ACTION]
-
             [ACTION=WORK]
-            WORK_ITEM_ID: 9
-            WRITE_PATH: src/Bad.cs
-            BODY_BEGIN
-            예약 번호를 잘못 사용했다.
-            BODY_END
-            [END_ACTION]
+            {
+              "action": "work",
+              "milestone": {
+                "id": "M3",
+                "branch": "main",
+                "goal": "목표",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [
+                  {
+                    "id": 9,
+                    "writePaths": ["src/Bad.cs"],
+                    "goal": "예약 번호를 잘못 사용했다.",
+                    "instructions": "",
+                    "completionCriteria": []
+                  }
+                ],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
             """;
 
         var parsed = ActionBlockContract.ParseHq(message);
 
-        Assert.Single(parsed.ValidActions);
-        Assert.Equal("MILESTONE", parsed.ValidActions[0].Name);
-        Assert.Contains(parsed.Actions, action =>
-            action.Name == "WORK" &&
-            action.Errors.Contains("WORK_ITEM_ID_INVALID"));
+        Assert.False(MilestoneDefinitionContract.TryBuild(
+            message,
+            parsed,
+            out _,
+            out var error));
+        Assert.Contains("WORK_ITEM_ID_INVALID", error);
     }
 
     [Fact]
     public void MilestoneDefinition_RejectsPathEscapingProjectRoot()
     {
         const string message = """
-            [ACTION=MILESTONE]
-            MILESTONE_ID: M4
-            TARGET_BRANCH: AUTO
-            QA: NO
-            BODY_BEGIN
-            경로 검증
-            BODY_END
-            [END_ACTION]
-
             [ACTION=WORK]
-            WORK_ITEM_ID: 10
-            WRITE_PATH: ../outside.txt
-            BODY_BEGIN
-            잘못된 경로
-            BODY_END
-            [END_ACTION]
+            {
+              "action": "work",
+              "milestone": {
+                "id": "M4",
+                "branch": "AUTO",
+                "goal": "경로 검증",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [
+                  {
+                    "id": 10,
+                    "writePaths": ["../outside.txt"],
+                    "goal": "잘못된 경로",
+                    "instructions": "",
+                    "completionCriteria": []
+                  }
+                ],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
             """;
 
         var parsed = ActionBlockContract.ParseHq(message);
@@ -241,8 +272,11 @@ public sealed class CoordinatorFirstContractTests
         var qa = RoleContractLoader.LoadQaFooter();
         var high = RoleContractLoader.LoadHighFooter();
 
-        Assert.Contains("[ACTION=MILESTONE]", hq);
-        Assert.Contains("QA: YES 또는 NO", hq);
+        Assert.Contains("[ACTION=WORK]", hq);
+        Assert.Contains("\"action\": \"work\"", hq);
+        Assert.Contains("[RESPONSE=OK]", hq);
+        Assert.DoesNotContain("[END_ACTION]", hq);
+        Assert.DoesNotContain("BODY_BEGIN", hq);
         Assert.Contains("[ACTION=READY_FOR_VALIDATION]", manager);
         Assert.Contains("[ACTION=GIT_FINALIZE]", manager);
         Assert.Contains("COMMAND:", manager);
