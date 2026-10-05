@@ -255,6 +255,10 @@ public partial class MainWindow
                 RunOnUi(() =>
                 {
                     _currentMilestoneQaReserved = milestone!.QaReserved;
+                    _currentMilestoneResourceReserved =
+                        milestone.Resources.Count > 0;
+                    if (_currentMilestoneResourceReserved != true)
+                        _resourceSidecarStatus = "ChatGPT Web";
                     UpdatePipelineVisuals();
                 });
 
