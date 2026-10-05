@@ -4,14 +4,20 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class TaskContinuationContractTests
 {
-    [Theory]
-    [InlineData("PAUSED")]
-    [InlineData("CANCELED")]
-    public void PausedAndCanceledRemainResumable(string status)
+    [Fact]
+    public void PausedRemainsResumable()
     {
-        Assert.True(TaskContinuationContract.IsResumableStatus(status));
-        Assert.True(TaskContinuationContract.CanAcceptFollowupStatus(status));
-        Assert.False(TaskContinuationContract.IsFreshStartStatus(status));
+        Assert.True(TaskContinuationContract.IsResumableStatus("PAUSED"));
+        Assert.True(TaskContinuationContract.CanAcceptFollowupStatus("PAUSED"));
+        Assert.False(TaskContinuationContract.IsFreshStartStatus("PAUSED"));
+    }
+
+    [Fact]
+    public void CanceledIsTerminalAndDoesNotAcceptFollowup()
+    {
+        Assert.False(TaskContinuationContract.IsResumableStatus("CANCELED"));
+        Assert.False(TaskContinuationContract.CanAcceptFollowupStatus("CANCELED"));
+        Assert.False(TaskContinuationContract.IsFreshStartStatus("CANCELED"));
     }
 
     [Theory]
