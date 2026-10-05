@@ -385,6 +385,9 @@ public partial class MainWindow
         if (!gitPreflight.Success)
             return new(true, gitPreflight.Summary);
 
+        var milestoneChangedPaths = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+
         var milestoneWriteScopes = milestone.WorkItems.Values
             .SelectMany(work => work.WritePaths)
             .Concat(milestone.Resources.Values.Select(resource => resource.TargetPath))
@@ -410,13 +413,29 @@ public partial class MainWindow
                     initialWriteConflicts.Select(path => "- " + path)));
         }
 
+        var gitIgnoreNeedsUpdate =
+            WorkerPaths.NeedsProjectHubGitIgnoreUpdate(workingDirectory);
+        if (gitIgnoreNeedsUpdate &&
+            initialChangedPaths.Contains(".gitignore"))
+        {
+            return new(
+                true,
+                "bin/·temp/ Git 제외 규칙을 추가해야 하지만 .gitignore에 기존 로컬 변경이 있습니다." +
+                Environment.NewLine +
+                "사용자가 .gitignore를 직접 정리한 뒤 재개하세요.");
+        }
+
+        if (gitIgnoreNeedsUpdate &&
+            WorkerPaths.EnsureProjectHubGitIgnore(workingDirectory))
+        {
+            milestoneChangedPaths.Add(".gitignore");
+        }
+
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var resourceReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
-        var milestoneChangedPaths = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase);
         var qaReport = string.Empty;
         var highReport = string.Empty;
         var validationRound = 0;
