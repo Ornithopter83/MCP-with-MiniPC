@@ -209,8 +209,14 @@ public sealed class BridgeServer : IDisposable
     }
     public BridgeAttachment CreateFileAttachment(CodexCliFile file)
     {
-        if (!File.Exists(file.Path)) throw new FileNotFoundException("CLI 파일을 찾을 수 없습니다.", file.Path);
-        if (file.Size <= 0 || file.Size > 50 * 1024 * 1024) throw new InvalidOperationException("CLI 파일 크기가 허용 범위를 벗어났습니다.");
+        if (!File.Exists(file.Path))
+            throw new FileNotFoundException("CLI 파일을 찾을 수 없습니다.", file.Path);
+
+        var sourceSize = new FileInfo(file.Path).Length;
+        UserAttachmentTransport.ValidateFileSize(
+            file.FileName,
+            file.MimeType,
+            sourceSize);
 
         var id = Guid.NewGuid().ToString("N");
         var directory = WorkerPaths.Attachments;
@@ -220,13 +226,13 @@ public sealed class BridgeServer : IDisposable
             extension = ".bin";
         var path = Path.Combine(directory, id + extension.ToLowerInvariant());
         File.Copy(file.Path, path, false);
-        var bytes = File.ReadAllBytes(path);
-        var sha256 = Convert.ToHexString(SHA256.HashData(bytes));
+        var size = new FileInfo(path).Length;
+        var sha256 = UserAttachmentTransport.ComputeSha256(path);
         return new BridgeAttachment(
             id,
             Path.GetFileName(file.FileName),
             file.MimeType,
-            bytes.LongLength,
+            size,
             "http://127.0.0.1:43821/bridge/attachment/" + id,
             sha256);
     }
