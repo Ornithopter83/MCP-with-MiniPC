@@ -1,5 +1,6 @@
 using System.Text;
 using System.IO;
+using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
@@ -57,86 +58,342 @@ internal static class MilestoneDefinitionContract
         milestone = null;
         error = string.Empty;
 
-        var milestones = parse.ValidActions
+        var workActions = parse.ValidActions
             .Where(action => string.Equals(
                 action.Name,
-                "MILESTONE",
+                "WORK",
                 StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        if (milestones.Length != 1)
+        if (workActions.Length != 1)
         {
             error =
-                $"valid MILESTONE count={milestones.Length}" +
+                $"valid WORK count={workActions.Length}" +
                 Environment.NewLine +
                 string.Join(Environment.NewLine, parse.Errors);
             return false;
         }
 
-        var milestoneAction = milestones[0];
-        var workItems = new Dictionary<string, MilestoneWorkDefinition>(
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var action in parse.ValidActions.Where(action =>
-                     string.Equals(
-                         action.Name,
-                         "WORK",
-                         StringComparison.OrdinalIgnoreCase)))
+        var action = workActions[0];
+        if (string.IsNullOrWhiteSpace(action.JsonPayload))
         {
-            var id = action.GetSingle("WORK_ITEM_ID")!;
-            var writePaths = action.GetMany("WRITE_PATH").ToArray();
-            if (writePaths.Any(path => !IsSafeRelativePath(path)))
+            error = "HQ_WORK_JSON_REQUIRED";
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(action.JsonPayload);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("milestone", out var milestoneJson) ||
+                milestoneJson.ValueKind != JsonValueKind.Object)
             {
-                error = $"WORK {id}: WRITE_PATH_OUTSIDE_PROJECT_ROOT";
+                error = "MILESTONE_OBJECT_REQUIRED";
                 return false;
             }
 
-            workItems[id] = new(
-                id,
-                writePaths,
-                action.Body,
-                action.RawText);
-        }
-
-        var resources = new Dictionary<string, MilestoneResourceDefinition>(
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var action in parse.ValidActions.Where(action =>
-                     string.Equals(
-                         action.Name,
-                         "RESOURCE",
-                         StringComparison.OrdinalIgnoreCase)))
-        {
-            var id = action.GetSingle("RESOURCE_ID")!;
-            var targetPath = action.GetSingle("TARGET_PATH")!;
-            if (!IsSafeRelativePath(targetPath))
+            if (!TryGetRequiredJsonString(milestoneJson, "id", out var milestoneId))
             {
-                error = $"RESOURCE {id}: TARGET_PATH_OUTSIDE_PROJECT_ROOT";
+                error = "MILESTONE_ID_REQUIRED";
                 return false;
             }
 
-            resources[id] = new(
-                id,
-                action.GetSingle("RESOURCE_TYPE")!,
-                targetPath,
-                action.Body,
-                action.RawText);
+            if (!TryGetRequiredJsonString(milestoneJson, "branch", out var targetBranch))
+            {
+                error = "MILESTONE_BRANCH_REQUIRED";
+                return false;
+            }
+
+            if (!TryGetRequiredJsonString(milestoneJson, "goal", out _))
+            {
+                error = "MILESTONE_GOAL_REQUIRED";
+                return false;
+            }
+
+            if (!milestoneJson.TryGetProperty("qa", out var qaJson) ||
+                qaJson.ValueKind != JsonValueKind.Object ||
+                !qaJson.TryGetProperty("required", out var qaRequiredJson) ||
+                qaRequiredJson.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                error = "MILESTONE_QA_REQUIRED";
+                return false;
+            }
+
+            var qaReserved = qaRequiredJson.GetBoolean();
+            if (qaReserved &&
+                (!qaJson.TryGetProperty("instructions", out var qaInstructions) ||
+                 qaInstructions.ValueKind != JsonValueKind.String ||
+                 string.IsNullOrWhiteSpace(qaInstructions.GetString())))
+            {
+                error = "MILESTONE_QA_INSTRUCTIONS_REQUIRED";
+                return false;
+            }
+
+            if (!milestoneJson.TryGetProperty("completionCriteria", out var completionCriteria) ||
+                !IsStringArray(completionCriteria))
+            {
+                error = "MILESTONE_COMPLETION_CRITERIA_REQUIRED";
+                return false;
+            }
+
+            if (!milestoneJson.TryGetProperty("validation", out var validation) ||
+                !IsStringArray(validation))
+            {
+                error = "MILESTONE_VALIDATION_REQUIRED";
+                return false;
+            }
+
+            var entrypoint = TryGetOptionalJsonString(
+                milestoneJson,
+                "entrypoint");
+
+            if (!milestoneJson.TryGetProperty("workItems", out var workItemsJson) ||
+                workItemsJson.ValueKind != JsonValueKind.Array)
+            {
+                error = "MILESTONE_WORK_ITEMS_REQUIRED";
+                return false;
+            }
+
+            var workItems = new Dictionary<string, MilestoneWorkDefinition>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var workJson in workItemsJson.EnumerateArray())
+            {
+                if (workJson.ValueKind != JsonValueKind.Object ||
+                    !TryGetJsonId(workJson, "id", out var workId) ||
+                    !int.TryParse(workId, out var workNumber) ||
+                    workNumber < 10)
+                {
+                    error = "WORK_ITEM_ID_INVALID";
+                    return false;
+                }
+
+                if (workItems.ContainsKey(workId))
+                {
+                    error = $"WORK {workId}: WORK_ITEM_ID_DUPLICATED";
+                    return false;
+                }
+
+                if (!workJson.TryGetProperty("writePaths", out var writePathsJson) ||
+                    !TryGetNonEmptyStringArray(writePathsJson, out var writePaths))
+                {
+                    error = $"WORK {workId}: WRITE_PATH_REQUIRED";
+                    return false;
+                }
+
+                if (writePaths.Any(path => !IsSafeRelativePath(path)))
+                {
+                    error = $"WORK {workId}: WRITE_PATH_OUTSIDE_PROJECT_ROOT";
+                    return false;
+                }
+
+                if (!TryGetRequiredJsonString(workJson, "goal", out var workGoal))
+                {
+                    error = $"WORK {workId}: GOAL_REQUIRED";
+                    return false;
+                }
+
+                if (workJson.TryGetProperty("completionCriteria", out var workCriteria) &&
+                    !IsStringArray(workCriteria))
+                {
+                    error = $"WORK {workId}: COMPLETION_CRITERIA_INVALID";
+                    return false;
+                }
+
+                var body = BuildWorkBody(workJson, workGoal);
+                workItems[workId] = new(
+                    workId,
+                    writePaths,
+                    body,
+                    workJson.GetRawText());
+            }
+
+            var resources = new Dictionary<string, MilestoneResourceDefinition>(
+                StringComparer.OrdinalIgnoreCase);
+            if (!milestoneJson.TryGetProperty("resource", out var resourceJson))
+            {
+                error = "MILESTONE_RESOURCE_REQUIRED";
+                return false;
+            }
+
+            if (resourceJson.ValueKind != JsonValueKind.Null)
+            {
+                if (resourceJson.ValueKind != JsonValueKind.Object)
+                {
+                    error = "RESOURCE_OBJECT_OR_NULL_REQUIRED";
+                    return false;
+                }
+
+                var resourceId = TryGetJsonId(resourceJson, "id", out var explicitResourceId)
+                    ? explicitResourceId
+                    : "0";
+                if (!string.Equals(resourceId, "0", StringComparison.Ordinal))
+                {
+                    error = "RESOURCE_ID_INVALID";
+                    return false;
+                }
+
+                if (!TryGetRequiredJsonString(resourceJson, "type", out var resourceType) ||
+                    !string.Equals(resourceType, "image", StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "RESOURCE_TYPE_INVALID";
+                    return false;
+                }
+
+                if (!TryGetRequiredJsonString(resourceJson, "targetPath", out var targetPath))
+                {
+                    error = "RESOURCE_TARGET_PATH_REQUIRED";
+                    return false;
+                }
+
+                if (!IsSafeRelativePath(targetPath))
+                {
+                    error = "RESOURCE 0: TARGET_PATH_OUTSIDE_PROJECT_ROOT";
+                    return false;
+                }
+
+                if (!TryGetRequiredJsonString(resourceJson, "instructions", out var resourceInstructions))
+                {
+                    error = "RESOURCE_INSTRUCTIONS_REQUIRED";
+                    return false;
+                }
+
+                resources["0"] = new(
+                    "0",
+                    resourceType.ToUpperInvariant(),
+                    targetPath,
+                    resourceInstructions,
+                    resourceJson.GetRawText());
+            }
+
+            milestone = new(
+                milestoneId,
+                targetBranch,
+                qaReserved,
+                entrypoint,
+                milestoneJson.GetRawText(),
+                rawMessage,
+                workItems,
+                resources,
+                parse.Errors.ToArray());
+            return true;
+        }
+        catch (JsonException exception)
+        {
+            error = "HQ_WORK_JSON_INVALID: " + exception.Message;
+            return false;
+        }
+    }
+
+    private static bool TryGetRequiredJsonString(
+        JsonElement element,
+        string propertyName,
+        out string value)
+    {
+        value = string.Empty;
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+            return false;
+
+        value = property.GetString()?.Trim() ?? string.Empty;
+        return value.Length > 0;
+    }
+
+    private static string? TryGetOptionalJsonString(
+        JsonElement element,
+        string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind == JsonValueKind.Null)
+            return null;
+
+        if (property.ValueKind != JsonValueKind.String)
+            return null;
+
+        var value = property.GetString()?.Trim();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static bool TryGetJsonId(
+        JsonElement element,
+        string propertyName,
+        out string value)
+    {
+        value = string.Empty;
+        if (!element.TryGetProperty(propertyName, out var property))
+            return false;
+
+        value = property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString()?.Trim() ?? string.Empty,
+            JsonValueKind.Number => property.GetRawText(),
+            _ => string.Empty
+        };
+        return value.Length > 0;
+    }
+
+    private static bool TryGetNonEmptyStringArray(
+        JsonElement element,
+        out string[] values)
+    {
+        values = Array.Empty<string>();
+        if (!IsStringArray(element))
+            return false;
+
+        values = element
+            .EnumerateArray()
+            .Select(item => item.GetString()?.Trim() ?? string.Empty)
+            .Where(item => item.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return values.Length > 0;
+    }
+
+    private static bool IsStringArray(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Array)
+            return false;
+
+        return element
+            .EnumerateArray()
+            .All(item => item.ValueKind == JsonValueKind.String);
+    }
+
+    private static string BuildWorkBody(
+        JsonElement workJson,
+        string goal)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(goal);
+
+        var instructions = TryGetOptionalJsonString(
+            workJson,
+            "instructions");
+        if (!string.IsNullOrWhiteSpace(instructions))
+        {
+            builder.AppendLine();
+            builder.AppendLine("세부 지시:");
+            builder.AppendLine(instructions);
         }
 
-        milestone = new(
-            milestoneAction.GetSingle("MILESTONE_ID")!,
-            milestoneAction.GetSingle("TARGET_BRANCH")!,
-            string.Equals(
-                milestoneAction.GetSingle("QA"),
-                "YES",
-                StringComparison.OrdinalIgnoreCase),
-            milestoneAction.GetSingle("ENTRYPOINT"),
-            milestoneAction.Body,
-            rawMessage,
-            workItems,
-            resources,
-            parse.Errors.ToArray());
-        return true;
+        if (workJson.TryGetProperty("completionCriteria", out var criteria) &&
+            criteria.ValueKind == JsonValueKind.Array)
+        {
+            var items = criteria
+                .EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString()?.Trim())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .ToArray();
+            if (items.Length > 0)
+            {
+                builder.AppendLine();
+                builder.AppendLine("완료 기준:");
+                foreach (var item in items)
+                    builder.AppendLine("- " + item);
+            }
+        }
+
+        return builder.ToString().Trim();
     }
 
     public static string BuildManagerInput(
