@@ -257,7 +257,10 @@ internal static class MilestoneDefinitionContract
         IReadOnlyList<string> mechanicalReports,
         string qaReport,
         string highReport,
-        MilestoneGitResult gitResult)
+        MilestoneGitResult gitResult,
+        IReadOnlyCollection<string> initialLocalChanges,
+        IReadOnlyCollection<string> milestoneChanges,
+        IReadOnlyCollection<string> currentLocalChanges)
     {
         var builder = new StringBuilder();
         builder.AppendLine("MILESTONE_RESULT");
@@ -274,6 +277,12 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine(string.IsNullOrWhiteSpace(qaReport) ? "없음" : qaReport);
         builder.AppendLine("HIGH_REPORT:");
         builder.AppendLine(string.IsNullOrWhiteSpace(highReport) ? "없음" : highReport);
+        builder.AppendLine("MILESTONE_CHANGESET:");
+        AppendPaths(builder, milestoneChanges);
+        builder.AppendLine("INITIAL_LOCAL_CHANGES:");
+        AppendPaths(builder, initialLocalChanges);
+        builder.AppendLine("CURRENT_LOCAL_CHANGES:");
+        AppendPaths(builder, currentLocalChanges);
         builder.AppendLine("GIT_RESULT:");
         builder.AppendLine(gitResult.Summary);
         builder.AppendLine("MANAGER_FINAL_REPORT:");
@@ -481,6 +490,26 @@ internal static class MilestoneDefinitionContract
         if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
             return value;
         return value[..maxLength] + Environment.NewLine + "[truncated]";
+    }
+
+    private static void AppendPaths(
+        StringBuilder builder,
+        IEnumerable<string> paths)
+    {
+        var values = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (values.Length == 0)
+        {
+            builder.AppendLine("- 없음");
+            return;
+        }
+
+        foreach (var path in values)
+            builder.AppendLine("- " + path);
     }
 
     private static void AppendReports(
