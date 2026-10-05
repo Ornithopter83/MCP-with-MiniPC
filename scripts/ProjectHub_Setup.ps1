@@ -12,7 +12,6 @@ if (-not $projectId) { $projectId = Split-Path -Leaf $gitRoot }
 $managedRoot = Join-Path $gitRoot 'ProjectHub'; $configDir = Join-Path $managedRoot 'config'; $binDir = Join-Path $managedRoot 'bin'; $stateDir = Join-Path $managedRoot 'state'; $logDir = Join-Path $managedRoot 'log'
 New-Item -ItemType Directory -Path $configDir,$binDir,$stateDir,$logDir -Force | Out-Null
 $configPath = Join-Path $configDir 'project.json'
-if (-not (Test-Path -LiteralPath $configPath) -and (Test-Path -LiteralPath (Join-Path $gitRoot '.projecthub\project.json'))) { Copy-Item -LiteralPath (Join-Path $gitRoot '.projecthub\project.json') -Destination $configPath }
 if (-not (Test-Path -LiteralPath $configPath)) { @{projectId=$projectId;serverBaseUrl=$ServerBaseUrl.TrimEnd('/');gatewayUrl=$GatewayUrl.TrimEnd('/')+'/';workstationId=$WorkstationId;repositoryUrl=$origin} | ConvertTo-Json | Set-Content -LiteralPath $configPath -Encoding UTF8 }
 else { $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json; $projectId=[string]$config.projectId; $ServerBaseUrl=[string]$config.serverBaseUrl; $GatewayUrl=[string]$config.gatewayUrl; $WorkstationId=[string]$config.workstationId }
 $state = @{workstationId=$WorkstationId;displayName=$projectId;repositoryUrl=$origin;branch=$branch;headSha=$head;dirty=(@(git -C $gitRoot status --porcelain=v1 --untracked-files=all).Count -gt 0);changedCount=0;untrackedCount=0;deletedCount=0;diffFingerprint='setup';lastFileActivity=$null} | ConvertTo-Json
