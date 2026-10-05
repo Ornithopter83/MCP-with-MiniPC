@@ -132,7 +132,7 @@ public sealed class UserAttachmentTransportTests
             Assert.True(File.Exists(stagedItem.Path));
             Assert.Equal(attachment.Sha256, stagedItem.Sha256);
             Assert.StartsWith(
-                Path.GetFullPath(Path.Combine(workspace, ".projecthub", "runtime", "attachments")) +
+                Path.GetFullPath(Path.Combine(workspace, "temp", "ProjectHub", "attachments")) +
                     Path.DirectorySeparatorChar,
                 Path.GetFullPath(stagedItem.Path),
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
@@ -205,9 +205,6 @@ public sealed class UserAttachmentTransportTests
         {
             if (attachment is not null && File.Exists(attachment.StoredPath))
                 File.Delete(attachment.StoredPath);
-            var projectHubRoot = Path.Combine(workspace, ".projecthub");
-            if (Directory.Exists(projectHubRoot))
-                Directory.Delete(projectHubRoot, true);
             Directory.Delete(root, recursive: true);
         }
     }
