@@ -334,6 +334,17 @@ public partial class MainWindow
         }
         finally
         {
+            try
+            {
+                await MilestoneManagedRunRegistry.StopAsync(
+                    jobId,
+                    CancellationToken.None);
+            }
+            catch
+            {
+                WorkerChildProcessJob.TerminateAllActiveJobs();
+            }
+
             UserAttachmentTransport.CleanupStagedWorkerRuntime(
                 stagedAttachments,
                 normalizedRoot);
@@ -692,12 +703,21 @@ public partial class MainWindow
                 });
 
                 var operation = action.GetSingle("OPERATION") ?? "UNKNOWN";
-                var result = await MilestoneMechanicalExecutor.ExecuteAsync(
-                    jobId,
-                    workingDirectory,
-                    operation,
-                    action.Body,
-                    cancellationToken);
+                var result = string.Equals(
+                        operation,
+                        "RUN",
+                        StringComparison.OrdinalIgnoreCase)
+                    ? await MilestoneManagedRunRegistry.StartAsync(
+                        jobId,
+                        workingDirectory,
+                        action.Body,
+                        cancellationToken)
+                    : await MilestoneMechanicalExecutor.ExecuteAsync(
+                        jobId,
+                        workingDirectory,
+                        operation,
+                        action.Body,
+                        cancellationToken);
                 var report =
                     MilestoneDefinitionContract.FormatMechanicalResult(result);
                 mechanicalReports.Add(report);
@@ -712,7 +732,12 @@ public partial class MainWindow
                     "PAUSE",
                     StringComparison.OrdinalIgnoreCase));
             if (pause is not null)
+            {
+                await MilestoneManagedRunRegistry.StopAsync(
+                    jobId,
+                    CancellationToken.None);
                 return new(true, pause.Body);
+            }
 
             if (parsed.ValidActions.Any(action =>
                     string.Equals(
@@ -810,6 +835,20 @@ public partial class MainWindow
                         "HIGH_REPORT:" +
                         Environment.NewLine +
                         highReport);
+
+                    var stoppedRun =
+                        await MilestoneManagedRunRegistry.StopAsync(
+                            jobId,
+                            CancellationToken.None);
+                    if (stoppedRun is not null)
+                    {
+                        var stoppedRunReport =
+                            MilestoneDefinitionContract.FormatMechanicalResult(
+                                stoppedRun);
+                        mechanicalReports.Add(stoppedRunReport);
+                        feedback.Add(stoppedRunReport);
+                    }
+
                     validationCompleted = true;
                     gitFinalizeAttempted = false;
                 }
