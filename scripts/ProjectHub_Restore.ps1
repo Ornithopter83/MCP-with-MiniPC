@@ -5,9 +5,9 @@
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$configPath = Join-Path $ProjectRoot 'ProjectHub\config\project.json'; if (-not (Test-Path -LiteralPath $configPath)) { $configPath = Join-Path $ProjectRoot '.projecthub\project.json' }
+$configPath = Join-Path $ProjectRoot 'ProjectHub\config\project.json'
 $config = Get-Content -Raw $configPath | ConvertFrom-Json
-$stateDir = if ($configPath -match '\\ProjectHub\\config\\') { Join-Path $ProjectRoot 'ProjectHub\state' } else { Join-Path $ProjectRoot '.projecthub' }
+$stateDir = Join-Path $ProjectRoot 'ProjectHub\state'
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
 $sha256 = [Security.Cryptography.SHA256]::Create()
 
