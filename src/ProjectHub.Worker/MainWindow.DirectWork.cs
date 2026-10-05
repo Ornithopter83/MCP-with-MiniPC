@@ -348,9 +348,6 @@ public partial class MainWindow
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         _activeWorkingDirectory = workingDirectory;
-        _activePrompt = prompt;
-        _activeCliModel = role.Model;
-        _activeReasoning = role.Reasoning;
         _activeCoordinatorFirst = false;
         _directWorkRunning = true;
         _userCanceledTask = false;
