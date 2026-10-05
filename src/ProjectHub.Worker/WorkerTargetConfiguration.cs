@@ -114,14 +114,27 @@ public static class WorkerTargetConfiguration
             return role with { Transport = transport };
         }
 
+        WorkerAiRoleSettings? NormalizeStatelessRole(
+            WorkerAiRoleSettings? role)
+        {
+            var normalized = NormalizeRole(role);
+            return normalized is null
+                ? null
+                : normalized with
+                {
+                    ThreadSessionId = null,
+                    ThreadProjectPath = null
+                };
+        }
+
         return settings with
         {
             ExecutionMode = "CLI_TO_CLI",
             Coordinator = NormalizeRole(settings.Coordinator),
-            Implementer = NormalizeRole(settings.Implementer),
-            Manager = NormalizeRole(settings.Manager),
-            Qa = NormalizeRole(settings.Qa),
-            HighLevel = NormalizeRole(settings.HighLevel)
+            Implementer = NormalizeStatelessRole(settings.Implementer),
+            Manager = NormalizeStatelessRole(settings.Manager),
+            Qa = NormalizeStatelessRole(settings.Qa),
+            HighLevel = NormalizeStatelessRole(settings.HighLevel)
         };
     }
 
