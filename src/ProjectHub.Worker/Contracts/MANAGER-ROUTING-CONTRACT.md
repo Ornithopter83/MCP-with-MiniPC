@@ -31,9 +31,12 @@ RESOURCE_ID: 0
 [ACTION=MECHANICAL]
 OPERATION: BUILD 또는 RUN 또는 PUBLISH
 BODY_BEGIN
-Worker가 실행할 대상과 필요한 기계 지시
+COMMAND: Worker가 프로젝트 루트에서 실행할 단일 Windows 명령
+필요하면 명령의 목적과 기대 결과를 추가 설명
 BODY_END
 [END_ACTION]
+
+MECHANICAL의 BODY에는 `COMMAND:` 한 줄을 반드시 포함한다. BUILD/PUBLISH 명령은 최신 결과가 프로젝트 루트의 `bin`에 만들어지도록 작성한다.
 
 ⑥ 현재 실행 묶음의 작업이 끝나 QA/HIGH 단계로 진행할 때:
 
