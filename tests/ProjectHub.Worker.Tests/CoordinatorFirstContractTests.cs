@@ -73,6 +73,54 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void MilestoneDefinition_ReadOnlyPolicyMakesWorkReadOnly()
+    {
+        const string message = """
+            [ACTION=WORK]
+            {
+              "action": "work",
+              "milestone": {
+                "id": "READ_ONLY_TEST",
+                "branch": "AUTO",
+                "goal": "역할 검증",
+                "entrypoint": null,
+                "projectPolicy": "READ_ONLY_NO_FILE_CHANGES",
+                "qa": {
+                  "required": true,
+                  "instructions": "읽기 전용 검증"
+                },
+                "resource": null,
+                "workItems": [
+                  {
+                    "id": 10,
+                    "writePaths": ["."],
+                    "goal": "읽기 전용 확인",
+                    "instructions": "파일을 바꾸지 않는다.",
+                    "completionCriteria": ["변경 없음"]
+                  }
+                ],
+                "completionCriteria": ["역할 검증 완료"],
+                "validation": ["변경 없음 확인"]
+              }
+            }
+            """;
+
+        var parsed = ActionBlockContract.ParseHq(message);
+
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            message,
+            parsed,
+            out var milestone,
+            out var error),
+            error);
+        Assert.NotNull(milestone);
+        Assert.True(milestone!.ReadOnlyNoFileChanges);
+        var work = Assert.Single(milestone.WorkItems.Values);
+        Assert.True(work.ReadOnly);
+        Assert.Equal(new[] { "." }, work.WritePaths);
+    }
+
+    [Fact]
     public void HqActionParser_RejectsMalformedJsonEnvelope()
     {
         const string message = """
@@ -288,6 +336,8 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("[ACTION=WORK]", hq);
         Assert.Contains("\"action\": \"work\"", hq);
         Assert.Contains("[RESPONSE=OK]", hq);
+        Assert.Contains("READ_ONLY_NO_FILE_CHANGES", hq);
+        Assert.Contains("\"readOnly\"", hq);
         Assert.Contains("JSON 밖", hq);
         Assert.Contains("END_ACTION", hq);
         Assert.Contains("BODY_BEGIN", hq);
