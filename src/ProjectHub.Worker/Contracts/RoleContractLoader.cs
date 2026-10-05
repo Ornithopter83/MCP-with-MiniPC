@@ -1,6 +1,5 @@
 using System.IO;
 using System.Reflection;
-using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
@@ -40,10 +39,10 @@ public static class RoleContractLoader
         ArgumentNullException.ThrowIfNull(workGraph);
         var header =
             $"역할: HQ\n입력 유형: {inboundType}\n" +
-            $"WorkGraph revision: {workGraph.Revision}\n" +
+            $"상태 revision: {workGraph.Revision}\n" +
             $"최대 동시 WORK: {workGraph.MaxConcurrentWork}\n" +
-            $"기준 ref: {workGraph.BaseRef}\n" +
-            "computerUse: disabled\n입력 본문:\n";
+            $"현재 Git 기준: {workGraph.BaseRef}\n" +
+            "입력 본문:\n";
         var prompt = header + body;
         return includeContract
             ? prompt + "\n\n" + LoadHqFooter()
@@ -67,28 +66,23 @@ public static class RoleContractLoader
             : $"비동기 계측 요청 폴더: {observationRequestDirectory}\n";
         var resourceHeader = string.IsNullOrWhiteSpace(resourceStagingRoot)
             ? string.Empty
-            : $"공용 생성 이미지 리소스 임시 루트: {resourceStagingRoot}\n" +
-              "RESOURCE 타입: IMAGE만 지원\n";
+            : $"RESOURCE 임시 루트: {resourceStagingRoot}\n" +
+              "RESOURCE 최종 반영은 HQ 지정 경로로 move하며 일반 WORK가 임의 처리하지 않는다.\n";
         var workTempHeader = string.IsNullOrWhiteSpace(workTempRoot)
             ? string.Empty
             : $"WORK 임시 산출물 루트: {workTempRoot}\n";
         var targetWorkspaceHeader = string.IsNullOrWhiteSpace(targetWorkspace)
             ? string.Empty
             : $"대상 프로젝트 루트: {targetWorkspace}\n" +
-              "FILE MANAGER 고정 슬롯: 파일·폴더 CRUD는 이 대상 프로젝트 루트에서만 수행한다. 격리 worktree는 checkpoint 준비용이며 파일 작업 대상으로 사용하지 않는다. Git 명령은 수행하지 않는다.\n";
-        var publishOutputHeader = string.IsNullOrWhiteSpace(publishOutputDirectory)
-            ? string.Empty
-            : $"최종 게시 산출물 루트(게시·export 결과는 이 경로에 저장): {publishOutputDirectory}\n";
+              "실제 프로젝트 폴더·파일은 이 루트에서 직접 작업한다. WorkItem별 clone/worktree/별도 branch를 만들지 않고 Git commit·push는 수행하지 않는다.\n";
+        _ = publishOutputDirectory;
         var header =
             $"역할: WORK\n입력 유형: {inboundType}\n" +
-            BuildWorkItemHeader(
-                workItem,
-                includeWorktree: string.IsNullOrWhiteSpace(targetWorkspace)) +
+            BuildWorkItemHeader(workItem) +
             observationHeader +
             resourceHeader +
             workTempHeader +
             targetWorkspaceHeader +
-            publishOutputHeader +
             "\n입력 본문:\n";
         var prompt = header + body;
         return includeContract
@@ -108,9 +102,7 @@ public static class RoleContractLoader
         "역할: HIGH\n호출 유형: MILESTONE_VALIDATION\n입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadHighFooter();
 
-    private static string BuildWorkItemHeader(
-        WorkItemPromptContext workItem,
-        bool includeWorktree = true)
+    private static string BuildWorkItemHeader(WorkItemPromptContext workItem)
     {
         var dependencies = workItem.Dependencies.Count == 0 ? "없음" : string.Join(", ", workItem.Dependencies);
         var previous = string.IsNullOrWhiteSpace(workItem.PreviousReport) ? string.Empty : $"이전 WorkItem 보고:\n{workItem.PreviousReport}\n";
@@ -125,20 +117,14 @@ public static class RoleContractLoader
             $"workItemKind: {workItem.Kind.ToString().ToUpperInvariant()}\n" +
             $"WorkItem 목표: {workItem.Goal}\n" +
             "WorkItem 작업 목록:\n" + checklist +
-            "computerUse: disabled\n" +
             $"선행 WorkItem: {dependencies}\n" +
-            $"기준 ref: {workItem.BaseRef ?? "없음"}\n" +
-            $"branch: {workItem.Branch ?? "미배정"}\n" +
-            (includeWorktree
-                ? $"worktree: {workItem.WorktreePath ?? "미배정"}\n"
-                : string.Empty) +
             dependencyResults + previous;
     }
 
     private static string FormatDependencyResult(WorkItemDependencyPromptContext result)
     {
         var header =
-            $"- workItemId={result.WorkItemId} resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} resultRef={result.ResultRef ?? "없음"} snapshot={result.IntegrationSnapshotPath ?? "없음"}";
+            $"- workItemId={result.WorkItemId} resultType={WorkItemResultTypeContract.ToToken(result.ResultType)} resultRef={result.ResultRef ?? "없음"}";
 
         if (string.IsNullOrWhiteSpace(result.ResultSummary))
             return header;
