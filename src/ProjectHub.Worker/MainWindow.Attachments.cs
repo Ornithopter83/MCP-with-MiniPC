@@ -293,14 +293,5 @@ public partial class MainWindow
             workingDirectory,
             batchId);
 
-    private static List<BridgeAttachment> BuildUserWebAttachments(
-        IReadOnlyList<UserAttachmentInput>? attachments)
-    {
-        if (attachments is null || attachments.Count == 0)
-            return new List<BridgeAttachment>();
 
-        return attachments
-            .Select(UserAttachmentTransport.CreateBridgeAttachment)
-            .ToList();
-    }
 }
