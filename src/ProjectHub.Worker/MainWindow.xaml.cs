@@ -24,7 +24,6 @@ public partial class MainWindow : Window
     private readonly CodexCliRunner _codexRunner = new();
     private readonly OpenCodeCliRunner _openCodeRunner = new();
     private readonly AiRoleRunnerRegistry _aiRoleRunners;
-    private readonly JevJudgeRunner _jevJudgeRunner = new();
     private CodexModelCatalogResult _codexModelCatalog = new(Array.Empty<CodexModelCapability>(), "MODEL_CATALOG_NOT_LOADED");
     private bool _loadingRoleControls;
     private bool _syncingRoleThreadSelection;
@@ -63,7 +62,6 @@ public partial class MainWindow : Window
         ["HighLevel"] = new("#ECD8E4", "#82194B", "#74133F", "current-openai.png"),
         ["Manager"] = new("#E7E7FF", "#5B5BD6", "#4646B8", "current-openai.png"),
         ["Resource"] = new("#E4EEF9", "#326FA8", "#245B8D", "current-web.png"),
-        ["Judge"] = new("#FFF0B8", "#B87900", "#765000", "current-jev.png"),
         ["Message"] = new("#EEF8F2", "#168A4A", "#116B39", "current-console.png")
     };
     private readonly List<TaskMessage> _taskMessages = new();
@@ -89,7 +87,6 @@ public partial class MainWindow : Window
             "HighLevel" => "검토",
             "Manager" => "통합",
             "Resource" => "작업 (#0, 리소스)",
-            "Judge" => "판정",
             "Message" => "메시지",
             _ => "시스템"
         };
@@ -139,7 +136,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _jobWatchdogTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private int _flowFrame;
     private bool _pairArrowActive;
-    private enum TaskStage { Idle, Coordinator, Implementer, Qa, HighLevel, Manager, Resource, Judge }
+    private enum TaskStage { Idle, Coordinator, Implementer, Qa, HighLevel, Manager, Resource }
     private enum DashboardBodyMode { NewTaskInput, TaskHistory }
     private DashboardBodyMode _dashboardBodyMode = DashboardBodyMode.NewTaskInput;
     private TaskStage _currentTaskStage = TaskStage.Idle;
@@ -152,9 +149,6 @@ public partial class MainWindow : Window
     private bool _resourceSidecarActive;
     private int _resourceSidecarQueued;
     private string _resourceSidecarStatus = "ChatGPT Web";
-    private string _judgeStatus = "OFF";
-    private int _judgeRound;
-    private string _activeJevJobId = Guid.NewGuid().ToString("N");
     private bool _allowClose;
     private bool _shutdownCleanupInProgress;
     private bool _newTaskCleanupInProgress;
@@ -183,7 +177,7 @@ public partial class MainWindow : Window
     private bool _loadingCodexSelections;
     private static string WindowPlacementPath => Path.Combine(WorkerPaths.Config, "window-placement.json");
 
-    private enum FlowNode { Codex, Worker, Web, Judge }
+    private enum FlowNode { Codex, Worker, Web }
     private sealed record CodexProjectOption(string Name, string Path);
     private sealed record TaskLaunchRequest(
         string Prompt,
