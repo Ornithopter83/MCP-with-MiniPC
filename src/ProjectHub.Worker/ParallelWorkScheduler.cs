@@ -491,10 +491,21 @@ public sealed class ParallelWorkScheduler : IAsyncDisposable
                 }
                 else if (result.Outcome == WorkItemExecutionOutcome.Completed)
                 {
+                    var resultSummary = result.ResultSummary;
+                    if (FixedWorkItemSlots.IsUnassignedReservedNumber(item.Id))
+                    {
+                        resultSummary = string.IsNullOrWhiteSpace(resultSummary)
+                            ? FixedWorkItemSlots.ReservedNumberWarning
+                            : resultSummary.TrimEnd() +
+                              Environment.NewLine +
+                              Environment.NewLine +
+                              FixedWorkItemSlots.ReservedNumberWarning;
+                    }
+
                     _graph.TryMarkCompleted(
                         item.Id,
                         result.ResultRef,
-                        result.ResultSummary,
+                        resultSummary,
                         result.ResultType);
                 }
                 else
