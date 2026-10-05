@@ -635,7 +635,7 @@
       </Grid>
     </Border>
 
-    <Border x:Name="CommandSection" Grid.Row="3" Style="{StaticResource SectionBorder}" Padding="16,10,16,12">
+    <Border x:Name="CommandSection" Grid.Row="3" Style="{StaticResource SectionBorder}" Padding="16,10,16,12" Visibility="Collapsed">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/><RowDefinition x:Name="CommandControlsRow" Height="38"/></Grid.RowDefinitions>
         <StackPanel Orientation="Horizontal"><TextBlock Text="➤" FontSize="21" Margin="0,0,12,0"/><TextBlock Text="COMMAND" FontSize="17" FontWeight="Bold"/></StackPanel>
