@@ -354,6 +354,13 @@ public partial class MainWindow
         IReadOnlySet<string> initialChangedPaths,
         CancellationToken cancellationToken)
     {
+        var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
+            workingDirectory,
+            milestone.TargetBranch,
+            cancellationToken);
+        if (!gitPreflight.Success)
+            return new(true, gitPreflight.Summary);
+
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var resourceReports = new Dictionary<string, string>(
