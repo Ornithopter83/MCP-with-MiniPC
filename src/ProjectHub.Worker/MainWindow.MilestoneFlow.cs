@@ -379,6 +379,31 @@ public partial class MainWindow
         if (!gitPreflight.Success)
             return new(true, gitPreflight.Summary);
 
+        var milestoneWriteScopes = milestone.WorkItems.Values
+            .SelectMany(work => work.WritePaths)
+            .Concat(milestone.Resources.Values.Select(resource => resource.TargetPath))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var initialWriteConflicts = initialChangedPaths
+            .Where(path =>
+                MilestoneMechanicalExecutor.IsPathWithinScopes(
+                    path,
+                    milestoneWriteScopes))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (initialWriteConflicts.Length > 0)
+        {
+            return new(
+                true,
+                "현재 마일스톤 쓰기 영역에 기존 로컬 변경이 있어 안전하게 시작할 수 없습니다." +
+                Environment.NewLine +
+                "사용자가 직접 정리한 뒤 재개하세요." +
+                Environment.NewLine +
+                string.Join(
+                    Environment.NewLine,
+                    initialWriteConflicts.Select(path => "- " + path)));
+        }
+
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var resourceReports = new Dictionary<string, string>(
