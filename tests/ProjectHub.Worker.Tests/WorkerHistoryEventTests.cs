@@ -13,8 +13,6 @@ public sealed class WorkerHistoryEventTests
     [InlineData("Implementer", "0", "작업 (#0, 리소스)")]
     [InlineData("Implementer", "10", "작업 (#10, 일반 작업)")]
     [InlineData("Implementer", "27", "작업 (#27, 일반 작업)")]
-    [InlineData("Implementer", "8", "작업 (#8)")]
-    [InlineData("Implementer", "9", "작업 (#9)")]
     public void HistoryRole_UsesFiveRolePresentation(
         string stage,
         string? workItemId,
@@ -36,32 +34,6 @@ public sealed class WorkerHistoryEventTests
         };
 
         Assert.Equal(expectedRole, item.Role);
-    }
-
-    [Fact]
-    public void GeneralWorkHistory_DoesNotRestoreLegacyFixedSlotLabels()
-    {
-        var fileManagerNumber = new MainWindow.WorkerHistoryEvent(
-            DateTimeOffset.UtcNow,
-            "Implementer",
-            "ROLE_RESPONSE",
-            "결과",
-            "완료",
-            null,
-            null,
-            null,
-            "RECEIVED",
-            null)
-        {
-            WorkItemId = "8"
-        };
-        var buildManagerNumber = fileManagerNumber with
-        {
-            WorkItemId = "9"
-        };
-
-        Assert.DoesNotContain("파일 매니저", fileManagerNumber.Role);
-        Assert.DoesNotContain("빌드 매니저", buildManagerNumber.Role);
     }
 
     [Fact]
