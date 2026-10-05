@@ -288,8 +288,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("[ACTION=WORK]", hq);
         Assert.Contains("\"action\": \"work\"", hq);
         Assert.Contains("[RESPONSE=OK]", hq);
-        Assert.DoesNotContain("[END_ACTION]", hq);
-        Assert.DoesNotContain("BODY_BEGIN", hq);
+        Assert.Contains("JSON 밖", hq);
+        Assert.Contains("END_ACTION", hq);
+        Assert.Contains("BODY_BEGIN", hq);
         Assert.Contains("[ACTION=READY_FOR_VALIDATION]", manager);
         Assert.Contains("[ACTION=GIT_FINALIZE]", manager);
         Assert.Contains("COMMAND:", manager);
