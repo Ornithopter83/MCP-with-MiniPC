@@ -26,7 +26,9 @@ public sealed record WorkItemPromptContext(
 public static class RoleContractLoader
 {
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
+    public static string LoadManagerFooter() => Load("MANAGER-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
+    public static string LoadQaFooter() => Load("QA-ROUTING-CONTRACT.md");
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");
 
     public static string BuildHqPrompt(
@@ -94,8 +96,16 @@ public static class RoleContractLoader
             : prompt;
     }
 
+    public static string BuildManagerPrompt(string body) =>
+        "역할: #1 중간관리자\n입력 본문:\n" +
+        (body ?? string.Empty) + "\n\n" + LoadManagerFooter();
+
+    public static string BuildQaPrompt(string body) =>
+        "역할: QA\n호출 유형: HQ_SCHEDULED_QA\n입력 본문:\n" +
+        (body ?? string.Empty) + "\n\n" + LoadQaFooter();
+
     public static string BuildHighPrompt(string body) =>
-        "역할: HIGH\n호출 유형: HQ_RECOVERY\ncomputerUse: disabled\n입력 본문:\n" +
+        "역할: HIGH\n호출 유형: MILESTONE_VALIDATION\n입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadHighFooter();
 
     private static string BuildWorkItemHeader(
