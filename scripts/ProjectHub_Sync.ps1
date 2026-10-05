@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $ProjectPath) { $ProjectPath = $scriptRoot }
 $ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
-$projectConfigPath = Join-Path $ProjectPath 'ProjectHub\config\project.json'; if (-not (Test-Path -LiteralPath $projectConfigPath)) { $projectConfigPath = Join-Path $ProjectPath '.projecthub\project.json' }
+$projectConfigPath = Join-Path $ProjectPath 'ProjectHub\config\project.json'
 if (Test-Path -LiteralPath $projectConfigPath) {
     $projectConfig = Get-Content -Raw -LiteralPath $projectConfigPath | ConvertFrom-Json
     if (-not $ProjectId) { $ProjectId = [string]$projectConfig.projectId }
@@ -19,7 +19,7 @@ if (Test-Path -LiteralPath $projectConfigPath) {
     if ($ServerBaseUrl -eq 'https://projecthub.ornithopter.bid' -and $projectConfig.serverBaseUrl) { $ServerBaseUrl = [string]$projectConfig.serverBaseUrl }
     if ($GatewayUrl -eq 'https://dfblackbox-nas.duckdns.org:8443/projecthub/' -and $projectConfig.gatewayUrl) { $GatewayUrl = [string]$projectConfig.gatewayUrl }
 }
-if (-not $ProjectId -or -not $WorkstationId) { throw 'ProjectId and WorkstationId are required or must be present in .projecthub/project.json.' }
+if (-not $ProjectId -or -not $WorkstationId) { throw 'ProjectId and WorkstationId are required or must be present in ProjectHub/config/project.json.' }
 $root = Join-Path $ProjectPath 'bin'
 $thresholdMatch = [regex]::Match($ThresholdBytes.Trim(), '^(\d+)(B|KB|MB|GB|TB)?$', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
 if (-not $thresholdMatch.Success) { throw "ThresholdBytes must be bytes or a value such as 500MB or 1GB." }
