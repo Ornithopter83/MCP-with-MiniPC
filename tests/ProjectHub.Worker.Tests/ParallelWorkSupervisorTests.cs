@@ -84,6 +84,32 @@ public sealed class ParallelWorkSupervisorTests
             text);
     }
 
+    [Theory]
+    [InlineData("2", "RESERVED")]
+    [InlineData("7", "RESERVED")]
+    [InlineData("10", "GENERAL")]
+    [InlineData("27", "GENERAL")]
+    public void MechanicalGraphEventLabelsReservedAndGeneralNumbers(
+        string workItemId,
+        string expectedSlot)
+    {
+        var graph = new WorkGraph("job", 1);
+        Assert.True(graph.ApplyPatch(new WorkGraphPatch(0, new[]
+        {
+            WorkGraphPatchOperation.Add(new WorkItemSpec(workItemId, "작업"))
+        })).Success);
+
+        var text = ParallelWorkSupervisor.FormatMechanicalGraphEvent(
+            Array.Empty<string>(),
+            new ParallelWorkSchedulerSnapshot(
+                graph.Snapshot(),
+                Array.Empty<RunningWorkItemSnapshot>()));
+
+        Assert.Contains(
+            $"workItemId={workItemId} slot={expectedSlot} kind=NORMAL state=READY",
+            text);
+    }
+
     [Fact]
     public async Task HighRecoveryRunsAndReturnsReportToSameHqLoop()
     {
