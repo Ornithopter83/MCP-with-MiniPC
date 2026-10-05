@@ -64,11 +64,11 @@ internal static class MilestoneMechanicalExecutor
                 targetBranch,
                 StringComparison.Ordinal))
         {
-            var status = await Run(
-                "status",
-                "--porcelain=v1").ConfigureAwait(false);
-            if (status.ExitCode != 0 ||
-                !string.IsNullOrWhiteSpace(status.StandardOutput))
+            var meaningfulChanges =
+                await SnapshotChangedPathsAsync(
+                    workingDirectory,
+                    cancellationToken).ConfigureAwait(false);
+            if (meaningfulChanges.Count > 0)
             {
                 return new(
                     false,
