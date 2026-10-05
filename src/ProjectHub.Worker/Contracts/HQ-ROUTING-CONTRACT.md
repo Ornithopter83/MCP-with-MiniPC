@@ -23,8 +23,8 @@ WORK_GRAPH_PATCH:
 ① 입력 헤더의 revision, 최대 동시 WORK, 기준 ref와 현재 WorkItem 상태를 사실로 사용한다.
 ② operation은 ADD, CANCEL, SET_DEPENDENCIES, SET_GOAL, SET_BASE_REF, RELEASE를 사용한다. ADD는 `workItemId`, `goal`과 필요한 `dependencies`, `kind`, `baseRef`, `checklist`를 사용한다. baseRef를 생략하면 Worker가 현재 기준 ref를 채운다.
 ③ 일반 WorkItem은 WORK 하나가 한 실행 흐름에서 완료 여부를 판정할 수 있는 작은 단위로 만든다. 하나의 응집된 목표와 checklist만 넣고, 독립적으로 구현·검증·실패할 수 있는 일은 별도 WorkItem으로 분리한다.
-④ 고정 슬롯은 #0 RESOURCE MAKE, #1 RESOURCE PROCESSING, #8 FILE MANAGER, #9 BUILD/PUBLISH다. 모두 NORMAL이며 dependency 없이 HQ가 순서를 관제하고 완료 뒤 재사용할 수 있다.
-⑤ 역할은 고정한다. #0은 이미지 생성만 하며 프로젝트 저장 경로·Git·패키징·통합 계약을 넘기지 않는다. #1은 기존 이미지 가공만 한다. #8은 실제 루트 구조·파일 CRUD만 하며 초기 scaffold는 최소 골격만 만든다. #9만 restore·compile·build·build를 수반하는 test/run·pack·export·publish를 수행한다.
+④ #0~#9는 예약 작업 번호다. #0 RESOURCE MAKE, #1 RESOURCE PROCESSING, #8 FILE MANAGER, #9 BUILD/PUBLISH만 지정된 역할로 사용하며 #2~#7에는 WorkItem을 배정하지 않는다. 일반 WorkItem은 #10 이상의 번호를 사용한다. 고정 슬롯 #0, #1, #8, #9는 모두 NORMAL이며 dependency 없이 HQ가 순서를 관제하고 완료 뒤 재사용할 수 있다.
+⑤ 역할은 고정한다. #0은 이미지 생성만 하며 프로젝트 저장 경로·Git·패키징·통합 계약을 넘기지 않는다. #1은 기존 이미지 가공만 한다. #8은 실제 루트 구조·파일 CRUD만 하며 초기 scaffold는 최소 골격만 만든다. #9만 restore·compile·build·build를 수반하는 test/run·pack·export·publish를 수행한다. #2~#7이 실수로 배정된 경우 Worker는 작업을 중단하지 않고 수행한 뒤 `예약된 작업 번호이므로 다른 작업 번호를 사용해주세요`를 완료 보고에 추가하므로, HQ는 이후 작업부터 #10 이상 번호로 교정한다.
 ⑥ 초기 구조가 필요하면 #8을 먼저 실행하고 그 CODE_CHANGE resultRef를 후속 작은 일반 WorkItem들의 baseRef로 사용한다.
 ⑦ primary branch에 아직 반영되지 않은 CODE_CHANGE가 하나라도 있으면 별도 INTEGRATION WorkItem으로 통합해 하나의 resultRef를 만든다. INTEGRATION은 여러 독립 결과뿐 아니라 직전 Integration 뒤 추가된 단일 CODE_CHANGE를 primary branch에 반영하는 유일한 통합 지점이기도 하다. #9는 이렇게 확정된 최종 또는 중간 milestone Integration resultRef를 baseRef로 사용하며 CODE_CHANGE나 Git commit을 만들지 않는다.
 ⑧ #9 외 WorkItem의 goal/checklist에 restore·compile·build·publish 실행이나 그 성공을 완료 조건으로 넣지 않는다. 일반 WORK와 INTEGRATION은 구현과 정적 검토 결과를 보고하고 실행형 빌드 검증은 #9로 모은다.
