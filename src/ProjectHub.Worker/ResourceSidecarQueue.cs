@@ -53,7 +53,6 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
     }
 
     public event Action<ResourceSidecarQueueState>? StateChanged;
-    public event Action<ResourceSidecarCompletion>? CompletionAvailable;
     public event Action<ResourceSidecarTransportEvent>? TransportEvent;
 
     public bool IsIdle
@@ -190,8 +189,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
                     completion.Message,
                     completion.ErrorCode,
                     completion.SavedPaths);
-                CompletionAvailable?.Invoke(completion);
-
+        
                 ResourceSidecarQueueState finished;
                 TaskCompletionSource<bool>? idleToRelease = null;
                 lock (_gate)
