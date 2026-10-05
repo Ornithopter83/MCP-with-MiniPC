@@ -39,6 +39,41 @@ public sealed class UserAttachmentTransportTests
     }
 
     [Fact]
+    public void AttachmentSizeLimitsMatchChatGptPolicy()
+    {
+        Assert.Equal(
+            512L * 1024L * 1024L,
+            UserAttachmentTransport.GetMaxFileBytes("clip.mp4", "video/mp4"));
+        Assert.Equal(
+            20L * 1024L * 1024L,
+            UserAttachmentTransport.GetMaxFileBytes("image.png", "image/png"));
+        Assert.Equal(
+            50L * 1024L * 1024L,
+            UserAttachmentTransport.GetMaxFileBytes("data.csv", "text/csv"));
+        Assert.Equal(
+            50L * 1024L * 1024L,
+            UserAttachmentTransport.GetMaxFileBytes(
+                "sheet.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+
+        UserAttachmentTransport.ValidateFileSize(
+            "clip.mp4",
+            "video/mp4",
+            51L * 1024L * 1024L);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            UserAttachmentTransport.ValidateFileSize(
+                "image.png",
+                "image/png",
+                UserAttachmentTransport.MaxImageBytes + 1));
+        Assert.Throws<InvalidOperationException>(() =>
+            UserAttachmentTransport.ValidateFileSize(
+                "clip.mp4",
+                "video/mp4",
+                UserAttachmentTransport.MaxFileBytes + 1));
+    }
+
+    [Fact]
     public void CacheFile_BlocksExecutableBinaryButAllowsSourceScripts()
     {
         var root = CreateTempDirectory();
