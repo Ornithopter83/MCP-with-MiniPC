@@ -2935,7 +2935,7 @@ public partial class MainWindow : Window
         AddTaskMessage("CLI STATUS", $"{outcome} · exit {result.ExitCode} · model {result.Model} · session {session}", sizeBytes: Encoding.UTF8.GetByteCount(result.FinalMessage), fileCount: result.Files.Count, status: outcome);
     }
 
-    private void AddTaskMessage(string source, string? content, long? sizeBytes = null, int? itemCount = null, int? fileCount = null, string? status = null, string? referenceId = null, string? summary = null, bool includeHistory = true)
+    private void AddTaskMessage(string source, string? content, long? sizeBytes = null, int? itemCount = null, int? fileCount = null, string? status = null, string? referenceId = null, string? summary = null, bool includeHistory = true, string? workItemId = null)
     {
         if (string.IsNullOrWhiteSpace(content)) return;
         var timestamp = DateTimeOffset.Now;
@@ -2950,7 +2950,8 @@ public partial class MainWindow : Window
             referenceId,
             sizeBytes,
             itemCount,
-            fileCount);
+            fileCount,
+            workItemId);
         var effectiveReferenceId = referenceId ?? eventId;
         _taskExported = false;
         _taskMessages.Add(new TaskMessage(timestamp, source, trimmed));
@@ -2963,7 +2964,7 @@ public partial class MainWindow : Window
             var historyEvent = CreateHistoryEvent(timestamp, source, trimmed, sizeBytes, itemCount, fileCount, status, effectiveReferenceId, summary);
             if (historyEvent is not null)
             {
-                historyEvent = historyEvent with { FullMessage = trimmed };
+                historyEvent = historyEvent with { FullMessage = trimmed, WorkItemId = workItemId };
                 if (historyEvent.StageKey == "Coordinator")
                     historyEvent = historyEvent with { IconAssetOverride = _coordinatorStageIconAsset };
                 _historyEvents.Add(historyEvent);
@@ -3029,7 +3030,9 @@ public partial class MainWindow : Window
             },
             text,
             status: "RUNNING",
-            includeHistory: false);
+            referenceId: referenceId,
+            includeHistory: false,
+            workItemId: workItemId);
         if (DashboardHistoryList.Items.Count > 0)
             DashboardHistoryList.ScrollIntoView(DashboardHistoryList.Items[DashboardHistoryList.Items.Count - 1]);
         RefreshMessageLog();
@@ -3082,6 +3085,25 @@ public partial class MainWindow : Window
             item = item with { IconAssetOverride = ProviderVisualCatalog.Resolve(providerWireId).ColorAsset };
         else if (item.StageKey == "Coordinator")
             item = item with { IconAssetOverride = _coordinatorStageIconAsset };
+
+        AddTaskMessage(
+            role switch
+            {
+                WorkerRoleState.Manager => "MANAGER RESPONSE",
+                WorkerRoleState.Work => "WORK RESPONSE",
+                WorkerRoleState.Qa => "QA RESPONSE",
+                WorkerRoleState.High => "HIGH RESPONSE",
+                WorkerRoleState.Resource => "RESOURCE RESPONSE",
+                _ => "HQ RESPONSE"
+            },
+            fullText,
+            sizeBytes: string.IsNullOrEmpty(fullText) ? null : Encoding.UTF8.GetByteCount(fullText),
+            fileCount: files?.Count,
+            status: status,
+            referenceId: referenceId,
+            includeHistory: false,
+            workItemId: workItemId);
+
         _historyEvents.Add(item);
         RefreshMessageLog();
     }
@@ -3106,6 +3128,8 @@ public partial class MainWindow : Window
             return new(timestamp, "Coordinator", "REQUEST_RECEIVED", "작업 요청", HistorySummary(summary ?? content), bytes, itemCount ?? 1, fileCount, null, referenceId);
         if (normalized.Contains("TASK CANCELED", StringComparison.Ordinal) || normalized.Contains("TASK CANCELLED", StringComparison.Ordinal))
             return new(timestamp, "System", "TASK_FINISHED", "작업이 취소되었습니다", "요청에 따라 실행을 중단했습니다.", null, null, null, "CANCELED", null);
+        if (normalized.Contains("TASK PAUSED", StringComparison.Ordinal) || statusText == "PAUSED")
+            return new(timestamp, "System", "TASK_PAUSED", "작업 일시정지", HistorySummary(summary ?? content), bytes > 0 ? bytes : null, itemCount, fileCount, "PAUSED", referenceId);
         if (normalized.Contains("TASK BLOCKED", StringComparison.Ordinal) || normalized.Contains("TIMEOUT", StringComparison.Ordinal) || normalized.Contains("FAIL", StringComparison.Ordinal) || normalized.Contains("ERROR", StringComparison.Ordinal) || statusText is "FAIL" or "ERROR" or "BLOCKED")
             return new(timestamp, stage, "TASK_FAILED", "작업을 진행할 수 없습니다", HistorySummary(summary ?? content.Split(Environment.NewLine)[0]), bytes > 0 ? bytes : null, itemCount, fileCount, statusText ?? "BLOCKED", referenceId);
         if (normalized.Contains("TASK RESULT", StringComparison.Ordinal))
