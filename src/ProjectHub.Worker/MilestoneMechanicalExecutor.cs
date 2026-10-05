@@ -530,6 +530,21 @@ internal static class MilestoneMechanicalExecutor
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        if (scopedPaths.Length == 0)
+        {
+            var unchangedHead = await Run(
+                "rev-parse",
+                "HEAD").ConfigureAwait(false);
+            return new(
+                true,
+                false,
+                targetBranch,
+                unchangedHead.ExitCode == 0
+                    ? unchangedHead.StandardOutput.Trim()
+                    : null,
+                "마일스톤 변경 없음 · commit/push 생략");
+        }
+
         var scopedPathspecs = BuildScopedPathspecs(scopedPaths);
         if (scopedPathspecs.Count > 0)
         {
@@ -570,6 +585,21 @@ internal static class MilestoneMechanicalExecutor
             diffArgs.AddRange(scopedPathspecs);
             var staged = await Run(diffArgs.ToArray())
                 .ConfigureAwait(false);
+
+            if (staged.ExitCode == 0)
+            {
+                var unchangedHead = await Run(
+                    "rev-parse",
+                    "HEAD").ConfigureAwait(false);
+                return new(
+                    true,
+                    false,
+                    targetBranch,
+                    unchangedHead.ExitCode == 0
+                        ? unchangedHead.StandardOutput.Trim()
+                        : null,
+                    "마일스톤 대상 변경 없음 · commit/push 생략");
+            }
 
             if (staged.ExitCode != 0)
             {
