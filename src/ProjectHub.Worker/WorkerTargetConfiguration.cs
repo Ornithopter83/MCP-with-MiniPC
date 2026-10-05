@@ -53,7 +53,10 @@ public sealed record WorkerTargetSettings(
     public WorkerAiRoleSettings EffectiveManager => Manager ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
     public WorkerAiRoleSettings EffectiveQa => Qa ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
     public WorkerAiRoleSettings EffectiveHighLevel => HighLevel ?? new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high", Transport: "codex_cli");
-    public int EffectiveMaxConcurrentWork => MaxConcurrentWork is >= WorkGraph.MinimumConcurrency and <= WorkGraph.MaximumConcurrency ? MaxConcurrentWork : 1;
+    public int EffectiveMaxConcurrentWork =>
+        MaxConcurrentWork is >= WorkerTargetConfiguration.MinimumConcurrentWork and <= WorkerTargetConfiguration.MaximumConcurrentWork
+            ? MaxConcurrentWork
+            : 1;
     public bool IsCoordinatorFirst => true;
 }
 public sealed record GitTargetSnapshot(
@@ -66,6 +69,8 @@ public sealed record GitTargetSnapshot(
 
 public static class WorkerTargetConfiguration
 {
+    public const int MinimumConcurrentWork = 1;
+    public const int MaximumConcurrentWork = 8;
     public const string DefaultServerBaseUrl = "https://projecthub.ornithopter.bid";
 
     public static string SettingsPath => Path.Combine(WorkerPaths.Config, "target-settings.json");
