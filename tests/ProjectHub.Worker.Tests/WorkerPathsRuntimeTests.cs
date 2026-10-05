@@ -199,6 +199,74 @@ public sealed class WorkerPathsRuntimeTests
     }
 
     [Fact]
+    public void ProjectExecutionLogsSurviveProjectTempReset()
+    {
+        WorkerPaths.EnsureCreated();
+        var parent = Path.Combine(
+            Path.GetTempPath(),
+            "ProjectHubWorkerPathsTests",
+            Guid.NewGuid().ToString("N"));
+        var workspace = Path.Combine(parent, "SampleProject");
+        Directory.CreateDirectory(workspace);
+
+        var eventDirectory = ProjectWorkspacePersistence.EventDirectory(workspace);
+        var transcriptDirectory = ProjectWorkspacePersistence.TranscriptDirectory(workspace);
+        try
+        {
+            var eventId = ProjectWorkspacePersistence.AppendEvent(
+                workspace,
+                "job-1",
+                DateTimeOffset.Now,
+                "HQ RESPONSE",
+                "response",
+                "RECEIVED");
+            Assert.False(string.IsNullOrWhiteSpace(eventId));
+
+            var transcript = ProjectWorkspacePersistence.CommandTranscriptPath(
+                workspace,
+                DateTimeOffset.Now);
+            Assert.True(ProjectWorkspacePersistence.InitializeCommandTranscript(
+                transcript,
+                "SampleProject",
+                "NewThread",
+                DateTimeOffset.Now));
+            Assert.True(ProjectWorkspacePersistence.AppendCommandTranscript(
+                transcript,
+                DateTimeOffset.Now,
+                "HQ RESPONSE",
+                "response"));
+
+            Assert.True(File.Exists(
+                ProjectWorkspacePersistence.EventLogPath(workspace, "job-1")));
+            Assert.True(File.Exists(transcript));
+
+            Assert.True(
+                WorkerPaths.TryResetProjectTemp(workspace, out var error),
+                error);
+
+            Assert.True(File.Exists(
+                ProjectWorkspacePersistence.EventLogPath(workspace, "job-1")));
+            Assert.True(File.Exists(transcript));
+            Assert.StartsWith(
+                Path.GetFullPath(WorkerPaths.Logs),
+                Path.GetFullPath(eventDirectory),
+                StringComparison.OrdinalIgnoreCase);
+            Assert.StartsWith(
+                Path.GetFullPath(WorkerPaths.Logs),
+                Path.GetFullPath(transcriptDirectory),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(parent))
+                Directory.Delete(parent, true);
+            var durableRoot = ProjectWorkspacePersistence.DurableLogDirectory(workspace);
+            if (Directory.Exists(durableRoot))
+                Directory.Delete(durableRoot, true);
+        }
+    }
+
+    [Fact]
     public void ProjectTempResetRemovesPreviousMilestoneState()
     {
         var parent = Path.Combine(
