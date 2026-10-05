@@ -90,7 +90,7 @@ public partial class MainWindow : Window
             "Qa" => "QA",
             "HighLevel" => "검토",
             "Manager" => "통합",
-            "Resource" => "리소스",
+            "Resource" => "작업 (#0, 리소스)",
             "Judge" => "판정",
             "Message" => "메시지",
             _ => "시스템"
@@ -563,7 +563,6 @@ public partial class MainWindow : Window
     private void CompleteFullCancellationUi()
     {
         var canceledWorkingDirectory = _activeWorkingDirectory;
-        var canceledJobId = _activeProjectJobId;
         ProjectWorkspacePersistence.ClearContinuation(canceledWorkingDirectory);
 
         AddTaskMessage(
