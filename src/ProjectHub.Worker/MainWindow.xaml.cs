@@ -2808,7 +2808,7 @@ public partial class MainWindow : Window
         var maxConcurrentWork = int.TryParse(
             GetSelectedTag(MaxConcurrentWorkCombo, "1"),
             out var parsedMaxConcurrentWork)
-            ? Math.Clamp(parsedMaxConcurrentWork, WorkGraph.MinimumConcurrency, WorkGraph.MaximumConcurrency)
+            ? Math.Clamp(parsedMaxConcurrentWork, WorkerTargetConfiguration.MinimumConcurrentWork, WorkerTargetConfiguration.MaximumConcurrentWork)
             : 1;
         _targetSettings = _targetSettings with
         {
@@ -3029,13 +3029,13 @@ public partial class MainWindow : Window
             {
                 if (_activeCoordinatorFirst && _currentTaskStage == TaskStage.Resource)
                 {
-                    TaskDirection.Text = "리소스 AI";
+                    TaskDirection.Text = "작업";
                     TaskTitle.Text = $"RESOURCE Web {progress.Stage}";
                     SetFlowState(false, true, true, explicitStage: TaskStage.Resource);
                 }
                 else if (_activeCoordinatorFirst && _currentTaskStage == TaskStage.Coordinator)
                 {
-                    TaskDirection.Text = "설계·관제 AI";
+                    TaskDirection.Text = "설계 관제";
                     TaskTitle.Text = $"HQ Web {progress.Stage}";
                     SetFlowState(true, false, true, explicitStage: TaskStage.Coordinator);
                 }
