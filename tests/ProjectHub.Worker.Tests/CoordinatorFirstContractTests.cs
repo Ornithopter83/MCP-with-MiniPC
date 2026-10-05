@@ -20,14 +20,21 @@ public sealed class CoordinatorFirstContractTests
                   "required": true,
                   "instructions": "앱 실행과 핵심 동작을 확인한다."
                 },
-                "resource": null,
+                "resource": {
+                  "id": 0,
+                  "type": "image",
+                  "targetPath": "assets/hero.png",
+                  "instructions": "대표 이미지를 생성한다.",
+                  "style": "flat"
+                },
                 "workItems": [
                   {
                     "id": 10,
                     "writePaths": ["src/A", "src/B.cs"],
                     "goal": "기능을 구현한다.",
                     "instructions": "지정 경로 안에서 구현한다.",
-                    "completionCriteria": ["구현이 완료된다."]
+                    "completionCriteria": ["구현이 완료된다."],
+                    "constraints": ["추가 JSON 조건도 보존한다."]
                   }
                 ],
                 "completionCriteria": ["마일스톤 목표가 충족된다."],
@@ -57,6 +64,12 @@ public sealed class CoordinatorFirstContractTests
         var work = Assert.Single(milestone.WorkItems.Values);
         Assert.Equal("10", work.Id);
         Assert.Equal(new[] { "src/A", "src/B.cs" }, work.WritePaths);
+        Assert.Contains("\"constraints\"", work.Body);
+
+        var resource = Assert.Single(milestone.Resources.Values);
+        Assert.Equal("IMAGE", resource.Type);
+        Assert.Equal("assets/hero.png", resource.TargetPath);
+        Assert.Contains("\"style\": \"flat\"", resource.Body);
     }
 
     [Fact]
