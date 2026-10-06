@@ -1556,11 +1556,6 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         CancellationToken cancellationToken)
     {
-        var workBefore =
-            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                workingDirectory,
-                cancellationToken);
-
         RunOnUi(() =>
         {
             TaskDirection.Text = "작업";
@@ -1675,6 +1670,11 @@ public partial class MainWindow
                     "blocked",
                     "계획되지 않은 WORK_ITEM_ID입니다."));
         }
+
+        var workBefore =
+            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                workingDirectory,
+                cancellationToken);
 
         RunOnUi(() =>
         {
