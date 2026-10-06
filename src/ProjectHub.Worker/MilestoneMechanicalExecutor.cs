@@ -767,13 +767,12 @@ internal static class MilestoneMechanicalExecutor
         if (scopedPaths.Count == 0)
             return Array.Empty<string>();
 
-        var result = new List<string>(scopedPaths.Count + 6);
-        result.AddRange(scopedPaths);
-        result.Add(":(exclude)bin");
-        result.Add(":(exclude)bin/**");
-        result.Add(":(exclude)temp");
-        result.Add(":(exclude)temp/**");
-        return result;
+        // milestoneChangedPaths에는 Worker가 실제로 관찰·기록한 대상만 들어온다.
+        // Git에는 그 경로만 명시하여 지정되지 않은 dirty 변경을 stage하지 않는다.
+        return scopedPaths
+            .Where(path => !IsRuntimeOutput(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static bool ScopesOverlap(string left, string right)
@@ -802,5 +801,7 @@ internal static class MilestoneMechanicalExecutor
         path.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
         path.StartsWith("bin/", StringComparison.OrdinalIgnoreCase) ||
         path.Equals("temp", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("temp/", StringComparison.OrdinalIgnoreCase);
+        path.StartsWith("temp/", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals(".projecthub", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith(".projecthub/", StringComparison.OrdinalIgnoreCase);
 }
