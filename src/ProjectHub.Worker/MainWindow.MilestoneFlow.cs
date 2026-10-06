@@ -2155,9 +2155,9 @@ public partial class MainWindow
         Environment.NewLine +
         $"실제 프로젝트 루트: {workingDirectory}" +
         Environment.NewLine +
-        "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH를 명확히 지정한다." +
+        "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH와 order를 명확히 지정한다." +
         Environment.NewLine +
-        "동시에 실행할 GENERAL WORK의 WRITE_PATH가 겹치지 않게 설계한다." +
+        "선행 의존성이 없는 WORK는 같은 order로 두고, 선행 결과가 필요한 WORK는 더 큰 order를 지정한다. 같은 order의 WRITE_PATH는 겹치지 않게 설계한다." +
         Environment.NewLine +
         "입력 본문:" +
         Environment.NewLine +
