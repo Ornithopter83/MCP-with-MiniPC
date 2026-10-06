@@ -6,7 +6,7 @@
 ② 계획된 GENERAL WORK와 RESOURCE를 실행시키고 결과를 취합한다.
 ③ build·run·publish의 의미적 수행과 완료 판단을 담당한다.
 ④ HQ가 지정한 entrypoint나 실행 경로가 있으면 QA 전에 실행 가능한 상태로 준비한다.
-⑤ HIGH 보고 뒤 HQ 설계 범위에서 명확히 보완 가능한 경우 후속 GENERAL WORK를 수행할 수 있다.
+⑤ HIGH 보고를 받으면 해당 결과를 현재 마일스톤의 최종 검토 자료로 취급하고, 추가 GENERAL WORK나 재검증을 판단하지 않는다. 필요한 후속 보완 여부는 HQ가 다음 판단에서 결정한다.
 ⑥ 마일스톤의 모든 작업은 성공·실패와 관계없이 terminal 상태가 되어야 최종 HQ 보고로 넘어간다.
 ⑦ HQ가 지정한 작업영역 안의 기존 dirty 변경은 현재 ProjectHub 작업보다 우선하지 않으므로 그 사실만으로 PAUSE하지 않는다.
 
@@ -72,12 +72,14 @@ BODY_END
 제4조 (HIGH 이후)
 
 ① HIGH가 직접 수정한 경우 그 변경을 현재 마일스톤 결과에 포함한다.
-② HIGH 보고에 따라 HQ 설계를 유지한 채 명확히 보완할 수 있으면 후속 WORK를 실행하고 다시 READY_FOR_VALIDATION으로 보낼 수 있다.
-③ 해결 방향이 불명확하거나 같은 실패가 반복되면 추가 의미 설계를 임의로 만들지 않고 현재 상태를 최종 보고한다.
+② HIGH 보고를 받은 뒤에는 RUN_WORK, RUN_RESOURCE, MECHANICAL, READY_FOR_VALIDATION을 새로 요청하지 않는다.
+③ Git finalize가 아직 수행되지 않았다면 GIT_FINALIZE만 요청하고, 그 결과를 받은 다음 즉시 HQ 최종 보고로 넘어간다.
+④ Git finalize가 이미 수행됐다면 추가 ACTION 없이 즉시 HQ에 최종 보고한다.
+⑤ QA가 BLOCKED였거나 HIGH가 MODIFIED 또는 INCOMPLETE여도 같은 마일스톤 안에서 재검증하지 않는다. 현재 결과와 남은 문제를 그대로 HQ에 보고하고 후속 판단은 HQ에 맡긴다.
 
 제5조 (Git과 HQ 보고)
 
-① 마일스톤 성공·실패와 관계없이 모든 작업이 끝났으면 GIT_FINALIZE를 요청한다.
+① HIGH 검토까지 끝난 뒤 마일스톤 성공·실패와 관계없이 GIT_FINALIZE가 아직 수행되지 않았다면 이를 요청한다.
 ② Worker가 가능한 경우 현재 마일스톤이 기록한 지정 경로 변경만 commit하고 대상 branch에 push하도록 한다. 지정되지 않은 dirty 경로는 stage·commit 대상으로 요구하지 않는다.
 ③ commit·push 오류가 있으면 실제 Git 상태를 바탕으로 가능한 해결을 시도한다.
 ④ 물리적·외부 정책상 push가 불가능하거나 반복 실패를 해결하지 못하면 그 사실을 그대로 HQ에 보고한다.
