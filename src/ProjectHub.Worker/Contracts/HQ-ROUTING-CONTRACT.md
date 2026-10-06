@@ -16,7 +16,7 @@
 {
   "milestone": {
     "id": "M1",
-    "branch": "AUTO",
+    "branch": "main",
     "goal": "현재 마일스톤 전체 목표",
     "entrypoint": null,
     "initializeGitIfMissing": false,
@@ -39,7 +39,7 @@
 ② JSON 최상위에는 `milestone` 객체를 둔다.
 ③ `milestone`은 최소한 다음 필드를 가진다.
 - `id`: 마일스톤 식별자
-- `branch`: `"AUTO"` 또는 명시 branch
+- `branch`: 반드시 정확히 `"main"`
 - `goal`: 마일스톤 목표와 구현 방향
 - `entrypoint`: 필요한 실행파일·URL·프로젝트 entrypoint 또는 null
 - `qa`: QA 예약 객체
@@ -48,7 +48,7 @@
 - `completionCriteria`: 완료 기준 문자열 배열
 - `validation`: HIGH/QA 핵심 검증 조건 문자열 배열
 ④ 필요한 추가 설계 근거, 제약, 구조와 주의사항은 milestone 내부 추가 JSON 필드로 넣는다.
-⑤ `branch`가 `"AUTO"`이면 Worker가 main을 우선하고 main이 없으면 master를 사용한다.
+⑤ `branch`는 항상 정확히 `"main"`이어야 한다. AUTO, master와 그 밖의 branch는 허용하지 않으며 HQ는 다른 branch를 설계하지 않는다.
 ⑥ `initializeGitIfMissing`은 선택 boolean이다. Git 저장소 생성은 GENERAL WORK에 배정하지 않는다.
 ⑦ 파일을 생성·수정·삭제하지 않는 검증 전용 마일스톤은 `projectPolicy`를 `"READ_ONLY_NO_FILE_CHANGES"`로 둔다.
 ⑧ READ_ONLY_NO_FILE_CHANGES에서는 RESOURCE를 사용하지 않고 모든 GENERAL WORK를 읽기 전용으로 설계한다.

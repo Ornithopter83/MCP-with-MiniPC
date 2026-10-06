@@ -107,6 +107,17 @@ internal static class MilestoneDefinitionContract
                 return false;
             }
 
+            if (!string.Equals(
+                    targetBranch,
+                    "main",
+                    StringComparison.Ordinal))
+            {
+                error = "MILESTONE_MAIN_BRANCH_REQUIRED";
+                return false;
+            }
+
+            targetBranch = "main";
+
             if (!TryGetRequiredJsonString(milestoneJson, "goal", out _))
             {
                 error = "MILESTONE_GOAL_REQUIRED";

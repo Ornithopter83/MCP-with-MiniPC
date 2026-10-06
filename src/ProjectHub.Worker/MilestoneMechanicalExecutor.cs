@@ -6,12 +6,26 @@ namespace ProjectHub.Worker;
 
 internal static class MilestoneMechanicalExecutor
 {
+    private const string RequiredBranch = "main";
     public static async Task<MilestoneGitResult> CheckGitReadyAsync(
         string workingDirectory,
         string configuredTargetBranch,
         bool initializeIfMissing,
         CancellationToken cancellationToken)
     {
+        if (!string.Equals(
+                configuredTargetBranch,
+                RequiredBranch,
+                StringComparison.Ordinal))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "MAIN_BRANCH_REQUIRED: ProjectHub 작업 branch는 main만 허용합니다.");
+        }
+
         var git = new ProcessGitCommandRunner();
 
         Task<GitCommandResult> Run(params string[] args) =>
@@ -36,157 +50,160 @@ internal static class MilestoneMechanicalExecutor
                 return new(
                     false,
                     true,
-                    configuredTargetBranch,
+                    RequiredBranch,
                     null,
                     "Git 저장소가 필수입니다. 현재 프로젝트 루트가 Git 저장소가 아니므로 PAUSE합니다.");
             }
 
-            var init = await Run("init").ConfigureAwait(false);
+            var init = await Run(
+                "init",
+                "-b",
+                RequiredBranch).ConfigureAwait(false);
             if (init.ExitCode != 0)
             {
-                return new(
-                    false,
-                    true,
-                    configuredTargetBranch,
-                    null,
-                    "git init에 실패했습니다." +
-                    Environment.NewLine +
-                    (string.IsNullOrWhiteSpace(init.StandardError)
-                        ? init.StandardOutput
-                        : init.StandardError));
+                init = await Run("init").ConfigureAwait(false);
+                if (init.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        true,
+                        RequiredBranch,
+                        null,
+                        "git init에 실패했습니다." +
+                        Environment.NewLine +
+                        (string.IsNullOrWhiteSpace(init.StandardError)
+                            ? init.StandardOutput
+                            : init.StandardError));
+                }
+
+                var setMainHead = await Run(
+                    "symbolic-ref",
+                    "HEAD",
+                    "refs/heads/" + RequiredBranch).ConfigureAwait(false);
+                if (setMainHead.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        true,
+                        RequiredBranch,
+                        null,
+                        "Git 초기화 후 HEAD를 main으로 강제하지 못했습니다." +
+                        Environment.NewLine +
+                        (string.IsNullOrWhiteSpace(setMainHead.StandardError)
+                            ? setMainHead.StandardOutput
+                            : setMainHead.StandardError));
+                }
             }
 
             WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
         }
 
-        var targetBranch = await ResolveTargetBranchAsync(
-            configuredTargetBranch,
-            Run).ConfigureAwait(false);
+        var currentBranch = await ReadCurrentBranchAsync(Run)
+            .ConfigureAwait(false);
 
-        if (string.IsNullOrWhiteSpace(targetBranch) &&
-            initializeIfMissing &&
-            string.Equals(
-                configuredTargetBranch,
-                "AUTO",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            var symbolicHead = await Run(
-                "symbolic-ref",
-                "--short",
-                "HEAD").ConfigureAwait(false);
-            if (symbolicHead.ExitCode == 0)
-                targetBranch = symbolicHead.StandardOutput.Trim();
-        }
-
-        if (string.IsNullOrWhiteSpace(targetBranch))
-        {
-            return new(
-                false,
-                true,
-                configuredTargetBranch,
-                null,
-                "main/master 대상 branch를 확인할 수 없어 PAUSE합니다.");
-        }
-
-        var current = await Run(
-            "rev-parse",
-            "--abbrev-ref",
-            "HEAD").ConfigureAwait(false);
-        var currentBranch = current.ExitCode == 0
-            ? current.StandardOutput.Trim()
-            : string.Empty;
-        if (string.Equals(
+        if (!string.Equals(
                 currentBranch,
-                "HEAD",
-                StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(currentBranch))
+                RequiredBranch,
+                StringComparison.Ordinal))
         {
-            var symbolicHead = await Run(
-                "symbolic-ref",
-                "--short",
-                "HEAD").ConfigureAwait(false);
-            if (symbolicHead.ExitCode == 0)
-                currentBranch = symbolicHead.StandardOutput.Trim();
+            var localMain = await Run(
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/heads/" + RequiredBranch).ConfigureAwait(false);
+
+            GitCommandResult mainPreparation;
+            if (localMain.ExitCode == 0)
+            {
+                mainPreparation = await Run(
+                    "switch",
+                    RequiredBranch).ConfigureAwait(false);
+            }
+            else
+            {
+                var remoteMain = await Run(
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    "refs/remotes/origin/" + RequiredBranch)
+                    .ConfigureAwait(false);
+
+                if (remoteMain.ExitCode == 0)
+                {
+                    mainPreparation = await Run(
+                        "switch",
+                        "-c",
+                        RequiredBranch,
+                        "--track",
+                        "origin/" + RequiredBranch)
+                        .ConfigureAwait(false);
+                }
+                else if (!string.IsNullOrWhiteSpace(currentBranch) &&
+                         !string.Equals(
+                             currentBranch,
+                             "HEAD",
+                             StringComparison.OrdinalIgnoreCase))
+                {
+                    mainPreparation = await Run(
+                        "branch",
+                        "-M",
+                        RequiredBranch).ConfigureAwait(false);
+                }
+                else
+                {
+                    return new(
+                        false,
+                        true,
+                        RequiredBranch,
+                        null,
+                        "MAIN_BRANCH_REQUIRED: 현재 Git 상태를 main으로 수렴시킬 수 없습니다.");
+                }
+            }
+
+            if (mainPreparation.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    true,
+                    RequiredBranch,
+                    null,
+                    "MAIN_BRANCH_REQUIRED: main 준비에 실패했습니다." +
+                    Environment.NewLine +
+                    $"current={currentBranch}" +
+                    Environment.NewLine +
+                    (string.IsNullOrWhiteSpace(mainPreparation.StandardError)
+                        ? mainPreparation.StandardOutput
+                        : mainPreparation.StandardError));
+            }
+
+            currentBranch = await ReadCurrentBranchAsync(Run)
+                .ConfigureAwait(false);
         }
 
         if (!string.Equals(
                 currentBranch,
-                targetBranch,
+                RequiredBranch,
                 StringComparison.Ordinal))
         {
-            var meaningfulChanges =
-                await SnapshotChangedPathsAsync(
-                    workingDirectory,
-                    cancellationToken).ConfigureAwait(false);
-            if (meaningfulChanges.Count > 0)
-            {
-                return new(
-                    false,
-                    true,
-                    targetBranch,
-                    null,
-                    "현재 checkout branch가 대상 branch와 다르고 로컬 변경이 있어 안전하게 전환할 수 없습니다." +
-                    Environment.NewLine +
-                    $"current={currentBranch}" +
-                    Environment.NewLine +
-                    $"target={targetBranch}" +
-                    Environment.NewLine +
-                    "사용자가 직접 정리한 뒤 재개하세요.");
-            }
-
-            var switchResult = await Run(
-                "switch",
-                targetBranch).ConfigureAwait(false);
-            if (switchResult.ExitCode != 0)
-            {
-                var remoteTarget = await Run(
-                    "show-ref",
-                    "--verify",
-                    "--quiet",
-                    "refs/remotes/origin/" + targetBranch)
-                    .ConfigureAwait(false);
-                if (remoteTarget.ExitCode == 0)
-                {
-                    switchResult = await Run(
-                        "switch",
-                        "-c",
-                        targetBranch,
-                        "--track",
-                        "origin/" + targetBranch)
-                        .ConfigureAwait(false);
-                }
-            }
-
-            if (switchResult.ExitCode != 0)
-            {
-                return new(
-                    false,
-                    true,
-                    targetBranch,
-                    null,
-                    "대상 branch로 안전하게 전환하지 못했습니다." +
-                    Environment.NewLine +
-                    $"current={currentBranch}" +
-                    Environment.NewLine +
-                    $"target={targetBranch}" +
-                    Environment.NewLine +
-                    (string.IsNullOrWhiteSpace(switchResult.StandardError)
-                        ? switchResult.StandardOutput
-                        : switchResult.StandardError));
-            }
-
-            currentBranch = targetBranch;
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "MAIN_BRANCH_REQUIRED: 최종 checkout이 main이 아니므로 작업을 시작하지 않습니다." +
+                Environment.NewLine +
+                $"current={currentBranch}");
         }
 
         var head = await Run("rev-parse", "HEAD").ConfigureAwait(false);
         return new(
             true,
             false,
-            targetBranch,
+            RequiredBranch,
             head.ExitCode == 0 ? head.StandardOutput.Trim() : null,
             "Git preflight 완료" +
             Environment.NewLine +
-            $"branch={targetBranch}" +
+            "branch=main" +
             Environment.NewLine +
             $"head={(head.ExitCode == 0 ? head.StandardOutput.Trim() : "확인 실패")}");
     }
@@ -506,6 +523,19 @@ internal static class MilestoneMechanicalExecutor
         IReadOnlyCollection<string> paths,
         CancellationToken cancellationToken)
     {
+        if (!string.Equals(
+                milestone.TargetBranch,
+                RequiredBranch,
+                StringComparison.Ordinal))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "MAIN_BRANCH_REQUIRED: main 이외의 마일스톤 branch는 finalize하지 않습니다.");
+        }
+
         var git = new ProcessGitCommandRunner();
 
         Task<GitCommandResult> Run(params string[] args) =>
@@ -527,50 +557,26 @@ internal static class MilestoneMechanicalExecutor
             return new(
                 false,
                 true,
-                milestone.TargetBranch,
+                RequiredBranch,
                 null,
                 "Git 저장소가 필수입니다. 현재 프로젝트 루트가 Git 저장소가 아니므로 PAUSE합니다.");
         }
 
-        var targetBranch = await ResolveTargetBranchAsync(
-            milestone.TargetBranch,
-            Run).ConfigureAwait(false);
-
-        if (string.IsNullOrWhiteSpace(targetBranch))
-        {
-            return new(
-                false,
-                true,
-                milestone.TargetBranch,
-                null,
-                "main/master 대상 branch를 확인할 수 없어 PAUSE합니다.");
-        }
-
-        var current = await Run(
-            "rev-parse",
-            "--abbrev-ref",
-            "HEAD").ConfigureAwait(false);
-        var currentBranch = current.ExitCode == 0
-            ? current.StandardOutput.Trim()
-            : string.Empty;
-
+        var currentBranch = await ReadCurrentBranchAsync(Run)
+            .ConfigureAwait(false);
         if (!string.Equals(
                 currentBranch,
-                targetBranch,
+                RequiredBranch,
                 StringComparison.Ordinal))
         {
             return new(
                 false,
                 true,
-                targetBranch,
+                RequiredBranch,
                 null,
-                "현재 checkout branch가 대상 branch와 다릅니다." +
+                "MAIN_BRANCH_REQUIRED: 현재 checkout이 main이 아니므로 commit/push하지 않습니다." +
                 Environment.NewLine +
-                $"current={currentBranch}" +
-                Environment.NewLine +
-                $"target={targetBranch}" +
-                Environment.NewLine +
-                "자동 branch 전환 없이 PAUSE합니다.");
+                $"current={currentBranch}");
         }
 
         var scopedPaths = paths
@@ -587,7 +593,7 @@ internal static class MilestoneMechanicalExecutor
             return new(
                 true,
                 false,
-                targetBranch,
+                RequiredBranch,
                 unchangedHead.ExitCode == 0
                     ? unchangedHead.StandardOutput.Trim()
                     : null,
@@ -611,7 +617,7 @@ internal static class MilestoneMechanicalExecutor
                 return new(
                     false,
                     false,
-                    targetBranch,
+                    RequiredBranch,
                     null,
                     "git add 실패:" +
                     Environment.NewLine +
@@ -643,40 +649,37 @@ internal static class MilestoneMechanicalExecutor
                 return new(
                     true,
                     false,
-                    targetBranch,
+                    RequiredBranch,
                     unchangedHead.ExitCode == 0
                         ? unchangedHead.StandardOutput.Trim()
                         : null,
                     "마일스톤 대상 변경 없음 · commit/push 생략");
             }
 
-            if (staged.ExitCode != 0)
+            var commitArgs = new List<string>
             {
-                var commitArgs = new List<string>
-                {
-                    "commit",
-                    "-m",
-                    $"ProjectHub milestone {milestone.Id}",
-                    "--"
-                };
-                commitArgs.AddRange(scopedPathspecs);
-                var commit = await Run(commitArgs.ToArray())
-                    .ConfigureAwait(false);
+                "commit",
+                "-m",
+                $"ProjectHub milestone {milestone.Id}",
+                "--"
+            };
+            commitArgs.AddRange(scopedPathspecs);
+            var commit = await Run(commitArgs.ToArray())
+                .ConfigureAwait(false);
 
-                if (commit.ExitCode != 0)
-                {
-                    return new(
-                        false,
-                        false,
-                        targetBranch,
-                        null,
-                        "git commit 실패:" +
-                        Environment.NewLine +
-                        commit.StandardError);
-                }
-
-                createdCommit = true;
+            if (commit.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    false,
+                    RequiredBranch,
+                    null,
+                    "git commit 실패:" +
+                    Environment.NewLine +
+                    commit.StandardError);
             }
+
+            createdCommit = true;
         }
 
         var head = await Run(
@@ -688,7 +691,7 @@ internal static class MilestoneMechanicalExecutor
         var push = await Run(
             "push",
             "origin",
-            targetBranch).ConfigureAwait(false);
+            RequiredBranch).ConfigureAwait(false);
 
         if (push.ExitCode != 0)
         {
@@ -704,20 +707,20 @@ internal static class MilestoneMechanicalExecutor
                 var fetch = await Run(
                     "fetch",
                     "origin",
-                    targetBranch).ConfigureAwait(false);
+                    RequiredBranch).ConfigureAwait(false);
 
                 if (fetch.ExitCode == 0)
                 {
                     var rebase = await Run(
                         "rebase",
-                        "origin/" + targetBranch).ConfigureAwait(false);
+                        "origin/" + RequiredBranch).ConfigureAwait(false);
 
                     if (rebase.ExitCode == 0)
                     {
                         push = await Run(
                             "push",
                             "origin",
-                            targetBranch).ConfigureAwait(false);
+                            RequiredBranch).ConfigureAwait(false);
 
                         if (push.ExitCode == 0)
                         {
@@ -742,9 +745,9 @@ internal static class MilestoneMechanicalExecutor
             return new(
                 false,
                 false,
-                targetBranch,
+                RequiredBranch,
                 commitSha,
-                "Git commit/push finalize를 완료하지 못했습니다." +
+                "Git main commit/push finalize를 완료하지 못했습니다." +
                 Environment.NewLine +
                 $"commit={commitSha ?? "없음"}" +
                 Environment.NewLine +
@@ -759,11 +762,11 @@ internal static class MilestoneMechanicalExecutor
         return new(
             true,
             false,
-            targetBranch,
+            RequiredBranch,
             commitSha,
             "Git finalize 완료" +
             Environment.NewLine +
-            $"branch={targetBranch}" +
+            "branch=main" +
             Environment.NewLine +
             $"commit={commitSha ?? "없음"}" +
             Environment.NewLine +
@@ -772,42 +775,37 @@ internal static class MilestoneMechanicalExecutor
             "push=COMPLETED");
     }
 
-    private static async Task<string?> ResolveTargetBranchAsync(
-        string configured,
+    private static async Task<string> ReadCurrentBranchAsync(
         Func<string[], Task<GitCommandResult>> run)
     {
-        if (!string.Equals(
-                configured,
-                "AUTO",
-                StringComparison.OrdinalIgnoreCase))
-            return configured.Trim();
-
-        foreach (var candidate in new[] { "main", "master" })
+        var current = await run(new[]
         {
-            var local = await run(new[]
+            "rev-parse",
+            "--abbrev-ref",
+            "HEAD"
+        }).ConfigureAwait(false);
+
+        var branch = current.ExitCode == 0
+            ? current.StandardOutput.Trim()
+            : string.Empty;
+
+        if (string.Equals(
+                branch,
+                "HEAD",
+                StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(branch))
+        {
+            var symbolicHead = await run(new[]
             {
-                "show-ref",
-                "--verify",
-                "--quiet",
-                "refs/heads/" + candidate
+                "symbolic-ref",
+                "--short",
+                "HEAD"
             }).ConfigureAwait(false);
-
-            if (local.ExitCode == 0)
-                return candidate;
-
-            var remote = await run(new[]
-            {
-                "show-ref",
-                "--verify",
-                "--quiet",
-                "refs/remotes/origin/" + candidate
-            }).ConfigureAwait(false);
-
-            if (remote.ExitCode == 0)
-                return candidate;
+            if (symbolicHead.ExitCode == 0)
+                branch = symbolicHead.StandardOutput.Trim();
         }
 
-        return null;
+        return branch;
     }
 
     private static IReadOnlyList<string> BuildScopedPathspecs(

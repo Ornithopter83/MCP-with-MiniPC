@@ -12,7 +12,7 @@ public sealed class CoordinatorFirstContractTests
             {
               "milestone": {
                 "id": "M1",
-                "branch": "AUTO",
+                "branch": "main",
                 "goal": "첫 마일스톤",
                 "entrypoint": "bin/App.exe",
                 "qa": {
@@ -57,7 +57,7 @@ public sealed class CoordinatorFirstContractTests
             error);
         Assert.NotNull(milestone);
         Assert.Equal("M1", milestone!.Id);
-        Assert.Equal("AUTO", milestone.TargetBranch);
+        Assert.Equal("main", milestone.TargetBranch);
         Assert.True(milestone.QaReserved);
         Assert.Equal("bin/App.exe", milestone.Entrypoint);
         Assert.False(milestone.InitializeGitIfMissing);
@@ -97,6 +97,46 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void MilestoneDefinition_RejectsEveryNonMainBranch()
+    {
+        const string template = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "MAIN_ONLY",
+                "branch": "__BRANCH__",
+                "goal": "main 전용 검증",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        foreach (var branch in new[] { "AUTO", "master", "feature/test", "MAIN" })
+        {
+            var message = template.Replace(
+                "__BRANCH__",
+                branch,
+                StringComparison.Ordinal);
+            var parsed = ActionBlockContract.ParseHq(message);
+
+            Assert.False(MilestoneDefinitionContract.TryBuild(
+                message,
+                parsed,
+                out _,
+                out var error));
+            Assert.Equal("MILESTONE_MAIN_BRANCH_REQUIRED", error);
+        }
+    }
+
+    [Fact]
     public void MilestoneDefinition_ParsesWorkerGitInitializationFlag()
     {
         const string message = """
@@ -104,7 +144,7 @@ public sealed class CoordinatorFirstContractTests
             {
               "milestone": {
                 "id": "GIT_INIT_TEST",
-                "branch": "AUTO",
+                "branch": "main",
                 "goal": "새 저장소 준비",
                 "entrypoint": null,
                 "initializeGitIfMissing": true,
@@ -140,7 +180,7 @@ public sealed class CoordinatorFirstContractTests
             {
               "milestone": {
                 "id": "READ_ONLY_TEST",
-                "branch": "AUTO",
+                "branch": "main",
                 "goal": "역할 검증",
                 "entrypoint": null,
                 "projectPolicy": "READ_ONLY_NO_FILE_CHANGES",
@@ -205,7 +245,7 @@ public sealed class CoordinatorFirstContractTests
               "action": "work",
               "milestone": {
                 "id": "M-OLD",
-                "branch": "AUTO",
+                "branch": "main",
                 "goal": "구형 문법",
                 "entrypoint": null,
                 "qa": {
@@ -320,7 +360,7 @@ public sealed class CoordinatorFirstContractTests
             {
               "milestone": {
                 "id": "M4",
-                "branch": "AUTO",
+                "branch": "main",
                 "goal": "경로 검증",
                 "entrypoint": null,
                 "qa": {
@@ -548,6 +588,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("READ_ONLY_NO_FILE_CHANGES", hq);
         Assert.Contains("\"readOnly\"", hq);
         Assert.Contains("\"initializeGitIfMissing\"", hq);
+        Assert.Contains("\"branch\": \"main\"", hq);
+        Assert.DoesNotContain("\"branch\": \"AUTO\"", hq);
+        Assert.Contains("AUTO, master와 그 밖의 branch는 허용하지 않으며", hq);
         Assert.Contains("[GOTO : 역할]", hq);
         Assert.DoesNotContain("END_ACTION", manager);
         Assert.DoesNotContain("BODY_BEGIN", manager);

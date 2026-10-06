@@ -58,7 +58,7 @@ internal static class RoleJsonRepairContract
                 {
                   "milestone": {
                     "id": "기존 값",
-                    "branch": "AUTO 또는 기존 값",
+                    "branch": "main",
                     "goal": "기존 목표",
                     "entrypoint": null,
                     "initializeGitIfMissing": false,

@@ -22,7 +22,7 @@
 
 제3조 (프로젝트 루트와 작업영역)
 
-① 사용자가 지정한 폴더가 유일한 실제 프로젝트 루트다. Git 저장소가 아니고 HQ가 `initializeGitIfMissing`을 true로 지정하면 Worker가 마일스톤 preflight에서 기계적으로 `git init`을 수행한다. 그 외에는 Git 저장소가 준비되어 있어야 한다.
+① 사용자가 지정한 폴더가 유일한 실제 프로젝트 루트다. Git 저장소가 아니고 HQ가 `initializeGitIfMissing`을 true로 지정하면 Worker가 마일스톤 preflight에서 기계적으로 `git init -b main`을 수행하여 처음부터 main으로 초기화한다. 그 외에는 Git 저장소가 준비되어 있어야 한다.
 ② 프로젝트의 실제 폴더·파일 구조는 해당 루트에서 직접 생성·수정·삭제한다. WorkItem별 clone, worktree, shadow workspace 또는 별도 작업 branch를 실제 프로젝트 작업공간으로 사용하지 않는다.
 ③ HQ는 마일스톤 설계 단계에서 동시에 실행될 WorkItem의 생성·수정·삭제 영역이 겹치지 않도록 설계한다.
 ④ 같은 마일스톤 안의 WorkItem dependency는 최대한 배제하고, 한 결과가 다른 작업의 전제가 되는 경우 가능한 한 다음 마일스톤과의 선후 관계로 분리한다. 같은 마일스톤에서 불가피한 경우만 최소 실행 순서를 둔다.
@@ -75,15 +75,16 @@
 제8조 (Git)
 
 ① Git 저장소는 ProjectHub 작업의 필수 전제다. 저장소가 없고 HQ가 초기화를 명시한 경우 Worker가 준비한다. origin이 없거나 push가 불가능한 것은 마일스톤 실행을 막지 않고 Git 결과에 사실대로 보고한다.
-② 사용자가 별도 branch를 명시하지 않으면 main을 우선하고 main이 없으면 master를 대상 branch로 사용한다.
-③ 사용자 로컬 checkout이 선택된 대상 branch와 다르거나 Worker가 안전하게 대상 branch를 준비할 수 없으면 PAUSE한다. 사용자가 하네스 없이 직접 Git 상태를 해결한 뒤 재개한다.
-④ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push 흐름은 중간관리자가 요청하고 Worker가 기계적으로 수행한다.
-⑤ WorkItem별 projecthub/* branch, checkpoint branch, Integration branch와 별도 원격 result branch를 사용하지 않는다.
-⑥ 마일스톤 종료 시 Worker는 HQ가 지정한 WRITE_PATH와 RESOURCE targetPath, HIGH가 명시한 CHANGED_PATH 안에서 현재 마일스톤 변경목록에 기록된 생성·수정·삭제만 stage하여 하나의 마일스톤 commit을 만든다. 지정되지 않은 경로는 dirty여도 stage·commit하지 않는다. 프로젝트 전체를 무조건 stage하지 않는다.
-⑦ 마일스톤이 기능적으로 성공했는지와 관계없이 Git 갱신이 물리적으로 가능한 경우에는 해당 현재 상태를 commit·push한다.
-⑧ commit 또는 push 문제가 있으면 중간관리자가 현재 Git 사실을 바탕으로 merge, rebase, fetch/pull, 재시도와 필요한 Git 갱신 방법을 사용해 대상 branch를 최대한 갱신한다. 마일스톤의 현재 상태를 원격에 반영하는 것을 우선한다.
-⑨ 원격 서비스 정책, 권한, 네트워크 또는 실제 Git 제약 때문에 물리적으로 push가 불가능하거나 반복 해결에 실패한 경우에만 현재 commit SHA, 로컬/원격 상태와 실패 사실을 HQ에 보고한다.
-⑩ push 성공 여부와 무관하게 마일스톤의 모든 작업이 끝났다면 HQ 최종 보고는 생략하지 않는다.
+② ProjectHub가 사용하는 유일한 작업 branch는 `main`이다. AUTO, master, feature/*, projecthub/*, checkpoint, integration 또는 그 밖의 branch를 작업 대상으로 인정하지 않는다.
+③ 새 저장소는 `git init -b main`으로 초기화한다. 호환성 fallback이 필요하더라도 최종 HEAD는 반드시 `refs/heads/main`이어야 하며 다른 branch 이름을 허용하지 않는다.
+④ 기존 저장소에서 local main이 있으면 main으로 전환하고, local main은 없지만 origin/main이 있으면 origin/main을 추적하는 local main만 준비한다. local/remote main이 모두 없으면 현재 branch 이름을 main으로 변경하여 수렴시킨다. main으로 수렴하지 못하면 PAUSE하며 다른 branch에서 작업하지 않는다.
+⑤ HQ, 사용자 입력 또는 다른 역할이 main 이외의 branch를 지정해도 실행하지 않는다. 마일스톤 계약 단계에서 오류로 처리한다.
+⑥ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push는 Worker가 main에 대해서만 기계적으로 수행한다.
+⑦ WorkItem별 별도 branch, checkpoint branch, Integration branch와 별도 원격 result branch를 생성하거나 사용하지 않는다.
+⑧ 마일스톤 종료 시 Worker는 HQ가 지정한 WRITE_PATH와 RESOURCE targetPath, HIGH가 명시한 CHANGED_PATH 안에서 현재 마일스톤 변경목록에 기록된 생성·수정·삭제만 stage하여 main에 하나의 마일스톤 commit을 만든다. 지정되지 않은 경로는 dirty여도 stage·commit하지 않는다. 프로젝트 전체를 무조건 stage하지 않는다.
+⑨ commit 또는 push 문제가 있으면 main에 한해서 fetch/rebase와 재시도를 수행할 수 있다. 다른 branch로 우회하거나 다른 branch에 push하지 않는다.
+⑩ 원격 서비스 정책, 권한, 네트워크 또는 실제 Git 제약 때문에 main push가 불가능하거나 반복 해결에 실패한 경우 현재 commit SHA, 로컬/원격 상태와 실패 사실을 HQ에 보고한다.
+⑪ push 성공 여부와 무관하게 마일스톤의 모든 작업이 끝났다면 HQ 최종 보고는 생략하지 않는다.
 
 제9조 (보고과 상태)
 
@@ -96,7 +97,7 @@
 제10조 (PAUSE와 사용자 개입)
 
 ① 지정된 작업영역 안의 dirty 변경이나 동시 변경은 현재 작업보다 우선하지 않으며 그 이유로 PAUSE하지 않는다.
-② 대상 branch가 준비되지 않았거나 다른 checkout 상태 때문에 직접 작업할 수 없으면 PAUSE한다.
+② main으로 수렴하지 못했거나 현재 checkout이 main이 아니면 PAUSE한다. 다른 branch에서 작업을 계속하지 않는다.
 ③ PAUSE 상태에서 Worker가 지정되지 않은 경로를 reset·강제 checkout·삭제하여 해결하지 않는다.
 ④ 사용자가 하네스 없이 필요한 수동 조치를 수행한 뒤 재개할 수 있어야 한다.
 ⑤ 사용자 파일 관리 실수나 프로젝트 자체의 잘못된 Git 설정을 모두 예측해 선제 차단하는 것을 목표로 하지 않는다.
