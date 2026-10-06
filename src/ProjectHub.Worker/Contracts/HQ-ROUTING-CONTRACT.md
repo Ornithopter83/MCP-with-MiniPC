@@ -60,12 +60,13 @@
 
 {
   "required": true,
-  "instructions": "조사 대상, 실행 방법, 확인할 화면·동작·상태"
+  "instructions": "실행 대상, 사용자 시나리오, 실제 화면·입력·출력·runtime 상태와 재현 조건"
 }
 
 ② QA가 필요 없으면 required=false와 빈 instructions를 사용할 수 있다.
 ③ QA가 필요하면 required=true이고 instructions를 비우지 않는다.
 ④ QA 호출 여부는 HQ만 결정한다.
+⑤ QA 지시는 실제 실행·사용자 관점의 동작 조사에 한정한다. 클래스·인터페이스 존재 여부, 소스 구조, 구현 알고리즘, 정적 의존성, 코드상 보안 규칙 검토는 HIGH 검증 조건으로 둔다.
 
 제4조 (일반 WorkItem)
 
@@ -73,6 +74,7 @@
 
 {
   "id": 10,
+  "order": 0,
   "readOnly": false,
   "writePaths": ["src/Feature"],
   "goal": "단일 목표",
@@ -81,14 +83,17 @@
 }
 
 ② id는 10 이상의 정수 또는 같은 값을 나타내는 문자열이다.
-③ 쓰기 WorkItem은 readOnly=false이고 writePaths에 프로젝트 루트 기준 상대경로를 하나 이상 둔다.
-④ 읽기 전용 WorkItem은 readOnly=true이고 writePaths를 빈 배열로 둘 수 있다.
-⑤ 하나의 WorkItem에 서로 독립적으로 수행 가능한 여러 목표를 묶지 않는다. 병렬 실행 가능한 최소 원자 작업으로 최대한 분해한다.
-⑥ 예를 들어 하나의 작업이 A·B·C로 나뉘고 서로 다른 파일 또는 경로에서 독립 수행 가능하면 `#10 A`, `#11 B`, `#12 C`처럼 별도 WorkItem으로 설계한다. `#10 ABC`처럼 한 WorkItem에 합치지 않는다.
-⑦ 동시에 실행할 쓰기 WorkItem의 WRITE_PATH는 서로 겹치지 않게 설계한다.
-⑧ 같은 파일을 함께 수정해야 하거나 A 결과가 B의 필수 전제인 경우에는 억지로 분리하지 않는다. 이 경우 같은 WorkItem으로 두거나 다음 마일스톤으로 분리한다.
-⑨ build·run·publish와 bin/obj/dist 같은 실행·빌드 산출물 생성을 GENERAL WORK의 책임이나 WRITE_PATH로 배정하지 않는다. 소스 구현과 기계 실행 책임을 분리한다.
-⑩ WRITE_PATH 안의 기존 dirty 변경 때문에 작업을 피하지 않는다.
+③ order는 0 이상의 정수이며 HQ가 WorkItem 간 선행 의존성을 판단해 지정한다. 작은 order가 먼저 실행된다.
+④ 같은 order의 WorkItem은 서로 선행 의존성이 없는 병렬 실행 그룹이다. 예를 들어 order가 0, 0, 1, 2이면 두 order=0 WorkItem을 병렬 실행하고 모두 terminal이 된 뒤 order=1, 이어서 order=2를 실행한다.
+⑤ 선행 WorkItem의 결과가 필요한 WorkItem은 반드시 더 큰 order를 사용한다. Worker와 MANAGER는 HQ가 정한 order를 재해석하거나 바꾸지 않는다.
+⑥ 쓰기 WorkItem은 readOnly=false이고 writePaths에 프로젝트 루트 기준 상대경로를 하나 이상 둔다.
+⑦ 읽기 전용 WorkItem은 readOnly=true이고 writePaths를 빈 배열로 둘 수 있다.
+⑧ 하나의 WorkItem에 서로 독립적으로 수행 가능한 여러 목표를 묶지 않는다. 병렬 실행 가능한 최소 원자 작업으로 최대한 분해한다.
+⑨ 예를 들어 하나의 작업이 A·B·C로 나뉘고 서로 다른 파일 또는 경로에서 독립 수행 가능하면 별도 WorkItem으로 설계한다.
+⑩ 같은 order로 동시에 실행할 쓰기 WorkItem의 WRITE_PATH는 서로 겹치지 않게 설계한다.
+⑪ 같은 파일을 함께 수정해야 하거나 A 결과가 B의 필수 전제인 경우 같은 order로 두지 않는다. 하나의 WorkItem으로 합치거나 선행 작업보다 큰 order를 지정한다.
+⑫ build·run·publish와 bin/obj/dist 같은 실행·빌드 산출물 생성을 GENERAL WORK의 책임이나 WRITE_PATH로 배정하지 않는다. 소스 구현과 기계 실행 책임을 분리한다.
+⑬ WRITE_PATH 안의 기존 dirty 변경 때문에 작업을 피하지 않는다.
 
 제5조 (RESOURCE)
 
