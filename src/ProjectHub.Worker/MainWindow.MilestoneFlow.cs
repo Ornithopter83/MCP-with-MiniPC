@@ -23,6 +23,36 @@ public partial class MainWindow
 
     private readonly ConcurrentDictionary<string, byte>
         _formatRecoveryJobs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string[]>
+        _formatRecoveryUnreadElements =
+            new(StringComparer.OrdinalIgnoreCase);
+
+    private void RecordUnreadRecoveryElements(
+        string jobId,
+        IEnumerable<string> elements)
+    {
+        var additions = elements
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (additions.Length == 0)
+            return;
+
+        _formatRecoveryUnreadElements.AddOrUpdate(
+            jobId,
+            additions,
+            (_, existing) => existing
+                .Concat(additions)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray());
+    }
+
+    private IReadOnlyList<string> GetUnreadRecoveryElements(string jobId) =>
+        _formatRecoveryUnreadElements.TryGetValue(jobId, out var elements)
+            ? elements
+            : Array.Empty<string>();
 
     private async Task RunMilestoneCoordinatorFirstJobAsync(
         string request,
@@ -110,6 +140,7 @@ public partial class MainWindow
             {
                 cts.Token.ThrowIfCancellationRequested();
                 _formatRecoveryJobs.TryRemove(jobId, out _);
+                _formatRecoveryUnreadElements.TryRemove(jobId, out _);
 
                 RunOnUi(() =>
                 {
@@ -442,135 +473,76 @@ public partial class MainWindow
                             }
                         }
 
-                        if (RoleElementRecoveryContract.TryBuildHqWorkResponse(
+                        var merged =
+                            RoleElementRecoveryContract.TryBuildHqWorkResponse(
                                 elementScan,
                                 recoveredByWork,
                                 out var mergedHqMessage,
-                                out var remainingElements))
+                                out var remainingElements);
+
+                        if (remainingElements.Count > 0)
                         {
-                            var mergedParse =
-                                ActionBlockContract.ParseHq(mergedHqMessage);
-                            if (!mergedParse.HasErrors &&
-                                MilestoneDefinitionContract.TryBuild(
-                                    mergedHqMessage,
-                                    mergedParse,
-                                    out milestone,
-                                    out milestoneError))
-                            {
-                                hqMessage = mergedHqMessage;
-                                hqParse = mergedParse;
-                                hqAction = mergedParse.ValidActions[0];
-                                AddDataFlowHistory(
-                                    WorkerRoleState.Work,
-                                    "Worker 작업",
-                                    "HQ element 복구 성공" +
-                                    Environment.NewLine +
-                                    $"기계 확보: {elementScan.Recovered.Count}" +
-                                    Environment.NewLine +
-                                    $"WORK 복구: {recoveredByWork.Count}",
-                                    status: "REPAIRED",
-                                    persistenceSource: "WORKER ACTION");
-                            }
-                            else
-                            {
-                                foreach (var inferred in
-                                         RoleElementRecoveryContract.Scan(
-                                             "HQ",
-                                             mergedHqMessage,
-                                             expectedAction: "WORK",
-                                             contractError: milestoneError)
-                                             .RecoveryTargets)
-                                {
-                                    recoveryTargets.Add(inferred);
-                                }
-                            }
+                            RecordUnreadRecoveryElements(
+                                jobId,
+                                remainingElements);
                         }
-                        else
+
+                        if (!merged)
                         {
-                            foreach (var remaining in remainingElements)
-                                recoveryTargets.Add(remaining);
-                        }
-                    }
-
-                    if (milestone is null)
-                    {
-                        var retryPrompt =
-                            RoleElementRecoveryContract.BuildHqFullRetryPrompt(
-                                recoveryTargets,
-                                milestoneError);
-
-                        AddDataFlowHistory(
-                            WorkerRoleState.Hq,
-                            "Worker 재요청",
-                            "HQ 전체 오더 재요청" +
-                            Environment.NewLine +
-                            "미확보 element:" +
-                            Environment.NewLine +
-                            (recoveryTargets.Count == 0
-                                ? "- strict validation 실패"
-                                : string.Join(
-                                    Environment.NewLine,
-                                    recoveryTargets.Select(
-                                        name => "- " + name))),
-                            status: "RETRY",
-                            persistenceSource: "WORKER ACTION");
-
-                        var retryResult = await RunHqRoleAsync(
-                            jobId,
-                            "HQ_MILESTONE_RECOVERY",
-                            retryPrompt,
-                            coordinator,
-                            normalizedRoot,
-                            hqSession,
-                            cts.Token,
-                            sessionStarted: session =>
-                                hqSession =
-                                    CodexCliRunner.NormalizeSessionId(session));
-
-                        hqSession =
-                            CodexCliRunner.NormalizeSessionId(
-                                retryResult.SessionId) ?? hqSession;
-
-                        if (retryResult.ExitCode != 0)
-                        {
+                            var unread = GetUnreadRecoveryElements(jobId);
                             throw new InvalidOperationException(
-                                "HQ_FULL_ORDER_RETRY_FAILED: " +
-                                retryResult.StandardError);
+                                "HQ 응답에서 필수 element를 읽지 못했습니다: " +
+                                string.Join(", ", unread));
                         }
 
-                        hqMessage =
-                            retryResult.FinalMessage?.Trim() ?? string.Empty;
-                        AddRoleResponseHistory(
-                            WorkerRoleState.Hq,
-                            "마일스톤 설계 전체 재요청",
-                            hqMessage,
-                            retryResult.Usage,
-                            retryResult.Files,
-                            status: "RECEIVED",
-                            providerWireId: coordinator.Provider,
-                            fullMessage: hqMessage);
-
-                        hqParse = ActionBlockContract.ParseHq(hqMessage);
-                        if (hqParse.HasErrors ||
-                            hqParse.ValidActions.Count != 1 ||
-                            !string.Equals(
-                                hqParse.ValidActions[0].Name,
-                                "WORK",
-                                StringComparison.OrdinalIgnoreCase) ||
-                            !MilestoneDefinitionContract.TryBuild(
-                                hqMessage,
-                                hqParse,
+                        var mergedParse =
+                            ActionBlockContract.ParseHq(mergedHqMessage);
+                        if (!mergedParse.HasErrors &&
+                            MilestoneDefinitionContract.TryBuild(
+                                mergedHqMessage,
+                                mergedParse,
                                 out milestone,
                                 out milestoneError))
                         {
-                            throw new InvalidOperationException(
-                                "HQ_MILESTONE_CONTRACT_INVALID_AFTER_FULL_RETRY: " +
-                                milestoneError +
-                                Environment.NewLine +
-                                string.Join(", ", hqParse.Errors));
-                        }
+                            hqMessage = mergedHqMessage;
+                            hqParse = mergedParse;
+                            hqAction = mergedParse.ValidActions[0];
 
-                        hqAction = hqParse.ValidActions[0];
+                            var unread = GetUnreadRecoveryElements(jobId);
+                            AddDataFlowHistory(
+                                WorkerRoleState.Work,
+                                "Worker 작업",
+                                "HQ element 복구 성공" +
+                                Environment.NewLine +
+                                $"기계 확보: {elementScan.Recovered.Count}" +
+                                Environment.NewLine +
+                                $"WORK 복구: {recoveredByWork.Count}" +
+                                (unread.Count == 0
+                                    ? string.Empty
+                                    : Environment.NewLine +
+                                      "읽지 못한 element: " +
+                                      string.Join(", ", unread)),
+                                status: "REPAIRED",
+                                persistenceSource: "WORKER ACTION");
+                        }
+                        else
+                        {
+                            var inferred =
+                                RoleElementRecoveryContract.Scan(
+                                    "HQ",
+                                    mergedHqMessage,
+                                    expectedAction: "WORK",
+                                    contractError: milestoneError)
+                                    .RecoveryTargets;
+                            RecordUnreadRecoveryElements(jobId, inferred);
+
+                            var unread = GetUnreadRecoveryElements(jobId);
+                            throw new InvalidOperationException(
+                                unread.Count == 0
+                                    ? "HQ 응답 복구 후 마일스톤을 구성하지 못했습니다."
+                                    : "HQ 응답에서 element를 읽지 못했습니다: " +
+                                      string.Join(", ", unread));
+                        }
                     }
                 }
 
@@ -658,7 +630,8 @@ public partial class MainWindow
                             initialChangedPaths,
                             Array.Empty<string>(),
                             currentLocalChanges,
-                            _formatRecoveryJobs.ContainsKey(jobId)));
+                            _formatRecoveryJobs.ContainsKey(jobId),
+                            GetUnreadRecoveryElements(jobId)));
 
                     AddTaskMessage(
                         "MILESTONE ERROR",
@@ -755,6 +728,7 @@ public partial class MainWindow
                 stagedAttachments,
                 normalizedRoot);
             _formatRecoveryJobs.TryRemove(jobId, out _);
+            _formatRecoveryUnreadElements.TryRemove(jobId, out _);
             _activeCoordinatorFirst = false;
             _activeTaskCts = null;
             _activeProjectJobId = null;
@@ -854,7 +828,8 @@ public partial class MainWindow
                     initialChangedPaths,
                     milestoneChangedPaths,
                     currentLocalChanges,
-                    _formatRecoveryJobs.ContainsKey(jobId)));
+                    _formatRecoveryJobs.ContainsKey(jobId),
+                    GetUnreadRecoveryElements(jobId)));
         }
 
         try
@@ -1576,7 +1551,8 @@ public partial class MainWindow
                     initialChangedPaths,
                     milestoneChangedPaths,
                     currentLocalChanges,
-                    _formatRecoveryJobs.ContainsKey(jobId)));
+                    _formatRecoveryJobs.ContainsKey(jobId),
+                    GetUnreadRecoveryElements(jobId)));
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
