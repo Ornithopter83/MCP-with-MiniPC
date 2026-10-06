@@ -708,7 +708,8 @@ internal static class MilestoneDefinitionContract
         IReadOnlyCollection<string> initialLocalChanges,
         IReadOnlyCollection<string> milestoneChanges,
         IReadOnlyCollection<string> currentLocalChanges,
-        bool formatRecoveryOccurred = false)
+        bool formatRecoveryOccurred = false,
+        IReadOnlyCollection<string>? unreadRecoveryElements = null)
     {
         // Detailed WORK/HIGH changed paths and full dirty snapshots remain Worker
         // mechanical state. HQ receives only dirty paths that can invalidate
@@ -742,8 +743,18 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine("REMOTE_BRANCH: origin/main");
         if (formatRecoveryOccurred)
         {
+            var unread = (unreadRecoveryElements ?? Array.Empty<string>())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
             builder.AppendLine(
-                "FORMAT_RECOVERY_NOTICE: 이전 역할 응답에 포맷 오류가 있어 복구 후 진행함");
+                unread.Length == 0
+                    ? "FORMAT_RECOVERY_NOTICE: 이전 역할 응답에 포맷 오류가 있어 복구 후 진행함"
+                    : "FORMAT_RECOVERY_NOTICE: 포맷 오류 복구 후 읽지 못한 element: " +
+                      string.Join(", ", unread));
         }
         builder.AppendLine("RESOURCE_STATE_AT_REPORT:");
         if (resourceReports.Count == 0)
