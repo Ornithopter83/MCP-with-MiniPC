@@ -22,7 +22,7 @@
 
 제3조 (프로젝트 루트와 작업영역)
 
-① 사용자가 지정한 폴더가 유일한 실제 프로젝트 루트이며 Git 저장소여야 한다.
+① 사용자가 지정한 폴더가 유일한 실제 프로젝트 루트다. Git 저장소가 아니고 HQ가 `initializeGitIfMissing`을 true로 지정하면 Worker가 마일스톤 preflight에서 기계적으로 `git init`을 수행한다. 그 외에는 Git 저장소가 준비되어 있어야 한다.
 ② 프로젝트의 실제 폴더·파일 구조는 해당 루트에서 직접 생성·수정·삭제한다. WorkItem별 clone, worktree, shadow workspace 또는 별도 작업 branch를 실제 프로젝트 작업공간으로 사용하지 않는다.
 ③ HQ는 마일스톤 설계 단계에서 동시에 실행될 WorkItem의 생성·수정·삭제 영역이 겹치지 않도록 설계한다.
 ④ 같은 마일스톤 안의 WorkItem dependency는 최대한 배제하고, 한 결과가 다른 작업의 전제가 되는 경우 가능한 한 다음 마일스톤과의 선후 관계로 분리한다. 같은 마일스톤에서 불가피한 경우만 최소 실행 순서를 둔다.
@@ -74,7 +74,7 @@
 
 제8조 (Git)
 
-① Git 저장소와 origin은 ProjectHub 작업의 필수 전제로 한다.
+① Git 저장소는 ProjectHub 작업의 필수 전제다. 저장소가 없고 HQ가 초기화를 명시한 경우 Worker가 준비한다. origin이 없거나 push가 불가능한 것은 마일스톤 실행을 막지 않고 Git 결과에 사실대로 보고한다.
 ② 사용자가 별도 branch를 명시하지 않으면 main을 우선하고 main이 없으면 master를 대상 branch로 사용한다.
 ③ 사용자 로컬 checkout이 선택된 대상 branch와 다르거나 Worker가 안전하게 대상 branch를 준비할 수 없으면 PAUSE한다. 사용자가 하네스 없이 직접 Git 상태를 해결한 뒤 재개한다.
 ④ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push 흐름은 중간관리자가 요청하고 Worker가 기계적으로 수행한다.
