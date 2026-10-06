@@ -363,8 +363,7 @@ public partial class MainWindow
                                 AddTaskMessage(
                                     "TASK PAUSED",
                                     hqAction.Body,
-                                    status: "PAUSED",
-                                    includeHistory: false);
+                                    status: "PAUSED");
                                 SetFlowState(false, false, false);
                                 SetFollowupComposerVisible(true);
                                 SetDashboardBodyMode(
