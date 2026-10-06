@@ -89,6 +89,7 @@ Web HQ의 정상 응답 골격은 다음과 같다.
 ⑥ 쓰기 WorkItem은 지정된 writePaths 범위 안에서 독립적으로 수행할 수 있게 설계한다.
 ⑦ 같은 마일스톤 내부 dependency는 최대한 만들지 않는다. 한 결과가 다른 작업의 전제가 되면 가능한 한 다음 마일스톤으로 분리한다.
 ⑧ WorkItem에 필요한 추가 조건은 해당 WorkItem 객체 안의 추가 JSON 필드로 넣는다.
+⑨ WRITE_PATH는 현재 ProjectHub 작업이 우선권을 갖는 경로다. 해당 경로에 기존 dirty 변경이 있어도 그 이유만으로 작업을 피하지 않는다.
 
 제5조 (RESOURCE)
 
