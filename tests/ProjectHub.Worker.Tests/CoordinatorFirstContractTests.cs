@@ -1073,98 +1073,8 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HqElementRecovery_SalvagesGoodElementsAndRepairsOnlyBrokenOnes()
+    public void RoleElementRecovery_DefinesNonHqElementsAndAcceptsBareRecoveryJson()
     {
-        const string malformed = """
-            [ACTION=WORK]
-            {
-              "milestone": {
-                "id": "M1",
-                "branch": "main",
-                "goal": "복구 검증",
-                "entrypoint": null,
-                "repositoryBaseline": {
-                  "remote": "https://github.com/owner/repo.git
-            ",
-                  "reference": "origin/main"
-                },
-                "qa": {
-                  "required": false,
-                  "instructions": ""
-                },
-                "resource": null,
-                "workItems": [],
-                "mechanicalInstructions": {
-                  "afterWorkTerminal": true,
-                  "instructions": "build"
-                },
-                "highInstructions": "high 검토",
-                "managerInstructions": "manager 취합",
-                "completionCriteria": [],
-                "validation": []
-              }
-            }
-            """;
-
-        var scan = RoleElementRecoveryContract.Scan(
-            "HQ",
-            malformed,
-            expectedAction: "WORK",
-            contractError: "WORK:JSON_INVALID");
-
-        Assert.Contains("repositoryBaseline", scan.RecoveryTargets);
-        Assert.DoesNotContain("mechanicalInstructions", scan.RecoveryTargets);
-        Assert.Contains("mechanicalInstructions", scan.Recovered.Keys);
-        Assert.Contains("highInstructions", scan.Recovered.Keys);
-        Assert.Contains("managerInstructions", scan.Recovered.Keys);
-
-        const string recoveryResponse = """
-            [ACTION=RESULT]
-            {
-              "status": "completed",
-              "summary": "repositoryBaseline 복구",
-              "changedPaths": [],
-              "issues": [],
-              "elements": {
-                "repositoryBaseline": {
-                  "remote": "https://github.com/owner/repo.git",
-                  "reference": "origin/main"
-                }
-              }
-            }
-            """;
-
-        var recovered =
-            RoleElementRecoveryContract.ReadRecoveredElements(
-                recoveryResponse,
-                scan.RecoveryTargets);
-
-        Assert.True(RoleElementRecoveryContract.TryBuildHqWorkResponse(
-            scan,
-            recovered,
-            out var merged,
-            out var remaining));
-        Assert.Empty(remaining);
-        Assert.Contains("\"mechanicalInstructions\"", merged);
-        Assert.Contains("\"highInstructions\"", merged);
-        Assert.Contains("\"managerInstructions\"", merged);
-
-        var parsed = ActionBlockContract.ParseHq(merged);
-        Assert.False(parsed.HasErrors);
-        Assert.True(MilestoneDefinitionContract.TryBuild(
-            merged,
-            parsed,
-            out _,
-            out var error),
-            error);
-    }
-
-    [Fact]
-    public void RoleElementRecovery_DefinesRoleElementsAndAcceptsBareRecoveryJson()
-    {
-        Assert.Contains(
-            RoleElementRecoveryContract.GetDefinitions("HQ", "WORK"),
-            item => item.Name == "workItems" && item.Required);
         Assert.Contains(
             RoleElementRecoveryContract.GetDefinitions("MANAGER", "DISPATCH"),
             item => item.Name == "mechanical" && item.Required);
@@ -1198,51 +1108,6 @@ public sealed class CoordinatorFirstContractTests
             new[] { "qa" });
 
         Assert.Contains("qa", recovered.Keys);
-    }
-
-    [Fact]
-    public void HqElementRecovery_AllowsUnreadOptionalElementAndReportsItsName()
-    {
-        const string malformed = """
-            [ACTION=WORK]
-            {
-              "milestone": {
-                "id": "M1",
-                "branch": "main",
-                "goal": "optional 복구",
-                "entrypoint": null,
-                "architecture": {
-                  "path": "C:\AI-AGENT\broken"
-                },
-                "qa": {
-                  "required": false,
-                  "instructions": ""
-                },
-                "resource": null,
-                "workItems": [],
-                "completionCriteria": [],
-                "validation": []
-              }
-            }
-            """;
-
-        var scan = RoleElementRecoveryContract.Scan(
-            "HQ",
-            malformed,
-            expectedAction: "WORK",
-            contractError: "WORK:JSON_INVALID");
-
-        Assert.Contains("architecture", scan.RecoveryTargets);
-
-        Assert.True(RoleElementRecoveryContract.TryBuildHqWorkResponse(
-            scan,
-            new Dictionary<string, string>(),
-            out var merged,
-            out var unread));
-
-        Assert.Contains("architecture", unread);
-        Assert.DoesNotContain("\"architecture\"", merged);
-        Assert.False(ActionBlockContract.ParseHq(merged).HasErrors);
     }
 
     [Fact]
@@ -1283,41 +1148,6 @@ public sealed class CoordinatorFirstContractTests
         var parsed = ActionBlockContract.ParseManager(merged);
         Assert.False(parsed.HasErrors);
         Assert.Equal("HQ", Assert.Single(parsed.ValidActions).GotoTarget);
-    }
-
-    [Fact]
-    public void ElementRecovery_TreatsWrongOptionalTypeAsRecoveryTarget()
-    {
-        const string message = """
-            [ACTION=WORK]
-            {
-              "milestone": {
-                "id": "M1",
-                "branch": "main",
-                "goal": "타입 검증",
-                "entrypoint": null,
-                "qa": {
-                  "required": false,
-                  "instructions": ""
-                },
-                "resource": null,
-                "workItems": [],
-                "highInstructions": {
-                  "unexpected": true
-                },
-                "completionCriteria": [],
-                "validation": []
-              }
-            }
-            """;
-
-        var scan = RoleElementRecoveryContract.Scan(
-            "HQ",
-            message,
-            expectedAction: "WORK");
-
-        Assert.Contains("highInstructions", scan.RecoveryTargets);
-        Assert.DoesNotContain("highInstructions", scan.Recovered.Keys);
     }
 
     [Fact]
