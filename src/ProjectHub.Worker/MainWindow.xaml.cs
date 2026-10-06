@@ -61,29 +61,58 @@ public partial class MainWindow : Window
         public string FullMessage { get; init; } = string.Empty;
         public string TokenDetails { get; init; } = "토큰 · 해당 없음";
         public string FileDetails { get; init; } = "파일 · 해당 없음";
-        public string Role => StageKey switch
+        private bool IsPausedEvent =>
+            EventType == "TASK_PAUSED" ||
+            string.Equals(Status, "PAUSED", StringComparison.OrdinalIgnoreCase);
+        private bool IsFailureEvent =>
+            EventType == "TASK_FAILED" ||
+            string.Equals(Status, "FAIL", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(Status, "FAILED", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(Status, "ERROR", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(Status, "BLOCKED", StringComparison.OrdinalIgnoreCase);
+        private bool IsAttentionEvent => IsPausedEvent || IsFailureEvent;
+
+        public string Role => EventType switch
         {
-            "Coordinator" => "설계 관제",
-            "Implementer" when string.Equals(WorkItemId, "0", StringComparison.Ordinal) => "작업 (#0, 리소스)",
-            "Implementer" when int.TryParse(WorkItemId, out var generalWorkId) && generalWorkId >= 10 => $"작업 (#{WorkItemId}, 일반 작업)",
-            "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"작업 (#{WorkItemId})",
-            "Implementer" when WorkNumber.HasValue => $"작업 (#{WorkNumber.Value})",
-            "Implementer" => "작업",
-            "Qa" => "QA",
-            "HighLevel" => "검토",
-            "Manager" => "통합",
-            "Resource" => "작업 (#0, 리소스)",
-            "Worker" => "Worker",
-            "Message" => "메시지",
-            _ => "시스템"
+            "TASK_PAUSED" => "중단 사유",
+            "TASK_FAILED" => "오류",
+            _ => StageKey switch
+            {
+                "Coordinator" => "설계 관제",
+                "Implementer" when string.Equals(WorkItemId, "0", StringComparison.Ordinal) => "작업 (#0, 리소스)",
+                "Implementer" when int.TryParse(WorkItemId, out var generalWorkId) && generalWorkId >= 10 => $"작업 (#{WorkItemId}, 일반 작업)",
+                "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"작업 (#{WorkItemId})",
+                "Implementer" when WorkNumber.HasValue => $"작업 (#{WorkNumber.Value})",
+                "Implementer" => "작업",
+                "Qa" => "QA",
+                "HighLevel" => "검토",
+                "Manager" => "통합",
+                "Resource" => "작업 (#0, 리소스)",
+                "Worker" => "Worker",
+                "Message" => "메시지",
+                _ => "시스템"
+            }
         };
         public string TimestampText => Timestamp.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
-        public Visibility MetricsVisibility => EventType == "ROLE_PROGRESS" ? Visibility.Collapsed : Visibility.Visible;
-        public TextWrapping SummaryWrapping => EventType == "ROLE_PROGRESS" ? TextWrapping.Wrap : TextWrapping.NoWrap;
+        public Visibility MetricsVisibility =>
+            EventType == "ROLE_PROGRESS" || IsAttentionEvent
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        public TextWrapping SummaryWrapping =>
+            EventType == "ROLE_PROGRESS" || IsAttentionEvent
+                ? TextWrapping.Wrap
+                : TextWrapping.NoWrap;
         public TextTrimming SummaryTrimming => TextTrimming.CharacterEllipsis;
-        public double SummaryMaxHeight => EventType == "ROLE_PROGRESS" ? 72d : double.PositiveInfinity;
-        public double SummaryHeight => EventType == "ROLE_PROGRESS" ? 72d : double.NaN;
-        public double CardHeight => EventType == "ROLE_PROGRESS" ? 104d : double.NaN;
+        public double SummaryMaxHeight =>
+            EventType == "ROLE_PROGRESS"
+                ? 72d
+                : IsAttentionEvent
+                    ? 58d
+                    : double.PositiveInfinity;
+        public double SummaryHeight =>
+            EventType == "ROLE_PROGRESS" ? 72d : double.NaN;
+        public double CardHeight =>
+            EventType == "ROLE_PROGRESS" ? 104d : double.NaN;
         public string Details
         {
             get
@@ -96,16 +125,56 @@ public partial class MainWindow : Window
                 return parts.Count == 0 ? EventType : string.Join(" · ", parts);
             }
         }
-        public System.Windows.Media.Brush RowBackground => GetRoleBrush(StageKey, p => p.Background, System.Windows.Media.Color.FromRgb(238, 241, 245));
-        public System.Windows.Media.Brush IconBackground => GetRoleBrush(StageKey, p => p.IconBackground, System.Windows.Media.Color.FromRgb(126, 139, 155));
-        public System.Windows.Media.Brush RoleForeground => GetRoleBrush(StageKey, p => p.Foreground, System.Windows.Media.Color.FromRgb(112, 128, 144));
+        public System.Windows.Media.Brush RowBackground =>
+            IsPausedEvent
+                ? CreateBrush("#FFF4D6")
+                : IsFailureEvent
+                    ? CreateBrush("#FDE8E7")
+                    : GetRoleBrush(
+                        StageKey,
+                        p => p.Background,
+                        System.Windows.Media.Color.FromRgb(238, 241, 245));
+        public System.Windows.Media.Brush IconBackground =>
+            IsPausedEvent
+                ? CreateBrush("#C47A00")
+                : IsFailureEvent
+                    ? CreateBrush("#C53B35")
+                    : GetRoleBrush(
+                        StageKey,
+                        p => p.IconBackground,
+                        System.Windows.Media.Color.FromRgb(126, 139, 155));
+        public System.Windows.Media.Brush RoleForeground =>
+            IsPausedEvent
+                ? CreateBrush("#8A5200")
+                : IsFailureEvent
+                    ? CreateBrush("#982B27")
+                    : GetRoleBrush(
+                        StageKey,
+                        p => p.Foreground,
+                        System.Windows.Media.Color.FromRgb(112, 128, 144));
+        public System.Windows.Media.Brush CardBorderBrush =>
+            IsPausedEvent
+                ? CreateBrush("#E0A43A")
+                : IsFailureEvent
+                    ? CreateBrush("#DD7771")
+                    : System.Windows.Media.Brushes.Transparent;
+        public Thickness CardBorderThickness =>
+            IsAttentionEvent ? new Thickness(1) : new Thickness(0);
         public string IconAssetName => IconAssetOverride ?? (RoleVisuals.TryGetValue(StageKey, out var palette) ? palette.IconAsset : "current-console.png");
         public System.Windows.Media.ImageSource IconSource =>
             LoadProviderAsset(IconAssetName);
-        private static System.Windows.Media.Brush GetRoleBrush(string stageKey, Func<RoleVisualPalette, string> selector, System.Windows.Media.Color fallback)
-            => new System.Windows.Media.SolidColorBrush(RoleVisuals.TryGetValue(stageKey, out var palette)
-                ? (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(selector(palette))
-                : fallback);
+        private static System.Windows.Media.Brush GetRoleBrush(
+            string stageKey,
+            Func<RoleVisualPalette, string> selector,
+            System.Windows.Media.Color fallback) =>
+            new System.Windows.Media.SolidColorBrush(
+                RoleVisuals.TryGetValue(stageKey, out var palette)
+                    ? (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(selector(palette))
+                    : fallback);
+
+        private static System.Windows.Media.Brush CreateBrush(string value) =>
+            new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(value));
         private static string FormatHistorySize(long bytes) => bytes >= 1024 * 1024 ? $"{bytes / 1024d / 1024d:0.0} MB" : bytes >= 1024 ? $"{bytes / 1024d:0.0} KB" : $"{bytes} B";
     }
     private readonly ObservableCollection<WorkerHistoryEvent> _historyEvents = new();
@@ -3219,9 +3288,29 @@ public partial class MainWindow : Window
         if (normalized.Contains("TASK CANCELED", StringComparison.Ordinal) || normalized.Contains("TASK CANCELLED", StringComparison.Ordinal))
             return new(timestamp, "System", "TASK_FINISHED", "작업이 취소되었습니다", "요청에 따라 실행을 중단했습니다.", null, null, null, "CANCELED", null);
         if (normalized.Contains("TASK PAUSED", StringComparison.Ordinal) || statusText == "PAUSED")
-            return new(timestamp, "System", "TASK_PAUSED", "작업 일시정지", HistorySummary(summary ?? content), bytes > 0 ? bytes : null, itemCount, fileCount, "PAUSED", referenceId);
+            return new(
+                timestamp,
+                "System",
+                "TASK_PAUSED",
+                "작업 중단 · 사용자 조치 필요",
+                HistorySummary(summary ?? content),
+                bytes > 0 ? bytes : null,
+                itemCount,
+                fileCount,
+                "PAUSED",
+                referenceId);
         if (normalized.Contains("TASK BLOCKED", StringComparison.Ordinal) || normalized.Contains("TIMEOUT", StringComparison.Ordinal) || normalized.Contains("FAIL", StringComparison.Ordinal) || normalized.Contains("ERROR", StringComparison.Ordinal) || statusText is "FAIL" or "ERROR" or "BLOCKED")
-            return new(timestamp, stage, "TASK_FAILED", "작업을 진행할 수 없습니다", HistorySummary(summary ?? content.Split(Environment.NewLine)[0]), bytes > 0 ? bytes : null, itemCount, fileCount, statusText ?? "BLOCKED", referenceId);
+            return new(
+                timestamp,
+                stage,
+                "TASK_FAILED",
+                "작업 오류 · 진행 중단",
+                HistorySummary(summary ?? content),
+                bytes > 0 ? bytes : null,
+                itemCount,
+                fileCount,
+                statusText ?? "BLOCKED",
+                referenceId);
         if (normalized.Contains("TASK RESULT", StringComparison.Ordinal))
             return new(timestamp, "Coordinator", "TASK_FINISHED", "수행 결과", HistorySummary(summary ?? SummaryAfterFirstLine(content)), bytes, itemCount, fileCount, statusText, referenceId);
         if (normalized.Contains("SOL WORK CARD", StringComparison.Ordinal))
