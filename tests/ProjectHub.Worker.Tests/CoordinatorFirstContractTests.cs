@@ -813,13 +813,45 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("REMOTE_BRANCH: origin/main", report);
         Assert.Contains("RESOURCE_STATUS: PENDING", report);
         Assert.Contains("MANAGER_FINAL_REPORT:", report);
+        Assert.Contains("RELEVANT_DIRTY_AFTER_FINALIZE: YES", report);
+        Assert.Contains("RELEVANT_DIRTY_COUNT: 1", report);
+        Assert.Contains("- src/A.cs", report);
         Assert.DoesNotContain("WORK_RESULTS:", report);
         Assert.DoesNotContain("MILESTONE_CHANGESET:", report);
         Assert.DoesNotContain("INITIAL_LOCAL_CHANGES:", report);
         Assert.DoesNotContain("CURRENT_LOCAL_CHANGES:", report);
-        Assert.DoesNotContain("src/A.cs", report);
+        Assert.DoesNotContain("- old.txt", report);
         Assert.DoesNotContain("QA DETAIL", report);
         Assert.DoesNotContain("HIGH DETAIL", report);
+    }
+
+    [Theory]
+    [InlineData(
+        "BUILD",
+        "dotnet build src/App/App.csproj --output \"C:\\\\Agent\\\\Project\\\\bin\"",
+        "dotnet build src/App/App.csproj --output bin")]
+    [InlineData(
+        "PUBLISH",
+        "dotnet publish src/App/App.csproj -o C:\\\\Agent\\\\Project\\\\publish",
+        "dotnet publish src/App/App.csproj --output bin")]
+    [InlineData(
+        "BUILD",
+        "dotnet build src/App/App.csproj",
+        "dotnet build src/App/App.csproj --output bin")]
+    [InlineData(
+        "RUN",
+        "dotnet run --project src/App/App.csproj",
+        "dotnet run --project src/App/App.csproj")]
+    public void MechanicalCommand_NormalizesBuildAndPublishOutput(
+        string operation,
+        string command,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            MilestoneMechanicalExecutor.NormalizeMechanicalCommand(
+                operation,
+                command));
     }
 
     [Fact]
@@ -1029,7 +1061,7 @@ public sealed class CoordinatorFirstContractTests
 
         var recovered = new Dictionary<string, string>
         {
-            ["content"] = ""첫 줄 둘째 줄""
+            ["content"] = "\"첫 줄 둘째 줄\""
         };
 
         Assert.True(RoleElementRecoveryContract.TryBuildRoleResponse(
