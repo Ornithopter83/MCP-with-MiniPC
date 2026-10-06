@@ -210,7 +210,9 @@ internal static class RoleElementRecoveryContract
             Environment.NewLine +
             "원문에서 확정할 수 없는 element는 만들어내지 말고 elements에서 생략하고 issues에 이름을 기록한다." +
             Environment.NewLine +
-            "출력은 반드시 아래 WORK RESULT JSON 하나만 사용한다." +
+            "첫 번째 비어 있지 않은 줄은 반드시 [ACTION=RESULT]이어야 한다." +
+            Environment.NewLine +
+            "그 다음에는 아래 JSON 객체 하나만 출력한다. JSON만 단독으로 출력하지 않는다." +
             Environment.NewLine +
             "[ACTION=RESULT]" +
             Environment.NewLine +
@@ -259,14 +261,26 @@ internal static class RoleElementRecoveryContract
     {
         var allowed = allowedTargets.ToHashSet(
             StringComparer.OrdinalIgnoreCase);
+        var payload = string.Empty;
+
         var parsed = ActionBlockContract.ParseWork(recoveryResponse);
-        if (parsed.HasErrors || parsed.ValidActions.Count != 1)
+        if (!parsed.HasErrors && parsed.ValidActions.Count == 1)
         {
-            return new Dictionary<string, string>(
-                StringComparer.OrdinalIgnoreCase);
+            payload = parsed.ValidActions[0].JsonPayload ?? string.Empty;
+        }
+        else
+        {
+            // ELEMENT-REPAIR는 내부 one-shot 복구 경로다.
+            // ACTION envelope가 빠졌더라도 응답 전체가 JSON object라면
+            // elements 값만 제한적으로 읽어 최초 기계 파싱 결과와 merge한다.
+            var bare = (recoveryResponse ?? string.Empty).Trim();
+            if (bare.StartsWith("{", StringComparison.Ordinal) &&
+                bare.EndsWith("}", StringComparison.Ordinal))
+            {
+                payload = bare;
+            }
         }
 
-        var payload = parsed.ValidActions[0].JsonPayload;
         if (string.IsNullOrWhiteSpace(payload))
         {
             return new Dictionary<string, string>(
@@ -276,7 +290,8 @@ internal static class RoleElementRecoveryContract
         try
         {
             using var document = JsonDocument.Parse(payload);
-            if (!document.RootElement.TryGetProperty(
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty(
                     "elements",
                     out var elements) ||
                 elements.ValueKind != JsonValueKind.Object)
@@ -424,35 +439,40 @@ internal static class RoleElementRecoveryContract
                         definition.Name,
                         pair.Key,
                         StringComparison.OrdinalIgnoreCase)) &&
-                IsValidJsonValue(pair.Value))
+                IsExpectedElementValue(
+                    "HQ",
+                    "WORK",
+                    pair.Key,
+                    pair.Value))
             {
                 values[pair.Key] = pair.Value;
             }
         }
 
-        var remaining = new HashSet<string>(
+        var unread = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase);
-
-        foreach (var definition in HqWorkElements)
-        {
-            if (definition.Required &&
-                !values.ContainsKey(definition.Name))
-            {
-                remaining.Add(definition.Name);
-            }
-        }
-
         foreach (var recoveryTarget in originalScan.RecoveryTargets)
         {
             if (!values.ContainsKey(recoveryTarget))
-                remaining.Add(recoveryTarget);
+                unread.Add(recoveryTarget);
         }
 
-        remainingElements = remaining
+        var requiredMissing = HqWorkElements
+            .Where(definition =>
+                definition.Required &&
+                !values.ContainsKey(definition.Name))
+            .Select(definition => definition.Name)
+            .ToArray();
+        foreach (var required in requiredMissing)
+            unread.Add(required);
+
+        remainingElements = unread
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        if (remainingElements.Count > 0)
+        // optional element를 끝내 못 읽은 경우에는 그 element만 생략하고
+        // 읽은 원본 값 + 복구 값을 merge해 계속 진행한다.
+        if (requiredMissing.Length > 0)
             return false;
 
         var builder = new StringBuilder();
@@ -479,38 +499,6 @@ internal static class RoleElementRecoveryContract
         builder.Append('}');
         response = builder.ToString();
         return true;
-    }
-
-    public static string BuildHqFullRetryPrompt(
-        IReadOnlyCollection<string> missingElements,
-        string failureDetail)
-    {
-        var missing = missingElements.Count == 0
-            ? "- element 합성 후 strict validation 실패"
-            : string.Join(
-                Environment.NewLine,
-                missingElements.Select(name => "- " + name));
-
-        return
-            "이전 HQ [ACTION=WORK] 응답의 element 복구가 최종적으로 완료되지 않았습니다." +
-            Environment.NewLine +
-            "아래 미확보/오류 element를 참고하되 부분 응답으로 보완하지 마세요." +
-            Environment.NewLine +
-            "누락 위험을 없애기 위해 현재 마일스톤 설계 오더 전체를 [ACTION=WORK] JSON으로 처음부터 다시 출력하세요." +
-            Environment.NewLine +
-            "기존 설계 의도, 모든 workItems, 각 id/order/writePaths, QA, RESOURCE, mechanicalInstructions, highInstructions, managerInstructions, completionCriteria, validation을 필요한 경우 포함하여 전체 오더를 완결된 하나의 JSON으로 다시 제공하세요." +
-            Environment.NewLine +
-            "이전 응답에서 정상인 내용을 임의로 축소하거나 생략하지 마세요." +
-            Environment.NewLine +
-            Environment.NewLine +
-            "FINAL_MISSING_ELEMENTS:" +
-            Environment.NewLine +
-            missing +
-            Environment.NewLine +
-            Environment.NewLine +
-            "FAILURE_DETAIL:" +
-            Environment.NewLine +
-            (failureDetail ?? string.Empty);
     }
 
     public static string DescribeElements(
