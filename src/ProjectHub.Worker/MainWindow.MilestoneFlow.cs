@@ -268,6 +268,12 @@ public partial class MainWindow
                         persistenceSource: "WORKER ACTION");
                 });
 
+                SaveMilestoneExecutionGraph(
+                    normalizedRoot,
+                    jobId,
+                    milestone!,
+                    "PLANNED");
+
                 var initialChangedPaths =
                     await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
                         normalizedRoot,
@@ -303,6 +309,14 @@ public partial class MainWindow
                         ": " +
                         milestoneException.Message;
 
+                    SaveMilestoneExecutionGraph(
+                        normalizedRoot,
+                        jobId,
+                        milestone!,
+                        "FAILED",
+                        managerFinalState: "FAILED",
+                        hqFinalState: "BLOCKED");
+
                     managerReport = new(
                         false,
                         MilestoneDefinitionContract.BuildHqReport(
@@ -331,6 +345,13 @@ public partial class MainWindow
 
                 if (managerReport.PauseRequired)
                 {
+                    SaveMilestoneExecutionGraph(
+                        normalizedRoot,
+                        jobId,
+                        milestone!,
+                        "PAUSED",
+                        managerFinalState: "PAUSED",
+                        hqFinalState: "BLOCKED");
                     SaveMilestoneContinuation(
                         "PAUSED",
                         hqMessage,
@@ -509,6 +530,17 @@ public partial class MainWindow
         var gitFinalizeAttempted = false;
         string? managerSession = null;
 
+        SaveMilestoneExecutionGraph(
+            workingDirectory,
+            jobId,
+            milestone,
+            "RUNNING",
+            workReports,
+            resourceReports,
+            qaReport,
+            highReport,
+            managerDispatchState: "RUNNING");
+
         var managerInput = MilestoneDefinitionContract.BuildManagerInput(
             milestone,
             workReports,
@@ -657,6 +689,18 @@ public partial class MainWindow
                     await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
                         workingDirectory,
                         cancellationToken);
+                SaveMilestoneExecutionGraph(
+                    workingDirectory,
+                    jobId,
+                    milestone,
+                    "REPORT_READY",
+                    workReports,
+                    resourceReports,
+                    qaReport,
+                    highReport,
+                    managerDispatchState: "COMPLETED",
+                    managerFinalState: "COMPLETED",
+                    hqFinalState: "READY");
                 return new(
                     false,
                     MilestoneDefinitionContract.BuildHqReport(
@@ -814,6 +858,16 @@ public partial class MainWindow
 
                 validationCompleted = false;
                 gitFinalizeAttempted = false;
+                SaveMilestoneExecutionGraph(
+                    workingDirectory,
+                    jobId,
+                    milestone,
+                    "RUNNING",
+                    workReports,
+                    resourceReports,
+                    qaReport,
+                    highReport,
+                    managerDispatchState: "RUNNING");
             }
 
             foreach (var action in parsed.ValidActions.Where(action =>
@@ -848,6 +902,16 @@ public partial class MainWindow
                     resourceResult.Report);
                 validationCompleted = false;
                 gitFinalizeAttempted = false;
+                SaveMilestoneExecutionGraph(
+                    workingDirectory,
+                    jobId,
+                    milestone,
+                    "RUNNING",
+                    workReports,
+                    resourceReports,
+                    qaReport,
+                    highReport,
+                    managerDispatchState: "RUNNING");
             }
 
             foreach (var action in parsed.ValidActions.Where(action =>
@@ -1041,6 +1105,16 @@ public partial class MainWindow
 
                     validationCompleted = true;
                     gitFinalizeAttempted = false;
+                    SaveMilestoneExecutionGraph(
+                        workingDirectory,
+                        jobId,
+                        milestone,
+                        "VALIDATED",
+                        workReports,
+                        resourceReports,
+                        qaReport,
+                        highReport,
+                        managerDispatchState: "RUNNING");
                 }
             }
 
@@ -1078,6 +1152,16 @@ public partial class MainWindow
                         return new(true, gitResult.Summary);
 
                     gitFinalizeAttempted = true;
+                    SaveMilestoneExecutionGraph(
+                        workingDirectory,
+                        jobId,
+                        milestone,
+                        gitResult.Success ? "FINALIZED" : "FINALIZE_FAILED",
+                        workReports,
+                        resourceReports,
+                        qaReport,
+                        highReport,
+                        managerDispatchState: "RUNNING");
                 }
             }
 
@@ -1116,6 +1200,122 @@ public partial class MainWindow
                 ": " +
                 exception.Message);
         }
+    }
+
+    private static void SaveMilestoneExecutionGraph(
+        string workingDirectory,
+        string jobId,
+        MilestoneDefinition milestone,
+        string state,
+        IReadOnlyDictionary<string, string>? workReports = null,
+        IReadOnlyDictionary<string, string>? resourceReports = null,
+        string? qaReport = null,
+        string? highReport = null,
+        string managerDispatchState = "PLANNED",
+        string managerFinalState = "PLANNED",
+        string hqFinalState = "PLANNED")
+    {
+        workReports ??= new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+        resourceReports ??= new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        var nodes = new List<MilestoneGraphNodeSnapshot>
+        {
+            new("HQ-DESIGN", "HQ", "COMPLETED"),
+            new("MANAGER-DISPATCH", "MANAGER", managerDispatchState)
+        };
+
+        foreach (var work in milestone.WorkItems.Values
+                     .OrderBy(item => int.TryParse(item.Id, out var number) ? number : int.MaxValue))
+        {
+            nodes.Add(new(
+                "WORK-" + work.Id,
+                "WORK",
+                workReports.ContainsKey(work.Id) ? "COMPLETED" : "PLANNED",
+                work.Id));
+        }
+
+        foreach (var resource in milestone.Resources.Values)
+        {
+            nodes.Add(new(
+                "RESOURCE-" + resource.Id,
+                "RESOURCE",
+                resourceReports.ContainsKey(resource.Id) ? "COMPLETED" : "PLANNED",
+                resource.Id));
+        }
+
+        nodes.Add(new(
+            "QA",
+            "QA",
+            !milestone.QaReserved
+                ? "SKIPPED"
+                : !string.IsNullOrWhiteSpace(qaReport)
+                    ? "COMPLETED"
+                    : "PLANNED"));
+        nodes.Add(new(
+            "HIGH",
+            "HIGH",
+            !string.IsNullOrWhiteSpace(highReport)
+                ? "COMPLETED"
+                : "PLANNED"));
+        nodes.Add(new(
+            "MANAGER-FINAL",
+            "MANAGER",
+            managerFinalState));
+        nodes.Add(new(
+            "HQ-FINAL",
+            "HQ",
+            hqFinalState));
+
+        var edges = new List<MilestoneGraphEdgeSnapshot>
+        {
+            new("HQ-DESIGN", "MANAGER-DISPATCH", "DESIGN_TO_EXECUTION")
+        };
+
+        var executionNodes = milestone.WorkItems.Values
+            .Select(work => "WORK-" + work.Id)
+            .Concat(milestone.Resources.Values.Select(resource => "RESOURCE-" + resource.Id))
+            .ToArray();
+
+        if (executionNodes.Length == 0)
+        {
+            edges.Add(new(
+                "MANAGER-DISPATCH",
+                milestone.QaReserved ? "QA" : "HIGH",
+                "VALIDATION"));
+        }
+        else
+        {
+            foreach (var executionNode in executionNodes)
+            {
+                edges.Add(new(
+                    "MANAGER-DISPATCH",
+                    executionNode,
+                    "DISPATCH"));
+                edges.Add(new(
+                    executionNode,
+                    milestone.QaReserved ? "QA" : "HIGH",
+                    "RESULT_TO_VALIDATION"));
+            }
+        }
+
+        if (milestone.QaReserved)
+            edges.Add(new("QA", "HIGH", "QA_TO_REVIEW"));
+        edges.Add(new("HIGH", "MANAGER-FINAL", "REVIEW_TO_INTEGRATION"));
+        edges.Add(new("MANAGER-FINAL", "HQ-FINAL", "REPORT_TO_HQ"));
+
+        ProjectWorkspacePersistence.SaveMilestoneGraph(
+            workingDirectory,
+            new MilestoneExecutionGraphSnapshot(
+                jobId,
+                milestone.Id,
+                state,
+                milestone.QaReserved,
+                milestone.Resources.Count > 0,
+                nodes,
+                edges,
+                DateTimeOffset.UtcNow));
     }
 
     private async Task<WorkExecutionReport> ExecuteMilestoneWorkAsync(
