@@ -194,29 +194,20 @@ public partial class MainWindow
                     providerWireId: coordinator.Provider,
                     fullMessage: hqMessage);
 
-                var hqEnvelope =
-                    await EnsureRoleJsonResponseAsync(
-                        jobId,
-                        normalizedRoot,
-                        "HQ",
-                        hqMessage,
-                        Array.Empty<string>(),
-                        expectedGoto: null,
-                        implementer,
-                        cts.Token);
-                hqMessage = hqEnvelope.Message;
-                var hqParse = hqEnvelope.Parse;
+                var hqParse = ActionBlockContract.ParseHq(hqMessage);
+                MilestoneDefinition? milestone = null;
+                var milestoneError = hqParse.HasErrors
+                    ? string.Join(", ", hqParse.Errors)
+                    : string.Empty;
 
-                if (hqParse.HasErrors ||
-                    hqParse.ValidActions.Count != 1)
-                {
-                    throw new InvalidOperationException(
-                        "HQ_RESPONSE_CONTRACT_INVALID: " +
-                        string.Join(", ", hqParse.Errors));
-                }
+                ActionBlock? hqAction =
+                    !hqParse.HasErrors &&
+                    hqParse.ValidActions.Count == 1
+                        ? hqParse.ValidActions[0]
+                        : null;
 
-                var hqAction = hqParse.ValidActions[0];
-                if (string.Equals(
+                if (hqAction is not null &&
+                    string.Equals(
                         hqAction.Name,
                         "PAUSE",
                         StringComparison.OrdinalIgnoreCase))
@@ -247,7 +238,8 @@ public partial class MainWindow
                     return;
                 }
 
-                if (string.Equals(
+                if (hqAction is not null &&
+                    string.Equals(
                         hqAction.Name,
                         "END",
                         StringComparison.OrdinalIgnoreCase))
@@ -278,53 +270,260 @@ public partial class MainWindow
                     return;
                 }
 
-                if (!MilestoneDefinitionContract.TryBuild(
+                if (hqAction is not null &&
+                    string.Equals(
+                        hqAction.Name,
+                        "WORK",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    MilestoneDefinitionContract.TryBuild(
                         hqMessage,
                         hqParse,
-                        out var milestone,
-                        out var milestoneError))
+                        out milestone,
+                        out milestoneError);
+                }
+
+                if (milestone is null)
                 {
-                    if (!hqEnvelope.RepairUsed)
+                    var elementScan =
+                        RoleElementRecoveryContract.Scan(
+                            "HQ",
+                            hqMessage,
+                            expectedAction: "WORK",
+                            contractError: milestoneError);
+                    var recoveryTargets =
+                        elementScan.RecoveryTargets.ToHashSet(
+                            StringComparer.OrdinalIgnoreCase);
+
+                    if (string.Equals(
+                            elementScan.ActionName,
+                            "PAUSE",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(
+                            elementScan.ActionName,
+                            "END",
+                            StringComparison.OrdinalIgnoreCase))
                     {
-                        var repaired =
+                        var repairedControl =
                             await ExecuteRoleJsonRepairWorkAsync(
                                 jobId,
                                 normalizedRoot,
                                 "HQ",
                                 hqMessage,
                                 milestoneError,
-                                "WORK",
+                                elementScan.ActionName,
                                 implementer,
                                 cts.Token);
 
-                        if (!string.IsNullOrWhiteSpace(repaired))
+                        if (!string.IsNullOrWhiteSpace(repairedControl))
                         {
-                            var repairedParse =
-                                ActionBlockContract.ParseHq(repaired);
-                            if (!repairedParse.HasErrors &&
+                            var controlParse =
+                                ActionBlockContract.ParseHq(repairedControl);
+                            if (!controlParse.HasErrors &&
+                                controlParse.ValidActions.Count == 1)
+                            {
+                                hqMessage = repairedControl;
+                                hqParse = controlParse;
+                                hqAction = controlParse.ValidActions[0];
+
+                                if (string.Equals(
+                                        hqAction.Name,
+                                        "PAUSE",
+                                        StringComparison.OrdinalIgnoreCase))
+                                {
+                                    SaveMilestoneContinuation(
+                                        "PAUSED",
+                                        hqMessage,
+                                        jobId,
+                                        normalizedRoot,
+                                        coordinator,
+                                        implementer,
+                                        hqSession,
+                                        high);
+                                    return;
+                                }
+
+                                if (string.Equals(
+                                        hqAction.Name,
+                                        "END",
+                                        StringComparison.OrdinalIgnoreCase))
+                                {
+                                    SaveMilestoneContinuation(
+                                        "DONE",
+                                        hqMessage,
+                                        jobId,
+                                        normalizedRoot,
+                                        coordinator,
+                                        implementer,
+                                        hqSession,
+                                        high);
+                                    ProjectWorkspacePersistence.ClearContinuation(
+                                        normalizedRoot);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        IReadOnlyDictionary<string, string> recoveredByWork =
+                            new Dictionary<string, string>(
+                                StringComparer.OrdinalIgnoreCase);
+
+                        if (recoveryTargets.Count > 0)
+                        {
+                            var recoveryResponse =
+                                await ExecuteRoleElementRecoveryWorkAsync(
+                                    jobId,
+                                    normalizedRoot,
+                                    "HQ",
+                                    "WORK",
+                                    hqMessage,
+                                    milestoneError,
+                                    recoveryTargets,
+                                    elementScan.Recovered.Keys.ToArray(),
+                                    implementer,
+                                    cts.Token);
+
+                            if (!string.IsNullOrWhiteSpace(recoveryResponse))
+                            {
+                                recoveredByWork =
+                                    RoleElementRecoveryContract
+                                        .ReadRecoveredElements(
+                                            recoveryResponse,
+                                            recoveryTargets);
+                            }
+                        }
+
+                        if (RoleElementRecoveryContract.TryBuildHqWorkResponse(
+                                elementScan,
+                                recoveredByWork,
+                                out var mergedHqMessage,
+                                out var remainingElements))
+                        {
+                            var mergedParse =
+                                ActionBlockContract.ParseHq(mergedHqMessage);
+                            if (!mergedParse.HasErrors &&
                                 MilestoneDefinitionContract.TryBuild(
-                                    repaired,
-                                    repairedParse,
+                                    mergedHqMessage,
+                                    mergedParse,
                                     out milestone,
                                     out milestoneError))
                             {
-                                hqMessage = repaired;
-                                hqParse = repairedParse;
+                                hqMessage = mergedHqMessage;
+                                hqParse = mergedParse;
+                                hqAction = mergedParse.ValidActions[0];
                                 AddDataFlowHistory(
                                     WorkerRoleState.Work,
                                     "Worker 작업",
-                                    "HQ JSON 복구 성공\n기존 HQ 파서 재검증 완료",
+                                    "HQ element 복구 성공" +
+                                    Environment.NewLine +
+                                    $"기계 확보: {elementScan.Recovered.Count}" +
+                                    Environment.NewLine +
+                                    $"WORK 복구: {recoveredByWork.Count}",
                                     status: "REPAIRED",
                                     persistenceSource: "WORKER ACTION");
                             }
+                            else
+                            {
+                                foreach (var inferred in
+                                         RoleElementRecoveryContract.Scan(
+                                             "HQ",
+                                             mergedHqMessage,
+                                             expectedAction: "WORK",
+                                             contractError: milestoneError)
+                                             .RecoveryTargets)
+                                {
+                                    recoveryTargets.Add(inferred);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            foreach (var remaining in remainingElements)
+                                recoveryTargets.Add(remaining);
                         }
                     }
 
                     if (milestone is null)
                     {
-                        throw new InvalidOperationException(
-                            "HQ_MILESTONE_CONTRACT_INVALID: " +
-                            milestoneError);
+                        var retryPrompt =
+                            RoleElementRecoveryContract.BuildHqFullRetryPrompt(
+                                recoveryTargets,
+                                milestoneError);
+
+                        AddDataFlowHistory(
+                            WorkerRoleState.Hq,
+                            "Worker 재요청",
+                            "HQ 전체 오더 재요청" +
+                            Environment.NewLine +
+                            "미확보 element:" +
+                            Environment.NewLine +
+                            (recoveryTargets.Count == 0
+                                ? "- strict validation 실패"
+                                : string.Join(
+                                    Environment.NewLine,
+                                    recoveryTargets.Select(
+                                        name => "- " + name))),
+                            status: "RETRY",
+                            persistenceSource: "WORKER ACTION");
+
+                        var retryResult = await RunHqRoleAsync(
+                            jobId,
+                            "HQ_MILESTONE_RECOVERY",
+                            retryPrompt,
+                            coordinator,
+                            normalizedRoot,
+                            hqSession,
+                            cts.Token,
+                            sessionStarted: session =>
+                                hqSession =
+                                    CodexCliRunner.NormalizeSessionId(session));
+
+                        hqSession =
+                            CodexCliRunner.NormalizeSessionId(
+                                retryResult.SessionId) ?? hqSession;
+
+                        if (retryResult.ExitCode != 0)
+                        {
+                            throw new InvalidOperationException(
+                                "HQ_FULL_ORDER_RETRY_FAILED: " +
+                                retryResult.StandardError);
+                        }
+
+                        hqMessage =
+                            retryResult.FinalMessage?.Trim() ?? string.Empty;
+                        AddRoleResponseHistory(
+                            WorkerRoleState.Hq,
+                            "마일스톤 설계 전체 재요청",
+                            hqMessage,
+                            retryResult.Usage,
+                            retryResult.Files,
+                            status: "RECEIVED",
+                            providerWireId: coordinator.Provider,
+                            fullMessage: hqMessage);
+
+                        hqParse = ActionBlockContract.ParseHq(hqMessage);
+                        if (hqParse.HasErrors ||
+                            hqParse.ValidActions.Count != 1 ||
+                            !string.Equals(
+                                hqParse.ValidActions[0].Name,
+                                "WORK",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            !MilestoneDefinitionContract.TryBuild(
+                                hqMessage,
+                                hqParse,
+                                out milestone,
+                                out milestoneError))
+                        {
+                            throw new InvalidOperationException(
+                                "HQ_MILESTONE_CONTRACT_INVALID_AFTER_FULL_RETRY: " +
+                                milestoneError +
+                                Environment.NewLine +
+                                string.Join(", ", hqParse.Errors));
+                        }
+
+                        hqAction = hqParse.ValidActions[0];
                     }
                 }
 
