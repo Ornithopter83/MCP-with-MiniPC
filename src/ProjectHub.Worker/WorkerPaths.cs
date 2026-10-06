@@ -57,6 +57,64 @@ public static class WorkerPaths
             tempRoot);
     }
 
+    public static bool EnsureProjectHubLocalExclude(
+        string repositoryRoot)
+    {
+        if (string.IsNullOrWhiteSpace(repositoryRoot) ||
+            !Directory.Exists(repositoryRoot))
+            return false;
+
+        try
+        {
+            var root = Path.GetFullPath(repositoryRoot)
+                .TrimEnd(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar);
+            var gitDirectory = Path.Combine(root, ".git");
+            if (!Directory.Exists(gitDirectory))
+                return false;
+
+            var infoDirectory = Path.Combine(gitDirectory, "info");
+            Directory.CreateDirectory(infoDirectory);
+            var excludePath = Path.Combine(infoDirectory, "exclude");
+            var lines = File.Exists(excludePath)
+                ? File.ReadAllLines(excludePath).ToList()
+                : new List<string>();
+
+            if (lines.Any(line =>
+                    string.Equals(
+                        line.Trim(),
+                        ".projecthub/",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(
+                        line.Trim(),
+                        "/.projecthub/",
+                        StringComparison.OrdinalIgnoreCase)))
+                return true;
+
+            var existing = File.Exists(excludePath)
+                ? File.ReadAllText(excludePath)
+                : string.Empty;
+            var separator = existing.Length == 0 ||
+                            existing.EndsWith("\n", StringComparison.Ordinal) ||
+                            existing.EndsWith("\r", StringComparison.Ordinal)
+                ? string.Empty
+                : Environment.NewLine;
+            File.WriteAllText(
+                excludePath,
+                existing +
+                separator +
+                ".projecthub/" +
+                Environment.NewLine,
+                new UTF8Encoding(false));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static bool NeedsProjectHubGitIgnoreUpdate(
         string repositoryRoot)
     {
