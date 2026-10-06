@@ -167,7 +167,7 @@ public sealed class WorkerPathsRuntimeTests
     }
 
     [Fact]
-    public void ProjectStateLivesUnderTempProjectHubState()
+    public void ProjectStateLivesUnderProjectRootProjectHub()
     {
         var parent = Path.Combine(
             Path.GetTempPath(),
@@ -183,11 +183,9 @@ public sealed class WorkerPathsRuntimeTests
             Assert.Equal(
                 Path.Combine(
                     Path.GetFullPath(workspace),
-                    "temp",
-                    "ProjectHub",
-                    "state"),
+                    ".projecthub"),
                 stateRoot);
-            Assert.DoesNotContain(
+            Assert.EndsWith(
                 ".projecthub",
                 stateRoot,
                 StringComparison.OrdinalIgnoreCase);
@@ -248,11 +246,11 @@ public sealed class WorkerPathsRuntimeTests
                 ProjectWorkspacePersistence.EventLogPath(workspace, "job-1")));
             Assert.True(File.Exists(transcript));
             Assert.StartsWith(
-                Path.GetFullPath(WorkerPaths.Logs),
+                Path.GetFullPath(ProjectWorkspacePersistence.RootDirectory(workspace)),
                 Path.GetFullPath(eventDirectory),
                 StringComparison.OrdinalIgnoreCase);
             Assert.StartsWith(
-                Path.GetFullPath(WorkerPaths.Logs),
+                Path.GetFullPath(ProjectWorkspacePersistence.RootDirectory(workspace)),
                 Path.GetFullPath(transcriptDirectory),
                 StringComparison.OrdinalIgnoreCase);
         }
@@ -260,9 +258,6 @@ public sealed class WorkerPathsRuntimeTests
         {
             if (Directory.Exists(parent))
                 Directory.Delete(parent, true);
-            var durableRoot = ProjectWorkspacePersistence.DurableLogDirectory(workspace);
-            if (Directory.Exists(durableRoot))
-                Directory.Delete(durableRoot, true);
         }
     }
 
@@ -294,6 +289,39 @@ public sealed class WorkerPathsRuntimeTests
                 Path.Combine(workspace, "temp")));
             Assert.Empty(Directory.EnumerateFileSystemEntries(
                 Path.Combine(workspace, "temp")));
+        }
+        finally
+        {
+            Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
+    public void ProjectHubRuntimeUsesLocalGitExcludeWithoutChangingGitIgnore()
+    {
+        var parent = Path.Combine(
+            Path.GetTempPath(),
+            "ProjectHubWorkerPathsTests",
+            Guid.NewGuid().ToString("N"));
+        var workspace = Path.Combine(parent, "SampleProject");
+        var gitInfo = Path.Combine(workspace, ".git", "info");
+        Directory.CreateDirectory(gitInfo);
+        File.WriteAllText(
+            Path.Combine(workspace, ".gitignore"),
+            "bin/\n");
+
+        try
+        {
+            Assert.True(WorkerPaths.EnsureProjectHubLocalExclude(workspace));
+            Assert.True(WorkerPaths.EnsureProjectHubLocalExclude(workspace));
+
+            var excludeLines = File.ReadAllLines(
+                Path.Combine(gitInfo, "exclude"));
+            Assert.Single(excludeLines.Where(line =>
+                line.Trim() == ".projecthub/"));
+            Assert.DoesNotContain(
+                ".projecthub/",
+                File.ReadAllLines(Path.Combine(workspace, ".gitignore")));
         }
         finally
         {
