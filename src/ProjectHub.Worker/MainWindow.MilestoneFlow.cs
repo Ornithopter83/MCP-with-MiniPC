@@ -241,17 +241,71 @@ public partial class MainWindow
                         out var milestone,
                         out var milestoneError))
                 {
-                    hqInbound =
-                        "HQ ACTION/JSON 계약 오류입니다. " +
-                        "[ACTION=WORK] 바로 다음의 단일 JSON 객체에 실행 가능한 milestone 전체를 다시 작성하세요." +
-                        Environment.NewLine +
-                        milestoneError +
-                        Environment.NewLine +
-                        "이전 응답:" +
-                        Environment.NewLine +
-                        hqMessage;
-                    continuing = false;
-                    continue;
+                    var repairResponse =
+                        await ExecuteHqJsonRepairWorkAsync(
+                            jobId,
+                            normalizedRoot,
+                            hqMessage,
+                            milestoneError,
+                            implementer,
+                            cts.Token);
+                    var repairError = string.Empty;
+
+                    if (!string.IsNullOrWhiteSpace(repairResponse) &&
+                        HqJsonRepairContract.TryWrapWorkJson(
+                            repairResponse,
+                            out var repairedHqMessage,
+                            out repairError))
+                    {
+                        var repairedParse =
+                            ActionBlockContract.ParseHq(repairedHqMessage);
+                        if (MilestoneDefinitionContract.TryBuild(
+                                repairedHqMessage,
+                                repairedParse,
+                                out milestone,
+                                out var repairedMilestoneError))
+                        {
+                            hqMessage = repairedHqMessage;
+                            hqParse = repairedParse;
+                            AddDataFlowHistory(
+                                WorkerRoleState.Work,
+                                "Worker 작업",
+                                "HQ JSON 복구 성공\n기존 HQ 파서 재검증 완료",
+                                status: "REPAIRED",
+                                persistenceSource: "WORKER ACTION");
+                        }
+                        else
+                        {
+                            repairError =
+                                "HQ_JSON_REPAIR_REPARSE_FAILED" +
+                                Environment.NewLine +
+                                repairedMilestoneError;
+                        }
+                    }
+                    else if (string.IsNullOrWhiteSpace(repairError))
+                    {
+                        repairError = "HQ_JSON_REPAIR_WORK_FAILED";
+                    }
+
+                    if (milestone is null)
+                    {
+                        hqInbound =
+                            "HQ ACTION/JSON 계약 오류입니다. " +
+                            "복구 전용 WORK가 JSON 문법 교정을 시도했지만 기존 HQ 파서를 통과하지 못했습니다. " +
+                            "[ACTION=WORK] 바로 다음의 단일 JSON 객체에 실행 가능한 milestone 전체를 다시 작성하세요." +
+                            Environment.NewLine +
+                            milestoneError +
+                            Environment.NewLine +
+                            "JSON_REPAIR_RESULT:" +
+                            Environment.NewLine +
+                            repairError +
+                            Environment.NewLine +
+                            "이전 응답:" +
+                            Environment.NewLine +
+                            hqMessage;
+                        continuing = false;
+                        continue;
+                    }
                 }
 
                 RunOnUi(() =>
@@ -1259,6 +1313,74 @@ public partial class MainWindow
                 nodes,
                 edges,
                 DateTimeOffset.UtcNow));
+    }
+
+    private async Task<string?> ExecuteHqJsonRepairWorkAsync(
+        string jobId,
+        string workingDirectory,
+        string hqMessage,
+        string parserError,
+        WorkerAiRoleSettings implementer,
+        CancellationToken cancellationToken)
+    {
+        RunOnUi(() =>
+        {
+            TaskDirection.Text = "작업";
+            TaskTitle.Text = "HQ JSON 복구";
+            ResultTitle.Text = "WORK";
+            SetFlowState(
+                codexActive: true,
+                workerActive: false,
+                webActive: false,
+                explicitStage: TaskStage.Implementer);
+        });
+
+        var prompt = HqJsonRepairContract.BuildPrompt(
+            hqMessage,
+            parserError);
+        AddDataFlowHistory(
+            WorkerRoleState.Work,
+            "Worker 분배",
+            prompt,
+            status: "DISPATCHED",
+            workItemId: "HQ-JSON-REPAIR",
+            persistenceSource: "WORKER DISPATCH");
+
+        var statelessRole = implementer with
+        {
+            ThreadSessionId = null,
+            ThreadProjectPath = null
+        };
+
+        var result = await RunCoordinatorRoleAsync(
+            jobId,
+            "WORK",
+            prompt,
+            statelessRole,
+            workingDirectory,
+            null,
+            null,
+            cancellationToken,
+            CodexSandboxMode.ReadOnly,
+            historyWorkItemId: "HQ-JSON-REPAIR",
+            historyReferenceId: "HQ-JSON-REPAIR");
+
+        var response = result.FinalMessage?.Trim() ?? string.Empty;
+        AddRoleResponseHistory(
+            WorkerRoleState.Work,
+            "HQ JSON 복구 응답",
+            response,
+            result.Usage,
+            result.Files,
+            status: result.ExitCode == 0 ? "RECEIVED" : "FAILED",
+            providerWireId: implementer.Provider,
+            fullMessage: response,
+            workItemId: "HQ-JSON-REPAIR",
+            referenceId: "HQ-JSON-REPAIR");
+
+        return result.ExitCode == 0 && response.Length > 0
+            ? response
+            : null;
     }
 
     private async Task<WorkExecutionReport> ExecuteMilestoneWorkAsync(

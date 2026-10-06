@@ -177,6 +177,77 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void HqJsonRepair_WrapsCorrectedWorkJsonForExistingParser()
+    {
+        const string repaired = """
+            설명 없이 교정 결과입니다.
+            {
+              "action": "work",
+              "milestone": {
+                "id": "M-REPAIR",
+                "branch": "AUTO",
+                "goal": "복구 검증",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        Assert.True(HqJsonRepairContract.TryWrapWorkJson(
+            repaired,
+            out var hqMessage,
+            out var repairError),
+            repairError);
+
+        var parsed = ActionBlockContract.ParseHq(hqMessage);
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            hqMessage,
+            parsed,
+            out var milestone,
+            out var milestoneError),
+            milestoneError);
+        Assert.Equal("M-REPAIR", milestone!.Id);
+    }
+
+    [Fact]
+    public void HqJsonRepair_RejectsNonWorkAction()
+    {
+        const string repaired = """
+            {
+              "action": "end",
+              "message": "완료"
+            }
+            """;
+
+        Assert.False(HqJsonRepairContract.TryWrapWorkJson(
+            repaired,
+            out _,
+            out var error));
+        Assert.Equal("HQ_JSON_REPAIR_WORK_ACTION_REQUIRED", error);
+    }
+
+    [Fact]
+    public void HqJsonRepairPrompt_IsReadOnlySyntaxRepair()
+    {
+        var prompt = HqJsonRepairContract.BuildPrompt(
+            "[ACTION=WORK]\n{ malformed }",
+            "JSON_INVALID");
+
+        Assert.Contains("JSON 문법 복구", prompt);
+        Assert.Contains("프로젝트 파일을 읽거나 수정하지 말고", prompt);
+        Assert.Contains("JSON 폼", prompt);
+        Assert.Contains("JSON_INVALID", prompt);
+        Assert.Contains("[ACTION=WORK]", prompt);
+    }
+
+    [Fact]
     public void MilestoneDefinition_RejectsWorkItemBelowTen()
     {
         const string message = """
