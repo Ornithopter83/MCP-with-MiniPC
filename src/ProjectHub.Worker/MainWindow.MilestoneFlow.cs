@@ -1872,6 +1872,86 @@ public partial class MainWindow
             : null;
     }
 
+    private async Task<string?> ExecuteRoleElementRecoveryWorkAsync(
+        string jobId,
+        string workingDirectory,
+        string role,
+        string actionName,
+        string originalMessage,
+        string parserError,
+        IReadOnlyCollection<string> recoveryTargets,
+        IReadOnlyCollection<string> recoveredElements,
+        WorkerAiRoleSettings implementer,
+        CancellationToken cancellationToken)
+    {
+        RunOnUi(() =>
+        {
+            TaskDirection.Text = "작업";
+            TaskTitle.Text = role + " element 복구";
+            ResultTitle.Text = "WORK";
+            SetFlowState(
+                codexActive: true,
+                workerActive: false,
+                webActive: false,
+                explicitStage: TaskStage.Implementer);
+        });
+
+        var prompt =
+            RoleElementRecoveryContract.BuildElementRecoveryPrompt(
+                role,
+                actionName,
+                originalMessage,
+                parserError,
+                recoveryTargets,
+                recoveredElements);
+        var repairId =
+            "ELEMENT-REPAIR-" + role.Trim().ToUpperInvariant();
+
+        AddDataFlowHistory(
+            WorkerRoleState.Work,
+            "Worker 분배",
+            prompt,
+            status: "DISPATCHED",
+            workItemId: repairId,
+            persistenceSource: "WORKER DISPATCH");
+
+        var statelessRole = implementer with
+        {
+            ThreadSessionId = null,
+            ThreadProjectPath = null
+        };
+
+        var result = await RunCoordinatorRoleAsync(
+            jobId,
+            "WORK",
+            prompt,
+            statelessRole,
+            workingDirectory,
+            null,
+            null,
+            cancellationToken,
+            CodexSandboxMode.ReadOnly,
+            historyWorkItemId: repairId,
+            historyReferenceId: repairId);
+
+        var response = result.FinalMessage?.Trim() ?? string.Empty;
+        AddRoleResponseHistory(
+            WorkerRoleState.Work,
+            role + " element 복구 응답",
+            response,
+            result.Usage,
+            result.Files,
+            status: result.ExitCode == 0 ? "RECEIVED" : "FAILED",
+            providerWireId: implementer.Provider,
+            fullMessage: response,
+            workItemId: repairId,
+            referenceId: repairId);
+
+        return result.ExitCode == 0 && response.Length > 0
+            ? response
+            : null;
+    }
+
     private static string BuildManagerFallbackReport(
         string summary,
         IEnumerable<string?> issues)
