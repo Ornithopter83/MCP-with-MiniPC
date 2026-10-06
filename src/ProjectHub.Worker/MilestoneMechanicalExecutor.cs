@@ -9,6 +9,7 @@ internal static class MilestoneMechanicalExecutor
     public static async Task<MilestoneGitResult> CheckGitReadyAsync(
         string workingDirectory,
         string configuredTargetBranch,
+        bool initializeIfMissing,
         CancellationToken cancellationToken)
     {
         var git = new ProcessGitCommandRunner();
@@ -30,17 +31,52 @@ internal static class MilestoneMechanicalExecutor
                 "true",
                 StringComparison.OrdinalIgnoreCase))
         {
-            return new(
-                false,
-                true,
-                configuredTargetBranch,
-                null,
-                "Git 저장소가 필수입니다. 현재 프로젝트 루트가 Git 저장소가 아니므로 PAUSE합니다.");
+            if (!initializeIfMissing)
+            {
+                return new(
+                    false,
+                    true,
+                    configuredTargetBranch,
+                    null,
+                    "Git 저장소가 필수입니다. 현재 프로젝트 루트가 Git 저장소가 아니므로 PAUSE합니다.");
+            }
+
+            var init = await Run("init").ConfigureAwait(false);
+            if (init.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    true,
+                    configuredTargetBranch,
+                    null,
+                    "git init에 실패했습니다." +
+                    Environment.NewLine +
+                    (string.IsNullOrWhiteSpace(init.StandardError)
+                        ? init.StandardOutput
+                        : init.StandardError));
+            }
+
+            WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
         }
 
         var targetBranch = await ResolveTargetBranchAsync(
             configuredTargetBranch,
             Run).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(targetBranch) &&
+            initializeIfMissing &&
+            string.Equals(
+                configuredTargetBranch,
+                "AUTO",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var symbolicHead = await Run(
+                "symbolic-ref",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+            if (symbolicHead.ExitCode == 0)
+                targetBranch = symbolicHead.StandardOutput.Trim();
+        }
 
         if (string.IsNullOrWhiteSpace(targetBranch))
         {
@@ -59,6 +95,19 @@ internal static class MilestoneMechanicalExecutor
         var currentBranch = current.ExitCode == 0
             ? current.StandardOutput.Trim()
             : string.Empty;
+        if (string.Equals(
+                currentBranch,
+                "HEAD",
+                StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(currentBranch))
+        {
+            var symbolicHead = await Run(
+                "symbolic-ref",
+                "--short",
+                "HEAD").ConfigureAwait(false);
+            if (symbolicHead.ExitCode == 0)
+                currentBranch = symbolicHead.StandardOutput.Trim();
+        }
 
         if (!string.Equals(
                 currentBranch,
