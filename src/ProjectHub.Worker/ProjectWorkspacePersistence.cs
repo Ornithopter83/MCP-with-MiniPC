@@ -31,6 +31,27 @@ public sealed record ProjectMemorySnapshot(
             HighLevel);
 }
 
+public sealed record MilestoneGraphNodeSnapshot(
+    string Id,
+    string Role,
+    string State,
+    string? WorkItemId = null);
+
+public sealed record MilestoneGraphEdgeSnapshot(
+    string From,
+    string To,
+    string Kind);
+
+public sealed record MilestoneExecutionGraphSnapshot(
+    string JobId,
+    string MilestoneId,
+    string State,
+    bool QaReserved,
+    bool ResourceReserved,
+    IReadOnlyList<MilestoneGraphNodeSnapshot> Nodes,
+    IReadOnlyList<MilestoneGraphEdgeSnapshot> Edges,
+    DateTimeOffset UpdatedAtUtc);
+
 public sealed record ProjectEventLogEntry(
     string EventId,
     DateTimeOffset Timestamp,
@@ -61,9 +82,7 @@ public static class ProjectWorkspacePersistence
     public static string RootDirectory(string workingDirectory)
         => Path.Combine(
             Path.GetFullPath(workingDirectory),
-            "temp",
-            "ProjectHub",
-            "state");
+            ".projecthub");
 
     public static string StatePath(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "session-state.json");
@@ -71,28 +90,17 @@ public static class ProjectWorkspacePersistence
     public static string HandoffPath(string workingDirectory)
         => Path.Combine(RootDirectory(workingDirectory), "last-handoff.md");
 
-    public static string DurableLogDirectory(string workingDirectory)
-    {
-        var normalized = Path.GetFullPath(workingDirectory)
-            .TrimEnd(
-                Path.DirectorySeparatorChar,
-                Path.AltDirectorySeparatorChar);
-        var projectName = SanitizeId(Path.GetFileName(normalized));
-        var hash = Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(
-                    Encoding.UTF8.GetBytes(normalized.ToUpperInvariant())))
-            .ToLowerInvariant()[..12];
-        return Path.Combine(
-            WorkerPaths.Logs,
-            "projects",
-            projectName + "-" + hash);
-    }
-
     public static string EventDirectory(string workingDirectory)
-        => Path.Combine(DurableLogDirectory(workingDirectory), "events");
+        => Path.Combine(RootDirectory(workingDirectory), "events");
 
     public static string TranscriptDirectory(string workingDirectory)
-        => Path.Combine(DurableLogDirectory(workingDirectory), "transcripts");
+        => Path.Combine(RootDirectory(workingDirectory), "transcripts");
+
+    public static string WorkGraphDirectory(string workingDirectory)
+        => Path.Combine(RootDirectory(workingDirectory), "work-graphs");
+
+    public static string WorkGraphPath(string workingDirectory, string jobId)
+        => Path.Combine(WorkGraphDirectory(workingDirectory), SanitizeId(jobId) + ".json");
 
     public static string EventLogPath(string workingDirectory, string jobId)
         => Path.Combine(EventDirectory(workingDirectory), SanitizeId(jobId) + ".jsonl");
@@ -247,6 +255,53 @@ public static class ProjectWorkspacePersistence
                 File.AppendAllText(path, line, new UTF8Encoding(false));
             }
             return eventId;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static bool SaveMilestoneGraph(
+        string workingDirectory,
+        MilestoneExecutionGraphSnapshot snapshot)
+    {
+        if (string.IsNullOrWhiteSpace(workingDirectory) ||
+            snapshot is null ||
+            string.IsNullOrWhiteSpace(snapshot.JobId) ||
+            !Directory.Exists(workingDirectory))
+            return false;
+
+        try
+        {
+            Directory.CreateDirectory(WorkGraphDirectory(workingDirectory));
+            WriteAtomic(
+                WorkGraphPath(workingDirectory, snapshot.JobId),
+                JsonSerializer.Serialize(snapshot, StateJsonOptions));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static MilestoneExecutionGraphSnapshot? TryLoadMilestoneGraph(
+        string workingDirectory,
+        string jobId)
+    {
+        if (string.IsNullOrWhiteSpace(workingDirectory) ||
+            string.IsNullOrWhiteSpace(jobId))
+            return null;
+
+        try
+        {
+            var path = WorkGraphPath(workingDirectory, jobId);
+            if (!File.Exists(path))
+                return null;
+            return JsonSerializer.Deserialize<MilestoneExecutionGraphSnapshot>(
+                File.ReadAllText(path, Encoding.UTF8),
+                StateJsonOptions);
         }
         catch
         {
