@@ -325,11 +325,26 @@ internal static class RoleElementRecoveryContract
             }
         }
 
-        remainingElements = HqWorkElements
-            .Where(definition =>
-                definition.Required &&
+        var remaining = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in HqWorkElements)
+        {
+            if (definition.Required &&
                 !values.ContainsKey(definition.Name))
-            .Select(definition => definition.Name)
+            {
+                remaining.Add(definition.Name);
+            }
+        }
+
+        foreach (var recoveryTarget in originalScan.RecoveryTargets)
+        {
+            if (!values.ContainsKey(recoveryTarget))
+                remaining.Add(recoveryTarget);
+        }
+
+        remainingElements = remaining
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         if (remainingElements.Count > 0)
