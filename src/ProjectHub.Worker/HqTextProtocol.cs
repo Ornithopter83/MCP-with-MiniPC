@@ -528,6 +528,7 @@ internal static class HqTextProtocol
         var result = new List<Section>();
         string? name = null;
         var argument = string.Empty;
+        var rawMarker = string.Empty;
         var content = new List<string>();
 
         void Flush()
@@ -535,12 +536,13 @@ internal static class HqTextProtocol
             if (name is null)
                 return;
 
-            var body = string.Join(Environment.NewLine, content).Trim();
-            var marker = "@@" + name +
-                (argument.Length == 0 ? string.Empty : " " + argument);
-            var raw = body.Length == 0
-                ? marker
-                : marker + Environment.NewLine + body;
+            var rawBody = string.Join(
+                Environment.NewLine,
+                content).TrimEnd();
+            var body = rawBody.Trim();
+            var raw = rawBody.Length == 0
+                ? rawMarker
+                : rawMarker + Environment.NewLine + rawBody;
             result.Add(new Section(name, argument, body, raw));
             content.Clear();
         }
@@ -556,6 +558,7 @@ internal static class HqTextProtocol
             }
 
             Flush();
+            rawMarker = line.TrimEnd();
             var marker = trimmed[2..].Trim();
             var split = marker.IndexOfAny(new[] { ' ', '\t' });
             if (split < 0)
