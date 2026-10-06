@@ -1751,13 +1751,6 @@ public partial class MainWindow : Window
         var effectiveAttachments = webAttachments ?? new List<BridgeAttachment>();
 
         var started = DateTimeOffset.UtcNow;
-        AddTaskMessage(
-            $"WORKER → {roleName} WEB",
-            effectivePrompt,
-            sizeBytes: Encoding.UTF8.GetByteCount(effectivePrompt),
-            fileCount: effectiveAttachments.Count,
-            status: "SENDING",
-            includeHistory: false);
         var task = bridgeServer.CreateTaskForRole(
             roleName,
             effectivePrompt,
@@ -1767,19 +1760,16 @@ public partial class MainWindow : Window
             ? WorkerRoleState.Resource
             : WorkerRoleState.Hq;
         RunOnUi(() =>
-            AddRoleProgressHistory(
+            AddDataFlowHistory(
                 webHistoryRole,
-                $"{roleName} Web 전달 시작 · task={task.Id}",
+                "전달 데이터",
+                effectivePrompt,
+                status: "SENT",
                 referenceId: task.Id,
-                workItemId: string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase) ? "0" : null));
+                workItemId: string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase) ? "0" : null,
+                persistenceSource: $"WORKER → {roleName} WEB"));
         var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
-        RunOnUi(() =>
-            AddRoleProgressHistory(
-                webHistoryRole,
-                $"{roleName} Web 응답 수신 완료 · {completed.Status}",
-                referenceId: task.Id,
-                workItemId: string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase) ? "0" : null));
         var message = completed.Result ?? string.Empty;
         var success = completed.Status == "COMPLETED";
         UsageTelemetryStore.Append(new ModelCallTelemetry(
@@ -1903,23 +1893,26 @@ public partial class MainWindow : Window
             _ => WorkerRoleState.Hq
         };
         RunOnUi(() =>
-            AddRoleProgressHistory(
+            AddDataFlowHistory(
                 historyRole,
-                $"{outboundRole} 호출 시작 · {role.Provider} / {role.Model}",
+                "전달 데이터",
+                prompt,
                 role.Provider,
+                status: "SENT",
                 referenceId: historyReferenceId,
-                workItemId: historyWorkItemId));
-        AddTaskMessage($"WORKER → {outboundRole} CLI", prompt, sizeBytes: Encoding.UTF8.GetByteCount(prompt), status: "SENDING", includeHistory: false);
+                workItemId: historyWorkItemId,
+                persistenceSource: $"WORKER → {outboundRole} CLI"));
         var runner = _aiRoleRunners.Resolve(role)
             ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
         Action<string>? progress = message => RunOnUi(() =>
         {
             _lastActivityAt = DateTimeOffset.UtcNow;
-            AddRoleProgressHistory(
-                historyRole,
+            AddTaskMessage(
+                $"{outboundRole} DETAIL",
                 message,
-                role.Provider,
+                status: "RUNNING",
                 referenceId: historyReferenceId,
+                includeHistory: false,
                 workItemId: historyWorkItemId);
         });
 
@@ -1970,11 +1963,12 @@ public partial class MainWindow : Window
             BypassHookTrust: bypassHookTrust,
             BuildExecutionAllowed: roleName != "WORK"));
         RunOnUi(() =>
-            AddRoleProgressHistory(
-                historyRole,
-                $"{outboundRole} 실행 종료 · exit {result.ExitCode}",
-                role.Provider,
+            AddTaskMessage(
+                $"{outboundRole} EXECUTION",
+                $"exit {result.ExitCode}",
+                status: result.ExitCode == 0 ? "COMPLETED" : "FAILED",
                 referenceId: historyReferenceId,
+                includeHistory: false,
                 workItemId: historyWorkItemId));
         UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
@@ -2847,22 +2841,17 @@ public partial class MainWindow : Window
                     : progressTask.Owner.Equals("HQ", StringComparison.OrdinalIgnoreCase)
                         ? WorkerRoleState.Hq
                         : WorkerRoleState.Unknown;
-                if (progressRole != WorkerRoleState.Unknown)
-                {
-                    AddRoleProgressHistory(
-                        progressRole,
-                        $"{progress.Stage}{detail}",
-                        referenceId: progress.TaskId,
-                        workItemId: progressRole == WorkerRoleState.Resource ? "0" : null);
-                }
-                else
-                {
-                    AddTaskMessage(
-                        "WEB EXTENSION",
-                        $"{progress.Stage}{detail}",
-                        status: "RUNNING",
-                        includeHistory: false);
-                }
+                AddTaskMessage(
+                    progressRole == WorkerRoleState.Resource
+                        ? "RESOURCE WEB DETAIL"
+                        : progressRole == WorkerRoleState.Hq
+                            ? "HQ WEB DETAIL"
+                            : "WEB EXTENSION",
+                    $"{progress.Stage}{detail}",
+                    status: "RUNNING",
+                    referenceId: progress.TaskId,
+                    includeHistory: false,
+                    workItemId: progressRole == WorkerRoleState.Resource ? "0" : null);
             }
             else
             {
@@ -2997,6 +2986,71 @@ public partial class MainWindow : Window
                 _historyEvents.Add(historyEvent);
             }
         }
+        RefreshMessageLog();
+    }
+
+    private void AddDataFlowHistory(
+        WorkerRoleState role,
+        string title,
+        string? body,
+        string? providerWireId = null,
+        string? status = null,
+        string? referenceId = null,
+        string? workItemId = null,
+        string? persistenceSource = null)
+    {
+        var text = body?.Trim() ?? string.Empty;
+        if (text.Length == 0) return;
+
+        var stage = role switch
+        {
+            WorkerRoleState.Hq => "Coordinator",
+            WorkerRoleState.Manager => "Manager",
+            WorkerRoleState.Work => "Implementer",
+            WorkerRoleState.Qa => "Qa",
+            WorkerRoleState.High => "HighLevel",
+            WorkerRoleState.Resource => "Resource",
+            _ => "System"
+        };
+
+        var item = new WorkerHistoryEvent(
+            DateTimeOffset.Now,
+            stage,
+            "DATA_FLOW",
+            title,
+            WorkerHistoryCardFormatter.Preview(text),
+            Encoding.UTF8.GetByteCount(text),
+            null,
+            null,
+            status,
+            referenceId)
+        {
+            WorkItemId = workItemId,
+            FullMessage = text,
+            TokenDetails = string.Empty,
+            FileDetails = string.Empty
+        };
+
+        if (!string.IsNullOrWhiteSpace(providerWireId))
+            item = item with { IconAssetOverride = ProviderVisualCatalog.Resolve(providerWireId).ColorAsset };
+        else if (item.StageKey == "Coordinator")
+            item = item with { IconAssetOverride = _coordinatorStageIconAsset };
+
+        AddTaskMessage(
+            string.IsNullOrWhiteSpace(persistenceSource)
+                ? title
+                : persistenceSource,
+            text,
+            sizeBytes: Encoding.UTF8.GetByteCount(text),
+            status: status,
+            referenceId: referenceId,
+            includeHistory: false,
+            workItemId: workItemId);
+
+        _historyEvents.Add(item);
+        if (DashboardHistoryList.Items.Count > 0)
+            DashboardHistoryList.ScrollIntoView(
+                DashboardHistoryList.Items[DashboardHistoryList.Items.Count - 1]);
         RefreshMessageLog();
     }
 
