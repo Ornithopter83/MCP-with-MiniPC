@@ -28,6 +28,8 @@ internal static class RoleJsonRepairContract
             Environment.NewLine +
             "원문의 의미, 경로, 상태, 작업 내용과 결과를 바꾸지 말고 문법과 JSON 구조만 교정한다." +
             Environment.NewLine +
+            "원문에 존재하는 property는 아래 최소 스키마 예시에 없더라도 삭제·축약·이름 변경하지 않는다." +
+            Environment.NewLine +
             "JSON 내부에는 action 필드를 만들지 않는다." +
             Environment.NewLine +
             "[GOTO : 역할]이 원문에 있거나 해당 스키마에 필요하면 ACTION 앞에 유지한다." +
@@ -35,7 +37,19 @@ internal static class RoleJsonRepairContract
             "출력은 설명이나 Markdown 코드펜스 없이 교정된 전체 응답만 출력한다." +
             Environment.NewLine +
             Environment.NewLine +
-            "허용 스키마:" +
+            "역할 element 정의:" +
+            Environment.NewLine +
+            RoleElementRecoveryContract.DescribeElements(
+                normalizedRole,
+                string.Equals(
+                    expected,
+                    "원문에서 의도한 허용 ACTION",
+                    StringComparison.Ordinal)
+                    ? string.Empty
+                    : expected) +
+            Environment.NewLine +
+            Environment.NewLine +
+            "최소 검증 스키마(재작성 템플릿이 아님):" +
             Environment.NewLine +
             GetSchema(normalizedRole) +
             Environment.NewLine +
