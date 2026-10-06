@@ -316,6 +316,11 @@ public partial class MainWindow
                         milestoneError);
                 }
 
+                milestone = milestone with
+                {
+                    RawHqMessage = hqMessage
+                };
+
                 if (hqText.UnknownSections.Count > 0)
                 {
                     AddDataFlowHistory(
@@ -413,7 +418,8 @@ public partial class MainWindow
                             Array.Empty<string>(),
                             currentLocalChanges,
                             _formatRecoveryJobs.ContainsKey(jobId),
-                            GetUnreadRecoveryElements(jobId)));
+                            GetUnreadRecoveryElements(jobId),
+                            normalizedRoot)));
 
                     AddTaskMessage(
                         "MILESTONE ERROR",
@@ -611,7 +617,8 @@ public partial class MainWindow
                     milestoneChangedPaths,
                     currentLocalChanges,
                     _formatRecoveryJobs.ContainsKey(jobId),
-                    GetUnreadRecoveryElements(jobId)));
+                    GetUnreadRecoveryElements(jobId),
+                    workingDirectory)));
         }
 
         try
@@ -1334,7 +1341,8 @@ public partial class MainWindow
                     milestoneChangedPaths,
                     currentLocalChanges,
                     _formatRecoveryJobs.ContainsKey(jobId),
-                    GetUnreadRecoveryElements(jobId)));
+                    GetUnreadRecoveryElements(jobId),
+                    workingDirectory)));
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
