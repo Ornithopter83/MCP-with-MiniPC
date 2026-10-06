@@ -107,7 +107,8 @@
 ⑥ GENERAL WORK에는 RESOURCE 결과를 코드·UI·문서에서 연결하거나 참조하는 작업만 배정할 수 있다.
 ⑦ RESOURCE는 MANAGER가 분배하거나 수행 여부를 판단하지 않는다. HQ가 resource를 요청하면 Worker가 독립 대기열에서 수행한다.
 ⑧ RESOURCE 실행은 GENERAL WORK와 병렬로 진행할 수 있으며, Worker는 결과를 temp/Resource에 수집한 뒤 targetPath로 move한다.
-⑨ QA/HIGH 진입 전에는 RESOURCE와 GENERAL WORK가 모두 terminal 상태여야 한다.
+⑨ QA/HIGH 진입 조건은 GENERAL WORK의 terminal 여부만 사용한다. RESOURCE가 PENDING이어도 기다리지 않고 QA 또는 HIGH로 진행한다.
+⑩ RESOURCE의 PENDING은 실패가 아니며, 이후 완료되면 기존 다운로드·파일명 처리·targetPath 저장 절차를 그대로 수행한다.
 
 제6조 (PAUSE와 END)
 

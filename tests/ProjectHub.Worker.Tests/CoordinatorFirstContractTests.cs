@@ -606,6 +606,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("RESOURCE 산출물을 신규 생성·편집·대체 제작하지 않는다", qa);
         Assert.Contains("[GOTO : MANAGER]", high);
         Assert.Contains("RESOURCE 실패를 HIGH가 직접 생성으로 우회하지 않는다", high);
+        Assert.Contains("PENDING이면 실패로 확정하거나 완료를 기다리지 않고", high);
+        Assert.Contains("RESOURCE가 PENDING이어도 기다리지 않고 QA 또는 HIGH로 진행한다", hq);
+        Assert.Contains("RESOURCE 완료 여부는 이 전환의 barrier가 아니다", manager);
         Assert.Contains("\"changedPaths\"", high);
 
         Assert.DoesNotContain("WorkGraph", hq);

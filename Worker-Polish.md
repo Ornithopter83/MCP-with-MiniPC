@@ -35,12 +35,12 @@
 
 ① HQ는 전용 계약의 `[ACTION=...]` 다음 단일 JSON 객체로 마일스톤 설계, WorkItem, 작업영역, QA 예약, RESOURCE와 필요한 entrypoint 정보를 전달한다.
 ② Worker는 ACTION과 JSON envelope를 기계적으로 파싱한다. HQ의 추가 설명과 세부 지시는 JSON 내부 필드에 포함하며 JSON 밖의 별도 BODY/END_ACTION 형식은 사용하지 않는다.
-③ 중간관리자는 HQ 설계를 받아 GENERAL WORK와 RESOURCE를 실행시킨다.
-④ 모든 계획된 작업은 성공·실패와 관계없이 terminal 상태가 되어야 현재 실행 묶음이 끝난 것으로 본다.
-⑤ HQ가 QA를 예약했다면 Worker는 HQ 지시를 기계적으로 파싱하여 HIGH 호출 직전에 QA를 삽입한다. QA 필요 여부를 Worker, 중간관리자 또는 HIGH가 새로 판단하지 않는다.
-⑥ 예약된 QA가 없거나 QA 실행이 끝나면 HIGH를 호출한다.
-⑦ HIGH 결과를 받은 중간관리자는 HQ 설계 범위에서 후속 작업을 수행하거나 현재 마일스톤 실행을 종료할 수 있다. 후속 실행 묶음도 같은 QA 예약과 HIGH 검증 흐름을 따른다.
-⑧ 마일스톤의 모든 작업이 성패와 관계없이 끝나고 중간관리자가 Git 처리를 마치면 HQ에 반드시 최종 보고한다.
+③ 중간관리자는 HQ 설계를 받아 GENERAL WORK를 일괄 분배한다. RESOURCE #0은 Worker의 독립 sidecar 대기열이 수행하며 중간관리자 분배 대상이 아니다.
+④ 모든 계획된 GENERAL WORK가 성공·실패와 관계없이 terminal 상태가 되면 현재 GENERAL WORK 실행 묶음이 끝난 것으로 본다. RESOURCE #0의 완료 여부는 이 조건에 포함하지 않는다.
+⑤ HQ가 QA를 예약했다면 Worker는 GENERAL WORK 실행 묶음이 끝나는 즉시 QA를 삽입한다. RESOURCE #0이 아직 진행 중이어도 QA 진입을 기다리지 않는다.
+⑥ 예약된 QA가 없거나 QA 실행이 끝나면 HIGH를 호출한다. RESOURCE #0이 아직 진행 중이어도 HIGH 진입을 기다리지 않는다.
+⑦ HIGH 결과를 받은 중간관리자는 RESOURCE #0의 완료를 추가 barrier로 만들지 않고 현재 전달된 WORK/QA/HIGH 결과와 RESOURCE의 현재 상태를 그대로 취합한다.
+⑧ GENERAL WORK와 QA/HIGH 흐름이 끝나고 Git 처리를 마치면 HQ에 반드시 최종 보고한다. RESOURCE #0이 PENDING이면 그 현재 상태만 보고하며 완료를 기다리지 않는다.
 ⑨ HQ는 이전 마일스톤의 성공·실패 여부와 관계없이 보고된 실제 변경, QA/HIGH 결과와 Git 상태를 기준으로 다음 지시를 만든다.
 
 제5조 (RESOURCE)
@@ -49,8 +49,9 @@
 ② RESOURCE 결과는 먼저 `<project-root>/temp/Resource`에 저장하고 작업 이력을 남긴다.
 ③ RESOURCE가 완료되어 프로젝트에 반영할 때는 복사본을 남기지 않고 HQ가 지정한 최종 프로젝트 경로로 move한다.
 ④ 최종 목적지가 HQ가 지정한 targetPath이면 현재 RESOURCE 작업이 우선하며 기존 파일이 있어도 최종 결과로 덮어쓴다.
-⑤ RESOURCE 결과와 보고는 일반 WorkItem 결과와 함께 현재 마일스톤 결과로 취급한다.
-⑥ RESOURCE 실패를 다른 임의 생성 경로로 자동 우회하지 않는다.
+⑤ RESOURCE 결과와 보고는 현재 마일스톤의 독립 sidecar 상태로 취급한다. 완료된 경우 결과를 전달하고, 아직 진행 중이면 PENDING 상태를 전달한다.
+⑥ RESOURCE #0은 GENERAL WORK 완료 barrier, QA 진입, HIGH 진입과 최종 통합을 차단하지 않는다. PENDING은 실패가 아니다.
+⑦ RESOURCE 실패를 다른 임의 생성 경로로 자동 우회하지 않는다.
 
 제6조 (Build, Run, Publish와 프로세스)
 

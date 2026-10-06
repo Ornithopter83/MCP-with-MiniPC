@@ -709,13 +709,43 @@ public partial class MainWindow
                         workItemId: "0",
                         persistenceSource: "WORKER RESOURCE QUEUE");
 
-                    return ExecuteMilestoneResourceAsync(
-                        workingDirectory,
-                        milestone,
-                        resource.Id,
-                        cancellationToken);
+                    return (
+                        Id: resource.Id,
+                        Task: ExecuteMilestoneResourceBackgroundAsync(
+                            workingDirectory,
+                            milestone,
+                            resource.Id,
+                            cancellationToken));
                 })
                 .ToArray();
+
+            void CaptureResourceStateWithoutWaiting()
+            {
+                foreach (var execution in resourceTasks)
+                {
+                    if (execution.Task.IsCompletedSuccessfully)
+                    {
+                        var result = execution.Task.Result;
+                        resourceReports[result.Id] = result.Report;
+                        foreach (var changedPath in result.ChangedPaths)
+                            milestoneChangedPaths.Add(changedPath);
+                    }
+                    else if (execution.Task.IsCompleted)
+                    {
+                        resourceReports[execution.Id] =
+                            "RESOURCE_STATUS: BLOCKED" +
+                            Environment.NewLine +
+                            "RESOURCE_BACKGROUND_EXECUTION_FAILED";
+                    }
+                    else
+                    {
+                        resourceReports[execution.Id] =
+                            "RESOURCE_STATUS: PENDING" +
+                            Environment.NewLine +
+                            "독립 RESOURCE sidecar 실행 중 · 다음 단계 진행을 차단하지 않음";
+                    }
+                }
+            }
 
             var runnableWorkIds = requestedWorkIds
                 .Where(milestone.WorkItems.ContainsKey)
@@ -846,16 +876,7 @@ public partial class MainWindow
                 }
             }
 
-            var completedResources = resourceTasks.Length == 0
-                ? Array.Empty<ResourceExecutionReport>()
-                : await Task.WhenAll(resourceTasks);
-
-            foreach (var resourceResult in completedResources)
-            {
-                resourceReports[resourceResult.Id] = resourceResult.Report;
-                foreach (var changedPath in resourceResult.ChangedPaths)
-                    milestoneChangedPaths.Add(changedPath);
-            }
+            CaptureResourceStateWithoutWaiting();
 
             using (var dispatchDocument =
                    JsonDocument.Parse(dispatchAction.JsonPayload!))
@@ -914,6 +935,8 @@ public partial class MainWindow
                 }
             }
 
+            CaptureResourceStateWithoutWaiting();
+
             SaveMilestoneExecutionGraph(
                 workingDirectory,
                 jobId,
@@ -928,9 +951,11 @@ public partial class MainWindow
             AddDataFlowHistory(
                 WorkerRoleState.Unknown,
                 "Worker 작업",
-                $"작업 묶음 종료\nWORK: {workReports.Count}/{milestone.WorkItems.Count} terminal\nRESOURCE: {resourceReports.Count}/{milestone.Resources.Count} terminal\n다음 단계: {(milestone.QaReserved ? "QA" : "HIGH")}",
+                $"GENERAL WORK 묶음 종료\nWORK: {workReports.Count}/{milestone.WorkItems.Count} terminal\nRESOURCE: 독립 sidecar · 완료 대기 없음\n다음 단계: {(milestone.QaReserved ? "QA" : "HIGH")}",
                 status: "COMPLETED",
                 persistenceSource: "WORKER ACTION");
+
+            CaptureResourceStateWithoutWaiting();
 
             if (milestone.QaReserved)
             {
@@ -947,6 +972,8 @@ public partial class MainWindow
                     cancellationToken);
             }
 
+            CaptureResourceStateWithoutWaiting();
+
             highReport = await ExecuteMilestoneHighAsync(
                 jobId,
                 workingDirectory,
@@ -959,6 +986,8 @@ public partial class MainWindow
                 high,
                 1,
                 cancellationToken);
+
+            CaptureResourceStateWithoutWaiting();
 
             foreach (var changedPath in
                      MilestoneDefinitionContract.ExtractHighChangedPaths(
@@ -1043,6 +1072,8 @@ public partial class MainWindow
                 foreach (var note in dispatchNotes)
                     finalEvent.AppendLine(note);
             }
+
+            CaptureResourceStateWithoutWaiting();
 
             var finalInput = MilestoneDefinitionContract.BuildManagerInput(
                 milestone,
@@ -1198,10 +1229,19 @@ public partial class MainWindow
 
         foreach (var resource in milestone.Resources.Values)
         {
+            var resourceState =
+                resourceReports.TryGetValue(resource.Id, out var resourceReport)
+                    ? resourceReport.StartsWith(
+                        "RESOURCE_STATUS: PENDING",
+                        StringComparison.Ordinal)
+                        ? "RUNNING"
+                        : "COMPLETED"
+                    : "PLANNED";
+
             nodes.Add(new(
                 "RESOURCE-" + resource.Id,
                 "RESOURCE",
-                resourceReports.ContainsKey(resource.Id) ? "COMPLETED" : "PLANNED",
+                resourceState,
                 resource.Id));
         }
 
@@ -1268,11 +1308,7 @@ public partial class MainWindow
             edges.Add(new(
                 "HQ-DESIGN",
                 resourceNode,
-                "RESOURCE_REQUEST"));
-            edges.Add(new(
-                resourceNode,
-                validationNode,
-                "RESOURCE_RESULT_TO_VALIDATION"));
+                "BACKGROUND_RESOURCE_REQUEST"));
         }
 
         if (milestone.QaReserved)
@@ -1642,6 +1678,50 @@ public partial class MainWindow
             referenceId: work.Id);
 
         return new(work.Id, report);
+    }
+
+    private async Task<ResourceExecutionReport> ExecuteMilestoneResourceBackgroundAsync(
+        string workingDirectory,
+        MilestoneDefinition milestone,
+        string resourceId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ExecuteMilestoneResourceAsync(
+                workingDirectory,
+                milestone,
+                resourceId,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            return new(
+                resourceId,
+                "RESOURCE_STATUS: BLOCKED" +
+                Environment.NewLine +
+                "RESOURCE_CANCELED",
+                Array.Empty<string>());
+        }
+        catch (Exception exception)
+        {
+            var report =
+                "RESOURCE_STATUS: BLOCKED" +
+                Environment.NewLine +
+                "RESOURCE_BACKGROUND_EXECUTION_FAILED" +
+                Environment.NewLine +
+                exception.Message;
+            AddRoleResponseHistory(
+                WorkerRoleState.Resource,
+                "리소스 독립 실행 실패",
+                report,
+                status: "BLOCKED");
+            return new(
+                resourceId,
+                report,
+                Array.Empty<string>());
+        }
     }
 
     private async Task<ResourceExecutionReport> ExecuteMilestoneResourceAsync(
