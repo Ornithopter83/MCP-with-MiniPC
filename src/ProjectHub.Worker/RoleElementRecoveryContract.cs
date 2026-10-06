@@ -127,7 +127,13 @@ internal static class RoleElementRecoveryContract
                     payload,
                     position,
                     definition.Name))
-                .Where(candidate => candidate is not null)
+                .Where(candidate =>
+                    candidate is not null &&
+                    IsExpectedElementValue(
+                        normalizedRole,
+                        actionName,
+                        definition.Name,
+                        candidate))
                 .Cast<string>()
                 .ToArray();
 
@@ -521,6 +527,74 @@ internal static class RoleElementRecoveryContract
                 "- " +
                 definition.Name +
                 (definition.Required ? " (required)" : " (optional)")));
+    }
+
+    private static bool IsExpectedElementValue(
+        string role,
+        string actionName,
+        string elementName,
+        string raw)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(raw);
+            var kind = document.RootElement.ValueKind;
+
+            if (string.Equals(role, "HQ", StringComparison.OrdinalIgnoreCase))
+            {
+                return elementName switch
+                {
+                    "id" or "branch" or "goal" or "projectPolicy" or
+                    "highInstructions" or "managerInstructions" =>
+                        kind == JsonValueKind.String,
+                    "entrypoint" =>
+                        kind is JsonValueKind.String or JsonValueKind.Null,
+                    "initializeGitIfMissing" =>
+                        kind is JsonValueKind.True or JsonValueKind.False,
+                    "repositoryBaseline" or "architecture" or "qa" =>
+                        kind == JsonValueKind.Object,
+                    "resource" =>
+                        kind is JsonValueKind.Object or JsonValueKind.Null,
+                    "workItems" or "completionCriteria" or "validation" =>
+                        kind == JsonValueKind.Array,
+                    "mechanicalInstructions" =>
+                        kind is JsonValueKind.Object or
+                            JsonValueKind.String or
+                            JsonValueKind.Array,
+                    _ => true
+                };
+            }
+
+            if (string.Equals(role, "MANAGER", StringComparison.OrdinalIgnoreCase))
+            {
+                return elementName switch
+                {
+                    "workItemIds" or "mechanical" =>
+                        kind == JsonValueKind.Array,
+                    "message" or "status" or "content" =>
+                        kind == JsonValueKind.String,
+                    _ => true
+                };
+            }
+
+            if (role is "WORK" or "QA" or "HIGH")
+            {
+                return elementName switch
+                {
+                    "status" or "summary" =>
+                        kind == JsonValueKind.String,
+                    "changedPaths" or "issues" =>
+                        kind == JsonValueKind.Array,
+                    _ => true
+                };
+            }
+
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static IEnumerable<string> InferElementsFromContractError(
