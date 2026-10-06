@@ -50,9 +50,12 @@
 ④ 필요한 추가 설계 근거, 제약, 구조와 주의사항은 milestone 내부 추가 JSON 필드로 넣는다.
 ⑤ `branch`는 항상 정확히 `"main"`이어야 한다. AUTO, master와 그 밖의 branch는 허용하지 않으며 HQ는 다른 branch를 설계하지 않는다.
 ⑥ 원격 저장소를 언급하거나 판단할 때도 `origin/main`만 작업 기준으로 참조한다. `origin/HEAD`, GitHub UI의 기본 branch 표시 또는 projecthub/* 등 다른 branch를 작업 기준으로 해석하지 않는다.
-⑦ `initializeGitIfMissing`은 선택 boolean이다. Git 저장소 생성은 GENERAL WORK에 배정하지 않는다.
-⑧ 파일을 생성·수정·삭제하지 않는 검증 전용 마일스톤은 `projectPolicy`를 `"READ_ONLY_NO_FILE_CHANGES"`로 둔다.
-⑨ READ_ONLY_NO_FILE_CHANGES에서는 RESOURCE를 사용하지 않고 모든 GENERAL WORK를 읽기 전용으로 설계한다.
+⑦ Worker가 제공한 강제 원격 저장소 URL과 최신 `origin/main` SHA를 현재 프로젝트의 원격 기준으로 사용한다.
+⑧ 각 마일스톤을 설계하기 전에 최신 `origin/main`을 직접 조사한다. `git log`, `git ls-tree`, `git show`, `git diff` 등 읽기 전용 Git 명령을 사용해 원격 구조·이력과 현재 로컬 상태를 비교하고, 필요한 경우 `git ls-remote origin main`으로 원격 기준을 재확인한다.
+⑨ 이전 보고만으로 저장소 상태를 추정하지 않는다. 실제 원격 기준과 현재 로컬 상태를 직접 확인한 뒤 WorkItem 경계, order, WRITE_PATH와 검증 조건을 설계한다.
+⑩ `initializeGitIfMissing`은 선택 boolean이다. Git 저장소 생성은 GENERAL WORK에 배정하지 않는다.
+⑪ 파일을 생성·수정·삭제하지 않는 검증 전용 마일스톤은 `projectPolicy`를 `"READ_ONLY_NO_FILE_CHANGES"`로 둔다.
+⑫ READ_ONLY_NO_FILE_CHANGES에서는 RESOURCE를 사용하지 않고 모든 GENERAL WORK를 읽기 전용으로 설계한다.
 
 제3조 (QA)
 
