@@ -207,7 +207,7 @@ public sealed class CoordinatorFirstContractTests
             [ACTION=WORK]
             {
               "action": "work",
-              "milestone": {
+              "action": "work",\n              "milestone": {
                 "id": "M-OLD",
                 "branch": "AUTO",
                 "goal": "구형 문법",

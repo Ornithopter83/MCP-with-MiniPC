@@ -564,7 +564,10 @@ public partial class MainWindow
                 fullMessage: dispatchMessage);
 
             if (dispatchEnvelope.Parse.HasErrors ||
-                dispatchEnvelope.Parse.ValidActions.Count != 1)
+                dispatchEnvelope.Parse.ValidActions.Count != 1 ||
+                !new[] { "DISPATCH", "PAUSE" }.Contains(
+                    dispatchEnvelope.Parse.ValidActions[0].Name,
+                    StringComparer.OrdinalIgnoreCase))
             {
                 return await BuildFailureReportAsync(
                     "MANAGER_DISPATCH_CONTRACT_INVALID: " +
@@ -1005,7 +1008,15 @@ public partial class MainWindow
 
                 managerMessage =
                     !finalEnvelope.Parse.HasErrors &&
-                    finalEnvelope.Parse.ValidActions.Count == 1
+                    finalEnvelope.Parse.ValidActions.Count == 1 &&
+                    string.Equals(
+                        finalEnvelope.Parse.ValidActions[0].Name,
+                        "REPORT",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        finalEnvelope.Parse.ValidActions[0].GotoTarget,
+                        "HQ",
+                        StringComparison.OrdinalIgnoreCase)
                         ? finalEnvelope.Message
                         : BuildManagerFallbackReport(
                             "MANAGER_FINAL_REPORT_CONTRACT_INVALID",
