@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Collections.Concurrent;
 
 namespace ProjectHub.Worker;
 
@@ -19,6 +20,9 @@ public partial class MainWindow
         string Id,
         string Report,
         IReadOnlyList<string> ChangedPaths);
+
+    private readonly ConcurrentDictionary<string, byte>
+        _formatRecoveryJobs = new(StringComparer.OrdinalIgnoreCase);
 
     private async Task RunMilestoneCoordinatorFirstJobAsync(
         string request,
@@ -105,6 +109,7 @@ public partial class MainWindow
                  milestoneIndex++)
             {
                 cts.Token.ThrowIfCancellationRequested();
+                _formatRecoveryJobs.TryRemove(jobId, out _);
 
                 RunOnUi(() =>
                 {
@@ -285,6 +290,8 @@ public partial class MainWindow
 
                 if (milestone is null)
                 {
+                    _formatRecoveryJobs[jobId] = 1;
+
                     var elementScan =
                         RoleElementRecoveryContract.Scan(
                             "HQ",
@@ -652,7 +659,8 @@ public partial class MainWindow
                                 milestone!.TargetBranch),
                             initialChangedPaths,
                             Array.Empty<string>(),
-                            currentLocalChanges));
+                            currentLocalChanges,
+                            _formatRecoveryJobs.ContainsKey(jobId)));
 
                     AddTaskMessage(
                         "MILESTONE ERROR",
@@ -749,6 +757,7 @@ public partial class MainWindow
             UserAttachmentTransport.CleanupStagedWorkerRuntime(
                 stagedAttachments,
                 normalizedRoot);
+            _formatRecoveryJobs.TryRemove(jobId, out _);
             _activeCoordinatorFirst = false;
             _activeTaskCts = null;
             _activeProjectJobId = null;
@@ -847,7 +856,8 @@ public partial class MainWindow
                     gitResult,
                     initialChangedPaths,
                     milestoneChangedPaths,
-                    currentLocalChanges));
+                    currentLocalChanges,
+                    _formatRecoveryJobs.ContainsKey(jobId)));
         }
 
         try
@@ -1564,7 +1574,8 @@ public partial class MainWindow
                     gitResult,
                     initialChangedPaths,
                     milestoneChangedPaths,
-                    currentLocalChanges));
+                    currentLocalChanges,
+                    _formatRecoveryJobs.ContainsKey(jobId)));
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1779,6 +1790,8 @@ public partial class MainWindow
 
         if (IsExpected(parsed))
             return (originalMessage, parsed, false);
+
+        _formatRecoveryJobs[jobId] = 1;
 
         var protocolError = new List<string>(parsed.Errors);
         if (!parsed.HasErrors &&
