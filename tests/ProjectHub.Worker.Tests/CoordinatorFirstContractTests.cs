@@ -591,6 +591,8 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("\"branch\": \"main\"", hq);
         Assert.DoesNotContain("\"branch\": \"AUTO\"", hq);
         Assert.Contains("AUTO, master와 그 밖의 branch는 허용하지 않으며", hq);
+        Assert.Contains("`origin/main`만 작업 기준으로 참조한다", hq);
+        Assert.Contains("개별 changedPaths나 전체 dirty 파일 목록을 HQ 보고에 일일이 열거하지 않는다", manager);
         Assert.Contains("[GOTO : 역할]", hq);
         Assert.DoesNotContain("END_ACTION", manager);
         Assert.DoesNotContain("BODY_BEGIN", manager);
@@ -623,6 +625,74 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain(
             "제1조 (기본 책임)",
             managerFollowup);
+    }
+
+    [Fact]
+    public void HqReport_UsesCompactManagerResultWithoutDetailedPathLists()
+    {
+        const string message = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "COMPACT_REPORT",
+                "branch": "main",
+                "goal": "보고 축약 검증",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        var parsed = ActionBlockContract.ParseHq(message);
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            message,
+            parsed,
+            out var milestone,
+            out var error),
+            error);
+
+        var report = MilestoneDefinitionContract.BuildHqReport(
+            milestone!,
+            "[GOTO : HQ]\n[ACTION=REPORT]\n{\"status\":\"completed\",\"summary\":\"완료\",\"issues\":[]}",
+            new Dictionary<string, string>
+            {
+                ["10"] = "[ACTION=RESULT]\n{\"changedPaths\":[\"src/A.cs\"]}"
+            },
+            new Dictionary<string, string>
+            {
+                ["0"] = "RESOURCE_STATUS: PENDING"
+            },
+            new[] { "MECHANICAL BUILD\nstatus=COMPLETED" },
+            "QA DETAIL",
+            "HIGH DETAIL",
+            new MilestoneGitResult(
+                true,
+                false,
+                "main",
+                "abc123",
+                "Git finalize 완료"),
+            new[] { "old.txt" },
+            new[] { "src/A.cs" },
+            new[] { "src/A.cs", "old.txt" });
+
+        Assert.Contains("TARGET_BRANCH: main", report);
+        Assert.Contains("REMOTE_BRANCH: origin/main", report);
+        Assert.Contains("RESOURCE_STATUS: PENDING", report);
+        Assert.Contains("MANAGER_FINAL_REPORT:", report);
+        Assert.DoesNotContain("WORK_RESULTS:", report);
+        Assert.DoesNotContain("MILESTONE_CHANGESET:", report);
+        Assert.DoesNotContain("INITIAL_LOCAL_CHANGES:", report);
+        Assert.DoesNotContain("CURRENT_LOCAL_CHANGES:", report);
+        Assert.DoesNotContain("src/A.cs", report);
+        Assert.DoesNotContain("QA DETAIL", report);
+        Assert.DoesNotContain("HIGH DETAIL", report);
     }
 
     [Fact]

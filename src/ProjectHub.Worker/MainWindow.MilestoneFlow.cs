@@ -1697,11 +1697,18 @@ public partial class MainWindow
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
         {
-            return new(
-                resourceId,
+            var report =
                 "RESOURCE_STATUS: BLOCKED" +
                 Environment.NewLine +
-                "RESOURCE_CANCELED",
+                "RESOURCE_CANCELED";
+            AddRoleResponseHistory(
+                WorkerRoleState.Resource,
+                "리소스 독립 실행 종료",
+                report,
+                status: "BLOCKED");
+            return new(
+                resourceId,
+                report,
                 Array.Empty<string>());
         }
         catch (Exception exception)
@@ -1732,11 +1739,18 @@ public partial class MainWindow
     {
         if (!milestone.Resources.TryGetValue(resourceId, out var resource))
         {
-            return new(
-                resourceId,
+            var report =
                 "RESOURCE_STATUS: BLOCKED" +
                 Environment.NewLine +
-                "계획되지 않은 RESOURCE_ID입니다.",
+                "계획되지 않은 RESOURCE_ID입니다.";
+            AddRoleResponseHistory(
+                WorkerRoleState.Resource,
+                "리소스 독립 실행 종료",
+                report,
+                status: "BLOCKED");
+            return new(
+                resourceId,
+                report,
                 Array.Empty<string>());
         }
 

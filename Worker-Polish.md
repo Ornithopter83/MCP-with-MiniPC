@@ -41,7 +41,8 @@
 ⑥ 예약된 QA가 없거나 QA 실행이 끝나면 HIGH를 호출한다. RESOURCE #0이 아직 진행 중이어도 HIGH 진입을 기다리지 않는다.
 ⑦ HIGH 결과를 받은 중간관리자는 RESOURCE #0의 완료를 추가 barrier로 만들지 않고 현재 전달된 WORK/QA/HIGH 결과와 RESOURCE의 현재 상태를 그대로 취합한다.
 ⑧ GENERAL WORK와 QA/HIGH 흐름이 끝나고 Git 처리를 마치면 HQ에 반드시 최종 보고한다. RESOURCE #0이 PENDING이면 그 현재 상태만 보고하며 완료를 기다리지 않는다.
-⑨ HQ는 이전 마일스톤의 성공·실패 여부와 관계없이 보고된 실제 변경, QA/HIGH 결과와 Git 상태를 기준으로 다음 지시를 만든다.
+⑨ HQ 최종 입력에는 현재 마일스톤의 의미 결과, 아직 해결되지 않은 문제, RESOURCE 현재 상태, Git 결과와 중간관리자 최종 보고만 전달한다. WORK/HIGH의 changedPaths와 초기·현재 dirty 전체 목록은 Worker 내부 기계 상태로 유지하고 HQ에 반복 주입하지 않는다.
+⑩ 이전 마일스톤에서 이미 종결된 세부 변경·성공 로그는 다음 HQ 보고에 누적하지 않는다. 현재 판단에 계속 영향을 주는 미해결 사실만 승계한다.
 
 제5조 (RESOURCE)
 
@@ -51,7 +52,8 @@
 ④ 최종 목적지가 HQ가 지정한 targetPath이면 현재 RESOURCE 작업이 우선하며 기존 파일이 있어도 최종 결과로 덮어쓴다.
 ⑤ RESOURCE 결과와 보고는 현재 마일스톤의 독립 sidecar 상태로 취급한다. 완료된 경우 결과를 전달하고, 아직 진행 중이면 PENDING 상태를 전달한다.
 ⑥ RESOURCE #0은 GENERAL WORK 완료 barrier, QA 진입, HIGH 진입과 최종 통합을 차단하지 않는다. PENDING은 실패가 아니다.
-⑦ RESOURCE 실패를 다른 임의 생성 경로로 자동 우회하지 않는다.
+⑦ RESOURCE sidecar는 다른 역할의 진행과 무관하게 자신이 종료되는 시점에 COMPLETED 또는 BLOCKED 계열 terminal 결과를 작업 이력에 정확히 한 번 남겨야 한다. timeout, 예외와 사용자 취소도 terminal 결과다.
+⑧ RESOURCE 실패를 다른 임의 생성 경로로 자동 우회하지 않는다.
 
 제6조 (Build, Run, Publish와 프로세스)
 
@@ -80,12 +82,13 @@
 ③ 새 저장소는 `git init -b main`으로 초기화한다. 호환성 fallback이 필요하더라도 최종 HEAD는 반드시 `refs/heads/main`이어야 하며 다른 branch 이름을 허용하지 않는다.
 ④ 기존 저장소에서 local main이 있으면 main으로 전환하고, local main은 없지만 origin/main이 있으면 origin/main을 추적하는 local main만 준비한다. local/remote main이 모두 없으면 현재 branch 이름을 main으로 변경하여 수렴시킨다. main으로 수렴하지 못하면 PAUSE하며 다른 branch에서 작업하지 않는다.
 ⑤ HQ, 사용자 입력 또는 다른 역할이 main 이외의 branch를 지정해도 실행하지 않는다. 마일스톤 계약 단계에서 오류로 처리한다.
-⑥ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push는 Worker가 main에 대해서만 기계적으로 수행한다.
-⑦ WorkItem별 별도 branch, checkpoint branch, Integration branch와 별도 원격 result branch를 생성하거나 사용하지 않는다.
-⑧ 마일스톤 종료 시 Worker는 HQ가 지정한 WRITE_PATH와 RESOURCE targetPath, HIGH가 명시한 CHANGED_PATH 안에서 현재 마일스톤 변경목록에 기록된 생성·수정·삭제만 stage하여 main에 하나의 마일스톤 commit을 만든다. 지정되지 않은 경로는 dirty여도 stage·commit하지 않는다. 프로젝트 전체를 무조건 stage하지 않는다.
-⑨ commit 또는 push 문제가 있으면 main에 한해서 fetch/rebase와 재시도를 수행할 수 있다. 다른 branch로 우회하거나 다른 branch에 push하지 않는다.
-⑩ 원격 서비스 정책, 권한, 네트워크 또는 실제 Git 제약 때문에 main push가 불가능하거나 반복 해결에 실패한 경우 현재 commit SHA, 로컬/원격 상태와 실패 사실을 HQ에 보고한다.
-⑪ push 성공 여부와 무관하게 마일스톤의 모든 작업이 끝났다면 HQ 최종 보고는 생략하지 않는다.
+⑥ HQ와 Worker가 원격 Git 상태를 참조할 때 작업 기준은 오직 `origin/main`이다. `origin/HEAD`, GitHub UI의 기본 branch 표시 또는 다른 원격 branch를 작업 대상 추론에 사용하지 않는다.
+⑦ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push는 Worker가 main에 대해서만 기계적으로 수행한다.
+⑧ WorkItem별 별도 branch, checkpoint branch, Integration branch와 별도 원격 result branch를 생성하거나 사용하지 않는다.
+⑨ 마일스톤 종료 시 Worker는 HQ가 지정한 WRITE_PATH와 RESOURCE targetPath, HIGH가 명시한 CHANGED_PATH 안에서 현재 마일스톤 변경목록에 기록된 생성·수정·삭제만 stage하여 main에 하나의 마일스톤 commit을 만든다. 지정되지 않은 경로는 dirty여도 stage·commit하지 않는다. 프로젝트 전체를 무조건 stage하지 않는다.
+⑩ commit 또는 push 문제가 있으면 main에 한해서 fetch/rebase와 재시도를 수행할 수 있다. 다른 branch로 우회하거나 다른 branch에 push하지 않는다.
+⑪ 원격 서비스 정책, 권한, 네트워크 또는 실제 Git 제약 때문에 main push가 불가능하거나 반복 해결에 실패한 경우 현재 commit SHA, 로컬/원격 상태와 실패 사실을 HQ에 보고한다.
+⑫ push 성공 여부와 무관하게 마일스톤의 모든 작업이 끝났다면 HQ 최종 보고는 생략하지 않는다.
 
 제9조 (보고과 상태)
 
@@ -93,7 +96,7 @@
 ② 현재 마일스톤 임시정보에는 최소한 HQ 지시, HQ 세부설계, 현재 마일스톤 변경목록, WorkItem/RESOURCE 결과, 최신 QA 결과와 최신 HIGH 결과를 둘 수 있다.
 ③ QA와 HIGH의 과거 검증 cycle 전체를 영구 이력으로 누적하는 것을 기본으로 하지 않는다. 장기적으로 필요한 사실은 프로젝트 문서나 HQ 관제 맥락에서 유지한다.
 ④ 진행 중 마일스톤의 복잡한 snapshot·rollback을 필수로 두지 않는다. 장애 후 상태가 애매하면 HQ가 현재 로컬 상태를 보고 재수행 여부를 판단한다.
-⑤ 중간관리자의 HQ 최종 보고에는 현재 로컬 변경 상태, WORK/RESOURCE 결과, QA 결과가 있으면 그 결과, HIGH 결과, 후속 작업, commit·push 결과와 참조 가능한 commit SHA를 포함한다.
+⑤ 중간관리자의 HQ 최종 보고는 현재 마일스톤의 의미 결과, RESOURCE 현재 상태, QA/HIGH의 최종 판단, 아직 해결되지 않은 문제, commit·push 결과와 참조 가능한 commit SHA를 요약한다. 개별 파일 changedPaths, 초기 dirty 전체 목록과 이미 종결된 이전 마일스톤 세부 로그는 HQ 보고에 반복하지 않는다.
 
 제10조 (PAUSE와 사용자 개입)
 

@@ -643,29 +643,39 @@ internal static class MilestoneDefinitionContract
         IReadOnlyCollection<string> milestoneChanges,
         IReadOnlyCollection<string> currentLocalChanges)
     {
+        // Detailed WORK/HIGH changed paths and dirty snapshots remain Worker
+        // mechanical state. HQ receives only the semantic integration result.
+        _ = workReports;
+        _ = mechanicalReports;
+        _ = qaReport;
+        _ = highReport;
+        _ = initialLocalChanges;
+        _ = milestoneChanges;
+        _ = currentLocalChanges;
+
         var builder = new StringBuilder();
         builder.AppendLine("MILESTONE_RESULT");
         builder.AppendLine($"MILESTONE_ID: {milestone.Id}");
-        AppendReports(builder, "WORK_RESULTS", workReports);
-        AppendReports(builder, "RESOURCE_RESULTS", resourceReports);
-        builder.AppendLine("MECHANICAL_RESULTS:");
-        if (mechanicalReports.Count == 0)
+        builder.AppendLine("TARGET_BRANCH: main");
+        builder.AppendLine("REMOTE_BRANCH: origin/main");
+        builder.AppendLine("RESOURCE_STATE_AT_REPORT:");
+        if (resourceReports.Count == 0)
+        {
             builder.AppendLine("- 없음");
+        }
         else
-            foreach (var report in mechanicalReports)
-                builder.AppendLine(report);
-        builder.AppendLine("QA_REPORT:");
-        builder.AppendLine(string.IsNullOrWhiteSpace(qaReport) ? "없음" : qaReport);
-        builder.AppendLine("HIGH_REPORT:");
-        builder.AppendLine(string.IsNullOrWhiteSpace(highReport) ? "없음" : highReport);
-        builder.AppendLine("MILESTONE_CHANGESET:");
-        AppendPaths(builder, milestoneChanges);
-        builder.AppendLine("INITIAL_LOCAL_CHANGES:");
-        AppendPaths(builder, initialLocalChanges);
-        builder.AppendLine("CURRENT_LOCAL_CHANGES:");
-        AppendPaths(builder, currentLocalChanges);
+        {
+            foreach (var pair in resourceReports.OrderBy(
+                         pair => pair.Key,
+                         StringComparer.OrdinalIgnoreCase))
+            {
+                builder.AppendLine($"--- {pair.Key} ---");
+                builder.AppendLine(Limit(pair.Value, 2000));
+            }
+        }
+
         builder.AppendLine("GIT_RESULT:");
-        builder.AppendLine(gitResult.Summary);
+        builder.AppendLine(Limit(gitResult.Summary, 4000));
         builder.AppendLine("MANAGER_FINAL_REPORT:");
         builder.AppendLine(managerMessage);
         return builder.ToString();

@@ -56,7 +56,9 @@
 }
 
 ② status는 completed, partial, blocked 중 하나다.
-③ 최종 입력으로 받은 HQ 설계, WORK/RESOURCE 실행 결과, QA/HIGH 결과, 기계 작업과 Git 결과를 사실대로 요약한다.
-④ RESOURCE에 대한 최종 검증 판단은 QA/HIGH 보고를 그대로 전달하며 MANAGER가 다시 생성·수정·검증하지 않는다. RESOURCE가 아직 PENDING이면 완료를 기다리지 않고 PENDING으로 보고한다.
-⑤ 최종 응답에서는 DISPATCH, PAUSE 등 새 실행 ACTION을 만들지 않는다.
-⑥ 미완료나 실패가 있어도 같은 마일스톤을 다시 돌리지 않고 HQ에 보고한다.
+③ 최종 입력으로 받은 현재 마일스톤의 결과를 의미 단위로 요약한다. 개별 changedPaths나 전체 dirty 파일 목록을 HQ 보고에 일일이 열거하지 않는다.
+④ 이전 마일스톤에서 이미 종결된 성공·변경 세부사항은 반복하지 않는다. 현재 마일스톤 판단에 계속 영향을 주는 미해결 사실만 issues 또는 summary에 유지한다.
+⑤ RESOURCE에 대한 최종 검증 판단은 QA/HIGH 보고를 그대로 전달하며 MANAGER가 다시 생성·수정·검증하지 않는다. RESOURCE가 아직 PENDING이면 완료를 기다리지 않고 PENDING으로 보고한다.
+⑥ Git branch는 `main`, 원격 작업 기준은 `origin/main`으로만 보고한다. 다른 branch 이름은 사용자가 정리 자체를 요청한 경우의 사실 보고 외에는 최종 작업 기준으로 제시하지 않는다.
+⑦ 최종 응답에서는 DISPATCH, PAUSE 등 새 실행 ACTION을 만들지 않는다.
+⑧ 미완료나 실패가 있어도 같은 마일스톤을 다시 돌리지 않고 HQ에 보고한다.

@@ -195,6 +195,9 @@ internal static class MilestoneMechanicalExecutor
                 $"current={currentBranch}");
         }
 
+        var originHeadSummary =
+            await AlignLocalOriginHeadToMainAsync(Run)
+                .ConfigureAwait(false);
         var head = await Run("rev-parse", "HEAD").ConfigureAwait(false);
         return new(
             true,
@@ -204,6 +207,10 @@ internal static class MilestoneMechanicalExecutor
             "Git preflight 완료" +
             Environment.NewLine +
             "branch=main" +
+            Environment.NewLine +
+            "remoteBranch=origin/main" +
+            Environment.NewLine +
+            originHeadSummary +
             Environment.NewLine +
             $"head={(head.ExitCode == 0 ? head.StandardOutput.Trim() : "확인 실패")}");
     }
@@ -759,6 +766,10 @@ internal static class MilestoneMechanicalExecutor
                     : push.StandardError));
         }
 
+        var originHeadSummary =
+            await AlignLocalOriginHeadToMainAsync(Run)
+                .ConfigureAwait(false);
+
         return new(
             true,
             false,
@@ -768,11 +779,52 @@ internal static class MilestoneMechanicalExecutor
             Environment.NewLine +
             "branch=main" +
             Environment.NewLine +
+            "remoteBranch=origin/main" +
+            Environment.NewLine +
+            originHeadSummary +
+            Environment.NewLine +
             $"commit={commitSha ?? "없음"}" +
             Environment.NewLine +
             $"createdCommit={(createdCommit ? "YES" : "NO")}" +
             Environment.NewLine +
             "push=COMPLETED");
+    }
+
+    private static async Task<string> AlignLocalOriginHeadToMainAsync(
+        Func<string[], Task<GitCommandResult>> run)
+    {
+        var origin = await run(new[]
+        {
+            "remote",
+            "get-url",
+            "origin"
+        }).ConfigureAwait(false);
+
+        if (origin.ExitCode != 0)
+            return "originHead=NO_ORIGIN";
+
+        var remoteMain = await run(new[]
+        {
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/remotes/origin/" + RequiredBranch
+        }).ConfigureAwait(false);
+
+        if (remoteMain.ExitCode != 0)
+            return "originHead=origin/main not fetched yet";
+
+        var setHead = await run(new[]
+        {
+            "remote",
+            "set-head",
+            "origin",
+            RequiredBranch
+        }).ConfigureAwait(false);
+
+        return setHead.ExitCode == 0
+            ? "originHead=origin/main"
+            : "originHead=origin/main alignment failed";
     }
 
     private static async Task<string> ReadCurrentBranchAsync(

@@ -49,9 +49,10 @@
 - `validation`: HIGH/QA 핵심 검증 조건 문자열 배열
 ④ 필요한 추가 설계 근거, 제약, 구조와 주의사항은 milestone 내부 추가 JSON 필드로 넣는다.
 ⑤ `branch`는 항상 정확히 `"main"`이어야 한다. AUTO, master와 그 밖의 branch는 허용하지 않으며 HQ는 다른 branch를 설계하지 않는다.
-⑥ `initializeGitIfMissing`은 선택 boolean이다. Git 저장소 생성은 GENERAL WORK에 배정하지 않는다.
-⑦ 파일을 생성·수정·삭제하지 않는 검증 전용 마일스톤은 `projectPolicy`를 `"READ_ONLY_NO_FILE_CHANGES"`로 둔다.
-⑧ READ_ONLY_NO_FILE_CHANGES에서는 RESOURCE를 사용하지 않고 모든 GENERAL WORK를 읽기 전용으로 설계한다.
+⑥ 원격 저장소를 언급하거나 판단할 때도 `origin/main`만 작업 기준으로 참조한다. `origin/HEAD`, GitHub UI의 기본 branch 표시 또는 projecthub/* 등 다른 branch를 작업 기준으로 해석하지 않는다.
+⑦ `initializeGitIfMissing`은 선택 boolean이다. Git 저장소 생성은 GENERAL WORK에 배정하지 않는다.
+⑧ 파일을 생성·수정·삭제하지 않는 검증 전용 마일스톤은 `projectPolicy`를 `"READ_ONLY_NO_FILE_CHANGES"`로 둔다.
+⑨ READ_ONLY_NO_FILE_CHANGES에서는 RESOURCE를 사용하지 않고 모든 GENERAL WORK를 읽기 전용으로 설계한다.
 
 제3조 (QA)
 
@@ -130,6 +131,9 @@
 제7조 (관제)
 
 ① HQ는 개별 WORK가 끝날 때마다 호출되는 중간관리자가 아니다.
-② 중간관리자가 마일스톤의 모든 작업과 Git 결과까지 모아 보고한 뒤 HQ가 다시 판단한다.
-③ HQ는 실제 로컬 결과, WORK/RESOURCE 결과, QA 결과가 있으면 그 결과, HIGH 결과, Git 결과를 받아 다음 마일스톤을 결정한다.
-④ 실패나 미완료 보고도 다음 판단의 입력으로 사용한다.
+② 중간관리자가 현재 마일스톤의 실행과 Git 결과를 취합해 최종 보고한 뒤 HQ가 다시 판단한다.
+③ HQ는 중간관리자의 의미 요약, RESOURCE 현재 상태, QA/HIGH 최종 판단, 아직 해결되지 않은 문제와 Git 결과를 받아 다음 마일스톤을 결정한다.
+④ WORK/HIGH의 개별 changedPaths, 초기·현재 dirty 전체 목록과 이미 종결된 이전 마일스톤 세부 로그를 요구하거나 다시 열거하지 않는다. 상세 경로는 Worker의 Git/검증 기계 상태로 둔다.
+⑤ 이전 마일스톤 정보는 현재 판단에 계속 영향을 주는 미해결 사실만 승계한다.
+⑥ 실패나 미완료 보고도 다음 판단의 입력으로 사용한다.
+⑦ branch 판단은 항상 현재 로컬 `main`과 원격 `origin/main`을 직접 기준으로 하며 다른 branch를 대체 기준으로 사용하지 않는다.
