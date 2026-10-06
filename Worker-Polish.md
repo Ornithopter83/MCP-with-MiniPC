@@ -58,7 +58,7 @@
 ② HQ는 QA가 확인해야 할 실행파일 경로나 프로젝트 entrypoint를 마일스톤 설계에 미리 지정할 수 있고, 중간관리자는 QA 전에 해당 실행 대상을 준비한다.
 ③ build·publish 최종 결과는 `<project-root>/bin`에 두고 가장 최근 상태만 유지한다. 실행별·시점별 결과를 별도 영구 경로에 누적하지 않는다.
 ④ `.projecthub/artifacts` 같은 별도 게시 artifact 저장소를 사용하지 않는다.
-⑤ `bin/`과 `temp/`는 기본 Git 제외영역으로 사용한다.
+⑤ `bin/`, `temp/`, `.projecthub/`는 ProjectHub 런타임 Git 제외영역으로 사용한다. Worker는 이를 위해 tracked `.gitignore`를 자동 수정하지 않고 저장소 로컬 `.git/info/exclude`를 사용한다.
 ⑥ 결과 파일의 최신 변경 시각 같은 기계 사실은 필요 시 참고할 수 있으나 Worker가 제품 품질을 의미적으로 판정하지 않는다.
 ⑦ 역할 또는 build·run·QA가 시작한 외부 실행 프로세스는 해당 보고 시점에 종료되어 있어야 한다. 남아 있으면 Worker가 관리하는 프로세스 tree를 강제 종료하는 것을 원칙으로 한다.
 ⑧ ProjectHub/Worker 프로세스 자신은 child Job Object에 넣지 않고, Worker가 관리하는 외부 프로세스는 KILL_ON_JOB_CLOSE 경계에 연결한다.
