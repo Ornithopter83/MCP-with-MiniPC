@@ -17,26 +17,6 @@ internal sealed record RoleElementScanResult(
 
 internal static class RoleElementRecoveryContract
 {
-    private static readonly RoleElementDefinition[] HqWorkElements =
-    {
-        new("id", true),
-        new("branch", true),
-        new("goal", true),
-        new("entrypoint", true),
-        new("initializeGitIfMissing", false),
-        new("projectPolicy", false),
-        new("repositoryBaseline", false),
-        new("architecture", false),
-        new("qa", true),
-        new("resource", true),
-        new("workItems", true),
-        new("mechanicalInstructions", false),
-        new("highInstructions", false),
-        new("managerInstructions", false),
-        new("completionCriteria", true, PreferLast: true),
-        new("validation", true, PreferLast: true)
-    };
-
     public static IReadOnlyList<RoleElementDefinition> GetDefinitions(
         string role,
         string actionName)
@@ -44,17 +24,6 @@ internal static class RoleElementRecoveryContract
         var normalizedRole = (role ?? string.Empty).Trim().ToUpperInvariant();
         var normalizedAction =
             (actionName ?? string.Empty).Trim().ToUpperInvariant();
-
-        if (normalizedRole == "HQ")
-        {
-            return normalizedAction switch
-            {
-                "WORK" => HqWorkElements,
-                "PAUSE" or "END" =>
-                    new[] { new RoleElementDefinition("message", true) },
-                _ => HqWorkElements
-            };
-        }
 
         if (normalizedRole == "MANAGER")
         {
@@ -420,87 +389,6 @@ internal static class RoleElementRecoveryContract
         return true;
     }
 
-    public static bool TryBuildHqWorkResponse(
-        RoleElementScanResult originalScan,
-        IReadOnlyDictionary<string, string> recoveredByWork,
-        out string response,
-        out IReadOnlyList<string> remainingElements)
-    {
-        response = string.Empty;
-        var values = new Dictionary<string, string>(
-            StringComparer.OrdinalIgnoreCase);
-        foreach (var pair in originalScan.Recovered)
-            values[pair.Key] = pair.Value;
-
-        foreach (var pair in recoveredByWork)
-        {
-            if (HqWorkElements.Any(definition =>
-                    string.Equals(
-                        definition.Name,
-                        pair.Key,
-                        StringComparison.OrdinalIgnoreCase)) &&
-                IsExpectedElementValue(
-                    "HQ",
-                    "WORK",
-                    pair.Key,
-                    pair.Value))
-            {
-                values[pair.Key] = pair.Value;
-            }
-        }
-
-        var unread = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase);
-        foreach (var recoveryTarget in originalScan.RecoveryTargets)
-        {
-            if (!values.ContainsKey(recoveryTarget))
-                unread.Add(recoveryTarget);
-        }
-
-        var requiredMissing = HqWorkElements
-            .Where(definition =>
-                definition.Required &&
-                !values.ContainsKey(definition.Name))
-            .Select(definition => definition.Name)
-            .ToArray();
-        foreach (var required in requiredMissing)
-            unread.Add(required);
-
-        remainingElements = unread
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        // optional element를 끝내 못 읽은 경우에는 그 element만 생략하고
-        // 읽은 원본 값 + 복구 값을 merge해 계속 진행한다.
-        if (requiredMissing.Length > 0)
-            return false;
-
-        var builder = new StringBuilder();
-        builder.AppendLine("[ACTION=WORK]");
-        builder.AppendLine("{");
-        builder.AppendLine("  \"milestone\": {");
-
-        var available = HqWorkElements
-            .Where(definition => values.ContainsKey(definition.Name))
-            .ToArray();
-        for (var index = 0; index < available.Length; index++)
-        {
-            var definition = available[index];
-            builder.Append("    ");
-            builder.Append(JsonSerializer.Serialize(definition.Name));
-            builder.Append(": ");
-            builder.Append(values[definition.Name]);
-            if (index < available.Length - 1)
-                builder.Append(',');
-            builder.AppendLine();
-        }
-
-        builder.AppendLine("  }");
-        builder.Append('}');
-        response = builder.ToString();
-        return true;
-    }
-
     public static string DescribeElements(
         string role,
         string actionName)
@@ -527,31 +415,6 @@ internal static class RoleElementRecoveryContract
         {
             using var document = JsonDocument.Parse(raw);
             var kind = document.RootElement.ValueKind;
-
-            if (string.Equals(role, "HQ", StringComparison.OrdinalIgnoreCase))
-            {
-                return elementName switch
-                {
-                    "id" or "branch" or "goal" or "projectPolicy" or
-                    "highInstructions" or "managerInstructions" =>
-                        kind == JsonValueKind.String,
-                    "entrypoint" =>
-                        kind is JsonValueKind.String or JsonValueKind.Null,
-                    "initializeGitIfMissing" =>
-                        kind is JsonValueKind.True or JsonValueKind.False,
-                    "repositoryBaseline" or "architecture" or "qa" =>
-                        kind == JsonValueKind.Object,
-                    "resource" =>
-                        kind is JsonValueKind.Object or JsonValueKind.Null,
-                    "workItems" or "completionCriteria" or "validation" =>
-                        kind == JsonValueKind.Array,
-                    "mechanicalInstructions" =>
-                        kind is JsonValueKind.Object or
-                            JsonValueKind.String or
-                            JsonValueKind.Array,
-                    _ => true
-                };
-            }
 
             if (string.Equals(role, "MANAGER", StringComparison.OrdinalIgnoreCase))
             {
@@ -592,14 +455,6 @@ internal static class RoleElementRecoveryContract
     {
         var normalized = (error ?? string.Empty).ToUpperInvariant();
 
-        if (string.Equals(role, "HQ", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(actionName, "WORK", StringComparison.OrdinalIgnoreCase))
-        {
-            foreach (var item in InferHqElementsFromContractError(normalized))
-                yield return item;
-            yield break;
-        }
-
         if (normalized.Contains("STATUS_", StringComparison.Ordinal) ||
             normalized.Contains("STATUS_REQUIRED", StringComparison.Ordinal))
         {
@@ -636,37 +491,6 @@ internal static class RoleElementRecoveryContract
 
         if (normalized.Contains("CONTENT_REQUIRED", StringComparison.Ordinal))
             yield return "content";
-    }
-
-    private static IEnumerable<string> InferHqElementsFromContractError(
-        string normalized)
-    {
-        if (normalized.Contains("WORK ", StringComparison.Ordinal) ||
-            normalized.Contains("WORK_ITEM", StringComparison.Ordinal) ||
-            normalized.Contains("ORDER_", StringComparison.Ordinal) ||
-            normalized.Contains("WRITE_PATH", StringComparison.Ordinal))
-        {
-            yield return "workItems";
-        }
-
-        if (normalized.Contains("MILESTONE_ID", StringComparison.Ordinal))
-            yield return "id";
-        if (normalized.Contains("BRANCH", StringComparison.Ordinal))
-            yield return "branch";
-        if (normalized.Contains("GOAL", StringComparison.Ordinal))
-            yield return "goal";
-        if (normalized.Contains("ENTRYPOINT", StringComparison.Ordinal))
-            yield return "entrypoint";
-        if (normalized.Contains("QA_", StringComparison.Ordinal))
-            yield return "qa";
-        if (normalized.Contains("RESOURCE", StringComparison.Ordinal))
-            yield return "resource";
-        if (normalized.Contains("COMPLETION_CRITERIA", StringComparison.Ordinal))
-            yield return "completionCriteria";
-        if (normalized.Contains("VALIDATION", StringComparison.Ordinal))
-            yield return "validation";
-        if (normalized.Contains("GIT_INIT", StringComparison.Ordinal))
-            yield return "initializeGitIfMissing";
     }
 
     private static string ReadActionName(string rawResponse)
