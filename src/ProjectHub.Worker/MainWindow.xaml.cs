@@ -2913,6 +2913,8 @@ public partial class MainWindow : Window
         _taskThreadName = string.IsNullOrWhiteSpace(selectedThread?.SessionId)
             ? "NewThread"
             : selectedThread.Label;
+        if (!string.IsNullOrWhiteSpace(projectPath))
+            WorkerPaths.EnsureProjectHubLocalExclude(projectPath);
         StartCommandTranscript();
         AddTaskMessage("USER COMMAND", command);
         AddTaskMessage("GPT WEB INSTRUCTION", webInstruction);
