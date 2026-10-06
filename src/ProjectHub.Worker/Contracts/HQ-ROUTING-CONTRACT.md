@@ -82,9 +82,12 @@
 ② id는 10 이상의 정수 또는 같은 값을 나타내는 문자열이다.
 ③ 쓰기 WorkItem은 readOnly=false이고 writePaths에 프로젝트 루트 기준 상대경로를 하나 이상 둔다.
 ④ 읽기 전용 WorkItem은 readOnly=true이고 writePaths를 빈 배열로 둘 수 있다.
-⑤ 동시에 실행할 쓰기 WorkItem의 경로는 서로 겹치지 않게 설계한다.
-⑥ 같은 마일스톤 내부 dependency는 최대한 만들지 않는다.
-⑦ WRITE_PATH 안의 기존 dirty 변경 때문에 작업을 피하지 않는다.
+⑤ 하나의 WorkItem에 서로 독립적으로 수행 가능한 여러 목표를 묶지 않는다. 병렬 실행 가능한 최소 원자 작업으로 최대한 분해한다.
+⑥ 예를 들어 하나의 작업이 A·B·C로 나뉘고 서로 다른 파일 또는 경로에서 독립 수행 가능하면 `#10 A`, `#11 B`, `#12 C`처럼 별도 WorkItem으로 설계한다. `#10 ABC`처럼 한 WorkItem에 합치지 않는다.
+⑦ 동시에 실행할 쓰기 WorkItem의 WRITE_PATH는 서로 겹치지 않게 설계한다.
+⑧ 같은 파일을 함께 수정해야 하거나 A 결과가 B의 필수 전제인 경우에는 억지로 분리하지 않는다. 이 경우 같은 WorkItem으로 두거나 다음 마일스톤으로 분리한다.
+⑨ build·run·publish와 bin/obj/dist 같은 실행·빌드 산출물 생성을 GENERAL WORK의 책임이나 WRITE_PATH로 배정하지 않는다. 소스 구현과 기계 실행 책임을 분리한다.
+⑩ WRITE_PATH 안의 기존 dirty 변경 때문에 작업을 피하지 않는다.
 
 제5조 (RESOURCE)
 
@@ -102,7 +105,9 @@
 ④ RESOURCE는 GPTWEB 고정이며 다른 Provider·모델로 대체하지 않는다.
 ⑤ 이미지 리소스의 신규 생성·편집·대체 제작이 필요하면 반드시 RESOURCE #0으로 설계하고 이미지 제작 자체를 GENERAL WORK에 배정하지 않는다.
 ⑥ GENERAL WORK에는 RESOURCE 결과를 코드·UI·문서에서 연결하거나 참조하는 작업만 배정할 수 있다.
-⑦ Worker가 결과를 temp/Resource에 수집한 뒤 targetPath로 move하는 것을 전제로 한다.
+⑦ RESOURCE는 MANAGER가 분배하거나 수행 여부를 판단하지 않는다. HQ가 resource를 요청하면 Worker가 독립 대기열에서 수행한다.
+⑧ RESOURCE 실행은 GENERAL WORK와 병렬로 진행할 수 있으며, Worker는 결과를 temp/Resource에 수집한 뒤 targetPath로 move한다.
+⑨ QA/HIGH 진입 전에는 RESOURCE와 GENERAL WORK가 모두 terminal 상태여야 한다.
 
 제6조 (PAUSE와 END)
 

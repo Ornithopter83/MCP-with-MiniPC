@@ -83,7 +83,6 @@ internal static class RoleJsonRepairContract
                 [ACTION=DISPATCH]
                 {
                   "workItemIds": [10],
-                  "resourceIds": [0],
                   "mechanical": [
                     {
                       "operation": "BUILD",

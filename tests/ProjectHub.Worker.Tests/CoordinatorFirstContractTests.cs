@@ -202,7 +202,7 @@ public sealed class CoordinatorFirstContractTests
         const string message = """
             [ACTION=WORK]
             {
-\n              "action": "work",
+              "action": "work",
               "milestone": {
                 "id": "M-OLD",
                 "branch": "AUTO",
@@ -360,7 +360,6 @@ public sealed class CoordinatorFirstContractTests
             [ACTION=DISPATCH]
             {
               "workItemIds": [10, 11],
-              "resourceIds": [0],
               "mechanical": [
                 {
                   "operation": "PUBLISH",
@@ -380,11 +379,52 @@ public sealed class CoordinatorFirstContractTests
             ActionBlockContract.GetIdArray(
                 action,
                 "workItemIds"));
-        Assert.Equal(
-            new[] { "0" },
+        Assert.Empty(
             ActionBlockContract.GetIdArray(
                 action,
                 "resourceIds"));
+    }
+
+    [Fact]
+    public void ManagerDispatch_RejectsResourceIds()
+    {
+        const string message = """
+            [ACTION=DISPATCH]
+            {
+              "workItemIds": [10],
+              "resourceIds": [0],
+              "mechanical": []
+            }
+            """;
+
+        var parsed = ActionBlockContract.ParseManager(message);
+
+        Assert.True(parsed.HasErrors);
+        Assert.Contains(
+            "RESOURCE_IDS_FORBIDDEN",
+            Assert.Single(parsed.Actions).Errors);
+    }
+
+    [Fact]
+    public void HighChangedPaths_RejectMarkdownWrappedPath()
+    {
+        const string message = """
+            [GOTO : MANAGER]
+            [ACTION=RESULT]
+            {
+              "status": "modified",
+              "summary": "수정 완료",
+              "changedPaths": ["`src/Fix.cs`"],
+              "issues": []
+            }
+            """;
+
+        var parsed = ActionBlockContract.ParseHigh(message);
+
+        Assert.True(parsed.HasErrors);
+        Assert.Contains(
+            "CHANGED_PATH_INVALID",
+            Assert.Single(parsed.Actions).Errors);
     }
 
     [Fact]
@@ -513,12 +553,16 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("BODY_BEGIN", manager);
         Assert.Contains("[ACTION=DISPATCH]", manager);
         Assert.Contains("\"workItemIds\"", manager);
+        Assert.DoesNotContain("\"resourceIds\"", manager);
         Assert.Contains("\"mechanical\"", manager);
+        Assert.Contains("병렬 실행 가능한 최소 원자 작업", hq);
         Assert.Contains("[ACTION=RESULT]", work);
         Assert.Contains("이미지 제작은 RESOURCE의 책임", work);
         Assert.Contains("[GOTO : HIGH]", qa);
-        Assert.Contains("코드나 프로젝트 파일을 수정하지 않는다", qa);
+        Assert.Contains("build·run", qa);
+        Assert.Contains("RESOURCE 산출물을 신규 생성·편집·대체 제작하지 않는다", qa);
         Assert.Contains("[GOTO : MANAGER]", high);
+        Assert.Contains("RESOURCE 실패를 HIGH가 직접 생성으로 우회하지 않는다", high);
         Assert.Contains("\"changedPaths\"", high);
 
         Assert.DoesNotContain("WorkGraph", hq);

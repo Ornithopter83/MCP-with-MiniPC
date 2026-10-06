@@ -1,4 +1,5 @@
-using System.Collections.ObjectModel;\nusing System.IO;
+using System.Collections.ObjectModel;
+using System.IO;
 using System.Text.Json;
 
 namespace ProjectHub.Worker;
@@ -356,7 +357,8 @@ public static class ActionBlockContract
         }
 
         ValidateIdArray(root, "workItemIds", errors);
-        ValidateIdArray(root, "resourceIds", errors);
+        if (root.TryGetProperty("resourceIds", out _))
+            errors.Add("RESOURCE_IDS_FORBIDDEN");
 
         if (!root.TryGetProperty("mechanical", out var mechanical) ||
             mechanical.ValueKind != JsonValueKind.Array)
@@ -400,6 +402,10 @@ public static class ActionBlockContract
 
         ValidateOptionalStringArray(root, "changedPaths", errors);
         ValidateOptionalStringArray(root, "issues", errors);
+
+        var changedPaths = GetStringArray(root, "changedPaths");
+        if (changedPaths.Any(path => !IsSafeRelativePath(path)))
+            errors.Add("CHANGED_PATH_INVALID");
     }
 
     private static void ValidateStatus(
@@ -608,8 +614,14 @@ public static class ActionBlockContract
 
     private static bool IsSafeRelativePath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path))
+        if (string.IsNullOrWhiteSpace(path) ||
+            Path.IsPathRooted(path) ||
+            path.Contains('`') ||
+            path.Contains('"') ||
+            path.Contains((char)39))
+        {
             return false;
+        }
 
         return path.Replace('\\', '/')
             .Split('/', StringSplitOptions.RemoveEmptyEntries)

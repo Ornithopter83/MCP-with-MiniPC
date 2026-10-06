@@ -1,4 +1,5 @@
-using System.Text.Json;\nusing System.Text;
+using System.Text.Json;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.IO;
 
@@ -508,7 +509,7 @@ public partial class MainWindow
                 gitResult,
                 "MILESTONE_START" +
                 Environment.NewLine +
-                "계획된 모든 WORK/RESOURCE를 DISPATCH JSON 하나로 일괄 분배하세요.");
+                "계획된 모든 GENERAL WORK를 DISPATCH JSON 하나로 일괄 분배하세요. RESOURCE는 Worker가 독립 대기열에서 처리하므로 DISPATCH에 포함하지 마세요.");
 
             var dispatchPrompt = RoleContractLoader.BuildManagerPrompt(
                 dispatchInput +
@@ -588,13 +589,6 @@ public partial class MainWindow
                 return new(true, dispatchAction.Body);
             }
 
-            var requestedResourceIds =
-                ActionBlockContract.GetIdArray(
-                    dispatchAction,
-                    "resourceIds")
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
             var requestedWorkIds =
                 ActionBlockContract.GetIdArray(
                     dispatchAction,
@@ -604,47 +598,26 @@ public partial class MainWindow
 
             var dispatchNotes = new List<string>();
 
-            foreach (var resourceId in requestedResourceIds)
-            {
-                if (!milestone.Resources.TryGetValue(
-                        resourceId,
-                        out var resourceDefinition))
+            var resourceTasks = milestone.Resources.Values
+                .Select(resource =>
                 {
-                    dispatchNotes.Add(
-                        "UNPLANNED_RESOURCE_IGNORED: " + resourceId);
-                    continue;
-                }
-
-                AddDataFlowHistory(
-                    WorkerRoleState.Resource,
-                    "Worker 분배",
-                    $"RESOURCE_ID: {resourceId}" +
-                    Environment.NewLine +
-                    resourceDefinition.RawText,
-                    status: "DISPATCHED",
-                    workItemId: "0",
-                    persistenceSource: "WORKER DISPATCH");
-
-                var resourceResult = await ExecuteMilestoneResourceAsync(
-                    workingDirectory,
-                    milestone,
-                    resourceId,
-                    cancellationToken);
-                resourceReports[resourceResult.Id] = resourceResult.Report;
-                foreach (var changedPath in resourceResult.ChangedPaths)
-                    milestoneChangedPaths.Add(changedPath);
-            }
-
-            foreach (var resource in milestone.Resources.Values)
-            {
-                if (!resourceReports.ContainsKey(resource.Id))
-                {
-                    resourceReports[resource.Id] =
-                        "RESOURCE_STATUS: BLOCKED" +
+                    AddDataFlowHistory(
+                        WorkerRoleState.Resource,
+                        "Worker 분배",
+                        $"RESOURCE_ID: {resource.Id}" +
                         Environment.NewLine +
-                        "MANAGER_DID_NOT_DISPATCH";
-                }
-            }
+                        resource.RawText,
+                        status: "DISPATCHED",
+                        workItemId: "0",
+                        persistenceSource: "WORKER RESOURCE QUEUE");
+
+                    return ExecuteMilestoneResourceAsync(
+                        workingDirectory,
+                        milestone,
+                        resource.Id,
+                        cancellationToken);
+                })
+                .ToArray();
 
             var runnableWorkIds = requestedWorkIds
                 .Where(milestone.WorkItems.ContainsKey)
@@ -773,6 +746,17 @@ public partial class MainWindow
                             "blocked",
                             "MANAGER_DID_NOT_DISPATCH");
                 }
+            }
+
+            var completedResources = resourceTasks.Length == 0
+                ? Array.Empty<ResourceExecutionReport>()
+                : await Task.WhenAll(resourceTasks);
+
+            foreach (var resourceResult in completedResources)
+            {
+                resourceReports[resourceResult.Id] = resourceResult.Report;
+                foreach (var changedPath in resourceResult.ChangedPaths)
+                    milestoneChangedPaths.Add(changedPath);
             }
 
             using (var dispatchDocument =
@@ -1151,31 +1135,46 @@ public partial class MainWindow
             new("HQ-DESIGN", "MANAGER-DISPATCH", "DESIGN_TO_EXECUTION")
         };
 
-        var executionNodes = milestone.WorkItems.Values
+        var workNodes = milestone.WorkItems.Values
             .Select(work => "WORK-" + work.Id)
-            .Concat(milestone.Resources.Values.Select(resource => "RESOURCE-" + resource.Id))
             .ToArray();
+        var resourceNodes = milestone.Resources.Values
+            .Select(resource => "RESOURCE-" + resource.Id)
+            .ToArray();
+        var validationNode = milestone.QaReserved ? "QA" : "HIGH";
 
-        if (executionNodes.Length == 0)
+        if (workNodes.Length == 0)
         {
             edges.Add(new(
                 "MANAGER-DISPATCH",
-                milestone.QaReserved ? "QA" : "HIGH",
-                "VALIDATION"));
+                validationNode,
+                "WORK_DISPATCH_COMPLETE"));
         }
         else
         {
-            foreach (var executionNode in executionNodes)
+            foreach (var workNode in workNodes)
             {
                 edges.Add(new(
                     "MANAGER-DISPATCH",
-                    executionNode,
+                    workNode,
                     "DISPATCH"));
                 edges.Add(new(
-                    executionNode,
-                    milestone.QaReserved ? "QA" : "HIGH",
+                    workNode,
+                    validationNode,
                     "RESULT_TO_VALIDATION"));
             }
+        }
+
+        foreach (var resourceNode in resourceNodes)
+        {
+            edges.Add(new(
+                "HQ-DESIGN",
+                resourceNode,
+                "RESOURCE_REQUEST"));
+            edges.Add(new(
+                resourceNode,
+                validationNode,
+                "RESOURCE_RESULT_TO_VALIDATION"));
         }
 
         if (milestone.QaReserved)
@@ -1759,7 +1758,7 @@ public partial class MainWindow
             null,
             null,
             cancellationToken,
-            CodexSandboxMode.ReadOnly);
+            CodexSandboxMode.WorkspaceWrite);
 
         string report;
         if (result.ExitCode != 0)
