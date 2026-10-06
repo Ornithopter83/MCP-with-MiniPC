@@ -29,6 +29,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
+                    "order": 0,
                     "writePaths": ["src/A", "src/B.cs"],
                     "goal": "기능을 구현한다.",
                     "instructions": "지정 경로 안에서 구현한다.",
@@ -63,6 +64,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.False(milestone.InitializeGitIfMissing);
         var work = Assert.Single(milestone.WorkItems.Values);
         Assert.Equal("10", work.Id);
+        Assert.Equal(0, work.Order);
         Assert.Equal(new[] { "src/A", "src/B.cs" }, work.WritePaths);
         Assert.Contains("\"constraints\"", work.Body);
 
@@ -71,29 +73,36 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("assets/hero.png", resource.TargetPath);
         Assert.Contains("\"style\": \"flat\"", resource.Body);
 
-        var validationContext = MilestoneDefinitionContract.BuildValidationContext(
+        var workReports = new Dictionary<string, string>
+        {
+            ["10"] = """
+                [ACTION=RESULT]
+                {
+                  "status": "completed",
+                  "summary": "구현 완료",
+                  "changedPaths": ["src/A"],
+                  "issues": []
+                }
+                """
+        };
+        var qaContext = MilestoneDefinitionContract.BuildQaContext(
             milestone,
-            new Dictionary<string, string>
-            {
-                ["10"] = """
-                    [ACTION=RESULT]
-                    {
-                      "status": "completed",
-                      "summary": "구현 완료",
-                      "changedPaths": ["src/A"],
-                      "issues": []
-                    }
-                    """
-            },
+            workReports,
+            new Dictionary<string, string>(),
+            Array.Empty<string>());
+        var highContext = MilestoneDefinitionContract.BuildHighContext(
+            milestone,
+            workReports,
             new Dictionary<string, string>(),
             Array.Empty<string>(),
             qaReport: null);
 
-        Assert.Contains("WORK_ITEM_INSTRUCTIONS:", validationContext);
-        Assert.Contains("기능을 구현한다.", validationContext);
-        Assert.Contains("지정 경로 안에서 구현한다.", validationContext);
-        Assert.Contains("WORK_RESULTS:", validationContext);
-        Assert.Contains("\"status\": \"completed\"", validationContext);
+        Assert.Contains("QA_INSTRUCTIONS:", qaContext);
+        Assert.DoesNotContain("WORK_ITEM_INSTRUCTIONS:", qaContext);
+        Assert.Contains("WORK_RESULTS:", qaContext);
+        Assert.Contains("MILESTONE_VALIDATION:", highContext);
+        Assert.DoesNotContain("HQ_DESIGN:", highContext);
+        Assert.Contains("\"status\": \"completed\"", highContext);
     }
 
     [Fact]
@@ -192,6 +201,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
+                    "order": 0,
                     "writePaths": ["."],
                     "goal": "읽기 전용 확인",
                     "instructions": "파일을 바꾸지 않는다.",
@@ -330,6 +340,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 9,
+                    "order": 0,
                     "writePaths": ["src/Bad.cs"],
                     "goal": "예약 번호를 잘못 사용했다.",
                     "instructions": "",
@@ -371,6 +382,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
+                    "order": 0,
                     "writePaths": ["../outside.txt"],
                     "goal": "잘못된 경로",
                     "instructions": "",
@@ -600,6 +612,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("\"workItemIds\"", manager);
         Assert.DoesNotContain("\"resourceIds\"", manager);
         Assert.Contains("\"mechanical\"", manager);
+        Assert.Contains("\"content\"", manager);
+        Assert.Contains("\"order\": 0", hq);
+        Assert.Contains("같은 order의 WorkItem", hq);
         Assert.Contains("병렬 실행 가능한 최소 원자 작업", hq);
         Assert.Contains("[ACTION=RESULT]", work);
         Assert.Contains("이미지 제작은 RESOURCE의 책임", work);
@@ -623,8 +638,13 @@ public sealed class CoordinatorFirstContractTests
             RoleContractLoader.ManagerContractPath,
             managerFollowup);
         Assert.DoesNotContain(
-            "제1조 (기본 책임)",
+            "제1조 (공통 응답 문법)",
             managerFollowup);
+
+        var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
+            RoleContractLoader.BuildQaPrompt("runtime 확인"));
+        Assert.Contains("ROLE_CONTRACT: QA · injected", historyPrompt);
+        Assert.DoesNotContain("당신은 QA다.", historyPrompt);
     }
 
     [Fact]
@@ -660,7 +680,7 @@ public sealed class CoordinatorFirstContractTests
 
         var report = MilestoneDefinitionContract.BuildHqReport(
             milestone!,
-            "[GOTO : HQ]\n[ACTION=REPORT]\n{\"status\":\"completed\",\"summary\":\"완료\",\"issues\":[]}",
+            "[GOTO : HQ]\n[ACTION=REPORT]\n{\"status\":\"completed\",\"content\":\"완료\"}",
             new Dictionary<string, string>
             {
                 ["10"] = "[ACTION=RESULT]\n{\"changedPaths\":[\"src/A.cs\"]}"
