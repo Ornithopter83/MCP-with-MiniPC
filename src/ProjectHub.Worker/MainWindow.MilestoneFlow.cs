@@ -392,6 +392,9 @@ public partial class MainWindow
                                         .ReadRecoveredElements(
                                             recoveryResponse,
                                             recoveryTargets);
+
+                                foreach (var recoveredName in recoveredByWork.Keys)
+                                    recoveryTargets.Remove(recoveredName);
                             }
                         }
 
