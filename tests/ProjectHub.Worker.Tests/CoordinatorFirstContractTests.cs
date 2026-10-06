@@ -61,6 +61,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("AUTO", milestone.TargetBranch);
         Assert.True(milestone.QaReserved);
         Assert.Equal("bin/App.exe", milestone.Entrypoint);
+        Assert.False(milestone.InitializeGitIfMissing);
         var work = Assert.Single(milestone.WorkItems.Values);
         Assert.Equal("10", work.Id);
         Assert.Equal(new[] { "src/A", "src/B.cs" }, work.WritePaths);
@@ -70,6 +71,43 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("IMAGE", resource.Type);
         Assert.Equal("assets/hero.png", resource.TargetPath);
         Assert.Contains("\"style\": \"flat\"", resource.Body);
+    }
+
+    [Fact]
+    public void MilestoneDefinition_ParsesWorkerGitInitializationFlag()
+    {
+        const string message = """
+            [ACTION=WORK]
+            {
+              "action": "work",
+              "milestone": {
+                "id": "GIT_INIT_TEST",
+                "branch": "AUTO",
+                "goal": "새 저장소 준비",
+                "entrypoint": null,
+                "initializeGitIfMissing": true,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        var parsed = ActionBlockContract.ParseHq(message);
+
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            message,
+            parsed,
+            out var milestone,
+            out var error),
+            error);
+        Assert.NotNull(milestone);
+        Assert.True(milestone!.InitializeGitIfMissing);
     }
 
     [Fact]
@@ -338,6 +376,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("[RESPONSE=OK]", hq);
         Assert.Contains("READ_ONLY_NO_FILE_CHANGES", hq);
         Assert.Contains("\"readOnly\"", hq);
+        Assert.Contains("\"initializeGitIfMissing\"", hq);
         Assert.Contains("JSON 밖", hq);
         Assert.Contains("END_ACTION", hq);
         Assert.Contains("BODY_BEGIN", hq);
@@ -352,6 +391,16 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.DoesNotContain("WorkGraph", hq);
         Assert.DoesNotContain("projecthub/*", manager);
+
+        var managerFollowup = RoleContractLoader.BuildManagerPrompt(
+            "CURRENT_EVENT: NEXT",
+            includeFullContract: false);
+        Assert.Contains(
+            RoleContractLoader.ManagerContractPath,
+            managerFollowup);
+        Assert.DoesNotContain(
+            "제1조 (기본 책임)",
+            managerFollowup);
     }
 
     [Fact]
