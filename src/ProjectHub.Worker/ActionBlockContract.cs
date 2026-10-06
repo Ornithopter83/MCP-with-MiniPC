@@ -342,9 +342,8 @@ public static class ActionBlockContract
                 root,
                 new[] { "completed", "partial", "blocked" },
                 errors);
-            if (!TryGetString(root, "summary", out body))
-                errors.Add("SUMMARY_REQUIRED");
-            ValidateOptionalStringArray(root, "issues", errors);
+            if (!TryGetString(root, "content", out body))
+                errors.Add("CONTENT_REQUIRED");
             return;
         }
 
