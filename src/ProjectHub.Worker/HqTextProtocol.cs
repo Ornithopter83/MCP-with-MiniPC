@@ -419,6 +419,14 @@ internal static class HqTextProtocol
         IReadOnlyList<Section> sections,
         IReadOnlyList<string> unknown)
     {
+        if (unknown.Count > 0)
+        {
+            return Invalid(
+                action,
+                unknown,
+                new[] { "UNKNOWN_SECTION_REQUIRES_WORK" });
+        }
+
         var message = sections
             .FirstOrDefault(section =>
                 string.Equals(section.Name, "MESSAGE", StringComparison.OrdinalIgnoreCase))
