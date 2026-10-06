@@ -117,6 +117,14 @@ public static class RoleContractLoader
                 StringComparison.Ordinal);
         }
 
+        const string mechanicalSupplementMarker =
+            "Worker 기계 실행 보충 계약:";
+        var mechanicalSupplementIndex = value.IndexOf(
+            mechanicalSupplementMarker,
+            StringComparison.Ordinal);
+        if (mechanicalSupplementIndex >= 0)
+            value = value[..mechanicalSupplementIndex];
+
         while (value.Contains(
                    Environment.NewLine + Environment.NewLine + Environment.NewLine,
                    StringComparison.Ordinal))
