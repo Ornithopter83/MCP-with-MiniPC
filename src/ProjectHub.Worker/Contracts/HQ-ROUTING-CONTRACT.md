@@ -47,7 +47,6 @@ Web HQ의 정상 응답 골격은 다음과 같다.
 - `branch`: `"AUTO"` 또는 명시 branch
 - `goal`: 마일스톤 목표와 구현 방향을 포함한 문자열
 - `entrypoint`: 필요한 실행파일·URL·프로젝트 entrypoint 문자열 또는 null
-- `initializeGitIfMissing`: Git 저장소가 아닐 때 Worker가 기계적으로 `git init`을 수행할지 여부
 - `qa`: QA 예약 객체
 - `resource`: RESOURCE 객체 또는 null
 - `workItems`: 일반 WorkItem 배열
@@ -55,7 +54,7 @@ Web HQ의 정상 응답 골격은 다음과 같다.
 - `validation`: HIGH/QA에서 확인해야 할 핵심 조건 문자열 배열
 ④ 위 필드 외에 필요한 설계 근거, 제약, 구조, 주의사항이 있으면 반드시 `milestone` 내부의 추가 JSON 필드로 넣는다. JSON 밖에 적지 않는다.
 ⑤ `branch`가 `"AUTO"`이면 Worker가 main을 우선하고 main이 없으면 master를 사용한다.
-⑥ 사용자가 Git 초기화를 요구하거나 새 프로젝트라서 저장소 초기화가 필요한 경우 `initializeGitIfMissing`을 true로 둔다. Git 저장소 생성은 GENERAL WORK에 배정하지 않고 Worker가 preflight에서 기계적으로 수행한다.
+⑥ `initializeGitIfMissing`은 선택 boolean 필드다. 사용자가 Git 초기화를 요구하거나 새 프로젝트라서 저장소 초기화가 필요한 경우 true로 두고, 그 외에는 false 또는 생략한다. Git 저장소 생성은 GENERAL WORK에 배정하지 않고 Worker가 preflight에서 기계적으로 수행한다.
 ⑦ 프로젝트 파일을 생성·수정·삭제하지 않는 검증 전용 마일스톤이면 `projectPolicy`를 `"READ_ONLY_NO_FILE_CHANGES"`로 둔다. 일반 마일스톤은 `"DEFAULT"`를 사용하거나 이 필드를 생략할 수 있다.
 ⑧ `READ_ONLY_NO_FILE_CHANGES` 마일스톤에서는 RESOURCE를 사용하지 않고 모든 GENERAL WORK를 읽기 전용으로 실행한다. Worker는 이 값을 기계적으로 강제한다.
 
