@@ -125,7 +125,9 @@ public partial class MainWindow
                 var hqPrompt = BuildMilestoneHqPrompt(
                     inboundType,
                     hqInbound,
-                    normalizedRoot);
+                    normalizedRoot,
+                    includeFullContract:
+                        !continuing && milestoneIndex == 1);
 
                 var hqResult = await RunHqRoleAsync(
                     jobId,
@@ -472,50 +474,10 @@ public partial class MainWindow
         var milestoneChangedPaths = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase);
 
-        var milestoneWriteScopes = milestone.WorkItems.Values
-            .Where(work => !work.ReadOnly)
-            .SelectMany(work => work.WritePaths)
-            .Concat(milestone.Resources.Values.Select(resource => resource.TargetPath))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var initialWriteConflicts = initialChangedPaths
-            .Where(path =>
-                MilestoneMechanicalExecutor.IsPathWithinScopes(
-                    path,
-                    milestoneWriteScopes))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (initialWriteConflicts.Length > 0)
-        {
-            return new(
-                true,
-                "현재 마일스톤 쓰기 영역에 기존 로컬 변경이 있어 안전하게 시작할 수 없습니다." +
-                Environment.NewLine +
-                "사용자가 직접 정리한 뒤 재개하세요." +
-                Environment.NewLine +
-                string.Join(
-                    Environment.NewLine,
-                    initialWriteConflicts.Select(path => "- " + path)));
-        }
-
-        var gitIgnoreNeedsUpdate =
-            !milestone.ReadOnlyNoFileChanges &&
-            WorkerPaths.NeedsProjectHubGitIgnoreUpdate(workingDirectory);
-        if (gitIgnoreNeedsUpdate &&
-            initialChangedPaths.Contains(".gitignore"))
-        {
-            return new(
-                true,
-                "bin/·temp/ Git 제외 규칙을 추가해야 하지만 .gitignore에 기존 로컬 변경이 있습니다." +
-                Environment.NewLine +
-                "사용자가 .gitignore를 직접 정리한 뒤 재개하세요.");
-        }
-
-        if (gitIgnoreNeedsUpdate &&
-            WorkerPaths.EnsureProjectHubGitIgnore(workingDirectory))
-        {
-            milestoneChangedPaths.Add(".gitignore");
-        }
+        // 현재 ProjectHub 작업이 지정된 쓰기 영역보다 우선한다.
+        // 기존 dirty 변경은 시작을 차단하지 않으며, 지정되지 않은 경로는
+        // milestoneChangedPaths에 들어오지 않으므로 stage 대상이 아니다.
+        WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
 
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
@@ -611,7 +573,8 @@ public partial class MainWindow
                 managerInput +
                 Environment.NewLine +
                 Environment.NewLine +
-                BuildManagerMechanicalSupplement(workingDirectory));
+                BuildManagerMechanicalSupplement(workingDirectory),
+                includeFullContract: managerRound == 1);
 
             var managerResult = await RunCoordinatorRoleAsync(
                 jobId,
@@ -1052,27 +1015,6 @@ public partial class MainWindow
                 var highChangedPaths =
                     MilestoneDefinitionContract.ExtractHighChangedPaths(
                         highReport);
-                var highWriteConflicts = highChangedPaths
-                    .Where(path =>
-                        initialChangedPaths.Contains(path))
-                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                if (highWriteConflicts.Length > 0)
-                {
-                    await MilestoneManagedRunRegistry.StopAsync(
-                        jobId,
-                        CancellationToken.None);
-                    return new(
-                        true,
-                        "HIGH가 마일스톤 시작 전에 이미 로컬 변경이 있던 동일 경로를 수정했다고 보고했습니다." +
-                        Environment.NewLine +
-                        "기존 변경 작성자는 판정하지 않으며 자동 병합·stage하지 않습니다. 사용자가 직접 정리한 뒤 재개하세요." +
-                        Environment.NewLine +
-                        string.Join(
-                            Environment.NewLine,
-                            highWriteConflicts.Select(path => "- " + path)));
-                }
-
                 foreach (var changedPath in highChangedPaths)
                     milestoneChangedPaths.Add(changedPath);
 
@@ -1718,7 +1660,8 @@ public partial class MainWindow
     private static string BuildMilestoneHqPrompt(
         string inboundType,
         string body,
-        string workingDirectory) =>
+        string workingDirectory,
+        bool includeFullContract) =>
         "역할: HQ" +
         Environment.NewLine +
         $"입력 유형: {inboundType}" +
@@ -1734,7 +1677,10 @@ public partial class MainWindow
         body +
         Environment.NewLine +
         Environment.NewLine +
-        RoleContractLoader.LoadHqFooter();
+        (includeFullContract
+            ? RoleContractLoader.LoadHqFooter()
+            : RoleContractLoader.BuildContractReference(
+                RoleContractLoader.HqContractPath));
 
     private static string BuildMilestoneFollowupInput(
         CoordinatorContinuationState continuation,
