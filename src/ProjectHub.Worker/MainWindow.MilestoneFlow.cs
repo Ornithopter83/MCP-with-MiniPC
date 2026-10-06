@@ -467,6 +467,7 @@ public partial class MainWindow
         var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
             workingDirectory,
             milestone.TargetBranch,
+            milestone.InitializeGitIfMissing,
             cancellationToken);
         if (!gitPreflight.Success)
             return new(true, gitPreflight.Summary);
