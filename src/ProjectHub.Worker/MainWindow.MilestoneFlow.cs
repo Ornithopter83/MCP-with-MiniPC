@@ -1251,9 +1251,13 @@ public partial class MainWindow
                     var operation =
                         request.GetProperty("operation")
                             .GetString()?.Trim() ?? "UNKNOWN";
-                    var command =
+                    var rawCommand =
                         request.GetProperty("command")
                             .GetString()?.Trim() ?? string.Empty;
+                    var command =
+                        MilestoneMechanicalExecutor.NormalizeMechanicalCommand(
+                            operation,
+                            rawCommand);
 
                     RunOnUi(() =>
                     {
