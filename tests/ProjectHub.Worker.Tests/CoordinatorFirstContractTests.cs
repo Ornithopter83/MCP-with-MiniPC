@@ -406,6 +406,110 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void MilestoneDefinition_RequiresNonNegativeWorkOrder()
+    {
+        const string missingOrder = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "ORDER_REQUIRED",
+                "branch": "main",
+                "goal": "순서 계약 검증",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [
+                  {
+                    "id": 10,
+                    "writePaths": ["src/A"],
+                    "goal": "A",
+                    "instructions": "A",
+                    "completionCriteria": []
+                  }
+                ],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+        const string negativeOrder = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "ORDER_NEGATIVE",
+                "branch": "main",
+                "goal": "순서 계약 검증",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [
+                  {
+                    "id": 10,
+                    "order": -1,
+                    "writePaths": ["src/A"],
+                    "goal": "A",
+                    "instructions": "A",
+                    "completionCriteria": []
+                  }
+                ],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        foreach (var message in new[] { missingOrder, negativeOrder })
+        {
+            var parsed = ActionBlockContract.ParseHq(message);
+            Assert.False(MilestoneDefinitionContract.TryBuild(
+                message,
+                parsed,
+                out _,
+                out var error));
+            Assert.Contains("ORDER_INVALID", error);
+        }
+    }
+
+    [Fact]
+    public void ManagerReport_UsesContentInsteadOfSummary()
+    {
+        const string valid = """
+            [GOTO : HQ]
+            [ACTION=REPORT]
+            {
+              "status": "partial",
+              "content": "현재 결과와 HQ 판단에 필요한 의견"
+            }
+            """;
+        const string legacy = """
+            [GOTO : HQ]
+            [ACTION=REPORT]
+            {
+              "status": "partial",
+              "summary": "구형 보고"
+            }
+            """;
+
+        var validParsed = ActionBlockContract.ParseManager(valid);
+        Assert.False(validParsed.HasErrors);
+        Assert.Equal(
+            "현재 결과와 HQ 판단에 필요한 의견",
+            Assert.Single(validParsed.ValidActions).Body);
+
+        var legacyParsed = ActionBlockContract.ParseManager(legacy);
+        Assert.True(legacyParsed.HasErrors);
+        Assert.Contains(
+            "CONTENT_REQUIRED",
+            Assert.Single(legacyParsed.Actions).Errors);
+    }
+
+    [Fact]
     public void ManagerActionParser_AcceptsBatchDispatchJson()
     {
         const string message = """
