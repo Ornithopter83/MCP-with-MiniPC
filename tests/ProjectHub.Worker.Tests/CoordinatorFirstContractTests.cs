@@ -965,6 +965,28 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void HqTextProtocol_ControlActionRejectsUnknownSectionBecauseHighCannotReceiveIt()
+    {
+        const string response = """
+            [ACTION=PAUSE]
+
+            @@MESSAGE
+            사용자 확인 필요
+
+            @@ARCHITECTURE_NOTE
+            HIGH 판단이 필요한 임의 section
+            """;
+
+        var hq = HqTextProtocol.Parse(response);
+
+        Assert.False(hq.IsValid);
+        Assert.Contains(
+            "UNKNOWN_SECTION_REQUIRES_WORK",
+            hq.Errors);
+        Assert.Contains("@@ARCHITECTURE_NOTE", hq.UnknownSections[0]);
+    }
+
+    [Fact]
     public void DirectWorkPrompt_AllowsEmptyWritePathsWhenReadOnly()
     {
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
