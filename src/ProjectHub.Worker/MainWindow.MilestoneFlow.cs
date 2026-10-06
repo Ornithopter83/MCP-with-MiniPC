@@ -20,8 +20,6 @@ public partial class MainWindow
         string Report,
         IReadOnlyList<string> ChangedPaths);
 
-    private readonly SemaphoreSlim _workItemGitGate = new(1, 1);
-
     private async Task RunMilestoneCoordinatorFirstJobAsync(
         string request,
         CodexThreadOption? selectedThread,
@@ -932,6 +930,64 @@ public partial class MainWindow
                 }
             }
 
+            var plannedWorkScopes = milestone.WorkItems.Values
+                .SelectMany(work => work.WritePaths)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var currentWorkDirtyPaths =
+                await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
+                    workingDirectory,
+                    cancellationToken);
+            var workBarrierPaths = currentWorkDirtyPaths
+                .Where(path =>
+                    MilestoneMechanicalExecutor.IsPathWithinScopes(
+                        path,
+                        plannedWorkScopes))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var observedPath in milestoneChangedPaths)
+            {
+                if (MilestoneMechanicalExecutor.IsPathWithinScopes(
+                        observedPath,
+                        plannedWorkScopes))
+                {
+                    workBarrierPaths.Add(observedPath);
+                }
+            }
+
+            AddDataFlowHistory(
+                WorkerRoleState.Unknown,
+                "Worker 작업",
+                "GENERAL WORK Git barrier · 일괄 commit/force push 시작",
+                status: "EXECUTING",
+                persistenceSource: "WORKER ACTION");
+
+            var workGitBarrier =
+                await MilestoneMechanicalExecutor.ForceCommitPushAsync(
+                    workingDirectory,
+                    $"ProjectHub milestone {milestone.Id} work batch",
+                    workBarrierPaths,
+                    _targetSettings.ManualRepositoryUrl?.Trim(),
+                    cancellationToken);
+
+            mechanicalReports.Add(
+                "WORK_GIT_BARRIER" +
+                Environment.NewLine +
+                workGitBarrier.Summary);
+
+            AddDataFlowHistory(
+                WorkerRoleState.Unknown,
+                "Worker 작업",
+                workGitBarrier.Summary,
+                status: workGitBarrier.Success ? "COMPLETED" : "WARNING",
+                persistenceSource: "WORKER ACTION");
+
+            if (!workGitBarrier.Success)
+            {
+                dispatchNotes.Add(
+                    "WORK_GIT_BARRIER_FAILED_CONTINUED: HIGH 이후 final force push에서 다시 시도합니다.");
+            }
+
             CaptureResourceStateWithoutWaiting();
 
             using (var dispatchDocument =
@@ -1094,10 +1150,6 @@ public partial class MainWindow
                 await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
                     workingDirectory,
                     cancellationToken);
-            var plannedWorkScopes = milestone.WorkItems.Values
-                .SelectMany(work => work.WritePaths)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
 
             foreach (var dirtyPath in finalDirtyPaths)
             {
@@ -1671,11 +1723,6 @@ public partial class MainWindow
                     "계획되지 않은 WORK_ITEM_ID입니다."));
         }
 
-        var workBefore =
-            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                workingDirectory,
-                cancellationToken);
-
         RunOnUi(() =>
         {
             TaskDirection.Text = "작업";
@@ -1803,60 +1850,6 @@ public partial class MainWindow
             fullMessage: report,
             workItemId: work.Id,
             referenceId: work.Id);
-
-        var workAfter =
-            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                workingDirectory,
-                cancellationToken);
-        var workChangedPaths =
-            MilestoneMechanicalExecutor.DiffChangeStates(
-                    workBefore,
-                    workAfter)
-                .Where(path =>
-                    MilestoneMechanicalExecutor.IsPathWithinScopes(
-                        path,
-                        work.WritePaths))
-                .ToArray();
-
-        await _workItemGitGate.WaitAsync(cancellationToken);
-        try
-        {
-            AddDataFlowHistory(
-                WorkerRoleState.Work,
-                "Worker 작업",
-                $"WORK #{work.Id} Git checkpoint 시작",
-                status: "EXECUTING",
-                workItemId: work.Id,
-                persistenceSource: "WORKER ACTION");
-
-            var checkpoint =
-                await MilestoneMechanicalExecutor.CheckpointWorkItemAsync(
-                    workingDirectory,
-                    milestone,
-                    work,
-                    workChangedPaths,
-                    _targetSettings.ManualRepositoryUrl?.Trim(),
-                    cancellationToken);
-
-            AddDataFlowHistory(
-                WorkerRoleState.Work,
-                "Worker 작업",
-                checkpoint.Summary,
-                status: checkpoint.Success ? "COMPLETED" : "FAILED",
-                workItemId: work.Id,
-                persistenceSource: "WORKER ACTION");
-
-            if (!checkpoint.Success)
-            {
-                throw new InvalidOperationException(
-                    "WORK_ITEM_GIT_CHECKPOINT_REQUIRED: " +
-                    checkpoint.Summary);
-            }
-        }
-        finally
-        {
-            _workItemGitGate.Release();
-        }
 
         return new(work.Id, report);
     }
