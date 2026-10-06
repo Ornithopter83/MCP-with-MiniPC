@@ -80,16 +80,22 @@ public static class WorkerPaths
             var lines = File.Exists(excludePath)
                 ? File.ReadAllLines(excludePath).ToList()
                 : new List<string>();
+            var normalized = lines
+                .Select(line => line.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var requiredEntries = new[]
+            {
+                ".projecthub/",
+                "temp/",
+                "bin/"
+            };
+            var additions = requiredEntries
+                .Where(entry =>
+                    !normalized.Contains(entry) &&
+                    !normalized.Contains("/" + entry))
+                .ToArray();
 
-            if (lines.Any(line =>
-                    string.Equals(
-                        line.Trim(),
-                        ".projecthub/",
-                        StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(
-                        line.Trim(),
-                        "/.projecthub/",
-                        StringComparison.OrdinalIgnoreCase)))
+            if (additions.Length == 0)
                 return true;
 
             var existing = File.Exists(excludePath)
@@ -104,7 +110,7 @@ public static class WorkerPaths
                 excludePath,
                 existing +
                 separator +
-                ".projecthub/" +
+                string.Join(Environment.NewLine, additions) +
                 Environment.NewLine,
                 new UTF8Encoding(false));
             return true;
