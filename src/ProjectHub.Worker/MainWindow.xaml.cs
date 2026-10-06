@@ -1765,7 +1765,7 @@ public partial class MainWindow : Window
             AddDataFlowHistory(
                 webHistoryRole,
                 "전달 데이터",
-                effectivePrompt,
+                RoleContractLoader.BuildHistoryPrompt(effectivePrompt),
                 status: "SENT",
                 referenceId: task.Id,
                 workItemId: string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase) ? "0" : null,
@@ -1898,7 +1898,7 @@ public partial class MainWindow : Window
             AddDataFlowHistory(
                 historyRole,
                 "전달 데이터",
-                prompt,
+                RoleContractLoader.BuildHistoryPrompt(prompt),
                 role.Provider,
                 status: "SENT",
                 referenceId: historyReferenceId,
