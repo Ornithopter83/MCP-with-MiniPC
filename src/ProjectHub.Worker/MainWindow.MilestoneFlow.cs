@@ -20,6 +20,8 @@ public partial class MainWindow
         string Report,
         IReadOnlyList<string> ChangedPaths);
 
+    private readonly SemaphoreSlim _workItemGitGate = new(1, 1);
+
     private async Task RunMilestoneCoordinatorFirstJobAsync(
         string request,
         CodexThreadOption? selectedThread,
@@ -1554,6 +1556,11 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         CancellationToken cancellationToken)
     {
+        var workBefore =
+            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                workingDirectory,
+                cancellationToken);
+
         RunOnUi(() =>
         {
             TaskDirection.Text = "작업";
@@ -1796,6 +1803,60 @@ public partial class MainWindow
             fullMessage: report,
             workItemId: work.Id,
             referenceId: work.Id);
+
+        var workAfter =
+            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                workingDirectory,
+                cancellationToken);
+        var workChangedPaths =
+            MilestoneMechanicalExecutor.DiffChangeStates(
+                    workBefore,
+                    workAfter)
+                .Where(path =>
+                    MilestoneMechanicalExecutor.IsPathWithinScopes(
+                        path,
+                        work.WritePaths))
+                .ToArray();
+
+        await _workItemGitGate.WaitAsync(cancellationToken);
+        try
+        {
+            AddDataFlowHistory(
+                WorkerRoleState.Work,
+                "Worker 작업",
+                $"WORK #{work.Id} Git checkpoint 시작",
+                status: "EXECUTING",
+                workItemId: work.Id,
+                persistenceSource: "WORKER ACTION");
+
+            var checkpoint =
+                await MilestoneMechanicalExecutor.CheckpointWorkItemAsync(
+                    workingDirectory,
+                    milestone,
+                    work,
+                    workChangedPaths,
+                    _targetSettings.ManualRepositoryUrl?.Trim(),
+                    cancellationToken);
+
+            AddDataFlowHistory(
+                WorkerRoleState.Work,
+                "Worker 작업",
+                checkpoint.Summary,
+                status: checkpoint.Success ? "COMPLETED" : "FAILED",
+                workItemId: work.Id,
+                persistenceSource: "WORKER ACTION");
+
+            if (!checkpoint.Success)
+            {
+                throw new InvalidOperationException(
+                    "WORK_ITEM_GIT_CHECKPOINT_REQUIRED: " +
+                    checkpoint.Summary);
+            }
+        }
+        finally
+        {
+            _workItemGitGate.Release();
+        }
 
         return new(work.Id, report);
     }
