@@ -704,7 +704,7 @@ public partial class MainWindow
                         "Worker 분배",
                         $"RESOURCE_ID: {resource.Id}" +
                         Environment.NewLine +
-                        resource.RawText,
+                        $"TARGET_PATH: {resource.TargetPath}",
                         status: "DISPATCHED",
                         workItemId: "0",
                         persistenceSource: "WORKER RESOURCE QUEUE");
@@ -766,7 +766,7 @@ public partial class MainWindow
                     "Worker 분배",
                     $"WORK_ITEM_ID: {workId}" +
                     Environment.NewLine +
-                    definition.RawText,
+                    $"ORDER: {definition.Order}",
                     status: "DISPATCHED",
                     workItemId: workId,
                     persistenceSource: "WORKER DISPATCH");
@@ -774,93 +774,119 @@ public partial class MainWindow
 
             if (runnableWorkIds.Length > 0)
             {
-                var runnableScopes = runnableWorkIds
-                    .Select(id => milestone.WorkItems[id].WritePaths)
+                var orderedWaves = runnableWorkIds
+                    .Select(id => milestone.WorkItems[id])
+                    .GroupBy(work => work.Order)
+                    .OrderBy(group => group.Key)
                     .ToArray();
-                var allRunnableScopes = runnableScopes
-                    .SelectMany(scopes => scopes)
-                    .ToArray();
-                var overlappingScopes =
-                    MilestoneMechanicalExecutor.HasOverlappingScopes(
-                        runnableScopes);
-                var maxConcurrency = overlappingScopes
-                    ? 1
-                    : Math.Clamp(
-                        _targetSettings.EffectiveMaxConcurrentWork,
-                        WorkerTargetConfiguration.MinimumConcurrentWork,
-                        WorkerTargetConfiguration.MaximumConcurrentWork);
 
-                if (overlappingScopes)
+                foreach (var wave in orderedWaves)
                 {
-                    dispatchNotes.Add(
-                        "WORK_CONCURRENCY_REDUCED: 동일/상위·하위 WRITE_PATH가 겹쳐 순차 실행합니다.");
-                }
+                    var waveWorkIds = wave
+                        .Select(work => work.Id)
+                        .ToArray();
+                    var runnableScopes = wave
+                        .Select(work => work.WritePaths)
+                        .ToArray();
+                    var allRunnableScopes = runnableScopes
+                        .SelectMany(scopes => scopes)
+                        .ToArray();
+                    var overlappingScopes =
+                        MilestoneMechanicalExecutor.HasOverlappingScopes(
+                            runnableScopes);
+                    var maxConcurrency = overlappingScopes
+                        ? 1
+                        : Math.Clamp(
+                            _targetSettings.EffectiveMaxConcurrentWork,
+                            WorkerTargetConfiguration.MinimumConcurrentWork,
+                            WorkerTargetConfiguration.MaximumConcurrentWork);
 
-                var workBatchBefore =
-                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                        workingDirectory,
-                        cancellationToken);
-                using var gate = new SemaphoreSlim(maxConcurrency);
-                var workTasks = runnableWorkIds.Select(async workId =>
-                {
-                    await gate.WaitAsync(cancellationToken);
-                    try
+                    AddDataFlowHistory(
+                        WorkerRoleState.Unknown,
+                        "Worker 작업",
+                        $"WORK ORDER {wave.Key} 시작 · {waveWorkIds.Length}건",
+                        status: "PROCESSING",
+                        persistenceSource: "WORKER ACTION");
+
+                    if (overlappingScopes)
                     {
-                        return await ExecuteMilestoneWorkAsync(
-                            jobId,
+                        dispatchNotes.Add(
+                            $"WORK_ORDER_{wave.Key}_CONCURRENCY_REDUCED: 동일/상위·하위 WRITE_PATH가 겹쳐 순차 실행합니다.");
+                    }
+
+                    var workBatchBefore =
+                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                             workingDirectory,
-                            milestone,
-                            workId,
-                            implementer,
                             cancellationToken);
-                    }
-                    finally
+                    using var gate = new SemaphoreSlim(maxConcurrency);
+                    var workTasks = waveWorkIds.Select(async workId =>
                     {
-                        gate.Release();
-                    }
-                }).ToArray();
+                        await gate.WaitAsync(cancellationToken);
+                        try
+                        {
+                            return await ExecuteMilestoneWorkAsync(
+                                jobId,
+                                workingDirectory,
+                                milestone,
+                                workId,
+                                implementer,
+                                cancellationToken);
+                        }
+                        finally
+                        {
+                            gate.Release();
+                        }
+                    }).ToArray();
 
-                RunOnUi(() =>
-                    ImplementerWorkGaugeText.Text =
-                        FormatActiveWorkItemGauge(
-                            Math.Min(runnableWorkIds.Length, maxConcurrency)));
+                    RunOnUi(() =>
+                        ImplementerWorkGaugeText.Text =
+                            FormatActiveWorkItemGauge(
+                                Math.Min(waveWorkIds.Length, maxConcurrency)));
 
-                var completed = await Task.WhenAll(workTasks);
+                    var completed = await Task.WhenAll(workTasks);
 
-                RunOnUi(() =>
-                    ImplementerWorkGaugeText.Text =
-                        FormatActiveWorkItemGauge(0));
+                    RunOnUi(() =>
+                        ImplementerWorkGaugeText.Text =
+                            FormatActiveWorkItemGauge(0));
 
-                foreach (var item in completed)
-                    workReports[item.Id] = item.Report;
+                    foreach (var item in completed)
+                        workReports[item.Id] = item.Report;
 
-                var workBatchAfter =
-                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                        workingDirectory,
-                        cancellationToken);
-                var observedWorkChanges =
-                    MilestoneMechanicalExecutor.DiffChangeStates(
-                        workBatchBefore,
-                        workBatchAfter);
+                    var workBatchAfter =
+                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                            workingDirectory,
+                            cancellationToken);
+                    var observedWorkChanges =
+                        MilestoneMechanicalExecutor.DiffChangeStates(
+                            workBatchBefore,
+                            workBatchAfter);
 
-                foreach (var changedPath in observedWorkChanges)
-                {
-                    if (MilestoneMechanicalExecutor.IsPathWithinScopes(
-                            changedPath,
-                            allRunnableScopes))
+                    foreach (var changedPath in observedWorkChanges)
                     {
-                        milestoneChangedPaths.Add(changedPath);
+                        if (MilestoneMechanicalExecutor.IsPathWithinScopes(
+                                changedPath,
+                                allRunnableScopes))
+                        {
+                            milestoneChangedPaths.Add(changedPath);
+                        }
                     }
-                }
 
-                if (observedWorkChanges.Count > 0)
-                {
-                    dispatchNotes.Add(
-                        "WORK_BATCH_CHANGED_PATHS:" +
-                        Environment.NewLine +
-                        string.Join(
-                            Environment.NewLine,
-                            observedWorkChanges.Select(path => "- " + path)));
+                    if (observedWorkChanges.Count > 0)
+                    {
+                        dispatchNotes.Add(
+                            $"WORK_ORDER_{wave.Key}_CHANGED_PATHS:" +
+                            Environment.NewLine +
+                            string.Join(
+                                Environment.NewLine,
+                                observedWorkChanges.Select(path => "- " + path)));
+                    }
+
+                    AddDataFlowHistory(
+                        WorkerRoleState.Unknown,
+                        "Worker 작업",
+                        $"WORK ORDER {wave.Key} 종료 · {completed.Length}/{waveWorkIds.Length} terminal",
+                        status: "COMPLETED",
+                        persistenceSource: "WORKER ACTION");
                 }
             }
 
@@ -1273,15 +1299,19 @@ public partial class MainWindow
             new("HQ-DESIGN", "MANAGER-DISPATCH", "DESIGN_TO_EXECUTION")
         };
 
-        var workNodes = milestone.WorkItems.Values
-            .Select(work => "WORK-" + work.Id)
-            .ToArray();
         var resourceNodes = milestone.Resources.Values
             .Select(resource => "RESOURCE-" + resource.Id)
             .ToArray();
         var validationNode = milestone.QaReserved ? "QA" : "HIGH";
+        var workWaves = milestone.WorkItems.Values
+            .GroupBy(work => work.Order)
+            .OrderBy(group => group.Key)
+            .Select(group => group
+                .Select(work => "WORK-" + work.Id)
+                .ToArray())
+            .ToArray();
 
-        if (workNodes.Length == 0)
+        if (workWaves.Length == 0)
         {
             edges.Add(new(
                 "MANAGER-DISPATCH",
@@ -1290,12 +1320,30 @@ public partial class MainWindow
         }
         else
         {
-            foreach (var workNode in workNodes)
+            foreach (var workNode in workWaves[0])
             {
                 edges.Add(new(
                     "MANAGER-DISPATCH",
                     workNode,
-                    "DISPATCH"));
+                    "DISPATCH_ORDER"));
+            }
+
+            for (var index = 1; index < workWaves.Length; index++)
+            {
+                foreach (var previousNode in workWaves[index - 1])
+                {
+                    foreach (var currentNode in workWaves[index])
+                    {
+                        edges.Add(new(
+                            previousNode,
+                            currentNode,
+                            "ORDER_BARRIER"));
+                    }
+                }
+            }
+
+            foreach (var workNode in workWaves[^1])
+            {
                 edges.Add(new(
                     workNode,
                     validationNode,
@@ -1509,14 +1557,20 @@ public partial class MainWindow
         string summary,
         IEnumerable<string?> issues)
     {
+        var detail = issues
+            .Where(issue => !string.IsNullOrWhiteSpace(issue))
+            .Select(issue => issue!.Trim())
+            .ToArray();
+        var content = detail.Length == 0
+            ? summary
+            : summary +
+              Environment.NewLine +
+              string.Join(Environment.NewLine, detail);
+
         var payload = new Dictionary<string, object?>
         {
             ["status"] = "blocked",
-            ["summary"] = summary,
-            ["issues"] = issues
-                .Where(issue => !string.IsNullOrWhiteSpace(issue))
-                .Select(issue => issue!.Trim())
-                .ToArray()
+            ["content"] = content
         };
 
         return "[GOTO : HQ]" +
@@ -1934,12 +1988,11 @@ public partial class MainWindow
                 explicitStage: TaskStage.Qa);
         });
 
-        var body = MilestoneDefinitionContract.BuildValidationContext(
+        var body = MilestoneDefinitionContract.BuildQaContext(
             milestone,
             workReports,
             resourceReports,
-            mechanicalReports,
-            qaReport: null);
+            mechanicalReports);
 
         var result = await RunCoordinatorRoleAsync(
             jobId,
@@ -2024,7 +2077,7 @@ public partial class MainWindow
                 explicitStage: TaskStage.HighLevel);
         });
 
-        var body = MilestoneDefinitionContract.BuildValidationContext(
+        var body = MilestoneDefinitionContract.BuildHighContext(
             milestone,
             workReports,
             resourceReports,
