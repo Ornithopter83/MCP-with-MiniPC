@@ -315,54 +315,93 @@ public partial class MainWindow
                                 implementer,
                                 cts.Token);
 
-                        if (!string.IsNullOrWhiteSpace(repairedControl))
+                        if (string.IsNullOrWhiteSpace(repairedControl))
                         {
-                            var controlParse =
-                                ActionBlockContract.ParseHq(repairedControl);
-                            if (!controlParse.HasErrors &&
-                                controlParse.ValidActions.Count == 1)
-                            {
-                                hqMessage = repairedControl;
-                                hqParse = controlParse;
-                                hqAction = controlParse.ValidActions[0];
-
-                                if (string.Equals(
-                                        hqAction.Name,
-                                        "PAUSE",
-                                        StringComparison.OrdinalIgnoreCase))
-                                {
-                                    SaveMilestoneContinuation(
-                                        "PAUSED",
-                                        hqMessage,
-                                        jobId,
-                                        normalizedRoot,
-                                        coordinator,
-                                        implementer,
-                                        hqSession,
-                                        high);
-                                    return;
-                                }
-
-                                if (string.Equals(
-                                        hqAction.Name,
-                                        "END",
-                                        StringComparison.OrdinalIgnoreCase))
-                                {
-                                    SaveMilestoneContinuation(
-                                        "DONE",
-                                        hqMessage,
-                                        jobId,
-                                        normalizedRoot,
-                                        coordinator,
-                                        implementer,
-                                        hqSession,
-                                        high);
-                                    ProjectWorkspacePersistence.ClearContinuation(
-                                        normalizedRoot);
-                                    return;
-                                }
-                            }
+                            throw new InvalidOperationException(
+                                "HQ_CONTROL_RESPONSE_RECOVERY_FAILED");
                         }
+
+                        var controlParse =
+                            ActionBlockContract.ParseHq(repairedControl);
+                        if (controlParse.HasErrors ||
+                            controlParse.ValidActions.Count != 1)
+                        {
+                            throw new InvalidOperationException(
+                                "HQ_CONTROL_RESPONSE_CONTRACT_INVALID: " +
+                                string.Join(", ", controlParse.Errors));
+                        }
+
+                        hqMessage = repairedControl;
+                        hqParse = controlParse;
+                        hqAction = controlParse.ValidActions[0];
+
+                        if (string.Equals(
+                                hqAction.Name,
+                                "PAUSE",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            SaveMilestoneContinuation(
+                                "PAUSED",
+                                hqMessage,
+                                jobId,
+                                normalizedRoot,
+                                coordinator,
+                                implementer,
+                                hqSession,
+                                high);
+                            RunOnUi(() =>
+                            {
+                                ResultTitle.Text = "PAUSED";
+                                ResultBody.Text = hqAction.Body;
+                                TaskTitle.Text = "사용자 직접 개입 필요";
+                                AddTaskMessage(
+                                    "TASK PAUSED",
+                                    hqAction.Body,
+                                    status: "PAUSED",
+                                    includeHistory: false);
+                                SetFlowState(false, false, false);
+                                SetFollowupComposerVisible(true);
+                                SetDashboardBodyMode(
+                                    DashboardBodyMode.TaskHistory);
+                            });
+                            return;
+                        }
+
+                        if (string.Equals(
+                                hqAction.Name,
+                                "END",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            SaveMilestoneContinuation(
+                                "DONE",
+                                hqMessage,
+                                jobId,
+                                normalizedRoot,
+                                coordinator,
+                                implementer,
+                                hqSession,
+                                high);
+                            ProjectWorkspacePersistence.ClearContinuation(
+                                normalizedRoot);
+                            RunOnUi(() =>
+                            {
+                                ResultTitle.Text = "DONE";
+                                ResultBody.Text = hqAction.Body;
+                                TaskTitle.Text = "프로젝트 작업 완료";
+                                AddTaskMessage(
+                                    "TASK RESULT",
+                                    hqAction.Body,
+                                    status: "COMPLETED");
+                                SetFlowState(false, false, false);
+                                SetFollowupComposerVisible(true);
+                                SetDashboardBodyMode(
+                                    DashboardBodyMode.TaskHistory);
+                            });
+                            return;
+                        }
+
+                        throw new InvalidOperationException(
+                            "HQ_CONTROL_RESPONSE_ACTION_CHANGED");
                     }
                     else
                     {
