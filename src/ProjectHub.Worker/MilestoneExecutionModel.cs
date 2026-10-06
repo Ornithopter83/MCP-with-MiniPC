@@ -714,6 +714,39 @@ internal static class MilestoneDefinitionContract
                    comparison);
     }
 
+    public static string BuildRoleResult(
+        string? gotoTarget,
+        string status,
+        string summary,
+        IReadOnlyCollection<string>? changedPaths = null,
+        IReadOnlyCollection<string>? issues = null)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["status"] = status,
+            ["summary"] = summary,
+            ["changedPaths"] = changedPaths?.ToArray() ?? Array.Empty<string>(),
+            ["issues"] = issues?.ToArray() ?? Array.Empty<string>()
+        };
+
+        var json = JsonSerializer.Serialize(
+            payload,
+            new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+        var prefix = string.IsNullOrWhiteSpace(gotoTarget)
+            ? string.Empty
+            : "[GOTO : " + gotoTarget.Trim().ToUpperInvariant() + "]" +
+              Environment.NewLine;
+
+        return prefix +
+               "[ACTION=RESULT]" +
+               Environment.NewLine +
+               json;
+    }
+
     public static string NormalizeWorkReport(
         int exitCode,
         string? finalMessage,
@@ -721,33 +754,30 @@ internal static class MilestoneDefinitionContract
     {
         if (exitCode != 0)
         {
-            return
-                "[GOTO : MANAGER]" +
-                Environment.NewLine +
-                "WORK_ITEM_STATUS: BLOCKED" +
-                Environment.NewLine +
-                (string.IsNullOrWhiteSpace(standardError)
+            return BuildRoleResult(
+                null,
+                "blocked",
+                string.IsNullOrWhiteSpace(standardError)
                     ? "WORK 실행 프로세스 실패"
                     : standardError.Trim());
         }
 
         var raw = finalMessage?.Trim() ?? string.Empty;
-        var statusCount =
-            CountExactLine(raw, "WORK_ITEM_STATUS: COMPLETED") +
-            CountExactLine(raw, "WORK_ITEM_STATUS: BLOCKED");
-
-        if (!HasFirstGoto(raw, "MANAGER") || statusCount != 1)
+        var parsed = ActionBlockContract.ParseWork(raw);
+        if (parsed.HasErrors ||
+            parsed.ValidActions.Count != 1 ||
+            !string.Equals(
+                parsed.ValidActions[0].Name,
+                "RESULT",
+                StringComparison.OrdinalIgnoreCase))
         {
-            return
-                "[GOTO : MANAGER]" +
-                Environment.NewLine +
-                "WORK_ITEM_STATUS: BLOCKED" +
-                Environment.NewLine +
-                "WORK_REPORT_CONTRACT_INVALID" +
-                Environment.NewLine +
-                "원본 응답:" +
-                Environment.NewLine +
-                raw;
+            return BuildRoleResult(
+                null,
+                "blocked",
+                "WORK_REPORT_CONTRACT_INVALID",
+                issues: parsed.Errors.Count == 0
+                    ? new[] { "RESULT action required" }
+                    : parsed.Errors);
         }
 
         return raw;
@@ -760,29 +790,30 @@ internal static class MilestoneDefinitionContract
     {
         if (exitCode != 0)
         {
-            return
-                "QA_STATUS: BLOCKED" +
-                Environment.NewLine +
-                (string.IsNullOrWhiteSpace(standardError)
+            return BuildRoleResult(
+                "HIGH",
+                "blocked",
+                string.IsNullOrWhiteSpace(standardError)
                     ? "QA 실행 프로세스 실패"
                     : standardError.Trim());
         }
 
         var raw = finalMessage?.Trim() ?? string.Empty;
-        var statusCount =
-            CountExactLine(raw, "QA_STATUS: COMPLETED") +
-            CountExactLine(raw, "QA_STATUS: BLOCKED");
-
-        if (statusCount != 1)
+        var parsed = ActionBlockContract.ParseQa(raw);
+        if (parsed.HasErrors ||
+            parsed.ValidActions.Count != 1 ||
+            !string.Equals(
+                parsed.ValidActions[0].Name,
+                "RESULT",
+                StringComparison.OrdinalIgnoreCase))
         {
-            return
-                "QA_STATUS: BLOCKED" +
-                Environment.NewLine +
-                "QA_REPORT_CONTRACT_INVALID" +
-                Environment.NewLine +
-                "원본 응답:" +
-                Environment.NewLine +
-                raw;
+            return BuildRoleResult(
+                "HIGH",
+                "blocked",
+                "QA_REPORT_CONTRACT_INVALID",
+                issues: parsed.Errors.Count == 0
+                    ? new[] { "RESULT action required" }
+                    : parsed.Errors);
         }
 
         return raw;
@@ -795,43 +826,30 @@ internal static class MilestoneDefinitionContract
     {
         if (exitCode != 0)
         {
-            return
-                "[GOTO : MANAGER]" +
-                Environment.NewLine +
-                "HIGH_STATUS: INCOMPLETE" +
-                Environment.NewLine +
-                (string.IsNullOrWhiteSpace(standardError)
+            return BuildRoleResult(
+                "MANAGER",
+                "incomplete",
+                string.IsNullOrWhiteSpace(standardError)
                     ? "HIGH 실행 프로세스 실패"
                     : standardError.Trim());
         }
 
         var raw = finalMessage?.Trim() ?? string.Empty;
-        var statusCount =
-            CountExactLine(raw, "HIGH_STATUS: VERIFIED") +
-            CountExactLine(raw, "HIGH_STATUS: MODIFIED") +
-            CountExactLine(raw, "HIGH_STATUS: INCOMPLETE");
-
-        var modified =
-            CountExactLine(raw, "HIGH_STATUS: MODIFIED") == 1;
-        var changedPaths = ExtractReportPaths(raw, "CHANGED_PATH");
-        var changedPathsValid =
-            changedPaths.Count > 0 &&
-            changedPaths.All(IsSafeRelativePath);
-
-        if (!HasFirstGoto(raw, "MANAGER") ||
-            statusCount != 1 ||
-            (modified && !changedPathsValid))
+        var parsed = ActionBlockContract.ParseHigh(raw);
+        if (parsed.HasErrors ||
+            parsed.ValidActions.Count != 1 ||
+            !string.Equals(
+                parsed.ValidActions[0].Name,
+                "RESULT",
+                StringComparison.OrdinalIgnoreCase))
         {
-            return
-                "[GOTO : MANAGER]" +
-                Environment.NewLine +
-                "HIGH_STATUS: INCOMPLETE" +
-                Environment.NewLine +
-                "HIGH_REPORT_CONTRACT_INVALID" +
-                Environment.NewLine +
-                "원본 응답:" +
-                Environment.NewLine +
-                raw;
+            return BuildRoleResult(
+                "MANAGER",
+                "incomplete",
+                "HIGH_REPORT_CONTRACT_INVALID",
+                issues: parsed.Errors.Count == 0
+                    ? new[] { "RESULT action required" }
+                    : parsed.Errors);
         }
 
         return raw;
@@ -840,15 +858,23 @@ internal static class MilestoneDefinitionContract
     public static IReadOnlyList<string> ExtractHighChangedPaths(
         string report)
     {
-        if (CountExactLine(report, "HIGH_STATUS: MODIFIED") != 1 ||
-            CountExactLine(report, "HIGH_STATUS: VERIFIED") != 0 ||
-            CountExactLine(report, "HIGH_STATUS: INCOMPLETE") != 0)
+        var parsed = ActionBlockContract.ParseHigh(report);
+        if (parsed.HasErrors || parsed.ValidActions.Count != 1)
+            return Array.Empty<string>();
+
+        var action = parsed.ValidActions[0];
+        var status = ActionBlockContract.GetJsonString(action, "status");
+        if (!string.Equals(
+                status,
+                "modified",
+                StringComparison.OrdinalIgnoreCase))
         {
             return Array.Empty<string>();
         }
 
-        return ExtractReportPaths(report, "CHANGED_PATH")
+        return ActionBlockContract.GetStringArray(action, "changedPaths")
             .Where(IsSafeRelativePath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
@@ -856,46 +882,58 @@ internal static class MilestoneDefinitionContract
         string report,
         string fieldName)
     {
-        var prefix = fieldName.Trim() + ":";
-        return (report ?? string.Empty)
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Split('\n')
-            .Select(line => line.Trim())
-            .Where(line => line.StartsWith(
-                prefix,
+        if (!string.Equals(
+                fieldName,
+                "CHANGED_PATH",
+                StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(
+                fieldName,
+                "changedPaths",
                 StringComparison.OrdinalIgnoreCase))
-            .Select(line => line[prefix.Length..].Trim())
-            .Where(path => path.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        {
+            return Array.Empty<string>();
+        }
+
+        foreach (var parser in new Func<string?, ActionBlockParseResult>[]
+                 {
+                     ActionBlockContract.ParseHigh,
+                     ActionBlockContract.ParseWork
+                 })
+        {
+            var parsed = parser(report);
+            if (!parsed.HasErrors && parsed.ValidActions.Count == 1)
+            {
+                return ActionBlockContract.GetStringArray(
+                        parsed.ValidActions[0],
+                        "changedPaths")
+                    .Where(IsSafeRelativePath)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+            }
+        }
+
+        return Array.Empty<string>();
     }
 
-    public static bool IsTerminalWorkReport(string report) =>
-        CountExactLine(report, "WORK_ITEM_STATUS: COMPLETED") == 1 ||
-        CountExactLine(report, "WORK_ITEM_STATUS: BLOCKED") == 1;
-
-    private static bool HasFirstGoto(string text, string role)
+    public static bool IsTerminalWorkReport(string report)
     {
-        var first = (text ?? string.Empty)
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Split('\n')
-            .FirstOrDefault(line => !string.IsNullOrWhiteSpace(line))
-            ?.Trim();
+        var parsed = ActionBlockContract.ParseWork(report);
+        if (parsed.HasErrors || parsed.ValidActions.Count != 1)
+            return false;
+
+        var status = ActionBlockContract.GetJsonString(
+            parsed.ValidActions[0],
+            "status");
 
         return string.Equals(
-            first,
-            "[GOTO : " + role + "]",
-            StringComparison.OrdinalIgnoreCase);
+                   status,
+                   "completed",
+                   StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(
+                   status,
+                   "blocked",
+                   StringComparison.OrdinalIgnoreCase);
     }
-
-    private static int CountExactLine(string text, string expected) =>
-        (text ?? string.Empty)
-        .Replace("\r\n", "\n", StringComparison.Ordinal)
-        .Split('\n')
-        .Count(line => string.Equals(
-            line.Trim(),
-            expected,
-            StringComparison.Ordinal));
 
     public static string Limit(string value, int maxLength)
     {
