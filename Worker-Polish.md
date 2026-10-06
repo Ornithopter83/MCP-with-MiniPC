@@ -18,6 +18,7 @@
 ② RESOURCE는 GPTWEB 고정이며 별도 Provider·모델 선택을 제공하지 않는다.
 ③ 실행 중 역할의 Provider·모델을 Worker가 임의로 다른 모델로 교체하지 않는다.
 ④ 실행 중 설정은 잠그고 다음 새 작업 상태에서 변경할 수 있게 하는 것을 기본으로 한다.
+⑤ 역할 계약 전문은 동일 AI 세션의 최초 호출에만 직접 주입한다. 같은 세션의 후속 호출은 ProjectHub Git 저장소의 해당 계약 파일 경로·파일명을 명시적으로 참조하고 전문을 반복 주입하지 않는다. 새 세션이거나 계약이 갱신되어 다시 bootstrap해야 할 때만 전문을 다시 주입한다.
 
 제3조 (프로젝트 루트와 작업영역)
 
@@ -26,8 +27,9 @@
 ③ HQ는 마일스톤 설계 단계에서 동시에 실행될 WorkItem의 생성·수정·삭제 영역이 겹치지 않도록 설계한다.
 ④ 같은 마일스톤 안의 WorkItem dependency는 최대한 배제하고, 한 결과가 다른 작업의 전제가 되는 경우 가능한 한 다음 마일스톤과의 선후 관계로 분리한다. 같은 마일스톤에서 불가피한 경우만 최소 실행 순서를 둔다.
 ⑤ Worker는 HQ가 명시한 작업영역과 현재 마일스톤이 실제로 만든 생성·수정·삭제 변경목록을 기계 상태로 보존한다.
-⑥ 작업영역 밖의 사용자 파일과 변경은 수정·정리·reset·stage·commit하지 않는다. 프로젝트 전체가 dirty라는 이유만으로 작업을 차단하지 않는다.
-⑦ Worker는 파일 변경의 작성자를 지속적으로 판정하거나 의미 검증하지 않는다. 같은 파일·경로에서 명백한 충돌이 발생하여 안전한 진행이 불가능한 경우에만 PAUSE하고 사용자 명령을 기다린다.
+⑥ 현재 ProjectHub 작업이 우선이다. HQ가 지정한 WRITE_PATH, RESOURCE targetPath 또는 HIGH가 명시한 CHANGED_PATH 안에 기존 dirty 변경이나 실행 중 새 변경이 있어도 그 이유로 PAUSE하지 않으며 현재 작업이 해당 내용을 덮어쓸 수 있다.
+⑦ 지정된 작업영역 밖의 파일과 변경은 수정·정리·reset·stage·commit하지 않는다. 작업 도중 외부에서 지정된 작업영역 안에 끼워 넣은 변경은 보존을 보장하지 않는다.
+⑧ Worker는 파일 변경의 작성자를 지속적으로 판정하거나 의미 검증하지 않는다. 프로젝트 전체가 dirty라는 이유만으로 작업을 차단하지 않는다.
 
 제4조 (마일스톤 실행)
 
@@ -46,7 +48,7 @@
 ① RESOURCE Web transport는 현재 IMAGE 생성 경로를 사용하며 GPTWEB에 고정한다.
 ② RESOURCE 결과는 먼저 `<project-root>/temp/Resource`에 저장하고 작업 이력을 남긴다.
 ③ RESOURCE가 완료되어 프로젝트에 반영할 때는 복사본을 남기지 않고 HQ가 지정한 최종 프로젝트 경로로 move한다.
-④ 최종 목적지에서 사용자 파일과 명백한 충돌이 발생하면 자동 덮어쓰기하지 않고 PAUSE한다.
+④ 최종 목적지가 HQ가 지정한 targetPath이면 현재 RESOURCE 작업이 우선하며 기존 파일이 있어도 최종 결과로 덮어쓴다.
 ⑤ RESOURCE 결과와 보고는 일반 WorkItem 결과와 함께 현재 마일스톤 결과로 취급한다.
 ⑥ RESOURCE 실패를 다른 임의 생성 경로로 자동 우회하지 않는다.
 
@@ -77,7 +79,7 @@
 ③ 사용자 로컬 checkout이 선택된 대상 branch와 다르거나 Worker가 안전하게 대상 branch를 준비할 수 없으면 PAUSE한다. 사용자가 하네스 없이 직접 Git 상태를 해결한 뒤 재개한다.
 ④ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push 흐름은 중간관리자가 요청하고 Worker가 기계적으로 수행한다.
 ⑤ WorkItem별 projecthub/* branch, checkpoint branch, Integration branch와 별도 원격 result branch를 사용하지 않는다.
-⑥ 마일스톤 종료 시 Worker는 현재 마일스톤 변경목록에 속한 생성·수정·삭제만 stage하여 하나의 마일스톤 commit을 만들고 대상 branch에 push한다. 프로젝트 전체를 무조건 stage하지 않는다.
+⑥ 마일스톤 종료 시 Worker는 HQ가 지정한 WRITE_PATH와 RESOURCE targetPath, HIGH가 명시한 CHANGED_PATH 안에서 현재 마일스톤 변경목록에 기록된 생성·수정·삭제만 stage하여 하나의 마일스톤 commit을 만든다. 지정되지 않은 경로는 dirty여도 stage·commit하지 않는다. 프로젝트 전체를 무조건 stage하지 않는다.
 ⑦ 마일스톤이 기능적으로 성공했는지와 관계없이 Git 갱신이 물리적으로 가능한 경우에는 해당 현재 상태를 commit·push한다.
 ⑧ commit 또는 push 문제가 있으면 중간관리자가 현재 Git 사실을 바탕으로 merge, rebase, fetch/pull, 재시도와 필요한 Git 갱신 방법을 사용해 대상 branch를 최대한 갱신한다. 마일스톤의 현재 상태를 원격에 반영하는 것을 우선한다.
 ⑨ 원격 서비스 정책, 권한, 네트워크 또는 실제 Git 제약 때문에 물리적으로 push가 불가능하거나 반복 해결에 실패한 경우에만 현재 commit SHA, 로컬/원격 상태와 실패 사실을 HQ에 보고한다.
@@ -93,9 +95,9 @@
 
 제10조 (PAUSE와 사용자 개입)
 
-① 프로젝트 작업 파일에서 명백한 사용자 충돌이 발생해 안전한 진행이 불가능하면 PAUSE한다.
+① 지정된 작업영역 안의 dirty 변경이나 동시 변경은 현재 작업보다 우선하지 않으며 그 이유로 PAUSE하지 않는다.
 ② 대상 branch가 준비되지 않았거나 다른 checkout 상태 때문에 직접 작업할 수 없으면 PAUSE한다.
-③ PAUSE 상태에서 Worker가 임의 reset, 강제 checkout, 사용자 파일 삭제나 덮어쓰기로 해결하지 않는다.
+③ PAUSE 상태에서 Worker가 지정되지 않은 경로를 reset·강제 checkout·삭제하여 해결하지 않는다.
 ④ 사용자가 하네스 없이 필요한 수동 조치를 수행한 뒤 재개할 수 있어야 한다.
 ⑤ 사용자 파일 관리 실수나 프로젝트 자체의 잘못된 Git 설정을 모두 예측해 선제 차단하는 것을 목표로 하지 않는다.
 
