@@ -3144,11 +3144,16 @@ public partial class MainWindow : Window
         };
         var text = body?.Trim() ?? string.Empty;
         var fullText = string.IsNullOrWhiteSpace(fullMessage) ? text : fullMessage.Trim();
+        var responseTitle = title.StartsWith(
+            "응답 데이터",
+            StringComparison.Ordinal)
+            ? title
+            : "응답 데이터 · " + title;
         var item = new WorkerHistoryEvent(
             DateTimeOffset.Now,
             stage,
             "ROLE_RESPONSE",
-            title,
+            responseTitle,
             WorkerHistoryCardFormatter.Preview(text),
             string.IsNullOrEmpty(text) ? null : Encoding.UTF8.GetByteCount(text),
             null,
