@@ -76,7 +76,15 @@ public sealed class CoordinatorFirstContractTests
             milestone,
             new Dictionary<string, string>
             {
-                ["10"] = "[GOTO : MANAGER]\nWORK_ITEM_STATUS: COMPLETED\n구현 완료"
+                ["10"] = """
+                    [ACTION=RESULT]
+                    {
+                      "status": "completed",
+                      "summary": "구현 완료",
+                      "changedPaths": ["src/A"],
+                      "issues": []
+                    }
+                    """
             },
             new Dictionary<string, string>(),
             Array.Empty<string>(),
@@ -86,7 +94,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("기능을 구현한다.", validationContext);
         Assert.Contains("지정 경로 안에서 구현한다.", validationContext);
         Assert.Contains("WORK_RESULTS:", validationContext);
-        Assert.Contains("WORK_ITEM_STATUS: COMPLETED", validationContext);
+        Assert.Contains("\"status\": \"completed\"", validationContext);
     }
 
     [Fact]
@@ -193,16 +201,16 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HqJsonRepair_WrapsCorrectedWorkJsonForExistingParser()
+    public void RoleJsonProtocol_RejectsJsonActionField()
     {
-        const string repaired = """
-            설명 없이 교정 결과입니다.
+        const string message = """
+            [ACTION=WORK]
             {
               "action": "work",
               "milestone": {
-                "id": "M-REPAIR",
+                "id": "M-OLD",
                 "branch": "AUTO",
-                "goal": "복구 검증",
+                "goal": "구형 문법",
                 "entrypoint": null,
                 "qa": {
                   "required": false,
@@ -216,51 +224,55 @@ public sealed class CoordinatorFirstContractTests
             }
             """;
 
-        Assert.True(HqJsonRepairContract.TryWrapWorkJson(
-            repaired,
-            out var hqMessage,
-            out var repairError),
-            repairError);
+        var parsed = ActionBlockContract.ParseHq(message);
 
-        var parsed = ActionBlockContract.ParseHq(hqMessage);
-        Assert.True(MilestoneDefinitionContract.TryBuild(
-            hqMessage,
-            parsed,
-            out var milestone,
-            out var milestoneError),
-            milestoneError);
-        Assert.Equal("M-REPAIR", milestone!.Id);
+        Assert.True(parsed.HasErrors);
+        Assert.Contains(
+            "JSON_ACTION_FIELD_FORBIDDEN",
+            Assert.Single(parsed.Actions).Errors);
     }
 
     [Fact]
-    public void HqJsonRepair_RejectsNonWorkAction()
+    public void RoleJsonProtocol_PreservesGotoAndParsesResult()
     {
-        const string repaired = """
+        const string message = """
+            [GOTO : MANAGER]
+            [ACTION=RESULT]
             {
-              "action": "end",
-              "message": "완료"
+              "status": "modified",
+              "summary": "검토 후 수정",
+              "changedPaths": ["src/Fix.cs"],
+              "issues": []
             }
             """;
 
-        Assert.False(HqJsonRepairContract.TryWrapWorkJson(
-            repaired,
-            out _,
-            out var error));
-        Assert.Equal("HQ_JSON_REPAIR_WORK_ACTION_REQUIRED", error);
+        var parsed = ActionBlockContract.ParseHigh(message);
+
+        Assert.False(parsed.HasErrors);
+        var action = Assert.Single(parsed.ValidActions);
+        Assert.Equal("RESULT", action.Name);
+        Assert.Equal("MANAGER", action.GotoTarget);
+        Assert.Equal(
+            new[] { "src/Fix.cs" },
+            ActionBlockContract.GetStringArray(
+                action,
+                "changedPaths"));
     }
 
     [Fact]
-    public void HqJsonRepairPrompt_IsReadOnlySyntaxRepair()
+    public void RoleJsonRepairPrompt_UsesOneTargetRoleSchema()
     {
-        var prompt = HqJsonRepairContract.BuildPrompt(
-            "[ACTION=WORK]\n{ malformed }",
-            "JSON_INVALID");
+        var prompt = RoleJsonRepairContract.BuildPrompt(
+            "MANAGER",
+            "[ACTION=DISPATCH]\n{ malformed }",
+            "JSON_INVALID",
+            "DISPATCH");
 
-        Assert.Contains("JSON 문법 복구", prompt);
-        Assert.Contains("프로젝트 파일을 읽거나 수정하지 말고", prompt);
-        Assert.Contains("JSON 폼", prompt);
-        Assert.Contains("JSON_INVALID", prompt);
-        Assert.Contains("[ACTION=WORK]", prompt);
+        Assert.Contains("일회성 임시 WORK", prompt);
+        Assert.Contains("역할: MANAGER", prompt);
+        Assert.Contains("기대 ACTION: DISPATCH", prompt);
+        Assert.Contains("[ACTION=DISPATCH]", prompt);
+        Assert.Contains("JSON 내부에는 action 필드를 만들지 않는다", prompt);
     }
 
     [Fact]
@@ -348,64 +360,95 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void ManagerActionParser_AcceptsInitialBatchDispatchActions()
+    public void ManagerActionParser_AcceptsBatchDispatchJson()
     {
         const string message = """
-            [ACTION=RUN_WORK]
-            WORK_ITEM_ID: 10
-            [END_ACTION]
-
-            [ACTION=RUN_RESOURCE]
-            RESOURCE_ID: 0
-            [END_ACTION]
-
-            [ACTION=MECHANICAL]
-            OPERATION: PUBLISH
-            BODY_BEGIN
-            COMMAND: dotnet publish App.csproj -o bin
-            BODY_END
-            [END_ACTION]
+            [ACTION=DISPATCH]
+            {
+              "workItemIds": [10, 11],
+              "resourceIds": [0],
+              "mechanical": [
+                {
+                  "operation": "PUBLISH",
+                  "command": "dotnet publish App.csproj -o bin"
+                }
+              ]
+            }
             """;
 
         var parsed = ActionBlockContract.ParseManager(message);
 
         Assert.False(parsed.HasErrors);
+        var action = Assert.Single(parsed.ValidActions);
+        Assert.Equal("DISPATCH", action.Name);
         Assert.Equal(
-            new[] { "RUN_WORK", "RUN_RESOURCE", "MECHANICAL" },
-            parsed.ValidActions.Select(action => action.Name));
+            new[] { "10", "11" },
+            ActionBlockContract.GetIdArray(
+                action,
+                "workItemIds"));
+        Assert.Equal(
+            new[] { "0" },
+            ActionBlockContract.GetIdArray(
+                action,
+                "resourceIds"));
     }
 
     [Fact]
-    public void WorkReportNormalizer_RequiresManagerGotoAndOneTerminalStatus()
+    public void WorkReportNormalizer_RequiresResultJsonStatus()
     {
         var valid = MilestoneDefinitionContract.NormalizeWorkReport(
             0,
-            "[GOTO : MANAGER]\nWORK_ITEM_STATUS: COMPLETED\n완료",
+            """
+            [ACTION=RESULT]
+            {
+              "status": "completed",
+              "summary": "완료",
+              "changedPaths": ["src/A.cs"],
+              "issues": []
+            }
+            """,
             null);
-        Assert.Contains("WORK_ITEM_STATUS: COMPLETED", valid);
+        Assert.Contains("\"status\": \"completed\"", valid);
 
         var invalid = MilestoneDefinitionContract.NormalizeWorkReport(
             0,
-            "WORK_ITEM_STATUS: COMPLETED\n완료",
+            "완료",
             null);
-        Assert.Contains("WORK_ITEM_STATUS: BLOCKED", invalid);
+        Assert.Contains("\"status\": \"blocked\"", invalid);
         Assert.Contains("WORK_REPORT_CONTRACT_INVALID", invalid);
     }
 
     [Fact]
-    public void QaAndHighReports_AreNormalizedToTheirRoleContracts()
+    public void QaAndHighReports_AreNormalizedToJsonContracts()
     {
         var qa = MilestoneDefinitionContract.NormalizeQaReport(
             0,
-            "QA_STATUS: COMPLETED\n동작 확인",
+            """
+            [GOTO : HIGH]
+            [ACTION=RESULT]
+            {
+              "status": "completed",
+              "summary": "동작 확인",
+              "issues": []
+            }
+            """,
             null);
-        Assert.Contains("QA_STATUS: COMPLETED", qa);
+        Assert.Contains("\"status\": \"completed\"", qa);
 
         var high = MilestoneDefinitionContract.NormalizeHighReport(
             0,
-            "[GOTO : MANAGER]\nHIGH_STATUS: MODIFIED\nCHANGED_PATH: src/Fix.cs\n보완 완료",
+            """
+            [GOTO : MANAGER]
+            [ACTION=RESULT]
+            {
+              "status": "modified",
+              "summary": "보완 완료",
+              "changedPaths": ["src/Fix.cs"],
+              "issues": []
+            }
+            """,
             null);
-        Assert.Contains("HIGH_STATUS: MODIFIED", high);
+        Assert.Contains("\"status\": \"modified\"", high);
         Assert.Equal(
             new[] { "src/Fix.cs" },
             MilestoneDefinitionContract.ExtractHighChangedPaths(high));
@@ -416,10 +459,19 @@ public sealed class CoordinatorFirstContractTests
     {
         var high = MilestoneDefinitionContract.NormalizeHighReport(
             0,
-            "[GOTO : MANAGER]\nHIGH_STATUS: MODIFIED\n보완 완료",
+            """
+            [GOTO : MANAGER]
+            [ACTION=RESULT]
+            {
+              "status": "modified",
+              "summary": "보완 완료",
+              "changedPaths": [],
+              "issues": []
+            }
+            """,
             null);
 
-        Assert.Contains("HIGH_STATUS: INCOMPLETE", high);
+        Assert.Contains("\"status\": \"incomplete\"", high);
         Assert.Contains("HIGH_REPORT_CONTRACT_INVALID", high);
         Assert.Empty(
             MilestoneDefinitionContract.ExtractHighChangedPaths(high));
@@ -457,24 +509,23 @@ public sealed class CoordinatorFirstContractTests
         var high = RoleContractLoader.LoadHighFooter();
 
         Assert.Contains("[ACTION=WORK]", hq);
-        Assert.Contains("\"action\": \"work\"", hq);
+        Assert.DoesNotContain("\"action\":", hq);
         Assert.Contains("[RESPONSE=OK]", hq);
         Assert.Contains("READ_ONLY_NO_FILE_CHANGES", hq);
         Assert.Contains("\"readOnly\"", hq);
         Assert.Contains("\"initializeGitIfMissing\"", hq);
-        Assert.Contains("JSON 밖", hq);
-        Assert.Contains("END_ACTION", hq);
-        Assert.Contains("BODY_BEGIN", hq);
-        Assert.Contains("일괄 분배", manager);
-        Assert.Contains("마지막 WORKITEM", manager);
-        Assert.Contains("COMMAND:", manager);
-        Assert.DoesNotContain("[ACTION=READY_FOR_VALIDATION]", manager);
-        Assert.DoesNotContain("[ACTION=GIT_FINALIZE]", manager);
-        Assert.Contains("[GOTO : MANAGER]", work);
+        Assert.Contains("[GOTO : 역할]", hq);
+        Assert.DoesNotContain("END_ACTION", manager);
+        Assert.DoesNotContain("BODY_BEGIN", manager);
+        Assert.Contains("[ACTION=DISPATCH]", manager);
+        Assert.Contains("\"workItemIds\"", manager);
+        Assert.Contains("\"mechanical\"", manager);
+        Assert.Contains("[ACTION=RESULT]", work);
+        Assert.Contains("이미지 제작은 RESOURCE의 책임", work);
+        Assert.Contains("[GOTO : HIGH]", qa);
         Assert.Contains("코드나 프로젝트 파일을 수정하지 않는다", qa);
         Assert.Contains("[GOTO : MANAGER]", high);
-        Assert.Contains("CHANGED_PATH:", high);
-        Assert.Contains("managed process", manager, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"changedPaths\"", high);
 
         Assert.DoesNotContain("WorkGraph", hq);
         Assert.DoesNotContain("projecthub/*", manager);
