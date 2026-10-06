@@ -348,11 +348,15 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void ManagerActionParser_AcceptsNewMilestoneActions()
+    public void ManagerActionParser_AcceptsInitialBatchDispatchActions()
     {
         const string message = """
             [ACTION=RUN_WORK]
             WORK_ITEM_ID: 10
+            [END_ACTION]
+
+            [ACTION=RUN_RESOURCE]
+            RESOURCE_ID: 0
             [END_ACTION]
 
             [ACTION=MECHANICAL]
@@ -361,19 +365,13 @@ public sealed class CoordinatorFirstContractTests
             COMMAND: dotnet publish App.csproj -o bin
             BODY_END
             [END_ACTION]
-
-            [ACTION=READY_FOR_VALIDATION]
-            [END_ACTION]
-
-            [ACTION=GIT_FINALIZE]
-            [END_ACTION]
             """;
 
         var parsed = ActionBlockContract.ParseManager(message);
 
         Assert.False(parsed.HasErrors);
         Assert.Equal(
-            new[] { "RUN_WORK", "MECHANICAL", "READY_FOR_VALIDATION", "GIT_FINALIZE" },
+            new[] { "RUN_WORK", "RUN_RESOURCE", "MECHANICAL" },
             parsed.ValidActions.Select(action => action.Name));
     }
 
