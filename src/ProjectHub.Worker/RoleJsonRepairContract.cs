@@ -100,8 +100,7 @@ internal static class RoleJsonRepairContract
                 [ACTION=REPORT]
                 {
                   "status": "completed 또는 partial 또는 blocked",
-                  "summary": "기존 결과 요약",
-                  "issues": []
+                  "content": "기존 결과와 판단 의견"
                 }
                 """,
 
