@@ -23,6 +23,7 @@ internal sealed record MilestoneDefinition(
     string TargetBranch,
     bool QaReserved,
     string? Entrypoint,
+    bool InitializeGitIfMissing,
     bool ReadOnlyNoFileChanges,
     string Body,
     string RawHqMessage,
@@ -161,6 +162,21 @@ internal static class MilestoneDefinitionContract
                 : null;
             if (string.IsNullOrWhiteSpace(entrypoint))
                 entrypoint = null;
+
+            var initializeGitIfMissing = false;
+            if (milestoneJson.TryGetProperty(
+                    "initializeGitIfMissing",
+                    out var initializeGitJson))
+            {
+                if (initializeGitJson.ValueKind is not
+                    (JsonValueKind.True or JsonValueKind.False))
+                {
+                    error = "MILESTONE_GIT_INIT_INVALID";
+                    return false;
+                }
+
+                initializeGitIfMissing = initializeGitJson.GetBoolean();
+            }
 
             var projectPolicy = TryGetOptionalJsonString(
                 milestoneJson,
@@ -343,6 +359,7 @@ internal static class MilestoneDefinitionContract
                 targetBranch,
                 qaReserved,
                 entrypoint,
+                initializeGitIfMissing,
                 readOnlyNoFileChanges,
                 milestoneJson.GetRawText(),
                 rawMessage,
