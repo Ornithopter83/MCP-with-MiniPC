@@ -326,6 +326,21 @@ public sealed class ManagedWebExtensionContractTests
     }
 
     [Fact]
+    public void EmbeddedContent_UsesTenMinuteLongOperationTimeout()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.Contains(
+            "const LONG_OPERATION_TIMEOUT=600000",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "const LONG_OPERATION_TIMEOUT=300000",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BridgeExpectedExtensionIdentity_MatchesEmbeddedExtension()
     {
         var flags = BindingFlags.NonPublic | BindingFlags.Static;
