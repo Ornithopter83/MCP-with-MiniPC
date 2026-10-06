@@ -9,7 +9,8 @@ public sealed record ActionBlock(
     string Body,
     string RawText,
     IReadOnlyList<string> Errors,
-    string? JsonPayload = null)
+    string? JsonPayload = null,
+    string? GotoTarget = null)
 {
     public bool IsValid => Errors.Count == 0;
 
@@ -37,24 +38,58 @@ public sealed record ActionBlockParseResult(
 
 public static class ActionBlockContract
 {
-    private static readonly HashSet<string> HqActionNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "WORK", "PAUSE", "END"
-    };
+    private static readonly HashSet<string> HqActionNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "WORK", "PAUSE", "END"
+        };
 
-    private static readonly HashSet<string> ManagerActionNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "RUN_WORK", "RUN_RESOURCE", "MECHANICAL",
-        "READY_FOR_VALIDATION", "GIT_FINALIZE", "PAUSE"
-    };
+    private static readonly HashSet<string> ManagerActionNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "DISPATCH", "PAUSE", "REPORT"
+        };
+
+    private static readonly HashSet<string> ResultActionNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "RESULT"
+        };
 
     public static ActionBlockParseResult ParseHq(string? rawMessage) =>
-        ParseHqJsonEnvelope(rawMessage);
+        ParseJsonEnvelope("HQ", rawMessage, HqActionNames);
 
     public static ActionBlockParseResult ParseManager(string? rawMessage) =>
-        ParseLegacyBlocks(rawMessage, ManagerActionNames, ValidateManagerAction);
+        ParseJsonEnvelope("MANAGER", rawMessage, ManagerActionNames);
 
-    private static ActionBlockParseResult ParseHqJsonEnvelope(string? rawMessage)
+    public static ActionBlockParseResult ParseWork(string? rawMessage) =>
+        ParseJsonEnvelope("WORK", rawMessage, ResultActionNames);
+
+    public static ActionBlockParseResult ParseQa(string? rawMessage) =>
+        ParseJsonEnvelope("QA", rawMessage, ResultActionNames);
+
+    public static ActionBlockParseResult ParseHigh(string? rawMessage) =>
+        ParseJsonEnvelope("HIGH", rawMessage, ResultActionNames);
+
+    public static ActionBlockParseResult ParseRole(
+        string role,
+        string? rawMessage) =>
+        role.Trim().ToUpperInvariant() switch
+        {
+            "HQ" => ParseHq(rawMessage),
+            "MANAGER" => ParseManager(rawMessage),
+            "WORK" => ParseWork(rawMessage),
+            "QA" => ParseQa(rawMessage),
+            "HIGH" => ParseHigh(rawMessage),
+            _ => new(
+                Array.Empty<ActionBlock>(),
+                new[] { "ROLE_UNKNOWN" })
+        };
+
+    private static ActionBlockParseResult ParseJsonEnvelope(
+        string role,
+        string? rawMessage,
+        IReadOnlySet<string> allowedActions)
     {
         if (string.IsNullOrWhiteSpace(rawMessage))
             return new(Array.Empty<ActionBlock>(), new[] { "ACTION_OUTPUT_EMPTY" });
@@ -63,31 +98,76 @@ public static class ActionBlockContract
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n');
         var lines = normalized.Split('\n');
-        var firstLineIndex = Array.FindIndex(
-            lines,
-            line => !string.IsNullOrWhiteSpace(line));
+        var significant = lines
+            .Select((line, index) => new { line = line.Trim(), index })
+            .Where(item => item.line.Length > 0)
+            .ToArray();
 
-        if (firstLineIndex < 0 ||
-            !TryReadActionStart(lines[firstLineIndex], out var actionName))
+        if (significant.Length == 0)
+            return new(Array.Empty<ActionBlock>(), new[] { "ACTION_OUTPUT_EMPTY" });
+
+        var cursor = 0;
+        if (significant[cursor].line.StartsWith(
+                "[KEY=",
+                StringComparison.Ordinal))
+        {
+            cursor++;
+        }
+
+        string? gotoTarget = null;
+        if (cursor < significant.Length &&
+            TryReadGoto(significant[cursor].line, out var parsedGoto))
+        {
+            gotoTarget = parsedGoto;
+            cursor++;
+        }
+
+        if (cursor >= significant.Length ||
+            !TryReadActionStart(
+                significant[cursor].line,
+                out var actionName))
         {
             return new(
                 Array.Empty<ActionBlock>(),
                 new[] { "ACTION_BLOCK_NOT_FOUND" });
         }
 
-        var errors = new List<string>();
-        if (!HqActionNames.Contains(actionName))
-            errors.Add("ACTION_UNKNOWN");
+        var actionLineIndex = significant[cursor].index;
+        var responseOkIndex = Array.FindIndex(
+            lines,
+            actionLineIndex + 1,
+            line => string.Equals(
+                line.Trim(),
+                "[RESPONSE=OK]",
+                StringComparison.Ordinal));
+
+        var jsonEnd = responseOkIndex >= 0
+            ? responseOkIndex
+            : lines.Length;
 
         var jsonPayload = string.Join(
                 Environment.NewLine,
-                lines[(firstLineIndex + 1)..])
+                lines[(actionLineIndex + 1)..jsonEnd])
             .Trim();
+
+        var errors = new List<string>();
+        if (!allowedActions.Contains(actionName))
+            errors.Add("ACTION_UNKNOWN");
+
+        if (responseOkIndex >= 0 &&
+            lines[(responseOkIndex + 1)..]
+                .Any(line => !string.IsNullOrWhiteSpace(line)))
+        {
+            errors.Add("CONTENT_AFTER_RESPONSE_OK");
+        }
 
         if (string.IsNullOrWhiteSpace(jsonPayload))
             errors.Add("JSON_REQUIRED");
 
         var body = string.Empty;
+        IReadOnlyDictionary<string, IReadOnlyList<string>> fields =
+            EmptyFields();
+
         if (errors.Count == 0)
         {
             try
@@ -100,43 +180,16 @@ public static class ActionBlockContract
                 }
                 else
                 {
-                    if (!TryGetRequiredString(root, "action", out var jsonAction))
-                    {
-                        errors.Add("JSON_ACTION_REQUIRED");
-                    }
-                    else if (!string.Equals(
-                                 jsonAction,
-                                 actionName,
-                                 StringComparison.OrdinalIgnoreCase))
-                    {
-                        errors.Add("JSON_ACTION_MISMATCH");
-                    }
+                    if (root.TryGetProperty("action", out _))
+                        errors.Add("JSON_ACTION_FIELD_FORBIDDEN");
 
-                    switch (actionName.ToUpperInvariant())
-                    {
-                        case "WORK":
-                            if (!root.TryGetProperty("milestone", out var milestone) ||
-                                milestone.ValueKind != JsonValueKind.Object)
-                            {
-                                errors.Add("MILESTONE_OBJECT_REQUIRED");
-                            }
-                            else if (TryGetRequiredString(
-                                         milestone,
-                                         "goal",
-                                         out var milestoneGoal))
-                            {
-                                body = milestoneGoal;
-                            }
-                            break;
-
-                        case "PAUSE":
-                        case "END":
-                            if (!TryGetRequiredString(root, "message", out var message))
-                                errors.Add("MESSAGE_REQUIRED");
-                            else
-                                body = message;
-                            break;
-                    }
+                    fields = BuildFields(root);
+                    ValidateRole(
+                        role,
+                        actionName,
+                        root,
+                        errors,
+                        out body);
                 }
             }
             catch (JsonException)
@@ -147,297 +200,397 @@ public static class ActionBlockContract
 
         var action = new ActionBlock(
             actionName.ToUpperInvariant(),
-            EmptyFields(),
+            fields,
             body,
             normalized.Trim(),
             errors.Distinct(StringComparer.Ordinal).ToArray(),
-            jsonPayload);
+            jsonPayload,
+            gotoTarget);
 
         return new(
             new[] { action },
             action.Errors.Select(error => $"{action.Name}:{error}").ToArray());
     }
 
-    private static ActionBlockParseResult ParseLegacyBlocks(
-        string? rawMessage,
-        IReadOnlySet<string> allowedActions,
-        Action<ActionBlock, List<string>> validator)
-    {
-        if (string.IsNullOrWhiteSpace(rawMessage))
-            return new(Array.Empty<ActionBlock>(), new[] { "ACTION_OUTPUT_EMPTY" });
-
-        var lines = rawMessage
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Split('\n');
-        var actions = new List<ActionBlock>();
-        var parseErrors = new List<string>();
-
-        for (var index = 0; index < lines.Length; index++)
-        {
-            if (!TryReadActionStart(lines[index], out var actionName))
-                continue;
-
-            var start = index;
-            var end = -1;
-            var nextStart = -1;
-            var scanningBody = false;
-
-            for (var cursor = index + 1; cursor < lines.Length; cursor++)
-            {
-                var scanLine = lines[cursor].Trim();
-
-                if (string.Equals(
-                        scanLine,
-                        "BODY_BEGIN",
-                        StringComparison.Ordinal))
-                {
-                    scanningBody = true;
-                    continue;
-                }
-
-                if (string.Equals(
-                        scanLine,
-                        "BODY_END",
-                        StringComparison.Ordinal))
-                {
-                    scanningBody = false;
-                    continue;
-                }
-
-                if (scanningBody)
-                    continue;
-
-                if (string.Equals(
-                        scanLine,
-                        "[END_ACTION]",
-                        StringComparison.Ordinal))
-                {
-                    end = cursor;
-                    break;
-                }
-
-                if (TryReadActionStart(lines[cursor], out _))
-                {
-                    nextStart = cursor;
-                    break;
-                }
-            }
-
-            if (end < 0)
-            {
-                var malformedEnd =
-                    nextStart >= 0 ? nextStart - 1 : lines.Length - 1;
-                var rawBlock = string.Join(
-                    Environment.NewLine,
-                    lines[start..(malformedEnd + 1)]);
-
-                actions.Add(new ActionBlock(
-                    actionName,
-                    EmptyFields(),
-                    string.Empty,
-                    rawBlock,
-                    new[] { "ACTION_END_MISSING" }));
-                parseErrors.Add($"{actionName}:ACTION_END_MISSING");
-
-                if (nextStart >= 0)
-                {
-                    index = nextStart - 1;
-                    continue;
-                }
-
-                break;
-            }
-
-            var blockLines = lines[start..(end + 1)];
-            var action = ParseLegacyBlock(
-                actionName,
-                blockLines,
-                allowedActions,
-                validator);
-            actions.Add(action);
-
-            foreach (var error in action.Errors)
-                parseErrors.Add($"{action.Name}:{error}");
-
-            index = end;
-        }
-
-        if (actions.Count == 0)
-            parseErrors.Add("ACTION_BLOCK_NOT_FOUND");
-
-        return new(actions, parseErrors);
-    }
-
-    private static ActionBlock ParseLegacyBlock(
+    private static void ValidateRole(
+        string role,
         string actionName,
-        IReadOnlyList<string> blockLines,
-        IReadOnlySet<string> allowedActions,
-        Action<ActionBlock, List<string>> validator)
+        JsonElement root,
+        List<string> errors,
+        out string body)
     {
-        var fields =
-            new Dictionary<string, List<string>>(
-                StringComparer.OrdinalIgnoreCase);
-        var bodyLines = new List<string>();
-        var errors = new List<string>();
-        var inBody = false;
-        var bodyStarted = false;
-        var bodyEnded = false;
+        body = string.Empty;
 
-        for (var index = 1; index < blockLines.Count - 1; index++)
+        switch (role)
         {
-            var line = blockLines[index];
-            var trimmed = line.Trim();
+            case "HQ":
+                ValidateHq(actionName, root, errors, out body);
+                return;
 
-            if (string.Equals(
-                    trimmed,
-                    "BODY_BEGIN",
-                    StringComparison.Ordinal))
-            {
-                if (inBody || bodyStarted)
-                    errors.Add("BODY_BEGIN_DUPLICATED");
+            case "MANAGER":
+                ValidateManager(actionName, root, errors, out body);
+                return;
 
-                inBody = true;
-                bodyStarted = true;
-                continue;
-            }
+            case "WORK":
+                ValidateResult(
+                    root,
+                    new[] { "completed", "blocked" },
+                    errors,
+                    out body);
+                return;
 
-            if (string.Equals(
-                    trimmed,
-                    "BODY_END",
-                    StringComparison.Ordinal))
-            {
-                if (!inBody)
-                    errors.Add("BODY_END_WITHOUT_BEGIN");
+            case "QA":
+                ValidateResult(
+                    root,
+                    new[] { "completed", "blocked" },
+                    errors,
+                    out body);
+                return;
 
-                inBody = false;
-                bodyEnded = true;
-                continue;
-            }
-
-            if (inBody)
-            {
-                bodyLines.Add(line);
-                continue;
-            }
-
-            if (trimmed.Length == 0)
-                continue;
-
-            var separator = trimmed.IndexOf(':');
-            if (separator <= 0)
-            {
-                errors.Add("FIELD_LINE_INVALID");
-                continue;
-            }
-
-            var key = trimmed[..separator].Trim().ToUpperInvariant();
-            var value = trimmed[(separator + 1)..].Trim();
-
-            if (!fields.TryGetValue(key, out var values))
-            {
-                values = new List<string>();
-                fields[key] = values;
-            }
-
-            values.Add(value);
+            case "HIGH":
+                ValidateResult(
+                    root,
+                    new[] { "verified", "modified", "incomplete" },
+                    errors,
+                    out body);
+                if (TryGetString(root, "status", out var status) &&
+                    string.Equals(
+                        status,
+                        "modified",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    var paths = GetStringArray(root, "changedPaths");
+                    if (paths.Count == 0)
+                    {
+                        errors.Add("CHANGED_PATHS_REQUIRED");
+                    }
+                    else if (paths.Any(path => !IsSafeRelativePath(path)))
+                    {
+                        errors.Add("CHANGED_PATH_INVALID");
+                    }
+                }
+                return;
         }
 
-        if (inBody || (bodyStarted && !bodyEnded))
-            errors.Add("BODY_END_MISSING");
-
-        if (!allowedActions.Contains(actionName))
-            errors.Add("ACTION_UNKNOWN");
-
-        var readonlyFields = fields.ToDictionary(
-            pair => pair.Key,
-            pair => (IReadOnlyList<string>)
-                new ReadOnlyCollection<string>(pair.Value),
-            StringComparer.OrdinalIgnoreCase);
-        var rawBlock = string.Join(Environment.NewLine, blockLines);
-        var action = new ActionBlock(
-            actionName.ToUpperInvariant(),
-            new ReadOnlyDictionary<string, IReadOnlyList<string>>(
-                readonlyFields),
-            string.Join(Environment.NewLine, bodyLines).Trim(),
-            rawBlock,
-            Array.Empty<string>());
-
-        validator(action, errors);
-        return action with
-        {
-            Errors = errors
-                .Distinct(StringComparer.Ordinal)
-                .ToArray()
-        };
+        errors.Add("ROLE_UNKNOWN");
     }
 
-    private static void ValidateManagerAction(
-        ActionBlock action,
+    private static void ValidateHq(
+        string actionName,
+        JsonElement root,
+        List<string> errors,
+        out string body)
+    {
+        body = string.Empty;
+
+        if (string.Equals(
+                actionName,
+                "WORK",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            if (!root.TryGetProperty("milestone", out var milestone) ||
+                milestone.ValueKind != JsonValueKind.Object)
+            {
+                errors.Add("MILESTONE_OBJECT_REQUIRED");
+                return;
+            }
+
+            if (TryGetString(milestone, "goal", out var goal))
+                body = goal;
+            return;
+        }
+
+        if (string.Equals(
+                actionName,
+                "PAUSE",
+                StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(
+                actionName,
+                "END",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryGetString(root, "message", out body))
+                errors.Add("MESSAGE_REQUIRED");
+        }
+    }
+
+    private static void ValidateManager(
+        string actionName,
+        JsonElement root,
+        List<string> errors,
+        out string body)
+    {
+        body = string.Empty;
+
+        if (string.Equals(
+                actionName,
+                "PAUSE",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryGetString(root, "message", out body))
+                errors.Add("MESSAGE_REQUIRED");
+            return;
+        }
+
+        if (string.Equals(
+                actionName,
+                "REPORT",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            ValidateStatus(
+                root,
+                new[] { "completed", "partial", "blocked" },
+                errors);
+            if (!TryGetString(root, "summary", out body))
+                errors.Add("SUMMARY_REQUIRED");
+            ValidateOptionalStringArray(root, "issues", errors);
+            return;
+        }
+
+        if (!string.Equals(
+                actionName,
+                "DISPATCH",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ValidateIdArray(root, "workItemIds", errors);
+        ValidateIdArray(root, "resourceIds", errors);
+
+        if (!root.TryGetProperty("mechanical", out var mechanical) ||
+            mechanical.ValueKind != JsonValueKind.Array)
+        {
+            errors.Add("MECHANICAL_ARRAY_REQUIRED");
+            return;
+        }
+
+        foreach (var item in mechanical.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                errors.Add("MECHANICAL_ITEM_INVALID");
+                continue;
+            }
+
+            if (!TryGetString(item, "operation", out var operation) ||
+                !new[] { "BUILD", "RUN", "PUBLISH" }.Contains(
+                    operation,
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                errors.Add("OPERATION_INVALID");
+            }
+
+            if (!TryGetString(item, "command", out _))
+                errors.Add("COMMAND_REQUIRED");
+        }
+    }
+
+    private static void ValidateResult(
+        JsonElement root,
+        IReadOnlyCollection<string> allowedStatuses,
+        List<string> errors,
+        out string body)
+    {
+        body = string.Empty;
+        ValidateStatus(root, allowedStatuses, errors);
+
+        if (!TryGetString(root, "summary", out body))
+            errors.Add("SUMMARY_REQUIRED");
+
+        ValidateOptionalStringArray(root, "changedPaths", errors);
+        ValidateOptionalStringArray(root, "issues", errors);
+    }
+
+    private static void ValidateStatus(
+        JsonElement root,
+        IReadOnlyCollection<string> allowedStatuses,
         List<string> errors)
     {
-        switch (action.Name)
+        if (!TryGetString(root, "status", out var status))
         {
-            case "RUN_WORK":
-                Require(action, errors, "WORK_ITEM_ID");
-                break;
+            errors.Add("STATUS_REQUIRED");
+            return;
+        }
 
-            case "RUN_RESOURCE":
-                Require(action, errors, "RESOURCE_ID");
-                break;
-
-            case "MECHANICAL":
-                var operation = Require(
-                    action,
-                    errors,
-                    "OPERATION");
-                if (operation is not null &&
-                    !string.Equals(
-                        operation,
-                        "BUILD",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(
-                        operation,
-                        "RUN",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(
-                        operation,
-                        "PUBLISH",
-                        StringComparison.OrdinalIgnoreCase))
-                    errors.Add("OPERATION_INVALID");
-
-                RequireBody(action, errors);
-                break;
-
-            case "PAUSE":
-                RequireBody(action, errors);
-                break;
+        if (!allowedStatuses.Contains(
+                status,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            errors.Add("STATUS_INVALID");
         }
     }
 
-    private static string? Require(
-        ActionBlock action,
-        List<string> errors,
-        string fieldName)
+    private static void ValidateIdArray(
+        JsonElement root,
+        string propertyName,
+        List<string> errors)
     {
-        var value = action.GetSingle(fieldName);
-        if (string.IsNullOrWhiteSpace(value))
+        if (!root.TryGetProperty(propertyName, out var value) ||
+            value.ValueKind != JsonValueKind.Array)
         {
-            errors.Add(fieldName + "_REQUIRED");
+            errors.Add(propertyName.ToUpperInvariant() + "_REQUIRED");
+            return;
+        }
+
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind is not
+                (JsonValueKind.String or JsonValueKind.Number))
+            {
+                errors.Add(propertyName.ToUpperInvariant() + "_INVALID");
+                return;
+            }
+        }
+    }
+
+    private static void ValidateOptionalStringArray(
+        JsonElement root,
+        string propertyName,
+        List<string> errors)
+    {
+        if (!root.TryGetProperty(propertyName, out var value))
+            return;
+
+        if (value.ValueKind != JsonValueKind.Array ||
+            value.EnumerateArray().Any(
+                item => item.ValueKind != JsonValueKind.String))
+        {
+            errors.Add(propertyName.ToUpperInvariant() + "_INVALID");
+        }
+    }
+
+    public static IReadOnlyList<string> GetStringArray(
+        ActionBlock action,
+        string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(action.JsonPayload))
+            return Array.Empty<string>();
+
+        try
+        {
+            using var document = JsonDocument.Parse(action.JsonPayload);
+            return GetStringArray(document.RootElement, propertyName);
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    public static IReadOnlyList<string> GetIdArray(
+        ActionBlock action,
+        string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(action.JsonPayload))
+            return Array.Empty<string>();
+
+        try
+        {
+            using var document = JsonDocument.Parse(action.JsonPayload);
+            if (!document.RootElement.TryGetProperty(
+                    propertyName,
+                    out var value) ||
+                value.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<string>();
+            }
+
+            return value.EnumerateArray()
+                .Where(item => item.ValueKind is
+                    JsonValueKind.String or JsonValueKind.Number)
+                .Select(item => item.ValueKind == JsonValueKind.String
+                    ? item.GetString()?.Trim() ?? string.Empty
+                    : item.GetRawText())
+                .Where(item => item.Length > 0)
+                .ToArray();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    public static string? GetJsonString(
+        ActionBlock action,
+        string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(action.JsonPayload))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(action.JsonPayload);
+            return TryGetString(
+                    document.RootElement,
+                    propertyName,
+                    out var value)
+                ? value
+                : null;
+        }
+        catch (JsonException)
+        {
             return null;
         }
-
-        return value;
     }
 
-    private static void RequireBody(
-        ActionBlock action,
-        List<string> errors)
+    private static IReadOnlyList<string> GetStringArray(
+        JsonElement root,
+        string propertyName)
     {
-        if (string.IsNullOrWhiteSpace(action.Body))
-            errors.Add("BODY_REQUIRED");
+        if (!root.TryGetProperty(propertyName, out var value) ||
+            value.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<string>();
+        }
+
+        return value.EnumerateArray()
+            .Where(item => item.ValueKind == JsonValueKind.String)
+            .Select(item => item.GetString()?.Trim() ?? string.Empty)
+            .Where(item => item.Length > 0)
+            .ToArray();
     }
 
-    private static bool TryGetRequiredString(
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>>
+        BuildFields(JsonElement root)
+    {
+        var values = new Dictionary<string, IReadOnlyList<string>>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (property.Value.ValueKind == JsonValueKind.String)
+            {
+                values[property.Name] = new[]
+                {
+                    property.Value.GetString() ?? string.Empty
+                };
+            }
+            else if (property.Value.ValueKind == JsonValueKind.Number)
+            {
+                values[property.Name] = new[]
+                {
+                    property.Value.GetRawText()
+                };
+            }
+            else if (property.Value.ValueKind == JsonValueKind.Array)
+            {
+                var items = property.Value.EnumerateArray()
+                    .Where(item => item.ValueKind is
+                        JsonValueKind.String or JsonValueKind.Number)
+                    .Select(item => item.ValueKind == JsonValueKind.String
+                        ? item.GetString() ?? string.Empty
+                        : item.GetRawText())
+                    .ToArray();
+                if (items.Length > 0)
+                    values[property.Name] = items;
+            }
+        }
+
+        return new ReadOnlyDictionary<string, IReadOnlyList<string>>(values);
+    }
+
+    private static bool TryGetString(
         JsonElement element,
         string propertyName,
         out string value)
@@ -445,10 +598,22 @@ public static class ActionBlockContract
         value = string.Empty;
         if (!element.TryGetProperty(propertyName, out var property) ||
             property.ValueKind != JsonValueKind.String)
+        {
             return false;
+        }
 
         value = property.GetString()?.Trim() ?? string.Empty;
         return value.Length > 0;
+    }
+
+    private static bool IsSafeRelativePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path))
+            return false;
+
+        return path.Replace('\\', '/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .All(part => part != "..");
     }
 
     private static bool TryReadActionStart(
@@ -463,13 +628,42 @@ public static class ActionBlockContract
                 "[ACTION=",
                 StringComparison.Ordinal) ||
             !trimmed.EndsWith(']'))
+        {
             return false;
+        }
 
         var value = trimmed[8..^1].Trim();
         if (value.Length == 0)
             return false;
 
         actionName = value.ToUpperInvariant();
+        return true;
+    }
+
+    private static bool TryReadGoto(
+        string? line,
+        out string target)
+    {
+        target = string.Empty;
+        var trimmed = line?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) ||
+            !trimmed.StartsWith(
+                "[GOTO",
+                StringComparison.OrdinalIgnoreCase) ||
+            !trimmed.EndsWith(']'))
+        {
+            return false;
+        }
+
+        var colon = trimmed.IndexOf(':');
+        if (colon < 0)
+            return false;
+
+        var value = trimmed[(colon + 1)..^1].Trim();
+        if (value.Length == 0)
+            return false;
+
+        target = value.ToUpperInvariant();
         return true;
     }
 
