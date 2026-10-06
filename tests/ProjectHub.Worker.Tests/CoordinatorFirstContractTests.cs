@@ -1006,6 +1006,81 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void GenericElementRecovery_RebuildsManagerReportAndGoto()
+    {
+        const string malformed = """
+            [ACTION=REPORT]
+            {
+              "status": "completed",
+              "content": "첫 줄
+            둘째 줄"
+            }
+            """;
+
+        var scan = RoleElementRecoveryContract.Scan(
+            "MANAGER",
+            malformed,
+            expectedAction: "REPORT",
+            contractError: "REPORT:JSON_INVALID");
+
+        Assert.Equal("REPORT", scan.ActionName);
+        Assert.Contains("content", scan.RecoveryTargets);
+        Assert.Contains("status", scan.Recovered.Keys);
+
+        var recovered = new Dictionary<string, string>
+        {
+            ["content"] = ""첫 줄 둘째 줄""
+        };
+
+        Assert.True(RoleElementRecoveryContract.TryBuildRoleResponse(
+            scan,
+            recovered,
+            "HQ",
+            out var merged,
+            out var remaining));
+        Assert.Empty(remaining);
+
+        var parsed = ActionBlockContract.ParseManager(merged);
+        Assert.False(parsed.HasErrors);
+        Assert.Equal("HQ", Assert.Single(parsed.ValidActions).GotoTarget);
+    }
+
+    [Fact]
+    public void ElementRecovery_TreatsWrongOptionalTypeAsRecoveryTarget()
+    {
+        const string message = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "M1",
+                "branch": "main",
+                "goal": "타입 검증",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [],
+                "highInstructions": {
+                  "unexpected": true
+                },
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        var scan = RoleElementRecoveryContract.Scan(
+            "HQ",
+            message,
+            expectedAction: "WORK");
+
+        Assert.Contains("highInstructions", scan.RecoveryTargets);
+        Assert.DoesNotContain("highInstructions", scan.Recovered.Keys);
+    }
+
+    [Fact]
     public void PipelineRoleVisuals_ColorOnlyTheCurrentRoleAfterLaunch()
     {
         Assert.True(PipelineCardVisualPolicy.Resolve(
