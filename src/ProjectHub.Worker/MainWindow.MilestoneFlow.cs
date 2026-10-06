@@ -2745,7 +2745,9 @@ public partial class MainWindow
         Environment.NewLine +
         "- operation은 BUILD, RUN, PUBLISH 중 하나다." +
         Environment.NewLine +
-        "- BUILD/PUBLISH 명령은 최신 결과를 프로젝트 루트의 bin에 만들도록 작성한다." +
+        "- BUILD/PUBLISH 명령은 출력 경로를 절대경로로 쓰지 말고 반드시 상대경로 '--output bin'으로 지정한다." +
+        Environment.NewLine +
+        "- Worker는 BUILD/PUBLISH 실행 직전에 output 옵션을 다시 '--output bin'으로 정규화한다." +
         Environment.NewLine +
         "- 프로젝트 루트: " + workingDirectory +
         Environment.NewLine +
