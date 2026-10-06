@@ -89,6 +89,34 @@ public static class RoleContractLoader
         "후속 호출에서는 같은 전문을 반복하지 않는다. " +
         "Worker가 갱신된 전문을 다시 주입하기 전까지 최초 주입된 계약을 유지한다.";
 
+    public static string BuildHistoryPrompt(string prompt)
+    {
+        var value = prompt ?? string.Empty;
+        var contracts = new[]
+        {
+            ("HQ", HqContractPath, LoadHqFooter()),
+            ("MANAGER", ManagerContractPath, LoadManagerFooter()),
+            ("WORK", WorkContractPath, LoadWorkFooter()),
+            ("QA", QaContractPath, LoadQaFooter()),
+            ("HIGH", HighContractPath, LoadHighFooter())
+        };
+
+        foreach (var (role, path, contract) in contracts)
+        {
+            var marker = $"ROLE_CONTRACT: {role} · injected";
+            value = value.Replace(
+                contract,
+                marker,
+                StringComparison.Ordinal);
+            value = value.Replace(
+                BuildContractReference(path),
+                marker,
+                StringComparison.Ordinal);
+        }
+
+        return value;
+    }
+
     private static string Load(string fileName)
     {
         var name = $"ProjectHub.Worker.Contracts.{fileName}";
