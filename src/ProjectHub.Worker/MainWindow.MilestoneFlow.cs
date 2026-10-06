@@ -260,6 +260,12 @@ public partial class MainWindow
                     if (_currentMilestoneResourceReserved != true)
                         _resourceSidecarStatus = "ChatGPT Web";
                     UpdatePipelineVisuals();
+                    AddDataFlowHistory(
+                        WorkerRoleState.Unknown,
+                        "Worker 작업",
+                        $"HQ 응답 파싱 완료\nMILESTONE: {milestone.Id}\nWORK: {milestone.WorkItems.Count}건\nRESOURCE: {milestone.Resources.Count}건\nQA: {(milestone.QaReserved ? "예약" : "미예약")}",
+                        status: "PARSED",
+                        persistenceSource: "WORKER ACTION");
                 });
 
                 var initialChangedPaths =
@@ -429,11 +435,12 @@ public partial class MainWindow
         IReadOnlySet<string> initialChangedPaths,
         CancellationToken cancellationToken)
     {
-        AddRoleProgressHistory(
-            WorkerRoleState.Manager,
-            milestone.ReadOnlyNoFileChanges
-                ? "마일스톤 사전 점검 시작 · READ_ONLY_NO_FILE_CHANGES"
-                : "마일스톤 사전 점검 시작");
+        AddDataFlowHistory(
+            WorkerRoleState.Unknown,
+            "Worker 작업",
+            $"마일스톤 사전 점검\nID: {milestone.Id}\nBRANCH: {milestone.TargetBranch}\nPOLICY: {(milestone.ReadOnlyNoFileChanges ? "READ_ONLY_NO_FILE_CHANGES" : "DEFAULT")}",
+            status: "PROCESSING",
+            persistenceSource: "WORKER ACTION");
         var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
             workingDirectory,
             milestone.TargetBranch,
@@ -688,6 +695,23 @@ public partial class MainWindow
 
             if (runnableWork.Length > 0)
             {
+                foreach (var action in runnableWork)
+                {
+                    var workId = action.GetSingle("WORK_ITEM_ID");
+                    var dispatchBody =
+                        workId is not null &&
+                        milestone.WorkItems.TryGetValue(workId, out var definition)
+                            ? action.RawText + Environment.NewLine + Environment.NewLine + definition.RawText
+                            : action.RawText;
+                    AddDataFlowHistory(
+                        WorkerRoleState.Work,
+                        "Worker 분배",
+                        dispatchBody,
+                        status: "DISPATCHED",
+                        workItemId: workId,
+                        persistenceSource: "WORKER DISPATCH");
+                }
+
                 var runnableScopes = runnableWork
                     .Select(action =>
                     {
@@ -798,6 +822,18 @@ public partial class MainWindow
                              "RUN_RESOURCE",
                              StringComparison.OrdinalIgnoreCase)))
             {
+                var resourceId = action.GetSingle("RESOURCE_ID") ?? "0";
+                var dispatchBody =
+                    milestone.Resources.TryGetValue(resourceId, out var resourceDefinition)
+                        ? action.RawText + Environment.NewLine + Environment.NewLine + resourceDefinition.RawText
+                        : action.RawText;
+                AddDataFlowHistory(
+                    WorkerRoleState.Resource,
+                    "Worker 분배",
+                    dispatchBody,
+                    status: "DISPATCHED",
+                    workItemId: "0",
+                    persistenceSource: "WORKER DISPATCH");
                 var resourceResult = await ExecuteMilestoneResourceAsync(
                     workingDirectory,
                     milestone,
@@ -832,9 +868,12 @@ public partial class MainWindow
                 });
 
                 var operation = action.GetSingle("OPERATION") ?? "UNKNOWN";
-                AddRoleProgressHistory(
-                    WorkerRoleState.Manager,
-                    $"기계 실행 시작 · {operation}");
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    action.RawText,
+                    status: "EXECUTING",
+                    persistenceSource: "WORKER ACTION");
                 var result = string.Equals(
                         operation,
                         "RUN",
@@ -877,6 +916,12 @@ public partial class MainWindow
                         "READY_FOR_VALIDATION",
                         StringComparison.OrdinalIgnoreCase)))
             {
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    $"검증 단계 전환\nQA: {(milestone.QaReserved ? "실행" : "미예약")}\nHIGH: 실행",
+                    status: "VALIDATING",
+                    persistenceSource: "WORKER ACTION");
                 var missingWork = milestone.WorkItems.Keys
                     .Where(id =>
                         !workReports.TryGetValue(id, out var report) ||
@@ -1012,9 +1057,12 @@ public partial class MainWindow
                 }
                 else
                 {
-                    AddRoleProgressHistory(
-                        WorkerRoleState.Manager,
-                        "Git finalize 시작");
+                    AddDataFlowHistory(
+                        WorkerRoleState.Unknown,
+                        "Worker 작업",
+                        "GIT_FINALIZE 실행",
+                        status: "EXECUTING",
+                        persistenceSource: "WORKER ACTION");
                     gitResult =
                         await MilestoneMechanicalExecutor.FinalizeGitAsync(
                             workingDirectory,
@@ -1202,10 +1250,12 @@ public partial class MainWindow
                 explicitStage: TaskStage.Resource);
         });
 
-        AddRoleProgressHistory(
-            WorkerRoleState.Resource,
+        AddTaskMessage(
+            "RESOURCE DETAIL",
             $"RESOURCE #{resource.Id} 생성 시작",
+            status: "RUNNING",
             referenceId: resource.Id,
+            includeHistory: false,
             workItemId: "0");
 
         var registry = new MechanicalWorkRegistry();
