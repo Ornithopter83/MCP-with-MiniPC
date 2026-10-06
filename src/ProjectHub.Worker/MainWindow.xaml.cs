@@ -47,6 +47,7 @@ public partial class MainWindow : Window
         ["HighLevel"] = new("#ECD8E4", "#82194B", "#74133F", "current-openai.png"),
         ["Manager"] = new("#E7E7FF", "#5B5BD6", "#4646B8", "current-openai.png"),
         ["Resource"] = new("#E4EEF9", "#326FA8", "#245B8D", "current-web.png"),
+        ["Worker"] = new("#EEF1F5", "#66788A", "#405166", "current-console.png"),
         ["Message"] = new("#EEF8F2", "#168A4A", "#116B39", "current-console.png")
     };
     private readonly List<TaskMessage> _taskMessages = new();
@@ -72,6 +73,7 @@ public partial class MainWindow : Window
             "HighLevel" => "검토",
             "Manager" => "통합",
             "Resource" => "작업 (#0, 리소스)",
+            "Worker" => "Worker",
             "Message" => "메시지",
             _ => "시스템"
         };
@@ -3010,7 +3012,7 @@ public partial class MainWindow : Window
             WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
-            _ => "System"
+            _ => "Worker"
         };
 
         var item = new WorkerHistoryEvent(
