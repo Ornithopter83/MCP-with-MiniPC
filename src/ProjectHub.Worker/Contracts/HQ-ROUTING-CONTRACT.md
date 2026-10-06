@@ -108,8 +108,10 @@ Web HQ의 정상 응답 골격은 다음과 같다.
 ③ `id`를 생략하면 Worker는 0으로 취급한다. 명시할 경우 0만 허용한다.
 ④ 현재 `type`은 `"image"`만 허용한다.
 ⑤ RESOURCE는 GPTWEB 고정이며 다른 Provider·모델로 대체하지 않는다.
-⑥ Worker가 결과를 temp/Resource에 수집한 뒤 완료 시 targetPath로 move하는 것을 전제로 한다.
-⑦ RESOURCE에 필요한 추가 조건은 resource 객체 안의 추가 JSON 필드로 넣는다.
+⑥ 사용자 요구를 충족하기 위해 이미지 리소스의 신규 생성·편집·대체 제작이 필요하면 반드시 RESOURCE #0으로 설계한다. 이미지 제작 자체를 GENERAL WORK에 배정하지 않는다.
+⑦ GENERAL WORK에는 RESOURCE 결과를 코드·UI·문서에서 연결하거나 참조하는 작업만 배정할 수 있다.
+⑧ Worker가 결과를 temp/Resource에 수집한 뒤 완료 시 targetPath로 move하는 것을 전제로 한다.
+⑨ RESOURCE에 필요한 추가 조건은 resource 객체 안의 추가 JSON 필드로 넣는다.
 
 제6조 (PAUSE와 END)
 
