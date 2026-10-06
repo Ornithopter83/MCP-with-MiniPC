@@ -144,14 +144,11 @@ internal static class RoleElementRecoveryContract
                 targets.Add(definition.Name);
         }
 
-        if (normalizedRole == "HQ" &&
-            string.Equals(
-                actionName,
-                "WORK",
-                StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(contractError))
+        if (!string.IsNullOrWhiteSpace(contractError))
         {
-            foreach (var inferred in InferHqElementsFromContractError(
+            foreach (var inferred in InferElementsFromContractError(
+                         normalizedRole,
+                         actionName,
                          contractError))
             {
                 targets.Add(inferred);
@@ -301,6 +298,107 @@ internal static class RoleElementRecoveryContract
         }
     }
 
+    public static bool TryBuildRoleResponse(
+        RoleElementScanResult originalScan,
+        IReadOnlyDictionary<string, string> recoveredByWork,
+        string? gotoTarget,
+        out string response,
+        out IReadOnlyList<string> remainingElements)
+    {
+        response = string.Empty;
+
+        if (string.Equals(
+                originalScan.Role,
+                "HQ",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            remainingElements = originalScan.RecoveryTargets;
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(originalScan.ActionName))
+        {
+            remainingElements = originalScan.RecoveryTargets;
+            return false;
+        }
+
+        var definitions = GetDefinitions(
+            originalScan.Role,
+            originalScan.ActionName);
+        var values = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in originalScan.Recovered)
+            values[pair.Key] = pair.Value;
+
+        foreach (var pair in recoveredByWork)
+        {
+            if (definitions.Any(definition =>
+                    string.Equals(
+                        definition.Name,
+                        pair.Key,
+                        StringComparison.OrdinalIgnoreCase)) &&
+                IsValidJsonValue(pair.Value))
+            {
+                values[pair.Key] = pair.Value;
+            }
+        }
+
+        var remaining = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var definition in definitions)
+        {
+            if (definition.Required &&
+                !values.ContainsKey(definition.Name))
+            {
+                remaining.Add(definition.Name);
+            }
+        }
+
+        foreach (var recoveryTarget in originalScan.RecoveryTargets)
+        {
+            if (!values.ContainsKey(recoveryTarget))
+                remaining.Add(recoveryTarget);
+        }
+
+        remainingElements = remaining
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (remainingElements.Count > 0)
+            return false;
+
+        var builder = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(gotoTarget))
+        {
+            builder.AppendLine(
+                "[GOTO : " + gotoTarget.Trim().ToUpperInvariant() + "]");
+        }
+
+        builder.AppendLine(
+            "[ACTION=" +
+            originalScan.ActionName.Trim().ToUpperInvariant() +
+            "]");
+        builder.AppendLine("{");
+
+        var available = definitions
+            .Where(definition => values.ContainsKey(definition.Name))
+            .ToArray();
+        for (var index = 0; index < available.Length; index++)
+        {
+            var definition = available[index];
+            builder.Append("  ");
+            builder.Append(JsonSerializer.Serialize(definition.Name));
+            builder.Append(": ");
+            builder.Append(values[definition.Name]);
+            if (index < available.Length - 1)
+                builder.Append(',');
+            builder.AppendLine();
+        }
+
+        builder.Append('}');
+        response = builder.ToString();
+        return true;
+    }
+
     public static bool TryBuildHqWorkResponse(
         RoleElementScanResult originalScan,
         IReadOnlyDictionary<string, string> recoveredByWork,
@@ -424,11 +522,62 @@ internal static class RoleElementRecoveryContract
                 (definition.Required ? " (required)" : " (optional)")));
     }
 
-    private static IEnumerable<string> InferHqElementsFromContractError(
+    private static IEnumerable<string> InferElementsFromContractError(
+        string role,
+        string actionName,
         string error)
     {
         var normalized = (error ?? string.Empty).ToUpperInvariant();
 
+        if (string.Equals(role, "HQ", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(actionName, "WORK", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var item in InferHqElementsFromContractError(normalized))
+                yield return item;
+            yield break;
+        }
+
+        if (normalized.Contains("STATUS_", StringComparison.Ordinal) ||
+            normalized.Contains("STATUS_REQUIRED", StringComparison.Ordinal))
+        {
+            yield return "status";
+        }
+
+        if (normalized.Contains("SUMMARY_", StringComparison.Ordinal) ||
+            normalized.Contains("SUMMARY_REQUIRED", StringComparison.Ordinal))
+        {
+            yield return "summary";
+        }
+
+        if (normalized.Contains("CHANGED_PATH", StringComparison.Ordinal))
+            yield return "changedPaths";
+
+        if (normalized.Contains("ISSUES", StringComparison.Ordinal))
+            yield return "issues";
+
+        if (normalized.Contains("WORKITEMIDS", StringComparison.Ordinal) ||
+            normalized.Contains("WORKITEMIDS_REQUIRED", StringComparison.Ordinal))
+        {
+            yield return "workItemIds";
+        }
+
+        if (normalized.Contains("MECHANICAL", StringComparison.Ordinal) ||
+            normalized.Contains("OPERATION_", StringComparison.Ordinal) ||
+            normalized.Contains("COMMAND_", StringComparison.Ordinal))
+        {
+            yield return "mechanical";
+        }
+
+        if (normalized.Contains("MESSAGE_REQUIRED", StringComparison.Ordinal))
+            yield return "message";
+
+        if (normalized.Contains("CONTENT_REQUIRED", StringComparison.Ordinal))
+            yield return "content";
+    }
+
+    private static IEnumerable<string> InferHqElementsFromContractError(
+        string normalized)
+    {
         if (normalized.Contains("WORK ", StringComparison.Ordinal) ||
             normalized.Contains("WORK_ITEM", StringComparison.Ordinal) ||
             normalized.Contains("ORDER_", StringComparison.Ordinal) ||
