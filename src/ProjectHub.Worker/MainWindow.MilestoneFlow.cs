@@ -419,7 +419,7 @@ public partial class MainWindow
                             currentLocalChanges,
                             _formatRecoveryJobs.ContainsKey(jobId),
                             GetUnreadRecoveryElements(jobId),
-                            normalizedRoot)));
+                            normalizedRoot));
 
                     AddTaskMessage(
                         "MILESTONE ERROR",
@@ -618,7 +618,7 @@ public partial class MainWindow
                     currentLocalChanges,
                     _formatRecoveryJobs.ContainsKey(jobId),
                     GetUnreadRecoveryElements(jobId),
-                    workingDirectory)));
+                    workingDirectory));
         }
 
         try
@@ -1342,7 +1342,7 @@ public partial class MainWindow
                     currentLocalChanges,
                     _formatRecoveryJobs.ContainsKey(jobId),
                     GetUnreadRecoveryElements(jobId),
-                    workingDirectory)));
+                    workingDirectory));
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
