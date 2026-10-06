@@ -407,8 +407,9 @@ internal static class RoleElementRecoveryContract
     {
         response = string.Empty;
         var values = new Dictionary<string, string>(
-            originalScan.Recovered,
             StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in originalScan.Recovered)
+            values[pair.Key] = pair.Value;
 
         foreach (var pair in recoveredByWork)
         {
