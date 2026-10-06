@@ -506,6 +506,7 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine($"TARGET_BRANCH: {milestone.TargetBranch}");
         builder.AppendLine($"QA_RESERVED: {(milestone.QaReserved ? "YES" : "NO")}");
         builder.AppendLine($"ENTRYPOINT: {milestone.Entrypoint ?? "없음"}");
+        builder.AppendLine($"GIT_INIT_IF_MISSING: {(milestone.InitializeGitIfMissing ? "YES" : "NO")}");
         builder.AppendLine($"PROJECT_POLICY: {(milestone.ReadOnlyNoFileChanges ? "READ_ONLY_NO_FILE_CHANGES" : "DEFAULT")}");
         builder.AppendLine("HQ_MILESTONE_DESIGN:");
         builder.AppendLine(milestone.Body);
