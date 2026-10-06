@@ -733,6 +733,21 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("당신은 QA다.", historyPrompt);
         Assert.DoesNotContain("ROLE_CONTRACT:", historyPrompt);
         Assert.DoesNotContain(RoleContractLoader.QaContractPath, historyPrompt);
+
+        var mechanicalHistory = RoleContractLoader.BuildHistoryPrompt(
+            "CURRENT_EVENT: START" +
+            Environment.NewLine +
+            Environment.NewLine +
+            "Worker 기계 실행 보충 계약:" +
+            Environment.NewLine +
+            "- operation은 BUILD, RUN, PUBLISH 중 하나다.");
+        Assert.Contains("CURRENT_EVENT: START", mechanicalHistory);
+        Assert.DoesNotContain(
+            "Worker 기계 실행 보충 계약:",
+            mechanicalHistory);
+        Assert.DoesNotContain(
+            "operation은 BUILD, RUN, PUBLISH",
+            mechanicalHistory);
     }
 
     [Fact]
