@@ -204,6 +204,104 @@ public partial class MainWindow
                         hqSession,
                         high);
                     RunOnUi(() =>
+                    {
+                        ResultTitle.Text = "PAUSED";
+                        ResultBody.Text = hqAction.Body;
+                        TaskTitle.Text = "사용자 직접 개입 필요";
+                        AddTaskMessage(
+                            "TASK PAUSED",
+                            hqAction.Body,
+                            status: "PAUSED",
+                            includeHistory: false);
+                        SetFlowState(false, false, false);
+                        SetFollowupComposerVisible(true);
+                        SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
+                    });
+                    return;
+                }
+
+                if (string.Equals(
+                        hqAction.Name,
+                        "END",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    SaveMilestoneContinuation(
+                        "DONE",
+                        hqMessage,
+                        jobId,
+                        normalizedRoot,
+                        coordinator,
+                        implementer,
+                        hqSession,
+                        high);
+                    ProjectWorkspacePersistence.ClearContinuation(normalizedRoot);
+                    RunOnUi(() =>
+                    {
+                        ResultTitle.Text = "DONE";
+                        ResultBody.Text = hqAction.Body;
+                        TaskTitle.Text = "프로젝트 작업 완료";
+                        AddTaskMessage(
+                            "TASK RESULT",
+                            hqAction.Body,
+                            status: "COMPLETED");
+                        SetFlowState(false, false, false);
+                        SetFollowupComposerVisible(true);
+                        SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
+                    });
+                    return;
+                }
+
+                if (!MilestoneDefinitionContract.TryBuild(
+                        hqMessage,
+                        hqParse,
+                        out var milestone,
+                        out var milestoneError))
+                {
+                    if (!hqEnvelope.RepairUsed)
+                    {
+                        var repaired =
+                            await ExecuteRoleJsonRepairWorkAsync(
+                                jobId,
+                                normalizedRoot,
+                                "HQ",
+                                hqMessage,
+                                milestoneError,
+                                "WORK",
+                                implementer,
+                                cts.Token);
+
+                        if (!string.IsNullOrWhiteSpace(repaired))
+                        {
+                            var repairedParse =
+                                ActionBlockContract.ParseHq(repaired);
+                            if (!repairedParse.HasErrors &&
+                                MilestoneDefinitionContract.TryBuild(
+                                    repaired,
+                                    repairedParse,
+                                    out milestone,
+                                    out milestoneError))
+                            {
+                                hqMessage = repaired;
+                                hqParse = repairedParse;
+                                AddDataFlowHistory(
+                                    WorkerRoleState.Work,
+                                    "Worker 작업",
+                                    "HQ JSON 복구 성공\n기존 HQ 파서 재검증 완료",
+                                    status: "REPAIRED",
+                                    persistenceSource: "WORKER ACTION");
+                            }
+                        }
+                    }
+
+                    if (milestone is null)
+                    {
+                        throw new InvalidOperationException(
+                            "HQ_MILESTONE_CONTRACT_INVALID: " +
+                            milestoneError);
+                    }
+                }
+
+                RunOnUi(() =>
                 {
                     _currentMilestoneQaReserved = milestone!.QaReserved;
                     _currentMilestoneResourceReserved =
