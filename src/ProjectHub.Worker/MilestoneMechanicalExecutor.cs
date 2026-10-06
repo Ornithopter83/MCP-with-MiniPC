@@ -7,10 +7,139 @@ namespace ProjectHub.Worker;
 internal static class MilestoneMechanicalExecutor
 {
     private const string RequiredBranch = "main";
+
+    public static async Task<MilestoneGitResult> RefreshConfiguredOriginMainAsync(
+        string workingDirectory,
+        string? configuredRepositoryUrl,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(configuredRepositoryUrl))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "CONFIGURED_REPOSITORY_REQUIRED: 강제 설정된 원격 저장소 URL이 없습니다.");
+        }
+
+        var git = new ProcessGitCommandRunner();
+
+        Task<GitCommandResult> Run(params string[] args) =>
+            git.RunAsync(
+                workingDirectory,
+                args,
+                TimeSpan.FromMinutes(3),
+                cancellationToken);
+
+        var inside = await Run(
+            "rev-parse",
+            "--is-inside-work-tree").ConfigureAwait(false);
+        if (inside.ExitCode != 0 ||
+            !string.Equals(
+                inside.StandardOutput.Trim(),
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "CONFIGURED_REPOSITORY_UNAVAILABLE: 현재 프로젝트 루트가 Git 저장소가 아닙니다.");
+        }
+
+        var origin = await Run(
+            "remote",
+            "get-url",
+            "origin").ConfigureAwait(false);
+        if (origin.ExitCode != 0 ||
+            string.IsNullOrWhiteSpace(origin.StandardOutput))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "CONFIGURED_ORIGIN_REQUIRED: origin 원격 저장소를 확인할 수 없습니다.");
+        }
+
+        var actualRepositoryUrl = origin.StandardOutput.Trim();
+        if (!RepositoryAddressesEqual(
+                configuredRepositoryUrl,
+                actualRepositoryUrl))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "CONFIGURED_ORIGIN_MISMATCH" +
+                Environment.NewLine +
+                $"configured={configuredRepositoryUrl.Trim()}" +
+                Environment.NewLine +
+                $"origin={actualRepositoryUrl}");
+        }
+
+        var fetch = await Run(
+            "fetch",
+            "--prune",
+            "origin",
+            RequiredBranch).ConfigureAwait(false);
+        if (fetch.ExitCode != 0)
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "ORIGIN_MAIN_FETCH_FAILED" +
+                Environment.NewLine +
+                (string.IsNullOrWhiteSpace(fetch.StandardError)
+                    ? fetch.StandardOutput
+                    : fetch.StandardError));
+        }
+
+        var remoteHead = await Run(
+            "rev-parse",
+            "refs/remotes/origin/" + RequiredBranch).ConfigureAwait(false);
+        if (remoteHead.ExitCode != 0 ||
+            string.IsNullOrWhiteSpace(remoteHead.StandardOutput))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "ORIGIN_MAIN_REFERENCE_MISSING");
+        }
+
+        await Run(
+            "remote",
+            "set-head",
+            "origin",
+            RequiredBranch).ConfigureAwait(false);
+
+        var remoteSha = remoteHead.StandardOutput.Trim();
+        return new(
+            true,
+            false,
+            RequiredBranch,
+            remoteSha,
+            "원격 저장소 참조 갱신 완료" +
+            Environment.NewLine +
+            $"repository={configuredRepositoryUrl.Trim()}" +
+            Environment.NewLine +
+            "remoteBranch=origin/main" +
+            Environment.NewLine +
+            $"remoteHead={remoteSha}");
+    }
+
     public static async Task<MilestoneGitResult> CheckGitReadyAsync(
         string workingDirectory,
         string configuredTargetBranch,
         bool initializeIfMissing,
+        string? configuredRepositoryUrl,
         CancellationToken cancellationToken)
     {
         if (!string.Equals(
@@ -97,6 +226,14 @@ internal static class MilestoneMechanicalExecutor
 
             WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
         }
+
+        var remoteReference =
+            await RefreshConfiguredOriginMainAsync(
+                workingDirectory,
+                configuredRepositoryUrl,
+                cancellationToken).ConfigureAwait(false);
+        if (!remoteReference.Success)
+            return remoteReference;
 
         var currentBranch = await ReadCurrentBranchAsync(Run)
             .ConfigureAwait(false);
@@ -209,6 +346,8 @@ internal static class MilestoneMechanicalExecutor
             "branch=main" +
             Environment.NewLine +
             "remoteBranch=origin/main" +
+            Environment.NewLine +
+            $"remoteHead={remoteReference.CommitSha ?? "확인 실패"}" +
             Environment.NewLine +
             originHeadSummary +
             Environment.NewLine +
@@ -528,6 +667,7 @@ internal static class MilestoneMechanicalExecutor
         string workingDirectory,
         MilestoneDefinition milestone,
         IReadOnlyCollection<string> paths,
+        string? configuredRepositoryUrl,
         CancellationToken cancellationToken)
     {
         if (!string.Equals(
@@ -586,26 +726,19 @@ internal static class MilestoneMechanicalExecutor
                 $"current={currentBranch}");
         }
 
+        var remoteReference =
+            await RefreshConfiguredOriginMainAsync(
+                workingDirectory,
+                configuredRepositoryUrl,
+                cancellationToken).ConfigureAwait(false);
+        if (!remoteReference.Success)
+            return remoteReference;
+
         var scopedPaths = paths
             .Select(NormalizeGitPath)
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-
-        if (scopedPaths.Length == 0)
-        {
-            var unchangedHead = await Run(
-                "rev-parse",
-                "HEAD").ConfigureAwait(false);
-            return new(
-                true,
-                false,
-                RequiredBranch,
-                unchangedHead.ExitCode == 0
-                    ? unchangedHead.StandardOutput.Trim()
-                    : null,
-                "마일스톤 변경 없음 · commit/push 생략");
-        }
 
         var scopedPathspecs = BuildScopedPathspecs(scopedPaths);
         if (scopedPathspecs.Count > 0)
@@ -648,45 +781,47 @@ internal static class MilestoneMechanicalExecutor
             var staged = await Run(diffArgs.ToArray())
                 .ConfigureAwait(false);
 
-            if (staged.ExitCode == 0)
-            {
-                var unchangedHead = await Run(
-                    "rev-parse",
-                    "HEAD").ConfigureAwait(false);
-                return new(
-                    true,
-                    false,
-                    RequiredBranch,
-                    unchangedHead.ExitCode == 0
-                        ? unchangedHead.StandardOutput.Trim()
-                        : null,
-                    "마일스톤 대상 변경 없음 · commit/push 생략");
-            }
-
-            var commitArgs = new List<string>
-            {
-                "commit",
-                "-m",
-                $"ProjectHub milestone {milestone.Id}",
-                "--"
-            };
-            commitArgs.AddRange(scopedPathspecs);
-            var commit = await Run(commitArgs.ToArray())
-                .ConfigureAwait(false);
-
-            if (commit.ExitCode != 0)
+            if (staged.ExitCode > 1)
             {
                 return new(
                     false,
                     false,
                     RequiredBranch,
                     null,
-                    "git commit 실패:" +
+                    "git diff --cached 확인 실패:" +
                     Environment.NewLine +
-                    commit.StandardError);
+                    (string.IsNullOrWhiteSpace(staged.StandardError)
+                        ? staged.StandardOutput
+                        : staged.StandardError));
             }
 
-            createdCommit = true;
+            if (staged.ExitCode == 1)
+            {
+                var commitArgs = new List<string>
+                {
+                    "commit",
+                    "-m",
+                    $"ProjectHub milestone {milestone.Id}",
+                    "--"
+                };
+                commitArgs.AddRange(scopedPathspecs);
+                var commit = await Run(commitArgs.ToArray())
+                    .ConfigureAwait(false);
+
+                if (commit.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        false,
+                        RequiredBranch,
+                        null,
+                        "git commit 실패:" +
+                        Environment.NewLine +
+                        commit.StandardError);
+                }
+
+                createdCommit = true;
+            }
         }
 
         var head = await Run(
@@ -781,6 +916,8 @@ internal static class MilestoneMechanicalExecutor
             Environment.NewLine +
             "remoteBranch=origin/main" +
             Environment.NewLine +
+            $"configuredRepository={configuredRepositoryUrl?.Trim() ?? "없음"}" +
+            Environment.NewLine +
             originHeadSummary +
             Environment.NewLine +
             $"commit={commitSha ?? "없음"}" +
@@ -872,6 +1009,32 @@ internal static class MilestoneMechanicalExecutor
             .Where(path => !IsRuntimeOutput(path))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static bool RepositoryAddressesEqual(
+        string left,
+        string right)
+    {
+        static string Normalize(string value)
+        {
+            var normalized = (value ?? string.Empty)
+                .Trim()
+                .TrimEnd('/');
+
+            if (normalized.EndsWith(
+                    ".git",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[..^4];
+            }
+
+            return normalized;
+        }
+
+        return string.Equals(
+            Normalize(left),
+            Normalize(right),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ScopesOverlap(string left, string right)
