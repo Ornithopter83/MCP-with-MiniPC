@@ -586,6 +586,21 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine($"ENTRYPOINT: {milestone.Entrypoint ?? "없음"}");
         builder.AppendLine("HQ_DESIGN:");
         builder.AppendLine(milestone.Body);
+        builder.AppendLine("WORK_ITEM_INSTRUCTIONS:");
+        if (milestone.WorkItems.Count == 0)
+        {
+            builder.AppendLine("- 없음");
+        }
+        else
+        {
+            foreach (var work in milestone.WorkItems.Values.OrderBy(
+                         work => work.Id,
+                         StringComparer.OrdinalIgnoreCase))
+            {
+                builder.AppendLine($"--- WORK {work.Id} ---");
+                builder.AppendLine(work.Body);
+            }
+        }
         AppendReports(builder, "WORK_RESULTS", workReports);
         AppendReports(builder, "RESOURCE_RESULTS", resourceReports);
         builder.AppendLine("MECHANICAL_RESULTS:");

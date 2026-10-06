@@ -71,6 +71,22 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("IMAGE", resource.Type);
         Assert.Equal("assets/hero.png", resource.TargetPath);
         Assert.Contains("\"style\": \"flat\"", resource.Body);
+
+        var validationContext = MilestoneDefinitionContract.BuildValidationContext(
+            milestone,
+            new Dictionary<string, string>
+            {
+                ["10"] = "[GOTO : MANAGER]\nWORK_ITEM_STATUS: COMPLETED\n구현 완료"
+            },
+            new Dictionary<string, string>(),
+            Array.Empty<string>(),
+            qaReport: null);
+
+        Assert.Contains("WORK_ITEM_INSTRUCTIONS:", validationContext);
+        Assert.Contains("기능을 구현한다.", validationContext);
+        Assert.Contains("지정 경로 안에서 구현한다.", validationContext);
+        Assert.Contains("WORK_RESULTS:", validationContext);
+        Assert.Contains("WORK_ITEM_STATUS: COMPLETED", validationContext);
     }
 
     [Fact]
@@ -451,9 +467,11 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("JSON 밖", hq);
         Assert.Contains("END_ACTION", hq);
         Assert.Contains("BODY_BEGIN", hq);
-        Assert.Contains("[ACTION=READY_FOR_VALIDATION]", manager);
-        Assert.Contains("[ACTION=GIT_FINALIZE]", manager);
+        Assert.Contains("일괄 분배", manager);
+        Assert.Contains("마지막 WORKITEM", manager);
         Assert.Contains("COMMAND:", manager);
+        Assert.DoesNotContain("[ACTION=READY_FOR_VALIDATION]", manager);
+        Assert.DoesNotContain("[ACTION=GIT_FINALIZE]", manager);
         Assert.Contains("[GOTO : MANAGER]", work);
         Assert.Contains("코드나 프로젝트 파일을 수정하지 않는다", qa);
         Assert.Contains("[GOTO : MANAGER]", high);
