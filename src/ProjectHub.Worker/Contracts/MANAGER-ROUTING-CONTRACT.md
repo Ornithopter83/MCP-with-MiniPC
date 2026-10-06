@@ -24,21 +24,22 @@
 
 ② 해당 항목이 없으면 배열을 비운다.
 ③ workItemIds에는 HQ가 계획한 GENERAL WORK id를 빠짐없이 넣는다.
-④ RESOURCE id를 DISPATCH JSON에 넣지 않는다. RESOURCE의 시작·대기·저장은 Worker 책임이다.
-⑤ mechanical.operation은 BUILD, RUN, PUBLISH 중 하나다.
-⑥ BUILD/PUBLISH 결과는 프로젝트 루트의 bin에 최신 상태로 만들도록 command를 작성한다.
-⑦ Worker는 GENERAL WORK만 모두 terminal이 되면 mechanical 요청을 실행하고 QA/HIGH로 진행한다. RESOURCE 완료 여부는 이 전환의 barrier가 아니다.
-⑧ RESOURCE가 아직 진행 중이면 PENDING 상태로 남겨 두고 기존 sidecar 처리와 저장을 계속한다.
-⑨ RUN은 QA/HIGH가 확인할 실행 대상을 준비하는 용도로만 사용한다.
-⑩ 첫 분배 이후 개별 WORK 결과를 받을 때마다 MANAGER를 다시 호출하지 않는다.
-⑪ 사용자 직접 개입 없이는 진행할 수 없는 경우에는 `[ACTION=PAUSE]`와 `{"message":"..."}`를 사용한다.
+④ WorkItem의 order와 실행 wave는 HQ 설계를 그대로 따른다. MANAGER는 의존성을 재추론하거나 order를 변경하지 않는다.
+⑤ RESOURCE id를 DISPATCH JSON에 넣지 않는다. RESOURCE의 시작·대기·저장은 Worker 책임이다.
+⑥ mechanical.operation은 BUILD, RUN, PUBLISH 중 하나다.
+⑦ BUILD/PUBLISH 결과는 프로젝트 루트의 bin에 최신 상태로 만들도록 command를 작성한다.
+⑧ Worker는 HQ가 지정한 order별 GENERAL WORK wave를 순서대로 실행하고 모든 wave가 terminal이면 mechanical 요청을 실행한 뒤 QA/HIGH로 진행한다. RESOURCE 완료 여부는 이 전환의 barrier가 아니다.
+⑨ RESOURCE가 아직 진행 중이면 PENDING 상태로 남겨 두고 기존 sidecar 처리와 저장을 계속한다.
+⑩ RUN은 QA/HIGH가 확인할 실행 대상을 준비하는 용도로만 사용한다.
+⑪ 첫 분배 이후 개별 WORK 결과를 받을 때마다 MANAGER를 다시 호출하지 않는다.
+⑫ 사용자 직접 개입 없이는 진행할 수 없는 경우에는 `[ACTION=PAUSE]`와 `{"message":"..."}`를 사용한다.
 
 제3조 (WORK 이후 자동 흐름)
 
-① RESOURCE와 GENERAL WORK는 서로 독립 실행된다. Worker는 GENERAL WORK만 모두 terminal이 되면 다음 단계로 진행하며 RESOURCE 완료를 기다리지 않는다.
-② QA 예약이 있으면 WORKITEM 지시와 WORK 결과, 그리고 그 시점의 RESOURCE 상태를 전달해 QA를 1회 실행한다. RESOURCE가 PENDING이면 그대로 표시한다.
-③ 이어서 같은 자료와 QA 결과를 HIGH에 전달한다. RESOURCE PENDING은 QA/HIGH를 차단하거나 실패로 확정하는 조건이 아니다.
-④ RESOURCE의 성공·실패와 의미 판단은 QA/HIGH가 확인한 현재 상태를 신뢰하며, MANAGER가 별도 재검증하거나 RESOURCE를 다시 요청하지 않는다.
+① RESOURCE와 GENERAL WORK는 서로 독립 실행된다.
+② QA 예약이 있으면 실제 동작 조사에 필요한 QA 지시, WORK 결과, 기계 결과와 그 시점의 RESOURCE 상태를 전달해 QA를 1회 실행한다.
+③ 이어서 HIGH에 현재 마일스톤의 검증 기준, WORK 결과, 기계 결과, QA 결과와 RESOURCE 현재 상태를 전달한다.
+④ RESOURCE PENDING은 QA/HIGH를 차단하거나 실패로 확정하는 조건이 아니다.
 ⑤ HIGH 이후 Worker가 Git finalize를 수행한다.
 ⑥ 같은 마일스톤에서 추가 WORK, RESOURCE 또는 재검증을 요청하지 않는다.
 ⑦ Git finalize 실패도 최종 보고를 막지 않는다.
@@ -51,14 +52,13 @@
 [ACTION=REPORT]
 {
   "status": "completed",
-  "summary": "지시사항 대비 실제 수행 결과",
-  "issues": []
+  "content": "지시사항 대비 실제 수행 결과와 현재 판단에 필요한 의견"
 }
 
 ② status는 completed, partial, blocked 중 하나다.
-③ 최종 입력으로 받은 현재 마일스톤의 결과를 의미 단위로 요약한다. 개별 changedPaths나 전체 dirty 파일 목록을 HQ 보고에 일일이 열거하지 않는다.
-④ 이전 마일스톤에서 이미 종결된 성공·변경 세부사항은 반복하지 않는다. 현재 마일스톤 판단에 계속 영향을 주는 미해결 사실만 issues 또는 summary에 유지한다.
-⑤ RESOURCE에 대한 최종 검증 판단은 QA/HIGH 보고를 그대로 전달하며 MANAGER가 다시 생성·수정·검증하지 않는다. RESOURCE가 아직 PENDING이면 완료를 기다리지 않고 PENDING으로 보고한다.
-⑥ Git branch는 `main`, 원격 작업 기준은 `origin/main`으로만 보고한다. 다른 branch 이름은 사용자가 정리 자체를 요청한 경우의 사실 보고 외에는 최종 작업 기준으로 제시하지 않는다.
+③ content에는 현재 마일스톤의 결과와 아직 HQ 판단에 영향을 주는 미해결 사실만 의미 단위로 작성한다.
+④ 개별 changedPaths, 전체 dirty 파일 목록과 이미 종결된 이전 마일스톤 성공 세부사항을 content에 반복하지 않는다.
+⑤ RESOURCE에 대한 최종 판단은 QA/HIGH 결과와 현재 상태를 그대로 반영하며 MANAGER가 다시 생성·수정·검증하지 않는다.
+⑥ Git branch는 `main`, 원격 작업 기준은 `origin/main`으로만 보고한다.
 ⑦ 최종 응답에서는 DISPATCH, PAUSE 등 새 실행 ACTION을 만들지 않는다.
 ⑧ 미완료나 실패가 있어도 같은 마일스톤을 다시 돌리지 않고 HQ에 보고한다.
