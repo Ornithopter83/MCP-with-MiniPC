@@ -664,6 +664,259 @@ internal static class MilestoneMechanicalExecutor
         return false;
     }
 
+    public static async Task<MilestoneGitResult> CheckpointWorkItemAsync(
+        string workingDirectory,
+        MilestoneDefinition milestone,
+        MilestoneWorkDefinition work,
+        IReadOnlyCollection<string> changedPaths,
+        string? configuredRepositoryUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(
+                milestone.TargetBranch,
+                RequiredBranch,
+                StringComparison.Ordinal))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "WORK_ITEM_GIT_MAIN_REQUIRED");
+        }
+
+        var git = new ProcessGitCommandRunner();
+
+        Task<GitCommandResult> Run(params string[] args) =>
+            git.RunAsync(
+                workingDirectory,
+                args,
+                TimeSpan.FromMinutes(3),
+                cancellationToken);
+
+        var currentBranch = await ReadCurrentBranchAsync(Run)
+            .ConfigureAwait(false);
+        if (!string.Equals(
+                currentBranch,
+                RequiredBranch,
+                StringComparison.Ordinal))
+        {
+            return new(
+                false,
+                true,
+                RequiredBranch,
+                null,
+                "WORK_ITEM_GIT_MAIN_REQUIRED" +
+                Environment.NewLine +
+                $"current={currentBranch}");
+        }
+
+        var scopedPaths = changedPaths
+            .Select(NormalizeGitPath)
+            .Where(path =>
+                !string.IsNullOrWhiteSpace(path) &&
+                IsPathWithinScopes(path, work.WritePaths) &&
+                !IsRuntimeOutput(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (scopedPaths.Length > 0)
+        {
+            var addArgs = new List<string>
+            {
+                "add",
+                "-A",
+                "--"
+            };
+            addArgs.AddRange(scopedPaths);
+
+            var add = await Run(addArgs.ToArray()).ConfigureAwait(false);
+            if (add.ExitCode != 0)
+            {
+                return new(
+                    false,
+                    false,
+                    RequiredBranch,
+                    null,
+                    "WORK_ITEM_GIT_ADD_FAILED" +
+                    Environment.NewLine +
+                    (string.IsNullOrWhiteSpace(add.StandardError)
+                        ? add.StandardOutput
+                        : add.StandardError));
+            }
+
+            var diffArgs = new List<string>
+            {
+                "diff",
+                "--cached",
+                "--quiet",
+                "--"
+            };
+            diffArgs.AddRange(scopedPaths);
+            var staged = await Run(diffArgs.ToArray())
+                .ConfigureAwait(false);
+
+            if (staged.ExitCode > 1)
+            {
+                return new(
+                    false,
+                    false,
+                    RequiredBranch,
+                    null,
+                    "WORK_ITEM_GIT_DIFF_FAILED" +
+                    Environment.NewLine +
+                    (string.IsNullOrWhiteSpace(staged.StandardError)
+                        ? staged.StandardOutput
+                        : staged.StandardError));
+            }
+
+            if (staged.ExitCode == 1)
+            {
+                var commitArgs = new List<string>
+                {
+                    "commit",
+                    "-m",
+                    $"ProjectHub {milestone.Id} WORK #{work.Id}",
+                    "--only",
+                    "--"
+                };
+                commitArgs.AddRange(scopedPaths);
+
+                var commit = await Run(commitArgs.ToArray())
+                    .ConfigureAwait(false);
+                if (commit.ExitCode != 0)
+                {
+                    return new(
+                        false,
+                        false,
+                        RequiredBranch,
+                        null,
+                        "WORK_ITEM_GIT_COMMIT_FAILED" +
+                        Environment.NewLine +
+                        (string.IsNullOrWhiteSpace(commit.StandardError)
+                            ? commit.StandardOutput
+                            : commit.StandardError));
+                }
+            }
+        }
+
+        var head = await Run(
+            "rev-parse",
+            "HEAD").ConfigureAwait(false);
+        if (head.ExitCode != 0 ||
+            string.IsNullOrWhiteSpace(head.StandardOutput))
+        {
+            return new(
+                false,
+                false,
+                RequiredBranch,
+                null,
+                "WORK_ITEM_GIT_HEAD_FAILED");
+        }
+
+        var localHead = head.StandardOutput.Trim();
+        string? lastError = null;
+
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            var remoteReference =
+                await RefreshConfiguredOriginMainAsync(
+                    workingDirectory,
+                    configuredRepositoryUrl,
+                    cancellationToken).ConfigureAwait(false);
+            if (!remoteReference.Success ||
+                string.IsNullOrWhiteSpace(remoteReference.CommitSha))
+            {
+                lastError = remoteReference.Summary;
+            }
+            else
+            {
+                var lease =
+                    "--force-with-lease=refs/heads/" +
+                    RequiredBranch +
+                    ":" +
+                    remoteReference.CommitSha;
+                var push = await Run(
+                    "push",
+                    lease,
+                    "origin",
+                    RequiredBranch + ":" + RequiredBranch)
+                    .ConfigureAwait(false);
+
+                if (push.ExitCode == 0)
+                {
+                    var verify = await Run(
+                        "ls-remote",
+                        "--heads",
+                        "origin",
+                        "refs/heads/" + RequiredBranch)
+                        .ConfigureAwait(false);
+
+                    var remoteHead = verify.ExitCode == 0
+                        ? verify.StandardOutput
+                            .Split(
+                                new[] { '\r', '\n', '\t', ' ' },
+                                StringSplitOptions.RemoveEmptyEntries)
+                            .FirstOrDefault()
+                        : null;
+
+                    if (string.Equals(
+                            localHead,
+                            remoteHead,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new(
+                            true,
+                            false,
+                            RequiredBranch,
+                            localHead,
+                            "WORK_ITEM_GIT_CHECKPOINT_COMPLETED" +
+                            Environment.NewLine +
+                            $"workItem={work.Id}" +
+                            Environment.NewLine +
+                            $"commit={localHead}" +
+                            Environment.NewLine +
+                            "push=FORCE_WITH_LEASE" +
+                            Environment.NewLine +
+                            $"attempt={attempt}");
+                    }
+
+                    lastError =
+                        "WORK_ITEM_GIT_REMOTE_VERIFY_MISMATCH" +
+                        Environment.NewLine +
+                        $"local={localHead}" +
+                        Environment.NewLine +
+                        $"remote={remoteHead ?? "없음"}";
+                }
+                else
+                {
+                    lastError =
+                        string.IsNullOrWhiteSpace(push.StandardError)
+                            ? push.StandardOutput
+                            : push.StandardError;
+                }
+            }
+
+            if (attempt < 3)
+            {
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(400 * attempt),
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return new(
+            false,
+            false,
+            RequiredBranch,
+            localHead,
+            "WORK_ITEM_GIT_CHECKPOINT_FAILED" +
+            Environment.NewLine +
+            $"workItem={work.Id}" +
+            Environment.NewLine +
+            (lastError ?? "알 수 없는 push 실패"));
+    }
+
     public static async Task<MilestoneGitResult> FinalizeGitAsync(
         string workingDirectory,
         MilestoneDefinition milestone,
