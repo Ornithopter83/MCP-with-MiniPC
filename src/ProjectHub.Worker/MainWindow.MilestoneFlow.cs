@@ -94,6 +94,8 @@ public partial class MainWindow
             var hqSession = CodexCliRunner.NormalizeSessionId(
                 continuation?.CoordinatorSessionId ??
                 coordinator.ThreadSessionId);
+            var configuredRepositoryUrl =
+                _targetSettings.ManualRepositoryUrl?.Trim();
             var hqInbound = continuing
                 ? BuildMilestoneFollowupInput(continuation!, request)
                 : request;
@@ -123,10 +125,35 @@ public partial class MainWindow
                     : milestoneIndex == 1
                         ? "USER_REQUEST"
                         : "MILESTONE_REPORT";
+
+                var remoteReference =
+                    await MilestoneMechanicalExecutor
+                        .RefreshConfiguredOriginMainAsync(
+                            normalizedRoot,
+                            configuredRepositoryUrl,
+                            cts.Token);
+                if (!remoteReference.Success)
+                {
+                    throw new InvalidOperationException(
+                        "HQ_REMOTE_REFERENCE_FAILED: " +
+                        remoteReference.Summary);
+                }
+
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    "HQ 원격 참조 갱신" +
+                    Environment.NewLine +
+                    remoteReference.Summary,
+                    status: "COMPLETED",
+                    persistenceSource: "WORKER ACTION");
+
                 var hqPrompt = BuildMilestoneHqPrompt(
                     inboundType,
                     hqInbound,
                     normalizedRoot,
+                    configuredRepositoryUrl,
+                    remoteReference.CommitSha,
                     includeFullContract:
                         !continuing && milestoneIndex == 1);
 
@@ -516,6 +543,7 @@ public partial class MainWindow
             workingDirectory,
             milestone.TargetBranch,
             milestone.InitializeGitIfMissing,
+            _targetSettings.ManualRepositoryUrl?.Trim(),
             cancellationToken);
         if (!gitPreflight.Success)
             return new(true, gitPreflight.Summary);
@@ -1054,6 +1082,7 @@ public partial class MainWindow
                 workingDirectory,
                 milestone,
                 milestoneChangedPaths,
+                _targetSettings.ManualRepositoryUrl?.Trim(),
                 cancellationToken);
 
             AddDataFlowHistory(
@@ -2148,12 +2177,22 @@ public partial class MainWindow
         string inboundType,
         string body,
         string workingDirectory,
+        string? configuredRepositoryUrl,
+        string? remoteMainSha,
         bool includeFullContract) =>
         "역할: HQ" +
         Environment.NewLine +
         $"입력 유형: {inboundType}" +
         Environment.NewLine +
         $"실제 프로젝트 루트: {workingDirectory}" +
+        Environment.NewLine +
+        $"강제 원격 저장소: {configuredRepositoryUrl ?? "없음"}" +
+        Environment.NewLine +
+        "원격 작업 기준: origin/main" +
+        Environment.NewLine +
+        $"현재 origin/main SHA: {remoteMainSha ?? "확인 실패"}" +
+        Environment.NewLine +
+        "Worker가 이 호출 직전에 origin/main을 fetch했다. 마일스톤을 설계하기 전에 git log, git ls-tree, git show, git diff 등 읽기 전용 Git 명령으로 origin/main의 실제 구조와 이력을 직접 조사하고 현재 로컬 상태와 비교한다. 필요하면 git ls-remote origin main으로 원격 기준을 직접 재확인한다." +
         Environment.NewLine +
         "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH와 order를 명확히 지정한다." +
         Environment.NewLine +
