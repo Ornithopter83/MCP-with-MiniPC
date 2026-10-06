@@ -86,9 +86,10 @@ TARGET_PATH: 프로젝트 상대 최종 경로
 
 제5조 (자유 section)
 
-① 설계 근거·architecture·remote 조사·주의사항 등 정해진 section에 맞지 않는 정보가 필요하면 임의의 @@SECTION 이름을 사용할 수 있다.
+① WORK 응답에서 설계 근거·architecture·remote 조사·주의사항 등 정해진 section에 맞지 않는 정보가 필요하면 임의의 @@SECTION 이름을 사용할 수 있다.
 ② Worker는 모르는 @@SECTION을 폐기하거나 해석하지 않고 원문 그대로 HIGH에 전달한다.
 ③ 실행 제어 의미가 필요한 정보는 임의 section에 숨기지 말고 정의된 기계 필드와 section을 사용한다.
+④ PAUSE/END에는 미등록 section을 사용하지 않는다. PAUSE는 @@MESSAGE와 선택 @@RESUME, END는 @@MESSAGE만 사용한다. HIGH 판단이 필요한 내용이 있으면 WORK로 설계해 전달한다.
 
 제6조 (PAUSE와 END)
 
