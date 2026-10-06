@@ -1028,6 +1028,11 @@ public partial class MainWindow
 
             CaptureResourceStateWithoutWaiting();
 
+            var highBefore =
+                await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    workingDirectory,
+                    cancellationToken);
+
             highReport = await ExecuteMilestoneHighAsync(
                 jobId,
                 workingDirectory,
@@ -1040,6 +1045,18 @@ public partial class MainWindow
                 high,
                 1,
                 cancellationToken);
+
+            var highAfter =
+                await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    workingDirectory,
+                    cancellationToken);
+            foreach (var changedPath in
+                     MilestoneMechanicalExecutor.DiffChangeStates(
+                         highBefore,
+                         highAfter))
+            {
+                milestoneChangedPaths.Add(changedPath);
+            }
 
             CaptureResourceStateWithoutWaiting();
 
@@ -1070,6 +1087,26 @@ public partial class MainWindow
                 qaReport,
                 highReport,
                 managerDispatchState: "COMPLETED");
+
+            var finalDirtyPaths =
+                await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
+                    workingDirectory,
+                    cancellationToken);
+            var plannedWorkScopes = milestone.WorkItems.Values
+                .SelectMany(work => work.WritePaths)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            foreach (var dirtyPath in finalDirtyPaths)
+            {
+                if (!initialChangedPaths.Contains(dirtyPath) &&
+                    MilestoneMechanicalExecutor.IsPathWithinScopes(
+                        dirtyPath,
+                        plannedWorkScopes))
+                {
+                    milestoneChangedPaths.Add(dirtyPath);
+                }
+            }
 
             AddDataFlowHistory(
                 WorkerRoleState.Unknown,
@@ -2192,7 +2229,7 @@ public partial class MainWindow
         Environment.NewLine +
         $"현재 origin/main SHA: {remoteMainSha ?? "확인 실패"}" +
         Environment.NewLine +
-        "Worker가 이 호출 직전에 origin/main을 fetch했다. 마일스톤을 설계하기 전에 git log, git ls-tree, git show, git diff 등 읽기 전용 Git 명령으로 origin/main의 실제 구조와 이력을 직접 조사하고 현재 로컬 상태와 비교한다. 필요하면 git ls-remote origin main으로 원격 기준을 직접 재확인한다." +
+        "Worker가 이 호출 직전에 origin/main을 fetch했다. 원격 저장소를 직접 참조하여 설계한다. 로컬 Git 명령을 사용할 수 있는 transport에서는 git log, git ls-tree, git show, git diff 등 읽기 전용 명령으로 origin/main의 실제 구조와 이력을 조사하고 현재 로컬 상태와 비교한다. Web transport에서는 위 강제 원격 저장소 URL의 main을 직접 열어 구조와 이력을 조사한다. 필요하면 git ls-remote origin main으로 원격 기준을 재확인한다." +
         Environment.NewLine +
         "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH와 order를 명확히 지정한다." +
         Environment.NewLine +
