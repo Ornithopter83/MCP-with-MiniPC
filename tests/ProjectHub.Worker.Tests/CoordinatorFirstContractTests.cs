@@ -699,44 +699,26 @@ public sealed class CoordinatorFirstContractTests
         var high = RoleContractLoader.LoadHighFooter();
 
         Assert.Contains("[ACTION=WORK]", hq);
-        Assert.DoesNotContain("\"action\":", hq);
         Assert.Contains("[RESPONSE=OK]", hq);
+        Assert.Contains("MILESTONE: M1", hq);
+        Assert.Contains("BRANCH: main", hq);
+        Assert.Contains("@@WORK 10", hq);
+        Assert.Contains("ORDER: 0", hq);
+        Assert.Contains("READ_ONLY: NO", hq);
+        Assert.Contains("@@QA", hq);
+        Assert.Contains("@@RESOURCE 0", hq);
         Assert.Contains("READ_ONLY_NO_FILE_CHANGES", hq);
-        Assert.Contains("\"readOnly\"", hq);
-        Assert.Contains("\"initializeGitIfMissing\"", hq);
-        Assert.Contains("\"branch\": \"main\"", hq);
-        Assert.DoesNotContain("\"branch\": \"AUTO\"", hq);
-        Assert.Contains("AUTO, master와 그 밖의 branch는 허용하지 않으며", hq);
-        Assert.Contains("`origin/main`만 작업 기준으로 참조한다", hq);
-        Assert.Contains("강제 원격 저장소 URL", hq);
-        Assert.Contains("Web transport", hq);
-        Assert.Contains("`git ls-remote origin main`", hq);
-        Assert.Contains("개별 changedPaths나 전체 dirty 파일 목록을 HQ 보고에 일일이 열거하지 않는다", manager);
-        Assert.Contains("[GOTO : 역할]", hq);
-        Assert.DoesNotContain("END_ACTION", manager);
-        Assert.DoesNotContain("BODY_BEGIN", manager);
+        Assert.Contains("모르는 @@SECTION", hq);
+        Assert.DoesNotContain("\"milestone\"", hq);
+        Assert.DoesNotContain("BODY_BEGIN", hq);
+
         Assert.Contains("[ACTION=DISPATCH]", manager);
         Assert.Contains("\"workItemIds\"", manager);
-        Assert.DoesNotContain("\"resourceIds\"", manager);
-        Assert.Contains("\"mechanical\"", manager);
-        Assert.Contains("\"content\"", manager);
-        Assert.Contains("\"order\": 0", hq);
-        Assert.Contains("같은 order의 WorkItem", hq);
-        Assert.Contains("병렬 실행 가능한 최소 원자 작업", hq);
         Assert.Contains("[ACTION=RESULT]", work);
-        Assert.Contains("이미지 제작은 RESOURCE의 책임", work);
         Assert.Contains("[GOTO : HIGH]", qa);
         Assert.Contains("build·run", qa);
-        Assert.Contains("RESOURCE 산출물을 신규 생성·편집·대체 제작하지 않는다", qa);
         Assert.Contains("[GOTO : MANAGER]", high);
-        Assert.Contains("RESOURCE 실패를 HIGH가 직접 생성으로 우회하지 않는다", high);
-        Assert.Contains("PENDING이면 실패로 확정하거나 완료를 기다리지 않고", high);
-        Assert.Contains("RESOURCE가 PENDING이어도 기다리지 않고 QA 또는 HIGH로 진행한다", hq);
-        Assert.Contains("RESOURCE 완료 여부는 이 전환의 barrier가 아니다", manager);
-        Assert.Contains("\"changedPaths\"", high);
-
-        Assert.DoesNotContain("WorkGraph", hq);
-        Assert.DoesNotContain("projecthub/*", manager);
+        Assert.Contains("HQ_UNKNOWN_SECTIONS_FOR_JUDGMENT", high);
 
         var managerFollowup = RoleContractLoader.BuildManagerPrompt(
             "CURRENT_EVENT: NEXT",
@@ -744,18 +726,17 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains(
             RoleContractLoader.ManagerContractPath,
             managerFollowup);
-        Assert.DoesNotContain(
-            "제1조 (공통 응답 문법)",
-            managerFollowup);
 
         var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
             RoleContractLoader.BuildQaPrompt("runtime 확인"));
-        Assert.Contains("ROLE_CONTRACT: QA · injected", historyPrompt);
+        Assert.Contains("runtime 확인", historyPrompt);
         Assert.DoesNotContain("당신은 QA다.", historyPrompt);
+        Assert.DoesNotContain("ROLE_CONTRACT:", historyPrompt);
+        Assert.DoesNotContain(RoleContractLoader.QaContractPath, historyPrompt);
     }
 
     [Fact]
-    public void HqReport_UsesCompactManagerResultWithoutDetailedPathLists()
+    public void HqReport_UsesCompactDecisionPacketWithoutRawRoleReports()
     {
         const string message = """
             [ACTION=WORK]
@@ -790,7 +771,7 @@ public sealed class CoordinatorFirstContractTests
             "[GOTO : HQ]\n[ACTION=REPORT]\n{\"status\":\"completed\",\"content\":\"완료\"}",
             new Dictionary<string, string>
             {
-                ["10"] = "[ACTION=RESULT]\n{\"changedPaths\":[\"src/A.cs\"]}"
+                ["10"] = "[ACTION=RESULT]\n{\"status\":\"completed\",\"summary\":\"done\",\"changedPaths\":[],\"issues\":[]}"
             },
             new Dictionary<string, string>
             {
@@ -809,20 +790,22 @@ public sealed class CoordinatorFirstContractTests
             new[] { "src/A.cs" },
             new[] { "src/A.cs", "old.txt" });
 
-        Assert.Contains("TARGET_BRANCH: main", report);
-        Assert.Contains("REMOTE_BRANCH: origin/main", report);
-        Assert.Contains("RESOURCE_STATUS: PENDING", report);
-        Assert.Contains("MANAGER_FINAL_REPORT:", report);
-        Assert.Contains("RELEVANT_DIRTY_AFTER_FINALIZE: YES", report);
-        Assert.Contains("RELEVANT_DIRTY_COUNT: 1", report);
-        Assert.Contains("- src/A.cs", report);
+        Assert.Contains("MILESTONE_REPORT", report);
+        Assert.Contains("MILESTONE: COMPACT_REPORT", report);
+        Assert.Contains("RESULT: COMPLETED", report);
+        Assert.Contains("BASELINE:", report);
+        Assert.Contains("- commit=abc123", report);
+        Assert.Contains("DONE:", report);
+        Assert.Contains("UNRESOLVED:", report);
+        Assert.Contains("완료", report);
+        Assert.Contains("- relevantDirty=YES", report);
+        Assert.Contains("- dirty=src/A.cs", report);
+        Assert.Contains("DECISION_REQUIRED:", report);
+        Assert.DoesNotContain("RESOURCE_STATUS: PENDING", report);
         Assert.DoesNotContain("WORK_RESULTS:", report);
-        Assert.DoesNotContain("MILESTONE_CHANGESET:", report);
-        Assert.DoesNotContain("INITIAL_LOCAL_CHANGES:", report);
-        Assert.DoesNotContain("CURRENT_LOCAL_CHANGES:", report);
-        Assert.DoesNotContain("- old.txt", report);
         Assert.DoesNotContain("QA DETAIL", report);
         Assert.DoesNotContain("HIGH DETAIL", report);
+        Assert.DoesNotContain("- old.txt", report);
     }
 
     [Fact]
@@ -872,10 +855,111 @@ public sealed class CoordinatorFirstContractTests
             unreadRecoveryElements: new[] { "architecture", "repositoryBaseline" });
 
         Assert.Contains(
-            "FORMAT_RECOVERY_NOTICE: 포맷 오류 복구 후 읽지 못한 element: architecture, repositoryBaseline",
+            "FORMAT_RECOVERY_NOTICE: 복구 후 읽지 못한 항목: architecture, repositoryBaseline",
             report);
         Assert.DoesNotContain("PARSER_ERROR", report);
         Assert.DoesNotContain("strict validation", report);
+    }
+
+    [Fact]
+    public void HqTextProtocol_ParsesPlainTextAndForwardsUnknownSectionsToHigh()
+    {
+        const string response = """
+            [ACTION=WORK]
+            MILESTONE: M1
+            BRANCH: main
+            POLICY: DEFAULT
+            ENTRYPOINT: project.godot
+            GIT_INIT: NO
+
+            @@GOAL
+            플레이어 동작을 보완한다.
+
+            @@WORK 10
+            ORDER: 0
+            READ_ONLY: NO
+            WRITE_PATH: scripts/player
+
+            @@WORK_GOAL
+            이동 보완
+
+            @@WORK_INSTRUCTIONS
+            C:\AI-AGENT\Worker\Demo에서 현재 구조를 유지한다.
+
+            @@WORK_COMPLETION
+            이동 검증 완료
+
+            @@QA
+            REQUIRED: NO
+
+            @@ARCHITECTURE_NOTE
+            이 section은 Worker가 해석하지 않고 HIGH가 판단한다.
+
+            @@MILESTONE_COMPLETION
+            요구사항 완료
+
+            @@VALIDATION
+            정적 구조 확인
+            """;
+
+        var hq = HqTextProtocol.Parse(response);
+
+        Assert.True(hq.IsValid, string.Join(", ", hq.Errors));
+        Assert.Equal("WORK", hq.ActionName);
+        Assert.Single(hq.UnknownSections);
+        Assert.Contains("@@ARCHITECTURE_NOTE", hq.UnknownSections[0]);
+
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            hq.CompatibilityMessage,
+            hq.Parse,
+            out var milestone,
+            out var error),
+            error);
+
+        var high = MilestoneDefinitionContract.BuildHighContext(
+            milestone!,
+            new Dictionary<string, string>(),
+            new Dictionary<string, string>(),
+            Array.Empty<string>(),
+            null);
+
+        Assert.Contains("HQ_UNKNOWN_SECTIONS_FOR_JUDGMENT:", high);
+        Assert.Contains("@@ARCHITECTURE_NOTE", high);
+        Assert.Contains("HIGH가 판단", high);
+    }
+
+    [Fact]
+    public void HqTextProtocol_PauseAllowsRawWindowsPathWithoutJsonEscaping()
+    {
+        const string response = """
+            [ACTION=PAUSE]
+
+            @@MESSAGE
+            C:\AI-AGENT\Worker\Demo\project.godot을 직접 확인해야 한다.
+
+            @@RESUME
+            확인 결과를 전달하면 재개한다.
+            """;
+
+        var hq = HqTextProtocol.Parse(response);
+
+        Assert.True(hq.IsValid, string.Join(", ", hq.Errors));
+        var action = Assert.Single(hq.Parse.ValidActions);
+        Assert.Equal("PAUSE", action.Name);
+        Assert.Contains("C:\\AI-AGENT\\Worker\\Demo", hq.CompatibilityMessage);
+    }
+
+    [Fact]
+    public void DirectWorkPrompt_AllowsEmptyWritePathsWhenReadOnly()
+    {
+        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
+            "10",
+            "읽기 전용 조사",
+            Array.Empty<string>(),
+            "C:\\repo",
+            readOnly: true);
+
+        Assert.Contains("없음 (읽기 전용)", prompt);
     }
 
     [Theory]
