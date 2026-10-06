@@ -35,9 +35,9 @@ internal static class WebCorrelationContract
             prompt.Trim() + Environment.NewLine + Environment.NewLine +
             "Web 요청 상관 규약:" + Environment.NewLine +
             "- 최종 응답의 첫 줄에 요청의 KEY 행을 정확히 그대로 출력한다." + Environment.NewLine +
-            "- KEY 바로 다음 의미 행은 [ACTION=...]이어야 한다." + Environment.NewLine +
-            "- ACTION 바로 다음에는 완전한 JSON 객체 하나만 출력한다." + Environment.NewLine +
-            "- JSON 밖에 GOTO, BODY, 설명문, 코드펜스 또는 다른 의미 내용을 출력하지 않는다." + Environment.NewLine +
+            "- KEY 바로 다음 의미 행은 필요하면 [GOTO : 역할], 그 다음은 [ACTION=...]이어야 한다." + Environment.NewLine +
+            "- ACTION 이후 본문은 현재 역할 계약의 포맷을 따른다. HQ는 JSON이 아니라 고정 필드와 @@SECTION 평문 프로토콜을 사용한다." + Environment.NewLine +
+            "- BODY_BEGIN/BODY_END/END_ACTION, Markdown 코드펜스를 추가하지 않는다." + Environment.NewLine +
             "- 응답을 모두 작성한 뒤 별도 마지막 줄에 " + ResponseOkMarker + "를 출력한다." + Environment.NewLine +
             "- 수신 측은 현재 KEY부터 " + ResponseOkMarker + "까지를 하나의 응답으로 상관한다." + Environment.NewLine +
             "- " + ResponseOkMarker + " 뒤에는 의미 내용을 이어 쓰지 않는다." + Environment.NewLine +
