@@ -710,15 +710,30 @@ internal static class MilestoneDefinitionContract
         IReadOnlyCollection<string> currentLocalChanges,
         bool formatRecoveryOccurred = false)
     {
-        // Detailed WORK/HIGH changed paths and dirty snapshots remain Worker
-        // mechanical state. HQ receives only the semantic integration result.
+        // Detailed WORK/HIGH changed paths and full dirty snapshots remain Worker
+        // mechanical state. HQ receives only dirty paths that can invalidate
+        // the claim that the verified working tree is reflected in origin/main.
         _ = workReports;
         _ = mechanicalReports;
         _ = qaReport;
         _ = highReport;
         _ = initialLocalChanges;
-        _ = milestoneChanges;
-        _ = currentLocalChanges;
+
+        var relevantScopes = milestone.WorkItems.Values
+            .SelectMany(work => work.WritePaths)
+            .Concat(milestoneChanges)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var relevantDirtyAfterFinalize = currentLocalChanges
+            .Where(path =>
+                relevantScopes.Length > 0 &&
+                MilestoneMechanicalExecutor.IsPathWithinScopes(
+                    path,
+                    relevantScopes))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         var builder = new StringBuilder();
         builder.AppendLine("MILESTONE_RESULT");
@@ -748,6 +763,23 @@ internal static class MilestoneDefinitionContract
 
         builder.AppendLine("GIT_RESULT:");
         builder.AppendLine(Limit(gitResult.Summary, 4000));
+        builder.AppendLine(
+            "RELEVANT_DIRTY_AFTER_FINALIZE: " +
+            (relevantDirtyAfterFinalize.Length == 0 ? "NO" : "YES"));
+        if (relevantDirtyAfterFinalize.Length > 0)
+        {
+            builder.AppendLine(
+                $"RELEVANT_DIRTY_COUNT: {relevantDirtyAfterFinalize.Length}");
+            builder.AppendLine("RELEVANT_DIRTY_PATHS:");
+            foreach (var path in relevantDirtyAfterFinalize.Take(20))
+                builder.AppendLine("- " + path);
+
+            if (relevantDirtyAfterFinalize.Length > 20)
+            {
+                builder.AppendLine(
+                    $"- ... +{relevantDirtyAfterFinalize.Length - 20} more");
+            }
+        }
         builder.AppendLine("MANAGER_FINAL_REPORT:");
         builder.AppendLine(managerMessage);
         return builder.ToString();
