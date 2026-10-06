@@ -1008,7 +1008,7 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void RoleElementRecovery_DefinesRoleElementsAndFullHqRetry()
+    public void RoleElementRecovery_DefinesRoleElementsAndAcceptsBareRecoveryJson()
     {
         Assert.Contains(
             RoleElementRecoveryContract.GetDefinitions("HQ", "WORK"),
@@ -1026,15 +1026,71 @@ public sealed class CoordinatorFirstContractTests
             RoleElementRecoveryContract.GetDefinitions("HIGH", "RESULT"),
             item => item.Name == "changedPaths" && !item.Required);
 
-        var prompt = RoleElementRecoveryContract.BuildHqFullRetryPrompt(
-            new[] { "repositoryBaseline", "workItems" },
-            "strict validation failed");
+        const string bareRecovery = """
+            {
+              "status": "completed",
+              "summary": "복구",
+              "changedPaths": [],
+              "issues": [],
+              "elements": {
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                }
+              }
+            }
+            """;
 
-        Assert.Contains("FINAL_MISSING_ELEMENTS", prompt);
-        Assert.Contains("repositoryBaseline", prompt);
-        Assert.Contains("workItems", prompt);
-        Assert.Contains("전체", prompt);
-        Assert.Contains("[ACTION=WORK]", prompt);
+        var recovered = RoleElementRecoveryContract.ReadRecoveredElements(
+            bareRecovery,
+            new[] { "qa" });
+
+        Assert.Contains("qa", recovered.Keys);
+    }
+
+    [Fact]
+    public void HqElementRecovery_AllowsUnreadOptionalElementAndReportsItsName()
+    {
+        const string malformed = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "M1",
+                "branch": "main",
+                "goal": "optional 복구",
+                "entrypoint": null,
+                "architecture": {
+                  "path": "C:\AI-AGENT\broken"
+                },
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        var scan = RoleElementRecoveryContract.Scan(
+            "HQ",
+            malformed,
+            expectedAction: "WORK",
+            contractError: "WORK:JSON_INVALID");
+
+        Assert.Contains("architecture", scan.RecoveryTargets);
+
+        Assert.True(RoleElementRecoveryContract.TryBuildHqWorkResponse(
+            scan,
+            new Dictionary<string, string>(),
+            out var merged,
+            out var unread));
+
+        Assert.Contains("architecture", unread);
+        Assert.DoesNotContain("\"architecture\"", merged);
+        Assert.False(ActionBlockContract.ParseHq(merged).HasErrors);
     }
 
     [Fact]
