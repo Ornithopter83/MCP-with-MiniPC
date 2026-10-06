@@ -825,6 +825,59 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("HIGH DETAIL", report);
     }
 
+    [Fact]
+    public void HqReport_SummarizesUnreadRecoveryElements()
+    {
+        const string message = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "RECOVERY_NOTICE",
+                "branch": "main",
+                "goal": "복구 보고",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        var parsed = ActionBlockContract.ParseHq(message);
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            message,
+            parsed,
+            out var milestone,
+            out var error),
+            error);
+
+        var report = MilestoneDefinitionContract.BuildHqReport(
+            milestone!,
+            "[GOTO : HQ]\n[ACTION=REPORT]\n{\"status\":\"partial\",\"content\":\"복구 후 진행\"}",
+            new Dictionary<string, string>(),
+            new Dictionary<string, string>(),
+            Array.Empty<string>(),
+            string.Empty,
+            string.Empty,
+            MilestoneGitResult.NotStarted("main"),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            formatRecoveryOccurred: true,
+            unreadRecoveryElements: new[] { "architecture", "repositoryBaseline" });
+
+        Assert.Contains(
+            "FORMAT_RECOVERY_NOTICE: 포맷 오류 복구 후 읽지 못한 element: architecture, repositoryBaseline",
+            report);
+        Assert.DoesNotContain("PARSER_ERROR", report);
+        Assert.DoesNotContain("strict validation", report);
+    }
+
     [Theory]
     [InlineData(
         "BUILD",
