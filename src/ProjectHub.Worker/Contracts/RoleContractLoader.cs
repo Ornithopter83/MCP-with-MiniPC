@@ -5,6 +5,17 @@ namespace ProjectHub.Worker;
 
 public static class RoleContractLoader
 {
+    public const string HqContractPath =
+        "src/ProjectHub.Worker/Contracts/HQ-ROUTING-CONTRACT.md";
+    public const string ManagerContractPath =
+        "src/ProjectHub.Worker/Contracts/MANAGER-ROUTING-CONTRACT.md";
+    public const string WorkContractPath =
+        "src/ProjectHub.Worker/Contracts/WORK-ROUTING-CONTRACT.md";
+    public const string QaContractPath =
+        "src/ProjectHub.Worker/Contracts/QA-ROUTING-CONTRACT.md";
+    public const string HighContractPath =
+        "src/ProjectHub.Worker/Contracts/HIGH-ROUTING-CONTRACT.md";
+
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
     public static string LoadManagerFooter() => Load("MANAGER-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
@@ -52,9 +63,15 @@ public static class RoleContractLoader
                LoadWorkFooter();
     }
 
-    public static string BuildManagerPrompt(string body) =>
+    public static string BuildManagerPrompt(
+        string body,
+        bool includeFullContract = true) =>
         "역할: #1 중간관리자\n입력 본문:\n" +
-        (body ?? string.Empty) + "\n\n" + LoadManagerFooter();
+        (body ?? string.Empty) +
+        "\n\n" +
+        (includeFullContract
+            ? LoadManagerFooter()
+            : BuildContractReference(ManagerContractPath));
 
     public static string BuildQaPrompt(string body) =>
         "역할: QA\n호출 유형: HQ_SCHEDULED_QA\n입력 본문:\n" +
@@ -63,6 +80,14 @@ public static class RoleContractLoader
     public static string BuildHighPrompt(string body) =>
         "역할: HIGH\n호출 유형: MILESTONE_VALIDATION\n입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadHighFooter();
+
+    public static string BuildContractReference(string repositoryPath) =>
+        "계약 참조: ProjectHub Git 저장소의 " +
+        repositoryPath +
+        " 파일을 현재 역할 계약 원본으로 계속 적용한다. " +
+        "이 세션 최초 호출에서 계약 전문을 직접 주입받았으며, " +
+        "후속 호출에서는 같은 전문을 반복하지 않는다. " +
+        "Worker가 갱신된 전문을 다시 주입하기 전까지 최초 주입된 계약을 유지한다.";
 
     private static string Load(string fileName)
     {
