@@ -1765,17 +1765,105 @@ public partial class MainWindow
                 "EXPECTED_GOTO=" + expectedGoto);
         }
 
+        var protocolErrorText = string.Join(
+            Environment.NewLine,
+            protocolError);
+        var expectedAction =
+            expectedActions.Count == 1
+                ? expectedActions.First()
+                : null;
+        var elementScan =
+            RoleElementRecoveryContract.Scan(
+                role,
+                originalMessage,
+                expectedAction,
+                protocolErrorText);
+
+        if (!string.Equals(
+                role,
+                "HQ",
+                StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(elementScan.ActionName) &&
+            RoleElementRecoveryContract.GetDefinitions(
+                role,
+                elementScan.ActionName).Count > 0)
+        {
+            var recoveryTargets =
+                elementScan.RecoveryTargets.ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
+            IReadOnlyDictionary<string, string> recoveredByWork =
+                new Dictionary<string, string>(
+                    StringComparer.OrdinalIgnoreCase);
+
+            if (recoveryTargets.Count > 0)
+            {
+                var elementRecovery =
+                    await ExecuteRoleElementRecoveryWorkAsync(
+                        jobId,
+                        workingDirectory,
+                        role,
+                        elementScan.ActionName,
+                        originalMessage,
+                        protocolErrorText,
+                        recoveryTargets,
+                        elementScan.Recovered.Keys.ToArray(),
+                        implementer,
+                        cancellationToken);
+
+                if (!string.IsNullOrWhiteSpace(elementRecovery))
+                {
+                    recoveredByWork =
+                        RoleElementRecoveryContract.ReadRecoveredElements(
+                            elementRecovery,
+                            recoveryTargets);
+                    foreach (var recoveredName in recoveredByWork.Keys)
+                        recoveryTargets.Remove(recoveredName);
+                }
+            }
+
+            if (RoleElementRecoveryContract.TryBuildRoleResponse(
+                    elementScan,
+                    recoveredByWork,
+                    expectedGoto,
+                    out var mergedResponse,
+                    out var remainingElements))
+            {
+                var mergedParse = ActionBlockContract.ParseRole(
+                    role,
+                    mergedResponse);
+                if (IsExpected(mergedParse))
+                {
+                    AddDataFlowHistory(
+                        WorkerRoleState.Work,
+                        "Worker 작업",
+                        role + " element 복구 성공" +
+                        Environment.NewLine +
+                        $"기계 확보: {elementScan.Recovered.Count}" +
+                        Environment.NewLine +
+                        $"WORK 복구: {recoveredByWork.Count}",
+                        status: "REPAIRED",
+                        persistenceSource: "WORKER ACTION");
+                    return (mergedResponse, mergedParse, true);
+                }
+            }
+            else if (remainingElements.Count > 0)
+            {
+                protocolError.Add(
+                    "ELEMENT_RECOVERY_REMAINING=" +
+                    string.Join(",", remainingElements));
+                protocolErrorText = string.Join(
+                    Environment.NewLine,
+                    protocolError);
+            }
+        }
+
         var repaired = await ExecuteRoleJsonRepairWorkAsync(
             jobId,
             workingDirectory,
             role,
             originalMessage,
-            string.Join(
-                Environment.NewLine,
-                protocolError),
-            expectedActions.Count == 1
-                ? expectedActions.First()
-                : null,
+            protocolErrorText,
+            expectedAction,
             implementer,
             cancellationToken);
 
