@@ -85,7 +85,8 @@ internal static class MilestoneMechanicalExecutor
             "fetch",
             "--prune",
             "origin",
-            RequiredBranch).ConfigureAwait(false);
+            "+refs/heads/" + RequiredBranch +
+            ":refs/remotes/origin/" + RequiredBranch).ConfigureAwait(false);
         if (fetch.ExitCode != 0)
         {
             return new(
@@ -848,8 +849,10 @@ internal static class MilestoneMechanicalExecutor
             {
                 var fetch = await Run(
                     "fetch",
+                    "--prune",
                     "origin",
-                    RequiredBranch).ConfigureAwait(false);
+                    "+refs/heads/" + RequiredBranch +
+                    ":refs/remotes/origin/" + RequiredBranch).ConfigureAwait(false);
 
                 if (fetch.ExitCode == 0)
                 {
