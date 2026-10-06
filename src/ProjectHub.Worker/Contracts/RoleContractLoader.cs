@@ -27,12 +27,15 @@ public static class RoleContractLoader
         string body,
         IReadOnlyList<string> writePaths,
         string targetWorkspace,
+        bool readOnly = false,
         string? resourceStagingRoot = null,
         string? workTempRoot = null)
     {
         if (string.IsNullOrWhiteSpace(workItemId))
             throw new ArgumentException("WorkItem ID가 비어 있습니다.", nameof(workItemId));
-        if (writePaths is null || writePaths.Count == 0)
+        if (writePaths is null)
+            throw new ArgumentNullException(nameof(writePaths));
+        if (!readOnly && writePaths.Count == 0)
             throw new ArgumentException("WRITE_PATH가 비어 있습니다.", nameof(writePaths));
 
         var resourceHeader = string.IsNullOrWhiteSpace(resourceStagingRoot)
@@ -44,8 +47,9 @@ public static class RoleContractLoader
             : $"WORK 임시 산출물 루트: {workTempRoot}\n";
         var writePathHeader =
             "허용 WRITE_PATH:\n" +
-            string.Join("\n", writePaths.Select(path => "- " + path)) +
-            "\n";
+            (writePaths.Count == 0
+                ? "- 없음 (읽기 전용)\n"
+                : string.Join("\n", writePaths.Select(path => "- " + path)) + "\n");
         var header =
             "역할: WORK\n" +
             "입력 유형: MILESTONE_WORK\n" +
