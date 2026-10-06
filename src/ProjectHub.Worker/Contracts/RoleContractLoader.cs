@@ -94,27 +94,36 @@ public static class RoleContractLoader
         var value = prompt ?? string.Empty;
         var contracts = new[]
         {
-            ("HQ", HqContractPath, LoadHqFooter()),
-            ("MANAGER", ManagerContractPath, LoadManagerFooter()),
-            ("WORK", WorkContractPath, LoadWorkFooter()),
-            ("QA", QaContractPath, LoadQaFooter()),
-            ("HIGH", HighContractPath, LoadHighFooter())
+            (HqContractPath, LoadHqFooter()),
+            (ManagerContractPath, LoadManagerFooter()),
+            (WorkContractPath, LoadWorkFooter()),
+            (QaContractPath, LoadQaFooter()),
+            (HighContractPath, LoadHighFooter())
         };
 
-        foreach (var (role, path, contract) in contracts)
+        foreach (var (path, contract) in contracts)
         {
-            var marker = $"ROLE_CONTRACT: {role} · injected";
             value = value.Replace(
                 contract,
-                marker,
+                string.Empty,
                 StringComparison.Ordinal);
             value = value.Replace(
                 BuildContractReference(path),
-                marker,
+                string.Empty,
                 StringComparison.Ordinal);
         }
 
-        return value;
+        while (value.Contains(
+                   Environment.NewLine + Environment.NewLine + Environment.NewLine,
+                   StringComparison.Ordinal))
+        {
+            value = value.Replace(
+                Environment.NewLine + Environment.NewLine + Environment.NewLine,
+                Environment.NewLine + Environment.NewLine,
+                StringComparison.Ordinal);
+        }
+
+        return value.Trim();
     }
 
     private static string Load(string fileName)
