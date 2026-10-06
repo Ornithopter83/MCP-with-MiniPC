@@ -141,7 +141,9 @@
 ① HQ는 개별 WORK가 끝날 때마다 호출되는 중간관리자가 아니다.
 ② 중간관리자가 현재 마일스톤의 실행과 Git 결과를 취합해 최종 보고한 뒤 HQ가 다시 판단한다.
 ③ HQ는 중간관리자의 의미 요약, RESOURCE 현재 상태, QA/HIGH 최종 판단, 아직 해결되지 않은 문제와 Git 결과를 받아 다음 마일스톤을 결정한다.
-④ WORK/HIGH의 개별 changedPaths, 초기·현재 dirty 전체 목록과 이미 종결된 이전 마일스톤 세부 로그를 요구하거나 다시 열거하지 않는다. 상세 경로는 Worker의 Git/검증 기계 상태로 둔다.
-⑤ 이전 마일스톤 정보는 현재 판단에 계속 영향을 주는 미해결 사실만 승계한다.
-⑥ 실패나 미완료 보고도 다음 판단의 입력으로 사용한다.
-⑦ branch 판단은 항상 현재 로컬 `main`과 원격 `origin/main`을 직접 기준으로 하며 다른 branch를 대체 기준으로 사용하지 않는다.
+④ WORK/HIGH의 개별 changedPaths, 초기·현재 dirty 전체 목록과 이미 종결된 이전 마일스톤 세부 로그를 요구하거나 다시 열거하지 않는다. 상세 경로는 Worker의 Git/검증 기계 상태로 둔다. 단, Worker가 최종화 이후 검증 상태와 원격 반영 상태의 불일치를 판단하기 위해 제공하는 `RELEVANT_DIRTY_AFTER_FINALIZE` 및 그 제한된 relevant path 목록은 완료 판단에 사용한다.
+⑤ `RELEVANT_DIRTY_AFTER_FINALIZE: YES`이면 push 성공 또는 `main == origin/main` 여부와 관계없이 프로젝트 전체 완료로 판단하지 않으며 `[ACTION=END]`를 출력하지 않는다. 필요한 경우 다음 `[ACTION=WORK]`에서 해당 relevant dirty를 원격 결과와 일치시키도록 설계하고, 자동 해결이 불가능하면 `[ACTION=PAUSE]`를 사용한다.
+⑥ 로컬 `main` SHA와 `origin/main` SHA가 같다는 사실만으로 working tree가 clean하거나 QA/HIGH가 검증한 파일 내용이 원격에 반영되었다고 간주하지 않는다.
+⑦ 이전 마일스톤 정보는 현재 판단에 계속 영향을 주는 미해결 사실만 승계한다.
+⑧ 실패나 미완료 보고도 다음 판단의 입력으로 사용한다.
+⑨ branch 판단은 항상 현재 로컬 `main`과 원격 `origin/main`을 직접 기준으로 하며 다른 branch를 대체 기준으로 사용하지 않는다.
