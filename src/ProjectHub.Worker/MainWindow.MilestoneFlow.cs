@@ -1937,6 +1937,7 @@ public partial class MainWindow
             work.Body,
             work.WritePaths,
             workingDirectory,
+            readOnly: work.ReadOnly,
             resourceStagingRoot: Path.Combine(
                 workingDirectory,
                 "temp",
