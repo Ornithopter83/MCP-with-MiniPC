@@ -10,7 +10,6 @@ public sealed class CoordinatorFirstContractTests
         const string message = """
             [ACTION=WORK]
             {
-              "action": "work",
               "milestone": {
                 "id": "M1",
                 "branch": "AUTO",
@@ -103,7 +102,6 @@ public sealed class CoordinatorFirstContractTests
         const string message = """
             [ACTION=WORK]
             {
-              "action": "work",
               "milestone": {
                 "id": "GIT_INIT_TEST",
                 "branch": "AUTO",
@@ -140,7 +138,6 @@ public sealed class CoordinatorFirstContractTests
         const string message = """
             [ACTION=WORK]
             {
-              "action": "work",
               "milestone": {
                 "id": "READ_ONLY_TEST",
                 "branch": "AUTO",
@@ -188,7 +185,6 @@ public sealed class CoordinatorFirstContractTests
         const string message = """
             [ACTION=WORK]
             {
-              "action": "work",
               "milestone":
             """;
 
@@ -206,8 +202,8 @@ public sealed class CoordinatorFirstContractTests
         const string message = """
             [ACTION=WORK]
             {
-              "action": "work",
-              "action": "work",\n              "milestone": {
+\n              "action": "work",
+              "milestone": {
                 "id": "M-OLD",
                 "branch": "AUTO",
                 "goal": "구형 문법",
@@ -281,7 +277,6 @@ public sealed class CoordinatorFirstContractTests
         const string message = """
             [ACTION=WORK]
             {
-              "action": "work",
               "milestone": {
                 "id": "M3",
                 "branch": "main",
@@ -323,7 +318,6 @@ public sealed class CoordinatorFirstContractTests
         const string message = """
             [ACTION=WORK]
             {
-              "action": "work",
               "milestone": {
                 "id": "M4",
                 "branch": "AUTO",
