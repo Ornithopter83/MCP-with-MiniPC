@@ -319,9 +319,16 @@ public sealed class WorkerPathsRuntimeTests
                 Path.Combine(gitInfo, "exclude"));
             Assert.Single(excludeLines.Where(line =>
                 line.Trim() == ".projecthub/"));
+            Assert.Single(excludeLines.Where(line =>
+                line.Trim() == "temp/"));
+            Assert.Single(excludeLines.Where(line =>
+                line.Trim() == "bin/"));
+            var gitIgnoreLines =
+                File.ReadAllLines(Path.Combine(workspace, ".gitignore"));
+            Assert.Equal(new[] { "bin/" }, gitIgnoreLines);
             Assert.DoesNotContain(
                 ".projecthub/",
-                File.ReadAllLines(Path.Combine(workspace, ".gitignore")));
+                gitIgnoreLines);
         }
         finally
         {
