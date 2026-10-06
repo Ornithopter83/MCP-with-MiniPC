@@ -582,6 +582,17 @@ internal static class MilestoneDefinitionContract
             builder.AppendLine(qaReport);
         }
 
+        var unknownSections = ReadMilestoneString(
+            milestone,
+            "hqUnknownSections");
+        if (!string.IsNullOrWhiteSpace(unknownSections))
+        {
+            builder.AppendLine("HQ_UNKNOWN_SECTIONS_FOR_JUDGMENT:");
+            builder.AppendLine(
+                "아래는 Worker가 해석하지 않은 HQ 미등록 @@SECTION 원문이다. 의미와 현재 마일스톤 영향 여부를 HIGH가 판단한다.");
+            builder.AppendLine(unknownSections);
+        }
+
         return builder.ToString();
     }
 
@@ -709,15 +720,9 @@ internal static class MilestoneDefinitionContract
         IReadOnlyCollection<string> milestoneChanges,
         IReadOnlyCollection<string> currentLocalChanges,
         bool formatRecoveryOccurred = false,
-        IReadOnlyCollection<string>? unreadRecoveryElements = null)
+        IReadOnlyCollection<string>? unreadRecoveryElements = null,
+        string? workingDirectory = null)
     {
-        // Detailed WORK/HIGH changed paths and full dirty snapshots remain Worker
-        // mechanical state. HQ receives only dirty paths that can invalidate
-        // the claim that the verified working tree is reflected in origin/main.
-        _ = workReports;
-        _ = mechanicalReports;
-        _ = qaReport;
-        _ = highReport;
         _ = initialLocalChanges;
 
         var relevantScopes = milestone.WorkItems.Values
@@ -736,11 +741,63 @@ internal static class MilestoneDefinitionContract
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var managerStatus = ReadRoleStatus(
+            managerMessage,
+            ActionBlockContract.ParseManager) ?? "failed";
+        var managerContent = ReadRoleField(
+            managerMessage,
+            ActionBlockContract.ParseManager,
+            "content");
+        if (string.IsNullOrWhiteSpace(managerContent))
+            managerContent = managerMessage;
+
+        var qaStatus = string.IsNullOrWhiteSpace(qaReport)
+            ? "not-run"
+            : ReadRoleStatus(
+                qaReport,
+                ActionBlockContract.ParseQa) ?? "unknown";
+        var highStatus = string.IsNullOrWhiteSpace(highReport)
+            ? "not-run"
+            : ReadRoleStatus(
+                highReport,
+                ActionBlockContract.ParseHigh) ?? "unknown";
+
+        var archiveReference = string.IsNullOrWhiteSpace(workingDirectory)
+            ? "not-written"
+            : ArchiveMilestoneReports(
+                workingDirectory,
+                milestone,
+                managerMessage,
+                workReports,
+                resourceReports,
+                mechanicalReports,
+                qaReport,
+                highReport,
+                gitResult);
+
         var builder = new StringBuilder();
-        builder.AppendLine("MILESTONE_RESULT");
-        builder.AppendLine($"MILESTONE_ID: {milestone.Id}");
-        builder.AppendLine("TARGET_BRANCH: main");
-        builder.AppendLine("REMOTE_BRANCH: origin/main");
+        builder.AppendLine("MILESTONE_REPORT");
+        builder.AppendLine($"MILESTONE: {milestone.Id}");
+        builder.AppendLine($"RESULT: {managerStatus.ToUpperInvariant()}");
+        builder.AppendLine("BASELINE:");
+        builder.AppendLine("- branch=main");
+        builder.AppendLine("- origin=origin/main");
+        builder.AppendLine("- commit=" + (gitResult.CommitSha ?? "none"));
+
+        builder.AppendLine("DONE:");
+        builder.AppendLine(
+            $"- WORK: {workReports.Count}/{milestone.WorkItems.Count} reported");
+        builder.AppendLine($"- RESOURCE: {resourceReports.Count} reported");
+        builder.AppendLine("- QA: " + qaStatus);
+        builder.AppendLine("- HIGH: " + highStatus);
+
+        builder.AppendLine("UNRESOLVED:");
+        var unresolved = Limit(managerContent ?? string.Empty, 1200).Trim();
+        if (unresolved.Length == 0)
+            builder.AppendLine("- 없음");
+        else
+            builder.AppendLine(unresolved);
+
         if (formatRecoveryOccurred)
         {
             var unread = (unreadRecoveryElements ?? Array.Empty<string>())
@@ -752,48 +809,136 @@ internal static class MilestoneDefinitionContract
 
             builder.AppendLine(
                 unread.Length == 0
-                    ? "FORMAT_RECOVERY_NOTICE: 이전 역할 응답에 포맷 오류가 있어 복구 후 진행함"
-                    : "FORMAT_RECOVERY_NOTICE: 포맷 오류 복구 후 읽지 못한 element: " +
+                    ? "FORMAT_RECOVERY_NOTICE: 일부 역할 응답의 포맷 오류를 복구 후 진행함"
+                    : "FORMAT_RECOVERY_NOTICE: 복구 후 읽지 못한 항목: " +
                       string.Join(", ", unread));
         }
-        builder.AppendLine("RESOURCE_STATE_AT_REPORT:");
-        if (resourceReports.Count == 0)
-        {
-            builder.AppendLine("- 없음");
-        }
-        else
-        {
-            foreach (var pair in resourceReports.OrderBy(
-                         pair => pair.Key,
-                         StringComparer.OrdinalIgnoreCase))
-            {
-                builder.AppendLine($"--- {pair.Key} ---");
-                builder.AppendLine(Limit(pair.Value, 2000));
-            }
-        }
 
-        builder.AppendLine("GIT_RESULT:");
-        builder.AppendLine(Limit(gitResult.Summary, 4000));
+        builder.AppendLine("GIT:");
+        builder.AppendLine("- success=" + (gitResult.Success ? "YES" : "NO"));
         builder.AppendLine(
-            "RELEVANT_DIRTY_AFTER_FINALIZE: " +
+            "- relevantDirty=" +
             (relevantDirtyAfterFinalize.Length == 0 ? "NO" : "YES"));
         if (relevantDirtyAfterFinalize.Length > 0)
         {
             builder.AppendLine(
-                $"RELEVANT_DIRTY_COUNT: {relevantDirtyAfterFinalize.Length}");
-            builder.AppendLine("RELEVANT_DIRTY_PATHS:");
-            foreach (var path in relevantDirtyAfterFinalize.Take(20))
-                builder.AppendLine("- " + path);
-
-            if (relevantDirtyAfterFinalize.Length > 20)
-            {
-                builder.AppendLine(
-                    $"- ... +{relevantDirtyAfterFinalize.Length - 20} more");
-            }
+                "- dirtyCount=" + relevantDirtyAfterFinalize.Length);
+            foreach (var dirtyPath in relevantDirtyAfterFinalize.Take(5))
+                builder.AppendLine("- dirty=" + dirtyPath);
         }
-        builder.AppendLine("MANAGER_FINAL_REPORT:");
-        builder.AppendLine(managerMessage);
+
+        builder.AppendLine("ARCHIVE: " + archiveReference);
+        builder.AppendLine(
+            "DECISION_REQUIRED: 다음 WORK / PAUSE / END 중 하나를 판단");
         return builder.ToString();
+    }
+
+    private static string? ReadRoleStatus(
+        string message,
+        Func<string?, ActionBlockParseResult> parser) =>
+        ReadRoleField(message, parser, "status");
+
+    private static string? ReadRoleField(
+        string message,
+        Func<string?, ActionBlockParseResult> parser,
+        string field)
+    {
+        var parsed = parser(message);
+        if (parsed.HasErrors || parsed.ValidActions.Count != 1)
+            return null;
+
+        return ActionBlockContract.GetJsonString(
+            parsed.ValidActions[0],
+            field);
+    }
+
+    private static string ArchiveMilestoneReports(
+        string workingDirectory,
+        MilestoneDefinition milestone,
+        string managerMessage,
+        IReadOnlyDictionary<string, string> workReports,
+        IReadOnlyDictionary<string, string> resourceReports,
+        IReadOnlyList<string> mechanicalReports,
+        string qaReport,
+        string highReport,
+        MilestoneGitResult gitResult)
+    {
+        try
+        {
+            WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
+            var runtime = WorkerPaths.GetRepositoryRuntimePaths(
+                workingDirectory);
+            var milestoneName = SafeArchiveName(milestone.Id);
+            var relative =
+                "temp/ProjectHub/reports/" + milestoneName;
+            var directory = Path.Combine(
+                runtime.Root,
+                "reports",
+                milestoneName);
+            Directory.CreateDirectory(directory);
+
+            File.WriteAllText(
+                Path.Combine(directory, "hq.txt"),
+                milestone.RawHqMessage ?? string.Empty);
+            File.WriteAllText(
+                Path.Combine(directory, "manager.txt"),
+                managerMessage ?? string.Empty);
+            File.WriteAllText(
+                Path.Combine(directory, "qa.txt"),
+                qaReport ?? string.Empty);
+            File.WriteAllText(
+                Path.Combine(directory, "high.txt"),
+                highReport ?? string.Empty);
+            File.WriteAllText(
+                Path.Combine(directory, "mechanical.txt"),
+                string.Join(
+                    Environment.NewLine + Environment.NewLine,
+                    mechanicalReports));
+            File.WriteAllText(
+                Path.Combine(directory, "git.txt"),
+                gitResult.Summary ?? string.Empty);
+
+            var workDirectory = Path.Combine(directory, "work");
+            Directory.CreateDirectory(workDirectory);
+            foreach (var pair in workReports)
+            {
+                File.WriteAllText(
+                    Path.Combine(
+                        workDirectory,
+                        SafeArchiveName(pair.Key) + ".txt"),
+                    pair.Value ?? string.Empty);
+            }
+
+            var resourceDirectory = Path.Combine(
+                directory,
+                "resource");
+            Directory.CreateDirectory(resourceDirectory);
+            foreach (var pair in resourceReports)
+            {
+                File.WriteAllText(
+                    Path.Combine(
+                        resourceDirectory,
+                        SafeArchiveName(pair.Key) + ".txt"),
+                    pair.Value ?? string.Empty);
+            }
+
+            return relative;
+        }
+        catch (Exception exception)
+        {
+            return "archive-failed:" + exception.GetType().Name;
+        }
+    }
+
+    private static string SafeArchiveName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        var chars = (value ?? string.Empty)
+            .Select(character =>
+                invalid.Contains(character) ? '_' : character)
+            .ToArray();
+        var safe = new string(chars).Trim();
+        return safe.Length == 0 ? "unknown" : safe;
     }
 
     public static string FormatMechanicalResult(MilestoneMechanicalResult result) =>
