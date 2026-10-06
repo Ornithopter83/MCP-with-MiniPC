@@ -708,6 +708,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("\"branch\": \"AUTO\"", hq);
         Assert.Contains("AUTO, master와 그 밖의 branch는 허용하지 않으며", hq);
         Assert.Contains("`origin/main`만 작업 기준으로 참조한다", hq);
+        Assert.Contains("강제 원격 저장소 URL", hq);
+        Assert.Contains("Web transport", hq);
+        Assert.Contains("`git ls-remote origin main`", hq);
         Assert.Contains("개별 changedPaths나 전체 dirty 파일 목록을 HQ 보고에 일일이 열거하지 않는다", manager);
         Assert.Contains("[GOTO : 역할]", hq);
         Assert.DoesNotContain("END_ACTION", manager);
