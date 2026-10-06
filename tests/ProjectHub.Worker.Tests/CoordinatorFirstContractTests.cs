@@ -889,6 +889,123 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void HqElementRecovery_SalvagesGoodElementsAndRepairsOnlyBrokenOnes()
+    {
+        const string malformed = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "M1",
+                "branch": "main",
+                "goal": "복구 검증",
+                "entrypoint": null,
+                "repositoryBaseline": {
+                  "remote": "https://github.com/owner/repo.git
+            ",
+                  "reference": "origin/main"
+                },
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [],
+                "mechanicalInstructions": {
+                  "afterWorkTerminal": true,
+                  "instructions": "build"
+                },
+                "highInstructions": "high 검토",
+                "managerInstructions": "manager 취합",
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        var scan = RoleElementRecoveryContract.Scan(
+            "HQ",
+            malformed,
+            expectedAction: "WORK",
+            contractError: "WORK:JSON_INVALID");
+
+        Assert.Contains("repositoryBaseline", scan.RecoveryTargets);
+        Assert.DoesNotContain("mechanicalInstructions", scan.RecoveryTargets);
+        Assert.Contains("mechanicalInstructions", scan.Recovered.Keys);
+        Assert.Contains("highInstructions", scan.Recovered.Keys);
+        Assert.Contains("managerInstructions", scan.Recovered.Keys);
+
+        const string recoveryResponse = """
+            [ACTION=RESULT]
+            {
+              "status": "completed",
+              "summary": "repositoryBaseline 복구",
+              "changedPaths": [],
+              "issues": [],
+              "elements": {
+                "repositoryBaseline": {
+                  "remote": "https://github.com/owner/repo.git",
+                  "reference": "origin/main"
+                }
+              }
+            }
+            """;
+
+        var recovered =
+            RoleElementRecoveryContract.ReadRecoveredElements(
+                recoveryResponse,
+                scan.RecoveryTargets);
+
+        Assert.True(RoleElementRecoveryContract.TryBuildHqWorkResponse(
+            scan,
+            recovered,
+            out var merged,
+            out var remaining));
+        Assert.Empty(remaining);
+        Assert.Contains("\"mechanicalInstructions\"", merged);
+        Assert.Contains("\"highInstructions\"", merged);
+        Assert.Contains("\"managerInstructions\"", merged);
+
+        var parsed = ActionBlockContract.ParseHq(merged);
+        Assert.False(parsed.HasErrors);
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            merged,
+            parsed,
+            out _,
+            out var error),
+            error);
+    }
+
+    [Fact]
+    public void RoleElementRecovery_DefinesRoleElementsAndFullHqRetry()
+    {
+        Assert.Contains(
+            RoleElementRecoveryContract.GetDefinitions("HQ", "WORK"),
+            item => item.Name == "workItems" && item.Required);
+        Assert.Contains(
+            RoleElementRecoveryContract.GetDefinitions("MANAGER", "DISPATCH"),
+            item => item.Name == "mechanical" && item.Required);
+        Assert.Contains(
+            RoleElementRecoveryContract.GetDefinitions("WORK", "RESULT"),
+            item => item.Name == "summary" && item.Required);
+        Assert.Contains(
+            RoleElementRecoveryContract.GetDefinitions("QA", "RESULT"),
+            item => item.Name == "status" && item.Required);
+        Assert.Contains(
+            RoleElementRecoveryContract.GetDefinitions("HIGH", "RESULT"),
+            item => item.Name == "changedPaths" && !item.Required);
+
+        var prompt = RoleElementRecoveryContract.BuildHqFullRetryPrompt(
+            new[] { "repositoryBaseline", "workItems" },
+            "strict validation failed");
+
+        Assert.Contains("FINAL_MISSING_ELEMENTS", prompt);
+        Assert.Contains("repositoryBaseline", prompt);
+        Assert.Contains("workItems", prompt);
+        Assert.Contains("전체", prompt);
+        Assert.Contains("[ACTION=WORK]", prompt);
+    }
+
+    [Fact]
     public void PipelineRoleVisuals_ColorOnlyTheCurrentRoleAfterLaunch()
     {
         Assert.True(PipelineCardVisualPolicy.Resolve(
