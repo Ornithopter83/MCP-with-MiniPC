@@ -707,7 +707,8 @@ internal static class MilestoneDefinitionContract
         MilestoneGitResult gitResult,
         IReadOnlyCollection<string> initialLocalChanges,
         IReadOnlyCollection<string> milestoneChanges,
-        IReadOnlyCollection<string> currentLocalChanges)
+        IReadOnlyCollection<string> currentLocalChanges,
+        bool formatRecoveryOccurred = false)
     {
         // Detailed WORK/HIGH changed paths and dirty snapshots remain Worker
         // mechanical state. HQ receives only the semantic integration result.
@@ -724,6 +725,11 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine($"MILESTONE_ID: {milestone.Id}");
         builder.AppendLine("TARGET_BRANCH: main");
         builder.AppendLine("REMOTE_BRANCH: origin/main");
+        if (formatRecoveryOccurred)
+        {
+            builder.AppendLine(
+                "FORMAT_RECOVERY_NOTICE: 이전 역할 응답에 포맷 오류가 있어 복구 후 진행함");
+        }
         builder.AppendLine("RESOURCE_STATE_AT_REPORT:");
         if (resourceReports.Count == 0)
         {
