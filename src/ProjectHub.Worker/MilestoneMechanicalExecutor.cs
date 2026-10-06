@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace ProjectHub.Worker;
 
@@ -384,12 +385,15 @@ internal static class MilestoneMechanicalExecutor
         string body,
         CancellationToken cancellationToken)
     {
-        var command = MilestoneDefinitionContract.ReadBodyDirective(
+        var rawCommand = MilestoneDefinitionContract.ReadBodyDirective(
             body,
             "COMMAND");
         var normalizedOperation = (operation ?? string.Empty)
             .Trim()
             .ToUpperInvariant();
+        var command = NormalizeMechanicalCommand(
+            normalizedOperation,
+            rawCommand ?? string.Empty);
 
         if (string.IsNullOrWhiteSpace(command))
         {
@@ -776,98 +780,120 @@ internal static class MilestoneMechanicalExecutor
         await Run("merge", "--abort").ConfigureAwait(false);
         await Run("cherry-pick", "--abort").ConfigureAwait(false);
 
-        var scopedPaths = BuildScopedPathspecs(
+        var requestedScopes = BuildScopedPathspecs(
             paths
                 .Select(NormalizeGitPath)
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray());
 
+        // 과거에 관찰된 파일 목록을 그대로 stage하지 않는다.
+        // BUILD/HIGH/QA 과정에서 생성 후 삭제된 파일이 pathspec에 남으면
+        // 하나의 stale path가 전체 git add를 실패시킬 수 있다.
+        // 현재 working tree에서 실제로 dirty인 relevant path만 다시 계산한다.
+        var liveDirtyPaths =
+            await SnapshotChangedPathsAsync(
+                workingDirectory,
+                cancellationToken).ConfigureAwait(false);
+        var scopedPaths = liveDirtyPaths
+            .Where(path =>
+                requestedScopes.Count > 0 &&
+                IsPathWithinScopes(path, requestedScopes))
+            .Where(path => !IsRuntimeOutput(path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         var commitCreated = false;
         string? commitError = null;
+        var addWarnings = new List<string>();
+        var stagedPaths = new List<string>();
 
-        if (scopedPaths.Count > 0)
+        // path별로 stage해서 한 파일의 race/stale 상태가 다른 소스까지
+        // staging하지 못하게 만드는 것을 방지한다.
+        foreach (var scopedPath in scopedPaths)
         {
-            var addArgs = new List<string>
-            {
+            var add = await Run(
                 "add",
                 "-A",
+                "--",
+                scopedPath).ConfigureAwait(false);
+            if (add.ExitCode == 0)
+            {
+                stagedPaths.Add(scopedPath);
+                continue;
+            }
+
+            addWarnings.Add(
+                scopedPath +
+                ": " +
+                (string.IsNullOrWhiteSpace(add.StandardError)
+                    ? add.StandardOutput
+                    : add.StandardError));
+        }
+
+        if (stagedPaths.Count > 0)
+        {
+            var diffArgs = new List<string>
+            {
+                "diff",
+                "--cached",
+                "--quiet",
                 "--"
             };
-            addArgs.AddRange(scopedPaths);
-            var add = await Run(addArgs.ToArray()).ConfigureAwait(false);
-            if (add.ExitCode != 0)
+            diffArgs.AddRange(stagedPaths);
+            var staged = await Run(diffArgs.ToArray())
+                .ConfigureAwait(false);
+
+            if (staged.ExitCode == 1)
             {
-                commitError =
-                    "git add 실패: " +
-                    (string.IsNullOrWhiteSpace(add.StandardError)
-                        ? add.StandardOutput
-                        : add.StandardError);
-            }
-            else
-            {
-                var diffArgs = new List<string>
+                async Task<GitCommandResult> CommitAsync()
                 {
-                    "diff",
-                    "--cached",
-                    "--quiet",
-                    "--"
-                };
-                diffArgs.AddRange(scopedPaths);
-                var staged = await Run(diffArgs.ToArray())
-                    .ConfigureAwait(false);
-
-                if (staged.ExitCode == 1)
-                {
-                    async Task<GitCommandResult> CommitAsync()
+                    var commitArgs = new List<string>
                     {
-                        var commitArgs = new List<string>
-                        {
-                            "commit",
-                            "-m",
-                            commitMessage,
-                            "--"
-                        };
-                        commitArgs.AddRange(scopedPaths);
-                        return await Run(commitArgs.ToArray())
-                            .ConfigureAwait(false);
-                    }
-
-                    var commit = await CommitAsync().ConfigureAwait(false);
-                    if (commit.ExitCode != 0)
-                    {
-                        await Run(
-                            "config",
-                            "user.name",
-                            "ProjectHub").ConfigureAwait(false);
-                        await Run(
-                            "config",
-                            "user.email",
-                            "projecthub@localhost").ConfigureAwait(false);
-                        commit = await CommitAsync().ConfigureAwait(false);
-                    }
-
-                    if (commit.ExitCode == 0)
-                    {
-                        commitCreated = true;
-                    }
-                    else
-                    {
-                        commitError =
-                            "git commit 실패: " +
-                            (string.IsNullOrWhiteSpace(commit.StandardError)
-                                ? commit.StandardOutput
-                                : commit.StandardError);
-                    }
+                        "commit",
+                        "-m",
+                        commitMessage,
+                        "--"
+                    };
+                    commitArgs.AddRange(stagedPaths);
+                    return await Run(commitArgs.ToArray())
+                        .ConfigureAwait(false);
                 }
-                else if (staged.ExitCode > 1)
+
+                var commit = await CommitAsync().ConfigureAwait(false);
+                if (commit.ExitCode != 0)
+                {
+                    await Run(
+                        "config",
+                        "user.name",
+                        "ProjectHub").ConfigureAwait(false);
+                    await Run(
+                        "config",
+                        "user.email",
+                        "projecthub@localhost").ConfigureAwait(false);
+                    commit = await CommitAsync().ConfigureAwait(false);
+                }
+
+                if (commit.ExitCode == 0)
+                {
+                    commitCreated = true;
+                }
+                else
                 {
                     commitError =
-                        "git diff --cached 확인 실패: " +
-                        (string.IsNullOrWhiteSpace(staged.StandardError)
-                            ? staged.StandardOutput
-                            : staged.StandardError);
+                        "git commit 실패: " +
+                        (string.IsNullOrWhiteSpace(commit.StandardError)
+                            ? commit.StandardOutput
+                            : commit.StandardError);
                 }
+            }
+            else if (staged.ExitCode > 1)
+            {
+                commitError =
+                    "git diff --cached 확인 실패: " +
+                    (string.IsNullOrWhiteSpace(staged.StandardError)
+                        ? staged.StandardOutput
+                        : staged.StandardError);
             }
         }
 
@@ -900,6 +926,21 @@ internal static class MilestoneMechanicalExecutor
         }
 
         var pushSucceeded = push?.ExitCode == 0;
+
+        // push 성공 자체가 검증된 working tree와 원격이 같다는 뜻은 아니다.
+        // commit 대상 scope에 source dirty가 남아 있으면 최종화 실패로 취급한다.
+        var postFinalizeDirty =
+            await SnapshotChangedPathsAsync(
+                workingDirectory,
+                cancellationToken).ConfigureAwait(false);
+        var relevantDirtyAfterFinalize = postFinalizeDirty
+            .Where(path =>
+                requestedScopes.Count > 0 &&
+                IsPathWithinScopes(path, requestedScopes))
+            .Where(path => !IsRuntimeOutput(path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         var summary =
             "FORCE_COMMIT_PUSH" +
             Environment.NewLine +
@@ -911,7 +952,17 @@ internal static class MilestoneMechanicalExecutor
             Environment.NewLine +
             $"push={(pushSucceeded ? "COMPLETED" : "FAILED")}" +
             Environment.NewLine +
-            "mode=FORCE_LOCAL_MAIN_WINS";
+            "mode=FORCE_LOCAL_MAIN_WINS" +
+            Environment.NewLine +
+            $"relevantDirtyAfterFinalize={relevantDirtyAfterFinalize.Length}";
+
+        if (addWarnings.Count > 0)
+        {
+            summary +=
+                Environment.NewLine +
+                "stageWarnings=" +
+                string.Join(" | ", addWarnings);
+        }
 
         if (!string.IsNullOrWhiteSpace(commitError))
         {
@@ -919,6 +970,14 @@ internal static class MilestoneMechanicalExecutor
                 Environment.NewLine +
                 "commitWarning=" +
                 commitError;
+        }
+
+        if (relevantDirtyAfterFinalize.Length > 0)
+        {
+            summary +=
+                Environment.NewLine +
+                "relevantDirtyPaths=" +
+                string.Join(",", relevantDirtyAfterFinalize);
         }
 
         if (!pushSucceeded && push is not null)
@@ -932,7 +991,9 @@ internal static class MilestoneMechanicalExecutor
         }
 
         return new(
-            pushSucceeded && string.IsNullOrWhiteSpace(commitError),
+            pushSucceeded &&
+            string.IsNullOrWhiteSpace(commitError) &&
+            relevantDirtyAfterFinalize.Length == 0,
             false,
             RequiredBranch,
             localHead,
@@ -1022,6 +1083,48 @@ internal static class MilestoneMechanicalExecutor
         return branch;
     }
 
+    public static string NormalizeMechanicalCommand(
+        string operation,
+        string command)
+    {
+        var normalizedOperation = (operation ?? string.Empty)
+            .Trim()
+            .ToUpperInvariant();
+        var normalizedCommand = (command ?? string.Empty).Trim();
+
+        if (normalizedCommand.Length == 0 ||
+            normalizedOperation is not ("BUILD" or "PUBLISH"))
+        {
+            return normalizedCommand;
+        }
+
+        // BUILD/PUBLISH 결과 위치는 Worker 소유 규칙으로 프로젝트 루트 bin에 고정한다.
+        // 모델이 절대경로와 따옴표를 섞어 출력해도 그대로 실행하지 않는다.
+        const string outputPattern =
+            @"(?i)(?:--output|-o)(?:\s*=\s*|\s+)(?:""[^""]*""|'[^']*'|[^\s&|]+)";
+        var rewritten = Regex.Replace(
+            normalizedCommand,
+            outputPattern,
+            "--output bin");
+
+        if (!Regex.IsMatch(
+                rewritten,
+                @"(?i)(?:^|\s)(?:--output|-o)(?:\s*=\s*|\s+)"))
+        {
+            var dotnetOperation = normalizedOperation == "BUILD"
+                ? "build"
+                : "publish";
+            if (Regex.IsMatch(
+                    rewritten,
+                    @"(?i)^\s*dotnet\s+" + dotnetOperation + @"\b"))
+            {
+                rewritten += " --output bin";
+            }
+        }
+
+        return rewritten;
+    }
+
     private static IReadOnlyList<string> BuildScopedPathspecs(
         IReadOnlyList<string> scopedPaths)
     {
@@ -1084,11 +1187,30 @@ internal static class MilestoneMechanicalExecutor
         .Trim()
         .Replace('\\', '/');
 
-    private static bool IsRuntimeOutput(string path) =>
-        path.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("bin/", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals("temp", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("temp/", StringComparison.OrdinalIgnoreCase) ||
-        path.Equals(".projecthub", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith(".projecthub/", StringComparison.OrdinalIgnoreCase);
+    private static bool IsRuntimeOutput(string path)
+    {
+        var normalized = NormalizeGitPath(path).Trim('/');
+        if (normalized.Length == 0)
+            return false;
+
+        var parts = normalized.Split(
+            '/',
+            StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Any(part =>
+                part.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("dist", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".projecthub", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return normalized.Equals(
+                   "temp",
+                   StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(
+                   "temp/",
+                   StringComparison.OrdinalIgnoreCase);
+    }
 }
