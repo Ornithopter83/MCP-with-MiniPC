@@ -53,7 +53,7 @@ WRITE_PATH: src/App
 ② POLICY는 DEFAULT 또는 READ_ONLY_NO_FILE_CHANGES다.
 ③ ENTRYPOINT는 QA가 실제 동작을 확인할 때 참고할 실행 대상이며 없으면 NONE이다.
 ④ GIT_INIT은 YES 또는 NO다.
-⑤ WORK id는 10 이상의 정수다.
+⑤ WORK id는 10 이상의 정수이며, HQ가 현재 작업 흐름에서 이전 HQ 응답으로 한 번이라도 배정한 id는 completed, blocked, timeout, PAUSE 여부와 관계없이 이후 HQ WORK 응답에서 다시 배정하지 않는다. Worker가 동일 WORK를 내부적으로 재실행하는 것은 HQ의 재배정이 아니다.
 ⑥ READ_ONLY는 YES 또는 NO다. 쓰기 WORK에는 WRITE_PATH를 하나 이상 둔다.
 ⑦ TEST는 모든 WORK에 ON 또는 OFF로 지정한다.
 ⑧ TEST: ON이 하나 이상이면 WORK 완료 후 QA로 진행한다.

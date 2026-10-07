@@ -1214,7 +1214,9 @@ public partial class MainWindow
             ThreadProjectPath = null
         };
 
-        async Task<AiRoleRunResult> RunAsync(string currentPrompt) =>
+        async Task<AiRoleRunResult> RunAsync(
+            string currentPrompt,
+            IReadOnlyList<AiInputAttachment>? currentAttachments = null) =>
             await RunCoordinatorRoleAsync(
                 jobId,
                 "WORK",
@@ -1227,6 +1229,7 @@ public partial class MainWindow
                 work.ReadOnly
                     ? CodexSandboxMode.ReadOnly
                     : CodexSandboxMode.WorkspaceWrite,
+                inputAttachments: currentAttachments,
                 historyWorkItemId: work.Id,
                 historyReferenceId: milestone.Id + ":" + work.Id);
 
@@ -1247,6 +1250,41 @@ public partial class MainWindow
             result.StandardError);
         var reportStatus =
             MilestoneDefinitionContract.ReadWorkStatus(report);
+
+        if (string.Equals(
+                reportStatus,
+                "blocked",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var recoveryAttachment =
+                WorkSandboxRecovery.CreateAttachment(
+                    workingDirectory,
+                    jobId,
+                    work.Id);
+            var recoveryPrompt =
+                WorkSandboxRecovery.BuildRetryPrompt(
+                    prompt,
+                    report,
+                    BuildCliFailureDiagnostics(result));
+
+            AddTaskMessage(
+                "WORK DETAIL",
+                $"WORK #{work.Id} blocked · WORKER-SANDBOX.md 첨부 후 동일 WORK 1회 재실행",
+                status: "RETRY",
+                referenceId: milestone.Id + ":" + work.Id,
+                includeHistory: false,
+                workItemId: work.Id);
+
+            result = await RunAsync(
+                recoveryPrompt,
+                new[] { recoveryAttachment });
+            report = MilestoneDefinitionContract.NormalizeWorkReport(
+                result.ExitCode,
+                result.FinalMessage,
+                result.StandardError);
+            reportStatus =
+                MilestoneDefinitionContract.ReadWorkStatus(report);
+        }
 
         AddRoleResponseHistory(
             WorkerRoleState.Work,

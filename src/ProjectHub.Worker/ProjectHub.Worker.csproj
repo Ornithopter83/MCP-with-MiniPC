@@ -51,5 +51,8 @@
     <EmbeddedResource Include="Contracts\HIGH-ROUTING-CONTRACT.md">
       <LogicalName>ProjectHub.Worker.Contracts.HIGH-ROUTING-CONTRACT.md</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Recovery\WORKER-SANDBOX.md">
+      <LogicalName>ProjectHub.Worker.Recovery.WORKER-SANDBOX.md</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>
