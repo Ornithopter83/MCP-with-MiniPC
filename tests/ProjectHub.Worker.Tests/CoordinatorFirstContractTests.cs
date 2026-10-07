@@ -320,6 +320,68 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
+    public void RoleJsonRepairPrompt_RejectsHqGenericJsonRepair()
+    {
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            RoleJsonRepairContract.BuildPrompt(
+                "HQ",
+                "[ACTION=WORK]\n{ malformed }",
+                "JSON_INVALID",
+                "WORK"));
+
+        Assert.Equal(
+            "HQ_GENERIC_JSON_REPAIR_FORBIDDEN",
+            error.Message);
+    }
+
+    [Fact]
+    public void ElementRecovery_RejectsHqPartialRecovery()
+    {
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            RoleElementRecoveryContract.BuildElementRecoveryPrompt(
+                "HQ",
+                "WORK",
+                "[ACTION=WORK]",
+                "WORK:JSON_INVALID",
+                new[] { "workItems" },
+                Array.Empty<string>()));
+
+        Assert.Equal(
+            "HQ_ELEMENT_RECOVERY_FORBIDDEN",
+            error.Message);
+    }
+
+    [Fact]
+    public void HqResponseRecovery_RequiresCurrentPlainTextContract()
+    {
+        var prompt = HqResponseRecoveryContract.BuildBody(
+            """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "workItems": [],
+                "managerInstructions": "legacy"
+              }
+            }
+            """,
+            "WORK:JSON_INVALID");
+
+        Assert.Contains("전체 응답", prompt);
+        Assert.Contains("JSON, YAML", prompt);
+        Assert.Contains("TEST: ON", prompt);
+        Assert.Contains("order", prompt);
+        Assert.Contains("managerInstructions", prompt);
+        Assert.Contains("mechanicalInstructions", prompt);
+        Assert.Contains("highInstructions", prompt);
+        Assert.Contains("validation", prompt);
+        Assert.Contains("현재 HQ 계약이 이전 응답보다 우선", prompt);
+        Assert.DoesNotContain(
+            "완전한 JSON 객체 하나만 출력",
+            prompt,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MilestoneDefinition_RejectsWorkItemBelowTen()
     {
         const string message = """

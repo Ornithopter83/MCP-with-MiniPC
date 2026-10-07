@@ -9,6 +9,12 @@ internal static class RoleJsonRepairContract
         string? expectedAction = null)
     {
         var normalizedRole = role.Trim().ToUpperInvariant();
+        if (string.Equals(normalizedRole, "HQ", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "HQ_GENERIC_JSON_REPAIR_FORBIDDEN");
+        }
+
         var expected =
             string.IsNullOrWhiteSpace(expectedAction)
                 ? "원문에서 의도한 허용 ACTION"
@@ -67,35 +73,6 @@ internal static class RoleJsonRepairContract
     private static string GetSchema(string role) =>
         role switch
         {
-            "HQ" => """
-                [ACTION=WORK]
-                {
-                  "milestone": {
-                    "id": "기존 값",
-                    "branch": "main",
-                    "goal": "기존 목표",
-                    "entrypoint": null,
-                    "initializeGitIfMissing": false,
-                    "projectPolicy": "DEFAULT",
-                    "resource": null,
-                    "workItems": [
-                      {
-                        "id": 10,
-                        "readOnly": false,
-                        "testRequired": false,
-                        "writePaths": ["기존 상대경로"],
-                        "goal": "기존 WORK 목표",
-                        "instructions": "기존 지시",
-                        "completionCriteria": []
-                      }
-                    ]
-                  }
-                }
-
-                또는 [ACTION=PAUSE] / [ACTION=END] 뒤에
-                { "message": "기존 메시지", ... }
-                """,
-
             "MANAGER" => """
                 초기 분배:
                 [ACTION=DISPATCH]

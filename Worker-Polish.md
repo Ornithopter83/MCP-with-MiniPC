@@ -20,6 +20,8 @@
 ④ 같은 마일스톤의 GENERAL WORK는 서로의 파일·프로젝트·타입·API·분석·결과·산출물을 필요로 하지 않는 독립 작업이어야 한다. 그런 의존성이 하나라도 있으면 하나의 WORKITEM으로 결합한다.
 ⑤ WRITE_PATH가 겹치는 쓰기 WORK는 설계하지 않는다. Worker는 겹침을 발견하면 충돌한 WORK만 blocked 처리하고 나머지를 계속한다.
 ⑥ 이미지 생성이 필요하면 RESOURCE #0만 사용하고, 그 이미지를 소비하는 작업은 다음 마일스톤으로 분리한다.
+⑦ HQ 응답 파싱 실패 시 부분 element 복구나 generic JSON repair를 사용하지 않는다. 같은 HQ 역할에 현재 계약 전문을 다시 주입하여 전체 응답을 1회만 재출력한다.
+⑧ HQ 전체 복구에서도 JSON, order, QA 지시, MANAGER, mechanicalInstructions, highInstructions, validation 같은 구형 실행 구조를 다시 허용하지 않는다.
 
 제3조 (프로젝트 루트와 작업영역)
 

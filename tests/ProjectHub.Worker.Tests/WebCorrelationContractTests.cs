@@ -22,6 +22,8 @@ public sealed class WebCorrelationContractTests
         Assert.StartsWith("[KEY=1234ABCDabcde]", prompt, StringComparison.Ordinal);
         Assert.Contains("원래 요청", prompt);
         Assert.Contains("HQ는 JSON이 아니라 고정 필드와 @@SECTION 평문 프로토콜", prompt);
+        Assert.Contains("HQ 형식 복구에서도 JSON", prompt);
+        Assert.Contains("mechanicalInstructions", prompt);
         Assert.Contains(WebCorrelationContract.ResponseOkMarker, prompt);
         Assert.Contains("마지막 줄", prompt);
     }
@@ -36,14 +38,17 @@ public sealed class WebCorrelationContractTests
 
             [KEY=1234ABCDabcde]
             [ACTION=END]
-            {"action":"end","message":"완료"}
+
+            @@MESSAGE
+            완료
             [RESPONSE=OK]
             ChatGPT UI footer
             """;
 
         Assert.True(WebCorrelationContract.TryExtractResponse(raw, key, out var response));
         Assert.StartsWith("[ACTION=END]", response, StringComparison.Ordinal);
-        Assert.Contains("{\"action\":\"end\",\"message\":\"완료\"}", response);
+        Assert.Contains("@@MESSAGE", response);
+        Assert.Contains("완료", response);
         Assert.DoesNotContain("도구 출력", response);
         Assert.DoesNotContain("[RESPONSE=OK]", response);
         Assert.DoesNotContain("ChatGPT UI footer", response);
@@ -59,7 +64,9 @@ public sealed class WebCorrelationContractTests
             기타 대화
             [KEY=1234ABCDabcde]
             [ACTION=END]
-            {"action":"end","message":"실제 응답"}
+
+            @@MESSAGE
+            실제 응답
             [RESPONSE=OK]
             이후 UI 텍스트
             """;
@@ -67,7 +74,9 @@ public sealed class WebCorrelationContractTests
         Assert.True(WebCorrelationContract.TryExtractResponse(raw, key, out var response));
         Assert.Equal(
             "[ACTION=END]" + Environment.NewLine +
-            "{\"action\":\"end\",\"message\":\"실제 응답\"}",
+            Environment.NewLine +
+            "@@MESSAGE" + Environment.NewLine +
+            "실제 응답",
             response);
     }
 
@@ -75,7 +84,7 @@ public sealed class WebCorrelationContractTests
     public void ExtractResponse_RejectsMatchingKeyUntilCompletionLineAppears()
     {
         Assert.False(WebCorrelationContract.TryExtractResponse(
-            "[KEY=1234ABCDabcde]\n[ACTION=END]\n{\"action\":\"end\",\"message\":\"아직 작성 중\"}",
+            "[KEY=1234ABCDabcde]\n[ACTION=END]\n\n@@MESSAGE\n아직 작성 중",
             "1234ABCDabcde",
             out _));
     }
@@ -84,7 +93,7 @@ public sealed class WebCorrelationContractTests
     public void ExtractResponse_RequiresCompletionMarkerOnItsOwnLine()
     {
         Assert.False(WebCorrelationContract.TryExtractResponse(
-            "[KEY=1234ABCDabcde]\n[ACTION=END]\n{\"action\":\"end\",\"message\":\"본문 [RESPONSE=OK] 계속\"}",
+            "[KEY=1234ABCDabcde]\n[ACTION=END]\n\n@@MESSAGE\n본문 [RESPONSE=OK] 계속",
             "1234ABCDabcde",
             out _));
     }

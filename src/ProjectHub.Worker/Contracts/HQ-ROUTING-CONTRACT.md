@@ -19,6 +19,7 @@
 ③ JSON, YAML, BODY_BEGIN/BODY_END/END_ACTION, Markdown 코드펜스를 사용하지 않는다.
 ④ 제어값은 NAME: VALUE 한 줄, 긴 지시는 @@SECTION 다음 평문으로 작성한다.
 ⑤ 응답 마지막 별도 줄에 [RESPONSE=OK]를 출력한다.
+⑥ 형식 복구 요청을 받은 경우에도 현재 문법으로 전체 응답을 처음부터 다시 출력하며 JSON 또는 구형 실행 필드를 사용하지 않는다.
 
 제3조 (WORK 형식)
 

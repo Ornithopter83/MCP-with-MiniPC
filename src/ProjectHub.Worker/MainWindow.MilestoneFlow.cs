@@ -228,9 +228,73 @@ public partial class MainWindow
                 var hqText = HqTextProtocol.Parse(hqMessage);
                 if (!hqText.IsValid)
                 {
-                    throw new InvalidOperationException(
-                        "HQ 응답에서 section을 읽지 못했습니다: " +
-                        string.Join(", ", hqText.Errors));
+                    _formatRecoveryJobs[jobId] = 1;
+
+                    var recoveryError =
+                        string.Join(", ", hqText.Errors);
+                    var recoveryBody =
+                        HqResponseRecoveryContract.BuildBody(
+                            hqMessage,
+                            recoveryError);
+                    var recoveryPrompt = BuildMilestoneHqPrompt(
+                        "HQ_RESPONSE_RECOVERY",
+                        recoveryBody,
+                        normalizedRoot,
+                        configuredRepositoryUrl,
+                        remoteReference.CommitSha);
+
+                    AddDataFlowHistory(
+                        WorkerRoleState.Hq,
+                        "Worker 작업",
+                        "HQ 전체 응답 복구 1회 실행" +
+                        Environment.NewLine +
+                        recoveryError,
+                        status: "RECOVERY",
+                        persistenceSource: "WORKER ACTION");
+
+                    var recoveryResult = await RunHqRoleAsync(
+                        jobId,
+                        "HQ_RESPONSE_RECOVERY",
+                        recoveryPrompt,
+                        coordinator,
+                        normalizedRoot,
+                        hqSession,
+                        cts.Token,
+                        sessionStarted: session =>
+                            hqSession = CodexCliRunner.NormalizeSessionId(session));
+
+                    hqSession = CodexCliRunner.NormalizeSessionId(
+                        recoveryResult.SessionId) ?? hqSession;
+
+                    if (recoveryResult.ExitCode != 0)
+                    {
+                        throw new InvalidOperationException(
+                            string.IsNullOrWhiteSpace(
+                                recoveryResult.StandardError)
+                                ? "HQ_RESPONSE_RECOVERY_EXECUTION_FAILED"
+                                : recoveryResult.StandardError);
+                    }
+
+                    hqMessage =
+                        recoveryResult.FinalMessage?.Trim() ??
+                        string.Empty;
+                    AddRoleResponseHistory(
+                        WorkerRoleState.Hq,
+                        "HQ 전체 응답 복구",
+                        hqMessage,
+                        recoveryResult.Usage,
+                        recoveryResult.Files,
+                        status: "RECOVERED",
+                        providerWireId: coordinator.Provider,
+                        fullMessage: hqMessage);
+
+                    hqText = HqTextProtocol.Parse(hqMessage);
+                    if (!hqText.IsValid)
+                    {
+                        throw new InvalidOperationException(
+                            "HQ_RESPONSE_RECOVERY_FAILED: " +
+                            string.Join(", ", hqText.Errors));
+                    }
                 }
 
                 var hqParse = hqText.Parse;
@@ -1542,6 +1606,15 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         CancellationToken cancellationToken)
     {
+        if (string.Equals(
+                role,
+                "HQ",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "HQ_GENERIC_JSON_REPAIR_FORBIDDEN");
+        }
+
         RunOnUi(() =>
         {
             TaskDirection.Text = "작업";

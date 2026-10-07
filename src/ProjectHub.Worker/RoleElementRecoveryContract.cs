@@ -148,6 +148,15 @@ internal static class RoleElementRecoveryContract
         IReadOnlyCollection<string> recoveryTargets,
         IReadOnlyCollection<string> recoveredElements)
     {
+        if (string.Equals(
+                role?.Trim(),
+                "HQ",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "HQ_ELEMENT_RECOVERY_FORBIDDEN");
+        }
+
         var targetList = recoveryTargets.Count == 0
             ? "- 없음"
             : string.Join(
