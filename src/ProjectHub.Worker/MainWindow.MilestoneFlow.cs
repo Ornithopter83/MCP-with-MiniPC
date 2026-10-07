@@ -852,205 +852,82 @@ public partial class MainWindow
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            if (milestone.QaReserved)
+            if (blockedWorkIds.Length == 0 && milestone.QaReserved)
             {
-                var buildCommand =
-                    MilestoneMechanicalExecutor.BuildCommandForEntrypoint(
-                        milestone.Entrypoint);
-                MilestoneMechanicalResult buildResult;
-                if (string.IsNullOrWhiteSpace(buildCommand))
+                qaReport = await ExecuteMilestoneQaAsync(
+                    jobId,
+                    workingDirectory,
+                    milestone,
+                    workReports,
+                    resourceReports,
+                    mechanicalReports,
+                    implementer,
+                    qa,
+                    1,
+                    cancellationToken);
+
+                var qaStatus =
+                    MilestoneDefinitionContract.ReadQaStatus(qaReport);
+
+                if (string.Equals(
+                        qaStatus,
+                        "passed",
+                        StringComparison.OrdinalIgnoreCase))
                 {
-                    buildResult = new(
-                        "BUILD",
-                        false,
-                        -1,
-                        string.Empty,
-                        string.Empty,
-                        "BUILD_ENTRYPOINT_UNSUPPORTED");
+                    outcome = "COMPLETED";
                 }
-                else
+                else if (string.Equals(
+                             qaStatus,
+                             "issue",
+                             StringComparison.OrdinalIgnoreCase))
                 {
-                    buildResult = await MilestoneMechanicalExecutor.ExecuteAsync(
-                        jobId,
-                        workingDirectory,
-                        "BUILD",
-                        "COMMAND: " + buildCommand,
-                        cancellationToken);
-                }
-
-                mechanicalReports.Add(
-                    MilestoneDefinitionContract.FormatMechanicalResult(
-                        buildResult));
-
-                for (var repairAttempt = 1;
-                     !buildResult.Success && repairAttempt <= 2;
-                     repairAttempt++)
-                {
-                    AddDataFlowHistory(
-                        WorkerRoleState.Work,
-                        "Worker 복구 분배",
-                        $"BUILD_REPAIR_ATTEMPT: {repairAttempt}",
-                        status: "DISPATCHED",
-                        referenceId: milestone.Id + ":BUILD-REPAIR-" + repairAttempt,
-                        workItemId: "BUILD-REPAIR-" + repairAttempt,
-                        persistenceSource: "WORKER DISPATCH");
-
-                    var repairBefore =
-                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                            workingDirectory,
-                            cancellationToken);
-                    var repair = await ExecuteBuildRepairWorkAsync(
-                        jobId,
-                        workingDirectory,
-                        milestone,
-                        implementer,
-                        repairAttempt,
-                        buildResult,
-                        plannedWorkScopes,
-                        cancellationToken);
-                    workReports[repair.Id] = repair.Report;
-                    var repairAfter =
+                    var highBefore =
                         await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                             workingDirectory,
                             cancellationToken);
 
-                    foreach (var changedPath in
-                             MilestoneMechanicalExecutor.DiffChangeStates(
-                                 repairBefore,
-                                 repairAfter))
-                    {
-                        if (MilestoneMechanicalExecutor.IsPathWithinScopes(
-                                changedPath,
-                                plannedWorkScopes))
-                        {
-                            milestoneChangedPaths.Add(changedPath);
-                        }
-                    }
-
-                    buildResult = await MilestoneMechanicalExecutor.ExecuteAsync(
-                        jobId,
-                        workingDirectory,
-                        "BUILD",
-                        "COMMAND: " + buildCommand,
-                        cancellationToken);
-                    mechanicalReports.Add(
-                        MilestoneDefinitionContract.FormatMechanicalResult(
-                            buildResult));
-                }
-
-                if (!buildResult.Success)
-                {
-                    outcome = "BUILD_FAILED_FINAL";
-                    highReport =
-                        "SKIPPED_BUILD_FAILED" +
-                        Environment.NewLine +
-                        MilestoneDefinitionContract.Limit(
-                            buildResult.Summary,
-                            1400);
-                }
-                else
-                {
-                    var qaBefore =
-                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                            workingDirectory,
-                            cancellationToken);
-                    qaReport = await ExecuteMilestoneQaAsync(
+                    highReport = await ExecuteMilestoneHighAsync(
                         jobId,
                         workingDirectory,
                         milestone,
                         workReports,
                         resourceReports,
                         mechanicalReports,
+                        qaReport,
                         implementer,
-                        qa,
+                        high,
                         1,
                         cancellationToken);
-                    var qaAfter =
+
+                    var highAfter =
                         await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                             workingDirectory,
                             cancellationToken);
-                    var qaSourceChanges =
-                        MilestoneMechanicalExecutor.DiffChangeStates(
-                            qaBefore,
-                            qaAfter);
-                    if (qaSourceChanges.Count > 0)
+                    foreach (var changedPath in
+                             MilestoneMechanicalExecutor.DiffChangeStates(
+                                 highBefore,
+                                 highAfter))
                     {
-                        qaReport = MilestoneDefinitionContract.BuildRoleResult(
-                            null,
-                            "issue",
-                            "QA_SOURCE_MODIFICATION_DETECTED",
-                            issues: qaSourceChanges
-                                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                                .ToArray());
+                        milestoneChangedPaths.Add(changedPath);
                     }
 
-                    var qaStatus =
-                        MilestoneDefinitionContract.ReadQaStatus(qaReport);
-                    if (string.Equals(
-                            qaStatus,
-                            "passed",
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        highReport = "SKIPPED_QA_PASSED";
-                        if (blockedWorkIds.Length == 0)
-                            outcome = "COMPLETED";
-                    }
-                    else
-                    {
-                        var highBefore =
-                            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                                workingDirectory,
-                                cancellationToken);
-
-                        highReport = await ExecuteMilestoneHighAsync(
-                            jobId,
-                            workingDirectory,
-                            milestone,
-                            workReports,
-                            resourceReports,
-                            mechanicalReports,
-                            qaReport,
-                            implementer,
-                            high,
-                            1,
-                            cancellationToken);
-
-                        var highAfter =
-                            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                                workingDirectory,
-                                cancellationToken);
-                        foreach (var changedPath in
-                                 MilestoneMechanicalExecutor.DiffChangeStates(
-                                     highBefore,
-                                     highAfter))
-                        {
-                            milestoneChangedPaths.Add(changedPath);
-                        }
-
-                        foreach (var changedPath in
-                                 MilestoneDefinitionContract.ExtractHighChangedPaths(
-                                     highReport))
-                        {
-                            milestoneChangedPaths.Add(changedPath);
-                        }
-
-                        var highStatus =
-                            MilestoneDefinitionContract.ReadHighStatus(
-                                highReport);
-                        outcome = string.Equals(
-                                highStatus,
-                                "incomplete",
-                                StringComparison.OrdinalIgnoreCase)
-                            ? "HIGH_INCOMPLETE"
-                            : blockedWorkIds.Length == 0
-                                ? "COMPLETED_WITH_HIGH"
-                                : "WORK_BLOCKED_WITH_HIGH";
-                    }
+                    var highStatus =
+                        MilestoneDefinitionContract.ReadHighStatus(highReport);
+                    outcome = string.Equals(
+                        highStatus,
+                        "blocked",
+                        StringComparison.OrdinalIgnoreCase)
+                        ? "HIGH_BLOCKED"
+                        : "COMPLETED_WITH_HIGH";
+                }
+                else
+                {
+                    outcome = "QA_BLOCKED";
                 }
             }
-            else
+            else if (blockedWorkIds.Length == 0)
             {
-                highReport = "SKIPPED_TEST_OFF";
+                outcome = "COMPLETED";
             }
 
             CaptureResourceStateWithoutWaiting();
@@ -1178,86 +1055,6 @@ public partial class MainWindow
         }
     }
 
-    private async Task<WorkExecutionReport> ExecuteBuildRepairWorkAsync(
-        string jobId,
-        string workingDirectory,
-        MilestoneDefinition milestone,
-        WorkerAiRoleSettings implementer,
-        int attempt,
-        MilestoneMechanicalResult buildFailure,
-        IReadOnlyList<string> writePaths,
-        CancellationToken cancellationToken)
-    {
-        var repairId = "BUILD-REPAIR-" + attempt;
-        if (writePaths.Count == 0)
-        {
-            return new(
-                repairId,
-                MilestoneDefinitionContract.BuildRoleResult(
-                    null,
-                    "blocked",
-                    "BUILD_REPAIR_WRITE_PATH_EMPTY"));
-        }
-
-        var body =
-            MilestoneDefinitionContract.BuildWorkGoalsSummary(milestone) +
-            Environment.NewLine +
-            Environment.NewLine +
-            "빌드 실패를 수정해주세요" +
-            Environment.NewLine +
-            Environment.NewLine +
-            "BUILD_LOG:" +
-            Environment.NewLine +
-            MilestoneDefinitionContract.Limit(
-                buildFailure.Summary,
-                16000);
-
-        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
-            repairId,
-            body,
-            writePaths,
-            workingDirectory,
-            readOnly: false);
-
-        var role = implementer with
-        {
-            ThreadSessionId = null,
-            ThreadProjectPath = null
-        };
-
-        var result = await RunCoordinatorRoleAsync(
-            jobId,
-            "WORK",
-            prompt,
-            role,
-            workingDirectory,
-            null,
-            null,
-            cancellationToken,
-            CodexSandboxMode.WorkspaceWrite,
-            historyWorkItemId: repairId,
-            historyReferenceId: milestone.Id + ":" + repairId);
-
-        var report = MilestoneDefinitionContract.NormalizeWorkReport(
-            result.ExitCode,
-            result.FinalMessage,
-            result.StandardError);
-
-        AddRoleResponseHistory(
-            WorkerRoleState.Work,
-            "빌드 복구 결과",
-            report,
-            result.Usage,
-            result.Files,
-            status: result.ExitCode == 0 ? "RECEIVED" : "BLOCKED",
-            providerWireId: implementer.Provider,
-            fullMessage: report,
-            workItemId: repairId,
-            referenceId: milestone.Id + ":" + repairId);
-
-        return new(repairId, report);
-    }
-
     private static void SaveMilestoneExecutionGraph(
         string workingDirectory,
         string jobId,
@@ -1307,34 +1104,17 @@ public partial class MainWindow
         }
 
         nodes.Add(new(
-            "BUILD",
-            "WORKER",
-            !milestone.QaReserved
-                ? "SKIPPED"
-                : highReport?.StartsWith(
-                    "SKIPPED_BUILD_FAILED",
-                    StringComparison.Ordinal) == true
-                    ? "FAILED"
-                    : state is "RUNNING" or "PLANNED"
-                        ? "PLANNED"
-                        : "COMPLETED"));
-        nodes.Add(new(
             "QA",
             "QA",
             !milestone.QaReserved
                 ? "SKIPPED"
-                : highReport?.StartsWith(
-                    "SKIPPED_BUILD_FAILED",
-                    StringComparison.Ordinal) == true
-                    ? "SKIPPED"
-                    : !string.IsNullOrWhiteSpace(qaReport)
-                        ? "COMPLETED"
-                        : "PLANNED"));
+                : !string.IsNullOrWhiteSpace(qaReport)
+                    ? "COMPLETED"
+                    : "PLANNED"));
         nodes.Add(new(
             "HIGH",
             "HIGH",
-            string.IsNullOrWhiteSpace(highReport) ||
-            highReport.StartsWith("SKIPPED_", StringComparison.Ordinal)
+            string.IsNullOrWhiteSpace(highReport)
                 ? "SKIPPED"
                 : "COMPLETED"));
         nodes.Add(new(
@@ -1358,8 +1138,8 @@ public partial class MainWindow
             edges.Add(new("HQ-DESIGN", workNode, "DISPATCH"));
             edges.Add(new(
                 workNode,
-                milestone.QaReserved ? "BUILD" : "GIT-FINALIZE",
-                milestone.QaReserved ? "RESULT_TO_BUILD" : "RESULT_TO_GIT"));
+                milestone.QaReserved ? "QA" : "GIT-FINALIZE",
+                milestone.QaReserved ? "RESULT_TO_QA" : "RESULT_TO_GIT"));
         }
 
         foreach (var resource in milestone.Resources.Values)
@@ -1372,10 +1152,9 @@ public partial class MainWindow
 
         if (milestone.QaReserved)
         {
-            edges.Add(new("BUILD", "QA", "BUILD_SUCCESS_TO_QA"));
             edges.Add(new("QA", "HIGH", "QA_ISSUE_ONLY"));
-            edges.Add(new("QA", "GIT-FINALIZE", "QA_PASSED_TO_GIT"));
-            edges.Add(new("HIGH", "GIT-FINALIZE", "HIGH_TO_GIT"));
+            edges.Add(new("QA", "GIT-FINALIZE", "QA_TERMINAL_TO_GIT"));
+            edges.Add(new("HIGH", "GIT-FINALIZE", "HIGH_TERMINAL_TO_GIT"));
         }
 
         edges.Add(new("GIT-FINALIZE", "HQ-FINAL", "REPORT_TO_HQ"));
@@ -1393,353 +1172,6 @@ public partial class MainWindow
                 DateTimeOffset.UtcNow));
     }
 
-    private async Task<(string Message, ActionBlockParseResult Parse, bool RepairUsed)>
-        EnsureRoleJsonResponseAsync(
-            string jobId,
-            string workingDirectory,
-            string role,
-            string originalMessage,
-            IReadOnlyCollection<string> expectedActions,
-            string? expectedGoto,
-            WorkerAiRoleSettings implementer,
-            CancellationToken cancellationToken)
-    {
-        var parsed = ActionBlockContract.ParseRole(
-            role,
-            originalMessage);
-
-        bool IsExpected(ActionBlockParseResult candidate)
-        {
-            if (candidate.HasErrors ||
-                candidate.ValidActions.Count != 1)
-            {
-                return false;
-            }
-
-            var action = candidate.ValidActions[0];
-            if (expectedActions.Count > 0 &&
-                !expectedActions.Contains(
-                    action.Name,
-                    StringComparer.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return string.IsNullOrWhiteSpace(expectedGoto) ||
-                   string.Equals(
-                       action.GotoTarget,
-                       expectedGoto,
-                       StringComparison.OrdinalIgnoreCase);
-        }
-
-        if (IsExpected(parsed))
-            return (originalMessage, parsed, false);
-
-        _formatRecoveryJobs[jobId] = 1;
-
-        var protocolError = new List<string>(parsed.Errors);
-        if (!parsed.HasErrors &&
-            parsed.ValidActions.Count == 1 &&
-            expectedActions.Count > 0 &&
-            !expectedActions.Contains(
-                parsed.ValidActions[0].Name,
-                StringComparer.OrdinalIgnoreCase))
-        {
-            protocolError.Add(
-                "EXPECTED_ACTION=" +
-                string.Join("/", expectedActions));
-        }
-
-        if (!string.IsNullOrWhiteSpace(expectedGoto) &&
-            parsed.ValidActions.Count == 1 &&
-            !string.Equals(
-                parsed.ValidActions[0].GotoTarget,
-                expectedGoto,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            protocolError.Add(
-                "EXPECTED_GOTO=" + expectedGoto);
-        }
-
-        var protocolErrorText = string.Join(
-            Environment.NewLine,
-            protocolError);
-        var expectedAction =
-            expectedActions.Count == 1
-                ? expectedActions.First()
-                : null;
-        var elementScan =
-            RoleElementRecoveryContract.Scan(
-                role,
-                originalMessage,
-                expectedAction,
-                protocolErrorText);
-
-        if (!string.Equals(
-                role,
-                "HQ",
-                StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(elementScan.ActionName) &&
-            RoleElementRecoveryContract.GetDefinitions(
-                role,
-                elementScan.ActionName).Count > 0)
-        {
-            var recoveryTargets =
-                elementScan.RecoveryTargets.ToHashSet(
-                    StringComparer.OrdinalIgnoreCase);
-            IReadOnlyDictionary<string, string> recoveredByWork =
-                new Dictionary<string, string>(
-                    StringComparer.OrdinalIgnoreCase);
-
-            if (recoveryTargets.Count > 0)
-            {
-                var elementRecovery =
-                    await ExecuteRoleElementRecoveryWorkAsync(
-                        jobId,
-                        workingDirectory,
-                        role,
-                        elementScan.ActionName,
-                        originalMessage,
-                        protocolErrorText,
-                        recoveryTargets,
-                        elementScan.Recovered.Keys.ToArray(),
-                        implementer,
-                        cancellationToken);
-
-                if (!string.IsNullOrWhiteSpace(elementRecovery))
-                {
-                    recoveredByWork =
-                        RoleElementRecoveryContract.ReadRecoveredElements(
-                            elementRecovery,
-                            recoveryTargets);
-                    foreach (var recoveredName in recoveredByWork.Keys)
-                        recoveryTargets.Remove(recoveredName);
-                }
-            }
-
-            if (RoleElementRecoveryContract.TryBuildRoleResponse(
-                    elementScan,
-                    recoveredByWork,
-                    expectedGoto,
-                    out var mergedResponse,
-                    out var remainingElements))
-            {
-                var mergedParse = ActionBlockContract.ParseRole(
-                    role,
-                    mergedResponse);
-                if (IsExpected(mergedParse))
-                {
-                    AddDataFlowHistory(
-                        WorkerRoleState.Work,
-                        "Worker 작업",
-                        role + " element 복구 성공" +
-                        Environment.NewLine +
-                        $"기계 확보: {elementScan.Recovered.Count}" +
-                        Environment.NewLine +
-                        $"WORK 복구: {recoveredByWork.Count}",
-                        status: "REPAIRED",
-                        persistenceSource: "WORKER ACTION");
-                    return (mergedResponse, mergedParse, true);
-                }
-            }
-            else if (remainingElements.Count > 0)
-            {
-                protocolError.Add(
-                    "ELEMENT_RECOVERY_REMAINING=" +
-                    string.Join(",", remainingElements));
-                protocolErrorText = string.Join(
-                    Environment.NewLine,
-                    protocolError);
-            }
-        }
-
-        var repaired = await ExecuteRoleJsonRepairWorkAsync(
-            jobId,
-            workingDirectory,
-            role,
-            originalMessage,
-            protocolErrorText,
-            expectedAction,
-            implementer,
-            cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(repaired))
-            return (originalMessage, parsed, true);
-
-        var reparsed = ActionBlockContract.ParseRole(
-            role,
-            repaired);
-
-        if (IsExpected(reparsed))
-        {
-            AddDataFlowHistory(
-                WorkerRoleState.Work,
-                "Worker 작업",
-                role + " 응답 JSON 복구 성공",
-                status: "REPAIRED",
-                persistenceSource: "WORKER ACTION");
-            return (repaired, reparsed, true);
-        }
-
-        return (repaired, reparsed, true);
-    }
-
-    private async Task<string?> ExecuteRoleJsonRepairWorkAsync(
-        string jobId,
-        string workingDirectory,
-        string role,
-        string originalMessage,
-        string parserError,
-        string? expectedAction,
-        WorkerAiRoleSettings implementer,
-        CancellationToken cancellationToken)
-    {
-
-        RunOnUi(() =>
-        {
-            TaskDirection.Text = "작업";
-            TaskTitle.Text = role + " JSON 복구";
-            ResultTitle.Text = "WORK";
-            SetFlowState(
-                codexActive: true,
-                workerActive: false,
-                webActive: false,
-                explicitStage: TaskStage.Implementer);
-        });
-
-        var prompt = RoleJsonRepairContract.BuildPrompt(
-            role,
-            originalMessage,
-            parserError,
-            expectedAction);
-        var repairId =
-            "JSON-REPAIR-" + role.Trim().ToUpperInvariant();
-
-        AddDataFlowHistory(
-            WorkerRoleState.Work,
-            "Worker 분배",
-            prompt,
-            status: "DISPATCHED",
-            workItemId: repairId,
-            persistenceSource: "WORKER DISPATCH");
-
-        var statelessRole = implementer with
-        {
-            ThreadSessionId = null,
-            ThreadProjectPath = null
-        };
-
-        var result = await RunCoordinatorRoleAsync(
-            jobId,
-            "WORK",
-            prompt,
-            statelessRole,
-            workingDirectory,
-            null,
-            null,
-            cancellationToken,
-            CodexSandboxMode.ReadOnly,
-            historyWorkItemId: repairId,
-            historyReferenceId: repairId);
-
-        var response = result.FinalMessage?.Trim() ?? string.Empty;
-        AddRoleResponseHistory(
-            WorkerRoleState.Work,
-            role + " JSON 복구 응답",
-            response,
-            result.Usage,
-            result.Files,
-            status: result.ExitCode == 0 ? "RECEIVED" : "FAILED",
-            providerWireId: implementer.Provider,
-            fullMessage: response,
-            workItemId: repairId,
-            referenceId: repairId);
-
-        return result.ExitCode == 0 && response.Length > 0
-            ? response
-            : null;
-    }
-
-    private async Task<string?> ExecuteRoleElementRecoveryWorkAsync(
-        string jobId,
-        string workingDirectory,
-        string role,
-        string actionName,
-        string originalMessage,
-        string parserError,
-        IReadOnlyCollection<string> recoveryTargets,
-        IReadOnlyCollection<string> recoveredElements,
-        WorkerAiRoleSettings implementer,
-        CancellationToken cancellationToken)
-    {
-        RunOnUi(() =>
-        {
-            TaskDirection.Text = "작업";
-            TaskTitle.Text = role + " element 복구";
-            ResultTitle.Text = "WORK";
-            SetFlowState(
-                codexActive: true,
-                workerActive: false,
-                webActive: false,
-                explicitStage: TaskStage.Implementer);
-        });
-
-        var prompt =
-            RoleElementRecoveryContract.BuildElementRecoveryPrompt(
-                role,
-                actionName,
-                originalMessage,
-                parserError,
-                recoveryTargets,
-                recoveredElements);
-        var repairId =
-            "ELEMENT-REPAIR-" + role.Trim().ToUpperInvariant();
-
-        AddDataFlowHistory(
-            WorkerRoleState.Work,
-            "Worker 분배",
-            prompt,
-            status: "DISPATCHED",
-            workItemId: repairId,
-            persistenceSource: "WORKER DISPATCH");
-
-        var statelessRole = implementer with
-        {
-            ThreadSessionId = null,
-            ThreadProjectPath = null
-        };
-
-        var result = await RunCoordinatorRoleAsync(
-            jobId,
-            "WORK",
-            prompt,
-            statelessRole,
-            workingDirectory,
-            null,
-            null,
-            cancellationToken,
-            CodexSandboxMode.ReadOnly,
-            historyWorkItemId: repairId,
-            historyReferenceId: repairId);
-
-        var response = result.FinalMessage?.Trim() ?? string.Empty;
-        AddRoleResponseHistory(
-            WorkerRoleState.Work,
-            role + " element 복구 응답",
-            response,
-            result.Usage,
-            result.Files,
-            status: result.ExitCode == 0 ? "RECEIVED" : "FAILED",
-            providerWireId: implementer.Provider,
-            fullMessage: response,
-            workItemId: repairId,
-            referenceId: repairId);
-
-        return result.ExitCode == 0 && response.Length > 0
-            ? response
-            : null;
-    }
-
     private async Task<WorkExecutionReport> ExecuteMilestoneWorkAsync(
         string jobId,
         string workingDirectory,
@@ -1752,8 +1184,7 @@ public partial class MainWindow
         {
             return new(
                 workId,
-                MilestoneDefinitionContract.BuildRoleResult(
-                    null,
+                RoleTextProtocol.BuildResult(
                     "blocked",
                     "계획되지 않은 WORK_ITEM_ID입니다."));
         }
@@ -1783,63 +1214,39 @@ public partial class MainWindow
             ThreadProjectPath = null
         };
 
-        var result = await RunCoordinatorRoleAsync(
-            jobId,
-            "WORK",
-            prompt,
-            statelessRole,
-            workingDirectory,
-            null,
-            null,
-            cancellationToken,
-            work.ReadOnly
-                ? CodexSandboxMode.ReadOnly
-                : CodexSandboxMode.WorkspaceWrite,
-            historyWorkItemId: work.Id,
-            historyReferenceId: milestone.Id + ":" + work.Id);
-
-        string report;
-        if (result.ExitCode != 0)
-        {
-            report = MilestoneDefinitionContract.NormalizeWorkReport(
-                result.ExitCode,
-                result.FinalMessage,
-                result.StandardError);
-        }
-        else
-        {
-            var envelope = await EnsureRoleJsonResponseAsync(
+        async Task<AiRoleRunResult> RunAsync(string currentPrompt) =>
+            await RunCoordinatorRoleAsync(
                 jobId,
-                workingDirectory,
                 "WORK",
-                result.FinalMessage?.Trim() ?? string.Empty,
-                new[] { "RESULT" },
-                expectedGoto: null,
-                implementer,
-                cancellationToken);
+                currentPrompt,
+                statelessRole,
+                workingDirectory,
+                null,
+                null,
+                cancellationToken,
+                work.ReadOnly
+                    ? CodexSandboxMode.ReadOnly
+                    : CodexSandboxMode.WorkspaceWrite,
+                historyWorkItemId: work.Id,
+                historyReferenceId: milestone.Id + ":" + work.Id);
 
-            report =
-                !envelope.Parse.HasErrors &&
-                envelope.Parse.ValidActions.Count == 1
-                    ? MilestoneDefinitionContract.NormalizeWorkReport(
-                        0,
-                        envelope.Message,
-                        null)
-                    : MilestoneDefinitionContract.BuildRoleResult(
-                        null,
-                        "blocked",
-                        "WORK_REPORT_CONTRACT_INVALID",
-                        issues: envelope.Parse.Errors);
+        var result = await RunAsync(prompt);
+        if (result.ExitCode == 0 &&
+            !RoleTextProtocol.ParseWork(result.FinalMessage).IsValid)
+        {
+            _formatRecoveryJobs[jobId] = 1;
+            result = await RunAsync(BuildRoleTextRetryPrompt(
+                prompt,
+                result.FinalMessage,
+                RoleContractLoader.LoadWorkFooter()));
         }
 
-        var reportParse = ActionBlockContract.ParseWork(report);
+        var report = MilestoneDefinitionContract.NormalizeWorkReport(
+            result.ExitCode,
+            result.FinalMessage,
+            result.StandardError);
         var reportStatus =
-            !reportParse.HasErrors &&
-            reportParse.ValidActions.Count == 1
-                ? ActionBlockContract.GetJsonString(
-                    reportParse.ValidActions[0],
-                    "status")
-                : null;
+            MilestoneDefinitionContract.ReadWorkStatus(report);
 
         AddRoleResponseHistory(
             WorkerRoleState.Work,
@@ -2115,6 +1522,10 @@ public partial class MainWindow
         int validationRound,
         CancellationToken cancellationToken)
     {
+        _ = resourceReports;
+        _ = mechanicalReports;
+        _ = implementer;
+
         RunOnUi(() =>
         {
             TaskDirection.Text = "QA";
@@ -2127,56 +1538,41 @@ public partial class MainWindow
                 explicitStage: TaskStage.Qa);
         });
 
-        var body = MilestoneDefinitionContract.BuildQaContext(
-            milestone,
-            workReports);
+        var prompt = RoleContractLoader.BuildQaPrompt(
+            MilestoneDefinitionContract.BuildQaContext(
+                milestone,
+                workReports));
 
-        var result = await RunCoordinatorRoleAsync(
-            jobId,
-            "QA",
-            RoleContractLoader.BuildQaPrompt(body),
-            qa,
-            workingDirectory,
-            null,
-            null,
-            cancellationToken,
-            CodexSandboxMode.WorkspaceWrite,
-            historyWorkItemId: "QA",
-            historyReferenceId: milestone.Id + ":QA");
-
-        string report;
-        if (result.ExitCode != 0)
-        {
-            report = MilestoneDefinitionContract.NormalizeQaReport(
-                result.ExitCode,
-                result.FinalMessage,
-                result.StandardError);
-        }
-        else
-        {
-            var envelope = await EnsureRoleJsonResponseAsync(
+        async Task<AiRoleRunResult> RunAsync(string currentPrompt) =>
+            await RunCoordinatorRoleAsync(
                 jobId,
-                workingDirectory,
                 "QA",
-                result.FinalMessage?.Trim() ?? string.Empty,
-                new[] { "RESULT" },
-                expectedGoto: null,
-                implementer,
-                cancellationToken);
+                currentPrompt,
+                qa,
+                workingDirectory,
+                null,
+                null,
+                cancellationToken,
+                CodexSandboxMode.WorkspaceWrite,
+                historyWorkItemId: "QA",
+                historyReferenceId: milestone.Id + ":QA");
 
-            report =
-                !envelope.Parse.HasErrors &&
-                envelope.Parse.ValidActions.Count == 1
-                    ? MilestoneDefinitionContract.NormalizeQaReport(
-                        0,
-                        envelope.Message,
-                        null)
-                    : MilestoneDefinitionContract.BuildRoleResult(
-                        null,
-                        "issue",
-                        "QA_REPORT_CONTRACT_INVALID",
-                        issues: envelope.Parse.Errors);
+        var result = await RunAsync(prompt);
+        if (result.ExitCode == 0 &&
+            !RoleTextProtocol.ParseQa(result.FinalMessage).IsValid)
+        {
+            _formatRecoveryJobs[jobId] = 1;
+            result = await RunAsync(BuildRoleTextRetryPrompt(
+                prompt,
+                result.FinalMessage,
+                RoleContractLoader.LoadQaFooter()));
         }
+
+        var report = MilestoneDefinitionContract.NormalizeQaReport(
+            result.ExitCode,
+            result.FinalMessage,
+            result.StandardError);
+        var qaStatus = MilestoneDefinitionContract.ReadQaStatus(report);
 
         AddRoleResponseHistory(
             WorkerRoleState.Qa,
@@ -2184,7 +1580,12 @@ public partial class MainWindow
             report,
             result.Usage,
             result.Files,
-            status: result.ExitCode == 0 ? "RECEIVED" : "BLOCKED",
+            status: string.Equals(
+                qaStatus,
+                "blocked",
+                StringComparison.OrdinalIgnoreCase)
+                    ? "BLOCKED"
+                    : "RECEIVED",
             providerWireId: qa.Provider,
             fullMessage: report,
             workItemId: "QA",
@@ -2206,6 +1607,10 @@ public partial class MainWindow
         int validationRound,
         CancellationToken cancellationToken)
     {
+        _ = resourceReports;
+        _ = mechanicalReports;
+        _ = implementer;
+
         RunOnUi(() =>
         {
             TaskDirection.Text = "검토";
@@ -2218,59 +1623,46 @@ public partial class MainWindow
                 explicitStage: TaskStage.HighLevel);
         });
 
-        var body = MilestoneDefinitionContract.BuildHighContext(
-            milestone,
-            workReports,
-            qaReport);
+        var prompt = RoleContractLoader.BuildHighPrompt(
+            MilestoneDefinitionContract.BuildHighContext(
+                milestone,
+                workReports,
+                qaReport));
 
-        var result = await RunCoordinatorRoleAsync(
-            jobId,
-            "HIGH",
-            RoleContractLoader.BuildHighPrompt(body),
-            high,
-            workingDirectory,
-            null,
-            null,
-            cancellationToken,
-            milestone.ReadOnlyNoFileChanges
-                ? CodexSandboxMode.ReadOnly
-                : CodexSandboxMode.DangerFullAccess,
-            historyWorkItemId: "HIGH",
-            historyReferenceId: milestone.Id + ":HIGH");
+        var sandbox = milestone.ReadOnlyNoFileChanges
+            ? CodexSandboxMode.ReadOnly
+            : CodexSandboxMode.DangerFullAccess;
 
-        string report;
-        if (result.ExitCode != 0)
-        {
-            report = MilestoneDefinitionContract.NormalizeHighReport(
-                result.ExitCode,
-                result.FinalMessage,
-                result.StandardError);
-        }
-        else
-        {
-            var envelope = await EnsureRoleJsonResponseAsync(
+        async Task<AiRoleRunResult> RunAsync(string currentPrompt) =>
+            await RunCoordinatorRoleAsync(
                 jobId,
-                workingDirectory,
                 "HIGH",
-                result.FinalMessage?.Trim() ?? string.Empty,
-                new[] { "RESULT" },
-                expectedGoto: null,
-                implementer,
-                cancellationToken);
+                currentPrompt,
+                high,
+                workingDirectory,
+                null,
+                null,
+                cancellationToken,
+                sandbox,
+                historyWorkItemId: "HIGH",
+                historyReferenceId: milestone.Id + ":HIGH");
 
-            report =
-                !envelope.Parse.HasErrors &&
-                envelope.Parse.ValidActions.Count == 1
-                    ? MilestoneDefinitionContract.NormalizeHighReport(
-                        0,
-                        envelope.Message,
-                        null)
-                    : MilestoneDefinitionContract.BuildRoleResult(
-                        null,
-                        "incomplete",
-                        "HIGH_REPORT_CONTRACT_INVALID",
-                        issues: envelope.Parse.Errors);
+        var result = await RunAsync(prompt);
+        if (result.ExitCode == 0 &&
+            !RoleTextProtocol.ParseHigh(result.FinalMessage).IsValid)
+        {
+            _formatRecoveryJobs[jobId] = 1;
+            result = await RunAsync(BuildRoleTextRetryPrompt(
+                prompt,
+                result.FinalMessage,
+                RoleContractLoader.LoadHighFooter()));
         }
+
+        var report = MilestoneDefinitionContract.NormalizeHighReport(
+            result.ExitCode,
+            result.FinalMessage,
+            result.StandardError);
+        var highStatus = MilestoneDefinitionContract.ReadHighStatus(report);
 
         AddRoleResponseHistory(
             WorkerRoleState.High,
@@ -2278,7 +1670,12 @@ public partial class MainWindow
             report,
             result.Usage,
             result.Files,
-            status: result.ExitCode == 0 ? "RECEIVED" : "INCOMPLETE",
+            status: string.Equals(
+                highStatus,
+                "blocked",
+                StringComparison.OrdinalIgnoreCase)
+                    ? "BLOCKED"
+                    : "RECEIVED",
             providerWireId: high.Provider,
             fullMessage: report,
             workItemId: "HIGH",
@@ -2286,6 +1683,27 @@ public partial class MainWindow
 
         return report;
     }
+
+    private static string BuildRoleTextRetryPrompt(
+        string originalPrompt,
+        string? previousResponse,
+        string currentContract) =>
+        originalPrompt +
+        Environment.NewLine +
+        Environment.NewLine +
+        "이전 역할 응답의 형식을 복구하기 위한 전체 응답 재요청이다." +
+        Environment.NewLine +
+        "이전 응답은 참고 데이터로 사용하고 현재 역할 계약 전문을 출력 기준으로 사용한다." +
+        Environment.NewLine +
+        "완결된 전체 RESULT 응답을 처음부터 한 번 다시 출력한다." +
+        Environment.NewLine +
+        Environment.NewLine +
+        "PREVIOUS_RESPONSE_AS_DATA:" +
+        Environment.NewLine +
+        (previousResponse ?? string.Empty) +
+        Environment.NewLine +
+        Environment.NewLine +
+        currentContract;
 
     private static string BuildMilestoneHqPrompt(
         string inboundType,

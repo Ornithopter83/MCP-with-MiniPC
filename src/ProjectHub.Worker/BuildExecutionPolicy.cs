@@ -6,8 +6,8 @@ using System.Text.RegularExpressions;
 namespace ProjectHub.Worker;
 
 /// <summary>
-/// GENERAL WORK가 build/run/publish 및 Git mutation을 직접 실행하지 않도록 하는 기계 정책입니다.
-/// build/run/publish와 Git finalize는 Worker의 별도 기계 단계에서 수행합니다.
+/// GENERAL WORK의 build/run/publish 및 Git mutation을 제한하고,
+/// QA에서는 Git mutation만 Worker에 남기는 기계 정책입니다.
 /// legacy WorkItem API는 제거 마이그레이션 동안 호환을 위해 유지합니다.
 /// </summary>
 public static class BuildExecutionPolicy
@@ -119,17 +119,27 @@ public static class BuildExecutionPolicy
            if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
            $pattern = '(?ix)(?:(?<![\w.-])dotnet(?:\.exe)?\s+(?:restore|build|test|run|publish|pack|msbuild|vstest)\b|(?<![\w.-])msbuild(?:\.exe)?\b|(?<![\w.-])(?:csc|vbc|cl|clang|clang\+\+|gcc|g\+\+|rustc|javac)(?:\.exe)?\b|(?<![\w.-])cmake(?:\.exe)?\s+--build\b|(?<![\w.-])(?:ninja|make)(?:\.exe)?\b|(?<![\w.-])cargo(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])go(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])(?:npm|pnpm|yarn|bun)(?:\.cmd|\.exe)?\s+(?:(?:run)\s+)?(?:build|test)\b|(?<![\w.-])(?:gradle|gradlew|mvn|mvnw)(?:\.bat|\.cmd|\.exe)?\b|(?<![\w.-])python(?:\.exe)?\s+-m\s+build\b|(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b)'
            if ($command -match $pattern) {
-             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: GENERAL WORK cannot run build/run/publish or Git mutation commands. Use the Worker mechanical stage.' } } | ConvertTo-Json -Compress -Depth 6
+             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: GENERAL WORK handles implementation only; TEST execution is routed through QA and Git finalization stays in Worker.' } } | ConvertTo-Json -Compress -Depth 6
              [Console]::Out.WriteLine($payload)
            }
            exit 0
            """;
 
     public static string CreateQaCodexPreToolHookScript()
-        => CreateCodexPreToolHookScript().Replace(
-            "ProjectHub: GENERAL WORK cannot run build/run/publish or Git mutation commands. Use the Worker mechanical stage.",
-            "ProjectHub: QA cannot run build/run/publish or Git mutation commands. Use the prepared execution target.",
-            StringComparison.Ordinal);
+        => """
+           $ErrorActionPreference = 'Stop'
+           $raw = [Console]::In.ReadToEnd()
+           try { $event = $raw | ConvertFrom-Json -Depth 32 } catch { exit 0 }
+           if ([string]$event.tool_name -ne 'Bash') { exit 0 }
+           $command = [string]$event.tool_input.command
+           if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
+           $pattern = '(?ix)(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b'
+           if ($command -match $pattern) {
+             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: QA keeps Git finalization in Worker.' } } | ConvertTo-Json -Compress -Depth 6
+             [Console]::Out.WriteLine($payload)
+           }
+           exit 0
+           """;
 
     public static string BuildCodexPreToolHookOverride(
         string hookPath,

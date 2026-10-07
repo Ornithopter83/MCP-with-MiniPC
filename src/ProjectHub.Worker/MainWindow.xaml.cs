@@ -2049,7 +2049,7 @@ public partial class MainWindow : Window
             IncludeAppBaseWritable: roleName != "WORK",
             CodexConfigOverrides: codexConfigOverrides,
             BypassHookTrust: bypassHookTrust,
-            BuildExecutionAllowed: roleName is not ("WORK" or "QA")));
+            BuildExecutionAllowed: roleName != "WORK"));
         RunOnUi(() =>
             AddTaskMessage(
                 $"{outboundRole} EXECUTION",

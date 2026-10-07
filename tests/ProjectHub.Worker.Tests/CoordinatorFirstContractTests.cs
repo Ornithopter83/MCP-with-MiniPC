@@ -613,85 +613,107 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void WorkReportNormalizer_RequiresResultJsonStatus()
+    public void WorkReportNormalizer_UsesAnnotationStatus()
     {
         var valid = MilestoneDefinitionContract.NormalizeWorkReport(
             0,
             """
             [ACTION=RESULT]
-            {
-              "status": "completed",
-              "summary": "완료",
-              "changedPaths": ["src/A.cs"],
-              "issues": []
-            }
+            STATUS: completed
+
+            @@SUMMARY
+            완료
+
+            @@CHANGED_PATHS
+            - src/A.cs
+
+            @@ISSUES
+            없음
+
+            [RESPONSE=OK]
             """,
             null);
-        Assert.Contains("\"status\": \"completed\"", valid);
+
+        Assert.Contains("STATUS: completed", valid);
 
         var invalid = MilestoneDefinitionContract.NormalizeWorkReport(
             0,
             "완료",
             null);
-        Assert.Contains("\"status\": \"blocked\"", invalid);
+
+        Assert.Contains("STATUS: blocked", invalid);
         Assert.Contains("WORK_REPORT_CONTRACT_INVALID", invalid);
     }
 
     [Fact]
-    public void QaAndHighReports_AreNormalizedToJsonContracts()
+    public void QaAndHighReports_UseAnnotationContracts()
     {
         var qa = MilestoneDefinitionContract.NormalizeQaReport(
             0,
             """
             [ACTION=RESULT]
-            {
-              "status": "passed",
-              "summary": "동작 확인",
-              "changedPaths": [],
-              "issues": []
-            }
+            STATUS: passed
+
+            @@SUMMARY
+            동작 확인
+
+            @@CHANGED_PATHS
+            없음
+
+            @@ISSUES
+            없음
+
+            [RESPONSE=OK]
             """,
             null);
-        Assert.Contains("\"status\": \"passed\"", qa);
+
+        Assert.Equal("passed", MilestoneDefinitionContract.ReadQaStatus(qa));
 
         var high = MilestoneDefinitionContract.NormalizeHighReport(
             0,
             """
             [ACTION=RESULT]
-            {
-              "status": "modified",
-              "summary": "보완 완료",
-              "changedPaths": ["src/Fix.cs"],
-              "issues": []
-            }
+            STATUS: completed
+
+            @@SUMMARY
+            보완 완료
+
+            @@CHANGED_PATHS
+            - src/Fix.cs
+
+            @@ISSUES
+            없음
+
+            [RESPONSE=OK]
             """,
             null);
-        Assert.Contains("\"status\": \"modified\"", high);
-        Assert.Equal(
-            new[] { "src/Fix.cs" },
-            MilestoneDefinitionContract.ExtractHighChangedPaths(high));
+
+        Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(high));
     }
 
     [Fact]
-    public void HighModifiedReport_WithoutChangedPath_IsRejected()
+    public void QaBlocked_IsDistinctFromIssue()
     {
-        var high = MilestoneDefinitionContract.NormalizeHighReport(
+        var qa = MilestoneDefinitionContract.NormalizeQaReport(
             0,
             """
             [ACTION=RESULT]
-            {
-              "status": "modified",
-              "summary": "보완 완료",
-              "changedPaths": [],
-              "issues": []
-            }
+            STATUS: blocked
+
+            @@SUMMARY
+            실행환경 문제
+
+            @@CHANGED_PATHS
+            없음
+
+            @@ISSUES
+            - helper setup failed
+
+            [RESPONSE=OK]
             """,
             null);
 
-        Assert.Contains("\"status\": \"incomplete\"", high);
-        Assert.Contains("HIGH_REPORT_CONTRACT_INVALID", high);
-        Assert.Empty(
-            MilestoneDefinitionContract.ExtractHighChangedPaths(high));
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadQaStatus(qa));
     }
 
     [Fact]
@@ -737,11 +759,11 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("@@MECHANICAL", hq);
 
         Assert.Contains("[ACTION=RESULT]", work);
-        Assert.Contains("\"passed\"", qa);
-        Assert.Contains("\"issue\"", qa);
+        Assert.Contains("STATUS: passed", qa);
+        Assert.Contains("STATUS는 passed, issue, blocked", qa);
         Assert.DoesNotContain("[GOTO : HIGH]", qa);
         Assert.DoesNotContain("[GOTO : MANAGER]", high);
-        Assert.Contains("최종 보완과 결과 정리", high);
+        Assert.Contains("최종 보완 역할", high);
 
         var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
             RoleContractLoader.BuildQaPrompt("runtime 확인"));
@@ -787,7 +809,7 @@ public sealed class CoordinatorFirstContractTests
             "COMPLETED_WITH_HIGH",
             new Dictionary<string, string>
             {
-                ["10"] = "[ACTION=RESULT]\n{\"status\":\"completed\",\"summary\":\"done\",\"changedPaths\":[],\"issues\":[]}"
+                ["10"] = "[ACTION=RESULT]\nSTATUS: completed\n\n@@SUMMARY\ndone\n\n@@CHANGED_PATHS\n없음\n\n@@ISSUES\n없음\n\n[RESPONSE=OK]"
             },
             new Dictionary<string, string>
             {
@@ -795,7 +817,7 @@ public sealed class CoordinatorFirstContractTests
             },
             new[] { "MECHANICAL BUILD\nstatus=COMPLETED" },
             "QA DETAIL",
-            "[ACTION=RESULT]\n{\"status\":\"modified\",\"summary\":\"HIGH 보완 완료\",\"changedPaths\":[\"src/A.cs\"],\"issues\":[]}",
+            "[ACTION=RESULT]\nSTATUS: completed\n\n@@SUMMARY\nHIGH 보완 완료\n\n@@CHANGED_PATHS\n- src/A.cs\n\n@@ISSUES\n없음\n\n[RESPONSE=OK]",
             new MilestoneGitResult(
                 true,
                 false,
@@ -809,12 +831,10 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("MILESTONE_REPORT", report);
         Assert.Contains("MILESTONE: COMPACT_REPORT", report);
         Assert.Contains("OUTCOME: COMPLETED_WITH_HIGH", report);
-        Assert.Contains("HIGH_RESULT:", report);
+        Assert.Contains("HIGH_STATUS: completed", report);
         Assert.Contains("HIGH 보완 완료", report);
         Assert.Contains("GIT_RESULT:", report);
         Assert.Contains("- commit=abc123", report);
-        Assert.Contains("- relevantDirty=YES", report);
-        Assert.Contains("- dirty=src/A.cs", report);
         Assert.Contains("DECISION_REQUIRED:", report);
         Assert.DoesNotContain("RESOURCE_STATUS: PENDING", report);
         Assert.DoesNotContain("WORK_RESULTS:", report);
@@ -998,19 +1018,29 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void WorkerBuildCommand_IsDerivedFromEntrypoint()
+    public void RoleTextProtocol_ParsesWorkAnnotation()
     {
-        var command =
-            MilestoneMechanicalExecutor.BuildCommandForEntrypoint(
-                "src/App/App.csproj");
+        var result = RoleTextProtocol.ParseWork(
+            """
+            [ACTION=RESULT]
+            STATUS: completed
 
-        Assert.Equal(
-            "dotnet build \"src/App/App.csproj\" --output bin",
-            command);
-        Assert.Equal(
-            string.Empty,
-            MilestoneMechanicalExecutor.BuildCommandForEntrypoint(
-                "../outside.csproj"));
+            @@SUMMARY
+            구현 완료
+
+            @@CHANGED_PATHS
+            - src/A.cs
+
+            @@ISSUES
+            없음
+
+            [RESPONSE=OK]
+            """);
+
+        Assert.True(result.IsValid, string.Join(", ", result.Errors));
+        Assert.Equal("completed", result.Status);
+        Assert.Equal("구현 완료", result.Summary);
+        Assert.Equal(new[] { "src/A.cs" }, result.ChangedPaths);
     }
 
     [Fact]
@@ -1143,7 +1173,8 @@ public sealed class CoordinatorFirstContractTests
             "C:\\repo",
             readOnly: true);
 
-        Assert.Contains("없음 (읽기 전용)", prompt);
+        Assert.Contains("@@WRITE_PATH", prompt);
+        Assert.Contains("없음", prompt);
     }
 
     [Fact]
@@ -1154,8 +1185,8 @@ public sealed class CoordinatorFirstContractTests
             "C:\\temp\\qa-gate.ps1",
             "ProjectHub QA command gate");
 
-        Assert.Contains("QA cannot run build/run/publish", script);
-        Assert.Contains("prepared execution target", script);
+        Assert.Contains("QA keeps Git finalization in Worker", script);
+        Assert.DoesNotContain("dotnet", script);
         Assert.Contains("ProjectHub QA command gate", hook);
     }
 

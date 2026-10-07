@@ -5,7 +5,7 @@
 ① WORK 응답은 마일스톤 목표와 WORKITEM을 정의한다.
 ② 각 WORKITEM에는 TEST: ON 또는 TEST: OFF를 지정한다.
 ③ WORKITEM에는 목표, 구현 지시, 완료 기준과 쓰기 범위를 포함한다.
-④ WORKITEM 배분 이후의 build·복구·QA·HIGH·Git 상태 전이는 Worker가 기계적으로 수행한다.
+④ WORKITEM 배분 이후의 역할 라우팅과 Git finalization은 Worker가 기계적으로 수행한다.
 ⑤ 같은 마일스톤의 WORKITEM은 서로의 분석·판단·파일·프로젝트·타입·API·결과·산출물을 선행조건으로 삼지 않는 독립 작업으로 설계한다.
 ⑥ 선행관계가 필요한 구현은 하나의 WORKITEM으로 결합한다.
 ⑦ 서로 독립적으로 완결 가능한 구현은 가능한 한 별도 WORKITEM으로 분리한다.
@@ -27,7 +27,7 @@
 MILESTONE: M1
 BRANCH: main
 POLICY: DEFAULT
-ENTRYPOINT: src/App/App.csproj
+ENTRYPOINT: NONE
 GIT_INIT: NO
 
 @@GOAL
@@ -51,14 +51,14 @@ WRITE_PATH: src/App
 
 ① MILESTONE과 BRANCH는 필수이며 BRANCH는 정확히 main이다.
 ② POLICY는 DEFAULT 또는 READ_ONLY_NO_FILE_CHANGES다.
-③ ENTRYPOINT가 없으면 NONE이다. TEST: ON이 하나 이상이면 build 가능한 entrypoint를 지정한다.
+③ ENTRYPOINT는 QA가 실제 동작을 확인할 때 참고할 실행 대상이며 없으면 NONE이다.
 ④ GIT_INIT은 YES 또는 NO다.
 ⑤ WORK id는 10 이상의 정수다.
 ⑥ READ_ONLY는 YES 또는 NO다. 쓰기 WORK에는 WRITE_PATH를 하나 이상 둔다.
 ⑦ TEST는 모든 WORK에 ON 또는 OFF로 지정한다.
-⑧ TEST: ON이 하나 이상이면 Worker가 GENERAL WORK 종료 후 entrypoint를 build하고 성공 시 QA를 수행한다.
+⑧ TEST: ON이 하나 이상이면 WORK 완료 후 QA로 진행한다.
 ⑨ TEST: OFF만 있으면 Worker가 Git finalize 단계로 진행한다.
-⑩ WORK 본문은 해당 구현 목표와 완료 기준에 집중하고 기계 실행 단계는 Worker 상태전이에 맡긴다.
+⑩ WORK 본문은 해당 구현 목표와 완료 기준에 집중한다.
 
 제4조 (RESOURCE)
 
@@ -100,5 +100,4 @@ RESOURCE는 GENERAL WORK와 독립 sidecar이며 새 RESOURCE 결과는 이후 �
 
 ① 매 마일스톤 설계 전 Worker가 제공한 최신 origin/main과 강제 원격 저장소를 직접 확인한다.
 ② 마일스톤 종료 후 Worker의 축약 보고를 받아 다음 WORK, PAUSE, END를 결정한다.
-③ 다음 설계에는 BUILD_FAILED_FINAL, HIGH 미해결 문제, Git 결과 등 현재 결정에 필요한 사실을 반영한다.
-④ RELEVANT_DIRTY_AFTER_FINALIZE=NO일 때 END 판단이 가능하다.
+③ blocked, timeout, QA issue 처리 결과와 Git 결과 등 다음 결정에 필요한 사실을 반영한다.

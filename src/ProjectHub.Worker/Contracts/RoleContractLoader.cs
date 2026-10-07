@@ -6,7 +6,7 @@ namespace ProjectHub.Worker;
 public static class RoleContractLoader
 {
     private const string EncodingGuidance =
-        "문자 인코딩: 텍스트와 JSON은 UTF-8을 사용하고 한글을 실제 Unicode 문자로 유지한다. " +
+        "문자 인코딩: 텍스트는 UTF-8을 사용하고 한글을 실제 Unicode 문자로 유지한다. " +
         "Windows PowerShell 5.1에서 텍스트를 읽거나 출력할 때는 UTF-8 출력 인코딩과 Get-Content -Encoding UTF8을 명시한다.\n";
     public const string HqContractPath =
         "src/ProjectHub.Worker/Contracts/HQ-ROUTING-CONTRACT.md";
@@ -36,36 +36,41 @@ public static class RoleContractLoader
         if (!readOnly && writePaths.Count == 0)
             throw new ArgumentException("WRITE_PATH가 비어 있습니다.", nameof(writePaths));
 
-        var writePathHeader =
-            "WRITE_PATH:\n" +
-            (writePaths.Count == 0
-                ? "- 없음 (읽기 전용)\n"
-                : string.Join("\n", writePaths.Select(path => "- " + path)) + "\n");
-        var header =
-            "역할: WORK\n" +
-            $"workItemId: {workItemId}\n" +
-            $"프로젝트 루트: {targetWorkspace}\n" +
-            EncodingGuidance +
-            writePathHeader +
-            "\n입력 본문:\n";
-
-        return header +
-               (body ?? string.Empty) +
-               "\n\n" +
-               LoadWorkFooter();
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("[ACTION=WORK]");
+        builder.AppendLine("WORK_ID: " + workItemId);
+        builder.AppendLine("PROJECT_ROOT: " + targetWorkspace);
+        builder.AppendLine();
+        builder.AppendLine("@@WRITE_PATH");
+        if (writePaths.Count == 0)
+            builder.AppendLine("없음");
+        else
+            foreach (var path in writePaths)
+                builder.AppendLine("- " + path);
+        builder.AppendLine();
+        builder.AppendLine(body ?? string.Empty);
+        builder.AppendLine();
+        builder.AppendLine(EncodingGuidance.TrimEnd());
+        builder.AppendLine();
+        builder.Append(LoadWorkFooter());
+        return builder.ToString();
     }
 
     public static string BuildQaPrompt(string body) =>
-        "역할: QA\n호출 유형: WORKER_TEST_QA\n" +
+        "[ACTION=QA]\n" +
+        (body ?? string.Empty) +
+        "\n\n" +
         EncodingGuidance +
-        "입력 본문:\n" +
-        (body ?? string.Empty) + "\n\n" + LoadQaFooter();
+        "\n" +
+        LoadQaFooter();
 
     public static string BuildHighPrompt(string body) =>
-        "역할: HIGH\n호출 유형: QA_ISSUE_REPAIR\n" +
+        "[ACTION=HIGH]\n" +
+        (body ?? string.Empty) +
+        "\n\n" +
         EncodingGuidance +
-        "입력 본문:\n" +
-        (body ?? string.Empty) + "\n\n" + LoadHighFooter();
+        "\n" +
+        LoadHighFooter();
 
     public static string BuildContractReference(string repositoryPath) =>
         "계약 참조: " +

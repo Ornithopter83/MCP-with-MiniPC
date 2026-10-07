@@ -1119,16 +1119,6 @@ internal static class MilestoneMechanicalExecutor
         return branch;
     }
 
-    public static string BuildCommandForEntrypoint(string? entrypoint)
-    {
-        var value = (entrypoint ?? string.Empty).Trim();
-        if (value.Length == 0 || !MilestoneDefinitionContract.IsSafeRelativePath(value))
-            return string.Empty;
-
-        var escaped = value.Replace("\"", "\\\"", StringComparison.Ordinal);
-        return "dotnet build \"" + escaped + "\" --output bin";
-    }
-
     public static string NormalizeMechanicalCommand(
         string operation,
         string command)
