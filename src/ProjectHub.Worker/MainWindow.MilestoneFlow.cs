@@ -656,11 +656,15 @@ public partial class MainWindow
 
                     return (
                         Id: resource.Id,
-                        Task: ExecuteMilestoneResourceBackgroundAsync(
+                        Task: _resourceTaskLifecycle.RunAsync(
+                            jobId,
                             workingDirectory,
-                            milestone,
-                            resource.Id,
-                            cancellationToken));
+                            resourceCancellation =>
+                                ExecuteMilestoneResourceBackgroundAsync(
+                                    workingDirectory,
+                                    milestone,
+                                    resource.Id,
+                                    resourceCancellation)));
                 })
                 .ToArray();
 
@@ -1256,46 +1260,104 @@ public partial class MainWindow
                 "blocked",
                 StringComparison.OrdinalIgnoreCase))
         {
-            var recoveryAttachment =
-                WorkSandboxRecovery.CreateAttachment(
+            var previousParsed = RoleTextProtocol.ParseWork(report);
+            if (!WorkSandboxRecovery.TryPrepare(
                     workingDirectory,
                     jobId,
-                    work.Id);
-            var recoveryPrompt =
-                WorkSandboxRecovery.BuildRetryPrompt(
+                    work.Id,
                     prompt,
                     report,
-                    BuildCliFailureDiagnostics(result));
-
-            AddTaskMessage(
-                "WORK DETAIL",
-                $"WORK #{work.Id} blocked · WORKER-SANDBOX.md 첨부 후 동일 WORK 1회 재실행",
-                status: "RETRY",
-                referenceId: milestone.Id + ":" + work.Id,
-                includeHistory: false,
-                workItemId: work.Id);
-
-            result = await RunAsync(
-                recoveryPrompt,
-                new[] { recoveryAttachment });
-            if (result.ExitCode == 0 &&
-                !RoleTextProtocol.ParseWork(result.FinalMessage).IsValid)
+                    BuildCliFailureDiagnostics(result),
+                    out var recovery,
+                    out var recoveryError) ||
+                recovery is null)
             {
-                _formatRecoveryJobs[jobId] = 1;
-                result = await RunAsync(
-                    BuildRoleTextRetryPrompt(
-                        recoveryPrompt,
-                        result.FinalMessage,
-                        RoleContractLoader.LoadWorkFooter()),
-                    new[] { recoveryAttachment });
-            }
+                var recoveryIssues = previousParsed.IsValid
+                    ? previousParsed.Issues
+                        .Concat(new[]
+                        {
+                            "WORK_SANDBOX_RECOVERY_PREPARATION_FAILED: " +
+                            (recoveryError ?? "unknown")
+                        })
+                        .ToArray()
+                    : new[]
+                    {
+                        "WORK_SANDBOX_RECOVERY_PREPARATION_FAILED: " +
+                        (recoveryError ?? "unknown")
+                    };
 
-            report = MilestoneDefinitionContract.NormalizeWorkReport(
-                result.ExitCode,
-                result.FinalMessage,
-                result.StandardError);
-            reportStatus =
-                MilestoneDefinitionContract.ReadWorkStatus(report);
+                report = RoleTextProtocol.BuildResult(
+                    "blocked",
+                    previousParsed.IsValid
+                        ? previousParsed.Summary
+                        : "WORK가 blocked 상태를 반환했고 sandbox 복구 준비에도 실패했습니다.",
+                    previousParsed.IsValid
+                        ? previousParsed.ChangedPaths
+                        : Array.Empty<string>(),
+                    recoveryIssues);
+                reportStatus = "blocked";
+
+                AddTaskMessage(
+                    "WORK DETAIL",
+                    $"WORK #{work.Id} sandbox 복구 준비 실패" +
+                    Environment.NewLine +
+                    (recoveryError ?? "unknown"),
+                    status: "FAILED",
+                    referenceId: milestone.Id + ":" + work.Id,
+                    includeHistory: false,
+                    workItemId: work.Id);
+            }
+            else
+            {
+                AddTaskMessage(
+                    "WORK DETAIL",
+                    $"WORK #{work.Id} blocked · WORKER-SANDBOX.md 본문 주입 후 동일 WORK 1회 재실행",
+                    status: "RETRY",
+                    referenceId: milestone.Id + ":" + work.Id,
+                    includeHistory: false,
+                    workItemId: work.Id);
+
+                if (!string.IsNullOrWhiteSpace(recovery.AttachmentWarning))
+                {
+                    AddTaskMessage(
+                        "WORK DETAIL",
+                        "WORKER-SANDBOX.md 파일 첨부 준비는 실패했지만 " +
+                        "동일 본문을 prompt에 직접 주입하여 복구를 계속합니다." +
+                        Environment.NewLine +
+                        recovery.AttachmentWarning,
+                        status: "PROCESSING",
+                        referenceId: milestone.Id + ":" + work.Id,
+                        includeHistory: false,
+                        workItemId: work.Id);
+                }
+
+                IReadOnlyList<AiInputAttachment>? recoveryAttachments =
+                    recovery.Attachment is null
+                        ? null
+                        : new[] { recovery.Attachment! };
+
+                result = await RunAsync(
+                    recovery.Prompt,
+                    recoveryAttachments);
+                if (result.ExitCode == 0 &&
+                    !RoleTextProtocol.ParseWork(result.FinalMessage).IsValid)
+                {
+                    _formatRecoveryJobs[jobId] = 1;
+                    result = await RunAsync(
+                        BuildRoleTextRetryPrompt(
+                            recovery.Prompt,
+                            result.FinalMessage,
+                            RoleContractLoader.LoadWorkFooter()),
+                        recoveryAttachments);
+                }
+
+                report = MilestoneDefinitionContract.NormalizeWorkReport(
+                    result.ExitCode,
+                    result.FinalMessage,
+                    result.StandardError);
+                reportStatus =
+                    MilestoneDefinitionContract.ReadWorkStatus(report);
+            }
         }
 
         AddRoleResponseHistory(

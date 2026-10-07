@@ -193,15 +193,42 @@ public sealed class BridgeServer : IDisposable
     public bool CancelActiveTask()
         => CancelActiveTask(out _);
 
-    public bool CancelActiveTask(out string? canceledTaskId)
+    public bool CancelActiveTask(out string? canceledTaskId) =>
+        CancelActiveTaskCore(
+            includeResource: true,
+            out canceledTaskId);
+
+    public bool CancelActiveNonResourceTask(out string? canceledTaskId) =>
+        CancelActiveTaskCore(
+            includeResource: false,
+            out canceledTaskId);
+
+    private bool CancelActiveTaskCore(
+        bool includeResource,
+        out string? canceledTaskId)
     {
         canceledTaskId = null;
         lock (_gate)
         {
-            var task = _state.Tasks.FirstOrDefault(item => item.Status is "PENDING" or "CLAIMED");
-            if (task is null) return false;
+            var task = _state.Tasks.FirstOrDefault(item =>
+                item.Status is "PENDING" or "CLAIMED" &&
+                (includeResource ||
+                 (!string.Equals(
+                      item.Owner,
+                      "RESOURCE",
+                      StringComparison.OrdinalIgnoreCase) &&
+                  item.Resource is null)));
+            if (task is null)
+                return false;
+
             canceledTaskId = task.Id;
-            var canceled = task with { Status = "FAILED", Result = "작업이 취소되었습니다.", FinishReason = "canceled", CompletedAt = DateTimeOffset.UtcNow };
+            var canceled = task with
+            {
+                Status = "FAILED",
+                Result = "작업이 취소되었습니다.",
+                FinishReason = "canceled",
+                CompletedAt = DateTimeOffset.UtcNow
+            };
             ReplaceTask(canceled);
             SaveState();
             TaskChanged?.Invoke(canceled);

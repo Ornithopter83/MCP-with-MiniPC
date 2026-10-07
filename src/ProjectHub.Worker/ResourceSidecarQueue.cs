@@ -250,14 +250,35 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         BridgeTask? completed;
         try
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var timeoutCts =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken);
             timeoutCts.CancelAfter(ResourceTransportTimeout);
-            completed = await _bridgeServer.WaitForTaskCompletionAsync(bridgeTask.Id, timeoutCts.Token);
+            completed = await _bridgeServer.WaitForTaskCompletionAsync(
+                bridgeTask.Id,
+                timeoutCts.Token);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
-            var detail = $"RESOURCE Web 작업이 {ResourceTransportTimeout.TotalMinutes:0}분 내 완료되지 않아 transport timeout으로 종료했습니다.";
-            completed = _bridgeServer.FailTask(bridgeTask.Id, detail, "resource_timeout");
+            var detail =
+                "새 작업이 시작되어 이전 사용자 작업의 RESOURCE를 종료했습니다.";
+            completed = _bridgeServer.FailTask(
+                bridgeTask.Id,
+                detail,
+                "resource_canceled");
+            if (completed is null)
+                return Failure(request, "RESOURCE_CANCELED", detail);
+        }
+        catch (OperationCanceledException)
+            when (!cancellationToken.IsCancellationRequested)
+        {
+            var detail =
+                $"RESOURCE Web 작업이 {ResourceTransportTimeout.TotalMinutes:0}분 내 완료되지 않아 transport timeout으로 종료했습니다.";
+            completed = _bridgeServer.FailTask(
+                bridgeTask.Id,
+                detail,
+                "resource_timeout");
             if (completed is null)
                 return Failure(request, "RESOURCE_TIMEOUT", detail);
         }
@@ -299,6 +320,7 @@ public sealed class ResourceSidecarQueue : IAsyncDisposable
         "resource_save_failed" => "RESOURCE_SAVE_FAILED",
         "send_failed" => "RESOURCE_WEB_DELIVERY_FAILED",
         "resource_timeout" => "RESOURCE_TIMEOUT",
+        "resource_canceled" => "RESOURCE_CANCELED",
         _ => "RESOURCE_RESULT_MISSING"
     };
 

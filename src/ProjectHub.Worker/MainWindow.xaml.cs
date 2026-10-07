@@ -186,6 +186,7 @@ public partial class MainWindow : Window
     private string? _taskTranscriptPath;
     private int _taskTranscriptStartIndex;
     private string? _activeProjectJobId;
+    private readonly ResourceTaskLifecycle _resourceTaskLifecycle = new();
     private CoordinatorContinuationState? _continuationState;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -449,7 +450,7 @@ public partial class MainWindow : Window
         _codexRunner.Dispose();
         _openCodeRunner.Dispose();
         if (_bridgeServer is not null &&
-            _bridgeServer.CancelActiveTask(out var canceledTaskId) &&
+            _bridgeServer.CancelActiveNonResourceTask(out var canceledTaskId) &&
             canceledTaskId is not null)
         {
             _userCanceledBridgeTaskIds.Add(canceledTaskId);
@@ -621,7 +622,6 @@ public partial class MainWindow : Window
 
         _continuationState = null;
         _activeProjectJobId = null;
-        _activeWorkingDirectory = null;
         _directWorkHistoryActive = false;
         SetFollowupComposerVisible(false);
         ClearPendingAttachments(deleteCachedFiles: true);
@@ -930,10 +930,10 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private Task BeginNewDashboardTaskAsync()
+    private async Task BeginNewDashboardTaskAsync()
     {
         if (_newTaskCleanupInProgress)
-            return Task.CompletedTask;
+            return;
 
         _newTaskCleanupInProgress = true;
         UpdateDashboardRunButtonState();
@@ -941,9 +941,15 @@ public partial class MainWindow : Window
 
         try
         {
+            var cleanupWorkspace = _activeWorkingDirectory;
+
+            // RESOURCE는 사용자 작업(Task) 생명주기에 속한다.
+            // 마일스톤/PAUSE/일반 취소에서는 계속 실행하고,
+            // 새 작업 진입에서만 이전 Task RESOURCE를 종료한 뒤 temp를 정리한다.
+            await _resourceTaskLifecycle.CancelAllAsync();
+
             ExportTaskTranscript();
 
-            var cleanupWorkspace = _activeWorkingDirectory;
             var wasDirectWork = _directWorkHistoryActive;
             _directWorkHistoryActive = false;
             _activeWorkingDirectory = null;
@@ -999,7 +1005,6 @@ public partial class MainWindow : Window
             }
         }
 
-        return Task.CompletedTask;
     }
 
     private bool TryPassSynchronousWorkspaceLaunchGate()
@@ -1383,7 +1388,7 @@ public partial class MainWindow : Window
 
         _jobTimedOut = true;
         _activeTaskCts?.Cancel();
-        _bridgeServer?.CancelActiveTask();
+        _bridgeServer?.CancelActiveNonResourceTask(out _);
         AddTaskMessage("SYSTEM", "Web 또는 Codex 응답이 30분 동안 없어 작업을 종료했습니다.");
         TaskDirection.Text = "TIMEOUT";
         TaskTitle.Text = "30분 무응답으로 작업 종료";
@@ -1399,7 +1404,6 @@ public partial class MainWindow : Window
         _currentMilestoneResourceReserved = null;
         _resourceSidecarStatus = "ChatGPT Web";
         _jobTimedOut = false;
-        _activeWorkingDirectory = null;
         TaskDirection.Text = "IDLE";
         TaskTitle.Text = "작업 없음";
         ResultTitle.Text = "Codex 결과 대기 중";
