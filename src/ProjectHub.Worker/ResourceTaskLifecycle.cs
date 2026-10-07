@@ -32,8 +32,14 @@ internal sealed class ResourceTaskLifecycle
         string workingDirectory,
         Func<CancellationToken, Task<T>> operation)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(taskId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+        if (string.IsNullOrWhiteSpace(taskId))
+            throw new ArgumentException(
+                "RESOURCE task ID가 비어 있습니다.",
+                nameof(taskId));
+        if (string.IsNullOrWhiteSpace(workingDirectory))
+            throw new ArgumentException(
+                "RESOURCE 작업 폴더가 비어 있습니다.",
+                nameof(workingDirectory));
         ArgumentNullException.ThrowIfNull(operation);
 
         TaskState state;
