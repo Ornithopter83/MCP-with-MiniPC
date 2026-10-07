@@ -1606,14 +1606,6 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         CancellationToken cancellationToken)
     {
-        if (string.Equals(
-                role,
-                "HQ",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                "HQ_GENERIC_JSON_REPAIR_FORBIDDEN");
-        }
 
         RunOnUi(() =>
         {

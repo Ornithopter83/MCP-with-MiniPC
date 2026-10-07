@@ -7,21 +7,13 @@ internal static class HqResponseRecoveryContract
         string parserError)
     {
         return
-            "이전 HQ 응답을 부분 element로 보완하지 말고 전체 응답을 현재 HQ 계약으로 한 번만 다시 출력한다." +
+            "이전 HQ 응답의 형식을 복구하기 위한 전체 응답 재요청이다." +
             Environment.NewLine +
-            "이전 응답의 제품 목표와 구현 의도는 유지하되 현재 HQ 계약과 충돌하는 구형 실행 구조는 보존하지 않는다." +
+            "이전 HQ 응답과 파싱 오류는 참고 데이터로 사용한다." +
             Environment.NewLine +
-            "JSON, YAML, Markdown 코드펜스를 사용하지 않는다." +
+            "이 요청 뒤에 함께 주입되는 현재 HQ 역할 계약 전문을 출력 기준으로 사용한다." +
             Environment.NewLine +
-            "order, qa, QA 지시, MANAGER, managerInstructions, mechanicalIntegration, mechanicalInstructions, highInstructions, validation, gitFinalize을 출력하지 않는다." +
-            Environment.NewLine +
-            "같은 마일스톤에서 서로의 결과가 필요한 WORKITEM은 현재 HQ 계약에 따라 하나의 WORKITEM으로 결합한다." +
-            Environment.NewLine +
-            "각 WORKITEM에는 TEST: ON 또는 TEST: OFF를 반드시 포함한다." +
-            Environment.NewLine +
-            "응답은 [ACTION=WORK|PAUSE|END]와 현재 HQ 고정 필드/@@SECTION 문법만 사용한다." +
-            Environment.NewLine +
-            "현재 HQ 계약이 이전 응답보다 우선한다." +
+            "이전 설계 의도를 참고하여 현재 HQ 계약에 맞는 완결된 전체 응답을 처음부터 한 번 다시 출력한다." +
             Environment.NewLine +
             Environment.NewLine +
             "PARSER_OR_CONTRACT_ERROR:" +

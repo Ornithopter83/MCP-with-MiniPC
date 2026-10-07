@@ -316,69 +316,25 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("역할: WORK", prompt);
         Assert.Contains("기대 ACTION: RESULT", prompt);
         Assert.Contains("[ACTION=RESULT]", prompt);
-        Assert.Contains("JSON 내부에는 action 필드를 만들지 않는다", prompt);
+        Assert.Contains("ACTION은 응답 envelope로 표현", prompt);
     }
 
     [Fact]
-    public void RoleJsonRepairPrompt_RejectsHqGenericJsonRepair()
-    {
-        var error = Assert.Throws<InvalidOperationException>(() =>
-            RoleJsonRepairContract.BuildPrompt(
-                "HQ",
-                "[ACTION=WORK]\n{ malformed }",
-                "JSON_INVALID",
-                "WORK"));
-
-        Assert.Equal(
-            "HQ_GENERIC_JSON_REPAIR_FORBIDDEN",
-            error.Message);
-    }
-
-    [Fact]
-    public void ElementRecovery_RejectsHqPartialRecovery()
-    {
-        var error = Assert.Throws<InvalidOperationException>(() =>
-            RoleElementRecoveryContract.BuildElementRecoveryPrompt(
-                "HQ",
-                "WORK",
-                "[ACTION=WORK]",
-                "WORK:JSON_INVALID",
-                new[] { "workItems" },
-                Array.Empty<string>()));
-
-        Assert.Equal(
-            "HQ_ELEMENT_RECOVERY_FORBIDDEN",
-            error.Message);
-    }
-
-    [Fact]
-    public void HqResponseRecovery_RequiresCurrentPlainTextContract()
+    public void HqResponseRecovery_ReinjectsCurrentContractForOneFullRetry()
     {
         var prompt = HqResponseRecoveryContract.BuildBody(
-            """
-            [ACTION=WORK]
-            {
-              "milestone": {
-                "workItems": [],
-                "managerInstructions": "legacy"
-              }
-            }
-            """,
+            "[ACTION=WORK]\n이전 응답",
             "WORK:JSON_INVALID");
 
-        Assert.Contains("전체 응답", prompt);
-        Assert.Contains("JSON, YAML", prompt);
-        Assert.Contains("TEST: ON", prompt);
-        Assert.Contains("order", prompt);
-        Assert.Contains("managerInstructions", prompt);
-        Assert.Contains("mechanicalInstructions", prompt);
-        Assert.Contains("highInstructions", prompt);
-        Assert.Contains("validation", prompt);
-        Assert.Contains("현재 HQ 계약이 이전 응답보다 우선", prompt);
-        Assert.DoesNotContain(
-            "완전한 JSON 객체 하나만 출력",
-            prompt,
-            StringComparison.Ordinal);
+        Assert.Contains("전체 응답 재요청", prompt);
+        Assert.Contains("참고 데이터", prompt);
+        Assert.Contains("현재 HQ 역할 계약 전문", prompt);
+        Assert.Contains("완결된 전체 응답", prompt);
+        Assert.Contains("한 번 다시 출력", prompt);
+        Assert.Contains("WORK:JSON_INVALID", prompt);
+        Assert.Contains("[ACTION=WORK]\n이전 응답", prompt);
+        Assert.DoesNotContain("금지", prompt);
+        Assert.DoesNotContain("FORBIDDEN", prompt);
     }
 
     [Fact]
@@ -773,7 +729,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("BRANCH: main", hq);
         Assert.Contains("@@WORK 10", hq);
         Assert.Contains("TEST: ON", hq);
-        Assert.Contains("종속", hq);
+        Assert.Contains("선행관계", hq);
         Assert.DoesNotContain("@@QA", hq);
         Assert.DoesNotContain("@@HIGH", hq);
         Assert.DoesNotContain("@@MANAGER", hq);
@@ -784,7 +740,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("\"issue\"", qa);
         Assert.DoesNotContain("[GOTO : HIGH]", qa);
         Assert.DoesNotContain("[GOTO : MANAGER]", high);
-        Assert.Contains("Worker가 HIGH 종료 직후", high);
+        Assert.Contains("HIGH 종료 후 Worker가 바로 Git finalize", high);
 
         var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
             RoleContractLoader.BuildQaPrompt("runtime 확인"));

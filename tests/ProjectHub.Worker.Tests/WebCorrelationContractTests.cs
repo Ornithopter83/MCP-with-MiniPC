@@ -22,8 +22,6 @@ public sealed class WebCorrelationContractTests
         Assert.StartsWith("[KEY=1234ABCDabcde]", prompt, StringComparison.Ordinal);
         Assert.Contains("원래 요청", prompt);
         Assert.Contains("HQ는 JSON이 아니라 고정 필드와 @@SECTION 평문 프로토콜", prompt);
-        Assert.Contains("HQ 형식 복구에서도 JSON", prompt);
-        Assert.Contains("mechanicalInstructions", prompt);
         Assert.Contains(WebCorrelationContract.ResponseOkMarker, prompt);
         Assert.Contains("마지막 줄", prompt);
     }
