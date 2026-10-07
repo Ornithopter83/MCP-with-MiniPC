@@ -77,14 +77,18 @@ internal static class RoleJsonRepairContract
                     "entrypoint": null,
                     "initializeGitIfMissing": false,
                     "projectPolicy": "DEFAULT",
-                    "qa": {
-                      "required": false,
-                      "instructions": ""
-                    },
                     "resource": null,
-                    "workItems": [],
-                    "completionCriteria": [],
-                    "validation": []
+                    "workItems": [
+                      {
+                        "id": 10,
+                        "readOnly": false,
+                        "testRequired": false,
+                        "writePaths": ["기존 상대경로"],
+                        "goal": "기존 WORK 목표",
+                        "instructions": "기존 지시",
+                        "completionCriteria": []
+                      }
+                    ]
                   }
                 }
 
@@ -129,17 +133,16 @@ internal static class RoleJsonRepairContract
                 """,
 
             "QA" => """
-                [GOTO : HIGH]
                 [ACTION=RESULT]
                 {
-                  "status": "completed 또는 blocked",
+                  "status": "passed 또는 issue",
                   "summary": "기존 조사 결과",
+                  "changedPaths": [],
                   "issues": []
                 }
                 """,
 
             "HIGH" => """
-                [GOTO : MANAGER]
                 [ACTION=RESULT]
                 {
                   "status": "verified 또는 modified 또는 incomplete",

@@ -465,7 +465,7 @@ internal static class MilestoneMechanicalExecutor
         startInfo.ArgumentList.Add(command);
 
         using var processJob = new WorkerChildProcessJob(
-            "Manager " + normalizedOperation);
+            "Worker " + normalizedOperation);
         using var launched = processJob.Start(
             startInfo,
             cancellationToken);
@@ -496,7 +496,7 @@ internal static class MilestoneMechanicalExecutor
         await File.WriteAllTextAsync(
             logPath,
             combined,
-            new UTF8Encoding(false),
+            ProjectHubJson.Utf8NoBom,
             cancellationToken).ConfigureAwait(false);
 
         var outputRequired =
@@ -1117,6 +1117,16 @@ internal static class MilestoneMechanicalExecutor
         }
 
         return branch;
+    }
+
+    public static string BuildCommandForEntrypoint(string? entrypoint)
+    {
+        var value = (entrypoint ?? string.Empty).Trim();
+        if (value.Length == 0 || !MilestoneDefinitionContract.IsSafeRelativePath(value))
+            return string.Empty;
+
+        var escaped = value.Replace("\"", "\\\"", StringComparison.Ordinal);
+        return "dotnet build \"" + escaped + "\" --output bin";
     }
 
     public static string NormalizeMechanicalCommand(

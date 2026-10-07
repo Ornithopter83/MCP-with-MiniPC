@@ -10,8 +10,6 @@ public static class RoleContractLoader
         "Windows PowerShell 5.1에서 텍스트를 읽거나 출력할 때는 UTF-8 출력 인코딩과 Get-Content -Encoding UTF8을 명시한다.\n";
     public const string HqContractPath =
         "src/ProjectHub.Worker/Contracts/HQ-ROUTING-CONTRACT.md";
-    public const string ManagerContractPath =
-        "src/ProjectHub.Worker/Contracts/MANAGER-ROUTING-CONTRACT.md";
     public const string WorkContractPath =
         "src/ProjectHub.Worker/Contracts/WORK-ROUTING-CONTRACT.md";
     public const string QaContractPath =
@@ -20,7 +18,6 @@ public static class RoleContractLoader
         "src/ProjectHub.Worker/Contracts/HIGH-ROUTING-CONTRACT.md";
 
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
-    public static string LoadManagerFooter() => Load("MANAGER-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
     public static string LoadQaFooter() => Load("QA-ROUTING-CONTRACT.md");
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");
@@ -71,26 +68,14 @@ public static class RoleContractLoader
                LoadWorkFooter();
     }
 
-    public static string BuildManagerPrompt(
-        string body,
-        bool includeFullContract = true) =>
-        "역할: #1 중간관리자\n" +
-        EncodingGuidance +
-        "입력 본문:\n" +
-        (body ?? string.Empty) +
-        "\n\n" +
-        (includeFullContract
-            ? LoadManagerFooter()
-            : BuildContractReference(ManagerContractPath));
-
     public static string BuildQaPrompt(string body) =>
-        "역할: QA\n호출 유형: HQ_SCHEDULED_QA\n" +
+        "역할: QA\n호출 유형: WORKER_TEST_QA\n" +
         EncodingGuidance +
         "입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadQaFooter();
 
     public static string BuildHighPrompt(string body) =>
-        "역할: HIGH\n호출 유형: MILESTONE_VALIDATION\n" +
+        "역할: HIGH\n호출 유형: QA_ISSUE_REPAIR\n" +
         EncodingGuidance +
         "입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadHighFooter();
@@ -109,7 +94,6 @@ public static class RoleContractLoader
         var contracts = new[]
         {
             (HqContractPath, LoadHqFooter()),
-            (ManagerContractPath, LoadManagerFooter()),
             (WorkContractPath, LoadWorkFooter()),
             (QaContractPath, LoadQaFooter()),
             (HighContractPath, LoadHighFooter())

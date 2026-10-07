@@ -22,15 +22,8 @@ internal static class HqTextProtocol
             "WORK_GOAL",
             "WORK_INSTRUCTIONS",
             "WORK_COMPLETION",
-            "QA",
-            "QA_INSTRUCTIONS",
             "RESOURCE",
             "RESOURCE_INSTRUCTIONS",
-            "MILESTONE_COMPLETION",
-            "VALIDATION",
-            "MECHANICAL",
-            "HIGH",
-            "MANAGER",
             "MESSAGE",
             "RESUME"
         };
@@ -45,6 +38,7 @@ internal static class HqTextProtocol
     {
         public required string Id { get; init; }
         public bool? ReadOnly { get; set; }
+        public bool? TestRequired { get; set; }
         public List<string> WritePaths { get; } = new();
         public string Goal { get; set; } = string.Empty;
         public string Instructions { get; set; } = string.Empty;
@@ -185,14 +179,10 @@ internal static class HqTextProtocol
 
         var works = new List<WorkBuilder>();
         WorkBuilder? currentWork = null;
-        var qaRequired = false;
-        var qaInstructions = string.Empty;
         ResourceBuilder? resource = null;
-        var milestoneCompletion = new List<string>();
-        var validation = new List<string>();
-        var mechanical = new List<string>();
-        var highInstructions = string.Empty;
-        var managerInstructions = string.Empty;
+
+        if (unknown.Count > 0)
+            errors.Add("UNKNOWN_SECTION_FORBIDDEN");
 
         foreach (var section in sections)
         {
@@ -212,6 +202,14 @@ internal static class HqTextProtocol
                         currentWork.ReadOnly = readOnly;
                     else
                         errors.Add($"WORK {currentWork.Id}.READ_ONLY");
+
+                    var testRaw = One(fields, "TEST");
+                    if (string.Equals(testRaw, "ON", StringComparison.OrdinalIgnoreCase))
+                        currentWork.TestRequired = true;
+                    else if (string.Equals(testRaw, "OFF", StringComparison.OrdinalIgnoreCase))
+                        currentWork.TestRequired = false;
+                    else
+                        errors.Add($"WORK {currentWork.Id}.TEST");
 
                     if (fields.TryGetValue("WRITE_PATH", out var paths))
                     {
@@ -245,24 +243,6 @@ internal static class HqTextProtocol
                         currentWork.Completion.AddRange(ReadTextItems(section.Content));
                     break;
 
-                case "QA":
-                {
-                    currentWork = null;
-                    var fields = ReadFields(section.Content.Split('\n'));
-                    var required = One(fields, "REQUIRED");
-                    if (!string.IsNullOrWhiteSpace(required) &&
-                        !TryReadBool(required, out qaRequired))
-                    {
-                        errors.Add("QA.REQUIRED");
-                    }
-                    break;
-                }
-
-                case "QA_INSTRUCTIONS":
-                    currentWork = null;
-                    qaInstructions = section.Content.Trim();
-                    break;
-
                 case "RESOURCE":
                 {
                     currentWork = null;
@@ -286,30 +266,6 @@ internal static class HqTextProtocol
                         resource.Instructions = section.Content.Trim();
                     break;
 
-                case "MILESTONE_COMPLETION":
-                    currentWork = null;
-                    milestoneCompletion.AddRange(ReadTextItems(section.Content));
-                    break;
-
-                case "VALIDATION":
-                    currentWork = null;
-                    validation.AddRange(ReadTextItems(section.Content));
-                    break;
-
-                case "MECHANICAL":
-                    currentWork = null;
-                    mechanical.AddRange(ReadTextItems(section.Content));
-                    break;
-
-                case "HIGH":
-                    currentWork = null;
-                    highInstructions = section.Content.Trim();
-                    break;
-
-                case "MANAGER":
-                    currentWork = null;
-                    managerInstructions = section.Content.Trim();
-                    break;
             }
         }
 
@@ -317,6 +273,8 @@ internal static class HqTextProtocol
         {
             if (work.Goal.Length == 0)
                 errors.Add($"WORK {work.Id}.GOAL");
+            if (work.TestRequired is null)
+                errors.Add($"WORK {work.Id}.TEST");
             if (work.ReadOnly != true && work.WritePaths.Count == 0)
                 errors.Add($"WORK {work.Id}.WRITE_PATH");
         }
@@ -326,9 +284,6 @@ internal static class HqTextProtocol
         {
             errors.Add("WORK.ID_DUPLICATE");
         }
-
-        if (qaRequired && qaInstructions.Length == 0)
-            errors.Add("QA_INSTRUCTIONS");
 
         if (resource is not null)
         {
@@ -353,11 +308,6 @@ internal static class HqTextProtocol
             ["entrypoint"] = entrypoint,
             ["initializeGitIfMissing"] = initializeGit,
             ["projectPolicy"] = policy,
-            ["qa"] = new Dictionary<string, object?>
-            {
-                ["required"] = qaRequired,
-                ["instructions"] = qaInstructions
-            },
             ["resource"] = resource is null
                 ? null
                 : new Dictionary<string, object?>
@@ -371,26 +321,15 @@ internal static class HqTextProtocol
             {
                 ["id"] = int.Parse(work.Id),
                 ["readOnly"] = work.ReadOnly!.Value,
+                ["testRequired"] = work.TestRequired!.Value,
                 ["writePaths"] = work.WritePaths
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
                 ["goal"] = work.Goal,
                 ["instructions"] = work.Instructions,
                 ["completionCriteria"] = work.Completion.ToArray()
-            }).ToArray(),
-            ["completionCriteria"] = milestoneCompletion.ToArray(),
-            ["validation"] = validation.ToArray(),
-            ["mechanicalInstructions"] = mechanical.ToArray(),
-            ["highInstructions"] = highInstructions,
-            ["managerInstructions"] = managerInstructions
+            }).ToArray()
         };
-
-        if (unknown.Count > 0)
-        {
-            milestone["hqUnknownSections"] = string.Join(
-                Environment.NewLine + Environment.NewLine,
-                unknown);
-        }
 
         var compatibility =
             "[ACTION=WORK]" + Environment.NewLine +

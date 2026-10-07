@@ -74,7 +74,7 @@ internal static class MilestoneManagedRunRegistry
         startInfo.ArgumentList.Add(command);
 
         var processJob = new WorkerChildProcessJob(
-            "Manager RUN " + jobId);
+            "Worker RUN " + jobId);
         SuspendedJobProcess launched;
         try
         {

@@ -8,7 +8,7 @@ namespace ProjectHub.Worker;
 
 public partial class MainWindow
 {
-    private sealed record MilestoneManagerResult(
+    private sealed record MilestoneRunResult(
         bool PauseRequired,
         string Body);
 
@@ -66,9 +66,6 @@ public partial class MainWindow
         var continuing = continuation is not null;
         var jobId = continuation?.JobId ?? Guid.NewGuid().ToString("N");
         var normalizedRoot = Path.GetFullPath(workingDirectory);
-        var manager = NormalizeRoleSessionForWorkspace(
-            _targetSettings.EffectiveManager,
-            normalizedRoot);
         var qa = NormalizeRoleSessionForWorkspace(
             _targetSettings.EffectiveQa,
             normalizedRoot);
@@ -189,9 +186,7 @@ public partial class MainWindow
                     hqInbound,
                     normalizedRoot,
                     configuredRepositoryUrl,
-                    remoteReference.CommitSha,
-                    includeFullContract:
-                        !continuing && milestoneIndex == 1);
+                    remoteReference.CommitSha);
 
                 var hqResult = await RunHqRoleAsync(
                     jobId,
@@ -344,7 +339,7 @@ public partial class MainWindow
                     AddDataFlowHistory(
                         WorkerRoleState.Unknown,
                         "Worker 작업",
-                        $"HQ 응답 파싱 완료\nMILESTONE: {milestone.Id}\nWORK: {milestone.WorkItems.Count}건\nRESOURCE: {milestone.Resources.Count}건\nQA: {(milestone.QaReserved ? "예약" : "미예약")}",
+                        $"HQ 응답 파싱 완료\nMILESTONE: {milestone.Id}\nWORK: {milestone.WorkItems.Count}건\nRESOURCE: {milestone.Resources.Count}건\nTEST: {(milestone.QaReserved ? "ON" : "OFF")}",
                         status: "PARSED",
                         persistenceSource: "WORKER ACTION");
                 });
@@ -360,15 +355,14 @@ public partial class MainWindow
                         normalizedRoot,
                         cts.Token);
 
-                MilestoneManagerResult managerReport;
+                MilestoneRunResult milestoneResult;
                 try
                 {
-                    managerReport = await RunSingleMilestoneAsync(
+                    milestoneResult = await RunSingleMilestoneAsync(
                         jobId,
                         normalizedRoot,
                         milestone!,
                         implementer,
-                        manager,
                         qa,
                         high,
                         initialChangedPaths,
@@ -395,10 +389,9 @@ public partial class MainWindow
                         jobId,
                         milestone!,
                         "FAILED",
-                        managerFinalState: "FAILED",
                         hqFinalState: "BLOCKED");
 
-                    managerReport = new(
+                    milestoneResult = new(
                         false,
                         MilestoneDefinitionContract.BuildHqReport(
                             milestone!,
@@ -427,14 +420,13 @@ public partial class MainWindow
                         status: "BLOCKED");
                 }
 
-                if (managerReport.PauseRequired)
+                if (milestoneResult.PauseRequired)
                 {
                     SaveMilestoneExecutionGraph(
                         normalizedRoot,
                         jobId,
                         milestone!,
                         "PAUSED",
-                        managerFinalState: "PAUSED",
                         hqFinalState: "BLOCKED");
                     SaveMilestoneContinuation(
                         "PAUSED",
@@ -448,11 +440,11 @@ public partial class MainWindow
                     RunOnUi(() =>
                     {
                         ResultTitle.Text = "PAUSED";
-                        ResultBody.Text = managerReport.Body;
+                        ResultBody.Text = milestoneResult.Body;
                         TaskTitle.Text = "사용자 직접 개입 필요";
                         AddTaskMessage(
                             "TASK PAUSED",
-                            managerReport.Body,
+                            milestoneResult.Body,
                             status: "PAUSED");
                         SetFlowState(false, false, false);
                         SetFollowupComposerVisible(true);
@@ -461,7 +453,7 @@ public partial class MainWindow
                     return;
                 }
 
-                hqInbound = managerReport.Body;
+                hqInbound = milestoneResult.Body;
                 continuing = false;
             }
 
@@ -530,12 +522,11 @@ public partial class MainWindow
         }
     }
 
-    private async Task<MilestoneManagerResult> RunSingleMilestoneAsync(
+    private async Task<MilestoneRunResult> RunSingleMilestoneAsync(
         string jobId,
         string workingDirectory,
         MilestoneDefinition milestone,
         WorkerAiRoleSettings implementer,
-        WorkerAiRoleSettings manager,
         WorkerAiRoleSettings qa,
         WorkerAiRoleSettings high,
         IReadOnlySet<string> initialChangedPaths,
@@ -557,20 +548,19 @@ public partial class MainWindow
         if (!gitPreflight.Success)
             return new(true, gitPreflight.Summary);
 
-        var milestoneChangedPaths = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase);
         WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
 
+        var milestoneChangedPaths = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var resourceReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
-        var finalReportNotes = new List<string>();
         var qaReport = string.Empty;
         var highReport = string.Empty;
         var gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
-        string? managerSession = null;
+        var outcome = "COMPLETED";
 
         SaveMilestoneExecutionGraph(
             workingDirectory,
@@ -580,162 +570,11 @@ public partial class MainWindow
             workReports,
             resourceReports,
             qaReport,
-            highReport,
-            managerDispatchState: "RUNNING");
-
-        async Task<MilestoneManagerResult> BuildFailureReportAsync(
-            string failureDetail)
-        {
-            var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
-                jobId,
-                CancellationToken.None);
-            if (stoppedRun is not null)
-            {
-                mechanicalReports.Add(
-                    MilestoneDefinitionContract.FormatMechanicalResult(
-                        stoppedRun));
-            }
-
-            var currentLocalChanges =
-                await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
-                    workingDirectory,
-                    CancellationToken.None);
-
-            return new(
-                false,
-                MilestoneDefinitionContract.BuildHqReport(
-                    milestone,
-                    "MILESTONE_EXECUTION_ERROR" +
-                    Environment.NewLine +
-                    failureDetail,
-                    workReports,
-                    resourceReports,
-                    mechanicalReports,
-                    qaReport,
-                    highReport,
-                    gitResult,
-                    initialChangedPaths,
-                    milestoneChangedPaths,
-                    currentLocalChanges,
-                    _formatRecoveryJobs.ContainsKey(jobId),
-                    GetUnreadRecoveryElements(jobId),
-                    workingDirectory));
-        }
+            highReport);
 
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            RunOnUi(() =>
-            {
-                TaskDirection.Text = "통합/분배";
-                TaskTitle.Text = $"중간관리자 일괄 분배 · {milestone.Id}";
-                ResultTitle.Text = "MANAGER";
-                SetFlowState(
-                    codexActive: true,
-                    workerActive: false,
-                    webActive: false,
-                    explicitStage: TaskStage.Manager);
-            });
-
-            var dispatchInput = MilestoneDefinitionContract.BuildManagerInput(
-                milestone,
-                workReports,
-                resourceReports,
-                mechanicalReports,
-                qaReport,
-                highReport,
-                gitResult,
-                "MILESTONE_START" +
-                Environment.NewLine +
-                "계획된 모든 GENERAL WORK를 DISPATCH JSON 하나로 일괄 분배하세요. RESOURCE는 Worker가 독립 대기열에서 처리하므로 DISPATCH에 포함하지 마세요.");
-
-            var dispatchPrompt = RoleContractLoader.BuildManagerPrompt(
-                dispatchInput +
-                Environment.NewLine +
-                Environment.NewLine +
-                BuildManagerMechanicalSupplement(workingDirectory),
-                includeFullContract: true);
-
-            var dispatchResult = await RunCoordinatorRoleAsync(
-                jobId,
-                "MANAGER",
-                dispatchPrompt,
-                manager,
-                workingDirectory,
-                managerSession,
-                null,
-                cancellationToken,
-                CodexSandboxMode.ReadOnly);
-
-            managerSession =
-                CodexCliRunner.NormalizeSessionId(dispatchResult.SessionId) ??
-                managerSession;
-
-            if (dispatchResult.ExitCode != 0)
-            {
-                throw new InvalidOperationException(
-                    "MANAGER_DISPATCH_FAILED: " +
-                    dispatchResult.StandardError);
-            }
-
-            var dispatchEnvelope =
-                await EnsureRoleJsonResponseAsync(
-                    jobId,
-                    workingDirectory,
-                    "MANAGER",
-                    dispatchResult.FinalMessage?.Trim() ?? string.Empty,
-                    new[] { "DISPATCH", "PAUSE" },
-                    expectedGoto: null,
-                    implementer,
-                    cancellationToken);
-
-            var dispatchMessage = dispatchEnvelope.Message;
-            AddRoleResponseHistory(
-                WorkerRoleState.Manager,
-                "통합 분배",
-                dispatchMessage,
-                dispatchResult.Usage,
-                dispatchResult.Files,
-                status: dispatchEnvelope.Parse.HasErrors
-                    ? "FAILED"
-                    : "RECEIVED",
-                providerWireId: manager.Provider,
-                fullMessage: dispatchMessage);
-
-            if (dispatchEnvelope.Parse.HasErrors ||
-                dispatchEnvelope.Parse.ValidActions.Count != 1 ||
-                !new[] { "DISPATCH", "PAUSE" }.Contains(
-                    dispatchEnvelope.Parse.ValidActions[0].Name,
-                    StringComparer.OrdinalIgnoreCase))
-            {
-                return await BuildFailureReportAsync(
-                    "MANAGER_DISPATCH_CONTRACT_INVALID: " +
-                    string.Join(", ", dispatchEnvelope.Parse.Errors));
-            }
-
-            var dispatchAction =
-                dispatchEnvelope.Parse.ValidActions[0];
-
-            if (string.Equals(
-                    dispatchAction.Name,
-                    "PAUSE",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                await MilestoneManagedRunRegistry.StopAsync(
-                    jobId,
-                    CancellationToken.None);
-                return new(true, dispatchAction.Body);
-            }
-
-            var requestedWorkIds =
-                ActionBlockContract.GetIdArray(
-                    dispatchAction,
-                    "workItemIds")
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            var dispatchNotes = new List<string>();
 
             var resourceTasks = milestone.Resources.Values
                 .Select(resource =>
@@ -788,39 +627,20 @@ public partial class MainWindow
                 }
             }
 
-            var runnableWorkIds = requestedWorkIds
-                .Where(milestone.WorkItems.ContainsKey)
+            var definitions = milestone.WorkItems.Values
+                .OrderBy(work =>
+                    int.TryParse(work.Id, out var number)
+                        ? number
+                        : int.MaxValue)
                 .ToArray();
 
-            foreach (var workId in requestedWorkIds
-                         .Where(id => !milestone.WorkItems.ContainsKey(id)))
-            {
-                dispatchNotes.Add(
-                    "UNPLANNED_WORK_IGNORED: " + workId);
-            }
-
-            var runnableDefinitions = runnableWorkIds
-                .Select(id => milestone.WorkItems[id])
-                .ToArray();
             var overlappingWorkIds =
                 MilestoneMechanicalExecutor.FindOverlappingWorkItemIds(
-                    runnableDefinitions
+                    definitions
                         .Where(work => !work.ReadOnly)
                         .Select(work => (
                             work.Id,
                             (IReadOnlyList<string>)work.WritePaths)));
-
-            if (overlappingWorkIds.Count > 0)
-            {
-                finalReportNotes.Add(
-                    "WORK_WRITE_PATH_OVERLAP: blocked=" +
-                    string.Join(
-                        ",",
-                        overlappingWorkIds.OrderBy(
-                            id => int.TryParse(id, out var number)
-                                ? number
-                                : int.MaxValue)));
-            }
 
             foreach (var workId in overlappingWorkIds)
             {
@@ -841,7 +661,7 @@ public partial class MainWindow
                         });
             }
 
-            var executableDefinitions = runnableDefinitions
+            var executableDefinitions = definitions
                 .Where(work => !overlappingWorkIds.Contains(work.Id))
                 .ToArray();
             var executableWorkIds = executableDefinitions
@@ -876,12 +696,12 @@ public partial class MainWindow
                     status: "PROCESSING",
                     persistenceSource: "WORKER ACTION");
 
-                var workBatchBefore =
+                var before =
                     await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                         workingDirectory,
                         cancellationToken);
                 using var gate = new SemaphoreSlim(maxConcurrency);
-                var workTasks = executableWorkIds.Select(async workId =>
+                var tasks = executableWorkIds.Select(async workId =>
                 {
                     await gate.WaitAsync(cancellationToken);
                     try
@@ -905,7 +725,7 @@ public partial class MainWindow
                         FormatActiveWorkItemGauge(
                             Math.Min(executableWorkIds.Length, maxConcurrency)));
 
-                var completed = await Task.WhenAll(workTasks);
+                var completed = await Task.WhenAll(tasks);
 
                 RunOnUi(() =>
                     ImplementerWorkGaugeText.Text =
@@ -914,16 +734,14 @@ public partial class MainWindow
                 foreach (var item in completed)
                     workReports[item.Id] = item.Report;
 
-                var workBatchAfter =
+                var after =
                     await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                         workingDirectory,
                         cancellationToken);
-                var observedWorkChanges =
-                    MilestoneMechanicalExecutor.DiffChangeStates(
-                        workBatchBefore,
-                        workBatchAfter);
-
-                foreach (var changedPath in observedWorkChanges)
+                foreach (var changedPath in
+                         MilestoneMechanicalExecutor.DiffChangeStates(
+                             before,
+                             after))
                 {
                     if (MilestoneMechanicalExecutor.IsPathWithinScopes(
                             changedPath,
@@ -931,16 +749,6 @@ public partial class MainWindow
                     {
                         milestoneChangedPaths.Add(changedPath);
                     }
-                }
-
-                if (observedWorkChanges.Count > 0)
-                {
-                    dispatchNotes.Add(
-                        "WORK_CHANGED_PATHS:" +
-                        Environment.NewLine +
-                        string.Join(
-                            Environment.NewLine,
-                            observedWorkChanges.Select(path => "- " + path)));
                 }
 
                 AddDataFlowHistory(
@@ -951,227 +759,234 @@ public partial class MainWindow
                     persistenceSource: "WORKER ACTION");
             }
 
-            foreach (var work in milestone.WorkItems.Values)
+            var blockedWorkIds = workReports
+                .Where(pair =>
+                    milestone.WorkItems.ContainsKey(pair.Key) &&
+                    string.Equals(
+                        MilestoneDefinitionContract.ReadWorkStatus(pair.Value),
+                        "blocked",
+                        StringComparison.OrdinalIgnoreCase))
+                .Select(pair => pair.Key)
+                .ToArray();
+            if (blockedWorkIds.Length > 0)
             {
-                if (!workReports.ContainsKey(work.Id))
-                {
-                    workReports[work.Id] =
-                        MilestoneDefinitionContract.BuildRoleResult(
-                            null,
-                            "blocked",
-                            "MANAGER_DID_NOT_DISPATCH");
-                }
+                outcome =
+                    "WORK_BLOCKED:" +
+                    string.Join(",", blockedWorkIds.OrderBy(
+                        id => int.TryParse(id, out var number)
+                            ? number
+                            : int.MaxValue));
             }
 
-            var plannedWorkScopes = milestone.WorkItems.Values
-                .Where(work => !overlappingWorkIds.Contains(work.Id))
+            CaptureResourceStateWithoutWaiting();
+
+            var plannedWorkScopes = executableDefinitions
+                .Where(work => !work.ReadOnly)
                 .SelectMany(work => work.WritePaths)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            var currentWorkDirtyPaths =
-                await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
-                    workingDirectory,
-                    cancellationToken);
-            var workBarrierPaths = currentWorkDirtyPaths
-                .Where(path =>
-                    MilestoneMechanicalExecutor.IsPathWithinScopes(
-                        path,
-                        plannedWorkScopes))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var observedPath in milestoneChangedPaths)
-            {
-                if (MilestoneMechanicalExecutor.IsPathWithinScopes(
-                        observedPath,
-                        plannedWorkScopes))
-                {
-                    workBarrierPaths.Add(observedPath);
-                }
-            }
-
-            if (milestone.ReadOnlyNoFileChanges)
-            {
-                mechanicalReports.Add(
-                    "WORK_GIT_BARRIER" +
-                    Environment.NewLine +
-                    "status=SKIPPED_READ_ONLY");
-            }
-            else
-            {
-                AddDataFlowHistory(
-                    WorkerRoleState.Unknown,
-                    "Worker 작업",
-                    "GENERAL WORK Git barrier · 일괄 commit/force push 시작",
-                    status: "EXECUTING",
-                    persistenceSource: "WORKER ACTION");
-
-                var workGitBarrier =
-                    await MilestoneMechanicalExecutor.ForceCommitPushAsync(
-                        workingDirectory,
-                        $"ProjectHub milestone {milestone.Id} work batch",
-                        workBarrierPaths,
-                        _targetSettings.ManualRepositoryUrl?.Trim(),
-                        cancellationToken);
-
-                mechanicalReports.Add(
-                    "WORK_GIT_BARRIER" +
-                    Environment.NewLine +
-                    workGitBarrier.Summary);
-
-                AddDataFlowHistory(
-                    WorkerRoleState.Unknown,
-                    "Worker 작업",
-                    workGitBarrier.Summary,
-                    status: workGitBarrier.Success ? "COMPLETED" : "WARNING",
-                    persistenceSource: "WORKER ACTION");
-
-                if (!workGitBarrier.Success)
-                {
-                    dispatchNotes.Add(
-                        "WORK_GIT_BARRIER_FAILED_CONTINUED: HIGH 이후 final force push에서 다시 시도합니다.");
-                }
-            }
-
-            CaptureResourceStateWithoutWaiting();
-
-            using (var dispatchDocument =
-                   JsonDocument.Parse(dispatchAction.JsonPayload!))
-            {
-                var mechanical =
-                    dispatchDocument.RootElement.GetProperty("mechanical");
-                foreach (var request in mechanical.EnumerateArray())
-                {
-                    var operation =
-                        request.GetProperty("operation")
-                            .GetString()?.Trim() ?? "UNKNOWN";
-                    var rawCommand =
-                        request.GetProperty("command")
-                            .GetString()?.Trim() ?? string.Empty;
-                    var command =
-                        MilestoneMechanicalExecutor.NormalizeMechanicalCommand(
-                            operation,
-                            rawCommand);
-
-                    RunOnUi(() =>
-                    {
-                        TaskDirection.Text = "통합/분배";
-                        TaskTitle.Text = "중간관리자 기계 실행";
-                        SetFlowState(
-                            codexActive: false,
-                            workerActive: true,
-                            webActive: false,
-                            explicitStage: TaskStage.Manager);
-                    });
-
-                    AddDataFlowHistory(
-                        WorkerRoleState.Unknown,
-                        "Worker 작업",
-                        $"OPERATION: {operation}" +
-                        Environment.NewLine +
-                        $"COMMAND: {command}",
-                        status: "EXECUTING",
-                        persistenceSource: "WORKER ACTION");
-
-                    var body = "COMMAND: " + command;
-                    var result = string.Equals(
-                            operation,
-                            "RUN",
-                            StringComparison.OrdinalIgnoreCase)
-                        ? await MilestoneManagedRunRegistry.StartAsync(
-                            jobId,
-                            workingDirectory,
-                            body,
-                            cancellationToken)
-                        : await MilestoneMechanicalExecutor.ExecuteAsync(
-                            jobId,
-                            workingDirectory,
-                            operation,
-                            body,
-                            cancellationToken);
-
-                    mechanicalReports.Add(
-                        MilestoneDefinitionContract.FormatMechanicalResult(
-                            result));
-                }
-            }
-
-            CaptureResourceStateWithoutWaiting();
-
-            SaveMilestoneExecutionGraph(
-                workingDirectory,
-                jobId,
-                milestone,
-                "WORK_COMPLETED",
-                workReports,
-                resourceReports,
-                qaReport,
-                highReport,
-                managerDispatchState: "COMPLETED");
-
-            AddDataFlowHistory(
-                WorkerRoleState.Unknown,
-                "Worker 작업",
-                $"GENERAL WORK 묶음 종료\nWORK: {workReports.Count}/{milestone.WorkItems.Count} terminal\nRESOURCE: 독립 sidecar · 완료 대기 없음\n다음 단계: {(milestone.QaReserved ? "QA" : "HIGH")}",
-                status: "COMPLETED",
-                persistenceSource: "WORKER ACTION");
-
-            CaptureResourceStateWithoutWaiting();
 
             if (milestone.QaReserved)
             {
-                qaReport = await ExecuteMilestoneQaAsync(
-                    jobId,
-                    workingDirectory,
-                    milestone,
-                    workReports,
-                    resourceReports,
-                    mechanicalReports,
-                    implementer,
-                    qa,
-                    1,
-                    cancellationToken);
+                var buildCommand =
+                    MilestoneMechanicalExecutor.BuildCommandForEntrypoint(
+                        milestone.Entrypoint);
+                MilestoneMechanicalResult buildResult;
+                if (string.IsNullOrWhiteSpace(buildCommand))
+                {
+                    buildResult = new(
+                        "BUILD",
+                        false,
+                        -1,
+                        string.Empty,
+                        string.Empty,
+                        "BUILD_ENTRYPOINT_UNSUPPORTED");
+                }
+                else
+                {
+                    buildResult = await MilestoneMechanicalExecutor.ExecuteAsync(
+                        jobId,
+                        workingDirectory,
+                        "BUILD",
+                        "COMMAND: " + buildCommand,
+                        cancellationToken);
+                }
+
+                mechanicalReports.Add(
+                    MilestoneDefinitionContract.FormatMechanicalResult(
+                        buildResult));
+
+                for (var repairAttempt = 1;
+                     !buildResult.Success && repairAttempt <= 2;
+                     repairAttempt++)
+                {
+                    AddDataFlowHistory(
+                        WorkerRoleState.Work,
+                        "Worker 복구 분배",
+                        $"BUILD_REPAIR_ATTEMPT: {repairAttempt}",
+                        status: "DISPATCHED",
+                        workItemId: "BUILD-REPAIR-" + repairAttempt,
+                        persistenceSource: "WORKER DISPATCH");
+
+                    var repairBefore =
+                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                            workingDirectory,
+                            cancellationToken);
+                    var repair = await ExecuteBuildRepairWorkAsync(
+                        jobId,
+                        workingDirectory,
+                        milestone,
+                        implementer,
+                        repairAttempt,
+                        buildResult,
+                        plannedWorkScopes,
+                        cancellationToken);
+                    workReports[repair.Id] = repair.Report;
+                    var repairAfter =
+                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                            workingDirectory,
+                            cancellationToken);
+
+                    foreach (var changedPath in
+                             MilestoneMechanicalExecutor.DiffChangeStates(
+                                 repairBefore,
+                                 repairAfter))
+                    {
+                        if (MilestoneMechanicalExecutor.IsPathWithinScopes(
+                                changedPath,
+                                plannedWorkScopes))
+                        {
+                            milestoneChangedPaths.Add(changedPath);
+                        }
+                    }
+
+                    buildResult = await MilestoneMechanicalExecutor.ExecuteAsync(
+                        jobId,
+                        workingDirectory,
+                        "BUILD",
+                        "COMMAND: " + buildCommand,
+                        cancellationToken);
+                    mechanicalReports.Add(
+                        MilestoneDefinitionContract.FormatMechanicalResult(
+                            buildResult));
+                }
+
+                if (!buildResult.Success)
+                {
+                    outcome = "BUILD_FAILED_FINAL";
+                    highReport =
+                        "SKIPPED_BUILD_FAILED" +
+                        Environment.NewLine +
+                        MilestoneDefinitionContract.Limit(
+                            buildResult.Summary,
+                            1400);
+                }
+                else
+                {
+                    var qaBefore =
+                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                            workingDirectory,
+                            cancellationToken);
+                    qaReport = await ExecuteMilestoneQaAsync(
+                        jobId,
+                        workingDirectory,
+                        milestone,
+                        workReports,
+                        resourceReports,
+                        mechanicalReports,
+                        implementer,
+                        qa,
+                        1,
+                        cancellationToken);
+                    var qaAfter =
+                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                            workingDirectory,
+                            cancellationToken);
+                    var qaSourceChanges =
+                        MilestoneMechanicalExecutor.DiffChangeStates(
+                            qaBefore,
+                            qaAfter);
+                    if (qaSourceChanges.Count > 0)
+                    {
+                        qaReport = MilestoneDefinitionContract.BuildRoleResult(
+                            null,
+                            "issue",
+                            "QA_SOURCE_MODIFICATION_DETECTED",
+                            issues: qaSourceChanges
+                                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                                .ToArray());
+                    }
+
+                    var qaStatus =
+                        MilestoneDefinitionContract.ReadQaStatus(qaReport);
+                    if (string.Equals(
+                            qaStatus,
+                            "passed",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        highReport = "SKIPPED_QA_PASSED";
+                        if (blockedWorkIds.Length == 0)
+                            outcome = "COMPLETED";
+                    }
+                    else
+                    {
+                        var highBefore =
+                            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                                workingDirectory,
+                                cancellationToken);
+
+                        highReport = await ExecuteMilestoneHighAsync(
+                            jobId,
+                            workingDirectory,
+                            milestone,
+                            workReports,
+                            resourceReports,
+                            mechanicalReports,
+                            qaReport,
+                            implementer,
+                            high,
+                            1,
+                            cancellationToken);
+
+                        var highAfter =
+                            await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                                workingDirectory,
+                                cancellationToken);
+                        foreach (var changedPath in
+                                 MilestoneMechanicalExecutor.DiffChangeStates(
+                                     highBefore,
+                                     highAfter))
+                        {
+                            milestoneChangedPaths.Add(changedPath);
+                        }
+
+                        foreach (var changedPath in
+                                 MilestoneDefinitionContract.ExtractHighChangedPaths(
+                                     highReport))
+                        {
+                            milestoneChangedPaths.Add(changedPath);
+                        }
+
+                        var highStatus =
+                            MilestoneDefinitionContract.ReadHighStatus(
+                                highReport);
+                        outcome = string.Equals(
+                                highStatus,
+                                "incomplete",
+                                StringComparison.OrdinalIgnoreCase)
+                            ? "HIGH_INCOMPLETE"
+                            : blockedWorkIds.Length == 0
+                                ? "COMPLETED_WITH_HIGH"
+                                : "WORK_BLOCKED_WITH_HIGH";
+                    }
+                }
+            }
+            else
+            {
+                highReport = "SKIPPED_TEST_OFF";
             }
 
             CaptureResourceStateWithoutWaiting();
-
-            var highBefore =
-                await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                    workingDirectory,
-                    cancellationToken);
-
-            highReport = await ExecuteMilestoneHighAsync(
-                jobId,
-                workingDirectory,
-                milestone,
-                workReports,
-                resourceReports,
-                mechanicalReports,
-                qaReport,
-                implementer,
-                high,
-                1,
-                cancellationToken);
-
-            var highAfter =
-                await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                    workingDirectory,
-                    cancellationToken);
-            foreach (var changedPath in
-                     MilestoneMechanicalExecutor.DiffChangeStates(
-                         highBefore,
-                         highAfter))
-            {
-                milestoneChangedPaths.Add(changedPath);
-            }
-
-            CaptureResourceStateWithoutWaiting();
-
-            foreach (var changedPath in
-                     MilestoneDefinitionContract.ExtractHighChangedPaths(
-                         highReport))
-            {
-                milestoneChangedPaths.Add(changedPath);
-            }
 
             var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
                 jobId,
@@ -1183,28 +998,17 @@ public partial class MainWindow
                         stoppedRun));
             }
 
-            SaveMilestoneExecutionGraph(
-                workingDirectory,
-                jobId,
-                milestone,
-                "VALIDATED",
-                workReports,
-                resourceReports,
-                qaReport,
-                highReport,
-                managerDispatchState: "COMPLETED");
-
             var finalDirtyPaths =
                 await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
                     workingDirectory,
                     cancellationToken);
-
             foreach (var dirtyPath in finalDirtyPaths)
             {
                 if (!initialChangedPaths.Contains(dirtyPath) &&
-                    MilestoneMechanicalExecutor.IsPathWithinScopes(
-                        dirtyPath,
-                        plannedWorkScopes))
+                    (MilestoneMechanicalExecutor.IsPathWithinScopes(
+                         dirtyPath,
+                         plannedWorkScopes) ||
+                     milestoneChangedPaths.Contains(dirtyPath)))
                 {
                     milestoneChangedPaths.Add(dirtyPath);
                 }
@@ -1220,7 +1024,7 @@ public partial class MainWindow
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
                     "Worker 작업",
-                    "GIT_FINALIZE 자동 실행",
+                    "GIT_FINALIZE 강제 실행",
                     status: "EXECUTING",
                     persistenceSource: "WORKER ACTION");
 
@@ -1234,125 +1038,10 @@ public partial class MainWindow
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
                     "Worker 작업",
-                    "GIT_FINALIZE 결과" +
-                    Environment.NewLine +
                     gitResult.Summary,
                     status: gitResult.Success ? "COMPLETED" : "FAILED",
                     persistenceSource: "WORKER ACTION");
             }
-
-            SaveMilestoneExecutionGraph(
-                workingDirectory,
-                jobId,
-                milestone,
-                gitResult.Success ? "FINALIZED" : "FINALIZE_FAILED",
-                workReports,
-                resourceReports,
-                qaReport,
-                highReport,
-                managerDispatchState: "COMPLETED");
-
-            RunOnUi(() =>
-            {
-                TaskDirection.Text = "통합/보고";
-                TaskTitle.Text = $"중간관리자 최종 보고 · {milestone.Id}";
-                ResultTitle.Text = "MANAGER";
-                SetFlowState(
-                    codexActive: true,
-                    workerActive: false,
-                    webActive: false,
-                    explicitStage: TaskStage.Manager);
-            });
-
-            var finalEvent = new StringBuilder();
-            finalEvent.AppendLine("FINAL_REPORT_REQUIRED");
-            finalEvent.AppendLine(
-                "추가 작업이나 재검증 없이 지시사항 대비 실제 결과를 REPORT JSON으로 HQ에 보고하세요.");
-            if (dispatchNotes.Count > 0)
-            {
-                finalEvent.AppendLine("DISPATCH_NOTES:");
-                foreach (var note in dispatchNotes)
-                    finalEvent.AppendLine(note);
-            }
-            if (finalReportNotes.Count > 0)
-            {
-                finalEvent.AppendLine("FINAL_REPORT_NOTES:");
-                foreach (var note in finalReportNotes)
-                    finalEvent.AppendLine(note);
-            }
-
-            CaptureResourceStateWithoutWaiting();
-
-            var finalInput = MilestoneDefinitionContract.BuildManagerInput(
-                milestone,
-                workReports,
-                resourceReports,
-                mechanicalReports,
-                qaReport,
-                highReport,
-                gitResult,
-                finalEvent.ToString());
-
-            var finalResult = await RunCoordinatorRoleAsync(
-                jobId,
-                "MANAGER",
-                RoleContractLoader.BuildManagerPrompt(
-                    finalInput,
-                    includeFullContract: false),
-                manager,
-                workingDirectory,
-                managerSession,
-                null,
-                cancellationToken,
-                CodexSandboxMode.ReadOnly);
-
-            string managerMessage;
-            if (finalResult.ExitCode != 0)
-            {
-                managerMessage =
-                    BuildManagerFallbackReport(
-                        "MANAGER_FINAL_EXECUTION_FAILED",
-                        new[] { finalResult.StandardError });
-            }
-            else
-            {
-                var finalEnvelope =
-                    await EnsureRoleJsonResponseAsync(
-                        jobId,
-                        workingDirectory,
-                        "MANAGER",
-                        finalResult.FinalMessage?.Trim() ?? string.Empty,
-                        new[] { "REPORT" },
-                        expectedGoto: "HQ",
-                        implementer,
-                        cancellationToken);
-
-                managerMessage =
-                    !finalEnvelope.Parse.HasErrors &&
-                    finalEnvelope.Parse.ValidActions.Count == 1 &&
-                    string.Equals(
-                        finalEnvelope.Parse.ValidActions[0].Name,
-                        "REPORT",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(
-                        finalEnvelope.Parse.ValidActions[0].GotoTarget,
-                        "HQ",
-                        StringComparison.OrdinalIgnoreCase)
-                        ? finalEnvelope.Message
-                        : BuildManagerFallbackReport(
-                            "MANAGER_FINAL_REPORT_CONTRACT_INVALID",
-                            finalEnvelope.Parse.Errors);
-            }
-
-            AddRoleResponseHistory(
-                WorkerRoleState.Manager,
-                "통합 최종 보고",
-                managerMessage,
-                finalResult.Usage,
-                finalResult.Files,
-                status: finalResult.ExitCode == 0 ? "RECEIVED" : "FAILED",
-                providerWireId: manager.Provider,
-                fullMessage: managerMessage);
 
             var currentLocalChanges =
                 await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
@@ -1363,20 +1052,18 @@ public partial class MainWindow
                 workingDirectory,
                 jobId,
                 milestone,
-                "REPORT_READY",
+                gitResult.Success ? "FINALIZED" : "FINALIZE_FAILED",
                 workReports,
                 resourceReports,
                 qaReport,
                 highReport,
-                managerDispatchState: "COMPLETED",
-                managerFinalState: "COMPLETED",
                 hqFinalState: "READY");
 
             return new(
                 false,
                 MilestoneDefinitionContract.BuildHqReport(
                     milestone,
-                    managerMessage,
+                    outcome,
                     workReports,
                     resourceReports,
                     mechanicalReports,
@@ -1397,11 +1084,126 @@ public partial class MainWindow
         }
         catch (Exception exception)
         {
-            return await BuildFailureReportAsync(
-                exception.GetType().Name +
-                ": " +
-                exception.Message);
+            var currentLocalChanges =
+                await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
+                    workingDirectory,
+                    CancellationToken.None);
+            return new(
+                false,
+                MilestoneDefinitionContract.BuildHqReport(
+                    milestone,
+                    "MILESTONE_EXECUTION_ERROR: " +
+                    exception.GetType().Name +
+                    ": " +
+                    exception.Message,
+                    workReports,
+                    resourceReports,
+                    mechanicalReports,
+                    qaReport,
+                    highReport,
+                    gitResult,
+                    initialChangedPaths,
+                    milestoneChangedPaths,
+                    currentLocalChanges,
+                    _formatRecoveryJobs.ContainsKey(jobId),
+                    GetUnreadRecoveryElements(jobId),
+                    workingDirectory));
         }
+    }
+
+    private async Task<WorkExecutionReport> ExecuteBuildRepairWorkAsync(
+        string jobId,
+        string workingDirectory,
+        MilestoneDefinition milestone,
+        WorkerAiRoleSettings implementer,
+        int attempt,
+        MilestoneMechanicalResult buildFailure,
+        IReadOnlyList<string> writePaths,
+        CancellationToken cancellationToken)
+    {
+        var repairId = "BUILD-REPAIR-" + attempt;
+        if (writePaths.Count == 0)
+        {
+            return new(
+                repairId,
+                MilestoneDefinitionContract.BuildRoleResult(
+                    null,
+                    "blocked",
+                    "BUILD_REPAIR_WRITE_PATH_EMPTY"));
+        }
+
+        var workTempRoot = Path.Combine(
+            workingDirectory,
+            "temp",
+            "ProjectHub",
+            jobId,
+            milestone.Id,
+            "work-" + repairId);
+        Directory.CreateDirectory(workTempRoot);
+
+        var body =
+            "MILESTONE_GOAL: " +
+            (MilestoneDefinitionContract.ReadMilestoneGoal(milestone) ?? milestone.Id) +
+            Environment.NewLine +
+            Environment.NewLine +
+            "빌드 실패를 수정해주세요" +
+            Environment.NewLine +
+            Environment.NewLine +
+            "BUILD_LOG:" +
+            Environment.NewLine +
+            MilestoneDefinitionContract.Limit(
+                buildFailure.Summary,
+                16000);
+
+        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
+            repairId,
+            body,
+            writePaths,
+            workingDirectory,
+            readOnly: false,
+            resourceStagingRoot: Path.Combine(
+                workingDirectory,
+                "temp",
+                "Resource"),
+            workTempRoot: workTempRoot);
+
+        var role = implementer with
+        {
+            ThreadSessionId = null,
+            ThreadProjectPath = null
+        };
+
+        var result = await RunCoordinatorRoleAsync(
+            jobId,
+            "WORK",
+            prompt,
+            role,
+            workingDirectory,
+            null,
+            null,
+            cancellationToken,
+            CodexSandboxMode.WorkspaceWrite,
+            historyWorkItemId: repairId,
+            historyReferenceId: milestone.Id + ":" + repairId);
+
+        var report = MilestoneDefinitionContract.NormalizeWorkReport(
+            result.ExitCode,
+            result.FinalMessage,
+            result.StandardError);
+
+        AddRoleResponseHistory(
+            WorkerRoleState.Work,
+            "빌드 복구 결과",
+            report,
+            result.Usage,
+            result.Files,
+            status: result.ExitCode == 0 ? "RECEIVED" : "BLOCKED",
+            providerWireId: implementer.Provider,
+            fullMessage: report,
+            workItemId: repairId,
+            referenceId: milestone.Id + ":" + repairId);
+
+        return new(repairId, report);
     }
 
     private static void SaveMilestoneExecutionGraph(
@@ -1413,8 +1215,6 @@ public partial class MainWindow
         IReadOnlyDictionary<string, string>? resourceReports = null,
         string? qaReport = null,
         string? highReport = null,
-        string managerDispatchState = "PLANNED",
-        string managerFinalState = "PLANNED",
         string hqFinalState = "PLANNED")
     {
         workReports ??= new Dictionary<string, string>(
@@ -1424,8 +1224,7 @@ public partial class MainWindow
 
         var nodes = new List<MilestoneGraphNodeSnapshot>
         {
-            new("HQ-DESIGN", "HQ", "COMPLETED"),
-            new("MANAGER-DISPATCH", "MANAGER", managerDispatchState)
+            new("HQ-DESIGN", "HQ", "COMPLETED")
         };
 
         foreach (var work in milestone.WorkItems.Values
@@ -1448,7 +1247,6 @@ public partial class MainWindow
                         ? "RUNNING"
                         : "COMPLETED"
                     : "PLANNED";
-
             nodes.Add(new(
                 "RESOURCE-" + resource.Id,
                 "RESOURCE",
@@ -1457,75 +1255,78 @@ public partial class MainWindow
         }
 
         nodes.Add(new(
+            "BUILD",
+            "WORKER",
+            !milestone.QaReserved
+                ? "SKIPPED"
+                : highReport?.StartsWith(
+                    "SKIPPED_BUILD_FAILED",
+                    StringComparison.Ordinal) == true
+                    ? "FAILED"
+                    : state is "RUNNING" or "PLANNED"
+                        ? "PLANNED"
+                        : "COMPLETED"));
+        nodes.Add(new(
             "QA",
             "QA",
             !milestone.QaReserved
                 ? "SKIPPED"
-                : !string.IsNullOrWhiteSpace(qaReport)
-                    ? "COMPLETED"
-                    : "PLANNED"));
+                : highReport?.StartsWith(
+                    "SKIPPED_BUILD_FAILED",
+                    StringComparison.Ordinal) == true
+                    ? "SKIPPED"
+                    : !string.IsNullOrWhiteSpace(qaReport)
+                        ? "COMPLETED"
+                        : "PLANNED"));
         nodes.Add(new(
             "HIGH",
             "HIGH",
-            !string.IsNullOrWhiteSpace(highReport)
+            string.IsNullOrWhiteSpace(highReport) ||
+            highReport.StartsWith("SKIPPED_", StringComparison.Ordinal)
+                ? "SKIPPED"
+                : "COMPLETED"));
+        nodes.Add(new(
+            "GIT-FINALIZE",
+            "WORKER",
+            state is "FINALIZED" or "FINALIZE_FAILED"
                 ? "COMPLETED"
                 : "PLANNED"));
-        nodes.Add(new(
-            "MANAGER-FINAL",
-            "MANAGER",
-            managerFinalState));
         nodes.Add(new(
             "HQ-FINAL",
             "HQ",
             hqFinalState));
 
-        var edges = new List<MilestoneGraphEdgeSnapshot>
-        {
-            new("HQ-DESIGN", "MANAGER-DISPATCH", "DESIGN_TO_EXECUTION")
-        };
-
-        var resourceNodes = milestone.Resources.Values
-            .Select(resource => "RESOURCE-" + resource.Id)
-            .ToArray();
-        var validationNode = milestone.QaReserved ? "QA" : "HIGH";
+        var edges = new List<MilestoneGraphEdgeSnapshot>();
         var workNodes = milestone.WorkItems.Values
             .Select(work => "WORK-" + work.Id)
             .ToArray();
 
-        if (workNodes.Length == 0)
+        foreach (var workNode in workNodes)
         {
+            edges.Add(new("HQ-DESIGN", workNode, "DISPATCH"));
             edges.Add(new(
-                "MANAGER-DISPATCH",
-                validationNode,
-                "WORK_DISPATCH_COMPLETE"));
-        }
-        else
-        {
-            foreach (var workNode in workNodes)
-            {
-                edges.Add(new(
-                    "MANAGER-DISPATCH",
-                    workNode,
-                    "DISPATCH"));
-                edges.Add(new(
-                    workNode,
-                    validationNode,
-                    "RESULT_TO_VALIDATION"));
-            }
+                workNode,
+                milestone.QaReserved ? "BUILD" : "GIT-FINALIZE",
+                milestone.QaReserved ? "RESULT_TO_BUILD" : "RESULT_TO_GIT"));
         }
 
-        foreach (var resourceNode in resourceNodes)
+        foreach (var resource in milestone.Resources.Values)
         {
             edges.Add(new(
                 "HQ-DESIGN",
-                resourceNode,
+                "RESOURCE-" + resource.Id,
                 "BACKGROUND_RESOURCE_REQUEST"));
         }
 
         if (milestone.QaReserved)
-            edges.Add(new("QA", "HIGH", "QA_TO_REVIEW"));
-        edges.Add(new("HIGH", "MANAGER-FINAL", "REVIEW_TO_INTEGRATION"));
-        edges.Add(new("MANAGER-FINAL", "HQ-FINAL", "REPORT_TO_HQ"));
+        {
+            edges.Add(new("BUILD", "QA", "BUILD_SUCCESS_TO_QA"));
+            edges.Add(new("QA", "HIGH", "QA_ISSUE_ONLY"));
+            edges.Add(new("QA", "GIT-FINALIZE", "QA_PASSED_TO_GIT"));
+            edges.Add(new("HIGH", "GIT-FINALIZE", "HIGH_TO_GIT"));
+        }
+
+        edges.Add(new("GIT-FINALIZE", "HQ-FINAL", "REPORT_TO_HQ"));
 
         ProjectWorkspacePersistence.SaveMilestoneGraph(
             workingDirectory,
@@ -1886,33 +1687,6 @@ public partial class MainWindow
             : null;
     }
 
-    private static string BuildManagerFallbackReport(
-        string summary,
-        IEnumerable<string?> issues)
-    {
-        var detail = issues
-            .Where(issue => !string.IsNullOrWhiteSpace(issue))
-            .Select(issue => issue!.Trim())
-            .ToArray();
-        var content = detail.Length == 0
-            ? summary
-            : summary +
-              Environment.NewLine +
-              string.Join(Environment.NewLine, detail);
-
-        var payload = new Dictionary<string, object?>
-        {
-            ["status"] = "blocked",
-            ["content"] = content
-        };
-
-        return "[GOTO : HQ]" +
-               Environment.NewLine +
-               "[ACTION=REPORT]" +
-               Environment.NewLine +
-               ProjectHubJson.SerializeIndented(payload);
-    }
-
     private async Task<WorkExecutionReport> ExecuteMilestoneWorkAsync(
         string jobId,
         string workingDirectory,
@@ -1948,6 +1722,7 @@ public partial class MainWindow
             "temp",
             "ProjectHub",
             jobId,
+            milestone.Id,
             "work-" + work.Id);
         Directory.CreateDirectory(workTempRoot);
 
@@ -1982,26 +1757,10 @@ public partial class MainWindow
                 ? CodexSandboxMode.ReadOnly
                 : CodexSandboxMode.WorkspaceWrite,
             historyWorkItemId: work.Id,
-            historyReferenceId: work.Id);
-
-        var forbiddenExecution = result.CommandExecutions
-            .FirstOrDefault(execution =>
-                BuildExecutionPolicy.IsGeneralWorkForbiddenCommand(
-                    execution.Command));
+            historyReferenceId: milestone.Id + ":" + work.Id);
 
         string report;
-        if (forbiddenExecution is not null)
-        {
-            report = MilestoneDefinitionContract.BuildRoleResult(
-                null,
-                "blocked",
-                BuildExecutionPolicy.GeneralWorkCommandForbiddenError,
-                issues: new[]
-                {
-                    "command=" + forbiddenExecution.Command
-                });
-        }
-        else if (result.ExitCode != 0)
+        if (result.ExitCode != 0)
         {
             report = MilestoneDefinitionContract.NormalizeWorkReport(
                 result.ExitCode,
@@ -2362,8 +2121,8 @@ public partial class MainWindow
                         envelope.Message,
                         null)
                     : MilestoneDefinitionContract.BuildRoleResult(
-                        "HIGH",
-                        "blocked",
+                        null,
+                        "issue",
                         "QA_REPORT_CONTRACT_INVALID",
                         issues: envelope.Parse.Errors);
         }
@@ -2454,7 +2213,7 @@ public partial class MainWindow
                         envelope.Message,
                         null)
                     : MilestoneDefinitionContract.BuildRoleResult(
-                        "MANAGER",
+                        null,
                         "incomplete",
                         "HIGH_REPORT_CONTRACT_INVALID",
                         issues: envelope.Parse.Errors);
@@ -2478,8 +2237,7 @@ public partial class MainWindow
         string body,
         string workingDirectory,
         string? configuredRepositoryUrl,
-        string? remoteMainSha,
-        bool includeFullContract) =>
+        string? remoteMainSha) =>
         "역할: HQ" +
         Environment.NewLine +
         $"입력 유형: {inboundType}" +
@@ -2501,11 +2259,9 @@ public partial class MainWindow
         "입력 본문:" +
         Environment.NewLine +
         body +
-        (includeFullContract
-            ? Environment.NewLine +
-              Environment.NewLine +
-              RoleContractLoader.LoadHqFooter()
-            : string.Empty);
+        Environment.NewLine +
+        Environment.NewLine +
+        RoleContractLoader.LoadHqFooter();
 
     private static string BuildMilestoneFollowupInput(
         CoordinatorContinuationState continuation,
@@ -2518,39 +2274,6 @@ public partial class MainWindow
         "사용자가 직접 개입을 마치고 전달한 재개 입력:" +
         Environment.NewLine +
         followup;
-
-    private static string BuildManagerMechanicalSupplement(
-        string workingDirectory) =>
-        "Worker 기계 실행 보충 계약:" +
-        Environment.NewLine +
-        "- DISPATCH JSON의 mechanical 배열 항목은 operation과 command를 가진다." +
-        Environment.NewLine +
-        "- operation은 BUILD, RUN, PUBLISH 중 하나다." +
-        Environment.NewLine +
-        "- BUILD/PUBLISH 명령은 출력 경로를 절대경로로 쓰지 말고 반드시 상대경로 '--output bin'으로 지정한다." +
-        Environment.NewLine +
-        "- Worker는 BUILD/PUBLISH 실행 직전에 output 옵션을 다시 '--output bin'으로 정규화한다." +
-        Environment.NewLine +
-        "- 프로젝트 루트: " + workingDirectory +
-        Environment.NewLine +
-        "- RUN은 보고 전에 종료 가능한 foreground 실행만 요청한다.";
-
-    private static bool IsManagerFinalReport(string message)
-    {
-        var parsed = ActionBlockContract.ParseManager(message);
-        if (parsed.HasErrors || parsed.ValidActions.Count != 1)
-            return false;
-
-        var action = parsed.ValidActions[0];
-        return string.Equals(
-                   action.Name,
-                   "REPORT",
-                   StringComparison.OrdinalIgnoreCase) &&
-               string.Equals(
-                   action.GotoTarget,
-                   "HQ",
-                   StringComparison.OrdinalIgnoreCase);
-    }
 
     private void SaveMilestoneContinuation(
         string status,

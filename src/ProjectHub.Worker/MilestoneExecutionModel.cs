@@ -8,6 +8,7 @@ internal sealed record MilestoneWorkDefinition(
     string Id,
     IReadOnlyList<string> WritePaths,
     bool ReadOnly,
+    bool TestRequired,
     string Body,
     string RawText);
 
@@ -132,43 +133,6 @@ internal static class MilestoneDefinitionContract
                 return false;
             }
 
-            if (!milestoneJson.TryGetProperty("qa", out var qaJson) ||
-                qaJson.ValueKind != JsonValueKind.Object ||
-                !qaJson.TryGetProperty("required", out var qaRequiredJson) ||
-                qaRequiredJson.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-            {
-                error = "MILESTONE_QA_REQUIRED";
-                return false;
-            }
-
-            var qaReserved = qaRequiredJson.GetBoolean();
-            if (!qaJson.TryGetProperty("instructions", out var qaInstructions) ||
-                qaInstructions.ValueKind != JsonValueKind.String)
-            {
-                error = "MILESTONE_QA_INSTRUCTIONS_REQUIRED";
-                return false;
-            }
-
-            if (qaReserved && string.IsNullOrWhiteSpace(qaInstructions.GetString()))
-            {
-                error = "MILESTONE_QA_INSTRUCTIONS_REQUIRED";
-                return false;
-            }
-
-            if (!milestoneJson.TryGetProperty("completionCriteria", out var completionCriteria) ||
-                !IsStringArray(completionCriteria))
-            {
-                error = "MILESTONE_COMPLETION_CRITERIA_REQUIRED";
-                return false;
-            }
-
-            if (!milestoneJson.TryGetProperty("validation", out var validation) ||
-                !IsStringArray(validation))
-            {
-                error = "MILESTONE_VALIDATION_REQUIRED";
-                return false;
-            }
-
             if (!milestoneJson.TryGetProperty("entrypoint", out var entrypointJson) ||
                 entrypointJson.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
             {
@@ -256,6 +220,14 @@ internal static class MilestoneDefinitionContract
                     workReadOnly = workReadOnly || workReadOnlyJson.GetBoolean();
                 }
 
+                if (!workJson.TryGetProperty("testRequired", out var testRequiredJson) ||
+                    testRequiredJson.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                {
+                    error = $"WORK {workId}: TEST_REQUIRED_INVALID";
+                    return false;
+                }
+                var testRequired = testRequiredJson.GetBoolean();
+
                 string[] writePaths;
                 if (!workJson.TryGetProperty("writePaths", out var writePathsJson) ||
                     writePathsJson.ValueKind != JsonValueKind.Array ||
@@ -309,6 +281,7 @@ internal static class MilestoneDefinitionContract
                     workId,
                     writePaths,
                     workReadOnly,
+                    testRequired,
                     body,
                     workJson.GetRawText());
             }
@@ -371,6 +344,15 @@ internal static class MilestoneDefinitionContract
                     targetPath,
                     resourceBody,
                     resourceJson.GetRawText());
+            }
+
+            var qaReserved = workItems.Values.Any(work => work.TestRequired);
+            if (qaReserved &&
+                (string.IsNullOrWhiteSpace(entrypoint) ||
+                 !IsSafeRelativePath(entrypoint)))
+            {
+                error = "MILESTONE_ENTRYPOINT_REQUIRED_FOR_TEST";
+                return false;
             }
 
             milestone = new(
@@ -468,72 +450,6 @@ internal static class MilestoneDefinitionContract
             .All(item => item.ValueKind == JsonValueKind.String);
     }
 
-    public static string BuildManagerInput(
-        MilestoneDefinition milestone,
-        IReadOnlyDictionary<string, string> workReports,
-        IReadOnlyDictionary<string, string> resourceReports,
-        IReadOnlyList<string> mechanicalReports,
-        string qaReport,
-        string highReport,
-        MilestoneGitResult gitResult,
-        string eventBody)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine($"MILESTONE_ID: {milestone.Id}");
-        builder.AppendLine($"TARGET_BRANCH: {milestone.TargetBranch}");
-        builder.AppendLine($"QA_RESERVED: {(milestone.QaReserved ? "YES" : "NO")}");
-        builder.AppendLine($"ENTRYPOINT: {milestone.Entrypoint ?? "없음"}");
-        builder.AppendLine($"GIT_INIT_IF_MISSING: {(milestone.InitializeGitIfMissing ? "YES" : "NO")}");
-        builder.AppendLine($"PROJECT_POLICY: {(milestone.ReadOnlyNoFileChanges ? "READ_ONLY_NO_FILE_CHANGES" : "DEFAULT")}");
-
-        builder.AppendLine("PLANNED_WORK_JSON:");
-        builder.AppendLine(ProjectHubJson.Serialize(
-            milestone.WorkItems.Values
-                .OrderBy(work => int.TryParse(work.Id, out var number) ? number : int.MaxValue)
-                .Select(work => new
-                {
-                    id = work.Id,
-                    readOnly = work.ReadOnly,
-                    writePaths = work.WritePaths
-                })));
-
-        builder.AppendLine("MECHANICAL_INSTRUCTIONS:");
-        builder.AppendLine(ReadMilestonePropertyRaw(
-            milestone,
-            "mechanicalInstructions") ?? "없음");
-        builder.AppendLine("MANAGER_INSTRUCTIONS:");
-        builder.AppendLine(ReadMilestoneString(
-            milestone,
-            "managerInstructions") ?? "없음");
-
-        if (milestone.ParseErrors.Count > 0)
-        {
-            builder.AppendLine("HQ_ACTION_PARSE_ERRORS:");
-            foreach (var parseError in milestone.ParseErrors)
-                builder.AppendLine("- " + parseError);
-        }
-
-        AppendReports(builder, "WORK_RESULTS", workReports);
-        AppendReports(builder, "RESOURCE_RESULTS", resourceReports);
-
-        builder.AppendLine("MECHANICAL_RESULTS:");
-        if (mechanicalReports.Count == 0)
-            builder.AppendLine("- 없음");
-        else
-            foreach (var report in mechanicalReports)
-                builder.AppendLine(report);
-
-        builder.AppendLine("QA_REPORT:");
-        builder.AppendLine(string.IsNullOrWhiteSpace(qaReport) ? "없음" : qaReport);
-        builder.AppendLine("HIGH_REPORT:");
-        builder.AppendLine(string.IsNullOrWhiteSpace(highReport) ? "없음" : highReport);
-        builder.AppendLine("GIT_RESULT:");
-        builder.AppendLine(gitResult.Summary);
-        builder.AppendLine("CURRENT_EVENT:");
-        builder.AppendLine(eventBody);
-        return builder.ToString();
-    }
-
     public static string BuildQaContext(
         MilestoneDefinition milestone,
         IReadOnlyDictionary<string, string> workReports,
@@ -542,9 +458,10 @@ internal static class MilestoneDefinitionContract
     {
         var builder = new StringBuilder();
         builder.AppendLine($"MILESTONE_ID: {milestone.Id}");
+        builder.AppendLine($"MILESTONE_GOAL: {ReadMilestoneString(milestone, "goal") ?? "없음"}");
         builder.AppendLine($"ENTRYPOINT: {milestone.Entrypoint ?? "없음"}");
-        builder.AppendLine("QA_INSTRUCTIONS:");
-        builder.AppendLine(ReadQaInstructions(milestone) ?? "없음");
+        builder.AppendLine("PREPARED_OUTPUT_ROOT: bin");
+        builder.AppendLine("QA는 build를 다시 하지 않고 bin의 최신 실행 결과를 사용해 위 마일스톤 목표와 완료된 WORK 결과의 실제 동작만 확인한다.");
         AppendReports(builder, "WORK_RESULTS", workReports);
         AppendReports(builder, "RESOURCE_RESULTS", resourceReports);
         AppendMechanicalReports(builder, mechanicalReports);
@@ -560,19 +477,9 @@ internal static class MilestoneDefinitionContract
     {
         var builder = new StringBuilder();
         builder.AppendLine($"MILESTONE_ID: {milestone.Id}");
+        builder.AppendLine($"MILESTONE_GOAL: {ReadMilestoneString(milestone, "goal") ?? "없음"}");
         builder.AppendLine($"ENTRYPOINT: {milestone.Entrypoint ?? "없음"}");
-        builder.AppendLine("HIGH_INSTRUCTIONS:");
-        builder.AppendLine(ReadMilestoneString(
-            milestone,
-            "highInstructions") ?? "없음");
-        AppendStringArray(
-            builder,
-            "MILESTONE_COMPLETION_CRITERIA",
-            ReadMilestoneStringArray(milestone, "completionCriteria"));
-        AppendStringArray(
-            builder,
-            "MILESTONE_VALIDATION",
-            ReadMilestoneStringArray(milestone, "validation"));
+        builder.AppendLine("HIGH는 QA가 보고한 문제를 최종 보완하고 수행 결과만 요약한다. 추가 WORK·QA·build를 요청하지 않는다.");
         AppendReports(builder, "WORK_RESULTS", workReports);
         AppendReports(builder, "RESOURCE_RESULTS", resourceReports);
         AppendMechanicalReports(builder, mechanicalReports);
@@ -581,17 +488,6 @@ internal static class MilestoneDefinitionContract
         {
             builder.AppendLine("QA_REPORT:");
             builder.AppendLine(qaReport);
-        }
-
-        var unknownSections = ReadMilestoneString(
-            milestone,
-            "hqUnknownSections");
-        if (!string.IsNullOrWhiteSpace(unknownSections))
-        {
-            builder.AppendLine("HQ_UNKNOWN_SECTIONS_FOR_JUDGMENT:");
-            builder.AppendLine(
-                "아래는 Worker가 해석하지 않은 HQ 미등록 @@SECTION 원문이다. 의미와 현재 마일스톤 영향 여부를 HIGH가 판단한다.");
-            builder.AppendLine(unknownSections);
         }
 
         return builder.ToString();
@@ -643,6 +539,9 @@ internal static class MilestoneDefinitionContract
             return null;
         }
     }
+
+    public static string? ReadMilestoneGoal(MilestoneDefinition milestone) =>
+        ReadMilestoneString(milestone, "goal");
 
     private static string? ReadMilestoneString(
         MilestoneDefinition milestone,
@@ -710,7 +609,7 @@ internal static class MilestoneDefinitionContract
 
     public static string BuildHqReport(
         MilestoneDefinition milestone,
-        string managerMessage,
+        string workerOutcome,
         IReadOnlyDictionary<string, string> workReports,
         IReadOnlyDictionary<string, string> resourceReports,
         IReadOnlyList<string> mechanicalReports,
@@ -725,6 +624,10 @@ internal static class MilestoneDefinitionContract
         string? workingDirectory = null)
     {
         _ = initialLocalChanges;
+        _ = workReports;
+        _ = resourceReports;
+        _ = mechanicalReports;
+        _ = qaReport;
 
         var relevantScopes = milestone.WorkItems.Values
             .SelectMany(work => work.WritePaths)
@@ -742,33 +645,21 @@ internal static class MilestoneDefinitionContract
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var managerStatus = ReadRoleStatus(
-            managerMessage,
-            ActionBlockContract.ParseManager) ?? "failed";
-        var managerContent = ReadRoleField(
-            managerMessage,
-            ActionBlockContract.ParseManager,
-            "content");
-        if (string.IsNullOrWhiteSpace(managerContent))
-            managerContent = managerMessage;
-
-        var qaStatus = string.IsNullOrWhiteSpace(qaReport)
-            ? "not-run"
-            : ReadRoleStatus(
-                qaReport,
-                ActionBlockContract.ParseQa) ?? "unknown";
-        var highStatus = string.IsNullOrWhiteSpace(highReport)
-            ? "not-run"
-            : ReadRoleStatus(
-                highReport,
-                ActionBlockContract.ParseHigh) ?? "unknown";
+        var highSummary = string.IsNullOrWhiteSpace(highReport)
+            ? "없음"
+            : Limit(
+                ReadRoleField(
+                    highReport,
+                    ActionBlockContract.ParseHigh,
+                    "summary") ?? highReport,
+                1400).Trim();
 
         var archiveReference = string.IsNullOrWhiteSpace(workingDirectory)
             ? "not-written"
             : ArchiveMilestoneReports(
                 workingDirectory,
                 milestone,
-                managerMessage,
+                workerOutcome,
                 workReports,
                 resourceReports,
                 mechanicalReports,
@@ -779,25 +670,21 @@ internal static class MilestoneDefinitionContract
         var builder = new StringBuilder();
         builder.AppendLine("MILESTONE_REPORT");
         builder.AppendLine($"MILESTONE: {milestone.Id}");
-        builder.AppendLine($"RESULT: {managerStatus.ToUpperInvariant()}");
-        builder.AppendLine("BASELINE:");
-        builder.AppendLine("- branch=main");
-        builder.AppendLine("- origin=origin/main");
+        builder.AppendLine("OUTCOME: " + workerOutcome.Trim());
+        builder.AppendLine("HIGH_RESULT:");
+        builder.AppendLine(highSummary.Length == 0 ? "없음" : highSummary);
+        builder.AppendLine("GIT_RESULT:");
+        builder.AppendLine("- success=" + (gitResult.Success ? "YES" : "NO"));
         builder.AppendLine("- commit=" + (gitResult.CommitSha ?? "none"));
-
-        builder.AppendLine("DONE:");
         builder.AppendLine(
-            $"- WORK: {workReports.Count}/{milestone.WorkItems.Count} reported");
-        builder.AppendLine($"- RESOURCE: {resourceReports.Count} reported");
-        builder.AppendLine("- QA: " + qaStatus);
-        builder.AppendLine("- HIGH: " + highStatus);
-
-        builder.AppendLine("UNRESOLVED:");
-        var unresolved = Limit(managerContent ?? string.Empty, 1200).Trim();
-        if (unresolved.Length == 0)
-            builder.AppendLine("- 없음");
-        else
-            builder.AppendLine(unresolved);
+            "- relevantDirty=" +
+            (relevantDirtyAfterFinalize.Length == 0 ? "NO" : "YES"));
+        if (relevantDirtyAfterFinalize.Length > 0)
+        {
+            builder.AppendLine("- dirtyCount=" + relevantDirtyAfterFinalize.Length);
+            foreach (var dirtyPath in relevantDirtyAfterFinalize.Take(5))
+                builder.AppendLine("- dirty=" + dirtyPath);
+        }
 
         if (formatRecoveryOccurred)
         {
@@ -807,7 +694,6 @@ internal static class MilestoneDefinitionContract
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-
             builder.AppendLine(
                 unread.Length == 0
                     ? "FORMAT_RECOVERY_NOTICE: 일부 역할 응답의 포맷 오류를 복구 후 진행함"
@@ -815,24 +701,19 @@ internal static class MilestoneDefinitionContract
                       string.Join(", ", unread));
         }
 
-        builder.AppendLine("GIT:");
-        builder.AppendLine("- success=" + (gitResult.Success ? "YES" : "NO"));
-        builder.AppendLine(
-            "- relevantDirty=" +
-            (relevantDirtyAfterFinalize.Length == 0 ? "NO" : "YES"));
-        if (relevantDirtyAfterFinalize.Length > 0)
-        {
-            builder.AppendLine(
-                "- dirtyCount=" + relevantDirtyAfterFinalize.Length);
-            foreach (var dirtyPath in relevantDirtyAfterFinalize.Take(5))
-                builder.AppendLine("- dirty=" + dirtyPath);
-        }
-
         builder.AppendLine("ARCHIVE: " + archiveReference);
-        builder.AppendLine(
-            "DECISION_REQUIRED: 다음 WORK / PAUSE / END 중 하나를 판단");
+        builder.AppendLine("DECISION_REQUIRED: 다음 WORK / PAUSE / END 중 하나를 판단");
         return builder.ToString();
     }
+
+    public static string? ReadWorkStatus(string message) =>
+        ReadRoleStatus(message, ActionBlockContract.ParseWork);
+
+    public static string? ReadQaStatus(string message) =>
+        ReadRoleStatus(message, ActionBlockContract.ParseQa);
+
+    public static string? ReadHighStatus(string message) =>
+        ReadRoleStatus(message, ActionBlockContract.ParseHigh);
 
     private static string? ReadRoleStatus(
         string message,
@@ -856,7 +737,7 @@ internal static class MilestoneDefinitionContract
     private static string ArchiveMilestoneReports(
         string workingDirectory,
         MilestoneDefinition milestone,
-        string managerMessage,
+        string workerOutcome,
         IReadOnlyDictionary<string, string> workReports,
         IReadOnlyDictionary<string, string> resourceReports,
         IReadOnlyList<string> mechanicalReports,
@@ -882,8 +763,8 @@ internal static class MilestoneDefinitionContract
                 Path.Combine(directory, "hq.txt"),
                 milestone.RawHqMessage ?? string.Empty);
             File.WriteAllText(
-                Path.Combine(directory, "manager.txt"),
-                managerMessage ?? string.Empty);
+                Path.Combine(directory, "outcome.txt"),
+                workerOutcome ?? string.Empty);
             File.WriteAllText(
                 Path.Combine(directory, "qa.txt"),
                 qaReport ?? string.Empty);
@@ -1068,11 +949,12 @@ internal static class MilestoneDefinitionContract
         if (exitCode != 0)
         {
             return BuildRoleResult(
-                "HIGH",
-                "blocked",
+                null,
+                "issue",
                 string.IsNullOrWhiteSpace(standardError)
                     ? "QA 실행 프로세스 실패"
-                    : standardError.Trim());
+                    : standardError.Trim(),
+                issues: new[] { "QA_EXECUTION_FAILED" });
         }
 
         var raw = finalMessage?.Trim() ?? string.Empty;
@@ -1085,8 +967,8 @@ internal static class MilestoneDefinitionContract
                 StringComparison.OrdinalIgnoreCase))
         {
             return BuildRoleResult(
-                "HIGH",
-                "blocked",
+                null,
+                "issue",
                 "QA_REPORT_CONTRACT_INVALID",
                 issues: parsed.Errors.Count == 0
                     ? new[] { "RESULT action required" }
@@ -1104,7 +986,7 @@ internal static class MilestoneDefinitionContract
         if (exitCode != 0)
         {
             return BuildRoleResult(
-                "MANAGER",
+                null,
                 "incomplete",
                 string.IsNullOrWhiteSpace(standardError)
                     ? "HIGH 실행 프로세스 실패"
@@ -1121,7 +1003,7 @@ internal static class MilestoneDefinitionContract
                 StringComparison.OrdinalIgnoreCase))
         {
             return BuildRoleResult(
-                "MANAGER",
+                null,
                 "incomplete",
                 "HIGH_REPORT_CONTRACT_INVALID",
                 issues: parsed.Errors.Count == 0

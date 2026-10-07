@@ -29,6 +29,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
+                    "testRequired": true,
                     "writePaths": ["src/A", "src/B.cs"],
                     "goal": "기능을 구현한다.",
                     "instructions": "지정 경로 안에서 구현한다.",
@@ -95,11 +96,11 @@ public sealed class CoordinatorFirstContractTests
             Array.Empty<string>(),
             qaReport: null);
 
-        Assert.Contains("QA_INSTRUCTIONS:", qaContext);
-        Assert.DoesNotContain("WORK_ITEM_INSTRUCTIONS:", qaContext);
+        Assert.Contains("MILESTONE_GOAL:", qaContext);
         Assert.Contains("WORK_RESULTS:", qaContext);
-        Assert.Contains("MILESTONE_VALIDATION:", highContext);
-        Assert.DoesNotContain("HQ_DESIGN:", highContext);
+        Assert.DoesNotContain("QA_INSTRUCTIONS:", qaContext);
+        Assert.Contains("MILESTONE_GOAL:", highContext);
+        Assert.DoesNotContain("MILESTONE_VALIDATION:", highContext);
         Assert.Contains("\"status\": \"completed\"", highContext);
     }
 
@@ -199,6 +200,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
+                    "testRequired": false,
                     "writePaths": ["."],
                     "goal": "읽기 전용 확인",
                     "instructions": "파일을 바꾸지 않는다.",
@@ -279,7 +281,6 @@ public sealed class CoordinatorFirstContractTests
     public void RoleJsonProtocol_PreservesGotoAndParsesResult()
     {
         const string message = """
-            [GOTO : MANAGER]
             [ACTION=RESULT]
             {
               "status": "modified",
@@ -294,7 +295,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.False(parsed.HasErrors);
         var action = Assert.Single(parsed.ValidActions);
         Assert.Equal("RESULT", action.Name);
-        Assert.Equal("MANAGER", action.GotoTarget);
+        Assert.Null(action.GotoTarget);
         Assert.Equal(
             new[] { "src/Fix.cs" },
             ActionBlockContract.GetStringArray(
@@ -306,15 +307,15 @@ public sealed class CoordinatorFirstContractTests
     public void RoleJsonRepairPrompt_UsesOneTargetRoleSchema()
     {
         var prompt = RoleJsonRepairContract.BuildPrompt(
-            "MANAGER",
-            "[ACTION=DISPATCH]\n{ malformed }",
+            "WORK",
+            "[ACTION=RESULT]\n{ malformed }",
             "JSON_INVALID",
-            "DISPATCH");
+            "RESULT");
 
         Assert.Contains("일회성 임시 WORK", prompt);
-        Assert.Contains("역할: MANAGER", prompt);
-        Assert.Contains("기대 ACTION: DISPATCH", prompt);
-        Assert.Contains("[ACTION=DISPATCH]", prompt);
+        Assert.Contains("역할: WORK", prompt);
+        Assert.Contains("기대 ACTION: RESULT", prompt);
+        Assert.Contains("[ACTION=RESULT]", prompt);
         Assert.Contains("JSON 내부에는 action 필드를 만들지 않는다", prompt);
     }
 
@@ -337,6 +338,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 9,
+                    "testRequired": false,
                     "writePaths": ["src/Bad.cs"],
                     "goal": "예약 번호를 잘못 사용했다.",
                     "instructions": "",
@@ -378,6 +380,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
+                    "testRequired": false,
                     "writePaths": ["../outside.txt"],
                     "goal": "잘못된 경로",
                     "instructions": "",
@@ -419,6 +422,7 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
+                    "testRequired": false,
                     "writePaths": ["src/A"],
                     "goal": "A",
                     "instructions": "A",
@@ -572,7 +576,6 @@ public sealed class CoordinatorFirstContractTests
     public void HighChangedPaths_RejectMarkdownWrappedPath()
     {
         const string message = """
-            [GOTO : MANAGER]
             [ACTION=RESULT]
             {
               "status": "modified",
@@ -621,21 +624,20 @@ public sealed class CoordinatorFirstContractTests
         var qa = MilestoneDefinitionContract.NormalizeQaReport(
             0,
             """
-            [GOTO : HIGH]
             [ACTION=RESULT]
             {
-              "status": "completed",
+              "status": "passed",
               "summary": "동작 확인",
+              "changedPaths": [],
               "issues": []
             }
             """,
             null);
-        Assert.Contains("\"status\": \"completed\"", qa);
+        Assert.Contains("\"status\": \"passed\"", qa);
 
         var high = MilestoneDefinitionContract.NormalizeHighReport(
             0,
             """
-            [GOTO : MANAGER]
             [ACTION=RESULT]
             {
               "status": "modified",
@@ -657,7 +659,6 @@ public sealed class CoordinatorFirstContractTests
         var high = MilestoneDefinitionContract.NormalizeHighReport(
             0,
             """
-            [GOTO : MANAGER]
             [ACTION=RESULT]
             {
               "status": "modified",
@@ -675,7 +676,7 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void RoleSettings_KeepManagerAndQaIndependent()
+    public void LegacyManagerSetting_RemainsReadableButIsNotPartOfActiveFlow()
     {
         var settings = new WorkerTargetSettings(
             null,
@@ -697,10 +698,9 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void RoleContracts_DescribeFiveRoleMilestoneFlow()
+    public void RoleContracts_DescribeManagerlessWorkerFlow()
     {
         var hq = RoleContractLoader.LoadHqFooter();
-        var manager = RoleContractLoader.LoadManagerFooter();
         var work = RoleContractLoader.LoadWorkFooter();
         var qa = RoleContractLoader.LoadQaFooter();
         var high = RoleContractLoader.LoadHighFooter();
@@ -710,34 +710,19 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("MILESTONE: M1", hq);
         Assert.Contains("BRANCH: main", hq);
         Assert.Contains("@@WORK 10", hq);
-        Assert.DoesNotContain("ORDER:", hq);
-        Assert.Contains("우선순위 0", hq);
-        Assert.Contains("우선순위 1", hq);
-        Assert.Contains("우선순위 2", hq);
-        Assert.Contains("READ_ONLY: NO", hq);
-        Assert.Contains("@@QA", hq);
-        Assert.Contains("@@RESOURCE 0", hq);
-        Assert.Contains("READ_ONLY_NO_FILE_CHANGES", hq);
-        Assert.Contains("모르는 @@SECTION", hq);
-        Assert.DoesNotContain("\"milestone\"", hq);
-        Assert.DoesNotContain("BODY_BEGIN", hq);
+        Assert.Contains("TEST: ON", hq);
+        Assert.Contains("종속", hq);
+        Assert.DoesNotContain("@@QA", hq);
+        Assert.DoesNotContain("@@HIGH", hq);
+        Assert.DoesNotContain("@@MANAGER", hq);
+        Assert.DoesNotContain("@@MECHANICAL", hq);
 
-        Assert.Contains("[ACTION=DISPATCH]", manager);
-        Assert.Contains("\"workItemIds\"", manager);
         Assert.Contains("[ACTION=RESULT]", work);
-        Assert.Contains("[GOTO : HIGH]", qa);
-        Assert.Contains("준비한 실행파일", qa);
-        Assert.Contains("빌드를 유발", qa);
-        Assert.Contains("수행하지 않는다", qa);
-        Assert.Contains("[GOTO : MANAGER]", high);
-        Assert.Contains("HQ_UNKNOWN_SECTIONS_FOR_JUDGMENT", high);
-
-        var managerFollowup = RoleContractLoader.BuildManagerPrompt(
-            "CURRENT_EVENT: NEXT",
-            includeFullContract: false);
-        Assert.Contains(
-            RoleContractLoader.ManagerContractPath,
-            managerFollowup);
+        Assert.Contains("\"passed\"", qa);
+        Assert.Contains("\"issue\"", qa);
+        Assert.DoesNotContain("[GOTO : HIGH]", qa);
+        Assert.DoesNotContain("[GOTO : MANAGER]", high);
+        Assert.Contains("Worker가 HIGH 종료 직후", high);
 
         var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
             RoleContractLoader.BuildQaPrompt("runtime 확인"));
@@ -745,21 +730,6 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("당신은 QA다.", historyPrompt);
         Assert.DoesNotContain("ROLE_CONTRACT:", historyPrompt);
         Assert.DoesNotContain(RoleContractLoader.QaContractPath, historyPrompt);
-
-        var mechanicalHistory = RoleContractLoader.BuildHistoryPrompt(
-            "CURRENT_EVENT: START" +
-            Environment.NewLine +
-            Environment.NewLine +
-            "Worker 기계 실행 보충 계약:" +
-            Environment.NewLine +
-            "- operation은 BUILD, RUN, PUBLISH 중 하나다.");
-        Assert.Contains("CURRENT_EVENT: START", mechanicalHistory);
-        Assert.DoesNotContain(
-            "Worker 기계 실행 보충 계약:",
-            mechanicalHistory);
-        Assert.DoesNotContain(
-            "operation은 BUILD, RUN, PUBLISH",
-            mechanicalHistory);
     }
 
     [Fact]
@@ -795,7 +765,7 @@ public sealed class CoordinatorFirstContractTests
 
         var report = MilestoneDefinitionContract.BuildHqReport(
             milestone!,
-            "[GOTO : HQ]\n[ACTION=REPORT]\n{\"status\":\"completed\",\"content\":\"완료\"}",
+            "COMPLETED_WITH_HIGH",
             new Dictionary<string, string>
             {
                 ["10"] = "[ACTION=RESULT]\n{\"status\":\"completed\",\"summary\":\"done\",\"changedPaths\":[],\"issues\":[]}"
@@ -806,7 +776,7 @@ public sealed class CoordinatorFirstContractTests
             },
             new[] { "MECHANICAL BUILD\nstatus=COMPLETED" },
             "QA DETAIL",
-            "HIGH DETAIL",
+            "[ACTION=RESULT]\n{\"status\":\"modified\",\"summary\":\"HIGH 보완 완료\",\"changedPaths\":[\"src/A.cs\"],\"issues\":[]}",
             new MilestoneGitResult(
                 true,
                 false,
@@ -819,19 +789,17 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Contains("MILESTONE_REPORT", report);
         Assert.Contains("MILESTONE: COMPACT_REPORT", report);
-        Assert.Contains("RESULT: COMPLETED", report);
-        Assert.Contains("BASELINE:", report);
+        Assert.Contains("OUTCOME: COMPLETED_WITH_HIGH", report);
+        Assert.Contains("HIGH_RESULT:", report);
+        Assert.Contains("HIGH 보완 완료", report);
+        Assert.Contains("GIT_RESULT:", report);
         Assert.Contains("- commit=abc123", report);
-        Assert.Contains("DONE:", report);
-        Assert.Contains("UNRESOLVED:", report);
-        Assert.Contains("완료", report);
         Assert.Contains("- relevantDirty=YES", report);
         Assert.Contains("- dirty=src/A.cs", report);
         Assert.Contains("DECISION_REQUIRED:", report);
         Assert.DoesNotContain("RESOURCE_STATUS: PENDING", report);
         Assert.DoesNotContain("WORK_RESULTS:", report);
         Assert.DoesNotContain("QA DETAIL", report);
-        Assert.DoesNotContain("HIGH DETAIL", report);
         Assert.DoesNotContain("- old.txt", report);
     }
 
@@ -868,7 +836,7 @@ public sealed class CoordinatorFirstContractTests
 
         var report = MilestoneDefinitionContract.BuildHqReport(
             milestone!,
-            "[GOTO : HQ]\n[ACTION=REPORT]\n{\"status\":\"partial\",\"content\":\"복구 후 진행\"}",
+            "WORK_BLOCKED:10",
             new Dictionary<string, string>(),
             new Dictionary<string, string>(),
             Array.Empty<string>(),
@@ -889,14 +857,14 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HqTextProtocol_ParsesPlainTextAndForwardsUnknownSectionsToHigh()
+    public void HqTextProtocol_ParsesPlainTextWorkWithTestFlag()
     {
         const string response = """
             [ACTION=WORK]
             MILESTONE: M1
             BRANCH: main
             POLICY: DEFAULT
-            ENTRYPOINT: project.godot
+            ENTRYPOINT: src/App/App.csproj
             GIT_INIT: NO
 
             @@GOAL
@@ -904,6 +872,7 @@ public sealed class CoordinatorFirstContractTests
 
             @@WORK 10
             READ_ONLY: NO
+            TEST: ON
             WRITE_PATH: scripts/player
 
             @@WORK_GOAL
@@ -914,26 +883,13 @@ public sealed class CoordinatorFirstContractTests
 
             @@WORK_COMPLETION
             이동 검증 완료
-
-            @@QA
-            REQUIRED: NO
-
-            @@ARCHITECTURE_NOTE
-            이 section은 Worker가 해석하지 않고 HIGH가 판단한다.
-
-            @@MILESTONE_COMPLETION
-            요구사항 완료
-
-            @@VALIDATION
-            정적 구조 확인
             """;
 
         var hq = HqTextProtocol.Parse(response);
 
         Assert.True(hq.IsValid, string.Join(", ", hq.Errors));
         Assert.Equal("WORK", hq.ActionName);
-        Assert.Single(hq.UnknownSections);
-        Assert.Contains("@@ARCHITECTURE_NOTE", hq.UnknownSections[0]);
+        Assert.Empty(hq.UnknownSections);
         Assert.Contains("플레이어 동작을 보완한다.", hq.CompatibilityMessage);
         Assert.False(
             hq.CompatibilityMessage.Contains(
@@ -946,17 +902,96 @@ public sealed class CoordinatorFirstContractTests
             out var milestone,
             out var error),
             error);
+        Assert.True(milestone!.QaReserved);
+        Assert.True(Assert.Single(milestone.WorkItems.Values).TestRequired);
+    }
 
-        var high = MilestoneDefinitionContract.BuildHighContext(
-            milestone!,
-            new Dictionary<string, string>(),
-            new Dictionary<string, string>(),
-            Array.Empty<string>(),
-            null);
+    [Fact]
+    public void HqTextProtocol_RejectsWorkWithoutTestFlag()
+    {
+        const string response = """
+            [ACTION=WORK]
+            MILESTONE: M1
+            BRANCH: main
+            POLICY: DEFAULT
+            ENTRYPOINT: NONE
+            GIT_INIT: NO
 
-        Assert.Contains("HQ_UNKNOWN_SECTIONS_FOR_JUDGMENT:", high);
-        Assert.Contains("@@ARCHITECTURE_NOTE", high);
-        Assert.Contains("HIGH가 판단", high);
+            @@GOAL
+            문서를 수정한다.
+
+            @@WORK 10
+            READ_ONLY: NO
+            WRITE_PATH: README.md
+
+            @@WORK_GOAL
+            문서 수정
+
+            @@WORK_INSTRUCTIONS
+            README를 수정한다.
+
+            @@WORK_COMPLETION
+            문서가 수정된다.
+            """;
+
+        var hq = HqTextProtocol.Parse(response);
+
+        Assert.False(hq.IsValid);
+        Assert.Contains("WORK 10.TEST", hq.Errors);
+    }
+
+    [Fact]
+    public void HqTextProtocol_RejectsLegacyExecutionSections()
+    {
+        const string response = """
+            [ACTION=WORK]
+            MILESTONE: M1
+            BRANCH: main
+            POLICY: DEFAULT
+            ENTRYPOINT: NONE
+            GIT_INIT: NO
+
+            @@GOAL
+            문서를 수정한다.
+
+            @@WORK 10
+            READ_ONLY: NO
+            TEST: OFF
+            WRITE_PATH: README.md
+
+            @@WORK_GOAL
+            문서 수정
+
+            @@WORK_INSTRUCTIONS
+            README를 수정한다.
+
+            @@WORK_COMPLETION
+            완료
+
+            @@QA
+            REQUIRED: YES
+            """;
+
+        var hq = HqTextProtocol.Parse(response);
+
+        Assert.False(hq.IsValid);
+        Assert.Contains("UNKNOWN_SECTION_FORBIDDEN", hq.Errors);
+    }
+
+    [Fact]
+    public void WorkerBuildCommand_IsDerivedFromEntrypoint()
+    {
+        var command =
+            MilestoneMechanicalExecutor.BuildCommandForEntrypoint(
+                "src/App/App.csproj");
+
+        Assert.Equal(
+            "dotnet build \"src/App/App.csproj\" --output bin",
+            command);
+        Assert.Equal(
+            string.Empty,
+            MilestoneMechanicalExecutor.BuildCommandForEntrypoint(
+                "../outside.csproj"));
     }
 
     [Fact]
@@ -981,7 +1016,7 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HqTextProtocol_ControlActionRejectsUnknownSectionBecauseHighCannotReceiveIt()
+    public void HqTextProtocol_ControlActionRejectsUnknownSection()
     {
         const string response = """
             [ACTION=PAUSE]
@@ -1032,9 +1067,7 @@ public sealed class CoordinatorFirstContractTests
             "C:\\repo");
         var qaPrompt = RoleContractLoader.BuildQaPrompt("{}");
         var highPrompt = RoleContractLoader.BuildHighPrompt("{}");
-        var managerPrompt = RoleContractLoader.BuildManagerPrompt("{}");
-
-        foreach (var prompt in new[] { workPrompt, qaPrompt, highPrompt, managerPrompt })
+        foreach (var prompt in new[] { workPrompt, qaPrompt, highPrompt })
         {
             Assert.Contains("문자 인코딩:", prompt);
             Assert.Contains("UTF-8", prompt);

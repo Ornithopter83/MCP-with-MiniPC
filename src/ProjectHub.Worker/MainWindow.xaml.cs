@@ -2543,7 +2543,6 @@ public partial class MainWindow : Window
         var selectedProviders = new List<string>
         {
             GetSelectedTag(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider),
-            GetSelectedTag(ManagerProviderCombo, _targetSettings.EffectiveManager.Provider),
             GetSelectedTag(QaProviderCombo, _targetSettings.EffectiveQa.Provider),
             GetSelectedTag(HighLevelProviderCombo, _targetSettings.EffectiveHighLevel.Provider)
         };
@@ -2596,7 +2595,6 @@ public partial class MainWindow : Window
         var roleChecks = new[]
         {
             (Name: "일반 WORK", Role: implementer),
-            (Name: "중간관리자", Role: _targetSettings.EffectiveManager),
             (Name: "QA", Role: _targetSettings.EffectiveQa),
             (Name: "검토", Role: _targetSettings.EffectiveHighLevel)
         };
@@ -2736,7 +2734,7 @@ public partial class MainWindow : Window
             ExecutionMode = executionMode,
             Coordinator = ReadCoordinatorSettings(),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer),
-            Manager = ReadRoleSettings(ManagerProviderCombo, ManagerModelCombo, ManagerReasoningCombo, _targetSettings.EffectiveManager),
+            Manager = _targetSettings.Manager,
             Qa = ReadRoleSettings(QaProviderCombo, QaModelCombo, QaReasoningCombo, _targetSettings.EffectiveQa),
             HighLevel = ReadRoleSettings(HighLevelProviderCombo, HighLevelModelCombo, HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel),
             MaxConcurrentWork = maxConcurrentWork

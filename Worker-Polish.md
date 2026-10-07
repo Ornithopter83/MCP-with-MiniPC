@@ -1,124 +1,122 @@
 # Worker-Polish — ProjectHub Worker 정책
 
-이 문서는 Worker의 장기 책임과 새 마일스톤 실행 경계를 정의한다. 실제 AI 출력 문법은 전용 역할·라우팅 계약을 사용한다.
+이 문서는 Worker의 장기 책임과 마일스톤 실행 경계를 정의한다. 실제 AI 출력 문법은 전용 역할·라우팅 계약을 사용한다.
 
 제1조 (역할)
 
-① HQ는 사용자 목표 해석, 프로젝트 전체 관제, 마일스톤 설계와 세부설계, WorkItem 작업영역, QA 수행 여부, 완료 기준과 다음 마일스톤 판단을 담당한다.
-② #1 중간관리자는 HQ의 세부설계를 실제 실행으로 연결하고 WorkItem 배정, 결과 취합, build·run·publish, HIGH 결과에 따른 후속 작업, 마일스톤 Git 처리와 HQ 최종 보고를 담당한다.
-③ QA는 HQ가 예약한 경우에만 실행하며 HQ가 지정한 준비된 프로그램·웹과 조사 범위를 실제로 확인하여 사실 기반 결과를 반환한다. QA는 build·restore·publish·compile 또는 빌드를 유발하는 프로젝트 실행 명령을 수행하지 않으며 코드 수정, 설계 변경, 다음 작업 결정이나 HIGH 호출을 하지 않는다.
-④ HIGH는 WorkItem 실행 묶음과 예약된 QA가 끝난 뒤 호출되는 높은 권한의 마일스톤 검증·보완 역할이다. 실제 프로젝트 상태를 조사하고 필요한 경우 직접 수정할 수 있으나 HQ 설계 자체나 다음 마일스톤을 결정하지 않는다.
-⑤ #0 RESOURCE는 GPTWEB을 사용하는 RESOURCE MAKE 전용 역할이다. RESOURCE 결과는 마일스톤 안의 작업 결과로 취급하고 QA와 HIGH가 확인할 수 있어야 한다.
-⑥ #10+ GENERAL WORK는 자신에게 배정된 작업과 작업영역만 수행하는 Stateless 실행 단위다.
-⑦ Worker는 의미 판단 대신 역할 호출, 세션, 상태, 프로세스, 파일 경계, Git과 기계 작업을 관리한다.
+① HQ는 사용자 목표 해석, 원격 main 기준 확인, 마일스톤 목표와 독립 WORKITEM 설계, 각 WORKITEM의 테스트 필요 여부, 다음 마일스톤·PAUSE·END 판단만 담당한다.
+② #10+ GENERAL WORK는 자신에게 배정된 WORKITEM과 WRITE_PATH만 수행하는 Stateless 구현 단위다.
+③ QA는 테스트가 필요한 마일스톤에서 Worker가 준비한 최신 실행 대상을 실제 사용자 관점으로 동작 확인한다. 소스 구조를 검토하거나 수정하지 않는다.
+④ HIGH는 QA가 문제를 보고한 경우에만 호출되는 최종 보완 역할이다. 실제 프로젝트 상태와 QA 문제를 조사하고 필요하면 직접 수정하며 수행 결과를 요약한다.
+⑤ #0 RESOURCE는 GPTWEB을 사용하는 IMAGE 생성 전용 독립 sidecar다.
+⑥ MANAGER 역할은 사용하지 않는다. WORK 배분, build, 복구 반복, QA/HIGH 분기, Git과 HQ 보고는 Worker가 기계적으로 수행한다.
+⑦ Worker는 의미 판단 대신 역할 호출, 파싱, 파일 경계, 상태 전이, build, 프로세스와 Git을 관리한다.
 
-제2조 (역할 설정)
+제2조 (HQ 강제 주입)
 
-① HQ, #1 중간관리자, QA, HIGH와 GENERAL WORK는 설정창에서 각각 독립적으로 Provider·모델을 선택할 수 있어야 한다.
-② RESOURCE는 GPTWEB 고정이며 별도 Provider·모델 선택을 제공하지 않는다.
-③ 실행 중 역할의 Provider·모델을 Worker가 임의로 다른 모델로 교체하지 않는다.
-④ 실행 중 설정은 잠그고 다음 새 작업 상태에서 변경할 수 있게 하는 것을 기본으로 한다.
-⑤ 역할 계약 전문은 동일 AI 세션의 최초 호출에만 직접 주입한다. 같은 세션의 후속 호출은 ProjectHub Git 저장소의 해당 계약 파일 경로·파일명을 명시적으로 참조하고 전문을 반복 주입하지 않는다. 새 세션이거나 계약이 갱신되어 다시 bootstrap해야 할 때만 전문을 다시 주입한다.
+① HQ 역할 계약 전문은 모든 HQ 호출에 직접 주입한다. 최초 호출 이후에도 생략하거나 경로 참조로 대체하지 않는다.
+② HQ에는 마일스톤 목표, WORKITEM, WRITE_PATH, WORK별 TEST ON/OFF만 설계하도록 강제한다.
+③ HQ는 QA 지시, HIGH 지시, 검토 기준, MANAGER 지시, build/run/publish 명령, 기계 실행 순서를 작성하지 않는다.
+④ 같은 마일스톤의 GENERAL WORK는 서로의 파일·프로젝트·타입·API·분석·결과·산출물을 필요로 하지 않는 독립 작업이어야 한다. 그런 의존성이 하나라도 있으면 하나의 WORKITEM으로 결합한다.
+⑤ WRITE_PATH가 겹치는 쓰기 WORK는 설계하지 않는다. Worker는 겹침을 발견하면 충돌한 WORK만 blocked 처리하고 나머지를 계속한다.
+⑥ 이미지 생성이 필요하면 RESOURCE #0만 사용하고, 그 이미지를 소비하는 작업은 다음 마일스톤으로 분리한다.
 
 제3조 (프로젝트 루트와 작업영역)
 
-① 사용자가 지정한 폴더가 유일한 실제 프로젝트 루트다. Git 저장소가 아니고 HQ가 `initializeGitIfMissing`을 true로 지정하면 Worker가 마일스톤 preflight에서 기계적으로 `git init -b main`을 수행하여 처음부터 main으로 초기화한다. 그 외에는 Git 저장소가 준비되어 있어야 한다.
-② 프로젝트의 실제 폴더·파일 구조는 해당 루트에서 직접 생성·수정·삭제한다. WorkItem별 clone, worktree, shadow workspace 또는 별도 작업 branch를 실제 프로젝트 작업공간으로 사용하지 않는다.
-③ HQ는 마일스톤 설계 단계에서 동시에 실행될 WorkItem의 생성·수정·삭제 영역이 겹치지 않도록 설계한다.
-④ 같은 마일스톤의 GENERAL WORK는 서로 실행 순서나 결과 dependency가 없는 독립 작업으로만 구성한다. 종속성이 있는 일반 작업은 HQ가 하나의 WorkItem으로 묶는다. 쓰기 WORK의 WRITE_PATH가 겹치면 Worker는 충돌한 WorkItem만 blocked 처리하고 나머지 WorkItem은 계속 실행한다. 이미지 생성은 예외로 #0 RESOURCE가 생성만 담당하며 그 결과를 사용하는 후행 작업은 다음 마일스톤에서 수행한다.
-⑤ Worker는 HQ가 명시한 작업영역과 현재 마일스톤이 실제로 만든 생성·수정·삭제 변경목록을 기계 상태로 보존한다.
-⑥ 현재 ProjectHub 작업이 우선이다. HQ가 지정한 WRITE_PATH, RESOURCE targetPath 또는 HIGH가 명시한 CHANGED_PATH 안에 기존 dirty 변경이나 실행 중 새 변경이 있어도 그 이유로 PAUSE하지 않으며 현재 작업이 해당 내용을 덮어쓸 수 있다.
-⑦ 지정된 작업영역 밖의 파일과 변경은 수정·정리·reset·stage·commit하지 않는다. 작업 도중 외부에서 지정된 작업영역 안에 끼워 넣은 변경은 보존을 보장하지 않는다.
-⑧ Worker는 파일 변경의 작성자를 지속적으로 판정하거나 의미 검증하지 않는다. 프로젝트 전체가 dirty라는 이유만으로 작업을 차단하지 않는다.
+① 사용자가 지정한 폴더가 유일한 실제 프로젝트 루트다. Git 저장소가 아니고 HQ가 GIT_INIT을 YES로 지정한 경우 Worker가 preflight에서 `git init -b main`을 수행한다.
+② 실제 프로젝트 파일은 해당 루트에서 직접 생성·수정·삭제한다. WorkItem별 clone, worktree, shadow workspace 또는 별도 branch를 사용하지 않는다.
+③ GENERAL WORK는 자신에게 허용된 WRITE_PATH 밖을 수정하지 않는다.
+④ 현재 WORK의 WRITE_PATH 안에서는 현재 작업이 우선하며 기존 dirty 변경을 덮어쓸 수 있다.
+⑤ WRITE_PATH 밖 파일과 변경은 수정·정리·reset·stage·commit하지 않는다.
+⑥ Worker는 현재 마일스톤이 실제로 만든 변경목록을 기계 상태로 보존한다.
 
 제4조 (마일스톤 실행)
 
-① HQ는 전용 계약의 `[ACTION=...]` 다음 단일 JSON 객체로 마일스톤 설계, WorkItem, 작업영역, QA 예약, RESOURCE와 필요한 entrypoint 정보를 전달한다.
-② Worker는 ACTION과 JSON envelope를 기계적으로 파싱한다. HQ의 추가 설명과 세부 지시는 JSON 내부 필드에 포함하며 JSON 밖의 별도 BODY/END_ACTION 형식은 사용하지 않는다.
-③ 중간관리자는 HQ 설계를 받아 GENERAL WORK를 일괄 분배한다. RESOURCE #0은 Worker의 독립 sidecar 대기열이 수행하며 중간관리자 분배 대상이 아니다.
-④ 모든 계획된 GENERAL WORK가 성공·실패와 관계없이 terminal 상태가 되면 현재 GENERAL WORK 실행 묶음이 끝난 것으로 본다. RESOURCE #0의 완료 여부는 이 조건에 포함하지 않는다.
-⑤ HQ가 QA를 예약했다면 Worker는 GENERAL WORK 실행 묶음이 끝나는 즉시 QA를 삽입한다. RESOURCE #0이 아직 진행 중이어도 QA 진입을 기다리지 않는다.
-⑥ 예약된 QA가 없거나 QA 실행이 끝나면 HIGH를 호출한다. RESOURCE #0이 아직 진행 중이어도 HIGH 진입을 기다리지 않는다.
-⑦ HIGH 결과를 받은 중간관리자는 RESOURCE #0의 완료를 추가 barrier로 만들지 않고 현재 전달된 WORK/QA/HIGH 결과와 RESOURCE의 현재 상태를 그대로 취합한다.
-⑧ GENERAL WORK와 QA/HIGH 흐름이 끝나고 Git 처리를 마치면 HQ에 반드시 최종 보고한다. RESOURCE #0이 PENDING이면 그 현재 상태만 보고하며 완료를 기다리지 않는다.
-⑨ HQ 최종 입력에는 현재 마일스톤의 의미 결과, 아직 해결되지 않은 문제, RESOURCE 현재 상태, Git 결과와 중간관리자 최종 보고만 전달한다. WORK/HIGH의 changedPaths와 초기·현재 dirty 전체 목록은 Worker 내부 기계 상태로 유지하고 HQ에 반복 주입하지 않는다.
-⑩ 이전 마일스톤에서 이미 종결된 세부 변경·성공 로그는 다음 HQ 보고에 누적하지 않는다. 현재 판단에 계속 영향을 주는 미해결 사실만 승계한다.
+① HQ WORK 응답을 받으면 Worker가 기계적으로 파싱하고 MANAGER 호출 없이 GENERAL WORK를 즉시 배분한다.
+② 모든 실행 가능한 GENERAL WORK는 같은 마일스톤 안에서 가능한 범위까지 병렬 실행한다.
+③ RESOURCE #0은 독립 sidecar로 실행하며 GENERAL WORK, build, QA, HIGH 또는 Git을 기다리게 하지 않는다. PENDING은 실패가 아니다.
+④ TEST=ON인 WORK가 하나 이상 있으면 GENERAL WORK 종료 후 Worker가 마일스톤 entrypoint를 기계적으로 build한다.
+⑤ build가 성공하면 QA를 호출한다.
+⑥ build가 실패하면 Worker는 오류를 해석하지 않고 build 실패 로그와 정확한 문구 `빌드 실패를 수정해주세요`를 포함한 단일 복구 WORK를 생성한다.
+⑦ 복구 WORK는 현재 마일스톤의 쓰기 가능한 WRITE_PATH 합집합 안에서만 작업한다. 복구 WORK 종료 후 Worker가 같은 build를 다시 수행한다.
+⑧ build 복구는 최대 2회다. 두 번의 복구 뒤에도 build가 실패하면 BUILD_FAILED_FINAL로 확정하고 QA와 HIGH를 호출하지 않는다.
+⑨ TEST=OFF만 있는 마일스톤은 build, QA, HIGH를 모두 생략한다.
+⑩ build 성공 후 QA가 문제없음 결과를 반환하면 HIGH를 생략한다.
+⑪ QA가 문제 결과를 반환한 경우에만 HIGH를 호출한다.
+⑫ HIGH 종료 후에는 HIGH 수정 여부와 관계없이 추가 WORK, build, QA 또는 HIGH 반복을 만들지 않는다.
+⑬ 모든 종료 경로에서 READ_ONLY 정책이 아닌 한 Worker가 현재 마일스톤 변경을 main에 강제 commit·push한다.
 
-제5조 (RESOURCE)
+제5조 (Build와 복구 WORK)
 
-① RESOURCE Web transport는 현재 IMAGE 생성 경로를 사용하며 GPTWEB에 고정한다.
-② RESOURCE 결과는 먼저 `<project-root>/temp/Resource`에 저장하고 작업 이력을 남긴다.
-③ RESOURCE가 완료되어 프로젝트에 반영할 때는 복사본을 남기지 않고 HQ가 지정한 최종 프로젝트 경로로 move한다.
-④ 최종 목적지가 HQ가 지정한 targetPath이면 현재 RESOURCE 작업이 우선하며 기존 파일이 있어도 최종 결과로 덮어쓴다.
-⑤ RESOURCE 결과와 보고는 현재 마일스톤의 독립 sidecar 상태로 취급한다. 완료된 경우 결과를 전달하고, 아직 진행 중이면 PENDING 상태를 전달한다.
-⑥ RESOURCE #0은 GENERAL WORK 완료 barrier, QA 진입, HIGH 진입과 최종 통합을 차단하지 않는다. PENDING은 실패가 아니다.
-⑦ RESOURCE sidecar는 다른 역할의 진행과 무관하게 자신이 종료되는 시점에 COMPLETED 또는 BLOCKED 계열 terminal 결과를 작업 이력에 정확히 한 번 남겨야 한다. timeout, 예외와 사용자 취소도 terminal 결과다.
-⑧ RESOURCE 실패를 다른 임의 생성 경로로 자동 우회하지 않는다.
+① build 명령은 AI가 생성하지 않는다. Worker가 entrypoint와 지원되는 프로젝트 형식으로부터 기계적으로 결정한다.
+② .NET entrypoint가 .csproj이면 해당 프로젝트를 build하고 Worker 런타임 결과는 프로젝트 루트 `bin`에 둔다.
+③ build 실패 로그는 복구 WORK에 원문을 전달하되 Worker가 오류 원인, 수정 파일 또는 해결책을 판단하지 않는다.
+④ 복구 WORK의 프롬프트에는 최소한 마일스톤 목표, 허용 WRITE_PATH, `빌드 실패를 수정해주세요`, 마지막 build 실패 로그를 포함한다.
+⑤ WORK와 QA는 build·restore·test·run·publish를 임의로 수행하지 않는다. build는 Worker 기계 단계 소유다.
+⑥ build 결과물, temp, .projecthub는 런타임 Git 제외영역으로 관리하고 tracked .gitignore를 Worker가 자동 수정하지 않는다.
 
-제6조 (Build, Run, Publish와 프로세스)
+제6조 (QA)
 
-① build·run·publish의 의미적 수행과 완료 판단은 중간관리자의 책임이다. Worker는 중간관리자가 요청한 기계 실행과 프로세스 제어를 수행한다.
-② HQ는 QA가 확인해야 할 실행파일 경로나 프로젝트 entrypoint를 마일스톤 설계에 미리 지정할 수 있고, 중간관리자는 QA 전에 해당 실행 대상을 준비한다.
-③ build·publish 최종 결과는 `<project-root>/bin`에 두고 가장 최근 상태만 유지한다. 실행별·시점별 결과를 별도 영구 경로에 누적하지 않는다.
-④ `.projecthub/artifacts` 같은 별도 게시 artifact 저장소를 사용하지 않는다.
-⑤ `bin/`, `temp/`, `.projecthub/`는 ProjectHub 런타임 Git 제외영역으로 사용한다. Worker는 이를 위해 tracked `.gitignore`를 자동 수정하지 않고 저장소 로컬 `.git/info/exclude`를 사용한다.
-⑥ 결과 파일의 최신 변경 시각 같은 기계 사실은 필요 시 참고할 수 있으나 Worker가 제품 품질을 의미적으로 판정하지 않는다.
-⑦ 역할 또는 build·run·QA가 시작한 외부 실행 프로세스는 해당 보고 시점에 종료되어 있어야 한다. 남아 있으면 Worker가 관리하는 프로세스 tree를 강제 종료하는 것을 원칙으로 한다.
-⑧ ProjectHub/Worker 프로세스 자신은 child Job Object에 넣지 않고, Worker가 관리하는 외부 프로세스는 KILL_ON_JOB_CLOSE 경계에 연결한다.
+① QA는 build 성공 후 TEST가 필요한 경우에만 호출한다.
+② QA는 마일스톤 목표와 완료된 WORK 결과를 기준으로 준비된 최신 실행 대상을 실제로 실행·조작하고 사용자 관점의 동작만 확인한다.
+③ QA는 build, restore, publish, compile 또는 빌드를 유발하는 프로젝트 도구 명령을 수행하지 않는다.
+④ QA는 소스·설계·정적 의존성을 판정하거나 프로젝트 파일을 수정하지 않는다.
+⑤ QA 결과 status는 `passed` 또는 `issue`만 사용한다.
+⑥ `passed`는 확인한 범위에서 문제를 발견하지 않았다는 뜻이며 즉시 HIGH를 생략한다.
+⑦ 접근 실패, 실행 실패, 재현 오류 또는 동작 문제는 `issue`로 보고하고 관찰 사실을 issues에 기록한다.
 
 제7조 (HIGH)
 
-① HIGH는 일반 WORK보다 높은 파일·도구·실행 권한으로 현재 마일스톤을 조사할 수 있다.
-② HIGH는 필요하면 프로젝트 파일을 직접 수정하여 마일스톤 문제를 보완할 수 있다.
-③ HIGH는 HQ 세부설계, WORK/RESOURCE 결과, QA 결과가 있는 경우 그 결과와 실제 프로젝트 상태를 함께 검토한다.
-④ HIGH는 HQ의 설계를 다른 목표로 바꾸거나 다음 마일스톤을 결정하지 않는다.
-⑤ HIGH는 QA를 호출·재호출하거나 QA 필요 여부를 판단하지 않는다.
-⑥ HIGH는 수행한 조사, 직접 수정, 남은 문제와 현재 검증 결과를 중간관리자에게 보고한다.
+① HIGH는 QA가 `issue`를 반환한 경우에만 호출한다.
+② HIGH는 일반 WORK보다 높은 파일·도구·실행 권한으로 QA 문제와 실제 프로젝트 상태를 조사한다.
+③ HIGH는 필요하면 현재 마일스톤 범위의 일반 소스·설정 파일을 직접 생성·수정·삭제할 수 있다.
+④ HIGH는 RESOURCE를 생성·편집·대체하지 않고 Git commit·push·branch 변경을 수행하지 않는다.
+⑤ HIGH는 다음 마일스톤, QA 재호출, 추가 WORK 또는 재검증을 요청하지 않는다.
+⑥ HIGH는 수행한 조사, 직접 수정, 해결하지 못한 문제와 최종 상태를 RESULT로 요약한다.
+⑦ HIGH 종료 후 Worker는 추가 검증 없이 Git finalize로 이동한다.
 
 제8조 (Git)
 
-① Git 저장소는 ProjectHub 작업의 필수 전제다. 저장소가 없고 HQ가 초기화를 명시한 경우 Worker가 준비한다. origin이 없거나 push가 불가능한 것은 마일스톤 실행을 막지 않고 Git 결과에 사실대로 보고한다.
-② ProjectHub가 사용하는 유일한 작업 branch는 `main`이다. AUTO, master, feature/*, projecthub/*, checkpoint, integration 또는 그 밖의 branch를 작업 대상으로 인정하지 않는다.
-③ 새 저장소는 `git init -b main`으로 초기화한다. 호환성 fallback이 필요하더라도 최종 HEAD는 반드시 `refs/heads/main`이어야 하며 다른 branch 이름을 허용하지 않는다.
-④ 기존 저장소에서 local main이 있으면 main으로 전환하고, local main은 없지만 origin/main이 있으면 origin/main을 추적하는 local main만 준비한다. local/remote main이 모두 없으면 현재 branch 이름을 main으로 변경하여 수렴시킨다. main으로 수렴하지 못하면 PAUSE하며 다른 branch에서 작업하지 않는다.
-⑤ HQ, 사용자 입력 또는 다른 역할이 main 이외의 branch를 지정해도 실행하지 않는다. 마일스톤 계약 단계에서 오류로 처리한다.
-⑥ HQ와 Worker가 원격 Git 상태를 참조할 때 작업 기준은 오직 `origin/main`이다. `origin/HEAD`, GitHub UI의 기본 branch 표시 또는 다른 원격 branch를 작업 대상 추론에 사용하지 않는다.
-⑦ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push는 Worker가 main에 대해서만 기계적으로 수행한다. 단 POLICY가 READ_ONLY_NO_FILE_CHANGES이면 GENERAL WORK Git barrier와 최종 commit·push를 모두 생략하고 SKIPPED_READ_ONLY로 기록한다.
-⑧ WorkItem별 별도 branch, checkpoint branch, Integration branch와 별도 원격 result branch를 생성하거나 사용하지 않는다.
-⑨ 마일스톤 종료 시 Worker는 HQ가 지정한 WRITE_PATH와 RESOURCE targetPath, HIGH가 명시한 CHANGED_PATH 안에서 현재 마일스톤 변경목록에 기록된 생성·수정·삭제만 stage하여 main에 하나의 마일스톤 commit을 만든다. 지정되지 않은 경로는 dirty여도 stage·commit하지 않는다. 프로젝트 전체를 무조건 stage하지 않는다.
-⑩ commit 또는 push 문제가 있으면 main에 한해서 fetch/rebase와 재시도를 수행할 수 있다. 다른 branch로 우회하거나 다른 branch에 push하지 않는다.
-⑪ 원격 서비스 정책, 권한, 네트워크 또는 실제 Git 제약 때문에 main push가 불가능하거나 반복 해결에 실패한 경우 현재 commit SHA, 로컬/원격 상태와 실패 사실을 HQ에 보고한다.
-⑫ push 성공 여부와 무관하게 마일스톤의 모든 작업이 끝났다면 HQ 최종 보고는 생략하지 않는다.
+① ProjectHub의 유일한 작업 branch는 `main`이다. 다른 branch를 작업 대상으로 인정하지 않는다.
+② 원격 기준은 오직 `origin/main`이다.
+③ WORK, RESOURCE, QA와 HIGH는 Git commit·push를 수행하지 않는다.
+④ GENERAL WORK 종료 직후 중간 commit/push barrier를 만들지 않는다.
+⑤ 마일스톤의 build/복구/QA/HIGH 분기가 모두 종료된 뒤 Worker가 현재 마일스톤 변경을 main에 한 번 강제 commit·push한다.
+⑥ HIGH가 수정한 파일도 현재 마일스톤 변경목록에 포함해 같은 final commit 대상으로 처리한다.
+⑦ READ_ONLY_NO_FILE_CHANGES이면 commit·push를 생략하고 SKIPPED_READ_ONLY로 기록한다.
+⑧ push 문제는 main에 한해서 처리하며 다른 branch로 우회하지 않는다.
+⑨ Git 실패 여부와 관계없이 HQ 최종 보고는 생략하지 않는다.
 
-제9조 (보고과 상태)
+제9조 (HQ 최종 보고)
 
-① WORK, RESOURCE, QA와 HIGH의 보고는 Worker가 의미적으로 다시 작성하지 않고 필요한 기계 메타데이터와 함께 보존한다.
-② 현재 마일스톤 임시정보에는 최소한 HQ 지시, HQ 세부설계, 현재 마일스톤 변경목록, WorkItem/RESOURCE 결과, 최신 QA 결과와 최신 HIGH 결과를 둘 수 있다.
-③ QA와 HIGH의 과거 검증 cycle 전체를 영구 이력으로 누적하는 것을 기본으로 하지 않는다. 장기적으로 필요한 사실은 프로젝트 문서나 HQ 관제 맥락에서 유지한다.
-④ 진행 중 마일스톤의 복잡한 snapshot·rollback을 필수로 두지 않는다. 장애 후 상태가 애매하면 HQ가 현재 로컬 상태를 보고 재수행 여부를 판단한다.
-⑤ 중간관리자의 HQ 최종 보고는 현재 마일스톤의 의미 결과, RESOURCE 현재 상태, QA/HIGH의 최종 판단, 아직 해결되지 않은 문제, commit·push 결과와 참조 가능한 commit SHA를 요약한다. 개별 파일 changedPaths, 초기 dirty 전체 목록과 이미 종결된 이전 마일스톤 세부 로그는 HQ 보고에 반복하지 않는다.
+① Worker는 AI 요약자 없이 기계적으로 HQ 보고를 작성한다.
+② HQ에는 개별 WORK 로그, 전체 build 로그, QA 성공 세부사항을 반복 주입하지 않는다.
+③ 보고에는 마일스톤 outcome, HIGH 수행결과 또는 HIGH 미실행 사유, final commit/push 결과와 현재 판단에 필요한 실패 사실만 포함한다.
+④ BUILD_FAILED_FINAL이면 HIGH_RESULT를 SKIPPED_BUILD_FAILED로 표시하고 마지막 build 실패 사실을 축약해서 전달한다.
+⑤ QA passed이면 HIGH_RESULT를 SKIPPED_QA_PASSED로 표시한다.
+⑥ TEST가 없으면 HIGH_RESULT를 SKIPPED_TEST_OFF로 표시한다.
+⑦ QA issue로 HIGH를 수행한 경우 HIGH RESULT 원문 요약을 전달한다.
+⑧ 이전 마일스톤에서 종결된 세부 로그는 다음 HQ 입력에 누적하지 않는다.
 
 제10조 (PAUSE와 사용자 개입)
 
-① 지정된 작업영역 안의 dirty 변경이나 동시 변경은 현재 작업보다 우선하지 않으며 그 이유로 PAUSE하지 않는다.
-② main으로 수렴하지 못했거나 현재 checkout이 main이 아니면 PAUSE한다. 다른 branch에서 작업을 계속하지 않는다.
-③ PAUSE 상태에서 Worker가 지정되지 않은 경로를 reset·강제 checkout·삭제하여 해결하지 않는다.
-④ 사용자가 하네스 없이 필요한 수동 조치를 수행한 뒤 재개할 수 있어야 한다.
-⑤ 사용자 파일 관리 실수나 프로젝트 자체의 잘못된 Git 설정을 모두 예측해 선제 차단하는 것을 목표로 하지 않는다.
+① main으로 수렴하지 못했거나 현재 checkout이 main이 아니면 PAUSE한다.
+② 지정 작업영역 안의 기존 dirty나 동시 변경만으로 PAUSE하지 않는다.
+③ PAUSE 상태에서 지정되지 않은 경로를 reset·강제 checkout·삭제하지 않는다.
+④ 사용자가 필요한 수동 조치를 수행한 뒤 재개할 수 있어야 한다.
 
 제11조 (UI와 설정)
 
-① UI는 HQ, #1 중간관리자, GENERAL WORK, RESOURCE, QA, HIGH와 실제 실행 상태를 표시한다.
-② HQ, #1 중간관리자, QA, HIGH와 GENERAL WORK의 Provider·모델 설정을 각각 노출한다.
-③ RESOURCE는 GPTWEB 고정으로 표시하고 Provider·모델 선택 UI를 두지 않는다.
-④ 사용하지 않는 역할이나 transport 설정 UI를 유지하지 않는다.
-⑤ 메인 창의 X 버튼은 Worker 종료가 아니라 트레이 숨김으로 동작하며 명시적 Exit만 Worker 종료를 요청한다.
+① UI는 HQ, GENERAL WORK, RESOURCE, QA, HIGH와 Worker 기계 상태를 표시한다.
+② MANAGER 역할 설정과 실행 단계를 사용자에게 노출하지 않는다.
+③ HQ, GENERAL WORK, QA, HIGH는 각각 독립 Provider·모델 설정을 사용할 수 있다.
+④ RESOURCE는 GPTWEB 고정이다.
+⑤ 메인 창의 X 버튼은 Worker 종료가 아니라 트레이 숨김으로 동작하며 명시적 Exit만 종료를 요청한다.
 
 제12조 (문자 인코딩)
 
-① Master-Polish의 한글 문서 원칙을 Worker의 역할 입력, 전송, JSON 직렬화, 보고, transcript, 상태 파일과 로그에서도 보존한다.
-② Worker가 생성하는 텍스트와 JSON의 기본 문자 인코딩은 UTF-8이며, 새 텍스트 파일은 대상 형식이 별도로 요구하지 않는 한 UTF-8 BOM 없이 기록한다.
-③ JSON의 한글과 일반 비ASCII 문자는 사람이 읽을 수 있는 실제 Unicode 문자로 직렬화한다. JSON 문법상 필요한 따옴표·역슬래시·제어문자 escaping을 제외하고 한글을 일괄적으로 `\\uXXXX` 형태로 변환하지 않는다.
-④ 역할 간 전달용 JSON, 작업 이력, transcript와 상태 파일은 동일한 Unicode JSON 직렬화 규칙을 사용한다.
-⑤ Windows PowerShell 5.1에서 텍스트 파일을 읽거나 콘솔에 출력할 때는 UTF-8을 명시한다. 필요한 경우 `[Console]::OutputEncoding`과 `$OutputEncoding`을 UTF-8로 설정하고 `Get-Content -Encoding UTF8`을 사용한다.
-⑥ 문자 디코딩 실패나 잘못된 인코딩이 의심되면 다른 코드페이지로 임의 재해석하여 정상 결과처럼 처리하지 않고 원문 보존과 오류 보고를 우선한다.
+① Worker 역할 입력, 전송, JSON, 보고, transcript, 상태 파일과 로그는 UTF-8을 기본으로 한다.
+② 새 텍스트 파일은 대상 형식이 별도로 요구하지 않는 한 UTF-8 BOM 없이 기록한다.
+③ JSON의 한글과 일반 비ASCII 문자는 실제 Unicode 문자로 직렬화하고 불필요하게 `\\uXXXX`로 변환하지 않는다.
+④ Windows PowerShell 5.1에서 텍스트를 읽거나 출력할 때 UTF-8을 명시한다.
+⑤ 문자 디코딩 실패를 다른 코드페이지로 임의 재해석하여 정상 결과처럼 처리하지 않는다.

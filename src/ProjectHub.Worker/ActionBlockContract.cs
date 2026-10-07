@@ -243,7 +243,7 @@ public static class ActionBlockContract
             case "QA":
                 ValidateResult(
                     root,
-                    new[] { "completed", "blocked" },
+                    new[] { "passed", "issue" },
                     errors,
                     out body);
                 return;
