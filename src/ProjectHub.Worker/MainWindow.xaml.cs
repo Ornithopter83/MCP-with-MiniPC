@@ -2050,6 +2050,22 @@ public partial class MainWindow : Window
             CodexConfigOverrides: codexConfigOverrides,
             BypassHookTrust: bypassHookTrust,
             BuildExecutionAllowed: roleName != "WORK"));
+
+        var executionDiagnostics = BuildCliFailureDiagnostics(result);
+        if (!string.IsNullOrWhiteSpace(executionDiagnostics))
+        {
+            RunOnUi(() =>
+                AddTaskMessage(
+                    $"{outboundRole} DETAIL",
+                    "CLI 실패 진단" +
+                    Environment.NewLine +
+                    executionDiagnostics,
+                    status: "FAILED",
+                    referenceId: historyReferenceId,
+                    includeHistory: false,
+                    workItemId: historyWorkItemId));
+        }
+
         RunOnUi(() =>
             AddTaskMessage(
                 $"{outboundRole} EXECUTION",
@@ -2071,6 +2087,82 @@ public partial class MainWindow : Window
             includeHistory: false);
         _lastActivityAt = DateTimeOffset.UtcNow;
         return result;
+    }
+
+    private static string BuildCliFailureDiagnostics(AiRoleRunResult result)
+    {
+        const int maxFailedCommands = 8;
+        const int maxCommandChars = 1200;
+        const int maxOutputChars = 4000;
+        const int maxTotalChars = 16000;
+
+        var failedCommands = result.CommandExecutions
+            .Where(execution => execution.ExitCode != 0)
+            .Take(maxFailedCommands)
+            .ToArray();
+        if (failedCommands.Length == 0 && result.ExitCode == 0)
+            return string.Empty;
+
+        var builder = new StringBuilder();
+        foreach (var execution in failedCommands)
+        {
+            AppendCliDiagnosticBlock(
+                builder,
+                $"COMMAND EXIT {execution.ExitCode}",
+                TruncateCliDiagnostic(execution.Command, maxCommandChars));
+
+            if (!string.IsNullOrWhiteSpace(execution.Output))
+            {
+                AppendCliDiagnosticBlock(
+                    builder,
+                    "COMMAND OUTPUT",
+                    TruncateCliDiagnostic(execution.Output, maxOutputChars));
+            }
+
+            if (builder.Length >= maxTotalChars)
+                break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.StandardError) &&
+            builder.Length < maxTotalChars)
+        {
+            AppendCliDiagnosticBlock(
+                builder,
+                "RUNNER STDERR",
+                TruncateCliDiagnostic(result.StandardError, maxOutputChars));
+        }
+
+        if (builder.Length <= maxTotalChars)
+            return builder.ToString().Trim();
+
+        return builder
+            .ToString(0, maxTotalChars)
+            .TrimEnd() +
+            Environment.NewLine +
+            "...[diagnostic truncated]";
+    }
+
+    private static void AppendCliDiagnosticBlock(
+        StringBuilder builder,
+        string title,
+        string content)
+    {
+        if (builder.Length > 0)
+            builder.AppendLine();
+
+        builder.AppendLine(title);
+        builder.AppendLine(content);
+    }
+
+    private static string TruncateCliDiagnostic(
+        string? value,
+        int maxChars)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length <= maxChars)
+            return normalized;
+
+        return normalized[..maxChars] + "...[truncated]";
     }
 
     private void ShowCoordinatorFirstBlocked(string title, string detail)
