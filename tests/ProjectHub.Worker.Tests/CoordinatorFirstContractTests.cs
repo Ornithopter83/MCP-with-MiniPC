@@ -29,7 +29,6 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
-                    "order": 0,
                     "writePaths": ["src/A", "src/B.cs"],
                     "goal": "기능을 구현한다.",
                     "instructions": "지정 경로 안에서 구현한다.",
@@ -64,7 +63,6 @@ public sealed class CoordinatorFirstContractTests
         Assert.False(milestone.InitializeGitIfMissing);
         var work = Assert.Single(milestone.WorkItems.Values);
         Assert.Equal("10", work.Id);
-        Assert.Equal(0, work.Order);
         Assert.Equal(new[] { "src/A", "src/B.cs" }, work.WritePaths);
         Assert.Contains("\"constraints\"", work.Body);
 
@@ -201,7 +199,6 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
-                    "order": 0,
                     "writePaths": ["."],
                     "goal": "읽기 전용 확인",
                     "instructions": "파일을 바꾸지 않는다.",
@@ -340,7 +337,6 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 9,
-                    "order": 0,
                     "writePaths": ["src/Bad.cs"],
                     "goal": "예약 번호를 잘못 사용했다.",
                     "instructions": "",
@@ -382,7 +378,6 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
-                    "order": 0,
                     "writePaths": ["../outside.txt"],
                     "goal": "잘못된 경로",
                     "instructions": "",
@@ -406,15 +401,15 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void MilestoneDefinition_RequiresNonNegativeWorkOrder()
+    public void MilestoneDefinition_DoesNotRequireWorkOrder()
     {
-        const string missingOrder = """
+        const string message = """
             [ACTION=WORK]
             {
               "milestone": {
-                "id": "ORDER_REQUIRED",
+                "id": "NO_ORDER_REQUIRED",
                 "branch": "main",
-                "goal": "순서 계약 검증",
+                "goal": "독립 작업 계약 검증",
                 "entrypoint": null,
                 "qa": {
                   "required": false,
@@ -424,34 +419,6 @@ public sealed class CoordinatorFirstContractTests
                 "workItems": [
                   {
                     "id": 10,
-                    "writePaths": ["src/A"],
-                    "goal": "A",
-                    "instructions": "A",
-                    "completionCriteria": []
-                  }
-                ],
-                "completionCriteria": [],
-                "validation": []
-              }
-            }
-            """;
-        const string negativeOrder = """
-            [ACTION=WORK]
-            {
-              "milestone": {
-                "id": "ORDER_NEGATIVE",
-                "branch": "main",
-                "goal": "순서 계약 검증",
-                "entrypoint": null,
-                "qa": {
-                  "required": false,
-                  "instructions": ""
-                },
-                "resource": null,
-                "workItems": [
-                  {
-                    "id": 10,
-                    "order": -1,
                     "writePaths": ["src/A"],
                     "goal": "A",
                     "instructions": "A",
@@ -464,16 +431,56 @@ public sealed class CoordinatorFirstContractTests
             }
             """;
 
-        foreach (var message in new[] { missingOrder, negativeOrder })
-        {
-            var parsed = ActionBlockContract.ParseHq(message);
-            Assert.False(MilestoneDefinitionContract.TryBuild(
-                message,
-                parsed,
-                out _,
-                out var error));
-            Assert.Contains("ORDER_INVALID", error);
-        }
+        var parsed = ActionBlockContract.ParseHq(message);
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            message,
+            parsed,
+            out var milestone,
+            out var error),
+            error);
+        Assert.NotNull(milestone);
+        Assert.Single(milestone!.WorkItems);
+    }
+
+    [Fact]
+    public void MilestoneDefinition_RejectsLegacyWorkOrder()
+    {
+        const string message = """
+            [ACTION=WORK]
+            {
+              "milestone": {
+                "id": "ORDER_FORBIDDEN",
+                "branch": "main",
+                "goal": "구형 순서 필드 거부",
+                "entrypoint": null,
+                "qa": {
+                  "required": false,
+                  "instructions": ""
+                },
+                "resource": null,
+                "workItems": [
+                  {
+                    "id": 10,
+                    "order": 0,
+                    "writePaths": ["src/A"],
+                    "goal": "A",
+                    "instructions": "A",
+                    "completionCriteria": []
+                  }
+                ],
+                "completionCriteria": [],
+                "validation": []
+              }
+            }
+            """;
+
+        var parsed = ActionBlockContract.ParseHq(message);
+        Assert.False(MilestoneDefinitionContract.TryBuild(
+            message,
+            parsed,
+            out _,
+            out var error));
+        Assert.Contains("ORDER_FORBIDDEN", error);
     }
 
     [Fact]
@@ -703,7 +710,10 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("MILESTONE: M1", hq);
         Assert.Contains("BRANCH: main", hq);
         Assert.Contains("@@WORK 10", hq);
-        Assert.Contains("ORDER: 0", hq);
+        Assert.DoesNotContain("ORDER:", hq);
+        Assert.Contains("우선순위 0", hq);
+        Assert.Contains("우선순위 1", hq);
+        Assert.Contains("우선순위 2", hq);
         Assert.Contains("READ_ONLY: NO", hq);
         Assert.Contains("@@QA", hq);
         Assert.Contains("@@RESOURCE 0", hq);
@@ -891,7 +901,6 @@ public sealed class CoordinatorFirstContractTests
             플레이어 동작을 보완한다.
 
             @@WORK 10
-            ORDER: 0
             READ_ONLY: NO
             WRITE_PATH: scripts/player
 

@@ -23,7 +23,6 @@ GIT_INIT: NO
 현재 마일스톤 전체 목표
 
 @@WORK 10
-ORDER: 0
 READ_ONLY: NO
 WRITE_PATH: src/Feature
 
@@ -61,11 +60,16 @@ white-box 검토 지시
 ① MILESTONE, BRANCH, POLICY는 필수다. BRANCH는 main만 사용한다.
 ② POLICY는 DEFAULT 또는 READ_ONLY_NO_FILE_CHANGES다.
 ③ ENTRYPOINT가 없으면 NONE, GIT_INIT은 YES/NO다.
-④ 각 @@WORK의 id는 10 이상의 정수다. ORDER는 0 이상의 정수이며 작은 값부터 실행하고 같은 ORDER는 병렬이다.
-⑤ READ_ONLY는 YES/NO다. NO이면 WRITE_PATH를 하나 이상 둔다. YES이면 WRITE_PATH를 생략할 수 있다.
-⑥ 같은 ORDER의 쓰기 WORK는 WRITE_PATH가 겹치지 않아야 한다. 선행 결과가 필요하면 더 큰 ORDER를 사용한다.
-⑦ WORK별 긴 내용은 해당 @@WORK 뒤의 @@WORK_GOAL, @@WORK_INSTRUCTIONS, @@WORK_COMPLETION에 둔다.
-⑧ build·run·publish와 bin/obj/dist 같은 실행 산출물 생성은 GENERAL WORK 책임이나 WRITE_PATH로 배정하지 않는다.
+④ 각 @@WORK의 id는 10 이상의 정수다.
+⑤ WORKITEM 분할은 다음 우선순위를 따른다.
+- 우선순위 0 — 독립 작업 분리: 서로 독립적으로 완결 가능한 작업은 가능한 한 별도의 WORKITEM으로 분리한다.
+- 우선순위 1 — 이미지 생성 격리: 이미지 생성이 필요할 때는 무조건 전용 WORKITEM인 #0 RESOURCE를 통해 이미지 생성 작업만 수행한다. 생성된 이미지를 사용하는 후행 작업은 반드시 이후 milestone에서 수행한다.
+- 우선순위 2 — 종속 작업 결합: 한 작업이 다른 작업의 분석, 판단, 결과 또는 산출물을 필요로 하는 경우 하나의 WORKITEM으로 처리한다.
+⑥ 같은 milestone의 GENERAL WORK 사이에는 실행 순서 또는 결과 dependency가 존재해서는 안 된다.
+⑦ READ_ONLY는 YES/NO다. NO이면 WRITE_PATH를 하나 이상 둔다. YES이면 WRITE_PATH를 생략할 수 있다.
+⑧ 동시에 실행되는 쓰기 WORK의 WRITE_PATH는 겹치지 않아야 한다.
+⑨ WORK별 긴 내용은 해당 @@WORK 뒤의 @@WORK_GOAL, @@WORK_INSTRUCTIONS, @@WORK_COMPLETION에 둔다.
+⑩ build·run·publish와 bin/obj/dist 같은 실행 산출물 생성은 GENERAL WORK 책임이나 WRITE_PATH로 배정하지 않는다.
 
 제4조 (QA·RESOURCE·기계 지시)
 

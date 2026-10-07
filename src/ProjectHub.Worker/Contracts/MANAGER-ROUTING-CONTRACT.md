@@ -21,7 +21,7 @@
 }
 
 ② 해당 항목이 없으면 배열을 비운다.
-③ workItemIds에는 HQ가 계획한 모든 GENERAL WORK를 넣고 order를 변경하지 않는다. RESOURCE는 포함하지 않는다.
+③ workItemIds에는 HQ가 계획한 모든 GENERAL WORK를 넣는다. RESOURCE는 포함하지 않는다.
 ④ mechanical은 BUILD, RUN, PUBLISH만 사용한다. BUILD/PUBLISH는 프로젝트 루트 bin에 최신 결과를 만들고 RUN은 검증용 실행 준비에만 사용한다.
 ⑤ 사용자 직접 개입 없이는 진행할 수 없으면 `[ACTION=PAUSE]`와 `{"message":"..."}`를 사용한다.
 

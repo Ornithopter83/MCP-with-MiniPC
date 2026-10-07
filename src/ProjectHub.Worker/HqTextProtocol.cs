@@ -44,7 +44,6 @@ internal static class HqTextProtocol
     private sealed class WorkBuilder
     {
         public required string Id { get; init; }
-        public int? Order { get; set; }
         public bool? ReadOnly { get; set; }
         public List<string> WritePaths { get; } = new();
         public string Goal { get; set; } = string.Empty;
@@ -206,10 +205,8 @@ internal static class HqTextProtocol
                         errors.Add("WORK.ID");
 
                     var fields = ReadFields(section.Content.Split('\n'));
-                    if (int.TryParse(One(fields, "ORDER"), out var order) && order >= 0)
-                        currentWork.Order = order;
-                    else
-                        errors.Add($"WORK {currentWork.Id}.ORDER");
+                    if (fields.ContainsKey("ORDER"))
+                        errors.Add($"WORK {currentWork.Id}.ORDER_FORBIDDEN");
 
                     if (TryReadBool(One(fields, "READ_ONLY"), out var readOnly))
                         currentWork.ReadOnly = readOnly;
@@ -373,7 +370,6 @@ internal static class HqTextProtocol
             ["workItems"] = works.Select(work => new Dictionary<string, object?>
             {
                 ["id"] = int.Parse(work.Id),
-                ["order"] = work.Order!.Value,
                 ["readOnly"] = work.ReadOnly!.Value,
                 ["writePaths"] = work.WritePaths
                     .Distinct(StringComparer.OrdinalIgnoreCase)

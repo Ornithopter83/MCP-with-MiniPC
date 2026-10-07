@@ -6,7 +6,6 @@ namespace ProjectHub.Worker;
 
 internal sealed record MilestoneWorkDefinition(
     string Id,
-    int Order,
     IReadOnlyList<string> WritePaths,
     bool ReadOnly,
     string Body,
@@ -232,12 +231,9 @@ internal static class MilestoneDefinitionContract
                     return false;
                 }
 
-                if (!workJson.TryGetProperty("order", out var workOrderJson) ||
-                    workOrderJson.ValueKind != JsonValueKind.Number ||
-                    !workOrderJson.TryGetInt32(out var workOrder) ||
-                    workOrder < 0)
+                if (workJson.TryGetProperty("order", out _))
                 {
-                    error = $"WORK {workId}: ORDER_INVALID";
+                    error = $"WORK {workId}: ORDER_FORBIDDEN";
                     return false;
                 }
 
@@ -303,7 +299,6 @@ internal static class MilestoneDefinitionContract
                 var body = workJson.GetRawText();
                 workItems[workId] = new(
                     workId,
-                    workOrder,
                     writePaths,
                     workReadOnly,
                     body,
@@ -486,12 +481,10 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine("PLANNED_WORK_JSON:");
         builder.AppendLine(JsonSerializer.Serialize(
             milestone.WorkItems.Values
-                .OrderBy(work => work.Order)
-                .ThenBy(work => int.TryParse(work.Id, out var number) ? number : int.MaxValue)
+                .OrderBy(work => int.TryParse(work.Id, out var number) ? number : int.MaxValue)
                 .Select(work => new
                 {
                     id = work.Id,
-                    order = work.Order,
                     readOnly = work.ReadOnly,
                     writePaths = work.WritePaths
                 })));

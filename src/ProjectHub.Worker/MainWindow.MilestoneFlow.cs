@@ -800,13 +800,10 @@ public partial class MainWindow
 
             foreach (var workId in runnableWorkIds)
             {
-                var definition = milestone.WorkItems[workId];
                 AddDataFlowHistory(
                     WorkerRoleState.Work,
                     "Worker 분배",
-                    $"WORK_ITEM_ID: {workId}" +
-                    Environment.NewLine +
-                    $"ORDER: {definition.Order}",
+                    $"WORK_ITEM_ID: {workId}",
                     status: "DISPATCHED",
                     workItemId: workId,
                     persistenceSource: "WORKER DISPATCH");
@@ -814,120 +811,111 @@ public partial class MainWindow
 
             if (runnableWorkIds.Length > 0)
             {
-                var orderedWaves = runnableWorkIds
+                var runnableDefinitions = runnableWorkIds
                     .Select(id => milestone.WorkItems[id])
-                    .GroupBy(work => work.Order)
-                    .OrderBy(group => group.Key)
                     .ToArray();
+                var runnableScopes = runnableDefinitions
+                    .Select(work => work.WritePaths)
+                    .ToArray();
+                var allRunnableScopes = runnableScopes
+                    .SelectMany(scopes => scopes)
+                    .ToArray();
+                var overlappingScopes =
+                    MilestoneMechanicalExecutor.HasOverlappingScopes(
+                        runnableScopes);
+                var maxConcurrency = overlappingScopes
+                    ? 1
+                    : Math.Clamp(
+                        _targetSettings.EffectiveMaxConcurrentWork,
+                        WorkerTargetConfiguration.MinimumConcurrentWork,
+                        WorkerTargetConfiguration.MaximumConcurrentWork);
 
-                foreach (var wave in orderedWaves)
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    $"GENERAL WORK 병렬 묶음 시작 · {runnableWorkIds.Length}건",
+                    status: "PROCESSING",
+                    persistenceSource: "WORKER ACTION");
+
+                if (overlappingScopes)
                 {
-                    var waveWorkIds = wave
-                        .Select(work => work.Id)
-                        .ToArray();
-                    var runnableScopes = wave
-                        .Select(work => work.WritePaths)
-                        .ToArray();
-                    var allRunnableScopes = runnableScopes
-                        .SelectMany(scopes => scopes)
-                        .ToArray();
-                    var overlappingScopes =
-                        MilestoneMechanicalExecutor.HasOverlappingScopes(
-                            runnableScopes);
-                    var maxConcurrency = overlappingScopes
-                        ? 1
-                        : Math.Clamp(
-                            _targetSettings.EffectiveMaxConcurrentWork,
-                            WorkerTargetConfiguration.MinimumConcurrentWork,
-                            WorkerTargetConfiguration.MaximumConcurrentWork);
-
-                    AddDataFlowHistory(
-                        WorkerRoleState.Unknown,
-                        "Worker 작업",
-                        $"WORK ORDER {wave.Key} 시작 · {waveWorkIds.Length}건",
-                        status: "PROCESSING",
-                        persistenceSource: "WORKER ACTION");
-
-                    if (overlappingScopes)
-                    {
-                        dispatchNotes.Add(
-                            $"WORK_ORDER_{wave.Key}_CONCURRENCY_REDUCED: 동일/상위·하위 WRITE_PATH가 겹쳐 순차 실행합니다.");
-                    }
-
-                    var workBatchBefore =
-                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                            workingDirectory,
-                            cancellationToken);
-                    using var gate = new SemaphoreSlim(maxConcurrency);
-                    var workTasks = waveWorkIds.Select(async workId =>
-                    {
-                        await gate.WaitAsync(cancellationToken);
-                        try
-                        {
-                            return await ExecuteMilestoneWorkAsync(
-                                jobId,
-                                workingDirectory,
-                                milestone,
-                                workId,
-                                implementer,
-                                cancellationToken);
-                        }
-                        finally
-                        {
-                            gate.Release();
-                        }
-                    }).ToArray();
-
-                    RunOnUi(() =>
-                        ImplementerWorkGaugeText.Text =
-                            FormatActiveWorkItemGauge(
-                                Math.Min(waveWorkIds.Length, maxConcurrency)));
-
-                    var completed = await Task.WhenAll(workTasks);
-
-                    RunOnUi(() =>
-                        ImplementerWorkGaugeText.Text =
-                            FormatActiveWorkItemGauge(0));
-
-                    foreach (var item in completed)
-                        workReports[item.Id] = item.Report;
-
-                    var workBatchAfter =
-                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                            workingDirectory,
-                            cancellationToken);
-                    var observedWorkChanges =
-                        MilestoneMechanicalExecutor.DiffChangeStates(
-                            workBatchBefore,
-                            workBatchAfter);
-
-                    foreach (var changedPath in observedWorkChanges)
-                    {
-                        if (MilestoneMechanicalExecutor.IsPathWithinScopes(
-                                changedPath,
-                                allRunnableScopes))
-                        {
-                            milestoneChangedPaths.Add(changedPath);
-                        }
-                    }
-
-                    if (observedWorkChanges.Count > 0)
-                    {
-                        dispatchNotes.Add(
-                            $"WORK_ORDER_{wave.Key}_CHANGED_PATHS:" +
-                            Environment.NewLine +
-                            string.Join(
-                                Environment.NewLine,
-                                observedWorkChanges.Select(path => "- " + path)));
-                    }
-
-                    AddDataFlowHistory(
-                        WorkerRoleState.Unknown,
-                        "Worker 작업",
-                        $"WORK ORDER {wave.Key} 종료 · {completed.Length}/{waveWorkIds.Length} terminal",
-                        status: "COMPLETED",
-                        persistenceSource: "WORKER ACTION");
+                    dispatchNotes.Add(
+                        "WORK_CONCURRENCY_REDUCED: 동일/상위·하위 WRITE_PATH가 겹쳐 순차 실행합니다.");
                 }
+
+                var workBatchBefore =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory,
+                        cancellationToken);
+                using var gate = new SemaphoreSlim(maxConcurrency);
+                var workTasks = runnableWorkIds.Select(async workId =>
+                {
+                    await gate.WaitAsync(cancellationToken);
+                    try
+                    {
+                        return await ExecuteMilestoneWorkAsync(
+                            jobId,
+                            workingDirectory,
+                            milestone,
+                            workId,
+                            implementer,
+                            cancellationToken);
+                    }
+                    finally
+                    {
+                        gate.Release();
+                    }
+                }).ToArray();
+
+                RunOnUi(() =>
+                    ImplementerWorkGaugeText.Text =
+                        FormatActiveWorkItemGauge(
+                            Math.Min(runnableWorkIds.Length, maxConcurrency)));
+
+                var completed = await Task.WhenAll(workTasks);
+
+                RunOnUi(() =>
+                    ImplementerWorkGaugeText.Text =
+                        FormatActiveWorkItemGauge(0));
+
+                foreach (var item in completed)
+                    workReports[item.Id] = item.Report;
+
+                var workBatchAfter =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory,
+                        cancellationToken);
+                var observedWorkChanges =
+                    MilestoneMechanicalExecutor.DiffChangeStates(
+                        workBatchBefore,
+                        workBatchAfter);
+
+                foreach (var changedPath in observedWorkChanges)
+                {
+                    if (MilestoneMechanicalExecutor.IsPathWithinScopes(
+                            changedPath,
+                            allRunnableScopes))
+                    {
+                        milestoneChangedPaths.Add(changedPath);
+                    }
+                }
+
+                if (observedWorkChanges.Count > 0)
+                {
+                    dispatchNotes.Add(
+                        "WORK_CHANGED_PATHS:" +
+                        Environment.NewLine +
+                        string.Join(
+                            Environment.NewLine,
+                            observedWorkChanges.Select(path => "- " + path)));
+                }
+
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    $"GENERAL WORK 병렬 묶음 종료 · {completed.Length}/{runnableWorkIds.Length} terminal",
+                    status: "COMPLETED",
+                    persistenceSource: "WORKER ACTION");
             }
 
             foreach (var work in milestone.WorkItems.Values)
@@ -1442,15 +1430,11 @@ public partial class MainWindow
             .Select(resource => "RESOURCE-" + resource.Id)
             .ToArray();
         var validationNode = milestone.QaReserved ? "QA" : "HIGH";
-        var workWaves = milestone.WorkItems.Values
-            .GroupBy(work => work.Order)
-            .OrderBy(group => group.Key)
-            .Select(group => group
-                .Select(work => "WORK-" + work.Id)
-                .ToArray())
+        var workNodes = milestone.WorkItems.Values
+            .Select(work => "WORK-" + work.Id)
             .ToArray();
 
-        if (workWaves.Length == 0)
+        if (workNodes.Length == 0)
         {
             edges.Add(new(
                 "MANAGER-DISPATCH",
@@ -1459,30 +1443,12 @@ public partial class MainWindow
         }
         else
         {
-            foreach (var workNode in workWaves[0])
+            foreach (var workNode in workNodes)
             {
                 edges.Add(new(
                     "MANAGER-DISPATCH",
                     workNode,
-                    "DISPATCH_ORDER"));
-            }
-
-            for (var index = 1; index < workWaves.Length; index++)
-            {
-                foreach (var previousNode in workWaves[index - 1])
-                {
-                    foreach (var currentNode in workWaves[index])
-                    {
-                        edges.Add(new(
-                            previousNode,
-                            currentNode,
-                            "ORDER_BARRIER"));
-                    }
-                }
-            }
-
-            foreach (var workNode in workWaves[^1])
-            {
+                    "DISPATCH"));
                 edges.Add(new(
                     workNode,
                     validationNode,
@@ -2475,9 +2441,9 @@ public partial class MainWindow
         Environment.NewLine +
         "Worker가 이 호출 직전에 origin/main을 fetch했다. 원격 저장소를 직접 참조하여 설계한다. 로컬 Git 명령을 사용할 수 있는 transport에서는 git log, git ls-tree, git show, git diff 등 읽기 전용 명령으로 origin/main의 실제 구조와 이력을 조사하고 현재 로컬 상태와 비교한다. Web transport에서는 위 강제 원격 저장소 URL의 main을 직접 열어 구조와 이력을 조사한다. 필요하면 git ls-remote origin main으로 원격 기준을 재확인한다." +
         Environment.NewLine +
-        "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH와 order를 명확히 지정한다." +
+        "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH를 명확히 지정한다." +
         Environment.NewLine +
-        "선행 의존성이 없는 WORK는 같은 order로 두고, 선행 결과가 필요한 WORK는 더 큰 order를 지정한다. 같은 order의 WRITE_PATH는 겹치지 않게 설계한다." +
+        "같은 milestone의 GENERAL WORK 사이에는 실행 순서나 결과 dependency를 만들지 않는다. WORKITEM 분할 판단은 HQ routing contract의 우선순위를 따른다." +
         Environment.NewLine +
         "입력 본문:" +
         Environment.NewLine +
