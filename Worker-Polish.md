@@ -38,16 +38,14 @@
 ④ 같은 사용자 작업에서 RESOURCE가 추가로 배정되면 기존 RESOURCE를 방해하지 않고 앞선 RESOURCE가 terminal이 될 때까지 직렬 대기한 뒤 실행한다.
 ⑤ RESOURCE는 결과가 준비되면 HQ가 지정한 TARGET_PATH에 스스로 반영한다.
 ⑥ 오직 사용자가 대시보드에서 새 작업을 시작할 때만 이전 사용자 작업의 미완료 RESOURCE를 cancel/abandon하고, RESOURCE 종료를 확인한 뒤 이전 temp 영역을 정리한다.
-⑦ GENERAL WORK가 blocked를 반환하면 Worker는 같은 WORKITEM에 이전 RESULT와 CLI 실패 진단을 참고 데이터로 전달하고 WORKER-SANDBOX.md의 동일 원문을 prompt에 직접 주입하여 1회만 재실행한다. 파일 attachment는 보조 수단이며 실패해도 prompt 직접 주입을 계속한다. 이 복구는 RESOURCE에는 적용하지 않는다.
-⑧ WORKER-SANDBOX.md 복구 준비 자체가 실패하면 해당 WORKITEM만 blocked로 확정하고 마일스톤 전체 예외로 확장하지 않는다.
-⑨ 위 재실행 후에도 blocked이거나 역할 실행이 timeout이면 QA와 HIGH를 생략하고 Git finalize 단계로 진행한다.
-⑩ 모든 GENERAL WORK가 completed이고 TEST=OFF만 있으면 Git finalize 단계로 진행한다.
-⑪ 모든 GENERAL WORK가 completed이고 TEST=ON이 하나 이상 있으면 QA를 한 번 호출한다.
-⑫ QA passed이면 Git finalize 단계로 진행한다.
-⑬ QA issue이면 HIGH를 한 번 호출한 뒤 Git finalize 단계로 진행한다.
-⑭ QA blocked 또는 timeout이면 HIGH를 생략하고 Git finalize 단계로 진행한다.
-⑮ HIGH는 completed, blocked 또는 timeout 결과와 관계없이 한 번의 호출 뒤 Git finalize 단계로 진행한다.
-⑯ READ_ONLY 정책을 제외한 모든 종료 경로는 Worker의 final commit·push로 수렴한다.
+⑦ GENERAL WORK 결과 중 blocked 또는 timeout이 있으면 QA와 HIGH를 생략하고 Git finalize 단계로 진행한다.
+⑧ 모든 GENERAL WORK가 completed이고 TEST=OFF만 있으면 Git finalize 단계로 진행한다.
+⑨ 모든 GENERAL WORK가 completed이고 TEST=ON이 하나 이상 있으면 QA를 한 번 호출한다.
+⑩ QA passed이면 Git finalize 단계로 진행한다.
+⑪ QA issue이면 HIGH를 한 번 호출한 뒤 Git finalize로 진행한다.
+⑫ QA blocked 또는 timeout이면 HIGH를 생략하고 Git finalize 단계로 진행한다.
+⑬ HIGH는 completed, blocked 또는 timeout 결과와 관계없이 한 번의 호출 뒤 Git finalize 단계로 진행한다.
+⑭ READ_ONLY 정책을 제외한 모든 종료 경로는 Worker의 final commit·push로 수렴한다.
 
 제5조 (역할 응답과 복구)
 
