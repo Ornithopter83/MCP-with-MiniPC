@@ -211,7 +211,7 @@ public sealed class BridgeServer : IDisposable
         lock (_gate)
         {
             var task = _state.Tasks.FirstOrDefault(item =>
-                item.Status is "PENDING" or "CLAIMED" &&
+                (item.Status is "PENDING" or "CLAIMED") &&
                 (includeResource ||
                  (!string.Equals(
                       item.Owner,
