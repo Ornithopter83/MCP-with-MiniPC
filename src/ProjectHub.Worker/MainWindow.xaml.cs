@@ -450,7 +450,7 @@ public partial class MainWindow : Window
         _codexRunner.Dispose();
         _openCodeRunner.Dispose();
         if (_bridgeServer is not null &&
-            _bridgeServer.CancelActiveNonResourceTask(out var canceledTaskId) &&
+            _bridgeServer.CancelActiveTask(out var canceledTaskId) &&
             canceledTaskId is not null)
         {
             _userCanceledBridgeTaskIds.Add(canceledTaskId);
@@ -593,7 +593,7 @@ public partial class MainWindow : Window
         _activeTaskCts?.Cancel();
 
         if (_bridgeServer is not null &&
-            _bridgeServer.CancelActiveTask(out var canceledTaskId) &&
+            _bridgeServer.CancelActiveNonResourceTask(out var canceledTaskId) &&
             canceledTaskId is not null)
         {
             _userCanceledBridgeTaskIds.Add(canceledTaskId);
@@ -601,7 +601,7 @@ public partial class MainWindow : Window
 
         AddTaskMessage(
             "SYSTEM",
-            "사용자가 현재 작업을 완전히 취소했습니다. 기존 세션 종료와 실행기 정리를 기다립니다.",
+            "사용자가 현재 일반 실행을 취소했습니다. RESOURCE는 결과가 나오거나 새 작업을 시작할 때까지 계속 진행합니다.",
             status: "CANCELING");
         SetFollowupComposerVisible(false);
         DashboardPreflightText.Text = "기존 세션 종료를 기다리는 중입니다...";
@@ -616,7 +616,7 @@ public partial class MainWindow : Window
 
         AddTaskMessage(
             "TASK CANCELED",
-            "사용자 요청으로 작업을 취소했습니다. 중간 흐름은 작업 이력에서 확인할 수 있습니다.",
+            "사용자 요청으로 일반 실행을 취소했습니다. 진행 중 RESOURCE는 이 사용자 작업에 남아 계속 실행됩니다.",
             status: "CANCELED");
         ExportTaskTranscript();
 
@@ -636,7 +636,7 @@ public partial class MainWindow : Window
         TaskDirection.Text = "CANCELED";
         TaskTitle.Text = "사용자 요청으로 작업이 취소되었습니다.";
         ResultTitle.Text = "CANCELED";
-        ResultBody.Text = "실행기와 sidecar 정리가 끝났습니다. 중간 흐름은 작업 이력에서 확인할 수 있습니다.";
+        ResultBody.Text = "일반 실행기 정리가 끝났습니다. 진행 중 RESOURCE는 결과가 나오거나 새 작업을 시작할 때까지 계속됩니다.";
         SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
         DashboardPreflightText.Text = "취소된 작업의 중간 흐름을 확인할 수 있습니다.";
         DashboardPreflightText.Foreground =
@@ -1389,11 +1389,11 @@ public partial class MainWindow : Window
         _jobTimedOut = true;
         _activeTaskCts?.Cancel();
         _bridgeServer?.CancelActiveNonResourceTask(out _);
-        AddTaskMessage("SYSTEM", "Web 또는 Codex 응답이 30분 동안 없어 작업을 종료했습니다.");
+        AddTaskMessage("SYSTEM", "Web 또는 Codex 응답이 30분 동안 없어 일반 실행을 종료했습니다. RESOURCE는 계속 진행합니다.");
         TaskDirection.Text = "TIMEOUT";
         TaskTitle.Text = "30분 무응답으로 작업 종료";
         ResultTitle.Text = "FINISH_TIMEOUT";
-        ResultBody.Text = "Web 또는 Codex에서 30분 동안 응답이 없어 작업을 종료했습니다.";
+        ResultBody.Text = "Web 또는 Codex에서 30분 동안 응답이 없어 일반 실행을 종료했습니다. 진행 중 RESOURCE는 새 작업 전까지 계속됩니다.";
         SetFlowState(false, false, false);
         ExportTaskTranscript();
     }

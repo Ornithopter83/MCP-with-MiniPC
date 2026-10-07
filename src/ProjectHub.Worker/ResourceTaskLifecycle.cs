@@ -39,17 +39,21 @@ internal sealed class ResourceTaskLifecycle
         TaskState state;
         lock (_gate)
         {
-            if (!_states.TryGetValue(taskId, out state!))
+            if (!_states.TryGetValue(taskId, out var existing))
             {
                 state = new TaskState(taskId, workingDirectory);
                 _states.Add(taskId, state);
             }
-            else if (!PathsEqual(
-                         state.WorkingDirectory,
-                         workingDirectory))
+            else
             {
-                throw new InvalidOperationException(
-                    "RESOURCE_TASK_WORKSPACE_MISMATCH");
+                state = existing;
+                if (!PathsEqual(
+                        state.WorkingDirectory,
+                        workingDirectory))
+                {
+                    throw new InvalidOperationException(
+                        "RESOURCE_TASK_WORKSPACE_MISMATCH");
+                }
             }
 
             if (state.Cancellation.IsCancellationRequested)
