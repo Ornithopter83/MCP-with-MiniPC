@@ -24,6 +24,7 @@ public sealed class BridgeServer : IDisposable
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
+        Encoder = ProjectHubJson.WebIndentedOptions.Encoder,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
     private BridgeState _state;
@@ -968,7 +969,10 @@ public sealed class BridgeServer : IDisposable
     private void SaveState()
     {
         var temp = _statePath + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(_state, _jsonOptions), Encoding.UTF8);
+        File.WriteAllText(
+            temp,
+            JsonSerializer.Serialize(_state, _jsonOptions),
+            ProjectHubJson.Utf8NoBom);
         File.Move(temp, _statePath, true);
     }
 

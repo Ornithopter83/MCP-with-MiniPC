@@ -487,7 +487,7 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine($"PROJECT_POLICY: {(milestone.ReadOnlyNoFileChanges ? "READ_ONLY_NO_FILE_CHANGES" : "DEFAULT")}");
 
         builder.AppendLine("PLANNED_WORK_JSON:");
-        builder.AppendLine(JsonSerializer.Serialize(
+        builder.AppendLine(ProjectHubJson.Serialize(
             milestone.WorkItems.Values
                 .OrderBy(work => int.TryParse(work.Id, out var number) ? number : int.MaxValue)
                 .Select(work => new
@@ -1011,12 +1011,7 @@ internal static class MilestoneDefinitionContract
             ["issues"] = issues?.ToArray() ?? Array.Empty<string>()
         };
 
-        var json = JsonSerializer.Serialize(
-            payload,
-            new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+        var json = ProjectHubJson.SerializeIndented(payload);
 
         var prefix = string.IsNullOrWhiteSpace(gotoTarget)
             ? string.Empty

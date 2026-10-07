@@ -198,13 +198,11 @@ internal sealed class TemporaryWerPolicyLease : IDisposable
         Directory.CreateDirectory(WorkerPaths.State);
         CleanupStaleJournalTemps();
 
-        var json = JsonSerializer.Serialize(
-            journal,
-            new JsonSerializerOptions { WriteIndented = true });
+        var json = ProjectHubJson.SerializeIndented(journal);
         var tempPath = JournalPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            File.WriteAllText(tempPath, json, new UTF8Encoding(false));
+            File.WriteAllText(tempPath, json, ProjectHubJson.Utf8NoBom);
             File.Move(tempPath, JournalPath, overwrite: true);
         }
         finally
@@ -273,13 +271,18 @@ internal sealed class TemporaryWerPolicyLease : IDisposable
             return new RegistryValueBackup(
                 Exists: true,
                 kind,
-                JsonSerializer.SerializeToElement(string.Empty));
+                JsonSerializer.SerializeToElement(
+                    string.Empty,
+                    ProjectHubJson.CompactOptions));
         }
 
         return new RegistryValueBackup(
             Exists: true,
             kind,
-            JsonSerializer.SerializeToElement(value, value.GetType()));
+            JsonSerializer.SerializeToElement(
+                value,
+                value.GetType(),
+                ProjectHubJson.CompactOptions));
     }
 
     private static void RestoreJournal(WerPolicyJournal journal)
@@ -386,7 +389,7 @@ internal sealed class TemporaryWerPolicyLease : IDisposable
             File.AppendAllText(
                 Path.Combine(WorkerPaths.Logs, "wer-policy-audit.log"),
                 line + Environment.NewLine,
-                Encoding.UTF8);
+                ProjectHubJson.Utf8NoBom);
         }
         catch
         {

@@ -113,3 +113,12 @@
 ③ RESOURCE는 GPTWEB 고정으로 표시하고 Provider·모델 선택 UI를 두지 않는다.
 ④ 사용하지 않는 역할이나 transport 설정 UI를 유지하지 않는다.
 ⑤ 메인 창의 X 버튼은 Worker 종료가 아니라 트레이 숨김으로 동작하며 명시적 Exit만 Worker 종료를 요청한다.
+
+제12조 (문자 인코딩)
+
+① Master-Polish의 한글 문서 원칙을 Worker의 역할 입력, 전송, JSON 직렬화, 보고, transcript, 상태 파일과 로그에서도 보존한다.
+② Worker가 생성하는 텍스트와 JSON의 기본 문자 인코딩은 UTF-8이며, 새 텍스트 파일은 대상 형식이 별도로 요구하지 않는 한 UTF-8 BOM 없이 기록한다.
+③ JSON의 한글과 일반 비ASCII 문자는 사람이 읽을 수 있는 실제 Unicode 문자로 직렬화한다. JSON 문법상 필요한 따옴표·역슬래시·제어문자 escaping을 제외하고 한글을 일괄적으로 `\\uXXXX` 형태로 변환하지 않는다.
+④ 역할 간 전달용 JSON, 작업 이력, transcript와 상태 파일은 동일한 Unicode JSON 직렬화 규칙을 사용한다.
+⑤ Windows PowerShell 5.1에서 텍스트 파일을 읽거나 콘솔에 출력할 때는 UTF-8을 명시한다. 필요한 경우 `[Console]::OutputEncoding`과 `$OutputEncoding`을 UTF-8로 설정하고 `Get-Content -Encoding UTF8`을 사용한다.
+⑥ 문자 디코딩 실패나 잘못된 인코딩이 의심되면 다른 코드페이지로 임의 재해석하여 정상 결과처럼 처리하지 않고 원문 보존과 오류 보고를 우선한다.

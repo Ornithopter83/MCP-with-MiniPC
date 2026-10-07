@@ -68,16 +68,10 @@ public static class ProjectWorkspacePersistence
 {
     private static readonly object EventSync = new();
     private static readonly object TranscriptSync = new();
-    private static readonly JsonSerializerOptions StateJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
-    private static readonly JsonSerializerOptions EventJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = false,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
+    private static readonly JsonSerializerOptions StateJsonOptions =
+        ProjectHubJson.WebIndentedOptions;
+    private static readonly JsonSerializerOptions EventJsonOptions =
+        ProjectHubJson.WebCompactOptions;
 
     public static string RootDirectory(string workingDirectory)
         => Path.Combine(
@@ -188,7 +182,7 @@ public static class ProjectWorkspacePersistence
                 File.AppendAllText(
                     Path.GetFullPath(path),
                     block,
-                    new UTF8Encoding(false));
+                    ProjectHubJson.Utf8NoBom);
             }
             return true;
         }
@@ -252,7 +246,7 @@ public static class ProjectWorkspacePersistence
             var line = JsonSerializer.Serialize(entry, EventJsonOptions) + Environment.NewLine;
             lock (EventSync)
             {
-                File.AppendAllText(path, line, new UTF8Encoding(false));
+                File.AppendAllText(path, line, ProjectHubJson.Utf8NoBom);
             }
             return eventId;
         }
@@ -536,7 +530,7 @@ public static class ProjectWorkspacePersistence
         var directory = Path.GetDirectoryName(path)!;
         Directory.CreateDirectory(directory);
         var temp = path + ".tmp";
-        File.WriteAllText(temp, content, new UTF8Encoding(false));
+        File.WriteAllText(temp, content, ProjectHubJson.Utf8NoBom);
         File.Move(temp, path, true);
     }
 

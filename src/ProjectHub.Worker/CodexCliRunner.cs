@@ -83,7 +83,12 @@ public sealed class CodexCliRunner : IDisposable
         var outputSchemaFile = string.IsNullOrWhiteSpace(outputSchemaJson)
             ? null
             : Path.Combine(outputDirectory, $"projecthub-schema-{Guid.NewGuid():N}.json");
-        if (outputSchemaFile is not null) await File.WriteAllTextAsync(outputSchemaFile, outputSchemaJson!, new UTF8Encoding(false), cancellationToken);
+        if (outputSchemaFile is not null)
+            await File.WriteAllTextAsync(
+                outputSchemaFile,
+                outputSchemaJson!,
+                ProjectHubJson.Utf8NoBom,
+                cancellationToken);
         var startedAt = DateTimeOffset.UtcNow;
         var sessionSnapshot = string.IsNullOrWhiteSpace(sessionId)
             ? CodexSessionLocator.CaptureSnapshot(workingDirectory, startedAt)
@@ -883,20 +888,20 @@ public static class CodexThreadArchive
         Directory.CreateDirectory(directory);
         var now = DateTimeOffset.UtcNow;
         var metadata = new CachedCodexThread(result.SessionId, normalizedProject, result.ConversationTitle, now);
-        var metadataJson = JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true });
+        var metadataJson = ProjectHubJson.SerializeIndented(metadata);
         var metadataPath = Path.Combine(directory, "metadata.json");
         var tempPath = metadataPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         lock (Sync)
         {
-            File.WriteAllText(tempPath, metadataJson, Encoding.UTF8);
+            File.WriteAllText(tempPath, metadataJson, ProjectHubJson.Utf8NoBom);
             File.Move(tempPath, metadataPath, true);
             var transcriptPath = Path.Combine(directory, "transcript.jsonl");
             var entries = new[]
             {
-                JsonSerializer.Serialize(new { timestamp = now, role = "user", content = prompt }),
-                JsonSerializer.Serialize(new { timestamp = now, role = "assistant", content = result.FinalMessage })
+                ProjectHubJson.Serialize(new { timestamp = now, role = "user", content = prompt }),
+                ProjectHubJson.Serialize(new { timestamp = now, role = "assistant", content = result.FinalMessage })
             };
-            File.AppendAllLines(transcriptPath, entries, Encoding.UTF8);
+            File.AppendAllLines(transcriptPath, entries, ProjectHubJson.Utf8NoBom);
             var handoff = string.Join(Environment.NewLine, new[]
             {
                 "# ProjectHub Codex Handoff",
@@ -911,7 +916,10 @@ public static class CodexThreadArchive
                 "## Latest response",
                 result.FinalMessage
             });
-            File.WriteAllText(Path.Combine(directory, "handoff.md"), handoff, new UTF8Encoding(false));
+            File.WriteAllText(
+                Path.Combine(directory, "handoff.md"),
+                handoff,
+                ProjectHubJson.Utf8NoBom);
         }
     }
 

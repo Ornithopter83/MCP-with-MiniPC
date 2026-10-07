@@ -16,6 +16,7 @@
 ② clone, worktree 또는 별도 branch를 만들지 않는다.
 ③ build·run·publish를 임의로 수행하지 않는다.
 ④ 필요한 정적 조사와 구현 작업에 집중한다.
+⑤ 텍스트 파일과 콘솔 입출력은 UTF-8을 기준으로 처리한다. Windows PowerShell 5.1에서 텍스트를 읽거나 표시할 때는 UTF-8 출력 인코딩과 `Get-Content -Encoding UTF8`을 명시한다.
 
 제3조 (기존 변경)
 

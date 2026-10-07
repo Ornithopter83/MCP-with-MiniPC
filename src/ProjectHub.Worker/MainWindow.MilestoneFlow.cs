@@ -1910,12 +1910,7 @@ public partial class MainWindow
                Environment.NewLine +
                "[ACTION=REPORT]" +
                Environment.NewLine +
-               JsonSerializer.Serialize(
-                   payload,
-                   new JsonSerializerOptions
-                   {
-                       WriteIndented = true
-                   });
+               ProjectHubJson.SerializeIndented(payload);
     }
 
     private async Task<WorkExecutionReport> ExecuteMilestoneWorkAsync(

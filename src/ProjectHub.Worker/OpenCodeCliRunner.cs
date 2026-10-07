@@ -351,7 +351,7 @@ public sealed class OpenCodeCliRunner : IDisposable
             ["permission"] = permission
         };
 
-        return JsonSerializer.Serialize(config);
+        return ProjectHubJson.Serialize(config);
     }
 
     private static Dictionary<string, string> BuildExternalDirectoryRules(

@@ -141,7 +141,10 @@ public static class WorkerTargetConfiguration
     public static void Save(WorkerTargetSettings settings)
     {
         Directory.CreateDirectory(WorkerPaths.Config);
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(
+            SettingsPath,
+            ProjectHubJson.SerializeIndented(settings),
+            ProjectHubJson.Utf8NoBom);
     }
 
     public static (string Url, string Source) ResolveServer(WorkerTargetSettings settings)

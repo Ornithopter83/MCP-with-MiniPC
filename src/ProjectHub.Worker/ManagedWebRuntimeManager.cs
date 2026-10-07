@@ -347,7 +347,7 @@ public sealed class ManagedWebRuntimeManager : IDisposable
 
                 File.WriteAllText(
                     Path.Combine(WorkerPaths.ManagedWebBrowserRuntime, "runtime.json"),
-                    JsonSerializer.Serialize(
+                    ProjectHubJson.SerializeIndented(
                         new
                         {
                             product = "Chrome for Testing",
@@ -355,8 +355,8 @@ public sealed class ManagedWebRuntimeManager : IDisposable
                             platform = "win64",
                             source = downloadUrl,
                             installedAtUtc = DateTimeOffset.UtcNow
-                        },
-                        new JsonSerializerOptions { WriteIndented = true }));
+                        }),
+                    ProjectHubJson.Utf8NoBom);
 
                 return ResolveBrowserExecutable()
                     ?? throw new InvalidOperationException("설치한 Chrome for Testing 실행 파일을 찾을 수 없습니다.");

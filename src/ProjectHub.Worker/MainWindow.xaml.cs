@@ -326,7 +326,10 @@ public partial class MainWindow : Window
         {
             if (WindowState != WindowState.Normal || double.IsNaN(Left) || double.IsNaN(Top)) return;
             Directory.CreateDirectory(WorkerPaths.Config);
-            File.WriteAllText(WindowPlacementPath, JsonSerializer.Serialize(new { left = Left, top = Top }));
+            File.WriteAllText(
+                WindowPlacementPath,
+                ProjectHubJson.Serialize(new { left = Left, top = Top }),
+                ProjectHubJson.Utf8NoBom);
         }
         catch
         {
@@ -1509,7 +1512,10 @@ public partial class MainWindow : Window
             if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(projectPath)) return;
             var path = GetSelectionStatePath();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new { sessionId, projectPath }));
+            File.WriteAllText(
+                path,
+                ProjectHubJson.Serialize(new { sessionId, projectPath }),
+                ProjectHubJson.Utf8NoBom);
         }
         catch { }
     }
@@ -2014,7 +2020,7 @@ public partial class MainWindow : Window
                 isQa
                     ? BuildExecutionPolicy.CreateQaCodexPreToolHookScript()
                     : BuildExecutionPolicy.CreateCodexPreToolHookScript(),
-                new UTF8Encoding(false),
+                ProjectHubJson.Utf8NoBom,
                 cancellationToken);
             codexConfigOverrides = new[]
             {
@@ -3447,7 +3453,7 @@ public partial class MainWindow : Window
             File.WriteAllText(
                 path,
                 string.Join(Environment.NewLine, lines),
-                new UTF8Encoding(false));
+                ProjectHubJson.Utf8NoBom);
             _taskTranscriptPath = path;
             _taskExported = true;
             return path;

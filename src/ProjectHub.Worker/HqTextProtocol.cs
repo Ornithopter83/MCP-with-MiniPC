@@ -394,9 +394,8 @@ internal static class HqTextProtocol
 
         var compatibility =
             "[ACTION=WORK]" + Environment.NewLine +
-            JsonSerializer.Serialize(
-                new Dictionary<string, object?> { ["milestone"] = milestone },
-                new JsonSerializerOptions { WriteIndented = true });
+            ProjectHubJson.SerializeIndented(
+                new Dictionary<string, object?> { ["milestone"] = milestone });
         var parse = ActionBlockContract.ParseHq(compatibility);
         var parseErrors = parse.HasErrors
             ? parse.Errors.ToArray()
@@ -444,9 +443,7 @@ internal static class HqTextProtocol
 
         var compatibility =
             $"[ACTION={action}]" + Environment.NewLine +
-            JsonSerializer.Serialize(
-                payload,
-                new JsonSerializerOptions { WriteIndented = true });
+            ProjectHubJson.SerializeIndented(payload);
         var parse = ActionBlockContract.ParseHq(compatibility);
         var parseErrors = parse.HasErrors
             ? parse.Errors.ToArray()

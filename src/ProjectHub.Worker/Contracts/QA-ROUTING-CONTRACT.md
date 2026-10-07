@@ -16,6 +16,7 @@
 ④ WorkItem을 만들거나 HQ 설계를 변경하지 않는다.
 ⑤ 다음 작업이나 수정 방향을 결정하지 않는다.
 ⑥ 선택된 QA Provider·모델을 임의로 바꾸지 않는다.
+⑦ 텍스트 파일과 콘솔 출력을 확인할 때 UTF-8을 기준으로 한다. Windows PowerShell 5.1에서는 UTF-8 출력 인코딩과 `Get-Content -Encoding UTF8`을 명시한다.
 
 제3조 (보고)
 

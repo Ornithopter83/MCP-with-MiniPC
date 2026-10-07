@@ -376,7 +376,7 @@ internal static class RoleElementRecoveryContract
         {
             var definition = available[index];
             builder.Append("  ");
-            builder.Append(JsonSerializer.Serialize(definition.Name));
+            builder.Append(ProjectHubJson.Serialize(definition.Name));
             builder.Append(": ");
             builder.Append(values[definition.Name]);
             if (index < available.Length - 1)
@@ -549,7 +549,7 @@ internal static class RoleElementRecoveryContract
         string payload,
         string propertyName)
     {
-        var token = JsonSerializer.Serialize(propertyName);
+        var token = ProjectHubJson.Serialize(propertyName);
         var positions = new List<int>();
         var cursor = 0;
 
@@ -583,7 +583,7 @@ internal static class RoleElementRecoveryContract
         int propertyStart,
         string propertyName)
     {
-        var token = JsonSerializer.Serialize(propertyName);
+        var token = ProjectHubJson.Serialize(propertyName);
         var cursor = propertyStart + token.Length;
 
         while (cursor < payload.Length &&

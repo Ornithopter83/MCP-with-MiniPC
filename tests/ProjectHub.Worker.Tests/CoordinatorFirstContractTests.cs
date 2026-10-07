@@ -934,6 +934,11 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal("WORK", hq.ActionName);
         Assert.Single(hq.UnknownSections);
         Assert.Contains("@@ARCHITECTURE_NOTE", hq.UnknownSections[0]);
+        Assert.Contains("플레이어 동작을 보완한다.", hq.CompatibilityMessage);
+        Assert.False(
+            hq.CompatibilityMessage.Contains(
+                "\\uD50C",
+                StringComparison.OrdinalIgnoreCase));
 
         Assert.True(MilestoneDefinitionContract.TryBuild(
             hq.CompatibilityMessage,
@@ -995,6 +1000,46 @@ public sealed class CoordinatorFirstContractTests
             "UNKNOWN_SECTION_REQUIRES_WORK",
             hq.Errors);
         Assert.Contains("@@ARCHITECTURE_NOTE", hq.UnknownSections[0]);
+    }
+
+    [Fact]
+    public void ProjectHubJson_PreservesReadableUnicode()
+    {
+        var compact = ProjectHubJson.Serialize(new { message = "한글 인코딩 확인" });
+        var indented = ProjectHubJson.SerializeIndented(new { message = "한글 인코딩 확인" });
+        var roleResult = MilestoneDefinitionContract.BuildRoleResult(
+            null,
+            "completed",
+            "한글 결과",
+            issues: new[] { "문제 없음" });
+
+        Assert.Contains("한글 인코딩 확인", compact);
+        Assert.Contains("한글 인코딩 확인", indented);
+        Assert.Contains("한글 결과", roleResult);
+        Assert.Contains("문제 없음", roleResult);
+        Assert.False(compact.Contains("\\uD55C", StringComparison.OrdinalIgnoreCase));
+        Assert.False(indented.Contains("\\uD55C", StringComparison.OrdinalIgnoreCase));
+        Assert.False(roleResult.Contains("\\uD55C", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RolePrompts_RepeatUtf8Guidance()
+    {
+        var workPrompt = RoleContractLoader.BuildDirectWorkPrompt(
+            "10",
+            "{}",
+            new[] { "src" },
+            "C:\\repo");
+        var qaPrompt = RoleContractLoader.BuildQaPrompt("{}");
+        var highPrompt = RoleContractLoader.BuildHighPrompt("{}");
+        var managerPrompt = RoleContractLoader.BuildManagerPrompt("{}");
+
+        foreach (var prompt in new[] { workPrompt, qaPrompt, highPrompt, managerPrompt })
+        {
+            Assert.Contains("문자 인코딩:", prompt);
+            Assert.Contains("UTF-8", prompt);
+            Assert.Contains("Get-Content -Encoding UTF8", prompt);
+        }
     }
 
     [Fact]

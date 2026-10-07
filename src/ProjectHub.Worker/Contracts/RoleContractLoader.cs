@@ -5,6 +5,9 @@ namespace ProjectHub.Worker;
 
 public static class RoleContractLoader
 {
+    private const string EncodingGuidance =
+        "문자 인코딩: 텍스트와 JSON은 UTF-8을 사용하고 한글을 실제 Unicode 문자로 유지한다. " +
+        "Windows PowerShell 5.1에서 텍스트를 읽거나 출력할 때는 UTF-8 출력 인코딩과 Get-Content -Encoding UTF8을 명시한다.\n";
     public const string HqContractPath =
         "src/ProjectHub.Worker/Contracts/HQ-ROUTING-CONTRACT.md";
     public const string ManagerContractPath =
@@ -56,6 +59,7 @@ public static class RoleContractLoader
             $"workItemId: {workItemId}\n" +
             $"대상 프로젝트 루트: {targetWorkspace}\n" +
             "실제 프로젝트 폴더·파일은 이 루트에서 직접 작업한다. clone/worktree/별도 branch를 만들지 않고 Git commit·push는 수행하지 않는다.\n" +
+            EncodingGuidance +
             writePathHeader +
             resourceHeader +
             workTempHeader +
@@ -70,7 +74,9 @@ public static class RoleContractLoader
     public static string BuildManagerPrompt(
         string body,
         bool includeFullContract = true) =>
-        "역할: #1 중간관리자\n입력 본문:\n" +
+        "역할: #1 중간관리자\n" +
+        EncodingGuidance +
+        "입력 본문:\n" +
         (body ?? string.Empty) +
         "\n\n" +
         (includeFullContract
@@ -78,11 +84,15 @@ public static class RoleContractLoader
             : BuildContractReference(ManagerContractPath));
 
     public static string BuildQaPrompt(string body) =>
-        "역할: QA\n호출 유형: HQ_SCHEDULED_QA\n입력 본문:\n" +
+        "역할: QA\n호출 유형: HQ_SCHEDULED_QA\n" +
+        EncodingGuidance +
+        "입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadQaFooter();
 
     public static string BuildHighPrompt(string body) =>
-        "역할: HIGH\n호출 유형: MILESTONE_VALIDATION\n입력 본문:\n" +
+        "역할: HIGH\n호출 유형: MILESTONE_VALIDATION\n" +
+        EncodingGuidance +
+        "입력 본문:\n" +
         (body ?? string.Empty) + "\n\n" + LoadHighFooter();
 
     public static string BuildContractReference(string repositoryPath) =>

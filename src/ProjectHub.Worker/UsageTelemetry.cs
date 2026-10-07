@@ -40,8 +40,12 @@ public static class UsageTelemetryStore
         var job = string.Concat(telemetry.JobId.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_'));
         var directory = Path.Combine(WorkerPaths.State, "usage", job);
         Directory.CreateDirectory(directory);
-        var line = JsonSerializer.Serialize(telemetry) + Environment.NewLine;
-        lock (Gate) File.AppendAllText(Path.Combine(directory, "calls.jsonl"), line, new UTF8Encoding(false));
+        var line = ProjectHubJson.Serialize(telemetry) + Environment.NewLine;
+        lock (Gate)
+            File.AppendAllText(
+                Path.Combine(directory, "calls.jsonl"),
+                line,
+                ProjectHubJson.Utf8NoBom);
     }
 }
 
