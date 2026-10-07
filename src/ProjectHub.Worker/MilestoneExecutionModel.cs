@@ -450,39 +450,64 @@ internal static class MilestoneDefinitionContract
             .All(item => item.ValueKind == JsonValueKind.String);
     }
 
+    public static string BuildWorkContext(
+        MilestoneWorkDefinition work)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(work.Body);
+            var root = document.RootElement;
+            var payload = new Dictionary<string, object?>
+            {
+                ["goal"] =
+                    root.TryGetProperty("goal", out var goal) &&
+                    goal.ValueKind == JsonValueKind.String
+                        ? goal.GetString()
+                        : null,
+                ["instructions"] =
+                    root.TryGetProperty("instructions", out var instructions) &&
+                    instructions.ValueKind == JsonValueKind.String
+                        ? instructions.GetString()
+                        : null,
+                ["completionCriteria"] =
+                    root.TryGetProperty("completionCriteria", out var completion) &&
+                    completion.ValueKind == JsonValueKind.Array
+                        ? completion
+                            .EnumerateArray()
+                            .Where(item => item.ValueKind == JsonValueKind.String)
+                            .Select(item => item.GetString() ?? string.Empty)
+                            .Where(value => value.Length > 0)
+                            .ToArray()
+                        : Array.Empty<string>()
+            };
+
+            return ProjectHubJson.SerializeIndented(payload);
+        }
+        catch (JsonException)
+        {
+            return work.Body;
+        }
+    }
+
     public static string BuildQaContext(
         MilestoneDefinition milestone,
-        IReadOnlyDictionary<string, string> workReports,
-        IReadOnlyDictionary<string, string> resourceReports,
-        IReadOnlyList<string> mechanicalReports)
+        IReadOnlyDictionary<string, string> workReports)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"MILESTONE_ID: {milestone.Id}");
-        builder.AppendLine($"MILESTONE_GOAL: {ReadMilestoneString(milestone, "goal") ?? "없음"}");
+        AppendWorkGoals(builder, milestone.WorkItems.Values);
         builder.AppendLine($"ENTRYPOINT: {milestone.Entrypoint ?? "없음"}");
-        builder.AppendLine("PREPARED_OUTPUT_ROOT: bin");
-        builder.AppendLine("QA는 build를 다시 하지 않고 bin의 최신 실행 결과를 사용해 위 마일스톤 목표와 완료된 WORK 결과의 실제 동작만 확인한다.");
         AppendReports(builder, "WORK_RESULTS", workReports);
-        AppendReports(builder, "RESOURCE_RESULTS", resourceReports);
-        AppendMechanicalReports(builder, mechanicalReports);
         return builder.ToString();
     }
 
     public static string BuildHighContext(
         MilestoneDefinition milestone,
         IReadOnlyDictionary<string, string> workReports,
-        IReadOnlyDictionary<string, string> resourceReports,
-        IReadOnlyList<string> mechanicalReports,
         string? qaReport)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"MILESTONE_ID: {milestone.Id}");
-        builder.AppendLine($"MILESTONE_GOAL: {ReadMilestoneString(milestone, "goal") ?? "없음"}");
-        builder.AppendLine($"ENTRYPOINT: {milestone.Entrypoint ?? "없음"}");
-        builder.AppendLine("HIGH는 QA가 보고한 문제를 최종 보완하고 수행 결과만 요약한다. 추가 WORK·QA·build를 요청하지 않는다.");
+        AppendWorkGoals(builder, milestone.WorkItems.Values);
         AppendReports(builder, "WORK_RESULTS", workReports);
-        AppendReports(builder, "RESOURCE_RESULTS", resourceReports);
-        AppendMechanicalReports(builder, mechanicalReports);
 
         if (!string.IsNullOrWhiteSpace(qaReport))
         {
@@ -491,6 +516,54 @@ internal static class MilestoneDefinitionContract
         }
 
         return builder.ToString();
+    }
+
+    public static string BuildWorkGoalsSummary(
+        MilestoneDefinition milestone)
+    {
+        var builder = new StringBuilder();
+        AppendWorkGoals(builder, milestone.WorkItems.Values);
+        return builder.ToString().TrimEnd();
+    }
+
+    private static void AppendWorkGoals(
+        StringBuilder builder,
+        IEnumerable<MilestoneWorkDefinition> works)
+    {
+        builder.AppendLine("WORK_GOALS:");
+        var any = false;
+        foreach (var work in works.OrderBy(work => work.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            var goal = ReadWorkField(work, "goal");
+            if (string.IsNullOrWhiteSpace(goal))
+                continue;
+
+            any = true;
+            builder.AppendLine($"- #{work.Id}: {goal}");
+        }
+
+        if (!any)
+            builder.AppendLine("- 없음");
+    }
+
+    private static string? ReadWorkField(
+        MilestoneWorkDefinition work,
+        string propertyName)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(work.Body);
+            return document.RootElement.TryGetProperty(
+                       propertyName,
+                       out var value) &&
+                   value.ValueKind == JsonValueKind.String
+                ? value.GetString()?.Trim()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static void AppendMechanicalReports(

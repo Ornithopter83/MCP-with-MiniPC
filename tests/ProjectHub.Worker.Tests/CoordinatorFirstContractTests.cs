@@ -86,21 +86,22 @@ public sealed class CoordinatorFirstContractTests
         };
         var qaContext = MilestoneDefinitionContract.BuildQaContext(
             milestone,
-            workReports,
-            new Dictionary<string, string>(),
-            Array.Empty<string>());
+            workReports);
         var highContext = MilestoneDefinitionContract.BuildHighContext(
             milestone,
             workReports,
-            new Dictionary<string, string>(),
-            Array.Empty<string>(),
             qaReport: null);
 
-        Assert.Contains("MILESTONE_GOAL:", qaContext);
+        Assert.Contains("WORK_GOALS:", qaContext);
         Assert.Contains("WORK_RESULTS:", qaContext);
         Assert.DoesNotContain("QA_INSTRUCTIONS:", qaContext);
-        Assert.Contains("MILESTONE_GOAL:", highContext);
+        Assert.DoesNotContain("RESOURCE_RESULTS:", qaContext);
+        Assert.DoesNotContain("MECHANICAL_RESULTS:", qaContext);
+        Assert.DoesNotContain("PREPARED_OUTPUT_ROOT:", qaContext);
+        Assert.Contains("WORK_GOALS:", highContext);
         Assert.DoesNotContain("MILESTONE_VALIDATION:", highContext);
+        Assert.DoesNotContain("RESOURCE_RESULTS:", highContext);
+        Assert.DoesNotContain("MECHANICAL_RESULTS:", highContext);
         Assert.Contains("\"status\": \"completed\"", highContext);
     }
 
@@ -740,7 +741,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("\"issue\"", qa);
         Assert.DoesNotContain("[GOTO : HIGH]", qa);
         Assert.DoesNotContain("[GOTO : MANAGER]", high);
-        Assert.Contains("HIGH 종료 후 Worker가 바로 Git finalize", high);
+        Assert.Contains("최종 보완과 결과 정리", high);
 
         var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
             RoleContractLoader.BuildQaPrompt("runtime 확인"));
@@ -1073,6 +1074,45 @@ public sealed class CoordinatorFirstContractTests
         Assert.False(compact.Contains("\\uD55C", StringComparison.OrdinalIgnoreCase));
         Assert.False(indented.Contains("\\uD55C", StringComparison.OrdinalIgnoreCase));
         Assert.False(roleResult.Contains("\\uD55C", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void WorkProjection_OmitsWorkerOrchestrationMetadata()
+    {
+        var work = new MilestoneWorkDefinition(
+            "10",
+            new[] { "src" },
+            false,
+            true,
+            """
+            {
+              "id": 10,
+              "readOnly": false,
+              "testRequired": true,
+              "writePaths": ["src"],
+              "goal": "기능 구현",
+              "instructions": "코드를 수정한다.",
+              "completionCriteria": ["기능이 동작한다."]
+            }
+            """,
+            string.Empty);
+
+        var body = MilestoneDefinitionContract.BuildWorkContext(work);
+        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
+            "10",
+            body,
+            new[] { "src" },
+            "C:\\repo");
+
+        Assert.Contains("기능 구현", body);
+        Assert.Contains("코드를 수정한다.", body);
+        Assert.Contains("기능이 동작한다.", body);
+        Assert.DoesNotContain("testRequired", body);
+        Assert.DoesNotContain("readOnly", body);
+        Assert.DoesNotContain("writePaths", body);
+        Assert.DoesNotContain("Git commit", prompt);
+        Assert.DoesNotContain("RESOURCE 임시 루트", prompt);
+        Assert.DoesNotContain("WORK 임시 산출물 루트", prompt);
     }
 
     [Fact]

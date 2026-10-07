@@ -9,12 +9,11 @@
 ⑤ 이미지 신규 제작 책임은 RESOURCE에 있고, GENERAL WORK는 이전 마일스톤에서 확정된 RESOURCE 결과를 코드·UI·문서에 연결할 수 있다.
 ⑥ 같은 마일스톤에서 새로 생성되는 RESOURCE 결과는 이후 마일스톤의 입력으로 사용한다.
 
-제2조 (실행 소유권)
+제2조 (실행)
 
-① Git 저장소와 branch, stage, commit, push는 Worker가 관리한다.
-② build·run·publish 같은 기계 실행은 Worker가 관리한다.
-③ GENERAL WORK는 필요한 정적 조사와 구현 작업에 집중한다.
-④ 텍스트 파일과 콘솔 입출력은 UTF-8을 기준으로 처리한다. Windows PowerShell 5.1에서 텍스트를 읽거나 표시할 때는 UTF-8 출력 인코딩과 `Get-Content -Encoding UTF8`을 명시한다.
+① build·run·publish 같은 기계 실행은 Worker가 준비한다.
+② GENERAL WORK는 필요한 정적 조사와 구현 작업에 집중한다.
+③ 텍스트 파일과 콘솔 입출력은 UTF-8을 기준으로 처리한다. Windows PowerShell 5.1에서 텍스트를 읽거나 표시할 때는 UTF-8 출력 인코딩과 `Get-Content -Encoding UTF8`을 명시한다.
 
 제3조 (기존 변경)
 

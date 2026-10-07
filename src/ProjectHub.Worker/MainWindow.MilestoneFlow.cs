@@ -650,6 +650,7 @@ public partial class MainWindow
                         Environment.NewLine +
                         $"TARGET_PATH: {resource.TargetPath}",
                         status: "DISPATCHED",
+                        referenceId: milestone.Id + ":RESOURCE:" + resource.Id,
                         workItemId: "0",
                         persistenceSource: "WORKER RESOURCE QUEUE");
 
@@ -739,6 +740,7 @@ public partial class MainWindow
                     "Worker 분배",
                     $"WORK_ITEM_ID: {workId}",
                     status: "DISPATCHED",
+                    referenceId: milestone.Id + ":" + workId,
                     workItemId: workId,
                     persistenceSource: "WORKER DISPATCH");
             }
@@ -889,6 +891,7 @@ public partial class MainWindow
                         "Worker 복구 분배",
                         $"BUILD_REPAIR_ATTEMPT: {repairAttempt}",
                         status: "DISPATCHED",
+                        referenceId: milestone.Id + ":BUILD-REPAIR-" + repairAttempt,
                         workItemId: "BUILD-REPAIR-" + repairAttempt,
                         persistenceSource: "WORKER DISPATCH");
 
@@ -1196,18 +1199,8 @@ public partial class MainWindow
                     "BUILD_REPAIR_WRITE_PATH_EMPTY"));
         }
 
-        var workTempRoot = Path.Combine(
-            workingDirectory,
-            "temp",
-            "ProjectHub",
-            jobId,
-            milestone.Id,
-            "work-" + repairId);
-        Directory.CreateDirectory(workTempRoot);
-
         var body =
-            "MILESTONE_GOAL: " +
-            (MilestoneDefinitionContract.ReadMilestoneGoal(milestone) ?? milestone.Id) +
+            MilestoneDefinitionContract.BuildWorkGoalsSummary(milestone) +
             Environment.NewLine +
             Environment.NewLine +
             "빌드 실패를 수정해주세요" +
@@ -1224,12 +1217,7 @@ public partial class MainWindow
             body,
             writePaths,
             workingDirectory,
-            readOnly: false,
-            resourceStagingRoot: Path.Combine(
-                workingDirectory,
-                "temp",
-                "Resource"),
-            workTempRoot: workTempRoot);
+            readOnly: false);
 
         var role = implementer with
         {
@@ -1782,26 +1770,12 @@ public partial class MainWindow
                 explicitStage: TaskStage.Implementer);
         });
 
-        var workTempRoot = Path.Combine(
-            workingDirectory,
-            "temp",
-            "ProjectHub",
-            jobId,
-            milestone.Id,
-            "work-" + work.Id);
-        Directory.CreateDirectory(workTempRoot);
-
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
             work.Id,
-            work.Body,
+            MilestoneDefinitionContract.BuildWorkContext(work),
             work.WritePaths,
             workingDirectory,
-            readOnly: work.ReadOnly,
-            resourceStagingRoot: Path.Combine(
-                workingDirectory,
-                "temp",
-                "Resource"),
-            workTempRoot: workTempRoot);
+            readOnly: work.ReadOnly);
 
         var statelessRole = implementer with
         {
@@ -1882,7 +1856,7 @@ public partial class MainWindow
             providerWireId: implementer.Provider,
             fullMessage: report,
             workItemId: work.Id,
-            referenceId: work.Id);
+            referenceId: milestone.Id + ":" + work.Id);
 
         return new(work.Id, report);
     }
@@ -1912,7 +1886,9 @@ public partial class MainWindow
                 WorkerRoleState.Resource,
                 "리소스 독립 실행 종료",
                 report,
-                status: "BLOCKED");
+                status: "BLOCKED",
+                workItemId: "0",
+                referenceId: milestone.Id + ":RESOURCE:" + resourceId);
             return new(
                 resourceId,
                 report,
@@ -1930,7 +1906,9 @@ public partial class MainWindow
                 WorkerRoleState.Resource,
                 "리소스 독립 실행 실패",
                 report,
-                status: "BLOCKED");
+                status: "BLOCKED",
+                workItemId: "0",
+                referenceId: milestone.Id + ":RESOURCE:" + resourceId);
             return new(
                 resourceId,
                 report,
@@ -1954,7 +1932,9 @@ public partial class MainWindow
                 WorkerRoleState.Resource,
                 "리소스 독립 실행 종료",
                 report,
-                status: "BLOCKED");
+                status: "BLOCKED",
+                workItemId: "0",
+                referenceId: milestone.Id + ":RESOURCE:" + resourceId);
             return new(
                 resourceId,
                 report,
@@ -2008,7 +1988,9 @@ public partial class MainWindow
                 WorkerRoleState.Resource,
                 "리소스 반영 실패",
                 missingReport,
-                status: "BLOCKED");
+                status: "BLOCKED",
+                workItemId: "0",
+                referenceId: milestone.Id + ":RESOURCE:" + resource.Id);
             return new(resource.Id, missingReport, Array.Empty<string>());
         }
 
@@ -2024,7 +2006,9 @@ public partial class MainWindow
                 WorkerRoleState.Resource,
                 "리소스 반영 실패",
                 failedReport,
-                status: "BLOCKED");
+                status: "BLOCKED",
+                workItemId: "0",
+                referenceId: milestone.Id + ":RESOURCE:" + resource.Id);
             return new(resource.Id, failedReport, Array.Empty<string>());
         }
 
@@ -2040,7 +2024,9 @@ public partial class MainWindow
                 "RESOURCE_STATUS: COMPLETED",
                 StringComparison.Ordinal)
                     ? "COMPLETED"
-                    : "BLOCKED");
+                    : "BLOCKED",
+            workItemId: "0",
+            referenceId: milestone.Id + ":RESOURCE:" + resource.Id);
         return new(
             resource.Id,
             moveResult.Report,
@@ -2143,9 +2129,7 @@ public partial class MainWindow
 
         var body = MilestoneDefinitionContract.BuildQaContext(
             milestone,
-            workReports,
-            resourceReports,
-            mechanicalReports);
+            workReports);
 
         var result = await RunCoordinatorRoleAsync(
             jobId,
@@ -2156,7 +2140,9 @@ public partial class MainWindow
             null,
             null,
             cancellationToken,
-            CodexSandboxMode.WorkspaceWrite);
+            CodexSandboxMode.WorkspaceWrite,
+            historyWorkItemId: "QA",
+            historyReferenceId: milestone.Id + ":QA");
 
         string report;
         if (result.ExitCode != 0)
@@ -2200,7 +2186,9 @@ public partial class MainWindow
             result.Files,
             status: result.ExitCode == 0 ? "RECEIVED" : "BLOCKED",
             providerWireId: qa.Provider,
-            fullMessage: report);
+            fullMessage: report,
+            workItemId: "QA",
+            referenceId: milestone.Id + ":QA");
 
         return report;
     }
@@ -2233,8 +2221,6 @@ public partial class MainWindow
         var body = MilestoneDefinitionContract.BuildHighContext(
             milestone,
             workReports,
-            resourceReports,
-            mechanicalReports,
             qaReport);
 
         var result = await RunCoordinatorRoleAsync(
@@ -2248,7 +2234,9 @@ public partial class MainWindow
             cancellationToken,
             milestone.ReadOnlyNoFileChanges
                 ? CodexSandboxMode.ReadOnly
-                : CodexSandboxMode.DangerFullAccess);
+                : CodexSandboxMode.DangerFullAccess,
+            historyWorkItemId: "HIGH",
+            historyReferenceId: milestone.Id + ":HIGH");
 
         string report;
         if (result.ExitCode != 0)
@@ -2292,7 +2280,9 @@ public partial class MainWindow
             result.Files,
             status: result.ExitCode == 0 ? "RECEIVED" : "INCOMPLETE",
             providerWireId: high.Provider,
-            fullMessage: report);
+            fullMessage: report,
+            workItemId: "HIGH",
+            referenceId: milestone.Id + ":HIGH");
 
         return report;
     }

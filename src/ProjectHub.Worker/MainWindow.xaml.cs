@@ -2065,7 +2065,10 @@ public partial class MainWindow : Window
             null, Encoding.UTF8.GetByteCount(result.FinalMessage), (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds,
             null, result.Usage.UsageKnown, null, null, DateTimeOffset.UtcNow));
         var transcriptSource = roleName == "WORK" && purpose == "WORK" ? "WORK CLI" : $"{roleName} {purpose}";
-        AddTaskMessage(transcriptSource, $"exit {result.ExitCode} · provider {role.Provider} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}");
+        AddTaskMessage(
+            transcriptSource,
+            $"exit {result.ExitCode} · provider {role.Provider} · model {role.Model} · reasoning {role.Reasoning} · session {result.SessionId ?? "missing"}",
+            includeHistory: false);
         _lastActivityAt = DateTimeOffset.UtcNow;
         return result;
     }
@@ -3135,7 +3138,11 @@ public partial class MainWindow : Window
             includeHistory: false,
             workItemId: workItemId);
 
-        _historyEvents.Add(item);
+        if (role != WorkerRoleState.Unknown &&
+            role != WorkerRoleState.Hq)
+        {
+            PublishHistoryCard(item);
+        }
         if (DashboardHistoryList.Items.Count > 0)
             DashboardHistoryList.ScrollIntoView(
                 DashboardHistoryList.Items[DashboardHistoryList.Items.Count - 1]);
@@ -3186,7 +3193,7 @@ public partial class MainWindow : Window
         else if (item.StageKey == "Coordinator")
             item = item with { IconAssetOverride = _coordinatorStageIconAsset };
 
-        _historyEvents.Add(item);
+        PublishHistoryCard(item);
         AddTaskMessage(
             role switch
             {
@@ -3278,8 +3285,42 @@ public partial class MainWindow : Window
             includeHistory: false,
             workItemId: workItemId);
 
-        _historyEvents.Add(item);
+        PublishHistoryCard(item);
         RefreshMessageLog();
+    }
+
+    private void PublishHistoryCard(WorkerHistoryEvent item)
+    {
+        var key = HistoryCardKey(item);
+        if (key is not null)
+        {
+            for (var index = _historyEvents.Count - 1; index >= 0; index--)
+            {
+                if (!string.Equals(
+                        HistoryCardKey(_historyEvents[index]),
+                        key,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                _historyEvents[index] = item;
+                return;
+            }
+        }
+
+        _historyEvents.Add(item);
+    }
+
+    private static string? HistoryCardKey(WorkerHistoryEvent item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.ReferenceId))
+            return item.StageKey + "|REF|" + item.ReferenceId.Trim();
+
+        if (!string.IsNullOrWhiteSpace(item.WorkItemId))
+            return item.StageKey + "|WORK|" + item.WorkItemId.Trim();
+
+        return null;
     }
 
     private static WorkerHistoryEvent? CreateHistoryEvent(DateTimeOffset timestamp, string source, string content, long? sizeBytes, int? itemCount, int? fileCount, string? explicitStatus, string? referenceId, string? summary)
