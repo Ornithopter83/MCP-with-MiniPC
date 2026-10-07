@@ -1278,6 +1278,18 @@ public partial class MainWindow
             result = await RunAsync(
                 recoveryPrompt,
                 new[] { recoveryAttachment });
+            if (result.ExitCode == 0 &&
+                !RoleTextProtocol.ParseWork(result.FinalMessage).IsValid)
+            {
+                _formatRecoveryJobs[jobId] = 1;
+                result = await RunAsync(
+                    BuildRoleTextRetryPrompt(
+                        recoveryPrompt,
+                        result.FinalMessage,
+                        RoleContractLoader.LoadWorkFooter()),
+                    new[] { recoveryAttachment });
+            }
+
             report = MilestoneDefinitionContract.NormalizeWorkReport(
                 result.ExitCode,
                 result.FinalMessage,
