@@ -125,7 +125,15 @@ public static class BuildExecutionPolicy
            exit 0
            """;
 
-    public static string BuildCodexPreToolHookOverride(string hookPath)
+    public static string CreateQaCodexPreToolHookScript()
+        => CreateCodexPreToolHookScript().Replace(
+            "ProjectHub: GENERAL WORK cannot run build/run/publish or Git mutation commands. Use the manager/Worker stages.",
+            "ProjectHub: QA cannot run build/run/publish or Git mutation commands. Use the prepared execution target.",
+            StringComparison.Ordinal);
+
+    public static string BuildCodexPreToolHookOverride(
+        string hookPath,
+        string statusMessage = "ProjectHub WORK command gate")
     {
         if (string.IsNullOrWhiteSpace(hookPath))
             throw new ArgumentException("Hook path가 비어 있습니다.", nameof(hookPath));
@@ -134,7 +142,9 @@ public static class BuildExecutionPolicy
                       normalizedPath.Replace("'", "''", StringComparison.Ordinal) + "'";
         return "hooks.PreToolUse=[{matcher=\"^Bash$\",hooks=[{type=\"command\",command=\"" +
                EscapeTomlBasicString(command) +
-               "\",timeout=5,statusMessage=\"ProjectHub WORK command gate\"}]}]";
+               "\",timeout=5,statusMessage=\"" +
+               EscapeTomlBasicString(statusMessage) +
+               "\"}]}]";
     }
 
     private static string EscapeTomlBasicString(string value)

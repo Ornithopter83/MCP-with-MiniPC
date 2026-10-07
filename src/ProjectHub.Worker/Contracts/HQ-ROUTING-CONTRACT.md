@@ -67,9 +67,9 @@ white-box 검토 지시
 - 우선순위 2 — 종속 작업 결합: 한 작업이 다른 작업의 분석, 판단, 결과 또는 산출물을 필요로 하는 경우 하나의 WORKITEM으로 처리한다.
 ⑥ 같은 milestone의 GENERAL WORK 사이에는 실행 순서 또는 결과 dependency가 존재해서는 안 된다.
 ⑦ READ_ONLY는 YES/NO다. NO이면 WRITE_PATH를 하나 이상 둔다. YES이면 WRITE_PATH를 생략할 수 있다.
-⑧ 동시에 실행되는 쓰기 WORK의 WRITE_PATH는 겹치지 않아야 한다.
+⑧ 동시에 실행되는 쓰기 WORK의 WRITE_PATH는 겹치지 않아야 한다. 겹친 WorkItem은 Worker가 해당 항목만 blocked 처리하고 나머지 WorkItem 실행은 계속한다.
 ⑨ WORK별 긴 내용은 해당 @@WORK 뒤의 @@WORK_GOAL, @@WORK_INSTRUCTIONS, @@WORK_COMPLETION에 둔다.
-⑩ build·run·publish와 bin/obj/dist 같은 실행 산출물 생성은 GENERAL WORK 책임이나 WRITE_PATH로 배정하지 않는다.
+⑩ build·run·publish와 bin/obj/dist 같은 실행 산출물 생성은 GENERAL WORK에 배정하지 않고 MANAGER/Worker 기계 단계에서 수행한다.
 
 제4조 (QA·RESOURCE·기계 지시)
 

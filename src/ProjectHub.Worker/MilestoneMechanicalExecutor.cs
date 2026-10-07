@@ -690,6 +690,42 @@ internal static class MilestoneMechanicalExecutor
         return false;
     }
 
+    public static IReadOnlySet<string> FindOverlappingWorkItemIds(
+        IEnumerable<(string Id, IReadOnlyList<string> Scopes)> workItems)
+    {
+        var groups = workItems
+            .Select(item => new
+            {
+                item.Id,
+                Scopes = item.Scopes
+                    .Select(path => NormalizeGitPath(path).Trim('/'))
+                    .Where(path => path.Length > 0)
+                    .ToArray()
+            })
+            .ToArray();
+        var blocked = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        for (var leftIndex = 0; leftIndex < groups.Length; leftIndex++)
+        {
+            for (var rightIndex = leftIndex + 1;
+                 rightIndex < groups.Length;
+                 rightIndex++)
+            {
+                var overlaps = groups[leftIndex].Scopes.Any(left =>
+                    groups[rightIndex].Scopes.Any(right =>
+                        ScopesOverlap(left, right)));
+                if (!overlaps)
+                    continue;
+
+                blocked.Add(groups[leftIndex].Id);
+                blocked.Add(groups[rightIndex].Id);
+            }
+        }
+
+        return blocked;
+    }
+
     public static async Task<MilestoneGitResult> ForceCommitPushAsync(
         string workingDirectory,
         string commitMessage,

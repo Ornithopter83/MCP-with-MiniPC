@@ -6,7 +6,7 @@
 
 ① HQ는 사용자 목표 해석, 프로젝트 전체 관제, 마일스톤 설계와 세부설계, WorkItem 작업영역, QA 수행 여부, 완료 기준과 다음 마일스톤 판단을 담당한다.
 ② #1 중간관리자는 HQ의 세부설계를 실제 실행으로 연결하고 WorkItem 배정, 결과 취합, build·run·publish, HIGH 결과에 따른 후속 작업, 마일스톤 Git 처리와 HQ 최종 보고를 담당한다.
-③ QA는 HQ가 예약한 경우에만 실행하며 HQ가 지정한 프로그램·웹과 조사 범위를 실제로 확인하여 사실 기반 결과를 반환한다. QA는 코드 수정, 설계 변경, 다음 작업 결정이나 HIGH 호출을 하지 않는다.
+③ QA는 HQ가 예약한 경우에만 실행하며 HQ가 지정한 준비된 프로그램·웹과 조사 범위를 실제로 확인하여 사실 기반 결과를 반환한다. QA는 build·restore·publish·compile 또는 빌드를 유발하는 프로젝트 실행 명령을 수행하지 않으며 코드 수정, 설계 변경, 다음 작업 결정이나 HIGH 호출을 하지 않는다.
 ④ HIGH는 WorkItem 실행 묶음과 예약된 QA가 끝난 뒤 호출되는 높은 권한의 마일스톤 검증·보완 역할이다. 실제 프로젝트 상태를 조사하고 필요한 경우 직접 수정할 수 있으나 HQ 설계 자체나 다음 마일스톤을 결정하지 않는다.
 ⑤ #0 RESOURCE는 GPTWEB을 사용하는 RESOURCE MAKE 전용 역할이다. RESOURCE 결과는 마일스톤 안의 작업 결과로 취급하고 QA와 HIGH가 확인할 수 있어야 한다.
 ⑥ #10+ GENERAL WORK는 자신에게 배정된 작업과 작업영역만 수행하는 Stateless 실행 단위다.
@@ -25,7 +25,7 @@
 ① 사용자가 지정한 폴더가 유일한 실제 프로젝트 루트다. Git 저장소가 아니고 HQ가 `initializeGitIfMissing`을 true로 지정하면 Worker가 마일스톤 preflight에서 기계적으로 `git init -b main`을 수행하여 처음부터 main으로 초기화한다. 그 외에는 Git 저장소가 준비되어 있어야 한다.
 ② 프로젝트의 실제 폴더·파일 구조는 해당 루트에서 직접 생성·수정·삭제한다. WorkItem별 clone, worktree, shadow workspace 또는 별도 작업 branch를 실제 프로젝트 작업공간으로 사용하지 않는다.
 ③ HQ는 마일스톤 설계 단계에서 동시에 실행될 WorkItem의 생성·수정·삭제 영역이 겹치지 않도록 설계한다.
-④ 같은 마일스톤의 GENERAL WORK는 서로 실행 순서나 결과 dependency가 없는 독립 작업으로만 구성한다. 종속성이 있는 일반 작업은 HQ가 하나의 WorkItem으로 묶는다. 이미지 생성은 예외로 #0 RESOURCE가 생성만 담당하며 그 결과를 사용하는 후행 작업은 다음 마일스톤에서 수행한다.
+④ 같은 마일스톤의 GENERAL WORK는 서로 실행 순서나 결과 dependency가 없는 독립 작업으로만 구성한다. 종속성이 있는 일반 작업은 HQ가 하나의 WorkItem으로 묶는다. 쓰기 WORK의 WRITE_PATH가 겹치면 Worker는 충돌한 WorkItem만 blocked 처리하고 나머지 WorkItem은 계속 실행한다. 이미지 생성은 예외로 #0 RESOURCE가 생성만 담당하며 그 결과를 사용하는 후행 작업은 다음 마일스톤에서 수행한다.
 ⑤ Worker는 HQ가 명시한 작업영역과 현재 마일스톤이 실제로 만든 생성·수정·삭제 변경목록을 기계 상태로 보존한다.
 ⑥ 현재 ProjectHub 작업이 우선이다. HQ가 지정한 WRITE_PATH, RESOURCE targetPath 또는 HIGH가 명시한 CHANGED_PATH 안에 기존 dirty 변경이나 실행 중 새 변경이 있어도 그 이유로 PAUSE하지 않으며 현재 작업이 해당 내용을 덮어쓸 수 있다.
 ⑦ 지정된 작업영역 밖의 파일과 변경은 수정·정리·reset·stage·commit하지 않는다. 작업 도중 외부에서 지정된 작업영역 안에 끼워 넣은 변경은 보존을 보장하지 않는다.
@@ -83,7 +83,7 @@
 ④ 기존 저장소에서 local main이 있으면 main으로 전환하고, local main은 없지만 origin/main이 있으면 origin/main을 추적하는 local main만 준비한다. local/remote main이 모두 없으면 현재 branch 이름을 main으로 변경하여 수렴시킨다. main으로 수렴하지 못하면 PAUSE하며 다른 branch에서 작업하지 않는다.
 ⑤ HQ, 사용자 입력 또는 다른 역할이 main 이외의 branch를 지정해도 실행하지 않는다. 마일스톤 계약 단계에서 오류로 처리한다.
 ⑥ HQ와 Worker가 원격 Git 상태를 참조할 때 작업 기준은 오직 `origin/main`이다. `origin/HEAD`, GitHub UI의 기본 branch 표시 또는 다른 원격 branch를 작업 대상 추론에 사용하지 않는다.
-⑦ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push는 Worker가 main에 대해서만 기계적으로 수행한다.
+⑦ 일반 WORK, RESOURCE, QA와 HIGH는 마일스톤 단위 Git 결과 확정을 대신하지 않는다. 최종 commit·push는 Worker가 main에 대해서만 기계적으로 수행한다. 단 POLICY가 READ_ONLY_NO_FILE_CHANGES이면 GENERAL WORK Git barrier와 최종 commit·push를 모두 생략하고 SKIPPED_READ_ONLY로 기록한다.
 ⑧ WorkItem별 별도 branch, checkpoint branch, Integration branch와 별도 원격 result branch를 생성하거나 사용하지 않는다.
 ⑨ 마일스톤 종료 시 Worker는 HQ가 지정한 WRITE_PATH와 RESOURCE targetPath, HIGH가 명시한 CHANGED_PATH 안에서 현재 마일스톤 변경목록에 기록된 생성·수정·삭제만 stage하여 main에 하나의 마일스톤 commit을 만든다. 지정되지 않은 경로는 dirty여도 stage·commit하지 않는다. 프로젝트 전체를 무조건 stage하지 않는다.
 ⑩ commit 또는 push 문제가 있으면 main에 한해서 fetch/rebase와 재시도를 수행할 수 있다. 다른 branch로 우회하거나 다른 branch에 push하지 않는다.

@@ -726,7 +726,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("\"workItemIds\"", manager);
         Assert.Contains("[ACTION=RESULT]", work);
         Assert.Contains("[GOTO : HIGH]", qa);
-        Assert.Contains("build·run", qa);
+        Assert.Contains("준비한 실행파일", qa);
+        Assert.Contains("빌드를 유발", qa);
+        Assert.Contains("수행하지 않는다", qa);
         Assert.Contains("[GOTO : MANAGER]", high);
         Assert.Contains("HQ_UNKNOWN_SECTIONS_FOR_JUDGMENT", high);
 
@@ -1008,6 +1010,30 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("없음 (읽기 전용)", prompt);
     }
 
+    [Fact]
+    public void QaCommandGate_UsesQaSpecificReason()
+    {
+        var script = BuildExecutionPolicy.CreateQaCodexPreToolHookScript();
+        var hook = BuildExecutionPolicy.BuildCodexPreToolHookOverride(
+            "C:\\temp\\qa-gate.ps1",
+            "ProjectHub QA command gate");
+
+        Assert.Contains("QA cannot run build/run/publish", script);
+        Assert.Contains("prepared execution target", script);
+        Assert.Contains("ProjectHub QA command gate", hook);
+    }
+
+    [Fact]
+    public void ReadOnlyGitResult_IsMarkedSkippedWithoutFailure()
+    {
+        var result = MilestoneGitResult.SkippedReadOnly("main");
+
+        Assert.True(result.Success);
+        Assert.False(result.PauseRequired);
+        Assert.Null(result.CommitSha);
+        Assert.Contains("SKIPPED_READ_ONLY", result.Summary);
+    }
+
     [Theory]
     [InlineData(
         "BUILD",
@@ -1053,6 +1079,23 @@ public sealed class CoordinatorFirstContractTests
                 new[] { "src/FeatureA" },
                 new[] { "src/FeatureB" }
             }));
+    }
+
+    [Fact]
+    public void WorkScopes_ReturnOnlyConflictingWorkItemIds()
+    {
+        var conflicts =
+            MilestoneMechanicalExecutor.FindOverlappingWorkItemIds(
+                new (string Id, IReadOnlyList<string> Scopes)[]
+                {
+                    ("10", new[] { "src/Feature" }),
+                    ("11", new[] { "src/Feature/View.cs" }),
+                    ("12", new[] { "src/Independent" })
+                });
+
+        Assert.Contains("10", conflicts);
+        Assert.Contains("11", conflicts);
+        Assert.DoesNotContain("12", conflicts);
     }
 
     [Fact]

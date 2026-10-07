@@ -566,6 +566,7 @@ public partial class MainWindow
         var resourceReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
+        var finalReportNotes = new List<string>();
         var qaReport = string.Empty;
         var highReport = string.Empty;
         var gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
@@ -798,7 +799,56 @@ public partial class MainWindow
                     "UNPLANNED_WORK_IGNORED: " + workId);
             }
 
-            foreach (var workId in runnableWorkIds)
+            var runnableDefinitions = runnableWorkIds
+                .Select(id => milestone.WorkItems[id])
+                .ToArray();
+            var overlappingWorkIds =
+                MilestoneMechanicalExecutor.FindOverlappingWorkItemIds(
+                    runnableDefinitions
+                        .Where(work => !work.ReadOnly)
+                        .Select(work => (
+                            work.Id,
+                            (IReadOnlyList<string>)work.WritePaths)));
+
+            if (overlappingWorkIds.Count > 0)
+            {
+                finalReportNotes.Add(
+                    "WORK_WRITE_PATH_OVERLAP: blocked=" +
+                    string.Join(
+                        ",",
+                        overlappingWorkIds.OrderBy(
+                            id => int.TryParse(id, out var number)
+                                ? number
+                                : int.MaxValue)));
+            }
+
+            foreach (var workId in overlappingWorkIds)
+            {
+                workReports[workId] =
+                    MilestoneDefinitionContract.BuildRoleResult(
+                        null,
+                        "blocked",
+                        "WORK_WRITE_PATH_OVERLAP",
+                        issues: new[]
+                        {
+                            "conflictingWorkItems=" +
+                            string.Join(
+                                ",",
+                                overlappingWorkIds.OrderBy(
+                                    id => int.TryParse(id, out var number)
+                                        ? number
+                                        : int.MaxValue))
+                        });
+            }
+
+            var executableDefinitions = runnableDefinitions
+                .Where(work => !overlappingWorkIds.Contains(work.Id))
+                .ToArray();
+            var executableWorkIds = executableDefinitions
+                .Select(work => work.Id)
+                .ToArray();
+
+            foreach (var workId in executableWorkIds)
             {
                 AddDataFlowHistory(
                     WorkerRoleState.Work,
@@ -809,46 +859,29 @@ public partial class MainWindow
                     persistenceSource: "WORKER DISPATCH");
             }
 
-            if (runnableWorkIds.Length > 0)
+            if (executableWorkIds.Length > 0)
             {
-                var runnableDefinitions = runnableWorkIds
-                    .Select(id => milestone.WorkItems[id])
+                var allRunnableScopes = executableDefinitions
+                    .SelectMany(work => work.WritePaths)
                     .ToArray();
-                var runnableScopes = runnableDefinitions
-                    .Select(work => work.WritePaths)
-                    .ToArray();
-                var allRunnableScopes = runnableScopes
-                    .SelectMany(scopes => scopes)
-                    .ToArray();
-                var overlappingScopes =
-                    MilestoneMechanicalExecutor.HasOverlappingScopes(
-                        runnableScopes);
-                var maxConcurrency = overlappingScopes
-                    ? 1
-                    : Math.Clamp(
-                        _targetSettings.EffectiveMaxConcurrentWork,
-                        WorkerTargetConfiguration.MinimumConcurrentWork,
-                        WorkerTargetConfiguration.MaximumConcurrentWork);
+                var maxConcurrency = Math.Clamp(
+                    _targetSettings.EffectiveMaxConcurrentWork,
+                    WorkerTargetConfiguration.MinimumConcurrentWork,
+                    WorkerTargetConfiguration.MaximumConcurrentWork);
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
                     "Worker 작업",
-                    $"GENERAL WORK 병렬 묶음 시작 · {runnableWorkIds.Length}건",
+                    $"GENERAL WORK 병렬 묶음 시작 · {executableWorkIds.Length}건",
                     status: "PROCESSING",
                     persistenceSource: "WORKER ACTION");
-
-                if (overlappingScopes)
-                {
-                    dispatchNotes.Add(
-                        "WORK_CONCURRENCY_REDUCED: 동일/상위·하위 WRITE_PATH가 겹쳐 순차 실행합니다.");
-                }
 
                 var workBatchBefore =
                     await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                         workingDirectory,
                         cancellationToken);
                 using var gate = new SemaphoreSlim(maxConcurrency);
-                var workTasks = runnableWorkIds.Select(async workId =>
+                var workTasks = executableWorkIds.Select(async workId =>
                 {
                     await gate.WaitAsync(cancellationToken);
                     try
@@ -870,7 +903,7 @@ public partial class MainWindow
                 RunOnUi(() =>
                     ImplementerWorkGaugeText.Text =
                         FormatActiveWorkItemGauge(
-                            Math.Min(runnableWorkIds.Length, maxConcurrency)));
+                            Math.Min(executableWorkIds.Length, maxConcurrency)));
 
                 var completed = await Task.WhenAll(workTasks);
 
@@ -913,7 +946,7 @@ public partial class MainWindow
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
                     "Worker 작업",
-                    $"GENERAL WORK 병렬 묶음 종료 · {completed.Length}/{runnableWorkIds.Length} terminal",
+                    $"GENERAL WORK 병렬 묶음 종료 · {completed.Length}/{executableWorkIds.Length} terminal",
                     status: "COMPLETED",
                     persistenceSource: "WORKER ACTION");
             }
@@ -931,6 +964,7 @@ public partial class MainWindow
             }
 
             var plannedWorkScopes = milestone.WorkItems.Values
+                .Where(work => !overlappingWorkIds.Contains(work.Id))
                 .SelectMany(work => work.WritePaths)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -955,37 +989,47 @@ public partial class MainWindow
                 }
             }
 
-            AddDataFlowHistory(
-                WorkerRoleState.Unknown,
-                "Worker 작업",
-                "GENERAL WORK Git barrier · 일괄 commit/force push 시작",
-                status: "EXECUTING",
-                persistenceSource: "WORKER ACTION");
-
-            var workGitBarrier =
-                await MilestoneMechanicalExecutor.ForceCommitPushAsync(
-                    workingDirectory,
-                    $"ProjectHub milestone {milestone.Id} work batch",
-                    workBarrierPaths,
-                    _targetSettings.ManualRepositoryUrl?.Trim(),
-                    cancellationToken);
-
-            mechanicalReports.Add(
-                "WORK_GIT_BARRIER" +
-                Environment.NewLine +
-                workGitBarrier.Summary);
-
-            AddDataFlowHistory(
-                WorkerRoleState.Unknown,
-                "Worker 작업",
-                workGitBarrier.Summary,
-                status: workGitBarrier.Success ? "COMPLETED" : "WARNING",
-                persistenceSource: "WORKER ACTION");
-
-            if (!workGitBarrier.Success)
+            if (milestone.ReadOnlyNoFileChanges)
             {
-                dispatchNotes.Add(
-                    "WORK_GIT_BARRIER_FAILED_CONTINUED: HIGH 이후 final force push에서 다시 시도합니다.");
+                mechanicalReports.Add(
+                    "WORK_GIT_BARRIER" +
+                    Environment.NewLine +
+                    "status=SKIPPED_READ_ONLY");
+            }
+            else
+            {
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    "GENERAL WORK Git barrier · 일괄 commit/force push 시작",
+                    status: "EXECUTING",
+                    persistenceSource: "WORKER ACTION");
+
+                var workGitBarrier =
+                    await MilestoneMechanicalExecutor.ForceCommitPushAsync(
+                        workingDirectory,
+                        $"ProjectHub milestone {milestone.Id} work batch",
+                        workBarrierPaths,
+                        _targetSettings.ManualRepositoryUrl?.Trim(),
+                        cancellationToken);
+
+                mechanicalReports.Add(
+                    "WORK_GIT_BARRIER" +
+                    Environment.NewLine +
+                    workGitBarrier.Summary);
+
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    workGitBarrier.Summary,
+                    status: workGitBarrier.Success ? "COMPLETED" : "WARNING",
+                    persistenceSource: "WORKER ACTION");
+
+                if (!workGitBarrier.Success)
+                {
+                    dispatchNotes.Add(
+                        "WORK_GIT_BARRIER_FAILED_CONTINUED: HIGH 이후 final force push에서 다시 시도합니다.");
+                }
             }
 
             CaptureResourceStateWithoutWaiting();
@@ -1166,28 +1210,36 @@ public partial class MainWindow
                 }
             }
 
-            AddDataFlowHistory(
-                WorkerRoleState.Unknown,
-                "Worker 작업",
-                "GIT_FINALIZE 자동 실행",
-                status: "EXECUTING",
-                persistenceSource: "WORKER ACTION");
+            if (milestone.ReadOnlyNoFileChanges)
+            {
+                gitResult = MilestoneGitResult.SkippedReadOnly(
+                    milestone.TargetBranch);
+            }
+            else
+            {
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    "GIT_FINALIZE 자동 실행",
+                    status: "EXECUTING",
+                    persistenceSource: "WORKER ACTION");
 
-            gitResult = await MilestoneMechanicalExecutor.FinalizeGitAsync(
-                workingDirectory,
-                milestone,
-                milestoneChangedPaths,
-                _targetSettings.ManualRepositoryUrl?.Trim(),
-                cancellationToken);
+                gitResult = await MilestoneMechanicalExecutor.FinalizeGitAsync(
+                    workingDirectory,
+                    milestone,
+                    milestoneChangedPaths,
+                    _targetSettings.ManualRepositoryUrl?.Trim(),
+                    cancellationToken);
 
-            AddDataFlowHistory(
-                WorkerRoleState.Unknown,
-                "Worker 작업",
-                "GIT_FINALIZE 결과" +
-                Environment.NewLine +
-                gitResult.Summary,
-                status: gitResult.Success ? "COMPLETED" : "FAILED",
-                persistenceSource: "WORKER ACTION");
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Worker 작업",
+                    "GIT_FINALIZE 결과" +
+                    Environment.NewLine +
+                    gitResult.Summary,
+                    status: gitResult.Success ? "COMPLETED" : "FAILED",
+                    persistenceSource: "WORKER ACTION");
+            }
 
             SaveMilestoneExecutionGraph(
                 workingDirectory,
@@ -1220,6 +1272,12 @@ public partial class MainWindow
             {
                 finalEvent.AppendLine("DISPATCH_NOTES:");
                 foreach (var note in dispatchNotes)
+                    finalEvent.AppendLine(note);
+            }
+            if (finalReportNotes.Count > 0)
+            {
+                finalEvent.AppendLine("FINAL_REPORT_NOTES:");
+                foreach (var note in finalReportNotes)
                     finalEvent.AppendLine(note);
             }
 

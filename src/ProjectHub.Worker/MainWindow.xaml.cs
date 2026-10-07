@@ -2001,17 +2001,28 @@ public partial class MainWindow : Window
 
         IReadOnlyList<string>? codexConfigOverrides = null;
         var bypassHookTrust = false;
-        if (roleName == "WORK")
+        if (roleName is "WORK" or "QA")
         {
-            var hookPath = Path.Combine(roleTempPath, "projecthub-work-command-gate.ps1");
+            var isQa = roleName == "QA";
+            var hookPath = Path.Combine(
+                roleTempPath,
+                isQa
+                    ? "projecthub-qa-command-gate.ps1"
+                    : "projecthub-work-command-gate.ps1");
             await File.WriteAllTextAsync(
                 hookPath,
-                BuildExecutionPolicy.CreateCodexPreToolHookScript(),
+                isQa
+                    ? BuildExecutionPolicy.CreateQaCodexPreToolHookScript()
+                    : BuildExecutionPolicy.CreateCodexPreToolHookScript(),
                 new UTF8Encoding(false),
                 cancellationToken);
             codexConfigOverrides = new[]
             {
-                BuildExecutionPolicy.BuildCodexPreToolHookOverride(hookPath)
+                BuildExecutionPolicy.BuildCodexPreToolHookOverride(
+                    hookPath,
+                    isQa
+                        ? "ProjectHub QA command gate"
+                        : "ProjectHub WORK command gate")
             };
             bypassHookTrust = true;
         }
@@ -2032,7 +2043,7 @@ public partial class MainWindow : Window
             IncludeAppBaseWritable: roleName != "WORK",
             CodexConfigOverrides: codexConfigOverrides,
             BypassHookTrust: bypassHookTrust,
-            BuildExecutionAllowed: roleName != "WORK"));
+            BuildExecutionAllowed: roleName is not ("WORK" or "QA")));
         RunOnUi(() =>
             AddTaskMessage(
                 $"{outboundRole} EXECUTION",
