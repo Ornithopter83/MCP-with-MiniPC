@@ -614,6 +614,37 @@ public partial class MainWindow
 
         var milestoneChangedPaths = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase);
+        // Launch RESOURCE immediately; Git preflight and design commit must not
+        // delay its own transport or lifetime.
+        var resourceTasks = milestone.Resources.Values
+            .Select(resource =>
+            {
+                AddDataFlowHistory(
+                    WorkerRoleState.Resource,
+                    "Worker 분배",
+                    $"RESOURCE_ID: {resource.Id}" +
+                    Environment.NewLine +
+                    $"TARGET_PATH: {resource.TargetPath}",
+                    status: "DISPATCHED",
+                    referenceId: milestone.Id + ":RESOURCE:" + resource.Id,
+                    workItemId: "0",
+                    persistenceSource: "WORKER RESOURCE QUEUE");
+
+                return (
+                    Id: resource.Id,
+                    Task: _resourceTaskLifecycle.RunAsync(
+                        jobId,
+                        workingDirectory,
+                        resourceCancellation =>
+                            ExecuteMilestoneResourceBackgroundAsync(
+                                workingDirectory,
+                                milestone,
+                                resource.Id,
+                                resourceCancellation)));
+            })
+            .ToArray();
+
+
         var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
             workingDirectory,
             milestone.TargetBranch,
@@ -701,34 +732,6 @@ public partial class MainWindow
                     }
                 }
             }
-
-            var resourceTasks = milestone.Resources.Values
-                .Select(resource =>
-                {
-                    AddDataFlowHistory(
-                        WorkerRoleState.Resource,
-                        "Worker 분배",
-                        $"RESOURCE_ID: {resource.Id}" +
-                        Environment.NewLine +
-                        $"TARGET_PATH: {resource.TargetPath}",
-                        status: "DISPATCHED",
-                        referenceId: milestone.Id + ":RESOURCE:" + resource.Id,
-                        workItemId: "0",
-                        persistenceSource: "WORKER RESOURCE QUEUE");
-
-                    return (
-                        Id: resource.Id,
-                        Task: _resourceTaskLifecycle.RunAsync(
-                            jobId,
-                            workingDirectory,
-                            resourceCancellation =>
-                                ExecuteMilestoneResourceBackgroundAsync(
-                                    workingDirectory,
-                                    milestone,
-                                    resource.Id,
-                                    resourceCancellation)));
-                })
-                .ToArray();
 
             void CaptureResourceStateWithoutWaiting()
             {
@@ -1011,6 +1014,12 @@ public partial class MainWindow
                 }
             }
 
+            // Paths completed in this or any earlier milestone of the same
+            // user task are added without waiting for outstanding RESOURCEs.
+            var pendingResourcePaths = _resourcePendingGit.Snapshot(workingDirectory);
+            foreach (var path in pendingResourcePaths.Keys)
+                milestoneChangedPaths.Add(path);
+
             if (milestone.ReadOnlyNoFileChanges)
             {
                 gitResult = MilestoneGitResult.SkippedReadOnly(
@@ -1066,6 +1075,9 @@ public partial class MainWindow
                         cancellationToken, gitProgress);
 
                 }
+
+                if (gitResult.Success)
+                    _resourcePendingGit.Acknowledge(workingDirectory, pendingResourcePaths);
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
@@ -1438,18 +1450,6 @@ public partial class MainWindow
                 Array.Empty<string>());
         }
 
-        RunOnUi(() =>
-        {
-            TaskDirection.Text = "작업";
-            TaskTitle.Text = "RESOURCE 생성";
-            ResultTitle.Text = "RESOURCE";
-            SetFlowState(
-                codexActive: false,
-                workerActive: true,
-                webActive: true,
-                explicitStage: TaskStage.Resource);
-        });
-
         AddTaskMessage(
             "RESOURCE DETAIL",
             $"RESOURCE #{resource.Id} 생성 시작",
@@ -1513,6 +1513,8 @@ public partial class MainWindow
             workingDirectory,
             resource.TargetPath,
             completion.SavedPaths);
+        if (moveResult.ChangedPaths.Count > 0)
+            _resourcePendingGit.Register(workingDirectory, moveResult.ChangedPaths);
         AddRoleResponseHistory(
             WorkerRoleState.Resource,
             "리소스 반영",

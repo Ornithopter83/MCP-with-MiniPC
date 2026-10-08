@@ -17,7 +17,6 @@ internal sealed class ResourceTaskLifecycle
         public string TaskId { get; }
         public string WorkingDirectory { get; }
         public CancellationTokenSource Cancellation { get; } = new();
-        public SemaphoreSlim SerialGate { get; } = new(1, 1);
         public int ActiveCount { get; set; }
         public TaskCompletionSource<bool> Idle { get; set; } =
             CompletedIdle();
@@ -112,7 +111,6 @@ internal sealed class ResourceTaskLifecycle
                 }
 
                 state.Cancellation.Dispose();
-                state.SerialGate.Dispose();
             }
         }
     }
@@ -121,25 +119,15 @@ internal sealed class ResourceTaskLifecycle
         TaskState state,
         Func<CancellationToken, Task<T>> operation)
     {
-        var entered = false;
         try
         {
-            await state.SerialGate.WaitAsync(
-                state.Cancellation.Token);
-            entered = true;
-
-            return await operation(
-                state.Cancellation.Token);
+            return await operation(state.Cancellation.Token);
         }
         finally
         {
-            if (entered)
-                state.SerialGate.Release();
-
             lock (_gate)
             {
-                state.ActiveCount =
-                    Math.Max(0, state.ActiveCount - 1);
+                state.ActiveCount = Math.Max(0, state.ActiveCount - 1);
                 if (state.ActiveCount == 0)
                     state.Idle.TrySetResult(true);
             }

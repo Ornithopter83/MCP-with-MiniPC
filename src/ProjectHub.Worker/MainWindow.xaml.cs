@@ -187,6 +187,7 @@ public partial class MainWindow : Window
     private int _taskTranscriptStartIndex;
     private string? _activeProjectJobId;
     private readonly ResourceTaskLifecycle _resourceTaskLifecycle = new();
+    private readonly ResourcePendingGitPaths _resourcePendingGit = new();
     private CoordinatorContinuationState? _continuationState;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -947,6 +948,7 @@ public partial class MainWindow : Window
             // 마일스톤/PAUSE/일반 취소에서는 계속 실행하고,
             // 새 작업 진입에서만 이전 Task RESOURCE를 종료한 뒤 temp를 정리한다.
             await _resourceTaskLifecycle.CancelAllAsync();
+            // The RESOURCE Git ledger persists across user tasks/restarts.
 
             ExportTaskTranscript();
 
