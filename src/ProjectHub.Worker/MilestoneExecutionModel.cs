@@ -19,6 +19,7 @@ internal sealed record MilestoneResourceDefinition(
     string Body,
     string RawText)
 {
+    public string Instructions { get; init; } = string.Empty;
     public int? Width { get; init; }
     public int? Height { get; init; }
     public int? Columns { get; init; }
@@ -365,6 +366,7 @@ internal static class MilestoneDefinitionContract
                     resourceBody,
                     resourceJson.GetRawText())
                 {
+                    Instructions = resourceInstructions,
                     Width = PositiveInt(resourceJson, "width"),
                     Height = PositiveInt(resourceJson, "height"),
                     Columns = PositiveInt(resourceJson, "columns"),
