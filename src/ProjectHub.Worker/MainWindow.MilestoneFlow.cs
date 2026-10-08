@@ -979,12 +979,21 @@ public partial class MainWindow
                     status: "EXECUTING",
                     persistenceSource: "WORKER ACTION");
 
+                var gitProgress = new Progress<string>(message =>
+                    RunOnUi(() => AddDataFlowHistory(
+                        WorkerRoleState.Unknown,
+                        "Worker 작업",
+                        message,
+                        status: "EXECUTING",
+                        persistenceSource: "WORKER ACTION")));
+
                 gitResult = await MilestoneMechanicalExecutor.FinalizeGitAsync(
                     workingDirectory,
                     milestone,
                     milestoneChangedPaths,
                     _targetSettings.ManualRepositoryUrl?.Trim(),
-                    cancellationToken);
+                    cancellationToken,
+                    gitProgress);
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,

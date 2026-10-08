@@ -86,26 +86,54 @@ public sealed class ProcessGitCommandRunner : IGitCommandRunner
                 {
                 }
 
-                var stdout = await stdoutTask.ConfigureAwait(false);
-                var stderr = await stderrTask.ConfigureAwait(false);
+                var (stdout, _) = await ReadBoundedAsync(stdoutTask).ConfigureAwait(false);
+                var (stderr, _) = await ReadBoundedAsync(stderrTask).ConfigureAwait(false);
                 return new GitCommandResult(
                     -1,
-                    stdout.Trim(),
-                    stderr.Trim(),
+                    stdout,
+                    stderr,
                     TimedOut: timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested,
                     Canceled: cancellationToken.IsCancellationRequested);
             }
 
             var exitCode = process.ExitCode;
             processJob.Dispose();
-            return new GitCommandResult(
-                exitCode,
-                (await stdoutTask.ConfigureAwait(false)).Trim(),
-                (await stderrTask.ConfigureAwait(false)).Trim());
+            var (output, outputComplete) =
+                await ReadBoundedAsync(stdoutTask).ConfigureAwait(false);
+            var (error, errorComplete) =
+                await ReadBoundedAsync(stderrTask).ConfigureAwait(false);
+            if (!outputComplete || !errorComplete)
+            {
+                return new GitCommandResult(
+                    -1,
+                    output,
+                    error + " GIT_OUTPUT_DRAIN_INCOMPLETE");
+            }
+
+            return new GitCommandResult(exitCode, output, error);
         }
         catch (Exception ex)
         {
             return new GitCommandResult(-1, string.Empty, ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    private static async Task<(string Output, bool Complete)> ReadBoundedAsync(
+        Task<string> readTask)
+    {
+        var finished = await Task.WhenAny(
+            readTask,
+            Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
+        if (finished != readTask)
+            return (string.Empty, false);
+
+        try
+        {
+            return ((await readTask.ConfigureAwait(false)).Trim(), true);
+        }
+        catch
+        {
+            return (string.Empty, false);
         }
     }
 }

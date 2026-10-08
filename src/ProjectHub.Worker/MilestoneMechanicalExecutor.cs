@@ -532,17 +532,20 @@ internal static class MilestoneMechanicalExecutor
 
     public static async Task<IReadOnlySet<string>> SnapshotChangedPathsAsync(
         string workingDirectory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireSuccess = false)
     {
         var state = await SnapshotChangeStateAsync(
             workingDirectory,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            requireSuccess).ConfigureAwait(false);
         return state.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     public static async Task<IReadOnlyDictionary<string, string>> SnapshotChangeStateAsync(
         string workingDirectory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireSuccess = false)
     {
         var git = new ProcessGitCommandRunner();
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -551,7 +554,13 @@ internal static class MilestoneMechanicalExecutor
                  {
                      new[] { "diff", "--name-only", "-z" },
                      new[] { "diff", "--cached", "--name-only", "-z" },
-                     new[] { "ls-files", "--others", "--exclude-standard", "-z" }
+                     new[]
+                      {
+                          "ls-files", "--others", "--exclude-standard",
+                          "--exclude=node_modules/", "--exclude=.npm-cache/",
+                          "--exclude=dist-electron/", "--exclude=coverage/",
+                          "--exclude=.vite/", "--exclude=*.tsbuildinfo", "-z"
+                      }
                  })
         {
             var result = await git.RunAsync(
@@ -560,8 +569,17 @@ internal static class MilestoneMechanicalExecutor
                 TimeSpan.FromSeconds(30),
                 cancellationToken).ConfigureAwait(false);
 
+            cancellationToken.ThrowIfCancellationRequested();
             if (result.ExitCode != 0)
+            {
+                if (requireSuccess)
+                    throw new InvalidOperationException(
+                        "GIT_SNAPSHOT_FAILED: " + args[0] +
+                        " exit=" + result.ExitCode + " " +
+                        MilestoneDefinitionContract.Limit(
+                            result.StandardError, 500));
                 continue;
+            }
 
             foreach (var rawPath in result.StandardOutput.Split(
                          '\0',
@@ -731,309 +749,238 @@ internal static class MilestoneMechanicalExecutor
         string commitMessage,
         IReadOnlyCollection<string> paths,
         string? configuredRepositoryUrl,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<string>? progress = null)
     {
         var git = new ProcessGitCommandRunner();
-
-        Task<GitCommandResult> Run(params string[] args) =>
-            git.RunAsync(
-                workingDirectory,
-                args,
-                TimeSpan.FromMinutes(3),
-                cancellationToken);
-
-        var inside = await Run(
-            "rev-parse",
-            "--is-inside-work-tree").ConfigureAwait(false);
-        if (inside.ExitCode != 0 ||
-            !string.Equals(
-                inside.StandardOutput.Trim(),
-                "true",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return new(
-                false,
-                false,
-                RequiredBranch,
-                null,
-                "FORCE_GIT_NOT_REPOSITORY");
-        }
-
-        var currentBranch = await ReadCurrentBranchAsync(Run)
-            .ConfigureAwait(false);
-        if (!string.Equals(
-                currentBranch,
-                RequiredBranch,
-                StringComparison.Ordinal))
-        {
-            var switchMain = await Run(
-                "switch",
-                RequiredBranch).ConfigureAwait(false);
-            if (switchMain.ExitCode != 0)
-            {
-                return new(
-                    false,
-                    false,
-                    RequiredBranch,
-                    null,
-                    "FORCE_GIT_MAIN_SWITCH_FAILED" +
-                    Environment.NewLine +
-                    (string.IsNullOrWhiteSpace(switchMain.StandardError)
-                        ? switchMain.StandardOutput
-                        : switchMain.StandardError));
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(configuredRepositoryUrl))
-        {
-            var origin = await Run(
-                "remote",
-                "get-url",
-                "origin").ConfigureAwait(false);
-            if (origin.ExitCode != 0 ||
-                string.IsNullOrWhiteSpace(origin.StandardOutput))
-            {
-                await Run(
-                    "remote",
-                    "add",
-                    "origin",
-                    configuredRepositoryUrl.Trim()).ConfigureAwait(false);
-            }
-            else if (!RepositoryAddressesEqual(
-                         configuredRepositoryUrl,
-                         origin.StandardOutput.Trim()))
-            {
-                await Run(
-                    "remote",
-                    "set-url",
-                    "origin",
-                    configuredRepositoryUrl.Trim()).ConfigureAwait(false);
-            }
-        }
-
-        // 이전 Git 작업의 충돌 상태가 남아 있어도 현재 로컬 main 작업을 우선한다.
-        await Run("rebase", "--abort").ConfigureAwait(false);
-        await Run("merge", "--abort").ConfigureAwait(false);
-        await Run("cherry-pick", "--abort").ConfigureAwait(false);
-
-        var requestedScopes = BuildScopedPathspecs(
-            paths
-                .Select(NormalizeGitPath)
-                .Where(path => !string.IsNullOrWhiteSpace(path))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray());
-
-        // 과거에 관찰된 파일 목록을 그대로 stage하지 않는다.
-        // BUILD/HIGH/QA 과정에서 생성 후 삭제된 파일이 pathspec에 남으면
-        // 하나의 stale path가 전체 git add를 실패시킬 수 있다.
-        // 현재 working tree에서 실제로 dirty인 relevant path만 다시 계산한다.
-        var liveDirtyPaths =
-            await SnapshotChangedPathsAsync(
-                workingDirectory,
-                cancellationToken).ConfigureAwait(false);
-        var scopedPaths = liveDirtyPaths
-            .Where(path =>
-                requestedScopes.Count > 0 &&
-                IsPathWithinScopes(path, requestedScopes))
-            .Where(path => !IsRuntimeOutput(path))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, deadline.Token);
+        var token = linked.Token;
+        string? pathspecFile = null;
+        string? localHead = null;
         var commitCreated = false;
-        string? commitError = null;
-        var addWarnings = new List<string>();
-        var stagedPaths = new List<string>();
+        var pushState = "SKIPPED";
+        var eligibleCount = 0;
+        var preservedOtherStaged = 0;
 
-        // path별로 stage해서 한 파일의 race/stale 상태가 다른 소스까지
-        // staging하지 못하게 만드는 것을 방지한다.
-        foreach (var scopedPath in scopedPaths)
+        async Task<GitCommandResult> Run(params string[] args)
         {
-            var add = await Run(
-                "add",
-                "-A",
-                "--",
-                scopedPath).ConfigureAwait(false);
-            if (add.ExitCode == 0)
-            {
-                stagedPaths.Add(scopedPath);
-                continue;
-            }
-
-            addWarnings.Add(
-                scopedPath +
-                ": " +
-                (string.IsNullOrWhiteSpace(add.StandardError)
-                    ? add.StandardOutput
-                    : add.StandardError));
+            token.ThrowIfCancellationRequested();
+            var result = await git.RunAsync(
+                workingDirectory, args, TimeSpan.FromMinutes(3), token)
+                .ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            return result;
         }
 
-        if (stagedPaths.Count > 0)
+        MilestoneGitResult Fail(string stage, GitCommandResult? result = null)
         {
-            var diffArgs = new List<string>
-            {
-                "diff",
-                "--cached",
-                "--quiet",
-                "--"
-            };
-            diffArgs.AddRange(stagedPaths);
-            var staged = await Run(diffArgs.ToArray())
-                .ConfigureAwait(false);
+            progress?.Report("GIT_FINALIZE 실패 · " + stage);
+            var detail = result is null ? string.Empty :
+                Environment.NewLine + $"exit={result.ExitCode}" +
+                Environment.NewLine + $"timedOut={result.TimedOut}" +
+                Environment.NewLine + "detail=" +
+                MilestoneDefinitionContract.Limit(
+                    string.IsNullOrWhiteSpace(result.StandardError)
+                        ? result.StandardOutput : result.StandardError, 1000);
+            return new(
+                false, false, RequiredBranch, localHead,
+                "FORCE_COMMIT_PUSH" + Environment.NewLine +
+                $"branch={RequiredBranch}" + Environment.NewLine +
+                $"step={stage}" + Environment.NewLine +
+                $"stagingPaths={eligibleCount}" + Environment.NewLine +
+                $"commitCreated={(commitCreated ? "YES" : "NO")}" +
+                Environment.NewLine + "push=" + pushState +
+                Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" + detail);
+        }
 
-            if (staged.ExitCode == 1)
+        try
+        {
+            progress?.Report("GIT_FINALIZE · 저장소 상태 확인");
+            var inside = await Run("rev-parse", "--is-inside-work-tree")
+                .ConfigureAwait(false);
+            if (inside.ExitCode != 0 ||
+                !string.Equals(inside.StandardOutput.Trim(), "true",
+                    StringComparison.OrdinalIgnoreCase))
+                return Fail("NOT_REPOSITORY", inside);
+
+            var branch = await ReadCurrentBranchAsync(Run).ConfigureAwait(false);
+            if (branch != RequiredBranch)
             {
-                async Task<GitCommandResult> CommitAsync()
-                {
-                    var commitArgs = new List<string>
-                    {
-                        "commit",
-                        "-m",
-                        commitMessage,
-                        "--"
-                    };
-                    commitArgs.AddRange(stagedPaths);
-                    return await Run(commitArgs.ToArray())
+                var switched = await Run("switch", RequiredBranch).ConfigureAwait(false);
+                if (switched.ExitCode != 0)
+                    return Fail("MAIN_SWITCH_FAILED", switched);
+            }
+
+            if (!string.IsNullOrWhiteSpace(configuredRepositoryUrl))
+            {
+                var origin = await Run("remote", "get-url", "origin")
+                    .ConfigureAwait(false);
+                GitCommandResult? updated = null;
+                if (origin.ExitCode != 0 || string.IsNullOrWhiteSpace(origin.StandardOutput))
+                    updated = await Run("remote", "add", "origin", configuredRepositoryUrl.Trim())
                         .ConfigureAwait(false);
+                else if (!RepositoryAddressesEqual(
+                             configuredRepositoryUrl, origin.StandardOutput.Trim()))
+                    updated = await Run("remote", "set-url", "origin", configuredRepositoryUrl.Trim())
+                        .ConfigureAwait(false);
+                if (updated is not null && updated.ExitCode != 0)
+                    return Fail("ORIGIN_UPDATE_FAILED", updated);
+            }
+
+            // 충돌 작업이 없는 경우 abort는 1/128을 반환할 수 있다.
+            foreach (var action in new[] { "rebase", "merge", "cherry-pick" })
+            {
+                var aborted = await Run(action, "--abort").ConfigureAwait(false);
+                if (aborted.ExitCode < 0 || aborted.TimedOut)
+                    return Fail("ABORT_FAILED:" + action, aborted);
+            }
+
+            var requestedScopes = BuildScopedPathspecs(
+                paths.Select(NormalizeGitPath)
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+            progress?.Report("GIT_FINALIZE · 변경 파일 수집");
+            var dirtyPaths = await SnapshotChangedPathsAsync(
+                workingDirectory, token, requireSuccess: true).ConfigureAwait(false);
+            var scopedPaths = dirtyPaths
+                .Where(path => requestedScopes.Count > 0 &&
+                               IsPathWithinScopes(path, requestedScopes))
+                .Where(path => !IsRuntimeOutput(path))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
+            eligibleCount = scopedPaths.Length;
+            progress?.Report($"GIT_FINALIZE · 소스 {eligibleCount}개 일괄 staging");
+
+            if (eligibleCount > 0)
+            {
+                // NUL 구분 UTF-8 pathspec: Windows 인수 길이 제한을 회피한다.
+                pathspecFile = Path.GetTempFileName();
+                await File.WriteAllBytesAsync(
+                    pathspecFile,
+                    new UTF8Encoding(false).GetBytes(string.Join('\0', scopedPaths) + "\0"),
+                    token).ConfigureAwait(false);
+                var added = await Run(
+                    "--literal-pathspecs", "add", "-A",
+                    "--pathspec-from-file=" + pathspecFile,
+                    "--pathspec-file-nul").ConfigureAwait(false);
+                if (added.ExitCode != 0)
+                    return Fail("BATCH_STAGE_FAILED", added);
+
+                // 별도로 staged된 타 작업 파일은 commit에 포함하지 않는다.
+                var diff = await Run("diff", "--cached", "--name-only", "-z")
+                    .ConfigureAwait(false);
+                if (diff.ExitCode != 0)
+                    return Fail("STAGED_DIFF_FAILED", diff);
+                var selected = scopedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var stagedPaths = diff.StandardOutput
+                    .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(NormalizeGitPath)
+                    .ToArray();
+                preservedOtherStaged = stagedPaths.Count(path => !selected.Contains(path));
+                if (!stagedPaths.Any(selected.Contains))
+                    return Fail("STAGED_SCOPE_EMPTY_AFTER_ADD");
+
+                progress?.Report($"GIT_FINALIZE · {eligibleCount}개 단일 커밋");
+                Task<GitCommandResult> CommitAsync(bool useFallbackIdentity)
+                {
+                    var args = new List<string>();
+                    if (useFallbackIdentity)
+                        args.AddRange(new[]
+                        {
+                            "-c", "user.name=ProjectHub",
+                            "-c", "user.email=projecthub@localhost"
+                        });
+                    args.AddRange(new[]
+                    {
+                        "--literal-pathspecs", "commit", "--only", "-m", commitMessage,
+                        "--pathspec-from-file=" + pathspecFile, "--pathspec-file-nul"
+                    });
+                    return Run(args.ToArray());
                 }
 
-                var commit = await CommitAsync().ConfigureAwait(false);
+                var commit = await CommitAsync(false).ConfigureAwait(false);
+                if (commit.ExitCode != 0 &&
+                    (commit.StandardError.Contains("Author identity unknown",
+                        StringComparison.OrdinalIgnoreCase) ||
+                     commit.StandardError.Contains("unable to auto-detect email address",
+                        StringComparison.OrdinalIgnoreCase)))
+                    commit = await CommitAsync(true).ConfigureAwait(false);
                 if (commit.ExitCode != 0)
-                {
-                    await Run(
-                        "config",
-                        "user.name",
-                        "ProjectHub").ConfigureAwait(false);
-                    await Run(
-                        "config",
-                        "user.email",
-                        "projecthub@localhost").ConfigureAwait(false);
-                    commit = await CommitAsync().ConfigureAwait(false);
-                }
-
-                if (commit.ExitCode == 0)
-                {
-                    commitCreated = true;
-                }
-                else
-                {
-                    commitError =
-                        "git commit 실패: " +
-                        (string.IsNullOrWhiteSpace(commit.StandardError)
-                            ? commit.StandardOutput
-                            : commit.StandardError);
-                }
+                    return Fail("COMMIT_FAILED", commit);
+                commitCreated = true;
             }
-            else if (staged.ExitCode > 1)
+
+            var head = await Run("rev-parse", "HEAD").ConfigureAwait(false);
+            if (head.ExitCode != 0 || string.IsNullOrWhiteSpace(head.StandardOutput))
+                return Fail("HEAD_READ_FAILED", head);
+            localHead = head.StandardOutput.Trim();
+
+            // stage/commit 실패일 때는 절대로 이전 HEAD만 push하지 않는다.
+            GitCommandResult? pushed = null;
+            for (var attempt = 1; attempt <= 3; attempt++)
             {
-                commitError =
-                    "git diff --cached 확인 실패: " +
-                    (string.IsNullOrWhiteSpace(staged.StandardError)
-                        ? staged.StandardOutput
-                        : staged.StandardError);
+                progress?.Report($"GIT_FINALIZE · push {attempt}/3");
+                pushed = await Run("push", "--force", "origin",
+                    "HEAD:refs/heads/" + RequiredBranch).ConfigureAwait(false);
+                if (pushed.ExitCode == 0)
+                    break;
+                if (attempt < 3)
+                    await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), token)
+                        .ConfigureAwait(false);
             }
+            pushState = pushed?.ExitCode == 0 ? "COMPLETED" : "FAILED";
+            if (pushState != "COMPLETED")
+                return Fail("PUSH_FAILED", pushed);
+
+            progress?.Report("GIT_FINALIZE · 커밋 후 변경 확인");
+            var remaining = (await SnapshotChangedPathsAsync(
+                    workingDirectory, token, requireSuccess: true).ConfigureAwait(false))
+                .Where(path => requestedScopes.Count > 0 &&
+                               IsPathWithinScopes(path, requestedScopes))
+                .Where(path => !IsRuntimeOutput(path))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
+            var summary = "FORCE_COMMIT_PUSH" + Environment.NewLine +
+                $"branch={RequiredBranch}" + Environment.NewLine +
+                $"commit={localHead}" + Environment.NewLine +
+                $"commitCreated={(commitCreated ? "YES" : "NO")}" +
+                Environment.NewLine + "push=" + pushState +
+                Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
+                Environment.NewLine + $"stagingPaths={eligibleCount}" +
+                Environment.NewLine + $"preservedOtherStaged={preservedOtherStaged}" +
+                Environment.NewLine + $"relevantDirtyAfterFinalize={remaining.Length}";
+            if (remaining.Length > 0)
+                summary += Environment.NewLine +
+                    "relevantDirtySample=" + string.Join(",", remaining.Take(10));
+            progress?.Report(remaining.Length == 0
+                ? "GIT_FINALIZE · 완료"
+                : $"GIT_FINALIZE · 잔여 변경 {remaining.Length}개");
+            return new(remaining.Length == 0, false, RequiredBranch, localHead, summary);
         }
-
-        var head = await Run(
-            "rev-parse",
-            "HEAD").ConfigureAwait(false);
-        var localHead = head.ExitCode == 0
-            ? head.StandardOutput.Trim()
-            : null;
-
-        GitCommandResult? push = null;
-        for (var attempt = 1; attempt <= 3; attempt++)
+        catch (OperationCanceledException)
+            when (deadline.IsCancellationRequested &&
+                  !cancellationToken.IsCancellationRequested)
         {
-            push = await Run(
-                "push",
-                "--force",
-                "origin",
-                "HEAD:refs/heads/" + RequiredBranch)
-                .ConfigureAwait(false);
-
-            if (push.ExitCode == 0)
-                break;
-
-            if (attempt < 3)
+            return Fail("OVERALL_TIMEOUT_6_MIN");
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return Fail("EXCEPTION:" + ex.GetType().Name,
+                new GitCommandResult(-1, string.Empty, ex.Message));
+        }
+        finally
+        {
+            if (pathspecFile is not null)
             {
-                await Task.Delay(
-                    TimeSpan.FromMilliseconds(500 * attempt),
-                    cancellationToken).ConfigureAwait(false);
+                try { File.Delete(pathspecFile); }
+                catch { /* Cleanup failure must not hide the Git result. */ }
             }
         }
-
-        var pushSucceeded = push?.ExitCode == 0;
-
-        // push 성공 자체가 검증된 working tree와 원격이 같다는 뜻은 아니다.
-        // commit 대상 scope에 source dirty가 남아 있으면 최종화 실패로 취급한다.
-        var postFinalizeDirty =
-            await SnapshotChangedPathsAsync(
-                workingDirectory,
-                cancellationToken).ConfigureAwait(false);
-        var relevantDirtyAfterFinalize = postFinalizeDirty
-            .Where(path =>
-                requestedScopes.Count > 0 &&
-                IsPathWithinScopes(path, requestedScopes))
-            .Where(path => !IsRuntimeOutput(path))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var summary =
-            "FORCE_COMMIT_PUSH" +
-            Environment.NewLine +
-            $"branch={RequiredBranch}" +
-            Environment.NewLine +
-            $"commit={localHead ?? "없음"}" +
-            Environment.NewLine +
-            $"commitCreated={(commitCreated ? "YES" : "NO")}" +
-            Environment.NewLine +
-            $"push={(pushSucceeded ? "COMPLETED" : "FAILED")}" +
-            Environment.NewLine +
-            "mode=FORCE_LOCAL_MAIN_WINS" +
-            Environment.NewLine +
-            $"relevantDirtyAfterFinalize={relevantDirtyAfterFinalize.Length}";
-
-        if (addWarnings.Count > 0)
-        {
-            summary +=
-                Environment.NewLine +
-                "stageWarnings=" +
-                string.Join(" | ", addWarnings);
-        }
-
-        if (!string.IsNullOrWhiteSpace(commitError))
-        {
-            summary +=
-                Environment.NewLine +
-                "commitWarning=" +
-                commitError;
-        }
-
-        if (relevantDirtyAfterFinalize.Length > 0)
-        {
-            summary +=
-                Environment.NewLine +
-                "relevantDirtyPaths=" +
-                string.Join(",", relevantDirtyAfterFinalize);
-        }
-
-        if (!pushSucceeded && push is not null)
-        {
-            summary +=
-                Environment.NewLine +
-                "pushWarning=" +
-                (string.IsNullOrWhiteSpace(push.StandardError)
-                    ? push.StandardOutput
-                    : push.StandardError);
-        }
-
-        return new(
-            pushSucceeded &&
-            string.IsNullOrWhiteSpace(commitError) &&
-            relevantDirtyAfterFinalize.Length == 0,
-            false,
-            RequiredBranch,
-            localHead,
-            summary);
     }
 
     public static Task<MilestoneGitResult> FinalizeGitAsync(
@@ -1041,13 +988,15 @@ internal static class MilestoneMechanicalExecutor
         MilestoneDefinition milestone,
         IReadOnlyCollection<string> paths,
         string? configuredRepositoryUrl,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        IProgress<string>? progress = null) =>
         ForceCommitPushAsync(
             workingDirectory,
             $"ProjectHub milestone {milestone.Id} final",
             paths,
             configuredRepositoryUrl,
-            cancellationToken);
+            cancellationToken,
+            progress);
 
     private static async Task<string> AlignLocalOriginHeadToMainAsync(
         Func<string[], Task<GitCommandResult>> run)
@@ -1237,10 +1186,20 @@ internal static class MilestoneMechanicalExecutor
                 part.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals("dist", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("dist-electron", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("node_modules", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".npm-cache", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".pnpm-store", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".vite", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".cache", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals("coverage", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals(".projecthub", StringComparison.OrdinalIgnoreCase)))
         {
             return true;
         }
+
+        if (normalized.EndsWith(".tsbuildinfo", StringComparison.OrdinalIgnoreCase))
+            return true;
 
         return normalized.Equals(
                    "temp",
