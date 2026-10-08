@@ -881,7 +881,16 @@ internal static class MilestoneDefinitionContract
         }
 
         if (formatRecoveryOccurred)
-            builder.AppendLine("FORMAT_RECOVERY_NOTICE: 역할 응답 전체 재요청 사용");
+        {
+            var unread = unreadRecoveryElements?
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray() ?? Array.Empty<string>();
+            builder.AppendLine(unread.Length == 0
+                ? "FORMAT_RECOVERY_NOTICE: 역할 응답 전체 재요청 사용"
+                : "FORMAT_RECOVERY_NOTICE: 복구 후 읽지 못한 항목: " +
+                  string.Join(", ", unread));
+        }
 
         builder.AppendLine("ARCHIVE: " + archiveReference);
         builder.AppendLine("DECISION_REQUIRED: 다음 WORK / PAUSE / END 중 하나를 판단");

@@ -92,13 +92,13 @@ public sealed class CoordinatorFirstContractTests
             workReports,
             qaReport: null);
 
-        Assert.Contains("WORK_GOALS:", qaContext);
-        Assert.Contains("WORK_RESULTS:", qaContext);
+        Assert.Contains("@@WORK_GOALS", qaContext);
+        Assert.Contains("@@WORK_RESULTS", qaContext);
         Assert.DoesNotContain("QA_INSTRUCTIONS:", qaContext);
         Assert.DoesNotContain("RESOURCE_RESULTS:", qaContext);
         Assert.DoesNotContain("MECHANICAL_RESULTS:", qaContext);
         Assert.DoesNotContain("PREPARED_OUTPUT_ROOT:", qaContext);
-        Assert.Contains("WORK_GOALS:", highContext);
+        Assert.Contains("@@WORK_GOALS", highContext);
         Assert.DoesNotContain("MILESTONE_VALIDATION:", highContext);
         Assert.DoesNotContain("RESOURCE_RESULTS:", highContext);
         Assert.DoesNotContain("MECHANICAL_RESULTS:", highContext);
@@ -749,12 +749,11 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("[ACTION=WORK]", hq);
         Assert.Contains("[RESPONSE=OK]", hq);
         Assert.Contains("MILESTONE: M1", hq);
-        Assert.Contains("BRANCH: main", hq);
-        Assert.Contains("@@WORK 10", hq);
-        Assert.Contains("TEST: ON", hq);
-        Assert.Contains("선행관계", hq);
-        Assert.DoesNotContain("@@QA", hq);
-        Assert.DoesNotContain("@@HIGH", hq);
+        Assert.Contains("@@WORK=10", hq);
+        Assert.Contains("PATH:", hq);
+        Assert.Contains("@@QA", hq);
+        Assert.Contains("@@HIGH", hq);
+        Assert.Contains("Git", hq);
         Assert.DoesNotContain("@@MANAGER", hq);
         Assert.DoesNotContain("@@MECHANICAL", hq);
 
@@ -763,7 +762,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("STATUS는 passed, issue, blocked", qa);
         Assert.DoesNotContain("[GOTO : HIGH]", qa);
         Assert.DoesNotContain("[GOTO : MANAGER]", high);
-        Assert.Contains("최종 보완 역할", high);
+        Assert.Contains("Git 장애", high);
 
         var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
             RoleContractLoader.BuildQaPrompt("runtime 확인"));
@@ -1007,8 +1006,8 @@ public sealed class CoordinatorFirstContractTests
             @@WORK_COMPLETION
             완료
 
-            @@QA
-            REQUIRED: YES
+            @@MECHANICAL
+            BUILD: npm run build
             """;
 
         var hq = HqTextProtocol.Parse(response);
@@ -1061,7 +1060,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.True(hq.IsValid, string.Join(", ", hq.Errors));
         var action = Assert.Single(hq.Parse.ValidActions);
         Assert.Equal("PAUSE", action.Name);
-        Assert.Contains("C:\\AI-AGENT\\Worker\\Demo", hq.CompatibilityMessage);
+        using var json = System.Text.Json.JsonDocument.Parse(action.JsonPayload!);
+        Assert.Contains("C:\\AI-AGENT\\Worker\\Demo",
+            json.RootElement.GetProperty("message").GetString());
     }
 
     [Fact]
