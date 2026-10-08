@@ -2,7 +2,7 @@
 
 > 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
 > 이 문서는 HIGH 제거와 RESOURCE 도입 과정의 구현 이력이다. 본문 중 `[GOTO : RESOURCE]` 뒤 자연어만 전달한다는 초기 설명은 현재 wire 계약으로 사용하지 않는다.
-> 현재 RESOURCE 요청은 `WORK-ROUTING-CONTRACT.md`가 원본이며 `RESOURCE_TYPE: IMAGE`만 허용한다. AUDIO·VIDEO·DOCUMENT·FILE은 현재 transport 대상이 아니다.
+> 현재 RESOURCE는 HQ의 `@@RESOURCE=0` 이미지 생성 지시를 `HQ-ROUTING-CONTRACT.md`로 정의한다. WORK 결과 문법은 `WORK-ROUTING-CONTRACT.md`의 별도 책임이다. AUDIO·VIDEO·DOCUMENT·FILE은 현재 RESOURCE 생성 대상이 아니다.
 
 
 갱신일: 2026-09-25
