@@ -21,11 +21,19 @@ public interface IGitCommandRunner
 
 public sealed class ProcessGitCommandRunner : IGitCommandRunner
 {
+    public Task<GitCommandResult> RunAsync(
+        string workingDirectory,
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(workingDirectory, arguments, timeout, cancellationToken, null);
+
     public async Task<GitCommandResult> RunAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environmentOverrides)
     {
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
             return new GitCommandResult(-1, string.Empty, "GIT_WORKING_DIRECTORY_MISSING");
@@ -44,6 +52,12 @@ public sealed class ProcessGitCommandRunner : IGitCommandRunner
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+
+            if (environmentOverrides is not null)
+            {
+                foreach (var pair in environmentOverrides)
+                    startInfo.Environment[pair.Key] = pair.Value;
+            }
 
             startInfo.ArgumentList.Add("-c");
             startInfo.ArgumentList.Add("safe.directory=" + workingDirectory);

@@ -559,7 +559,9 @@ internal static class MilestoneMechanicalExecutor
                           "ls-files", "--others", "--exclude-standard",
                           "--exclude=node_modules/", "--exclude=.npm-cache/",
                           "--exclude=dist-electron/", "--exclude=coverage/",
-                          "--exclude=.vite/", "--exclude=*.tsbuildinfo", "-z"
+                          "--exclude=.vite/", "--exclude=.electron-cache/",
+                          "--exclude=.playwright/", "--exclude=.next/",
+                          "--exclude=.turbo/", "--exclude=*.tsbuildinfo", "-z"
                       }
                  })
         {
@@ -763,6 +765,8 @@ internal static class MilestoneMechanicalExecutor
         var pushState = "SKIPPED";
         var eligibleCount = 0;
         var preservedOtherStaged = 0;
+        var repairedRuntimeCount = 0;
+        string? replacedHead = null;
 
         async Task<GitCommandResult> Run(params string[] args)
         {
@@ -792,7 +796,11 @@ internal static class MilestoneMechanicalExecutor
                 $"stagingPaths={eligibleCount}" + Environment.NewLine +
                 $"commitCreated={(commitCreated ? "YES" : "NO")}" +
                 Environment.NewLine + "push=" + pushState +
-                Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" + detail);
+                Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
+                (replacedHead is null ? string.Empty :
+                    Environment.NewLine + $"repairedPreviousHead={replacedHead}" +
+                    Environment.NewLine + $"removedRuntimeFiles={repairedRuntimeCount}") +
+                detail);
         }
 
         try
@@ -837,6 +845,20 @@ internal static class MilestoneMechanicalExecutor
                     return Fail("ABORT_FAILED:" + action, aborted);
             }
 
+            // A previous push may have failed after a ProjectHub commit accidentally
+            // included generated files. Repair only when remote main is exactly its
+            // parent; never reset source changes or the user's existing index.
+            var repair = await RepairUnpublishedRuntimeHeadAsync(
+                workingDirectory, git, Run, token, progress).ConfigureAwait(false);
+            if (!repair.Success)
+            {
+                localHead = repair.PreviousHead;
+                return Fail(repair.ErrorStep ?? "RUNTIME_COMMIT_REPAIR_FAILED",
+                    repair.Error);
+            }
+            replacedHead = repair.PreviousHead;
+            repairedRuntimeCount = repair.ExcludedFiles;
+
             var requestedScopes = BuildScopedPathspecs(
                 paths.Select(NormalizeGitPath)
                     .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -850,6 +872,24 @@ internal static class MilestoneMechanicalExecutor
                 .Where(path => !IsRuntimeOutput(path))
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
             eligibleCount = scopedPaths.Length;
+
+            // GitHub rejects blobs >= 100 MiB; flag large source files explicitly
+            // instead of silently omitting user content or creating an unpushable commit.
+            foreach (var scopedPath in scopedPaths)
+            {
+                var fullPath = Path.Combine(
+                    workingDirectory, scopedPath.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(fullPath) &&
+                    new FileInfo(fullPath).Length >= 100L * 1024 * 1024)
+                {
+                    return Fail("SOURCE_FILE_TOO_LARGE",
+                        new GitCommandResult(-1, string.Empty,
+                            "path=" + scopedPath +
+                            " sizeBytes=" + new FileInfo(fullPath).Length +
+                            " (GitHub 100 MiB limit; use supported LFS or reduce file size)"));
+                }
+            }
+
             progress?.Report($"GIT_FINALIZE · 소스 {eligibleCount}개 일괄 staging");
 
             if (eligibleCount > 0)
@@ -948,6 +988,9 @@ internal static class MilestoneMechanicalExecutor
                 Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
                 Environment.NewLine + $"stagingPaths={eligibleCount}" +
                 Environment.NewLine + $"preservedOtherStaged={preservedOtherStaged}" +
+                Environment.NewLine + $"repairedRuntimeFiles={repairedRuntimeCount}" +
+                (replacedHead is null ? string.Empty :
+                    Environment.NewLine + $"repairedPreviousHead={replacedHead}") +
                 Environment.NewLine + $"relevantDirtyAfterFinalize={remaining.Length}";
             if (remaining.Length > 0)
                 summary += Environment.NewLine +
@@ -997,6 +1040,193 @@ internal static class MilestoneMechanicalExecutor
             configuredRepositoryUrl,
             cancellationToken,
             progress);
+
+    private sealed record RuntimeCommitRepairResult(
+        bool Success,
+        string? PreviousHead = null,
+        string? RewrittenHead = null,
+        int ExcludedFiles = 0,
+        string? ErrorStep = null,
+        GitCommandResult? Error = null);
+
+    private static async Task<RuntimeCommitRepairResult> RepairUnpublishedRuntimeHeadAsync(
+        string workingDirectory,
+        ProcessGitCommandRunner git,
+        Func<string[], Task<GitCommandResult>> run,
+        CancellationToken cancellationToken,
+        IProgress<string>? progress)
+    {
+        var head = await run(new[] { "rev-parse", "--verify", "HEAD" })
+            .ConfigureAwait(false);
+        // An unborn repository does not have any previous commit to repair.
+        if (head.ExitCode != 0)
+            return new(true);
+
+        var headSha = head.StandardOutput.Trim();
+        var additions = await run(new[]
+        {
+            "diff-tree", "--no-commit-id", "--diff-filter=A",
+            "--name-only", "-r", "-z", "HEAD"
+        }).ConfigureAwait(false);
+        if (additions.ExitCode != 0)
+            return new(false, headSha, ErrorStep: "RUNTIME_HEAD_SCAN_FAILED",
+                Error: additions);
+
+        var unwanted = additions.StandardOutput
+            .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            .Select(NormalizeGitPath)
+            .Where(IsRuntimeOutput)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (unwanted.Length == 0)
+            return new(true);
+
+        var remote = await run(new[] {
+            "ls-remote", "--heads", "origin", RequiredBranch
+        }).ConfigureAwait(false);
+        if (remote.ExitCode != 0)
+            return new(false, headSha, ErrorStep: "RUNTIME_REMOTE_CHECK_FAILED",
+                Error: remote);
+        var remoteSha = remote.StandardOutput.Split(
+            new[] { '\t', ' ', '\r', '\n' },
+            StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.Equals(remoteSha, headSha, StringComparison.OrdinalIgnoreCase))
+        {
+            // This commit is already published. Never rewrite it on the user's behalf.
+            progress?.Report(
+                "GIT_FINALIZE · 원격에 게시된 이전 생성물은 보존하고 신규 커밋에서 제외");
+            return new(true);
+        }
+
+        var subject = await run(new[] { "log", "-1", "--format=%s", "HEAD" })
+            .ConfigureAwait(false);
+        if (subject.ExitCode != 0)
+            return new(false, headSha, ErrorStep: "RUNTIME_HEAD_SUBJECT_FAILED",
+                Error: subject);
+        if (!subject.StandardOutput.StartsWith(
+                "ProjectHub milestone ", StringComparison.Ordinal))
+        {
+            return new(false, headSha, ErrorStep: "RUNTIME_HEAD_NOT_PROJECTHUB",
+                Error: new GitCommandResult(-1, string.Empty,
+                    "Generated files exist in a commit not owned by ProjectHub; " +
+                    "manual review required. Example: " + unwanted[0]));
+        }
+
+        var parents = await run(new[] { "rev-list", "--parents", "-n", "1", "HEAD" })
+            .ConfigureAwait(false);
+        if (parents.ExitCode != 0)
+            return new(false, headSha, ErrorStep: "RUNTIME_HEAD_PARENTS_FAILED",
+                Error: parents);
+        var tokens = parents.StandardOutput
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length != 2 ||
+            !string.Equals(tokens[0], headSha, StringComparison.OrdinalIgnoreCase))
+        {
+            return new(false, headSha, ErrorStep: "RUNTIME_HEAD_NOT_SINGLE_PARENT",
+                Error: new GitCommandResult(-1, string.Empty,
+                    "Unpublished HEAD cannot be safely rewritten without review."));
+        }
+
+        // A precise remote lease prevents dropping unrelated local history.
+        if (!string.Equals(
+                remoteSha, tokens[1], StringComparison.OrdinalIgnoreCase))
+        {
+            return new(false, headSha, ErrorStep: "RUNTIME_REMOTE_PARENT_MISMATCH",
+                Error: new GitCommandResult(-1, string.Empty,
+                    "origin/main is not the sole parent of local HEAD; " +
+                    "automatic history repair skipped. Local=" + headSha +
+                    " parent=" + tokens[1] + " remote=" + (remoteSha ?? "missing")));
+        }
+
+        progress?.Report(
+            $"GIT_FINALIZE · 미게시 커밋에서 생성물 {unwanted.Length}개 안전 제외");
+        string? temporaryIndex = null;
+        string? exclusionPathspec = null;
+        try
+        {
+            // Use a disposable index so all pre-existing staged files remain intact.
+            temporaryIndex = Path.Combine(
+                Path.GetTempPath(),
+                "projecthub-repair-index-" + Guid.NewGuid().ToString("N"));
+            exclusionPathspec = Path.GetTempFileName();
+            await File.WriteAllBytesAsync(
+                exclusionPathspec,
+                new UTF8Encoding(false).GetBytes(string.Join('\0', unwanted) + "\0"),
+                cancellationToken).ConfigureAwait(false);
+            var environment = new Dictionary<string, string>
+            {
+                ["GIT_INDEX_FILE"] = temporaryIndex
+            };
+            async Task<GitCommandResult> WithIndex(params string[] args)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = await git.RunAsync(
+                    workingDirectory, args, TimeSpan.FromMinutes(3),
+                    cancellationToken, environment).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                return result;
+            }
+
+            var read = await WithIndex("read-tree", "HEAD").ConfigureAwait(false);
+            if (read.ExitCode != 0)
+                return new(false, headSha, ErrorStep: "RUNTIME_REPAIR_READ_TREE_FAILED",
+                    Error: read);
+            var remove = await WithIndex(
+                "--literal-pathspecs", "rm", "--cached", "-r", "--ignore-unmatch",
+                "--pathspec-from-file=" + exclusionPathspec, "--pathspec-file-nul")
+                .ConfigureAwait(false);
+            if (remove.ExitCode != 0)
+                return new(false, headSha, ErrorStep: "RUNTIME_REPAIR_REMOVE_FAILED",
+                    Error: remove);
+            var tree = await WithIndex("write-tree").ConfigureAwait(false);
+            if (tree.ExitCode != 0 ||
+                string.IsNullOrWhiteSpace(tree.StandardOutput))
+                return new(false, headSha, ErrorStep: "RUNTIME_REPAIR_TREE_FAILED",
+                    Error: tree);
+
+            var originalMessage = await run(new[] {
+                "log", "-1", "--format=%B", "HEAD"
+            }).ConfigureAwait(false);
+            if (originalMessage.ExitCode != 0)
+                return new(false, headSha, ErrorStep: "RUNTIME_REPAIR_MESSAGE_FAILED",
+                    Error: originalMessage);
+            var replacement = await run(new[]
+            {
+                "-c", "user.name=ProjectHub",
+                "-c", "user.email=projecthub@localhost",
+                "commit-tree", tree.StandardOutput.Trim(),
+                "-p", tokens[1], "-m", originalMessage.StandardOutput
+            }).ConfigureAwait(false);
+            if (replacement.ExitCode != 0 ||
+                string.IsNullOrWhiteSpace(replacement.StandardOutput))
+                return new(false, headSha, ErrorStep: "RUNTIME_REPAIR_COMMIT_FAILED",
+                    Error: replacement);
+
+            var replacementSha = replacement.StandardOutput.Trim();
+            var moved = await run(new[] {
+                "update-ref", "refs/heads/" + RequiredBranch, replacementSha, headSha
+            }).ConfigureAwait(false);
+            if (moved.ExitCode != 0)
+                return new(false, headSha, ErrorStep: "RUNTIME_REPAIR_REF_FAILED",
+                    Error: moved);
+
+            progress?.Report(
+                $"GIT_FINALIZE · 생성물 제외 완료 · {headSha[..8]} → {replacementSha[..8]}");
+            return new(true, headSha, replacementSha, unwanted.Length);
+        }
+        finally
+        {
+            if (exclusionPathspec is not null)
+            {
+                try { File.Delete(exclusionPathspec); } catch { }
+            }
+            if (temporaryIndex is not null)
+            {
+                try { File.Delete(temporaryIndex); } catch { }
+                try { File.Delete(temporaryIndex + ".lock"); } catch { }
+            }
+        }
+    }
 
     private static async Task<string> AlignLocalOriginHeadToMainAsync(
         Func<string[], Task<GitCommandResult>> run)
@@ -1192,6 +1422,10 @@ internal static class MilestoneMechanicalExecutor
                 part.Equals(".pnpm-store", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals(".vite", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals(".cache", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".electron-cache", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".playwright", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".next", StringComparison.OrdinalIgnoreCase) ||
+                part.Equals(".turbo", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals("coverage", StringComparison.OrdinalIgnoreCase) ||
                 part.Equals(".projecthub", StringComparison.OrdinalIgnoreCase)))
         {

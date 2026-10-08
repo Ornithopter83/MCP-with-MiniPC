@@ -800,6 +800,27 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine("GIT_RESULT:");
         builder.AppendLine("- success=" + (gitResult.Success ? "YES" : "NO"));
         builder.AppendLine("- commit=" + (gitResult.CommitSha ?? "none"));
+        if (!gitResult.Success)
+        {
+            // Preserve the mechanical failure reason so HQ can distinguish a
+            // rejected GitHub blob from a transient push or local index failure.
+            var diagnostic = (gitResult.Summary ?? string.Empty)
+                .Replace("\r", string.Empty, StringComparison.Ordinal)
+                .Split('\n')
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("step=", StringComparison.Ordinal) ||
+                               line.StartsWith("exit=", StringComparison.Ordinal) ||
+                               line.StartsWith("push=", StringComparison.Ordinal) ||
+                               line.StartsWith("detail=", StringComparison.Ordinal) ||
+                               line.Contains("GH001", StringComparison.OrdinalIgnoreCase) ||
+                               line.Contains("exceeds GitHub", StringComparison.OrdinalIgnoreCase) ||
+                               line.Contains("remote rejected", StringComparison.OrdinalIgnoreCase))
+                .Take(10)
+                .ToArray();
+            builder.AppendLine("- failure=" + Limit(
+                string.Join(" | ", diagnostic.Length > 0 ? diagnostic :
+                    new[] { gitResult.Summary ?? "unknown" }), 2000));
+        }
 
         if (formatRecoveryOccurred)
             builder.AppendLine("FORMAT_RECOVERY_NOTICE: 역할 응답 전체 재요청 사용");
