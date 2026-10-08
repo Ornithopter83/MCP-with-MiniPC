@@ -189,6 +189,7 @@ public partial class MainWindow : Window
     private readonly ResourceTaskLifecycle _resourceTaskLifecycle = new();
     private readonly ResourcePendingGitPaths _resourcePendingGit = new();
     private CoordinatorContinuationState? _continuationState;
+    private bool _automaticRecoveryClaimed;
     private readonly DispatcherTimer _flowTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly DispatcherTimer _connectionTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _jobWatchdogTimer = new() { Interval = TimeSpan.FromSeconds(10) };
@@ -282,6 +283,7 @@ public partial class MainWindow : Window
         {
             RestoreWindowPosition();
             await InitializeStartupConfigurationAsync();
+            RestoreInterruptedMilestoneJob();
             await EnsureManagedWebRuntimesStartedAsync();
             RefreshManagedWebRuntimePresentation();
         };
@@ -2877,12 +2879,55 @@ public partial class MainWindow : Window
         ApplyConnectionStatus();
     }
 
+    private void RestoreInterruptedMilestoneJob()
+    {
+        if (_continuationState is not null || _activeTaskCts is not null)
+            return;
+
+        var workingDirectory = ResolveCoordinatorTargetWorkingDirectory();
+        if (string.IsNullOrWhiteSpace(workingDirectory))
+            return;
+
+        var saved = ProjectWorkspacePersistence.TryLoad(workingDirectory);
+        if (saved is null)
+            return;
+
+        _continuationState = saved.ToContinuation();
+        _activeWorkingDirectory = workingDirectory;
+        _activeProjectJobId = saved.JobId;
+        AddTaskMessage(
+            "WORK RECOVERY",
+            saved.Status == "INTERRUPTED"
+                ? "프로세스 중단 전에 저장한 WORKITEM 상태가 있습니다. 역할 연결을 확인한 뒤 기존 작업을 자동 재개합니다."
+                : "사용자 조작을 기다리던 작업 상태를 복원했습니다. 추가 입력을 통해 재개할 수 있습니다.",
+            status: "RECOVERABLE");
+        SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
+        SetFollowupComposerVisible(true);
+    }
+
     private async Task RefreshConnectionChecksAsync()
     {
-        // Keep the timer lightweight: startup configuration is intentionally one-shot.
-        // Bridge/Web state is already updated by heartbeat callbacks and task events.
-        await Task.CompletedTask;
+        // Connection heartbeat is also the recovery launch gate; it never
+        // retries a failed environment preflight or resurrects a canceled job.
         ApplyConnectionStatus();
+        var saved = _continuationState;
+        if (_automaticRecoveryClaimed ||
+            saved?.Status != "INTERRUPTED" ||
+            _activeTaskCts is not null ||
+            _newTaskCleanupInProgress || _cancelCleanupInProgress ||
+            _userCanceledTask)
+            return;
+        if (GetCoordinatorFirstPreflightError(
+                saved.WorkingDirectory, saved.Coordinator, saved.Implementer) is not null)
+            return;
+
+        _automaticRecoveryClaimed = true;
+        await RunCoordinatorFirstJobAsync(
+            "WORKER_RESTART_RECOVERY: 새 작업을 만들지 말고 저장된 기존 목표와 " +
+            "WORKITEM 체크포인트를 확인하여 완료된 부분은 건너뛰고 " +
+            "미완료 WORKITEM만 MODE=CONTINUE로 수행하라.",
+            null, saved.WorkingDirectory, saved.Coordinator,
+            saved.Implementer, continuation: saved);
     }
 
     private void UpdateWebRoleBindingStatusPresentation()
