@@ -223,8 +223,6 @@ internal static class HqTextProtocol
             if (sections.Any(section => section.Name is "GOAL" or "WORK_GOAL" or
                     "WORK_INSTRUCTIONS" or "WORK_COMPLETION"))
                 errors.Add("COMPACT_LEGACY_SECTION_FORBIDDEN");
-            if (sections.Count > 24)
-                errors.Add("COMPACT_SECTION_LIMIT");
         }
 
         var works = new List<WorkBuilder>();
