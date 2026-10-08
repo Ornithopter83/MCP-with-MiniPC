@@ -1,4 +1,8 @@
-# ProjectHub New System 261005 — 목표 역할 및 운영 모델
+# ProjectHub New System 261005 — 2026-10-05 목표 역할 및 운영 모델
+
+> 문서 상태: **HISTORICAL ARCHITECTURE PROPOSAL / SUPERSEDED FOR CURRENT RUNTIME**
+> 이 문서는 2026-10-05 당시 목표 모델의 설계 의도를 보존한다. 아래 Stateless WORK, #1 중간관리자, JSON HQ 출력 등은 현재 구현 계약이 아니다.
+> 현재 실행은 `Worker-Polish.md`와 HQ/WORK/QA/HIGH 전용 계약 및 해당 코드·테스트를 기준으로 확인한다. 본문의 과거 제안을 현재 규칙처럼 재적용하지 않는다.
 
 ## 1. 문서 목적
 
