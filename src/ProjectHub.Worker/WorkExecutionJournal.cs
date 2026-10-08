@@ -187,7 +187,8 @@ internal static class WorkExecutionJournal
 
     private static WorkExecutionCheckpoint? ReadFile(string path)
         => File.Exists(path)
-            ? JsonSerializer.Deserialize<WorkExecutionCheckpoint>(File.ReadAllText(path, Encoding.UTF8))
+            ? JsonSerializer.Deserialize<WorkExecutionCheckpoint>(
+                File.ReadAllText(path, Encoding.UTF8), ProjectHubJson.WebIndentedOptions)
             : null;
 
     private static void WriteFile(string path, WorkExecutionCheckpoint value)
