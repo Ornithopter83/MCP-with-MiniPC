@@ -33,10 +33,10 @@ dotnet run --project src/ProjectHub.Server
 
 ## Worker와 Web 런타임
 
-Worker는 HQ가 WorkGraph와 작업 분해를 관제하고 WORK가 배정된 WorkItem checklist를 수행하는 실행 흐름을 관리한다. RESOURCE, JUDGE, OBSERVATION은 일반 WorkItem과 분리된 sidecar로 현재 요청 문맥에 귀속된다. WORK가 일반 파일을 수정하는 동안 Git metadata와 Git 원격 접근은 AI 실행 경계에서 분리하고, checkpoint commit의 `projecthub/*` 원격 게시와 CODE_CHANGE `resultRef` 검증은 Worker가 담당한다. 별도 Commit Manifest나 materialization ledger는 사용하지 않는다. 세부 실행 정책은 `Worker-Polish.md`와 Worker 전용 계약 문서에 둔다.
+Worker는 HQ의 마일스톤 설계를 받아 독립 GENERAL WORK를 병렬 실행하고, 예약된 QA와 마일스톤 HIGH 검토, 기계적 BUILD, `main` 최종 commit·push를 관제한다. WORKITEM은 고유 ID와 독립 실행 세션·체크포인트를 가지며, 미완료 상태는 `CONTINUE`로 후속 마일스톤에 이어갈 수 있다. RESOURCE는 이미지 생성만 수행하는 비차단 GPTWEB sidecar로 일반 WORK, QA, HIGH 및 Git과 별도 수명으로 동작한다. Git metadata 및 원격 접근은 AI 역할이 아닌 Worker의 기계적 책임이다. 현재 역할은 HQ, GENERAL WORK, RESOURCE, QA, HIGH이며 구형 JUDGE·OBSERVATION, `projecthub/*` 게시, `resultRef` 기반 CODE_CHANGE 흐름을 현재 실행 계약으로 취급하지 않는다. 세부 정책은 `Worker-Polish.md`와 전용 역할·전송 계약을 따른다.
 
 HQ와 RESOURCE는 서로 다른 persistent profile의 관리형 Chromium을 사용한다. 각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 app window로 실행되며, runtime token이 없는 일반 Chrome과 임의 ChatGPT 페이지는 Worker bridge에 연결하지 않는다. HQ Web 응답은 task별 correlation KEY와 `[RESPONSE=OK]` 완료 표식을 사용하고, RESOURCE 완료는 생성 파일 준비와 capture 상태를 별도로 사용한다. 세부 상관·완료 계약은 `Web-Polish.md`와 Worker의 Web 전송 계약에 둔다.
 
-Worker의 저장소별 기계 상태는 작업 루트의 `.projecthub` 아래에 둔다. WorkGraph·event log·transcript·continuation은 `.projecthub`에 기록하고, 해당 저장소의 disposable clone·tool cache·WORK/RESOURCE runtime은 `.projecthub/runtime`에 둔다. `.projecthub`는 Worker 기계 상태이므로 Git status와 코드 결과에서 제외한다.
+Worker의 작업별 기계 상태는 실제 프로젝트 루트의 `.projecthub` 아래에 둔다. WORKITEM 실행 체크포인트(`work-executions`), WorkGraph·event log·transcript·continuation을 저장한다. 임시 실행·RESOURCE 결과 수집에는 프로젝트 루트의 `temp/`도 사용한다. `.projecthub/`와 `temp/`는 Worker 내부 상태·임시 작업영역이며, Worker가 관리하는 로컬 Git 제외 규칙으로 일반 코드 결과와 구분한다. WORK의 실제 소스 수정은 사용자가 지정한 프로젝트 루트에서 수행한다.
 
 Worker의 메시지 및 작업 이력 입력은 파일 drag-and-drop과 화면 캡처 이미지 Ctrl+V 첨부를 지원한다. Web 전달에서는 로컬 파일 hash 검증과 ChatGPT UI의 기계적 준비 상태를 구분하고, 일반 Web 결과 파일은 Worker가 안전한 결과 경로에 저장한다.
