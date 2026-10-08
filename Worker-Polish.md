@@ -44,7 +44,7 @@
 
 제5조 (마일스톤 실행)
 
-① HQ의 유효한 WORK 설계를 받으면 실행 가능한 독립 WORK를 병렬 슬롯 안에서 배정한다.
+① HQ의 유효한 WORK 설계를 받으면 실행 가능한 독립 WORK를 병렬 슬롯 안에서 배정한다. 동시 실행 수는 사용자 설정을 따르며, Worker는 고정 상한이나 자원량 기반 자동 축소를 적용하지 않는다.
 ② RESOURCE는 사용자 작업 단위의 독립 sidecar로 실행된다. GENERAL WORK, QA, HIGH, Git, HQ 다음 판단, PAUSE, 후속 마일스톤은 RESOURCE의 완료를 기다리지 않는다. 같은 사용자 작업 안의 복수 RESOURCE 요청은 RESOURCE 실행 수명 간 충돌 없이 직렬화한다.
 ③ RESOURCE가 성공하면 이미지 검사 후 지정 TARGET_PATH에 반영하며, 다음 Git 최종화에서 그 결과를 수집한다. RESOURCE의 PENDING은 정상 상태다.
 ④ 새 사용자 작업이 시작될 때만 이전 작업의 미완료 RESOURCE를 cancel/abandon하고 종료를 확인한 뒤 해당 임시영역을 정리한다.
