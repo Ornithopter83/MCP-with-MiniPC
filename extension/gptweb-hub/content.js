@@ -148,7 +148,7 @@ function setStatus(kind,value,tone){const e=root.querySelector('.status-row[data
     if(index<0)return '';
     const correlated=text.slice(index).trim();
     const after=correlated.slice(marker.length).trim();
-    if(!after||!/^[\\\s]*\[ACTION=(?:WORK|PAUSE|END)\](?:\s|$)/.test(after))return '';
+    if(!after||!/^\s*(?:\[GOTO=[^\]\r\n]+\]\s*)?\[ACTION=(?:WORK|PAUSE|END)\](?:\s|$)/.test(after))return '';
     return correlated;
   }
   function correlationRootFromElement(element){

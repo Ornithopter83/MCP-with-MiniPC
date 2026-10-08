@@ -142,9 +142,9 @@ internal static class StructuredHqProtocol
             var optional = new Dictionary<string, int>();
             foreach (var field in new[] { "WIDTH", "HEIGHT", "COLUMNS", "ROWS" })
             {
-                var raw = Value(s, field);
-                if (raw.Length == 0) continue;
-                if (!int.TryParse(raw, out var value) || value < 1 || value > 16384)
+                var rawValue = Value(s, field);
+                if (rawValue.Length == 0) continue;
+                if (!int.TryParse(rawValue, out var value) || value < 1 || value > 16384)
                     errors.Add("RESOURCE." + field);
                 else optional[field] = value;
             }
