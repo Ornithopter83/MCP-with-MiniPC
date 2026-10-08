@@ -716,7 +716,8 @@ internal static class MilestoneDefinitionContract
         IReadOnlyCollection<string> currentLocalChanges,
         bool formatRecoveryOccurred = false,
         IReadOnlyCollection<string>? unreadRecoveryElements = null,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        string? jobId = null)
     {
         _ = initialLocalChanges;
         _ = milestoneChanges;
@@ -740,12 +741,29 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine($"MILESTONE: {milestone.Id}");
         builder.AppendLine("OUTCOME: " + workerOutcome.Trim());
 
+        var statuses = workReports
+            .Select(pair => (pair.Key, Status: ReadWorkStatus(pair.Value)))
+            .ToArray();
+        var completedIds = statuses
+            .Where(item => string.Equals(item.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            .Select(item => item.Key)
+            .OrderBy(id => int.Parse(id))
+            .ToArray();
+        var blockedIds = statuses
+            .Where(item => string.Equals(item.Status, "blocked", StringComparison.OrdinalIgnoreCase))
+            .Select(item => item.Key)
+            .OrderBy(id => int.Parse(id))
+            .ToArray();
+        builder.AppendLine("WORK_COMPLETED: " + (completedIds.Length == 0 ? "none" : string.Join(",", completedIds)));
+        builder.AppendLine("WORK_BLOCKED: " + (blockedIds.Length == 0 ? "none" : string.Join(",", blockedIds)));
+        builder.AppendLine("NEXT_WORKITEM_ID: " + NextWorkItemId(milestone, workingDirectory, jobId));
+
         foreach (var pair in workReports.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
             var work = RoleTextProtocol.ParseWork(pair.Value);
             if (work.IsValid && string.Equals(work.Status, "blocked", StringComparison.OrdinalIgnoreCase))
             {
-                builder.AppendLine("WORK_BLOCKED: " + pair.Key);
+                builder.AppendLine("WORK_BLOCKED_DETAIL: " + pair.Key);
                 builder.AppendLine("- summary=" + Limit(work.Summary, 800));
                 foreach (var issue in work.Issues.Take(3))
                     builder.AppendLine("- issue=" + Limit(issue, 600));
@@ -789,6 +807,42 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine("ARCHIVE: " + archiveReference);
         builder.AppendLine("DECISION_REQUIRED: 다음 WORK / PAUSE / END 중 하나를 판단");
         return builder.ToString();
+    }
+
+    private static long NextWorkItemId(
+        MilestoneDefinition milestone,
+        string? workingDirectory,
+        string? jobId)
+    {
+        long highestId = 9;
+        foreach (var id in milestone.WorkItems.Keys)
+        {
+            if (long.TryParse(id, out var workId) && workId >= 10)
+                highestId = Math.Max(highestId, workId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(workingDirectory) &&
+            !string.IsNullOrWhiteSpace(jobId))
+        {
+            foreach (var entry in ProjectWorkspacePersistence.ReadAllEvents(workingDirectory, jobId))
+            {
+                if (!string.Equals(entry.Source, "HQ RESPONSE", StringComparison.Ordinal))
+                    continue;
+
+                foreach (var line in entry.FullMessage.Split('\n'))
+                {
+                    var header = line.Trim();
+                    if (header.StartsWith("@@WORK ", StringComparison.Ordinal) &&
+                        long.TryParse(header["@@WORK ".Length..], out var workId) &&
+                        workId >= 10)
+                    {
+                        highestId = Math.Max(highestId, workId);
+                    }
+                }
+            }
+        }
+
+        return highestId + 1;
     }
 
     public static string? ReadWorkStatus(string message)

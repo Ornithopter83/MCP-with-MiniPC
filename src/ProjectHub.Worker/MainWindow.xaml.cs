@@ -2026,14 +2026,19 @@ public partial class MainWindow : Window
                     : BuildExecutionPolicy.CreateCodexPreToolHookScript(),
                 ProjectHubJson.Utf8NoBom,
                 cancellationToken);
-            codexConfigOverrides = new[]
-            {
+            var commandGateOverride =
                 BuildExecutionPolicy.BuildCodexPreToolHookOverride(
                     hookPath,
                     isQa
                         ? "ProjectHub QA command gate"
-                        : "ProjectHub WORK command gate")
-            };
+                        : "ProjectHub WORK command gate");
+            codexConfigOverrides = isQa
+                ? new[] { commandGateOverride }
+                : new[]
+                {
+                    commandGateOverride,
+                    "sandbox_workspace_write.network_access=true"
+                };
             bypassHookTrust = true;
         }
 

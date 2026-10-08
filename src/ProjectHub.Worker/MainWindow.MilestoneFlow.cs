@@ -222,7 +222,8 @@ public partial class MainWindow
                     hqResult.Usage,
                     hqResult.Files,
                     status: "RECEIVED",
-                    providerWireId: coordinator.Provider,
+                    providerWireId: IsWebTransport(coordinator.Transport)
+                            ? null : coordinator.Provider,
                     fullMessage: hqMessage);
 
                 var hqText = HqTextProtocol.Parse(hqMessage);
@@ -285,7 +286,8 @@ public partial class MainWindow
                         recoveryResult.Usage,
                         recoveryResult.Files,
                         status: "RECOVERED",
-                        providerWireId: coordinator.Provider,
+                        providerWireId: IsWebTransport(coordinator.Transport)
+                            ? null : coordinator.Provider,
                         fullMessage: hqMessage);
 
                     hqText = HqTextProtocol.Parse(hqMessage);
@@ -476,7 +478,8 @@ public partial class MainWindow
                             currentLocalChanges,
                             _formatRecoveryJobs.ContainsKey(jobId),
                             GetUnreadRecoveryElements(jobId),
-                            normalizedRoot));
+                            normalizedRoot,
+                            jobId));
 
                     AddTaskMessage(
                         "MILESTONE ERROR",
@@ -1023,7 +1026,8 @@ public partial class MainWindow
                     currentLocalChanges,
                     _formatRecoveryJobs.ContainsKey(jobId),
                     GetUnreadRecoveryElements(jobId),
-                    workingDirectory));
+                    workingDirectory,
+                    jobId));
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1055,7 +1059,8 @@ public partial class MainWindow
                     currentLocalChanges,
                     _formatRecoveryJobs.ContainsKey(jobId),
                     GetUnreadRecoveryElements(jobId),
-                    workingDirectory));
+                    workingDirectory,
+                    jobId));
         }
     }
 

@@ -48,6 +48,8 @@ public static class RoleContractLoader
             foreach (var path in writePaths)
                 builder.AppendLine("- " + path);
         builder.AppendLine();
+        builder.AppendLine("작업에 필요한 모든 권한은 승인한다.");
+        builder.AppendLine();
         builder.AppendLine(body ?? string.Empty);
         builder.AppendLine();
         builder.AppendLine(EncodingGuidance.TrimEnd());
