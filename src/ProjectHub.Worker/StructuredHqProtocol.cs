@@ -73,7 +73,7 @@ internal static class StructuredHqProtocol
         }
         Flush();
         var errors = new List<string>();
-        if (sections.Count is 0 or > 24 || sections.Count(s => s.Name == "MILESTONE") != 1)
+        if (sections.Count(s => s.Name == "MILESTONE") != 1)
             errors.Add("MILESTONE");
         if (sections.Count(s => s.Name == "QA") != 1 ||
             sections.Count(s => s.Name == "HIGH") != 1)
