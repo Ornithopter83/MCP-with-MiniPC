@@ -2,7 +2,7 @@
 
 > 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
 > 이 문서는 병렬 WorkGraph 도입 과정과 당시 완료 기준을 누적한 기록이다. 본문의 `현재`, 재시작 복구, persistence 완료 조건은 현재 장기 정책을 덮어쓰지 않는다.
-> 현재 정책에서는 프로그램 시작 시 과거 session-state/HQ·WORK 세션/WorkGraph를 새 작업 문맥으로 자동 복구하지 않는다. 같은 프로그램 실행 안의 USER_FOLLOWUP만 기존 continuation을 유지할 수 있다.
+> 현재 구현은 작업 중단 시 continuation과 WORKITEM 실행 체크포인트를 `.projecthub`에 보존하고, 앱 재시작 뒤 연결 조건이 준비되면 동일 사용자 작업의 미완료 WORK 재개를 시도한다. 과거 작업을 **새 사용자 작업의 문맥**으로 자동 재사용하지는 않는다. 세부 상태·재개 요건은 `Worker-Polish.md`와 현재 코드·테스트를 따른다.
 
 
 갱신일: 2026-09-25
