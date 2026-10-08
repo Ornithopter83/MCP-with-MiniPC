@@ -99,6 +99,10 @@ internal static class StructuredHqProtocol
         foreach (var s in sections.Where(s => s.Name == "WORK"))
         {
             var instr = Value(s, "INSTRUCTIONS");
+            var executionMode = Value(s, "MODE");
+            if (executionMode.Length == 0) executionMode = "NEW";
+            if (executionMode is not ("NEW" or "CONTINUE"))
+                errors.Add("WORK " + s.Argument + ".MODE");
             var paths = parsed.TryGetValue(s, out var f) ? f.GetMany("PATH") : Array.Empty<string>();
             if (!int.TryParse(s.Argument, out var id) || id < 10)
                 errors.Add("WORK.ID");
@@ -108,11 +112,12 @@ internal static class StructuredHqProtocol
             if (paths.Any(p => !MilestoneDefinitionContract.IsSafeRelativePath(p)))
                 errors.Add("WORK " + s.Argument + ".WRITE_PATH");
             if (parsed.TryGetValue(s, out var wf) &&
-                wf.Names.Any(n => n is not ("PATH" or "INSTRUCTIONS")))
+                wf.Names.Any(n => n is not ("PATH" or "INSTRUCTIONS" or "MODE")))
                 errors.Add("WORK " + s.Argument + ".UNKNOWN_FIELD");
             works.Add(new()
             {
                 ["id"] = id,
+                ["executionMode"] = executionMode,
                 ["readOnly"] = false,
                 ["testRequired"] = true,
                 ["writePaths"] = paths,
