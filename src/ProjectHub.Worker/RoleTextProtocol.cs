@@ -65,7 +65,7 @@ internal static class RoleTextProtocol
         if (normalized.Length == 0)
             return new("", "", Array.Empty<string>(), Array.Empty<string>(), new[] { "RESULT_EMPTY" });
 
-        var lines = normalized.Split('\n');
+        var lines = RepairMechanicalEnvelope(normalized).Split('\n');
         if (lines.Any(line => line.Trim() == "@@REPORT"))
         {
             var index = Array.FindIndex(lines, line => line.Trim() == "@@REPORT");
@@ -130,6 +130,31 @@ internal static class RoleTextProtocol
             ReadItems(changed),
             ReadItems(issues),
             errors);
+    }
+
+    // Repair deterministic *formatting* mistakes only. Never infer status
+    // or change the report's evidence, prose, or requested actions.
+    private static string RepairMechanicalEnvelope(string raw)
+    {
+        if (!raw.Split('\n').Any(line => line.Trim() == "@@REPORT"))
+            return raw;
+        var lines = raw.Split('\n').ToList();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].Trim() is "</STATUS>" or "</SUMMARY>" or
+                "</CHANGED_PATH>" or "</ISSUES>")
+                lines[i] = "</>";
+        }
+
+        var first = lines.FindIndex(line => !string.IsNullOrWhiteSpace(line));
+        if (first >= 0 && lines[first].Trim() == WebCorrelationContract.ResponseOkMarker)
+        {
+            lines.RemoveAt(first); // stray terminator from a previous Web turn
+            first = lines.FindIndex(line => !string.IsNullOrWhiteSpace(line));
+        }
+        if (first >= 0 && lines[first].Trim() == "@@REPORT")
+            lines.Insert(first, "[ACTION=RESULT]");
+        return string.Join("\n", lines);
     }
 
     private static Dictionary<string, string> ReadSections(string[] lines)
