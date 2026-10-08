@@ -111,6 +111,78 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
+    public void WorkMode_ParsesExplicitContinuationAndDefaultsToNew()
+    {
+        var normal = HqTextProtocol.Parse(Modern);
+        Assert.True(normal.IsValid, string.Join(", ", normal.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            normal.CompatibilityMessage, normal.Parse, out var first, out _));
+        Assert.Equal("NEW", first!.WorkItems["54"].ExecutionMode);
+
+        var rawContinue = Modern.Replace(
+            "<PATH>scripts/player.gd</>",
+            "<MODE>CONTINUE</>\n<PATH>scripts/player.gd</>",
+            StringComparison.Ordinal);
+        var parsed = HqTextProtocol.Parse(rawContinue);
+        Assert.True(parsed.IsValid, string.Join(", ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var next, out var error), error);
+        Assert.Equal("CONTINUE", next!.WorkItems["54"].ExecutionMode);
+
+        var invalid = HqTextProtocol.Parse(rawContinue.Replace(
+            "<MODE>CONTINUE</>", "<MODE>UNKNOWN</>", StringComparison.Ordinal));
+        Assert.False(invalid.IsValid);
+    }
+
+    [Fact]
+    public void WorkInProgress_ReportRemainsMachineReadable()
+    {
+        var report = RoleTextProtocol.BuildResult(
+            "in_progress", "파일 수정 후 오류 원인을 조사함", new[] { "src/actor.cs" });
+        var parsed = RoleTextProtocol.ParseWork(report);
+        Assert.True(parsed.IsValid, string.Join(", ", parsed.Errors));
+        Assert.Equal("in_progress", parsed.Status);
+    }
+
+    [Fact]
+    public void QaHighFormattingTypos_DoNotDiscardRealTestResults()
+    {
+        const string qa = """
+            [ACTION=RESULT]
+            @@REPORT
+            <STATUS>issue</>
+            <SUMMARY>
+            실제 크기 불일치, smoke 통과
+            </SUMMARY>
+            <ISSUES>
+            GUI 화면 미검증
+            </>
+            [RESPONSE=OK]
+            """;
+        var parsedQa = RoleTextProtocol.ParseQa(qa);
+        Assert.True(parsedQa.IsValid, string.Join(", ", parsedQa.Errors));
+        Assert.Equal("issue", parsedQa.Status);
+        Assert.Contains("smoke 통과", parsedQa.Summary);
+
+        const string high = """
+            [RESPONSE=OK]
+            @@REPORT
+            <STATUS>completed</>
+            <SUMMARY>
+            결함 수정 완료
+            </SUMMARY>
+            <ISSUES>
+            없음
+            </ISSUES>
+            [RESPONSE=OK]
+            """;
+        var parsedHigh = RoleTextProtocol.ParseHigh(high);
+        Assert.True(parsedHigh.IsValid, string.Join(", ", parsedHigh.Errors));
+        Assert.Equal("completed", parsedHigh.Status);
+        Assert.Contains("결함 수정", parsedHigh.Summary);
+    }
+
+    [Fact]
     public void ResourceWebPrompt_ContainsOnlyImageCreationInstructions()
     {
         var parsed = HqTextProtocol.Parse(Modern.Replace(
