@@ -670,34 +670,8 @@ public partial class MainWindow
             })
             .ToArray();
 
-        // RESOURCE #0 is now a strict milestone prerequisite. Only a terminal
-        // success or failure permits another role to run. General cancellation
-        // stops waiting without cancelling the RESOURCE sidecar itself.
-        var terminalResources = await Task.WhenAll(
-            resourceTasks.Select(entry => entry.Task)).WaitAsync(cancellationToken);
-        var terminalResourceReports = terminalResources.ToDictionary(
-            entry => entry.Id, entry => entry.Report,
-            StringComparer.OrdinalIgnoreCase);
-        if (terminalResources.Any(entry =>
-                !entry.Report.StartsWith("RESOURCE_STATUS: COMPLETED",
-                    StringComparison.Ordinal)))
-        {
-            SaveMilestoneExecutionGraph(
-                workingDirectory, jobId, milestone, "RESOURCE_BLOCKED",
-                resourceReports: terminalResourceReports, hqFinalState: "READY");
-            // A failed asset must not be passed to WORK as if it were valid.
-            // HQ chooses whether to regenerate or change the next milestone.
-            return new(false, MilestoneDefinitionContract.BuildHqReport(
-                milestone, "RESOURCE_BLOCKED_REPLAN_REQUIRED",
-                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                terminalResourceReports,
-                Array.Empty<string>(),
-                string.Empty, string.Empty,
-                MilestoneGitResult.NotStarted(milestone.TargetBranch),
-                initialChangedPaths, Array.Empty<string>(), Array.Empty<string>(),
-                workingDirectory: workingDirectory, jobId: jobId));
-        }
-
+        // RESOURCE is an independent sidecar: never gate WORK, QA, HIGH or Git
+        // on generation, failure, artifact validation or transport completion.
         var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
             workingDirectory,
             milestone.TargetBranch,
@@ -731,7 +705,7 @@ public partial class MainWindow
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var resourceReports = new Dictionary<string, string>(
-            terminalResourceReports, StringComparer.OrdinalIgnoreCase);
+            StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
         var qaReport = string.Empty;
         var highReport = string.Empty;
@@ -809,7 +783,7 @@ public partial class MainWindow
                         resourceReports[execution.Id] =
                             "RESOURCE_STATUS: PENDING" +
                             Environment.NewLine +
-                            "RESOURCE terminal gate invariant violated";
+                            "RESOURCE sidecar still running independently";
                     }
                 }
             }
@@ -1289,11 +1263,7 @@ public partial class MainWindow
 
         foreach (var workNode in workNodes)
         {
-            if (milestone.Resources.Count == 0)
-                edges.Add(new("HQ-DESIGN", workNode, "DISPATCH"));
-            else
-                foreach (var resource in milestone.Resources.Values)
-                    edges.Add(new("RESOURCE-" + resource.Id, workNode, "RESOURCE_TERMINAL_GATE"));
+            edges.Add(new("HQ-DESIGN", workNode, "DISPATCH"));
             edges.Add(new(
                 workNode,
                 milestone.QaReserved ? "QA" : "GIT-FINALIZE",
@@ -1305,7 +1275,7 @@ public partial class MainWindow
             edges.Add(new(
                 "HQ-DESIGN",
                 "RESOURCE-" + resource.Id,
-                "RESOURCE_FIRST"));
+                "BACKGROUND_RESOURCE_REQUEST"));
         }
 
         if (milestone.QaReserved)
@@ -1526,7 +1496,7 @@ public partial class MainWindow
 
         queue.Enqueue(
             resource.Type,
-            resource.Body,
+            ResourceImagePromptBuilder.Build(resource),
             resource.Id,
             workingDirectory);
         await queue.WaitForIdleAsync(cancellationToken);
@@ -1565,12 +1535,13 @@ public partial class MainWindow
             return new(resource.Id, failedReport, Array.Empty<string>());
         }
 
-        if (!ResourceArtifactValidator.TryValidate(
-                resource, completion.SavedPaths, out var validationError))
+        if (!ResourceArtifactValidator.TrySelect(
+                resource, completion.SavedPaths, out var selectedPath,
+                out var validationDetail))
         {
             var validationReport =
                 "RESOURCE_STATUS: BLOCKED" + Environment.NewLine +
-                validationError;
+                validationDetail;
             AddRoleResponseHistory(
                 WorkerRoleState.Resource, "리소스 규격 불합격",
                 validationReport, status: "BLOCKED",
@@ -1582,13 +1553,15 @@ public partial class MainWindow
         var moveResult = MoveResourceResults(
             workingDirectory,
             resource.TargetPath,
-            completion.SavedPaths);
+            new[] { selectedPath });
         if (moveResult.ChangedPaths.Count > 0)
             _resourcePendingGit.Register(workingDirectory, moveResult.ChangedPaths);
+        var completedReport = moveResult.Report + Environment.NewLine +
+            validationDetail;
         AddRoleResponseHistory(
             WorkerRoleState.Resource,
             "리소스 반영",
-            moveResult.Report,
+            completedReport,
             status: moveResult.Report.StartsWith(
                 "RESOURCE_STATUS: COMPLETED",
                 StringComparison.Ordinal)
@@ -1598,7 +1571,7 @@ public partial class MainWindow
             referenceId: milestone.Id + ":RESOURCE:" + resource.Id);
         return new(
             resource.Id,
-            moveResult.Report,
+            completedReport,
             moveResult.ChangedPaths);
     }
 

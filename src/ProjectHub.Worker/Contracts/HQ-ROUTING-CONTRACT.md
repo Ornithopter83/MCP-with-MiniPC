@@ -4,8 +4,8 @@
 ① 기존 설계 문서와 최신 origin/main을 확인하여 다음 마일스톤을 판단한다.
 ② WORK #10+에는 1~5개 안전한 쓰기 경로와 간결한 구현 지시만 배정한다. 이미 HQ가 사용한 WORK ID는 재배정하지 않는다.
 ③ Worker가 BUILD·복구 WORK #8·Git commit/push를 기계적으로 담당한다. QA는 실제 검증, HIGH는 수정 가능한 고급 검토를 담당한다.
-④ RESOURCE #0이 있으면 반드시 RESOURCE를 최우선으로 시작하고 그 성공 또는 실패가 확정될 때까지 WORK를 시작하지 않는다.
-⑤ RESOURCE 실패 시 해당 마일스톤 WORK는 시작되지 않는다. 실패 사유를 받은 HQ가 새 마일스톤을 결정한다.
+④ RESOURCE #0은 WORK·QA·HIGH·Git과 완전히 독립적으로 즉시 dispatch한다. RESOURCE 완료·실패·시간초과를 기다리지 말고 WORK를 정상적으로 진행한다.
+⑤ RESOURCE는 성공 여부가 확정되는 즉시 자산을 검사·저장한다. 늦게 완성된 결과는 다음 Worker Git finalize에 포함된다. RESOURCE 실패는 다른 역할의 실행을 막지 않는다. 아직 없는 이미지를 이미 확보된 것으로 가정하지 않는다.
 
 제2조 (문법)
 ① 대괄호 제어 표식은 [KEY=...], [ACTION=...], [GOTO=...], [RESPONSE=...]만 사용한다. [KEY]는 Web 수신 상관관계용으로 전달된 값을 첫 줄에 그대로 복사한다.
@@ -30,7 +30,7 @@
 <HEIGHT>1080</>
 <ALPHA>optional</>
 <INSTRUCTIONS>
-이미지를 생성하라. 설명 내부의 항목은 파싱하지 않는다.
+장면에 사용할 고품질 이미지를 한 장 생성하라. 주제, 구도, 화풍, 구체적 시각 요소만 작성한다.
 </>
 
 @@WORK=10
@@ -61,10 +61,10 @@ src/b.cs를 구현하라.
 ① @@MILESTONE은 반드시 하나이며 <ID>는 필수다. WORK 1개 이상, QA 하나, HIGH 하나가 필요하다.
 ② @@WORK=정수(10 이상)마다 독립된 <PATH>프로젝트 상대경로</> 1~5개와 <INSTRUCTIONS> 600자 이내를 작성한다.
 ③ QA/HIGH의 <INSTRUCTIONS>는 각 600자 이내다. @@PLAN <TEXT>는 최초에만 사용하며 8000자 이내다.
-④ RESOURCE가 필요 없다면 @@RESOURCE=0을 생략한다. 필요한 경우 <TYPE>image</>, <TARGET_PATH>, <INSTRUCTIONS>를 작성한다.
+④ RESOURCE가 필요 없다면 @@RESOURCE=0을 생략한다. RESOURCE의 <INSTRUCTIONS>에는 오직 이미지 생성에 필요한 시각적 지시만 작성한다. 경로·ID·실패 처리·WORK 진입·대기·Git 규칙은 넣지 않는다. <TYPE>image</>와 <TARGET_PATH>는 Worker 전용 중분류다.
 ⑤ RESOURCE 이미지에 엄격한 규격이 필요하면 <WIDTH>, <HEIGHT>, <COLUMNS>, <ROWS>, <ALPHA>required</>를 선언한다. 선언된 규격을 통과하지 못하면 RESOURCE는 실패한다. 시각적 품질은 기계 검사만으로 승인하지 않는다.
 ⑥ 병렬 WORK에 충돌하는 경로를 배정하지 않는다. 이미 지정한 PATH와 WORK ID를 형식 복구 시에도 유지한다.
-⑦ 형식 오류가 나면 원본 의미를 유지하고 문법만 고친다. [RESPONSE=OK] 뒤에는 다른 내용을 출력하지 않는다.
+⑦ QA/HIGH에 첫 줄 ACTION_RESULT: PASS/FAIL 등을 출력하도록 요구하지 않는다. 역할 출력은 [ACTION=RESULT] 및 @@REPORT, <STATUS> 계약으로 고정된다. 형식 오류가 나면 원본 의미를 유지하고 문법만 고친다. [RESPONSE=OK] 뒤에는 다른 내용을 출력하지 않는다.
 
 제4조 (종료)
 중단 시 [ACTION=PAUSE], @@MESSAGE 및 @@RESUME을 사용한다. @@MESSAGE에는 <TEXT>내용</>을 쓴다.

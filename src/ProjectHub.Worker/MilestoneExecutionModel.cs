@@ -512,7 +512,7 @@ internal static class MilestoneDefinitionContract
         if (!string.IsNullOrWhiteSpace(milestone.QaInstructions))
         {
             builder.AppendLine("@@QA_INSTRUCTIONS");
-            builder.AppendLine(milestone.QaInstructions);
+            builder.AppendLine(StripRoleFormatOverrides(milestone.QaInstructions));
         }
         if (!string.IsNullOrWhiteSpace(milestone.Entrypoint))
         {
@@ -553,7 +553,7 @@ internal static class MilestoneDefinitionContract
         {
             builder.AppendLine();
             builder.AppendLine("@@HIGH_INSTRUCTIONS");
-            builder.AppendLine(milestone.HighInstructions);
+            builder.AppendLine(StripRoleFormatOverrides(milestone.HighInstructions));
         }
         builder.AppendLine();
         builder.AppendLine("@@WORK_RESULTS");
@@ -589,6 +589,17 @@ internal static class MilestoneDefinitionContract
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    private static string StripRoleFormatOverrides(string instructions)
+    {
+        // HQ may describe tests, but it must not redefine the QA/HIGH
+        // [ACTION=RESULT] + @@REPORT + <STATUS> output contract.
+        return System.Text.RegularExpressions.Regex.Replace(
+            instructions ?? string.Empty,
+            @"첫\s*줄에\s*ACTION_RESULT:[^.!?\r\n]*[.!?]\s*",
+            string.Empty,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
     }
 
     private static void AppendWorkGoals(
