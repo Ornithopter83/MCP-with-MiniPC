@@ -2011,9 +2011,10 @@ public partial class MainWindow : Window
 
         IReadOnlyList<string>? codexConfigOverrides = null;
         var bypassHookTrust = false;
-        if (roleName is "WORK" or "QA")
+        if (roleName is "WORK" or "QA" or "HIGH")
         {
-            var isQa = roleName == "QA";
+            // QA/HIGH may build, but Git mutation stays in Worker.
+            var isQa = roleName is "QA" or "HIGH";
             var hookPath = Path.Combine(
                 roleTempPath,
                 isQa
@@ -3415,11 +3416,14 @@ public partial class MainWindow : Window
 
     private static string? HistoryCardKey(WorkerHistoryEvent item)
     {
+        var kind = item.EventType == "DATA_FLOW"
+            ? item.EventType + "|" + item.Title
+            : item.EventType;
         if (!string.IsNullOrWhiteSpace(item.ReferenceId))
-            return item.StageKey + "|REF|" + item.ReferenceId.Trim();
+            return item.StageKey + "|" + kind + "|REF|" + item.ReferenceId.Trim();
 
         if (!string.IsNullOrWhiteSpace(item.WorkItemId))
-            return item.StageKey + "|WORK|" + item.WorkItemId.Trim();
+            return item.StageKey + "|" + kind + "|WORK|" + item.WorkItemId.Trim();
 
         return null;
     }

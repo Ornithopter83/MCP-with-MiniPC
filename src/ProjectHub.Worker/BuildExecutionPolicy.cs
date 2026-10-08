@@ -114,8 +114,12 @@ public static class BuildExecutionPolicy
            $ErrorActionPreference = 'Stop'
            $raw = [Console]::In.ReadToEnd()
            try { $event = $raw | ConvertFrom-Json -Depth 32 } catch { exit 0 }
-           if ([string]$event.tool_name -ne 'Bash') { exit 0 }
+           $tool = [string]$event.tool_name
+           if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell)') { exit 0 }
            $command = [string]$event.tool_input.command
+           if ([string]::IsNullOrWhiteSpace($command)) {
+             $command = [string]($event.tool_input.cmd -join ' ')
+           }
            if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
            $pattern = '(?ix)(?:(?<![\w.-])dotnet(?:\.exe)?\s+(?:restore|build|test|run|publish|pack|msbuild|vstest)\b|(?<![\w.-])msbuild(?:\.exe)?\b|(?<![\w.-])(?:csc|vbc|cl|clang|clang\+\+|gcc|g\+\+|rustc|javac)(?:\.exe)?\b|(?<![\w.-])cmake(?:\.exe)?\s+--build\b|(?<![\w.-])(?:ninja|make)(?:\.exe)?\b|(?<![\w.-])cargo(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])go(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])(?:npm|pnpm|yarn|bun)(?:\.cmd|\.exe)?\s+(?:(?:run)\s+)?(?:build|test)\b|(?<![\w.-])(?:gradle|gradlew|mvn|mvnw)(?:\.bat|\.cmd|\.exe)?\b|(?<![\w.-])python(?:\.exe)?\s+-m\s+build\b|(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b)'
            if ($command -match $pattern) {
@@ -130,8 +134,12 @@ public static class BuildExecutionPolicy
            $ErrorActionPreference = 'Stop'
            $raw = [Console]::In.ReadToEnd()
            try { $event = $raw | ConvertFrom-Json -Depth 32 } catch { exit 0 }
-           if ([string]$event.tool_name -ne 'Bash') { exit 0 }
+           $tool = [string]$event.tool_name
+           if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell)') { exit 0 }
            $command = [string]$event.tool_input.command
+           if ([string]::IsNullOrWhiteSpace($command)) {
+             $command = [string]($event.tool_input.cmd -join ' ')
+           }
            if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
            $pattern = '(?ix)(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b'
            if ($command -match $pattern) {
@@ -150,7 +158,7 @@ public static class BuildExecutionPolicy
         var normalizedPath = Path.GetFullPath(hookPath).Replace('\\', '/');
         var command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '" +
                       normalizedPath.Replace("'", "''", StringComparison.Ordinal) + "'";
-        return "hooks.PreToolUse=[{matcher=\"^Bash$\",hooks=[{type=\"command\",command=\"" +
+        return "hooks.PreToolUse=[{matcher=\".*\",hooks=[{type=\"command\",command=\"" +
                EscapeTomlBasicString(command) +
                "\",timeout=5,statusMessage=\"" +
                EscapeTomlBasicString(statusMessage) +

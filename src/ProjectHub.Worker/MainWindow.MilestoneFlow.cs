@@ -606,6 +606,8 @@ public partial class MainWindow
             status: "PROCESSING",
             persistenceSource: "WORKER ACTION");
 
+        var milestoneChangedPaths = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
         var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
             workingDirectory,
             milestone.TargetBranch,
@@ -613,12 +615,29 @@ public partial class MainWindow
             _targetSettings.ManualRepositoryUrl?.Trim(),
             cancellationToken);
         if (!gitPreflight.Success)
-            return new(true, gitPreflight.Summary);
+        {
+            var beforeGitHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                workingDirectory, cancellationToken);
+            var diagnostic = await ExecuteGitHighAsync(
+                jobId, workingDirectory, milestone, high, "PREFLIGHT",
+                gitPreflight.Summary, cancellationToken);
+            var afterGitHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                workingDirectory, cancellationToken);
+            foreach (var path in MilestoneMechanicalExecutor.DiffChangeStates(
+                beforeGitHigh, afterGitHigh))
+                milestoneChangedPaths.Add(path);
+            gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
+                workingDirectory, milestone.TargetBranch,
+                milestone.InitializeGitIfMissing,
+                _targetSettings.ManualRepositoryUrl?.Trim(), cancellationToken);
+            if (!gitPreflight.Success)
+                return new(true, "GIT_PREFLIGHT_FAILED: " + gitPreflight.Summary +
+                    Environment.NewLine + "HIGH_GIT: " +
+                    MilestoneDefinitionContract.Limit(diagnostic, 1200));
+        }
 
         WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
 
-        var milestoneChangedPaths = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase);
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var resourceReports = new Dictionary<string, string>(
@@ -642,6 +661,40 @@ public partial class MainWindow
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // The initial design is a separate Worker-owned commit.
+            if (!string.IsNullOrWhiteSpace(milestone.PlanDocument))
+            {
+                const string planPath = "docs/projecthub/initial-plan.md";
+                var fullPlanPath = Path.Combine(
+                    workingDirectory, "docs", "projecthub", "initial-plan.md");
+                if (!File.Exists(fullPlanPath))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(fullPlanPath)!);
+                    await File.WriteAllTextAsync(fullPlanPath,
+                        "# Project design" + Environment.NewLine +
+                        milestone.PlanDocument.Trim() + Environment.NewLine,
+                        cancellationToken);
+                    var planGit = await MilestoneMechanicalExecutor.ForceCommitPushAsync(
+                        workingDirectory, "ProjectHub initial project design",
+                        new[] { planPath }, _targetSettings.ManualRepositoryUrl?.Trim(),
+                        cancellationToken);
+                    if (!planGit.Success)
+                    {
+                        var diagnosis = await ExecuteGitHighAsync(
+                            jobId, workingDirectory, milestone, high, "INITIAL_PLAN",
+                            planGit.Summary, cancellationToken);
+                        planGit = await MilestoneMechanicalExecutor.ForceCommitPushAsync(
+                            workingDirectory, "ProjectHub initial project design",
+                            new[] { planPath }, _targetSettings.ManualRepositoryUrl?.Trim(),
+                            cancellationToken);
+                        if (!planGit.Success)
+                            return new(true, "INITIAL_PLAN_GIT_FAILED: " +
+                                planGit.Summary + Environment.NewLine + "HIGH_GIT: " +
+                                MilestoneDefinitionContract.Limit(diagnosis, 1200));
+                    }
+                }
+            }
 
             var resourceTasks = milestone.Resources.Values
                 .Select(resource =>
@@ -859,83 +912,70 @@ public partial class MainWindow
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            if (blockedWorkIds.Length == 0 && milestone.QaReserved)
+            // Worker owns BUILD; source-fix WORK #8 is attempted only once
+            // for an actual compiler/build failure, never for EPERM or timeout.
+            var buildRuns = await MilestoneBuildRunner.RunAsync(
+                workingDirectory, jobId, executableDefinitions, cancellationToken);
+            foreach (var build in buildRuns)
+                mechanicalReports.Add(
+                    MilestoneDefinitionContract.FormatMechanicalResult(build));
+            var buildFailed = buildRuns.Any(run => !run.Success);
+            if (buildFailed && !MilestoneBuildRunner.IsEnvironmentFailure(buildRuns))
+            {
+                var beforeRepair = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    workingDirectory, cancellationToken);
+                var repairReport = await ExecuteBuildRepairAsync(
+                    jobId, workingDirectory, milestone, plannedWorkScopes,
+                    buildRuns.Last(run => !run.Success), implementer, cancellationToken);
+                mechanicalReports.Add("WORK_8_REPAIR: " +
+                    MilestoneDefinitionContract.Limit(repairReport, 1200));
+                var afterRepair = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    workingDirectory, cancellationToken);
+                foreach (var path in MilestoneMechanicalExecutor.DiffChangeStates(
+                    beforeRepair, afterRepair))
+                    if (MilestoneMechanicalExecutor.IsPathWithinScopes(path, plannedWorkScopes))
+                        milestoneChangedPaths.Add(path);
+                buildRuns = await MilestoneBuildRunner.RunAsync(
+                    workingDirectory, jobId, executableDefinitions, cancellationToken);
+                foreach (var build in buildRuns)
+                    mechanicalReports.Add("REBUILD: " +
+                        MilestoneDefinitionContract.FormatMechanicalResult(build));
+                buildFailed = buildRuns.Any(run => !run.Success);
+            }
+
+            // Preserve original WORK/BUILD failures instead of hiding them after QA.
+            if (blockedWorkIds.Length == 0 && buildFailed)
+                outcome = "BUILD_FAILED";
+
+            if (milestone.QaReserved)
             {
                 qaReport = await ExecuteMilestoneQaAsync(
-                    jobId,
-                    workingDirectory,
-                    milestone,
-                    workReports,
-                    resourceReports,
-                    mechanicalReports,
-                    implementer,
-                    qa,
-                    1,
-                    cancellationToken);
-
-                var qaStatus =
-                    MilestoneDefinitionContract.ReadQaStatus(qaReport);
-
-                if (string.Equals(
-                        qaStatus,
-                        "passed",
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    outcome = "COMPLETED";
-                }
-                else if (string.Equals(
-                             qaStatus,
-                             "issue",
-                             StringComparison.OrdinalIgnoreCase))
-                {
-                    var highBefore =
-                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                            workingDirectory,
-                            cancellationToken);
-
-                    highReport = await ExecuteMilestoneHighAsync(
-                        jobId,
-                        workingDirectory,
-                        milestone,
-                        workReports,
-                        resourceReports,
-                        mechanicalReports,
-                        qaReport,
-                        implementer,
-                        high,
-                        1,
-                        cancellationToken);
-
-                    var highAfter =
-                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                            workingDirectory,
-                            cancellationToken);
-                    foreach (var changedPath in
-                             MilestoneMechanicalExecutor.DiffChangeStates(
-                                 highBefore,
-                                 highAfter))
-                    {
-                        milestoneChangedPaths.Add(changedPath);
-                    }
-
-                    var highStatus =
-                        MilestoneDefinitionContract.ReadHighStatus(highReport);
-                    outcome = string.Equals(
-                        highStatus,
-                        "blocked",
-                        StringComparison.OrdinalIgnoreCase)
-                        ? "HIGH_BLOCKED"
-                        : "COMPLETED_WITH_HIGH";
-                }
-                else
-                {
-                    outcome = "QA_BLOCKED";
-                }
+                    jobId, workingDirectory, milestone,
+                    workReports, resourceReports, mechanicalReports,
+                    implementer, qa, 1, cancellationToken);
+                var qaStatus = MilestoneDefinitionContract.ReadQaStatus(qaReport);
+                if (outcome == "COMPLETED" &&
+                    !string.Equals(qaStatus, "passed", StringComparison.OrdinalIgnoreCase))
+                    outcome = string.Equals(qaStatus, "issue", StringComparison.OrdinalIgnoreCase)
+                        ? "QA_ISSUE" : "QA_BLOCKED";
             }
-            else if (blockedWorkIds.Length == 0)
-            {
-                outcome = "COMPLETED";
-            }
+
+            // HIGH is always a milestone review, not solely a QA issue fixer.
+            var beforeHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                workingDirectory, cancellationToken);
+            highReport = await ExecuteMilestoneHighAsync(
+                jobId, workingDirectory, milestone, workReports, resourceReports,
+                mechanicalReports, qaReport, implementer, high, 1, cancellationToken);
+            var afterHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                workingDirectory, cancellationToken);
+            foreach (var path in MilestoneMechanicalExecutor.DiffChangeStates(
+                beforeHigh, afterHigh))
+                milestoneChangedPaths.Add(path);
+
+            if (outcome == "COMPLETED" &&
+                string.Equals(MilestoneDefinitionContract.ReadHighStatus(highReport),
+                    "blocked", StringComparison.OrdinalIgnoreCase))
+                outcome = "HIGH_BLOCKED";
 
             CaptureResourceStateWithoutWaiting();
 
@@ -994,6 +1034,32 @@ public partial class MainWindow
                     _targetSettings.ManualRepositoryUrl?.Trim(),
                     cancellationToken,
                     gitProgress);
+
+                if (!gitResult.Success)
+                {
+                    var originalGitError = gitResult.Summary;
+                    var gitHigh = await ExecuteGitHighAsync(
+                        jobId, workingDirectory, milestone, high,
+                        "FINALIZE", originalGitError, cancellationToken);
+                    mechanicalReports.Add("GIT_HIGH: " +
+                        MilestoneDefinitionContract.Limit(gitHigh, 1200));
+                    mechanicalReports.Add("GIT_INITIAL_FAILURE: " +
+                        MilestoneDefinitionContract.Limit(originalGitError, 1200));
+                    // HIGH can fix .gitignore or source configuration. Include
+                    // its actual changes in the single controlled Worker retry.
+                    var changedAfterGitHigh =
+                        await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
+                            workingDirectory, cancellationToken);
+                    foreach (var path in changedAfterGitHigh)
+                        if (!initialChangedPaths.Contains(path) ||
+                            milestoneChangedPaths.Contains(path))
+                            milestoneChangedPaths.Add(path);
+                    gitResult = await MilestoneMechanicalExecutor.FinalizeGitAsync(
+                        workingDirectory, milestone, milestoneChangedPaths,
+                        _targetSettings.ManualRepositoryUrl?.Trim(),
+                        cancellationToken, gitProgress);
+
+                }
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
@@ -1559,7 +1625,8 @@ public partial class MainWindow
         var prompt = RoleContractLoader.BuildQaPrompt(
             MilestoneDefinitionContract.BuildQaContext(
                 milestone,
-                workReports));
+                workReports,
+                mechanicalReports));
 
         async Task<AiRoleRunResult> RunAsync(string currentPrompt) =>
             await RunCoordinatorRoleAsync(
@@ -1645,11 +1712,12 @@ public partial class MainWindow
             MilestoneDefinitionContract.BuildHighContext(
                 milestone,
                 workReports,
-                qaReport));
+                qaReport,
+                mechanicalReports));
 
         var sandbox = milestone.ReadOnlyNoFileChanges
             ? CodexSandboxMode.ReadOnly
-            : CodexSandboxMode.DangerFullAccess;
+            : CodexSandboxMode.WorkspaceWrite;
 
         async Task<AiRoleRunResult> RunAsync(string currentPrompt) =>
             await RunCoordinatorRoleAsync(
@@ -1699,6 +1767,81 @@ public partial class MainWindow
             workItemId: "HIGH",
             referenceId: milestone.Id + ":HIGH");
 
+        return report;
+    }
+
+    private async Task<string> ExecuteBuildRepairAsync(
+        string jobId,
+        string workingDirectory,
+        MilestoneDefinition milestone,
+        IReadOnlyList<string> writePaths,
+        MilestoneMechanicalResult failure,
+        WorkerAiRoleSettings implementer,
+        CancellationToken cancellationToken)
+    {
+        if (writePaths.Count == 0)
+            return "blocked: NO_WRITABLE_SCOPE";
+        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
+            "8", "@@GOAL" + Environment.NewLine +
+            "Worker 빌드 오류에 필요한 최소 소스 수정만 수행하라." +
+            Environment.NewLine + "@@INSTRUCTIONS" + Environment.NewLine +
+            "원래 작업 범위 외 변경 금지. Git 명령 실행 금지. " +
+            "오류: " + MilestoneDefinitionContract.Limit(failure.Summary, 1600),
+            writePaths, workingDirectory);
+        var stateless = implementer with
+        {
+            ThreadSessionId = null,
+            ThreadProjectPath = null
+        };
+        var result = await RunCoordinatorRoleAsync(
+            jobId, "WORK", prompt, stateless, workingDirectory,
+            null, null, cancellationToken, CodexSandboxMode.WorkspaceWrite,
+            historyWorkItemId: "8",
+            historyReferenceId: milestone.Id + ":BUILD:REPAIR-1");
+        var report = MilestoneDefinitionContract.NormalizeWorkReport(
+            result.ExitCode, result.FinalMessage, result.StandardError);
+        AddRoleResponseHistory(WorkerRoleState.Work,
+            "임시 빌드 복구 #8", report, result.Usage, result.Files,
+            status: MilestoneDefinitionContract.ReadWorkStatus(report) == "blocked"
+                ? "BLOCKED" : "RECEIVED",
+            providerWireId: implementer.Provider, fullMessage: report,
+            workItemId: "8",
+            referenceId: milestone.Id + ":BUILD:REPAIR-1");
+        return report;
+    }
+
+    private async Task<string> ExecuteGitHighAsync(
+        string jobId,
+        string workingDirectory,
+        MilestoneDefinition milestone,
+        WorkerAiRoleSettings high,
+        string stage,
+        string diagnostic,
+        CancellationToken cancellationToken)
+    {
+        var prompt = RoleContractLoader.BuildHighPrompt(
+            "REASON: GIT_FAILED" + Environment.NewLine +
+            "STAGE: " + stage + Environment.NewLine +
+            "Git 자체의 commit/push/reset 등 변경 명령은 Worker 전용이다." +
+            Environment.NewLine +
+            "안전하게 수정 가능한 소스/설정만 수정하고 결과를 보고하라." +
+            Environment.NewLine +
+            "@@ERROR" + Environment.NewLine +
+            MilestoneDefinitionContract.Limit(diagnostic, 2400));
+        var result = await RunCoordinatorRoleAsync(
+            jobId, "HIGH", prompt, high, workingDirectory,
+            null, null, cancellationToken, CodexSandboxMode.WorkspaceWrite,
+            historyWorkItemId: "HIGH-GIT",
+            historyReferenceId: milestone.Id + ":HIGH:GIT:" + stage);
+        var report = MilestoneDefinitionContract.NormalizeHighReport(
+            result.ExitCode, result.FinalMessage, result.StandardError);
+        AddRoleResponseHistory(WorkerRoleState.High, "Git 오류 검토",
+            report, result.Usage, result.Files,
+            status: MilestoneDefinitionContract.ReadHighStatus(report) == "blocked"
+                ? "BLOCKED" : "RECEIVED",
+            providerWireId: high.Provider, fullMessage: report,
+            workItemId: "HIGH-GIT",
+            referenceId: milestone.Id + ":HIGH:GIT:" + stage);
         return report;
     }
 

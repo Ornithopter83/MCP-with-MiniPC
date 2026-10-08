@@ -18,6 +18,9 @@ internal static class HqTextProtocol
         new(StringComparer.OrdinalIgnoreCase)
         {
             "GOAL",
+            "PLAN",
+            "QA",
+            "HIGH",
             "WORK",
             "WORK_GOAL",
             "WORK_INSTRUCTIONS",
@@ -116,6 +119,15 @@ internal static class HqTextProtocol
             : payloadLines[firstSection..];
 
         var headers = ReadFields(headerLines);
+        if (action == "WORK" && !headers.ContainsKey("BRANCH"))
+        {
+            if (responseOk < 0 ||
+                lines[(responseOk + 1)..].Any(line => !string.IsNullOrWhiteSpace(line)))
+                return Invalid("COMPACT_RESPONSE_TERMINATOR_INVALID");
+            if (headerLines.Where(line => !string.IsNullOrWhiteSpace(line))
+                    .Any(line => !line.TrimStart().StartsWith("MILESTONE:", StringComparison.OrdinalIgnoreCase)))
+                return Invalid("COMPACT_HEADER_FORBIDDEN");
+        }
         var sections = ReadSections(sectionLines);
         var unknown = sections
             .Where(section => !KnownSections.Contains(section.Name))
@@ -142,9 +154,11 @@ internal static class HqTextProtocol
         if (string.IsNullOrWhiteSpace(milestoneId))
             errors.Add("MILESTONE");
 
-        var branch = One(headers, "BRANCH");
+        // Branch is Worker-owned for minimal HQ output.
+        var branch = One(headers, "BRANCH") ?? "main";
         if (!string.Equals(branch, "main", StringComparison.Ordinal))
             errors.Add("BRANCH");
+        var compact = !headers.ContainsKey("BRANCH");
 
         var policy = One(headers, "POLICY");
         if (string.IsNullOrWhiteSpace(policy))
@@ -174,8 +188,33 @@ internal static class HqTextProtocol
             .FirstOrDefault(section =>
                 string.Equals(section.Name, "GOAL", StringComparison.OrdinalIgnoreCase))
             ?.Content.Trim() ?? string.Empty;
-        if (goal.Length == 0)
+        if (goal.Length == 0 && !compact)
             errors.Add("GOAL");
+        if (compact)
+            goal = milestoneId ?? string.Empty;
+
+        var qaSection = sections.FirstOrDefault(section =>
+            string.Equals(section.Name, "QA", StringComparison.OrdinalIgnoreCase));
+        var highSection = sections.FirstOrDefault(section =>
+            string.Equals(section.Name, "HIGH", StringComparison.OrdinalIgnoreCase));
+        var planSection = sections.FirstOrDefault(section =>
+            string.Equals(section.Name, "PLAN", StringComparison.OrdinalIgnoreCase));
+        if (compact)
+        {
+            if (headers.Keys.Any(key => !string.Equals(key, "MILESTONE", StringComparison.OrdinalIgnoreCase)))
+                errors.Add("COMPACT_HEADER_FORBIDDEN");
+            if (normalizedSectionCount(sections, "QA") > 1 ||
+                normalizedSectionCount(sections, "HIGH") > 1 ||
+                normalizedSectionCount(sections, "PLAN") > 1)
+                errors.Add("COMPACT_SECTION_DUPLICATED");
+            if (qaSection is null || highSection is null)
+                errors.Add("COMPACT_QA_HIGH_REQUIRED");
+            if (sections.Any(section => section.Name is "GOAL" or "WORK_GOAL" or
+                    "WORK_INSTRUCTIONS" or "WORK_COMPLETION"))
+                errors.Add("COMPACT_LEGACY_SECTION_FORBIDDEN");
+            if (sections.Count > 24)
+                errors.Add("COMPACT_SECTION_LIMIT");
+        }
 
         var works = new List<WorkBuilder>();
         WorkBuilder? currentWork = null;
@@ -191,25 +230,53 @@ internal static class HqTextProtocol
                 case "WORK":
                 {
                     currentWork = new WorkBuilder { Id = section.Argument.Trim() };
+                    if (compact)
+                    {
+                        var sourceLines = section.Content.Replace("\r", "", StringComparison.Ordinal).Split('\n')
+                            .Select(line => line.Trim()).Where(line => line.Length > 0).ToArray();
+                        var workPaths = sourceLines.Where(line =>
+                            line.StartsWith("PATH:", StringComparison.OrdinalIgnoreCase)).ToArray();
+                        var instructionLines = sourceLines.Where(line =>
+                            !line.StartsWith("PATH:", StringComparison.OrdinalIgnoreCase)).ToArray();
+                        currentWork.ReadOnly = false;
+                        currentWork.TestRequired = qaSection is not null;
+                        currentWork.WritePaths.AddRange(workPaths.Select(line => line[5..].Trim()));
+                        currentWork.Goal = string.Join(" ", instructionLines);
+                        currentWork.Instructions = currentWork.Goal;
+                        currentWork.Completion.Add(currentWork.Goal);
+                        if (workPaths.Length == 0 || workPaths.Length > 5 ||
+                            instructionLines.Length is < 1 or > 3 ||
+                            currentWork.Goal.Length > 600 ||
+                            workPaths.Any(line => line.Length > 250))
+                            errors.Add($"WORK {currentWork.Id}.COMPACT_LIMIT");
+                    }
                     if (!int.TryParse(currentWork.Id, out var number) || number < 10)
                         errors.Add("WORK.ID");
 
                     var fields = ReadFields(section.Content.Split('\n'));
                     if (fields.ContainsKey("ORDER"))
                         errors.Add($"WORK {currentWork.Id}.ORDER_FORBIDDEN");
+                    if (compact && fields.Keys.Any(key => !string.Equals(key, "PATH", StringComparison.OrdinalIgnoreCase)))
+                        errors.Add($"WORK {currentWork.Id}.COMPACT_FIELD");
 
-                    if (TryReadBool(One(fields, "READ_ONLY"), out var readOnly))
-                        currentWork.ReadOnly = readOnly;
-                    else
-                        errors.Add($"WORK {currentWork.Id}.READ_ONLY");
+                    if (!compact)
+                    {
+                        if (TryReadBool(One(fields, "READ_ONLY"), out var readOnly))
+                            currentWork.ReadOnly = readOnly;
+                        else
+                            errors.Add($"WORK {currentWork.Id}.READ_ONLY");
+                    }
 
-                    var testRaw = One(fields, "TEST");
-                    if (string.Equals(testRaw, "ON", StringComparison.OrdinalIgnoreCase))
-                        currentWork.TestRequired = true;
-                    else if (string.Equals(testRaw, "OFF", StringComparison.OrdinalIgnoreCase))
-                        currentWork.TestRequired = false;
-                    else
-                        errors.Add($"WORK {currentWork.Id}.TEST");
+                    if (!compact)
+                    {
+                        var testRaw = One(fields, "TEST");
+                        if (string.Equals(testRaw, "ON", StringComparison.OrdinalIgnoreCase))
+                            currentWork.TestRequired = true;
+                        else if (string.Equals(testRaw, "OFF", StringComparison.OrdinalIgnoreCase))
+                            currentWork.TestRequired = false;
+                        else
+                            errors.Add($"WORK {currentWork.Id}.TEST");
+                    }
 
                     if (fields.TryGetValue("WRITE_PATH", out var paths))
                     {
@@ -269,6 +336,21 @@ internal static class HqTextProtocol
             }
         }
 
+        if (compact && works.Count == 0)
+            errors.Add("COMPACT_WORK_REQUIRED");
+        if (compact && (qaSection?.Content.Length > 600 ||
+                        highSection?.Content.Length > 600 ||
+                        planSection?.Content.Length > 8000 ||
+                        (qaSection?.Content.Split('\n').Count(line => !string.IsNullOrWhiteSpace(line)) ?? 0) > 3 ||
+                        (highSection?.Content.Split('\n').Count(line => !string.IsNullOrWhiteSpace(line)) ?? 0) > 3))
+            errors.Add("COMPACT_SECTION_LENGTH");
+        if (compact && (string.IsNullOrWhiteSpace(qaSection?.Content) ||
+                        string.IsNullOrWhiteSpace(highSection?.Content)))
+            errors.Add("COMPACT_QA_HIGH_EMPTY");
+        if (compact && sections.Any(section => section.Name is not
+                ("WORK" or "QA" or "HIGH" or "PLAN" or "RESOURCE" or "RESOURCE_INSTRUCTIONS")))
+            errors.Add("COMPACT_SECTION_FORBIDDEN");
+
         foreach (var work in works)
         {
             if (work.Goal.Length == 0)
@@ -305,6 +387,9 @@ internal static class HqTextProtocol
             ["id"] = milestoneId,
             ["branch"] = "main",
             ["goal"] = goal,
+            ["qaInstructions"] = qaSection?.Content.Trim(),
+            ["highInstructions"] = highSection?.Content.Trim(),
+            ["planDocument"] = planSection?.Content.Trim(),
             ["entrypoint"] = entrypoint,
             ["initializeGitIfMissing"] = initializeGit,
             ["projectPolicy"] = policy,
@@ -427,6 +512,9 @@ internal static class HqTextProtocol
         return action.Length > 0;
     }
 
+    private static int normalizedSectionCount(IReadOnlyList<Section> sections, string name) =>
+        sections.Count(section => string.Equals(section.Name, name, StringComparison.OrdinalIgnoreCase));
+
     private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadFields(
         IEnumerable<string> lines)
     {
@@ -500,6 +588,9 @@ internal static class HqTextProtocol
             Flush();
             rawMarker = line.TrimEnd();
             var marker = trimmed[2..].Trim();
+            // Minimal form: @@WORK=10 (legacy @@WORK 10 still accepted).
+            if (marker.StartsWith("WORK=", StringComparison.OrdinalIgnoreCase))
+                marker = "WORK " + marker["WORK=".Length..].Trim();
             var split = marker.IndexOfAny(new[] { ' ', '\t' });
             if (split < 0)
             {

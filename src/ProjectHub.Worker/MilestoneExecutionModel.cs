@@ -30,7 +30,12 @@ internal sealed record MilestoneDefinition(
     string RawHqMessage,
     IReadOnlyDictionary<string, MilestoneWorkDefinition> WorkItems,
     IReadOnlyDictionary<string, MilestoneResourceDefinition> Resources,
-    IReadOnlyList<string> ParseErrors);
+    IReadOnlyList<string> ParseErrors)
+{
+    public string QaInstructions { get; init; } = string.Empty;
+    public string HighInstructions { get; init; } = string.Empty;
+    public string PlanDocument { get; init; } = string.Empty;
+}
 
 internal sealed record MilestoneMechanicalResult(
     string Operation,
@@ -346,12 +351,15 @@ internal static class MilestoneDefinitionContract
                     resourceJson.GetRawText());
             }
 
-            var qaReserved = workItems.Values.Any(work => work.TestRequired);
-            if (qaReserved &&
-                (string.IsNullOrWhiteSpace(entrypoint) ||
-                 !IsSafeRelativePath(entrypoint)))
+            var qaInstructions = TryGetOptionalJsonString(milestoneJson, "qaInstructions") ?? string.Empty;
+            var highInstructions = TryGetOptionalJsonString(milestoneJson, "highInstructions") ?? string.Empty;
+            var planDocument = TryGetOptionalJsonString(milestoneJson, "planDocument") ?? string.Empty;
+            var qaReserved = workItems.Values.Any(work => work.TestRequired) ||
+                             qaInstructions.Length > 0;
+            if (qaReserved && !string.IsNullOrWhiteSpace(entrypoint) &&
+                !IsSafeRelativePath(entrypoint))
             {
-                error = "MILESTONE_ENTRYPOINT_REQUIRED_FOR_TEST";
+                error = "MILESTONE_ENTRYPOINT_INVALID";
                 return false;
             }
 
@@ -366,7 +374,12 @@ internal static class MilestoneDefinitionContract
                 rawMessage,
                 workItems,
                 resources,
-                parse.Errors.ToArray());
+                parse.Errors.ToArray())
+            {
+                QaInstructions = qaInstructions,
+                HighInstructions = highInstructions,
+                PlanDocument = planDocument
+            };
             return true;
         }
         catch (JsonException exception)
@@ -468,10 +481,16 @@ internal static class MilestoneDefinitionContract
 
     public static string BuildQaContext(
         MilestoneDefinition milestone,
-        IReadOnlyDictionary<string, string> workReports)
+        IReadOnlyDictionary<string, string> workReports,
+        IReadOnlyList<string>? mechanicalReports = null)
     {
         var builder = new StringBuilder();
         AppendWorkGoals(builder, milestone.WorkItems.Values);
+        if (!string.IsNullOrWhiteSpace(milestone.QaInstructions))
+        {
+            builder.AppendLine("@@QA_INSTRUCTIONS");
+            builder.AppendLine(milestone.QaInstructions);
+        }
         if (!string.IsNullOrWhiteSpace(milestone.Entrypoint))
         {
             builder.AppendLine();
@@ -484,7 +503,17 @@ internal static class MilestoneDefinitionContract
         {
             var parsed = RoleTextProtocol.ParseWork(pair.Value);
             builder.AppendLine($"# {pair.Key}");
+            builder.AppendLine("STATUS: " + (parsed.IsValid ? parsed.Status : "blocked"));
             builder.AppendLine(parsed.IsValid ? parsed.Summary : pair.Value);
+            if (parsed.IsValid)
+                foreach (var issue in parsed.Issues)
+                    builder.AppendLine("ISSUE: " + issue);
+        }
+        if (mechanicalReports is not null && mechanicalReports.Count > 0)
+        {
+            builder.AppendLine("@@BUILD_RESULTS");
+            foreach (var report in mechanicalReports)
+                builder.AppendLine(Limit(report, 1200));
         }
         return builder.ToString().TrimEnd();
     }
@@ -492,19 +521,41 @@ internal static class MilestoneDefinitionContract
     public static string BuildHighContext(
         MilestoneDefinition milestone,
         IReadOnlyDictionary<string, string> workReports,
-        string? qaReport)
+        string? qaReport,
+        IReadOnlyList<string>? mechanicalReports = null)
     {
         var builder = new StringBuilder();
         AppendWorkGoals(builder, milestone.WorkItems.Values);
+        if (!string.IsNullOrWhiteSpace(milestone.HighInstructions))
+        {
+            builder.AppendLine();
+            builder.AppendLine("@@HIGH_INSTRUCTIONS");
+            builder.AppendLine(milestone.HighInstructions);
+        }
         builder.AppendLine();
         builder.AppendLine("@@WORK_RESULTS");
         foreach (var pair in workReports.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
             var parsed = RoleTextProtocol.ParseWork(pair.Value);
             builder.AppendLine($"# {pair.Key}");
-            builder.AppendLine(parsed.IsValid ? parsed.Summary : pair.Value);
+            if (parsed.IsValid)
+            {
+                builder.AppendLine("STATUS: " + parsed.Status);
+                builder.AppendLine(parsed.Summary);
+                foreach (var issue in parsed.Issues)
+                    builder.AppendLine("ISSUE: " + issue);
+            }
+            else
+                builder.AppendLine(pair.Value);
         }
 
+        if (mechanicalReports is not null && mechanicalReports.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("@@BUILD_RESULTS");
+            foreach (var report in mechanicalReports)
+                builder.AppendLine(Limit(report, 1200));
+        }
         if (!string.IsNullOrWhiteSpace(qaReport))
         {
             builder.AppendLine();
@@ -797,6 +848,13 @@ internal static class MilestoneDefinitionContract
             }
         }
 
+        if (mechanicalReports.Count > 0)
+        {
+            builder.AppendLine("MECHANICAL_RESULTS:");
+            foreach (var report in mechanicalReports.Take(4))
+                builder.AppendLine("- " + Limit(report.Replace("\r", "", StringComparison.Ordinal)
+                    .Replace("\n", " | ", StringComparison.Ordinal), 1000));
+        }
         builder.AppendLine("GIT_RESULT:");
         builder.AppendLine("- success=" + (gitResult.Success ? "YES" : "NO"));
         builder.AppendLine("- commit=" + (gitResult.CommitSha ?? "none"));
