@@ -14,5 +14,5 @@
 
 제3조 (과거 설계)
 
-① HIGH 역할, 과거 직렬 runtime, 프로그램 재시작 후 session-state 자동 복구, RESOURCE 초기 wire처럼 현재 정책에서 제거·변경된 설계는 이력으로만 보존한다.
+① JUDGE·OBSERVATION, 과거 직렬 runtime, HIGH 일회성 permit, RESOURCE 초기 wire 및 과거 JSON HQ 프로토콜 등은 작성 당시의 설계 이력으로만 보존한다. 현재 HIGH 마일스톤 검토와 작업 중단 후 체크포인트 재개는 현행 Worker 구현에 존재하므로 제거된 기능으로 간주하지 않는다.
 ② 과거 작업 문서가 현재 정책과 다르면 과거 문서를 고쳐서 역사를 다시 쓰기보다 상단 상태 표시로 현재 원본이 아님을 명확히 한다.
