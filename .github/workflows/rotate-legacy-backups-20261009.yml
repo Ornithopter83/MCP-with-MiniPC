@@ -1,0 +1,117 @@
+name: One-time legacy backup reference rotation (2026-10-09)
+
+# This workflow exists solely to execute the explicitly authorized
+# 2026-10-09 backup rotation. Edits to this file do not re-run the
+# destructive phase if the replacement tag already exists.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/rotate-legacy-backups-20261009.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: projecthub-one-time-backup-rotation-20261009
+  cancel-in-progress: false
+
+jobs:
+  rotate:
+    if: github.repository == 'Ornithopter83/MCP-with-MiniPC'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out exact main commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Verify, establish replacement tag, remove explicitly inventoried old backups
+        shell: bash
+        run: |
+          set -euo pipefail
+          desired="${GITHUB_SHA}"
+          new_branch="refs/heads/backup/main-docs-aligned-20261009"
+          new_tag="refs/tags/backup-main-docs-aligned-20261009"
+          main_sha="$(git ls-remote --refs origin refs/heads/main | cut -f1)"
+          if [[ "$main_sha" != "$desired" ]]; then
+            echo "::error::main changed during backup rotation; refusing to delete references."
+            exit 1
+          fi
+
+          tag_now="$(git ls-remote --refs origin "$new_tag" | cut -f1)"
+          if [[ -n "$tag_now" ]]; then
+            if [[ "$tag_now" == "$desired" ]]; then
+              echo "Already rotated: replacement tag matches the workflow commit."
+              exit 0
+            fi
+            echo "::error::Replacement tag already points elsewhere."
+            exit 1
+          fi
+
+          branch_now="$(git ls-remote --refs origin "$new_branch" | cut -f1)"
+          if [[ "$branch_now" != "f94d5d34e3f032c854957093ad9ebf5d8a057ff4" ]]; then
+            echo "::error::Replacement backup branch was unexpectedly modified."
+            exit 1
+          fi
+
+          declare -A previous=(
+            ["refs/heads/archive/LocalGit-마지막"]="9bee97e40a8bd97908e18d068face9333961230a"
+            ["refs/heads/archive/hq-session-rollover-experiment-20261001"]="1c1433a4b2abd972c77b96b6f2a2f1ea9a280cb3"
+            ["refs/heads/backup/pre-muse-opencode-20261004"]="360c7c6045fbac61666a72600e499e5dd6d3d2cf"
+            ["refs/heads/recovery/current"]="1231ccfbd510c790be8f88d9e21699014f8f6940"
+            ["refs/heads/recovery/pre-hq-session-rollover-20261001"]="9bee97e40a8bd97908e18d068face9333961230a"
+            ["refs/heads/recovery/pre-managed-web-runtime-20260926"]="1231ccfbd510c790be8f88d9e21699014f8f6940"
+            ["refs/heads/recovery/pre-parallel-work-graph-20260925"]="1231ccfbd510c790be8f88d9e21699014f8f6940"
+            ["refs/tags/pre-muse-opencode-20261004"]="c862df05f9138d61413afb80febf7dbbe78a77a2"
+            ["refs/tags/recovery/before-11a-cli-to-cli-2026-09-23"]="6a44d94011f9393a688f505cfa1e6b2918e5485b"
+          )
+
+          # Ensure no unanticipated backup refs or tags will be silently left behind.
+          mapfile -t current_refs < <(git ls-remote --refs origin \
+            'refs/heads/archive/*' 'refs/heads/backup/*' \
+            'refs/heads/recovery/*' 'refs/tags/*' | awk '{print $2}' | sort)
+          if [[ "${#current_refs[@]}" -ne "$((${#previous[@]} + 1))" ]]; then
+            echo "::error::Backup ref inventory changed; stop and review before rotation."
+            printf '%s\n' "${current_refs[@]}"
+            exit 1
+          fi
+          for ref in "${current_refs[@]}"; do
+            if [[ "$ref" != "$new_branch" && -z "${previous[$ref]+exists}" ]]; then
+              echo "::error::Unexpected backup ref: $ref"
+              exit 1
+            fi
+          done
+          for ref in "${!previous[@]}"; do
+            actual="$(git ls-remote --refs origin "$ref" | cut -f1)"
+            if [[ "$actual" != "${previous[$ref]}" ]]; then
+              echo "::error::Ref moved or disappeared: $ref; refusing deletion."
+              exit 1
+            fi
+          done
+
+          # The replacement backup always exists BEFORE deleting any old reference.
+          git push --atomic origin \
+            "$desired:$new_branch" \
+            "$desired:$new_tag"
+
+          for ref in "${!previous[@]}"; do
+            echo "Deleting previous backup reference: $ref"
+            git push origin ":$ref"
+          done
+
+          final_branch="$(git ls-remote --refs origin "$new_branch" | cut -f1)"
+          final_tag="$(git ls-remote --refs origin "$new_tag" | cut -f1)"
+          if [[ "$final_branch" != "$desired" || "$final_tag" != "$desired" ]]; then
+            echo "::error::Final replacement backup refs do not match main."
+            exit 1
+          fi
+          remaining="$(git ls-remote --refs origin \
+            'refs/heads/archive/*' 'refs/heads/recovery/*' | wc -l | tr -d ' ')"
+          if [[ "$remaining" != "0" ]]; then
+            echo "::error::Some old archive/recovery branches remain."
+            exit 1
+          fi
+          echo "Backup rotation verified at $desired"
