@@ -6,7 +6,7 @@ internal static class HqResponseRecoveryContract
     {
         repaired = System.Text.RegularExpressions.Regex.Replace(
             original ?? string.Empty,
-            @"(?m)^([ \t]*<([A-Z][A-Z0-9_]*)>[^\r\n<>]+)</([A-Z][A-Z0-9_]*)>([ \t]*)$",
+            @"(?m)^([ \t]*<([A-Z][A-Z0-9_]*)>[^\r\n<>]+)</([A-Z][A-Z0-9_]*)>([ \t]*\r?)$",
             match => string.Equals(match.Groups[2].Value, match.Groups[3].Value,
                 StringComparison.Ordinal)
                 ? match.Groups[1].Value + "</>" + match.Groups[4].Value
