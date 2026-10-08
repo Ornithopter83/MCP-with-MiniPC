@@ -13,7 +13,7 @@ internal sealed record RoleTextResult(
 internal static class RoleTextProtocol
 {
     public static RoleTextResult ParseWork(string? raw) =>
-        Parse(raw, new[] { "completed", "blocked" });
+        Parse(raw, new[] { "completed", "in_progress", "blocked" });
 
     public static RoleTextResult ParseQa(string? raw) =>
         Parse(raw, new[] { "passed", "issue", "blocked" });
