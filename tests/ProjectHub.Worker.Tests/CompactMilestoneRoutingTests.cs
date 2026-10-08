@@ -10,11 +10,11 @@ public sealed class CompactMilestoneRoutingTests
         MILESTONE: M1
 
         @@WORK=10
-        PATH: a.txt
+        <PATH>a.txt</>
         a.txt를 생성하여 설정 읽기를 구현하라.
 
         @@WORK=11
-        PATH: b.cs
+        <PATH>b.cs</>
         b.cs 입력 처리를 완성하라.
 
         @@QA
@@ -87,10 +87,72 @@ public sealed class CompactMilestoneRoutingTests
     }
 
     [Fact]
+    public void CompactHq_AllowsColonsUrlsAndDrivePathsInNaturalLanguage()
+    {
+        var body = Minimal.Replace(
+            "a.txt를 생성하여 설정 읽기를 구현하라.",
+            "Electron file://에서 base: './'를 적용하라.\n" +
+            "https://example.org/api 와 C:\\Project\\src\\main.ts:1을 확인하라.",
+            StringComparison.Ordinal);
+        var parsed = HqTextProtocol.Parse(body);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse,
+            out var milestone, out var error), error);
+        Assert.Equal(new[] { "a.txt" }, milestone!.WorkItems["10"].WritePaths);
+        Assert.Contains("file://", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["10"]));
+        Assert.Contains("base: './'", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["10"]));
+        Assert.Contains("https://example.org/api", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["10"]));
+    }
+
+    [Fact]
+    public void CompactHq_ParsesMultiplePathTagsWithoutMixingWithInstructions()
+    {
+        var body = Minimal.Replace(
+            "<PATH>a.txt</>",
+            "<PATH>a.txt</>\n<PATH>src/main.tsx</>",
+            StringComparison.Ordinal);
+        var parsed = HqTextProtocol.Parse(body);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse,
+            out var milestone, out var error), error);
+        Assert.Equal(
+            new[] { "a.txt", "src/main.tsx" },
+            milestone!.WorkItems["10"].WritePaths);
+        Assert.DoesNotContain("<PATH>", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["10"]));
+    }
+
+    [Theory]
+    [InlineData("<PATH></>")]
+    [InlineData("<PATH>a.txt")]
+    [InlineData("<PATH>a.txt</PATH>")]
+    [InlineData("<PATH>a.txt</><PATH>b.cs</>")]
+    [InlineData("<PATH>a.txt</> trailing")]
+    public void CompactHq_RejectsMalformedPathTags(string tag)
+    {
+        var parsed = HqTextProtocol.Parse(Minimal.Replace(
+            "<PATH>a.txt</>", tag, StringComparison.Ordinal));
+        Assert.False(parsed.IsValid);
+        Assert.Contains(parsed.Errors, error => error.Contains(
+            "COMPACT_PATH_TAG", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CompactHq_RejectsLegacyPathField()
+    {
+        var parsed = HqTextProtocol.Parse(Minimal.Replace(
+            "<PATH>a.txt</>", "PATH: a.txt", StringComparison.Ordinal));
+        Assert.False(parsed.IsValid);
+        Assert.Contains(parsed.Errors, error => error.Contains(
+            "COMPACT_LEGACY_PATH", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void CompactHq_RejectsMissingPathOrQa()
     {
         var missingPath = HqTextProtocol.Parse(Minimal.Replace(
-            "PATH: a.txt", "NOT_PATH: a.txt", StringComparison.Ordinal));
+            "<PATH>a.txt</>", "지시만 있고 경로는 없음", StringComparison.Ordinal));
         Assert.False(missingPath.IsValid);
 
         var missingQa = HqTextProtocol.Parse(Minimal.Replace(

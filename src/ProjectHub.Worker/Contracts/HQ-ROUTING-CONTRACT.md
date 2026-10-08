@@ -16,11 +16,11 @@ MILESTONE: M1
 최초 응답인 경우에만 작성한다. 프로젝트 목표, 구조, 주요 마일스톤과 완료 기준을 기록한다.
 
 @@WORK=10
-PATH: src/a.txt
+<PATH>src/a.txt</>
 src/a.txt를 생성하여 설정 읽기를 구현하라.
 
 @@WORK=11
-PATH: src/b.cs
+<PATH>src/b.cs</>
 src/b.cs의 입력 처리 기능을 완성하라.
 
 @@QA
@@ -32,11 +32,11 @@ src/b.cs의 입력 처리 기능을 완성하라.
 [RESPONSE=OK]
 
 ① MILESTONE 1개, WORK 1개 이상, QA 1개, HIGH 1개를 필수로 출력한다.
-② WORK는 @@WORK=정수(10 이상), PATH 1~5개와 구현 지시 1~3줄(600자 이내)로 제한한다.
+② WORK는 @@WORK=정수(10 이상), 독립 행의 <PATH>프로젝트 상대경로</> 1~5개와 구현 지시 1~3줄(600자 이내)로 제한한다.
 ③ QA와 HIGH 지시는 각각 600자 이내로 한다.
 ④ @@PLAN은 최초에만 쓰며 8000자를 넘지 않는다. 이전 설계를 반복 출력하지 않는다.
 ⑤ BRANCH, POLICY, ENTRYPOINT, GIT_INIT, TEST, 전체 로드맵의 중복 설명, Git 운영 지시를 출력하지 않는다.
-⑥ 추가 필수 스코프는 PATH 줄을 반복한다. 서로 충돌하는 쓰기 경로를 병렬 WORK에 배정하지 않는다.
+⑥ 추가 필수 스코프는 <PATH>경로</> 행을 반복한다. 태그는 한 줄로 완성하고 값이 비어 있으면 안 된다. PATH:와 WRITE_PATH: 구형 필드는 금지한다. <PATH> 태그 바깥의 자연어는 콜론·URL·file://·base: './'를 포함해도 필드로 해석하지 않는다. 서로 충돌하는 쓰기 경로를 병렬 WORK에 배정하지 않는다.
 ⑦ 예외적 이미지 생성은 @@RESOURCE 0, TYPE: image, TARGET_PATH: 경로 및 @@RESOURCE_INSTRUCTIONS를 사용한다.
 ⑧ @@GOAL, @@WORK_GOAL, @@WORK_INSTRUCTIONS, @@WORK_COMPLETION은 최소 형식에서 사용하지 않는다.
 ⑨ 형식 불량 시 전체 응답을 한 번만 다시 출력한다. [RESPONSE=OK] 뒤에는 어떤 텍스트도 쓰지 않는다.

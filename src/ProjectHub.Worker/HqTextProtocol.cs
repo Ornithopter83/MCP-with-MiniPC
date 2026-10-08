@@ -242,30 +242,59 @@ internal static class HqTextProtocol
                     {
                         var sourceLines = section.Content.Replace("\r", "", StringComparison.Ordinal).Split('\n')
                             .Select(line => line.Trim()).Where(line => line.Length > 0).ToArray();
-                        var workPaths = sourceLines.Where(line =>
-                            line.StartsWith("PATH:", StringComparison.OrdinalIgnoreCase)).ToArray();
-                        var instructionLines = sourceLines.Where(line =>
-                            !line.StartsWith("PATH:", StringComparison.OrdinalIgnoreCase)).ToArray();
+                        var instructionLines = new List<string>();
+                        foreach (var line in sourceLines)
+                        {
+                            if (TryReadCompactPath(line, out var path))
+                            {
+                                currentWork.WritePaths.Add(path);
+                                continue;
+                            }
+
+                            // Only a complete, standalone <PATH>value</> is a field.
+                            // Colons in ordinary instructions (file://, base: './',
+                            // URLs, drive paths, etc.) are never field separators.
+                            if (line.StartsWith("<PATH", StringComparison.OrdinalIgnoreCase) ||
+                                line.StartsWith("</>", StringComparison.Ordinal) ||
+                                line.EndsWith("</>", StringComparison.Ordinal))
+                            {
+                                errors.Add($"WORK {currentWork.Id}.COMPACT_PATH_TAG");
+                                continue;
+                            }
+
+                            // Legacy field spellings must not silently become goals.
+                            if (line.StartsWith("PATH:", StringComparison.OrdinalIgnoreCase) ||
+                                line.StartsWith("WRITE_PATH:", StringComparison.OrdinalIgnoreCase))
+                            {
+                                errors.Add($"WORK {currentWork.Id}.COMPACT_LEGACY_PATH");
+                                continue;
+                            }
+
+                            instructionLines.Add(line);
+                        }
                         currentWork.ReadOnly = false;
                         currentWork.TestRequired = qaSection is not null;
-                        currentWork.WritePaths.AddRange(workPaths.Select(line => line[5..].Trim()));
                         currentWork.Goal = string.Join(" ", instructionLines);
                         currentWork.Instructions = currentWork.Goal;
                         currentWork.Completion.Add(currentWork.Goal);
-                        if (workPaths.Length == 0 || workPaths.Length > 5 ||
-                            instructionLines.Length is < 1 or > 3 ||
+                        if (currentWork.WritePaths.Count is < 1 or > 5 ||
+                            instructionLines.Count is < 1 or > 3 ||
                             currentWork.Goal.Length > 600 ||
-                            workPaths.Any(line => line.Length > 250))
+                            currentWork.WritePaths.Any(path => path.Length > 250))
                             errors.Add($"WORK {currentWork.Id}.COMPACT_LIMIT");
                     }
                     if (!int.TryParse(currentWork.Id, out var number) || number < 10)
                         errors.Add("WORK.ID");
 
-                    var fields = ReadFields(section.Content.Split('\n'));
-                    if (fields.ContainsKey("ORDER"))
+                    // Read colon-delimited fields only for the legacy protocol.
+                    // Compact @@WORK bodies are free-form text plus <PATH> tags.
+                    var fields = compact
+                        ? new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
+                        : ReadFields(section.Content.Split('\n'));
+                    if (fields.ContainsKey("ORDER") ||
+                        (compact && section.Content.Split('\n').Any(line =>
+                            line.TrimStart().StartsWith("ORDER:", StringComparison.OrdinalIgnoreCase))))
                         errors.Add($"WORK {currentWork.Id}.ORDER_FORBIDDEN");
-                    if (compact && fields.Keys.Any(key => !string.Equals(key, "PATH", StringComparison.OrdinalIgnoreCase)))
-                        errors.Add($"WORK {currentWork.Id}.COMPACT_FIELD");
 
                     if (!compact)
                     {
@@ -518,6 +547,22 @@ internal static class HqTextProtocol
 
         action = line[prefix.Length..^1].Trim().ToUpperInvariant();
         return action.Length > 0;
+    }
+
+    private static bool TryReadCompactPath(string line, out string path)
+    {
+        path = string.Empty;
+        const string open = "<PATH>";
+        const string close = "</>";
+        if (!line.StartsWith(open, StringComparison.Ordinal) ||
+            !line.EndsWith(close, StringComparison.Ordinal))
+            return false;
+
+        var value = line[open.Length..^close.Length].Trim();
+        if (value.Length == 0 || value.Contains('<') || value.Contains('>'))
+            return false;
+        path = value;
+        return true;
     }
 
     private static int normalizedSectionCount(IReadOnlyList<Section> sections, string name) =>

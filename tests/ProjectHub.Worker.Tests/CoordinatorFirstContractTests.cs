@@ -750,7 +750,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("[RESPONSE=OK]", hq);
         Assert.Contains("MILESTONE: M1", hq);
         Assert.Contains("@@WORK=10", hq);
-        Assert.Contains("PATH:", hq);
+        Assert.Contains("<PATH>", hq);
         Assert.Contains("@@QA", hq);
         Assert.Contains("@@HIGH", hq);
         Assert.Contains("Git", hq);
