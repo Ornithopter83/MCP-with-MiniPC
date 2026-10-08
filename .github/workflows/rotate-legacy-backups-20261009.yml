@@ -26,7 +26,7 @@ jobs:
       - name: Check out exact main commit
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Verify, establish replacement tag, remove explicitly inventoried old backups
         shell: bash
