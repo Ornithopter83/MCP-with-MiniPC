@@ -371,6 +371,27 @@ public partial class MainWindow
                         "END",
                         StringComparison.OrdinalIgnoreCase))
                 {
+                    // HQ cannot declare the goal complete while a WORKITEM
+                    // still owns an unfinished execution checkpoint.
+                    var unfinished = WorkExecutionJournal.ReadAll(normalizedRoot, jobId)
+                        .Where(item => item.State is "RUNNING" or "IN_PROGRESS")
+                        .Select(item => item.WorkItemId)
+                        .ToArray();
+                    if (unfinished.Length > 0)
+                    {
+                        hqInbound = "END_REJECTED: WORK_IN_PROGRESS=" +
+                            string.Join(",", unfinished) + Environment.NewLine +
+                            "미완료 WORKITEM의 기존 ID를 @@WORK=<ID> 및 " +
+                            "<MODE>CONTINUE</>로 이어서 수행하거나, 명시적으로 " +
+                            "사용자 조작이 필요한 경우에만 PAUSE를 선택하라.";
+                        AddDataFlowHistory(
+                            WorkerRoleState.Hq,
+                            "Worker 작업",
+                            hqInbound,
+                            status: "BLOCKED",
+                            persistenceSource: "WORKER ACTION");
+                        continue;
+                    }
                     SaveMilestoneContinuation(
                         "DONE",
                         hqMessage,
