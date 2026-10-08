@@ -131,6 +131,16 @@ public partial class MainWindow
                 ? BuildMilestoneFollowupInput(continuation!, request)
                 : request;
 
+            void PersistRecovery(string evidence)
+            {
+                var snapshot = new CoordinatorContinuationState(
+                    jobId, normalizedRoot, coordinator, implementer,
+                    hqSession, null, "INTERRUPTED", evidence, high);
+                if (!ProjectWorkspacePersistence.SaveContinuation(snapshot))
+                    throw new IOException("TASK_RECOVERY_CHECKPOINT_WRITE_FAILED");
+            }
+            PersistRecovery(hqInbound);
+
             for (var milestoneIndex = 1;
                  milestoneIndex <= 64;
                  milestoneIndex++)
@@ -371,6 +381,27 @@ public partial class MainWindow
                         "END",
                         StringComparison.OrdinalIgnoreCase))
                 {
+                    // HQ cannot declare the goal complete while a WORKITEM
+                    // still owns an unfinished execution checkpoint.
+                    var unfinished = WorkExecutionJournal.ReadAll(normalizedRoot, jobId)
+                        .Where(item => item.State is "RUNNING" or "IN_PROGRESS")
+                        .Select(item => item.WorkItemId)
+                        .ToArray();
+                    if (unfinished.Length > 0)
+                    {
+                        hqInbound = "END_REJECTED: WORK_IN_PROGRESS=" +
+                            string.Join(",", unfinished) + Environment.NewLine +
+                            "미완료 WORKITEM의 기존 ID를 @@WORK=<ID> 및 " +
+                            "<MODE>CONTINUE</>로 이어서 수행하거나, 명시적으로 " +
+                            "사용자 조작이 필요한 경우에만 PAUSE를 선택하라.";
+                        AddDataFlowHistory(
+                            WorkerRoleState.Hq,
+                            "Worker 작업",
+                            hqInbound,
+                            status: "BLOCKED",
+                            persistenceSource: "WORKER ACTION");
+                        continue;
+                    }
                     SaveMilestoneContinuation(
                         "DONE",
                         hqMessage,
@@ -413,6 +444,9 @@ public partial class MainWindow
                 {
                     RawHqMessage = hqMessage
                 };
+                // If the process stops mid-WORK, HQ gets this plan plus the
+                // persistent per-WORKITEM journal when recovery is initiated.
+                PersistRecovery(hqMessage);
 
                 if (hqText.UnknownSections.Count > 0)
                 {
@@ -553,6 +587,7 @@ public partial class MainWindow
                 }
 
                 hqInbound = milestoneResult.Body;
+                PersistRecovery(hqInbound);
                 continuing = false;
             }
 
@@ -930,6 +965,15 @@ public partial class MainWindow
                         StringComparison.OrdinalIgnoreCase))
                 .Select(pair => pair.Key)
                 .ToArray();
+            var pendingWorkIds = workReports
+                .Where(pair =>
+                    milestone.WorkItems.ContainsKey(pair.Key) &&
+                    string.Equals(
+                        MilestoneDefinitionContract.ReadWorkStatus(pair.Value),
+                        "in_progress",
+                        StringComparison.OrdinalIgnoreCase))
+                .Select(pair => pair.Key)
+                .ToArray();
             if (blockedWorkIds.Length > 0)
             {
                 outcome =
@@ -938,6 +982,11 @@ public partial class MainWindow
                         id => int.TryParse(id, out var number)
                             ? number
                             : int.MaxValue));
+            }
+
+            else if (pendingWorkIds.Length > 0)
+            {
+                outcome = "WORK_IN_PROGRESS:" + string.Join(",", pendingWorkIds);
             }
 
             CaptureResourceState();
@@ -983,7 +1032,7 @@ public partial class MainWindow
             if (blockedWorkIds.Length == 0 && buildFailed)
                 outcome = "BUILD_FAILED";
 
-            if (milestone.QaReserved)
+            if (milestone.QaReserved && pendingWorkIds.Length == 0)
             {
                 qaReport = await ExecuteMilestoneQaAsync(
                     jobId, workingDirectory, milestone,
@@ -996,7 +1045,10 @@ public partial class MainWindow
                         ? "QA_ISSUE" : "QA_BLOCKED";
             }
 
-            // HIGH is always a milestone review, not solely a QA issue fixer.
+            // HIGH reviews completed milestone work; incomplete WORK retains
+            // its own Luna session and checkpoint for the next milestone.
+            if (pendingWorkIds.Length == 0)
+            {
             var beforeHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
             highReport = await ExecuteMilestoneHighAsync(
@@ -1012,6 +1064,8 @@ public partial class MainWindow
                 string.Equals(MilestoneDefinitionContract.ReadHighStatus(highReport),
                     "blocked", StringComparison.OrdinalIgnoreCase))
                 outcome = "HIGH_BLOCKED";
+
+            }
 
             CaptureResourceState();
 
@@ -1336,37 +1390,121 @@ public partial class MainWindow
             workingDirectory,
             readOnly: work.ReadOnly);
 
-        var statelessRole = implementer with
+        // A new ID is unique for this user task; only an explicit CONTINUE
+        // can reuse an unfinished ID. Persist ownership before invoking Luna.
+        if (!WorkExecutionJournal.TryBegin(
+                workingDirectory, jobId, milestone.Id, work, implementer,
+                out var checkpoint, out var startError))
+        {
+            return new(work.Id, RoleTextProtocol.BuildResult(
+                "blocked", startError));
+        }
+
+        var sessionId = checkpoint!.SessionId;
+        var isolatedRole = implementer with
         {
             ThreadSessionId = null,
             ThreadProjectPath = null
         };
 
-        async Task<AiRoleRunResult> RunAsync(string currentPrompt) =>
-            await RunCoordinatorRoleAsync(
+        async Task<AiRoleRunResult> RunAsync(string currentPrompt)
+        {
+            if (!WorkExecutionJournal.Record(
+                    workingDirectory, jobId, work.Id, "RUNNING",
+                    sessionId, invocationStarted: true))
+                throw new IOException("WORK_CHECKPOINT_WRITE_FAILED");
+
+            var run = await RunCoordinatorRoleAsync(
                 jobId,
                 "WORK",
                 currentPrompt,
-                statelessRole,
+                isolatedRole,
                 workingDirectory,
-                null,
+                sessionId,
                 null,
                 cancellationToken,
                 work.ReadOnly
                     ? CodexSandboxMode.ReadOnly
                     : CodexSandboxMode.WorkspaceWrite,
+                sessionStarted: id =>
+                {
+                    sessionId = CodexCliRunner.NormalizeSessionId(id) ?? sessionId;
+                    WorkExecutionJournal.Record(
+                        workingDirectory, jobId, work.Id, "RUNNING", sessionId);
+                },
                 historyWorkItemId: work.Id,
                 historyReferenceId: milestone.Id + ":" + work.Id);
 
-        var result = await RunAsync(prompt);
-        if (result.ExitCode == 0 &&
-            !RoleTextProtocol.ParseWork(result.FinalMessage).IsValid)
+            sessionId = CodexCliRunner.NormalizeSessionId(run.SessionId) ?? sessionId;
+            return run;
+        }
+
+        AiRoleRunResult result;
+        try
         {
-            _formatRecoveryJobs[jobId] = 1;
-            result = await RunAsync(BuildRoleTextRetryPrompt(
-                prompt,
-                result.FinalMessage,
-                RoleContractLoader.LoadWorkFooter()));
+            var currentPrompt = prompt;
+            for (var turn = 0; ; turn++)
+            {
+                var beforeTurn = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    workingDirectory, cancellationToken);
+                result = await RunAsync(currentPrompt);
+                var parsed = RoleTextProtocol.ParseWork(result.FinalMessage);
+                if (result.ExitCode == 0 && !parsed.IsValid && sessionId is not null)
+                {
+                    // Reformat only; never re-execute the original implementation.
+                    _formatRecoveryJobs[jobId] = 1;
+                    result = await RunAsync(
+                        "직전 WORKITEM의 작업·명령·파일 수정은 다시 실행하지 마라. " +
+                        "직전 실행 결과를 그대로 유지하고 형식만 [ACTION=RESULT], " +
+                        "@@REPORT의 <STATUS>, <SUMMARY>, <CHANGED_PATH>, <ISSUES>, " +
+                        "[RESPONSE=OK] 계약에 맞추어 재출력하라.\n\n" +
+                        RoleContractLoader.LoadWorkFooter());
+                    parsed = RoleTextProtocol.ParseWork(result.FinalMessage);
+                }
+
+                var state = result.ExitCode != 0 || !parsed.IsValid
+                    ? "BLOCKED"
+                    : parsed.Status switch
+                    {
+                        "completed" => "COMPLETED",
+                        "in_progress" => "IN_PROGRESS",
+                        _ => "BLOCKED"
+                    };
+                if (!WorkExecutionJournal.Record(
+                        workingDirectory, jobId, work.Id, state,
+                        sessionId, result.FinalMessage))
+                    throw new IOException("WORK_CHECKPOINT_WRITE_FAILED");
+
+                if (state != "IN_PROGRESS" || turn >= 2)
+                    break;
+                var afterTurn = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    workingDirectory, cancellationToken);
+                var progress = MilestoneMechanicalExecutor.DiffChangeStates(
+                    beforeTurn, afterTurn).Any(path =>
+                        MilestoneMechanicalExecutor.IsPathWithinScopes(
+                            path, work.WritePaths));
+                if (!progress)
+                    break;
+
+                currentPrompt =
+                    "동일 WORKITEM #" + work.Id + "의 같은 세션에서 이어서 작업하라. " +
+                    "새 WORKITEM이 아니며 쓰기 범위는 바꾸지 않는다. " +
+                    "남은 구현과 검증을 진행하고 완료하면 completed, " +
+                    "아직 해결 가능한 잔여 작업이 있으면 in_progress를 보고하라. " +
+                    "같은 실패를 그대로 반복하지 마라.";
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            WorkExecutionJournal.Record(workingDirectory, jobId, work.Id,
+                "CANCELED", sessionId);
+            throw;
+        }
+        catch
+        {
+            WorkExecutionJournal.Record(workingDirectory, jobId, work.Id,
+                "IN_PROGRESS", sessionId);
+            throw;
         }
 
         var report = MilestoneDefinitionContract.NormalizeWorkReport(
@@ -1936,15 +2074,27 @@ public partial class MainWindow
 
     private static string BuildMilestoneFollowupInput(
         CoordinatorContinuationState continuation,
-        string followup) =>
-        "이전 HQ 상태:" +
-        Environment.NewLine +
-        continuation.LastHqMessage +
-        Environment.NewLine +
-        Environment.NewLine +
-        "사용자가 직접 개입을 마치고 전달한 재개 입력:" +
-        Environment.NewLine +
-        followup;
+        string followup)
+    {
+        var checkpoints = WorkExecutionJournal.ReadAll(
+            continuation.WorkingDirectory, continuation.JobId);
+        var journal = checkpoints.Count == 0
+            ? "없음"
+            : string.Join(Environment.NewLine, checkpoints.Select(item =>
+                "#" + item.WorkItemId + " state=" + item.State +
+                " paths=" + string.Join(",", item.WritePaths) +
+                " origin=" + item.OriginMilestoneId +
+                " attempts=" + item.Attempts +
+                " session=" + (item.SessionId is null ? "missing" : "saved")));
+        return "이전 HQ 상태:" + Environment.NewLine +
+            continuation.LastHqMessage + Environment.NewLine +
+            Environment.NewLine + "WORKITEM_CHECKPOINTS:" + Environment.NewLine +
+            journal + Environment.NewLine +
+            "RUNNING/IN_PROGRESS WORKITEM은 기존 ID, 동일 PATH, MODE=CONTINUE로 잇고 " +
+            "COMPLETED/BLOCKED/CANCELED ID를 재배정하지 마라. 새 업무는 미사용 ID로 생성한다." +
+            Environment.NewLine + Environment.NewLine +
+            "재개 입력:" + Environment.NewLine + followup;
+    }
 
     private void SaveMilestoneContinuation(
         string status,

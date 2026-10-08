@@ -40,6 +40,7 @@ internal static class HqTextProtocol
     private sealed class WorkBuilder
     {
         public required string Id { get; init; }
+        public string ExecutionMode { get; set; } = "NEW";
         public bool? ReadOnly { get; set; }
         public bool? TestRequired { get; set; }
         public List<string> WritePaths { get; } = new();
@@ -247,6 +248,16 @@ internal static class HqTextProtocol
                         var instructionLines = new List<string>();
                         foreach (var line in sourceLines)
                         {
+                            if (line.StartsWith("<MODE>", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (line.Equals("<MODE>NEW</>", StringComparison.OrdinalIgnoreCase))
+                                    currentWork.ExecutionMode = "NEW";
+                                else if (line.Equals("<MODE>CONTINUE</>", StringComparison.OrdinalIgnoreCase))
+                                    currentWork.ExecutionMode = "CONTINUE";
+                                else
+                                    errors.Add($"WORK {currentWork.Id}.MODE");
+                                continue;
+                            }
                             if (TryReadCompactPath(line, out var path))
                             {
                                 currentWork.WritePaths.Add(path);
@@ -444,6 +455,7 @@ internal static class HqTextProtocol
             ["workItems"] = works.Select(work => new Dictionary<string, object?>
             {
                 ["id"] = int.Parse(work.Id),
+                ["executionMode"] = work.ExecutionMode,
                 ["readOnly"] = work.ReadOnly!.Value,
                 ["testRequired"] = work.TestRequired!.Value,
                 ["writePaths"] = work.WritePaths

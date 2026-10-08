@@ -10,7 +10,10 @@ internal sealed record MilestoneWorkDefinition(
     bool ReadOnly,
     bool TestRequired,
     string Body,
-    string RawText);
+    string RawText)
+{
+    public string ExecutionMode { get; init; } = "NEW";
+}
 
 internal sealed record MilestoneResourceDefinition(
     string Id,
@@ -289,6 +292,15 @@ internal static class MilestoneDefinitionContract
                     return false;
                 }
 
+                var executionMode = workJson.TryGetProperty("executionMode", out var modeJson)
+                    ? modeJson.ValueKind == JsonValueKind.String ? modeJson.GetString() : null
+                    : "NEW";
+                if (executionMode is not ("NEW" or "CONTINUE"))
+                {
+                    error = $"WORK {workId}: EXECUTION_MODE_INVALID";
+                    return false;
+                }
+
                 var body = workJson.GetRawText();
                 workItems[workId] = new(
                     workId,
@@ -296,7 +308,10 @@ internal static class MilestoneDefinitionContract
                     workReadOnly,
                     testRequired,
                     body,
-                    workJson.GetRawText());
+                    workJson.GetRawText())
+                {
+                    ExecutionMode = executionMode
+                };
             }
 
             var resources = new Dictionary<string, MilestoneResourceDefinition>(
@@ -827,6 +842,11 @@ internal static class MilestoneDefinitionContract
             .Select(item => item.Key)
             .OrderBy(id => int.Parse(id))
             .ToArray();
+        var pendingIds = statuses
+            .Where(item => string.Equals(item.Status, "in_progress", StringComparison.OrdinalIgnoreCase))
+            .Select(item => item.Key)
+            .OrderBy(id => int.Parse(id))
+            .ToArray();
         var blockedIds = statuses
             .Where(item => string.Equals(item.Status, "blocked", StringComparison.OrdinalIgnoreCase))
             .Select(item => item.Key)
@@ -834,7 +854,18 @@ internal static class MilestoneDefinitionContract
             .ToArray();
         builder.AppendLine("WORK_COMPLETED: " + (completedIds.Length == 0 ? "none" : string.Join(",", completedIds)));
         builder.AppendLine("WORK_BLOCKED: " + (blockedIds.Length == 0 ? "none" : string.Join(",", blockedIds)));
-        builder.AppendLine("NEXT_WORKITEM_ID: " + NextWorkItemId(milestone, workingDirectory, jobId));
+        builder.AppendLine("WORK_PENDING: " + (pendingIds.Length == 0 ? "none" : string.Join(",", pendingIds)));
+        if (!string.IsNullOrWhiteSpace(workingDirectory) && !string.IsNullOrWhiteSpace(jobId))
+        {
+            var workHistory = WorkExecutionJournal.ReadAll(workingDirectory, jobId);
+            var unfinished = workHistory.Where(item => item.State is "RUNNING" or "IN_PROGRESS")
+                .Select(item => item.WorkItemId).ToArray();
+            builder.AppendLine("WORK_IN_PROGRESS: " +
+                (unfinished.Length == 0 ? "none" : string.Join(",", unfinished)));
+            builder.AppendLine("WORK_IDS_USED: " +
+                (workHistory.Count == 0 ? "none" : string.Join(",", workHistory.Select(item => item.WorkItemId))));
+        }
+        builder.AppendLine("WORK_ID_POLICY: NEW uses any unused ID >=10; CONTINUE resumes only a nonterminal checkpoint with the same WRITE_PATH and model.");
 
         foreach (var pair in workReports.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
@@ -931,42 +962,6 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine("ARCHIVE: " + archiveReference);
         builder.AppendLine("DECISION_REQUIRED: 다음 WORK / PAUSE / END 중 하나를 판단");
         return builder.ToString();
-    }
-
-    private static long NextWorkItemId(
-        MilestoneDefinition milestone,
-        string? workingDirectory,
-        string? jobId)
-    {
-        long highestId = 9;
-        foreach (var id in milestone.WorkItems.Keys)
-        {
-            if (long.TryParse(id, out var workId) && workId >= 10)
-                highestId = Math.Max(highestId, workId);
-        }
-
-        if (!string.IsNullOrWhiteSpace(workingDirectory) &&
-            !string.IsNullOrWhiteSpace(jobId))
-        {
-            foreach (var entry in ProjectWorkspacePersistence.ReadAllEvents(workingDirectory, jobId))
-            {
-                if (!string.Equals(entry.Source, "HQ RESPONSE", StringComparison.Ordinal))
-                    continue;
-
-                foreach (var line in entry.FullMessage.Split('\n'))
-                {
-                    var header = line.Trim();
-                    if (header.StartsWith("@@WORK ", StringComparison.Ordinal) &&
-                        long.TryParse(header["@@WORK ".Length..], out var workId) &&
-                        workId >= 10)
-                    {
-                        highestId = Math.Max(highestId, workId);
-                    }
-                }
-            }
-        }
-
-        return highestId + 1;
     }
 
     public static string? ReadWorkStatus(string message)

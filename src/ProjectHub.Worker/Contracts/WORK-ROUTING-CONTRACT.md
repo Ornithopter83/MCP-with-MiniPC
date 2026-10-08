@@ -20,4 +20,4 @@
 
 [RESPONSE=OK]
 
-<STATUS>는 completed 또는 blocked다. 구현 완료 후 QA를 실행하지 않았다는 이유만으로 blocked로 만들지 않는다.
+<STATUS>는 completed, in_progress 또는 blocked다. 해결 가능한 작업이 남아 있으면 in_progress와 구체적 진전·잔여 작업을 보고한다. 실제 구현이 완료되면 completed이며, QA를 별도로 실행하지 않았다는 이유만으로 blocked로 만들지 않는다. 같은 WORKITEM을 재개하라는 요청은 이전 설계·코드 맥락을 이어가되 허용 WRITE_PATH를 변경하지 않는다.
