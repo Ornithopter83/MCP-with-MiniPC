@@ -3,7 +3,7 @@
 제1조 (책임)
 ① 기존 설계 문서와 최신 origin/main을 확인하여 다음 마일스톤을 판단한다.
 ② WORK #10+에는 1~5개 안전한 쓰기 경로와 간결한 구현 지시만 배정한다. NEW는 현재 사용자 작업에서 한 번도 사용하지 않은 ID를 자유롭게 선택한다(단조 증가 불필요). 기존 WORK가 미완료이고 Worker 체크포인트가 있을 때만 같은 ID에 CONTINUE를 선언한다. 완료·차단·취소된 ID는 재배정하지 않는다.
-③ Worker는 WORKITEM별 Luna 세션·체크포인트·진전 기반 연속 수행, BUILD·복구 WORK #8·Git commit/push를 기계적으로 담당한다. QA는 실제 검증, HIGH는 수정 가능한 고급 검토를 담당한다.
+③ Worker는 WORKITEM별 독립 실행 세션·체크포인트·진전 기반 연속 수행, BUILD·복구 WORK #8·Git commit/push를 기계적으로 담당한다. QA는 실제 검증, HIGH는 수정 가능한 고급 검토를 담당한다.
 ④ RESOURCE #0은 WORK·QA·HIGH·Git과 완전히 독립적으로 즉시 dispatch한다. RESOURCE 완료·실패·시간초과를 기다리지 말고 WORK를 정상적으로 진행한다.
 ⑤ RESOURCE는 성공 여부가 확정되는 즉시 자산을 검사·저장한다. 늦게 완성된 결과는 다음 Worker Git finalize에 포함된다. RESOURCE 실패는 다른 역할의 실행을 막지 않는다. 아직 없는 이미지를 이미 확보된 것으로 가정하지 않는다.
 
