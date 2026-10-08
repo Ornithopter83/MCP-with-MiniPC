@@ -27,20 +27,30 @@ internal static class RoleTextProtocol
         IReadOnlyCollection<string>? changedPaths = null,
         IReadOnlyCollection<string>? issues = null)
     {
-        var builder = new System.Text.StringBuilder();
-        builder.AppendLine("[ACTION=RESULT]");
-        builder.AppendLine("STATUS: " + status.Trim());
-        builder.AppendLine();
-        builder.AppendLine("@@SUMMARY");
-        builder.AppendLine(summary?.Trim() ?? string.Empty);
-        builder.AppendLine();
-        builder.AppendLine("@@CHANGED_PATHS");
-        AppendItems(builder, changedPaths);
-        builder.AppendLine();
-        builder.AppendLine("@@ISSUES");
-        AppendItems(builder, issues);
-        builder.Append(WebCorrelationContract.ResponseOkMarker);
-        return builder.ToString();
+        // All machine-readable response fields are middle fields inside one
+        // major @@REPORT section; issue detail remains opaque free text.
+        var b = new System.Text.StringBuilder();
+        b.AppendLine("[ACTION=RESULT]");
+        b.AppendLine();
+        b.AppendLine("@@REPORT");
+        b.AppendLine("<STATUS>" + status.Trim() + "</>");
+        AppendMultiline(b, "SUMMARY", summary);
+        foreach (var path in changedPaths ?? Array.Empty<string>())
+            if (!string.IsNullOrWhiteSpace(path))
+                b.AppendLine("<CHANGED_PATH>" + path.Trim() + "</>");
+        AppendMultiline(b, "ISSUES",
+            string.Join("\n", (issues ?? Array.Empty<string>())
+                .Where(value => !string.IsNullOrWhiteSpace(value))));
+        b.Append(WebCorrelationContract.ResponseOkMarker);
+        return b.ToString();
+    }
+
+    private static void AppendMultiline(
+        System.Text.StringBuilder b, string name, string? body)
+    {
+        b.AppendLine("<" + name + ">");
+        b.AppendLine(string.IsNullOrWhiteSpace(body) ? "없음" : body.Trim());
+        b.AppendLine("</>");
     }
 
     private static RoleTextResult Parse(
@@ -56,6 +66,33 @@ internal static class RoleTextProtocol
             return new("", "", Array.Empty<string>(), Array.Empty<string>(), new[] { "RESULT_EMPTY" });
 
         var lines = normalized.Split('\n');
+        if (lines.Any(line => line.Trim() == "@@REPORT"))
+        {
+            var index = Array.FindIndex(lines, line => line.Trim() == "@@REPORT");
+            var payload = string.Join("\n", lines.Skip(index + 1)
+                .TakeWhile(line => line.Trim() != WebCorrelationContract.ResponseOkMarker));
+            if (!StructuredRoleFields.TryParse(payload, out var structured, out var fieldError))
+                return new("", normalized, Array.Empty<string>(), Array.Empty<string>(),
+                    new[] { fieldError });
+            var newErrors = new List<string>();
+            var leading = lines.Take(index).Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => line.Trim()).ToArray();
+            if (leading.Length != 1 || leading[0] != "[ACTION=RESULT]")
+                newErrors.Add("ACTION_RESULT_REQUIRED");
+            var statusValue = (structured.Get("STATUS") ?? "").ToLowerInvariant();
+            if (!allowedStatuses.Contains(statusValue, StringComparer.OrdinalIgnoreCase))
+                newErrors.Add("STATUS");
+            if (string.IsNullOrWhiteSpace(structured.Get("SUMMARY")))
+                newErrors.Add("SUMMARY");
+            if (structured.Names.Any(name => name is not
+                    ("STATUS" or "SUMMARY" or "CHANGED_PATH" or "ISSUES")))
+                newErrors.Add("REPORT_UNKNOWN_FIELD");
+            return new(statusValue, structured.Get("SUMMARY") ?? "",
+                structured.GetMany("CHANGED_PATH").Where(x => x.Length > 0).ToArray(),
+                (structured.Get("ISSUES") ?? "").Split('\n')
+                    .Select(line => line.Trim()).Where(line => line.Length > 0 && line != "없음").ToArray(),
+                newErrors);
+        }
         var significant = lines
             .Select((line, index) => new { Text = line.Trim(), Index = index })
             .Where(item => item.Text.Length > 0)

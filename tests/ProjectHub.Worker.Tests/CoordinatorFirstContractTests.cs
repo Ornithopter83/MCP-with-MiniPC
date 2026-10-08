@@ -641,7 +641,7 @@ public sealed class CoordinatorFirstContractTests
             "완료",
             null);
 
-        Assert.Contains("STATUS: blocked", invalid);
+        Assert.Contains("<STATUS>blocked</>", invalid);
         Assert.Contains("WORK_REPORT_CONTRACT_INVALID", invalid);
     }
 
@@ -748,7 +748,7 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Contains("[ACTION=WORK]", hq);
         Assert.Contains("[RESPONSE=OK]", hq);
-        Assert.Contains("MILESTONE: M1", hq);
+        Assert.Contains("<ID>M1</>", hq);
         Assert.Contains("@@WORK=10", hq);
         Assert.Contains("<PATH>", hq);
         Assert.Contains("@@QA", hq);
@@ -758,11 +758,11 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("@@MECHANICAL", hq);
 
         Assert.Contains("[ACTION=RESULT]", work);
-        Assert.Contains("STATUS: passed", qa);
-        Assert.Contains("STATUS는 passed, issue, blocked", qa);
+        Assert.Contains("<STATUS>passed</>", qa);
+        Assert.Contains("<STATUS>는 passed, issue, blocked", qa);
         Assert.DoesNotContain("[GOTO : HIGH]", qa);
         Assert.DoesNotContain("[GOTO : MANAGER]", high);
-        Assert.Contains("Git 장애", high);
+        Assert.Contains("Git 오류", high);
 
         var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
             RoleContractLoader.BuildQaPrompt("runtime 확인"));
@@ -835,9 +835,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("GIT_RESULT:", report);
         Assert.Contains("- commit=abc123", report);
         Assert.Contains("DECISION_REQUIRED:", report);
-        Assert.DoesNotContain("RESOURCE_STATUS: PENDING", report);
+        Assert.Contains("RESOURCE_STATUS: PENDING", report);
         Assert.DoesNotContain("WORK_RESULTS:", report);
-        Assert.DoesNotContain("QA DETAIL", report);
+        Assert.Contains("QA DETAIL", report);
         Assert.DoesNotContain("- old.txt", report);
     }
 

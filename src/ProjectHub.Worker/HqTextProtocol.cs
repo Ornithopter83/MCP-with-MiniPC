@@ -61,6 +61,8 @@ internal static class HqTextProtocol
         bool completionValidatedByTransport = false)
     {
         var raw = rawMessage ?? string.Empty;
+        if (StructuredHqProtocol.IsModern(raw))
+            return StructuredHqProtocol.Parse(raw, completionValidatedByTransport);
         var normalized = raw
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
@@ -487,6 +489,9 @@ internal static class HqTextProtocol
             .FirstOrDefault(section =>
                 string.Equals(section.Name, "MESSAGE", StringComparison.OrdinalIgnoreCase))
             ?.Content.Trim() ?? string.Empty;
+        if (message.StartsWith("<TEXT>", StringComparison.Ordinal) &&
+            StructuredRoleFields.TryParse(message, out var fields, out _))
+            message = fields.Get("TEXT") ?? string.Empty;
         if (message.Length == 0)
             return Invalid(action, unknown, new[] { "MESSAGE" });
 

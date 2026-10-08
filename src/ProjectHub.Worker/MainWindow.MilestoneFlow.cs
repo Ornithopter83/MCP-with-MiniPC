@@ -230,6 +230,28 @@ public partial class MainWindow
                     hqMessage,
                     completionValidatedByTransport:
                         IsWebTransport(coordinator.Transport));
+                var unmodifiedHqResponse = hqMessage;
+                if (!hqText.IsValid &&
+                    HqResponseRecoveryContract.TryRepairClosingTags(
+                        hqMessage, out var localRepair) &&
+                    HqResponseRecoveryContract.PreservesPaths(hqMessage, localRepair))
+                {
+                    var locallyParsed = HqTextProtocol.Parse(
+                        localRepair,
+                        completionValidatedByTransport:
+                            IsWebTransport(coordinator.Transport));
+                    if (locallyParsed.IsValid)
+                    {
+                        hqMessage = localRepair;
+                        hqText = locallyParsed;
+                        AddDataFlowHistory(
+                            WorkerRoleState.Hq, "Worker 작업",
+                            "HQ 태그 닫기 국소 복구: WORK 경로 보존",
+                            status: "RECOVERED",
+                            persistenceSource: "WORKER ACTION");
+                    }
+                }
+
                 if (!hqText.IsValid)
                 {
                     _formatRecoveryJobs[jobId] = 1;
@@ -297,11 +319,15 @@ public partial class MainWindow
                         hqMessage,
                         completionValidatedByTransport:
                             IsWebTransport(coordinator.Transport));
-                    if (!hqText.IsValid)
+                    if (!hqText.IsValid ||
+                        !HqResponseRecoveryContract.PreservesPaths(
+                            unmodifiedHqResponse, hqMessage))
                     {
                         throw new InvalidOperationException(
                             "HQ_RESPONSE_RECOVERY_FAILED: " +
-                            string.Join(", ", hqText.Errors));
+                            (!hqText.IsValid
+                                ? string.Join(", ", hqText.Errors)
+                                : "ORIGINAL_PATHS_CHANGED"));
                     }
                 }
 
@@ -644,6 +670,33 @@ public partial class MainWindow
             })
             .ToArray();
 
+        // RESOURCE #0 is now a strict milestone prerequisite. Only a terminal
+        // success or failure permits another role to run. General cancellation
+        // stops waiting without cancelling the RESOURCE sidecar itself.
+        var terminalResources = await Task.WhenAll(
+            resourceTasks.Select(entry => entry.Task)).WaitAsync(cancellationToken);
+        var terminalResourceReports = terminalResources.ToDictionary(
+            entry => entry.Id, entry => entry.Report,
+            StringComparer.OrdinalIgnoreCase);
+        if (terminalResources.Any(entry =>
+                !entry.Report.StartsWith("RESOURCE_STATUS: COMPLETED",
+                    StringComparison.Ordinal)))
+        {
+            SaveMilestoneExecutionGraph(
+                workingDirectory, jobId, milestone, "RESOURCE_BLOCKED",
+                resourceReports: terminalResourceReports, hqFinalState: "READY");
+            // A failed asset must not be passed to WORK as if it were valid.
+            // HQ chooses whether to regenerate or change the next milestone.
+            return new(false, MilestoneDefinitionContract.BuildHqReport(
+                milestone, "RESOURCE_BLOCKED_REPLAN_REQUIRED",
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                terminalResourceReports,
+                Array.Empty<string>(),
+                string.Empty, string.Empty,
+                MilestoneGitResult.NotStarted(milestone.TargetBranch),
+                initialChangedPaths, Array.Empty<string>(), Array.Empty<string>(),
+                workingDirectory: workingDirectory, jobId: jobId));
+        }
 
         var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
             workingDirectory,
@@ -678,7 +731,7 @@ public partial class MainWindow
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var resourceReports = new Dictionary<string, string>(
-            StringComparer.OrdinalIgnoreCase);
+            terminalResourceReports, StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
         var qaReport = string.Empty;
         var highReport = string.Empty;
@@ -733,7 +786,7 @@ public partial class MainWindow
                 }
             }
 
-            void CaptureResourceStateWithoutWaiting()
+            void CaptureResourceState()
             {
                 foreach (var execution in resourceTasks)
                 {
@@ -756,7 +809,7 @@ public partial class MainWindow
                         resourceReports[execution.Id] =
                             "RESOURCE_STATUS: PENDING" +
                             Environment.NewLine +
-                            "독립 RESOURCE sidecar 실행 중 · 다음 단계 진행을 차단하지 않음";
+                            "RESOURCE terminal gate invariant violated";
                     }
                 }
             }
@@ -913,7 +966,7 @@ public partial class MainWindow
                             : int.MaxValue));
             }
 
-            CaptureResourceStateWithoutWaiting();
+            CaptureResourceState();
 
             var plannedWorkScopes = executableDefinitions
                 .Where(work => !work.ReadOnly)
@@ -986,7 +1039,7 @@ public partial class MainWindow
                     "blocked", StringComparison.OrdinalIgnoreCase))
                 outcome = "HIGH_BLOCKED";
 
-            CaptureResourceStateWithoutWaiting();
+            CaptureResourceState();
 
             var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
                 jobId,
@@ -1192,11 +1245,10 @@ public partial class MainWindow
         {
             var resourceState =
                 resourceReports.TryGetValue(resource.Id, out var resourceReport)
-                    ? resourceReport.StartsWith(
-                        "RESOURCE_STATUS: PENDING",
-                        StringComparison.Ordinal)
-                        ? "RUNNING"
-                        : "COMPLETED"
+                    ? resourceReport.StartsWith("RESOURCE_STATUS: COMPLETED",
+                        StringComparison.Ordinal) ? "COMPLETED" :
+                      resourceReport.StartsWith("RESOURCE_STATUS: BLOCKED",
+                        StringComparison.Ordinal) ? "BLOCKED" : "RUNNING"
                     : "PLANNED";
             nodes.Add(new(
                 "RESOURCE-" + resource.Id,
@@ -1237,7 +1289,11 @@ public partial class MainWindow
 
         foreach (var workNode in workNodes)
         {
-            edges.Add(new("HQ-DESIGN", workNode, "DISPATCH"));
+            if (milestone.Resources.Count == 0)
+                edges.Add(new("HQ-DESIGN", workNode, "DISPATCH"));
+            else
+                foreach (var resource in milestone.Resources.Values)
+                    edges.Add(new("RESOURCE-" + resource.Id, workNode, "RESOURCE_TERMINAL_GATE"));
             edges.Add(new(
                 workNode,
                 milestone.QaReserved ? "QA" : "GIT-FINALIZE",
@@ -1249,7 +1305,7 @@ public partial class MainWindow
             edges.Add(new(
                 "HQ-DESIGN",
                 "RESOURCE-" + resource.Id,
-                "BACKGROUND_RESOURCE_REQUEST"));
+                "RESOURCE_FIRST"));
         }
 
         if (milestone.QaReserved)
@@ -1509,6 +1565,20 @@ public partial class MainWindow
             return new(resource.Id, failedReport, Array.Empty<string>());
         }
 
+        if (!ResourceArtifactValidator.TryValidate(
+                resource, completion.SavedPaths, out var validationError))
+        {
+            var validationReport =
+                "RESOURCE_STATUS: BLOCKED" + Environment.NewLine +
+                validationError;
+            AddRoleResponseHistory(
+                WorkerRoleState.Resource, "리소스 규격 불합격",
+                validationReport, status: "BLOCKED",
+                workItemId: "0",
+                referenceId: milestone.Id + ":RESOURCE:" + resource.Id);
+            return new(resource.Id, validationReport, Array.Empty<string>());
+        }
+
         var moveResult = MoveResourceResults(
             workingDirectory,
             resource.TargetPath,
@@ -1650,16 +1720,9 @@ public partial class MainWindow
                 historyWorkItemId: "QA",
                 historyReferenceId: milestone.Id + ":QA");
 
+        // No report-format retry: it duplicates testing and may discard real
+        // diagnostic evidence. Unparseable reports remain available verbatim.
         var result = await RunAsync(prompt);
-        if (result.ExitCode == 0 &&
-            !RoleTextProtocol.ParseQa(result.FinalMessage).IsValid)
-        {
-            _formatRecoveryJobs[jobId] = 1;
-            result = await RunAsync(BuildRoleTextRetryPrompt(
-                prompt,
-                result.FinalMessage,
-                RoleContractLoader.LoadQaFooter()));
-        }
 
         var report = MilestoneDefinitionContract.NormalizeQaReport(
             result.ExitCode,
@@ -1741,16 +1804,9 @@ public partial class MainWindow
                 historyWorkItemId: "HIGH",
                 historyReferenceId: milestone.Id + ":HIGH");
 
+        // Preserve HIGH findings without a second model invocation merely
+        // to repair formatting.
         var result = await RunAsync(prompt);
-        if (result.ExitCode == 0 &&
-            !RoleTextProtocol.ParseHigh(result.FinalMessage).IsValid)
-        {
-            _formatRecoveryJobs[jobId] = 1;
-            result = await RunAsync(BuildRoleTextRetryPrompt(
-                prompt,
-                result.FinalMessage,
-                RoleContractLoader.LoadHighFooter()));
-        }
 
         var report = MilestoneDefinitionContract.NormalizeHighReport(
             result.ExitCode,

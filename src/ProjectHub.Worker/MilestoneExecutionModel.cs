@@ -17,7 +17,14 @@ internal sealed record MilestoneResourceDefinition(
     string Type,
     string TargetPath,
     string Body,
-    string RawText);
+    string RawText)
+{
+    public int? Width { get; init; }
+    public int? Height { get; init; }
+    public int? Columns { get; init; }
+    public int? Rows { get; init; }
+    public bool RequireAlpha { get; init; }
+}
 
 internal sealed record MilestoneDefinition(
     string Id,
@@ -343,12 +350,28 @@ internal static class MilestoneDefinitionContract
 
                 var resourceBody = resourceJson.GetRawText();
 
+                static int? PositiveInt(JsonElement json, string name)
+                {
+                    if (!json.TryGetProperty(name, out var item) ||
+                        item.ValueKind != JsonValueKind.Number)
+                        return null;
+                    return item.TryGetInt32(out var value) && value > 0 ? value : null;
+                }
+
                 resources["0"] = new(
                     "0",
                     resourceType.ToUpperInvariant(),
                     targetPath,
                     resourceBody,
-                    resourceJson.GetRawText());
+                    resourceJson.GetRawText())
+                {
+                    Width = PositiveInt(resourceJson, "width"),
+                    Height = PositiveInt(resourceJson, "height"),
+                    Columns = PositiveInt(resourceJson, "columns"),
+                    Rows = PositiveInt(resourceJson, "rows"),
+                    RequireAlpha = resourceJson.TryGetProperty("requireAlpha", out var alpha) &&
+                        alpha.ValueKind == JsonValueKind.True
+                };
             }
 
             var qaInstructions = TryGetOptionalJsonString(milestoneJson, "qaInstructions") ?? string.Empty;
@@ -559,19 +582,10 @@ internal static class MilestoneDefinitionContract
         if (!string.IsNullOrWhiteSpace(qaReport))
         {
             builder.AppendLine();
-            builder.AppendLine("@@QA_ISSUES");
-            var qa = RoleTextProtocol.ParseQa(qaReport);
-            if (qa.IsValid)
-            {
-                foreach (var issue in qa.Issues)
-                    builder.AppendLine("- " + issue);
-                if (qa.Issues.Count == 0)
-                    builder.AppendLine(qa.Summary);
-            }
-            else
-            {
-                builder.AppendLine(qaReport);
-            }
+            builder.AppendLine("@@QA_REPORT");
+            // HIGH receives the complete QA report, including failures and
+            // unparsed evidence. Never reduce it to an issues-only summary.
+            builder.AppendLine(qaReport);
         }
 
         return builder.ToString().TrimEnd();
@@ -824,28 +838,37 @@ internal static class MilestoneDefinitionContract
         if (!string.IsNullOrWhiteSpace(qaReport))
         {
             var qa = RoleTextProtocol.ParseQa(qaReport);
-            if (qa.IsValid)
+            builder.AppendLine("QA_STATUS: " + (qa.IsValid ? qa.Status : "protocol_invalid"));
+            if (!qa.IsValid)
+                builder.AppendLine("- raw=" + Limit(qaReport.Replace("\n", " | "), 1400));
+            else if (!string.Equals(qa.Status, "passed", StringComparison.OrdinalIgnoreCase))
             {
-                builder.AppendLine("QA_STATUS: " + qa.Status);
-                if (!string.Equals(qa.Status, "passed", StringComparison.OrdinalIgnoreCase))
-                {
-                    builder.AppendLine("- summary=" + Limit(qa.Summary, 800));
-                    foreach (var issue in qa.Issues.Take(3))
-                        builder.AppendLine("- issue=" + Limit(issue, 600));
-                }
+                builder.AppendLine("- summary=" + Limit(qa.Summary, 800));
+                foreach (var issue in qa.Issues.Take(3))
+                    builder.AppendLine("- issue=" + Limit(issue, 600));
             }
         }
 
         if (!string.IsNullOrWhiteSpace(highReport))
         {
             var high = RoleTextProtocol.ParseHigh(highReport);
-            if (high.IsValid)
+            builder.AppendLine("HIGH_STATUS: " + (high.IsValid ? high.Status : "protocol_invalid"));
+            if (!high.IsValid)
+                builder.AppendLine("- raw=" + Limit(highReport.Replace("\n", " | "), 1400));
+            else
             {
-                builder.AppendLine("HIGH_STATUS: " + high.Status);
                 builder.AppendLine("- summary=" + Limit(high.Summary, 1000));
                 foreach (var issue in high.Issues.Take(3))
                     builder.AppendLine("- issue=" + Limit(issue, 600));
             }
+        }
+
+        if (resourceReports.Count > 0)
+        {
+            builder.AppendLine("RESOURCE_RESULTS:");
+            foreach (var report in resourceReports.OrderBy(pair => pair.Key))
+                builder.AppendLine("- RESOURCE #" + report.Key + ": " +
+                    Limit(report.Value.Replace("\r", "").Replace("\n", " | "), 1500));
         }
 
         if (mechanicalReports.Count > 0)
@@ -1119,12 +1142,11 @@ internal static class MilestoneDefinitionContract
 
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseQa(raw);
-        return parsed.IsValid
-            ? raw
-            : RoleTextProtocol.BuildResult(
-                "blocked",
-                "QA_REPORT_CONTRACT_INVALID",
-                issues: parsed.Errors);
+        // Report format errors are not technical QA failures. Keep the
+        // original report, even when the structured status cannot be read.
+        return raw.Length == 0
+            ? RoleTextProtocol.BuildResult("blocked", "QA_REPORT_EMPTY")
+            : raw;
     }
 
     public static string NormalizeHighReport(
@@ -1143,12 +1165,9 @@ internal static class MilestoneDefinitionContract
 
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseHigh(raw);
-        return parsed.IsValid
-            ? raw
-            : RoleTextProtocol.BuildResult(
-                "blocked",
-                "HIGH_REPORT_CONTRACT_INVALID",
-                issues: parsed.Errors);
+        return raw.Length == 0
+            ? RoleTextProtocol.BuildResult("blocked", "HIGH_REPORT_EMPTY")
+            : raw;
     }
 
     public static IReadOnlyList<string> ExtractHighChangedPaths(string report) =>
