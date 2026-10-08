@@ -82,7 +82,7 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.True(HqTextProtocol.Parse(repaired).IsValid);
         Assert.True(HqResponseRecoveryContract.PreservesPaths(malformed, repaired));
         Assert.True(HqResponseRecoveryContract.TryRepairClosingTags(
-            malformed.Replace("\n", "\r\n"), out var windowsRepaired));
+            malformed.Replace("\r\n", "\n", StringComparison.Ordinal)\n                .Replace("\n", "\r\n", StringComparison.Ordinal), out var windowsRepaired));
         Assert.True(HqTextProtocol.Parse(windowsRepaired).IsValid);
         Assert.False(HqResponseRecoveryContract.PreservesPaths(
             malformed, repaired.Replace("<PATH>scripts/player.gd</>", "")));
