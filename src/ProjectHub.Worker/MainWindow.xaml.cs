@@ -2332,7 +2332,7 @@ public partial class MainWindow : Window
             PopulateProviderCombo(ImplementerProviderCombo, implementer.Provider);
             PopulateRoleModelCombo(ImplementerModelCombo, implementer.Provider, implementer.Model);
             PopulateRoleReasoningCombo(ImplementerReasoningCombo, implementer.Provider, implementer.Model, implementer.Reasoning);
-            SelectTag(MaxConcurrentWorkCombo, _targetSettings.EffectiveMaxConcurrentWork.ToString(), "1");
+            MaxConcurrentWorkInput.Text = _targetSettings.EffectiveMaxConcurrentWork.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             var manager = _targetSettings.EffectiveManager;
             PopulateProviderCombo(ManagerProviderCombo, manager.Provider);
@@ -2830,11 +2830,19 @@ public partial class MainWindow : Window
             WorkingDirectoryInput.ToolTip = "Choose an existing folder before applying settings.";
             return;
         }
-        var maxConcurrentWork = int.TryParse(
-            GetSelectedTag(MaxConcurrentWorkCombo, "1"),
-            out var parsedMaxConcurrentWork)
-            ? Math.Clamp(parsedMaxConcurrentWork, WorkerTargetConfiguration.MinimumConcurrentWork, WorkerTargetConfiguration.MaximumConcurrentWork)
-            : 1;
+        if (!int.TryParse(
+                MaxConcurrentWorkInput.Text.Trim(),
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var maxConcurrentWork) ||
+            maxConcurrentWork < WorkerTargetConfiguration.MinimumConcurrentWork)
+        {
+            MaxConcurrentWorkInput.ToolTip = "최대 동시 WORK 수는 1 이상의 정수여야 합니다.";
+            AiRolesStatusText.Text = "최대 동시 WORK 수에 1 이상의 정수를 입력하세요.";
+            MaxConcurrentWorkInput.Focus();
+            return;
+        }
+        MaxConcurrentWorkInput.ToolTip = "1 이상의 정수. 고정된 최대 동시 실행 수 제한은 없습니다.";
         _targetSettings = _targetSettings with
         {
             ManualRepositoryUrl = repository, ManualServerBaseUrl = server,

@@ -881,10 +881,9 @@ public partial class MainWindow
                 var allRunnableScopes = executableDefinitions
                     .SelectMany(work => work.WritePaths)
                     .ToArray();
-                var maxConcurrency = Math.Clamp(
+                var maxConcurrency = Math.Min(
                     _targetSettings.EffectiveMaxConcurrentWork,
-                    WorkerTargetConfiguration.MinimumConcurrentWork,
-                    WorkerTargetConfiguration.MaximumConcurrentWork);
+                    executableWorkIds.Length);
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,

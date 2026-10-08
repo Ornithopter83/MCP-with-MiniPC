@@ -4,6 +4,28 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class StructuredMilestoneProtocolTests
 {
+
+    [Fact]
+    public void StructuredHq_AcceptsThirtyIndependentWorkItems()
+    {
+        var start = Modern.IndexOf("@@WORK=54", StringComparison.Ordinal);
+        var end = Modern.IndexOf("@@QA", StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        var blocks = string.Join("\n\n", Enumerable.Range(10, 30).Select(id =>
+            $"@@WORK={id}\n<PATH>generated/{id}.cs</>\n<INSTRUCTIONS>파일 {id}를 구현하라.</>"));
+        var input = Modern[..start] + blocks + "\n\n" + Modern[end..];
+
+        var parsed = HqTextProtocol.Parse(input);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
+        Assert.NotNull(milestone);
+        Assert.Equal(30, milestone!.WorkItems.Count);
+        Assert.Equal(new[] { "generated/39.cs" }, milestone.WorkItems["39"].WritePaths);
+        Assert.Single(milestone.Resources);
+        Assert.True(milestone.QaReserved);
+    }
+
     private const string Modern = """
         [ACTION=WORK]
 

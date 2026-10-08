@@ -27,7 +27,7 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("executionMode")] string ExecutionMode = "CLI_TO_CLI",
     [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
     [property: JsonPropertyName("implementer")] WorkerAiRoleSettings? Implementer = null,
-    [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = 1,
+    [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = WorkerTargetConfiguration.DefaultConcurrentWork,
     [property: JsonPropertyName("highLevel")] WorkerAiRoleSettings? HighLevel = null,
     [property: JsonPropertyName("manager")] WorkerAiRoleSettings? Manager = null,
     [property: JsonPropertyName("qa")] WorkerAiRoleSettings? Qa = null)
@@ -38,9 +38,9 @@ public sealed record WorkerTargetSettings(
     public WorkerAiRoleSettings EffectiveQa => Qa ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
     public WorkerAiRoleSettings EffectiveHighLevel => HighLevel ?? new WorkerAiRoleSettings(Model: "gpt-6-astra", Reasoning: "high", Transport: "codex_cli");
     public int EffectiveMaxConcurrentWork =>
-        MaxConcurrentWork is >= WorkerTargetConfiguration.MinimumConcurrentWork and <= WorkerTargetConfiguration.MaximumConcurrentWork
+        MaxConcurrentWork >= WorkerTargetConfiguration.MinimumConcurrentWork
             ? MaxConcurrentWork
-            : 1;
+            : WorkerTargetConfiguration.DefaultConcurrentWork;
     public bool IsCoordinatorFirst => true;
 }
 public sealed record GitTargetSnapshot(
@@ -54,7 +54,7 @@ public sealed record GitTargetSnapshot(
 public static class WorkerTargetConfiguration
 {
     public const int MinimumConcurrentWork = 1;
-    public const int MaximumConcurrentWork = 8;
+    public const int DefaultConcurrentWork = 16;
     public const string DefaultServerBaseUrl = "https://projecthub.ornithopter.bid";
 
     public static string SettingsPath => Path.Combine(WorkerPaths.Config, "target-settings.json");
