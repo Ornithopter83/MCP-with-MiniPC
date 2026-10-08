@@ -56,7 +56,9 @@ internal static class HqTextProtocol
         public string Instructions { get; set; } = string.Empty;
     }
 
-    public static HqTextProtocolResult Parse(string? rawMessage)
+    public static HqTextProtocolResult Parse(
+        string? rawMessage,
+        bool completionValidatedByTransport = false)
     {
         var raw = rawMessage ?? string.Empty;
         var normalized = raw
@@ -121,8 +123,14 @@ internal static class HqTextProtocol
         var headers = ReadFields(headerLines);
         if (action == "WORK" && !headers.ContainsKey("BRANCH"))
         {
-            if (responseOk < 0 ||
-                lines[(responseOk + 1)..].Any(line => !string.IsNullOrWhiteSpace(line)))
+            // The Web bridge requires the KEY and independent [RESPONSE=OK]
+            // before returning the response, then deliberately strips that
+            // marker. Keep local CLI validation strict without rechecking a
+            // marker that the Web transport has already consumed.
+            if ((responseOk < 0 && !completionValidatedByTransport) ||
+                (responseOk >= 0 &&
+                 lines[(responseOk + 1)..].Any(
+                     line => !string.IsNullOrWhiteSpace(line))))
                 return Invalid("COMPACT_RESPONSE_TERMINATOR_INVALID");
             if (headerLines.Where(line => !string.IsNullOrWhiteSpace(line))
                     .Any(line => !line.TrimStart().StartsWith("MILESTONE:", StringComparison.OrdinalIgnoreCase)))

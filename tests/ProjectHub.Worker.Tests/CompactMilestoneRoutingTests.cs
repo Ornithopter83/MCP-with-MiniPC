@@ -49,6 +49,44 @@ public sealed class CompactMilestoneRoutingTests
     }
 
     [Fact]
+    public void CompactHq_WebBridgeExtractsCompletionMarkerBeforeParsing()
+    {
+        const string key = "1234ABCDabcde";
+        var rawWebResponse = WebCorrelationContract.Marker(key) + "\n" + Minimal;
+
+        // The completion marker is validated by the Web transport, then
+        // removed from the message before the Worker parser sees it.
+        Assert.True(WebCorrelationContract.TryExtractResponse(
+            rawWebResponse, key, out var extracted));
+        Assert.DoesNotContain(WebCorrelationContract.ResponseOkMarker, extracted);
+
+        var parsed = HqTextProtocol.Parse(
+            extracted, completionValidatedByTransport: true);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone,
+            out var error), error);
+        Assert.Equal("10", milestone!.WorkItems["10"].Id);
+
+        // Non-Web CLI responses must still provide the marker themselves.
+        var unvalidated = HqTextProtocol.Parse(extracted);
+        Assert.False(unvalidated.IsValid);
+        Assert.Contains("COMPACT_RESPONSE_TERMINATOR_INVALID",
+            unvalidated.Errors);
+    }
+
+    [Fact]
+    public void CompactHq_RejectsTrailingContentEvenIfWebValidated()
+    {
+        var invalid = HqTextProtocol.Parse(
+            Minimal + "\nSURPRISE_TRAILING_TEXT",
+            completionValidatedByTransport: true);
+        Assert.False(invalid.IsValid);
+        Assert.Contains("COMPACT_RESPONSE_TERMINATOR_INVALID",
+            invalid.Errors);
+    }
+
+    [Fact]
     public void CompactHq_RejectsMissingPathOrQa()
     {
         var missingPath = HqTextProtocol.Parse(Minimal.Replace(

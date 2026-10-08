@@ -226,7 +226,10 @@ public partial class MainWindow
                             ? null : coordinator.Provider,
                     fullMessage: hqMessage);
 
-                var hqText = HqTextProtocol.Parse(hqMessage);
+                var hqText = HqTextProtocol.Parse(
+                    hqMessage,
+                    completionValidatedByTransport:
+                        IsWebTransport(coordinator.Transport));
                 if (!hqText.IsValid)
                 {
                     _formatRecoveryJobs[jobId] = 1;
@@ -290,7 +293,10 @@ public partial class MainWindow
                             ? null : coordinator.Provider,
                         fullMessage: hqMessage);
 
-                    hqText = HqTextProtocol.Parse(hqMessage);
+                    hqText = HqTextProtocol.Parse(
+                        hqMessage,
+                        completionValidatedByTransport:
+                            IsWebTransport(coordinator.Transport));
                     if (!hqText.IsValid)
                     {
                         throw new InvalidOperationException(
