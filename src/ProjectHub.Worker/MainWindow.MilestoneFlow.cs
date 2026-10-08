@@ -131,6 +131,16 @@ public partial class MainWindow
                 ? BuildMilestoneFollowupInput(continuation!, request)
                 : request;
 
+            void PersistRecovery(string evidence)
+            {
+                var snapshot = new CoordinatorContinuationState(
+                    jobId, normalizedRoot, coordinator, implementer,
+                    hqSession, null, "INTERRUPTED", evidence, high);
+                if (!ProjectWorkspacePersistence.SaveContinuation(snapshot))
+                    throw new IOException("TASK_RECOVERY_CHECKPOINT_WRITE_FAILED");
+            }
+            PersistRecovery(hqInbound);
+
             for (var milestoneIndex = 1;
                  milestoneIndex <= 64;
                  milestoneIndex++)
@@ -434,6 +444,9 @@ public partial class MainWindow
                 {
                     RawHqMessage = hqMessage
                 };
+                // If the process stops mid-WORK, HQ gets this plan plus the
+                // persistent per-WORKITEM journal when recovery is initiated.
+                PersistRecovery(hqMessage);
 
                 if (hqText.UnknownSections.Count > 0)
                 {
@@ -574,6 +587,7 @@ public partial class MainWindow
                 }
 
                 hqInbound = milestoneResult.Body;
+                PersistRecovery(hqInbound);
                 continuing = false;
             }
 
@@ -2060,15 +2074,27 @@ public partial class MainWindow
 
     private static string BuildMilestoneFollowupInput(
         CoordinatorContinuationState continuation,
-        string followup) =>
-        "이전 HQ 상태:" +
-        Environment.NewLine +
-        continuation.LastHqMessage +
-        Environment.NewLine +
-        Environment.NewLine +
-        "사용자가 직접 개입을 마치고 전달한 재개 입력:" +
-        Environment.NewLine +
-        followup;
+        string followup)
+    {
+        var checkpoints = WorkExecutionJournal.ReadAll(
+            continuation.WorkingDirectory, continuation.JobId);
+        var journal = checkpoints.Count == 0
+            ? "없음"
+            : string.Join(Environment.NewLine, checkpoints.Select(item =>
+                "#" + item.WorkItemId + " state=" + item.State +
+                " paths=" + string.Join(",", item.WritePaths) +
+                " origin=" + item.OriginMilestoneId +
+                " attempts=" + item.Attempts +
+                " session=" + (item.SessionId is null ? "missing" : "saved")));
+        return "이전 HQ 상태:" + Environment.NewLine +
+            continuation.LastHqMessage + Environment.NewLine +
+            Environment.NewLine + "WORKITEM_CHECKPOINTS:" + Environment.NewLine +
+            journal + Environment.NewLine +
+            "RUNNING/IN_PROGRESS WORKITEM은 기존 ID, 동일 PATH, MODE=CONTINUE로 잇고 " +
+            "COMPLETED/BLOCKED/CANCELED ID를 재배정하지 마라. 새 업무는 미사용 ID로 생성한다." +
+            Environment.NewLine + Environment.NewLine +
+            "재개 입력:" + Environment.NewLine + followup;
+    }
 
     private void SaveMilestoneContinuation(
         string status,
