@@ -766,7 +766,8 @@ internal static class MilestoneMechanicalExecutor
         var eligibleCount = 0;
         var preservedOtherStaged = 0;
         var repairedRuntimeCount = 0;
-        var trustedCleanupRemoved = false;
+        var cachedDeletionCount = 0;
+        IReadOnlyList<string> cachedDeletionPaths = Array.Empty<string>();
         string? replacedHead = null;
 
         async Task<GitCommandResult> Run(params string[] args)
@@ -796,8 +797,7 @@ internal static class MilestoneMechanicalExecutor
                 $"step={stage}" + Environment.NewLine +
                 $"stagingPaths={eligibleCount}" + Environment.NewLine +
                 $"commitCreated={(commitCreated ? "YES" : "NO")}" +
-                Environment.NewLine + "trustedCleanup=" +
-                    (trustedCleanupRemoved ? "REMOVED" : "NONE") +
+                Environment.NewLine + "cachedOnlyDeletions=" + cachedDeletionCount +
                 Environment.NewLine + "push=" + pushState +
                 Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
                 (replacedHead is null ? string.Empty :
@@ -866,6 +866,19 @@ internal static class MilestoneMechanicalExecutor
                 paths.Select(NormalizeGitPath)
                     .Where(path => !string.IsNullOrWhiteSpace(path))
                     .Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+            // Discover only deletions already staged in Git's real index,
+            // explicitly scoped to this milestone and ignored by the repo.
+            // No repository-name or filename heuristic can trigger removal.
+            var deletionPlan = await TrustedTrackedArtifactCleanup.DiscoverAsync(
+                workingDirectory, args => Run(args), requestedScopes)
+                .ConfigureAwait(false);
+            if (!deletionPlan.Success)
+                return Fail(deletionPlan.ErrorStage ?? "CACHED_DELETE_DISCOVERY_FAILED",
+                    deletionPlan.Error);
+            cachedDeletionPaths = deletionPlan.Paths;
+            var cachedDeletionSet = cachedDeletionPaths.ToHashSet(
+                StringComparer.OrdinalIgnoreCase);
+
             progress?.Report("GIT_FINALIZE · 변경 파일 수집");
             var dirtyPaths = await SnapshotChangedPathsAsync(
                 workingDirectory, token, requireSuccess: true).ConfigureAwait(false);
@@ -873,6 +886,7 @@ internal static class MilestoneMechanicalExecutor
                 .Where(path => requestedScopes.Count > 0 &&
                                IsPathWithinScopes(path, requestedScopes))
                 .Where(path => !IsRuntimeOutput(path))
+                .Where(path => !cachedDeletionSet.Contains(path))
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
             eligibleCount = scopedPaths.Length;
 
@@ -954,21 +968,20 @@ internal static class MilestoneMechanicalExecutor
                 commitCreated = true;
             }
 
-            // Scoped generated-artifact cleanup is owned by the trusted Worker
-            // Git finalizer, never by the role sandbox. Use an isolated tree so
-            // unrelated files staged by the user cannot enter the cleanup commit.
+            // Cache-only removals already selected in the Git index are
+            // committed separately from ordinary source files. Local files
+            // and unrelated staged changes are never removed.
             var cleanup = await TrustedTrackedArtifactCleanup.ApplyAsync(
-                workingDirectory, git,
-                args => Run(args),
-                token).ConfigureAwait(false);
+                workingDirectory, git, args => Run(args),
+                cachedDeletionPaths, token).ConfigureAwait(false);
             if (!cleanup.Success)
-                return Fail(cleanup.ErrorStage ?? "TRACKED_CLEANUP_FAILED",
+                return Fail(cleanup.ErrorStage ?? "CACHED_DELETE_FINALIZE_FAILED",
                     cleanup.Error);
-            trustedCleanupRemoved = cleanup.Removed;
-            if (trustedCleanupRemoved)
+            cachedDeletionCount = cleanup.RemovedPaths.Count;
+            if (cachedDeletionCount > 0)
             {
                 commitCreated = true;
-                progress?.Report("GIT_FINALIZE · 추적된 생성물 1개 안전 제외");
+                progress?.Report($"GIT_FINALIZE · 명시된 추적 제거 {cachedDeletionCount}개 저장");
             }
 
             var head = await Run("rev-parse", "HEAD").ConfigureAwait(false);
@@ -993,10 +1006,8 @@ internal static class MilestoneMechanicalExecutor
             if (pushState != "COMPLETED")
                 return Fail("PUSH_FAILED", pushed);
 
-            if (trustedCleanupRemoved)
+            if (cachedDeletionCount > 0)
             {
-                // A successful push alone does not prove that the remote now
-                // references the cleanup commit. Verify SHA and target tree.
                 var remoteHead = await Run(
                     "ls-remote", "--heads", "origin", RequiredBranch)
                     .ConfigureAwait(false);
@@ -1006,15 +1017,18 @@ internal static class MilestoneMechanicalExecutor
                 if (remoteHead.ExitCode != 0 ||
                     !string.Equals(publishedHead, localHead,
                         StringComparison.OrdinalIgnoreCase))
-                    return Fail("CLEANUP_REMOTE_SHA_NOT_CONFIRMED", remoteHead);
+                    return Fail("CACHED_DELETE_REMOTE_SHA_NOT_CONFIRMED", remoteHead);
 
-                var localTree = await Run(
-                    "ls-tree", "-r", "--name-only", "HEAD", "--",
-                    TrustedTrackedArtifactCleanup.TargetPath)
-                    .ConfigureAwait(false);
-                if (localTree.ExitCode != 0 ||
-                    !string.IsNullOrWhiteSpace(localTree.StandardOutput))
-                    return Fail("CLEANUP_TARGET_STILL_TRACKED", localTree);
+                foreach (var path in cachedDeletionPaths)
+                {
+                    var remoteTreePath = await Run(
+                        "ls-tree", "-r", "--name-only", "HEAD", "--", path)
+                        .ConfigureAwait(false);
+                    if (remoteTreePath.ExitCode != 0 ||
+                        !string.IsNullOrWhiteSpace(remoteTreePath.StandardOutput))
+                        return Fail("CACHED_DELETE_REMOTE_PATH_STILL_TRACKED",
+                            remoteTreePath);
+                }
             }
 
             progress?.Report("GIT_FINALIZE · 커밋 후 변경 확인");
@@ -1028,8 +1042,9 @@ internal static class MilestoneMechanicalExecutor
                 $"branch={RequiredBranch}" + Environment.NewLine +
                 $"commit={localHead}" + Environment.NewLine +
                 $"commitCreated={(commitCreated ? "YES" : "NO")}" +
-                Environment.NewLine + "trustedCleanup=" +
-                    (trustedCleanupRemoved ? "REMOVED_AND_REMOTE_VERIFIED" : "NONE") +
+                Environment.NewLine + "cachedOnlyDeletions=" + cachedDeletionCount +
+                Environment.NewLine + "cachedDeletionRemoteVerified=" +
+                    (cachedDeletionCount > 0 ? "YES" : "NOT_APPLICABLE") +
                 Environment.NewLine + "noChanges=" + (!commitCreated ? "YES" : "NO") +
                 Environment.NewLine + "push=" + pushState +
                 Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
@@ -1456,14 +1471,6 @@ internal static class MilestoneMechanicalExecutor
         var normalized = NormalizeGitPath(path).Trim('/');
         if (normalized.Length == 0)
             return false;
-
-        // The trusted finalizer handles this exact ignored tracked binary.
-        // Do not feed its staged deletion back into ordinary git add -A,
-        // which can restage or reject an ignored local executable.
-        if (normalized.Equals(
-                TrustedTrackedArtifactCleanup.TargetPath,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
 
         var parts = normalized.Split(
             '/',

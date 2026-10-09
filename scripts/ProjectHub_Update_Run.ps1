@@ -1,6 +1,8 @@
-﻿$ErrorActionPreference = "Stop"
+﻿[CmdletBinding()]
+param([string]$ProjectPath = (Split-Path -Parent $PSScriptRoot))
 
-$ProjectPath = "C:\AI-Server\ProjectHub"
+$ErrorActionPreference = "Stop"
+
 $SolutionFile = "ProjectHub.sln"
 $ServerProject = ".\src\ProjectHub.Server\ProjectHub.Server.csproj"
 $PrivateKeyPath = Join-Path $ProjectPath "src\ProjectHub.Server\projecthub-private.pem"

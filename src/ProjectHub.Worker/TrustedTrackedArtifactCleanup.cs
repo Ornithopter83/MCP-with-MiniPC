@@ -1,88 +1,126 @@
 using System.IO;
+using System.Text;
 
 namespace ProjectHub.Worker;
 
-// Trusted Git-finalize repair for the explicitly approved BeltScroll generated
-// executable. It must never run in the WORK/QA/HIGH sandbox.
+// Git index deletions are explicit intent: a trusted operator has already
+// staged them. Never infer removals from filenames, project names, or prompts.
 internal static class TrustedTrackedArtifactCleanup
 {
-    internal const string TargetPath =
-        ".qa_logs/editor-publish-current/BeltScrollEditor.exe";
-    private const string IntentScript = "tools/untrack_editor_publish_binary.ps1";
-    private const string IntentDocument = "docs/review/m6e_repository_hygiene_gate.md";
-
-    internal sealed record Result(
+    internal sealed record Discovery(
         bool Success,
-        bool Removed = false,
+        IReadOnlyList<string> Paths,
         string? ErrorStage = null,
         GitCommandResult? Error = null)
     {
-        public static Result NoChange() => new(true);
-        public static Result Failure(string stage, GitCommandResult? error = null) =>
-            new(false, ErrorStage: stage, Error: error);
+        public static Discovery Failure(string stage, GitCommandResult? error = null) =>
+            new(false, Array.Empty<string>(), stage, error);
     }
 
-    // A disposable index makes the deletion-only tree; original staged files
-    // cannot leak into the commit. Commit is created before modifying live index.
+    internal sealed record Result(
+        bool Success,
+        IReadOnlyList<string> RemovedPaths,
+        string? ErrorStage = null,
+        GitCommandResult? Error = null)
+    {
+        public static Result NoChange() => new(true, Array.Empty<string>());
+        public static Result Failure(string stage, GitCommandResult? error = null) =>
+            new(false, Array.Empty<string>(), stage, error);
+    }
+
+    // Only explicitly staged cached-only deletions that remain present on disk,
+    // are ignored by this repository, and belong to the given commit scope.
+    internal static async Task<Discovery> DiscoverAsync(
+        string workingDirectory,
+        Func<string[], Task<GitCommandResult>> run,
+        IReadOnlyCollection<string> approvedScopes)
+    {
+        if (approvedScopes.Count == 0)
+            return new(true, Array.Empty<string>());
+
+        var staged = await run(new[] {
+            "diff", "--cached", "--diff-filter=D", "--name-only", "-z"
+        }).ConfigureAwait(false);
+        if (staged.ExitCode != 0)
+            return Discovery.Failure("CACHED_DELETE_SCAN_FAILED", staged);
+
+        var candidates = new List<string>();
+        foreach (var raw in staged.StandardOutput.Split(
+                     '\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var path = raw.Replace('\\', '/');
+            if (!MilestoneMechanicalExecutor.IsPathWithinScopes(
+                    path, approvedScopes))
+                continue;
+            var localPath = Path.GetFullPath(Path.Combine(workingDirectory,
+                path.Replace('/', Path.DirectorySeparatorChar)));
+            if (!MilestoneDefinitionContract.IsPathInsideRoot(
+                    workingDirectory, localPath) || !File.Exists(localPath))
+                continue;
+
+            var ignored = await run(new[] {
+                "check-ignore", "--no-index", "-q", "--", path
+            }).ConfigureAwait(false);
+            if (ignored.ExitCode == 1)
+                continue;
+            if (ignored.ExitCode != 0)
+                return Discovery.Failure("CACHED_DELETE_IGNORE_CHECK_FAILED", ignored);
+            candidates.Add(path);
+        }
+
+        return new(true, candidates.Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    // Commit only the selected pre-staged deletions using a disposable index.
+    // Other staged entries cannot enter the tree or be unstaged by this step.
     internal static async Task<Result> ApplyAsync(
         string workingDirectory,
         ProcessGitCommandRunner git,
         Func<string[], Task<GitCommandResult>> run,
+        IReadOnlyList<string> requestedPaths,
         CancellationToken cancellationToken)
     {
-        if (!File.Exists(Path.Combine(workingDirectory,
-                IntentScript.Replace('/', Path.DirectorySeparatorChar))) ||
-            !File.Exists(Path.Combine(workingDirectory,
-                IntentDocument.Replace('/', Path.DirectorySeparatorChar))))
+        if (requestedPaths.Count == 0)
             return Result.NoChange();
 
-        var trackedHead = await run(new[] {
-            "ls-tree", "-r", "--name-only", "HEAD", "--", TargetPath
-        }).ConfigureAwait(false);
-        if (trackedHead.ExitCode != 0)
-            return Result.Failure("CLEANUP_HEAD_INSPECT_FAILED", trackedHead);
-        if (!string.Equals(trackedHead.StandardOutput.Trim(), TargetPath,
-                StringComparison.Ordinal))
-            return Result.NoChange();
+        var realLock = Path.Combine(workingDirectory, ".git", "index.lock");
+        if (File.Exists(realLock))
+            return Result.Failure("CACHED_DELETE_INDEX_LOCK_PRESENT");
 
-        var ignored = await run(new[] {
-            "check-ignore", "--no-index", "-q", "--", TargetPath
+        var selected = requestedPaths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var staged = await run(new[] {
+            "diff", "--cached", "--diff-filter=D", "--name-only", "-z"
         }).ConfigureAwait(false);
-        if (ignored.ExitCode != 0)
-            return Result.Failure("CLEANUP_TARGET_NOT_IGNORED", ignored);
+        if (staged.ExitCode != 0)
+            return Result.Failure("CACHED_DELETE_STAGE_RECHECK_FAILED", staged);
+        var stillStaged = staged.StandardOutput.Split(
+            '\0', StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (selected.Any(path => !stillStaged.Contains(path)))
+            return Result.Failure("CACHED_DELETE_STAGE_CHANGED");
 
-        var localPath = Path.Combine(workingDirectory,
-            TargetPath.Replace('/', Path.DirectorySeparatorChar));
-        if (!File.Exists(localPath))
-            return Result.Failure("CLEANUP_LOCAL_FILE_MISSING");
-        var preservedSize = new FileInfo(localPath).Length;
+        var originalSizes = new Dictionary<string, long>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var path in selected)
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(workingDirectory,
+                path.Replace('/', Path.DirectorySeparatorChar)));
+            if (!MilestoneDefinitionContract.IsPathInsideRoot(
+                    workingDirectory, fullPath) || !File.Exists(fullPath))
+                return Result.Failure("CACHED_DELETE_LOCAL_FILE_CHANGED");
+            originalSizes[path] = new FileInfo(fullPath).Length;
+        }
 
-        var indexTarget = await run(new[] {
-            "ls-files", "--", TargetPath
-        }).ConfigureAwait(false);
-        if (indexTarget.ExitCode != 0)
-            return Result.Failure("CLEANUP_INDEX_INSPECT_FAILED", indexTarget);
-        var liveIndexContainsTarget =
-            string.Equals(indexTarget.StandardOutput.Trim(), TargetPath,
-                StringComparison.Ordinal);
-        var stagedTarget = await run(new[] {
-            "diff", "--cached", "--name-only", "--", TargetPath
-        }).ConfigureAwait(false);
-        if (stagedTarget.ExitCode != 0)
-            return Result.Failure("CLEANUP_STAGED_INSPECT_FAILED", stagedTarget);
-        if (liveIndexContainsTarget &&
-            !string.IsNullOrWhiteSpace(stagedTarget.StandardOutput))
-            return Result.Failure("CLEANUP_STAGED_TARGET_CONFLICT");
-
-        var oldHead = await run(new[] { "rev-parse", "HEAD" })
+        var previousHead = await run(new[] { "rev-parse", "HEAD" })
             .ConfigureAwait(false);
-        if (oldHead.ExitCode != 0 ||
-            string.IsNullOrWhiteSpace(oldHead.StandardOutput))
-            return Result.Failure("CLEANUP_HEAD_READ_FAILED", oldHead);
+        if (previousHead.ExitCode != 0 ||
+            string.IsNullOrWhiteSpace(previousHead.StandardOutput))
+            return Result.Failure("CACHED_DELETE_HEAD_READ_FAILED", previousHead);
 
-        var temporaryIndex = Path.Combine(
-            Path.GetTempPath(),
-            "projecthub-tracked-cleanup-" + Guid.NewGuid().ToString("N"));
+        var temporaryIndex = Path.Combine(Path.GetTempPath(),
+            "projecthub-cached-index-" + Guid.NewGuid().ToString("N"));
+        var temporaryPathspec = Path.GetTempFileName();
         var environment = new Dictionary<string, string>
         {
             ["GIT_INDEX_FILE"] = temporaryIndex
@@ -97,68 +135,67 @@ internal static class TrustedTrackedArtifactCleanup
 
         try
         {
+            await File.WriteAllBytesAsync(temporaryPathspec,
+                new UTF8Encoding(false).GetBytes(string.Join('\0', selected) + "\0"),
+                cancellationToken).ConfigureAwait(false);
+
             var read = await WithIndex("read-tree", "HEAD").ConfigureAwait(false);
             if (read.ExitCode != 0)
-                return Result.Failure("CLEANUP_READ_TREE_FAILED", read);
+                return Result.Failure("CACHED_DELETE_READ_TREE_FAILED", read);
             var remove = await WithIndex(
-                "rm", "--cached", "--", TargetPath).ConfigureAwait(false);
+                "--literal-pathspecs", "rm", "--cached", "-r",
+                "--ignore-unmatch",
+                "--pathspec-from-file=" + temporaryPathspec,
+                "--pathspec-file-nul").ConfigureAwait(false);
             if (remove.ExitCode != 0)
-                return Result.Failure("CLEANUP_TEMP_REMOVE_FAILED", remove);
+                return Result.Failure("CACHED_DELETE_TEMP_REMOVE_FAILED", remove);
             var tree = await WithIndex("write-tree").ConfigureAwait(false);
             if (tree.ExitCode != 0 ||
                 string.IsNullOrWhiteSpace(tree.StandardOutput))
-                return Result.Failure("CLEANUP_WRITE_TREE_FAILED", tree);
+                return Result.Failure("CACHED_DELETE_WRITE_TREE_FAILED", tree);
 
             var commit = await run(new[] {
                 "-c", "user.name=ProjectHub",
                 "-c", "user.email=projecthub@localhost",
                 "commit-tree", tree.StandardOutput.Trim(),
-                "-p", oldHead.StandardOutput.Trim(),
-                "-m", "chore: untrack generated editor executable"
+                "-p", previousHead.StandardOutput.Trim(),
+                "-m", "ProjectHub finalize staged tracked-file removals"
             }).ConfigureAwait(false);
             if (commit.ExitCode != 0 ||
                 string.IsNullOrWhiteSpace(commit.StandardOutput))
-                return Result.Failure("CLEANUP_COMMIT_TREE_FAILED", commit);
-
-            // Only the approved path is removed from the live index.
-            // No ordinary role is granted write access to .git.
-            if (liveIndexContainsTarget)
-            {
-                var stage = await run(new[] {
-                    "rm", "--cached", "--", TargetPath
-                }).ConfigureAwait(false);
-                if (stage.ExitCode != 0)
-                    return Result.Failure("CLEANUP_INDEX_REMOVE_FAILED", stage);
-            }
+                return Result.Failure("CACHED_DELETE_COMMIT_TREE_FAILED", commit);
 
             var update = await run(new[] {
                 "update-ref", "refs/heads/main", commit.StandardOutput.Trim(),
-                oldHead.StandardOutput.Trim()
+                previousHead.StandardOutput.Trim()
             }).ConfigureAwait(false);
             if (update.ExitCode != 0)
-                return Result.Failure("CLEANUP_HEAD_UPDATE_FAILED", update);
+                return Result.Failure("CACHED_DELETE_HEAD_UPDATE_FAILED", update);
 
-            var indexedAfter = await run(new[] {
-                "ls-files", "--", TargetPath
-            }).ConfigureAwait(false);
-            var headAfter = await run(new[] {
-                "ls-tree", "-r", "--name-only", "HEAD", "--", TargetPath
-            }).ConfigureAwait(false);
-            if (indexedAfter.ExitCode != 0 || headAfter.ExitCode != 0 ||
-                !string.IsNullOrWhiteSpace(indexedAfter.StandardOutput) ||
-                !string.IsNullOrWhiteSpace(headAfter.StandardOutput) ||
-                !File.Exists(localPath) ||
-                new FileInfo(localPath).Length != preservedSize)
-                return Result.Failure("CLEANUP_POST_VERIFY_FAILED");
-
-            return new(true, Removed: true);
+            foreach (var path in selected)
+            {
+                var indexed = await run(new[] {
+                    "ls-files", "--", path
+                }).ConfigureAwait(false);
+                var headFile = await run(new[] {
+                    "ls-tree", "-r", "--name-only", "HEAD", "--", path
+                }).ConfigureAwait(false);
+                var localPath = Path.Combine(workingDirectory,
+                    path.Replace('/', Path.DirectorySeparatorChar));
+                if (indexed.ExitCode != 0 || headFile.ExitCode != 0 ||
+                    !string.IsNullOrWhiteSpace(indexed.StandardOutput) ||
+                    !string.IsNullOrWhiteSpace(headFile.StandardOutput) ||
+                    !File.Exists(localPath) ||
+                    new FileInfo(localPath).Length != originalSizes[path])
+                    return Result.Failure("CACHED_DELETE_POST_VERIFY_FAILED");
+            }
+            return new(true, selected);
         }
         finally
         {
-            try { File.Delete(temporaryIndex); }
-            catch { }
-            try { File.Delete(temporaryIndex + ".lock"); }
-            catch { }
+            try { File.Delete(temporaryPathspec); } catch { }
+            try { File.Delete(temporaryIndex); } catch { }
+            try { File.Delete(temporaryIndex + ".lock"); } catch { }
         }
     }
 }
