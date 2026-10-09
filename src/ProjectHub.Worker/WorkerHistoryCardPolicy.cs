@@ -97,6 +97,14 @@ public static class WorkerHistoryCardPolicy
             return;
         }
 
+        // Async progress callbacks may be delivered after the final response.
+        // Never recreate a RUNNING card for an already completed invocation.
+        if (history.Any(item =>
+            item.EventType == "ROLE_RESPONSE" &&
+            item.StageKey == incoming.StageKey &&
+            string.Equals(item.ReferenceId, incoming.ReferenceId, StringComparison.Ordinal)))
+            return;
+
         var previous = history.LastOrDefault(item =>
             item.EventType == "ROLE_PROGRESS" &&
             item.StageKey == incoming.StageKey &&
