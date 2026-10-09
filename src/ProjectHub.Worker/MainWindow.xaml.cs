@@ -3454,6 +3454,11 @@ public partial class MainWindow : Window
     private void PublishHistoryCard(WorkerHistoryEvent item) =>
         WorkerHistoryCardPolicy.Publish(_historyEvents, item);
 
+    // Preserve the legacy test/reflection entry point; all identity logic
+    // lives in the pure policy class.
+    private static string? HistoryCardKey(WorkerHistoryEvent item) =>
+        WorkerHistoryCardPolicy.HistoryCardKey(item);
+
     private static WorkerHistoryEvent? CreateHistoryEvent(DateTimeOffset timestamp, string source, string content, long? sizeBytes, int? itemCount, int? fileCount, string? explicitStatus, string? referenceId, string? summary)
     {
         var normalized = source.Trim().ToUpperInvariant();
