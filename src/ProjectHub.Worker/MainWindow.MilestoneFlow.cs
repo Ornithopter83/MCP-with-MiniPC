@@ -75,12 +75,14 @@ public partial class MainWindow
 
         _activeWorkingDirectory = normalizedRoot;
         _activeProjectJobId = jobId;
+        var interventionQueue = new HqUserInterventionQueue(normalizedRoot, jobId);
+        _hqInterventions = interventionQueue;
         RunOnUi(() => SetDashboardBodyMode(DashboardBodyMode.TaskHistory));
         using var cts = new CancellationTokenSource();
         _activeTaskCts = cts;
         UpdateTaskConfigurationLockState();
         _activeCoordinatorFirst = true;
-        SetFollowupComposerVisible(false);
+        SetFollowupComposerVisible(true);
         RunButton.Content = "■   취소";
         _userCanceledTask = false;
         _jobTimedOut = false;
@@ -112,6 +114,12 @@ public partial class MainWindow
                     itemCount: 1,
                     fileCount: attachments?.Count,
                     includeHistory: false);
+                // Restore undelivered user input after a process interruption.
+                foreach (var entry in interventionQueue.Pending())
+                    if (!_historyEvents.Any(card =>
+                        card.EventType == "USER_INTERVENTION" &&
+                        card.ReferenceId == entry.Id))
+                        AddHqInterventionHistory(entry, delivered: false);
             }
 
             stagedAttachments = UserAttachmentTransport.StageForWorkerRuntime(
@@ -191,9 +199,13 @@ public partial class MainWindow
                     status: "COMPLETED",
                     persistenceSource: "WORKER ACTION");
 
+                // Snapshot immediately before this HQ request. Messages entered
+                // while HQ is responding stay queued for the next invocation.
+                var sentInterventions = interventionQueue.Pending();
                 var hqPrompt = BuildMilestoneHqPrompt(
                     inboundType,
-                    hqInbound,
+                    HqUserInterventionQueue.AppendToHqBody(
+                        hqInbound, sentInterventions),
                     normalizedRoot,
                     configuredRepositoryUrl,
                     remoteReference.CommitSha);
@@ -272,9 +284,14 @@ public partial class MainWindow
                         HqResponseRecoveryContract.BuildBody(
                             hqMessage,
                             recoveryError);
+                    // The first response was invalid: do not acknowledge it.
+                    // Re-send its messages, plus any new ones, with the
+                    // existing format-recovery request (no extra HQ call).
+                    sentInterventions = interventionQueue.Pending();
                     var recoveryPrompt = BuildMilestoneHqPrompt(
                         "HQ_RESPONSE_RECOVERY",
-                        recoveryBody,
+                        HqUserInterventionQueue.AppendToHqBody(
+                            recoveryBody, sentInterventions),
                         normalizedRoot,
                         configuredRepositoryUrl,
                         remoteReference.CommitSha);
@@ -346,11 +363,34 @@ public partial class MainWindow
                 var milestoneError = string.Empty;
                 var hqAction = hqParse.ValidActions.Single();
 
+                // The transport returned a protocol-valid HQ decision.
+                // Commit acknowledgments before proceeding; an interrupted
+                // request must leave messages pending instead of losing them.
+                interventionQueue.Acknowledge(sentInterventions);
+                foreach (var delivered in sentInterventions)
+                {
+                    AddTaskMessage(
+                        "USER INTERVENTION DELIVERED",
+                        "HQ 요청에 포함되어 유효한 응답을 받았습니다. ID: " + delivered.Id,
+                        status: "DELIVERED",
+                        referenceId: delivered.Id,
+                        includeHistory: false);
+                    AddHqInterventionHistory(delivered, delivered: true);
+                }
+
                 if (string.Equals(
                         hqAction.Name,
                         "PAUSE",
                         StringComparison.OrdinalIgnoreCase))
                 {
+                    if (interventionQueue.Pending().Count > 0)
+                    {
+                        hqInbound = "PAUSE_DEFERRED_USER_INTERVENTION: " +
+                            "HQ 응답 생성 중 추가 사용자 메시지가 도착했다. " +
+                            "다음 호출에서 원문을 확인한 후 PAUSE 여부를 다시 판단하라.";
+                        PersistRecovery(hqInbound);
+                        continue;
+                    }
                     SaveMilestoneContinuation(
                         "PAUSED",
                         hqMessage,
@@ -381,6 +421,14 @@ public partial class MainWindow
                         "END",
                         StringComparison.OrdinalIgnoreCase))
                 {
+                    if (interventionQueue.Pending().Count > 0)
+                    {
+                        hqInbound = "END_DEFERRED_USER_INTERVENTION: " +
+                            "HQ 응답 생성 중 추가 사용자 메시지가 도착했다. " +
+                            "다음 호출에서 원문을 확인한 후 완료 여부를 다시 판단하라.";
+                        PersistRecovery(hqInbound);
+                        continue;
+                    }
                     // HQ cannot declare the goal complete while a WORKITEM
                     // still owns an unfinished execution checkpoint.
                     var unfinished = WorkExecutionJournal.ReadAll(normalizedRoot, jobId)
@@ -646,6 +694,7 @@ public partial class MainWindow
             _activeCoordinatorFirst = false;
             _activeTaskCts = null;
             _activeProjectJobId = null;
+            _hqInterventions = null;
             RunOnUi(() =>
             {
                 RunButton.Content = "▶   실행";
