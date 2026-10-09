@@ -105,14 +105,14 @@ public partial class MainWindow : Window
         public TextTrimming SummaryTrimming => TextTrimming.CharacterEllipsis;
         public double SummaryMaxHeight =>
             EventType == "ROLE_PROGRESS"
-                ? 72d
+                ? 56d
                 : IsAttentionEvent
                     ? 58d
                     : double.PositiveInfinity;
         public double SummaryHeight =>
-            EventType == "ROLE_PROGRESS" ? 72d : double.NaN;
+            EventType == "ROLE_PROGRESS" ? 56d : double.NaN;
         public double CardHeight =>
-            EventType == "ROLE_PROGRESS" ? 104d : double.NaN;
+            EventType == "ROLE_PROGRESS" ? 90d : double.NaN;
         public string Details
         {
             get
