@@ -68,34 +68,12 @@ internal static class RoleTextProtocol
         if (normalized.Length == 0)
             return new("", "", Array.Empty<string>(), Array.Empty<string>(), new[] { "RESULT_EMPTY" });
 
-        var lines = RepairMechanicalEnvelope(normalized).Split('\n');
-        if (lines.Any(line => line.Trim() == "@@REPORT"))
-        {
-            var index = Array.FindIndex(lines, line => line.Trim() == "@@REPORT");
-            var payload = string.Join("\n", lines.Skip(index + 1)
-                .TakeWhile(line => line.Trim() != WebCorrelationContract.ResponseOkMarker));
-            if (!StructuredRoleFields.TryParse(payload, out var structured, out var fieldError))
-                return new("", normalized, Array.Empty<string>(), Array.Empty<string>(),
-                    new[] { fieldError });
-            var newErrors = new List<string>();
-            var leading = lines.Take(index).Where(line => !string.IsNullOrWhiteSpace(line))
-                .Select(line => line.Trim()).ToArray();
-            if (leading.Length != 1 || leading[0] != "[ACTION=RESULT]")
-                newErrors.Add("ACTION_RESULT_REQUIRED");
-            var statusValue = (structured.Get("STATUS") ?? "").ToLowerInvariant();
-            if (!allowedStatuses.Contains(statusValue, StringComparer.OrdinalIgnoreCase))
-                newErrors.Add("STATUS");
-            if (string.IsNullOrWhiteSpace(structured.Get("SUMMARY")))
-                newErrors.Add("SUMMARY");
-            if (structured.Names.Any(name => name is not
-                    ("STATUS" or "SUMMARY" or "CHANGED_PATH" or "ISSUES")))
-                newErrors.Add("REPORT_UNKNOWN_FIELD");
-            return new(statusValue, structured.Get("SUMMARY") ?? "",
-                ReadChangedPaths(structured.GetMany("CHANGED_PATH")),
-                (structured.Get("ISSUES") ?? "").Split('\n')
-                    .Select(line => line.Trim()).Where(line => line.Length > 0 && line != "없음").ToArray(),
-                newErrors);
-        }
+        var lines = normalized.Split('\n');
+        var reportIndex = Array.FindIndex(lines,
+            line => line.Trim() == "@@REPORT");
+        if (reportIndex >= 0)
+            return ParseLooseReport(lines, reportIndex, allowedStatuses);
+
         if (TryParseLegacyJsonResult(lines, allowedStatuses, out var jsonResult))
             return jsonResult;
 
@@ -138,92 +116,187 @@ internal static class RoleTextProtocol
             errors);
     }
 
-    // Accept middle-field XML closers from older models without changing the
-    // report's status or prose. This adapter is deliberately report-only:
-    // HQ field parsing and WORK routing remain strict.
-    private static string RepairMechanicalEnvelope(string raw)
+    // Only role RESULTS use the tolerant scanner. HQ assignments, WORKITEM
+    // scopes and other machine directives retain their strict parsers.
+    // Explicit known opening tags delimit fields; closing tags are optional.
+    private static RoleTextResult ParseLooseReport(
+        string[] lines,
+        int reportIndex,
+        IReadOnlyCollection<string> allowedStatuses)
     {
-        if (!raw.Split('\n').Any(line => line.Trim() == "@@REPORT"))
-            return raw;
+        var errors = new List<string>();
+        var header = lines.Take(reportIndex)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0 &&
+                line != WebCorrelationContract.ResponseOkMarker)
+            .ToArray();
+        if (header.Any(line => !string.Equals(
+                line, "[ACTION=RESULT]", StringComparison.OrdinalIgnoreCase)))
+            errors.Add("ACTION_RESULT_REQUIRED");
 
-        var lines = raw.Split('\n').ToList();
-        string? openField = null;
-        for (var i = 0; i < lines.Count; i++)
+        var fields = new List<(string Name, string Value)>();
+        var outside = new List<string>();
+        var buffer = new System.Text.StringBuilder();
+        string? current = null;
+        string? previousClosed = null;
+        var inFence = false;
+
+        void Append(string part)
         {
-            var trimmed = lines[i].Trim();
-            var legacyInline = Regex.Match(trimmed,
-                @"^<(STATUS|SUMMARY|CHANGED_PATH|ISSUES)>(.*?)</\1>$",
-                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-            if (legacyInline.Success && openField is null)
+            if (current is not null)
+                buffer.Append(part);
+            else if (!string.IsNullOrWhiteSpace(part))
+                outside.Add(part.Trim());
+        }
+
+        void Finish()
+        {
+            if (current is not null)
             {
-                lines[i] = "<" + legacyInline.Groups[1].Value.ToUpperInvariant() +
-                    ">" + legacyInline.Groups[2].Value + "</>";
+                fields.Add((current, buffer.ToString().Trim()));
+                previousClosed = current;
+                current = null;
+                buffer.Clear();
+            }
+        }
+
+        for (var i = reportIndex + 1; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var trimmed = line.Trim();
+            if (trimmed == WebCorrelationContract.ResponseOkMarker && !inFence)
+            {
+                if (lines.Skip(i + 1).Any(after =>
+                    !string.IsNullOrWhiteSpace(after) &&
+                    after.Trim() != WebCorrelationContract.ResponseOkMarker))
+                    errors.Add("CONTENT_AFTER_RESPONSE_OK");
+                break;
+            }
+
+            if (trimmed.StartsWith(new string((char)96, 3), StringComparison.Ordinal))
+            {
+                inFence = !inFence;
+                Append(line);
+                if (current is not null)
+                    buffer.Append('\n');
+                continue;
+            }
+            if (inFence)
+            {
+                Append(line);
+                if (current is not null)
+                    buffer.Append('\n');
                 continue;
             }
 
-            if (openField is not null)
+            var matches = Regex.Matches(line,
+                @"</>|</?(?:STATUS|SUMMARY|CHANGED_PATHS?|ISSUES?)>",
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            var position = 0;
+            var lastWasClosing = false;
+            foreach (Match match in matches)
             {
-                if (trimmed == "</>")
-                    openField = null;
-                else if (string.Equals(trimmed, "</" + openField + ">",
-                    StringComparison.OrdinalIgnoreCase))
+                var between = line[position..match.Index];
+                var tag = match.Value;
+                var isClose = tag.StartsWith("</", StringComparison.Ordinal);
+                var namedClose = isClose && tag != "</>";
+                var name = isClose
+                    ? (namedClose ? tag[2..^1] : current ?? "")
+                    : tag[1..^1];
+                name = name.ToUpperInvariant() switch
                 {
-                    lines[i] = "</>";
-                    openField = null;
+                    "CHANGED_PATHS" => "CHANGED_PATH",
+                    "ISSUE" => "ISSUES",
+                    var field => field
+                };
+
+                // Keep inline quotations as prose. A tag at a line boundary
+                // or adjoining a recognized close/open tag is a delimiter.
+                var atLineStart = string.IsNullOrWhiteSpace(line[..match.Index]);
+                var atLineEnd = string.IsNullOrWhiteSpace(
+                    line[(match.Index + match.Length)..]);
+                var adjacentToClosedTag = lastWasClosing &&
+                    string.IsNullOrWhiteSpace(between);
+                var explicitInlinePair = !isClose &&
+                    line[(match.Index + match.Length)..].Contains(
+                        "</" + name + ">", StringComparison.OrdinalIgnoreCase);
+                var structural = isClose || atLineStart || atLineEnd ||
+                    adjacentToClosedTag || explicitInlinePair ||
+                    (position > 0 && string.IsNullOrWhiteSpace(between));
+                if (!structural)
+                {
+                    Append(between + tag);
+                    position = match.Index + match.Length;
+                    lastWasClosing = false;
+                    continue;
+                }
+
+                Append(between);
+                position = match.Index + match.Length;
+                if (isClose)
+                {
+                    if (current is null)
+                    {
+                        if (namedClose && !string.Equals(name,
+                            previousClosed, StringComparison.OrdinalIgnoreCase))
+                            errors.Add("MIDDLE_FIELD_UNEXPECTED_CLOSE: " + name);
+                    }
+                    else if (namedClose &&
+                        !string.Equals(current, name,
+                            StringComparison.OrdinalIgnoreCase))
+                        errors.Add("MIDDLE_FIELD_MISMATCH: " +
+                            current + "/" + name);
+                    else
+                        Finish();
+                    lastWasClosing = true;
                 }
                 else
                 {
-                    var trailing = Regex.Match(trimmed,
-                        @"^(.*?)</(STATUS|SUMMARY|CHANGED_PATH|ISSUES)>$",
-                        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-                    if (trailing.Success && string.Equals(
-                        trailing.Groups[2].Value, openField,
-                        StringComparison.OrdinalIgnoreCase))
-                    {
-                        lines[i] = trailing.Groups[1].Value;
-                        lines.Insert(i + 1, "</>");
-                        openField = null;
-                        i++;
-                    }
-                }
-                continue;
-            }
-
-            var opening = Regex.Match(trimmed,
-                @"^<(STATUS|SUMMARY|CHANGED_PATH|ISSUES)>$",
-                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-            if (opening.Success)
-            {
-                openField = opening.Groups[1].Value.ToUpperInvariant();
-                lines[i] = "<" + openField + ">";
-                continue;
-            }
-
-            // Some models put the first value on the opening-tag line and
-            // the legacy closing tag after the final value on a later line.
-            if (!trimmed.EndsWith("</>", StringComparison.Ordinal))
-            {
-                var openingWithValue = Regex.Match(trimmed,
-                    @"^<(STATUS|SUMMARY|CHANGED_PATH|ISSUES)>(.+)$",
-                    RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-                if (openingWithValue.Success)
-                {
-                    openField = openingWithValue.Groups[1].Value.ToUpperInvariant();
-                    lines[i] = "<" + openField + ">";
-                    lines.Insert(i + 1, openingWithValue.Groups[2].Value);
+                    Finish(); // omitted close: next opening ends this field
+                    current = name;
+                    previousClosed = null;
+                    lastWasClosing = false;
                 }
             }
+            Append(line[position..]);
+            if (current is not null)
+                buffer.Append('\n');
         }
 
-        var first = lines.FindIndex(line => !string.IsNullOrWhiteSpace(line));
-        if (first >= 0 && lines[first].Trim() == WebCorrelationContract.ResponseOkMarker)
-        {
-            lines.RemoveAt(first); // stray terminator from an earlier Web turn
-            first = lines.FindIndex(line => !string.IsNullOrWhiteSpace(line));
-        }
-        if (first >= 0 && lines[first].Trim() == "@@REPORT")
-            lines.Insert(first, "[ACTION=RESULT]");
-        return string.Join("\n", lines);
+        Finish();
+        var statuses = fields.Where(field => field.Name == "STATUS")
+            .Select(field => field.Value.Trim().ToLowerInvariant())
+            .ToArray();
+        var status = statuses.FirstOrDefault() ?? string.Empty;
+        if (statuses.Length == 0 ||
+            statuses.Any(value => !string.Equals(value, status,
+                StringComparison.OrdinalIgnoreCase)) ||
+            !allowedStatuses.Contains(status, StringComparer.OrdinalIgnoreCase))
+            errors.Add("STATUS");
+
+        var summaries = fields.Where(field => field.Name == "SUMMARY")
+            .Select(field => field.Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+        // Untagged prose is preserved, but it cannot replace the explicit
+        // SUMMARY field when deciding whether a role report is complete.
+        if (summaries.Count == 0)
+            errors.Add("SUMMARY");
+        if (outside.Count > 0)
+            summaries.Insert(0, string.Join("\n", outside));
+        var summary = string.Join("\n", summaries);
+
+        var changedPaths = ReadChangedPaths(fields
+            .Where(field => field.Name == "CHANGED_PATH")
+            .Select(field => field.Value));
+        var issues = fields.Where(field => field.Name == "ISSUES")
+            .SelectMany(field => field.Value.Split('\n'))
+            .Select(value => value.Trim())
+            .Where(value => value.Length > 0 &&
+                !string.Equals(value, "없음", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        return new(status, summary, changedPaths, issues,
+            errors.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     // The old ActionBlock wire format used a JSON object after ACTION=RESULT.

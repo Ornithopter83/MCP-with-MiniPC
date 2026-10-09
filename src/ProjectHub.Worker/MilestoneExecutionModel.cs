@@ -1127,7 +1127,8 @@ internal static class MilestoneDefinitionContract
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseWork(raw);
         return parsed.IsValid
-            ? raw
+            ? RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
+                parsed.ChangedPaths, parsed.Issues)
             : RoleTextProtocol.BuildResult(
                 "blocked",
                 "WORK_REPORT_CONTRACT_INVALID",
@@ -1150,8 +1151,12 @@ internal static class MilestoneDefinitionContract
 
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseQa(raw);
-        // Report format errors are not technical QA failures. Keep the
-        // original report, even when the structured status cannot be read.
+        // Valid reports travel downstream in the canonical text format.
+        // Invalid reports remain verbatim: a format error must not invent
+        // technical QA results or discard test evidence.
+        if (parsed.IsValid)
+            return RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
+                parsed.ChangedPaths, parsed.Issues);
         return raw.Length == 0
             ? RoleTextProtocol.BuildResult("blocked", "QA_REPORT_EMPTY")
             : raw;
@@ -1173,6 +1178,10 @@ internal static class MilestoneDefinitionContract
 
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseHigh(raw);
+        // Preserve unparseable HIGH evidence for diagnosis, as with QA.
+        if (parsed.IsValid)
+            return RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
+                parsed.ChangedPaths, parsed.Issues);
         return raw.Length == 0
             ? RoleTextProtocol.BuildResult("blocked", "HIGH_REPORT_EMPTY")
             : raw;
