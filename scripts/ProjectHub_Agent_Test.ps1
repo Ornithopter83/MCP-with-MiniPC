@@ -1,8 +1,8 @@
-﻿$ErrorActionPreference = "Stop"
-
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [string]$ProjectPath = (Split-Path -Parent $PSScriptRoot),
+    [string]$ProjectPath = (Split-Path -Parent $PSScriptRoot)
+
+$ErrorActionPreference = "Stop",
     [string]$ServerBaseUrl = "https://projecthub.ornithopter.bid"
 )
 $AgentProject = ".\src\ProjectHub.Agent\ProjectHub.Agent.csproj"
