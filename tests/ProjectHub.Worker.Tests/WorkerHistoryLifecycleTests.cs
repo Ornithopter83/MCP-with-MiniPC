@@ -40,7 +40,9 @@ public sealed class WorkerHistoryLifecycleTests
             Card(id, stage, "ROLE_RESPONSE", "작업 종료 보고"));
         Assert.Single(cards);
         Assert.Equal("ROLE_RESPONSE", cards[0].EventType);
-        Assert.Equal("작업 종료 보고", cards[0].FullMessage);
+        Assert.StartsWith("작업 종료 보고", cards[0].FullMessage);
+        if (stage == "Implementer")
+            Assert.Contains("----- WORK DETAIL -----", cards[0].FullMessage);
     }
 
     [Fact]
