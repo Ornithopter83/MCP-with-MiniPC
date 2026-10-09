@@ -483,7 +483,7 @@
                   <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <TextBox x:Name="DashboardFollowupInput" Grid.Row="0" MinHeight="48" Text="추가할 작업을 입력하세요..." Foreground="{StaticResource Muted}" Background="Transparent" BorderThickness="0" FontSize="15" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" GotFocus="DashboardFollowupInput_GotFocus" LostFocus="DashboardFollowupInput_LostFocus" TextChanged="DashboardFollowupInput_TextChanged" PreviewKeyDown="DashboardFollowupInput_PreviewKeyDown"/>
-                    <ItemsControl Grid.Row="1" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=FollowupAttachments}" Margin="0,6,0,0">
+                    <ItemsControl x:Name="DashboardFollowupAttachmentList" Grid.Row="1" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=FollowupAttachments}" Margin="0,6,0,0">
                       <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                       <ItemsControl.ItemTemplate><DataTemplate>
                         <Border Background="#E7F6EC" BorderBrush="#C2E3CD" BorderThickness="1" CornerRadius="7" Padding="8,4" Margin="0,0,6,5">
@@ -496,7 +496,7 @@
                         </Border>
                       </DataTemplate></ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Grid.Row="2" Text="파일 드롭 · 캡처 Ctrl+V" FontSize="10" Foreground="{StaticResource Muted}" Margin="1,0,0,0"/>
+                    <TextBlock x:Name="DashboardFollowupAttachmentHint" Grid.Row="2" Text="파일 드롭 · 캡처 Ctrl+V" FontSize="10" Foreground="{StaticResource Muted}" Margin="1,0,0,0"/>
                   </Grid>
                 </Border>
               </Grid>
