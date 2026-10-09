@@ -141,7 +141,19 @@ public static class WorkerHistoryCardPolicy
                     candidate.StageKey != result.StageKey ||
                     !string.Equals(candidate.ReferenceId, result.ReferenceId, StringComparison.Ordinal))
                     continue;
-                history[i] = result;
+                // Preserve accumulated WORK detail in the final card's
+                // double-click viewer, without adding a second history card.
+                var finalCard = result;
+                if (result.StageKey == "Implementer" &&
+                    !string.IsNullOrWhiteSpace(candidate.FullMessage))
+                    finalCard = result with
+                    {
+                        FullMessage = result.FullMessage +
+                            Environment.NewLine + Environment.NewLine +
+                            "----- WORK DETAIL -----" + Environment.NewLine +
+                            candidate.FullMessage
+                    };
+                history[i] = finalCard;
                 if (i != history.Count - 1)
                     history.Move(i, history.Count - 1);
                 return;
