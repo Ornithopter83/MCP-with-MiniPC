@@ -220,6 +220,10 @@ public sealed class StructuredMilestoneProtocolTests
             - tests/d.gd
             - tests/e.gd
             </CHANGED_PATH>
+            <CHANGED_PATH>tools/a.gd
+            tests/new.gd
+            docs/review.md</CHANGED_PATH>
+            <CHANGED_PATH>[scripts/motion.gd](/C:/AI-AGENT/Worker/scripts/motion.gd:84)</>
             <ISSUES>쓰기 범위 외 파일 필요</ISSUES>
             [RESPONSE=OK]
             """;
@@ -228,7 +232,8 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Equal("blocked", parsed.Status);
         Assert.Contains("허용되지 않은 경로", parsed.Summary);
         Assert.Equal(new[] {
-            "tests/a.gd", "tests/b.gd", "tests/c.gd", "tests/d.gd", "tests/e.gd"
+            "tests/a.gd", "tests/b.gd", "tests/c.gd", "tests/d.gd", "tests/e.gd",
+            "tools/a.gd", "tests/new.gd", "docs/review.md", "scripts/motion.gd"
         }, parsed.ChangedPaths);
         Assert.Equal(new[] { "쓰기 범위 외 파일 필요" }, parsed.Issues);
         Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(report));
