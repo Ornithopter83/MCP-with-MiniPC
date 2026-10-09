@@ -560,6 +560,9 @@ public partial class MainWindow : Window
     private void DashboardFollowupInput_TextChanged(object sender, TextChangedEventArgs e)
         => UpdateFollowupButtonState();
 
+    private void InterventionRecordOnlyCheckBox_Changed(object sender, RoutedEventArgs e)
+        => UpdateFollowupButtonState();
+
     private bool CanEditTaskConfiguration
         => TaskContinuationContract.CanEditTaskConfiguration(
             executionActive:
@@ -663,12 +666,15 @@ public partial class MainWindow : Window
                                 TaskContinuationContract.CanAcceptFollowupStatus(_continuationState.Status));
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
                         DashboardFollowupInput.Text != FollowupPromptPlaceholder;
-        AddWorkButton.Content = activeIntervention
-            ? "＋   HQ 전달 예약"
-            : "＋   작업 추가";
-        DashboardFollowupSubtitle.Text = activeIntervention
-            ? "다음 HQ 호출에 전달 · 실행 중단 없음"
-            : "현재 세션에 작업 추가";
+        var recordOnly = activeIntervention &&
+                         InterventionRecordOnlyCheckBox.IsChecked == true;
+        AddWorkButton.Content = recordOnly
+            ? "＋   개입 기록"
+            : activeIntervention ? "＋   HQ 전달 예약" : "＋   작업 추가";
+        DashboardFollowupSubtitle.Text = recordOnly
+            ? "HQ 웹에서 직접 전달한 사용자 개입만 기록"
+            : activeIntervention ? "다음 HQ 호출에 전달 · 실행 중단 없음"
+                : "현재 세션에 작업 추가";
         InterventionRecordOnlyCheckBox.Visibility = activeIntervention
             ? Visibility.Visible : Visibility.Collapsed;
         // The editor lives inside DashboardFollowupAttachmentView:
