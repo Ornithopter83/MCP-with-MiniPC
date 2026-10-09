@@ -78,7 +78,7 @@ public static class WorkerHistoryCardPolicy
         history.Add(item);
     }
 
-    private static string? HistoryCardKey(MainWindow.WorkerHistoryEvent item)
+    public static string? HistoryCardKey(MainWindow.WorkerHistoryEvent item)
     {
         var kind = item.EventType == "DATA_FLOW"
             ? item.EventType + "|" + item.Title
