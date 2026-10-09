@@ -636,7 +636,9 @@ public sealed class CoordinatorFirstContractTests
             """,
             null);
 
-        Assert.Contains("STATUS: completed", valid);
+        Assert.Contains("<STATUS>completed</>", valid);
+        Assert.DoesNotContain("STATUS: completed", valid);
+        Assert.Equal("completed", MilestoneDefinitionContract.ReadWorkStatus(valid));
 
         var invalid = MilestoneDefinitionContract.NormalizeWorkReport(
             0,
