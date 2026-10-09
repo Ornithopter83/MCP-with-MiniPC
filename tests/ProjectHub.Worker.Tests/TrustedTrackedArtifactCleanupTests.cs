@@ -184,8 +184,14 @@ public sealed class TrustedTrackedArtifactCleanupTests
 
         public void Dispose()
         {
-            if (Directory.Exists(_base))
-                Directory.Delete(_base, recursive: true);
+            if (!Directory.Exists(_base))
+                return;
+            // Git objects are read-only on Windows. Clear those attributes
+            // before deleting this test-owned isolated fixture directory.
+            foreach (var file in Directory.EnumerateFiles(
+                         _base, "*", SearchOption.AllDirectories))
+                File.SetAttributes(file, FileAttributes.Normal);
+            Directory.Delete(_base, recursive: true);
         }
     }
 }
