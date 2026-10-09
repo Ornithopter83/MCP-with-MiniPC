@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace ProjectHub.Worker;
 
 /// <summary>
@@ -55,6 +57,39 @@ public static class WorkerHistoryCardPolicy
         };
     }
 
+    public static void Publish(
+        ObservableCollection<MainWindow.WorkerHistoryEvent> history,
+        MainWindow.WorkerHistoryEvent item)
+    {
+        var key = HistoryCardKey(item);
+        for (var index = history.Count - 1; index >= 0; index--)
+        {
+            var existing = history[index];
+            if ((key is not null &&
+                 string.Equals(HistoryCardKey(existing), key, StringComparison.Ordinal)) ||
+                IsDuplicateCoordinatorResponse(item, existing))
+            {
+                history[index] = item;
+                if (index != history.Count - 1)
+                    history.Move(index, history.Count - 1);
+                return;
+            }
+        }
+        history.Add(item);
+    }
+
+    private static string? HistoryCardKey(MainWindow.WorkerHistoryEvent item)
+    {
+        var kind = item.EventType == "DATA_FLOW"
+            ? item.EventType + "|" + item.Title
+            : item.EventType;
+        if (!string.IsNullOrWhiteSpace(item.ReferenceId))
+            return item.StageKey + "|" + kind + "|REF|" + item.ReferenceId.Trim();
+        if (!string.IsNullOrWhiteSpace(item.WorkItemId))
+            return item.StageKey + "|" + kind + "|WORK|" + item.WorkItemId.Trim();
+        return null;
+    }
+
     public static string NewInvocationReference(string milestoneId, string roleId) =>
         milestoneId + ":" + roleId + ":" + Guid.NewGuid().ToString("N");
 
@@ -67,6 +102,8 @@ public static class WorkerHistoryCardPolicy
         existing.StageKey == "Coordinator" &&
         existing.EventType == "ROLE_RESPONSE" &&
         string.IsNullOrWhiteSpace(existing.ReferenceId) &&
+        string.Equals(candidate.Title, existing.Title, StringComparison.Ordinal) &&
+        string.Equals(candidate.Status, existing.Status, StringComparison.Ordinal) &&
         string.Equals(candidate.FullMessage, existing.FullMessage, StringComparison.Ordinal) &&
         Math.Abs((candidate.Timestamp - existing.Timestamp).TotalSeconds) <= 2;
 }
