@@ -1,10 +1,11 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$ProjectPath = (Split-Path -Parent $PSScriptRoot)
-
-$ErrorActionPreference = "Stop",
+    [string]$ProjectPath = (Split-Path -Parent $PSScriptRoot),
     [string]$ServerBaseUrl = "https://projecthub.ornithopter.bid"
 )
+
+$ErrorActionPreference = "Stop"
+
 $AgentProject = ".\src\ProjectHub.Agent\ProjectHub.Agent.csproj"
 
 function Pause-Step([string]$Message) {
