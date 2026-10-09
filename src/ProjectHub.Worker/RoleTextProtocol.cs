@@ -171,6 +171,21 @@ internal static class RoleTextProtocol
                     lines[i] = "</>";
                     openField = null;
                 }
+                else
+                {
+                    var trailing = Regex.Match(trimmed,
+                        @"^(.*?)</(STATUS|SUMMARY|CHANGED_PATH|ISSUES)>$",
+                        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                    if (trailing.Success && string.Equals(
+                        trailing.Groups[2].Value, openField,
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        lines[i] = trailing.Groups[1].Value;
+                        lines.Insert(i + 1, "</>");
+                        openField = null;
+                        i++;
+                    }
+                }
                 continue;
             }
 
@@ -181,6 +196,22 @@ internal static class RoleTextProtocol
             {
                 openField = opening.Groups[1].Value.ToUpperInvariant();
                 lines[i] = "<" + openField + ">";
+                continue;
+            }
+
+            // Some models put the first value on the opening-tag line and
+            // the legacy closing tag after the final value on a later line.
+            if (!trimmed.EndsWith("</>", StringComparison.Ordinal))
+            {
+                var openingWithValue = Regex.Match(trimmed,
+                    @"^<(STATUS|SUMMARY|CHANGED_PATH|ISSUES)>(.+)$",
+                    RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                if (openingWithValue.Success)
+                {
+                    openField = openingWithValue.Groups[1].Value.ToUpperInvariant();
+                    lines[i] = "<" + openField + ">";
+                    lines.Insert(i + 1, openingWithValue.Groups[2].Value);
+                }
             }
         }
 
@@ -301,6 +332,13 @@ internal static class RoleTextProtocol
             .Select(path => path.Trim())
             .Select(path => path.StartsWith("- ", StringComparison.Ordinal)
                 ? path[2..].Trim() : path)
+            .Select(path =>
+            {
+                // Model responses sometimes present local changed files as
+                // clickable Markdown paths. Only the visible path is relevant.
+                var link = Regex.Match(path, @"^\[([^\]]+)\]\([^)]+\)$");
+                return link.Success ? link.Groups[1].Value.Trim() : path;
+            })
             .Where(path => path.Length > 0 &&
                 !string.Equals(path, "없음", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(path, "none", StringComparison.OrdinalIgnoreCase))
