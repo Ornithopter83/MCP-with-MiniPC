@@ -44,6 +44,26 @@ public sealed class TrustedTrackedArtifactCleanupTests
     }
 
     [Fact]
+    public async Task Finalize_RespectsAnAlreadyStagedCachedOnlyDeletion()
+    {
+        using var fixture = new GitFixture(withIntent: true);
+        fixture.Git("rm", "--cached", "--",
+            TrustedTrackedArtifactCleanup.TargetPath);
+
+        var result = await MilestoneMechanicalExecutor.ForceCommitPushAsync(
+            fixture.Repo, "ProjectHub milestone cached removal",
+            new[] { TrustedTrackedArtifactCleanup.TargetPath },
+            null, CancellationToken.None);
+
+        Assert.True(result.Success, result.Summary);
+        Assert.Contains("trustedCleanup=REMOVED_AND_REMOTE_VERIFIED", result.Summary);
+        Assert.True(File.Exists(fixture.Target));
+        Assert.Equal("", fixture.Git("diff", "--cached", "--name-only").Trim());
+        Assert.Equal("", fixture.GitBare("ls-tree", "-r", "--name-only",
+            "main", "--", TrustedTrackedArtifactCleanup.TargetPath).Trim());
+    }
+
+    [Fact]
     public async Task Finalize_DoesNotRemoveArtifactWithoutExplicitIntent()
     {
         using var fixture = new GitFixture(withIntent: false);
