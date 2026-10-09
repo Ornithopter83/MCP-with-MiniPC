@@ -1679,11 +1679,11 @@ public partial class MainWindow
                 Array.Empty<string>());
         }
 
-        AddRoleProgressHistory(
+        RunOnUi(() => AddRoleProgressHistory(
             WorkerRoleState.Resource,
             $"RESOURCE #{resource.Id} 생성 시작 · 독립 실행 대기",
             referenceId: milestone.Id + ":RESOURCE:" + resource.Id,
-            workItemId: "0");
+            workItemId: "0"));
 
         var registry = new MechanicalWorkRegistry();
         await using var queue = new ResourceSidecarQueue(
