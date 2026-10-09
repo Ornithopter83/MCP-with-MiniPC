@@ -330,6 +330,13 @@ public sealed class StructuredMilestoneProtocolTests
             """;
         Assert.False(RoleTextProtocol.ParseQa(ambiguousJson).IsValid);
 
+        const string modifiedWithoutPaths = """
+            [ACTION=RESULT]
+            {"status":"modified","summary":"수정을 주장하지만 변경 파일 없음"}
+            [RESPONSE=OK]
+            """;
+        Assert.False(RoleTextProtocol.ParseHigh(modifiedWithoutPaths).IsValid);
+
         const string malformedJson = """
             [ACTION=RESULT]
             {"status":"passed","summary":
