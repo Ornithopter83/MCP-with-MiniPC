@@ -102,7 +102,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("MILESTONE_VALIDATION:", highContext);
         Assert.DoesNotContain("RESOURCE_RESULTS:", highContext);
         Assert.DoesNotContain("MECHANICAL_RESULTS:", highContext);
-        Assert.Contains("\"status\": \"completed\"", highContext);
+        Assert.Contains("STATUS: completed", highContext);
+        Assert.Contains("구현 완료", highContext);
+        Assert.DoesNotContain("\"status\": \"completed\"", highContext);
     }
 
     [Fact]
