@@ -3451,41 +3451,8 @@ public partial class MainWindow : Window
         RefreshMessageLog();
     }
 
-    private void PublishHistoryCard(WorkerHistoryEvent item)
-    {
-        var key = HistoryCardKey(item);
-        for (var index = _historyEvents.Count - 1; index >= 0; index--)
-        {
-            var existing = _historyEvents[index];
-            if ((key is not null &&
-                 string.Equals(HistoryCardKey(existing), key, StringComparison.Ordinal)) ||
-                WorkerHistoryCardPolicy.IsDuplicateCoordinatorResponse(item, existing))
-            {
-                _historyEvents[index] = item;
-                // A refreshed card belongs at the time of its latest event,
-                // not among old WORK/HQ cards further up the timeline.
-                if (index != _historyEvents.Count - 1)
-                    _historyEvents.Move(index, _historyEvents.Count - 1);
-                return;
-            }
-        }
-
-        _historyEvents.Add(item);
-    }
-
-    private static string? HistoryCardKey(WorkerHistoryEvent item)
-    {
-        var kind = item.EventType == "DATA_FLOW"
-            ? item.EventType + "|" + item.Title
-            : item.EventType;
-        if (!string.IsNullOrWhiteSpace(item.ReferenceId))
-            return item.StageKey + "|" + kind + "|REF|" + item.ReferenceId.Trim();
-
-        if (!string.IsNullOrWhiteSpace(item.WorkItemId))
-            return item.StageKey + "|" + kind + "|WORK|" + item.WorkItemId.Trim();
-
-        return null;
-    }
+    private void PublishHistoryCard(WorkerHistoryEvent item) =>
+        WorkerHistoryCardPolicy.Publish(_historyEvents, item);
 
     private static WorkerHistoryEvent? CreateHistoryEvent(DateTimeOffset timestamp, string source, string content, long? sizeBytes, int? itemCount, int? fileCount, string? explicitStatus, string? referenceId, string? summary)
     {
