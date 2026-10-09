@@ -37,6 +37,27 @@ public sealed class WorkerHistoryEventTests
     }
 
     [Fact]
+    public void RunningHistory_UsesCompactPreviewWithoutChangingResultCard()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var running = new MainWindow.WorkerHistoryEvent(
+            timestamp, "Implementer", "ROLE_PROGRESS",
+            "작업 진행", "현재 진행 중", null, null, null,
+            "RUNNING", "M4:27:invocation");
+        var completed = running with
+        {
+            EventType = "ROLE_RESPONSE",
+            Status = "RECEIVED"
+        };
+
+        Assert.Equal(90d, running.CardHeight);
+        Assert.Equal(56d, running.SummaryHeight);
+        Assert.Equal(56d, running.SummaryMaxHeight);
+        Assert.True(double.IsNaN(completed.CardHeight));
+        Assert.True(double.IsNaN(completed.SummaryHeight));
+    }
+
+    [Fact]
     public void WorkHistory_FallsBackToExecutionNumberWhenIdIsMissing()
     {
         var item = new MainWindow.WorkerHistoryEvent(

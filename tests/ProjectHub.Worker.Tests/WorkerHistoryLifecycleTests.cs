@@ -96,6 +96,38 @@ public sealed class WorkerHistoryLifecycleTests
     }
 
     [Fact]
+    public void CliHqHistory_ShowsDispatchRunningResponseAndWorkerReceipt()
+    {
+        // Verifies card sequencing only; a real CLI HQ session is the next
+        // end-to-end manual check, not simulated by this unit test.
+        var history = new ObservableCollection<MainWindow.WorkerHistoryEvent>();
+        var requestId = WorkerHistoryCardPolicy.NewInvocationReference("HQ", "MILESTONE_1");
+        var now = DateTimeOffset.UtcNow;
+        WorkerHistoryCardPolicy.Publish(history,
+            new MainWindow.WorkerHistoryEvent(now, "Worker", "DATA_FLOW",
+                "Worker → HQ 전달", "CLI 요청", null, null, null,
+                "SENT", requestId));
+        WorkerHistoryCardPolicy.Publish(history,
+            Card(requestId, "Coordinator", "ROLE_PROGRESS",
+                "CLI HQ 응답 대기", now.AddSeconds(1)));
+
+        Assert.Equal(2, history.Count);
+        Assert.Equal("RUNNING", history[1].Status);
+
+        WorkerHistoryCardPolicy.PublishRoleResponse(history,
+            Card(requestId, "Coordinator", "ROLE_RESPONSE",
+                "[ACTION=WORK]", now.AddSeconds(2)));
+        WorkerHistoryCardPolicy.Publish(history,
+            new MainWindow.WorkerHistoryEvent(now.AddSeconds(3), "Worker",
+                "DATA_FLOW", "Worker · HQ 응답 수신", "HQ ACTION: WORK",
+                null, null, null, "RECEIVED", null));
+
+        Assert.Equal(3, history.Count);
+        Assert.Equal("ROLE_RESPONSE", history[1].EventType);
+        Assert.Equal("Worker · HQ 응답 수신", history[2].Title);
+    }
+
+    [Fact]
     public void HqReception_BecomesWorkerControlCard_NotRepeatedCommandDetail()
     {
         Assert.True(WorkerHistoryCardPolicy.ShouldShowDataFlow(
