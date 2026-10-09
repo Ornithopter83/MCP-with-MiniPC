@@ -1457,6 +1457,14 @@ internal static class MilestoneMechanicalExecutor
         if (normalized.Length == 0)
             return false;
 
+        // The trusted finalizer handles this exact ignored tracked binary.
+        // Do not feed its staged deletion back into ordinary git add -A,
+        // which can restage or reject an ignored local executable.
+        if (normalized.Equals(
+                TrustedTrackedArtifactCleanup.TargetPath,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
         var parts = normalized.Split(
             '/',
             StringSplitOptions.RemoveEmptyEntries);
