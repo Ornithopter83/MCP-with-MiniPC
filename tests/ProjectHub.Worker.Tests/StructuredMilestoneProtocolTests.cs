@@ -469,6 +469,12 @@ public sealed class StructuredMilestoneProtocolTests
             <SUMMARY>형식 혼합</>
             """;
         Assert.False(RoleTextProtocol.ParseWork(wrongAction).IsValid);
+        const string missingSummary = """
+            @@REPORT
+            <STATUS>completed</>
+            완료한 것처럼 보이는 무태그 문장
+            """;
+        Assert.False(RoleTextProtocol.ParseWork(missingSummary).IsValid);
     }
 
     [Fact]
