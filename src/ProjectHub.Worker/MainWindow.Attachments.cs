@@ -19,13 +19,28 @@ public partial class MainWindow
         => HandleAttachmentDragOver(e);
 
     private void DashboardFollowupAttachmentView_PreviewDragOver(object sender, DragEventArgs e)
-        => HandleAttachmentDragOver(e);
+    {
+        if (_activeTaskCts is not null && _activeCoordinatorFirst)
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+        HandleAttachmentDragOver(e);
+    }
 
     private void DashboardInputView_PreviewDrop(object sender, DragEventArgs e)
         => HandleAttachmentDrop(e, InitialAttachments);
 
     private void DashboardFollowupAttachmentView_PreviewDrop(object sender, DragEventArgs e)
-        => HandleAttachmentDrop(e, FollowupAttachments);
+    {
+        if (_activeTaskCts is not null && _activeCoordinatorFirst)
+        {
+            e.Handled = true;
+            return;
+        }
+        HandleAttachmentDrop(e, FollowupAttachments);
+    }
 
     private void DashboardTaskInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -35,6 +50,15 @@ public partial class MainWindow
 
     private void DashboardFollowupInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (_activeTaskCts is not null && _activeCoordinatorFirst &&
+            e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 &&
+            System.Windows.Clipboard.ContainsImage())
+        {
+            e.Handled = true;
+            DashboardPreflightText.Text =
+                "실행 중 HQ 예약은 이미지 첨부를 지원하지 않습니다. 텍스트만 입력하세요.";
+            return;
+        }
         if (TryPasteClipboardImage(e, FollowupAttachments))
             e.Handled = true;
     }
