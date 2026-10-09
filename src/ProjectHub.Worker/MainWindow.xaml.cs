@@ -1847,7 +1847,7 @@ public partial class MainWindow : Window
         RunOnUi(() =>
             AddDataFlowHistory(
                 webHistoryRole,
-                "전달 데이터",
+                purpose == "HQ_RESPONSE_RECOVERY" ? "재요청 데이터" : "전달 데이터",
                 RoleContractLoader.BuildHistoryPrompt(effectivePrompt),
                 status: "SENT",
                 referenceId: task.Id,
@@ -1980,11 +1980,14 @@ public partial class MainWindow : Window
         RunOnUi(() =>
             AddDataFlowHistory(
                 historyRole,
-                "전달 데이터",
+                purpose == "HQ_RESPONSE_RECOVERY" ? "재요청 데이터" : "전달 데이터",
                 RoleContractLoader.BuildHistoryPrompt(prompt),
                 role.Provider,
                 status: "SENT",
-                referenceId: historyReferenceId,
+                referenceId: historyReferenceId ??
+                    (historyRole == WorkerRoleState.Hq
+                        ? WorkerHistoryCardPolicy.NewInvocationReference("HQ", purpose)
+                        : null),
                 workItemId: historyWorkItemId,
                 persistenceSource: $"WORKER → {outboundRole} CLI"));
         var runner = _aiRoleRunners.Resolve(role)
@@ -3261,11 +3264,16 @@ public partial class MainWindow : Window
             _ => "Worker"
         };
 
+        var publish = WorkerHistoryCardPolicy.ShouldShowDataFlow(
+            title, status, persistenceSource);
         var item = new WorkerHistoryEvent(
             DateTimeOffset.Now,
-            stage,
+            publish ? "Worker" : stage,
             "DATA_FLOW",
-            title,
+            publish
+                ? WorkerHistoryCardPolicy.DataFlowTitle(
+                    title, status, persistenceSource, workItemId)
+                : title,
             WorkerHistoryCardFormatter.Preview(text),
             Encoding.UTF8.GetByteCount(text),
             null,
@@ -3279,7 +3287,7 @@ public partial class MainWindow : Window
             FileDetails = string.Empty
         };
 
-        if (!string.IsNullOrWhiteSpace(providerWireId))
+        if (item.StageKey != "Worker" && !string.IsNullOrWhiteSpace(providerWireId))
             item = item with { IconAssetOverride = ProviderVisualCatalog.Resolve(providerWireId).ColorAsset };
         else if (item.StageKey == "Coordinator")
             item = item with { IconAssetOverride = _coordinatorStageIconAsset };
@@ -3295,11 +3303,8 @@ public partial class MainWindow : Window
             includeHistory: false,
             workItemId: workItemId);
 
-        if (role != WorkerRoleState.Unknown &&
-            role != WorkerRoleState.Hq)
-        {
+        if (publish)
             PublishHistoryCard(item);
-        }
         if (DashboardHistoryList.Items.Count > 0)
             DashboardHistoryList.ScrollIntoView(
                 DashboardHistoryList.Items[DashboardHistoryList.Items.Count - 1]);
@@ -3449,19 +3454,18 @@ public partial class MainWindow : Window
     private void PublishHistoryCard(WorkerHistoryEvent item)
     {
         var key = HistoryCardKey(item);
-        if (key is not null)
+        for (var index = _historyEvents.Count - 1; index >= 0; index--)
         {
-            for (var index = _historyEvents.Count - 1; index >= 0; index--)
+            var existing = _historyEvents[index];
+            if ((key is not null &&
+                 string.Equals(HistoryCardKey(existing), key, StringComparison.Ordinal)) ||
+                WorkerHistoryCardPolicy.IsDuplicateCoordinatorResponse(item, existing))
             {
-                if (!string.Equals(
-                        HistoryCardKey(_historyEvents[index]),
-                        key,
-                        StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
                 _historyEvents[index] = item;
+                // A refreshed card belongs at the time of its latest event,
+                // not among old WORK/HQ cards further up the timeline.
+                if (index != _historyEvents.Count - 1)
+                    _historyEvents.Move(index, _historyEvents.Count - 1);
                 return;
             }
         }
