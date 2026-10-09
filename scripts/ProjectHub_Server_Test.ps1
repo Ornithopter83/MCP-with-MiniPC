@@ -1,7 +1,8 @@
 [CmdletBinding()]
-param([string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot)
+param([string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot))
 
-$ErrorActionPreference = "Stop")
+$ErrorActionPreference = "Stop"
+
 $ServerProject = Join-Path $ProjectRoot "src\ProjectHub.Server\ProjectHub.Server.csproj"
 $PrivateKeyPath = Join-Path $ProjectRoot "src\ProjectHub.Server\projecthub-private.pem"
 
