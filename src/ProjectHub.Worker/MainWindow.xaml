@@ -477,7 +477,7 @@
                 <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="7,13,10,0">
                   <TextBlock Text="메시지" FontSize="16" FontWeight="Bold" Foreground="#116B39"/>
                   <TextBlock x:Name="DashboardFollowupSubtitle" Text="현재 세션에 작업 추가" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
-                  <CheckBox x:Name="InterventionRecordOnlyCheckBox" Content="웹에서 직접 전달함 · 기록만" FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed" ToolTip="HQ에 메시지를 다시 전송하지 않고 사용자 개입 이력만 기록합니다."/>
+                  <CheckBox x:Name="InterventionRecordOnlyCheckBox" Content="웹에서 직접 전달함 · 기록만" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,8,0,0" Visibility="Collapsed" ToolTip="HQ에 메시지를 다시 전송하지 않고 사용자 개입 이력만 기록합니다."/>
                 </StackPanel>
                 <Border x:Name="DashboardFollowupAttachmentView" Grid.Column="2" Background="#F1FAF5" BorderBrush="#CFE9D8" BorderThickness="1" CornerRadius="8" Padding="12,9" AllowDrop="True" PreviewDragOver="DashboardFollowupAttachmentView_PreviewDragOver" PreviewDrop="DashboardFollowupAttachmentView_PreviewDrop">
                   <Grid>
