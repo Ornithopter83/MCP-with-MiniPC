@@ -1161,7 +1161,7 @@ public partial class MainWindow
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
-                    "Worker 작업",
+                    "Git 최종화",
                     gitResult.Summary,
                     status: gitResult.Success ? "COMPLETED" : "FAILED",
                     persistenceSource: "WORKER ACTION");
@@ -1400,6 +1400,8 @@ public partial class MainWindow
         }
 
         var sessionId = checkpoint!.SessionId;
+        var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
+            milestone.Id, work.Id);
         var isolatedRole = implementer with
         {
             ThreadSessionId = null,
@@ -1432,7 +1434,7 @@ public partial class MainWindow
                         workingDirectory, jobId, work.Id, "RUNNING", sessionId);
                 },
                 historyWorkItemId: work.Id,
-                historyReferenceId: milestone.Id + ":" + work.Id);
+                historyReferenceId: historyInvocationReference);
 
             sessionId = CodexCliRunner.NormalizeSessionId(run.SessionId) ?? sessionId;
             return run;
@@ -1528,7 +1530,7 @@ public partial class MainWindow
             providerWireId: implementer.Provider,
             fullMessage: report,
             workItemId: work.Id,
-            referenceId: milestone.Id + ":" + work.Id);
+            referenceId: historyInvocationReference);
 
         return new(work.Id, report);
     }
@@ -1810,6 +1812,8 @@ public partial class MainWindow
                 explicitStage: TaskStage.Qa);
         });
 
+        var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
+            milestone.Id, "QA");
         var prompt = RoleContractLoader.BuildQaPrompt(
             MilestoneDefinitionContract.BuildQaContext(
                 milestone,
@@ -1828,7 +1832,7 @@ public partial class MainWindow
                 cancellationToken,
                 CodexSandboxMode.WorkspaceWrite,
                 historyWorkItemId: "QA",
-                historyReferenceId: milestone.Id + ":QA");
+                historyReferenceId: historyInvocationReference);
 
         // No report-format retry: it duplicates testing and may discard real
         // diagnostic evidence. Unparseable reports remain available verbatim.
@@ -1855,7 +1859,7 @@ public partial class MainWindow
             providerWireId: qa.Provider,
             fullMessage: report,
             workItemId: "QA",
-            referenceId: milestone.Id + ":QA");
+            referenceId: historyInvocationReference);
 
         return report;
     }
@@ -1889,6 +1893,8 @@ public partial class MainWindow
                 explicitStage: TaskStage.HighLevel);
         });
 
+        var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
+            milestone.Id, "HIGH");
         var prompt = RoleContractLoader.BuildHighPrompt(
             MilestoneDefinitionContract.BuildHighContext(
                 milestone,
@@ -1912,7 +1918,7 @@ public partial class MainWindow
                 cancellationToken,
                 sandbox,
                 historyWorkItemId: "HIGH",
-                historyReferenceId: milestone.Id + ":HIGH");
+                historyReferenceId: historyInvocationReference);
 
         // Preserve HIGH findings without a second model invocation merely
         // to repair formatting.
@@ -1939,7 +1945,7 @@ public partial class MainWindow
             providerWireId: high.Provider,
             fullMessage: report,
             workItemId: "HIGH",
-            referenceId: milestone.Id + ":HIGH");
+            referenceId: historyInvocationReference);
 
         return report;
     }
