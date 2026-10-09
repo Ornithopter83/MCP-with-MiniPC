@@ -293,7 +293,13 @@ internal static class RoleTextProtocol
             if (!TryReadJsonStrings(root, "changedPaths", out var changed) ||
                 !TryReadJsonStrings(root, "issues", out var issues))
                 return true;
-            result = new(status, summary, ReadChangedPaths(changed),
+            var changedPaths = ReadChangedPaths(changed);
+            if (isHigh &&
+                string.Equals(statusJson.GetString(), "modified",
+                    StringComparison.OrdinalIgnoreCase) &&
+                changedPaths.Count == 0)
+                return true; // Preserve the legacy modified-path requirement.
+            result = new(status, summary, changedPaths,
                 issues.Where(value => !string.IsNullOrWhiteSpace(value)).ToArray(),
                 Array.Empty<string>());
         }
