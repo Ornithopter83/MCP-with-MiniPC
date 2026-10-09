@@ -1863,7 +1863,8 @@ public partial class MainWindow : Window
         CancellationToken cancellationToken,
         Action<string>? sessionStarted = null,
         IReadOnlyList<AiInputAttachment>? inputAttachments = null,
-        List<BridgeAttachment>? webAttachments = null)
+        List<BridgeAttachment>? webAttachments = null,
+        string? historyReferenceId = null)
     {
         if (!IsWebTransport(role.Transport))
             return await RunCoordinatorRoleAsync(
@@ -1877,7 +1878,8 @@ public partial class MainWindow : Window
                 cancellationToken,
                 CodexSandboxMode.ReadOnly,
                 sessionStarted,
-                inputAttachments);
+                inputAttachments,
+                historyReferenceId: historyReferenceId);
         return await RunWebRoleAsync(
             jobId,
             "HQ",
@@ -1885,7 +1887,8 @@ public partial class MainWindow : Window
             prompt,
             cancellationToken,
             inputAttachments,
-            webAttachments);
+            webAttachments,
+            historyReferenceId);
     }
 
     private async Task<AiRoleRunResult> RunWebRoleAsync(
@@ -1895,7 +1898,8 @@ public partial class MainWindow : Window
         string prompt,
         CancellationToken cancellationToken,
         IReadOnlyList<AiInputAttachment>? inputAttachments = null,
-        List<BridgeAttachment>? webAttachments = null)
+        List<BridgeAttachment>? webAttachments = null,
+        string? historyReferenceId = null)
     {
         var bridgeServer = _bridgeServer;
         var webStatus = bridgeServer?.GetRoleBindingStatus(roleName);
@@ -1922,9 +1926,13 @@ public partial class MainWindow : Window
                 purpose == "HQ_RESPONSE_RECOVERY" ? "재요청 데이터" : "전달 데이터",
                 RoleContractLoader.BuildHistoryPrompt(effectivePrompt),
                 status: "SENT",
-                referenceId: task.Id,
+                referenceId: historyReferenceId ?? task.Id,
                 workItemId: string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase) ? "0" : null,
                 persistenceSource: $"WORKER → {roleName} WEB"));
+        if (!string.IsNullOrWhiteSpace(historyReferenceId))
+            RunOnUi(() => AddRoleProgressHistory(
+                webHistoryRole, "요청 전달 완료 · HQ 응답 대기",
+                referenceId: historyReferenceId));
         var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
         var message = completed.Result ?? string.Empty;
@@ -2062,6 +2070,11 @@ public partial class MainWindow : Window
                         : null),
                 workItemId: historyWorkItemId,
                 persistenceSource: $"WORKER → {outboundRole} CLI"));
+        if (!string.IsNullOrWhiteSpace(historyReferenceId))
+            RunOnUi(() => AddRoleProgressHistory(
+                historyRole, "요청 전달 완료 · 응답 대기", role.Provider,
+                referenceId: historyReferenceId,
+                workItemId: historyWorkItemId));
         var runner = _aiRoleRunners.Resolve(role)
             ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
         Action<string>? progress = message => RunOnUi(() =>
@@ -3534,7 +3547,7 @@ public partial class MainWindow : Window
             includeHistory: false,
             workItemId: workItemId);
 
-        PublishHistoryCard(item);
+        WorkerHistoryCardPolicy.PublishRoleResponse(_historyEvents, item);
         RefreshMessageLog();
     }
 
