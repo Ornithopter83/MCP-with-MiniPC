@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
 namespace ProjectHub.Worker;
 
 internal sealed record RoleTextResult(
@@ -88,11 +91,14 @@ internal static class RoleTextProtocol
                     ("STATUS" or "SUMMARY" or "CHANGED_PATH" or "ISSUES")))
                 newErrors.Add("REPORT_UNKNOWN_FIELD");
             return new(statusValue, structured.Get("SUMMARY") ?? "",
-                structured.GetMany("CHANGED_PATH").Where(x => x.Length > 0).ToArray(),
+                ReadChangedPaths(structured.GetMany("CHANGED_PATH")),
                 (structured.Get("ISSUES") ?? "").Split('\n')
                     .Select(line => line.Trim()).Where(line => line.Length > 0 && line != "없음").ToArray(),
                 newErrors);
         }
+        if (TryParseLegacyJsonResult(lines, allowedStatuses, out var jsonResult))
+            return jsonResult;
+
         var significant = lines
             .Select((line, index) => new { Text = line.Trim(), Index = index })
             .Where(item => item.Text.Length > 0)
@@ -127,35 +133,179 @@ internal static class RoleTextProtocol
         return new(
             status,
             summary?.Trim() ?? string.Empty,
-            ReadItems(changed),
+            ReadChangedPaths(ReadItems(changed)),
             ReadItems(issues),
             errors);
     }
 
-    // Repair deterministic *formatting* mistakes only. Never infer status
-    // or change the report's evidence, prose, or requested actions.
+    // Accept middle-field XML closers from older models without changing the
+    // report's status or prose. This adapter is deliberately report-only:
+    // HQ field parsing and WORK routing remain strict.
     private static string RepairMechanicalEnvelope(string raw)
     {
         if (!raw.Split('\n').Any(line => line.Trim() == "@@REPORT"))
             return raw;
+
         var lines = raw.Split('\n').ToList();
+        string? openField = null;
         for (var i = 0; i < lines.Count; i++)
         {
-            if (lines[i].Trim() is "</STATUS>" or "</SUMMARY>" or
-                "</CHANGED_PATH>" or "</ISSUES>")
-                lines[i] = "</>";
+            var trimmed = lines[i].Trim();
+            var legacyInline = Regex.Match(trimmed,
+                @"^<(STATUS|SUMMARY|CHANGED_PATH|ISSUES)>(.*?)</\1>$",
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            if (legacyInline.Success && openField is null)
+            {
+                lines[i] = "<" + legacyInline.Groups[1].Value.ToUpperInvariant() +
+                    ">" + legacyInline.Groups[2].Value + "</>";
+                continue;
+            }
+
+            if (openField is not null)
+            {
+                if (trimmed == "</>")
+                    openField = null;
+                else if (string.Equals(trimmed, "</" + openField + ">",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    lines[i] = "</>";
+                    openField = null;
+                }
+                continue;
+            }
+
+            var opening = Regex.Match(trimmed,
+                @"^<(STATUS|SUMMARY|CHANGED_PATH|ISSUES)>$",
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            if (opening.Success)
+            {
+                openField = opening.Groups[1].Value.ToUpperInvariant();
+                lines[i] = "<" + openField + ">";
+            }
         }
 
         var first = lines.FindIndex(line => !string.IsNullOrWhiteSpace(line));
         if (first >= 0 && lines[first].Trim() == WebCorrelationContract.ResponseOkMarker)
         {
-            lines.RemoveAt(first); // stray terminator from a previous Web turn
+            lines.RemoveAt(first); // stray terminator from an earlier Web turn
             first = lines.FindIndex(line => !string.IsNullOrWhiteSpace(line));
         }
         if (first >= 0 && lines[first].Trim() == "@@REPORT")
             lines.Insert(first, "[ACTION=RESULT]");
         return string.Join("\n", lines);
     }
+
+    // The old ActionBlock wire format used a JSON object after ACTION=RESULT.
+    // Read it without invoking legacy role validators, whose HIGH statuses
+    // (verified/modified/incomplete) differ from the current text contract.
+    // Require explicit status and summary; never infer success from prose.
+    private static bool TryParseLegacyJsonResult(
+        string[] lines,
+        IReadOnlyCollection<string> allowedStatuses,
+        out RoleTextResult result)
+    {
+        result = new("", "", Array.Empty<string>(), Array.Empty<string>(),
+            new[] { "JSON_REPORT_INVALID" });
+        var significant = lines.Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.Trim()).ToArray();
+        if (significant.Length < 2 ||
+            !string.Equals(significant[0], "[ACTION=RESULT]",
+                StringComparison.OrdinalIgnoreCase) ||
+            !significant[1].StartsWith("{", StringComparison.Ordinal))
+            return false;
+
+        var responseEnd = Array.FindIndex(lines,
+            line => line.Trim() == WebCorrelationContract.ResponseOkMarker);
+        if (responseEnd >= 0 &&
+            lines.Skip(responseEnd + 1).Any(line => !string.IsNullOrWhiteSpace(line)))
+            return true;
+
+        var firstBodyLine = Array.FindIndex(lines,
+            line => line.TrimStart().StartsWith("{", StringComparison.Ordinal));
+        var bodyEnd = responseEnd >= 0 ? responseEnd : lines.Length;
+        if (firstBodyLine < 0 || bodyEnd <= firstBodyLine)
+            return true;
+
+        try
+        {
+            using var document = JsonDocument.Parse(
+                string.Join("\n", lines.Skip(firstBodyLine)
+                    .Take(bodyEnd - firstBodyLine)));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("status", out var statusJson) ||
+                statusJson.ValueKind != JsonValueKind.String ||
+                !root.TryGetProperty("summary", out var summaryJson) ||
+                summaryJson.ValueKind != JsonValueKind.String)
+                return true;
+
+            var status = (statusJson.GetString() ?? "").Trim().ToLowerInvariant();
+            // Legacy HIGH statuses have a documented, conservative mapping.
+            var isHigh = allowedStatuses.Contains("completed",
+                StringComparer.OrdinalIgnoreCase) &&
+                !allowedStatuses.Contains("in_progress",
+                    StringComparer.OrdinalIgnoreCase);
+            if (isHigh)
+            {
+                status = status switch
+                {
+                    "verified" or "modified" => "completed",
+                    "incomplete" => "blocked",
+                    _ => status
+                };
+            }
+            var summary = summaryJson.GetString()?.Trim() ?? "";
+            if (!allowedStatuses.Contains(status, StringComparer.OrdinalIgnoreCase) ||
+                summary.Length == 0)
+                return true;
+
+            if (!TryReadJsonStrings(root, "changedPaths", out var changed) ||
+                !TryReadJsonStrings(root, "issues", out var issues))
+                return true;
+            result = new(status, summary, ReadChangedPaths(changed),
+                issues.Where(value => !string.IsNullOrWhiteSpace(value)).ToArray(),
+                Array.Empty<string>());
+        }
+        catch (JsonException)
+        {
+            // Malformed JSON cannot be promoted to a successful role report.
+        }
+        return true;
+    }
+
+    private static bool TryReadJsonStrings(
+        JsonElement root,
+        string name,
+        out IReadOnlyList<string> values)
+    {
+        values = Array.Empty<string>();
+        if (!root.TryGetProperty(name, out var property) ||
+            property.ValueKind == JsonValueKind.Null)
+            return true;
+        if (property.ValueKind == JsonValueKind.String)
+        {
+            values = new[] { property.GetString() ?? "" };
+            return true;
+        }
+        if (property.ValueKind != JsonValueKind.Array ||
+            property.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String))
+            return false;
+        values = property.EnumerateArray()
+            .Select(item => item.GetString() ?? "").ToArray();
+        return true;
+    }
+
+    private static IReadOnlyList<string> ReadChangedPaths(
+        IEnumerable<string> fields) =>
+        fields.SelectMany(field => Regex.Split(field, @"[,;\r\n]+"))
+            .Select(path => path.Trim())
+            .Select(path => path.StartsWith("- ", StringComparison.Ordinal)
+                ? path[2..].Trim() : path)
+            .Where(path => path.Length > 0 &&
+                !string.Equals(path, "없음", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(path, "none", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     private static Dictionary<string, string> ReadSections(string[] lines)
     {
