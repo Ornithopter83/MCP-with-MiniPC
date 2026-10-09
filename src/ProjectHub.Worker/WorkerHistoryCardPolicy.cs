@@ -13,7 +13,7 @@ public static class WorkerHistoryCardPolicy
         string? status,
         string? persistenceSource)
     {
-        if (title is "전달 데이터" or "재요청 데이터" or "Git 최종화")
+        if (title is "전달 데이터" or "재요청 데이터" or "Git 최종화" or "HQ 응답 수신")
             return true;
 
         // WORK dispatch is followed by the real CLI send card; showing both
@@ -48,6 +48,8 @@ public static class WorkerHistoryCardPolicy
             return "Worker → RESOURCE 배정";
         if (title == "Git 최종화")
             return "Worker · Git 최종화";
+        if (title == "HQ 응답 수신")
+            return "Worker · HQ 응답 수신";
         return status switch
         {
             "RECOVERED" => "Worker · 복구 완료",
@@ -76,6 +78,88 @@ public static class WorkerHistoryCardPolicy
             }
         }
         history.Add(item);
+    }
+
+    /// <summary>
+    /// One visible WORK card per invocation. Recent progress is shown in the
+    /// compact card while double-clicking exposes the accumulated detail.
+    /// The original complete detail remains in the task transcript/JSONL.
+    /// </summary>
+    public static void AccumulateWorkProgress(
+        ObservableCollection<MainWindow.WorkerHistoryEvent> history,
+        MainWindow.WorkerHistoryEvent incoming)
+    {
+        if (incoming.EventType != "ROLE_PROGRESS" ||
+            incoming.StageKey != "Implementer" ||
+            string.IsNullOrWhiteSpace(incoming.ReferenceId))
+        {
+            Publish(history, incoming);
+            return;
+        }
+
+        // Async progress callbacks may be delivered after the final response.
+        // Never recreate a RUNNING card for an already completed invocation.
+        if (history.Any(item =>
+            item.EventType == "ROLE_RESPONSE" &&
+            item.StageKey == incoming.StageKey &&
+            string.Equals(item.ReferenceId, incoming.ReferenceId, StringComparison.Ordinal)))
+            return;
+
+        var previous = history.LastOrDefault(item =>
+            item.EventType == "ROLE_PROGRESS" &&
+            item.StageKey == incoming.StageKey &&
+            string.Equals(item.ReferenceId, incoming.ReferenceId, StringComparison.Ordinal));
+        var fullMessage = previous is null
+            ? incoming.FullMessage
+            : previous.FullMessage + Environment.NewLine + incoming.FullMessage;
+        const int maxDetailCharacters = 48_000;
+        if (fullMessage.Length > maxDetailCharacters)
+            fullMessage = "[이전 상세 내용은 작업 로그에 보존됨]" +
+                Environment.NewLine + fullMessage[^45_000..];
+        var visibleTail = fullMessage.Length > 420 ? fullMessage[^420..] : fullMessage;
+        Publish(history, incoming with
+        {
+            FullMessage = fullMessage,
+            Summary = WorkerHistoryCardFormatter.ProgressPreview(visibleTail)
+        });
+    }
+
+    /// <summary>
+    /// Finish the same role card that became visible when the request began.
+    /// Results from separate invocations retain their own reference IDs.
+    /// </summary>
+    public static void PublishRoleResponse(
+        ObservableCollection<MainWindow.WorkerHistoryEvent> history,
+        MainWindow.WorkerHistoryEvent result)
+    {
+        if (!string.IsNullOrWhiteSpace(result.ReferenceId))
+        {
+            for (var i = history.Count - 1; i >= 0; i--)
+            {
+                var candidate = history[i];
+                if (candidate.EventType != "ROLE_PROGRESS" ||
+                    candidate.StageKey != result.StageKey ||
+                    !string.Equals(candidate.ReferenceId, result.ReferenceId, StringComparison.Ordinal))
+                    continue;
+                // Preserve accumulated WORK detail in the final card's
+                // double-click viewer, without adding a second history card.
+                var finalCard = result;
+                if (result.StageKey == "Implementer" &&
+                    !string.IsNullOrWhiteSpace(candidate.FullMessage))
+                    finalCard = result with
+                    {
+                        FullMessage = result.FullMessage +
+                            Environment.NewLine + Environment.NewLine +
+                            "----- WORK DETAIL -----" + Environment.NewLine +
+                            candidate.FullMessage
+                    };
+                history[i] = finalCard;
+                if (i != history.Count - 1)
+                    history.Move(i, history.Count - 1);
+                return;
+            }
+        }
+        Publish(history, result);
     }
 
     public static string? HistoryCardKey(MainWindow.WorkerHistoryEvent item)

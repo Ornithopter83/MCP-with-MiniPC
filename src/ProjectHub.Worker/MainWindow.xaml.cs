@@ -560,9 +560,6 @@ public partial class MainWindow : Window
     private void DashboardFollowupInput_TextChanged(object sender, TextChangedEventArgs e)
         => UpdateFollowupButtonState();
 
-    private void InterventionRecordOnlyCheckBox_Changed(object sender, RoutedEventArgs e)
-        => UpdateFollowupButtonState();
-
     private bool CanEditTaskConfiguration
         => TaskContinuationContract.CanEditTaskConfiguration(
             executionActive:
@@ -666,17 +663,8 @@ public partial class MainWindow : Window
                                 TaskContinuationContract.CanAcceptFollowupStatus(_continuationState.Status));
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
                         DashboardFollowupInput.Text != FollowupPromptPlaceholder;
-        var recordOnly = activeIntervention &&
-                         InterventionRecordOnlyCheckBox.IsChecked == true;
-        AddWorkButton.Content = recordOnly
-            ? "＋   개입 기록"
-            : activeIntervention ? "＋   HQ 전달 예약" : "＋   작업 추가";
-        DashboardFollowupSubtitle.Text = recordOnly
-            ? "HQ 웹에서 직접 전달한 사용자 개입만 기록"
-            : activeIntervention ? "다음 HQ 호출에 전달 · 실행 중단 없음"
-                : "현재 세션에 작업 추가";
-        InterventionRecordOnlyCheckBox.Visibility = activeIntervention
-            ? Visibility.Visible : Visibility.Collapsed;
+        AddWorkButton.Content = activeIntervention
+            ? "＋   HQ 전달 예약" : "＋   작업 추가";
         // The editor lives inside DashboardFollowupAttachmentView:
         // keep the parent visible and disable only attachment controls.
         DashboardFollowupAttachmentView.AllowDrop = !activeIntervention;
@@ -779,12 +767,9 @@ public partial class MainWindow : Window
     private void AddHqInterventionHistory(
         HqUserIntervention entry, bool delivered)
     {
-        var status = entry.RecordOnly ? "RECORDED" :
-            delivered ? "DELIVERED" : "QUEUED";
-        var title = entry.RecordOnly
-            ? "사용자 · 웹 직접 개입 기록"
-            : delivered ? "사용자 · HQ 전달 완료"
-                : "사용자 · HQ 전달 예약";
+        var status = delivered ? "DELIVERED" : "QUEUED";
+        var title = delivered
+            ? "사용자 · HQ 전달 완료" : "사용자 · HQ 전달 예약";
         var card = new WorkerHistoryEvent(
             delivered ? DateTimeOffset.Now : entry.CreatedAt.ToLocalTime(),
             "Message", "USER_INTERVENTION", title,
@@ -819,19 +804,17 @@ public partial class MainWindow : Window
             }
             try
             {
-                var entry = _hqInterventions.Add(
-                    message, InterventionRecordOnlyCheckBox.IsChecked == true);
+                var entry = _hqInterventions.Add(message, false);
                 AddTaskMessage(
                     "USER INTERVENTION",
                     entry.Message,
-                    status: entry.RecordOnly ? "RECORDED" : "QUEUED",
+                    status: "QUEUED",
                     referenceId: entry.Id,
                     includeHistory: false);
                 AddHqInterventionHistory(entry, delivered: false);
                 DashboardFollowupInput.Text = FollowupPromptPlaceholder;
                 DashboardFollowupInput.Foreground = FindResource("Muted")
                     as System.Windows.Media.Brush;
-                InterventionRecordOnlyCheckBox.IsChecked = false;
                 UpdateFollowupButtonState();
             }
             catch (Exception exception)
@@ -1880,7 +1863,8 @@ public partial class MainWindow : Window
         CancellationToken cancellationToken,
         Action<string>? sessionStarted = null,
         IReadOnlyList<AiInputAttachment>? inputAttachments = null,
-        List<BridgeAttachment>? webAttachments = null)
+        List<BridgeAttachment>? webAttachments = null,
+        string? historyReferenceId = null)
     {
         if (!IsWebTransport(role.Transport))
             return await RunCoordinatorRoleAsync(
@@ -1894,7 +1878,8 @@ public partial class MainWindow : Window
                 cancellationToken,
                 CodexSandboxMode.ReadOnly,
                 sessionStarted,
-                inputAttachments);
+                inputAttachments,
+                historyReferenceId: historyReferenceId);
         return await RunWebRoleAsync(
             jobId,
             "HQ",
@@ -1902,7 +1887,8 @@ public partial class MainWindow : Window
             prompt,
             cancellationToken,
             inputAttachments,
-            webAttachments);
+            webAttachments,
+            historyReferenceId);
     }
 
     private async Task<AiRoleRunResult> RunWebRoleAsync(
@@ -1912,7 +1898,8 @@ public partial class MainWindow : Window
         string prompt,
         CancellationToken cancellationToken,
         IReadOnlyList<AiInputAttachment>? inputAttachments = null,
-        List<BridgeAttachment>? webAttachments = null)
+        List<BridgeAttachment>? webAttachments = null,
+        string? historyReferenceId = null)
     {
         var bridgeServer = _bridgeServer;
         var webStatus = bridgeServer?.GetRoleBindingStatus(roleName);
@@ -1939,9 +1926,13 @@ public partial class MainWindow : Window
                 purpose == "HQ_RESPONSE_RECOVERY" ? "재요청 데이터" : "전달 데이터",
                 RoleContractLoader.BuildHistoryPrompt(effectivePrompt),
                 status: "SENT",
-                referenceId: task.Id,
+                referenceId: historyReferenceId ?? task.Id,
                 workItemId: string.Equals(roleName, "RESOURCE", StringComparison.OrdinalIgnoreCase) ? "0" : null,
                 persistenceSource: $"WORKER → {roleName} WEB"));
+        if (!string.IsNullOrWhiteSpace(historyReferenceId))
+            RunOnUi(() => AddRoleProgressHistory(
+                webHistoryRole, "요청 전달 완료 · HQ 응답 대기",
+                referenceId: historyReferenceId));
         var completed = await bridgeServer.WaitForTaskCompletionAsync(task.Id, cancellationToken)
             ?? throw new InvalidOperationException($"{roleName}_WEB_TASK_MISSING");
         var message = completed.Result ?? string.Empty;
@@ -2079,18 +2070,35 @@ public partial class MainWindow : Window
                         : null),
                 workItemId: historyWorkItemId,
                 persistenceSource: $"WORKER → {outboundRole} CLI"));
+        if (!string.IsNullOrWhiteSpace(historyReferenceId))
+            RunOnUi(() => AddRoleProgressHistory(
+                historyRole, "요청 전달 완료 · 응답 대기", role.Provider,
+                referenceId: historyReferenceId,
+                workItemId: historyWorkItemId));
         var runner = _aiRoleRunners.Resolve(role)
             ?? throw new InvalidOperationException($"PROVIDER_RUNNER_UNAVAILABLE: {role.Provider}");
         Action<string>? progress = message => RunOnUi(() =>
         {
             _lastActivityAt = DateTimeOffset.UtcNow;
-            AddTaskMessage(
-                $"{outboundRole} DETAIL",
-                message,
-                status: "RUNNING",
-                referenceId: historyReferenceId,
-                includeHistory: false,
-                workItemId: historyWorkItemId);
+            if (roleName == "WORK" && !string.IsNullOrWhiteSpace(historyWorkItemId))
+            {
+                AddRoleProgressHistory(
+                    WorkerRoleState.Work,
+                    message,
+                    role.Provider,
+                    referenceId: historyReferenceId,
+                    workItemId: historyWorkItemId);
+            }
+            else
+            {
+                AddTaskMessage(
+                    $"{outboundRole} DETAIL",
+                    message,
+                    status: "RUNNING",
+                    referenceId: historyReferenceId,
+                    includeHistory: false,
+                    workItemId: historyWorkItemId);
+            }
         });
 
         var roleTempPath = Path.Combine(
@@ -3444,12 +3452,15 @@ public partial class MainWindow : Window
         else if (item.StageKey == "Coordinator")
             item = item with { IconAssetOverride = _coordinatorStageIconAsset };
 
-        PublishHistoryCard(item);
+        if (role == WorkerRoleState.Work)
+            WorkerHistoryCardPolicy.AccumulateWorkProgress(_historyEvents, item);
+        else
+            PublishHistoryCard(item);
         AddTaskMessage(
             role switch
             {
                 WorkerRoleState.Manager => "MANAGER PROGRESS",
-                WorkerRoleState.Work => "WORK PROGRESS",
+                WorkerRoleState.Work => "WORK DETAIL",
                 WorkerRoleState.Qa => "QA PROGRESS",
                 WorkerRoleState.High => "HIGH PROGRESS",
                 WorkerRoleState.Resource => "RESOURCE PROGRESS",
@@ -3536,7 +3547,7 @@ public partial class MainWindow : Window
             includeHistory: false,
             workItemId: workItemId);
 
-        PublishHistoryCard(item);
+        WorkerHistoryCardPolicy.PublishRoleResponse(_historyEvents, item);
         RefreshMessageLog();
     }
 

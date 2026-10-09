@@ -202,6 +202,8 @@ public partial class MainWindow
                 // Snapshot immediately before this HQ request. Messages entered
                 // while HQ is responding stay queued for the next invocation.
                 var sentInterventions = interventionQueue.Pending();
+                var hqHistoryReferenceId = WorkerHistoryCardPolicy.NewInvocationReference(
+                    "HQ", "MILESTONE_" + milestoneIndex);
                 var hqPrompt = BuildMilestoneHqPrompt(
                     inboundType,
                     HqUserInterventionQueue.AppendToHqBody(
@@ -223,7 +225,8 @@ public partial class MainWindow
                     inputAttachments:
                         milestoneIndex == 1 ? stagedAttachments : null,
                     webAttachments:
-                        milestoneIndex == 1 ? webAttachments : null);
+                        milestoneIndex == 1 ? webAttachments : null,
+                    historyReferenceId: hqHistoryReferenceId);
 
                 hqSession = CodexCliRunner.NormalizeSessionId(
                     hqResult.SessionId) ?? hqSession;
@@ -246,7 +249,8 @@ public partial class MainWindow
                     status: "RECEIVED",
                     providerWireId: IsWebTransport(coordinator.Transport)
                             ? null : coordinator.Provider,
-                    fullMessage: hqMessage);
+                    fullMessage: hqMessage,
+                    referenceId: hqHistoryReferenceId);
 
                 var hqText = HqTextProtocol.Parse(
                     hqMessage,
@@ -305,6 +309,8 @@ public partial class MainWindow
                         status: "RECOVERY",
                         persistenceSource: "WORKER ACTION");
 
+                    var hqRecoveryReferenceId = WorkerHistoryCardPolicy.NewInvocationReference(
+                        "HQ", "RESPONSE_RECOVERY_" + milestoneIndex);
                     var recoveryResult = await RunHqRoleAsync(
                         jobId,
                         "HQ_RESPONSE_RECOVERY",
@@ -314,7 +320,8 @@ public partial class MainWindow
                         hqSession,
                         cts.Token,
                         sessionStarted: session =>
-                            hqSession = CodexCliRunner.NormalizeSessionId(session));
+                            hqSession = CodexCliRunner.NormalizeSessionId(session),
+                        historyReferenceId: hqRecoveryReferenceId);
 
                     hqSession = CodexCliRunner.NormalizeSessionId(
                         recoveryResult.SessionId) ?? hqSession;
@@ -340,7 +347,8 @@ public partial class MainWindow
                         status: "RECOVERED",
                         providerWireId: IsWebTransport(coordinator.Transport)
                             ? null : coordinator.Provider,
-                        fullMessage: hqMessage);
+                        fullMessage: hqMessage,
+                        referenceId: hqRecoveryReferenceId);
 
                     hqText = HqTextProtocol.Parse(
                         hqMessage,
@@ -362,6 +370,13 @@ public partial class MainWindow
                 MilestoneDefinition? milestone = null;
                 var milestoneError = string.Empty;
                 var hqAction = hqParse.ValidActions.Single();
+                AddDataFlowHistory(
+                    WorkerRoleState.Hq,
+                    "HQ 응답 수신",
+                    "HQ ACTION: " + hqAction.Name + Environment.NewLine +
+                    WorkerHistoryCardFormatter.Preview(hqMessage),
+                    status: "RECEIVED",
+                    persistenceSource: "WORKER ACTION");
 
                 // The transport returned a protocol-valid HQ decision.
                 // Commit acknowledgments before proceeding; an interrupted
@@ -1664,13 +1679,11 @@ public partial class MainWindow
                 Array.Empty<string>());
         }
 
-        AddTaskMessage(
-            "RESOURCE DETAIL",
-            $"RESOURCE #{resource.Id} 생성 시작",
-            status: "RUNNING",
-            referenceId: resource.Id,
-            includeHistory: false,
-            workItemId: "0");
+        RunOnUi(() => AddRoleProgressHistory(
+            WorkerRoleState.Resource,
+            $"RESOURCE #{resource.Id} 생성 시작 · 독립 실행 대기",
+            referenceId: milestone.Id + ":RESOURCE:" + resource.Id,
+            workItemId: "0"));
 
         var registry = new MechanicalWorkRegistry();
         await using var queue = new ResourceSidecarQueue(

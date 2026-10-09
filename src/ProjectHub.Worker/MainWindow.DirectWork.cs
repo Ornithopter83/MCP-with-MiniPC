@@ -364,6 +364,11 @@ public partial class MainWindow
             webActive: false,
             explicitStage: TaskStage.Implementer);
 
+        var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
+            "DIRECT", "WORK");
+        AddRoleProgressHistory(
+            WorkerRoleState.Work, "직접 작업 실행 중 · 응답 대기",
+            role.Provider, referenceId: historyInvocationReference);
         try
         {
             var result = await runner.RunAsync(new AiRoleRunRequest(
@@ -381,7 +386,8 @@ public partial class MainWindow
                             AddRoleProgressHistory(
                                 WorkerRoleState.Work,
                                 progress,
-                                role.Provider);
+                                role.Provider,
+                                referenceId: historyInvocationReference);
                     }));
                 },
                 IgnoreProjectInstructions: true,
@@ -403,7 +409,8 @@ public partial class MainWindow
                 files: result.Files,
                 status: result.ExitCode == 0 ? "COMPLETED" : "ERROR",
                 providerWireId: result.Provider,
-                fullMessage: response);
+                fullMessage: response,
+                referenceId: historyInvocationReference);
         }
         catch (OperationCanceledException)
         {
@@ -414,7 +421,8 @@ public partial class MainWindow
                     "직접 작업 중단",
                     "직접 작업 실행이 취소되었습니다.",
                     status: "CANCELED",
-                    providerWireId: role.Provider);
+                    providerWireId: role.Provider,
+                    referenceId: historyInvocationReference);
             }
         }
         catch (Exception exception)
@@ -426,7 +434,8 @@ public partial class MainWindow
                 exception.Message,
                 status: "ERROR",
                 providerWireId: role.Provider,
-                fullMessage: exception.ToString());
+                fullMessage: exception.ToString(),
+                referenceId: historyInvocationReference);
         }
         finally
         {
