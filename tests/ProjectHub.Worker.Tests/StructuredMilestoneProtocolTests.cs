@@ -237,7 +237,10 @@ public sealed class StructuredMilestoneProtocolTests
         }, parsed.ChangedPaths);
         Assert.Equal(new[] { "쓰기 범위 외 파일 필요" }, parsed.Issues);
         Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(report));
-        Assert.Equal(report, MilestoneDefinitionContract.NormalizeWorkReport(0, report, null));
+        var normalizedWork = MilestoneDefinitionContract.NormalizeWorkReport(0, report, null);
+        Assert.Equal(RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
+            parsed.ChangedPaths, parsed.Issues), normalizedWork);
+        Assert.True(RoleTextProtocol.ParseWork(normalizedWork).IsValid);
     }
 
     [Fact]
@@ -255,7 +258,10 @@ public sealed class StructuredMilestoneProtocolTests
             [RESPONSE=OK]
             """;
         Assert.Equal("issue", MilestoneDefinitionContract.ReadQaStatus(qa));
-        Assert.Equal(qa, MilestoneDefinitionContract.NormalizeQaReport(0, qa, null));
+        var normalizedQa = MilestoneDefinitionContract.NormalizeQaReport(0, qa, null);
+        Assert.Equal("issue", MilestoneDefinitionContract.ReadQaStatus(normalizedQa));
+        Assert.Contains("<STATUS>issue</>", normalizedQa);
+        Assert.DoesNotContain("</STATUS>", normalizedQa);
 
         const string high = """
             [ACTION=RESULT]
@@ -270,7 +276,11 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(high));
         Assert.Equal(new[] { "src/A.cs", "src/B.cs" }, parsed.ChangedPaths);
-        Assert.Equal(high, MilestoneDefinitionContract.NormalizeHighReport(0, high, null));
+        var normalizedHigh = MilestoneDefinitionContract.NormalizeHighReport(0, high, null);
+        Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(normalizedHigh));
+        Assert.Contains("<CHANGED_PATH>src/A.cs</>", normalizedHigh);
+        Assert.Contains("<CHANGED_PATH>src/B.cs</>", normalizedHigh);
+        Assert.DoesNotContain("</CHANGED_PATH>", normalizedHigh);
     }
 
     [Theory]
@@ -343,6 +353,140 @@ public sealed class StructuredMilestoneProtocolTests
             [RESPONSE=OK]
             """;
         Assert.False(RoleTextProtocol.ParseQa(malformedJson).IsValid);
+    }
+
+    [Fact]
+    public void QaWithInlineIssuesAndMissingSummaryClose_ReachesHighInCanonicalForm()
+    {
+        const string actualQa = """
+            @@REPORT
+            <STATUS>issue</>
+            <SUMMARY>
+            Git HEAD와 origin/main이 일치하고 재검증했습니다.
+            Godot 4.7.2 전체 smoke가 통과했습니다.
+            #69 jump safe 검증, #70 Window 캡처도 통과.
+            Git 추적 리뷰 증거 90개를 확인했습니다. <ISSUES>
+            1. #73 미해결: QA 산출물 정리 필요.
+            2. 편집기 timeline 이벤트의 duration 검증이 남았습니다.
+            3. 리뷰보드 사람 승인 미진행.
+            </ISSUES>
+            """;
+        var parsed = RoleTextProtocol.ParseQa(actualQa);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Equal("issue", parsed.Status);
+        Assert.Contains("전체 smoke", parsed.Summary);
+        Assert.Contains("Git 추적 리뷰 증거 90개", parsed.Summary);
+        Assert.DoesNotContain("<ISSUES>", parsed.Summary);
+        Assert.Equal(3, parsed.Issues.Count);
+        Assert.Contains("#73 미해결", parsed.Issues[0]);
+        var canonical = MilestoneDefinitionContract.NormalizeQaReport(0, actualQa, null);
+        Assert.StartsWith("[ACTION=RESULT]", canonical);
+        Assert.Contains("@@REPORT", canonical);
+        Assert.Contains("<STATUS>issue</>", canonical);
+        Assert.Contains("<ISSUES>", canonical);
+        Assert.Contains("</>", canonical);
+        Assert.EndsWith("[RESPONSE=OK]", canonical);
+        Assert.DoesNotContain("</ISSUES>", canonical);
+        Assert.Equal("issue", MilestoneDefinitionContract.ReadQaStatus(canonical));
+        Assert.Equal(canonical, MilestoneDefinitionContract.NormalizeQaReport(0, canonical, null));
+    }
+
+    [Fact]
+    public void MissingMiddleClosersAndMultiplePathBlocks_AreCanonicalized()
+    {
+        const string raw = """
+            [ACTION=RESULT]
+            @@REPORT
+            <STATUS>completed
+            <SUMMARY>두 파일 구현
+            <CHANGED_PATH>src/A.cs, src/B.cs
+            <CHANGED_PATHS>
+            - src/C.cs
+            - src/D.cs
+            <ISSUES>없음
+            [RESPONSE=OK]
+            """;
+        var parsed = RoleTextProtocol.ParseWork(raw);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Equal("completed", parsed.Status);
+        Assert.Equal("두 파일 구현", parsed.Summary);
+        Assert.Equal(new[] { "src/A.cs", "src/B.cs", "src/C.cs", "src/D.cs" },
+            parsed.ChangedPaths);
+        var canonical = MilestoneDefinitionContract.NormalizeWorkReport(0, raw, null);
+        Assert.Equal(canonical, MilestoneDefinitionContract.NormalizeWorkReport(0, canonical, null));
+        Assert.Equal(4, RoleTextProtocol.ParseWork(canonical).ChangedPaths.Count);
+    }
+
+    [Fact]
+    public void FencedFieldExamplesAndInlineMentions_RemainSummaryEvidence()
+    {
+        const string raw = """
+            [ACTION=RESULT]
+            @@REPORT
+            <STATUS>passed</>
+            <SUMMARY>
+            테스트 코드에서 "<ISSUES>" 문자열을 검사했습니다.
+            ```
+            <ISSUES>
+            This is only a code example.
+            </ISSUES>
+            ```
+            실제 검증은 성공했습니다.
+            </SUMMARY>
+            <ISSUES>없음</ISSUES>
+            [RESPONSE=OK]
+            """;
+        var parsed = RoleTextProtocol.ParseQa(raw);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Contains("This is only a code example.", parsed.Summary);
+        Assert.Contains("\"<ISSUES>\"", parsed.Summary);
+        Assert.Empty(parsed.Issues);
+        var canonical = MilestoneDefinitionContract.NormalizeQaReport(0, raw, null);
+        Assert.Equal(parsed.Summary, RoleTextProtocol.ParseQa(canonical).Summary);
+    }
+
+    [Fact]
+    public void ConflictingStatusesAndMismatchedClosers_NeverBecomeSuccess()
+    {
+        const string conflicting = """
+            @@REPORT
+            <STATUS>completed</>
+            <SUMMARY>완료했다고 주장</>
+            <STATUS>blocked</>
+            """;
+        Assert.False(RoleTextProtocol.ParseWork(conflicting).IsValid);
+        const string mismatched = """
+            @@REPORT
+            <STATUS>passed</>
+            <SUMMARY>결과 설명
+            </ISSUES>
+            """;
+        Assert.False(RoleTextProtocol.ParseQa(mismatched).IsValid);
+        const string wrongAction = """
+            [ACTION=WORK]
+            @@REPORT
+            <STATUS>completed</>
+            <SUMMARY>형식 혼합</>
+            """;
+        Assert.False(RoleTextProtocol.ParseWork(wrongAction).IsValid);
+    }
+
+    [Fact]
+    public void LegacyJsonReports_AreForwardedAsCanonicalTextWithoutStatusChange()
+    {
+        const string oldHigh = """
+            [ACTION=RESULT]
+            {"status":"modified","summary":"코드 수정 후 통과",
+             "changedPaths":["src/A.cs"],"issues":["사람 검토 필요"]}
+            [RESPONSE=OK]
+            """;
+        var canonical = MilestoneDefinitionContract.NormalizeHighReport(0, oldHigh, null);
+        Assert.StartsWith("[ACTION=RESULT]", canonical);
+        Assert.Contains("<STATUS>completed</>", canonical);
+        Assert.Contains("<CHANGED_PATH>src/A.cs</>", canonical);
+        Assert.Contains("사람 검토 필요", canonical);
+        Assert.DoesNotContain("\"changedPaths\"", canonical);
+        Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(canonical));
     }
 
     [Fact]
