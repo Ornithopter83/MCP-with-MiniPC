@@ -278,11 +278,13 @@ internal static class RoleTextProtocol
             .Select(field => field.Value)
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .ToList();
+        // Untagged prose is preserved, but it cannot replace the explicit
+        // SUMMARY field when deciding whether a role report is complete.
+        if (summaries.Count == 0)
+            errors.Add("SUMMARY");
         if (outside.Count > 0)
             summaries.Insert(0, string.Join("\n", outside));
         var summary = string.Join("\n", summaries);
-        if (string.IsNullOrWhiteSpace(summary))
-            errors.Add("SUMMARY");
 
         var changedPaths = ReadChangedPaths(fields
             .Where(field => field.Name == "CHANGED_PATH")
