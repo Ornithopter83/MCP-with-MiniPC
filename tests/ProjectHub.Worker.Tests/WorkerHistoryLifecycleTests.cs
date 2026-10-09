@@ -63,7 +63,10 @@ public sealed class WorkerHistoryLifecycleTests
         WorkerHistoryCardPolicy.PublishRoleResponse(cards,
             Card(reference, "Implementer", "ROLE_RESPONSE", "COMPLETED"));
         Assert.Single(cards);
-        Assert.Equal("COMPLETED", cards[0].FullMessage);
+        Assert.StartsWith("COMPLETED", cards[0].FullMessage);
+        Assert.Contains("----- WORK DETAIL -----", cards[0].FullMessage);
+        Assert.Contains("프로젝트 조사", cards[0].FullMessage);
+        Assert.Contains("cmd.exe 실행", cards[0].FullMessage);
 
         // Dispatcher callbacks delivered out of order must not re-open the card.
         WorkerHistoryCardPolicy.AccumulateWorkProgress(cards,
