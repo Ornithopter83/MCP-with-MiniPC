@@ -766,6 +766,7 @@ internal static class MilestoneMechanicalExecutor
         var eligibleCount = 0;
         var preservedOtherStaged = 0;
         var repairedRuntimeCount = 0;
+        var trustedCleanupRemoved = false;
         string? replacedHead = null;
 
         async Task<GitCommandResult> Run(params string[] args)
@@ -795,6 +796,8 @@ internal static class MilestoneMechanicalExecutor
                 $"step={stage}" + Environment.NewLine +
                 $"stagingPaths={eligibleCount}" + Environment.NewLine +
                 $"commitCreated={(commitCreated ? "YES" : "NO")}" +
+                Environment.NewLine + "trustedCleanup=" +
+                    (trustedCleanupRemoved ? "REMOVED" : "NONE") +
                 Environment.NewLine + "push=" + pushState +
                 Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
                 (replacedHead is null ? string.Empty :
@@ -951,6 +954,23 @@ internal static class MilestoneMechanicalExecutor
                 commitCreated = true;
             }
 
+            // Scoped generated-artifact cleanup is owned by the trusted Worker
+            // Git finalizer, never by the role sandbox. Use an isolated tree so
+            // unrelated files staged by the user cannot enter the cleanup commit.
+            var cleanup = await TrustedTrackedArtifactCleanup.ApplyAsync(
+                workingDirectory, git,
+                args => Run(args),
+                token).ConfigureAwait(false);
+            if (!cleanup.Success)
+                return Fail(cleanup.ErrorStage ?? "TRACKED_CLEANUP_FAILED",
+                    cleanup.Error);
+            trustedCleanupRemoved = cleanup.Removed;
+            if (trustedCleanupRemoved)
+            {
+                commitCreated = true;
+                progress?.Report("GIT_FINALIZE · 추적된 생성물 1개 안전 제외");
+            }
+
             var head = await Run("rev-parse", "HEAD").ConfigureAwait(false);
             if (head.ExitCode != 0 || string.IsNullOrWhiteSpace(head.StandardOutput))
                 return Fail("HEAD_READ_FAILED", head);
@@ -973,6 +993,30 @@ internal static class MilestoneMechanicalExecutor
             if (pushState != "COMPLETED")
                 return Fail("PUSH_FAILED", pushed);
 
+            if (trustedCleanupRemoved)
+            {
+                // A successful push alone does not prove that the remote now
+                // references the cleanup commit. Verify SHA and target tree.
+                var remoteHead = await Run(
+                    "ls-remote", "--heads", "origin", RequiredBranch)
+                    .ConfigureAwait(false);
+                var publishedHead = remoteHead.StandardOutput.Split(
+                    new[] { '\t', ' ', '\r', '\n' },
+                    StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                if (remoteHead.ExitCode != 0 ||
+                    !string.Equals(publishedHead, localHead,
+                        StringComparison.OrdinalIgnoreCase))
+                    return Fail("CLEANUP_REMOTE_SHA_NOT_CONFIRMED", remoteHead);
+
+                var localTree = await Run(
+                    "ls-tree", "-r", "--name-only", "HEAD", "--",
+                    TrustedTrackedArtifactCleanup.TargetPath)
+                    .ConfigureAwait(false);
+                if (localTree.ExitCode != 0 ||
+                    !string.IsNullOrWhiteSpace(localTree.StandardOutput))
+                    return Fail("CLEANUP_TARGET_STILL_TRACKED", localTree);
+            }
+
             progress?.Report("GIT_FINALIZE · 커밋 후 변경 확인");
             var remaining = (await SnapshotChangedPathsAsync(
                     workingDirectory, token, requireSuccess: true).ConfigureAwait(false))
@@ -984,6 +1028,9 @@ internal static class MilestoneMechanicalExecutor
                 $"branch={RequiredBranch}" + Environment.NewLine +
                 $"commit={localHead}" + Environment.NewLine +
                 $"commitCreated={(commitCreated ? "YES" : "NO")}" +
+                Environment.NewLine + "trustedCleanup=" +
+                    (trustedCleanupRemoved ? "REMOVED_AND_REMOTE_VERIFIED" : "NONE") +
+                Environment.NewLine + "noChanges=" + (!commitCreated ? "YES" : "NO") +
                 Environment.NewLine + "push=" + pushState +
                 Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
                 Environment.NewLine + $"stagingPaths={eligibleCount}" +
@@ -996,7 +1043,9 @@ internal static class MilestoneMechanicalExecutor
                 summary += Environment.NewLine +
                     "relevantDirtySample=" + string.Join(",", remaining.Take(10));
             progress?.Report(remaining.Length == 0
-                ? "GIT_FINALIZE · 완료"
+                ? (commitCreated
+                    ? "GIT_FINALIZE · 완료"
+                    : "GIT_FINALIZE · 변경 없음, 기존 HEAD 재확인")
                 : $"GIT_FINALIZE · 잔여 변경 {remaining.Length}개");
             return new(remaining.Length == 0, false, RequiredBranch, localHead, summary);
         }
