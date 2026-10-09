@@ -476,13 +476,14 @@
                 <Border Width="48" Height="48" Background="#168A4A" CornerRadius="25" VerticalAlignment="Top" Margin="0,9,0,0"><TextBlock Text="＋" FontSize="28" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
                 <StackPanel Grid.Column="1" VerticalAlignment="Top" Margin="7,13,10,0">
                   <TextBlock Text="메시지" FontSize="16" FontWeight="Bold" Foreground="#116B39"/>
-                  <TextBlock Text="현재 세션에 작업 추가" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
+                  <TextBlock x:Name="DashboardFollowupSubtitle" Text="현재 세션에 작업 추가" FontSize="13" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
+                  <CheckBox x:Name="InterventionRecordOnlyCheckBox" Content="웹에서 직접 전달함 · 기록만" Checked="InterventionRecordOnlyCheckBox_Changed" Unchecked="InterventionRecordOnlyCheckBox_Changed" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,8,0,0" Visibility="Collapsed" ToolTip="HQ에 메시지를 다시 전송하지 않고 사용자 개입 이력만 기록합니다."/>
                 </StackPanel>
                 <Border x:Name="DashboardFollowupAttachmentView" Grid.Column="2" Background="#F1FAF5" BorderBrush="#CFE9D8" BorderThickness="1" CornerRadius="8" Padding="12,9" AllowDrop="True" PreviewDragOver="DashboardFollowupAttachmentView_PreviewDragOver" PreviewDrop="DashboardFollowupAttachmentView_PreviewDrop">
                   <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <TextBox x:Name="DashboardFollowupInput" Grid.Row="0" MinHeight="48" Text="추가할 작업을 입력하세요..." Foreground="{StaticResource Muted}" Background="Transparent" BorderThickness="0" FontSize="15" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" GotFocus="DashboardFollowupInput_GotFocus" LostFocus="DashboardFollowupInput_LostFocus" TextChanged="DashboardFollowupInput_TextChanged" PreviewKeyDown="DashboardFollowupInput_PreviewKeyDown"/>
-                    <ItemsControl Grid.Row="1" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=FollowupAttachments}" Margin="0,6,0,0">
+                    <ItemsControl x:Name="DashboardFollowupAttachmentList" Grid.Row="1" ItemsSource="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type Window}}, Path=FollowupAttachments}" Margin="0,6,0,0">
                       <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                       <ItemsControl.ItemTemplate><DataTemplate>
                         <Border Background="#E7F6EC" BorderBrush="#C2E3CD" BorderThickness="1" CornerRadius="7" Padding="8,4" Margin="0,0,6,5">
@@ -495,7 +496,7 @@
                         </Border>
                       </DataTemplate></ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Grid.Row="2" Text="파일 드롭 · 캡처 Ctrl+V" FontSize="10" Foreground="{StaticResource Muted}" Margin="1,0,0,0"/>
+                    <TextBlock x:Name="DashboardFollowupAttachmentHint" Grid.Row="2" Text="파일 드롭 · 캡처 Ctrl+V" FontSize="10" Foreground="{StaticResource Muted}" Margin="1,0,0,0"/>
                   </Grid>
                 </Border>
               </Grid>

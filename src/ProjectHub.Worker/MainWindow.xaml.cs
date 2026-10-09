@@ -186,6 +186,7 @@ public partial class MainWindow : Window
     private string? _taskTranscriptPath;
     private int _taskTranscriptStartIndex;
     private string? _activeProjectJobId;
+    private HqUserInterventionQueue? _hqInterventions;
     private readonly ResourceTaskLifecycle _resourceTaskLifecycle = new();
     private readonly ResourcePendingGitPaths _resourcePendingGit = new();
     private CoordinatorContinuationState? _continuationState;
@@ -559,6 +560,9 @@ public partial class MainWindow : Window
     private void DashboardFollowupInput_TextChanged(object sender, TextChangedEventArgs e)
         => UpdateFollowupButtonState();
 
+    private void InterventionRecordOnlyCheckBox_Changed(object sender, RoutedEventArgs e)
+        => UpdateFollowupButtonState();
+
     private bool CanEditTaskConfiguration
         => TaskContinuationContract.CanEditTaskConfiguration(
             executionActive:
@@ -651,15 +655,38 @@ public partial class MainWindow : Window
     private void UpdateFollowupButtonState()
     {
         if (AddWorkButton is null || DashboardFollowupInput is null) return;
+        var activeIntervention = _activeTaskCts is not null &&
+                                 _activeCoordinatorFirst &&
+                                 _hqInterventions is not null &&
+                                 !_cancelCleanupInProgress;
         var inactive = !_cancelCleanupInProgress &&
                        _activeTaskCts is null;
         var hasContinuation = IsDirectWorkMode ||
-                              (_continuationState is not null &&
-                               TaskContinuationContract.CanAcceptFollowupStatus(_continuationState.Status));
+                               (_continuationState is not null &&
+                                TaskContinuationContract.CanAcceptFollowupStatus(_continuationState.Status));
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
                         DashboardFollowupInput.Text != FollowupPromptPlaceholder;
-        AddWorkButton.Content = "＋   작업 추가";
-        AddWorkButton.IsEnabled = inactive && hasContinuation && hasPrompt;
+        var recordOnly = activeIntervention &&
+                         InterventionRecordOnlyCheckBox.IsChecked == true;
+        AddWorkButton.Content = recordOnly
+            ? "＋   개입 기록"
+            : activeIntervention ? "＋   HQ 전달 예약" : "＋   작업 추가";
+        DashboardFollowupSubtitle.Text = recordOnly
+            ? "HQ 웹에서 직접 전달한 사용자 개입만 기록"
+            : activeIntervention ? "다음 HQ 호출에 전달 · 실행 중단 없음"
+                : "현재 세션에 작업 추가";
+        InterventionRecordOnlyCheckBox.Visibility = activeIntervention
+            ? Visibility.Visible : Visibility.Collapsed;
+        // The editor lives inside DashboardFollowupAttachmentView:
+        // keep the parent visible and disable only attachment controls.
+        DashboardFollowupAttachmentView.AllowDrop = !activeIntervention;
+        DashboardFollowupAttachmentList.Visibility =
+            !activeIntervention || FollowupAttachments.Count > 0
+                ? Visibility.Visible : Visibility.Collapsed;
+        DashboardFollowupAttachmentHint.Visibility =
+            activeIntervention ? Visibility.Collapsed : Visibility.Visible;
+        AddWorkButton.IsEnabled = hasPrompt &&
+            (activeIntervention || (inactive && hasContinuation));
         AddWorkButton.Opacity = AddWorkButton.IsEnabled ? 1 : 0.72;
     }
 
@@ -749,11 +776,73 @@ public partial class MainWindow : Window
         RefreshMessageLog();
     }
 
+    private void AddHqInterventionHistory(
+        HqUserIntervention entry, bool delivered)
+    {
+        var status = entry.RecordOnly ? "RECORDED" :
+            delivered ? "DELIVERED" : "QUEUED";
+        var title = entry.RecordOnly
+            ? "사용자 · 웹 직접 개입 기록"
+            : delivered ? "사용자 · HQ 전달 완료"
+                : "사용자 · HQ 전달 예약";
+        var card = new WorkerHistoryEvent(
+            delivered ? DateTimeOffset.Now : entry.CreatedAt.ToLocalTime(),
+            "Message", "USER_INTERVENTION", title,
+            WorkerHistoryCardFormatter.Preview(entry.Message),
+            Encoding.UTF8.GetByteCount(entry.Message),
+            1, null, status, entry.Id)
+        {
+            FullMessage = entry.Message,
+            TokenDetails = "토큰 · 사용자 입력",
+            FileDetails = string.Empty
+        };
+        PublishHistoryCard(card);
+        RefreshMessageLog();
+    }
+
     private async void AddWorkButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_cancelCleanupInProgress ||
-            _activeTaskCts is not null)
+        if (_cancelCleanupInProgress) return;
+        if (_activeTaskCts is not null)
+        {
+            if (!_activeCoordinatorFirst || _hqInterventions is null) return;
+            var message = DashboardFollowupInput.Text;
+            if (string.IsNullOrWhiteSpace(message) ||
+                message == FollowupPromptPlaceholder) return;
+            if (FollowupAttachments.Count > 0)
+            {
+                DashboardPreflightText.Text =
+                    "실행 중 HQ 예약은 텍스트 메시지만 지원합니다. 첨부 파일은 제거한 뒤 예약하세요.";
+                DashboardPreflightText.Foreground =
+                    System.Windows.Media.Brushes.Firebrick;
+                return;
+            }
+            try
+            {
+                var entry = _hqInterventions.Add(
+                    message, InterventionRecordOnlyCheckBox.IsChecked == true);
+                AddTaskMessage(
+                    "USER INTERVENTION",
+                    entry.Message,
+                    status: entry.RecordOnly ? "RECORDED" : "QUEUED",
+                    referenceId: entry.Id,
+                    includeHistory: false);
+                AddHqInterventionHistory(entry, delivered: false);
+                DashboardFollowupInput.Text = FollowupPromptPlaceholder;
+                DashboardFollowupInput.Foreground = FindResource("Muted")
+                    as System.Windows.Media.Brush;
+                InterventionRecordOnlyCheckBox.IsChecked = false;
+                UpdateFollowupButtonState();
+            }
+            catch (Exception exception)
+            {
+                DashboardPreflightText.Text =
+                    "HQ 메시지 기록 실패: " + exception.Message;
+                DashboardPreflightText.Foreground =
+                    System.Windows.Media.Brushes.Firebrick;
+            }
             return;
+        }
 
         if (IsDirectWorkMode)
         {
