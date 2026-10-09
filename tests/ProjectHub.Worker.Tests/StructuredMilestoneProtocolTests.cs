@@ -205,6 +205,135 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
+    public void MixedXmlClosingTags_AreAcceptedWithoutChangingRealWorkOutcome()
+    {
+        const string report = """
+            [ACTION=RESULT]
+            @@REPORT
+            <STATUS>blocked</STATUS>
+            <SUMMARY>
+            테스트는 통과했지만 허용되지 않은 경로 수정이 필요합니다.
+            </SUMMARY>
+            <CHANGED_PATH>tests/a.gd</CHANGED_PATH>
+            <CHANGED_PATH>tests/b.gd, tests/c.gd</>
+            <CHANGED_PATH>
+            - tests/d.gd
+            - tests/e.gd
+            </CHANGED_PATH>
+            <ISSUES>쓰기 범위 외 파일 필요</ISSUES>
+            [RESPONSE=OK]
+            """;
+        var parsed = RoleTextProtocol.ParseWork(report);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Equal("blocked", parsed.Status);
+        Assert.Contains("허용되지 않은 경로", parsed.Summary);
+        Assert.Equal(new[] {
+            "tests/a.gd", "tests/b.gd", "tests/c.gd", "tests/d.gd", "tests/e.gd"
+        }, parsed.ChangedPaths);
+        Assert.Equal(new[] { "쓰기 범위 외 파일 필요" }, parsed.Issues);
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(report));
+        Assert.Equal(report, MilestoneDefinitionContract.NormalizeWorkReport(0, report, null));
+    }
+
+    [Fact]
+    public void LegacyQaAndHighClosers_AreReadWithoutRetryOrStatusLoss()
+    {
+        const string qa = """
+            @@REPORT
+            <STATUS>issue</STATUS>
+            <SUMMARY>
+            전체 smoke 실패
+            </SUMMARY>
+            <ISSUES>
+            Godot parser error
+            </ISSUES>
+            [RESPONSE=OK]
+            """;
+        Assert.Equal("issue", MilestoneDefinitionContract.ReadQaStatus(qa));
+        Assert.Equal(qa, MilestoneDefinitionContract.NormalizeQaReport(0, qa, null));
+
+        const string high = """
+            [ACTION=RESULT]
+            @@REPORT
+            <STATUS>completed</STATUS>
+            <SUMMARY>기존 결함 수정 및 검사 완료</SUMMARY>
+            <CHANGED_PATH>src/A.cs, src/B.cs</CHANGED_PATH>
+            <ISSUES>없음</ISSUES>
+            [RESPONSE=OK]
+            """;
+        var parsed = RoleTextProtocol.ParseHigh(high);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(high));
+        Assert.Equal(new[] { "src/A.cs", "src/B.cs" }, parsed.ChangedPaths);
+        Assert.Equal(high, MilestoneDefinitionContract.NormalizeHighReport(0, high, null));
+    }
+
+    [Theory]
+    [InlineData("verified", "completed")]
+    [InlineData("modified", "completed")]
+    [InlineData("incomplete", "blocked")]
+    public void LegacyHighJsonResult_UsesExplicitConservativeStatusMapping(
+        string oldStatus, string currentStatus)
+    {
+        var report = "[ACTION=RESULT]\n" +
+            "{\"status\":\"" + oldStatus +
+            "\",\"summary\":\"실제 검증 정보\",\"changedPaths\":[\"src/A.cs\",\"src/B.cs\"]," +
+            "\"issues\":[\"남은 검사\"]}\n[RESPONSE=OK]";
+        var parsed = RoleTextProtocol.ParseHigh(report);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Equal(currentStatus, parsed.Status);
+        Assert.Equal(new[] { "src/A.cs", "src/B.cs" }, parsed.ChangedPaths);
+        Assert.Equal(new[] { "남은 검사" }, parsed.Issues);
+    }
+
+    [Fact]
+    public void LegacyJsonResult_PreservesModernRoleStatuses()
+    {
+        const string work = """
+            [ACTION=RESULT]
+            {"status":"in_progress","summary":"테스트 중","changedPaths":["src/a.cs"]}
+            [RESPONSE=OK]
+            """;
+        Assert.Equal("in_progress", MilestoneDefinitionContract.ReadWorkStatus(work));
+
+        const string qa = """
+            [ACTION=RESULT]
+            {"status":"blocked","summary":"테스트 환경 접근 불가","issues":["GUI 없음"]}
+            [RESPONSE=OK]
+            """;
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadQaStatus(qa));
+    }
+
+    [Fact]
+    public void ReportCompatibility_DoesNotInferSuccessFromAmbiguousFields()
+    {
+        const string mismatched = """
+            [ACTION=RESULT]
+            @@REPORT
+            <STATUS>completed</STATUS>
+            <SUMMARY>
+            확인하지 못했습니다.
+            </ISSUES>
+            [RESPONSE=OK]
+            """;
+        Assert.False(RoleTextProtocol.ParseWork(mismatched).IsValid);
+
+        const string ambiguousJson = """
+            [ACTION=RESULT]
+            {"status":"success","summary":"검증했다고 주장함"}
+            [RESPONSE=OK]
+            """;
+        Assert.False(RoleTextProtocol.ParseQa(ambiguousJson).IsValid);
+
+        const string malformedJson = """
+            [ACTION=RESULT]
+            {"status":"passed","summary":
+            [RESPONSE=OK]
+            """;
+        Assert.False(RoleTextProtocol.ParseQa(malformedJson).IsValid);
+    }
+
+    [Fact]
     public void ResourceWebPrompt_ContainsOnlyImageCreationInstructions()
     {
         var parsed = HqTextProtocol.Parse(Modern.Replace(
