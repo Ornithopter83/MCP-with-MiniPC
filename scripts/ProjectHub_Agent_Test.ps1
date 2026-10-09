@@ -1,8 +1,11 @@
 ﻿$ErrorActionPreference = "Stop"
 
-$ProjectPath = "C:\Projects\AI-AGENTS\MCP\Server"
+[CmdletBinding()]
+param(
+    [string]$ProjectPath = (Split-Path -Parent $PSScriptRoot),
+    [string]$ServerBaseUrl = "https://projecthub.ornithopter.bid"
+)
 $AgentProject = ".\src\ProjectHub.Agent\ProjectHub.Agent.csproj"
-$ServerBaseUrl = "https://projecthub.ornithopter.bid"
 
 function Pause-Step([string]$Message) {
     Write-Host ""
@@ -47,7 +50,7 @@ catch {
 
 Pause-Step "2. Configure this DEV PC Agent"
 
-$defaultWorkstation = "DEV-PC-01"
+$defaultWorkstation = $env:COMPUTERNAME
 $workstationId = Read-Host "Workstation ID [$defaultWorkstation]"
 if ([string]::IsNullOrWhiteSpace($workstationId)) { $workstationId = $defaultWorkstation }
 
