@@ -51,13 +51,23 @@ public partial class MainWindow
     private void DashboardFollowupInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (_activeTaskCts is not null && _activeCoordinatorFirst &&
-            e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 &&
-            System.Windows.Clipboard.ContainsImage())
+            e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
         {
-            e.Handled = true;
-            DashboardPreflightText.Text =
-                "실행 중 HQ 예약은 이미지 첨부를 지원하지 않습니다. 텍스트만 입력하세요.";
-            return;
+            try
+            {
+                if (System.Windows.Clipboard.ContainsImage())
+                {
+                    e.Handled = true;
+                    DashboardPreflightText.Text =
+                        "실행 중 HQ 예약은 이미지 첨부를 지원하지 않습니다. 텍스트만 입력하세요.";
+                    return;
+                }
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+                // Clipboard may be temporarily locked by another process.
+                // The ordinary paste path retains its existing error handling.
+            }
         }
         if (TryPasteClipboardImage(e, FollowupAttachments))
             e.Handled = true;
