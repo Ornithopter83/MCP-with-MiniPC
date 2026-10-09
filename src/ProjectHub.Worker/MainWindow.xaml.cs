@@ -671,8 +671,14 @@ public partial class MainWindow : Window
             : "현재 세션에 작업 추가";
         InterventionRecordOnlyCheckBox.Visibility = activeIntervention
             ? Visibility.Visible : Visibility.Collapsed;
-        DashboardFollowupAttachmentView.Visibility = activeIntervention
-            ? Visibility.Collapsed : Visibility.Visible;
+        // The editor lives inside DashboardFollowupAttachmentView:
+        // keep the parent visible and disable only attachment controls.
+        DashboardFollowupAttachmentView.AllowDrop = !activeIntervention;
+        DashboardFollowupAttachmentList.Visibility =
+            !activeIntervention || FollowupAttachments.Count > 0
+                ? Visibility.Visible : Visibility.Collapsed;
+        DashboardFollowupAttachmentHint.Visibility =
+            activeIntervention ? Visibility.Collapsed : Visibility.Visible;
         AddWorkButton.IsEnabled = hasPrompt &&
             (activeIntervention || (inactive && hasContinuation));
         AddWorkButton.Opacity = AddWorkButton.IsEnabled ? 1 : 0.72;
