@@ -18,7 +18,8 @@ internal sealed record WorkExecutionCheckpoint(
     string? SessionId,
     int Attempts,
     string LastReport,
-    DateTimeOffset UpdatedAtUtc);
+    DateTimeOffset UpdatedAtUtc,
+    int ReResolutionAttempts = 0);
 
 internal static class WorkExecutionJournal
 {
@@ -166,6 +167,49 @@ internal static class WorkExecutionJournal
                 return true;
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+            {
+                return false;
+            }
+        }
+    }
+
+    // Atomically claim the one self-review for this WORKITEM's entire
+    // checkpoint lifetime (including later CONTINUE and application restarts).
+    // Keep the first report as provisional, not a terminal COMPLETED/BLOCKED.
+    public static bool TryClaimReResolution(
+        string workspace,
+        string jobId,
+        string workId,
+        string? sessionId,
+        string firstReport)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) ||
+            !TryPath(workspace, jobId, workId, out var path))
+            return false;
+
+        lock (Sync)
+        {
+            try
+            {
+                var previous = ReadFile(path);
+                if (previous is null ||
+                    previous.State is not ("RUNNING" or "IN_PROGRESS") ||
+                    previous.ReResolutionAttempts >= 1)
+                    return false;
+
+                var updated = previous with
+                {
+                    State = "IN_PROGRESS",
+                    SessionId = sessionId,
+                    ReResolutionAttempts = previous.ReResolutionAttempts + 1,
+                    LastReport = firstReport[..Math.Min(firstReport.Length, 4000)],
+                    UpdatedAtUtc = DateTimeOffset.UtcNow
+                };
+                WriteFile(path, updated);
+                return true;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or JsonException)
             {
                 return false;
             }

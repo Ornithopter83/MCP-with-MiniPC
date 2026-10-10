@@ -95,6 +95,57 @@ public sealed class WorkExecutionJournalTests
         });
     }
 
+    [Fact]
+    public void OneReResolutionClaimSurvivesRestartAndContinuation()
+    {
+        WithDirectory(root =>
+        {
+            Assert.True(WorkExecutionJournal.TryBegin(root, "reviewjob", "M1",
+                Work("628"), Luna, out _, out _));
+            Assert.True(WorkExecutionJournal.Record(root, "reviewjob", "628",
+                "RUNNING", "session-review", invocationStarted: true));
+
+            Assert.True(WorkExecutionJournal.TryClaimReResolution(root,
+                "reviewjob", "628", "session-review", "first report"));
+            var checkpoint = WorkExecutionJournal.Read(root, "reviewjob", "628")!;
+            Assert.Equal(1, checkpoint.ReResolutionAttempts);
+            Assert.Equal("IN_PROGRESS", checkpoint.State);
+            Assert.Equal("session-review", checkpoint.SessionId);
+            Assert.Equal("first report", checkpoint.LastReport);
+            Assert.False(WorkExecutionJournal.TryClaimReResolution(root,
+                "reviewjob", "628", "session-review", "second report"));
+
+            Assert.True(WorkExecutionJournal.TryBegin(root, "reviewjob", "M2",
+                Work("628", mode: "CONTINUE"), Luna, out var resumed, out _));
+            Assert.Equal(1, resumed!.ReResolutionAttempts);
+            Assert.False(WorkExecutionJournal.TryClaimReResolution(root,
+                "reviewjob", "628", "session-review", "third report"));
+
+            Assert.True(WorkExecutionJournal.Record(root, "reviewjob", "628",
+                "COMPLETED", resumed.SessionId, "latest final report"));
+            Assert.False(WorkExecutionJournal.TryClaimReResolution(root,
+                "reviewjob", "628", "session-review", "fourth report"));
+            Assert.Equal("latest final report",
+                WorkExecutionJournal.Read(root, "reviewjob", "628")!.LastReport);
+        });
+    }
+
+    [Fact]
+    public void ReResolutionCannotStartWithoutSessionOrCheckpoint()
+    {
+        WithDirectory(root =>
+        {
+            Assert.False(WorkExecutionJournal.TryClaimReResolution(
+                root, "unknown", "628", "session", "report"));
+            Assert.True(WorkExecutionJournal.TryBegin(root, "reviewjob2",
+                "M1", Work("628"), Luna, out _, out _));
+            Assert.False(WorkExecutionJournal.TryClaimReResolution(
+                root, "reviewjob2", "628", null, "report"));
+            Assert.Equal(0, WorkExecutionJournal.Read(
+                root, "reviewjob2", "628")!.ReResolutionAttempts);
+        });
+    }
+
     private static void WithDirectory(Action<string> callback)
     {
         var root = Path.Combine(Path.GetTempPath(), "projecthub-work-test-" + Guid.NewGuid().ToString("N"));

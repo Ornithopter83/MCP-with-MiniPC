@@ -1508,7 +1508,9 @@ public partial class MainWindow
         try
         {
             var currentPrompt = prompt;
-            for (var turn = 0; ; turn++)
+            var continuationTurns = 0;
+            var reResolutionPerformed = false;
+            for (;;)
             {
                 var beforeTurn = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                     workingDirectory, cancellationToken);
@@ -1535,28 +1537,70 @@ public partial class MainWindow
                         "in_progress" => "IN_PROGRESS",
                         _ => "BLOCKED"
                     };
+
+                // Existing progress-based CONTINUE remains bounded to two
+                // continuations and is separate from the one-time self-review.
+                // The review is only considered when the current WORK attempt
+                // would otherwise finish; it never interrupts active progress.
+                var progress = false;
+                if (state == "IN_PROGRESS" && continuationTurns < 2 &&
+                    !reResolutionPerformed)
+                {
+                    var afterTurn =
+                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                            workingDirectory, cancellationToken);
+                    progress = MilestoneMechanicalExecutor.DiffChangeStates(
+                        beforeTurn, afterTurn).Any(path =>
+                            MilestoneMechanicalExecutor.IsPathWithinScopes(
+                                path, work.WritePaths));
+                }
+                if (state == "IN_PROGRESS" && progress)
+                {
+                    if (!WorkExecutionJournal.Record(
+                            workingDirectory, jobId, work.Id, "IN_PROGRESS",
+                            sessionId, result.FinalMessage))
+                        throw new IOException("WORK_CHECKPOINT_WRITE_FAILED");
+
+                    continuationTurns++;
+                    currentPrompt =
+                        "동일 WORKITEM #" + work.Id + "의 같은 세션에서 이어서 작업하라. " +
+                        "새 WORKITEM이 아니며 쓰기 범위는 바꾸지 않는다. " +
+                        "남은 구현과 검증을 진행하고 완료하면 completed, " +
+                        "아직 해결 가능한 잔여 작업이 있으면 in_progress를 보고하라. " +
+                        "같은 실패를 그대로 반복하지 마라.";
+                    continue;
+                }
+
+                // A provisional final report with an actual unresolved item
+                // earns exactly one self-review. Claim it durably BEFORE the
+                // invocation; the ID must never become terminal and then be
+                // reassigned. No retry on CLI errors or invalid protocols.
+                var firstReport = MilestoneDefinitionContract.NormalizeWorkReport(
+                    result.ExitCode, result.FinalMessage, result.StandardError);
+                if (!reResolutionPerformed && sessionId is not null &&
+                    WorkReResolutionPolicy.IsEligible(result.ExitCode, parsed) &&
+                    WorkExecutionJournal.TryClaimReResolution(
+                        workingDirectory, jobId, work.Id, sessionId, firstReport))
+                {
+                    reResolutionPerformed = true;
+                    AddDataFlowHistory(
+                        WorkerRoleState.Work,
+                        "작업 재해결",
+                        $"WORK_ITEM_ID: {work.Id} · 미해결 항목 재검토 1/1",
+                        status: "PROCESSING",
+                        workItemId: work.Id,
+                        referenceId: historyInvocationReference,
+                        persistenceSource: "WORKER ACTION");
+                    currentPrompt = WorkReResolutionPolicy.BuildPrompt(
+                        prompt, firstReport, work.Id);
+                    continue;
+                }
+
                 if (!WorkExecutionJournal.Record(
                         workingDirectory, jobId, work.Id, state,
                         sessionId, result.FinalMessage))
                     throw new IOException("WORK_CHECKPOINT_WRITE_FAILED");
-
-                if (state != "IN_PROGRESS" || turn >= 2)
-                    break;
-                var afterTurn = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                    workingDirectory, cancellationToken);
-                var progress = MilestoneMechanicalExecutor.DiffChangeStates(
-                    beforeTurn, afterTurn).Any(path =>
-                        MilestoneMechanicalExecutor.IsPathWithinScopes(
-                            path, work.WritePaths));
-                if (!progress)
-                    break;
-
-                currentPrompt =
-                    "동일 WORKITEM #" + work.Id + "의 같은 세션에서 이어서 작업하라. " +
-                    "새 WORKITEM이 아니며 쓰기 범위는 바꾸지 않는다. " +
-                    "남은 구현과 검증을 진행하고 완료하면 completed, " +
-                    "아직 해결 가능한 잔여 작업이 있으면 in_progress를 보고하라. " +
-                    "같은 실패를 그대로 반복하지 마라.";
+                break;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
