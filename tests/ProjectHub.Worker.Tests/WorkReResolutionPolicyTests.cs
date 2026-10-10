@@ -58,6 +58,6 @@ public sealed class WorkReResolutionPolicyTests
         Assert.Contains("WORKITEM #628", review);
         Assert.Contains("같은 모델·세션·WORK_ID·WRITE_PATH", review);
         Assert.Contains("최대 1회", review);
-        Assert.Single(review.Split("[ACTION=RESULT]", StringSplitOptions.None).Skip(1));
+        Assert.Equal(1, review.Split("@@REPORT", StringSplitOptions.None).Length - 1);
     }
 }
