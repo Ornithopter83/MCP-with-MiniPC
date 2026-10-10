@@ -36,11 +36,13 @@
 ① WORKITEM ID는 사용자 작업(Job) 안에서의 고유 식별자이며 실행 순서를 뜻하지 않는다. 신규 WORK는 미사용 ID(10 이상)를 NEW로 발급한다. ID의 단조 증가는 요구하지 않는다.
 ② RUNNING·IN_PROGRESS 상태의 기존 WORKITEM은 같은 ID, 동일한 WRITE_PATH·읽기 전용 범위·Provider·모델로 CONTINUE를 지정하여 다시 수행할 수 있다.
 ③ COMPLETED·BLOCKED·CANCELED WORKITEM은 동일 ID로 재배정하거나 CONTINUE하지 않는다. 후속 변경은 다른 신규 WORKITEM으로 설계한다.
-④ Worker는 WORKITEM별로 실행 세션과 체크포인트를 격리하고 ID, 작업 범위, 모델, 세션, 실행 횟수, 최근 보고, 상태를 프로젝트의 .projecthub 안에 영구 기록한다.
+④ Worker는 WORKITEM별로 실행 세션과 체크포인트를 격리하고 ID, 작업 범위, 모델, 세션, 실행 횟수, 최근 보고, 상태와 재해결 사용 횟수를 프로젝트의 .projecthub 안에 영구 기록한다.
 ⑤ WORK 결과의 in_progress는 진행 중인 작업의 상태다. Worker는 실제 작업 범위의 파일 변경으로 진전이 확인되는 경우 한정된 횟수만 동일 세션에서 추가 실행한다. 파일 진전이 없거나 호출 한도에 도달하면 HQ의 다음 판단에 맡긴다.
-⑥ 마일스톤 종료는 IN_PROGRESS WORKITEM의 완료나 폐기를 뜻하지 않는다. HQ는 다음 마일스톤에서 명시적으로 CONTINUE를 지정할 수 있다.
-⑦ 프로그램이 비정상 중단됐을 때 Worker는 저장된 사용자 작업과 WORK 체크포인트를 복원하고, 필수 역할 연결 조건이 갖춰지면 기존 작업 재개를 시도한다. 새 사용자 작업·명시적 취소·PAUSE를 임의 재시도로 바꾸지 않는다.
-⑧ 사용자 작업의 END는 해당 작업에 RUNNING·IN_PROGRESS WORKITEM이 남아 있는 경우 거부한다.
+⑥ Worker는 WORK의 기존 연속 수행이 끝나는 시점에 마무리 보고서의 미해결 항목을 확인한다. 해결 가능한 blocked·in_progress 또는 completed의 ISSUES에 명시된 미완료 구현·미실행 검증에 한하여, 원래 임무와 해당 마무리 보고서를 동일 WORKITEM의 기존 세션에 재주입하여 재해결을 최대 1회 수행한다. 정상 완료, 실행 환경·권한 장애, 수동 승인 대기, 도구 실행 실패 및 유효하지 않은 보고서는 재해결하지 않는다.
+⑦ 재해결은 새 WORKITEM 발급이나 완료된 ID의 재배정이 아니다. 최초 보고서는 재해결 입력에만 사용하고, 결과는 기존 @@REPORT 형식의 마무리 보고서로 갱신한다. Worker는 재해결이 끝나기 전에 해당 WORKITEM을 최종 종료 처리하지 않으며, 체크포인트에 사용 횟수를 기록하여 재시작·CONTINUE 후에도 추가 재해결을 허용하지 않는다. 재해결 후에도 미완료이면 실제 상태를 그대로 보고한다.
+⑧ 마일스톤 종료는 IN_PROGRESS WORKITEM의 완료나 폐기를 뜻하지 않는다. HQ는 다음 마일스톤에서 명시적으로 CONTINUE를 지정할 수 있다.
+⑨ 프로그램이 비정상 중단됐을 때 Worker는 저장된 사용자 작업과 WORK 체크포인트를 복원하고, 필수 역할 연결 조건이 갖춰지면 기존 작업 재개를 시도한다. 새 사용자 작업·명시적 취소·PAUSE를 임의 재시도로 바꾸지 않는다.
+⑩ 사용자 작업의 END는 해당 작업에 RUNNING·IN_PROGRESS WORKITEM이 남아 있는 경우 거부한다.
 
 제5조 (마일스톤 실행)
 
@@ -48,8 +50,8 @@
 ② RESOURCE는 사용자 작업 단위의 독립 sidecar로 실행된다. GENERAL WORK, QA, HIGH, Git, HQ 다음 판단, PAUSE, 후속 마일스톤은 RESOURCE의 완료를 기다리지 않는다. 같은 사용자 작업 안의 복수 RESOURCE 요청은 RESOURCE 실행 수명 간 충돌 없이 직렬화한다.
 ③ RESOURCE가 성공하면 이미지 검사 후 지정 TARGET_PATH에 반영하며, 다음 Git 최종화에서 그 결과를 수집한다. RESOURCE의 PENDING은 정상 상태다.
 ④ 새 사용자 작업이 시작될 때만 이전 작업의 미완료 RESOURCE를 cancel/abandon하고 종료를 확인한 뒤 해당 임시영역을 정리한다.
-⑤ Worker는 구현 후 필요한 기계 BUILD를 실행하고, 실제 코드 빌드 오류에 한해 WORK #8 복구를 한 번 시도한다. 환경 오류를 소스 수정으로 우회하지 않는다.
-⑥ 미완료 WORKITEM이 있는 마일스톤에서는 QA와 일반 HIGH 검토를 수행하지 않고 진행 상태를 HQ에 보고한다.
+⑤ Worker는 모든 병렬 GENERAL WORK의 이번 실행 및 필요한 1회 재해결이 종료되기를 기다린 다음 기계 BUILD를 실행한다. 실제 코드 빌드 오류에 한해 WORK #8 복구를 한 번 시도하고, 환경 오류를 소스 수정으로 우회하지 않는다.
+⑥ 모든 WORK 실행을 기다린 뒤에도 in_progress WORKITEM이 남아 있는 마일스톤에서는 QA와 일반 HIGH 검토를 수행하지 않고 진행 상태를 HQ에 보고한다.
 ⑦ 미완료 WORKITEM이 없는 마일스톤에서 QA가 예약되어 있으면 QA를 실행하고, 그 결과와 무관하게 일반 HIGH 검토를 한 번 수행한다. QA를 예약하지 않은 경우에도 HIGH 검토는 수행한다.
 ⑧ 일반 HIGH 결과가 완료·차단되거나 BUILD·QA에 문제가 있어도 READ_ONLY 정책 이외의 마일스톤은 Git 최종화 단계로 진행한다. Git preflight·최종화 실패는 별도 HIGH 진단 및 한정 재시도 경로를 사용할 수 있다.
 ⑨ Worker는 마일스톤 결과와 Git 상태를 기계적으로 축약해 HQ에 돌려주고, 다음 마일스톤·PAUSE·END는 HQ가 결정한다.
