@@ -180,6 +180,53 @@ public static class WorkerTargetConfiguration
         return new(root, SanitizeRemote(remote), branch, head, source, true);
     }
 
+    // Repository is a property of the selected working folder, not the
+    // read-only repository textbox. Role/model changes must never clear or
+    // replace its persisted origin merely because the UI is temporarily blank.
+    public static WorkerTargetSettings ResolveRepositorySettingsForSave(
+        WorkerTargetSettings previous,
+        string workingDirectory)
+    {
+        var discovered = ResolveGit(workingDirectory, previous, requireExactRoot: true);
+        var hasOrigin = discovered.IsRepository &&
+            !string.IsNullOrWhiteSpace(discovered.RepositoryUrl);
+
+        // A transient Git discovery failure in the same folder must not
+        // erase the last confirmed URL. Switching to a different folder must
+        // not silently reuse the old folder's origin.
+        var sameFolder = false;
+        if (!string.IsNullOrWhiteSpace(previous.ManualWorkingDirectory))
+        {
+            try
+            {
+                sameFolder = string.Equals(
+                    Path.GetFullPath(previous.ManualWorkingDirectory)
+                        .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    Path.GetFullPath(workingDirectory)
+                        .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    OperatingSystem.IsWindows()
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal);
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                sameFolder = false;
+            }
+        }
+
+        return previous with
+        {
+            ManualWorkingDirectory = workingDirectory,
+            ManualRepositoryUrl = hasOrigin
+                ? discovered.RepositoryUrl
+                : sameFolder ? previous.ManualRepositoryUrl : null,
+            RepositoryUrlSource = hasOrigin
+                ? discovered.Source
+                : sameFolder ? previous.RepositoryUrlSource : null
+        };
+    }
+
     private static bool HasGitMetadata(string path)
         => Directory.Exists(Path.Combine(path, ".git")) ||
            File.Exists(Path.Combine(path, ".git"));
