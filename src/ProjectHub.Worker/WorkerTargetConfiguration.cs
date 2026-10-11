@@ -20,9 +20,7 @@ public sealed record WorkerAiRoleSettings(
 
 public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("manualRepositoryUrl")] string? ManualRepositoryUrl,
-    [property: JsonPropertyName("manualServerBaseUrl")] string? ManualServerBaseUrl,
     [property: JsonPropertyName("repositoryUrlSource")] string? RepositoryUrlSource,
-    [property: JsonPropertyName("serverBaseUrlSource")] string? ServerBaseUrlSource,
     [property: JsonPropertyName("manualWorkingDirectory")] string? ManualWorkingDirectory = null,
     [property: JsonPropertyName("executionMode")] string ExecutionMode = "CLI_TO_CLI",
     [property: JsonPropertyName("coordinator")] WorkerAiRoleSettings? Coordinator = null,
@@ -55,7 +53,6 @@ public static class WorkerTargetConfiguration
 {
     public const int MinimumConcurrentWork = 1;
     public const int DefaultConcurrentWork = 16;
-    public const string DefaultServerBaseUrl = "https://projecthub.ornithopter.bid";
 
     public static string SettingsPath => Path.Combine(WorkerPaths.Config, "target-settings.json");
 
@@ -64,15 +61,15 @@ public static class WorkerTargetConfiguration
         try
         {
             if (!File.Exists(SettingsPath))
-                return new(null, null, null, null);
+                return new(null, null);
 
             var settings = JsonSerializer.Deserialize<WorkerTargetSettings>(File.ReadAllText(SettingsPath))
-                ?? new(null, null, null, null);
+                ?? new(null, null);
             return NormalizeForRuntime(settings);
         }
         catch
         {
-            return new(null, null, null, null);
+            return new(null, null);
         }
     }
 
@@ -145,19 +142,6 @@ public static class WorkerTargetConfiguration
             SettingsPath,
             ProjectHubJson.SerializeIndented(settings),
             ProjectHubJson.Utf8NoBom);
-    }
-
-    public static (string Url, string Source) ResolveServer(WorkerTargetSettings settings)
-    {
-        if (!string.IsNullOrWhiteSpace(settings.ManualServerBaseUrl))
-            return (settings.ManualServerBaseUrl.Trim(), "MANUAL");
-
-        var environment = Environment.GetEnvironmentVariable("PROJECTHUB_AGENT_SERVER_BASE_URL");
-        if (!string.IsNullOrWhiteSpace(environment))
-            return (environment.Trim(), "AUTO_ENV");
-
-
-        return (DefaultServerBaseUrl, "DEFAULT");
     }
 
     public static GitTargetSnapshot ResolveGit(

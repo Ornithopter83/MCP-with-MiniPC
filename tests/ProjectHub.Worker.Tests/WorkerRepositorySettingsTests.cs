@@ -14,9 +14,7 @@ public sealed class WorkerRepositorySettingsTests
 
         var previous = new WorkerTargetSettings(
             ManualRepositoryUrl: null,
-            ManualServerBaseUrl: "https://projecthub.example.invalid",
             RepositoryUrlSource: null,
-            ServerBaseUrlSource: "MANUAL",
             ManualWorkingDirectory: fixture.Root,
             HighLevel: new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "high"));
 
@@ -32,8 +30,6 @@ public sealed class WorkerRepositorySettingsTests
         Assert.Equal(remote, saved.ManualRepositoryUrl);
         Assert.Equal("AUTO_GIT_REMOTE", saved.RepositoryUrlSource);
         Assert.Equal("gpt-6-sol", saved.EffectiveHighLevel.Model);
-        Assert.Equal(previous.ManualServerBaseUrl, saved.ManualServerBaseUrl);
-        Assert.Equal(previous.ServerBaseUrlSource, saved.ServerBaseUrlSource);
         Assert.Equal(remote, fixture.Git("remote", "get-url", "origin").Trim());
 
         // Applying another model change must also keep the repository URL.
@@ -53,8 +49,8 @@ public sealed class WorkerRepositorySettingsTests
         original.SetRemote("origin", "https://github.com/example/old.git");
         selected.SetRemote("origin", "https://github.com/example/new.git");
         var current = new WorkerTargetSettings(
-            "https://github.com/example/old.git", null,
-            "AUTO_GIT_REMOTE", null, ManualWorkingDirectory: original.Root);
+            "https://github.com/example/old.git",
+            "AUTO_GIT_REMOTE", ManualWorkingDirectory: original.Root);
 
         var changed = WorkerTargetConfiguration.ResolveRepositorySettingsForSave(
             current, selected.Root);
@@ -68,8 +64,8 @@ public sealed class WorkerRepositorySettingsTests
     {
         using var fixture = new RepositoryFixture(createGit: false);
         var existing = new WorkerTargetSettings(
-            "https://github.com/example/saved.git", null,
-            "AUTO_GIT_REMOTE", null, ManualWorkingDirectory: fixture.Root);
+            "https://github.com/example/saved.git",
+            "AUTO_GIT_REMOTE", ManualWorkingDirectory: fixture.Root);
 
         var saved = WorkerTargetConfiguration.ResolveRepositorySettingsForSave(
             existing with { HighLevel = new WorkerAiRoleSettings(Model: "gpt-6-sol") },
@@ -86,13 +82,41 @@ public sealed class WorkerRepositorySettingsTests
         using var different = new RepositoryFixture(createGit: false);
         fixture.SetRemote("origin", "https://github.com/example/old.git");
         var settings = new WorkerTargetSettings(
-            "https://github.com/example/old.git", null,
-            "AUTO_GIT_REMOTE", null, ManualWorkingDirectory: fixture.Root);
+            "https://github.com/example/old.git",
+            "AUTO_GIT_REMOTE", ManualWorkingDirectory: fixture.Root);
 
         var saved = WorkerTargetConfiguration.ResolveRepositorySettingsForSave(
             settings, different.Root);
         Assert.Null(saved.ManualRepositoryUrl);
         Assert.Null(saved.RepositoryUrlSource);
+    }
+
+    [Fact]
+    public void LegacyCentralServerSettingsAreIgnoredWithoutLosingGitOrModels()
+    {
+        const string legacy = """
+            {
+              "manualRepositoryUrl": "https://github.com/example/repo.git",
+              "repositoryUrlSource": "AUTO_GIT_REMOTE",
+              "manualServerBaseUrl": "https://projecthub.example.invalid",
+              "serverBaseUrlSource": "MANUAL",
+              "highLevel": { "model": "gpt-6-sol", "reasoning": "high" },
+              "maxConcurrentWork": 24
+            }
+            """;
+
+        var loaded = System.Text.Json.JsonSerializer
+            .Deserialize<WorkerTargetSettings>(legacy);
+
+        Assert.NotNull(loaded);
+        Assert.Equal("https://github.com/example/repo.git", loaded.ManualRepositoryUrl);
+        Assert.Equal("gpt-6-sol", loaded.EffectiveHighLevel.Model);
+        Assert.Equal(24, loaded.EffectiveMaxConcurrentWork);
+
+        var saved = System.Text.Json.JsonSerializer.Serialize(loaded);
+        Assert.DoesNotContain("manualServerBaseUrl", saved);
+        Assert.DoesNotContain("serverBaseUrlSource", saved);
+        Assert.Contains("manualRepositoryUrl", saved);
     }
 
     private sealed class RepositoryFixture : IDisposable

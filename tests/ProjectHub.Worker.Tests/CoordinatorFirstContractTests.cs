@@ -726,8 +726,6 @@ public sealed class CoordinatorFirstContractTests
         var settings = new WorkerTargetSettings(
             null,
             null,
-            null,
-            null,
             Manager: new WorkerAiRoleSettings(
                 Provider: "openai",
                 Model: "manager-model",
