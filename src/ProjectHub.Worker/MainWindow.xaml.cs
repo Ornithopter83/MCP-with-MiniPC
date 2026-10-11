@@ -218,19 +218,15 @@ public partial class MainWindow : Window
     private const string WebInstructionPlaceholder = "CLI 답변 뒤에 붙여 GPT Web에 전달할 지침...";
     private const string DashboardPromptPlaceholder = "작업 내용을 입력하세요...";
     private const string FollowupPromptPlaceholder = "추가할 작업을 입력하세요...";
-    private readonly HttpClient _connectionClient = new() { Timeout = TimeSpan.FromSeconds(2) };
     private BridgeServer? _bridgeServer;
     private ManagedWebRuntimeManager? _managedWebRuntimeManager;
     private bool _codexAuthenticated;
-    private bool _serverOnline;
     private bool _messageExpanded;
     private bool _startupConfigurationInitialized;
     private Task? _startupConfigurationTask;
     private bool IsSettingsOverlayOpen
         => SettingsOverlayHost.Visibility == Visibility.Visible;
-    private string _serverBaseUrl = WorkerTargetConfiguration.DefaultServerBaseUrl;
-    private string _serverBaseUrlSource = "DEFAULT";
-    private WorkerTargetSettings _targetSettings = new(null, null, null, null);
+    private WorkerTargetSettings _targetSettings = new(null, null);
     private GitTargetSnapshot? _gitTarget;
     private string? _gitValidationMessage;
     private string? _gitLaunchErrorMessage;
@@ -290,7 +286,6 @@ public partial class MainWindow : Window
         };
         ProjectStatusText.Text = "CHECKING";
         WebStatusText.Text = "WAITING";
-        ServerStatusText.Text = "CHECKING";
         _trayIcon = new Forms.NotifyIcon
         {
             Text = "ProjectHub Worker · MCP-with-MiniPC",
@@ -426,7 +421,6 @@ public partial class MainWindow : Window
         _trayIcon.Visible = false;
         _trayIcon.ContextMenuStrip?.Dispose();
         _trayIcon.Dispose();
-        _connectionClient.Dispose();
     }
 
     private void ShowFromTray()
@@ -2294,16 +2288,12 @@ public partial class MainWindow : Window
 
     private void ApplyTargetConfiguration()
     {
-        var server = WorkerTargetConfiguration.ResolveServer(_targetSettings);
-        _serverBaseUrl = server.Url;
-        _serverBaseUrlSource = server.Source;
         var selected = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var workingDirectory = _targetSettings.IsCoordinatorFirst
             ? ResolveCoordinatorTargetWorkingDirectory()
             : ResolveWorkingDirectory(selected);
         UpdateWorkspaceControls(selected, workingDirectory);
         RepositoryUrlInput.Text = _targetSettings.ManualRepositoryUrl ?? string.Empty;
-        ServerUrlInput.Text = _serverBaseUrl;
         ApplyRoleSettingsToControls();
         ApplyExecutionModePresentation(_targetSettings.IsCoordinatorFirst);
         UpdateDashboardSummary();
@@ -2319,7 +2309,6 @@ public partial class MainWindow : Window
                 ? _targetSettings.ManualWorkingDirectory
                 : WorkingDirectoryInput.Text);
         DashboardFolderText.Text = string.IsNullOrWhiteSpace(folder) ? "작업 폴더 미설정" : folder;
-        DashboardServerUrlText.Text = _serverBaseUrl;
         var repository = _gitTarget?.RepositoryUrl;
         var repositoryName = string.IsNullOrWhiteSpace(repository)
             ? "ProjectHub"
@@ -2921,7 +2910,6 @@ public partial class MainWindow : Window
             return;
 
         _gitLaunchErrorMessage = null;
-        var server = string.IsNullOrWhiteSpace(ServerUrlInput.Text) ? WorkerTargetConfiguration.DefaultServerBaseUrl : ServerUrlInput.Text.Trim();
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var executionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI");
         var coordinatorFirst = string.Equals(executionMode, "CLI_TO_CLI", StringComparison.OrdinalIgnoreCase);
@@ -2955,8 +2943,6 @@ public partial class MainWindow : Window
             _targetSettings, workingDirectory);
         _targetSettings = resolvedRepository with
         {
-            ManualServerBaseUrl = server,
-            ServerBaseUrlSource = "MANUAL",
             ExecutionMode = executionMode,
             Coordinator = ReadCoordinatorSettings(),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer),
@@ -2969,7 +2955,6 @@ public partial class MainWindow : Window
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();
         await ValidateSavedGitConfigurationAsync();
-        _serverOnline = await CheckServerAsync();
         ApplyConnectionStatus();
         SetSettingsPopupOpen(false);
     }
@@ -2984,15 +2969,14 @@ public partial class MainWindow : Window
 
     private async Task InitializeStartupConfigurationCoreAsync()
     {
-        // Repository discovery, Codex login status, and server endpoint resolution are
-        // startup configuration work. Do not repeat them from the periodic status timer.
+        // Repository discovery and Codex login status are startup configuration work.
+        // Do not repeat them from the periodic status timer.
         _targetSettings = WorkerTargetConfiguration.Load();
         LoadCodexSelections();
         await RefreshCodexModelCatalogAsync();
         ApplyTargetConfiguration();
         await ValidateSavedGitConfigurationAsync();
         _codexAuthenticated = await CheckCodexAuthenticationAsync();
-        _serverOnline = await CheckServerAsync();
         ApplyConnectionStatus();
     }
 
@@ -3115,9 +3099,6 @@ public partial class MainWindow : Window
         SetConnectionStatus(WebStatusText, !webOnline ? "WAITING" : !webExtensionReady ? "UPDATE REQUIRED" : !webConversationBound ? "BIND REQUIRED" : "READY", webOnline && webExtensionReady && webConversationBound, waiting: !webOnline, indicator: WebStatusDot);
         WebDescriptionText.Text = !webOnline ? "관리형 ChatGPT Web 연결 대기" : !webExtensionReady ? "내장 Web bridge 업데이트 필요" : !webConversationBound ? "Worker 관리 브라우저에서 대화를 선택하세요" : !string.IsNullOrWhiteSpace(_bridgeServer?.WebConversationTitle) ? _bridgeServer.WebConversationTitle : "MCP 프로젝트 진척도 확인";
         UpdateDashboardRunButtonState();
-        SetConnectionStatus(ServerStatusText, _serverOnline ? "온라인" : "오프라인", _serverOnline, indicator: ServerStatusDot);
-        SetConnectionStatus(ServerStatusTextSettings, _serverOnline ? "READY" : "OFFLINE", _serverOnline, indicator: ServerStatusDotSettings);
-        RepositoryNameText.Foreground = _serverOnline ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
         PcNameText.Foreground = _codexAuthenticated ? FindResource("Muted") as System.Windows.Media.Brush : System.Windows.Media.Brushes.OrangeRed;
     }
 
@@ -3154,24 +3135,6 @@ public partial class MainWindow : Window
         {
             return false;
         }
-    }
-
-    private async Task<bool> CheckServerAsync()
-    {
-        try
-        {
-            using var response = await _connectionClient.GetAsync(_serverBaseUrl.TrimEnd('/') + "/api/status");
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-    private static string ResolveServerBaseUrl()
-    {
-        var configured = Environment.GetEnvironmentVariable("PROJECTHUB_AGENT_SERVER_BASE_URL");
-        return string.IsNullOrWhiteSpace(configured) ? "https://projecthub.ornithopter.bid" : configured.Trim();
     }
 
     private static string GetSelectedContent(System.Windows.Controls.ComboBox combo, string fallback)
