@@ -7,7 +7,7 @@ public sealed class WorkConcurrencySettingsTests
     [Fact]
     public void NewTargetSettings_DefaultToSixteen()
     {
-        var settings = new WorkerTargetSettings(null, null, null, null);
+        var settings = new WorkerTargetSettings(null, null);
         Assert.Equal(16, settings.EffectiveMaxConcurrentWork);
     }
 
@@ -23,7 +23,7 @@ public sealed class WorkConcurrencySettingsTests
         int requested, int expected)
     {
         var settings = new WorkerTargetSettings(
-            null, null, null, null, MaxConcurrentWork: requested);
+            null, null, MaxConcurrentWork: requested);
 
         var normalized = WorkerTargetConfiguration.NormalizeForRuntime(settings);
 
