@@ -479,6 +479,9 @@ public partial class MainWindow : Window
         {
             await InitializeStartupConfigurationAsync();
             ApplyRoleSettingsToControls();
+            // The URL is auto-detected from the selected Git workspace.
+            // A model/settings change must not rely on a stale or blank view.
+            await RefreshWorkingDirectoryGitTargetPresentationAsync();
         }
         SetSettingsPopupOpen(!IsSettingsOverlayOpen);
     }
@@ -2849,6 +2852,11 @@ public partial class MainWindow : Window
                 _targetSettings,
                 requireExactRoot: true));
 
+        // Ignore an older discovery result if the user switched folders
+        // while Git was being queried.
+        if (!string.Equals(WorkingDirectoryInput?.Text?.Trim(), workingDirectory,
+                StringComparison.OrdinalIgnoreCase))
+            return;
         RepositoryUrlInput.Text =
             target.IsRepository && !string.IsNullOrWhiteSpace(target.RepositoryUrl)
                 ? target.RepositoryUrl
@@ -2913,9 +2921,6 @@ public partial class MainWindow : Window
             return;
 
         _gitLaunchErrorMessage = null;
-        var repository = string.IsNullOrWhiteSpace(RepositoryUrlInput.Text)
-            ? null
-            : RepositoryUrlInput.Text.Trim();
         var server = string.IsNullOrWhiteSpace(ServerUrlInput.Text) ? WorkerTargetConfiguration.DefaultServerBaseUrl : ServerUrlInput.Text.Trim();
         var selectedThread = CodexThreadCombo.SelectedItem as CodexThreadOption;
         var executionMode = GetSelectedTag(ExecutionModeCombo, "CLI_TO_CLI");
@@ -2943,11 +2948,15 @@ public partial class MainWindow : Window
             return;
         }
         MaxConcurrentWorkInput.ToolTip = "1 이상의 정수. 고정된 최대 동시 실행 수 제한은 없습니다.";
-        _targetSettings = _targetSettings with
+        // The repository field is read-only presentation, not user input.
+        // Model changes preserve the selected folder's Git origin even when
+        // that field is blank or has not finished auto-detecting.
+        var resolvedRepository = WorkerTargetConfiguration.ResolveRepositorySettingsForSave(
+            _targetSettings, workingDirectory);
+        _targetSettings = resolvedRepository with
         {
-            ManualRepositoryUrl = repository, ManualServerBaseUrl = server,
-            RepositoryUrlSource = repository is null ? null : "AUTO_GIT_REMOTE", ServerBaseUrlSource = "MANUAL",
-            ManualWorkingDirectory = workingDirectory,
+            ManualServerBaseUrl = server,
+            ServerBaseUrlSource = "MANUAL",
             ExecutionMode = executionMode,
             Coordinator = ReadCoordinatorSettings(),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer),
