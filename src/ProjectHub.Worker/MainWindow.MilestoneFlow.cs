@@ -2069,9 +2069,10 @@ public partial class MainWindow
             return "blocked: NO_WRITABLE_SCOPE";
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
             "8", "@@GOAL" + Environment.NewLine +
-            "Worker 빌드 오류에 필요한 최소 소스 수정만 수행하라." +
+            "WORK #8 전용 복구: 실제 코드 빌드 오류만 이 호출에서 한 번 최소 수정하라." +
             Environment.NewLine + "@@INSTRUCTIONS" + Environment.NewLine +
             "원래 작업 범위 외 변경 금지. Git 명령 실행 금지. " +
+            "환경 EPERM 등 실행 환경 오류를 소스 수정으로 우회하지 마라. " +
             "오류: " + MilestoneDefinitionContract.Limit(failure.Summary, 1600),
             writePaths, workingDirectory);
         var stateless = implementer with
