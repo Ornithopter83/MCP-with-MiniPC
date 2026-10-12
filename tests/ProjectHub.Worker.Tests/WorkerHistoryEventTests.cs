@@ -5,14 +5,14 @@ namespace ProjectHub.Worker.Tests;
 public sealed class WorkerHistoryEventTests
 {
     [Theory]
-    [InlineData("Coordinator", null, "설계 관제")]
-    [InlineData("Qa", null, "QA")]
-    [InlineData("HighLevel", null, "검토")]
-    [InlineData("Manager", null, "통합")]
-    [InlineData("Resource", null, "작업 (#0, 리소스)")]
-    [InlineData("Implementer", "0", "작업 (#0, 리소스)")]
-    [InlineData("Implementer", "10", "작업 (#10, 일반 작업)")]
-    [InlineData("Implementer", "27", "작업 (#27, 일반 작업)")]
+    [InlineData("Coordinator", null, "Unity HQ · 게임 설계")]
+    [InlineData("Qa", null, "Unity QA · 플레이테스트")]
+    [InlineData("HighLevel", null, "Unity HIGH · 통합")]
+    [InlineData("Manager", null, "관리자(비활성)")]
+    [InlineData("Resource", null, "Unity 에셋 (#0)")]
+    [InlineData("Implementer", "0", "Unity 에셋 (#0)")]
+    [InlineData("Implementer", "10", "Unity WORK (#10)")]
+    [InlineData("Implementer", "27", "Unity WORK (#27)")]
     public void HistoryRole_UsesFiveRolePresentation(
         string stage,
         string? workItemId,
@@ -75,6 +75,6 @@ public sealed class WorkerHistoryEventTests
             WorkNumber = 3
         };
 
-        Assert.Equal("작업 (#3)", item.Role);
+        Assert.Equal("Unity WORK (#3)", item.Role);
     }
 }
