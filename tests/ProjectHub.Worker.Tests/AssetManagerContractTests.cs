@@ -69,8 +69,8 @@ public sealed class AssetManagerContractTests
         var parsed = HqTextProtocol.Parse(valid);
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         var invalid = AssetOnly.Replace(
-            "@@MILESTONE\n<ID>M1</>",
-            "@@MILESTONE\n<ID>M1</>\n\n" + work,
+            "@@ASSET_MANAGER=1",
+            work + "\n\n@@ASSET_MANAGER=1",
             StringComparison.Ordinal);
         Assert.False(HqTextProtocol.Parse(invalid).IsValid);
     }
