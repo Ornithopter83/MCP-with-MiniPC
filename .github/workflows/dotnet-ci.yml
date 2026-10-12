@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - UnityWorker
   pull_request:
   workflow_dispatch:
 
