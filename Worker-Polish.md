@@ -6,11 +6,11 @@
 
 ① HQ는 사용자 목표 해석, 최초 계획, 마일스톤·WORKITEM 설계, QA 조사 지시와 다음 WORK·PAUSE·END 판단을 담당한다.
 ② #10+ GENERAL WORK는 지정된 WORKITEM과 WRITE_PATH 안에서 구현을 수행한다. WORKITEM은 마일스톤을 넘어 이어질 수 있고, 동일 WORKITEM의 실행 세션과 진행 상태는 Worker가 보존한다.
-③ #0 RESOURCE는 GPTWEB 이미지 생성 전용의 독립 sidecar다.
+③ #0 RESOURCE는 GPTWEB 이미지 생성 전용의 독립 sidecar다. #1 ASSET MANAGER는 별개로 에셋 검색→획득·Import→씬 반영을 선행 실행한다.
 ④ QA는 예약된 마일스톤의 실제 동작과 실행 증거를 조사하고 passed, issue, blocked 중 하나를 반환한다.
 ⑤ HIGH는 마일스톤 WORK 실행 묶음이 종료된 뒤 고급 검토와 필요한 보완을 수행한다. QA의 issue 여부에만 종속되지 않는다.
 ⑥ Worker는 역할 배정과 병렬 실행, 세션·체크포인트, 기계적 BUILD·Git, 오류·중단 상태와 HQ 보고를 관리한다.
-⑦ 현재 실행 역할은 HQ, GENERAL WORK, RESOURCE, QA, HIGH다. 과거의 JUDGE·OBSERVATION·#1 중간관리자 설계는 현재 실행 필수 단계가 아니다.
+⑦ UnityWorker의 현재 실행 역할은 HQ, #1 ASSET MANAGER, #10+ WORK, #0 IMAGE RESOURCE, QA, HIGH다. 과거의 JUDGE·OBSERVATION 및 기존 #1 중간관리자 설계는 실행하지 않는다.
 
 제2조 (HQ 설계와 역할 전달)
 
@@ -111,3 +111,11 @@
 ⑥ Unity CLI/MCP 연결 오류를 코드 결함으로 오인해 자동 소스 복구를 반복하지 않는다.
 ⑦ UnityWorker 제품 코드 브랜치와 사용자의 게임 프로젝트 작업 브랜치는 별개다. 게임 프로젝트의 기존 main/origin/main Git 계약을 임의 변경하지 않는다.
 ⑧ 1차 구현은 역할 카드·계약·WORK 직렬화, Unity CLI 재컴파일 BUILD, HQ 시작 전 프로젝트/Pipeline/Editor 읽기 연결 점검을 제공한다. 이 점검은 Codex 샌드박스 내부 MCP 호출 성공까지 입증하지 않는다. Editor 접근 분리, 실제 Windows 통합 검증과 Unity PlayMode QA 기계 판정은 후속 과제다.
+
+제13조 (#1 ASSET MANAGER 실행 정책)
+
+① HQ는 게임에 에셋이 필요한 경우 첫 마일스톤부터 @@ASSET_MANAGER=1을 우선 구성한다. 에셋 불필요 시 생략한다. #1만 있는 마일스톤을 지원하며 #1은 #10+ WORK 전에 실행한다.
+② #1은 DISCOVER, ACQUIRE, INTEGRATE 3단계를 동일 Request ID·AI 세션에서 순서대로 수행한다. DISCOVER는 읽기 전용 에셋 탐색, ACQUIRE는 PROJECT_ONLY 재사용 또는 CC0_AUTO의 승인 가능한 획득·Import, INTEGRATE는 실제 씬 저장·참조 확인이다.
+③ #1 단계별 쓰기 범위, 모델, 세션 및 실행 상태를 .projecthub 체크포인트에 기록한다. 중단된 변경 단계를 무조건 다시 실행하지 않는다. 요청 범위 밖의 변경은 BLOCKED로 보고한다.
+④ #1은 WORK의 명령 실행 보호 Hook을 적용받는다. Import·씬 변경은 Editor 공유 상태 보호를 위한 직렬 실행이다. Git 최종화는 Worker가 담당한다.
+⑤ 공식 공급원 검색/다운로드 및 Editor 실기 성공은 Windows에서 별도 검증한다. CI 성공만으로 실제 에셋 설치·씬 배치 완료를 주장하지 않는다.

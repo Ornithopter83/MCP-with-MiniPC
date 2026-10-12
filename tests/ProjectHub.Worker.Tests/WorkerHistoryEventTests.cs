@@ -8,7 +8,7 @@ public sealed class WorkerHistoryEventTests
     [InlineData("Coordinator", null, "Unity HQ · 게임 설계")]
     [InlineData("Qa", null, "Unity QA · 플레이테스트")]
     [InlineData("HighLevel", null, "Unity HIGH · 통합")]
-    [InlineData("Manager", null, "관리자(비활성)")]
+    [InlineData("Manager", null, "#1 ASSET MANAGER")]
     [InlineData("Resource", null, "Unity 에셋 (#0)")]
     [InlineData("Implementer", "0", "Unity 에셋 (#0)")]
     [InlineData("Implementer", "10", "Unity WORK (#10)")]

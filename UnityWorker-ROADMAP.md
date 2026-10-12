@@ -10,13 +10,14 @@
 | 역할 | 현재 실행 주체 | 표시 카드 | 목표 산출물 |
 |---|---|---|---|
 | 프로젝트 조정 | HQ | Unity HQ | 요구·완료 기준 및 WORKITEM 설계 |
+| #1 에셋 전문 역할 | ASSET MANAGER (첫 구현) | #1 Asset Manager | 검색→획득/Import→씬 적용, 단계별 체크포인트·차단 정책 |
 | 도구·플러그인 점검 | Worker Unity 사전 점검 (부분 구현) | 실행 이력 | 프로젝트/Pipeline 및 CLI 응답; MCP 인증·세션은 미검증 |
 | Editor 연결·독점 | Worker Editor 연결 Probe (부분 구현) | 실행 이력 | --project-path로 Editor 읽기 명령 확인; 독점 정책은 직렬 WORK |
 | 게임플레이 구현 | WORK #10+ | Unity WORK | C# 코드, 컴포넌트 구현 |
 | 씬 구성 | WORK #10+ | Unity WORK | 씬·프리팹 저장과 참조 구성 |
 | 실행 검증 | QA + Unity CLI 컴파일 BUILD (첫 구현) | Unity QA | CLI 컴파일 및 추후 Console·PlayMode 증거 |
 | 통합·릴리스 | HIGH + Worker Git | Unity HIGH | 통합 검토 및 Commit/Push |
-| 비차단 이미지 | RESOURCE #0 | Unity 에셋 #0 | GPTWEB 이미지 (기존 동작 유지) |
+| 비차단 이미지 | RESOURCE #0 | #0 IMAGE | GPTWEB 이미지 (기존 동작 유지) |
 
 ## 1차 구현에 실제 반영한 범위
 
@@ -27,6 +28,8 @@
 - UnityWorker 브랜치 대상으로 .NET CI 실행 및 직렬 정책 회귀 테스트 추가
 - Unity 프로젝트로 인식되면 Worker BUILD 단계에서 Unity CLI `recompile`을 호출하고, 컴파일 실패(exit 6)와 연결·환경 실패를 구분 (Windows 실증 전)
 - HQ 실행 전에 프로젝트 구조·Pipeline 의존성과 `unity command --project-path ... --format json` 읽기 전용 Probe를 확인하고, 도구·Editor 오류가 나면 WORK 실행 전에 차단 (실제 Windows 실증 전)
+
+- #1 ASSET MANAGER 역할 계약·HQ 우선 계획 문법·직렬 3단계 실행·독립 세션·WORK 선행 실행·카드 표시 및 체크포인트 반영 (Windows Editor 실증 전)
 
 ## 다음 작업 (구현·실증 전)
 
