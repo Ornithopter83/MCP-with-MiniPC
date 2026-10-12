@@ -100,7 +100,7 @@ public sealed class WorkerHistoryCardPolicyTests
         Assert.Equal(2, cards.Count);
         Assert.Equal("Coordinator", cards[0].StageKey);
         Assert.Equal("동일 실행 내 연속 요청", cards[1].FullMessage);
-        Assert.Equal("Worker", cards[1].Role);
+        Assert.Equal("UnityWorker", cards[1].Role);
     }
 
     [Fact]
