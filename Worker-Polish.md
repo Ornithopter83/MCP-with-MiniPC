@@ -100,3 +100,14 @@
 ③ JSON은 Worker 내부 직렬화에 사용할 수 있고 비ASCII 문자를 실제 Unicode 문자로 기록한다. AI 역할 응답에 JSON 출력을 요구하는 것과 구분한다.
 ④ Windows PowerShell 5.1의 텍스트 입출력은 UTF-8을 명시한다.
 ⑤ 디코딩 실패는 원문을 보존하고 오류로 보고한다.
+
+제12조 (UnityWorker 전용 1차 실행 정책)
+
+① 이 브랜치는 Unity 프로젝트 자동 개발 특화 버전이다. Unity CLI/MCP는 Editor와 연결하는 외부 도구이며 Unity Editor는 씬·프리팹 변경과 실제 실행 환경이다.
+② Unity HQ는 Gameplay 소스 작성과 Scene/Prefab 변경을 별도 WORK 또는 마일스톤으로 설계한다. Toolchain·Editor 연결 확인은 장기적으로 Worker의 기계 관제 책임이며 독립 상시 AI 역할을 새로 만들지 않는다.
+③ Editor 공유 씬·Asset Import·Domain Reload 충돌을 방지하기 위해 Editor 전용 독점 스케줄러 완성 전에는 이 브랜치의 WORK를 하나씩 실행한다. 동시 WORK 설정값은 보존하되 1차 구현에서는 병렬 실행하지 않는다.
+④ Unity 컴파일/Console/PlayMode의 실제 증거가 없으면 BUILD_SKIPPED 또는 WORK 완료 보고를 검증 성공으로 선언하지 않는다. Unity 전용 BUILD/QA 어댑터 도입 전에는 QA가 검증 가능 범위와 환경 제약을 구분한다.
+⑤ Assets와 대응 .meta, Packages, ProjectSettings는 허용된 변경 범위를 따른다. Library, Temp, Logs, UserSettings 등의 생성물은 Git 대상에서 제외한다.
+⑥ Unity CLI/MCP 연결 오류를 코드 결함으로 오인해 자동 소스 복구를 반복하지 않는다.
+⑦ UnityWorker 제품 코드 브랜치와 사용자의 게임 프로젝트 작업 브랜치는 별개다. 게임 프로젝트의 기존 main/origin/main Git 계약을 임의 변경하지 않는다.
+⑧ 1차 구현은 역할 카드·계약 및 WORK 직렬화를 제공한다. Unity CLI/MCP 사전 점검, Editor 접근 분리, Unity BUILD/QA의 기계적 판정은 후속 구현·검증 과제다.
