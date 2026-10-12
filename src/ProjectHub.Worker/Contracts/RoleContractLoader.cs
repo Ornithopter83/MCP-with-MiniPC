@@ -16,11 +16,14 @@ public static class RoleContractLoader
         "src/ProjectHub.Worker/Contracts/QA-ROUTING-CONTRACT.md";
     public const string HighContractPath =
         "src/ProjectHub.Worker/Contracts/HIGH-ROUTING-CONTRACT.md";
+    public const string AssetManagerContractPath =
+        "src/ProjectHub.Worker/Contracts/ASSET-MANAGER-ROUTING-CONTRACT.md";
 
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
     public static string LoadQaFooter() => Load("QA-ROUTING-CONTRACT.md");
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");
+    public static string LoadAssetManagerFooter() => Load("ASSET-MANAGER-ROUTING-CONTRACT.md");
 
     public static string BuildDirectWorkPrompt(
         string workItemId,
@@ -90,7 +93,8 @@ public static class RoleContractLoader
             (HqContractPath, LoadHqFooter()),
             (WorkContractPath, LoadWorkFooter()),
             (QaContractPath, LoadQaFooter()),
-            (HighContractPath, LoadHighFooter())
+            (HighContractPath, LoadHighFooter()),
+            (AssetManagerContractPath, LoadAssetManagerFooter())
         };
 
         foreach (var (path, contract) in contracts)

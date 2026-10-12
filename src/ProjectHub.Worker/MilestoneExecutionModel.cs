@@ -15,6 +15,14 @@ internal sealed record MilestoneWorkDefinition(
     public string ExecutionMode { get; init; } = "NEW";
 }
 
+internal sealed record AssetManagerDefinition(
+    string RequestId,
+    string Goal,
+    string ScenePath,
+    string TargetPath,
+    string SourcePolicy,
+    string Instructions);
+
 internal sealed record MilestoneResourceDefinition(
     string Id,
     string Type,
@@ -46,6 +54,7 @@ internal sealed record MilestoneDefinition(
     public string QaInstructions { get; init; } = string.Empty;
     public string HighInstructions { get; init; } = string.Empty;
     public string PlanDocument { get; init; } = string.Empty;
+    public AssetManagerDefinition? AssetManager { get; init; }
 }
 
 internal sealed record MilestoneMechanicalResult(
@@ -193,6 +202,35 @@ internal static class MilestoneDefinitionContract
                 return false;
             }
 
+            AssetManagerDefinition? assetManager = null;
+            if (milestoneJson.TryGetProperty("assetManager", out var assetJson) &&
+                assetJson.ValueKind != JsonValueKind.Null)
+            {
+                if (readOnlyNoFileChanges || assetJson.ValueKind != JsonValueKind.Object ||
+                    !TryGetJsonId(assetJson, "id", out var assetId) || assetId != "1" ||
+                    !TryGetRequiredJsonString(assetJson, "requestId", out var assetRequest) ||
+                    !System.Text.RegularExpressions.Regex.IsMatch(assetRequest, @"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$") ||
+                    !TryGetRequiredJsonString(assetJson, "goal", out var assetGoal) ||
+                    !TryGetRequiredJsonString(assetJson, "scene", out var assetScene) ||
+                    !TryGetRequiredJsonString(assetJson, "targetPath", out var assetTarget) ||
+                    !TryGetRequiredJsonString(assetJson, "sourcePolicy", out var assetSource) ||
+                    !TryGetRequiredJsonString(assetJson, "instructions", out var assetInstructions) ||
+                    !assetScene.StartsWith("Assets/", StringComparison.Ordinal) ||
+                    !assetScene.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
+                    !IsSafeRelativePath(assetScene) ||
+                    !assetTarget.StartsWith("Assets/", StringComparison.Ordinal) ||
+                    assetTarget.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
+                    !IsSafeRelativePath(assetTarget) ||
+                    assetSource is not ("PROJECT_ONLY" or "CC0_AUTO") ||
+                    assetGoal.Length > 600 || assetInstructions.Length > 1200)
+                {
+                    error = "ASSET_MANAGER_CONTRACT_INVALID";
+                    return false;
+                }
+                assetManager = new(assetRequest, assetGoal, assetScene,
+                    assetTarget, assetSource, assetInstructions);
+            }
+
             if (!milestoneJson.TryGetProperty("workItems", out var workItemsJson) ||
                 workItemsJson.ValueKind != JsonValueKind.Array)
             {
@@ -314,6 +352,24 @@ internal static class MilestoneDefinitionContract
                 };
             }
 
+            if (workItems.Count == 0 && assetManager is null)
+            {
+                error = "MILESTONE_WORK_ITEMS_REQUIRED";
+                return false;
+            }
+            if (assetManager is not null &&
+                workItems.Values.Any(work => !work.ReadOnly && work.WritePaths.Any(path =>
+                    MilestoneMechanicalExecutor.IsPathWithinScopes(
+                        assetManager.ScenePath, new[] { path }) ||
+                    MilestoneMechanicalExecutor.IsPathWithinScopes(
+                        assetManager.TargetPath, new[] { path }) ||
+                    MilestoneMechanicalExecutor.IsPathWithinScopes(
+                        path, new[] { assetManager.TargetPath }))))
+            {
+                error = "ASSET_MANAGER_WORK_PATH_OVERLAP";
+                return false;
+            }
+
             var resources = new Dictionary<string, MilestoneResourceDefinition>(
                 StringComparer.OrdinalIgnoreCase);
             if (!milestoneJson.TryGetProperty("resource", out var resourceJson))
@@ -418,7 +474,8 @@ internal static class MilestoneDefinitionContract
             {
                 QaInstructions = qaInstructions,
                 HighInstructions = highInstructions,
-                PlanDocument = planDocument
+                PlanDocument = planDocument,
+                AssetManager = assetManager
             };
             return true;
         }

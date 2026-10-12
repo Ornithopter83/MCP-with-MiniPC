@@ -78,7 +78,7 @@ internal static class StructuredHqProtocol
         if (sections.Count(s => s.Name == "QA") != 1 ||
             sections.Count(s => s.Name == "HIGH") != 1)
             errors.Add("COMPACT_QA_HIGH_REQUIRED");
-        if (sections.Any(s => s.Name is not ("MILESTONE" or "WORK" or "RESOURCE" or "QA" or "HIGH" or "PLAN")))
+        if (sections.Any(s => s.Name is not ("MILESTONE" or "WORK" or "RESOURCE" or "ASSET_MANAGER" or "QA" or "HIGH" or "PLAN")))
             errors.Add("COMPACT_SECTION_FORBIDDEN");
         var parsed = new Dictionary<Section, StructuredRoleFields>();
         foreach (var section in sections)
@@ -126,7 +126,51 @@ internal static class StructuredHqProtocol
                 ["completionCriteria"] = new[] { instr }
             });
         }
-        if (works.Count == 0 || works.Select(w => w["id"]).Distinct().Count() != works.Count)
+        if (works.Select(w => w["id"]).Distinct().Count() != works.Count)
+            errors.Add("WORK.ID_DUPLICATE");
+
+        Dictionary<string, object?>? assetManager = null;
+        var assetSections = sections.Where(s => s.Name == "ASSET_MANAGER").ToArray();
+        if (assetSections.Length > 1) errors.Add("ASSET_MANAGER_COUNT");
+        if (assetSections.Length == 1)
+        {
+            var s = assetSections[0];
+            var requestId = Value(s, "REQUEST_ID");
+            var goal = Value(s, "GOAL");
+            var scene = Value(s, "SCENE");
+            var target = Value(s, "TARGET_PATH");
+            var source = Value(s, "SOURCE_POLICY");
+            var instructions = Value(s, "INSTRUCTIONS");
+            if (s.Argument != "1") errors.Add("ASSET_MANAGER.ID");
+            if (!Regex.IsMatch(requestId, @"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"))
+                errors.Add("ASSET_MANAGER.REQUEST_ID");
+            if (goal.Length is < 1 or > 600 || instructions.Length is < 1 or > 1200)
+                errors.Add("ASSET_MANAGER.INSTRUCTIONS");
+            if (!scene.StartsWith("Assets/", StringComparison.Ordinal) ||
+                !scene.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
+                !MilestoneDefinitionContract.IsSafeRelativePath(scene))
+                errors.Add("ASSET_MANAGER.SCENE");
+            if (!target.StartsWith("Assets/", StringComparison.Ordinal) ||
+                target.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
+                !MilestoneDefinitionContract.IsSafeRelativePath(target))
+                errors.Add("ASSET_MANAGER.TARGET_PATH");
+            if (source is not ("PROJECT_ONLY" or "CC0_AUTO"))
+                errors.Add("ASSET_MANAGER.SOURCE_POLICY");
+            if (parsed.TryGetValue(s, out var af) && af.Names.Any(n =>
+                    n is not ("REQUEST_ID" or "GOAL" or "SCENE" or "TARGET_PATH" or "SOURCE_POLICY" or "INSTRUCTIONS")))
+                errors.Add("ASSET_MANAGER.UNKNOWN_FIELD");
+            if (sections.FindIndex(section => section == s) >
+                sections.FindIndex(section => section.Name == "WORK") &&
+                sections.Any(section => section.Name == "WORK"))
+                errors.Add("ASSET_MANAGER_MUST_PRECEDE_WORK");
+            assetManager = new()
+            {
+                ["id"] = 1, ["requestId"] = requestId, ["goal"] = goal,
+                ["scene"] = scene, ["targetPath"] = target,
+                ["sourcePolicy"] = source, ["instructions"] = instructions
+            };
+        }
+        if (works.Count == 0 && assetManager is null)
             errors.Add("COMPACT_WORK_REQUIRED");
 
         Dictionary<string, object?>? resource = null;
@@ -188,7 +232,7 @@ internal static class StructuredHqProtocol
             ["qaInstructions"] = qa, ["highInstructions"] = high,
             ["planDocument"] = plan, ["entrypoint"] = null,
             ["initializeGitIfMissing"] = false, ["projectPolicy"] = "DEFAULT",
-            ["resource"] = resource, ["workItems"] = works
+            ["resource"] = resource, ["assetManager"] = assetManager, ["workItems"] = works
         };
         var compatibility = "[ACTION=WORK]\n" + ProjectHubJson.SerializeIndented(
             new Dictionary<string, object?> { ["milestone"] = milestone });
