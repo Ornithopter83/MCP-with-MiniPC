@@ -141,6 +141,29 @@ public sealed class AssetManagerContractTests
     }
 
     [Fact]
+    public void QaAndHighReceiveAssetManagerPlanAndCompletionEvidence()
+    {
+        var parsed = HqTextProtocol.Parse(AssetOnly);
+        Assert.True(parsed.IsValid);
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse,
+            out var milestone, out var error), error);
+        Assert.NotNull(milestone);
+        var evidence = new[] { "ASSET_MANAGER #1: ASSET_MANAGER_COMPLETED: rock-001" };
+        var qaContext = MilestoneDefinitionContract.BuildQaContext(
+            milestone!, new Dictionary<string, string>(), evidence);
+        var highContext = MilestoneDefinitionContract.BuildHighContext(
+            milestone!, new Dictionary<string, string>(), null, evidence);
+        Assert.Contains("@@ASSET_MANAGER_REQUEST", qaContext);
+        Assert.Contains("@@ASSET_MANAGER_RESULTS", qaContext);
+        Assert.Contains("Assets/Scenes/AIDemo.unity", qaContext);
+        Assert.Contains("@@ASSET_MANAGER_REQUEST", highContext);
+        Assert.Contains("@@ASSET_MANAGER_RESULTS", highContext);
+        Assert.Contains("ASSET MANAGER", RoleContractLoader.LoadQaFooter());
+        Assert.Contains("ASSET MANAGER", RoleContractLoader.LoadHighFooter());
+    }
+
+    [Fact]
     public void AssetManagerContractIsEmbedded()
     {
         Assert.Contains("DISCOVER", RoleContractLoader.LoadAssetManagerFooter());
