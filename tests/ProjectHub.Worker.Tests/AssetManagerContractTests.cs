@@ -64,10 +64,9 @@ public sealed class AssetManagerContractTests
             <PATH>Assets/Scripts/Foo.cs</>
             <INSTRUCTIONS>코드를 구현한다.</>
             """;
-        var misplaced = AssetOnly.Replace(
-            "@@ASSET_MANAGER=1", work + "\n@@ASSET_MANAGER=1",
-            StringComparison.Ordinal);
-        var parsed = HqTextProtocol.Parse(misplaced);
+        var valid = AssetOnly.Replace(
+            "@@QA", work + "\n\n@@QA", StringComparison.Ordinal);
+        var parsed = HqTextProtocol.Parse(valid);
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         var invalid = AssetOnly.Replace(
             "@@MILESTONE\n<ID>M1</>",
