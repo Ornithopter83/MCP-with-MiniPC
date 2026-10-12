@@ -872,6 +872,27 @@ public partial class MainWindow
                 }
             }
 
+            // #1 is a strict foreground prerequisite, not a RESOURCE sidecar.
+            // It must finish all three phases before independent WORK begins.
+            if (milestone.AssetManager is { } assetDefinition)
+            {
+                var assetRun = await ExecuteMilestoneAssetManagerAsync(
+                    jobId, workingDirectory, milestone, assetDefinition,
+                    implementer, cancellationToken);
+                mechanicalReports.Add("ASSET_MANAGER #1: " +
+                    MilestoneDefinitionContract.Limit(assetRun.Detail, 4000));
+                foreach (var path in assetRun.ChangedPaths)
+                    milestoneChangedPaths.Add(path);
+                if (!assetRun.Success)
+                {
+                    SaveMilestoneExecutionGraph(workingDirectory, jobId,
+                        milestone, "ASSET_MANAGER_BLOCKED", workReports,
+                        resourceReports, string.Empty, string.Empty);
+                    return new(true, "ASSET_MANAGER_BLOCKED: " +
+                        MilestoneDefinitionContract.Limit(assetRun.Detail, 2500));
+                }
+            }
+
             void CaptureResourceState()
             {
                 foreach (var execution in resourceTasks)

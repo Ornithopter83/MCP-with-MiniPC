@@ -2027,7 +2027,11 @@ public partial class MainWindow : Window
         string? historyReferenceId = null)
     {
         var started = DateTimeOffset.UtcNow;
-        var roleName = purpose.Contains("MANAGER", StringComparison.OrdinalIgnoreCase)
+        // #1 ASSET MANAGER is an independent role, but must run with
+        // WORK's strict command hooks, network configuration and sandbox.
+        var assetManagerPurpose = purpose.StartsWith("ASSET_MANAGER_", StringComparison.OrdinalIgnoreCase);
+        var roleName = assetManagerPurpose ? "WORK" :
+            purpose.Contains("MANAGER", StringComparison.OrdinalIgnoreCase)
             ? "MANAGER"
             : purpose.Contains("QA", StringComparison.OrdinalIgnoreCase)
                 ? "QA"
@@ -2046,7 +2050,7 @@ public partial class MainWindow : Window
             "HIGH" => "HIGH",
             _ => "HQ"
         };
-        var historyRole = roleName switch
+        var historyRole = assetManagerPurpose ? WorkerRoleState.Manager : roleName switch
         {
             "MANAGER" => WorkerRoleState.Manager,
             "QA" => WorkerRoleState.Qa,
@@ -2080,7 +2084,7 @@ public partial class MainWindow : Window
             if (roleName == "WORK" && !string.IsNullOrWhiteSpace(historyWorkItemId))
             {
                 AddRoleProgressHistory(
-                    WorkerRoleState.Work,
+                    historyRole,
                     message,
                     role.Provider,
                     referenceId: historyReferenceId,
