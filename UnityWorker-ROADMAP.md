@@ -10,8 +10,8 @@
 | 역할 | 현재 실행 주체 | 표시 카드 | 목표 산출물 |
 |---|---|---|---|
 | 프로젝트 조정 | HQ | Unity HQ | 요구·완료 기준 및 WORKITEM 설계 |
-| 도구·플러그인 점검 | Worker Toolchain (추가 예정) | 미구현 | CLI/MCP/인증 가용성 |
-| Editor 연결·독점 | Worker Editor (추가 예정) | 미구현 | 일치하는 프로젝트/씬 및 독점 실행 |
+| 도구·플러그인 점검 | Worker Unity 사전 점검 (부분 구현) | 실행 이력 | 프로젝트/Pipeline 및 CLI 응답; MCP 인증·세션은 미검증 |
+| Editor 연결·독점 | Worker Editor 연결 Probe (부분 구현) | 실행 이력 | --project-path로 Editor 읽기 명령 확인; 독점 정책은 직렬 WORK |
 | 게임플레이 구현 | WORK #10+ | Unity WORK | C# 코드, 컴포넌트 구현 |
 | 씬 구성 | WORK #10+ | Unity WORK | 씬·프리팹 저장과 참조 구성 |
 | 실행 검증 | QA + Unity CLI 컴파일 BUILD (첫 구현) | Unity QA | CLI 컴파일 및 추후 Console·PlayMode 증거 |
@@ -26,10 +26,11 @@
 - 공유 Editor 경쟁 상태를 피하기 위해 Unity WORK를 한 번에 하나만 실행하도록 제한
 - UnityWorker 브랜치 대상으로 .NET CI 실행 및 직렬 정책 회귀 테스트 추가
 - Unity 프로젝트로 인식되면 Worker BUILD 단계에서 Unity CLI `recompile`을 호출하고, 컴파일 실패(exit 6)와 연결·환경 실패를 구분 (Windows 실증 전)
+- HQ 실행 전에 프로젝트 구조·Pipeline 의존성과 `unity command --project-path ... --format json` 읽기 전용 Probe를 확인하고, 도구·Editor 오류가 나면 WORK 실행 전에 차단 (실제 Windows 실증 전)
 
 ## 다음 작업 (구현·실증 전)
 
-1. Unity CLI/Pipeline/MCP Toolchain 점검: Windows의 PATH, 인증, Editor 탐지, Codex workspace-write ACL/연결 검사
+1. Unity Toolchain 실증·확장: 현재 Probe를 실제 Windows Unity CLI에서 검증하고 Codex WORK 샌드박스의 MCP 등록·호출/ACL까지 확인 (HQ 시작 전 Probe가 MCP 사용 가능성을 보장하지는 않음)
 2. Editor 독점 스케줄러: Gameplay 소스 작업은 병렬로 되돌리고 Scene 작업만 독점 구간에서 실행
 3. 기계 BUILD 실증·보강: Unity CLI `recompile`의 실제 Windows 응답/로그 검증, Editor Console 및 컴파일 상태 세부 파싱
 4. QA: EditMode/PlayMode 테스트, 프레임·입력·카메라 동작 증거 검증, 미검증 상태 명시

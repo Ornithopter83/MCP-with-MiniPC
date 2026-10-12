@@ -122,6 +122,19 @@ public partial class MainWindow
                         AddHqInterventionHistory(entry, delivered: false);
             }
 
+            // Unity toolchain and the selected Editor must be ready before
+            // the first HQ dispatch; never repair a missing Editor through WORK.
+            var unityPreflight = await UnityToolchainPreflight.RunAsync(
+                normalizedRoot, cts.Token);
+            AddTaskMessage(
+                "UNITY TOOLCHAIN / EDITOR PREFLIGHT",
+                unityPreflight.Code + ": " + unityPreflight.Detail,
+                status: unityPreflight.Ready ? "COMPLETED" : "BLOCKED");
+            if (!unityPreflight.Ready)
+                throw new InvalidOperationException(
+                    "UNITY_PREFLIGHT_BLOCKED: " + unityPreflight.Code +
+                    ": " + unityPreflight.Detail);
+
             stagedAttachments = UserAttachmentTransport.StageForWorkerRuntime(
                 attachments,
                 normalizedRoot,
