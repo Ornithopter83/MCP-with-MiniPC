@@ -17,6 +17,13 @@ internal static class MilestoneBuildRunner
         string root, string jobId, IEnumerable<MilestoneWorkDefinition> workItems,
         CancellationToken cancellationToken)
     {
+        if (UnityCliBuildRunner.IsUnityProject(root))
+        {
+            var unityResult = await UnityCliBuildRunner.RunAsync(
+                root, jobId, cancellationToken).ConfigureAwait(false);
+            return new[] { unityResult };
+        }
+
         var targets = DiscoverTargets(root, workItems).ToArray();
         if (targets.Length == 0)
             return new[] { new MilestoneMechanicalResult("BUILD", true, 0, "",
@@ -160,7 +167,8 @@ internal static class MilestoneBuildRunner
 
     public static bool IsEnvironmentFailure(IEnumerable<MilestoneMechanicalResult> reports) =>
         reports.Any(report => !report.Success &&
-            (report.Summary.Contains("EPERM", StringComparison.OrdinalIgnoreCase) ||
+            (UnityCliBuildRunner.IsEnvironmentFailure(report) ||
+             report.Summary.Contains("EPERM", StringComparison.OrdinalIgnoreCase) ||
              report.Summary.Contains("Permission denied", StringComparison.OrdinalIgnoreCase) ||
              report.Summary.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) ||
              report.Summary.Contains("Win32Exception", StringComparison.OrdinalIgnoreCase) ||

@@ -14,7 +14,7 @@
 | Editor 연결·독점 | Worker Editor (추가 예정) | 미구현 | 일치하는 프로젝트/씬 및 독점 실행 |
 | 게임플레이 구현 | WORK #10+ | Unity WORK | C# 코드, 컴포넌트 구현 |
 | 씬 구성 | WORK #10+ | Unity WORK | 씬·프리팹 저장과 참조 구성 |
-| 실행 검증 | QA + 기계 BUILD (추가 예정) | Unity QA | 컴파일·Console·PlayMode 증거 |
+| 실행 검증 | QA + Unity CLI 컴파일 BUILD (첫 구현) | Unity QA | CLI 컴파일 및 추후 Console·PlayMode 증거 |
 | 통합·릴리스 | HIGH + Worker Git | Unity HIGH | 통합 검토 및 Commit/Push |
 | 비차단 이미지 | RESOURCE #0 | Unity 에셋 #0 | GPTWEB 이미지 (기존 동작 유지) |
 
@@ -25,12 +25,13 @@
 - 화면 파이프라인/모델 설정/이력 카드 이름을 Unity용으로 수정
 - 공유 Editor 경쟁 상태를 피하기 위해 Unity WORK를 한 번에 하나만 실행하도록 제한
 - UnityWorker 브랜치 대상으로 .NET CI 실행 및 직렬 정책 회귀 테스트 추가
+- Unity 프로젝트로 인식되면 Worker BUILD 단계에서 Unity CLI `recompile`을 호출하고, 컴파일 실패(exit 6)와 연결·환경 실패를 구분 (Windows 실증 전)
 
 ## 다음 작업 (구현·실증 전)
 
 1. Unity CLI/Pipeline/MCP Toolchain 점검: Windows의 PATH, 인증, Editor 탐지, Codex workspace-write ACL/연결 검사
 2. Editor 독점 스케줄러: Gameplay 소스 작업은 병렬로 되돌리고 Scene 작업만 독점 구간에서 실행
-3. 기계 BUILD: Unity Editor C# 컴파일 결과, 오류/환경 실패 분리, Console·로그 수집
+3. 기계 BUILD 실증·보강: Unity CLI `recompile`의 실제 Windows 응답/로그 검증, Editor Console 및 컴파일 상태 세부 파싱
 4. QA: EditMode/PlayMode 테스트, 프레임·입력·카메라 동작 증거 검증, 미검증 상태 명시
 5. Unity Asset/Git: .meta, 프리팹 및 Packages/ProjectSettings 승인 범위, 캐시/생성물 제외
 6. Windows 실증과 회귀 검증을 통과한 후 UnityWorker 베타 프리릴리스 발행

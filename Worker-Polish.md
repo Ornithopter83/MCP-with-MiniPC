@@ -110,4 +110,4 @@
 ⑤ Assets와 대응 .meta, Packages, ProjectSettings는 허용된 변경 범위를 따른다. Library, Temp, Logs, UserSettings 등의 생성물은 Git 대상에서 제외한다.
 ⑥ Unity CLI/MCP 연결 오류를 코드 결함으로 오인해 자동 소스 복구를 반복하지 않는다.
 ⑦ UnityWorker 제품 코드 브랜치와 사용자의 게임 프로젝트 작업 브랜치는 별개다. 게임 프로젝트의 기존 main/origin/main Git 계약을 임의 변경하지 않는다.
-⑧ 1차 구현은 역할 카드·계약 및 WORK 직렬화를 제공한다. Unity CLI/MCP 사전 점검, Editor 접근 분리, Unity BUILD/QA의 기계적 판정은 후속 구현·검증 과제다.
+⑧ 1차 구현은 역할 카드·계약·WORK 직렬화 및 Unity CLI 재컴파일 BUILD 호출을 제공한다. Unity CLI/MCP 연결 사전 점검, Editor 접근 분리, 실제 Windows 빌드 통합 검증과 Unity PlayMode QA의 기계적 판정은 후속 과제다.
