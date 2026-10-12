@@ -586,6 +586,15 @@ internal static class MilestoneDefinitionContract
     {
         var builder = new StringBuilder();
         AppendWorkGoals(builder, milestone.WorkItems.Values);
+        if (milestone.AssetManager is { } asset)
+        {
+            builder.AppendLine("@@ASSET_MANAGER_REQUEST");
+            builder.AppendLine("REQUEST_ID: " + asset.RequestId);
+            builder.AppendLine("GOAL: " + asset.Goal);
+            builder.AppendLine("SCENE: " + asset.ScenePath);
+            builder.AppendLine("TARGET_PATH: " + asset.TargetPath);
+            builder.AppendLine("SOURCE_POLICY: " + asset.SourcePolicy);
+        }
         if (!string.IsNullOrWhiteSpace(milestone.QaInstructions))
         {
             builder.AppendLine("@@QA_INSTRUCTIONS");
@@ -611,8 +620,17 @@ internal static class MilestoneDefinitionContract
         }
         if (mechanicalReports is not null && mechanicalReports.Count > 0)
         {
+            var assetResults = mechanicalReports
+                .Where(report => report.StartsWith("ASSET_MANAGER #1:",
+                    StringComparison.Ordinal)).ToArray();
+            if (assetResults.Length > 0)
+            {
+                builder.AppendLine("@@ASSET_MANAGER_RESULTS");
+                foreach (var report in assetResults)
+                    builder.AppendLine(Limit(report, 2500));
+            }
             builder.AppendLine("@@BUILD_RESULTS");
-            foreach (var report in mechanicalReports)
+            foreach (var report in mechanicalReports.Except(assetResults))
                 builder.AppendLine(Limit(report, 1200));
         }
         return builder.ToString().TrimEnd();
@@ -626,6 +644,15 @@ internal static class MilestoneDefinitionContract
     {
         var builder = new StringBuilder();
         AppendWorkGoals(builder, milestone.WorkItems.Values);
+        if (milestone.AssetManager is { } asset)
+        {
+            builder.AppendLine("@@ASSET_MANAGER_REQUEST");
+            builder.AppendLine("REQUEST_ID: " + asset.RequestId);
+            builder.AppendLine("GOAL: " + asset.Goal);
+            builder.AppendLine("SCENE: " + asset.ScenePath);
+            builder.AppendLine("TARGET_PATH: " + asset.TargetPath);
+            builder.AppendLine("SOURCE_POLICY: " + asset.SourcePolicy);
+        }
         if (!string.IsNullOrWhiteSpace(milestone.HighInstructions))
         {
             builder.AppendLine();
@@ -651,9 +678,19 @@ internal static class MilestoneDefinitionContract
 
         if (mechanicalReports is not null && mechanicalReports.Count > 0)
         {
+            var assetResults = mechanicalReports
+                .Where(report => report.StartsWith("ASSET_MANAGER #1:",
+                    StringComparison.Ordinal)).ToArray();
+            if (assetResults.Length > 0)
+            {
+                builder.AppendLine();
+                builder.AppendLine("@@ASSET_MANAGER_RESULTS");
+                foreach (var report in assetResults)
+                    builder.AppendLine(Limit(report, 2500));
+            }
             builder.AppendLine();
             builder.AppendLine("@@BUILD_RESULTS");
-            foreach (var report in mechanicalReports)
+            foreach (var report in mechanicalReports.Except(assetResults))
                 builder.AppendLine(Limit(report, 1200));
         }
         if (!string.IsNullOrWhiteSpace(qaReport))
