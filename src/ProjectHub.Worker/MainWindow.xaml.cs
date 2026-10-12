@@ -86,7 +86,7 @@ public partial class MainWindow : Window
                 "Implementer" => "Unity WORK",
                 "Qa" => "Unity QA · 플레이테스트",
                 "HighLevel" => "Unity HIGH · 통합",
-                "Manager" => "관리자(비활성)",
+                "Manager" => "#1 ASSET MANAGER",
                 "Resource" => "Unity 에셋 (#0)",
                 "Worker" => "UnityWorker",
                 "Message" => "메시지",
@@ -1239,6 +1239,9 @@ public partial class MainWindow : Window
                 _targetSettings.EffectiveQa.Model);
         SetPipelineCard(PipelineQaCard, PipelineQaTitle, QaStageCircle, QaStageIcon, _qaStageIconAsset, TaskStage.Qa, RoleVisuals["Qa"], qaDisabled, initialInputIdle);
         SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, _highLevelStageIconAsset, TaskStage.HighLevel, RoleVisuals["HighLevel"], false, initialInputIdle);
+        ManagerStageModelText.Text = AiProviderCatalog.FormatModel(
+            _targetSettings.EffectiveImplementer.Provider,
+            _targetSettings.EffectiveImplementer.Model);
         SetPipelineCard(PipelineManagerCard, PipelineManagerTitle, ManagerStageCircle, ManagerStageIcon, _managerStageIconAsset, TaskStage.Manager, RoleVisuals["Manager"], false, initialInputIdle);
     }
 

@@ -1357,6 +1357,10 @@ public partial class MainWindow
         {
             new("HQ-DESIGN", "HQ", "COMPLETED")
         };
+        if (milestone.AssetManager is not null)
+            nodes.Add(new("ASSET-MANAGER-1", "ASSET_MANAGER",
+                state == "ASSET_MANAGER_BLOCKED" ? "BLOCKED" :
+                state is "FINALIZED" or "FINALIZE_FAILED" ? "COMPLETED" : "RUNNING", "1"));
 
         foreach (var work in milestone.WorkItems.Values
                      .OrderBy(item => int.TryParse(item.Id, out var number) ? number : int.MaxValue))
@@ -1414,14 +1418,23 @@ public partial class MainWindow
             .Select(work => "WORK-" + work.Id)
             .ToArray();
 
+        if (milestone.AssetManager is not null)
+            edges.Add(new("HQ-DESIGN", "ASSET-MANAGER-1", "ASSET_MANAGER_DISPATCH"));
+
         foreach (var workNode in workNodes)
         {
-            edges.Add(new("HQ-DESIGN", workNode, "DISPATCH"));
+            edges.Add(new(milestone.AssetManager is null ? "HQ-DESIGN" :
+                "ASSET-MANAGER-1", workNode,
+                milestone.AssetManager is null ? "DISPATCH" : "ASSET_MANAGER_TO_WORK"));
             edges.Add(new(
                 workNode,
                 milestone.QaReserved ? "QA" : "GIT-FINALIZE",
                 milestone.QaReserved ? "RESULT_TO_QA" : "RESULT_TO_GIT"));
         }
+
+        if (milestone.AssetManager is not null && workNodes.Length == 0)
+            edges.Add(new("ASSET-MANAGER-1", milestone.QaReserved ? "QA" :
+                "GIT-FINALIZE", "ASSET_MANAGER_TERMINAL"));
 
         foreach (var resource in milestone.Resources.Values)
         {

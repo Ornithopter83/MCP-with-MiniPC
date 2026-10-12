@@ -885,6 +885,15 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine("MILESTONE_REPORT");
         builder.AppendLine($"MILESTONE: {milestone.Id}");
         builder.AppendLine("OUTCOME: " + workerOutcome.Trim());
+        if (milestone.AssetManager is { } assetRequest)
+        {
+            builder.AppendLine("ASSET_MANAGER_REQUEST: " + assetRequest.RequestId);
+            var assetResult = mechanicalReports.FirstOrDefault(item =>
+                item.StartsWith("ASSET_MANAGER #1:", StringComparison.Ordinal));
+            builder.AppendLine("ASSET_MANAGER_RESULT: " +
+                (assetResult is null ? "BLOCKED_OR_NOT_EXECUTED" :
+                    Limit(assetResult.Replace("\r", "").Replace("\n", " | "), 1800)));
+        }
 
         var statuses = workReports
             .Select(pair => (pair.Key, Status: ReadWorkStatus(pair.Value)))
