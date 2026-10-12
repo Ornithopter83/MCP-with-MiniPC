@@ -945,14 +945,16 @@ public partial class MainWindow
                 var allRunnableScopes = executableDefinitions
                     .SelectMany(work => work.WritePaths)
                     .ToArray();
-                var maxConcurrency = Math.Min(
+                // Phase 1: Unity Editor and AssetDatabase state are shared across WORKs.
+                // Do not overlap WORK sessions before editor-exclusive scheduling exists.
+                var maxConcurrency = UnityWorkSchedulingPolicy.MaxConcurrentWork(
                     _targetSettings.EffectiveMaxConcurrentWork,
                     executableWorkIds.Length);
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
                     "Worker 작업",
-                    $"GENERAL WORK 병렬 묶음 시작 · {executableWorkIds.Length}건",
+                    $"Unity WORK 순차 실행 시작 · {executableWorkIds.Length}건",
                     status: "PROCESSING",
                     persistenceSource: "WORKER ACTION");
 
@@ -1014,7 +1016,7 @@ public partial class MainWindow
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
                     "Worker 작업",
-                    $"GENERAL WORK 병렬 묶음 종료 · {completed.Length}/{executableWorkIds.Length} terminal",
+                    $"Unity WORK 순차 실행 종료 · {completed.Length}/{executableWorkIds.Length} terminal",
                     status: "COMPLETED",
                     persistenceSource: "WORKER ACTION");
             }
@@ -1437,7 +1439,7 @@ public partial class MainWindow
         RunOnUi(() =>
         {
             TaskDirection.Text = "작업";
-            TaskTitle.Text = $"GENERAL WORK #{work.Id}";
+            TaskTitle.Text = $"Unity WORK #{work.Id}";
             ResultTitle.Text = "WORK";
             SetFlowState(
                 codexActive: false,

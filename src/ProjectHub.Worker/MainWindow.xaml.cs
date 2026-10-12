@@ -78,17 +78,17 @@ public partial class MainWindow : Window
             "TASK_FAILED" => "오류",
             _ => StageKey switch
             {
-                "Coordinator" => "설계 관제",
-                "Implementer" when string.Equals(WorkItemId, "0", StringComparison.Ordinal) => "작업 (#0, 리소스)",
-                "Implementer" when int.TryParse(WorkItemId, out var generalWorkId) && generalWorkId >= 10 => $"작업 (#{WorkItemId}, 일반 작업)",
-                "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"작업 (#{WorkItemId})",
-                "Implementer" when WorkNumber.HasValue => $"작업 (#{WorkNumber.Value})",
-                "Implementer" => "작업",
-                "Qa" => "QA",
-                "HighLevel" => "검토",
-                "Manager" => "통합",
-                "Resource" => "작업 (#0, 리소스)",
-                "Worker" => "Worker",
+                "Coordinator" => "Unity HQ · 게임 설계",
+                "Implementer" when string.Equals(WorkItemId, "0", StringComparison.Ordinal) => "Unity 에셋 (#0)",
+                "Implementer" when int.TryParse(WorkItemId, out var generalWorkId) && generalWorkId >= 10 => $"Unity WORK (#{WorkItemId})",
+                "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"Unity WORK (#{WorkItemId})",
+                "Implementer" when WorkNumber.HasValue => $"Unity WORK (#{WorkNumber.Value})",
+                "Implementer" => "Unity WORK",
+                "Qa" => "Unity QA · 플레이테스트",
+                "HighLevel" => "Unity HIGH · 통합",
+                "Manager" => "관리자(비활성)",
+                "Resource" => "Unity 에셋 (#0)",
+                "Worker" => "UnityWorker",
                 "Message" => "메시지",
                 _ => "시스템"
             }
@@ -271,7 +271,7 @@ public partial class MainWindow : Window
         _connectionTimer.Start();
         _jobWatchdogTimer.Tick += (_, _) => CheckJobInactivity();
         _jobWatchdogTimer.Start();
-        RepositoryNameText.Text = " · MCP-with-MiniPC";
+        RepositoryNameText.Text = " · UnityWorker";
         PcNameText.Text = Environment.MachineName;
         SetFlowState(codexActive: false, workerActive: false, webActive: false);
         ActivateResultTab(web: false);
@@ -288,7 +288,7 @@ public partial class MainWindow : Window
         WebStatusText.Text = "WAITING";
         _trayIcon = new Forms.NotifyIcon
         {
-            Text = "ProjectHub Worker · MCP-with-MiniPC",
+            Text = "ProjectHub UnityWorker",
             Icon = CreateTrayIcon(),
             Visible = true,
             ContextMenuStrip = new Forms.ContextMenuStrip()

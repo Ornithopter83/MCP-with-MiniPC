@@ -1,7 +1,7 @@
 <Window x:Class="ProjectHub.Worker.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ProjectHub"
+        Title="ProjectHub UnityWorker"
         Width="1400" Height="980" MinWidth="1180" MinHeight="820" MaxWidth="1440" MaxHeight="1050"
         Background="#F7FAFF" Foreground="#12244C"
         WindowStartupLocation="CenterScreen"
@@ -132,7 +132,7 @@
             <TextBlock Text="프로젝트" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="작업 폴더" FontSize="15" FontWeight="SemiBold" Margin="0,6,0,0"/>
           </StackPanel>
           <StackPanel Grid.Column="1" VerticalAlignment="Center">
-            <TextBlock x:Name="DashboardProjectText" Text="ProjectHub" FontSize="15"/><TextBlock x:Name="DashboardFolderText" Text="작업 폴더 확인 중" FontSize="15" Margin="0,6,0,0"/>
+            <TextBlock x:Name="DashboardProjectText" Text="UnityWorker" FontSize="15"/><TextBlock x:Name="DashboardFolderText" Text="작업 폴더 확인 중" FontSize="15" Margin="0,6,0,0"/>
           </StackPanel>
         </Grid>
       </Border>
@@ -154,7 +154,7 @@
           <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Padding="0,0,4,0">
         <StackPanel>
     <Border Background="White" Height="30">
-      <TextBlock Text="AI 모델 설정" FontSize="18" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="2,0,0,4" VerticalAlignment="Center"/>
+      <TextBlock Text="Unity 개발 AI 설정" FontSize="18" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="2,0,0,4" VerticalAlignment="Center"/>
     </Border>
     <Grid Margin="0,0,0,12" Visibility="Collapsed"><Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0,0,8,0">
@@ -205,7 +205,7 @@
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="설계 관제 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock Text="Unity HQ · 게임 설계" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                     <Border x:Name="CoordinatorProviderIconCircle" Width="52" Height="52" Background="#1477E8" CornerRadius="26">
                       <Image x:Name="CoordinatorProviderIcon" Source="Assets/current-openai.png" Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -257,7 +257,7 @@
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0" Grid.RowSpan="3" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="작업 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock Text="Unity WORK · 게임/씬" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                     <Border x:Name="ImplementerProviderIconCircle" Width="52" Height="52" Background="#168A4A" CornerRadius="26">
                       <Image x:Name="ImplementerProviderIcon" Source="Assets/current-openai.png" Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -268,9 +268,9 @@
                   <ComboBox x:Name="ImplementerModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
                   <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
                   <ComboBox x:Name="ImplementerReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
-                  <TextBlock Grid.Row="2" Grid.Column="1" Text="최대 동시 WORK" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                  <TextBlock Grid.Row="2" Grid.Column="1" Text="WORK 동시성 (준비 중)" VerticalAlignment="Center" Margin="0,8,0,0"/>
                   <TextBox x:Name="MaxConcurrentWorkInput" Grid.Row="2" Grid.Column="2" Width="120" Height="32" Text="16" HorizontalAlignment="Left" Margin="0,4,8,0" VerticalContentAlignment="Center" ToolTip="1 이상의 정수. 고정된 최대 동시 실행 수 제한은 없습니다."/>
-                  <TextBlock Grid.Row="2" Grid.Column="3" Grid.ColumnSpan="2" Text="동시에 실행할 최대 WORK 수" FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                  <TextBlock Grid.Row="2" Grid.Column="3" Grid.ColumnSpan="2" Text="Unity 1차 버전은 Editor 충돌 방지를 위해 WORK를 순차 실행합니다." FontSize="12" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,8,0,0" TextWrapping="Wrap"/>
                   <Border Grid.Column="5" Grid.RowSpan="3" Width="350" HorizontalAlignment="Right" Background="#F4F9FF" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
                     <StackPanel Orientation="Horizontal"><Border Width="36" Height="30" BorderBrush="{StaticResource Blue}" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#EAF4FF"><Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="{StaticResource Blue}" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="{StaticResource Blue}" HorizontalAlignment="Left"/></Grid></Border><StackPanel VerticalAlignment="Center"><TextBlock Text="Stateless" FontWeight="Bold"/><TextBlock Text="매 실행 새 세션" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/><ComboBox x:Name="ImplementerRoleThreadCombo" Visibility="Collapsed" Width="1" Height="1"/></StackPanel></StackPanel>
                   </Border>
@@ -281,7 +281,7 @@
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="중간관리자 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock Text="레거시 관리자 (비활성)" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                     <Border x:Name="ManagerProviderIconCircle" Width="52" Height="52" Background="#5B5BD6" CornerRadius="26">
                       <Image x:Name="ManagerProviderIcon" Source="Assets/current-openai.png" Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -302,7 +302,7 @@
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="QA AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock Text="Unity QA · 실행 검증" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                     <Border x:Name="QaProviderIconCircle" Width="52" Height="52" Background="#B87900" CornerRadius="26">
                       <Image x:Name="QaProviderIcon" Source="Assets/current-openai.png" Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -323,7 +323,7 @@
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock Text="검토 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock Text="Unity HIGH · 통합" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                     <Border x:Name="HighLevelProviderIconCircle" Width="52" Height="52" Background="#82194B" CornerRadius="26">
                       <Image x:Name="HighLevelProviderIcon" Source="Assets/current-openai.png" Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -345,7 +345,7 @@
             <Grid Background="White">
               <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock Text="리소스 AI" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                <TextBlock Text="Unity 에셋 · 이미지" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                 <Image Source="Assets/current-web.png" Width="42" Height="42" Stretch="Uniform"/>
               </StackPanel>
               <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,14,0">
@@ -388,19 +388,19 @@
         <TextBlock Text="현재 작업" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Margin="5,0"/>
         <Grid Grid.Row="1" Margin="0,7,0,0">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="2"/><ColumnDefinition Width="*"/><ColumnDefinition Width="0"/><ColumnDefinition Width="0"/></Grid.ColumnDefinitions>
-          <Border x:Name="PipelineCoordinatorCard" Grid.Column="0" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineCoordinatorTitle" Text="1. 설계 관제" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="CoordinatorStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="CoordinatorStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="CoordinatorStageModelText" Grid.Row="2" Text="HQ" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+          <Border x:Name="PipelineCoordinatorCard" Grid.Column="0" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineCoordinatorTitle" Text="1. Unity HQ" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="CoordinatorStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="CoordinatorStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="CoordinatorStageModelText" Grid.Row="2" Text="HQ" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
           <Rectangle x:Name="PipelineCoordinatorActiveBase" Grid.Column="0" Style="{StaticResource PipelineActiveOutline}"/>
           <Rectangle x:Name="PipelineCoordinatorActiveOrbit" Grid.Column="0" Style="{StaticResource PipelineActiveOrbit}"/>
-          <Border x:Name="PipelineImplementerCard" Grid.Column="2" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineImplementerTitle" Text="2. 작업" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="ImplementerStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="ImplementerStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="ImplementerWorkGaugeText" Grid.Row="2" Text="□□□□□□□□" FontFamily="Segoe UI Symbol" FontSize="24" FontWeight="Bold" Foreground="#20C65A" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+          <Border x:Name="PipelineImplementerCard" Grid.Column="2" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineImplementerTitle" Text="2. Unity WORK" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="ImplementerStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="ImplementerStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="ImplementerWorkGaugeText" Grid.Row="2" Text="□□□□□□□□" FontFamily="Segoe UI Symbol" FontSize="24" FontWeight="Bold" Foreground="#20C65A" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
           <Rectangle x:Name="PipelineImplementerActiveBase" Grid.Column="2" Style="{StaticResource PipelineActiveOutline}"/>
           <Rectangle x:Name="PipelineImplementerActiveOrbit" Grid.Column="2" Style="{StaticResource PipelineActiveOrbit}"/>
-          <Border x:Name="PipelineResourceCard" Grid.Column="4" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineResourceTitle" Text="#0 리소스" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="ResourceStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="ResourceStageIcon" Source="Assets/current-web-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="ResourceStageModelText" Grid.Row="2" Text="ChatGPT Web" FontSize="17" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/></Grid></Border>
+          <Border x:Name="PipelineResourceCard" Grid.Column="4" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineResourceTitle" Text="#0 에셋" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="ResourceStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="ResourceStageIcon" Source="Assets/current-web-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="ResourceStageModelText" Grid.Row="2" Text="ChatGPT Web" FontSize="17" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/></Grid></Border>
           <Rectangle x:Name="PipelineResourceActiveBase" Grid.Column="4" Style="{StaticResource PipelineActiveOutline}"/>
           <Rectangle x:Name="PipelineResourceActiveOrbit" Grid.Column="4" Style="{StaticResource PipelineActiveOrbit}"/>
-          <Border x:Name="PipelineQaCard" Grid.Column="6" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineQaTitle" Text="3. QA" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="QaStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="QaStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="QaStageModelText" Grid.Row="2" Text="QA" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+          <Border x:Name="PipelineQaCard" Grid.Column="6" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineQaTitle" Text="3. Unity QA" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="QaStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="QaStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="QaStageModelText" Grid.Row="2" Text="QA" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
           <Rectangle x:Name="PipelineQaActiveBase" Grid.Column="6" Style="{StaticResource PipelineActiveOutline}"/>
           <Rectangle x:Name="PipelineQaActiveOrbit" Grid.Column="6" Style="{StaticResource PipelineActiveOrbit}"/>
-          <Border x:Name="PipelineHighLevelCard" Grid.Column="8" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineHighLevelTitle" Text="4. 검토" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="HighLevelStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="HighLevelStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="HighLevelStageModelText" Grid.Row="2" Text="HIGH" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
+          <Border x:Name="PipelineHighLevelCard" Grid.Column="8" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineHighLevelTitle" Text="4. Unity HIGH" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="HighLevelStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="HighLevelStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="HighLevelStageModelText" Grid.Row="2" Text="HIGH" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
           <Rectangle x:Name="PipelineHighLevelActiveBase" Grid.Column="8" Style="{StaticResource PipelineActiveOutline}"/>
           <Rectangle x:Name="PipelineHighLevelActiveOrbit" Grid.Column="8" Style="{StaticResource PipelineActiveOrbit}"/>
           <Border x:Name="PipelineManagerCard" Visibility="Collapsed" Grid.Column="10" Background="#B8C8DA" CornerRadius="10" Margin="2" Padding="14"><Grid><Grid.RowDefinitions><RowDefinition Height="34"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions><TextBlock x:Name="PipelineManagerTitle" Text="5. 통합" FontSize="23" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/><Border x:Name="ManagerStageCircle" Grid.Row="1" Width="82" Height="82" Background="#8798AA" CornerRadius="44" HorizontalAlignment="Center" VerticalAlignment="Center"><Image x:Name="ManagerStageIcon" Source="Assets/current-openai-gray.png" Width="64" Height="64" Stretch="Uniform"/></Border><TextBlock x:Name="ManagerStageModelText" Grid.Row="2" Text="MANAGER" FontSize="19" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid></Border>
