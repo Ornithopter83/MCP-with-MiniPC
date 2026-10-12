@@ -352,11 +352,6 @@ internal static class MilestoneDefinitionContract
                 };
             }
 
-            if (workItems.Count == 0 && assetManager is null)
-            {
-                error = "MILESTONE_WORK_ITEMS_REQUIRED";
-                return false;
-            }
             if (assetManager is not null &&
                 workItems.Values.Any(work => !work.ReadOnly && work.WritePaths.Any(path =>
                     MilestoneMechanicalExecutor.IsPathWithinScopes(
