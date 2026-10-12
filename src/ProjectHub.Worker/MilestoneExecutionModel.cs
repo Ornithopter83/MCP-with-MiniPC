@@ -442,6 +442,14 @@ internal static class MilestoneDefinitionContract
                 };
             }
 
+            if (assetManager is not null && resources.Values.Any(r =>
+                MilestoneMechanicalExecutor.IsPathWithinScopes(
+                    r.TargetPath, new[] { assetManager.TargetPath, assetManager.ScenePath })))
+            {
+                error = "ASSET_MANAGER_RESOURCE_PATH_OVERLAP";
+                return false;
+            }
+
             var qaInstructions = TryGetOptionalJsonString(milestoneJson, "qaInstructions") ?? string.Empty;
             var highInstructions = TryGetOptionalJsonString(milestoneJson, "highInstructions") ?? string.Empty;
             var planDocument = TryGetOptionalJsonString(milestoneJson, "planDocument") ?? string.Empty;

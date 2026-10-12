@@ -95,6 +95,25 @@ public sealed class AssetManagerContractTests
     }
 
     [Fact]
+    public void ResourceCannotRaceAgainstManagerImportDirectory()
+    {
+        const string resource = """
+            @@RESOURCE=0
+            <TYPE>image</>
+            <TARGET_PATH>Assets/ThirdParty/Environment/Rocks/generated.png</>
+            <INSTRUCTIONS>작은 바위 텍스처를 생성한다.</>
+
+            """;
+        var parsed = HqTextProtocol.Parse(
+            AssetOnly.Replace("@@QA", resource + "@@QA", StringComparison.Ordinal));
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.False(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse,
+            out _, out var error));
+        Assert.Equal("ASSET_MANAGER_RESOURCE_PATH_OVERLAP", error);
+    }
+
+    [Fact]
     public void CheckpointUsesStableRequestAndRejectsChangedScope()
     {
         var root = Path.Combine(Path.GetTempPath(),

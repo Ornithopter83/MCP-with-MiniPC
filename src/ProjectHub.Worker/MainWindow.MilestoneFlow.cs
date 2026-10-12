@@ -876,6 +876,14 @@ public partial class MainWindow
             // It must finish all three phases before independent WORK begins.
             if (milestone.AssetManager is { } assetDefinition)
             {
+                var preexistingAssetChanges = initialChangedPaths
+                    .Where(path => AssetManagerPathPolicy.IsAllowed(
+                        path, assetDefinition, "INTEGRATE"))
+                    .ToArray();
+                if (preexistingAssetChanges.Length > 0)
+                    return new(true, "ASSET_MANAGER_PREEXISTING_DIRTY: " +
+                        string.Join(", ", preexistingAssetChanges.Take(16)) +
+                        " · 씬/에셋의 사용자 수정을 자동으로 덮어쓰지 않습니다.");
                 var assetRun = await ExecuteMilestoneAssetManagerAsync(
                     jobId, workingDirectory, milestone, assetDefinition,
                     implementer, cancellationToken);
