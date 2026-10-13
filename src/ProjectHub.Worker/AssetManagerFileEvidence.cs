@@ -32,11 +32,10 @@ internal static class AssetManagerFileEvidence
         try
         {
             var project = Path.GetFullPath(root);
-            var assets = Path.Combine(project, "Assets") + Path.DirectorySeparatorChar;
             var target = Path.GetFullPath(Path.Combine(project,
                 targetPath.Replace('/', Path.DirectorySeparatorChar)));
-            if (!target.StartsWith(assets, StringComparison.OrdinalIgnoreCase))
-                return new(false, "ASSET_TARGET_OUTSIDE_ASSETS", Array.Empty<AssetFileEvidence>(), 0);
+            if (!MilestoneDefinitionContract.IsPathInsideRoot(project, target))
+                return new(false, "ASSET_TARGET_OUTSIDE_PROJECT", Array.Empty<AssetFileEvidence>(), 0);
             if (!Directory.Exists(target))
                 return new(false, "ASSET_TARGET_MISSING", Array.Empty<AssetFileEvidence>(), 0);
             if (requireCc0Manifest)
@@ -50,10 +49,15 @@ internal static class AssetManagerFileEvidence
             var list = new List<AssetFileEvidence>();
             var models = 0;
             var skipped = 0;
-            foreach (var path in Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories))
+            // Reparse points are not a stopping condition. Avoid following
+            // links outside the selected project when enumerating evidence.
+            var enumeration = new EnumerationOptions
             {
-                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-                    return new(false, "ASSET_REPARSE_POINT", Array.Empty<AssetFileEvidence>(), 0);
+                RecurseSubdirectories = true,
+                AttributesToSkip = FileAttributes.ReparsePoint
+            };
+            foreach (var path in Directory.EnumerateFiles(target, "*", enumeration))
+            {
                 var ext = Path.GetExtension(path);
                 if (ext.Equals(".meta", StringComparison.OrdinalIgnoreCase) ||
                     ext.Equals(".md", StringComparison.OrdinalIgnoreCase)) continue;
