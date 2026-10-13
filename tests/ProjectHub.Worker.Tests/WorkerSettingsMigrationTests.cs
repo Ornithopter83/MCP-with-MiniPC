@@ -53,7 +53,7 @@ public sealed class WorkerSettingsMigrationTests
         Assert.Contains("target-settings.json", imported);
         Assert.Contains("window-placement.json", imported);
         Assert.Contains("worker-selection.json", imported);
-        Assert.Contains(@"""maxConcurrentWork"":7""",
+        Assert.Contains("""maxConcurrentWork":7""",
             File.ReadAllText(Path.Combine(f.Canonical, "target-settings.json")));
         Assert.True(File.Exists(Path.Combine(f.LegacyRelease, "target-settings.json")));
         Assert.True(File.Exists(Path.Combine(f.LegacyBuild, "window-placement.json")));
