@@ -55,6 +55,16 @@ internal static class UnityNewTaskGitPolicy
     internal sealed record Result(bool Success, string Detail,
         IReadOnlyList<string> ReplacedPaths);
 
+    internal static bool IsCheckoutCollision(string error) =>
+        error.Contains("would be overwritten by checkout",
+            StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("Please commit your changes or stash them",
+            StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("would be overwritten by merge",
+            StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("untracked working tree files",
+            StringComparison.OrdinalIgnoreCase);
+
     private static bool IsProtectedPath(string p)
     {
         var s = p.Replace('\\', '/');
@@ -102,24 +112,45 @@ internal static class UnityNewTaskGitPolicy
         var untrackedCollisions = FindUntrackedCollisions(targetFiles, ReadPaths(others));
         var head = await Run("rev-parse", "--verify", "HEAD");
         var trackedConflicts = Array.Empty<string>();
+        var stagedAdditions = Array.Empty<string>();
+        var stagedSet = ReadPaths(staged).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (head.ExitCode == 0)
         {
             var differing = await Run("diff", "--name-only", "-z", "HEAD", "origin/main");
-            if (differing.ExitCode != 0)
+            var currentTree = await Run("ls-tree", "-r", "--name-only", "-z", "HEAD");
+            if (differing.ExitCode != 0 || currentTree.ExitCode != 0)
                 return new(false, "NEW_TASK_GIT_TARGET_DIFF_FAILED", Array.Empty<string>());
             var changedInTarget = ReadPaths(differing).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var currentTreePaths = ReadPaths(currentTree).ToHashSet(StringComparer.OrdinalIgnoreCase);
             trackedConflicts = ReadPaths(tracked).Concat(ReadPaths(staged))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Where(changedInTarget.Contains)
+                .Where(p => currentTreePaths.Contains(p))
                 .Where(p => !IsProtectedPath(p))
                 .ToArray();
+            stagedAdditions = stagedSet
+                .Where(p => !currentTreePaths.Contains(p) &&
+                    targetFiles.Any(target => target.Equals(p, StringComparison.OrdinalIgnoreCase) ||
+                        target.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase) ||
+                        p.StartsWith(target + "/", StringComparison.OrdinalIgnoreCase)))
+                .Where(p => !IsProtectedPath(p)).ToArray();
+        }
+        else
+        {
+            stagedAdditions = stagedSet
+                .Where(p => targetFiles.Any(target =>
+                    target.Equals(p, StringComparison.OrdinalIgnoreCase) ||
+                    target.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase) ||
+                    p.StartsWith(target + "/", StringComparison.OrdinalIgnoreCase)))
+                .Where(p => !IsProtectedPath(p)).ToArray();
         }
 
-        if (untrackedCollisions.Count == 0 && trackedConflicts.Length == 0)
+        if (untrackedCollisions.Count == 0 && trackedConflicts.Length == 0 &&
+            stagedAdditions.Length == 0)
             return new(false, "NEW_TASK_NO_DETERMINISTIC_COLLISIONS", Array.Empty<string>());
 
         // Avoid partially deleting a tree when a parent is a symlink/reparse point.
-        foreach (var path in untrackedCollisions.Concat(trackedConflicts))
+        foreach (var path in untrackedCollisions.Concat(trackedConflicts).Concat(stagedAdditions))
             if (!TryGetSafePath(root, path, out _, out var error))
                 return new(false, "NEW_TASK_UNSAFE_PATH: " + path + " " + error,
                     Array.Empty<string>());
@@ -135,32 +166,69 @@ internal static class UnityNewTaskGitPolicy
                     " " + restored.StandardError, Array.Empty<string>());
         }
 
-        foreach (var path in untrackedCollisions)
+        // A staged file absent from the old HEAD is not restorable from HEAD.
+        // Remove only its colliding index entry; unrelated staged entries remain.
+        foreach (var path in stagedAdditions)
         {
-            if (!TryGetSafePath(root, path, out var full, out var error))
-                return new(false, "NEW_TASK_UNSAFE_PATH: " + error, Array.Empty<string>());
-            try
+            var removed = await Run("--literal-pathspecs", "rm", "--cached",
+                "--force", "--", path);
+            if (removed.ExitCode != 0)
+                return new(false, "NEW_TASK_STAGED_COLLISION_FAILED: " + path +
+                    " " + removed.StandardError, Array.Empty<string>());
+        }
+
+        try
+        {
+            // A target file may replace a local directory. That entire directory
+            // is the conflict, including ignored residue, and must disappear.
+            foreach (var target in targetFiles)
             {
+                if (!untrackedCollisions.Any(path =>
+                    path.StartsWith(target + "/", StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                if (!TryGetSafePath(root, target, out var full, out var error))
+                    return new(false, "NEW_TASK_UNSAFE_PATH: " + error, Array.Empty<string>());
+                if (Directory.Exists(full))
+                    Directory.Delete(full, recursive: true);
+            }
+            foreach (var path in untrackedCollisions.Concat(stagedAdditions)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!TryGetSafePath(root, path, out var full, out var error))
+                    return new(false, "NEW_TASK_UNSAFE_PATH: " + error, Array.Empty<string>());
                 if (File.Exists(full))
                     File.Delete(full);
                 else if (Directory.Exists(full))
-                {
-                    // Directory/file collision: only untracked conflicting descendants,
-                    // never an entire directory that might contain unrelated files.
-                    return new(false, "NEW_TASK_DIRECTORY_COLLISION_REQUIRES_EXPLICIT_HANDLING: " +
-                        path, Array.Empty<string>());
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return new(false, "NEW_TASK_CONFLICT_DELETE_FAILED: " + path + " " + ex.Message,
-                    Array.Empty<string>());
+                    Directory.Delete(full, recursive: true);
+                // Drop empty folders that remain from the overwritten old tree.
+                RemoveEmptyParents(root, Path.GetDirectoryName(full));
             }
         }
-        var replaced = trackedConflicts.Concat(untrackedCollisions).Distinct(
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new(false, "NEW_TASK_CONFLICT_DELETE_FAILED: " + ex.Message,
+                Array.Empty<string>());
+        }
+        var replaced = trackedConflicts.Concat(untrackedCollisions)
+            .Concat(stagedAdditions).Distinct(
             StringComparer.OrdinalIgnoreCase).ToArray();
         return new(true, "NEW_TASK_CONFLICTS_OVERWRITTEN=" + replaced.Length,
             replaced);
+    }
+
+    private static void RemoveEmptyParents(string root, string? directory)
+    {
+        var rootPath = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+        while (directory is not null &&
+               directory.StartsWith(rootPath + Path.DirectorySeparatorChar,
+                   StringComparison.OrdinalIgnoreCase) &&
+               Directory.Exists(directory))
+        {
+            if (Directory.EnumerateFileSystemEntries(directory).Any())
+                break;
+            Directory.Delete(directory);
+            directory = Path.GetDirectoryName(directory);
+        }
     }
 
     private static bool TryGetSafePath(string root, string relative,
