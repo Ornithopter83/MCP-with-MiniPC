@@ -218,7 +218,6 @@ internal static class MilestoneDefinitionContract
                     !assetScene.StartsWith("Assets/", StringComparison.Ordinal) ||
                     !assetScene.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
                     !IsSafeRelativePath(assetScene) ||
-                    !assetTarget.StartsWith("Assets/", StringComparison.Ordinal) ||
                     assetTarget.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
                     !IsSafeRelativePath(assetTarget) ||
                     assetSource is not ("PROJECT_ONLY" or "CC0_AUTO") ||
