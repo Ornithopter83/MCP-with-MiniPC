@@ -60,7 +60,8 @@ public partial class MainWindow
             {
                 var available = AssetManagerFileEvidence.Inspect(root,
                     definition.TargetPath, definition.SourcePolicy == "CC0_AUTO",
-                    checkpoint.AcquiredFiles);
+                    checkpoint.AcquiredFiles,
+                    requireModel: definition.SourcePolicy != "PROJECT_ONLY");
                 if (available.Ready)
                 {
                     checkpoint = checkpoint with
@@ -86,7 +87,8 @@ public partial class MainWindow
                     var illegal = importDiff.Where(p =>
                         !AssetManagerPathPolicy.IsAllowed(p, definition, "ACQUIRE")).ToArray();
                     var recheck = AssetManagerFileEvidence.Inspect(root, definition.TargetPath,
-                        definition.SourcePolicy == "CC0_AUTO", available.Files);
+                        definition.SourcePolicy == "CC0_AUTO", available.Files,
+                        requireModel: definition.SourcePolicy != "PROJECT_ONLY");
                     if (completed.Success && recheck.Ready && illegal.Length == 0)
                     {
                         checkpoint = checkpoint with
@@ -118,7 +120,8 @@ public partial class MainWindow
 
                 if (recoveringAcquisition)
                     return new(false, "ASSET_ACQUIRE_RECONCILIATION_REQUIRED: " +
-                        available.Detail + " (다운로드 파일을 재사용하거나 검증 실패를 조사해야 합니다)",
+                        available.Detail + " (실제 파일/해시를 확인한 후 HQ가 " +
+                        "다른 다운로드 방법, TARGET_PATH 또는 PAUSE를 결정합니다)",
                         checkpoint.ChangedPaths);
             }
 
@@ -188,10 +191,9 @@ public partial class MainWindow
                 return new(false, checkpoint.Evidence, checkpoint.ChangedPaths);
             }
 
-            // FULL_AUTONOMY: attempt one alternative acquisition strategy only
-            // when no project files were changed. Never replay a partial Import.
-            if (WorkerAutonomyPolicy.Enabled && phase == "ACQUIRE" &&
-                run.ExitCode == 0)
+            // A bounded alternative attempt is allowed only if this phase did
+            // not mutate the project. No partial Import or scene edit is replayed.
+            if (WorkerAutonomyPolicy.Enabled)
             {
                 var initial = RoleTextProtocol.ParseWork(run.FinalMessage);
                 if (initial.IsValid &&
@@ -202,17 +204,19 @@ public partial class MainWindow
                     if (!MilestoneMechanicalExecutor.DiffChangeStates(before, intermediate).Any())
                     {
                         AddTaskMessage("AUTONOMY RECOVERY",
-                            "ACQUIRE 차단 감지 · 파일 변경 없음 · 대체 획득 경로 1회 자동 시도",
+                            phase + " 차단 감지 · 변경 없음 · 다른 실행 방법 1회 시도",
                             status: "PROCESSING");
                         var recoveryPrompt =
-                            "동일 ASSET MANAGER ACQUIRE 단계의 자동 복구다. " +
-                            "앞서 실패한 도구/도메인 경로만 반복하지 말고 " +
-                            "다른 HTTPS 클라이언트·공식 CC0 에셋 후보·" +
-                            "공식 다운로드 경로를 조사하여 실제 획득을 완료하라. " +
-                            "사용자 승인 대기 없이 가능한 방식을 직접 실행하되 " +
-                            "TLS 인증 및 라이선스 검증, Import·GUID 검증은 유지하라. " +
-                            "실제 완료하지 못하면 blocked로 정확히 보고하라.\\n" +
-                            "PREVIOUS_BLOCKED_RESULT:\\n" + run.FinalMessage + "\\n" +
+                            "동일 ASSET MANAGER " + phase +
+                            " 단계의 대체 실행이다. 이전 실패를 똑같이 반복하지 마라. " +
+                            (phase == "DISCOVER"
+                                ? "로컬 파일 탐색 및 다른 공식 CC0 출처를 읽기 전용으로 조사하라. "
+                                : phase == "ACQUIRE"
+                                    ? "기존 다운로드를 먼저 검사하고 누락분만 다른 공식 HTTPS 경로로 확보하라. "
+                                    : "실제 기존 Unity Editor/Pipeline 명령을 확인하고 씬을 저장·검증하라. ") +
+                            "기존 파일과 검증 상태를 보존하고, 실제 수행하지 못한 것은 완료로 보고하지 마라. " +
+                            "다른 방법도 없다면 미해결 이유를 blocked로 보고하라.\n" +
+                            "PREVIOUS_BLOCKED_RESULT:\n" + run.FinalMessage + "\n" +
                             BuildAssetManagerPhasePrompt(definition, phase,
                                 checkpoint.Evidence, root);
                         try
@@ -245,8 +249,9 @@ public partial class MainWindow
             if (phase == "ACQUIRE")
             {
                 acquiredAfterAi = AssetManagerFileEvidence.Inspect(root,
-                    definition.TargetPath, definition.SourcePolicy == "CC0_AUTO");
-                if (acquiredAfterAi.Ready && run.ExitCode == 0)
+                    definition.TargetPath, definition.SourcePolicy == "CC0_AUTO",
+                    requireModel: definition.SourcePolicy != "PROJECT_ONLY");
+                if (acquiredAfterAi.Ready)
                 {
                     // Persist BEFORE asking a live Editor to import: a restart
                     // must never re-download these proven files.
@@ -273,13 +278,14 @@ public partial class MainWindow
             var outOfScope = changed.Where(p =>
                 !AssetManagerPathPolicy.IsAllowed(p, definition, phase)).ToArray();
             var parsed = RoleTextProtocol.ParseWork(run.FinalMessage);
-            var successful = run.ExitCode == 0 && parsed.IsValid &&
-                (string.Equals(parsed.Status, "completed", StringComparison.OrdinalIgnoreCase) ||
-                 (phase == "ACQUIRE" && importAfterAi?.Success == true &&
-                  string.Equals(parsed.Status, "blocked", StringComparison.OrdinalIgnoreCase)));
-            if (phase == "ACQUIRE" && definition.SourcePolicy != "PROJECT_ONLY" &&
-                importAfterAi?.Success != true)
-                successful = false;
+            // A proven local payload + Editor-side Import can recover a
+            // blocked/failed AI acquisition. Other phases still demand an
+            // actual successfully completed role response.
+            var successful = phase == "ACQUIRE"
+                ? importAfterAi?.Success == true && acquiredAfterAi?.Ready == true
+                : run.ExitCode == 0 && parsed.IsValid &&
+                  string.Equals(parsed.Status, "completed",
+                      StringComparison.OrdinalIgnoreCase);
             var additional = changed.Where(p =>
                 !checkpoint.ChangedPaths.Contains(p, StringComparer.OrdinalIgnoreCase))
                 .ToArray();

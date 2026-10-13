@@ -20,11 +20,14 @@ internal static class AssetManagerFileEvidence
         new(StringComparer.OrdinalIgnoreCase)
         {
             ".fbx", ".obj", ".gltf", ".glb", ".png", ".jpg", ".jpeg",
-            ".tga", ".tif", ".tiff", ".exr", ".hdr", ".mat", ".mtl"
+            ".tga", ".tif", ".tiff", ".exr", ".hdr", ".mat", ".mtl",
+            ".prefab", ".asset", ".shader", ".compute", ".psd",
+            ".wav", ".mp3", ".ogg", ".controller", ".anim", ".ttf", ".otf"
         };
 
     internal static AssetFolderEvidence Inspect(string root, string targetPath,
-        bool requireCc0Manifest, IReadOnlyList<AssetFileEvidence>? expected = null)
+        bool requireCc0Manifest, IReadOnlyList<AssetFileEvidence>? expected = null,
+        bool requireModel = true)
     {
         try
         {
@@ -46,6 +49,7 @@ internal static class AssetManagerFileEvidence
 
             var list = new List<AssetFileEvidence>();
             var models = 0;
+            var skipped = 0;
             foreach (var path in Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories))
             {
                 if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
@@ -53,9 +57,14 @@ internal static class AssetManagerFileEvidence
                 var ext = Path.GetExtension(path);
                 if (ext.Equals(".meta", StringComparison.OrdinalIgnoreCase) ||
                     ext.Equals(".md", StringComparison.OrdinalIgnoreCase)) continue;
+                // Ignore accompanying archives, notes and unknown file types.
+                // They do not become part of import evidence or block valid
+                // FBX/texture assets. Expected files still undergo strict hashes.
                 if (!ImportableExtensions.Contains(ext))
-                    return new(false, "ASSET_UNRECOGNIZED_FILE: " +
-                        Path.GetRelativePath(project, path), Array.Empty<AssetFileEvidence>(), 0);
+                {
+                    skipped++;
+                    continue;
+                }
                 using var file = File.OpenRead(path);
                 var hash = Convert.ToHexString(SHA256.HashData(file));
                 var relative = Path.GetRelativePath(project, path).Replace('\\', '/');
@@ -64,8 +73,9 @@ internal static class AssetManagerFileEvidence
             }
             list.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(
                 a.RelativePath, b.RelativePath));
-            if (models == 0)
-                return new(false, "ASSET_MODEL_NOT_FOUND", list, 0);
+            if (list.Count == 0 || (requireModel && models == 0))
+                return new(false, requireModel ? "ASSET_MODEL_NOT_FOUND" :
+                    "ASSET_IMPORTABLE_FILE_NOT_FOUND", list, 0);
             if (expected is not null)
             {
                 var previous = expected.OrderBy(x => x.RelativePath,
@@ -80,7 +90,7 @@ internal static class AssetManagerFileEvidence
                     return new(false, "ASSET_FILES_CHANGED_SINCE_CHECKPOINT", list, models);
             }
             return new(true, "ASSET_FILES_VERIFIED: " + list.Count +
-                " files, " + models + " models", list, models);
+                " files, " + models + " models, ignored=" + skipped, list, models);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                  or ArgumentException or NotSupportedException)

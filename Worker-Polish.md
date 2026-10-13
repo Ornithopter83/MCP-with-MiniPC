@@ -29,7 +29,7 @@
 ② 현재 간결한 HQ 문법은 GIT_INIT 필드를 제공하지 않는다. 초기화 여부는 현재 기계적 preflight·설정 계약에 따른다.
 ③ GENERAL WORK는 자신의 WRITE_PATH 안에서 수정한다. 지정되지 않은 사용자 파일과 변경은 보존한다.
 ④ Worker는 마일스톤 시작·종료 시점의 파일 상태를 비교해 기계적으로 이번 마일스톤의 변경을 계산한다.
-⑤ QA는 소스와 Git을 수정하지 않는다. HIGH는 검토 과정에서 필요한 소스·설정 변경을 수행할 수 있으나 Git 최종화는 Worker가 담당한다.
+⑤ QA·HIGH는 검증과 복구에 필요한 소스·설정 변경을 수행할 수 있으나 검증하지 않은 성공을 보고하지 않는다. Git 최종화는 Worker가 담당한다.
 
 제4조 (WORKITEM 식별·세션·재개)
 
@@ -117,7 +117,7 @@
 ① HQ는 게임에 에셋이 필요한 경우 첫 마일스톤부터 @@ASSET_MANAGER=1을 우선 구성한다. 에셋 불필요 시 생략한다. #1만 있는 마일스톤을 지원하며 #1은 #10+ WORK 전에 실행한다.
 ② #1은 DISCOVER, ACQUIRE, INTEGRATE 3단계를 동일 Request ID·AI 세션에서 순서대로 수행한다. DISCOVER는 읽기 전용 에셋 탐색, ACQUIRE는 PROJECT_ONLY 재사용 또는 CC0_AUTO의 승인 가능한 획득·Import, INTEGRATE는 실제 씬 저장·참조 확인이다.
 ③ #1 단계별 쓰기 범위, 모델, 세션 및 실행 상태를 .projecthub 체크포인트에 기록한다. 중단된 변경 단계를 무조건 다시 실행하지 않는다. 요청 범위 밖의 변경은 BLOCKED로 보고한다.
-④ #1은 WORK의 명령 실행 보호 Hook을 적용받는다. Import·씬 변경은 Editor 공유 상태 보호를 위한 직렬 실행이다. Git 최종화는 Worker가 담당한다.
+④ #1은 Editor 공유 상태 보호를 위해 직렬 실행한다. FULL_AUTONOMY에서 명령 차단 Hook을 적용하지 않으며 Git 최종화는 Worker가 담당한다.
 ⑤ 공식 공급원 검색/다운로드 및 Editor 실기 성공은 Windows에서 별도 검증한다. CI 성공만으로 실제 에셋 설치·씬 배치 완료를 주장하지 않는다.
 
 제14조 (Unity 새 작업의 충돌 파일 강제 교체)
@@ -148,13 +148,11 @@
 ① UnityWorker에서 Codex/OpenCode의 역할 요청은 FULL_AUTONOMY를 기본 적용한다. Codex 실행은 사용자 승인을 요구하지 않는 전체 접근 정책을 사용하고, OpenCode는 외부 디렉터리·셸 편집 권한을 허용한다. 이는 별도의 관리자 권한 상승이나 서비스 인증 우회와 다르다.
 ② FULL_AUTONOMY에서는 WORK·QA·HIGH 실행 명령을 사전에 deny하는 ProjectHub 훅을 설치하지 않는다. 외부 도구 명령의 위험도가 높다는 이유만으로 실행을 지연·차단하지 않고, 위험도 기록과 실행 결과 보고를 분리한다.
 ③ 관측된 명령 중 위험 신호에 대해 [주의], [경고], [위험] 태그, 실행 단계, 역할, Job ID, 명령 미리보기를 기존 명령 이력과 `%LOCALAPPDATA%\ProjectHub\Worker\logs\risk-audit.log`에 기록한다. 태그는 휴리스틱 진단 정보이며 모든 간접 작업의 위험을 보장하거나 통제하지 않는다. 로그가 실패해도 작업 명령을 소급 차단하지 않는다.
-④ ACQUIRE에서 유효한 blocked 응답이 발생하고 그 단계의 프로젝트 파일 변경이 없으면, 동일 요청·세션에서 다른 에셋 공급처 또는 다운로드 방법을 한 차례 재시도한다. 부분 획득·Import가 있으면 무조건 재실행하지 않는다. QA·실제 Import·GUID·씬 저장·Git 최종화 상태는 별개로 검증한다.
+④ 실행 실패는 대체 방법으로 복구를 시도하되 부분 변경을 무조건 재실행하지 않으며, 실제 성공 여부와 QA·Git 최종화는 별도로 검증한다.
 ⑤ FULL_AUTONOMY는 명령 실행 권한 정책이며 역할별 계획·작업 범위·검증 성공 조건 자체를 통과시킨다는 의미가 아니다. 이후 사용자의 종료·취소 및 실제 도구 오류는 계속 존중한다.
 
-제19조 (ASSET MANAGER 부분 획득 보존 및 Unity CLI Import 이어하기)
+제19조 (실패·복구와 HQ 결정)
 
-① ASSET MANAGER의 DISCOVER/ACQUIRE/INTEGRATE 외부 계약은 유지한다. ACQUIRE 내부에서 CC0 출처·라이선스 기록을 포함한 다운로드 파일의 길이·SHA-256을 증거로 저장하고, Unity Import 완료와 구별하여 IMPORT_PENDING 상태를 영속화한다.
-② ACQUIRE 재개 또는 새 요청 시 TARGET_PATH에 이미 확보된 정상 파일과 LICENSES.md를 먼저 검증해 재사용한다. 새 파일을 덮어쓰거나 재다운로드하지 않는다. 이전 체크포인트의 파일 해시와 실제 파일이 달라지면 자동 복구로 덮어쓰지 않고 상태 불일치를 보고한다.
-③ Worker는 새 Editor 프로세스를 띄우지 않고 기존 프로젝트의 공식 `unity command eval --project-path ...` 명령에서 AssetDatabase.Refresh/ImportAsset 및 GUID, AssetImporter, 모델 로드 결과를 확인한다. 실제 Editor 결과와 파일 재검증이 모두 성공한 경우에만 ACQUIRED로 진행한다. 명령 미지원·Editor 연결 실패는 구체적 코드로 보고하며 추측으로 통과시키지 않는다.
-④ 다운로드 파일이 생겼다는 이유만으로 자동 복구를 포기하지 않는다. Import 불가 시 IMPORT_PENDING을 보존하고 동일 Job/Request의 이어하기에서는 다운로드 대신 Import부터 재시도한다. 새 작업으로 생성된 별도 Job에서도 유효한 기존 CC0 파일을 조사·재사용할 수 있다.
-⑤ 이 수정은 전체 UnityEditorBridge 서버나 새 마일스톤 스케줄러를 도입하지 않는다. CI는 가짜 Unity CLI 응답과 파일 해시를 검증하며 실제 Windows Editor/FBX 통합 검증은 별도 수행해야 한다.
+① 사용자 명시 취소, 잘못된 작업 대상, 사용자 소유 파일과의 복구 불가능한 충돌만 강제 중단한다. 검증되지 않은 완료는 성공 처리하지 않는다. 위험 태그는 차단 사유가 아니다.
+② 다운로드·Editor/Pipeline·Import·BUILD·QA·Git 실패 및 부분 성공은 가능한 기계적 대안을 한정해서 시도한다. 미해결이면 실패 증거·복구 시도·보존된 체크포인트를 HQ에 전달하여 재계획·대체 작업 또는 PAUSE를 판단하게 한다. 같은 실패를 무한 반복하지 않는다.
+③ #1은 검증된 기존 에셋을 재사용하고 Import 미완료를 별도로 기록한다. NEW 작업의 origin/main Git 충돌 경로 강제 교체는 제14조에 한정한다. 에셋 재사용은 사용자 소유 씬을 덮어쓸 권한이 아니다.

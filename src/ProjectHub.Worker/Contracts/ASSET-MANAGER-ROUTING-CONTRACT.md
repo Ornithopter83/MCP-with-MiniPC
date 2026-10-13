@@ -11,7 +11,7 @@
 
 제2조 (3단계 실행)
 ① DISCOVER: Worker의 LOCAL_ASSET_INVENTORY와 Assets 내 파일 목록을 먼저 확인한다. 추가 검색은 PowerShell Get-ChildItem으로 가능하며 rg 설치와 AssetDatabase 호출은 필수가 아니다. CC0_AUTO에서 로컬 자산이 부족하면 공식 배포처의 CC0 표기·모델 형식·다운로드 안내와 공식 페이지 URL이 확인된 후보를 하나 이상 고른다. 직접 다운로드 파일 URL·크기·버전이 미공개이면 ISSUES에 표시하고 ACQUIRE에서 검증한다. TARGET_PATH 미생성은 정상이다. DISCOVER에서 다운로드하거나 파일을 변경하지 않는다. 로컬 자산도 검증 가능한 CC0 후보도 없다면 blocked다.
-② ACQUIRE: 기존 TARGET_PATH에 있는 검증된 파일을 먼저 재사용한다. 부족한 후보의 실제 다운로드 경로와 CC0 조건을 검증한 뒤 파일을 획득하고 크기·유형·라이선스·출처·해시를 LICENSES.md에 기록한다. 다운로드 파일을 확보했으면 Editor 연결 문제만으로 blocked를 보고하지 않는다. Worker가 기존 Editor에 Unity CLI의 eval/AssetDatabase를 직접 호출하여 Import, .meta/GUID/Importer 및 모델 로드 결과를 별도로 검증한다. 실제 Import 증거가 없으면 Worker가 ACQUIRE를 통과시키지 않는다. PROJECT_ONLY면 내부 자산을 재사용하고 다운로드하지 않는다.
+② ACQUIRE: 기존 TARGET_PATH의 정상 파일을 우선 재사용한다. 부족한 파일은 공식 CC0 출처에서 확보하고 경로·크기·해시·라이선스를 기록한다. Worker가 실제 Editor Import/GUID/Importer를 별도 검증하므로 Editor 접속 문제만으로 획득 성과를 폐기하지 않는다. 실제 미검증 결과는 보고한다. PROJECT_ONLY는 내부 에셋을 사용한다.
 ③ INTEGRATE: 지정된 SCENE에 합의된 개수·위치의 에셋 인스턴스를 놓고 저장한다. 다시 조회하여 인스턴스 수, 경로/참조 GUID, Console/컴파일 오류와 확인 가능한 Game View 증거를 SUMMARY에 기록한다. 검증 불가능한 항목은 ISSUES에 남긴다.
 ④ 각 단계는 Worker가 별도로 지시하며, 이전 단계의 성공을 허위로 가정해 다음 단계로 넘어가지 않는다.
 ⑤ 실제 단계 완료 요건을 만족하지 못할 때만 blocked로 종료한다. DISCOVER에서 rg·AssetDatabase 호출 불가 또는 미생성 TARGET_PATH만으로 차단하지 않는다. 프로젝트가 이미 열려 있다면 Unity.exe -help/-batchmode 등 별도 Editor를 중복 실행하지 않는다. 기존 .meta/Prefab/Scene을 임의로 삭제하거나 우회하지 않는다.
@@ -31,4 +31,3 @@
 [RESPONSE=OK]
 
 <STATUS>는 completed, in_progress, blocked다. Worker는 completed만 해당 단계를 통과시킨다. in_progress와 blocked는 현재 단계에서 중단하고 HQ에 보고한다.
-FULL_AUTONOMY 보충: ACQUIRE에서 도구 접근 환경 때문에 blocked가 되었고 프로젝트 파일을 변경하지 않았다면 Worker가 한 차례 대체 다운로드·공식 CC0 공급처를 자동 탐색한다. 재시도에서도 획득/Importer/GUID 검증에 실패하면 blocked 유지. 실행 명령의 위험도는 감사 로그에 남기되 위험도 자체로 명령을 막지 않는다.

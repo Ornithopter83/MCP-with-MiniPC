@@ -152,10 +152,19 @@ public partial class MainWindow
                 "UNITY TOOLCHAIN / EDITOR PREFLIGHT",
                 unityPreflight.Code + ": " + unityPreflight.Detail,
                 status: unityPreflight.Ready ? "COMPLETED" : "BLOCKED");
-            if (!unityPreflight.Ready)
+            // Editor connectivity is an execution capability, not a reason to
+            // prevent HQ from planning code-only work or choosing PAUSE.
+            // Keep the failure visible to HQ; never treat it as Import proof.
+            if (unityPreflight.Code == "UNITY_PROJECT_NOT_FOUND")
                 throw new InvalidOperationException(
-                    "UNITY_PREFLIGHT_BLOCKED: " + unityPreflight.Code +
-                    ": " + unityPreflight.Detail);
+                    "UNITY_PROJECT_NOT_FOUND: " + unityPreflight.Detail);
+
+            var editorRecoveryNotice = unityPreflight.Ready ? string.Empty :
+                "UNITY_EDITOR_UNAVAILABLE: " + unityPreflight.Code + ": " +
+                unityPreflight.Detail + Environment.NewLine +
+                "Unity Editor 작업은 확인 전 실행하지 말고, 가능한 코드/진단 대안을 " +
+                "계획하라. 해결 수단이 없으면 HQ가 [ACTION=PAUSE]를 판단하라." +
+                Environment.NewLine;
 
             stagedAttachments = UserAttachmentTransport.StageForWorkerRuntime(
                 attachments,
@@ -170,9 +179,11 @@ public partial class MainWindow
                 coordinator.ThreadSessionId);
             var configuredRepositoryUrl =
                 _targetSettings.ManualRepositoryUrl?.Trim();
-            var hqInbound = continuing
-                ? BuildMilestoneFollowupInput(continuation!, request)
-                : request;
+            var hqInbound = editorRecoveryNotice +
+                (continuing
+                    ? BuildMilestoneFollowupInput(continuation!, request)
+                    : request);
+            var lastRemoteError = string.Empty;
 
             void PersistRecovery(string evidence)
             {
@@ -220,10 +231,21 @@ public partial class MainWindow
                             cts.Token);
                 if (!remoteReference.Success)
                 {
-                    throw new InvalidOperationException(
-                        "HQ_REMOTE_REFERENCE_FAILED: " +
-                        remoteReference.Summary);
+                    // Avoid duplicating the same diagnostic on every HQ turn.
+                    var error = remoteReference.Summary;
+                    if (!string.Equals(lastRemoteError, error, StringComparison.Ordinal))
+                    {
+                        hqInbound = "HQ_REMOTE_REFERENCE_FAILED: " +
+                            error + Environment.NewLine +
+                            "원격 참조를 확인할 수 없다. 검증하지 않은 원격 상태를 " +
+                            "가정하지 말고 로컬 읽기 전용 진단 또는 복구를 선택하라. " +
+                            "대안이 없으면 HQ가 PAUSE를 선택하라." +
+                            Environment.NewLine + hqInbound;
+                        lastRemoteError = error;
+                    }
                 }
+                else
+                    lastRemoteError = string.Empty;
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
@@ -231,7 +253,7 @@ public partial class MainWindow
                     "HQ 원격 참조 갱신" +
                     Environment.NewLine +
                     remoteReference.Summary,
-                    status: "COMPLETED",
+                    status: remoteReference.Success ? "COMPLETED" : "FAILED",
                     persistenceSource: "WORKER ACTION");
 
                 // Snapshot immediately before this HQ request. Messages entered
@@ -755,6 +777,41 @@ public partial class MainWindow
         }
     }
 
+    private async Task<MilestoneRunResult> BuildHqDecisionReportAsync(
+        string jobId, string workingDirectory, MilestoneDefinition milestone,
+        string reasonCode, string detail, IReadOnlySet<string> initialChangedPaths,
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? mechanicalReports = null,
+        IReadOnlyList<string>? changedPaths = null)
+    {
+        var current = await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
+            workingDirectory, cancellationToken);
+        var diagnostics = (mechanicalReports ?? Array.Empty<string>())
+            .Concat(new[] { "RECOVERY_DECISION: " + reasonCode + " · " + detail })
+            .ToArray();
+        var report = MilestoneDefinitionContract.BuildHqReport(
+            milestone, "HQ_DECISION_REQUIRED:" + reasonCode,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            diagnostics, string.Empty, string.Empty,
+            MilestoneGitResult.NotStarted(milestone.TargetBranch),
+            initialChangedPaths,
+            changedPaths ?? Array.Empty<string>(),
+            current,
+            _formatRecoveryJobs.ContainsKey(jobId),
+            GetUnreadRecoveryElements(jobId),
+            workingDirectory, jobId);
+        SaveMilestoneExecutionGraph(workingDirectory, jobId, milestone,
+            "HQ_DECISION_REQUIRED", hqFinalState: "READY");
+        AddTaskMessage("HQ RECOVERY DECISION",
+            reasonCode + ": " + detail, status: "FORWARDED");
+        return new(false, report + Environment.NewLine +
+            "RECOVERY_DECISION_REQUIRED: Worker가 가능한 직접 복구를 먼저 시도했다. " +
+            "미완료 결과를 완료로 간주하지 마라. HQ는 대체 구현/진단 마일스톤을 " +
+            "선택하거나, 사용자 판단 없이는 진행할 수 없을 때만 PAUSE를 선택하라. " +
+            "동일한 실패 작업을 아무 변경 없이 재실행하지 마라.");
+    }
+
     private async Task<MilestoneRunResult> RunSingleMilestoneAsync(
         string jobId,
         string workingDirectory,
@@ -816,7 +873,9 @@ public partial class MainWindow
         {
             // Preflight is mechanical. Do not dispatch HIGH with write rights
             // before a valid Git workspace exists.
-            return new(true, "GIT_PREFLIGHT_FAILED: " + gitPreflight.Summary);
+            return await BuildHqDecisionReportAsync(jobId,
+                workingDirectory, milestone, "GIT_PREFLIGHT_FAILED",
+                gitPreflight.Summary, initialChangedPaths, cancellationToken);
         }
 
         WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
@@ -880,9 +939,11 @@ public partial class MainWindow
                             new[] { planPath }, _targetSettings.ManualRepositoryUrl?.Trim(),
                             cancellationToken);
                         if (!planGit.Success)
-                            return new(true, "INITIAL_PLAN_GIT_FAILED: " +
+                            return await BuildHqDecisionReportAsync(jobId,
+                                workingDirectory, milestone, "INITIAL_PLAN_GIT_FAILED",
                                 planGit.Summary + Environment.NewLine + "HIGH_GIT: " +
-                                MilestoneDefinitionContract.Limit(diagnosis, 1200));
+                                MilestoneDefinitionContract.Limit(diagnosis, 1200),
+                                initialChangedPaths, cancellationToken);
                     }
                 }
             }
@@ -896,9 +957,35 @@ public partial class MainWindow
                         path, assetDefinition, "INTEGRATE"))
                     .ToArray();
                 if (preexistingAssetChanges.Length > 0)
-                    return new(true, "ASSET_MANAGER_PREEXISTING_DIRTY: " +
-                        string.Join(", ", preexistingAssetChanges.Take(16)) +
-                        " · 씬/에셋의 사용자 수정을 자동으로 덮어쓰지 않습니다.");
+                {
+                    var sceneDirty = preexistingAssetChanges.Where(path =>
+                        path.Equals(assetDefinition.ScenePath,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        path.Equals(assetDefinition.ScenePath + ".meta",
+                            StringComparison.OrdinalIgnoreCase)).ToArray();
+                    var reusable = AssetManagerFileEvidence.Inspect(
+                        workingDirectory, assetDefinition.TargetPath,
+                        assetDefinition.SourcePolicy == "CC0_AUTO",
+                        requireModel: assetDefinition.SourcePolicy != "PROJECT_ONLY");
+                    if (sceneDirty.Length > 0 || !reusable.Ready ||
+                        preexistingAssetChanges.Any(path =>
+                            !path.StartsWith(assetDefinition.TargetPath.TrimEnd('/') + "/",
+                                StringComparison.OrdinalIgnoreCase) &&
+                            !path.Equals(assetDefinition.TargetPath.TrimEnd('/') + ".meta",
+                                StringComparison.OrdinalIgnoreCase) &&
+                            !path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        // This is a real, unowned write collision, not an
+                        // ordinary resumable download. Do not overwrite it.
+                        return new(true, "ASSET_MANAGER_USER_FILE_CONFLICT: " +
+                            string.Join(", ", preexistingAssetChanges.Take(16)) +
+                            " · " + reusable.Detail);
+                    }
+                    AddTaskMessage("ASSET MANAGER",
+                        "기존 에셋 변경 " + preexistingAssetChanges.Length +
+                        "개를 재사용 검증으로 승인 · " + reusable.Detail,
+                        status: "RECOVERED");
+                }
                 var assetRun = await ExecuteMilestoneAssetManagerAsync(
                     jobId, workingDirectory, milestone, assetDefinition,
                     implementer, cancellationToken);
@@ -911,8 +998,13 @@ public partial class MainWindow
                     SaveMilestoneExecutionGraph(workingDirectory, jobId,
                         milestone, "ASSET_MANAGER_BLOCKED", workReports,
                         resourceReports, string.Empty, string.Empty);
-                    return new(true, "ASSET_MANAGER_BLOCKED: " +
-                        MilestoneDefinitionContract.Limit(assetRun.Detail, 2500));
+                    if (MilestoneHqDecisionPolicy.IsHardStop(assetRun.Detail))
+                        return new(true, "ASSET_MANAGER_HARD_STOP: " +
+                            MilestoneDefinitionContract.Limit(assetRun.Detail, 2500));
+                    return await BuildHqDecisionReportAsync(jobId,
+                        workingDirectory, milestone, "ASSET_MANAGER_BLOCKED",
+                        assetRun.Detail, initialChangedPaths, cancellationToken,
+                        mechanicalReports, assetRun.ChangedPaths);
                 }
             }
 
@@ -2243,7 +2335,9 @@ public partial class MainWindow
         Environment.NewLine +
         $"현재 origin/main SHA: {remoteMainSha ?? "확인 실패"}" +
         Environment.NewLine +
-        "Worker가 이 호출 직전에 origin/main을 fetch했다. 원격 저장소를 직접 참조하여 설계한다. 로컬 Git 명령을 사용할 수 있는 transport에서는 git log, git ls-tree, git show, git diff 등 읽기 전용 명령으로 origin/main의 실제 구조와 이력을 조사하고 현재 로컬 상태와 비교한다. Web transport에서는 위 강제 원격 저장소 URL의 main을 직접 열어 구조와 이력을 조사한다. 필요하면 git ls-remote origin main으로 원격 기준을 재확인한다." +
+        (remoteMainSha is null
+            ? "Worker가 origin/main의 최신 SHA를 검증하지 못했다. 확인되지 않은 원격 상태를 성공으로 가정하지 말고 읽기 전용 점검으로 검증하라. 대체 경로가 없으면 HQ가 PAUSE를 판단한다."
+            : "Worker가 이 호출 직전에 origin/main을 fetch했다. 원격 저장소를 직접 참조하여 설계한다. 로컬 Git 명령을 사용할 수 있는 transport에서는 git log, git ls-tree, git show, git diff 등 읽기 전용 명령으로 origin/main의 실제 구조와 이력을 조사하고 현재 로컬 상태와 비교한다. Web transport에서는 위 강제 원격 저장소 URL의 main을 직접 열어 구조와 이력을 조사한다. 필요하면 git ls-remote origin main으로 원격 기준을 재확인한다.") +
         Environment.NewLine +
         "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH를 명확히 지정한다." +
         Environment.NewLine +

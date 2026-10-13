@@ -78,16 +78,3 @@
 - 프로젝트별 체크포인트·이벤트는 계속 `<프로젝트 루트>\.projecthub`를, 프로젝트별 임시 산출물은 `<프로젝트 루트>\temp`를 사용한다.
 - 기존 EXE가 완전히 무관한 폴더에 보관돼 자동 검색할 수 없는 경우, 중앙 설정 폴더로 사용자가 기존 JSON 파일을 복사해야 한다.
 
-### FULL_AUTONOMY 및 위험도 이벤트 기록
-
-- Codex 전체 접근·승인 대기 생략, OpenCode edit/bash/external_directory 허용을 기본 실행 정책으로 적용한다. Work/QA/High의 기존 명령 거부 훅은 자율 모드에서 생성하지 않는다.
-- 실행이 관측된 셸 명령을 [주의] 로컬 변경, [경고] 네트워크/설치/권한 변경, [위험] 파괴적 삭제/강제 Git 재설정 등으로 분류하여 명령 시작·결과 로그와 LocalAppData 위험 감사 로그에 기록한다. 위험도가 작업 실행의 게이트는 아니다.
-- ACQUIRE가 blocked인데 파일 변경이 전혀 없다면 1회만 대체 공급처/HTTPS 클라이언트 자동 복구를 시도한다. 부분 Import 이후 무조건 재실행은 하지 않는다.
-- 위험 라벨은 진단용이며 실제 안전성의 보증이 아니다. 원래 QA·Unity 실제 검증과 Worker Git 최종화는 유지하고, 실기 테스트가 없는 완료 선언은 하지 않는다.
-
-### ACQUIRE 파일 재사용 및 Unity CLI Editor Import
-
-- 디스크 에셋에 대한 해시·크기·CC0 출처 증거를 체크포인트에 저장하고 IMPORT_PENDING 상태와 ACQUIRED 상태를 분리한다.
-- Worker가 해당 프로젝트의 기존 Editor에 `unity command eval`을 보내 AssetDatabase.Refresh/ImportAsset, GUID, AssetImporter 및 FBX 모델 로드를 검증한다. 실제 결과가 없거나 CLI eval 미지원이면 IMPORT_PENDING에 남고 원인을 출력한다.
-- 실패 뒤 동일 Job 또는 새 Job에서 이미 확보한 에셋 파일을 우선 재사용한다. 임의 파일 변경·예상 밖 파일·라이선스 누락이 있으면 덮어쓰지 않는다.
-- 기존 DISCOVER → ACQUIRE → INTEGRATE 계약과 Unity QA, Git 최종화는 유지한다. 전체 Bridge 재설계나 별도 Unity Editor 추가 기동은 하지 않는다.

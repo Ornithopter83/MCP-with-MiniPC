@@ -22,6 +22,10 @@ internal static class UnityAssetCliImporter
         new[] { "command", "eval", expression, "--project-path",
             Path.GetFullPath(root), "--format", "json", "--timeout", "180" };
 
+    internal static string[] ImportFileArguments(string root, string file) =>
+        new[] { "command", "eval_file", file, "--project-path",
+            Path.GetFullPath(root), "--format", "json", "--timeout", "180" };
+
     internal static string BuildImportExpression(IReadOnlyList<AssetFileEvidence> files)
     {
         var paths = string.Join(", ", files.Select(f =>
@@ -113,22 +117,45 @@ internal static class UnityAssetCliImporter
         CancellationToken cancellationToken,
         Func<IReadOnlyList<string>, CancellationToken, Task<UnityAssetCliResult>>? execute = null)
     {
-        if (files.Count == 0 || models == 0)
-            return new(false, "ASSET_IMPORT_NO_MODEL_FILES", 0);
+        if (files.Count == 0)
+            return new(false, "ASSET_IMPORT_NO_FILES", 0);
         execute ??= (args, token) => ExecuteAsync(root, args, token);
         try
         {
-            // Command listing is diagnostic. Older CLI versions may reject
-            // query filters; the actual named eval invocation remains authoritative.
-            var catalog = await execute(CatalogArguments(root), cancellationToken)
+            // The catalog query is diagnostic, never a hard gate: some CLI
+            // versions list tags only or do not support query flags.
+            _ = await execute(CatalogArguments(root), cancellationToken)
                 .ConfigureAwait(false);
-            if (catalog.ExitCode != 0)
-                return new(false, "UNITY_PIPELINE_CATALOG_UNAVAILABLE: " +
-                    Trim(catalog.Error.Length > 0 ? catalog.Error : catalog.Output), 0);
 
-            var args = ImportArguments(root, BuildImportExpression(files));
-            var response = await execute(args, cancellationToken).ConfigureAwait(false);
-            return InterpretImportResult(response, files.Count, models);
+            var expression = BuildImportExpression(files);
+            var response = await execute(ImportArguments(root, expression),
+                cancellationToken).ConfigureAwait(false);
+            var interpreted = InterpretImportResult(response, files.Count, models);
+            if (interpreted.Success || !IsCommandUnavailable(response))
+                return interpreted;
+
+            // eval was definitively NOT executed. The official eval_file
+            // command is the second supported path (never replay an uncertain
+            // timeout, editor disconnect or partial Import).
+            var directory = Path.Combine(Path.GetFullPath(root),
+                "temp", "ProjectHub", "asset-import");
+            Directory.CreateDirectory(directory);
+            var file = Path.Combine(directory,
+                "eval-" + Guid.NewGuid().ToString("N") + ".cs");
+            try
+            {
+                await File.WriteAllTextAsync(file, expression,
+                    cancellationToken).ConfigureAwait(false);
+                var fallback = await execute(ImportFileArguments(root, file),
+                    cancellationToken).ConfigureAwait(false);
+                return InterpretImportResult(fallback, files.Count, models);
+            }
+            finally
+            {
+                try { File.Delete(file); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -139,6 +166,16 @@ internal static class UnityAssetCliImporter
         {
             return new(false, "UNITY_IMPORT_COMMAND_ERROR: " + ex.Message, 0);
         }
+    }
+
+    private static bool IsCommandUnavailable(UnityAssetCliResult result)
+    {
+        var failure = result.Error + Environment.NewLine + result.Output;
+        return (result.ExitCode != 0 ||
+                failure.Contains("\"success\":false", StringComparison.OrdinalIgnoreCase)) &&
+            (failure.Contains("UNKNOWN_COMMAND", StringComparison.OrdinalIgnoreCase) ||
+             failure.Contains("COMMAND_NOT_FOUND", StringComparison.OrdinalIgnoreCase) ||
+             failure.Contains("Unrecognized command", StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<UnityAssetCliResult> ExecuteAsync(
