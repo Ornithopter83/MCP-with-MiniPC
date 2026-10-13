@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace ProjectHub.Worker;
 
-internal enum WorkerCommandRiskLevel { Normal, Caution, Warning, Danger }
+public enum WorkerCommandRiskLevel { Normal, Caution, Warning, Danger }
 
 internal sealed record WorkerCommandRiskAssessment(
     WorkerCommandRiskLevel Level, string Reason)
@@ -85,8 +85,11 @@ internal static class WorkerCommandRisk
         {
             var i = message.IndexOf(" · ", StringComparison.Ordinal);
             if (i < 0) return false;
-            command = message[(i + 3)..].Trim();
-            phase = message[..i].Trim();
+            // Codex reports "명령 실행 종료 · exit N · <command>".
+            var exitDelimiter = message.IndexOf(" · ", i + 3, StringComparison.Ordinal);
+            var commandDelimiter = exitDelimiter >= 0 ? exitDelimiter : i;
+            command = message[(commandDelimiter + 3)..].Trim();
+            phase = message[..commandDelimiter].Trim();
         }
         if (command.Length == 0) return false;
         assessment = Classify(command);
