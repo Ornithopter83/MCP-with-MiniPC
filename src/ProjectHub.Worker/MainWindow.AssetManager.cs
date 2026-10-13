@@ -31,6 +31,13 @@ public partial class MainWindow
         var evidence = new List<string>();
         foreach (var (phase, completedState) in phases)
         {
+            var recoveringAcquisition = checkpoint.State is "IMPORT_PENDING" or "RUNNING_ACQUIRE" ||
+                (checkpoint.State == "BLOCKED" &&
+                 (checkpoint.BlockedPhase == "ACQUIRE" ||
+                  (checkpoint.BlockedPhase is null &&
+                   checkpoint.Evidence.Contains("ACQUIRE ·", StringComparison.OrdinalIgnoreCase))));
+            if (phase == "DISCOVER" && recoveringAcquisition)
+                continue;
             if (checkpoint.State == "INTEGRATED" ||
                 checkpoint.State == completedState ||
                 (phase == "DISCOVER" && checkpoint.State is "ACQUIRED" or "RUNNING_ACQUIRE") ||
@@ -44,6 +51,77 @@ public partial class MainWindow
                 "ACQUIRE" => "DISCOVERED",
                 _ => "ACQUIRED"
             };
+
+            // A download is durable even when the AI could not reach the
+            // Editor. Verify the exact files (and their saved hashes) before
+            // invoking Unity; never execute a second acquisition in this case.
+            if (phase == "ACQUIRE" &&
+                (checkpoint.State == "DISCOVERED" || recoveringAcquisition))
+            {
+                var available = AssetManagerFileEvidence.Inspect(root,
+                    definition.TargetPath, definition.SourcePolicy == "CC0_AUTO",
+                    checkpoint.AcquiredFiles);
+                if (available.Ready)
+                {
+                    checkpoint = checkpoint with
+                    {
+                        State = "IMPORT_PENDING",
+                        AcquiredFiles = available.Files,
+                        BlockedPhase = "ACQUIRE",
+                        Evidence = checkpoint.Evidence + "\n" + available.Detail
+                    };
+                    AssetManagerExecutionJournal.Save(root, checkpoint);
+                    AddTaskMessage("UNITY IMPORT",
+                        "기존 에셋 " + available.Files.Count +
+                        "개 해시 검증 완료 · 재다운로드 없이 Unity Import 재개",
+                        status: "PROCESSING");
+                    var beforeImport = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        root, cancellationToken);
+                    var completed = await UnityAssetCliImporter.RunAsync(
+                        root, available.Files, available.ModelCount, cancellationToken);
+                    var afterImport = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        root, cancellationToken);
+                    var importDiff = MilestoneMechanicalExecutor.DiffChangeStates(
+                        beforeImport, afterImport).ToArray();
+                    var illegal = importDiff.Where(p =>
+                        !AssetManagerPathPolicy.IsAllowed(p, definition, "ACQUIRE")).ToArray();
+                    var recheck = AssetManagerFileEvidence.Inspect(root, definition.TargetPath,
+                        definition.SourcePolicy == "CC0_AUTO", available.Files);
+                    if (completed.Success && recheck.Ready && illegal.Length == 0)
+                    {
+                        checkpoint = checkpoint with
+                        {
+                            State = "ACQUIRED",
+                            BlockedPhase = null,
+                            ChangedPaths = checkpoint.ChangedPaths.Concat(importDiff)
+                                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                            Evidence = checkpoint.Evidence + "\n" + completed.Detail
+                        };
+                        AssetManagerExecutionJournal.Save(root, checkpoint);
+                        AddTaskMessage("UNITY IMPORT", completed.Detail, status: "COMPLETED");
+                        continue;
+                    }
+                    var failure = !recheck.Ready ? recheck.Detail :
+                        illegal.Length > 0 ? "ASSET_MANAGER_SCOPE_VIOLATION: " +
+                            string.Join(",", illegal.Take(8)) : completed.Detail;
+                    checkpoint = checkpoint with
+                    {
+                        State = illegal.Length > 0 || !recheck.Ready ? "BLOCKED" : "IMPORT_PENDING",
+                        Evidence = checkpoint.Evidence + "\n" + failure,
+                        ChangedPaths = checkpoint.ChangedPaths.Concat(importDiff)
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                    };
+                    AssetManagerExecutionJournal.Save(root, checkpoint);
+                    AddTaskMessage("UNITY IMPORT", failure, status: "FAILED");
+                    return new(false, "UNITY_IMPORT_PENDING: " + failure, checkpoint.ChangedPaths);
+                }
+
+                if (recoveringAcquisition)
+                    return new(false, "ASSET_ACQUIRE_RECONCILIATION_REQUIRED: " +
+                        available.Detail + " (다운로드 파일을 재사용하거나 검증 실패를 조사해야 합니다)",
+                        checkpoint.ChangedPaths);
+            }
+
             if (checkpoint.State != expectedState)
                 return new(false, "ASSET_MANAGER_RECONCILIATION_REQUIRED: " +
                     checkpoint.State + " (동일 REQUEST_ID의 변경을 자동 재실행하지 않음)",
@@ -103,7 +181,9 @@ public partial class MainWindow
             catch (Exception error)
             {
                 checkpoint = checkpoint with { State = "BLOCKED",
-                    Evidence = phase + ": " + error.GetType().Name + ": " + error.Message };
+                    BlockedPhase = phase,
+                    Evidence = checkpoint.Evidence + "\n" + phase + ": " +
+                        error.GetType().Name + ": " + error.Message };
                 AssetManagerExecutionJournal.Save(root, checkpoint);
                 return new(false, checkpoint.Evidence, checkpoint.ChangedPaths);
             }
@@ -160,6 +240,32 @@ public partial class MainWindow
                 }
             }
 
+            AssetFolderEvidence? acquiredAfterAi = null;
+            UnityAssetImportResult? importAfterAi = null;
+            if (phase == "ACQUIRE")
+            {
+                acquiredAfterAi = AssetManagerFileEvidence.Inspect(root,
+                    definition.TargetPath, definition.SourcePolicy == "CC0_AUTO");
+                if (acquiredAfterAi.Ready && run.ExitCode == 0)
+                {
+                    // Persist BEFORE asking a live Editor to import: a restart
+                    // must never re-download these proven files.
+                    checkpoint = checkpoint with
+                    {
+                        State = "IMPORT_PENDING",
+                        BlockedPhase = "ACQUIRE",
+                        AcquiredFiles = acquiredAfterAi.Files,
+                        Evidence = checkpoint.Evidence + "\n" + acquiredAfterAi.Detail
+                    };
+                    AssetManagerExecutionJournal.Save(root, checkpoint);
+                    AddTaskMessage("UNITY IMPORT",
+                        acquiredAfterAi.Detail + " · 기존 Editor에서 Import/Importer/GUID 검증",
+                        status: "PROCESSING");
+                    importAfterAi = await UnityAssetCliImporter.RunAsync(
+                        root, acquiredAfterAi.Files, acquiredAfterAi.ModelCount, cancellationToken);
+                }
+            }
+
             var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 root, cancellationToken);
             var changed = MilestoneMechanicalExecutor.DiffChangeStates(before, after)
@@ -168,7 +274,12 @@ public partial class MainWindow
                 !AssetManagerPathPolicy.IsAllowed(p, definition, phase)).ToArray();
             var parsed = RoleTextProtocol.ParseWork(run.FinalMessage);
             var successful = run.ExitCode == 0 && parsed.IsValid &&
-                string.Equals(parsed.Status, "completed", StringComparison.OrdinalIgnoreCase);
+                (string.Equals(parsed.Status, "completed", StringComparison.OrdinalIgnoreCase) ||
+                 (phase == "ACQUIRE" && importAfterAi?.Success == true &&
+                  string.Equals(parsed.Status, "blocked", StringComparison.OrdinalIgnoreCase)));
+            if (phase == "ACQUIRE" && definition.SourcePolicy != "PROJECT_ONLY" &&
+                importAfterAi?.Success != true)
+                successful = false;
             var additional = changed.Where(p =>
                 !checkpoint.ChangedPaths.Contains(p, StringComparer.OrdinalIgnoreCase))
                 .ToArray();
@@ -178,6 +289,9 @@ public partial class MainWindow
                 " · protocol=" + (parsed.IsValid ? parsed.Status : "invalid") +
                 " · summary=" + MilestoneDefinitionContract.Limit(
                     parsed.IsValid ? parsed.Summary : run.FinalMessage, 1000);
+            if (phase == "ACQUIRE")
+                detail += " · " + (importAfterAi?.Detail ??
+                    acquiredAfterAi?.Detail ?? "ASSET_IMPORT_NOT_VERIFIED");
             if (phase == "DISCOVER" && changed.Length > 0)
                 detail += " · DISCOVERY_MODIFIED_PROJECT";
             if (outOfScope.Length > 0)
@@ -215,7 +329,10 @@ public partial class MainWindow
             evidence.Add(detail);
             checkpoint = checkpoint with
             {
-                State = phasePassed ? completedState : "BLOCKED",
+                State = phasePassed ? completedState :
+                    phase == "ACQUIRE" && acquiredAfterAi?.Ready == true &&
+                    outOfScope.Length == 0 ? "IMPORT_PENDING" : "BLOCKED",
+                BlockedPhase = phasePassed ? null : phase,
                 SessionId = CodexCliRunner.NormalizeSessionId(run.SessionId) ??
                     checkpoint.SessionId,
                 Evidence = checkpoint.Evidence + "\n" + detail,
@@ -254,7 +371,15 @@ public partial class MainWindow
                   "모델 형식이 확인되면 직접 다운로드 URL·크기 미공개는 " +
                   "ISSUES에 명시하고 ACQUIRE에서 검증하라. " +
                   "이 단계에서는 다운로드하거나 프로젝트를 수정하지 마라.\n"
-                : string.Empty) +
+                : phase == "ACQUIRE"
+                    ? "\nACQUIRE는 다운로드 파일과 라이선스·크기·해시 검증에 집중하라. " +
+                      "TARGET_PATH에 이미 있는 정상 파일은 삭제하거나 다시 다운로드하지 마라. " +
+                      "이미 확보된 파일과 LICENSES.md를 검증해서 재사용하라. " +
+                      "기존 Editor의 Import·GUID 검증은 이 응답 후 Worker가 " +
+                      "공식 Unity CLI로 직접 수행한다. Editor 연결이 없다는 이유만으로 " +
+                      "다운로드 완료 결과를 blocked로 낮추지 마라. " +
+                      "실제 다운로드나 로컬 검증에 실패한 경우에만 blocked로 보고하라.\n"
+                    : string.Empty) +
             "\n현재 PHASE만 실제 수행하라. 이후 단계로 미리 진입하지 마라. " +
             "완료 기준을 충족하지 못한 경우 blocked 또는 in_progress로 보고하라. " +
             "검색/획득/씬 연결의 도구 결과와 실제 파일 증거를 기록하라.\n\n" +

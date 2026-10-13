@@ -14,7 +14,9 @@ internal sealed record AssetManagerCheckpoint(
     string State,
     string? SessionId,
     string Evidence,
-    IReadOnlyList<string> ChangedPaths);
+    IReadOnlyList<string> ChangedPaths,
+    IReadOnlyList<AssetFileEvidence>? AcquiredFiles = null,
+    string? BlockedPhase = null);
 
 /// <summary>
 /// Per-job, per-request durable state. A crashed mutating phase never

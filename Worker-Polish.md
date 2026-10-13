@@ -150,3 +150,11 @@
 ③ 관측된 명령 중 위험 신호에 대해 [주의], [경고], [위험] 태그, 실행 단계, 역할, Job ID, 명령 미리보기를 기존 명령 이력과 `%LOCALAPPDATA%\ProjectHub\Worker\logs\risk-audit.log`에 기록한다. 태그는 휴리스틱 진단 정보이며 모든 간접 작업의 위험을 보장하거나 통제하지 않는다. 로그가 실패해도 작업 명령을 소급 차단하지 않는다.
 ④ ACQUIRE에서 유효한 blocked 응답이 발생하고 그 단계의 프로젝트 파일 변경이 없으면, 동일 요청·세션에서 다른 에셋 공급처 또는 다운로드 방법을 한 차례 재시도한다. 부분 획득·Import가 있으면 무조건 재실행하지 않는다. QA·실제 Import·GUID·씬 저장·Git 최종화 상태는 별개로 검증한다.
 ⑤ FULL_AUTONOMY는 명령 실행 권한 정책이며 역할별 계획·작업 범위·검증 성공 조건 자체를 통과시킨다는 의미가 아니다. 이후 사용자의 종료·취소 및 실제 도구 오류는 계속 존중한다.
+
+제19조 (ASSET MANAGER 부분 획득 보존 및 Unity CLI Import 이어하기)
+
+① ASSET MANAGER의 DISCOVER/ACQUIRE/INTEGRATE 외부 계약은 유지한다. ACQUIRE 내부에서 CC0 출처·라이선스 기록을 포함한 다운로드 파일의 길이·SHA-256을 증거로 저장하고, Unity Import 완료와 구별하여 IMPORT_PENDING 상태를 영속화한다.
+② ACQUIRE 재개 또는 새 요청 시 TARGET_PATH에 이미 확보된 정상 파일과 LICENSES.md를 먼저 검증해 재사용한다. 새 파일을 덮어쓰거나 재다운로드하지 않는다. 이전 체크포인트의 파일 해시와 실제 파일이 달라지면 자동 복구로 덮어쓰지 않고 상태 불일치를 보고한다.
+③ Worker는 새 Editor 프로세스를 띄우지 않고 기존 프로젝트의 공식 `unity command eval --project-path ...` 명령에서 AssetDatabase.Refresh/ImportAsset 및 GUID, AssetImporter, 모델 로드 결과를 확인한다. 실제 Editor 결과와 파일 재검증이 모두 성공한 경우에만 ACQUIRED로 진행한다. 명령 미지원·Editor 연결 실패는 구체적 코드로 보고하며 추측으로 통과시키지 않는다.
+④ 다운로드 파일이 생겼다는 이유만으로 자동 복구를 포기하지 않는다. Import 불가 시 IMPORT_PENDING을 보존하고 동일 Job/Request의 이어하기에서는 다운로드 대신 Import부터 재시도한다. 새 작업으로 생성된 별도 Job에서도 유효한 기존 CC0 파일을 조사·재사용할 수 있다.
+⑤ 이 수정은 전체 UnityEditorBridge 서버나 새 마일스톤 스케줄러를 도입하지 않는다. CI는 가짜 Unity CLI 응답과 파일 해시를 검증하며 실제 Windows Editor/FBX 통합 검증은 별도 수행해야 한다.
