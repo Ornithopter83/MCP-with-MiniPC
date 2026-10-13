@@ -12,9 +12,9 @@
 | 프로젝트 조정 | HQ | Unity HQ | 요구·완료 기준 및 WORKITEM 설계 |
 | #1 에셋 전문 역할 | ASSET MANAGER (첫 구현) | #1 Asset Manager | 검색→획득/Import→씬 적용, 단계별 체크포인트·차단 정책 |
 | 도구·플러그인 점검 | Worker Unity 사전 점검 (부분 구현) | 실행 이력 | 프로젝트/Pipeline 및 CLI 응답; MCP 인증·세션은 미검증 |
-| Editor 연결·독점 | Worker Editor 연결 Probe (부분 구현) | 실행 이력 | --project-path로 Editor 읽기 명령 확인; 독점 정책은 직렬 WORK |
+| Editor 연결·독점 | Worker 연결 Probe + 프로젝트별 공통 게이트 | 실행 이력 | 명령 목록 확인; Editor WORK, CLI BUILD/Import/Probe, ASSET MANAGER INTEGRATE는 같은 프로젝트 게이트 공유 |
 | 게임플레이 구현 | WORK #10+ | Unity WORK | C# 코드, 컴포넌트 구현 |
-| 씬 구성 | WORK #10+ | Unity WORK | 씬·프리팹 저장과 참조 구성 |
+| 씬 구성 | WORK #10+ / ASSET MANAGER INTEGRATE | Unity WORK | 연결 Editor에서 Scene 열기·수정·저장, SaveScene 반환값 검증 |
 | 실행 검증 | QA + Unity CLI 컴파일 BUILD (첫 구현) | Unity QA | CLI 컴파일 및 추후 Console·PlayMode 증거 |
 | 통합·릴리스 | HIGH + Worker Git | Unity HIGH | 통합 검토 및 Commit/Push |
 | 비차단 이미지 | RESOURCE #0 | #0 IMAGE | GPTWEB 이미지 (기존 동작 유지) |
@@ -34,7 +34,7 @@
 ## 다음 작업 (구현·실증 전)
 
 1. Unity Toolchain 실증·확장: 현재 Probe를 실제 Windows Unity CLI에서 검증하고 Codex WORK 샌드박스의 MCP 등록·호출/ACL까지 확인 (HQ 시작 전 Probe가 MCP 사용 가능성을 보장하지는 않음)
-2. Editor 독점 스케줄러: 소스 병렬/Editor 독점 스케줄러와 회귀 테스트 반영. Windows 실환경에서 Unity Editor/CLI 동시성 실증 및 에이전트의 직접 도구 호출에 대한 강제 격리는 아직 필요
+2. Editor 게이트·Scene 흐름 실증: 구현된 프로젝트 공통 게이트/Scene Open·Save를 실제 Windows Unity Editor에서 검증하고, 외부 셸 CLI/MCP 호출을 강제 격리할지 결정
 3. 기계 BUILD 실증·보강: Unity CLI `recompile`의 실제 Windows 응답/로그 검증, Editor Console 및 컴파일 상태 세부 파싱
 4. QA: EditMode/PlayMode 테스트, 프레임·입력·카메라 동작 증거 검증, 미검증 상태 명시
 5. Unity Asset/Git: .meta, 프리팹 및 Packages/ProjectSettings 승인 범위, 캐시/생성물 제외
@@ -47,7 +47,10 @@
 - Editor 대기 작업은 동시 WORK 슬롯을 선점하지 않으며, WORK별 체크포인트와 세션을 따로 기록한다.
 - `in_progress` 상태여도 완료로 둔갑시키지 않고 QA/HIGH에 현재 상태를 전달한다. 빌드 소스 복구 WORK #8은 미완료 WORK가 남아 있으면 실행하지 않는다.
 - `CONTINUE`는 앞선 체크포인트의 보고서를 전달하며 이미 수행한 작업을 반복하지 않도록 지시한다. `rg` 등이 없다면 기존 Git/PowerShell 검색으로 대체한다.
-- Editor 측 작업은 AI에 부여한 레인 지시를 따르는 방식이므로, FULL_AUTONOMY 세션에서 직접 CLI/MCP를 호출하는 경우 OS 수준의 강제 배타성까지 보장하지 않는다. Windows 실증 및 필요 시 도구 게이트 강화가 남아 있다.
+- 프로젝트별 `UnityEditorOperationGate`를 Editor WORK 전체, CLI BUILD/Import/Probe와 ASSET MANAGER INTEGRATE에서 공유한다. Editor 대기 중에도 독립 소스 WORK 슬롯은 유지한다.
+- `UnitySceneCliWorkflow`는 연결된 Editor의 `eval`로 기존 Scene을 Additive 방식으로 열고 활성화하며, 작업 후 `EditorSceneManager.SaveScene` 반환값을 확인한다. 이미 열린 Scene은 다시 열지 않으며 Batch Mode/수동 YAML 편집을 기본 경로로 사용하지 않는다.
+- AI는 실제 Editor 명령 카탈로그에서 `open_scene`, `create_gameobject`, `set_transform`, `add_component`, `save_scene` 등의 지원 여부/인자를 조회한 후 사용한다. 명령 이름과 스키마는 설치된 Pipeline 버전별로 확인한다.
+- 공통 게이트는 **Worker 프로세스가 관리하는 호출 및 Editor WORK의 협력적 독점**이다. 외부 프로그램·독립 셸에서 직접 호출하는 CLI/MCP 명령을 OS 수준에서 가로채지는 못한다. Windows Unity Editor 실환경에서 Additive 씬 열기/저장과 FULL_AUTONOMY 동시성 검증은 아직 필요하다.
 - Asset Import CLI 시간초과는 성공 여부 미확인으로 보고하고 무조건 재시도하지 않는다. HQ가 기존 결과 검증과 대체 경로를 결정한다.
 
 ## 안전 기준
