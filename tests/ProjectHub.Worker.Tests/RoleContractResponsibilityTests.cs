@@ -24,7 +24,8 @@ public sealed class RoleContractResponsibilityTests
 
         Assert.DoesNotContain("HIGH에 그대로 전달", qa);
         Assert.Contains("실제 실행 결과 및 증거를 자세히 기록", qa);
-        Assert.Contains("소스와 Git은 수정하지 않는다", qa);
+        Assert.Contains("FULL_AUTONOMY에서는 결함 조사", qa);
+        Assert.Contains("최종 commit/push는 Worker가 수행한다", qa);
     }
 
     [Fact]
