@@ -10,7 +10,37 @@ namespace ProjectHub.Worker;
 /// </summary>
 internal static class UnityToolchainPreflight
 {
-    internal sealed record Result(bool Ready, string Code, string Detail);
+    // CommandCatalogJson is read from the same successful live probe, not
+    // inferred from remembered CLI syntax or past Editor sessions.
+    internal sealed record Result(bool Ready, string Code, string Detail,
+        string? CommandCatalogJson = null);
+
+    internal static string CatalogPath(string root, string jobId) =>
+        Path.Combine(Path.GetFullPath(root), "temp", "ProjectHub", jobId,
+            "unity-command-catalog.json");
+
+    // Information-only cache, scoped to this user job. Missing/invalid data
+    // never blocks an otherwise valid Editor connection or role execution.
+    internal static string? SaveCatalogForJob(
+        string root, string jobId, Result probe)
+    {
+        var path = CatalogPath(root, jobId);
+        try
+        {
+            if (!probe.Ready || string.IsNullOrWhiteSpace(probe.CommandCatalogJson))
+            {
+                if (File.Exists(path)) File.Delete(path);
+                return null;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, probe.CommandCatalogJson, ProjectHubJson.Utf8NoBom);
+            return path;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     internal static Result ValidateProject(string root)
     {
@@ -52,8 +82,19 @@ internal static class UnityToolchainPreflight
                 success.ValueKind != JsonValueKind.True)
                 return new(false, "UNITY_EDITOR_UNVERIFIED",
                     "Unity CLI의 성공 JSON 응답을 확인하지 못했습니다: " + ShortDetail(stdout));
+            string? commandCatalogJson = null;
+            if (document.RootElement.TryGetProperty("data", out var data) &&
+                data.ValueKind == JsonValueKind.Object &&
+                data.TryGetProperty("commands", out var commands) &&
+                commands.ValueKind == JsonValueKind.Array)
+            {
+                // Store the exact command/parameter records returned by this
+                // Editor, without AI reconstruction or schema guessing.
+                commandCatalogJson = commands.GetRawText();
+            }
             return new(true, "UNITY_EDITOR_CONNECTED",
-                "지정 프로젝트에 대한 Unity CLI 명령 목록 요청 성공 (MCP 호출 검증과 별개)");
+                "지정 프로젝트에 대한 Unity CLI 명령 목록 요청 성공 (MCP 호출 검증과 별개)",
+                commandCatalogJson);
         }
         catch (JsonException)
         {
