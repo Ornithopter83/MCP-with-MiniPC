@@ -87,7 +87,12 @@ internal static class AssetManagerExecutionJournal
 /// </summary>
 internal static class AssetManagerPathPolicy
 {
-    internal static bool IsAllowed(string path, AssetManagerDefinition request, string phase)
+    // FULL_AUTONOMY permits every safe project-relative file. Scope declarations
+    // are a scheduling and diagnostics hint, not write authorization.
+    internal static bool IsAllowed(string path, AssetManagerDefinition request, string phase) =>
+        MilestoneDefinitionContract.IsSafeRelativePath(path);
+
+    internal static bool IsDeclaredScope(string path, AssetManagerDefinition request, string phase)
     {
         var changed = (path ?? string.Empty).Replace('\\', '/');
         var folder = request.TargetPath.TrimEnd('/');
