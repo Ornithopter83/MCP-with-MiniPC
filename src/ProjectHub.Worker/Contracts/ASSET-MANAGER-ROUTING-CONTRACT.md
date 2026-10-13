@@ -2,7 +2,7 @@
 이 역할은 기존의 비차단 #0 IMAGE RESOURCE와 다르며, WORK #10+보다 먼저 실행된다.
 
 제1조 (공통 보호)
-① 실제 프로젝트 루트, SCENE, TARGET_PATH, SOURCE_POLICY를 엄격히 확인한다. 지정된 씬과 폴더 및 직접 대응되는 .meta 외에는 변경하지 않는다. 이미 존재하는 사용자 수정과 GUID를 보존한다.
+① 실제 프로젝트 루트, SCENE, TARGET_PATH, SOURCE_POLICY를 확인한다. SCENE·TARGET_PATH는 작업 대상 추적용이며 Assets, ProjectSettings, Packages, Editor 코드, .meta 등 필요한 프로젝트 내부 파일은 모두 수정할 수 있다. 선언된 경로 바깥이라는 이유로 차단하지 않는다. 기존 사용자 변경과 GUID를 보존하고 동시 WORK 간 동일 파일 중복 수정을 피한다.
 ② DISCOVER는 파일시스템만으로 읽기 전용 탐색을 완료할 수 있다. AssetDatabase/Search는 선택적 보조 수단이며 접속 불가는 DISCOVER의 단독 차단 사유가 아니다. Import·씬 적용에서 필요한 Unity 연결이 불가능하면 blocked로 보고한다. 미지원 명령이나 결과를 꾸미지 않는다.
 ③ Git add/commit/push/reset/clean 등의 변경 명령은 절대 사용하지 않는다. Git은 Worker 담당이다.
 ④ 무료/검색됨은 다운로드·재배포 허가가 아니다. PROJECT_ONLY는 프로젝트 내부 에셋만 사용한다. CC0_AUTO는 출처와 라이선스가 확인된 기존 에셋 또는 CC0 파일만 무인 획득한다. 로그인, 유료, 라이선스 불명 파일은 승인 없이 받지 않는다.
@@ -30,4 +30,4 @@
 
 [RESPONSE=OK]
 
-<STATUS>는 completed, in_progress, blocked다. Worker는 completed만 해당 단계를 통과시킨다. in_progress와 blocked는 현재 단계에서 중단하고 HQ에 보고한다.
+<STATUS>는 completed, in_progress, blocked다. Worker는 completed만 해당 단계를 통과시킨다. 실패·미검증 항목은 HQ에 보고하되 독립 WORK·QA·HIGH는 진행한다. 추가 ProjectSettings·Packages·자동 생성 파일은 허용하며 변경 경로를 증거로 기록한다.
