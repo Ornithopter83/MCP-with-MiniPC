@@ -48,6 +48,35 @@ public sealed class UnityToolchainPreflightTests
         Assert.Equal(new[] { "--format", "json" }, args[3..]);
     }
 
+    [Fact]
+    public void LiveCommandSchemaIsSharedExactlyAndInvalidatedOnFailedProbe()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "unity-catalog-" +
+            Guid.NewGuid().ToString("N"));
+        const string jobId = "test-job";
+        const string commands =
+            "[{\"name\":\"open_scene\",\"parameters\":[{\"name\":\"path\",\"type\":\"String\"}]}]";
+        try
+        {
+            var probe = UnityToolchainPreflight.InterpretEditorProbe(
+                0, "{\"success\":true,\"data\":{\"commands\":" +
+                    commands + "}}", "");
+            Assert.True(probe.Ready);
+            Assert.Equal(commands, probe.CommandCatalogJson);
+            var catalogPath = UnityToolchainPreflight.SaveCatalogForJob(
+                root, jobId, probe);
+            Assert.Equal(UnityToolchainPreflight.CatalogPath(root, jobId), catalogPath);
+            Assert.Equal(commands, File.ReadAllText(catalogPath!));
+            Assert.Null(UnityToolchainPreflight.SaveCatalogForJob(
+                root, jobId, new(false, "EDITOR_UNAVAILABLE", "offline")));
+            Assert.False(File.Exists(catalogPath));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
     [Theory]
     [InlineData(0, "{\"success\":true,\"data\":[]}", true, "UNITY_EDITOR_CONNECTED")]
     [InlineData(0, "{\"success\":false,\"errors\":[{\"code\":\"NOT_CONNECTED\"}]}", false, "UNITY_EDITOR_UNVERIFIED")]
