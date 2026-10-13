@@ -127,3 +127,11 @@
 ③ origin/main과 충돌하지 않는 미스테이징/스테이징 파일은 변경하지 않는다. Git 메타데이터(.git), ProjectHub 지속 상태(.projecthub)와 임의의 프로젝트 외부 경로는 삭제하지 않는다. 전체 저장소에 git clean -fdx, reset --hard, force checkout을 수행하지 않는다.
 ④ Unity .gitignore는 Library, Temp, Logs, UserSettings, 캐시·IDE 생성물을 기본 제외하되 Assets, Packages, ProjectSettings 및 .meta 파일은 추적한다. 체크아웃 전에 .git/info/exclude를 마련하고, 정상 전환 후 .gitignore를 보완한다.
 ⑤ Git 준비 실패 시 HIGH를 파일 수정 권한으로 실행하지 않는다. 충돌 아닌 Git 장애는 즉시 오류 보고한다. 이 강제 정책은 NEW 작업에만 적용하고 CONTINUE 및 진행 중 마일스톤에는 확대하지 않는다.
+
+제15조 (명령 접수 시 Unity Editor 자동 기동)
+
+① 대시보드의 '＋ 새 작업' 버튼은 이전 작업 정리 및 새 명령 입력 화면 전환만 담당한다. 이 버튼, 빈 입력 필드의 포커스, 창 시작 및 설정 변경은 Unity Editor를 실행하지 않는다.
+② 사용자가 새 명령을 '▶ 실행'으로 제출하거나 '＋ 작업 추가'로 명령을 접수한 때만 대상 프로젝트의 Unity Editor 연결 상태를 확인하고, 필요할 경우 `unity open <프로젝트 루트>`를 실행한다. 사용자 입력 없이 뒤따르는 자동 마일스톤·WORK/QA 단계에서는 Editor를 새로 띄우지 않는다.
+③ NEW 명령은 Git main 강제 충돌 경로 교체가 완료된 다음에만 Editor 자동 기동을 수행하여 씬 파일과 에디터 메모리의 불일치를 방지한다. CONTINUE 명령은 destructive NEW Git 정리를 하지 않는다.
+④ 대상 프로젝트 Editor/Pipeline이 이미 연결되어 있으면 재사용한다. 프로젝트 잠금이 확인되면 Editor를 중복 실행하지 않고 Pipeline 초기화를 대기한다. Safe Mode·CLI 실행 실패·패키지 문제는 중복 실행으로 우회하지 않고 오류를 보고한다.
+⑤ 자동 기동 후에는 준비 여부를 시간제한 내에서 확인한다. 자동 시작 또는 초기화에 실패하면 명령 실행을 차단하거나 추가 명령의 오류를 기록한다. 사용자가 직접 종료한 Editor를 작업자가 백그라운드 반복 실행하지 않는다.
