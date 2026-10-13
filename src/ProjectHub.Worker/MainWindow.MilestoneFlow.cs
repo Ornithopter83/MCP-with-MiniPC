@@ -1133,16 +1133,16 @@ public partial class MainWindow
                 var allRunnableScopes = executableDefinitions
                     .SelectMany(work => work.WritePaths)
                     .ToArray();
-                // Phase 1: Unity Editor and AssetDatabase state are shared across WORKs.
-                // Do not overlap WORK sessions before editor-exclusive scheduling exists.
                 var maxConcurrency = UnityWorkSchedulingPolicy.MaxConcurrentWork(
                     _targetSettings.EffectiveMaxConcurrentWork,
                     executableWorkIds.Length);
+                var editorLaneCount = executableDefinitions.Count(
+                    UnityWorkSchedulingPolicy.RequiresEditorLane);
 
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
                     "Worker 작업",
-                    $"Unity WORK 순차 실행 시작 · {executableWorkIds.Length}건",
+                    $"Unity WORK 병렬 실행 시작 · {executableWorkIds.Length}건 · 최대 {maxConcurrency}개 · Editor 독점 {editorLaneCount}건",
                     status: "PROCESSING",
                     persistenceSource: "WORKER ACTION");
 
@@ -1150,36 +1150,30 @@ public partial class MainWindow
                     await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                         workingDirectory,
                         cancellationToken);
-                using var gate = new SemaphoreSlim(maxConcurrency);
-                var tasks = executableWorkIds.Select(async workId =>
+                WorkExecutionReport[] completed;
+                try
                 {
-                    await gate.WaitAsync(cancellationToken);
-                    try
-                    {
-                        return await ExecuteMilestoneWorkAsync(
+                    completed = await UnityWorkSchedulingPolicy.RunAsync(
+                        executableDefinitions,
+                        _targetSettings.EffectiveMaxConcurrentWork,
+                        (work, token) => ExecuteMilestoneWorkAsync(
                             jobId,
                             workingDirectory,
                             milestone,
-                            workId,
+                            work.Id,
                             implementer,
-                            cancellationToken);
-                    }
-                    finally
-                    {
-                        gate.Release();
-                    }
-                }).ToArray();
-
-                RunOnUi(() =>
-                    ImplementerWorkGaugeText.Text =
-                        FormatActiveWorkItemGauge(
-                            Math.Min(executableWorkIds.Length, maxConcurrency)));
-
-                var completed = await Task.WhenAll(tasks);
-
-                RunOnUi(() =>
-                    ImplementerWorkGaugeText.Text =
-                        FormatActiveWorkItemGauge(0));
+                            token),
+                        cancellationToken,
+                        activeCount => RunOnUi(() =>
+                            ImplementerWorkGaugeText.Text =
+                                FormatActiveWorkItemGauge(activeCount)));
+                }
+                finally
+                {
+                    RunOnUi(() =>
+                        ImplementerWorkGaugeText.Text =
+                            FormatActiveWorkItemGauge(0));
+                }
 
                 foreach (var item in completed)
                     workReports[item.Id] = item.Report;
@@ -1204,7 +1198,7 @@ public partial class MainWindow
                 AddDataFlowHistory(
                     WorkerRoleState.Unknown,
                     "Worker 작업",
-                    $"Unity WORK 순차 실행 종료 · {completed.Length}/{executableWorkIds.Length} terminal",
+                    $"Unity WORK 병렬 실행 종료 · {completed.Length}/{executableWorkIds.Length} 응답 수집",
                     status: "COMPLETED",
                     persistenceSource: "WORKER ACTION");
             }
@@ -1258,7 +1252,8 @@ public partial class MainWindow
                 mechanicalReports.Add(
                     MilestoneDefinitionContract.FormatMechanicalResult(build));
             var buildFailed = buildRuns.Any(run => !run.Success);
-            if (buildFailed && !MilestoneBuildRunner.IsEnvironmentFailure(buildRuns))
+            if (buildFailed && pendingWorkIds.Length == 0 &&
+                !MilestoneBuildRunner.IsEnvironmentFailure(buildRuns))
             {
                 var beforeRepair = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                     workingDirectory, cancellationToken);
@@ -1282,10 +1277,10 @@ public partial class MainWindow
             }
 
             // Preserve original WORK/BUILD failures instead of hiding them after QA.
-            if (blockedWorkIds.Length == 0 && buildFailed)
+            if (blockedWorkIds.Length == 0 && pendingWorkIds.Length == 0 && buildFailed)
                 outcome = "BUILD_FAILED";
 
-            if (milestone.QaReserved && pendingWorkIds.Length == 0)
+            if (milestone.QaReserved)
             {
                 qaReport = await ExecuteMilestoneQaAsync(
                     jobId, workingDirectory, milestone,
@@ -1298,10 +1293,9 @@ public partial class MainWindow
                         ? "QA_ISSUE" : "QA_BLOCKED";
             }
 
-            // HIGH reviews completed milestone work; incomplete WORK retains
-            // its own Luna session and checkpoint for the next milestone.
-            if (pendingWorkIds.Length == 0)
-            {
+            // QA and HIGH also receive unfinished WORK reports. They must
+            // preserve unresolved checkpoints and report partial verification;
+            // only HQ can decide whether to continue those WORK IDs.
             var beforeHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
             highReport = await ExecuteMilestoneHighAsync(
@@ -1317,8 +1311,6 @@ public partial class MainWindow
                 string.Equals(MilestoneDefinitionContract.ReadHighStatus(highReport),
                     "blocked", StringComparison.OrdinalIgnoreCase))
                 outcome = "HIGH_BLOCKED";
-
-            }
 
             CaptureResourceState();
 
@@ -1522,7 +1514,14 @@ public partial class MainWindow
             nodes.Add(new(
                 "WORK-" + work.Id,
                 "WORK",
-                workReports.ContainsKey(work.Id) ? "COMPLETED" : "PLANNED",
+                workReports.TryGetValue(work.Id, out var workReport)
+                    ? MilestoneDefinitionContract.ReadWorkStatus(workReport) switch
+                    {
+                        "completed" => "COMPLETED",
+                        "in_progress" => "IN_PROGRESS",
+                        _ => "BLOCKED"
+                    }
+                    : "PLANNED",
                 work.Id));
         }
 
@@ -1649,15 +1648,9 @@ public partial class MainWindow
                 explicitStage: TaskStage.Implementer);
         });
 
-        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
-            work.Id,
-            MilestoneDefinitionContract.BuildWorkContext(work),
-            work.WritePaths,
-            workingDirectory,
-            readOnly: work.ReadOnly);
-
-        // A new ID is unique for this user task; only an explicit CONTINUE
-        // can reuse an unfinished ID. Persist ownership before invoking Luna.
+        // Ownership is journaled before dispatch. CONTINUE retains the
+        // actual session and prior report rather than re-investigating work
+        // already completed in an earlier milestone.
         if (!WorkExecutionJournal.TryBegin(
                 workingDirectory, jobId, milestone.Id, work, implementer,
                 out var checkpoint, out var startError))
@@ -1665,6 +1658,34 @@ public partial class MainWindow
             return new(work.Id, RoleTextProtocol.BuildResult(
                 "blocked", startError));
         }
+
+        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
+            work.Id,
+            MilestoneDefinitionContract.BuildWorkContext(work),
+            work.WritePaths,
+            workingDirectory,
+            readOnly: work.ReadOnly);
+        if (work.ExecutionMode == "CONTINUE" &&
+            !string.IsNullOrWhiteSpace(checkpoint!.LastReport))
+        {
+            prompt += Environment.NewLine + Environment.NewLine +
+                "@@PREVIOUS_WORK_CHECKPOINT" + Environment.NewLine +
+                "기존 세션의 실제 작업 결과다. 완료한 구현·명령·파일 조사를 재실행하지 말고 " +
+                "보고된 잔여 항목만 이어서 처리하라." + Environment.NewLine +
+                MilestoneDefinitionContract.Limit(checkpoint.LastReport, 4000);
+        }
+        if (!UnityWorkSchedulingPolicy.RequiresEditorLane(work))
+        {
+            prompt += Environment.NewLine + Environment.NewLine +
+                "@@UNITY_SOURCE_ONLY_LANE" + Environment.NewLine +
+                "이 WORK는 C# 소스 파일만 수정하는 병렬 작업이다. Unity CLI/MCP, " +
+                "Editor API, AssetDatabase, 씬·프리팹 변경·컴파일·PlayMode 명령을 " +
+                "실행하지 마라. Editor 관련 검증은 WORK 종료 후 Worker BUILD/QA에서 처리한다.";
+        }
+        prompt += Environment.NewLine + Environment.NewLine +
+            "검색 도구가 설치되지 않았다면 동일 명령을 반복하거나 설치하지 말고 " +
+            "git grep 또는 PowerShell Get-ChildItem/Select-String 같은 이미 있는 " +
+            "도구로 대체하라. 변경 범위와 기존 체크포인트를 유지하라.";
 
         var sessionId = checkpoint!.SessionId;
         var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(

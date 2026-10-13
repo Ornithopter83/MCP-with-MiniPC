@@ -204,4 +204,35 @@ public sealed class UnityAssetImportRecoveryTests
         Assert.Equal("ACQUIRE", recovered.BlockedPhase);
         Assert.Equal(2, recovered.AcquiredFiles!.Count);
     }
+    [Theory]
+    [InlineData(1, "UNITY_EDITOR_QUERY_TIMEOUT")]
+    [InlineData(2, "UNITY_IMPORT_UNCERTAIN_TIMEOUT")]
+    [InlineData(3, "UNITY_IMPORT_UNCERTAIN_TIMEOUT")]
+    public async Task TimeoutsDoNotReplayPossiblyExecutedImports(
+        int timedOutAt, string expectedCode)
+    {
+        using var folder = new Workspace();
+        var assets = AssetManagerFileEvidence.Inspect(folder.Root,
+            "Assets/ThirdParty/Forest", true);
+        var calls = 0;
+        Task<UnityAssetCliResult> Fake(IReadOnlyList<string> args, CancellationToken _)
+        {
+            calls++;
+            if (calls == timedOutAt)
+                return Task.FromResult(
+                    new UnityAssetCliResult(-1, "", "UNITY_IMPORT_CLI_TIMEOUT"));
+            if (calls == 2 && timedOutAt == 3)
+                return Task.FromResult(
+                    new UnityAssetCliResult(6, "", "UNKNOWN_COMMAND: eval"));
+            return Task.FromResult(
+                new UnityAssetCliResult(0, """{"success":true}""", ""));
+        }
+
+        var result = await UnityAssetCliImporter.RunAsync(folder.Root,
+            assets.Files, assets.ModelCount, CancellationToken.None, Fake);
+        Assert.False(result.Success);
+        Assert.Contains(expectedCode, result.Detail);
+        Assert.Equal(timedOutAt, calls);
+    }
+
 }

@@ -124,12 +124,22 @@ internal static class UnityAssetCliImporter
         {
             // The catalog query is diagnostic, never a hard gate: some CLI
             // versions list tags only or do not support query flags.
-            _ = await execute(CatalogArguments(root), cancellationToken)
+            var catalog = await execute(CatalogArguments(root), cancellationToken)
                 .ConfigureAwait(false);
+            if (IsTimeout(catalog))
+                return new(false,
+                    "UNITY_EDITOR_QUERY_TIMEOUT: 에디터 응답이 확인되지 않아 Import를 시작하지 않았습니다. HQ에서 재확인 또는 대체 계획을 판단하세요.",
+                    0);
 
             var expression = BuildImportExpression(files);
             var response = await execute(ImportArguments(root, expression),
                 cancellationToken).ConfigureAwait(false);
+            // A timed-out mutation may already have imported assets in Editor.
+            // Never blindly replay it using eval_file or the same eval command.
+            if (IsTimeout(response))
+                return new(false,
+                    "UNITY_IMPORT_UNCERTAIN_TIMEOUT: Unity CLI 응답 시간초과. Editor 저장·Import 성공 여부가 미확인입니다. 기존 파일과 체크포인트를 보존하고 HQ가 검증 또는 대체를 결정해야 합니다.",
+                    0);
             var interpreted = InterpretImportResult(response, files.Count, models);
             if (interpreted.Success || !IsCommandUnavailable(response))
                 return interpreted;
@@ -148,6 +158,10 @@ internal static class UnityAssetCliImporter
                     cancellationToken).ConfigureAwait(false);
                 var fallback = await execute(ImportFileArguments(root, file),
                     cancellationToken).ConfigureAwait(false);
+                if (IsTimeout(fallback))
+                    return new(false,
+                        "UNITY_IMPORT_UNCERTAIN_TIMEOUT: eval_file 응답 시간초과. 실행 여부 미확인으로 재호출하지 않습니다.",
+                        0);
                 return InterpretImportResult(fallback, files.Count, models);
             }
             finally
@@ -167,6 +181,10 @@ internal static class UnityAssetCliImporter
             return new(false, "UNITY_IMPORT_COMMAND_ERROR: " + ex.Message, 0);
         }
     }
+
+    private static bool IsTimeout(UnityAssetCliResult result) =>
+        result.Error.Contains("UNITY_IMPORT_CLI_TIMEOUT",
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool IsCommandUnavailable(UnityAssetCliResult result)
     {

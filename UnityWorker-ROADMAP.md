@@ -24,7 +24,7 @@
 - WORKITEM ID, 세션, 체크포인트, HQ/WORK/QA/HIGH 결과 문법 유지
 - Unity 역할별 작업·검증 계약과 Worker-Polish 확장
 - 화면 파이프라인/모델 설정/이력 카드 이름을 Unity용으로 수정
-- 공유 Editor 경쟁 상태를 피하기 위해 Unity WORK를 한 번에 하나만 실행하도록 제한
+- 초기에는 Unity WORK 전체를 직렬화했으나, 후속 개선에서 독립 C# 소스 WORK는 사용자 설정 상한까지 병렬 실행하고 씬·프리팹·AssetDatabase/Editor 작업은 별도 독점 레인으로 제한
 - UnityWorker 브랜치 대상으로 .NET CI 실행 및 직렬 정책 회귀 테스트 추가
 - Unity 프로젝트로 인식되면 Worker BUILD 단계에서 Unity CLI `recompile`을 호출하고, 컴파일 실패(exit 6)와 연결·환경 실패를 구분 (Windows 실증 전)
 - HQ 실행 전에 프로젝트 구조·Pipeline 의존성과 `unity command --project-path ... --format json` 읽기 전용 Probe를 확인하고, 도구·Editor 오류가 나면 WORK 실행 전에 차단 (실제 Windows 실증 전)
@@ -34,11 +34,21 @@
 ## 다음 작업 (구현·실증 전)
 
 1. Unity Toolchain 실증·확장: 현재 Probe를 실제 Windows Unity CLI에서 검증하고 Codex WORK 샌드박스의 MCP 등록·호출/ACL까지 확인 (HQ 시작 전 Probe가 MCP 사용 가능성을 보장하지는 않음)
-2. Editor 독점 스케줄러: Gameplay 소스 작업은 병렬로 되돌리고 Scene 작업만 독점 구간에서 실행
+2. Editor 독점 스케줄러: 소스 병렬/Editor 독점 스케줄러와 회귀 테스트 반영. Windows 실환경에서 Unity Editor/CLI 동시성 실증 및 에이전트의 직접 도구 호출에 대한 강제 격리는 아직 필요
 3. 기계 BUILD 실증·보강: Unity CLI `recompile`의 실제 Windows 응답/로그 검증, Editor Console 및 컴파일 상태 세부 파싱
 4. QA: EditMode/PlayMode 테스트, 프레임·입력·카메라 동작 증거 검증, 미검증 상태 명시
 5. Unity Asset/Git: .meta, 프리팹 및 Packages/ProjectSettings 승인 범위, 캐시/생성물 제외
 6. Windows 실증과 회귀 검증을 통과한 후 UnityWorker 베타 프리릴리스 발행
+
+## 병렬 WORK 재개 정책 (구현, 실환경 검증 전)
+
+- `WRITE_PATH`가 서로 겹치는 WORK는 기존처럼 실행 대상에서 제외하고 HQ에 BLOCKED 근거를 보낸다.
+- 일반 C# 소스 파일(`Assets/**/*.cs`, `Editor` 경로 제외)만 소스 레인으로 처리한다. 그 외 파일·폴더 또는 Editor 관련 실행 지시가 있으면 Editor 독점 레인으로 분류한다.
+- Editor 대기 작업은 동시 WORK 슬롯을 선점하지 않으며, WORK별 체크포인트와 세션을 따로 기록한다.
+- `in_progress` 상태여도 완료로 둔갑시키지 않고 QA/HIGH에 현재 상태를 전달한다. 빌드 소스 복구 WORK #8은 미완료 WORK가 남아 있으면 실행하지 않는다.
+- `CONTINUE`는 앞선 체크포인트의 보고서를 전달하며 이미 수행한 작업을 반복하지 않도록 지시한다. `rg` 등이 없다면 기존 Git/PowerShell 검색으로 대체한다.
+- Editor 측 작업은 AI에 부여한 레인 지시를 따르는 방식이므로, FULL_AUTONOMY 세션에서 직접 CLI/MCP를 호출하는 경우 OS 수준의 강제 배타성까지 보장하지 않는다. Windows 실증 및 필요 시 도구 게이트 강화가 남아 있다.
+- Asset Import CLI 시간초과는 성공 여부 미확인으로 보고하고 무조건 재시도하지 않는다. HQ가 기존 결과 검증과 대체 경로를 결정한다.
 
 ## 안전 기준
 
