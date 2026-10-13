@@ -1818,11 +1818,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RunOnUi(Action action)
-    {
-        if (Dispatcher.CheckAccess()) action();
-        else Dispatcher.Invoke(action);
-    }
+    private void RunOnUi(Action action) =>
+        WorkerUiDispatch.Invoke(Dispatcher, action);
 
     private void OnResourceSidecarStateChanged(ResourceSidecarQueueState state)
     {
