@@ -313,7 +313,9 @@ public sealed class OpenCodeCliRunner : IDisposable
     {
         var permission = new Dictionary<string, object>(StringComparer.Ordinal)
         {
-            ["external_directory"] = BuildExternalDirectoryRules(request)
+            ["external_directory"] = request.Sandbox == CodexSandboxMode.DangerFullAccess
+                ? "allow"
+                : BuildExternalDirectoryRules(request)
         };
 
         switch (request.Sandbox)

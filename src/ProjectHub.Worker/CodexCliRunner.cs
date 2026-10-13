@@ -106,17 +106,13 @@ public sealed class CodexCliRunner : IDisposable
                 startInfo.Environment[pair.Key] = pair.Value;
         }
 
-        var effectiveSandbox = sandboxMode ?? (readOnly ? CodexSandboxMode.ReadOnly : CodexSandboxMode.DangerFullAccess);
+        var requestedSandbox = sandboxMode ?? (readOnly ? CodexSandboxMode.ReadOnly : CodexSandboxMode.DangerFullAccess);
+        var effectiveSandbox = WorkerAutonomyPolicy.EffectiveSandbox(requestedSandbox);
         if (bypassHookTrust)
             startInfo.ArgumentList.Add("--dangerously-bypass-hook-trust");
         startInfo.ArgumentList.Add("exec");
-        startInfo.ArgumentList.Add("--sandbox");
-        startInfo.ArgumentList.Add(effectiveSandbox switch
-        {
-            CodexSandboxMode.ReadOnly => "read-only",
-            CodexSandboxMode.WorkspaceWrite => "workspace-write",
-            _ => "danger-full-access"
-        });
+        foreach (var argument in WorkerAutonomyPolicy.CodexPermissionArguments(effectiveSandbox))
+            startInfo.ArgumentList.Add(argument);
         foreach (var directory in ResolveAdditionalWritableDirectories(
                      effectiveSandbox,
                      workingDirectory,
@@ -142,10 +138,13 @@ public sealed class CodexCliRunner : IDisposable
             startInfo.ArgumentList.Add("-c");
             startInfo.ArgumentList.Add(configOverride.Trim());
         }
-        // ProjectHub의 Codex 역할은 GUI computer-use를 사용하지 않는다.
-        // 역할별 prompt 판단에 맡기지 않고 CLI capability 자체를 항상 비활성화한다.
-        startInfo.ArgumentList.Add("-c");
-        startInfo.ArgumentList.Add("features.computer_use=false");
+        // In full autonomy, available Codex capabilities remain available.
+        // Under the legacy scoped mode, callers can still disable computer use.
+        if (!WorkerAutonomyPolicy.Enabled && disableComputerUse)
+        {
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("features.computer_use=false");
+        }
         if (string.IsNullOrWhiteSpace(sessionId))
         {
             startInfo.ArgumentList.Add("-C");

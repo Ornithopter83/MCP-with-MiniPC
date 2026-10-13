@@ -31,3 +31,4 @@
 [RESPONSE=OK]
 
 <STATUS>는 completed, in_progress, blocked다. Worker는 completed만 해당 단계를 통과시킨다. in_progress와 blocked는 현재 단계에서 중단하고 HQ에 보고한다.
+FULL_AUTONOMY 보충: ACQUIRE에서 도구 접근 환경 때문에 blocked가 되었고 프로젝트 파일을 변경하지 않았다면 Worker가 한 차례 대체 다운로드·공식 CC0 공급처를 자동 탐색한다. 재시도에서도 획득/Importer/GUID 검증에 실패하면 blocked 유지. 실행 명령의 위험도는 감사 로그에 남기되 위험도 자체로 명령을 막지 않는다.

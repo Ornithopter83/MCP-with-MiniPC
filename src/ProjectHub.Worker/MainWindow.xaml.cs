@@ -2102,6 +2102,12 @@ public partial class MainWindow : Window
         Action<string>? progress = message => RunOnUi(() =>
         {
             _lastActivityAt = DateTimeOffset.UtcNow;
+            if (WorkerCommandRisk.TryReadProgress(message, out var observedCommand,
+                    out var phase, out var assessedRisk))
+                RecordCommandRisk(jobId,
+                    assetManagerPurpose ? "ASSET_MANAGER" : roleName,
+                    observedCommand, phase, assessedRisk,
+                    historyReferenceId, historyWorkItemId);
             if (roleName == "WORK" && !string.IsNullOrWhiteSpace(historyWorkItemId))
             {
                 AddRoleProgressHistory(
@@ -2137,8 +2143,10 @@ public partial class MainWindow : Window
 
         IReadOnlyList<string>? codexConfigOverrides = null;
         var bypassHookTrust = false;
-        if (roleName is "WORK" or "QA" or "HIGH")
+        if (!WorkerAutonomyPolicy.Enabled &&
+            (roleName is "WORK" or "QA" or "HIGH"))
         {
+            // Legacy command denial gates are inactive in full autonomy.
             // QA/HIGH may build, but Git mutation stays in Worker.
             var isQa = roleName is "QA" or "HIGH";
             var hookPath = Path.Combine(
@@ -2187,6 +2195,17 @@ public partial class MainWindow : Window
             BypassHookTrust: bypassHookTrust,
             BuildExecutionAllowed: roleName != "WORK"));
 
+        foreach (var executedCommand in result.CommandExecutions)
+        {
+            var risk = WorkerCommandRisk.Classify(executedCommand.Command);
+            if (risk.Level != WorkerCommandRiskLevel.Normal)
+                RecordCommandRisk(jobId,
+                    assetManagerPurpose ? "ASSET_MANAGER" : roleName,
+                    executedCommand.Command,
+                    "FINISHED exit=" + executedCommand.ExitCode, risk,
+                    historyReferenceId, historyWorkItemId);
+        }
+
         var executionDiagnostics = BuildCliFailureDiagnostics(result);
         if (!string.IsNullOrWhiteSpace(executionDiagnostics))
         {
@@ -2223,6 +2242,20 @@ public partial class MainWindow : Window
             includeHistory: false);
         _lastActivityAt = DateTimeOffset.UtcNow;
         return result;
+    }
+
+    private void RecordCommandRisk(
+        string jobId, string role, string command, string phase,
+        WorkerCommandRiskAssessment risk, string? referenceId = null,
+        string? workItemId = null)
+    {
+        if (risk.Level == WorkerCommandRiskLevel.Normal) return;
+        var record = WorkerRiskAuditLog.Format(jobId, role, risk, command, phase);
+        WorkerRiskAuditLog.TryAppend(WorkerPaths.Logs, record);
+        AddTaskMessage("RISK AUDIT", record,
+            status: "RISK_" + risk.Level.ToString().ToUpperInvariant(),
+            referenceId: referenceId, includeHistory: false,
+            workItemId: workItemId);
     }
 
     private static string BuildCliFailureDiagnostics(AiRoleRunResult result)

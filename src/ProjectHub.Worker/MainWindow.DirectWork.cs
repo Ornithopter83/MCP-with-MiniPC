@@ -407,17 +407,32 @@ public partial class MainWindow
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
                         if (_directWorkRunning)
+                        {
                             AddRoleProgressHistory(
                                 WorkerRoleState.Work,
                                 progress,
                                 role.Provider,
                                 referenceId: historyInvocationReference);
+                            if (WorkerCommandRisk.TryReadProgress(progress,
+                                    out var command, out var phase, out var risk))
+                                RecordCommandRisk(historyInvocationReference,
+                                    "DIRECT_WORK", command, phase, risk,
+                                    historyInvocationReference);
+                        }
                     }));
                 },
                 IgnoreProjectInstructions: true,
                 InputAttachments: stagedAttachments));
 
             _lastActivityAt = DateTimeOffset.UtcNow;
+            foreach (var command in result.CommandExecutions)
+            {
+                var risk = WorkerCommandRisk.Classify(command.Command);
+                if (risk.Level != WorkerCommandRiskLevel.Normal)
+                    RecordCommandRisk(historyInvocationReference, "DIRECT_WORK",
+                        command.Command, "FINISHED exit=" + command.ExitCode,
+                        risk, historyInvocationReference);
+            }
             var response = string.IsNullOrWhiteSpace(result.FinalMessage)
                 ? (string.IsNullOrWhiteSpace(result.StandardError)
                     ? "(응답 없음)"

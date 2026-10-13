@@ -108,6 +108,58 @@ public partial class MainWindow
                 return new(false, checkpoint.Evidence, checkpoint.ChangedPaths);
             }
 
+            // FULL_AUTONOMY: attempt one alternative acquisition strategy only
+            // when no project files were changed. Never replay a partial Import.
+            if (WorkerAutonomyPolicy.Enabled && phase == "ACQUIRE" &&
+                run.ExitCode == 0)
+            {
+                var initial = RoleTextProtocol.ParseWork(run.FinalMessage);
+                if (initial.IsValid &&
+                    string.Equals(initial.Status, "blocked", StringComparison.OrdinalIgnoreCase))
+                {
+                    var intermediate = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        root, cancellationToken);
+                    if (!MilestoneMechanicalExecutor.DiffChangeStates(before, intermediate).Any())
+                    {
+                        AddTaskMessage("AUTONOMY RECOVERY",
+                            "ACQUIRE 차단 감지 · 파일 변경 없음 · 대체 획득 경로 1회 자동 시도",
+                            status: "PROCESSING");
+                        var recoveryPrompt =
+                            "동일 ASSET MANAGER ACQUIRE 단계의 자동 복구다. " +
+                            "앞서 실패한 도구/도메인 경로만 반복하지 말고 " +
+                            "다른 HTTPS 클라이언트·공식 CC0 에셋 후보·" +
+                            "공식 다운로드 경로를 조사하여 실제 획득을 완료하라. " +
+                            "사용자 승인 대기 없이 가능한 방식을 직접 실행하되 " +
+                            "TLS 인증 및 라이선스 검증, Import·GUID 검증은 유지하라. " +
+                            "실제 완료하지 못하면 blocked로 정확히 보고하라.\\n" +
+                            "PREVIOUS_BLOCKED_RESULT:\\n" + run.FinalMessage + "\\n" +
+                            BuildAssetManagerPhasePrompt(definition, phase,
+                                checkpoint.Evidence, root);
+                        try
+                        {
+                            run = await RunCoordinatorRoleAsync(
+                                jobId, "ASSET_MANAGER_" + phase + "_RECOVERY",
+                                recoveryPrompt, isolatedRole, root,
+                                CodexCliRunner.NormalizeSessionId(run.SessionId) ??
+                                    checkpoint.SessionId,
+                                null, cancellationToken, CodexSandboxMode.WorkspaceWrite,
+                                historyWorkItemId: "1",
+                                historyReferenceId: historyId);
+                        }
+                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                        catch (Exception retryError)
+                        {
+                            AddTaskMessage("AUTONOMY RECOVERY",
+                                "대체 획득 시도 오류: " + retryError.Message,
+                                status: "FAILED");
+                        }
+                    }
+                }
+            }
+
             var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 root, cancellationToken);
             var changed = MilestoneMechanicalExecutor.DiffChangeStates(before, after)

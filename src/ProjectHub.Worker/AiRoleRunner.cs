@@ -77,16 +77,17 @@ public sealed class OpenAiCodexRoleRunner(CodexCliRunner codexRunner) : IAiRoleR
                 : StringComparer.Ordinal)
             .ToArray();
 
+        var effectiveSandbox = WorkerAutonomyPolicy.EffectiveSandbox(request.Sandbox);
         var result = await codexRunner.RunAsync(
             effectivePrompt,
             request.Role.Model,
             request.Role.Reasoning,
             request.WorkingDirectory,
             request.SessionId,
-            request.Sandbox == CodexSandboxMode.ReadOnly,
+            effectiveSandbox == CodexSandboxMode.ReadOnly,
             request.CancellationToken,
             request.OutputSchemaJson,
-            request.Sandbox,
+            effectiveSandbox,
             request.Progress,
             request.SessionStarted,
             additionalWritableDirectories,
@@ -155,7 +156,10 @@ public sealed class MuseOpenCodeRoleRunner(OpenCodeCliRunner openCodeRunner) : I
             request.Prompt,
             request.InputAttachments);
         var result = await openCodeRunner
-            .RunAsync(request, effectivePrompt)
+            .RunAsync(request with
+            {
+                Sandbox = WorkerAutonomyPolicy.EffectiveSandbox(request.Sandbox)
+            }, effectivePrompt)
             .ConfigureAwait(false);
 
         return new AiRoleRunResult(
