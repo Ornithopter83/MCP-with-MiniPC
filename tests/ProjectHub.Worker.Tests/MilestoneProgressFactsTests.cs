@@ -50,7 +50,7 @@ public sealed class MilestoneProgressFactsTests
         var facts = MilestoneProgressFacts.Format(
             "M10", TimeSpan.Zero, Array.Empty<string>(),
             new Dictionary<string, string>(), Array.Empty<string>(),
-            false, "", "");
+            false, null, null);
 
         Assert.Contains("SCHEDULED_WORK_COUNT: 0", facts);
         Assert.Contains("GIT_CANDIDATE_PATH_COUNT: 0", facts);
