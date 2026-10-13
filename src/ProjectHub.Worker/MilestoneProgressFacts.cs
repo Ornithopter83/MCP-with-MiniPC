@@ -14,8 +14,8 @@ internal static class MilestoneProgressFacts
         IReadOnlyDictionary<string, string> checkpointStates,
         IReadOnlyCollection<string> gitCandidatePaths,
         bool gitSucceeded,
-        string qaReportedStatus,
-        string highReportedStatus)
+        string? qaReportedStatus,
+        string? highReportedStatus)
     {
         var statuses = scheduledWorkIds
             .Distinct(StringComparer.OrdinalIgnoreCase)
