@@ -119,3 +119,11 @@
 ③ #1 단계별 쓰기 범위, 모델, 세션 및 실행 상태를 .projecthub 체크포인트에 기록한다. 중단된 변경 단계를 무조건 다시 실행하지 않는다. 요청 범위 밖의 변경은 BLOCKED로 보고한다.
 ④ #1은 WORK의 명령 실행 보호 Hook을 적용받는다. Import·씬 변경은 Editor 공유 상태 보호를 위한 직렬 실행이다. Git 최종화는 Worker가 담당한다.
 ⑤ 공식 공급원 검색/다운로드 및 Editor 실기 성공은 Windows에서 별도 검증한다. CI 성공만으로 실제 에셋 설치·씬 배치 완료를 주장하지 않는다.
+
+제14조 (Unity 새 작업의 충돌 파일 강제 교체)
+
+① NEW 작업은 첫 HQ 전달 전에 Git main 준비와 Unity .gitignore 규칙 설치를 완료한다. 이전 로컬 브랜치 master 등에서 origin/main 전환이 미추적 또는 변경 파일의 경로 충돌로 실패하면, Worker가 충돌 파일만 원격 main 내용으로 강제 교체하고 재시도한다.
+② 충돌 파일에 대한 백업·stash·임시 복제본은 만들지 않는다. 이미 다른 위치에 별도 백업이 있다고 가정한다. 원격 대상 파일과 겹치는 오래된 로컬 파일 및 디렉터리 충돌 잔여물을 삭제한다.
+③ origin/main과 충돌하지 않는 미스테이징/스테이징 파일은 변경하지 않는다. Git 메타데이터(.git), ProjectHub 지속 상태(.projecthub)와 임의의 프로젝트 외부 경로는 삭제하지 않는다. 전체 저장소에 git clean -fdx, reset --hard, force checkout을 수행하지 않는다.
+④ Unity .gitignore는 Library, Temp, Logs, UserSettings, 캐시·IDE 생성물을 기본 제외하되 Assets, Packages, ProjectSettings 및 .meta 파일은 추적한다. 체크아웃 전에 .git/info/exclude를 마련하고, 정상 전환 후 .gitignore를 보완한다.
+⑤ Git 준비 실패 시 HIGH를 파일 수정 권한으로 실행하지 않는다. 충돌 아닌 Git 장애는 즉시 오류 보고한다. 이 강제 정책은 NEW 작업에만 적용하고 CONTINUE 및 진행 중 마일스톤에는 확대하지 않는다.

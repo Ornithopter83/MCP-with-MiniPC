@@ -93,7 +93,11 @@ public sealed class UnityNewTaskGitPolicyTests
             Fixture.Git(f.Work, "diff", "--cached", "--name-only"));
         Assert.Contains("/[Ll]ibrary/", File.ReadAllText(
             Path.Combine(f.Work, ".gitignore")));
-        Assert.DoesNotContain(".backup", Directory.GetDirectories(f.Work, "*", SearchOption.TopDirectoryOnly));
+        Assert.DoesNotContain(Directory.GetDirectories(f.Work), d =>
+            Path.GetFileName(d).Contains("backup", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(Directory.GetFiles(f.Work, "*", SearchOption.AllDirectories),
+            d => d.EndsWith(".orig", StringComparison.OrdinalIgnoreCase) ||
+                 d.EndsWith(".bak", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -132,6 +136,8 @@ public sealed class UnityNewTaskGitPolicyTests
         }, collisions);
         Assert.True(UnityNewTaskGitPolicy.IsCheckoutCollision(
             "The following untracked working tree files would be overwritten by checkout:"));
+        Assert.True(UnityNewTaskGitPolicy.IsCheckoutCollision(
+            "Updating the following directories would lose untracked files in them:"));
         Assert.False(UnityNewTaskGitPolicy.IsCheckoutCollision(
             "fatal: could not read from remote repository"));
     }

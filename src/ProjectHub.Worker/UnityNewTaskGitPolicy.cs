@@ -63,6 +63,8 @@ internal static class UnityNewTaskGitPolicy
         error.Contains("would be overwritten by merge",
             StringComparison.OrdinalIgnoreCase) ||
         error.Contains("untracked working tree files",
+            StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("directories would lose untracked files",
             StringComparison.OrdinalIgnoreCase);
 
     private static bool IsProtectedPath(string p)

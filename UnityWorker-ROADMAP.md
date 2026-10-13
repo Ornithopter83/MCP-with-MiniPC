@@ -46,3 +46,10 @@
 - 연결·인증 장애는 환경 문제로 즉시 보고하며 구현 WORK를 무의미하게 반복하지 않는다.
 - Editor 기능은 Unity 공식 CLI/Pipeline/MCP를 우선 재사용하고 별도의 씬 조작 서버를 새로 만들지 않는다.
 - UnityWorker 제품 개발과 실제 Unity 게임 프로젝트의 Git 브랜치·최종화는 별개의 계약이다.
+
+### #1 ASSET MANAGER 이전 NEW 작업 Git 경계 (UnityWorker)
+
+- 새 작업 시작 시 Unity Editor 사전 점검 후, HQ 전송 전에 Worker가 origin/main을 기준으로 로컬 Git 준비를 수행한다.
+- 브랜치 전환을 방해하는 충돌 경로만 강제로 삭제·교체한다. 백업·stash 생성 없음, 무관한 미스테이징/스테이징 파일 보존.
+- Unity 캐시/IDE 출력용 ignore 규칙을 사전에 적용하며 Git 메타데이터 및 ProjectHub 지속 상태는 보호한다.
+- Git 사전 점검 실패는 HIGH의 소스 수정 없이 즉시 중단한다. 실제 Unity 씬 실행은 별도 실기 검증이 필요하다.
