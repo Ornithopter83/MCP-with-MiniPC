@@ -7,7 +7,9 @@ namespace ProjectHub.Worker;
 /// </summary>
 internal static class WorkerAutonomyPolicy
 {
-    internal const bool Enabled = true;
+    // Runtime-level setting: avoid compile-time dead-code warnings while
+    // preserving the existing always-on FULL_AUTONOMY behavior.
+    internal static readonly bool Enabled = true;
 
     internal static CodexSandboxMode EffectiveSandbox(CodexSandboxMode requested) =>
         Enabled ? CodexSandboxMode.DangerFullAccess : requested;

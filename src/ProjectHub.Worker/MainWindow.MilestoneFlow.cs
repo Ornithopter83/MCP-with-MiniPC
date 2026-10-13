@@ -90,6 +90,12 @@ public partial class MainWindow
 
         IReadOnlyList<AiInputAttachment> stagedAttachments =
             Array.Empty<AiInputAttachment>();
+        // Timeout/error handlers execute outside the main try body. Keep the
+        // latest HQ identity and completed HQ message in the outer scope.
+        var hqSession = CodexCliRunner.NormalizeSessionId(
+            continuation?.CoordinatorSessionId ??
+            coordinator.ThreadSessionId);
+        var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
 
         try
         {
@@ -174,9 +180,6 @@ public partial class MainWindow
                 .Select(UserAttachmentTransport.CreateBridgeAttachment)
                 .ToList() ?? new List<BridgeAttachment>();
 
-            var hqSession = CodexCliRunner.NormalizeSessionId(
-                continuation?.CoordinatorSessionId ??
-                coordinator.ThreadSessionId);
             var configuredRepositoryUrl =
                 _targetSettings.ManualRepositoryUrl?.Trim();
             var hqInbound = editorRecoveryNotice +
@@ -297,6 +300,8 @@ public partial class MainWindow
                 }
 
                 var hqMessage = hqResult.FinalMessage?.Trim() ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(hqMessage))
+                    lastHqMessage = hqMessage;
                 AddRoleResponseHistory(
                     WorkerRoleState.Hq,
                     "마일스톤 설계",
@@ -727,7 +732,7 @@ public partial class MainWindow
                     "보존했습니다. 재시작 시 HQ는 완료 증거를 먼저 검사하고 " +
                     "미완료 WORK만 이어서 진행해야 합니다.";
                 SaveMilestoneContinuation(
-                    "INTERRUPTED", hqMessage, jobId, normalizedRoot,
+                    "INTERRUPTED", lastHqMessage, jobId, normalizedRoot,
                     coordinator, implementer, hqSession, high);
                 AddTaskMessage("TASK INTERRUPTED", detail, status: "RECOVERABLE");
                 ResultTitle.Text = "INTERRUPTED · 이어하기 가능";
@@ -744,7 +749,7 @@ public partial class MainWindow
                 // UI event handler and crash the Worker process.
                 var detail = "WORKER_EXECUTION_INTERRUPTED: 작업이 외부에서 취소됨";
                 SaveMilestoneContinuation(
-                    "INTERRUPTED", hqMessage, jobId, normalizedRoot,
+                    "INTERRUPTED", lastHqMessage, jobId, normalizedRoot,
                     coordinator, implementer, hqSession, high);
                 AddTaskMessage("TASK INTERRUPTED", detail, status: "RECOVERABLE");
                 ResultTitle.Text = "INTERRUPTED";
