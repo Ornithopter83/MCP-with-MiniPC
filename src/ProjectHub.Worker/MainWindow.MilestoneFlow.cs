@@ -987,12 +987,13 @@ public partial class MainWindow
                 }
             }
 
-            // #1 is a strict foreground prerequisite, not a RESOURCE sidecar.
-            // It must finish all three phases before independent WORK begins.
+            // Asset Manager errors are reported to HQ/QA/HIGH, but independent
+            // WORKs still run; only simultaneous duplicate file writes conflict.
+            var assetManagerFailed = false;
             if (milestone.AssetManager is { } assetDefinition)
             {
                 var preexistingAssetChanges = initialChangedPaths
-                    .Where(path => AssetManagerPathPolicy.IsAllowed(
+                    .Where(path => AssetManagerPathPolicy.IsDeclaredScope(
                         path, assetDefinition, "INTEGRATE"))
                     .ToArray();
                 if (preexistingAssetChanges.Length > 0)
@@ -1006,24 +1007,12 @@ public partial class MainWindow
                         workingDirectory, assetDefinition.TargetPath,
                         assetDefinition.SourcePolicy == "CC0_AUTO",
                         requireModel: assetDefinition.SourcePolicy != "PROJECT_ONLY");
-                    if (sceneDirty.Length > 0 || !reusable.Ready ||
-                        preexistingAssetChanges.Any(path =>
-                            !path.StartsWith(assetDefinition.TargetPath.TrimEnd('/') + "/",
-                                StringComparison.OrdinalIgnoreCase) &&
-                            !path.Equals(assetDefinition.TargetPath.TrimEnd('/') + ".meta",
-                                StringComparison.OrdinalIgnoreCase) &&
-                            !path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        // This is a real, unowned write collision, not an
-                        // ordinary resumable download. Do not overwrite it.
-                        return new(true, "ASSET_MANAGER_USER_FILE_CONFLICT: " +
-                            string.Join(", ", preexistingAssetChanges.Take(16)) +
-                            " · " + reusable.Detail);
-                    }
+                    // Previously dirty files are valid project state, not
+                    // proof of concurrent duplicate file writers.
                     AddTaskMessage("ASSET MANAGER",
-                        "기존 에셋 변경 " + preexistingAssetChanges.Length +
-                        "개를 재사용 검증으로 승인 · " + reusable.Detail,
-                        status: "RECOVERED");
+                        "기존 프로젝트 변경 " + preexistingAssetChanges.Length +
+                        "개 보존 · sceneDirty=" + sceneDirty.Length +
+                        " · " + reusable.Detail, status: "RECOVERED");
                 }
                 var assetRun = await ExecuteMilestoneAssetManagerAsync(
                     jobId, workingDirectory, milestone, assetDefinition,
@@ -1034,16 +1023,11 @@ public partial class MainWindow
                     milestoneChangedPaths.Add(path);
                 if (!assetRun.Success)
                 {
-                    SaveMilestoneExecutionGraph(workingDirectory, jobId,
-                        milestone, "ASSET_MANAGER_BLOCKED", workReports,
-                        resourceReports, string.Empty, string.Empty);
-                    if (MilestoneHqDecisionPolicy.IsHardStop(assetRun.Detail))
-                        return new(true, "ASSET_MANAGER_HARD_STOP: " +
-                            MilestoneDefinitionContract.Limit(assetRun.Detail, 2500));
-                    return await BuildHqDecisionReportAsync(jobId,
-                        workingDirectory, milestone, "ASSET_MANAGER_BLOCKED",
-                        assetRun.Detail, initialChangedPaths, cancellationToken,
-                        mechanicalReports, assetRun.ChangedPaths);
+                    assetManagerFailed = true;
+                    AddTaskMessage("ASSET MANAGER",
+                        "미완료 증거를 HQ/QA/HIGH에 전달하고 독립 WORK는 계속 실행 · " +
+                        MilestoneDefinitionContract.Limit(assetRun.Detail, 600),
+                        status: "BLOCKED");
                 }
             }
 
@@ -1188,12 +1172,9 @@ public partial class MainWindow
                              before,
                              after))
                 {
-                    if (MilestoneMechanicalExecutor.IsPathWithinScopes(
-                            changedPath,
-                            allRunnableScopes))
-                    {
-                        milestoneChangedPaths.Add(changedPath);
-                    }
+                    // All changes made during WORK belong to this milestone.
+                    // WRITE_PATH does not filter the eventual Git finalization.
+                    milestoneChangedPaths.Add(changedPath);
                 }
 
                 AddDataFlowHistory(
@@ -1236,6 +1217,8 @@ public partial class MainWindow
             {
                 outcome = "WORK_IN_PROGRESS:" + string.Join(",", pendingWorkIds);
             }
+            if (assetManagerFailed && outcome == "COMPLETED")
+                outcome = "ASSET_MANAGER_BLOCKED";
 
             CaptureResourceState();
 
@@ -1267,8 +1250,7 @@ public partial class MainWindow
                     workingDirectory, cancellationToken);
                 foreach (var path in MilestoneMechanicalExecutor.DiffChangeStates(
                     beforeRepair, afterRepair))
-                    if (MilestoneMechanicalExecutor.IsPathWithinScopes(path, plannedWorkScopes))
-                        milestoneChangedPaths.Add(path);
+                    milestoneChangedPaths.Add(path);
                 buildRuns = await MilestoneBuildRunner.RunAsync(
                     workingDirectory, jobId, executableDefinitions, cancellationToken);
                 foreach (var build in buildRuns)
@@ -1331,14 +1313,9 @@ public partial class MainWindow
                     cancellationToken);
             foreach (var dirtyPath in finalDirtyPaths)
             {
-                if (!initialChangedPaths.Contains(dirtyPath) &&
-                    (MilestoneMechanicalExecutor.IsPathWithinScopes(
-                         dirtyPath,
-                         plannedWorkScopes) ||
-                     milestoneChangedPaths.Contains(dirtyPath)))
-                {
+                if (!initialChangedPaths.Contains(dirtyPath) ||
+                    milestoneChangedPaths.Contains(dirtyPath))
                     milestoneChangedPaths.Add(dirtyPath);
-                }
             }
 
             // Paths completed in this or any earlier milestone of the same
@@ -1428,7 +1405,8 @@ public partial class MainWindow
                 resourceReports,
                 qaReport,
                 highReport,
-                hqFinalState: "READY");
+                hqFinalState: "READY",
+                assetManagerFailed: assetManagerFailed);
 
             return new(
                 false,
@@ -1493,7 +1471,8 @@ public partial class MainWindow
         IReadOnlyDictionary<string, string>? resourceReports = null,
         string? qaReport = null,
         string? highReport = null,
-        string hqFinalState = "PLANNED")
+        string hqFinalState = "PLANNED",
+        bool assetManagerFailed = false)
     {
         workReports ??= new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
@@ -1506,7 +1485,7 @@ public partial class MainWindow
         };
         if (milestone.AssetManager is not null)
             nodes.Add(new("ASSET-MANAGER-1", "ASSET_MANAGER",
-                state == "ASSET_MANAGER_BLOCKED" ? "BLOCKED" :
+                state == "ASSET_MANAGER_BLOCKED" || assetManagerFailed ? "BLOCKED" :
                 state is "FINALIZED" or "FINALIZE_FAILED" ? "COMPLETED" : "RUNNING", "1"));
 
         foreach (var work in milestone.WorkItems.Values
@@ -1712,6 +1691,13 @@ public partial class MainWindow
             }
         }
         prompt += Environment.NewLine + Environment.NewLine +
+            "@@UNITY_PROJECT_WRITE_AUTHORIZATION" + Environment.NewLine +
+            "FULL_AUTONOMY: WRITE_PATH는 작업 배정과 중복 파일 충돌 조정용이다. " +
+            "ProjectSettings, Packages, 에셋, .meta, 코드와 추가 프로젝트 설정의 " +
+            "수정은 허용한다. 선언 범위 밖 파일 수정만으로 blocked를 보고하지 말고 " +
+            "변경 경로를 CHANGED_PATH에 기록하라. " +
+            "다른 WORK와 같은 파일을 동시에 수정하지 마라." +
+            Environment.NewLine +
             "검색 도구가 설치되지 않았다면 동일 명령을 반복하거나 설치하지 말고 " +
             "git grep 또는 PowerShell Get-ChildItem/Select-String 같은 이미 있는 " +
             "도구로 대체하라. 변경 범위와 기존 체크포인트를 유지하라.";
