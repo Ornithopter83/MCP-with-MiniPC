@@ -76,13 +76,13 @@ public sealed class AssetManagerContractTests
     }
 
     [Fact]
-    public void AssetManagerAllowsOnlyExpectedUnityWriteScopes()
+    public void AssetManagerAllowsAnyProjectWriteWithDeclaredScopeTracking()
     {
         var request = new AssetManagerDefinition("x", "goal",
             "Assets/Scenes/AIDemo.unity", "Assets/ThirdParty/Environment/Rocks",
             "CC0_AUTO", "Instructions");
 
-        Assert.False(AssetManagerPathPolicy.IsAllowed(
+        Assert.True(AssetManagerPathPolicy.IsAllowed(
             "Assets/Scenes/AIDemo.unity", request, "ACQUIRE"));
         Assert.True(AssetManagerPathPolicy.IsAllowed(
             "Assets/ThirdParty.meta", request, "ACQUIRE"));
@@ -90,8 +90,22 @@ public sealed class AssetManagerContractTests
             "Assets/ThirdParty/Environment/Rocks/a.prefab.meta", request, "ACQUIRE"));
         Assert.True(AssetManagerPathPolicy.IsAllowed(
             "Assets/Scenes/AIDemo.unity", request, "INTEGRATE"));
-        Assert.False(AssetManagerPathPolicy.IsAllowed(
+        Assert.True(AssetManagerPathPolicy.IsAllowed(
             "Packages/manifest.json", request, "INTEGRATE"));
+        Assert.True(AssetManagerPathPolicy.IsAllowed(
+            "ProjectSettings/URPProjectSettings.asset", request, "INTEGRATE"));
+        Assert.True(AssetManagerPathPolicy.IsAllowed(
+            "Assets/Editor/SceneInstaller.cs", request, "DISCOVER"));
+        Assert.True(AssetManagerPathPolicy.IsAllowed(
+            "Assets/Other.unity.meta", request, "ACQUIRE"));
+        Assert.False(AssetManagerPathPolicy.IsAllowed(
+            "../Outside/settings.asset", request, "INTEGRATE"));
+        Assert.False(AssetManagerPathPolicy.IsAllowed(
+            "/absolute/file.mat", request, "INTEGRATE"));
+        Assert.False(AssetManagerPathPolicy.IsDeclaredScope(
+            "ProjectSettings/URPProjectSettings.asset", request, "INTEGRATE"));
+        Assert.True(AssetManagerPathPolicy.IsDeclaredScope(
+            "Assets/Scenes/AIDemo.unity", request, "INTEGRATE"));
     }
 
     [Fact]
