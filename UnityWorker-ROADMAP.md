@@ -53,6 +53,16 @@
 - 공통 게이트는 **Worker 프로세스가 관리하는 호출 및 Editor WORK의 협력적 독점**이다. 외부 프로그램·독립 셸에서 직접 호출하는 CLI/MCP 명령을 OS 수준에서 가로채지는 못한다. Windows Unity Editor 실환경에서 Additive 씬 열기/저장과 FULL_AUTONOMY 동시성 검증은 아직 필요하다.
 - Asset Import CLI 시간초과는 성공 여부 미확인으로 보고하고 무조건 재시도하지 않는다. HQ가 기존 결과 검증과 대체 경로를 결정한다.
 
+## FULL_AUTONOMY 프로젝트 변경 허용 정책 (2026-10-13)
+
+- Unity 프로젝트의 `Assets`, `ProjectSettings`, `Packages`, Scene, Prefab, .meta, Editor/C# 코드, 소재 및 구성 파일의 필요한 변경을 모두 허용한다.
+- WORK의 `WRITE_PATH`, ASSET MANAGER의 `TARGET_PATH`는 작업 범위 추적·병렬 충돌 조정용이다. 선언 범위 밖 파일 변경은 작업 중단이나 Git 제외 근거가 아니다.
+- `ProjectSettings/URPProjectSettings.asset` 같은 Unity 자동 갱신은 `ADDITIONAL_PROJECT_CHANGES`로 기록하고 계속 진행한다.
+- 기존 미커밋 파일은 중복 충돌이 아니다. 서로 다른 WORK가 동일 파일에 동시 쓰기를 수행할 때만 충돌 대상으로 조정한다.
+- ASSET MANAGER의 실제 실패는 HQ에 전달하면서 독립 WORK·QA·HIGH를 수행한다. 완료·미완료 상태는 각각 명확히 기록한다.
+- 새로 발생한 프로젝트 변경은 선언 `WRITE_PATH`와 무관하게 Git 최종화 후보에 포함하며, 기존 사용자 미커밋 변경은 별도로 보존한다.
+- 프로젝트 루트 밖 경로, 파서·신원 무결성, 파일 해시·실제 테스트 성공 검증은 변경 범위에 대한 별도 허가 요청과 구분한다.
+
 ## 안전 기준
 
 - `BUILD_SKIPPED`는 Unity 컴파일 통과를 뜻하지 않는다. Editor 또는 MCP와의 연결이 없으면 실제 플레이테스트 성공을 보고하지 않는다.
