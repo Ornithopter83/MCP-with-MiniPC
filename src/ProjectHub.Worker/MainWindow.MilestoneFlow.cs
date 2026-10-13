@@ -718,8 +718,42 @@ public partial class MainWindow
         {
             if (_userCanceledTask)
                 CompleteFullCancellationUi();
+            else if (_jobTimedOut)
+            {
+                // Idle timeout is NOT a user cancel or a terminal WORK state.
+                // Preserve the job/WORK checkpoint and keep the WPF app alive.
+                var detail = "WORKER_IDLE_TIMEOUT: Codex/Web가 종료되지 않아 " +
+                    "실행을 중단했습니다. 기존 파일과 미완료 WORK 체크포인트를 " +
+                    "보존했습니다. 재시작 시 HQ는 완료 증거를 먼저 검사하고 " +
+                    "미완료 WORK만 이어서 진행해야 합니다.";
+                SaveMilestoneContinuation(
+                    "INTERRUPTED", hqMessage, jobId, normalizedRoot,
+                    coordinator, implementer, hqSession, high);
+                AddTaskMessage("TASK INTERRUPTED", detail, status: "RECOVERABLE");
+                ResultTitle.Text = "INTERRUPTED · 이어하기 가능";
+                ResultBody.Text = detail;
+                TaskTitle.Text = "30분 무응답 · 작업 상태 보존";
+                SetFlowState(false, false, false);
+                SetFollowupComposerVisible(true);
+                SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
+                ExportTaskTranscript();
+            }
             else
-                throw;
+            {
+                // Other lifecycle cancellation must not escape an async void
+                // UI event handler and crash the Worker process.
+                var detail = "WORKER_EXECUTION_INTERRUPTED: 작업이 외부에서 취소됨";
+                SaveMilestoneContinuation(
+                    "INTERRUPTED", hqMessage, jobId, normalizedRoot,
+                    coordinator, implementer, hqSession, high);
+                AddTaskMessage("TASK INTERRUPTED", detail, status: "RECOVERABLE");
+                ResultTitle.Text = "INTERRUPTED";
+                ResultBody.Text = detail;
+                SetFlowState(false, false, false);
+                SetFollowupComposerVisible(true);
+                SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
+                ExportTaskTranscript();
+            }
         }
         catch (Exception exception)
         {
@@ -1770,7 +1804,7 @@ public partial class MainWindow
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             WorkExecutionJournal.Record(workingDirectory, jobId, work.Id,
-                "CANCELED", sessionId);
+                _userCanceledTask ? "CANCELED" : "IN_PROGRESS", sessionId);
             throw;
         }
         catch

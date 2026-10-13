@@ -188,6 +188,12 @@ public sealed class CodexCliRunner : IDisposable
             }
 
             var stdoutBuilder = new StringBuilder();
+            // The last valid WORK report can precede launcher termination.
+            // A stalled launcher must not block the next WORK for 30 minutes.
+            var terminalWorkReport = new TaskCompletionSource<string>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            long lastOutputTicks = DateTime.UtcNow.Ticks;
+            var activeCommandCount = 0;
             var stdoutTask = Task.Run(async () =>
             {
                 while (true)
@@ -195,6 +201,17 @@ public sealed class CodexCliRunner : IDisposable
                     var line = await launched.StandardOutput!.ReadLineAsync(cancellationToken);
                     if (line is null) break;
                     stdoutBuilder.AppendLine(line);
+                    Interlocked.Exchange(ref lastOutputTicks, DateTime.UtcNow.Ticks);
+                    if (TryExtractAgentMessage(line, out var agentMessage) &&
+                        IsTerminalWorkReport(agentMessage))
+                        terminalWorkReport.TrySetResult(agentMessage);
+                    if (TryExtractCommandProgress(line, out var commandEvent))
+                    {
+                        if (commandEvent.StartsWith("명령 실행 시작", StringComparison.Ordinal))
+                            Interlocked.Increment(ref activeCommandCount);
+                        else if (Volatile.Read(ref activeCommandCount) > 0)
+                            Interlocked.Decrement(ref activeCommandCount);
+                    }
                     if (sessionStarted is not null && TryExtractThreadStarted(line, out var startedSessionId))
                     {
                         try { sessionStarted(startedSessionId); }
@@ -229,28 +246,51 @@ public sealed class CodexCliRunner : IDisposable
                 launched.StandardInput!.Close();
             }
 
+            var recoveredStalledExit = false;
             try
             {
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                var exitTask = process.WaitForExitAsync(cancellationToken);
+                recoveredStalledExit = await WaitForTerminalWorkOrProcessExitAsync(
+                    exitTask, terminalWorkReport.Task,
+                    () => Volatile.Read(ref activeCommandCount) == 0 &&
+                          DateTime.UtcNow.Ticks - Interlocked.Read(ref lastOutputTicks) >=
+                          TerminalReportExitGrace.Ticks,
+                    TerminalReportExitGrace, cancellationToken).ConfigureAwait(false);
+                if (recoveredStalledExit)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        progress?.Invoke("CODEX_TERMINAL_EXIT_RECOVERED · 유효한 WORK 종료 보고 후 " +
+                            "CLI 종료 지연 감지 · 해당 실행 프로세스만 정리하고 다음 단계로 이동");
+                    }
+                    catch { }
+                    // Only the invocation-specific Job is disposed; Unity and
+                    // unrelated WORK/RESOURCE processes are not touched.
+                    processJob.Dispose();
+                    await TerminateProcessTreeAsync(process).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException)
             {
-                // 취소에서는 실행 전용 Job을 먼저 닫아 Codex가 시작한 모든 후손을 끊고
-                // Process tree kill/wait는 fallback으로 사용한다.
                 processJob.Dispose();
                 await TerminateProcessTreeAsync(process).ConfigureAwait(false);
                 throw;
             }
 
-            // Codex launcher가 종료된 뒤에도 하위 프로세스가 stdout/stderr handle을 상속한 채
-            // 남아 있으면 stream drain이 끝나지 않는다. 출력 대기 전에 실행 전용 Job을 닫아
-            // 해당 실행의 잔존 후손과 pipe handle을 먼저 정리한다.
+            // Close inherited pipe handles before draining, whether the
+            // launcher exited naturally or a terminal-report stall was recovered.
             processJob.Dispose();
 
-            await stdoutTask;
+            await stdoutTask.WaitAsync(cancellationToken);
             var stdout = stdoutBuilder.ToString();
-            var stderr = await stderrTask;
-            var finalMessage = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile) : ExtractFinalMessage(stdout);
+            var stderr = await stderrTask.WaitAsync(cancellationToken);
+            var finalMessage = recoveredStalledExit
+                ? await terminalWorkReport.Task.ConfigureAwait(false)
+                : File.Exists(outputFile)
+                    ? await File.ReadAllTextAsync(outputFile, cancellationToken)
+                        .ConfigureAwait(false)
+                    : ExtractFinalMessage(stdout);
             var finishedAt = DateTimeOffset.UtcNow;
             var resolvedSessionId = sessionId ?? ExtractSessionId(stdout);
             string? sessionDiagnostic = null;
@@ -260,7 +300,11 @@ public sealed class CodexCliRunner : IDisposable
                 if (resolvedSessionId is null)
                     sessionDiagnostic = $"stdoutBytes={Encoding.UTF8.GetByteCount(stdout)}; {searchDiagnostic}";
             }
-            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, finishedAt, ExtractCommandExecutions(stdout), sessionDiagnostic);
+            if (recoveredStalledExit)
+                sessionDiagnostic = "CODEX_TERMINAL_EXIT_RECOVERED: valid WORK report; " +
+                    "launcher did not exit within grace period; invocation Job terminated" +
+                    (sessionDiagnostic is null ? string.Empty : "; " + sessionDiagnostic);
+            return new CodexCliResult(executable, model, reasoning, CreateConversationTitle(prompt), resolvedSessionId, recoveredStalledExit ? 0 : process.ExitCode, stdout, stderr, finalMessage.Trim(), ExtractFiles(stdout, workingDirectory), ExtractUsage(stdout), startedAt, finishedAt, ExtractCommandExecutions(stdout), sessionDiagnostic);
         }
         finally
         {
@@ -410,6 +454,51 @@ public sealed class CodexCliRunner : IDisposable
         catch (JsonException)
         {
             return false;
+        }
+    }
+
+    internal static readonly TimeSpan TerminalReportExitGrace = TimeSpan.FromSeconds(30);
+
+    // A progress paragraph or an incomplete response must never be promoted
+    // to a completed WORK. RoleTextProtocol still validates it once returned.
+    internal static bool IsTerminalWorkReport(string message) =>
+        !string.IsNullOrWhiteSpace(message) &&
+        message.TrimEnd().EndsWith(WebCorrelationContract.ResponseOkMarker,
+            StringComparison.Ordinal) &&
+        RoleTextProtocol.ParseWork(message).IsValid;
+
+    // Returns true only when a validated terminal WORK report was emitted
+    // and the CLI launcher is still alive after an entire quiet grace period.
+    // Ordinary process exit always takes priority, including nonzero codes.
+    internal static async Task<bool> WaitForTerminalWorkOrProcessExitAsync(
+        Task processExit, Task<string> terminalReport, Func<bool> quietAndSafe,
+        TimeSpan grace, CancellationToken cancellationToken)
+    {
+        var first = await Task.WhenAny(processExit, terminalReport)
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (first == processExit)
+        {
+            await processExit.ConfigureAwait(false);
+            return false;
+        }
+
+        for (;;)
+        {
+            var delay = Task.Delay(grace, cancellationToken);
+            if (await Task.WhenAny(processExit, delay)
+                    .WaitAsync(cancellationToken).ConfigureAwait(false) == processExit)
+            {
+                await processExit.ConfigureAwait(false);
+                return false;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (processExit.IsCompleted)
+            {
+                await processExit.ConfigureAwait(false);
+                return false;
+            }
+            if (quietAndSafe())
+                return true;
         }
     }
 
