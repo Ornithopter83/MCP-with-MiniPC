@@ -292,16 +292,28 @@ public static class WorkerPaths
     }
 
     public static bool TryResetEphemeralDirectories(
-        out string? errorDetail)
+        out string? errorDetail) =>
+        TryResetEphemeralDirectories(
+            new[] { Task, Attachments, WebResults }, out errorDetail);
+
+    // Use a private, unique directory in tests instead of resetting the
+    // per-user application folders shared by other test hosts and EXEs.
+    internal static bool TryResetEphemeralDirectoriesForTests(
+        string isolatedRoot, out string? errorDetail) =>
+        TryResetEphemeralDirectories(
+            new[]
+            {
+                Path.Combine(isolatedRoot, "Task"),
+                Path.Combine(isolatedRoot, "attachments"),
+                Path.Combine(isolatedRoot, "web-results")
+            }, out errorDetail);
+
+    private static bool TryResetEphemeralDirectories(
+        IEnumerable<string> paths, out string? errorDetail)
     {
         var errors = new List<string>();
 
-        foreach (var directory in new[]
-                 {
-                     Task,
-                     Attachments,
-                     WebResults
-                 })
+        foreach (var directory in paths)
         {
             try
             {

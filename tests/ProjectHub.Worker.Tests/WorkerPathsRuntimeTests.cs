@@ -339,30 +339,32 @@ public sealed class WorkerPathsRuntimeTests
     [Fact]
     public void GlobalEphemeralDirectoriesAreRecreatedEmpty()
     {
-        WorkerPaths.EnsureCreated();
+        // Do not wipe %LOCALAPPDATA% during a test run. Other test hosts
+        // and installed Workers can be active under the same user account.
+        var isolated = Path.Combine(Path.GetTempPath(),
+            "worker-ephemeral-test-" + Guid.NewGuid().ToString("N"));
+        var attachments = Path.Combine(isolated, "attachments");
+        var webResults = Path.Combine(isolated, "web-results");
+        var tasks = Path.Combine(isolated, "Task");
+        try
+        {
+            Directory.CreateDirectory(attachments);
+            Directory.CreateDirectory(webResults);
+            Directory.CreateDirectory(tasks);
+            File.WriteAllText(Path.Combine(attachments, "attachment.tmp"), "attachment");
+            File.WriteAllText(Path.Combine(webResults, "result.tmp"), "result");
+            File.WriteAllText(Path.Combine(tasks, "task.tmp"), "task");
 
-        var attachment = Path.Combine(
-            WorkerPaths.Attachments,
-            "test-" + Guid.NewGuid().ToString("N") + ".tmp");
-        var result = Path.Combine(
-            WorkerPaths.WebResults,
-            "test-" + Guid.NewGuid().ToString("N") + ".tmp");
-        var task = Path.Combine(
-            WorkerPaths.Task,
-            "test-" + Guid.NewGuid().ToString("N") + ".tmp");
-
-        File.WriteAllText(attachment, "attachment");
-        File.WriteAllText(result, "result");
-        File.WriteAllText(task, "task");
-
-        Assert.True(
-            WorkerPaths.TryResetEphemeralDirectories(out var error),
-            error);
-        Assert.Empty(Directory.EnumerateFileSystemEntries(
-            WorkerPaths.Attachments));
-        Assert.Empty(Directory.EnumerateFileSystemEntries(
-            WorkerPaths.WebResults));
-        Assert.Empty(Directory.EnumerateFileSystemEntries(
-            WorkerPaths.Task));
+            Assert.True(
+                WorkerPaths.TryResetEphemeralDirectoriesForTests(
+                    isolated, out var error), error);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(attachments));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(webResults));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(tasks));
+        }
+        finally
+        {
+            if (Directory.Exists(isolated)) Directory.Delete(isolated, recursive: true);
+        }
     }
 }
