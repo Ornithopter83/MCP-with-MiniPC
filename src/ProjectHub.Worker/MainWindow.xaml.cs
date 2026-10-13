@@ -2079,6 +2079,24 @@ public partial class MainWindow : Window
             "HIGH" => WorkerRoleState.High,
             _ => WorkerRoleState.Hq
         };
+        // The preflight already queried this Editor's real command catalog.
+        // Share that exact, job-scoped file with CLI roles instead of asking
+        // each role to rediscover and guess the Unity command arguments.
+        // It is syntax guidance, not a substitute for executing validation.
+        if (roleName is "WORK" or "QA" or "HIGH")
+        {
+            var catalogPath = UnityToolchainPreflight.CatalogPath(
+                workingDirectory, jobId);
+            if (File.Exists(catalogPath))
+                prompt += Environment.NewLine + Environment.NewLine +
+                    "@@UNITY_CLI_COMMAND_CATALOG" + Environment.NewLine +
+                    "이 작업을 수락할 때 연결된 Editor에서 실제 조회한 Unity CLI " +
+                    "명령 이름·파라미터 JSON: " + catalogPath +
+                    Environment.NewLine +
+                    "사용 가능한 명령과 인수를 먼저 이 파일에서 확인하라. " +
+                    "파일은 명령 사용법 참고용이며 현재 실행 성공·테스트 통과 증거가 아니다. " +
+                    "연결이나 명령 인수가 달라졌다면 현재 Editor에서 다시 조회하라.";
+        }
         RunOnUi(() =>
             AddDataFlowHistory(
                 historyRole,
