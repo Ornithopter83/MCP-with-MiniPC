@@ -164,6 +164,71 @@ public sealed class AssetManagerContractTests
     }
 
     [Fact]
+    public void FileInventoryWorksWithoutAssetDatabaseOrRg()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "asset-discovery-" + Guid.NewGuid().ToString("N"));
+        var assets = Path.Combine(root, "Assets");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(assets, "Scenes"));
+            File.WriteAllText(Path.Combine(assets, "Scenes", "AIDemo.unity"), "scene");
+            Directory.CreateDirectory(Path.Combine(assets, "Models"));
+            File.WriteAllText(Path.Combine(assets, "Models", "Oak.fbx"), "model");
+            File.WriteAllText(Path.Combine(assets, "Models", "Oak.fbx.meta"), "guid");
+            var result = AssetManagerLocalInventory.Scan(root,
+                "Assets/Scenes/AIDemo.unity", "Assets/ThirdParty/Forest");
+            Assert.True(result.SceneExists);
+            Assert.False(result.TargetExists);
+            Assert.Equal(1, result.Candidates);
+            Assert.Null(result.Error);
+            Assert.Contains("Assets/Models/Oak.fbx", result.Examples);
+            var summary = AssetManagerLocalInventory.Format(result);
+            Assert.Contains("SOURCE=WORKER_FILESYSTEM_READ_ONLY", summary);
+            Assert.Contains("TARGET_EXISTS=False", summary);
+            Assert.Contains("MODEL_CANDIDATES=1", summary);
+            Assert.False(Directory.Exists(Path.Combine(assets, "ThirdParty")));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void DiscoveryContractSeparatesCandidateFromImportedAsset()
+    {
+        var contract = RoleContractLoader.LoadAssetManagerFooter();
+        Assert.Contains("LOCAL_ASSET_INVENTORY", contract);
+        Assert.Contains("Get-ChildItem", contract);
+        Assert.Contains("단독 차단 사유가 아니다", contract);
+        Assert.Contains("ACQUIRE에서 검증", contract);
+        Assert.Contains("Importer", contract);
+        Assert.Contains("Unity.exe -help/-batchmode", contract);
+    }
+
+    [Fact]
+    public void EmptyLocalInventoryDoesNotRequireTargetDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "asset-discovery-empty-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "Assets"));
+            var result = AssetManagerLocalInventory.Scan(root,
+                "Assets/Scenes/AIDemo.unity", "Assets/ThirdParty/Forest");
+            Assert.Equal(0, result.Candidates);
+            Assert.False(result.TargetExists);
+            Assert.False(result.Truncated);
+            Assert.Null(result.Error);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void AssetManagerContractIsEmbedded()
     {
         Assert.Contains("DISCOVER", RoleContractLoader.LoadAssetManagerFooter());

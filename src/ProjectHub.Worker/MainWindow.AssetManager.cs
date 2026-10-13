@@ -64,8 +64,14 @@ public partial class MainWindow
             // cannot accidentally replay an Import or scene edit.
             checkpoint = checkpoint with { State = "RUNNING_" + phase };
             AssetManagerExecutionJournal.Save(root, checkpoint);
+            // DISCOVER never requires Editor APIs or optional shell tools.
+            // This inventory is read-only, including when no target folder exists.
+            var localInventory = phase == "DISCOVER"
+                ? AssetManagerLocalInventory.Format(AssetManagerLocalInventory.Scan(
+                    root, definition.ScenePath, definition.TargetPath, cancellationToken))
+                : string.Empty;
             var prompt = BuildAssetManagerPhasePrompt(definition, phase,
-                checkpoint.Evidence, root);
+                checkpoint.Evidence, root, localInventory);
             AddDataFlowHistory(WorkerRoleState.Manager, "#1 ASSET MANAGER",
                 phase + " 시작 · " + definition.RequestId, status: "PROCESSING",
                 workItemId: "1", referenceId: historyId,
@@ -174,7 +180,7 @@ public partial class MainWindow
 
     private static string BuildAssetManagerPhasePrompt(
         AssetManagerDefinition definition, string phase,
-        string priorEvidence, string root)
+        string priorEvidence, string root, string localInventory = "")
     {
         return "[ROLE=ASSET_MANAGER]\nASSET_MANAGER_ID: 1\nREQUEST_ID: " +
             definition.RequestId +
@@ -186,6 +192,17 @@ public partial class MainWindow
             "\nGOAL: " + definition.Goal +
             "\nINSTRUCTIONS: " + definition.Instructions +
             "\nPREVIOUS_PHASE_EVIDENCE:\n" + priorEvidence +
+            (phase == "DISCOVER"
+                ? "\nLOCAL_ASSET_INVENTORY:\n" + localInventory +
+                  "\nDISCOVER는 로컬 파일 검색으로 완료할 수 있다. " +
+                  "AssetDatabase/Search 조회 불가만으로 blocked를 반환하지 마라. " +
+                  "rg 명령이 없으면 Get-ChildItem을 사용하라. " +
+                  "Unity Editor가 열려 있다면 Unity.exe -help/-batchmode로 " +
+                  "중복 실행하지 마라. CC0 공식 배포처 페이지·라이선스·" +
+                  "모델 형식이 확인되면 직접 다운로드 URL·크기 미공개는 " +
+                  "ISSUES에 명시하고 ACQUIRE에서 검증하라. " +
+                  "이 단계에서는 다운로드하거나 프로젝트를 수정하지 마라.\n"
+                : string.Empty) +
             "\n현재 PHASE만 실제 수행하라. 이후 단계로 미리 진입하지 마라. " +
             "완료 기준을 충족하지 못한 경우 blocked 또는 in_progress로 보고하라. " +
             "검색/획득/씬 연결의 도구 결과와 실제 파일 증거를 기록하라.\n\n" +

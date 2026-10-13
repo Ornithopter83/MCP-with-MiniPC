@@ -61,3 +61,10 @@
 - NEW 명령 Git 준비 이후 Editor 상태를 조사하고, 없는 경우 `unity open <project>`으로 실행한 다음 Pipeline 가용성을 기다린다.
 - 이미 열렸거나 잠긴 프로젝트는 자동 중복 실행하지 않는다. 일반 자동 마일스톤 반복 과정에서 Editor를 재실행하지 않는다.
 - 테스트는 가짜 Unity CLI 프로브로 연결 성공, 미실행 기동, 기존 Editor 잠금, 실패·시간초과를 검증한다. 실제 Windows Unity Editor 통합 테스트는 별도로 필요하다.
+
+### ASSET MANAGER DISCOVER 오차단 방지
+
+- Worker가 `Assets/`의 모델·Prefab 후보 파일을 읽기 전용으로 조사하고 `LOCAL_ASSET_INVENTORY`를 DISCOVER에 주입한다. 디스크 파일 후보는 Import 완료의 증거가 아니다.
+- 외부 `rg` 설치와 Unity AssetDatabase/Search 호출은 DISCOVER의 필수 조건이 아니다. `Assets/ThirdParty/Forest` 등 대상 폴더가 아직 없어도 정상이다.
+- CC0_AUTO는 공식 배포처의 CC0 표시·다운로드 안내·모델 형식으로 후보를 선정할 수 있다. 직접 파일 URL·용량·버전 미공개는 ACQUIRE에서 확인하고 검증하지 않은 다운로드·Import를 성공이라 보고하지 않는다.
+- 실제 Unity Import/Importer/.meta/GUID와 씬 배치/저장 검증은 ACQUIRE/INTEGRATE에서 여전히 필수다. 동일 프로젝트의 추가 Unity Editor 배치 실행을 피한다.
