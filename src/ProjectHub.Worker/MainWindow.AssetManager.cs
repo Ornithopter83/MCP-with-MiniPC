@@ -84,12 +84,13 @@ public partial class MainWindow
                         root, cancellationToken);
                     var importDiff = MilestoneMechanicalExecutor.DiffChangeStates(
                         beforeImport, afterImport).ToArray();
-                    var illegal = importDiff.Where(p =>
-                        !AssetManagerPathPolicy.IsAllowed(p, definition, "ACQUIRE")).ToArray();
+                    var additionalPaths = importDiff.Where(path =>
+                        !AssetManagerPathPolicy.IsDeclaredScope(path, definition, "ACQUIRE"))
+                        .ToArray();
                     var recheck = AssetManagerFileEvidence.Inspect(root, definition.TargetPath,
                         definition.SourcePolicy == "CC0_AUTO", available.Files,
                         requireModel: definition.SourcePolicy != "PROJECT_ONLY");
-                    if (completed.Success && recheck.Ready && illegal.Length == 0)
+                    if (completed.Success && recheck.Ready)
                     {
                         checkpoint = checkpoint with
                         {
@@ -97,18 +98,18 @@ public partial class MainWindow
                             BlockedPhase = null,
                             ChangedPaths = checkpoint.ChangedPaths.Concat(importDiff)
                                 .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                            Evidence = checkpoint.Evidence + "\n" + completed.Detail
+                            Evidence = checkpoint.Evidence + "\n" + completed.Detail +
+                                (additionalPaths.Length == 0 ? string.Empty :
+                                    "\nADDITIONAL_PROJECT_CHANGES: " + string.Join(",", additionalPaths))
                         };
                         AssetManagerExecutionJournal.Save(root, checkpoint);
                         AddTaskMessage("UNITY IMPORT", completed.Detail, status: "COMPLETED");
                         continue;
                     }
-                    var failure = !recheck.Ready ? recheck.Detail :
-                        illegal.Length > 0 ? "ASSET_MANAGER_SCOPE_VIOLATION: " +
-                            string.Join(",", illegal.Take(8)) : completed.Detail;
+                    var failure = !recheck.Ready ? recheck.Detail : completed.Detail;
                     checkpoint = checkpoint with
                     {
-                        State = illegal.Length > 0 || !recheck.Ready ? "BLOCKED" : "IMPORT_PENDING",
+                        State = !recheck.Ready ? "BLOCKED" : "IMPORT_PENDING",
                         Evidence = checkpoint.Evidence + "\n" + failure,
                         ChangedPaths = checkpoint.ChangedPaths.Concat(importDiff)
                             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
@@ -304,8 +305,8 @@ public partial class MainWindow
                 root, cancellationToken);
             var changed = MilestoneMechanicalExecutor.DiffChangeStates(before, after)
                 .ToArray();
-            var outOfScope = changed.Where(p =>
-                !AssetManagerPathPolicy.IsAllowed(p, definition, phase)).ToArray();
+            var additionalProjectChanges = changed.Where(path =>
+                !AssetManagerPathPolicy.IsDeclaredScope(path, definition, phase)).ToArray();
             // A proven local payload + Editor-side Import can recover a
             // blocked/failed AI acquisition. Other phases still demand an
             // actual successfully completed role response.
@@ -330,9 +331,9 @@ public partial class MainWindow
                 detail += " · DISCOVERY_MODIFIED_PROJECT";
             if (phase == "INTEGRATE")
                 detail += " · " + (sceneSaved?.Detail ?? "UNITY_SCENE_SAVE_NOT_CONFIRMED");
-            if (outOfScope.Length > 0)
-                detail += " · ASSET_MANAGER_SCOPE_VIOLATION: " +
-                    string.Join(",", outOfScope.Take(8));
+            if (additionalProjectChanges.Length > 0)
+                detail += " · ADDITIONAL_PROJECT_CHANGES: " +
+                    string.Join(",", additionalProjectChanges.Take(16));
             if (phase == "INTEGRATE" &&
                 (!File.Exists(Path.Combine(root, definition.ScenePath.Replace('/',
                     Path.DirectorySeparatorChar))) ||
@@ -347,9 +348,8 @@ public partial class MainWindow
                 definition.SourcePolicy != "PROJECT_ONLY")
                 detail += " · IMPORT_DIRECTORY_MISSING";
 
-            var phasePassed = successful && outOfScope.Length == 0 &&
+            var phasePassed = successful &&
                 (phase != "INTEGRATE" || sceneSaved?.Success == true) &&
-                (phase != "DISCOVER" || changed.Length == 0) &&
                 (phase != "INTEGRATE" || (File.Exists(Path.Combine(root,
                     definition.ScenePath.Replace('/', Path.DirectorySeparatorChar))) &&
                     changed.Any(p => p.Equals(definition.ScenePath,
@@ -367,8 +367,8 @@ public partial class MainWindow
             checkpoint = checkpoint with
             {
                 State = phasePassed ? completedState :
-                    phase == "ACQUIRE" && acquiredAfterAi?.Ready == true &&
-                    outOfScope.Length == 0 ? "IMPORT_PENDING" : "BLOCKED",
+                    phase == "ACQUIRE" && acquiredAfterAi?.Ready == true
+                        ? "IMPORT_PENDING" : "BLOCKED",
                 BlockedPhase = phasePassed ? null : phase,
                 SessionId = CodexCliRunner.NormalizeSessionId(run.SessionId) ??
                     checkpoint.SessionId,
@@ -418,6 +418,10 @@ public partial class MainWindow
                       "실제 다운로드나 로컬 검증에 실패한 경우에만 blocked로 보고하라.\n"
                     : "\nINTEGRATE는 Editor에서 씬 구성과 저장까지 실제로 수행한다. " +
                   UnitySceneCliWorkflow.DirectSceneInstructions(definition.ScenePath)) +
+            "\nWRITE_PATH·TARGET_PATH는 파일 작업 추적 및 동시 수정 충돌 조정용이다. " +
+            "ProjectSettings, Packages, .meta, 에셋 및 필요한 프로젝트 내부 설정 수정은 허용한다. " +
+            "선언 범위 밖 변경만으로 blocked를 반환하지 말고 변경 경로를 보고하라. " +
+            "다른 WORK가 동시에 수정 중인 동일 파일은 수정하지 마라. " +
             "\n현재 PHASE만 실제 수행하라. 이후 단계로 미리 진입하지 마라. " +
             "완료 기준을 충족하지 못한 경우 blocked 또는 in_progress로 보고하라. " +
             "검색/획득/씬 연결의 도구 결과와 실제 파일 증거를 기록하라.\n\n" +
