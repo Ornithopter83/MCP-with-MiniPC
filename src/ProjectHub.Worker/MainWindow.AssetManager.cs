@@ -335,13 +335,14 @@ public partial class MainWindow
                 detail += " · ADDITIONAL_PROJECT_CHANGES: " +
                     string.Join(",", additionalProjectChanges.Take(16));
             if (phase == "INTEGRATE" &&
-                (!File.Exists(Path.Combine(root, definition.ScenePath.Replace('/',
-                    Path.DirectorySeparatorChar))) ||
-                 !changed.Any(p => p.Equals(definition.ScenePath,
-                     StringComparison.OrdinalIgnoreCase))))
-                detail += " · SCENE_SAVE_NOT_OBSERVED";
+                !File.Exists(Path.Combine(root, definition.ScenePath.Replace('/',
+                    Path.DirectorySeparatorChar))))
+                detail += " · SCENE_FILE_NOT_FOUND";
             else if (phase == "INTEGRATE" && successful)
-                detail += " · scene saved at " + definition.ScenePath;
+                detail += " · scene saved at " + definition.ScenePath +
+                    (changed.Any(p => p.Equals(definition.ScenePath,
+                        StringComparison.OrdinalIgnoreCase))
+                        ? "" : " · UNCHANGED_SCENE_REUSED");
             if (phase == "ACQUIRE" && successful &&
                 !Directory.Exists(Path.Combine(root,
                     definition.TargetPath.Replace('/', Path.DirectorySeparatorChar))) &&
@@ -350,10 +351,8 @@ public partial class MainWindow
 
             var phasePassed = successful &&
                 (phase != "INTEGRATE" || sceneSaved?.Success == true) &&
-                (phase != "INTEGRATE" || (File.Exists(Path.Combine(root,
-                    definition.ScenePath.Replace('/', Path.DirectorySeparatorChar))) &&
-                    changed.Any(p => p.Equals(definition.ScenePath,
-                        StringComparison.OrdinalIgnoreCase)))) &&
+                (phase != "INTEGRATE" || File.Exists(Path.Combine(root,
+                    definition.ScenePath.Replace('/', Path.DirectorySeparatorChar)))) &&
                 (phase != "ACQUIRE" || definition.SourcePolicy == "PROJECT_ONLY" ||
                  Directory.Exists(Path.Combine(root,
                      definition.TargetPath.Replace('/', Path.DirectorySeparatorChar))));
