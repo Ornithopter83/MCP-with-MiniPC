@@ -35,7 +35,8 @@ public sealed class RoleContractResponsibilityTests
 
         Assert.DoesNotContain("WORK #8", work);
         Assert.DoesNotContain("환경 EPERM", work);
-        Assert.Contains("WRITE_PATH 안에서만", work);
+        Assert.Contains("WRITE_PATH는 작업 배정", work);
+        Assert.DoesNotContain("WRITE_PATH 안에서만", work);
         Assert.Contains("<STATUS>completed</>", work);
     }
 
