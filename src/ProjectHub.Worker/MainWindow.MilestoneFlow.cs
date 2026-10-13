@@ -1675,6 +1675,9 @@ public partial class MainWindow
                 "보고된 잔여 항목만 이어서 처리하라." + Environment.NewLine +
                 MilestoneDefinitionContract.Limit(checkpoint.LastReport, 4000);
         }
+        var sceneWritePath = work.ReadOnly ? null : work.WritePaths
+            .FirstOrDefault(path => UnitySceneCliWorkflow.TryNormalizeScenePath(
+                path, out _));
         if (!UnityWorkSchedulingPolicy.RequiresEditorLane(work))
         {
             prompt += Environment.NewLine + Environment.NewLine +
@@ -1682,6 +1685,31 @@ public partial class MainWindow
                 "이 WORK는 C# 소스 파일만 수정하는 병렬 작업이다. Unity CLI/MCP, " +
                 "Editor API, AssetDatabase, 씬·프리팹 변경·컴파일·PlayMode 명령을 " +
                 "실행하지 마라. Editor 관련 검증은 WORK 종료 후 Worker BUILD/QA에서 처리한다.";
+        }
+        else
+        {
+            prompt += Environment.NewLine + Environment.NewLine +
+                "@@UNITY_EDITOR_DIRECT_OPERATION" + Environment.NewLine +
+                UnitySceneCliWorkflow.DirectSceneInstructions(
+                    sceneWritePath ?? "WORK의 지정된 Unity 에셋",
+                    readOnly: work.ReadOnly);
+            // The scheduler already holds the project-wide Editor lease here.
+            // Idempotent additive open preserves the user's other open scenes.
+            if (sceneWritePath is not null)
+            {
+                var sceneFile = Path.Combine(workingDirectory,
+                    sceneWritePath.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(sceneFile))
+                {
+                    var opened = await UnitySceneCliWorkflow.OpenAsync(
+                        workingDirectory, sceneWritePath, cancellationToken);
+                    prompt += Environment.NewLine +
+                        "@@UNITY_SCENE_OPEN_EVIDENCE " + opened.Detail +
+                        (opened.Success ? "" :
+                            " · 자동 재호출하지 말고 Editor 상태를 조회하여 필요한 경우 " +
+                            "등록된 open_scene 명령으로 대체하라.");
+                }
+            }
         }
         prompt += Environment.NewLine + Environment.NewLine +
             "검색 도구가 설치되지 않았다면 동일 명령을 반복하거나 설치하지 말고 " +
@@ -1821,6 +1849,28 @@ public partial class MainWindow
                     continue;
                 }
 
+                if (state == "COMPLETED" && sceneWritePath is not null)
+                {
+                    // Save only once after the role has finished, while this
+                    // Editor WORK still owns the shared gate. A timeout may
+                    // already have saved the scene: never replay it blindly.
+                    var saved = await UnitySceneCliWorkflow.SaveAsync(
+                        workingDirectory, sceneWritePath, cancellationToken);
+                    if (!saved.Success)
+                    {
+                        state = "IN_PROGRESS";
+                        result = result with
+                        {
+                            FinalMessage = RoleTextProtocol.BuildResult(
+                                "in_progress", parsed.Summary,
+                                parsed.ChangedPaths,
+                                parsed.Issues.Concat(new[] {
+                                    "UNITY_SCENE_SAVE_UNVERIFIED: " + saved.Detail +
+                                    " · HQ 확인 전 자동 재시도 금지"
+                                }).ToArray())
+                        };
+                    }
+                }
                 if (!WorkExecutionJournal.Record(
                         workingDirectory, jobId, work.Id, state,
                         sessionId, result.FinalMessage))

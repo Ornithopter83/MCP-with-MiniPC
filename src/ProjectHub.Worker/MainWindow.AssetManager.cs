@@ -139,6 +139,11 @@ public partial class MainWindow
                     webActive: false, explicitStage: TaskStage.Manager);
             });
 
+            // Keep the same shared Editor lease while the integrating agent
+            // opens, edits, and saves the Scene, including recovery.
+            using var editorLease = phase == "INTEGRATE"
+                ? await UnityEditorOperationGate.EnterAsync(root, cancellationToken)
+                : null;
             var before = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 root, cancellationToken);
             // Store the running phase before invoking Codex: an interruption
@@ -153,6 +158,19 @@ public partial class MainWindow
                 : string.Empty;
             var prompt = BuildAssetManagerPhasePrompt(definition, phase,
                 checkpoint.Evidence, root, localInventory);
+            if (phase == "INTEGRATE")
+            {
+                var sceneFile = Path.Combine(root, definition.ScenePath
+                    .Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(sceneFile))
+                {
+                    var opened = await UnitySceneCliWorkflow.OpenAsync(
+                        root, definition.ScenePath, cancellationToken);
+                    prompt += "\n@@UNITY_SCENE_OPEN_EVIDENCE " + opened.Detail +
+                        (opened.Success ? "" :
+                            " · 자동 재호출 금지. 명령 카탈로그로 Editor 상태를 확인하라.");
+                }
+            }
             AddDataFlowHistory(WorkerRoleState.Manager, "#1 ASSET MANAGER",
                 phase + " 시작 · " + definition.RequestId, status: "PROCESSING",
                 workItemId: "1", referenceId: historyId,
@@ -271,13 +289,23 @@ public partial class MainWindow
                 }
             }
 
+            var parsed = RoleTextProtocol.ParseWork(run.FinalMessage);
+            UnitySceneCliResult? sceneSaved = null;
+            if (phase == "INTEGRATE" && run.ExitCode == 0 && parsed.IsValid &&
+                string.Equals(parsed.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            {
+                // Explicit saved-Scene evidence from the connected Editor.
+                // If this times out we cannot know whether the save happened:
+                // preserve the checkpoint and ask HQ, do not repeat.
+                sceneSaved = await UnitySceneCliWorkflow.SaveAsync(
+                    root, definition.ScenePath, cancellationToken);
+            }
             var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 root, cancellationToken);
             var changed = MilestoneMechanicalExecutor.DiffChangeStates(before, after)
                 .ToArray();
             var outOfScope = changed.Where(p =>
                 !AssetManagerPathPolicy.IsAllowed(p, definition, phase)).ToArray();
-            var parsed = RoleTextProtocol.ParseWork(run.FinalMessage);
             // A proven local payload + Editor-side Import can recover a
             // blocked/failed AI acquisition. Other phases still demand an
             // actual successfully completed role response.
@@ -300,6 +328,8 @@ public partial class MainWindow
                     acquiredAfterAi?.Detail ?? "ASSET_IMPORT_NOT_VERIFIED");
             if (phase == "DISCOVER" && changed.Length > 0)
                 detail += " · DISCOVERY_MODIFIED_PROJECT";
+            if (phase == "INTEGRATE")
+                detail += " · " + (sceneSaved?.Detail ?? "UNITY_SCENE_SAVE_NOT_CONFIRMED");
             if (outOfScope.Length > 0)
                 detail += " · ASSET_MANAGER_SCOPE_VIOLATION: " +
                     string.Join(",", outOfScope.Take(8));
@@ -318,6 +348,7 @@ public partial class MainWindow
                 detail += " · IMPORT_DIRECTORY_MISSING";
 
             var phasePassed = successful && outOfScope.Length == 0 &&
+                (phase != "INTEGRATE" || sceneSaved?.Success == true) &&
                 (phase != "DISCOVER" || changed.Length == 0) &&
                 (phase != "INTEGRATE" || (File.Exists(Path.Combine(root,
                     definition.ScenePath.Replace('/', Path.DirectorySeparatorChar))) &&
@@ -385,7 +416,8 @@ public partial class MainWindow
                       "공식 Unity CLI로 직접 수행한다. Editor 연결이 없다는 이유만으로 " +
                       "다운로드 완료 결과를 blocked로 낮추지 마라. " +
                       "실제 다운로드나 로컬 검증에 실패한 경우에만 blocked로 보고하라.\n"
-                    : string.Empty) +
+                    : "\nINTEGRATE는 Editor에서 씬 구성과 저장까지 실제로 수행한다. " +
+                  UnitySceneCliWorkflow.DirectSceneInstructions(definition.ScenePath)) +
             "\n현재 PHASE만 실제 수행하라. 이후 단계로 미리 진입하지 마라. " +
             "완료 기준을 충족하지 못한 경우 blocked 또는 in_progress로 보고하라. " +
             "검색/획득/씬 연결의 도구 결과와 실제 파일 증거를 기록하라.\n\n" +
