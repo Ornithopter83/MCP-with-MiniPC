@@ -135,6 +135,22 @@ public partial class MainWindow
                     "UNITY_PREFLIGHT_BLOCKED: " + unityPreflight.Code +
                     ": " + unityPreflight.Detail);
 
+            // New tasks normalize the Git workspace before HQ inspects origin/main.
+            // A failed collision checkout may destructively replace only paths
+            // competing with the remote tree. Continuing tasks never do this.
+            if (!continuing)
+            {
+                var newTaskGit = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
+                    normalizedRoot, "main", initializeIfMissing: true,
+                    _targetSettings.ManualRepositoryUrl?.Trim(), cts.Token,
+                    overwriteNewTaskConflicts: true);
+                AddTaskMessage("NEW TASK GIT PREFLIGHT", newTaskGit.Summary,
+                    status: newTaskGit.Success ? "COMPLETED" : "BLOCKED");
+                if (!newTaskGit.Success)
+                    throw new InvalidOperationException(
+                        "NEW_TASK_GIT_PREFLIGHT_BLOCKED: " + newTaskGit.Summary);
+            }
+
             stagedAttachments = UserAttachmentTransport.StageForWorkerRuntime(
                 attachments,
                 normalizedRoot,
@@ -792,27 +808,20 @@ public partial class MainWindow
             cancellationToken);
         if (!gitPreflight.Success)
         {
-            var beforeGitHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                workingDirectory, cancellationToken);
-            var diagnostic = await ExecuteGitHighAsync(
-                jobId, workingDirectory, milestone, high, "PREFLIGHT",
-                gitPreflight.Summary, cancellationToken);
-            var afterGitHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                workingDirectory, cancellationToken);
-            foreach (var path in MilestoneMechanicalExecutor.DiffChangeStates(
-                beforeGitHigh, afterGitHigh))
-                milestoneChangedPaths.Add(path);
-            gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
-                workingDirectory, milestone.TargetBranch,
-                milestone.InitializeGitIfMissing,
-                _targetSettings.ManualRepositoryUrl?.Trim(), cancellationToken);
-            if (!gitPreflight.Success)
-                return new(true, "GIT_PREFLIGHT_FAILED: " + gitPreflight.Summary +
-                    Environment.NewLine + "HIGH_GIT: " +
-                    MilestoneDefinitionContract.Limit(diagnostic, 1200));
+            // Preflight is mechanical. Do not dispatch HIGH with write rights
+            // before a valid Git workspace exists.
+            return new(true, "GIT_PREFLIGHT_FAILED: " + gitPreflight.Summary);
         }
 
         WorkerPaths.EnsureProjectHubLocalExclude(workingDirectory);
+        // On a new job the Unity ignore template is applied before HQ; include
+        // this repo policy change in Worker Git finalization, even though the
+        // initial dirty snapshot naturally already includes it.
+        var unityIgnorePath = Path.Combine(workingDirectory, ".gitignore");
+        if (File.Exists(unityIgnorePath) &&
+            File.ReadAllText(unityIgnorePath).Contains(
+                "# ProjectHub Unity generated files", StringComparison.Ordinal))
+            milestoneChangedPaths.Add(".gitignore");
 
         var workReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);

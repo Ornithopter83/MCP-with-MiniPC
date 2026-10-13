@@ -164,7 +164,8 @@ internal static class MilestoneMechanicalExecutor
         string configuredTargetBranch,
         bool initializeIfMissing,
         string? configuredRepositoryUrl,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool overwriteNewTaskConflicts = false)
     {
         if (!string.Equals(
                 configuredTargetBranch,
@@ -259,6 +260,9 @@ internal static class MilestoneMechanicalExecutor
         if (!remoteReference.Success)
             return remoteReference;
 
+        if (overwriteNewTaskConflicts)
+            UnityNewTaskGitPolicy.PrepareLocalExcludes(workingDirectory);
+
         var currentBranch = await ReadCurrentBranchAsync(Run)
             .ConfigureAwait(false);
 
@@ -321,6 +325,21 @@ internal static class MilestoneMechanicalExecutor
                 }
             }
 
+            if (mainPreparation.ExitCode != 0 && overwriteNewTaskConflicts &&
+                UnityNewTaskGitPolicy.IsCheckoutCollision(mainPreparation.StandardError))
+            {
+                var overwrite = await UnityNewTaskGitPolicy.ResolveCheckoutConflictsAsync(
+                    workingDirectory, git, cancellationToken).ConfigureAwait(false);
+                if (!overwrite.Success)
+                    return new(false, true, RequiredBranch, null,
+                        "NEW_TASK_CONFLICT_OVERWRITE_FAILED: " + overwrite.Detail);
+                // No -f switch: unrelated unstaged/staged files must survive.
+                mainPreparation = localMain.ExitCode == 0
+                    ? await Run("switch", RequiredBranch).ConfigureAwait(false)
+                    : await Run("switch", "-c", RequiredBranch,
+                        "--track", "origin/" + RequiredBranch).ConfigureAwait(false);
+            }
+
             if (mainPreparation.ExitCode != 0)
             {
                 return new(
@@ -356,6 +375,8 @@ internal static class MilestoneMechanicalExecutor
                 $"current={currentBranch}");
         }
 
+        var ignoreUpdate = overwriteNewTaskConflicts &&
+            UnityNewTaskGitPolicy.EnsureUnityGitIgnore(workingDirectory);
         var originHeadSummary =
             await AlignLocalOriginHeadToMainAsync(Run)
                 .ConfigureAwait(false);
@@ -367,6 +388,10 @@ internal static class MilestoneMechanicalExecutor
             head.ExitCode == 0 ? head.StandardOutput.Trim() : null,
             "Git preflight 완료" +
             Environment.NewLine +
+            (overwriteNewTaskConflicts
+                ? "newTaskOverwrite=CONFLICT_PATHS_ONLY" + Environment.NewLine +
+                  "unityGitIgnore=" + (ignoreUpdate ? "UPDATED" : "READY") + Environment.NewLine
+                : string.Empty) +
             "branch=main" +
             Environment.NewLine +
             "remoteBranch=origin/main" +
