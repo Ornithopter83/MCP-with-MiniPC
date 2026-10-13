@@ -165,6 +165,13 @@ public partial class MainWindow
                 throw new InvalidOperationException(
                     "UNITY_PROJECT_NOT_FOUND: " + unityPreflight.Detail);
 
+            var unityCatalogPath = UnityToolchainPreflight.SaveCatalogForJob(
+                normalizedRoot, jobId, unityPreflight);
+            if (unityCatalogPath is not null)
+                AddTaskMessage("UNITY CLI COMMAND CATALOG",
+                    "실제 Editor에서 조회한 명령·매개변수 목록 보존: " +
+                    unityCatalogPath, status: "OBSERVED");
+
             var editorRecoveryNotice = unityPreflight.Ready ? string.Empty :
                 "UNITY_EDITOR_UNAVAILABLE: " + unityPreflight.Code + ": " +
                 unityPreflight.Detail + Environment.NewLine +
@@ -861,6 +868,7 @@ public partial class MainWindow
         IReadOnlySet<string> initialChangedPaths,
         CancellationToken cancellationToken)
     {
+        var milestoneStartedAt = DateTimeOffset.UtcNow;
         AddDataFlowHistory(
             WorkerRoleState.Unknown,
             "Worker 작업",
@@ -1407,6 +1415,36 @@ public partial class MainWindow
                 highReport,
                 hqFinalState: "READY",
                 assetManagerFailed: assetManagerFailed);
+
+            // Read-only progress reporting after mechanical finalization.
+            // A missing observation must never block the next milestone or
+            // change QA/HIGH/HQ decisions.
+            try
+            {
+                var checkpointStates = WorkExecutionJournal.ReadAll(
+                        workingDirectory, jobId)
+                    .Where(checkpoint => milestone.WorkItems.ContainsKey(
+                        checkpoint.WorkItemId))
+                    .ToDictionary(checkpoint => checkpoint.WorkItemId,
+                        checkpoint => checkpoint.State,
+                        StringComparer.OrdinalIgnoreCase);
+                var facts = MilestoneProgressFacts.Format(
+                    milestone.Id,
+                    DateTimeOffset.UtcNow - milestoneStartedAt,
+                    milestone.WorkItems.Keys.ToArray(),
+                    checkpointStates,
+                    milestoneChangedPaths,
+                    gitResult.Success,
+                    MilestoneDefinitionContract.ReadQaStatus(qaReport),
+                    MilestoneDefinitionContract.ReadHighStatus(highReport));
+                AddTaskMessage("MILESTONE PROGRESS FACTS", facts,
+                    status: "OBSERVED");
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "MILESTONE_PROGRESS_FACTS_UNAVAILABLE: " + exception.Message);
+            }
 
             return new(
                 false,
