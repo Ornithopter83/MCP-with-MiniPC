@@ -293,6 +293,30 @@ public partial class MainWindow
             return;
         }
 
+        // Direct WORK is also a submitted user command. Do not trigger on
+        // switching the dashboard into 'new task' input mode.
+        if (UnityCliBuildRunner.IsUnityProject(workingDirectory))
+        {
+            try
+            {
+                var editor = await UnityEditorCommandLifecycle
+                    .EnsureForAcceptedCommandAsync(
+                        workingDirectory, CancellationToken.None);
+                if (!editor.Ready)
+                {
+                    ShowDirectWorkPreflightError(
+                        "UNITY_EDITOR_COMMAND_GATE: " + editor.Code +
+                        ": " + editor.Detail);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowDirectWorkPreflightError("UNITY_EDITOR_COMMAND_GATE: " + ex.Message);
+                return;
+            }
+        }
+
         IReadOnlyList<AiInputAttachment> stagedAttachments;
         try
         {

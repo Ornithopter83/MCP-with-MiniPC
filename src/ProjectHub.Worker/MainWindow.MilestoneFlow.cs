@@ -122,22 +122,10 @@ public partial class MainWindow
                         AddHqInterventionHistory(entry, delivered: false);
             }
 
-            // Unity toolchain and the selected Editor must be ready before
-            // the first HQ dispatch; never repair a missing Editor through WORK.
-            var unityPreflight = await UnityToolchainPreflight.RunAsync(
-                normalizedRoot, cts.Token);
-            AddTaskMessage(
-                "UNITY TOOLCHAIN / EDITOR PREFLIGHT",
-                unityPreflight.Code + ": " + unityPreflight.Detail,
-                status: unityPreflight.Ready ? "COMPLETED" : "BLOCKED");
-            if (!unityPreflight.Ready)
-                throw new InvalidOperationException(
-                    "UNITY_PREFLIGHT_BLOCKED: " + unityPreflight.Code +
-                    ": " + unityPreflight.Detail);
-
-            // New tasks normalize the Git workspace before HQ inspects origin/main.
-            // A failed collision checkout may destructively replace only paths
-            // competing with the remote tree. Continuing tasks never do this.
+            // This path runs only after a real user command was submitted.
+            // The '＋ 새 작업' navigation button does not call this method.
+            // Prepare destructive NEW-task Git changes before opening an Editor,
+            // so Unity never holds an outdated scene in memory during checkout.
             if (!continuing)
             {
                 var newTaskGit = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
@@ -150,6 +138,24 @@ public partial class MainWindow
                     throw new InvalidOperationException(
                         "NEW_TASK_GIT_PREFLIGHT_BLOCKED: " + newTaskGit.Summary);
             }
+
+            // New commands and resumed/added user commands are the only
+            // events allowed to open Unity. Ordinary milestone iteration never
+            // starts another Editor. An already running project's lock is honored.
+            AddTaskMessage("UNITY EDITOR COMMAND GATE",
+                "명령이 접수되어 지정 프로젝트의 Editor / Pipeline 연결을 확인합니다.",
+                status: "PROCESSING");
+            var unityPreflight =
+                await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
+                    normalizedRoot, cts.Token);
+            AddTaskMessage(
+                "UNITY TOOLCHAIN / EDITOR PREFLIGHT",
+                unityPreflight.Code + ": " + unityPreflight.Detail,
+                status: unityPreflight.Ready ? "COMPLETED" : "BLOCKED");
+            if (!unityPreflight.Ready)
+                throw new InvalidOperationException(
+                    "UNITY_PREFLIGHT_BLOCKED: " + unityPreflight.Code +
+                    ": " + unityPreflight.Detail);
 
             stagedAttachments = UserAttachmentTransport.StageForWorkerRuntime(
                 attachments,

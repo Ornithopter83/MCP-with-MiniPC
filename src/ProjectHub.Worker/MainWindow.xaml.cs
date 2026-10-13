@@ -813,6 +813,24 @@ public partial class MainWindow : Window
                 DashboardFollowupInput.Foreground = FindResource("Muted")
                     as System.Windows.Media.Brush;
                 UpdateFollowupButtonState();
+
+                // The active task keeps running. This newly accepted command
+                // is the trigger, not the 'new task' navigation button.
+                if (!string.IsNullOrWhiteSpace(_activeWorkingDirectory))
+                {
+                    var editorState = await UnityEditorCommandLifecycle
+                        .EnsureForAcceptedCommandAsync(
+                            _activeWorkingDirectory, _activeTaskCts.Token);
+                    AddTaskMessage("UNITY EDITOR COMMAND GATE",
+                        editorState.Code + ": " + editorState.Detail,
+                        status: editorState.Ready ? "COMPLETED" : "BLOCKED",
+                        includeHistory: false);
+                }
+            }
+            catch (OperationCanceledException) when (
+                _activeTaskCts?.IsCancellationRequested == true)
+            {
+                // User canceled while an editor was initializing.
             }
             catch (Exception exception)
             {
