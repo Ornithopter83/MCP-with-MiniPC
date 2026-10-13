@@ -68,3 +68,12 @@
 - 외부 `rg` 설치와 Unity AssetDatabase/Search 호출은 DISCOVER의 필수 조건이 아니다. `Assets/ThirdParty/Forest` 등 대상 폴더가 아직 없어도 정상이다.
 - CC0_AUTO는 공식 배포처의 CC0 표시·다운로드 안내·모델 형식으로 후보를 선정할 수 있다. 직접 파일 URL·용량·버전 미공개는 ACQUIRE에서 확인하고 검증하지 않은 다운로드·Import를 성공이라 보고하지 않는다.
 - 실제 Unity Import/Importer/.meta/GUID와 씬 배치/저장 검증은 ACQUIRE/INTEGRATE에서 여전히 필수다. 동일 프로젝트의 추가 Unity Editor 배치 실행을 피한다.
+
+### 단일 EXE 위치 독립형 설정 및 앱 데이터
+
+- 전역 Worker 설정·실행 임시 폴더·로그의 기준은 EXE 경로가 아닌 `%LOCALAPPDATA%\ProjectHub\Worker`다. 설정은 `config/target-settings.json`, `worker-selection.json`, `window-placement.json`으로 유지한다.
+- 새 빌드나 배포판을 어느 폴더에서 실행하든 같은 Windows 사용자 계정에서는 동일 설정을 참조한다. 다른 사용자·PC에는 자동 공유되지 않는다.
+- 첫 실행에서 구형 `<EXE폴더>\Worker\config`와 지원되는 repo/bin·인접 배포 경로를 조사해 누락된 설정만 이전한다. 이미 존재하는 중앙 설정은 절대 덮어쓰지 않으며 기존 파일도 삭제하지 않는다.
+- 배포 스크립트는 기존 bin을 비우기 전에 구형 bin/deployment 설정을 중앙 설정 폴더로 복사한다. 파일을 사용할 수 없으면 빌드 과정에서 잃지 않도록 중단한다.
+- 프로젝트별 체크포인트·이벤트는 계속 `<프로젝트 루트>\.projecthub`를, 프로젝트별 임시 산출물은 `<프로젝트 루트>\temp`를 사용한다.
+- 기존 EXE가 완전히 무관한 폴더에 보관돼 자동 검색할 수 없는 경우, 중앙 설정 폴더로 사용자가 기존 JSON 파일을 복사해야 한다.

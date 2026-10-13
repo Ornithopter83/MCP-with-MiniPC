@@ -37,6 +37,65 @@ Write-Host "Repository : $repositoryRoot"
 Write-Host "Project    : $projectFile"
 Write-Host "Publish    : $publishDirectory"
 
+# The previous EXE stored user configuration below its own directory.
+# Copy these settings before deleting bin/, otherwise an old bin-only
+# configuration would be lost before the new EXE can perform migration.
+$canonicalConfig = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ProjectHub\Worker\config'
+$legacyConfigs = @(
+    (Join-Path $publishDirectory 'Worker\config'),
+    (Join-Path $deploymentDirectory 'Worker\config')
+)
+foreach ($fileName in @('target-settings.json', 'worker-selection.json', 'window-placement.json')) {
+    $destination = Join-Path $canonicalConfig $fileName
+    if (Test-Path -LiteralPath $destination -PathType Leaf) {
+        continue
+    }
+
+    $candidates = @($legacyConfigs |
+        ForEach-Object { Join-Path $_ $fileName } |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+        Sort-Object { (Get-Item -LiteralPath $_).LastWriteTimeUtc } -Descending)
+    if ($candidates.Count -eq 0) {
+        continue
+    }
+
+    $imported = $false
+    foreach ($candidate in $candidates) {
+        try {
+            $parsed = Get-Content -LiteralPath $candidate -Raw -Encoding UTF8 |
+                ConvertFrom-Json -ErrorAction Stop
+            if ($null -eq $parsed -or $parsed -isnot [pscustomobject]) {
+                continue
+            }
+        }
+        catch {
+            Write-Warning "Skipping malformed legacy Worker configuration: $candidate"
+            continue
+        }
+
+        New-Item -ItemType Directory -Path $canonicalConfig -Force | Out-Null
+        $temporary = "$destination.$([guid]::NewGuid().ToString('N')).tmp"
+        try {
+            [System.IO.File]::Copy($candidate, $temporary)
+            if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) {
+                [System.IO.File]::Move($temporary, $destination)
+                Write-Host "Imported legacy setting: $fileName"
+            }
+            $imported = $true
+            break
+        }
+        finally {
+            if (Test-Path -LiteralPath $temporary) {
+                Remove-Item -LiteralPath $temporary -Force
+            }
+        }
+    }
+
+    if (-not $imported) {
+        throw "Legacy Worker settings could not be migrated: $fileName. bin/ was not removed."
+    }
+}
+
 if (Test-Path -LiteralPath $publishDirectory) {
     Remove-Item -LiteralPath $publishDirectory -Recurse -Force
 }

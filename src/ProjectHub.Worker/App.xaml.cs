@@ -38,6 +38,26 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // Migrate old EXE-relative configuration before the main window
+        // loads its settings. Never replace a file already in LocalAppData.
+        try
+        {
+            WorkerSettingsMigration.MigrateKnownLegacySettings();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogStartupFailure(new IOException(
+                "Worker settings migration failed. Settings folder: " +
+                WorkerPaths.Config, ex));
+            System.Windows.MessageBox.Show(
+                "기존 Worker 설정을 가져오지 못했습니다. 새 설정 위치: " +
+                WorkerPaths.Config + Environment.NewLine +
+                "기존 설정 폴더를 보존하고 startup-errors.log를 확인하세요.",
+                "UnityWorker 설정 이전 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
         try
         {
             TemporaryWerPolicyLease.RecoverStaleLease();

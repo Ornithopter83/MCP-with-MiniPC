@@ -9,9 +9,15 @@ public sealed record RepositoryRuntimePaths(
 
 public static class WorkerPaths
 {
-    public static string Root => Path.Combine(AppContext.BaseDirectory, "Worker");
+    // Per-user application data is independent of the path of the one-file
+    // executable (and writable even for a binary launched from Program Files).
+    public static string Root => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ProjectHub", "Worker");
 
     public static string State => Path.Combine(Root, "state");
+    // Settings, transient application files and logs all avoid EXE-relative
+    // paths. Project-scoped .projecthub and temp/ remain under the project root.
     public static string Config => Path.Combine(Root, "config");
     public static string Task => Path.Combine(Root, "Task");
     public static string Attachments => Path.Combine(Root, "attachments");

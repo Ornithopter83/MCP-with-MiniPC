@@ -67,8 +67,12 @@ public static class WorkerTargetConfiguration
                 ?? new(null, null);
             return NormalizeForRuntime(settings);
         }
-        catch
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or JsonException)
         {
+            // A corrupt or inaccessible persisted file must never disappear
+            // silently when a new build reads the shared profile directory.
+            App.LogRuntimeFailure("WORKER_SETTINGS_LOAD", ex);
             return new(null, null);
         }
     }
@@ -138,10 +142,19 @@ public static class WorkerTargetConfiguration
     public static void Save(WorkerTargetSettings settings)
     {
         Directory.CreateDirectory(WorkerPaths.Config);
-        File.WriteAllText(
-            SettingsPath,
-            ProjectHubJson.SerializeIndented(settings),
-            ProjectHubJson.Utf8NoBom);
+        var temporary = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllText(
+                temporary,
+                ProjectHubJson.SerializeIndented(settings),
+                ProjectHubJson.Utf8NoBom);
+            File.Move(temporary, SettingsPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
 
     public static GitTargetSnapshot ResolveGit(
