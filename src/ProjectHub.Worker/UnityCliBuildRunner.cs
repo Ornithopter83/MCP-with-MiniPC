@@ -26,6 +26,8 @@ internal static class UnityCliBuildRunner
         string root, string jobId, CancellationToken cancellationToken)
     {
         var projectRoot = Path.GetFullPath(root);
+        using var editorLease = await UnityEditorOperationGate.EnterAsync(
+            projectRoot, cancellationToken).ConfigureAwait(false);
         var args = RecompileArguments(projectRoot);
         var command = "unity " + string.Join(" ", args);
         var folder = Path.Combine(projectRoot, "temp", "ProjectHub", jobId, "build");

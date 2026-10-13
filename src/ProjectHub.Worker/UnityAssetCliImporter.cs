@@ -119,6 +119,8 @@ internal static class UnityAssetCliImporter
     {
         if (files.Count == 0)
             return new(false, "ASSET_IMPORT_NO_FILES", 0);
+        using var editorLease = await UnityEditorOperationGate.EnterAsync(
+            root, cancellationToken).ConfigureAwait(false);
         execute ??= (args, token) => ExecuteAsync(root, args, token);
         try
         {

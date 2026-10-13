@@ -69,6 +69,8 @@ internal static class UnityToolchainPreflight
             return project;
 
         var projectRoot = Path.GetFullPath(root);
+        using var editorLease = await UnityEditorOperationGate.EnterAsync(
+            projectRoot, cancellationToken).ConfigureAwait(false);
         try
         {
             var psi = new ProcessStartInfo

@@ -1166,7 +1166,8 @@ public partial class MainWindow
                         cancellationToken,
                         activeCount => RunOnUi(() =>
                             ImplementerWorkGaugeText.Text =
-                                FormatActiveWorkItemGauge(activeCount)));
+                                FormatActiveWorkItemGauge(activeCount)),
+                        projectRoot: workingDirectory);
                 }
                 finally
                 {

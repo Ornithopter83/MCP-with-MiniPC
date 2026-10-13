@@ -54,7 +54,8 @@ internal static class UnityWorkSchedulingPolicy
         int configured,
         Func<MilestoneWorkDefinition, CancellationToken, Task<TResult>> execute,
         CancellationToken cancellationToken,
-        Action<int>? activeChanged = null)
+        Action<int>? activeChanged = null,
+        string? projectRoot = null)
     {
         ArgumentNullException.ThrowIfNull(workItems);
         ArgumentNullException.ThrowIfNull(execute);
@@ -63,15 +64,16 @@ internal static class UnityWorkSchedulingPolicy
             return Array.Empty<TResult>();
 
         using var workers = new SemaphoreSlim(parallelism);
-        using var editor = new SemaphoreSlim(1);
         var active = 0;
 
         async Task<TResult> RunOneAsync(MilestoneWorkDefinition work)
         {
-            var exclusive = RequiresEditorLane(work);
-            if (exclusive)
-                await editor.WaitAsync(cancellationToken).ConfigureAwait(false);
-
+            // Take the shared project-wide Editor lease before a worker slot:
+            // waiting Editor WORKs must not block independent source WORKs.
+            using var editorLease = RequiresEditorLane(work)
+                ? await UnityEditorOperationGate.EnterAsync(
+                    projectRoot ?? ".", cancellationToken).ConfigureAwait(false)
+                : null;
             var workerSlot = false;
             try
             {
@@ -93,8 +95,6 @@ internal static class UnityWorkSchedulingPolicy
             {
                 if (workerSlot)
                     workers.Release();
-                if (exclusive)
-                    editor.Release();
             }
         }
 
