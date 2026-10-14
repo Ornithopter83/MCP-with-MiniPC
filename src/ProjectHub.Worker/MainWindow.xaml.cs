@@ -2115,7 +2115,11 @@ public partial class MainWindow : Window
                 persistenceSource: $"WORKER → {outboundRole} CLI"));
         if (!string.IsNullOrWhiteSpace(historyReferenceId))
             RunOnUi(() => AddRoleProgressHistory(
-                historyRole, "요청 전달 완료 · 응답 대기", role.Provider,
+                historyRole,
+                historyRole == WorkerRoleState.High
+                    ? "HIGH 검토 중 · 첫 CLI 진행 이벤트 대기"
+                    : "요청 전달 완료 · 응답 대기",
+                role.Provider,
                 referenceId: historyReferenceId,
                 workItemId: historyWorkItemId));
         var runner = _aiRoleRunners.Resolve(role)
