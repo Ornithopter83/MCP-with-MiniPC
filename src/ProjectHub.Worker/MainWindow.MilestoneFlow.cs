@@ -641,6 +641,7 @@ public partial class MainWindow
                         qa,
                         high,
                         designRole,
+                        unityPreflight.Ready,
                         initialChangedPaths,
                         cts.Token);
                 }
@@ -883,6 +884,7 @@ public partial class MainWindow
         WorkerAiRoleSettings qa,
         WorkerAiRoleSettings high,
         WorkerAiRoleSettings designRole,
+        bool unityEditorReady,
         IReadOnlySet<string> initialChangedPaths,
         CancellationToken cancellationToken)
     {
@@ -1062,13 +1064,27 @@ public partial class MainWindow
                     await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                         workingDirectory, cancellationToken);
                 string designReport;
+                UnityBackgroundVisualPlan? visualPlan = null;
+                try
+                {
+                    visualPlan = UnityBackgroundVisualTools.Prepare(
+                        workingDirectory, jobId, milestone.Id + "-initial");
+                }
+                catch (Exception visualToolError) when (visualToolError is IOException or
+                    UnauthorizedAccessException or ArgumentException)
+                {
+                    mechanicalReports.Add("INTERNAL_VISUAL_TOOLS_UNAVAILABLE: " +
+                        visualToolError.Message);
+                }
                 try
                 {
                     using var designEditorLease = await UnityEditorOperationGate.EnterAsync(
                         workingDirectory, cancellationToken);
                     var run = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
-                        RoleContractLoader.BuildDesignPrompt(design, workingDirectory),
+                        RoleContractLoader.BuildDesignPrompt(design, workingDirectory) +
+                        (visualPlan is null ? string.Empty :
+                            Environment.NewLine + visualPlan.AgentGuidance),
                         designRole with { ThreadSessionId = null, ThreadProjectPath = null },
                         workingDirectory, null, null, cancellationToken,
                         CodexSandboxMode.WorkspaceWrite,
@@ -1083,6 +1099,15 @@ public partial class MainWindow
                     var actualGraphics = producedPaths.Any(UnityDesignPromptPolicy.IsVisualArtifact);
                     var verified = run.ExitCode == 0 && parsed.IsValid &&
                         parsed.Status == "completed" && actualGraphics;
+                    // Worker obtains its own evidence after the agent; this
+                    // must not overwrite screenshots captured during DESIGN.
+                    var offscreen = visualPlan is null || !unityEditorReady
+                        ? new UnityBackgroundVisualEvidence(false,
+                            "OFFSCREEN_CAPTURE_UNVERIFIED: " +
+                            (visualPlan is null ? "tool preparation unavailable" :
+                                "Unity Editor preflight not ready"), null)
+                        : await UnityBackgroundVisualTools.CaptureAsync(
+                            visualPlan, cancellationToken);
                     designReport = (verified ? "DESIGN_STATUS: COMPLETED" :
                         "DESIGN_STATUS: BLOCKED_OR_IN_PROGRESS") +
                         Environment.NewLine +
@@ -1091,7 +1116,9 @@ public partial class MainWindow
                         "ACTUAL_GRAPHIC_CHANGES: " +
                         string.Join(", ", producedPaths.Where(UnityDesignPromptPolicy.IsVisualArtifact)) +
                         Environment.NewLine +
-                        "VISUAL_E2E: UNVERIFIED_UNLESS_INSPECTED";
+                        "VISUAL_E2E: UNVERIFIED_UNLESS_INSPECTED" +
+                        Environment.NewLine + "INTERNAL_VISUAL_CAPTURE: " +
+                        offscreen.Detail;
                 }
                 catch (OperationCanceledException) when (
                     cancellationToken.IsCancellationRequested)
@@ -1473,13 +1500,27 @@ public partial class MainWindow
                     workItemId: "0", referenceId: reviewReference,
                     persistenceSource: "HIGH DESIGN HANDOFF");
                 string designResponse;
+                string reviewVisualEvidence = "OFFSCREEN_CAPTURE_UNVERIFIED";
+                UnityBackgroundVisualPlan? reviewVisualPlan = null;
+                try
+                {
+                    reviewVisualPlan = UnityBackgroundVisualTools.Prepare(
+                        workingDirectory, jobId, milestone.Id + "-review-" + invocation);
+                }
+                catch (Exception visualToolError) when (visualToolError is IOException or
+                    UnauthorizedAccessException or ArgumentException)
+                {
+                    reviewVisualEvidence += ": " + visualToolError.Message;
+                }
                 try
                 {
                     using var reviewEditorLease = await UnityEditorOperationGate.EnterAsync(
                         workingDirectory, cancellationToken);
                     var roleRun = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
-                        RoleContractLoader.BuildDesignPrompt(handoffDesign, workingDirectory),
+                        RoleContractLoader.BuildDesignPrompt(handoffDesign, workingDirectory) +
+                        (reviewVisualPlan is null ? string.Empty :
+                            Environment.NewLine + reviewVisualPlan.AgentGuidance),
                         designRole with { ThreadSessionId = null, ThreadProjectPath = null },
                         workingDirectory, null, null, cancellationToken,
                         CodexSandboxMode.WorkspaceWrite,
@@ -1490,6 +1531,12 @@ public partial class MainWindow
                         : RoleTextProtocol.BuildResult("blocked",
                             "DESIGN_REVISION_INVALID_OR_PROCESS_FAILED",
                             issues: new[] { roleRun.StandardError ?? string.Empty });
+                    if (unityEditorReady && reviewVisualPlan is not null)
+                    {
+                        var evidence = await UnityBackgroundVisualTools.CaptureAsync(
+                            reviewVisualPlan, cancellationToken);
+                        reviewVisualEvidence = evidence.Detail;
+                    }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -1518,6 +1565,7 @@ public partial class MainWindow
                     " STATUS=" + RoleTextProtocol.ParseWork(designResponse).Status +
                     "\nCHANGED_PATHS=" + string.Join(", ", revisionChanges) +
                     "\nVISUAL_E2E=UNVERIFIED_UNLESS_INSPECTED\n" +
+                    "INTERNAL_VISUAL_CAPTURE=" + reviewVisualEvidence + "\n" +
                     MilestoneDefinitionContract.Limit(designResponse, 4000);
                 mechanicalReports.Add(revisionReport);
                 AddRoleResponseHistory(WorkerRoleState.Design, "#0 DESIGN 반환",

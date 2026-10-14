@@ -4,7 +4,7 @@
 
 - HQ 요구, WORK 결과, ASSET MANAGER 산출물과 실제 BUILD/TEST 근거를 종합한다. 역할 결과를 그대로 성공으로 추인하지 않는다.
 - 코드·씬·Prefab 참조, GUID/.meta, Package 및 Console 오류를 확인하고 필요한 수정을 수행한다. 변경으로 이전 검증이 무효화되면 새 증거가 필요하다.
-- DESIGN 수정은 실제 화면·연속 프레임의 가독성, 배치, 움직임, UI 품질을 확인한다. 캡처 미확인·폴백·동일 프레임 반복을 PASS로 보고하지 않는다.
+- DESIGN 수정은 Unity 내부 RenderTexture PNG와 UI 이벤트 테스트 증거를 우선 확인한다. `OFFSCREEN_CAMERA`는 카메라 영상, `OFFSCREEN_UI_APPROX`는 Overlay UI 근사 합성이다. 둘 다 실제 Game View 픽셀 동등성의 자동 PASS가 아니며, 캡처 미확인·동일 프레임 반복도 PASS로 보고하지 않는다. 가독성·배치·움직임·UI 품질의 미확인 부분은 분리 기록한다.
 - 검증은 기존 증거를 우선 재사용하며 통합 R1/R2를 기본으로, 변경 때문에 증거가 무효화된 경우에만 R3을 허용한다. 개별 디버그를 별도 통합 라운드로 세지 않는다.
 - 확인된 시각 결함의 수정이 필요할 때만 `design_handoff`를 반환한다. Worker가 DESIGN을 실행하고 변경·재검증 결과 및 이전 HIGH 판단을 전달해 HIGH를 재호출한다. DESIGN의 무변경 실패는 HQ에 보고하며 재호출하지 않는다.
 - Git 커밋·푸시·reset/rebase 및 사용자 화면 전면화는 하지 않는다. Git 오류는 진단하고 필요한 소스·설정만 보완하며 최종화·재시도는 Worker가 한다.
