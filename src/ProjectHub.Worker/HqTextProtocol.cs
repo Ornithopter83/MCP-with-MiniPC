@@ -62,8 +62,6 @@ internal static class HqTextProtocol
         bool completionValidatedByTransport = false)
     {
         var raw = rawMessage ?? string.Empty;
-        if (StructuredHqProtocol.IsModern(raw))
-            return StructuredHqProtocol.Parse(raw, completionValidatedByTransport);
         var normalized = raw
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
@@ -99,6 +97,12 @@ internal static class HqTextProtocol
 
         if (action is not ("WORK" or "PAUSE" or "END"))
             return Invalid("ACTION");
+
+        // The HQ control action takes precedence over document sections.
+        // @@MILESTONE may also appear in PAUSE/END text, but the strict
+        // structured parser is only a parser for WORK payloads.
+        if (action == "WORK" && StructuredHqProtocol.IsModern(raw))
+            return StructuredHqProtocol.Parse(raw, completionValidatedByTransport);
 
         var actionLine = significant[cursor].Index;
         var responseOk = Array.FindIndex(
@@ -145,13 +149,14 @@ internal static class HqTextProtocol
             .Select(section => section.Raw)
             .ToArray();
 
-        return action switch
-        {
-            "WORK" => ParseWork(headers, sections, unknown),
-            "PAUSE" => ParseControl("PAUSE", sections, unknown),
-            "END" => ParseControl("END", sections, unknown),
-            _ => Invalid("ACTION")
-        };
+        if (action == "WORK")
+            return ParseWork(headers, sections, unknown);
+
+        // A valid PAUSE/END action is authoritative even when its descriptive
+        // body is malformed. Display the original response without asking HQ
+        // to make a second decision under the guise of format recovery.
+        var control = ParseControl(action, sections, unknown);
+        return control.IsValid ? control : ParseControlRaw(action, raw);
     }
 
     private static HqTextProtocolResult ParseWork(
@@ -480,6 +485,19 @@ internal static class HqTextProtocol
             parse,
             unknown,
             parseErrors);
+    }
+
+    private static HqTextProtocolResult ParseControlRaw(
+        string action,
+        string originalResponse)
+    {
+        var compatibility =
+            $"[ACTION={action}]" + Environment.NewLine +
+            ProjectHubJson.SerializeIndented(
+                new Dictionary<string, object?> { ["message"] = originalResponse });
+        var parsed = ActionBlockContract.ParseHq(compatibility);
+        return new(action, compatibility, parsed,
+            Array.Empty<string>(), parsed.Errors.ToArray());
     }
 
     private static HqTextProtocolResult ParseControl(
