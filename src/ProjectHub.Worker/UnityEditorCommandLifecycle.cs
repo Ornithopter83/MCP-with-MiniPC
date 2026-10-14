@@ -6,6 +6,7 @@ namespace ProjectHub.Worker;
 /// <summary>
 /// Invoked only when a user command is accepted for execution or queued.
 /// The "new task" dashboard navigation never opens Unity.
+/// No GUI auto-open: an Editor launch cannot guarantee foreground preservation.
 /// </summary>
 internal static class UnityEditorCommandLifecycle
 {
@@ -64,33 +65,14 @@ internal static class UnityEditorCommandLifecycle
         var first = await probe(root, cancellationToken).ConfigureAwait(false);
         if (first.Ready || !CanAutoOpen(first)) return first;
 
-        // Do not start a second Editor when the project is already locked.
-        // Its Pipeline could be importing packages or in Safe Mode.
-        var locked = editorLockHeld(root);
-        if (!locked)
-        {
-            var launched = await open(root, cancellationToken).ConfigureAwait(false);
-            if (!launched.Success)
-                return new(false, "UNITY_EDITOR_AUTO_OPEN_FAILED", launched.Detail);
-        }
-
-        var last = first;
-        for (var attempt = 0; attempt < maxChecks; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await wait(TimeSpan.FromSeconds(4), cancellationToken)
-                .ConfigureAwait(false);
-            last = await probe(root, cancellationToken).ConfigureAwait(false);
-            if (last.Ready) return last;
-            if (!CanAutoOpen(last)) return last;
-        }
-
-        return new(false,
-            locked ? "UNITY_EDITOR_RUNNING_PIPELINE_UNAVAILABLE" :
-                     "UNITY_EDITOR_AUTO_OPEN_TIMEOUT",
-            "Unity Editor " + (locked ? "프로젝트 잠금이 감지되어 중복 실행하지 않았습니다. " :
-                "자동 실행 후 ") +
-            "Pipeline 연결을 확인하지 못했습니다. 마지막 진단: " + last.Detail);
+        // Neither CreateNoWindow nor runInBackground prevents a GUI Editor
+        // taking user foreground. Keep the existing Editor only.
+        if (editorLockHeld(root))
+            return new(false, "UNITY_EDITOR_RUNNING_PIPELINE_UNAVAILABLE",
+                "Existing Editor locked this project; Pipeline is unavailable.");
+        return new(false, "UNITY_EDITOR_UNAVAILABLE_BACKGROUND_ONLY",
+            "The Worker will not launch a new GUI Editor or steal user focus. " +
+            "Use an already connected Editor, a headless alternative, or report unverified.");
     }
 
     private static async Task<LaunchResult> OpenEditorAsync(

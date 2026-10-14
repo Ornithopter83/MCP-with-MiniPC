@@ -1013,6 +1013,17 @@ public partial class MainWindow
                 }
             }
 
+            if (_hqInterventions?.Pending().Any(entry =>
+                    UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
+            {
+                UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
+                return await BuildHqDecisionReportAsync(jobId, workingDirectory,
+                    milestone, "USER_PAUSE_REQUESTED",
+                    "No DESIGN start after explicit user save/stop.",
+                    initialChangedPaths, cancellationToken, mechanicalReports,
+                    milestoneChangedPaths.ToArray());
+            }
+
             if (milestone.Design is { } design)
             {
                 RunOnUi(() =>
@@ -1035,6 +1046,8 @@ public partial class MainWindow
                 string designReport;
                 try
                 {
+                    using var designEditorLease = await UnityEditorOperationGate.EnterAsync(
+                        workingDirectory, cancellationToken);
                     var run = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
                         RoleContractLoader.BuildDesignPrompt(design, workingDirectory),
@@ -1284,6 +1297,18 @@ public partial class MainWindow
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+            if (_hqInterventions?.Pending().Any(entry =>
+                    UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
+            {
+                UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
+                mechanicalReports.Add("USER_PAUSE_REQUESTED: BUILD/HIGH deferred for HQ decision");
+                return await BuildHqDecisionReportAsync(jobId, workingDirectory,
+                    milestone, "USER_PAUSE_REQUESTED",
+                    "Do not begin any new BUILD/HIGH while user requested save and stop.",
+                    initialChangedPaths, cancellationToken, mechanicalReports,
+                    milestoneChangedPaths.ToArray());
+            }
+
             // Worker owns BUILD; source-fix WORK #8 is attempted only once
             // for an actual compiler/build failure, never for EPERM or timeout.
             var buildRuns = await MilestoneBuildRunner.RunAsync(
@@ -1325,6 +1350,16 @@ public partial class MainWindow
             // QA and HIGH also receive unfinished WORK reports. They must
             // preserve unresolved checkpoints and report partial verification;
             // only HQ can decide whether to continue those WORK IDs.
+            if (_hqInterventions?.Pending().Any(entry =>
+                    UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
+            {
+                UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
+                return await BuildHqDecisionReportAsync(jobId, workingDirectory,
+                    milestone, "USER_PAUSE_REQUESTED",
+                    "HIGH dispatch deferred; preserve Worker BUILD and WORK evidence.",
+                    initialChangedPaths, cancellationToken, mechanicalReports,
+                    milestoneChangedPaths.ToArray());
+            }
             var beforeHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
             highReport = await ExecuteMilestoneHighAsync(
@@ -1360,6 +1395,7 @@ public partial class MainWindow
                 if (_hqInterventions?.Pending().Any(entry =>
                         UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
                 {
+                    UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
                     mechanicalReports.Add("USER_PAUSE_REQUESTED: no new DESIGN validation");
                     return await BuildHqDecisionReportAsync(jobId, workingDirectory,
                         milestone, "USER_PAUSE_REQUESTED",
@@ -1410,6 +1446,8 @@ public partial class MainWindow
                 string designResponse;
                 try
                 {
+                    using var reviewEditorLease = await UnityEditorOperationGate.EnterAsync(
+                        workingDirectory, cancellationToken);
                     var roleRun = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
                         RoleContractLoader.BuildDesignPrompt(handoffDesign, workingDirectory),
@@ -1477,6 +1515,17 @@ public partial class MainWindow
                     "blocked", StringComparison.OrdinalIgnoreCase))
                 outcome = "HIGH_BLOCKED";
 
+            if (_hqInterventions?.Pending().Any(entry =>
+                    UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
+            {
+                UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
+                mechanicalReports.Add("USER_PAUSE_REQUESTED: no new validation");
+                return await BuildHqDecisionReportAsync(jobId, workingDirectory,
+                    milestone, "USER_PAUSE_REQUESTED",
+                    "Preserve milestone changes and report to HQ before next assignment.",
+                    initialChangedPaths, cancellationToken, mechanicalReports,
+                    milestoneChangedPaths.ToArray());
+            }
             CaptureResourceState();
 
             var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
@@ -2406,7 +2455,9 @@ public partial class MainWindow
                 milestone,
                 workReports,
                 qaReport,
-                mechanicalReports));
+                mechanicalReports) + Environment.NewLine +
+            "@@VALIDATION_BUDGET" + Environment.NewLine +
+            UnityValidationBudget.Guidance);
 
         var sandbox = milestone.ReadOnlyNoFileChanges
             ? CodexSandboxMode.ReadOnly
@@ -2428,6 +2479,8 @@ public partial class MainWindow
 
         // Preserve HIGH findings without a second model invocation merely
         // to repair formatting.
+        using var highEditorLease = await UnityEditorOperationGate.EnterAsync(
+            workingDirectory, cancellationToken);
         var result = await RunAsync(prompt);
 
         var report = MilestoneDefinitionContract.NormalizeHighReport(

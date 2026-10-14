@@ -2160,6 +2160,22 @@ public partial class MainWindow : Window
 
         IReadOnlyList<string>? codexConfigOverrides = null;
         var bypassHookTrust = false;
+        // Always deny foreground Unity UI launch/OS-global input in Codex.
+        // This does not claim protection for external shells or OpenCode.
+        if (WorkerAutonomyPolicy.Enabled &&
+            (roleName is "WORK" or "HIGH" || designPurpose))
+        {
+            var backgroundHookPath = Path.Combine(roleTempPath,
+                "projecthub-unity-background-gate.ps1");
+            await File.WriteAllTextAsync(backgroundHookPath,
+                BuildExecutionPolicy.CreateUnityBackgroundPreToolHookScript(),
+                ProjectHubJson.Utf8NoBom, cancellationToken);
+            codexConfigOverrides = new[]
+            {
+                BuildExecutionPolicy.BuildCodexPreToolHookOverride(
+                    backgroundHookPath, "UnityWorker foreground protection")
+            };
+        }
         if (!WorkerAutonomyPolicy.Enabled &&
             (roleName is "WORK" or "QA" or "HIGH" || designPurpose))
         {

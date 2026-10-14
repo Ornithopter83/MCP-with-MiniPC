@@ -35,7 +35,7 @@ public sealed class UnityEditorCommandLifecycleTests
         Task.CompletedTask;
 
     [Fact]
-    public async Task SubmittedCommand_OpensExactlyOnceThenWaitsForPipeline()
+    public async Task SubmittedCommand_DoesNotAutoOpenForegroundEditor()
     {
         using var project = new UnityProject();
         var attempts = 0;
@@ -50,9 +50,10 @@ public sealed class UnityEditorCommandLifecycleTests
                     true, "unity open success"));
             },
             _ => false, WaitInstantly, 8);
-        Assert.True(state.Ready);
-        Assert.Equal(1, launches);
-        Assert.Equal(4, attempts);
+        Assert.False(state.Ready);
+        Assert.Equal("UNITY_EDITOR_UNAVAILABLE_BACKGROUND_ONLY", state.Code);
+        Assert.Equal(0, launches);
+        Assert.Equal(1, attempts);
         Assert.Equal(new[] { "open", Path.GetFullPath(project.Root) },
             UnityEditorCommandLifecycle.OpenArguments(project.Root));
     }
@@ -73,7 +74,8 @@ public sealed class UnityEditorCommandLifecycleTests
                     true, "should not execute"));
             },
             _ => true, WaitInstantly, 5);
-        Assert.True(state.Ready);
+        Assert.False(state.Ready);
+        Assert.Equal("UNITY_EDITOR_RUNNING_PIPELINE_UNAVAILABLE", state.Code);
         Assert.Equal(0, launches);
     }
 

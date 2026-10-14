@@ -149,6 +149,25 @@ public static class BuildExecutionPolicy
            exit 0
            """;
 
+    public static string CreateUnityBackgroundPreToolHookScript() => """
+           $ErrorActionPreference = 'Stop'
+           $raw = [Console]::In.ReadToEnd()
+           try { $event = $raw | ConvertFrom-Json -Depth 32 } catch { exit 0 }
+           $tool = [string]$event.tool_name
+           if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell)') { exit 0 }
+           $command = [string]$event.tool_input.command
+           if ([string]::IsNullOrWhiteSpace($command)) {
+             $command = [string]($event.tool_input.cmd -join ' ')
+           }
+           if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
+           $unsafe = '(?ix)(?:\bunity(?:\.exe)?\s+open\b|\bUnity(?:\.exe)?\b[^\r\n]*-projectPath\b|\bSetForegroundWindow\b|\bAppActivate\b|\bSendKeys\b|\bSetCursorPos\b|\bSendInput\b|\bmouse_event\b|\bkeybd_event\b|\bStart-Process\b[^\r\n]*\bUnity(?:\.exe)?\b)'
+           if ($command -match $unsafe) {
+             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'UnityWorker BACKGROUND_ONLY: foreground GUI launch and OS-wide input are forbidden. Use connected Editor CLI/MCP or report unverified.' } } | ConvertTo-Json -Compress -Depth 6
+             [Console]::Out.WriteLine($payload)
+           }
+           exit 0
+           """;
+
     public static string BuildCodexPreToolHookOverride(
         string hookPath,
         string statusMessage = "ProjectHub WORK command gate")
