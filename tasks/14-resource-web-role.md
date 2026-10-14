@@ -1,8 +1,8 @@
 # 14 RESOURCE Web 역할 + HQ Web 복원
 
 > 문서 상태: **HISTORICAL IMPLEMENTATION RECORD**
-> 이 문서는 HIGH 제거와 RESOURCE 도입 과정의 구현 이력이다. 본문 중 `[GOTO : RESOURCE]` 뒤 자연어만 전달한다는 초기 설명은 현재 wire 계약으로 사용하지 않는다.
-> 현재 RESOURCE는 HQ의 `@@RESOURCE=0` 이미지 생성 지시를 `HQ-ROUTING-CONTRACT.md`로 정의한다. WORK 결과 문법은 `WORK-ROUTING-CONTRACT.md`의 별도 책임이다. AUDIO·VIDEO·DOCUMENT·FILE은 현재 RESOURCE 생성 대상이 아니다.
+> 이 문서는 RESOURCE 도입 과정의 과거 구현 이력이며 UnityWorker의 현행 출력 계약이 아니다.
+> **UnityWorker 전용:** 이전 RESOURCE 대상 인계와 이미지 생성 전용 대분류는 폐기되었다. 허용 목록 외의 대괄호·대분류 제어 문법은 **절대로 사용하면 안 된다.** 현행 에셋 작업은 ASSET MANAGER 역할 계약에 따르고, 작업 보조 맥락은 `@@MESSAGE` 한 구역으로 구성한다.
 
 
 갱신일: 2026-09-25
