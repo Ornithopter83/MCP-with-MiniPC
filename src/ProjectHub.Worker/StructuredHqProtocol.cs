@@ -20,9 +20,14 @@ internal static class StructuredHqProtocol
         var lines = raw.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
         var significant = lines.Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
         var i = 0;
+        if (!RoleGotoContract.TryReadLeading(raw, out var destination,
+                out var gotoError))
+            return Invalid(gotoError);
+        if (destination is not null && destination != "WORKER")
+            return Invalid("HQ_GOTO_TARGET_INVALID");
         if (significant.Length > 0 && significant[0].StartsWith("[KEY=", StringComparison.Ordinal))
             i++;
-        if (i < significant.Length && significant[i].StartsWith("[GOTO", StringComparison.Ordinal))
+        while (i < significant.Length && RoleGotoContract.IsGotoLine(significant[i]))
             i++;
         if (i >= significant.Length || significant[i] != "[ACTION=WORK]")
             return Invalid("ACTION");

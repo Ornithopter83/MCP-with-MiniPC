@@ -2,45 +2,95 @@ using System.Text.RegularExpressions;
 
 namespace ProjectHub.Worker;
 
-/// <summary>Evidence-bound, nonterminal HIGH => DESIGN request.</summary>
+/// <summary>
+/// Tolerant HIGH => DESIGN handoff. GOTO is routing; image evidence is
+/// supplemental. Unsafe write targets never become executable.
+/// </summary>
 internal sealed record HighDesignHandoff(
     string Goal, string EvidencePath, string TargetPath,
-    string ExpectedResult, string Reason);
+    string ExpectedResult, string Reason)
+{
+    internal IReadOnlyList<string> EvidencePaths { get; init; } = Array.Empty<string>();
+    internal IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+}
 
 internal static class HighDesignHandoffContract
 {
     internal const int MaxReviewHandoffs = 2;
 
-    internal static bool TryRead(string report, out HighDesignHandoff? handoff, out string error)
+    internal static bool TryRead(string report, out HighDesignHandoff? handoff,
+        out string error)
     {
         handoff = null;
         error = string.Empty;
-        var parsed = RoleTextProtocol.ParseHigh(report);
-        if (!parsed.IsValid || parsed.Status != "design_handoff")
+        if (MilestoneDefinitionContract.ReadHighStatus(report) != "design_handoff")
         {
             error = "HIGH_NOT_VALID_HANDOFF";
             return false;
         }
+
         string Field(string name)
         {
-            var match = Regex.Match(report, @"(?s)<" + name + @">\s*(.*?)\s*</>",
+            var match = Regex.Match(report,
+                @"(?ims)^[ \t]*<" + name +
+                @">\s*(.*?)(?:</>|</" + name +
+                @">|(?=^[ \t]*<[A-Z_]+>))",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
+            return match.Success ? match.Groups[1].Value.Trim() : "";
         }
+
+        var parsed = RoleTextProtocol.ParseHigh(report);
         var goal = Field("DESIGN_GOAL");
-        var evidence = Field("EVIDENCE_PATH");
-        var target = Field("TARGET_PATH");
+        if (goal.Length == 0) goal = parsed.Summary.Trim();
+        var target = Field("TARGET_PATH").Replace('\\', '/').Trim();
         var expected = Field("EXPECTED_RESULT");
+        if (expected.Length == 0) expected = goal;
         var reason = Field("REASON");
-        if (goal.Length is < 8 or > 2000 || expected.Length is < 8 or > 2000 ||
-            reason.Length is < 8 or > 2000 ||
-            !MilestoneDefinitionContract.IsSafeRelativePath(evidence) ||
+        if (reason.Length == 0) reason = "HIGH 인계 이유 미기재";
+        if (goal.Length is < 4 or > 2000 ||
+            expected.Length > 2000 || reason.Length > 2000 ||
+            target.Contains(';') || target.Contains('\n') ||
             !MilestoneDefinitionContract.IsSafeRelativePath(target))
         {
             error = "HIGH_DESIGN_HANDOFF_FIELDS_INVALID";
             return false;
         }
-        handoff = new(goal, evidence, target, expected, reason);
+
+        var warnings = new List<string>();
+        if (Field("DESIGN_GOAL").Length == 0)
+            warnings.Add("DESIGN_GOAL_RECOVERED_FROM_SUMMARY");
+        if (Field("EXPECTED_RESULT").Length == 0)
+            warnings.Add("EXPECTED_RESULT_DEFAULTED_TO_GOAL");
+        if (Field("REASON").Length == 0)
+            warnings.Add("REASON_MISSING");
+
+        var evidenceText = Field("EVIDENCE_PATH");
+        var extraEvidence = Field("EVIDENCE_PATHS");
+        if (extraEvidence.Length > 0)
+            evidenceText += "\n" + extraEvidence;
+        var parts = evidenceText.Split(new[] { ';', '\n', '\r', '|' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var valid = new List<string>();
+        foreach (var part in parts)
+        {
+            var candidate = part.Trim().Trim('"', '\'', (char)96)
+                .Replace('\\', '/');
+            if (candidate.StartsWith("- ", StringComparison.Ordinal))
+                candidate = candidate[2..].Trim();
+            if (MilestoneDefinitionContract.IsSafeRelativePath(candidate))
+                valid.Add(candidate);
+            else
+                warnings.Add("EVIDENCE_UNSAFE_OR_INVALID_OMITTED");
+        }
+        var paths = valid.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (paths.Length == 0)
+            warnings.Add("EVIDENCE_UNVERIFIED_NO_SAFE_PATH");
+        handoff = new(goal, paths.FirstOrDefault() ?? "", target,
+            expected, reason)
+        {
+            EvidencePaths = paths,
+            Warnings = warnings
+        };
         return true;
     }
 }

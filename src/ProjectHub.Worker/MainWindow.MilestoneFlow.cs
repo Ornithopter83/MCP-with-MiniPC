@@ -1466,24 +1466,33 @@ public partial class MainWindow
 
                 designHandoffs++;
                 var invocation = designHandoffs;
-                var evidenceFile = Path.Combine(workingDirectory,
-                    request.EvidencePath.Replace('/', Path.DirectorySeparatorChar));
-                if (!File.Exists(evidenceFile))
+                var verifiedEvidence = request.EvidencePaths.Where(path =>
                 {
-                    highReport = RoleTextProtocol.BuildResult("blocked",
-                        "HIGH_DESIGN_HANDOFF_EVIDENCE_MISSING",
-                        issues: new[] { request.EvidencePath });
-                    break;
-                }
+                    var full = Path.GetFullPath(Path.Combine(workingDirectory,
+                        path.Replace('/', Path.DirectorySeparatorChar)));
+                    return MilestoneDefinitionContract.IsPathInsideRoot(
+                        workingDirectory, full) && File.Exists(full);
+                }).ToArray();
+                var missingEvidence = request.EvidencePaths.Except(verifiedEvidence,
+                    StringComparer.OrdinalIgnoreCase).ToArray();
+                if (missingEvidence.Length > 0 || request.Warnings.Count > 0 ||
+                    verifiedEvidence.Length == 0)
+                    mechanicalReports.Add("HIGH_DESIGN_HANDOFF_EVIDENCE_UNVERIFIED: " +
+                        string.Join("; ", missingEvidence.Concat(request.Warnings)) +
+                        (verifiedEvidence.Length == 0 ? "; no readable capture" : ""));
+                var evidenceDescription = verifiedEvidence.Length > 0
+                    ? string.Join("\n", verifiedEvidence)
+                    : "UNVERIFIED: no valid captured image; inspect scene directly";
                 mechanicalReports.Add("HIGH_DESIGN_HANDOFF: " + invocation +
-                    " GOAL: " + request.Goal + " EVIDENCE: " + request.EvidencePath +
+                    " GOAL: " + request.Goal +
+                    " EVIDENCE: " + string.Join("; ", verifiedEvidence) +
                     " TARGET: " + request.TargetPath);
                 var handoffDesign = milestone.Design is { } existingDesign
                     ? existingDesign with
                     {
                         Instructions = request.Goal + "\nExpected: " + request.ExpectedResult +
                             "\nReason: " + request.Reason +
-                            "\nEvidence: " + request.EvidencePath,
+                            "\nEvidence: " + evidenceDescription,
                         WritePaths = new[] { request.TargetPath }
                     }
                     : new MilestoneDesignDefinition(
@@ -1491,7 +1500,7 @@ public partial class MainWindow
                         new string(milestone.Id.Where(char.IsLetterOrDigit).ToArray()) + ".md",
                         request.Goal + "\nExpected: " + request.ExpectedResult +
                             "\nReason: " + request.Reason +
-                            "\nEvidence: " + request.EvidencePath)
+                            "\nEvidence: " + evidenceDescription)
                     { WritePaths = new[] { request.TargetPath } };
 
                 // HIGH has yielded the Editor lane. Mark only DESIGN active
