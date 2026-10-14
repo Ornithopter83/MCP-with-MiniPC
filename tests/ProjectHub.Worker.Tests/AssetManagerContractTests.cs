@@ -20,9 +20,6 @@ public sealed class AssetManagerContractTests
         프로젝트 내부 재사용을 우선하고 부족하면 합법적 CC0를 찾아 배치한다.
         </>
 
-        @@QA
-        <INSTRUCTIONS>씬 구성과 참조를 실제 검증한다.</>
-
         @@HIGH
         <INSTRUCTIONS>에셋 출처·GUID·씬 저장을 검토한다.</>
 
@@ -42,7 +39,7 @@ public sealed class AssetManagerContractTests
         Assert.Equal("rock-001", milestone.AssetManager!.RequestId);
         Assert.Equal("CC0_AUTO", milestone.AssetManager.SourcePolicy);
         Assert.Equal("Assets/Scenes/AIDemo.unity", milestone.AssetManager.ScenePath);
-        Assert.True(milestone.QaReserved);
+        Assert.False(milestone.QaReserved);
     }
 
     [Theory]
@@ -65,7 +62,7 @@ public sealed class AssetManagerContractTests
             <INSTRUCTIONS>코드를 구현한다.</>
             """;
         var valid = AssetOnly.Replace(
-            "@@QA", work + "\n\n@@QA", StringComparison.Ordinal);
+            "@@HIGH", work + "\n\n@@HIGH", StringComparison.Ordinal);
         var parsed = HqTextProtocol.Parse(valid);
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         var invalid = AssetOnly.Replace(
@@ -119,7 +116,7 @@ public sealed class AssetManagerContractTests
 
             """;
         var parsed = HqTextProtocol.Parse(
-            AssetOnly.Replace("@@QA", resource + "@@QA", StringComparison.Ordinal));
+            AssetOnly.Replace("@@HIGH", resource + "@@HIGH", StringComparison.Ordinal));
         Assert.False(parsed.IsValid);
         Assert.Contains("COMPACT_SECTION_FORBIDDEN", parsed.Errors);
     }
@@ -152,7 +149,7 @@ public sealed class AssetManagerContractTests
     }
 
     [Fact]
-    public void QaAndHighReceiveAssetManagerPlanAndCompletionEvidence()
+    public void HighReceivesAssetManagerPlanAndCompletionEvidence()
     {
         var parsed = HqTextProtocol.Parse(AssetOnly);
         Assert.True(parsed.IsValid);
@@ -161,16 +158,12 @@ public sealed class AssetManagerContractTests
             out var milestone, out var error), error);
         Assert.NotNull(milestone);
         var evidence = new[] { "ASSET_MANAGER #1: ASSET_MANAGER_COMPLETED: rock-001" };
-        var qaContext = MilestoneDefinitionContract.BuildQaContext(
-            milestone!, new Dictionary<string, string>(), evidence);
         var highContext = MilestoneDefinitionContract.BuildHighContext(
             milestone!, new Dictionary<string, string>(), null, evidence);
-        Assert.Contains("@@ASSET_MANAGER_REQUEST", qaContext);
-        Assert.Contains("@@ASSET_MANAGER_RESULTS", qaContext);
-        Assert.Contains("Assets/Scenes/AIDemo.unity", qaContext);
+        Assert.Contains("Assets/Scenes/AIDemo.unity", highContext);
         Assert.Contains("@@ASSET_MANAGER_REQUEST", highContext);
         Assert.Contains("@@ASSET_MANAGER_RESULTS", highContext);
-        Assert.Contains("ASSET MANAGER", RoleContractLoader.LoadQaFooter());
+        Assert.DoesNotContain("@@QA_REPORT", highContext);
         Assert.Contains("ASSET MANAGER", RoleContractLoader.LoadHighFooter());
     }
 

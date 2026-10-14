@@ -57,7 +57,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.NotNull(milestone);
         Assert.Equal("M1", milestone!.Id);
         Assert.Equal("main", milestone.TargetBranch);
-        Assert.True(milestone.QaReserved);
+        Assert.False(milestone.QaReserved);
         Assert.Equal("bin/App.exe", milestone.Entrypoint);
         Assert.False(milestone.InitializeGitIfMissing);
         var work = Assert.Single(milestone.WorkItems.Values);
@@ -939,7 +939,7 @@ public sealed class CoordinatorFirstContractTests
             out var milestone,
             out var error),
             error);
-        Assert.True(milestone!.QaReserved);
+        Assert.False(milestone!.QaReserved);
         Assert.True(Assert.Single(milestone.WorkItems.Values).TestRequired);
     }
 

@@ -1023,6 +1023,17 @@ internal static class MilestoneDefinitionContract
                     Limit(report.Value.Replace("\r", "").Replace("\n", " | "), 1500));
         }
 
+        var actualDesignResults = mechanicalReports.Where(report =>
+            report.StartsWith("DESIGN #0:", StringComparison.Ordinal) ||
+            report.StartsWith("HIGH_DESIGN_HANDOFF:", StringComparison.Ordinal)).ToArray();
+        if (actualDesignResults.Length > 0)
+        {
+            builder.AppendLine("DESIGN_RESULTS:");
+            foreach (var report in actualDesignResults)
+                builder.AppendLine("- " + Limit(report.Replace("\r", "",
+                    StringComparison.Ordinal).Replace("\n", " | ",
+                    StringComparison.Ordinal), 2000));
+        }
         if (mechanicalReports.Count > 0)
         {
             builder.AppendLine("MECHANICAL_RESULTS:");

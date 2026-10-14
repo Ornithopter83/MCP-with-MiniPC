@@ -1511,9 +1511,9 @@ public partial class MainWindow
             }
 
             if (outcome == "COMPLETED" &&
-                string.Equals(MilestoneDefinitionContract.ReadHighStatus(highReport),
-                    "blocked", StringComparison.OrdinalIgnoreCase))
-                outcome = "HIGH_BLOCKED";
+                !string.Equals(MilestoneDefinitionContract.ReadHighStatus(highReport),
+                    "completed", StringComparison.OrdinalIgnoreCase))
+                outcome = "HIGH_BLOCKED_OR_UNVERIFIED";
 
             if (_hqInterventions?.Pending().Any(entry =>
                     UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
@@ -1789,8 +1789,13 @@ public partial class MainWindow
             "HIGH",
             "HIGH",
             string.IsNullOrWhiteSpace(highReport)
-                ? "SKIPPED"
-                : "COMPLETED"));
+                ? "PLANNED"
+                : MilestoneDefinitionContract.ReadHighStatus(highReport) switch
+                {
+                    "completed" => "COMPLETED",
+                    "design_handoff" => "IN_PROGRESS",
+                    _ => "BLOCKED"
+                }));
         nodes.Add(new(
             "GIT-FINALIZE",
             "WORKER",
