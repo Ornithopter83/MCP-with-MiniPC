@@ -42,6 +42,20 @@ public sealed class WorkerHistoryCardPolicyTests
             WorkerHistoryCardPolicy.ShouldShowDataFlow(title, status, source));
     }
 
+    [Theory]
+    [InlineData("전달 데이터", "Design", true, "Design")]
+    [InlineData("재요청 데이터", "Design", true, "Design")]
+    [InlineData("#0 DESIGN 인계", "Design", false, "Design")]
+    [InlineData("HQ 응답 수신", "Coordinator", true, "Worker")]
+    [InlineData("전달 데이터", "Implementer", true, "Worker")]
+    [InlineData("Worker 작업", "Worker", true, "Worker")]
+    public void DesignRecipientDataFlow_UsesDesignCardButRetainsWorkerOwnedDecisions(
+        string title, string stage, bool published, string expectedStage)
+    {
+        Assert.Equal(expectedStage,
+            WorkerHistoryCardPolicy.DataFlowStageKey(title, stage, published));
+    }
+
     [Fact]
     public void WorkerTransferCards_IdentifyRecipientAndResumedWork()
     {

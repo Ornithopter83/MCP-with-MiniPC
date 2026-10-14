@@ -10,6 +10,7 @@ public sealed class WorkerHistoryEventTests
     [InlineData("HighLevel", null, "Unity HIGH · 통합")]
     [InlineData("Manager", null, "#1 ASSET MANAGER")]
     [InlineData("Resource", null, "Unity DESIGN (#0)")]
+    [InlineData("Design", null, "Unity DESIGN (#0)")]
     [InlineData("Implementer", "0", "Unity DESIGN (#0)")]
     [InlineData("Implementer", "10", "Unity WORK (#10)")]
     [InlineData("Implementer", "27", "Unity WORK (#27)")]
@@ -34,6 +35,21 @@ public sealed class WorkerHistoryEventTests
         };
 
         Assert.Equal(expectedRole, item.Role);
+    }
+
+    [Fact]
+    public void DesignHistory_UsesSameBlueRoleStyleAsActivePipelineCard()
+    {
+        var item = new MainWindow.WorkerHistoryEvent(
+            DateTimeOffset.UtcNow, "Design", "ROLE_PROGRESS", "작업 진행",
+            "실행 중", null, null, null, "RUNNING", "M17:DESIGN:0")
+        {
+            WorkItemId = "0"
+        };
+        Assert.Equal("Unity DESIGN (#0)", item.Role);
+        Assert.Equal("current-openai.png", item.IconAssetName);
+        Assert.NotEqual(System.Windows.Media.Brushes.Transparent.ToString(),
+            item.IconBackground.ToString());
     }
 
     [Fact]

@@ -47,6 +47,7 @@ public partial class MainWindow : Window
         ["HighLevel"] = new("#ECD8E4", "#82194B", "#74133F", "current-openai.png"),
         ["Manager"] = new("#E7E7FF", "#5B5BD6", "#4646B8", "current-openai.png"),
         ["Resource"] = new("#E4EEF9", "#326FA8", "#245B8D", "current-openai.png"),
+        ["Design"] = new("#E4EEF9", "#326FA8", "#245B8D", "current-openai.png"),
         ["Worker"] = new("#EEF1F5", "#66788A", "#405166", "current-console.png"),
         ["Message"] = new("#EEF8F2", "#168A4A", "#116B39", "current-console.png")
     };
@@ -88,6 +89,7 @@ public partial class MainWindow : Window
                 "HighLevel" => "Unity HIGH · 통합",
                 "Manager" => "#1 ASSET MANAGER",
                 "Resource" => "Unity DESIGN (#0)",
+                "Design" => "Unity DESIGN (#0)",
                 "Worker" => "UnityWorker",
                 "Message" => "메시지",
                 _ => "시스템"
@@ -3463,7 +3465,7 @@ public partial class MainWindow : Window
             title, status, persistenceSource);
         var item = new WorkerHistoryEvent(
             DateTimeOffset.Now,
-            publish ? "Worker" : stage,
+            WorkerHistoryCardPolicy.DataFlowStageKey(title, stage, publish),
             "DATA_FLOW",
             publish
                 ? WorkerHistoryCardPolicy.DataFlowTitle(
@@ -3531,6 +3533,7 @@ public partial class MainWindow : Window
             WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
+            WorkerRoleState.Design => "Design",
             _ => "System"
         };
         var item = new WorkerHistoryEvent(
@@ -3568,7 +3571,7 @@ public partial class MainWindow : Window
                 WorkerRoleState.Qa => "QA PROGRESS",
                 WorkerRoleState.High => "HIGH PROGRESS",
                 WorkerRoleState.Resource => "RESOURCE PROGRESS",
-            WorkerRoleState.Design => "DESIGN PROGRESS",
+                WorkerRoleState.Design => "DESIGN PROGRESS",
                 _ => "HQ PROGRESS"
             },
             text,
@@ -3608,6 +3611,7 @@ public partial class MainWindow : Window
             WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
+            WorkerRoleState.Design => "Design",
             _ => "System"
         };
         var text = body?.Trim() ?? string.Empty;
@@ -3648,7 +3652,7 @@ public partial class MainWindow : Window
                 WorkerRoleState.Qa => "QA RESPONSE",
                 WorkerRoleState.High => "HIGH RESPONSE",
                 WorkerRoleState.Resource => "RESOURCE RESPONSE",
-            WorkerRoleState.Design => "DESIGN RESPONSE",
+                WorkerRoleState.Design => "DESIGN RESPONSE",
                 _ => "HQ RESPONSE"
             },
             fullText,

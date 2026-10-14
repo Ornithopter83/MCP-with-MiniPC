@@ -46,6 +46,22 @@ public sealed class WorkerHistoryLifecycleTests
     }
 
     [Fact]
+    public void DesignProgress_ReplacesRunningDesignCardOnCompletion()
+    {
+        var cards = new ObservableCollection<MainWindow.WorkerHistoryEvent>();
+        var refId = "M17:DESIGN:0";
+        WorkerHistoryCardPolicy.Publish(cards,
+            Card(refId, "Design", "ROLE_PROGRESS", "Unity 그래픽 제작 중"));
+        Assert.Equal("Unity DESIGN (#0)", cards[0].Role);
+        WorkerHistoryCardPolicy.PublishRoleResponse(cards,
+            Card(refId, "Design", "ROLE_RESPONSE", "시각 파일 변경 완료"));
+        Assert.Single(cards);
+        Assert.Equal("Design", cards[0].StageKey);
+        Assert.Equal("ROLE_RESPONSE", cards[0].EventType);
+        Assert.Equal("Unity DESIGN (#0)", cards[0].Role);
+    }
+
+    [Fact]
     public void WorkDetails_AccumulateWithinOneGreenCard_AndPromoteAtCompletion()
     {
         var cards = new ObservableCollection<MainWindow.WorkerHistoryEvent>();

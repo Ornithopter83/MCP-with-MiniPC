@@ -1102,7 +1102,8 @@ public partial class MainWindow
                     "#0 DESIGN 결과", designReport,
                     status: designReport.StartsWith("DESIGN_STATUS: COMPLETED",
                         StringComparison.Ordinal) ? "COMPLETED" : "BLOCKED",
-                    workItemId: "0", referenceId: designReference);
+                    workItemId: "0", referenceId: designReference,
+                    providerWireId: designRole.Provider);
             }
 
             void CaptureResourceState()
@@ -1510,7 +1511,8 @@ public partial class MainWindow
                     revisionReport,
                     status: RoleTextProtocol.ParseWork(designResponse).Status == "completed"
                         ? "COMPLETED" : "BLOCKED",
-                    workItemId: "0", referenceId: reviewReference);
+                    workItemId: "0", referenceId: reviewReference,
+                    providerWireId: designRole.Provider);
 
                 if (!HighDesignContinuationPolicy.ShouldResumeHigh(
                         designResponse, revisionChanges))

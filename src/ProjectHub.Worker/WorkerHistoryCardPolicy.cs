@@ -59,6 +59,15 @@ public static class WorkerHistoryCardPolicy
         };
     }
 
+    // Keep Worker as the sender in the title, but use the recipient's role
+    // palette on DESIGN dispatch so it matches the active DESIGN stage.
+    // HQ reception and Worker-level decisions remain Worker-owned cards.
+    public static string DataFlowStageKey(string title, string roleStage, bool publish) =>
+        !publish ? roleStage
+        : roleStage == "Design" && (title is "전달 데이터" or "재요청 데이터")
+            ? "Design"
+            : "Worker";
+
     public static void Publish(
         ObservableCollection<MainWindow.WorkerHistoryEvent> history,
         MainWindow.WorkerHistoryEvent item)
