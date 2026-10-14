@@ -878,35 +878,9 @@ public partial class MainWindow
 
         var milestoneChangedPaths = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase);
-        // Launch RESOURCE immediately; Git preflight and design commit must not
-        // delay its own transport or lifetime.
-        var resourceTasks = milestone.Resources.Values
-            .Select(resource =>
-            {
-                AddDataFlowHistory(
-                    WorkerRoleState.Resource,
-                    "Worker 분배",
-                    $"RESOURCE_ID: {resource.Id}" +
-                    Environment.NewLine +
-                    $"TARGET_PATH: {resource.TargetPath}",
-                    status: "DISPATCHED",
-                    referenceId: milestone.Id + ":RESOURCE:" + resource.Id,
-                    workItemId: "0",
-                    persistenceSource: "WORKER RESOURCE QUEUE");
-
-                return (
-                    Id: resource.Id,
-                    Task: _resourceTaskLifecycle.RunAsync(
-                        jobId,
-                        workingDirectory,
-                        resourceCancellation =>
-                            ExecuteMilestoneResourceBackgroundAsync(
-                                workingDirectory,
-                                milestone,
-                                resource.Id,
-                                resourceCancellation)));
-            })
-            .ToArray();
+        // RESOURCE image extraction is disabled in UnityWorker. DESIGN #0
+        // instead executes as an ordered, local, source-safe stage below.
+        var resourceTasks = Array.Empty<(string Id, Task<ResourceExecutionReport> Task)>();
 
         // RESOURCE is an independent sidecar: never gate WORK, QA, HIGH or Git
         // on generation, failure, artifact validation or transport completion.
@@ -1037,6 +1011,63 @@ public partial class MainWindow
                         MilestoneDefinitionContract.Limit(assetRun.Detail, 600),
                         status: "BLOCKED");
                 }
+            }
+
+            if (milestone.Design is { } design)
+            {
+                var designReference = milestone.Id + ":DESIGN:0";
+                AddDataFlowHistory(WorkerRoleState.Resource, "#0 DESIGN",
+                    "Design 문서 및 실제 시각 증거 검토: " + design.Path,
+                    status: "DISPATCHED", workItemId: "0",
+                    referenceId: designReference,
+                    persistenceSource: "WORKER DESIGN");
+                var beforeDesign =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory, cancellationToken);
+                string designReport;
+                try
+                {
+                    var run = await RunCoordinatorRoleAsync(
+                        jobId, "DESIGN",
+                        UnityDesignPromptPolicy.Build(design, workingDirectory),
+                        implementer with { ThreadSessionId = null, ThreadProjectPath = null },
+                        workingDirectory, null, null, cancellationToken,
+                        CodexSandboxMode.WorkspaceWrite,
+                        historyWorkItemId: "0",
+                        historyReferenceId: designReference);
+                    var parsed = RoleTextProtocol.ParseWork(run.FinalMessage);
+                    var verified = run.ExitCode == 0 && parsed.IsValid &&
+                        parsed.Status == "completed" &&
+                        UnityDesignPromptPolicy.IsVerifiedDocument(
+                            workingDirectory, design);
+                    designReport = (verified ? "DESIGN_STATUS: COMPLETED" :
+                        "DESIGN_STATUS: BLOCKED_OR_IN_PROGRESS") +
+                        Environment.NewLine +
+                        MilestoneDefinitionContract.Limit(run.FinalMessage, 1600);
+                }
+                catch (OperationCanceledException) when (
+                    cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    designReport = "DESIGN_STATUS: BLOCKED" +
+                        Environment.NewLine + ex.GetType().Name + ": " + ex.Message;
+                }
+                var afterDesign =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory, cancellationToken);
+                foreach (var changedPath in
+                    MilestoneMechanicalExecutor.DiffChangeStates(
+                        beforeDesign, afterDesign))
+                    milestoneChangedPaths.Add(changedPath);
+                mechanicalReports.Add("DESIGN #0: " + designReport);
+                AddRoleResponseHistory(WorkerRoleState.Resource,
+                    "#0 DESIGN 결과", designReport,
+                    status: designReport.StartsWith("DESIGN_STATUS: COMPLETED",
+                        StringComparison.Ordinal) ? "COMPLETED" : "BLOCKED",
+                    workItemId: "0", referenceId: designReference);
             }
 
             void CaptureResourceState()
@@ -1521,6 +1552,9 @@ public partial class MainWindow
         {
             new("HQ-DESIGN", "HQ", "COMPLETED")
         };
+        if (milestone.Design is not null)
+            nodes.Add(new("DESIGN-0", "DESIGN",
+                state is "FINALIZED" or "FINALIZE_FAILED" ? "COMPLETED" : "RUNNING", "0"));
         if (milestone.AssetManager is not null)
             nodes.Add(new("ASSET-MANAGER-1", "ASSET_MANAGER",
                 state == "ASSET_MANAGER_BLOCKED" || assetManagerFailed ? "BLOCKED" :
@@ -1592,8 +1626,12 @@ public partial class MainWindow
         if (milestone.AssetManager is not null)
             edges.Add(new("HQ-DESIGN", "ASSET-MANAGER-1", "ASSET_MANAGER_DISPATCH"));
 
+        if (milestone.Design is not null)
+            edges.Add(new("HQ-DESIGN", "DESIGN-0", "DESIGN_REQUEST"));
         foreach (var workNode in workNodes)
         {
+            if (milestone.Design is not null)
+                edges.Add(new("DESIGN-0", workNode, "DESIGN_GUIDANCE"));
             edges.Add(new(milestone.AssetManager is null ? "HQ-DESIGN" :
                 "ASSET-MANAGER-1", workNode,
                 milestone.AssetManager is null ? "DISPATCH" : "ASSET_MANAGER_TO_WORK"));
