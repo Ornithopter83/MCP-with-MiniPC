@@ -164,13 +164,12 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
                     // Windows can reject a foreground request from Worker;
                     // temporarily attach input queues as a bounded fallback.
                     var unityThread = GetWindowThreadProcessId(window, out _);
-                    var targetThread = GetWindowThreadProcessId(_previousUserWindow, out _);
                     var callerThread = GetCurrentThreadId();
+                    // Do not attach to the previous user's (possibly WPF)
+                    // thread: synchronous WinEvent callbacks may be queued
+                    // on that thread, causing a circular GUI wait.
                     var attachedUnity = unityThread != 0 && callerThread != unityThread &&
                         AttachThreadInput(callerThread, unityThread, true);
-                    var attachedTarget = targetThread != 0 && callerThread != targetThread &&
-                        targetThread != unityThread &&
-                        AttachThreadInput(callerThread, targetThread, true);
                     try
                     {
                         if (GetForegroundWindow() == window)
@@ -178,8 +177,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
                     }
                     finally
                     {
-                        if (attachedTarget)
-                            AttachThreadInput(callerThread, targetThread, false);
                         if (attachedUnity)
                             AttachThreadInput(callerThread, unityThread, false);
                     }
