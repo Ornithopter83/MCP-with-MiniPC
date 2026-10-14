@@ -543,6 +543,12 @@ internal static class MilestoneDefinitionContract
     {
         var builder = new StringBuilder();
         AppendWorkGoals(builder, milestone.WorkItems.Values);
+        if (milestone.Design is { } design)
+        {
+            builder.AppendLine("@@DESIGN_REQUEST");
+            builder.AppendLine("PATH: " + design.Path);
+            builder.AppendLine("INSTRUCTIONS: " + design.Instructions);
+        }
         if (milestone.AssetManager is { } asset)
         {
             builder.AppendLine("@@ASSET_MANAGER_REQUEST");
@@ -601,6 +607,12 @@ internal static class MilestoneDefinitionContract
     {
         var builder = new StringBuilder();
         AppendWorkGoals(builder, milestone.WorkItems.Values);
+        if (milestone.Design is { } design)
+        {
+            builder.AppendLine("@@DESIGN_REQUEST");
+            builder.AppendLine("PATH: " + design.Path);
+            builder.AppendLine("INSTRUCTIONS: " + design.Instructions);
+        }
         if (milestone.AssetManager is { } asset)
         {
             builder.AppendLine("@@ASSET_MANAGER_REQUEST");
