@@ -214,7 +214,7 @@ A 경로에서 최소:
 - Tetris 로그의 첫 WORK 출력 `[GOTO : HQ] I’ll inspect ...`는 제어행 뒤 설명을 포함했으나 이전 파서가 마지막 문자 `]`만 허용해 실패했다.
 - 재지시의 “Worker는 GOTO 제어선을 출력하지 말고”는 Worker 문구가 아니라 HQ AI가 만든 응답 본문이다. 이후 WORK가 제어행 없는 본문을 반환해 `GOTO_INVALID_FIRST_LINE`이 됐다.
 - 구현: 제어어 바로 뒤 `]`를 확인하고, 뒤따르는 같은 줄 텍스트를 body에 합친다. 테스트: Worker 61개 통과. Release 게시/복사는 이 수정 이후 미수행.
-- UNKNOWN은 원문·기술 상세를 한글 시스템 로그에 남기고, HQ에는 발생 역할·오류 코드·한글 설명만 작업당 1회 전달한다. 반복 오류는 로그 기록 후 종료하며 `[ROLE : UNKNOWN]` prompt 봉투 구조는 제거했다.
+- UNKNOWN은 원문·기술 상세를 한글 시스템 로그에 남기고, HQ에는 발생 역할·오류 코드·한글 설명만 작업당 1회 전달한다. 반복 오류는 로그 기록 후 종료하며 폐기된 역할 지정 프롬프트 봉투 구조는 제거했다.
 - 후속: UNKNOWN의 원문·기술 상세는 로그에만 보관하고 HQ에는 한글 오류 요약만 작업당 1회 전달한다. 재발 오류는 기록 후 종료한다.
 - WORK JEV 하단 계약과 API 문서에 원자적 NOUL/SCORE/CHOICE, QID, 기준, 선택 PASS/SCOPE/COUNTEREXAMPLE/EVIDENCE, 일부 QID만 재판정 규칙을 추가했다. JUDGE 비활성 시 지침은 제거된다.
 - 전체 테스트 69개 통과 (Worker 64, Agent 3, Core 1, Server 1), Release 빌드 경고 0/오류 0, 게시/복사 성공. SHA-256 `8C22F3D50CFFEAB2E27A6D84C7568D84A9ECEEA04F5D7DEA9A5B70626891A95A`. Explorer 오류 복귀 E2E 잔여.
