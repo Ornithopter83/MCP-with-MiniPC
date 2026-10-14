@@ -25,6 +25,17 @@ public sealed class UnityRoleMessageComposerTests
     }
 
     [Fact]
+    public void ReferencedMessageMarker_DoesNotReplaceRequiredLeadingSection()
+    {
+        var input = "이전 결과:\n@@MESSAGE\n<TEXT>과거 종료 알림</>\n@@REPORT\n<STATUS>blocked</>";
+        var output = UnityRoleMessageComposer.Compose(input);
+        Assert.StartsWith("@@MESSAGE\n이전 결과:", output);
+        Assert.Equal(1, output.Split('\n').Count(line => line == "@@MESSAGE"));
+        Assert.Contains("추가 작업 맥락:", output);
+        Assert.Contains("@@REPORT", output);
+    }
+
+    [Fact]
     public void StructuredReportTemplate_IsNeverChanged()
     {
         var input = "@@MESSAGE\n결과 형식:\n[GOTO=WORKER]\n@@REPORT\n<STATUS>completed</>\n[RESPONSE=OK]";

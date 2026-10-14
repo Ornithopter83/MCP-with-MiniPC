@@ -13,25 +13,23 @@ internal static class UnityRoleMessageComposer
             .Replace('\r', '\n')
             .Trim();
         var lines = value.Split('\n');
-        var seen = false;
+        var hasLeadingMessage = lines.Length > 0 &&
+            lines[0].Trim() == "@@MESSAGE";
         for (var index = 0; index < lines.Length; index++)
         {
             if (lines[index].Trim() != "@@MESSAGE")
                 continue;
-            if (!seen)
-            {
+            if (hasLeadingMessage && index == 0)
                 lines[index] = "@@MESSAGE";
-                seen = true;
-            }
             else
             {
-                // Information remains readable; duplicate transport headings
-                // do not create additional MESSAGE sections.
+                // A MESSAGE marker inside a previous response is reference
+                // data, not an additional top-level auxiliary section.
                 lines[index] = "추가 작업 맥락:";
             }
         }
 
         var body = string.Join("\n", lines);
-        return seen ? body : "@@MESSAGE\n" + body;
+        return hasLeadingMessage ? body : "@@MESSAGE\n" + body;
     }
 }
