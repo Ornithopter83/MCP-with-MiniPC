@@ -148,7 +148,8 @@ public sealed class StructuredMilestoneProtocolTests
             "<PATH>scripts/player.gd</>", "<PATH>scripts/player.gd</PATH>"));
         Assert.False(malformed.IsValid);
         var unknown = HqTextProtocol.Parse(Modern.Replace(
-            "<WIDTH>4096</>", "<WIDTH>4096</>\n<SECRET>value</>"));
+            "<PATH>docs/projecthub/visual-design.md</>",
+            "<PATH>docs/projecthub/visual-design.md</>\n<SECRET>value</>"));
         Assert.False(unknown.IsValid);
     }
 
