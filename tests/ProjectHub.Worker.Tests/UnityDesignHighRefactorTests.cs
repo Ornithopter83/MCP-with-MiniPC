@@ -62,11 +62,13 @@ public sealed class UnityDesignHighRefactorTests
     }
 
     [Fact]
-    public void HighHandoff_MissingEvidenceAndUnsafeTargetAreRejected()
+    public void HighHandoff_MissingEvidenceIsWarningButUnsafeTargetIsRejected()
     {
-        Assert.False(HighDesignHandoffContract.TryRead(
+        Assert.True(HighDesignHandoffContract.TryRead(
             Handoff.Replace("<EVIDENCE_PATH>temp/projecthub/frames/answer.png</>", ""),
-            out _, out _));
+            out var recovered, out var warning), warning);
+        Assert.Empty(recovered!.EvidencePaths);
+        Assert.Contains("EVIDENCE_UNVERIFIED_NO_SAFE_PATH", recovered.Warnings);
         Assert.False(HighDesignHandoffContract.TryRead(
             Handoff.Replace("Assets/UI/Quiz.prefab", "../other/Quiz.prefab"),
             out _, out _));

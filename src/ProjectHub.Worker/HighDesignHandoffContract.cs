@@ -49,7 +49,7 @@ internal static class HighDesignHandoffContract
         if (reason.Length == 0) reason = "HIGH 인계 이유 미기재";
         if (goal.Length is < 4 or > 2000 ||
             expected.Length > 2000 || reason.Length > 2000 ||
-            target.Contains(';') || target.Contains('\n') ||
+            target.Contains(';') || target.Any(char.IsControl) ||
             !MilestoneDefinitionContract.IsSafeRelativePath(target))
         {
             error = "HIGH_DESIGN_HANDOFF_FIELDS_INVALID";
@@ -77,7 +77,8 @@ internal static class HighDesignHandoffContract
                 .Replace('\\', '/');
             if (candidate.StartsWith("- ", StringComparison.Ordinal))
                 candidate = candidate[2..].Trim();
-            if (MilestoneDefinitionContract.IsSafeRelativePath(candidate))
+            if (!candidate.Any(char.IsControl) &&
+                MilestoneDefinitionContract.IsSafeRelativePath(candidate))
                 valid.Add(candidate);
             else
                 warnings.Add("EVIDENCE_UNSAFE_OR_INVALID_OMITTED");
