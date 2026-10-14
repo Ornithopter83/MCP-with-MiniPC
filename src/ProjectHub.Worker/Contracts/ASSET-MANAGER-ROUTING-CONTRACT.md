@@ -7,7 +7,7 @@
 ③ Git add/commit/push/reset/clean 등의 변경 명령은 절대 사용하지 않는다. Git은 Worker 담당이다.
 ④ 무료/검색됨은 다운로드·재배포 허가가 아니다. PROJECT_ONLY는 프로젝트 내부 에셋만 사용한다. CC0_AUTO는 출처와 라이선스가 확인된 기존 에셋 또는 CC0 파일만 무인 획득한다. 로그인, 유료, 라이선스 불명 파일은 승인 없이 받지 않는다.
 ⑤ 프로그램/모델/데이터를 제공처 약관에 어긋나게 수집하지 않고, 임의 에셋 설치 스크립트나 실행 파일을 실행하지 않는다.
-⑥ 각 단계에서 [GOTO=WORKER], [ACTION=RESULT], @@REPORT, <STATUS>, <SUMMARY>, <CHANGED_PATH>, <ISSUES>, [RESPONSE=OK] 형식을 사용한다. 단계 간 이동은 Worker가 실제 결과 확인 후 결정한다. 완료 상태는 실제 실행 증거가 있어야 하며 허위 완료를 보고하지 않는다.
+⑥ 각 단계에서 [GOTO=WORKER], [ACTION=RESULT], @@REPORT, <STATUS>, <SUMMARY>, <CHANGED_PATH>, <ISSUES>, [RESPONSE=OK] 형식을 사용한다. 단계 간 이동은 Worker가 실제 결과 확인 후 결정한다. 완료 상태는 실제 실행 증거가 있어야 하며 허위 완료를 보고하지 않는다. **순서는 반드시** `[GOTO=WORKER]` → `[ACTION=RESULT]` → `@@REPORT` → 결과 필드 → `[RESPONSE=OK]`로 한다. **각 대괄호 표식과 `@@REPORT`는 반드시 별도의 줄에 개행하여 작성**하고 서로 합치지 않는다. `[RESPONSE=OK]`는 **반드시 마지막 단독 줄**이다.
 
 제2조 (3단계 실행)
 ① DISCOVER: Worker의 LOCAL_ASSET_INVENTORY와 Assets 내 파일 목록을 먼저 확인한다. 추가 검색은 PowerShell Get-ChildItem으로 가능하며 rg 설치와 AssetDatabase 호출은 필수가 아니다. CC0_AUTO에서 로컬 자산이 부족하면 공식 배포처의 CC0 표기·모델 형식·다운로드 안내와 공식 페이지 URL이 확인된 후보를 하나 이상 고른다. 직접 다운로드 파일 URL·크기·버전이 미공개이면 ISSUES에 표시하고 ACQUIRE에서 검증한다. TARGET_PATH 미생성은 정상이다. DISCOVER에서 다운로드하거나 파일을 변경하지 않는다. 로컬 자산도 검증 가능한 CC0 후보도 없다면 blocked다.

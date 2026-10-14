@@ -31,9 +31,19 @@ internal static class UnityDesignPromptPolicy
             "재검증 증거를 남겨라. 실제 시각 파일 변경 없이 완료라고 보고하지 마라.\n" +
             "5. 변경 파일, 실제 실행한 명령과 관찰 결과, 실패·미검증 사항을 명시하라.\n\n" +
             "@@RESULT_CONTRACT\n" +
-            "[ACTION=RESULT] @@REPORT <STATUS>completed|in_progress|blocked</> " +
-            "<SUMMARY>실제 변경과 검증 근거</> <CHANGED_PATH>실제 수정 파일(반복)</> " +
-            "<ISSUES>실패·미검증</> [RESPONSE=OK].";
+            "대괄호 제어 표식과 @@REPORT는 반드시 각각 독립된 줄에 작성하고 개행한다. " +
+            "순서는 반드시 [GOTO=WORKER] -> [ACTION=RESULT] -> @@REPORT -> " +
+            "<STATUS>/<SUMMARY>/<CHANGED_PATH>/<ISSUES> -> [RESPONSE=OK]이다. " +
+            "대괄호 표식은 한 줄에 결합하지 않는다. [RESPONSE=OK]는 반드시 마지막 단독 줄이다.\n" +
+            "[GOTO=WORKER]\n" +
+            "[ACTION=RESULT]\n" +
+            "@@REPORT\n" +
+            "<STATUS>completed</>\n" +
+            "<SUMMARY>실제 변경과 검증 근거</>\n" +
+            "<CHANGED_PATH>실제 수정 파일(반복)</>\n" +
+            "<ISSUES>실패·미검증</>\n" +
+            "[RESPONSE=OK]\n" +
+            "STATUS는 completed, in_progress, blocked 중 실제 상태를 택하고 CHANGED_PATH는 반복할 수 있다.";
     }
 
     internal static bool IsVisualArtifact(string path) =>

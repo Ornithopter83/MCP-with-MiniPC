@@ -9,4 +9,17 @@
 - HIGH가 시각 결함을 인계했다면 목표·경로를 수정하고 변경과 재검증 증거를 `[GOTO=WORKER]`로 돌려준다. Worker가 변경 여부를 확인하고 HIGH 재검토를 수행하므로 DESIGN이 직접 HIGH를 호출하지 않는다.
 - 실제 시각 파일 변경 없이 `completed`를 보고하지 않는다. 진행이 막히면 실패 원인과 부분 변경을 보고한다.
 
-**출력:** `[GOTO=WORKER] [ACTION=RESULT] @@REPORT <STATUS>completed|in_progress|blocked</> <SUMMARY>변경·명령·시각 증거</> <CHANGED_PATH>실제 수정 파일</> <ISSUES>실패·미검증</> [RESPONSE=OK]`.
+**출력 문법(반드시 준수):** 대괄호 제어 표식과 `@@REPORT`는 **반드시 각각 독립된 줄에 작성하고 개행으로 분리**한다. 순서는 **반드시** `[GOTO=WORKER]` → `[ACTION=RESULT]` → `@@REPORT` → `<STATUS>`·`<SUMMARY>`·`<CHANGED_PATH>`·`<ISSUES>` → `[RESPONSE=OK]`이다. 대괄호 표식의 결합이나 순서 변경은 반드시 하지 않는다. `[RESPONSE=OK]`는 **반드시 마지막 단독 줄**이며 뒤에 설명·마침표·코드블록 표식을 붙이지 않는다.
+
+```text
+[GOTO=WORKER]
+[ACTION=RESULT]
+@@REPORT
+<STATUS>completed</>
+<SUMMARY>실제 변경·명령·시각 검증 근거</>
+<CHANGED_PATH>실제 수정 파일</>
+<ISSUES>실패·미검증 항목</>
+[RESPONSE=OK]
+```
+
+`<STATUS>` 값은 실제 상황에 맞춰 `completed`, `in_progress`, `blocked` 중 하나를 사용한다. `CHANGED_PATH`는 실제 변경 파일마다 반복할 수 있다.
