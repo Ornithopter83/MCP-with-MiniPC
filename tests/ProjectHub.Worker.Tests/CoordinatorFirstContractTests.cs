@@ -19,12 +19,10 @@ public sealed class CoordinatorFirstContractTests
                   "required": true,
                   "instructions": "앱 실행과 핵심 동작을 확인한다."
                 },
-                "resource": {
+                "design": {
                   "id": 0,
-                  "type": "image",
-                  "targetPath": "assets/hero.png",
-                  "instructions": "대표 이미지를 생성한다.",
-                  "style": "flat"
+                  "path": "docs/projecthub/visual-design.md",
+                  "instructions": "실제 화면을 보고 디자인 가이드를 작성한다."
                 },
                 "workItems": [
                   {
@@ -67,10 +65,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.Equal(new[] { "src/A", "src/B.cs" }, work.WritePaths);
         Assert.Contains("\"constraints\"", work.Body);
 
-        var resource = Assert.Single(milestone.Resources.Values);
-        Assert.Equal("IMAGE", resource.Type);
-        Assert.Equal("assets/hero.png", resource.TargetPath);
-        Assert.Contains("\"style\": \"flat\"", resource.Body);
+        Assert.Empty(milestone.Resources);
+        var design = Assert.IsType<MilestoneDesignDefinition>(milestone.Design);
+        Assert.Equal("docs/projecthub/visual-design.md", design.Path);
 
         var workReports = new Dictionary<string, string>
         {
