@@ -9,8 +9,8 @@ public sealed class WorkerHistoryEventTests
     [InlineData("Qa", null, "Unity QA · 플레이테스트")]
     [InlineData("HighLevel", null, "Unity HIGH · 통합")]
     [InlineData("Manager", null, "#1 ASSET MANAGER")]
-    [InlineData("Resource", null, "Unity 에셋 (#0)")]
-    [InlineData("Implementer", "0", "Unity 에셋 (#0)")]
+    [InlineData("Resource", null, "Unity DESIGN (#0)")]
+    [InlineData("Implementer", "0", "Unity DESIGN (#0)")]
     [InlineData("Implementer", "10", "Unity WORK (#10)")]
     [InlineData("Implementer", "27", "Unity WORK (#27)")]
     public void HistoryRole_UsesFiveRolePresentation(
