@@ -416,7 +416,7 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Equal(3, parsed.Issues.Count);
         Assert.Contains("#73 미해결", parsed.Issues[0]);
         var canonical = MilestoneDefinitionContract.NormalizeQaReport(0, actualQa, null);
-        Assert.StartsWith("@@REPORT", canonical);
+        Assert.StartsWith("@@REPORT", canonical.TrimStart());
         Assert.Contains("@@REPORT", canonical);
         Assert.Contains("<STATUS>issue</>", canonical);
         Assert.Contains("<ISSUES>", canonical);
@@ -514,7 +514,7 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
-    public void LegacyJsonReports_AreForwardedAsCanonicalTextWithoutStatusChange()
+    public void ObsoleteJsonReport_IsNotPromotedToSuccess()
     {
         const string oldHigh = """
             
@@ -524,11 +524,8 @@ public sealed class StructuredMilestoneProtocolTests
             """;
         var canonical = MilestoneDefinitionContract.NormalizeHighReport(0, oldHigh, null);
         Assert.StartsWith("", canonical);
-        Assert.Contains("<STATUS>completed</>", canonical);
-        Assert.Contains("<CHANGED_PATH>src/A.cs</>", canonical);
-        Assert.Contains("사람 검토 필요", canonical);
-        Assert.DoesNotContain("\"changedPaths\"", canonical);
-        Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(canonical));
+        Assert.Equal(oldHigh.Trim(), canonical);
+        Assert.Null(MilestoneDefinitionContract.ReadHighStatus(canonical));
     }
 
     [Fact]
@@ -541,7 +538,8 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Empty(milestone!.Resources);
         var design = Assert.IsType<MilestoneDesignDefinition>(milestone.Design);
         var prompt = UnityDesignPromptPolicy.Build(design, Path.GetTempPath());
-        Assert.Contains("[ROLE=DESIGN]", prompt);
+        Assert.DoesNotContain("[ROLE=DESIGN]", prompt);
+        Assert.Contains("DESIGN_ID: 0", prompt);
         Assert.Contains("capture_game_view", prompt);
         Assert.Contains("Application.runInBackground", prompt);
         Assert.Contains("미검증", prompt);

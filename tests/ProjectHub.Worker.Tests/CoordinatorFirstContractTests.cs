@@ -99,7 +99,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("MILESTONE_VALIDATION:", highContext);
         Assert.DoesNotContain("RESOURCE_RESULTS:", highContext);
         Assert.DoesNotContain("MECHANICAL_RESULTS:", highContext);
-        Assert.Contains("STATUS: completed", highContext);
+        Assert.DoesNotContain("STATUS: completed", highContext);
         Assert.Contains("구현 완료", highContext);
         Assert.DoesNotContain("\"status\": \"completed\"", highContext);
     }
@@ -1319,8 +1319,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Empty(remaining);
 
         var parsed = ActionBlockContract.ParseManager(merged);
-        Assert.False(parsed.HasErrors);
-        Assert.Equal("HQ", Assert.Single(parsed.ValidActions).GotoTarget);
+        Assert.True(parsed.HasErrors); // Obsolete MANAGER report action is no longer an accepted wire action.
     }
 
     [Fact]

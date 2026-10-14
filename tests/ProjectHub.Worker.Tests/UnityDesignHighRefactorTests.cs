@@ -36,9 +36,9 @@ public sealed class UnityDesignHighRefactorTests
     }
 
     private const string Handoff = """
-        
+        [GOTO=DESIGN]
         @@REPORT
-        <STATUS>design_handoff</>
+        <STATUS>in_progress</>
         <SUMMARY>실제 렌더 정답 O 배치 불량</>
         <DESIGN_GOAL>정답 O와 파티클이 중첩되지 않도록 UI 그래픽을 수정한다.</>
         <EVIDENCE_PATH>temp/projecthub/frames/answer.png</>
@@ -54,7 +54,8 @@ public sealed class UnityDesignHighRefactorTests
     {
         var parsed = RoleTextProtocol.ParseHigh(Handoff);
         Assert.True(parsed.IsValid, string.Join(";", parsed.Errors));
-        Assert.Equal("design_handoff", parsed.Status);
+        Assert.Equal("in_progress", parsed.Status);
+        Assert.Equal("design_handoff", MilestoneDefinitionContract.ReadHighStatus(Handoff));
         Assert.True(HighDesignHandoffContract.TryRead(Handoff, out var request, out var error), error);
         Assert.Equal("Assets/UI/Quiz.prefab", request!.TargetPath);
         Assert.Equal(Handoff, MilestoneDefinitionContract.NormalizeHighReport(0, Handoff, null));
@@ -89,7 +90,7 @@ public sealed class UnityDesignHighRefactorTests
         {
             Assert.Contains("반드시", contract);
             Assert.Contains("[GOTO=", contract);
-            Assert.Contains("[ACTION=", contract);
+            Assert.DoesNotContain("[ACTION=RESULT]", contract);
             Assert.Contains("[RESPONSE=OK]", contract);
             Assert.Contains("개행", contract);
         }
