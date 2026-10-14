@@ -32,6 +32,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private readonly object _sync = new();
     private readonly HashSet<IntPtr> _parkedEditorWindows = new();
     private System.Threading.Timer? _watchdog;
+    private bool _everAvailable;
     private IntPtr _hook;
     private IntPtr _previousUserWindow;
     private IntPtr _manualUnityWindow;
@@ -51,7 +52,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     internal int ExplicitUserUnitySelections { get; private set; }
     internal int RestoreSuccesses => RestoreAttempts - RestoreFailures;
 
-    internal string Diagnostic => Available
+    internal string Diagnostic => _everAvailable
         ? $"FOCUS_GUARD: restore={RestoreSuccesses}/{RestoreAttempts}; " +
           $"minimize_fallback_requests={MinimizeFallbacks}; " +
           $"parked_restored={ParkedWindowRestores}; not_restored={RestoreFailures}; " +
@@ -101,6 +102,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         {
             guard._unavailableReason = error.GetType().Name + ": " + error.Message;
         }
+        guard._everAvailable = guard.Available;
         return guard;
     }
 
