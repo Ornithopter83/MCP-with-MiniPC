@@ -73,6 +73,24 @@ public sealed class UnityDesignHighRefactorTests
     }
 
     [Fact]
+    public void HighAndHqContracts_DoNotPrescribeValidationRoundCounts()
+    {
+        var highContract = RoleContractLoader.LoadHighFooter();
+        var hqContract = RoleContractLoader.LoadHqFooter();
+        foreach (var contract in new[] { highContract, hqContract })
+        {
+            Assert.DoesNotMatch(@"\\bR[1-9]\\b", contract);
+            Assert.DoesNotContain("통합 R1/R2", contract);
+        }
+        Assert.Contains("기존 BUILD/TEST", highContract);
+        Assert.Contains("재검증", highContract);
+        Assert.Contains("기존 유효 증거의 재사용", hqContract);
+        // Internal guardrails remain deterministic, not model-facing.
+        Assert.False(UnityValidationBudget.CanStart(3, false));
+        Assert.True(UnityValidationBudget.CanStart(3, true));
+    }
+
+    [Fact]
     public void ValidationBudget_DoesNotCountDebugCommandsAsFullRounds()
     {
         Assert.True(UnityValidationBudget.CanStart(1, false));

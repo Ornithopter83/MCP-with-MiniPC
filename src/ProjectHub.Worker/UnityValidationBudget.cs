@@ -12,9 +12,4 @@ internal static class UnityValidationBudget
         round >= 1 && round <= BasicRoundCount ||
         round == MaximumRoundCount && previousRoundChangedIntegrationEvidence;
 
-    internal static string Guidance =>
-        "R1 existing BUILD/TEST evidence and critical scenes; " +
-        "R2 changed-area regression plus Player smoke; " +
-        "R3 at most once when R2 evidence invalidated. " +
-        "Local debugging is separate; failures/untested work remain visible.";
 }

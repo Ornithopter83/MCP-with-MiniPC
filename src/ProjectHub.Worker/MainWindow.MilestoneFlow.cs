@@ -2637,9 +2637,7 @@ public partial class MainWindow
         var prompt = RoleContractLoader.BuildHighPrompt(
             HighDesignContinuationPolicy.BuildReviewContext(
                 MilestoneDefinitionContract.BuildHighContext(
-                    milestone, workReports, qaReport, mechanicalReports) +
-                Environment.NewLine + "@@VALIDATION_BUDGET" +
-                Environment.NewLine + UnityValidationBudget.Guidance,
+                    milestone, workReports, qaReport, mechanicalReports),
                 previousHighReport));
 
         var sandbox = milestone.ReadOnlyNoFileChanges
