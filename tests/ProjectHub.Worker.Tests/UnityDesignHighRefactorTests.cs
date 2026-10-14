@@ -97,7 +97,10 @@ public sealed class UnityDesignHighRefactorTests
         Assert.Contains("[GOTO=WORKER]\n[ACTION=RESULT]\n@@REPORT", designContract);
         var designPrompt = UnityDesignPromptPolicy.Build(
             new MilestoneDesignDefinition("docs/projecthub/design.md",
-                "화면 정리", new[] { "Assets/Quiz/Presentation/QuizBoardDecorator.cs" }),
+                "화면 정리")
+            {
+                WritePaths = new[] { "Assets/Quiz/Presentation/QuizBoardDecorator.cs" }
+            },
             Path.GetTempPath());
         Assert.Contains("반드시", designPrompt);
         Assert.Contains("[GOTO=WORKER]\n[ACTION=RESULT]\n@@REPORT", designPrompt);
