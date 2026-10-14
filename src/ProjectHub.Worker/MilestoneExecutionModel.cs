@@ -15,6 +15,8 @@ internal sealed record MilestoneWorkDefinition(
     public string ExecutionMode { get; init; } = "NEW";
 }
 
+internal sealed record MilestoneDesignDefinition(string Path, string Instructions);
+
 internal sealed record AssetManagerDefinition(
     string RequestId,
     string Goal,
@@ -55,6 +57,7 @@ internal sealed record MilestoneDefinition(
     public string HighInstructions { get; init; } = string.Empty;
     public string PlanDocument { get; init; } = string.Empty;
     public AssetManagerDefinition? AssetManager { get; init; }
+    public MilestoneDesignDefinition? Design { get; init; }
 }
 
 internal sealed record MilestoneMechanicalResult(
@@ -364,90 +367,44 @@ internal static class MilestoneDefinitionContract
                 return false;
             }
 
+            // DESIGN #0 replaces the old image extraction sidecar.
+            if (milestoneJson.TryGetProperty("resource", out var unusedResource) &&
+                unusedResource.ValueKind != JsonValueKind.Null)
+            {
+                error = "UNITY_RESOURCE_ZERO_REPLACED_BY_DESIGN";
+                return false;
+            }
+            MilestoneDesignDefinition? design = null;
+            if (milestoneJson.TryGetProperty("design", out var designJson) &&
+                designJson.ValueKind != JsonValueKind.Null)
+            {
+                if (readOnlyNoFileChanges || designJson.ValueKind != JsonValueKind.Object ||
+                    !TryGetRequiredJsonString(designJson, "path", out var designPath) ||
+                    !TryGetRequiredJsonString(designJson, "instructions", out var designInstructions) ||
+                    !designPath.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+                    !designPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
+                    !IsSafeRelativePath(designPath) ||
+                    designInstructions.Length is < 1 or > 1200 ||
+                    (TryGetJsonId(designJson, "id", out var designId) &&
+                     designId != "0"))
+                {
+                    error = "MILESTONE_DESIGN_INVALID";
+                    return false;
+                }
+                if (workItems.Values.Any(work => !work.ReadOnly &&
+                    work.WritePaths.Any(path =>
+                        MilestoneMechanicalExecutor.IsPathWithinScopes(
+                            designPath, new[] { path }) ||
+                        MilestoneMechanicalExecutor.IsPathWithinScopes(
+                            path, new[] { designPath }))))
+                {
+                    error = "DESIGN_WORK_PATH_OVERLAP";
+                    return false;
+                }
+                design = new(designPath, designInstructions);
+            }
             var resources = new Dictionary<string, MilestoneResourceDefinition>(
                 StringComparer.OrdinalIgnoreCase);
-            if (!milestoneJson.TryGetProperty("resource", out var resourceJson))
-            {
-                error = "MILESTONE_RESOURCE_REQUIRED";
-                return false;
-            }
-
-            if (resourceJson.ValueKind != JsonValueKind.Null)
-            {
-                if (resourceJson.ValueKind != JsonValueKind.Object)
-                {
-                    error = "RESOURCE_OBJECT_OR_NULL_REQUIRED";
-                    return false;
-                }
-
-                var resourceId = TryGetJsonId(resourceJson, "id", out var explicitResourceId)
-                    ? explicitResourceId
-                    : "0";
-                if (!string.Equals(resourceId, "0", StringComparison.Ordinal))
-                {
-                    error = "RESOURCE_ID_INVALID";
-                    return false;
-                }
-
-                if (!TryGetRequiredJsonString(resourceJson, "type", out var resourceType) ||
-                    !string.Equals(resourceType, "image", StringComparison.OrdinalIgnoreCase))
-                {
-                    error = "RESOURCE_TYPE_INVALID";
-                    return false;
-                }
-
-                if (!TryGetRequiredJsonString(resourceJson, "targetPath", out var targetPath))
-                {
-                    error = "RESOURCE_TARGET_PATH_REQUIRED";
-                    return false;
-                }
-
-                if (!IsSafeRelativePath(targetPath))
-                {
-                    error = "RESOURCE 0: TARGET_PATH_OUTSIDE_PROJECT_ROOT";
-                    return false;
-                }
-
-                if (!TryGetRequiredJsonString(resourceJson, "instructions", out var resourceInstructions))
-                {
-                    error = "RESOURCE_INSTRUCTIONS_REQUIRED";
-                    return false;
-                }
-
-                var resourceBody = resourceJson.GetRawText();
-
-                static int? PositiveInt(JsonElement json, string name)
-                {
-                    if (!json.TryGetProperty(name, out var item) ||
-                        item.ValueKind != JsonValueKind.Number)
-                        return null;
-                    return item.TryGetInt32(out var value) && value > 0 ? value : null;
-                }
-
-                resources["0"] = new(
-                    "0",
-                    resourceType.ToUpperInvariant(),
-                    targetPath,
-                    resourceBody,
-                    resourceJson.GetRawText())
-                {
-                    Instructions = resourceInstructions,
-                    Width = PositiveInt(resourceJson, "width"),
-                    Height = PositiveInt(resourceJson, "height"),
-                    Columns = PositiveInt(resourceJson, "columns"),
-                    Rows = PositiveInt(resourceJson, "rows"),
-                    RequireAlpha = resourceJson.TryGetProperty("requireAlpha", out var alpha) &&
-                        alpha.ValueKind == JsonValueKind.True
-                };
-            }
-
-            if (assetManager is not null && resources.Values.Any(r =>
-                MilestoneMechanicalExecutor.IsPathWithinScopes(
-                    r.TargetPath, new[] { assetManager.TargetPath, assetManager.ScenePath })))
-            {
-                error = "ASSET_MANAGER_RESOURCE_PATH_OVERLAP";
-                return false;
-            }
 
             var qaInstructions = TryGetOptionalJsonString(milestoneJson, "qaInstructions") ?? string.Empty;
             var highInstructions = TryGetOptionalJsonString(milestoneJson, "highInstructions") ?? string.Empty;
@@ -477,7 +434,8 @@ internal static class MilestoneDefinitionContract
                 QaInstructions = qaInstructions,
                 HighInstructions = highInstructions,
                 PlanDocument = planDocument,
-                AssetManager = assetManager
+                AssetManager = assetManager,
+                Design = design
             };
             return true;
         }
