@@ -22,17 +22,20 @@ internal static class RoleTextProtocol
         Parse(raw, new[] { "passed", "issue", "blocked" });
 
     public static RoleTextResult ParseHigh(string? raw) =>
-        Parse(raw, new[] { "completed", "blocked", "design_handoff" });
+        Parse(raw, new[] { "completed", "blocked", "in_progress", "design_handoff" });
 
     public static string BuildResult(
         string status,
         string summary,
         IReadOnlyCollection<string>? changedPaths = null,
-        IReadOnlyCollection<string>? issues = null)
+        IReadOnlyCollection<string>? issues = null,
+        string? gotoTarget = null)
     {
         // All machine-readable response fields are middle fields inside one
         // major @@REPORT section; issue detail remains opaque free text.
         var b = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(gotoTarget))
+            b.AppendLine(RoleGotoContract.Format(gotoTarget));
         b.AppendLine("[ACTION=RESULT]");
         b.AppendLine();
         b.AppendLine("@@REPORT");
@@ -68,6 +71,9 @@ internal static class RoleTextProtocol
         if (normalized.Length == 0)
             return new("", "", Array.Empty<string>(), Array.Empty<string>(), new[] { "RESULT_EMPTY" });
 
+        if (!RoleGotoContract.TryReadLeading(normalized, out _, out var gotoError))
+            return new("", "", Array.Empty<string>(), Array.Empty<string>(),
+                new[] { gotoError });
         var lines = normalized.Split('\n');
         var reportIndex = Array.FindIndex(lines,
             line => line.Trim() == "@@REPORT");
@@ -79,7 +85,8 @@ internal static class RoleTextProtocol
 
         var significant = lines
             .Select((line, index) => new { Text = line.Trim(), Index = index })
-            .Where(item => item.Text.Length > 0)
+            .Where(item => item.Text.Length > 0 &&
+                !RoleGotoContract.IsGotoLine(item.Text))
             .ToArray();
         if (significant.Length == 0 ||
             !string.Equals(significant[0].Text, "[ACTION=RESULT]", StringComparison.OrdinalIgnoreCase))
@@ -128,7 +135,8 @@ internal static class RoleTextProtocol
         var header = lines.Take(reportIndex)
             .Select(line => line.Trim())
             .Where(line => line.Length > 0 &&
-                line != WebCorrelationContract.ResponseOkMarker)
+                line != WebCorrelationContract.ResponseOkMarker &&
+                !RoleGotoContract.IsGotoLine(line))
             .ToArray();
         if (header.Any(line => !string.Equals(
                 line, "[ACTION=RESULT]", StringComparison.OrdinalIgnoreCase)))
@@ -311,7 +319,8 @@ internal static class RoleTextProtocol
         result = new("", "", Array.Empty<string>(), Array.Empty<string>(),
             new[] { "JSON_REPORT_INVALID" });
         var significant = lines.Where(line => !string.IsNullOrWhiteSpace(line))
-            .Select(line => line.Trim()).ToArray();
+            .Select(line => line.Trim())
+            .Where(line => !RoleGotoContract.IsGotoLine(line)).ToArray();
         if (significant.Length < 2 ||
             !string.Equals(significant[0], "[ACTION=RESULT]",
                 StringComparison.OrdinalIgnoreCase) ||
@@ -345,10 +354,8 @@ internal static class RoleTextProtocol
 
             var status = (statusJson.GetString() ?? "").Trim().ToLowerInvariant();
             // Legacy HIGH statuses have a documented, conservative mapping.
-            var isHigh = allowedStatuses.Contains("completed",
-                StringComparer.OrdinalIgnoreCase) &&
-                !allowedStatuses.Contains("in_progress",
-                    StringComparer.OrdinalIgnoreCase);
+            var isHigh = allowedStatuses.Contains("design_handoff",
+                StringComparer.OrdinalIgnoreCase);
             if (isHigh)
             {
                 status = status switch

@@ -115,13 +115,12 @@ public static class ActionBlockContract
             cursor++;
         }
 
-        string? gotoTarget = null;
-        if (cursor < significant.Length &&
-            TryReadGoto(significant[cursor].line, out var parsedGoto))
-        {
-            gotoTarget = parsedGoto;
+        if (!RoleGotoContract.TryReadLeading(normalized,
+                out var gotoTarget, out var gotoError))
+            return new(Array.Empty<ActionBlock>(), new[] { gotoError });
+        while (cursor < significant.Length &&
+               RoleGotoContract.IsGotoLine(significant[cursor].line))
             cursor++;
-        }
 
         if (cursor >= significant.Length ||
             !TryReadActionStart(
@@ -648,33 +647,6 @@ public static class ActionBlockContract
             return false;
 
         actionName = value.ToUpperInvariant();
-        return true;
-    }
-
-    private static bool TryReadGoto(
-        string? line,
-        out string target)
-    {
-        target = string.Empty;
-        var trimmed = line?.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed) ||
-            !trimmed.StartsWith(
-                "[GOTO",
-                StringComparison.OrdinalIgnoreCase) ||
-            !trimmed.EndsWith(']'))
-        {
-            return false;
-        }
-
-        var colon = trimmed.IndexOf(':');
-        if (colon < 0)
-            return false;
-
-        var value = trimmed[(colon + 1)..^1].Trim();
-        if (value.Length == 0)
-            return false;
-
-        target = value.ToUpperInvariant();
         return true;
     }
 

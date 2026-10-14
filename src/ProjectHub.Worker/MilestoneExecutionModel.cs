@@ -1098,7 +1098,19 @@ internal static class MilestoneDefinitionContract
     public static string? ReadHighStatus(string message)
     {
         var parsed = RoleTextProtocol.ParseHigh(message);
-        return parsed.IsValid ? parsed.Status : null;
+        if (!parsed.IsValid ||
+            !RoleGotoContract.TryReadLeading(message,
+                out var destination, out _))
+            return null;
+        // Explicit GOTO is canonical; legacy design_handoff remains readable.
+        if (destination == "DESIGN" &&
+            parsed.Status is "in_progress" or "design_handoff")
+            return "design_handoff";
+        if (parsed.Status == "design_handoff")
+            return destination is null ? "design_handoff" : null;
+        if (parsed.Status == "in_progress")
+            return null; // Nonterminal status without a recipient is not a route.
+        return destination is null or "HQ" or "WORKER" ? parsed.Status : null;
     }
 
     private static string ArchiveMilestoneReports(
@@ -1221,12 +1233,12 @@ internal static class MilestoneDefinitionContract
         IReadOnlyCollection<string>? changedPaths = null,
         IReadOnlyCollection<string>? issues = null)
     {
-        _ = gotoTarget;
         return RoleTextProtocol.BuildResult(
             status,
             summary,
             changedPaths,
-            issues);
+            issues,
+            gotoTarget);
     }
 
     public static string NormalizeWorkReport(
@@ -1298,12 +1310,16 @@ internal static class MilestoneDefinitionContract
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseHigh(raw);
         // Intermediate handoff fields must survive normalization unmodified.
-        if (parsed.IsValid && parsed.Status == "design_handoff")
+        var routedStatus = ReadHighStatus(raw);
+        if (routedStatus == "design_handoff")
             return raw;
-        // Preserve unparseable HIGH evidence for diagnosis, as with QA.
-        if (parsed.IsValid)
+        // Never strip a conflicting or unsupported GOTO and accidentally PASS.
+        if (parsed.IsValid && routedStatus is not null)
+        {
+            RoleGotoContract.TryReadLeading(raw, out var destination, out _);
             return RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
-                parsed.ChangedPaths, parsed.Issues);
+                parsed.ChangedPaths, parsed.Issues, destination);
+        }
         return raw.Length == 0
             ? RoleTextProtocol.BuildResult("blocked", "HIGH_REPORT_EMPTY")
             : raw;

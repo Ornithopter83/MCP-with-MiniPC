@@ -79,15 +79,17 @@ internal static class HqTextProtocol
         if (significant.Length == 0)
             return Invalid("ACTION_OUTPUT_EMPTY");
 
+        if (!RoleGotoContract.TryReadLeading(normalized, out var gotoTarget,
+                out var gotoError))
+            return Invalid(gotoError);
+        if (gotoTarget is not null && gotoTarget != "WORKER")
+            return Invalid("HQ_GOTO_TARGET_INVALID");
         var cursor = 0;
         if (significant[cursor].Text.StartsWith("[KEY=", StringComparison.Ordinal))
             cursor++;
-
-        if (cursor < significant.Length &&
-            significant[cursor].Text.StartsWith("[GOTO", StringComparison.OrdinalIgnoreCase))
-        {
+        while (cursor < significant.Length &&
+               RoleGotoContract.IsGotoLine(significant[cursor].Text))
             cursor++;
-        }
 
         if (cursor >= significant.Length ||
             !TryReadAction(significant[cursor].Text, out var action))
