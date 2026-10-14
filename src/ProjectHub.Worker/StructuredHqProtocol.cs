@@ -78,7 +78,7 @@ internal static class StructuredHqProtocol
         if (sections.Count(s => s.Name == "QA") != 1 ||
             sections.Count(s => s.Name == "HIGH") != 1)
             errors.Add("COMPACT_QA_HIGH_REQUIRED");
-        if (sections.Any(s => s.Name is not ("MILESTONE" or "WORK" or "RESOURCE" or "ASSET_MANAGER" or "QA" or "HIGH" or "PLAN")))
+        if (sections.Any(s => s.Name is not ("MILESTONE" or "WORK" or "DESIGN" or "ASSET_MANAGER" or "QA" or "HIGH" or "PLAN")))
             errors.Add("COMPACT_SECTION_FORBIDDEN");
         var parsed = new Dictionary<Section, StructuredRoleFields>();
         foreach (var section in sections)
@@ -173,45 +173,40 @@ internal static class StructuredHqProtocol
         if (works.Count == 0 && assetManager is null)
             errors.Add("COMPACT_WORK_REQUIRED");
 
-        Dictionary<string, object?>? resource = null;
-        var resources = sections.Where(s => s.Name == "RESOURCE").ToArray();
-        if (resources.Length > 1) errors.Add("RESOURCE_COUNT");
-        if (resources.Length > 0)
+        // DESIGN #0 is a real, ordered design role, not a resource sidecar.
+        // RESOURCE #0 image generation is intentionally unsupported in UnityWorker.
+        Dictionary<string, object?>? design = null;
+        var designs = sections.Where(section => section.Name == "DESIGN").ToArray();
+        if (designs.Length > 1)
+            errors.Add("DESIGN_COUNT");
+        if (designs.Length == 1)
         {
-            var s = resources[0];
-            var type = Value(s, "TYPE");
-            var target = Value(s, "TARGET_PATH");
-            var instructions = Value(s, "INSTRUCTIONS");
-            if (s.Argument != "0") errors.Add("RESOURCE.ID");
-            if (!string.Equals(type, "image", StringComparison.OrdinalIgnoreCase))
-                errors.Add("RESOURCE.TYPE");
-            if (!MilestoneDefinitionContract.IsSafeRelativePath(target))
-                errors.Add("RESOURCE.TARGET_PATH");
-            if (instructions.Length == 0) errors.Add("RESOURCE.INSTRUCTIONS");
-            var optional = new Dictionary<string, int>();
-            foreach (var field in new[] { "WIDTH", "HEIGHT", "COLUMNS", "ROWS" })
+            var section = designs[0];
+            var path = Value(section, "PATH");
+            var instructions = Value(section, "INSTRUCTIONS");
+            if (section.Argument != "0") errors.Add("DESIGN.ID");
+            if (!path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
+                !path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
+                !MilestoneDefinitionContract.IsSafeRelativePath(path))
+                errors.Add("DESIGN.PATH");
+            if (instructions.Length is < 1 or > 1200)
+                errors.Add("DESIGN.INSTRUCTIONS");
+            if (parsed.TryGetValue(section, out var fields) && fields.Names.Any(name =>
+                    name is not ("PATH" or "INSTRUCTIONS")))
+                errors.Add("DESIGN.UNKNOWN_FIELD");
+            if (sections.Any(item => item.Name == "WORK") &&
+                sections.FindIndex(item => item == section) >
+                sections.FindIndex(item => item.Name == "WORK"))
+                errors.Add("DESIGN_MUST_PRECEDE_WORK");
+            if (works.Any(work => ((IReadOnlyList<string>)work["writePaths"]!).Any(
+                    workPath => MilestoneMechanicalExecutor.IsPathWithinScopes(
+                        path, new[] { workPath }) ||
+                        MilestoneMechanicalExecutor.IsPathWithinScopes(
+                            workPath, new[] { path }))))
+                errors.Add("DESIGN_WORK_PATH_OVERLAP");
+            design = new()
             {
-                var rawValue = Value(s, field);
-                if (rawValue.Length == 0) continue;
-                if (!int.TryParse(rawValue, out var value) || value < 1 || value > 16384)
-                    errors.Add("RESOURCE." + field);
-                else optional[field] = value;
-            }
-            var alpha = Value(s, "ALPHA");
-            if (alpha.Length != 0 && alpha != "required" && alpha != "optional")
-                errors.Add("RESOURCE.ALPHA");
-            if (parsed.TryGetValue(s, out var rf) && rf.Names.Any(n =>
-                    n is not ("TYPE" or "TARGET_PATH" or "INSTRUCTIONS" or "WIDTH" or "HEIGHT" or "COLUMNS" or "ROWS" or "ALPHA")))
-                errors.Add("RESOURCE.UNKNOWN_FIELD");
-            resource = new()
-            {
-                ["id"] = 0, ["type"] = "image", ["targetPath"] = target,
-                ["instructions"] = instructions,
-                ["width"] = optional.GetValueOrDefault("WIDTH"),
-                ["height"] = optional.GetValueOrDefault("HEIGHT"),
-                ["columns"] = optional.GetValueOrDefault("COLUMNS"),
-                ["rows"] = optional.GetValueOrDefault("ROWS"),
-                ["requireAlpha"] = alpha == "required"
+                ["id"] = 0, ["path"] = path, ["instructions"] = instructions
             };
         }
         var qa = Value(sections.FirstOrDefault(s => s.Name == "QA"), "INSTRUCTIONS");
@@ -232,7 +227,7 @@ internal static class StructuredHqProtocol
             ["qaInstructions"] = qa, ["highInstructions"] = high,
             ["planDocument"] = plan, ["entrypoint"] = null,
             ["initializeGitIfMissing"] = false, ["projectPolicy"] = "DEFAULT",
-            ["resource"] = resource, ["assetManager"] = assetManager, ["workItems"] = works
+            ["resource"] = null, ["design"] = design, ["assetManager"] = assetManager, ["workItems"] = works
         };
         var compatibility = "[ACTION=WORK]\n" + ProjectHubJson.SerializeIndented(
             new Dictionary<string, object?> { ["milestone"] = milestone });
