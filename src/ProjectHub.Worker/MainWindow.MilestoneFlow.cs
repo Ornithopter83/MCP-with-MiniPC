@@ -596,9 +596,9 @@ public partial class MainWindow
                 {
                     _currentMilestoneQaReserved = milestone!.QaReserved;
                     _currentMilestoneResourceReserved =
-                        milestone.Resources.Count > 0;
+                        milestone.Design is not null;
                     if (_currentMilestoneResourceReserved != true)
-                        _resourceSidecarStatus = "ChatGPT Web";
+                        _resourceSidecarStatus = "로컬 Design";
                     UpdatePipelineVisuals();
                     AddDataFlowHistory(
                         WorkerRoleState.Unknown,
@@ -1721,6 +1721,18 @@ public partial class MainWindow
             work.WritePaths,
             workingDirectory,
             readOnly: work.ReadOnly);
+        if (milestone.Design is { } design &&
+            UnityDesignPromptPolicy.IsVerifiedDocument(workingDirectory, design))
+        {
+            prompt += Environment.NewLine + Environment.NewLine +
+                "@@UNITY_DESIGN_GUIDANCE" + Environment.NewLine +
+                "DESIGN #0가 WORK 시작 전에 작성한 아트 방향·화면 검증 명세: " +
+                Path.Combine(workingDirectory,
+                    design.Path.Replace('/', Path.DirectorySeparatorChar)) +
+                Environment.NewLine +
+                "실제 캡처 기반 기준을 참고하고, 미확인 장면을 통과로 주장하지 마라. " +
+                "WORK의 개별 책임과 완료 기준은 변경되지 않는다.";
+        }
         if (work.ExecutionMode == "CONTINUE" &&
             !string.IsNullOrWhiteSpace(checkpoint!.LastReport))
         {
