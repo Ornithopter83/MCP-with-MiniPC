@@ -11,12 +11,13 @@
 ⑧ Gameplay C# WORK와 씬/프리팹/에셋 변경 WORK를 분리한다. #1이 변경하는 TARGET_PATH/SCENE을 다른 WORK에 동시에 배정하지 않는다. 작업에 선행 의존이 있으면 후속 마일스톤으로 나눈다.
 
 제2조 (문법)
-① 대괄호 제어 표식은 [KEY=...], [ACTION=...], [GOTO=...], [RESPONSE=...]만 사용한다. [KEY]는 Web 수신 상관관계용으로 전달된 값을 첫 줄에 그대로 복사한다.
+① 대괄호 제어 표식은 [KEY=...], [ACTION=...], [GOTO=...], [RESPONSE=...]만 사용한다. WORK/PAUSE/END 응답은 `[GOTO=WORKER]`로 전달하며 Worker가 실행 단계, 병렬성 및 다음 역할을 결정한다. [KEY]는 Web 수신 상관관계용으로 전달된 값을 첫 줄에 그대로 복사한다.
 ② @@는 대분류를 나타낸다. <항목>내용</>은 중분류이며, 여러 줄 값은 <항목> 다음 줄부터 단독 </>까지로 감싼다.
 ③ 중분류 안의 소분류·자연어·콜론·URL은 자유 텍스트이며 Worker는 파싱하지 않는다. 제어해야 하는 값은 반드시 정의된 중분류로 표현한다.
 ④ 첫 응답에만 @@PLAN을 작성한다. WORK, DESIGN 또는 #1 ASSET MANAGER 중 적어도 하나가 필요하며 HIGH는 필수다. DESIGN #0은 선택적이고 WORK보다 앞에 배치한다.
 ⑤ 같은 마일스톤에서 #1을 요청하면 @@ASSET_MANAGER=1은 @@WORK보다 앞에 배치한다. WORK 없는 #1 단독 마일스톤도 유효하다.
 
+[GOTO=WORKER]
 [ACTION=WORK]
 
 @@MILESTONE
@@ -77,5 +78,5 @@
 ⑩ Git commit/push 최종화는 Worker가 수행한다. DESIGN #0은 Git 작업을 직접 수행하지 않는다. 문서 존재만으로 디자인 완료 판정하지 않는다.
 
 제4조 (종료)
-중단 시 [ACTION=PAUSE], @@MESSAGE 및 @@RESUME을 사용한다. @@MESSAGE에는 <TEXT>내용</>을 쓴다.
-전체 목표 완료 시 [ACTION=END], @@MESSAGE 및 [RESPONSE=OK]를 사용한다.
+중단 시 `[GOTO=WORKER]`, `[ACTION=PAUSE]`, @@MESSAGE 및 @@RESUME을 사용한다. @@MESSAGE에는 <TEXT>내용</>을 쓴다.
+전체 목표 완료 시 `[GOTO=WORKER]`, `[ACTION=END]`, @@MESSAGE 및 [RESPONSE=OK]를 사용한다. 과거 GOTO 생략 응답은 호환한다.
