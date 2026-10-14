@@ -510,11 +510,12 @@ public partial class MainWindow
         }
         finally
         {
-            if (unityFocusGuard.RestoreAttempts > 0)
-                AddTaskMessage("UNITY BACKGROUND GUARD",
-                    unityFocusGuard.Diagnostic,
-                    status: unityFocusGuard.RestoreFailures == 0
-                        ? "OBSERVED" : "UNVERIFIED");
+            AddTaskMessage("UNITY BACKGROUND GUARD",
+                unityFocusGuard.Diagnostic,
+                status: unityFocusGuard.Available &&
+                        unityFocusGuard.RestoreFailures == 0
+                    ? "OBSERVED" : "UNVERIFIED",
+                includeHistory: false);
             UserAttachmentTransport.CleanupStagedWorkerRuntime(
                 stagedAttachments,
                 workingDirectory);

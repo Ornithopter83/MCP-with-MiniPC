@@ -33,6 +33,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private IntPtr _hook;
     private IntPtr _previousUserWindow;
     private IntPtr _manualUnityWindow;
+    private IntPtr _lastObservedForeground;
     private bool _restoring;
     private volatile bool _disposed;
     private string _unavailableReason = string.Empty;
@@ -43,11 +44,15 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     internal int RestoreAttempts { get; private set; }
     internal int RestoreFailures { get; private set; }
     internal int MinimizeFallbacks { get; private set; }
+    internal int UnityForegroundActivations { get; private set; }
+    internal int ExplicitUserUnitySelections { get; private set; }
     internal int RestoreSuccesses => RestoreAttempts - RestoreFailures;
 
     internal string Diagnostic => Available
         ? $"FOCUS_GUARD: restore={RestoreSuccesses}/{RestoreAttempts}; " +
           $"minimize_fallbacks={MinimizeFallbacks}; not_restored={RestoreFailures}; " +
+          $"unity_activations={UnityForegroundActivations}; " +
+          $"user_selection_exempt={ExplicitUserUnitySelections}; " +
           "watchdog=on, direct Unity mouse/Alt-Tab selection exempt. " +
           "Unity may briefly flash when it self-activates."
         : "FOCUS_GUARD_UNAVAILABLE: " + _unavailableReason +
@@ -120,7 +125,13 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
             if (_disposed || _restoring) return;
             try
             {
-                if (!IsUnityEditorWindow(window))
+                var isUnityEditor = IsUnityEditorWindow(window);
+                if (_lastObservedForeground != window)
+                {
+                    if (isUnityEditor) UnityForegroundActivations++;
+                    _lastObservedForeground = window;
+                }
+                if (!isUnityEditor)
                 {
                     // Switches to a regular application reset any explicit
                     // Unity focus exemption.
@@ -147,6 +158,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
                         MillisecondsSinceUserInput(), IsExplicitUnitySelection(window)))
                 {
                     _manualUnityWindow = window;
+                    ExplicitUserUnitySelections++;
                     return;
                 }
                 if (!UnityBackgroundFocusPolicy.ShouldRestore(
