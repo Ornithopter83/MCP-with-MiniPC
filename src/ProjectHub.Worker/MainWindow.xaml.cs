@@ -46,8 +46,8 @@ public partial class MainWindow : Window
         ["Qa"] = new("#FFF0B8", "#B87900", "#765000", "current-openai.png"),
         ["HighLevel"] = new("#ECD8E4", "#82194B", "#74133F", "current-openai.png"),
         ["Manager"] = new("#E7E7FF", "#5B5BD6", "#4646B8", "current-openai.png"),
-        ["Resource"] = new("#E4EEF9", "#326FA8", "#245B8D", "current-openai.png"),
-        ["Design"] = new("#E4EEF9", "#326FA8", "#245B8D", "current-openai.png"),
+        ["Resource"] = new("#FFF2CE", "#B97B0D", "#815300", "current-openai.png"),
+        ["Design"] = new("#FFF2CE", "#B97B0D", "#815300", "current-openai.png"),
         ["Worker"] = new("#EEF1F5", "#66788A", "#405166", "current-console.png"),
         ["Message"] = new("#EEF8F2", "#168A4A", "#116B39", "current-console.png")
     };
