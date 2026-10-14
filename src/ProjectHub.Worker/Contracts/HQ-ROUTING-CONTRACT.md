@@ -12,7 +12,7 @@
 
 제2조 (문법)
 ① 대괄호 제어 표식은 [KEY=...], [GOTO=...], [ACTION=...], [RESPONSE=...]만 사용한다. WORK/PAUSE/END 응답은 `[GOTO=WORKER]`로 전달하며 Worker가 실행 단계, 병렬성 및 다음 역할을 결정한다. [KEY]는 Web 수신 상관관계용으로 전달된 값을 첫 줄에 그대로 복사한다.
-①-1 **대괄호 제어 표식의 순서는 반드시 `[KEY=...]`(발급된 경우 최초 줄) → `[GOTO=WORKER]` → `[ACTION=WORK|PAUSE|END]` → `@@` 본문 → `[RESPONSE=OK]`(마지막 줄)이어야 한다. 각 대괄호 표식과 `@@` 대분류는 반드시 각각 독립된 줄에 작성하고 개행으로 분리한다. 한 줄에 `[GOTO=...] [ACTION=...]`이나 `[ACTION=...] @@MILESTONE`처럼 이어 쓰는 것은 반드시 금지한다. `[RESPONSE=OK]` 뒤에는 반드시 아무 내용도 쓰지 않는다.**
+①-1 **대괄호 제어 표식의 순서는 반드시 `[KEY=...]`(발급된 경우 최초 줄) → `[GOTO=WORKER]` → ACTION 값(WORK, PAUSE, END) → `@@` 본문 → `[RESPONSE=OK]`(마지막 줄)이어야 한다. 각 대괄호 표식과 `@@` 대분류는 반드시 각각 독립된 줄에 작성하고 개행으로 분리한다. 한 줄에 GOTO와 ACTION을 함께 쓰거나 `[ACTION=...] @@MILESTONE`처럼 이어 쓰는 것은 반드시 금지한다. `[RESPONSE=OK]` 뒤에는 반드시 아무 내용도 쓰지 않는다.**
 ② @@는 대분류를 나타낸다. <항목>내용</>은 중분류이며, 여러 줄 값은 <항목> 다음 줄부터 단독 </>까지로 감싼다.
 ③ 중분류 안의 소분류·자연어·콜론·URL은 자유 텍스트이며 Worker는 파싱하지 않는다. 제어해야 하는 값은 반드시 정의된 중분류로 표현한다.
 ④ 첫 응답에만 @@PLAN을 작성한다. WORK, DESIGN 또는 #1 ASSET MANAGER 중 적어도 하나가 필요하며 HIGH는 필수다. DESIGN #0은 선택적이고 WORK보다 앞에 배치한다.
@@ -74,7 +74,7 @@
 ⑥ 병렬 WORK에 충돌하는 경로를 배정하지 않는다. 이미 지정한 PATH와 WORK ID를 형식 복구 시에도 유지한다. 마일스톤 종료는 CONTINUE 가능한 WORK의 수명 종료가 아니며, WORK_IN_PROGRESS 보고를 받으면 다음 마일스톤에 동일 ID·MODE=CONTINUE를 지정할 수 있다.
 ⑦ #1의 에셋 검색·획득 및 씬 반영은 기존 WORK와 경로 충돌이 없어야 한다. 유료·로그인 필수·라이선스 불명 에셋은 자동 획득하지 않는다. #1의 Import/배치가 완료된 뒤 다른 WORK가 시작한다.
 ⑧ Unity 명령은 실제 Editor의 command 카탈로그와 버전을 먼저 확인하고 CLI/MCP의 등록된 명령만 사용한다. 배경 검증에는 연결된 Editor에 비-UI 명령을 우선 사용하고 새 GUI 실행, 창 활성화, 전경 키보드·마우스 포커스 탈취를 피한다. Application.runInBackground은 포커스가 없을 때 Player 업데이트를 유지할 뿐 창 비활성 실행이나 캡처를 보장하지 않는다. 별도 batchmode는 같은 프로젝트를 연 Editor와 충돌하며 -nographics에서는 시각 렌더 검증을 하지 않는다. 실행하지 않은 결과를 완료로 보고하지 않는다.
-⑨ HIGH에 첫 줄 ACTION_RESULT: PASS/FAIL 등을 출력하도록 요구하지 않는다. 역할 출력은 [ACTION=RESULT] 및 @@REPORT, <STATUS> 계약으로 고정된다. 형식 오류가 나면 원본 의미를 유지하고 문법만 고친다. [RESPONSE=OK] 뒤에는 다른 내용을 출력하지 않는다.
+⑨ HIGH에 별도 결과 ACTION을 요구하지 않는다. 역할 출력은 @@REPORT와 <STATUS> 계약으로 고정된다. 형식 오류가 나면 원본 의미를 유지하고 문법만 고친다. [RESPONSE=OK] 뒤에는 다른 내용을 출력하지 않는다.
 
 ⑩ Git commit/push 최종화는 Worker가 수행한다. DESIGN #0은 Git 작업을 직접 수행하지 않는다. 문서 존재만으로 디자인 완료 판정하지 않는다.
 

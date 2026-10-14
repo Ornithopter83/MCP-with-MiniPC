@@ -224,7 +224,7 @@ public sealed class StructuredMilestoneProtocolTests
     public void QaHighFormattingTypos_DoNotDiscardRealTestResults()
     {
         const string qa = """
-            [ACTION=RESULT]
+            
             @@REPORT
             <STATUS>issue</>
             <SUMMARY>
@@ -262,7 +262,7 @@ public sealed class StructuredMilestoneProtocolTests
     public void MixedXmlClosingTags_AreAcceptedWithoutChangingRealWorkOutcome()
     {
         const string report = """
-            [ACTION=RESULT]
+            
             @@REPORT
             <STATUS>blocked</STATUS>
             <SUMMARY>
@@ -318,7 +318,7 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.DoesNotContain("</STATUS>", normalizedQa);
 
         const string high = """
-            [ACTION=RESULT]
+            
             @@REPORT
             <STATUS>completed</STATUS>
             <SUMMARY>기존 결함 수정 및 검사 완료</SUMMARY>
@@ -337,47 +337,29 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.DoesNotContain("</CHANGED_PATH>", normalizedHigh);
     }
 
-    [Theory]
-    [InlineData("verified", "completed")]
-    [InlineData("modified", "completed")]
-    [InlineData("incomplete", "blocked")]
-    public void LegacyHighJsonResult_UsesExplicitConservativeStatusMapping(
-        string oldStatus, string currentStatus)
-    {
-        var report = "[ACTION=RESULT]\n" +
-            "{\"status\":\"" + oldStatus +
-            "\",\"summary\":\"실제 검증 정보\",\"changedPaths\":[\"src/A.cs\",\"src/B.cs\"]," +
-            "\"issues\":[\"남은 검사\"]}\n[RESPONSE=OK]";
-        var parsed = RoleTextProtocol.ParseHigh(report);
-        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
-        Assert.Equal(currentStatus, parsed.Status);
-        Assert.Equal(new[] { "src/A.cs", "src/B.cs" }, parsed.ChangedPaths);
-        Assert.Equal(new[] { "남은 검사" }, parsed.Issues);
-    }
-
     [Fact]
-    public void LegacyJsonResult_PreservesModernRoleStatuses()
+    public void ModernHighReport_RequiresExplicitStructuredStatus()
     {
-        const string work = """
-            [ACTION=RESULT]
-            {"status":"in_progress","summary":"테스트 중","changedPaths":["src/a.cs"]}
+        var report = """
+            [GOTO=HQ]
+            @@REPORT
+            <STATUS>completed</>
+            <SUMMARY>실제 검증 정보</>
+            <CHANGED_PATH>src/A.cs</>
+            <ISSUES>남은 검사</>
             [RESPONSE=OK]
             """;
-        Assert.Equal("in_progress", MilestoneDefinitionContract.ReadWorkStatus(work));
-
-        const string qa = """
-            [ACTION=RESULT]
-            {"status":"blocked","summary":"테스트 환경 접근 불가","issues":["GUI 없음"]}
-            [RESPONSE=OK]
-            """;
-        Assert.Equal("blocked", MilestoneDefinitionContract.ReadQaStatus(qa));
+        var parsed = RoleTextProtocol.ParseHigh(report);
+        Assert.True(parsed.IsValid);
+        Assert.Equal("completed", parsed.Status);
+        Assert.Equal(new[] { "src/A.cs" }, parsed.ChangedPaths);
     }
 
     [Fact]
     public void ReportCompatibility_DoesNotInferSuccessFromAmbiguousFields()
     {
         const string mismatched = """
-            [ACTION=RESULT]
+            
             @@REPORT
             <STATUS>completed</STATUS>
             <SUMMARY>
@@ -388,21 +370,21 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.False(RoleTextProtocol.ParseWork(mismatched).IsValid);
 
         const string ambiguousJson = """
-            [ACTION=RESULT]
+            
             {"status":"success","summary":"검증했다고 주장함"}
             [RESPONSE=OK]
             """;
         Assert.False(RoleTextProtocol.ParseQa(ambiguousJson).IsValid);
 
         const string modifiedWithoutPaths = """
-            [ACTION=RESULT]
+            
             {"status":"modified","summary":"수정을 주장하지만 변경 파일 없음"}
             [RESPONSE=OK]
             """;
         Assert.False(RoleTextProtocol.ParseHigh(modifiedWithoutPaths).IsValid);
 
         const string malformedJson = """
-            [ACTION=RESULT]
+            
             {"status":"passed","summary":
             [RESPONSE=OK]
             """;
@@ -434,7 +416,7 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Equal(3, parsed.Issues.Count);
         Assert.Contains("#73 미해결", parsed.Issues[0]);
         var canonical = MilestoneDefinitionContract.NormalizeQaReport(0, actualQa, null);
-        Assert.StartsWith("[ACTION=RESULT]", canonical);
+        Assert.StartsWith("@@REPORT", canonical);
         Assert.Contains("@@REPORT", canonical);
         Assert.Contains("<STATUS>issue</>", canonical);
         Assert.Contains("<ISSUES>", canonical);
@@ -449,7 +431,7 @@ public sealed class StructuredMilestoneProtocolTests
     public void MissingMiddleClosersAndMultiplePathBlocks_AreCanonicalized()
     {
         const string raw = """
-            [ACTION=RESULT]
+            
             @@REPORT
             <STATUS>completed
             <SUMMARY>두 파일 구현
@@ -475,7 +457,7 @@ public sealed class StructuredMilestoneProtocolTests
     public void FencedFieldExamplesAndInlineMentions_RemainSummaryEvidence()
     {
         const string raw = """
-            [ACTION=RESULT]
+            
             @@REPORT
             <STATUS>passed</>
             <SUMMARY>
@@ -535,13 +517,13 @@ public sealed class StructuredMilestoneProtocolTests
     public void LegacyJsonReports_AreForwardedAsCanonicalTextWithoutStatusChange()
     {
         const string oldHigh = """
-            [ACTION=RESULT]
+            
             {"status":"modified","summary":"코드 수정 후 통과",
              "changedPaths":["src/A.cs"],"issues":["사람 검토 필요"]}
             [RESPONSE=OK]
             """;
         var canonical = MilestoneDefinitionContract.NormalizeHighReport(0, oldHigh, null);
-        Assert.StartsWith("[ACTION=RESULT]", canonical);
+        Assert.StartsWith("", canonical);
         Assert.Contains("<STATUS>completed</>", canonical);
         Assert.Contains("<CHANGED_PATH>src/A.cs</>", canonical);
         Assert.Contains("사람 검토 필요", canonical);

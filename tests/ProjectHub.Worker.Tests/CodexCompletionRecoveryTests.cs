@@ -21,7 +21,7 @@ public sealed class CodexCompletionRecoveryTests
         Assert.False(CodexCliRunner.IsTerminalWorkReport(
             valid.Replace("[RESPONSE=OK]", "", StringComparison.Ordinal)));
         Assert.False(CodexCliRunner.IsTerminalWorkReport(
-            "[ACTION=RESULT]\n@@REPORT\n<STATUS>completed</>\n[RESPONSE=OK]"));
+            "\n@@REPORT\n<STATUS>completed</>\n[RESPONSE=OK]"));
         Assert.False(CodexCliRunner.IsTerminalWorkReport(
             "작업 완료했습니다. [RESPONSE=OK]"));
     }

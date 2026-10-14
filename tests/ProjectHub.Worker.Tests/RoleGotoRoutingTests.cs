@@ -5,7 +5,7 @@ namespace ProjectHub.Worker.Tests;
 public sealed class RoleGotoRoutingTests
 {
     private const string Summary = """
-        [ACTION=RESULT]
+        
         @@REPORT
         <STATUS>completed</>
         <SUMMARY>작업 결과</>
@@ -14,7 +14,7 @@ public sealed class RoleGotoRoutingTests
 
     private const string CanonicalHandoff = """
         [GOTO=DESIGN]
-        [ACTION=RESULT]
+        
         @@REPORT
         <STATUS>in_progress</>
         <SUMMARY>50개 승급 UI 문구 겹침</>
@@ -55,10 +55,10 @@ public sealed class RoleGotoRoutingTests
     }
 
     [Theory]
-    [InlineData("[GOTO=WORKER] [ACTION=RESULT] @@REPORT")]
-    [InlineData("[GOTO : WORKER][ACTION=RESULT]@@REPORT")]
-    [InlineData("[GOTO=WORKER]\\n[ACTION=RESULT] @@REPORT")]
-    [InlineData("[ACTION=RESULT] @@REPORT")]
+    [InlineData("[GOTO=WORKER]  @@REPORT")]
+    [InlineData("[GOTO : WORKER]@@REPORT")]
+    [InlineData("[GOTO=WORKER]\\n @@REPORT")]
+    [InlineData(" @@REPORT")]
     public void JoinedHeaderTokensAreRecoveredWithoutChangingContract(string header)
     {
         var report = header.Replace("\\n", "\n") + "\n" +
@@ -70,7 +70,7 @@ public sealed class RoleGotoRoutingTests
         Assert.Equal("completed",
             MilestoneDefinitionContract.ReadWorkStatus(report));
         var normalized = RoleGotoContract.NormalizeResultHeader(report);
-        Assert.Contains("[ACTION=RESULT]\n@@REPORT", normalized);
+        Assert.Contains("@@REPORT", normalized);
         if (header.StartsWith("[GOTO", StringComparison.Ordinal))
         {
             Assert.True(RoleGotoContract.TryReadLeading(
@@ -80,12 +80,12 @@ public sealed class RoleGotoRoutingTests
     }
 
     [Theory]
-    [InlineData("[GOTO=DESIGN] [ACTION=RESULT] @@REPORT")]
-    [InlineData("[GOTO : DESIGN][ACTION=RESULT]@@REPORT")]
+    [InlineData("[GOTO=DESIGN]  @@REPORT")]
+    [InlineData("[GOTO : DESIGN]@@REPORT")]
     public void HighHandoffJoinedHeaderIsRecovered(string header)
     {
         var report = CanonicalHandoff.Replace(
-            "[GOTO=DESIGN]\n[ACTION=RESULT]\n@@REPORT", header);
+            "[GOTO=DESIGN]\n\n@@REPORT", header);
         Assert.Equal("design_handoff",
             MilestoneDefinitionContract.ReadHighStatus(report));
         Assert.True(HighDesignHandoffContract.TryRead(
@@ -94,8 +94,8 @@ public sealed class RoleGotoRoutingTests
     }
 
     [Theory]
-    [InlineData("[GOTO=WORKER] [GOTO=DESIGN] [ACTION=RESULT] @@REPORT")]
-    [InlineData("[GOTO=UNKNOWN] [ACTION=RESULT] @@REPORT")]
+    [InlineData("[GOTO=WORKER] [GOTO=DESIGN]  @@REPORT")]
+    [InlineData("[GOTO=UNKNOWN]  @@REPORT")]
     public void JoinedHeaderStillRejectsConflictingOrInvalidRoutes(string header)
     {
         var report = header + "\n" +
@@ -106,7 +106,7 @@ public sealed class RoleGotoRoutingTests
     [Fact]
     public void GotoInsideSummaryNeverChangesRecipient()
     {
-        var report = "[GOTO=WORKER] [ACTION=RESULT] @@REPORT\n" +
+        var report = "[GOTO=WORKER]  @@REPORT\n" +
             "<STATUS>completed</>\n" +
             "<SUMMARY>예시 문자열 [GOTO=DESIGN]은 작업 설명입니다.</>\n" +
             "[RESPONSE=OK]";
@@ -154,19 +154,18 @@ public sealed class RoleGotoRoutingTests
     }
 
     [Fact]
-    public void LegacyHandoff_WithoutGotoRemainsReadable()
+    public void HandoffWithoutRoutingIsNotAccepted()
     {
-        var report = CanonicalHandoff.Replace("[GOTO=DESIGN]\n", "")
+        var report = CanonicalHandoff.Replace("[GOTO=DESIGN]\\n", "")
             .Replace("<STATUS>in_progress</>", "<STATUS>design_handoff</>");
-        Assert.Equal("design_handoff", MilestoneDefinitionContract.ReadHighStatus(report));
-        Assert.True(HighDesignHandoffContract.TryRead(report, out _, out _));
+        Assert.Null(MilestoneDefinitionContract.ReadHighStatus(report));
+        Assert.False(HighDesignHandoffContract.TryRead(report, out _, out _));
     }
 
     [Theory]
     [InlineData("completed", "DESIGN")]
     [InlineData("blocked", "DESIGN")]
     [InlineData("in_progress", "HQ")]
-    [InlineData("design_handoff", "HQ")]
     [InlineData("in_progress", "WORK")]
     public void ContradictoryOrUnauthorizedHighRouteCannotCompleteOrDispatch(
         string status, string destination)
@@ -185,7 +184,7 @@ public sealed class RoleGotoRoutingTests
     {
         const string report = """
             [GOTO : HQ]
-            [ACTION=RESULT]
+            
             @@REPORT
             <STATUS>completed</>
             <SUMMARY>검증 종료</>

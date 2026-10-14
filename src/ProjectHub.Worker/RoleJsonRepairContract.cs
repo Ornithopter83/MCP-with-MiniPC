@@ -26,9 +26,9 @@ internal static class RoleJsonRepairContract
             "기대 ACTION: " + expected +
             Environment.NewLine +
             Environment.NewLine +
-            "원문의 의미, 경로, 상태, 작업 내용, 결과와 property를 보존하면서 문법과 JSON 구조를 정상화한다." +
+            "원문의 의미, 경로, 상태, 작업 내용과 결과를 보존하면서 현재 응답 문법으로 정상화한다." +
             Environment.NewLine +
-            "ACTION은 응답 envelope로 표현하고 JSON 본문은 해당 역할의 결과 필드를 유지한다." +
+            "HQ ACTION은 제어 표식으로 유지한다. 다른 역할은 @@REPORT 본문으로 결과를 전달한다." +
             Environment.NewLine +
             "[GOTO : 역할]이 원문에 있거나 해당 스키마에 필요하면 ACTION 앞에 유지한다." +
             Environment.NewLine +
@@ -62,65 +62,10 @@ internal static class RoleJsonRepairContract
             (originalResponse ?? string.Empty);
     }
 
+    // Current role results use one structured report. The HQ control
+    // actions (WORK/PAUSE/END) are separate from role result reporting.
     private static string GetSchema(string role) =>
-        role switch
-        {
-            "MANAGER" => """
-                초기 분배:
-                [ACTION=DISPATCH]
-                {
-                  "workItemIds": [10],
-                  "mechanical": [
-                    {
-                      "operation": "BUILD",
-                      "command": "기존 명령"
-                    }
-                  ]
-                }
-
-                일시정지:
-                [ACTION=PAUSE]
-                { "message": "기존 메시지" }
-
-                최종 보고:
-                [GOTO : HQ]
-                [ACTION=REPORT]
-                {
-                  "status": "completed 또는 partial 또는 blocked",
-                  "content": "기존 결과와 판단 의견"
-                }
-                """,
-
-            "WORK" => """
-                [ACTION=RESULT]
-                {
-                  "status": "completed 또는 blocked",
-                  "summary": "기존 수행 결과",
-                  "changedPaths": [],
-                  "issues": []
-                }
-                """,
-
-            "QA" => """
-                [ACTION=RESULT]
-                {
-                  "status": "passed 또는 issue",
-                  "summary": "기존 조사 결과",
-                  "changedPaths": [],
-                  "issues": []
-                }
-                """,
-
-            "HIGH" => """
-                [ACTION=RESULT]
-                {
-                  "status": "verified 또는 modified 또는 incomplete",
-                  "summary": "기존 검토 결과",
-                  "changedPaths": [],
-                  "issues": []
-                }
-                """,
-
-            _ => "[ACTION=RESULT]\n{ \"status\": \"blocked\", \"summary\": \"기존 결과\" }"
-        };
+        role.Trim().ToUpperInvariant() == "HQ"
+            ? "[ACTION=WORK]\n@@MILESTONE\n<ID>M1</>\n@@HIGH\n<INSTRUCTIONS>기존 검토</>\n[RESPONSE=OK]"
+            : "@@REPORT\n<STATUS>blocked</>\n<SUMMARY>기존 결과</>\n<ISSUES>기존 문제</>\n[RESPONSE=OK]";
 }

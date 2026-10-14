@@ -72,7 +72,7 @@ public sealed class CoordinatorFirstContractTests
         var workReports = new Dictionary<string, string>
         {
             ["10"] = """
-                [ACTION=RESULT]
+                
                 {
                   "status": "completed",
                   "summary": "구현 완료",
@@ -278,29 +278,20 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void RoleJsonProtocol_PreservesGotoAndParsesResult()
+    public void HighReport_PreservesChangedPaths()
     {
         const string message = """
-            [ACTION=RESULT]
-            {
-              "status": "modified",
-              "summary": "검토 후 수정",
-              "changedPaths": ["src/Fix.cs"],
-              "issues": []
-            }
+            @@REPORT
+            <STATUS>completed</>
+            <SUMMARY>검토 후 수정</>
+            <CHANGED_PATH>src/Fix.cs</>
+            <ISSUES>없음</>
+            [RESPONSE=OK]
             """;
 
-        var parsed = ActionBlockContract.ParseHigh(message);
-
-        Assert.False(parsed.HasErrors);
-        var action = Assert.Single(parsed.ValidActions);
-        Assert.Equal("RESULT", action.Name);
-        Assert.Null(action.GotoTarget);
-        Assert.Equal(
-            new[] { "src/Fix.cs" },
-            ActionBlockContract.GetStringArray(
-                action,
-                "changedPaths"));
+        var parsed = RoleTextProtocol.ParseHigh(message);
+        Assert.True(parsed.IsValid);
+        Assert.Equal(new[] { "src/Fix.cs" }, parsed.ChangedPaths);
     }
 
     [Fact]
@@ -308,15 +299,15 @@ public sealed class CoordinatorFirstContractTests
     {
         var prompt = RoleJsonRepairContract.BuildPrompt(
             "WORK",
-            "[ACTION=RESULT]\n{ malformed }",
+            "\n{ malformed }",
             "JSON_INVALID",
             "RESULT");
 
         Assert.Contains("일회성 임시 WORK", prompt);
         Assert.Contains("역할: WORK", prompt);
         Assert.Contains("기대 ACTION: RESULT", prompt);
-        Assert.Contains("[ACTION=RESULT]", prompt);
-        Assert.Contains("ACTION은 응답 envelope로 표현", prompt);
+        Assert.Contains("@@REPORT", prompt);
+        Assert.Contains("현재 응답 문법", prompt);
     }
 
     [Fact]
@@ -591,45 +582,17 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HighChangedPaths_RejectMarkdownWrappedPath()
-    {
-        const string message = """
-            [ACTION=RESULT]
-            {
-              "status": "modified",
-              "summary": "수정 완료",
-              "changedPaths": ["`src/Fix.cs`"],
-              "issues": []
-            }
-            """;
-
-        var parsed = ActionBlockContract.ParseHigh(message);
-
-        Assert.True(parsed.HasErrors);
-        Assert.Contains(
-            "CHANGED_PATH_INVALID",
-            Assert.Single(parsed.Actions).Errors);
-    }
-
-    [Fact]
     public void WorkReportNormalizer_UsesAnnotationStatus()
     {
         var valid = MilestoneDefinitionContract.NormalizeWorkReport(
             0,
             """
-            [ACTION=RESULT]
-            STATUS: completed
-
-            @@SUMMARY
-            완료
-
-            @@CHANGED_PATHS
-            - src/A.cs
-
-            @@ISSUES
-            없음
-
-            [RESPONSE=OK]
+            @@REPORT
+<STATUS>completed</>
+<SUMMARY>완료</>
+<CHANGED_PATH>src/A.cs</>
+<ISSUES>없음</>
+[RESPONSE=OK]
             """,
             null);
 
@@ -652,19 +615,11 @@ public sealed class CoordinatorFirstContractTests
         var qa = MilestoneDefinitionContract.NormalizeQaReport(
             0,
             """
-            [ACTION=RESULT]
-            STATUS: passed
-
-            @@SUMMARY
-            동작 확인
-
-            @@CHANGED_PATHS
-            없음
-
-            @@ISSUES
-            없음
-
-            [RESPONSE=OK]
+            @@REPORT
+<STATUS>passed</>
+<SUMMARY>동작 확인</>
+<ISSUES>없음</>
+[RESPONSE=OK]
             """,
             null);
 
@@ -673,19 +628,12 @@ public sealed class CoordinatorFirstContractTests
         var high = MilestoneDefinitionContract.NormalizeHighReport(
             0,
             """
-            [ACTION=RESULT]
-            STATUS: completed
-
-            @@SUMMARY
-            보완 완료
-
-            @@CHANGED_PATHS
-            - src/Fix.cs
-
-            @@ISSUES
-            없음
-
-            [RESPONSE=OK]
+            @@REPORT
+<STATUS>completed</>
+<SUMMARY>보완 완료</>
+<CHANGED_PATH>src/Fix.cs</>
+<ISSUES>없음</>
+[RESPONSE=OK]
             """,
             null);
 
@@ -698,19 +646,11 @@ public sealed class CoordinatorFirstContractTests
         var qa = MilestoneDefinitionContract.NormalizeQaReport(
             0,
             """
-            [ACTION=RESULT]
-            STATUS: blocked
-
-            @@SUMMARY
-            실행환경 문제
-
-            @@CHANGED_PATHS
-            없음
-
-            @@ISSUES
-            - helper setup failed
-
-            [RESPONSE=OK]
+            @@REPORT
+<STATUS>blocked</>
+<SUMMARY>실행환경 문제</>
+<ISSUES>helper setup failed</>
+[RESPONSE=OK]
             """,
             null);
 
@@ -756,7 +696,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.DoesNotContain("@@MANAGER", hq);
         Assert.DoesNotContain("@@MECHANICAL", hq);
 
-        Assert.Contains("[ACTION=RESULT]", work);
+        Assert.Contains("@@REPORT", work);
         Assert.Contains("<STATUS>passed</>", qa);
         Assert.Contains("<STATUS>는 passed, issue, blocked", qa);
         Assert.DoesNotContain("[GOTO : HIGH]", qa);
@@ -807,7 +747,7 @@ public sealed class CoordinatorFirstContractTests
             "COMPLETED_WITH_HIGH",
             new Dictionary<string, string>
             {
-                ["10"] = "[ACTION=RESULT]\nSTATUS: completed\n\n@@SUMMARY\ndone\n\n@@CHANGED_PATHS\n없음\n\n@@ISSUES\n없음\n\n[RESPONSE=OK]"
+                ["10"] = "@@REPORT\n<STATUS>completed</>\n<SUMMARY>done</>\n<ISSUES>없음</>\n[RESPONSE=OK]"
             },
             new Dictionary<string, string>
             {
@@ -815,7 +755,7 @@ public sealed class CoordinatorFirstContractTests
             },
             new[] { "MECHANICAL BUILD\nstatus=COMPLETED" },
             "QA DETAIL",
-            "[ACTION=RESULT]\nSTATUS: completed\n\n@@SUMMARY\nHIGH 보완 완료\n\n@@CHANGED_PATHS\n- src/A.cs\n\n@@ISSUES\n없음\n\n[RESPONSE=OK]",
+            "@@REPORT\n<STATUS>completed</>\n<SUMMARY>HIGH 보완 완료</>\n<CHANGED_PATH>src/A.cs</>\n<ISSUES>없음</>\n[RESPONSE=OK]",
             new MilestoneGitResult(
                 true,
                 false,
@@ -1020,19 +960,12 @@ public sealed class CoordinatorFirstContractTests
     {
         var result = RoleTextProtocol.ParseWork(
             """
-            [ACTION=RESULT]
-            STATUS: completed
-
-            @@SUMMARY
-            구현 완료
-
-            @@CHANGED_PATHS
-            - src/A.cs
-
-            @@ISSUES
-            없음
-
-            [RESPONSE=OK]
+            @@REPORT
+<STATUS>completed</>
+<SUMMARY>구현 완료</>
+<CHANGED_PATH>src/A.cs</>
+<ISSUES>없음</>
+[RESPONSE=OK]
             """);
 
         Assert.True(result.IsValid, string.Join(", ", result.Errors));

@@ -7,7 +7,7 @@ internal static class UnityDesignPromptPolicy
 {
     internal static string Build(MilestoneDesignDefinition design, string projectRoot)
     {
-        return "[ROLE=DESIGN]\nDESIGN_ID: 0\nPROJECT_ROOT: " +
+        return "DESIGN_ID: 0\nPROJECT_ROOT: " +
             Path.GetFullPath(projectRoot) +
             "\nDESIGN_DOCUMENT: " + design.Path +
             "\nDESIGN_WRITE_PATHS: " +
@@ -32,11 +32,10 @@ internal static class UnityDesignPromptPolicy
             "5. 변경 파일, 실제 실행한 명령과 관찰 결과, 실패·미검증 사항을 명시하라.\n\n" +
             "@@RESULT_CONTRACT\n" +
             "대괄호 제어 표식과 @@REPORT는 반드시 각각 독립된 줄에 작성하고 개행한다. " +
-            "순서는 반드시 [GOTO=WORKER] -> [ACTION=RESULT] -> @@REPORT -> " +
+            "순서는 반드시 [GOTO=WORKER] -> @@REPORT -> " +
             "<STATUS>/<SUMMARY>/<CHANGED_PATH>/<ISSUES> -> [RESPONSE=OK]이다. " +
             "대괄호 표식은 한 줄에 결합하지 않는다. [RESPONSE=OK]는 반드시 마지막 단독 줄이다.\n" +
             "[GOTO=WORKER]\n" +
-            "[ACTION=RESULT]\n" +
             "@@REPORT\n" +
             "<STATUS>completed</>\n" +
             "<SUMMARY>실제 변경과 검증 근거</>\n" +

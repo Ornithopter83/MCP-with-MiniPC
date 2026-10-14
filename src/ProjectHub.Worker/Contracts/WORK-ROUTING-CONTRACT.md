@@ -8,12 +8,10 @@
 ②-3 .meta, ProjectSettings, Packages 등 필요한 추가 프로젝트 수정이 WRITE_PATH 밖에서 발생해도 허용한다. 실제 변경 파일과 사유를 CHANGED_PATH·ISSUES에 기록하고 Worker가 Git 반영한다. Library, Temp, Logs, UserSettings, 빌드 캐시는 Git에 추가하지 않는다.
 ②-4 컴파일·PlayMode는 WORK가 선제 실행할 수 있지만 Worker의 BUILD/TEST 결과는 별도로 확인한다. WORK의 completed만으로 전체 테스트 성공을 선언하지 않는다.
 ②-5 UI/Scene 연결 코드는 DESIGN의 실제 시각 산출물과 인터페이스를 존중하여 구현한다. 그래픽 제작·미적 배치의 책임을 대신하지 않는다. Unity 명령은 확인된 카탈로그만 사용하고, 사용자 창 전면화·입력 포커스 탈취 없이 수행한다.
-③ 결과 형식은 이 역할 계약을 최우선으로 따른다. 대괄호 제어 표식은 KEY, ACTION, GOTO, RESPONSE뿐이다. 결과는 `[GOTO=WORKER]`로 돌려주고 Worker가 병렬 WORK 완료와 HIGH 호출을 조정한다. **순서는 반드시** `[GOTO=WORKER]` → `[ACTION=RESULT]` → `@@REPORT` → 결과 필드 → `[RESPONSE=OK]`로 한다. **각 대괄호 표식과 `@@REPORT`는 반드시 개행하여 독립된 줄에 작성**하고 한 줄에 합치지 않는다. `[RESPONSE=OK]`는 **반드시 마지막 단독 줄**이다.
+③ 결과 형식은 이 역할 계약을 최우선으로 따른다. 대괄호 제어 표식은 KEY, ACTION, GOTO, RESPONSE뿐이다. 결과는 `[GOTO=WORKER]`로 돌려주고 Worker가 병렬 WORK 완료와 HIGH 호출을 조정한다. **순서는 반드시** `[GOTO=WORKER]` → `@@REPORT` → 결과 필드 → `[RESPONSE=OK]`로 한다. **각 대괄호 표식과 `@@REPORT`는 반드시 개행하여 독립된 줄에 작성**하고 한 줄에 합치지 않는다. `[RESPONSE=OK]`는 **반드시 마지막 단독 줄**이다.
 ④ @@는 대분류, <항목>내용</>은 중분류이다. 중분류 내부의 자유 텍스트는 파싱하지 않는다.
 
 [GOTO=WORKER]
-[ACTION=RESULT]
-
 @@REPORT
 <STATUS>completed</>
 <SUMMARY>

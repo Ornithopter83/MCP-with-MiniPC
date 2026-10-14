@@ -77,7 +77,7 @@ HQ는 개별 WorkItem 완료마다 호출되지 않는다.
 
 QA 호출 여부와 조사 목적은 HQ만 결정한다. HQ는 마일스톤 설계·세부설계에 QA 수행 여부와 조사 지시를 명시한다. Worker는 그 내용을 기계적으로 파싱하여 QA가 예약된 경우 해당 호출을 HIGH 이전의 정해진 위치에 삽입한다. 중간관리자와 HIGH는 QA를 호출하거나 QA 실행을 요구하지 않는다.
 
-HQ의 기계 지시는 `[ACTION=...]`으로 시작하고 바로 뒤의 단일 JSON 객체에 현재 판단에 필요한 전체 내용을 담는다. Worker는 ACTION과 JSON envelope를 기계적으로 파싱하며, 마일스톤·WorkItem·QA·RESOURCE·완료 기준·검증 조건과 추가 설명은 모두 JSON 내부 필드로 전달한다. Web HQ 응답은 기존 KEY 상관 규약을 유지하여 `[KEY=...]` → `[ACTION=...]` → JSON → `[RESPONSE=OK]` 순서를 사용한다.
+이 문단은 2026-10-05 당시 JSON 응답 구조를 기록한 것으로 현재 UnityWorker 계약은 아니다. 현행 HQ 제어는 KEY(관리형 Web에 발급된 경우), GOTO, ACTION(WORK/PAUSE/END), @@ 본문, RESPONSE 완료 순서를 따른다. 역할 실행 결과는 별도의 ACTION 값 없이 @@REPORT에 상태와 근거를 기록한다.
 
 ---
 

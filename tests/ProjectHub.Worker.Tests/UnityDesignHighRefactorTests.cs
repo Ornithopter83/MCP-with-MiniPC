@@ -36,7 +36,7 @@ public sealed class UnityDesignHighRefactorTests
     }
 
     private const string Handoff = """
-        [ACTION=RESULT]
+        
         @@REPORT
         <STATUS>design_handoff</>
         <SUMMARY>실제 렌더 정답 O 배치 불량</>
@@ -95,7 +95,7 @@ public sealed class UnityDesignHighRefactorTests
         }
         var designContract = RoleContractLoader.LoadDesignFooter()
             .Replace("\r\n", "\n", StringComparison.Ordinal);
-        Assert.Contains("[GOTO=WORKER]\n[ACTION=RESULT]\n@@REPORT", designContract);
+        Assert.Contains("[GOTO=WORKER]\n\n@@REPORT", designContract);
         var designPrompt = UnityDesignPromptPolicy.Build(
             new MilestoneDesignDefinition("docs/projecthub/design.md",
                 "화면 정리")
@@ -104,8 +104,8 @@ public sealed class UnityDesignHighRefactorTests
             },
             Path.GetTempPath());
         Assert.Contains("반드시", designPrompt);
-        Assert.Contains("[GOTO=WORKER]\n[ACTION=RESULT]\n@@REPORT", designPrompt);
-        Assert.DoesNotContain("[ACTION=RESULT] @@REPORT", designPrompt);
+        Assert.Contains("[GOTO=WORKER]\n\n@@REPORT", designPrompt);
+        Assert.DoesNotContain("[GOTO=WORKER] @@REPORT", designPrompt);
     }
 
     [Fact]

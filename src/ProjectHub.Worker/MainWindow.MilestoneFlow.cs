@@ -2229,7 +2229,7 @@ public partial class MainWindow
                     _formatRecoveryJobs[jobId] = 1;
                     result = await RunAsync(
                         "직전 WORKITEM의 작업·명령·파일 수정은 다시 실행하지 마라. " +
-                        "직전 실행 결과를 그대로 유지하고 형식만 [ACTION=RESULT], " +
+                        "직전 실행 결과를 그대로 유지하고 형식만 " +
                         "@@REPORT의 <STATUS>, <SUMMARY>, <CHANGED_PATH>, <ISSUES>, " +
                         "[RESPONSE=OK] 계약에 맞추어 재출력하라.\n\n" +
                         RoleContractLoader.LoadWorkFooter());

@@ -710,7 +710,7 @@ internal static class MilestoneDefinitionContract
     private static string StripRoleFormatOverrides(string instructions)
     {
         // HQ may describe tests, but it must not redefine the QA/HIGH
-        // [ACTION=RESULT] + @@REPORT + <STATUS> output contract.
+        // @@REPORT + <STATUS> output contract.
         return System.Text.RegularExpressions.Regex.Replace(
             instructions ?? string.Empty,
             @"첫\s*줄에\s*ACTION_RESULT:[^.!?\r\n]*[.!?]\s*",
@@ -1102,12 +1102,8 @@ internal static class MilestoneDefinitionContract
             !RoleGotoContract.TryReadLeading(message,
                 out var destination, out _))
             return null;
-        // Explicit GOTO is canonical; legacy design_handoff remains readable.
-        if (destination == "DESIGN" &&
-            parsed.Status is "in_progress" or "design_handoff")
-            return "design_handoff";
-        if (parsed.Status == "design_handoff")
-            return destination is null ? "design_handoff" : null;
+        if (destination == "DESIGN" && parsed.Status == "in_progress")
+            return "design_handoff"; // Scheduler state, not a model status.
         if (parsed.Status == "in_progress")
             return null; // Nonterminal status without a recipient is not a route.
         return destination is null or "HQ" or "WORKER" ? parsed.Status : null;

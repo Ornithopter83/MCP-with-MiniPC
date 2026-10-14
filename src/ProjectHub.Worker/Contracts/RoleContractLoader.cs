@@ -46,7 +46,6 @@ public static class RoleContractLoader
             throw new ArgumentException("WRITE_PATH가 비어 있습니다.", nameof(writePaths));
 
         var builder = new System.Text.StringBuilder();
-        builder.AppendLine("[ACTION=WORK]");
         builder.AppendLine("WORK_ID: " + workItemId);
         builder.AppendLine("PROJECT_ROOT: " + targetWorkspace);
         builder.AppendLine();
@@ -68,7 +67,6 @@ public static class RoleContractLoader
     }
 
     public static string BuildQaPrompt(string body) =>
-        "[ACTION=QA]\n" +
         (body ?? string.Empty) +
         "\n\n" +
         EncodingGuidance +
@@ -76,7 +74,6 @@ public static class RoleContractLoader
         LoadQaFooter();
 
     public static string BuildHighPrompt(string body) =>
-        "[ACTION=HIGH]\n" +
         (body ?? string.Empty) +
         "\n\n" +
         EncodingGuidance +

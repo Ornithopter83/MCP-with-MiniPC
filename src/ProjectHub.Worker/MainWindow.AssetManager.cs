@@ -387,7 +387,7 @@ public partial class MainWindow
         AssetManagerDefinition definition, string phase,
         string priorEvidence, string root, string localInventory = "")
     {
-        return "[ROLE=ASSET_MANAGER]\nASSET_MANAGER_ID: 1\nREQUEST_ID: " +
+        return "ASSET_MANAGER_ID: 1\nREQUEST_ID: " +
             definition.RequestId +
             "\nPHASE: " + phase +
             "\nPROJECT_ROOT: " + root +
