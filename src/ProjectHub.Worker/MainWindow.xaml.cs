@@ -209,7 +209,7 @@ public partial class MainWindow : Window
     private string _managerStageIconAsset = "current-openai.png";
     private bool _resourceSidecarActive;
     private int _resourceSidecarQueued;
-    private string _resourceSidecarStatus = "로컬 Design";
+    private string _resourceSidecarStatus = "DESIGN";
     private bool _allowClose;
     private bool _shutdownCleanupInProgress;
     private bool _newTaskCleanupInProgress;
@@ -1235,15 +1235,15 @@ public partial class MainWindow : Window
             _currentMilestoneResourceReserved == false;
         ResourceStageModelText.Text = resourceDisabled
             ? "미예약"
-            : _currentTaskStage == TaskStage.Resource || _resourceSidecarActive
-                ? _resourceSidecarStatus
-                : "Local Design";
+            : AiProviderCatalog.FormatModel(
+                _targetSettings.EffectiveDesign.Provider,
+                _targetSettings.EffectiveDesign.Model);
         SetPipelineCard(
             PipelineResourceCard,
             PipelineResourceTitle,
             ResourceStageCircle,
             ResourceStageIcon,
-            "current-openai.png",
+            ProviderVisualCatalog.Resolve(_targetSettings.EffectiveDesign.Provider).ColorAsset,
             TaskStage.Resource,
             RoleVisuals["Resource"],
             resourceDisabled,
@@ -1782,6 +1782,7 @@ public partial class MainWindow : Window
             SetRoleThreadOptions(ImplementerRoleThreadCombo, GetCompatibleThreadSession(ImplementerRoleThreadCombo, selected.ProjectPath));
             SetRoleThreadOptions(ManagerRoleThreadCombo, GetCompatibleThreadSession(ManagerRoleThreadCombo, selected.ProjectPath));
             SetRoleThreadOptions(QaRoleThreadCombo, GetCompatibleThreadSession(QaRoleThreadCombo, selected.ProjectPath));
+            SetRoleThreadOptions(DesignRoleThreadCombo, GetCompatibleThreadSession(DesignRoleThreadCombo, selected.ProjectPath));
             SetRoleThreadOptions(HighLevelRoleThreadCombo, GetCompatibleThreadSession(HighLevelRoleThreadCombo, selected.ProjectPath));
             roleCombo.SelectedItem = (roleCombo.ItemsSource as IEnumerable<CodexThreadOption>)?.FirstOrDefault(option =>
                 string.Equals(option.SessionId, selected.SessionId, StringComparison.OrdinalIgnoreCase) && PathsEqual(option.ProjectPath, selected.ProjectPath));
@@ -2409,6 +2410,7 @@ public partial class MainWindow : Window
         var coordinator = _targetSettings.EffectiveCoordinator;
         var implementer = _targetSettings.EffectiveImplementer;
         var qa = _targetSettings.EffectiveQa;
+        var design = _targetSettings.EffectiveDesign;
         var highLevel = _targetSettings.EffectiveHighLevel;
         var manager = _targetSettings.EffectiveManager;
         CoordinatorStageModelText.Text = IsWebTransport(coordinator.Transport) ? "ChatGPT Web" : AiProviderCatalog.FormatModel(coordinator.Provider, coordinator.Model);
@@ -2416,6 +2418,7 @@ public partial class MainWindow : Window
         QaStageModelText.Text = AiProviderCatalog.FormatModel(qa.Provider, qa.Model);
         HighLevelStageModelText.Text = AiProviderCatalog.FormatModel(highLevel.Provider, highLevel.Model);
         ManagerStageModelText.Text = AiProviderCatalog.FormatModel(manager.Provider, manager.Model);
+        ResourceStageModelText.Text = AiProviderCatalog.FormatModel(design.Provider, design.Model);
 
         _coordinatorStageIconAsset = IsWebTransport(coordinator.Transport)
             ? "current-web.png"
@@ -2429,6 +2432,7 @@ public partial class MainWindow : Window
         QaStageIcon.Source = LoadProviderAsset(_qaStageIconAsset);
         HighLevelStageIcon.Source = LoadProviderAsset(_highLevelStageIconAsset);
         ManagerStageIcon.Source = LoadProviderAsset(_managerStageIconAsset);
+        ResourceStageIcon.Source = LoadProviderAsset(ProviderVisualCatalog.Resolve(design.Provider).ColorAsset);
     }
 
     private static string FormatActiveWorkItemGauge(int activeCount)
@@ -2527,6 +2531,11 @@ public partial class MainWindow : Window
             PopulateRoleModelCombo(QaModelCombo, qa.Provider, qa.Model);
             PopulateRoleReasoningCombo(QaReasoningCombo, qa.Provider, qa.Model, qa.Reasoning);
 
+            var design = _targetSettings.EffectiveDesign;
+            PopulateProviderCombo(DesignProviderCombo, design.Provider);
+            PopulateRoleModelCombo(DesignModelCombo, design.Provider, design.Model);
+            PopulateRoleReasoningCombo(DesignReasoningCombo, design.Provider, design.Model, design.Reasoning);
+
             var highLevel = _targetSettings.EffectiveHighLevel;
             PopulateProviderCombo(HighLevelProviderCombo, highLevel.Provider);
             PopulateRoleModelCombo(HighLevelModelCombo, highLevel.Provider, highLevel.Model);
@@ -2536,11 +2545,13 @@ public partial class MainWindow : Window
             SetRoleThreadOptions(ImplementerRoleThreadCombo, implementer.ThreadSessionId);
             SetRoleThreadOptions(ManagerRoleThreadCombo, manager.ThreadSessionId);
             SetRoleThreadOptions(QaRoleThreadCombo, qa.ThreadSessionId);
+            SetRoleThreadOptions(DesignRoleThreadCombo, design.ThreadSessionId);
             SetRoleThreadOptions(HighLevelRoleThreadCombo, highLevel.ThreadSessionId);
             ApplyRoleSessionCapability(CoordinatorProviderCombo, CoordinatorRoleThreadCombo);
             ApplyRoleSessionCapability(ImplementerProviderCombo, ImplementerRoleThreadCombo);
             ApplyRoleSessionCapability(ManagerProviderCombo, ManagerRoleThreadCombo);
             ApplyRoleSessionCapability(QaProviderCombo, QaRoleThreadCombo);
+            ApplyRoleSessionCapability(DesignProviderCombo, DesignRoleThreadCombo);
             ApplyRoleSessionCapability(HighLevelProviderCombo, HighLevelRoleThreadCombo);
             UpdateRoleProviderVisuals();
             UpdateCoordinatorProviderCard();
@@ -2631,6 +2642,8 @@ public partial class MainWindow : Window
             return (ManagerModelCombo, ManagerReasoningCombo, ManagerRoleThreadCombo, ManagerProviderIcon);
         if (ReferenceEquals(providerCombo, QaProviderCombo))
             return (QaModelCombo, QaReasoningCombo, QaRoleThreadCombo, QaProviderIcon);
+        if (ReferenceEquals(providerCombo, DesignProviderCombo))
+            return (DesignModelCombo, DesignReasoningCombo, DesignRoleThreadCombo, DesignProviderIcon);
         if (ReferenceEquals(providerCombo, HighLevelProviderCombo))
             return (HighLevelModelCombo, HighLevelReasoningCombo, HighLevelRoleThreadCombo, HighLevelProviderIcon);
         throw new ArgumentException("Unknown role provider control.", nameof(providerCombo));
@@ -2641,6 +2654,7 @@ public partial class MainWindow : Window
         : ReferenceEquals(modelCombo, ImplementerModelCombo) ? ImplementerProviderCombo
         : ReferenceEquals(modelCombo, ManagerModelCombo) ? ManagerProviderCombo
         : ReferenceEquals(modelCombo, QaModelCombo) ? QaProviderCombo
+        : ReferenceEquals(modelCombo, DesignModelCombo) ? DesignProviderCombo
         : ReferenceEquals(modelCombo, HighLevelModelCombo) ? HighLevelProviderCombo
         : throw new ArgumentException("Unknown model control.", nameof(modelCombo));
 
@@ -2674,6 +2688,7 @@ public partial class MainWindow : Window
         SetProviderIcon(ImplementerProviderIcon, GetSelectedTag(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider));
         SetProviderIcon(ManagerProviderIcon, GetSelectedTag(ManagerProviderCombo, _targetSettings.EffectiveManager.Provider));
         SetProviderIcon(QaProviderIcon, GetSelectedTag(QaProviderCombo, _targetSettings.EffectiveQa.Provider));
+        SetProviderIcon(DesignProviderIcon, GetSelectedTag(DesignProviderCombo, _targetSettings.EffectiveDesign.Provider));
         SetProviderIcon(HighLevelProviderIcon, GetSelectedTag(HighLevelProviderCombo, _targetSettings.EffectiveHighLevel.Provider));
     }
 
@@ -2780,7 +2795,9 @@ public partial class MainWindow : Window
                 ? ManagerReasoningCombo
                 : ReferenceEquals(modelCombo, QaModelCombo)
                     ? QaReasoningCombo
-                    : ReferenceEquals(modelCombo, HighLevelModelCombo)
+                    : ReferenceEquals(modelCombo, DesignModelCombo)
+                        ? DesignReasoningCombo
+                        : ReferenceEquals(modelCombo, HighLevelModelCombo)
                         ? HighLevelReasoningCombo
                         : ImplementerReasoningCombo;
         var fallbackReasoning = ReferenceEquals(modelCombo, CoordinatorModelCombo)
@@ -2789,7 +2806,9 @@ public partial class MainWindow : Window
                 ? _targetSettings.EffectiveManager.Reasoning
                 : ReferenceEquals(modelCombo, QaModelCombo)
                     ? _targetSettings.EffectiveQa.Reasoning
-                    : ReferenceEquals(modelCombo, HighLevelModelCombo)
+                    : ReferenceEquals(modelCombo, DesignModelCombo)
+                        ? _targetSettings.EffectiveDesign.Reasoning
+                        : ReferenceEquals(modelCombo, HighLevelModelCombo)
                         ? _targetSettings.EffectiveHighLevel.Reasoning
                         : _targetSettings.EffectiveImplementer.Reasoning;
         var currentReasoning = GetSelectedTag(reasoningCombo, fallbackReasoning);
@@ -2835,7 +2854,7 @@ public partial class MainWindow : Window
         var selectedProviders = new List<string>
         {
             GetSelectedTag(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider),
-            GetSelectedTag(QaProviderCombo, _targetSettings.EffectiveQa.Provider),
+            GetSelectedTag(DesignProviderCombo, _targetSettings.EffectiveDesign.Provider),
             GetSelectedTag(HighLevelProviderCombo, _targetSettings.EffectiveHighLevel.Provider)
         };
         if (!string.Equals(GetSelectedTag(CoordinatorTargetCombo, "cli"), "web", StringComparison.OrdinalIgnoreCase))
@@ -2887,8 +2906,8 @@ public partial class MainWindow : Window
         var roleChecks = new[]
         {
             (Name: "일반 WORK", Role: implementer),
-            (Name: "QA", Role: _targetSettings.EffectiveQa),
-            (Name: "검토", Role: _targetSettings.EffectiveHighLevel)
+            (Name: "DESIGN", Role: _targetSettings.EffectiveDesign),
+            (Name: "HIGH", Role: _targetSettings.EffectiveHighLevel)
         };
         foreach (var check in roleChecks)
         {
@@ -3038,7 +3057,8 @@ public partial class MainWindow : Window
             Coordinator = ReadCoordinatorSettings(),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer),
             Manager = _targetSettings.Manager,
-            Qa = ReadRoleSettings(QaProviderCombo, QaModelCombo, QaReasoningCombo, _targetSettings.EffectiveQa),
+            Qa = _targetSettings.Qa,
+            Design = ReadRoleSettings(DesignProviderCombo, DesignModelCombo, DesignReasoningCombo, _targetSettings.EffectiveDesign),
             HighLevel = ReadRoleSettings(HighLevelProviderCombo, HighLevelModelCombo, HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel),
             MaxConcurrentWork = maxConcurrentWork
         };

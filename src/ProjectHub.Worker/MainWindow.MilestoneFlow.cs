@@ -72,6 +72,9 @@ public partial class MainWindow
         var high = NormalizeRoleSessionForWorkspace(
             _targetSettings.EffectiveHighLevel,
             normalizedRoot);
+        var designRole = NormalizeRoleSessionForWorkspace(
+            _targetSettings.EffectiveDesign,
+            normalizedRoot);
 
         _activeWorkingDirectory = normalizedRoot;
         _activeProjectJobId = jobId;
@@ -629,6 +632,7 @@ public partial class MainWindow
                         implementer,
                         qa,
                         high,
+                        designRole,
                         initialChangedPaths,
                         cts.Token);
                 }
@@ -865,6 +869,7 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         WorkerAiRoleSettings qa,
         WorkerAiRoleSettings high,
+        WorkerAiRoleSettings designRole,
         IReadOnlySet<string> initialChangedPaths,
         CancellationToken cancellationToken)
     {
@@ -1051,7 +1056,7 @@ public partial class MainWindow
                     var run = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
                         RoleContractLoader.BuildDesignPrompt(design, workingDirectory),
-                        implementer with { ThreadSessionId = null, ThreadProjectPath = null },
+                        designRole with { ThreadSessionId = null, ThreadProjectPath = null },
                         workingDirectory, null, null, cancellationToken,
                         CodexSandboxMode.WorkspaceWrite,
                         historyWorkItemId: "0",
@@ -1461,7 +1466,7 @@ public partial class MainWindow
                     var roleRun = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
                         RoleContractLoader.BuildDesignPrompt(handoffDesign, workingDirectory),
-                        implementer with { ThreadSessionId = null, ThreadProjectPath = null },
+                        designRole with { ThreadSessionId = null, ThreadProjectPath = null },
                         workingDirectory, null, null, cancellationToken,
                         CodexSandboxMode.WorkspaceWrite,
                         historyWorkItemId: "0", historyReferenceId: reviewReference);
