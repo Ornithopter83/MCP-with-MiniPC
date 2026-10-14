@@ -1531,7 +1531,8 @@ public partial class MainWindow
                 }
 
                 if (!UnityValidationBudget.CanStart(
-                        1 + invocation, revisionChanges.Length > 0))
+                        1 + invocation,
+                        HighDesignContinuationPolicy.HasNewIntegrationEvidence(revisionChanges)))
                 {
                     highReport = RoleTextProtocol.BuildResult("blocked",
                         "HIGH_VALIDATION_R3_NOT_JUSTIFIED",
@@ -1590,12 +1591,25 @@ public partial class MainWindow
                     mechanicalReports.Add("HIGH_FINAL_BUILD: " +
                         MilestoneDefinitionContract.FormatMechanicalResult(build));
                 if (highBuilds.Any(build => !build.Success))
+                {
+                    mechanicalReports.Add("HIGH_BEFORE_FAILED_FINAL_BUILD: " +
+                        MilestoneDefinitionContract.Limit(highReport, 1200));
+                    highReport = HighDesignContinuationPolicy.InvalidateCompletion(
+                        highReport, "HIGH_FINAL_BUILD_FAILED");
                     outcome = "HIGH_FINAL_BUILD_FAILED";
+                }
                 else
                     designRevisionBuildFailed = false;
             }
-            if (designRevisionBuildFailed && outcome == "COMPLETED")
-                outcome = "DESIGN_REVISION_BUILD_FAILED";
+            if (designRevisionBuildFailed)
+            {
+                mechanicalReports.Add("HIGH_BEFORE_FAILED_DESIGN_BUILD: " +
+                    MilestoneDefinitionContract.Limit(highReport, 1200));
+                highReport = HighDesignContinuationPolicy.InvalidateCompletion(
+                    highReport, "DESIGN_REVISION_BUILD_FAILED");
+                if (outcome == "COMPLETED")
+                    outcome = "DESIGN_REVISION_BUILD_FAILED";
+            }
 
             var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
                 jobId,

@@ -27,6 +27,20 @@ internal static class HighDesignContinuationPolicy
             "Do not assume the prior handoff was resolved.";
     }
 
+    internal static bool HasNewIntegrationEvidence(IEnumerable<string> changedPaths) =>
+        changedPaths.Any(path => UnityDesignPromptPolicy.IsVisualArtifact(path) ||
+            RequiresBuild(path));
+
+    internal static string InvalidateCompletion(string highReport, string failure)
+    {
+        if (!string.Equals(MilestoneDefinitionContract.ReadHighStatus(highReport),
+                "completed", StringComparison.OrdinalIgnoreCase))
+            return highReport;
+        return RoleTextProtocol.BuildResult("blocked",
+            "HIGH_REVIEW_INVALIDATED_BY_BUILD_FAILURE",
+            issues: new[] { failure });
+    }
+
     internal static bool RequiresBuild(IEnumerable<string> changedPaths) =>
         changedPaths.Any(RequiresBuild);
 

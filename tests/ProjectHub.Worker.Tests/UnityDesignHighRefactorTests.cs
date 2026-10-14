@@ -131,6 +131,10 @@ public sealed class UnityDesignHighRefactorTests
         Assert.True(HighDesignContinuationPolicy.RequiresBuild(
             new[] { "Packages/manifest.json" }));
         Assert.False(HighDesignContinuationPolicy.RequiresBuild(Array.Empty<string>()));
+        Assert.False(HighDesignContinuationPolicy.HasNewIntegrationEvidence(
+            new[] { "docs/projecthub/direction.md" }));
+        Assert.True(HighDesignContinuationPolicy.HasNewIntegrationEvidence(
+            new[] { "Assets/Art/O.png" }));
     }
 
     [Fact]
@@ -143,6 +147,19 @@ public sealed class UnityDesignHighRefactorTests
         Assert.Contains("DESIGN #0: STATUS=completed", context);
         Assert.DoesNotContain("@@PREVIOUS_HIGH_REVIEW",
             HighDesignContinuationPolicy.BuildReviewContext("base", null));
+    }
+
+    [Fact]
+    public void FailedBuild_InvalidatesHighCompletionWithoutMaskingOriginalIssue()
+    {
+        var done = RoleTextProtocol.BuildResult("completed", "review finished");
+        var invalidated = HighDesignContinuationPolicy.InvalidateCompletion(
+            done, "DESIGN_REVISION_BUILD_FAILED");
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadHighStatus(invalidated));
+        Assert.Contains("DESIGN_REVISION_BUILD_FAILED", invalidated);
+        var alreadyBlocked = RoleTextProtocol.BuildResult("blocked", "original fault");
+        Assert.Equal(alreadyBlocked, HighDesignContinuationPolicy.InvalidateCompletion(
+            alreadyBlocked, "HIGH_FINAL_BUILD_FAILED"));
     }
 
     [Fact]
