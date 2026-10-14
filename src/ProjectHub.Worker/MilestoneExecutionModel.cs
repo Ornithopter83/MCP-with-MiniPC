@@ -607,8 +607,17 @@ internal static class MilestoneDefinitionContract
                 foreach (var report in assetResults)
                     builder.AppendLine(Limit(report, 2500));
             }
+            var designResults = mechanicalReports.Where(report =>
+                report.StartsWith("DESIGN #0:", StringComparison.Ordinal) ||
+                report.StartsWith("HIGH_DESIGN_HANDOFF:", StringComparison.Ordinal)).ToArray();
+            if (designResults.Length > 0)
+            {
+                builder.AppendLine("@@DESIGN_RESULTS");
+                foreach (var report in designResults)
+                    builder.AppendLine(Limit(report, 4000));
+            }
             builder.AppendLine("@@BUILD_RESULTS");
-            foreach (var report in mechanicalReports.Except(assetResults))
+            foreach (var report in mechanicalReports.Except(assetResults).Except(designResults))
                 builder.AppendLine(Limit(report, 1200));
         }
         return builder.ToString().TrimEnd();
@@ -673,8 +682,17 @@ internal static class MilestoneDefinitionContract
                     builder.AppendLine(Limit(report, 2500));
             }
             builder.AppendLine();
+            var designResults = mechanicalReports.Where(report =>
+                report.StartsWith("DESIGN #0:", StringComparison.Ordinal) ||
+                report.StartsWith("HIGH_DESIGN_HANDOFF:", StringComparison.Ordinal)).ToArray();
+            if (designResults.Length > 0)
+            {
+                builder.AppendLine("@@DESIGN_RESULTS");
+                foreach (var report in designResults)
+                    builder.AppendLine(Limit(report, 4000));
+            }
             builder.AppendLine("@@BUILD_RESULTS");
-            foreach (var report in mechanicalReports.Except(assetResults))
+            foreach (var report in mechanicalReports.Except(assetResults).Except(designResults))
                 builder.AppendLine(Limit(report, 1200));
         }
         if (!string.IsNullOrWhiteSpace(qaReport))
@@ -1268,6 +1286,9 @@ internal static class MilestoneDefinitionContract
 
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseHigh(raw);
+        // Intermediate handoff fields must survive normalization unmodified.
+        if (parsed.IsValid && parsed.Status == "design_handoff")
+            return raw;
         // Preserve unparseable HIGH evidence for diagnosis, as with QA.
         if (parsed.IsValid)
             return RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,

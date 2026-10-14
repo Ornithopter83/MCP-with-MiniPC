@@ -1336,6 +1336,142 @@ public partial class MainWindow
                 beforeHigh, afterHigh))
                 milestoneChangedPaths.Add(path);
 
+            // HIGH remains nonterminal until an evidence-bound DESIGN handoff
+            // returns and the original HIGH role reviews the actual changes.
+            var designHandoffs = 0;
+            while (MilestoneDefinitionContract.ReadHighStatus(highReport) == "design_handoff")
+            {
+                if (designHandoffs >= HighDesignHandoffContract.MaxReviewHandoffs)
+                {
+                    highReport = RoleTextProtocol.BuildResult(
+                        "blocked", "HIGH_DESIGN_HANDOFF_BUDGET_EXHAUSTED",
+                        issues: new[] { "Additional visual review requires an HQ milestone." });
+                    break;
+                }
+                if (!HighDesignHandoffContract.TryRead(
+                        highReport, out var request, out var handoffError) ||
+                    request is null)
+                {
+                    highReport = RoleTextProtocol.BuildResult(
+                        "blocked", "HIGH_DESIGN_HANDOFF_INVALID",
+                        issues: new[] { handoffError });
+                    break;
+                }
+                if (_hqInterventions?.Pending().Any(entry =>
+                        UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
+                {
+                    mechanicalReports.Add("USER_PAUSE_REQUESTED: no new DESIGN validation");
+                    return await BuildHqDecisionReportAsync(jobId, workingDirectory,
+                        milestone, "USER_PAUSE_REQUESTED",
+                        "Preserve previous HIGH evidence; HQ must decide PAUSE.",
+                        initialChangedPaths, cancellationToken, mechanicalReports,
+                        milestoneChangedPaths.ToArray());
+                }
+
+                designHandoffs++;
+                var invocation = designHandoffs;
+                var evidenceFile = Path.Combine(workingDirectory,
+                    request.EvidencePath.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(evidenceFile))
+                {
+                    highReport = RoleTextProtocol.BuildResult("blocked",
+                        "HIGH_DESIGN_HANDOFF_EVIDENCE_MISSING",
+                        issues: new[] { request.EvidencePath });
+                    break;
+                }
+                mechanicalReports.Add("HIGH_DESIGN_HANDOFF: " + invocation +
+                    " GOAL: " + request.Goal + " EVIDENCE: " + request.EvidencePath +
+                    " TARGET: " + request.TargetPath);
+                var handoffDesign = milestone.Design is { } existingDesign
+                    ? existingDesign with
+                    {
+                        Instructions = request.Goal + "\nExpected: " + request.ExpectedResult +
+                            "\nReason: " + request.Reason +
+                            "\nEvidence: " + request.EvidencePath,
+                        WritePaths = new[] { request.TargetPath }
+                    }
+                    : new MilestoneDesignDefinition(
+                        "docs/projecthub/visual-handoff-" +
+                        new string(milestone.Id.Where(char.IsLetterOrDigit).ToArray()) + ".md",
+                        request.Goal + "\nExpected: " + request.ExpectedResult +
+                            "\nReason: " + request.Reason +
+                            "\nEvidence: " + request.EvidencePath)
+                    { WritePaths = new[] { request.TargetPath } };
+
+                // Exclusive Editor lane while HIGH yields mutation ownership.
+                var beforeReviewDesign =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory, cancellationToken);
+                var reviewReference = milestone.Id + ":DESIGN:0:REVISION:" + invocation;
+                AddDataFlowHistory(WorkerRoleState.Design, "#0 DESIGN 인계",
+                    mechanicalReports.Last(), status: "DISPATCHED",
+                    workItemId: "0", referenceId: reviewReference,
+                    persistenceSource: "HIGH DESIGN HANDOFF");
+                string designResponse;
+                try
+                {
+                    var roleRun = await RunCoordinatorRoleAsync(
+                        jobId, "DESIGN",
+                        RoleContractLoader.BuildDesignPrompt(handoffDesign, workingDirectory),
+                        implementer with { ThreadSessionId = null, ThreadProjectPath = null },
+                        workingDirectory, null, null, cancellationToken,
+                        CodexSandboxMode.WorkspaceWrite,
+                        historyWorkItemId: "0", historyReferenceId: reviewReference);
+                    var parsedDesign = RoleTextProtocol.ParseWork(roleRun.FinalMessage);
+                    designResponse = roleRun.ExitCode == 0 && parsedDesign.IsValid
+                        ? roleRun.FinalMessage
+                        : RoleTextProtocol.BuildResult("blocked",
+                            "DESIGN_REVISION_INVALID_OR_PROCESS_FAILED",
+                            issues: new[] { roleRun.StandardError ?? string.Empty });
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    designResponse = RoleTextProtocol.BuildResult(
+                        "blocked", "DESIGN_REVISION_ERROR: " + exception.Message);
+                }
+
+                var afterReviewDesign =
+                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                        workingDirectory, cancellationToken);
+                var revisionChanges = MilestoneMechanicalExecutor.DiffChangeStates(
+                    beforeReviewDesign, afterReviewDesign).ToArray();
+                foreach (var changed in revisionChanges)
+                    milestoneChangedPaths.Add(changed);
+                var graphical = revisionChanges.Any(UnityDesignPromptPolicy.IsVisualArtifact);
+                var designParsed = RoleTextProtocol.ParseWork(designResponse);
+                if (!graphical && designParsed.Status == "completed")
+                    designResponse = RoleTextProtocol.BuildResult("blocked",
+                        "DESIGN_REPORTED_COMPLETE_WITHOUT_GRAPHICS",
+                        issues: new[] { "No changed Scene/Prefab/visual asset evidence." });
+                var revisionReport = "DESIGN #0: INVOCATION=" + invocation +
+                    " STATUS=" + RoleTextProtocol.ParseWork(designResponse).Status +
+                    "\nCHANGED_PATHS=" + string.Join(", ", revisionChanges) +
+                    "\nVISUAL_E2E=UNVERIFIED_UNLESS_INSPECTED\n" +
+                    MilestoneDefinitionContract.Limit(designResponse, 4000);
+                mechanicalReports.Add(revisionReport);
+                AddRoleResponseHistory(WorkerRoleState.Design, "#0 DESIGN 반환",
+                    revisionReport,
+                    status: RoleTextProtocol.ParseWork(designResponse).Status == "completed"
+                        ? "COMPLETED" : "BLOCKED",
+                    workItemId: "0", referenceId: reviewReference);
+
+                // The HIGH role retains its original session and all old evidence.
+                var beforeResume = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    workingDirectory, cancellationToken);
+                highReport = await ExecuteMilestoneHighAsync(jobId, workingDirectory,
+                    milestone, workReports, resourceReports, mechanicalReports,
+                    string.Empty, implementer, high, 1 + invocation, cancellationToken);
+                var afterResume = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    workingDirectory, cancellationToken);
+                foreach (var changed in MilestoneMechanicalExecutor.DiffChangeStates(
+                    beforeResume, afterResume))
+                    milestoneChangedPaths.Add(changed);
+            }
+
             if (outcome == "COMPLETED" &&
                 string.Equals(MilestoneDefinitionContract.ReadHighStatus(highReport),
                     "blocked", StringComparison.OrdinalIgnoreCase))

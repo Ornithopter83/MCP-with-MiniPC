@@ -24,3 +24,21 @@
 [RESPONSE=OK]
 
 <STATUS>는 completed 또는 blocked다. 미해결 사항은 completed에서도 <ISSUES>에 남긴다.
+
+
+HIGH 검증 예산: Worker BUILD/TEST 증거를 재사용한다. R1 기존 증거+핵심 통합, R2 수정 영역 회귀+Player 스모크를 기본으로 한다. 영향 변경 시 R3 한 번만 추가한다. 국소 디버그는 별도 집계한다. 실패를 PASS로 포장하거나 새 Unity 프로세스를 전면화하지 않는다.
+시각 품질 결함을 실제 증거로 확인했고 DESIGN이 고쳐야 한다면 최종 완료 대신 다음 중간 보고를 작성할 수 있다. 마일스톤 내부에서 DESIGN #0이 실제 씬·그래픽을 수정한 뒤 같은 HIGH 검토를 이어간다.
+
+[ACTION=RESULT]
+@@REPORT
+<STATUS>design_handoff</>
+<SUMMARY>확인된 그래픽 결함</>
+<DESIGN_GOAL>DESIGN에 넘길 실제 제작 목표</>
+<EVIDENCE_PATH>프로젝트 상대 캡처/연속 프레임 증거 경로</>
+<TARGET_PATH>프로젝트 상대 시각 수정 소유 경로</>
+<EXPECTED_RESULT>변경 후 확인할 화면 결과</>
+<REASON>HIGH에서 DESIGN으로 인계할 근거</>
+<ISSUES>실제 실패·미검증 내용</>
+[RESPONSE=OK]
+
+중간 STATUS design_handoff는 completed가 아니다. 실제 시각 증거 경로가 없거나 목표가 모호하면 인계하지 말고 blocked/미검증을 HQ에 전달한다. 무한 DESIGN 재호출은 금지한다.

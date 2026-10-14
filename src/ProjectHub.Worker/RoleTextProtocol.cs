@@ -22,7 +22,7 @@ internal static class RoleTextProtocol
         Parse(raw, new[] { "passed", "issue", "blocked" });
 
     public static RoleTextResult ParseHigh(string? raw) =>
-        Parse(raw, new[] { "completed", "blocked" });
+        Parse(raw, new[] { "completed", "blocked", "design_handoff" });
 
     public static string BuildResult(
         string status,
