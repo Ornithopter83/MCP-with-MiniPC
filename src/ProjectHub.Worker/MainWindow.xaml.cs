@@ -1232,9 +1232,10 @@ public partial class MainWindow : Window
         SetPipelineCard(PipelineCoordinatorCard, PipelineCoordinatorTitle, CoordinatorStageCircle, CoordinatorStageIcon, _coordinatorStageIconAsset, TaskStage.Coordinator, RoleVisuals["Coordinator"], false, initialInputIdle);
         SetPipelineCard(PipelineImplementerCard, PipelineImplementerTitle, ImplementerStageCircle, ImplementerStageIcon, _implementerStageIconAsset, TaskStage.Implementer, RoleVisuals["Implementer"], false, initialInputIdle);
 
-        var resourceDisabled =
-            _activeCoordinatorFirst &&
-            _currentMilestoneResourceReserved == false;
+        var resourceDisabled = UnityDesignCardActivationPolicy.IsDisabled(
+            _activeCoordinatorFirst,
+            _currentMilestoneResourceReserved,
+            _currentTaskStage == TaskStage.Resource);
         ResourceStageModelText.Text = resourceDisabled
             ? "미예약"
             : AiProviderCatalog.FormatModel(

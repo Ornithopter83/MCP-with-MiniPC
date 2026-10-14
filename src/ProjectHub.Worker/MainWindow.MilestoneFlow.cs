@@ -1494,6 +1494,16 @@ public partial class MainWindow
                             "\nEvidence: " + request.EvidencePath)
                     { WritePaths = new[] { request.TargetPath } };
 
+                // HIGH has yielded the Editor lane. Mark only DESIGN active
+                // before dispatch, even if HQ did not pre-reserve DESIGN #0.
+                RunOnUi(() =>
+                {
+                    TaskDirection.Text = "Design";
+                    TaskTitle.Text = $"HIGH 인계 · #0 DESIGN 수정 {invocation}";
+                    ResultTitle.Text = "#0 DESIGN";
+                    SetFlowState(codexActive: true, workerActive: true,
+                        webActive: false, explicitStage: TaskStage.Resource);
+                });
                 // Exclusive Editor lane while HIGH yields mutation ownership.
                 var beforeReviewDesign =
                     await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
@@ -1578,6 +1588,18 @@ public partial class MainWindow
                         ? "COMPLETED" : "BLOCKED",
                     workItemId: "0", referenceId: reviewReference,
                     providerWireId: designRole.Provider);
+
+                // DESIGN has returned; release the yellow card and return
+                // ownership to HIGH for integration decisions. The actual
+                // HIGH invocation below refreshes this stage again.
+                RunOnUi(() =>
+                {
+                    TaskDirection.Text = "검토";
+                    TaskTitle.Text = $"HIGH · DESIGN 결과 확인 {invocation}";
+                    ResultTitle.Text = "HIGH";
+                    SetFlowState(codexActive: true, workerActive: false,
+                        webActive: false, explicitStage: TaskStage.HighLevel);
+                });
 
                 if (!HighDesignContinuationPolicy.ShouldResumeHigh(
                         designResponse, revisionChanges))
