@@ -517,9 +517,13 @@ internal static class HqTextProtocol
             .FirstOrDefault(section =>
                 string.Equals(section.Name, "MESSAGE", StringComparison.OrdinalIgnoreCase))
             ?.Content.Trim() ?? string.Empty;
-        if (message.StartsWith("<TEXT>", StringComparison.Ordinal) &&
-            StructuredRoleFields.TryParse(message, out var fields, out _))
-            message = fields.Get("TEXT") ?? string.Empty;
+        if (message.StartsWith("<TEXT>", StringComparison.Ordinal))
+        {
+            if (!StructuredRoleFields.TryParse(message, out var fields, out _) ||
+                fields.Get("TEXT") is not { Length: > 0 } parsedText)
+                return Invalid(action, unknown, new[] { "MESSAGE_FORMAT" });
+            message = parsedText;
+        }
         if (message.Length == 0)
             return Invalid(action, unknown, new[] { "MESSAGE" });
 
