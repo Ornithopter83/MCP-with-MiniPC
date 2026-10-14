@@ -510,6 +510,8 @@ public partial class MainWindow
         }
         finally
         {
+            // End protection and restore only windows parked by this job.
+            unityFocusGuard.Dispose();
             AddTaskMessage("UNITY BACKGROUND GUARD",
                 unityFocusGuard.Diagnostic,
                 status: unityFocusGuard.Available &&
