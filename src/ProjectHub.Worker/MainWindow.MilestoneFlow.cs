@@ -104,6 +104,7 @@ public partial class MainWindow
         // recompilation and HIGH; a Codex command hook cannot intercept an
         // already-running Editor promoting its own native window.
         using var unityFocusGuard = UnityBackgroundFocusGuard.Start();
+        UnityEditorRecoverySupervisor? editorRecoverySupervisor = null;
         if (!unityFocusGuard.Available)
             AddTaskMessage("UNITY BACKGROUND GUARD",
                 unityFocusGuard.Diagnostic, status: "UNVERIFIED");
@@ -175,6 +176,15 @@ public partial class MainWindow
             if (unityPreflight.Code == "UNITY_PROJECT_NOT_FOUND")
                 throw new InvalidOperationException(
                     "UNITY_PROJECT_NOT_FOUND: " + unityPreflight.Detail);
+
+            // Live only while this user job is running. It probes without
+            // waiting for AI roles' long-held Editor lane and never persists
+            // into the dashboard idle state.
+            if (UnityToolchainPreflight.ValidateProject(normalizedRoot).Ready)
+                editorRecoverySupervisor = UnityEditorRecoverySupervisor.StartForJob(
+                    normalizedRoot, cts.Token, (detail, status) =>
+                        AddTaskMessage("UNITY EDITOR RECOVERY", detail,
+                            status: status, includeHistory: false));
 
             var unityCatalogPath = UnityToolchainPreflight.SaveCatalogForJob(
                 normalizedRoot, jobId, unityPreflight);
@@ -806,6 +816,10 @@ public partial class MainWindow
         }
         finally
         {
+            // Shut down monitoring before transitioning this job to idle;
+            // no later timer tick may start an Editor on an idle dashboard.
+            if (editorRecoverySupervisor is not null)
+                await editorRecoverySupervisor.DisposeAsync();
             try
             {
                 await MilestoneManagedRunRegistry.StopAsync(

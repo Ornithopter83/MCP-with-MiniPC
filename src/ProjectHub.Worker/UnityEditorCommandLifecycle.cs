@@ -75,6 +75,12 @@ internal static class UnityEditorCommandLifecycle
             "Use an already connected Editor, a headless alternative, or report unverified.");
     }
 
+    // Only the active-job supervisor may invoke this directly. The initial
+    // command gate intentionally retains its no-auto-open policy.
+    internal static Task<LaunchResult> OpenForRecoveryAsync(
+        string root, CancellationToken cancellationToken) =>
+        OpenEditorAsync(root, cancellationToken);
+
     private static async Task<LaunchResult> OpenEditorAsync(
         string root, CancellationToken cancellationToken)
     {

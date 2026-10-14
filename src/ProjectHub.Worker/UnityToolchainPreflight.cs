@@ -103,15 +103,28 @@ internal static class UnityToolchainPreflight
         }
     }
 
-    public static async Task<Result> RunAsync(string root, CancellationToken cancellationToken)
+    public static Task<Result> RunAsync(string root, CancellationToken cancellationToken) =>
+        RunProbeAsync(root, cancellationToken, useEditorGate: true);
+
+    // Read-only connectivity probe for the job-scoped recovery supervisor.
+    // AI roles can own the cooperative Editor lane for their entire run;
+    // monitoring must not wait for that lane to become free.
+    internal static Task<Result> RunUncoordinatedAsync(
+        string root, CancellationToken cancellationToken) =>
+        RunProbeAsync(root, cancellationToken, useEditorGate: false);
+
+    private static async Task<Result> RunProbeAsync(
+        string root, CancellationToken cancellationToken, bool useEditorGate)
     {
         var project = ValidateProject(root);
         if (!project.Ready)
             return project;
 
         var projectRoot = Path.GetFullPath(root);
-        using var editorLease = await UnityEditorOperationGate.EnterAsync(
-            projectRoot, cancellationToken).ConfigureAwait(false);
+        using var editorLease = useEditorGate
+            ? await UnityEditorOperationGate.EnterAsync(
+                projectRoot, cancellationToken).ConfigureAwait(false)
+            : null;
         try
         {
             var psi = new ProcessStartInfo
