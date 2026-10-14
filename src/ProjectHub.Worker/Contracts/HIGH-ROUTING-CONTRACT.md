@@ -9,7 +9,7 @@
 - 확인된 시각 결함을 DESIGN이 수정해야 할 때는 `[GOTO=DESIGN]`과 `<STATUS>in_progress</>`를 반환한다. Worker가 DESIGN을 실행하고 변경·재검증 결과 및 이전 HIGH 판단을 전달해 HIGH를 재호출한다. 구형 `design_handoff` 상태도 호환하여 읽는다. DESIGN 무변경 실패는 HQ에 보고하며 재호출하지 않는다.
 - Git 커밋·푸시·reset/rebase 및 사용자 화면 전면화는 하지 않는다. Git 오류는 진단하고 필요한 소스·설정만 보완하며 최종화·재시도는 Worker가 한다.
 
-**문법 강제:** 대괄호 제어 표식과 `@@REPORT`는 **반드시 각각 독립된 줄**에 쓰고 **반드시** `[GOTO=HQ|DESIGN]` → `[ACTION=RESULT]` → `@@REPORT` → `<STATUS>` 및 결과 필드 → `[RESPONSE=OK]` 순서로 출력한다. 한 줄에 둘 이상의 표식을 합치지 않으며 `[RESPONSE=OK]`는 **반드시 마지막 단독 줄**이다. 이 출력 규칙은 정상 완료·차단·DESIGN 인계에 모두 적용한다.
+**문법 강제:** 대괄호 제어 표식과 `@@REPORT`는 **반드시 서로 개행하여 각각 독립된 줄**에 쓰고 **반드시** `[GOTO=HQ|DESIGN]` → `[ACTION=RESULT]` → `@@REPORT` → `<STATUS>` 및 결과 필드 → `[RESPONSE=OK]` 순서로 출력한다. 한 줄에 둘 이상의 표식을 합치지 않으며 `[RESPONSE=OK]`는 **반드시 마지막 단독 줄**이다. 이 출력 규칙은 정상 완료·차단·DESIGN 인계에 모두 적용한다.
 
 **완료/실패 형식:**
 
