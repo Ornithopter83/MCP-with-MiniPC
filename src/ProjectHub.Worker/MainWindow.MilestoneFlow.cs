@@ -2581,7 +2581,7 @@ public partial class MainWindow
             workItemId: "HIGH",
             referenceId: historyInvocationReference);
 
-        return report;
+        return (report, result.SessionId ?? sessionId);
     }
 
     private async Task<string> ExecuteBuildRepairAsync(
@@ -2622,7 +2622,7 @@ public partial class MainWindow
             providerWireId: implementer.Provider, fullMessage: report,
             workItemId: "8",
             referenceId: milestone.Id + ":BUILD:REPAIR-1");
-        return (report, result.SessionId ?? sessionId);
+        return report;
     }
 
     private async Task<string> ExecuteGitHighAsync(
