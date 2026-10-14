@@ -107,4 +107,49 @@ public sealed class UnityDesignHighRefactorTests
         Assert.Contains("permissionDecision", script);
         Assert.DoesNotContain("(?<!", script);
     }
+    [Fact]
+    public void DesignRevision_FailedNoOpDoesNotReinvokeHigh()
+    {
+        var blocked = RoleTextProtocol.BuildResult("blocked", "no visuals");
+        var completed = RoleTextProtocol.BuildResult("completed", "graphics changed");
+        Assert.False(HighDesignContinuationPolicy.ShouldResumeHigh(blocked, Array.Empty<string>()));
+        Assert.True(HighDesignContinuationPolicy.ShouldResumeHigh(
+            blocked, new[] { "Assets/UI/Scene.prefab" }));
+        Assert.True(HighDesignContinuationPolicy.ShouldResumeHigh(
+            completed, new[] { "Assets/UI/Scene.prefab" }));
+    }
+
+    [Fact]
+    public void DesignRevision_RebuildsOnlyForAffectedInputs()
+    {
+        Assert.False(HighDesignContinuationPolicy.RequiresBuild(
+            new[] { "Assets/Art/Fireworks.png", "docs/projecthub/design.md" }));
+        Assert.True(HighDesignContinuationPolicy.RequiresBuild(
+            new[] { "Assets/UI/Panel.prefab" }));
+        Assert.True(HighDesignContinuationPolicy.RequiresBuild(
+            new[] { "Assets/Scripts/UI/Effects.cs" }));
+        Assert.True(HighDesignContinuationPolicy.RequiresBuild(
+            new[] { "Packages/manifest.json" }));
+        Assert.False(HighDesignContinuationPolicy.RequiresBuild(Array.Empty<string>()));
+    }
+
+    [Fact]
+    public void HighResumeContext_PreservesPriorReviewForSessionlessProviders()
+    {
+        var context = HighDesignContinuationPolicy.BuildReviewContext(
+            "@@DESIGN_RESULTS\nDESIGN #0: STATUS=completed", Handoff);
+        Assert.Contains("@@PREVIOUS_HIGH_REVIEW", context);
+        Assert.Contains("<STATUS>design_handoff</>", context);
+        Assert.Contains("DESIGN #0: STATUS=completed", context);
+        Assert.DoesNotContain("@@PREVIOUS_HIGH_REVIEW",
+            HighDesignContinuationPolicy.BuildReviewContext("base", null));
+    }
+
+    [Fact]
+    public void HighRound3_RequiresNewChangeEvidence()
+    {
+        Assert.True(UnityValidationBudget.CanStart(2, false));
+        Assert.False(UnityValidationBudget.CanStart(3, false));
+        Assert.True(UnityValidationBudget.CanStart(3, true));
+    }
 }

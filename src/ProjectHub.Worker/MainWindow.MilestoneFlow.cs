@@ -1383,6 +1383,7 @@ public partial class MainWindow
             // HIGH remains nonterminal until an evidence-bound DESIGN handoff
             // returns and the original HIGH role reviews the actual changes.
             var designHandoffs = 0;
+            var designRevisionBuildFailed = false;
             while (MilestoneDefinitionContract.ReadHighStatus(highReport) == "design_handoff")
             {
                 if (designHandoffs >= HighDesignHandoffContract.MaxReviewHandoffs)
@@ -1526,11 +1527,16 @@ public partial class MainWindow
                     foreach (var build in reviewBuilds)
                         mechanicalReports.Add("DESIGN_REVISION_BUILD: " +
                             MilestoneDefinitionContract.FormatMechanicalResult(build));
-                    if (reviewBuilds.Any(build => !build.Success))
-                    {
-                        if (outcome == "COMPLETED")
-                            outcome = "DESIGN_REVISION_BUILD_FAILED";
-                    }
+                    designRevisionBuildFailed = reviewBuilds.Any(build => !build.Success);
+                }
+
+                if (!UnityValidationBudget.CanStart(
+                        1 + invocation, revisionChanges.Length > 0))
+                {
+                    highReport = RoleTextProtocol.BuildResult("blocked",
+                        "HIGH_VALIDATION_R3_NOT_JUSTIFIED",
+                        issues: new[] { "The third integration review requires new evidence." });
+                    break;
                 }
 
                 // Resume the real HIGH session when available. The previous
@@ -1585,7 +1591,11 @@ public partial class MainWindow
                         MilestoneDefinitionContract.FormatMechanicalResult(build));
                 if (highBuilds.Any(build => !build.Success))
                     outcome = "HIGH_FINAL_BUILD_FAILED";
+                else
+                    designRevisionBuildFailed = false;
             }
+            if (designRevisionBuildFailed && outcome == "COMPLETED")
+                outcome = "DESIGN_REVISION_BUILD_FAILED";
 
             var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
                 jobId,
@@ -2517,20 +2527,12 @@ public partial class MainWindow
         var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
             milestone.Id, "HIGH");
         var prompt = RoleContractLoader.BuildHighPrompt(
-            MilestoneDefinitionContract.BuildHighContext(
-                milestone,
-                workReports,
-                qaReport,
-                mechanicalReports) + Environment.NewLine +
-            "@@VALIDATION_BUDGET" + Environment.NewLine +
-            UnityValidationBudget.Guidance +
-            (string.IsNullOrWhiteSpace(previousHighReport) ? string.Empty :
-                Environment.NewLine + "@@PREVIOUS_HIGH_REVIEW" +
-                Environment.NewLine + MilestoneDefinitionContract.Limit(
-                    previousHighReport, 4000) +
-                Environment.NewLine + "DESIGN revision results appear in @@DESIGN_RESULTS. " +
-                "Verify actual changed paths and new BUILD evidence; do not " +
-                "assume the earlier design_handoff was resolved."));
+            HighDesignContinuationPolicy.BuildReviewContext(
+                MilestoneDefinitionContract.BuildHighContext(
+                    milestone, workReports, qaReport, mechanicalReports) +
+                Environment.NewLine + "@@VALIDATION_BUDGET" +
+                Environment.NewLine + UnityValidationBudget.Guidance,
+                previousHighReport));
 
         var sandbox = milestone.ReadOnlyNoFileChanges
             ? CodexSandboxMode.ReadOnly

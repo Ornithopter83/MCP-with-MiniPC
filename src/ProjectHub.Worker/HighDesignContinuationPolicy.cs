@@ -15,6 +15,18 @@ internal static class HighDesignContinuationPolicy
                changedPaths.Count > 0;
     }
 
+    internal static string BuildReviewContext(string context, string? previousHighReport)
+    {
+        if (string.IsNullOrWhiteSpace(previousHighReport))
+            return context;
+        return context + Environment.NewLine + "@@PREVIOUS_HIGH_REVIEW" +
+            Environment.NewLine + MilestoneDefinitionContract.Limit(
+                previousHighReport, 4000) +
+            Environment.NewLine +
+            "Use the DESIGN revision evidence and new BUILD results. " +
+            "Do not assume the prior handoff was resolved.";
+    }
+
     internal static bool RequiresBuild(IEnumerable<string> changedPaths) =>
         changedPaths.Any(RequiresBuild);
 
