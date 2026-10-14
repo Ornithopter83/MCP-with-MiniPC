@@ -18,17 +18,28 @@ public sealed class UnityBackgroundFocusPolicyTests
     }
 
     [Theory]
-    [InlineData(true, true, 0U, false)]
-    [InlineData(true, true, 350U, false)]
-    [InlineData(true, true, 351U, true)]
-    [InlineData(true, true, 10_000U, true)]
-    [InlineData(true, false, 10_000U, false)]
-    [InlineData(false, true, 10_000U, false)]
-    public void NativeActivationRestoresOnlyWhenUserDidNotJustSwitchFocus(
-        bool unity, bool previous, uint inputAge, bool expected)
+    [InlineData(true, true, false, true)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    public void UnityHijackIsRestoredRegardlessOfRecentTypingInOtherApp(
+        bool unity, bool previous, bool explicitUnitySelection, bool expected)
     {
-        Assert.Equal(expected,
-            UnityBackgroundFocusPolicy.ShouldRestore(unity, previous, inputAge));
+        Assert.Equal(expected, UnityBackgroundFocusPolicy.ShouldRestore(
+            unity, previous, explicitUnitySelection));
+    }
+
+    [Theory]
+    [InlineData(0U, true, true)]
+    [InlineData(350U, true, true)]
+    [InlineData(351U, true, false)]
+    [InlineData(0U, false, false)]
+    [InlineData(100U, false, false)]
+    public void GraceIsReservedForActualUnityMouseOrAltTabSelection(
+        uint age, bool inputTargetsUnity, bool expected)
+    {
+        Assert.Equal(expected, UnityBackgroundFocusPolicy.IsRecentUserSelection(
+            age, inputTargetsUnity));
     }
 
     [Fact]

@@ -138,9 +138,10 @@ public sealed class CodexCliRunner : IDisposable
             startInfo.ArgumentList.Add("-c");
             startInfo.ArgumentList.Add(configOverride.Trim());
         }
-        // In full autonomy, available Codex capabilities remain available.
-        // Under the legacy scoped mode, callers can still disable computer use.
-        if (!WorkerAutonomyPolicy.Enabled && disableComputerUse)
+        // Background-only Unity work must disable OS-wide computer use
+        // even in FULL_AUTONOMY. Shell and Unity's own internal APIs remain
+        // available; this does not relax the user's foreground requirement.
+        if (disableComputerUse)
         {
             startInfo.ArgumentList.Add("-c");
             startInfo.ArgumentList.Add("features.computer_use=false");

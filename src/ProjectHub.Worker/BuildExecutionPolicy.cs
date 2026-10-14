@@ -160,7 +160,7 @@ public static class BuildExecutionPolicy
              $command = [string]($event.tool_input.cmd -join ' ')
            }
            if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
-           $unsafe = '(?ix)(?:\bunity(?:\.exe)?\s+open\b|\bUnity(?:\.exe)?\b[^\r\n]*-projectPath\b|\bSetForegroundWindow\b|\bAppActivate\b|\bSendKeys\b|\bSetCursorPos\b|\bSendInput\b|\bmouse_event\b|\bkeybd_event\b|\bStart-Process\b[^\r\n]*\bUnity(?:\.exe)?\b)'
+           $unsafe = '(?ix)(?:\bunity(?:\.exe)?\s+open\b|\bUnity(?:\.exe)?\b[^\r\n]*-projectPath\b|\bSetForegroundWindow\b|\bAppActivate\b|\bSendKeys\b|\bSetCursorPos\b|\bSendInput\b|\bmouse_event\b|\bkeybd_event\b|\bStart-Process\b[^\r\n]*\bUnity(?:\.exe)?\b|\bpyautogui\b|\bpynput\b|\bAutoHotkey\b|\bImageGrab\b|\bSystem\.Windows\.Forms\.Cursor\b)'
            if ($command -match $unsafe) {
              $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'UnityWorker BACKGROUND_ONLY: foreground GUI launch and OS-wide input are forbidden. Use connected Editor CLI/MCP or report unverified.' } } | ConvertTo-Json -Compress -Depth 6
              [Console]::Out.WriteLine($payload)

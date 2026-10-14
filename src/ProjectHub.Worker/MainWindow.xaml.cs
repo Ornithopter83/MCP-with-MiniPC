@@ -2163,10 +2163,12 @@ public partial class MainWindow : Window
 
         IReadOnlyList<string>? codexConfigOverrides = null;
         var bypassHookTrust = false;
-        // Always deny foreground Unity UI launch/OS-global input in Codex.
-        // This does not claim protection for external shells or OpenCode.
+        // All Unity roles, including HQ and asset discovery, must avoid
+        // GUI activation and OS-global input. Shell autonomy remains intact.
+        // OpenCode does not implement the Codex hook, so the native
+        // foreground guard is retained as an additional fallback.
         if (WorkerAutonomyPolicy.Enabled &&
-            (roleName is "WORK" or "HIGH" || designPurpose))
+            UnityCliBuildRunner.IsUnityProject(workingDirectory))
         {
             var backgroundHookPath = Path.Combine(roleTempPath,
                 "projecthub-unity-background-gate.ps1");
@@ -2225,7 +2227,7 @@ public partial class MainWindow : Window
             sessionStarted,
             InputAttachments: inputAttachments,
             EnvironmentVariables: roleEnvironment,
-            DisableComputerUse: roleName == "WORK",
+            DisableComputerUse: UnityCliBuildRunner.IsUnityProject(workingDirectory),
             IncludeAppBaseWritable: roleName != "WORK",
             CodexConfigOverrides: codexConfigOverrides,
             BypassHookTrust: bypassHookTrust,

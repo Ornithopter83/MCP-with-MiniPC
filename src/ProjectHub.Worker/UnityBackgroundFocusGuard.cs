@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace ProjectHub.Worker;
 
@@ -20,23 +21,35 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private const uint EventSystemForeground = 0x0003;
     private const uint WinEventOutOfContext = 0;
     private const int ObjIdWindow = 0;
+    private const int SwMinimize = 6;
+    private const int VkLButton = 0x01;
+    private const int VkRButton = 0x02;
+    private const int VkMenu = 0x12;
+    private const int VkTab = 0x09;
 
     private readonly WinEventDelegate _callback;
+    private readonly object _sync = new();
+    private System.Threading.Timer? _watchdog;
     private IntPtr _hook;
     private IntPtr _previousUserWindow;
+    private IntPtr _manualUnityWindow;
     private bool _restoring;
-    private bool _disposed;
+    private volatile bool _disposed;
     private string _unavailableReason = string.Empty;
 
-    internal bool Available => _hook != IntPtr.Zero;
+    // The independent polling watchdog also works when the UI message pump
+    // fails to deliver foreground WinEvents during synchronous UI work.
+    internal bool Available => _watchdog is not null || _hook != IntPtr.Zero;
     internal int RestoreAttempts { get; private set; }
     internal int RestoreFailures { get; private set; }
+    internal int MinimizeFallbacks { get; private set; }
     internal int RestoreSuccesses => RestoreAttempts - RestoreFailures;
 
     internal string Diagnostic => Available
         ? $"FOCUS_GUARD: restore={RestoreSuccesses}/{RestoreAttempts}; " +
-          $"not_restored={RestoreFailures}; direct user activation is preserved. " +
-          "Windows may reject programmatic foreground recovery."
+          $"minimize_fallbacks={MinimizeFallbacks}; not_restored={RestoreFailures}; " +
+          "watchdog=on, direct Unity mouse/Alt-Tab selection exempt. " +
+          "Unity may briefly flash when it self-activates."
         : "FOCUS_GUARD_UNAVAILABLE: " + _unavailableReason +
           "; Unity Editor may take focus during CLI/MCP execution.";
 
@@ -67,6 +80,12 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
             if (guard._hook == IntPtr.Zero)
                 guard._unavailableReason =
                     "SetWinEventHook failed (" + Marshal.GetLastWin32Error() + ")";
+            // Never rely solely on WPF WinEvent callbacks. Unity itself may
+            // activate while the user is typing, exactly when the previous
+            // input-grace implementation incorrectly ignored the hijack.
+            guard._watchdog = new System.Threading.Timer(
+                static state => ((UnityBackgroundFocusGuard)state!).WatchdogTick(),
+                guard, TimeSpan.FromMilliseconds(120), TimeSpan.FromMilliseconds(120));
         }
         catch (Exception error) when (error is Win32Exception or
             InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
@@ -80,72 +99,129 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         IntPtr eventHook, uint eventType, IntPtr window,
         int objectId, int childId, uint eventThread, uint eventTime)
     {
-        if (_disposed || _restoring || objectId != ObjIdWindow ||
-            childId != 0 || window == IntPtr.Zero)
+        if (objectId != ObjIdWindow || childId != 0)
             return;
+        CheckForeground(window);
+    }
 
-        try
+    private void WatchdogTick()
+    {
+        if (_disposed) return;
+        // SetWinEventHook reports normal changes rapidly, but the independent
+        // timer also handles missed UI-dispatcher messages.
+        CheckForeground(GetForegroundWindow());
+    }
+
+    private void CheckForeground(IntPtr window)
+    {
+        if (_disposed || window == IntPtr.Zero) return;
+        lock (_sync)
         {
-            if (!IsUnityEditorWindow(window))
+            if (_disposed || _restoring) return;
+            try
             {
-                // Always follow the user's most recently chosen non-Unity
-                // window, not the ProjectHub window that initially launched us.
-                _previousUserWindow = window;
-                return;
+                if (!IsUnityEditorWindow(window))
+                {
+                    // Switches to a regular application reset any explicit
+                    // Unity focus exemption.
+                    if (IsWindow(window) && IsWindowVisible(window))
+                    {
+                        _previousUserWindow = window;
+                        _manualUnityWindow = IntPtr.Zero;
+                    }
+                    return;
+                }
+                if (_manualUnityWindow == window)
+                    return;
+                if (_previousUserWindow == IntPtr.Zero ||
+                    !IsWindow(_previousUserWindow) ||
+                    !IsWindowVisible(_previousUserWindow) ||
+                    IsIconic(_previousUserWindow) ||
+                    _previousUserWindow == window)
+                    return;
+
+                // Fresh keyboard input in ANOTHER app is not an intentional
+                // selection of Unity. Only a mouse interaction targeting
+                // Unity or an Alt+Tab gesture exempts direct user activation.
+                if (UnityBackgroundFocusPolicy.IsRecentUserSelection(
+                        MillisecondsSinceUserInput(), IsExplicitUnitySelection(window)))
+                {
+                    _manualUnityWindow = window;
+                    return;
+                }
+                if (!UnityBackgroundFocusPolicy.ShouldRestore(
+                        unityForeground: true,
+                        hasPreviousWindow: true,
+                        explicitUnitySelection: false))
+                    return;
+                if (GetForegroundWindow() != window)
+                    return;
+                _restoring = true;
+                RestoreAttempts++;
+                var restored = SetForegroundWindow(_previousUserWindow);
+                if (!restored && GetForegroundWindow() == window)
+                {
+                    // Windows can reject a foreground request from Worker;
+                    // temporarily attach input queues as a bounded fallback.
+                    var unityThread = GetWindowThreadProcessId(window, out _);
+                    var targetThread = GetWindowThreadProcessId(_previousUserWindow, out _);
+                    var callerThread = GetCurrentThreadId();
+                    var attachedUnity = unityThread != 0 && callerThread != unityThread &&
+                        AttachThreadInput(callerThread, unityThread, true);
+                    var attachedTarget = targetThread != 0 && callerThread != targetThread &&
+                        targetThread != unityThread &&
+                        AttachThreadInput(callerThread, targetThread, true);
+                    try
+                    {
+                        if (GetForegroundWindow() == window)
+                            restored = SetForegroundWindow(_previousUserWindow);
+                    }
+                    finally
+                    {
+                        if (attachedTarget)
+                            AttachThreadInput(callerThread, targetThread, false);
+                        if (attachedUnity)
+                            AttachThreadInput(callerThread, unityThread, false);
+                    }
+                }
+                if ((!restored || GetForegroundWindow() == window) &&
+                    GetForegroundWindow() == window)
+                {
+                    // Last resort: park only the foreground Unity window.
+                    // Hidden/minimized Unity may not render identically; the
+                    // internal RenderTexture evidence must remain unverified.
+                    if (ShowWindowAsync(window, SwMinimize))
+                        MinimizeFallbacks++;
+                }
+                if (GetForegroundWindow() == window)
+                    RestoreFailures++;
             }
-
-            if (_previousUserWindow == IntPtr.Zero ||
-                !IsWindow(_previousUserWindow) ||
-                !IsWindowVisible(_previousUserWindow) ||
-                IsIconic(_previousUserWindow))
-                return;
-
-            var inputAge = MillisecondsSinceUserInput();
-            if (!UnityBackgroundFocusPolicy.ShouldRestore(
-                    unityForeground: true, hasPreviousWindow: true, inputAge))
-                return;
-
-            // Recheck immediately to avoid overriding a user window switch
-            // queued between the event callback and the restoration attempt.
-            if (GetForegroundWindow() != window)
-                return;
-
-            _restoring = true;
-            RestoreAttempts++;
-            var restored = SetForegroundWindow(_previousUserWindow);
-            if (!restored && GetForegroundWindow() == window)
+            catch (Exception ex) when (ex is InvalidOperationException or
+                ArgumentException or Win32Exception or DllNotFoundException or
+                EntryPointNotFoundException)
             {
-                // Windows normally blocks background focus requests. Briefly
-                // attach to the current foreground thread only as fallback.
-                var unityThread = GetWindowThreadProcessId(window, out _);
-                var callerThread = GetCurrentThreadId();
-                var attached = unityThread != 0 && callerThread != unityThread &&
-                               AttachThreadInput(callerThread, unityThread, true);
-                try
-                {
-                    if (attached && GetForegroundWindow() == window &&
-                        UnityBackgroundFocusPolicy.ShouldRestore(
-                            true, true, MillisecondsSinceUserInput()))
-                        restored = SetForegroundWindow(_previousUserWindow);
-                }
-                finally
-                {
-                    if (attached)
-                        AttachThreadInput(callerThread, unityThread, false);
-                }
-            }
-            if (!restored || GetForegroundWindow() != _previousUserWindow)
                 RestoreFailures++;
+            }
+            finally
+            {
+                _restoring = false;
+            }
         }
-        catch (Exception error) when (error is InvalidOperationException or
-            ArgumentException or Win32Exception)
+    }
+
+    private static bool IsExplicitUnitySelection(IntPtr unityWindow)
+    {
+        var mouseDown = (GetAsyncKeyState(VkLButton) & 0x8000) != 0 ||
+                        (GetAsyncKeyState(VkRButton) & 0x8000) != 0;
+        if (mouseDown && GetCursorPos(out var cursor))
         {
-            RestoreFailures++;
+            var underMouse = WindowFromPoint(cursor);
+            if (underMouse != IntPtr.Zero &&
+                IsUnityEditorWindow(underMouse))
+                return true;
         }
-        finally
-        {
-            _restoring = false;
-        }
+        return (GetAsyncKeyState(VkMenu) & 0x8000) != 0 &&
+               (GetAsyncKeyState(VkTab) & 0x8000) != 0;
     }
 
     private static uint MillisecondsSinceUserInput()
@@ -178,6 +254,8 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        var watchdog = Interlocked.Exchange(ref _watchdog, null);
+        watchdog?.Dispose();
         if (_hook != IntPtr.Zero)
         {
             UnhookWinEvent(_hook);
@@ -237,6 +315,23 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point { public int X; public int Y; }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out Point point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Point point);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindowAsync(IntPtr window, int command);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetLastInputInfo(ref LastInputInfo info);
@@ -244,15 +339,16 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
 
 internal static class UnityBackgroundFocusPolicy
 {
-    // Explicit user activation (click, Alt+Tab, keyboard) must win.
     internal const uint UserInputGraceMilliseconds = 350;
 
     internal static bool IsUnityEditorProcess(string? processName) =>
         string.Equals(processName, "Unity", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(processName, "Unity.exe", StringComparison.OrdinalIgnoreCase);
 
+    internal static bool IsRecentUserSelection(uint ageMilliseconds, bool inputTargetsUnity) =>
+        inputTargetsUnity && ageMilliseconds <= UserInputGraceMilliseconds;
+
     internal static bool ShouldRestore(
-        bool unityForeground, bool hasPreviousWindow, uint millisecondsSinceInput) =>
-        unityForeground && hasPreviousWindow &&
-        millisecondsSinceInput > UserInputGraceMilliseconds;
+        bool unityForeground, bool hasPreviousWindow, bool explicitUnitySelection) =>
+        unityForeground && hasPreviousWindow && !explicitUnitySelection;
 }
