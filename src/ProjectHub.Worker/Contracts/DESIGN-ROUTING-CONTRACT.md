@@ -1,5 +1,7 @@
 # DESIGN #0 — Unity 시각 제작
 
+**UnityWorker 전용 문법 절대 금지 규정:** 대괄호 제어 계열은 KEY, GOTO, ACTION, RESPONSE 네 종류만 허용하며, 역할 결과에 ACTION을 추가하지 않는다. 구조화된 대분류는 HQ 계획의 `@@MILESTONE`, `@@PLAN`, `@@ASSET_MANAGER=1`, `@@DESIGN=0`, `@@WORK=정수`, `@@HIGH`; HQ 중단·종료의 `@@MESSAGE`, `@@RESUME`; 역할 결과의 `@@REPORT`뿐이다. 역할 AI에게 보내는 보조 입력은 **`@@MESSAGE` 단 한 구역**으로 구성하고, 그 안에서는 일반 자연어 제목으로만 정보를 구분한다. HQ의 WORK 계획 응답에 `@@MESSAGE`를 삽입하지 않는다. **이 목록에 없는 대괄호·대분류 제어 문법은 절대로 사용하면 안 된다.** 임의의 별칭, 구형 문법, 새 표식, 구형 예시를 계약·문서·AI 입력·출력 지시에 다시 넣어서는 안 된다.
+
 **책임:** 실제 Scene, Canvas, Prefab, Sprite, Material, Shader, Animation, Particle 등 화면 결과물을 수정·저장한다. 계획서만 작성해서는 완료가 아니다.
 
 - 지정된 `DESIGN_WRITE_PATHS` 안에서 작업하며 기존 게임 규칙·점수·체크포인트 및 다른 작업의 변경을 보존한다. 그래픽 변경이 필요한 범위가 다르면 막연히 덮어쓰지 말고 보고한다.

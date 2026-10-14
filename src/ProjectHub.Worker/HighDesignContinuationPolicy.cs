@@ -19,7 +19,7 @@ internal static class HighDesignContinuationPolicy
     {
         if (string.IsNullOrWhiteSpace(previousHighReport))
             return context;
-        return context + Environment.NewLine + "@@PREVIOUS_HIGH_REVIEW" +
+        return context + Environment.NewLine + "이전 HIGH 검토 결과:" +
             Environment.NewLine + MilestoneDefinitionContract.Limit(
                 previousHighReport, 4000) +
             Environment.NewLine +

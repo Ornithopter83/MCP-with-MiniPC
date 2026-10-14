@@ -10,7 +10,7 @@ internal sealed record UnityBackgroundVisualPlan(
     string WorkerScript, string WorkerPng, string ProjectRoot)
 {
     internal string AgentGuidance =>
-        "@@UNITY_INTERNAL_INPUT_RENDER\n" +
+        "Unity 내부 렌더 및 입력 검증 지침:\n" +
         "OS 마우스·키보드/화면 스크린샷 대신 기존 Unity Editor의 내부 렌더와 UI 이벤트를 사용한다.\n" +
         "먼저 실제 연결된 Editor의 eval_file 명령을 카탈로그에서 확인하라.\n" +
         "변경 전 내부 캡처: unity command eval_file \"" + BeforeScript +

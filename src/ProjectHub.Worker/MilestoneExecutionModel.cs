@@ -539,13 +539,13 @@ internal static class MilestoneDefinitionContract
         MilestoneWorkDefinition work)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("@@GOAL");
+        builder.AppendLine("작업 목표:");
         builder.AppendLine(ReadWorkField(work, "goal") ?? string.Empty);
         builder.AppendLine();
-        builder.AppendLine("@@INSTRUCTIONS");
+        builder.AppendLine("작업 지시:");
         builder.AppendLine(ReadWorkField(work, "instructions") ?? string.Empty);
         builder.AppendLine();
-        builder.AppendLine("@@COMPLETION");
+        builder.AppendLine("완료 기준:");
         foreach (var item in ReadWorkStringArray(work, "completionCriteria"))
             builder.AppendLine("- " + item);
         return builder.ToString().TrimEnd();
@@ -560,13 +560,13 @@ internal static class MilestoneDefinitionContract
         AppendWorkGoals(builder, milestone.WorkItems.Values);
         if (milestone.Design is { } design)
         {
-            builder.AppendLine("@@DESIGN_REQUEST");
+            builder.AppendLine("DESIGN 요청:");
             builder.AppendLine("PATH: " + design.Path);
             builder.AppendLine("INSTRUCTIONS: " + design.Instructions);
         }
         if (milestone.AssetManager is { } asset)
         {
-            builder.AppendLine("@@ASSET_MANAGER_REQUEST");
+            builder.AppendLine("ASSET MANAGER 요청:");
             builder.AppendLine("REQUEST_ID: " + asset.RequestId);
             builder.AppendLine("GOAL: " + asset.Goal);
             builder.AppendLine("SCENE: " + asset.ScenePath);
@@ -575,17 +575,17 @@ internal static class MilestoneDefinitionContract
         }
         if (!string.IsNullOrWhiteSpace(milestone.QaInstructions))
         {
-            builder.AppendLine("@@QA_INSTRUCTIONS");
+            builder.AppendLine("QA 검증 지시:");
             builder.AppendLine(StripRoleFormatOverrides(milestone.QaInstructions));
         }
         if (!string.IsNullOrWhiteSpace(milestone.Entrypoint))
         {
             builder.AppendLine();
-            builder.AppendLine("@@TARGET");
+            builder.AppendLine("실행 대상:");
             builder.AppendLine(milestone.Entrypoint);
         }
         builder.AppendLine();
-        builder.AppendLine("@@WORK_RESULTS");
+        builder.AppendLine("WORK 수행 결과:");
         foreach (var pair in workReports.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
             var parsed = RoleTextProtocol.ParseWork(pair.Value);
@@ -603,7 +603,7 @@ internal static class MilestoneDefinitionContract
                     StringComparison.Ordinal)).ToArray();
             if (assetResults.Length > 0)
             {
-                builder.AppendLine("@@ASSET_MANAGER_RESULTS");
+                builder.AppendLine("ASSET MANAGER 결과:");
                 foreach (var report in assetResults)
                     builder.AppendLine(Limit(report, 2500));
             }
@@ -612,11 +612,11 @@ internal static class MilestoneDefinitionContract
                 report.StartsWith("HIGH_DESIGN_HANDOFF:", StringComparison.Ordinal)).ToArray();
             if (designResults.Length > 0)
             {
-                builder.AppendLine("@@DESIGN_RESULTS");
+                builder.AppendLine("DESIGN 수행 결과:");
                 foreach (var report in designResults)
                     builder.AppendLine(Limit(report, 4000));
             }
-            builder.AppendLine("@@BUILD_RESULTS");
+            builder.AppendLine("빌드 및 테스트 결과:");
             foreach (var report in mechanicalReports.Except(assetResults).Except(designResults))
                 builder.AppendLine(Limit(report, 1200));
         }
@@ -633,13 +633,13 @@ internal static class MilestoneDefinitionContract
         AppendWorkGoals(builder, milestone.WorkItems.Values);
         if (milestone.Design is { } design)
         {
-            builder.AppendLine("@@DESIGN_REQUEST");
+            builder.AppendLine("DESIGN 요청:");
             builder.AppendLine("PATH: " + design.Path);
             builder.AppendLine("INSTRUCTIONS: " + design.Instructions);
         }
         if (milestone.AssetManager is { } asset)
         {
-            builder.AppendLine("@@ASSET_MANAGER_REQUEST");
+            builder.AppendLine("ASSET MANAGER 요청:");
             builder.AppendLine("REQUEST_ID: " + asset.RequestId);
             builder.AppendLine("GOAL: " + asset.Goal);
             builder.AppendLine("SCENE: " + asset.ScenePath);
@@ -649,11 +649,11 @@ internal static class MilestoneDefinitionContract
         if (!string.IsNullOrWhiteSpace(milestone.HighInstructions))
         {
             builder.AppendLine();
-            builder.AppendLine("@@HIGH_INSTRUCTIONS");
+            builder.AppendLine("HIGH 최종 검토 지시:");
             builder.AppendLine(StripRoleFormatOverrides(milestone.HighInstructions));
         }
         builder.AppendLine();
-        builder.AppendLine("@@WORK_RESULTS");
+        builder.AppendLine("WORK 수행 결과:");
         foreach (var pair in workReports.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
             var parsed = RoleTextProtocol.ParseWork(pair.Value);
@@ -677,7 +677,7 @@ internal static class MilestoneDefinitionContract
             if (assetResults.Length > 0)
             {
                 builder.AppendLine();
-                builder.AppendLine("@@ASSET_MANAGER_RESULTS");
+                builder.AppendLine("ASSET MANAGER 결과:");
                 foreach (var report in assetResults)
                     builder.AppendLine(Limit(report, 2500));
             }
@@ -687,18 +687,18 @@ internal static class MilestoneDefinitionContract
                 report.StartsWith("HIGH_DESIGN_HANDOFF:", StringComparison.Ordinal)).ToArray();
             if (designResults.Length > 0)
             {
-                builder.AppendLine("@@DESIGN_RESULTS");
+                builder.AppendLine("DESIGN 수행 결과:");
                 foreach (var report in designResults)
                     builder.AppendLine(Limit(report, 4000));
             }
-            builder.AppendLine("@@BUILD_RESULTS");
+            builder.AppendLine("빌드 및 테스트 결과:");
             foreach (var report in mechanicalReports.Except(assetResults).Except(designResults))
                 builder.AppendLine(Limit(report, 1200));
         }
         if (!string.IsNullOrWhiteSpace(qaReport))
         {
             builder.AppendLine();
-            builder.AppendLine("@@QA_REPORT");
+            builder.AppendLine("QA 검증 결과:");
             // HIGH receives the complete QA report, including failures and
             // unparsed evidence. Never reduce it to an issues-only summary.
             builder.AppendLine(qaReport);
@@ -722,7 +722,7 @@ internal static class MilestoneDefinitionContract
         StringBuilder builder,
         IEnumerable<MilestoneWorkDefinition> works)
     {
-        builder.AppendLine("@@WORK_GOALS");
+        builder.AppendLine("WORK 목표:");
         var any = false;
         foreach (var work in works.OrderBy(work => work.Id, StringComparer.OrdinalIgnoreCase))
         {

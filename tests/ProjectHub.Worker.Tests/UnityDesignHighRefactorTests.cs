@@ -196,11 +196,11 @@ public sealed class UnityDesignHighRefactorTests
     public void HighResumeContext_PreservesPriorReviewForSessionlessProviders()
     {
         var context = HighDesignContinuationPolicy.BuildReviewContext(
-            "@@DESIGN_RESULTS\nDESIGN #0: STATUS=completed", Handoff);
-        Assert.Contains("@@PREVIOUS_HIGH_REVIEW", context);
+            "DESIGN 수행 결과:\nDESIGN #0: STATUS=completed", Handoff);
+        Assert.Contains("이전 HIGH 검토 결과:", context);
         Assert.Contains("<STATUS>in_progress</>", context);
         Assert.Contains("DESIGN #0: STATUS=completed", context);
-        Assert.DoesNotContain("@@PREVIOUS_HIGH_REVIEW",
+        Assert.DoesNotContain("이전 HIGH 검토 결과:",
             HighDesignContinuationPolicy.BuildReviewContext("base", null));
     }
 

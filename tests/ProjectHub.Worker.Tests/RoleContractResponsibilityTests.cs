@@ -45,7 +45,7 @@ public sealed class RoleContractResponsibilityTests
     public void RequestedWorkPermissionSentenceRemainsUnchanged()
     {
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
-            "10", "@@GOAL\n코드를 구현하라.", new[] { "src/a.cs" }, "/project");
+            "10", "작업 목표:\n코드를 구현하라.", new[] { "src/a.cs" }, "/project");
 
         Assert.Contains("작업에 필요한 모든 권한은 승인한다.", prompt);
     }

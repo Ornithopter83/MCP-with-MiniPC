@@ -167,7 +167,7 @@ public partial class MainWindow
                 {
                     var opened = await UnitySceneCliWorkflow.OpenAsync(
                         root, definition.ScenePath, cancellationToken);
-                    prompt += "\n@@UNITY_SCENE_OPEN_EVIDENCE " + opened.Detail +
+                    prompt += "\nUnity 씬 열기 증거: " + opened.Detail +
                         (opened.Success ? "" :
                             " · 자동 재호출 금지. 명령 카탈로그로 Editor 상태를 확인하라.");
                 }
@@ -387,7 +387,7 @@ public partial class MainWindow
         AssetManagerDefinition definition, string phase,
         string priorEvidence, string root, string localInventory = "")
     {
-        return "ASSET_MANAGER_ID: 1\nREQUEST_ID: " +
+        return "@@MESSAGE\nASSET_MANAGER_ID: 1\nREQUEST_ID: " +
             definition.RequestId +
             "\nPHASE: " + phase +
             "\nPROJECT_ROOT: " + root +

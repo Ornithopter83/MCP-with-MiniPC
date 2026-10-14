@@ -89,13 +89,13 @@ public sealed class CoordinatorFirstContractTests
             workReports,
             qaReport: null);
 
-        Assert.Contains("@@WORK_GOALS", qaContext);
-        Assert.Contains("@@WORK_RESULTS", qaContext);
+        Assert.Contains("WORK 목표:", qaContext);
+        Assert.Contains("WORK 수행 결과:", qaContext);
         Assert.DoesNotContain("QA_INSTRUCTIONS:", qaContext);
         Assert.DoesNotContain("RESOURCE_RESULTS:", qaContext);
         Assert.DoesNotContain("MECHANICAL_RESULTS:", qaContext);
         Assert.DoesNotContain("PREPARED_OUTPUT_ROOT:", qaContext);
-        Assert.Contains("@@WORK_GOALS", highContext);
+        Assert.Contains("WORK 목표:", highContext);
         Assert.DoesNotContain("MILESTONE_VALIDATION:", highContext);
         Assert.DoesNotContain("RESOURCE_RESULTS:", highContext);
         Assert.DoesNotContain("MECHANICAL_RESULTS:", highContext);
@@ -1105,7 +1105,8 @@ public sealed class CoordinatorFirstContractTests
             "C:\\repo",
             readOnly: true);
 
-        Assert.Contains("@@WRITE_PATH", prompt);
+        Assert.Contains("@@MESSAGE", prompt);
+        Assert.Contains("지정 작업 경로:", prompt);
         Assert.Contains("없음", prompt);
     }
 

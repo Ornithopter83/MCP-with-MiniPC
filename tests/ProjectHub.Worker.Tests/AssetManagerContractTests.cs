@@ -161,9 +161,9 @@ public sealed class AssetManagerContractTests
         var highContext = MilestoneDefinitionContract.BuildHighContext(
             milestone!, new Dictionary<string, string>(), null, evidence);
         Assert.Contains("Assets/Scenes/AIDemo.unity", highContext);
-        Assert.Contains("@@ASSET_MANAGER_REQUEST", highContext);
-        Assert.Contains("@@ASSET_MANAGER_RESULTS", highContext);
-        Assert.DoesNotContain("@@QA_REPORT", highContext);
+        Assert.Contains("ASSET MANAGER 요청:", highContext);
+        Assert.Contains("ASSET MANAGER 결과:", highContext);
+        Assert.DoesNotContain("QA 검증 결과:", highContext);
         Assert.Contains("ASSET MANAGER", RoleContractLoader.LoadHighFooter());
     }
 

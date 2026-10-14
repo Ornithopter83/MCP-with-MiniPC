@@ -2092,7 +2092,7 @@ public partial class MainWindow : Window
                 workingDirectory, jobId);
             if (File.Exists(catalogPath))
                 prompt += Environment.NewLine + Environment.NewLine +
-                    "@@UNITY_CLI_COMMAND_CATALOG" + Environment.NewLine +
+                    "Unity CLI 명령 카탈로그:" + Environment.NewLine +
                     "이 작업을 수락할 때 연결된 Editor에서 실제 조회한 Unity CLI " +
                     "명령 이름·파라미터 JSON: " + catalogPath +
                     Environment.NewLine +
@@ -2100,6 +2100,10 @@ public partial class MainWindow : Window
                     "파일은 명령 사용법 참고용이며 현재 실행 성공·테스트 통과 증거가 아니다. " +
                     "연결이나 명령 인수가 달라졌다면 현재 Editor에서 다시 조회하라.";
         }
+        // Exactly one auxiliary MESSAGE section per Unity specialist request,
+        // including format-retry turns. HQ structured responses stay untouched.
+        if (roleName is "WORK" or "QA" or "HIGH" || designPurpose || assetManagerPurpose)
+            prompt = UnityRoleMessageComposer.Compose(prompt);
         RunOnUi(() =>
             AddDataFlowHistory(
                 historyRole,

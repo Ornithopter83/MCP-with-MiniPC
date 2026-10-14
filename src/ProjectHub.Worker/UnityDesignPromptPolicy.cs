@@ -7,14 +7,14 @@ internal static class UnityDesignPromptPolicy
 {
     internal static string Build(MilestoneDesignDefinition design, string projectRoot)
     {
-        return "DESIGN_ID: 0\nPROJECT_ROOT: " +
+        return "@@MESSAGE\nDESIGN_ID: 0\nPROJECT_ROOT: " +
             Path.GetFullPath(projectRoot) +
             "\nDESIGN_DOCUMENT: " + design.Path +
             "\nDESIGN_WRITE_PATHS: " +
             (design.WritePaths.Count == 0 ? "프로젝트 시각 제작 범위(기존 변경 존중)" :
                 string.Join(", ", design.WritePaths)) +
-            "\n@@DESIGN_GOAL\n" + design.Instructions +
-            "\n\n@@DESIGN_METHOD\n" +
+            "\n디자인 목표:\n" + design.Instructions +
+            "\n\n디자인 수행 방법:\n" +
             "1. 계획·문서 작성에 머무르지 말고 기존 UI/Scene/Canvas/Prefab 등을 분석하여 " +
             "실제 Sprite, Material, Shader, Animator, Particle 및 시각 전용 C#을 제작·수정·저장하라. " +
             "게임 규칙·점수·기존 체크포인트와 다른 작업의 변경을 훼손하지 마라.\n" +
@@ -30,7 +30,7 @@ internal static class UnityDesignPromptPolicy
             "4. HIGH에서 인계된 목표·증거·수정 경로가 있으면 그 범위에서 수정하고 " +
             "재검증 증거를 남겨라. 실제 시각 파일 변경 없이 완료라고 보고하지 마라.\n" +
             "5. 변경 파일, 실제 실행한 명령과 관찰 결과, 실패·미검증 사항을 명시하라.\n\n" +
-            "@@RESULT_CONTRACT\n" +
+            "결과 출력 규칙:\n" +
             "대괄호 제어 표식과 @@REPORT는 반드시 각각 독립된 줄에 작성하고 개행한다. " +
             "순서는 반드시 [GOTO=WORKER] -> @@REPORT -> " +
             "<STATUS>/<SUMMARY>/<CHANGED_PATH>/<ISSUES> -> [RESPONSE=OK]이다. " +

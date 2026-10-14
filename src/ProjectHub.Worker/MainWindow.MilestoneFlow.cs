@@ -2105,7 +2105,7 @@ public partial class MainWindow
             UnityDesignPromptPolicy.IsVerifiedDocument(workingDirectory, design))
         {
             prompt += Environment.NewLine + Environment.NewLine +
-                "@@UNITY_DESIGN_GUIDANCE" + Environment.NewLine +
+                "DESIGN 가이드:" + Environment.NewLine +
                 "DESIGN #0가 WORK 시작 전에 작성한 아트 방향·화면 검증 명세: " +
                 Path.Combine(workingDirectory,
                     design.Path.Replace('/', Path.DirectorySeparatorChar)) +
@@ -2117,7 +2117,7 @@ public partial class MainWindow
             !string.IsNullOrWhiteSpace(checkpoint!.LastReport))
         {
             prompt += Environment.NewLine + Environment.NewLine +
-                "@@PREVIOUS_WORK_CHECKPOINT" + Environment.NewLine +
+                "이전 WORK 체크포인트:" + Environment.NewLine +
                 "기존 세션의 실제 작업 결과다. 완료한 구현·명령·파일 조사를 재실행하지 말고 " +
                 "보고된 잔여 항목만 이어서 처리하라." + Environment.NewLine +
                 MilestoneDefinitionContract.Limit(checkpoint.LastReport, 4000);
@@ -2128,7 +2128,7 @@ public partial class MainWindow
         if (!UnityWorkSchedulingPolicy.RequiresEditorLane(work))
         {
             prompt += Environment.NewLine + Environment.NewLine +
-                "@@UNITY_SOURCE_ONLY_LANE" + Environment.NewLine +
+                "소스 전용 작업 제한:" + Environment.NewLine +
                 "이 WORK는 C# 소스 파일만 수정하는 병렬 작업이다. Unity CLI/MCP, " +
                 "Editor API, AssetDatabase, 씬·프리팹 변경·컴파일·PlayMode 명령을 " +
                 "실행하지 마라. Editor 관련 검증은 WORK 종료 후 Worker BUILD/QA에서 처리한다.";
@@ -2136,7 +2136,7 @@ public partial class MainWindow
         else
         {
             prompt += Environment.NewLine + Environment.NewLine +
-                "@@UNITY_EDITOR_DIRECT_OPERATION" + Environment.NewLine +
+                "Unity Editor 직접 작업 지침:" + Environment.NewLine +
                 UnitySceneCliWorkflow.DirectSceneInstructions(
                     sceneWritePath ?? "WORK의 지정된 Unity 에셋",
                     readOnly: work.ReadOnly);
@@ -2151,7 +2151,7 @@ public partial class MainWindow
                     var opened = await UnitySceneCliWorkflow.OpenAsync(
                         workingDirectory, sceneWritePath, cancellationToken);
                     prompt += Environment.NewLine +
-                        "@@UNITY_SCENE_OPEN_EVIDENCE " + opened.Detail +
+                        "Unity 씬 열기 증거: " + opened.Detail +
                         (opened.Success ? "" :
                             " · 자동 재호출하지 말고 Editor 상태를 조회하여 필요한 경우 " +
                             "등록된 open_scene 명령으로 대체하라.");
@@ -2159,7 +2159,7 @@ public partial class MainWindow
             }
         }
         prompt += Environment.NewLine + Environment.NewLine +
-            "@@UNITY_PROJECT_WRITE_AUTHORIZATION" + Environment.NewLine +
+            "프로젝트 수정 권한:" + Environment.NewLine +
             "FULL_AUTONOMY: WRITE_PATH는 작업 배정과 중복 파일 충돌 조정용이다. " +
             "ProjectSettings, Packages, 에셋, .meta, 코드와 추가 프로젝트 설정의 " +
             "수정은 허용한다. 선언 범위 밖 파일 수정만으로 blocked를 보고하지 말고 " +
@@ -2720,9 +2720,9 @@ public partial class MainWindow
         if (writePaths.Count == 0)
             return "blocked: NO_WRITABLE_SCOPE";
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
-            "8", "@@GOAL" + Environment.NewLine +
+            "8", "복구 목표:" + Environment.NewLine +
             "WORK #8 전용 복구: 실제 코드 빌드 오류만 이 호출에서 한 번 최소 수정하라." +
-            Environment.NewLine + "@@INSTRUCTIONS" + Environment.NewLine +
+            Environment.NewLine + "복구 지시:" + Environment.NewLine +
             "원래 작업 범위 외 변경 금지. Git 명령 실행 금지. " +
             "환경 EPERM 등 실행 환경 오류를 소스 수정으로 우회하지 마라. " +
             "오류: " + MilestoneDefinitionContract.Limit(failure.Summary, 1600),
@@ -2765,7 +2765,7 @@ public partial class MainWindow
             Environment.NewLine +
             "안전하게 수정 가능한 소스/설정만 수정하고 결과를 보고하라." +
             Environment.NewLine +
-            "@@ERROR" + Environment.NewLine +
+            "오류 정보:" + Environment.NewLine +
             MilestoneDefinitionContract.Limit(diagnostic, 2400));
         var result = await RunCoordinatorRoleAsync(
             jobId, "HIGH", prompt, high, workingDirectory,

@@ -564,7 +564,7 @@ public sealed class StructuredMilestoneProtocolTests
             new Dictionary<string, string>(), null);
         Assert.DoesNotContain("ACTION_RESULT: PASS", high);
         Assert.DoesNotContain("ACTION_RESULT: FAIL", high);
-        Assert.DoesNotContain("@@QA_INSTRUCTIONS", high);
+        Assert.DoesNotContain("QA 검증 지시:", high);
         Assert.Contains("결함을 수정하고 다시 검증한다.", high);
     }
 
