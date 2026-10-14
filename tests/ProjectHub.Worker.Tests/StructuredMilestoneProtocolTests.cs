@@ -22,7 +22,8 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.NotNull(milestone);
         Assert.Equal(30, milestone!.WorkItems.Count);
         Assert.Equal(new[] { "generated/39.cs" }, milestone.WorkItems["39"].WritePaths);
-        Assert.Single(milestone.Resources);
+        Assert.Empty(milestone.Resources);
+        Assert.NotNull(milestone.Design);
         Assert.True(milestone.QaReserved);
     }
 
@@ -32,16 +33,10 @@ public sealed class StructuredMilestoneProtocolTests
         @@MILESTONE
         <ID>M3</>
 
-        @@RESOURCE=0
-        <TYPE>image</>
-        <TARGET_PATH>assets/art/character.png</>
-        <WIDTH>4096</>
-        <HEIGHT>4096</>
-        <COLUMNS>8</>
-        <ROWS>8</>
-        <ALPHA>required</>
+        @@DESIGN=0
+        <PATH>docs/projecthub/visual-design.md</>
         <INSTRUCTIONS>
-        바탕색 없는 sprite sheet.
+        퀴즈 UI의 색상 대비, 테마, O/X 시각 피드백과 애니메이션 검증을 설계하라.
         1행: idle, 2행: run, 상세: https://example.com
         </>
 
@@ -73,13 +68,10 @@ public sealed class StructuredMilestoneProtocolTests
             parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
         Assert.NotNull(milestone);
         Assert.Equal("M3", milestone!.Id);
-        var resource = Assert.Single(milestone.Resources.Values);
-        Assert.Equal(4096, resource.Width);
-        Assert.Equal(4096, resource.Height);
-        Assert.Equal(8, resource.Columns);
-        Assert.Equal(8, resource.Rows);
-        Assert.True(resource.RequireAlpha);
-        Assert.Contains("1행: idle", resource.Body);
+        Assert.Empty(milestone.Resources);
+        var design = Assert.IsType<MilestoneDesignDefinition>(milestone.Design);
+        Assert.Equal("docs/projecthub/visual-design.md", design.Path);
+        Assert.Contains("1행: idle", design.Instructions);
         Assert.Contains("base: './'", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["54"]));
     }
 
@@ -562,26 +554,25 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
-    public void ResourceWebPrompt_ContainsOnlyImageCreationInstructions()
+    public void DesignZero_IsAnOrderedLocalRoleNotAResourcePrompt()
     {
-        var parsed = HqTextProtocol.Parse(Modern.Replace(
-            "바탕색 없는 sprite sheet.",
-            "바탕색 없는 sprite sheet. 이 RESOURCE가 실패하면 WORK를 시작하지 않는다."));
-        Assert.True(parsed.IsValid);
+        var parsed = HqTextProtocol.Parse(Modern);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         Assert.True(MilestoneDefinitionContract.TryBuild(
             parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
-        var resource = Assert.Single(milestone!.Resources.Values);
-        var prompt = ResourceImagePromptBuilder.Build(resource);
-        Assert.Contains("이미지 한 장", prompt);
-        Assert.Contains("4096×4096", prompt);
-        Assert.Contains("바탕색 없는 sprite sheet", prompt);
-        Assert.Contains("1행: idle", prompt);
-        Assert.DoesNotContain("RESOURCE가 실패", prompt);
-        Assert.DoesNotContain("WORK를 시작", prompt);
-        Assert.DoesNotContain("assets/art/character.png", prompt);
-        Assert.DoesNotContain("targetPath", prompt);
-        Assert.DoesNotContain("requireAlpha", prompt);
-        Assert.DoesNotContain("{", prompt);
+        Assert.Empty(milestone!.Resources);
+        var design = Assert.IsType<MilestoneDesignDefinition>(milestone.Design);
+        var prompt = UnityDesignPromptPolicy.Build(design, Path.GetTempPath());
+        Assert.Contains("[ROLE=DESIGN]", prompt);
+        Assert.Contains("capture_game_view", prompt);
+        Assert.Contains("Application.runInBackground", prompt);
+        Assert.Contains("미검증", prompt);
+        Assert.DoesNotContain("RESOURCE_IMAGE", prompt);
+
+        var legacy = HqTextProtocol.Parse(Modern.Replace(
+            "@@DESIGN=0", "@@RESOURCE=0", StringComparison.Ordinal));
+        Assert.False(legacy.IsValid);
+        Assert.Contains("COMPACT_SECTION_FORBIDDEN", legacy.Errors);
     }
 
     [Fact]
