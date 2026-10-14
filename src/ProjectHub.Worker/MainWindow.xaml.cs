@@ -46,7 +46,7 @@ public partial class MainWindow : Window
         ["Qa"] = new("#FFF0B8", "#B87900", "#765000", "current-openai.png"),
         ["HighLevel"] = new("#ECD8E4", "#82194B", "#74133F", "current-openai.png"),
         ["Manager"] = new("#E7E7FF", "#5B5BD6", "#4646B8", "current-openai.png"),
-        ["Resource"] = new("#E4EEF9", "#326FA8", "#245B8D", "current-web.png"),
+        ["Resource"] = new("#E4EEF9", "#326FA8", "#245B8D", "current-openai.png"),
         ["Worker"] = new("#EEF1F5", "#66788A", "#405166", "current-console.png"),
         ["Message"] = new("#EEF8F2", "#168A4A", "#116B39", "current-console.png")
     };
@@ -79,7 +79,7 @@ public partial class MainWindow : Window
             _ => StageKey switch
             {
                 "Coordinator" => "Unity HQ · 게임 설계",
-                "Implementer" when string.Equals(WorkItemId, "0", StringComparison.Ordinal) => "Unity 에셋 (#0)",
+                "Implementer" when string.Equals(WorkItemId, "0", StringComparison.Ordinal) => "Unity DESIGN (#0)",
                 "Implementer" when int.TryParse(WorkItemId, out var generalWorkId) && generalWorkId >= 10 => $"Unity WORK (#{WorkItemId})",
                 "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"Unity WORK (#{WorkItemId})",
                 "Implementer" when WorkNumber.HasValue => $"Unity WORK (#{WorkNumber.Value})",
@@ -87,7 +87,7 @@ public partial class MainWindow : Window
                 "Qa" => "Unity QA · 플레이테스트",
                 "HighLevel" => "Unity HIGH · 통합",
                 "Manager" => "#1 ASSET MANAGER",
-                "Resource" => "Unity 에셋 (#0)",
+                "Resource" => "Unity DESIGN (#0)",
                 "Worker" => "UnityWorker",
                 "Message" => "메시지",
                 _ => "시스템"
@@ -209,7 +209,7 @@ public partial class MainWindow : Window
     private string _managerStageIconAsset = "current-openai.png";
     private bool _resourceSidecarActive;
     private int _resourceSidecarQueued;
-    private string _resourceSidecarStatus = "ChatGPT Web";
+    private string _resourceSidecarStatus = "로컬 Design";
     private bool _allowClose;
     private bool _shutdownCleanupInProgress;
     private bool _newTaskCleanupInProgress;
@@ -1237,13 +1237,13 @@ public partial class MainWindow : Window
             ? "미예약"
             : _currentTaskStage == TaskStage.Resource || _resourceSidecarActive
                 ? _resourceSidecarStatus
-                : "ChatGPT Web";
+                : "Local Design";
         SetPipelineCard(
             PipelineResourceCard,
             PipelineResourceTitle,
             ResourceStageCircle,
             ResourceStageIcon,
-            "current-web.png",
+            "current-openai.png",
             TaskStage.Resource,
             RoleVisuals["Resource"],
             resourceDisabled,
@@ -1496,7 +1496,7 @@ public partial class MainWindow : Window
         _activeCoordinatorFirst = false;
         _currentMilestoneQaReserved = null;
         _currentMilestoneResourceReserved = null;
-        _resourceSidecarStatus = "ChatGPT Web";
+        _resourceSidecarStatus = "로컬 Design";
         _jobTimedOut = false;
         TaskDirection.Text = "IDLE";
         TaskTitle.Text = "작업 없음";
@@ -2048,7 +2048,8 @@ public partial class MainWindow : Window
         // #1 ASSET MANAGER is an independent role, but must run with
         // WORK's strict command hooks, network configuration and sandbox.
         var assetManagerPurpose = purpose.StartsWith("ASSET_MANAGER_", StringComparison.OrdinalIgnoreCase);
-        var roleName = assetManagerPurpose ? "WORK" :
+        var designPurpose = purpose == "DESIGN";
+        var roleName = assetManagerPurpose || designPurpose ? "WORK" :
             purpose.Contains("MANAGER", StringComparison.OrdinalIgnoreCase)
             ? "MANAGER"
             : purpose.Contains("QA", StringComparison.OrdinalIgnoreCase)
@@ -2060,7 +2061,7 @@ public partial class MainWindow : Window
                       purpose == "WORK"
                         ? "WORK"
                         : "COORDINATOR";
-        var outboundRole = roleName switch
+        var outboundRole = designPurpose ? "DESIGN" : roleName switch
         {
             "MANAGER" => "MANAGER",
             "QA" => "QA",
@@ -2068,7 +2069,8 @@ public partial class MainWindow : Window
             "HIGH" => "HIGH",
             _ => "HQ"
         };
-        var historyRole = assetManagerPurpose ? WorkerRoleState.Manager : roleName switch
+        var historyRole = assetManagerPurpose ? WorkerRoleState.Manager :
+            designPurpose ? WorkerRoleState.Resource : roleName switch
         {
             "MANAGER" => WorkerRoleState.Manager,
             "QA" => WorkerRoleState.Qa,
