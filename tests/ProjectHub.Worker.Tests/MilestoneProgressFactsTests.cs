@@ -38,7 +38,8 @@ public sealed class MilestoneProgressFactsTests
         Assert.Contains("GIT_CANDIDATE_SCENE_COUNT: 1", facts);
         Assert.Contains("GIT_CANDIDATE_CS_COUNT: 2", facts);
         Assert.Contains("GIT_CANDIDATE_META_COUNT: 1", facts);
-        Assert.Contains("QA_REPORTED_STATUS: issue", facts);
+        Assert.Contains("MECHANICAL_VERIFICATION_OWNER: WORKER", facts);
+        Assert.DoesNotContain("QA_REPORTED_STATUS", facts);
         Assert.Contains("HIGH_REPORTED_STATUS: completed", facts);
         Assert.Contains("TEST_EXECUTED_COUNT: NOT_MACHINE_RECORDED", facts);
         Assert.DoesNotContain("TEST_EXECUTED_COUNT: 0", facts);
@@ -54,7 +55,7 @@ public sealed class MilestoneProgressFactsTests
 
         Assert.Contains("SCHEDULED_WORK_COUNT: 0", facts);
         Assert.Contains("GIT_CANDIDATE_PATH_COUNT: 0", facts);
-        Assert.Contains("QA_REPORTED_STATUS: NOT_RECORDED", facts);
+        Assert.Contains("MECHANICAL_VERIFICATION_OWNER: WORKER", facts);
         Assert.Contains("HIGH_REPORTED_STATUS: NOT_RECORDED", facts);
         Assert.Contains("TEST_EXECUTED_COUNT: NOT_MACHINE_RECORDED", facts);
     }

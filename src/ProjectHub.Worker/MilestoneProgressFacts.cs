@@ -17,6 +17,9 @@ internal static class MilestoneProgressFacts
         string? qaReportedStatus,
         string? highReportedStatus)
     {
+        // Legacy callers may still supply QA status; new observations never
+        // display or schedule a separate QA stage.
+        _ = qaReportedStatus;
         var statuses = scheduledWorkIds
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(id => checkpointStates.TryGetValue(id, out var state)
@@ -47,8 +50,7 @@ internal static class MilestoneProgressFacts
                "GIT_CANDIDATE_SCENE_COUNT: " + HasExtension(paths, ".unity") + "\n" +
                "GIT_CANDIDATE_CS_COUNT: " + HasExtension(paths, ".cs") + "\n" +
                "GIT_CANDIDATE_META_COUNT: " + HasExtension(paths, ".meta") + "\n" +
-               "QA_REPORTED_STATUS: " + (string.IsNullOrWhiteSpace(qaReportedStatus)
-                   ? "NOT_RECORDED" : qaReportedStatus) + "\n" +
+               "MECHANICAL_VERIFICATION_OWNER: WORKER" + "\n" +
                "HIGH_REPORTED_STATUS: " + (string.IsNullOrWhiteSpace(highReportedStatus)
                    ? "NOT_RECORDED" : highReportedStatus) + "\n" +
                "TEST_EXECUTED_COUNT: NOT_MACHINE_RECORDED" + "\n" +

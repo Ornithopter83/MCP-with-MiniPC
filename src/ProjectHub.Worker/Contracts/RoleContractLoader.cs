@@ -25,7 +25,7 @@ public static class RoleContractLoader
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
     public static string LoadQaFooter() => Load("QA-ROUTING-CONTRACT.md");
     public static string LoadDesignFooter() => Load("DESIGN-ROUTING-CONTRACT.md");
-    public static string BuildDesignPrompt(MilestoneDesignDefinition design, string projectRoot) =>
+    internal static string BuildDesignPrompt(MilestoneDesignDefinition design, string projectRoot) =>
         UnityDesignPromptPolicy.Build(design, projectRoot) + "\n\n" + LoadDesignFooter();
 
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");

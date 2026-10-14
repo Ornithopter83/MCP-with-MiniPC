@@ -750,7 +750,7 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("<ID>M1</>", hq);
         Assert.Contains("@@WORK=10", hq);
         Assert.Contains("<PATH>", hq);
-        Assert.Contains("@@QA", hq);
+        Assert.DoesNotContain("@@QA\n", hq);
         Assert.Contains("@@HIGH", hq);
         Assert.Contains("Git", hq);
         Assert.DoesNotContain("@@MANAGER", hq);

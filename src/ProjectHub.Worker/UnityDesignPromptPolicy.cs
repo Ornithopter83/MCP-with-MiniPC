@@ -69,7 +69,8 @@ internal static class UnityDesignPromptPolicy
             ".anim", ".controller", ".uxml", ".uss", ".vfx" }
             .Any(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) ||
         (path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) &&
-         new[] { "/UI/", "/Visual", "/Editor/", "/Presentation/" }
+         new[] { "/UI/", "/Visual", "/Editor/", "/Presentation/",
+                 "Sprite", "Effect", "Theme", "Vfx", "Procedural" }
             .Any(fragment => ("/" + path.Replace('\\', '/')).Contains(fragment,
                 StringComparison.OrdinalIgnoreCase)));
 

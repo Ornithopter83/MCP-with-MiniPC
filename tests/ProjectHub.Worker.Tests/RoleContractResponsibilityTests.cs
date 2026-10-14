@@ -9,7 +9,7 @@ public sealed class RoleContractResponsibilityTests
     {
         var hq = RoleContractLoader.LoadHqFooter();
 
-        Assert.Contains("QA에는 실제 검증을, HIGH에는 심층 검토", hq);
+        Assert.Contains("QA 독립 역할은 없다", hq);
         Assert.Contains("DESIGN #0", hq);
         Assert.Contains("이미지 추출 프로세스는 사용하지 않는다", hq);
         Assert.DoesNotContain("진전 기반 연속 수행", hq);
