@@ -1068,7 +1068,7 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HqTextProtocol_ControlActionRejectsUnknownSection()
+    public void HqTextProtocol_ControlActionWithUnknownSectionPreservesOriginalDecision()
     {
         const string response = """
             [ACTION=PAUSE]
@@ -1082,11 +1082,10 @@ public sealed class CoordinatorFirstContractTests
 
         var hq = HqTextProtocol.Parse(response);
 
-        Assert.False(hq.IsValid);
-        Assert.Contains(
-            "UNKNOWN_SECTION_REQUIRES_WORK",
-            hq.Errors);
-        Assert.Contains("@@ARCHITECTURE_NOTE", hq.UnknownSections[0]);
+        Assert.True(hq.IsValid, string.Join("; ", hq.Errors));
+        var control = Assert.Single(hq.Parse.ValidActions);
+        Assert.Equal("PAUSE", control.Name);
+        Assert.Equal(response, control.Body);
     }
 
     [Fact]
