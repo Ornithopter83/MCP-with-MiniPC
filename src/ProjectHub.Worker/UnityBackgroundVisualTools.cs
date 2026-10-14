@@ -6,7 +6,8 @@ namespace ProjectHub.Worker;
 
 internal sealed record UnityBackgroundVisualPlan(
     string Directory, string BeforeScript, string AfterScript,
-    string InputTemplate, string BeforePng, string AfterPng, string ProjectRoot)
+    string InputTemplate, string BeforePng, string AfterPng,
+    string WorkerScript, string WorkerPng, string ProjectRoot)
 {
     internal string AgentGuidance =>
         "@@UNITY_INTERNAL_INPUT_RENDER\n" +
@@ -53,11 +54,14 @@ internal static class UnityBackgroundVisualTools
         var before = Path.Combine(directory, "capture-before.cs");
         var after = Path.Combine(directory, "capture-after.cs");
         var input = Path.Combine(directory, "ui-click-template.cs");
+        var workerPng = Path.Combine(directory, "worker-verify.png");
+        var workerScript = Path.Combine(directory, "capture-worker-verify.cs");
         File.WriteAllText(before, BuildCaptureExpression(beforePng), ProjectHubJson.Utf8NoBom);
         File.WriteAllText(after, BuildCaptureExpression(afterPng), ProjectHubJson.Utf8NoBom);
+        File.WriteAllText(workerScript, BuildCaptureExpression(workerPng), ProjectHubJson.Utf8NoBom);
         File.WriteAllText(input, BuildUiClickTemplate(), ProjectHubJson.Utf8NoBom);
         return new(directory, before, after, input, beforePng, afterPng,
-            Path.GetFullPath(root));
+            workerScript, workerPng, Path.GetFullPath(root));
     }
 
     private static string SafeSegment(string text)
@@ -83,7 +87,8 @@ internal static class UnityBackgroundVisualTools
             if (phCamera == null) {
                 var phCameras = UnityEngine.Object.FindObjectsByType<UnityEngine.Camera>(
                     UnityEngine.FindObjectsSortMode.None);
-                phCamera = phCameras.FirstOrDefault(c => c.isActiveAndEnabled);
+                foreach (var phCandidate in phCameras)
+                    if (phCandidate.isActiveAndEnabled) { phCamera = phCandidate; break; }
             }
             if (phCamera == null)
                 throw new System.InvalidOperationException("PROJECTHUB_VISUAL_NO_CAMERA");
@@ -255,12 +260,12 @@ internal static class UnityBackgroundVisualTools
         try
         {
             // Do not reuse stale artifacts as evidence after a failed attempt.
-            if (File.Exists(plan.AfterPng)) File.Delete(plan.AfterPng);
+            if (File.Exists(plan.WorkerPng)) File.Delete(plan.WorkerPng);
             execute ??= (args, token) => RunCliAsync(plan.ProjectRoot, args, token);
             var response = await execute(
-                UnityAssetCliImporter.ImportFileArguments(plan.ProjectRoot, plan.AfterScript),
+                UnityAssetCliImporter.ImportFileArguments(plan.ProjectRoot, plan.WorkerScript),
                 cancellationToken).ConfigureAwait(false);
-            return InterpretCapture(response, plan.AfterPng);
+            return InterpretCapture(response, plan.WorkerPng);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -290,7 +295,7 @@ internal static class UnityBackgroundVisualTools
         using var child = job.Start(psi, token);
         var stdout = child.StandardOutput!.ReadToEndAsync(token);
         var stderr = child.StandardError!.ReadToEndAsync(token);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
         try
         {
