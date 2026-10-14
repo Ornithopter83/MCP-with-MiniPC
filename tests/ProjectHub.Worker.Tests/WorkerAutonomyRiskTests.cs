@@ -19,6 +19,19 @@ public sealed class WorkerAutonomyRiskTests
         Assert.DoesNotContain("--sandbox", arguments);
     }
 
+    [Fact]
+    public void BackgroundComputerUseIsDisabledEvenWithFullAutonomy()
+    {
+        Assert.True(WorkerAutonomyPolicy.Enabled);
+        Assert.Equal(new[] { "-c", "features.computer_use=false" },
+            WorkerAutonomyPolicy.ComputerUseArguments(true));
+        Assert.Empty(WorkerAutonomyPolicy.ComputerUseArguments(false));
+        var script = BuildExecutionPolicy.CreateUnityBackgroundPreToolHookScript();
+        Assert.Contains("pyautogui", script);
+        Assert.Contains("SendInput", script);
+        Assert.Contains("AppActivate", script);
+    }
+
     [Theory]
     [InlineData("git status", WorkerCommandRiskLevel.Normal)]
     [InlineData("git add Assets/Scene.unity", WorkerCommandRiskLevel.Caution)]

@@ -2180,6 +2180,10 @@ public partial class MainWindow : Window
                 BuildExecutionPolicy.BuildCodexPreToolHookOverride(
                     backgroundHookPath, "UnityWorker foreground protection")
             };
+            // Allow only this Worker-generated hook to be used even when
+            // Codex requires explicit hook trust. Full shell autonomy must
+            // not silently suppress the foreground safety policy.
+            bypassHookTrust = true;
         }
         if (!WorkerAutonomyPolicy.Enabled &&
             (roleName is "WORK" or "QA" or "HIGH" || designPurpose))

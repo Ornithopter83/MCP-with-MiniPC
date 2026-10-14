@@ -11,6 +11,13 @@ internal static class WorkerAutonomyPolicy
     // preserving the existing always-on FULL_AUTONOMY behavior.
     internal static readonly bool Enabled = true;
 
+    // This restriction is deliberately independent of FULL_AUTONOMY:
+    // full shell access does not imply OS cursor/screen-control permission.
+    internal static IReadOnlyList<string> ComputerUseArguments(bool disable) =>
+        disable
+            ? new[] { "-c", "features.computer_use=false" }
+            : Array.Empty<string>();
+
     internal static CodexSandboxMode EffectiveSandbox(CodexSandboxMode requested) =>
         Enabled ? CodexSandboxMode.DangerFullAccess : requested;
 

@@ -347,7 +347,7 @@
               <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="170"/><ColumnDefinition Width="360"/></Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
                 <TextBlock Text="Unity DESIGN · #0" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,4"/>
-                <Border x:Name="DesignProviderIconCircle" Width="52" Height="52" Background="#3072AC" CornerRadius="26">
+                <Border x:Name="DesignProviderIconCircle" Width="52" Height="52" Background="#B97B0D" CornerRadius="26">
                   <Image x:Name="DesignProviderIcon" Source="Assets/current-openai.png" Width="34" Height="34" Stretch="Uniform"/>
                 </Border>
               </StackPanel>
@@ -357,10 +357,10 @@
               <ComboBox x:Name="DesignModelCombo" Grid.Row="1" Grid.Column="2" Height="32" Margin="0,4,8,0" SelectionChanged="RoleModelCombo_SelectionChanged"/>
               <TextBlock Grid.Row="1" Grid.Column="3" Text="추론" FontSize="14" VerticalAlignment="Center" Margin="0,4,0,0"/>
               <ComboBox x:Name="DesignReasoningCombo" Grid.Row="1" Grid.Column="4" Height="32" Margin="0,4,0,0"/>
-              <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#E7F1FB" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
+              <Border Grid.Column="5" Grid.RowSpan="2" Width="350" HorizontalAlignment="Right" Background="#FFF2CE" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="8">
                 <StackPanel Orientation="Horizontal">
-                  <Border Width="36" Height="30" BorderBrush="#3072AC" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#E7F1FB">
-                    <Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="#3072AC" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="#3072AC" HorizontalAlignment="Left"/></Grid>
+                  <Border Width="36" Height="30" BorderBrush="#B97B0D" BorderThickness="2" CornerRadius="6" Margin="0,0,8,0" Background="#FFF2CE">
+                    <Grid Margin="6"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Border Background="#B97B0D" CornerRadius="2" Margin="0,0,0,2"/><Border Grid.Row="1" Width="15" Height="2" Background="#B97B0D" HorizontalAlignment="Left"/></Grid>
                   </Border>
                   <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="DESIGN AI · Stateless" FontWeight="Bold"/>

@@ -398,6 +398,25 @@ public partial class MainWindow
 
         var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
             "DIRECT", "WORK");
+        IReadOnlyList<string>? backgroundConfigOverrides = null;
+        var backgroundHookTrusted = false;
+        if (UnityCliBuildRunner.IsUnityProject(workingDirectory))
+        {
+            var backgroundDirectory = Path.Combine(workingDirectory,
+                "temp", "ProjectHub", "direct-background");
+            Directory.CreateDirectory(backgroundDirectory);
+            var backgroundHookPath = Path.Combine(backgroundDirectory,
+                "projecthub-unity-background-gate.ps1");
+            await File.WriteAllTextAsync(backgroundHookPath,
+                BuildExecutionPolicy.CreateUnityBackgroundPreToolHookScript(),
+                ProjectHubJson.Utf8NoBom, cts.Token);
+            backgroundConfigOverrides = new[]
+            {
+                BuildExecutionPolicy.BuildCodexPreToolHookOverride(
+                    backgroundHookPath, "UnityWorker direct-work background safety")
+            };
+            backgroundHookTrusted = true;
+        }
         AddRoleProgressHistory(
             WorkerRoleState.Work, "직접 작업 실행 중 · 응답 대기",
             role.Provider, referenceId: historyInvocationReference);
@@ -430,7 +449,10 @@ public partial class MainWindow
                     }));
                 },
                 IgnoreProjectInstructions: true,
-                InputAttachments: stagedAttachments));
+                InputAttachments: stagedAttachments,
+                DisableComputerUse: UnityCliBuildRunner.IsUnityProject(workingDirectory),
+                CodexConfigOverrides: backgroundConfigOverrides,
+                BypassHookTrust: backgroundHookTrusted));
 
             _lastActivityAt = DateTimeOffset.UtcNow;
             foreach (var command in result.CommandExecutions)

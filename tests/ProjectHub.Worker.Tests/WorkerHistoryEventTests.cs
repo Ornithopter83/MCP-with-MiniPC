@@ -53,6 +53,22 @@ public sealed class WorkerHistoryEventTests
     }
 
     [Fact]
+    public void DesignAndLegacyResourceHistoryUseMatchingAmberPalette()
+    {
+        var design = new MainWindow.WorkerHistoryEvent(
+            DateTimeOffset.UtcNow, "Design", "ROLE_PROGRESS", "진행",
+            "내부 렌더", null, null, null, "RUNNING", "M1:DESIGN:0");
+        var resource = design with { StageKey = "Resource" };
+        var designBrush = Assert.IsType<System.Windows.Media.SolidColorBrush>(
+            design.RowBackground);
+        var resourceBrush = Assert.IsType<System.Windows.Media.SolidColorBrush>(
+            resource.RowBackground);
+        Assert.Equal(System.Windows.Media.Color.FromRgb(0xFF, 0xF2, 0xCE),
+            designBrush.Color);
+        Assert.Equal(designBrush.Color, resourceBrush.Color);
+    }
+
+    [Fact]
     public void RunningHistory_UsesCompactPreviewWithoutChangingResultCard()
     {
         var timestamp = DateTimeOffset.UtcNow;
