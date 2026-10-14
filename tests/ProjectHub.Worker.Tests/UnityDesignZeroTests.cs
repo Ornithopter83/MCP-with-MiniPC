@@ -14,15 +14,13 @@ public sealed class UnityDesignZeroTests
         @@WORK=42
         <PATH>Assets/Quiz/Presentation</>
         <INSTRUCTIONS>디자인 문서대로 보드를 구성하라.</>
-        @@QA
-        <INSTRUCTIONS>Editor 렌더와 테스트 증거를 확인하라.</>
         @@HIGH
         <INSTRUCTIONS>미확인 연출을 확인하라.</>
         [RESPONSE=OK]
         """;
 
     [Fact]
-    public void DesignZero_ParsesAndReachesQaAndHigh()
+    public void DesignZero_ParsesAndReachesHigh()
     {
         var parsed = HqTextProtocol.Parse(DesignMilestone);
         Assert.True(parsed.IsValid, string.Join(";", parsed.Errors));

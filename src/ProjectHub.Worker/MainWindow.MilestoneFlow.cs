@@ -594,7 +594,7 @@ public partial class MainWindow
 
                 RunOnUi(() =>
                 {
-                    _currentMilestoneQaReserved = milestone!.QaReserved;
+                    _currentMilestoneQaReserved = false;
                     _currentMilestoneResourceReserved =
                         milestone.Design is not null;
                     if (_currentMilestoneResourceReserved != true)
@@ -1310,18 +1310,8 @@ public partial class MainWindow
             if (blockedWorkIds.Length == 0 && pendingWorkIds.Length == 0 && buildFailed)
                 outcome = "BUILD_FAILED";
 
-            if (milestone.QaReserved)
-            {
-                qaReport = await ExecuteMilestoneQaAsync(
-                    jobId, workingDirectory, milestone,
-                    workReports, resourceReports, mechanicalReports,
-                    implementer, qa, 1, cancellationToken);
-                var qaStatus = MilestoneDefinitionContract.ReadQaStatus(qaReport);
-                if (outcome == "COMPLETED" &&
-                    !string.Equals(qaStatus, "passed", StringComparison.OrdinalIgnoreCase))
-                    outcome = string.Equals(qaStatus, "issue", StringComparison.OrdinalIgnoreCase)
-                        ? "QA_ISSUE" : "QA_BLOCKED";
-            }
+            // Worker BUILD/TEST evidence is passed directly to HIGH.
+            // Legacy QA is retained only for reading older reports.
 
             // QA and HIGH also receive unfinished WORK reports. They must
             // preserve unresolved checkpoints and report partial verification;
@@ -1474,7 +1464,7 @@ public partial class MainWindow
                     checkpointStates,
                     milestoneChangedPaths,
                     gitResult.Success,
-                    MilestoneDefinitionContract.ReadQaStatus(qaReport),
+                    null,
                     MilestoneDefinitionContract.ReadHighStatus(highReport));
                 AddTaskMessage("MILESTONE PROGRESS FACTS", facts,
                     status: "OBSERVED");
@@ -1602,14 +1592,6 @@ public partial class MainWindow
         }
 
         nodes.Add(new(
-            "QA",
-            "QA",
-            !milestone.QaReserved
-                ? "SKIPPED"
-                : !string.IsNullOrWhiteSpace(qaReport)
-                    ? "COMPLETED"
-                    : "PLANNED"));
-        nodes.Add(new(
             "HIGH",
             "HIGH",
             string.IsNullOrWhiteSpace(highReport)
@@ -1645,13 +1627,12 @@ public partial class MainWindow
                 milestone.AssetManager is null ? "DISPATCH" : "ASSET_MANAGER_TO_WORK"));
             edges.Add(new(
                 workNode,
-                milestone.QaReserved ? "QA" : "GIT-FINALIZE",
-                milestone.QaReserved ? "RESULT_TO_QA" : "RESULT_TO_GIT"));
+                "HIGH",
+                "RESULT_TO_HIGH"));
         }
 
         if (milestone.AssetManager is not null && workNodes.Length == 0)
-            edges.Add(new("ASSET-MANAGER-1", milestone.QaReserved ? "QA" :
-                "GIT-FINALIZE", "ASSET_MANAGER_TERMINAL"));
+            edges.Add(new("ASSET-MANAGER-1", "HIGH", "ASSET_MANAGER_TO_HIGH"));
 
         foreach (var resource in milestone.Resources.Values)
         {
@@ -1661,12 +1642,9 @@ public partial class MainWindow
                 "BACKGROUND_RESOURCE_REQUEST"));
         }
 
-        if (milestone.QaReserved)
-        {
-            edges.Add(new("QA", "HIGH", "QA_ISSUE_ONLY"));
-            edges.Add(new("QA", "GIT-FINALIZE", "QA_TERMINAL_TO_GIT"));
-            edges.Add(new("HIGH", "GIT-FINALIZE", "HIGH_TERMINAL_TO_GIT"));
-        }
+        if (milestone.Design is not null && workNodes.Length == 0)
+            edges.Add(new("DESIGN-0", "HIGH", "DESIGN_TO_HIGH"));
+        edges.Add(new("HIGH", "GIT-FINALIZE", "HIGH_TERMINAL_TO_GIT"));
 
         edges.Add(new("GIT-FINALIZE", "HQ-FINAL", "REPORT_TO_HQ"));
 
@@ -1676,7 +1654,7 @@ public partial class MainWindow
                 jobId,
                 milestone.Id,
                 state,
-                milestone.QaReserved,
+                false,
                 milestone.Resources.Count > 0,
                 nodes,
                 edges,
@@ -2245,86 +2223,6 @@ public partial class MainWindow
                 Environment.NewLine,
                 moved.Select(path => "- " + path)),
             moved);
-    }
-
-    private async Task<string> ExecuteMilestoneQaAsync(
-        string jobId,
-        string workingDirectory,
-        MilestoneDefinition milestone,
-        IReadOnlyDictionary<string, string> workReports,
-        IReadOnlyDictionary<string, string> resourceReports,
-        IReadOnlyList<string> mechanicalReports,
-        WorkerAiRoleSettings implementer,
-        WorkerAiRoleSettings qa,
-        int validationRound,
-        CancellationToken cancellationToken)
-    {
-        _ = resourceReports;
-        _ = mechanicalReports;
-        _ = implementer;
-
-        RunOnUi(() =>
-        {
-            TaskDirection.Text = "QA";
-            TaskTitle.Text = $"QA 동작 조사 · {validationRound}";
-            ResultTitle.Text = "QA";
-            SetFlowState(
-                codexActive: true,
-                workerActive: false,
-                webActive: false,
-                explicitStage: TaskStage.Qa);
-        });
-
-        var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
-            milestone.Id, "QA");
-        var prompt = RoleContractLoader.BuildQaPrompt(
-            MilestoneDefinitionContract.BuildQaContext(
-                milestone,
-                workReports,
-                mechanicalReports));
-
-        async Task<AiRoleRunResult> RunAsync(string currentPrompt) =>
-            await RunCoordinatorRoleAsync(
-                jobId,
-                "QA",
-                currentPrompt,
-                qa,
-                workingDirectory,
-                null,
-                null,
-                cancellationToken,
-                CodexSandboxMode.WorkspaceWrite,
-                historyWorkItemId: "QA",
-                historyReferenceId: historyInvocationReference);
-
-        // No report-format retry: it duplicates testing and may discard real
-        // diagnostic evidence. Unparseable reports remain available verbatim.
-        var result = await RunAsync(prompt);
-
-        var report = MilestoneDefinitionContract.NormalizeQaReport(
-            result.ExitCode,
-            result.FinalMessage,
-            result.StandardError);
-        var qaStatus = MilestoneDefinitionContract.ReadQaStatus(report);
-
-        AddRoleResponseHistory(
-            WorkerRoleState.Qa,
-            "QA 조사 결과",
-            report,
-            result.Usage,
-            result.Files,
-            status: string.Equals(
-                qaStatus,
-                "blocked",
-                StringComparison.OrdinalIgnoreCase)
-                    ? "BLOCKED"
-                    : "RECEIVED",
-            providerWireId: qa.Provider,
-            fullMessage: report,
-            workItemId: "QA",
-            referenceId: historyInvocationReference);
-
-        return report;
     }
 
     private async Task<string> ExecuteMilestoneHighAsync(

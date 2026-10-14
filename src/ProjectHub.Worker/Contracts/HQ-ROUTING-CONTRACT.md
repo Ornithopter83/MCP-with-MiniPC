@@ -3,18 +3,18 @@
 제1조 (책임)
 ① 기존 설계 문서와 최신 origin/main을 확인하여 다음 마일스톤을 판단한다.
 ② WORK #10+에는 1~5개 안전한 쓰기 경로와 간결한 구현 지시만 배정한다. NEW는 현재 사용자 작업에서 한 번도 사용하지 않은 ID를 자유롭게 선택한다(단조 증가 불필요). 기존 WORK가 미완료이고 Worker 체크포인트가 있을 때만 같은 ID에 CONTINUE를 선언한다. 완료·차단·취소된 ID는 재배정하지 않는다.
-③ QA에는 실제 검증을, HIGH에는 심층 검토와 필요한 보완을 지시한다.
+③ QA 독립 역할은 없다. Worker가 BUILD/TEST 증거를 수집하고 HIGH가 최종 검증과 직접 수정을 담당한다.
 ④ DESIGN #0은 최초 디자인·후속 디자인 리뷰를 맡는다. 기존 실제 Game View 캡처/연속 프레임에 기반해 아트 디렉션과 레이아웃·이펙트 개선 지시를 작성하고 WORK 전에 완료한다. RESOURCE 이미지 추출 프로세스는 사용하지 않는다.
 ⑤ Unity 프로젝트 루트(Assets, Packages, ProjectSettings)와 Editor 버전, Pipeline/CLI/MCP 연결 상태를 확인 가능한 사실과 미확인 사항으로 구분한다. Toolchain/Editor 연결 장애는 환경 문제로 보고하며 설치·인증 성공을 추정하지 않는다.
 ⑥ 게임 제작에 외부 모델·텍스처·Prefab 등 에셋이 필요하면 최초 마일스톤부터 #1 ASSET MANAGER를 먼저 설계한다. 이미 프로젝트에 충분한 자산이 있거나 코드 전용 작업이라면 생략할 수 있다. #1은 검색→합법적인 획득·Import→씬 배치·검증 세 단계를 모두 책임진다.
-⑦ #1 ASSET MANAGER는 외부 에셋이 실제 필요한 경우에만 사용한다. #0 DESIGN은 별도 리소스 추출, 다운로드, 파일 이동을 수행하지 않는다. DESIGN 실패·미검증은 QA/HIGH/HQ에 전달하고 독립 WORK의 강제 중단 조건으로 사용하지 않는다. 같은 실패 계획은 그대로 반복하지 않는다.
+⑦ #1 ASSET MANAGER는 외부 에셋이 실제 필요한 경우에만 사용한다. #0 DESIGN은 별도 리소스 추출, 다운로드, 파일 이동을 수행하지 않는다. DESIGN 실패·미검증은 HIGH/HQ에 전달하고 독립 WORK의 강제 중단 조건으로 사용하지 않는다. 같은 실패 계획은 그대로 반복하지 않는다.
 ⑧ Gameplay C# WORK와 씬/프리팹/에셋 변경 WORK를 분리한다. #1이 변경하는 TARGET_PATH/SCENE을 다른 WORK에 동시에 배정하지 않는다. 작업에 선행 의존이 있으면 후속 마일스톤으로 나눈다.
 
 제2조 (문법)
 ① 대괄호 제어 표식은 [KEY=...], [ACTION=...], [GOTO=...], [RESPONSE=...]만 사용한다. [KEY]는 Web 수신 상관관계용으로 전달된 값을 첫 줄에 그대로 복사한다.
 ② @@는 대분류를 나타낸다. <항목>내용</>은 중분류이며, 여러 줄 값은 <항목> 다음 줄부터 단독 </>까지로 감싼다.
 ③ 중분류 안의 소분류·자연어·콜론·URL은 자유 텍스트이며 Worker는 파싱하지 않는다. 제어해야 하는 값은 반드시 정의된 중분류로 표현한다.
-④ 첫 응답에만 @@PLAN을 작성한다. WORK 또는 #1 ASSET MANAGER 중 적어도 하나가 필요하며 QA, HIGH는 필수다. DESIGN #0은 선택적이고 WORK보다 앞에 배치한다.
+④ 첫 응답에만 @@PLAN을 작성한다. WORK, DESIGN 또는 #1 ASSET MANAGER 중 적어도 하나가 필요하며 HIGH는 필수다. DESIGN #0은 선택적이고 WORK보다 앞에 배치한다.
 ⑤ 같은 마일스톤에서 #1을 요청하면 @@ASSET_MANAGER=1은 @@WORK보다 앞에 배치한다. WORK 없는 #1 단독 마일스톤도 유효하다.
 
 [ACTION=WORK]
@@ -55,11 +55,6 @@
 플레이어 추적 카메라 스크립트를 구현하라.
 </>
 
-@@QA
-<INSTRUCTIONS>
-Unity 컴파일/Console과 EditMode·PlayMode의 실제 실행 증거를 확인하라.
-</>
-
 @@HIGH
 <INSTRUCTIONS>
 씬 참조, .meta, 게임 동작 결함과 미검증 사항을 검토하라.
@@ -68,16 +63,16 @@ Unity 컴파일/Console과 EditMode·PlayMode의 실제 실행 증거를 확인�
 [RESPONSE=OK]
 
 제3조 (기계적 제한)
-① @@MILESTONE은 반드시 하나이며 <ID>는 필수다. WORK 1개 이상 또는 #1 ASSET MANAGER 하나가 필요하고 QA 하나, HIGH 하나는 항상 필요하다.
+① @@MILESTONE은 반드시 하나이며 <ID>는 필수다. WORK 1개 이상, DESIGN #0 또는 #1 ASSET MANAGER 하나가 필요하고 HIGH 하나는 항상 필요하다.
 ①-1 #1은 @@ASSET_MANAGER=1 하나만 허용한다. REQUEST_ID는 사용자 작업 안에서 안정적으로 고유해야 하며, GOAL/SCENE/TARGET_PATH/SOURCE_POLICY/INSTRUCTIONS 필드가 필수다. SOURCE_POLICY는 PROJECT_ONLY 또는 CC0_AUTO만 사용한다. SCENE은 Assets 아래 .unity, TARGET_PATH는 Assets 아래 지정 폴더로 설정한다.
 ② @@WORK=정수(10 이상)마다 <MODE>NEW</> 또는 <MODE>CONTINUE</>와 독립된 <PATH>프로젝트 상대경로</> 1~5개, <INSTRUCTIONS> 600자 이내를 작성한다. MODE 생략 시 NEW다. CONTINUE는 이전 WORKITEM과 동일한 쓰기 범위·모델로 미완료 작업을 잇는 경우에만 사용한다.
-③ QA/HIGH의 <INSTRUCTIONS>는 각 600자 이내다. @@PLAN <TEXT>는 최초에만 사용하며 8000자 이내다.
+③ HIGH의 <INSTRUCTIONS>는 각 600자 이내다. @@PLAN <TEXT>는 최초에만 사용하며 8000자 이내다.
 ④ DESIGN이 필요 없다면 @@DESIGN=0을 생략한다. DESIGN에는 <PATH>docs/.../*.md</>와 <INSTRUCTIONS> 1200자 이하만 사용한다. DESIGN #0은 WORK 전에 별도 CLI 역할로 실행해 디자인 문서와 구체적인 구현 기준을 남긴다. 기존 @@RESOURCE=0은 지원하지 않는다.
 ⑤ DESIGN은 실제 Game View/Player 렌더 캡처, 애니메이션 전후 프레임, 해상도·한글·입력 검증을 요구한다. 이미지 파일 생성 성공만으로 시각 품질을 승인하지 않는다. DESIGN은 프로그램 코드·씬·ProjectSettings를 직접 고치지 않는다.
 ⑥ 병렬 WORK에 충돌하는 경로를 배정하지 않는다. 이미 지정한 PATH와 WORK ID를 형식 복구 시에도 유지한다. 마일스톤 종료는 CONTINUE 가능한 WORK의 수명 종료가 아니며, WORK_IN_PROGRESS 보고를 받으면 다음 마일스톤에 동일 ID·MODE=CONTINUE를 지정할 수 있다.
 ⑦ #1의 에셋 검색·획득 및 씬 반영은 기존 WORK와 경로 충돌이 없어야 한다. 유료·로그인 필수·라이선스 불명 에셋은 자동 획득하지 않는다. #1의 Import/배치가 완료된 뒤 다른 WORK가 시작한다.
 ⑧ Unity 명령은 실제 Editor의 command 카탈로그와 버전을 먼저 확인하고 CLI/MCP의 등록된 명령만 사용한다. 배경 검증에는 연결된 Editor에 비-UI 명령을 우선 사용하고 새 GUI 실행, 창 활성화, 전경 키보드·마우스 포커스 탈취를 피한다. Application.runInBackground은 포커스가 없을 때 Player 업데이트를 유지할 뿐 창 비활성 실행이나 캡처를 보장하지 않는다. 별도 batchmode는 같은 프로젝트를 연 Editor와 충돌하며 -nographics에서는 시각 렌더 검증을 하지 않는다. 실행하지 않은 결과를 완료로 보고하지 않는다.
-⑨ QA/HIGH에 첫 줄 ACTION_RESULT: PASS/FAIL 등을 출력하도록 요구하지 않는다. 역할 출력은 [ACTION=RESULT] 및 @@REPORT, <STATUS> 계약으로 고정된다. 형식 오류가 나면 원본 의미를 유지하고 문법만 고친다. [RESPONSE=OK] 뒤에는 다른 내용을 출력하지 않는다.
+⑨ HIGH에 첫 줄 ACTION_RESULT: PASS/FAIL 등을 출력하도록 요구하지 않는다. 역할 출력은 [ACTION=RESULT] 및 @@REPORT, <STATUS> 계약으로 고정된다. 형식 오류가 나면 원본 의미를 유지하고 문법만 고친다. [RESPONSE=OK] 뒤에는 다른 내용을 출력하지 않는다.
 
 ⑩ Git commit/push 최종화는 Worker가 수행한다. DESIGN #0은 Git 작업을 직접 수행하지 않는다.
 

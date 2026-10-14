@@ -75,10 +75,11 @@ internal static class StructuredHqProtocol
         var errors = new List<string>();
         if (sections.Count(s => s.Name == "MILESTONE") != 1)
             errors.Add("MILESTONE");
-        if (sections.Count(s => s.Name == "QA") != 1 ||
-            sections.Count(s => s.Name == "HIGH") != 1)
-            errors.Add("COMPACT_QA_HIGH_REQUIRED");
-        if (sections.Any(s => s.Name is not ("MILESTONE" or "WORK" or "DESIGN" or "ASSET_MANAGER" or "QA" or "HIGH" or "PLAN")))
+        if (sections.Count(s => s.Name == "HIGH") != 1)
+            errors.Add("COMPACT_HIGH_REQUIRED");
+        if (sections.Any(s => s.Name == "QA"))
+            errors.Add("COMPACT_QA_REMOVED");
+        if (sections.Any(s => s.Name is not ("MILESTONE" or "WORK" or "DESIGN" or "ASSET_MANAGER" or "HIGH" or "PLAN")))
             errors.Add("COMPACT_SECTION_FORBIDDEN");
         var parsed = new Dictionary<Section, StructuredRoleFields>();
         foreach (var section in sections)
@@ -170,7 +171,8 @@ internal static class StructuredHqProtocol
                 ["sourcePolicy"] = source, ["instructions"] = instructions
             };
         }
-        if (works.Count == 0 && assetManager is null)
+        if (works.Count == 0 && assetManager is null &&
+            !sections.Any(s => s.Name == "DESIGN"))
             errors.Add("COMPACT_WORK_REQUIRED");
 
         // DESIGN #0 is a real, ordered design role, not a resource sidecar.
@@ -209,12 +211,11 @@ internal static class StructuredHqProtocol
                 ["id"] = 0, ["path"] = path, ["instructions"] = instructions
             };
         }
-        var qa = Value(sections.FirstOrDefault(s => s.Name == "QA"), "INSTRUCTIONS");
         var high = Value(sections.FirstOrDefault(s => s.Name == "HIGH"), "INSTRUCTIONS");
         var plan = Value(sections.FirstOrDefault(s => s.Name == "PLAN"), "TEXT");
-        if (qa.Length is < 1 or > 600 || high.Length is < 1 or > 600 || plan.Length > 8000)
+        if (high.Length is < 1 or > 600 || plan.Length > 8000)
             errors.Add("COMPACT_SECTION_LENGTH");
-        foreach (var s in sections.Where(s => s.Name is "QA" or "HIGH" or "PLAN" or "MILESTONE"))
+        foreach (var s in sections.Where(s => s.Name is "HIGH" or "PLAN" or "MILESTONE"))
         {
             var allowed = s.Name == "MILESTONE" ? "ID" : s.Name == "PLAN" ? "TEXT" : "INSTRUCTIONS";
             if (parsed.TryGetValue(s, out var f) && f.Names.Any(n => n != allowed))
@@ -224,7 +225,7 @@ internal static class StructuredHqProtocol
         var milestone = new Dictionary<string, object?>
         {
             ["id"] = milestoneId, ["branch"] = "main", ["goal"] = milestoneId,
-            ["qaInstructions"] = qa, ["highInstructions"] = high,
+            ["highInstructions"] = high,
             ["planDocument"] = plan, ["entrypoint"] = null,
             ["initializeGitIfMissing"] = false, ["projectPolicy"] = "DEFAULT",
             ["resource"] = null, ["design"] = design, ["assetManager"] = assetManager, ["workItems"] = works

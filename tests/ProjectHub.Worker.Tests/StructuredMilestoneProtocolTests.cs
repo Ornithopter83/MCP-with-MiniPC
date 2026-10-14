@@ -9,7 +9,7 @@ public sealed class StructuredMilestoneProtocolTests
     public void StructuredHq_AcceptsThirtyIndependentWorkItems()
     {
         var start = Modern.IndexOf("@@WORK=54", StringComparison.Ordinal);
-        var end = Modern.IndexOf("@@QA", StringComparison.Ordinal);
+        var end = Modern.IndexOf("@@HIGH", StringComparison.Ordinal);
         Assert.True(start >= 0 && end > start);
         var blocks = string.Join("\n\n", Enumerable.Range(10, 30).Select(id =>
             $"@@WORK={id}\n<PATH>generated/{id}.cs</>\n<INSTRUCTIONS>파일 {id}를 구현하라.</>"));
@@ -24,7 +24,7 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Equal(new[] { "generated/39.cs" }, milestone.WorkItems["39"].WritePaths);
         Assert.Empty(milestone.Resources);
         Assert.NotNull(milestone.Design);
-        Assert.True(milestone.QaReserved);
+        Assert.False(milestone.QaReserved);
     }
 
     private const string Modern = """
@@ -44,11 +44,6 @@ public sealed class StructuredMilestoneProtocolTests
         <PATH>scripts/player.gd</>
         <INSTRUCTIONS>
         이미지가 적합하면 연결한다. base: './'
-        </>
-
-        @@QA
-        <INSTRUCTIONS>
-        게임 실행 후 확인한다.
         </>
 
         @@HIGH
