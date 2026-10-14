@@ -94,7 +94,7 @@ public partial class MainWindow
             return;
 
         CoordinatorManagedWebRuntimeStatusText.Text = "HQ 브라우저 런타임 준비 중…";
-        ResourceManagedWebRuntimeStatusText.Text = "RESOURCE 브라우저 런타임 준비 중…";
+        ResourceManagedWebRuntimeStatusText.Text = "RESOURCE 추출 비활성 · #0 DESIGN은 로컬 CLI";
 
         var terminated = await Task.Run(
             _managedWebRuntimeManager.TerminateStaleOwnedBrowserProcesses);
@@ -111,13 +111,10 @@ public partial class MainWindow
         var hq = await _managedWebRuntimeManager.StartHiddenAsync(
             ManagedWebRole.Hq,
             _bridgeServer?.GetRoleConversationId("HQ"));
-        var resource = await _managedWebRuntimeManager.StartHiddenAsync(
-            ManagedWebRole.Resource,
-            _bridgeServer?.GetRoleConversationId("RESOURCE"));
-
+        // #0 DESIGN runs as a local role. The old RESOURCE browser must
+        // not spawn a second managed Chromium process during application boot.
         RefreshManagedWebRuntimePresentation();
         ReportManagedWebStartFailure("HQ", hq);
-        ReportManagedWebStartFailure("RESOURCE", resource);
     }
 
     private async void ShowManagedHqWeb_Click(object sender, RoutedEventArgs e)
