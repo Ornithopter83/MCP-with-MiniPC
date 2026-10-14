@@ -79,7 +79,7 @@ public sealed class UnityDesignHighRefactorTests
         var hqContract = RoleContractLoader.LoadHqFooter();
         foreach (var contract in new[] { highContract, hqContract })
         {
-            Assert.DoesNotMatch(@"\\bR[1-9]\\b", contract);
+            Assert.DoesNotMatch(@"\bR[1-9]\b", contract);
             Assert.DoesNotContain("통합 R1/R2", contract);
         }
         Assert.Contains("기존 BUILD/TEST", highContract);
