@@ -1257,13 +1257,14 @@ internal static class MilestoneDefinitionContract
 
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseWork(raw);
-        return parsed.IsValid
-            ? RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
-                parsed.ChangedPaths, parsed.Issues)
-            : RoleTextProtocol.BuildResult(
-                "blocked",
-                "WORK_REPORT_CONTRACT_INVALID",
-                issues: parsed.Errors);
+        if (parsed.IsValid)
+        {
+            RoleGotoContract.TryReadLeading(raw, out var destination, out _);
+            return RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
+                parsed.ChangedPaths, parsed.Issues, destination);
+        }
+        return RoleTextProtocol.BuildResult("blocked",
+            "WORK_REPORT_CONTRACT_INVALID", issues: parsed.Errors);
     }
 
     public static string NormalizeQaReport(

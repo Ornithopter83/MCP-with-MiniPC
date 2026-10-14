@@ -140,8 +140,12 @@ public sealed class RoleGotoRoutingTests
     {
         Assert.False(RoleTextProtocol.ParseWork(
             "[GOTO=DESIGN]\n" + Summary).IsValid);
-        Assert.True(RoleTextProtocol.ParseWork(
-            "[GOTO : WORKER]\n" + Summary).IsValid);
+        var completed = "[GOTO : WORKER]\n" + Summary;
+        Assert.True(RoleTextProtocol.ParseWork(completed).IsValid);
+        var normalized = MilestoneDefinitionContract.NormalizeWorkReport(
+            0, completed, null);
+        Assert.StartsWith("[GOTO=WORKER]", normalized);
+        Assert.Equal("completed", MilestoneDefinitionContract.ReadWorkStatus(normalized));
     }
 
     [Fact]
