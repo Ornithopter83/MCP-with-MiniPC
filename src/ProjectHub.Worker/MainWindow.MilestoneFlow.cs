@@ -1024,7 +1024,7 @@ public partial class MainWindow
                         webActive: false, explicitStage: TaskStage.Resource);
                 });
                 var designReference = milestone.Id + ":DESIGN:0";
-                AddDataFlowHistory(WorkerRoleState.Resource, "#0 DESIGN",
+                AddDataFlowHistory(WorkerRoleState.Design, "#0 DESIGN",
                     "Design 문서 및 실제 시각 증거 검토: " + design.Path,
                     status: "DISPATCHED", workItemId: "0",
                     referenceId: designReference,
@@ -1037,21 +1037,30 @@ public partial class MainWindow
                 {
                     var run = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
-                        UnityDesignPromptPolicy.Build(design, workingDirectory),
+                        RoleContractLoader.BuildDesignPrompt(design, workingDirectory),
                         implementer with { ThreadSessionId = null, ThreadProjectPath = null },
                         workingDirectory, null, null, cancellationToken,
                         CodexSandboxMode.WorkspaceWrite,
                         historyWorkItemId: "0",
                         historyReferenceId: designReference);
                     var parsed = RoleTextProtocol.ParseWork(run.FinalMessage);
+                    var afterProduction =
+                        await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                            workingDirectory, cancellationToken);
+                    var producedPaths = MilestoneMechanicalExecutor.DiffChangeStates(
+                        beforeDesign, afterProduction).ToArray();
+                    var actualGraphics = producedPaths.Any(UnityDesignPromptPolicy.IsVisualArtifact);
                     var verified = run.ExitCode == 0 && parsed.IsValid &&
-                        parsed.Status == "completed" &&
-                        UnityDesignPromptPolicy.IsVerifiedDocument(
-                            workingDirectory, design);
+                        parsed.Status == "completed" && actualGraphics;
                     designReport = (verified ? "DESIGN_STATUS: COMPLETED" :
                         "DESIGN_STATUS: BLOCKED_OR_IN_PROGRESS") +
                         Environment.NewLine +
-                        MilestoneDefinitionContract.Limit(run.FinalMessage, 1600);
+                        MilestoneDefinitionContract.Limit(run.FinalMessage, 1600) +
+                        Environment.NewLine +
+                        "ACTUAL_GRAPHIC_CHANGES: " +
+                        string.Join(", ", producedPaths.Where(UnityDesignPromptPolicy.IsVisualArtifact)) +
+                        Environment.NewLine +
+                        "VISUAL_E2E: UNVERIFIED_UNLESS_INSPECTED";
                 }
                 catch (OperationCanceledException) when (
                     cancellationToken.IsCancellationRequested)
@@ -1071,7 +1080,7 @@ public partial class MainWindow
                         beforeDesign, afterDesign))
                     milestoneChangedPaths.Add(changedPath);
                 mechanicalReports.Add("DESIGN #0: " + designReport);
-                AddRoleResponseHistory(WorkerRoleState.Resource,
+                AddRoleResponseHistory(WorkerRoleState.Design,
                     "#0 DESIGN 결과", designReport,
                     status: designReport.StartsWith("DESIGN_STATUS: COMPLETED",
                         StringComparison.Ordinal) ? "COMPLETED" : "BLOCKED",

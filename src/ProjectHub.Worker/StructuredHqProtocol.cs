@@ -186,6 +186,11 @@ internal static class StructuredHqProtocol
             var section = designs[0];
             var path = Value(section, "PATH");
             var instructions = Value(section, "INSTRUCTIONS");
+            var writePaths = parsed.TryGetValue(section, out var designFields)
+                ? designFields.GetMany("WRITE_PATH") : Array.Empty<string>();
+            if (writePaths.Count > 12 ||
+                writePaths.Any(value => !MilestoneDefinitionContract.IsSafeRelativePath(value)))
+                errors.Add("DESIGN.WRITE_PATH");
             if (section.Argument != "0") errors.Add("DESIGN.ID");
             if (!path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
                 !path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
@@ -194,21 +199,23 @@ internal static class StructuredHqProtocol
             if (instructions.Length is < 1 or > 1200)
                 errors.Add("DESIGN.INSTRUCTIONS");
             if (parsed.TryGetValue(section, out var fields) && fields.Names.Any(name =>
-                    name is not ("PATH" or "INSTRUCTIONS")))
+                    name is not ("PATH" or "INSTRUCTIONS" or "WRITE_PATH")))
                 errors.Add("DESIGN.UNKNOWN_FIELD");
             if (sections.Any(item => item.Name == "WORK") &&
                 sections.FindIndex(item => item == section) >
                 sections.FindIndex(item => item.Name == "WORK"))
                 errors.Add("DESIGN_MUST_PRECEDE_WORK");
             if (works.Any(work => ((IReadOnlyList<string>)work["writePaths"]!).Any(
-                    workPath => MilestoneMechanicalExecutor.IsPathWithinScopes(
-                        path, new[] { workPath }) ||
-                        MilestoneMechanicalExecutor.IsPathWithinScopes(
-                            workPath, new[] { path }))))
+                    workPath => (new[] { path }.Concat(writePaths)).Any(
+                        designPath => MilestoneMechanicalExecutor.IsPathWithinScopes(
+                            designPath, new[] { workPath }) ||
+                            MilestoneMechanicalExecutor.IsPathWithinScopes(
+                                workPath, new[] { designPath })))))
                 errors.Add("DESIGN_WORK_PATH_OVERLAP");
             design = new()
             {
-                ["id"] = 0, ["path"] = path, ["instructions"] = instructions
+                ["id"] = 0, ["path"] = path, ["instructions"] = instructions,
+                ["writePaths"] = writePaths
             };
         }
         var high = Value(sections.FirstOrDefault(s => s.Name == "HIGH"), "INSTRUCTIONS");

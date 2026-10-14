@@ -2070,7 +2070,7 @@ public partial class MainWindow : Window
             _ => "HQ"
         };
         var historyRole = assetManagerPurpose ? WorkerRoleState.Manager :
-            designPurpose ? WorkerRoleState.Resource : roleName switch
+            designPurpose ? WorkerRoleState.Design : roleName switch
         {
             "MANAGER" => WorkerRoleState.Manager,
             "QA" => WorkerRoleState.Qa,
@@ -2082,7 +2082,7 @@ public partial class MainWindow : Window
         // Share that exact, job-scoped file with CLI roles instead of asking
         // each role to rediscover and guess the Unity command arguments.
         // It is syntax guidance, not a substitute for executing validation.
-        if (roleName is "WORK" or "QA" or "HIGH")
+        if (roleName is "WORK" or "QA" or "HIGH" || designPurpose)
         {
             var catalogPath = UnityToolchainPreflight.CatalogPath(
                 workingDirectory, jobId);
@@ -2161,7 +2161,7 @@ public partial class MainWindow : Window
         IReadOnlyList<string>? codexConfigOverrides = null;
         var bypassHookTrust = false;
         if (!WorkerAutonomyPolicy.Enabled &&
-            (roleName is "WORK" or "QA" or "HIGH"))
+            (roleName is "WORK" or "QA" or "HIGH" || designPurpose))
         {
             // Legacy command denial gates are inactive in full autonomy.
             // QA/HIGH may build, but Git mutation stays in Worker.
@@ -3419,6 +3419,7 @@ public partial class MainWindow : Window
             WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
+            WorkerRoleState.Design => "Design",
             _ => "Worker"
         };
 
@@ -3531,6 +3532,7 @@ public partial class MainWindow : Window
                 WorkerRoleState.Qa => "QA PROGRESS",
                 WorkerRoleState.High => "HIGH PROGRESS",
                 WorkerRoleState.Resource => "RESOURCE PROGRESS",
+            WorkerRoleState.Design => "DESIGN PROGRESS",
                 _ => "HQ PROGRESS"
             },
             text,
@@ -3610,6 +3612,7 @@ public partial class MainWindow : Window
                 WorkerRoleState.Qa => "QA RESPONSE",
                 WorkerRoleState.High => "HIGH RESPONSE",
                 WorkerRoleState.Resource => "RESOURCE RESPONSE",
+            WorkerRoleState.Design => "DESIGN RESPONSE",
                 _ => "HQ RESPONSE"
             },
             fullText,

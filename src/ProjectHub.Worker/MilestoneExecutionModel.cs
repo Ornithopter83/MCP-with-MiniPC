@@ -15,7 +15,10 @@ internal sealed record MilestoneWorkDefinition(
     public string ExecutionMode { get; init; } = "NEW";
 }
 
-internal sealed record MilestoneDesignDefinition(string Path, string Instructions);
+internal sealed record MilestoneDesignDefinition(string Path, string Instructions)
+{
+    public IReadOnlyList<string> WritePaths { get; init; } = Array.Empty<string>();
+}
 
 internal sealed record AssetManagerDefinition(
     string RequestId,
@@ -391,17 +394,28 @@ internal static class MilestoneDefinitionContract
                     error = "MILESTONE_DESIGN_INVALID";
                     return false;
                 }
+                var designWritePaths = designJson.TryGetProperty("writePaths", out var designPathsJson) &&
+                    designPathsJson.ValueKind == JsonValueKind.Array && IsStringArray(designPathsJson)
+                        ? designPathsJson.EnumerateArray().Select(p => p.GetString() ?? "").ToArray()
+                        : Array.Empty<string>();
+                if (designWritePaths.Length > 12 ||
+                    designWritePaths.Any(path => !IsSafeRelativePath(path)))
+                {
+                    error = "DESIGN_WRITE_PATH_INVALID";
+                    return false;
+                }
                 if (workItems.Values.Any(work => !work.ReadOnly &&
                     work.WritePaths.Any(path =>
+                        new[] { designPath }.Concat(designWritePaths).Any(target =>
                         MilestoneMechanicalExecutor.IsPathWithinScopes(
-                            designPath, new[] { path }) ||
+                            target, new[] { path }) ||
                         MilestoneMechanicalExecutor.IsPathWithinScopes(
-                            path, new[] { designPath }))))
+                            path, new[] { target })))))
                 {
                     error = "DESIGN_WORK_PATH_OVERLAP";
                     return false;
                 }
-                design = new(designPath, designInstructions);
+                design = new(designPath, designInstructions) { WritePaths = designWritePaths };
             }
             var resources = new Dictionary<string, MilestoneResourceDefinition>(
                 StringComparer.OrdinalIgnoreCase);
@@ -409,8 +423,9 @@ internal static class MilestoneDefinitionContract
             var qaInstructions = TryGetOptionalJsonString(milestoneJson, "qaInstructions") ?? string.Empty;
             var highInstructions = TryGetOptionalJsonString(milestoneJson, "highInstructions") ?? string.Empty;
             var planDocument = TryGetOptionalJsonString(milestoneJson, "planDocument") ?? string.Empty;
-            var qaReserved = workItems.Values.Any(work => work.TestRequired) ||
-                             qaInstructions.Length > 0;
+            // Historical JSON QA configuration remains readable; mechanical tests
+            // are Worker-owned and must not reserve a new QA stage.
+            var qaReserved = qaInstructions.Length > 0;
             if (qaReserved && !string.IsNullOrWhiteSpace(entrypoint) &&
                 !IsSafeRelativePath(entrypoint))
             {

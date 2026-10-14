@@ -13,6 +13,9 @@ internal static class UnityDesignPromptPolicy
         return "[ROLE=DESIGN]\nDESIGN_ID: 0\nPROJECT_ROOT: " +
             Path.GetFullPath(projectRoot) +
             "\nDESIGN_DOCUMENT: " + design.Path +
+            "\nDESIGN_WRITE_PATHS: " +
+            (design.WritePaths.Count == 0 ? "프로젝트 그래픽 범위(기존 WORK 소유권 존중)" :
+                string.Join(", ", design.WritePaths)) +
             "\n@@DESIGN_GOAL\n" + design.Instructions +
             "\n\n@@DESIGN_METHOD\n" +
             "1. 실제 Unity 프로젝트의 UI/Scene/Canvas/URP/패키지를 읽고 아트 방향, " +
@@ -47,14 +50,28 @@ internal static class UnityDesignPromptPolicy
             "7. 색상·요소·이펙트의 전후 프레임 비교와 시각적 수정·재촬영 계획, " +
             "1280x720 및 1920x1080, 시작·정답·오답·결과·테마 0~10 " +
             "검증 매트릭스를 만든다. 실패·미검증은 PASS가 아니다.\n" +
-            "8. DESIGN_DOCUMENT 경로의 .md 한 파일만 작성/수정하고, " +
-            "게임 코드·씬·ProjectSettings·기존 WORK 결과를 직접 바꾸지 마라. " +
-            "프로젝트의 기존 변경과 체크포인트를 보존한다.\n\n" +
+            "8. 문서만 작성하지 말고 실제 Unity Scene, Canvas, Prefab, UI Sprite, " +
+            "Material, Shader, Animator, Particle, 미적 배치와 시각 전용 스크립트를 " +
+            "직접 제작·저장하라. 필요한 시각 파일에는 쓰기 권한이 있다. " +
+            "독립 WORK의 게임 규칙과 이전 체크포인트는 보존하고, " +
+            "같은 파일의 WORK 동시 수정을 금지한다.\n\n" +
             "@@RESULT_CONTRACT\n" +
             "[ACTION=RESULT] @@REPORT <STATUS>completed|in_progress|blocked</> " +
-            "<SUMMARY>실제 확인한 디자인 증거</> <CHANGED_PATH>문서 경로</> " +
+            "<SUMMARY>실제 그래픽 변경과 캡처·타임라인·명령 기록</> " +
+            "<CHANGED_PATH>실제 수정 파일(반복)</> " +
             "<ISSUES>미확인·실패</> [RESPONSE=OK].";
     }
+
+    // A Markdown document by itself is not evidence of graphic production.
+    internal static bool IsVisualArtifact(string path) =>
+        new[] { ".unity", ".prefab", ".mat", ".shader", ".shadergraph",
+            ".png", ".jpg", ".jpeg", ".svg", ".spriteatlas",
+            ".anim", ".controller", ".uxml", ".uss", ".vfx" }
+            .Any(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) ||
+        (path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) &&
+         new[] { "/UI/", "/Visual", "/Editor/", "/Presentation/" }
+            .Any(fragment => ("/" + path.Replace('\\', '/')).Contains(fragment,
+                StringComparison.OrdinalIgnoreCase)));
 
     internal static bool IsVerifiedDocument(string root, MilestoneDesignDefinition design) =>
         MilestoneDefinitionContract.IsSafeRelativePath(design.Path) &&

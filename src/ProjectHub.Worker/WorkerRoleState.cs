@@ -7,6 +7,7 @@ public enum WorkerRoleState
     Work,
     Qa,
     High,
-    Resource,
+    Resource, // historical RESOURCE records
+    Design,
     Unknown
 }
