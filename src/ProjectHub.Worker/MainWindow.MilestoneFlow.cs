@@ -1471,11 +1471,11 @@ public partial class MainWindow
                 var missingEvidence = request.EvidencePaths.Except(verifiedEvidence,
                     StringComparer.OrdinalIgnoreCase).ToArray();
                 if (missingEvidence.Length > 0 || request.Warnings.Count > 0 ||
-                    verifiedEvidence.Length == 0)
+                    verifiedEvidence.Count == 0)
                     mechanicalReports.Add("HIGH_DESIGN_HANDOFF_EVIDENCE_UNVERIFIED: " +
                         string.Join("; ", missingEvidence.Concat(request.Warnings)) +
-                        (verifiedEvidence.Length == 0 ? "; no readable capture" : ""));
-                var evidenceDescription = verifiedEvidence.Length > 0
+                        (verifiedEvidence.Count == 0 ? "; no readable capture" : ""));
+                var evidenceDescription = verifiedEvidence.Count > 0
                     ? string.Join("\n", verifiedEvidence)
                     : "UNVERIFIED: no valid captured image; inspect scene directly";
                 mechanicalReports.Add("HIGH_DESIGN_HANDOFF: " + invocation +
