@@ -45,6 +45,81 @@ public sealed class WorkerHistoryLifecycleTests
             Assert.Contains("----- WORK DETAIL -----", cards[0].FullMessage);
     }
 
+    [Theory]
+    [InlineData("HIGH", "HIGH", "M17:HIGH:review-1", true)]
+    [InlineData("HIGH", null, "M17:HIGH:review-2", true)]
+    [InlineData("HIGH", "HIGH", null, false)]
+    [InlineData("WORK", "27", "M17:WORK:27", true)]
+    [InlineData("WORK", null, "M17:WORK:27", false)]
+    [InlineData("DESIGN", "0", "M17:DESIGN:0", false)]
+    public void CliProgressRoutesToActiveRoleCardOnly(
+        string roleName, string? workId, string? reference, bool expected)
+    {
+        Assert.Equal(expected,
+            WorkerHistoryCardPolicy.ShouldStreamToRoleCard(
+                roleName, workId, reference));
+    }
+
+    [Fact]
+    public void HighProgress_UpdatesSameLiveCardAndPreservesEvidenceOnCompletion()
+    {
+        var cards = new ObservableCollection<MainWindow.WorkerHistoryEvent>();
+        var first = WorkerHistoryCardPolicy.NewInvocationReference("M17", "HIGH");
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards,
+            Card(first, "HighLevel", "ROLE_PROGRESS",
+                "요청 전달 완료 · 응답 대기"));
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards,
+            Card(first, "HighLevel", "ROLE_PROGRESS",
+                "명령 실행 시작 · unity command get_scene_hierarchy"));
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards,
+            Card(first, "HighLevel", "ROLE_PROGRESS",
+                "명령 실행 종료 · exit 0 · unity command get_scene_hierarchy"));
+        Assert.Single(cards);
+        Assert.Equal("HighLevel", cards[0].StageKey);
+        Assert.Equal("RUNNING", cards[0].Status);
+        Assert.Contains("명령 실행 종료", cards[0].Summary);
+        Assert.Contains("명령 실행 시작", cards[0].FullMessage);
+        Assert.Contains("응답 대기", cards[0].FullMessage);
+
+        WorkerHistoryCardPolicy.PublishRoleResponse(cards,
+            Card(first, "HighLevel", "ROLE_RESPONSE", "최종 HIGH 검토 완료"));
+        Assert.Single(cards);
+        Assert.Equal("ROLE_RESPONSE", cards[0].EventType);
+        Assert.Contains("----- HIGH DETAIL -----", cards[0].FullMessage);
+        Assert.Contains("unity command get_scene_hierarchy", cards[0].FullMessage);
+        Assert.StartsWith("최종 HIGH 검토 완료", cards[0].FullMessage);
+
+        // Late CLI events must not resurrect a RUNNING card.
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards,
+            Card(first, "HighLevel", "ROLE_PROGRESS", "늦은 진행 이벤트"));
+        Assert.Single(cards);
+        Assert.Equal("ROLE_RESPONSE", cards[0].EventType);
+    }
+
+    [Fact]
+    public void HighResumedReview_HasIndependentProgressAndResponseCard()
+    {
+        var cards = new ObservableCollection<MainWindow.WorkerHistoryEvent>();
+        var first = WorkerHistoryCardPolicy.NewInvocationReference("M17", "HIGH");
+        var second = WorkerHistoryCardPolicy.NewInvocationReference("M17", "HIGH");
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards,
+            Card(first, "HighLevel", "ROLE_PROGRESS", "첫 검토 진행"));
+        WorkerHistoryCardPolicy.PublishRoleResponse(cards,
+            Card(first, "HighLevel", "ROLE_RESPONSE", "design_handoff"));
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards,
+            Card(second, "HighLevel", "ROLE_PROGRESS", "DESIGN 수정 재점검"));
+        Assert.Equal(2, cards.Count);
+        Assert.Contains(cards, x => x.ReferenceId == first &&
+            x.EventType == "ROLE_RESPONSE");
+        Assert.Contains(cards, x => x.ReferenceId == second &&
+            x.EventType == "ROLE_PROGRESS" &&
+            x.Summary!.Contains("DESIGN 수정 재점검"));
+        WorkerHistoryCardPolicy.PublishRoleResponse(cards,
+            Card(second, "HighLevel", "ROLE_RESPONSE", "재점검 완료"));
+        Assert.Equal(2, cards.Count);
+        Assert.All(cards, x => Assert.Equal("ROLE_RESPONSE", x.EventType));
+    }
+
     [Fact]
     public void DesignProgress_ReplacesRunningDesignCardOnCompletion()
     {

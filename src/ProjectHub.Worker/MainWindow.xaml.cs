@@ -2129,7 +2129,8 @@ public partial class MainWindow : Window
                     assetManagerPurpose ? "ASSET_MANAGER" : roleName,
                     observedCommand, phase, assessedRisk,
                     historyReferenceId, historyWorkItemId);
-            if (roleName == "WORK" && !string.IsNullOrWhiteSpace(historyWorkItemId))
+            if (WorkerHistoryCardPolicy.ShouldStreamToRoleCard(
+                    roleName, historyWorkItemId, historyReferenceId))
             {
                 AddRoleProgressHistory(
                     historyRole,
@@ -3566,8 +3567,8 @@ public partial class MainWindow : Window
         else if (item.StageKey == "Coordinator")
             item = item with { IconAssetOverride = _coordinatorStageIconAsset };
 
-        if (role == WorkerRoleState.Work)
-            WorkerHistoryCardPolicy.AccumulateWorkProgress(_historyEvents, item);
+        if (role is WorkerRoleState.Work or WorkerRoleState.High)
+            WorkerHistoryCardPolicy.AccumulateRoleProgress(_historyEvents, item);
         else
             PublishHistoryCard(item);
         AddTaskMessage(

@@ -89,17 +89,25 @@ public static class WorkerHistoryCardPolicy
         history.Add(item);
     }
 
+    // HIGH has one card per CLI review invocation (including post-DESIGN
+    // rechecks). Route its live command/tool events there rather than leaving
+    // the initial "awaiting response" summary unchanged.
+    public static bool ShouldStreamToRoleCard(
+        string roleName, string? workItemId, string? referenceId) =>
+        roleName == "HIGH" && !string.IsNullOrWhiteSpace(referenceId) ||
+        roleName == "WORK" && !string.IsNullOrWhiteSpace(workItemId);
+
     /// <summary>
-    /// One visible WORK card per invocation. Recent progress is shown in the
+    /// One visible WORK or HIGH card per invocation. Recent progress is shown in the
     /// compact card while double-clicking exposes the accumulated detail.
     /// The original complete detail remains in the task transcript/JSONL.
     /// </summary>
-    public static void AccumulateWorkProgress(
+    public static void AccumulateRoleProgress(
         ObservableCollection<MainWindow.WorkerHistoryEvent> history,
         MainWindow.WorkerHistoryEvent incoming)
     {
         if (incoming.EventType != "ROLE_PROGRESS" ||
-            incoming.StageKey != "Implementer" ||
+            incoming.StageKey is not ("Implementer" or "HighLevel") ||
             string.IsNullOrWhiteSpace(incoming.ReferenceId))
         {
             Publish(history, incoming);
@@ -133,6 +141,12 @@ public static class WorkerHistoryCardPolicy
         });
     }
 
+    // Existing WORK callers use the same bounded accumulator.
+    public static void AccumulateWorkProgress(
+        ObservableCollection<MainWindow.WorkerHistoryEvent> history,
+        MainWindow.WorkerHistoryEvent incoming) =>
+        AccumulateRoleProgress(history, incoming);
+
     /// <summary>
     /// Finish the same role card that became visible when the request began.
     /// Results from separate invocations retain their own reference IDs.
@@ -150,17 +164,19 @@ public static class WorkerHistoryCardPolicy
                     candidate.StageKey != result.StageKey ||
                     !string.Equals(candidate.ReferenceId, result.ReferenceId, StringComparison.Ordinal))
                     continue;
-                // Preserve accumulated WORK detail in the final card's
-                // double-click viewer, without adding a second history card.
+                // Keep a bounded progress history when the final response
+                // replaces the same visible invocation card.
                 var finalCard = result;
-                if (result.StageKey == "Implementer" &&
+                if (result.StageKey is "Implementer" or "HighLevel" &&
                     !string.IsNullOrWhiteSpace(candidate.FullMessage))
                     finalCard = result with
                     {
                         FullMessage = result.FullMessage +
                             Environment.NewLine + Environment.NewLine +
-                            "----- WORK DETAIL -----" + Environment.NewLine +
-                            candidate.FullMessage
+                            (result.StageKey == "HighLevel"
+                                ? "----- HIGH DETAIL -----"
+                                : "----- WORK DETAIL -----") +
+                            Environment.NewLine + candidate.FullMessage
                     };
                 history[i] = finalCard;
                 if (i != history.Count - 1)
