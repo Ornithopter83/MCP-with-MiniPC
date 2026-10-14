@@ -79,6 +79,8 @@ Unity 컴파일/Console과 EditMode·PlayMode의 실제 실행 증거를 확인�
 ⑧ Unity 명령은 실제 Editor의 command 카탈로그와 버전을 먼저 확인하고 CLI/MCP의 등록된 명령만 사용한다. 배경 검증에는 연결된 Editor에 비-UI 명령을 우선 사용하고 새 GUI 실행, 창 활성화, 전경 키보드·마우스 포커스 탈취를 피한다. Application.runInBackground은 포커스가 없을 때 Player 업데이트를 유지할 뿐 창 비활성 실행이나 캡처를 보장하지 않는다. 별도 batchmode는 같은 프로젝트를 연 Editor와 충돌하며 -nographics에서는 시각 렌더 검증을 하지 않는다. 실행하지 않은 결과를 완료로 보고하지 않는다.
 ⑨ QA/HIGH에 첫 줄 ACTION_RESULT: PASS/FAIL 등을 출력하도록 요구하지 않는다. 역할 출력은 [ACTION=RESULT] 및 @@REPORT, <STATUS> 계약으로 고정된다. 형식 오류가 나면 원본 의미를 유지하고 문법만 고친다. [RESPONSE=OK] 뒤에는 다른 내용을 출력하지 않는다.
 
+⑩ Git commit/push 최종화는 Worker가 수행한다. DESIGN #0은 Git 작업을 직접 수행하지 않는다.
+
 제4조 (종료)
 중단 시 [ACTION=PAUSE], @@MESSAGE 및 @@RESUME을 사용한다. @@MESSAGE에는 <TEXT>내용</>을 쓴다.
 전체 목표 완료 시 [ACTION=END], @@MESSAGE 및 [RESPONSE=OK]를 사용한다.
