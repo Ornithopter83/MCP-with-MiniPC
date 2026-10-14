@@ -204,9 +204,8 @@ public sealed class RoleGotoRoutingTests
     [Fact]
     public void MissingEvidenceAndOptionalDescriptions_DoNotBlockSafeHandoff()
     {
-        var report = CanonicalHandoff.Replace(
-            "<EVIDENCE_PATH>temp/screens/50.png; temp/screens/100.png\n" +
-            "temp/screens/missing.png</>", "");
+        var report = System.Text.RegularExpressions.Regex.Replace(
+            CanonicalHandoff, @"(?s)<EVIDENCE_PATH>.*?</>", "");
         report = report.Replace("<EXPECTED_RESULT>각 문구가 가려지지 않는다.</>", "")
             .Replace("<REASON>화면 캡처를 통해 발견함</>", "");
         Assert.True(HighDesignHandoffContract.TryRead(
