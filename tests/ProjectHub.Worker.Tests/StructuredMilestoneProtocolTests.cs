@@ -83,6 +83,72 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Contains("base: './'", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["54"]));
     }
 
+    [Theory]
+    [InlineData("PAUSE")]
+    [InlineData("END")]
+    public void HqControlActionTakesPriorityOverMisleadingMilestoneAndPreservesOriginal(
+        string action)
+    {
+        var original = "[KEY=control123]\\n[ACTION=" + action + "]\\n" +
+            "@@MILESTONE\\n<ID>M8</>\\n" +
+            "@@MESSAGE\\n<TEXT>오프라인 검증은 미확인이다.</>\\n" +
+            "@@RESUME\\n<TEXT>사용자 검증 후 재개</>\\n" +
+            "[RESPONSE=OK]";
+        original = original.Replace("\\n", "\n", StringComparison.Ordinal);
+
+        var result = HqTextProtocol.Parse(original);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors));
+        var control = Assert.Single(result.Parse.ValidActions);
+        Assert.Equal(action, control.Name);
+        Assert.Equal(original, control.Body);
+        Assert.Equal(original, ActionBlockContract.ParseHq(
+            result.CompatibilityMessage).ValidActions.Single().Body);
+    }
+
+    [Theory]
+    [InlineData("PAUSE")]
+    [InlineData("END")]
+    public void HqMalformedControlTextPreservesOriginalInsteadOfAskingForNewDecision(
+        string action)
+    {
+        var original = "[ACTION=" + action + "]\n" +
+            "@@MESSAGE\n<TEXT>원문 그대로 노출</TEXT>\n" +
+            "[RESPONSE=OK]";
+        var result = HqTextProtocol.Parse(original);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors));
+        var control = Assert.Single(result.Parse.ValidActions);
+        Assert.Equal(action, control.Name);
+        Assert.Equal(original, control.Body);
+    }
+
+    [Fact]
+    public void HqValidPauseUsesItsMessageWithoutReparsingItAsWork()
+    {
+        const string original = """
+            [ACTION=PAUSE]
+            @@MESSAGE
+            <TEXT>사용자 입력 대기</>
+            @@RESUME
+            <TEXT>입력 후</>
+            [RESPONSE=OK]
+            """;
+        var result = HqTextProtocol.Parse(original);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors));
+        Assert.Equal("PAUSE", Assert.Single(result.Parse.ValidActions).Name);
+        Assert.Equal("사용자 입력 대기", Assert.Single(result.Parse.ValidActions).Body);
+    }
+
+    [Fact]
+    public void HqInvalidActionAndMalformedWorkStillFailValidation()
+    {
+        var unknown = HqTextProtocol.Parse(
+            "[ACTION=PROCEED]\n@@MILESTONE\n<ID>M8</>\n[RESPONSE=OK]");
+        Assert.False(unknown.IsValid);
+        var missingWork = HqTextProtocol.Parse(
+            "[ACTION=WORK]\n@@MILESTONE\n<ID>M8</>\n[RESPONSE=OK]");
+        Assert.False(missingWork.IsValid);
+    }
+
     [Fact]
     public void StructuredHq_RejectsUnclosedOrUnknownMiddleFields()
     {
