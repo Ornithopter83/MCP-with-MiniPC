@@ -100,6 +100,14 @@ public partial class MainWindow
             coordinator.ThreadSessionId);
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
 
+        // Foreground window protection spans preflight, DESIGN, WORK, CLI
+        // recompilation and HIGH; a Codex command hook cannot intercept an
+        // already-running Editor promoting its own native window.
+        using var unityFocusGuard = UnityBackgroundFocusGuard.Start();
+        if (!unityFocusGuard.Available)
+            AddTaskMessage("UNITY BACKGROUND GUARD",
+                unityFocusGuard.Diagnostic, status: "UNVERIFIED");
+
         try
         {
             if (!continuing)
@@ -808,6 +816,11 @@ public partial class MainWindow
                 WorkerChildProcessJob.TerminateAllActiveJobs();
             }
 
+            if (unityFocusGuard.RestoreAttempts > 0)
+                AddTaskMessage("UNITY BACKGROUND GUARD",
+                    unityFocusGuard.Diagnostic,
+                    status: unityFocusGuard.RestoreFailures == 0
+                        ? "OBSERVED" : "UNVERIFIED");
             UserAttachmentTransport.CleanupStagedWorkerRuntime(
                 stagedAttachments,
                 normalizedRoot);

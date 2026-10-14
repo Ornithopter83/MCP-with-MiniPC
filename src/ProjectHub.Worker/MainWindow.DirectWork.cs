@@ -293,6 +293,14 @@ public partial class MainWindow
             return;
         }
 
+        // Direct WORK can also trigger foreground-promoting Unity CLI/MCP
+        // operations; cover its preflight and AI execution with the same guard.
+        using var unityFocusGuard = UnityBackgroundFocusGuard.Start();
+        if (!unityFocusGuard.Available &&
+            UnityCliBuildRunner.IsUnityProject(workingDirectory))
+            AddTaskMessage("UNITY BACKGROUND GUARD",
+                unityFocusGuard.Diagnostic, status: "UNVERIFIED");
+
         // Direct WORK is also a submitted user command. Do not trigger on
         // switching the dashboard into 'new task' input mode.
         if (UnityCliBuildRunner.IsUnityProject(workingDirectory))
@@ -478,6 +486,11 @@ public partial class MainWindow
         }
         finally
         {
+            if (unityFocusGuard.RestoreAttempts > 0)
+                AddTaskMessage("UNITY BACKGROUND GUARD",
+                    unityFocusGuard.Diagnostic,
+                    status: unityFocusGuard.RestoreFailures == 0
+                        ? "OBSERVED" : "UNVERIFIED");
             UserAttachmentTransport.CleanupStagedWorkerRuntime(
                 stagedAttachments,
                 workingDirectory);
