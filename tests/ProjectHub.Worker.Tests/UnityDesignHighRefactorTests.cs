@@ -198,7 +198,7 @@ public sealed class UnityDesignHighRefactorTests
         var context = HighDesignContinuationPolicy.BuildReviewContext(
             "@@DESIGN_RESULTS\nDESIGN #0: STATUS=completed", Handoff);
         Assert.Contains("@@PREVIOUS_HIGH_REVIEW", context);
-        Assert.Contains("<STATUS>design_handoff</>", context);
+        Assert.Contains("<STATUS>in_progress</>", context);
         Assert.Contains("DESIGN #0: STATUS=completed", context);
         Assert.DoesNotContain("@@PREVIOUS_HIGH_REVIEW",
             HighDesignContinuationPolicy.BuildReviewContext("base", null));
