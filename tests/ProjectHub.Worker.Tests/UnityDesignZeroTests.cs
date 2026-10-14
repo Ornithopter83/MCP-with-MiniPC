@@ -72,10 +72,10 @@ public sealed class UnityDesignZeroTests
         Assert.Contains("batchmode", prompt);
         Assert.Contains("-nographics", prompt);
         Assert.Contains("capture_game_view", prompt);
-        Assert.Contains("실제로 지원되는", prompt);
+        Assert.Contains("확인된 Unity CLI/MCP/Editor API", prompt);
         Assert.Contains("미검증", prompt);
         Assert.DoesNotContain("RESOURCE 이미지 추출", prompt);
-        Assert.Contains("직접 제작·저장", prompt);
+        Assert.Contains("제작·수정·저장", prompt);
         Assert.True(UnityDesignPromptPolicy.IsVisualArtifact("Assets/UI/Panel.prefab"));
         Assert.False(UnityDesignPromptPolicy.IsVisualArtifact("docs/projecthub/design.md"));
     }
