@@ -96,7 +96,7 @@ public sealed class UnityDesignHighRefactorTests
         }
         var designContract = RoleContractLoader.LoadDesignFooter()
             .Replace("\r\n", "\n", StringComparison.Ordinal);
-        Assert.Contains("[GOTO=WORKER]\n\n@@REPORT", designContract);
+        Assert.Contains("[GOTO=WORKER]\n@@REPORT", designContract);
         var designPrompt = UnityDesignPromptPolicy.Build(
             new MilestoneDesignDefinition("docs/projecthub/design.md",
                 "화면 정리")
@@ -105,7 +105,7 @@ public sealed class UnityDesignHighRefactorTests
             },
             Path.GetTempPath());
         Assert.Contains("반드시", designPrompt);
-        Assert.Contains("[GOTO=WORKER]\n\n@@REPORT", designPrompt);
+        Assert.Contains("[GOTO=WORKER]\n@@REPORT", designPrompt);
         Assert.DoesNotContain("[GOTO=WORKER] @@REPORT", designPrompt);
     }
 
