@@ -7,6 +7,7 @@
 ②-2-1 소스 전용 병렬 레인에서는 Unity CLI/MCP, Editor API, AssetDatabase, 컴파일 및 PlayMode 호출을 금지하며 Worker BUILD/QA에 위임한다. Editor 레인도 같은 Editor의 명령을 병렬로 호출하지 않는다. 모든 외부 명령이 OS 수준의 강제 게이트로 감시된다고 가정하지 않는다.
 ②-3 .meta, ProjectSettings, Packages 등 필요한 추가 프로젝트 수정이 WRITE_PATH 밖에서 발생해도 허용한다. 실제 변경 파일과 사유를 CHANGED_PATH·ISSUES에 기록하고 Worker가 Git 반영한다. Library, Temp, Logs, UserSettings, 빌드 캐시는 Git에 추가하지 않는다.
 ②-4 컴파일·PlayMode는 WORK가 선제 실행할 수 있지만 독립된 Worker BUILD/QA 확인은 별도로 수행한다. WORK의 completed만으로 전체 테스트 성공을 선언하지 않는다.
+②-5 디자인 WORK는 #0 DESIGN의 확인된 화면·레이아웃·색상·이펙트 가이드를 참고한다. Unity CLI/MCP의 실제 명령 카탈로그를 우선 확인하고 필요하면 Editor 전용 미리보기/테마 강제 표시/캡처 명령을 구현한다. 이미지 생성, Shader Graph, Animator·Timeline, 9-slice, 파티클 등은 실제 지원·출처가 확인된 도구만 활용한다. 시각 연출에는 기존 100문제·점수·입력 계약을 유지한다. 창 활성화·전경 키 입력에 의존하지 않으며, 연결된 Editor의 비-UI 명령과 재생 상태·프레임 진행 검증을 우선한다. 실제 캡처를 보지 못했으면 화려함·가독성을 확인했다고 주장하지 않는다.
 ③ 결과 형식은 이 역할 계약을 최우선으로 따른다. 대괄호 제어 표식은 KEY, ACTION, GOTO, RESPONSE뿐이다.
 ④ @@는 대분류, <항목>내용</>은 중분류이다. 중분류 내부의 자유 텍스트는 파싱하지 않는다.
 
