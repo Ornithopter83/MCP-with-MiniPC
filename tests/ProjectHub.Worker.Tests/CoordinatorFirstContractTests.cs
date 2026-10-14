@@ -588,11 +588,11 @@ public sealed class CoordinatorFirstContractTests
             0,
             """
             @@REPORT
-<STATUS>completed</>
-<SUMMARY>완료</>
-<CHANGED_PATH>src/A.cs</>
-<ISSUES>없음</>
-[RESPONSE=OK]
+            <STATUS>completed</>
+            <SUMMARY>완료</>
+            <CHANGED_PATH>src/A.cs</>
+            <ISSUES>없음</>
+            [RESPONSE=OK]
             """,
             null);
 
@@ -616,10 +616,10 @@ public sealed class CoordinatorFirstContractTests
             0,
             """
             @@REPORT
-<STATUS>passed</>
-<SUMMARY>동작 확인</>
-<ISSUES>없음</>
-[RESPONSE=OK]
+            <STATUS>passed</>
+            <SUMMARY>동작 확인</>
+            <ISSUES>없음</>
+            [RESPONSE=OK]
             """,
             null);
 
@@ -629,11 +629,11 @@ public sealed class CoordinatorFirstContractTests
             0,
             """
             @@REPORT
-<STATUS>completed</>
-<SUMMARY>보완 완료</>
-<CHANGED_PATH>src/Fix.cs</>
-<ISSUES>없음</>
-[RESPONSE=OK]
+            <STATUS>completed</>
+            <SUMMARY>보완 완료</>
+            <CHANGED_PATH>src/Fix.cs</>
+            <ISSUES>없음</>
+            [RESPONSE=OK]
             """,
             null);
 
@@ -647,10 +647,10 @@ public sealed class CoordinatorFirstContractTests
             0,
             """
             @@REPORT
-<STATUS>blocked</>
-<SUMMARY>실행환경 문제</>
-<ISSUES>helper setup failed</>
-[RESPONSE=OK]
+            <STATUS>blocked</>
+            <SUMMARY>실행환경 문제</>
+            <ISSUES>helper setup failed</>
+            [RESPONSE=OK]
             """,
             null);
 
@@ -961,11 +961,11 @@ public sealed class CoordinatorFirstContractTests
         var result = RoleTextProtocol.ParseWork(
             """
             @@REPORT
-<STATUS>completed</>
-<SUMMARY>구현 완료</>
-<CHANGED_PATH>src/A.cs</>
-<ISSUES>없음</>
-[RESPONSE=OK]
+            <STATUS>completed</>
+            <SUMMARY>구현 완료</>
+            <CHANGED_PATH>src/A.cs</>
+            <ISSUES>없음</>
+            [RESPONSE=OK]
             """);
 
         Assert.True(result.IsValid, string.Join(", ", result.Errors));
