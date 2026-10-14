@@ -54,6 +54,68 @@ public sealed class RoleGotoRoutingTests
         Assert.False(RoleTextProtocol.ParseWork(leading + Summary).IsValid);
     }
 
+    [Theory]
+    [InlineData("[GOTO=WORKER] [ACTION=RESULT] @@REPORT")]
+    [InlineData("[GOTO : WORKER][ACTION=RESULT]@@REPORT")]
+    [InlineData("[GOTO=WORKER]\\n[ACTION=RESULT] @@REPORT")]
+    [InlineData("[ACTION=RESULT] @@REPORT")]
+    public void JoinedHeaderTokensAreRecoveredWithoutChangingContract(string header)
+    {
+        var report = header.Replace("\\n", "\n") + "\n" +
+            "<STATUS>completed</>\n<SUMMARY>실제 제작 완료</>\n" +
+            "<CHANGED_PATH>Assets/UI/Panel.prefab</>\n" +
+            "<ISSUES>없음</>\n[RESPONSE=OK]";
+        Assert.True(RoleTextProtocol.ParseWork(report).IsValid,
+            string.Join(";", RoleTextProtocol.ParseWork(report).Errors));
+        Assert.Equal("completed",
+            MilestoneDefinitionContract.ReadWorkStatus(report));
+        var normalized = RoleGotoContract.NormalizeResultHeader(report);
+        Assert.Contains("[ACTION=RESULT]\n@@REPORT", normalized);
+        if (header.StartsWith("[GOTO", StringComparison.Ordinal))
+        {
+            Assert.True(RoleGotoContract.TryReadLeading(
+                report, out var target, out var error), error);
+            Assert.Equal("WORKER", target);
+        }
+    }
+
+    [Theory]
+    [InlineData("[GOTO=DESIGN] [ACTION=RESULT] @@REPORT")]
+    [InlineData("[GOTO : DESIGN][ACTION=RESULT]@@REPORT")]
+    public void HighHandoffJoinedHeaderIsRecovered(string header)
+    {
+        var report = CanonicalHandoff.Replace(
+            "[GOTO=DESIGN]\n[ACTION=RESULT]\n@@REPORT", header);
+        Assert.Equal("design_handoff",
+            MilestoneDefinitionContract.ReadHighStatus(report));
+        Assert.True(HighDesignHandoffContract.TryRead(
+            report, out var handoff, out var error), error);
+        Assert.Equal("Assets/UI/Promotion.prefab", handoff!.TargetPath);
+    }
+
+    [Theory]
+    [InlineData("[GOTO=WORKER] [GOTO=DESIGN] [ACTION=RESULT] @@REPORT")]
+    [InlineData("[GOTO=UNKNOWN] [ACTION=RESULT] @@REPORT")]
+    public void JoinedHeaderStillRejectsConflictingOrInvalidRoutes(string header)
+    {
+        var report = header + "\n" +
+            "<STATUS>completed</>\n<SUMMARY>결과</>\n[RESPONSE=OK]";
+        Assert.False(RoleTextProtocol.ParseWork(report).IsValid);
+    }
+
+    [Fact]
+    public void GotoInsideSummaryNeverChangesRecipient()
+    {
+        var report = "[GOTO=WORKER] [ACTION=RESULT] @@REPORT\n" +
+            "<STATUS>completed</>\n" +
+            "<SUMMARY>예시 문자열 [GOTO=DESIGN]은 작업 설명입니다.</>\n" +
+            "[RESPONSE=OK]";
+        Assert.True(RoleTextProtocol.ParseWork(report).IsValid);
+        Assert.True(RoleGotoContract.TryReadLeading(
+            report, out var target, out var error), error);
+        Assert.Equal("WORKER", target);
+    }
+
     [Fact]
     public void DuplicateMatchingGoto_IsNotAnAmbiguousRoute()
     {

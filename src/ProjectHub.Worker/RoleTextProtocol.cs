@@ -70,10 +70,7 @@ internal static class RoleTextProtocol
         string? raw,
         IReadOnlyCollection<string> allowedStatuses)
     {
-        var normalized = (raw ?? string.Empty)
-            .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n')
-            .Trim();
+        var normalized = RoleGotoContract.NormalizeResultHeader(raw).Trim();
         var errors = new List<string>();
         if (normalized.Length == 0)
             return new("", "", Array.Empty<string>(), Array.Empty<string>(), new[] { "RESULT_EMPTY" });

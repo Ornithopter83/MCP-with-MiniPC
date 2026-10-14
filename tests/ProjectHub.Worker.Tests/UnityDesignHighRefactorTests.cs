@@ -75,6 +75,36 @@ public sealed class UnityDesignHighRefactorTests
     }
 
     [Fact]
+    public void ActiveRoleContractsMandateBracketOrderAndLineBreaks()
+    {
+        var contracts = new[]
+        {
+            RoleContractLoader.LoadHqFooter(),
+            RoleContractLoader.LoadHighFooter(),
+            RoleContractLoader.LoadDesignFooter(),
+            RoleContractLoader.LoadWorkFooter(),
+            RoleContractLoader.LoadAssetManagerFooter()
+        };
+        foreach (var contract in contracts)
+        {
+            Assert.Contains("반드시", contract);
+            Assert.Contains("[GOTO=", contract);
+            Assert.Contains("[ACTION=", contract);
+            Assert.Contains("[RESPONSE=OK]", contract);
+            Assert.Contains("개행", contract);
+        }
+        var designContract = RoleContractLoader.LoadDesignFooter();
+        Assert.Contains("[GOTO=WORKER]\n[ACTION=RESULT]\n@@REPORT", designContract);
+        var designPrompt = UnityDesignPromptPolicy.Build(
+            new MilestoneDesignDefinition("docs/projecthub/design.md",
+                "화면 정리", new[] { "Assets/Quiz/Presentation/QuizBoardDecorator.cs" }),
+            Path.GetTempPath());
+        Assert.Contains("반드시", designPrompt);
+        Assert.Contains("[GOTO=WORKER]\n[ACTION=RESULT]\n@@REPORT", designPrompt);
+        Assert.DoesNotContain("[ACTION=RESULT] @@REPORT", designPrompt);
+    }
+
+    [Fact]
     public void HighAndHqContracts_DoNotPrescribeValidationRoundCounts()
     {
         var highContract = RoleContractLoader.LoadHighFooter();
