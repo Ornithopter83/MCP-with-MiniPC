@@ -1362,14 +1362,23 @@ public partial class MainWindow
             }
             var beforeHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
-            highReport = await ExecuteMilestoneHighAsync(
+            var initialHigh = await ExecuteMilestoneHighAsync(
                 jobId, workingDirectory, milestone, workReports, resourceReports,
                 mechanicalReports, qaReport, implementer, high, 1, cancellationToken);
+            highReport = initialHigh.Report;
+            // Keep the actual HIGH CLI session for same-milestone DESIGN handoffs.
+            // If the provider has no resumable session, the previous report is
+            // explicitly supplied as evidence on the next invocation.
+            var highSessionId = initialHigh.SessionId;
+            var highChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var afterHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
             foreach (var path in MilestoneMechanicalExecutor.DiffChangeStates(
                 beforeHigh, afterHigh))
+            {
                 milestoneChangedPaths.Add(path);
+                highChangedPaths.Add(path);
+            }
 
             // HIGH remains nonterminal until an evidence-bound DESIGN handoff
             // returns and the original HIGH role reviews the actual changes.
@@ -1497,17 +1506,53 @@ public partial class MainWindow
                         ? "COMPLETED" : "BLOCKED",
                     workItemId: "0", referenceId: reviewReference);
 
-                // The HIGH role retains its original session and all old evidence.
+                if (!HighDesignContinuationPolicy.ShouldResumeHigh(
+                        designResponse, revisionChanges))
+                {
+                    // A failed/no-op DESIGN cannot be credited as a repair.
+                    // Report to HQ instead of spending another HIGH invocation.
+                    highReport = RoleTextProtocol.BuildResult("blocked",
+                        "DESIGN_REVISION_FAILED_WITHOUT_CHANGES",
+                        issues: new[] { MilestoneDefinitionContract.Limit(revisionReport, 1200) });
+                    break;
+                }
+
+                // Recompile only when DESIGN touched integration/build inputs.
+                // Graphics-only revisions reuse earlier BUILD evidence.
+                if (HighDesignContinuationPolicy.RequiresBuild(revisionChanges))
+                {
+                    var reviewBuilds = await MilestoneBuildRunner.RunAsync(
+                        workingDirectory, jobId, executableDefinitions, cancellationToken);
+                    foreach (var build in reviewBuilds)
+                        mechanicalReports.Add("DESIGN_REVISION_BUILD: " +
+                            MilestoneDefinitionContract.FormatMechanicalResult(build));
+                    if (reviewBuilds.Any(build => !build.Success))
+                    {
+                        if (outcome == "COMPLETED")
+                            outcome = "DESIGN_REVISION_BUILD_FAILED";
+                    }
+                }
+
+                // Resume the real HIGH session when available. The previous
+                // decision and DESIGN evidence are included even without one.
+                var previousHighReport = highReport;
                 var beforeResume = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                     workingDirectory, cancellationToken);
-                highReport = await ExecuteMilestoneHighAsync(jobId, workingDirectory,
-                    milestone, workReports, resourceReports, mechanicalReports,
-                    string.Empty, implementer, high, 1 + invocation, cancellationToken);
+                var resumedHigh = await ExecuteMilestoneHighAsync(
+                    jobId, workingDirectory, milestone, workReports, resourceReports,
+                    mechanicalReports, string.Empty, implementer, high,
+                    1 + invocation, cancellationToken,
+                    highSessionId, previousHighReport);
+                highReport = resumedHigh.Report;
+                highSessionId = resumedHigh.SessionId ?? highSessionId;
                 var afterResume = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                     workingDirectory, cancellationToken);
                 foreach (var changed in MilestoneMechanicalExecutor.DiffChangeStates(
                     beforeResume, afterResume))
+                {
                     milestoneChangedPaths.Add(changed);
+                    highChangedPaths.Add(changed);
+                }
             }
 
             if (outcome == "COMPLETED" &&
@@ -1527,6 +1572,20 @@ public partial class MainWindow
                     milestoneChangedPaths.ToArray());
             }
             CaptureResourceState();
+
+            // HIGH may edit compilation/scene inputs after earlier evidence.
+            // Validate its changes once before finalization; never treat a
+            // failed recompile as a passed milestone.
+            if (HighDesignContinuationPolicy.RequiresBuild(highChangedPaths))
+            {
+                var highBuilds = await MilestoneBuildRunner.RunAsync(
+                    workingDirectory, jobId, executableDefinitions, cancellationToken);
+                foreach (var build in highBuilds)
+                    mechanicalReports.Add("HIGH_FINAL_BUILD: " +
+                        MilestoneDefinitionContract.FormatMechanicalResult(build));
+                if (highBuilds.Any(build => !build.Success))
+                    outcome = "HIGH_FINAL_BUILD_FAILED";
+            }
 
             var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
                 jobId,
@@ -2424,7 +2483,7 @@ public partial class MainWindow
             moved);
     }
 
-    private async Task<string> ExecuteMilestoneHighAsync(
+    private async Task<(string Report, string? SessionId)> ExecuteMilestoneHighAsync(
         string jobId,
         string workingDirectory,
         MilestoneDefinition milestone,
@@ -2435,7 +2494,9 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         WorkerAiRoleSettings high,
         int validationRound,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sessionId = null,
+        string? previousHighReport = null)
     {
         _ = resourceReports;
         _ = mechanicalReports;
@@ -2462,7 +2523,14 @@ public partial class MainWindow
                 qaReport,
                 mechanicalReports) + Environment.NewLine +
             "@@VALIDATION_BUDGET" + Environment.NewLine +
-            UnityValidationBudget.Guidance);
+            UnityValidationBudget.Guidance +
+            (string.IsNullOrWhiteSpace(previousHighReport) ? string.Empty :
+                Environment.NewLine + "@@PREVIOUS_HIGH_REVIEW" +
+                Environment.NewLine + MilestoneDefinitionContract.Limit(
+                    previousHighReport, 4000) +
+                Environment.NewLine + "DESIGN revision results appear in @@DESIGN_RESULTS. " +
+                "Verify actual changed paths and new BUILD evidence; do not " +
+                "assume the earlier design_handoff was resolved."));
 
         var sandbox = milestone.ReadOnlyNoFileChanges
             ? CodexSandboxMode.ReadOnly
@@ -2475,7 +2543,7 @@ public partial class MainWindow
                 currentPrompt,
                 high,
                 workingDirectory,
-                null,
+                sessionId,
                 null,
                 cancellationToken,
                 sandbox,
@@ -2552,7 +2620,7 @@ public partial class MainWindow
             providerWireId: implementer.Provider, fullMessage: report,
             workItemId: "8",
             referenceId: milestone.Id + ":BUILD:REPAIR-1");
-        return report;
+        return (report, result.SessionId ?? sessionId);
     }
 
     private async Task<string> ExecuteGitHighAsync(
