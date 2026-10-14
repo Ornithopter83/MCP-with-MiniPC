@@ -15,8 +15,15 @@ internal sealed record RoleTextResult(
 
 internal static class RoleTextProtocol
 {
-    public static RoleTextResult ParseWork(string? raw) =>
-        Parse(raw, new[] { "completed", "in_progress", "blocked" });
+    public static RoleTextResult ParseWork(string? raw)
+    {
+        var parsed = Parse(raw, new[] { "completed", "in_progress", "blocked" });
+        if (!parsed.IsValid || !RoleGotoContract.TryReadLeading(raw,
+                out var destination, out _) ||
+            destination is null or "WORKER")
+            return parsed;
+        return parsed with { Errors = new[] { "WORK_GOTO_TARGET_INVALID" } };
+    }
 
     public static RoleTextResult ParseQa(string? raw) =>
         Parse(raw, new[] { "passed", "issue", "blocked" });

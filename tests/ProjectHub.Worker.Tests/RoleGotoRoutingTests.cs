@@ -136,6 +136,36 @@ public sealed class RoleGotoRoutingTests
     }
 
     [Fact]
+    public void WorkCannotRedirectParallelSchedulerToAnotherRole()
+    {
+        Assert.False(RoleTextProtocol.ParseWork(
+            "[GOTO=DESIGN]\n" + Summary).IsValid);
+        Assert.True(RoleTextProtocol.ParseWork(
+            "[GOTO : WORKER]\n" + Summary).IsValid);
+    }
+
+    [Fact]
+    public void EvidenceResolverReportsOnlyExistingFilesWithinRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "goto-evidence-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "temp", "screen"));
+        try
+        {
+            var image = Path.Combine(root, "temp", "screen", "evidence.png");
+            File.WriteAllBytes(image, new byte[] { 137, 80, 78, 71 });
+            var verified = HighDesignHandoffContract.ExistingEvidencePaths(root,
+                new[] { "temp/screen/evidence.png", "temp/screen/missing.png",
+                    "../outside.png", "C:/outside.png" });
+            Assert.Equal(new[] { "temp/screen/evidence.png" }, verified);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void WorkResultAndLegacyManagerUseCommonGotoParsing()
     {
         Assert.True(RoleTextProtocol.ParseWork("[GOTO=WORKER]\n" + Summary).IsValid);

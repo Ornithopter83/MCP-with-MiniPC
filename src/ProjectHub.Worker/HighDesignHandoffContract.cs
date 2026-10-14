@@ -18,6 +18,36 @@ internal static class HighDesignHandoffContract
 {
     internal const int MaxReviewHandoffs = 2;
 
+    /// <summary>
+    /// Read only existing, inside-root evidence. Invalid paths and inaccessible
+    /// files are omitted, not retried or interpreted as verified images.
+    /// </summary>
+    internal static IReadOnlyList<string> ExistingEvidencePaths(
+        string projectRoot, IEnumerable<string> paths)
+    {
+        var valid = new List<string>();
+        foreach (var path in paths)
+        {
+            if (path.Any(char.IsControl) ||
+                !MilestoneDefinitionContract.IsSafeRelativePath(path))
+                continue;
+            try
+            {
+                var full = Path.GetFullPath(Path.Combine(projectRoot,
+                    path.Replace('/', Path.DirectorySeparatorChar)));
+                if (MilestoneDefinitionContract.IsPathInsideRoot(projectRoot, full) &&
+                    File.Exists(full))
+                    valid.Add(path);
+            }
+            catch (Exception e) when (e is ArgumentException or
+                IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                // Preserve missing evidence as a warning, never promote it.
+            }
+        }
+        return valid.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
     internal static bool TryRead(string report, out HighDesignHandoff? handoff,
         out string error)
     {

@@ -1466,13 +1466,8 @@ public partial class MainWindow
 
                 designHandoffs++;
                 var invocation = designHandoffs;
-                var verifiedEvidence = request.EvidencePaths.Where(path =>
-                {
-                    var full = Path.GetFullPath(Path.Combine(workingDirectory,
-                        path.Replace('/', Path.DirectorySeparatorChar)));
-                    return MilestoneDefinitionContract.IsPathInsideRoot(
-                        workingDirectory, full) && File.Exists(full);
-                }).ToArray();
+                var verifiedEvidence = HighDesignHandoffContract.ExistingEvidencePaths(
+                    workingDirectory, request.EvidencePaths);
                 var missingEvidence = request.EvidencePaths.Except(verifiedEvidence,
                     StringComparer.OrdinalIgnoreCase).ToArray();
                 if (missingEvidence.Length > 0 || request.Warnings.Count > 0 ||
