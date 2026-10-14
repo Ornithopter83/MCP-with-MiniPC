@@ -93,7 +93,8 @@ public sealed class UnityDesignHighRefactorTests
             Assert.Contains("[RESPONSE=OK]", contract);
             Assert.Contains("개행", contract);
         }
-        var designContract = RoleContractLoader.LoadDesignFooter();
+        var designContract = RoleContractLoader.LoadDesignFooter()
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
         Assert.Contains("[GOTO=WORKER]\n[ACTION=RESULT]\n@@REPORT", designContract);
         var designPrompt = UnityDesignPromptPolicy.Build(
             new MilestoneDesignDefinition("docs/projecthub/design.md",
