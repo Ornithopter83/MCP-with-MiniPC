@@ -22,6 +22,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private const uint WinEventOutOfContext = 0;
     private const int ObjIdWindow = 0;
     private const int SwMinimize = 6;
+    private const int SwShowNoActivate = 4;
     private const int VkLButton = 0x01;
     private const int VkRButton = 0x02;
     private const int VkMenu = 0x12;
@@ -29,6 +30,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
 
     private readonly WinEventDelegate _callback;
     private readonly object _sync = new();
+    private readonly HashSet<IntPtr> _parkedEditorWindows = new();
     private System.Threading.Timer? _watchdog;
     private IntPtr _hook;
     private IntPtr _previousUserWindow;
@@ -44,13 +46,15 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     internal int RestoreAttempts { get; private set; }
     internal int RestoreFailures { get; private set; }
     internal int MinimizeFallbacks { get; private set; }
+    internal int ParkedWindowRestores { get; private set; }
     internal int UnityForegroundActivations { get; private set; }
     internal int ExplicitUserUnitySelections { get; private set; }
     internal int RestoreSuccesses => RestoreAttempts - RestoreFailures;
 
     internal string Diagnostic => Available
         ? $"FOCUS_GUARD: restore={RestoreSuccesses}/{RestoreAttempts}; " +
-          $"minimize_fallbacks={MinimizeFallbacks}; not_restored={RestoreFailures}; " +
+          $"minimize_fallback_requests={MinimizeFallbacks}; " +
+          $"parked_restored={ParkedWindowRestores}; not_restored={RestoreFailures}; " +
           $"unity_activations={UnityForegroundActivations}; " +
           $"user_selection_exempt={ExplicitUserUnitySelections}; " +
           "watchdog=on, direct Unity mouse/Alt-Tab selection exempt. " +
@@ -199,8 +203,12 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
                     // Last resort: park only the foreground Unity window.
                     // Hidden/minimized Unity may not render identically; the
                     // internal RenderTexture evidence must remain unverified.
-                    if (ShowWindowAsync(window, SwMinimize))
-                        MinimizeFallbacks++;
+                    // Record only windows actually parked by this guard,
+                    // so Dispose can return them to their original visible
+                    // size without activating Unity over the user's app.
+                    ShowWindowAsync(window, SwMinimize);
+                    _parkedEditorWindows.Add(window);
+                    MinimizeFallbacks++;
                 }
                 if (GetForegroundWindow() == window)
                     RestoreFailures++;
@@ -269,6 +277,18 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         {
             UnhookWinEvent(_hook);
             _hook = IntPtr.Zero;
+        }
+        lock (_sync)
+        {
+            foreach (var window in _parkedEditorWindows)
+            {
+                if (!IsWindow(window) || !IsIconic(window))
+                    continue;
+                // SW_SHOWNOACTIVATE preserves the user's current foreground.
+                ShowWindowAsync(window, SwShowNoActivate);
+                ParkedWindowRestores++;
+            }
+            _parkedEditorWindows.Clear();
         }
         GC.KeepAlive(_callback);
     }
