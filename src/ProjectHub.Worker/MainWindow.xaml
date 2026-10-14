@@ -369,6 +369,15 @@
                   </StackPanel>
                 </StackPanel>
               </Border>
+              <!-- Legacy RESOURCE-Web bindings remain hidden for compatibility with
+                   inactive browser management code. DESIGN itself uses CLI AI. -->
+              <StackPanel Grid.Column="2" Grid.RowSpan="2" Visibility="Collapsed">
+                <TextBlock x:Name="ResourceWebBindingStatusText" Text="RESOURCE Web 미연결"/>
+                <TextBlock x:Name="ResourceWebBindingDetailText" Text="레거시 RESOURCE Web"/>
+                <TextBlock x:Name="ResourceManagedWebRuntimeStatusText" Text="비활성"/>
+                <Button x:Name="ResourceManagedWebShowButton" Click="ShowManagedResourceWeb_Click"/>
+                <Button x:Name="ResourceManagedWebHideButton" Click="HideManagedResourceWeb_Click"/>
+              </StackPanel>
             </Grid>
           </Border>
         </Grid>
