@@ -10,11 +10,12 @@ public sealed class RoleContractResponsibilityTests
         var hq = RoleContractLoader.LoadHqFooter();
 
         Assert.Contains("QA에는 실제 검증을, HIGH에는 심층 검토", hq);
-        Assert.Contains("RESOURCE #0은 비차단 이미지 생성 요청", hq);
+        Assert.Contains("DESIGN #0", hq);
+        Assert.Contains("이미지 추출 프로세스는 사용하지 않는다", hq);
         Assert.DoesNotContain("진전 기반 연속 수행", hq);
         Assert.DoesNotContain("즉시 dispatch", hq);
         Assert.DoesNotContain("다음 Worker Git finalize", hq);
-        Assert.Contains("아직 확보되지 않은 자산", hq);
+        Assert.Contains("실제 Game View 캡처", hq);
     }
 
     [Fact]
