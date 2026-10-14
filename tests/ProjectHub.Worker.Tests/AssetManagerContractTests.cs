@@ -120,11 +120,8 @@ public sealed class AssetManagerContractTests
             """;
         var parsed = HqTextProtocol.Parse(
             AssetOnly.Replace("@@QA", resource + "@@QA", StringComparison.Ordinal));
-        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
-        Assert.False(MilestoneDefinitionContract.TryBuild(
-            parsed.CompatibilityMessage, parsed.Parse,
-            out _, out var error));
-        Assert.Equal("ASSET_MANAGER_RESOURCE_PATH_OVERLAP", error);
+        Assert.False(parsed.IsValid);
+        Assert.Contains("COMPACT_SECTION_FORBIDDEN", parsed.Errors);
     }
 
     [Fact]
