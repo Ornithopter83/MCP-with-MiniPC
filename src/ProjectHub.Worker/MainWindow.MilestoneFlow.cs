@@ -1015,6 +1015,14 @@ public partial class MainWindow
 
             if (milestone.Design is { } design)
             {
+                RunOnUi(() =>
+                {
+                    TaskDirection.Text = "Design";
+                    TaskTitle.Text = "#0 DESIGN · 시각적 아트 디렉션";
+                    ResultTitle.Text = "#0 DESIGN";
+                    SetFlowState(codexActive: true, workerActive: true,
+                        webActive: false, explicitStage: TaskStage.Resource);
+                });
                 var designReference = milestone.Id + ":DESIGN:0";
                 AddDataFlowHistory(WorkerRoleState.Resource, "#0 DESIGN",
                     "Design 문서 및 실제 시각 증거 검토: " + design.Path,
