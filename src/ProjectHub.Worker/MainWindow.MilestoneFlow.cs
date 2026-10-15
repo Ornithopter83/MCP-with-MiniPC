@@ -1383,7 +1383,8 @@ public partial class MainWindow
             // Worker owns BUILD; source-fix WORK #8 is attempted only once
             // for an actual compiler/build failure, never for EPERM or timeout.
             var buildRuns = await MilestoneBuildRunner.RunAsync(
-                workingDirectory, jobId, executableDefinitions, cancellationToken);
+                workingDirectory, jobId, executableDefinitions, cancellationToken,
+                unityEditorReady);
             foreach (var build in buildRuns)
                 mechanicalReports.Add(
                     MilestoneDefinitionContract.FormatMechanicalResult(build));
@@ -1404,7 +1405,8 @@ public partial class MainWindow
                     beforeRepair, afterRepair))
                     milestoneChangedPaths.Add(path);
                 buildRuns = await MilestoneBuildRunner.RunAsync(
-                    workingDirectory, jobId, executableDefinitions, cancellationToken);
+                    workingDirectory, jobId, executableDefinitions, cancellationToken,
+                unityEditorReady);
                 foreach (var build in buildRuns)
                     mechanicalReports.Add("REBUILD: " +
                         MilestoneDefinitionContract.FormatMechanicalResult(build));
@@ -1413,7 +1415,8 @@ public partial class MainWindow
 
             // Preserve original WORK/BUILD failures instead of hiding them after QA.
             if (blockedWorkIds.Length == 0 && pendingWorkIds.Length == 0 && buildFailed)
-                outcome = "BUILD_FAILED";
+                outcome = MilestoneBuildRunner.IsEnvironmentFailure(buildRuns)
+                    ? "BUILD_UNVERIFIED" : "BUILD_FAILED";
 
             // Worker BUILD/TEST evidence is passed directly to HIGH.
             // Legacy QA is retained only for reading older reports.
@@ -1631,11 +1634,18 @@ public partial class MainWindow
                 if (HighDesignContinuationPolicy.RequiresBuild(revisionChanges))
                 {
                     var reviewBuilds = await MilestoneBuildRunner.RunAsync(
-                        workingDirectory, jobId, executableDefinitions, cancellationToken);
+                        workingDirectory, jobId, executableDefinitions, cancellationToken,
+                unityEditorReady);
                     foreach (var build in reviewBuilds)
                         mechanicalReports.Add("DESIGN_REVISION_BUILD: " +
                             MilestoneDefinitionContract.FormatMechanicalResult(build));
-                    designRevisionBuildFailed = reviewBuilds.Any(build => !build.Success);
+                    designRevisionBuildFailed = reviewBuilds.Any(build => !build.Success) &&
+                        !MilestoneBuildRunner.IsEnvironmentFailure(reviewBuilds);
+                    if (reviewBuilds.Any(build => !build.Success) &&
+                        !designRevisionBuildFailed)
+                        mechanicalReports.Add(
+                            "DESIGN_REVISION_BUILD_UNVERIFIED: Editor/tool unavailable; " +
+                            "HIGH may continue source review without claiming build success.");
                 }
 
                 if (!UnityValidationBudget.CanStart(
@@ -1683,17 +1693,31 @@ public partial class MainWindow
             if (HighDesignContinuationPolicy.RequiresBuild(highChangedPaths))
             {
                 var highBuilds = await MilestoneBuildRunner.RunAsync(
-                    workingDirectory, jobId, executableDefinitions, cancellationToken);
+                    workingDirectory, jobId, executableDefinitions, cancellationToken,
+                unityEditorReady);
                 foreach (var build in highBuilds)
                     mechanicalReports.Add("HIGH_FINAL_BUILD: " +
                         MilestoneDefinitionContract.FormatMechanicalResult(build));
                 if (highBuilds.Any(build => !build.Success))
                 {
-                    mechanicalReports.Add("HIGH_BEFORE_FAILED_FINAL_BUILD: " +
-                        MilestoneDefinitionContract.Limit(highReport, 1200));
-                    highReport = HighDesignContinuationPolicy.InvalidateCompletion(
-                        highReport, "HIGH_FINAL_BUILD_FAILED");
-                    outcome = "HIGH_FINAL_BUILD_FAILED";
+                    if (MilestoneBuildRunner.IsEnvironmentFailure(highBuilds))
+                    {
+                        // Preserve HIGH's real source-review result. Missing
+                        // Pipeline is unverified compilation, not failed code.
+                        mechanicalReports.Add(
+                            "HIGH_FINAL_BUILD_UNVERIFIED: no connected Editor; " +
+                            "do not credit the unavailable build as PASS.");
+                        if (outcome == "COMPLETED")
+                            outcome = "HIGH_FINAL_BUILD_UNVERIFIED";
+                    }
+                    else
+                    {
+                        mechanicalReports.Add("HIGH_BEFORE_FAILED_FINAL_BUILD: " +
+                            MilestoneDefinitionContract.Limit(highReport, 1200));
+                        highReport = HighDesignContinuationPolicy.InvalidateCompletion(
+                            highReport, "HIGH_FINAL_BUILD_FAILED");
+                        outcome = "HIGH_FINAL_BUILD_FAILED";
+                    }
                 }
                 else
                     designRevisionBuildFailed = false;
