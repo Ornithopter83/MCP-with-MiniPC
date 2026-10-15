@@ -18,4 +18,20 @@ public sealed class UnityDesignCardActivationPolicyTests
             UnityDesignCardActivationPolicy.IsDisabled(
                 coordinator, reserved, designRunning));
     }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)] // Retired RESOURCE is still outstanding.
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public void DesignTurnHighlight_FollowsCurrentTurnNotLegacyResource(
+        bool designRunning, bool legacyResourceOutstanding, bool expectedActive)
+    {
+        var highlighted = UnityDesignCardActivationPolicy.ShouldHighlight(
+            designRunning, legacyResourceOutstanding);
+        Assert.Equal(expectedActive, highlighted);
+        var visual = PipelineCardVisualPolicy.Resolve(
+            initialInputIdle: false, isCurrent: highlighted, disabled: false);
+        Assert.Equal(expectedActive, visual.IsColored);
+    }
 }

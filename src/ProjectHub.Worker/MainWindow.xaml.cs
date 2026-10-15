@@ -1258,11 +1258,14 @@ public partial class MainWindow : Window
 
     private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, RoleVisualPalette palette, bool disabled, bool initialInputIdle)
     {
+        // UnityWorker's yellow #0 card is DESIGN, not the retired Web RESOURCE
+        // sidecar. A stale resource queue callback must never keep it active.
         var current = _directWorkRunning
             ? !disabled && stage == TaskStage.Implementer
-            : !disabled &&
-              (_currentTaskStage == stage ||
-               (stage == TaskStage.Resource && _resourceSidecarActive));
+            : !disabled && (stage == TaskStage.Resource
+                ? UnityDesignCardActivationPolicy.ShouldHighlight(
+                    _currentTaskStage == TaskStage.Resource, _resourceSidecarActive)
+                : _currentTaskStage == stage);
         SetPipelineStageAnimation(stage, current);
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
         var colored = visual.IsColored;

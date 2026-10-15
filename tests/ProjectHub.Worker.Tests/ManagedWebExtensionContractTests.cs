@@ -50,6 +50,18 @@ public sealed class ManagedWebExtensionContractTests
     }
 
     [Fact]
+    public void EmbeddedContent_CompletedImageTurnRendersInactiveTaskCard()
+    {
+        var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");
+
+        Assert.Contains(
+            "const tones={IDLE:'',CLAIMED:'blue',PENDING:'blue',COMPLETED:'',FAILED:'amber'};",
+            source);
+        Assert.Contains("spinner.classList.toggle('visible',active)", source);
+        Assert.Contains("setTask(p.data?.status==='FAILED'?'FAILED':'COMPLETED',p.data);", source);
+    }
+
+    [Fact]
     public void EmbeddedContent_LatchesHiddenSendEvidenceAndReconcilesTurns()
     {
         var source = ReadEmbeddedText("ProjectHub.Worker.Extension.content.js");

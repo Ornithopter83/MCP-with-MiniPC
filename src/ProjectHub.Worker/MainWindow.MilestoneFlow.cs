@@ -1174,6 +1174,10 @@ public partial class MainWindow
                         StringComparison.Ordinal) ? "COMPLETED" : "BLOCKED",
                     workItemId: "0", referenceId: designReference,
                     providerWireId: designRole.Provider);
+                // The DESIGN turn is terminal even if this milestone continues
+                // to WORK/HIGH. Deactivate its pipeline card immediately.
+                RunOnUi(() => SetFlowState(codexActive: false, workerActive: false,
+                    webActive: false, explicitStage: TaskStage.Idle));
             }
 
             void CaptureResourceState()
