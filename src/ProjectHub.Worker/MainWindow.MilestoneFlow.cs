@@ -171,7 +171,9 @@ public partial class MainWindow
             AddTaskMessage(
                 "UNITY TOOLCHAIN / EDITOR PREFLIGHT",
                 unityPreflight.Code + ": " + unityPreflight.Detail,
-                status: unityPreflight.Ready ? "COMPLETED" : "BLOCKED");
+                status: unityPreflight.Ready ? "COMPLETED" :
+                    unityPreflight.Code == "UNITY_PROJECT_NOT_FOUND"
+                        ? "BLOCKED" : "UNVERIFIED");
             // Editor connectivity is an execution capability, not a reason to
             // prevent HQ from planning code-only work or choosing PAUSE.
             // Keep the failure visible to HQ; never treat it as Import proof.

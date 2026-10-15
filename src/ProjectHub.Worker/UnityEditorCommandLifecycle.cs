@@ -18,7 +18,9 @@ internal static class UnityEditorCommandLifecycle
     internal static bool CanAutoOpen(UnityToolchainPreflight.Result result) =>
         result.Code == "UNITY_EDITOR_UNAVAILABLE" &&
         (result.Detail.Contains("No Pipeline instance found", StringComparison.OrdinalIgnoreCase) ||
-         result.Detail.Contains("STATUS_NO_INSTANCES", StringComparison.OrdinalIgnoreCase));
+         result.Detail.Contains("STATUS_NO_INSTANCES", StringComparison.OrdinalIgnoreCase) ||
+         // Unity CLI localizes the missing-instance message on Korean Windows.
+         result.Detail.Contains("Pipeline 인스턴스를 찾을 수 없습니다", StringComparison.Ordinal));
 
     internal static bool ProjectEditorLockHeld(string root)
     {

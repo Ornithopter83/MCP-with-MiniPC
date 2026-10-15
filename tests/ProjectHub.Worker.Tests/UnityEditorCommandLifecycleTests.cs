@@ -165,6 +165,30 @@ public sealed class UnityEditorCommandLifecycleTests
     }
 
     [Fact]
+    public async Task KoreanMissingPipeline_IsRecognizedButInitialGateDoesNotStealFocus()
+    {
+        using var project = new UnityProject();
+        var missing = new UnityToolchainPreflight.Result(
+            false, "UNITY_EDITOR_UNAVAILABLE",
+            "Unity CLI exit 6: 프로젝트의 Pipeline 인스턴스를 찾을 수 없습니다. " +
+            "Pipeline 패키지가 설치된 Unity Editor가 실행 중인지 확인하세요.");
+        Assert.True(UnityEditorCommandLifecycle.CanAutoOpen(missing));
+        var launched = 0;
+        var state = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
+            project.Root, CancellationToken.None,
+            (_, _) => Task.FromResult(missing),
+            (_, _) =>
+            {
+                launched++;
+                return Task.FromResult(
+                    new UnityEditorCommandLifecycle.LaunchResult(true, "unexpected"));
+            },
+            _ => false, WaitInstantly, 5);
+        Assert.Equal("UNITY_EDITOR_UNAVAILABLE_BACKGROUND_ONLY", state.Code);
+        Assert.Equal(0, launched);
+    }
+
+    [Fact]
     public void EditorConnectionMissingIsNotEquivalentToGenericCliFailure()
     {
         Assert.True(UnityEditorCommandLifecycle.CanAutoOpen(Offline()));

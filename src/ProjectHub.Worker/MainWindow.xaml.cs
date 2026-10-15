@@ -3754,6 +3754,13 @@ public partial class MainWindow : Window
 
         if (normalized is "USER COMMAND" or "GPT WEB INSTRUCTION") return null;
         if (normalized.Contains("TASK START", StringComparison.Ordinal)) return null;
+        // Connectivity failure does not mean the HQ/source task has stopped.
+        if (normalized == "UNITY TOOLCHAIN / EDITOR PREFLIGHT" &&
+            statusText == "UNVERIFIED")
+            return new(timestamp, "System", "EDITOR_CONNECTION_UNVERIFIED",
+                "Unity Editor 미연결 · HQ 진행",
+                HistorySummary(summary ?? content), bytes,
+                itemCount ?? 1, fileCount, "UNVERIFIED", referenceId);
         if (normalized == "TASK REQUEST")
             return new(timestamp, "Coordinator", "REQUEST_RECEIVED", "작업 요청", HistorySummary(summary ?? content), bytes, itemCount ?? 1, fileCount, null, referenceId);
         if (normalized.Contains("TASK CANCELED", StringComparison.Ordinal) || normalized.Contains("TASK CANCELLED", StringComparison.Ordinal))

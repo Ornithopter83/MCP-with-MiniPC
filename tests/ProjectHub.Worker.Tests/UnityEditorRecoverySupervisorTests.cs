@@ -52,6 +52,52 @@ public sealed class UnityEditorRecoverySupervisorTests
     }
 
     [Fact]
+    public async Task KoreanMissingPipeline_RelaunchesAfterTwoChecksIfUnlocked()
+    {
+        var launches = 0;
+        var events = new List<string>();
+        var missing = new UnityToolchainPreflight.Result(
+            false, "UNITY_EDITOR_UNAVAILABLE",
+            "Unity CLI exit 6: 프로젝트의 Pipeline 인스턴스를 찾을 수 없습니다.");
+        await using var supervisor = Create(
+            (_, _) => Task.FromResult(missing),
+            _ => false,
+            (_, _) =>
+            {
+                launches++;
+                return Task.FromResult(
+                    new UnityEditorCommandLifecycle.LaunchResult(true, "launched"));
+            },
+            (message, _) => events.Add(message));
+        await supervisor.CheckOnceAsync(CancellationToken.None);
+        Assert.Equal(0, launches);
+        await supervisor.CheckOnceAsync(CancellationToken.None);
+        Assert.Equal(1, launches);
+        Assert.Contains(events, e => e.Contains("재실행을 시도합니다"));
+    }
+
+    [Fact]
+    public async Task KoreanMissingPipeline_DoesNotLaunchWhenEditorLocked()
+    {
+        var launches = 0;
+        var missing = new UnityToolchainPreflight.Result(
+            false, "UNITY_EDITOR_UNAVAILABLE",
+            "프로젝트의 Pipeline 인스턴스를 찾을 수 없습니다.");
+        await using var supervisor = Create(
+            (_, _) => Task.FromResult(missing),
+            _ => true,
+            (_, _) =>
+            {
+                launches++;
+                return Task.FromResult(
+                    new UnityEditorCommandLifecycle.LaunchResult(true, "unexpected"));
+            });
+        for (var i = 0; i < 4; i++)
+            await supervisor.CheckOnceAsync(CancellationToken.None);
+        Assert.Equal(0, launches);
+    }
+
+    [Fact]
     public async Task LockedEditor_IsNeverOpenedTwice()
     {
         var launches = 0;
