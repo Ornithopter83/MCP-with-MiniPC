@@ -2084,7 +2084,7 @@ public partial class MainWindow : Window
         };
         // The WORK contract is sufficient; avoid a second generic tool
         // availability paragraph on every WORK invocation.
-        if ((roleName != "WORK" || designPurpose || assetManagerPurpose) &&
+        if (!designPurpose && (roleName != "WORK" || assetManagerPurpose) &&
             UnityCliBuildRunner.IsUnityProject(workingDirectory))
             prompt += Environment.NewLine +
                 UnityFreeDesignToolPolicy.BuildCliToolGuidance();
@@ -2097,14 +2097,17 @@ public partial class MainWindow : Window
             var catalogPath = UnityToolchainPreflight.CatalogPath(
                 workingDirectory, jobId);
             if (File.Exists(catalogPath))
-                prompt += Environment.NewLine + Environment.NewLine +
-                    "Unity CLI 명령 카탈로그:" + Environment.NewLine +
-                    "이 작업을 수락할 때 연결된 Editor에서 실제 조회한 Unity CLI " +
-                    "명령 이름·파라미터 JSON: " + catalogPath +
-                    Environment.NewLine +
-                    "사용 가능한 명령과 인수를 먼저 이 파일에서 확인하라. " +
-                    "파일은 명령 사용법 참고용이며 현재 실행 성공·테스트 통과 증거가 아니다. " +
-                    "연결이나 명령 인수가 달라졌다면 현재 Editor에서 다시 조회하라.";
+                prompt += designPurpose
+                    ? Environment.NewLine + "Unity CLI 명령 카탈로그: " +
+                      catalogPath + " (연결·실행 성공 증거는 아님)"
+                    : Environment.NewLine + Environment.NewLine +
+                      "Unity CLI 명령 카탈로그:" + Environment.NewLine +
+                      "이 작업을 수락할 때 연결된 Editor에서 실제 조회한 Unity CLI " +
+                      "명령 이름·파라미터 JSON: " + catalogPath +
+                      Environment.NewLine +
+                      "사용 가능한 명령과 인수를 먼저 이 파일에서 확인하라. " +
+                      "파일은 명령 사용법 참고용이며 현재 실행 성공·테스트 통과 증거가 아니다. " +
+                      "연결이나 명령 인수가 달라졌다면 현재 Editor에서 다시 조회하라.";
         }
         // HQ messages are handled in RunHqRoleAsync for both Web and CLI.
         // Every other AI role may receive the next user batch atomically.
@@ -2183,6 +2186,9 @@ public partial class MainWindow : Window
         {
             ["PROJECTHUB_CODEX_TEMP"] = roleTempPath
         };
+        if (designPurpose)
+            foreach (var tool in UnityFreeDesignToolPolicy.BuildDesignToolEnvironment())
+                roleEnvironment[tool.Key] = tool.Value;
 
         IReadOnlyList<string>? codexConfigOverrides = null;
         var bypassHookTrust = false;
