@@ -101,6 +101,41 @@ public sealed class HqUserInterventionQueueTests
     }
 
     [Fact]
+    public void ParallelRoleClaims_DoNotDuplicateAndFailuresRelease()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var queue = new HqUserInterventionQueue(root, "parallel");
+            var first = queue.Add("안전 중단 요청", false);
+            var second = queue.Add("그래픽을 밝게 수정", false);
+            var designBatch = queue.ClaimPending();
+            Assert.Equal(new[] { first.Id, second.Id }, designBatch.Select(x => x.Id));
+            Assert.Empty(queue.ClaimPending());
+            queue.Release(designBatch);
+            var highBatch = queue.ClaimPending();
+            Assert.Equal(designBatch.Select(x => x.Id), highBatch.Select(x => x.Id));
+            queue.Acknowledge(highBatch);
+            Assert.Empty(queue.Pending());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void Restart_ReleasesUnacknowledgedReservations()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var original = new HqUserInterventionQueue(root, "restart");
+            original.Add("원문 메시지", false);
+            Assert.Single(original.ClaimPending());
+            Assert.Single(new HqUserInterventionQueue(root, "restart").ClaimPending());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void EmptyBatch_PreservesOriginalHqPrompt()
     {
         Assert.Equal("ORIGINAL", HqUserInterventionQueue.AppendToHqBody(

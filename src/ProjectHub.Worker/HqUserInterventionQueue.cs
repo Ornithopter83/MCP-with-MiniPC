@@ -13,12 +13,15 @@ public sealed record HqUserIntervention(
 
 /// <summary>
 /// Persists user messages independently of milestone checkpoints. A message
-/// is acknowledged only after HQ returns a valid response, never on dispatch.
+/// is acknowledged only after the next AI role returns a valid response.
 /// </summary>
 public sealed class HqUserInterventionQueue
 {
     private static readonly object Sync = new();
     private readonly string _path;
+    // In-memory claims prevent duplicate deliveries across parallel roles.
+    // Process restarts release all claims without losing queued messages.
+    private readonly HashSet<string> _claimed = new(StringComparer.Ordinal);
 
     public HqUserInterventionQueue(string workingDirectory, string jobId)
     {
@@ -60,6 +63,23 @@ public sealed class HqUserInterventionQueue
             return ReadCore().Where(x => !x.RecordOnly && x.DeliveredAt is null).ToArray();
     }
 
+    public IReadOnlyList<HqUserIntervention> ClaimPending()
+    {
+        lock (Sync)
+        {
+            var available = ReadCore().Where(x => !x.RecordOnly &&
+                x.DeliveredAt is null && !_claimed.Contains(x.Id)).ToArray();
+            foreach (var message in available) _claimed.Add(message.Id);
+            return available;
+        }
+    }
+
+    public void Release(IReadOnlyList<HqUserIntervention> sent)
+    {
+        lock (Sync)
+            foreach (var message in sent) _claimed.Remove(message.Id);
+    }
+
     public void Acknowledge(IReadOnlyList<HqUserIntervention> sent)
     {
         if (sent.Count == 0) return;
@@ -74,6 +94,7 @@ public sealed class HqUserInterventionQueue
                 if (ids.Contains(all[i].Id))
                     all[i] = all[i] with { DeliveredAt = deliveredAt };
             SaveCore(all);
+            foreach (var message in sent) _claimed.Remove(message.Id);
         }
     }
 
@@ -83,8 +104,8 @@ public sealed class HqUserInterventionQueue
         if (pending.Count == 0) return body;
         var result = new StringBuilder(body);
         result.AppendLine().AppendLine();
-        result.AppendLine("USER_INTERVENTIONS_WHILE_RUNNING:");
-        result.AppendLine("아래는 실행 중 사용자가 추가한 메시지 원문이다. Worker가 해석하거나 검열하지 않았으며 입력 순서대로 전달한다.");
+        result.AppendLine("실행 중 추가된 사용자 메시지 (원문 및 입력 순서 유지):");
+        result.AppendLine("다음 역할 AI가 의미를 판단한다. Worker는 자연어를 PAUSE로 해석하지 않는다. 역할이 직접 처리할 수 없다면 보고를 통해 HQ에 인계하라.");
         foreach (var item in pending)
         {
             result.Append("USER_INTERVENTION_ID: ").AppendLine(item.Id);

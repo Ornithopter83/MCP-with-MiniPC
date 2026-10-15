@@ -663,7 +663,7 @@ public partial class MainWindow : Window
         var hasPrompt = !string.IsNullOrWhiteSpace(DashboardFollowupInput.Text) &&
                         DashboardFollowupInput.Text != FollowupPromptPlaceholder;
         AddWorkButton.Content = activeIntervention
-            ? "＋   HQ 전달 예약" : "＋   작업 추가";
+            ? "＋   다음 AI에 전달" : "＋   작업 추가";
         // The editor lives inside DashboardFollowupAttachmentView:
         // keep the parent visible and disable only attachment controls.
         DashboardFollowupAttachmentView.AllowDrop = !activeIntervention;
@@ -768,7 +768,7 @@ public partial class MainWindow : Window
     {
         var status = delivered ? "DELIVERED" : "QUEUED";
         var title = delivered
-            ? "사용자 · HQ 전달 완료" : "사용자 · HQ 전달 예약";
+            ? "사용자 · AI 전달 완료" : "사용자 · 다음 AI 대기";
         var card = new WorkerHistoryEvent(
             delivered ? DateTimeOffset.Now : entry.CreatedAt.ToLocalTime(),
             "Message", "USER_INTERVENTION", title,
@@ -796,7 +796,7 @@ public partial class MainWindow : Window
             if (FollowupAttachments.Count > 0)
             {
                 DashboardPreflightText.Text =
-                    "실행 중 HQ 예약은 텍스트 메시지만 지원합니다. 첨부 파일은 제거한 뒤 예약하세요.";
+                    "실행 중 AI 전달은 텍스트 메시지만 지원합니다. 첨부 파일은 제거한 뒤 전송하세요.";
                 DashboardPreflightText.Foreground =
                     System.Windows.Media.Brushes.Firebrick;
                 return;
@@ -816,18 +816,8 @@ public partial class MainWindow : Window
                     as System.Windows.Media.Brush;
                 UpdateFollowupButtonState();
 
-                // The active task keeps running. This newly accepted command
-                // is the trigger, not the 'new task' navigation button.
-                if (!string.IsNullOrWhiteSpace(_activeWorkingDirectory))
-                {
-                    var editorState = await UnityEditorCommandLifecycle
-                        .EnsureForAcceptedCommandAsync(
-                            _activeWorkingDirectory, _activeTaskCts.Token);
-                    AddTaskMessage("UNITY EDITOR COMMAND GATE",
-                        editorState.Code + ": " + editorState.Detail,
-                        status: editorState.Ready ? "COMPLETED" : "BLOCKED",
-                        includeHistory: false);
-                }
+                // Queue for the next AI role boundary; this user message must
+                // not start an Editor or trigger Worker-side text interpretation.
             }
             catch (OperationCanceledException) when (
                 _activeTaskCts?.IsCancellationRequested == true)
@@ -837,7 +827,7 @@ public partial class MainWindow : Window
             catch (Exception exception)
             {
                 DashboardPreflightText.Text =
-                    "HQ 메시지 기록 실패: " + exception.Message;
+                    "메시지 기록 실패: " + exception.Message;
                 DashboardPreflightText.Foreground =
                     System.Windows.Media.Brushes.Firebrick;
             }
@@ -1885,29 +1875,35 @@ public partial class MainWindow : Window
         List<BridgeAttachment>? webAttachments = null,
         string? historyReferenceId = null)
     {
-        if (!IsWebTransport(role.Transport))
-            return await RunCoordinatorRoleAsync(
-                jobId,
-                purpose,
-                prompt,
-                role,
-                workingDirectory,
-                sessionId,
-                null,
-                cancellationToken,
-                CodexSandboxMode.ReadOnly,
-                sessionStarted,
-                inputAttachments,
-                historyReferenceId: historyReferenceId);
-        return await RunWebRoleAsync(
-            jobId,
-            "HQ",
-            purpose,
-            prompt,
-            cancellationToken,
-            inputAttachments,
-            webAttachments,
-            historyReferenceId);
+        var queue = _hqInterventions;
+        var sent = queue?.ClaimPending() ?? Array.Empty<HqUserIntervention>();
+        var routedPrompt = HqUserInterventionQueue.AppendToHqBody(prompt, sent);
+        try
+        {
+            var result = !IsWebTransport(role.Transport)
+                ? await RunCoordinatorRoleAsync(
+                    jobId, purpose, routedPrompt, role, workingDirectory,
+                    sessionId, null, cancellationToken, CodexSandboxMode.ReadOnly,
+                    sessionStarted, inputAttachments,
+                    historyReferenceId: historyReferenceId)
+                : await RunWebRoleAsync(
+                    jobId, "HQ", purpose, routedPrompt, cancellationToken,
+                    inputAttachments, webAttachments, historyReferenceId);
+            if (queue is not null && result.ExitCode == 0 &&
+                HqTextProtocol.Parse(result.FinalMessage,
+                    completionValidatedByTransport:
+                        IsWebTransport(role.Transport)).IsValid)
+                CommitDeliveredUserMessages(
+                    workingDirectory, jobId, queue, sent, "HQ");
+            else
+                queue?.Release(sent);
+            return result;
+        }
+        catch
+        {
+            queue?.Release(sent);
+            throw;
+        }
     }
 
     private async Task<AiRoleRunResult> RunWebRoleAsync(
@@ -2104,8 +2100,13 @@ public partial class MainWindow : Window
                     "파일은 명령 사용법 참고용이며 현재 실행 성공·테스트 통과 증거가 아니다. " +
                     "연결이나 명령 인수가 달라졌다면 현재 Editor에서 다시 조회하라.";
         }
-        // Exactly one auxiliary MESSAGE section per Unity specialist request,
-        // including format-retry turns. HQ structured responses stay untouched.
+        // HQ messages are handled in RunHqRoleAsync for both Web and CLI.
+        // Every other AI role may receive the next user batch atomically.
+        var messageQueue = roleName == "COORDINATOR" ? null : _hqInterventions;
+        var routedMessages = messageQueue?.ClaimPending() ??
+            Array.Empty<HqUserIntervention>();
+        prompt = HqUserInterventionQueue.AppendToHqBody(prompt, routedMessages);
+        // Exactly one auxiliary MESSAGE section per Unity specialist request.
         if (roleName is "WORK" or "QA" or "HIGH" || designPurpose || assetManagerPurpose)
             prompt = UnityRoleMessageComposer.Compose(prompt);
         RunOnUi(() =>
@@ -2233,23 +2234,35 @@ public partial class MainWindow : Window
             bypassHookTrust = true;
         }
 
-        var result = await runner.RunAsync(new AiRoleRunRequest(
-            prompt,
-            role,
-            workingDirectory,
-            sessionId,
-            sandbox,
-            cancellationToken,
-            schema,
-            progress,
-            sessionStarted,
-            InputAttachments: inputAttachments,
-            EnvironmentVariables: roleEnvironment,
-            DisableComputerUse: UnityCliBuildRunner.IsUnityProject(workingDirectory),
-            IncludeAppBaseWritable: roleName != "WORK",
-            CodexConfigOverrides: codexConfigOverrides,
-            BypassHookTrust: bypassHookTrust,
-            BuildExecutionAllowed: roleName != "WORK"));
+        AiRoleRunResult result;
+        try
+        {
+            result = await runner.RunAsync(new AiRoleRunRequest(
+                prompt, role, workingDirectory, sessionId, sandbox,
+                cancellationToken, schema, progress, sessionStarted,
+                InputAttachments: inputAttachments,
+                EnvironmentVariables: roleEnvironment,
+                DisableComputerUse: UnityCliBuildRunner.IsUnityProject(workingDirectory),
+                IncludeAppBaseWritable: roleName != "WORK",
+                CodexConfigOverrides: codexConfigOverrides,
+                BypassHookTrust: bypassHookTrust,
+                BuildExecutionAllowed: roleName != "WORK"));
+        }
+        catch
+        {
+            messageQueue?.Release(routedMessages);
+            throw;
+        }
+        var receivedValidReport = result.ExitCode == 0 &&
+            (roleName == "HIGH"
+                ? RoleTextProtocol.ParseHigh(result.FinalMessage).IsValid
+                : RoleTextProtocol.ParseWork(result.FinalMessage).IsValid);
+        if (messageQueue is not null && receivedValidReport)
+            CommitDeliveredUserMessages(
+                workingDirectory, jobId, messageQueue, routedMessages,
+                outboundRole);
+        else
+            messageQueue?.Release(routedMessages);
 
         foreach (var executedCommand in result.CommandExecutions)
         {
@@ -2298,6 +2311,25 @@ public partial class MainWindow : Window
             includeHistory: false);
         _lastActivityAt = DateTimeOffset.UtcNow;
         return result;
+    }
+
+    private void CommitDeliveredUserMessages(
+        string workingDirectory, string jobId,
+        HqUserInterventionQueue queue,
+        IReadOnlyList<HqUserIntervention> sent, string destination)
+    {
+        if (sent.Count == 0) return;
+        queue.Acknowledge(sent);
+        foreach (var item in sent)
+        {
+            AddTaskMessage("USER MESSAGE DELIVERED",
+                "AI 역할 " + destination + " 응답 수신 · ID: " + item.Id,
+                status: "DELIVERED", referenceId: item.Id,
+                includeHistory: false);
+            RunOnUi(() => AddHqInterventionHistory(item, delivered: true));
+            ProjectHandoffJournal.RecordUserInstruction(
+                workingDirectory, jobId, item.Id, item.Message);
+        }
     }
 
     private void RecordCommandRisk(

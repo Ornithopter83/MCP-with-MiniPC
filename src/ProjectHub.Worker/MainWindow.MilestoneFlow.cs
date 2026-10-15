@@ -302,15 +302,13 @@ public partial class MainWindow
                     status: remoteReference.Success ? "COMPLETED" : "FAILED",
                     persistenceSource: "WORKER ACTION");
 
-                // Snapshot immediately before this HQ request. Messages entered
-                // while HQ is responding stay queued for the next invocation.
-                var sentInterventions = interventionQueue.Pending();
+                // The next dispatched AI claims user messages atomically.
+                // HQ has no priority over DESIGN, WORK or HIGH.
                 var hqHistoryReferenceId = WorkerHistoryCardPolicy.NewInvocationReference(
                     "HQ", "MILESTONE_" + milestoneIndex);
                 var hqPrompt = BuildMilestoneHqPrompt(
                     inboundType,
-                    HqUserInterventionQueue.AppendToHqBody(
-                        hqInbound, sentInterventions),
+                    hqInbound,
                     normalizedRoot,
                     configuredRepositoryUrl,
                     remoteReference.CommitSha,
@@ -394,14 +392,11 @@ public partial class MainWindow
                         HqResponseRecoveryContract.BuildBody(
                             hqMessage,
                             recoveryError);
-                    // The first response was invalid: do not acknowledge it.
-                    // Re-send its messages, plus any new ones, with the
-                    // existing format-recovery request (no extra HQ call).
-                    sentInterventions = interventionQueue.Pending();
+                    // A failed AI response releases its batch; grammar
+                    // recovery will claim it again, without HQ-only routing.
                     var recoveryPrompt = BuildMilestoneHqPrompt(
                         "HQ_RESPONSE_RECOVERY",
-                        HqUserInterventionQueue.AppendToHqBody(
-                            recoveryBody, sentInterventions),
+                        recoveryBody,
                         normalizedRoot,
                         configuredRepositoryUrl,
                         remoteReference.CommitSha,
@@ -485,22 +480,7 @@ public partial class MainWindow
                     status: "RECEIVED",
                     persistenceSource: "WORKER ACTION");
 
-                // The transport returned a protocol-valid HQ decision.
-                // Commit acknowledgments before proceeding; an interrupted
-                // request must leave messages pending instead of losing them.
-                interventionQueue.Acknowledge(sentInterventions);
-                foreach (var delivered in sentInterventions)
-                {
-                    AddTaskMessage(
-                        "USER INTERVENTION DELIVERED",
-                        "HQ 요청에 포함되어 유효한 응답을 받았습니다. ID: " + delivered.Id,
-                        status: "DELIVERED",
-                        referenceId: delivered.Id,
-                        includeHistory: false);
-                    AddHqInterventionHistory(delivered, delivered: true);
-                    ProjectHandoffJournal.RecordUserInstruction(
-                        normalizedRoot, jobId, delivered.Id, delivered.Message);
-                }
+                // Delivery is acknowledged by the actual recipient role.
 
                 if (string.Equals(
                         hqAction.Name,
@@ -1093,16 +1073,6 @@ public partial class MainWindow
                 }
             }
 
-            if (_hqInterventions?.Pending().Any(entry =>
-                    UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
-            {
-                UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
-                return await BuildHqDecisionReportAsync(jobId, workingDirectory,
-                    milestone, "USER_PAUSE_REQUESTED",
-                    "No DESIGN start after explicit user save/stop.",
-                    initialChangedPaths, cancellationToken, mechanicalReports,
-                    milestoneChangedPaths.ToArray());
-            }
 
             if (milestone.Design is { } design)
             {
@@ -1403,17 +1373,6 @@ public partial class MainWindow
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            if (_hqInterventions?.Pending().Any(entry =>
-                    UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
-            {
-                UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
-                mechanicalReports.Add("USER_PAUSE_REQUESTED: BUILD/HIGH deferred for HQ decision");
-                return await BuildHqDecisionReportAsync(jobId, workingDirectory,
-                    milestone, "USER_PAUSE_REQUESTED",
-                    "Do not begin any new BUILD/HIGH while user requested save and stop.",
-                    initialChangedPaths, cancellationToken, mechanicalReports,
-                    milestoneChangedPaths.ToArray());
-            }
 
             // Worker owns BUILD; source-fix WORK #8 is attempted only once
             // for an actual compiler/build failure, never for EPERM or timeout.
@@ -1456,16 +1415,6 @@ public partial class MainWindow
             // QA and HIGH also receive unfinished WORK reports. They must
             // preserve unresolved checkpoints and report partial verification;
             // only HQ can decide whether to continue those WORK IDs.
-            if (_hqInterventions?.Pending().Any(entry =>
-                    UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
-            {
-                UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
-                return await BuildHqDecisionReportAsync(jobId, workingDirectory,
-                    milestone, "USER_PAUSE_REQUESTED",
-                    "HIGH dispatch deferred; preserve Worker BUILD and WORK evidence.",
-                    initialChangedPaths, cancellationToken, mechanicalReports,
-                    milestoneChangedPaths.ToArray());
-            }
             var beforeHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
             var initialHigh = await ExecuteMilestoneHighAsync(
@@ -1494,9 +1443,17 @@ public partial class MainWindow
             {
                 if (designHandoffs >= HighDesignHandoffContract.MaxReviewHandoffs)
                 {
+                    // The latest HIGH request contains the unresolved
+                    // defect, its target and evidence. HQ must see these
+                    // details rather than a generic budget failure.
+                    var unfinishedDesignRequest = highReport;
                     highReport = RoleTextProtocol.BuildResult(
                         "blocked", "HIGH_DESIGN_HANDOFF_BUDGET_EXHAUSTED",
-                        issues: new[] { "Additional visual review requires an HQ milestone." });
+                        issues: new[] {
+                            "DESIGN 재수정 2회 소진. 세 번째 호출은 하지 않고 HQ 판단에 인계.",
+                            MilestoneDefinitionContract.Limit(
+                                unfinishedDesignRequest, 3600)
+                        });
                     break;
                 }
                 if (!HighDesignHandoffContract.TryRead(
@@ -1507,17 +1464,6 @@ public partial class MainWindow
                         "blocked", "HIGH_DESIGN_HANDOFF_INVALID",
                         issues: new[] { handoffError });
                     break;
-                }
-                if (_hqInterventions?.Pending().Any(entry =>
-                        UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
-                {
-                    UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
-                    mechanicalReports.Add("USER_PAUSE_REQUESTED: no new DESIGN validation");
-                    return await BuildHqDecisionReportAsync(jobId, workingDirectory,
-                        milestone, "USER_PAUSE_REQUESTED",
-                        "Preserve previous HIGH evidence; HQ must decide PAUSE.",
-                        initialChangedPaths, cancellationToken, mechanicalReports,
-                        milestoneChangedPaths.ToArray());
                 }
 
                 designHandoffs++;
@@ -1721,17 +1667,6 @@ public partial class MainWindow
                     "completed", StringComparison.OrdinalIgnoreCase))
                 outcome = "HIGH_BLOCKED_OR_UNVERIFIED";
 
-            if (_hqInterventions?.Pending().Any(entry =>
-                    UnityUserPausePolicy.IsPauseRequest(entry.Message)) == true)
-            {
-                UnityUserPausePolicy.PersistRequested(workingDirectory, jobId, milestone.Id);
-                mechanicalReports.Add("USER_PAUSE_REQUESTED: no new validation");
-                return await BuildHqDecisionReportAsync(jobId, workingDirectory,
-                    milestone, "USER_PAUSE_REQUESTED",
-                    "Preserve milestone changes and report to HQ before next assignment.",
-                    initialChangedPaths, cancellationToken, mechanicalReports,
-                    milestoneChangedPaths.ToArray());
-            }
             CaptureResourceState();
 
             // HIGH may edit compilation/scene inputs after earlier evidence.
