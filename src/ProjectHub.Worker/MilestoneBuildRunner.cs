@@ -15,12 +15,15 @@ internal static class MilestoneBuildRunner
 
     public static async Task<IReadOnlyList<MilestoneMechanicalResult>> RunAsync(
         string root, string jobId, IEnumerable<MilestoneWorkDefinition> workItems,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool? unityEditorReady = null)
     {
         if (UnityCliBuildRunner.IsUnityProject(root))
         {
-            var unityResult = await UnityCliBuildRunner.RunAsync(
-                root, jobId, cancellationToken).ConfigureAwait(false);
+            var unityResult = unityEditorReady == false
+                ? UnityCliBuildRunner.EditorUnavailableResult(
+                    "UNITY_EDITOR_UNAVAILABLE_AT_JOB_PREFLIGHT")
+                : await UnityCliBuildRunner.RunAsync(
+                    root, jobId, cancellationToken).ConfigureAwait(false);
             return new[] { unityResult };
         }
 
