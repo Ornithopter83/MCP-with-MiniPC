@@ -33,9 +33,13 @@ dotnet run --project src/ProjectHub.Server
 
 ## Worker와 Web 런타임
 
-Worker는 HQ의 마일스톤 설계를 받아 독립 GENERAL WORK를 병렬 실행하고, 예약된 QA와 마일스톤 HIGH 검토, 기계적 BUILD, `main` 최종 commit·push를 관제한다. WORKITEM은 고유 ID와 독립 실행 세션·체크포인트를 가지며, 미완료 상태는 `CONTINUE`로 후속 마일스톤에 이어갈 수 있다. RESOURCE는 이미지 생성만 수행하는 비차단 GPTWEB sidecar로 일반 WORK, QA, HIGH 및 Git과 별도 수명으로 동작한다. Git metadata 및 원격 접근은 AI 역할이 아닌 Worker의 기계적 책임이다. 현재 역할은 HQ, GENERAL WORK, RESOURCE, QA, HIGH이며 구형 JUDGE·OBSERVATION, `projecthub/*` 게시, `resultRef` 기반 CODE_CHANGE 흐름을 현재 실행 계약으로 취급하지 않는다. 세부 정책은 `Worker-Polish.md`와 전용 역할·전송 계약을 따른다.
+**적용 범위:** `UnityWorker` 브랜치의 현재 실행 정책은 `Worker-Polish.md`, `UnityWorker-ROADMAP.md` 및 활성 역할 계약을 따른다. 범용 `main` Worker의 과거 QA·RESOURCE 설명을 이 브랜치의 활성 실행으로 취급하지 않는다.
 
-HQ와 RESOURCE는 서로 다른 persistent profile의 관리형 Chromium을 사용한다. 각 슬롯은 일반 탭 브라우저가 아니라 ChatGPT URL 하나를 여는 app window로 실행되며, runtime token이 없는 일반 Chrome과 임의 ChatGPT 페이지는 Worker bridge에 연결하지 않는다. HQ Web 응답은 task별 correlation KEY와 `[RESPONSE=OK]` 완료 표식을 사용하고, RESOURCE 완료는 생성 파일 준비와 capture 상태를 별도로 사용한다. 세부 상관·완료 계약은 `Web-Polish.md`와 Worker의 Web 전송 계약에 둔다.
+UnityWorker에서는 HQ(Web/CLI)가 마일스톤을 설계한다. #1 ASSET MANAGER는 외부 에셋 검색·획득·연결, #0 DESIGN은 그래픽·씬 시각 제작, #10+ WORK는 코드·CLI 구현을 담당하고 HIGH(PL)가 BUILD/TEST 증거를 검토·수정한다. 독립 QA와 이미지 추출용 RESOURCE sidecar는 실행하지 않는다. HIGH가 DESIGN에 재수정을 요청하는 횟수는 최대 2회이며 마지막 미해결 결함과 증거는 HQ에 남긴다.
+
+WORKITEM별 원본 ID·세션·체크포인트를 보존하고 미완료 작업만 `CONTINUE`한다. 빌드 복구도 원본 소유 WORKITEM ID로 수행하며 한 작업에 귀속할 수 없으면 HQ에 판단을 요청한다. Git commit·push와 기계적 BUILD/TEST는 Worker가 맡는다. **Worker 제품 소스의 `UnityWorker` 브랜치와 사용자의 게임 프로젝트 `main`은 별개**다.
+
+HQ Web은 관리형 Chromium·브리지, HQ CLI는 로컬 CLI 연결과 개별 상태 확인 경로를 사용한다. HQ는 설계·판단 중심의 읽기 전용 역할이다. 실시간 사용자 메시지는 고정된 HQ 예약이 아닌 다음 제어권을 받는 AI 역할에 원문으로 한 번만 전달한다. Worker는 자연어를 PAUSE로 판정하지 않으며 명시적 UI 취소는 별도 제어다. 신규 사용자 작업은 새 HQ CLI 세션과 `.projecthub/last-handoff.md`를 참고하고, 동일 작업 중단 복구는 기존 세션·체크포인트를 재사용한다. 구형 QA/RESOURCE 설정·보고서·전송 클래스 잔존은 활성 호출을 의미하지 않는다.
 
 Worker의 작업별 기계 상태는 실제 프로젝트 루트의 `.projecthub` 아래에 둔다. WORKITEM 실행 체크포인트(`work-executions`), WorkGraph·event log·transcript·continuation을 저장한다. 임시 실행·RESOURCE 결과 수집에는 프로젝트 루트의 `temp/`도 사용한다. `.projecthub/`와 `temp/`는 Worker 내부 상태·임시 작업영역이며, Worker가 관리하는 로컬 Git 제외 규칙으로 일반 코드 결과와 구분한다. WORK의 실제 소스 수정은 사용자가 지정한 프로젝트 루트에서 수행한다.
 

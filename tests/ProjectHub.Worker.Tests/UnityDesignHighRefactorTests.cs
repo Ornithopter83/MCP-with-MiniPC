@@ -138,12 +138,29 @@ public sealed class UnityDesignHighRefactorTests
     }
 
     [Theory]
-    [InlineData("신규 업데이트를 위해 임시 저장하고 중단합니다.", true)]
-    [InlineData("저장 후 중단", true)]
-    [InlineData("작업은 중단하지 마세요.", false)]
-    [InlineData("UI에 효과음 추가해주세요", false)]
-    public void PauseQueue_OnlyExplicitStopsPreempt(string message, bool expected) =>
-        Assert.Equal(expected, UnityUserPausePolicy.IsPauseRequest(message));
+    [InlineData("신규 업데이트를 위해 임시 저장하고 중단합니다.")]
+    [InlineData("저장 후 중단")]
+    [InlineData("작업은 중단하지 마세요.")]
+    [InlineData("UI에 효과음 추가해주세요")]
+    public void LiveUserMessage_IsQueuedVerbatimWithoutWorkerPauseClassification(string message)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "UnityRoleMessageQueueTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var queue = new HqUserInterventionQueue(root, "job-message");
+            queue.Add(message, false);
+            var pending = queue.ClaimPending();
+            Assert.Equal(message, Assert.Single(pending).Message);
+            queue.Acknowledge(pending);
+            Assert.Empty(queue.Pending());
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
 
     [Fact]
     public void DesignEvidence_DocumentAloneIsNotGraphicChange()

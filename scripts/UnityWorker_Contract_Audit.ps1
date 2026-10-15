@@ -75,16 +75,21 @@ foreach ($role in @('HQ', 'WORK', 'HIGH', 'DESIGN', 'ASSET-MANAGER')) {
     Scan-Lines $path '^\s*\[(?:ROUTE|TARGET|HANDOFF|NEXT|RESULT|STATUS)\s*[:=]' 'ERROR' 'UNSUPPORTED_BRACKET_TAG' '현행 4종 대괄호 제어 표식 외의 형식입니다.'
 }
 
-foreach ($doc in @('README.md', 'UnityWorker-ROADMAP.md')) {
-    Scan-Lines $doc '(?i)(예약된 QA|QA \+ Unity CLI|Unity QA|QA/HIGH|WORK/QA/HIGH|QA: EditMode|검증.*QA)' 'REVIEW' 'LEGACY_QA_REFERENCE' 'QA 독립 역할 삭제와 일치하는지 검토하세요.'
-    Scan-Lines $doc '(?i)(RESOURCE #0|RESOURCE는 이미지 생성|HQ와 RESOURCE|#0 IMAGE|RESOURCE 이미지)' 'REVIEW' 'LEGACY_RESOURCE_REFERENCE' '현재 DESIGN/ASSET MANAGER 및 Web 설정과 비교하세요.'
+foreach ($doc in @('README.md', 'UnityWorker-ROADMAP.md', 'Worker-Polish.md')) {
+    Scan-Lines $doc '(?i)(예약된 QA|QA \+ Unity CLI|Unity QA|QA/HIGH|WORK/QA/HIGH|QA: EditMode)' 'REVIEW' 'LEGACY_QA_REFERENCE' 'QA 독립 역할 삭제와 일치하는지 검토하세요.'
+    Scan-Lines $doc '(?i)(RESOURCE #0|RESOURCE는 이미지 생성|HQ와 RESOURCE|#0 IMAGE|RESOURCE 이미지 생성 전용)' 'REVIEW' 'LEGACY_RESOURCE_REFERENCE' '현재 DESIGN/ASSET MANAGER 및 Web 설정과 비교하세요.'
     Scan-Lines $doc '(?i)WORK\s*#?8(?![0-9])' 'REVIEW' 'OLD_BUILD_REPAIR_ID' '빌드 복구의 WORKITEM ID 정책과 비교하세요.'
     Scan-Lines $doc '(?i)(HQ 전달 예약|HQ 메시지 예약|HQ 예약)' 'REVIEW' 'OLD_MESSAGE_ROUTING' '메시지 수신자는 고정 HQ가 아닌 다음 AI 역할입니다.'
 }
 
 $qaPath = $folder + '/QA-ROUTING-CONTRACT.md'
-if (-not [string]::IsNullOrWhiteSpace((Read-Text $qaPath))) {
-    Add-Finding 'REVIEW' 'LEGACY_QA_CONTRACT' $qaPath 1 '구형 QA 계약이 호환용인지 활성 호출 경로가 있는지 확인하세요.'
+$qaText = Read-Text $qaPath
+if (-not [string]::IsNullOrWhiteSpace($qaText) -and $qaText -notmatch '비활성 레거시 호환 문서') {
+    Add-Finding 'REVIEW' 'LEGACY_QA_CONTRACT' $qaPath 1 '구형 QA 계약의 비활성 호환 목적을 명시하세요.'
+}
+$milestoneFlow = Read-Text 'src/ProjectHub.Worker/MainWindow.MilestoneFlow.cs'
+if ($milestoneFlow -match '\bExecuteMilestoneQaAsync\s*\(') {
+    Add-Finding 'REVIEW' 'ACTIVE_LEGACY_QA_DISPATCH' 'src/ProjectHub.Worker/MainWindow.MilestoneFlow.cs' 0 '독립 QA 재도입 여부를 확인하세요.'
 }
 
 $pauseSource = 'src/ProjectHub.Worker/UnityUserPausePolicy.cs'
@@ -96,9 +101,13 @@ if ((Read-Text $pauseSource) -match '\bIsPauseRequest\s*\(' -and
 
 $workContract = Read-Text ($folder + '/WORK-ROUTING-CONTRACT.md')
 $roleRunner = Read-Text 'src/ProjectHub.Worker/MainWindow.xaml.cs'
+$autonomy = Read-Text 'src/ProjectHub.Worker/WorkerAutonomyPolicy.cs'
+# BuildExecutionAllowed is used in OpenCode WorkspaceWrite only. FULL_AUTONOMY
+# runs DangerFullAccess, which permits builds; source-lane restrictions are guidance.
 if ($workContract -match '(?i)FULL_AUTONOMY.*(?:Git|빌드)' -and
-    $roleRunner -match 'BuildExecutionAllowed:\s*roleName\s*!=\s*"WORK"') {
-    Add-Finding 'REVIEW' 'WORK_BUILD_AUTHORITY' ($folder + '/WORK-ROUTING-CONTRACT.md') 0 'WORK의 FULL_AUTONOMY 문서와 실제 CLI 실행기 권한을 대조하세요.'
+    $roleRunner -match 'BuildExecutionAllowed:\s*roleName\s*!=\s*"WORK"' -and
+    $autonomy -notmatch 'Enabled\s*=\s*true') {
+    Add-Finding 'REVIEW' 'WORK_BUILD_AUTHORITY' ($folder + '/WORK-ROUTING-CONTRACT.md') 0 'WORK 샌드박스·빌드 권한을 다시 대조하세요.'
 }
 
 $errors = @($script:Findings | Where-Object { $_.Severity -eq 'ERROR' }).Count
