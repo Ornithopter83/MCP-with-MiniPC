@@ -105,7 +105,8 @@ public sealed class UnityDesignHighRefactorTests
             },
             Path.GetTempPath());
         Assert.Contains("반드시", designPrompt);
-        Assert.Contains("[GOTO=WORKER]\n@@REPORT", designPrompt);
+        Assert.Contains("[GOTO=WORKER]\n@@REPORT",
+            designPrompt.Replace("\r\n", "\n", StringComparison.Ordinal));
         Assert.DoesNotContain("[GOTO=WORKER] @@REPORT", designPrompt);
     }
 
