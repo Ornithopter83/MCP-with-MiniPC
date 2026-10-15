@@ -54,7 +54,7 @@ internal static class RoleElementRecoveryContract
             };
         }
 
-        if (normalizedRole is "WORK" or "QA" or "HIGH")
+        if (normalizedRole is "WORK" or "HIGH")
         {
             return new[]
             {
@@ -177,7 +177,9 @@ internal static class RoleElementRecoveryContract
             Environment.NewLine +
             "원문에서 확정 가능한 element를 elements에 기록하고 나머지 이름은 issues에 기록한다." +
             Environment.NewLine +
-            "이 내부 복구 응답은 JSON 객체 하나로 구성한다." +
+            "응답은 첫 줄 [ACTION=RESULT]과 이어지는 JSON 객체 하나로 구성한다." +
+            Environment.NewLine +
+            "[ACTION=RESULT]" +
             Environment.NewLine +
             "{" +
             Environment.NewLine +
@@ -226,11 +228,23 @@ internal static class RoleElementRecoveryContract
             StringComparer.OrdinalIgnoreCase);
         var payload = string.Empty;
 
-        // A repair tool returns data, not an AI control envelope.
-        var bare = (recoveryResponse ?? string.Empty).Trim();
-        if (bare.StartsWith("{", StringComparison.Ordinal) &&
-            bare.EndsWith("}", StringComparison.Ordinal))
-            payload = bare;
+        var parsed = ActionBlockContract.ParseWork(recoveryResponse);
+        if (!parsed.HasErrors && parsed.ValidActions.Count == 1)
+        {
+            payload = parsed.ValidActions[0].JsonPayload ?? string.Empty;
+        }
+        else
+        {
+            // ELEMENT-REPAIR는 내부 one-shot 복구 경로다.
+            // ACTION envelope가 빠졌더라도 응답 전체가 JSON object라면
+            // elements 값만 제한적으로 읽어 최초 기계 파싱 결과와 merge한다.
+            var bare = (recoveryResponse ?? string.Empty).Trim();
+            if (bare.StartsWith("{", StringComparison.Ordinal) &&
+                bare.EndsWith("}", StringComparison.Ordinal))
+            {
+                payload = bare;
+            }
+        }
 
         if (string.IsNullOrWhiteSpace(payload))
         {
@@ -345,7 +359,10 @@ internal static class RoleElementRecoveryContract
                 "[GOTO : " + gotoTarget.Trim().ToUpperInvariant() + "]");
         }
 
-        builder.AppendLine("@@REPORT");
+        builder.AppendLine(
+            "[ACTION=" +
+            originalScan.ActionName.Trim().ToUpperInvariant() +
+            "]");
         builder.AppendLine("{");
 
         var available = definitions
@@ -407,7 +424,7 @@ internal static class RoleElementRecoveryContract
                 };
             }
 
-            if (role is "WORK" or "QA" or "HIGH")
+            if (role is "WORK" or "HIGH")
             {
                 return elementName switch
                 {

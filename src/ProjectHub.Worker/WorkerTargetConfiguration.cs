@@ -28,13 +28,11 @@ public sealed record WorkerTargetSettings(
     [property: JsonPropertyName("maxConcurrentWork")] int MaxConcurrentWork = WorkerTargetConfiguration.DefaultConcurrentWork,
     [property: JsonPropertyName("highLevel")] WorkerAiRoleSettings? HighLevel = null,
     [property: JsonPropertyName("manager")] WorkerAiRoleSettings? Manager = null,
-    [property: JsonPropertyName("qa")] WorkerAiRoleSettings? Qa = null,
     [property: JsonPropertyName("design")] WorkerAiRoleSettings? Design = null)
 {
     public WorkerAiRoleSettings EffectiveCoordinator => Coordinator ?? new WorkerAiRoleSettings(Model: "gpt-6-sol", Reasoning: "high");
     public WorkerAiRoleSettings EffectiveImplementer => Implementer ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
     public WorkerAiRoleSettings EffectiveManager => Manager ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
-    public WorkerAiRoleSettings EffectiveQa => Qa ?? new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium", Transport: "codex_cli");
     // Existing profiles retain WORK's choice until DESIGN is configured independently.
     public WorkerAiRoleSettings EffectiveDesign => Design ?? EffectiveImplementer with
     {
@@ -142,7 +140,6 @@ public static class WorkerTargetConfiguration
             Implementer = NormalizeStatelessRole(settings.Implementer),
             Manager = NormalizeStatelessRole(settings.Manager),
             Design = NormalizeStatelessRole(settings.Design),
-            Qa = NormalizeStatelessRole(settings.Qa),
             HighLevel = NormalizeStatelessRole(settings.HighLevel)
         };
     }

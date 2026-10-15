@@ -19,7 +19,6 @@ internal static class HqTextProtocol
         {
             "GOAL",
             "PLAN",
-            "QA",
             "HIGH",
             "WORK",
             "WORK_GOAL",
@@ -62,6 +61,8 @@ internal static class HqTextProtocol
         bool completionValidatedByTransport = false)
     {
         var raw = rawMessage ?? string.Empty;
+        if (StructuredHqProtocol.IsModern(raw))
+            return StructuredHqProtocol.Parse(raw, completionValidatedByTransport);
         var normalized = raw
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
@@ -79,17 +80,15 @@ internal static class HqTextProtocol
         if (significant.Length == 0)
             return Invalid("ACTION_OUTPUT_EMPTY");
 
-        if (!RoleGotoContract.TryReadLeading(normalized, out var gotoTarget,
-                out var gotoError))
-            return Invalid(gotoError);
-        if (gotoTarget is not null && gotoTarget != "WORKER")
-            return Invalid("HQ_GOTO_TARGET_INVALID");
         var cursor = 0;
         if (significant[cursor].Text.StartsWith("[KEY=", StringComparison.Ordinal))
             cursor++;
-        while (cursor < significant.Length &&
-               RoleGotoContract.IsGotoLine(significant[cursor].Text))
+
+        if (cursor < significant.Length &&
+            significant[cursor].Text.StartsWith("[GOTO", StringComparison.OrdinalIgnoreCase))
+        {
             cursor++;
+        }
 
         if (cursor >= significant.Length ||
             !TryReadAction(significant[cursor].Text, out var action))
@@ -99,12 +98,6 @@ internal static class HqTextProtocol
 
         if (action is not ("WORK" or "PAUSE" or "END"))
             return Invalid("ACTION");
-
-        // The HQ control action takes precedence over document sections.
-        // @@MILESTONE may also appear in PAUSE/END text, but the strict
-        // structured parser is only a parser for WORK payloads.
-        if (action == "WORK" && StructuredHqProtocol.IsModern(raw))
-            return StructuredHqProtocol.Parse(raw, completionValidatedByTransport);
 
         var actionLine = significant[cursor].Index;
         var responseOk = Array.FindIndex(
@@ -151,14 +144,13 @@ internal static class HqTextProtocol
             .Select(section => section.Raw)
             .ToArray();
 
-        if (action == "WORK")
-            return ParseWork(headers, sections, unknown);
-
-        // A valid PAUSE/END action is authoritative even when its descriptive
-        // body is malformed. Display the original response without asking HQ
-        // to make a second decision under the guise of format recovery.
-        var control = ParseControl(action, sections, unknown);
-        return control.IsValid ? control : ParseControlRaw(action, raw);
+        return action switch
+        {
+            "WORK" => ParseWork(headers, sections, unknown),
+            "PAUSE" => ParseControl("PAUSE", sections, unknown),
+            "END" => ParseControl("END", sections, unknown),
+            _ => Invalid("ACTION")
+        };
     }
 
     private static HqTextProtocolResult ParseWork(
@@ -211,8 +203,6 @@ internal static class HqTextProtocol
         if (compact)
             goal = milestoneId ?? string.Empty;
 
-        var qaSection = sections.FirstOrDefault(section =>
-            string.Equals(section.Name, "QA", StringComparison.OrdinalIgnoreCase));
         var highSection = sections.FirstOrDefault(section =>
             string.Equals(section.Name, "HIGH", StringComparison.OrdinalIgnoreCase));
         var planSection = sections.FirstOrDefault(section =>
@@ -221,12 +211,11 @@ internal static class HqTextProtocol
         {
             if (headers.Keys.Any(key => !string.Equals(key, "MILESTONE", StringComparison.OrdinalIgnoreCase)))
                 errors.Add("COMPACT_HEADER_FORBIDDEN");
-            if (normalizedSectionCount(sections, "QA") > 1 ||
-                normalizedSectionCount(sections, "HIGH") > 1 ||
+            if (normalizedSectionCount(sections, "HIGH") > 1 ||
                 normalizedSectionCount(sections, "PLAN") > 1)
                 errors.Add("COMPACT_SECTION_DUPLICATED");
-            if (qaSection is null || highSection is null)
-                errors.Add("COMPACT_QA_HIGH_REQUIRED");
+            if (highSection is null)
+                errors.Add("COMPACT_HIGH_REQUIRED");
             if (sections.Any(section => section.Name is "GOAL" or "WORK_GOAL" or
                     "WORK_INSTRUCTIONS" or "WORK_COMPLETION"))
                 errors.Add("COMPACT_LEGACY_SECTION_FORBIDDEN");
@@ -291,7 +280,8 @@ internal static class HqTextProtocol
                             instructionLines.Add(line);
                         }
                         currentWork.ReadOnly = false;
-                        currentWork.TestRequired = qaSection is not null;
+                        // HIGH owns validation; WORK no longer reserves an independent QA role.
+                        currentWork.TestRequired = false;
                         currentWork.Goal = string.Join(" ", instructionLines);
                         currentWork.Instructions = currentWork.Goal;
                         currentWork.Completion.Add(currentWork.Goal);
@@ -393,17 +383,14 @@ internal static class HqTextProtocol
 
         if (compact && works.Count == 0)
             errors.Add("COMPACT_WORK_REQUIRED");
-        if (compact && (qaSection?.Content.Length > 600 ||
-                        highSection?.Content.Length > 600 ||
+        if (compact && (highSection?.Content.Length > 600 ||
                         planSection?.Content.Length > 8000 ||
-                        (qaSection?.Content.Split('\n').Count(line => !string.IsNullOrWhiteSpace(line)) ?? 0) > 3 ||
                         (highSection?.Content.Split('\n').Count(line => !string.IsNullOrWhiteSpace(line)) ?? 0) > 3))
             errors.Add("COMPACT_SECTION_LENGTH");
-        if (compact && (string.IsNullOrWhiteSpace(qaSection?.Content) ||
-                        string.IsNullOrWhiteSpace(highSection?.Content)))
-            errors.Add("COMPACT_QA_HIGH_EMPTY");
+        if (compact && string.IsNullOrWhiteSpace(highSection?.Content))
+            errors.Add("COMPACT_HIGH_EMPTY");
         if (compact && sections.Any(section => section.Name is not
-                ("WORK" or "QA" or "HIGH" or "PLAN" or "RESOURCE" or "RESOURCE_INSTRUCTIONS")))
+                ("WORK" or "HIGH" or "PLAN" or "RESOURCE" or "RESOURCE_INSTRUCTIONS")))
             errors.Add("COMPACT_SECTION_FORBIDDEN");
 
         foreach (var work in works)
@@ -442,7 +429,6 @@ internal static class HqTextProtocol
             ["id"] = milestoneId,
             ["branch"] = "main",
             ["goal"] = goal,
-            ["qaInstructions"] = qaSection?.Content.Trim(),
             ["highInstructions"] = highSection?.Content.Trim(),
             ["planDocument"] = planSection?.Content.Trim(),
             ["entrypoint"] = entrypoint,
@@ -489,19 +475,6 @@ internal static class HqTextProtocol
             parseErrors);
     }
 
-    private static HqTextProtocolResult ParseControlRaw(
-        string action,
-        string originalResponse)
-    {
-        var compatibility =
-            $"[ACTION={action}]" + Environment.NewLine +
-            ProjectHubJson.SerializeIndented(
-                new Dictionary<string, object?> { ["message"] = originalResponse });
-        var parsed = ActionBlockContract.ParseHq(compatibility);
-        return new(action, compatibility, parsed,
-            Array.Empty<string>(), parsed.Errors.ToArray());
-    }
-
     private static HqTextProtocolResult ParseControl(
         string action,
         IReadOnlyList<Section> sections,
@@ -519,13 +492,9 @@ internal static class HqTextProtocol
             .FirstOrDefault(section =>
                 string.Equals(section.Name, "MESSAGE", StringComparison.OrdinalIgnoreCase))
             ?.Content.Trim() ?? string.Empty;
-        if (message.StartsWith("<TEXT>", StringComparison.Ordinal))
-        {
-            if (!StructuredRoleFields.TryParse(message, out var fields, out _) ||
-                fields.Get("TEXT") is not { Length: > 0 } parsedText)
-                return Invalid(action, unknown, new[] { "MESSAGE_FORMAT" });
-            message = parsedText;
-        }
+        if (message.StartsWith("<TEXT>", StringComparison.Ordinal) &&
+            StructuredRoleFields.TryParse(message, out var fields, out _))
+            message = fields.Get("TEXT") ?? string.Empty;
         if (message.Length == 0)
             return Invalid(action, unknown, new[] { "MESSAGE" });
 

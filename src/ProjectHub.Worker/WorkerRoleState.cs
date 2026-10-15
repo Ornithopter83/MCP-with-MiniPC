@@ -5,7 +5,6 @@ public enum WorkerRoleState
     Hq,
     Manager,
     Work,
-    Qa,
     High,
     Resource, // historical RESOURCE records
     Design,

@@ -22,7 +22,6 @@ public static class WorkerUnknownErrorLog
         WorkerRoleState.Hq => "설계 관제",
         WorkerRoleState.Manager => "통합",
         WorkerRoleState.Work => "작업",
-        WorkerRoleState.Qa => "QA",
         WorkerRoleState.High => "검토",
         WorkerRoleState.Resource => "작업 (#0, 리소스)",
         _ => "시스템"

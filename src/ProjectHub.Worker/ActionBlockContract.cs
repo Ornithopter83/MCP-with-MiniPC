@@ -66,9 +66,6 @@ public static class ActionBlockContract
     public static ActionBlockParseResult ParseWork(string? rawMessage) =>
         ParseJsonEnvelope("WORK", rawMessage, ResultActionNames);
 
-    public static ActionBlockParseResult ParseQa(string? rawMessage) =>
-        ParseJsonEnvelope("QA", rawMessage, ResultActionNames);
-
     public static ActionBlockParseResult ParseHigh(string? rawMessage) =>
         ParseJsonEnvelope("HIGH", rawMessage, ResultActionNames);
 
@@ -80,7 +77,6 @@ public static class ActionBlockContract
             "HQ" => ParseHq(rawMessage),
             "MANAGER" => ParseManager(rawMessage),
             "WORK" => ParseWork(rawMessage),
-            "QA" => ParseQa(rawMessage),
             "HIGH" => ParseHigh(rawMessage),
             _ => new(
                 Array.Empty<ActionBlock>(),
@@ -115,12 +111,13 @@ public static class ActionBlockContract
             cursor++;
         }
 
-        if (!RoleGotoContract.TryReadLeading(normalized,
-                out var gotoTarget, out var gotoError))
-            return new(Array.Empty<ActionBlock>(), new[] { gotoError });
-        while (cursor < significant.Length &&
-               RoleGotoContract.IsGotoLine(significant[cursor].line))
+        string? gotoTarget = null;
+        if (cursor < significant.Length &&
+            TryReadGoto(significant[cursor].line, out var parsedGoto))
+        {
+            gotoTarget = parsedGoto;
             cursor++;
+        }
 
         if (cursor >= significant.Length ||
             !TryReadActionStart(
@@ -235,14 +232,6 @@ public static class ActionBlockContract
                 ValidateResult(
                     root,
                     new[] { "completed", "blocked" },
-                    errors,
-                    out body);
-                return;
-
-            case "QA":
-                ValidateResult(
-                    root,
-                    new[] { "passed", "issue" },
                     errors,
                     out body);
                 return;
@@ -647,6 +636,33 @@ public static class ActionBlockContract
             return false;
 
         actionName = value.ToUpperInvariant();
+        return true;
+    }
+
+    private static bool TryReadGoto(
+        string? line,
+        out string target)
+    {
+        target = string.Empty;
+        var trimmed = line?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) ||
+            !trimmed.StartsWith(
+                "[GOTO",
+                StringComparison.OrdinalIgnoreCase) ||
+            !trimmed.EndsWith(']'))
+        {
+            return false;
+        }
+
+        var colon = trimmed.IndexOf(':');
+        if (colon < 0)
+            return false;
+
+        var value = trimmed[(colon + 1)..^1].Trim();
+        if (value.Length == 0)
+            return false;
+
+        target = value.ToUpperInvariant();
         return true;
     }
 

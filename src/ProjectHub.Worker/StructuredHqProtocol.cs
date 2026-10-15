@@ -82,8 +82,6 @@ internal static class StructuredHqProtocol
             errors.Add("MILESTONE");
         if (sections.Count(s => s.Name == "HIGH") != 1)
             errors.Add("COMPACT_HIGH_REQUIRED");
-        if (sections.Any(s => s.Name == "QA"))
-            errors.Add("COMPACT_QA_REMOVED");
         if (sections.Any(s => s.Name is not ("MILESTONE" or "WORK" or "DESIGN" or "ASSET_MANAGER" or "HIGH" or "PLAN")))
             errors.Add("COMPACT_SECTION_FORBIDDEN");
         var parsed = new Dictionary<Section, StructuredRoleFields>();

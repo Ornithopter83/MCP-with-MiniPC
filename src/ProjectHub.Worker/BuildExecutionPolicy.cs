@@ -7,7 +7,7 @@ namespace ProjectHub.Worker;
 
 /// <summary>
 /// GENERAL WORK의 build/run/publish 및 Git mutation을 제한하고,
-/// QA에서는 Git mutation만 Worker에 남기는 기계 정책입니다.
+/// HIGH에서는 Git mutation만 Worker에 남기는 기계 정책입니다.
 /// legacy WorkItem API는 제거 마이그레이션 동안 호환을 위해 유지합니다.
 /// </summary>
 public static class BuildExecutionPolicy
@@ -123,13 +123,13 @@ public static class BuildExecutionPolicy
            if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
            $pattern = '(?ix)(?:(?<![\w.-])dotnet(?:\.exe)?\s+(?:restore|build|test|run|publish|pack|msbuild|vstest)\b|(?<![\w.-])msbuild(?:\.exe)?\b|(?<![\w.-])(?:csc|vbc|cl|clang|clang\+\+|gcc|g\+\+|rustc|javac)(?:\.exe)?\b|(?<![\w.-])cmake(?:\.exe)?\s+--build\b|(?<![\w.-])(?:ninja|make)(?:\.exe)?\b|(?<![\w.-])cargo(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])go(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])(?:npm|pnpm|yarn|bun)(?:\.cmd|\.exe)?\s+(?:(?:run)\s+)?(?:build|test)\b|(?<![\w.-])(?:gradle|gradlew|mvn|mvnw)(?:\.bat|\.cmd|\.exe)?\b|(?<![\w.-])python(?:\.exe)?\s+-m\s+build\b|(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b)'
            if ($command -match $pattern) {
-             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: GENERAL WORK handles implementation only; TEST execution is routed through QA and Git finalization stays in Worker.' } } | ConvertTo-Json -Compress -Depth 6
+             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: GENERAL WORK handles implementation only; TEST execution is routed through HIGH and Git finalization stays in Worker.' } } | ConvertTo-Json -Compress -Depth 6
              [Console]::Out.WriteLine($payload)
            }
            exit 0
            """;
 
-    public static string CreateQaCodexPreToolHookScript()
+    public static string CreateHighCodexPreToolHookScript()
         => """
            $ErrorActionPreference = 'Stop'
            $raw = [Console]::In.ReadToEnd()
@@ -143,26 +143,7 @@ public static class BuildExecutionPolicy
            if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
            $pattern = '(?ix)(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b'
            if ($command -match $pattern) {
-             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: QA keeps Git finalization in Worker.' } } | ConvertTo-Json -Compress -Depth 6
-             [Console]::Out.WriteLine($payload)
-           }
-           exit 0
-           """;
-
-    public static string CreateUnityBackgroundPreToolHookScript() => """
-           $ErrorActionPreference = 'Stop'
-           $raw = [Console]::In.ReadToEnd()
-           try { $event = $raw | ConvertFrom-Json -Depth 32 } catch { exit 0 }
-           $tool = [string]$event.tool_name
-           if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell)') { exit 0 }
-           $command = [string]$event.tool_input.command
-           if ([string]::IsNullOrWhiteSpace($command)) {
-             $command = [string]($event.tool_input.cmd -join ' ')
-           }
-           if ([string]::IsNullOrWhiteSpace($command)) { exit 0 }
-           $unsafe = '(?ix)(?:\bunity(?:\.exe)?\s+open\b|\bUnity(?:\.exe)?\b[^\r\n]*-projectPath\b|\bSetForegroundWindow\b|\bAppActivate\b|\bSendKeys\b|\bSetCursorPos\b|\bSendInput\b|\bmouse_event\b|\bkeybd_event\b|\bStart-Process\b[^\r\n]*\bUnity(?:\.exe)?\b|\bpyautogui\b|\bpynput\b|\bAutoHotkey\b|\bImageGrab\b|\bSystem\.Windows\.Forms\.Cursor\b)'
-           if ($command -match $unsafe) {
-             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'UnityWorker BACKGROUND_ONLY: foreground GUI launch and OS-wide input are forbidden. Use connected Editor CLI/MCP or report unverified.' } } | ConvertTo-Json -Compress -Depth 6
+             $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: HIGH keeps Git finalization in Worker.' } } | ConvertTo-Json -Compress -Depth 6
              [Console]::Out.WriteLine($payload)
            }
            exit 0

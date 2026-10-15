@@ -45,11 +45,11 @@
     <EmbeddedResource Include="Contracts\WORK-ROUTING-CONTRACT.md">
       <LogicalName>ProjectHub.Worker.Contracts.WORK-ROUTING-CONTRACT.md</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="Contracts\QA-ROUTING-CONTRACT.md">
-      <LogicalName>ProjectHub.Worker.Contracts.QA-ROUTING-CONTRACT.md</LogicalName>
-    </EmbeddedResource>
     <EmbeddedResource Include="Contracts\ASSET-MANAGER-ROUTING-CONTRACT.md">
       <LogicalName>ProjectHub.Worker.Contracts.ASSET-MANAGER-ROUTING-CONTRACT.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\current-*.png">
+      <LogicalName>ProjectHub.Worker.Assets.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="Contracts\DESIGN-ROUTING-CONTRACT.md">
       <LogicalName>ProjectHub.Worker.Contracts.DESIGN-ROUTING-CONTRACT.md</LogicalName>

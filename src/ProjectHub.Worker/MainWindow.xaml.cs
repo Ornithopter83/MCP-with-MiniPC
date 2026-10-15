@@ -43,7 +43,6 @@ public partial class MainWindow : Window
     {
         ["Coordinator"] = new("#DDEEFF", "#1477E8", "#1267D5", "current-openai.png"),
         ["Implementer"] = new("#DCF5E3", "#168A4A", "#116B39", "current-openai.png"),
-        ["Qa"] = new("#FFF0B8", "#B87900", "#765000", "current-openai.png"),
         ["HighLevel"] = new("#ECD8E4", "#82194B", "#74133F", "current-openai.png"),
         ["Manager"] = new("#E7E7FF", "#5B5BD6", "#4646B8", "current-openai.png"),
         ["Resource"] = new("#FFF2CE", "#B97B0D", "#815300", "current-openai.png"),
@@ -85,7 +84,6 @@ public partial class MainWindow : Window
                 "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"Unity WORK (#{WorkItemId})",
                 "Implementer" when WorkNumber.HasValue => $"Unity WORK (#{WorkNumber.Value})",
                 "Implementer" => "Unity WORK",
-                "Qa" => "Unity QA · 플레이테스트",
                 "HighLevel" => "Unity HIGH · 통합",
                 "Manager" => "#1 ASSET MANAGER",
                 "Resource" => "Unity DESIGN (#0)",
@@ -198,15 +196,13 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _jobWatchdogTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private int _flowFrame;
     private bool _pairArrowActive;
-    private enum TaskStage { Idle, Coordinator, Implementer, Qa, HighLevel, Manager, Resource }
+    private enum TaskStage { Idle, Coordinator, Implementer, HighLevel, Manager, Resource }
     private enum DashboardBodyMode { NewTaskInput, TaskHistory }
     private DashboardBodyMode _dashboardBodyMode = DashboardBodyMode.NewTaskInput;
     private TaskStage _currentTaskStage = TaskStage.Idle;
-    private bool? _currentMilestoneQaReserved;
     private bool? _currentMilestoneResourceReserved;
     private string _coordinatorStageIconAsset = "current-openai.png";
     private string _implementerStageIconAsset = "current-openai.png";
-    private string _qaStageIconAsset = "current-openai.png";
     private string _highLevelStageIconAsset = "current-openai.png";
     private string _managerStageIconAsset = "current-openai.png";
     private bool _resourceSidecarActive;
@@ -1242,13 +1238,6 @@ public partial class MainWindow : Window
             resourceDisabled,
             initialInputIdle);
 
-        var qaDisabled = _activeCoordinatorFirst && _currentMilestoneQaReserved == false;
-        QaStageModelText.Text = qaDisabled
-            ? "미예약"
-            : AiProviderCatalog.FormatModel(
-                _targetSettings.EffectiveQa.Provider,
-                _targetSettings.EffectiveQa.Model);
-        SetPipelineCard(PipelineQaCard, PipelineQaTitle, QaStageCircle, QaStageIcon, _qaStageIconAsset, TaskStage.Qa, RoleVisuals["Qa"], qaDisabled, initialInputIdle);
         SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, _highLevelStageIconAsset, TaskStage.HighLevel, RoleVisuals["HighLevel"], false, initialInputIdle);
         ManagerStageModelText.Text = AiProviderCatalog.FormatModel(
             _targetSettings.EffectiveImplementer.Provider,
@@ -1278,7 +1267,6 @@ public partial class MainWindow : Window
         icon.Source = LoadProviderAsset(selectedName);
         if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineResourceCard) ResourceStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
-        else if (card == PipelineQaCard) QaStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineHighLevelCard) HighLevelStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineManagerCard) ManagerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         card.BorderBrush = System.Windows.Media.Brushes.Transparent;
@@ -1294,7 +1282,6 @@ public partial class MainWindow : Window
             TaskStage.Coordinator => (PipelineCoordinatorActiveBase, PipelineCoordinatorActiveOrbit),
             TaskStage.Implementer => (PipelineImplementerActiveBase, PipelineImplementerActiveOrbit),
             TaskStage.Resource => (PipelineResourceActiveBase, PipelineResourceActiveOrbit),
-            TaskStage.Qa => (PipelineQaActiveBase, PipelineQaActiveOrbit),
             TaskStage.HighLevel => (PipelineHighLevelActiveBase, PipelineHighLevelActiveOrbit),
             TaskStage.Manager => (PipelineManagerActiveBase, PipelineManagerActiveOrbit),
             _ => throw new ArgumentOutOfRangeException(nameof(stage))
@@ -1490,7 +1477,6 @@ public partial class MainWindow : Window
     private void ResetTaskState()
     {
         _activeCoordinatorFirst = false;
-        _currentMilestoneQaReserved = null;
         _currentMilestoneResourceReserved = null;
         _resourceSidecarStatus = "로컬 Design";
         _jobTimedOut = false;
@@ -1777,7 +1763,6 @@ public partial class MainWindow : Window
             SetRoleThreadOptions(CoordinatorRoleThreadCombo, GetCompatibleThreadSession(CoordinatorRoleThreadCombo, selected.ProjectPath));
             SetRoleThreadOptions(ImplementerRoleThreadCombo, GetCompatibleThreadSession(ImplementerRoleThreadCombo, selected.ProjectPath));
             SetRoleThreadOptions(ManagerRoleThreadCombo, GetCompatibleThreadSession(ManagerRoleThreadCombo, selected.ProjectPath));
-            SetRoleThreadOptions(QaRoleThreadCombo, GetCompatibleThreadSession(QaRoleThreadCombo, selected.ProjectPath));
             SetRoleThreadOptions(DesignRoleThreadCombo, GetCompatibleThreadSession(DesignRoleThreadCombo, selected.ProjectPath));
             SetRoleThreadOptions(HighLevelRoleThreadCombo, GetCompatibleThreadSession(HighLevelRoleThreadCombo, selected.ProjectPath));
             roleCombo.SelectedItem = (roleCombo.ItemsSource as IEnumerable<CodexThreadOption>)?.FirstOrDefault(option =>
@@ -2056,9 +2041,7 @@ public partial class MainWindow : Window
         var roleName = assetManagerPurpose || designPurpose ? "WORK" :
             purpose.Contains("MANAGER", StringComparison.OrdinalIgnoreCase)
             ? "MANAGER"
-            : purpose.Contains("QA", StringComparison.OrdinalIgnoreCase)
-                ? "QA"
-                : purpose.Contains("HIGH", StringComparison.OrdinalIgnoreCase)
+            : purpose.Contains("HIGH", StringComparison.OrdinalIgnoreCase)
                     ? "HIGH"
                     : purpose.Contains("IMPLEMENTER", StringComparison.OrdinalIgnoreCase) ||
                       purpose.Contains("LUNA", StringComparison.OrdinalIgnoreCase) ||
@@ -2068,7 +2051,6 @@ public partial class MainWindow : Window
         var outboundRole = designPurpose ? "DESIGN" : roleName switch
         {
             "MANAGER" => "MANAGER",
-            "QA" => "QA",
             "WORK" => "WORK",
             "HIGH" => "HIGH",
             _ => "HQ"
@@ -2077,7 +2059,6 @@ public partial class MainWindow : Window
             designPurpose ? WorkerRoleState.Design : roleName switch
         {
             "MANAGER" => WorkerRoleState.Manager,
-            "QA" => WorkerRoleState.Qa,
             "WORK" => WorkerRoleState.Work,
             "HIGH" => WorkerRoleState.High,
             _ => WorkerRoleState.Hq
@@ -2092,7 +2073,7 @@ public partial class MainWindow : Window
         // Share that exact, job-scoped file with CLI roles instead of asking
         // each role to rediscover and guess the Unity command arguments.
         // It is syntax guidance, not a substitute for executing validation.
-        if (roleName is "QA" or "HIGH" || designPurpose || assetManagerPurpose)
+        if (roleName is "HIGH" || designPurpose || assetManagerPurpose)
         {
             var catalogPath = UnityToolchainPreflight.CatalogPath(
                 workingDirectory, jobId);
@@ -2117,7 +2098,7 @@ public partial class MainWindow : Window
         // Compose the role's own prompt first. The user's verbatim payload
         // must never pass through Compose(), which normalizes whitespace and
         // rewrites reference lines that resemble @@MESSAGE headers.
-        if (roleName is "WORK" or "QA" or "HIGH" || designPurpose || assetManagerPurpose)
+        if (roleName is "WORK" or "HIGH" || designPurpose || assetManagerPurpose)
             prompt = UnityRoleMessageComposer.Compose(prompt);
         prompt = HqUserInterventionQueue.AppendToHqBody(prompt, routedMessages);
         RunOnUi(() =>
@@ -2218,30 +2199,30 @@ public partial class MainWindow : Window
             bypassHookTrust = true;
         }
         if (!WorkerAutonomyPolicy.Enabled &&
-            (roleName is "WORK" or "QA" or "HIGH" || designPurpose))
+            (roleName is "WORK" or "HIGH" || designPurpose))
         {
             // Legacy command denial gates are inactive in full autonomy.
-            // QA/HIGH may build, but Git mutation stays in Worker.
-            var isQa = roleName is "QA" or "HIGH";
+            // HIGH may build, but Git mutation stays in Worker.
+            var isHigh = roleName == "HIGH";
             var hookPath = Path.Combine(
                 roleTempPath,
-                isQa
-                    ? "projecthub-qa-command-gate.ps1"
+                isHigh
+                    ? "projecthub-high-command-gate.ps1"
                     : "projecthub-work-command-gate.ps1");
             await File.WriteAllTextAsync(
                 hookPath,
-                isQa
-                    ? BuildExecutionPolicy.CreateQaCodexPreToolHookScript()
+                isHigh
+                    ? BuildExecutionPolicy.CreateHighCodexPreToolHookScript()
                     : BuildExecutionPolicy.CreateCodexPreToolHookScript(),
                 ProjectHubJson.Utf8NoBom,
                 cancellationToken);
             var commandGateOverride =
                 BuildExecutionPolicy.BuildCodexPreToolHookOverride(
                     hookPath,
-                    isQa
-                        ? "ProjectHub QA command gate"
+                    isHigh
+                        ? "ProjectHub HIGH command gate"
                         : "ProjectHub WORK command gate");
-            codexConfigOverrides = isQa
+            codexConfigOverrides = isHigh
                 ? new[] { commandGateOverride }
                 : new[]
                 {
@@ -2486,13 +2467,11 @@ public partial class MainWindow : Window
 
         var coordinator = _targetSettings.EffectiveCoordinator;
         var implementer = _targetSettings.EffectiveImplementer;
-        var qa = _targetSettings.EffectiveQa;
         var design = _targetSettings.EffectiveDesign;
         var highLevel = _targetSettings.EffectiveHighLevel;
         var manager = _targetSettings.EffectiveManager;
         CoordinatorStageModelText.Text = IsWebTransport(coordinator.Transport) ? "ChatGPT Web" : AiProviderCatalog.FormatModel(coordinator.Provider, coordinator.Model);
         ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(0);
-        QaStageModelText.Text = AiProviderCatalog.FormatModel(qa.Provider, qa.Model);
         HighLevelStageModelText.Text = AiProviderCatalog.FormatModel(highLevel.Provider, highLevel.Model);
         ManagerStageModelText.Text = AiProviderCatalog.FormatModel(manager.Provider, manager.Model);
         ResourceStageModelText.Text = AiProviderCatalog.FormatModel(design.Provider, design.Model);
@@ -2501,12 +2480,10 @@ public partial class MainWindow : Window
             ? "current-web.png"
             : ProviderVisualCatalog.Resolve(coordinator.Provider).ColorAsset;
         _implementerStageIconAsset = ProviderVisualCatalog.Resolve(implementer.Provider).ColorAsset;
-        _qaStageIconAsset = ProviderVisualCatalog.Resolve(qa.Provider).ColorAsset;
         _highLevelStageIconAsset = ProviderVisualCatalog.Resolve(highLevel.Provider).ColorAsset;
         _managerStageIconAsset = ProviderVisualCatalog.Resolve(manager.Provider).ColorAsset;
         CoordinatorStageIcon.Source = LoadProviderAsset(_coordinatorStageIconAsset);
         ImplementerStageIcon.Source = LoadProviderAsset(_implementerStageIconAsset);
-        QaStageIcon.Source = LoadProviderAsset(_qaStageIconAsset);
         HighLevelStageIcon.Source = LoadProviderAsset(_highLevelStageIconAsset);
         ManagerStageIcon.Source = LoadProviderAsset(_managerStageIconAsset);
         ResourceStageIcon.Source = LoadProviderAsset(ProviderVisualCatalog.Resolve(design.Provider).ColorAsset);
@@ -2521,44 +2498,8 @@ public partial class MainWindow : Window
 
     private static bool IsWebTransport(string transport) => string.Equals(transport, "web", StringComparison.OrdinalIgnoreCase);
 
-    private static System.Windows.Media.ImageSource LoadProviderAsset(string asset)
-    {
-        const string fallbackAsset = "current-console.png";
-        foreach (var candidate in new[] { asset, fallbackAsset }
-                     .Where(value => !string.IsNullOrWhiteSpace(value))
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            try
-            {
-                var bitmap = new System.Windows.Media.Imaging.BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption =
-                    System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-                bitmap.UriSource = new Uri(
-                    $"pack://application:,,,/ProjectHub.Worker;component/Assets/{candidate}",
-                    UriKind.Absolute);
-                bitmap.EndInit();
-                bitmap.Freeze();
-                return bitmap;
-            }
-            catch (Exception exception)
-            {
-                App.LogRuntimeFailure(
-                    $"PROVIDER_ICON_LOAD_FAILED asset={candidate}",
-                    exception);
-            }
-        }
-
-        var empty = new System.Windows.Media.Imaging.WriteableBitmap(
-            1,
-            1,
-            96,
-            96,
-            System.Windows.Media.PixelFormats.Bgra32,
-            null);
-        empty.Freeze();
-        return empty;
-    }
+    private static System.Windows.Media.ImageSource LoadProviderAsset(string asset) =>
+        WorkerCardIconAssets.Load(asset);
 
     private void UpdateWorkspaceControls(CodexThreadOption? selected, string workingDirectory)
     {
@@ -2603,12 +2544,7 @@ public partial class MainWindow : Window
             PopulateRoleModelCombo(ManagerModelCombo, manager.Provider, manager.Model);
             PopulateRoleReasoningCombo(ManagerReasoningCombo, manager.Provider, manager.Model, manager.Reasoning);
 
-            var qa = _targetSettings.EffectiveQa;
-            PopulateProviderCombo(QaProviderCombo, qa.Provider);
-            PopulateRoleModelCombo(QaModelCombo, qa.Provider, qa.Model);
-            PopulateRoleReasoningCombo(QaReasoningCombo, qa.Provider, qa.Model, qa.Reasoning);
-
-            var design = _targetSettings.EffectiveDesign;
+                var design = _targetSettings.EffectiveDesign;
             PopulateProviderCombo(DesignProviderCombo, design.Provider);
             PopulateRoleModelCombo(DesignModelCombo, design.Provider, design.Model);
             PopulateRoleReasoningCombo(DesignReasoningCombo, design.Provider, design.Model, design.Reasoning);
@@ -2621,13 +2557,11 @@ public partial class MainWindow : Window
             SetRoleThreadOptions(CoordinatorRoleThreadCombo, coordinator.ThreadSessionId);
             SetRoleThreadOptions(ImplementerRoleThreadCombo, implementer.ThreadSessionId);
             SetRoleThreadOptions(ManagerRoleThreadCombo, manager.ThreadSessionId);
-            SetRoleThreadOptions(QaRoleThreadCombo, qa.ThreadSessionId);
             SetRoleThreadOptions(DesignRoleThreadCombo, design.ThreadSessionId);
             SetRoleThreadOptions(HighLevelRoleThreadCombo, highLevel.ThreadSessionId);
             ApplyRoleSessionCapability(CoordinatorProviderCombo, CoordinatorRoleThreadCombo);
             ApplyRoleSessionCapability(ImplementerProviderCombo, ImplementerRoleThreadCombo);
             ApplyRoleSessionCapability(ManagerProviderCombo, ManagerRoleThreadCombo);
-            ApplyRoleSessionCapability(QaProviderCombo, QaRoleThreadCombo);
             ApplyRoleSessionCapability(DesignProviderCombo, DesignRoleThreadCombo);
             ApplyRoleSessionCapability(HighLevelProviderCombo, HighLevelRoleThreadCombo);
             UpdateRoleProviderVisuals();
@@ -2717,8 +2651,6 @@ public partial class MainWindow : Window
             return (ImplementerModelCombo, ImplementerReasoningCombo, ImplementerRoleThreadCombo, ImplementerProviderIcon);
         if (ReferenceEquals(providerCombo, ManagerProviderCombo))
             return (ManagerModelCombo, ManagerReasoningCombo, ManagerRoleThreadCombo, ManagerProviderIcon);
-        if (ReferenceEquals(providerCombo, QaProviderCombo))
-            return (QaModelCombo, QaReasoningCombo, QaRoleThreadCombo, QaProviderIcon);
         if (ReferenceEquals(providerCombo, DesignProviderCombo))
             return (DesignModelCombo, DesignReasoningCombo, DesignRoleThreadCombo, DesignProviderIcon);
         if (ReferenceEquals(providerCombo, HighLevelProviderCombo))
@@ -2730,7 +2662,6 @@ public partial class MainWindow : Window
         ReferenceEquals(modelCombo, CoordinatorModelCombo) ? CoordinatorProviderCombo
         : ReferenceEquals(modelCombo, ImplementerModelCombo) ? ImplementerProviderCombo
         : ReferenceEquals(modelCombo, ManagerModelCombo) ? ManagerProviderCombo
-        : ReferenceEquals(modelCombo, QaModelCombo) ? QaProviderCombo
         : ReferenceEquals(modelCombo, DesignModelCombo) ? DesignProviderCombo
         : ReferenceEquals(modelCombo, HighLevelModelCombo) ? HighLevelProviderCombo
         : throw new ArgumentException("Unknown model control.", nameof(modelCombo));
@@ -2764,7 +2695,6 @@ public partial class MainWindow : Window
         }
         SetProviderIcon(ImplementerProviderIcon, GetSelectedTag(ImplementerProviderCombo, _targetSettings.EffectiveImplementer.Provider));
         SetProviderIcon(ManagerProviderIcon, GetSelectedTag(ManagerProviderCombo, _targetSettings.EffectiveManager.Provider));
-        SetProviderIcon(QaProviderIcon, GetSelectedTag(QaProviderCombo, _targetSettings.EffectiveQa.Provider));
         SetProviderIcon(DesignProviderIcon, GetSelectedTag(DesignProviderCombo, _targetSettings.EffectiveDesign.Provider));
         SetProviderIcon(HighLevelProviderIcon, GetSelectedTag(HighLevelProviderCombo, _targetSettings.EffectiveHighLevel.Provider));
     }
@@ -2870,9 +2800,7 @@ public partial class MainWindow : Window
             ? CoordinatorReasoningCombo
             : ReferenceEquals(modelCombo, ManagerModelCombo)
                 ? ManagerReasoningCombo
-                : ReferenceEquals(modelCombo, QaModelCombo)
-                    ? QaReasoningCombo
-                    : ReferenceEquals(modelCombo, DesignModelCombo)
+                : ReferenceEquals(modelCombo, DesignModelCombo)
                         ? DesignReasoningCombo
                         : ReferenceEquals(modelCombo, HighLevelModelCombo)
                         ? HighLevelReasoningCombo
@@ -2881,9 +2809,7 @@ public partial class MainWindow : Window
             ? _targetSettings.EffectiveCoordinator.Reasoning
             : ReferenceEquals(modelCombo, ManagerModelCombo)
                 ? _targetSettings.EffectiveManager.Reasoning
-                : ReferenceEquals(modelCombo, QaModelCombo)
-                    ? _targetSettings.EffectiveQa.Reasoning
-                    : ReferenceEquals(modelCombo, DesignModelCombo)
+                : ReferenceEquals(modelCombo, DesignModelCombo)
                         ? _targetSettings.EffectiveDesign.Reasoning
                         : ReferenceEquals(modelCombo, HighLevelModelCombo)
                         ? _targetSettings.EffectiveHighLevel.Reasoning
@@ -2899,7 +2825,7 @@ public partial class MainWindow : Window
     {
         if (_loadingRoleControls) return;
         AiRolesStatusText.Text =
-            "신규 역할 실행 설정: HQ·중간관리자·QA·검토·일반 WORK는 역할별 Provider/Model을 사용하고 RESOURCE는 GPT Web 고정입니다.";
+            "UnityWorker: HQ · ASSET MANAGER #1 · DESIGN #0 · WORK #10+ · HIGH는 각 역할 계약으로 진행합니다.";
     }
 
     private static string GetSelectedTag(System.Windows.Controls.ComboBox combo, string fallback) =>
@@ -3134,7 +3060,6 @@ public partial class MainWindow : Window
             Coordinator = ReadCoordinatorSettings(),
             Implementer = ReadRoleSettings(ImplementerProviderCombo, ImplementerModelCombo, ImplementerReasoningCombo, _targetSettings.EffectiveImplementer),
             Manager = _targetSettings.Manager,
-            Qa = _targetSettings.Qa,
             Design = ReadRoleSettings(DesignProviderCombo, DesignModelCombo, DesignReasoningCombo, _targetSettings.EffectiveDesign),
             HighLevel = ReadRoleSettings(HighLevelProviderCombo, HighLevelModelCombo, HighLevelReasoningCombo, _targetSettings.EffectiveHighLevel),
             MaxConcurrentWork = maxConcurrentWork
@@ -3531,7 +3456,6 @@ public partial class MainWindow : Window
             WorkerRoleState.Hq => "Coordinator",
             WorkerRoleState.Manager => "Manager",
             WorkerRoleState.Work => "Implementer",
-            WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
             WorkerRoleState.Design => "Design",
@@ -3607,7 +3531,6 @@ public partial class MainWindow : Window
             WorkerRoleState.Hq => "Coordinator",
             WorkerRoleState.Manager => "Manager",
             WorkerRoleState.Work => "Implementer",
-            WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
             WorkerRoleState.Design => "Design",
@@ -3645,7 +3568,6 @@ public partial class MainWindow : Window
             {
                 WorkerRoleState.Manager => "MANAGER PROGRESS",
                 WorkerRoleState.Work => "WORK DETAIL",
-                WorkerRoleState.Qa => "QA PROGRESS",
                 WorkerRoleState.High => "HIGH PROGRESS",
                 WorkerRoleState.Resource => "RESOURCE PROGRESS",
                 WorkerRoleState.Design => "DESIGN PROGRESS",
@@ -3685,7 +3607,6 @@ public partial class MainWindow : Window
             WorkerRoleState.Hq => "Coordinator",
             WorkerRoleState.Manager => "Manager",
             WorkerRoleState.Work => "Implementer",
-            WorkerRoleState.Qa => "Qa",
             WorkerRoleState.High => "HighLevel",
             WorkerRoleState.Resource => "Resource",
             WorkerRoleState.Design => "Design",
@@ -3726,7 +3647,6 @@ public partial class MainWindow : Window
             {
                 WorkerRoleState.Manager => "MANAGER RESPONSE",
                 WorkerRoleState.Work => "WORK RESPONSE",
-                WorkerRoleState.Qa => "QA RESPONSE",
                 WorkerRoleState.High => "HIGH RESPONSE",
                 WorkerRoleState.Resource => "RESOURCE RESPONSE",
                 WorkerRoleState.Design => "DESIGN RESPONSE",
@@ -3756,7 +3676,6 @@ public partial class MainWindow : Window
     {
         var normalized = source.Trim().ToUpperInvariant();
         string stage = normalized.Contains("MANAGER", StringComparison.Ordinal) ? "Manager"
-            : normalized.Contains("QA", StringComparison.Ordinal) ? "Qa"
             : normalized.Contains("HIGH", StringComparison.Ordinal) ? "HighLevel"
             : normalized.Contains("RESOURCE", StringComparison.Ordinal) ? "Resource"
             : normalized.Contains("LUNA", StringComparison.Ordinal) || normalized.Contains("IMPLEMENT", StringComparison.Ordinal) || normalized.Contains("WORKER", StringComparison.Ordinal) ? "Implementer"

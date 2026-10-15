@@ -66,9 +66,6 @@ public partial class MainWindow
         var continuing = continuation is not null;
         var jobId = continuation?.JobId ?? Guid.NewGuid().ToString("N");
         var normalizedRoot = Path.GetFullPath(workingDirectory);
-        var qa = NormalizeRoleSessionForWorkspace(
-            _targetSettings.EffectiveQa,
-            normalizedRoot);
         var high = NormalizeRoleSessionForWorkspace(
             _targetSettings.EffectiveHighLevel,
             normalizedRoot);
@@ -214,8 +211,8 @@ public partial class MainWindow
 
             var configuredRepositoryUrl =
                 _targetSettings.ManualRepositoryUrl?.Trim();
-            var priorHandoff = continuing
-                ? null : ProjectHandoffJournal.ReadForNewTask(normalizedRoot);
+            var priorHandoff = !continuing && !IsWebTransport(coordinator.Transport)
+                ? ProjectHandoffJournal.ReadForNewTask(normalizedRoot) : null;
             var handoffContext = string.IsNullOrWhiteSpace(priorHandoff)
                 ? ""
                 : "이전 프로젝트 인계문 (참고 자료, 이전 세션 자동 재개 금지):" +
@@ -223,10 +220,12 @@ public partial class MainWindow
                   Environment.NewLine +
                   "이전 상태를 사실로 가정하지 말고 최신 사용자 지시와 Git·실제 파일을 우선하라." +
                   Environment.NewLine + Environment.NewLine;
+            var webHq = IsWebTransport(coordinator.Transport);
             var hqInbound = editorRecoveryNotice +
                 (continuing
-                    ? BuildMilestoneFollowupInput(continuation!, request)
-                    : handoffContext + "새 사용자 지시:" + Environment.NewLine + request);
+                    ? BuildMilestoneFollowupInput(continuation!, request, webHq)
+                    : webHq ? request : handoffContext +
+                        "새 사용자 지시:" + Environment.NewLine + request);
             ProjectHandoffJournal.RecordUserInstruction(
                 normalizedRoot, jobId,
                 continuing ? "FOLLOWUP-" + DateTimeOffset.UtcNow.ToString("O") : "NEW-TASK",
@@ -624,7 +623,6 @@ public partial class MainWindow
 
                 RunOnUi(() =>
                 {
-                    _currentMilestoneQaReserved = false;
                     _currentMilestoneResourceReserved =
                         milestone.Design is not null;
                     if (_currentMilestoneResourceReserved != true)
@@ -633,7 +631,7 @@ public partial class MainWindow
                     AddDataFlowHistory(
                         WorkerRoleState.Unknown,
                         "Worker 작업",
-                        $"HQ 응답 파싱 완료\nMILESTONE: {milestone.Id}\nWORK: {milestone.WorkItems.Count}건\nRESOURCE: {milestone.Resources.Count}건\nTEST: {(milestone.QaReserved ? "ON" : "OFF")}",
+                        $"HQ 응답 파싱 완료\nMILESTONE: {milestone.Id}\nWORK: {milestone.WorkItems.Count}건\nRESOURCE: {milestone.Resources.Count}건",
                         status: "PARSED",
                         persistenceSource: "WORKER ACTION");
                 });
@@ -657,7 +655,6 @@ public partial class MainWindow
                         normalizedRoot,
                         milestone!,
                         implementer,
-                        qa,
                         high,
                         designRole,
                         unityPreflight.Ready,
@@ -699,7 +696,6 @@ public partial class MainWindow
                             new Dictionary<string, string>(
                                 StringComparer.OrdinalIgnoreCase),
                             Array.Empty<string>(),
-                            string.Empty,
                             string.Empty,
                             MilestoneGitResult.NotStarted(
                                 milestone!.TargetBranch),
@@ -899,7 +895,7 @@ public partial class MainWindow
             milestone, "HQ_DECISION_REQUIRED:" + reasonCode,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-            diagnostics, string.Empty, string.Empty,
+            diagnostics, string.Empty,
             MilestoneGitResult.NotStarted(milestone.TargetBranch),
             initialChangedPaths,
             changedPaths ?? Array.Empty<string>(),
@@ -923,7 +919,6 @@ public partial class MainWindow
         string workingDirectory,
         MilestoneDefinition milestone,
         WorkerAiRoleSettings implementer,
-        WorkerAiRoleSettings qa,
         WorkerAiRoleSettings high,
         WorkerAiRoleSettings designRole,
         bool unityEditorReady,
@@ -944,7 +939,7 @@ public partial class MainWindow
         // instead executes as an ordered, local, source-safe stage below.
         var resourceTasks = Array.Empty<(string Id, Task<ResourceExecutionReport> Task)>();
 
-        // RESOURCE is an independent sidecar: never gate WORK, QA, HIGH or Git
+        // RESOURCE is an independent sidecar: never gate WORK, HIGH or Git
         // on generation, failure, artifact validation or transport completion.
         var gitPreflight = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
             workingDirectory,
@@ -976,7 +971,6 @@ public partial class MainWindow
         var resourceReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
-        var qaReport = string.Empty;
         var highReport = string.Empty;
         var gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
         var outcome = "COMPLETED";
@@ -988,7 +982,6 @@ public partial class MainWindow
             "RUNNING",
             workReports,
             resourceReports,
-            qaReport,
             highReport);
 
         try
@@ -1031,7 +1024,7 @@ public partial class MainWindow
                 }
             }
 
-            // Asset Manager errors are reported to HQ/QA/HIGH, but independent
+            // Asset Manager errors are reported to HQ/HIGH, but independent
             // WORKs still run; only simultaneous duplicate file writes conflict.
             var assetManagerFailed = false;
             if (milestone.AssetManager is { } assetDefinition)
@@ -1069,7 +1062,7 @@ public partial class MainWindow
                 {
                     assetManagerFailed = true;
                     AddTaskMessage("ASSET MANAGER",
-                        "미완료 증거를 HQ/QA/HIGH에 전달하고 독립 WORK는 계속 실행 · " +
+                        "미완료 증거를 HQ/HIGH에 전달하고 독립 WORK는 계속 실행 · " +
                         MilestoneDefinitionContract.Limit(assetRun.Detail, 600),
                         status: "BLOCKED");
                 }
@@ -1413,23 +1406,23 @@ public partial class MainWindow
                 buildFailed = buildRuns.Any(run => !run.Success);
             }
 
-            // Preserve original WORK/BUILD failures instead of hiding them after QA.
+            // Preserve original WORK/BUILD failures instead of hiding them during HIGH.
             if (blockedWorkIds.Length == 0 && pendingWorkIds.Length == 0 && buildFailed)
                 outcome = UnityCliBuildRunner.IsUnityProject(workingDirectory) &&
                     MilestoneBuildRunner.IsEnvironmentFailure(buildRuns)
                     ? "BUILD_UNVERIFIED" : "BUILD_FAILED";
 
             // Worker BUILD/TEST evidence is passed directly to HIGH.
-            // Legacy QA is retained only for reading older reports.
+            // No independent validation role is dispatched.
 
-            // QA and HIGH also receive unfinished WORK reports. They must
+            // HIGH also receives unfinished WORK reports. They must
             // preserve unresolved checkpoints and report partial verification;
             // only HQ can decide whether to continue those WORK IDs.
             var beforeHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
             var initialHigh = await ExecuteMilestoneHighAsync(
                 jobId, workingDirectory, milestone, workReports, resourceReports,
-                mechanicalReports, qaReport, implementer, high, 1, cancellationToken);
+                mechanicalReports, implementer, high, 1, cancellationToken);
             highReport = initialHigh.Report;
             // Keep the actual HIGH CLI session for same-milestone DESIGN handoffs.
             // If the provider has no resumable session, the previous report is
@@ -1840,14 +1833,13 @@ public partial class MainWindow
                 gitResult.Success ? "FINALIZED" : "FINALIZE_FAILED",
                 workReports,
                 resourceReports,
-                qaReport,
-                highReport,
+                    highReport,
                 hqFinalState: "READY",
                 assetManagerFailed: assetManagerFailed);
 
             // Read-only progress reporting after mechanical finalization.
             // A missing observation must never block the next milestone or
-            // change QA/HIGH/HQ decisions.
+            // change HIGH/HQ decisions.
             try
             {
                 var checkpointStates = WorkExecutionJournal.ReadAll(
@@ -1883,8 +1875,7 @@ public partial class MainWindow
                     workReports,
                     resourceReports,
                     mechanicalReports,
-                    qaReport,
-                    highReport,
+                            highReport,
                     gitResult,
                     initialChangedPaths,
                     milestoneChangedPaths,
@@ -1916,8 +1907,7 @@ public partial class MainWindow
                     workReports,
                     resourceReports,
                     mechanicalReports,
-                    qaReport,
-                    highReport,
+                            highReport,
                     gitResult,
                     initialChangedPaths,
                     milestoneChangedPaths,
@@ -1936,7 +1926,6 @@ public partial class MainWindow
         string state,
         IReadOnlyDictionary<string, string>? workReports = null,
         IReadOnlyDictionary<string, string>? resourceReports = null,
-        string? qaReport = null,
         string? highReport = null,
         string hqFinalState = "PLANNED",
         bool assetManagerFailed = false)
@@ -2059,7 +2048,6 @@ public partial class MainWindow
                 jobId,
                 milestone.Id,
                 state,
-                false,
                 milestone.Resources.Count > 0,
                 nodes,
                 edges,
@@ -2601,7 +2589,6 @@ public partial class MainWindow
         IReadOnlyDictionary<string, string> workReports,
         IReadOnlyDictionary<string, string> resourceReports,
         IReadOnlyList<string> mechanicalReports,
-        string qaReport,
         WorkerAiRoleSettings implementer,
         WorkerAiRoleSettings high,
         int validationRound,
@@ -2630,7 +2617,7 @@ public partial class MainWindow
         var prompt = RoleContractLoader.BuildHighPrompt(
             HighDesignContinuationPolicy.BuildReviewContext(
                 MilestoneDefinitionContract.BuildHighContext(
-                    milestone, workReports, qaReport, mechanicalReports),
+                    milestone, workReports, mechanicalReports),
                 previousHighReport));
 
         var sandbox = milestone.ReadOnlyNoFileChanges
@@ -2819,10 +2806,39 @@ public partial class MainWindow
         Environment.NewLine +
         RoleContractLoader.LoadHqFooter();
 
+    private static string BuildMilestoneCliNewSessionInput(
+        string workingDirectory, string request)
+    {
+        try
+        {
+            // Read-only, workspace-scoped handoff. This file is deliberately
+            // NOT injected into WEB and does not alter the browser thread.
+            var path = ProjectWorkspacePersistence.HandoffPath(workingDirectory);
+            if (!File.Exists(path))
+                return request;
+            var handoff = File.ReadAllText(path, Encoding.UTF8);
+            return HqTransportHandoffPolicy.ComposeNewCliSession(request, handoff);
+        }
+        catch (IOException)
+        {
+            return request; // Failure to read a helpful note must not block HQ.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return request;
+        }
+    }
+
     private static string BuildMilestoneFollowupInput(
         CoordinatorContinuationState continuation,
-        string followup)
+        string followup,
+        bool webTransport = false)
     {
+        // WEB is bound to a conversation, not a newly created CLI role session.
+        // The user followup is sufficient; current repo and milestone evidence
+        // continue to be provided separately in the ordinary HQ request.
+        if (webTransport)
+            return HqTransportHandoffPolicy.ComposeWebFollowup(followup);
         var checkpoints = WorkExecutionJournal.ReadAll(
             continuation.WorkingDirectory, continuation.JobId);
         var journal = checkpoints.Count == 0

@@ -46,7 +46,6 @@ internal sealed record MilestoneResourceDefinition(
 internal sealed record MilestoneDefinition(
     string Id,
     string TargetBranch,
-    bool QaReserved,
     string? Entrypoint,
     bool InitializeGitIfMissing,
     bool ReadOnlyNoFileChanges,
@@ -56,7 +55,6 @@ internal sealed record MilestoneDefinition(
     IReadOnlyDictionary<string, MilestoneResourceDefinition> Resources,
     IReadOnlyList<string> ParseErrors)
 {
-    public string QaInstructions { get; init; } = string.Empty;
     public string HighInstructions { get; init; } = string.Empty;
     public string PlanDocument { get; init; } = string.Empty;
     public AssetManagerDefinition? AssetManager { get; init; }
@@ -420,23 +418,11 @@ internal static class MilestoneDefinitionContract
             var resources = new Dictionary<string, MilestoneResourceDefinition>(
                 StringComparer.OrdinalIgnoreCase);
 
-            var qaInstructions = TryGetOptionalJsonString(milestoneJson, "qaInstructions") ?? string.Empty;
             var highInstructions = TryGetOptionalJsonString(milestoneJson, "highInstructions") ?? string.Empty;
             var planDocument = TryGetOptionalJsonString(milestoneJson, "planDocument") ?? string.Empty;
-            // Historical JSON QA configuration remains readable; mechanical tests
-            // are Worker-owned and must not reserve a new QA stage.
-            var qaReserved = qaInstructions.Length > 0;
-            if (qaReserved && !string.IsNullOrWhiteSpace(entrypoint) &&
-                !IsSafeRelativePath(entrypoint))
-            {
-                error = "MILESTONE_ENTRYPOINT_INVALID";
-                return false;
-            }
-
             milestone = new(
                 milestoneId,
                 targetBranch,
-                qaReserved,
                 entrypoint,
                 initializeGitIfMissing,
                 readOnlyNoFileChanges,
@@ -446,7 +432,6 @@ internal static class MilestoneDefinitionContract
                 resources,
                 parse.Errors.ToArray())
             {
-                QaInstructions = qaInstructions,
                 HighInstructions = highInstructions,
                 PlanDocument = planDocument,
                 AssetManager = assetManager,
@@ -557,82 +542,9 @@ internal static class MilestoneDefinitionContract
         return builder.ToString();
     }
 
-    public static string BuildQaContext(
-        MilestoneDefinition milestone,
-        IReadOnlyDictionary<string, string> workReports,
-        IReadOnlyList<string>? mechanicalReports = null)
-    {
-        var builder = new StringBuilder();
-        AppendWorkGoals(builder, milestone.WorkItems.Values);
-        if (milestone.Design is { } design)
-        {
-            builder.AppendLine("DESIGN 요청:");
-            builder.AppendLine("PATH: " + design.Path);
-            builder.AppendLine("INSTRUCTIONS: " + design.Instructions);
-        }
-        if (milestone.AssetManager is { } asset)
-        {
-            builder.AppendLine("ASSET MANAGER 요청:");
-            builder.AppendLine("REQUEST_ID: " + asset.RequestId);
-            builder.AppendLine("GOAL: " + asset.Goal);
-            builder.AppendLine("SCENE: " + asset.ScenePath);
-            builder.AppendLine("TARGET_PATH: " + asset.TargetPath);
-            builder.AppendLine("SOURCE_POLICY: " + asset.SourcePolicy);
-        }
-        if (!string.IsNullOrWhiteSpace(milestone.QaInstructions))
-        {
-            builder.AppendLine("QA 검증 지시:");
-            builder.AppendLine(StripRoleFormatOverrides(milestone.QaInstructions));
-        }
-        if (!string.IsNullOrWhiteSpace(milestone.Entrypoint))
-        {
-            builder.AppendLine();
-            builder.AppendLine("실행 대상:");
-            builder.AppendLine(milestone.Entrypoint);
-        }
-        builder.AppendLine();
-        builder.AppendLine("WORK 수행 결과:");
-        foreach (var pair in workReports.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
-        {
-            var parsed = RoleTextProtocol.ParseWork(pair.Value);
-            builder.AppendLine($"# {pair.Key}");
-            builder.AppendLine("STATUS: " + (parsed.IsValid ? parsed.Status : "blocked"));
-            builder.AppendLine(parsed.IsValid ? parsed.Summary : pair.Value);
-            if (parsed.IsValid)
-                foreach (var issue in parsed.Issues)
-                    builder.AppendLine("ISSUE: " + issue);
-        }
-        if (mechanicalReports is not null && mechanicalReports.Count > 0)
-        {
-            var assetResults = mechanicalReports
-                .Where(report => report.StartsWith("ASSET_MANAGER #1:",
-                    StringComparison.Ordinal)).ToArray();
-            if (assetResults.Length > 0)
-            {
-                builder.AppendLine("ASSET MANAGER 결과:");
-                foreach (var report in assetResults)
-                    builder.AppendLine(Limit(report, 2500));
-            }
-            var designResults = mechanicalReports.Where(report =>
-                report.StartsWith("DESIGN #0:", StringComparison.Ordinal) ||
-                report.StartsWith("HIGH_DESIGN_HANDOFF:", StringComparison.Ordinal)).ToArray();
-            if (designResults.Length > 0)
-            {
-                builder.AppendLine("DESIGN 수행 결과:");
-                foreach (var report in designResults)
-                    builder.AppendLine(Limit(report, 4000));
-            }
-            builder.AppendLine("빌드 및 테스트 결과:");
-            foreach (var report in mechanicalReports.Except(assetResults).Except(designResults))
-                builder.AppendLine(Limit(report, 1200));
-        }
-        return builder.ToString().TrimEnd();
-    }
-
     public static string BuildHighContext(
         MilestoneDefinition milestone,
         IReadOnlyDictionary<string, string> workReports,
-        string? qaReport,
         IReadOnlyList<string>? mechanicalReports = null)
     {
         var builder = new StringBuilder();
@@ -701,21 +613,12 @@ internal static class MilestoneDefinitionContract
             foreach (var report in mechanicalReports.Except(assetResults).Except(designResults))
                 builder.AppendLine(Limit(report, 1200));
         }
-        if (!string.IsNullOrWhiteSpace(qaReport))
-        {
-            builder.AppendLine();
-            builder.AppendLine("QA 검증 결과:");
-            // HIGH receives the complete QA report, including failures and
-            // unparsed evidence. Never reduce it to an issues-only summary.
-            builder.AppendLine(qaReport);
-        }
-
         return builder.ToString().TrimEnd();
     }
 
     private static string StripRoleFormatOverrides(string instructions)
     {
-        // HQ may describe tests, but it must not redefine the QA/HIGH
+        // HQ may describe tests, but it must not redefine the HIGH
         // @@REPORT + <STATUS> output contract.
         return System.Text.RegularExpressions.Regex.Replace(
             instructions ?? string.Empty,
@@ -811,31 +714,6 @@ internal static class MilestoneDefinitionContract
                 builder.AppendLine("- " + value);
     }
 
-    private static string? ReadQaInstructions(MilestoneDefinition milestone)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(milestone.Body);
-            if (!document.RootElement.TryGetProperty("qa", out var qa) ||
-                qa.ValueKind != JsonValueKind.Object ||
-                !qa.TryGetProperty("instructions", out var instructions) ||
-                instructions.ValueKind != JsonValueKind.String)
-            {
-                return null;
-            }
-
-            var value = instructions.GetString()?.Trim();
-            return string.IsNullOrWhiteSpace(value) ? null : value;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    public static string? ReadMilestoneGoal(MilestoneDefinition milestone) =>
-        ReadMilestoneString(milestone, "goal");
-
     private static string? ReadMilestoneString(
         MilestoneDefinition milestone,
         string propertyName)
@@ -906,7 +784,6 @@ internal static class MilestoneDefinitionContract
         IReadOnlyDictionary<string, string> workReports,
         IReadOnlyDictionary<string, string> resourceReports,
         IReadOnlyList<string> mechanicalReports,
-        string qaReport,
         string highReport,
         MilestoneGitResult gitResult,
         IReadOnlyCollection<string> initialLocalChanges,
@@ -930,7 +807,6 @@ internal static class MilestoneDefinitionContract
                 workReports,
                 resourceReports,
                 mechanicalReports,
-                qaReport,
                 highReport,
                 gitResult);
 
@@ -989,20 +865,6 @@ internal static class MilestoneDefinitionContract
                 builder.AppendLine("WORK_BLOCKED_DETAIL: " + pair.Key);
                 builder.AppendLine("- summary=" + Limit(work.Summary, 800));
                 foreach (var issue in work.Issues.Take(3))
-                    builder.AppendLine("- issue=" + Limit(issue, 600));
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(qaReport))
-        {
-            var qa = RoleTextProtocol.ParseQa(qaReport);
-            builder.AppendLine("QA_STATUS: " + (qa.IsValid ? qa.Status : "protocol_invalid"));
-            if (!qa.IsValid)
-                builder.AppendLine("- raw=" + Limit(qaReport.Replace("\n", " | "), 1400));
-            else if (!string.Equals(qa.Status, "passed", StringComparison.OrdinalIgnoreCase))
-            {
-                builder.AppendLine("- summary=" + Limit(qa.Summary, 800));
-                foreach (var issue in qa.Issues.Take(3))
                     builder.AppendLine("- issue=" + Limit(issue, 600));
             }
         }
@@ -1095,12 +957,6 @@ internal static class MilestoneDefinitionContract
         return parsed.IsValid ? parsed.Status : null;
     }
 
-    public static string? ReadQaStatus(string message)
-    {
-        var parsed = RoleTextProtocol.ParseQa(message);
-        return parsed.IsValid ? parsed.Status : null;
-    }
-
     public static string? ReadHighStatus(string message)
     {
         var parsed = RoleTextProtocol.ParseHigh(message);
@@ -1122,7 +978,6 @@ internal static class MilestoneDefinitionContract
         IReadOnlyDictionary<string, string> workReports,
         IReadOnlyDictionary<string, string> resourceReports,
         IReadOnlyList<string> mechanicalReports,
-        string qaReport,
         string highReport,
         MilestoneGitResult gitResult)
     {
@@ -1142,7 +997,6 @@ internal static class MilestoneDefinitionContract
 
             File.WriteAllText(Path.Combine(directory, "hq.txt"), milestone.RawHqMessage ?? string.Empty);
             File.WriteAllText(Path.Combine(directory, "outcome.txt"), workerOutcome ?? string.Empty);
-            File.WriteAllText(Path.Combine(directory, "qa.txt"), qaReport ?? string.Empty);
             File.WriteAllText(Path.Combine(directory, "high.txt"), highReport ?? string.Empty);
             File.WriteAllText(Path.Combine(directory, "git.txt"), gitResult.Summary ?? string.Empty);
 
@@ -1267,33 +1121,6 @@ internal static class MilestoneDefinitionContract
         }
         return RoleTextProtocol.BuildResult("blocked",
             "WORK_REPORT_CONTRACT_INVALID", issues: parsed.Errors);
-    }
-
-    public static string NormalizeQaReport(
-        int exitCode,
-        string? finalMessage,
-        string? standardError)
-    {
-        if (exitCode != 0)
-        {
-            return RoleTextProtocol.BuildResult(
-                "blocked",
-                string.IsNullOrWhiteSpace(standardError)
-                    ? "QA 실행 프로세스 실패"
-                    : standardError.Trim());
-        }
-
-        var raw = finalMessage?.Trim() ?? string.Empty;
-        var parsed = RoleTextProtocol.ParseQa(raw);
-        // Valid reports travel downstream in the canonical text format.
-        // Invalid reports remain verbatim: a format error must not invent
-        // technical QA results or discard test evidence.
-        if (parsed.IsValid)
-            return RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
-                parsed.ChangedPaths, parsed.Issues);
-        return raw.Length == 0
-            ? RoleTextProtocol.BuildResult("blocked", "QA_REPORT_EMPTY")
-            : raw;
     }
 
     public static string NormalizeHighReport(

@@ -12,8 +12,6 @@ public static class RoleContractLoader
         "src/ProjectHub.Worker/Contracts/HQ-ROUTING-CONTRACT.md";
     public const string WorkContractPath =
         "src/ProjectHub.Worker/Contracts/WORK-ROUTING-CONTRACT.md";
-    public const string QaContractPath =
-        "src/ProjectHub.Worker/Contracts/QA-ROUTING-CONTRACT.md";
     public const string DesignContractPath =
         "src/ProjectHub.Worker/Contracts/DESIGN-ROUTING-CONTRACT.md";
     public const string HighContractPath =
@@ -23,7 +21,6 @@ public static class RoleContractLoader
 
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
-    public static string LoadQaFooter() => Load("QA-ROUTING-CONTRACT.md");
     public static string LoadDesignFooter() => Load("DESIGN-ROUTING-CONTRACT.md");
     internal static string BuildDesignPrompt(MilestoneDesignDefinition design, string projectRoot) =>
         UnityDesignPromptPolicy.Build(design, projectRoot) +
@@ -68,14 +65,6 @@ public static class RoleContractLoader
         return builder.ToString();
     }
 
-    public static string BuildQaPrompt(string body) =>
-        "@@MESSAGE" + Environment.NewLine +
-        (body ?? string.Empty) +
-        "\n\n" +
-        EncodingGuidance +
-        "\n" +
-        LoadQaFooter();
-
     public static string BuildHighPrompt(string body) =>
         "@@MESSAGE" + Environment.NewLine +
         (body ?? string.Empty) +
@@ -100,7 +89,6 @@ public static class RoleContractLoader
             (HqContractPath, LoadHqFooter()),
             (WorkContractPath, LoadWorkFooter()),
             (DesignContractPath, LoadDesignFooter()),
-            (QaContractPath, LoadQaFooter()),
             (HighContractPath, LoadHighFooter()),
             (AssetManagerContractPath, LoadAssetManagerFooter())
         };

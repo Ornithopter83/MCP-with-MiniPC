@@ -46,7 +46,6 @@ public sealed record MilestoneExecutionGraphSnapshot(
     string JobId,
     string MilestoneId,
     string State,
-    bool QaReserved,
     bool ResourceReserved,
     IReadOnlyList<MilestoneGraphNodeSnapshot> Nodes,
     IReadOnlyList<MilestoneGraphEdgeSnapshot> Edges,

@@ -25,9 +25,6 @@ internal static class RoleTextProtocol
         return parsed with { Errors = new[] { "WORK_GOTO_TARGET_INVALID" } };
     }
 
-    public static RoleTextResult ParseQa(string? raw) =>
-        Parse(raw, new[] { "passed", "issue", "blocked" });
-
     public static RoleTextResult ParseHigh(string? raw) =>
         Parse(raw, new[] { "completed", "blocked", "in_progress" });
 
@@ -41,9 +38,8 @@ internal static class RoleTextProtocol
         // All machine-readable response fields are middle fields inside one
         // major @@REPORT section; issue detail remains opaque free text.
         var b = new System.Text.StringBuilder();
-        if (!string.IsNullOrWhiteSpace(gotoTarget))
-            b.AppendLine(RoleGotoContract.Format(gotoTarget));
-        b.AppendLine();
+        b.AppendLine(RoleGotoContract.Format(
+            string.IsNullOrWhiteSpace(gotoTarget) ? "WORKER" : gotoTarget));
         b.AppendLine("@@REPORT");
         b.AppendLine("<STATUS>" + status.Trim() + "</>");
         AppendMultiline(b, "SUMMARY", summary);
