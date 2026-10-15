@@ -10,25 +10,13 @@ internal sealed record UnityBackgroundVisualPlan(
     string WorkerScript, string WorkerPng, string ProjectRoot)
 {
     internal string AgentGuidance =>
-        "Unity 내부 렌더 및 입력 검증 지침:\n" +
-        "OS 마우스·키보드/화면 스크린샷 대신 기존 Unity Editor의 내부 렌더와 UI 이벤트를 사용한다.\n" +
-        "먼저 실제 연결된 Editor의 eval_file 명령을 카탈로그에서 확인하라.\n" +
-        "Unity CLI screenshot/capture_game_view를 사용하면 --save_path/--output은 " +
-        "프로젝트 루트 기준 docs/... 절대 경로로 지정하라. 상대 docs/...가 Assets/docs로 " +
-        "저장될 수 있으므로 실제 출력 경로를 확인하고 오출력은 증거로 인정하지 마라.\n" +
-        "변경 전 내부 캡처: unity command eval_file \"" + BeforeScript +
-            "\" --project-path \"" + ProjectRoot + "\" --format json --timeout 180\n" +
-        "변경 후 내부 캡처: unity command eval_file \"" + AfterScript +
-            "\" --project-path \"" + ProjectRoot + "\" --format json --timeout 180\n" +
-        "UI 상호작용이 필요한 경우 " + InputTemplate +
-            "을 별도 파일로 복사하고 __TARGET_UI_OBJECT__를 실제 활성 UI 객체 경로로 바꾼 다음 " +
-            "eval_file로 실행한다. 이 템플릿은 Play Mode와 EventSystem을 필요로 한다. " +
-            "게임 로직 함수를 직접 호출한 결과를 진짜 포인터 입력 검증으로 표시하지 마라.\n" +
-        "캡처는 Camera.Render/RenderTexture/ReadPixels를 사용하며 OS 화면을 보지 않는다. " +
-        "Overlay Canvas는 임시 복제 후 ScreenSpaceCamera로 합성하므로 " +
-        "Game View와 픽셀 완전 일치 증거가 아니다. UI/후처리/카메라 스태킹 차이는 미검증으로 보고하라. " +
-        "캡처·입력이 실패하면 파일 존재나 CLI exit 0만으로 PASS라 하지 말고 다른 코드 작업을 계속하라.\n" +
-        "생성된 PNG: " + AfterPng;
+        "Unity 내부 캡처 보조 파일 (연결된 Editor의 eval_file 지원 확인 후 사용):\n" +
+        "변경 전: " + BeforeScript + "\n" +
+        "변경 후: " + AfterScript + "\n" +
+        "입력 템플릿: " + InputTemplate + " (실제 UI 객체 지정 필요)\n" +
+        "프로젝트: " + ProjectRoot + "\n" +
+        "OS 화면·입력 조작은 하지 않는다. 내부 렌더는 Game View와 픽셀 동일성을 " +
+        "입증하지 않으며, CLI 종료 코드 또는 파일 존재만으로 PASS 판정하지 마라.";
 }
 
 internal sealed record UnityBackgroundVisualEvidence(
