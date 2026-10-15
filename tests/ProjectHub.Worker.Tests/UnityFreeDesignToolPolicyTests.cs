@@ -29,22 +29,32 @@ public sealed class UnityFreeDesignToolPolicyTests
     }
 
     [Fact]
-    public void HqReceivesFactualGraphicToolStatus()
+    public void DesignRunnerReceivesStableExecutableEnvironmentNames()
     {
-        var guidance = UnityFreeDesignToolPolicy.BuildHqGuidance();
-        Assert.Contains("Inkscape", guidance);
-        Assert.True(guidance.Contains("DESIGN") || guidance.Contains("미설치"));
+        var environment = UnityFreeDesignToolPolicy.BuildDesignToolEnvironment();
+        Assert.Equal(2, environment.Count);
+        Assert.False(string.IsNullOrWhiteSpace(
+            environment[UnityFreeDesignToolPolicy.InkscapeVariable]));
+        Assert.False(string.IsNullOrWhiteSpace(
+            environment[UnityFreeDesignToolPolicy.BlenderVariable]));
     }
 
     [Fact]
-    public void DesignGuidanceNeverAddsNewControlMarkersOrPaidModelDependency()
+    public void DesignAndHqPromptsNeverExposeGraphicsInstallationPaths()
     {
-        var guidance = UnityFreeDesignToolPolicy.BuildGuidance();
-        Assert.Contains("Inkscape:", guidance);
-        Assert.Contains("Blender", guidance);
-        Assert.Contains("ComfyUI", guidance);
-        Assert.Contains("로컬 생성 모델", guidance);
-        Assert.DoesNotContain("@@", guidance);
-        Assert.Contains("Editor 조작 중에는 다른 AI 작업과 병렬 실행하지 마라", guidance);
+        var contract = RoleContractLoader.LoadDesignFooter();
+        var design = RoleContractLoader.BuildDesignPrompt(
+            new MilestoneDesignDefinition("docs/projecthub/visual.md", "UI 개선"),
+            Path.GetTempPath());
+        Assert.Contains("$env:PROJECTHUB_INKSCAPE", contract);
+        Assert.Contains("$env:PROJECTHUB_BLENDER", contract);
+        Assert.DoesNotContain("Inkscape:", design);
+        Assert.DoesNotContain("Blender (선택):", design);
+        Assert.DoesNotContain("NOT_INSTALLED", design);
+        Assert.DoesNotContain("Program Files", contract);
+        Assert.DoesNotContain("노트북", design);
+        Assert.DoesNotContain("ComfyUI", design);
+        Assert.Equal(1, design.Split('\n').Count(
+            line => line == "@@REPORT"));
     }
 }
