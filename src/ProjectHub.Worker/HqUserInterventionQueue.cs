@@ -98,20 +98,21 @@ public sealed class HqUserInterventionQueue
         }
     }
 
+    /// <summary>
+    /// Append only the user's literal text. Message IDs, interpretation rules,
+    /// headers and delivery metadata remain in the queue, never in the AI input.
+    /// LF separators keep adjacent inputs distinct without rewriting either
+    /// message (including its whitespace and original line endings).
+    /// </summary>
     public static string AppendToHqBody(
         string body, IReadOnlyList<HqUserIntervention> pending)
     {
         if (pending.Count == 0) return body;
         var result = new StringBuilder(body);
-        result.AppendLine().AppendLine();
-        result.AppendLine("실행 중 추가된 사용자 메시지 (원문 및 입력 순서 유지):");
-        result.AppendLine("다음 역할 AI가 의미를 판단한다. Worker는 자연어를 PAUSE로 해석하지 않는다. 역할이 직접 처리할 수 없다면 보고를 통해 HQ에 인계하라.");
         foreach (var item in pending)
         {
-            result.Append("USER_INTERVENTION_ID: ").AppendLine(item.Id);
-            result.AppendLine("USER_MESSAGE_BEGIN");
-            result.AppendLine(item.Message);
-            result.AppendLine("USER_MESSAGE_END");
+            if (result.Length > 0) result.Append("\n\n");
+            result.Append(item.Message);
         }
         return result.ToString();
     }

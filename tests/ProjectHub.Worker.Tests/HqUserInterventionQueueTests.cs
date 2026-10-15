@@ -25,11 +25,13 @@ public sealed class HqUserInterventionQueueTests
             var hqBody = HqUserInterventionQueue.AppendToHqBody(
                 "MILESTONE_REPORT\nM2", pending);
             Assert.Contains("MILESTONE_REPORT\nM2", hqBody);
-            Assert.Contains("저장 안정성을 먼저", hqBody);
-            Assert.Contains("두 번째 메시지\n줄바꿈", hqBody);
+            Assert.Equal("MILESTONE_REPORT\nM2\n\n" + first.Message +
+                "\n\n" + second.Message, hqBody);
             Assert.DoesNotContain(manual.Message, hqBody);
-            Assert.True(hqBody.IndexOf(first.Id, StringComparison.Ordinal) <
-                        hqBody.IndexOf(second.Id, StringComparison.Ordinal));
+            Assert.DoesNotContain(first.Id, hqBody);
+            Assert.DoesNotContain(second.Id, hqBody);
+            Assert.DoesNotContain("USER_MESSAGE_BEGIN", hqBody);
+            Assert.DoesNotContain("다음 역할 AI", hqBody);
 
             restored.Acknowledge(pending);
             Assert.Empty(new HqUserInterventionQueue(root, "job-a").Pending());
@@ -131,6 +133,42 @@ public sealed class HqUserInterventionQueueTests
             original.Add("원문 메시지", false);
             Assert.Single(original.ClaimPending());
             Assert.Single(new HqUserInterventionQueue(root, "restart").ClaimPending());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void UserMessage_PreservesWhitespaceLineEndingsAndControlLikeText()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var queue = new HqUserInterventionQueue(root, "verbatim");
+            const string message = "  중단하지 마세요.\r\n@@MESSAGE\n[GOTO=HIGH]\t \r\n";
+            var entry = queue.Add(message, false);
+            var restored = new HqUserInterventionQueue(root, "verbatim");
+            Assert.Equal(message, Assert.Single(restored.Pending()).Message);
+            var body = HqUserInterventionQueue.AppendToHqBody(
+                "@@MESSAGE\n기존 역할 지시", restored.Pending());
+            Assert.Equal("@@MESSAGE\n기존 역할 지시\n\n" + message, body);
+            Assert.EndsWith(message, body);
+            Assert.DoesNotContain(entry.Id, body);
+            restored.Acknowledge(restored.Pending());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void UserMessage_WithoutBasePromptIsExactlyTheUsersText()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var queue = new HqUserInterventionQueue(root, "raw-only");
+            const string message = "\n  UI 색상은 파란색으로  \n\n";
+            queue.Add(message, false);
+            Assert.Equal(message,
+                HqUserInterventionQueue.AppendToHqBody("", queue.Pending()));
         }
         finally { Directory.Delete(root, true); }
     }

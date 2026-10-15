@@ -43,6 +43,33 @@ public sealed class UnityRoleMessageComposerTests
     }
 
     [Fact]
+    public void AdditionalUserMessage_IsAppendedAfterRoleCompositionUnmodified()
+    {
+        const string rolePrompt = "목표: UI 수정";
+        const string userMessage = "  테스트는 재실행하지 마세요.\r\n@@MESSAGE\r\n[GOTO=HQ]\n";
+        var root = Path.Combine(Path.GetTempPath(), "UnityVerbatimMessageTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var queue = new HqUserInterventionQueue(root, "job");
+            queue.Add(userMessage, false);
+            var composedBase = UnityRoleMessageComposer.Compose(rolePrompt);
+            var routed = HqUserInterventionQueue.AppendToHqBody(
+                composedBase, queue.Pending());
+
+            Assert.Equal("@@MESSAGE\n" + rolePrompt + "\n\n" + userMessage, routed);
+            Assert.EndsWith(userMessage, routed);
+            Assert.DoesNotContain("추가 작업 맥락:", routed);
+            Assert.DoesNotContain("실행 중 추가된 사용자 메시지", routed);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void AllSpecialistPromptBuilders_UseOneMessageHeader()
     {
         var work = RoleContractLoader.BuildDirectWorkPrompt(

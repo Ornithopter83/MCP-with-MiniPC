@@ -2108,10 +2108,12 @@ public partial class MainWindow : Window
         var messageQueue = roleName == "COORDINATOR" ? null : _hqInterventions;
         var routedMessages = messageQueue?.ClaimPending() ??
             Array.Empty<HqUserIntervention>();
-        prompt = HqUserInterventionQueue.AppendToHqBody(prompt, routedMessages);
-        // Exactly one auxiliary MESSAGE section per Unity specialist request.
+        // Compose the role's own prompt first. The user's verbatim payload
+        // must never pass through Compose(), which normalizes whitespace and
+        // rewrites reference lines that resemble @@MESSAGE headers.
         if (roleName is "WORK" or "QA" or "HIGH" || designPurpose || assetManagerPurpose)
             prompt = UnityRoleMessageComposer.Compose(prompt);
+        prompt = HqUserInterventionQueue.AppendToHqBody(prompt, routedMessages);
         RunOnUi(() =>
             AddDataFlowHistory(
                 historyRole,
