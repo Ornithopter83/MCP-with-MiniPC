@@ -27,7 +27,12 @@ internal static class WorkReResolutionPolicy
         "실제 키보드", "실제 os 입력", "물리 입력",
         "사람 승인", "사람 검수", "육안 승인", "인수 승인",
         "human approval", "manual approval", "physical keyboard",
-        "하드웨어 미확인", "qa에서 별도", "qa 단계에서 별도"
+        "하드웨어 미확인", "qa에서 별도", "qa 단계에서 별도",
+        // Missing test infrastructure is reported to HIGH/HQ, not retried
+        // as an unfinished implementation by the same WORKITEM.
+        "미검증", "playmode 실행", "unity editor", "pipeline 인스턴스",
+        "연결 도구가 없어", "도구를 찾을 수 없", "rg 부재",
+        "검증하지 못", "테스트하지 못", "실행하지 못"
     };
 
     internal static bool IsEligible(int exitCode, RoleTextResult report)
@@ -80,8 +85,10 @@ internal static class WorkReResolutionPolicy
                "같은 모델·세션·WORK_ID·WRITE_PATH를 유지한다. " +
                "환경 권한 오류나 사람의 수동 승인 사항은 억지로 반복하지 말고 명확히 보고하라. " +
                "이번 재해결은 최대 1회이며 미해결이면 blocked 또는 in_progress로 정직하게 보고하라. " +
-               "새 보고서 폼을 만들지 말고 기존 [ACTION=RESULT] @@REPORT 형식으로 " +
-               "마무리 보고서를 갱신하라.\n\n" +
+               "결과는 기존 역할 계약의 [GOTO=WORKER] → @@REPORT → " +
+               "<STATUS>/<SUMMARY>/<CHANGED_PATH>/<ISSUES> → " +
+               "[RESPONSE=OK] 순서로만 갱신하라. " +
+               "각 대괄호 표식과 @@REPORT는 반드시 독립된 줄에 적어라.\n\n" +
                "=== 원래 임무 ===\n" +
                originalMission.Trim() + "\n\n" +
                "=== 첫 번째 마무리 보고서 ===\n" +
