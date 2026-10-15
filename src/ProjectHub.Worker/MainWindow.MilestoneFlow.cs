@@ -1659,7 +1659,7 @@ public partial class MainWindow
                     workingDirectory, cancellationToken);
                 var resumedHigh = await ExecuteMilestoneHighAsync(
                     jobId, workingDirectory, milestone, workReports, resourceReports,
-                    mechanicalReports, string.Empty, implementer, high,
+                    mechanicalReports, implementer, high,
                     1 + invocation, cancellationToken,
                     highSessionId, previousHighReport);
                 highReport = resumedHigh.Report;
