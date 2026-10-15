@@ -97,7 +97,7 @@ public sealed class UnityDesignHighRefactorTests
         var designContract = RoleContractLoader.LoadDesignFooter()
             .Replace("\r\n", "\n", StringComparison.Ordinal);
         Assert.Contains("[GOTO=WORKER]\n@@REPORT", designContract);
-        var designPrompt = UnityDesignPromptPolicy.Build(
+        var designPrompt = RoleContractLoader.BuildDesignPrompt(
             new MilestoneDesignDefinition("docs/projecthub/design.md",
                 "화면 정리")
             {
