@@ -465,8 +465,8 @@ public partial class MainWindow
                 AddDataFlowHistory(
                     WorkerRoleState.Hq,
                     "HQ 응답 수신",
-                    "HQ ACTION: " + hqAction.Name + Environment.NewLine +
-                    WorkerHistoryCardFormatter.Preview(hqMessage),
+                    WorkerHistoryCardFormatter.BuildHqReceiptBody(
+                        hqAction.Name, hqMessage),
                     status: "RECEIVED",
                     persistenceSource: "WORKER ACTION");
 
@@ -2827,7 +2827,9 @@ public partial class MainWindow
         $"현재 origin/main SHA: {remoteMainSha ?? "확인 실패"}" +
         Environment.NewLine +
         HqTransportPolicy.BuildRepositoryGuidance(
-            webTransport, remoteMainSha is not null) +
+            webTransport, remoteMainSha is not null, inboundType) +
+        Environment.NewLine +
+        UnityFreeDesignToolPolicy.BuildHqGuidance() +
         Environment.NewLine +
         "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH를 명확히 지정한다." +
         Environment.NewLine +

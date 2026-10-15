@@ -90,6 +90,17 @@ public sealed class WorkerHistoryEventTests
     }
 
     [Fact]
+    public void HqReceiptCardsCanDisplayMultilineControlMessages()
+    {
+        var item = new MainWindow.WorkerHistoryEvent(
+            DateTimeOffset.UtcNow, "Worker", "DATA_FLOW",
+            "Worker · HQ 응답 수신", "[GOTO=WORKER]\n[ACTION=WORK]",
+            null, null, null, "RECEIVED", null);
+        Assert.Equal(System.Windows.TextWrapping.Wrap, item.SummaryWrapping);
+        Assert.Equal(76d, item.SummaryMaxHeight);
+    }
+
+    [Fact]
     public void WorkHistory_FallsBackToExecutionNumberWhenIdIsMissing()
     {
         var item = new MainWindow.WorkerHistoryEvent(

@@ -26,6 +26,24 @@ public sealed class HqTransportPolicyTests
     }
 
     [Fact]
+    public void MilestoneFollowupLimitsDiscovery()
+    {
+        var guidance = HqTransportPolicy.BuildRepositoryGuidance(
+            false, true, "MILESTONE_REPORT");
+        Assert.Contains("전체 프로젝트를 다시 조사하지 말고", guidance);
+        Assert.Contains("변경 파일, 미해결 항목만", guidance);
+        Assert.Contains("git status", guidance);
+    }
+
+    [Fact]
+    public void GrammarRecoveryDoesNotRedoInvestigation()
+    {
+        var guidance = HqTransportPolicy.BuildRepositoryGuidance(
+            false, true, "HQ_RESPONSE_RECOVERY");
+        Assert.Contains("조사나 검증을 다시 실행하지 말고", guidance);
+    }
+
+    [Fact]
     public void WebGuidanceDoesNotAssumeCli()
     {
         var guidance = HqTransportPolicy.BuildRepositoryGuidance(true, true);

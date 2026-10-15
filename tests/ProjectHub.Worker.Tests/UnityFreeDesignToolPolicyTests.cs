@@ -20,6 +20,23 @@ public sealed class UnityFreeDesignToolPolicyTests
     }
 
     [Fact]
+    public void CliToolAvailabilityIncludesWindowsFallback()
+    {
+        var guidance = UnityFreeDesignToolPolicy.BuildCliToolGuidance();
+        Assert.Contains("rg=", guidance);
+        Assert.Contains("Get-ChildItem", guidance);
+        Assert.DoesNotContain("@@", guidance);
+    }
+
+    [Fact]
+    public void HqReceivesFactualGraphicToolStatus()
+    {
+        var guidance = UnityFreeDesignToolPolicy.BuildHqGuidance();
+        Assert.Contains("Inkscape", guidance);
+        Assert.True(guidance.Contains("DESIGN") || guidance.Contains("미설치"));
+    }
+
+    [Fact]
     public void DesignGuidanceNeverAddsNewControlMarkersOrPaidModelDependency()
     {
         var guidance = UnityFreeDesignToolPolicy.BuildGuidance();

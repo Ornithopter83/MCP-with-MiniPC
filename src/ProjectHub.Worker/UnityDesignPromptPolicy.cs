@@ -14,6 +14,7 @@ internal static class UnityDesignPromptPolicy
             (design.WritePaths.Count == 0 ? "프로젝트 시각 제작 범위(기존 변경 존중)" :
                 string.Join(", ", design.WritePaths)) +
             "\n디자인 목표:\n" + design.Instructions +
+            "\n\n" + BuildCapturePathGuidance(projectRoot) +
             "\n\n디자인 수행 방법:\n" +
             "1. 계획·문서 작성에 머무르지 말고 기존 UI/Scene/Canvas/Prefab 등을 분석하여 " +
             "실제 Sprite, Material, Shader, Animator, Particle 및 시각 전용 C#을 제작·수정·저장하라. " +
@@ -44,6 +45,14 @@ internal static class UnityDesignPromptPolicy
             "[RESPONSE=OK]\n" +
             "STATUS는 completed, in_progress, blocked 중 실제 상태를 택하고 CHANGED_PATH는 반복할 수 있다.";
     }
+
+    internal static string BuildCapturePathGuidance(string projectRoot) =>
+        "Unity CLI screenshot/capture_game_view 등 --save_path 또는 --output 출력은 " +
+        "상대 docs/... 경로를 사용하지 마라(Assets/docs 아래에 저장될 수 있음). " +
+        "프로젝트 루트(" + Path.GetFullPath(projectRoot) + ")부터 docs/...까지의 " +
+        "절대 경로를 지정하고 사전에 부모 폴더를 준비하라. " +
+        "실행 후 실제 파일 위치와 PNG 화면 내용을 확인하고 " +
+        "Assets/docs에 잘못 생성된 파일은 검증 증거 또는 커밋 대상으로 삼지 마라.";
 
     internal static bool IsVisualArtifact(string path) =>
         new[] { ".unity", ".prefab", ".mat", ".shader", ".shadergraph",

@@ -13,6 +13,9 @@ internal sealed record UnityBackgroundVisualPlan(
         "Unity 내부 렌더 및 입력 검증 지침:\n" +
         "OS 마우스·키보드/화면 스크린샷 대신 기존 Unity Editor의 내부 렌더와 UI 이벤트를 사용한다.\n" +
         "먼저 실제 연결된 Editor의 eval_file 명령을 카탈로그에서 확인하라.\n" +
+        "Unity CLI screenshot/capture_game_view를 사용하면 --save_path/--output은 " +
+        "프로젝트 루트 기준 docs/... 절대 경로로 지정하라. 상대 docs/...가 Assets/docs로 " +
+        "저장될 수 있으므로 실제 출력 경로를 확인하고 오출력은 증거로 인정하지 마라.\n" +
         "변경 전 내부 캡처: unity command eval_file \"" + BeforeScript +
             "\" --project-path \"" + ProjectRoot + "\" --format json --timeout 180\n" +
         "변경 후 내부 캡처: unity command eval_file \"" + AfterScript +

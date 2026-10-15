@@ -101,7 +101,7 @@ public partial class MainWindow : Window
                 ? Visibility.Collapsed
                 : Visibility.Visible;
         public TextWrapping SummaryWrapping =>
-            EventType == "ROLE_PROGRESS" || IsAttentionEvent
+            EventType == "ROLE_PROGRESS" || EventType == "DATA_FLOW" || IsAttentionEvent
                 ? TextWrapping.Wrap
                 : TextWrapping.NoWrap;
         public TextTrimming SummaryTrimming => TextTrimming.CharacterEllipsis;
@@ -110,7 +110,7 @@ public partial class MainWindow : Window
                 ? 56d
                 : IsAttentionEvent
                     ? 58d
-                    : double.PositiveInfinity;
+                    : EventType == "DATA_FLOW" ? 76d : double.PositiveInfinity;
         public double SummaryHeight =>
             EventType == "ROLE_PROGRESS" ? 56d : double.NaN;
         public double CardHeight =>
@@ -2082,6 +2082,10 @@ public partial class MainWindow : Window
             "HIGH" => WorkerRoleState.High,
             _ => WorkerRoleState.Hq
         };
+        // Give all Unity CLI roles observed local-tool availability.
+        if (UnityCliBuildRunner.IsUnityProject(workingDirectory))
+            prompt += Environment.NewLine +
+                UnityFreeDesignToolPolicy.BuildCliToolGuidance();
         // The preflight already queried this Editor's real command catalog.
         // Share that exact, job-scoped file with CLI roles instead of asking
         // each role to rediscover and guess the Unity command arguments.

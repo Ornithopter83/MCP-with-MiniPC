@@ -9,11 +9,16 @@ public static class WorkerHistoryCardFormatter
     public static string Preview(string? body)
     {
         if (string.IsNullOrWhiteSpace(body)) return "(본문 없음)";
-        var value = Regex.Replace(body, @"\s+", " ", RegexOptions.CultureInvariant).Trim();
+        var value = body.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n').Trim();
+        value = Regex.Replace(value, @"[^\S\n]+", " ", RegexOptions.CultureInvariant);
         value = Regex.Replace(value, @"https?://\S+", "[주소]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         value = Regex.Replace(value, @"(?i)(api[_ -]?key|token|password|secret)\s*[:=]\s*\S+", "$1=[숨김]", RegexOptions.CultureInvariant);
         return value.Length <= HardPreviewLimit ? value : value[..(HardPreviewLimit - 1)] + "…";
     }
+
+    public static string BuildHqReceiptBody(string action, string? response) =>
+        "HQ ACTION: " + action + Environment.NewLine + (response ?? string.Empty);
 
     public static string ProgressPreview(string? body)
     {
