@@ -2782,8 +2782,6 @@ public partial class MainWindow
         HqTransportPolicy.BuildRepositoryGuidance(
             webTransport, remoteMainSha is not null, inboundType) +
         Environment.NewLine +
-        UnityFreeDesignToolPolicy.BuildHqGuidance() +
-        Environment.NewLine +
         "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH를 명확히 지정한다." +
         Environment.NewLine +
         "같은 milestone의 GENERAL WORK 사이에는 실행 순서나 결과 dependency를 만들지 않는다. WORKITEM 분할 판단은 HQ routing contract의 우선순위를 따른다." +
