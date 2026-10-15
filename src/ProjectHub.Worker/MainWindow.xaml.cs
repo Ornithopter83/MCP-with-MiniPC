@@ -2175,12 +2175,15 @@ public partial class MainWindow : Window
             }
         });
 
-        var roleTempPath = Path.Combine(
-            Path.GetFullPath(workingDirectory),
-            "temp",
-            "ProjectHub",
-            jobId,
-            "role-" + outboundRole.ToLowerInvariant());
+        // Unity can recreate or clean its own Temp tree during a batchmode
+        // build. Keep CLI last-message files and pre-tool hooks outside the
+        // Unity project. WEB transport and non-Unity role locations do not change.
+        var roleTempPath = UnityCliBuildRunner.IsUnityProject(workingDirectory)
+            ? UnityRoleRuntimePaths.Resolve(jobId, outboundRole)
+            : Path.Combine(
+                Path.GetFullPath(workingDirectory),
+                "temp", "ProjectHub", jobId,
+                "role-" + outboundRole.ToLowerInvariant());
         Directory.CreateDirectory(roleTempPath);
         var roleEnvironment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
