@@ -784,7 +784,11 @@ public partial class MainWindow
             when (cts.IsCancellationRequested)
         {
             if (_userCanceledTask)
+            {
+                ProjectHandoffJournal.RecordHqControl(
+                    normalizedRoot, jobId, "CANCELED", lastHqMessage);
                 CompleteFullCancellationUi();
+            }
             else if (_jobTimedOut)
             {
                 // Idle timeout is NOT a user cancel or a terminal WORK state.
@@ -847,6 +851,8 @@ public partial class MainWindow
                 implementer,
                 null,
                 high);
+            ProjectHandoffJournal.RecordHqControl(
+                normalizedRoot, jobId, "DONE_WITH_ERROR", detail);
             SetFollowupComposerVisible(true);
             SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
         }

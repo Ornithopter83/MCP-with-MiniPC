@@ -13,12 +13,14 @@ namespace ProjectHub.Worker;
 internal static class ProjectHandoffJournal
 {
     private static readonly object Sync = new();
-    private const int MaxRecentEntries = 6;
+    // Bound the entire rendered document so recent reports survive fresh-HQ
+    // prompt injection without cutting off the end of the handoff.
+    private const int MaxRecentEntries = 3;
     private const int MaxHandoffRead = 24_000;
     private const int MaxPlan = 8_000;
-    private const int MaxDecision = 3_000;
-    private const int MaxReport = 5_000;
-    private const int MaxUserInput = 2_000;
+    private const int MaxDecision = 2_000;
+    private const int MaxReport = 1_800;
+    private const int MaxUserInput = 1_000;
 
     private sealed record Entry(string Id, string Text);
     private sealed record State
@@ -63,7 +65,7 @@ internal static class ProjectHandoffJournal
         => Update(root, jobId, state =>
         {
             var entries = state.UserInstructions.ToList();
-            AddOrReplace(entries, id, instruction, MaxUserInput);
+            AddOrReplace(entries, jobId + "/" + id, instruction, MaxUserInput);
             return state with { UserInstructions = entries };
         });
 
@@ -84,7 +86,7 @@ internal static class ProjectHandoffJournal
         => Update(root, jobId, state =>
         {
             var reports = state.MilestoneReports.ToList();
-            AddOrReplace(reports, milestoneId, report, MaxReport);
+            AddOrReplace(reports, jobId + "/" + milestoneId, report, MaxReport);
             return state with { MilestoneReports = reports };
         });
 
@@ -116,10 +118,10 @@ internal static class ProjectHandoffJournal
         {
             var file = StatePath(root);
             var state = ReadState(file);
-            // A new job keeps the project's HQ plan but starts a fresh
-            // activity history, never treating old WORK IDs as active.
+            // A fresh CLI session does NOT discard recent project history.
+            // Entries carry job IDs and are references, not resumable WORKITEMs.
             if (state.JobId != jobId)
-                state = new State { JobId = jobId, Plan = state.Plan };
+                state = state with { JobId = jobId, Status = "NEW_TASK" };
             state = change(state) with { UpdatedAtUtc = DateTimeOffset.UtcNow };
             var handoff = Render(state);
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);

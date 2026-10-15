@@ -46,8 +46,10 @@ public sealed class ProjectHandoffJournalTests
             Assert.NotNull(next);
             Assert.Contains("HQ가 설계한 화면 위계와 완료 기준", next);
             Assert.Contains("이어서 화면 연출 개선", next);
-            Assert.DoesNotContain("USER-2", next);
-            Assert.DoesNotContain("컴파일 PASS, Game View 미검증", next);
+            // A new CLI session must not erase the most recent user changes
+            // and milestone evidence before HQ has redesigned the plan.
+            Assert.Contains("job-one/USER-2", next);
+            Assert.Contains("컴파일 PASS, Game View 미검증", next);
             ProjectHandoffJournal.RecordHqPlan(
                 root, "job-two", "M31", "새 HQ 설계 갱신", "M31 설계");
             Assert.Contains("새 HQ 설계 갱신",
