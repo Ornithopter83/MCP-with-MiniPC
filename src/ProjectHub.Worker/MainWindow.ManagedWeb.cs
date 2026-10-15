@@ -5,6 +5,8 @@ namespace ProjectHub.Worker;
 public partial class MainWindow
 {
     private readonly HashSet<ManagedWebRole> _managedWebTransitions = new();
+    private readonly SemaphoreSlim _managedHqRuntimeLock = new(1, 1);
+    private bool _managedWebStaleCleanupDone;
     private void OnManagedWebRuntimeStatusChanged(ManagedWebRuntimeStatus status)
     {
         Dispatcher.BeginInvoke(new Action(RefreshManagedWebRuntimePresentation));
@@ -93,28 +95,52 @@ public partial class MainWindow
         if (_managedWebRuntimeManager is null)
             return;
 
-        CoordinatorManagedWebRuntimeStatusText.Text = "HQ 브라우저 런타임 준비 중…";
-        ResourceManagedWebRuntimeStatusText.Text = "RESOURCE 추출 비활성 · #0 DESIGN은 로컬 CLI";
-
-        var terminated = await Task.Run(
-            _managedWebRuntimeManager.TerminateStaleOwnedBrowserProcesses);
-        if (terminated > 0)
+        // The startup and settings-save paths can overlap. Do not provision a
+        // Chromium session for CLI HQ, even after an in-flight Web selection.
+        await _managedHqRuntimeLock.WaitAsync();
+        try
         {
-            AddTaskMessage(
-                "WEB RUNTIME",
-                $"이전 Worker가 남긴 관리형 Chromium 프로세스 {terminated}개를 정리했습니다.",
-                status: "RECOVERED",
-                includeHistory: false);
-            await Task.Delay(500);
-        }
+            ResourceManagedWebRuntimeStatusText.Text =
+                "RESOURCE 추출 비활성 · #0 DESIGN은 로컬 CLI";
+            if (!_managedWebStaleCleanupDone)
+            {
+                _managedWebStaleCleanupDone = true;
+                var terminated = await Task.Run(
+                    _managedWebRuntimeManager.TerminateStaleOwnedBrowserProcesses);
+                if (terminated > 0)
+                    AddTaskMessage("WEB RUNTIME",
+                        $"이전 Worker가 남긴 관리형 Chromium 프로세스 {terminated}개를 정리했습니다.",
+                        status: "RECOVERED", includeHistory: false);
+            }
 
-        var hq = await _managedWebRuntimeManager.StartHiddenAsync(
-            ManagedWebRole.Hq,
-            _bridgeServer?.GetRoleConversationId("HQ"));
-        // #0 DESIGN runs as a local role. The old RESOURCE browser must
-        // not spawn a second managed Chromium process during application boot.
-        RefreshManagedWebRuntimePresentation();
-        ReportManagedWebStartFailure("HQ", hq);
+            if (!HqTransportPolicy.NeedsManagedBrowser(
+                    _targetSettings.EffectiveCoordinator))
+            {
+                // BridgeServer remains available for Web mode switching.
+                _managedWebRuntimeManager.Stop(ManagedWebRole.Hq);
+                RefreshManagedWebRuntimePresentation();
+                return;
+            }
+
+            if (_managedWebRuntimeManager.GetStatus(ManagedWebRole.Hq).Running)
+            {
+                RefreshManagedWebRuntimePresentation();
+                return;
+            }
+
+            CoordinatorManagedWebRuntimeStatusText.Text = "HQ 브라우저 런타임 준비 중…";
+            var hq = await _managedWebRuntimeManager.StartHiddenAsync(
+                ManagedWebRole.Hq,
+                _bridgeServer?.GetRoleConversationId("HQ"));
+            if (!HqTransportPolicy.NeedsManagedBrowser(
+                    _targetSettings.EffectiveCoordinator))
+                _managedWebRuntimeManager.Stop(ManagedWebRole.Hq);
+            RefreshManagedWebRuntimePresentation();
+            if (HqTransportPolicy.NeedsManagedBrowser(
+                    _targetSettings.EffectiveCoordinator))
+                ReportManagedWebStartFailure("HQ", hq);
+        }
+        finally { _managedHqRuntimeLock.Release(); }
     }
 
     private async void ShowManagedHqWeb_Click(object sender, RoutedEventArgs e)

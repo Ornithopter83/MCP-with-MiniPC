@@ -298,7 +298,8 @@ public partial class MainWindow
                         hqInbound, sentInterventions),
                     normalizedRoot,
                     configuredRepositoryUrl,
-                    remoteReference.CommitSha);
+                    remoteReference.CommitSha,
+                    IsWebTransport(coordinator.Transport));
 
                 var hqResult = await RunHqRoleAsync(
                     jobId,
@@ -388,7 +389,8 @@ public partial class MainWindow
                             recoveryBody, sentInterventions),
                         normalizedRoot,
                         configuredRepositoryUrl,
-                        remoteReference.CommitSha);
+                        remoteReference.CommitSha,
+                    IsWebTransport(coordinator.Transport));
 
                     AddDataFlowHistory(
                         WorkerRoleState.Hq,
@@ -2810,7 +2812,8 @@ public partial class MainWindow
         string body,
         string workingDirectory,
         string? configuredRepositoryUrl,
-        string? remoteMainSha) =>
+        string? remoteMainSha,
+        bool webTransport) =>
         "역할: HQ" +
         Environment.NewLine +
         $"입력 유형: {inboundType}" +
@@ -2823,9 +2826,8 @@ public partial class MainWindow
         Environment.NewLine +
         $"현재 origin/main SHA: {remoteMainSha ?? "확인 실패"}" +
         Environment.NewLine +
-        (remoteMainSha is null
-            ? "Worker가 origin/main의 최신 SHA를 검증하지 못했다. 확인되지 않은 원격 상태를 성공으로 가정하지 말고 읽기 전용 점검으로 검증하라. 대체 경로가 없으면 HQ가 PAUSE를 판단한다."
-            : "Worker가 이 호출 직전에 origin/main을 fetch했다. 원격 저장소를 직접 참조하여 설계한다. 로컬 Git 명령을 사용할 수 있는 transport에서는 git log, git ls-tree, git show, git diff 등 읽기 전용 명령으로 origin/main의 실제 구조와 이력을 조사하고 현재 로컬 상태와 비교한다. Web transport에서는 위 강제 원격 저장소 URL의 main을 직접 열어 구조와 이력을 조사한다. 필요하면 git ls-remote origin main으로 원격 기준을 재확인한다.") +
+        HqTransportPolicy.BuildRepositoryGuidance(
+            webTransport, remoteMainSha is not null) +
         Environment.NewLine +
         "사용자가 지정한 실제 프로젝트 루트 하나를 공통 작업공간으로 사용하고 GENERAL WORK별 WRITE_PATH를 명확히 지정한다." +
         Environment.NewLine +

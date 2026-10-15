@@ -3083,6 +3083,8 @@ public partial class MainWindow : Window
         SaveCodexSelection();
         WorkerTargetConfiguration.Save(_targetSettings);
         ApplyTargetConfiguration();
+        // Start or stop managed HQ Chromium only after the saved transport changes.
+        await EnsureManagedWebRuntimesStartedAsync();
         await ValidateSavedGitConfigurationAsync();
         ApplyConnectionStatus();
         SetSettingsPopupOpen(false);

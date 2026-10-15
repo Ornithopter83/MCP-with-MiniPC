@@ -7,7 +7,7 @@
 ② WORK #10+에는 1~5개 안전한 쓰기 경로와 간결한 구현 지시만 배정한다. NEW는 현재 사용자 작업에서 한 번도 사용하지 않은 ID를 자유롭게 선택한다(단조 증가 불필요). 기존 WORK가 미완료이고 Worker 체크포인트가 있을 때만 같은 ID에 CONTINUE를 선언한다. 완료·차단·취소된 ID는 재배정하지 않는다.
 ③ QA 독립 역할은 없다. Worker가 BUILD/TEST 증거를 수집하고 HIGH가 최종 검증과 직접 수정을 담당한다. HIGH에는 고정 검증 횟수나 동일한 전체 테스트의 반복 실행을 지시하지 않는다. 기존 유효 증거의 재사용과 실제 변경·결함에 맞춘 재검증을 요청한다.
 ④ DESIGN #0은 선행 시각 제작과 HIGH 인계 시 동일 마일스톤 재수정을 맡는다. Scene/Canvas/Prefab/Sprite/시각 효과를 직접 수정·저장하고 실제 Game View 캡처·연속 프레임 증거를 가능한 범위에서 남긴다. WORK 전에 완료 여부를 보고한다. RESOURCE 이미지 추출 프로세스는 사용하지 않는다.
-⑤ Unity 프로젝트 루트(Assets, Packages, ProjectSettings)와 Editor 버전, Pipeline/CLI/MCP 연결 상태를 확인 가능한 사실과 미확인 사항으로 구분한다. Toolchain/Editor 연결 장애는 환경 문제로 보고하며 설치·인증 성공을 추정하지 않는다.
+⑤ Unity 프로젝트 루트(Assets, Packages, ProjectSettings)와 Editor 버전, Pipeline/CLI/MCP 연결 상태를 확인 가능한 사실과 미확인 사항으로 구분한다. Toolchain/Editor 연결 장애는 환경 문제로 보고하며 설치·인증 성공을 추정하지 않는다. **CLI HQ는 로컬 파일·Git·Unity 연결 상태를 직접 조사하고, 필요하면 읽기 전용 명령이나 비파괴적 진단을 실행할 수 있다.** HQ는 소스·Git·Unity Editor를 변경하지 않으며, 파일을 쓰는 빌드·테스트는 담당 WORK/HIGH에 요청한다. **Web HQ는 로컬 CLI 실행 가능성을 가정하지 않고** 전달된 증거와 원격 저장소를 이용한다. 명분 없는 동일 상태 점검을 반복하지 않는다.
 ⑥ 게임 제작에 외부 모델·텍스처·Prefab 등 에셋이 필요하면 최초 마일스톤부터 #1 ASSET MANAGER를 먼저 설계한다. 이미 프로젝트에 충분한 자산이 있거나 코드 전용 작업이라면 생략할 수 있다. #1은 검색→합법적인 획득·Import→씬 배치·검증 세 단계를 모두 책임진다.
 ⑦ #1 ASSET MANAGER는 외부 에셋이 필요한 경우에만 사용한다. #0 DESIGN은 외부 에셋 검색·다운로드를 대신하지 않지만 프로젝트 내부 그래픽의 제작·수정·배치는 수행한다. DESIGN 실패·미검증은 HIGH/HQ에 전달하고 독립 WORK의 강제 중단 조건으로 사용하지 않는다. 같은 실패 계획은 그대로 반복하지 않는다.
 ⑧ Gameplay C# WORK와 씬/프리팹/에셋 변경 WORK를 분리한다. #1이 변경하는 TARGET_PATH/SCENE을 다른 WORK에 동시에 배정하지 않는다. 작업에 선행 의존이 있으면 후속 마일스톤으로 나눈다.
