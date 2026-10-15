@@ -52,7 +52,7 @@ public sealed class RoleContractResponsibilityTests
     [Fact]
     public void WorkContext_UsesOnlyInstructionsEvenWhenCompactFieldsRepeat()
     {
-        var json = """ 
+        var json = """
             {"goal":"같은 설명","instructions":"같은 설명","completionCriteria":["같은 설명"]}
             """;
         var work = new MilestoneWorkDefinition("112",
