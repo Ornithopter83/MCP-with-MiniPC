@@ -1415,7 +1415,8 @@ public partial class MainWindow
 
             // Preserve original WORK/BUILD failures instead of hiding them after QA.
             if (blockedWorkIds.Length == 0 && pendingWorkIds.Length == 0 && buildFailed)
-                outcome = MilestoneBuildRunner.IsEnvironmentFailure(buildRuns)
+                outcome = UnityCliBuildRunner.IsUnityProject(workingDirectory) &&
+                    MilestoneBuildRunner.IsEnvironmentFailure(buildRuns)
                     ? "BUILD_UNVERIFIED" : "BUILD_FAILED";
 
             // Worker BUILD/TEST evidence is passed directly to HIGH.
@@ -1700,7 +1701,8 @@ public partial class MainWindow
                         MilestoneDefinitionContract.FormatMechanicalResult(build));
                 if (highBuilds.Any(build => !build.Success))
                 {
-                    if (MilestoneBuildRunner.IsEnvironmentFailure(highBuilds))
+                    if (UnityCliBuildRunner.IsUnityProject(workingDirectory) &&
+                        MilestoneBuildRunner.IsEnvironmentFailure(highBuilds))
                     {
                         // Preserve HIGH's real source-review result. Missing
                         // Pipeline is unverified compilation, not failed code.
