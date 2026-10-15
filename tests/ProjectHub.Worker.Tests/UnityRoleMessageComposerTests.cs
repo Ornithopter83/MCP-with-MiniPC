@@ -58,8 +58,8 @@ public sealed class UnityRoleMessageComposerTests
             var routed = HqUserInterventionQueue.AppendToHqBody(
                 composedBase, queue.Pending());
 
-            Assert.Equal("@@MESSAGE\n" + rolePrompt + "\n\n" + userMessage, routed);
-            Assert.EndsWith(userMessage, routed);
+            Assert.Equal("@@MESSAGE\n" + userMessage + "\n\n" + rolePrompt, routed);
+            Assert.StartsWith("@@MESSAGE\n" + userMessage, routed);
             Assert.DoesNotContain("추가 작업 맥락:", routed);
             Assert.DoesNotContain("실행 중 추가된 사용자 메시지", routed);
         }
@@ -67,6 +67,31 @@ public sealed class UnityRoleMessageComposerTests
         {
             Directory.Delete(root, true);
         }
+    }
+
+    [Fact]
+    public void NextAiMessage_IsPlacedBeforeWorkContractResponseTemplate()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "UnityVerbatimMessageTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var queue = new HqUserInterventionQueue(root, "work");
+            queue.Add("텍스트 원문 그대로 전달", false);
+            var basePrompt = RoleContractLoader.BuildDirectWorkPrompt(
+                "112", "작업 지시:\nC# 검증 수정", new[] { "Assets/Tests/Test.cs" },
+                root);
+            var routed = HqUserInterventionQueue.AppendToHqBody(
+                UnityRoleMessageComposer.Compose(basePrompt), queue.ClaimPending());
+
+            Assert.StartsWith("@@MESSAGE\n텍스트 원문 그대로 전달\n\nWORK_ID: 112", routed);
+            Assert.True(routed.IndexOf("텍스트 원문 그대로 전달",
+                StringComparison.Ordinal) < routed.IndexOf(
+                    "[RESPONSE=OK]", StringComparison.Ordinal));
+            Assert.Equal(1, routed.Split('\n').Count(s => s == "@@MESSAGE"));
+        }
+        finally { Directory.Delete(root, true); }
     }
 
     [Fact]

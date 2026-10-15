@@ -1,5 +1,4 @@
 using System.IO;
-using System.Text;
 using System.Text.Json;
 
 namespace ProjectHub.Worker;
@@ -13,7 +12,8 @@ public sealed record HqUserIntervention(
 
 /// <summary>
 /// Persists user messages independently of milestone checkpoints. A message
-/// is acknowledged only after the next AI role returns a valid response.
+/// is acknowledged after the recipient AI returns a successful, nonempty
+/// response. Report grammar validation is separate from actual delivery.
 /// </summary>
 public sealed class HqUserInterventionQueue
 {
@@ -99,23 +99,48 @@ public sealed class HqUserInterventionQueue
     }
 
     /// <summary>
-    /// Append only the user's literal text. Message IDs, interpretation rules,
-    /// headers and delivery metadata remain in the queue, never in the AI input.
-    /// LF separators keep adjacent inputs distinct without rewriting either
-    /// message (including its whitespace and original line endings).
+    /// Put verbatim user input at the START of the next AI's actual input,
+    /// not after a role contract's closing [RESPONSE=OK] example. The existing
+    /// @@MESSAGE or HQ input-body header is kept; no new labels, identifiers or
+    /// interpretation instructions are added to user text.
     /// </summary>
     public static string AppendToHqBody(
         string body, IReadOnlyList<HqUserIntervention> pending)
     {
         if (pending.Count == 0) return body;
-        var result = new StringBuilder(body);
-        foreach (var item in pending)
+        var userText = string.Join("\n\n", pending.Select(item => item.Message));
+        if (body.Length == 0) return userText;
+
+        // Specialist prompts must retain exactly one generated @@MESSAGE.
+        // Compose the role's prompt before invoking this method so that
+        // user-controlled lines are never normalized or rewritten.
+        const string specialistHeader = "@@MESSAGE\n";
+        if (body.StartsWith(specialistHeader, StringComparison.Ordinal))
+            return specialistHeader + userText + "\n\n" +
+                body[specialistHeader.Length..];
+
+        const string specialistHeaderCrLf = "@@MESSAGE\r\n";
+        if (body.StartsWith(specialistHeaderCrLf, StringComparison.Ordinal))
+            return specialistHeaderCrLf + userText + "\r\n\r\n" +
+                body[specialistHeaderCrLf.Length..];
+
+        // HQ prompts already have a natural input-body slot. Insert BEFORE
+        // the original input and its contract, not after the contract footer.
+        foreach (var inputHeader in new[] { "입력 본문:\r\n", "입력 본문:\n" })
         {
-            if (result.Length > 0) result.Append("\n\n");
-            result.Append(item.Message);
+            var index = body.IndexOf(inputHeader, StringComparison.Ordinal);
+            if (index >= 0)
+            {
+                var insertAt = index + inputHeader.Length;
+                return body[..insertAt] + userText + "\n\n" + body[insertAt..];
+            }
         }
-        return result.ToString();
+
+        return userText + "\n\n" + body;
     }
+
+    public static bool CanAcknowledgeAiDelivery(int exitCode, string? finalMessage) =>
+        exitCode == 0 && !string.IsNullOrWhiteSpace(finalMessage);
 
     private List<HqUserIntervention> ReadCore()
     {

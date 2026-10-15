@@ -1892,10 +1892,11 @@ public partial class MainWindow : Window
                 : await RunWebRoleAsync(
                     jobId, "HQ", purpose, routedPrompt, cancellationToken,
                     inputAttachments, webAttachments, historyReferenceId);
-            if (queue is not null && result.ExitCode == 0 &&
-                HqTextProtocol.Parse(result.FinalMessage,
-                    completionValidatedByTransport:
-                        IsWebTransport(role.Transport)).IsValid)
+            // A completed AI turn received the text even if its response
+            // violates the separate HQ report grammar.
+            if (queue is not null &&
+                HqUserInterventionQueue.CanAcknowledgeAiDelivery(
+                    result.ExitCode, result.FinalMessage))
                 CommitDeliveredUserMessages(
                     workingDirectory, jobId, queue, sent, "HQ");
             else
@@ -2260,11 +2261,12 @@ public partial class MainWindow : Window
             messageQueue?.Release(routedMessages);
             throw;
         }
-        var receivedValidReport = result.ExitCode == 0 &&
-            (roleName == "HIGH"
-                ? RoleTextProtocol.ParseHigh(result.FinalMessage).IsValid
-                : RoleTextProtocol.ParseWork(result.FinalMessage).IsValid);
-        if (messageQueue is not null && receivedValidReport)
+        // Delivery is established by the recipient AI's successful reply,
+        // NOT by WORK/HIGH report formatting. Invalid reports are recovered
+        // separately and must not cause a user message to be sent twice.
+        var recipientReplied = HqUserInterventionQueue.CanAcknowledgeAiDelivery(
+            result.ExitCode, result.FinalMessage);
+        if (messageQueue is not null && recipientReplied)
             CommitDeliveredUserMessages(
                 workingDirectory, jobId, messageQueue, routedMessages,
                 outboundRole);
