@@ -335,8 +335,8 @@ public static class ProjectWorkspacePersistence
                 StatePath(state.WorkingDirectory),
                 JsonSerializer.Serialize(snapshot, StateJsonOptions));
 
-            var handoff = BuildHandoff(snapshot);
-            WriteAtomic(HandoffPath(state.WorkingDirectory), handoff);
+            // The resumable task state must never overwrite the independent
+            // HQ-authored project handoff during checkpoints.
             return true;
         }
         catch

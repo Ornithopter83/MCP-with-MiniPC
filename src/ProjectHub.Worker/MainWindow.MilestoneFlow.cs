@@ -95,9 +95,11 @@ public partial class MainWindow
             Array.Empty<AiInputAttachment>();
         // Timeout/error handlers execute outside the main try body. Keep the
         // latest HQ identity and completed HQ message in the outer scope.
-        var hqSession = CodexCliRunner.NormalizeSessionId(
-            continuation?.CoordinatorSessionId ??
-            coordinator.ThreadSessionId);
+        // New user task: always create a new CLI HQ session.
+        // PAUSE/INTERRUPTED recovery keeps the previous task's session.
+        var hqSession = continuing
+            ? CodexCliRunner.NormalizeSessionId(continuation!.CoordinatorSessionId)
+            : null;
         var lastHqMessage = continuation?.LastHqMessage ?? string.Empty;
 
         // Foreground window protection spans preflight, DESIGN, WORK, CLI
@@ -210,10 +212,23 @@ public partial class MainWindow
 
             var configuredRepositoryUrl =
                 _targetSettings.ManualRepositoryUrl?.Trim();
+            var priorHandoff = continuing
+                ? null : ProjectHandoffJournal.ReadForNewTask(normalizedRoot);
+            var handoffContext = string.IsNullOrWhiteSpace(priorHandoff)
+                ? ""
+                : "이전 프로젝트 인계문 (참고 자료, 이전 세션 자동 재개 금지):" +
+                  Environment.NewLine + priorHandoff +
+                  Environment.NewLine +
+                  "이전 상태를 사실로 가정하지 말고 최신 사용자 지시와 Git·실제 파일을 우선하라." +
+                  Environment.NewLine + Environment.NewLine;
             var hqInbound = editorRecoveryNotice +
                 (continuing
                     ? BuildMilestoneFollowupInput(continuation!, request)
-                    : request);
+                    : handoffContext + "새 사용자 지시:" + Environment.NewLine + request);
+            ProjectHandoffJournal.RecordUserInstruction(
+                normalizedRoot, jobId,
+                continuing ? "FOLLOWUP-" + DateTimeOffset.UtcNow.ToString("O") : "NEW-TASK",
+                request);
             var lastRemoteError = string.Empty;
 
             void PersistRecovery(string evidence)
@@ -483,6 +498,8 @@ public partial class MainWindow
                         referenceId: delivered.Id,
                         includeHistory: false);
                     AddHqInterventionHistory(delivered, delivered: true);
+                    ProjectHandoffJournal.RecordUserInstruction(
+                        normalizedRoot, jobId, delivered.Id, delivered.Message);
                 }
 
                 if (string.Equals(
@@ -507,6 +524,8 @@ public partial class MainWindow
                         implementer,
                         hqSession,
                         high);
+                    ProjectHandoffJournal.RecordHqControl(
+                        normalizedRoot, jobId, "PAUSED", hqMessage);
                     RunOnUi(() =>
                     {
                         ResultTitle.Text = "PAUSED";
@@ -567,6 +586,8 @@ public partial class MainWindow
                         hqSession,
                         high);
                     ProjectWorkspacePersistence.ClearContinuation(normalizedRoot);
+                    ProjectHandoffJournal.RecordHqControl(
+                        normalizedRoot, jobId, "DONE", hqMessage);
                     RunOnUi(() =>
                     {
                         ResultTitle.Text = "DONE";
@@ -599,6 +620,10 @@ public partial class MainWindow
                 {
                     RawHqMessage = hqMessage
                 };
+                // HQ owns the plan. Worker mirrors its accepted contract output.
+                ProjectHandoffJournal.RecordHqPlan(
+                    normalizedRoot, jobId, milestone.Id,
+                    milestone.PlanDocument, hqMessage);
                 // If the process stops mid-WORK, HQ gets this plan plus the
                 // persistent per-WORKITEM journal when recovery is initiated.
                 PersistRecovery(hqMessage);
@@ -710,6 +735,9 @@ public partial class MainWindow
                         status: "BLOCKED");
                 }
 
+                ProjectHandoffJournal.RecordMilestoneReport(
+                    normalizedRoot, jobId, milestone!.Id, milestoneResult.Body);
+
                 if (milestoneResult.PauseRequired)
                 {
                     SaveMilestoneExecutionGraph(
@@ -727,6 +755,8 @@ public partial class MainWindow
                         implementer,
                         hqSession,
                         high);
+                    ProjectHandoffJournal.RecordHqControl(
+                        normalizedRoot, jobId, "PAUSED", hqMessage);
                     RunOnUi(() =>
                     {
                         ResultTitle.Text = "PAUSED";
@@ -766,6 +796,8 @@ public partial class MainWindow
                 SaveMilestoneContinuation(
                     "INTERRUPTED", lastHqMessage, jobId, normalizedRoot,
                     coordinator, implementer, hqSession, high);
+                ProjectHandoffJournal.RecordHqControl(
+                    normalizedRoot, jobId, "INTERRUPTED", lastHqMessage);
                 AddTaskMessage("TASK INTERRUPTED", detail, status: "RECOVERABLE");
                 ResultTitle.Text = "INTERRUPTED · 이어하기 가능";
                 ResultBody.Text = detail;
@@ -783,6 +815,8 @@ public partial class MainWindow
                 SaveMilestoneContinuation(
                     "INTERRUPTED", lastHqMessage, jobId, normalizedRoot,
                     coordinator, implementer, hqSession, high);
+                ProjectHandoffJournal.RecordHqControl(
+                    normalizedRoot, jobId, "INTERRUPTED", lastHqMessage);
                 AddTaskMessage("TASK INTERRUPTED", detail, status: "RECOVERABLE");
                 ResultTitle.Text = "INTERRUPTED";
                 ResultBody.Text = detail;
