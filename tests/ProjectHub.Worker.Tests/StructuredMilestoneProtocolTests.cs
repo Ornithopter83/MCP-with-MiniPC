@@ -540,9 +540,9 @@ public sealed class StructuredMilestoneProtocolTests
         var prompt = UnityDesignPromptPolicy.Build(design, Path.GetTempPath());
         Assert.DoesNotContain("[ROLE=DESIGN]", prompt);
         Assert.Contains("DESIGN_ID: 0", prompt);
-        Assert.Contains("capture_game_view", prompt);
-        Assert.Contains("Application.runInBackground", prompt);
-        Assert.Contains("미검증", prompt);
+        Assert.Contains("--save_path/--output", prompt);
+        Assert.Contains("실제 시각 결과물을 제작·적용", prompt);
+        Assert.Contains("증거", prompt);
         Assert.DoesNotContain("RESOURCE_IMAGE", prompt);
 
         var legacy = HqTextProtocol.Parse(Modern.Replace(
