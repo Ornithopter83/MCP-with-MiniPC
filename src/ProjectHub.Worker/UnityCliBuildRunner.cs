@@ -117,8 +117,9 @@ internal static class UnityCliBuildRunner
     // and unknown exits remain environment/tool failures.
     public static bool IsEnvironmentFailure(MilestoneMechanicalResult report)
         => !report.Success &&
-           report.Command.StartsWith("unity recompile", StringComparison.OrdinalIgnoreCase) &&
-           (report.ExitCode != 6 ||
-            report.Summary.Contains("BUILD_UNVERIFIED:",
-                StringComparison.OrdinalIgnoreCase));
+           (report.Summary.Contains("BUILD_UNVERIFIED:",
+                StringComparison.OrdinalIgnoreCase) ||
+            (report.Command.StartsWith("unity recompile",
+                StringComparison.OrdinalIgnoreCase) &&
+             report.ExitCode != 6));
 }
