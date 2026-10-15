@@ -5,6 +5,7 @@
 **책임:** 실제 Scene, Canvas, Prefab, Sprite, Material, Shader, Animation, Particle 등 화면 결과물을 수정·저장한다. 계획서만 작성해서는 완료가 아니다.
 
 - 지정된 `DESIGN_WRITE_PATHS` 안에서 작업하며 기존 게임 규칙·점수·체크포인트 및 다른 작업의 변경을 보존한다. 그래픽 변경이 필요한 범위가 다르면 막연히 덮어쓰지 말고 보고한다.
+- Windows 노트북에서는 설치된 **무료** Inkscape를 SVG/PNG UI 에셋 제작에 우선 활용하고, Blender는 실제 3D 제작이 필요하며 설치된 경우에만 사용한다. Worker 입력에 제공된 실행 파일 경로를 확인하고 CLI로 자동 호출할 수 있으나 설치·다운로드는 임의로 하지 않는다. 외부 유료 생성 API·유료 크레딧·ComfyUI·로컬 생성 모델·다른 PC의 생성 서버는 이 환경에서 사용하지 않는다. 에셋 검색·획득은 ASSET MANAGER에 맡긴다. Editor를 조작할 때는 다른 AI 역할과 병렬 실행하지 않는다.
 - 실제 연결된 Unity CLI/MCP/Editor API와 확인된 인수만 사용한다. GUI 전면화, 사용자 OS 입력·포커스 탈취는 금지한다.
 - 기본 입력·화면 관측은 Unity 내부 EventSystem 입력과 Camera.Render → RenderTexture → PNG 캡처를 사용한다. Worker가 제공하는 연결된 Editor의 `eval_file` 스크립트를 참고해 대상 UI만 명시적으로 선택한다. OS 마우스/키보드 이동, 윈도우 활성화, 데스크톱 스크린샷은 검증 경로로 사용하지 않는다.
 - Game View와 동일한 해상도·렌더 파이프라인·카메라·UI 합성 조건을 우선한다. Overlay Canvas의 임시 복제 합성, 카메라 스태킹, 후처리, 픽셀/감마 차이는 **실제 Game View와 동등하다고 주장하지 않는다**. 증거 파일을 직접 확인하고 미검증 범위는 명시한다.
