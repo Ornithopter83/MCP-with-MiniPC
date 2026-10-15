@@ -78,7 +78,7 @@ foreach ($role in @('HQ', 'WORK', 'HIGH', 'DESIGN', 'ASSET-MANAGER')) {
 foreach ($doc in @('README.md', 'UnityWorker-ROADMAP.md')) {
     Scan-Lines $doc '(?i)(예약된 QA|QA \+ Unity CLI|Unity QA|QA/HIGH|WORK/QA/HIGH|QA: EditMode|검증.*QA)' 'REVIEW' 'LEGACY_QA_REFERENCE' 'QA 독립 역할 삭제와 일치하는지 검토하세요.'
     Scan-Lines $doc '(?i)(RESOURCE #0|RESOURCE는 이미지 생성|HQ와 RESOURCE|#0 IMAGE|RESOURCE 이미지)' 'REVIEW' 'LEGACY_RESOURCE_REFERENCE' '현재 DESIGN/ASSET MANAGER 및 Web 설정과 비교하세요.'
-    Scan-Lines $doc '(?i)WORK\s*#?8\b' 'REVIEW' 'OLD_BUILD_REPAIR_ID' '빌드 복구의 WORKITEM ID 정책과 비교하세요.'
+    Scan-Lines $doc '(?i)WORK\s*#?8(?![0-9])' 'REVIEW' 'OLD_BUILD_REPAIR_ID' '빌드 복구의 WORKITEM ID 정책과 비교하세요.'
     Scan-Lines $doc '(?i)(HQ 전달 예약|HQ 메시지 예약|HQ 예약)' 'REVIEW' 'OLD_MESSAGE_ROUTING' '메시지 수신자는 고정 HQ가 아닌 다음 AI 역할입니다.'
 }
 
