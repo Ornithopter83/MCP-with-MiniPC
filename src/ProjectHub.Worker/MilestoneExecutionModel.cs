@@ -538,12 +538,23 @@ internal static class MilestoneDefinitionContract
     public static string BuildWorkContext(
         MilestoneWorkDefinition work)
     {
-        // WORK receives its instruction once. HQ's compact parser already
-        // stores the same text in goal/instructions/completionCriteria.
+        // Compact HQ copies the same instruction into three JSON fields.
+        // Emit exact duplicate text once, but preserve any truly distinct
+        // goal or completion criterion: those are real HQ requirements.
+        var goal = ReadWorkField(work, "goal");
         var instructions = ReadWorkField(work, "instructions");
-        if (string.IsNullOrWhiteSpace(instructions))
-            instructions = ReadWorkField(work, "goal");
-        return "작업 지시:" + Environment.NewLine + (instructions ?? string.Empty);
+        var primary = !string.IsNullOrWhiteSpace(instructions)
+            ? instructions : goal ?? string.Empty;
+        var builder = new StringBuilder();
+        builder.AppendLine("작업 지시:");
+        builder.Append(primary);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { primary };
+        if (!string.IsNullOrWhiteSpace(goal) && seen.Add(goal))
+            builder.AppendLine().Append("작업 목표: ").Append(goal);
+        foreach (var criterion in ReadWorkStringArray(work, "completionCriteria"))
+            if (seen.Add(criterion))
+                builder.AppendLine().Append("완료 기준: ").Append(criterion);
+        return builder.ToString();
     }
 
     public static string BuildQaContext(
