@@ -68,14 +68,15 @@ public sealed class UnityDesignZeroTests
         var prompt = UnityDesignPromptPolicy.Build(
             new("docs/projecthub/test.md", "화면 품질을 설계하라."),
             Path.GetTempPath());
-        Assert.Contains("Application.runInBackground", prompt);
-        Assert.Contains("batchmode", prompt);
-        Assert.Contains("-nographics", prompt);
-        Assert.Contains("capture_game_view", prompt);
-        Assert.Contains("확인된 Unity CLI/MCP/Editor API", prompt);
-        Assert.Contains("미검증", prompt);
+        Assert.Contains("DESIGN_DOCUMENT:", prompt);
+        Assert.Contains("PROJECT_ROOT:", prompt);
+        Assert.Contains("실제 시각 결과물을 제작·적용", prompt);
+        Assert.Contains("--save_path/--output", prompt);
+        Assert.DoesNotContain("노트북", prompt);
         Assert.DoesNotContain("RESOURCE 이미지 추출", prompt);
-        Assert.Contains("제작·수정·저장", prompt);
+        var contract = RoleContractLoader.LoadDesignFooter();
+        Assert.Contains("Editor 조작은 병렬로 수행하지 않고", contract);
+        Assert.Contains("Game View", contract);
         Assert.True(UnityDesignPromptPolicy.IsVisualArtifact("Assets/UI/Panel.prefab"));
         Assert.False(UnityDesignPromptPolicy.IsVisualArtifact("docs/projecthub/design.md"));
     }
