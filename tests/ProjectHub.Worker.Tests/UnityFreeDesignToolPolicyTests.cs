@@ -55,6 +55,6 @@ public sealed class UnityFreeDesignToolPolicyTests
         Assert.DoesNotContain("노트북", design);
         Assert.DoesNotContain("ComfyUI", design);
         Assert.Equal(1, design.Split('\n').Count(
-            line => line == "@@REPORT"));
+            line => line.Trim() == "@@REPORT"));
     }
 }
