@@ -22,10 +22,21 @@ internal static class UnityCliBuildRunner
     internal static string[] RecompileArguments(string root) =>
         new[] { "recompile", "--project-path", Path.GetFullPath(root), "--format", "json" };
 
+    internal static MilestoneMechanicalResult EditorUnavailableResult(string reason) =>
+        new("BUILD", false, -2, "unity editor preflight", "",
+            "BUILD_UNVERIFIED: " + reason + " (no Unity recompile invoked)");
+
     public static async Task<MilestoneMechanicalResult> RunAsync(
         string root, string jobId, CancellationToken cancellationToken)
     {
         var projectRoot = Path.GetFullPath(root);
+        // A missing Pipeline instance is not a compiler failure. Do not run
+        // recompile against an unconnected Editor or retry the same failure.
+        var probe = await UnityToolchainPreflight.RunAsync(
+            projectRoot, cancellationToken).ConfigureAwait(false);
+        if (!probe.Ready)
+            return EditorUnavailableResult(probe.Code + ": " +
+                MilestoneDefinitionContract.Limit(probe.Detail, 900));
         using var editorLease = await UnityEditorOperationGate.EnterAsync(
             projectRoot, cancellationToken).ConfigureAwait(false);
         var args = RecompileArguments(projectRoot);
@@ -79,12 +90,21 @@ internal static class UnityCliBuildRunner
         await File.WriteAllTextAsync(logFile, output.ToString(),
             cancellationToken).ConfigureAwait(false);
 
+        var pipelineDisconnected =
+            output.ToString().Contains("Pipeline 인스턴스를 찾을 수 없습니다",
+                StringComparison.Ordinal) ||
+            output.ToString().Contains("No Pipeline instance found",
+                StringComparison.OrdinalIgnoreCase) ||
+            output.ToString().Contains("STATUS_NO_INSTANCES",
+                StringComparison.OrdinalIgnoreCase);
         var summary = exitCode switch
         {
             0 => "BUILD_PASSED: Unity CLI recompile completed",
+            _ when pipelineDisconnected => "BUILD_UNVERIFIED: UNITY_EDITOR_UNAVAILABLE",
             6 => "BUILD_FAILED: UNITY_COMPILATION_ERRORS",
-            7 => "UNITY_CLI_ENVIRONMENT: EDITOR_UNAVAILABLE",
-            _ => "UNITY_CLI_ENVIRONMENT: " + (timeoutReached ? "TIMEOUT" : "RECOMPILE_FAILED")
+            7 => "BUILD_UNVERIFIED: UNITY_CLI_ENVIRONMENT",
+            _ => "BUILD_UNVERIFIED: UNITY_CLI_ENVIRONMENT: " +
+                (timeoutReached ? "TIMEOUT" : "RECOMPILE_FAILED")
         };
         if (exitCode != 0)
             summary += ": " + MilestoneDefinitionContract.Limit(output.ToString(), 1800);
@@ -98,5 +118,7 @@ internal static class UnityCliBuildRunner
     public static bool IsEnvironmentFailure(MilestoneMechanicalResult report)
         => !report.Success &&
            report.Command.StartsWith("unity recompile", StringComparison.OrdinalIgnoreCase) &&
-           report.ExitCode != 6;
+           (report.ExitCode != 6 ||
+            report.Summary.Contains("BUILD_UNVERIFIED:",
+                StringComparison.OrdinalIgnoreCase));
 }
