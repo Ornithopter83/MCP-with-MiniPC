@@ -283,12 +283,28 @@ public sealed class CodexCliRunner : IDisposable
             await stdoutTask.WaitAsync(cancellationToken);
             var stdout = stdoutBuilder.ToString();
             var stderr = await stderrTask.WaitAsync(cancellationToken);
+            // Codex can complete a valid agent turn but fail its final file
+            // write (e.g. Unity resets a project-local Temp directory).
+            // Recover from the structured stdout messages in that case;
+            // do not re-run the role just because an auxiliary file vanished.
+            string? savedMessage = null;
+            if (!recoveredStalledExit)
+            {
+                try
+                {
+                    if (File.Exists(outputFile))
+                        savedMessage = await File.ReadAllTextAsync(
+                            outputFile, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    // The structured stream is independently collected below.
+                }
+            }
             var finalMessage = recoveredStalledExit
                 ? await terminalWorkReport.Task.ConfigureAwait(false)
-                : File.Exists(outputFile)
-                    ? await File.ReadAllTextAsync(outputFile, cancellationToken)
-                        .ConfigureAwait(false)
-                    : ExtractFinalMessage(stdout);
+                : !string.IsNullOrWhiteSpace(savedMessage)
+                    ? savedMessage : ExtractFinalMessage(stdout);
             var finishedAt = DateTimeOffset.UtcNow;
             var resolvedSessionId = sessionId ?? ExtractSessionId(stdout);
             string? sessionDiagnostic = null;
@@ -686,19 +702,36 @@ public sealed class CodexCliRunner : IDisposable
 
     private static string ExtractFinalMessage(string stdout)
     {
-        var messages = new List<string>();
+        // The final agent_message event carries the actual user-facing role
+        // result even if --output-last-message failed on the filesystem.
+        // Prefer the last terminal response over an earlier progress message.
+        string? lastAgentMessage = null;
+        string? lastTerminalMessage = null;
+        var legacyMessages = new List<string>();
         foreach (var line in stdout.SplitLines())
         {
+            if (TryExtractAgentMessage(line, out var agentMessage))
+            {
+                lastAgentMessage = agentMessage;
+                if (agentMessage.TrimEnd().EndsWith(
+                        WebCorrelationContract.ResponseOkMarker,
+                        StringComparison.Ordinal))
+                    lastTerminalMessage = agentMessage;
+                continue;
+            }
             try
             {
                 using var document = JsonDocument.Parse(line);
                 foreach (var propertyName in new[] { "message", "text", "content" })
-                    if (document.RootElement.TryGetProperty(propertyName, out var property) && !string.IsNullOrWhiteSpace(property.ToString()))
-                        messages.Add(property.ToString());
+                    if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                        document.RootElement.TryGetProperty(propertyName, out var property) &&
+                        !string.IsNullOrWhiteSpace(property.ToString()))
+                        legacyMessages.Add(property.ToString());
             }
             catch (JsonException) { }
         }
-        return string.Join(Environment.NewLine, messages);
+        return lastTerminalMessage ?? lastAgentMessage ??
+            string.Join(Environment.NewLine, legacyMessages);
     }
 
     private static async Task TerminateProcessTreeAsync(
