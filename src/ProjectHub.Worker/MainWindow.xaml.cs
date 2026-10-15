@@ -2259,6 +2259,11 @@ public partial class MainWindow : Window
                 cancellationToken, schema, progress, sessionStarted,
                 InputAttachments: inputAttachments,
                 EnvironmentVariables: roleEnvironment,
+                // Codex workspace sandbox must permit its own external
+                // last-message and hook directory, never Unity's Temp.
+                AdditionalWritableDirectories:
+                    UnityCliBuildRunner.IsUnityProject(workingDirectory)
+                        ? new[] { roleTempPath } : null,
                 DisableComputerUse: UnityCliBuildRunner.IsUnityProject(workingDirectory),
                 IncludeAppBaseWritable: roleName != "WORK",
                 CodexConfigOverrides: codexConfigOverrides,
