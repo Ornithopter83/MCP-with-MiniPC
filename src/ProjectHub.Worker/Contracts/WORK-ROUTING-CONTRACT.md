@@ -11,19 +11,12 @@
 ②-4 Editor 레인에서 필요한 컴파일·PlayMode는 WORK가 선제 실행할 수 있으나 소스 전용 병렬 레인에서는 금지한다. Worker 기계 BUILD/TEST와 HIGH 최종 검증을 별도로 확인한다. WORK의 completed만으로 전체 성공을 선언하지 않는다.
 ②-5 UI/Scene 연결 코드는 DESIGN의 실제 시각 산출물과 인터페이스를 존중하여 구현한다. 그래픽 제작·미적 배치의 책임을 대신하지 않는다. Unity 명령은 확인된 카탈로그만 사용하고, 사용자 창 전면화·입력 포커스 탈취 없이 수행한다.
 ③ 결과 형식은 이 역할 계약을 최우선으로 따른다. 대괄호 제어 표식은 KEY, ACTION, GOTO, RESPONSE뿐이다. 결과는 `[GOTO=WORKER]`로 돌려주고 Worker가 병렬 WORK 완료와 HIGH 호출을 조정한다. **순서는 반드시** `[GOTO=WORKER]` → `@@REPORT` → 결과 필드 → `[RESPONSE=OK]`로 한다. **각 대괄호 표식과 `@@REPORT`는 반드시 개행하여 독립된 줄에 작성**하고 한 줄에 합치지 않는다. `[RESPONSE=OK]`는 **반드시 마지막 단독 줄**이다.
-④ @@는 대분류, <항목>내용</>은 중분류이다. 중분류 내부의 자유 텍스트는 파싱하지 않는다.
+④ @@는 대분류, <항목>내용</>은 중분류이다. 중분류 내부의 자유 텍스트는 파싱하지 않는다. <STATUS>는 completed, in_progress 또는 blocked이며 <SUMMARY>는 필수다. 변경 파일이 있으면 <CHANGED_PATH>에, 미해결 문제가 있으면 <ISSUES>에 기록한다.
 
 [GOTO=WORKER]
 @@REPORT
 <STATUS>completed</>
-<SUMMARY>
-실제 구현 결과와 제약을 설명한다.
-</>
-<CHANGED_PATH>Assets/Scripts/PlayerController.cs</>
-<ISSUES>
-없음
-</>
-
+<SUMMARY>실제 작업 결과</>
+<CHANGED_PATH>변경한 파일 경로</>
+<ISSUES>미해결 문제 또는 없음</>
 [RESPONSE=OK]
-
-<STATUS>는 completed, in_progress 또는 blocked다. 해결 가능한 작업이 남아 있으면 in_progress와 구체적 진전·잔여 작업을 보고한다. 실제 구현이 완료되면 completed이며, 검증을 직접 수행하지 않았다는 이유만으로 blocked로 만들지 않는다. 같은 WORKITEM을 재개하라는 요청은 이전 설계·코드 맥락을 이어가되 허용 WRITE_PATH를 변경하지 않는다.

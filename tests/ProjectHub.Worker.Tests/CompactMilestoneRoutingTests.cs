@@ -70,6 +70,20 @@ public sealed class CompactMilestoneRoutingTests
     }
 
     [Fact]
+    public void CompactWorkContext_DoesNotDuplicateGoalAndCompletion()
+    {
+        var parsed = HqTextProtocol.Parse(Minimal);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone,
+            out var error), error);
+        var context = MilestoneDefinitionContract.BuildWorkContext(
+            milestone!.WorkItems["10"]);
+        Assert.Equal("작업 지시:" + Environment.NewLine +
+            "a.txt를 생성하여 설정 읽기를 구현하라.", context);
+    }
+
+    [Fact]
     public void CompactHq_WebBridgeExtractsCompletionMarkerBeforeParsing()
     {
         const string key = "1234ABCDabcde";

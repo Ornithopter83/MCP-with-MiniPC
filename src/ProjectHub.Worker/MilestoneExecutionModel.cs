@@ -538,17 +538,12 @@ internal static class MilestoneDefinitionContract
     public static string BuildWorkContext(
         MilestoneWorkDefinition work)
     {
-        var builder = new StringBuilder();
-        builder.AppendLine("작업 목표:");
-        builder.AppendLine(ReadWorkField(work, "goal") ?? string.Empty);
-        builder.AppendLine();
-        builder.AppendLine("작업 지시:");
-        builder.AppendLine(ReadWorkField(work, "instructions") ?? string.Empty);
-        builder.AppendLine();
-        builder.AppendLine("완료 기준:");
-        foreach (var item in ReadWorkStringArray(work, "completionCriteria"))
-            builder.AppendLine("- " + item);
-        return builder.ToString().TrimEnd();
+        // WORK receives its instruction once. HQ's compact parser already
+        // stores the same text in goal/instructions/completionCriteria.
+        var instructions = ReadWorkField(work, "instructions");
+        if (string.IsNullOrWhiteSpace(instructions))
+            instructions = ReadWorkField(work, "goal");
+        return "작업 지시:" + Environment.NewLine + (instructions ?? string.Empty);
     }
 
     public static string BuildQaContext(

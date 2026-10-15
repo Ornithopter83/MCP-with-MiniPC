@@ -2081,15 +2081,17 @@ public partial class MainWindow : Window
             "HIGH" => WorkerRoleState.High,
             _ => WorkerRoleState.Hq
         };
-        // Give all Unity CLI roles observed local-tool availability.
-        if (UnityCliBuildRunner.IsUnityProject(workingDirectory))
+        // The WORK contract is sufficient; avoid a second generic tool
+        // availability paragraph on every WORK invocation.
+        if ((roleName != "WORK" || designPurpose || assetManagerPurpose) &&
+            UnityCliBuildRunner.IsUnityProject(workingDirectory))
             prompt += Environment.NewLine +
                 UnityFreeDesignToolPolicy.BuildCliToolGuidance();
         // The preflight already queried this Editor's real command catalog.
         // Share that exact, job-scoped file with CLI roles instead of asking
         // each role to rediscover and guess the Unity command arguments.
         // It is syntax guidance, not a substitute for executing validation.
-        if (roleName is "WORK" or "QA" or "HIGH" || designPurpose)
+        if (roleName is "QA" or "HIGH" || designPurpose || assetManagerPurpose)
         {
             var catalogPath = UnityToolchainPreflight.CatalogPath(
                 workingDirectory, jobId);

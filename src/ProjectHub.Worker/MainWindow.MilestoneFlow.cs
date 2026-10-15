@@ -2084,18 +2084,6 @@ public partial class MainWindow
             work.WritePaths,
             workingDirectory,
             readOnly: work.ReadOnly);
-        if (milestone.Design is { } design &&
-            UnityDesignPromptPolicy.IsVerifiedDocument(workingDirectory, design))
-        {
-            prompt += Environment.NewLine + Environment.NewLine +
-                "DESIGN 가이드:" + Environment.NewLine +
-                "DESIGN #0가 WORK 시작 전에 작성한 아트 방향·화면 검증 명세: " +
-                Path.Combine(workingDirectory,
-                    design.Path.Replace('/', Path.DirectorySeparatorChar)) +
-                Environment.NewLine +
-                "실제 캡처 기반 기준을 참고하고, 미확인 장면을 통과로 주장하지 마라. " +
-                "WORK의 개별 책임과 완료 기준은 변경되지 않는다.";
-        }
         if (work.ExecutionMode == "CONTINUE" &&
             !string.IsNullOrWhiteSpace(checkpoint!.LastReport))
         {
@@ -2108,50 +2096,26 @@ public partial class MainWindow
         var sceneWritePath = work.ReadOnly ? null : work.WritePaths
             .FirstOrDefault(path => UnitySceneCliWorkflow.TryNormalizeScenePath(
                 path, out _));
-        if (!UnityWorkSchedulingPolicy.RequiresEditorLane(work))
+        // Source/Editor lane restrictions and Unity tool use are already in
+        // the WORK contract. Keep the existing scene-open operation without
+        // appending another generic instruction block to every WORK prompt.
+        if (UnityWorkSchedulingPolicy.RequiresEditorLane(work) &&
+            sceneWritePath is not null)
         {
-            prompt += Environment.NewLine + Environment.NewLine +
-                "소스 전용 작업 제한:" + Environment.NewLine +
-                "이 WORK는 C# 소스 파일만 수정하는 병렬 작업이다. Unity CLI/MCP, " +
-                "Editor API, AssetDatabase, 씬·프리팹 변경·컴파일·PlayMode 명령을 " +
-                "실행하지 마라. Editor 관련 검증은 WORK 종료 후 Worker BUILD/QA에서 처리한다.";
-        }
-        else
-        {
-            prompt += Environment.NewLine + Environment.NewLine +
-                "Unity Editor 직접 작업 지침:" + Environment.NewLine +
-                UnitySceneCliWorkflow.DirectSceneInstructions(
-                    sceneWritePath ?? "WORK의 지정된 Unity 에셋",
-                    readOnly: work.ReadOnly);
-            // The scheduler already holds the project-wide Editor lease here.
-            // Idempotent additive open preserves the user's other open scenes.
-            if (sceneWritePath is not null)
+            // The scheduler holds the project-wide Editor lease here.
+            var sceneFile = Path.Combine(workingDirectory,
+                sceneWritePath.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(sceneFile))
             {
-                var sceneFile = Path.Combine(workingDirectory,
-                    sceneWritePath.Replace('/', Path.DirectorySeparatorChar));
-                if (File.Exists(sceneFile))
-                {
-                    var opened = await UnitySceneCliWorkflow.OpenAsync(
-                        workingDirectory, sceneWritePath, cancellationToken);
-                    prompt += Environment.NewLine +
-                        "Unity 씬 열기 증거: " + opened.Detail +
-                        (opened.Success ? "" :
-                            " · 자동 재호출하지 말고 Editor 상태를 조회하여 필요한 경우 " +
-                            "등록된 open_scene 명령으로 대체하라.");
-                }
+                var opened = await UnitySceneCliWorkflow.OpenAsync(
+                    workingDirectory, sceneWritePath, cancellationToken);
+                prompt += Environment.NewLine +
+                    "Unity 씬 열기 증거: " + opened.Detail +
+                    (opened.Success ? "" :
+                        " · 자동 재호출하지 말고 Editor 상태를 조회하여 필요한 경우 " +
+                        "등록된 open_scene 명령으로 대체하라.");
             }
         }
-        prompt += Environment.NewLine + Environment.NewLine +
-            "프로젝트 수정 권한:" + Environment.NewLine +
-            "FULL_AUTONOMY: WRITE_PATH는 작업 배정과 중복 파일 충돌 조정용이다. " +
-            "ProjectSettings, Packages, 에셋, .meta, 코드와 추가 프로젝트 설정의 " +
-            "수정은 허용한다. 선언 범위 밖 파일 수정만으로 blocked를 보고하지 말고 " +
-            "변경 경로를 CHANGED_PATH에 기록하라. " +
-            "다른 WORK와 같은 파일을 동시에 수정하지 마라." +
-            Environment.NewLine +
-            "검색 도구가 설치되지 않았다면 동일 명령을 반복하거나 설치하지 말고 " +
-            "git grep 또는 PowerShell Get-ChildItem/Select-String 같은 이미 있는 " +
-            "도구로 대체하라. 변경 범위와 기존 체크포인트를 유지하라.";
 
         var sessionId = checkpoint!.SessionId;
         var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
