@@ -38,6 +38,11 @@ jobs:
           node --check extension/gptweb-hub/content.js
           node --check extension/gptweb-hub/background.js
 
+      - name: Audit UnityWorker contracts (read-only)
+        if: github.ref == 'refs/heads/UnityWorker'
+        shell: pwsh
+        run: ./scripts/UnityWorker_Contract_Audit.ps1
+
       - name: Restore
         run: dotnet restore ProjectHub.sln
 
