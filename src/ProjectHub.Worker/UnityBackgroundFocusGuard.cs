@@ -29,6 +29,8 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private const int VkTab = 0x09;
 
     private readonly WinEventDelegate _callback;
+    private readonly string? _projectRoot;
+    private readonly DateTime _jobStartUtc;
     private readonly object _sync = new();
     private readonly HashSet<IntPtr> _parkedEditorWindows = new();
     private System.Threading.Timer? _watchdog;
@@ -49,6 +51,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     internal int MinimizeFallbacks { get; private set; }
     internal int ParkedWindowRestores { get; private set; }
     internal int UnityForegroundActivations { get; private set; }
+    internal int PlayerForegroundActivations { get; private set; }
     internal int ExplicitUserUnitySelections { get; private set; }
     internal int RestoreSuccesses => RestoreAttempts - RestoreFailures;
 
@@ -57,20 +60,24 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
           $"minimize_fallback_requests={MinimizeFallbacks}; " +
           $"parked_restored={ParkedWindowRestores}; not_restored={RestoreFailures}; " +
           $"unity_activations={UnityForegroundActivations}; " +
+           $"player_activations={PlayerForegroundActivations}; " +
           $"user_selection_exempt={ExplicitUserUnitySelections}; " +
           "watchdog=on, direct Unity mouse/Alt-Tab selection exempt. " +
           "Unity may briefly flash when it self-activates."
         : "FOCUS_GUARD_UNAVAILABLE: " + _unavailableReason +
           "; Unity Editor may take focus during CLI/MCP execution.";
 
-    private UnityBackgroundFocusGuard()
+    private UnityBackgroundFocusGuard(string? projectRoot)
     {
         _callback = OnForegroundChanged;
+        _projectRoot = string.IsNullOrWhiteSpace(projectRoot)
+            ? null : Path.GetFullPath(projectRoot);
+        _jobStartUtc = DateTime.UtcNow.AddSeconds(-5);
     }
 
-    internal static UnityBackgroundFocusGuard Start()
+    internal static UnityBackgroundFocusGuard Start(string? projectRoot = null)
     {
-        var guard = new UnityBackgroundFocusGuard();
+        var guard = new UnityBackgroundFocusGuard(projectRoot);
         if (!OperatingSystem.IsWindows())
         {
             guard._unavailableReason = "Windows-only";
@@ -80,7 +87,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         try
         {
             var current = GetForegroundWindow();
-            if (current != IntPtr.Zero && !IsUnityEditorWindow(current))
+            if (current != IntPtr.Zero && !guard.IsWatchedUnityWindow(current))
                 guard._previousUserWindow = current;
             // WPF already supplies the message pump required by out-of-context
             // WinEvent delivery. Do not install a global keyboard/mouse hook.
@@ -132,12 +139,15 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
             try
             {
                 var isUnityEditor = IsUnityEditorWindow(window);
+                var isProjectPlayer = !isUnityEditor && IsProjectPlayerWindow(window);
+                var guardedWindow = isUnityEditor || isProjectPlayer;
                 if (_lastObservedForeground != window)
                 {
-                    if (isUnityEditor) UnityForegroundActivations++;
+                    if (guardedWindow) UnityForegroundActivations++;
+                    if (isProjectPlayer) PlayerForegroundActivations++;
                     _lastObservedForeground = window;
                 }
-                if (!isUnityEditor)
+                if (!guardedWindow)
                 {
                     // Switches to a regular application reset any explicit
                     // Unity focus exemption.
@@ -228,7 +238,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         }
     }
 
-    private static bool IsExplicitUnitySelection(IntPtr unityWindow)
+    private bool IsExplicitUnitySelection(IntPtr unityWindow)
     {
         var mouseDown = (GetAsyncKeyState(VkLButton) & 0x8000) != 0 ||
                         (GetAsyncKeyState(VkRButton) & 0x8000) != 0;
@@ -236,7 +246,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         {
             var underMouse = WindowFromPoint(cursor);
             if (underMouse != IntPtr.Zero &&
-                IsUnityEditorWindow(underMouse))
+                IsWatchedUnityWindow(underMouse))
                 return true;
         }
         return (GetAsyncKeyState(VkMenu) & 0x8000) != 0 &&
@@ -249,6 +259,25 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         if (!GetLastInputInfo(ref input))
             return 0; // Unknown intent: do not override user focus.
         return unchecked((uint)Environment.TickCount - input.TickCount);
+    }
+
+    private bool IsWatchedUnityWindow(IntPtr window) =>
+        IsUnityEditorWindow(window) || IsProjectPlayerWindow(window);
+
+    private bool IsProjectPlayerWindow(IntPtr window)
+    {
+        if (_projectRoot is null || window == IntPtr.Zero) return false;
+        GetWindowThreadProcessId(window, out var pid);
+        if (pid == 0) return false;
+        try
+        {
+            using var process = Process.GetProcessById(unchecked((int)pid));
+            return process.StartTime.ToUniversalTime() >= _jobStartUtc &&
+                UnityBackgroundFocusPolicy.IsProjectPlayerExecutable(
+                    _projectRoot, process.MainModule?.FileName);
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException
+            or Win32Exception or UnauthorizedAccessException) { return false; }
     }
 
     private static bool IsUnityEditorWindow(IntPtr window)
@@ -371,6 +400,26 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
 internal static class UnityBackgroundFocusPolicy
 {
     internal const uint UserInputGraceMilliseconds = 350;
+
+    internal static bool IsProjectPlayerExecutable(
+        string projectRoot, string? executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(projectRoot) ||
+            string.IsNullOrWhiteSpace(executablePath) ||
+            !executablePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            return false;
+        try
+        {
+            var outputRoot = Path.GetFullPath(
+                Path.Combine(projectRoot, "Builds")).TrimEnd(
+                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+                Path.DirectorySeparatorChar;
+            return Path.GetFullPath(executablePath).StartsWith(
+                outputRoot, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is IOException or ArgumentException
+            or NotSupportedException) { return false; }
+    }
 
     internal static bool IsUnityEditorProcess(string? processName) =>
         string.Equals(processName, "Unity", StringComparison.OrdinalIgnoreCase) ||

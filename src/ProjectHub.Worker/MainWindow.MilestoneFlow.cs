@@ -105,7 +105,7 @@ public partial class MainWindow
         // Foreground window protection spans preflight, DESIGN, WORK, CLI
         // recompilation and HIGH; a Codex command hook cannot intercept an
         // already-running Editor promoting its own native window.
-        using var unityFocusGuard = UnityBackgroundFocusGuard.Start();
+        using var unityFocusGuard = UnityBackgroundFocusGuard.Start(normalizedRoot);
         UnityEditorRecoverySupervisor? editorRecoverySupervisor = null;
         if (!unityFocusGuard.Available)
             AddTaskMessage("UNITY BACKGROUND GUARD",
@@ -1390,7 +1390,7 @@ public partial class MainWindow
                 var repairReport = await ExecuteBuildRepairAsync(
                     jobId, workingDirectory, milestone, plannedWorkScopes,
                     buildRuns.Last(run => !run.Success), implementer, cancellationToken);
-                mechanicalReports.Add("WORK_8_REPAIR: " +
+                mechanicalReports.Add("BUILD_REPAIR: " +
                     MilestoneDefinitionContract.Limit(repairReport, 1200));
                 var afterRepair = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                     workingDirectory, cancellationToken);
@@ -1575,12 +1575,14 @@ public partial class MainWindow
                     beforeReviewDesign, afterReviewDesign).ToArray();
                 foreach (var changed in revisionChanges)
                     milestoneChangedPaths.Add(changed);
-                var graphical = revisionChanges.Any(UnityDesignPromptPolicy.IsVisualArtifact);
                 var designParsed = RoleTextProtocol.ParseWork(designResponse);
-                if (!graphical && designParsed.Status == "completed")
+                // HIGH owns the visual judgement. A C# change can implement
+                // real UI appearance without matching a path-name heuristic.
+                // Only a true no-op contradicts DESIGN's completed report.
+                if (revisionChanges.Length == 0 && designParsed.Status == "completed")
                     designResponse = RoleTextProtocol.BuildResult("blocked",
-                        "DESIGN_REPORTED_COMPLETE_WITHOUT_GRAPHICS",
-                        issues: new[] { "No changed Scene/Prefab/visual asset evidence." });
+                        "DESIGN_REPORTED_COMPLETE_WITHOUT_CHANGES",
+                        issues: new[] { "No changed file evidence; HIGH cannot credit a no-op." });
                 var revisionReport = "DESIGN #0: INVOCATION=" + invocation +
                     " STATUS=" + RoleTextProtocol.ParseWork(designResponse).Status +
                     "\nCHANGED_PATHS=" + string.Join(", ", revisionChanges) +
@@ -2696,14 +2698,20 @@ public partial class MainWindow
     {
         if (writePaths.Count == 0)
             return "blocked: NO_WRITABLE_SCOPE";
+        var ownerId = MilestoneBuildRepairOwnership.Resolve(
+            milestone.WorkItems, failure.Summary);
+        if (ownerId is null)
+            return "blocked: BUILD_REPAIR_WORK_OWNER_AMBIGUOUS";
+        var ownerPaths = milestone.WorkItems[ownerId].WritePaths;
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
-            "8", "복구 목표:" + Environment.NewLine +
-            "WORK #8 전용 복구: 실제 코드 빌드 오류만 이 호출에서 한 번 최소 수정하라." +
+            ownerId, "복구 목표:" + Environment.NewLine +
+            "원래 WORK #" + ownerId +
+            "의 실제 컴파일 오류만 이번 복구 호출에서 한 번 최소 수정하라." +
             Environment.NewLine + "복구 지시:" + Environment.NewLine +
             "원래 작업 범위 외 변경 금지. Git 명령 실행 금지. " +
             "환경 EPERM 등 실행 환경 오류를 소스 수정으로 우회하지 마라. " +
             "오류: " + MilestoneDefinitionContract.Limit(failure.Summary, 1600),
-            writePaths, workingDirectory);
+            ownerPaths, workingDirectory);
         var stateless = implementer with
         {
             ThreadSessionId = null,
@@ -2712,16 +2720,16 @@ public partial class MainWindow
         var result = await RunCoordinatorRoleAsync(
             jobId, "WORK", prompt, stateless, workingDirectory,
             null, null, cancellationToken, CodexSandboxMode.WorkspaceWrite,
-            historyWorkItemId: "8",
+            historyWorkItemId: ownerId,
             historyReferenceId: milestone.Id + ":BUILD:REPAIR-1");
         var report = MilestoneDefinitionContract.NormalizeWorkReport(
             result.ExitCode, result.FinalMessage, result.StandardError);
         AddRoleResponseHistory(WorkerRoleState.Work,
-            "임시 빌드 복구 #8", report, result.Usage, result.Files,
+            "빌드 복구 #" + ownerId, report, result.Usage, result.Files,
             status: MilestoneDefinitionContract.ReadWorkStatus(report) == "blocked"
                 ? "BLOCKED" : "RECEIVED",
             providerWireId: implementer.Provider, fullMessage: report,
-            workItemId: "8",
+            workItemId: ownerId,
             referenceId: milestone.Id + ":BUILD:REPAIR-1");
         return report;
     }

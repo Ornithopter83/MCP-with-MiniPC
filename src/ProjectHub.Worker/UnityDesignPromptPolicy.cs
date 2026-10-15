@@ -10,6 +10,8 @@ internal static class UnityDesignPromptPolicy
         return "@@MESSAGE\nDESIGN_ID: 0\nPROJECT_ROOT: " +
             Path.GetFullPath(projectRoot) +
             "\nDESIGN_DOCUMENT: " + design.Path +
+            "\n디자인 문서가 없으면 이 경로에 직접 생성하고 실제 제작 내용과 WORK 연결 규칙을 기록하라. " +
+            "단순 증거 README를 디자인 문서 대신 사용하지 마라." +
             "\nDESIGN_WRITE_PATHS: " +
             (design.WritePaths.Count == 0 ? "프로젝트 시각 제작 범위(기존 변경 존중)" :
                 string.Join(", ", design.WritePaths)) +

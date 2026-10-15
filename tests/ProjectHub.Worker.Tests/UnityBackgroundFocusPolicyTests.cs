@@ -43,6 +43,20 @@ public sealed class UnityBackgroundFocusPolicyTests
     }
 
     [Fact]
+    public void GuardMatchesOnlyCurrentProjectPlayerOutput()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "UnityPlayerFocusTest");
+        Assert.True(UnityBackgroundFocusPolicy.IsProjectPlayerExecutable(
+            root, Path.Combine(root, "Builds", "Windows", "Quiz.exe")));
+        Assert.False(UnityBackgroundFocusPolicy.IsProjectPlayerExecutable(
+            root, Path.Combine(root, "Assets", "Editor.exe")));
+        Assert.False(UnityBackgroundFocusPolicy.IsProjectPlayerExecutable(
+            root + "-other", Path.Combine(root, "Builds", "Quiz.exe")));
+        Assert.False(UnityBackgroundFocusPolicy.IsProjectPlayerExecutable(
+            root, Path.Combine(root, "Builds", "notes.txt")));
+    }
+
+    [Fact]
     public void GuardCanBeSafelyDisposedTwiceOnHeadlessPlatforms()
     {
         if (OperatingSystem.IsWindows())
