@@ -32,7 +32,10 @@ internal static class WebCorrelationContract
         var marker = Marker(key);
         return
             marker + Environment.NewLine +
-            prompt.Trim() + Environment.NewLine + Environment.NewLine +
+            // Preserve the first user message's exact leading whitespace and
+            // line endings. Trimming here would silently rewrite its original
+            // contents after HQ already prioritized it.
+            prompt + Environment.NewLine + Environment.NewLine +
             "Web 요청 상관 규약:" + Environment.NewLine +
             "- 최종 응답의 첫 줄에 요청의 KEY 행을 정확히 그대로 출력한다." + Environment.NewLine +
             "- KEY 바로 다음 의미 행은 필요하면 [GOTO=역할], 그 다음은 [ACTION=...]이어야 한다." + Environment.NewLine +
