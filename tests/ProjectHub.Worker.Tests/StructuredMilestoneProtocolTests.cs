@@ -169,7 +169,7 @@ public sealed class StructuredMilestoneProtocolTests
     public void ReportProtocol_ParsesStatusOnlyAndKeepsProseOpaque()
     {
         var response = RoleTextProtocol.BuildResult(
-            "issue", "원본: FAIL\n세부 검사: 실제 실패", issues: new[] { "배경 크기 불일치" });
+            "blocked", "원본: FAIL\n세부 검사: 실제 실패", issues: new[] { "배경 크기 불일치" });
         var parsed = RoleTextProtocol.ParseWork(response);
         Assert.True(parsed.IsValid, string.Join(", ", parsed.Errors));
         Assert.Equal("blocked", parsed.Status);
@@ -180,8 +180,9 @@ public sealed class StructuredMilestoneProtocolTests
     [Fact]
     public void InvalidWorkAndHighReports_ArePreservedWithoutSyntheticSuccess()
     {
-        const string raw = "ACTION_RESULT: FAIL\nSTATUS: issue\nGodot smoke 실패";
-        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(\n            MilestoneDefinitionContract.NormalizeWorkReport(0, raw, null)));
+        const string raw = "ACTION_RESULT: FAIL\nSTATUS: issue\nUnity smoke 실패";
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(
+            MilestoneDefinitionContract.NormalizeWorkReport(0, raw, null)));
         Assert.Equal(raw, MilestoneDefinitionContract.NormalizeHighReport(0, raw, null));
         Assert.Null(MilestoneDefinitionContract.ReadWorkStatus(raw));
     }
@@ -223,7 +224,7 @@ public sealed class StructuredMilestoneProtocolTests
     [Fact]
     public void WorkHighFormattingTypos_DoNotDiscardRealTestResults()
     {
-        const string qa = """
+        const string work = """
             
             @@REPORT
             <STATUS>blocked</>
@@ -235,10 +236,10 @@ public sealed class StructuredMilestoneProtocolTests
             </>
             [RESPONSE=OK]
             """;
-        var parsedQa = RoleTextProtocol.ParseWork(qa);
-        Assert.True(parsedQa.IsValid, string.Join(", ", parsedQa.Errors));
-        Assert.Equal("blocked", parsedQa.Status);
-        Assert.Contains("smoke 통과", parsedQa.Summary);
+        var parsedWork = RoleTextProtocol.ParseWork(work);
+        Assert.True(parsedWork.IsValid, string.Join(", ", parsedWork.Errors));
+        Assert.Equal("blocked", parsedWork.Status);
+        Assert.Contains("smoke 통과", parsedWork.Summary);
 
         const string high = """
             [RESPONSE=OK]
@@ -300,22 +301,22 @@ public sealed class StructuredMilestoneProtocolTests
     [Fact]
     public void LegacyWorkAndHighClosers_AreReadWithoutRetryOrStatusLoss()
     {
-        const string qa = """
+        const string work = """
             @@REPORT
             <STATUS>blocked</STATUS>
             <SUMMARY>
             전체 smoke 실패
             </SUMMARY>
             <ISSUES>
-            Godot parser error
+            Unity parser error
             </ISSUES>
             [RESPONSE=OK]
             """;
-        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(qa));
-        var normalizedQa = MilestoneDefinitionContract.NormalizeWorkReport(0, qa, null);
-        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(normalizedQa));
-        Assert.Contains("<STATUS>blocked</>", normalizedQa);
-        Assert.DoesNotContain("</STATUS>", normalizedQa);
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(work));
+        var normalizedWorkReport = MilestoneDefinitionContract.NormalizeWorkReport(0, work, null);
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(normalizedWorkReport));
+        Assert.Contains("<STATUS>blocked</>", normalizedWorkReport);
+        Assert.DoesNotContain("</STATUS>", normalizedWorkReport);
 
         const string high = """
             
@@ -394,12 +395,12 @@ public sealed class StructuredMilestoneProtocolTests
     [Fact]
     public void WorkWithInlineIssuesAndMissingSummaryClose_ReachesHighInCanonicalForm()
     {
-        const string actualQa = """
+        const string actualWork = """
             @@REPORT
             <STATUS>blocked</>
             <SUMMARY>
             Git HEAD와 origin/main이 일치하고 재검증했습니다.
-            Godot 4.7.2 전체 smoke가 통과했습니다.
+            Unity 전체 smoke가 통과했습니다.
             #69 jump safe 검증, #70 Window 캡처도 통과.
             Git 추적 리뷰 증거 90개를 확인했습니다. <ISSUES>
             1. #73 미해결: 검증 산출물 정리 필요.
@@ -407,7 +408,7 @@ public sealed class StructuredMilestoneProtocolTests
             3. 리뷰보드 사람 승인 미진행.
             </ISSUES>
             """;
-        var parsed = RoleTextProtocol.ParseWork(actualQa);
+        var parsed = RoleTextProtocol.ParseWork(actualWork);
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         Assert.Equal("blocked", parsed.Status);
         Assert.Contains("전체 smoke", parsed.Summary);
@@ -415,7 +416,7 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.DoesNotContain("<ISSUES>", parsed.Summary);
         Assert.Equal(3, parsed.Issues.Count);
         Assert.Contains("#73 미해결", parsed.Issues[0]);
-        var canonical = MilestoneDefinitionContract.NormalizeWorkReport(0, actualQa, null);
+        var canonical = MilestoneDefinitionContract.NormalizeWorkReport(0, actualWork, null);
         Assert.StartsWith("@@REPORT", canonical.TrimStart());
         Assert.Contains("@@REPORT", canonical);
         Assert.Contains("<STATUS>blocked</>", canonical);
