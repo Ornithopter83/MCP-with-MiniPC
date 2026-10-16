@@ -30,6 +30,20 @@ public sealed class UnityBackgroundFocusPolicyTests
     }
 
     [Theory]
+    [InlineData(false, true, true, false, false)]
+    [InlineData(true, true, true, false, true)]
+    [InlineData(true, true, true, true, false)]
+    [InlineData(true, false, true, false, false)]
+    [InlineData(true, true, false, false, false)]
+    public void FocusRestorationIsDeferredUntilJobEnds(
+        bool jobFinished, bool unityForeground, bool previousAvailable,
+        bool userSelectedUnity, bool expected)
+    {
+        Assert.Equal(expected, UnityBackgroundFocusPolicy.ShouldRestoreAfterJob(
+            jobFinished, unityForeground, previousAvailable, userSelectedUnity));
+    }
+
+    [Theory]
     [InlineData(0U, true, true)]
     [InlineData(350U, true, true)]
     [InlineData(351U, true, false)]
@@ -73,6 +87,8 @@ public sealed class UnityBackgroundFocusPolicyTests
         var scope = guard.BeginBackgroundCapture();
         Assert.Contains("BACKGROUND_CAPTURE", scope.Diagnostic);
         scope.Dispose();
+        Assert.Equal(0, guard.RestoreAttempts);
+        Assert.Equal("FOCUS_JOB_END_GUARD_UNAVAILABLE", guard.RestoreAfterJob());
         Assert.Equal(0, guard.RestoreAttempts);
     }
 
