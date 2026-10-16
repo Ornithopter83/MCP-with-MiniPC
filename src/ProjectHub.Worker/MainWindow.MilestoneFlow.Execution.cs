@@ -276,7 +276,7 @@ public partial class MainWindow
                 // DESIGN instructions; the user should not repeat art direction.
                 var foundryBrief = (milestone.RawHqMessage ?? string.Empty) +
                     Environment.NewLine + design.Instructions;
-                if (UnityVisualFoundry.IsVisualScreenRequest(design.Instructions))
+                if (UnityVisualFoundry.IsVisualScreenRequest(foundryBrief))
                 {
                     try
                     {
