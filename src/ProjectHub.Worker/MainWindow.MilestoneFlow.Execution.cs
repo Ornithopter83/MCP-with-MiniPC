@@ -331,7 +331,11 @@ public partial class MainWindow
                         AddTaskMessage("UNITY VISUAL FOUNDRY", foundryReport,
                             status: foundryReport.StartsWith(
                                 "VISUAL_FOUNDRY_GENERATED_UNINSPECTED",
-                                StringComparison.Ordinal) ? "OBSERVED" : "UNVERIFIED",
+                                StringComparison.Ordinal) ||
+                                foundryReport.StartsWith(
+                                    "VISUAL_FOUNDRY_REUSED_UNINSPECTED",
+                                    StringComparison.Ordinal)
+                                ? "OBSERVED" : "UNVERIFIED",
                             includeHistory: false);
                     }
                     var run = await RunCoordinatorRoleAsync(
