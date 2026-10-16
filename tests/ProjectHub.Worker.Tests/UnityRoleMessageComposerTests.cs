@@ -58,7 +58,9 @@ public sealed class UnityRoleMessageComposerTests
             var routed = HqUserInterventionQueue.AppendToHqBody(
                 composedBase, queue.Pending());
 
-            Assert.Equal("@@MESSAGE\n" + userMessage + "\n\n" + rolePrompt, routed);
+            Assert.Equal("@@MESSAGE\n" + userMessage + "\n\n" +
+                HqUserInterventionQueue.LatestUserPriorityGuidance +
+                "\n\n" + rolePrompt, routed);
             Assert.StartsWith("@@MESSAGE\n" + userMessage, routed);
             Assert.DoesNotContain("추가 작업 맥락:", routed);
             Assert.DoesNotContain("실행 중 추가된 사용자 메시지", routed);
@@ -85,7 +87,11 @@ public sealed class UnityRoleMessageComposerTests
             var routed = HqUserInterventionQueue.AppendToHqBody(
                 UnityRoleMessageComposer.Compose(basePrompt), queue.ClaimPending());
 
-            Assert.StartsWith("@@MESSAGE\n텍스트 원문 그대로 전달\n\nWORK_ID: 112", routed);
+            Assert.StartsWith("@@MESSAGE\n텍스트 원문 그대로 전달\n\n" +
+                HqUserInterventionQueue.LatestUserPriorityGuidance, routed);
+            Assert.True(routed.IndexOf("WORK_ID: 112", StringComparison.Ordinal) >
+                routed.IndexOf(HqUserInterventionQueue.LatestUserPriorityGuidance,
+                    StringComparison.Ordinal));
             Assert.True(routed.IndexOf("텍스트 원문 그대로 전달",
                 StringComparison.Ordinal) < routed.IndexOf(
                     "[RESPONSE=OK]", StringComparison.Ordinal));
