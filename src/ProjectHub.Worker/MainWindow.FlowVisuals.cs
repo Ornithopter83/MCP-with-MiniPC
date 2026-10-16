@@ -36,11 +36,11 @@ public partial class MainWindow
             _activeCoordinatorFirst,
             _currentMilestoneResourceReserved,
             _currentTaskStage == TaskStage.Resource);
-        ResourceStageModelText.Text = resourceDisabled
-            ? "미예약"
-            : AiProviderCatalog.FormatModel(
-                _targetSettings.EffectiveDesign.Provider,
-                _targetSettings.EffectiveDesign.Model);
+        // Always show the configured DESIGN model; HQ assignment only
+        // controls stage activation, not the model label.
+        ResourceStageModelText.Text = AiProviderCatalog.FormatModel(
+            _targetSettings.EffectiveDesign.Provider,
+            _targetSettings.EffectiveDesign.Model);
         SetPipelineCard(
             PipelineResourceCard,
             PipelineResourceTitle,
