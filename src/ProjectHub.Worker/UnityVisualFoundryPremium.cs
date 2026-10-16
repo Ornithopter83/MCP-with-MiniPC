@@ -283,21 +283,21 @@ internal static class UnityVisualFoundryPremium
                     ReplaceOnce(
                         ReplaceOnce(
                             ReplaceOnce(source,
-                                "            var vfScreens = new [] {",
+                                "var vfScreens = new [] {",
                                 CreateMaterial.Replace("__SHADER_CONTENT__", shader,
                                     StringComparison.Ordinal) +
                                 "            var vfScreens = new [] {"),
-                            "                var frame = vfPlate(",
+                            "var frame = vfPlate(",
                             AddDecor + "                var frame = vfPlate("),
-                        "                    vfLabel(buttonPlate,vfChoices[i]",
+                        "vfLabel(buttonPlate,vfChoices[i]",
                         EnhanceChoices + "                    vfLabel(buttonPlate,vfChoices[i]"),
-                    "                UnityEditor.AssetDatabase.CreateAsset(clip,clipPath);",
+                    "UnityEditor.AssetDatabase.CreateAsset(clip,clipPath);",
                     ExtraMotion +
                     "                UnityEditor.AssetDatabase.CreateAsset(clip,clipPath);"),
-                "                UnityEngine.Object.DestroyImmediate(vfRoot);",
+                "UnityEngine.Object.DestroyImmediate(vfRoot);",
                 VariantPrefabs +
                 "                UnityEngine.Object.DestroyImmediate(vfRoot);"),
-            "            UnityEditor.AssetDatabase.SaveAssets();",
+            "UnityEditor.AssetDatabase.SaveAssets();",
             LayoutAudit + "            UnityEditor.AssetDatabase.SaveAssets();");
     }
 
@@ -305,7 +305,7 @@ internal static class UnityVisualFoundryPremium
     {
         var at = s.IndexOf(find, StringComparison.Ordinal);
         if (at < 0 || s.IndexOf(find, at + find.Length, StringComparison.Ordinal) >= 0)
-            throw new InvalidOperationException("VISUAL_FOUNDRY_PREMIUM_TEMPLATE_INVALID");
+            throw new InvalidOperationException("VISUAL_FOUNDRY_PREMIUM_TEMPLATE_INVALID: " + find);
         return s.Replace(find, replace, StringComparison.Ordinal);
     }
 }
