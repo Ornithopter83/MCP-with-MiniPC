@@ -348,6 +348,13 @@ public partial class MainWindow
                     remoteReference.CommitSha,
                     IsWebTransport(coordinator.Transport));
 
+                // Capture the boundary before HQ is dispatched. A user
+                // message arriving while HQ plans must not disappear merely
+                // because it predates the subsequent WORK stage.
+                var interventionIdsBeforeMilestone = interventionQueue.ReadAll()
+                    .Select(item => item.Id)
+                    .ToHashSet(StringComparer.Ordinal);
+
                 var hqResult = await RunHqRoleAsync(
                     jobId,
                     "HQ_MILESTONE",
@@ -674,12 +681,6 @@ public partial class MainWindow
                     jobId,
                     milestone!,
                     "PLANNED");
-
-                // Distinguish user input received during this milestone from
-                // earlier context already considered by HQ.
-                var interventionIdsBeforeMilestone = interventionQueue.ReadAll()
-                    .Select(item => item.Id)
-                    .ToHashSet(StringComparer.Ordinal);
 
                 var initialChangedPaths =
                     await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
