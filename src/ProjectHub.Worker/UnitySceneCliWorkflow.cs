@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -139,41 +138,11 @@ internal static class UnitySceneCliWorkflow
         return false;
     }
 
-    private static async Task<UnityAssetCliResult> ExecuteAsync(
-        string root, IReadOnlyList<string> args, CancellationToken token)
-    {
-        var info = new ProcessStartInfo
-        {
-            FileName = "unity",
-            WorkingDirectory = Path.GetFullPath(root),
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        foreach (var arg in args)
-            info.ArgumentList.Add(arg);
-
-        using var job = new WorkerChildProcessJob("UnityWorker scene command");
-        using var child = job.Start(info, token);
-        var stdout = child.StandardOutput!.ReadToEndAsync(token);
-        var stderr = child.StandardError!.ReadToEndAsync(token);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-            token, timeout.Token);
-        try
-        {
-            await child.Process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
-        {
-            job.Dispose();
-            return new(-1, "", "UNITY_SCENE_CLI_TIMEOUT: 실행 여부가 불확실해 자동 재시도 금지");
-        }
-        return new(child.Process.ExitCode,
-            await stdout.ConfigureAwait(false),
-            await stderr.ConfigureAwait(false));
-    }
+    private static Task<UnityAssetCliResult> ExecuteAsync(
+        string root, IReadOnlyList<string> args, CancellationToken token) =>
+        UnityCliProcessRunner.RunAsync(root, args, TimeSpan.FromMinutes(4),
+            "UnityWorker scene command",
+            "UNITY_SCENE_CLI_TIMEOUT: 실행 여부가 불확실해 자동 재시도 금지", token);
 
     private static string Limit(string value) =>
         value.Length <= 500 ? value.Trim() : value[..500].Trim() + "...";
