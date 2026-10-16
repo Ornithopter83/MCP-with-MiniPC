@@ -101,7 +101,6 @@ public partial class MainWindow : Window
         // Five visible body lines at most: one title plus either four summary
         // lines, or two summary and two metadata lines.
         // The original report remains available by double-click.
-        public string CardPreview => WorkerHistoryCardFormatter.CardPreview(Summary);
         public TextWrapping SummaryWrapping => TextWrapping.Wrap;
         public TextTrimming SummaryTrimming => TextTrimming.CharacterEllipsis;
         public int CardSummaryLines => MetricsVisibility == Visibility.Visible ? 2 : 4;
