@@ -47,7 +47,7 @@ internal static class UnityWorkSchedulingPolicy
 
         var normalized = path.Replace('\\', '/').Trim('/');
         if (normalized.Contains("..", StringComparison.Ordinal) ||
-            !normalized.Contains('/', StringComparison.Ordinal))
+            !normalized.Contains('/'))
             return false;
 
         // Editing test code does not execute EditMode. The worker's BUILD
