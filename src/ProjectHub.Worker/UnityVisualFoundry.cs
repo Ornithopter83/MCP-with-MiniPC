@@ -77,7 +77,7 @@ internal static class UnityVisualFoundry
     internal static Plan Prepare(string root, string jobId, string milestoneId,
         string instructions)
     {
-        var style = Select(instructions);
+        var style = UnityVisualFoundryQuality.AutoTune(Select(instructions));
         var direction = UnityVisualFoundryQuality.Evaluate(style, instructions);
         var safeKey = SafePart(jobId) + "_" + SafePart(milestoneId) + "_" + style.Id;
         var folder = Path.Combine(Path.GetFullPath(root), "temp", "ProjectHub",
