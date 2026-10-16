@@ -1,8 +1,8 @@
 namespace ProjectHub.Worker;
 
 /// <summary>
-/// DESIGN may be invoked by HIGH even when HQ did not pre-reserve a DESIGN
-/// stage. The live role always takes precedence over initial reservation.
+/// DESIGN is scheduled by HQ. Its live state takes precedence over the
+/// reservation displayed in the UI; HIGH never redispatches DESIGN.
 /// </summary>
 internal static class UnityDesignCardActivationPolicy
 {
@@ -10,9 +10,7 @@ internal static class UnityDesignCardActivationPolicy
         bool coordinatorFirst, bool? initiallyReserved, bool designCurrentlyRunning) =>
         coordinatorFirst && initiallyReserved == false && !designCurrentlyRunning;
 
-    // The retired RESOURCE sidecar must not keep the DESIGN visual stage
-    // highlighted after the DESIGN turn ends in the current task group.
-    internal static bool ShouldHighlight(
-        bool designTurnRunning, bool legacyResourceSidecarOutstanding) =>
+    // Historical RESOURCE callbacks never activate the DESIGN card.
+    internal static bool ShouldHighlight(bool designTurnRunning) =>
         designTurnRunning;
 }
