@@ -22,7 +22,8 @@ public sealed class RoleContractResponsibilityTests
         foreach (var contract in new[]
                  { RoleContractLoader.LoadWorkFooter(), RoleContractLoader.LoadHighFooter() })
         {
-            Assert.Contains("[GOTO=WORKER]\n@@REPORT\n",\n                contract.Replace("\r\n", "\n", StringComparison.Ordinal));
+            Assert.Contains("[GOTO=WORKER]\n@@REPORT\n",
+                contract.Replace("\r\n", "\n", StringComparison.Ordinal));
             Assert.Contains("[RESPONSE=OK]", contract);
         }
     }
