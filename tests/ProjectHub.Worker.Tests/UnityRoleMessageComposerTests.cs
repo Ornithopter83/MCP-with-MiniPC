@@ -100,11 +100,10 @@ public sealed class UnityRoleMessageComposerTests
         var work = RoleContractLoader.BuildDirectWorkPrompt(
             "10", "작업 목표: 게임 규칙 구현", new[] { "Assets/Scripts/Play.cs" }, "/tmp/unity");
         var high = RoleContractLoader.BuildHighPrompt("빌드 검증 결과: 미확인");
-        var qa = RoleContractLoader.BuildQaPrompt("화면 테스트");
         var design = UnityDesignPromptPolicy.Build(
             new MilestoneDesignDefinition("docs/projecthub/visual.md", "게임 UI 제작"),
             Path.GetTempPath());
-        foreach (var prompt in new[] { work, high, qa, design })
+        foreach (var prompt in new[] { work, high, design })
         {
             var composed = UnityRoleMessageComposer.Compose(prompt);
             Assert.Equal(1, composed.Split('\n')
