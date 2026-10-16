@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -394,37 +393,11 @@ internal static class UnityBackgroundVisualTools
         }
     }
 
-    private static async Task<UnityAssetCliResult> RunCliAsync(
-        string root, IReadOnlyList<string> args, CancellationToken token)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "unity",
-            WorkingDirectory = root,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        foreach (var arg in args) psi.ArgumentList.Add(arg);
-        using var job = new WorkerChildProcessJob("UnityWorker internal visual capture");
-        using var child = job.Start(psi, token);
-        var stdout = child.StandardOutput!.ReadToEndAsync(token);
-        var stderr = child.StandardError!.ReadToEndAsync(token);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
-        try
-        {
-            await child.Process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
-        {
-            job.Dispose();
-            return new(-1, "", "OFFSCREEN_CAPTURE_TIMEOUT_UNCERTAIN_NO_RETRY");
-        }
-        return new(child.Process.ExitCode,
-            await stdout.ConfigureAwait(false), await stderr.ConfigureAwait(false));
-    }
+    private static Task<UnityAssetCliResult> RunCliAsync(
+        string root, IReadOnlyList<string> args, CancellationToken token) =>
+        UnityCliProcessRunner.RunAsync(root, args, TimeSpan.FromSeconds(25),
+            "UnityWorker internal visual capture",
+            "OFFSCREEN_CAPTURE_TIMEOUT_UNCERTAIN_NO_RETRY", token);
 
     private static string Limit(string text) =>
         text.Length <= 550 ? text.Trim() : text[..550].Trim() + "...";
