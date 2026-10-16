@@ -70,6 +70,8 @@ public sealed class UnityEditorRecoverySupervisorTests
         Assert.Equal(0, launches);
         await supervisor.CheckOnceAsync(CancellationToken.None);
         Assert.Equal(1, launches);
+        Assert.Contains(events, s => s.Contains("UNITY_EDITOR_GUI_LAUNCH_SUBMITTED"));
+        Assert.DoesNotContain(events, s => s.Contains("복구되었습니다"));
         await supervisor.CheckOnceAsync(CancellationToken.None);
         Assert.Contains(events, s => s.Contains("복구되었습니다"));
     }
