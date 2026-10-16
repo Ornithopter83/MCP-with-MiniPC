@@ -25,6 +25,6 @@ jobs:
       - name: Restore UnityWorker tests
         run: dotnet restore tests/ProjectHub.Worker.Tests/ProjectHub.Worker.Tests.csproj
       - name: Build UnityWorker
-        run: dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --configuration Release --no-restore -p:PublishSingleFile=false -p:SelfContained=false
+        run: dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --configuration Release --no-restore
       - name: Test UnityWorker Visual Foundry and focus policy
         run: dotnet test tests/ProjectHub.Worker.Tests/ProjectHub.Worker.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~UnityVisualFoundryTests|FullyQualifiedName~UnityBackgroundVisualToolsTests|FullyQualifiedName~UnityBackgroundFocusPolicyTests" --logger "console;verbosity=normal"
