@@ -80,20 +80,9 @@ public sealed class CoordinatorFirstContractTests
                 }
                 """
         };
-        var qaContext = MilestoneDefinitionContract.BuildQaContext(
-            milestone,
-            workReports);
         var highContext = MilestoneDefinitionContract.BuildHighContext(
-            milestone,
-            workReports,
-            qaReport: null);
+            milestone, workReports);
 
-        Assert.Contains("WORK 목표:", qaContext);
-        Assert.Contains("WORK 수행 결과:", qaContext);
-        Assert.DoesNotContain("QA_INSTRUCTIONS:", qaContext);
-        Assert.DoesNotContain("RESOURCE_RESULTS:", qaContext);
-        Assert.DoesNotContain("MECHANICAL_RESULTS:", qaContext);
-        Assert.DoesNotContain("PREPARED_OUTPUT_ROOT:", qaContext);
         Assert.Contains("WORK 목표:", highContext);
         Assert.DoesNotContain("MILESTONE_VALIDATION:", highContext);
         Assert.DoesNotContain("RESOURCE_RESULTS:", highContext);
@@ -731,7 +720,6 @@ public sealed class CoordinatorFirstContractTests
                 ["0"] = "RESOURCE_STATUS: PENDING"
             },
             new[] { "MECHANICAL BUILD\nstatus=COMPLETED" },
-            "QA DETAIL",
             "@@REPORT\n<STATUS>completed</>\n<SUMMARY>HIGH 보완 완료</>\n<CHANGED_PATH>src/A.cs</>\n<ISSUES>없음</>\n[RESPONSE=OK]",
             new MilestoneGitResult(
                 true,
@@ -753,7 +741,6 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("DECISION_REQUIRED:", report);
         Assert.Contains("RESOURCE_STATUS: PENDING", report);
         Assert.DoesNotContain("WORK_RESULTS:", report);
-        Assert.Contains("QA DETAIL", report);
         Assert.DoesNotContain("- old.txt", report);
     }
 
@@ -794,7 +781,6 @@ public sealed class CoordinatorFirstContractTests
             new Dictionary<string, string>(),
             new Dictionary<string, string>(),
             Array.Empty<string>(),
-            string.Empty,
             string.Empty,
             MilestoneGitResult.NotStarted("main"),
             Array.Empty<string>(),
@@ -1083,19 +1069,6 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("@@MESSAGE", prompt);
         Assert.Contains("지정 작업 경로:", prompt);
         Assert.Contains("없음", prompt);
-    }
-
-    [Fact]
-    public void QaCommandGate_UsesQaSpecificReason()
-    {
-        var script = BuildExecutionPolicy.CreateQaCodexPreToolHookScript();
-        var hook = BuildExecutionPolicy.BuildCodexPreToolHookOverride(
-            "C:\\temp\\qa-gate.ps1",
-            "ProjectHub QA command gate");
-
-        Assert.Contains("QA keeps Git finalization in Worker", script);
-        Assert.DoesNotContain("dotnet", script);
-        Assert.Contains("ProjectHub QA command gate", hook);
     }
 
     [Fact]
