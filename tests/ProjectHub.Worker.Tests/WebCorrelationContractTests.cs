@@ -27,6 +27,28 @@ public sealed class WebCorrelationContractTests
     }
 
     [Fact]
+    public void PrioritizedHqUserTextRemainsFirstPayloadAfterTransportKey()
+    {
+        const string key = "1234ABCDabcde";
+        var rawMessage = "  사용자 원문\r\n기존 지시보다 우선  ";
+        var entry = new HqUserIntervention(
+            "id", DateTimeOffset.UtcNow, rawMessage, false);
+        var routed = HqUserInterventionQueue.AppendToHqBody(
+            "역할: HQ\n입력 본문:\n기존 지시\n역할 계약",
+            new[] { entry });
+        var web = WebCorrelationContract.WrapPrompt(routed, key);
+        Assert.StartsWith(WebCorrelationContract.Marker(key) +
+            Environment.NewLine + rawMessage, web, StringComparison.Ordinal);
+        Assert.True(web.IndexOf(rawMessage, StringComparison.Ordinal) <
+            web.IndexOf("역할: HQ", StringComparison.Ordinal));
+        Assert.True(web.IndexOf(
+            HqUserInterventionQueue.LatestUserPriorityGuidance,
+            StringComparison.Ordinal) <
+            web.IndexOf("역할 계약", StringComparison.Ordinal));
+        Assert.Contains("원문\r\n기존 지시보다 우선  ", web);
+    }
+
+    [Fact]
     public void ExtractResponse_SearchesWholeAnswerAndKeepsOnlyContentBeforeCompletionLine()
     {
         const string key = "1234ABCDabcde";
