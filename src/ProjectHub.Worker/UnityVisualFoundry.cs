@@ -315,6 +315,7 @@ internal static class UnityVisualFoundry
                     outline.effectDistance = new UnityEngine.Vector2(2,-2);
                     var button = buttonPlate.gameObject.AddComponent<UnityEngine.UI.Button>();
                     button.targetGraphic = buttonPlate.GetComponent<UnityEngine.UI.Image>();
+                    button.targetGraphic.raycastTarget = true;
                     button.transition = UnityEngine.UI.Selectable.Transition.ColorTint;
                     var colors = button.colors;
                     colors.normalColor = UnityEngine.Color.white;
