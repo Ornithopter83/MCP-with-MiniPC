@@ -158,7 +158,7 @@ public sealed class AssetManagerContractTests
         Assert.NotNull(milestone);
         var evidence = new[] { "ASSET_MANAGER #1: ASSET_MANAGER_COMPLETED: rock-001" };
         var highContext = MilestoneDefinitionContract.BuildHighContext(
-            milestone!, new Dictionary<string, string>(), null, evidence);
+            milestone!, new Dictionary<string, string>(), evidence);
         Assert.Contains("Assets/Scenes/AIDemo.unity", highContext);
         Assert.Contains("ASSET MANAGER 요청:", highContext);
         Assert.Contains("ASSET MANAGER 결과:", highContext);
