@@ -59,9 +59,10 @@ internal static class UnityBackgroundVisualTools
     }
 
     /// <summary>
-    /// Native Game View screenshot request. CaptureScreenshot writes on a later
-    /// rendered frame; Worker must poll the exact fresh file, not trust the CLI
-    /// acknowledgement. Does not synthesize a camera for Overlay UI.
+    /// Foreground-free Native Game View screenshot request. CaptureScreenshot
+    /// writes on a later rendered frame; Worker polls a fresh image rather
+    /// than trusting a CLI acknowledgment. No Focus()/SetForegroundWindow().
+    /// An inactive Editor may not render a frame; that remains unverified.
     /// </summary>
     internal static string BuildNativeCaptureExpression(string outputPath)
     {
@@ -75,7 +76,11 @@ internal static class UnityBackgroundVisualTools
                 if (phWindow.GetType().Name == "GameView") { phGameView = phWindow; break; }
             if (phGameView == null)
                 throw new System.InvalidOperationException("PROJECTHUB_NATIVE_GAME_VIEW_MISSING");
-            phGameView.Focus();
+            // Never bring Unity or Game View to the user's foreground.
+            // Repaint requests an Editor frame without changing OS keyboard
+            // focus. If an inactive Editor cannot render a native frame,
+            // the Worker reports it as unverified instead of activating it.
+            UnityEditor.EditorApplication.QueuePlayerLoopUpdate();
             phGameView.Repaint();
             var phWidth = UnityEngine.Screen.width;
             var phHeight = UnityEngine.Screen.height;
