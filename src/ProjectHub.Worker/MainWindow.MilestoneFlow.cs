@@ -675,6 +675,12 @@ public partial class MainWindow
                     milestone!,
                     "PLANNED");
 
+                // Distinguish user input received during this milestone from
+                // earlier context already considered by HQ.
+                var interventionIdsBeforeMilestone = interventionQueue.ReadAll()
+                    .Select(item => item.Id)
+                    .ToHashSet(StringComparer.Ordinal);
+
                 var initialChangedPaths =
                     await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
                         normalizedRoot,
@@ -786,6 +792,20 @@ public partial class MainWindow
                 }
 
                 hqInbound = milestoneResult.Body;
+                // A specialist's acknowledgment proves delivery, not that HQ
+                // considered the instruction. Forward newly delivered text to
+                // HQ verbatim at its next decision boundary as well.
+                var newlyDeliveredInstructions = interventionQueue.ReadAll()
+                    .Where(item => !item.RecordOnly && item.DeliveredAt is not null &&
+                        !interventionIdsBeforeMilestone.Contains(item.Id))
+                    .Select(item => item.Message)
+                    .ToArray();
+                if (newlyDeliveredInstructions.Length > 0)
+                    hqInbound = "마일스톤 중 전달된 사용자 지시 원문 (HQ 판단 필요):" +
+                        Environment.NewLine +
+                        string.Join(Environment.NewLine + Environment.NewLine,
+                            newlyDeliveredInstructions) +
+                        Environment.NewLine + Environment.NewLine + hqInbound;
                 PersistRecovery(hqInbound);
                 continuing = false;
             }
@@ -1969,6 +1989,15 @@ public partial class MainWindow
             }
         }
 
+        // A fresh user message may arrive while WORK is running. The AI
+        // receives it without keyword-based Worker interpretation; once a
+        // message arrives, the next decision belongs to HQ, not automatic
+        // continuation or self-review of the old mission.
+        var interventionIdsBeforeWork = _hqInterventions?.ReadAll()
+            .Where(item => !item.RecordOnly)
+            .Select(item => item.Id)
+            .ToHashSet(StringComparer.Ordinal) ??
+            new HashSet<string>(StringComparer.Ordinal);
         var sessionId = checkpoint!.SessionId;
         var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
             milestone.Id, work.Id);
@@ -2048,8 +2077,11 @@ public partial class MainWindow
                 // continuations and is separate from the one-time self-review.
                 // The review is only considered when the current WORK attempt
                 // would otherwise finish; it never interrupts active progress.
+                var userMessageDuringWork = _hqInterventions?.ReadAll()
+                    .Any(item => !item.RecordOnly &&
+                        !interventionIdsBeforeWork.Contains(item.Id)) == true;
                 var progress = false;
-                if (state == "IN_PROGRESS" && continuationTurns < 2 &&
+                if (!userMessageDuringWork && state == "IN_PROGRESS" && continuationTurns < 2 &&
                     !reResolutionPerformed)
                 {
                     var afterTurn =
@@ -2060,7 +2092,7 @@ public partial class MainWindow
                             MilestoneMechanicalExecutor.IsPathWithinScopes(
                                 path, work.WritePaths));
                 }
-                if (state == "IN_PROGRESS" && progress)
+                if (!userMessageDuringWork && state == "IN_PROGRESS" && progress)
                 {
                     if (!WorkExecutionJournal.Record(
                             workingDirectory, jobId, work.Id, "IN_PROGRESS",
@@ -2083,7 +2115,8 @@ public partial class MainWindow
                 // reassigned. No retry on CLI errors or invalid protocols.
                 var firstReport = MilestoneDefinitionContract.NormalizeWorkReport(
                     result.ExitCode, result.FinalMessage, result.StandardError);
-                if (!reResolutionPerformed && sessionId is not null &&
+                if (!userMessageDuringWork && !reResolutionPerformed &&
+                    sessionId is not null &&
                     WorkReResolutionPolicy.IsEligible(result.ExitCode, parsed) &&
                     WorkExecutionJournal.TryClaimReResolution(
                         workingDirectory, jobId, work.Id, sessionId, firstReport))
