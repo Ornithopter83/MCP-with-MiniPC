@@ -15,7 +15,7 @@ internal static class UnityVisualFoundry
         string Signature);
 
     internal sealed record Plan(
-        string Directory, string ScriptPath, string ManifestPath,
+        string ProjectRoot, string Directory, string ScriptPath, string ManifestPath,
         string AssetDirectory, Style Theme)
     {
         internal string AgentGuidance =>
@@ -48,8 +48,8 @@ internal static class UnityVisualFoundry
         if (instructions.Contains("NO_VISUAL_FOUNDRY", StringComparison.OrdinalIgnoreCase))
             return false;
         return new[] { "UI", "화면", "게임", "메뉴", "HUD", "퀴즈", "인터페이스",
-            "레이아웃", "디자인", "scene", "visual", "screen", "menu", "quiz",
-            "프리미엄", "고급", "화려", "visual" }
+            "레이아웃", "디자인", "시각", "그래픽", "미술", "scene", "visual", "screen", "menu", "quiz",
+            "프리미엄", "고급", "화려" }
             .Any(term => instructions.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -92,7 +92,7 @@ internal static class UnityVisualFoundry
         }, new JsonSerializerOptions { WriteIndented = true }), ProjectHubJson.Utf8NoBom);
         File.WriteAllText(script, BuildEditorExpression(relativeAssets, style),
             ProjectHubJson.Utf8NoBom);
-        return new(folder, script, manifest, relativeAssets, style);
+        return new(Path.GetFullPath(root), folder, script, manifest, relativeAssets, style);
     }
 
     private static string SafePart(string s)
@@ -398,13 +398,13 @@ internal static class UnityVisualFoundry
         Func<IReadOnlyList<string>, CancellationToken, Task<UnityAssetCliResult>>? execute = null)
     {
         execute ??= (args, token) => UnityCliProcessRunner.RunAsync(
-            Path.GetFullPath(Path.Combine(plan.Directory, "..", "..", "..", "..")),
+            plan.ProjectRoot,
             args, TimeSpan.FromSeconds(90), "UnityWorker Visual Foundry",
             "VISUAL_FOUNDRY_EXEC_TIMEOUT_UNVERIFIED", token);
         try
         {
             var args = UnityAssetCliImporter.ImportFileArguments(
-                Path.GetFullPath(Path.Combine(plan.Directory, "..", "..", "..", "..")),
+                plan.ProjectRoot,
                 plan.ScriptPath);
             var response = await execute(args, cancellationToken).ConfigureAwait(false);
             if (response.ExitCode != 0)
