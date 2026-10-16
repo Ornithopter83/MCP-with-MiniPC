@@ -21,7 +21,8 @@ internal static class UnityVisualFoundry
         internal string AgentGuidance =>
             "VISUAL_FOUNDRY: " + Theme.Name + "\n" +
             "프리미엄 화면 킷 경로: " + AssetDirectory + "\n" +
-            "기본 화면: Menu.prefab, Quiz.prefab, Results.prefab, Preview.unity.\n" +
+            "화면: Menu/Quiz/Results 각 3가지 레이아웃(기본·Editorial·Immersive), Preview.unity.\n" +
+            "셰이더: PrismaticUI.shader/material; 등장·발광 애니메이션.\n" +
             "생성된 샘플 텍스트와 버튼은 게임 로직이 아니다. 기존 게임 데이터·" +
             "입력 이벤트에 맞게 실제 씬/프리팹에 통합하고, 외부 에셋·" +
             "기존 UI를 덮어쓰지 마라. 필요하면 킷을 개조하되 이미지와 " +
@@ -86,6 +87,9 @@ internal static class UnityVisualFoundry
             style = style,
             output = relativeAssets,
             screens = new[] { "Menu", "Quiz", "Results" },
+            layoutVariants = new[] { "Base", "Editorial", "Immersive" },
+            shader = "PrismaticUI",
+            motion = new[] { "Intro", "Pulse" },
             viewport = new { width = 1920, height = 1080 },
             instructions,
             note = "Presentation-only sample; DESIGN must bind actual gameplay."
@@ -381,7 +385,7 @@ internal static class UnityVisualFoundry
             return "PROJECTHUB_VISUAL_FOUNDRY_READY|" + vfStyle + "|" +
                 vfPrefabPaths.Count + "|" + vfOutput;
             """;
-        return script
+        return UnityVisualFoundryPremium.Upgrade(script)
             .Replace("__OUTPUT__", JsonSerializer.Serialize(relativeAssets), StringComparison.Ordinal)
             .Replace("__STYLE__", JsonSerializer.Serialize(style.Id), StringComparison.Ordinal)
             .Replace("__BACK__", JsonSerializer.Serialize(style.Back), StringComparison.Ordinal)
@@ -418,13 +422,15 @@ internal static class UnityVisualFoundry
                 !TryMarker(data, out var marker))
                 return new(false, "VISUAL_FOUNDRY_ACK_UNVERIFIED", null);
             var expected = "PROJECTHUB_VISUAL_FOUNDRY_READY|" + plan.Theme.Id +
-                "|3|" + plan.AssetDirectory;
+                "|9|" + plan.AssetDirectory;
             if (!string.Equals(marker, expected, StringComparison.Ordinal))
                 return new(false, "VISUAL_FOUNDRY_ACK_MISMATCH: " + Clip(marker), null);
             // Editor confirms SaveAsPrefabAsset + AssetDatabase.SaveAssets,
             // but the Worker never mistakes this for visual/functional approval.
             return new(true, "VISUAL_FOUNDRY_GENERATED_UNINSPECTED: " +
-                plan.AssetDirectory + "; Menu, Quiz, Results, Preview", plan.AssetDirectory);
+                plan.AssetDirectory + "; 3 screens x 3 variants, procedural shader, " +
+                "multi-track motion, Preview; content and visual quality uninspected",
+                plan.AssetDirectory);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
