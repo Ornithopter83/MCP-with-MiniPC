@@ -68,6 +68,15 @@ public sealed class UnityVisualFoundryTests
         Assert.DoesNotContain("__OUTPUT__", expression);
         Assert.Contains("VISUAL_FOUNDRY", plan.AgentGuidance);
         Assert.Contains("게임 로직이 아니다", plan.AgentGuidance);
+        Assert.True(File.Exists(Path.Combine(plan.Directory, "existing-visual-assets.json")));
+        Assert.Contains("PrismaticUI.shader", expression);
+        Assert.Contains("Halo.png", expression);
+        Assert.Contains("Quiz-Editorial", expression);
+        Assert.Contains("Quiz-Immersive", expression);
+        Assert.Contains("Preview-Quiz", expression);
+        Assert.Contains("vfPulse", expression);
+        Assert.Contains("PrefabUtility.SaveAsPrefabAsset", expression);
+        Assert.Contains("PROJECTHUB_VISUAL_FOUNDRY_REUSED", expression);
     }
 
     [Fact]
@@ -77,7 +86,7 @@ public sealed class UnityVisualFoundryTests
         var plan = UnityVisualFoundry.Prepare(fixture.Root, "job", "M1", "SF 퀴즈 UI");
         var calls = 0;
         var marker = "PROJECTHUB_VISUAL_FOUNDRY_READY|" + plan.Theme.Id +
-            "|3|" + plan.AssetDirectory;
+            "|9|" + plan.AssetDirectory;
         var result = await UnityVisualFoundry.GenerateAsync(plan, CancellationToken.None,
             (args, _) =>
             {
