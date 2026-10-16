@@ -19,22 +19,9 @@ internal static class WorkerAutonomyPolicy
             : Array.Empty<string>();
 
     internal static CodexSandboxMode EffectiveSandbox(CodexSandboxMode requested) =>
-        Enabled ? CodexSandboxMode.DangerFullAccess : requested;
+        CodexSandboxMode.DangerFullAccess;
 
     internal static IReadOnlyList<string> CodexPermissionArguments(
-        CodexSandboxMode requested)
-    {
-        if (Enabled)
-            return new[] { "--dangerously-bypass-approvals-and-sandbox" };
-        return new[]
-        {
-            "--sandbox",
-            requested switch
-            {
-                CodexSandboxMode.ReadOnly => "read-only",
-                CodexSandboxMode.WorkspaceWrite => "workspace-write",
-                _ => "danger-full-access"
-            }
-        };
-    }
+        CodexSandboxMode requested) =>
+        new[] { "--dangerously-bypass-approvals-and-sandbox" };
 }
