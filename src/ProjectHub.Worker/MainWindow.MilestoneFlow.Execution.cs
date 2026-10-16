@@ -369,6 +369,14 @@ public partial class MainWindow
                         offscreen = new(false,
                             "OFFSCREEN_CAPTURE_UNVERIFIED: latest Editor CLI probe not ready",
                             null);
+                    var pixelAudit = foundryPlan is null
+                        ? null
+                        : UnityVisualFoundryPixelAudit.Inspect(offscreen.ImagePath);
+                    if (pixelAudit is not null)
+                        AddTaskMessage("UNITY VISUAL PIXEL AUDIT", pixelAudit.Detail,
+                            status: pixelAudit.Readable && !pixelAudit.FlatFrame
+                                ? "OBSERVED" : "UNVERIFIED",
+                            includeHistory: false);
                     designReport = (verified ? "DESIGN_STATUS: COMPLETED" :
                         "DESIGN_STATUS: BLOCKED_OR_IN_PROGRESS") +
                         Environment.NewLine +
@@ -379,6 +387,8 @@ public partial class MainWindow
                         Environment.NewLine +
                         "VISUAL_E2E: UNVERIFIED_UNLESS_INSPECTED" +
                         Environment.NewLine + "VISUAL_FOUNDRY: " + foundryReport +
+                        Environment.NewLine + "VISUAL_PIXEL_AUDIT: " +
+                        (pixelAudit?.Detail ?? "NOT_APPLICABLE") +
                         Environment.NewLine + "INTERNAL_VISUAL_CAPTURE: " +
                         offscreen.Detail;
                 }
