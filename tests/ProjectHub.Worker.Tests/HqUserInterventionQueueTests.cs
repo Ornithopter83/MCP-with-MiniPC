@@ -25,6 +25,7 @@ public sealed class HqUserInterventionQueueTests
             var hqBody = HqUserInterventionQueue.AppendToHqBody(
                 "MILESTONE_REPORT\nM2", pending);
             Assert.Equal(first.Message + "\n\n" + second.Message +
+                "\n\n" + HqUserInterventionQueue.LatestUserPriorityGuidance +
                 "\n\nMILESTONE_REPORT\nM2", hqBody);
             Assert.DoesNotContain(manual.Message, hqBody);
             Assert.DoesNotContain(first.Id, hqBody);
@@ -152,6 +153,7 @@ public sealed class HqUserInterventionQueueTests
             var body = HqUserInterventionQueue.AppendToHqBody(
                 "@@MESSAGE\n기존 역할 지시", restored.Pending());
             Assert.Equal("@@MESSAGE\n" + message +
+                "\n\n" + HqUserInterventionQueue.LatestUserPriorityGuidance +
                 "\n\n기존 역할 지시", body);
             Assert.Contains(message, body);
             Assert.DoesNotContain(entry.Id, body);
@@ -189,10 +191,53 @@ public sealed class HqUserInterventionQueueTests
                 "기존 마일스톤 보고\r\n\r\nHQ 계약";
             var composed = HqUserInterventionQueue.AppendToHqBody(
                 hqPrompt, queue.ClaimPending());
-            Assert.Equal("역할: HQ\r\n입력 유형: MILESTONE\r\n입력 본문:\r\n" +
-                message + "\n\n기존 마일스톤 보고\r\n\r\nHQ 계약", composed);
+            Assert.Equal(message + "\n\n" +
+                HqUserInterventionQueue.LatestUserPriorityGuidance + "\n\n" +
+                hqPrompt, composed);
+            Assert.StartsWith(message, composed, StringComparison.Ordinal);
+            Assert.True(composed.IndexOf("역할: HQ", StringComparison.Ordinal) >
+                composed.IndexOf(HqUserInterventionQueue.LatestUserPriorityGuidance,
+                    StringComparison.Ordinal));
             Assert.DoesNotContain(entry.Id, composed);
             Assert.DoesNotContain("USER_MESSAGE_BEGIN", composed);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void LatestUserInputHasPriorityOverEarlierHqAndSpecialistInstructions()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var queue = new HqUserInterventionQueue(root, "priority");
+            const string latest = "  최신 사용자 요청은 이대로 전달해.\r\n기존 방침 취소.  ";
+            queue.Add(latest, false);
+            var pending = queue.ClaimPending();
+            var hqPrompt = HqUserInterventionQueue.AppendToHqBody(
+                "역할: HQ\n입력 본문:\n과거 계획\n기존 HQ 계약", pending);
+            Assert.StartsWith(latest, hqPrompt, StringComparison.Ordinal);
+            Assert.True(hqPrompt.IndexOf(latest, StringComparison.Ordinal) <
+                hqPrompt.IndexOf("역할: HQ", StringComparison.Ordinal));
+            Assert.True(hqPrompt.IndexOf(
+                HqUserInterventionQueue.LatestUserPriorityGuidance,
+                StringComparison.Ordinal) <
+                hqPrompt.IndexOf("과거 계획", StringComparison.Ordinal));
+
+            var workPrompt = HqUserInterventionQueue.AppendToHqBody(
+                "@@MESSAGE\n이전 작업 지시\nWORK 계약", pending);
+            Assert.StartsWith("@@MESSAGE\n" + latest, workPrompt,
+                StringComparison.Ordinal);
+            Assert.True(workPrompt.IndexOf("WORK 계약", StringComparison.Ordinal) >
+                workPrompt.IndexOf(HqUserInterventionQueue.LatestUserPriorityGuidance,
+                    StringComparison.Ordinal));
+
+            var crlfPrompt = HqUserInterventionQueue.AppendToHqBody(
+                "@@MESSAGE\r\n이전 HIGH 지시\r\nHIGH 계약", pending);
+            Assert.StartsWith("@@MESSAGE\r\n" + latest, crlfPrompt,
+                StringComparison.Ordinal);
+            Assert.Contains(latest, crlfPrompt);
+            Assert.DoesNotContain(pending[0].Id, hqPrompt);
         }
         finally { Directory.Delete(root, true); }
     }
