@@ -53,6 +53,29 @@ public sealed class UnityBackgroundFocusPolicyTests
             UnityBackgroundFocusPolicy.IsProjectEditorTitle(title, project));
     }
 
+    [Theory]
+    [InlineData("Unity", "Unity 6 - Unity3DSample - Windows", @"C:\projects\Unity3DSample", true)]
+    [InlineData("Unity", "Unity 6 - DifferentProject - Windows", @"C:\projects\Unity3DSample", false)]
+    [InlineData("Unity Hub", "Unity 6 - Unity3DSample - Windows", @"C:\projects\Unity3DSample", false)]
+    [InlineData("Unity", "Unity 6 - Unity3DSample - Windows", null, false)]
+    public void BackgroundGuardDoesNotTargetOtherProjectEditors(
+        string process, string title, string? root, bool expected)
+    {
+        Assert.Equal(expected,
+            UnityBackgroundFocusPolicy.IsGuardedEditorForProject(process, title, root));
+    }
+
+    [Fact]
+    public void CaptureScopeNeverRequiresAnOSForegroundWindowOnHeadlessPlatforms()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        using var guard = UnityBackgroundFocusGuard.Start();
+        var scope = guard.BeginBackgroundCapture();
+        Assert.Contains("BACKGROUND_CAPTURE", scope.Diagnostic);
+        scope.Dispose();
+        Assert.Equal(0, guard.RestoreAttempts);
+    }
+
     [Fact]
     public void GuardMatchesOnlyCurrentProjectPlayerOutput()
     {
