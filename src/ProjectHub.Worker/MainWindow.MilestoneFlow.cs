@@ -920,6 +920,7 @@ public partial class MainWindow
                 normalizedRoot);
             _formatRecoveryJobs.TryRemove(jobId, out _);
             _formatRecoveryUnreadElements.TryRemove(jobId, out _);
+            WorkerCliEnvironmentProbe.Forget(jobId);
             _activeCoordinatorFirst = false;
             _activeTaskCts = null;
             _activeProjectJobId = null;
