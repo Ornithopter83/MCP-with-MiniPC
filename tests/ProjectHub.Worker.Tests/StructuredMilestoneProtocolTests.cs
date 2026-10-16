@@ -72,29 +72,29 @@ public sealed class StructuredMilestoneProtocolTests
     [Theory]
     [InlineData("PAUSE")]
     [InlineData("END")]
-    public void HqControlActionTakesPriorityOverMisleadingMilestoneAndPreservesOriginal(
-        string action)
+    public void HqControlMessageIsNotInterpretedAsAnotherMilestone(string action)
     {
-        var original = "[KEY=control123]\\n[ACTION=" + action + "]\\n" +
-            "@@MILESTONE\\n<ID>M8</>\\n" +
-            "@@MESSAGE\\n<TEXT>오프라인 검증은 미확인이다.</>\\n" +
-            "@@RESUME\\n<TEXT>사용자 검증 후 재개</>\\n" +
+        const string message = "@@MILESTONE와 <ID>M8</>은 사용자 설명이며 오프라인 검증은 미확인이다.";
+        var original = "[KEY=control123]" + Environment.NewLine +
+            "[GOTO=WORKER]" + Environment.NewLine +
+            "[ACTION=" + action + "]" + Environment.NewLine +
+            "@@MESSAGE" + Environment.NewLine +
+            "<TEXT>" + message + "</>" + Environment.NewLine +
             "[RESPONSE=OK]";
-        original = original.Replace("\\n", "\n", StringComparison.Ordinal);
-
         var result = HqTextProtocol.Parse(original);
         Assert.True(result.IsValid, string.Join("; ", result.Errors));
         var control = Assert.Single(result.Parse.ValidActions);
         Assert.Equal(action, control.Name);
-        Assert.Equal(original, control.Body);
-        Assert.Equal(original, ActionBlockContract.ParseHq(
-            result.CompatibilityMessage).ValidActions.Single().Body);
+        Assert.Equal(message, control.Body);
+        var wrapped = ActionBlockContract.ParseHq(result.CompatibilityMessage);
+        Assert.False(wrapped.HasErrors);
+        Assert.Contains(message, Assert.Single(wrapped.ValidActions).JsonPayload);
     }
 
     [Theory]
     [InlineData("PAUSE")]
     [InlineData("END")]
-    public void HqMalformedControlTextPreservesOriginalInsteadOfAskingForNewDecision(
+    public void HqMalformedControlTextDoesNotChangeAction(
         string action)
     {
         var original = "[ACTION=" + action + "]\n" +
@@ -104,7 +104,7 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.True(result.IsValid, string.Join("; ", result.Errors));
         var control = Assert.Single(result.Parse.ValidActions);
         Assert.Equal(action, control.Name);
-        Assert.Equal(original, control.Body);
+        Assert.Equal("<TEXT>원문 그대로 노출</TEXT>", control.Body);
     }
 
     [Fact]
@@ -416,7 +416,7 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Equal(3, parsed.Issues.Count);
         Assert.Contains("#73 미해결", parsed.Issues[0]);
         var canonical = MilestoneDefinitionContract.NormalizeWorkReport(0, actualWork, null);
-        Assert.StartsWith("@@REPORT", canonical.TrimStart());
+        Assert.StartsWith("[GOTO=WORKER]", canonical.TrimStart());
         Assert.Contains("@@REPORT", canonical);
         Assert.Contains("<STATUS>blocked</>", canonical);
         Assert.Contains("<ISSUES>", canonical);
