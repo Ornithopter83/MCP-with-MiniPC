@@ -93,6 +93,45 @@ internal static class UnityVisualFoundryPremium
                 UnityEditor.AssetDatabase.CreateAsset(vfPremiumMat,
                     vfOutput + "/PrismaticUI.mat");
             }
+            // Animated atmospheric halo is baked as a Sprite. This is
+            // pipeline-neutral and requires no external image-generation model.
+            var vfHaloTexture = new UnityEngine.Texture2D(256,256,
+                UnityEngine.TextureFormat.RGBA32,false);
+            var vfHaloPixels = new UnityEngine.Color[256*256];
+            for(int vfY=0;vfY<256;vfY++)
+                for(int vfX=0;vfX<256;vfX++) {
+                    var vfDx=(vfX-127.5f)/127.5f;
+                    var vfDy=(vfY-127.5f)/127.5f;
+                    var vfRadius = UnityEngine.Mathf.Sqrt(vfDx*vfDx + vfDy*vfDy);
+                    var vfGlow = UnityEngine.Mathf.Pow(
+                        UnityEngine.Mathf.Clamp01(1f-vfRadius),2.8f);
+                    var vfHue = UnityEngine.Color.Lerp(vfColor(vfSecondary),
+                        vfColor(vfAccent),.6f+vfDx*.2f);
+                    vfHue.a = vfGlow*.73f;
+                    vfHaloPixels[vfY*256+vfX]=vfHue;
+                }
+            vfHaloTexture.SetPixels(vfHaloPixels);
+            vfHaloTexture.Apply();
+            var vfHaloPath = vfOutput+"/Halo.png";
+            System.IO.File.WriteAllBytes(
+                System.IO.Path.Combine(UnityEngine.Application.dataPath,
+                    vfHaloPath.Substring("Assets/".Length).Replace('/',
+                        System.IO.Path.DirectorySeparatorChar)),
+                vfHaloTexture.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(vfHaloTexture);
+            UnityEditor.AssetDatabase.ImportAsset(vfHaloPath,
+                UnityEditor.ImportAssetOptions.ForceSynchronousImport);
+            var vfHaloImporter = UnityEditor.AssetImporter.GetAtPath(vfHaloPath)
+                as UnityEditor.TextureImporter;
+            if(vfHaloImporter == null)
+                throw new System.InvalidOperationException("VISUAL_FOUNDRY_HALO_IMPORT_FAILED");
+            vfHaloImporter.textureType = UnityEditor.TextureImporterType.Sprite;
+            vfHaloImporter.mipmapEnabled = false;
+            vfHaloImporter.SaveAndReimport();
+            var vfHaloSprite = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Sprite>(
+                vfHaloPath);
+            if(vfHaloSprite == null)
+                throw new System.InvalidOperationException("VISUAL_FOUNDRY_HALO_SPRITE_MISSING");
             """;
 
     private const string AddDecor = """
@@ -102,6 +141,10 @@ internal static class UnityVisualFoundryPremium
                 var vfSweep = vfPlate("Atmospheric rim",vfRoot.transform,
                     new UnityEngine.Vector2(0,393),
                     new UnityEngine.Vector2(1480,2),vfColor(vfSecondary) * .38f);
+                var vfHalo = vfPlate("Atmospheric halo",vfRoot.transform,
+                    new UnityEngine.Vector2(699,322),
+                    new UnityEngine.Vector2(410,410),UnityEngine.Color.white);
+                vfHalo.GetComponent<UnityEngine.UI.Image>().sprite = vfHaloSprite;
                 var vfSignal = vfPlate("Status indicator",vfRoot.transform,
                     new UnityEngine.Vector2(782,439),
                     new UnityEngine.Vector2(36,36),vfColor(vfAccent));
@@ -207,6 +250,10 @@ internal static class UnityVisualFoundryPremium
                 vfPulse.SetCurve("",typeof(UnityEngine.UI.Image),"m_Color.a",vfPulseCurve);
                 UnityEditor.AssetDatabase.CreateAsset(vfPulse,
                     vfOutput + "/" + vfScreen + "-pulse.anim");
+                var vfSignalAnimation = vfSignal.gameObject.AddComponent<UnityEngine.Animation>();
+                vfSignalAnimation.AddClip(vfPulse,"Pulse");
+                vfSignalAnimation.clip = vfPulse;
+                vfSignalAnimation.playAutomatically = true;
                 """;
 
     private const string LayoutAudit = """
