@@ -27,7 +27,7 @@ public sealed class UnityDesignHighDirectReviewTests
     {
         var qa = HqTextProtocol.Parse(Milestone(
             "@@WORK=10\n<PATH>Assets/Quiz.cs</>\n<INSTRUCTIONS>구현</>\n@@QA\n<INSTRUCTIONS>테스트</>"));
-        Assert.Contains("COMPACT_QA_REMOVED", qa.Errors);
+        Assert.Contains("COMPACT_SECTION_FORBIDDEN", qa.Errors);
         var noHigh = HqTextProtocol.Parse(Milestone(
             "@@DESIGN=0\n<PATH>docs/projecthub/look.md</>\n<INSTRUCTIONS>UI 제작</>")
             .Replace("@@HIGH\n<INSTRUCTIONS>최종 통합 확인과 수정</>", ""));
