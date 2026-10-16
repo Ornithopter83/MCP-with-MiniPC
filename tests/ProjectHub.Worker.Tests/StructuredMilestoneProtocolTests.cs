@@ -88,7 +88,10 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Equal(message, control.Body);
         var wrapped = ActionBlockContract.ParseHq(result.CompatibilityMessage);
         Assert.False(wrapped.HasErrors);
-        Assert.Contains(message, Assert.Single(wrapped.ValidActions).JsonPayload);
+        using var decoded = System.Text.Json.JsonDocument.Parse(
+            Assert.Single(wrapped.ValidActions).JsonPayload!);
+        Assert.Equal(message,
+            decoded.RootElement.GetProperty("message").GetString());
     }
 
     [Theory]
