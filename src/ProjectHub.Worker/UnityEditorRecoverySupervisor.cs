@@ -173,9 +173,15 @@ internal sealed class UnityEditorRecoverySupervisor : IAsyncDisposable
         {
             var launch = await _open(_projectRoot, cancellationToken)
                 .ConfigureAwait(false);
-            if (!launch.Success)
+            if (launch.Success)
+                _report("UNITY_EDITOR_GUI_LAUNCH_SUBMITTED: 명령은 성공했지만 " +
+                    "Editor/Pipeline 연결 및 화면 포커스는 아직 확인되지 않았습니다. " +
+                    "다음 실제 연결 점검으로 복구 여부를 판정합니다.", "UNVERIFIED");
+            else
                 _report("Unity Editor 재실행 실패: " + launch.Detail, "UNVERIFIED");
-            // Do not claim recovery until a later live Editor probe succeeds.
+            // A GUI launcher can self-activate. The project-scoped focus
+            // guard protects the user; the native screenshot path never
+            // requests foreground activation. A later probe proves recovery.
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
