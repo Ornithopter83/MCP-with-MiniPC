@@ -1,17 +1,18 @@
 namespace ProjectHub.Worker;
 
 /// <summary>
-/// Independent source-only WORKs may run up to the user-selected limit.
-/// Any WORK that can touch Unity Editor, scenes, prefabs or AssetDatabase
-/// uses the same exclusive lane; waiting for that lane never consumes a
-/// source-worker slot.
+/// Independent code, data and documentation WORKs may run in parallel.
+/// Editor-dependent WORKs keep their exclusive project-wide lease; waiting
+/// for that lease does not consume a file-only worker slot.
 /// </summary>
 internal static class UnityWorkSchedulingPolicy
 {
     private static readonly string[] EditorOperations =
     {
         "unity cli", "unity mcp", "unity editor", "unityeditor.",
-        "assetdatabase", "editor api", "playmode", "editmode",
+        "assetdatabase", "editor api", "playmode",
+        "editmode 실행", "editmode 테스트 실행", "editmode 검증 실행",
+        "run editmode", "execute editmode",
         "unity recompile", "unity command", "unity eval",
         "씬 저장", "씬 배치", "프리팹 저장", "에셋 임포트",
         "에셋 import"
@@ -36,17 +37,41 @@ internal static class UnityWorkSchedulingPolicy
                 work.Body.Contains(marker, StringComparison.OrdinalIgnoreCase)))
             return true;
 
-        return work.WritePaths.Any(path =>
-        {
-            var normalized = path.Replace('\\', '/').Trim('/');
-            // Only ordinary C# gameplay source files are an unambiguous
-            // editor-free lane. Folders, Editor scripts and other assets stay
-            // exclusive, including read-only Editor operations.
-            return !normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
-                   !normalized.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
-                   normalized.Split('/').Any(segment =>
-                       segment.Equals("Editor", StringComparison.OrdinalIgnoreCase));
-        });
+        return work.WritePaths.Any(path => !IsEditorFreeFile(path));
+    }
+
+    private static bool IsEditorFreeFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var normalized = path.Replace('\\', '/').Trim('/');
+        if (normalized.Contains("..", StringComparison.Ordinal) ||
+            !normalized.Contains('/', StringComparison.Ordinal))
+            return false;
+
+        // Editing test code does not execute EditMode. The worker's BUILD
+        // stage and HIGH own Unity compilation and test execution.
+        if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
+            normalized.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) &&
+            !normalized.Split('/').Any(segment =>
+                segment.Equals("Editor", StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        // StreamingAssets text databases and scoped reports do not need
+        // Unity Editor API access. .meta, folders and importable Unity assets
+        // remain exclusive. The WORK prompt forbids Editor calls on this lane.
+        var textDatabase = normalized.StartsWith("Assets/StreamingAssets/",
+            StringComparison.OrdinalIgnoreCase);
+        var projectDocument = normalized.StartsWith("docs/",
+            StringComparison.OrdinalIgnoreCase);
+        var suffix = Path.GetExtension(normalized);
+        return (textDatabase && (suffix.Equals(".json", StringComparison.OrdinalIgnoreCase) ||
+                                 suffix.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
+                                 suffix.Equals(".csv", StringComparison.OrdinalIgnoreCase))) ||
+               (projectDocument && (suffix.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+                                    suffix.Equals(".txt", StringComparison.OrdinalIgnoreCase)));
+
     }
 
     internal static async Task<TResult[]> RunAsync<TResult>(
