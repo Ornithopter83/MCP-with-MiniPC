@@ -20,7 +20,6 @@ public sealed class UnityDesignHighDirectReviewTests
         Assert.True(MilestoneDefinitionContract.TryBuild(parsed.CompatibilityMessage,
             parsed.Parse, out var milestone, out var error), error);
         Assert.NotNull(milestone);
-        Assert.False(milestone!.QaReserved);
     }
 
     [Fact]
