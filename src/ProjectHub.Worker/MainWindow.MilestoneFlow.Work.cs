@@ -48,12 +48,20 @@ public partial class MainWindow
                 "blocked", startError));
         }
 
+        var requiresEditorLane = UnityWorkSchedulingPolicy.RequiresEditorLane(work);
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
             work.Id,
             MilestoneDefinitionContract.BuildWorkContext(work),
             work.WritePaths,
             workingDirectory,
             readOnly: work.ReadOnly);
+        if (!requiresEditorLane)
+            prompt += Environment.NewLine + Environment.NewLine +
+                "WORK_LANE: FILE_ONLY. 지정된 C#·StreamingAssets 텍스트·문서 파일만 " +
+                "편집한다. Editor/Unity CLI/MCP/AssetDatabase 및 빌드·테스트는 " +
+                "호출하지 않는다. 신규 .meta, Packages/ProjectSettings 수정이나 " +
+                "씬·프리팹 작업이 필요하면 직접 실행하지 말고 ISSUES에 보고해 " +
+                "Worker/HQ의 다음 결정을 받는다.";
         if (work.ExecutionMode == "CONTINUE" &&
             !string.IsNullOrWhiteSpace(checkpoint!.LastReport))
         {
@@ -66,11 +74,8 @@ public partial class MainWindow
         var sceneWritePath = work.ReadOnly ? null : work.WritePaths
             .FirstOrDefault(path => UnitySceneCliWorkflow.TryNormalizeScenePath(
                 path, out _));
-        // Source/Editor lane restrictions and Unity tool use are already in
-        // the WORK contract. Keep the existing scene-open operation without
-        // appending another generic instruction block to every WORK prompt.
-        if (UnityWorkSchedulingPolicy.RequiresEditorLane(work) &&
-            sceneWritePath is not null)
+        // Only the Editor lane may open an existing Unity scene.
+        if (requiresEditorLane && sceneWritePath is not null)
         {
             // The scheduler holds the project-wide Editor lease here.
             var sceneFile = Path.Combine(workingDirectory,
