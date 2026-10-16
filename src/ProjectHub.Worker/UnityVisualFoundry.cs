@@ -25,6 +25,8 @@ internal static class UnityVisualFoundry
             "프리미엄 화면 킷 경로: " + AssetDirectory + "\n" +
             "화면: Menu/Quiz/Results 각 3가지 레이아웃(기본·Editorial·Immersive), Preview-*.unity.\n" +
             "셰이더: PrismaticUI.shader/material; 등장·발광 애니메이션.\n" +
+            "기존 프로젝트 재사용 가능한 에셋: " +
+            Path.Combine(Directory, "existing-visual-assets.json") + "\n" +
             "추천 화면 구성: " + PreferredLayout + "; 우선 후보: " +
             UnityVisualFoundryQuality.PrefabPath(this, "Quiz", PreferredLayout) + "\n" +
             "화면 구성 후보는 지시와 실제 디자인 맥락에 따라 선택하라.\n" +
@@ -103,6 +105,9 @@ internal static class UnityVisualFoundry
             instructions,
             note = "Presentation-only sample; DESIGN must bind actual gameplay."
         }, new JsonSerializerOptions { WriteIndented = true }), ProjectHubJson.Utf8NoBom);
+        UnityVisualFoundryCatalog.SaveManifest(
+            Path.Combine(folder, "existing-visual-assets.json"),
+            UnityVisualFoundryCatalog.Discover(root, style));
         File.WriteAllText(script, BuildEditorExpression(relativeAssets, style),
             ProjectHubJson.Utf8NoBom);
         return new(Path.GetFullPath(root), folder, script, manifest, relativeAssets, style)
