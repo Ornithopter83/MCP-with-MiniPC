@@ -610,20 +610,8 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void QaAndHighReports_UseAnnotationContracts()
+    public void HighReports_UseAnnotationContracts()
     {
-        var qa = MilestoneDefinitionContract.NormalizeQaReport(
-            0,
-            """
-            @@REPORT
-            <STATUS>passed</>
-            <SUMMARY>동작 확인</>
-            <ISSUES>없음</>
-            [RESPONSE=OK]
-            """,
-            null);
-
-        Assert.Equal("passed", MilestoneDefinitionContract.ReadQaStatus(qa));
 
         var high = MilestoneDefinitionContract.NormalizeHighReport(
             0,
@@ -641,9 +629,9 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void QaBlocked_IsDistinctFromIssue()
+    public void WorkBlocked_IsNotSuccess()
     {
-        var qa = MilestoneDefinitionContract.NormalizeQaReport(
+        var qa = MilestoneDefinitionContract.NormalizeWorkReport(
             0,
             """
             @@REPORT
@@ -654,11 +642,11 @@ public sealed class CoordinatorFirstContractTests
             """,
             null);
 
-        Assert.Equal("blocked", MilestoneDefinitionContract.ReadQaStatus(qa));
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(qa));
     }
 
     [Fact]
-    public void LegacyManagerSetting_RemainsReadableButIsNotPartOfActiveFlow()
+    public void DesignSetting_IsIndependentFromManager()
     {
         var settings = new WorkerTargetSettings(
             null,
@@ -667,48 +655,38 @@ public sealed class CoordinatorFirstContractTests
                 Provider: "openai",
                 Model: "manager-model",
                 Reasoning: "medium"),
-            Qa: new WorkerAiRoleSettings(
+            Design: new WorkerAiRoleSettings(
                 Provider: "openai",
-                Model: "qa-model",
+                Model: "design-model",
                 Reasoning: "high"));
 
         Assert.Equal("manager-model", settings.EffectiveManager.Model);
-        Assert.Equal("qa-model", settings.EffectiveQa.Model);
-        Assert.NotEqual(settings.EffectiveManager.Model, settings.EffectiveQa.Model);
+        Assert.Equal("design-model", settings.EffectiveDesign.Model);
+        Assert.NotEqual(settings.EffectiveManager.Model, settings.EffectiveDesign.Model);
     }
 
     [Fact]
-    public void RoleContracts_DescribeManagerlessWorkerFlow()
+    public void RoleContracts_DescribeCurrentUnityWorkerFlow()
     {
         var hq = RoleContractLoader.LoadHqFooter();
         var work = RoleContractLoader.LoadWorkFooter();
-        var qa = RoleContractLoader.LoadQaFooter();
+        var design = RoleContractLoader.LoadDesignFooter();
         var high = RoleContractLoader.LoadHighFooter();
-
+        var asset = RoleContractLoader.LoadAssetManagerFooter();
         Assert.Contains("[ACTION=WORK]", hq);
-        Assert.Contains("[RESPONSE=OK]", hq);
-        Assert.Contains("<ID>M1</>", hq);
         Assert.Contains("@@WORK=10", hq);
-        Assert.Contains("<PATH>", hq);
-        Assert.DoesNotContain("@@QA\n", hq);
+        Assert.Contains("@@DESIGN=0", hq);
+        Assert.Contains("@@ASSET_MANAGER=1", hq);
         Assert.Contains("@@HIGH", hq);
-        Assert.Contains("Git", hq);
-        Assert.DoesNotContain("@@MANAGER", hq);
-        Assert.DoesNotContain("@@MECHANICAL", hq);
-
+        Assert.DoesNotContain("@@QA", hq);
         Assert.Contains("@@REPORT", work);
-        Assert.Contains("<STATUS>passed</>", qa);
-        Assert.Contains("<STATUS>는 passed, issue, blocked", qa);
-        Assert.DoesNotContain("[GOTO : HIGH]", qa);
-        Assert.DoesNotContain("[GOTO : MANAGER]", high);
-        Assert.Contains("Git 오류", high);
-
+        Assert.Contains("1920×1080", design);
+        Assert.Contains("DESIGN을 재호출하지 않는다", high);
+        Assert.Contains("DISCOVER", asset);
         var historyPrompt = RoleContractLoader.BuildHistoryPrompt(
-            RoleContractLoader.BuildQaPrompt("runtime 확인"));
+            RoleContractLoader.BuildHighPrompt("runtime 확인"));
         Assert.Contains("runtime 확인", historyPrompt);
-        Assert.DoesNotContain("당신은 QA다.", historyPrompt);
-        Assert.DoesNotContain("ROLE_CONTRACT:", historyPrompt);
-        Assert.DoesNotContain(RoleContractLoader.QaContractPath, historyPrompt);
+        Assert.DoesNotContain(RoleContractLoader.HighContractPath, historyPrompt);
     }
 
     [Fact]
@@ -1085,9 +1063,8 @@ public sealed class CoordinatorFirstContractTests
             "{}",
             new[] { "src" },
             "C:\\repo");
-        var qaPrompt = RoleContractLoader.BuildQaPrompt("{}");
         var highPrompt = RoleContractLoader.BuildHighPrompt("{}");
-        foreach (var prompt in new[] { workPrompt, qaPrompt, highPrompt })
+        foreach (var prompt in new[] { workPrompt, highPrompt })
         {
             Assert.Contains("문자 인코딩:", prompt);
             Assert.Contains("UTF-8", prompt);
