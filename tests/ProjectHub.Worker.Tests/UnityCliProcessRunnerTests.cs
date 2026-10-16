@@ -8,7 +8,7 @@ public sealed class UnityCliProcessRunnerTests
     public void ChildProcessArgumentsAndIsolationArePreserved()
     {
         var root = Path.Combine(Path.GetTempPath(), "unity project");
-        var args = new[] { "command", "eval", "UnityEngine.Debug.Log(\\"a b\\")",
+        var args = new[] { "command", "eval", "quoted argument with spaces",
             "--project-path", root, "--format", "json" };
         var info = UnityCliProcessRunner.CreateStartInfo(root, args);
 
