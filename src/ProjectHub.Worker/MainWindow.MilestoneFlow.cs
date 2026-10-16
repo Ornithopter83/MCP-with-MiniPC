@@ -179,6 +179,12 @@ public partial class MainWindow
                 throw new InvalidOperationException(
                     "UNITY_PROJECT_NOT_FOUND: " + unityPreflight.Detail);
 
+            // The first HQ preflight is only a snapshot. Later Editor recovery
+            // must be visible to milestone execution and Native verification.
+            var editorConnection = new UnityEditorConnectionState(
+                normalizedRoot, unityPreflight,
+                UnityToolchainPreflight.RunUncoordinatedAsync);
+
             // Live only while this user job is running. It probes without
             // waiting for AI roles' long-held Editor lane and never persists
             // into the dashboard idle state.
@@ -186,7 +192,8 @@ public partial class MainWindow
                 editorRecoverySupervisor = UnityEditorRecoverySupervisor.StartForJob(
                     normalizedRoot, cts.Token, (detail, status) =>
                         AddTaskMessage("UNITY EDITOR RECOVERY", detail,
-                            status: status, includeHistory: false));
+                            status: status, includeHistory: false),
+                    editorConnection.Observe);
 
             var unityCatalogPath = UnityToolchainPreflight.SaveCatalogForJob(
                 normalizedRoot, jobId, unityPreflight);
@@ -194,6 +201,31 @@ public partial class MainWindow
                 AddTaskMessage("UNITY CLI COMMAND CATALOG",
                     "실제 Editor에서 조회한 명령·매개변수 목록 보존: " +
                     unityCatalogPath, status: "OBSERVED");
+
+            // Re-probe immediately before an Editor-dependent operation.
+            // The background recovery watcher also updates this shared state,
+            // but process existence/localhost listeners never count as ready.
+            async Task<bool> RecheckUnityEditorAsync(CancellationToken token)
+            {
+                var previous = editorConnection.Current;
+                var refreshed = await editorConnection.RecheckAsync(token);
+                if (previous.Ready != refreshed.Ready ||
+                    previous.Code != refreshed.Code)
+                    AddTaskMessage("UNITY EDITOR RECHECK",
+                        refreshed.Code + ": " + refreshed.Detail,
+                        status: refreshed.Ready ? "OBSERVED" : "UNVERIFIED",
+                        includeHistory: false);
+
+                // Invalidate an older catalog on failure; publish only
+                // command records from the current live CLI response.
+                var updatedCatalog = UnityToolchainPreflight.SaveCatalogForJob(
+                    normalizedRoot, jobId, refreshed);
+                if (updatedCatalog is not null && !previous.Ready)
+                    AddTaskMessage("UNITY CLI COMMAND CATALOG",
+                        "Editor 재연결 후 실시간 명령 목록: " + updatedCatalog,
+                        status: "OBSERVED", includeHistory: false);
+                return refreshed.Ready;
+            }
 
             var editorRecoveryNotice = unityPreflight.Ready ? string.Empty :
                 "UNITY_EDITOR_UNAVAILABLE: " + unityPreflight.Code + ": " +
@@ -658,7 +690,7 @@ public partial class MainWindow
                         implementer,
                         high,
                         designRole,
-                        unityPreflight.Ready,
+                        RecheckUnityEditorAsync,
                         unityFocusGuard,
                         initialChangedPaths,
                         cts.Token);
@@ -969,7 +1001,7 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         WorkerAiRoleSettings high,
         WorkerAiRoleSettings designRole,
-        bool unityEditorReady,
+        Func<CancellationToken, Task<bool>> recheckUnityEditorAsync,
         UnityBackgroundFocusGuard unityFocusGuard,
         IReadOnlySet<string> initialChangedPaths,
         CancellationToken cancellationToken)
@@ -1020,6 +1052,10 @@ public partial class MainWindow
         var resourceReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
+        var milestoneEditorReady = await recheckUnityEditorAsync(cancellationToken);
+        mechanicalReports.Add("UNITY_EDITOR_MILESTONE_RECHECK: " +
+            (milestoneEditorReady ? "CLI_CONNECTED" : "CLI_UNVERIFIED") +
+            "; individual commands and Native image remain separately unverified.");
         var highReport = string.Empty;
         var gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
         var outcome = "COMPLETED";
@@ -1175,13 +1211,17 @@ public partial class MainWindow
                         parsed.Status == "completed" && actualGraphics;
                     // Worker obtains its own evidence after the agent; this
                     // must not overwrite screenshots captured during DESIGN.
-                    var offscreen = visualPlan is null || !unityEditorReady
-                        ? new UnityBackgroundVisualEvidence(false,
-                            "OFFSCREEN_CAPTURE_UNVERIFIED: " +
-                            (visualPlan is null ? "tool preparation unavailable" :
-                                "Unity Editor preflight not ready"), null)
-                        : await CaptureBestAvailableVisualAsync(
+                    UnityBackgroundVisualEvidence offscreen;
+                    if (visualPlan is null)
+                        offscreen = new(false,
+                            "OFFSCREEN_CAPTURE_UNVERIFIED: tool preparation unavailable", null);
+                    else if (await recheckUnityEditorAsync(cancellationToken))
+                        offscreen = await CaptureBestAvailableVisualAsync(
                             visualPlan, unityFocusGuard, cancellationToken);
+                    else
+                        offscreen = new(false,
+                            "OFFSCREEN_CAPTURE_UNVERIFIED: latest Editor CLI probe not ready",
+                            null);
                     designReport = (verified ? "DESIGN_STATUS: COMPLETED" :
                         "DESIGN_STATUS: BLOCKED_OR_IN_PROGRESS") +
                         Environment.NewLine +
@@ -1426,7 +1466,7 @@ public partial class MainWindow
             // for an actual compiler/build failure, never for EPERM or timeout.
             var buildRuns = await MilestoneBuildRunner.RunAsync(
                 workingDirectory, jobId, executableDefinitions, cancellationToken,
-                unityEditorReady);
+                await recheckUnityEditorAsync(cancellationToken));
             foreach (var build in buildRuns)
                 mechanicalReports.Add(
                     MilestoneDefinitionContract.FormatMechanicalResult(build));
@@ -1448,7 +1488,7 @@ public partial class MainWindow
                     milestoneChangedPaths.Add(path);
                 buildRuns = await MilestoneBuildRunner.RunAsync(
                     workingDirectory, jobId, executableDefinitions, cancellationToken,
-                unityEditorReady);
+                await recheckUnityEditorAsync(cancellationToken));
                 foreach (var build in buildRuns)
                     mechanicalReports.Add("REBUILD: " +
                         MilestoneDefinitionContract.FormatMechanicalResult(build));
@@ -1603,11 +1643,17 @@ public partial class MainWindow
                         : RoleTextProtocol.BuildResult("blocked",
                             "DESIGN_REVISION_INVALID_OR_PROCESS_FAILED",
                             issues: new[] { roleRun.StandardError ?? string.Empty });
-                    if (unityEditorReady && reviewVisualPlan is not null)
+                    if (reviewVisualPlan is not null)
                     {
-                        var evidence = await CaptureBestAvailableVisualAsync(
-                            reviewVisualPlan, unityFocusGuard, cancellationToken);
-                        reviewVisualEvidence = evidence.Detail;
+                        if (await recheckUnityEditorAsync(cancellationToken))
+                        {
+                            var evidence = await CaptureBestAvailableVisualAsync(
+                                reviewVisualPlan, unityFocusGuard, cancellationToken);
+                            reviewVisualEvidence = evidence.Detail;
+                        }
+                        else
+                            reviewVisualEvidence =
+                                "NATIVE_CAPTURE_UNVERIFIED: latest Editor CLI probe not ready";
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1678,7 +1724,7 @@ public partial class MainWindow
                 {
                     var reviewBuilds = await MilestoneBuildRunner.RunAsync(
                         workingDirectory, jobId, executableDefinitions, cancellationToken,
-                unityEditorReady);
+                await recheckUnityEditorAsync(cancellationToken));
                     foreach (var build in reviewBuilds)
                         mechanicalReports.Add("DESIGN_REVISION_BUILD: " +
                             MilestoneDefinitionContract.FormatMechanicalResult(build));
@@ -1737,7 +1783,7 @@ public partial class MainWindow
             {
                 var highBuilds = await MilestoneBuildRunner.RunAsync(
                     workingDirectory, jobId, executableDefinitions, cancellationToken,
-                unityEditorReady);
+                await recheckUnityEditorAsync(cancellationToken));
                 foreach (var build in highBuilds)
                     mechanicalReports.Add("HIGH_FINAL_BUILD: " +
                         MilestoneDefinitionContract.FormatMechanicalResult(build));

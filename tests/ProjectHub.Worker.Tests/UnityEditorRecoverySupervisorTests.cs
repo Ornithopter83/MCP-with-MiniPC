@@ -17,12 +17,35 @@ public sealed class UnityEditorRecoverySupervisorTests
         Func<string, CancellationToken,
             Task<UnityEditorCommandLifecycle.LaunchResult>> open,
         Action<string, string>? report = null,
-        Func<TimeSpan, CancellationToken, Task>? wait = null) =>
+        Func<TimeSpan, CancellationToken, Task>? wait = null,
+        Action<UnityToolchainPreflight.Result>? observe = null) =>
         new(
             Path.Combine(Path.GetTempPath(), "projecthub-recovery-tests"),
             CancellationToken.None, probe, locked, open,
             wait ?? ((_, token) => Task.Delay(Timeout.InfiniteTimeSpan, token)),
-            report ?? ((_, _) => { }));
+            report ?? ((_, _) => { }), observe);
+
+    [Fact]
+    public async Task RecoveryProbeUpdatesSharedEditorStateForLaterMilestones()
+    {
+        var offline = Missing();
+        var live = Connected();
+        var connection = new UnityEditorConnectionState(
+            Path.GetTempPath(), offline, (_, _) => Task.FromResult(live));
+        var observations = new Queue<UnityToolchainPreflight.Result>(
+            new[] { offline, live });
+        await using var supervisor = Create(
+            (_, _) => Task.FromResult(observations.Dequeue()),
+            _ => true,
+            (_, _) => Task.FromResult(
+                new UnityEditorCommandLifecycle.LaunchResult(true, "not needed")),
+            observe: connection.Observe);
+        Assert.False(connection.Current.Ready);
+        await supervisor.CheckOnceAsync(CancellationToken.None);
+        Assert.False(connection.Current.Ready);
+        await supervisor.CheckOnceAsync(CancellationToken.None);
+        Assert.True(connection.Current.Ready);
+    }
 
     [Fact]
     public async Task TwoConfirmedMissingChecks_RelaunchOnce_ThenConnectionRecovers()

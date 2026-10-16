@@ -23,6 +23,7 @@ internal sealed class UnityEditorRecoverySupervisor : IAsyncDisposable
         Task<UnityEditorCommandLifecycle.LaunchResult>> _open;
     private readonly Func<TimeSpan, CancellationToken, Task> _wait;
     private readonly Action<string, string> _report;
+    private readonly Action<UnityToolchainPreflight.Result>? _stateObserved;
     private Task _loop = Task.CompletedTask;
     private int _missingChecks;
     private int _restartAttempts;
@@ -38,7 +39,8 @@ internal sealed class UnityEditorRecoverySupervisor : IAsyncDisposable
         Func<string, CancellationToken,
             Task<UnityEditorCommandLifecycle.LaunchResult>> open,
         Func<TimeSpan, CancellationToken, Task> wait,
-        Action<string, string> report)
+        Action<string, string> report,
+        Action<UnityToolchainPreflight.Result>? stateObserved = null)
     {
         _projectRoot = Path.GetFullPath(projectRoot);
         _stop = CancellationTokenSource.CreateLinkedTokenSource(jobCancellationToken);
@@ -47,11 +49,13 @@ internal sealed class UnityEditorRecoverySupervisor : IAsyncDisposable
         _open = open;
         _wait = wait;
         _report = report;
+        _stateObserved = stateObserved;
     }
 
     internal static UnityEditorRecoverySupervisor StartForJob(
         string projectRoot, CancellationToken jobCancellationToken,
-        Action<string, string> report)
+        Action<string, string> report,
+        Action<UnityToolchainPreflight.Result>? stateObserved = null)
     {
         var supervisor = new UnityEditorRecoverySupervisor(
             projectRoot, jobCancellationToken,
@@ -59,7 +63,7 @@ internal sealed class UnityEditorRecoverySupervisor : IAsyncDisposable
             UnityEditorCommandLifecycle.ProjectEditorLockHeld,
             UnityEditorCommandLifecycle.OpenForRecoveryAsync,
             (delay, token) => Task.Delay(delay, token),
-            report);
+            report, stateObserved);
         supervisor.StartWatching();
         return supervisor;
     }
@@ -111,6 +115,7 @@ internal sealed class UnityEditorRecoverySupervisor : IAsyncDisposable
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        _stateObserved?.Invoke(state);
         if (state.Ready)
         {
             if (_connectionLost)
