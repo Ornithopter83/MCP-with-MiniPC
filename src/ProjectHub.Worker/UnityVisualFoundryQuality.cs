@@ -31,6 +31,43 @@ internal static class UnityVisualFoundryQuality
             Math.Round(accent, 2), Math.Round(budget, 3), notes);
     }
 
+    /// <summary>
+    /// Mechanical accessibility self-correction applied BEFORE rendering.
+    /// Changes only insufficiently legible palette entries, not game logic.
+    /// </summary>
+    internal static UnityVisualFoundry.Style AutoTune(UnityVisualFoundry.Style input)
+    {
+        return input with
+        {
+            Text = ReachContrast(input.Text, input.Panel, 4.5),
+            Muted = ReachContrast(input.Muted, input.Panel, 4.5),
+            Accent = ReachContrast(input.Accent, input.Panel, 3)
+        };
+    }
+
+    private static string ReachContrast(string foreground, string background,
+        double minimum)
+    {
+        if (Contrast(foreground,background) >= minimum) return foreground;
+        var towardWhite = Contrast("#FFFFFF",background) >
+            Contrast("#000000",background);
+        var end = towardWhite ? "#FFFFFF" : "#000000";
+        var r = Convert.ToInt32(foreground.Substring(1,2),16);
+        var g = Convert.ToInt32(foreground.Substring(3,2),16);
+        var b = Convert.ToInt32(foreground.Substring(5,2),16);
+        var endChannel = towardWhite ? 255 : 0;
+        for (var step = 1; step <= 20; step++)
+        {
+            var t = step/20.0;
+            var color = "#" +
+                ((int)Math.Round(r+(endChannel-r)*t)).ToString("X2") +
+                ((int)Math.Round(g+(endChannel-g)*t)).ToString("X2") +
+                ((int)Math.Round(b+(endChannel-b)*t)).ToString("X2");
+            if (Contrast(color,background) >= minimum) return color;
+        }
+        return end;
+    }
+
     internal static string ChooseLayout(string brief)
     {
         var text = brief ?? string.Empty;
