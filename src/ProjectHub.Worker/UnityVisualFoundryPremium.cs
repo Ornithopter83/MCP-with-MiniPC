@@ -294,9 +294,9 @@ internal static class UnityVisualFoundryPremium
                     "                UnityEditor.AssetDatabase.CreateAsset(clip,clipPath);",
                     ExtraMotion +
                     "                UnityEditor.AssetDatabase.CreateAsset(clip,clipPath);"),
-                "                UnityEngine.Object.DestroyImmediate(vfRoot);\n                vfPrefabPaths.Add(prefabPath);",
+                "                UnityEngine.Object.DestroyImmediate(vfRoot);",
                 VariantPrefabs +
-                "                UnityEngine.Object.DestroyImmediate(vfRoot);\n                vfPrefabPaths.Add(prefabPath);"),
+                "                UnityEngine.Object.DestroyImmediate(vfRoot);"),
             "            UnityEditor.AssetDatabase.SaveAssets();",
             LayoutAudit + "            UnityEditor.AssetDatabase.SaveAssets();");
     }
