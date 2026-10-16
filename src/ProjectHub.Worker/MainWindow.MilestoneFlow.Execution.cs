@@ -372,6 +372,56 @@ public partial class MainWindow
                     var pixelAudit = foundryPlan is null
                         ? null
                         : UnityVisualFoundryPixelAudit.Inspect(offscreen.ImagePath);
+                    // One bounded correction inside the already assigned DESIGN
+                    // task. Only a reliably decoded, near-empty rendered frame
+                    // justifies an additional model turn. No blind retry on CLI
+                    // failure or unverified/missing screenshots.
+                    if (foundryPlan is not null &&
+                        pixelAudit is { Readable: true, FlatFrame: true })
+                    {
+                        AddTaskMessage("UNITY VISUAL FOUNDRY POLISH",
+                            pixelAudit.Detail + "; one bounded correction requested",
+                            status: "UNVERIFIED", includeHistory: false);
+                        var visualPolishPrompt =
+                            RoleContractLoader.BuildDesignPrompt(design, workingDirectory) +
+                            Environment.NewLine + foundryPlan.AgentGuidance +
+                            Environment.NewLine +
+                            "같은 DESIGN #0 작업의 제한적 시각 보정 단계다. " +
+                            "기존 게임 기능과 다른 역할의 작업을 보존하라. " +
+                            "첫 제작 결과에서 실제 PNG를 읽었지만 화면이 비어 있거나 " +
+                            "거의 단색으로 확인되었다. 렌더 경로 및 표시 상태를 " +
+                            "조사하고 효과·레이어·Prefab 통합 문제를 수정하라. " +
+                            "실제 보이지 않는 화면을 성공이라고 보고하지 마라." +
+                            Environment.NewLine + "PIXEL_AUDIT: " + pixelAudit.Detail +
+                            Environment.NewLine + "CAPTURE_FILE: " + offscreen.ImagePath;
+                        var polish = await RunCoordinatorRoleAsync(
+                            jobId, "DESIGN", visualPolishPrompt,
+                            designRole with { ThreadSessionId = null, ThreadProjectPath = null },
+                            workingDirectory, null, null, cancellationToken,
+                            CodexSandboxMode.WorkspaceWrite,
+                            historyWorkItemId: "0",
+                            historyReferenceId: designReference + ":POLISH");
+                        var polished = RoleTextProtocol.ParseWork(polish.FinalMessage);
+                        if (polish.ExitCode == 0 && polished.IsValid &&
+                            polished.Status == "completed")
+                        {
+                            var revisedState =
+                                await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                                    workingDirectory, cancellationToken);
+                            producedPaths = MilestoneMechanicalExecutor.DiffChangeStates(
+                                beforeDesign, revisedState).ToArray();
+                            verified = producedPaths.Any(UnityDesignPromptPolicy.IsVisualArtifact);
+                        }
+                        else
+                            verified = false;
+                        if (visualPlan is not null &&
+                            await recheckUnityEditorAsync(cancellationToken))
+                            offscreen = await CaptureBestAvailableVisualAsync(
+                                visualPlan, unityFocusGuard, cancellationToken);
+                        pixelAudit = UnityVisualFoundryPixelAudit.Inspect(offscreen.ImagePath);
+                    }
+                    if (pixelAudit is { Readable: true, FlatFrame: true })
+                        verified = false;
                     if (pixelAudit is not null)
                         AddTaskMessage("UNITY VISUAL PIXEL AUDIT", pixelAudit.Detail,
                             status: pixelAudit.Readable && !pixelAudit.FlatFrame
