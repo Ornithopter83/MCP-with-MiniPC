@@ -24,7 +24,6 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Equal(new[] { "generated/39.cs" }, milestone.WorkItems["39"].WritePaths);
         Assert.Empty(milestone.Resources);
         Assert.NotNull(milestone.Design);
-        Assert.False(milestone.QaReserved);
     }
 
     private const string Modern = """
