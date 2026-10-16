@@ -508,11 +508,8 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         try
         {
             using var process = Process.GetProcessById(unchecked((int)processId));
-            var projectName = Path.GetFileName(_projectRoot.TrimEnd(
-                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            return UnityBackgroundFocusPolicy.IsUnityEditorProcess(process.ProcessName) &&
-                   UnityBackgroundFocusPolicy.IsProjectEditorTitle(
-                       process.MainWindowTitle, projectName);
+            return UnityBackgroundFocusPolicy.IsGuardedEditorForProject(
+                process.ProcessName, process.MainWindowTitle, _projectRoot);
         }
         catch (Exception error) when (error is ArgumentException or
             InvalidOperationException or Win32Exception)
@@ -628,6 +625,16 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
 internal static class UnityBackgroundFocusPolicy
 {
     internal const uint UserInputGraceMilliseconds = 350;
+
+    internal static bool IsGuardedEditorForProject(
+        string? processName, string? title, string? root)
+    {
+        if (!IsUnityEditorProcess(processName) || string.IsNullOrWhiteSpace(root))
+            return false;
+        var projectName = Path.GetFileName(root.TrimEnd(
+            Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        return IsProjectEditorTitle(title, projectName);
+    }
 
     internal static bool IsProjectPlayerExecutable(
         string projectRoot, string? executablePath)
