@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -198,39 +197,11 @@ internal static class UnityAssetCliImporter
              failure.Contains("Unrecognized command", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static async Task<UnityAssetCliResult> ExecuteAsync(
-        string root, IReadOnlyList<string> args, CancellationToken cancellationToken)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "unity",
-            WorkingDirectory = Path.GetFullPath(root),
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        foreach (var arg in args) psi.ArgumentList.Add(arg);
-
-        using var job = new WorkerChildProcessJob("UnityWorker asset import");
-        using var child = job.Start(psi, cancellationToken);
-        var output = child.StandardOutput!.ReadToEndAsync(cancellationToken);
-        var errors = child.StandardError!.ReadToEndAsync(cancellationToken);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, timeout.Token);
-        try
-        {
-            await child.Process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            job.Dispose();
-            return new(-1, string.Empty, "UNITY_IMPORT_CLI_TIMEOUT");
-        }
-        return new(child.Process.ExitCode,
-            await output.ConfigureAwait(false), await errors.ConfigureAwait(false));
-    }
+    private static Task<UnityAssetCliResult> ExecuteAsync(
+        string root, IReadOnlyList<string> args, CancellationToken cancellationToken) =>
+        UnityCliProcessRunner.RunAsync(root, args, TimeSpan.FromMinutes(4),
+            "UnityWorker asset import", "UNITY_IMPORT_CLI_TIMEOUT",
+            cancellationToken);
 
     private static string Trim(string value) =>
         value.Length <= 650 ? value.Trim() : value[..650].Trim() + "...";
