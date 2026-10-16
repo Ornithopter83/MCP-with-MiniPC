@@ -270,6 +270,23 @@ public partial class MainWindow
                         workingDirectory, cancellationToken);
                 string designReport;
                 UnityBackgroundVisualPlan? visualPlan = null;
+                UnityVisualFoundry.Plan? foundryPlan = null;
+                var foundryReport = "VISUAL_FOUNDRY_NOT_APPLICABLE";
+                if (UnityVisualFoundry.IsVisualScreenRequest(design.Instructions))
+                {
+                    try
+                    {
+                        foundryPlan = UnityVisualFoundry.Prepare(
+                            workingDirectory, jobId, milestone.Id,
+                            design.Instructions);
+                    }
+                    catch (Exception foundryError) when (foundryError is IOException or
+                        UnauthorizedAccessException or ArgumentException)
+                    {
+                        foundryReport = "VISUAL_FOUNDRY_PREPARE_UNVERIFIED: " +
+                            foundryError.Message;
+                    }
+                }
                 try
                 {
                     visualPlan = UnityBackgroundVisualTools.Prepare(
@@ -285,9 +302,28 @@ public partial class MainWindow
                 {
                     using var designEditorLease = await UnityEditorOperationGate.EnterAsync(
                         workingDirectory, cancellationToken);
+                    if (foundryPlan is not null)
+                    {
+                        if (milestoneEditorReady)
+                        {
+                            var generated = await UnityVisualFoundry.GenerateAsync(
+                                foundryPlan, cancellationToken);
+                            foundryReport = generated.Detail;
+                        }
+                        else
+                            foundryReport = "VISUAL_FOUNDRY_EDITOR_UNVERIFIED";
+                        AddTaskMessage("UNITY VISUAL FOUNDRY", foundryReport,
+                            status: foundryReport.StartsWith(
+                                "VISUAL_FOUNDRY_GENERATED_UNINSPECTED",
+                                StringComparison.Ordinal) ? "OBSERVED" : "UNVERIFIED",
+                            includeHistory: false);
+                    }
                     var run = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
                         RoleContractLoader.BuildDesignPrompt(design, workingDirectory) +
+                        (foundryPlan is null ? string.Empty :
+                            Environment.NewLine + foundryPlan.AgentGuidance +
+                            Environment.NewLine + "FOUNDRY_GENERATION_STATUS: " + foundryReport) +
                         (visualPlan is null ? string.Empty :
                             Environment.NewLine + visualPlan.AgentGuidance),
                         designRole with { ThreadSessionId = null, ThreadProjectPath = null },
@@ -326,6 +362,7 @@ public partial class MainWindow
                         string.Join(", ", producedPaths.Where(UnityDesignPromptPolicy.IsVisualArtifact)) +
                         Environment.NewLine +
                         "VISUAL_E2E: UNVERIFIED_UNLESS_INSPECTED" +
+                        Environment.NewLine + "VISUAL_FOUNDRY: " + foundryReport +
                         Environment.NewLine + "INTERNAL_VISUAL_CAPTURE: " +
                         offscreen.Detail;
                 }
