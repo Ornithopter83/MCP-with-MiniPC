@@ -35,7 +35,7 @@ dotnet run --project src/ProjectHub.Server
 
 **적용 범위:** `UnityWorker` 브랜치의 현재 실행 정책은 `Worker-Polish.md`, `UnityWorker-ROADMAP.md` 및 활성 역할 계약을 따른다. 범용 `main` Worker의 과거 QA·RESOURCE 설명을 이 브랜치의 활성 실행으로 취급하지 않는다.
 
-UnityWorker에서는 HQ(Web/CLI)가 마일스톤을 설계한다. #1 ASSET MANAGER는 외부 에셋 검색·획득·연결, #0 DESIGN은 그래픽·씬 시각 제작, #10+ WORK는 코드·CLI 구현을 담당하고 HIGH(PL)가 BUILD/TEST 증거를 검토·수정한다. 독립 QA와 이미지 추출용 RESOURCE sidecar는 실행하지 않는다. HIGH가 DESIGN에 재수정을 요청하는 횟수는 최대 2회이며 마지막 미해결 결함과 증거는 HQ에 남긴다.
+UnityWorker에서는 HQ(Web/CLI)가 마일스톤을 설계한다. #1 ASSET MANAGER는 외부 에셋 검색·획득·연결, #0 DESIGN은 그래픽·씬 시각 제작, #10+ WORK는 코드·CLI 구현을 담당하고 HIGH(PL)가 BUILD/TEST 증거를 검토·수정한다. 독립 QA와 이미지 추출용 RESOURCE sidecar는 실행하지 않는다. HIGH는 수정과 최종 검증을 직접 수행하며, 추가 DESIGN 작업이 필요하면 미해결 결함과 증거를 HQ에 보고한다. HIGH에서 DESIGN으로 재호출하지 않는다.
 
 WORKITEM별 원본 ID·세션·체크포인트를 보존하고 미완료 작업만 `CONTINUE`한다. 빌드 복구도 원본 소유 WORKITEM ID로 수행하며 한 작업에 귀속할 수 없으면 HQ에 판단을 요청한다. Git commit·push와 기계적 BUILD/TEST는 Worker가 맡는다. **Worker 제품 소스의 `UnityWorker` 브랜치와 사용자의 게임 프로젝트 `main`은 별개**다.
 

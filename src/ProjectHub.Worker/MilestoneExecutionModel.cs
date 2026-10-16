@@ -601,8 +601,7 @@ internal static class MilestoneDefinitionContract
             }
             builder.AppendLine();
             var designResults = mechanicalReports.Where(report =>
-                report.StartsWith("DESIGN #0:", StringComparison.Ordinal) ||
-                report.StartsWith("HIGH_DESIGN_HANDOFF:", StringComparison.Ordinal)).ToArray();
+                report.StartsWith("DESIGN #0:", StringComparison.Ordinal)).ToArray();
             if (designResults.Length > 0)
             {
                 builder.AppendLine("DESIGN 수행 결과:");
@@ -892,8 +891,7 @@ internal static class MilestoneDefinitionContract
         }
 
         var actualDesignResults = mechanicalReports.Where(report =>
-            report.StartsWith("DESIGN #0:", StringComparison.Ordinal) ||
-            report.StartsWith("HIGH_DESIGN_HANDOFF:", StringComparison.Ordinal)).ToArray();
+            report.StartsWith("DESIGN #0:", StringComparison.Ordinal)).ToArray();
         if (actualDesignResults.Length > 0)
         {
             builder.AppendLine("DESIGN_RESULTS:");
@@ -964,10 +962,6 @@ internal static class MilestoneDefinitionContract
             !RoleGotoContract.TryReadLeading(message,
                 out var destination, out _))
             return null;
-        if (destination == "DESIGN" && parsed.Status == "in_progress")
-            return "design_handoff"; // Scheduler state, not a model status.
-        if (parsed.Status == "in_progress")
-            return null; // Nonterminal status without a recipient is not a route.
         return destination is null or "HQ" or "WORKER" ? parsed.Status : null;
     }
 
@@ -1139,10 +1133,16 @@ internal static class MilestoneDefinitionContract
 
         var raw = finalMessage?.Trim() ?? string.Empty;
         var parsed = RoleTextProtocol.ParseHigh(raw);
-        // Intermediate handoff fields must survive normalization unmodified.
         var routedStatus = ReadHighStatus(raw);
-        if (routedStatus == "design_handoff")
-            return raw;
+        // HIGH never dispatches DESIGN, even when an obsolete session requests it.
+        if (RoleGotoContract.TryReadLeading(raw, out var target, out _) &&
+            target == "DESIGN")
+            return RoleTextProtocol.BuildResult("blocked",
+                "HIGH_DESIGN_ROUTE_REMOVED",
+                issues: new[] {
+                    "HIGH fixes and verifies directly or reports defects to HQ. " +
+                    "Only HQ can schedule DESIGN in another milestone."
+                });
         // Never strip a conflicting or unsupported GOTO and accidentally PASS.
         if (parsed.IsValid && routedStatus is not null)
         {

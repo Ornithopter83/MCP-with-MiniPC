@@ -19,7 +19,7 @@
 | 씬 구성 | DESIGN #0 / WORK #10+ / ASSET MANAGER INTEGRATE | Unity DESIGN/WORK | 공통 Editor 게이트 아래 Scene 열기·수정·저장, SaveScene 결과 검증 |
 | 기계 BUILD/TEST | Worker + Unity CLI | 실행 이력 | 컴파일·테스트 증거를 HIGH에 전달, 미검증 분리 |
 | 통합·릴리스 | HIGH + Worker Git | Unity HIGH | 통합 검토 및 Commit/Push |
-| 시각 제작·재수정 | DESIGN #0 | Unity DESIGN | 실제 UI·씬·그래픽 제작, HIGH 재수정 인계 |
+| 시각 제작 | DESIGN #0 | Unity DESIGN | HQ가 배정한 UI·씬·그래픽 제작 |
 
 ## 1차 구현 당시 이력 (현행 활성 역할 정의가 아님)
 
@@ -37,7 +37,7 @@
 
 - HQ(웹/CLI)는 설계·재판단, #1 ASSET MANAGER는 검색·획득·적용, #0 DESIGN은 시각 제작·수정, #10+ WORK는 구현, HIGH는 최종 검증·보완을 담당한다.
 - 독립 QA와 이미지 추출용 RESOURCE sidecar를 사용하지 않는다. 남은 설정·QA 계약·이전 보고 형식은 호환 여부를 구분해서 다룬다.
-- 독립 C# 소스 WORK는 병렬이고 Editor·Scene·Import는 프로젝트 공통 게이트로 조정한다. HIGH는 유효한 이전 증거를 재사용하고 DESIGN 재수정을 최대 2회 요청한다.
+- 독립 C# 소스 WORK는 병렬이고 Editor·Scene·Import는 프로젝트 공통 게이트로 조정한다. HIGH는 유효한 이전 증거를 재사용하며 직접 수정·검토한다. 추가 DESIGN은 HQ가 새로운 마일스톤에서 배정하며 HIGH는 DESIGN을 재호출하지 않는다.
 - 사용자 추가 원문 메시지는 다음 제어권의 AI에 전달하며 Worker는 자연어 중단 판정을 하지 않는다.
 - 새 HQ CLI 작업은 새 세션에서 시작하고 `.projecthub/last-handoff.md`를 참고한다. 중단 재개는 기존 세션과 `.projecthub/session-state.json`을 쓴다.
 - Unity Editor와 이 프로젝트에서 실행한 Windows Player의 포커스 보호는 최선의 복구이며 운영체제 수준의 보장이 아니다.

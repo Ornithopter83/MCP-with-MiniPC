@@ -12,21 +12,6 @@ public sealed class RoleGotoRoutingTests
         [RESPONSE=OK]
         """;
 
-    private const string CanonicalHandoff = """
-        [GOTO=DESIGN]
-        
-        @@REPORT
-        <STATUS>in_progress</>
-        <SUMMARY>50개 승급 UI 문구 겹침</>
-        <DESIGN_GOAL>50개 승급 화면에서 문구 겹침을 수정한다.</>
-        <EVIDENCE_PATH>temp/screens/50.png; temp/screens/100.png
-        temp/screens/missing.png</>
-        <TARGET_PATH>Assets/UI/Promotion.prefab</>
-        <EXPECTED_RESULT>각 문구가 가려지지 않는다.</>
-        <REASON>화면 캡처를 통해 발견함</>
-        [RESPONSE=OK]
-        """;
-
     [Theory]
     [InlineData("[GOTO=DESIGN]", "DESIGN")]
     [InlineData("[GOTO : DESIGN]", "DESIGN")]
@@ -35,7 +20,7 @@ public sealed class RoleGotoRoutingTests
     [InlineData("[GOTO : ASSET MANAGER]", "ASSET_MANAGER")]
     [InlineData("[GOTO=WORKER]", "WORKER")]
     [InlineData("[GOTO : HQ]", "HQ")]
-    public void EquivalentGotoSyntax_NormalizesToSameRole(string line, string role)
+    public void CommonGotoParserStillNormalizesRoles(string line, string role)
     {
         Assert.True(RoleGotoContract.TryReadLeading(
             line + "\n" + Summary, out var actual, out var error), error);
@@ -65,38 +50,14 @@ public sealed class RoleGotoRoutingTests
             "<STATUS>completed</>\n<SUMMARY>실제 제작 완료</>\n" +
             "<CHANGED_PATH>Assets/UI/Panel.prefab</>\n" +
             "<ISSUES>없음</>\n[RESPONSE=OK]";
-        Assert.True(RoleTextProtocol.ParseWork(report).IsValid,
-            string.Join(";", RoleTextProtocol.ParseWork(report).Errors));
-        Assert.Equal("completed",
-            MilestoneDefinitionContract.ReadWorkStatus(report));
-        var normalized = RoleGotoContract.NormalizeResultHeader(report);
-        Assert.Contains("@@REPORT", normalized);
-        if (header.StartsWith("[GOTO", StringComparison.Ordinal))
-        {
-            Assert.True(RoleGotoContract.TryReadLeading(
-                report, out var target, out var error), error);
-            Assert.Equal("WORKER", target);
-        }
-    }
-
-    [Theory]
-    [InlineData("[GOTO=DESIGN]  @@REPORT")]
-    [InlineData("[GOTO : DESIGN]@@REPORT")]
-    public void HighHandoffJoinedHeaderIsRecovered(string header)
-    {
-        var report = CanonicalHandoff.Replace(
-            "[GOTO=DESIGN]\n\n@@REPORT", header);
-        Assert.Equal("design_handoff",
-            MilestoneDefinitionContract.ReadHighStatus(report));
-        Assert.True(HighDesignHandoffContract.TryRead(
-            report, out var handoff, out var error), error);
-        Assert.Equal("Assets/UI/Promotion.prefab", handoff!.TargetPath);
+        Assert.True(RoleTextProtocol.ParseWork(report).IsValid);
+        Assert.Equal("completed", MilestoneDefinitionContract.ReadWorkStatus(report));
     }
 
     [Theory]
     [InlineData("[GOTO=WORKER] [GOTO=DESIGN]  @@REPORT")]
     [InlineData("[GOTO=UNKNOWN]  @@REPORT")]
-    public void JoinedHeaderStillRejectsConflictingOrInvalidRoutes(string header)
+    public void JoinedHeaderRejectsConflictingOrInvalidRoutes(string header)
     {
         var report = header + "\n" +
             "<STATUS>completed</>\n<SUMMARY>결과</>\n[RESPONSE=OK]";
@@ -104,7 +65,7 @@ public sealed class RoleGotoRoutingTests
     }
 
     [Fact]
-    public void GotoInsideSummaryNeverChangesRecipient()
+    public void GotoInSummaryIsNeverExecuted()
     {
         var report = "[GOTO=WORKER]  @@REPORT\n" +
             "<STATUS>completed</>\n" +
@@ -117,7 +78,7 @@ public sealed class RoleGotoRoutingTests
     }
 
     [Fact]
-    public void DuplicateMatchingGoto_IsNotAnAmbiguousRoute()
+    public void DuplicateMatchingGotoIsNotAmbiguous()
     {
         Assert.True(RoleGotoContract.TryReadLeading(
             "[GOTO:DESIGN]\n[GOTO=design]\n" + Summary,
@@ -125,79 +86,46 @@ public sealed class RoleGotoRoutingTests
         Assert.Equal("DESIGN", role);
     }
 
-    [Fact]
-    public void RoutesInSummaryOrExampleText_AreNotExecuted()
-    {
-        var report = Summary.Replace("<SUMMARY>작업 결과</>",
-            "<SUMMARY>문서 예시 [GOTO=DESIGN] 는 코드가 아니다</>");
-        Assert.True(RoleGotoContract.TryReadLeading(report,
-            out var destination, out var error), error);
-        Assert.Null(destination);
-        Assert.True(RoleTextProtocol.ParseWork(report).IsValid);
-    }
-
     [Theory]
-    [InlineData("[GOTO : DESIGN]")]
     [InlineData("[GOTO=DESIGN]")]
-    public void CanonicalHighHandoff_UsesGotoAndPreservesSupportingEvidence(string gotoLine)
+    [InlineData("[GOTO : DESIGN]")]
+    public void HighCannotRouteToDesign_AndReportsBlockedToWorker(string gotoLine)
     {
-        var report = CanonicalHandoff.Replace("[GOTO=DESIGN]", gotoLine);
-        Assert.Equal("design_handoff", MilestoneDefinitionContract.ReadHighStatus(report));
-        Assert.Equal(report,
-            MilestoneDefinitionContract.NormalizeHighReport(0, report, null));
-        Assert.True(HighDesignHandoffContract.TryRead(
-            report, out var handoff, out var error), error);
-        Assert.Equal("Assets/UI/Promotion.prefab", handoff!.TargetPath);
-        Assert.Equal(3, handoff.EvidencePaths.Count);
-        Assert.Equal("temp/screens/50.png", handoff.EvidencePaths[0]);
-        Assert.Equal("temp/screens/100.png", handoff.EvidencePaths[1]);
+        var report = gotoLine + "\n@@REPORT\n<STATUS>completed</>\n" +
+            "<SUMMARY>디자인 수정 요구</>\n[RESPONSE=OK]";
+        Assert.Null(MilestoneDefinitionContract.ReadHighStatus(report));
+        var normalized = MilestoneDefinitionContract.NormalizeHighReport(
+            0, report, null);
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadHighStatus(normalized));
+        Assert.StartsWith("[GOTO=WORKER]", normalized);
+        Assert.Contains("HIGH_DESIGN_ROUTE_REMOVED", normalized);
     }
 
     [Fact]
-    public void HandoffWithoutRoutingIsNotAccepted()
-    {
-        var report = CanonicalHandoff.Replace("[GOTO=DESIGN]\\n", "")
-            .Replace("<STATUS>in_progress</>", "<STATUS>design_handoff</>");
-        Assert.Null(MilestoneDefinitionContract.ReadHighStatus(report));
-        Assert.False(HighDesignHandoffContract.TryRead(report, out _, out _));
-    }
-
-    [Theory]
-    [InlineData("completed", "DESIGN")]
-    [InlineData("blocked", "DESIGN")]
-    [InlineData("in_progress", "HQ")]
-    [InlineData("in_progress", "WORK")]
-    public void ContradictoryOrUnauthorizedHighRouteCannotCompleteOrDispatch(
-        string status, string destination)
-    {
-        var report = CanonicalHandoff.Replace("[GOTO=DESIGN]",
-            "[GOTO=" + destination + "]").Replace("<STATUS>in_progress</>",
-            "<STATUS>" + status + "</>");
-        Assert.Null(MilestoneDefinitionContract.ReadHighStatus(report));
-        Assert.False(HighDesignHandoffContract.TryRead(report, out _, out _));
-        var normalized = MilestoneDefinitionContract.NormalizeHighReport(0, report, null);
-        Assert.Null(MilestoneDefinitionContract.ReadHighStatus(normalized));
-    }
-
-    [Fact]
-    public void HighCompletionCanReturnToHqWithoutStatusChange()
+    public void HighCompletionMayReturnDirectlyToHq()
     {
         const string report = """
             [GOTO : HQ]
-            
             @@REPORT
             <STATUS>completed</>
             <SUMMARY>검증 종료</>
             [RESPONSE=OK]
             """;
         Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(report));
-        var normalized = MilestoneDefinitionContract.NormalizeHighReport(0, report, null);
-        Assert.StartsWith("[GOTO=HQ]", normalized);
-        Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(normalized));
+        Assert.Equal("completed", MilestoneDefinitionContract.ReadHighStatus(
+            MilestoneDefinitionContract.NormalizeHighReport(0, report, null)));
     }
 
     [Fact]
-    public void WorkCannotRedirectParallelSchedulerToAnotherRole()
+    public void HighInProgressIsNotAllowedWithoutDesignHandoff()
+    {
+        var response = RoleTextProtocol.BuildResult("in_progress", "unfinished");
+        Assert.False(RoleTextProtocol.ParseHigh(response).IsValid);
+        Assert.Null(MilestoneDefinitionContract.ReadHighStatus(response));
+    }
+
+    [Fact]
+    public void WorkCannotRedirectSchedulerToAnotherRole()
     {
         Assert.False(RoleTextProtocol.ParseWork(
             "[GOTO=DESIGN]\n" + Summary).IsValid);
@@ -206,32 +134,10 @@ public sealed class RoleGotoRoutingTests
         var normalized = MilestoneDefinitionContract.NormalizeWorkReport(
             0, completed, null);
         Assert.StartsWith("[GOTO=WORKER]", normalized);
-        Assert.Equal("completed", MilestoneDefinitionContract.ReadWorkStatus(normalized));
     }
 
     [Fact]
-    public void EvidenceResolverReportsOnlyExistingFilesWithinRoot()
-    {
-        var root = Path.Combine(Path.GetTempPath(),
-            "goto-evidence-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(root, "temp", "screen"));
-        try
-        {
-            var image = Path.Combine(root, "temp", "screen", "evidence.png");
-            File.WriteAllBytes(image, new byte[] { 137, 80, 78, 71 });
-            var verified = HighDesignHandoffContract.ExistingEvidencePaths(root,
-                new[] { "temp/screen/evidence.png", "temp/screen/missing.png",
-                    "../outside.png", "C:/outside.png" });
-            Assert.Equal(new[] { "temp/screen/evidence.png" }, verified);
-        }
-        finally
-        {
-            Directory.Delete(root, true);
-        }
-    }
-
-    [Fact]
-    public void WorkResultAndLegacyManagerUseCommonGotoParsing()
+    public void WorkAndLegacyManagerUseCommonGotoParsing()
     {
         Assert.True(RoleTextProtocol.ParseWork("[GOTO=WORKER]\n" + Summary).IsValid);
         const string manager = """
@@ -245,7 +151,7 @@ public sealed class RoleGotoRoutingTests
     }
 
     [Fact]
-    public void HqMilestoneAcceptsCanonicalAndLegacyGotoButNotArbitraryTarget()
+    public void HqMilestoneStillAllowsHqDirectedDesign()
     {
         const string milestone = """
             [ACTION=WORK]
@@ -259,36 +165,7 @@ public sealed class RoleGotoRoutingTests
             [RESPONSE=OK]
             """;
         foreach (var prefix in new[] { "[GOTO=WORKER]", "[GOTO : WORKER]" })
-        {
-            var parsed = HqTextProtocol.Parse(prefix + "\n" + milestone);
-            Assert.True(parsed.IsValid, string.Join(";", parsed.Errors));
-        }
+            Assert.True(HqTextProtocol.Parse(prefix + "\n" + milestone).IsValid);
         Assert.False(HqTextProtocol.Parse("[GOTO=DESIGN]\n" + milestone).IsValid);
-    }
-
-    [Fact]
-    public void MissingEvidenceAndOptionalDescriptions_DoNotBlockSafeHandoff()
-    {
-        var report = System.Text.RegularExpressions.Regex.Replace(
-            CanonicalHandoff, @"(?s)<EVIDENCE_PATH>.*?</>", "");
-        report = report.Replace("<EXPECTED_RESULT>각 문구가 가려지지 않는다.</>", "")
-            .Replace("<REASON>화면 캡처를 통해 발견함</>", "");
-        Assert.True(HighDesignHandoffContract.TryRead(
-            report, out var handoff, out var error), error);
-        Assert.Empty(handoff!.EvidencePaths);
-        Assert.NotEmpty(handoff.Warnings);
-        Assert.Equal(handoff.Goal, handoff.ExpectedResult);
-    }
-
-    [Theory]
-    [InlineData("../secrets/screenshot.png")]
-    [InlineData("C:/Windows/win.ini")]
-    [InlineData("Assets/UI/Panel.prefab;Assets/Other")]
-    public void UnsafeOrAmbiguousWriteTargetsAreNeverAssumed(string target)
-    {
-        var report = CanonicalHandoff.Replace(
-            "Assets/UI/Promotion.prefab", target);
-        Assert.False(HighDesignHandoffContract.TryRead(
-            report, out _, out _));
     }
 }

@@ -3,7 +3,7 @@
 제1조 (설계 책임)
 ① 최신 사용자 지시·기존 설계·origin/main·실제 마일스톤 증거로 WORK/PAUSE/END를 판단한다. 검증되지 않은 결과를 성공으로 가정하지 않는다.
 ② GENERAL WORK #10+는 구현·CLI 중심이다. <PATH>는 작업 간 충돌을 막는 안전한 쓰기 범위이며, 새 작업은 미사용 ID·MODE=NEW로 배정한다. 미완료 체크포인트의 같은 범위·모델에만 MODE=CONTINUE를 사용한다. 완료·차단·취소된 ID는 재배정하지 않는다.
-③ DESIGN #0은 Unity Scene/Canvas/Prefab/시각 C#·그래픽 제작과 실제 화면 검토를 담당한다. WORK 전에 먼저 수행하고 HIGH 요청 시 같은 마일스톤에서 재수정한다. 외부 에셋 검색·획득은 대신하지 않는다. 필요하다면 사용 가능한 Inkscape 등 그래픽 CLI 활용을 지시하되 강제하지 않는다.
+③ DESIGN #0은 Unity Scene/Canvas/Prefab/시각 C#·그래픽 제작과 실제 화면 검토를 담당한다. WORK 전에 먼저 수행하며, 추가 제작이 필요하면 HQ가 후속 마일스톤으로 배정한다. HIGH가 DESIGN을 직접 또는 Worker를 통해 재호출하지 않는다. 외부 에셋 검색·획득은 대신하지 않는다. 필요하다면 사용 가능한 Inkscape 등 그래픽 CLI 활용을 지시하되 강제하지 않는다.
 ④ 외부 모델·텍스처·Prefab이 필요할 때만 ASSET MANAGER #1을 배정한다. 기존 에셋 조사→합법적 획득·Import→씬 배치·검증을 담당하며, 대상 SCENE/TARGET_PATH가 다른 WORK와 충돌하지 않도록 한다.
 ⑤ HIGH는 기존 코드·DESIGN 및 기계 BUILD/TEST 증거를 최종 검토하고 필요한 수정·변경 범위 검증을 맡는다. 독립 QA는 배정하지 않는다. 유효한 증거를 재사용하고 동일 실패 검증을 근거 없이 반복하지 않는다.
 ⑥ 게임플레이 소스와 Editor/씬·에셋 변경의 병렬 충돌 및 선행 의존을 피한다. DESIGN 실패·미검증은 HIGH/HQ에 전달하되 독립 WORK의 자동 중단 사유로 만들지 않는다.
@@ -22,7 +22,7 @@
 ③ @@DESIGN=0: <PATH>docs/.../*.md</>, 선택적 <WRITE_PATH>실제 그래픽 소유 경로</> 반복, <INSTRUCTIONS>1200자 이하. 실제 제작·저장·Game View 증거와 미검증을 구분해 보고하도록 지시한다.
 ④ @@ASSET_MANAGER=1: <REQUEST_ID>사용자 작업 내 고유 ID</>, <GOAL>, <SCENE>Assets/.../*.unity</>, <TARGET_PATH>Assets/.../</>, <SOURCE_POLICY>PROJECT_ONLY|CC0_AUTO</>, <INSTRUCTIONS>가 필수다. 유료·로그인 필수·라이선스 불명 에셋은 무인 획득하지 않는다. 같은 대상의 후속 WORK는 에셋 반영 후 배정한다.
 ⑤ @@HIGH: <INSTRUCTIONS>600자 이하. @@PLAN의 <TEXT>는 최초 응답에만 작성하고 8000자 이하로 제한한다.
-⑥ 역할 출력은 [GOTO=WORKER] 또는 정해진 인계 대상 → @@REPORT → <STATUS>/<SUMMARY>/<CHANGED_PATH>/<ISSUES> → [RESPONSE=OK]를 따른다. 역할 결과에 ACTION을 추가하도록 지시하지 않는다.
+⑥ 역할 출력은 [GOTO=WORKER] → @@REPORT → <STATUS>/<SUMMARY>/<CHANGED_PATH>/<ISSUES> → [RESPONSE=OK]를 따른다. HIGH는 완료·차단 결과만 반환하고 DESIGN으로 인계하지 않는다. 역할 결과에 ACTION을 추가하도록 지시하지 않는다.
 
 제4조 (최소 형식 예시 — 최초 WORK 마일스톤)
 [GOTO=WORKER]

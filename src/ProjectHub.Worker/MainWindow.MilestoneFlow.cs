@@ -1509,14 +1509,9 @@ public partial class MainWindow
             // only HQ can decide whether to continue those WORK IDs.
             var beforeHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
-            var initialHigh = await ExecuteMilestoneHighAsync(
+            highReport = await ExecuteMilestoneHighAsync(
                 jobId, workingDirectory, milestone, workReports, resourceReports,
-                mechanicalReports, implementer, high, 1, cancellationToken);
-            highReport = initialHigh.Report;
-            // Keep the actual HIGH CLI session for same-milestone DESIGN handoffs.
-            // If the provider has no resumable session, the previous report is
-            // explicitly supplied as evidence on the next invocation.
-            var highSessionId = initialHigh.SessionId;
+                mechanicalReports, implementer, high, cancellationToken);
             var highChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var afterHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
@@ -1525,248 +1520,6 @@ public partial class MainWindow
             {
                 milestoneChangedPaths.Add(path);
                 highChangedPaths.Add(path);
-            }
-
-            // HIGH remains nonterminal until an evidence-bound DESIGN handoff
-            // returns and the original HIGH role reviews the actual changes.
-            var designHandoffs = 0;
-            var designRevisionBuildFailed = false;
-            while (MilestoneDefinitionContract.ReadHighStatus(highReport) == "design_handoff")
-            {
-                if (designHandoffs >= HighDesignHandoffContract.MaxReviewHandoffs)
-                {
-                    // The latest HIGH request contains the unresolved
-                    // defect, its target and evidence. HQ must see these
-                    // details rather than a generic budget failure.
-                    var unfinishedDesignRequest = highReport;
-                    highReport = RoleTextProtocol.BuildResult(
-                        "blocked", "HIGH_DESIGN_HANDOFF_BUDGET_EXHAUSTED",
-                        issues: new[] {
-                            "DESIGN 재수정 2회 소진. 세 번째 호출은 하지 않고 HQ 판단에 인계.",
-                            MilestoneDefinitionContract.Limit(
-                                unfinishedDesignRequest, 3600)
-                        });
-                    break;
-                }
-                if (!HighDesignHandoffContract.TryRead(
-                        highReport, out var request, out var handoffError) ||
-                    request is null)
-                {
-                    highReport = RoleTextProtocol.BuildResult(
-                        "blocked", "HIGH_DESIGN_HANDOFF_INVALID",
-                        issues: new[] { handoffError });
-                    break;
-                }
-
-                designHandoffs++;
-                var invocation = designHandoffs;
-                var verifiedEvidence = HighDesignHandoffContract.ExistingEvidencePaths(
-                    workingDirectory, request.EvidencePaths);
-                var missingEvidence = request.EvidencePaths.Except(verifiedEvidence,
-                    StringComparer.OrdinalIgnoreCase).ToArray();
-                if (missingEvidence.Length > 0 || request.Warnings.Count > 0 ||
-                    verifiedEvidence.Count == 0)
-                    mechanicalReports.Add("HIGH_DESIGN_HANDOFF_EVIDENCE_UNVERIFIED: " +
-                        string.Join("; ", missingEvidence.Concat(request.Warnings)) +
-                        (verifiedEvidence.Count == 0 ? "; no readable capture" : ""));
-                var evidenceDescription = verifiedEvidence.Count > 0
-                    ? string.Join("\n", verifiedEvidence)
-                    : "UNVERIFIED: no valid captured image; inspect scene directly";
-                mechanicalReports.Add("HIGH_DESIGN_HANDOFF: " + invocation +
-                    " GOAL: " + request.Goal +
-                    " EVIDENCE: " + string.Join("; ", verifiedEvidence) +
-                    " TARGET: " + request.TargetPath);
-                var handoffDesign = milestone.Design is { } existingDesign
-                    ? existingDesign with
-                    {
-                        Instructions = request.Goal + "\nExpected: " + request.ExpectedResult +
-                            "\nReason: " + request.Reason +
-                            "\nEvidence: " + evidenceDescription,
-                        WritePaths = new[] { request.TargetPath }
-                    }
-                    : new MilestoneDesignDefinition(
-                        "docs/projecthub/visual-handoff-" +
-                        new string(milestone.Id.Where(char.IsLetterOrDigit).ToArray()) + ".md",
-                        request.Goal + "\nExpected: " + request.ExpectedResult +
-                            "\nReason: " + request.Reason +
-                            "\nEvidence: " + evidenceDescription)
-                    { WritePaths = new[] { request.TargetPath } };
-
-                // HIGH has yielded the Editor lane. Mark only DESIGN active
-                // before dispatch, even if HQ did not pre-reserve DESIGN #0.
-                RunOnUi(() =>
-                {
-                    TaskDirection.Text = "Design";
-                    TaskTitle.Text = $"HIGH 인계 · #0 DESIGN 수정 {invocation}";
-                    ResultTitle.Text = "#0 DESIGN";
-                    SetFlowState(codexActive: true, workerActive: true,
-                        webActive: false, explicitStage: TaskStage.Resource);
-                });
-                // Exclusive Editor lane while HIGH yields mutation ownership.
-                var beforeReviewDesign =
-                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                        workingDirectory, cancellationToken);
-                var reviewReference = milestone.Id + ":DESIGN:0:REVISION:" + invocation;
-                AddDataFlowHistory(WorkerRoleState.Design, "#0 DESIGN 인계",
-                    mechanicalReports.Last(), status: "DISPATCHED",
-                    workItemId: "0", referenceId: reviewReference,
-                    persistenceSource: "HIGH DESIGN HANDOFF");
-                string designResponse;
-                string reviewVisualEvidence = "OFFSCREEN_CAPTURE_UNVERIFIED";
-                UnityBackgroundVisualPlan? reviewVisualPlan = null;
-                try
-                {
-                    reviewVisualPlan = UnityBackgroundVisualTools.Prepare(
-                        workingDirectory, jobId, milestone.Id + "-review-" + invocation);
-                }
-                catch (Exception visualToolError) when (visualToolError is IOException or
-                    UnauthorizedAccessException or ArgumentException)
-                {
-                    reviewVisualEvidence += ": " + visualToolError.Message;
-                }
-                try
-                {
-                    using var reviewEditorLease = await UnityEditorOperationGate.EnterAsync(
-                        workingDirectory, cancellationToken);
-                    var roleRun = await RunCoordinatorRoleAsync(
-                        jobId, "DESIGN",
-                        RoleContractLoader.BuildDesignPrompt(handoffDesign, workingDirectory) +
-                        (reviewVisualPlan is null ? string.Empty :
-                            Environment.NewLine + reviewVisualPlan.AgentGuidance),
-                        designRole with { ThreadSessionId = null, ThreadProjectPath = null },
-                        workingDirectory, null, null, cancellationToken,
-                        CodexSandboxMode.WorkspaceWrite,
-                        historyWorkItemId: "0", historyReferenceId: reviewReference);
-                    var parsedDesign = RoleTextProtocol.ParseWork(roleRun.FinalMessage);
-                    designResponse = roleRun.ExitCode == 0 && parsedDesign.IsValid
-                        ? roleRun.FinalMessage
-                        : RoleTextProtocol.BuildResult("blocked",
-                            "DESIGN_REVISION_INVALID_OR_PROCESS_FAILED",
-                            issues: new[] { roleRun.StandardError ?? string.Empty });
-                    if (reviewVisualPlan is not null)
-                    {
-                        if (await recheckUnityEditorAsync(cancellationToken))
-                        {
-                            var evidence = await CaptureBestAvailableVisualAsync(
-                                reviewVisualPlan, unityFocusGuard, cancellationToken);
-                            reviewVisualEvidence = evidence.Detail;
-                        }
-                        else
-                            reviewVisualEvidence =
-                                "NATIVE_CAPTURE_UNVERIFIED: latest Editor CLI probe not ready";
-                    }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception exception)
-                {
-                    designResponse = RoleTextProtocol.BuildResult(
-                        "blocked", "DESIGN_REVISION_ERROR: " + exception.Message);
-                }
-
-                var afterReviewDesign =
-                    await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                        workingDirectory, cancellationToken);
-                var revisionChanges = MilestoneMechanicalExecutor.DiffChangeStates(
-                    beforeReviewDesign, afterReviewDesign).ToArray();
-                foreach (var changed in revisionChanges)
-                    milestoneChangedPaths.Add(changed);
-                var designParsed = RoleTextProtocol.ParseWork(designResponse);
-                // HIGH owns the visual judgement. A C# change can implement
-                // real UI appearance without matching a path-name heuristic.
-                // Only a true no-op contradicts DESIGN's completed report.
-                if (revisionChanges.Length == 0 && designParsed.Status == "completed")
-                    designResponse = RoleTextProtocol.BuildResult("blocked",
-                        "DESIGN_REPORTED_COMPLETE_WITHOUT_CHANGES",
-                        issues: new[] { "No changed file evidence; HIGH cannot credit a no-op." });
-                var revisionReport = "DESIGN #0: INVOCATION=" + invocation +
-                    " STATUS=" + RoleTextProtocol.ParseWork(designResponse).Status +
-                    "\nCHANGED_PATHS=" + string.Join(", ", revisionChanges) +
-                    "\nVISUAL_E2E=UNVERIFIED_UNLESS_INSPECTED\n" +
-                    "INTERNAL_VISUAL_CAPTURE=" + reviewVisualEvidence + "\n" +
-                    MilestoneDefinitionContract.Limit(designResponse, 4000);
-                mechanicalReports.Add(revisionReport);
-                AddRoleResponseHistory(WorkerRoleState.Design, "#0 DESIGN 반환",
-                    revisionReport,
-                    status: RoleTextProtocol.ParseWork(designResponse).Status == "completed"
-                        ? "COMPLETED" : "BLOCKED",
-                    workItemId: "0", referenceId: reviewReference,
-                    providerWireId: designRole.Provider);
-
-                // DESIGN has returned; release the yellow card and return
-                // ownership to HIGH for integration decisions. The actual
-                // HIGH invocation below refreshes this stage again.
-                RunOnUi(() =>
-                {
-                    TaskDirection.Text = "검토";
-                    TaskTitle.Text = $"HIGH · DESIGN 결과 확인 {invocation}";
-                    ResultTitle.Text = "HIGH";
-                    SetFlowState(codexActive: true, workerActive: false,
-                        webActive: false, explicitStage: TaskStage.HighLevel);
-                });
-
-                if (!HighDesignContinuationPolicy.ShouldResumeHigh(
-                        designResponse, revisionChanges))
-                {
-                    // A failed/no-op DESIGN cannot be credited as a repair.
-                    // Report to HQ instead of spending another HIGH invocation.
-                    highReport = RoleTextProtocol.BuildResult("blocked",
-                        "DESIGN_REVISION_FAILED_WITHOUT_CHANGES",
-                        issues: new[] { MilestoneDefinitionContract.Limit(revisionReport, 1200) });
-                    break;
-                }
-
-                // Recompile only when DESIGN touched integration/build inputs.
-                // Graphics-only revisions reuse earlier BUILD evidence.
-                if (HighDesignContinuationPolicy.RequiresBuild(revisionChanges))
-                {
-                    var reviewBuilds = await MilestoneBuildRunner.RunAsync(
-                        workingDirectory, jobId, executableDefinitions, cancellationToken,
-                await recheckUnityEditorAsync(cancellationToken));
-                    foreach (var build in reviewBuilds)
-                        mechanicalReports.Add("DESIGN_REVISION_BUILD: " +
-                            MilestoneDefinitionContract.FormatMechanicalResult(build));
-                    designRevisionBuildFailed = reviewBuilds.Any(build => !build.Success) &&
-                        !MilestoneBuildRunner.IsEnvironmentFailure(reviewBuilds);
-                    if (reviewBuilds.Any(build => !build.Success) &&
-                        !designRevisionBuildFailed)
-                        mechanicalReports.Add(
-                            "DESIGN_REVISION_BUILD_UNVERIFIED: Editor/tool unavailable; " +
-                            "HIGH may continue source review without claiming build success.");
-                }
-
-                if (!UnityValidationBudget.CanStart(
-                        1 + invocation,
-                        HighDesignContinuationPolicy.HasNewIntegrationEvidence(revisionChanges)))
-                {
-                    highReport = RoleTextProtocol.BuildResult("blocked",
-                        "HIGH_VALIDATION_R3_NOT_JUSTIFIED",
-                        issues: new[] { "The third integration review requires new evidence." });
-                    break;
-                }
-
-                // Resume the real HIGH session when available. The previous
-                // decision and DESIGN evidence are included even without one.
-                var previousHighReport = highReport;
-                var beforeResume = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                    workingDirectory, cancellationToken);
-                var resumedHigh = await ExecuteMilestoneHighAsync(
-                    jobId, workingDirectory, milestone, workReports, resourceReports,
-                    mechanicalReports, implementer, high,
-                    1 + invocation, cancellationToken,
-                    highSessionId, previousHighReport);
-                highReport = resumedHigh.Report;
-                highSessionId = resumedHigh.SessionId ?? highSessionId;
-                var afterResume = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                    workingDirectory, cancellationToken);
-                foreach (var changed in MilestoneMechanicalExecutor.DiffChangeStates(
-                    beforeResume, afterResume))
-                {
-                    milestoneChangedPaths.Add(changed);
-                    highChangedPaths.Add(changed);
-                }
             }
 
             if (outcome == "COMPLETED" &&
@@ -1779,7 +1532,7 @@ public partial class MainWindow
             // HIGH may edit compilation/scene inputs after earlier evidence.
             // Validate its changes once before finalization; never treat a
             // failed recompile as a passed milestone.
-            if (HighDesignContinuationPolicy.RequiresBuild(highChangedPaths))
+            if (HighFinalBuildPolicy.RequiresBuild(highChangedPaths))
             {
                 var highBuilds = await MilestoneBuildRunner.RunAsync(
                     workingDirectory, jobId, executableDefinitions, cancellationToken,
@@ -1804,22 +1557,11 @@ public partial class MainWindow
                     {
                         mechanicalReports.Add("HIGH_BEFORE_FAILED_FINAL_BUILD: " +
                             MilestoneDefinitionContract.Limit(highReport, 1200));
-                        highReport = HighDesignContinuationPolicy.InvalidateCompletion(
+                        highReport = HighFinalBuildPolicy.InvalidateCompletion(
                             highReport, "HIGH_FINAL_BUILD_FAILED");
                         outcome = "HIGH_FINAL_BUILD_FAILED";
                     }
                 }
-                else
-                    designRevisionBuildFailed = false;
-            }
-            if (designRevisionBuildFailed)
-            {
-                mechanicalReports.Add("HIGH_BEFORE_FAILED_DESIGN_BUILD: " +
-                    MilestoneDefinitionContract.Limit(highReport, 1200));
-                highReport = HighDesignContinuationPolicy.InvalidateCompletion(
-                    highReport, "DESIGN_REVISION_BUILD_FAILED");
-                if (outcome == "COMPLETED")
-                    outcome = "DESIGN_REVISION_BUILD_FAILED";
             }
 
             var stoppedRun = await MilestoneManagedRunRegistry.StopAsync(
@@ -2083,7 +1825,6 @@ public partial class MainWindow
                 : MilestoneDefinitionContract.ReadHighStatus(highReport) switch
                 {
                     "completed" => "COMPLETED",
-                    "design_handoff" => "IN_PROGRESS",
                     _ => "BLOCKED"
                 }));
         nodes.Add(new(
@@ -2677,7 +2418,7 @@ public partial class MainWindow
             moved);
     }
 
-    private async Task<(string Report, string? SessionId)> ExecuteMilestoneHighAsync(
+    private async Task<string> ExecuteMilestoneHighAsync(
         string jobId,
         string workingDirectory,
         MilestoneDefinition milestone,
@@ -2686,10 +2427,7 @@ public partial class MainWindow
         IReadOnlyList<string> mechanicalReports,
         WorkerAiRoleSettings implementer,
         WorkerAiRoleSettings high,
-        int validationRound,
-        CancellationToken cancellationToken,
-        string? sessionId = null,
-        string? previousHighReport = null)
+        CancellationToken cancellationToken)
     {
         _ = resourceReports;
         _ = mechanicalReports;
@@ -2698,7 +2436,7 @@ public partial class MainWindow
         RunOnUi(() =>
         {
             TaskDirection.Text = "검토";
-            TaskTitle.Text = $"HIGH 마일스톤 검토 · {validationRound}";
+            TaskTitle.Text = "HIGH 마일스톤 최종 검토";
             ResultTitle.Text = "HIGH";
             SetFlowState(
                 codexActive: true,
@@ -2710,10 +2448,8 @@ public partial class MainWindow
         var historyInvocationReference = WorkerHistoryCardPolicy.NewInvocationReference(
             milestone.Id, "HIGH");
         var prompt = RoleContractLoader.BuildHighPrompt(
-            HighDesignContinuationPolicy.BuildReviewContext(
-                MilestoneDefinitionContract.BuildHighContext(
-                    milestone, workReports, mechanicalReports),
-                previousHighReport));
+            MilestoneDefinitionContract.BuildHighContext(
+                milestone, workReports, mechanicalReports));
 
         var sandbox = milestone.ReadOnlyNoFileChanges
             ? CodexSandboxMode.ReadOnly
@@ -2726,7 +2462,7 @@ public partial class MainWindow
                 currentPrompt,
                 high,
                 workingDirectory,
-                sessionId,
+                null,
                 null,
                 cancellationToken,
                 sandbox,
@@ -2762,7 +2498,7 @@ public partial class MainWindow
             workItemId: "HIGH",
             referenceId: historyInvocationReference);
 
-        return (report, result.SessionId ?? sessionId);
+        return report;
     }
 
     private async Task<string> ExecuteBuildRepairAsync(

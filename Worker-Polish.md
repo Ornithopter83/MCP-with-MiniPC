@@ -10,7 +10,7 @@
 ② #10+ WORK는 코드·CLI 구현을 담당한다. WRITE_PATH는 병렬 충돌 추적용이며 수정 권한의 한계가 아니다. WORKITEM 세션·진행 상태는 Worker가 보존한다.
 ③ #0 DESIGN은 UI·씬·그래픽 실제 제작·시각 수정을, #1 ASSET MANAGER는 에셋 검색·획득·Import·연결을 담당한다. 구형 이미지 추출 RESOURCE sidecar는 비활성이다.
 ④ 독립 QA 역할은 호출하지 않는다. Worker의 BUILD/TEST 근거를 HIGH가 검증하며 기존 QA 출력·설정은 호환 판독용이다.
-⑤ HIGH(PL)는 구현·BUILD/TEST·DESIGN 증거를 검증하고 직접 보완한다. 필요한 DESIGN 재수정 인계는 최대 2회이며 미해결 결함·증거는 HQ에 보존한다.
+⑤ HIGH(PL)는 구현·BUILD/TEST·DESIGN 증거를 검증하고 직접 보완한다. HIGH에서 DESIGN 재호출은 하지 않는다. HIGH가 직접 수정·검토한 뒤 남은 결함·증거를 HQ에 보고한다.
 ⑥ Worker는 역할 배정과 병렬 실행, 세션·체크포인트, 기계적 BUILD·Git, 오류·중단 상태와 HQ 보고를 관리한다.
 ⑦ 현재 역할은 HQ, #1 ASSET MANAGER, #0 DESIGN, #10+ WORK, HIGH다. 구형 QA·RESOURCE와 JUDGE·OBSERVATION은 신규 실행하지 않는다.
 
@@ -54,14 +54,14 @@
 ④ Editor·Scene·Import 등 공유 호출은 공통 게이트로 조정하며 독립 C# 소스 WORK는 병렬 실행한다.
 ⑤ Worker는 실행한 WORK 결과를 바탕으로 기계 BUILD를 수행한다. 실제 빌드 오류가 단일 WORKITEM에 귀속되면 원래 ID로 복구하고, 소유자가 불명확하면 HQ 판단에 맡긴다. 환경 오류를 코드 수정으로 우회하지 않는다.
 ⑥ in_progress WORKITEM은 완료 처리하지 않고 HIGH/HQ에 실제 상태·체크포인트·남은 작업을 전달한다. 후속 CONTINUE는 HQ가 판단한다.
-⑦ 독립 QA 단계 없이 HIGH가 BUILD/TEST와 WORK/DESIGN 결과를 검증한다. DESIGN 재수정은 2회 상한이며 실패·무변경·초과 시 미해결을 HQ에 보고한다.
+⑦ 독립 QA 단계 없이 HIGH가 BUILD/TEST와 WORK/DESIGN 결과를 검증한다. HIGH가 DESIGN을 재수정 호출하지 않는다. 해결이 어려운 시각 문제는 증거와 대상을 HQ에 보고하고, HQ만 후속 마일스톤에 DESIGN을 배정한다.
 ⑧ HIGH 결과가 완료·차단되거나 BUILD에 문제가 있어도 READ_ONLY 외 마일스톤은 규정된 Git 최종화 판단으로 이어진다. Git 오류는 별도 HIGH 진단과 한정 재시도를 따른다.
 ⑨ Worker는 마일스톤 결과와 Git 상태를 기계적으로 축약해 HQ에 돌려주고, 다음 마일스톤·PAUSE·END는 HQ가 결정한다.
 
 제6조 (역할 결과와 오류)
 
 ① ASSET MANAGER, DESIGN, WORK, HIGH는 @@REPORT와 역할별 중분류 결과를 반환하며 대괄호 제어·종료 형식은 전용 계약을 따른다.
-② WORK·DESIGN·ASSET MANAGER의 STATUS는 completed, in_progress, blocked다. HIGH는 completed·blocked 또는 DESIGN 수정 인계를 사용하며 이전 QA 상태는 호환 판독으로만 다룬다.
+② WORK·DESIGN·ASSET MANAGER의 STATUS는 completed, in_progress, blocked다. HIGH는 completed 또는 blocked로 Worker에 보고한다. DESIGN 인계 라우팅은 사용하지 않는다.
 ③ 실행 timeout·도구·전송 실패는 실제 기계 상태로 기록한다. 역할의 자연어 SUMMARY·ISSUES를 기계적 성공 증거로 오인하지 않는다.
 ④ 명백한 문법 오류는 원문의 STATUS·증거를 바꾸지 않는 기계적 복구를 우선 적용하고, 필요한 경우 현재 역할 계약에 맞춘 형식 재출력을 요청한다.
 ⑤ WORK 형식 재출력은 동일 WORKITEM의 구현을 다시 실행시키지 않는다. 복구 뒤에도 유효한 결과가 없으면 해당 WORK는 blocked로 보고한다.

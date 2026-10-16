@@ -26,7 +26,7 @@ internal static class RoleTextProtocol
     }
 
     public static RoleTextResult ParseHigh(string? raw) =>
-        Parse(raw, new[] { "completed", "blocked", "in_progress" });
+        Parse(raw, new[] { "completed", "blocked" });
 
     public static string BuildResult(
         string status,
