@@ -36,7 +36,7 @@ public sealed class WorkerRepositorySettingsTests
         var next = WorkerTargetConfiguration.ResolveRepositorySettingsForSave(
             saved with
             {
-                Qa = new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium")
+                Design = new WorkerAiRoleSettings(Model: "gpt-6-luna", Reasoning: "medium")
             }, fixture.Root);
         Assert.Equal(remote, next.ManualRepositoryUrl);
     }
