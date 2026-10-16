@@ -223,7 +223,24 @@ internal static class UnityVisualFoundry
             if (vfSprite == null)
                 throw new System.InvalidOperationException("VISUAL_FOUNDRY_SPRITE_MISSING");
             UnityEngine.Font vfFont = null;
-            try {
+            // Prefer a project-provided display font with Korean glyph
+            // coverage over a generic built-in fallback.
+            var vfFonts = UnityEditor.AssetDatabase.FindAssets("t:Font",
+                new[] { "Assets" });
+            foreach (var vfFontGuid in vfFonts) {
+                var vfFontPath = UnityEditor.AssetDatabase.GUIDToAssetPath(vfFontGuid);
+                var vfCandidate = UnityEditor.AssetDatabase.LoadAssetAtPath<
+                    UnityEngine.Font>(vfFontPath);
+                if (vfCandidate == null) continue;
+                var vfName = vfCandidate.name.ToLowerInvariant();
+                if(vfName.Contains("pretendard") || vfName.Contains("noto") ||
+                   vfName.Contains("nanum") || vfName.Contains("korean") ||
+                   vfName.Contains("gothic") || vfName.Contains("spoqa")) {
+                    vfFont = vfCandidate;
+                    break;
+                }
+            }
+            if (vfFont == null) try {
                 vfFont = UnityEngine.Resources.GetBuiltinResource<UnityEngine.Font>(
                     "LegacyRuntime.ttf");
             } catch (System.Exception) {}
@@ -414,6 +431,13 @@ internal static class UnityVisualFoundry
                         preview) as UnityEngine.GameObject;
                     if (instance == null)
                         throw new System.InvalidOperationException("VISUAL_FOUNDRY_INSTANCE_FAILED");
+                    // The preview is a self-contained, interactable scene.
+                    // Runtime game behaviors are still supplied via Bridge.
+                    var vfEvents = new UnityEngine.GameObject("Preview EventSystem",
+                        typeof(UnityEngine.EventSystems.EventSystem),
+                        typeof(UnityEngine.EventSystems.StandaloneInputModule));
+                    UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(
+                        vfEvents,preview);
                     var camera = new UnityEngine.GameObject("Preview Camera",
                         typeof(UnityEngine.Camera));
                     UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(camera,preview);
