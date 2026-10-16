@@ -57,7 +57,6 @@ public sealed class CoordinatorFirstContractTests
         Assert.NotNull(milestone);
         Assert.Equal("M1", milestone!.Id);
         Assert.Equal("main", milestone.TargetBranch);
-        Assert.False(milestone.QaReserved);
         Assert.Equal("bin/App.exe", milestone.Entrypoint);
         Assert.False(milestone.InitializeGitIfMissing);
         var work = Assert.Single(milestone.WorkItems.Values);
@@ -631,7 +630,7 @@ public sealed class CoordinatorFirstContractTests
     [Fact]
     public void WorkBlocked_IsNotSuccess()
     {
-        var qa = MilestoneDefinitionContract.NormalizeWorkReport(
+        var workReport = MilestoneDefinitionContract.NormalizeWorkReport(
             0,
             """
             @@REPORT
@@ -642,7 +641,7 @@ public sealed class CoordinatorFirstContractTests
             """,
             null);
 
-        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(qa));
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(workReport));
     }
 
     [Fact]
@@ -857,7 +856,6 @@ public sealed class CoordinatorFirstContractTests
             out var milestone,
             out var error),
             error);
-        Assert.False(milestone!.QaReserved);
         Assert.True(Assert.Single(milestone.WorkItems.Values).TestRequired);
     }
 
