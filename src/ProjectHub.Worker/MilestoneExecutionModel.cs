@@ -1155,9 +1155,6 @@ internal static class MilestoneDefinitionContract
             : raw;
     }
 
-    public static IReadOnlyList<string> ExtractHighChangedPaths(string report) =>
-        Array.Empty<string>();
-
     public static IReadOnlyList<string> ExtractReportPaths(
         string report,
         string fieldName)
