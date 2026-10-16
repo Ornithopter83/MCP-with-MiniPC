@@ -272,13 +272,17 @@ public partial class MainWindow
                 UnityBackgroundVisualPlan? visualPlan = null;
                 UnityVisualFoundry.Plan? foundryPlan = null;
                 var foundryReport = "VISUAL_FOUNDRY_NOT_APPLICABLE";
+                // Include the accepted HQ design brief, not only the short
+                // DESIGN instructions; the user should not repeat art direction.
+                var foundryBrief = (milestone.RawHqMessage ?? string.Empty) +
+                    Environment.NewLine + design.Instructions;
                 if (UnityVisualFoundry.IsVisualScreenRequest(design.Instructions))
                 {
                     try
                     {
                         foundryPlan = UnityVisualFoundry.Prepare(
                             workingDirectory, jobId, milestone.Id,
-                            design.Instructions);
+                            foundryBrief);
                     }
                     catch (Exception foundryError) when (foundryError is IOException or
                         UnauthorizedAccessException or ArgumentException)
