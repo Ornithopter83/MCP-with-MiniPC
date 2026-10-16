@@ -1884,12 +1884,12 @@ public partial class MainWindow : Window
             "HIGH" => WorkerRoleState.High,
             _ => WorkerRoleState.Hq
         };
-        // The WORK contract is sufficient; avoid a second generic tool
-        // availability paragraph on every WORK invocation.
-        if (!designPurpose && (roleName != "WORK" || assetManagerPurpose) &&
-            UnityCliBuildRunner.IsUnityProject(workingDirectory))
-            prompt += Environment.NewLine +
-                UnityFreeDesignToolPolicy.BuildCliToolGuidance();
+        // Share one real, bounded CLI availability probe across parallel roles.
+        // Static tool versions are diagnostic only; no build or Unity Editor
+        // validation is implied. WORK needs it as much as HIGH does.
+        if (UnityCliBuildRunner.IsUnityProject(workingDirectory))
+            prompt += Environment.NewLine + Environment.NewLine +
+                await WorkerCliEnvironmentProbe.GetGuidanceAsync(cancellationToken);
         // The preflight already queried this Editor's real command catalog.
         // Share that exact, job-scoped file with CLI roles instead of asking
         // each role to rediscover and guess the Unity command arguments.
