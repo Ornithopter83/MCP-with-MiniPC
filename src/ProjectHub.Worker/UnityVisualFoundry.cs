@@ -166,6 +166,20 @@ internal static class UnityVisualFoundry
                     if (UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(
                         vfOutput + "/" + screen + variant + ".prefab") != null)
                         vfPresent++;
+            if (vfPresent == 0) {
+                // A failed earlier run may have written textures or a shader
+                // before prefabs. Never overwrite those potentially edited files.
+                foreach (var existing in new [] {
+                    "Backdrop.png", "Halo.png", "PrismaticUI.shader",
+                    "PrismaticUI.mat", "LayoutAudit.json",
+                    "Preview-Menu.unity", "Preview-Quiz.unity",
+                    "Preview-Results.unity"
+                })
+                    if (UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(
+                        vfOutput + "/" + existing) != null)
+                        throw new System.InvalidOperationException(
+                            "VISUAL_FOUNDRY_PARTIAL_ASSETS_NO_OVERWRITE:" + existing);
+            }
             if (vfPresent > 0) {
                 var vfComplete = vfPresent == 9;
                 foreach(var screen in vfScreenNames)
