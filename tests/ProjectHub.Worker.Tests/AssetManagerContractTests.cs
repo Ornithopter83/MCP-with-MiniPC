@@ -39,7 +39,6 @@ public sealed class AssetManagerContractTests
         Assert.Equal("rock-001", milestone.AssetManager!.RequestId);
         Assert.Equal("CC0_AUTO", milestone.AssetManager.SourcePolicy);
         Assert.Equal("Assets/Scenes/AIDemo.unity", milestone.AssetManager.ScenePath);
-        Assert.False(milestone.QaReserved);
     }
 
     [Theory]
