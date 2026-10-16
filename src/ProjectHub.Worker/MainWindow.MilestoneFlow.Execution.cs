@@ -309,6 +309,18 @@ public partial class MainWindow
                             var generated = await UnityVisualFoundry.GenerateAsync(
                                 foundryPlan, cancellationToken);
                             foundryReport = generated.Detail;
+                            if (generated.Success)
+                            {
+                                var runtime = UnityVisualFoundryRuntime.Install(workingDirectory);
+                                foundryReport += "; " + runtime.Detail;
+                                AddTaskMessage("UNITY VISUAL FOUNDRY RUNTIME",
+                                    runtime.Detail,
+                                    status: runtime.Available ? "OBSERVED" : "UNVERIFIED",
+                                    includeHistory: false);
+                                // A newly installed runtime component may be compiled
+                                // asynchronously by Unity. Preserve evidence instead of
+                                // assuming the next Editor request can use it immediately.
+                            }
                         }
                         else
                             foundryReport = "VISUAL_FOUNDRY_EDITOR_UNVERIFIED";
