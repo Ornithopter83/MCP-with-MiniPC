@@ -906,9 +906,17 @@ public partial class MainWindow
                 WorkerChildProcessJob.TerminateAllActiveJobs();
             }
 
-            // End protection and restore only windows parked by this job.
+            // All AI/Unity commands and managed Editor operations are now
+            // stopped. FocusGuard was passive throughout the job: attempt a
+            // single user-window restoration ONLY at this final boundary.
             var focusGuardWasAvailable = unityFocusGuard.Available;
+            var focusRestoreResult = unityFocusGuard.RestoreAfterJob();
             unityFocusGuard.Dispose();
+            AddTaskMessage("UNITY FOCUS RESTORE", focusRestoreResult,
+                status: focusRestoreResult.Contains("UNVERIFIED", StringComparison.Ordinal) ||
+                        focusRestoreResult.Contains("UNAVAILABLE", StringComparison.Ordinal)
+                    ? "UNVERIFIED" : "OBSERVED",
+                includeHistory: false);
             AddTaskMessage("UNITY BACKGROUND GUARD",
                 unityFocusGuard.Diagnostic,
                 status: focusGuardWasAvailable &&
