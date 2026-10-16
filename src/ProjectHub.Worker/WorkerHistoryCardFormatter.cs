@@ -17,6 +17,24 @@ public static class WorkerHistoryCardFormatter
         return value.Length <= HardPreviewLimit ? value : value[..(HardPreviewLimit - 1)] + "…";
     }
 
+    /// <summary>
+    /// Card-only preview: show the human-readable result instead of spending
+    /// the limited visible lines on routing markers. Never alter FullMessage.
+    /// </summary>
+    public static string CardPreview(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return "(본문 없음)";
+        var report = Regex.Match(body,
+            @"(?is)<SUMMARY>\s*(.*?)(?:</(?:SUMMARY)?>|\z)",
+            RegexOptions.CultureInvariant);
+        if (report.Success && !string.IsNullOrWhiteSpace(report.Groups[1].Value))
+            return Preview(report.Groups[1].Value);
+        var withoutEnvelope = Regex.Replace(body,
+            @"(?m)^\s*(?:\[GOTO=[^\]\r\n]+\]|\[ACTION=[^\]\r\n]+\]|\[RESPONSE=OK\]|@@REPORT)\s*(?:\r?\n|$)",
+            string.Empty, RegexOptions.CultureInvariant);
+        return Preview(withoutEnvelope);
+    }
+
     public static string BuildHqReceiptBody(string action, string? response) =>
         "HQ ACTION: " + action + Environment.NewLine + (response ?? string.Empty);
 

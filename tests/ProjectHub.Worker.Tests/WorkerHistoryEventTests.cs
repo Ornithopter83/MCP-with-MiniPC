@@ -82,11 +82,13 @@ public sealed class WorkerHistoryEventTests
             Status = "RECEIVED"
         };
 
-        Assert.Equal(90d, running.CardHeight);
-        Assert.Equal(56d, running.SummaryHeight);
-        Assert.Equal(56d, running.SummaryMaxHeight);
-        Assert.True(double.IsNaN(completed.CardHeight));
-        Assert.True(double.IsNaN(completed.SummaryHeight));
+        Assert.Equal(108d, running.CardHeight);
+        Assert.True(double.IsNaN(running.SummaryHeight));
+        Assert.Equal(72d, running.SummaryMaxHeight);
+        Assert.Equal(4, running.CardSummaryLines);
+        Assert.Equal(108d, completed.CardHeight);
+        Assert.Equal(36d, completed.SummaryMaxHeight);
+        Assert.Equal(2, completed.CardSummaryLines);
     }
 
     [Fact]
@@ -97,7 +99,8 @@ public sealed class WorkerHistoryEventTests
             "Worker · HQ 응답 수신", "[GOTO=WORKER]\n[ACTION=WORK]",
             null, null, null, "RECEIVED", null);
         Assert.Equal(System.Windows.TextWrapping.Wrap, item.SummaryWrapping);
-        Assert.Equal(76d, item.SummaryMaxHeight);
+        Assert.Equal(36d, item.SummaryMaxHeight);
+        Assert.Equal(108d, item.CardHeight);
     }
 
     [Fact]

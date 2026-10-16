@@ -98,21 +98,16 @@ public partial class MainWindow : Window
             EventType == "ROLE_PROGRESS" || IsAttentionEvent
                 ? Visibility.Collapsed
                 : Visibility.Visible;
-        public TextWrapping SummaryWrapping =>
-            EventType == "ROLE_PROGRESS" || EventType == "DATA_FLOW" || IsAttentionEvent
-                ? TextWrapping.Wrap
-                : TextWrapping.NoWrap;
+        // Five visible body lines at most: one title plus either four summary
+        // lines, or two summary and two metadata lines.
+        // The original report remains available by double-click.
+        public string CardPreview => WorkerHistoryCardFormatter.CardPreview(Summary);
+        public TextWrapping SummaryWrapping => TextWrapping.Wrap;
         public TextTrimming SummaryTrimming => TextTrimming.CharacterEllipsis;
-        public double SummaryMaxHeight =>
-            EventType == "ROLE_PROGRESS"
-                ? 56d
-                : IsAttentionEvent
-                    ? 58d
-                    : EventType == "DATA_FLOW" ? 76d : double.PositiveInfinity;
-        public double SummaryHeight =>
-            EventType == "ROLE_PROGRESS" ? 56d : double.NaN;
-        public double CardHeight =>
-            EventType == "ROLE_PROGRESS" ? 90d : double.NaN;
+        public int CardSummaryLines => MetricsVisibility == Visibility.Visible ? 2 : 4;
+        public double SummaryMaxHeight => CardSummaryLines * 18d;
+        public double SummaryHeight => double.NaN;
+        public double CardHeight => 108d;
         public string Details
         {
             get
