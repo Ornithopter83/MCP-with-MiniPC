@@ -41,12 +41,30 @@ public sealed class UnityWorkSchedulingPolicyTests
     [InlineData("Packages/manifest.json", "", true)]
     [InlineData("Assets/Scripts/Player.cs", "Unity CLI로 컴파일 확인", true)]
     [InlineData("Assets/Scripts/Player.cs", "AssetDatabase.Refresh 사용", true)]
-    public void OnlyEditorFreeSourcePathsUseParallelLane(
+    [InlineData("Assets/StreamingAssets/QuizDatabase/linux.json", "퀴즈 데이터 20문항 작성", false)]
+    [InlineData("Assets/StreamingAssets/QuizDatabase/manifest.json", "JSON 목록 작성", false)]
+    [InlineData("docs/projecthub/content.md", "콘텐츠 기록 작성", false)]
+    [InlineData("Assets/Tests/EditMode/ServerQuizContentScaleTests.cs", "EditMode 검증 코드 작성. 실제 실행은 HIGH 담당", false)]
+    [InlineData("Assets/StreamingAssets/QuizDatabase/linux.json.meta", "JSON 임포트 설정 수정", true)]
+    [InlineData("Assets/StreamingAssets/QuizDatabase", "데이터 폴더 정리", true)]
+    [InlineData("Assets/Textures/Pixel.png", "이미지 작성", true)]
+    [InlineData("Assets/StreamingAssets/QuizDatabase/linux.json", "Unity Editor에서 열어 검증", true)]
+    [InlineData("Assets/Tests/EditMode/ServerQuizContentScaleTests.cs", "EditMode 테스트 실행", true)]
+    public void EditorFreeCodeAndDataPathsUseParallelLane(
         string path, string instructions, bool requiresEditor)
     {
         Assert.Equal(requiresEditor,
             UnityWorkSchedulingPolicy.RequiresEditorLane(
                 Work("80", path, instructions)));
+    }
+
+    [Fact]
+    public void MultiPathWorkUsesEditorLaneIfAnyPathNeedsUnity()
+    {
+        var mixed = new MilestoneWorkDefinition("90",
+            new[] { "Assets/StreamingAssets/QuizDatabase/linux.json", "Assets/Scenes/Level.unity" },
+            false, true, "파일 작성", "파일 작성");
+        Assert.True(UnityWorkSchedulingPolicy.RequiresEditorLane(mixed));
     }
 
     [Fact]
