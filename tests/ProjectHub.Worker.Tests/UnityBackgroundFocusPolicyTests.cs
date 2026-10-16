@@ -42,6 +42,17 @@ public sealed class UnityBackgroundFocusPolicyTests
             age, inputTargetsUnity));
     }
 
+    [Theory]
+    [InlineData("Unity 6 - Unity3DSample - Windows", "Unity3DSample", true)]
+    [InlineData("Unity 6 - DifferentProject", "Unity3DSample", false)]
+    [InlineData("", "Unity3DSample", false)]
+    public void ForegroundLeaseMustMatchEditorProjectTitle(
+        string title, string project, bool expected)
+    {
+        Assert.Equal(expected,
+            UnityBackgroundFocusPolicy.IsProjectEditorTitle(title, project));
+    }
+
     [Fact]
     public void GuardMatchesOnlyCurrentProjectPlayerOutput()
     {

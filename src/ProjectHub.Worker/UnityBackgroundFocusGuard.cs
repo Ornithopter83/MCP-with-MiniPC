@@ -31,6 +31,10 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
 
     private readonly WinEventDelegate _callback;
     private readonly string? _projectRoot;
+    private readonly IntPtr _workerWindow;
+    private IntPtr _visualLeaseWindow;
+    private long _visualLeaseDeadline;
+    private bool _visualUserOverride;
     private readonly DateTime _jobStartUtc;
     private readonly object _sync = new();
     private readonly HashSet<IntPtr> _parkedEditorWindows = new();
@@ -68,17 +72,19 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         : "FOCUS_GUARD_UNAVAILABLE: " + _unavailableReason +
           "; Unity Editor may take focus during CLI/MCP execution.";
 
-    private UnityBackgroundFocusGuard(string? projectRoot)
+    private UnityBackgroundFocusGuard(string? projectRoot, IntPtr workerWindow)
     {
         _callback = OnForegroundChanged;
+        _workerWindow = workerWindow;
         _projectRoot = string.IsNullOrWhiteSpace(projectRoot)
             ? null : Path.GetFullPath(projectRoot);
         _jobStartUtc = DateTime.UtcNow.AddSeconds(-5);
     }
 
-    internal static UnityBackgroundFocusGuard Start(string? projectRoot = null)
+    internal static UnityBackgroundFocusGuard Start(string? projectRoot = null,
+        IntPtr workerWindow = default)
     {
-        var guard = new UnityBackgroundFocusGuard(projectRoot);
+        var guard = new UnityBackgroundFocusGuard(projectRoot, workerWindow);
         if (!OperatingSystem.IsWindows())
         {
             guard._unavailableReason = "Windows-only";
@@ -114,6 +120,129 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         return guard;
     }
 
+    /// <summary>
+    /// A narrowly scoped foreground window lease for Worker-owned Native Game View
+    /// verification. Skips activation when the user is working in another app.
+    /// Never changes another project's Editor and never minimizes the Editor.
+    /// </summary>
+    internal VisualVerificationLease BeginVisualVerification()
+    {
+        lock (_sync)
+        {
+            if (_disposed || !Available || _projectRoot is null ||
+                _workerWindow == IntPtr.Zero || !IsWindow(_workerWindow) ||
+                !IsWindowVisible(_workerWindow) || IsIconic(_workerWindow))
+                return new(null, IntPtr.Zero, "FOCUS_LEASE_UNAVAILABLE");
+            if (_visualLeaseWindow != IntPtr.Zero)
+                return new(null, IntPtr.Zero, "FOCUS_LEASE_ALREADY_ACTIVE");
+            if (GetForegroundWindow() != _workerWindow)
+                return new(null, IntPtr.Zero, "FOCUS_LEASE_SKIPPED_USER_IN_OTHER_APP");
+
+            var projectName = Path.GetFileName(_projectRoot.TrimEnd(
+                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            IntPtr editorWindow = IntPtr.Zero;
+            foreach (var process in Process.GetProcessesByName("Unity"))
+            {
+                using (process)
+                {
+                    try
+                    {
+                        if (!UnityBackgroundFocusPolicy.IsProjectEditorTitle(
+                                process.MainWindowTitle, projectName))
+                            continue;
+                        var candidate = process.MainWindowHandle;
+                        if (candidate == IntPtr.Zero || !IsWindow(candidate) ||
+                            !IsWindowVisible(candidate) || IsIconic(candidate))
+                            continue;
+                        if (editorWindow != IntPtr.Zero)
+                            return new(null, IntPtr.Zero,
+                                "FOCUS_LEASE_AMBIGUOUS_PROJECT_WINDOWS");
+                        editorWindow = candidate;
+                    }
+                    catch (Exception ex) when (ex is InvalidOperationException or
+                        Win32Exception or ArgumentException) { }
+                }
+            }
+            if (editorWindow == IntPtr.Zero)
+                return new(null, IntPtr.Zero,
+                    "FOCUS_LEASE_EDITOR_NOT_UNIQUELY_LOCATED_BY_PROJECT_TITLE");
+            _visualLeaseWindow = editorWindow;
+            _visualLeaseDeadline = Environment.TickCount64 + 50_000;
+            _visualUserOverride = false;
+            _previousUserWindow = _workerWindow;
+
+            if (!SetForegroundWindow(editorWindow) ||
+                GetForegroundWindow() != editorWindow)
+            {
+                _visualLeaseWindow = IntPtr.Zero;
+                return new(null, IntPtr.Zero, "FOCUS_LEASE_ACTIVATION_DENIED");
+            }
+            return new(this, editorWindow, "FOCUS_LEASE_ACTIVE");
+        }
+    }
+
+    internal sealed class VisualVerificationLease : IDisposable
+    {
+        private UnityBackgroundFocusGuard? _owner;
+        private readonly IntPtr _window;
+        internal bool Active => _owner is not null;
+        internal string Diagnostic { get; private set; }
+
+        internal VisualVerificationLease(UnityBackgroundFocusGuard? owner,
+            IntPtr window, string diagnostic)
+        {
+            _owner = owner;
+            _window = window;
+            Diagnostic = diagnostic;
+        }
+
+        public void Dispose()
+        {
+            var owner = Interlocked.Exchange(ref _owner, null);
+            if (owner is not null)
+                Diagnostic = owner.EndVisualVerification(_window);
+        }
+    }
+
+    private string EndVisualVerification(IntPtr unityWindow)
+    {
+        lock (_sync)
+        {
+            if (_visualLeaseWindow != unityWindow)
+                return "FOCUS_LEASE_ALREADY_EXPIRED";
+            _visualLeaseWindow = IntPtr.Zero;
+            var userOverride = _visualUserOverride;
+            _visualUserOverride = false;
+            if (userOverride || GetForegroundWindow() != unityWindow)
+                return "FOCUS_LEASE_USER_SWITCH_RESPECTED";
+            if (_workerWindow == IntPtr.Zero || !IsWindow(_workerWindow) ||
+                !IsWindowVisible(_workerWindow) || IsIconic(_workerWindow))
+                return "FOCUS_LEASE_WORKER_WINDOW_UNAVAILABLE";
+            var restored = SetForegroundWindow(_workerWindow);
+            if (!restored && GetForegroundWindow() == unityWindow)
+            {
+                var unityThread = GetWindowThreadProcessId(unityWindow, out _);
+                var callerThread = GetCurrentThreadId();
+                var attached = unityThread != 0 && unityThread != callerThread &&
+                    AttachThreadInput(callerThread, unityThread, true);
+                try
+                {
+                    if (GetForegroundWindow() == unityWindow)
+                        restored = SetForegroundWindow(_workerWindow);
+                }
+                finally
+                {
+                    if (attached)
+                        AttachThreadInput(callerThread, unityThread, false);
+                }
+            }
+            return (restored && GetForegroundWindow() == _workerWindow) ||
+                GetForegroundWindow() == _workerWindow
+                ? "FOCUS_LEASE_WORKER_RESTORED"
+                : "FOCUS_LEASE_WORKER_RESTORE_DENIED";
+        }
+    }
+
     private void OnForegroundChanged(
         IntPtr eventHook, uint eventType, IntPtr window,
         int objectId, int childId, uint eventThread, uint eventTime)
@@ -139,6 +268,26 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
             if (_disposed || _restoring) return;
             try
             {
+                if (_visualLeaseWindow != IntPtr.Zero)
+                {
+                    if (Environment.TickCount64 >= _visualLeaseDeadline)
+                    {
+                        EndVisualVerification(_visualLeaseWindow);
+                    }
+                    else if (window == _visualLeaseWindow)
+                    {
+                        if (UnityBackgroundFocusPolicy.IsRecentUserSelection(
+                                MillisecondsSinceUserInput(), IsExplicitUnitySelection(window)))
+                            _visualUserOverride = true;
+                        return;
+                    }
+                    else if (window != _workerWindow && !IsWatchedUnityWindow(window))
+                    {
+                        // User switched to a different application during capture.
+                        // Do not take focus back when the capture later finishes.
+                        _visualUserOverride = true;
+                    }
+                }
                 var isUnityEditor = IsUnityEditorWindow(window);
                 var isProjectPlayer = !isUnityEditor && IsProjectPlayerWindow(window);
                 var guardedWindow = isUnityEditor || isProjectPlayer;
@@ -302,6 +451,11 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        lock (_sync)
+        {
+            if (_visualLeaseWindow != IntPtr.Zero)
+                EndVisualVerification(_visualLeaseWindow);
+        }
         _disposed = true;
         var watchdog = Interlocked.Exchange(ref _watchdog, null);
         watchdog?.Dispose();
@@ -420,6 +574,24 @@ internal static class UnityBackgroundFocusPolicy
         }
         catch (Exception e) when (e is IOException or ArgumentException
             or NotSupportedException) { return false; }
+    }
+
+    internal static bool IsProjectEditorTitle(string? title, string? projectName)
+    {
+        if (string.IsNullOrWhiteSpace(title) ||
+            string.IsNullOrWhiteSpace(projectName))
+            return false;
+        var index = title.IndexOf(projectName, StringComparison.OrdinalIgnoreCase);
+        while (index >= 0)
+        {
+            var end = index + projectName.Length;
+            var before = index == 0 || !char.IsLetterOrDigit(title[index - 1]);
+            var after = end == title.Length || !char.IsLetterOrDigit(title[end]);
+            if (before && after) return true;
+            index = title.IndexOf(projectName, index + 1,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
     }
 
     internal static bool IsUnityEditorProcess(string? processName) =>

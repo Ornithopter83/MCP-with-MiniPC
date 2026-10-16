@@ -7,7 +7,8 @@ namespace ProjectHub.Worker;
 internal sealed record UnityBackgroundVisualPlan(
     string Directory, string BeforeScript, string AfterScript,
     string InputTemplate, string BeforePng, string AfterPng,
-    string WorkerScript, string WorkerPng, string ProjectRoot)
+    string WorkerScript, string WorkerPng, string ProjectRoot,
+    string NativeScript, string NativePng)
 {
     internal string AgentGuidance =>
         "Unity 내부 캡처 보조 파일 (연결된 Editor의 eval_file 지원 확인 후 사용):\n" +
@@ -47,12 +48,41 @@ internal static class UnityBackgroundVisualTools
         var input = Path.Combine(directory, "ui-click-template.cs");
         var workerPng = Path.Combine(directory, "worker-verify.png");
         var workerScript = Path.Combine(directory, "capture-worker-verify.cs");
+        var nativePng = Path.Combine(directory, "native-game-view.png");
+        var nativeScript = Path.Combine(directory, "capture-native-game-view.cs");
         File.WriteAllText(before, BuildCaptureExpression(beforePng), ProjectHubJson.Utf8NoBom);
         File.WriteAllText(after, BuildCaptureExpression(afterPng), ProjectHubJson.Utf8NoBom);
         File.WriteAllText(workerScript, BuildCaptureExpression(workerPng), ProjectHubJson.Utf8NoBom);
+        File.WriteAllText(nativeScript, BuildNativeCaptureExpression(nativePng), ProjectHubJson.Utf8NoBom);
         File.WriteAllText(input, BuildUiClickTemplate(), ProjectHubJson.Utf8NoBom);
         return new(directory, before, after, input, beforePng, afterPng,
-            workerScript, workerPng, Path.GetFullPath(root));
+            workerScript, workerPng, Path.GetFullPath(root), nativeScript, nativePng);
+    }
+
+    /// <summary>
+    /// Native Game View screenshot request. CaptureScreenshot writes on a later
+    /// rendered frame; Worker must poll the exact fresh file, not trust the CLI
+    /// acknowledgement. Does not synthesize a camera for Overlay UI.
+    /// </summary>
+    internal static string BuildNativeCaptureExpression(string outputPath)
+    {
+        var literal = JsonSerializer.Serialize(Path.GetFullPath(outputPath));
+        return """
+            var phOutput = __OUTPUT__;
+            if (!UnityEditor.EditorApplication.isPlaying)
+                throw new System.InvalidOperationException("PROJECTHUB_NATIVE_REQUIRES_PLAY_MODE");
+            UnityEditor.EditorWindow phGameView = null;
+            foreach (var phWindow in UnityEngine.Resources.FindObjectsOfTypeAll<UnityEditor.EditorWindow>())
+                if (phWindow.GetType().Name == "GameView") { phGameView = phWindow; break; }
+            if (phGameView == null)
+                throw new System.InvalidOperationException("PROJECTHUB_NATIVE_GAME_VIEW_MISSING");
+            phGameView.Focus();
+            phGameView.Repaint();
+            var phWidth = UnityEngine.Screen.width;
+            var phHeight = UnityEngine.Screen.height;
+            UnityEngine.ScreenCapture.CaptureScreenshot(phOutput);
+            return "PROJECTHUB_NATIVE_REQUESTED|" + phWidth + "|" + phHeight;
+            """.Replace("__OUTPUT__", literal, StringComparison.Ordinal);
     }
 
     private static string SafeSegment(string text)
@@ -229,19 +259,98 @@ internal static class UnityBackgroundVisualTools
             System.Text.Encoding.ASCII.GetString(header, 12, 4) == "IHDR";
     }
 
-    private static bool TryResult(JsonElement data, out string value)
+    private static bool TryResult(JsonElement data, out string value,
+        string requiredPrefix = FrameMarker)
     {
         value = string.Empty;
         if (data.ValueKind == JsonValueKind.String)
         {
             value = data.GetString() ?? "";
-            return value.StartsWith(FrameMarker, StringComparison.Ordinal);
+            return value.StartsWith(requiredPrefix, StringComparison.Ordinal);
         }
         if (data.ValueKind != JsonValueKind.Object) return false;
         foreach (var key in new[] { "result", "value", "output" })
-            if (data.TryGetProperty(key, out var child) && TryResult(child, out value))
+            if (data.TryGetProperty(key, out var child) &&
+                TryResult(child, out value, requiredPrefix))
                 return true;
         return false;
+    }
+
+    internal static async Task<UnityBackgroundVisualEvidence> CaptureNativeAsync(
+        UnityBackgroundVisualPlan plan, CancellationToken cancellationToken,
+        Func<IReadOnlyList<string>, CancellationToken, Task<UnityAssetCliResult>>? execute = null)
+    {
+        try
+        {
+            if (File.Exists(plan.NativePng)) File.Delete(plan.NativePng);
+            execute ??= (args, token) => RunCliAsync(plan.ProjectRoot, args, token);
+            var response = await execute(
+                UnityAssetCliImporter.ImportFileArguments(plan.ProjectRoot, plan.NativeScript),
+                cancellationToken).ConfigureAwait(false);
+            if (response.ExitCode != 0)
+                return new(false, "NATIVE_CAPTURE_CLI_FAILED: " +
+                    Limit(response.Error + " " + response.Output), null);
+            string marker;
+            using (var json = JsonDocument.Parse(response.Output))
+            {
+                var root = json.RootElement;
+                if (!root.TryGetProperty("success", out var success) ||
+                    success.ValueKind != JsonValueKind.True ||
+                    !root.TryGetProperty("data", out var data) ||
+                    !TryResult(data, out marker, "PROJECTHUB_NATIVE_REQUESTED|"))
+                    return new(false, "NATIVE_CAPTURE_ACK_UNVERIFIED", null);
+            }
+            var parts = marker.Split('|');
+            if (parts.Length != 3 ||
+                !int.TryParse(parts[1], out var expectedWidth) || expectedWidth <= 0 ||
+                !int.TryParse(parts[2], out var expectedHeight) || expectedHeight <= 0)
+                return new(false, "NATIVE_CAPTURE_ACK_INVALID", null);
+
+            // ScreenCapture.CaptureScreenshot is asynchronous in the Editor.
+            // A new, complete PNG is required; the request alone is not proof.
+            for (var attempt = 0; attempt < 40; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (File.Exists(plan.NativePng))
+                {
+                    var info = new FileInfo(plan.NativePng);
+                    if (info.Length > 2048 && IsPng(plan.NativePng))
+                    {
+                        var pngHeader = new byte[24];
+                        using (var input = File.OpenRead(plan.NativePng))
+                            if (input.Read(pngHeader, 0, pngHeader.Length) != pngHeader.Length)
+                                return new(false, "NATIVE_CAPTURE_HEADER_INCOMPLETE", null);
+                        var width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(
+                            pngHeader.AsSpan(16, 4));
+                        var height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(
+                            pngHeader.AsSpan(20, 4));
+                        if (width != expectedWidth || height != expectedHeight)
+                            return new(false, "NATIVE_CAPTURE_SIZE_MISMATCH: screenshot=" +
+                                width + "x" + height + "; Screen=" +
+                                expectedWidth + "x" + expectedHeight, null);
+                        var hash = Convert.ToHexString(
+                            System.Security.Cryptography.SHA256.HashData(
+                                File.ReadAllBytes(plan.NativePng)));
+                        return new(true, "NATIVE_GAME_VIEW_CAPTURED_UNINSPECTED: " +
+                            width + "x" + height + "; sha256=" + hash +
+                            "; visual quality and content still require inspection; file=" +
+                            plan.NativePng, plan.NativePng);
+                    }
+                }
+                await Task.Delay(200, cancellationToken).ConfigureAwait(false);
+            }
+            return new(false, "NATIVE_CAPTURE_FILE_TIMEOUT_UNVERIFIED", null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            InvalidOperationException or JsonException or
+            System.ComponentModel.Win32Exception)
+        {
+            return new(false, "NATIVE_CAPTURE_ERROR: " + ex.Message, null);
+        }
     }
 
     internal static async Task<UnityBackgroundVisualEvidence> CaptureAsync(

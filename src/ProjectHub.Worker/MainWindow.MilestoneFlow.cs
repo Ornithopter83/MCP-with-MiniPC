@@ -102,7 +102,8 @@ public partial class MainWindow
         // Foreground window protection spans preflight, DESIGN, WORK, CLI
         // recompilation and HIGH; a Codex command hook cannot intercept an
         // already-running Editor promoting its own native window.
-        using var unityFocusGuard = UnityBackgroundFocusGuard.Start(normalizedRoot);
+        using var unityFocusGuard = UnityBackgroundFocusGuard.Start(normalizedRoot,
+            new System.Windows.Interop.WindowInteropHelper(this).Handle);
         UnityEditorRecoverySupervisor? editorRecoverySupervisor = null;
         if (!unityFocusGuard.Available)
             AddTaskMessage("UNITY BACKGROUND GUARD",
@@ -658,6 +659,7 @@ public partial class MainWindow
                         high,
                         designRole,
                         unityPreflight.Ready,
+                        unityFocusGuard,
                         initialChangedPaths,
                         cts.Token);
                 }
@@ -914,6 +916,52 @@ public partial class MainWindow
             "동일한 실패 작업을 아무 변경 없이 재실행하지 마라.");
     }
 
+    /// <summary>
+    /// The foreground exception is restricted to this one Native Game View
+    /// capture. A user switching away from Worker prevents automatic activation
+    /// and a user switching away during capture prevents forced focus recovery.
+    /// Native screenshots are not marked visually approved without inspection.
+    /// </summary>
+    private async Task<UnityBackgroundVisualEvidence> CaptureBestAvailableVisualAsync(
+        UnityBackgroundVisualPlan plan, UnityBackgroundFocusGuard guard,
+        CancellationToken cancellationToken)
+    {
+        var lease = guard.BeginVisualVerification();
+        UnityBackgroundVisualEvidence native;
+        try
+        {
+            native = lease.Active
+                ? await UnityBackgroundVisualTools.CaptureNativeAsync(
+                    plan, cancellationToken)
+                : new UnityBackgroundVisualEvidence(false,
+                    "NATIVE_CAPTURE_SKIPPED: " + lease.Diagnostic, null);
+        }
+        finally
+        {
+            // Restores Worker even on cancellation/timeout or a failed capture.
+            lease.Dispose();
+            AddTaskMessage("UNITY NATIVE FOCUS",
+                lease.Diagnostic, status: lease.Diagnostic ==
+                    "FOCUS_LEASE_WORKER_RESTORED" ? "OBSERVED" : "UNVERIFIED",
+                includeHistory: false);
+        }
+
+        AddTaskMessage("UNITY NATIVE GAME VIEW",
+            native.Detail, status: native.Captured ? "OBSERVED" : "UNVERIFIED",
+            includeHistory: false);
+        if (native.Captured)
+            return native;
+
+        // The existing offscreen path is only a supplementary approximation.
+        // In particular, a camera-free Screen Space Overlay UI cannot rely on it.
+        var offscreen = await UnityBackgroundVisualTools.CaptureAsync(
+            plan, cancellationToken);
+        return offscreen with
+        {
+            Detail = "NATIVE=" + native.Detail + "; OFFSCREEN=" + offscreen.Detail
+        };
+    }
+
     private async Task<MilestoneRunResult> RunSingleMilestoneAsync(
         string jobId,
         string workingDirectory,
@@ -922,6 +970,7 @@ public partial class MainWindow
         WorkerAiRoleSettings high,
         WorkerAiRoleSettings designRole,
         bool unityEditorReady,
+        UnityBackgroundFocusGuard unityFocusGuard,
         IReadOnlySet<string> initialChangedPaths,
         CancellationToken cancellationToken)
     {
@@ -1131,8 +1180,8 @@ public partial class MainWindow
                             "OFFSCREEN_CAPTURE_UNVERIFIED: " +
                             (visualPlan is null ? "tool preparation unavailable" :
                                 "Unity Editor preflight not ready"), null)
-                        : await UnityBackgroundVisualTools.CaptureAsync(
-                            visualPlan, cancellationToken);
+                        : await CaptureBestAvailableVisualAsync(
+                            visualPlan, unityFocusGuard, cancellationToken);
                     designReport = (verified ? "DESIGN_STATUS: COMPLETED" :
                         "DESIGN_STATUS: BLOCKED_OR_IN_PROGRESS") +
                         Environment.NewLine +
@@ -1556,8 +1605,8 @@ public partial class MainWindow
                             issues: new[] { roleRun.StandardError ?? string.Empty });
                     if (unityEditorReady && reviewVisualPlan is not null)
                     {
-                        var evidence = await UnityBackgroundVisualTools.CaptureAsync(
-                            reviewVisualPlan, cancellationToken);
+                        var evidence = await CaptureBestAvailableVisualAsync(
+                            reviewVisualPlan, unityFocusGuard, cancellationToken);
                         reviewVisualEvidence = evidence.Detail;
                     }
                 }

@@ -34,6 +34,13 @@ public sealed class UnityBackgroundVisualToolsTests
         Assert.True(File.Exists(plan.AfterScript));
         Assert.True(File.Exists(plan.InputTemplate));
         Assert.True(File.Exists(plan.WorkerScript));
+        Assert.True(File.Exists(plan.NativeScript));
+        Assert.NotEqual(plan.WorkerPng, plan.NativePng);
+        var native = File.ReadAllText(plan.NativeScript);
+        Assert.Contains("ScreenCapture.CaptureScreenshot", native);
+        Assert.Contains("GameView", native);
+        Assert.Contains("PROJECTHUB_NATIVE_REQUIRES_PLAY_MODE", native);
+        Assert.DoesNotContain("SetForegroundWindow", native);
         Assert.NotEqual(plan.AfterPng, plan.WorkerPng);
         var capture = File.ReadAllText(plan.WorkerScript);
         Assert.Contains("UnityEngine.RenderTexture", capture);
@@ -90,6 +97,35 @@ public sealed class UnityBackgroundVisualToolsTests
         Assert.False(result.GameViewParityVerified);
         Assert.Contains("APPROX", result.Detail);
         Assert.Equal(plan.WorkerPng, result.ImagePath);
+    }
+
+    [Fact]
+    public async Task NativeScreenshotRequestWithoutActualFileIsUnverified()
+    {
+        using var layout = new Layout();
+        var plan = UnityBackgroundVisualTools.Prepare(layout.Root, "M1", "native");
+        Assert.False(File.Exists(plan.NativePng));
+        var response = await UnityBackgroundVisualTools.CaptureNativeAsync(
+            plan, CancellationToken.None, (args, ct) => Task.FromResult(
+                new UnityAssetCliResult(0,
+                    """{"success":true,"data":{"result":"PROJECTHUB_NATIVE_REQUESTED|1280|720"}}""",
+                    "")));
+        Assert.False(response.Captured);
+        Assert.Contains("TIMEOUT", response.Detail);
+        Assert.False(response.GameViewParityVerified);
+    }
+
+    [Fact]
+    public async Task FailedNativeCommandCannotReuseStaleCapture()
+    {
+        using var layout = new Layout();
+        var plan = UnityBackgroundVisualTools.Prepare(layout.Root, "M2", "native");
+        WritePngHeader(plan.NativePng);
+        var response = await UnityBackgroundVisualTools.CaptureNativeAsync(
+            plan, CancellationToken.None, (args, ct) => Task.FromResult(
+                new UnityAssetCliResult(-1, "", "editor disconnected")));
+        Assert.False(response.Captured);
+        Assert.False(File.Exists(plan.NativePng));
     }
 
     [Fact]
