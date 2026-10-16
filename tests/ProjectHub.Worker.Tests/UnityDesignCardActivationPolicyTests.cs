@@ -5,8 +5,8 @@ namespace ProjectHub.Worker.Tests;
 public sealed class UnityDesignCardActivationPolicyTests
 {
     [Theory]
-    [InlineData(true, false, true, false)]   // HIGH handoff, no initial DESIGN
-    [InlineData(true, false, false, true)]   // HIGH returned and no initial DESIGN
+    [InlineData(true, false, true, false)]   // Current DESIGN turn takes precedence over an unreserved card
+    [InlineData(true, false, false, true)]   // Unreserved card outside the DESIGN turn
     [InlineData(true, true, true, false)]    // HQ initial DESIGN
     [InlineData(true, true, false, false)]   // HQ design is still a reserved stage
     [InlineData(true, null, true, false)]    // Unspecified reservation during run
@@ -20,12 +20,10 @@ public sealed class UnityDesignCardActivationPolicyTests
     }
 
     [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(false, true, false)] // Retired RESOURCE is still outstanding.
-    [InlineData(true, false, true)]
-    [InlineData(true, true, true)]
-    public void DesignTurnHighlight_FollowsCurrentTurnNotLegacyResource(
-        bool designRunning, bool legacyResourceOutstanding, bool expectedActive)
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void DesignTurnHighlight_FollowsCurrentTurn(
+        bool designRunning, bool expectedActive)
     {
         var highlighted = UnityDesignCardActivationPolicy.ShouldHighlight(designRunning);
         Assert.Equal(expectedActive, highlighted);
