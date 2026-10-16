@@ -1,0 +1,30 @@
+name: UnityWorker Visual Foundry build
+
+on:
+  push:
+    branches: [UnityWorker]
+    paths:
+      - 'src/ProjectHub.Worker/**'
+      - 'tests/ProjectHub.Worker.Tests/**'
+      - '.github/workflows/unityworker-visual-foundry-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET SDK 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Restore UnityWorker tests
+        run: dotnet restore tests/ProjectHub.Worker.Tests/ProjectHub.Worker.Tests.csproj
+      - name: Build UnityWorker
+        run: dotnet build src/ProjectHub.Worker/ProjectHub.Worker.csproj --configuration Release --no-restore -p:PublishSingleFile=false -p:SelfContained=false
+      - name: Test UnityWorker Visual Foundry and focus policy
+        run: dotnet test tests/ProjectHub.Worker.Tests/ProjectHub.Worker.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~UnityVisualFoundryTests|FullyQualifiedName~UnityBackgroundVisualToolsTests|FullyQualifiedName~UnityBackgroundFocusPolicyTests" --logger "console;verbosity=normal"
