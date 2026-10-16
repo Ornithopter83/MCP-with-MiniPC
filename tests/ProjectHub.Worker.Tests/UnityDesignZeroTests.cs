@@ -31,7 +31,7 @@ public sealed class UnityDesignZeroTests
         Assert.Empty(milestone!.Resources);
         Assert.Equal("docs/projecthub/design-m42.md", milestone.Design?.Path);
         Assert.Contains("정답 O", milestone.Design?.Instructions);
-        Assert.Contains("DESIGN 요청:", MilestoneDefinitionContract.BuildQaContext(
+        Assert.Contains("DESIGN 요청:", MilestoneDefinitionContract.BuildHighContext(
             milestone, new Dictionary<string, string>()));
         Assert.Contains("DESIGN 요청:", MilestoneDefinitionContract.BuildHighContext(
             milestone, new Dictionary<string, string>(), null));
