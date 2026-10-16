@@ -202,12 +202,12 @@ public sealed class AssetManagerContractTests
     public void DiscoveryContractSeparatesCandidateFromImportedAsset()
     {
         var contract = RoleContractLoader.LoadAssetManagerFooter();
-        Assert.Contains("LOCAL_ASSET_INVENTORY", contract);
-        Assert.Contains("Get-ChildItem", contract);
-        Assert.Contains("단독 차단 사유가 아니다", contract);
-        Assert.Contains("ACQUIRE에서 검증", contract);
+        Assert.Contains("프로젝트 내부 에셋을 먼저 조사", contract);
+        Assert.Contains("AssetDatabase 부재", contract);
+        Assert.Contains("실패로 보지 않는다", contract);
+        Assert.Contains("INTEGRATE", contract);
+        Assert.Contains("GUID", contract);
         Assert.Contains("Importer", contract);
-        Assert.Contains("Unity.exe -help/-batchmode", contract);
     }
 
     [Fact]
