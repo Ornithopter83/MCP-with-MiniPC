@@ -170,20 +170,20 @@ public sealed class StructuredMilestoneProtocolTests
     {
         var response = RoleTextProtocol.BuildResult(
             "issue", "원본: FAIL\n세부 검사: 실제 실패", issues: new[] { "배경 크기 불일치" });
-        var parsed = RoleTextProtocol.ParseQa(response);
+        var parsed = RoleTextProtocol.ParseWork(response);
         Assert.True(parsed.IsValid, string.Join(", ", parsed.Errors));
-        Assert.Equal("issue", parsed.Status);
+        Assert.Equal("blocked", parsed.Status);
         Assert.Contains("원본: FAIL", parsed.Summary);
         Assert.Contains("배경 크기 불일치", parsed.Issues);
     }
 
     [Fact]
-    public void InvalidQaAndHighReports_ArePreservedWithoutSyntheticSuccess()
+    public void InvalidWorkAndHighReports_ArePreservedWithoutSyntheticSuccess()
     {
         const string raw = "ACTION_RESULT: FAIL\nSTATUS: issue\nGodot smoke 실패";
-        Assert.Equal(raw, MilestoneDefinitionContract.NormalizeQaReport(0, raw, null));
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(\n            MilestoneDefinitionContract.NormalizeWorkReport(0, raw, null)));
         Assert.Equal(raw, MilestoneDefinitionContract.NormalizeHighReport(0, raw, null));
-        Assert.Null(MilestoneDefinitionContract.ReadQaStatus(raw));
+        Assert.Null(MilestoneDefinitionContract.ReadWorkStatus(raw));
     }
 
     [Fact]
@@ -221,12 +221,12 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
-    public void QaHighFormattingTypos_DoNotDiscardRealTestResults()
+    public void WorkHighFormattingTypos_DoNotDiscardRealTestResults()
     {
         const string qa = """
             
             @@REPORT
-            <STATUS>issue</>
+            <STATUS>blocked</>
             <SUMMARY>
             실제 크기 불일치, smoke 통과
             </SUMMARY>
@@ -235,9 +235,9 @@ public sealed class StructuredMilestoneProtocolTests
             </>
             [RESPONSE=OK]
             """;
-        var parsedQa = RoleTextProtocol.ParseQa(qa);
+        var parsedQa = RoleTextProtocol.ParseWork(qa);
         Assert.True(parsedQa.IsValid, string.Join(", ", parsedQa.Errors));
-        Assert.Equal("issue", parsedQa.Status);
+        Assert.Equal("blocked", parsedQa.Status);
         Assert.Contains("smoke 통과", parsedQa.Summary);
 
         const string high = """
@@ -298,11 +298,11 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
-    public void LegacyQaAndHighClosers_AreReadWithoutRetryOrStatusLoss()
+    public void LegacyWorkAndHighClosers_AreReadWithoutRetryOrStatusLoss()
     {
         const string qa = """
             @@REPORT
-            <STATUS>issue</STATUS>
+            <STATUS>blocked</STATUS>
             <SUMMARY>
             전체 smoke 실패
             </SUMMARY>
@@ -311,10 +311,10 @@ public sealed class StructuredMilestoneProtocolTests
             </ISSUES>
             [RESPONSE=OK]
             """;
-        Assert.Equal("issue", MilestoneDefinitionContract.ReadQaStatus(qa));
-        var normalizedQa = MilestoneDefinitionContract.NormalizeQaReport(0, qa, null);
-        Assert.Equal("issue", MilestoneDefinitionContract.ReadQaStatus(normalizedQa));
-        Assert.Contains("<STATUS>issue</>", normalizedQa);
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(qa));
+        var normalizedQa = MilestoneDefinitionContract.NormalizeWorkReport(0, qa, null);
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(normalizedQa));
+        Assert.Contains("<STATUS>blocked</>", normalizedQa);
         Assert.DoesNotContain("</STATUS>", normalizedQa);
 
         const string high = """
@@ -374,7 +374,7 @@ public sealed class StructuredMilestoneProtocolTests
             {"status":"success","summary":"검증했다고 주장함"}
             [RESPONSE=OK]
             """;
-        Assert.False(RoleTextProtocol.ParseQa(ambiguousJson).IsValid);
+        Assert.False(RoleTextProtocol.ParseWork(ambiguousJson).IsValid);
 
         const string modifiedWithoutPaths = """
             
@@ -388,43 +388,43 @@ public sealed class StructuredMilestoneProtocolTests
             {"status":"passed","summary":
             [RESPONSE=OK]
             """;
-        Assert.False(RoleTextProtocol.ParseQa(malformedJson).IsValid);
+        Assert.False(RoleTextProtocol.ParseWork(malformedJson).IsValid);
     }
 
     [Fact]
-    public void QaWithInlineIssuesAndMissingSummaryClose_ReachesHighInCanonicalForm()
+    public void WorkWithInlineIssuesAndMissingSummaryClose_ReachesHighInCanonicalForm()
     {
         const string actualQa = """
             @@REPORT
-            <STATUS>issue</>
+            <STATUS>blocked</>
             <SUMMARY>
             Git HEAD와 origin/main이 일치하고 재검증했습니다.
             Godot 4.7.2 전체 smoke가 통과했습니다.
             #69 jump safe 검증, #70 Window 캡처도 통과.
             Git 추적 리뷰 증거 90개를 확인했습니다. <ISSUES>
-            1. #73 미해결: QA 산출물 정리 필요.
+            1. #73 미해결: 검증 산출물 정리 필요.
             2. 편집기 timeline 이벤트의 duration 검증이 남았습니다.
             3. 리뷰보드 사람 승인 미진행.
             </ISSUES>
             """;
-        var parsed = RoleTextProtocol.ParseQa(actualQa);
+        var parsed = RoleTextProtocol.ParseWork(actualQa);
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
-        Assert.Equal("issue", parsed.Status);
+        Assert.Equal("blocked", parsed.Status);
         Assert.Contains("전체 smoke", parsed.Summary);
         Assert.Contains("Git 추적 리뷰 증거 90개", parsed.Summary);
         Assert.DoesNotContain("<ISSUES>", parsed.Summary);
         Assert.Equal(3, parsed.Issues.Count);
         Assert.Contains("#73 미해결", parsed.Issues[0]);
-        var canonical = MilestoneDefinitionContract.NormalizeQaReport(0, actualQa, null);
+        var canonical = MilestoneDefinitionContract.NormalizeWorkReport(0, actualQa, null);
         Assert.StartsWith("@@REPORT", canonical.TrimStart());
         Assert.Contains("@@REPORT", canonical);
-        Assert.Contains("<STATUS>issue</>", canonical);
+        Assert.Contains("<STATUS>blocked</>", canonical);
         Assert.Contains("<ISSUES>", canonical);
         Assert.Contains("</>", canonical);
         Assert.EndsWith("[RESPONSE=OK]", canonical);
         Assert.DoesNotContain("</ISSUES>", canonical);
-        Assert.Equal("issue", MilestoneDefinitionContract.ReadQaStatus(canonical));
-        Assert.Equal(canonical, MilestoneDefinitionContract.NormalizeQaReport(0, canonical, null));
+        Assert.Equal("blocked", MilestoneDefinitionContract.ReadWorkStatus(canonical));
+        Assert.Equal(canonical, MilestoneDefinitionContract.NormalizeWorkReport(0, canonical, null));
     }
 
     [Fact]
@@ -459,7 +459,7 @@ public sealed class StructuredMilestoneProtocolTests
         const string raw = """
             
             @@REPORT
-            <STATUS>passed</>
+            <STATUS>completed</>
             <SUMMARY>
             테스트 코드에서 "<ISSUES>" 문자열을 검사했습니다.
             ```
@@ -472,13 +472,13 @@ public sealed class StructuredMilestoneProtocolTests
             <ISSUES>없음</ISSUES>
             [RESPONSE=OK]
             """;
-        var parsed = RoleTextProtocol.ParseQa(raw);
+        var parsed = RoleTextProtocol.ParseWork(raw);
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         Assert.Contains("This is only a code example.", parsed.Summary);
         Assert.Contains("\"<ISSUES>\"", parsed.Summary);
         Assert.Empty(parsed.Issues);
-        var canonical = MilestoneDefinitionContract.NormalizeQaReport(0, raw, null);
-        Assert.Equal(parsed.Summary, RoleTextProtocol.ParseQa(canonical).Summary);
+        var canonical = MilestoneDefinitionContract.NormalizeWorkReport(0, raw, null);
+        Assert.Equal(parsed.Summary, RoleTextProtocol.ParseWork(canonical).Summary);
     }
 
     [Fact]
@@ -493,11 +493,11 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.False(RoleTextProtocol.ParseWork(conflicting).IsValid);
         const string mismatched = """
             @@REPORT
-            <STATUS>passed</>
+            <STATUS>completed</>
             <SUMMARY>결과 설명
             </ISSUES>
             """;
-        Assert.False(RoleTextProtocol.ParseQa(mismatched).IsValid);
+        Assert.False(RoleTextProtocol.ParseWork(mismatched).IsValid);
         const string wrongAction = """
             [ACTION=WORK]
             @@REPORT
