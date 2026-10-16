@@ -113,8 +113,12 @@ internal static class UnityBackgroundVisualTools
             }
             if (phCamera == null)
                 throw new System.InvalidOperationException("PROJECTHUB_VISUAL_NO_CAMERA");
-            const int phWidth = 1280;
-            const int phHeight = 720;
+            // Offscreen evidence follows the current Game View dimensions.
+            // The program's default design resolution is a separate HQ policy.
+            var phWidth = UnityEngine.Screen.width;
+            var phHeight = UnityEngine.Screen.height;
+            if (phWidth <= 0 || phHeight <= 0)
+                throw new System.InvalidOperationException("PROJECTHUB_VISUAL_INVALID_SCREEN_SIZE");
             var phRt = new UnityEngine.RenderTexture(phWidth, phHeight, 24,
                 UnityEngine.RenderTextureFormat.ARGB32);
             var phSavedTarget = phCamera.targetTexture;
@@ -231,15 +235,27 @@ internal static class UnityBackgroundVisualTools
             var parts = marker.Split('|');
             if (parts.Length != 4 || parts[0] != "PROJECTHUB_VISUAL_FRAME" ||
                 parts[1] is not ("OFFSCREEN_CAMERA" or "OFFSCREEN_UI_APPROX") ||
-                !int.TryParse(parts[2], out var width) || width != 1280 ||
-                !int.TryParse(parts[3], out var height) || height != 720)
+                !int.TryParse(parts[2], out var width) || width <= 0 ||
+                !int.TryParse(parts[3], out var height) || height <= 0)
                 return new(false, "OFFSCREEN_CAPTURE_MARKER_INVALID", null);
             if (!File.Exists(expectedPng) || !IsPng(expectedPng))
                 return new(false, "OFFSCREEN_CAPTURE_FILE_NOT_VALID_PNG", null);
+            // A script marker is not proof of which dimensions reached disk.
+            var pngHeader = new byte[24];
+            using (var input = File.OpenRead(expectedPng))
+                if (input.Read(pngHeader, 0, pngHeader.Length) != pngHeader.Length)
+                    return new(false, "OFFSCREEN_CAPTURE_FILE_NOT_VALID_PNG", null);
+            var pngWidth = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(
+                pngHeader.AsSpan(16, 4));
+            var pngHeight = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(
+                pngHeader.AsSpan(20, 4));
+            if (pngWidth != width || pngHeight != height)
+                return new(false, "OFFSCREEN_CAPTURE_SIZE_MISMATCH", null);
             return new(true,
                 (parts[1] == "OFFSCREEN_UI_APPROX"
                     ? "OFFSCREEN_UI_APPROX: Overlay UI composition is approximate"
                     : "OFFSCREEN_CAMERA: Camera pixels only") +
+                "; captured=" + width + "x" + height +
                 "; Game View parity UNVERIFIED; file=" + expectedPng,
                 expectedPng);
         }

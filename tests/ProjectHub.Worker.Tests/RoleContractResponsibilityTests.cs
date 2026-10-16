@@ -28,6 +28,26 @@ public sealed class RoleContractResponsibilityTests
     }
 
     [Fact]
+    public void UnityProgramsDefaultToFullHdOnlyWhenResolutionUnspecified()
+    {
+        foreach (var contract in new[]
+                 {
+                     RoleContractLoader.LoadHqFooter(),
+                     RoleContractLoader.LoadDesignFooter(),
+                     RoleContractLoader.LoadWorkFooter(),
+                     RoleContractLoader.LoadHighFooter()
+                 })
+        {
+            Assert.Contains("1920×1080", contract);
+            Assert.DoesNotContain("1280×720", contract);
+        }
+        Assert.Contains("해상도가 없으면",
+            RoleContractLoader.LoadHqFooter());
+        Assert.Contains("명시된 규격",
+            RoleContractLoader.LoadDesignFooter());
+    }
+
+    [Fact]
     public void RequestedWorkPermissionSentenceRemainsUnchanged()
     {
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(

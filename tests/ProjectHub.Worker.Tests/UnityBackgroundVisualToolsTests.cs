@@ -21,6 +21,10 @@ public sealed class UnityBackgroundVisualToolsTests
         var prefix = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
         prefix.CopyTo(bytes, 0);
         System.Text.Encoding.ASCII.GetBytes("IHDR").CopyTo(bytes, 12);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(
+            bytes.AsSpan(16, 4), 1920);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(
+            bytes.AsSpan(20, 4), 1080);
         File.WriteAllBytes(path, bytes);
     }
 
@@ -48,6 +52,9 @@ public sealed class UnityBackgroundVisualToolsTests
         Assert.Contains("ReadPixels", capture);
         Assert.Contains("ScreenSpaceCamera", capture);
         Assert.Contains("OFFSCREEN_UI_APPROX", capture);
+        Assert.Contains("UnityEngine.Screen.width", capture);
+        Assert.Contains("UnityEngine.Screen.height", capture);
+        Assert.DoesNotContain("const int phWidth", capture);
         Assert.Contains("finally", capture);
         var input = File.ReadAllText(plan.InputTemplate);
         Assert.Contains("EventSystem.current", input);
@@ -66,10 +73,10 @@ public sealed class UnityBackgroundVisualToolsTests
         using var layout = new Layout();
         var plan = UnityBackgroundVisualTools.Prepare(layout.Root, "M1", "initial");
         var echo = new UnityAssetCliResult(0,
-            """{"success":true,"data":{"expression":"PROJECTHUB_VISUAL_FRAME|OFFSCREEN_CAMERA|1280|720"}}""", "");
+            """{"success":true,"data":{"expression":"PROJECTHUB_VISUAL_FRAME|OFFSCREEN_CAMERA|1920|1080"}}""", "");
         Assert.False(UnityBackgroundVisualTools.InterpretCapture(echo, plan.WorkerPng).Captured);
         Assert.False(UnityBackgroundVisualTools.InterpretCapture(
-            new(0, """{"success":true,"data":{"result":"PROJECTHUB_VISUAL_FRAME|OFFSCREEN_CAMERA|1280|720"}}""", ""),
+            new(0, """{"success":true,"data":{"result":"PROJECTHUB_VISUAL_FRAME|OFFSCREEN_CAMERA|1920|1080"}}""", ""),
             plan.WorkerPng).Captured);
     }
 
@@ -88,7 +95,7 @@ public sealed class UnityBackgroundVisualToolsTests
             Assert.Contains("--project-path", args);
             WritePngHeader(plan.WorkerPng);
             return Task.FromResult(new UnityAssetCliResult(0,
-                """{"success":true,"data":{"result":"PROJECTHUB_VISUAL_FRAME|OFFSCREEN_UI_APPROX|1280|720"}}""", ""));
+                """{"success":true,"data":{"result":"PROJECTHUB_VISUAL_FRAME|OFFSCREEN_UI_APPROX|1920|1080"}}""", ""));
         }
         var result = await UnityBackgroundVisualTools.CaptureAsync(
             plan, CancellationToken.None, Execute);
@@ -100,6 +107,20 @@ public sealed class UnityBackgroundVisualToolsTests
     }
 
     [Fact]
+    public void OffscreenCaptureRejectsDimensionsDifferentFromPng()
+    {
+        using var layout = new Layout();
+        var plan = UnityBackgroundVisualTools.Prepare(layout.Root, "M1", "size-check");
+        WritePngHeader(plan.WorkerPng);
+        const string response =
+            """{"success":true,"data":{"result":"PROJECTHUB_VISUAL_FRAME|OFFSCREEN_CAMERA|1920|1079"}}""";
+        var outcome = UnityBackgroundVisualTools.InterpretCapture(
+            new UnityAssetCliResult(0, response, ""), plan.WorkerPng);
+        Assert.False(outcome.Captured);
+        Assert.Contains("SIZE_MISMATCH", outcome.Detail);
+    }
+
+    [Fact]
     public async Task NativeScreenshotRequestWithoutActualFileIsUnverified()
     {
         using var layout = new Layout();
@@ -108,7 +129,7 @@ public sealed class UnityBackgroundVisualToolsTests
         var response = await UnityBackgroundVisualTools.CaptureNativeAsync(
             plan, CancellationToken.None, (args, ct) => Task.FromResult(
                 new UnityAssetCliResult(0,
-                    """{"success":true,"data":{"result":"PROJECTHUB_NATIVE_REQUESTED|1280|720"}}""",
+                    """{"success":true,"data":{"result":"PROJECTHUB_NATIVE_REQUESTED|1920|1080"}}""",
                     "")));
         Assert.False(response.Captured);
         Assert.Contains("TIMEOUT", response.Detail);
