@@ -10,6 +10,8 @@ internal static class UnityVisualFoundryRuntime
 {
     internal const string RelativeSourcePath =
         "Assets/ProjectHub/VisualFoundry/Runtime/VisualFoundryBridge.cs";
+    internal const string RelativeWatcherPath =
+        "Assets/ProjectHub/VisualFoundry/Runtime/VisualFoundryWatcher.cs";
 
     internal sealed record InstallResult(bool Available, bool Changed, string Detail);
 
@@ -18,30 +20,48 @@ internal static class UnityVisualFoundryRuntime
         try
         {
             var project = Path.GetFullPath(projectRoot);
-            var path = Path.GetFullPath(Path.Combine(project,
-                RelativeSourcePath.Replace('/', Path.DirectorySeparatorChar)));
-            if (!path.StartsWith(project.TrimEnd(Path.DirectorySeparatorChar) +
-                    Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                return new(false, false, "VISUAL_FOUNDRY_RUNTIME_SCOPE_INVALID");
-            if (File.Exists(path))
+            var files = new[]
             {
-                var existing = File.ReadAllText(path);
-                return string.Equals(existing, Source, StringComparison.Ordinal)
-                    ? new(true, false, "VISUAL_FOUNDRY_RUNTIME_PRESENT")
-                    : new(false, false,
-                        "VISUAL_FOUNDRY_RUNTIME_CONFLICT: existing user file preserved " +
-                        RelativeSourcePath);
+                (Path: RelativeSourcePath, Text: Source),
+                (Path: RelativeWatcherPath, Text: WatcherSource)
+            };
+            // Check every path for user edits before writing anything.
+            foreach (var asset in files)
+            {
+                var path = Resolve(project, asset.Path);
+                if (path is null) return new(false, false, "VISUAL_FOUNDRY_RUNTIME_SCOPE_INVALID");
+                if (File.Exists(path) &&
+                    !string.Equals(File.ReadAllText(path), asset.Text, StringComparison.Ordinal))
+                    return new(false, false,
+                        "VISUAL_FOUNDRY_RUNTIME_CONFLICT: user file preserved " + asset.Path);
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, Source, ProjectHubJson.Utf8NoBom);
-            return new(true, true, "VISUAL_FOUNDRY_RUNTIME_INSTALLED: " +
-                RelativeSourcePath + "; Unity recompile still required");
+            var changed = false;
+            foreach (var asset in files)
+            {
+                var path = Resolve(project, asset.Path)!;
+                if (File.Exists(path)) continue;
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, asset.Text, ProjectHubJson.Utf8NoBom);
+                changed = true;
+            }
+            return new(true, changed, changed
+                ? "VISUAL_FOUNDRY_RUNTIME_INSTALLED: Unity recompile required"
+                : "VISUAL_FOUNDRY_RUNTIME_PRESENT");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
             ArgumentException or NotSupportedException)
         {
             return new(false, false, "VISUAL_FOUNDRY_RUNTIME_UNVERIFIED: " + ex.Message);
         }
+    }
+
+    private static string? Resolve(string project, string relative)
+    {
+        var path = Path.GetFullPath(Path.Combine(project,
+            relative.Replace('/', Path.DirectorySeparatorChar)));
+        return path.StartsWith(project.TrimEnd(Path.DirectorySeparatorChar) +
+            Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            ? path : null;
     }
 
     // This compiles inside the target Unity game, NOT the WPF Worker.
@@ -80,7 +100,6 @@ internal static class UnityVisualFoundryRuntime
 
                 private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
                 {
-                    WiredButtons.Clear();
                     BindAll();
                 }
 
@@ -184,17 +203,25 @@ internal static class UnityVisualFoundryRuntime
                     return true;
                 }
 
-                internal sealed class VisualFoundryWatcher : MonoBehaviour
+            }
+        }
+        """;
+    internal static string WatcherSource => """
+        using UnityEngine;
+
+        namespace ProjectHub.VisualFoundry
+        {
+            public sealed class VisualFoundryWatcher : MonoBehaviour
+            {
+                private float nextScan;
+                private void Update()
                 {
-                    private float nextScan;
-                    private void Update()
-                    {
-                        if (Time.unscaledTime < nextScan) return;
-                        nextScan = Time.unscaledTime + 1.5f;
-                        BindAll();
-                    }
+                    if (Time.unscaledTime < nextScan) return;
+                    nextScan = Time.unscaledTime + 1.5f;
+                    VisualFoundryBridge.BindAll();
                 }
             }
         }
         """;
+
 }
