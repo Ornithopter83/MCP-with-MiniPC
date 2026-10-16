@@ -1,31 +1,55 @@
-# UnityWorker Visual Foundry — 자동 고급 비주얼 제작 킷
+# UnityWorker Visual Foundry — 자동 프리미엄 UI 제작 엔진
 
-## 개요
+## 목표
 
-Visual Foundry는 DESIGN #0에 공급하는 **로컬·결정론적** Unity 프리미엄 화면 킷 생성기다. HQ의 기존 `@@DESIGN=0` 명세에 게임/화면/UI 제작 지시가 포함되면 Worker가 연결된 Unity Editor를 통해 별도 킷 생성을 시도한다. AI가 매번 프리셋·배경·버튼 구조를 새로 설계할 필요가 없다. 새로운 AI 역할, HQ 제어 문법, 외부 서비스는 추가하지 않는다.
+HQ 설계안과 기존 DESIGN #0 배정만으로 Unity Editor의 게임 UI 제작에 활용 가능한 **완성형 화면 후보·절차적 그래픽·재질·모션·런타임 데이터 바인딩 표면**을 준비한다. Visual Foundry는 신규 AI 역할이 아니라 Worker가 DESIGN에 공급하는 모델 비의존적인 제작 도구다. 기존 HQ 프로토콜, DESIGN, ASSET MANAGER, WORK, HIGH, Git 정책은 유지한다.
 
-## 생성 규격
+## HQ → Worker → DESIGN 실행
 
-- 스타일: Neon Command / Arcane Atelier / Noir Edition / Nova Pop.
-- 생성물: `Assets/ProjectHub/VisualFoundry/{job}_{milestone}_{style}/` 내 Menu, Quiz, Results Prefab과 Preview.unity, Backdrop.png, 화면 등장 AnimationClip 3개.
-- 배경: 픽셀 계산으로 제작하는 512×288 색상 그라데이션·기하학적 패턴 기반 Sprite.
-- UI: Canvas/CanvasScaler 기준 해상도 1920×1080, 패널·타이포그래피·선택 효과·버튼·색상 계층을 갖춘 uGUI 프리팹.
-- 모션: CanvasGroup 알파를 이용한 각 화면 등장 애니메이션.
-- 설계안: `temp/ProjectHub/{job}/visual-foundry/{milestone}/design-dna.json` 기록. 킷 제작 소스도 같은 temp 하위에 배치.
+1. Worker는 HQ의 전체 승인된 지시(`RawHqMessage`)와 마일스톤 DESIGN 지시를 함께 해석한다. 별도의 Visual Foundry 제어 태그는 없다. 필요하면 `NO_VISUAL_FOUNDRY`로 제외한다.
+2. Theme: Neon Command(SF), Arcane Atelier(판타지), Noir Edition(럭셔리), Nova Pop(캐주얼). **AI 호출 없이** 키워드 기반으로 선택하고, 최소 대비를 자동 보정한다.
+3. 정보 밀도·연출 의도를 기준으로 Base / Editorial / Immersive 화면 구도를 추천한다. 디자인 명세는 `temp/ProjectHub/.../visual-foundry/.../design-dna.json`으로 저장한다.
+4. 지정 프로젝트의 기존 Prefab, Material, Shader, UI 이미지를 **읽기 전용**으로 조사하여 `existing-visual-assets.json`에 적합한 재사용 후보를 기록한다. 사용자가 보유한 유료 Kit를 임의 다운로드하거나 라이선스를 추정하지 않는다.
+5. Editor 독점 레인에서 기존 Editor의 `eval_file`로 생성 스크립트를 실행한다. 생성 성공 시 Runtime Bridge를 독립된 경로에 추가한다. 새로운 MonoBehaviour가 컴파일될 때까지 게임의 바인딩 기능을 확인된 사실로 보고하지 않는다.
+6. DESIGN은 게임 목표에 맞춰 선택한 Prefab을 실제 Scene에 통합하고 게임 데이터를 연결한다. 뒤따르는 Worker 캡처는 품질 검토용 증거이지 자동 합격 판단이 아니다.
+7. Worker는 실제 PNG 내용을 경량 디코딩하여 매우 평탄하거나 거의 빈 화면을 감지한다. 확실한 경우 **동일한 DESIGN 배정에서 한 번만** 시각 보정 지시를 실행하고 재캡처한다. 미생성/CLI 실패/미확인 PNG는 재시도 사유로 자동 간주하지 않는다.
 
-## 실행과 책임
+## 생성 자산 (uGUI)
 
-1. Worker가 HQ의 DESIGN 지시에서 화면 제작 요청을 판별하고 규칙 기반 스타일을 선택한다.
-2. Unity Editor 연결 확인 후 Editor 독점 구간에서 `eval_file`로 프리팹과 미리보기 씬을 생성한다. 기존 사용자 씬을 열거나 덮어쓰지 않는다.
-3. 생성된 에셋 경로와 상태를 DESIGN 프롬프트에 전달한다. DESIGN은 실제 게임 씬·데이터·동작 이벤트에 킷을 연결하고 필요 시 자유롭게 재구성한다.
-4. DESIGN 자체 그래픽 결과물과 Worker의 Native Game View 캡처를 분리해 기록한다. 생성 성공은 시각 품질 검증 또는 실제 입력 동작 성공과 같지 않다.
-5. 이미 생성된 스타일 킷이 필요 없거나 일부만 필요한 경우 DESIGN은 선택적으로 재사용한다. 외부 에셋은 기존 ASSET MANAGER 계약에 따른다.
+`Assets/ProjectHub/VisualFoundry/{job}_{milestone}_{style}/`
 
-`NO_VISUAL_FOUNDRY` 지시가 있거나 화면 제작 작업이 아닌 경우 자동 생성하지 않는다. Editor 비연결/생성 실패 시 실패를 기록하고 기존 DESIGN 경로는 그대로 실행한다.
+| 분류 | 생성 항목 |
+|---|---|
+| Menu / Quiz / Results | 3개 화면 × Base / Editorial / Immersive = 9개 Prefab |
+| 미리보기 | `Preview-Menu.unity`, `Preview-Quiz.unity`, `Preview-Results.unity` |
+| 절차적 스프라이트 | `Backdrop.png`, `Halo.png` |
+| Shader/Material | `PrismaticUI.shader`, 지원될 때 `PrismaticUI.mat` |
+| 모션 | 화면별 `*-intro.anim`과 `*-pulse.anim`, 페이드·스케일·발광 |
+| 구조 감사 | `LayoutAudit.json`: 생성 정보와 미검증 상태 |
 
-## 도입 제약 및 후속 검증
+기본 디자인 해상도는 **1920×1080**이며, Unity CanvasScaler로 실제 창 비율을 따라간다. UI 아트 킷의 화면 예시는 실제 게임플레이 논리로 간주하지 않는다. Unity UI/Default 호환 셰이더가 지원되지 않는 환경은 기본 Image 렌더링으로 유지된다.
 
-- 현재 프리미엄 킷은 **미리 준비된 그래픽/타이포그래피/레이아웃 구조를 자동 생성하는 기반 구현**이며, 실제 사용자 게임 UI의 완성형 자동 교체 기능은 아니다. 데이터 바인딩은 DESIGN이 수행한다.
-- 프로시저럴 배경, UI 프리팹, 애니메이션 생성 후 Unity Editor에서 Import·Preview·Game View를 실제로 확인해야 한다.
-- 유료 에셋, 사용자 승인이 없는 외부 API, 프로젝트의 기존 사용자 UI를 자동으로 덮어쓰는 작업은 하지 않는다.
-- 비전 기반 미학 평가, 다중 화면 후보 탐색, 외부 고급 그래픽 패키지는 이 구현에 포함하지 않는다.
+## 실제 데이터·이벤트 연결
+
+최초 생성 성공 시 기존 파일을 덮어쓰지 않고 아래 런타임 소스 두 개를 설치한다.
+
+- `Assets/ProjectHub/VisualFoundry/Runtime/VisualFoundryBridge.cs`
+- `Assets/ProjectHub/VisualFoundry/Runtime/VisualFoundryWatcher.cs`
+
+네임스페이스 `ProjectHub.VisualFoundry`, API:
+- `VisualFoundryBridge.ApplyQuiz(question, choices, number, total)`
+- `VisualFoundryBridge.ApplyResults(title, summary)`
+- `VisualFoundryBridge.ApplyMenu(title, subtitle)`
+- `VisualFoundryBridge.ShowScreen("Quiz")`
+- `VisualFoundryBridge.ActionPressed += (screen, index) => { ... }`
+
+브리지는 화면 찾기·텍스트 변경·버튼 번호 이벤트 전달만 수행한다. 실제 정답 판정, 점수, 데이터 로드, 화면 흐름은 **기존 게임 코드의 책임**이며 DESIGN이 실제 프로젝트에 맞게 연결해야 한다. 동적 생성된 Prefab도 런타임 watcher가 일정 주기로 버튼을 연결한다.
+
+## 안전성과 검증 의미
+
+- 기존 Scene을 닫거나 덮어쓰지 않고 별도 미리보기 Scene을 생성한다. Preview 생성 뒤 원래 Scene을 활성으로 복귀시킨다.
+- 생성 경로에 기존 킷이 있다면 전체 파일 구성이 확인된 경우 재사용한다. 일부만 남은 경우 기존 파일을 덮어쓰지 않고 충돌로 보고한다.
+- 재사용 후보 에셋과 사용자 편집한 런타임 바인딩 파일은 절대로 덮어쓰지 않는다.
+- 생성된 PNG·Prefab·에셋 수량·CLI 성공은 디자인 미적 승인/실제 GUI 동작 확인을 의미하지 않는다. Visual Pixel Audit도 빈 이미지 탐지 정도의 보조 지표다.
+- 최종 검증은 Windows Action의 Worker 빌드·테스트와 실제 Unity Editor에서의 9개 Prefab Import/미리보기/게임 UI 이벤트 확인으로 구분한다.
+- Figma·Scenario·유료 Unity Asset Store 팩은 별도의 라이선스·연동 승인이 있어야 사용한다. 이 버전은 완성형 상용 아트팩을 자동 획득하지 않는다.
