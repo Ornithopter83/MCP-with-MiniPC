@@ -842,7 +842,7 @@ public sealed class CoordinatorFirstContractTests
             out var milestone,
             out var error),
             error);
-        Assert.True(Assert.Single(milestone.WorkItems.Values).TestRequired);
+        Assert.True(Assert.Single(milestone!.WorkItems.Values).TestRequired);
     }
 
     [Fact]
