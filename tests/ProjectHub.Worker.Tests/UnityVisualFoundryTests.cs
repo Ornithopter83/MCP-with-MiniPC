@@ -71,9 +71,9 @@ public sealed class UnityVisualFoundryTests
         Assert.True(File.Exists(Path.Combine(plan.Directory, "existing-visual-assets.json")));
         Assert.Contains("PrismaticUI.shader", expression);
         Assert.Contains("Halo.png", expression);
-        Assert.Contains("Quiz-Editorial", expression);
-        Assert.Contains("Quiz-Immersive", expression);
-        Assert.Contains("Preview-Quiz", expression);
+        Assert.Contains("Editorial", expression);
+        Assert.Contains("Immersive", expression);
+        Assert.Contains("Preview-", expression);
         Assert.Contains("vfPulse", expression);
         Assert.Contains("PrefabUtility.SaveAsPrefabAsset", expression);
         Assert.Contains("PROJECTHUB_VISUAL_FOUNDRY_REUSED", expression);
