@@ -44,32 +44,28 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// The foreground exception is restricted to this one Native Game View
-    /// capture. A user switching away from Worker prevents automatic activation
-    /// and a user switching away during capture prevents forced focus recovery.
-    /// Native screenshots are not marked visually approved without inspection.
+    /// First attempt a native Game View capture with no Windows foreground
+    /// activation. Native capture is only file evidence until inspected.
+    /// An inactive Editor that cannot render is not forcibly activated.
     /// </summary>
     private async Task<UnityBackgroundVisualEvidence> CaptureBestAvailableVisualAsync(
         UnityBackgroundVisualPlan plan, UnityBackgroundFocusGuard guard,
         CancellationToken cancellationToken)
     {
-        var lease = guard.BeginVisualVerification();
+        // Defer accidental self-activation recovery until the screenshot file
+        // is complete or the attempt fails. This lease NEVER focuses Unity.
+        var captureScope = guard.BeginBackgroundCapture();
         UnityBackgroundVisualEvidence native;
         try
         {
-            native = lease.Active
-                ? await UnityBackgroundVisualTools.CaptureNativeAsync(
-                    plan, cancellationToken)
-                : new UnityBackgroundVisualEvidence(false,
-                    "NATIVE_CAPTURE_SKIPPED: " + lease.Diagnostic, null);
+            native = await UnityBackgroundVisualTools.CaptureNativeAsync(
+                plan, cancellationToken);
         }
         finally
         {
-            // Restores Worker even on cancellation/timeout or a failed capture.
-            lease.Dispose();
+            captureScope.Dispose();
             AddTaskMessage("UNITY NATIVE FOCUS",
-                lease.Diagnostic, status: lease.Diagnostic ==
-                    "FOCUS_LEASE_WORKER_RESTORED" ? "OBSERVED" : "UNVERIFIED",
+                captureScope.Diagnostic, status: "OBSERVED",
                 includeHistory: false);
         }
 
@@ -79,13 +75,14 @@ public partial class MainWindow
         if (native.Captured)
             return native;
 
-        // The existing offscreen path is only a supplementary approximation.
-        // In particular, a camera-free Screen Space Overlay UI cannot rely on it.
+        // The offscreen camera is supplementary, not equivalent to native
+        // Game View or pointer-input evidence. Never activate a GUI as fallback.
         var offscreen = await UnityBackgroundVisualTools.CaptureAsync(
             plan, cancellationToken);
         return offscreen with
         {
-            Detail = "NATIVE=" + native.Detail + "; OFFSCREEN=" + offscreen.Detail
+            Detail = "NATIVE_UNVERIFIED=" + native.Detail +
+                     "; OFFSCREEN_SUPPLEMENT_ONLY=" + offscreen.Detail
         };
     }
 
