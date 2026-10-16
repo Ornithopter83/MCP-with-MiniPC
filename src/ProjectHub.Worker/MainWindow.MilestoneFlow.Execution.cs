@@ -65,7 +65,10 @@ public partial class MainWindow
         {
             captureScope.Dispose();
             AddTaskMessage("UNITY NATIVE FOCUS",
-                captureScope.Diagnostic, status: "OBSERVED",
+                captureScope.Diagnostic,
+                status: captureScope.Diagnostic.Contains("UNAVAILABLE", StringComparison.Ordinal) ||
+                        captureScope.Diagnostic.Contains("UNVERIFIED", StringComparison.Ordinal)
+                    ? "UNVERIFIED" : "OBSERVED",
                 includeHistory: false);
         }
 
