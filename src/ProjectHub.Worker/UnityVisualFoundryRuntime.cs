@@ -86,6 +86,15 @@ internal static class UnityVisualFoundryRuntime
                 private static readonly HashSet<int> WiredButtons = new HashSet<int>();
                 private static bool started;
 
+                [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+                private static void ResetRuntime()
+                {
+                    // Also supports projects with Unity domain reload disabled.
+                    started = false;
+                    WiredButtons.Clear();
+                    ActionPressed = null;
+                }
+
                 [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
                 private static void OnRuntimeLoaded()
                 {
