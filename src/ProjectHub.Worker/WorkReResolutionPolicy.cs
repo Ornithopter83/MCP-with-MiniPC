@@ -6,12 +6,10 @@ internal static class WorkReResolutionPolicy
 {
     private static readonly string[] OutstandingImplementationMarkers =
     {
-        "미해결", "미완료", "미구현", "미수행", "미실행",
-        "실행하지 않았", "실행하지 못", "테스트하지 않았",
-        "검증하지 않았", "검증하지 못", "확인하지 못",
+        "미해결", "미완료", "미구현", "동작하지 않", "잔여 코드",
         "수정하지 못", "구현하지 못", "아직 구현",
         "아직 해결", "테스트 실패", "검증 실패",
-        "not run", "not executed", "not implemented",
+        "not implemented", "not working",
         "unresolved", "incomplete implementation",
         "test failed", "tests failed", "not verified"
     };
@@ -27,7 +25,7 @@ internal static class WorkReResolutionPolicy
         "실제 키보드", "실제 os 입력", "물리 입력",
         "사람 승인", "사람 검수", "육안 승인", "인수 승인",
         "human approval", "manual approval", "physical keyboard",
-        "하드웨어 미확인", "qa에서 별도", "qa 단계에서 별도",
+        "하드웨어 미확인",
         // Missing test infrastructure is reported to HIGH/HQ, not retried
         // as an unfinished implementation by the same WORKITEM.
         "미검증", "playmode 실행", "unity editor", "pipeline 인스턴스",
@@ -55,20 +53,14 @@ internal static class WorkReResolutionPolicy
         bool IsOutstanding(string text) => OutstandingImplementationMarkers.Any(marker =>
             text.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
-        if (report.Status == "completed")
-        {
-            // A clean completion, a warning about a recovered environment,
-            // and an independent QA/manual acceptance gate must not retry.
-            return issues.Any(issue => !IsNonActionable(issue) &&
-                                       IsOutstanding(issue));
-        }
+        // The AI's BLOCKED judgment belongs to HQ, never to an automatic
+        // WORK replay. In-progress WORK with no source progress is likewise
+        // returned to HQ. Only clearly unfinished implementation qualifies.
+        if (report.Status == "blocked" || issues.Length == 0)
+            return false;
 
-        if (issues.Length > 0)
-            return issues.Any(issue => !IsNonActionable(issue));
-
-        // Explicit blocked/in_progress without a reason still describes an
-        // unresolved implementation. Do not inspect summary for hidden new fields.
-        return !IsNonActionable(report.Summary);
+        return issues.Any(issue => !IsNonActionable(issue) &&
+                                   IsOutstanding(issue));
     }
 
     internal static string BuildPrompt(
