@@ -100,44 +100,49 @@ public sealed class HqUserInterventionQueue
     }
 
     /// <summary>
-    /// Put verbatim user input at the START of the next AI's actual input,
-    /// not after a role contract's closing [RESPONSE=OK] example. The existing
-    /// @@MESSAGE or HQ input-body header is kept; no new labels, identifiers or
-    /// interpretation instructions are added to user text.
+    /// Latest user input has the highest TASK-level priority. The verbatim
+    /// payload is the first content in the recipient's prompt: specialist
+    /// roles retain only their required leading @@MESSAGE envelope. Existing
+    /// plans and role task instructions follow the user input, not precede it.
+    /// Provider-level safeguards, executable permissions, and the machine
+    /// response schema are not transport instructions and are not bypassed.
     /// </summary>
+    internal const string LatestUserPriorityGuidance =
+        "최신 사용자 지시 우선 적용: 위 사용자 메시지는 이번 AI 호출의 최우선 작업 지시다. " +
+        "기존 HQ 계획, 이전 마일스톤 지시, 이전 사용자 요청, 역할 계약의 일반적인 작업 내용과 " +
+        "충돌하면 위 원문을 우선하여 판단하고 실행하라. " +
+        "Worker의 역할·쓰기 권한 경계 및 필수 응답 문법은 지키고, " +
+        "현재 역할에 없는 권한이나 다른 역할의 재배정이 필요하면 " +
+        "임의로 무시하지 말고 HQ에 변경 판단을 요청하라.";
+
     public static string AppendToHqBody(
         string body, IReadOnlyList<HqUserIntervention> pending)
     {
         if (pending.Count == 0) return body;
         var userText = string.Join("\n\n", pending.Select(item => item.Message));
-        if (body.Length == 0) return userText;
+        var priorityAndPrevious = "\n\n" + LatestUserPriorityGuidance +
+            "\n\n" + body;
 
-        // Specialist prompts must retain exactly one generated @@MESSAGE.
-        // Compose the role's prompt before invoking this method so that
-        // user-controlled lines are never normalized or rewritten.
+        // Preserve the protocol-only marker required by specialist prompts.
+        // The raw user bytes must be the FIRST payload after this marker and
+        // MUST NOT pass through UnityRoleMessageComposer.Compose().
         const string specialistHeader = "@@MESSAGE\n";
         if (body.StartsWith(specialistHeader, StringComparison.Ordinal))
-            return specialistHeader + userText + "\n\n" +
+            return specialistHeader + userText +
+                "\n\n" + LatestUserPriorityGuidance + "\n\n" +
                 body[specialistHeader.Length..];
 
         const string specialistHeaderCrLf = "@@MESSAGE\r\n";
         if (body.StartsWith(specialistHeaderCrLf, StringComparison.Ordinal))
-            return specialistHeaderCrLf + userText + "\r\n\r\n" +
+            return specialistHeaderCrLf + userText +
+                "\r\n\r\n" + LatestUserPriorityGuidance + "\r\n\r\n" +
                 body[specialistHeaderCrLf.Length..];
 
-        // HQ prompts already have a natural input-body slot. Insert BEFORE
-        // the original input and its contract, not after the contract footer.
-        foreach (var inputHeader in new[] { "입력 본문:\r\n", "입력 본문:\n" })
-        {
-            var index = body.IndexOf(inputHeader, StringComparison.Ordinal);
-            if (index >= 0)
-            {
-                var insertAt = index + inputHeader.Length;
-                return body[..insertAt] + userText + "\n\n" + body[insertAt..];
-            }
-        }
-
-        return userText + "\n\n" + body;
+        // HQ must see the latest user message BEFORE role metadata, project
+        // summaries, original instructions and the routing contract.
+        // An empty base prompt contains nothing to supersede: keep the raw
+        // user message exactly as it was received.
+        return body.Length == 0 ? userText : userText + priorityAndPrevious;
     }
 
     public static bool CanAcknowledgeAiDelivery(int exitCode, string? finalMessage) =>
