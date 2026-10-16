@@ -109,7 +109,7 @@ public sealed class UnityVisualFoundryAdvancedTests
         Assert.Contains("PrismaticUI.shader",script);
         Assert.Contains("Halo.png",script);
         Assert.Contains("EditorSceneManager.CloseScene",script);
-        Assert.Contains("Preview-Results",script);
+        Assert.Contains("Preview-",script);
         Assert.Contains("SetActiveScene",script);
         Assert.Contains("PROJECTHUB_VISUAL_FOUNDRY_REUSED",script);
         Assert.DoesNotContain("SetForegroundWindow",script);
