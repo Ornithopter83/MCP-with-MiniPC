@@ -23,7 +23,7 @@ internal static class UnityVisualFoundry
         internal string AgentGuidance =>
             "VISUAL_FOUNDRY: " + Theme.Name + "\n" +
             "프리미엄 화면 킷 경로: " + AssetDirectory + "\n" +
-            "화면: Menu/Quiz/Results 각 3가지 레이아웃(기본·Editorial·Immersive), Preview.unity.\n" +
+            "화면: Menu/Quiz/Results 각 3가지 레이아웃(기본·Editorial·Immersive), Preview-*.unity.\n" +
             "셰이더: PrismaticUI.shader/material; 등장·발광 애니메이션.\n" +
             "추천 화면 구성: " + PreferredLayout + "; 우선 후보: " +
             UnityVisualFoundryQuality.PrefabPath(this, "Quiz", PreferredLayout) + "\n" +
@@ -369,29 +369,37 @@ internal static class UnityVisualFoundry
                 UnityEngine.Object.DestroyImmediate(vfRoot);
                 vfPrefabPaths.Add(prefabPath);
             }
-            var preview = UnityEditor.SceneManagement.EditorSceneManager.NewScene(
-                UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,
-                UnityEditor.SceneManagement.NewSceneMode.Additive);
-            try {
-                var rootPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<
-                    UnityEngine.GameObject>(vfPrefabPaths[1]);
-                if (rootPrefab == null)
-                    throw new System.InvalidOperationException("VISUAL_FOUNDRY_PREFAB_MISSING");
-                var instance = UnityEditor.PrefabUtility.InstantiatePrefab(rootPrefab,
-                    preview) as UnityEngine.GameObject;
-                if (instance == null)
-                    throw new System.InvalidOperationException("VISUAL_FOUNDRY_INSTANCE_FAILED");
-                var camera = new UnityEngine.GameObject("Preview Camera",
-                    typeof(UnityEngine.Camera));
-                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(camera,preview);
-                camera.GetComponent<UnityEngine.Camera>().clearFlags =
-                    UnityEngine.CameraClearFlags.SolidColor;
-                camera.GetComponent<UnityEngine.Camera>().backgroundColor =
-                    vfColor(vfBack);
-                UnityEditor.SceneManagement.EditorSceneManager.SaveScene(preview,
-                    vfOutput + "/Preview.unity");
-            } finally {
-                UnityEditor.SceneManagement.EditorSceneManager.CloseScene(preview,true);
+            // Standalone non-destructive preview scenes for each screen.
+            // A list index is unsafe when additional candidate variants exist.
+            var vfPreviousScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            foreach (var vfPreviewScreen in vfScreens) {
+                var preview = UnityEditor.SceneManagement.EditorSceneManager.NewScene(
+                    UnityEditor.SceneManagement.NewSceneSetup.EmptyScene,
+                    UnityEditor.SceneManagement.NewSceneMode.Additive);
+                try {
+                    var rootPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<
+                        UnityEngine.GameObject>(vfOutput + "/" + vfPreviewScreen + ".prefab");
+                    if (rootPrefab == null)
+                        throw new System.InvalidOperationException(
+                            "VISUAL_FOUNDRY_PREFAB_MISSING:" + vfPreviewScreen);
+                    var instance = UnityEditor.PrefabUtility.InstantiatePrefab(rootPrefab,
+                        preview) as UnityEngine.GameObject;
+                    if (instance == null)
+                        throw new System.InvalidOperationException("VISUAL_FOUNDRY_INSTANCE_FAILED");
+                    var camera = new UnityEngine.GameObject("Preview Camera",
+                        typeof(UnityEngine.Camera));
+                    UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(camera,preview);
+                    camera.GetComponent<UnityEngine.Camera>().clearFlags =
+                        UnityEngine.CameraClearFlags.SolidColor;
+                    camera.GetComponent<UnityEngine.Camera>().backgroundColor =
+                        vfColor(vfBack);
+                    UnityEditor.SceneManagement.EditorSceneManager.SaveScene(preview,
+                        vfOutput + "/Preview-" + vfPreviewScreen + ".unity");
+                } finally {
+                    UnityEditor.SceneManagement.EditorSceneManager.CloseScene(preview,true);
+                    if (vfPreviousScene.IsValid() && vfPreviousScene.isLoaded)
+                        UnityEngine.SceneManagement.SceneManager.SetActiveScene(vfPreviousScene);
+                }
             }
             UnityEditor.AssetDatabase.SaveAssets();
             return "PROJECTHUB_VISUAL_FOUNDRY_READY|" + vfStyle + "|" +
@@ -441,7 +449,7 @@ internal static class UnityVisualFoundry
             // but the Worker never mistakes this for visual/functional approval.
             return new(true, "VISUAL_FOUNDRY_GENERATED_UNINSPECTED: " +
                 plan.AssetDirectory + "; 3 screens x 3 variants, procedural shader, " +
-                "multi-track motion, Preview; content and visual quality uninspected",
+                "multi-track motion, Preview scenes; content and visual quality uninspected",
                 plan.AssetDirectory);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
