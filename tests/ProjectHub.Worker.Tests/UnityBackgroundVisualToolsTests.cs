@@ -43,7 +43,10 @@ public sealed class UnityBackgroundVisualToolsTests
         var native = File.ReadAllText(plan.NativeScript);
         Assert.Contains("ScreenCapture.CaptureScreenshot", native);
         Assert.Contains("GameView", native);
+        Assert.Contains("EditorApplication.QueuePlayerLoopUpdate()", native);
+        Assert.Contains("phGameView.Repaint()", native);
         Assert.Contains("PROJECTHUB_NATIVE_REQUIRES_PLAY_MODE", native);
+        Assert.DoesNotContain("phGameView.Focus()", native);
         Assert.DoesNotContain("SetForegroundWindow", native);
         Assert.NotEqual(plan.AfterPng, plan.WorkerPng);
         var capture = File.ReadAllText(plan.WorkerScript);
