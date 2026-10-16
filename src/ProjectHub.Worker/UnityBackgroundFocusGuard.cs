@@ -7,13 +7,11 @@ using System.Threading;
 namespace ProjectHub.Worker;
 
 /// <summary>
-/// Best-effort native foreground recovery while Worker owns a user-requested
-/// Unity job. An existing Unity Editor may self-activate on CLI/MCP calls;
-/// CreateNoWindow and Codex hooks cannot prevent that native activation.
-///
-/// A fallback may minimize only a matched, unintentionally foregrounded
-/// project window; no input is injected. User-triggered activation is
-/// respected using the latest Windows input timestamp.
+/// Passive foreground observation throughout a user-requested Unity job.
+/// Unity is NEVER refocused, unfocused, or minimized while the job is running.
+/// Only after all job commands stop may the guard restore the last user window
+/// once, if this project's Unity Editor/Player is still foreground and was
+/// not intentionally selected by the user. No input is injected.
 /// It cannot guarantee focus on other desktops/elevated processes and does
 /// not claim to control external processes outside this Worker job.
 /// Must be created/disposed on the WPF dispatcher thread (message loop).
@@ -23,8 +21,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private const uint EventSystemForeground = 0x0003;
     private const uint WinEventOutOfContext = 0;
     private const int ObjIdWindow = 0;
-    private const int SwMinimize = 6;
-    private const int SwShowNoActivate = 4;
     private const int VkLButton = 0x01;
     private const int VkRButton = 0x02;
     private const int VkMenu = 0x12;
@@ -39,7 +35,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private int _backgroundCaptureDepth;
     private readonly DateTime _jobStartUtc;
     private readonly object _sync = new();
-    private readonly HashSet<IntPtr> _parkedEditorWindows = new();
     private System.Threading.Timer? _watchdog;
     private bool _everAvailable;
     private IntPtr _hook;
@@ -47,6 +42,8 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private IntPtr _manualUnityWindow;
     private IntPtr _lastObservedForeground;
     private bool _restoring;
+    private bool _jobEndRestoreEnabled;
+    private bool _jobEndRestoreRequested;
     private volatile bool _disposed;
     private string _unavailableReason = string.Empty;
 
@@ -55,8 +52,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     internal bool Available => _watchdog is not null || _hook != IntPtr.Zero;
     internal int RestoreAttempts { get; private set; }
     internal int RestoreFailures { get; private set; }
-    internal int MinimizeFallbacks { get; private set; }
-    internal int ParkedWindowRestores { get; private set; }
     internal int UnityForegroundActivations { get; private set; }
     internal int PlayerForegroundActivations { get; private set; }
     internal int ExplicitUserUnitySelections { get; private set; }
@@ -64,13 +59,13 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
 
     internal string Diagnostic => _everAvailable
         ? $"FOCUS_GUARD: restore={RestoreSuccesses}/{RestoreAttempts}; " +
-          $"minimize_fallback_requests={MinimizeFallbacks}; " +
-          $"parked_restored={ParkedWindowRestores}; not_restored={RestoreFailures}; " +
+          $"not_restored={RestoreFailures}; " +
           $"unity_activations={UnityForegroundActivations}; " +
            $"player_activations={PlayerForegroundActivations}; " +
           $"user_selection_exempt={ExplicitUserUnitySelections}; " +
-          "watchdog=on, direct Unity mouse/Alt-Tab selection exempt. " +
-          "Unity may briefly flash when it self-activates."
+          "watchdog=passive, restore=job_end_only, " +
+          "direct Unity mouse/Alt-Tab selection exempt. " +
+          "Unity can remain foreground during a running job."
         : "FOCUS_GUARD_UNAVAILABLE: " + _unavailableReason +
           "; Unity Editor may take focus during CLI/MCP execution.";
 
@@ -123,70 +118,16 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     }
 
     /// <summary>
-    /// A narrowly scoped foreground window lease for Worker-owned Native Game View
-    /// verification. Skips activation when the user is working in another app.
-    /// Never changes another project's Editor and never minimizes the Editor.
+    /// Compatibility API: foreground leases are deliberately disabled.
+    /// A running job must not activate Unity even for visual verification.
     /// </summary>
-    internal VisualVerificationLease BeginVisualVerification()
-    {
-        lock (_sync)
-        {
-            if (_disposed || !Available || _projectRoot is null ||
-                _workerWindow == IntPtr.Zero || !IsWindow(_workerWindow) ||
-                !IsWindowVisible(_workerWindow) || IsIconic(_workerWindow))
-                return new(null, IntPtr.Zero, "FOCUS_LEASE_UNAVAILABLE");
-            if (_visualLeaseWindow != IntPtr.Zero)
-                return new(null, IntPtr.Zero, "FOCUS_LEASE_ALREADY_ACTIVE");
-            if (GetForegroundWindow() != _workerWindow)
-                return new(null, IntPtr.Zero, "FOCUS_LEASE_SKIPPED_USER_IN_OTHER_APP");
-
-            var projectName = Path.GetFileName(_projectRoot.TrimEnd(
-                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            IntPtr editorWindow = IntPtr.Zero;
-            foreach (var process in Process.GetProcessesByName("Unity"))
-            {
-                using (process)
-                {
-                    try
-                    {
-                        if (!UnityBackgroundFocusPolicy.IsProjectEditorTitle(
-                                process.MainWindowTitle, projectName))
-                            continue;
-                        var candidate = process.MainWindowHandle;
-                        if (candidate == IntPtr.Zero || !IsWindow(candidate) ||
-                            !IsWindowVisible(candidate) || IsIconic(candidate))
-                            continue;
-                        if (editorWindow != IntPtr.Zero)
-                            return new(null, IntPtr.Zero,
-                                "FOCUS_LEASE_AMBIGUOUS_PROJECT_WINDOWS");
-                        editorWindow = candidate;
-                    }
-                    catch (Exception ex) when (ex is InvalidOperationException or
-                        Win32Exception or ArgumentException) { }
-                }
-            }
-            if (editorWindow == IntPtr.Zero)
-                return new(null, IntPtr.Zero,
-                    "FOCUS_LEASE_EDITOR_NOT_UNIQUELY_LOCATED_BY_PROJECT_TITLE");
-            _visualLeaseWindow = editorWindow;
-            _visualLeaseDeadline = Environment.TickCount64 + 50_000;
-            _visualUserOverride = false;
-            _previousUserWindow = _workerWindow;
-
-            if (!SetForegroundWindow(editorWindow) ||
-                GetForegroundWindow() != editorWindow)
-            {
-                _visualLeaseWindow = IntPtr.Zero;
-                return new(null, IntPtr.Zero, "FOCUS_LEASE_ACTIVATION_DENIED");
-            }
-            return new(this, editorWindow, "FOCUS_LEASE_ACTIVE");
-        }
-    }
+    internal VisualVerificationLease BeginVisualVerification() =>
+        new(null, IntPtr.Zero, "FOCUS_LEASE_DISABLED_UNTIL_JOB_END");
 
     /// <summary>
-    /// Allows native screenshots to finish without automatic focus recovery
-    /// mid-frame. This scope NEVER foregrounds Unity. If Unity activates on
-    /// its own, the normal user-window restoration occurs after capture ends.
+    /// Tracks a background screenshot interval. The guard never restores
+    /// foreground during this interval or anywhere else in a running job.
+    /// Only RestoreAfterJob may trigger a foreground restoration.
     /// </summary>
     internal BackgroundCaptureScope BeginBackgroundCapture()
     {
@@ -229,15 +170,58 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
             _backgroundCaptureDepth--;
             if (_backgroundCaptureDepth != 0)
                 return "BACKGROUND_CAPTURE_NESTED_SCOPE_FINISHED";
-            // A user-selected Unity window remains exempt. Only an
-            // incidental activation of this project's Editor may be restored.
-            var priorAttempts = RestoreAttempts;
+            // Passive observation only; even a self-activated Unity Editor
+            // must keep focus until the entire user job finishes.
             CheckForeground(GetForegroundWindow());
-            return RestoreAttempts == priorAttempts
-                ? "BACKGROUND_CAPTURE_COMPLETE_NO_FOCUS_CHANGE"
-                : GetForegroundWindow() == _previousUserWindow
-                    ? "BACKGROUND_CAPTURE_COMPLETE_USER_FOCUS_RESTORED"
-                    : "BACKGROUND_CAPTURE_COMPLETE_RESTORE_UNVERIFIED";
+            return "BACKGROUND_CAPTURE_COMPLETE_NO_FOCUS_CHANGE";
+        }
+    }
+
+    /// <summary>
+    /// Called exactly once after the job has stopped all Unity work. The
+    /// watchdog remains passive; only this explicit call can restore focus.
+    /// Do not interrupt a user who switched applications or chose Unity.
+    /// </summary>
+    internal string RestoreAfterJob()
+    {
+        lock (_sync)
+        {
+            if (_jobEndRestoreRequested)
+                return "FOCUS_JOB_END_ALREADY_HANDLED";
+            _jobEndRestoreRequested = true;
+            if (_disposed || !Available)
+                return "FOCUS_JOB_END_GUARD_UNAVAILABLE";
+
+            var foreground = GetForegroundWindow();
+            CheckForeground(foreground); // Final passive observation.
+            if (foreground == IntPtr.Zero || !IsWatchedUnityWindow(foreground))
+                return "FOCUS_JOB_END_OTHER_APP_ACTIVE";
+            if (_manualUnityWindow == foreground ||
+                UnityBackgroundFocusPolicy.IsRecentUserSelection(
+                    MillisecondsSinceUserInput(), IsExplicitUnitySelection(foreground)))
+                return "FOCUS_JOB_END_USER_SELECTED_UNITY";
+            if (_previousUserWindow == IntPtr.Zero ||
+                !IsWindow(_previousUserWindow) ||
+                !IsWindowVisible(_previousUserWindow) ||
+                IsIconic(_previousUserWindow) ||
+                _previousUserWindow == foreground)
+                return "FOCUS_JOB_END_NO_VALID_USER_WINDOW";
+
+            var earlierAttempts = RestoreAttempts;
+            _jobEndRestoreEnabled = true;
+            try
+            {
+                CheckForeground(foreground);
+            }
+            finally
+            {
+                _jobEndRestoreEnabled = false;
+            }
+            if (RestoreAttempts == earlierAttempts)
+                return "FOCUS_JOB_END_RESTORE_SKIPPED";
+            return GetForegroundWindow() == _previousUserWindow
+                ? "FOCUS_JOB_END_USER_WINDOW_RESTORED"
+                : "FOCUS_JOB_END_RESTORE_UNVERIFIED";
         }
     }
 
@@ -380,6 +364,20 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
                     }
                     return;
                 }
+                // During the entire job, only observe focus. Automatic Unity
+                // activation is not canceled, so Editor refresh/compilation
+                // and screenshots have a chance to run in the foreground.
+                if (!_jobEndRestoreEnabled)
+                {
+                    if (_manualUnityWindow != window &&
+                        UnityBackgroundFocusPolicy.IsRecentUserSelection(
+                            MillisecondsSinceUserInput(), IsExplicitUnitySelection(window)))
+                    {
+                        _manualUnityWindow = window;
+                        ExplicitUserUnitySelections++;
+                    }
+                    return;
+                }
                 if (_manualUnityWindow == window)
                     return;
                 if (_previousUserWindow == IntPtr.Zero ||
@@ -399,7 +397,8 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
                     ExplicitUserUnitySelections++;
                     return;
                 }
-                if (!UnityBackgroundFocusPolicy.ShouldRestore(
+                if (!UnityBackgroundFocusPolicy.ShouldRestoreAfterJob(
+                        jobFinished: _jobEndRestoreEnabled,
                         unityForeground: true,
                         hasPreviousWindow: true,
                         explicitUnitySelection: false))
@@ -431,19 +430,8 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
                             AttachThreadInput(callerThread, unityThread, false);
                     }
                 }
-                if ((!restored || GetForegroundWindow() == window) &&
-                    GetForegroundWindow() == window)
-                {
-                    // Last resort: park only the foreground Unity window.
-                    // Hidden/minimized Unity may not render identically; the
-                    // internal RenderTexture evidence must remain unverified.
-                    // Record only windows actually parked by this guard,
-                    // so Dispose can return them to their original visible
-                    // size without activating Unity over the user's app.
-                    ShowWindowAsync(window, SwMinimize);
-                    _parkedEditorWindows.Add(window);
-                    MinimizeFallbacks++;
-                }
+                // Never minimize Unity, even if Windows denies the final
+                // foreground request. The caller receives UNVERIFIED.
                 if (GetForegroundWindow() == window)
                     RestoreFailures++;
             }
@@ -536,18 +524,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
             UnhookWinEvent(_hook);
             _hook = IntPtr.Zero;
         }
-        lock (_sync)
-        {
-            foreach (var window in _parkedEditorWindows)
-            {
-                if (!IsWindow(window) || !IsIconic(window))
-                    continue;
-                // SW_SHOWNOACTIVATE preserves the user's current foreground.
-                ShowWindowAsync(window, SwShowNoActivate);
-                ParkedWindowRestores++;
-            }
-            _parkedEditorWindows.Clear();
-        }
         GC.KeepAlive(_callback);
     }
 
@@ -617,10 +593,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ShowWindowAsync(IntPtr window, int command);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetLastInputInfo(ref LastInputInfo info);
 }
 
@@ -686,4 +658,11 @@ internal static class UnityBackgroundFocusPolicy
     internal static bool ShouldRestore(
         bool unityForeground, bool hasPreviousWindow, bool explicitUnitySelection) =>
         unityForeground && hasPreviousWindow && !explicitUnitySelection;
+
+    // Foreground changes are only allowed at the explicit job-end boundary.
+    internal static bool ShouldRestoreAfterJob(
+        bool jobFinished, bool unityForeground, bool hasPreviousWindow,
+        bool explicitUnitySelection) =>
+        jobFinished && ShouldRestore(
+            unityForeground, hasPreviousWindow, explicitUnitySelection);
 }
