@@ -148,7 +148,7 @@ public sealed class UnityWorkSchedulingPolicyTests
     {
         Assert.Contains("Unity HQ", RoleContractLoader.LoadHqFooter());
         Assert.Contains("Unity CLI/MCP", RoleContractLoader.LoadWorkFooter());
-        Assert.Contains("PlayMode", RoleContractLoader.LoadQaFooter());
+        Assert.Contains("PlayMode", RoleContractLoader.LoadWorkFooter());
         Assert.Contains("GUID/.meta", RoleContractLoader.LoadHighFooter());
     }
 }
