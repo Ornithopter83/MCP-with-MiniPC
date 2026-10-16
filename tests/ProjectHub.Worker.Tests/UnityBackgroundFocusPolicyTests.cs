@@ -54,9 +54,9 @@ public sealed class UnityBackgroundFocusPolicyTests
     }
 
     [Theory]
-    [InlineData("Unity", "Unity 6 - Unity3DSample - Windows", @"C:\projects\Unity3DSample", true)]
-    [InlineData("Unity", "Unity 6 - DifferentProject - Windows", @"C:\projects\Unity3DSample", false)]
-    [InlineData("Unity Hub", "Unity 6 - Unity3DSample - Windows", @"C:\projects\Unity3DSample", false)]
+    [InlineData("Unity", "Unity 6 - Unity3DSample - Windows", "Unity3DSample", true)]
+    [InlineData("Unity", "Unity 6 - DifferentProject - Windows", "Unity3DSample", false)]
+    [InlineData("Unity Hub", "Unity 6 - Unity3DSample - Windows", "Unity3DSample", false)]
     [InlineData("Unity", "Unity 6 - Unity3DSample - Windows", null, false)]
     public void BackgroundGuardDoesNotTargetOtherProjectEditors(
         string process, string title, string? root, bool expected)
