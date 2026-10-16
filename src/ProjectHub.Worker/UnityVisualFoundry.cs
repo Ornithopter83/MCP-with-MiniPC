@@ -151,6 +151,29 @@ internal static class UnityVisualFoundry
                     UnityEditor.AssetDatabase.CreateFolder(vfParent, vfParts[i]);
                 vfParent = vfNext;
             }
+            // Preserve any earlier generated kit or user edits. Reuse only
+            // if ALL expected prefabs and preview scenes are already present.
+            var vfScreenNames = new [] { "Menu", "Quiz", "Results" };
+            var vfVariantNames = new [] { "", "-Editorial", "-Immersive" };
+            var vfPresent = 0;
+            foreach (var screen in vfScreenNames)
+                foreach (var variant in vfVariantNames)
+                    if (UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(
+                        vfOutput + "/" + screen + variant + ".prefab") != null)
+                        vfPresent++;
+            if (vfPresent > 0) {
+                var vfComplete = vfPresent == 9;
+                foreach(var screen in vfScreenNames)
+                    vfComplete &= UnityEditor.AssetDatabase.LoadAssetAtPath<
+                        UnityEditor.SceneAsset>(
+                            vfOutput + "/Preview-" + screen + ".unity") != null;
+                vfComplete &= UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Sprite>(
+                    vfOutput + "/Backdrop.png") != null;
+                if (!vfComplete)
+                    throw new System.InvalidOperationException(
+                        "VISUAL_FOUNDRY_EXISTING_ASSETS_INCOMPLETE_NO_OVERWRITE");
+                return "PROJECTHUB_VISUAL_FOUNDRY_REUSED|" + vfStyle + "|9|" + vfOutput;
+            }
             var vfBackTex = new UnityEngine.Texture2D(512, 288,
                 UnityEngine.TextureFormat.RGBA32, false);
             vfBackTex.wrapMode = UnityEngine.TextureWrapMode.Clamp;
@@ -443,10 +466,15 @@ internal static class UnityVisualFoundry
                 return new(false, "VISUAL_FOUNDRY_ACK_UNVERIFIED", null);
             var expected = "PROJECTHUB_VISUAL_FOUNDRY_READY|" + plan.Theme.Id +
                 "|9|" + plan.AssetDirectory;
+            var reused = "PROJECTHUB_VISUAL_FOUNDRY_REUSED|" + plan.Theme.Id +
+                "|9|" + plan.AssetDirectory;
+            if (string.Equals(marker, reused, StringComparison.Ordinal))
+                return new(true, "VISUAL_FOUNDRY_REUSED_UNINSPECTED: " +
+                    plan.AssetDirectory + "; all expected prefabs and scenes exist",
+                    plan.AssetDirectory);
             if (!string.Equals(marker, expected, StringComparison.Ordinal))
                 return new(false, "VISUAL_FOUNDRY_ACK_MISMATCH: " + Clip(marker), null);
-            // Editor confirms SaveAsPrefabAsset + AssetDatabase.SaveAssets,
-            // but the Worker never mistakes this for visual/functional approval.
+            // Asset generation and scene saves are not visual approval.
             return new(true, "VISUAL_FOUNDRY_GENERATED_UNINSPECTED: " +
                 plan.AssetDirectory + "; 3 screens x 3 variants, procedural shader, " +
                 "multi-track motion, Preview scenes; content and visual quality uninspected",
@@ -471,7 +499,9 @@ internal static class UnityVisualFoundry
         {
             marker = data.GetString() ?? string.Empty;
             return marker.StartsWith("PROJECTHUB_VISUAL_FOUNDRY_READY|",
-                StringComparison.Ordinal);
+                StringComparison.Ordinal) ||
+                marker.StartsWith("PROJECTHUB_VISUAL_FOUNDRY_REUSED|",
+                    StringComparison.Ordinal);
         }
         if (data.ValueKind != JsonValueKind.Object) return false;
         foreach (var name in new[] { "result", "value", "output" })
