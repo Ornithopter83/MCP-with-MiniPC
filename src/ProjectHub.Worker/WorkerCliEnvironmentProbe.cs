@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -5,17 +6,22 @@ using System.IO;
 namespace ProjectHub.Worker;
 
 /// <summary>
-/// Read-only command availability snapshot shared by all roles in this Worker
-/// process. It checks a tool's real --version exit code, not just its PATH
-/// entry (Windows Store Python aliases are not Python installations).
+/// Read-only, per-job command availability snapshot shared by parallel roles.
+/// A successful --version exit is required: PATH entries alone are not proof
+/// of installation (Windows Store Python aliases are not interpreters).
 /// </summary>
 internal static class WorkerCliEnvironmentProbe
 {
-    private static readonly Lazy<Task<string>> Guidance =
-        new(BuildGuidanceAsync, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly ConcurrentDictionary<string, Lazy<Task<string>>> GuidanceByJob =
+        new(StringComparer.Ordinal);
 
-    internal static Task<string> GetGuidanceAsync(CancellationToken token) =>
-        Guidance.Value.WaitAsync(token);
+    internal static Task<string> GetGuidanceAsync(string jobId, CancellationToken token) =>
+        GuidanceByJob.GetOrAdd(jobId, _ =>
+            new Lazy<Task<string>>(BuildGuidanceAsync,
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value.WaitAsync(token);
+
+    internal static void Forget(string jobId) =>
+        GuidanceByJob.TryRemove(jobId, out _);
 
     internal static bool IsWindowsAppAlias(string path) =>
         path.Replace('\\', '/').Contains("/Microsoft/WindowsApps/",
