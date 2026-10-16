@@ -960,24 +960,19 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HqTextProtocol_ControlActionWithUnknownSectionPreservesOriginalDecision()
+    public void HqTextProtocol_RejectsUnknownSectionInsteadOfReinterpretingControl()
     {
         const string response = """
             [ACTION=PAUSE]
-
             @@MESSAGE
             사용자 확인 필요
-
             @@ARCHITECTURE_NOTE
             HIGH 판단이 필요한 임의 section
             """;
 
         var hq = HqTextProtocol.Parse(response);
-
-        Assert.True(hq.IsValid, string.Join("; ", hq.Errors));
-        var control = Assert.Single(hq.Parse.ValidActions);
-        Assert.Equal("PAUSE", control.Name);
-        Assert.Equal(response, control.Body);
+        Assert.False(hq.IsValid);
+        Assert.Contains("UNKNOWN_SECTION_REQUIRES_WORK", hq.Errors);
     }
 
     [Fact]
@@ -1195,80 +1190,28 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void RoleElementRecovery_DefinesNonHqElementsAndAcceptsBareRecoveryJson()
+    public void RoleElementRecovery_DefinesActiveWorkHighElements()
     {
-        Assert.Contains(
-            RoleElementRecoveryContract.GetDefinitions("MANAGER", "DISPATCH"),
-            item => item.Name == "mechanical" && item.Required);
         Assert.Contains(
             RoleElementRecoveryContract.GetDefinitions("WORK", "RESULT"),
             item => item.Name == "summary" && item.Required);
         Assert.Contains(
-            RoleElementRecoveryContract.GetDefinitions("QA", "RESULT"),
-            item => item.Name == "status" && item.Required);
-        Assert.Contains(
             RoleElementRecoveryContract.GetDefinitions("HIGH", "RESULT"),
-            item => item.Name == "changedPaths" && !item.Required);
+            item => item.Name == "status" && item.Required);
+        Assert.Empty(RoleElementRecoveryContract.GetDefinitions("QA", "RESULT"));
 
         const string bareRecovery = """
             {
               "status": "completed",
               "summary": "복구",
-              "changedPaths": [],
-              "issues": [],
               "elements": {
-                "qa": {
-                  "required": false,
-                  "instructions": ""
-                }
+                "summary": "원문 증거 보존"
               }
             }
             """;
-
         var recovered = RoleElementRecoveryContract.ReadRecoveredElements(
-            bareRecovery,
-            new[] { "qa" });
-
-        Assert.Contains("qa", recovered.Keys);
-    }
-
-    [Fact]
-    public void GenericElementRecovery_RebuildsManagerReportAndGoto()
-    {
-        const string malformed = """
-            [ACTION=REPORT]
-            {
-              "status": "completed",
-              "content": "첫 줄
-            둘째 줄"
-            }
-            """;
-
-        var scan = RoleElementRecoveryContract.Scan(
-            "MANAGER",
-            malformed,
-            expectedAction: "REPORT",
-            contractError: "REPORT:JSON_INVALID");
-
-        Assert.Equal("REPORT", scan.ActionName);
-        Assert.Contains("content", scan.RecoveryTargets);
-        Assert.Contains("status", scan.Recovered.Keys);
-
-        var recovered = new Dictionary<string, string>
-        {
-            ["content"] = "\"첫 줄 둘째 줄\""
-        };
-
-        Assert.True(RoleElementRecoveryContract.TryBuildRoleResponse(
-            scan,
-            recovered,
-            "HQ",
-            out var merged,
-            out var remaining));
-        Assert.Empty(remaining);
-
-        var parsed = ActionBlockContract.ParseManager(merged);
-        Assert.True(parsed.HasErrors); // Obsolete MANAGER report action is no longer an accepted wire action.
+            bareRecovery, new[] { "summary" });
+        Assert.Contains("summary", recovered.Keys);
     }
 
     [Fact]
