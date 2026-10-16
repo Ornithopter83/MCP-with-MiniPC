@@ -27,8 +27,7 @@ public sealed class UnityDesignCardActivationPolicyTests
     public void DesignTurnHighlight_FollowsCurrentTurnNotLegacyResource(
         bool designRunning, bool legacyResourceOutstanding, bool expectedActive)
     {
-        var highlighted = UnityDesignCardActivationPolicy.ShouldHighlight(
-            designRunning, legacyResourceOutstanding);
+        var highlighted = UnityDesignCardActivationPolicy.ShouldHighlight(designRunning);
         Assert.Equal(expectedActive, highlighted);
         var visual = PipelineCardVisualPolicy.Resolve(
             initialInputIdle: false, isCurrent: highlighted, disabled: false);
