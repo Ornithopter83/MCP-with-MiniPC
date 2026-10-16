@@ -192,8 +192,10 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     {
         lock (_sync)
         {
-            if (_disposed)
-                return new(null, "BACKGROUND_CAPTURE_GUARD_DISPOSED");
+            if (_disposed || !Available)
+                return new(null, _disposed
+                    ? "BACKGROUND_CAPTURE_GUARD_DISPOSED"
+                    : "BACKGROUND_CAPTURE_GUARD_UNAVAILABLE");
             _backgroundCaptureDepth++;
             return new(this, "BACKGROUND_CAPTURE_NO_ACTIVATION");
         }
