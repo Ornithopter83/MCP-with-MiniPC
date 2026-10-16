@@ -199,8 +199,6 @@ public partial class MainWindow : Window
     private string _implementerStageIconAsset = "current-openai.png";
     private string _highLevelStageIconAsset = "current-openai.png";
     private string _managerStageIconAsset = "current-openai.png";
-    private bool _resourceSidecarActive;
-    private int _resourceSidecarQueued;
     private string _resourceSidecarStatus = "DESIGN";
     private bool _allowClose;
     private bool _shutdownCleanupInProgress;
@@ -1247,7 +1245,7 @@ public partial class MainWindow : Window
             ? !disabled && stage == TaskStage.Implementer
             : !disabled && (stage == TaskStage.Resource
                 ? UnityDesignCardActivationPolicy.ShouldHighlight(
-                    _currentTaskStage == TaskStage.Resource, _resourceSidecarActive)
+                    _currentTaskStage == TaskStage.Resource)
                 : _currentTaskStage == stage);
         SetPipelineStageAnimation(stage, current);
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
@@ -1801,8 +1799,6 @@ public partial class MainWindow : Window
     {
         RunOnUi(() =>
         {
-            _resourceSidecarActive = state.OutstandingCount > 0;
-            _resourceSidecarQueued = state.QueuedCount;
             _resourceSidecarStatus = state.Stage switch
             {
                 "GENERATING" => "생성·다운로드 중",
