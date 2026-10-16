@@ -6,7 +6,7 @@ public sealed class WorkerHistoryEventTests
 {
     [Theory]
     [InlineData("Coordinator", null, "Unity HQ · 게임 설계")]
-    [InlineData("Qa", null, "Unity QA · 플레이테스트")]
+    [InlineData("Unknown", null, "시스템")]
     [InlineData("HighLevel", null, "Unity HIGH · 통합")]
     [InlineData("Manager", null, "#1 ASSET MANAGER")]
     [InlineData("Resource", null, "Unity DESIGN (#0)")]
