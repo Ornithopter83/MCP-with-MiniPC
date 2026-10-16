@@ -207,7 +207,7 @@ public sealed class AssetManagerContractTests
         Assert.Contains("실패로 보지 않는다", contract);
         Assert.Contains("INTEGRATE", contract);
         Assert.Contains("GUID", contract);
-        Assert.Contains("Importer", contract);
+        Assert.Contains("Import", contract);
     }
 
     [Fact]
