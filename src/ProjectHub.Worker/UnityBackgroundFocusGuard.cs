@@ -11,8 +11,9 @@ namespace ProjectHub.Worker;
 /// Unity job. An existing Unity Editor may self-activate on CLI/MCP calls;
 /// CreateNoWindow and Codex hooks cannot prevent that native activation.
 ///
-/// This guard does not hide/minimize Unity or inject input. User-triggered
-/// activation is respected using the latest Windows input timestamp.
+/// A fallback may minimize only a matched, unintentionally foregrounded
+/// project window; no input is injected. User-triggered activation is
+/// respected using the latest Windows input timestamp.
 /// It cannot guarantee focus on other desktops/elevated processes and does
 /// not claim to control external processes outside this Worker job.
 /// Must be created/disposed on the WPF dispatcher thread (message loop).
@@ -35,6 +36,7 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     private IntPtr _visualLeaseWindow;
     private long _visualLeaseDeadline;
     private bool _visualUserOverride;
+    private int _backgroundCaptureDepth;
     private readonly DateTime _jobStartUtc;
     private readonly object _sync = new();
     private readonly HashSet<IntPtr> _parkedEditorWindows = new();
@@ -181,6 +183,62 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         }
     }
 
+    /// <summary>
+    /// Allows native screenshots to finish without automatic focus recovery
+    /// mid-frame. This scope NEVER foregrounds Unity. If Unity activates on
+    /// its own, the normal user-window restoration occurs after capture ends.
+    /// </summary>
+    internal BackgroundCaptureScope BeginBackgroundCapture()
+    {
+        lock (_sync)
+        {
+            if (_disposed)
+                return new(null, "BACKGROUND_CAPTURE_GUARD_DISPOSED");
+            _backgroundCaptureDepth++;
+            return new(this, "BACKGROUND_CAPTURE_NO_ACTIVATION");
+        }
+    }
+
+    internal sealed class BackgroundCaptureScope : IDisposable
+    {
+        private UnityBackgroundFocusGuard? _owner;
+        internal string Diagnostic { get; private set; }
+
+        internal BackgroundCaptureScope(UnityBackgroundFocusGuard? owner, string diagnostic)
+        {
+            _owner = owner;
+            Diagnostic = diagnostic;
+        }
+
+        public void Dispose()
+        {
+            var owner = Interlocked.Exchange(ref _owner, null);
+            if (owner is not null)
+                Diagnostic = owner.EndBackgroundCapture();
+        }
+    }
+
+    private string EndBackgroundCapture()
+    {
+        lock (_sync)
+        {
+            if (_backgroundCaptureDepth == 0)
+                return "BACKGROUND_CAPTURE_SCOPE_ALREADY_FINISHED";
+            _backgroundCaptureDepth--;
+            if (_backgroundCaptureDepth != 0)
+                return "BACKGROUND_CAPTURE_NESTED_SCOPE_FINISHED";
+            // A user-selected Unity window remains exempt. Only an
+            // incidental activation of this project's Editor may be restored.
+            var priorAttempts = RestoreAttempts;
+            CheckForeground(GetForegroundWindow());
+            return RestoreAttempts == priorAttempts
+                ? "BACKGROUND_CAPTURE_COMPLETE_NO_FOCUS_CHANGE"
+                : GetForegroundWindow() == _previousUserWindow
+                    ? "BACKGROUND_CAPTURE_COMPLETE_USER_FOCUS_RESTORED"
+                    : "BACKGROUND_CAPTURE_COMPLETE_RESTORE_UNVERIFIED";
+        }
+    }
+
     internal sealed class VisualVerificationLease : IDisposable
     {
         private UnityBackgroundFocusGuard? _owner;
@@ -308,6 +366,18 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
                     }
                     return;
                 }
+                if (guardedWindow && _backgroundCaptureDepth > 0)
+                {
+                    // Keep the rendered frame undisturbed. This is NOT an
+                    // instruction to bring the Editor into the foreground.
+                    if (UnityBackgroundFocusPolicy.IsRecentUserSelection(
+                            MillisecondsSinceUserInput(), IsExplicitUnitySelection(window)))
+                    {
+                        _manualUnityWindow = window;
+                        ExplicitUserUnitySelections++;
+                    }
+                    return;
+                }
                 if (_manualUnityWindow == window)
                     return;
                 if (_previousUserWindow == IntPtr.Zero ||
@@ -430,16 +500,19 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
             or Win32Exception or UnauthorizedAccessException) { return false; }
     }
 
-    private static bool IsUnityEditorWindow(IntPtr window)
+    private bool IsUnityEditorWindow(IntPtr window)
     {
-        if (window == IntPtr.Zero) return false;
+        if (_projectRoot is null || window == IntPtr.Zero) return false;
         GetWindowThreadProcessId(window, out var processId);
         if (processId == 0) return false;
         try
         {
             using var process = Process.GetProcessById(unchecked((int)processId));
-            return UnityBackgroundFocusPolicy.IsUnityEditorProcess(
-                process.ProcessName);
+            var projectName = Path.GetFileName(_projectRoot.TrimEnd(
+                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            return UnityBackgroundFocusPolicy.IsUnityEditorProcess(process.ProcessName) &&
+                   UnityBackgroundFocusPolicy.IsProjectEditorTitle(
+                       process.MainWindowTitle, projectName);
         }
         catch (Exception error) when (error is ArgumentException or
             InvalidOperationException or Win32Exception)
