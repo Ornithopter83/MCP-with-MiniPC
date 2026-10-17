@@ -235,7 +235,7 @@ public partial class MainWindow
                         referenceId: historyInvocationReference,
                         persistenceSource: "WORKER ACTION");
                     currentPrompt = WorkReResolutionPolicy.BuildPrompt(
-                        prompt, firstReport, work.Id);
+                        firstReport, work.Id);
                     continue;
                 }
 
