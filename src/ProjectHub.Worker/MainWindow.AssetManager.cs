@@ -426,7 +426,7 @@ public partial class MainWindow
             "다른 WORK가 동시에 수정 중인 동일 파일은 수정하지 마라. " +
             "\n현재 PHASE만 실제 수행하라. 이후 단계로 미리 진입하지 마라. " +
             "완료 기준을 충족하지 못한 경우 blocked 또는 in_progress로 보고하라. " +
-            "검색/획득/씬 연결의 도구 결과와 실제 파일 증거를 기록하라.\n\n" +
-            string.Empty, existingSessionId);
+            "검색/획득/씬 연결의 도구 결과와 실제 파일 증거를 기록하라.",
+            existingSessionId);
     }
 }
