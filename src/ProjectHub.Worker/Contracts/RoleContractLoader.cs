@@ -20,6 +20,12 @@ public static class RoleContractLoader
         "src/ProjectHub.Worker/Contracts/ASSET-MANAGER-ROUTING-CONTRACT.md";
 
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
+    // A new user task begins with USER_REQUEST. All subsequent milestones and
+    // grammar-recovery turns remain in the same HQ conversation.
+    internal static string AppendHqContractForUserStart(string inboundType, string prompt) =>
+        string.Equals(inboundType, "USER_REQUEST", StringComparison.Ordinal)
+            ? prompt + Environment.NewLine + Environment.NewLine + LoadHqFooter()
+            : prompt;
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
     public static string LoadDesignFooter() => Load("DESIGN-ROUTING-CONTRACT.md");
     internal static string BuildDesignPrompt(MilestoneDesignDefinition design, string projectRoot) =>
