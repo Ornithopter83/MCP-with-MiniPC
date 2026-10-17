@@ -80,6 +80,7 @@
 ① Worker는 추가 AI 요약자 없이 WORK·DESIGN·ASSET MANAGER·BUILD/TEST·HIGH·Git의 실제 상태를 정리한다.
 ② blocked·timeout·in_progress, BUILD/TEST 실패, HIGH의 미해결 시각 결함과 증거를 HQ에 손실 없이 보고한다.
 ③ HQ의 END는 사용자 목표의 전체 완료 판단이며, Worker는 진행 중인 WORKITEM 체크포인트가 남아 있으면 이를 수락하지 않는다.
+④ HQ는 최초 목표 대비 실질 진전이 없는 마일스톤이 연속 2회 발생하면 역할 계약에 따라 PAUSE한다. Git 커밋·문서·검증 실행기 증가는 그 자체로 목표 진전이 아니며, Worker는 결정 근거를 보고하되 HQ의 PAUSE/END 의미 판단을 대행하지 않는다.
 
 제9조 (PAUSE·사용자 메시지·인수인계)
 
