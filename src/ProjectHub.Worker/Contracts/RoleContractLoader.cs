@@ -34,13 +34,19 @@ public static class RoleContractLoader
 
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");
     public static string LoadAssetManagerFooter() => Load("ASSET-MANAGER-ROUTING-CONTRACT.md");
+    internal static string AppendAssetManagerContractForNewSession(
+        string prompt, string? existingSessionId) =>
+        string.IsNullOrWhiteSpace(existingSessionId)
+            ? prompt + Environment.NewLine + Environment.NewLine + LoadAssetManagerFooter()
+            : prompt;
 
     public static string BuildDirectWorkPrompt(
         string workItemId,
         string body,
         IReadOnlyList<string> writePaths,
         string targetWorkspace,
-        bool readOnly = false)
+        bool readOnly = false,
+        bool includeEncodingGuidance = true)
     {
         if (string.IsNullOrWhiteSpace(workItemId))
             throw new ArgumentException("WorkItem ID가 비어 있습니다.", nameof(workItemId));
@@ -61,11 +67,12 @@ public static class RoleContractLoader
             foreach (var path in writePaths)
                 builder.AppendLine("- " + path);
         builder.AppendLine();
-        builder.AppendLine("작업에 필요한 모든 권한은 승인한다.");
+        builder.AppendLine("실행 권한은 Worker 설정과 사용자 승인 범위를 따른다.");
         builder.AppendLine();
         builder.AppendLine(body ?? string.Empty);
         builder.AppendLine();
-        builder.AppendLine(EncodingGuidance.TrimEnd());
+        if (includeEncodingGuidance)
+            builder.AppendLine(EncodingGuidance.TrimEnd());
         builder.AppendLine();
         builder.Append(LoadWorkFooter());
         return builder.ToString();
