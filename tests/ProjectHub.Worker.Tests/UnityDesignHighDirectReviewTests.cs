@@ -115,11 +115,13 @@ public sealed class UnityDesignHighDirectReviewTests
     }
 
     [Fact]
-    public void HighFinalBuild_DoesNotRebuildUnaffectedGraphics()
+    public void HighFinalBuild_RecompilesSourceButNotUnaffectedVisualAssets()
     {
         Assert.False(HighFinalBuildPolicy.RequiresBuild(
             new[] { "Assets/Art/Fireworks.png", "docs/projecthub/design.md" }));
-        Assert.True(HighFinalBuildPolicy.RequiresBuild(
+        // Visual prefab changes still need targeted HIGH inspection, not
+        // an unrelated C# script recompile.
+        Assert.False(HighFinalBuildPolicy.RequiresBuild(
             new[] { "Assets/UI/Panel.prefab" }));
         Assert.True(HighFinalBuildPolicy.RequiresBuild(
             new[] { "Assets/Scripts/UI/Effects.cs" }));
