@@ -33,15 +33,15 @@ dotnet run --project src/ProjectHub.Server
 
 ## Worker와 Web 런타임
 
-**적용 범위:** `UnityWorker` 브랜치의 현재 실행 정책은 `Worker-Polish.md`, `UnityWorker-ROADMAP.md` 및 활성 역할 계약을 따른다. 범용 `main` Worker의 과거 QA·RESOURCE 설명을 이 브랜치의 활성 실행으로 취급하지 않는다.
+**적용 범위:** `UnityWorker` 브랜치의 현재 실행 정책은 `Worker-Polish.md`, `UnityWorker-ROADMAP.md` 및 활성 역할 계약을 따른다. 범용 `main`의 역사적 역할 설명은 이 브랜치의 활성 실행 기준이 아니다.
 
 해상도를 별도로 지정하지 않은 UnityWorker 신규 제작 프로그램의 기본 해상도는 **1920×1080(16:9)**이며 사용자·프로젝트의 명시적 규격이 우선한다. 실제 화면 캡처 크기는 이 기본값과 별개다.
 
-UnityWorker에서는 HQ(Web/CLI)가 마일스톤을 설계한다. #1 ASSET MANAGER는 외부 에셋 검색·획득·연결, #0 DESIGN은 그래픽·씬 시각 제작, #10+ WORK는 코드·CLI 구현을 담당하고 HIGH(PL)가 BUILD/TEST 증거를 검토·수정한다. 독립 QA와 이미지 추출용 RESOURCE sidecar는 실행하지 않는다. HIGH는 수정과 최종 검증을 직접 수행하며, 추가 DESIGN 작업이 필요하면 미해결 결함과 증거를 HQ에 보고한다. HIGH에서 DESIGN으로 재호출하지 않는다.
+UnityWorker에서는 HQ(Web/CLI)가 마일스톤을 설계한다. #1 ASSET MANAGER는 외부 에셋 검색·획득·연결, #0 DESIGN은 그래픽·씬 시각 제작, #10+ WORK는 코드·CLI 구현을 담당하고 HIGH(PL)가 BUILD/TEST 증거를 검토·수정한다. 이미지 추출용 RESOURCE sidecar는 실행하지 않는다. HIGH는 수정과 최종 검증을 직접 수행하며, 추가 DESIGN 작업이 필요하면 미해결 결함과 증거를 HQ에 보고한다. HIGH에서 DESIGN으로 재호출하지 않는다.
 
 WORKITEM별 원본 ID·세션·체크포인트를 보존하고 미완료 작업만 `CONTINUE`한다. 빌드 복구도 원본 소유 WORKITEM ID로 수행하며 한 작업에 귀속할 수 없으면 HQ에 판단을 요청한다. Git commit·push와 기계적 BUILD/TEST는 Worker가 맡는다. **Worker 제품 소스의 `UnityWorker` 브랜치와 사용자의 게임 프로젝트 `main`은 별개**다.
 
-HQ Web은 관리형 Chromium·브리지, HQ CLI는 로컬 CLI 연결과 개별 상태 확인 경로를 사용한다. HQ는 설계·판단 중심의 읽기 전용 역할이다. 실시간 사용자 메시지는 특정 HQ에 따로 보관하지 않고 다음 제어권을 받는 AI 역할에 원문으로 한 번만 전달한다. Worker는 자연어를 PAUSE로 판정하지 않으며 명시적 UI 취소는 별도 제어다. 신규 사용자 작업은 새 HQ CLI 세션과 `.projecthub/last-handoff.md`를 참고하고, 동일 작업 중단 복구는 기존 세션·체크포인트를 재사용한다. 구형 QA/RESOURCE 설정·보고서·전송 클래스 잔존은 활성 호출을 의미하지 않는다.
+HQ Web은 관리형 Chromium·브리지, HQ CLI는 로컬 CLI 연결과 개별 상태 확인 경로를 사용한다. HQ는 설계·판단 중심의 읽기 전용 역할이다. 실시간 사용자 메시지는 특정 HQ에 따로 보관하지 않고 다음 제어권을 받는 AI 역할에 원문으로 한 번만 전달한다. Worker는 자연어를 PAUSE로 판정하지 않으며 명시적 UI 취소는 별도 제어다. 신규 사용자 작업은 새 HQ CLI 세션과 `.projecthub/last-handoff.md`를 참고하고, 동일 작업 중단 복구는 기존 세션·체크포인트를 재사용한다.
 
 Worker의 작업별 기계 상태는 실제 프로젝트 루트의 `.projecthub` 아래에 둔다. WORKITEM 실행 체크포인트(`work-executions`), WorkGraph·event log·transcript·continuation을 저장한다. 임시 실행·RESOURCE 결과 수집에는 프로젝트 루트의 `temp/`도 사용한다. `.projecthub/`와 `temp/`는 Worker 내부 상태·임시 작업영역이며, Worker가 관리하는 로컬 Git 제외 규칙으로 일반 코드 결과와 구분한다. WORK의 실제 소스 수정은 사용자가 지정한 프로젝트 루트에서 수행한다.
 
