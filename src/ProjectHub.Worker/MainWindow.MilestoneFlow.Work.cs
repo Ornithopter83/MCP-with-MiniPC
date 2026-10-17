@@ -54,7 +54,8 @@ public partial class MainWindow
             MilestoneDefinitionContract.BuildWorkContext(work),
             work.WritePaths,
             workingDirectory,
-            readOnly: work.ReadOnly);
+            readOnly: work.ReadOnly,
+            includeEncodingGuidance: checkpoint!.SessionId is null);
         if (!requiresEditorLane)
             prompt += Environment.NewLine + Environment.NewLine +
                 "WORK_LANE: FILE_ONLY. 지정된 C#·StreamingAssets 텍스트·문서 파일만 " +
