@@ -15,15 +15,23 @@ internal static class MilestoneBuildRunner
 
     public static async Task<IReadOnlyList<MilestoneMechanicalResult>> RunAsync(
         string root, string jobId, IEnumerable<MilestoneWorkDefinition> workItems,
-        CancellationToken cancellationToken, bool? unityEditorReady = null)
+        CancellationToken cancellationToken, bool? unityEditorReady = null,
+        bool requiresUnityRecompile = true)
     {
         if (UnityCliBuildRunner.IsUnityProject(root))
         {
+            if (!requiresUnityRecompile)
+                return new[] { new MilestoneMechanicalResult(
+                    "BUILD", true, 0, "", "",
+                    "BUILD_SKIPPED: NO_COMPILATION_AFFECTING_CHANGES; " +
+                    "prior build evidence is not new proof of verification") };
             var unityResult = unityEditorReady == false
                 ? UnityCliBuildRunner.EditorUnavailableResult(
-                    "UNITY_EDITOR_UNAVAILABLE_AT_JOB_PREFLIGHT")
+                    "UNITY_EDITOR_UNAVAILABLE_AT_BUILD")
                 : await UnityCliBuildRunner.RunAsync(
-                    root, jobId, cancellationToken).ConfigureAwait(false);
+                    root, jobId, cancellationToken,
+                    editorConnectivityVerified: unityEditorReady == true)
+                    .ConfigureAwait(false);
             return new[] { unityResult };
         }
 
