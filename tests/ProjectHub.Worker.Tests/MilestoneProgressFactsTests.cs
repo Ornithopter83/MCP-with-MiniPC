@@ -46,6 +46,34 @@ public sealed class MilestoneProgressFactsTests
     }
 
     [Fact]
+    public void GoalProgressCandidatesSeparateGameChangesFromRepeatedDiagnosticArtifacts()
+    {
+        var summary = MilestoneProgressFacts.FormatGoalProgressCandidates(new[]
+        {
+            "docs/projecthub/m90-findings.md",
+            "tools/projecthub/run-m90.ps1",
+            "Assets/Tests/PlayMode/KeyboardInputTests.cs",
+            "Assets/ProjectHub/VisualFoundry/M90/Menu.prefab",
+            "Assets/ProjectHub/VisualFoundry/M90/Menu.prefab.meta",
+            "Assets/Quiz/Scripts/QuizGameController.cs",
+            "Assets/Quiz/Scripts/QuizGameController.cs",
+            "Assets/Quiz/Scenes/QuizScene.unity.meta"
+        });
+        Assert.Contains("total=7", summary);
+        Assert.Contains("product_or_config=1", summary);
+        Assert.Contains("tests=1", summary);
+        Assert.Contains("visual_kit_unverified=1", summary);
+        Assert.Contains("docs_or_tools=2", summary);
+        Assert.Contains("meta=2", summary);
+        Assert.Contains("커밋 여부를 증명하지 않는다", summary);
+
+        var diagnosticOnly = MilestoneProgressFacts.FormatGoalProgressCandidates(
+            new[] { "docs/m91.md", "tools/m91.ps1", "Assets/Tests/Suite.cs" });
+        Assert.Contains("product_or_config=0", diagnosticOnly);
+        Assert.Contains("tests=1", diagnosticOnly);
+    }
+
+    [Fact]
     public void NoWorkOrGitChangesAreRecordedAsZeroNotInventedCompletion()
     {
         var facts = MilestoneProgressFacts.Format(
