@@ -1517,6 +1517,7 @@ public partial class MainWindow
         string? configuredRepositoryUrl,
         string? remoteMainSha,
         bool webTransport) =>
+        RoleContractLoader.AppendHqContractForUserStart(inboundType,
         "역할: HQ" +
         Environment.NewLine +
         $"입력 유형: {inboundType}" +
@@ -1538,10 +1539,7 @@ public partial class MainWindow
         Environment.NewLine +
         "입력 본문:" +
         Environment.NewLine +
-        body +
-        Environment.NewLine +
-        Environment.NewLine +
-        RoleContractLoader.LoadHqFooter();
+        body);
 
     private static string BuildMilestoneCliNewSessionInput(
         string workingDirectory, string request)
