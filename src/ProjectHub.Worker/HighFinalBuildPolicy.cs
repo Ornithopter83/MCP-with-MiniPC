@@ -22,12 +22,17 @@ internal static class HighFinalBuildPolicy
     private static bool RequiresBuild(string path)
     {
         var normalized = path.Replace('\\', '/');
-        return normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ||
-               normalized.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase) ||
-               new[] { ".cs", ".asmdef", ".asmref", ".dll", ".unity",
-                   ".prefab", ".shader", ".shadergraph", ".compute",
-                   ".mat", ".meta", ".uxml", ".uss", ".controller", ".anim" }
-               .Any(extension => normalized.EndsWith(extension,
-                   StringComparison.OrdinalIgnoreCase));
+        // Recompile only for source/assembly/build-configuration inputs.
+        // Scene, prefab, material, visual kit, texture and their sidecars
+        // require targeted HIGH/Unity checks, not an unrelated C# recompile.
+        if (normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("ProjectSettings/", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return new[] { ".cs", ".asmdef", ".asmref", ".dll", ".rsp" }
+            .Any(extension => normalized.EndsWith(extension,
+                StringComparison.OrdinalIgnoreCase)) ||
+            new[] { ".asmdef.meta", ".asmref.meta", ".dll.meta" }
+            .Any(extension => normalized.EndsWith(extension,
+                StringComparison.OrdinalIgnoreCase));
     }
 }
