@@ -46,16 +46,16 @@ public sealed class WorkReResolutionPolicyTests
     }
 
     [Fact]
-    public void ReResolutionReinjectsOriginalMissionAndFirstResultWithoutNewForm()
+    public void ReResolutionUsesPriorSessionContextAndFirstResultWithoutFullMission()
     {
         var original = "[ACTION=WORK]\nWORK_ID: 628\n" +
                        "@@WRITE_PATH\n- scripts/player.gd\n" +
                        "@@GOAL\nFix collision\n";
         var report = RoleTextProtocol.BuildResult("completed", "Partial implementation",
             issues: new[] { "Window 스모크는 실행하지 않았습니다." });
-        var review = WorkReResolutionPolicy.BuildPrompt(original, report, "628");
+        var review = WorkReResolutionPolicy.BuildPrompt(report, "628");
 
-        Assert.Contains(original.Trim(), review);
+        Assert.DoesNotContain(original.Trim(), review);
         Assert.Contains(report.Trim(), review);
         Assert.Contains("WORKITEM #628", review);
         Assert.Contains("같은 모델·세션·WORK_ID·WRITE_PATH", review);
