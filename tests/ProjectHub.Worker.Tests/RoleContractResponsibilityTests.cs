@@ -66,7 +66,28 @@ public sealed class RoleContractResponsibilityTests
     }
 
     [Fact]
-    public void RequestedWorkPermissionSentenceRemainsUnchanged()
+    public void AssetManagerContractIsNotRepeatedInSameSession()
+    {
+        const string prompt = "@@MESSAGE\nPHASE: INTEGRATE";
+        var initial = RoleContractLoader.AppendAssetManagerContractForNewSession(
+            prompt, null);
+        Assert.Contains(RoleContractLoader.LoadAssetManagerFooter(), initial);
+        Assert.Equal(prompt, RoleContractLoader.AppendAssetManagerContractForNewSession(
+            prompt, "existing-session"));
+    }
+
+    [Fact]
+    public void WorkContinuationAvoidsRepeatedContractAndEncoding()
+    {
+        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
+            "10", "작업을 이어가라", new[] { "Assets/Scripts/A.cs" }, "/workspace",
+            includeRoleContract: false, includeEncodingGuidance: false);
+        Assert.DoesNotContain(RoleContractLoader.LoadWorkFooter(), prompt);
+        Assert.DoesNotContain("문자 인코딩:", prompt);
+    }
+
+    [Fact]
+    public void WorkPermissionSentenceIsBoundedByWorkerSettings()
     {
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
             "10", "@@GOAL\n코드를 구현하라.", new[] { "src/a.cs" }, "/project");
