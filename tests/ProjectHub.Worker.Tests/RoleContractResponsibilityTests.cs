@@ -17,6 +17,23 @@ public sealed class RoleContractResponsibilityTests
     }
 
     [Fact]
+    public void HqRoutingContractIsOnlyInjectedForNewUserTask()
+    {
+        const string header = "역할: HQ\n입력 본문: 작업을 시작한다";
+        var initial = RoleContractLoader.AppendHqContractForUserStart(
+            "USER_REQUEST", header);
+        Assert.Equal(1, initial.Split(RoleContractLoader.LoadHqFooter(),
+            StringSplitOptions.None).Length - 1);
+
+        foreach (var followupType in new[]
+                 { "MILESTONE_REPORT", "HQ_RESPONSE_RECOVERY", "USER_FOLLOWUP" })
+        {
+            Assert.Equal(header, RoleContractLoader.AppendHqContractForUserStart(
+                followupType, header));
+        }
+    }
+
+    [Fact]
     public void WorkAndHighUseStandAloneGotoAndReportLines()
     {
         foreach (var contract in new[]
