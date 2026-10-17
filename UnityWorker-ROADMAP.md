@@ -1,6 +1,5 @@
 # ProjectHub UnityWorker — 개발 상태 및 단계별 기준
 
-**UnityWorker 전용 문법 절대 금지 규정:** 대괄호 제어 계열은 KEY, GOTO, ACTION, RESPONSE 네 종류만 허용하며, 역할 결과에 ACTION을 추가하지 않는다. 구조화된 대분류는 HQ 계획의 `@@MILESTONE`, `@@PLAN`, `@@ASSET_MANAGER=1`, `@@DESIGN=0`, `@@WORK=정수`, `@@HIGH`; HQ 중단·종료의 `@@MESSAGE`, `@@RESUME`; 역할 결과의 `@@REPORT`뿐이다. 역할 AI에게 보내는 보조 입력은 **`@@MESSAGE` 단 한 구역**으로 구성하고, 그 안에서는 일반 자연어 제목으로만 정보를 구분한다. HQ의 WORK 계획 응답에 `@@MESSAGE`를 삽입하지 않는다. **이 목록에 없는 대괄호·대분류 제어 문법은 절대로 사용하면 안 된다.** 임의의 별칭, 구형 문법, 새 표식, 구형 예시를 계약·문서·AI 입력·출력 지시에 다시 넣어서는 안 된다.
 
 - 기준: 범용 ProjectHub `v1.0.0` / `aea8279917801b1bff0c1f45d4e956389a98d625`
 - 개발 브랜치: `UnityWorker` (범용 `main`과 별도)
@@ -23,7 +22,7 @@
 
 ## 1차 구현 당시 이력 (현행 활성 역할 정의가 아님)
 
-- WORKITEM ID, 세션, 체크포인트, HQ/WORK/DESIGN/HIGH 결과 문법 유지 (과거 QA 기록 호환 판독은 별도)
+- WORKITEM ID, 세션, 체크포인트, HQ/WORK/DESIGN/HIGH 결과 문법 유지
 - Unity 역할별 작업·검증 계약과 Worker-Polish 확장
 - 화면 파이프라인/모델 설정/이력 카드 이름을 Unity용으로 수정
 - 초기에는 Unity WORK 전체를 직렬화했으나, 후속 개선에서 독립 C# 소스 WORK는 사용자 설정 상한까지 병렬 실행하고 씬·프리팹·AssetDatabase/Editor 작업은 별도 독점 레인으로 제한
@@ -33,27 +32,27 @@
 
 - #1 ASSET MANAGER 역할 계약·HQ 우선 계획 문법·직렬 3단계 실행·독립 세션·WORK 선행 실행·카드 표시 및 체크포인트 반영 (Windows Editor 실증 전)
 
-## 현재 활성 실행 기준 (2026-10-15)
+## 활성 실행 정책 (작업별 실제 검증 결과와 구분)
 
 - 해상도 요구가 사용자 지시나 해당 프로젝트 명세에 명시되지 않은 UnityWorker 신규 제작 프로그램의 기본 해상도는 **1920×1080(16:9)**이다. 명시된 해상도 요구가 있으면 그 요구를 우선한다. 이 제작 기본값을 Game View 실제 렌더 크기, 캡처 파일 크기 또는 모든 창 크기의 강제 검증 조건으로 오인하지 않는다.
 
 - HQ(웹/CLI)는 설계·재판단, #1 ASSET MANAGER는 검색·획득·적용, #0 DESIGN은 시각 제작·수정, #10+ WORK는 구현, HIGH는 최종 검증·보완을 담당한다.
-- 독립 QA와 이미지 추출용 RESOURCE sidecar를 사용하지 않는다. 남은 설정·QA 계약·이전 보고 형식은 호환 여부를 구분해서 다룬다.
+- 이미지 추출용 RESOURCE sidecar를 사용하지 않는다. 역할별 실행 문법은 전용 계약과 파서에서 확인한다.
 - 독립 C# 소스 WORK는 병렬이고 Editor·Scene·Import는 프로젝트 공통 게이트로 조정한다. HIGH는 유효한 이전 증거를 재사용하며 직접 수정·검토한다. 추가 DESIGN은 HQ가 새로운 마일스톤에서 배정하며 HIGH는 DESIGN을 재호출하지 않는다.
 - 사용자 추가 원문 메시지는 다음 제어권의 AI에 전달하며 Worker는 자연어 중단 판정을 하지 않는다.
 - 새 HQ CLI 작업은 새 세션에서 시작하고 `.projecthub/last-handoff.md`를 참고한다. 중단 재개는 기존 세션과 `.projecthub/session-state.json`을 쓴다.
 - Unity Editor와 이 프로젝트에서 실행한 Windows Player의 포커스 보호는 최선의 복구이며 운영체제 수준의 보장이 아니다.
 
-## 다음 작업 (구현·실증 전)
+## 추가 검증 대상 (완료 여부는 최신 실행 로그 기준)
 
 1. Unity Toolchain 실증·확장: 현재 Probe를 실제 Windows Unity CLI에서 검증하고 Codex WORK 샌드박스의 MCP 등록·호출/ACL까지 확인 (HQ 시작 전 Probe가 MCP 사용 가능성을 보장하지는 않음)
 2. Editor 게이트·Scene 흐름 실증: 구현된 프로젝트 공통 게이트/Scene Open·Save를 실제 Windows Unity Editor에서 검증하고, 외부 셸 CLI/MCP 호출을 강제 격리할지 결정
 3. 기계 BUILD 실증·보강: Unity CLI `recompile`의 실제 Windows 응답/로그 검증, Editor Console 및 컴파일 상태 세부 파싱
-4. HIGH: EditMode/PlayMode 테스트·프레임·입력·카메라 실제 증거 조사 및 미검증 구분 (독립 QA 호출은 하지 않음)
+4. HIGH: EditMode/PlayMode·프레임·입력·카메라 증거를 개별 검증하고 미검증 범위를 분리
 5. Unity Asset/Git: .meta, 프리팹 및 Packages/ProjectSettings 승인 범위, 캐시/생성물 제외
 6. Windows 실증과 회귀 검증을 통과한 후 UnityWorker 베타 프리릴리스 발행
 
-## 병렬 WORK 재개 정책 (구현, 실환경 검증 전)
+## 병렬 WORK 재개 정책
 
 - `WRITE_PATH`가 서로 겹치는 WORK는 기존처럼 실행 대상에서 제외하고 HQ에 BLOCKED 근거를 보낸다.
 - 일반 C# 소스 파일(`Assets/**/*.cs`, `Editor` 경로 제외)만 소스 레인으로 처리한다. 그 외 파일·폴더 또는 Editor 관련 실행 지시가 있으면 Editor 독점 레인으로 분류한다.
