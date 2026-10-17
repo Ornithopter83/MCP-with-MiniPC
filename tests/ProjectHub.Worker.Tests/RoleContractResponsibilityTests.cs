@@ -70,6 +70,7 @@ public sealed class RoleContractResponsibilityTests
     {
         var prompt = RoleContractLoader.BuildDirectWorkPrompt(
             "10", "@@GOAL\n코드를 구현하라.", new[] { "src/a.cs" }, "/project");
-        Assert.Contains("작업에 필요한 모든 권한은 승인한다.", prompt);
+        Assert.Contains("실행 권한은 Worker 설정과 사용자 승인 범위를 따른다.", prompt);
+        Assert.DoesNotContain("작업에 필요한 모든 권한은 승인한다.", prompt);
     }
 }
