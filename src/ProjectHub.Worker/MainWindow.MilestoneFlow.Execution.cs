@@ -147,10 +147,14 @@ public partial class MainWindow
         var resourceReports = new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
         var mechanicalReports = new List<string>();
-        var milestoneEditorReady = await recheckUnityEditorAsync(cancellationToken);
-        mechanicalReports.Add("UNITY_EDITOR_MILESTONE_RECHECK: " +
-            (milestoneEditorReady ? "CLI_CONNECTED" : "CLI_UNVERIFIED") +
-            "; individual commands and Native image remain separately unverified.");
+        // A diagnostics-only WORK milestone never needs a redundant Editor
+        // catalog probe. DESIGN does need fresh CLI access for visual actions.
+        var milestoneEditorReady = milestone.Design is not null &&
+            await recheckUnityEditorAsync(cancellationToken);
+        if (milestone.Design is not null)
+            mechanicalReports.Add("UNITY_EDITOR_DESIGN_RECHECK: " +
+                (milestoneEditorReady ? "CLI_CONNECTED" : "CLI_UNVERIFIED") +
+                "; Native image remains separately unverified.");
         var highReport = string.Empty;
         var gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
         var outcome = "COMPLETED";
@@ -674,11 +678,18 @@ public partial class MainWindow
                 .ToArray();
 
 
-            // Worker owns BUILD; source-fix WORK #8 is attempted only once
-            // for an actual compiler/build failure, never for EPERM or timeout.
+            // Mechanical, path-only condition: no Unity recompile for reports,
+            // runner scripts, unrelated visual assets or read-only diagnosis.
+            // HQ/HIGH still own the meaning and adequacy of validation.
+            var unityProject = UnityCliBuildRunner.IsUnityProject(workingDirectory);
+            var needsCompile = !unityProject ||
+                HighFinalBuildPolicy.RequiresBuild(milestoneChangedPaths);
+            var buildEditorReady = unityProject && needsCompile
+                ? await recheckUnityEditorAsync(cancellationToken)
+                : (bool?)null;
             var buildRuns = await MilestoneBuildRunner.RunAsync(
                 workingDirectory, jobId, executableDefinitions, cancellationToken,
-                await recheckUnityEditorAsync(cancellationToken));
+                buildEditorReady, requiresUnityRecompile: needsCompile);
             foreach (var build in buildRuns)
                 mechanicalReports.Add(
                     MilestoneDefinitionContract.FormatMechanicalResult(build));
@@ -700,7 +711,8 @@ public partial class MainWindow
                     milestoneChangedPaths.Add(path);
                 buildRuns = await MilestoneBuildRunner.RunAsync(
                     workingDirectory, jobId, executableDefinitions, cancellationToken,
-                await recheckUnityEditorAsync(cancellationToken));
+                    unityProject ? await recheckUnityEditorAsync(cancellationToken) : null,
+                    requiresUnityRecompile: true);
                 foreach (var build in buildRuns)
                     mechanicalReports.Add("REBUILD: " +
                         MilestoneDefinitionContract.FormatMechanicalResult(build));
@@ -748,7 +760,8 @@ public partial class MainWindow
             {
                 var highBuilds = await MilestoneBuildRunner.RunAsync(
                     workingDirectory, jobId, executableDefinitions, cancellationToken,
-                await recheckUnityEditorAsync(cancellationToken));
+                    unityProject ? await recheckUnityEditorAsync(cancellationToken) : null,
+                    requiresUnityRecompile: true);
                 foreach (var build in highBuilds)
                     mechanicalReports.Add("HIGH_FINAL_BUILD: " +
                         MilestoneDefinitionContract.FormatMechanicalResult(build));
