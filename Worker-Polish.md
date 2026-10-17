@@ -1,6 +1,5 @@
 # Worker-Polish — ProjectHub Worker 정책
 
-**UnityWorker 전용 문법 절대 금지 규정:** 대괄호 제어 계열은 KEY, GOTO, ACTION, RESPONSE 네 종류만 허용하며, 역할 결과에 ACTION을 추가하지 않는다. 구조화된 대분류는 HQ 계획의 `@@MILESTONE`, `@@PLAN`, `@@ASSET_MANAGER=1`, `@@DESIGN=0`, `@@WORK=정수`, `@@HIGH`; HQ 중단·종료의 `@@MESSAGE`, `@@RESUME`; 역할 결과의 `@@REPORT`뿐이다. 역할 AI에게 보내는 보조 입력은 **`@@MESSAGE` 단 한 구역**으로 구성하고, 그 안에서는 일반 자연어 제목으로만 정보를 구분한다. HQ의 WORK 계획 응답에 `@@MESSAGE`를 삽입하지 않는다. **이 목록에 없는 대괄호·대분류 제어 문법은 절대로 사용하면 안 된다.** 임의의 별칭, 구형 문법, 새 표식, 구형 예시를 계약·문서·AI 입력·출력 지시에 다시 넣어서는 안 된다.
 
 이 문서는 Worker의 장기 책임, 사용자 작업과 WORKITEM의 생명주기, 마일스톤 실행 경계를 정의한다. 역할의 출력 문법과 필드 제한은 전용 라우팅 계약, 기계적 판정의 세부 구현은 코드와 테스트를 따른다.
 
@@ -9,16 +8,16 @@
 ① HQ는 목표 해석·계획·WORKITEM 설계 및 다음 WORK·PAUSE·END 판단을 맡는다. HQ Web/CLI는 로컬 프로젝트를 변경하지 않는다.
 ② #10+ WORK는 코드·CLI 구현을 담당한다. WRITE_PATH는 병렬 충돌 추적용이며 수정 권한의 한계가 아니다. WORKITEM 세션·진행 상태는 Worker가 보존한다.
 ③ #0 DESIGN은 UI·씬·그래픽 실제 제작·시각 수정을, #1 ASSET MANAGER는 에셋 검색·획득·Import·연결을 담당한다. 구형 이미지 추출 RESOURCE sidecar는 비활성이다.
-④ 독립 QA 역할은 호출하지 않는다. Worker의 BUILD/TEST 근거를 HIGH가 검증하며 기존 QA 출력·설정은 호환 판독용이다.
+④ 기계적 BUILD/TEST 근거는 HIGH가 검증한다.
 ⑤ HIGH(PL)는 구현·BUILD/TEST·DESIGN 증거를 검증하고 직접 보완한다. HIGH에서 DESIGN 재호출은 하지 않는다. HIGH가 직접 수정·검토한 뒤 남은 결함·증거를 HQ에 보고한다.
 ⑥ Worker는 역할 배정과 병렬 실행, 세션·체크포인트, 기계적 BUILD·Git, 오류·중단 상태와 HQ 보고를 관리한다.
-⑦ 현재 역할은 HQ, #1 ASSET MANAGER, #0 DESIGN, #10+ WORK, HIGH다. 구형 QA·RESOURCE와 JUDGE·OBSERVATION은 신규 실행하지 않는다.
+⑦ 현재 역할은 HQ, #1 ASSET MANAGER, #0 DESIGN, #10+ WORK, HIGH다. 비활성 이미지 추출용 RESOURCE sidecar는 실행하지 않는다.
 
 제2조 (HQ 설계와 역할 전달)
 
-① HQ 호출에는 HQ 전용 역할 계약을 적용하고, 다음 판단에는 사용자 요청 또는 직전 마일스톤의 축약 결과와 현재 프로젝트·원격 상태를 제공한다.
+① HQ 역할 계약 전문은 사용자 명령으로 새 작업을 시작할 때 한 번 주입한다. 후속 마일스톤과 형식 복구에는 현재 결과 및 프로젝트·원격 상태만 전달하고, 같은 세션의 계약을 유지한다.
 ② HQ는 첫 설계에서 목표와 완료 기준을 정리하고, 이후에는 필요한 마일스톤과 WORKITEM·쓰기 경로·검증 지시를 구성한다.
-③ 현행 HQ 계획은 HIGH가 필수이며 #1 ASSET MANAGER, #0 DESIGN, #10+ WORK 중 작업에 필요한 역할을 설계한다. 구형 JSON QA 필드는 이전 실행 호환용이다.
+③ 현행 HQ 계획은 HIGH가 필수이며 #1 ASSET MANAGER, #0 DESIGN, #10+ WORK 중 작업에 필요한 역할을 설계한다.
 ④ 같은 마일스톤의 병렬 GENERAL WORK는 서로의 미완료 결과에 의존하지 않게 설계한다. 충돌하거나 선행 의존이 있는 작업은 범위를 합치거나 후속 마일스톤으로 나눈다.
 ⑤ 쓰기 WORK의 WRITE_PATH는 서로 겹치지 않게 구성하고 Worker가 경로 충돌을 기계적으로 판정한다.
 ⑥ WORK는 실제 확보·검증된 ASSET MANAGER 결과와 DESIGN 산출물에 의존할 때 적절한 순서로 설계한다. 비활성 RESOURCE 완료를 기다리도록 배정하지 않는다.
@@ -41,7 +40,7 @@
 ③ COMPLETED·BLOCKED·CANCELED WORKITEM은 동일 ID로 재배정하거나 CONTINUE하지 않는다. 후속 변경은 다른 신규 WORKITEM으로 설계한다.
 ④ Worker는 WORKITEM별로 실행 세션과 체크포인트를 격리하고 ID, 작업 범위, 모델, 세션, 실행 횟수, 최근 보고, 상태와 재해결 사용 횟수를 프로젝트의 .projecthub 안에 영구 기록한다.
 ⑤ WORK 결과의 in_progress는 진행 중인 작업의 상태다. Worker는 실제 작업 범위의 파일 변경으로 진전이 확인되는 경우 한정된 횟수만 동일 세션에서 추가 실행한다. 파일 진전이 없거나 호출 한도에 도달하면 HQ의 다음 판단에 맡긴다.
-⑥ Worker는 WORK의 기존 연속 수행이 끝나는 시점에 마무리 보고서의 미해결 항목을 확인한다. 해결 가능한 blocked·in_progress 또는 completed의 ISSUES에 명시된 미완료 구현·미실행 검증에 한하여, 원래 임무와 해당 마무리 보고서를 동일 WORKITEM의 기존 세션에 재주입하여 재해결을 최대 1회 수행한다. 정상 완료, 실행 환경·권한 장애, 수동 승인 대기, 도구 실행 실패 및 유효하지 않은 보고서는 재해결하지 않는다.
+⑥ Worker는 WORK의 기존 연속 수행이 끝나는 시점에 마무리 보고서의 미해결 항목을 확인한다. 해결 가능한 blocked·in_progress 또는 completed의 ISSUES에 명시된 미완료 구현·미실행 검증에 한하여, 해당 마무리 보고서만 동일 WORKITEM의 기존 세션에 전달하여 재해결을 최대 1회 수행한다. 정상 완료, 실행 환경·권한 장애, 수동 승인 대기, 도구 실행 실패 및 유효하지 않은 보고서는 재해결하지 않는다.
 ⑦ 재해결은 새 WORKITEM 발급이나 완료된 ID의 재배정이 아니다. 최초 보고서는 재해결 입력에만 사용하고, 결과는 기존 @@REPORT 형식의 마무리 보고서로 갱신한다. Worker는 재해결이 끝나기 전에 해당 WORKITEM을 최종 종료 처리하지 않으며, 체크포인트에 사용 횟수를 기록하여 재시작·CONTINUE 후에도 추가 재해결을 허용하지 않는다. 재해결 후에도 미완료이면 실제 상태를 그대로 보고한다.
 ⑧ 마일스톤 종료는 IN_PROGRESS WORKITEM의 완료나 폐기를 뜻하지 않는다. HQ는 다음 마일스톤에서 명시적으로 CONTINUE를 지정할 수 있다.
 ⑨ 프로그램이 비정상 중단됐을 때 Worker는 저장된 사용자 작업과 WORK 체크포인트를 복원하고, 필수 역할 연결 조건이 갖춰지면 기존 작업 재개를 시도한다. 새 사용자 작업·명시적 취소·PAUSE를 임의 재시도로 바꾸지 않는다.
@@ -55,7 +54,7 @@
 ④ Editor·Scene·Import 등 공유 호출은 공통 게이트로 조정하며 독립 C# 소스 WORK는 병렬 실행한다.
 ⑤ Worker는 실행한 WORK 결과를 바탕으로 기계 BUILD를 수행한다. 실제 빌드 오류가 단일 WORKITEM에 귀속되면 원래 ID로 복구하고, 소유자가 불명확하면 HQ 판단에 맡긴다. 환경 오류를 코드 수정으로 우회하지 않는다.
 ⑥ in_progress WORKITEM은 완료 처리하지 않고 HIGH/HQ에 실제 상태·체크포인트·남은 작업을 전달한다. 후속 CONTINUE는 HQ가 판단한다.
-⑦ 독립 QA 단계 없이 HIGH가 BUILD/TEST와 WORK/DESIGN 결과를 검증한다. HIGH가 DESIGN을 재수정 호출하지 않는다. 해결이 어려운 시각 문제는 증거와 대상을 HQ에 보고하고, HQ만 후속 마일스톤에 DESIGN을 배정한다.
+⑦ HIGH가 BUILD/TEST와 WORK/DESIGN 결과를 검증한다. HIGH가 DESIGN을 재수정 호출하지 않는다. 해결이 어려운 시각 문제는 증거와 대상을 HQ에 보고하고, HQ만 후속 마일스톤에 DESIGN을 배정한다.
 ⑧ HIGH 결과가 완료·차단되거나 BUILD에 문제가 있어도 READ_ONLY 외 마일스톤은 규정된 Git 최종화 판단으로 이어진다. Git 오류는 별도 HIGH 진단과 한정 재시도를 따른다.
 ⑨ Worker는 마일스톤 결과와 Git 상태를 기계적으로 축약해 HQ에 돌려주고, 다음 마일스톤·PAUSE·END는 HQ가 결정한다.
 
@@ -93,7 +92,7 @@
 
 ① UI는 HQ, #1 ASSET MANAGER, #0 DESIGN, WORK, HIGH 및 기계 상태를 구분한다. 구형 역할 설정·표시 잔존은 활성 스테이지의 증거가 아니다.
 ② 실제 작업 단위의 이력 카드는 배정·진행·응답을 동일 카드에서 갱신하고, 기계 이벤트는 transcript·로그에 기록한다.
-③ HQ·WORK·DESIGN·ASSET MANAGER·HIGH는 역할별 모델·Provider 설정을 지원한다. 기존 QA/RESOURCE 설정은 비활성 호환용이다.
+③ HQ·WORK·DESIGN·ASSET MANAGER·HIGH는 역할별 모델·Provider 설정을 지원한다.
 ④ 메인 창의 X 버튼은 트레이 숨김이며, 명시적 Exit가 종료를 요청한다.
 
 제11조 (문자 인코딩)
@@ -113,7 +112,7 @@
 ⑤ Assets와 대응 .meta, Packages, ProjectSettings는 허용된 변경 범위를 따른다. Library, Temp, Logs, UserSettings 등의 생성물은 Git 대상에서 제외한다.
 ⑥ Unity CLI/MCP 연결 오류를 코드 결함으로 오인해 자동 소스 복구를 반복하지 않는다.
 ⑦ UnityWorker 제품 코드 브랜치와 사용자의 게임 프로젝트 작업 브랜치는 별개다. 게임 프로젝트의 기존 main/origin/main Git 계약을 임의 변경하지 않는다.
-⑧ 현재 구현은 역할 카드·계약·소스 WORK 병렬/Editor 게이트, Unity CLI 재컴파일 BUILD, HQ 사전 점검, DESIGN 제작과 HIGH 검증을 제공한다. Windows Editor/Player 실기와 포커스 보호는 별도 실증이 필요하다.
+⑧ 현재 구현은 역할 카드·계약·소스 WORK 병렬/Editor 게이트, Unity CLI 재컴파일 BUILD, HQ 사전 점검, DESIGN 제작과 HIGH 검증을 제공한다. Windows Editor/Player·포커스 보호의 성공 여부는 개별 실행 증거로 판정하며 한 번의 PASS를 전체 검증으로 확대하지 않는다.
 
 제13조 (#1 ASSET MANAGER 실행 정책)
 
