@@ -790,12 +790,12 @@ public partial class MainWindow
                 await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
                     workingDirectory,
                     cancellationToken);
-            foreach (var dirtyPath in finalDirtyPaths)
-            {
-                if (!initialChangedPaths.Contains(dirtyPath) ||
-                    milestoneChangedPaths.Contains(dirtyPath))
-                    milestoneChangedPaths.Add(dirtyPath);
-            }
+            // A source file appearing after role completion is not automatically owned
+            // by this milestone (Unity may generate unrelated assets asynchronously).
+            // Only add a matching Unity sidecar for an already-owned source file.
+            foreach (var sidecar in MilestoneLateGitPathPolicy.SelectSidecars(
+                finalDirtyPaths, initialChangedPaths, milestoneChangedPaths))
+                milestoneChangedPaths.Add(sidecar);
 
             // Paths completed in this or any earlier milestone of the same
             // user task are added without waiting for outstanding RESOURCEs.
