@@ -17,6 +17,18 @@ public sealed class RoleContractResponsibilityTests
     }
 
     [Fact]
+    public void HqContractPausesAfterTwoMilestonesWithoutGoalProgress()
+    {
+        var contract = RoleContractLoader.LoadHqFooter();
+        Assert.Contains("제3조의2 (원래 목표 대비 정체 감지와 PAUSE)", contract);
+        Assert.Contains("연속 2개 완료된 마일스톤", contract);
+        Assert.Contains("[ACTION=PAUSE]", contract);
+        Assert.Contains("새 진단 WORK", contract);
+        Assert.Contains("@@RESUME", contract);
+        Assert.Contains("END로 가장하지 않는다", contract);
+    }
+
+    [Fact]
     public void HqRoutingContractIsOnlyInjectedForNewUserTask()
     {
         const string header = "역할: HQ\n입력 본문: 작업을 시작한다";
