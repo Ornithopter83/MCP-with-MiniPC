@@ -307,7 +307,7 @@ public sealed class CoordinatorFirstContractTests
 
         Assert.Contains("전체 응답 재요청", prompt);
         Assert.Contains("참고 데이터", prompt);
-        Assert.Contains("현재 HQ 역할 계약 전문", prompt);
+        Assert.Contains("처음 사용자 명령에서 받은 HQ 역할 계약", prompt);
         Assert.Contains("완결된 전체 응답", prompt);
         Assert.Contains("한 번 다시 출력", prompt);
         Assert.Contains("WORK:JSON_INVALID", prompt);
