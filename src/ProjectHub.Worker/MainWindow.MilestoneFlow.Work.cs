@@ -208,7 +208,7 @@ public partial class MainWindow
                     currentPrompt =
                         "동일 WORKITEM #" + work.Id + "의 같은 세션에서 이어서 작업하라. " +
                         "새 WORKITEM이 아니며 쓰기 범위는 바꾸지 않는다. " +
-                        "남은 구현과 검증을 진행하고 완료하면 completed, " +
+                        "남은 구현과 파일 변경 정리를 진행하고 완료하면 completed, " +
                         "아직 해결 가능한 잔여 작업이 있으면 in_progress를 보고하라. " +
                         "같은 실패를 그대로 반복하지 마라.";
                     continue;
