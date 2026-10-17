@@ -64,13 +64,12 @@ internal static class WorkReResolutionPolicy
     }
 
     internal static string BuildPrompt(
-        string originalMission,
         string firstReport,
         string workItemId)
     {
         return "동일 WORKITEM #" + workItemId +
                "의 작업 마무리 재해결이다. 새로운 WORKITEM이 아니다. " +
-               "원래 임무와 첫 번째 마무리 보고서에서 실제로 미해결이거나 " +
+               "같은 세션의 기존 임무와 첫 번째 마무리 보고서에서 미해결이거나 " +
                "검증하지 못한 부분만 재검토해 해결하라. " +
                "단순히 완료 문구만 바꾸지 말고, 필요하면 허용된 기존 WRITE_PATH 안에서 " +
                "구현을 보완하고 실제 실행 가능한 검증을 수행하라. " +
@@ -81,8 +80,6 @@ internal static class WorkReResolutionPolicy
                "<STATUS>/<SUMMARY>/<CHANGED_PATH>/<ISSUES> → " +
                "[RESPONSE=OK] 순서로만 갱신하라. " +
                "각 대괄호 표식과 @@REPORT는 반드시 독립된 줄에 적어라.\n\n" +
-               "=== 원래 임무 ===\n" +
-               originalMission.Trim() + "\n\n" +
                "=== 첫 번째 마무리 보고서 ===\n" +
                firstReport.Trim() + "\n";
     }
