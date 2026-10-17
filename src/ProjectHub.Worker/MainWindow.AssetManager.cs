@@ -158,7 +158,7 @@ public partial class MainWindow
                     root, definition.ScenePath, definition.TargetPath, cancellationToken))
                 : string.Empty;
             var prompt = BuildAssetManagerPhasePrompt(definition, phase,
-                checkpoint.Evidence, root, localInventory);
+                checkpoint.Evidence, root, localInventory, checkpoint.SessionId);
             if (phase == "INTEGRATE")
             {
                 var sceneFile = Path.Combine(root, definition.ScenePath
@@ -237,7 +237,8 @@ public partial class MainWindow
                             "다른 방법도 없다면 미해결 이유를 blocked로 보고하라.\n" +
                             "PREVIOUS_BLOCKED_RESULT:\n" + run.FinalMessage + "\n" +
                             BuildAssetManagerPhasePrompt(definition, phase,
-                                checkpoint.Evidence, root);
+                                checkpoint.Evidence, root, existingSessionId:
+                                    CodexCliRunner.NormalizeSessionId(run.SessionId) ?? checkpoint.SessionId);
                         try
                         {
                             run = await RunCoordinatorRoleAsync(
@@ -385,9 +386,11 @@ public partial class MainWindow
 
     private static string BuildAssetManagerPhasePrompt(
         AssetManagerDefinition definition, string phase,
-        string priorEvidence, string root, string localInventory = "")
+        string priorEvidence, string root, string localInventory = "",
+        string? existingSessionId = null)
     {
-        return "@@MESSAGE\nASSET_MANAGER_ID: 1\nREQUEST_ID: " +
+        return RoleContractLoader.AppendAssetManagerContractForNewSession(
+            "@@MESSAGE\nASSET_MANAGER_ID: 1\nREQUEST_ID: " +
             definition.RequestId +
             "\nPHASE: " + phase +
             "\nPROJECT_ROOT: " + root +
@@ -424,6 +427,6 @@ public partial class MainWindow
             "\n현재 PHASE만 실제 수행하라. 이후 단계로 미리 진입하지 마라. " +
             "완료 기준을 충족하지 못한 경우 blocked 또는 in_progress로 보고하라. " +
             "검색/획득/씬 연결의 도구 결과와 실제 파일 증거를 기록하라.\n\n" +
-            RoleContractLoader.LoadAssetManagerFooter();
+            string.Empty, existingSessionId);
     }
 }
