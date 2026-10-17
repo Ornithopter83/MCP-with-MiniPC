@@ -794,7 +794,6 @@ internal static class MilestoneDefinitionContract
         string? jobId = null)
     {
         _ = initialLocalChanges;
-        _ = milestoneChanges;
         _ = currentLocalChanges;
 
         var archiveReference = string.IsNullOrWhiteSpace(workingDirectory)
@@ -813,6 +812,8 @@ internal static class MilestoneDefinitionContract
         builder.AppendLine("MILESTONE_REPORT");
         builder.AppendLine($"MILESTONE: {milestone.Id}");
         builder.AppendLine("OUTCOME: " + workerOutcome.Trim());
+        builder.AppendLine(MilestoneProgressFacts.FormatGoalProgressCandidates(
+            milestoneChanges));
         if (milestone.AssetManager is { } assetRequest)
         {
             builder.AppendLine("ASSET_MANAGER_REQUEST: " + assetRequest.RequestId);
