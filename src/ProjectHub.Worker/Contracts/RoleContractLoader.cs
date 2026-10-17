@@ -46,7 +46,8 @@ public static class RoleContractLoader
         IReadOnlyList<string> writePaths,
         string targetWorkspace,
         bool readOnly = false,
-        bool includeEncodingGuidance = true)
+        bool includeEncodingGuidance = true,
+        bool includeRoleContract = true)
     {
         if (string.IsNullOrWhiteSpace(workItemId))
             throw new ArgumentException("WorkItem ID가 비어 있습니다.", nameof(workItemId));
@@ -74,7 +75,8 @@ public static class RoleContractLoader
         if (includeEncodingGuidance)
             builder.AppendLine(EncodingGuidance.TrimEnd());
         builder.AppendLine();
-        builder.Append(LoadWorkFooter());
+        if (includeRoleContract)
+            builder.Append(LoadWorkFooter());
         return builder.ToString();
     }
 
