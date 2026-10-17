@@ -27,16 +27,21 @@ internal static class UnityCliBuildRunner
             "BUILD_UNVERIFIED: " + reason + " (no Unity recompile invoked)");
 
     public static async Task<MilestoneMechanicalResult> RunAsync(
-        string root, string jobId, CancellationToken cancellationToken)
+        string root, string jobId, CancellationToken cancellationToken,
+        bool editorConnectivityVerified = false)
     {
         var projectRoot = Path.GetFullPath(root);
-        // A missing Pipeline instance is not a compiler failure. Do not run
-        // recompile against an unconnected Editor or retry the same failure.
-        var probe = await UnityToolchainPreflight.RunAsync(
-            projectRoot, cancellationToken).ConfigureAwait(false);
-        if (!probe.Ready)
-            return EditorUnavailableResult(probe.Code + ": " +
-                MilestoneDefinitionContract.Limit(probe.Detail, 900));
+        // A caller that just probed this Editor does not need another CLI
+        // catalog request before recompile. Command failure still remains
+        // UNVERIFIED and does not trigger compiler-error repair.
+        if (!editorConnectivityVerified)
+        {
+            var probe = await UnityToolchainPreflight.RunAsync(
+                projectRoot, cancellationToken).ConfigureAwait(false);
+            if (!probe.Ready)
+                return EditorUnavailableResult(probe.Code + ": " +
+                    MilestoneDefinitionContract.Limit(probe.Detail, 900));
+        }
         using var editorLease = await UnityEditorOperationGate.EnterAsync(
             projectRoot, cancellationToken).ConfigureAwait(false);
         var args = RecompileArguments(projectRoot);
