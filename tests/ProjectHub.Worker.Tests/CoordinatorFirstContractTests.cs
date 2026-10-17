@@ -734,6 +734,9 @@ public sealed class CoordinatorFirstContractTests
         Assert.Contains("MILESTONE_REPORT", report);
         Assert.Contains("MILESTONE: COMPACT_REPORT", report);
         Assert.Contains("OUTCOME: COMPLETED_WITH_HIGH", report);
+        Assert.Contains("GOAL_PROGRESS_CANDIDATES:", report);
+        Assert.Contains("GOAL_PROGRESS_CAUTION:", report);
+        Assert.Contains("product_or_config=0", report);
         Assert.Contains("HIGH_STATUS: completed", report);
         Assert.Contains("HIGH 보완 완료", report);
         Assert.Contains("GIT_RESULT:", report);
