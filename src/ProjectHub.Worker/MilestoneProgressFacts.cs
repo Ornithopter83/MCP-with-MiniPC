@@ -7,6 +7,48 @@ namespace ProjectHub.Worker;
 /// </summary>
 internal static class MilestoneProgressFacts
 {
+    // HQ receives a compact view of actual changed-path candidates, not merely
+    // a commit SHA. These path classes are *not* validated gameplay progress.
+    internal static string FormatGoalProgressCandidates(
+        IEnumerable<string> candidatePaths)
+    {
+        var paths = candidatePaths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => path.Replace('\\', '/'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        static bool In(string path, string prefix) =>
+            path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+        var meta = paths.Count(path => path.EndsWith(
+            ".meta", StringComparison.OrdinalIgnoreCase));
+        var product = paths.Count(path =>
+            !path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) &&
+            ((In(path, "Assets/") &&
+              !In(path, "Assets/Tests/") &&
+              !In(path, "Assets/ProjectHub/VisualFoundry/") &&
+              !In(path, "Assets/_Recovery/")) ||
+             In(path, "ProjectSettings/") || In(path, "Packages/")));
+        var tests = paths.Count(path => In(path, "Assets/Tests/") &&
+            !path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase));
+        var visualKits = paths.Count(path =>
+            In(path, "Assets/ProjectHub/VisualFoundry/") &&
+            !path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase));
+        var evidence = paths.Count(path =>
+            In(path, "docs/") || In(path, "tools/"));
+
+        return "GOAL_PROGRESS_CANDIDATES: total=" + paths.Length +
+               " product_or_config=" + product +
+               " tests=" + tests +
+               " visual_kit_unverified=" + visualKits +
+               " docs_or_tools=" + evidence +
+               " meta=" + meta + "\n" +
+               "GOAL_PROGRESS_CAUTION: 변경 후보 경로의 수는 실제 적용·" +
+               "검증 성공·커밋 여부를 증명하지 않는다. 기존 목표/실패 조건과 " +
+               "HIGH 증거를 비교해 실질 진전이 없으면 HQ가 PAUSE를 판단한다.";
+    }
+
     internal static string Format(
         string milestoneId,
         TimeSpan elapsed,
