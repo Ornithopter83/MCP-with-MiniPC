@@ -140,11 +140,8 @@ public partial class MainWindow
                     webActive: false, explicitStage: TaskStage.Manager);
             });
 
-            // Keep the same shared Editor lease while the integrating agent
-            // opens, edits, and saves the Scene, including recovery.
-            using var editorLease = phase == "INTEGRATE"
-                ? await UnityEditorOperationGate.EnterAsync(root, cancellationToken)
-                : null;
+            // Do not retain the Editor lease across AI execution: the specialist
+            // may request a native Worker MCP command while it is running.
             var before = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 root, cancellationToken);
             // Store the running phase before invoking Codex: an interruption
@@ -165,6 +162,8 @@ public partial class MainWindow
                     .Replace('/', Path.DirectorySeparatorChar));
                 if (File.Exists(sceneFile))
                 {
+                    using var sceneOpenLease = await UnityEditorOperationGate.EnterAsync(
+                        root, cancellationToken);
                     var opened = await UnitySceneCliWorkflow.OpenAsync(
                         root, definition.ScenePath, cancellationToken);
                     prompt += "\nUnity 씬 열기 증거: " + opened.Detail +
@@ -299,6 +298,8 @@ public partial class MainWindow
                 // Explicit saved-Scene evidence from the connected Editor.
                 // If this times out we cannot know whether the save happened:
                 // preserve the checkpoint and ask HQ, do not repeat.
+                using var sceneSaveLease = await UnityEditorOperationGate.EnterAsync(
+                    root, cancellationToken);
                 sceneSaved = await UnitySceneCliWorkflow.SaveAsync(
                     root, definition.ScenePath, cancellationToken);
             }
