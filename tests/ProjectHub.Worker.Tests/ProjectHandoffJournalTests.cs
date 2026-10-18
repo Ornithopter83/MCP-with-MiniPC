@@ -96,4 +96,26 @@ public sealed class ProjectHandoffJournalTests
         }
         finally { Directory.Delete(root, true); }
     }
+    [Fact]
+    public void ModelUsageSurvivesMilestoneReportTruncationAndNewJob()
+    {
+        var root = NewRoot();
+        var job = "tokens-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            UsageTelemetryStore.RecordCall(job, "DESIGN", "model-design",
+                "high", "DESIGN", new CodexUsage(100, 30, 40, 0, 140, 140, true));
+            ProjectHandoffJournal.RecordMilestoneReport(root, job, "M200",
+                new string('X', 5000));
+            var first = ProjectHandoffJournal.ReadForNewTask(root)!;
+            Assert.Contains("MODEL=model-design", first);
+            Assert.Contains("CACHED_INPUT=30", first);
+            ProjectHandoffJournal.RecordUserInstruction(root, "job-next",
+                "START", "continue");
+            var later = ProjectHandoffJournal.ReadForNewTask(root)!;
+            Assert.Contains("MODEL=model-design", later);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
 }

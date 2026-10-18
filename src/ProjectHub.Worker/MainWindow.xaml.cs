@@ -1898,10 +1898,15 @@ public partial class MainWindow : Window
         // Static tool versions are diagnostic only; no build or Unity Editor
         // validation is implied. WORK needs it as much as HIGH does.
         if (UnityCliBuildRunner.IsUnityProject(workingDirectory))
+        {
             prompt += Environment.NewLine + Environment.NewLine +
-                await WorkerCliEnvironmentProbe.GetGuidanceAsync(jobId, cancellationToken) +
-                Environment.NewLine + Environment.NewLine +
-                UnityEditorExecutionGuidance.Text;
+                await WorkerCliEnvironmentProbe.GetGuidanceAsync(jobId, cancellationToken);
+            // HQ only manages directly assigned WORK. Never expose specialist
+            // internal delegation guidance to HQ.
+            if (roleName is "WORK" or "HIGH" || designPurpose || assetManagerPurpose)
+                prompt += Environment.NewLine + Environment.NewLine +
+                    UnityEditorExecutionGuidance.Text;
+        }
         // The preflight already queried this Editor's real command catalog.
         // Share that exact, job-scoped file with CLI roles instead of asking
         // each role to rediscover and guess the Unity command arguments.
@@ -2205,7 +2210,9 @@ public partial class MainWindow : Window
                 referenceId: historyReferenceId,
                 includeHistory: false,
                 workItemId: historyWorkItemId));
-        UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null, roleName, role.Model, role.Reasoning, purpose,
+        UsageTelemetryStore.Append(new ModelCallTelemetry(jobId, null,
+            assetManagerPurpose ? "ASSET_MANAGER" : outboundRole,
+            role.Model, role.Reasoning, purpose,
             result.Usage.UsageKnown ? result.Usage.InputTokens : null, result.Usage.UsageKnown ? result.Usage.CachedInputTokens : null,
             result.Usage.UsageKnown ? result.Usage.OutputTokens : null, result.Usage.UsageKnown ? result.Usage.ReasoningOutputTokens : null,
             result.Usage.ProviderTotalTokens, Encoding.UTF8.GetByteCount(prompt), Encoding.UTF8.GetByteCount(prompt), 0,

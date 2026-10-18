@@ -29,6 +29,7 @@ internal static class ProjectHandoffJournal
         public string Status { get; init; } = "IN_PROGRESS";
         public string Plan { get; init; } = "";
         public string LastHqDecision { get; init; } = "";
+        public string ModelUsageSummary { get; init; } = "";
         public List<Entry> UserInstructions { get; init; } = new();
         public List<Entry> MilestoneReports { get; init; } = new();
         public DateTimeOffset UpdatedAtUtc { get; init; }
@@ -87,7 +88,12 @@ internal static class ProjectHandoffJournal
         {
             var reports = state.MilestoneReports.ToList();
             AddOrReplace(reports, jobId + "/" + milestoneId, report, MaxReport);
-            return state with { MilestoneReports = reports };
+            return state with
+            {
+                MilestoneReports = reports,
+                ModelUsageSummary = Limit(
+                    UsageTelemetryStore.FormatForNextRole(jobId), 2400)
+            };
         });
 
     internal static void RecordHqControl(
@@ -173,6 +179,10 @@ internal static class ProjectHandoffJournal
             output.AppendLine(entry.Text);
             output.AppendLine();
         }
+        output.AppendLine("## 모델 토큰 사용량 (마지막 완료 파트)");
+        output.AppendLine(string.IsNullOrWhiteSpace(state.ModelUsageSummary)
+            ? "MODEL_USAGE_HANDOFF: NO_PREVIOUS_CALLS" : state.ModelUsageSummary);
+        output.AppendLine();
         output.AppendLine("## 마일스톤 보고 (최근)");
         foreach (var entry in state.MilestoneReports)
         {
