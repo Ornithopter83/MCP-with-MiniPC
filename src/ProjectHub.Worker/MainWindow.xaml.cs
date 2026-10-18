@@ -2129,7 +2129,9 @@ public partial class MainWindow : Window
             if (activeMcpToken is not null)
                 _bridgeServer?.UnregisterMcpSession(activeMcpToken);
         }
-        var requireDelegation = activeMcpToken is not null && !polishOnly;
+        // Missing bridge is a blocked specialist run, never a silent opt-out.
+        var requireDelegation = (designPurpose || assetManagerPurpose || roleName == "HIGH") &&
+            !polishOnly;
         result = SpecialistDelegationPolicy.Enforce(
             result, requireDelegation, successfulDelegations);
         if (requireDelegation && result.ExitCode != 0 && successfulDelegations == 0)
