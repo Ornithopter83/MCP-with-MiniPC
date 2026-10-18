@@ -37,9 +37,18 @@ internal static class UnityEditorDirectBridge
 
     internal static string EmbeddedSource()
     {
-        using var stream = typeof(UnityEditorDirectBridge).Assembly
-            .GetManifestResourceStream(ResourceName) ??
-            throw new InvalidOperationException("EDITOR_BRIDGE_EMBEDDED_SCRIPT_MISSING");
+        var assembly = typeof(UnityEditorDirectBridge).Assembly;
+        var names = assembly.GetManifestResourceNames();
+        var resolved = names.FirstOrDefault(name =>
+            string.Equals(name, ResourceName, StringComparison.Ordinal)) ??
+            names.SingleOrDefault(name => name.Contains(
+                "ProjectHubEditorBridge", StringComparison.OrdinalIgnoreCase));
+        if (resolved is null)
+            throw new InvalidOperationException(
+                "EDITOR_BRIDGE_EMBEDDED_SCRIPT_MISSING: available=" +
+                string.Join(", ", names));
+        using var stream = assembly.GetManifestResourceStream(resolved) ??
+            throw new InvalidOperationException("EDITOR_BRIDGE_EMBEDDED_STREAM_MISSING");
         using var reader = new StreamReader(stream, Encoding.UTF8);
         return reader.ReadToEnd();
     }
