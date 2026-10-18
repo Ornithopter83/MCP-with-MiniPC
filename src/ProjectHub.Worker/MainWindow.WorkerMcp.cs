@@ -191,16 +191,22 @@ public partial class MainWindow
         return value.GetString()!.Trim();
     }
 
-    private static bool IsAllowedTemporaryPath(string value)
+    internal static bool IsAllowedTemporaryPath(string value)
     {
         if (string.IsNullOrWhiteSpace(value) || value.Length > 250 ||
             Path.IsPathRooted(value) || value.IndexOf(':') >= 0)
             return false;
         var path = value.Replace('\\', '/');
-        if (path.Split('/').Any(part => part is "." or ".." || part.Length == 0 && part != path.Split('/').Last()))
+        if (path.Contains("//", StringComparison.Ordinal) ||
+            path.Split('/').Any(part => part is "." or ".."))
             return false;
-        return path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
-               path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase);
+        if (!path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
+            !path.StartsWith("docs/", StringComparison.OrdinalIgnoreCase))
+            return false;
+        // A child may own a specific file or a narrow subtree, never all Assets/.
+        if (path.EndsWith("/", StringComparison.Ordinal))
+            return path.TrimEnd('/').Split('/').Length >= 3;
+        return path.Split('/').Length >= 3;
     }
 
     private static bool MatchesMcpScope(string scope, string changedPath)
