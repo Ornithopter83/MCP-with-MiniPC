@@ -416,9 +416,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        lock (_sync)
-        {
-        }
         _disposed = true;
         var watchdog = Interlocked.Exchange(ref _watchdog, null);
         watchdog?.Dispose();
