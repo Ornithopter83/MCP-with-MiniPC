@@ -1377,8 +1377,8 @@ public partial class MainWindow
 
         // Preserve HIGH findings without a second model invocation merely
         // to repair formatting.
-        using var highEditorLease = await UnityEditorOperationGate.EnterAsync(
-            workingDirectory, cancellationToken);
+        // HIGH may synchronously request Worker MCP tools during its turn.
+        // Individual native commands obtain the gate instead of this entire AI turn.
         var result = await RunAsync(prompt);
 
         var report = MilestoneDefinitionContract.NormalizeHighReport(

@@ -308,12 +308,14 @@ public partial class MainWindow
                 }
                 try
                 {
-                    using var designEditorLease = await UnityEditorOperationGate.EnterAsync(
-                        workingDirectory, cancellationToken);
+                    // Specialist AI must not hold the Editor gate while waiting for
+                    // nested MCP worker_command calls. Lock only the native step.
                     if (foundryPlan is not null)
                     {
                         if (milestoneEditorReady)
                         {
+                            using var foundryLease = await UnityEditorOperationGate.EnterAsync(
+                                workingDirectory, cancellationToken);
                             var generated = await UnityVisualFoundry.GenerateAsync(
                                 foundryPlan, cancellationToken);
                             foundryReport = generated.Detail;

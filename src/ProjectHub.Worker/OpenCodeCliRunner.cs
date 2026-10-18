@@ -353,6 +353,25 @@ public sealed class OpenCodeCliRunner : IDisposable
             ["permission"] = permission
         };
 
+        if (request.EnvironmentVariables?.TryGetValue(
+                "PROJECTHUB_MCP_BEARER", out var token) == true &&
+            !string.IsNullOrWhiteSpace(token))
+        {
+            config["mcp"] = new Dictionary<string, object>
+            {
+                ["projecthub"] = new
+                {
+                    type = "remote",
+                    url = BridgeServer.WorkerMcpUrl,
+                    enabled = true,
+                    headers = new Dictionary<string, string>
+                    {
+                        ["Authorization"] = "Bearer " + token
+                    },
+                    timeout = 720000
+                }
+            };
+        }
         return ProjectHubJson.Serialize(config);
     }
 

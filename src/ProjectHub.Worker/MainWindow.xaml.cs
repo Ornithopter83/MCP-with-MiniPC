@@ -252,6 +252,7 @@ public partial class MainWindow : Window
         if (bridgeServer is not null)
         {
             bridgeServer.ExtensionProgressChanged += OnExtensionProgress;
+            bridgeServer.McpToolExecutor = ExecuteMcpToolAsync;
         }
         if (managedWebRuntimeManager is not null)
             managedWebRuntimeManager.StatusChanged += OnManagedWebRuntimeStatusChanged;
@@ -2053,6 +2054,32 @@ public partial class MainWindow : Window
             bypassHookTrust = true;
         }
 
+        // Only specialist invocations receive credentials. Temporary WORK never
+        // receives a second MCP token and cannot recursively delegate.
+        string? activeMcpToken = null;
+        if (_bridgeServer is not null &&
+            (designPurpose || assetManagerPurpose || roleName == "HIGH"))
+        {
+            activeMcpToken = _bridgeServer.RegisterMcpSession(
+                assetManagerPurpose ? "ASSET_MANAGER" : designPurpose ? "DESIGN" : "HIGH",
+                jobId, workingDirectory, cancellationToken);
+            roleEnvironment["PROJECTHUB_MCP_BEARER"] = activeMcpToken;
+            if (role.ProviderKind == AiServiceProvider.OpenAI)
+            {
+                codexConfigOverrides = (codexConfigOverrides ?? Array.Empty<string>())
+                    .Concat(new[]
+                    {
+                        "mcp_servers.projecthub.url=\"" + BridgeServer.WorkerMcpUrl + "\"",
+                        "mcp_servers.projecthub.bearer_token_env_var=\"PROJECTHUB_MCP_BEARER\"",
+                        "mcp_servers.projecthub.tool_timeout_sec=720"
+                    }).ToArray();
+            }
+            prompt = "역할 내부 실행 도구: projecthub.delegate_work(번호 없는 임시 WORK, " +
+                "현재 WORK 모델 설정)와 projecthub.worker_command(Worker의 상태/빌드/Unity 조회)를 " +
+                "필요할 때만 사용하라. HQ에 하위 호출을 알리거나 새 WORK 번호를 만들지 마라." +
+                Environment.NewLine + Environment.NewLine + prompt;
+        }
+
         AiRoleRunResult result;
         try
         {
@@ -2076,6 +2103,11 @@ public partial class MainWindow : Window
         {
             messageQueue?.Release(routedMessages);
             throw;
+        }
+        finally
+        {
+            if (activeMcpToken is not null)
+                _bridgeServer?.UnregisterMcpSession(activeMcpToken);
         }
         // Delivery is established by the recipient AI's successful reply,
         // NOT by WORK/HIGH report formatting. Invalid reports are recovered

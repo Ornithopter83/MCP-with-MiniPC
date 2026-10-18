@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 
 namespace ProjectHub.Worker;
 
-public sealed class BridgeServer : IDisposable
+public sealed partial class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
@@ -340,6 +340,13 @@ public sealed class BridgeServer : IDisposable
                 return;
             }
 
+            var path = context.Request.Url?.AbsolutePath.TrimEnd('/') ?? string.Empty;
+            if (path == "/mcp")
+            {
+                await HandleMcpAsync(context).ConfigureAwait(false);
+                return;
+            }
+
             var suppliedRuntimeToken = context.Request.Headers["X-ProjectHub-Managed-Token"];
             if (!string.Equals(suppliedRuntimeToken, _managedRuntimeToken, StringComparison.Ordinal))
             {
@@ -348,7 +355,6 @@ public sealed class BridgeServer : IDisposable
                 return;
             }
 
-            var path = context.Request.Url?.AbsolutePath.TrimEnd('/') ?? string.Empty;
             var method = context.Request.HttpMethod;
             if (method == "GET" && path.StartsWith("/bridge/attachment/", StringComparison.Ordinal))
             {
