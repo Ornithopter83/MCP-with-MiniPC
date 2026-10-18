@@ -38,6 +38,11 @@ public sealed class UnityEditorDirectBridgeTests
         Assert.Contains("BindingFlags.Static | BindingFlags.Public", source);
         Assert.Contains("BuildReport", source);
         Assert.Contains("REQUEST_EXPIRED_UNEXECUTED", source);
+        Assert.Contains("scene_status", source);
+        Assert.Contains("GetActiveScene()", source);
+        Assert.Contains("ACTIVE_ROOTS=", source);
+        Assert.Contains("LOADED_ROOTS=", source);
+        Assert.Contains("COMPILING=", source);
         var first = UnityEditorDirectBridge.Install(project.Root);
         Assert.Contains("INSTALLED_WAIT", first);
         var target = UnityEditorDirectBridge.EditorSourcePath(project.Root);
@@ -80,8 +85,12 @@ public sealed class UnityEditorDirectBridgeTests
                 id, success = true, code = "EDITOR_METHOD_RETURNED",
                 value = actual, detail = "BuildResult=" + actual
             });
-            await File.WriteAllTextAsync(Path.Combine(queue, id + ".resp.json"),
-                response, token);
+            // Model the Editor's atomic response publish. The client must
+            // never observe a partially written .resp.json on Windows.
+            var target = Path.Combine(queue, id + ".resp.json");
+            var staging = target + ".tmp";
+            await File.WriteAllTextAsync(staging, response, token);
+            File.Move(staging, target);
         }
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         var service = Server("Succeeded", cts.Token);
@@ -90,6 +99,7 @@ public sealed class UnityEditorDirectBridgeTests
             null, "Succeeded", TimeSpan.FromSeconds(8), cts.Token);
         await service;
         Assert.Contains("EDITOR_BRIDGE_CONFIRMED", response);
+        Assert.Contains("EVIDENCE=", response);
 
         var failedServer = Server("Failed", cts.Token);
         var failed = await Assert.ThrowsAsync<InvalidOperationException>(() =>

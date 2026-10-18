@@ -270,7 +270,7 @@ public sealed partial class BridgeServer
                 type = "object",
                 properties = new
                 {
-                    action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "editor_eval", "editor_bridge_install", "editor_bridge_ping", "editor_bridge_invoke", "editor_bridge_menu", "native_capture", "visual_foundry" } },
+                    action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "editor_eval", "editor_bridge_install", "editor_bridge_ping", "editor_bridge_scene_status", "editor_bridge_invoke", "editor_bridge_menu", "native_capture", "visual_foundry" } },
                     command = new { type = "string", description = "For unity_query only: editor_state (via CLI status), or a read-only command present in the live command_catalog." },
                     expression = new { type = "string", description = "For editor_eval: specialist-selected Editor C# expression, max 5000 characters. For a build use: return QuizStandaloneBuild.BuildQuizStandalone().summary.result.ToString();" },
                     expected_result = new { type = "string", description = "Required for editor_eval/editor_bridge_invoke/editor_bridge_menu: exact returned string (e.g. Succeeded for BuildReport, True for a menu item)." },

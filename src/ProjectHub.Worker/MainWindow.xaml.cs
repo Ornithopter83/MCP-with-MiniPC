@@ -1899,7 +1899,9 @@ public partial class MainWindow : Window
         // validation is implied. WORK needs it as much as HIGH does.
         if (UnityCliBuildRunner.IsUnityProject(workingDirectory))
             prompt += Environment.NewLine + Environment.NewLine +
-                await WorkerCliEnvironmentProbe.GetGuidanceAsync(jobId, cancellationToken);
+                await WorkerCliEnvironmentProbe.GetGuidanceAsync(jobId, cancellationToken) +
+                Environment.NewLine + Environment.NewLine +
+                UnityEditorExecutionGuidance.Text;
         // The preflight already queried this Editor's real command catalog.
         // Share that exact, job-scoped file with CLI roles instead of asking
         // each role to rediscover and guess the Unity command arguments.

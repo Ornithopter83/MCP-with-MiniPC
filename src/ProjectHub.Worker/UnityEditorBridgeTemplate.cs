@@ -144,6 +144,36 @@ internal static class ProjectHubEditorBridge
             id = request.id, success = false, code = "UNKNOWN_ACTION",
             value = "", detail = ""
         };
+        if (request.action == "scene_status")
+        {
+            var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            var sceneInfo = new StringBuilder();
+            var rootTotal = 0;
+            for (var index = 0; index <
+                 UnityEngine.SceneManagement.SceneManager.sceneCount; index++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(index);
+                if (!scene.isLoaded) continue;
+                var roots = scene.GetRootGameObjects();
+                rootTotal += roots.Length;
+                sceneInfo.Append(" [").Append(scene.name).Append(" path=")
+                    .Append(scene.path).Append(" roots=").Append(roots.Length)
+                    .Append(" names=");
+                foreach (var item in roots)
+                    sceneInfo.Append(item.name).Append(",");
+                sceneInfo.Append("]");
+            }
+            reply.success = true;
+            reply.code = "EDITOR_SCENE_STATE";
+            reply.value = "ACTIVE=" + activeScene.path +
+                ";ACTIVE_ROOTS=" + (activeScene.isLoaded ?
+                    activeScene.GetRootGameObjects().Length : -1) +
+                ";LOADED_ROOTS=" + rootTotal +
+                ";PLAYING=" + UnityEditor.EditorApplication.isPlaying +
+                ";COMPILING=" + UnityEditor.EditorApplication.isCompiling;
+            reply.detail = sceneInfo.ToString();
+            return reply;
+        }
         if (request.action == "ping")
         {
             reply.success = true;

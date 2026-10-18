@@ -50,6 +50,32 @@ internal static class UnityEditorCommandGateway
         return new(connection, catalog, evalFound, evidence);
     }
 
+    // Common Editor transport entry for explicit specialist-chosen bridge
+    // commands. CLI eval uses ExecuteEvalAsync below; unsupported commands
+    // stay on their already verified CLI paths instead of being guessed.
+    internal static Task<string> ExecuteBridgeAsync(
+        string root, string action,
+        string? type, string? method, string? menu, string? expected,
+        CancellationToken cancellationToken)
+    {
+        return action switch
+        {
+            "editor_bridge_ping" => UnityEditorDirectBridge.ExecuteAsync(
+                root, "ping", null, null, null, null,
+                TimeSpan.FromSeconds(8), cancellationToken),
+            "editor_bridge_scene_status" => UnityEditorDirectBridge.ExecuteAsync(
+                root, "scene_status", null, null, null, null,
+                TimeSpan.FromSeconds(12), cancellationToken),
+            "editor_bridge_invoke" => UnityEditorDirectBridge.ExecuteAsync(
+                root, "invoke", type, method, null, expected,
+                TimeSpan.FromMinutes(10), cancellationToken),
+            "editor_bridge_menu" => UnityEditorDirectBridge.ExecuteAsync(
+                root, "menu", null, null, menu, expected,
+                TimeSpan.FromMinutes(3), cancellationToken),
+            _ => throw new ArgumentException("EDITOR_BRIDGE_UNKNOWN_ACTION")
+        };
+    }
+
     internal static async Task<string> ExecuteEvalAsync(
         string projectRoot, Capabilities capabilities,
         string expression, string expectedResult, CancellationToken cancellationToken)

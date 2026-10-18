@@ -77,18 +77,19 @@ internal static class UnityEditorDirectBridge
             StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "EDITOR_BRIDGE_INSTALLED_SOURCE_CHANGED: do not run an unknown script");
-        if (action is not ("ping" or "invoke" or "menu"))
+        if (action is not ("ping" or "scene_status" or "invoke" or "menu"))
             throw new ArgumentException("EDITOR_BRIDGE_ACTION_INVALID", nameof(action));
         if (action == "invoke" &&
             (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(method)))
             throw new ArgumentException("EDITOR_BRIDGE_METHOD_REQUIRED");
         if (action == "menu" && string.IsNullOrWhiteSpace(menu))
             throw new ArgumentException("EDITOR_BRIDGE_MENU_REQUIRED");
-        if (action != "ping" && string.IsNullOrWhiteSpace(expected))
+        if (action is not ("ping" or "scene_status") && string.IsNullOrWhiteSpace(expected))
             throw new ArgumentException("EDITOR_BRIDGE_EXPECTED_RESULT_REQUIRED");
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromMinutes(10))
             throw new ArgumentOutOfRangeException(nameof(timeout));
 
+        var startedUtc = DateTimeOffset.UtcNow;
         var directory = QueueDirectory(root);
         Directory.CreateDirectory(directory);
         var id = Guid.NewGuid().ToString("N");
@@ -135,24 +136,65 @@ internal static class UnityEditorDirectBridge
                             "EDITOR_BRIDGE_RESULT_MISMATCH: actual=" + Limit(value) +
                             "; expected=" + Limit(expected) + "; " + Limit(detail));
                     return "EDITOR_BRIDGE_CONFIRMED: " + code + "; VALUE=" +
-                        Limit(value) + "; " + Limit(detail);
+                        Limit(value) + "; " + Limit(detail) +
+                        "; EVIDENCE=" + EvidencePath(root, id);
                 }
                 await Task.Delay(150, cancellationToken).ConfigureAwait(false);
             }
             // An Editor might already have claimed the request: never
             // automatically retry an uncertain mutation.
             throw new TimeoutException(
-                "EDITOR_BRIDGE_TIMEOUT_UNVERIFIED: Editor may be compiling, " +
-                "not importing scripts or still processing the command.");
+                "EDITOR_BRIDGE_TIMEOUT_UNVERIFIED: phase=" +
+                (File.Exists(Path.Combine(directory, id + ".processing"))
+                    ? "CLAIMED_BY_EDITOR" : File.Exists(pending)
+                        ? "PENDING_NOT_CLAIMED" : "UNKNOWN") +
+                "; request=" + id + "; elapsed=" +
+                (DateTimeOffset.UtcNow - startedUtc).TotalMilliseconds.ToString("F0") +
+                "ms; evidence=" + EvidencePath(root, id));
         }
         finally
         {
+            // Persist complete bounded original response outside the Unity
+            // project before deleting transport files; never retry mutations.
+            PersistEvidence(root, id, action, startedUtc, resultPath,
+                File.Exists(Path.Combine(directory, id + ".processing")));
             // If pending it has not been claimed; if .processing exists,
             // execution may have occurred and requires separate verification.
             TryDelete(pending);
             TryDelete(staging);
             TryDelete(resultPath);
         }
+    }
+
+    private static string EvidencePath(string root, string id)
+    {
+        var key = Path.GetFileName(QueueDirectory(root));
+        return Path.Combine(Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData),
+            "ProjectHub", "UnityWorker", "editor-bridge-evidence",
+            key, id + ".json");
+    }
+
+    private static void PersistEvidence(string root, string id,
+        string action, DateTimeOffset startedUtc, string responsePath, bool claimed)
+    {
+        try
+        {
+            var path = EvidencePath(root, id);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var response = File.Exists(responsePath)
+                ? File.ReadAllText(responsePath) : null;
+            if (response is { Length: > 2_000_000 })
+                response = response[..2_000_000];
+            File.WriteAllText(path, JsonSerializer.Serialize(new
+            {
+                id, action, startedUtc, completedUtc = DateTimeOffset.UtcNow,
+                claimed, response, status = response is null
+                    ? "NO_RESPONSE_UNVERIFIED" : "EDITOR_RESPONSE_RECEIVED"
+            }), ProjectHubJson.Utf8NoBom);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or ArgumentException) { }
     }
 
     private static void TryDelete(string file)

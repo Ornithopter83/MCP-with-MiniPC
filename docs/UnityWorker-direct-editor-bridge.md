@@ -35,3 +35,10 @@ Unity 공식 `InitializeOnLoad`, `EditorApplication.update`, `EditorApplication.
 `EDITOR_BRIDGE_INSTALLED_SOURCE_CHANGED` 또는 `SOURCE_CONFLICT`: 설치 파일이 내장된 버전과 다르므로 실행·덮어쓰기를 거부한다.
 
 이 기능의 .NET CI는 설치·로컬 요청/응답·결과 판독을 모의 검증한다. **실제 Windows Unity Editor 자동 Import, 메뉴 명령, Player 빌드는 Unity 실행 로그를 확보해야 실증 완료**다.
+
+## 실행·Scene 실증
+
+- `worker_command`의 `editor_bridge_scene_status`는 기존 Editor 메인 스레드에서 활성 Scene 경로, 루트 오브젝트 수·이름, PlayMode/컴파일 상태를 반환한다. 자동으로 씬을 재생성하거나 PlayMode를 전환하지 않는다.
+- Worker가 캡처를 자동 수행하지 않는다. DESIGN/HIGH가 실제 PlayMode와 Scene 구성을 확인한 다음 `native_capture`를 직접 실행하고, 자신이 PlayMode를 시작한 경우에만 종료해 원래 상태를 복원한다.
+- 기존 브리지 설치본과 내장 수신 스크립트가 다르면 Worker는 `INSTALLED_SOURCE_CHANGED`를 반환한다. 자동 덮어쓰기·권한 상승 없이 사용자가 설치 상태를 확인해야 한다.
+- 각 브리지 호출은 `%LOCALAPPDATA%/ProjectHub/UnityWorker/editor-bridge-evidence`에 시간·응답·요청 ID를 기록한다. 응답 없이 대기 중이면 `PENDING_NOT_CLAIMED`, Editor가 가져간 뒤면 `CLAIMED_BY_EDITOR`로 진단한다. 후자에서는 자동 재시도를 하지 않는다.

@@ -130,3 +130,11 @@
 - `editor_bridge_invoke`는 역할이 지정한 public static 인수 없는 메서드를 호출하고 반환값을 검증한다. `editor_bridge_menu`는 명시한 Unity 메뉴 명령만 전달한다. 명령 대상·예상 결과는 역할이 정하며 Worker가 판단하지 않는다.
 - 요청·응답은 같은 Windows 사용자 계정의 `%LOCALAPPDATA%`에 저장되며 관리자 권한 승격 및 별도 네트워크 서버는 없다. WORK의 최초 설치는 브리지 소스·.meta가 포함된 좁은 경로가 필요하다.
 - 실환경 Unity Editor 컴파일·Player BuildReport 검증이 별도로 필요하며, CI가 성공했다고 Editor의 명령 실행까지 검증된 것으로 간주하지 않는다.
+
+### 명시적 캡처·현장 Scene 진단·토큰 인계 (2026-10-18)
+
+- DESIGN 종료 후 Worker의 무조건 Native/Offscreen 자동 캡처를 제거했다. DESIGN/HIGH는 실제 PlayMode를 확인한 뒤 직접 `worker_command.native_capture`를 요청한다. PlayMode는 명령을 시작한 역할이 원래 상태로 복원한다.
+- `editor_bridge_scene_status`는 실제 Editor의 활성 Scene 경로, 각 로드된 Scene의 루트 수와 이름, PlayMode/컴파일 상태를 읽기 전용으로 반환한다. 원격 저장소의 QuizScene에는 루트가 있어도 M113 런타임 0개 보고만으로 씬 파일을 재생성해서는 안 된다.
+- ASSET DISCOVER의 `docs/projecthub/` 증거 문서는 제품 에셋 변경과 별도 보고한다. 위임 WORK는 보고서·증거 파일 경로를 `paths`에 직접 명시하며 검사 범위를 자동 확대하지 않는다.
+- 기존 `UsageTelemetryStore` 호출 기록을 역할·모델별로 합산해 다음 역할 요청과 HQ 마일스톤 인계에 포함한다. 웹 모델의 토큰 미제공은 UNKNOWN으로 표기한다. 자식 WORK의 번호·위임 내용은 HQ에 전달하지 않는다.
+- Editor CLI·직접 브리지 모두 증거 파일을 Git 외부에 저장한다. 완전히 단일화되지 않은 내부 Import/Scene/Build CLI 호출은 기존 성공 경로를 보존하며, 브리지 대응 API가 없는 작업을 강제로 옮기지 않는다.

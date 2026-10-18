@@ -130,7 +130,9 @@ public partial class MainWindow
                 string.Join(Environment.NewLine, paths) +
                 Environment.NewLine + "작업:" + Environment.NewLine + task +
                 Environment.NewLine + Environment.NewLine +
-                UsageTelemetryStore.FormatForNextRole(session.JobId);
+                UsageTelemetryStore.FormatForNextRole(session.JobId) +
+                Environment.NewLine + Environment.NewLine +
+                UnityEditorExecutionGuidance.Text;
 
             // Bypass the parent role wrapper: it consumes pending user messages,
             // creates HQ-visible handoffs and may re-enter its own MCP tools.
@@ -244,24 +246,20 @@ public partial class MainWindow
                 session.ProjectRoot, cancellationToken).ConfigureAwait(false);
         if (action == "editor_bridge_install")
             return UnityEditorDirectBridge.Install(session.ProjectRoot);
-        if (action == "editor_bridge_ping")
-            return await UnityEditorDirectBridge.ExecuteAsync(
-                session.ProjectRoot, "ping", null, null, null, null,
-                TimeSpan.FromSeconds(8), cancellationToken).ConfigureAwait(false);
-        if (action == "editor_bridge_invoke")
-            return await UnityEditorDirectBridge.ExecuteAsync(
-                session.ProjectRoot, "invoke",
-                RequiredMcpString(arguments, "type", 250),
-                RequiredMcpString(arguments, "method", 150),
-                null, RequiredMcpString(arguments, "expected_result", 250),
-                TimeSpan.FromMinutes(10), cancellationToken).ConfigureAwait(false);
-        if (action == "editor_bridge_menu")
-            return await UnityEditorDirectBridge.ExecuteAsync(
-                session.ProjectRoot, "menu", null, null,
-                RequiredMcpString(arguments, "menu_path", 300),
-                RequiredMcpString(arguments, "expected_result", 20),
-                TimeSpan.FromMinutes(3), cancellationToken).ConfigureAwait(false);
-                if (action == "native_capture")
+        if (action is "editor_bridge_ping" or "editor_bridge_scene_status" or
+            "editor_bridge_invoke" or "editor_bridge_menu")
+            return await UnityEditorCommandGateway.ExecuteBridgeAsync(
+                session.ProjectRoot, action,
+                action == "editor_bridge_invoke"
+                    ? RequiredMcpString(arguments, "type", 250) : null,
+                action == "editor_bridge_invoke"
+                    ? RequiredMcpString(arguments, "method", 150) : null,
+                action == "editor_bridge_menu"
+                    ? RequiredMcpString(arguments, "menu_path", 300) : null,
+                action is "editor_bridge_menu" or "editor_bridge_invoke"
+                    ? RequiredMcpString(arguments, "expected_result", 250) : null,
+                cancellationToken).ConfigureAwait(false);
+        if (action == "native_capture")
         {
             var plan = UnityBackgroundVisualTools.Prepare(session.ProjectRoot,
                 session.JobId, "mcp-native-" + Guid.NewGuid().ToString("N"));
@@ -323,6 +321,9 @@ public partial class MainWindow
             if (action == "command_catalog")
                 return "CATALOG_STATUS=" + capabilities.Connection.Code +
                     "; CATALOG=" + (capabilities.Catalog ?? "UNVERIFIED_NO_COMMANDS") +
+                    "; DIRECT_BRIDGE_SOURCE=" +
+                    (File.Exists(UnityEditorDirectBridge.EditorSourcePath(session.ProjectRoot))
+                        ? "PRESENT_BUT_NOT_PING_VERIFIED" : "NOT_INSTALLED") +
                     "; " + capabilities.Evidence;
             if (action == "editor_eval")
                 return await UnityEditorCommandGateway.ExecuteEvalAsync(
