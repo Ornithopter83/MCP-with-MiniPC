@@ -124,4 +124,43 @@ public sealed class UnityEditorDirectBridgeTests
         Assert.Empty(Directory.GetFiles(queue, "*.req.json"));
         Assert.Empty(Directory.GetFiles(queue, "*.resp.json"));
     }
+    [Fact]
+    public async Task MenuInvocationIsNotAPlayerBuildSucceededAssertion()
+    {
+        using var project = new FakeProject();
+        UnityEditorDirectBridge.Install(project.Root);
+        var queue = UnityEditorDirectBridge.QueueDirectory(project.Root);
+        Directory.CreateDirectory(queue);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var emulator = Task.Run(async () =>
+        {
+            string? pending = null;
+            for (var i = 0; i < 300; i++)
+            {
+                pending = Directory.GetFiles(queue, "*.req.json").FirstOrDefault();
+                if (pending is not null) break;
+                await Task.Delay(20, timeout.Token);
+            }
+            Assert.NotNull(pending);
+            using var input = JsonDocument.Parse(
+                await File.ReadAllTextAsync(pending!, timeout.Token));
+            var request = input.RootElement;
+            Assert.Equal("menu", request.GetProperty("action").GetString());
+            var id = request.GetProperty("id").GetString()!;
+            await File.WriteAllTextAsync(Path.Combine(queue, id + ".resp.json"),
+                JsonSerializer.Serialize(new {
+                    id, success = true, code = "EDITOR_MENU_INVOKED",
+                    value = "True", detail = "" }), timeout.Token);
+        }, timeout.Token);
+        // Legacy callers used "Succeeded" as a menu expectation. It must
+        // never be confused with the actual result of BuildPipeline.BuildPlayer.
+        var answer = await UnityEditorDirectBridge.ExecuteAsync(project.Root,
+            "menu", null, null, "Tools/Quiz/Build Windows",
+            "Succeeded", TimeSpan.FromSeconds(8), timeout.Token);
+        await emulator;
+        Assert.Contains("MENU_TRIGGERED_ONLY", answer);
+        Assert.Contains("verify BuildReport", answer);
+        Assert.DoesNotContain("RESULT_MISMATCH", answer);
+    }
+
 }

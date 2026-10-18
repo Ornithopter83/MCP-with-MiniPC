@@ -246,13 +246,13 @@ public sealed partial class BridgeServer
         new
         {
             name = "delegate_work",
-            description = "MANDATORY for DESIGN, HIGH and ASSET MANAGER: delegate one bounded implementation or read-only mechanical task before parent finalization. Uses the configured WORK provider/model/reasoning. No HQ WORK number; returns to caller.",
+            description = "MANDATORY for DESIGN, HIGH and ASSET MANAGER: delegate ONE bounded deliverable or read-only check per call. Split large UI implementation, capture and audit into successive small delegations; never combine them in one 720-second tool call. Uses the configured WORK model; no HQ WORK number.",
             inputSchema = new
             {
                 type = "object",
                 properties = new
                 {
-                    task = new { type = "string", description = "Exact, self-contained edit instruction (up to 2000 characters)." },
+                    task = new { type = "string", description = "One focused deliverable (up to 2000 characters). Do not combine asset production, PlayMode capture, build and report audit in the same call." },
                     paths = new { type = "array", items = new { type = "string" }, description = "One to five precise write scopes relative to the project, each a file or a narrow subdirectory under Assets/ or docs/ (e.g. docs/projecthub/m110-environment/environment-audit.md). Do not use Assets/, docs/, project root or absolute paths. Read-only investigation still requires a specific report path." }
                 },
                 required = new[] { "task", "paths" },
@@ -273,7 +273,7 @@ public sealed partial class BridgeServer
                     action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "editor_eval", "editor_bridge_install", "editor_bridge_ping", "editor_bridge_scene_status", "editor_bridge_sync_scene", "editor_bridge_refresh_assets", "editor_bridge_invoke", "editor_bridge_menu", "native_capture", "visual_foundry" } },
                     command = new { type = "string", description = "For unity_query only: editor_state (via CLI status), or a read-only command present in the live command_catalog." },
                     expression = new { type = "string", description = "For editor_eval: specialist-selected Editor C# expression, max 5000 characters. For a build use: return QuizStandaloneBuild.BuildQuizStandalone().summary.result.ToString();" },
-                    expected_result = new { type = "string", description = "Required for editor_eval/editor_bridge_invoke/editor_bridge_menu: exact returned string (e.g. Succeeded for BuildReport, True for a menu item)." },
+                    expected_result = new { type = "string", description = "Required for editor_eval/editor_bridge_invoke exact return-value assertion. Optional for editor_bridge_menu: menu success is True (handled); BuildReport Succeeded is NOT a menu return and must be validated separately." },
                     type = new { type = "string", description = "For editor_bridge_invoke: exact C# type name, including namespace if applicable (e.g. QuizStandaloneBuild)." },
                     method = new { type = "string", description = "For editor_bridge_invoke: public static zero-argument method name (e.g. BuildQuizStandalone)." },
                     menu_path = new { type = "string", description = "For editor_bridge_menu: complete Unity menu item path as registered with MenuItem." },

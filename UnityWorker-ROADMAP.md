@@ -39,6 +39,7 @@
 - HQ(웹/CLI)는 설계·재판단, #1 ASSET MANAGER는 검색·획득·적용, #0 DESIGN은 시각 제작·수정, #10+ WORK는 구현, HIGH는 최종 검증·보완을 담당한다.
 - 이미지 추출용 RESOURCE sidecar를 사용하지 않는다. 역할별 실행 문법은 전용 계약과 파서에서 확인한다.
 - HQ는 직접 지정한 WORK #10+만 계획·추적한다. DESIGN·HIGH·ASSET MANAGER의 임시 WORK 위임은 그 부모 세션 내부에서만 이루어지며 HQ WORKITEM 번호나 마일스톤으로 유출하지 않는다.
+- DESIGN 산출물에 의존하는 WORK만 `<DEPENDS_ON_DESIGN>true</>`로 표시한다(기존 `DESIGN 종료 후` 지시도 동일 취급). DESIGN 미완료 시 해당 WORK를 실제 실행하지 않고 BLOCKED로 기록한다. 독립 WORK는 계속한다.
 - WORK에는 할당된 과업 수행에 필요한 셸·Unity CLI/MCP·Editor·빌드·테스트 실행 권한을 부여하되 작업·파일 경로는 좁고 명시적으로 유지한다. 임시 WORK는 자체 MCP 명령만 사용하며 재위임할 수 없다. 절대 경로·프로젝트 루트 전체를 위임 범위로 지정하지 않는다.
 - 독립 C# 소스 WORK는 병렬이고 Editor·Scene·Import는 프로젝트 공통 게이트로 조정한다. 직접 Editor WORK가 이미 보유한 게이트는 같은 WORK의 중첩 MCP 명령에만 재사용한다. HIGH는 이전 유효 증거를 재사용하며 독립 판단한다. 추가 DESIGN은 HQ가 새로운 마일스톤에서 배정한다.
 - 사용자 추가 원문 메시지는 다음 제어권의 AI에 전달하며 Worker는 자연어 중단 판정을 하지 않는다.
@@ -127,7 +128,7 @@
 ### 기존 Editor 직접 실행 브리지
 
 - 최초 `worker_command.editor_bridge_install`은 `Assets/Editor/ProjectHub/ProjectHubEditorBridge.cs`에 내장 스크립트를 설치한다. 이미 다른 내용이면 덮어쓰지 않는다. 기존 Editor가 자동 Import한 뒤 `editor_bridge_ping`에서 실제 메인 스레드 응답을 받아야 한다.
-- `editor_bridge_invoke`는 역할이 지정한 public static 인수 없는 메서드를 호출하고 반환값을 검증한다. `editor_bridge_menu`는 명시한 Unity 메뉴 명령만 전달한다. 명령 대상·예상 결과는 역할이 정하며 Worker가 판단하지 않는다.
+- `editor_bridge_invoke`는 public static 메서드 반환값을 정확히 검증한다. `editor_bridge_menu`는 메뉴가 실제 호출됐는지(반환 True)만 확인하고 BuildReport Succeeded·산출물 확인과 분리한다. `expected_result=Succeeded`를 메뉴에 지정해도 빌드 성공 증거로 간주하지 않는다.
 - 요청·응답은 같은 Windows 사용자 계정의 `%LOCALAPPDATA%`에 저장되며 관리자 권한 승격 및 별도 네트워크 서버는 없다. WORK의 최초 설치는 브리지 소스·.meta가 포함된 좁은 경로가 필요하다.
 - 실환경 Unity Editor 컴파일·Player BuildReport 검증이 별도로 필요하며, CI가 성공했다고 Editor의 명령 실행까지 검증된 것으로 간주하지 않는다.
 
@@ -136,7 +137,7 @@
 - DESIGN 종료 후 Worker의 무조건 Native/Offscreen 자동 캡처를 제거했다. DESIGN/HIGH는 실제 PlayMode를 확인한 뒤 직접 `worker_command.native_capture`를 요청한다. PlayMode는 명령을 시작한 역할이 원래 상태로 복원한다.
 - `editor_bridge_scene_status`는 실제 Editor의 활성 Scene 경로, 각 로드된 Scene의 루트 수와 이름, PlayMode/컴파일 상태를 읽기 전용으로 반환한다. 원격 저장소의 QuizScene에는 루트가 있어도 M113 런타임 0개 보고만으로 씬 파일을 재생성해서는 안 된다.
 - ASSET DISCOVER의 `docs/projecthub/` 증거 문서는 제품 에셋 변경과 별도 보고한다. 위임 WORK는 보고서·증거 파일 경로를 `paths`에 직접 명시하며 검사 범위를 자동 확대하지 않는다.
-- 기존 `UsageTelemetryStore` 호출 기록을 역할·모델별로 합산해 다음 역할 요청과 HQ 마일스톤 인계에 포함한다. 웹 모델의 토큰 미제공은 UNKNOWN으로 표기한다. 자식 WORK의 번호·위임 내용은 HQ에 전달하지 않는다.
+- 기존 `UsageTelemetryStore` 호출 기록을 역할·모델별로 합산해 다음 부모 역할·HQ 인계에 포함한다. 일회성 임시 WORK 프롬프트에는 누적 사용량 표와 전체 Editor 지침을 매번 재주입하지 않고 과업·경로·핵심 실행 규칙만 보낸다. 웹 모델의 토큰 미제공은 UNKNOWN으로 표기한다.
 - Editor CLI·직접 브리지 모두 증거 파일을 Git 외부에 저장한다. 완전히 단일화되지 않은 내부 Import/Scene/Build CLI 호출은 기존 성공 경로를 보존하며, 브리지 대응 API가 없는 작업을 강제로 옮기지 않는다.
 
 ### 새 Unity 작업 시작 시 Editor 실행 (2026-10-18)

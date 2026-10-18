@@ -6,8 +6,20 @@ namespace ProjectHub.Worker;
 /// </summary>
 internal static class UnityEditorExecutionGuidance
 {
+    // Focused temporary WORK guidance; parent roles keep the full policy.
+    // Do not inject cumulative role usage and full Editor startup guidance
+    // again into each ephemeral delegated model session.
+    internal const string TemporaryWorkBrief =
+        "TEMP_WORK_POLICY: Deliver one bounded result. Stay within declared file " +
+        "scopes (a narrow directory may be named with or without trailing /). " +
+        "Use MCP worker_command for shared Editor actions. Menu True means " +
+        "invoked only; verify BuildReport separately. On a timeout do not retry " +
+        "an uncertain mutation. Restore PlayMode you started, do not steal focus " +
+        "or modify Git, and report unverified results.\\n";
+
     internal const string Text =
         "UNITY_EDITOR_EXECUTION_POLICY:\n" +
+        "- For editor_bridge_menu, menu invocation True means only MENU_TRIGGERED, never BuildReport Succeeded; inspect actual BuildReport/output separately. For editor_bridge_invoke and editor_eval, specify the actual exact expected return.\n" +
         "- Choose the Editor operation and exact expected result yourself; Worker only transmits and records evidence.\n" +
         "- Worker auto-installs the approved Editor bridge at the start of a Unity job, but file installation is NOT proof the running Editor imported or compiled it.\n" +
         "- Worker sends WORKER_EDITOR_COMMAND_READY to HQ only after the actual Editor main-thread ping and scene_status succeed, the active scene is loaded, and compilation/import is idle. GUI PID alone is insufficient; startup or bridge failure BLOCKS HQ. CONTINUE and every further HQ milestone also require renewed command readiness. Unity CLI/Pipeline errors remain separately classified.\n" +

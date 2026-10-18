@@ -142,9 +142,7 @@ public partial class MainWindow
                 string.Join(Environment.NewLine, paths) +
                 Environment.NewLine + "작업:" + Environment.NewLine + task +
                 Environment.NewLine + Environment.NewLine +
-                UsageTelemetryStore.FormatForNextRole(session.JobId) +
-                Environment.NewLine + Environment.NewLine +
-                UnityEditorExecutionGuidance.Text;
+                UnityEditorExecutionGuidance.TemporaryWorkBrief;
 
             // Bypass the parent role wrapper: it consumes pending user messages,
             // creates HQ-visible handoffs and may re-enter its own MCP tools.
@@ -445,13 +443,17 @@ public partial class MainWindow
         return path.Split('/').Length >= 3;
     }
 
-    private static bool MatchesMcpScope(string scope, string changedPath)
+    internal static bool MatchesMcpScope(string scope, string changedPath)
     {
         var normalizedScope = scope.Replace('\\', '/').TrimEnd('/');
-        var normalizedChange = changedPath.Replace('\\', '/');
+        var normalizedChange = changedPath.Replace('\\', '/').TrimEnd('/');
+        // A narrow directory scope is valid with OR without its trailing '/'.
+        // A file scope never grants descendants; matching is segment-bounded.
+        var isDirectory = scope.EndsWith("/", StringComparison.Ordinal) ||
+            Path.GetExtension(normalizedScope).Length == 0;
         return string.Equals(normalizedScope, normalizedChange,
                    StringComparison.OrdinalIgnoreCase) ||
-               (scope.EndsWith("/", StringComparison.Ordinal) &&
+               (isDirectory &&
                 normalizedChange.StartsWith(normalizedScope + "/",
                     StringComparison.OrdinalIgnoreCase));
     }

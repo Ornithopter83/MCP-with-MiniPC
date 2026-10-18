@@ -207,6 +207,7 @@ public partial class MainWindow
             }
 
 
+            var designCompleted = milestone.Design is null;
             if (milestone.Design is { } design)
             {
                 RunOnUi(() =>
@@ -277,6 +278,8 @@ public partial class MainWindow
                     MilestoneMechanicalExecutor.DiffChangeStates(
                         beforeDesign, afterDesign))
                     milestoneChangedPaths.Add(changedPath);
+                designCompleted = designReport.StartsWith(
+                    "DESIGN_STATUS: COMPLETED", StringComparison.Ordinal);
                 mechanicalReports.Add("DESIGN #0: " + designReport);
                 AddRoleResponseHistory(WorkerRoleState.Design,
                     "#0 DESIGN 결과", designReport,
@@ -352,8 +355,21 @@ public partial class MainWindow
                         });
             }
 
+            // An independent WORK is allowed to proceed; only tasks that
+            // explicitly depend on this DESIGN's successful output are blocked.
+            var designDependentBlocked =
+                UnityDesignDependencyPolicy.BlockedWorkIds(definitions, designCompleted);
+            foreach (var work in definitions.Where(work =>
+                designDependentBlocked.Contains(work.Id)))
+            {
+                workReports[work.Id] = MilestoneDefinitionContract.BuildRoleResult(
+                    null, "blocked", "DESIGN_DEPENDENCY_UNVERIFIED",
+                    issues: new[] { "DESIGN #0 did not complete; dependent WORK " +
+                        work.Id + " was not executed. Independent WORK may continue." });
+            }
             var executableDefinitions = definitions
-                .Where(work => !overlappingWorkIds.Contains(work.Id))
+                .Where(work => !overlappingWorkIds.Contains(work.Id) &&
+                    !designDependentBlocked.Contains(work.Id))
                 .ToArray();
             var executableWorkIds = executableDefinitions
                 .Select(work => work.Id)

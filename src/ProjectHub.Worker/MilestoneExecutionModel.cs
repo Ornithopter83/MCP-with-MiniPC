@@ -13,6 +13,7 @@ internal sealed record MilestoneWorkDefinition(
     string RawText)
 {
     public string ExecutionMode { get; init; } = "NEW";
+    public bool DependsOnDesign { get; init; }
 }
 
 internal sealed record MilestoneDesignDefinition(string Path, string Instructions)
@@ -342,6 +343,17 @@ internal static class MilestoneDefinitionContract
                     return false;
                 }
 
+                var dependsOnDesign = false;
+                if (workJson.TryGetProperty("dependsOnDesign", out var dependency))
+                {
+                    if (dependency.ValueKind is not
+                        (JsonValueKind.True or JsonValueKind.False))
+                    {
+                        error = $"WORK {workId}: DEPENDS_ON_DESIGN_INVALID";
+                        return false;
+                    }
+                    dependsOnDesign = dependency.GetBoolean();
+                }
                 var body = workJson.GetRawText();
                 workItems[workId] = new(
                     workId,
@@ -351,7 +363,8 @@ internal static class MilestoneDefinitionContract
                     body,
                     workJson.GetRawText())
                 {
-                    ExecutionMode = executionMode
+                    ExecutionMode = executionMode,
+                    DependsOnDesign = dependsOnDesign
                 };
             }
 
@@ -414,6 +427,11 @@ internal static class MilestoneDefinitionContract
                     return false;
                 }
                 design = new(designPath, designInstructions) { WritePaths = designWritePaths };
+            }
+            if (design is null && workItems.Values.Any(work => work.DependsOnDesign))
+            {
+                error = "WORK_DESIGN_DEPENDENCY_WITHOUT_DESIGN";
+                return false;
             }
             var resources = new Dictionary<string, MilestoneResourceDefinition>(
                 StringComparer.OrdinalIgnoreCase);

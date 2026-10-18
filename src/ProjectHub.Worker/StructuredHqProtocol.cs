@@ -115,8 +115,22 @@ internal static class StructuredHqProtocol
                 errors.Add("WORK " + s.Argument + ".COMPACT_LIMIT");
             if (paths.Any(p => !MilestoneDefinitionContract.IsSafeRelativePath(p)))
                 errors.Add("WORK " + s.Argument + ".WRITE_PATH");
+            var dependencyField = Value(s, "DEPENDS_ON_DESIGN");
+            if (dependencyField.Length != 0 &&
+                dependencyField is not ("true" or "false" or "TRUE" or "FALSE"))
+                errors.Add("WORK " + s.Argument + ".DEPENDS_ON_DESIGN");
+            // Legacy HQ plans say "DESIGN 종료 후" in instructions; treat
+            // this as an explicit ordering requirement, not a general dependency
+            // inferred merely from the presence of a DESIGN section.
+            var designDependent = dependencyField.Length != 0
+                ? string.Equals(dependencyField, "true",
+                    StringComparison.OrdinalIgnoreCase)
+                : instr.Contains("DESIGN 종료 후", StringComparison.OrdinalIgnoreCase) ||
+                  instr.Contains("DESIGN 완료 후", StringComparison.OrdinalIgnoreCase) ||
+                  instr.Contains("DESIGN 적용 후", StringComparison.OrdinalIgnoreCase);
             if (parsed.TryGetValue(s, out var wf) &&
-                wf.Names.Any(n => n is not ("PATH" or "INSTRUCTIONS" or "MODE")))
+                wf.Names.Any(n => n is not ("PATH" or "INSTRUCTIONS" or "MODE" or
+                    "DEPENDS_ON_DESIGN")))
                 errors.Add("WORK " + s.Argument + ".UNKNOWN_FIELD");
             works.Add(new()
             {
@@ -124,6 +138,7 @@ internal static class StructuredHqProtocol
                 ["executionMode"] = executionMode,
                 ["readOnly"] = false,
                 ["testRequired"] = true,
+                ["dependsOnDesign"] = designDependent,
                 ["writePaths"] = paths,
                 ["goal"] = instr,
                 ["instructions"] = instr,

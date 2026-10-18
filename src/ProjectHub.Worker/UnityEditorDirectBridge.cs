@@ -84,8 +84,13 @@ internal static class UnityEditorDirectBridge
             throw new ArgumentException("EDITOR_BRIDGE_METHOD_REQUIRED");
         if (action == "menu" && string.IsNullOrWhiteSpace(menu))
             throw new ArgumentException("EDITOR_BRIDGE_MENU_REQUIRED");
-        if (action is "invoke" or "menu" && string.IsNullOrWhiteSpace(expected))
+        if (action == "invoke" && string.IsNullOrWhiteSpace(expected))
             throw new ArgumentException("EDITOR_BRIDGE_EXPECTED_RESULT_REQUIRED");
+        // ExecuteMenuItem returns whether the menu was invoked, not whether
+        // the menu's BuildPipeline/async operation completed successfully.
+        // Never compare a menu result with a BuildReport such as "Succeeded".
+        if (action == "menu")
+            expected = "True";
         if (action == "sync_scene" &&
             (string.IsNullOrWhiteSpace(scenePath) || scenePath.Length > 300 ||
              !IsValidScenePath(scenePath)))
@@ -141,7 +146,10 @@ internal static class UnityEditorDirectBridge
                             "; expected=" + Limit(expected) + "; " + Limit(detail));
                     return "EDITOR_BRIDGE_CONFIRMED: " + code + "; VALUE=" +
                         Limit(value) + "; " + Limit(detail) +
-                        "; EVIDENCE=" + EvidencePath(root, id);
+                        "; EVIDENCE=" + EvidencePath(root, id) +
+                        (action == "menu"
+                            ? "; MENU_TRIGGERED_ONLY: verify BuildReport and build outputs separately"
+                            : "");
                 }
                 await Task.Delay(150, cancellationToken).ConfigureAwait(false);
             }

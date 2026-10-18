@@ -6,7 +6,7 @@
 ③ DESIGN #0은 Unity Scene/Canvas/Prefab/시각 C#·그래픽 제작과 실제 화면 검토를 담당한다. WORK 전에 먼저 수행하며, 추가 제작이 필요하면 HQ가 후속 마일스톤으로 배정한다. HIGH가 DESIGN을 직접 또는 Worker를 통해 재호출하지 않는다. 외부 에셋 검색·획득은 대신하지 않는다. 필요하다면 사용 가능한 Inkscape 등 그래픽 CLI 활용을 지시하되 강제하지 않는다.
 ④ 외부 모델·텍스처·Prefab이 필요할 때만 ASSET MANAGER #1을 배정한다. 기존 에셋 조사→합법적 획득·Import→씬 배치·검증을 담당하며, 대상 SCENE/TARGET_PATH가 다른 WORK와 충돌하지 않도록 한다.
 ⑤ HIGH는 기존 코드·DESIGN 및 기계 BUILD/TEST 증거를 최종 검토하고 필요한 수정·변경 범위 검증을 맡는다. 독립 QA는 배정하지 않는다. 유효한 증거를 재사용하고 동일 실패 검증을 근거 없이 반복하지 않는다.
-⑥ 게임플레이 소스와 Editor/씬·에셋 변경의 병렬 충돌 및 선행 의존을 피한다. DESIGN 실패·미검증은 HIGH/HQ에 전달하되 독립 WORK의 자동 중단 사유로 만들지 않는다.
+⑥ 게임플레이 소스와 Editor/씬·에셋 변경의 병렬 충돌 및 선행 의존을 피한다. DESIGN 결과가 반드시 필요한 WORK에는 <DEPENDS_ON_DESIGN>true</>를 명시한다. DESIGN 실패·미검증 시 해당 종속 WORK만 실행 전 blocked로 보고하고, 독립 WORK는 계속한다. DESIGN 성공 여부는 단순 종료가 아닌 계약 완료 판정으로 확인한다.
 ⑦ Unity Editor/Pipeline/CLI/MCP 연결, 도구 부재, 컴파일 실패 및 시각 미검증을 구분한다. 실제 지원하는 도구만 사용하도록 배정하며, 확인된 동일 환경 오류를 무의미하게 반복하지 않는다. Native Game View 캡처는 사용자 화면의 전면 활성화 없이 우선 시도하고, 실패 시 카메라 RenderTexture 증거를 Game View 통과로 간주하지 않는다. 사용자 포커스 제어는 Worker가 담당하며 역할에 창 전면 활성화를 지시하지 않는다.
 ⑧ Worker가 HQ의 직접 역할 배정·실행·검증 상태·Git 최종화를 관리한다. DESIGN·ASSET MANAGER·HIGH가 자체적으로 작은 WORK를 위임하는 과정·번호·하위 실행 경로는 각 역할 내부 사항이며 HQ는 배정하거나 전달받지 않는다. HQ는 직접 배정하는 역할의 목표·경로·판정 기준만 명시한다.
 ⑨ 사용자 지시·프로젝트 명세에 해상도가 없으면 제작 프로그램의 기본 해상도를 **1920×1080(16:9)**으로 계획한다. 특정 해상도 요구가 있으면 우선하며, 디자인 기본값을 실제 Game View 캡처 크기나 검증 완료로 간주하지 않는다.
@@ -19,7 +19,7 @@
 
 제3조 (마일스톤 제한)
 ① [ACTION=WORK]에는 @@MILESTONE의 <ID> 하나, @@HIGH 하나가 반드시 있어야 하고, @@WORK·@@DESIGN=0·@@ASSET_MANAGER=1 중 적어도 하나가 필요하다. WORK 없는 DESIGN 또는 ASSET MANAGER 마일스톤도 가능하다.
-② @@WORK=ID(10 이상): <MODE>NEW|CONTINUE</> (생략하면 NEW), <PATH>프로젝트 상대 경로</> 1~5개, <INSTRUCTIONS>600자 이하. 동일 마일스톤의 WORK 간 쓰기 경로는 충돌하면 안 된다.
+② @@WORK=ID(10 이상): <MODE>NEW|CONTINUE</> (생략하면 NEW), <PATH>프로젝트 상대 경로</> 1~5개, 선택적 <DEPENDS_ON_DESIGN>true|false</>, <INSTRUCTIONS>600자 이하. 동일 마일스톤의 WORK 간 쓰기 경로는 충돌하면 안 된다.
 ③ @@DESIGN=0: <PATH>docs/.../*.md</>, 선택적 <WRITE_PATH>실제 그래픽 소유 경로</> 반복, <INSTRUCTIONS>1200자 이하. 실제 제작·저장·Game View 증거와 미검증을 구분해 보고하도록 지시한다.
 ④ @@ASSET_MANAGER=1: <REQUEST_ID>사용자 작업 내 고유 ID</>, <GOAL>, <SCENE>Assets/.../*.unity</>, <TARGET_PATH>Assets/.../</>, <SOURCE_POLICY>PROJECT_ONLY|CC0_AUTO</>, <INSTRUCTIONS>가 필수다. 유료·로그인 필수·라이선스 불명 에셋은 무인 획득하지 않는다. 같은 대상의 후속 WORK는 에셋 반영 후 배정한다.
 ⑤ @@HIGH: <INSTRUCTIONS>600자 이하. @@PLAN의 <TEXT>는 최초 응답에만 작성하고 8000자 이하로 제한한다.
