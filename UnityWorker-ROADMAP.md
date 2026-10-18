@@ -138,3 +138,11 @@
 - ASSET DISCOVER의 `docs/projecthub/` 증거 문서는 제품 에셋 변경과 별도 보고한다. 위임 WORK는 보고서·증거 파일 경로를 `paths`에 직접 명시하며 검사 범위를 자동 확대하지 않는다.
 - 기존 `UsageTelemetryStore` 호출 기록을 역할·모델별로 합산해 다음 역할 요청과 HQ 마일스톤 인계에 포함한다. 웹 모델의 토큰 미제공은 UNKNOWN으로 표기한다. 자식 WORK의 번호·위임 내용은 HQ에 전달하지 않는다.
 - Editor CLI·직접 브리지 모두 증거 파일을 Git 외부에 저장한다. 완전히 단일화되지 않은 내부 Import/Scene/Build CLI 호출은 기존 성공 경로를 보존하며, 브리지 대응 API가 없는 작업을 강제로 옮기지 않는다.
+
+### 사용자 작업 시작 시 Unity Editor 정상 재시작 (2026-10-18)
+
+- NEW 사용자 작업의 Git 사전 점검 이후, 승인된 브리지 수신기를 자동 설치하고 `UnityEditorStartupRestart.RunAsync`를 정확히 1회 수행한다. 마일스톤 간 반복·PAUSE/CONTINUE·백그라운드 감시에서는 재시작하지 않는다.
+- `unity status --project-path`의 `data.instances`에서 현재 프로젝트 경로와 완전히 일치하는 GUI `Unity.exe` PID 하나만 확인한다. 다른 프로젝트·중복 PID·모호한 응답이면 프로세스를 종료하지 않는다.
+- `Process.CloseMainWindow`로 정상 종료 요청 후 최대 35초 기다린다. 사용자 미저장 변경 확인창 등이 남아 있으면 `Kill`/`taskkill` 없이 종료를 중단하고 `UNVERIFIED`를 기록한다. 원래 프로세스 종료가 확인된 경우에만 같은 Unity 실행 파일에 `-projectPath`를 전달해 최소화 상태로 재실행한다. 새 Editor PID와 CLI `ready` 상태를 최대 105초 확인한다.
+- OS 창 포커스를 임의로 되돌리거나 입력을 주입하지 않는다. Windows의 Unity 시작 동작 자체가 잠시 창 포커스를 바꿀 가능성은 배제할 수 없으며, 기존 FocusGuard의 작업 종료 복구 정책은 그대로 유지한다.
+- 실제 Windows Unity GUI와 CLI가 있어야 종료·재시작을 검증할 수 있다. 이 변경에서 실제 프로세스 종료·재시작·CI 실행은 수행하지 않았다.

@@ -180,6 +180,22 @@ public partial class MainWindow
                 }
             }
 
+            // A fresh user task gets one bounded graceful Editor restart.
+            // Continuations, automatic milestone transitions, PAUSE handling
+            // and ordinary CLI commands NEVER restart the user's Editor.
+            if (!continuing && UnityCliBuildRunner.IsUnityProject(normalizedRoot))
+            {
+                AddTaskMessage("UNITY EDITOR STARTUP RESTART",
+                    "요청 프로젝트의 기존 Unity Editor PID를 확인하고 정상 종료 및 " +
+                    "1회 재시작을 수행합니다. 미저장 변경이 있으면 강제 종료하지 않습니다.",
+                    status: "PROCESSING");
+                var restart = await UnityEditorStartupRestart.RunAsync(
+                    normalizedRoot, cts.Token);
+                AddTaskMessage("UNITY EDITOR STARTUP RESTART",
+                    restart.Code + ": " + restart.Detail,
+                    status: restart.Verified ? "OBSERVED" : "UNVERIFIED");
+            }
+
             // New commands and resumed/added user commands are the only
             // events allowed to open Unity. Ordinary milestone iteration never
             // starts another Editor. An already running project's lock is honored.

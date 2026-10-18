@@ -10,6 +10,7 @@ internal static class UnityEditorExecutionGuidance
         "UNITY_EDITOR_EXECUTION_POLICY:\n" +
         "- Choose the Editor operation and exact expected result yourself; Worker only transmits and records evidence.\n" +
         "- Worker auto-installs the approved Editor bridge at the start of a Unity job, but file installation is NOT proof the running Editor imported or compiled it.\n" +
+        "- For each NEW user Unity task Worker attempts one graceful restart of the verified same-project Editor (never a forced kill). A prompt for unsaved changes, missing PID or failed CLI recheck leaves restart UNVERIFIED; do not claim verified bridge readiness.\n" +
         "- Prefer fixed worker_command.editor_bridge_scene_status (or unity_query editor_state, bridge-first) for read-only scene inspection. Never write ad hoc eval merely to check isPlaying or scene roots.\n" +
         "- Only when the task explicitly requires reloading the CURRENT active scene, choose editor_bridge_sync_scene with its exact scene_path; this first copies the on-disk scene to Library/ProjectHub and backs up unsaved state under Assets/Editor/ProjectHub/SceneBackups/. Do not discard or silently save other scenes.\n" +
         "- Request editor_bridge_refresh_assets separately to invoke AssetDatabase.Refresh and inspect scene/import flags; a domain reload or timeout is UNVERIFIED, never automatic success.\n" +

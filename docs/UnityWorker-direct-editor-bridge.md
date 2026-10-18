@@ -53,3 +53,13 @@ Unity 공식 `InitializeOnLoad`, `EditorApplication.update`, `EditorApplication.
 **권한 경계:** 임시 WORK가 3번을 실행하려면 `paths`에 대상 씬 파일과 `Assets/Editor/ProjectHub/SceneBackups/`를 모두 명시해야 한다. 4번은 Unity 프로젝트 Import 과정에서 자동 수정이 발생할 수 있어 변경 감사가 필요하다. 모든 동작은 기존 사용자 권한 안에서만 수행하며, 설치 성공을 실제 Editor Import 성공으로 간주하지 않는다.
 
 **실환경 상태:** 이 변경은 요청대로 Unity 실행·Windows CI·테스트 검증을 수행하지 않은 구현이다. 실제 동작 여부는 다음 사용 시 확인해야 한다.
+
+## 작업 시작 시 Editor 재시작
+
+새 사용자 작업의 Git 사전 점검 이후 Worker가 브리지 소스를 먼저 설치한 다음, `UnityEditorStartupRestart`를 1회 실행한다. Unity CLI `status`가 보고하는 **해당 프로젝트 한 개의 PID**를 Process의 Unity.exe 경로와 GUI MainWindow로 교차 확인한다. 신원 확인이 불가능하거나 여러 Editor가 관측되면 종료하지 않는다.
+
+확인된 Editor에는 `CloseMainWindow()`로 정상 종료만 요청한다. Unity가 미저장 Scene·Prefab 등의 저장 확인창을 띄우거나 종료를 거부하면 최대 35초 기다린 뒤 작업에 `EDITOR_RESTART_UNSAVED_OR_BUSY` 등 미검증 상태를 남긴다. `Kill()`·강제 저장·키보드/마우스 입력을 사용하지 않는다.
+
+기존 Editor가 종료한 것이 확인되면 기존 `Unity.exe`를 `-projectPath`와 함께 최소화 시작하도록 요청한다. 105초 안에 해당 프로젝트의 **새 PID와 CLI ready**가 확인될 때만 `EDITOR_RESTART_VERIFIED`로 기록한다. 다른 프로젝트는 건드리지 않는다. 이 기능은 NEW 작업의 시작에서만 실행되며 각 WORK·DESIGN·HIGH, 마일스톤 반복 또는 HQ PAUSE에서 재실행하지 않는다.
+
+윈도우가 새로운 Unity GUI를 활성화할 가능성은 완전히 제거할 수 없으며, FocusGuard 정책은 여전히 작업 종료 시점에만 복구한다. 이번 변경은 실제 Editor 재시작이나 Windows CI를 실행하지 않은 코드 변경이다.
