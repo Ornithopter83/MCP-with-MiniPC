@@ -28,10 +28,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
 
     private readonly WinEventDelegate _callback;
     private readonly string? _projectRoot;
-    private readonly IntPtr _workerWindow;
-    private IntPtr _visualLeaseWindow;
-    private long _visualLeaseDeadline;
-    private bool _visualUserOverride;
     private int _backgroundCaptureDepth;
     private readonly DateTime _jobStartUtc;
     private readonly object _sync = new();
@@ -69,19 +65,17 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         : "FOCUS_GUARD_UNAVAILABLE: " + _unavailableReason +
           "; Unity Editor may take focus during CLI/MCP execution.";
 
-    private UnityBackgroundFocusGuard(string? projectRoot, IntPtr workerWindow)
+    private UnityBackgroundFocusGuard(string? projectRoot)
     {
         _callback = OnForegroundChanged;
-        _workerWindow = workerWindow;
         _projectRoot = string.IsNullOrWhiteSpace(projectRoot)
             ? null : Path.GetFullPath(projectRoot);
         _jobStartUtc = DateTime.UtcNow.AddSeconds(-5);
     }
 
-    internal static UnityBackgroundFocusGuard Start(string? projectRoot = null,
-        IntPtr workerWindow = default)
+    internal static UnityBackgroundFocusGuard Start(string? projectRoot = null)
     {
-        var guard = new UnityBackgroundFocusGuard(projectRoot, workerWindow);
+        var guard = new UnityBackgroundFocusGuard(projectRoot);
         if (!OperatingSystem.IsWindows())
         {
             guard._unavailableReason = "Windows-only";
@@ -116,13 +110,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         guard._everAvailable = guard.Available;
         return guard;
     }
-
-    /// <summary>
-    /// Compatibility API: foreground leases are deliberately disabled.
-    /// A running job must not activate Unity even for visual verification.
-    /// </summary>
-    internal VisualVerificationLease BeginVisualVerification() =>
-        new(null, IntPtr.Zero, "FOCUS_LEASE_DISABLED_UNTIL_JOB_END");
 
     /// <summary>
     /// Tracks a background screenshot interval. The guard never restores
@@ -225,68 +212,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         }
     }
 
-    internal sealed class VisualVerificationLease : IDisposable
-    {
-        private UnityBackgroundFocusGuard? _owner;
-        private readonly IntPtr _window;
-        internal bool Active => _owner is not null;
-        internal string Diagnostic { get; private set; }
-
-        internal VisualVerificationLease(UnityBackgroundFocusGuard? owner,
-            IntPtr window, string diagnostic)
-        {
-            _owner = owner;
-            _window = window;
-            Diagnostic = diagnostic;
-        }
-
-        public void Dispose()
-        {
-            var owner = Interlocked.Exchange(ref _owner, null);
-            if (owner is not null)
-                Diagnostic = owner.EndVisualVerification(_window);
-        }
-    }
-
-    private string EndVisualVerification(IntPtr unityWindow)
-    {
-        lock (_sync)
-        {
-            if (_visualLeaseWindow != unityWindow)
-                return "FOCUS_LEASE_ALREADY_EXPIRED";
-            _visualLeaseWindow = IntPtr.Zero;
-            var userOverride = _visualUserOverride;
-            _visualUserOverride = false;
-            if (userOverride || GetForegroundWindow() != unityWindow)
-                return "FOCUS_LEASE_USER_SWITCH_RESPECTED";
-            if (_workerWindow == IntPtr.Zero || !IsWindow(_workerWindow) ||
-                !IsWindowVisible(_workerWindow) || IsIconic(_workerWindow))
-                return "FOCUS_LEASE_WORKER_WINDOW_UNAVAILABLE";
-            var restored = SetForegroundWindow(_workerWindow);
-            if (!restored && GetForegroundWindow() == unityWindow)
-            {
-                var unityThread = GetWindowThreadProcessId(unityWindow, out _);
-                var callerThread = GetCurrentThreadId();
-                var attached = unityThread != 0 && unityThread != callerThread &&
-                    AttachThreadInput(callerThread, unityThread, true);
-                try
-                {
-                    if (GetForegroundWindow() == unityWindow)
-                        restored = SetForegroundWindow(_workerWindow);
-                }
-                finally
-                {
-                    if (attached)
-                        AttachThreadInput(callerThread, unityThread, false);
-                }
-            }
-            return (restored && GetForegroundWindow() == _workerWindow) ||
-                GetForegroundWindow() == _workerWindow
-                ? "FOCUS_LEASE_WORKER_RESTORED"
-                : "FOCUS_LEASE_WORKER_RESTORE_DENIED";
-        }
-    }
-
     private void OnForegroundChanged(
         IntPtr eventHook, uint eventType, IntPtr window,
         int objectId, int childId, uint eventThread, uint eventTime)
@@ -312,26 +237,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
             if (_disposed || _restoring) return;
             try
             {
-                if (_visualLeaseWindow != IntPtr.Zero)
-                {
-                    if (Environment.TickCount64 >= _visualLeaseDeadline)
-                    {
-                        EndVisualVerification(_visualLeaseWindow);
-                    }
-                    else if (window == _visualLeaseWindow)
-                    {
-                        if (UnityBackgroundFocusPolicy.IsRecentUserSelection(
-                                MillisecondsSinceUserInput(), IsExplicitUnitySelection(window)))
-                            _visualUserOverride = true;
-                        return;
-                    }
-                    else if (window != _workerWindow && !IsWatchedUnityWindow(window))
-                    {
-                        // User switched to a different application during capture.
-                        // Do not take focus back when the capture later finishes.
-                        _visualUserOverride = true;
-                    }
-                }
                 var isUnityEditor = IsUnityEditorWindow(window);
                 var isProjectPlayer = !isUnityEditor && IsProjectPlayerWindow(window);
                 var guardedWindow = isUnityEditor || isProjectPlayer;
@@ -513,8 +418,6 @@ internal sealed class UnityBackgroundFocusGuard : IDisposable
         if (_disposed) return;
         lock (_sync)
         {
-            if (_visualLeaseWindow != IntPtr.Zero)
-                EndVisualVerification(_visualLeaseWindow);
         }
         _disposed = true;
         var watchdog = Interlocked.Exchange(ref _watchdog, null);
