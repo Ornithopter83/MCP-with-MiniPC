@@ -69,7 +69,8 @@ public partial class MainWindow
         {
             prompt += Environment.NewLine + Environment.NewLine +
                 "이전 WORK 체크포인트:" + Environment.NewLine +
-                "기존 세션의 실제 작업 결과다. 완료한 구현·명령·파일 조사를 재실행하지 말고 " +
+                "이전 마일스톤의 저장된 작업 결과다. CLI 세션은 이번 마일스톤에 " +
+                "새로 시작하므로 완료한 구현·파일 조사를 재실행하지 말고 " +
                 "보고된 잔여 항목만 이어서 처리하라." + Environment.NewLine +
                 MilestoneDefinitionContract.Limit(checkpoint.LastReport, 4000);
         }

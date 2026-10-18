@@ -13,7 +13,7 @@ public sealed class WorkExecutionJournalTests
             false, true, "{}", "{}") { ExecutionMode = mode };
 
     [Fact]
-    public void NewWork_PersistsAndContinuesAcrossMilestonesAndRestart()
+    public void ContinuationPreservesEvidenceButResetsSessionAcrossMilestones()
     {
         WithDirectory(root =>
         {
@@ -26,15 +26,33 @@ public sealed class WorkExecutionJournalTests
                 "IN_PROGRESS", "session-abc", "partial implementation"));
             Assert.True(WorkExecutionJournal.TryBegin(root, "job01", "M2",
                 Work(mode: "CONTINUE"), Luna, out var resumed, out error), error);
-            Assert.Equal("session-abc", resumed!.SessionId);
+            Assert.Null(resumed!.SessionId);
             Assert.Equal("M1", resumed.OriginMilestoneId);
+            Assert.Equal("M2", resumed.ActiveMilestoneId);
+            Assert.Equal("partial implementation", resumed.LastReport);
             Assert.Equal(1, resumed.Attempts);
             Assert.True(WorkExecutionJournal.Record(root, "job01", "10",
-                "COMPLETED", resumed.SessionId, "tests passed"));
+                "COMPLETED", "fresh-m2-session", "tests passed"));
             Assert.Equal("COMPLETED", WorkExecutionJournal.Read(root, "job01", "10")!.State);
             Assert.False(WorkExecutionJournal.TryBegin(root, "job01", "M3",
                 Work(mode: "CONTINUE"), Luna, out _, out error));
             Assert.Equal("WORK_CONTINUATION_TERMINAL", error);
+        });
+    }
+
+    [Fact]
+    public void ContinuationWithinMilestoneUsesItsExistingParentSession()
+    {
+        WithDirectory(root =>
+        {
+            Assert.True(WorkExecutionJournal.TryBegin(root, "job", "M1",
+                Work(), Luna, out _, out _));
+            Assert.True(WorkExecutionJournal.Record(root, "job", "10",
+                "IN_PROGRESS", "session-M1", "pending"));
+            Assert.True(WorkExecutionJournal.TryBegin(root, "job", "M1",
+                Work(mode: "CONTINUE"), Luna, out var resumed, out _));
+            Assert.Equal("session-M1", resumed!.SessionId);
+            Assert.Equal("M1", resumed.ActiveMilestoneId);
         });
     }
 
@@ -117,7 +135,8 @@ public sealed class WorkExecutionJournalTests
 
             Assert.True(WorkExecutionJournal.TryBegin(root, "reviewjob", "M2",
                 Work("628", mode: "CONTINUE"), Luna, out var resumed, out _));
-            Assert.Equal(1, resumed!.ReResolutionAttempts);
+            Assert.Null(resumed!.SessionId);
+            Assert.Equal(1, resumed.ReResolutionAttempts);
             Assert.False(WorkExecutionJournal.TryClaimReResolution(root,
                 "reviewjob", "628", "session-review", "third report"));
 

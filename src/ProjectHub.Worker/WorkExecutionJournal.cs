@@ -4,8 +4,7 @@ using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
-// One durable owner per WORKITEM. A milestone is a verification boundary,
-// not the lifetime of a WORK session.
+// One durable owner per WORKITEM. Evidence persists, but CLI sessions are milestone-scoped.
 internal sealed record WorkExecutionCheckpoint(
     string JobId,
     string WorkItemId,
@@ -19,7 +18,8 @@ internal sealed record WorkExecutionCheckpoint(
     int Attempts,
     string LastReport,
     DateTimeOffset UpdatedAtUtc,
-    int ReResolutionAttempts = 0);
+    int ReResolutionAttempts = 0,
+    string? ActiveMilestoneId = null);
 
 internal static class WorkExecutionJournal
 {
@@ -79,8 +79,20 @@ internal static class WorkExecutionJournal
                     ? new WorkExecutionCheckpoint(
                         jobId, work.Id, milestoneId, work.WritePaths.ToArray(),
                         work.ReadOnly, role.Provider, role.Model, "RUNNING",
-                        null, 0, string.Empty, DateTimeOffset.UtcNow)
-                    : previous with { State = "RUNNING", UpdatedAtUtc = DateTimeOffset.UtcNow };
+                        null, 0, string.Empty, DateTimeOffset.UtcNow,
+                        ActiveMilestoneId: milestoneId)
+                    : previous with
+                    {
+                        State = "RUNNING",
+                        // Preserve prior work evidence but never resume a CLI
+                        // conversation started in another milestone.
+                        SessionId = string.Equals(
+                            previous.ActiveMilestoneId ?? previous.OriginMilestoneId,
+                            milestoneId, StringComparison.Ordinal)
+                            ? previous.SessionId : null,
+                        ActiveMilestoneId = milestoneId,
+                        UpdatedAtUtc = DateTimeOffset.UtcNow
+                    };
                 WriteFile(path, checkpoint);
                 return true;
             }

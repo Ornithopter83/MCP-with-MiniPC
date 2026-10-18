@@ -16,7 +16,8 @@ internal sealed record AssetManagerCheckpoint(
     string Evidence,
     IReadOnlyList<string> ChangedPaths,
     IReadOnlyList<AssetFileEvidence>? AcquiredFiles = null,
-    string? BlockedPhase = null);
+    string? BlockedPhase = null,
+    string? ActiveMilestoneId = null);
 
 /// <summary>
 /// Per-job, per-request durable state. A crashed mutating phase never
@@ -42,7 +43,7 @@ internal static class AssetManagerExecutionJournal
     }
 
     internal static AssetManagerCheckpoint Open(string root, string jobId,
-        AssetManagerDefinition definition, WorkerAiRoleSettings role)
+        string milestoneId, AssetManagerDefinition definition, WorkerAiRoleSettings role)
     {
         var file = FilePath(root, jobId, definition.RequestId);
         var fingerprint = Fingerprint(definition);
@@ -55,11 +56,22 @@ internal static class AssetManagerExecutionJournal
                 !string.Equals(saved.Provider, role.Provider, StringComparison.OrdinalIgnoreCase) ||
                 saved.Model != role.Model)
                 throw new InvalidOperationException("ASSET_MANAGER_CHECKPOINT_SCOPE_OR_MODEL_CHANGED");
-            return saved;
+            if (string.Equals(saved.ActiveMilestoneId, milestoneId,
+                    StringComparison.Ordinal))
+                return saved;
+            // A new milestone must not inherit an old AI thread. Preserve
+            // acquisition/Import state to prevent duplicate side effects.
+            var nextMilestone = saved with
+            {
+                SessionId = null,
+                ActiveMilestoneId = milestoneId
+            };
+            Save(root, nextMilestone);
+            return nextMilestone;
         }
         var checkpoint = new AssetManagerCheckpoint(jobId, definition.RequestId,
             fingerprint, role.Provider, role.Model, "READY", null,
-            string.Empty, Array.Empty<string>());
+            string.Empty, Array.Empty<string>(), ActiveMilestoneId: milestoneId);
         Save(root, checkpoint);
         return checkpoint;
     }

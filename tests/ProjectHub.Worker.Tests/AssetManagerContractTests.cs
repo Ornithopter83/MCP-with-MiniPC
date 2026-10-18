@@ -153,18 +153,54 @@ public sealed class AssetManagerContractTests
         try
         {
             Directory.CreateDirectory(root);
-            var initial = AssetManagerExecutionJournal.Open(root, "testjob", definition, role);
+            var initial = AssetManagerExecutionJournal.Open(root, "testjob", "M1", definition, role);
             Assert.Equal("READY", initial.State);
             AssetManagerExecutionJournal.Save(root, initial with { State = "RUNNING_INTEGRATE" });
-            var resumed = AssetManagerExecutionJournal.Open(root, "testjob", definition, role);
+            var resumed = AssetManagerExecutionJournal.Open(root, "testjob", "M1", definition, role);
             Assert.Equal("RUNNING_INTEGRATE", resumed.State);
             Assert.Throws<InvalidOperationException>(() =>
-                AssetManagerExecutionJournal.Open(root, "testjob",
+                AssetManagerExecutionJournal.Open(root, "testjob", "M1",
                     definition with { ScenePath = "Assets/Scenes/Another.unity" }, role));
         }
         finally
         {
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AssetManagerMilestoneSwitchClearsSessionButKeepsDurableImportState()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "asset-manager-session-" + Guid.NewGuid().ToString("N"));
+        var definition = new AssetManagerDefinition("rocks",
+            "place rocks", "Assets/Scenes/AIDemo.unity",
+            "Assets/ThirdParty/Rocks", "PROJECT_ONLY", "reuse");
+        var role = new WorkerAiRoleSettings();
+        try
+        {
+            Directory.CreateDirectory(root);
+            var original = AssetManagerExecutionJournal.Open(
+                root, "job", "M1", definition, role);
+            AssetManagerExecutionJournal.Save(root,
+                original with { State = "ACQUIRED", SessionId = "session-M1",
+                    Evidence = "downloaded" });
+
+            var sameMilestone = AssetManagerExecutionJournal.Open(
+                root, "job", "M1", definition, role);
+            Assert.Equal("session-M1", sameMilestone.SessionId);
+
+            var next = AssetManagerExecutionJournal.Open(
+                root, "job", "M2", definition, role);
+            Assert.Null(next.SessionId);
+            Assert.Equal("M2", next.ActiveMilestoneId);
+            Assert.Equal("ACQUIRED", next.State);
+            Assert.Equal("downloaded", next.Evidence);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
         }
     }
 

@@ -17,7 +17,7 @@ public partial class MainWindow
         try
         {
             checkpoint = AssetManagerExecutionJournal.Open(
-                root, jobId, definition, implementer);
+                root, jobId, milestone.Id, definition, implementer);
         }
         catch (Exception e) when (e is IOException or JsonException or InvalidOperationException or ArgumentException)
         {

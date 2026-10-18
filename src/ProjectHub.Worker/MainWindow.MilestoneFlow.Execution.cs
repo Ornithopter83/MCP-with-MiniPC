@@ -386,7 +386,11 @@ public partial class MainWindow
                     // task. Only a reliably decoded, near-empty rendered frame
                     // justifies an additional model turn. No blind retry on CLI
                     // failure or unverified/missing screenshots.
-                    if (run.ExitCode == 0 && foundryPlan is not null &&
+                    // Polishing remains in the original DESIGN session.
+                    // If its ID is unavailable, do not launch a new blind turn.
+                    if (run.ExitCode == 0 &&
+                        !string.IsNullOrWhiteSpace(run.SessionId) &&
+                        foundryPlan is not null &&
                         pixelAudit is { Readable: true, FlatFrame: true })
                     {
                         AddTaskMessage("UNITY VISUAL FOUNDRY POLISH",
@@ -407,7 +411,9 @@ public partial class MainWindow
                         var polish = await RunCoordinatorRoleAsync(
                             jobId, "DESIGN", visualPolishPrompt,
                             designRole with { ThreadSessionId = null, ThreadProjectPath = null },
-                            workingDirectory, null, null, cancellationToken,
+                            workingDirectory,
+                            CodexCliRunner.NormalizeSessionId(run.SessionId),
+                            null, cancellationToken,
                             CodexSandboxMode.WorkspaceWrite,
                             historyWorkItemId: "0",
                             historyReferenceId: designReference + ":POLISH",
