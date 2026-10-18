@@ -25,9 +25,9 @@ internal static class UnityVisualFoundry
             "프리미엄 화면 킷 경로: " + AssetDirectory + "\n" +
             "화면: Menu/Quiz/Results 각 3가지 레이아웃(기본·Editorial·Immersive), Preview-*.unity.\n" +
             "셰이더: PrismaticUI.shader/material; 등장·발광 애니메이션.\n" +
-            "기존 프로젝트 재사용 가능한 에셋: " +
+            "기존 프로젝트 에셋의 비평가식 원시 목록: " +
             Path.Combine(Directory, "existing-visual-assets.json") + "\n" +
-            "추천 화면 구성: " + PreferredLayout + "; 우선 후보: " +
+            "DESIGN이 명시적으로 선택한 화면 구성: " + PreferredLayout + "; 선택된 Prefab 경로: " +
             UnityVisualFoundryQuality.PrefabPath(this, "Quiz", PreferredLayout) + "\n" +
             "화면 구성 후보는 지시와 실제 디자인 맥락에 따라 선택하라.\n" +
             "생성된 샘플 텍스트와 버튼은 게임 로직이 아니다. 기존 게임 데이터·" +
@@ -50,37 +50,17 @@ internal static class UnityVisualFoundry
             "#FE7FCB", "#59E7DB", "#FFFFFF", "#CCD3FF", "PLAY / DISCOVER")
     };
 
-    internal static bool IsVisualScreenRequest(string instructions)
-    {
-        if (string.IsNullOrWhiteSpace(instructions)) return false;
-        if (instructions.Contains("NO_VISUAL_FOUNDRY", StringComparison.OrdinalIgnoreCase))
-            return false;
-        return new[] { "UI", "화면", "게임", "메뉴", "HUD", "퀴즈", "인터페이스",
-            "레이아웃", "디자인", "시각", "그래픽", "미술", "scene", "visual", "screen", "menu", "quiz",
-            "프리미엄", "고급", "화려" }
-            .Any(term => instructions.Contains(term, StringComparison.OrdinalIgnoreCase));
-    }
-
-    internal static Style Select(string instructions)
-    {
-        var text = instructions ?? string.Empty;
-        if (ContainsAny(text, "판타지", "마법", "중세", "RPG", "fantasy", "medieval", "arcane"))
-            return Styles[1];
-        if (ContainsAny(text, "미니멀", "럭셔리", "고급스러운", "절제", "luxury", "minimal", "noir"))
-            return Styles[2];
-        if (ContainsAny(text, "캐주얼", "귀여", "키즈", "어린이", "casual", "cute", "colorful"))
-            return Styles[3];
-        return Styles[0]; // bold, cinematic default without extra model calls
-    }
-
-    private static bool ContainsAny(string text, params string[] words) =>
-        words.Any(word => text.Contains(word, StringComparison.OrdinalIgnoreCase));
-
     internal static Plan Prepare(string root, string jobId, string milestoneId,
-        string instructions)
+        string instructions, string styleId, string layout)
     {
-        var style = UnityVisualFoundryQuality.AutoTune(Select(instructions));
-        var direction = UnityVisualFoundryQuality.Evaluate(style, instructions);
+        var selected = Styles.FirstOrDefault(style =>
+            string.Equals(style.Id, styleId, StringComparison.OrdinalIgnoreCase));
+        if (selected is null)
+            throw new ArgumentException("VISUAL_FOUNDRY_STYLE_REQUIRED_OR_INVALID", nameof(styleId));
+        if (layout is not ("Base" or "Editorial" or "Immersive"))
+            throw new ArgumentException("VISUAL_FOUNDRY_LAYOUT_REQUIRED_OR_INVALID", nameof(layout));
+        var style = UnityVisualFoundryQuality.AutoTune(selected);
+        var direction = UnityVisualFoundryQuality.Evaluate(style, layout);
         var safeKey = SafePart(jobId) + "_" + SafePart(milestoneId) + "_" + style.Id;
         var folder = Path.Combine(Path.GetFullPath(root), "temp", "ProjectHub",
             SafePart(jobId), "visual-foundry", SafePart(milestoneId));
@@ -103,11 +83,11 @@ internal static class UnityVisualFoundry
                 (direction.Layout == "Base" ? "" : "-" + direction.Layout) + ".prefab",
             viewport = new { width = 1920, height = 1080 },
             instructions,
-            note = "Presentation-only sample; DESIGN must bind actual gameplay."
+            note = "DESIGN-selected kit; not gameplay implementation or visual approval."
         }, new JsonSerializerOptions { WriteIndented = true }), ProjectHubJson.Utf8NoBom);
         UnityVisualFoundryCatalog.SaveManifest(
             Path.Combine(folder, "existing-visual-assets.json"),
-            UnityVisualFoundryCatalog.Discover(root, style));
+            UnityVisualFoundryCatalog.Inventory(root));
         File.WriteAllText(script, BuildEditorExpression(relativeAssets, style),
             ProjectHubJson.Utf8NoBom);
         return new(Path.GetFullPath(root), folder, script, manifest, relativeAssets, style)

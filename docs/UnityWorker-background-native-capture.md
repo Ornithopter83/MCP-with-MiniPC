@@ -19,3 +19,7 @@
 - 검증 로그의 `UNITY NATIVE FOCUS`, `UNITY NATIVE GAME VIEW`, `FOCUS_GUARD` 진단과 실제 PNG 내용을 함께 확인
 
 Windows 대화형 환경의 실제 Unity Editor가 없으면 포커스·Game View 렌더링 검증 완료를 선언하지 않는다.
+
+## MCP 호출
+
+DESIGN·HIGH가 MCP `worker_command`에 `{"action":"native_capture"}`를 명시적으로 요청하면 Worker는 기존 Native Game View 스크립트를 연결된 Editor에서 실행한다. 성공하면 PNG 경로·SHA 및 MCP `image/png` 이미지 내용을 반환한다. 포커스 전환 없이 프레임을 얻지 못하면 `NATIVE_UNVERIFIED`를 반환하고 이미지를 위조하거나 강제 활성화하지 않는다.

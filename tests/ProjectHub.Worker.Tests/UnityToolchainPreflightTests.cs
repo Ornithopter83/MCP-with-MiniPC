@@ -77,6 +77,16 @@ public sealed class UnityToolchainPreflightTests
         }
     }
 
+    [Fact]
+    public void CatalogRejectsUnsupportedAndEchoedCommands()
+    {
+        const string catalog = """[{"name":"console"},{"name":"open_scene"}]""";
+        Assert.True(UnityToolchainPreflight.CatalogContainsCommand(catalog, "console"));
+        Assert.False(UnityToolchainPreflight.CatalogContainsCommand(catalog, "editor_state"));
+        Assert.False(UnityToolchainPreflight.CatalogContainsCommand(null, "console"));
+        Assert.False(UnityToolchainPreflight.CatalogContainsCommand("{bad", "console"));
+    }
+
     [Theory]
     [InlineData(0, "{\"success\":true,\"data\":[]}", true, "UNITY_EDITOR_CONNECTED")]
     [InlineData(0, "{\"success\":false,\"errors\":[{\"code\":\"NOT_CONNECTED\"}]}", false, "UNITY_EDITOR_UNVERIFIED")]

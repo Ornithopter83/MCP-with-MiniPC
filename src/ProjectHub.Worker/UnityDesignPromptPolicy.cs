@@ -25,17 +25,6 @@ internal static class UnityDesignPromptPolicy
         "절대 경로로 지정하라. 상대 docs/...는 Assets/docs에 저장될 수 있다. " +
         "실제 저장 위치와 PNG 내용을 확인하고 오출력은 증거로 사용하지 마라.";
 
-    internal static bool IsVisualArtifact(string path) =>
-        new[] { ".unity", ".prefab", ".mat", ".shader", ".shadergraph",
-            ".png", ".jpg", ".jpeg", ".svg", ".spriteatlas",
-            ".anim", ".controller", ".uxml", ".uss", ".vfx" }
-            .Any(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) ||
-        (path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) &&
-         new[] { "/UI/", "/Visual", "/Editor/", "/Presentation/",
-                 "Sprite", "Effect", "Theme", "Vfx", "Procedural" }
-            .Any(fragment => ("/" + path.Replace('\\', '/')).Contains(fragment,
-                StringComparison.OrdinalIgnoreCase)));
-
     internal static bool IsVerifiedDocument(string root, MilestoneDesignDefinition design) =>
         MilestoneDefinitionContract.IsSafeRelativePath(design.Path) &&
         File.Exists(Path.Combine(Path.GetFullPath(root),

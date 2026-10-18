@@ -25,22 +25,12 @@ public sealed class UnityVisualFoundryAdvancedTests
         Assert.True(UnityVisualFoundryQuality.Contrast(tuned.Accent,tuned.Panel) >= 3);
     }
 
-    [Theory]
-    [InlineData("넓은 시네마틱 몰입 화면", "Immersive")]
-    [InlineData("정보 밀도 높은 대시보드", "Editorial")]
-    [InlineData("일반 퀴즈 UI", "Base")]
-    public void LayoutGrammarSelectsVariantDeterministically(
-        string brief,string expected)
-    {
-        Assert.Equal(expected,UnityVisualFoundryQuality.ChooseLayout(brief));
-    }
-
     [Fact]
     public void HqDirectionIsCarriedIntoTheDesignDnaAndPrefabSelection()
     {
         using var workspace = new Workspace();
         var plan = UnityVisualFoundry.Prepare(workspace.Root,"job","M1",
-            "정보 밀도 높은 SF 퀴즈 대시보드");
+            "정보 밀도 높은 SF 퀴즈 대시보드", "neon", "Editorial");
         Assert.Equal("Editorial", plan.PreferredLayout);
         Assert.EndsWith("Quiz-Editorial.prefab",
             UnityVisualFoundryQuality.PrefabPath(plan,"Quiz",plan.PreferredLayout));
@@ -51,7 +41,7 @@ public sealed class UnityVisualFoundryAdvancedTests
     }
 
     [Fact]
-    public void ExistingVisualAssetsAreRankedWithoutCopyingOrChangingThem()
+    public void ExistingVisualAssetsAreListedWithoutRankingOrModification()
     {
         using var workspace = new Workspace();
         var assets = Path.Combine(workspace.Root,"Assets","ThirdParty","PremiumUI");
@@ -59,8 +49,7 @@ public sealed class UnityVisualFoundryAdvancedTests
         var premium = Path.Combine(assets,"CyberNeonHUD.prefab");
         File.WriteAllText(premium,"original");
         File.WriteAllText(Path.Combine(assets,"random.txt"),"ignored");
-        var discovered = UnityVisualFoundryCatalog.Discover(workspace.Root,
-            UnityVisualFoundry.Select("sci fi"));
+        var discovered = UnityVisualFoundryCatalog.Inventory(workspace.Root);
         Assert.Contains(discovered,x=>x.Path.EndsWith("CyberNeonHUD.prefab"));
         Assert.Equal("original",File.ReadAllText(premium));
     }
@@ -104,7 +93,9 @@ public sealed class UnityVisualFoundryAdvancedTests
     public void EditorScriptIsSideEffectIsolatedAndHasDetailedVariants()
     {
         var script = UnityVisualFoundry.BuildEditorExpression(
-            "Assets/ProjectHub/VisualFoundry/example", UnityVisualFoundry.Select("SF"));
+            "Assets/ProjectHub/VisualFoundry/example", new UnityVisualFoundry.Style("neon", "Neon Command", "#07101F",
+                "#132D49", "#102238", "#18D5F7", "#FFAC5B", "#ECF8FF",
+                "#A4BCCF", "SYSTEM / ARCADE"));
         Assert.Contains("VISUAL_FOUNDRY_EXISTING_ASSETS_INCOMPLETE_NO_OVERWRITE",script);
         Assert.Contains("PrismaticUI.shader",script);
         Assert.Contains("Halo.png",script);
@@ -120,7 +111,7 @@ public sealed class UnityVisualFoundryAdvancedTests
     public void RejectsUnknownPrefabVariantsWithoutChangingProject()
     {
         using var workspace = new Workspace();
-        var plan = UnityVisualFoundry.Prepare(workspace.Root,"j","m","quiz");
+        var plan = UnityVisualFoundry.Prepare(workspace.Root,"j","m","quiz", "neon", "Base");
         Assert.Throws<ArgumentException>(() =>
             UnityVisualFoundryQuality.PrefabPath(plan,"Unknown"));
         Assert.Throws<ArgumentException>(() =>

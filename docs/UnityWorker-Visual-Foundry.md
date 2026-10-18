@@ -1,18 +1,17 @@
-# UnityWorker Visual Foundry — 자동 프리미엄 UI 제작 엔진
+# UnityWorker Visual Foundry — DESIGN이 명시적으로 호출하는 UI 제작 도구
 
 ## 목표
 
-HQ 설계안과 기존 DESIGN #0 배정만으로 Unity Editor의 게임 UI 제작에 활용 가능한 **완성형 화면 후보·절차적 그래픽·재질·모션·런타임 데이터 바인딩 표면**을 준비한다. Visual Foundry는 신규 AI 역할이 아니라 Worker가 DESIGN에 공급하는 모델 비의존적인 제작 도구다. 기존 HQ 프로토콜, DESIGN, ASSET MANAGER, WORK, HIGH, Git 정책은 유지한다.
+DESIGN #0이 필요하다고 선택했을 때 Unity Editor의 게임 UI 제작에 활용 가능한 **완성형 화면 후보·절차적 그래픽·재질·모션·런타임 데이터 바인딩 표면**을 준비한다. Visual Foundry는 신규 AI 역할이 아니라 Worker가 DESIGN에 공급하는 모델 비의존적인 제작 도구다. 기존 HQ 프로토콜, DESIGN, ASSET MANAGER, WORK, HIGH, Git 정책은 유지한다.
 
-## HQ → Worker → DESIGN 실행
+## DESIGN 결정 → MCP 실행
 
-1. Worker는 HQ의 전체 승인된 지시(`RawHqMessage`)와 마일스톤 DESIGN 지시를 함께 해석한다. 별도의 Visual Foundry 제어 태그는 없다. 필요하면 `NO_VISUAL_FOUNDRY`로 제외한다.
-2. Theme: Neon Command(SF), Arcane Atelier(판타지), Noir Edition(럭셔리), Nova Pop(캐주얼). **AI 호출 없이** 키워드 기반으로 선택하고, 최소 대비를 자동 보정한다.
-3. 정보 밀도·연출 의도를 기준으로 Base / Editorial / Immersive 화면 구도를 추천한다. 디자인 명세는 `temp/ProjectHub/.../visual-foundry/.../design-dna.json`으로 저장한다.
-4. 지정 프로젝트의 기존 Prefab, Material, Shader, UI 이미지를 **읽기 전용**으로 조사하여 `existing-visual-assets.json`에 적합한 재사용 후보를 기록한다. 사용자가 보유한 유료 Kit를 임의 다운로드하거나 라이선스를 추정하지 않는다.
-5. Editor 독점 레인에서 기존 Editor의 `eval_file`로 생성 스크립트를 실행한다. 생성 성공 시 Runtime Bridge를 독립된 경로에 추가한다. 새로운 MonoBehaviour가 컴파일될 때까지 게임의 바인딩 기능을 확인된 사실로 보고하지 않는다.
-6. DESIGN은 게임 목표에 맞춰 선택한 Prefab을 실제 Scene에 통합하고 게임 데이터를 연결한다. 뒤따르는 Worker 캡처는 품질 검토용 증거이지 자동 합격 판단이 아니다.
-7. Worker는 실제 PNG 내용을 경량 디코딩하여 매우 평탄하거나 거의 빈 화면을 감지한다. 확실한 경우 **동일한 DESIGN 배정에서 한 번만** 시각 보정 지시를 실행하고 재캡처한다. 미생성/CLI 실패/미확인 PNG는 재시도 사유로 자동 간주하지 않는다.
+1. DESIGN은 기존 에셋과 요구사항을 검토하여 Foundry 사용 여부를 결정한다. HQ 문장 키워드로 Worker가 자동 선택하지 않는다.
+2. 사용을 선택했다면 MCP `worker_command`의 `visual_foundry`에 `style`(neon/arcane/luxury/playful), `layout`(Base/Editorial/Immersive), `description`을 **모두 명시**한다.
+3. Worker는 입력값의 유효성 및 Editor 실행 가능 상태만 확인하고, 스크립트를 실행한다. Play Mode에서는 생성할 수 없다는 기존 Unity Editor 제약을 유지한다.
+4. Worker는 기존 프로젝트 시각 에셋의 단순 파일 목록을 만들 수 있으나 우선순위·적합성·라이선스를 결정하지 않는다. ASSET MANAGER가 실제 후보를 선정한다.
+5. DESIGN은 생성 결과를 실제 게임 씬과 데이터에 연결한다. Worker의 Native PNG와 픽셀 통계는 관측 자료이고 품질 합격 판정이 아니다.
+6. Worker는 화면 평탄도만으로 자동 보정·재시도·DESIGN 추가 호출을 하지 않는다. DESIGN이 판단하고 HIGH가 최종 검증한다.
 
 ## 생성 자산 (uGUI)
 

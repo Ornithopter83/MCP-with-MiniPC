@@ -274,27 +274,6 @@ public partial class MainWindow
                         workingDirectory, cancellationToken);
                 string designReport;
                 UnityBackgroundVisualPlan? visualPlan = null;
-                UnityVisualFoundry.Plan? foundryPlan = null;
-                var foundryReport = "VISUAL_FOUNDRY_NOT_APPLICABLE";
-                // Include the accepted HQ design brief, not only the short
-                // DESIGN instructions; the user should not repeat art direction.
-                var foundryBrief = (milestone.RawHqMessage ?? string.Empty) +
-                    Environment.NewLine + design.Instructions;
-                if (UnityVisualFoundry.IsVisualScreenRequest(foundryBrief))
-                {
-                    try
-                    {
-                        foundryPlan = UnityVisualFoundry.Prepare(
-                            workingDirectory, jobId, milestone.Id,
-                            foundryBrief);
-                    }
-                    catch (Exception foundryError) when (foundryError is IOException or
-                        UnauthorizedAccessException or ArgumentException)
-                    {
-                        foundryReport = "VISUAL_FOUNDRY_PREPARE_UNVERIFIED: " +
-                            foundryError.Message;
-                    }
-                }
                 try
                 {
                     visualPlan = UnityBackgroundVisualTools.Prepare(
@@ -308,48 +287,9 @@ public partial class MainWindow
                 }
                 try
                 {
-                    // Specialist AI must not hold the Editor gate while waiting for
-                    // nested MCP worker_command calls. Lock only the native step.
-                    if (foundryPlan is not null)
-                    {
-                        if (milestoneEditorReady)
-                        {
-                            using var foundryLease = await UnityEditorOperationGate.EnterAsync(
-                                workingDirectory, cancellationToken);
-                            var generated = await UnityVisualFoundry.GenerateAsync(
-                                foundryPlan, cancellationToken);
-                            foundryReport = generated.Detail;
-                            if (generated.Success)
-                            {
-                                var runtime = UnityVisualFoundryRuntime.Install(workingDirectory);
-                                foundryReport += "; " + runtime.Detail;
-                                AddTaskMessage("UNITY VISUAL FOUNDRY RUNTIME",
-                                    runtime.Detail,
-                                    status: runtime.Available ? "OBSERVED" : "UNVERIFIED",
-                                    includeHistory: false);
-                                // A newly installed runtime component may be compiled
-                                // asynchronously by Unity. Preserve evidence instead of
-                                // assuming the next Editor request can use it immediately.
-                            }
-                        }
-                        else
-                            foundryReport = "VISUAL_FOUNDRY_EDITOR_UNVERIFIED";
-                        AddTaskMessage("UNITY VISUAL FOUNDRY", foundryReport,
-                            status: foundryReport.StartsWith(
-                                "VISUAL_FOUNDRY_GENERATED_UNINSPECTED",
-                                StringComparison.Ordinal) ||
-                                foundryReport.StartsWith(
-                                    "VISUAL_FOUNDRY_REUSED_UNINSPECTED",
-                                    StringComparison.Ordinal)
-                                ? "OBSERVED" : "UNVERIFIED",
-                            includeHistory: false);
-                    }
                     var run = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
                         RoleContractLoader.BuildDesignPrompt(design, workingDirectory) +
-                        (foundryPlan is null ? string.Empty :
-                            Environment.NewLine + foundryPlan.AgentGuidance +
-                            Environment.NewLine + "FOUNDRY_GENERATION_STATUS: " + foundryReport) +
                         (visualPlan is null ? string.Empty :
                             Environment.NewLine + visualPlan.AgentGuidance),
                         designRole with { ThreadSessionId = null, ThreadProjectPath = null },
@@ -363,9 +303,11 @@ public partial class MainWindow
                             workingDirectory, cancellationToken);
                     var producedPaths = MilestoneMechanicalExecutor.DiffChangeStates(
                         beforeDesign, afterProduction).ToArray();
-                    var actualGraphics = producedPaths.Any(UnityDesignPromptPolicy.IsVisualArtifact);
+                    // DESIGN determines visual adequacy, HIGH verifies; Worker checks
+                    // only successful role report and the required document file.
                     var verified = run.ExitCode == 0 && parsed.IsValid &&
-                        parsed.Status == "completed" && actualGraphics;
+                        parsed.Status == "completed" &&
+                        UnityDesignPromptPolicy.IsVerifiedDocument(workingDirectory, design);
                     // Worker obtains its own evidence after the agent; this
                     // must not overwrite screenshots captured during DESIGN.
                     UnityBackgroundVisualEvidence offscreen;
@@ -379,83 +321,17 @@ public partial class MainWindow
                         offscreen = new(false,
                             "OFFSCREEN_CAPTURE_UNVERIFIED: latest Editor CLI probe not ready",
                             null);
-                    var pixelAudit = foundryPlan is null
-                        ? null
-                        : UnityVisualFoundryPixelAudit.Inspect(offscreen.ImagePath);
-                    // One bounded correction inside the already assigned DESIGN
-                    // task. Only a reliably decoded, near-empty rendered frame
-                    // justifies an additional model turn. No blind retry on CLI
-                    // failure or unverified/missing screenshots.
-                    // Polishing remains in the original DESIGN session.
-                    // If its ID is unavailable, do not launch a new blind turn.
-                    if (run.ExitCode == 0 &&
-                        !string.IsNullOrWhiteSpace(run.SessionId) &&
-                        foundryPlan is not null &&
-                        pixelAudit is { Readable: true, FlatFrame: true })
-                    {
-                        AddTaskMessage("UNITY VISUAL FOUNDRY POLISH",
-                            pixelAudit.Detail + "; one bounded correction requested",
-                            status: "UNVERIFIED", includeHistory: false);
-                        var visualPolishPrompt =
-                            RoleContractLoader.BuildDesignPrompt(design, workingDirectory) +
-                            Environment.NewLine + foundryPlan.AgentGuidance +
-                            Environment.NewLine +
-                            "같은 DESIGN #0 작업의 제한적 시각 보정 단계다. " +
-                            "기존 게임 기능과 다른 역할의 작업을 보존하라. " +
-                            "첫 제작 결과에서 실제 PNG를 읽었지만 화면이 비어 있거나 " +
-                            "거의 단색으로 확인되었다. 렌더 경로 및 표시 상태를 " +
-                            "조사하고 효과·레이어·Prefab 통합 문제를 수정하라. " +
-                            "실제 보이지 않는 화면을 성공이라고 보고하지 마라." +
-                            Environment.NewLine + "PIXEL_AUDIT: " + pixelAudit.Detail +
-                            Environment.NewLine + "CAPTURE_FILE: " + offscreen.ImagePath;
-                        var polish = await RunCoordinatorRoleAsync(
-                            jobId, "DESIGN", visualPolishPrompt,
-                            designRole with { ThreadSessionId = null, ThreadProjectPath = null },
-                            workingDirectory,
-                            CodexCliRunner.NormalizeSessionId(run.SessionId),
-                            null, cancellationToken,
-                            CodexSandboxMode.WorkspaceWrite,
-                            historyWorkItemId: "0",
-                            historyReferenceId: designReference + ":POLISH",
-                            polishOnly: true);
-                        var polished = RoleTextProtocol.ParseWork(polish.FinalMessage);
-                        if (polish.ExitCode == 0 && polished.IsValid &&
-                            polished.Status == "completed")
-                        {
-                            var revisedState =
-                                await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                                    workingDirectory, cancellationToken);
-                            producedPaths = MilestoneMechanicalExecutor.DiffChangeStates(
-                                beforeDesign, revisedState).ToArray();
-                            verified = producedPaths.Any(UnityDesignPromptPolicy.IsVisualArtifact);
-                        }
-                        else
-                            verified = false;
-                        if (visualPlan is not null &&
-                            await recheckUnityEditorAsync(cancellationToken))
-                            offscreen = await CaptureBestAvailableVisualAsync(
-                                visualPlan, unityFocusGuard, cancellationToken);
-                        pixelAudit = UnityVisualFoundryPixelAudit.Inspect(offscreen.ImagePath);
-                    }
-                    if (pixelAudit is { Readable: true, FlatFrame: true })
-                        verified = false;
-                    if (pixelAudit is not null)
-                        AddTaskMessage("UNITY VISUAL PIXEL AUDIT", pixelAudit.Detail,
-                            status: pixelAudit.Readable && !pixelAudit.FlatFrame
-                                ? "OBSERVED" : "UNVERIFIED",
-                            includeHistory: false);
+                    var pixelAudit = UnityVisualFoundryPixelAudit.Inspect(offscreen.ImagePath);
+                    AddTaskMessage("UNITY VISUAL PIXEL AUDIT", pixelAudit.Detail,
+                        status: pixelAudit.Readable ? "OBSERVED" : "UNVERIFIED",
+                        includeHistory: false);
                     designReport = (verified ? "DESIGN_STATUS: COMPLETED" :
                         "DESIGN_STATUS: BLOCKED_OR_IN_PROGRESS") +
                         Environment.NewLine +
                         MilestoneDefinitionContract.Limit(run.FinalMessage, 1600) +
-                        Environment.NewLine +
-                        "ACTUAL_GRAPHIC_CHANGES: " +
-                        string.Join(", ", producedPaths.Where(UnityDesignPromptPolicy.IsVisualArtifact)) +
-                        Environment.NewLine +
-                        "VISUAL_E2E: UNVERIFIED_UNLESS_INSPECTED" +
-                        Environment.NewLine + "VISUAL_FOUNDRY: " + foundryReport +
-                        Environment.NewLine + "VISUAL_PIXEL_AUDIT: " +
-                        (pixelAudit?.Detail ?? "NOT_APPLICABLE") +
+                        Environment.NewLine + "CHANGED_PATHS: " +
+                        string.Join(", ", producedPaths) +
+                        Environment.NewLine + "PIXEL_OBSERVATION_ONLY: " + pixelAudit.Detail +
                         Environment.NewLine + "INTERNAL_VISUAL_CAPTURE: " +
                         offscreen.Detail;
                 }

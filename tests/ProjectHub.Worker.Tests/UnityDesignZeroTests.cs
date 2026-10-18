@@ -77,8 +77,6 @@ public sealed class UnityDesignZeroTests
         var contract = RoleContractLoader.LoadDesignFooter();
         Assert.Contains("Editor 조작은 병렬로 수행하지 않고", contract);
         Assert.Contains("Game View", contract);
-        Assert.True(UnityDesignPromptPolicy.IsVisualArtifact("Assets/UI/Panel.prefab"));
-        Assert.False(UnityDesignPromptPolicy.IsVisualArtifact("docs/projecthub/design.md"));
     }
 
     [Fact]

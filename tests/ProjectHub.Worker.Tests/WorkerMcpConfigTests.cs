@@ -46,6 +46,17 @@ public sealed class WorkerMcpConfigTests
     }
 
     [Fact]
+    public void McpCommandDefinitionsExposeNativeCaptureAndExplicitDesignOptions()
+    {
+        var json = JsonSerializer.Serialize(BridgeServer.ToolDefinitions());
+        Assert.Contains("native_capture", json);
+        Assert.Contains("command_catalog", json);
+        Assert.Contains("visual_foundry", json);
+        Assert.Contains("Immersive", json);
+        Assert.Contains("playful", json);
+    }
+
+    [Fact]
     public void McpRegistration_ReportsUninitializedVsDiscoveredWithoutSecrets()
     {
         using var bridge = new BridgeServer();

@@ -142,6 +142,45 @@ public partial class MainWindow
         CancellationToken cancellationToken)
     {
         var action = RequiredMcpString(arguments, "action", 40);
+        if (action == "native_capture")
+        {
+            var plan = UnityBackgroundVisualTools.Prepare(session.ProjectRoot,
+                session.JobId, "mcp-native-" + Guid.NewGuid().ToString("N"));
+            using var lease = await UnityEditorOperationGate.EnterAsync(
+                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            var evidence = await UnityBackgroundVisualTools.CaptureNativeAsync(
+                plan, cancellationToken).ConfigureAwait(false);
+            if (!evidence.Captured || evidence.ImagePath is null)
+                throw new InvalidOperationException("NATIVE_UNVERIFIED: " + evidence.Detail);
+            session.NativeScreenshot = await File.ReadAllBytesAsync(
+                evidence.ImagePath, cancellationToken).ConfigureAwait(false);
+            return evidence.Detail;
+        }
+        if (action == "visual_foundry")
+        {
+            if (session.Role != "DESIGN")
+                throw new ArgumentException("VISUAL_FOUNDRY_DESIGN_ONLY");
+            if (Volatile.Read(ref session.SuccessfulDelegations) == 0)
+                throw new InvalidOperationException("VISUAL_FOUNDRY_REQUIRES_PRIOR_DELEGATE_WORK");
+            var style = RequiredMcpString(arguments, "style", 30);
+            var layout = RequiredMcpString(arguments, "layout", 30);
+            var description = RequiredMcpString(arguments, "description", 1000);
+            // DESIGN selects whether to generate and which style/layout.
+            // Worker only performs the requested Editor operation.
+            var plan = UnityVisualFoundry.Prepare(session.ProjectRoot,
+                session.JobId, "mcp-foundry-" + session.InvocationId + "-" +
+                    style + "-" + layout, description, style, layout);
+            using var lease = await UnityEditorOperationGate.EnterAsync(
+                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            var generated = await UnityVisualFoundry.GenerateAsync(
+                plan, cancellationToken).ConfigureAwait(false);
+            if (!generated.Success)
+                throw new InvalidOperationException(generated.Detail);
+            var runtime = UnityVisualFoundryRuntime.Install(session.ProjectRoot);
+            return generated.Detail + "; " + runtime.Detail + "; SELECTED_STYLE=" +
+                style + "; SELECTED_LAYOUT=" + layout + Environment.NewLine +
+                plan.AgentGuidance;
+        }
         if (action == "recompile")
         {
             var result = await UnityCliBuildRunner.RunAsync(
@@ -152,32 +191,72 @@ public partial class MainWindow
                 "; " + MilestoneDefinitionContract.Limit(result.Summary, 2000);
         }
 
-        string[] args;
-        if (action == "status")
-            args = ["status", "--project-path", session.ProjectRoot, "--format", "json"];
-        else if (action == "unity_query")
-        {
-            var name = RequiredMcpString(arguments, "command", 60);
-            if (name is not ("console" or "editor_state" or "list_open_scenes" or
-                "get_scene_hierarchy" or "recompile_status"))
-                throw new ArgumentException("UNITY_COMMAND_NOT_ALLOWLISTED");
-            args = ["command", name, "--project-path", session.ProjectRoot, "--format", "json"];
-        }
-        else
-            throw new ArgumentException("WORKER_COMMAND_NOT_ALLOWLISTED");
-
         using var editorLease = await UnityEditorOperationGate.EnterAsync(
             session.ProjectRoot, cancellationToken).ConfigureAwait(false);
-        var resultCli = await UnityCliProcessRunner.RunAsync(
-            session.ProjectRoot, args, TimeSpan.FromSeconds(75),
-            "UnityWorker MCP " + action, "UNITY_MCP_COMMAND_TIMEOUT",
-            cancellationToken).ConfigureAwait(false);
-        var output = "COMMAND_EXIT=" + resultCli.ExitCode +
-            Environment.NewLine + MilestoneDefinitionContract.Limit(
-                resultCli.Output + Environment.NewLine + resultCli.Error, 4500);
-        if (resultCli.ExitCode != 0)
-            throw new InvalidOperationException(output);
-        return output;
+        if (action == "command_catalog" || action == "unity_query")
+        {
+            var probeCommand = await UnityCliProcessRunner.RunAsync(
+                session.ProjectRoot, UnityToolchainPreflight.EditorProbeArguments(
+                    session.ProjectRoot), TimeSpan.FromSeconds(75),
+                "UnityWorker live command catalog", "UNITY_COMMAND_CATALOG_TIMEOUT",
+                cancellationToken).ConfigureAwait(false);
+            var probe = UnityToolchainPreflight.InterpretEditorProbe(
+                probeCommand.ExitCode, probeCommand.Output, probeCommand.Error);
+            if (!probe.Ready)
+                throw new InvalidOperationException(probe.Code + ": " + probe.Detail);
+            if (action == "command_catalog")
+                return "UNITY_COMMAND_CATALOG: " +
+                    (probe.CommandCatalogJson ?? "UNVERIFIED_NO_COMMANDS");
+            var name = RequiredMcpString(arguments, "command", 60);
+            if (name == "editor_state")
+            {
+                // editor_state is a logical status request, not a guessed
+                // Editor command; route it to the verified CLI status API.
+                return await RunStatusCommandAsync(session.ProjectRoot,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            if (name is not ("console" or "list_open_scenes" or
+                "get_scene_hierarchy" or "recompile_status"))
+                throw new ArgumentException("UNITY_COMMAND_NOT_ALLOWLISTED");
+            if (!UnityToolchainPreflight.CatalogContainsCommand(
+                    probe.CommandCatalogJson, name))
+                throw new InvalidOperationException(
+                    "UNITY_COMMAND_NOT_IN_LIVE_CATALOG: " + name +
+                    "; request command_catalog for available commands");
+            var result = await UnityCliProcessRunner.RunAsync(
+                session.ProjectRoot,
+                ["command", name, "--project-path", session.ProjectRoot,
+                    "--format", "json"],
+                TimeSpan.FromSeconds(75), "UnityWorker MCP unity_query",
+                "UNITY_MCP_COMMAND_TIMEOUT", cancellationToken).ConfigureAwait(false);
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException("COMMAND_EXIT=" + result.ExitCode +
+                    "; " + MilestoneDefinitionContract.Limit(
+                        result.Output + Environment.NewLine + result.Error, 4500));
+            return "COMMAND_EXIT=0" + Environment.NewLine +
+                MilestoneDefinitionContract.Limit(
+                    result.Output + Environment.NewLine + result.Error, 4500);
+        }
+        if (action == "status")
+            return await RunStatusCommandAsync(session.ProjectRoot,
+                cancellationToken).ConfigureAwait(false);
+        throw new ArgumentException("WORKER_COMMAND_NOT_ALLOWLISTED");
+    }
+
+    private static async Task<string> RunStatusCommandAsync(
+        string projectRoot, CancellationToken token)
+    {
+        var result = await UnityCliProcessRunner.RunAsync(
+            projectRoot, ["status", "--project-path", projectRoot, "--format", "json"],
+            TimeSpan.FromSeconds(75), "UnityWorker MCP status",
+            "UNITY_MCP_STATUS_TIMEOUT", token).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+            throw new InvalidOperationException("COMMAND_EXIT=" + result.ExitCode +
+                "; " + MilestoneDefinitionContract.Limit(
+                    result.Output + Environment.NewLine + result.Error, 4500));
+        return "COMMAND_EXIT=0" + Environment.NewLine +
+            MilestoneDefinitionContract.Limit(
+                result.Output + Environment.NewLine + result.Error, 4500);
     }
 
     private static string RequiredMcpString(JsonElement args, string name, int max)

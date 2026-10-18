@@ -16,35 +16,26 @@ public sealed class UnityVisualFoundryTests
         }
     }
 
-    [Theory]
-    [InlineData("판타지 마법 퀴즈 화면", "arcane")]
-    [InlineData("luxury minimal main menu", "luxury")]
-    [InlineData("귀여운 캐주얼 게임 화면", "playful")]
-    [InlineData("고품질 SF 서버 퀴즈 UI", "neon")]
-    [InlineData("", "neon")]
-    public void StyleSelectionIsDeterministicWithoutAnAiCall(string brief, string expected) =>
-        Assert.Equal(expected, UnityVisualFoundry.Select(brief).Id);
-
-    [Theory]
-    [InlineData("게임 화면을 고급스럽게")]
-    [InlineData("퀴즈 인터페이스 생성")]
-    [InlineData("씬 시각 구성과 실제 Game View")]
-    public void ExistingHqDesignPromptsEnableFoundry(string brief) =>
-        Assert.True(UnityVisualFoundry.IsVisualScreenRequest(brief));
-
-    [Theory]
-    [InlineData("sprite only")]
-    [InlineData("NO_VISUAL_FOUNDRY 게임 화면")]
-    [InlineData("")]
-    public void ExcludedInstructionsDoNotForceNewScreenAssets(string brief) =>
-        Assert.False(UnityVisualFoundry.IsVisualScreenRequest(brief));
+    [Fact]
+    public void StyleAndLayoutRequireExplicitDesignChoice()
+    {
+        using var fixture = new Fixture();
+        Assert.Throws<ArgumentException>(() => UnityVisualFoundry.Prepare(
+            fixture.Root, "job", "M1", "화면 제작", "", "Base"));
+        Assert.Throws<ArgumentException>(() => UnityVisualFoundry.Prepare(
+            fixture.Root, "job", "M1", "화면 제작", "neon", ""));
+        var plan = UnityVisualFoundry.Prepare(fixture.Root, "job", "M1",
+            "어떤 키워드도 자동 선택하지 않음", "arcane", "Immersive");
+        Assert.Equal("arcane", plan.Theme.Id);
+        Assert.Equal("Immersive", plan.PreferredLayout);
+    }
 
     [Fact]
     public void PrepareMakesIsolatedManifestAndExecutableUnityEditorScript()
     {
         using var fixture = new Fixture();
         var plan = UnityVisualFoundry.Prepare(fixture.Root, "../job", "M:1",
-            "화려한 SF 퀴즈 게임 화면");
+            "화려한 SF 퀴즈 게임 화면", "neon", "Base");
         Assert.Equal(Path.GetFullPath(fixture.Root), plan.ProjectRoot);
         Assert.StartsWith(Path.Combine(fixture.Root, "temp", "ProjectHub"),
             plan.ScriptPath, StringComparison.OrdinalIgnoreCase);
@@ -54,6 +45,7 @@ public sealed class UnityVisualFoundryTests
         using var json = JsonDocument.Parse(File.ReadAllText(plan.ManifestPath));
         Assert.Equal("neon",
             json.RootElement.GetProperty("style").GetProperty("Id").GetString());
+        Assert.Equal("Base", plan.PreferredLayout);
         Assert.Equal(1920,
             json.RootElement.GetProperty("viewport").GetProperty("width").GetInt32());
         var expression = File.ReadAllText(plan.ScriptPath);
@@ -83,7 +75,7 @@ public sealed class UnityVisualFoundryTests
     public async Task SuccessfulCliMarkerReportsGeneratedButUninspectedAssets()
     {
         using var fixture = new Fixture();
-        var plan = UnityVisualFoundry.Prepare(fixture.Root, "job", "M1", "SF 퀴즈 UI");
+        var plan = UnityVisualFoundry.Prepare(fixture.Root, "job", "M1", "SF 퀴즈 UI", "neon", "Base");
         var calls = 0;
         var marker = "PROJECTHUB_VISUAL_FOUNDRY_READY|" + plan.Theme.Id +
             "|9|" + plan.AssetDirectory;
@@ -113,7 +105,7 @@ public sealed class UnityVisualFoundryTests
     public async Task CliEchoWithoutAConfirmedResultIsNotEvidence()
     {
         using var fixture = new Fixture();
-        var plan = UnityVisualFoundry.Prepare(fixture.Root, "job", "M1", "SF 퀴즈 UI");
+        var plan = UnityVisualFoundry.Prepare(fixture.Root, "job", "M1", "SF 퀴즈 UI", "neon", "Base");
         var result = await UnityVisualFoundry.GenerateAsync(plan, CancellationToken.None,
             (_, _) => Task.FromResult(new UnityAssetCliResult(0,
                 """{"success":true,"data":{"expression":"PROJECTHUB_VISUAL_FOUNDRY_READY|neon|3|Assets/ProjectHub/VisualFoundry/job_M1_neon"}}""", "")));
@@ -125,7 +117,7 @@ public sealed class UnityVisualFoundryTests
     public async Task FailedCliCannotClaimGeneratedPremiumAssets()
     {
         using var fixture = new Fixture();
-        var plan = UnityVisualFoundry.Prepare(fixture.Root, "job", "M1", "SF 퀴즈 UI");
+        var plan = UnityVisualFoundry.Prepare(fixture.Root, "job", "M1", "SF 퀴즈 UI", "neon", "Base");
         var result = await UnityVisualFoundry.GenerateAsync(plan, CancellationToken.None,
             (_, _) => Task.FromResult(new UnityAssetCliResult(-1, "", "Editor disconnected")));
         Assert.False(result.Success);

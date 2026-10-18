@@ -103,6 +103,33 @@ internal static class UnityToolchainPreflight
         }
     }
 
+    // A command is executable only if the current Editor declared it.
+    // Do not infer capabilities from remembered Unity command names.
+    internal static bool CatalogContainsCommand(string? catalogJson, string command)
+    {
+        if (string.IsNullOrWhiteSpace(catalogJson) ||
+            string.IsNullOrWhiteSpace(command)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(catalogJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) return false;
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String &&
+                    string.Equals(item.GetString(), command, StringComparison.Ordinal))
+                    return true;
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                foreach (var key in new[] { "name", "command" })
+                    if (item.TryGetProperty(key, out var value) &&
+                        value.ValueKind == JsonValueKind.String &&
+                        string.Equals(value.GetString(), command, StringComparison.Ordinal))
+                        return true;
+            }
+        }
+        catch (JsonException) { }
+        return false;
+    }
+
     public static Task<Result> RunAsync(string root, CancellationToken cancellationToken) =>
         RunProbeAsync(root, cancellationToken, useEditorGate: true);
 

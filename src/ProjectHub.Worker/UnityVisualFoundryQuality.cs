@@ -12,9 +12,10 @@ internal static class UnityVisualFoundryQuality
         double AccentContrast, double QualityBudget,
         IReadOnlyList<string> Notes);
 
-    internal static Direction Evaluate(UnityVisualFoundry.Style style, string brief)
+    internal static Direction Evaluate(UnityVisualFoundry.Style style, string layout)
     {
-        var layout = ChooseLayout(brief);
+        if (layout is not ("Base" or "Editorial" or "Immersive"))
+            throw new ArgumentException("VISUAL_FOUNDRY_LAYOUT_REQUIRED_OR_INVALID", nameof(layout));
         var title = Contrast(style.Text, style.Panel);
         var muted = Contrast(style.Muted, style.Panel);
         var accent = Contrast(style.Accent, style.Panel);
@@ -68,18 +69,6 @@ internal static class UnityVisualFoundryQuality
         return end;
     }
 
-    internal static string ChooseLayout(string brief)
-    {
-        var text = brief ?? string.Empty;
-        if (Has(text, "정보 밀도", "데이터", "대시보드", "편집", "editorial", "dense",
-                "dashboard", "information", "카드형"))
-            return "Editorial";
-        if (Has(text, "몰입", "극장", "시네마", "영상", "대형", "immersive",
-                "cinematic", "hero", "wide"))
-            return "Immersive";
-        return "Base";
-    }
-
     internal static string PrefabPath(UnityVisualFoundry.Plan plan, string screen,
         string? requestedLayout = null)
     {
@@ -91,9 +80,6 @@ internal static class UnityVisualFoundryQuality
         return plan.AssetDirectory + "/" + screen +
             (layout == "Base" ? "" : "-" + layout) + ".prefab";
     }
-
-    private static bool Has(string text, params string[] values) =>
-        values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
 
     internal static double Contrast(string first, string second)
     {
