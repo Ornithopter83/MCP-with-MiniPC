@@ -106,16 +106,17 @@ internal static class UnityToolchainPreflight
         if (root.TryGetProperty("data", out var data))
         {
             if (data.ValueKind == JsonValueKind.Array)
-                return data.GetRawText();
+                return data.GetArrayLength() > 0 ? data.GetRawText() : null;
             if (data.ValueKind == JsonValueKind.Object)
                 foreach (var key in new[] { "commands", "items", "results" })
                     if (data.TryGetProperty(key, out var records) &&
                         records.ValueKind == JsonValueKind.Array)
-                        return records.GetRawText();
+                        return records.GetArrayLength() > 0
+                            ? records.GetRawText() : null;
         }
         if (root.TryGetProperty("commands", out var direct) &&
             direct.ValueKind == JsonValueKind.Array)
-            return direct.GetRawText();
+            return direct.GetArrayLength() > 0 ? direct.GetRawText() : null;
         return null;
     }
 

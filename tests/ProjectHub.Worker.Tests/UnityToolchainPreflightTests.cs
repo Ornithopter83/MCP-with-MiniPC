@@ -116,7 +116,7 @@ public sealed class UnityToolchainPreflightTests
     }
 
     [Theory]
-    [InlineData(0, "{\"success\":true,\"data\":[]}", true, "UNITY_EDITOR_CONNECTED")]
+    [InlineData(0, "{\"success\":true,\"data\":[]}", true, "UNITY_EDITOR_CONNECTED_NO_CATALOG")]
     [InlineData(0, "{\"success\":false,\"errors\":[{\"code\":\"NOT_CONNECTED\"}]}", false, "UNITY_EDITOR_UNVERIFIED")]
     [InlineData(0, "not json", false, "UNITY_EDITOR_INVALID_RESPONSE")]
     [InlineData(7, "", false, "UNITY_EDITOR_UNAVAILABLE")]

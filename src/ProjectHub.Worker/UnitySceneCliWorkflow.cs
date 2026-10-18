@@ -98,6 +98,11 @@ internal static class UnitySceneCliWorkflow
             var result = await execute(
                 UnityAssetCliImporter.ImportArguments(root, expression(normalized)),
                 token).ConfigureAwait(false);
+            // Preserve the existing uncertain-execution distinction. An
+            // unsuccessful CLI process may have reached the Editor; no retry.
+            if (result.ExitCode != 0)
+                return new(false, "UNITY_SCENE_COMMAND_UNCERTAIN_EXIT_" +
+                    result.ExitCode + ": " + Limit(result.Error + " " + result.Output));
             UnityEditorCommandResult.Verify(result, marker + normalized);
             return new(true, marker + normalized);
         }
