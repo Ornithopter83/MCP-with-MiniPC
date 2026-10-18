@@ -1,98 +1,31 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
 /// <summary>
-/// Single bounded restart at a user command boundary, never between milestones.
-/// Uses the current project's CLI-reported Editor PID; refuses ambiguous or
-/// foreign processes. No Kill(), taskkill, forced process termination or
-/// automated response to Unity's unsaved-work dialog.
+/// First action of a new Unity job: gracefully restart the single matching
+/// GUI Editor or start one if stopped. Never require a working Pipeline CLI.
+/// Never force-terminate, guess between windows, or start a duplicate.
 /// </summary>
 internal static class UnityEditorStartupRestart
 {
     internal sealed record Result(string Code, string Detail, bool Restarted)
     {
         internal bool Verified => Code is "EDITOR_RESTART_VERIFIED" or
-            "EDITOR_RESTART_NOT_RUNNING";
+            "EDITOR_STARTED_VERIFIED";
     }
 
-    internal sealed record Instance(int Pid, string Project, string State);
+    internal static bool IsUnityEditorExecutable(string? file) =>
+        !string.IsNullOrWhiteSpace(file) &&
+        string.Equals(Path.GetFileName(file), "Unity.exe",
+            StringComparison.OrdinalIgnoreCase);
 
-    internal static bool TryIdentifyOneInstance(
-        string stdout, string projectRoot, out Instance? match, out string code)
-    {
-        match = null;
-        code = "EDITOR_RESTART_STATUS_UNVERIFIED";
-        try
-        {
-            using var json = JsonDocument.Parse(stdout);
-            var root = json.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("success", out var ok) ||
-                ok.ValueKind != JsonValueKind.True ||
-                !root.TryGetProperty("data", out var data) ||
-                data.ValueKind != JsonValueKind.Object ||
-                !data.TryGetProperty("instances", out var items) ||
-                items.ValueKind != JsonValueKind.Array)
-                return false;
-            var matches = new List<Instance>();
-            foreach (var item in items.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object ||
-                    !item.TryGetProperty("project", out var project) ||
-                    project.ValueKind != JsonValueKind.String ||
-                    !item.TryGetProperty("pid", out var pid) ||
-                    !pid.TryGetInt32(out var processId))
-                    continue;
-                if (processId > 0 &&
-                    SameProject(project.GetString(), projectRoot))
-                    matches.Add(new(processId, project.GetString()!,
-                        item.TryGetProperty("state", out var state) &&
-                        state.ValueKind == JsonValueKind.String
-                            ? state.GetString() ?? "" : ""));
-            }
-            if (matches.Count == 0)
-            {
-                code = "EDITOR_RESTART_NOT_RUNNING";
-                return true;
-            }
-            if (matches.Count != 1)
-            {
-                code = "EDITOR_RESTART_AMBIGUOUS_PROJECT_INSTANCES";
-                return false;
-            }
-            match = matches[0];
-            code = "EDITOR_RESTART_INSTANCE_IDENTIFIED";
-            return true;
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException
-            or ArgumentException) { return false; }
-    }
+    internal static bool MatchesEditorWindow(string? processName, string? title,
+        string root) => UnityBackgroundFocusPolicy.IsGuardedEditorForProject(
+            processName, title, root);
 
-    internal static bool SameProject(string? candidate, string root)
-    {
-        if (string.IsNullOrWhiteSpace(candidate)) return false;
-        try
-        {
-            static string Canonical(string path) =>
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-            return string.Equals(Canonical(candidate), Canonical(root),
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException
-            or PathTooLongException) { return false; }
-    }
-
-    internal static bool IsUnityEditorExecutable(string? file)
-        => !string.IsNullOrWhiteSpace(file) &&
-           string.Equals(Path.GetFileName(file), "Unity.exe",
-               StringComparison.OrdinalIgnoreCase);
-
-    // Launch through the Windows shell rather than treating a GUI Unity Editor
-    // as a redirected CLI child. A visible window makes launch failures clear.
     internal static ProcessStartInfo CreateLaunchStartInfo(string executable, string root)
     {
         if (!IsUnityEditorExecutable(executable) || !File.Exists(executable))
@@ -172,176 +105,150 @@ internal static class UnityEditorStartupRestart
             IsUnityEditorExecutable(x) && File.Exists(x));
     }
 
+
+    // Window title identifies the project name. The project's held lock is
+    // required as an independent signal before closing an existing Editor.
+    private static int[] FindProjectWindowPids(string root)
+    {
+        var ids = new List<int>();
+        foreach (var process in Process.GetProcessesByName("Unity"))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (!process.HasExited && process.MainWindowHandle != IntPtr.Zero &&
+                        MatchesEditorWindow(process.ProcessName,
+                            process.MainWindowTitle, root))
+                        ids.Add(process.Id);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or
+                    Win32Exception or UnauthorizedAccessException) { }
+            }
+        }
+        return ids.Distinct().ToArray();
+    }
+
+    private static bool SameExecutable(string? actual, string expected)
+    {
+        try
+        {
+            return IsUnityEditorExecutable(actual) &&
+                string.Equals(Path.GetFullPath(actual!), Path.GetFullPath(expected),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
     internal static async Task<Result> RunAsync(
         string projectRoot, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows())
-            return new("EDITOR_RESTART_WINDOWS_ONLY", "Windows-only operation", false);
+            return new("EDITOR_START_WINDOWS_ONLY", "Windows-only", false);
         if (!UnityCliBuildRunner.IsUnityProject(projectRoot))
-            return new("EDITOR_RESTART_PROJECT_INVALID", "Unity project not found", false);
+            return new("EDITOR_START_INVALID_PROJECT", "Unity project not found", false);
 
         using var lease = await UnityEditorOperationGate.EnterAsync(
             projectRoot, cancellationToken).ConfigureAwait(false);
-        var status = await UnityCliProcessRunner.RunAsync(projectRoot,
-            ["status", "--project-path", projectRoot, "--format", "json"],
-            TimeSpan.FromSeconds(20), "UnityWorker startup restart discovery",
-            "EDITOR_RESTART_DISCOVERY_TIMEOUT", cancellationToken).ConfigureAwait(false);
-        if (status.ExitCode != 0)
-            return new("EDITOR_RESTART_UNVERIFIED",
-                "Cannot identify Editor: CLI_EXIT=" + status.ExitCode + " " +
-                Short(status.Error) + "; EVIDENCE=" + status.EvidencePath, false);
-        if (!TryIdentifyOneInstance(status.Output, projectRoot, out var instance,
-                out var discovery))
-            return new("EDITOR_RESTART_UNVERIFIED",
-                "Cannot identify Editor: " + discovery +
-                "; EVIDENCE=" + status.EvidencePath, false);
+        var oldPids = FindProjectWindowPids(projectRoot);
+        if (oldPids.Length > 1)
+            return new("EDITOR_START_AMBIGUOUS",
+                "Multiple matching Unity Editor windows; no process closed.", false);
+        // With a visible project-matching Unity window, the GUI is the
+        // identity signal. Unity versions can place their lock elsewhere.
+        // Without a matching window, a held lock blocks duplicate startup.
+        if (oldPids.Length == 0 &&
+            UnityEditorCommandLifecycle.ProjectEditorLockHeld(projectRoot))
+            return new("EDITOR_START_PROJECT_LOCKED",
+                "No matching GUI, but this project is locked; no duplicate launch.",
+                false);
 
         string? executable = null;
-        int? previousPid = null;
+        var oldPid = oldPids.FirstOrDefault();
         try
         {
-            if (instance is not null)
+            if (oldPid != 0)
             {
-                using var oldEditor = Process.GetProcessById(instance.Pid);
-                if (oldEditor.HasExited)
-                    return new("EDITOR_RESTART_RACE",
-                        "Old Editor exited before identification; no second launch.", false);
-                try { executable = oldEditor.MainModule?.FileName; }
-                catch (Win32Exception)
-                {
-                    return new("EDITOR_RESTART_ACCESS_DENIED",
-                        "Cannot inspect Unity.exe of reported PID; no close.", false);
-                }
-                if (!IsUnityEditorExecutable(executable) ||
-                    oldEditor.MainWindowHandle == IntPtr.Zero)
-                    return new("EDITOR_RESTART_PROCESS_UNVERIFIED",
-                        "CLI PID is not a verifiable GUI Unity.exe; no close.", false);
-
-                // Persist before closing so a subsequent user command can
-                // recover from a failed launch, even when no Editor runs.
+                using var old = Process.GetProcessById(oldPid);
+                if (old.HasExited)
+                    return new("EDITOR_START_RACE", "Old Editor just exited.", false);
+                executable = old.MainModule?.FileName;
+                if (!IsUnityEditorExecutable(executable))
+                    return new("EDITOR_START_UNVERIFIED_EXE",
+                        "Matching window is not a verified Unity.exe.", false);
                 RememberExecutable(projectRoot, executable!);
-                previousPid = instance.Pid;
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!oldEditor.CloseMainWindow())
-                    return new("EDITOR_RESTART_CLOSE_REFUSED",
-                        "Unity refused a graceful close; no duplicate launch.", false);
-                using var shutdownTimeout = new CancellationTokenSource(
-                    TimeSpan.FromSeconds(35));
+                if (!old.CloseMainWindow())
+                    return new("EDITOR_START_CLOSE_REFUSED",
+                        "Unity refused graceful close.", false);
+                using var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(40));
                 try
                 {
-                    // Finish a close/relaunch transaction even if the job's
-                    // cancellation arrives after closing the window.
-                    await oldEditor.WaitForExitAsync(shutdownTimeout.Token)
-                        .ConfigureAwait(false);
+                    // Once close is requested, finish the bounded restart even
+                    // when the user's job cancellation arrives.
+                    await old.WaitForExitAsync(shutdown.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    return new("EDITOR_RESTART_UNSAVED_OR_BUSY",
-                        "Unity did not exit within 35 seconds. No force-kill.", false);
+                    return new("EDITOR_START_CLOSE_TIMEOUT",
+                        "Old Editor did not exit. Unsaved changes may need attention; " +
+                        "no force-kill and no duplicate launch.", false);
                 }
             }
             else
             {
-                // A missing CLI instance is not necessarily a stopped
-                // Editor. An active UnityLockfile blocks launching a duplicate.
-                if (UnityEditorCommandLifecycle.ProjectEditorLockHeld(projectRoot))
-                    return new("EDITOR_RESTART_PROJECT_LOCKED",
-                        "Editor lock held but no CLI PID; refusing a duplicate.", false);
                 executable = FindExecutableForStoppedEditor(projectRoot);
                 if (executable is null)
                     return new("EDITOR_START_EXE_NOT_FOUND",
-                        "No Editor is running and no cached/default Unity.exe was found. " +
-                        "Set UNITY_EDITOR_PATH or open the correct Editor once.", false);
+                        "Unity.exe not found. Set UNITY_EDITOR_PATH or open " +
+                        "this Unity version once to record its path.", false);
             }
 
-            // This is a desktop GUI startup. Never attach to the short-lived
-            // CLI Job Object, never use -batchmode/-quit, and do not hide the window.
+            // Wait until Unity releases its project lock after shutdown.
+            for (var i = 0; i < 20 &&
+                UnityEditorCommandLifecycle.ProjectEditorLockHeld(projectRoot); i++)
+                await Task.Delay(250).ConfigureAwait(false);
+            if (UnityEditorCommandLifecycle.ProjectEditorLockHeld(projectRoot) ||
+                FindProjectWindowPids(projectRoot).Length != 0)
+                return new("EDITOR_START_OLD_EDITOR_STILL_PRESENT",
+                    "Project lock or Editor window still present; no duplicate started.", false);
+
             using var launched = Process.Start(
                 CreateLaunchStartInfo(executable!, projectRoot));
             if (launched is null)
-                return new("EDITOR_RESTART_LAUNCH_FAILED",
-                    "Previous Editor closed (if present), but Windows shell returned " +
-                    "no Unity process. EXE=" + executable, false);
-            var launchedPid = launched.Id;
-            var lastDiagnostic = "NO_CLI_OBSERVATION";
+                return new("EDITOR_START_LAUNCH_FAILED",
+                    "Windows did not return a Unity process.", false);
+
             var deadline = DateTime.UtcNow.AddSeconds(120);
             while (DateTime.UtcNow < deadline)
             {
-                await Task.Delay(1500).ConfigureAwait(false);
-                var check = await UnityCliProcessRunner.RunAsync(projectRoot,
-                    ["status", "--project-path", projectRoot, "--format", "json"],
-                    TimeSpan.FromSeconds(10), "UnityWorker Editor startup readiness",
-                    "EDITOR_RESTART_STATUS_TIMEOUT", CancellationToken.None)
-                    .ConfigureAwait(false);
-                lastDiagnostic = "STATUS_EXIT=" + check.ExitCode +
-                    "; EVIDENCE=" + check.EvidencePath;
-                if (check.ExitCode == 0 &&
-                    TryIdentifyOneInstance(check.Output, projectRoot,
-                        out var observed, out var code) &&
-                    observed is not null &&
-                    observed.Pid != previousPid &&
-                    string.Equals(observed.State, "ready",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    IsMatchingNewUnityEditor(observed.Pid, executable!))
-                    return new(previousPid.HasValue
-                            ? "EDITOR_RESTART_VERIFIED" : "EDITOR_STARTED_VERIFIED",
-                        "Unity GUI launched; previous PID=" +
-                        (previousPid?.ToString() ?? "NONE") +
-                        "; shell PID=" + launchedPid +
-                        "; Editor PID=" + observed.Pid +
-                        "; " + lastDiagnostic, true);
-                if (check.ExitCode == 0 &&
-                    !TryIdentifyOneInstance(check.Output, projectRoot,
-                        out _, out var reason))
-                    lastDiagnostic += "; " + reason;
+                await Task.Delay(1200).ConfigureAwait(false);
+                var matches = FindProjectWindowPids(projectRoot);
+                if (matches.Length > 1)
+                    return new("EDITOR_START_AMBIGUOUS",
+                        "Multiple matching Editor windows after launch.", false);
+                if (matches.Length == 1 && matches[0] != oldPid)
+                {
+                    using var opened = Process.GetProcessById(matches[0]);
+                    if (SameExecutable(opened.MainModule?.FileName, executable!))
+                        return new(oldPid == 0 ? "EDITOR_STARTED_VERIFIED" :
+                            "EDITOR_RESTART_VERIFIED",
+                            "Project Editor GUI running. oldPID=" + oldPid +
+                            "; newPID=" + matches[0], true);
+                }
             }
-
-            // Never spawn a second Unity merely because the shell process
-            // handed control to a different PID. Report exact diagnostics.
-            string exitDetail = launched.HasExited
-                ? "EXIT_CODE=" + launched.ExitCode : "SHELL_PROCESS_ALIVE";
-            return new("EDITOR_RESTART_READY_UNVERIFIED",
-                "Unity shell startup PID=" + launchedPid + "; " + exitDetail +
-                "; EXE=" + executable + "; " + lastDiagnostic +
-                "; no automatic duplicate launch.", false);
+            return new("EDITOR_START_NOT_CONFIRMED",
+                "Unity launched but no matching project GUI + lock confirmed " +
+                "within 120 seconds; no retry.", false);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
-            Win32Exception or UnauthorizedAccessException or IOException)
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or
+            ArgumentException or IOException or UnauthorizedAccessException)
         {
-            return new(previousPid.HasValue
-                    ? "EDITOR_RESTART_LAUNCH_FAILED" : "EDITOR_START_LAUNCH_FAILED",
-                "Windows Unity GUI launch failed; oldPID=" +
-                (previousPid?.ToString() ?? "NONE") +
-                "; EXE=" + (executable ?? "UNKNOWN") +
-                "; " + ex.GetType().Name +
-                (ex is Win32Exception win ? "(" + win.NativeErrorCode + ")" : "") +
-                ": " + Short(ex.Message), false);
+            return new("EDITOR_START_FAILED",
+                ex.GetType().Name + ": " + ex.Message, false);
         }
     }
-
-    private static bool IsMatchingNewUnityEditor(int pid, string executable)
-    {
-        try
-        {
-            using var process = Process.GetProcessById(pid);
-            return !process.HasExited && IsUnityEditorExecutable(process.MainModule?.FileName) &&
-                SameProjectExecutable(process.MainModule?.FileName, executable);
-        }
-        catch (Exception ex) when (ex is ArgumentException or Win32Exception or
-            InvalidOperationException or UnauthorizedAccessException) { return false; }
-    }
-
-    private static bool SameProjectExecutable(string? first, string second)
-    {
-        if (first is null) return false;
-        try
-        {
-            return string.Equals(Path.GetFullPath(first), Path.GetFullPath(second),
-                StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException) { return false; }
-    }
-
-    private static string Short(string text) =>
-        text.Length <= 600 ? text.Trim() : text[..600].Trim();
 }

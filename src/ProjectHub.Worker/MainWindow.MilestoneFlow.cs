@@ -139,10 +139,32 @@ public partial class MainWindow
                         AddHqInterventionHistory(entry, delivered: false);
             }
 
+            // A fresh user task gets one bounded graceful Editor restart.
+            // Continuations, automatic milestone transitions, PAUSE handling
+            // and ordinary CLI commands NEVER restart the user's Editor.
+            if (!continuing && UnityCliBuildRunner.IsUnityProject(normalizedRoot))
+            {
+                AddTaskMessage("UNITY EDITOR STARTUP RESTART",
+                    "요청 프로젝트의 기존 Unity Editor PID를 확인하고 정상 종료 및 " +
+                    "1회 재시작을 수행합니다. 미저장 변경이 있으면 강제 종료하지 않습니다.",
+                    status: "PROCESSING");
+                var restart = await UnityEditorStartupRestart.RunAsync(
+                    normalizedRoot, cts.Token);
+                AddTaskMessage("UNITY EDITOR STARTUP RESTART",
+                    restart.Code + ": " + restart.Detail,
+                    status: restart.Verified ? "OBSERVED" : "BLOCKED");
+                // Do not let HQ or any role act on a project after the old
+                // Editor has closed but its replacement is unverified.
+                if (!restart.Verified)
+                    throw new InvalidOperationException(
+                        "UNITY_EDITOR_STARTUP_BLOCKED: " + restart.Code +
+                        ": " + restart.Detail);
+            }
+
             // This path runs only after a real user command was submitted.
             // The '＋ 새 작업' navigation button does not call this method.
-            // Prepare destructive NEW-task Git changes before opening an Editor,
-            // so Unity never holds an outdated scene in memory during checkout.
+            // Git preflight follows the required Editor start confirmation.
+            // It does not imply a successful Unity asset import.
             if (!continuing)
             {
                 var newTaskGit = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
@@ -178,28 +200,6 @@ public partial class MainWindow
                         "; existing CLI execution remains available",
                         status: "UNVERIFIED");
                 }
-            }
-
-            // A fresh user task gets one bounded graceful Editor restart.
-            // Continuations, automatic milestone transitions, PAUSE handling
-            // and ordinary CLI commands NEVER restart the user's Editor.
-            if (!continuing && UnityCliBuildRunner.IsUnityProject(normalizedRoot))
-            {
-                AddTaskMessage("UNITY EDITOR STARTUP RESTART",
-                    "요청 프로젝트의 기존 Unity Editor PID를 확인하고 정상 종료 및 " +
-                    "1회 재시작을 수행합니다. 미저장 변경이 있으면 강제 종료하지 않습니다.",
-                    status: "PROCESSING");
-                var restart = await UnityEditorStartupRestart.RunAsync(
-                    normalizedRoot, cts.Token);
-                AddTaskMessage("UNITY EDITOR STARTUP RESTART",
-                    restart.Code + ": " + restart.Detail,
-                    status: restart.Verified ? "OBSERVED" : "BLOCKED");
-                // Do not let HQ or any role act on a project after the old
-                // Editor has closed but its replacement is unverified.
-                if (!restart.Verified)
-                    throw new InvalidOperationException(
-                        "UNITY_EDITOR_STARTUP_BLOCKED: " + restart.Code +
-                        ": " + restart.Detail);
             }
 
             // New commands and resumed/added user commands are the only

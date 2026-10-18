@@ -54,12 +54,10 @@ Unity 공식 `InitializeOnLoad`, `EditorApplication.update`, `EditorApplication.
 
 **실환경 상태:** 이 변경은 요청대로 Unity 실행·Windows CI·테스트 검증을 수행하지 않은 구현이다. 실제 동작 여부는 다음 사용 시 확인해야 한다.
 
-## 작업 시작 시 Editor 재시작
+## 작업 시작 시 Unity Editor 실행
 
-새 사용자 작업의 Git 사전 점검 이후 Worker가 브리지 소스를 먼저 설치한 다음, `UnityEditorStartupRestart`를 1회 실행한다. Unity CLI `status`가 보고하는 **해당 프로젝트 한 개의 PID**를 Process의 Unity.exe 경로와 GUI MainWindow로 교차 확인한다. 신원 확인이 불가능하거나 여러 Editor가 관측되면 종료하지 않는다.
-
-확인된 Editor에는 `CloseMainWindow()`로 정상 종료만 요청한다. Unity가 미저장 Scene·Prefab 등의 저장 확인창을 띄우거나 종료를 거부하면 최대 35초 기다린 뒤 작업에 `EDITOR_RESTART_UNSAVED_OR_BUSY` 등 미검증 상태를 남긴다. `Kill()`·강제 저장·키보드/마우스 입력을 사용하지 않는다.
-
-기존 Editor가 종료한 것이 확인되면 기존 `Unity.exe`를 Windows ShellExecute와 `-projectPath`로 **표시되는 GUI 창**으로 실행한다. 종료 직전에 Unity 실행 파일 위치를 프로젝트별 로컬 상태에 저장해, 다음 작업에서 Editor가 없을 때도 해당 경로로 다시 열 수 있다. 사용자 미저장 변경 보호·강제 종료 금지 정책은 유지한다. 120초 안에 해당 프로젝트의 **새 PID와 CLI ready**가 확인될 때만 `EDITOR_RESTART_VERIFIED`로 기록한다. 다른 프로젝트는 건드리지 않는다. 이 기능은 NEW 작업의 시작에서만 실행되며 각 WORK·DESIGN·HIGH, 마일스톤 반복 또는 HQ PAUSE에서 재실행하지 않는다.
-
-Unity GUI를 일반 창으로 시작하므로 포커스를 잠시 차지할 수 있으며, FocusGuard 정책은 여전히 작업 종료 시점에만 복구한다. 이번 변경은 실제 Editor 재시작이나 Windows CI를 실행하지 않은 코드 변경이다.
+- NEW 사용자 Unity 작업은 HQ에 요청을 보내기 **전에 가장 먼저** 기존 Editor GUI를 확인한다. Unity CLI 연결 상태는 시작 조건으로 요구하지 않는다.
+- 해당 프로젝트 이름과 일치하는 Unity 창이 하나 확인되면 `CloseMainWindow()`로 정상 종료하고 프로세스 종료까지 최대 40초 기다린 뒤 재실행한다. 미저장 변경 확인창·종료 실패 시 강제 종료 없이 중단한다.
+- 해당 프로젝트 창이 없고 프로젝트 잠금도 없으면 로컬에 저장된 Unity.exe 또는 ProjectVersion.txt의 설치 경로로 새 GUI를 실행한다.
+- 실행은 단 한 번이며 `-projectPath`를 사용한다. 120초 이내 새 Unity 프로젝트 GUI 창, 다른 PID 및 Unity.exe 일치를 확인했을 때만 성공이다. 확인 실패 시 HQ에 전달하지 않고 BLOCKED로 중단한다.
+- 프로젝트가 잠겨 있는데 창이 보이지 않거나, 프로젝트 이름과 일치하는 Editor가 둘 이상이면 다른 프로젝트를 건드리지 않도록 중단한다. 이 절차는 실제 Windows Unity 재실행까지 CI가 증명하는 기능이 아니다.

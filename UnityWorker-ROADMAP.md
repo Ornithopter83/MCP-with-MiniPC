@@ -86,7 +86,7 @@
 
 ### #1 ASSET MANAGER 이전 NEW 작업 Git 경계 (UnityWorker)
 
-- NEW 작업은 HQ 전송 전에 Worker가 origin/main 기준 Git 준비를 먼저 수행하고, 이후 기존 Unity Editor 연결을 점검한다.
+- NEW Unity 작업은 HQ/Git 사전 점검보다 먼저 프로젝트 Editor를 종료·재실행 또는 최초 실행하고 GUI 동작을 확인한다. 실패하면 HQ에 전달하지 않는다.
 - 브랜치 전환을 방해하는 충돌 경로만 강제로 삭제·교체한다. 백업·stash 생성 없음, 무관한 미스테이징/스테이징 파일 보존.
 - Unity 캐시/IDE 출력용 ignore 규칙을 사전에 적용하며 Git 메타데이터 및 ProjectHub 지속 상태는 보호한다.
 - Git 사전 점검 실패는 HIGH의 소스 수정 없이 즉시 중단한다. 실제 Unity 씬 실행은 별도 실기 검증이 필요하다.
@@ -139,17 +139,9 @@
 - 기존 `UsageTelemetryStore` 호출 기록을 역할·모델별로 합산해 다음 역할 요청과 HQ 마일스톤 인계에 포함한다. 웹 모델의 토큰 미제공은 UNKNOWN으로 표기한다. 자식 WORK의 번호·위임 내용은 HQ에 전달하지 않는다.
 - Editor CLI·직접 브리지 모두 증거 파일을 Git 외부에 저장한다. 완전히 단일화되지 않은 내부 Import/Scene/Build CLI 호출은 기존 성공 경로를 보존하며, 브리지 대응 API가 없는 작업을 강제로 옮기지 않는다.
 
-### 사용자 작업 시작 시 Unity Editor 정상 재시작 (2026-10-18)
+### 새 Unity 작업 시작 시 Editor 실행 (2026-10-18)
 
-- NEW 사용자 작업의 Git 사전 점검 이후, 승인된 브리지 수신기를 자동 설치하고 `UnityEditorStartupRestart.RunAsync`를 정확히 1회 수행한다. 마일스톤 간 반복·PAUSE/CONTINUE·백그라운드 감시에서는 재시작하지 않는다.
-- `unity status --project-path`의 `data.instances`에서 현재 프로젝트 경로와 완전히 일치하는 GUI `Unity.exe` PID 하나만 확인한다. 다른 프로젝트·중복 PID·모호한 응답이면 프로세스를 종료하지 않는다.
-- `Process.CloseMainWindow`로 정상 종료 요청 후 최대 35초 기다린다. 사용자 미저장 변경 확인창 등이 남아 있으면 `Kill`/`taskkill` 없이 종료를 중단하고 `UNVERIFIED`를 기록한다. 원래 프로세스 종료가 확인된 경우에만 같은 Unity 실행 파일에 `-projectPath`를 전달해 최소화 상태로 재실행한다. 새 Editor PID와 CLI `ready` 상태를 최대 105초 확인한다.
-- OS 창 포커스를 임의로 되돌리거나 입력을 주입하지 않는다. Windows의 Unity 시작 동작 자체가 잠시 창 포커스를 바꿀 가능성은 배제할 수 없으며, 기존 FocusGuard의 작업 종료 복구 정책은 그대로 유지한다.
-- 실제 Windows Unity GUI와 CLI가 있어야 종료·재시작을 검증할 수 있다. 이 변경에서 실제 프로세스 종료·재시작·CI 실행은 수행하지 않았다.
-
-### Editor 종료 후 재실행 실패 보정
-
-- 과거 구현의 `UseShellExecute=false`, `WindowStyle=Minimized` 조합을 제거하고 `UseShellExecute=true`, `WindowStyle=Normal`을 사용한다. Unity의 공식 `Unity.exe -projectPath "<project>"` 형식을 인자 목록으로 전달한다. Windows가 창을 활성화할 수 있다.
-- 정상 종료하기 전에 실제 Editor 실행 파일 경로를 프로젝트별 `%LOCALAPPDATA%/ProjectHub/UnityWorker/EditorBridge/<hash>/last-editor-executable.txt`에 저장한다. 이전 재시작 실패로 Editor 프로세스가 없으면 그 경로, `UNITY_EDITOR_PATH`, 프로젝트 `ProjectVersion.txt` 버전의 기본 Unity Hub 설치 경로 순으로 복구한다. 프로젝트 잠금이 남아 있으면 중복 실행하지 않는다.
-- 새 Unity PID가 Shell 시작 PID와 다르더라도 해당 프로젝트의 CLI `ready` 및 같은 `Unity.exe` 바이너리를 확인하면 성공으로 판정한다. 120초 안에 확인되지 않으면 CLI 증거 경로와 시작 PID/종료 코드를 남기며 자동 재시도하지 않는다.
-- 정상 종료 후 새 Editor의 실행·ready 확인에 실패하면 `UNITY_EDITOR_STARTUP_BLOCKED`로 HQ 작업을 중단한다. 이 기능의 성공 여부는 실제 Windows Unity 실행 로그로 검증해야 한다.
+- HQ/Git 전처리 이전에 Windows 프로세스와 프로젝트 제목으로 해당 Editor 창을 찾는다. 실행 중인 Unity Editor 창이 하나 있고 해당 프로젝트 UnityLockfile이 유지되는 경우에만 정상 종료를 요청한 뒤 종료 확인 후 다시 연다.
+- 실행 중인 Editor가 없고 프로젝트 잠금이 없다면 프로젝트 버전 또는 이전에 저장한 Unity.exe 경로로 한 번 실행한다. 다른 프로젝트·여러 창·잠금 불일치에는 강제 종료나 중복 실행을 하지 않는다.
+- `Unity.exe -projectPath`로 GUI를 시작하고 새 프로젝트 Editor 창·실행 파일·PID를 확인한 뒤 HQ에 전달한다. Unity CLI exit 6 또는 Pipeline 명령 누락 때문에 시작 자체를 차단하지 않는다. 120초 안에 새 창이 확인되지 않으면 BLOCKED로 중단한다.
+- 마일스톤·PAUSE/CONTINUE에서는 재시작하지 않는다. FocusGuard는 기존처럼 작업 종료 시점의 포커스 복구만 수행한다.
