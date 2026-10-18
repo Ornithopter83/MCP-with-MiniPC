@@ -12,6 +12,9 @@ internal sealed record WorkerMcpSession(
     string Role, string JobId, string ProjectRoot, CancellationToken Cancellation)
 {
     internal SemaphoreSlim SerialCalls { get; } = new(1, 1);
+    internal int Initialized;
+    internal int ToolsListed;
+    internal int ToolsCalled;
 }
 
 public sealed partial class BridgeServer
@@ -22,6 +25,18 @@ public sealed partial class BridgeServer
 
     internal Func<WorkerMcpSession, string, JsonElement, CancellationToken, Task<string>>?
         McpToolExecutor { get; set; }
+    // Metadata-only diagnostics. Never log bearer tokens, prompts or tool arguments.
+    internal Action<string, string>? McpActivity { get; set; }
+
+    internal static IReadOnlyList<string> CodexMcpOverrides() =>
+    [
+        "mcp_servers.projecthub.url=\"" + WorkerMcpUrl + "\"",
+        "mcp_servers.projecthub.bearer_token_env_var=\"PROJECTHUB_MCP_BEARER\"",
+        // One-shot codex exec must not silently omit a slow optional MCP server.
+        "mcp_servers.projecthub.required=true",
+        "mcp_servers.projecthub.startup_timeout_sec=15",
+        "mcp_servers.projecthub.tool_timeout_sec=720"
+    ];
 
     internal string RegisterMcpSession(
         string role, string jobId, string projectRoot, CancellationToken cancellation)
@@ -31,10 +46,18 @@ public sealed partial class BridgeServer
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         _mcpSessions[token] = new WorkerMcpSession(
             role, jobId, Path.GetFullPath(projectRoot), cancellation);
+        McpActivity?.Invoke(role, "SESSION_REGISTERED (not yet connected)");
         return token;
     }
 
-    internal void UnregisterMcpSession(string token) => _mcpSessions.TryRemove(token, out _);
+    internal void UnregisterMcpSession(string token)
+    {
+        if (!_mcpSessions.TryRemove(token, out var session)) return;
+        McpActivity?.Invoke(session.Role,
+            "SESSION_FINISHED initialized=" + (Volatile.Read(ref session.Initialized) != 0) +
+            " tools_listed=" + (Volatile.Read(ref session.ToolsListed) != 0) +
+            " tool_calls=" + Volatile.Read(ref session.ToolsCalled));
+    }
 
     private async Task HandleMcpAsync(HttpListenerContext context)
     {
@@ -86,6 +109,8 @@ public sealed partial class BridgeServer
         switch (method)
         {
             case "initialize":
+                Interlocked.Exchange(ref session.Initialized, 1);
+                McpActivity?.Invoke(session.Role, "INITIALIZED");
                 result = new
                 {
                     protocolVersion = "2025-03-26",
@@ -98,6 +123,8 @@ public sealed partial class BridgeServer
                 result = new { };
                 break;
             case "tools/list":
+                Interlocked.Exchange(ref session.ToolsListed, 1);
+                McpActivity?.Invoke(session.Role, "TOOLS_LISTED delegate_work, worker_command");
                 result = new { tools = ToolDefinitions() };
                 break;
             case "tools/call":
@@ -117,6 +144,8 @@ public sealed partial class BridgeServer
                         "Unknown tool.")).ConfigureAwait(false);
                     return;
                 }
+                Interlocked.Increment(ref session.ToolsCalled);
+                McpActivity?.Invoke(session.Role, "TOOL_STARTED " + toolName);
                 var arguments = parameters.TryGetProperty("arguments", out var input)
                     ? input : default;
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(
@@ -148,6 +177,8 @@ public sealed partial class BridgeServer
                 {
                     if (held) session.SerialCalls.Release();
                 }
+                McpActivity?.Invoke(session.Role,
+                    (failed ? "TOOL_FAILED " : "TOOL_COMPLETED ") + toolName);
                 result = new
                 {
                     content = new[] { new { type = "text", text = output } },

@@ -35,6 +35,32 @@ public sealed class WorkerMcpConfigTests
     }
 
     [Fact]
+    public void CodexOneShot_RequiresMcpReadyBeforeToolBinding()
+    {
+        var overrides = BridgeServer.CodexMcpOverrides();
+        Assert.Contains("mcp_servers.projecthub.required=true", overrides);
+        Assert.Contains("mcp_servers.projecthub.startup_timeout_sec=15", overrides);
+        Assert.Contains("mcp_servers.projecthub.tool_timeout_sec=720", overrides);
+        Assert.Contains(overrides, item => item.Contains(
+            "bearer_token_env_var", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void McpRegistration_ReportsUninitializedVsDiscoveredWithoutSecrets()
+    {
+        using var bridge = new BridgeServer();
+        var activity = new List<string>();
+        bridge.McpActivity = (role, detail) => activity.Add(role + " " + detail);
+        var token = bridge.RegisterMcpSession(
+            "DESIGN", "job", Path.GetTempPath(), CancellationToken.None);
+        bridge.UnregisterMcpSession(token);
+        Assert.Contains(activity, item => item.Contains("SESSION_REGISTERED"));
+        Assert.Contains(activity, item => item.Contains(
+            "SESSION_FINISHED initialized=False tools_listed=False tool_calls=0"));
+        Assert.DoesNotContain(activity, item => item.Contains(token, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void McpRegistration_RefusesHqAndUsesUniqueTokens()
     {
         using var bridge = new BridgeServer();

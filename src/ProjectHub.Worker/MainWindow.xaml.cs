@@ -253,6 +253,9 @@ public partial class MainWindow : Window
         {
             bridgeServer.ExtensionProgressChanged += OnExtensionProgress;
             bridgeServer.McpToolExecutor = ExecuteMcpToolAsync;
+            bridgeServer.McpActivity = (role, activity) => RunOnUi(() =>
+                AddTaskMessage("WORKER MCP " + role, activity,
+                    status: "OBSERVED", includeHistory: false));
         }
         if (managedWebRuntimeManager is not null)
             managedWebRuntimeManager.StatusChanged += OnManagedWebRuntimeStatusChanged;
@@ -2067,16 +2070,17 @@ public partial class MainWindow : Window
             if (role.ProviderKind == AiServiceProvider.OpenAI)
             {
                 codexConfigOverrides = (codexConfigOverrides ?? Array.Empty<string>())
-                    .Concat(new[]
-                    {
-                        "mcp_servers.projecthub.url=\"" + BridgeServer.WorkerMcpUrl + "\"",
-                        "mcp_servers.projecthub.bearer_token_env_var=\"PROJECTHUB_MCP_BEARER\"",
-                        "mcp_servers.projecthub.tool_timeout_sec=720"
-                    }).ToArray();
+                    .Concat(BridgeServer.CodexMcpOverrides()).ToArray();
             }
-            prompt = "역할 내부 실행 도구: projecthub.delegate_work(번호 없는 임시 WORK, " +
-                "현재 WORK 모델 설정)와 projecthub.worker_command(Worker의 상태/빌드/Unity 조회)를 " +
-                "필요할 때만 사용하라. HQ에 하위 호출을 알리거나 새 WORK 번호를 만들지 마라." +
+            prompt = "역할 내부 도구: Codex의 mcp__projecthub__delegate_work / " +
+                "mcp__projecthub__worker_command (OpenCode에서는 projecthub 도구). " +
+                "판단이 끝난 범위 확정 단순 코드·텍스트 수정은 직접 편집하기 전에 " +
+                "delegate_work(번호 없는 임시 WORK, 현재 WORK 모델 설정)를 우선 검토하고, " +
+                "여러 작은 수정을 가능하면 한 번의 명령으로 묶어 위임하라. " +
+                "설계·원인 분석·결과 검토는 부모 역할이 수행한다. " +
+                "상태 조회·재컴파일 등 기계적 명령은 worker_command를 사용하라. " +
+                "도구 연결이 실패하면 사용 불가를 명시하고 호출을 재시도하지 마라. " +
+                "HQ에 하위 호출을 알리거나 새 WORK 번호를 만들지 마라." +
                 Environment.NewLine + Environment.NewLine + prompt;
         }
 
