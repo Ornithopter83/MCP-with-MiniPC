@@ -107,11 +107,17 @@ public sealed class UnityDesignHighDirectReviewTests
     }
 
     [Fact]
-    public void DesignRequiresGraphicFilesNotJustDocumentation()
+    public void DesignAndHighOwnVisualJudgment_NoWorkerFileTypeHeuristic()
     {
-        Assert.False(UnityDesignPromptPolicy.IsVisualArtifact("docs/design.md"));
-        Assert.True(UnityDesignPromptPolicy.IsVisualArtifact("Assets/UI/Panel.prefab"));
-        Assert.True(UnityDesignPromptPolicy.IsVisualArtifact("Assets/Scripts/ThemeEffects.cs"));
+        var design = RoleContractLoader.LoadDesignFooter();
+        var high = RoleContractLoader.LoadHighFooter();
+        Assert.Contains("실제 Unity 시각 결과물", design);
+        Assert.Contains("실제 이미지 내용", design);
+        Assert.Contains("시각 요구사항", high);
+        Assert.Null(typeof(UnityDesignPromptPolicy).GetMethod("IsVisualArtifact",
+            System.Reflection.BindingFlags.Static |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic));
     }
 
     [Fact]
