@@ -264,16 +264,19 @@ public sealed partial class BridgeServer
         new
         {
             name = "worker_command",
-            description = "Execute Unity status/recompile, live-catalog or verified detailed-query Editor eval, Native Game View screenshot, or DESIGN-requested Visual Foundry generation. The specialist provides an expression and expected_result; CLI success alone is not Editor confirmation. Never launches GUI or chooses creative direction.",
+            description = "Execute Unity CLI or the optional official-API Editor bridge without GUI focus/elevation. editor_bridge_install writes an Editor script once; after Unity imports it, editor_bridge_ping checks actual responsiveness, editor_bridge_invoke calls a public static zero-argument method, and editor_bridge_menu executes a named menu item. Specialist supplies target and exact expected_result; WORK installation requires the precise bridge script path in its scope.",
             inputSchema = new
             {
                 type = "object",
                 properties = new
                 {
-                    action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "editor_eval", "native_capture", "visual_foundry" } },
+                    action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "editor_eval", "editor_bridge_install", "editor_bridge_ping", "editor_bridge_invoke", "editor_bridge_menu", "native_capture", "visual_foundry" } },
                     command = new { type = "string", description = "For unity_query only: editor_state (via CLI status), or a read-only command present in the live command_catalog." },
                     expression = new { type = "string", description = "For editor_eval: specialist-selected Editor C# expression, max 5000 characters. For a build use: return QuizStandaloneBuild.BuildQuizStandalone().summary.result.ToString();" },
-                    expected_result = new { type = "string", description = "For editor_eval: exact expected Editor-side return string; requires actual data.result, not an echoed expression." },
+                    expected_result = new { type = "string", description = "Required for editor_eval/editor_bridge_invoke/editor_bridge_menu: exact returned string (e.g. Succeeded for BuildReport, True for a menu item)." },
+                    type = new { type = "string", description = "For editor_bridge_invoke: exact C# type name, including namespace if applicable (e.g. QuizStandaloneBuild)." },
+                    method = new { type = "string", description = "For editor_bridge_invoke: public static zero-argument method name (e.g. BuildQuizStandalone)." },
+                    menu_path = new { type = "string", description = "For editor_bridge_menu: complete Unity menu item path as registered with MenuItem." },
                     style = new { type = "string", @enum = new[] { "neon", "arcane", "luxury", "playful" }, description = "For visual_foundry: explicit DESIGN-selected theme." },
                     layout = new { type = "string", @enum = new[] { "Base", "Editorial", "Immersive" }, description = "For visual_foundry: explicit DESIGN-selected layout." },
                     description = new { type = "string", description = "For visual_foundry: DESIGN's explicit brief, never interpreted for automatic activation." }

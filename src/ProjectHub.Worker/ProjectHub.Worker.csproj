@@ -30,6 +30,9 @@
     <Content Include="Assets\worker-icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <EmbeddedResource Include="Assets\ProjectHubEditorBridge.cs.txt">
+      <LogicalName>ProjectHub.Worker.Assets.ProjectHubEditorBridge.cs.txt</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="..\..\extension\gptweb-hub\manifest.json">
       <LogicalName>ProjectHub.Worker.Extension.manifest.json</LogicalName>
     </EmbeddedResource>

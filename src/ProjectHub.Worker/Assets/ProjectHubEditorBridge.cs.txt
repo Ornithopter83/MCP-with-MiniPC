@@ -1,0 +1,220 @@
+// PROJECTHUB_EDITOR_BRIDGE_V1
+// Unity Editor-only extension. Runs in the existing Editor process.
+// The local per-user queue is transport, not an elevated permission service.
+#if UNITY_EDITOR
+using System;
+using System.IO;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using UnityEditor;
+using UnityEditor.Build.Reporting;
+using UnityEngine;
+
+[InitializeOnLoad]
+internal static class ProjectHubEditorBridge
+{
+    [Serializable]
+    private sealed class Request
+    {
+        public string id;
+        public string action;
+        public string type;
+        public string method;
+        public string menu;
+        public long deadlineUtcTicks;
+    }
+
+    [Serializable]
+    private sealed class Response
+    {
+        public string id;
+        public bool success;
+        public string code;
+        public string value;
+        public string detail;
+    }
+
+    private static readonly string QueueDirectory = MakeQueueDirectory();
+    private static double _nextTick;
+
+    static ProjectHubEditorBridge()
+    {
+        // Update callbacks run on the Editor's main thread, including in the
+        // background while the Unity Editor is responsive.
+        EditorApplication.update -= Tick;
+        EditorApplication.update += Tick;
+        AssemblyReloadEvents.beforeAssemblyReload += () =>
+            EditorApplication.update -= Tick;
+    }
+
+    private static string MakeQueueDirectory()
+    {
+        string root = Directory.GetParent(Application.dataPath).FullName;
+        string canonical = Path.GetFullPath(root).Replace('\\', '/')
+            .TrimEnd('/').ToUpperInvariant();
+        byte[] hash;
+        using (var sha = SHA256.Create())
+            hash = sha.ComputeHash(Encoding.UTF8.GetBytes(canonical));
+        string key = BitConverter.ToString(hash).Replace("-", "").Substring(0, 16);
+        return Path.Combine(Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData),
+            "ProjectHub", "UnityWorker", "EditorBridge", key);
+    }
+
+    private static void Tick()
+    {
+        if (EditorApplication.timeSinceStartup < _nextTick)
+            return;
+        _nextTick = EditorApplication.timeSinceStartup + 0.2d;
+        if (EditorApplication.isCompiling || EditorApplication.isUpdating ||
+            !Directory.Exists(QueueDirectory))
+            return;
+        try
+        {
+            string[] pending = Directory.GetFiles(QueueDirectory, "*.req.json");
+            Array.Sort(pending, StringComparer.Ordinal);
+            // Never run more than one mutation per Editor update.
+            if (pending.Length > 0)
+                Process(pending[0]);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("PROJECTHUB_EDITOR_BRIDGE_QUEUE_ERROR: " +
+                e.GetType().Name + ": " + e.Message);
+        }
+    }
+
+    private static void Process(string requestPath)
+    {
+        string basename = Path.GetFileName(requestPath);
+        string id = basename.Substring(0, basename.Length - ".req.json".Length);
+        if (!Guid.TryParseExact(id, "N", out _))
+            return;
+        string active = Path.Combine(QueueDirectory, id + ".processing");
+        try { File.Move(requestPath, active); }
+        catch (IOException) { return; }
+
+        var reply = new Response
+        {
+            id = id, success = false, code = "BRIDGE_UNVERIFIED",
+            value = "", detail = ""
+        };
+        try
+        {
+            if (new FileInfo(active).Length > 128 * 1024)
+                throw new InvalidOperationException("REQUEST_TOO_LARGE");
+            var request = JsonUtility.FromJson<Request>(File.ReadAllText(active));
+            if (request == null || request.id != id)
+                throw new InvalidOperationException("REQUEST_ID_INVALID");
+            if (request.deadlineUtcTicks <= DateTime.UtcNow.Ticks)
+                throw new InvalidOperationException("REQUEST_EXPIRED_UNEXECUTED");
+            reply = Execute(request);
+        }
+        catch (Exception e)
+        {
+            reply.code = "EDITOR_COMMAND_FAILED";
+            reply.detail = e.GetType().Name + ": " + e.Message;
+        }
+
+        try
+        {
+            string target = Path.Combine(QueueDirectory, id + ".resp.json");
+            string staging = target + ".tmp";
+            File.WriteAllText(staging, JsonUtility.ToJson(reply));
+            File.Move(staging, target);
+        }
+        finally
+        {
+            try { File.Delete(active); }
+            catch (IOException) { }
+        }
+    }
+
+    private static Response Execute(Request request)
+    {
+        var reply = new Response
+        {
+            id = request.id, success = false, code = "UNKNOWN_ACTION",
+            value = "", detail = ""
+        };
+        if (request.action == "ping")
+        {
+            reply.success = true;
+            reply.code = "EDITOR_RESPONDED";
+            reply.value = Application.unityVersion;
+            reply.detail = "Editor main thread responded; project=" +
+                Directory.GetParent(Application.dataPath).FullName;
+            return reply;
+        }
+
+        if (request.action == "menu")
+        {
+            if (String.IsNullOrWhiteSpace(request.menu))
+                throw new ArgumentException("MENU_PATH_REQUIRED");
+            bool handled = EditorApplication.ExecuteMenuItem(request.menu);
+            reply.success = handled;
+            reply.code = handled ? "EDITOR_MENU_INVOKED" : "EDITOR_MENU_NOT_FOUND";
+            reply.value = handled ? "True" : "False";
+            return reply;
+        }
+        if (request.action != "invoke")
+            throw new InvalidOperationException("BRIDGE_ACTION_NOT_SUPPORTED");
+        if (String.IsNullOrWhiteSpace(request.type) ||
+            String.IsNullOrWhiteSpace(request.method))
+            throw new ArgumentException("EDITOR_TYPE_AND_METHOD_REQUIRED");
+
+        Type target = null;
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type found = assembly.GetType(request.type, false);
+            if (found == null) continue;
+            if (target != null)
+                throw new InvalidOperationException("EDITOR_TYPE_AMBIGUOUS");
+            target = found;
+        }
+        if (target == null)
+            throw new InvalidOperationException("EDITOR_TYPE_NOT_FOUND");
+
+        MethodInfo method = null;
+        foreach (MethodInfo candidate in target.GetMethods(
+            BindingFlags.Static | BindingFlags.Public))
+        {
+            if (candidate.Name != request.method ||
+                candidate.GetParameters().Length != 0 ||
+                candidate.ContainsGenericParameters)
+                continue;
+            if (method != null)
+                throw new InvalidOperationException("EDITOR_METHOD_AMBIGUOUS");
+            method = candidate;
+        }
+        if (method == null)
+            throw new InvalidOperationException("EDITOR_PUBLIC_STATIC_NOARG_METHOD_NOT_FOUND");
+
+        object result;
+        try { result = method.Invoke(null, null); }
+        catch (TargetInvocationException e)
+        {
+            throw new InvalidOperationException("EDITOR_METHOD_THREW: " +
+                (e.InnerException == null ? e.Message : e.InnerException.Message));
+        }
+
+        BuildReport build = result as BuildReport;
+        if (build != null)
+        {
+            reply.value = build.summary.result.ToString();
+            reply.detail = "BuildResult=" + reply.value + "; Errors=" +
+                build.summary.totalErrors + "; Warnings=" +
+                build.summary.totalWarnings + "; OutputPath=" +
+                build.summary.outputPath;
+        }
+        else
+        {
+            reply.value = result == null ? "VOID" : result.ToString();
+        }
+        reply.success = true; // An invoked method still needs expected-value verification.
+        reply.code = "EDITOR_METHOD_RETURNED";
+        return reply;
+    }
+}
+#endif

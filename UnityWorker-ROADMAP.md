@@ -81,7 +81,7 @@
 
 - `BUILD_SKIPPED`는 Unity 컴파일 통과를 뜻하지 않는다. Editor 또는 MCP와의 연결이 없으면 실제 플레이테스트 성공을 보고하지 않는다.
 - 연결·인증 장애는 환경 문제로 즉시 보고하며 구현 WORK를 무의미하게 반복하지 않는다.
-- Editor 기능은 Unity 공식 CLI/Pipeline/MCP를 우선 재사용하고 별도의 씬 조작 서버를 새로 만들지 않는다.
+- Editor 기능은 공식 CLI/Pipeline을 우선 재사용하되 명령 탐색 장애 시 기존 Editor 내부 공식 API를 사용하는 **옵션형 로컬 파일 큐 브리지**를 사용할 수 있다. 별도 포트·GUI Editor 프로세스·권한 상승은 만들지 않는다.
 - UnityWorker 제품 개발과 실제 Unity 게임 프로젝트의 Git 브랜치·최종화는 별개의 계약이다.
 
 ### #1 ASSET MANAGER 이전 NEW 작업 Git 경계 (UnityWorker)
@@ -123,3 +123,10 @@
 - 프로젝트별 체크포인트·이벤트는 계속 `<프로젝트 루트>\.projecthub`를, 프로젝트별 임시 산출물은 `<프로젝트 루트>\temp`를 사용한다.
 - 기존 EXE가 완전히 무관한 폴더에 보관돼 자동 검색할 수 없는 경우, 중앙 설정 폴더로 사용자가 기존 JSON 파일을 복사해야 한다.
 
+
+### 기존 Editor 직접 실행 브리지
+
+- 최초 `worker_command.editor_bridge_install`은 `Assets/Editor/ProjectHub/ProjectHubEditorBridge.cs`에 내장 스크립트를 설치한다. 이미 다른 내용이면 덮어쓰지 않는다. 기존 Editor가 자동 Import한 뒤 `editor_bridge_ping`에서 실제 메인 스레드 응답을 받아야 한다.
+- `editor_bridge_invoke`는 역할이 지정한 public static 인수 없는 메서드를 호출하고 반환값을 검증한다. `editor_bridge_menu`는 명시한 Unity 메뉴 명령만 전달한다. 명령 대상·예상 결과는 역할이 정하며 Worker가 판단하지 않는다.
+- 요청·응답은 같은 Windows 사용자 계정의 `%LOCALAPPDATA%`에 저장되며 관리자 권한 승격 및 별도 네트워크 서버는 없다. WORK의 최초 설치는 브리지 소스·.meta가 포함된 좁은 경로가 필요하다.
+- 실환경 Unity Editor 컴파일·Player BuildReport 검증이 별도로 필요하며, CI가 성공했다고 Editor의 명령 실행까지 검증된 것으로 간주하지 않는다.

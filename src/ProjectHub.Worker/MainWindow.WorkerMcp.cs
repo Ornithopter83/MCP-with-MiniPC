@@ -36,7 +36,13 @@ public partial class MainWindow
         // Read-only status/discovery should not repeatedly scan Git or
         // attribute concurrent file-only WORK edits to this MCP session.
         var action = RequiredMcpString(arguments, "action", 40);
-        if (action is not ("recompile" or "editor_eval" or "visual_foundry"))
+        if (action == "editor_bridge_install" &&
+            !session.AllowedPaths.Any(scope =>
+                MatchesMcpScope(scope, UnityEditorDirectBridge.EditorSourceRelativePath)))
+            throw new InvalidOperationException(
+                "EDITOR_BRIDGE_INSTALL_REQUIRES_EXPLICIT_SOURCE_PATH_IN_WORK_SCOPE");
+        if (action is not ("recompile" or "editor_eval" or "visual_foundry" or
+            "editor_bridge_install" or "editor_bridge_invoke" or "editor_bridge_menu"))
             return await RunWorkerMcpCommandAsync(
                 session, arguments, cancellationToken).ConfigureAwait(false);
         // Best-effort after-execution audit: not a Windows filesystem sandbox.
@@ -232,7 +238,26 @@ public partial class MainWindow
         using var editorLease = session.EditorLaneHeld ? null :
             await UnityEditorOperationGate.EnterAsync(
                 session.ProjectRoot, cancellationToken).ConfigureAwait(false);
-        if (action == "native_capture")
+        if (action == "editor_bridge_install")
+            return UnityEditorDirectBridge.Install(session.ProjectRoot);
+        if (action == "editor_bridge_ping")
+            return await UnityEditorDirectBridge.ExecuteAsync(
+                session.ProjectRoot, "ping", null, null, null, null,
+                TimeSpan.FromSeconds(8), cancellationToken).ConfigureAwait(false);
+        if (action == "editor_bridge_invoke")
+            return await UnityEditorDirectBridge.ExecuteAsync(
+                session.ProjectRoot, "invoke",
+                RequiredMcpString(arguments, "type", 250),
+                RequiredMcpString(arguments, "method", 150),
+                null, RequiredMcpString(arguments, "expected_result", 250),
+                TimeSpan.FromMinutes(10), cancellationToken).ConfigureAwait(false);
+        if (action == "editor_bridge_menu")
+            return await UnityEditorDirectBridge.ExecuteAsync(
+                session.ProjectRoot, "menu", null, null,
+                RequiredMcpString(arguments, "menu_path", 300),
+                RequiredMcpString(arguments, "expected_result", 20),
+                TimeSpan.FromMinutes(3), cancellationToken).ConfigureAwait(false);
+                if (action == "native_capture")
         {
             var plan = UnityBackgroundVisualTools.Prepare(session.ProjectRoot,
                 session.JobId, "mcp-native-" + Guid.NewGuid().ToString("N"));
