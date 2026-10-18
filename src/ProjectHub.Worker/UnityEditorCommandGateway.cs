@@ -56,10 +56,16 @@ internal static class UnityEditorCommandGateway
     internal static Task<string> ExecuteBridgeAsync(
         string root, string action,
         string? type, string? method, string? menu, string? expected,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? scenePath = null)
     {
         return action switch
         {
+            "editor_bridge_sync_scene" => UnityEditorDirectBridge.ExecuteAsync(
+                root, "sync_scene", null, null, null, null,
+                TimeSpan.FromMinutes(2), cancellationToken, scenePath),
+            "editor_bridge_refresh_assets" => UnityEditorDirectBridge.ExecuteAsync(
+                root, "refresh_assets", null, null, null, null,
+                TimeSpan.FromMinutes(2), cancellationToken),
             "editor_bridge_ping" => UnityEditorDirectBridge.ExecuteAsync(
                 root, "ping", null, null, null, null,
                 TimeSpan.FromSeconds(8), cancellationToken),

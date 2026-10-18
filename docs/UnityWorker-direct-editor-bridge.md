@@ -6,7 +6,7 @@ Unity 공식 `InitializeOnLoad`, `EditorApplication.update`, `EditorApplication.
 
 ## 설치 및 실행
 
-1. 부모 전문 역할(HIGH/DESIGN/ASSET MANAGER)에서 MCP `worker_command`에 `action=editor_bridge_install`을 호출한다. Worker는 대상 Unity 프로젝트의 `Assets/Editor/ProjectHub/ProjectHubEditorBridge.cs`에 내장된 Editor 스크립트를 **최초 한 번** 작성한다. 기존 파일의 내용이 다르면 덮어쓰지 않고 `SOURCE_CONFLICT`를 반환한다.
+1. **새 Unity 작업 접수 시 Worker가 먼저 `UnityEditorDirectBridge.Install`을 자동 수행한다.** 필요하면 부모 전문 역할이 MCP `worker_command(action=editor_bridge_install)`을 명시적으로 호출할 수도 있다. Worker는 대상 Unity 프로젝트의 `Assets/Editor/ProjectHub/ProjectHubEditorBridge.cs`에 내장된 Editor 스크립트를 **최초 한 번** 작성한다. 기존 파일의 내용이 다르면 덮어쓰지 않고 `SOURCE_CONFLICT`를 반환한다.
 2. 기존 Unity Editor가 해당 C# 파일을 **자동 Import·컴파일**하고 도메인을 다시 로드해야 한다. 사용자의 Unity Auto Refresh 설정이나 컴파일 오류에 따라 백그라운드 갱신이 늦어질 수 있다. Worker는 Editor 창을 활성화하거나 새 Editor를 실행하지 않는다.
 3. `action=editor_bridge_ping`에서 실제 Editor 메인 스레드의 `EDITOR_RESPONDED`가 반환돼야 연결 성공이다. 단순 CLI `ready`는 이 증거를 대체하지 못한다.
 4. WORK 또는 전문 역할은 `action=editor_bridge_invoke`, `type=QuizStandaloneBuild`, `method=BuildQuizStandalone`, `expected_result=Succeeded`로 기존에 컴파일된 **public static 인수 없는 메서드**를 요청할 수 있다. `BuildReport`를 반환하는 메서드는 `BuildResult`와 오류 수·출력 경로를 함께 반환한다.
@@ -42,3 +42,14 @@ Unity 공식 `InitializeOnLoad`, `EditorApplication.update`, `EditorApplication.
 - Worker가 캡처를 자동 수행하지 않는다. DESIGN/HIGH가 실제 PlayMode와 Scene 구성을 확인한 다음 `native_capture`를 직접 실행하고, 자신이 PlayMode를 시작한 경우에만 종료해 원래 상태를 복원한다.
 - 기존 브리지 설치본과 내장 수신 스크립트가 다르면 Worker는 `INSTALLED_SOURCE_CHANGED`를 반환한다. 자동 덮어쓰기·권한 상승 없이 사용자가 설치 상태를 확인해야 한다.
 - 각 브리지 호출은 `%LOCALAPPDATA%/ProjectHub/UnityWorker/editor-bridge-evidence`에 시간·응답·요청 ID를 기록한다. 응답 없이 대기 중이면 `PENDING_NOT_CLAIMED`, Editor가 가져간 뒤면 `CLAIMED_BY_EDITOR`로 진단한다. 후자에서는 자동 재시도를 하지 않는다.
+
+## 1~4단계 직접 실행 경로 (2026-10-18)
+
+1. **자동 설치·브리지 우선**: 새로운 사용자 Unity 작업 접수 시 기존 Editor 프로젝트에 수신기를 한 번 설치한다. 기존 다른 내용은 덮어쓰지 않는다. `unity_query(command=editor_state)`는 설치된 수신기의 고정 `scene_status`를 우선 실행하고, 응답이 없을 때만 비변경 CLI status로 돌아간다. `command_catalog`와 명시적 `editor_eval`은 호환성 때문에 CLI를 유지한다.
+2. **사전 컴파일 진단**: `editor_bridge_scene_status`는 임의 C# 문자열을 받지 않고 Unity Editor에 미리 컴파일된 읽기 전용 명령을 실행한다. 현재 활성/로드 씬, 루트 GameObject 이름·수, Dirty/Play/Compiling/Updating 플래그를 반환한다. 제품용 임의 스크립트를 Worker가 작성하지 않는다.
+3. **명시적 씬 동기화**: 전문 역할이 `editor_bridge_sync_scene`, `scene_path=Assets/Quiz/Scenes/QuizScene.unity`처럼 실제 활성 씬 경로를 지정한 경우에만 실행한다. 실행 전 현재 씬의 **디스크 버전**을 `Library/ProjectHub/SceneBackups`에 복사하고, **미저장 상태**는 Unity 공식 `EditorSceneManager.SaveScene(scene, backupPath, saveAsCopy: true)`로 `Assets/Editor/ProjectHub/SceneBackups/`에 별도 씬 파일을 남긴다. 백업 실패·씬 불일치·PlayMode/컴파일 중이면 재로드를 중단한다. 다른 로드된 씬을 닫지 않도록 현재 씬만 CloseScene 후 OpenScene(Additive)해 활성화한다. 백업 파일은 자동 삭제하지 않는다. 기존 Scene을 자동 재생성하거나 프로젝트 내 다른 작업자의 Dirty 상태를 저장하지 않는다.
+4. **에셋 Import 갱신**: 전문 역할이 `editor_bridge_refresh_assets`를 명시적으로 요청하면 기존 Editor에서 `AssetDatabase.Refresh(ForceSynchronousImport)` 후 위 상태를 다시 조회한다. 스크립트 갱신 때문에 도메인이 재로드되면 요청 응답이 없어질 수 있으므로 해당 실행은 `UNVERIFIED`로 남기고 자동 재실행하지 않는다.
+
+**권한 경계:** 임시 WORK가 3번을 실행하려면 `paths`에 대상 씬 파일과 `Assets/Editor/ProjectHub/SceneBackups/`를 모두 명시해야 한다. 4번은 Unity 프로젝트 Import 과정에서 자동 수정이 발생할 수 있어 변경 감사가 필요하다. 모든 동작은 기존 사용자 권한 안에서만 수행하며, 설치 성공을 실제 Editor Import 성공으로 간주하지 않는다.
+
+**실환경 상태:** 이 변경은 요청대로 Unity 실행·Windows CI·테스트 검증을 수행하지 않은 구현이다. 실제 동작 여부는 다음 사용 시 확인해야 한다.

@@ -13,8 +13,6 @@ namespace ProjectHub.Worker;
 /// </summary>
 internal static class UnityEditorDirectBridge
 {
-    private const string ResourceName =
-        "ProjectHub.Worker.Assets.ProjectHubEditorBridge.cs.txt";
     internal const string EditorSourceRelativePath =
         "Assets/Editor/ProjectHub/ProjectHubEditorBridge.cs";
     private const string Marker = "// PROJECTHUB_EDITOR_BRIDGE_V1";
@@ -67,7 +65,8 @@ internal static class UnityEditorDirectBridge
 
     internal static async Task<string> ExecuteAsync(string root, string action,
         string? type, string? method, string? menu, string? expected,
-        TimeSpan timeout, CancellationToken cancellationToken)
+        TimeSpan timeout, CancellationToken cancellationToken,
+        string? scenePath = null)
     {
         var installed = EditorSourcePath(root);
         if (!File.Exists(installed))
@@ -77,15 +76,20 @@ internal static class UnityEditorDirectBridge
             StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "EDITOR_BRIDGE_INSTALLED_SOURCE_CHANGED: do not run an unknown script");
-        if (action is not ("ping" or "scene_status" or "invoke" or "menu"))
+        if (action is not ("ping" or "scene_status" or "sync_scene" or
+            "refresh_assets" or "invoke" or "menu"))
             throw new ArgumentException("EDITOR_BRIDGE_ACTION_INVALID", nameof(action));
         if (action == "invoke" &&
             (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(method)))
             throw new ArgumentException("EDITOR_BRIDGE_METHOD_REQUIRED");
         if (action == "menu" && string.IsNullOrWhiteSpace(menu))
             throw new ArgumentException("EDITOR_BRIDGE_MENU_REQUIRED");
-        if (action is not ("ping" or "scene_status") && string.IsNullOrWhiteSpace(expected))
+        if (action is "invoke" or "menu" && string.IsNullOrWhiteSpace(expected))
             throw new ArgumentException("EDITOR_BRIDGE_EXPECTED_RESULT_REQUIRED");
+        if (action == "sync_scene" &&
+            (string.IsNullOrWhiteSpace(scenePath) || scenePath.Length > 300 ||
+             !IsValidScenePath(scenePath)))
+            throw new ArgumentException("EDITOR_BRIDGE_SCENE_PATH_REQUIRED", nameof(scenePath));
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromMinutes(10))
             throw new ArgumentOutOfRangeException(nameof(timeout));
 
@@ -100,7 +104,7 @@ internal static class UnityEditorDirectBridge
         var request = JsonSerializer.Serialize(new
         {
             id, action, type = type ?? "", method = method ?? "", menu = menu ?? "",
-            deadlineUtcTicks = deadline.Ticks
+            scene = scenePath ?? "", deadlineUtcTicks = deadline.Ticks
         });
         try
         {
@@ -196,6 +200,21 @@ internal static class UnityEditorDirectBridge
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
             or ArgumentException) { }
     }
+
+    internal static bool IsValidScenePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            value.Length > 300 || value.Contains('\\') ||
+            value.Contains(':') || value.Contains("//", StringComparison.Ordinal) ||
+            value.Split('/').Any(x => x is "." or ".."))
+            return false;
+        return value.StartsWith("Assets/", StringComparison.Ordinal) &&
+            value.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) &&
+            value.Split('/').Length >= 3;
+    }
+
+    internal const string DirtySceneBackupScope =
+        "Assets/Editor/ProjectHub/SceneBackups/";
 
     private static void TryDelete(string file)
     {

@@ -156,6 +156,30 @@ public partial class MainWindow
                         "NEW_TASK_GIT_PREFLIGHT_BLOCKED: " + newTaskGit.Summary);
             }
 
+            // One-time idempotent bootstrap: place the approved Editor-only
+            // receiver in the selected project before dispatching model roles.
+            // The running Editor imports it on its own refresh cycle; writing
+            // the file does NOT count as a connected or compiled bridge.
+            if (UnityCliBuildRunner.IsUnityProject(normalizedRoot))
+            {
+                try
+                {
+                    var installed = UnityEditorDirectBridge.Install(normalizedRoot);
+                    AddTaskMessage("UNITY DIRECT BRIDGE BOOTSTRAP", installed,
+                        status: "OBSERVED");
+                }
+                catch (Exception ex) when (ex is IOException or
+                    UnauthorizedAccessException or InvalidOperationException)
+                {
+                    // Never overwrite an existing user-edited receiver.
+                    // Keep verified CLI eval available for this task.
+                    AddTaskMessage("UNITY DIRECT BRIDGE BOOTSTRAP",
+                        "INSTALL_UNVERIFIED: " + ex.Message +
+                        "; existing CLI execution remains available",
+                        status: "UNVERIFIED");
+                }
+            }
+
             // New commands and resumed/added user commands are the only
             // events allowed to open Unity. Ordinary milestone iteration never
             // starts another Editor. An already running project's lock is honored.

@@ -15,7 +15,9 @@ using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 [InitializeOnLoad]
 internal static class ProjectHubEditorBridge
@@ -28,6 +30,7 @@ internal static class ProjectHubEditorBridge
         public string type;
         public string method;
         public string menu;
+        public string scene;
         public long deadlineUtcTicks;
     }
 
@@ -145,35 +148,11 @@ internal static class ProjectHubEditorBridge
             value = "", detail = ""
         };
         if (request.action == "scene_status")
-        {
-            var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            var sceneInfo = new StringBuilder();
-            var rootTotal = 0;
-            for (var index = 0; index <
-                 UnityEngine.SceneManagement.SceneManager.sceneCount; index++)
-            {
-                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(index);
-                if (!scene.isLoaded) continue;
-                var roots = scene.GetRootGameObjects();
-                rootTotal += roots.Length;
-                sceneInfo.Append(" [").Append(scene.name).Append(" path=")
-                    .Append(scene.path).Append(" roots=").Append(roots.Length)
-                    .Append(" names=");
-                foreach (var item in roots)
-                    sceneInfo.Append(item.name).Append(",");
-                sceneInfo.Append("]");
-            }
-            reply.success = true;
-            reply.code = "EDITOR_SCENE_STATE";
-            reply.value = "ACTIVE=" + activeScene.path +
-                ";ACTIVE_ROOTS=" + (activeScene.isLoaded ?
-                    activeScene.GetRootGameObjects().Length : -1) +
-                ";LOADED_ROOTS=" + rootTotal +
-                ";PLAYING=" + UnityEditor.EditorApplication.isPlaying +
-                ";COMPILING=" + UnityEditor.EditorApplication.isCompiling;
-            reply.detail = sceneInfo.ToString();
-            return reply;
-        }
+            return ReadSceneStatus(reply);
+        if (request.action == "sync_scene")
+            return ReloadActiveSceneWithBackup(reply, request.scene);
+        if (request.action == "refresh_assets")
+            return RefreshAndInspectAssets(reply);
         if (request.action == "ping")
         {
             reply.success = true;
@@ -252,6 +231,132 @@ internal static class ProjectHubEditorBridge
         reply.code = "EDITOR_METHOD_RETURNED";
         return reply;
     }
+    private static Response ReadSceneStatus(Response reply)
+    {
+        Scene active = SceneManager.GetActiveScene();
+        var detail = new StringBuilder();
+        var total = 0;
+        for (int i = 0; i < SceneManager.sceneCount; i++)
+        {
+            Scene scene = SceneManager.GetSceneAt(i);
+            if (!scene.isLoaded) continue;
+            var roots = scene.GetRootGameObjects();
+            total += roots.Length;
+            detail.Append("[scene=").Append(scene.path)
+                .Append(";loaded=").Append(scene.isLoaded)
+                .Append(";dirty=").Append(scene.isDirty)
+                .Append(";roots=").Append(roots.Length).Append(";names=");
+            foreach (var root in roots)
+                detail.Append(root.name).Append(",");
+            detail.Append("] ");
+        }
+        reply.success = true;
+        reply.code = "EDITOR_SCENE_STATE";
+        reply.value = "ACTIVE=" + active.path +
+            ";ACTIVE_LOADED=" + active.isLoaded +
+            ";ACTIVE_DIRTY=" + (active.IsValid() && active.isLoaded && active.isDirty) +
+            ";ACTIVE_ROOTS=" + (active.IsValid() && active.isLoaded
+                ? active.GetRootGameObjects().Length : -1) +
+            ";LOADED_ROOTS=" + total +
+            ";PLAYING=" + EditorApplication.isPlaying +
+            ";COMPILING=" + EditorApplication.isCompiling +
+            ";UPDATING=" + EditorApplication.isUpdating;
+        reply.detail = detail.ToString();
+        return reply;
+    }
+
+    private static string ResolveScenePath(string relative)
+    {
+        if (String.IsNullOrWhiteSpace(relative) ||
+            !relative.StartsWith("Assets/", StringComparison.Ordinal) ||
+            !relative.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
+            relative.Contains("\\") || relative.Contains("..") ||
+            Path.IsPathRooted(relative) || relative.Contains(":"))
+            throw new InvalidOperationException("SYNC_SCENE_PATH_NOT_ALLOWED");
+        string root = Directory.GetParent(Application.dataPath).FullName;
+        string full = Path.GetFullPath(Path.Combine(root, relative));
+        string assets = Path.GetFullPath(Application.dataPath) +
+            Path.DirectorySeparatorChar;
+        if (!full.StartsWith(assets, StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(full))
+            throw new InvalidOperationException("SYNC_SCENE_FILE_MISSING_OR_OUTSIDE_ASSETS");
+        return full;
+    }
+
+    private static Response ReloadActiveSceneWithBackup(Response reply, string requestedScene)
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode ||
+            EditorApplication.isCompiling || EditorApplication.isUpdating)
+            throw new InvalidOperationException("SYNC_SCENE_BUSY_EDITOR");
+        var file = ResolveScenePath(requestedScene);
+        Scene old = SceneManager.GetActiveScene();
+        if (!old.IsValid() || !old.isLoaded ||
+            !String.Equals(old.path, requestedScene, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "SYNC_SCENE_NOT_ACTIVE: " + old.path);
+        // The original on-disk version is always snapshotted outside Assets
+        // before touching the in-memory scene.
+        string project = Directory.GetParent(Application.dataPath).FullName;
+        string backupFolder = Path.Combine(project, "Library", "ProjectHub",
+            "SceneBackups");
+        Directory.CreateDirectory(backupFolder);
+        string unique = DateTime.UtcNow.ToString("yyyyMMddTHHmmssfff") +
+            "-" + Guid.NewGuid().ToString("N");
+        string diskBackup = Path.Combine(backupFolder, unique + ".unity");
+        File.Copy(file, diskBackup, false);
+
+        string dirtyBackup = "NONE";
+        if (old.isDirty)
+        {
+            // Unity SaveScene requires an Assets-relative destination.
+            // SaveAsCopy keeps the original Scene path and does not accept
+            // the pending changes as an implicit save of that original.
+            const string baseFolder = "Assets/Editor/ProjectHub/SceneBackups";
+            Directory.CreateDirectory(Path.Combine(project,
+                baseFolder.Replace('/', Path.DirectorySeparatorChar)));
+            dirtyBackup = baseFolder + "/" + unique + ".unity";
+            if (!EditorSceneManager.SaveScene(old, dirtyBackup, true) ||
+                !File.Exists(Path.Combine(project,
+                    dirtyBackup.Replace('/', Path.DirectorySeparatorChar))))
+                throw new InvalidOperationException(
+                    "SYNC_SCENE_DIRTY_BACKUP_FAILED: aborting without reload");
+        }
+
+        // Do not call OpenSceneMode.Single: it can discard other loaded
+        // scenes and their unrelated unsaved state.
+        if (!EditorSceneManager.CloseScene(old, true))
+            throw new InvalidOperationException("SYNC_SCENE_CLOSE_FAILED");
+        Scene reopened = EditorSceneManager.OpenScene(
+            requestedScene, OpenSceneMode.Additive);
+        if (!reopened.IsValid() || !reopened.isLoaded ||
+            !SceneManager.SetActiveScene(reopened))
+            throw new InvalidOperationException(
+                "SYNC_SCENE_REOPEN_FAILED: diskBackup=" + diskBackup +
+                "; dirtyBackup=" + dirtyBackup);
+
+        reply = ReadSceneStatus(reply);
+        reply.code = "EDITOR_SCENE_RELOADED_FROM_DISK";
+        reply.detail = "DISK_BACKUP=" + diskBackup +
+            ";DIRTY_BACKUP=" + dirtyBackup + "; " + reply.detail;
+        return reply;
+    }
+
+    private static Response RefreshAndInspectAssets(Response reply)
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode ||
+            EditorApplication.isCompiling || EditorApplication.isUpdating)
+            throw new InvalidOperationException("REFRESH_ASSETS_BUSY_EDITOR");
+        // May trigger an Editor domain reload on changed scripts. Such a
+        // request is UNVERIFIED if no final response is received.
+        AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        reply = ReadSceneStatus(reply);
+        reply.code = "EDITOR_ASSET_REFRESH_RETURNED";
+        reply.detail = "IMPORT_OR_COMPILE_MAY_CONTINUE_AFTER_RETURN; " +
+            reply.detail;
+        return reply;
+    }
+
+
 }
 #endif
 """;

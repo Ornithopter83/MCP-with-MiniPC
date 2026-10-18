@@ -41,8 +41,20 @@ public partial class MainWindow
                 MatchesMcpScope(scope, UnityEditorDirectBridge.EditorSourceRelativePath)))
             throw new InvalidOperationException(
                 "EDITOR_BRIDGE_INSTALL_REQUIRES_EXPLICIT_SOURCE_PATH_IN_WORK_SCOPE");
+        if (action == "editor_bridge_sync_scene")
+        {
+            var target = RequiredMcpString(arguments, "scene_path", 300);
+            if (!UnityEditorDirectBridge.IsValidScenePath(target) ||
+                !session.AllowedPaths.Any(scope => MatchesMcpScope(scope, target)) ||
+                !session.AllowedPaths.Any(scope => MatchesMcpScope(scope,
+                    UnityEditorDirectBridge.DirtySceneBackupScope +
+                    "backup.unity")))
+                throw new InvalidOperationException(
+                    "SYNC_SCENE_WORK_REQUIRES_SCENE_AND_BACKUP_WRITE_SCOPES");
+        }
         if (action is not ("recompile" or "editor_eval" or "visual_foundry" or
-            "editor_bridge_install" or "editor_bridge_invoke" or "editor_bridge_menu"))
+            "editor_bridge_install" or "editor_bridge_invoke" or "editor_bridge_menu" or
+            "editor_bridge_sync_scene" or "editor_bridge_refresh_assets"))
             return await RunWorkerMcpCommandAsync(
                 session, arguments, cancellationToken).ConfigureAwait(false);
         // Best-effort after-execution audit: not a Windows filesystem sandbox.
@@ -247,6 +259,7 @@ public partial class MainWindow
         if (action == "editor_bridge_install")
             return UnityEditorDirectBridge.Install(session.ProjectRoot);
         if (action is "editor_bridge_ping" or "editor_bridge_scene_status" or
+            "editor_bridge_sync_scene" or "editor_bridge_refresh_assets" or
             "editor_bridge_invoke" or "editor_bridge_menu")
             return await UnityEditorCommandGateway.ExecuteBridgeAsync(
                 session.ProjectRoot, action,
@@ -258,7 +271,10 @@ public partial class MainWindow
                     ? RequiredMcpString(arguments, "menu_path", 300) : null,
                 action is "editor_bridge_menu" or "editor_bridge_invoke"
                     ? RequiredMcpString(arguments, "expected_result", 250) : null,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                action == "editor_bridge_sync_scene"
+                    ? RequiredMcpString(arguments, "scene_path", 300) : null)
+                .ConfigureAwait(false);
         if (action == "native_capture")
         {
             var plan = UnityBackgroundVisualTools.Prepare(session.ProjectRoot,
@@ -310,6 +326,32 @@ public partial class MainWindow
                 "; " + MilestoneDefinitionContract.Limit(result.Summary, 2000);
         }
 
+        // Read-only Editor diagnostics prefer a direct, precompiled command.
+        // Only an unavailable bridge may fall back to the existing CLI status.
+        if (action == "unity_query" &&
+            RequiredMcpString(arguments, "command", 60) == "editor_state")
+        {
+            if (File.Exists(UnityEditorDirectBridge.EditorSourcePath(session.ProjectRoot)))
+            {
+                try
+                {
+                    return await UnityEditorCommandGateway.ExecuteBridgeAsync(
+                        session.ProjectRoot, "editor_bridge_scene_status",
+                        null, null, null, null, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is TimeoutException or
+                    InvalidOperationException or IOException)
+                {
+                    return "EDITOR_BRIDGE_UNVERIFIED: " +
+                        MilestoneDefinitionContract.Limit(ex.Message, 1200) +
+                        Environment.NewLine + await RunStatusCommandAsync(
+                            session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            return await RunStatusCommandAsync(session.ProjectRoot,
+                cancellationToken).ConfigureAwait(false);
+        }
         if (action == "command_catalog" || action == "unity_query" ||
             action == "editor_eval")
         {
@@ -332,13 +374,6 @@ public partial class MainWindow
                     RequiredMcpString(arguments, "expected_result", 250),
                     cancellationToken).ConfigureAwait(false);
             var name = RequiredMcpString(arguments, "command", 60);
-            if (name == "editor_state")
-            {
-                // editor_state is a logical status request, not a guessed
-                // Editor command; route it to the verified CLI status API.
-                return await RunStatusCommandAsync(session.ProjectRoot,
-                    cancellationToken).ConfigureAwait(false);
-            }
             if (name is not ("console" or "list_open_scenes" or
                 "get_scene_hierarchy" or "recompile_status"))
                 throw new ArgumentException("UNITY_COMMAND_NOT_ALLOWLISTED");

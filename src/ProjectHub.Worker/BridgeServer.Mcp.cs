@@ -264,19 +264,20 @@ public sealed partial class BridgeServer
         new
         {
             name = "worker_command",
-            description = "Execute Unity CLI or the optional official-API Editor bridge without GUI focus/elevation. editor_bridge_install writes an Editor script once; after Unity imports it, editor_bridge_ping checks actual responsiveness, editor_bridge_invoke calls a public static zero-argument method, and editor_bridge_menu executes a named menu item. Specialist supplies target and exact expected_result; WORK installation requires the precise bridge script path in its scope.",
+            description = "Execute Editor operations through the existing Editor's precompiled official-API bridge by default; initial project bootstrap auto-installs the receiver without GUI focus or elevation. scene_status inspects loaded scenes; sync_scene backs up the current active scene and reloads it from disk (requires explicitly scoped scene and backup paths for WORK); refresh_assets performs AssetDatabase.Refresh then reports import/scene state. Legacy arbitrary editor_eval uses verified CLI only; no guessed fallback for uncertain mutations.",
             inputSchema = new
             {
                 type = "object",
                 properties = new
                 {
-                    action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "editor_eval", "editor_bridge_install", "editor_bridge_ping", "editor_bridge_scene_status", "editor_bridge_invoke", "editor_bridge_menu", "native_capture", "visual_foundry" } },
+                    action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "editor_eval", "editor_bridge_install", "editor_bridge_ping", "editor_bridge_scene_status", "editor_bridge_sync_scene", "editor_bridge_refresh_assets", "editor_bridge_invoke", "editor_bridge_menu", "native_capture", "visual_foundry" } },
                     command = new { type = "string", description = "For unity_query only: editor_state (via CLI status), or a read-only command present in the live command_catalog." },
                     expression = new { type = "string", description = "For editor_eval: specialist-selected Editor C# expression, max 5000 characters. For a build use: return QuizStandaloneBuild.BuildQuizStandalone().summary.result.ToString();" },
                     expected_result = new { type = "string", description = "Required for editor_eval/editor_bridge_invoke/editor_bridge_menu: exact returned string (e.g. Succeeded for BuildReport, True for a menu item)." },
                     type = new { type = "string", description = "For editor_bridge_invoke: exact C# type name, including namespace if applicable (e.g. QuizStandaloneBuild)." },
                     method = new { type = "string", description = "For editor_bridge_invoke: public static zero-argument method name (e.g. BuildQuizStandalone)." },
                     menu_path = new { type = "string", description = "For editor_bridge_menu: complete Unity menu item path as registered with MenuItem." },
+                    scene_path = new { type = "string", description = "For editor_bridge_sync_scene only: exact currently ACTIVE Assets/.../*.unity path. Requires disk snapshot and, if dirty, a SaveAsCopy scene backup before reloading. This can discard current in-memory changes after backup; never call merely to inspect state." },
                     style = new { type = "string", @enum = new[] { "neon", "arcane", "luxury", "playful" }, description = "For visual_foundry: explicit DESIGN-selected theme." },
                     layout = new { type = "string", @enum = new[] { "Base", "Editorial", "Immersive" }, description = "For visual_foundry: explicit DESIGN-selected layout." },
                     description = new { type = "string", description = "For visual_foundry: DESIGN's explicit brief, never interpreted for automatic activation." }
