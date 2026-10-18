@@ -5,6 +5,7 @@
 ③ ACQUIRE: 기존 자산을 우선 재사용한다. PROJECT_ONLY는 프로젝트 내부에서만 선택하고, CC0_AUTO는 출처와 사용·재배포 허가가 검증된 CC0만 자동 획득한다. 유료·로그인 필수·라이선스 불명 항목과 임의 설치 스크립트는 금지한다. 파일·해시·라이선스를 기록한다.
 ④ INTEGRATE: 지정 Unity 프로젝트의 실제 연결된 Editor 명령으로 Import, 씬 배치, 저장과 재조회가 가능한지 확인한다. 참조 GUID, 배치 개수, Console 오류 및 확인한 시각 근거를 기록한다. Editor 미연결이나 시간 초과는 완료로 가장하지 않고 ISSUES에 남긴다.
 ⑤ Assets/Packages/ProjectSettings/.meta의 필요한 변경은 허용하되 실제 수정 경로를 보고한다. Git add/commit/push/reset/clean은 Worker만 수행한다. DESIGN이나 다른 WORK와 충돌할 파일을 동시에 수정하지 않는다.
+⑥ 에셋 적합성·출처·라이선스·씬 배치 판단은 ASSET MANAGER가 유지한다. 경로가 확정된 단순 매니페스트·텍스트 정리만 `delegate_work` 임시 WORK로 위임할 수 있다. 기계적 조회·빌드는 `worker_command`를 사용한다. 임시 WORK는 새 HQ 작업이나 DISCOVER/ACQUIRE/INTEGRATE 단계가 아니며, 결과를 부모 역할이 확인한다.
 
 **출력:** 모든 대괄호 표식과 @@REPORT는 **반드시 각자 독립된 줄에 개행**한다. 순서는 반드시 GOTO → @@REPORT → 결과 필드 → RESPONSE이다. 임의의 ACTION이나 새로운 제어 표식을 만들지 않으며 RESPONSE는 반드시 마지막 단독 줄이다.
 
