@@ -386,7 +386,7 @@ public partial class MainWindow
                     // task. Only a reliably decoded, near-empty rendered frame
                     // justifies an additional model turn. No blind retry on CLI
                     // failure or unverified/missing screenshots.
-                    if (foundryPlan is not null &&
+                    if (run.ExitCode == 0 && foundryPlan is not null &&
                         pixelAudit is { Readable: true, FlatFrame: true })
                     {
                         AddTaskMessage("UNITY VISUAL FOUNDRY POLISH",
@@ -410,7 +410,8 @@ public partial class MainWindow
                             workingDirectory, null, null, cancellationToken,
                             CodexSandboxMode.WorkspaceWrite,
                             historyWorkItemId: "0",
-                            historyReferenceId: designReference + ":POLISH");
+                            historyReferenceId: designReference + ":POLISH",
+                            polishOnly: true);
                         var polished = RoleTextProtocol.ParseWork(polish.FinalMessage);
                         if (polish.ExitCode == 0 && polished.IsValid &&
                             polished.Status == "completed")

@@ -15,6 +15,7 @@ internal sealed record WorkerMcpSession(
     internal int Initialized;
     internal int ToolsListed;
     internal int ToolsCalled;
+    internal int SuccessfulDelegations;
 }
 
 public sealed partial class BridgeServer
@@ -56,8 +57,14 @@ public sealed partial class BridgeServer
         McpActivity?.Invoke(session.Role,
             "SESSION_FINISHED initialized=" + (Volatile.Read(ref session.Initialized) != 0) +
             " tools_listed=" + (Volatile.Read(ref session.ToolsListed) != 0) +
-            " tool_calls=" + Volatile.Read(ref session.ToolsCalled));
+            " tool_calls=" + Volatile.Read(ref session.ToolsCalled) +
+            " delegate_work_completed=" + Volatile.Read(ref session.SuccessfulDelegations));
     }
+
+    internal int SuccessfulDelegationCount(string token) =>
+        _mcpSessions.TryGetValue(token, out var session)
+            ? Volatile.Read(ref session.SuccessfulDelegations)
+            : 0;
 
     private async Task HandleMcpAsync(HttpListenerContext context)
     {
@@ -116,7 +123,7 @@ public sealed partial class BridgeServer
                     protocolVersion = "2025-03-26",
                     capabilities = new { tools = new { listChanged = false } },
                     serverInfo = new { name = "projecthub-unity-worker", version = "1.0.0" },
-                    instructions = "Use delegate_work only for bounded edits. Use worker_command for Unity status, compile, and permitted read-only commands. These calls are internal to the current specialist role."
+                    instructions = "MANDATORY: Every specialist role must first call delegate_work for one bounded mechanical or implementation task and wait for success. Specialist judgment stays in the parent role. Direct parent edits are allowed only to polish or integrate a successful WORK result. Use worker_command for Unity status, compile, and permitted read-only commands. No HQ task number is created."
                 };
                 break;
             case "ping":
@@ -177,6 +184,8 @@ public sealed partial class BridgeServer
                 {
                     if (held) session.SerialCalls.Release();
                 }
+                if (!failed && toolName == "delegate_work")
+                    Interlocked.Increment(ref session.SuccessfulDelegations);
                 McpActivity?.Invoke(session.Role,
                     (failed ? "TOOL_FAILED " : "TOOL_COMPLETED ") + toolName);
                 result = new
@@ -203,7 +212,7 @@ public sealed partial class BridgeServer
         new
         {
             name = "delegate_work",
-            description = "Run one short, bounded temporary WORK using the WORK role's configured provider, model and reasoning. No HQ WORK number or checkpoint; result returns to this specialist.",
+            description = "MANDATORY for DESIGN, HIGH and ASSET MANAGER: delegate one bounded implementation or read-only mechanical task before parent finalization. Uses the configured WORK provider/model/reasoning. No HQ WORK number; returns to caller.",
             inputSchema = new
             {
                 type = "object",

@@ -1856,7 +1856,8 @@ public partial class MainWindow : Window
         Action<string>? sessionStarted = null,
         IReadOnlyList<AiInputAttachment>? inputAttachments = null,
         string? historyWorkItemId = null,
-        string? historyReferenceId = null)
+        string? historyReferenceId = null,
+        bool polishOnly = false)
     {
         var started = DateTimeOffset.UtcNow;
         // #1 ASSET MANAGER is an independent role, but must run with
@@ -2072,19 +2073,31 @@ public partial class MainWindow : Window
                 codexConfigOverrides = (codexConfigOverrides ?? Array.Empty<string>())
                     .Concat(BridgeServer.CodexMcpOverrides()).ToArray();
             }
-            prompt = "역할 내부 도구: Codex의 mcp__projecthub__delegate_work / " +
-                "mcp__projecthub__worker_command (OpenCode에서는 projecthub 도구). " +
-                "판단이 끝난 범위 확정 단순 코드·텍스트 수정은 직접 편집하기 전에 " +
-                "delegate_work(번호 없는 임시 WORK, 현재 WORK 모델 설정)를 우선 검토하고, " +
-                "여러 작은 수정을 가능하면 한 번의 명령으로 묶어 위임하라. " +
-                "설계·원인 분석·결과 검토는 부모 역할이 수행한다. " +
-                "상태 조회·재컴파일 등 기계적 명령은 worker_command를 사용하라. " +
-                "도구 연결이 실패하면 사용 불가를 명시하고 호출을 재시도하지 마라. " +
-                "HQ에 하위 호출을 알리거나 새 WORK 번호를 만들지 마라." +
+            prompt = polishOnly
+                ? "이 호출은 앞선 임시 WORK 완료 후의 DESIGN 보정 전용이다. " +
+                  "새 작업을 직접 제작하지 말고 WORK 산출물의 문제만 다듬어라. " +
+                  "판단은 DESIGN이 유지하고, HQ에 새 역할을 알리지 마라." +
+                  Environment.NewLine + Environment.NewLine + prompt
+                : "실험 강제 규칙: 부모 역할(ASSET MANAGER·DESIGN·HIGH)은 " +
+                  "분석·작업 범위 설정·판단을 담당한다. 실제 작업(읽기 전용 " +
+                  "기계적 조사, 파일 제작·수정·반복 변환 포함)은 반드시 " +
+                  "MCP projecthub.delegate_work(코덱스 도구명 " +
+                  "mcp__projecthub__delegate_work)를 먼저 호출해 임시 WORK에 시켜라. " +
+                  "작업 내용·최대 5개 허용 경로·완료 조건을 명확히 전달하고 " +
+                  "성공 결과를 확인하라. 자잘한 여러 작업은 가능한 한 묶어라. " +
+                  "WORK 성공 전 부모의 직접 제작·파일 수정 금지. 성공 후에는 " +
+                  "부모 역할이 검토하여 마무리 보정만 직접 할 수 있다. " +
+                  "기계적 Unity 상태·빌드는 projecthub.worker_command로 처리하라. " +
+                  "WORK가 실패하거나 MCP 도구가 없다면 직접 수행하지 말고 " +
+                  "BLOCKED로 보고하라. Worker는 완료 전 실제 WORK 성공을 확인하며, " +
+                  "호출하지 않으면 완료를 거부한다. " +
+                  "HQ에 하위 호출이나 임시 WORK 번호를 주입하지 마라." +
+                  Environment.NewLine + Environment.NewLine + prompt;
                 Environment.NewLine + Environment.NewLine + prompt;
         }
 
         AiRoleRunResult result;
+        var successfulDelegations = 0;
         try
         {
             result = await runner.RunAsync(new AiRoleRunRequest(
@@ -2102,6 +2115,9 @@ public partial class MainWindow : Window
                 CodexConfigOverrides: codexConfigOverrides,
                 BypassHookTrust: bypassHookTrust,
                 BuildExecutionAllowed: roleName != "WORK"));
+            if (activeMcpToken is not null)
+                successfulDelegations = _bridgeServer?.SuccessfulDelegationCount(
+                    activeMcpToken) ?? 0;
         }
         catch
         {
@@ -2113,6 +2129,16 @@ public partial class MainWindow : Window
             if (activeMcpToken is not null)
                 _bridgeServer?.UnregisterMcpSession(activeMcpToken);
         }
+        var requireDelegation = activeMcpToken is not null && !polishOnly;
+        result = SpecialistDelegationPolicy.Enforce(
+            result, requireDelegation, successfulDelegations);
+        if (requireDelegation && result.ExitCode != 0 && successfulDelegations == 0)
+            RunOnUi(() => AddTaskMessage(
+                "WORKER MCP " + (assetManagerPurpose ? "ASSET_MANAGER" :
+                    designPurpose ? "DESIGN" : "HIGH"),
+                "DELEGATION_UNVERIFIED · 성공한 임시 WORK 호출 없음. " +
+                "원래 역할은 직접 대행할 수 없으며 완료로 판정하지 않습니다.",
+                status: "BLOCKED", includeHistory: false));
         // Delivery is established by the recipient AI's successful reply,
         // NOT by WORK/HIGH report formatting. Invalid reports are recovered
         // separately and must not cause a user message to be sent twice.

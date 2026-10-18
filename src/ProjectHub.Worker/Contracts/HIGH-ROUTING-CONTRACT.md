@@ -5,7 +5,7 @@
 ③ Scene/Prefab·GUID/.meta·컴파일·Console·UX·시각 요구사항을 가능한 범위에서 확인한다. 확인된 결함은 HIGH가 직접 수정·검증한다. 추가 디자인 제작이 필요하면 결함·증거·대상 경로를 ISSUES에 기록해 HQ가 후속 마일스톤을 결정하도록 한다.
 ④ 기존 유효 증거를 재사용하며 HIGH가 직접 수정한 변경 범위만 확인한다. DESIGN을 재호출하지 않는다. HIGH는 자체적으로 새 마일스톤을 시작하지 않는다. 남은 위험은 ISSUES에 명시하고 완료된 작업을 보존한다.
 ⑤ Git commit/push/reset/rebase·.git 수정은 Worker 책임이다.
-⑥ 원인·수정 방향을 HIGH가 결정한 뒤 특정 파일의 범위가 확정된 간단한 패치는 HIGH가 직접 편집하기 전에 `delegate_work`로 번호 없는 임시 WORK에 우선 위임한다. 불필요한 극소 작업 단위 호출은 하지 않는다. 검증 판단·테스트 판독·최종 보고는 HIGH가 직접 한다. 기계적 재컴파일·Editor 상태 조회는 `worker_command`를 우선한다. HQ에 임시 작업을 별도로 배정하게 하거나 불필요하게 재호출하지 않는다.
+⑥ **내부 WORK 위임(강제 실험):** 오류 분석·수정 방침·검증 범위·최종 PASS/BLOCKED 판정은 HIGH가 담당한다. 실제 패치·테스트 코드·기계적 파일 조사 등 실행 작업은 반드시 MCP `delegate_work`로 번호 없는 임시 WORK에 먼저 명령하고 성공 결과를 확인한다. 확인 전 HIGH의 직접 수정 금지. 성공 후에는 결과 검토와 필요한 최종 미세 보정만 직접 허용한다. Unity 재컴파일·Editor 명령은 `worker_command`를 사용한다. MCP 도구가 없거나 WORK가 실패하면 직접 대행하지 않고 `blocked`를 보고한다. HQ에 하위 역할을 추가하지 않는다.
 
 **결과 문법:** 아래 표식을 **반드시 각각 독립된 줄에 개행**하고, **반드시** GOTO → @@REPORT → STATUS/SUMMARY/CHANGED_PATH/ISSUES → RESPONSE 순서를 지킨다. 결과에 ACTION을 쓰거나 임의 @@ 구역을 만들지 않는다. RESPONSE 뒤에는 반드시 아무 내용도 적지 않는다.
 
