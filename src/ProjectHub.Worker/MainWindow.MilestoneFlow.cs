@@ -102,8 +102,7 @@ public partial class MainWindow
         // Foreground window protection spans preflight, DESIGN, WORK, CLI
         // recompilation and HIGH; a Codex command hook cannot intercept an
         // already-running Editor promoting its own native window.
-        using var unityFocusGuard = UnityBackgroundFocusGuard.Start(normalizedRoot,
-            new System.Windows.Interop.WindowInteropHelper(this).Handle);
+        using var unityFocusGuard = UnityBackgroundFocusGuard.Start(normalizedRoot);
         UnityEditorRecoverySupervisor? editorRecoverySupervisor = null;
         if (!unityFocusGuard.Available)
             AddTaskMessage("UNITY BACKGROUND GUARD",
