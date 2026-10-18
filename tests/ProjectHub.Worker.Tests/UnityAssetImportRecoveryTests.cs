@@ -189,7 +189,7 @@ public sealed class UnityAssetImportRecoveryTests
             "CC0_AUTO", "Acquire");
         var role = new WorkerAiRoleSettings();
         var checkpoint = AssetManagerExecutionJournal.Open(
-            folder.Root, "testjob", definition, role);
+            folder.Root, "testjob", "M1", definition, role);
         AssetManagerExecutionJournal.Save(folder.Root, checkpoint with
         {
             State = "IMPORT_PENDING",
@@ -197,7 +197,7 @@ public sealed class UnityAssetImportRecoveryTests
             BlockedPhase = "ACQUIRE"
         });
         var recovered = AssetManagerExecutionJournal.Open(
-            folder.Root, "testjob", definition, role);
+            folder.Root, "testjob", "M1", definition, role);
         Assert.Equal("IMPORT_PENDING", recovered.State);
         Assert.Equal("testjob", recovered.JobId);
         Assert.Equal("forest-01", recovered.RequestId);
