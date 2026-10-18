@@ -20,14 +20,42 @@ public partial class MainWindow
         if (!UnityCliBuildRunner.IsUnityProject(session.ProjectRoot))
             throw new InvalidOperationException("WORKER_MCP_UNITY_PROJECT_REQUIRED");
 
-        return tool switch
+        if (tool == "delegate_work")
         {
-            "delegate_work" => await RunTemporaryMcpWorkAsync(
-                session, arguments, cancellationToken).ConfigureAwait(false),
-            "worker_command" => await RunWorkerMcpCommandAsync(
-                session, arguments, cancellationToken).ConfigureAwait(false),
-            _ => throw new InvalidOperationException("WORKER_MCP_UNKNOWN_TOOL")
-        };
+            if (session.IsWork)
+                throw new InvalidOperationException("WORK_CANNOT_DELEGATE");
+            return await RunTemporaryMcpWorkAsync(
+                session, arguments, cancellationToken).ConfigureAwait(false);
+        }
+        if (tool != "worker_command")
+            throw new InvalidOperationException("WORKER_MCP_UNKNOWN_TOOL");
+        if (!session.IsWork)
+            return await RunWorkerMcpCommandAsync(
+                session, arguments, cancellationToken).ConfigureAwait(false);
+
+        // WORK may execute arbitrary supported Editor commands, but any
+        // observed file changes must stay within this single invocation's scope.
+        var before = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+            session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+        string? output = null;
+        Exception? failure = null;
+        try
+        {
+            output = await RunWorkerMcpCommandAsync(
+                session, arguments, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) { failure = error; }
+        var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+            session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+        var unexpected = MilestoneMechanicalExecutor.DiffChangeStates(before, after)
+            .Where(path => !session.AllowedPaths.Any(scope =>
+                MatchesMcpScope(scope, path))).ToArray();
+        if (unexpected.Length > 0)
+            throw new InvalidOperationException("WORK_MCP_OUT_OF_SCOPE_CHANGES: " +
+                string.Join(", ", unexpected.Take(15)));
+        if (failure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        return output!;
     }
 
     private async Task<string> RunTemporaryMcpWorkAsync(
@@ -42,8 +70,13 @@ public partial class MainWindow
             .Select(value => value.ValueKind == JsonValueKind.String
                 ? value.GetString() ?? "" : "")
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (paths.Length is < 1 or > 5 || paths.Any(path => !IsAllowedTemporaryPath(path)))
-            throw new ArgumentException("WORK_PATHS_MUST_BE_SCOPED_TO_ASSETS_OR_DOCS");
+        var invalidPaths = paths.Where(path => !IsAllowedTemporaryPath(path)).ToArray();
+        if (paths.Length is < 1 or > 5 || invalidPaths.Length > 0)
+            throw new ArgumentException("WORK_PATHS_MUST_BE_SCOPED_TO_ASSETS_OR_DOCS: " +
+                "use one to five specific project-relative paths, e.g. " +
+                "docs/projecthub/m110-environment/audit.md or Assets/Scripts/Quiz.cs; " +
+                "invalid=" + string.Join(", ", invalidPaths.Select(path =>
+                    MilestoneDefinitionContract.Limit(path, 100))));
 
         await _temporaryWorkSerial.WaitAsync(cancellationToken).ConfigureAwait(false);
         var reference = WorkerHistoryCardPolicy.NewInvocationReference(
@@ -72,30 +105,67 @@ public partial class MainWindow
             });
             var before = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 session.ProjectRoot, cancellationToken).ConfigureAwait(false);
-            var instruction = "당신은 상위 " + session.Role + " 역할이 호출한 일회성 WORK다. " +
-                "아래 단순 작업 하나만 수행하라. 새 계획이나 하위 위임을 만들지 마라. " +
-                "허용 경로 외 수정, Git 변경, Unity 빌드·테스트·Editor/CLI 호출은 금지한다. " +
-                "필요한 최소 파일만 읽고, 불명확하면 추측하거나 장시간 조사하지 말고 보고하라. " +
-                "작업을 완료한 뒤 변경한 파일과 남은 문제를 간단히 설명하라." +
-                Environment.NewLine + "허용 경로:" + Environment.NewLine +
+            var instruction = "당신은 " + session.Role +
+                "가 자체 위임한 단발성 WORK다. HQ 마일스톤·WORK 번호를 만들거나 " +
+                "다른 역할의 전문 판단을 대신하지 마라. 명시된 과업에 필요한 " +
+                "셸·Unity CLI/MCP·Editor 명령·빌드·테스트 실행 권한을 갖는다. " +
+                "공유 Editor 작업은 MCP worker_command로 실행한다. " +
+                "다른 WORK로 재위임하거나 Git을 변경하지 마라. 파일 작성·수정은 " +
+                "허용된 좁은 경로로 제한하고 필요한 추가 경로는 보고하라. " +
+                "결과와 증거는 위임한 부모 역할에만 반환한다." +
+                Environment.NewLine + "허용 파일 범위:" + Environment.NewLine +
                 string.Join(Environment.NewLine, paths) +
                 Environment.NewLine + "작업:" + Environment.NewLine + task;
 
             // Bypass the parent role wrapper: it consumes pending user messages,
             // creates HQ-visible handoffs and may re-enter its own MCP tools.
-            var result = await runner.RunAsync(new AiRoleRunRequest(
-                instruction, roleSettings, session.ProjectRoot, null,
-                CodexSandboxMode.WorkspaceWrite, cancellationToken,
-                Progress: message => AddRoleProgressHistory(
-                    WorkerRoleState.Work, message, roleSettings.Provider,
-                    referenceId: reference),
-                DisableComputerUse: true,
-                IncludeAppBaseWritable: false,
-                BuildExecutionAllowed: false)).ConfigureAwait(false);
+            // Child has its own command-only MCP token, no parent token or HQ ID.
+            var childToken = _bridgeServer?.RegisterMcpSession(
+                "WORK", session.JobId, session.ProjectRoot, cancellationToken,
+                allowedPaths: paths) ??
+                throw new InvalidOperationException("WORKER_MCP_NOT_AVAILABLE");
+            try
+            {
+                var childTemp = UnityRoleRuntimePaths.Resolve(
+                    session.JobId, "TEMP-WORK-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(childTemp);
+                var childEnvironment = new Dictionary<string, string>
+                {
+                    ["PROJECTHUB_MCP_BEARER"] = childToken,
+                    ["PROJECTHUB_CODEX_TEMP"] = childTemp
+                };
+                var childOverrides = new List<string>();
+                var bypassHookTrust = false;
+                if (WorkerAutonomyPolicy.Enabled)
+                {
+                    var hook = Path.Combine(childTemp, "projecthub-unity-background-gate.ps1");
+                    await File.WriteAllTextAsync(hook,
+                        BuildExecutionPolicy.CreateUnityBackgroundPreToolHookScript(),
+                        ProjectHubJson.Utf8NoBom, cancellationToken).ConfigureAwait(false);
+                    childOverrides.Add(
+                        BuildExecutionPolicy.BuildCodexPreToolHookOverride(
+                            hook, "UnityWorker foreground protection"));
+                    bypassHookTrust = true;
+                }
+                if (roleSettings.ProviderKind == AiServiceProvider.OpenAI)
+                    childOverrides.AddRange(BridgeServer.CodexMcpOverrides());
+                var result = await runner.RunAsync(new AiRoleRunRequest(
+                    instruction, roleSettings, session.ProjectRoot, null,
+                    CodexSandboxMode.WorkspaceWrite, cancellationToken,
+                    Progress: message => AddRoleProgressHistory(
+                        WorkerRoleState.Work, message, roleSettings.Provider,
+                        referenceId: reference),
+                    EnvironmentVariables: childEnvironment,
+                    AdditionalWritableDirectories: new[] { childTemp },
+                    CodexConfigOverrides: childOverrides,
+                    BypassHookTrust: bypassHookTrust,
+                    DisableComputerUse: false,
+                    IncludeAppBaseWritable: false,
+                    BuildExecutionAllowed: true)).ConfigureAwait(false);
 
-            var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
-            var changes = MilestoneMechanicalExecutor.DiffChangeStates(before, after)
+                var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
+                    session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+                var changes = MilestoneMechanicalExecutor.DiffChangeStates(before, after)
                 .ToArray();
             var unexpected = changes.Where(path => !paths.Any(scope =>
                 MatchesMcpScope(scope, path))).ToArray();
@@ -117,7 +187,12 @@ public partial class MainWindow
             if (result.ExitCode != 0 || unexpected.Length > 0)
                 throw new InvalidOperationException("TEMP_WORK_FAILED_OR_SCOPE_VIOLATION: " +
                     MilestoneDefinitionContract.Limit(summary, 1800));
-            return summary;
+                return summary;
+            }
+            finally
+            {
+                _bridgeServer?.UnregisterMcpSession(childToken);
+            }
         }
         catch (Exception ex)
         {
@@ -146,8 +221,9 @@ public partial class MainWindow
         {
             var plan = UnityBackgroundVisualTools.Prepare(session.ProjectRoot,
                 session.JobId, "mcp-native-" + Guid.NewGuid().ToString("N"));
-            using var lease = await UnityEditorOperationGate.EnterAsync(
-                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            using var lease = session.EditorLaneHeld ? null :
+                await UnityEditorOperationGate.EnterAsync(
+                    session.ProjectRoot, cancellationToken).ConfigureAwait(false);
             var evidence = await UnityBackgroundVisualTools.CaptureNativeAsync(
                 plan, cancellationToken).ConfigureAwait(false);
             if (!evidence.Captured || evidence.ImagePath is null)
@@ -158,9 +234,10 @@ public partial class MainWindow
         }
         if (action == "visual_foundry")
         {
-            if (session.Role != "DESIGN")
-                throw new ArgumentException("VISUAL_FOUNDRY_DESIGN_ONLY");
-            if (Volatile.Read(ref session.SuccessfulDelegations) == 0)
+            if (session.Role is not ("DESIGN" or "WORK"))
+                throw new ArgumentException("VISUAL_FOUNDRY_REQUIRES_DESIGN_OR_DELEGATED_WORK");
+            if (session.Role == "DESIGN" &&
+                Volatile.Read(ref session.SuccessfulDelegations) == 0)
                 throw new InvalidOperationException("VISUAL_FOUNDRY_REQUIRES_PRIOR_DELEGATE_WORK");
             var style = RequiredMcpString(arguments, "style", 30);
             var layout = RequiredMcpString(arguments, "layout", 30);
@@ -170,8 +247,9 @@ public partial class MainWindow
             var plan = UnityVisualFoundry.Prepare(session.ProjectRoot,
                 session.JobId, "mcp-foundry-" + session.InvocationId + "-" +
                     style + "-" + layout, description, style, layout);
-            using var lease = await UnityEditorOperationGate.EnterAsync(
-                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            using var lease = session.EditorLaneHeld ? null :
+                await UnityEditorOperationGate.EnterAsync(
+                    session.ProjectRoot, cancellationToken).ConfigureAwait(false);
             var generated = await UnityVisualFoundry.GenerateAsync(
                 plan, cancellationToken).ConfigureAwait(false);
             if (!generated.Success)
@@ -184,15 +262,17 @@ public partial class MainWindow
         if (action == "recompile")
         {
             var result = await UnityCliBuildRunner.RunAsync(
-                session.ProjectRoot, session.JobId, cancellationToken)
+                session.ProjectRoot, session.JobId, cancellationToken,
+                editorLaneHeld: session.EditorLaneHeld)
                 .ConfigureAwait(false);
             return "BUILD_EXIT=" + result.ExitCode +
                 "; LOG=" + result.LogPath +
                 "; " + MilestoneDefinitionContract.Limit(result.Summary, 2000);
         }
 
-        using var editorLease = await UnityEditorOperationGate.EnterAsync(
-            session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+        using var editorLease = session.EditorLaneHeld ? null :
+            await UnityEditorOperationGate.EnterAsync(
+                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
         if (action == "command_catalog" || action == "unity_query" ||
             action == "editor_eval")
         {

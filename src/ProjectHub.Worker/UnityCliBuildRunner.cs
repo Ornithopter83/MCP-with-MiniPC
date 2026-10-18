@@ -28,7 +28,8 @@ internal static class UnityCliBuildRunner
 
     public static async Task<MilestoneMechanicalResult> RunAsync(
         string root, string jobId, CancellationToken cancellationToken,
-        bool editorConnectivityVerified = false)
+        bool editorConnectivityVerified = false,
+        bool editorLaneHeld = false)
     {
         var projectRoot = Path.GetFullPath(root);
         // A caller that just probed this Editor does not need another CLI
@@ -36,14 +37,19 @@ internal static class UnityCliBuildRunner
         // UNVERIFIED and does not trigger compiler-error repair.
         if (!editorConnectivityVerified)
         {
-            var probe = await UnityToolchainPreflight.RunAsync(
-                projectRoot, cancellationToken).ConfigureAwait(false);
+            // Direct Editor WORK already owns the scheduler's gate.
+            var probe = await (editorLaneHeld
+                ? UnityToolchainPreflight.RunUncoordinatedAsync(
+                    projectRoot, cancellationToken)
+                : UnityToolchainPreflight.RunAsync(
+                    projectRoot, cancellationToken)).ConfigureAwait(false);
             if (!probe.Ready)
                 return EditorUnavailableResult(probe.Code + ": " +
                     MilestoneDefinitionContract.Limit(probe.Detail, 900));
         }
-        using var editorLease = await UnityEditorOperationGate.EnterAsync(
-            projectRoot, cancellationToken).ConfigureAwait(false);
+        using var editorLease = editorLaneHeld ? null :
+            await UnityEditorOperationGate.EnterAsync(
+                projectRoot, cancellationToken).ConfigureAwait(false);
         var args = RecompileArguments(projectRoot);
         var command = "unity " + string.Join(" ", args);
         var folder = Path.Combine(projectRoot, "temp", "ProjectHub", jobId, "build");

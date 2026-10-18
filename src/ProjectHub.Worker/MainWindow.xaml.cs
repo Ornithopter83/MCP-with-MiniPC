@@ -1857,7 +1857,9 @@ public partial class MainWindow : Window
         IReadOnlyList<AiInputAttachment>? inputAttachments = null,
         string? historyWorkItemId = null,
         string? historyReferenceId = null,
-        bool polishOnly = false)
+        bool polishOnly = false,
+        IReadOnlyList<string>? workExecutionPaths = null,
+        bool editorLaneHeld = false)
     {
         var started = DateTimeOffset.UtcNow;
         // #1 ASSET MANAGER is an independent role, but must run with
@@ -1899,7 +1901,7 @@ public partial class MainWindow : Window
         // Share that exact, job-scoped file with CLI roles instead of asking
         // each role to rediscover and guess the Unity command arguments.
         // It is syntax guidance, not a substitute for executing validation.
-        if (roleName is "HIGH" || designPurpose || assetManagerPurpose)
+        if (roleName is "HIGH" or "WORK" || designPurpose || assetManagerPurpose)
         {
             var catalogPath = UnityToolchainPreflight.CatalogPath(
                 workingDirectory, jobId);
@@ -2058,22 +2060,33 @@ public partial class MainWindow : Window
             bypassHookTrust = true;
         }
 
-        // Only specialist invocations receive credentials. Temporary WORK never
-        // receives a second MCP token and cannot recursively delegate.
+        // Parent specialists and directly assigned WORK use separate scoped tokens.
+        // WORK can call only execution tools, never delegate another WORK.
         string? activeMcpToken = null;
         if (_bridgeServer is not null &&
-            (designPurpose || assetManagerPurpose || roleName == "HIGH"))
+            (designPurpose || assetManagerPurpose || roleName == "HIGH" ||
+             (roleName == "WORK" && workExecutionPaths is { Count: > 0 })))
         {
             activeMcpToken = _bridgeServer.RegisterMcpSession(
-                assetManagerPurpose ? "ASSET_MANAGER" : designPurpose ? "DESIGN" : "HIGH",
-                jobId, workingDirectory, cancellationToken);
+                assetManagerPurpose ? "ASSET_MANAGER" : designPurpose ? "DESIGN" :
+                    roleName == "WORK" ? "WORK" : "HIGH",
+                jobId, workingDirectory, cancellationToken,
+                allowedPaths: roleName == "WORK" ? workExecutionPaths : null,
+                editorLaneHeld: roleName == "WORK" && editorLaneHeld);
             roleEnvironment["PROJECTHUB_MCP_BEARER"] = activeMcpToken;
             if (role.ProviderKind == AiServiceProvider.OpenAI)
             {
                 codexConfigOverrides = (codexConfigOverrides ?? Array.Empty<string>())
                     .Concat(BridgeServer.CodexMcpOverrides()).ToArray();
             }
-            prompt = polishOnly
+            if (roleName == "WORK" && !designPurpose && !assetManagerPurpose)
+                prompt = "WORK는 지정받은 좁은 작업만 실행한다. 셸·Unity CLI·" +
+                    "MCP worker_command·Editor·빌드·테스트 등 실행 수단은 이용할 수 있다. " +
+                    "Editor 공유 명령은 worker_command를 사용하고, " +
+                    "역할 판단·다른 WORK 배정·Git 변경은 하지 않는다. " +
+                    "허용 작업 경로: " + string.Join(", ", workExecutionPaths ?? Array.Empty<string>()) +
+                    Environment.NewLine + Environment.NewLine + prompt;
+            else prompt = polishOnly
                 ? "이 호출은 앞선 임시 WORK 완료 후의 DESIGN 보정 전용이다. " +
                   "새 작업을 직접 제작하지 말고 WORK 산출물의 문제만 다듬어라. " +
                   "판단은 DESIGN이 유지하고, HQ에 새 역할을 알리지 마라." +
@@ -2109,11 +2122,12 @@ public partial class MainWindow : Window
                 AdditionalWritableDirectories:
                     UnityCliBuildRunner.IsUnityProject(workingDirectory)
                         ? new[] { roleTempPath } : null,
-                DisableComputerUse: UnityCliBuildRunner.IsUnityProject(workingDirectory),
+                DisableComputerUse: UnityCliBuildRunner.IsUnityProject(workingDirectory) &&
+                    roleName != "WORK",
                 IncludeAppBaseWritable: roleName != "WORK",
                 CodexConfigOverrides: codexConfigOverrides,
                 BypassHookTrust: bypassHookTrust,
-                BuildExecutionAllowed: roleName != "WORK"));
+                BuildExecutionAllowed: true));
             if (activeMcpToken is not null)
                 successfulDelegations = _bridgeServer?.SuccessfulDelegationCount(
                     activeMcpToken) ?? 0;

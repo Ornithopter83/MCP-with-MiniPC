@@ -59,6 +59,23 @@ public sealed class WorkerMcpConfigTests
     }
 
     [Fact]
+    public void WorkMcpExposesOnlyExecutionToolsWithNarrowScope()
+    {
+        var workTools = JsonSerializer.Serialize(BridgeServer.ToolDefinitions(workOnly: true));
+        Assert.Contains("worker_command", workTools);
+        Assert.Contains("editor_eval", workTools);
+        Assert.Contains("recompile", workTools);
+        Assert.DoesNotContain("delegate_work", workTools);
+        using var bridge = new BridgeServer();
+        Assert.Throws<ArgumentException>(() => bridge.RegisterMcpSession(
+            "WORK", "job", Path.GetTempPath(), CancellationToken.None));
+        var work = bridge.RegisterMcpSession(
+            "WORK", "job", Path.GetTempPath(), CancellationToken.None,
+            allowedPaths: new[] { "docs/projecthub/audit.md" });
+        bridge.UnregisterMcpSession(work);
+    }
+
+    [Fact]
     public void McpRegistration_ReportsUninitializedVsDiscoveredWithoutSecrets()
     {
         using var bridge = new BridgeServer();

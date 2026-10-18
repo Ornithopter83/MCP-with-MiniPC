@@ -6,8 +6,8 @@ using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
-// Each specialist's tool access is scoped to its live invocation and its workspace.
-// Tokens are never stored in project files or passed to temporary WORK children.
+// Each parent/WORK invocation receives its own per-session MCP token.
+// WORK exposes execution commands only; parent delegation remains private to its role.
 internal sealed record WorkerMcpSession(
     string Role, string JobId, string ProjectRoot, CancellationToken Cancellation)
 {
@@ -18,6 +18,11 @@ internal sealed record WorkerMcpSession(
     internal int SuccessfulDelegations;
     internal byte[]? NativeScreenshot;
     internal string InvocationId { get; } = Guid.NewGuid().ToString("N");
+    internal IReadOnlyList<string> AllowedPaths { get; init; } = Array.Empty<string>();
+    // Direct Editor-lane WORK already owns the scheduler's gate. A nested MCP
+    // request must not acquire the same non-reentrant semaphore again.
+    internal bool EditorLaneHeld { get; init; }
+    internal bool IsWork => Role == "WORK";
 }
 
 public sealed partial class BridgeServer
@@ -42,13 +47,20 @@ public sealed partial class BridgeServer
     ];
 
     internal string RegisterMcpSession(
-        string role, string jobId, string projectRoot, CancellationToken cancellation)
+        string role, string jobId, string projectRoot, CancellationToken cancellation,
+        IReadOnlyList<string>? allowedPaths = null, bool editorLaneHeld = false)
     {
-        if (role is not ("DESIGN" or "HIGH" or "ASSET_MANAGER"))
-            throw new ArgumentException("Only specialist roles can expose Worker MCP tools.");
+        if (role is not ("DESIGN" or "HIGH" or "ASSET_MANAGER" or "WORK"))
+            throw new ArgumentException("Only specialist or WORK roles can expose Worker MCP tools.");
+        if (role == "WORK" && (allowedPaths is null || allowedPaths.Count == 0))
+            throw new ArgumentException("WORK_MCP_REQUIRES_NARROW_PATHS");
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         _mcpSessions[token] = new WorkerMcpSession(
-            role, jobId, Path.GetFullPath(projectRoot), cancellation);
+            role, jobId, Path.GetFullPath(projectRoot), cancellation)
+        {
+            AllowedPaths = allowedPaths?.ToArray() ?? Array.Empty<string>(),
+            EditorLaneHeld = editorLaneHeld
+        };
         McpActivity?.Invoke(role, "SESSION_REGISTERED (not yet connected)");
         return token;
     }
@@ -125,7 +137,9 @@ public sealed partial class BridgeServer
                     protocolVersion = "2025-03-26",
                     capabilities = new { tools = new { listChanged = false } },
                     serverInfo = new { name = "projecthub-unity-worker", version = "1.0.0" },
-                    instructions = "MANDATORY: Every specialist role must first call delegate_work for one bounded mechanical or implementation task and wait for success. Specialist judgment stays in the parent role. Direct parent edits are allowed only to polish or integrate a successful WORK result. Use worker_command for Unity status, compile, command_catalog, editor_eval, native_capture and explicitly DESIGN-selected visual_foundry. The specialist chooses Editor expressions and expected results; no HQ task number is created."
+                    instructions = session.IsWork
+                        ? "WORK executes only its assigned bounded task. Unity CLI, Editor commands, capture and build are available through worker_command. Follow the declared file paths and never delegate or choose other tasks. No HQ number is created for specialist-owned WORK."
+                        : "Specialists decide scope, delegate bounded execution through delegate_work and judge results. worker_command also provides Unity commands. Specialist-delegated WORK remains private to its parent; HQ receives no new WORK number.",
                 };
                 break;
             case "ping":
@@ -133,8 +147,10 @@ public sealed partial class BridgeServer
                 break;
             case "tools/list":
                 Interlocked.Exchange(ref session.ToolsListed, 1);
-                McpActivity?.Invoke(session.Role, "TOOLS_LISTED delegate_work, worker_command");
-                result = new { tools = ToolDefinitions() };
+                McpActivity?.Invoke(session.Role,
+                    session.IsWork ? "TOOLS_LISTED worker_command" :
+                        "TOOLS_LISTED delegate_work, worker_command");
+                result = new { tools = ToolDefinitions(session.IsWork) };
                 break;
             case "tools/call":
             {
@@ -147,7 +163,8 @@ public sealed partial class BridgeServer
                     return;
                 }
                 var toolName = toolNameElement.GetString()!;
-                if (toolName is not ("delegate_work" or "worker_command"))
+                if (toolName is not ("delegate_work" or "worker_command") ||
+                    (session.IsWork && toolName == "delegate_work"))
                 {
                     await WriteJsonAsync(response, JsonRpcError(requestId, -32601,
                         "Unknown tool.")).ConfigureAwait(false);
@@ -221,8 +238,11 @@ public sealed partial class BridgeServer
     private static object JsonRpcError(JsonElement id, int code, string message) =>
         new { jsonrpc = "2.0", id, error = new { code, message } };
 
-    internal static object[] ToolDefinitions() =>
-    [
+    internal static object[] ToolDefinitions(bool workOnly = false) =>
+        workOnly ? new object[] { WorkerCommandDefinition() } :
+        new object[] { DelegateWorkDefinition(), WorkerCommandDefinition() };
+
+    private static object DelegateWorkDefinition() =>
         new
         {
             name = "delegate_work",
@@ -233,12 +253,14 @@ public sealed partial class BridgeServer
                 properties = new
                 {
                     task = new { type = "string", description = "Exact, self-contained edit instruction (up to 2000 characters)." },
-                    paths = new { type = "array", items = new { type = "string" }, description = "One to five allowed relative files or directories beneath Assets/ or docs/." }
+                    paths = new { type = "array", items = new { type = "string" }, description = "One to five precise write scopes relative to the project, each a file or a narrow subdirectory under Assets/ or docs/ (e.g. docs/projecthub/m110-environment/environment-audit.md). Do not use Assets/, docs/, project root or absolute paths. Read-only investigation still requires a specific report path." }
                 },
                 required = new[] { "task", "paths" },
                 additionalProperties = false
             }
-        },
+        };
+
+    private static object WorkerCommandDefinition() =>
         new
         {
             name = "worker_command",
@@ -259,6 +281,5 @@ public sealed partial class BridgeServer
                 required = new[] { "action" },
                 additionalProperties = false
             }
-        }
-    ];
+        };
 }

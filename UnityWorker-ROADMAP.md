@@ -38,7 +38,9 @@
 
 - HQ(웹/CLI)는 설계·재판단, #1 ASSET MANAGER는 검색·획득·적용, #0 DESIGN은 시각 제작·수정, #10+ WORK는 구현, HIGH는 최종 검증·보완을 담당한다.
 - 이미지 추출용 RESOURCE sidecar를 사용하지 않는다. 역할별 실행 문법은 전용 계약과 파서에서 확인한다.
-- 독립 C# 소스 WORK는 병렬이고 Editor·Scene·Import는 프로젝트 공통 게이트로 조정한다. HIGH는 유효한 이전 증거를 재사용하며 직접 수정·검토한다. 추가 DESIGN은 HQ가 새로운 마일스톤에서 배정하며 HIGH는 DESIGN을 재호출하지 않는다.
+- HQ는 직접 지정한 WORK #10+만 계획·추적한다. DESIGN·HIGH·ASSET MANAGER의 임시 WORK 위임은 그 부모 세션 내부에서만 이루어지며 HQ WORKITEM 번호나 마일스톤으로 유출하지 않는다.
+- WORK에는 할당된 과업 수행에 필요한 셸·Unity CLI/MCP·Editor·빌드·테스트 실행 권한을 부여하되 작업·파일 경로는 좁고 명시적으로 유지한다. 임시 WORK는 자체 MCP 명령만 사용하며 재위임할 수 없다. 절대 경로·프로젝트 루트 전체를 위임 범위로 지정하지 않는다.
+- 독립 C# 소스 WORK는 병렬이고 Editor·Scene·Import는 프로젝트 공통 게이트로 조정한다. 직접 Editor WORK가 이미 보유한 게이트는 같은 WORK의 중첩 MCP 명령에만 재사용한다. HIGH는 이전 유효 증거를 재사용하며 독립 판단한다. 추가 DESIGN은 HQ가 새로운 마일스톤에서 배정한다.
 - 사용자 추가 원문 메시지는 다음 제어권의 AI에 전달하며 Worker는 자연어 중단 판정을 하지 않는다.
 - 새 HQ CLI 작업은 새 세션에서 시작하고 `.projecthub/last-handoff.md`를 참고한다. 중단 재개는 기존 세션과 `.projecthub/session-state.json`을 쓴다.
 - Unity Editor와 이 프로젝트에서 실행한 Windows Player의 포커스 보호는 최선의 복구이며 운영체제 수준의 보장이 아니다.

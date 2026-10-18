@@ -59,11 +59,10 @@ public partial class MainWindow
             includeRoleContract: checkpoint.SessionId is null);
         if (!requiresEditorLane)
             prompt += Environment.NewLine + Environment.NewLine +
-                "WORK_LANE: FILE_ONLY. 지정된 C#·StreamingAssets 텍스트·문서 파일만 " +
-                "편집한다. Editor/Unity CLI/MCP/AssetDatabase 및 빌드·테스트는 " +
-                "호출하지 않는다. 신규 .meta, Packages/ProjectSettings 수정이나 " +
-                "씬·프리팹 작업이 필요하면 직접 실행하지 말고 ISSUES에 보고해 " +
-                "Worker/HQ의 다음 결정을 받는다.";
+                "WORK_LANE: FILE_ONLY. 선언된 파일 수정 범위만 사용하고 " +
+                "Editor에 영향을 주는 명령은 MCP worker_command를 통해 " +
+                "별도의 공통 Editor 게이트를 얻어 실행한다. " +
+                "새 Scene/Prefab 작성 또는 범위 확대가 필요하면 직접 결정하지 말고 ISSUES에 기록한다.";
         if (work.ExecutionMode == "CONTINUE" &&
             !string.IsNullOrWhiteSpace(checkpoint!.LastReport))
         {
@@ -139,7 +138,9 @@ public partial class MainWindow
                         workingDirectory, jobId, work.Id, "RUNNING", sessionId);
                 },
                 historyWorkItemId: work.Id,
-                historyReferenceId: historyInvocationReference);
+                historyReferenceId: historyInvocationReference,
+                workExecutionPaths: work.WritePaths,
+                editorLaneHeld: requiresEditorLane);
 
             sessionId = CodexCliRunner.NormalizeSessionId(run.SessionId) ?? sessionId;
             return run;
