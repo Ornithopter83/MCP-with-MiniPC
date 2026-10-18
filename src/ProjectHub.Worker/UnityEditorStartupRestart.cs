@@ -107,14 +107,16 @@ internal static class UnityEditorStartupRestart
             ["status", "--project-path", projectRoot, "--format", "json"],
             TimeSpan.FromSeconds(20), "UnityWorker startup restart discovery",
             "EDITOR_RESTART_DISCOVERY_TIMEOUT", cancellationToken).ConfigureAwait(false);
-        if (status.ExitCode != 0 ||
-            !TryIdentifyOneInstance(status.Output, projectRoot, out var instance,
+        if (status.ExitCode != 0)
+            return new("EDITOR_RESTART_UNVERIFIED",
+                "Cannot safely identify a single Editor for this project: " +
+                "CLI_EXIT=" + status.ExitCode + " " + Short(status.Error) +
+                "; CLI_EVIDENCE=" + status.EvidencePath, false);
+        if (!TryIdentifyOneInstance(status.Output, projectRoot, out var instance,
                 out var discovery))
             return new("EDITOR_RESTART_UNVERIFIED",
                 "Cannot safely identify a single Editor for this project: " +
-                (status.ExitCode != 0
-                    ? "CLI_EXIT=" + status.ExitCode + " " + Short(status.Error)
-                    : discovery) + "; CLI_EVIDENCE=" + status.EvidencePath, false);
+                discovery + "; CLI_EVIDENCE=" + status.EvidencePath, false);
         if (instance is null)
             return new("EDITOR_RESTART_NOT_RUNNING",
                 "No running Editor for the selected project; did not launch one.", false);
