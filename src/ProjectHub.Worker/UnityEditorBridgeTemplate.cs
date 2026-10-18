@@ -1,3 +1,9 @@
+namespace ProjectHub.Worker;
+
+// Compile-time asset: no runtime manifest-resource lookup or external sidecar.
+internal static class UnityEditorBridgeTemplate
+{
+    internal const string Source = """
 // PROJECTHUB_EDITOR_BRIDGE_V1
 // Unity Editor-only extension. Runs in the existing Editor process.
 // The local per-user queue is transport, not an elevated permission service.
@@ -218,3 +224,5 @@ internal static class ProjectHubEditorBridge
     }
 }
 #endif
+""";
+}

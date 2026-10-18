@@ -1,5 +1,4 @@
 using System.IO;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -35,23 +34,8 @@ internal static class UnityEditorDirectBridge
             "ProjectHub", "UnityWorker", "EditorBridge", hash);
     }
 
-    internal static string EmbeddedSource()
-    {
-        var assembly = typeof(UnityEditorDirectBridge).Assembly;
-        var names = assembly.GetManifestResourceNames();
-        var resolved = names.FirstOrDefault(name =>
-            string.Equals(name, ResourceName, StringComparison.Ordinal)) ??
-            names.SingleOrDefault(name => name.Contains(
-                "ProjectHubEditorBridge", StringComparison.OrdinalIgnoreCase));
-        if (resolved is null)
-            throw new InvalidOperationException(
-                "EDITOR_BRIDGE_EMBEDDED_SCRIPT_MISSING: available=" +
-                string.Join(", ", names));
-        using var stream = assembly.GetManifestResourceStream(resolved) ??
-            throw new InvalidOperationException("EDITOR_BRIDGE_EMBEDDED_STREAM_MISSING");
-        using var reader = new StreamReader(stream, Encoding.UTF8);
-        return reader.ReadToEnd();
-    }
+    internal static string EmbeddedSource() =>
+        UnityEditorBridgeTemplate.Source + Environment.NewLine;
 
     internal static string Install(string root)
     {
