@@ -150,9 +150,10 @@ public partial class MainWindow
                     status: "PROCESSING");
                 var restart = await UnityEditorStartupRestart.RunAsync(
                     normalizedRoot, cts.Token);
-                AddTaskMessage("UNITY EDITOR STARTUP RESTART",
-                    restart.Code + ": " + restart.Detail,
-                    status: restart.Verified ? "OBSERVED" : "BLOCKED");
+                AddTaskMessage("UNITY EDITOR GUI START",
+                    restart.Code + ": " + restart.Detail +
+                    (restart.Verified ? "; Command readiness not yet checked." : ""),
+                    status: restart.Verified ? "PROCESSING" : "BLOCKED");
                 // Do not let HQ or any role act on a project after the old
                 // Editor has closed but its replacement is unverified.
                 if (!restart.Verified)
@@ -178,28 +179,47 @@ public partial class MainWindow
                         "NEW_TASK_GIT_PREFLIGHT_BLOCKED: " + newTaskGit.Summary);
             }
 
-            // One-time idempotent bootstrap: place the approved Editor-only
-            // receiver in the selected project before dispatching model roles.
-            // The running Editor imports it on its own refresh cycle; writing
-            // the file does NOT count as a connected or compiled bridge.
+            // A visible GUI is not execution readiness. Compile/import must
+            // finish and TWO fresh Editor-main-thread commands must succeed.
+            string commandReadyHqMessage = string.Empty;
             if (UnityCliBuildRunner.IsUnityProject(normalizedRoot))
             {
                 try
                 {
                     var installed = UnityEditorDirectBridge.Install(normalizedRoot);
-                    AddTaskMessage("UNITY DIRECT BRIDGE BOOTSTRAP", installed,
+                    AddTaskMessage("UNITY EDITOR BRIDGE INSTALL", installed,
                         status: "OBSERVED");
                 }
                 catch (Exception ex) when (ex is IOException or
                     UnauthorizedAccessException or InvalidOperationException)
                 {
-                    // Never overwrite an existing user-edited receiver.
-                    // Keep verified CLI eval available for this task.
-                    AddTaskMessage("UNITY DIRECT BRIDGE BOOTSTRAP",
-                        "INSTALL_UNVERIFIED: " + ex.Message +
-                        "; existing CLI execution remains available",
-                        status: "UNVERIFIED");
+                    AddTaskMessage("UNITY EDITOR BRIDGE INSTALL",
+                        "EDITOR_BRIDGE_INSTALL_BLOCKED: " + ex.Message,
+                        status: "BLOCKED");
+                    throw new InvalidOperationException(
+                        "UNITY_EDITOR_STARTUP_BLOCKED: BRIDGE_INSTALL: " +
+                        ex.Message, ex);
                 }
+
+                AddTaskMessage("UNITY EDITOR COMMAND READINESS",
+                    "Waiting for Editor main-thread Ping and scene_status, " +
+                    "with compile/import idle; HQ not yet called.",
+                    status: "PROCESSING");
+                var ready = await UnityEditorStartupReadiness.WaitAsync(
+                    normalizedRoot, cts.Token);
+                AddTaskMessage("UNITY EDITOR COMMAND READINESS",
+                    ready.Code + ": " + ready.Detail,
+                    status: ready.Ready ? "COMPLETED" : "BLOCKED");
+                if (!ready.Ready)
+                    throw new InvalidOperationException(
+                        "UNITY_EDITOR_STARTUP_BLOCKED: " + ready.Code +
+                        ": " + ready.Detail);
+                commandReadyHqMessage =
+                    "WORKER_EDITOR_COMMAND_READY: actual Editor Ping and " +
+                    "scene_status succeeded; active scene loaded; " +
+                    "Compiling=False; Updating=False. " +
+                    MilestoneDefinitionContract.Limit(ready.Detail, 1100) +
+                    Environment.NewLine;
             }
 
             // New commands and resumed/added user commands are the only
@@ -208,15 +228,20 @@ public partial class MainWindow
             AddTaskMessage("UNITY EDITOR COMMAND GATE",
                 "명령이 접수되어 지정 프로젝트의 Editor / Pipeline 연결을 확인합니다.",
                 status: "PROCESSING");
-            var unityPreflight =
+            var cliPreflight =
                 await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
                     normalizedRoot, cts.Token);
+            var unityPreflight = !cliPreflight.Ready &&
+                !string.IsNullOrEmpty(commandReadyHqMessage)
+                ? new UnityToolchainPreflight.Result(true,
+                    "UNITY_EDITOR_COMMAND_READY_CLI_UNVERIFIED",
+                    "Editor bridge commands verified; CLI optional: " +
+                    cliPreflight.Code + ": " + cliPreflight.Detail)
+                : cliPreflight;
             AddTaskMessage(
-                "UNITY TOOLCHAIN / EDITOR PREFLIGHT",
-                unityPreflight.Code + ": " + unityPreflight.Detail,
-                status: unityPreflight.Ready ? "COMPLETED" :
-                    unityPreflight.Code == "UNITY_PROJECT_NOT_FOUND"
-                        ? "BLOCKED" : "UNVERIFIED");
+                "UNITY CLI OPTIONAL PREFLIGHT",
+                cliPreflight.Code + ": " + cliPreflight.Detail,
+                status: cliPreflight.Ready ? "OBSERVED" : "UNVERIFIED");
             // Editor connectivity is an execution capability, not a reason to
             // prevent HQ from planning code-only work or choosing PAUSE.
             // Keep the failure visible to HQ; never treat it as Import proof.
@@ -253,7 +278,21 @@ public partial class MainWindow
             async Task<bool> RecheckUnityEditorAsync(CancellationToken token)
             {
                 var previous = editorConnection.Current;
-                var refreshed = await editorConnection.RecheckAsync(token);
+                var cliResult = await editorConnection.RecheckAsync(token);
+                var refreshed = cliResult;
+                if (!cliResult.Ready &&
+                    !string.IsNullOrEmpty(commandReadyHqMessage))
+                {
+                    var bridge = await UnityEditorStartupReadiness.WaitAsync(
+                        normalizedRoot, token, TimeSpan.FromSeconds(15));
+                    if (bridge.Ready)
+                    {
+                        refreshed = new UnityToolchainPreflight.Result(
+                            true, "UNITY_EDITOR_COMMAND_READY_CLI_UNVERIFIED",
+                            bridge.Detail + "; CLI=" + cliResult.Code);
+                        editorConnection.Observe(refreshed);
+                    }
+                }
                 if (previous.Ready != refreshed.Ready ||
                     previous.Code != refreshed.Code)
                     AddTaskMessage("UNITY EDITOR RECHECK",
@@ -272,12 +311,13 @@ public partial class MainWindow
                 return refreshed.Ready;
             }
 
-            var editorRecoveryNotice = unityPreflight.Ready ? string.Empty :
-                "UNITY_EDITOR_UNAVAILABLE: " + unityPreflight.Code + ": " +
-                unityPreflight.Detail + Environment.NewLine +
-                "Unity Editor 작업은 확인 전 실행하지 말고, 가능한 코드/진단 대안을 " +
-                "계획하라. 해결 수단이 없으면 HQ가 [ACTION=PAUSE]를 판단하라." +
-                Environment.NewLine;
+            var editorRecoveryNotice = commandReadyHqMessage +
+                (cliPreflight.Ready ? string.Empty :
+                    "UNITY_CLI_OPTIONAL_UNVERIFIED: " + cliPreflight.Code +
+                    ": " + cliPreflight.Detail + Environment.NewLine +
+                    "Editor main-thread commands were independently verified; " +
+                    "do not treat CLI catalog failure as Editor startup failure." +
+                    Environment.NewLine);
 
             stagedAttachments = UserAttachmentTransport.StageForWorkerRuntime(
                 attachments,
@@ -380,6 +420,27 @@ public partial class MainWindow
                     remoteReference.Summary,
                     status: remoteReference.Success ? "COMPLETED" : "FAILED",
                     persistenceSource: "WORKER ACTION");
+
+                // After a milestone the Editor may be compiling again or
+                // disconnected. No subsequent HQ call on stale readiness.
+                if (milestoneIndex > 1 &&
+                    !string.IsNullOrEmpty(commandReadyHqMessage))
+                {
+                    var nextReady = await UnityEditorStartupReadiness.WaitAsync(
+                        normalizedRoot, cts.Token);
+                    if (!nextReady.Ready)
+                    {
+                        AddTaskMessage("UNITY EDITOR COMMAND READINESS",
+                            nextReady.Code + ": " + nextReady.Detail,
+                            status: "BLOCKED");
+                        throw new InvalidOperationException(
+                            "UNITY_EDITOR_STARTUP_BLOCKED_BEFORE_HQ: " +
+                            nextReady.Code + ": " + nextReady.Detail);
+                    }
+                    hqInbound = "WORKER_EDITOR_COMMAND_READY: " +
+                        MilestoneDefinitionContract.Limit(nextReady.Detail, 1100) +
+                        Environment.NewLine + hqInbound;
+                }
 
                 // The next dispatched AI claims user messages atomically.
                 // HQ has no priority over DESIGN, WORK or HIGH.

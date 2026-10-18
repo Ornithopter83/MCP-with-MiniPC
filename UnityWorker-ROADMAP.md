@@ -143,5 +143,5 @@
 
 - HQ/Git 전처리 이전에 Windows 프로세스와 프로젝트 제목으로 해당 Editor 창을 찾는다. 실행 중인 Unity Editor 창이 하나 있고 해당 프로젝트 UnityLockfile이 유지되는 경우에만 정상 종료를 요청한 뒤 종료 확인 후 다시 연다.
 - 실행 중인 Editor가 없고 프로젝트 잠금이 없다면 프로젝트 버전 또는 이전에 저장한 Unity.exe 경로로 한 번 실행한다. 다른 프로젝트·여러 창·잠금 불일치에는 강제 종료나 중복 실행을 하지 않는다.
-- `Unity.exe -projectPath`로 GUI를 시작하고 새 프로젝트 Editor 창·실행 파일·PID를 확인한 뒤 HQ에 전달한다. Unity CLI exit 6 또는 Pipeline 명령 누락 때문에 시작 자체를 차단하지 않는다. 120초 안에 새 창이 확인되지 않으면 BLOCKED로 중단한다.
-- 마일스톤·PAUSE/CONTINUE에서는 재시작하지 않는다. FocusGuard는 기존처럼 작업 종료 시점의 포커스 복구만 수행한다.
+- `Unity.exe -projectPath`로 GUI를 시작하고 새 프로젝트 Editor 창·실행 파일·PID를 확인한다. GUI 확인만으로 HQ에는 전달하지 않는다. Git 사전 준비 후 브리지 설치·Import를 기다리고 메인 스레드 Ping 및 scene_status가 성공하고 Active Scene 로드·컴파일/Import 미진행을 확인한 뒤에만 HQ에 `WORKER_EDITOR_COMMAND_READY`를 보낸다. GUI 대기 120초, 명령 준비 대기 5분. 실패 시 HQ를 호출하지 않는다.
+- 마일스톤·PAUSE/CONTINUE에서는 재시작하지 않는다. 단 CONTINUE와 다음 마일스톤의 HQ 전달 전에도 새 브리지 명령 응답을 확인하며 실패 시 BLOCKED로 중단한다. CLI/Pipeline 불능과 브리지 실명령 준비 상태는 분리한다. FocusGuard는 기존처럼 작업 종료 시점의 포커스 복구만 수행한다.

@@ -59,5 +59,7 @@ Unity 공식 `InitializeOnLoad`, `EditorApplication.update`, `EditorApplication.
 - NEW 사용자 Unity 작업은 HQ에 요청을 보내기 **전에 가장 먼저** 기존 Editor GUI를 확인한다. Unity CLI 연결 상태는 시작 조건으로 요구하지 않는다.
 - 해당 프로젝트 이름과 일치하는 Unity 창이 하나 확인되면 `CloseMainWindow()`로 정상 종료하고 프로세스 종료까지 최대 40초 기다린 뒤 재실행한다. 미저장 변경 확인창·종료 실패 시 강제 종료 없이 중단한다.
 - 해당 프로젝트 창이 없고 프로젝트 잠금도 없으면 로컬에 저장된 Unity.exe 또는 ProjectVersion.txt의 설치 경로로 새 GUI를 실행한다.
-- 실행은 단 한 번이며 `-projectPath`를 사용한다. 120초 이내 새 Unity 프로젝트 GUI 창, 다른 PID 및 Unity.exe 일치를 확인했을 때만 성공이다. 확인 실패 시 HQ에 전달하지 않고 BLOCKED로 중단한다.
+- 실행은 단 한 번이며 `-projectPath`를 사용한다. 120초 이내 새 Unity 프로젝트 GUI 창, 새 PID 및 Unity.exe 일치를 확인한다. **GUI 확인은 HQ 전송 성공 조건이 아니다.** Git 점검이 끝나면 승인된 브리지 소스를 설치하고 최대 5분간 Unity Import·컴파일 종료와 실제 메인 스레드 `ping` 및 `scene_status` 응답을 기다린다. 활성 씬 로드·Compiling=False·Updating=False까지 확인되었을 때에만 Worker가 HQ에 `WORKER_EDITOR_COMMAND_READY`를 전달한다. GUI·브리지·씬 명령 중 하나라도 실패하면 HQ는 호출하지 않고 BLOCKED로 중단한다.
 - 프로젝트가 잠겨 있는데 창이 보이지 않거나, 프로젝트 이름과 일치하는 Editor가 둘 이상이면 다른 프로젝트를 건드리지 않도록 중단한다. 이 절차는 실제 Windows Unity 재실행까지 CI가 증명하는 기능이 아니다.
+
+- CONTINUE에서는 Editor를 재시작하지 않지만 같은 명령 준비 확인을 먼저 수행한다. 이후 각 마일스톤의 HQ 전달 전에도 실명령으로 준비 상태를 확인한다. CLI 명령 카탈로그 실패와 실명령 성공을 혼동하지 않는다.
