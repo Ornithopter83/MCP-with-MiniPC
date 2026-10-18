@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 
@@ -56,48 +55,15 @@ internal static class UnityCliBuildRunner
         Directory.CreateDirectory(folder);
         var logFile = Path.Combine(folder,
             "unity-" + DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff") + ".log");
-        var output = new StringBuilder();
-        var exitCode = -1;
-        var timeoutReached = false;
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "unity",
-                WorkingDirectory = projectRoot,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            foreach (var arg in args)
-                psi.ArgumentList.Add(arg);
-            using var job = new WorkerChildProcessJob("UnityWorker CLI BUILD");
-            using var child = job.Start(psi, cancellationToken);
-            var process = child.Process;
-            var stdout = child.StandardOutput!.ReadToEndAsync(cancellationToken);
-            var stderr = child.StandardError!.ReadToEndAsync(cancellationToken);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, timeout.Token);
-            try
-            {
-                await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-                exitCode = process.ExitCode;
-                output.Append(await stdout.ConfigureAwait(false));
-                output.AppendLine(await stderr.ConfigureAwait(false));
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                timeoutReached = true;
-                job.Dispose();
-                output.AppendLine("UNITY_CLI_TIMEOUT_10_MIN");
-            }
-        }
-        catch (Exception error) when (error is not OperationCanceledException)
-        {
-            output.AppendLine("UNITY_CLI_LAUNCH_FAILED: " + error.GetType().Name + ": " + error.Message);
-        }
+        var execution = await UnityCliProcessRunner.RunAsync(projectRoot,
+            args, TimeSpan.FromMinutes(10), "UnityWorker CLI BUILD",
+            "UNITY_CLI_TIMEOUT_10_MIN", cancellationToken).ConfigureAwait(false);
+        var output = new StringBuilder(execution.Output)
+            .AppendLine(execution.Error)
+            .AppendLine("CLI_EVIDENCE=" + execution.EvidencePath);
+        var exitCode = execution.ExitCode;
+        var timeoutReached = execution.Error.Contains("UNITY_CLI_TIMEOUT_10_MIN",
+            StringComparison.Ordinal);
         await File.WriteAllTextAsync(logFile, output.ToString(),
             cancellationToken).ConfigureAwait(false);
 

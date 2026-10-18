@@ -77,6 +77,34 @@ public sealed class UnityToolchainPreflightTests
         }
     }
 
+    [Theory]
+    [InlineData("""{"success":true,"data":[{"name":"eval"}]}""", "UNITY_EDITOR_CONNECTED", true)]
+    [InlineData("""{"success":true,"data":{"commands":[{"name":"eval"}]}}""", "UNITY_EDITOR_CONNECTED", true)]
+    [InlineData("""{"success":true,"commands":[{"name":"eval"}]}""", "UNITY_EDITOR_CONNECTED", true)]
+    [InlineData("""{"success":true,"data":{"count":1}}""", "UNITY_EDITOR_CONNECTED_NO_CATALOG", false)]
+    public void ProbeSeparatesConnectionAndLiveCommandCapability(
+        string output, string code, bool hasEval)
+    {
+        var probe = UnityToolchainPreflight.InterpretEditorProbe(0, output, "");
+        Assert.True(probe.Ready);
+        Assert.Equal(code, probe.Code);
+        Assert.Equal(hasEval,
+            UnityToolchainPreflight.CatalogContainsCommand(probe.CommandCatalogJson, "eval"));
+    }
+
+    [Theory]
+    [InlineData("""{"success":true,"data":{"name":"eval","parameters":[]}}""", true)]
+    [InlineData("""{"success":true,"data":[{"name":"eval"}]}""", true)]
+    [InlineData("""{"success":true,"command":"eval","data":{"count":1}}""", false)]
+    [InlineData("""{"success":true,"data":{"name":"other"}}""", false)]
+    [InlineData("""{"success":false,"data":{"name":"eval"}}""", false)]
+    public void DetailedProbeDoesNotAcceptEchoOrSuccessfulStatus(
+        string stdout, bool allowed)
+    {
+        Assert.Equal(allowed,
+            UnityToolchainPreflight.DetailedCommandConfirmed(0, stdout, "eval"));
+    }
+
     [Fact]
     public void CatalogRejectsUnsupportedAndEchoedCommands()
     {

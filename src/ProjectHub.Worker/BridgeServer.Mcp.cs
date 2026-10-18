@@ -264,7 +264,7 @@ public sealed partial class BridgeServer
         new
         {
             name = "worker_command",
-            description = "Execute Unity status/recompile, catalog-listed Editor eval, Native Game View screenshot, or DESIGN-requested Visual Foundry generation. The specialist provides an expression and expected_result; CLI success alone is not Editor confirmation. Never launches GUI or chooses creative direction.",
+            description = "Execute Unity status/recompile, live-catalog or verified detailed-query Editor eval, Native Game View screenshot, or DESIGN-requested Visual Foundry generation. The specialist provides an expression and expected_result; CLI success alone is not Editor confirmation. Never launches GUI or chooses creative direction.",
             inputSchema = new
             {
                 type = "object",

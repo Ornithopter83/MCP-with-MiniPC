@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -82,18 +81,14 @@ internal static class UnityToolchainPreflight
                 success.ValueKind != JsonValueKind.True)
                 return new(false, "UNITY_EDITOR_UNVERIFIED",
                     "Unity CLI의 성공 JSON 응답을 확인하지 못했습니다: " + ShortDetail(stdout));
-            string? commandCatalogJson = null;
-            if (document.RootElement.TryGetProperty("data", out var data) &&
-                data.ValueKind == JsonValueKind.Object &&
-                data.TryGetProperty("commands", out var commands) &&
-                commands.ValueKind == JsonValueKind.Array)
-            {
-                // Store the exact command/parameter records returned by this
-                // Editor, without AI reconstruction or schema guessing.
-                commandCatalogJson = commands.GetRawText();
-            }
-            return new(true, "UNITY_EDITOR_CONNECTED",
-                "지정 프로젝트에 대한 Unity CLI 명령 목록 요청 성공 (MCP 호출 검증과 별개)",
+            var commandCatalogJson = ExtractCommandCatalog(document.RootElement);
+            return new(true,
+                commandCatalogJson is null ? "UNITY_EDITOR_CONNECTED_NO_CATALOG" :
+                    "UNITY_EDITOR_CONNECTED",
+                commandCatalogJson is null
+                    ? "Unity CLI 요청 성공, 명령 목록은 확인되지 않음; " +
+                      "실제 Editor 명령 실행 가능 여부는 별도 조회 필요"
+                    : "Unity CLI 명령 목록 확인 (실제 Editor 명령 실행과 별개)",
                 commandCatalogJson);
         }
         catch (JsonException)
@@ -101,6 +96,59 @@ internal static class UnityToolchainPreflight
             return new(false, "UNITY_EDITOR_INVALID_RESPONSE",
                 "Unity CLI의 출력이 올바른 JSON이 아닙니다: " + ShortDetail(stdout));
         }
+    }
+
+    // Only preserve explicit command collections, never guess a command from
+    // an echoed request name or an unrelated status response.
+    internal static string? ExtractCommandCatalog(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        if (root.TryGetProperty("data", out var data))
+        {
+            if (data.ValueKind == JsonValueKind.Array)
+                return data.GetRawText();
+            if (data.ValueKind == JsonValueKind.Object)
+                foreach (var key in new[] { "commands", "items", "results" })
+                    if (data.TryGetProperty(key, out var records) &&
+                        records.ValueKind == JsonValueKind.Array)
+                        return records.GetRawText();
+        }
+        if (root.TryGetProperty("commands", out var direct) &&
+            direct.ValueKind == JsonValueKind.Array)
+            return direct.GetRawText();
+        return null;
+    }
+
+    // A detailed command query may return an object rather than an array.
+    // Success=true is insufficient: the data must identify the exact command.
+    internal static bool DetailedCommandConfirmed(
+        int exitCode, string stdout, string requested)
+    {
+        if (exitCode != 0) return false;
+        try
+        {
+            using var json = JsonDocument.Parse(stdout);
+            var root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("success", out var success) ||
+                success.ValueKind != JsonValueKind.True ||
+                !root.TryGetProperty("data", out var data)) return false;
+            if (data.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var key in new[] { "name", "command" })
+                    if (data.TryGetProperty(key, out var name) &&
+                        name.ValueKind == JsonValueKind.String &&
+                        string.Equals(name.GetString(), requested, StringComparison.Ordinal))
+                        return true;
+                if (data.TryGetProperty("commands", out var commands) &&
+                    commands.ValueKind == JsonValueKind.Array)
+                    return CatalogContainsCommand(commands.GetRawText(), requested);
+            }
+            if (data.ValueKind == JsonValueKind.Array)
+                return CatalogContainsCommand(data.GetRawText(), requested);
+        }
+        catch (JsonException) { }
+        return false;
     }
 
     // A command is executable only if the current Editor declared it.
@@ -152,45 +200,16 @@ internal static class UnityToolchainPreflight
             ? await UnityEditorOperationGate.EnterAsync(
                 projectRoot, cancellationToken).ConfigureAwait(false)
             : null;
-        try
+        var execution = await UnityCliProcessRunner.RunAsync(
+            projectRoot, EditorProbeArguments(projectRoot),
+            TimeSpan.FromSeconds(30), "UnityWorker Editor preflight",
+            "UNITY_EDITOR_PREFLIGHT_TIMEOUT", cancellationToken).ConfigureAwait(false);
+        var parsed = InterpretEditorProbe(
+            execution.ExitCode, execution.Output, execution.Error);
+        return parsed with
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "unity",
-                WorkingDirectory = projectRoot,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            foreach (var arg in EditorProbeArguments(projectRoot))
-                psi.ArgumentList.Add(arg);
-            using var job = new WorkerChildProcessJob("UnityWorker Editor preflight");
-            using var child = job.Start(psi, cancellationToken);
-            var stdout = child.StandardOutput!.ReadToEndAsync(cancellationToken);
-            var stderr = child.StandardError!.ReadToEndAsync(cancellationToken);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, timeout.Token);
-            try
-            {
-                await child.Process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
-                return InterpretEditorProbe(child.Process.ExitCode,
-                    await stdout.ConfigureAwait(false),
-                    await stderr.ConfigureAwait(false));
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                job.Dispose();
-                return new(false, "UNITY_EDITOR_PREFLIGHT_TIMEOUT",
-                    "30초 안에 Editor 연결을 확인하지 못했습니다.");
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return new(false, "UNITY_CLI_LAUNCH_FAILED",
-                "Unity CLI를 실행할 수 없습니다: " + ex.GetType().Name + ": " + ShortDetail(ex.Message));
-        }
+            Detail = parsed.Detail + "; CLI_EVIDENCE=" + execution.EvidencePath
+        };
     }
 
     private static string ShortDetail(string value)

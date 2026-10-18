@@ -4,7 +4,10 @@ using System.Text.Json;
 
 namespace ProjectHub.Worker;
 
-internal sealed record UnityAssetCliResult(int ExitCode, string Output, string Error);
+internal sealed record UnityAssetCliResult(int ExitCode, string Output, string Error)
+{
+    internal string? EvidencePath { get; init; }
+}
 internal sealed record UnityAssetImportResult(bool Success, string Detail, int VerifiedAssets);
 
 /// <summary>

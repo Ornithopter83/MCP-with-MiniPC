@@ -33,10 +33,16 @@ public partial class MainWindow
             return await RunWorkerMcpCommandAsync(
                 session, arguments, cancellationToken).ConfigureAwait(false);
 
-        // WORK may execute arbitrary supported Editor commands, but any
-        // observed file changes must stay within this single invocation's scope.
+        // Read-only status/discovery should not repeatedly scan Git or
+        // attribute concurrent file-only WORK edits to this MCP session.
+        var action = RequiredMcpString(arguments, "action", 40);
+        if (action is not ("recompile" or "editor_eval" or "visual_foundry"))
+            return await RunWorkerMcpCommandAsync(
+                session, arguments, cancellationToken).ConfigureAwait(false);
+        // Best-effort after-execution audit: not a Windows filesystem sandbox.
         var before = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-            session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            session.ProjectRoot, cancellationToken, requireSuccess: true)
+            .ConfigureAwait(false);
         string? output = null;
         Exception? failure = null;
         try
@@ -46,7 +52,8 @@ public partial class MainWindow
         }
         catch (Exception error) { failure = error; }
         var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-            session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            session.ProjectRoot, cancellationToken, requireSuccess: true)
+            .ConfigureAwait(false);
         var unexpected = MilestoneMechanicalExecutor.DiffChangeStates(before, after)
             .Where(path => !session.AllowedPaths.Any(scope =>
                 MatchesMcpScope(scope, path))).ToArray();
@@ -217,13 +224,18 @@ public partial class MainWindow
         CancellationToken cancellationToken)
     {
         var action = RequiredMcpString(arguments, "action", 40);
+        if (action == "status")
+            return await RunStatusCommandAsync(session.ProjectRoot,
+                cancellationToken).ConfigureAwait(false);
+        // Acquire once per MCP command unless the direct WORK scheduler already
+        // owns the project lane. The probe, eval and mutation share this lease.
+        using var editorLease = session.EditorLaneHeld ? null :
+            await UnityEditorOperationGate.EnterAsync(
+                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
         if (action == "native_capture")
         {
             var plan = UnityBackgroundVisualTools.Prepare(session.ProjectRoot,
                 session.JobId, "mcp-native-" + Guid.NewGuid().ToString("N"));
-            using var lease = session.EditorLaneHeld ? null :
-                await UnityEditorOperationGate.EnterAsync(
-                    session.ProjectRoot, cancellationToken).ConfigureAwait(false);
             var evidence = await UnityBackgroundVisualTools.CaptureNativeAsync(
                 plan, cancellationToken).ConfigureAwait(false);
             if (!evidence.Captured || evidence.ImagePath is null)
@@ -247,9 +259,10 @@ public partial class MainWindow
             var plan = UnityVisualFoundry.Prepare(session.ProjectRoot,
                 session.JobId, "mcp-foundry-" + session.InvocationId + "-" +
                     style + "-" + layout, description, style, layout);
-            using var lease = session.EditorLaneHeld ? null :
-                await UnityEditorOperationGate.EnterAsync(
-                    session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            if (session.IsWork && !session.AllowedPaths.Any(scope =>
+                MatchesMcpScope(scope, plan.AssetDirectory)))
+                throw new InvalidOperationException(
+                    "VISUAL_FOUNDRY_TARGET_OUT_OF_WORK_SCOPE: " + plan.AssetDirectory);
             var generated = await UnityVisualFoundry.GenerateAsync(
                 plan, cancellationToken).ConfigureAwait(false);
             if (!generated.Success)
@@ -263,51 +276,31 @@ public partial class MainWindow
         {
             var result = await UnityCliBuildRunner.RunAsync(
                 session.ProjectRoot, session.JobId, cancellationToken,
-                editorLaneHeld: session.EditorLaneHeld)
+                editorLaneHeld: true)
                 .ConfigureAwait(false);
             return "BUILD_EXIT=" + result.ExitCode +
                 "; LOG=" + result.LogPath +
                 "; " + MilestoneDefinitionContract.Limit(result.Summary, 2000);
         }
 
-        using var editorLease = session.EditorLaneHeld ? null :
-            await UnityEditorOperationGate.EnterAsync(
-                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
         if (action == "command_catalog" || action == "unity_query" ||
             action == "editor_eval")
         {
-            var probeCommand = await UnityCliProcessRunner.RunAsync(
-                session.ProjectRoot, UnityToolchainPreflight.EditorProbeArguments(
-                    session.ProjectRoot), TimeSpan.FromSeconds(75),
-                "UnityWorker live command catalog", "UNITY_COMMAND_CATALOG_TIMEOUT",
-                cancellationToken).ConfigureAwait(false);
-            var probe = UnityToolchainPreflight.InterpretEditorProbe(
-                probeCommand.ExitCode, probeCommand.Output, probeCommand.Error);
-            if (!probe.Ready)
-                throw new InvalidOperationException(probe.Code + ": " + probe.Detail);
+            var capabilities = await UnityEditorCommandGateway.DiscoverAsync(
+                session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            if (!capabilities.Connection.Ready)
+                throw new InvalidOperationException(
+                    capabilities.Connection.Code + ": " + capabilities.Connection.Detail);
             if (action == "command_catalog")
-                return "UNITY_COMMAND_CATALOG: " +
-                    (probe.CommandCatalogJson ?? "UNVERIFIED_NO_COMMANDS");
+                return "CATALOG_STATUS=" + capabilities.Connection.Code +
+                    "; CATALOG=" + (capabilities.Catalog ?? "UNVERIFIED_NO_COMMANDS") +
+                    "; " + capabilities.Evidence;
             if (action == "editor_eval")
-            {
-                if (!UnityToolchainPreflight.CatalogContainsCommand(
-                        probe.CommandCatalogJson, "eval"))
-                    throw new InvalidOperationException(
-                        "UNITY_EVAL_NOT_IN_LIVE_CATALOG");
-                var expression = RequiredMcpString(arguments, "expression", 5000);
-                var expected = RequiredMcpString(arguments, "expected_result", 250);
-                // The role chooses the Editor operation and the expected
-                // acknowledgment. Worker only transmits and verifies it.
-                var executed = await UnityCliProcessRunner.RunAsync(
-                    session.ProjectRoot,
-                    UnityEditorCommandResult.EvalArguments(
-                        session.ProjectRoot, expression),
-                    TimeSpan.FromMinutes(10),
-                    "UnityWorker MCP Editor command",
-                    "UNITY_EDITOR_COMMAND_TIMEOUT_UNVERIFIED",
+                return await UnityEditorCommandGateway.ExecuteEvalAsync(
+                    session.ProjectRoot, capabilities,
+                    RequiredMcpString(arguments, "expression", 5000),
+                    RequiredMcpString(arguments, "expected_result", 250),
                     cancellationToken).ConfigureAwait(false);
-                return UnityEditorCommandResult.Verify(executed, expected);
-            }
             var name = RequiredMcpString(arguments, "command", 60);
             if (name == "editor_state")
             {
@@ -320,7 +313,7 @@ public partial class MainWindow
                 "get_scene_hierarchy" or "recompile_status"))
                 throw new ArgumentException("UNITY_COMMAND_NOT_ALLOWLISTED");
             if (!UnityToolchainPreflight.CatalogContainsCommand(
-                    probe.CommandCatalogJson, name))
+                    capabilities.Catalog, name))
                 throw new InvalidOperationException(
                     "UNITY_COMMAND_NOT_IN_LIVE_CATALOG: " + name +
                     "; request command_catalog for available commands");
@@ -336,11 +329,9 @@ public partial class MainWindow
                         result.Output + Environment.NewLine + result.Error, 4500));
             return "COMMAND_EXIT=0" + Environment.NewLine +
                 MilestoneDefinitionContract.Limit(
-                    result.Output + Environment.NewLine + result.Error, 4500);
+                    result.Output + Environment.NewLine + result.Error, 4500) +
+                Environment.NewLine + "EVIDENCE=" + result.EvidencePath;
         }
-        if (action == "status")
-            return await RunStatusCommandAsync(session.ProjectRoot,
-                cancellationToken).ConfigureAwait(false);
         throw new ArgumentException("WORKER_COMMAND_NOT_ALLOWLISTED");
     }
 

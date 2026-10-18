@@ -98,16 +98,7 @@ internal static class UnitySceneCliWorkflow
             var result = await execute(
                 UnityAssetCliImporter.ImportArguments(root, expression(normalized)),
                 token).ConfigureAwait(false);
-            if (result.ExitCode != 0)
-                return new(false, "UNITY_SCENE_COMMAND_UNCERTAIN_EXIT_" +
-                    result.ExitCode + ": " + Limit(result.Error + " " + result.Output));
-            using var json = JsonDocument.Parse(result.Output);
-            if (!json.RootElement.TryGetProperty("success", out var success) ||
-                success.ValueKind != JsonValueKind.True ||
-                !json.RootElement.TryGetProperty("data", out var data) ||
-                !FindResult(data, out var actual) ||
-                !string.Equals(actual, marker + normalized, StringComparison.Ordinal))
-                return new(false, "UNITY_SCENE_RESULT_UNVERIFIED: " + Limit(result.Output));
+            UnityEditorCommandResult.Verify(result, marker + normalized);
             return new(true, marker + normalized);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -119,23 +110,6 @@ internal static class UnitySceneCliWorkflow
         {
             return new(false, "UNITY_SCENE_COMMAND_ERROR: " + ex.Message);
         }
-    }
-
-    private static bool FindResult(JsonElement data, out string value)
-    {
-        value = "";
-        if (data.ValueKind == JsonValueKind.String)
-        {
-            value = data.GetString() ?? "";
-            return true;
-        }
-        if (data.ValueKind != JsonValueKind.Object)
-            return false;
-        foreach (var key in new[] { "result", "value", "output" })
-            if (data.TryGetProperty(key, out var child) &&
-                FindResult(child, out value))
-                return true;
-        return false;
     }
 
     private static Task<UnityAssetCliResult> ExecuteAsync(

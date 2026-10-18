@@ -4,11 +4,11 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class UnityEditorCommandLifecycleTests
 {
-    private sealed class UnityProject : IDisposable
+    private sealed class Project : IDisposable
     {
-        public string Root { get; } = Path.Combine(Path.GetTempPath(),
-            "unity-editor-command-" + Guid.NewGuid().ToString("N"));
-        public UnityProject()
+        internal string Root { get; } = Path.Combine(Path.GetTempPath(),
+            "unity-editor-gate-" + Guid.NewGuid().ToString("N"));
+        internal Project()
         {
             Directory.CreateDirectory(Path.Combine(Root, "Assets"));
             Directory.CreateDirectory(Path.Combine(Root, "Packages"));
@@ -18,183 +18,61 @@ public sealed class UnityEditorCommandLifecycleTests
             File.WriteAllText(Path.Combine(Root, "ProjectSettings", "ProjectVersion.txt"),
                 "m_EditorVersion: 6000.6.5f1");
         }
-        public void Dispose()
-        {
-            if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
-        }
+        public void Dispose() => Directory.Delete(Root, true);
     }
 
-    private static UnityToolchainPreflight.Result Offline() =>
-        new(false, "UNITY_EDITOR_UNAVAILABLE",
-            "Unity CLI exit 6: No Pipeline instance found for project");
-
-    private static UnityToolchainPreflight.Result Ready() =>
-        new(true, "UNITY_EDITOR_CONNECTED", "ready");
-
-    private static Task WaitInstantly(TimeSpan _, CancellationToken __) =>
-        Task.CompletedTask;
-
-    [Fact]
-    public async Task SubmittedCommand_DoesNotAutoOpenForegroundEditor()
+    [Theory]
+    [InlineData(true, false, "UNITY_EDITOR_CONNECTED")]
+    [InlineData(false, true, "UNITY_EDITOR_RUNNING_PIPELINE_UNAVAILABLE")]
+    [InlineData(false, false, "UNITY_EDITOR_UNAVAILABLE_BACKGROUND_ONLY")]
+    public async Task CommandGateChecksConnectionWithoutLaunchingEditor(
+        bool connected, bool locked, string expected)
     {
-        using var project = new UnityProject();
-        var attempts = 0;
-        var launches = 0;
-        var state = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
+        using var project = new Project();
+        var probes = 0;
+        var actual = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
             project.Root, CancellationToken.None,
-            (_, _) => Task.FromResult(++attempts >= 4 ? Ready() : Offline()),
             (_, _) =>
             {
-                launches++;
-                return Task.FromResult(new UnityEditorCommandLifecycle.LaunchResult(
-                    true, "unity open success"));
+                probes++;
+                return Task.FromResult(connected
+                    ? new UnityToolchainPreflight.Result(true, "UNITY_EDITOR_CONNECTED", "ready")
+                    : new UnityToolchainPreflight.Result(false,
+                        "UNITY_EDITOR_UNAVAILABLE", "No Pipeline instance found"));
             },
-            _ => false, WaitInstantly, 8);
-        Assert.False(state.Ready);
-        Assert.Equal("UNITY_EDITOR_UNAVAILABLE_BACKGROUND_ONLY", state.Code);
-        Assert.Equal(0, launches);
-        Assert.Equal(1, attempts);
-        Assert.Equal(new[] { "open", Path.GetFullPath(project.Root) },
-            UnityEditorCommandLifecycle.OpenArguments(project.Root));
+            _ => locked);
+        Assert.Equal(expected, actual.Code);
+        Assert.Equal(1, probes);
     }
 
     [Fact]
-    public async Task RunningEditorIsReusedWithoutOpeningAnotherInstance()
+    public async Task UnrelatedToolErrorsNeverTriggerGuiRecovery()
     {
-        using var project = new UnityProject();
-        var attempts = 0;
-        var launches = 0;
-        var state = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
-            project.Root, CancellationToken.None,
-            (_, _) => Task.FromResult(++attempts == 2 ? Ready() : Offline()),
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(new UnityEditorCommandLifecycle.LaunchResult(
-                    true, "should not execute"));
-            },
-            _ => true, WaitInstantly, 5);
-        Assert.False(state.Ready);
-        Assert.Equal("UNITY_EDITOR_RUNNING_PIPELINE_UNAVAILABLE", state.Code);
-        Assert.Equal(0, launches);
-    }
-
-    [Fact]
-    public async Task ConnectedEditorDoesNotStartAnotherEditor()
-    {
-        using var project = new UnityProject();
-        var launches = 0;
-        var state = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
-            project.Root, CancellationToken.None,
-            (_, _) => Task.FromResult(Ready()),
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(new UnityEditorCommandLifecycle.LaunchResult(
-                    true, "unreachable"));
-            },
-            _ => false, WaitInstantly, 5);
-        Assert.True(state.Ready);
-        Assert.Equal(0, launches);
-    }
-
-    [Fact]
-    public async Task SafeModeOrNonMissingEditorErrorsDoNotAutoOpen()
-    {
-        using var project = new UnityProject();
-        var launches = 0;
-        var state = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
+        using var project = new Project();
+        var lockedChecks = 0;
+        var result = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
             project.Root, CancellationToken.None,
             (_, _) => Task.FromResult(new UnityToolchainPreflight.Result(
-                false, "UNITY_EDITOR_UNAVAILABLE",
-                "Unity CLI exit 7: Pipeline failed due to script compilation")),
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(new UnityEditorCommandLifecycle.LaunchResult(
-                    true, "unreachable"));
-            },
-            _ => false, WaitInstantly, 5);
-        Assert.False(state.Ready);
-        Assert.Equal(0, launches);
+                false, "UNITY_CLI_LAUNCH_FAILED", "unity executable missing")),
+            _ => { lockedChecks++; return true; });
+        Assert.Equal("UNITY_CLI_LAUNCH_FAILED", result.Code);
+        Assert.Equal(0, lockedChecks);
     }
 
     [Fact]
-    public async Task InvalidProjectDoesNotTryToLaunchUnity()
+    public async Task MissingProjectDoesNotRunEditorProbe()
     {
-        var launches = 0;
         var probes = 0;
-        var state = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
+        var result = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
             Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")),
             CancellationToken.None,
             (_, _) =>
             {
                 probes++;
-                return Task.FromResult(Offline());
+                throw new InvalidOperationException("unexpected probe");
             },
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(new UnityEditorCommandLifecycle.LaunchResult(
-                    true, "unreachable"));
-            },
-            _ => false, WaitInstantly, 5);
-        Assert.Equal("UNITY_PROJECT_NOT_FOUND", state.Code);
+            _ => false);
+        Assert.Equal("UNITY_PROJECT_NOT_FOUND", result.Code);
         Assert.Equal(0, probes);
-        Assert.Equal(0, launches);
-    }
-
-    [Fact]
-    public async Task UnresponsiveLockedEditorIsNotDuplicated()
-    {
-        using var project = new UnityProject();
-        var launches = 0;
-        var state = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
-            project.Root, CancellationToken.None,
-            (_, _) => Task.FromResult(Offline()),
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(new UnityEditorCommandLifecycle.LaunchResult(
-                    true, "unreachable"));
-            },
-            _ => true, WaitInstantly, 3);
-        Assert.False(state.Ready);
-        Assert.Equal("UNITY_EDITOR_RUNNING_PIPELINE_UNAVAILABLE", state.Code);
-        Assert.Equal(0, launches);
-    }
-
-    [Fact]
-    public async Task KoreanMissingPipeline_IsRecognizedButInitialGateDoesNotStealFocus()
-    {
-        using var project = new UnityProject();
-        var missing = new UnityToolchainPreflight.Result(
-            false, "UNITY_EDITOR_UNAVAILABLE",
-            "Unity CLI exit 6: 프로젝트의 Pipeline 인스턴스를 찾을 수 없습니다. " +
-            "Pipeline 패키지가 설치된 Unity Editor가 실행 중인지 확인하세요.");
-        Assert.True(UnityEditorCommandLifecycle.CanAutoOpen(missing));
-        var launched = 0;
-        var state = await UnityEditorCommandLifecycle.EnsureForAcceptedCommandAsync(
-            project.Root, CancellationToken.None,
-            (_, _) => Task.FromResult(missing),
-            (_, _) =>
-            {
-                launched++;
-                return Task.FromResult(
-                    new UnityEditorCommandLifecycle.LaunchResult(true, "unexpected"));
-            },
-            _ => false, WaitInstantly, 5);
-        Assert.Equal("UNITY_EDITOR_UNAVAILABLE_BACKGROUND_ONLY", state.Code);
-        Assert.Equal(0, launched);
-    }
-
-    [Fact]
-    public void EditorConnectionMissingIsNotEquivalentToGenericCliFailure()
-    {
-        Assert.True(UnityEditorCommandLifecycle.CanAutoOpen(Offline()));
-        Assert.False(UnityEditorCommandLifecycle.CanAutoOpen(
-            new(false, "UNITY_CLI_LAUNCH_FAILED", "unity not installed")));
-        Assert.False(UnityEditorCommandLifecycle.CanAutoOpen(
-            new(false, "UNITY_EDITOR_UNAVAILABLE", "Editor Safe Mode")));
     }
 }

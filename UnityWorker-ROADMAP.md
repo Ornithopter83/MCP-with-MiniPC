@@ -91,6 +91,13 @@
 - Unity 캐시/IDE 출력용 ignore 규칙을 사전에 적용하며 Git 메타데이터 및 ProjectHub 지속 상태는 보호한다.
 - Git 사전 점검 실패는 HIGH의 소스 수정 없이 즉시 중단한다. 실제 Unity 씬 실행은 별도 실기 검증이 필요하다.
 
+### Unity CLI 실행 계층 및 증거
+
+- `UnityCliProcessRunner`는 사전 연결 점검·Editor 명령 탐색·씬 명령·재컴파일 등 CLI 전송을 공유한다. 각 호출의 종료 코드, 시작·종료 시각, stdout/stderr(각 200만 문자 한도, 초과 시 명시)를 프로젝트 Git 외부의 로컬 `ProjectHub/UnityWorker/unity-cli-evidence`에 보존한다. 파일 저장 실패는 실행 결과를 바꾸지 않는다.
+- 연결 결과(`UNITY_EDITOR_CONNECTED_NO_CATALOG` 가능), 명령 목록 존재, 개별 메서드 반환 성공을 별도 취급한다. `data.commands` 및 Unity CLI가 실제 반환한 배열 형태를 판독하며, `eval`이 목록에 없으면 기존 Import 경로에서 사용하는 `--query eval --detail full` 읽기 전용 조회를 수행한다. 명령 이름이 확증되지 않으면 `editor_eval`을 호출하지 않는다.
+- WORK의 MCP 실행 권한은 위임 범위 내에서 제공한다. 현재 FULL_AUTONOMY와 Git 스냅샷 감사는 OS 수준의 사전 파일 접근 차단이 아니라 실행 후 범위 위반 탐지다. 병렬 작업의 변경 귀속은 불확실할 수 있어 결과를 보안 보장으로 해석하지 않는다.
+- HIGH는 CLI 연결 확인, 명령 지원 확인, 실제 컴파일·Scene·Player BuildReport를 서로 다른 증거로 판정한다. 결과 원본이 없으면 과거 로그 재수집을 반복하지 않고 미검증 사유만 남긴다.
+
 ### 명령 접수 기반 Unity Editor 연결 정책
 
 - '＋ 새 작업' 화면 전환은 Editor 실행 및 연결 점검과 무관하다.
