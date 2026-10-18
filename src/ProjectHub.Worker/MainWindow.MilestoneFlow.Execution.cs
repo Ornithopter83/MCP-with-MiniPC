@@ -680,13 +680,6 @@ public partial class MainWindow
 
             CaptureResourceState();
 
-            var plannedWorkScopes = executableDefinitions
-                .Where(work => !work.ReadOnly)
-                .SelectMany(work => work.WritePaths)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-
             // Mechanical, path-only condition: no Unity recompile for reports,
             // runner scripts, unrelated visual assets or read-only diagnosis.
             // HQ/HIGH still own the meaning and adequacy of validation.
@@ -703,31 +696,6 @@ public partial class MainWindow
                 mechanicalReports.Add(
                     MilestoneDefinitionContract.FormatMechanicalResult(build));
             var buildFailed = buildRuns.Any(run => !run.Success);
-            if (buildFailed && pendingWorkIds.Length == 0 &&
-                !MilestoneBuildRunner.IsEnvironmentFailure(buildRuns))
-            {
-                var beforeRepair = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                    workingDirectory, cancellationToken);
-                var repairReport = await ExecuteBuildRepairAsync(
-                    jobId, workingDirectory, milestone, plannedWorkScopes,
-                    buildRuns.Last(run => !run.Success), implementer, cancellationToken);
-                mechanicalReports.Add("BUILD_REPAIR: " +
-                    MilestoneDefinitionContract.Limit(repairReport, 1200));
-                var afterRepair = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                    workingDirectory, cancellationToken);
-                foreach (var path in MilestoneMechanicalExecutor.DiffChangeStates(
-                    beforeRepair, afterRepair))
-                    milestoneChangedPaths.Add(path);
-                buildRuns = await MilestoneBuildRunner.RunAsync(
-                    workingDirectory, jobId, executableDefinitions, cancellationToken,
-                    unityProject ? await recheckUnityEditorAsync(cancellationToken) : null,
-                    requiresUnityRecompile: true);
-                foreach (var build in buildRuns)
-                    mechanicalReports.Add("REBUILD: " +
-                        MilestoneDefinitionContract.FormatMechanicalResult(build));
-                buildFailed = buildRuns.Any(run => !run.Success);
-            }
-
             // Preserve original WORK/BUILD failures instead of hiding them during HIGH.
             if (blockedWorkIds.Length == 0 && pendingWorkIds.Length == 0 && buildFailed)
                 outcome = UnityCliBuildRunner.IsUnityProject(workingDirectory) &&

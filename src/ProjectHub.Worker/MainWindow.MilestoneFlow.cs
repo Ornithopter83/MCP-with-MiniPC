@@ -1406,53 +1406,6 @@ public partial class MainWindow
         return report;
     }
 
-    private async Task<string> ExecuteBuildRepairAsync(
-        string jobId,
-        string workingDirectory,
-        MilestoneDefinition milestone,
-        IReadOnlyList<string> writePaths,
-        MilestoneMechanicalResult failure,
-        WorkerAiRoleSettings implementer,
-        CancellationToken cancellationToken)
-    {
-        if (writePaths.Count == 0)
-            return "blocked: NO_WRITABLE_SCOPE";
-        var ownerId = MilestoneBuildRepairOwnership.Resolve(
-            milestone.WorkItems, failure.Summary);
-        if (ownerId is null)
-            return "blocked: BUILD_REPAIR_WORK_OWNER_AMBIGUOUS";
-        var ownerPaths = milestone.WorkItems[ownerId].WritePaths;
-        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
-            ownerId, "복구 목표:" + Environment.NewLine +
-            "원래 WORK #" + ownerId +
-            "의 실제 컴파일 오류만 이번 복구 호출에서 한 번 최소 수정하라." +
-            Environment.NewLine + "복구 지시:" + Environment.NewLine +
-            "원래 작업 범위 외 변경 금지. Git 명령 실행 금지. " +
-            "환경 EPERM 등 실행 환경 오류를 소스 수정으로 우회하지 마라. " +
-            "오류: " + MilestoneDefinitionContract.Limit(failure.Summary, 1600),
-            ownerPaths, workingDirectory);
-        var stateless = implementer with
-        {
-            ThreadSessionId = null,
-            ThreadProjectPath = null
-        };
-        var result = await RunCoordinatorRoleAsync(
-            jobId, "WORK", prompt, stateless, workingDirectory,
-            null, null, cancellationToken, CodexSandboxMode.WorkspaceWrite,
-            historyWorkItemId: ownerId,
-            historyReferenceId: milestone.Id + ":BUILD:REPAIR-1");
-        var report = MilestoneDefinitionContract.NormalizeWorkReport(
-            result.ExitCode, result.FinalMessage, result.StandardError);
-        AddRoleResponseHistory(WorkerRoleState.Work,
-            "빌드 복구 #" + ownerId, report, result.Usage, result.Files,
-            status: MilestoneDefinitionContract.ReadWorkStatus(report) == "blocked"
-                ? "BLOCKED" : "RECEIVED",
-            providerWireId: implementer.Provider, fullMessage: report,
-            workItemId: ownerId,
-            referenceId: milestone.Id + ":BUILD:REPAIR-1");
-        return report;
-    }
-
     private async Task<string> ExecuteGitHighAsync(
         string jobId,
         string workingDirectory,

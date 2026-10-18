@@ -57,7 +57,7 @@
 - `WRITE_PATH`가 서로 겹치는 WORK는 기존처럼 실행 대상에서 제외하고 HQ에 BLOCKED 근거를 보낸다.
 - 일반 C# 소스 파일(`Assets/**/*.cs`, `Editor` 경로 제외)만 소스 레인으로 처리한다. 그 외 파일·폴더 또는 Editor 관련 실행 지시가 있으면 Editor 독점 레인으로 분류한다.
 - Editor 대기 작업은 동시 WORK 슬롯을 선점하지 않으며, WORK별 체크포인트와 세션을 따로 기록한다.
-- `in_progress` 상태여도 완료로 둔갑시키지 않고 HIGH/HQ에 전달한다. 빌드 복구는 원래 WORKITEM ID를 사용하며 소유자를 특정하지 못하면 HQ 판단에 맡긴다. 미완료 WORK가 남으면 복구를 시작하지 않는다.
+- `in_progress` 상태여도 완료로 둔갑시키지 않고 HIGH/HQ에 전달한다.
 - `CONTINUE`는 앞선 체크포인트의 보고서를 전달하며 이미 수행한 작업을 반복하지 않도록 지시한다. `rg` 등이 없다면 기존 Git/PowerShell 검색으로 대체한다.
 - 프로젝트별 `UnityEditorOperationGate`를 Editor WORK 전체, CLI BUILD/Import/Probe와 ASSET MANAGER INTEGRATE에서 공유한다. Editor 대기 중에도 독립 소스 WORK 슬롯은 유지한다.
 - `UnitySceneCliWorkflow`는 연결된 Editor의 `eval`로 기존 Scene을 Additive 방식으로 열고 활성화하며, 작업 후 `EditorSceneManager.SaveScene` 반환값을 확인한다. 이미 열린 Scene은 다시 열지 않으며 Batch Mode/수동 YAML 편집을 기본 경로로 사용하지 않는다.
