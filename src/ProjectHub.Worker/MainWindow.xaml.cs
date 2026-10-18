@@ -2093,7 +2093,6 @@ public partial class MainWindow : Window
                   "호출하지 않으면 완료를 거부한다. " +
                   "HQ에 하위 호출이나 임시 WORK 번호를 주입하지 마라." +
                   Environment.NewLine + Environment.NewLine + prompt;
-                Environment.NewLine + Environment.NewLine + prompt;
         }
 
         AiRoleRunResult result;
