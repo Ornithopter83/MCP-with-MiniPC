@@ -128,7 +128,9 @@ public partial class MainWindow
                 "결과와 증거는 위임한 부모 역할에만 반환한다." +
                 Environment.NewLine + "허용 파일 범위:" + Environment.NewLine +
                 string.Join(Environment.NewLine, paths) +
-                Environment.NewLine + "작업:" + Environment.NewLine + task;
+                Environment.NewLine + "작업:" + Environment.NewLine + task +
+                Environment.NewLine + Environment.NewLine +
+                UsageTelemetryStore.FormatForNextRole(session.JobId);
 
             // Bypass the parent role wrapper: it consumes pending user messages,
             // creates HQ-visible handoffs and may re-enter its own MCP tools.
@@ -176,6 +178,8 @@ public partial class MainWindow
                     IncludeAppBaseWritable: false,
                     BuildExecutionAllowed: true)).ConfigureAwait(false);
 
+                UsageTelemetryStore.RecordCall(session.JobId, "WORK",
+                    result.Model, result.Reasoning, "TEMP_WORK", result.Usage);
                 var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                     session.ProjectRoot, cancellationToken).ConfigureAwait(false);
                 var changes = MilestoneMechanicalExecutor.DiffChangeStates(before, after)

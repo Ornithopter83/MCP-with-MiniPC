@@ -43,52 +43,6 @@ public partial class MainWindow
             "동일한 실패 작업을 아무 변경 없이 재실행하지 마라.");
     }
 
-    /// <summary>
-    /// First attempt a native Game View capture with no Windows foreground
-    /// activation. Native capture is only file evidence until inspected.
-    /// An inactive Editor that cannot render is not forcibly activated.
-    /// </summary>
-    private async Task<UnityBackgroundVisualEvidence> CaptureBestAvailableVisualAsync(
-        UnityBackgroundVisualPlan plan, UnityBackgroundFocusGuard guard,
-        CancellationToken cancellationToken)
-    {
-        // Defer accidental self-activation recovery until the screenshot file
-        // is complete or the attempt fails. This lease NEVER focuses Unity.
-        var captureScope = guard.BeginBackgroundCapture();
-        UnityBackgroundVisualEvidence native;
-        try
-        {
-            native = await UnityBackgroundVisualTools.CaptureNativeAsync(
-                plan, cancellationToken);
-        }
-        finally
-        {
-            captureScope.Dispose();
-            AddTaskMessage("UNITY NATIVE FOCUS",
-                captureScope.Diagnostic,
-                status: captureScope.Diagnostic.Contains("UNAVAILABLE", StringComparison.Ordinal) ||
-                        captureScope.Diagnostic.Contains("UNVERIFIED", StringComparison.Ordinal)
-                    ? "UNVERIFIED" : "OBSERVED",
-                includeHistory: false);
-        }
-
-        AddTaskMessage("UNITY NATIVE GAME VIEW",
-            native.Detail, status: native.Captured ? "OBSERVED" : "UNVERIFIED",
-            includeHistory: false);
-        if (native.Captured)
-            return native;
-
-        // The offscreen camera is supplementary, not equivalent to native
-        // Game View or pointer-input evidence. Never activate a GUI as fallback.
-        var offscreen = await UnityBackgroundVisualTools.CaptureAsync(
-            plan, cancellationToken);
-        return offscreen with
-        {
-            Detail = "NATIVE_UNVERIFIED=" + native.Detail +
-                     "; OFFSCREEN_SUPPLEMENT_ONLY=" + offscreen.Detail
-        };
-    }
-
     private async Task<MilestoneRunResult> RunSingleMilestoneAsync(
         string jobId,
         string workingDirectory,
@@ -273,25 +227,11 @@ public partial class MainWindow
                     await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                         workingDirectory, cancellationToken);
                 string designReport;
-                UnityBackgroundVisualPlan? visualPlan = null;
-                try
-                {
-                    visualPlan = UnityBackgroundVisualTools.Prepare(
-                        workingDirectory, jobId, milestone.Id + "-initial");
-                }
-                catch (Exception visualToolError) when (visualToolError is IOException or
-                    UnauthorizedAccessException or ArgumentException)
-                {
-                    mechanicalReports.Add("INTERNAL_VISUAL_TOOLS_UNAVAILABLE: " +
-                        visualToolError.Message);
-                }
                 try
                 {
                     var run = await RunCoordinatorRoleAsync(
                         jobId, "DESIGN",
-                        RoleContractLoader.BuildDesignPrompt(design, workingDirectory) +
-                        (visualPlan is null ? string.Empty :
-                            Environment.NewLine + visualPlan.AgentGuidance),
+                        RoleContractLoader.BuildDesignPrompt(design, workingDirectory),
                         designRole with { ThreadSessionId = null, ThreadProjectPath = null },
                         workingDirectory, null, null, cancellationToken,
                         CodexSandboxMode.WorkspaceWrite,
@@ -308,32 +248,17 @@ public partial class MainWindow
                     var verified = run.ExitCode == 0 && parsed.IsValid &&
                         parsed.Status == "completed" &&
                         UnityDesignPromptPolicy.IsVerifiedDocument(workingDirectory, design);
-                    // Worker obtains its own evidence after the agent; this
-                    // must not overwrite screenshots captured during DESIGN.
-                    UnityBackgroundVisualEvidence offscreen;
-                    if (visualPlan is null)
-                        offscreen = new(false,
-                            "OFFSCREEN_CAPTURE_UNVERIFIED: tool preparation unavailable", null);
-                    else if (await recheckUnityEditorAsync(cancellationToken))
-                        offscreen = await CaptureBestAvailableVisualAsync(
-                            visualPlan, unityFocusGuard, cancellationToken);
-                    else
-                        offscreen = new(false,
-                            "OFFSCREEN_CAPTURE_UNVERIFIED: latest Editor CLI probe not ready",
-                            null);
-                    var pixelAudit = UnityVisualFoundryPixelAudit.Inspect(offscreen.ImagePath);
-                    AddTaskMessage("UNITY VISUAL PIXEL AUDIT", pixelAudit.Detail,
-                        status: pixelAudit.Readable ? "OBSERVED" : "UNVERIFIED",
-                        includeHistory: false);
+                    // Only explicit role-requested native capture runs. Completion
+                    // of DESIGN does not imply PlayMode or a screenshot request.
                     designReport = (verified ? "DESIGN_STATUS: COMPLETED" :
                         "DESIGN_STATUS: BLOCKED_OR_IN_PROGRESS") +
                         Environment.NewLine +
                         MilestoneDefinitionContract.Limit(run.FinalMessage, 1600) +
                         Environment.NewLine + "CHANGED_PATHS: " +
                         string.Join(", ", producedPaths) +
-                        Environment.NewLine + "PIXEL_OBSERVATION_ONLY: " + pixelAudit.Detail +
-                        Environment.NewLine + "INTERNAL_VISUAL_CAPTURE: " +
-                        offscreen.Detail;
+                        Environment.NewLine +
+                        "INTERNAL_VISUAL_CAPTURE: EXPLICIT_REQUEST_ONLY; " +
+                        "DESIGN/HIGH may request native_capture after checking PlayMode.";
                 }
                 catch (OperationCanceledException) when (
                     cancellationToken.IsCancellationRequested)

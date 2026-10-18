@@ -104,6 +104,18 @@ internal static class AssetManagerPathPolicy
     internal static bool IsAllowed(string path, AssetManagerDefinition request, string phase) =>
         MilestoneDefinitionContract.IsSafeRelativePath(path);
 
+    // Evidence reports are distinct from product content. Discover may write
+    // only textual reports under docs/projecthub/, not arbitrary project files.
+    internal static bool IsDiscoverEvidence(string path)
+    {
+        var name = (path ?? "").Replace('\\', '/');
+        if (!name.StartsWith("docs/projecthub/", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("/../", StringComparison.Ordinal) ||
+            name.EndsWith("/", StringComparison.Ordinal)) return false;
+        return new[] { ".md", ".txt", ".json", ".jsonl" }.Any(extension =>
+            name.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
+    }
+
     internal static bool IsDeclaredScope(string path, AssetManagerDefinition request, string phase)
     {
         var changed = (path ?? string.Empty).Replace('\\', '/');

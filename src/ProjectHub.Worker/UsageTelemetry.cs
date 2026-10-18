@@ -35,6 +35,74 @@ public static class UsageTelemetryStore
 {
     private static readonly object Gate = new();
 
+    /// <summary>
+    /// Mechanical handoff only: all known model calls, without leaking
+    /// specialist-owned temporary WORK task identities to HQ.
+    /// Missing provider usage is marked UNKNOWN, never silently recorded as 0.
+    /// </summary>
+    public static string FormatForNextRole(string jobId)
+    {
+        var job = string.Concat(jobId.Select(c =>
+            char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_'));
+        var file = Path.Combine(WorkerPaths.State, "usage", job, "calls.jsonl");
+        var rows = new List<ModelCallTelemetry>();
+        lock (Gate)
+        {
+            try
+            {
+                if (!File.Exists(file)) return "MODEL_USAGE_HANDOFF: NO_PREVIOUS_CALLS";
+                foreach (var line in File.ReadLines(file))
+                {
+                    try
+                    {
+                        var item = JsonSerializer.Deserialize<ModelCallTelemetry>(
+                            line, ProjectHubJson.WebIndentedOptions);
+                        if (item is not null && item.JobId == jobId) rows.Add(item);
+                    }
+                    catch (JsonException) { }
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return "MODEL_USAGE_HANDOFF: READ_UNAVAILABLE";
+            }
+        }
+        if (rows.Count == 0) return "MODEL_USAGE_HANDOFF: NO_PREVIOUS_CALLS";
+        var output = new StringBuilder();
+        output.AppendLine("MODEL_USAGE_HANDOFF: recorded model calls, provider usage only");
+        foreach (var group in rows.GroupBy(x => (x.Role, x.Model, x.Reasoning))
+                     .OrderBy(x => x.Key.Role).ThenBy(x => x.Key.Model))
+        {
+            var known = group.Where(x => x.UsageKnown).ToArray();
+            output.Append("ROLE=").Append(group.Key.Role)
+                .Append("; MODEL=").Append(group.Key.Model)
+                .Append("; REASONING=").Append(group.Key.Reasoning ?? "none")
+                .Append("; CALLS=").Append(group.Count())
+                .Append("; USAGE_KNOWN_CALLS=").Append(known.Length)
+                .Append("; INPUT=").Append(known.Sum(x => x.InputTokens ?? 0))
+                .Append("; CACHED_INPUT=").Append(known.Sum(x => x.CachedInputTokens ?? 0))
+                .Append("; OUTPUT=").Append(known.Sum(x => x.OutputTokens ?? 0))
+                .Append("; PROVIDER_TOTAL=").Append(known.Sum(x => x.ProviderTotalTokens ??
+                    (x.InputTokens ?? 0) + (x.OutputTokens ?? 0)))
+                .AppendLine(known.Length == group.Count() ? "" : "; UNKNOWN_CALLS=" +
+                    (group.Count() - known.Length));
+        }
+        // This section is factual telemetry, not an assignment or instruction.
+        return output.ToString().TrimEnd();
+    }
+
+    public static void RecordCall(string jobId, string role, string model,
+        string? reasoning, string purpose, CodexUsage usage)
+    {
+        Append(new ModelCallTelemetry(jobId, null, role, model, reasoning,
+            purpose, usage.UsageKnown ? usage.InputTokens : null,
+            usage.UsageKnown ? usage.CachedInputTokens : null,
+            usage.UsageKnown ? usage.OutputTokens : null,
+            usage.UsageKnown ? usage.ReasoningOutputTokens : null,
+            usage.ProviderTotalTokens, 0, 0, 0, null, 0, 0, null,
+            usage.UsageKnown, null, null, DateTimeOffset.UtcNow));
+    }
+
     public static void Append(ModelCallTelemetry telemetry)
     {
         var job = string.Concat(telemetry.JobId.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_'));

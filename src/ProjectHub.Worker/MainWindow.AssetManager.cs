@@ -307,7 +307,12 @@ public partial class MainWindow
                 root, cancellationToken);
             var changed = MilestoneMechanicalExecutor.DiffChangeStates(before, after)
                 .ToArray();
-            var additionalProjectChanges = changed.Where(path =>
+            var discoverEvidence = phase == "DISCOVER"
+                ? changed.Where(AssetManagerPathPolicy.IsDiscoverEvidence).ToArray()
+                : Array.Empty<string>();
+            var productChanges = changed.Except(discoverEvidence,
+                StringComparer.OrdinalIgnoreCase).ToArray();
+            var additionalProjectChanges = productChanges.Where(path =>
                 !AssetManagerPathPolicy.IsDeclaredScope(path, definition, phase)).ToArray();
             // A proven local payload + Editor-side Import can recover a
             // blocked/failed AI acquisition. Other phases still demand an
@@ -329,8 +334,12 @@ public partial class MainWindow
             if (phase == "ACQUIRE")
                 detail += " · " + (importAfterAi?.Detail ??
                     acquiredAfterAi?.Detail ?? "ASSET_IMPORT_NOT_VERIFIED");
-            if (phase == "DISCOVER" && changed.Length > 0)
-                detail += " · DISCOVERY_MODIFIED_PROJECT";
+            if (phase == "DISCOVER" && productChanges.Length > 0)
+                detail += " · DISCOVERY_MODIFIED_PROJECT: " +
+                    string.Join(",", productChanges.Take(12));
+            if (phase == "DISCOVER" && discoverEvidence.Length > 0)
+                detail += " · DISCOVERY_EVIDENCE_WRITTEN: " +
+                    string.Join(",", discoverEvidence.Take(12));
             if (phase == "INTEGRATE")
                 detail += " · " + (sceneSaved?.Detail ?? "UNITY_SCENE_SAVE_NOT_CONFIRMED");
             if (additionalProjectChanges.Length > 0)

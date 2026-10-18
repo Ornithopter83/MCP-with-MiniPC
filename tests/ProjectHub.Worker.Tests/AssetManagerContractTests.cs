@@ -71,6 +71,18 @@ public sealed class AssetManagerContractTests
         Assert.False(HqTextProtocol.Parse(invalid).IsValid);
     }
 
+    [Theory]
+    [InlineData("docs/projecthub/m113/discover-evidence.md", true)]
+    [InlineData("docs/projecthub/m113/proof.json", true)]
+    [InlineData("Assets/Scripts/Quiz.cs", false)]
+    [InlineData("docs/projecthub/m113/scene.unity", false)]
+    [InlineData("docs/other/report.md", false)]
+    [InlineData("docs/projecthub/../Assets/code.md", false)]
+    public void DiscoverEvidenceSeparatedFromProductWrites(string path, bool expected)
+    {
+        Assert.Equal(expected, AssetManagerPathPolicy.IsDiscoverEvidence(path));
+    }
+
     [Fact]
     public void AssetManagerAllowsAnyProjectWriteWithDeclaredScopeTracking()
     {

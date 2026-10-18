@@ -1736,7 +1736,8 @@ public partial class MainWindow : Window
             throw new InvalidOperationException($"{roleName}_WEB_UNAVAILABLE");
 
         var effectivePrompt = UserAttachmentTransport.AppendWebPrompt(
-            prompt,
+            prompt + Environment.NewLine + Environment.NewLine +
+            UsageTelemetryStore.FormatForNextRole(jobId),
             inputAttachments);
         var effectiveAttachments = webAttachments ?? new List<BridgeAttachment>();
 
@@ -1862,6 +1863,8 @@ public partial class MainWindow : Window
         bool editorLaneHeld = false)
     {
         var started = DateTimeOffset.UtcNow;
+        prompt += Environment.NewLine + Environment.NewLine +
+            UsageTelemetryStore.FormatForNextRole(jobId);
         // #1 ASSET MANAGER is an independent role, but must run with
         // WORK's strict command hooks, network configuration and sandbox.
         var assetManagerPurpose = purpose.StartsWith("ASSET_MANAGER_", StringComparison.OrdinalIgnoreCase);

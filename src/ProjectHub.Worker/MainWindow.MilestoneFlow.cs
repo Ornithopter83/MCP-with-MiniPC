@@ -756,7 +756,9 @@ public partial class MainWindow
                 }
 
                 ProjectHandoffJournal.RecordMilestoneReport(
-                    normalizedRoot, jobId, milestone!.Id, milestoneResult.Body);
+                    normalizedRoot, jobId, milestone!.Id,
+                    milestoneResult.Body + Environment.NewLine +
+                    UsageTelemetryStore.FormatForNextRole(jobId));
 
                 if (milestoneResult.PauseRequired)
                 {
