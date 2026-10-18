@@ -66,4 +66,36 @@ public sealed class UnityEditorStartupRestartTests
     public void OnlyUnityEditorExecutableIsAllowed(string executable, bool expected) =>
         Assert.Equal(expected, UnityEditorStartupRestart.IsUnityEditorExecutable(
             executable));
+    [Fact]
+    public void EditorGuiLaunchUsesWindowsShellAndVisibleWindow()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "unity-project",
+            Guid.NewGuid().ToString("N"));
+        var editor = Path.Combine(root, "Hub", "Editor", "Unity.exe");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(editor)!);
+            File.WriteAllBytes(editor, Array.Empty<byte>());
+            // Construction only: never launch the fake executable.
+            var launch = UnityEditorStartupRestart.CreateLaunchStartInfo(editor, root);
+            Assert.True(launch.UseShellExecute);
+            Assert.Equal(System.Diagnostics.ProcessWindowStyle.Normal,
+                launch.WindowStyle);
+            Assert.Equal(Path.GetFullPath(editor), launch.FileName);
+            Assert.Equal(Path.GetDirectoryName(editor), launch.WorkingDirectory);
+            Assert.Equal(new[] { "-projectPath", Path.GetFullPath(root) },
+                launch.ArgumentList.ToArray());
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void MissingUnityExecutableIsRejectedBeforeShellStart()
+    {
+        Assert.Throws<FileNotFoundException>(() =>
+            UnityEditorStartupRestart.CreateLaunchStartInfo(
+                Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"),
+                    "Unity.exe"), Path.GetTempPath()));
+    }
+
 }

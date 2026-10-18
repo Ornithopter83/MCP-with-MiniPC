@@ -193,7 +193,13 @@ public partial class MainWindow
                     normalizedRoot, cts.Token);
                 AddTaskMessage("UNITY EDITOR STARTUP RESTART",
                     restart.Code + ": " + restart.Detail,
-                    status: restart.Verified ? "OBSERVED" : "UNVERIFIED");
+                    status: restart.Verified ? "OBSERVED" : "BLOCKED");
+                // Do not let HQ or any role act on a project after the old
+                // Editor has closed but its replacement is unverified.
+                if (!restart.Verified)
+                    throw new InvalidOperationException(
+                        "UNITY_EDITOR_STARTUP_BLOCKED: " + restart.Code +
+                        ": " + restart.Detail);
             }
 
             // New commands and resumed/added user commands are the only

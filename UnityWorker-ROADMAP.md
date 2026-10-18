@@ -146,3 +146,10 @@
 - `Process.CloseMainWindow`로 정상 종료 요청 후 최대 35초 기다린다. 사용자 미저장 변경 확인창 등이 남아 있으면 `Kill`/`taskkill` 없이 종료를 중단하고 `UNVERIFIED`를 기록한다. 원래 프로세스 종료가 확인된 경우에만 같은 Unity 실행 파일에 `-projectPath`를 전달해 최소화 상태로 재실행한다. 새 Editor PID와 CLI `ready` 상태를 최대 105초 확인한다.
 - OS 창 포커스를 임의로 되돌리거나 입력을 주입하지 않는다. Windows의 Unity 시작 동작 자체가 잠시 창 포커스를 바꿀 가능성은 배제할 수 없으며, 기존 FocusGuard의 작업 종료 복구 정책은 그대로 유지한다.
 - 실제 Windows Unity GUI와 CLI가 있어야 종료·재시작을 검증할 수 있다. 이 변경에서 실제 프로세스 종료·재시작·CI 실행은 수행하지 않았다.
+
+### Editor 종료 후 재실행 실패 보정
+
+- 과거 구현의 `UseShellExecute=false`, `WindowStyle=Minimized` 조합을 제거하고 `UseShellExecute=true`, `WindowStyle=Normal`을 사용한다. Unity의 공식 `Unity.exe -projectPath "<project>"` 형식을 인자 목록으로 전달한다. Windows가 창을 활성화할 수 있다.
+- 정상 종료하기 전에 실제 Editor 실행 파일 경로를 프로젝트별 `%LOCALAPPDATA%/ProjectHub/UnityWorker/EditorBridge/<hash>/last-editor-executable.txt`에 저장한다. 이전 재시작 실패로 Editor 프로세스가 없으면 그 경로, `UNITY_EDITOR_PATH`, 프로젝트 `ProjectVersion.txt` 버전의 기본 Unity Hub 설치 경로 순으로 복구한다. 프로젝트 잠금이 남아 있으면 중복 실행하지 않는다.
+- 새 Unity PID가 Shell 시작 PID와 다르더라도 해당 프로젝트의 CLI `ready` 및 같은 `Unity.exe` 바이너리를 확인하면 성공으로 판정한다. 120초 안에 확인되지 않으면 CLI 증거 경로와 시작 PID/종료 코드를 남기며 자동 재시도하지 않는다.
+- 정상 종료 후 새 Editor의 실행·ready 확인에 실패하면 `UNITY_EDITOR_STARTUP_BLOCKED`로 HQ 작업을 중단한다. 이 기능의 성공 여부는 실제 Windows Unity 실행 로그로 검증해야 한다.
