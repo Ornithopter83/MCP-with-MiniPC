@@ -54,8 +54,8 @@ public partial class MainWindow
 
         SetPipelineCard(PipelineHighLevelCard, PipelineHighLevelTitle, HighLevelStageCircle, HighLevelStageIcon, _highLevelStageIconAsset, TaskStage.HighLevel, RoleVisuals["HighLevel"], false, initialInputIdle);
         ManagerStageModelText.Text = AiProviderCatalog.FormatModel(
-            _targetSettings.EffectiveImplementer.Provider,
-            _targetSettings.EffectiveImplementer.Model);
+            _targetSettings.EffectiveManager.Provider,
+            _targetSettings.EffectiveManager.Model);
         SetPipelineCard(PipelineManagerCard, PipelineManagerTitle, ManagerStageCircle, ManagerStageIcon, _managerStageIconAsset, TaskStage.Manager, RoleVisuals["Manager"], false, initialInputIdle);
     }
 

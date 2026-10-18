@@ -237,7 +237,7 @@ public partial class MainWindow
                 }
                 var assetRun = await ExecuteMilestoneAssetManagerAsync(
                     jobId, workingDirectory, milestone, assetDefinition,
-                    implementer, cancellationToken);
+                    _targetSettings.EffectiveManager, cancellationToken);
                 mechanicalReports.Add("ASSET_MANAGER #1: " +
                     MilestoneDefinitionContract.Limit(assetRun.Detail, 4000));
                 foreach (var path in assetRun.ChangedPaths)

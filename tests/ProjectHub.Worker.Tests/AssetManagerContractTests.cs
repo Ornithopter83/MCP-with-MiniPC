@@ -121,6 +121,27 @@ public sealed class AssetManagerContractTests
     }
 
     [Fact]
+    public void AssetManagerModelSettingsStayIndependentOfWork()
+    {
+        var manager = new WorkerAiRoleSettings(
+            Provider: "openai", Model: "gpt-6-sol", Reasoning: "low");
+        var work = new WorkerAiRoleSettings(
+            Provider: "openai", Model: "gpt-6-luna", Reasoning: "high");
+        var settings = new WorkerTargetSettings(null, null,
+            Implementer: work, Manager: manager);
+
+        Assert.Equal("gpt-6-sol", settings.EffectiveManager.Model);
+        Assert.Equal("low", settings.EffectiveManager.Reasoning);
+        Assert.Equal("gpt-6-luna", settings.EffectiveImplementer.Model);
+        Assert.Equal("high", settings.EffectiveImplementer.Reasoning);
+
+        var normalized = WorkerTargetConfiguration.NormalizeForRuntime(settings);
+        Assert.Equal("gpt-6-sol", normalized.EffectiveManager.Model);
+        Assert.Equal("low", normalized.EffectiveManager.Reasoning);
+        Assert.Equal("gpt-6-luna", normalized.EffectiveImplementer.Model);
+    }
+
+    [Fact]
     public void CheckpointUsesStableRequestAndRejectsChangedScope()
     {
         var root = Path.Combine(Path.GetTempPath(),
