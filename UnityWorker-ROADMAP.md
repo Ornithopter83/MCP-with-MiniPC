@@ -28,7 +28,7 @@
 - 초기에는 Unity WORK 전체를 직렬화했으나, 후속 개선에서 독립 C# 소스 WORK는 사용자 설정 상한까지 병렬 실행하고 씬·프리팹·AssetDatabase/Editor 작업은 별도 독점 레인으로 제한
 - UnityWorker 브랜치 대상으로 .NET CI 실행 및 직렬 정책 회귀 테스트 추가
 - Unity 프로젝트로 인식되면 Worker BUILD 단계에서 Unity CLI `recompile`을 호출하고, 컴파일 실패(exit 6)와 연결·환경 실패를 구분 (Windows 실증 전)
-- HQ 실행 전에 프로젝트 구조·Pipeline 의존성과 `unity command --project-path ... --format json` 읽기 전용 Probe를 확인하고, 도구·Editor 오류가 나면 WORK 실행 전에 차단 (실제 Windows 실증 전)
+- HQ 실행 전에 프로젝트 구조·Pipeline 의존성과 `unity command --project-path ... --format json` 읽기 전용 Probe를 확인했다. 현재는 Editor 연결 장애를 HQ에 전달하며 코드 전용 WORK까지 일괄 차단하지 않는다. Editor 의존 동작은 실제 명령 응답으로 개별 판정한다.
 
 - #1 ASSET MANAGER 역할 계약·HQ 우선 계획 문법·직렬 3단계 실행·독립 세션·WORK 선행 실행·카드 표시 및 체크포인트 반영 (Windows Editor 실증 전)
 
@@ -84,18 +84,19 @@
 
 ### #1 ASSET MANAGER 이전 NEW 작업 Git 경계 (UnityWorker)
 
-- 새 작업 시작 시 Unity Editor 사전 점검 후, HQ 전송 전에 Worker가 origin/main을 기준으로 로컬 Git 준비를 수행한다.
+- NEW 작업은 HQ 전송 전에 Worker가 origin/main 기준 Git 준비를 먼저 수행하고, 이후 기존 Unity Editor 연결을 점검한다.
 - 브랜치 전환을 방해하는 충돌 경로만 강제로 삭제·교체한다. 백업·stash 생성 없음, 무관한 미스테이징/스테이징 파일 보존.
 - Unity 캐시/IDE 출력용 ignore 규칙을 사전에 적용하며 Git 메타데이터 및 ProjectHub 지속 상태는 보호한다.
 - Git 사전 점검 실패는 HIGH의 소스 수정 없이 즉시 중단한다. 실제 Unity 씬 실행은 별도 실기 검증이 필요하다.
 
-### 명령 접수 기반 Unity Editor 수명주기
+### 명령 접수 기반 Unity Editor 연결 정책
 
-- '＋ 새 작업' 화면 전환은 Editor 실행과 무관하다.
-- 실제 명령 제출(`▶ 실행`) 및 작업 추가(`＋ 작업 추가`)에서만 Unity CLI 연결·자동 실행 게이트에 들어간다.
-- NEW 명령 Git 준비 이후 Editor 상태를 조사하고, 없는 경우 `unity open <project>`으로 실행한 다음 Pipeline 가용성을 기다린다.
-- 이미 열렸거나 잠긴 프로젝트는 자동 중복 실행하지 않는다. 일반 자동 마일스톤 반복 과정에서 Editor를 재실행하지 않는다.
-- 테스트는 가짜 Unity CLI 프로브로 연결 성공, 미실행 기동, 기존 Editor 잠금, 실패·시간초과를 검증한다. 실제 Windows Unity Editor 통합 테스트는 별도로 필요하다.
+- '＋ 새 작업' 화면 전환은 Editor 실행 및 연결 점검과 무관하다.
+- 실제 명령 제출(`▶ 실행`) 및 작업 추가(`＋ 작업 추가`)에서 기존 Unity CLI/Editor 연결 상태만 점검한다.
+- NEW 작업은 Git 준비 후 연결을 확인한다. 연결이 없더라도 GUI Editor를 자동 실행하지 않으며 HQ가 코드 전용 작업 또는 중단을 판단한다.
+- 프로젝트 잠금·Pipeline 오류·Safe Mode는 새 Editor 실행으로 우회하지 않는다. 작업 중 연결 감시는 읽기 전용으로 운영하며 자동 재시작·재연결·사용자 포커스 전환을 수행하지 않는다.
+- 역할 AI가 실제 명령을 선택하고, Worker의 `worker_command`는 실시간 카탈로그에 등록된 `eval`을 `editor_eval`로 전달한다. `expected_result`와 실제 Editor 반환값이 일치해야 명령 성공으로 인정하며, 재컴파일 또는 메서드 반환 성공만으로 Player BuildReport·산출물 검증 완료를 주장하지 않는다.
+- 실제 Windows Editor의 명령 전달 및 Player 빌드 결과는 별도 실행 증거가 필요하다.
 
 ### ASSET MANAGER DISCOVER 오차단 방지
 
