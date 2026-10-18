@@ -343,6 +343,7 @@ public partial class MainWindow
                     inboundType,
                     hqInbound,
                     normalizedRoot,
+                    jobId,
                     configuredRepositoryUrl,
                     remoteReference.CommitSha,
                     IsWebTransport(coordinator.Transport));
@@ -438,9 +439,10 @@ public partial class MainWindow
                         "HQ_RESPONSE_RECOVERY",
                         recoveryBody,
                         normalizedRoot,
+                        jobId,
                         configuredRepositoryUrl,
                         remoteReference.CommitSha,
-                    IsWebTransport(coordinator.Transport));
+                        IsWebTransport(coordinator.Transport));
 
                     AddDataFlowHistory(
                         WorkerRoleState.Hq,
@@ -1466,6 +1468,7 @@ public partial class MainWindow
         string inboundType,
         string body,
         string workingDirectory,
+        string jobId,
         string? configuredRepositoryUrl,
         string? remoteMainSha,
         bool webTransport) =>
@@ -1489,9 +1492,19 @@ public partial class MainWindow
         Environment.NewLine +
         "같은 milestone의 GENERAL WORK 사이에는 실행 순서나 결과 dependency를 만들지 않는다. WORKITEM 분할 판단은 HQ routing contract의 우선순위를 따른다." +
         Environment.NewLine +
+        "이미 사용한 WORK ID (새 MODE=NEW에 재사용 금지): " +
+        FormatUsedWorkIdsForHq(workingDirectory, jobId) +
+        Environment.NewLine +
         "입력 본문:" +
         Environment.NewLine +
         body);
+
+    private static string FormatUsedWorkIdsForHq(string directory, string jobId)
+    {
+        var used = WorkExecutionJournal.ReadAll(directory, jobId)
+            .Select(item => item.WorkItemId).ToArray();
+        return used.Length == 0 ? "없음" : string.Join(",", used);
+    }
 
     private static string BuildMilestoneCliNewSessionInput(
         string workingDirectory, string request)

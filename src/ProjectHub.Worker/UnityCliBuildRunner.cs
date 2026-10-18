@@ -117,9 +117,8 @@ internal static class UnityCliBuildRunner
             exitCode, command, logFile, summary);
     }
 
-    // Only a confirmed compiler error (Unity CLI exit 6) can enter the
-    // existing bounded #8 code-fix path. Missing CLI, auth, editor, timeout
-    // and unknown exits remain environment/tool failures.
+    // Classify genuine compilation errors separately from tool/environment
+    // failures. Worker never dispatches an automatic repair WORK.
     public static bool IsEnvironmentFailure(MilestoneMechanicalResult report)
         => !report.Success &&
            (report.Summary.Contains("BUILD_UNVERIFIED:",

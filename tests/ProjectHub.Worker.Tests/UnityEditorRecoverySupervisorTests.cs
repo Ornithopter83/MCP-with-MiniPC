@@ -14,174 +14,59 @@ public sealed class UnityEditorRecoverySupervisorTests
     private static UnityEditorRecoverySupervisor Create(
         Func<string, CancellationToken, Task<UnityToolchainPreflight.Result>> probe,
         Func<string, bool> locked,
-        Func<string, CancellationToken,
-            Task<UnityEditorCommandLifecycle.LaunchResult>> open,
         Action<string, string>? report = null,
         Func<TimeSpan, CancellationToken, Task>? wait = null,
         Action<UnityToolchainPreflight.Result>? observe = null) =>
         new(
             Path.Combine(Path.GetTempPath(), "projecthub-recovery-tests"),
-            CancellationToken.None, probe, locked, open,
+            CancellationToken.None, probe, locked,
             wait ?? ((_, token) => Task.Delay(Timeout.InfiniteTimeSpan, token)),
             report ?? ((_, _) => { }), observe);
 
     [Fact]
-    public async Task RecoveryProbeUpdatesSharedEditorStateForLaterMilestones()
+    public async Task PassiveProbeUpdatesSharedStateAndReportsRecovery()
     {
-        var offline = Missing();
-        var live = Connected();
         var connection = new UnityEditorConnectionState(
-            Path.GetTempPath(), offline, (_, _) => Task.FromResult(live));
-        var observations = new Queue<UnityToolchainPreflight.Result>(
-            new[] { offline, live });
+            Path.GetTempPath(), Missing(), (_, _) => Task.FromResult(Connected()));
+        var states = new Queue<UnityToolchainPreflight.Result>(
+            new[] { Missing(), Connected() });
+        var events = new List<string>();
         await using var supervisor = Create(
-            (_, _) => Task.FromResult(observations.Dequeue()),
-            _ => true,
-            (_, _) => Task.FromResult(
-                new UnityEditorCommandLifecycle.LaunchResult(true, "not needed")),
+            (_, _) => Task.FromResult(states.Dequeue()),
+            _ => true, (message, _) => events.Add(message),
             observe: connection.Observe);
-        Assert.False(connection.Current.Ready);
         await supervisor.CheckOnceAsync(CancellationToken.None);
         Assert.False(connection.Current.Ready);
         await supervisor.CheckOnceAsync(CancellationToken.None);
         Assert.True(connection.Current.Ready);
+        Assert.Contains(events, e => e.Contains("재실행·재연결은 자동 수행하지 않음"));
+        Assert.Contains(events, e => e.Contains("연결 재확인"));
     }
 
-    [Fact]
-    public async Task TwoConfirmedMissingChecks_RelaunchOnce_ThenConnectionRecovers()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PersistentMissingEditorNeverTriggersRecoveryOrRepeatedNotifications(
+        bool lockHeld)
     {
-        var launches = 0;
-        var states = new Queue<UnityToolchainPreflight.Result>(
-            new[] { Connected(), Missing(), Missing(), Connected() });
         var events = new List<string>();
-        await using var supervisor = Create(
-            (_, _) => Task.FromResult(states.Dequeue()),
-            _ => false,
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(
-                    new UnityEditorCommandLifecycle.LaunchResult(true, "launched"));
-            },
-            (message, _) => events.Add(message));
-
-        await supervisor.CheckOnceAsync(CancellationToken.None);
-        await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Equal(0, launches);
-        await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Equal(1, launches);
-        Assert.Contains(events, s => s.Contains("UNITY_EDITOR_GUI_LAUNCH_SUBMITTED"));
-        Assert.DoesNotContain(events, s => s.Contains("복구되었습니다"));
-        await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Contains(events, s => s.Contains("복구되었습니다"));
-    }
-
-    [Fact]
-    public async Task KoreanMissingPipeline_RelaunchesAfterTwoChecksIfUnlocked()
-    {
-        var launches = 0;
-        var events = new List<string>();
-        var missing = new UnityToolchainPreflight.Result(
-            false, "UNITY_EDITOR_UNAVAILABLE",
-            "Unity CLI exit 6: 프로젝트의 Pipeline 인스턴스를 찾을 수 없습니다.");
-        await using var supervisor = Create(
-            (_, _) => Task.FromResult(missing),
-            _ => false,
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(
-                    new UnityEditorCommandLifecycle.LaunchResult(true, "launched"));
-            },
-            (message, _) => events.Add(message));
-        await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Equal(0, launches);
-        await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Equal(1, launches);
-        Assert.Contains(events, e => e.Contains("재실행을 시도합니다"));
-    }
-
-    [Fact]
-    public async Task KoreanMissingPipeline_DoesNotLaunchWhenEditorLocked()
-    {
-        var launches = 0;
-        var missing = new UnityToolchainPreflight.Result(
-            false, "UNITY_EDITOR_UNAVAILABLE",
-            "프로젝트의 Pipeline 인스턴스를 찾을 수 없습니다.");
-        await using var supervisor = Create(
-            (_, _) => Task.FromResult(missing),
-            _ => true,
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(
-                    new UnityEditorCommandLifecycle.LaunchResult(true, "unexpected"));
-            });
-        for (var i = 0; i < 4; i++)
-            await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Equal(0, launches);
-    }
-
-    [Fact]
-    public async Task LockedEditor_IsNeverOpenedTwice()
-    {
-        var launches = 0;
+        var lockChecks = 0;
         await using var supervisor = Create(
             (_, _) => Task.FromResult(Missing()),
-            _ => true,
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(
-                    new UnityEditorCommandLifecycle.LaunchResult(true, "launched"));
-            });
-        for (var i = 0; i < 6; i++)
+            _ => { lockChecks++; return lockHeld; },
+            (message, _) => events.Add(message));
+        for (var i = 0; i < 5; i++)
             await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Equal(0, launches);
+        Assert.Equal(1, events.Count);
+        Assert.Equal(5, lockChecks);
+        Assert.Contains("자동 수행하지 않음", events[0]);
     }
 
     [Fact]
-    public async Task SafeModeAndGenericCliFailures_NeverTriggerLaunch()
-    {
-        var launches = 0;
-        await using var supervisor = Create(
-            (_, _) => Task.FromResult(new UnityToolchainPreflight.Result(
-                false, "UNITY_EDITOR_PREFLIGHT_TIMEOUT", "Editor busy")),
-            _ => false,
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(
-                    new UnityEditorCommandLifecycle.LaunchResult(true, "launched"));
-            });
-        for (var i = 0; i < 4; i++)
-            await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Equal(0, launches);
-    }
-
-    [Fact]
-    public async Task RelaunchAttemptsAreBoundedAcrossRepeatedFailures()
-    {
-        var launches = 0;
-        await using var supervisor = Create(
-            (_, _) => Task.FromResult(Missing()),
-            _ => false,
-            (_, _) =>
-            {
-                launches++;
-                return Task.FromResult(
-                    new UnityEditorCommandLifecycle.LaunchResult(false, "failed"));
-            });
-        for (var i = 0; i < 10; i++)
-            await supervisor.CheckOnceAsync(CancellationToken.None);
-        Assert.Equal(2, launches);
-    }
-
-    [Fact]
-    public async Task MonitorHasNoPollingUntilStarted_AndStopsAtJobEnd()
+    public async Task MonitorDoesNotPollUntilStartedAndStopsAtJobEnd()
     {
         var probes = 0;
-        var waitEntered = new TaskCompletionSource<bool>(
+        var entered = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         await using (var supervisor = Create(
             (_, _) =>
@@ -190,17 +75,15 @@ public sealed class UnityEditorRecoverySupervisorTests
                 return Task.FromResult(Missing());
             },
             _ => false,
-            (_, _) => Task.FromResult(
-                new UnityEditorCommandLifecycle.LaunchResult(true, "launched")),
             wait: async (_, token) =>
             {
-                waitEntered.TrySetResult(true);
+                entered.TrySetResult(true);
                 await Task.Delay(Timeout.InfiniteTimeSpan, token);
             }))
         {
             Assert.Equal(0, probes);
             supervisor.StartWatching();
-            await waitEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
         }
         Assert.Equal(0, probes);
     }

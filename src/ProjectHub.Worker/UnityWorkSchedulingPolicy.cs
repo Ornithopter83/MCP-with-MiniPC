@@ -16,6 +16,11 @@ internal static class UnityWorkSchedulingPolicy
         "editmode 실행", "editmode 테스트 실행", "editmode 검증 실행",
         "run editmode", "execute editmode",
         "unity recompile", "unity command", "unity eval",
+        // Conservative execution isolation, not a semantic task judgment:
+        // an explicit Editor request needs the exclusive lane even when the
+        // only writable output is a documentation report.
+        "editor", "에디터", "재연결", "빌드 실행", "빌드를 실행",
+        "player 빌드",
         "씬 저장", "씬 배치", "프리팹 저장", "에셋 임포트",
         "에셋 import"
     };

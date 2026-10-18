@@ -51,6 +51,8 @@ public sealed class WorkerMcpConfigTests
         var json = JsonSerializer.Serialize(BridgeServer.ToolDefinitions());
         Assert.Contains("native_capture", json);
         Assert.Contains("command_catalog", json);
+        Assert.Contains("editor_eval", json);
+        Assert.Contains("expected_result", json);
         Assert.Contains("visual_foundry", json);
         Assert.Contains("Immersive", json);
         Assert.Contains("playful", json);

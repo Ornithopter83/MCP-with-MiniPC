@@ -125,7 +125,7 @@ public sealed partial class BridgeServer
                     protocolVersion = "2025-03-26",
                     capabilities = new { tools = new { listChanged = false } },
                     serverInfo = new { name = "projecthub-unity-worker", version = "1.0.0" },
-                    instructions = "MANDATORY: Every specialist role must first call delegate_work for one bounded mechanical or implementation task and wait for success. Specialist judgment stays in the parent role. Direct parent edits are allowed only to polish or integrate a successful WORK result. Use worker_command for Unity status, compile, command_catalog, native_capture and explicitly DESIGN-selected visual_foundry. No HQ task number is created."
+                    instructions = "MANDATORY: Every specialist role must first call delegate_work for one bounded mechanical or implementation task and wait for success. Specialist judgment stays in the parent role. Direct parent edits are allowed only to polish or integrate a successful WORK result. Use worker_command for Unity status, compile, command_catalog, editor_eval, native_capture and explicitly DESIGN-selected visual_foundry. The specialist chooses Editor expressions and expected results; no HQ task number is created."
                 };
                 break;
             case "ping":
@@ -242,14 +242,16 @@ public sealed partial class BridgeServer
         new
         {
             name = "worker_command",
-            description = "Execute Unity status/compile, live catalog query, Native Game View screenshot, or DESIGN-requested Visual Foundry generation. Never chooses art direction or activates the GUI. This is not a shell.",
+            description = "Execute Unity status/recompile, catalog-listed Editor eval, Native Game View screenshot, or DESIGN-requested Visual Foundry generation. The specialist provides an expression and expected_result; CLI success alone is not Editor confirmation. Never launches GUI or chooses creative direction.",
             inputSchema = new
             {
                 type = "object",
                 properties = new
                 {
-                    action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "native_capture", "visual_foundry" } },
+                    action = new { type = "string", @enum = new[] { "status", "recompile", "unity_query", "command_catalog", "editor_eval", "native_capture", "visual_foundry" } },
                     command = new { type = "string", description = "For unity_query only: editor_state (via CLI status), or a read-only command present in the live command_catalog." },
+                    expression = new { type = "string", description = "For editor_eval: specialist-selected Editor C# expression, max 5000 characters. For a build use: return QuizStandaloneBuild.BuildQuizStandalone().summary.result.ToString();" },
+                    expected_result = new { type = "string", description = "For editor_eval: exact expected Editor-side return string; requires actual data.result, not an echoed expression." },
                     style = new { type = "string", @enum = new[] { "neon", "arcane", "luxury", "playful" }, description = "For visual_foundry: explicit DESIGN-selected theme." },
                     layout = new { type = "string", @enum = new[] { "Base", "Editorial", "Immersive" }, description = "For visual_foundry: explicit DESIGN-selected layout." },
                     description = new { type = "string", description = "For visual_foundry: DESIGN's explicit brief, never interpreted for automatic activation." }

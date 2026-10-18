@@ -193,7 +193,8 @@ public partial class MainWindow
 
         using var editorLease = await UnityEditorOperationGate.EnterAsync(
             session.ProjectRoot, cancellationToken).ConfigureAwait(false);
-        if (action == "command_catalog" || action == "unity_query")
+        if (action == "command_catalog" || action == "unity_query" ||
+            action == "editor_eval")
         {
             var probeCommand = await UnityCliProcessRunner.RunAsync(
                 session.ProjectRoot, UnityToolchainPreflight.EditorProbeArguments(
@@ -207,6 +208,26 @@ public partial class MainWindow
             if (action == "command_catalog")
                 return "UNITY_COMMAND_CATALOG: " +
                     (probe.CommandCatalogJson ?? "UNVERIFIED_NO_COMMANDS");
+            if (action == "editor_eval")
+            {
+                if (!UnityToolchainPreflight.CatalogContainsCommand(
+                        probe.CommandCatalogJson, "eval"))
+                    throw new InvalidOperationException(
+                        "UNITY_EVAL_NOT_IN_LIVE_CATALOG");
+                var expression = RequiredMcpString(arguments, "expression", 5000);
+                var expected = RequiredMcpString(arguments, "expected_result", 250);
+                // The role chooses the Editor operation and the expected
+                // acknowledgment. Worker only transmits and verifies it.
+                var executed = await UnityCliProcessRunner.RunAsync(
+                    session.ProjectRoot,
+                    UnityEditorCommandResult.EvalArguments(
+                        session.ProjectRoot, expression),
+                    TimeSpan.FromMinutes(10),
+                    "UnityWorker MCP Editor command",
+                    "UNITY_EDITOR_COMMAND_TIMEOUT_UNVERIFIED",
+                    cancellationToken).ConfigureAwait(false);
+                return UnityEditorCommandResult.Verify(executed, expected);
+            }
             var name = RequiredMcpString(arguments, "command", 60);
             if (name == "editor_state")
             {
