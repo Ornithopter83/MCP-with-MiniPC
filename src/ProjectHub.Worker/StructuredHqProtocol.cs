@@ -107,7 +107,15 @@ internal static class StructuredHqProtocol
             if (executionMode.Length == 0) executionMode = "NEW";
             if (executionMode is not ("NEW" or "CONTINUE"))
                 errors.Add("WORK " + s.Argument + ".MODE");
-            var paths = parsed.TryGetValue(s, out var f) ? f.GetMany("PATH") : Array.Empty<string>();
+            // HQ may emit DESIGN's WRITE_PATH spelling for a WORK item.
+            // Accept that alias while preserving the same 1..5 safe-path checks.
+            var paths = parsed.TryGetValue(s, out var f)
+                ? f.GetMany("PATH").Concat(f.GetMany("WRITE_PATH")).ToArray()
+                : Array.Empty<string>();
+            if (parsed.TryGetValue(s, out var pathFields) &&
+                pathFields.Names.Contains("PATH") &&
+                pathFields.Names.Contains("WRITE_PATH"))
+                errors.Add("WORK " + s.Argument + ".PATH_FIELD_CONFLICT");
             if (!int.TryParse(s.Argument, out var id) || id < 10)
                 errors.Add("WORK.ID");
             if (paths.Count is < 1 or > 5 || paths.Any(p => p.Length == 0 || p.Length > 250) ||
@@ -130,7 +138,7 @@ internal static class StructuredHqProtocol
                   instr.Contains("DESIGN 적용 후", StringComparison.OrdinalIgnoreCase);
             if (parsed.TryGetValue(s, out var wf) &&
                 wf.Names.Any(n => n is not ("PATH" or "INSTRUCTIONS" or "MODE" or
-                    "DEPENDS_ON_DESIGN")))
+                    "DEPENDS_ON_DESIGN" or "WRITE_PATH")))
                 errors.Add("WORK " + s.Argument + ".UNKNOWN_FIELD");
             works.Add(new()
             {
