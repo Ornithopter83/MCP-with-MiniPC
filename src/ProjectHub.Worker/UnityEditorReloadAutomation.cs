@@ -74,9 +74,7 @@ internal sealed class UnityEditorReloadAutomation : IAsyncDisposable
                 DiscoverProjectEditorPids();
                 ConfirmDialogs();
             }
-            catch (Exception ex) when (ex is Win32Exception or COMException or
-                InvalidOperationException or ArgumentException or
-                ElementNotAvailableException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _report("EDITOR_RELOAD_SCAN_UNVERIFIED: " +
                     ex.GetType().Name + ": " + ex.Message);
@@ -89,15 +87,29 @@ internal sealed class UnityEditorReloadAutomation : IAsyncDisposable
 
     private void DiscoverProjectEditorPids()
     {
+        var visibleTitles = new Dictionary<int, List<string>>();
+        EnumWindows((handle, _) =>
+        {
+            if (!IsWindowVisible(handle)) return true;
+            GetWindowThreadProcessId(handle, out var pid);
+            if (pid == 0) return true;
+            if (!visibleTitles.TryGetValue((int)pid, out var titles))
+                visibleTitles[(int)pid] = titles = new List<string>();
+            titles.Add(WindowText(handle));
+            return true;
+        }, IntPtr.Zero);
         foreach (var process in Process.GetProcessesByName("Unity"))
         {
             using (process)
             {
                 try
                 {
-                    if (!process.HasExited && process.MainWindowHandle != IntPtr.Zero &&
+                    if (process.HasExited) continue;
+                    if (!visibleTitles.TryGetValue(process.Id, out var titles))
+                        continue;
+                    if (titles.Any(title =>
                         UnityBackgroundFocusPolicy.IsGuardedEditorForProject(
-                            process.ProcessName, process.MainWindowTitle, _root))
+                            process.ProcessName, title, _root)))
                         _projectPids.Add(process.Id);
                 }
                 catch (Exception ex) when (ex is Win32Exception or
@@ -235,6 +247,7 @@ internal sealed class UnityEditorReloadAutomation : IAsyncDisposable
                 "; waiting for fresh Editor Ping/scene_status");
             return;
         }
+        _lastClickUtc[handle] = DateTime.UtcNow;
         _report("EDITOR_RELOAD_CONTROL_UNAVAILABLE: " + Limit(title));
     }
 
