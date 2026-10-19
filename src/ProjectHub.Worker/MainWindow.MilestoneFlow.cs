@@ -513,27 +513,6 @@ public partial class MainWindow
                     completionValidatedByTransport:
                         IsWebTransport(coordinator.Transport));
                 var unmodifiedHqResponse = hqMessage;
-                if (!hqText.IsValid &&
-                    HqResponseRecoveryContract.TryRepairClosingTags(
-                        hqMessage, out var localRepair) &&
-                    HqResponseRecoveryContract.PreservesPaths(hqMessage, localRepair))
-                {
-                    var locallyParsed = HqTextProtocol.Parse(
-                        localRepair,
-                        completionValidatedByTransport:
-                            IsWebTransport(coordinator.Transport));
-                    if (locallyParsed.IsValid)
-                    {
-                        hqMessage = localRepair;
-                        hqText = locallyParsed;
-                        AddDataFlowHistory(
-                            WorkerRoleState.Hq, "Worker 작업",
-                            "HQ 태그 닫기 국소 복구: WORK 경로 보존",
-                            status: "RECOVERED",
-                            persistenceSource: "WORKER ACTION");
-                    }
-                }
-
                 if (!hqText.IsValid)
                 {
                     _formatRecoveryJobs[jobId] = 1;
@@ -748,7 +727,7 @@ public partial class MainWindow
                     // bracket-controlled HQ turn. Run a no-write HIGH review
                     // with the original AI text if downstream validation fails.
                     var originalBuildError = milestoneError;
-                    if (HqBodyFallbackContract.TryParse(
+                    if (StructuredHqProtocol.TryParse(
                             hqMessage,
                             IsWebTransport(coordinator.Transport),
                             out var reviewOnly, reviewOnly: true) &&
