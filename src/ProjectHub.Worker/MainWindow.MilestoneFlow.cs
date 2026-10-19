@@ -744,9 +744,35 @@ public partial class MainWindow
                         out milestoneError) ||
                     milestone is null)
                 {
-                    throw new InvalidOperationException(
-                        "HQ 텍스트 프로토콜을 마일스톤으로 구성하지 못했습니다: " +
-                        milestoneError);
+                    // @@/field failures must not terminate an otherwise valid
+                    // bracket-controlled HQ turn. Run a no-write HIGH review
+                    // with the original AI text if downstream validation fails.
+                    var originalBuildError = milestoneError;
+                    if (HqBodyFallbackContract.TryParse(
+                            hqMessage,
+                            IsWebTransport(coordinator.Transport),
+                            out var reviewOnly, reviewOnly: true) &&
+                        MilestoneDefinitionContract.TryBuild(
+                            reviewOnly.CompatibilityMessage, reviewOnly.Parse,
+                            out milestone, out milestoneError) &&
+                        milestone is not null)
+                    {
+                        hqText = reviewOnly;
+                        hqParse = reviewOnly.Parse;
+                        AddDataFlowHistory(
+                            WorkerRoleState.Hq, "Worker 작업",
+                            "HQ @@ 본문 마일스톤 구성 복구: 변경 권한 없이 HIGH에 원문 전달" +
+                            Environment.NewLine + originalBuildError,
+                            status: "RECOVERED",
+                            persistenceSource: "WORKER ACTION");
+                    }
+                    else
+                    {
+                        // Bracket control violations are intentionally fatal.
+                        throw new InvalidOperationException(
+                            "HQ_CONTROL_OR_MILESTONE_INVALID: " +
+                            originalBuildError + "; " + milestoneError);
+                    }
                 }
 
                 milestone = milestone with
