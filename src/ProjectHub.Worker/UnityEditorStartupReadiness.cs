@@ -59,7 +59,8 @@ internal static class UnityEditorStartupReadiness
     {
         var timeout = maximumWait ?? TimeSpan.FromMinutes(5);
         var deadline = DateTime.UtcNow.Add(timeout);
-        var snapshot = baseline ?? UnityEditorStartupDiagnostics.Capture();
+        var snapshot = baseline ??
+            UnityEditorStartupDiagnostics.Capture(projectRoot: projectRoot);
         var last = "WAITING_FOR_EDITOR_IMPORT_AND_MAIN_THREAD";
         while (DateTime.UtcNow < deadline)
         {
