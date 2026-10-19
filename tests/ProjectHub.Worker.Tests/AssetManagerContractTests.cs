@@ -46,31 +46,45 @@ public sealed class AssetManagerContractTests
     [InlineData("<SOURCE_POLICY>CC0_AUTO</>", "<SOURCE_POLICY>PAID_AUTO</>")]
     [InlineData("<SCENE>Assets/Scenes/AIDemo.unity</>", "<SCENE>../Outside.unity</>")]
     [InlineData("<REQUEST_ID>rock-001</>", "<REQUEST_ID>../../bad</>")]
-    public void InvalidNumberPolicyOrPathIsRejected(string oldText, string newText)
+    public void InvalidNumberPolicyOrPathIsHandledWithoutUnauthorizedWrites(string oldText, string newText)
     {
         var changed = AssetOnly.Replace(oldText, newText, StringComparison.Ordinal);
-        Assert.False(HqTextProtocol.Parse(changed).IsValid);
+        var parsed = HqTextProtocol.Parse(changed);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(parsed.CompatibilityMessage,
+            parsed.Parse, out var milestone, out var error), error);
+        if (oldText.StartsWith("<SCENE>", StringComparison.Ordinal) ||
+            oldText.StartsWith("@@ASSET_MANAGER", StringComparison.Ordinal))
+            Assert.Null(milestone!.AssetManager);
+        else if (oldText.StartsWith("<SOURCE_POLICY>", StringComparison.Ordinal))
+            Assert.Equal("PROJECT_ONLY", milestone!.AssetManager!.SourcePolicy);
+        else
+            Assert.Equal("HQ-RECOVERED-ASSET", milestone!.AssetManager!.RequestId);
+        Assert.Contains("HQ_BODY_NOTICE", milestone!.HighInstructions);
     }
-
     [Fact]
-    public void AssetManagerMustPrecedeOrdinaryWork()
+    public void AssetManagerSchedulingDoesNotDependOnHqSectionOrder()
     {
         const string work = """
             @@WORK=10
             <PATH>Assets/Scripts/Foo.cs</>
             <INSTRUCTIONS>코드를 구현한다.</>
             """;
-        var valid = AssetOnly.Replace(
-            "@@HIGH", work + "\n\n@@HIGH", StringComparison.Ordinal);
-        var parsed = HqTextProtocol.Parse(valid);
-        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
-        var invalid = AssetOnly.Replace(
-            "@@ASSET_MANAGER=1",
-            work + "\n\n@@ASSET_MANAGER=1",
-            StringComparison.Ordinal);
-        Assert.False(HqTextProtocol.Parse(invalid).IsValid);
+        foreach (var text in new[] {
+            AssetOnly.Replace("@@HIGH", work + "\n\n@@HIGH",
+                StringComparison.Ordinal),
+            AssetOnly.Replace("@@ASSET_MANAGER=1",
+                work + "\n\n@@ASSET_MANAGER=1", StringComparison.Ordinal)
+        })
+        {
+            var parsed = HqTextProtocol.Parse(text);
+            Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+            Assert.True(MilestoneDefinitionContract.TryBuild(parsed.CompatibilityMessage,
+                parsed.Parse, out var milestone, out var error), error);
+            Assert.NotNull(milestone!.AssetManager);
+            Assert.Single(milestone.WorkItems);
+        }
     }
-
     [Theory]
     [InlineData("docs/projecthub/m113/discover-evidence.md", true)]
     [InlineData("docs/projecthub/m113/proof.json", true)]
@@ -117,7 +131,7 @@ public sealed class AssetManagerContractTests
     }
 
     [Fact]
-    public void ResourceCannotRaceAgainstManagerImportDirectory()
+    public void UnknownResourceSectionCannotStartAnUnapprovedRole()
     {
         const string resource = """
             @@RESOURCE=0
@@ -128,10 +142,12 @@ public sealed class AssetManagerContractTests
             """;
         var parsed = HqTextProtocol.Parse(
             AssetOnly.Replace("@@HIGH", resource + "@@HIGH", StringComparison.Ordinal));
-        Assert.False(parsed.IsValid);
-        Assert.Contains("COMPACT_SECTION_FORBIDDEN", parsed.Errors);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(parsed.CompatibilityMessage,
+            parsed.Parse, out var milestone, out var error), error);
+        Assert.Empty(milestone!.Resources);
+        Assert.Contains("@@RESOURCE", milestone.HighInstructions);
     }
-
     [Fact]
     public void AssetManagerModelSettingsStayIndependentOfWork()
     {
