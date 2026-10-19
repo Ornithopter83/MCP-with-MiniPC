@@ -50,16 +50,12 @@ internal static class StructuredHqProtocol
             .Any(line => !string.IsNullOrWhiteSpace(line)))
             return false;
         var end = terminator < 0 ? lines.Length : terminator;
-        if (lines.Skip(actionLine + 1).Take(end - actionLine - 1).Any(line =>
-            Regex.IsMatch(line.Trim(), @"^\[(?:KEY|GOTO|ACTION|RESPONSE)\b",
-                RegexOptions.IgnoreCase)))
-            return false;
-
         var sections = new List<Section>();
         string? name = null;
         var argument = "";
         var body = new List<string>();
         var orphan = new List<string>();
+        string? openField = null;
         void Flush()
         {
             if (name is not null)
@@ -68,7 +64,21 @@ internal static class StructuredHqProtocol
         }
         foreach (var line in lines.Skip(actionLine + 1).Take(end - actionLine - 1))
         {
-            var header = Regex.Match(line.Trim(),
+            var trimmed = line.Trim();
+            // A multiline middle field is opaque AI prose, including @@ headings
+            // and bracket-looking examples. Only top-level controls are strict.
+            if (openField is not null)
+            {
+                body.Add(line);
+                if (trimmed == "</>" ||
+                    trimmed.Equals("</" + openField + ">", StringComparison.OrdinalIgnoreCase))
+                    openField = null;
+                continue;
+            }
+            if (Regex.IsMatch(trimmed, @"^\[(?:KEY|GOTO|ACTION|RESPONSE)\b",
+                RegexOptions.IgnoreCase))
+                return false;
+            var header = Regex.Match(trimmed,
                 @"^@@(?<name>[A-Z_]+)(?:[= ](?<id>\d+))?$",
                 RegexOptions.IgnoreCase);
             if (header.Success)
@@ -80,7 +90,12 @@ internal static class StructuredHqProtocol
             else if (name is null)
                 orphan.Add(line);
             else
+            {
                 body.Add(line);
+                var opening = Regex.Match(trimmed, @"^<(?<field>[A-Z_][A-Z0-9_]*)>$");
+                if (opening.Success)
+                    openField = opening.Groups["field"].Value;
+            }
         }
         Flush();
 
@@ -128,6 +143,8 @@ internal static class StructuredHqProtocol
         }
 
         var notes = new List<string>();
+        if (openField is not null)
+            notes.Add("닫히지 않은 본문 필드: 원문을 HIGH에 전달");
         var milestoneSection = sections.FirstOrDefault(section => section.Name == "MILESTONE");
         var milestoneId = milestoneSection is null ? "" : Field(milestoneSection, "ID");
         if (milestoneId.Length == 0)
