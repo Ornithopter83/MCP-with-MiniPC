@@ -154,13 +154,18 @@ internal static class HqTextProtocol
             .Select(section => section.Raw)
             .ToArray();
 
-        return action switch
+        var parsedBody = action switch
         {
             "WORK" => ParseWork(headers, sections, unknown),
             "PAUSE" => ParseControl("PAUSE", sections, unknown),
             "END" => ParseControl("END", sections, unknown),
             _ => Invalid("ACTION")
         };
+        if (action == "WORK" && !parsedBody.IsValid &&
+            HqBodyFallbackContract.TryParse(raw, completionValidatedByTransport,
+                out var bestEffort))
+            return bestEffort;
+        return parsedBody;
     }
 
     private static HqTextProtocolResult ParseWork(
