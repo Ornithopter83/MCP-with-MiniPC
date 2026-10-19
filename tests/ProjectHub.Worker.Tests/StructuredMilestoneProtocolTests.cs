@@ -223,6 +223,29 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
+    public void PartialHqRepair_PreservesWritePathAliasesAcrossRecovery()
+    {
+        const string original = """
+            @@WORK=14
+            <WRITE_PATH>Assets/Scripts/Fishing/Core/</WRITE_PATH>
+            <WRITE_PATH>Assets/Tests/EditMode/FishingCore/</WRITE_PATH>
+            """;
+        const string repaired = """
+            @@WORK=14
+            <PATH>Assets/Scripts/Fishing/Core/</>
+            <PATH>Assets/Tests/EditMode/FishingCore/</>
+            """;
+        Assert.Equal(2, HqResponseRecoveryContract.RecognizablePaths(original).Length);
+        Assert.True(HqResponseRecoveryContract.PreservesPaths(original, repaired));
+        Assert.False(HqResponseRecoveryContract.PreservesPaths(original, repaired.Replace(
+            "Assets/Tests/EditMode/FishingCore/", "Assets/Tests/EditMode/Other/",
+            StringComparison.Ordinal)));
+        Assert.False(HqResponseRecoveryContract.PreservesPaths(original, repaired.Replace(
+            "<PATH>Assets/Tests/EditMode/FishingCore/</>", "",
+            StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public void ReportProtocol_ParsesStatusOnlyAndKeepsProseOpaque()
     {
         var response = RoleTextProtocol.BuildResult(
