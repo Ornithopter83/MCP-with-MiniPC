@@ -15,11 +15,16 @@ internal static class UnityEditorStartupDiagnostics
         string LogPath, long LogLength, string Prefix, DateTime StartedUtc);
     internal sealed record Finding(string Code, string Detail);
 
-    internal static Baseline Capture(string? logPath = null)
+    internal static Baseline Capture(string? logPath = null,
+        string? projectRoot = null)
     {
-        var path = logPath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Unity", "Editor", "Editor.log");
+        // Unity 6 moves live logs into <project>/Logs/Editor.log.
+        var projectLog = projectRoot is null ? null :
+            Path.Combine(projectRoot, "Logs", "Editor.log");
+        var path = logPath ?? (projectLog is not null && File.Exists(projectLog)
+            ? projectLog : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Unity", "Editor", "Editor.log"));
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
