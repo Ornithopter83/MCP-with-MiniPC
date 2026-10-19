@@ -963,7 +963,7 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HqTextProtocol_RejectsUnknownSectionInsteadOfReinterpretingControl()
+    public void HqTextProtocol_ForwardsUnknownSectionWithoutChangingPauseControl()
     {
         const string response = """
             [ACTION=PAUSE]
@@ -971,11 +971,14 @@ public sealed class CoordinatorFirstContractTests
             사용자 확인 필요
             @@ARCHITECTURE_NOTE
             HIGH 판단이 필요한 임의 section
+            [RESPONSE=OK]
             """;
 
         var hq = HqTextProtocol.Parse(response);
-        Assert.False(hq.IsValid);
-        Assert.Contains("UNKNOWN_SECTION_REQUIRES_WORK", hq.Errors);
+        Assert.True(hq.IsValid, string.Join("; ", hq.Errors));
+        var action = Assert.Single(hq.Parse.ValidActions);
+        Assert.Equal("PAUSE", action.Name);
+        Assert.Contains("HIGH 판단이 필요한 임의 section", action.Body);
     }
 
     [Fact]
