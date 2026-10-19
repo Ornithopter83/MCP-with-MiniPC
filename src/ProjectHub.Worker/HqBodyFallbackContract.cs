@@ -213,18 +213,6 @@ internal static class HqBodyFallbackContract
         bool Overlaps(string path, string scope) =>
             MilestoneMechanicalExecutor.IsPathWithinScopes(path, new[] { scope }) ||
             MilestoneMechanicalExecutor.IsPathWithinScopes(scope, new[] { path });
-        if (asset is not null && design is not null)
-        {
-            var designScopes = new[] { (string)design["path"]! }
-                .Concat((string[])design["writePaths"]!).ToArray();
-            if (designScopes.Any(scope =>
-                Overlaps((string)asset["scene"]!, scope) ||
-                Overlaps((string)asset["targetPath"]!, scope)))
-            {
-                notes.Add("ASSET_MANAGER와 DESIGN의 경로가 충돌하여 자산 역할을 이번 단계에서 보류");
-                asset = null;
-            }
-        }
         var reserved = new List<string>();
         if (design is not null)
         {
