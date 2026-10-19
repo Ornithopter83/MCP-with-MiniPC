@@ -293,6 +293,11 @@ internal static class StructuredHqProtocol
             if (design is null) work["dependsOnDesign"] = false;
         }
 
+        if (works.Count == 0 && design is null && asset is null)
+        {
+            reviewOnly = true;
+            notes.Add("실행 가능한 역할이 없어 변경 없이 HIGH에서 원문을 검토");
+        }
         if (reviewOnly)
         {
             // Last-resort recovery for a downstream milestone-contract mismatch:
