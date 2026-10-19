@@ -9,6 +9,8 @@ public sealed class UnityEditorDirectBridgeTests
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(),
             "projecthub-bridge-test-" + Guid.NewGuid().ToString("N"));
+        public string Backups { get; } = Path.Combine(Path.GetTempPath(),
+            "projecthub-bridge-backups-test-" + Guid.NewGuid().ToString("N"));
 
         public FakeProject()
         {
@@ -25,11 +27,12 @@ public sealed class UnityEditorDirectBridgeTests
             if (Directory.Exists(Root)) Directory.Delete(Root, true);
             var queue = UnityEditorDirectBridge.QueueDirectory(Root);
             if (Directory.Exists(queue)) Directory.Delete(queue, true);
+            if (Directory.Exists(Backups)) Directory.Delete(Backups, true);
         }
     }
 
     [Fact]
-    public void InstallationIsIdempotentAndNeverOverwritesEditedEditorSource()
+    public void InstallationIsIdempotentAndSafelyUpgradesEditedManagedSource()
     {
         using var project = new FakeProject();
         var source = UnityEditorDirectBridge.EmbeddedSource();
@@ -43,36 +46,94 @@ public sealed class UnityEditorDirectBridgeTests
         Assert.Contains("ACTIVE_ROOTS=", source);
         Assert.Contains("LOADED_ROOTS=", source);
         Assert.Contains("COMPILING=", source);
-        var first = UnityEditorDirectBridge.Install(project.Root);
-        Assert.Contains("INSTALLED_WAIT", first);
+
+        Assert.Contains("INSTALLED_WAIT",
+            UnityEditorDirectBridge.Install(project.Root, project.Backups));
         var target = UnityEditorDirectBridge.EditorSourcePath(project.Root);
         Assert.Equal(source, File.ReadAllText(target));
         Assert.Contains("ALREADY_INSTALLED",
-            UnityEditorDirectBridge.Install(project.Root));
+            UnityEditorDirectBridge.Install(project.Root, project.Backups));
+
         File.AppendAllText(target, "// USER EDIT\n");
-        var error = Assert.Throws<InvalidOperationException>(() =>
-            UnityEditorDirectBridge.Install(project.Root));
-        Assert.Contains("SOURCE_CONFLICT", error.Message);
-        Assert.EndsWith("// USER EDIT\n", File.ReadAllText(target));
+        var altered = File.ReadAllBytes(target);
+        var upgraded = UnityEditorDirectBridge.Install(project.Root, project.Backups);
+        Assert.Contains("BACKED_UP_AND_UPGRADED", upgraded);
+        Assert.Equal(source, File.ReadAllText(target));
+        var backup = Assert.Single(Directory.GetFiles(project.Backups));
+        Assert.Equal(altered, File.ReadAllBytes(backup));
+        Assert.Contains(backup, upgraded);
+        Assert.Contains("ALREADY_INSTALLED",
+            UnityEditorDirectBridge.Install(project.Root, project.Backups));
+        Assert.Single(Directory.GetFiles(project.Backups));
     }
 
     [Fact]
-    public void PreviouslyInstalledManagedReceiverUpgradesWithoutOverwritingUserChanges()
+    public void ExistingLegacyReceiverWithWindowsLineEndingsUpgradesAndPreservesBytes()
     {
         using var project = new FakeProject();
-        var source = UnityEditorDirectBridge.EditorSourcePath(project.Root);
-        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
-        var previous = UnityEditorDirectBridge.LegacyEmbeddedSource();
+        var target = UnityEditorDirectBridge.EditorSourcePath(project.Root);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var previous = UnityEditorDirectBridge.LegacyEmbeddedSource()
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\n", "\r\n", StringComparison.Ordinal);
+        File.WriteAllText(target, previous);
         Assert.DoesNotContain("PROJECTHUB_STARTUP_SIGNAL_IMPL_BEGIN", previous);
-        File.WriteAllText(source, previous);
-        Assert.Contains("APPROVED_UPGRADE", UnityEditorDirectBridge.Install(project.Root));
-        Assert.Equal(UnityEditorDirectBridge.EmbeddedSource(), File.ReadAllText(source));
+        var upgraded = UnityEditorDirectBridge.Install(project.Root, project.Backups);
+        Assert.Contains("BACKED_UP_AND_UPGRADED", upgraded);
+        Assert.Equal(UnityEditorDirectBridge.EmbeddedSource(), File.ReadAllText(target));
+        Assert.Equal(previous, File.ReadAllText(
+            Assert.Single(Directory.GetFiles(project.Backups))));
         Assert.Contains("PROJECTHUB_STARTUP_SIGNAL_IMPL_BEGIN",
-            File.ReadAllText(source));
-        Assert.Contains("ALREADY_INSTALLED", UnityEditorDirectBridge.Install(project.Root));
-        File.AppendAllText(source, "// user edited\n");
-        Assert.Contains("SOURCE_CONFLICT", Assert.Throws<InvalidOperationException>(
-            () => UnityEditorDirectBridge.Install(project.Root)).Message);
+            File.ReadAllText(target));
+    }
+
+    [Fact]
+    public void CurrentReceiverWithCrLfIsValidWithoutRewriting()
+    {
+        using var project = new FakeProject();
+        var target = UnityEditorDirectBridge.EditorSourcePath(project.Root);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var current = UnityEditorDirectBridge.EmbeddedSource()
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\n", "\r\n", StringComparison.Ordinal);
+        File.WriteAllText(target, current);
+        Assert.True(UnityEditorDirectBridge.SameManagedSource(
+            File.ReadAllText(target), UnityEditorDirectBridge.EmbeddedSource()));
+        Assert.Contains("ALREADY_INSTALLED",
+            UnityEditorDirectBridge.Install(project.Root, project.Backups));
+        Assert.Equal(current, File.ReadAllText(target));
+        Assert.False(Directory.Exists(project.Backups));
+    }
+
+    [Fact]
+    public void ForeignBridgeSourceIsNeverOverwritten()
+    {
+        using var project = new FakeProject();
+        var target = UnityEditorDirectBridge.EditorSourcePath(project.Root);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        const string foreign = "// user-owned\npublic static class ProjectHubEditorBridge { }\n";
+        File.WriteAllText(target, foreign);
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            UnityEditorDirectBridge.Install(project.Root, project.Backups));
+        Assert.Contains("EDITOR_BRIDGE_FOREIGN_SOURCE", error.Message);
+        Assert.Equal(foreign, File.ReadAllText(target));
+        Assert.False(Directory.Exists(project.Backups));
+    }
+
+    [Fact]
+    public void BackupFailureNeverOverwritesOriginalManagedSource()
+    {
+        using var project = new FakeProject();
+        var target = UnityEditorDirectBridge.EditorSourcePath(project.Root);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var old = UnityEditorDirectBridge.LegacyEmbeddedSource();
+        File.WriteAllText(target, old);
+        // Directory.CreateDirectory refuses to overwrite an existing file.
+        var unavailable = Path.Combine(project.Root, "backup-blocking-file");
+        File.WriteAllText(unavailable, "not a directory");
+        Assert.ThrowsAny<IOException>(() =>
+            UnityEditorDirectBridge.Install(project.Root, unavailable));
+        Assert.Equal(old, File.ReadAllText(target));
     }
 
     [Fact]

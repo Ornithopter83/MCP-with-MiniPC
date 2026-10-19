@@ -127,7 +127,7 @@
 
 ### 기존 Editor 직접 실행 브리지
 
-- 최초 `worker_command.editor_bridge_install`은 `Assets/Editor/ProjectHub/ProjectHubEditorBridge.cs`에 내장 스크립트를 설치한다. 이미 다른 내용이면 덮어쓰지 않는다. 기존 Editor가 자동 Import한 뒤 `editor_bridge_ping`에서 실제 메인 스레드 응답을 받아야 한다.
+- 최초 `worker_command.editor_bridge_install` 및 NEW 시작은 `Assets/Editor/ProjectHub/ProjectHubEditorBridge.cs`에 내장 스크립트를 설치한다. 기존 ProjectHub 수신기로 확인되는 소스가 다른 버전/수정본이면 외부에 검증 가능한 원본 백업을 남긴 뒤 갱신한다. 외부 파일·링크는 자동 교체하지 않는다. 기존 Editor가 자동 Import한 뒤 `editor_bridge_ping`에서 실제 메인 스레드 응답을 받아야 한다.
 - `editor_bridge_invoke`는 public static 메서드 반환값을 정확히 검증한다. `editor_bridge_menu`는 메뉴가 실제 호출됐는지(반환 True)만 확인하고 BuildReport Succeeded·산출물 확인과 분리한다. `expected_result=Succeeded`를 메뉴에 지정해도 빌드 성공 증거로 간주하지 않는다.
 - 요청·응답은 같은 Windows 사용자 계정의 `%LOCALAPPDATA%`에 저장되며 관리자 권한 승격 및 별도 네트워크 서버는 없다. WORK의 최초 설치는 브리지 소스·.meta가 포함된 좁은 경로가 필요하다.
 - 실환경 Unity Editor 컴파일·Player BuildReport 검증이 별도로 필요하며, CI가 성공했다고 Editor의 명령 실행까지 검증된 것으로 간주하지 않는다.
@@ -142,7 +142,7 @@
 
 ### 새 Unity 작업 시작 시 Editor 실행 (2026-10-18)
 
-- NEW 작업에서 Git main 준비 → 내장 브리지 파일 설치(정확히 일치하는 구버전만 승인 갱신) → Windows Editor 정상 종료·재시작/최초 시작을 수행한다. 실행 중인 Unity Editor 창이 하나 있고 해당 프로젝트 UnityLockfile이 유지되는 경우에만 정상 종료를 요청한 뒤 종료 확인 후 다시 연다.
+- NEW 작업에서 Git main 준비 → 내장 브리지 설치(기존 ProjectHub 브리지는 원본 백업 후 승인 갱신) → Windows Editor 정상 종료·재시작/최초 시작을 수행한다. 실행 중인 Unity Editor 창이 하나 있고 해당 프로젝트 UnityLockfile이 유지되는 경우에만 정상 종료를 요청한 뒤 종료 확인 후 다시 연다.
 - 실행 중인 Editor가 없고 프로젝트 잠금이 없다면 프로젝트 버전 또는 이전에 저장한 Unity.exe 경로로 한 번 실행한다. 다른 프로젝트·여러 창·잠금 불일치에는 강제 종료나 중복 실행을 하지 않는다.
 - `Unity.exe -projectPath`로 GUI를 시작하고 프로젝트 Editor 창·실행 파일·PID를 확인한다. GUI 확인만으로 HQ에는 전달하지 않는다. 시작 이전에 설치한 브리지의 Import를 기다리고 실제 메인 스레드 Ping 및 scene_status가 성공하며 Active Scene 로드·컴파일/Import 미진행이 확인된 뒤에만 HQ에 `WORKER_EDITOR_COMMAND_READY`를 보낸다. GUI 대기 120초, 명령 준비 대기 5분. 실패 시 HQ를 호출하지 않는다.
 - 마일스톤·PAUSE/CONTINUE에서는 재시작하지 않는다. 단 CONTINUE와 다음 마일스톤의 HQ 전달 전에도 새 브리지 명령 응답을 확인하며 실패 시 BLOCKED로 중단한다. CLI/Pipeline 불능과 브리지 실명령 준비 상태는 분리한다. FocusGuard는 기존처럼 작업 종료 시점의 포커스 복구만 수행한다.

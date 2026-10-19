@@ -41,7 +41,35 @@ internal static class UnityEditorDirectBridge
     internal static string LegacyEmbeddedSource() =>
         UnityEditorBridgeTemplate.LegacySource + Environment.NewLine;
 
-    internal static string Install(string root)
+    // Normalize only line endings and the terminal newline. Do not accept
+    // whitespace or logic changes as an exact installed-version match.
+    internal static bool SameManagedSource(string left, string right) =>
+        string.Equals(NormalizeSource(left), NormalizeSource(right),
+            StringComparison.Ordinal);
+
+    private static string NormalizeSource(string source) =>
+        source.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n').TrimEnd('\n');
+
+    // A recognizable Worker-installed receiver may be safely replaced if and
+    // only if its exact original bytes are backed up outside the Unity project.
+    // Foreign Editor scripts are never overwritten.
+    internal static bool LooksLikeManagedReceiver(string source) =>
+        source.StartsWith(Marker, StringComparison.Ordinal) &&
+        source.Contains("[InitializeOnLoad]", StringComparison.Ordinal) &&
+        source.Contains("class ProjectHubEditorBridge", StringComparison.Ordinal) &&
+        source.Contains("EditorApplication.update", StringComparison.Ordinal) &&
+        source.Contains("QueueDirectory", StringComparison.Ordinal) &&
+        source.Contains(".req.json", StringComparison.Ordinal) &&
+        source.Contains(".resp.json", StringComparison.Ordinal);
+
+    private static string BackupDirectory(string root) =>
+        Path.Combine(Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData),
+            "ProjectHub", "UnityWorker", "bridge-source-backups",
+            Path.GetFileName(QueueDirectory(root)));
+
+    internal static string Install(string root, string? backupDirectory = null)
     {
         if (!UnityCliBuildRunner.IsUnityProject(root))
             throw new InvalidOperationException("EDITOR_BRIDGE_NOT_UNITY_PROJECT");
@@ -51,24 +79,53 @@ internal static class UnityEditorDirectBridge
             throw new InvalidOperationException("EDITOR_BRIDGE_SCRIPT_INVALID");
         if (File.Exists(target))
         {
+            // A symbolic link or reparse point must never be replaced.
+            if ((File.GetAttributes(target) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException(
+                    "EDITOR_BRIDGE_UNSAFE_LINK: manual intervention required: " +
+                    EditorSourceRelativePath);
             var existing = File.ReadAllText(target);
-            if (string.Equals(existing, source, StringComparison.Ordinal))
+            if (SameManagedSource(existing, source))
                 return "EDITOR_BRIDGE_ALREADY_INSTALLED: " + EditorSourceRelativePath;
-            // Exact previously shipped receiver is Worker-owned and can be
-            // upgraded to emit startup diagnostics. User-edited files cannot.
-            if (string.Equals(existing, LegacyEmbeddedSource(), StringComparison.Ordinal))
+            if (!LooksLikeManagedReceiver(existing))
+                throw new InvalidOperationException(
+                    "EDITOR_BRIDGE_FOREIGN_SOURCE: manual backup and inspection " +
+                    "required; no file overwritten: " + EditorSourceRelativePath);
+
+            var folder = backupDirectory ?? BackupDirectory(root);
+            Directory.CreateDirectory(folder);
+            // Preserve the exact old file, including original CRLF/BOM.
+            var backup = Path.Combine(folder,
+                "ProjectHubEditorBridge-" +
+                DateTime.UtcNow.ToString("yyyyMMddTHHmmssfff") +
+                "-" + Guid.NewGuid().ToString("N") + ".cs.bak");
+            File.Copy(target, backup, overwrite: false);
+            var oldHash = SHA256.HashData(File.ReadAllBytes(target));
+            if (!oldHash.AsSpan().SequenceEqual(
+                    SHA256.HashData(File.ReadAllBytes(backup))))
+                throw new IOException("EDITOR_BRIDGE_BACKUP_VERIFICATION_FAILED: " +
+                    backup);
+            var staging = target + ".new-" + Guid.NewGuid().ToString("N");
+            try
             {
-                File.WriteAllText(target, source, ProjectHubJson.Utf8NoBom);
-                return "EDITOR_BRIDGE_APPROVED_UPGRADE_WAIT_FOR_UNITY_IMPORT: " +
-                    EditorSourceRelativePath;
+                File.WriteAllText(staging, source, ProjectHubJson.Utf8NoBom);
+                // Refuse to replace if another process modified it after
+                // the backup; the backup is retained for manual recovery.
+                if (!oldHash.AsSpan().SequenceEqual(
+                        SHA256.HashData(File.ReadAllBytes(target))))
+                    throw new IOException("EDITOR_BRIDGE_CHANGED_DURING_UPGRADE: " +
+                        target);
+                File.Move(staging, target, overwrite: true);
             }
-            throw new InvalidOperationException(
-                "EDITOR_BRIDGE_SOURCE_CONFLICT: existing file was not overwritten: " +
-                EditorSourceRelativePath);
+            finally
+            {
+                if (File.Exists(staging)) File.Delete(staging);
+            }
+            return "EDITOR_BRIDGE_BACKED_UP_AND_UPGRADED_WAIT_FOR_UNITY_IMPORT: " +
+                EditorSourceRelativePath + "; BACKUP=" + backup;
         }
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         // Never modify Packages, .git, scene files or the current window focus.
-        // Unity may import this script only at its next automatic Asset refresh.
         using (var file = new FileStream(target, FileMode.CreateNew, FileAccess.Write,
             FileShare.None))
         using (var writer = new StreamWriter(file, ProjectHubJson.Utf8NoBom))
@@ -86,8 +143,7 @@ internal static class UnityEditorDirectBridge
         if (!File.Exists(installed))
             throw new InvalidOperationException(
                 "EDITOR_BRIDGE_NOT_INSTALLED: call editor_bridge_install first");
-        if (!string.Equals(File.ReadAllText(installed), EmbeddedSource(),
-            StringComparison.Ordinal))
+        if (!SameManagedSource(File.ReadAllText(installed), EmbeddedSource()))
             throw new InvalidOperationException(
                 "EDITOR_BRIDGE_INSTALLED_SOURCE_CHANGED: do not run an unknown script");
         if (action is not ("ping" or "scene_status" or "sync_scene" or
