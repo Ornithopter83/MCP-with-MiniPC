@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Automation;
@@ -15,7 +16,6 @@ namespace ProjectHub.Worker;
 internal sealed class UnityEditorReloadAutomation : IAsyncDisposable
 {
     private const uint BmClick = 0x00F5;
-    private const uint GwOwner = 4;
     private readonly string _root;
     private readonly CancellationTokenSource _stop;
     private readonly Action<string> _report;
@@ -168,7 +168,8 @@ internal sealed class UnityEditorReloadAutomation : IAsyncDisposable
             if (value.Length > 0) parts.Add(value);
             var className = new StringBuilder(100);
             GetClassName(child, className, className.Capacity);
-            if (className.ToString().Equals("Button",
+            if (IsWindowVisible(child) &&
+                className.ToString().Equals("Button",
                     StringComparison.OrdinalIgnoreCase))
                 nativeButtons.Add((child, value));
             return true;
