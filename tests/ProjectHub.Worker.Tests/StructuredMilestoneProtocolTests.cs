@@ -163,7 +163,7 @@ public sealed class StructuredMilestoneProtocolTests
             missingWork.CompatibilityMessage, missingWork.Parse, out var milestone, out var error),
             error);
         Assert.Empty(milestone!.WorkItems);
-        Assert.Contains("HQ_BEST_EFFORT_BODY_RECOVERY", milestone.HighInstructions);
+        Assert.Contains("HQ_BODY_NOTICE", milestone.HighInstructions);
     }
 
     [Fact]
