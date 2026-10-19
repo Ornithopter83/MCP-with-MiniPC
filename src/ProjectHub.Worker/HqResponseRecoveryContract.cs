@@ -17,7 +17,7 @@ internal static class HqResponseRecoveryContract
     public static string[] RecognizablePaths(string content) =>
         System.Text.RegularExpressions.Regex.Matches(
             content ?? string.Empty,
-            @"(?m)^\s*<PATH>([^<>\r\n]+)</(?:PATH)?>\s*$")
+            @"(?m)^\s*<(?:PATH|WRITE_PATH)>([^<>\r\n]+)</(?:PATH|WRITE_PATH)?>\s*$")
             .Select(x => x.Groups[1].Value.Trim()).ToArray();
 
     public static bool PreservesPaths(string previous, string next)
