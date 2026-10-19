@@ -104,6 +104,7 @@ public partial class MainWindow
         // already-running Editor promoting its own native window.
         using var unityFocusGuard = UnityBackgroundFocusGuard.Start(normalizedRoot);
         UnityEditorRecoverySupervisor? editorRecoverySupervisor = null;
+        UnityEditorReloadAutomation? reloadAutomation = null;
         if (!unityFocusGuard.Available)
             AddTaskMessage("UNITY BACKGROUND GUARD",
                 unityFocusGuard.Diagnostic, status: "UNVERIFIED");
@@ -180,6 +181,15 @@ public partial class MainWindow
                 }
             }
 
+            if (UnityCliBuildRunner.IsUnityProject(normalizedRoot))
+            {
+                // The native/modal responder must be alive before restart/import.
+                // Unity's EditorApplication.update cannot service a blocking dialog.
+                reloadAutomation = UnityEditorReloadAutomation.StartForJob(
+                    normalizedRoot, cts.Token, detail =>
+                        AddTaskMessage("UNITY AUTO RELOAD", detail,
+                            status: "UNVERIFIED", includeHistory: false));
+            }
             var editorLogBaseline = UnityEditorStartupDiagnostics.Capture();
             // A fresh user task gets one bounded graceful Editor restart.
             // No GUI activity for CONTINUE or ordinary milestone transitions.
@@ -1012,6 +1022,8 @@ public partial class MainWindow
             // no later timer tick may start an Editor on an idle dashboard.
             if (editorRecoverySupervisor is not null)
                 await editorRecoverySupervisor.DisposeAsync();
+            if (reloadAutomation is not null)
+                await reloadAutomation.DisposeAsync();
             try
             {
                 await MilestoneManagedRunRegistry.StopAsync(
