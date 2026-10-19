@@ -265,6 +265,55 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
+    public void StructuredHq_OriginalM11LegacyTagsAndRoleOrderContinueWithoutRecoveryRoundtrip()
+    {
+        const string raw = """
+            [GOTO=WORKER]
+            [ACTION=WORK]
+            @@MILESTONE
+            <ID>M11</ID>
+            @@DESIGN=0
+            <PATH>docs/projecthub/m11-title-scene-application.md</PATH>
+            <WRITE_PATH>Assets/Scenes/TitleScene.unity</WRITE_PATH>
+            <INSTRUCTIONS>실제 TitleScene에 메시를 적용하라.</INSTRUCTIONS>
+            @@WORK=14
+            <MODE>NEW</MODE>
+            <WRITE_PATH>Assets/Scripts/Fishing/Core/</WRITE_PATH>
+            <WRITE_PATH>Assets/Tests/EditMode/FishingCore/</WRITE_PATH>
+            <INSTRUCTIONS>낚시 상태 머신의 소스와 테스트를 구현하라.</INSTRUCTIONS>
+            @@ASSET_MANAGER=1
+            <REQUEST_ID>M11-3D-FISH-GEAR-01</REQUEST_ID>
+            <GOAL>실제 3D 물고기와 낚싯대 모델 확보</GOAL>
+            <SCENE>Assets/Scenes/TitleScene.unity</SCENE>
+            <TARGET_PATH>Assets/Art/External/</TARGET_PATH>
+            <SOURCE_POLICY>CC0_AUTO</SOURCE_POLICY>
+            <INSTRUCTIONS>실제 CC0 FBX를 확인하고 Import하라.</INSTRUCTIONS>
+            @@HIGH
+            <INSTRUCTIONS>Unity Editor와 에셋 증거를 검증하라.</INSTRUCTIONS>
+            [RESPONSE=OK]
+            """;
+        var parsed = HqTextProtocol.Parse(raw);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
+        Assert.Equal("M11", milestone!.Id);
+        Assert.NotNull(milestone.Design);
+        Assert.NotNull(milestone.AssetManager);
+        Assert.Equal(2, milestone.WorkItems["14"].WritePaths.Count);
+        Assert.False(milestone.WorkItems["14"].ReadOnly);
+
+        Assert.True(HqBodyFallbackContract.TryParse(
+            raw, completionValidatedByTransport: false, out var reviewOnly, reviewOnly: true));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            reviewOnly.CompatibilityMessage, reviewOnly.Parse, out var review, out error), error);
+        Assert.True(review!.ReadOnlyNoFileChanges);
+        Assert.Empty(review.WorkItems);
+        Assert.Null(review.Design);
+        Assert.Null(review.AssetManager);
+        Assert.Contains("M11", review.HighInstructions);
+    }
+
+    [Fact]
     public void StructuredHq_MalformedBodyStillNeedsValidBracketControls()
     {
         var badBody = Modern.Replace("<PATH>scripts/player.gd</>",
