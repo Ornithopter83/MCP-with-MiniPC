@@ -19,6 +19,8 @@
     <DebugType>None</DebugType>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
     <Resource Include="Assets\worker-icon.png" />
     <Resource Include="Assets\current-openai.png" />
     <Resource Include="Assets\current-console.png" />
