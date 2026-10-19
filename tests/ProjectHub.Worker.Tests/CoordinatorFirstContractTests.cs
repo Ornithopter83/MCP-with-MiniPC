@@ -826,6 +826,7 @@ public sealed class CoordinatorFirstContractTests
 
             @@WORK_COMPLETION
             이동 검증 완료
+            [RESPONSE=OK]
             """;
 
         var hq = HqTextProtocol.Parse(response);
@@ -956,6 +957,7 @@ public sealed class CoordinatorFirstContractTests
 
             @@RESUME
             확인 결과를 전달하면 재개한다.
+            [RESPONSE=OK]
             """;
 
         var hq = HqTextProtocol.Parse(response);
