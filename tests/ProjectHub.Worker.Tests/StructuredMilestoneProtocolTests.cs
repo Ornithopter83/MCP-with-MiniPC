@@ -37,6 +37,8 @@ public sealed class StructuredMilestoneProtocolTests
         <INSTRUCTIONS>
         퀴즈 UI의 색상 대비, 테마, O/X 시각 피드백과 애니메이션 검증을 설계하라.
         1행: idle, 2행: run, 상세: https://example.com
+        @@WORK=98
+        위의 @@ 표식은 디자인 본문의 설명이며 새 역할이 아니다.
         </>
 
         @@WORK=54
@@ -66,6 +68,8 @@ public sealed class StructuredMilestoneProtocolTests
         var design = Assert.IsType<MilestoneDesignDefinition>(milestone.Design);
         Assert.Equal("docs/projecthub/visual-design.md", design.Path);
         Assert.Contains("1행: idle", design.Instructions);
+        Assert.Contains("@@WORK=98", design.Instructions);
+        Assert.Single(milestone.WorkItems);
         Assert.Contains("base: './'", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["54"]));
     }
 
