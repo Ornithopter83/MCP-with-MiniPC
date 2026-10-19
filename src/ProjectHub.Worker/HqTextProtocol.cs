@@ -62,17 +62,7 @@ internal static class HqTextProtocol
     {
         var raw = rawMessage ?? string.Empty;
         if (StructuredHqProtocol.IsModern(raw))
-        {
-            var structured = StructuredHqProtocol.Parse(raw, completionValidatedByTransport);
-            // Only bracket control violations are fatal. @@ sections and <...>
-            // middle-field grammar are AI content; salvage the role intentions
-            // with safe read-only defaults instead of aborting the job.
-            if (!structured.IsValid &&
-                HqBodyFallbackContract.TryParse(raw, completionValidatedByTransport,
-                    out var bestEffort))
-                return bestEffort;
-            return structured;
-        }
+            return StructuredHqProtocol.Parse(raw, completionValidatedByTransport);
         var normalized = raw
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
@@ -162,7 +152,7 @@ internal static class HqTextProtocol
             _ => Invalid("ACTION")
         };
         if (action == "WORK" && !parsedBody.IsValid &&
-            HqBodyFallbackContract.TryParse(raw, completionValidatedByTransport,
+            StructuredHqProtocol.TryParse(raw, completionValidatedByTransport,
                 out var bestEffort))
             return bestEffort;
         return parsedBody;
