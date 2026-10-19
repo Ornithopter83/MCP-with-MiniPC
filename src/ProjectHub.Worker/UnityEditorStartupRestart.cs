@@ -222,7 +222,7 @@ internal static class UnityEditorStartupRestart
                 return new("EDITOR_START_LAUNCH_FAILED",
                     "Windows did not return a Unity process.", false);
 
-            var deadline = DateTime.UtcNow.AddSeconds(120);
+            var deadline = DateTime.UtcNow.AddSeconds(600);
             while (DateTime.UtcNow < deadline)
             {
                 await Task.Delay(1200).ConfigureAwait(false);
@@ -242,7 +242,7 @@ internal static class UnityEditorStartupRestart
             }
             return new("EDITOR_START_NOT_CONFIRMED",
                 "Unity launched but no matching project GUI + lock confirmed " +
-                "within 120 seconds; no retry.", false);
+                "within 600 seconds; no retry.", false);
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or
             ArgumentException or IOException or UnauthorizedAccessException)
