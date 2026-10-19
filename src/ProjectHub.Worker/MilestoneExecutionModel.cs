@@ -225,8 +225,7 @@ internal static class MilestoneDefinitionContract
                     !IsSafeRelativePath(assetScene) ||
                     assetTarget.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) ||
                     !IsSafeRelativePath(assetTarget) ||
-                    assetSource is not ("PROJECT_ONLY" or "CC0_AUTO") ||
-                    assetGoal.Length > 600 || assetInstructions.Length > 1200)
+                    assetSource is not ("PROJECT_ONLY" or "CC0_AUTO"))
                 {
                     error = "ASSET_MANAGER_CONTRACT_INVALID";
                     return false;
@@ -398,7 +397,7 @@ internal static class MilestoneDefinitionContract
                     !designPath.StartsWith("docs/", StringComparison.OrdinalIgnoreCase) ||
                     !designPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
                     !IsSafeRelativePath(designPath) ||
-                    designInstructions.Length is < 1 or > 1200 ||
+                    designInstructions.Length == 0 ||
                     (TryGetJsonId(designJson, "id", out var designId) &&
                      designId != "0"))
                 {
