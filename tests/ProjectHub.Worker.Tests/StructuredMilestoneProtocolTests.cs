@@ -108,20 +108,26 @@ public sealed class StructuredMilestoneProtocolTests
     }
 
     [Fact]
-    public void StructuredHq_RejectsMixedOrUnsafeWorkPathAliases()
+    public void StructuredHq_RecoversMixedAliasAndDowngradesUnsafeWritePath()
     {
         var mixed = HqTextProtocol.Parse(Modern.Replace(
             "<PATH>scripts/player.gd</>",
             "<PATH>scripts/player.gd</>\n<WRITE_PATH>scripts/other.gd</>",
             StringComparison.Ordinal));
-        Assert.False(mixed.IsValid);
-        Assert.Contains("WORK 54.PATH_FIELD_CONFLICT", mixed.Errors);
+        Assert.True(mixed.IsValid, string.Join("; ", mixed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            mixed.CompatibilityMessage, mixed.Parse, out var valid, out var error), error);
+        Assert.Equal(2, valid!.WorkItems["54"].WritePaths.Count);
 
         var unsafePath = HqTextProtocol.Parse(Modern.Replace(
             "<PATH>scripts/player.gd</>", "<WRITE_PATH>../outside.cs</>",
             StringComparison.Ordinal));
-        Assert.False(unsafePath.IsValid);
-        Assert.Contains("WORK 54.WRITE_PATH", unsafePath.Errors);
+        Assert.True(unsafePath.IsValid, string.Join("; ", unsafePath.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            unsafePath.CompatibilityMessage, unsafePath.Parse, out var safe, out error), error);
+        Assert.True(safe!.WorkItems["54"].ReadOnly);
+        Assert.Empty(safe.WorkItems["54"].WritePaths);
+        Assert.Contains("../outside.cs", safe.HighInstructions);
     }
 
     [Theory]
@@ -190,19 +196,32 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.False(unknown.IsValid);
         var missingWork = HqTextProtocol.Parse(
             "[ACTION=WORK]\n@@MILESTONE\n<ID>M8</>\n[RESPONSE=OK]");
-        Assert.False(missingWork.IsValid);
+        Assert.True(missingWork.IsValid, string.Join("; ", missingWork.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            missingWork.CompatibilityMessage, missingWork.Parse, out var milestone, out var error),
+            error);
+        Assert.Empty(milestone!.WorkItems);
+        Assert.Contains("HQ_BEST_EFFORT_BODY_RECOVERY", milestone.HighInstructions);
     }
 
     [Fact]
-    public void StructuredHq_RejectsUnclosedOrUnknownMiddleFields()
+    public void StructuredHq_RecoversLegacyClosingTagsAndForwardsUnknownFields()
     {
         var malformed = HqTextProtocol.Parse(Modern.Replace(
             "<PATH>scripts/player.gd</>", "<PATH>scripts/player.gd</PATH>"));
-        Assert.False(malformed.IsValid);
+        Assert.True(malformed.IsValid, string.Join("; ", malformed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            malformed.CompatibilityMessage, malformed.Parse, out var milestone, out var error),
+            error);
+        Assert.Equal("scripts/player.gd", Assert.Single(milestone!.WorkItems["54"].WritePaths));
+
         var unknown = HqTextProtocol.Parse(Modern.Replace(
             "<PATH>docs/projecthub/visual-design.md</>",
             "<PATH>docs/projecthub/visual-design.md</>\n<SECRET>value</>"));
-        Assert.False(unknown.IsValid);
+        Assert.True(unknown.IsValid, string.Join("; ", unknown.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            unknown.CompatibilityMessage, unknown.Parse, out milestone, out error), error);
+        Assert.Contains("<SECRET>value</>", milestone!.HighInstructions);
     }
 
     [Fact]
@@ -243,6 +262,39 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.False(HqResponseRecoveryContract.PreservesPaths(original, repaired.Replace(
             "<PATH>Assets/Tests/EditMode/FishingCore/</>", "",
             StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void StructuredHq_MalformedBodyStillNeedsValidBracketControls()
+    {
+        var badBody = Modern.Replace("<PATH>scripts/player.gd</>",
+            "<PATH>scripts/player.gd</PATH>", StringComparison.Ordinal);
+        Assert.True(HqTextProtocol.Parse(badBody).IsValid);
+        Assert.False(HqTextProtocol.Parse(
+            badBody.Replace("[ACTION=WORK]", "[ACTION=PROCEED]",
+                StringComparison.Ordinal)).IsValid);
+        Assert.False(HqTextProtocol.Parse(
+            badBody.Replace("[RESPONSE=OK]", "", StringComparison.Ordinal)).IsValid);
+        Assert.False(HqTextProtocol.Parse(
+            badBody.Replace("[ACTION=WORK]", "[GOTO=DESIGN]\n[ACTION=WORK]",
+                StringComparison.Ordinal)).IsValid);
+    }
+
+    [Fact]
+    public void StructuredHq_MissingWorkPathBecomesReadOnlyAndDoesNotDropInstructions()
+    {
+        var raw = Modern.Replace("<PATH>scripts/player.gd</>", "",
+            StringComparison.Ordinal).Replace(
+            "이미지가 적합하면 연결한다.", "원본 명령을 AI에게 보존한다.",
+            StringComparison.Ordinal);
+        var parsed = HqTextProtocol.Parse(raw);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
+        Assert.True(milestone!.WorkItems["54"].ReadOnly);
+        Assert.Empty(milestone.WorkItems["54"].WritePaths);
+        Assert.Contains("원본 명령을 AI에게 보존한다.", milestone.WorkItems["54"].Body);
+        Assert.Contains("WORK 54", milestone.HighInstructions);
     }
 
     [Fact]
@@ -288,7 +340,10 @@ public sealed class StructuredMilestoneProtocolTests
 
         var invalid = HqTextProtocol.Parse(rawContinue.Replace(
             "<MODE>CONTINUE</>", "<MODE>UNKNOWN</>", StringComparison.Ordinal));
-        Assert.False(invalid.IsValid);
+        Assert.True(invalid.IsValid, string.Join("; ", invalid.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            invalid.CompatibilityMessage, invalid.Parse, out var fallback, out error), error);
+        Assert.Equal("NEW", fallback!.WorkItems["54"].ExecutionMode);
     }
 
     [Fact]
@@ -628,8 +683,11 @@ public sealed class StructuredMilestoneProtocolTests
 
         var legacy = HqTextProtocol.Parse(Modern.Replace(
             "@@DESIGN=0", "@@RESOURCE=0", StringComparison.Ordinal));
-        Assert.False(legacy.IsValid);
-        Assert.Contains("COMPACT_SECTION_FORBIDDEN", legacy.Errors);
+        Assert.True(legacy.IsValid, string.Join("; ", legacy.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            legacy.CompatibilityMessage, legacy.Parse, out var fallback, out error), error);
+        Assert.Null(fallback!.Design);
+        Assert.Contains("@@RESOURCE", fallback.HighInstructions);
     }
 
     [Fact]
