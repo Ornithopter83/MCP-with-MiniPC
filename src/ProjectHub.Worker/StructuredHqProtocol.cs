@@ -10,7 +10,7 @@ internal static class StructuredHqProtocol
 {
     private sealed record Section(string Name, string Argument, string Body);
     public static bool IsModern(string raw) =>
-        Regex.IsMatch(raw ?? string.Empty, @"(?m)^@@MILESTONE\s*$");
+        Regex.IsMatch(raw ?? string.Empty, @"(?mi)^\s*@@MILESTONE\b");
 
     public static HqTextProtocolResult Parse(string raw, bool completionValidatedByTransport)
     {
