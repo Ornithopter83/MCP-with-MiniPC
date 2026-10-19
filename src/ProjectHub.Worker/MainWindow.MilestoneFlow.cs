@@ -190,7 +190,8 @@ public partial class MainWindow
                         AddTaskMessage("UNITY AUTO RELOAD", detail,
                             status: "UNVERIFIED", includeHistory: false));
             }
-            var editorLogBaseline = UnityEditorStartupDiagnostics.Capture();
+            var editorLogBaseline =
+                UnityEditorStartupDiagnostics.Capture(projectRoot: normalizedRoot);
             // A fresh user task gets one bounded graceful Editor restart.
             // No GUI activity for CONTINUE or ordinary milestone transitions.
             if (!continuing && UnityCliBuildRunner.IsUnityProject(normalizedRoot))
