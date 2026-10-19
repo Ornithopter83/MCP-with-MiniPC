@@ -490,14 +490,9 @@ internal static class HqTextProtocol
         IReadOnlyList<Section> sections,
         IReadOnlyList<string> unknown)
     {
-        if (unknown.Count > 0)
-        {
-            return Invalid(
-                action,
-                unknown,
-                new[] { "UNKNOWN_SECTION_REQUIRES_WORK" });
-        }
-
+        // Unknown @@ sections are opaque AI text, not control syntax.
+        // Preserve them in the chosen PAUSE/END message, never turn a
+        // valid bracket action into a grammar failure.
         var message = sections
             .FirstOrDefault(section =>
                 string.Equals(section.Name, "MESSAGE", StringComparison.OrdinalIgnoreCase))
@@ -505,8 +500,11 @@ internal static class HqTextProtocol
         if (message.StartsWith("<TEXT>", StringComparison.Ordinal) &&
             StructuredRoleFields.TryParse(message, out var fields, out _))
             message = fields.Get("TEXT") ?? string.Empty;
+        if (unknown.Count > 0)
+            message = (message.Length == 0 ? "" : message + Environment.NewLine) +
+                string.Join(Environment.NewLine, unknown);
         if (message.Length == 0)
-            return Invalid(action, unknown, new[] { "MESSAGE" });
+            message = "HQ가 " + action + "를 요청했으나 본문 메시지는 비어 있습니다.";
 
         var payload = new Dictionary<string, object?>
         {
