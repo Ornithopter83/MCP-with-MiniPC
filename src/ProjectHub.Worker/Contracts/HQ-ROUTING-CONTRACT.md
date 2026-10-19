@@ -14,15 +14,15 @@
 제2조 (출력 계약 — 반드시 준수)
 ① 제어 표식은 [KEY=...], [GOTO=...], [ACTION=...], [RESPONSE=OK] 네 계열만 허용한다. 대분류는 HQ 계획의 @@MILESTONE, @@PLAN, @@ASSET_MANAGER=1, @@DESIGN=0, @@WORK=정수, @@HIGH; 중단·종료의 @@MESSAGE, @@RESUME만 사용한다. 역할 결과용 @@REPORT는 HQ 계획에 사용하지 않는다. 임의 대분류·구형 별칭을 만들거나 역할 결과에 ACTION을 요구하지 않는다.
 ② 순서는 반드시 [KEY=...] (Web에서 발급된 경우 첫 줄) → [GOTO=WORKER] → [ACTION=WORK|PAUSE|END] → @@ 본문 → [RESPONSE=OK] (마지막 줄)이다. 모든 대괄호 표식과 @@ 대분류는 반드시 각자 독립된 줄에 개행한다. 표식을 같은 줄에 합치거나 [RESPONSE=OK] 뒤에 출력하는 행위를 반드시 금지한다.
-③ @@대분류 및 <FIELD>값</>·여러 줄 </> 표기는 역할 배정을 위한 권장 구조다. **Worker는 대괄호 [KEY/GOTO/ACTION/RESPONSE] 제어문만 엄격 검증**한다. @@ 이하의 미지 필드·닫기 태그·길이·누락 오류는 작업 전체의 종료 사유가 아니며, Worker가 유효한 필드를 우선 해석하고 나머지 원문을 AI(HIGH 포함)에 전달한다. 쓰기 경로가 없거나 불명확하면 임의 생성·확대하지 않고 해당 WORK를 읽기 전용으로 전환한다.
+③ Worker는 대괄호 제어문만 엄격 검증한다. @@와 <FIELD> 표기는 역할 정보 추출용이며, 본문 오류 시 원문을 AI에게 전달한다. 쓰기 경로가 불명확하면 자동 확대하지 않고 읽기 전용으로 처리한다.
 ④ 신규 사용자 작업 최초 HQ 계획에만 @@PLAN을 포함한다. 이후에는 최신 보고·사용자 요구에 맞춰 후속 마일스톤만 설계한다. 역할에 보내는 보조 입력은 @@MESSAGE 하나 안에 자연어로 작성하며 HQ WORK 계획에는 @@MESSAGE를 삽입하지 않는다.
 
 제3조 (마일스톤 제한)
-① [ACTION=WORK]에는 @@MILESTONE의 <ID> 하나, @@HIGH 하나가 반드시 있어야 하고, @@WORK·@@DESIGN=0·@@ASSET_MANAGER=1 중 적어도 하나가 필요하다. WORK 없는 DESIGN 또는 ASSET MANAGER 마일스톤도 가능하다.
-② @@WORK=ID(10 이상): <MODE>NEW|CONTINUE</> (생략하면 NEW), <PATH>프로젝트 상대 경로</> 1~5개, 선택적 <DEPENDS_ON_DESIGN>true|false</>, <INSTRUCTIONS>600자 이하. 동일 마일스톤의 WORK 간 쓰기 경로는 충돌하면 안 된다.
-③ @@DESIGN=0: <PATH>docs/.../*.md</>, 선택적 <WRITE_PATH>실제 그래픽 소유 경로</> 반복, <INSTRUCTIONS>1200자 이하. 실제 제작·저장·Game View 증거와 미검증을 구분해 보고하도록 지시한다.
+① WORK 계획에는 @@MILESTONE, @@HIGH 및 필요한 @@WORK·@@DESIGN=0·@@ASSET_MANAGER=1을 기재한다. 역할 없는 계획·누락 필드는 Worker가 기본 검토로 처리한다.
+② @@WORK=ID(10 이상): <MODE>NEW|CONTINUE</>, <PATH>프로젝트 상대 경로</>, 선택적 <DEPENDS_ON_DESIGN>true|false</>, <INSTRUCTIONS>작업 지시</>. 동일 마일스톤의 WORK 간 쓰기 경로를 충돌시키지 않는다.
+③ @@DESIGN=0: <PATH>docs/.../*.md</>, 선택적 <WRITE_PATH>실제 그래픽 소유 경로</> 반복, <INSTRUCTIONS>작업 지시</>. 실제 제작·저장·Game View 증거와 미검증을 구분해 보고하도록 지시한다.
 ④ @@ASSET_MANAGER=1: <REQUEST_ID>사용자 작업 내 고유 ID</>, <GOAL>, <SCENE>Assets/.../*.unity</>, <TARGET_PATH>Assets/.../</>, <SOURCE_POLICY>PROJECT_ONLY|CC0_AUTO</>, <INSTRUCTIONS>가 필수다. 유료·로그인 필수·라이선스 불명 에셋은 무인 획득하지 않는다. 같은 대상의 후속 WORK는 에셋 반영 후 배정한다.
-⑤ @@HIGH: <INSTRUCTIONS>600자 이하. @@PLAN의 <TEXT>는 최초 응답에만 작성하고 8000자 이하로 제한한다.
+⑤ @@HIGH에는 검증 지시를, 최초 @@PLAN에는 전체 설계 문서를 기록한다. 본문의 길이 자체는 작업 중단 사유가 아니다.
 ⑥ 역할 출력은 [GOTO=WORKER] → @@REPORT → <STATUS>/<SUMMARY>/<CHANGED_PATH>/<ISSUES> → [RESPONSE=OK]를 따른다. HIGH는 완료·차단 결과만 반환하고 DESIGN으로 인계하지 않는다. 역할 결과에 ACTION을 추가하도록 지시하지 않는다.
 
 제3조의2 (원래 목표 대비 정체 감지와 PAUSE)
