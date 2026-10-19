@@ -849,7 +849,7 @@ public sealed class CoordinatorFirstContractTests
     }
 
     [Fact]
-    public void HqTextProtocol_RejectsWorkWithoutTestFlag()
+    public void HqTextProtocol_WorkDefaultsToRequiredValidation()
     {
         const string response = """
             [ACTION=WORK]
@@ -878,12 +878,14 @@ public sealed class CoordinatorFirstContractTests
 
         var hq = HqTextProtocol.Parse(response);
 
-        Assert.False(hq.IsValid);
-        Assert.Contains("WORK 10.TEST", hq.Errors);
+        Assert.True(hq.IsValid, string.Join("; ", hq.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            hq.CompatibilityMessage, hq.Parse, out var milestone, out var error), error);
+        Assert.True(milestone!.WorkItems["10"].TestRequired);
     }
 
     [Fact]
-    public void HqTextProtocol_RejectsLegacyExecutionSections()
+    public void HqTextProtocol_ForwardsUnrecognizedSectionsToHigh()
     {
         const string response = """
             [ACTION=WORK]
@@ -916,8 +918,10 @@ public sealed class CoordinatorFirstContractTests
 
         var hq = HqTextProtocol.Parse(response);
 
-        Assert.False(hq.IsValid);
-        Assert.Contains("UNKNOWN_SECTION_FORBIDDEN", hq.Errors);
+        Assert.True(hq.IsValid, string.Join("; ", hq.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            hq.CompatibilityMessage, hq.Parse, out var milestone, out var error), error);
+        Assert.Contains("@@MECHANICAL", milestone!.HighInstructions);
     }
 
     [Fact]
