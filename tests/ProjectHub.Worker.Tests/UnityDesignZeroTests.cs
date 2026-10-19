@@ -41,25 +41,30 @@ public sealed class UnityDesignZeroTests
     [InlineData("Assets/Quiz/Presentation")]
     [InlineData("../other/design.md")]
     [InlineData("docs/projecthub/design.png")]
-    public void DesignZero_RejectsMissingDocumentScope(string invalidPath)
+    public void DesignZero_InvalidDocumentScopeFallsBackToHigh(string invalidPath)
     {
         var text = DesignMilestone.Replace("docs/projecthub/design-m42.md",
             invalidPath, StringComparison.Ordinal);
         var parsed = HqTextProtocol.Parse(text);
-        Assert.False(parsed.IsValid);
-        Assert.Contains(parsed.Errors, error => error.StartsWith("DESIGN.",
-            StringComparison.Ordinal));
+        Assert.True(parsed.IsValid, string.Join(";", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(parsed.CompatibilityMessage,
+            parsed.Parse, out var milestone, out var error), error);
+        Assert.Null(milestone!.Design);
+        Assert.Contains("DESIGN 문서 경로가 불명확", milestone.HighInstructions);
     }
 
     [Fact]
-    public void DesignZero_DoesNotWriteToWorkScope()
+    public void DesignZero_OverlappingWorkScopeIsReadOnly()
     {
         var text = DesignMilestone.Replace(
             "<PATH>Assets/Quiz/Presentation</>",
             "<PATH>docs/projecthub</>", StringComparison.Ordinal);
         var parsed = HqTextProtocol.Parse(text);
-        Assert.False(parsed.IsValid);
-        Assert.Contains("DESIGN_WORK_PATH_OVERLAP", parsed.Errors);
+        Assert.True(parsed.IsValid, string.Join(";", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(parsed.CompatibilityMessage,
+            parsed.Parse, out var milestone, out var error), error);
+        Assert.True(milestone!.WorkItems["42"].ReadOnly);
+        Assert.Empty(milestone.WorkItems["42"].WritePaths);
     }
 
     [Fact]
