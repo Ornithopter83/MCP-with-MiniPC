@@ -32,10 +32,10 @@ internal static class UnityEditorStartupDiagnostics
         }
     }
 
-    private static string ReadPrefix(FileStream stream)
+    private static string ReadPrefix(FileStream stream, int limit = 128)
     {
         stream.Position = 0;
-        var bytes = new byte[Math.Min(stream.Length, 128)];
+        var bytes = new byte[(int)Math.Min(stream.Length, limit)];
         var read = stream.Read(bytes, 0, bytes.Length);
         return Convert.ToHexString(bytes.AsSpan(0, read));
     }
@@ -136,8 +136,8 @@ internal static class UnityEditorStartupDiagnostics
             using var stream = new FileStream(baseline.LogPath, FileMode.Open,
                 FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             var sameFile = stream.Length >= baseline.LogLength &&
-                string.Equals(ReadPrefix(stream), baseline.Prefix,
-                    StringComparison.Ordinal);
+                string.Equals(ReadPrefix(stream, baseline.Prefix.Length / 2),
+                    baseline.Prefix, StringComparison.Ordinal);
             // When Unity rotates/truncates Editor.log on restart, scan the
             // new file. Otherwise read only the bytes appended after baseline.
             var offset = sameFile ? baseline.LogLength : 0;
