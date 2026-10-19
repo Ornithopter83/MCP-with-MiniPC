@@ -139,9 +139,50 @@ public partial class MainWindow
                         AddHqInterventionHistory(entry, delivered: false);
             }
 
+            // On NEW tasks the approved bridge must already be on disk
+            // before Unity starts/imports scripts. Do not restart CONTINUE.
+            // This path runs only after a real user command was submitted.
+            // The '＋ 새 작업' navigation button does not call this method.
+            // Git preparation must precede bridge installation so the
+            // preflight cannot overwrite the freshly approved receiver.
+            if (!continuing)
+            {
+                var newTaskGit = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
+                    normalizedRoot, "main", initializeIfMissing: true,
+                    _targetSettings.ManualRepositoryUrl?.Trim(), cts.Token,
+                    overwriteNewTaskConflicts: true);
+                AddTaskMessage("NEW TASK GIT PREFLIGHT", newTaskGit.Summary,
+                    status: newTaskGit.Success ? "COMPLETED" : "BLOCKED");
+                if (!newTaskGit.Success)
+                    throw new InvalidOperationException(
+                        "NEW_TASK_GIT_PREFLIGHT_BLOCKED: " + newTaskGit.Summary);
+            }
+
+
+            string commandReadyHqMessage = string.Empty;
+            if (UnityCliBuildRunner.IsUnityProject(normalizedRoot))
+            {
+                try
+                {
+                    var installed = UnityEditorDirectBridge.Install(normalizedRoot);
+                    AddTaskMessage("UNITY EDITOR BRIDGE INSTALL", installed,
+                        status: "OBSERVED");
+                }
+                catch (Exception ex) when (ex is IOException or
+                    UnauthorizedAccessException or InvalidOperationException)
+                {
+                    AddTaskMessage("UNITY EDITOR BRIDGE INSTALL",
+                        "EDITOR_BRIDGE_INSTALL_BLOCKED: " + ex.Message,
+                        status: "BLOCKED");
+                    throw new InvalidOperationException(
+                        "UNITY_EDITOR_STARTUP_BLOCKED: BRIDGE_INSTALL: " +
+                        ex.Message, ex);
+                }
+            }
+
+            var editorLogBaseline = UnityEditorStartupDiagnostics.Capture();
             // A fresh user task gets one bounded graceful Editor restart.
-            // Continuations, automatic milestone transitions, PAUSE handling
-            // and ordinary CLI commands NEVER restart the user's Editor.
+            // No GUI activity for CONTINUE or ordinary milestone transitions.
             if (!continuing && UnityCliBuildRunner.IsUnityProject(normalizedRoot))
             {
                 AddTaskMessage("UNITY EDITOR STARTUP RESTART",
@@ -162,51 +203,14 @@ public partial class MainWindow
                         ": " + restart.Detail);
             }
 
-            // This path runs only after a real user command was submitted.
-            // The '＋ 새 작업' navigation button does not call this method.
-            // Git preflight follows the required Editor start confirmation.
-            // It does not imply a successful Unity asset import.
-            if (!continuing)
-            {
-                var newTaskGit = await MilestoneMechanicalExecutor.CheckGitReadyAsync(
-                    normalizedRoot, "main", initializeIfMissing: true,
-                    _targetSettings.ManualRepositoryUrl?.Trim(), cts.Token,
-                    overwriteNewTaskConflicts: true);
-                AddTaskMessage("NEW TASK GIT PREFLIGHT", newTaskGit.Summary,
-                    status: newTaskGit.Success ? "COMPLETED" : "BLOCKED");
-                if (!newTaskGit.Success)
-                    throw new InvalidOperationException(
-                        "NEW_TASK_GIT_PREFLIGHT_BLOCKED: " + newTaskGit.Summary);
-            }
-
-            // A visible GUI is not execution readiness. Compile/import must
-            // finish and TWO fresh Editor-main-thread commands must succeed.
-            string commandReadyHqMessage = string.Empty;
             if (UnityCliBuildRunner.IsUnityProject(normalizedRoot))
             {
-                try
-                {
-                    var installed = UnityEditorDirectBridge.Install(normalizedRoot);
-                    AddTaskMessage("UNITY EDITOR BRIDGE INSTALL", installed,
-                        status: "OBSERVED");
-                }
-                catch (Exception ex) when (ex is IOException or
-                    UnauthorizedAccessException or InvalidOperationException)
-                {
-                    AddTaskMessage("UNITY EDITOR BRIDGE INSTALL",
-                        "EDITOR_BRIDGE_INSTALL_BLOCKED: " + ex.Message,
-                        status: "BLOCKED");
-                    throw new InvalidOperationException(
-                        "UNITY_EDITOR_STARTUP_BLOCKED: BRIDGE_INSTALL: " +
-                        ex.Message, ex);
-                }
-
                 AddTaskMessage("UNITY EDITOR COMMAND READINESS",
                     "Waiting for Editor main-thread Ping and scene_status, " +
                     "with compile/import idle; HQ not yet called.",
                     status: "PROCESSING");
                 var ready = await UnityEditorStartupReadiness.WaitAsync(
-                    normalizedRoot, cts.Token);
+                    normalizedRoot, cts.Token, baseline: editorLogBaseline);
                 AddTaskMessage("UNITY EDITOR COMMAND READINESS",
                     ready.Code + ": " + ready.Detail,
                     status: ready.Ready ? "COMPLETED" : "BLOCKED");

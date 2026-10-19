@@ -102,8 +102,8 @@
 ### 명령 접수 기반 Unity Editor 연결 정책
 
 - '＋ 새 작업' 화면 전환은 Editor 실행 및 연결 점검과 무관하다.
-- 실제 명령 제출(`▶ 실행`) 및 작업 추가(`＋ 작업 추가`)에서 기존 Unity CLI/Editor 연결 상태만 점검한다.
-- NEW 작업은 Git 준비 후 연결을 확인한다. 연결이 없더라도 GUI Editor를 자동 실행하지 않으며 HQ가 코드 전용 작업 또는 중단을 판단한다.
+- 실제 NEW 명령 제출(`▶ 실행`) 시 Git main 준비와 승인된 브리지 설치를 완료한 뒤 Unity GUI Editor를 1회 정상 재시작/최초 실행한다. CONTINUE는 GUI를 재시작하지 않고 기존 Editor에서 명령 준비만 재검증한다.
+- GUI 존재만으로 HQ를 시작하지 않는다. Ping·scene_status 메인 스레드 실제 응답 및 Import/컴파일 종료 확인 전에는 HQ에 어떤 성공도 전달하지 않는다.
 - 프로젝트 잠금·Pipeline 오류·Safe Mode는 새 Editor 실행으로 우회하지 않는다. 작업 중 연결 감시는 읽기 전용으로 운영하며 자동 재시작·재연결·사용자 포커스 전환을 수행하지 않는다.
 - 역할 AI가 실제 명령을 선택하고, Worker의 `worker_command`는 실시간 카탈로그에 등록된 `eval`을 `editor_eval`로 전달한다. `expected_result`와 실제 Editor 반환값이 일치해야 명령 성공으로 인정하며, 재컴파일 또는 메서드 반환 성공만으로 Player BuildReport·산출물 검증 완료를 주장하지 않는다.
 - 실제 Windows Editor의 명령 전달 및 Player 빌드 결과는 별도 실행 증거가 필요하다.
@@ -142,7 +142,9 @@
 
 ### 새 Unity 작업 시작 시 Editor 실행 (2026-10-18)
 
-- HQ/Git 전처리 이전에 Windows 프로세스와 프로젝트 제목으로 해당 Editor 창을 찾는다. 실행 중인 Unity Editor 창이 하나 있고 해당 프로젝트 UnityLockfile이 유지되는 경우에만 정상 종료를 요청한 뒤 종료 확인 후 다시 연다.
+- NEW 작업에서 Git main 준비 → 내장 브리지 파일 설치(정확히 일치하는 구버전만 승인 갱신) → Windows Editor 정상 종료·재시작/최초 시작을 수행한다. 실행 중인 Unity Editor 창이 하나 있고 해당 프로젝트 UnityLockfile이 유지되는 경우에만 정상 종료를 요청한 뒤 종료 확인 후 다시 연다.
 - 실행 중인 Editor가 없고 프로젝트 잠금이 없다면 프로젝트 버전 또는 이전에 저장한 Unity.exe 경로로 한 번 실행한다. 다른 프로젝트·여러 창·잠금 불일치에는 강제 종료나 중복 실행을 하지 않는다.
-- `Unity.exe -projectPath`로 GUI를 시작하고 새 프로젝트 Editor 창·실행 파일·PID를 확인한다. GUI 확인만으로 HQ에는 전달하지 않는다. Git 사전 준비 후 브리지 설치·Import를 기다리고 메인 스레드 Ping 및 scene_status가 성공하고 Active Scene 로드·컴파일/Import 미진행을 확인한 뒤에만 HQ에 `WORKER_EDITOR_COMMAND_READY`를 보낸다. GUI 대기 120초, 명령 준비 대기 5분. 실패 시 HQ를 호출하지 않는다.
+- `Unity.exe -projectPath`로 GUI를 시작하고 프로젝트 Editor 창·실행 파일·PID를 확인한다. GUI 확인만으로 HQ에는 전달하지 않는다. 시작 이전에 설치한 브리지의 Import를 기다리고 실제 메인 스레드 Ping 및 scene_status가 성공하며 Active Scene 로드·컴파일/Import 미진행이 확인된 뒤에만 HQ에 `WORKER_EDITOR_COMMAND_READY`를 보낸다. GUI 대기 120초, 명령 준비 대기 5분. 실패 시 HQ를 호출하지 않는다.
 - 마일스톤·PAUSE/CONTINUE에서는 재시작하지 않는다. 단 CONTINUE와 다음 마일스톤의 HQ 전달 전에도 새 브리지 명령 응답을 확인하며 실패 시 BLOCKED로 중단한다. CLI/Pipeline 불능과 브리지 실명령 준비 상태는 분리한다. FocusGuard는 기존처럼 작업 종료 시점의 포커스 복구만 수행한다.
+
+- 준비 실패 시 브리지의 주기적 `bridge-active.json` 신호, `%LOCALAPPDATA%/Unity/Editor/Editor.log`의 새 컴파일 오류와 실제 응답 큐를 분석해 COMPILE_FAILED/BRIDGE_NOT_LOADED/BRIDGE_NO_RESPONSE/IMPORT_IN_PROGRESS/QUEUE_MISMATCH를 구분한다. 이는 진단일 뿐 Ping·scene_status의 성공을 대체하지 않는다.

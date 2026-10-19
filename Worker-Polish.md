@@ -135,12 +135,13 @@
 
 ① 대시보드의 '＋ 새 작업' 버튼은 이전 작업 정리 및 새 명령 입력 화면 전환만 담당하며 Unity Editor 실행·연결 점검을 시작하지 않는다.
 ② '▶ 실행'로 NEW Unity 작업을 접수하면 기존 프로젝트 Editor를 정상 종료·재시작하거나 미실행 시 새로 연다. GUI 확인만으로 HQ를 시작하지 않는다. CONTINUE는 GUI 재시작 없이 실제 Editor 메인 스레드 명령 실행 준비만 재확인한다.
-③ NEW 명령에서는 Editor GUI 실행 확인 뒤 Git 준비·브리지 설치·실제 명령 준비 확인을 완료하고 첫 HQ를 호출한다. CONTINUE에는 NEW 전용 Git 충돌 교체와 Editor 재시작을 적용하지 않으나 브리지 명령 준비 확인은 필수다.
+③ NEW 명령에서는 Git 사전 점검 → 브리지 소스 설치·허용된 기존 버전 갱신 → Editor GUI 실행·재시작 → 컴파일/Import 및 실제 메인 스레드 Ping·scene_status 확인을 모두 통과한 뒤 첫 HQ를 호출한다. CONTINUE에는 NEW 전용 Git 충돌 교체와 Editor 재시작을 적용하지 않으나 브리지 명령 준비 확인은 필수다.
 ④ 작업 시작 시 GUI 존재만으로 HQ에 PASS를 알리지 않는다. 명시적 Editor 명령 응답으로 COMMAND_READY 확인에 실패하면 HQ를 실행하지 않는다. 작업 중 CLI 상태 저하·명령 카탈로그 오류는 브리지 실명령 성공 여부와 독립적으로 기록한다.
 ⑤ 작업 중 연결 상태 감시는 읽기 전용이며 Editor 자동 재시작·재연결·강제 포커스 이동을 수행하지 않는다. 역할 AI가 실행할 명령을 결정하고 Worker는 실제 반환값을 기계적으로 확인한다. CLI 연결 성공·명령 카탈로그 발견·Editor 메서드 성공은 각각 별개 상태다. CLI의 stdout/stderr·종료 코드·시각은 저장소 외부의 로컬 진단 파일로 보존하며, 존재하지 않는 명령을 추정 실행하지 않는다.
 ⑥ DESIGN 완료만으로 Native Game View 캡처를 시작하지 않는다. 실제 캡처는 역할이 요청하고 PlayMode·Scene 조건을 확인했을 때에만 실행하며, 실패 결과를 HIGH 판정으로 대체하지 않는다. DISCOVER 단계에서 `docs/projecthub/` 아래 근거 문서를 작성한 경우 제품 파일 변경과 구분해 기록한다.
 ⑦ 모든 모델 호출의 실제 제공자 토큰 보고량(입력·캐시·출력·추론·총합)을 모델·역할별로 저장하고 다음 역할 프롬프트 및 마일스톤 인계문에 자동 포함한다. 제공자 미보고(예: WEB)는 UNKNOWN으로 기재한다.
-⑧ NEW 사용자 Unity 작업은 해당 프로젝트의 Editor를 한 번 정상 종료·재실행하거나 미실행 시 새로 연다. 창·PID 확인은 GUI 관측일 뿐 작업 준비 성공이 아니다. Git 사전 점검 후 브리지 소스를 설치·Import하고, 실제 Editor 메인 스레드 Ping 및 읽기 전용 scene_status 실행이 모두 성공하며 ACTIVE_LOADED=True, COMPILING=False, UPDATING=False가 확인된 시점에만 Worker가 WORKER_EDITOR_COMMAND_READY를 HQ에 전달한다. 5분 내 미확인·Import 오류·브리지 미설치/내용 충돌·종료/실행 실패 시 HQ에 전달하지 않고 BLOCKED로 중단한다. CONTINUE는 재시작하지 않지만 동일한 COMMAND_READY 확인을 반드시 통과한다. 후속 HQ 호출에서도 최신 준비 상태를 재확인한다. Unity CLI 카탈로그/exit 6은 별도 상태이며 성공한 브리지 명령을 실패로 덮어쓰지 않는다.
+⑧ NEW Unity 작업은 Git main 준비 후 승인된 브리지 소스를 설치한 다음 해당 프로젝트 Editor를 정상 재시작하거나 미실행 시 새로 연다. 기존 정확한 Worker 브리지 버전은 진단 신호를 포함한 버전으로 갱신하되 사용자 수정 파일은 덮어쓰지 않는다. GUI 창·PID만으로 준비 성공을 선언하지 않는다. 실제 Editor 메인 스레드 Ping 및 읽기 전용 scene_status 실행이 모두 성공하며 ACTIVE_LOADED=True, COMPILING=False, UPDATING=False일 때만 WORKER_EDITOR_COMMAND_READY를 HQ에 전달한다. 5분 내 미확인·Import 오류·브리지 미설치/내용 충돌·종료/실행 실패 시 HQ에 전달하지 않고 BLOCKED로 중단한다. CONTINUE는 재시작하지 않지만 동일한 COMMAND_READY 확인을 반드시 통과한다. 후속 HQ 호출에서도 최신 준비 상태를 재확인한다. Unity CLI 카탈로그/exit 6은 별도 상태이며 성공한 브리지 명령을 실패로 덮어쓰지 않는다.
+⑧-1 명령 준비 시간 초과는 설치·활성화 신호, 요청 큐와 Unity Editor.log의 신규 컴파일 오류를 함께 대조해 EDITOR_COMPILE_FAILED, BRIDGE_NOT_LOADED, BRIDGE_NO_RESPONSE, EDITOR_IMPORT_IN_PROGRESS, EDITOR_BRIDGE_QUEUE_MISMATCH로 분류한다. 설치 성공이나 브리지 활성화 신호만으로 HQ 시작을 허용하지 않는다. CONTINUE는 Editor를 재시작하지 않는다.
 ⑨ 기존 Unity Editor 수신기는 Unity 작업 최초 접수 시 사용자 지정 프로젝트에 자동 설치를 시도한다. 설치는 Import·실행 성공 증거가 아니다. 씬 상태는 고정된 읽기 전용 명령을 우선 사용하며, 현재 씬 디스크 재로드는 역할이 명시적으로 요청하고 미저장 상태의 독립 백업 성공 후에만 수행한다. 에셋 갱신은 별도 명시적 요청으로 수행한다. WORK의 씬 변경은 대상 Scene과 백업 경로의 소유 범위가 모두 필요하다.
 ⑩ Unity CLI 카탈로그에 의존하지 않는 보조 실행 수단으로 기존 Unity Editor에 `InitializeOnLoad` 수신 스크립트를 명시적으로 설치할 수 있다. 설치 시 사용자 파일을 덮어쓰지 않으며 새 Editor 실행·관리자 권한 상승·포커스 획득을 하지 않는다. 실제 Editor 메인 스레드 응답과 기대 결과를 확인하고, 기존 CLI 연결 성공이나 설치 완료만으로 업무 성공을 판정하지 않는다.
 

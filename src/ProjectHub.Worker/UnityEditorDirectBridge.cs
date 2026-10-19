@@ -35,6 +35,12 @@ internal static class UnityEditorDirectBridge
     internal static string EmbeddedSource() =>
         UnityEditorBridgeTemplate.Source + Environment.NewLine;
 
+    internal static string StartupSignalPath(string root) =>
+        Path.Combine(QueueDirectory(root), "bridge-active.json");
+
+    internal static string LegacyEmbeddedSource() =>
+        UnityEditorBridgeTemplate.LegacySource + Environment.NewLine;
+
     internal static string Install(string root)
     {
         if (!UnityCliBuildRunner.IsUnityProject(root))
@@ -46,11 +52,19 @@ internal static class UnityEditorDirectBridge
         if (File.Exists(target))
         {
             var existing = File.ReadAllText(target);
-            if (!string.Equals(existing, source, StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    "EDITOR_BRIDGE_SOURCE_CONFLICT: existing file was not overwritten: " +
-                    EditorSourceRelativePath);
-            return "EDITOR_BRIDGE_ALREADY_INSTALLED: " + EditorSourceRelativePath;
+            if (string.Equals(existing, source, StringComparison.Ordinal))
+                return "EDITOR_BRIDGE_ALREADY_INSTALLED: " + EditorSourceRelativePath;
+            // Exact previously shipped receiver is Worker-owned and can be
+            // upgraded to emit startup diagnostics. User-edited files cannot.
+            if (string.Equals(existing, LegacyEmbeddedSource(), StringComparison.Ordinal))
+            {
+                File.WriteAllText(target, source, ProjectHubJson.Utf8NoBom);
+                return "EDITOR_BRIDGE_APPROVED_UPGRADE_WAIT_FOR_UNITY_IMPORT: " +
+                    EditorSourceRelativePath;
+            }
+            throw new InvalidOperationException(
+                "EDITOR_BRIDGE_SOURCE_CONFLICT: existing file was not overwritten: " +
+                EditorSourceRelativePath);
         }
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         // Never modify Packages, .git, scene files or the current window focus.

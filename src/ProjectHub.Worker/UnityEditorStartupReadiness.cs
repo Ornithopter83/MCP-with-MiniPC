@@ -54,10 +54,12 @@ internal static class UnityEditorStartupReadiness
 
     internal static async Task<Result> WaitAsync(
         string projectRoot, CancellationToken cancellationToken,
-        TimeSpan? maximumWait = null)
+        TimeSpan? maximumWait = null,
+        UnityEditorStartupDiagnostics.Baseline? baseline = null)
     {
         var timeout = maximumWait ?? TimeSpan.FromMinutes(5);
         var deadline = DateTime.UtcNow.Add(timeout);
+        var snapshot = baseline ?? UnityEditorStartupDiagnostics.Capture();
         var last = "WAITING_FOR_EDITOR_IMPORT_AND_MAIN_THREAD";
         while (DateTime.UtcNow < deadline)
         {
@@ -85,15 +87,22 @@ internal static class UnityEditorStartupReadiness
                      ex.Message.Contains("NOT_INSTALLED", StringComparison.Ordinal)))
                     return new(false, "EDITOR_BRIDGE_INSTALL_BLOCKED", last);
             }
+            if (DateTime.UtcNow - snapshot.StartedUtc >= TimeSpan.FromSeconds(20))
+            {
+                var diagnosed = UnityEditorStartupDiagnostics.Analyze(
+                    projectRoot, snapshot, last);
+                if (diagnosed.Code == "EDITOR_COMPILE_FAILED")
+                    return new(false, diagnosed.Code, diagnosed.Detail);
+            }
             var remaining = deadline - DateTime.UtcNow;
             if (remaining > TimeSpan.Zero)
                 await Task.Delay(remaining < TimeSpan.FromSeconds(2)
                     ? remaining : TimeSpan.FromSeconds(2),
                     cancellationToken).ConfigureAwait(false);
         }
-        return new(false, "EDITOR_COMMAND_NOT_READY",
-            "Unity GUI may be open but Editor import/compile/bridge command " +
-            "did not complete. Last observed: " + last);
+        var final = UnityEditorStartupDiagnostics.Analyze(
+            projectRoot, snapshot, last);
+        return new(false, final.Code, final.Detail);
     }
 
     private static string Limit(string text) =>

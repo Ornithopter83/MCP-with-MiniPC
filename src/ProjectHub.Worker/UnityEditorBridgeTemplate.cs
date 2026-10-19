@@ -47,6 +47,42 @@ internal static class ProjectHubEditorBridge
     private static readonly string QueueDirectory = MakeQueueDirectory();
     private static double _nextTick;
 
+    // PROJECTHUB_STARTUP_SIGNAL_IMPL_BEGIN
+    [Serializable]
+    private sealed class StartupSignal
+    {
+        public string projectRoot;
+        public string queueDirectory;
+        public string status;
+        public int processId;
+        public long utcTicks;
+    }
+
+    private static double _nextSignal;
+    private static void PublishStartupSignal()
+    {
+        try
+        {
+            Directory.CreateDirectory(QueueDirectory);
+            var signal = new StartupSignal
+            {
+                projectRoot = Directory.GetParent(Application.dataPath).FullName,
+                queueDirectory = QueueDirectory,
+                status = EditorApplication.isCompiling || EditorApplication.isUpdating
+                    ? "EDITOR_IMPORT_BUSY" : "BRIDGE_CALLBACK_ACTIVE",
+                processId = System.Diagnostics.Process.GetCurrentProcess().Id,
+                utcTicks = DateTime.UtcNow.Ticks
+            };
+            File.WriteAllText(Path.Combine(QueueDirectory, "bridge-active.json"),
+                JsonUtility.ToJson(signal));
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("PROJECTHUB_STARTUP_SIGNAL_FAILED: " + e.Message);
+        }
+    }
+    // PROJECTHUB_STARTUP_SIGNAL_IMPL_END
+
     static ProjectHubEditorBridge()
     {
         // Update callbacks run on the Editor's main thread, including in the
@@ -55,6 +91,9 @@ internal static class ProjectHubEditorBridge
         EditorApplication.update += Tick;
         AssemblyReloadEvents.beforeAssemblyReload += () =>
             EditorApplication.update -= Tick;
+        // PROJECTHUB_STARTUP_SIGNAL_BEGIN
+        PublishStartupSignal();
+        // PROJECTHUB_STARTUP_SIGNAL_END
     }
 
     private static string MakeQueueDirectory()
@@ -73,6 +112,13 @@ internal static class ProjectHubEditorBridge
 
     private static void Tick()
     {
+        // PROJECTHUB_STARTUP_HEARTBEAT_BEGIN
+        if (EditorApplication.timeSinceStartup >= _nextSignal)
+        {
+            _nextSignal = EditorApplication.timeSinceStartup + 5d;
+            PublishStartupSignal();
+        }
+        // PROJECTHUB_STARTUP_HEARTBEAT_END
         if (EditorApplication.timeSinceStartup < _nextTick)
             return;
         _nextTick = EditorApplication.timeSinceStartup + 0.2d;
@@ -360,4 +406,37 @@ internal static class ProjectHubEditorBridge
 }
 #endif
 """;
+
+    // Only exact prior Worker-managed receiver code may be upgraded.
+    // Remove all three diagnostic-only additions to reconstruct the
+    // published legacy source; never overwrite an arbitrary user edit.
+    internal static string LegacySource
+    {
+        get
+        {
+            var source = Source;
+            foreach (var (begin, end) in new[]
+            {
+                ("// PROJECTHUB_STARTUP_SIGNAL_IMPL_BEGIN",
+                    "// PROJECTHUB_STARTUP_SIGNAL_IMPL_END"),
+                ("// PROJECTHUB_STARTUP_SIGNAL_BEGIN",
+                    "// PROJECTHUB_STARTUP_SIGNAL_END"),
+                ("// PROJECTHUB_STARTUP_HEARTBEAT_BEGIN",
+                    "// PROJECTHUB_STARTUP_HEARTBEAT_END")
+            })
+            {
+                // Use line boundaries rather than substring replacement so
+                // the original exact whitespace is restored.
+                var from = source.LastIndexOf('\n', source.IndexOf(begin,
+                    StringComparison.Ordinal)) + 1;
+                var to = source.IndexOf('\n', source.IndexOf(end,
+                    StringComparison.Ordinal));
+                if (to < 0) throw new InvalidOperationException(
+                    "EDITOR_BRIDGE_LEGACY_MARKER_MISSING");
+                source = source.Remove(from, to + 1 - from);
+            }
+            return source.Replace("\n\n\n    static ProjectHubEditorBridge()",
+                "\n\n    static ProjectHubEditorBridge()", StringComparison.Ordinal);
+        }
+    }
 }

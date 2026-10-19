@@ -57,6 +57,25 @@ public sealed class UnityEditorDirectBridgeTests
     }
 
     [Fact]
+    public void PreviouslyInstalledManagedReceiverUpgradesWithoutOverwritingUserChanges()
+    {
+        using var project = new FakeProject();
+        var source = UnityEditorDirectBridge.EditorSourcePath(project.Root);
+        Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+        var previous = UnityEditorDirectBridge.LegacyEmbeddedSource();
+        Assert.DoesNotContain("PROJECTHUB_STARTUP_SIGNAL_IMPL_BEGIN", previous);
+        File.WriteAllText(source, previous);
+        Assert.Contains("APPROVED_UPGRADE", UnityEditorDirectBridge.Install(project.Root));
+        Assert.Equal(UnityEditorDirectBridge.EmbeddedSource(), File.ReadAllText(source));
+        Assert.Contains("PROJECTHUB_STARTUP_SIGNAL_IMPL_BEGIN",
+            File.ReadAllText(source));
+        Assert.Contains("ALREADY_INSTALLED", UnityEditorDirectBridge.Install(project.Root));
+        File.AppendAllText(source, "// user edited\n");
+        Assert.Contains("SOURCE_CONFLICT", Assert.Throws<InvalidOperationException>(
+            () => UnityEditorDirectBridge.Install(project.Root)).Message);
+    }
+
+    [Fact]
     public async Task ResponseMustBeFromSameRequestAndEqualExpectedResult()
     {
         using var project = new FakeProject();
