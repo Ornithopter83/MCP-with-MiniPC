@@ -108,6 +108,11 @@ internal static class HqTextProtocol
                 WebCorrelationContract.ResponseOkMarker,
                 StringComparison.Ordinal));
 
+        // Control framing remains strict regardless of legacy/modern @@ syntax.
+        if ((responseOk < 0 && !completionValidatedByTransport) ||
+            (responseOk >= 0 && lines[(responseOk + 1)..].Any(
+                line => !string.IsNullOrWhiteSpace(line))))
+            return Invalid("COMPACT_RESPONSE_TERMINATOR_INVALID");
         var end = responseOk >= 0 ? responseOk : lines.Length;
         var payloadLines = lines[(actionLine + 1)..end];
 
@@ -129,11 +134,6 @@ internal static class HqTextProtocol
             // before returning the response, then deliberately strips that
             // marker. Keep local CLI validation strict without rechecking a
             // marker that the Web transport has already consumed.
-            if ((responseOk < 0 && !completionValidatedByTransport) ||
-                (responseOk >= 0 &&
-                 lines[(responseOk + 1)..].Any(
-                     line => !string.IsNullOrWhiteSpace(line))))
-                return Invalid("COMPACT_RESPONSE_TERMINATOR_INVALID");
             if (headerLines.Where(line => !string.IsNullOrWhiteSpace(line))
                     .Any(line => !line.TrimStart().StartsWith("MILESTONE:", StringComparison.OrdinalIgnoreCase)))
                 return Invalid("COMPACT_HEADER_FORBIDDEN");
