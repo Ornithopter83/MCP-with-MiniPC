@@ -27,11 +27,13 @@ public sealed class UnityDesignHighDirectReviewTests
     {
         var qa = HqTextProtocol.Parse(Milestone(
             "@@WORK=10\n<PATH>Assets/Quiz.cs</>\n<INSTRUCTIONS>구현</>\n@@QA\n<INSTRUCTIONS>테스트</>"));
-        Assert.Contains("COMPACT_SECTION_FORBIDDEN", qa.Errors);
+        Assert.True(qa.IsValid, string.Join(";", qa.Errors));
+        Assert.Contains("@@QA", qa.CompatibilityMessage);
         var noHigh = HqTextProtocol.Parse(Milestone(
             "@@DESIGN=0\n<PATH>docs/projecthub/look.md</>\n<INSTRUCTIONS>UI 제작</>")
             .Replace("@@HIGH\n<INSTRUCTIONS>최종 통합 확인과 수정</>", ""));
-        Assert.False(noHigh.IsValid);
+        Assert.True(noHigh.IsValid, string.Join(";", noHigh.Errors));
+        Assert.Contains("HIGH 검증 지시 누락", noHigh.CompatibilityMessage);
     }
 
     [Fact]
