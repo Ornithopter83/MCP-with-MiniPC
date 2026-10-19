@@ -61,7 +61,9 @@ internal static class HqTextProtocol
         bool completionValidatedByTransport = false)
     {
         var raw = rawMessage ?? string.Empty;
-        if (StructuredHqProtocol.IsModern(raw))
+        if (StructuredHqProtocol.IsModern(raw) &&
+            System.Text.RegularExpressions.Regex.IsMatch(raw,
+                @"(?m)^[ \t]*\[ACTION=WORK\][ \t]*\r?$"))
             return StructuredHqProtocol.Parse(raw, completionValidatedByTransport);
         var normalized = raw
             .Replace("\r\n", "\n", StringComparison.Ordinal)
