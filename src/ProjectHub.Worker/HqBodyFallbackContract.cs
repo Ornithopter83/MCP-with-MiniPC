@@ -60,7 +60,7 @@ internal static class HqBodyFallbackContract
         foreach (var line in lines.Skip(actionLine + 1).Take(end - actionLine - 1))
         {
             var header = Regex.Match(line.Trim(),
-                @"^@@(?<name>[A-Z_]+)(?:=(?<id>\d+))?$",
+                @"^@@(?<name>[A-Z_]+)(?:[= ](?<id>\d+))?$",
                 RegexOptions.IgnoreCase);
             if (header.Success)
             {
@@ -85,6 +85,15 @@ internal static class HqBodyFallbackContract
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
                 .Select(match => match.Groups["value"].Value.Trim()).ToArray();
             if (values.Length > 0) return values;
+            // Legacy colon fields are also data; scope them to exact names.
+            if (field is "PATH" or "WRITE_PATH")
+            {
+                var legacy = Regex.Matches(section.Body,
+                        @"(?m)^[ \t]*" + escaped + @":[ \t]*(?<value>[^\r\n]+)$",
+                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+                    .Select(match => match.Groups["value"].Value.Trim()).ToArray();
+                if (legacy.Length > 0) return legacy;
+            }
             // Preserve a field with an incorrect or missing closing tag as text.
             return Regex.Matches(section.Body,
                     @"(?m)^[ \t]*<" + escaped + @">(?<value>[^\r\n<>]*)",
@@ -104,6 +113,9 @@ internal static class HqBodyFallbackContract
         var notes = new List<string>();
         var milestoneSection = sections.FirstOrDefault(section => section.Name == "MILESTONE");
         var milestoneId = milestoneSection is null ? "" : Field(milestoneSection, "ID");
+        if (milestoneId.Length == 0)
+            milestoneId = Regex.Match(raw, @"(?m)^MILESTONE:[ \t]*(?<id>[A-Za-z0-9_-]+)")
+                .Groups["id"].Value;
         if (!Regex.IsMatch(milestoneId, @"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"))
         {
             milestoneId = "M_UNSPECIFIED";
