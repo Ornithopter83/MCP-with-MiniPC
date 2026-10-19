@@ -38,7 +38,8 @@ internal static class StructuredHqProtocol
         var cursor = 0;
         if (Regex.IsMatch(significant[cursor].Text, @"^\[KEY=[^\]\r\n]+\]$"))
             cursor++;
-        if (cursor < significant.Length && significant[cursor].Text == "[GOTO=WORKER]")
+        if (cursor < significant.Length && Regex.IsMatch(significant[cursor].Text,
+            @"^\[GOTO\s*[:=]\s*WORKER\s*\]$", RegexOptions.IgnoreCase))
             cursor++;
         if (cursor >= significant.Length || significant[cursor].Text != "[ACTION=WORK]")
             return false;
@@ -128,7 +129,9 @@ internal static class StructuredHqProtocol
         static string Field(Section section, string field) =>
             Fields(section, field).LastOrDefault() ?? "";
         static bool Safe(string path) =>
-            path.Length <= 250 && MilestoneDefinitionContract.IsSafeRelativePath(path);
+            path.Length <= 250 &&
+            path.IndexOfAny(new[] { '\r', '\n', '<', '>' }) < 0 &&
+            MilestoneDefinitionContract.IsSafeRelativePath(path);
         static string BodyOrInstructions(Section section)
         {
             // Extract the explicit AI instruction without reinterpreting prose.
@@ -143,6 +146,10 @@ internal static class StructuredHqProtocol
         }
 
         var notes = new List<string>();
+        if (sections.Any(section => (section.Name == "ASSET_MANAGER" &&
+            section.Argument != "1") || (section.Name == "DESIGN" &&
+            section.Argument != "0")))
+            notes.Add("역할 번호를 인식하지 못해 실행하지 않고 HIGH에 원문 전달");
         if (openField is not null)
             notes.Add("닫히지 않은 본문 필드: 원문을 HIGH에 전달");
         var milestoneSection = sections.FirstOrDefault(section => section.Name == "MILESTONE");
@@ -231,10 +238,16 @@ internal static class StructuredHqProtocol
             {
                 var requestId = Field(assetSection, "REQUEST_ID");
                 if (!Regex.IsMatch(requestId, @"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"))
+                {
+                    notes.Add("ASSET_MANAGER 요청 ID 불명확: 기본 식별자 적용");
                     requestId = "HQ-RECOVERED-ASSET";
+                }
                 var source = Field(assetSection, "SOURCE_POLICY");
                 if (source is not ("PROJECT_ONLY" or "CC0_AUTO"))
+                {
+                    notes.Add("ASSET_MANAGER 출처 정책 불명확: PROJECT_ONLY 적용");
                     source = "PROJECT_ONLY";
+                }
                 asset = new Dictionary<string, object?>
                 {
                     ["id"] = 1,
