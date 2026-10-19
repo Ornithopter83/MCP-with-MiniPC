@@ -874,6 +874,7 @@ public sealed class CoordinatorFirstContractTests
 
             @@WORK_COMPLETION
             문서가 수정된다.
+            [RESPONSE=OK]
             """;
 
         var hq = HqTextProtocol.Parse(response);
@@ -914,6 +915,7 @@ public sealed class CoordinatorFirstContractTests
 
             @@MECHANICAL
             BUILD: npm run build
+            [RESPONSE=OK]
             """;
 
         var hq = HqTextProtocol.Parse(response);
