@@ -12,7 +12,7 @@ internal static class HqBodyFallbackContract
     private sealed record Section(string Name, string Argument, string Body);
 
     public static bool TryParse(string raw, bool completionValidatedByTransport,
-        out HqTextProtocolResult result)
+        out HqTextProtocolResult result, bool reviewOnly = false)
     {
         result = Invalid("HQ_CONTROL_INVALID");
         if (string.IsNullOrWhiteSpace(raw)) return false;
@@ -236,6 +236,16 @@ internal static class HqBodyFallbackContract
             else if (!(bool)work["readOnly"]!)
                 reserved.AddRange(paths);
             if (design is null) work["dependsOnDesign"] = false;
+        }
+
+        if (reviewOnly)
+        {
+            // Last-resort recovery for a downstream milestone-contract mismatch:
+            // run HIGH with the unmodified HQ text, never authorize file writes.
+            works.Clear();
+            design = null;
+            asset = null;
+            notes.Add("마일스톤 구성 오류: 역할 실행을 건너뛰고 HIGH에 원문만 전달");
         }
 
         var highSection = sections.FirstOrDefault(section => section.Name == "HIGH");
