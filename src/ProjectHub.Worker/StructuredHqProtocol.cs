@@ -114,8 +114,6 @@ internal static class StructuredHqProtocol
             Fields(section, field).LastOrDefault() ?? "";
         static bool Safe(string path) =>
             path.Length <= 250 && MilestoneDefinitionContract.IsSafeRelativePath(path);
-        static string Limit(string value, int count) =>
-            value.Length <= count ? value : value[..count];
         static string BodyOrInstructions(Section section)
         {
             // Extract the explicit AI instruction without reinterpreting prose.
@@ -138,7 +136,8 @@ internal static class StructuredHqProtocol
         if (!Regex.IsMatch(milestoneId, @"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"))
         {
             milestoneId = "M_UNSPECIFIED";
-            notes.Add("마일스톤 ID를 해석할 수 없어 기본값 M_UNSPECIFIED 사용");
+            reviewOnly = true; // No identity means no safe continuation or write authority.
+            notes.Add("마일스톤 식별 불가: 변경 없이 HIGH 검토");
         }
         var works = new List<Dictionary<string, object?>>();
         var ids = new HashSet<int>();
@@ -149,10 +148,17 @@ internal static class StructuredHqProtocol
                 notes.Add("WORK ID 오류·중복: " + section.Argument + " (HIGH에 원문 전달)");
                 continue;
             }
-            var paths = Fields(section, "PATH").Concat(Fields(section, "WRITE_PATH"))
-                .Where(Safe).Distinct(StringComparer.OrdinalIgnoreCase).Take(5).ToArray();
+            var requestedPaths = Fields(section, "PATH").Concat(Fields(section, "WRITE_PATH"))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var paths = requestedPaths.Where(Safe).Take(5).ToArray();
+            if (paths.Length != requestedPaths.Length)
+                notes.Add("WORK " + id + ": 안전 범위 밖이거나 초과한 경로는 제외됨");
             var mode = Field(section, "MODE");
-            if (mode is not ("NEW" or "CONTINUE")) mode = "NEW";
+            if (mode is not ("NEW" or "CONTINUE"))
+            {
+                if (mode.Length > 0) notes.Add("WORK " + id + ": 실행 모드 불명확, NEW 적용");
+                mode = "NEW";
+            }
             var readOnly = paths.Length == 0;
             if (readOnly)
                 notes.Add("WORK " + id + ": 안전한 쓰기 경로가 없어 읽기 전용으로 전달");
@@ -187,7 +193,7 @@ internal static class StructuredHqProtocol
                     ["path"] = designPath,
                     ["writePaths"] = Fields(designSection, "WRITE_PATH")
                         .Where(Safe).Distinct(StringComparer.OrdinalIgnoreCase).Take(12).ToArray(),
-                    ["instructions"] = Limit(BodyOrInstructions(designSection), 1200)
+                    ["instructions"] = BodyOrInstructions(designSection)
                 };
             }
             else
@@ -216,12 +222,12 @@ internal static class StructuredHqProtocol
                 {
                     ["id"] = 1,
                     ["requestId"] = requestId,
-                    ["goal"] = Limit(Field(assetSection, "GOAL") is { Length: > 0 } goal
-                        ? goal : BodyOrInstructions(assetSection), 600),
+                    ["goal"] = Field(assetSection, "GOAL") is { Length: > 0 } goal
+                        ? goal : BodyOrInstructions(assetSection),
                     ["scene"] = scene,
                     ["targetPath"] = target,
                     ["sourcePolicy"] = source,
-                    ["instructions"] = Limit(BodyOrInstructions(assetSection), 1200)
+                    ["instructions"] = BodyOrInstructions(assetSection)
                 };
             }
             else
@@ -270,11 +276,36 @@ internal static class StructuredHqProtocol
         var highSection = sections.FirstOrDefault(section => section.Name == "HIGH");
         var high = highSection is null ? "" : Field(highSection, "INSTRUCTIONS");
         if (string.IsNullOrWhiteSpace(high))
+        {
+            notes.Add("HIGH 검증 지시 누락: 기본값 적용");
             high = "유효한 기존 결과를 재사용하고 미검증 사항을 분리해 보고하라.";
-        // The AI, not the Worker, interprets non-control material.
-        high += "\nHQ_BEST_EFFORT_BODY_RECOVERY: " + string.Join("; ", notes) +
-            "\n다음 HQ 원문에서 복구하지 못한 지시를 검토하고 안전하게 보고하라. " +
-            "원문을 성공한 실행으로 간주하지 않는다.\n" + raw;
+        }
+        var unknownSections = sections.Where(section => section.Name is not
+            ("MILESTONE" or "PLAN" or "WORK" or "DESIGN" or "ASSET_MANAGER" or "HIGH"))
+            .Select(section => "@@" + section.Name + "\n" + section.Body)
+            .Concat(orphan.Where(line => !string.IsNullOrWhiteSpace(line))).ToArray();
+        // Unknown middle fields are not machine commands; pass them to HIGH as AI data.
+        bool UnknownFields(Section section)
+        {
+            string[] allowed = section.Name switch
+            {
+                "MILESTONE" => new[] { "ID" },
+                "PLAN" => new[] { "TEXT" },
+                "WORK" => new[] { "PATH", "WRITE_PATH", "MODE", "INSTRUCTIONS",
+                    "DEPENDS_ON_DESIGN" },
+                "DESIGN" => new[] { "PATH", "WRITE_PATH", "INSTRUCTIONS" },
+                "ASSET_MANAGER" => new[] { "REQUEST_ID", "GOAL", "SCENE",
+                    "TARGET_PATH", "SOURCE_POLICY", "INSTRUCTIONS" },
+                "HIGH" => new[] { "INSTRUCTIONS" },
+                _ => Array.Empty<string>()
+            };
+            return Regex.Matches(section.Body, @"(?m)^[ \t]*<(?<field>[A-Z_][A-Z0-9_]*)>")
+                .Any(match => !allowed.Contains(match.Groups["field"].Value,
+                    StringComparer.OrdinalIgnoreCase));
+        }
+        if (notes.Count > 0 || unknownSections.Length > 0 || sections.Any(UnknownFields))
+            high += "\nHQ_BODY_NOTICE: " + string.Join("; ", notes) +
+                "\n복구하지 못한 구역은 AI 판단용 원문이며 실행 결과가 아님:\n" + raw;
         var planSection = sections.FirstOrDefault(section => section.Name == "PLAN");
         var plan = planSection is null ? "" : Field(planSection, "TEXT");
         if (string.IsNullOrWhiteSpace(plan) && planSection is not null)
@@ -283,7 +314,7 @@ internal static class StructuredHqProtocol
         {
             ["id"] = milestoneId, ["branch"] = "main", ["goal"] = milestoneId,
             ["highInstructions"] = high,
-            ["planDocument"] = Limit(plan, 8000), ["entrypoint"] = null,
+            ["planDocument"] = plan, ["entrypoint"] = null,
             ["initializeGitIfMissing"] = false, ["projectPolicy"] = reviewOnly
                 ? "READ_ONLY_NO_FILE_CHANGES" : "DEFAULT",
             ["resource"] = null, ["design"] = design, ["assetManager"] = asset,
@@ -294,11 +325,7 @@ internal static class StructuredHqProtocol
         var parse = ActionBlockContract.ParseHq(compatibility);
         if (parse.HasErrors) return false;
         result = new HqTextProtocolResult("WORK", compatibility, parse,
-            sections.Where(section => section.Name is not
-                ("MILESTONE" or "PLAN" or "WORK" or "DESIGN" or "ASSET_MANAGER" or "HIGH"))
-                .Select(section => "@@" + section.Name + "\n" + section.Body)
-                .Concat(orphan.Where(line => !string.IsNullOrWhiteSpace(line)))
-                .ToArray(), Array.Empty<string>());
+            unknownSections, Array.Empty<string>());
         return true;
     }
 
