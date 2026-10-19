@@ -144,46 +144,55 @@ public sealed class CompactMilestoneRoutingTests
     [InlineData("<PATH>a.txt</PATH>")]
     [InlineData("<PATH>a.txt</><PATH>b.cs</>")]
     [InlineData("<PATH>a.txt</> trailing")]
-    public void CompactHq_RejectsMalformedPathTags(string tag)
+    public void CompactHq_RecoversMalformedPathTagsWithoutUnsafeWrites(string tag)
     {
         var parsed = HqTextProtocol.Parse(Minimal.Replace(
             "<PATH>a.txt</>", tag, StringComparison.Ordinal));
-        Assert.False(parsed.IsValid);
-        Assert.Contains(parsed.Errors, error => error.Contains(
-            "COMPACT_PATH_TAG", StringComparison.Ordinal));
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
+        var work = milestone!.WorkItems["10"];
+        Assert.True(work.ReadOnly || work.WritePaths.All(path =>
+            MilestoneDefinitionContract.IsSafeRelativePath(path)));
     }
 
     [Fact]
-    public void CompactHq_RejectsLegacyPathField()
+    public void CompactHq_RecoversLegacyPathField()
     {
         var parsed = HqTextProtocol.Parse(Minimal.Replace(
             "<PATH>a.txt</>", "PATH: a.txt", StringComparison.Ordinal));
-        Assert.False(parsed.IsValid);
-        Assert.Contains(parsed.Errors, error => error.Contains(
-            "COMPACT_LEGACY_PATH", StringComparison.Ordinal));
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
+        Assert.Equal("a.txt", Assert.Single(milestone!.WorkItems["10"].WritePaths));
     }
 
     [Fact]
-    public void CompactHq_RejectsMissingPathOrHigh()
+    public void CompactHq_MissingPathOrHighUsesSafeDefaults()
     {
         var missingPath = HqTextProtocol.Parse(Minimal.Replace(
             "<PATH>a.txt</>", "지시만 있고 경로는 없음", StringComparison.Ordinal));
-        Assert.False(missingPath.IsValid);
+        Assert.True(missingPath.IsValid, string.Join("; ", missingPath.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            missingPath.CompatibilityMessage, missingPath.Parse,
+            out var milestone, out var error), error);
+        Assert.True(milestone!.WorkItems["10"].ReadOnly);
 
         var missingHigh = HqTextProtocol.Parse(Minimal.Replace(
             "@@HIGH", "@@MISSING_HIGH", StringComparison.Ordinal));
-        Assert.False(missingHigh.IsValid);
+        Assert.True(missingHigh.IsValid, string.Join("; ", missingHigh.Errors));
     }
 
     [Fact]
-    public void CompactHq_LimitsWorkInstructions()
+    public void CompactHq_PreservesLongWorkInstructionsForAi()
     {
         var verbose = HqTextProtocol.Parse(Minimal.Replace(
             "a.txt를 생성하여 설정 읽기를 구현하라.",
             new string('가', 601), StringComparison.Ordinal));
-        Assert.False(verbose.IsValid);
-        Assert.Contains(verbose.Errors, error => error.Contains(
-            "COMPACT_LIMIT", StringComparison.Ordinal));
+        Assert.True(verbose.IsValid, string.Join("; ", verbose.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            verbose.CompatibilityMessage, verbose.Parse, out var milestone, out var error), error);
+        Assert.Contains(new string('가', 601), milestone!.WorkItems["10"].Body);
     }
 
     [Fact]
