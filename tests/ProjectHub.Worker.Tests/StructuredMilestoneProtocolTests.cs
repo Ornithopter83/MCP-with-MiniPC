@@ -69,6 +69,61 @@ public sealed class StructuredMilestoneProtocolTests
         Assert.Contains("base: './'", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["54"]));
     }
 
+    [Fact]
+    public void StructuredHq_AcceptsWorkWritePathAliasFromRecoveredM11()
+    {
+        // Regression: the recovered M11 response used WRITE_PATH for WORK #14.
+        var response = """
+            [GOTO=WORKER]
+            [ACTION=WORK]
+            @@MILESTONE
+            <ID>M11</>
+            @@DESIGN=0
+            <PATH>docs/projecthub/m11-title-scene-application.md</>
+            <WRITE_PATH>Assets/Scenes/TitleScene.unity</>
+            <INSTRUCTIONS>TitleScene을 수정하라.</>
+            @@ASSET_MANAGER=1
+            <REQUEST_ID>M11-3D-FISH-GEAR-01</>
+            <GOAL>CC0 물고기 모델 확보</>
+            <SCENE>Assets/Scenes/TitleScene.unity</>
+            <TARGET_PATH>Assets/Art/External/</>
+            <SOURCE_POLICY>CC0_AUTO</>
+            <INSTRUCTIONS>라이선스를 검증하고 출처를 기록하라.</>
+            @@WORK=14
+            <MODE>NEW</>
+            <WRITE_PATH>Assets/Scripts/Fishing/Core/</>
+            <WRITE_PATH>Assets/Tests/EditMode/FishingCore/</>
+            <INSTRUCTIONS>독립 상태 머신과 EditMode 테스트를 구현하라.</>
+            @@HIGH
+            <INSTRUCTIONS>소스와 테스트를 검증하라.</>
+            [RESPONSE=OK]
+            """;
+        var parsed = HqTextProtocol.Parse(response);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
+        Assert.Equal("M11", milestone!.Id);
+        Assert.Equal(new[] { "Assets/Scripts/Fishing/Core/", "Assets/Tests/EditMode/FishingCore/" },
+            milestone.WorkItems["14"].WritePaths);
+    }
+
+    [Fact]
+    public void StructuredHq_RejectsMixedOrUnsafeWorkPathAliases()
+    {
+        var mixed = HqTextProtocol.Parse(Modern.Replace(
+            "<PATH>scripts/player.gd</>",
+            "<PATH>scripts/player.gd</>\n<WRITE_PATH>scripts/other.gd</>",
+            StringComparison.Ordinal));
+        Assert.False(mixed.IsValid);
+        Assert.Contains("WORK 54.PATH_FIELD_CONFLICT", mixed.Errors);
+
+        var unsafePath = HqTextProtocol.Parse(Modern.Replace(
+            "<PATH>scripts/player.gd</>", "<WRITE_PATH>../outside.cs</>",
+            StringComparison.Ordinal));
+        Assert.False(unsafePath.IsValid);
+        Assert.Contains("WORK 54.WRITE_PATH", unsafePath.Errors);
+    }
+
     [Theory]
     [InlineData("PAUSE")]
     [InlineData("END")]
