@@ -161,6 +161,7 @@ public partial class MainWindow
 
 
             string commandReadyHqMessage = string.Empty;
+            string editorRepairNotice = string.Empty;
             if (UnityCliBuildRunner.IsUnityProject(normalizedRoot))
             {
                 try
@@ -206,12 +207,14 @@ public partial class MainWindow
                     restart.Code + ": " + restart.Detail +
                     (restart.Verified ? "; Command readiness not yet checked." : ""),
                     status: restart.Verified ? "PROCESSING" : "BLOCKED");
-                // Do not let HQ or any role act on a project after the old
-                // Editor has closed but its replacement is unverified.
                 if (!restart.Verified)
-                    throw new InvalidOperationException(
-                        "UNITY_EDITOR_STARTUP_BLOCKED: " + restart.Code +
-                        ": " + restart.Detail);
+                    editorRepairNotice =
+                        "WORKER_EDITOR_REPAIR_REQUIRED: Startup " + restart.Code +
+                        ": " + restart.Detail + Environment.NewLine +
+                        "Editor is NOT ready. Diagnose project files, repair recoverable " +
+                        "compile/import issues through WORK, and recheck readiness. " +
+                        "Do not claim Unity verification before actual Editor response." +
+                        Environment.NewLine;
             }
 
             if (UnityCliBuildRunner.IsUnityProject(normalizedRoot))
@@ -225,16 +228,25 @@ public partial class MainWindow
                 AddTaskMessage("UNITY EDITOR COMMAND READINESS",
                     ready.Code + ": " + ready.Detail,
                     status: ready.Ready ? "COMPLETED" : "BLOCKED");
-                if (!ready.Ready)
-                    throw new InvalidOperationException(
-                        "UNITY_EDITOR_STARTUP_BLOCKED: " + ready.Code +
-                        ": " + ready.Detail);
-                commandReadyHqMessage =
-                    "WORKER_EDITOR_COMMAND_READY: actual Editor Ping and " +
-                    "scene_status succeeded; active scene loaded; " +
-                    "Compiling=False; Updating=False. " +
-                    MilestoneDefinitionContract.Limit(ready.Detail, 1100) +
-                    Environment.NewLine;
+                if (ready.Ready)
+                {
+                    editorRepairNotice = string.Empty;
+                    commandReadyHqMessage =
+                        "WORKER_EDITOR_COMMAND_READY: actual Editor Ping and " +
+                        "scene_status succeeded; active scene loaded; " +
+                        "Compiling=False; Updating=False. " +
+                        MilestoneDefinitionContract.Limit(ready.Detail, 1100) +
+                        Environment.NewLine;
+                }
+                else
+                    editorRepairNotice =
+                        "WORKER_EDITOR_REPAIR_REQUIRED: " + ready.Code + ": " +
+                        MilestoneDefinitionContract.Limit(ready.Detail, 1900) +
+                        Environment.NewLine +
+                        "Reload prompts are auto-confirmed when accessible. " +
+                        "If the Editor remains unresponsive, repair compile/import " +
+                        "errors through WORK and recheck; never report a Unity PASS " +
+                        "without fresh Editor command evidence." + Environment.NewLine;
             }
 
             // New commands and resumed/added user commands are the only
@@ -326,12 +338,13 @@ public partial class MainWindow
                 return refreshed.Ready;
             }
 
-            var editorRecoveryNotice = commandReadyHqMessage +
+            var editorRecoveryNotice = editorRepairNotice + commandReadyHqMessage +
                 (cliPreflight.Ready ? string.Empty :
                     "UNITY_CLI_OPTIONAL_UNVERIFIED: " + cliPreflight.Code +
                     ": " + cliPreflight.Detail + Environment.NewLine +
-                    "Editor main-thread commands were independently verified; " +
-                    "do not treat CLI catalog failure as Editor startup failure." +
+                    (commandReadyHqMessage.Length > 0
+                        ? "Editor main-thread commands were independently verified."
+                        : "Editor command readiness remains UNVERIFIED.") +
                     Environment.NewLine);
 
             stagedAttachments = UserAttachmentTransport.StageForWorkerRuntime(
@@ -436,25 +449,32 @@ public partial class MainWindow
                     status: remoteReference.Success ? "COMPLETED" : "FAILED",
                     persistenceSource: "WORKER ACTION");
 
-                // After a milestone the Editor may be compiling again or
-                // disconnected. No subsequent HQ call on stale readiness.
+                // A blocked Editor is a repair input for HQ, not a task-wide
+                // exception. Any recovery still needs a fresh main-thread proof.
                 if (milestoneIndex > 1 &&
-                    !string.IsNullOrEmpty(commandReadyHqMessage))
+                    UnityCliBuildRunner.IsUnityProject(normalizedRoot))
                 {
                     var nextReady = await UnityEditorStartupReadiness.WaitAsync(
                         normalizedRoot, cts.Token);
-                    if (!nextReady.Ready)
+                    if (nextReady.Ready)
+                        hqInbound = "WORKER_EDITOR_COMMAND_READY: " +
+                            MilestoneDefinitionContract.Limit(nextReady.Detail, 1100) +
+                            Environment.NewLine + hqInbound;
+                    else
                     {
-                        AddTaskMessage("UNITY EDITOR COMMAND READINESS",
+                        AddTaskMessage("UNITY EDITOR RECOVERY REQUIRED",
                             nextReady.Code + ": " + nextReady.Detail,
-                            status: "BLOCKED");
-                        throw new InvalidOperationException(
-                            "UNITY_EDITOR_STARTUP_BLOCKED_BEFORE_HQ: " +
-                            nextReady.Code + ": " + nextReady.Detail);
+                            status: "UNVERIFIED");
+                        hqInbound = "WORKER_EDITOR_REPAIR_REQUIRED: " +
+                            nextReady.Code + ": " +
+                            MilestoneDefinitionContract.Limit(nextReady.Detail, 1900) +
+                            Environment.NewLine +
+                            "Editor reload dialog auto-confirmation attempted; " +
+                            "inspect and fix source/import errors in the next WORK, " +
+                            "then recheck. Do not claim editor verification or " +
+                            "repeat unverified scene mutations." +
+                            Environment.NewLine + hqInbound;
                     }
-                    hqInbound = "WORKER_EDITOR_COMMAND_READY: " +
-                        MilestoneDefinitionContract.Limit(nextReady.Detail, 1100) +
-                        Environment.NewLine + hqInbound;
                 }
 
                 // The next dispatched AI claims user messages atomically.
