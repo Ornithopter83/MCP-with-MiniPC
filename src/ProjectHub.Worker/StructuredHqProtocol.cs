@@ -331,7 +331,7 @@ internal static class StructuredHqProtocol
         {
             ["id"] = milestoneId, ["branch"] = "main", ["goal"] = milestoneId,
             ["highInstructions"] = high,
-            ["planDocument"] = plan, ["entrypoint"] = null,
+            ["planDocument"] = reviewOnly ? "" : plan, ["entrypoint"] = null,
             ["initializeGitIfMissing"] = false, ["projectPolicy"] = reviewOnly
                 ? "READ_ONLY_NO_FILE_CHANGES" : "DEFAULT",
             ["resource"] = null, ["design"] = design, ["assetManager"] = asset,
