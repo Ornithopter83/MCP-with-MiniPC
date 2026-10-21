@@ -1153,8 +1153,13 @@ public partial class MainWindow
         var nodes = new List<MilestoneGraphNodeSnapshot>
         {
             new("HQ-DESIGN", "HQ", "COMPLETED"),
-            new("SV-1", "SV", workReports.ContainsKey("1") ? "COMPLETED" : "PLANNED"),
-            new("TEMP-WORK", "WORK", workReports.ContainsKey("1") ? "COMPLETED" : "PLANNED")
+            new("SV-1", "SV",
+                workReports.TryGetValue("1", out var svReport)
+                    ? MilestoneGraphStatePolicy.RoleState(
+                        MilestoneDefinitionContract.ReadWorkStatus(svReport))
+                    : "PLANNED"),
+            // Parent completion alone does not prove child execution.
+            new("TEMP-WORK", "WORK", "UNVERIFIED")
         };
 
         foreach (var work in milestone.WorkItems.Values
@@ -1188,13 +1193,13 @@ public partial class MainWindow
             "HIGH",
             string.IsNullOrWhiteSpace(highReport)
                 ? "SKIPPED"
-                : "COMPLETED"));
+                : MilestoneGraphStatePolicy.RoleState(
+                    MilestoneDefinitionContract.ReadHighStatus(highReport))));
+        nodes.Add(new("HIGH-TEMP-WORK", "WORK", "UNVERIFIED"));
         nodes.Add(new(
             "GIT-FINALIZE",
             "WORKER",
-            state is "FINALIZED" or "FINALIZE_FAILED"
-                ? "COMPLETED"
-                : "PLANNED"));
+            MilestoneGraphStatePolicy.GitState(state)));
         nodes.Add(new(
             "HQ-FINAL",
             "HQ",
@@ -1206,6 +1211,8 @@ public partial class MainWindow
             new("SV-1", "TEMP-WORK", "DELEGATE"),
             new("TEMP-WORK", "SV-1", "RESULT"),
             new("SV-1", "HIGH", "INTEGRATE_AND_REVIEW"),
+            new("HIGH", "HIGH-TEMP-WORK", "VERIFY_DELEGATE"),
+            new("HIGH-TEMP-WORK", "HIGH", "VERIFY_RESULT"),
             new("HIGH", "GIT-FINALIZE", "REVIEW_TO_GIT"),
             new("GIT-FINALIZE", "HQ-FINAL", "REPORT_TO_HQ")
         };
