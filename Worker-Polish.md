@@ -8,7 +8,7 @@
 ③ SuperVisor(#1)는 마일스톤 첫 실행자이며 구현을 책임진다. 필요한 파일 제작·조사·테스트를 임시 WORK에 위임하고 결과를 통합한다.
 ④ WORK는 SuperVisor 또는 HIGH의 delegate_work(task, paths)로 생성되는 단발성 SubAgent다. HQ WORKITEM과 영구 체크포인트는 발급하지 않는다. HIGH가 위임한 WORK는 읽기 전용 조사·검증만 한다.
 ⑤ RESOURCE(#0)는 GPT Web 이미지 생성 전용 비차단 sidecar이며 다른 역할은 완료를 기다리지 않는다.
-⑥ HIGH는 SuperVisor 통합 결과를 심층 검토·검증한다. 검증 실행은 임시 WORK에 먼저 위임하며, 검증 위임이 실패할 때에만 별도 신규 읽기 전용 HIGH 세션으로 직접 조사한다. 수정 요구는 SuperVisor와 HQ에 보고하고 직접 구현하지 않는다.
+⑥ HIGH는 SuperVisor 통합 결과를 심층 검토·검증한다. MCP 지원 Provider에서는 검증 실행을 임시 WORK에 먼저 위임하며, 위임 실패 시 별도 신규 읽기 전용 세션에서 직접 조사한다. HIGH Provider가 MCP를 지원하지 않는 경우에도 사유를 기계적으로 기록하고 읽기 전용 검토만 수행한다. 수정 요구는 SuperVisor와 HQ에 보고하고 직접 구현하지 않는다.
 
 제2조 (세션과 위임)
 ① SuperVisor·HIGH와 각 WORK 호출은 매번 새 Provider 세션(SessionId=null)을 사용한다. 이전 호출이나 마일스톤 세션을 재사용하지 않는다.
