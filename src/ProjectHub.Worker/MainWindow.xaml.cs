@@ -2108,16 +2108,21 @@ public partial class MainWindow : Window
         {
             // Reviewer may verify; Git mutation stays in Worker.
             var isReviewer = roleName == "HIGH";
+            var isTemporaryWork = purpose == "TEMP_WORK";
             var hookPath = Path.Combine(
                 roleTempPath,
                 isReviewer
                     ? "projecthub-review-command-gate.ps1"
-                    : "projecthub-work-command-gate.ps1");
+                    : isTemporaryWork
+                        ? "projecthub-temp-work-command-gate.ps1"
+                        : "projecthub-work-command-gate.ps1");
             await File.WriteAllTextAsync(
                 hookPath,
                 isReviewer
                     ? BuildExecutionPolicy.CreateReviewCodexPreToolHookScript()
-                    : BuildExecutionPolicy.CreateCodexPreToolHookScript(),
+                    : isTemporaryWork
+                        ? BuildExecutionPolicy.CreateTemporaryWorkCodexPreToolHookScript()
+                        : BuildExecutionPolicy.CreateCodexPreToolHookScript(),
                 ProjectHubJson.Utf8NoBom,
                 cancellationToken);
             var commandGateOverride =
@@ -2160,7 +2165,7 @@ public partial class MainWindow : Window
             IncludeAppBaseWritable: roleName != "WORK",
             CodexConfigOverrides: codexConfigOverrides,
             BypassHookTrust: bypassHookTrust,
-            BuildExecutionAllowed: roleName != "WORK"));
+            BuildExecutionAllowed: roleName != "WORK" || purpose == "TEMP_WORK"));
 
         var executionDiagnostics = BuildCliFailureDiagnostics(result);
         if (!string.IsNullOrWhiteSpace(executionDiagnostics))
