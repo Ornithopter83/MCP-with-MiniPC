@@ -66,7 +66,8 @@ public partial class MainWindow
                     persistenceSource: "MCP DELEGATION"));
 
                 var before = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                    session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+                    session.ProjectRoot, cancellationToken,
+                    requireSuccess: true, scopedPaths: paths).ConfigureAwait(false);
                 var parentName = session.Role == "HIGH" ? "HIGH" : "SuperVisor";
                 var instructions = parentName + "가 배정한 단발성 하위 WORK다. 새 세션만 사용한다. " +
                     "HQ WORKITEM을 만들지 말고 " + parentName + "에게만 완료 결과와 미해결 항목을 보고하라. " +
@@ -93,13 +94,21 @@ public partial class MainWindow
                         historyReferenceId: reference, mcpToken: childToken)
                         .ConfigureAwait(false);
                     var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
-                        session.ProjectRoot, cancellationToken).ConfigureAwait(false);
+                        session.ProjectRoot, cancellationToken,
+                        requireSuccess: true, scopedPaths: paths).ConfigureAwait(false);
                     var allChanges = MilestoneMechanicalExecutor.DiffChangeStates(
                         before, after).ToArray();
-                    var scopedChanges = allChanges.Where(change =>
-                        paths.Any(path => TemporaryWorkScopeRegistry.Overlaps(path, change)))
-                        .ToArray();
-                    var unexpectedChanges = allChanges.Except(scopedChanges,
+                    var siblingScopes = _temporaryWorkScopes.OtherConcurrentScopes(
+                        session.ProjectRoot, paths);
+                    var siblingChanges = allChanges.Where(change =>
+                        siblingScopes.Any(scope =>
+                            TemporaryWorkScopeRegistry.Overlaps(scope, change))).ToArray();
+                    var ownChanges = allChanges.Except(siblingChanges,
+                        StringComparer.OrdinalIgnoreCase).ToArray();
+                    var scopedChanges = ownChanges.Where(change =>
+                        paths.Any(path =>
+                            TemporaryWorkScopeRegistry.Overlaps(path, change))).ToArray();
+                    var unexpectedChanges = ownChanges.Except(scopedChanges,
                         StringComparer.OrdinalIgnoreCase).ToArray();
                     var parsedWork = RoleTextProtocol.ParseWork(result.FinalMessage);
                     var completed = result.ExitCode == 0 &&
@@ -107,13 +116,15 @@ public partial class MainWindow
                         string.Equals(parsedWork.Status, "completed",
                             StringComparison.OrdinalIgnoreCase) &&
                         unexpectedChanges.Length == 0 &&
-                        (!readOnly || allChanges.Length == 0);
+                        (!readOnly || ownChanges.Length == 0);
                     var summary = "INVOCATION: " + reference +
                         Environment.NewLine + "EXIT: " + result.ExitCode +
                         Environment.NewLine + "MODEL: " + result.Model +
                         Environment.NewLine + "TOKENS: " + result.Usage.TotalTokens +
                         Environment.NewLine + "CHANGED_PATHS: " +
                         string.Join(", ", scopedChanges.Take(30)) +
+                        Environment.NewLine + "CONCURRENT_WORK_CHANGES: " +
+                        string.Join(", ", siblingChanges.Take(30)) +
                         Environment.NewLine + "OUT_OF_SCOPE_CHANGES: " +
                         string.Join(", ", unexpectedChanges.Take(30)) +
                         Environment.NewLine + "RESULT:" + Environment.NewLine +
@@ -122,7 +133,7 @@ public partial class MainWindow
                         "임시 WORK 결과", summary, result.Usage, result.Files,
                         status: completed ? "COMPLETED" : "BLOCKED",
                         providerWireId: settings.Provider, referenceId: reference));
-                    if (readOnly && allChanges.Length != 0)
+                    if (readOnly && ownChanges.Length != 0)
                         throw new InvalidOperationException("WORK_READ_ONLY_VIOLATION: " +
                             MilestoneDefinitionContract.Limit(summary, 1200));
                     if (unexpectedChanges.Length != 0)
