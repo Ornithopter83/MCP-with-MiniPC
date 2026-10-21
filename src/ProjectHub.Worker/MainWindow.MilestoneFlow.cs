@@ -1081,11 +1081,17 @@ public partial class MainWindow
                     workingDirectory,
                     cancellationToken);
 
+            var graphGitState = milestone.ReadOnlyNoFileChanges
+                ? "SKIPPED_READ_ONLY"
+                : !MilestoneFinalizationPolicy.ShouldPublish(
+                    blockedWorkIds.Length, pendingWorkIds.Length, buildFailed, outcome)
+                    ? "SKIPPED_BLOCKED"
+                    : gitResult.Success ? "FINALIZED" : "FINALIZE_FAILED";
             SaveMilestoneExecutionGraph(
                 workingDirectory,
                 jobId,
                 milestone,
-                gitResult.Success ? "FINALIZED" : "FINALIZE_FAILED",
+                graphGitState,
                 workReports,
                 resourceReports,
                 highReport,
