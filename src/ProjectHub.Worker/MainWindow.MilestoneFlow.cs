@@ -1241,9 +1241,8 @@ public partial class MainWindow
                     : CodexSandboxMode.WorkspaceWrite,
                 historyWorkItemId: "1", historyReferenceId: reference,
                 mcpToken: token);
-            result = SpecialistDelegationPolicy.Enforce(result,
-                !milestone.ReadOnlyNoFileChanges,
-                _bridgeServer.SuccessfulDelegationCount(token));
+            // SV decides whether delegation is necessary for this milestone.
+            // A successful implementation must not require an arbitrary WORK call.
             var report = MilestoneDefinitionContract.NormalizeWorkReport(
                 result.ExitCode, result.FinalMessage, result.StandardError);
             RunOnUi(() => AddRoleResponseHistory(WorkerRoleState.Manager,
