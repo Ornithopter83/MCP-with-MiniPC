@@ -1302,7 +1302,7 @@ public partial class MainWindow
                 !string.Equals(preliminary.Status, "completed",
                     StringComparison.OrdinalIgnoreCase) ||
                 metrics.Successful == 0;
-            if (metrics.UnsafeFailures > 0)
+            if (SpecialistDelegationPolicy.MustBlockForUnsafeDelegation(metrics))
             {
                 // A real unsafe execution still blocks completion. A rejected
                 // preflight request is NOT an unsafe execution; previous
@@ -1983,10 +1983,8 @@ public partial class MainWindow
                 };
             }
 
-            if (metrics.Attempts > 0 &&
-                (metrics.Successful == 0 || result.ExitCode != 0 ||
-                 !RoleTextProtocol.ParseHigh(result.FinalMessage).IsValid) &&
-                !cancellationToken.IsCancellationRequested)
+            if (SpecialistDelegationPolicy.ShouldRetryHighReview(
+                metrics, result, cancellationToken.IsCancellationRequested))
             {
                 // Direct inspection cannot mutate files. It is a NEW session
                 // with no delegation token, never a writable retry.
