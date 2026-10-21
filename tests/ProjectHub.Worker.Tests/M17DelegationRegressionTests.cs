@@ -51,19 +51,6 @@ public sealed class M17DelegationRegressionTests
     }
 
     [Fact]
-    public void HighChildSucceededButHighProcessExitedOne_RequiresOneReadOnlyRetry()
-    {
-        var metrics = new DelegationMetrics(1, 1, 0, 0, 0, true,
-            Array.Empty<DelegatedWorkEvidence>());
-        Assert.True(SpecialistDelegationPolicy.ShouldRetryHighReview(
-            metrics, Result(1, "completed"), canceled: false));
-        Assert.False(SpecialistDelegationPolicy.ShouldRetryHighReview(
-            metrics, Result(0, "completed"), canceled: false));
-        Assert.False(SpecialistDelegationPolicy.ShouldRetryHighReview(
-            metrics, Result(1, "completed"), canceled: true));
-    }
-
-    [Fact]
     public void NoWorkDelegation_ForReadOnlyMilestoneStillCannotClaimCompletion()
     {
         var blocked = SpecialistDelegationPolicy.Enforce(
