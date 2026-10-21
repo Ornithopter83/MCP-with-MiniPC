@@ -147,7 +147,7 @@ public static class BuildExecutionPolicy
     public static string CreateReviewCodexPreToolHookScript()
         => """
            $ErrorActionPreference = 'Stop'
-           $raw = [Console]::In.ReadToEnd()
+           $raw = $input | Out-String
            try { $event = $raw | ConvertFrom-Json } catch { exit 0 }
            $tool = [string]$event.tool_name
            if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell)') { exit 0 }
@@ -159,7 +159,7 @@ public static class BuildExecutionPolicy
            $pattern = '(?ix)(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b'
            if ($command -match $pattern) {
              $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: Git finalization belongs to Worker.' } } | ConvertTo-Json -Compress -Depth 6
-             [Console]::Out.WriteLine($payload)
+             Write-Output $payload
            }
            exit 0
            """;
