@@ -92,7 +92,7 @@ public partial class MainWindow
         {
             if (!continuing)
             {
-                _historyEvents.Clear();
+                RunOnUi(() => _historyEvents.Clear());
                 StartTaskTranscript(selectedThread, request, string.Empty);
                 AddTaskMessage(
                     "TASK REQUEST",
