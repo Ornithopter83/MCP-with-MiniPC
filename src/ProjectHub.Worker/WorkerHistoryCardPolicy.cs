@@ -39,7 +39,7 @@ public static class WorkerHistoryCardPolicy
             var label = target == "WORK" &&
                 !string.IsNullOrWhiteSpace(workItemId)
                     ? "WORK #" + workItemId
-                    : target;
+                    : target == "SV" ? "SuperVisor" : target;
             return "Worker → " + label +
                 (title == "재요청 데이터" ? " 재요청" : " 전달");
         }
@@ -81,16 +81,20 @@ public static class WorkerHistoryCardPolicy
     }
 
     /// <summary>
-    /// One visible WORK card per invocation. Recent progress is shown in the
+    /// One visible role card per invocation. Recent progress is shown in the
     /// compact card while double-clicking exposes the accumulated detail.
     /// The original complete detail remains in the task transcript/JSONL.
     /// </summary>
     public static void AccumulateWorkProgress(
         ObservableCollection<MainWindow.WorkerHistoryEvent> history,
+        MainWindow.WorkerHistoryEvent incoming) => AccumulateRoleProgress(history, incoming);
+
+    public static void AccumulateRoleProgress(
+        ObservableCollection<MainWindow.WorkerHistoryEvent> history,
         MainWindow.WorkerHistoryEvent incoming)
     {
         if (incoming.EventType != "ROLE_PROGRESS" ||
-            incoming.StageKey != "Implementer" ||
+            incoming.StageKey is not ("Implementer" or "Manager" or "HighLevel") ||
             string.IsNullOrWhiteSpace(incoming.ReferenceId))
         {
             Publish(history, incoming);
@@ -141,16 +145,16 @@ public static class WorkerHistoryCardPolicy
                     candidate.StageKey != result.StageKey ||
                     !string.Equals(candidate.ReferenceId, result.ReferenceId, StringComparison.Ordinal))
                     continue;
-                // Preserve accumulated WORK detail in the final card's
-                // double-click viewer, without adding a second history card.
+                // Preserve role progress in the final card's detail viewer.
                 var finalCard = result;
-                if (result.StageKey == "Implementer" &&
+                if (result.StageKey is "Implementer" or "Manager" or "HighLevel" &&
                     !string.IsNullOrWhiteSpace(candidate.FullMessage))
                     finalCard = result with
                     {
                         FullMessage = result.FullMessage +
                             Environment.NewLine + Environment.NewLine +
-                            "----- WORK DETAIL -----" + Environment.NewLine +
+                            "----- " + (result.StageKey == "Manager" ? "SuperVisor" : result.StageKey == "HighLevel" ? "HIGH" : "WORK") +
+                            " DETAIL -----" + Environment.NewLine +
                             candidate.FullMessage
                     };
                 history[i] = finalCard;
