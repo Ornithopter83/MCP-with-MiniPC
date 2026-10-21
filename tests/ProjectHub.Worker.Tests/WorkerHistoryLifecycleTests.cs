@@ -23,7 +23,7 @@ public sealed class WorkerHistoryLifecycleTests
     [Theory]
     [InlineData("Coordinator")]
     [InlineData("Implementer")]
-    [InlineData("Qa")]
+    [InlineData("Manager")]
     [InlineData("HighLevel")]
     [InlineData("Resource")]
     public void RoleAppearsAtActivation_AndResponseFinalizesSameCard(string stage)

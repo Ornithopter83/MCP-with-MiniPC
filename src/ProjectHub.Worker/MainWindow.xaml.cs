@@ -82,9 +82,9 @@ public partial class MainWindow : Window
                 "Implementer" when int.TryParse(WorkItemId, out var generalWorkId) && generalWorkId >= 10 => $"작업 (#{WorkItemId}, 일반 작업)",
                 "Implementer" when !string.IsNullOrWhiteSpace(WorkItemId) => $"작업 (#{WorkItemId})",
                 "Implementer" when WorkNumber.HasValue => $"작업 (#{WorkNumber.Value})",
-                "Implementer" => "작업",
+                "Implementer" => "임시 WORK",
                 "HighLevel" => "검토",
-                "Manager" => "통합",
+                "Manager" => "SV",
                 "Resource" => "작업 (#0, 리소스)",
                 "Worker" => "Worker",
                 "Message" => "메시지",
@@ -2977,7 +2977,7 @@ public partial class MainWindow : Window
         AddTaskMessage(
             "WORK RECOVERY",
             saved.Status == "INTERRUPTED"
-                ? "프로세스 중단 전에 저장한 WORKITEM 상태가 있습니다. 역할 연결을 확인한 뒤 기존 작업을 자동 재개합니다."
+                ? "중단된 마일스톤 기록이 있습니다. SV/WORK의 새 세션 정책에 맞춰 복구합니다."
                 : "사용자 조작을 기다리던 작업 상태를 복원했습니다. 추가 입력을 통해 재개할 수 있습니다.",
             status: "RECOVERABLE");
         SetDashboardBodyMode(DashboardBodyMode.TaskHistory);
@@ -3003,8 +3003,7 @@ public partial class MainWindow : Window
         _automaticRecoveryClaimed = true;
         await RunCoordinatorFirstJobAsync(
             "WORKER_RESTART_RECOVERY: 새 작업을 만들지 말고 저장된 기존 목표와 " +
-            "WORKITEM 체크포인트를 확인하여 완료된 부분은 건너뛰고 " +
-            "미완료 WORKITEM만 MODE=CONTINUE로 수행하라.",
+            "직전 마일스톤 결과와 실제 프로젝트 파일을 보고 새 SV 지시를 계획하라.",
             null, saved.WorkingDirectory, saved.Coordinator,
             saved.Implementer, continuation: saved);
     }
@@ -3407,7 +3406,7 @@ public partial class MainWindow : Window
         AddTaskMessage(
             role switch
             {
-                WorkerRoleState.Manager => "MANAGER PROGRESS",
+                WorkerRoleState.Manager => "SV PROGRESS",
                 WorkerRoleState.Work => "WORK DETAIL",
                 WorkerRoleState.High => "HIGH PROGRESS",
                 WorkerRoleState.Resource => "RESOURCE PROGRESS",

@@ -51,9 +51,9 @@ public sealed class WorkerHistoryCardPolicyTests
         Assert.Equal("Worker → HQ 재요청",
             WorkerHistoryCardPolicy.DataFlowTitle(
                 "재요청 데이터", "SENT", "WORKER → HQ WEB", null));
-        Assert.Equal("Worker → QA 전달",
+        Assert.Equal("Worker → SV 전달",
             WorkerHistoryCardPolicy.DataFlowTitle(
-                "전달 데이터", "SENT", "WORKER → QA CLI", "QA"));
+                "전달 데이터", "SENT", "WORKER → SV CLI", "SV"));
     }
 
     [Fact]
@@ -125,16 +125,16 @@ public sealed class WorkerHistoryCardPolicyTests
     }
 
     [Fact]
-    public void SameMilestone_QaAndHighCardsPreserveLaterExecutionRound()
+    public void SameMilestone_SvAndHighCardsPreserveLaterExecutionRound()
     {
         var t = DateTimeOffset.UtcNow;
         var cards = new ObservableCollection<MainWindow.WorkerHistoryEvent>();
         WorkerHistoryCardPolicy.Publish(cards,
-            Card(t, "Qa", "ROLE_RESPONSE", "QA 조사 결과", "issue",
-                "M2:QA:round1", "QA"));
+            Card(t, "Manager", "ROLE_RESPONSE", "SV 통합 결과", "issue",
+                "M2:SV:round1", "SV"));
         WorkerHistoryCardPolicy.Publish(cards,
-            Card(t.AddMinutes(5), "Qa", "ROLE_RESPONSE", "QA 조사 결과",
-                "passed", "M2:QA:round2", "QA"));
+            Card(t.AddMinutes(5), "Manager", "ROLE_RESPONSE", "SV 통합 결과",
+                "passed", "M2:SV:round2", "SV"));
         WorkerHistoryCardPolicy.Publish(cards,
             Card(t.AddMinutes(7), "HighLevel", "ROLE_RESPONSE", "검토 결과",
                 "reviewed", "M2:HIGH:round2", "HIGH"));
