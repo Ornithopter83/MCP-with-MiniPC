@@ -12,6 +12,7 @@ internal sealed record WorkerMcpSession(
 {
     internal string InvocationId { get; } = Guid.NewGuid().ToString("N");
     internal IReadOnlyList<string> AllowedPaths { get; init; } = Array.Empty<string>();
+    internal bool ForbidWrites { get; init; }
     internal int Initialized;
     internal int ToolsListed;
     internal int ToolsCalled;
@@ -73,7 +74,7 @@ public sealed partial class BridgeServer
 
     internal string RegisterMcpSession(
         string role, string jobId, string projectRoot, CancellationToken cancellation,
-        IReadOnlyList<string>? allowedPaths = null)
+        IReadOnlyList<string>? allowedPaths = null, bool forbidWrites = false)
     {
         if (!CanRegisterRole(role))
             throw new ArgumentException("Only SV, HIGH and temporary WORK have MCP access.");
@@ -83,7 +84,8 @@ public sealed partial class BridgeServer
         _mcpSessions[token] = new WorkerMcpSession(
             role, jobId, Path.GetFullPath(projectRoot), cancellation)
         {
-            AllowedPaths = allowedPaths?.ToArray() ?? Array.Empty<string>()
+            AllowedPaths = allowedPaths?.ToArray() ?? Array.Empty<string>(),
+            ForbidWrites = forbidWrites
         };
         McpActivity?.Invoke(role, "SESSION_REGISTERED");
         return token;
