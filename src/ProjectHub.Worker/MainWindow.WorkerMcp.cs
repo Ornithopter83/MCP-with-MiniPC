@@ -28,6 +28,13 @@ public partial class MainWindow
             !arguments.TryGetProperty("paths", out var pathsElement) ||
             pathsElement.ValueKind != JsonValueKind.Array)
             throw new ArgumentException("WORK_TASK_OR_PATHS_INVALID");
+        var readOnly = session.Role == "HIGH";
+        if (arguments.TryGetProperty("read_only", out var readOnlyElement))
+        {
+            if (readOnlyElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new ArgumentException("WORK_READ_ONLY_INVALID");
+            readOnly = readOnly || readOnlyElement.GetBoolean();
+        }
         var paths = pathsElement.EnumerateArray()
             .Select(value => value.ValueKind == JsonValueKind.String
                 ? value.GetString() ?? "" : "")
@@ -52,20 +59,25 @@ public partial class MainWindow
                 var reference = WorkerHistoryCardPolicy.NewInvocationReference(
                     session.JobId, "TEMP-WORK");
                 RunOnUi(() => AddDataFlowHistory(WorkerRoleState.Work,
-                    "SuperVisor → WORK 배정", "TASK: " + task + Environment.NewLine +
+                    (session.Role == "HIGH" ? "HIGH → WORK 검증 위임" : "SuperVisor → WORK 배정"),
+                    "TASK: " + task + Environment.NewLine +
                     "PATHS: " + string.Join(", ", paths),
                     settings.Provider, status: "DISPATCHED", referenceId: reference,
                     persistenceSource: "MCP DELEGATION"));
 
                 var before = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                     session.ProjectRoot, cancellationToken).ConfigureAwait(false);
-                var instructions = "SuperVisor가 배정한 단발성 하위 WORK다. 새 세션만 사용한다. " +
-                    "HQ WORKITEM을 만들지 말고 SuperVisor에게만 완료 결과와 미해결 항목을 보고하라. " +
+                var parentName = session.Role == "HIGH" ? "HIGH" : "SuperVisor";
+                var instructions = parentName + "가 배정한 단발성 하위 WORK다. 새 세션만 사용한다. " +
+                    "HQ WORKITEM을 만들지 말고 " + parentName + "에게만 완료 결과와 미해결 항목을 보고하라. " +
                     "재위임과 Git commit/push는 금지한다. 지정된 파일 범위에서만 " +
-                    "구현·조사·테스트를 수행하라. 다른 파일 변경이 필요하면 보고하라." +
+                    (readOnly
+                        ? "읽기 전용 조사·검증만 수행하라. 파일 변경은 금지한다."
+                        : "구현·조사·테스트를 수행하라. 다른 파일 변경이 필요하면 보고하라.") +
                     Environment.NewLine + task;
                 var prompt = RoleContractLoader.BuildDirectWorkPrompt(
-                    "TEMP", instructions, paths, session.ProjectRoot);
+                    "TEMP", instructions, paths, session.ProjectRoot,
+                    readOnly: readOnly);
                 // This is NOT a resumable HQ work-item and never enters its journal.
                 // The child receives a separate token with no delegation tool.
                 var childToken = _bridgeServer?.RegisterMcpSession(
@@ -77,7 +89,7 @@ public partial class MainWindow
                     var result = await RunCoordinatorRoleAsync(
                         session.JobId, "TEMP_WORK", prompt, settings,
                         session.ProjectRoot, null, null, cancellationToken,
-                        CodexSandboxMode.WorkspaceWrite,
+                        readOnly ? CodexSandboxMode.ReadOnly : CodexSandboxMode.WorkspaceWrite,
                         historyReferenceId: reference, mcpToken: childToken)
                         .ConfigureAwait(false);
                     var after = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
@@ -94,7 +106,8 @@ public partial class MainWindow
                         parsedWork.IsValid &&
                         string.Equals(parsedWork.Status, "completed",
                             StringComparison.OrdinalIgnoreCase) &&
-                        unexpectedChanges.Length == 0;
+                        unexpectedChanges.Length == 0 &&
+                        (!readOnly || allChanges.Length == 0);
                     var summary = "INVOCATION: " + reference +
                         Environment.NewLine + "EXIT: " + result.ExitCode +
                         Environment.NewLine + "MODEL: " + result.Model +
@@ -109,6 +122,9 @@ public partial class MainWindow
                         "임시 WORK 결과", summary, result.Usage, result.Files,
                         status: completed ? "COMPLETED" : "BLOCKED",
                         providerWireId: settings.Provider, referenceId: reference));
+                    if (readOnly && allChanges.Length != 0)
+                        throw new InvalidOperationException("WORK_READ_ONLY_VIOLATION: " +
+                            MilestoneDefinitionContract.Limit(summary, 1200));
                     if (unexpectedChanges.Length != 0)
                         throw new InvalidOperationException("WORK_SCOPE_VIOLATION: " +
                             MilestoneDefinitionContract.Limit(summary, 1200));
