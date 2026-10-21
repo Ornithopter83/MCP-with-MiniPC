@@ -1253,7 +1253,11 @@ public partial class MainWindow : Window
         if (card == PipelineCoordinatorCard) CoordinatorStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineResourceCard) ResourceStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
         else if (card == PipelineHighLevelCard) HighLevelStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
-        else if (card == PipelineManagerCard) ManagerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
+        else if (card == PipelineManagerCard)
+        {
+            ManagerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
+            ManagerStageStatusText.Foreground = ManagerStageModelText.Foreground;
+        }
         card.BorderBrush = System.Windows.Media.Brushes.Transparent;
         card.BorderThickness = new Thickness(1);
         card.Effect = null;
