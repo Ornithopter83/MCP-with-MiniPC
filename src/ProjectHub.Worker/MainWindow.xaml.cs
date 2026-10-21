@@ -2031,7 +2031,7 @@ public partial class MainWindow : Window
         string? mcpToken = null)
     {
         var started = DateTimeOffset.UtcNow;
-        var roleName = purpose is "SV" or "SV_INTEGRATION"
+        var roleName = purpose == "SV"
             ? "SV"
             : purpose.Contains("MANAGER", StringComparison.OrdinalIgnoreCase)
             ? "MANAGER"
@@ -2126,8 +2126,7 @@ public partial class MainWindow : Window
             var isReviewer = roleName == "HIGH";
             var isTemporaryWork = purpose == "TEMP_WORK";
             var isDelegationTurn =
-                (mcpToken is not null && (roleName is "SV" or "HIGH")) ||
-                purpose is "SV_INTEGRATION" or "HIGH_INTEGRATION";
+                mcpToken is not null && (roleName is "SV" or "HIGH");
             var hookPath = Path.Combine(
                 roleTempPath,
                 isDelegationTurn
