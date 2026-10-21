@@ -545,7 +545,8 @@ internal static class MilestoneMechanicalExecutor
     public static async Task<IReadOnlyDictionary<string, string>> SnapshotChangeStateAsync(
         string workingDirectory,
         CancellationToken cancellationToken,
-        bool requireSuccess = false)
+        bool requireSuccess = false,
+        IReadOnlyCollection<string>? scopedPaths = null)
     {
         var git = new ProcessGitCommandRunner();
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -600,6 +601,12 @@ internal static class MilestoneMechanicalExecutor
             StringComparer.OrdinalIgnoreCase);
         var root = Path.GetFullPath(workingDirectory);
 
+        // Git --exclude-standard deliberately hides ignored paths. A bounded
+        // WORK may legitimately create ignored test outputs, so audit its
+        // declared scope through the filesystem as well.
+        if (scopedPaths is not null)
+            AddScopedFilesystemPaths(root, scopedPaths, paths);
+
         foreach (var path in paths)
         {
             var fullPath = Path.GetFullPath(Path.Combine(root, path));
@@ -629,6 +636,57 @@ internal static class MilestoneMechanicalExecutor
         }
 
         return state;
+    }
+
+    private static void AddScopedFilesystemPaths(
+        string root, IReadOnlyCollection<string> scopedPaths,
+        HashSet<string> paths)
+    {
+        foreach (var scope in scopedPaths)
+        {
+            if (!TemporaryWorkScopeRegistry.IsAllowedPath(scope))
+                throw new InvalidOperationException("WORK_SCOPE_SNAPSHOT_INVALID");
+            var normalized = NormalizeGitPath(scope).TrimEnd('/');
+            var full = Path.GetFullPath(Path.Combine(root,
+                normalized.Replace('/', Path.DirectorySeparatorChar)));
+            if (!MilestoneDefinitionContract.IsPathInsideRoot(root, full))
+                throw new InvalidOperationException("WORK_SCOPE_SNAPSHOT_OUTSIDE_ROOT");
+            if (IsRuntimeOutput(normalized))
+                continue;
+            if (File.Exists(full))
+            {
+                if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidOperationException("WORK_SCOPE_SYMLINK");
+                paths.Add(normalized);
+                continue;
+            }
+            if (!Directory.Exists(full))
+                continue;
+            var directories = new Stack<(string Full, string Relative)>();
+            directories.Push((full, normalized));
+            while (directories.Count > 0)
+            {
+                var current = directories.Pop();
+                if (IsRuntimeOutput(current.Relative))
+                    continue;
+                if ((File.GetAttributes(current.Full) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidOperationException("WORK_SCOPE_SYMLINK");
+                paths.Add(current.Relative);
+                foreach (var entry in Directory.EnumerateFileSystemEntries(current.Full))
+                {
+                    var name = Path.GetFileName(entry);
+                    var relative = current.Relative + "/" + name;
+                    if (IsRuntimeOutput(relative))
+                        continue;
+                    if ((File.GetAttributes(entry) & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidOperationException("WORK_SCOPE_SYMLINK");
+                    if (Directory.Exists(entry))
+                        directories.Push((entry, relative));
+                    else
+                        paths.Add(relative);
+                }
+            }
+        }
     }
 
     public static IReadOnlyCollection<string> DiffChangeStates(
