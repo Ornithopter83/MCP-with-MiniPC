@@ -4,6 +4,19 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class CoordinatorFirstContractTests
 {
+    [Theory]
+    [InlineData("[RESPONSE=OK]", "")]
+    [InlineData("[ACTION=RESULT]", "[ACTION=WORK]")]
+    public void RoleReport_BracketControlsRemainStrict(
+        string oldControl, string newControl)
+    {
+        var report = RoleTextProtocol.BuildResult("completed", "검증 완료");
+        var parsed = RoleTextProtocol.ParseWork(
+            report.Replace(oldControl, newControl, StringComparison.Ordinal));
+        Assert.False(parsed.IsValid);
+        Assert.Contains("BRACKET_CONTROL_INVALID", parsed.Errors);
+    }
+
     [Fact]
     public void RoleReport_InlineClosingMarkerInProse_IsNotAFieldBoundary()
     {

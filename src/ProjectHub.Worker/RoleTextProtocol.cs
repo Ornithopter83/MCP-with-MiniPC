@@ -127,9 +127,32 @@ internal static class RoleTextProtocol
             .Where(line => line.Length > 0 &&
                 line != WebCorrelationContract.ResponseOkMarker)
             .ToArray();
-        if (header.Any(line => !string.Equals(
-                line, "[ACTION=RESULT]", StringComparison.OrdinalIgnoreCase)))
+        if (header.Length != 1 ||
+            !string.Equals(header[0], "[ACTION=RESULT]",
+                StringComparison.OrdinalIgnoreCase))
             errors.Add("ACTION_RESULT_REQUIRED");
+
+        // Only square-bracket controls are a strict grammar. Read them
+        // outside fenced examples so prose can quote the syntax safely.
+        var controlLines = new List<string>();
+        var insideExample = false;
+        foreach (var sourceLine in lines)
+        {
+            var marker = sourceLine.Trim();
+            if (marker.StartsWith("```", StringComparison.Ordinal))
+            {
+                insideExample = !insideExample;
+                continue;
+            }
+            if (insideExample || !Regex.IsMatch(marker,
+                @"^\[(?:ACTION|GOTO|KEY|RESPONSE)[=\]]"))
+                continue;
+            controlLines.Add(marker);
+        }
+        if (controlLines.Count(line => line == "[ACTION=RESULT]") != 1 ||
+            controlLines.Count(line => line == "[RESPONSE=OK]") != 1 ||
+            controlLines.Any(line => line is not ("[ACTION=RESULT]" or "[RESPONSE=OK]")))
+            errors.Add("BRACKET_CONTROL_INVALID");
 
         var fields = new List<(string Name, string Value)>();
         var outside = new List<string>();

@@ -35,6 +35,8 @@ M22 문서를 구현한다.
     [InlineData("[ACTION=WORK]\n[ACTION=WORK]")]
     [InlineData("[KEY=x]\n[KEY=y]")]
     [InlineData("[GOTO=UNAUTHORIZED]")]
+    [InlineData("[ACTION=WORK]\n[KEY=late]")]
+    [InlineData("[ACTION=WORK]\n[GOTO=WORKER]")]
     public void StructuredHq_RejectsInvalidBracketControl(string extra)
     {
         var bad = Valid.Replace("[ACTION=WORK]", extra, StringComparison.Ordinal);

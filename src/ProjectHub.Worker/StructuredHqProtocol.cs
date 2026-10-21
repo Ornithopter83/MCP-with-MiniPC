@@ -31,7 +31,10 @@ internal static class StructuredHqProtocol
         var controls = significant.Where(line =>
             Regex.IsMatch(line, @"^\[[A-Z][A-Z_]*[=\]]", RegexOptions.CultureInvariant))
             .ToArray();
-        if (controls.Any(line => line != "[ACTION=WORK]" &&
+        if (significant.Skip(i + 1).Any(line =>
+                line.StartsWith("[KEY=", StringComparison.Ordinal) ||
+                line.StartsWith("[GOTO=", StringComparison.Ordinal)) ||
+            controls.Any(line => line != "[ACTION=WORK]" &&
             line != "[GOTO=WORKER]" && line != "[RESPONSE=OK]" &&
             !Regex.IsMatch(line, @"^\[KEY=[^\]\r\n]+\]$")) ||
             controls.Count(line => line == "[ACTION=WORK]") != 1 ||
