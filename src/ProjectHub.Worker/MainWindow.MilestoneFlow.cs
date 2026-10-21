@@ -2108,7 +2108,7 @@ public partial class MainWindow
         Environment.NewLine +
         RoleContractLoader.HqContractForTurn(includeFullContract);
 
-    private static string BuildMilestoneFollowupInput;
+    private static string BuildMilestoneFollowupInput(
         CoordinatorContinuationState continuation,
         string followup)
     {
