@@ -51,7 +51,7 @@ public sealed class WorkerHistoryCardPolicyTests
         Assert.Equal("Worker → HQ 재요청",
             WorkerHistoryCardPolicy.DataFlowTitle(
                 "재요청 데이터", "SENT", "WORKER → HQ WEB", null));
-        Assert.Equal("Worker → SV 전달",
+        Assert.Equal("Worker → SuperVisor 전달",
             WorkerHistoryCardPolicy.DataFlowTitle(
                 "전달 데이터", "SENT", "WORKER → SV CLI", "SV"));
     }
