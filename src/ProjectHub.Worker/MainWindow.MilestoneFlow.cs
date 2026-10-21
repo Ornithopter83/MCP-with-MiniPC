@@ -1857,76 +1857,9 @@ public partial class MainWindow
                 workReports,
                 mechanicalReports));
 
-        // HIGH must delegate independent evidence gathering first, but never
-        // receives permission to mutate source or finalize Git.
-        if (high.ProviderKind != AiServiceProvider.OpenAI)
-            return RoleTextProtocol.BuildResult(
-                "blocked", "HIGH_MCP_DELEGATION_REQUIRES_CODEX_CLI");
-
-        var token = _bridgeServer?.RegisterMcpSession(
-            "HIGH", jobId, workingDirectory, cancellationToken) ??
-            throw new InvalidOperationException("HIGH_MCP_BRIDGE_NOT_RUNNING");
-        AiRoleRunResult result;
-        try
-        {
-            result = await RunCoordinatorRoleAsync(
-                jobId, "HIGH", prompt, high, workingDirectory,
-                null, null, cancellationToken, CodexSandboxMode.ReadOnly,
-                historyWorkItemId: "HIGH",
-                historyReferenceId: historyInvocationReference,
-                mcpToken: token);
-
-            var metrics = _bridgeServer.GetDelegationMetrics(token);
-            RunOnUi(() => AddRoleProgressHistory(
-                WorkerRoleState.High,
-                "WORK 검증 위임: 시도 " + metrics.Attempts +
-                "회 · 완료 " + metrics.Successful +
-                "회 · 실패 " +
-                (metrics.RecoverableFailures + metrics.UnsafeFailures) + "회",
-                high.Provider, referenceId: historyInvocationReference,
-                workItemId: "HIGH"));
-
-            if (metrics.Attempts == 0 && result.ExitCode == 0 &&
-                string.Equals(RoleTextProtocol.ParseHigh(result.FinalMessage).Status,
-                    "completed", StringComparison.OrdinalIgnoreCase))
-            {
-                result = result with
-                {
-                    ExitCode = 1,
-                    FinalMessage = RoleTextProtocol.BuildResult(
-                        "blocked", "HIGH_WORK_DELEGATION_REQUIRED"),
-                    StandardError = result.StandardError + Environment.NewLine +
-                        "HIGH_WORK_DELEGATION_REQUIRED"
-                };
-            }
-            else if (metrics.Attempts > 0 && metrics.Successful == 0 &&
-                     !cancellationToken.IsCancellationRequested)
-            {
-                // Verification-only fallback is safe to run in a separate
-                // read-only session, even when child execution was unavailable.
-                // Never escalate HIGH to a writable sandbox.
-                var directPrompt = RoleContractLoader.BuildHighPrompt(
-                    "WORK 검증 실행을 시도했으나 성공한 하위 검증이 없습니다. " +
-                    "Worker 승인에 따라 이번 신규 읽기 전용 세션에서 직접 증거를 " +
-                    "조사·검토하라. 소스·설정·Git 변경을 수행하지 마라. " +
-                    "미확인 사실은 반드시 ISSUES에 남겨라." +
-                    Environment.NewLine + Environment.NewLine +
-                    MilestoneDefinitionContract.BuildHighContext(
-                        milestone, workReports, mechanicalReports) +
-                    Environment.NewLine +
-                    "이전 HIGH 결과:" + Environment.NewLine +
-                    MilestoneDefinitionContract.Limit(result.FinalMessage, 1500));
-                result = await RunCoordinatorRoleAsync(
-                    jobId, "HIGH", directPrompt, high, workingDirectory,
-                    null, null, cancellationToken, CodexSandboxMode.ReadOnly,
-                    historyWorkItemId: "HIGH",
-                    historyReferenceId: historyInvocationReference);
-            }
-        }
-        finally
-        {
-            _bridgeServer?.UnregisterMcpSession(token);
-        }
+        var result = await RunHighDelegatedReviewAsync(
+            jobId, workingDirectory, high, prompt,
+            historyInvocationReference, cancellationToken);
 
         var report = MilestoneDefinitionContract.NormalizeHighReport(
             result.ExitCode,
@@ -1952,6 +1885,78 @@ public partial class MainWindow
             referenceId: historyInvocationReference);
 
         return report;
+    }
+
+    private async Task<AiRoleRunResult> RunHighDelegatedReviewAsync(
+        string jobId, string workingDirectory, WorkerAiRoleSettings high,
+        string prompt, string historyReferenceId, CancellationToken cancellationToken)
+    {
+        if (high.ProviderKind != AiServiceProvider.OpenAI)
+            throw new InvalidOperationException(
+                "HIGH_MCP_DELEGATION_REQUIRES_CODEX_CLI");
+
+        var token = _bridgeServer?.RegisterMcpSession(
+            "HIGH", jobId, workingDirectory, cancellationToken) ??
+            throw new InvalidOperationException("HIGH_MCP_BRIDGE_NOT_RUNNING");
+        try
+        {
+            var result = await RunCoordinatorRoleAsync(
+                jobId, "HIGH", prompt, high, workingDirectory,
+                null, null, cancellationToken, CodexSandboxMode.ReadOnly,
+                historyWorkItemId: "HIGH",
+                historyReferenceId: historyReferenceId,
+                mcpToken: token);
+            var metrics = _bridgeServer.GetDelegationMetrics(token);
+            RunOnUi(() => AddRoleProgressHistory(
+                WorkerRoleState.High,
+                "WORK 검증 위임: 시도 " + metrics.Attempts +
+                "회 · 완료 " + metrics.Successful +
+                "회 · 실패 " +
+                (metrics.RecoverableFailures + metrics.UnsafeFailures) + "회",
+                high.Provider, referenceId: historyReferenceId,
+                workItemId: "HIGH"));
+
+            if (metrics.Attempts == 0 && result.ExitCode == 0 &&
+                string.Equals(RoleTextProtocol.ParseHigh(result.FinalMessage).Status,
+                    "completed", StringComparison.OrdinalIgnoreCase))
+            {
+                return result with
+                {
+                    ExitCode = 1,
+                    FinalMessage = RoleTextProtocol.BuildResult(
+                        "blocked", "HIGH_WORK_DELEGATION_REQUIRED"),
+                    StandardError = result.StandardError + Environment.NewLine +
+                        "HIGH_WORK_DELEGATION_REQUIRED"
+                };
+            }
+
+            if (metrics.Attempts > 0 && metrics.Successful == 0 &&
+                !cancellationToken.IsCancellationRequested)
+            {
+                // Direct inspection cannot mutate files. It is a NEW session
+                // with no delegation token, never a writable retry.
+                var fallbackBody =
+                    "WORK 검증 위임을 시도했으나 성공한 하위 검증이 없습니다. " +
+                    "직접 읽기 전용 증거 조사만 하라. " +
+                    "소스·설정·Git을 변경하지 말고 미확인 사실은 ISSUES에 기록하라." +
+                    Environment.NewLine +
+                    RoleContractLoader.BuildHistoryPrompt(prompt) +
+                    Environment.NewLine + "이전 HIGH 결과:" +
+                    Environment.NewLine +
+                    MilestoneDefinitionContract.Limit(result.FinalMessage, 1500);
+                return await RunCoordinatorRoleAsync(
+                    jobId, "HIGH",
+                    RoleContractLoader.BuildHighPrompt(fallbackBody),
+                    high, workingDirectory, null, null, cancellationToken,
+                    CodexSandboxMode.ReadOnly, historyWorkItemId: "HIGH",
+                    historyReferenceId: historyReferenceId);
+            }
+            return result;
+        }
+        finally
+        {
+            _bridgeServer?.UnregisterMcpSession(token);
+        }
     }
 
     private async Task<string> ExecuteBuildRepairAsync(
@@ -2013,11 +2018,9 @@ public partial class MainWindow
             Environment.NewLine +
             "@@ERROR" + Environment.NewLine +
             MilestoneDefinitionContract.Limit(diagnostic, 2400));
-        var result = await RunCoordinatorRoleAsync(
-            jobId, "HIGH", prompt, high, workingDirectory,
-            null, null, cancellationToken, CodexSandboxMode.ReadOnly,
-            historyWorkItemId: "HIGH-GIT",
-            historyReferenceId: milestone.Id + ":HIGH:GIT:" + stage);
+        var result = await RunHighDelegatedReviewAsync(
+            jobId, workingDirectory, high, prompt,
+            milestone.Id + ":HIGH:GIT:" + stage, cancellationToken);
         var report = MilestoneDefinitionContract.NormalizeHighReport(
             result.ExitCode, result.FinalMessage, result.StandardError);
         AddRoleResponseHistory(WorkerRoleState.High, "Git 오류 검토",
