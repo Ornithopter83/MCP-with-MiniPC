@@ -2154,9 +2154,10 @@ public partial class MainWindow : Window
                         ? BuildExecutionPolicy.DelegatorDeniedToolMatcher
                         : ".*");
             codexConfigOverrides = isReviewer
-                ? new[] { commandGateOverride }
+                ? new[] { "features.hooks=true", commandGateOverride }
                 : new[]
                 {
+                    "features.hooks=true",
                     commandGateOverride,
                     "sandbox_workspace_write.network_access=true"
                 };
