@@ -19,6 +19,64 @@ public sealed class MilestoneFinalizationPolicyTests
                 blocked, pending, buildFailed, outcome));
     }
 
+    [Theory]
+    [InlineData(true, "design body", false)]
+    [InlineData(false, "design body", true)]
+    [InlineData(false, "", false)]
+    [InlineData(true, "", false)]
+    public void InitialPlanWrite_RespectsReadOnlyMilestone(
+        bool readOnly, string plan, bool expected)
+    {
+        Assert.Equal(expected,
+            MilestoneFinalizationPolicy.ShouldWriteInitialPlan(readOnly, plan));
+    }
+
+    [Theory]
+    [InlineData("COMPLETED", false, false, "GIT_FINALIZE_FAILED")]
+    [InlineData("COMPLETED", false, true, "COMPLETED")]
+    [InlineData("COMPLETED", true, false, "COMPLETED")]
+    [InlineData("SV_BLOCKED:1", false, false, "SV_BLOCKED:1")]
+    [InlineData("BUILD_FAILED", false, false, "BUILD_FAILED")]
+    public void GitFailure_CannotBeReportedAsCompleted(
+        string outcome, bool readOnly, bool gitSucceeded, string expected)
+    {
+        Assert.Equal(expected,
+            MilestoneFinalizationPolicy.ResolveGitOutcome(
+                outcome, readOnly, gitSucceeded));
+    }
+
+    [Fact]
+    public void GitOperationMarker_BlocksWithoutModifyingMarker()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "projecthub-git-guard-" + Guid.NewGuid().ToString("N"));
+        var git = Path.Combine(root, ".git");
+        Directory.CreateDirectory(git);
+        try
+        {
+            var mergeHead = Path.Combine(git, "MERGE_HEAD");
+            File.WriteAllText(mergeHead, "conflict");
+            var rebase = Path.Combine(git, "rebase-merge");
+            Directory.CreateDirectory(rebase);
+            Assert.True(MilestoneMechanicalExecutor.IsGitOperationMarkerPresent(
+                root, ".git/MERGE_HEAD"));
+            Assert.True(MilestoneMechanicalExecutor.IsGitOperationMarkerPresent(
+                root, rebase));
+            Assert.False(MilestoneMechanicalExecutor.IsGitOperationMarkerPresent(
+                root, ".git/CHERRY_PICK_HEAD"));
+            Assert.Contains("MERGE_HEAD",
+                MilestoneMechanicalExecutor.InProgressGitOperationMarkers);
+            Assert.Contains("rebase-merge",
+                MilestoneMechanicalExecutor.InProgressGitOperationMarkers);
+            Assert.Equal("conflict", File.ReadAllText(mergeHead));
+            Assert.True(Directory.Exists(rebase));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public void GitFinalize_UsesFastForwardOnlyPush()
     {
