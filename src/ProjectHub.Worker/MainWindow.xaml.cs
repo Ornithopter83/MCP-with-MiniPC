@@ -1244,12 +1244,14 @@ public partial class MainWindow : Window
 
     private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, RoleVisualPalette palette, bool disabled, bool initialInputIdle)
     {
-        var current = _directWorkRunning
+        // Show the active CLI executor, never both a parent card and its
+        // WORK card. RESOURCE remains an independent background sidecar.
+        var temporaryWorkRunning = Volatile.Read(ref _activeTemporaryWorkCount) > 0;
+        var current = _directWorkRunning || temporaryWorkRunning
             ? !disabled && stage == TaskStage.Implementer
             : !disabled &&
               (_currentTaskStage == stage ||
-               (stage == TaskStage.Resource && _resourceSidecarActive) ||
-               (stage == TaskStage.Implementer && Volatile.Read(ref _activeTemporaryWorkCount) > 0));
+               (stage == TaskStage.Resource && _resourceSidecarActive));
         SetPipelineStageAnimation(stage, current);
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
         var colored = visual.IsColored;
@@ -2028,7 +2030,7 @@ public partial class MainWindow : Window
         string? mcpToken = null)
     {
         var started = DateTimeOffset.UtcNow;
-        var roleName = purpose == "SV"
+        var roleName = purpose is "SV" or "SV_INTEGRATION"
             ? "SV"
             : purpose.Contains("MANAGER", StringComparison.OrdinalIgnoreCase)
             ? "MANAGER"
@@ -2122,8 +2124,9 @@ public partial class MainWindow : Window
             // Reviewer may verify; Git mutation stays in Worker.
             var isReviewer = roleName == "HIGH";
             var isTemporaryWork = purpose == "TEMP_WORK";
-            var isDelegationTurn = mcpToken is not null &&
-                (roleName is "SV" or "HIGH");
+            var isDelegationTurn =
+                (mcpToken is not null && (roleName is "SV" or "HIGH")) ||
+                purpose is "SV_INTEGRATION" or "HIGH_INTEGRATION";
             var hookPath = Path.Combine(
                 roleTempPath,
                 isDelegationTurn
