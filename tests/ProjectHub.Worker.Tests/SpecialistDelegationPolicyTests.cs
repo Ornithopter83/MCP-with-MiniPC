@@ -29,6 +29,19 @@ public sealed class SpecialistDelegationPolicyTests
             readOnly, attempts, successful, recoverable, unsafeCount, canceled));
     }
 
+    [Theory]
+    [InlineData("TEMP_WORK_FAILED: WORK blocked", true)]
+    [InlineData("WORK_SCOPE_VIOLATION: changed other files", false)]
+    [InlineData("WORK_IN_PROGRESS: partial changes", false)]
+    [InlineData("WORK_REPORT_INVALID: invalid format", false)]
+    [InlineData("WORK_PATH_INVALID_OR_CONFLICT", false)]
+    public void McpFailureClassification_DeniesUnsafeDirectFallback(
+        string message, bool expected)
+    {
+        Assert.Equal(expected, BridgeServer.IsRecoverableWorkFailure(
+            new InvalidOperationException(message)));
+    }
+
     [Fact]
     public void WritableCompletion_WithoutAnySuccessfulWork_IsBlocked()
     {
