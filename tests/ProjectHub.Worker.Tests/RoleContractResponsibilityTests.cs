@@ -15,6 +15,20 @@ public sealed class RoleContractResponsibilityTests
     }
 
     [Fact]
+    public void ResumedHqCli_UsesContractReferenceInsteadOfFullReinjection()
+    {
+        var full = RoleContractLoader.HqContractForTurn(includeFullContract: true);
+        var resumed = RoleContractLoader.HqContractForTurn(includeFullContract: false);
+        Assert.Equal(RoleContractLoader.LoadHqFooter(), full);
+        Assert.Equal(
+            RoleContractLoader.BuildContractReference(RoleContractLoader.HqContractPath),
+            resumed);
+        Assert.Contains("계약 참조:", resumed);
+        Assert.DoesNotContain("@@HIGH", resumed);
+        Assert.True(resumed.Length < full.Length);
+    }
+
+    [Fact]
     public void SvContract_OwnsImplementationAndSubagents()
     {
         var sv = RoleContractLoader.LoadSvFooter();
