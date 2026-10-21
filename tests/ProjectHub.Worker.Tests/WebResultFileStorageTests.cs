@@ -5,6 +5,7 @@ using ProjectHub.Worker;
 
 namespace ProjectHub.Worker.Tests;
 
+[Collection("WorkerPathsGlobalFilesystem")]
 public sealed class WebResultFileStorageTests
 {
     [Fact]
