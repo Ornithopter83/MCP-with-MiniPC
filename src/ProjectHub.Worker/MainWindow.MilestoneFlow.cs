@@ -12,6 +12,9 @@ public partial class MainWindow
         bool PauseRequired,
         string Body);
 
+    private sealed record SupervisorExecutionResult(
+        string Report, DelegationMetrics Delegations);
+
     private sealed record WorkExecutionReport(
         string Id,
         string Report);
@@ -781,6 +784,8 @@ public partial class MainWindow
         var highReport = string.Empty;
         var gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
         var outcome = "COMPLETED";
+        var supervisorDelegations = DelegationMetrics.Empty;
+        var highDelegations = DelegationMetrics.Empty;
 
         SaveMilestoneExecutionGraph(
             workingDirectory,
@@ -861,9 +866,10 @@ public partial class MainWindow
             // are transient MCP invocations, never persistent HQ work-items.
             var beforeSv = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
-            var supervisorReport = await ExecuteMilestoneSupervisorAsync(
+            var supervisor = await ExecuteMilestoneSupervisorAsync(
                 jobId, workingDirectory, milestone, cancellationToken);
-            workReports["1"] = supervisorReport;
+            supervisorDelegations = supervisor.Delegations;
+            workReports["1"] = supervisor.Report;
             var afterSv = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
             var svChangedPaths = MilestoneMechanicalExecutor.DiffChangeStates(
@@ -938,7 +944,8 @@ public partial class MainWindow
                 workingDirectory, cancellationToken);
             highReport = await ExecuteMilestoneHighAsync(
                 jobId, workingDirectory, milestone, workReports, resourceReports,
-                mechanicalReports, implementer, high, 1, cancellationToken);
+                mechanicalReports, implementer, high, 1, cancellationToken,
+                metrics => highDelegations = metrics);
             var afterHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
             foreach (var path in MilestoneMechanicalExecutor.DiffChangeStates(
@@ -1081,7 +1088,9 @@ public partial class MainWindow
                 workReports,
                 resourceReports,
                 highReport,
-                hqFinalState: "READY");
+                hqFinalState: "READY",
+                supervisorDelegations: supervisorDelegations,
+                highDelegations: highDelegations);
 
             return new(
                 false,
@@ -1099,7 +1108,9 @@ public partial class MainWindow
                     _formatRecoveryJobs.ContainsKey(jobId),
                     GetUnreadRecoveryElements(jobId),
                     workingDirectory,
-                    jobId));
+                    jobId,
+                    supervisorDelegations,
+                    highDelegations));
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1131,7 +1142,9 @@ public partial class MainWindow
                     _formatRecoveryJobs.ContainsKey(jobId),
                     GetUnreadRecoveryElements(jobId),
                     workingDirectory,
-                    jobId));
+                    jobId,
+                    supervisorDelegations,
+                    highDelegations));
         }
     }
 
@@ -1143,7 +1156,9 @@ public partial class MainWindow
         IReadOnlyDictionary<string, string>? workReports = null,
         IReadOnlyDictionary<string, string>? resourceReports = null,
         string? highReport = null,
-        string hqFinalState = "PLANNED")
+        string hqFinalState = "PLANNED",
+        DelegationMetrics? supervisorDelegations = null,
+        DelegationMetrics? highDelegations = null)
     {
         workReports ??= new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase);
@@ -1159,7 +1174,10 @@ public partial class MainWindow
                         MilestoneDefinitionContract.ReadWorkStatus(svReport))
                     : "PLANNED"),
             // Parent completion alone does not prove child execution.
-            new("TEMP-WORK", "WORK", "UNVERIFIED")
+            new("TEMP-WORK", "WORK",
+                supervisorDelegations is null ? "PLANNED" :
+                supervisorDelegations.Successful > 0 ? "COMPLETED" :
+                supervisorDelegations.Attempts > 0 ? "BLOCKED" : "PLANNED")
         };
 
         foreach (var work in milestone.WorkItems.Values
@@ -1195,7 +1213,10 @@ public partial class MainWindow
                 ? "SKIPPED"
                 : MilestoneGraphStatePolicy.RoleState(
                     MilestoneDefinitionContract.ReadHighStatus(highReport))));
-        nodes.Add(new("HIGH-TEMP-WORK", "WORK", "UNVERIFIED"));
+        nodes.Add(new("HIGH-TEMP-WORK", "WORK",
+            highDelegations is null ? "PLANNED" :
+            highDelegations.Successful > 0 ? "COMPLETED" :
+            highDelegations.Attempts > 0 ? "BLOCKED" : "PLANNED"));
         nodes.Add(new(
             "GIT-FINALIZE",
             "WORKER",
@@ -1231,7 +1252,7 @@ public partial class MainWindow
                 DateTimeOffset.UtcNow));
     }
 
-    private async Task<string> ExecuteMilestoneSupervisorAsync(
+    private async Task<SupervisorExecutionResult> ExecuteMilestoneSupervisorAsync(
         string jobId, string workingDirectory, MilestoneDefinition milestone,
         CancellationToken cancellationToken)
     {
@@ -1270,7 +1291,8 @@ public partial class MainWindow
                 "WORK 위임 시도: " + metrics.Attempts +
                 "회 · 완료: " + metrics.Successful +
                 "회 · 실행 실패: " + metrics.RecoverableFailures +
-                "회 · 차단: " + metrics.UnsafeFailures + "회",
+                "회 · 경로 거부: " + metrics.Rejected +
+                "회 · 안전 위반: " + metrics.UnsafeFailures + "회",
                 settings.Provider, referenceId: reference, workItemId: "1"));
 
             var preliminary = RoleTextProtocol.ParseWork(result.FinalMessage);
@@ -1281,13 +1303,20 @@ public partial class MainWindow
                 metrics.Successful == 0;
             if (metrics.UnsafeFailures > 0)
             {
-                // Scope violations, invalid paths and cancellation are never
-                // silently converted into unrestricted SV writes.
+                // A real unsafe execution still blocks completion. A rejected
+                // preflight request is NOT an unsafe execution; previous
+                // successful children and the SV's actual report are retained.
+                var original = preliminary.IsValid
+                    ? preliminary.Summary
+                    : MilestoneDefinitionContract.Limit(result.FinalMessage, 1800);
                 result = result with
                 {
                     ExitCode = 1,
                     FinalMessage = RoleTextProtocol.BuildResult(
-                        "blocked", SpecialistDelegationPolicy.UnsafeFailureCode)
+                        "blocked", SpecialistDelegationPolicy.UnsafeFailureCode,
+                        issues: new[] { original }.Concat(
+                            metrics.Evidence.Where(entry => entry.Status == "UNSAFE")
+                                .Select(entry => entry.Detail)).ToArray())
                 };
             }
             else if (wantsRecovery &&
@@ -1340,7 +1369,7 @@ public partial class MainWindow
                     StringComparison.OrdinalIgnoreCase) ? "BLOCKED" : "RECEIVED",
                 providerWireId: settings.Provider, fullMessage: report,
                 workItemId: "1", referenceId: reference));
-            return report;
+            return new SupervisorExecutionResult(report, metrics);
         }
         finally
         {
@@ -1831,7 +1860,8 @@ public partial class MainWindow
         WorkerAiRoleSettings implementer,
         WorkerAiRoleSettings high,
         int validationRound,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<DelegationMetrics>? recordDelegations = null)
     {
         _ = resourceReports;
         _ = mechanicalReports;
@@ -1859,7 +1889,8 @@ public partial class MainWindow
 
         var result = await RunHighDelegatedReviewAsync(
             jobId, workingDirectory, high, prompt,
-            historyInvocationReference, cancellationToken);
+            historyInvocationReference, cancellationToken,
+            recordDelegations);
 
         var report = MilestoneDefinitionContract.NormalizeHighReport(
             result.ExitCode,
@@ -1889,7 +1920,8 @@ public partial class MainWindow
 
     private async Task<AiRoleRunResult> RunHighDelegatedReviewAsync(
         string jobId, string workingDirectory, WorkerAiRoleSettings high,
-        string prompt, string historyReferenceId, CancellationToken cancellationToken)
+        string prompt, string historyReferenceId, CancellationToken cancellationToken,
+        Action<DelegationMetrics>? recordDelegations = null)
     {
         if (high.ProviderKind != AiServiceProvider.OpenAI)
         {
@@ -1926,6 +1958,7 @@ public partial class MainWindow
                 historyReferenceId: historyReferenceId,
                 mcpToken: token);
             var metrics = _bridgeServer.GetDelegationMetrics(token);
+            recordDelegations?.Invoke(metrics);
             RunOnUi(() => AddRoleProgressHistory(
                 WorkerRoleState.High,
                 "WORK 검증 위임: 시도 " + metrics.Attempts +
@@ -1949,14 +1982,17 @@ public partial class MainWindow
                 };
             }
 
-            if (metrics.Attempts > 0 && metrics.Successful == 0 &&
+            if (metrics.Attempts > 0 &&
+                (metrics.Successful == 0 || result.ExitCode != 0 ||
+                 !RoleTextProtocol.ParseHigh(result.FinalMessage).IsValid) &&
                 !cancellationToken.IsCancellationRequested)
             {
                 // Direct inspection cannot mutate files. It is a NEW session
                 // with no delegation token, never a writable retry.
                 var fallbackBody =
                     "WORKER_APPROVED_READ_ONLY_HIGH_FALLBACK: " +
-                    "직전 HIGH 세션에서 WORK 검증 위임을 시도했으나 성공한 하위 검증이 없습니다. " +
+                    "직전 HIGH 세션은 WORK 검증 위임을 시도했으나 " +
+                    "검토 본체 완료를 확보하지 못했습니다. " +
                     "직접 읽기 전용 증거 조사만 하라. " +
                     "소스·설정·Git을 변경하지 말고 미확인 사실은 ISSUES에 기록하라." +
                     Environment.NewLine +
