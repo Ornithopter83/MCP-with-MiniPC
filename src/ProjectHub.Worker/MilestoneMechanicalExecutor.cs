@@ -667,7 +667,10 @@ internal static class MilestoneMechanicalExecutor
             while (directories.Count > 0)
             {
                 var current = directories.Pop();
-                if (IsRuntimeOutput(current.Relative))
+                if (IsRuntimeOutput(current.Relative) ||
+                    current.Relative.Split('/').Any(segment =>
+                        segment.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+                        segment.Equals(".github", StringComparison.OrdinalIgnoreCase)))
                     continue;
                 if ((File.GetAttributes(current.Full) & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidOperationException("WORK_SCOPE_SYMLINK");
@@ -676,8 +679,12 @@ internal static class MilestoneMechanicalExecutor
                 {
                     var name = Path.GetFileName(entry);
                     var relative = current.Relative + "/" + name;
-                    if (IsRuntimeOutput(relative))
+                    if (IsRuntimeOutput(relative) ||
+                        name.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals(".github", StringComparison.OrdinalIgnoreCase))
                         continue;
+                    if (paths.Count >= 30000)
+                        throw new InvalidOperationException("WORK_SCOPE_SNAPSHOT_TOO_LARGE");
                     if ((File.GetAttributes(entry) & FileAttributes.ReparsePoint) != 0)
                         throw new InvalidOperationException("WORK_SCOPE_SYMLINK");
                     if (Directory.Exists(entry))
