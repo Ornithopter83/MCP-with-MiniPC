@@ -734,7 +734,9 @@ internal static class MilestoneDefinitionContract
         bool formatRecoveryOccurred = false,
         IReadOnlyCollection<string>? unreadRecoveryElements = null,
         string? workingDirectory = null,
-        string? jobId = null)
+        string? jobId = null,
+        DelegationMetrics? supervisorDelegations = null,
+        DelegationMetrics? highDelegations = null)
     {
         _ = initialLocalChanges;
         _ = milestoneChanges;
@@ -788,7 +790,11 @@ internal static class MilestoneDefinitionContract
             builder.AppendLine("WORK_IDS_USED: " +
                 (workHistory.Count == 0 ? "none" : string.Join(",", workHistory.Select(item => item.WorkItemId))));
         }
-        builder.AppendLine("SV_ROLE: #1, fresh session each milestone; temporary WORK delegated only by SV.");
+        builder.AppendLine("SV_ROLE: #1, fresh session each milestone; temporary WORK delegated by SV and HIGH.");
+        // The legacy WORK_* fields above describe the SV aggregate (#1), not
+        // MCP children. Report actual child invocations separately.
+        AppendDelegatedChildren(builder, "SV", supervisorDelegations);
+        AppendDelegatedChildren(builder, "HIGH", highDelegations);
 
         foreach (var pair in workReports.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
@@ -883,6 +889,26 @@ internal static class MilestoneDefinitionContract
     {
         var parsed = RoleTextProtocol.ParseHigh(message);
         return parsed.IsValid ? parsed.Status : null;
+    }
+
+    internal static void AppendDelegatedChildren(
+        StringBuilder builder, string parent, DelegationMetrics? metrics)
+    {
+        if (metrics is null)
+        {
+            builder.AppendLine(parent + "_WORK_CHILDREN: NOT_RECORDED");
+            return;
+        }
+
+        builder.AppendLine(parent + "_WORK_CHILDREN: attempts=" +
+            metrics.Attempts + " completed=" + metrics.Successful +
+            " rejected=" + metrics.Rejected +
+            " execution_failed=" + metrics.RecoverableFailures +
+            " unsafe=" + metrics.UnsafeFailures);
+        foreach (var evidence in metrics.Evidence.Take(24))
+            builder.AppendLine("- " + parent + "_WORK_INVOCATION: " +
+                Limit(evidence.Invocation, 120) + " " + evidence.Status +
+                " " + Limit(evidence.Detail.Replace("\r", " ").Replace("\n", " "), 320));
     }
 
     private static string ArchiveMilestoneReports(
