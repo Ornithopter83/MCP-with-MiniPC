@@ -19,4 +19,4 @@
 
 [RESPONSE=OK]
 
-<STATUS>는 completed, in_progress, blocked 중 하나다. 생산적인 마일스톤은 실제 성공한 delegate_work 호출이 최소 한 번 필요하다.
+<STATUS>는 completed, in_progress, blocked 중 하나다. 위임 여부와 횟수는 SV가 작업 성격에 따라 자율 결정한다.
