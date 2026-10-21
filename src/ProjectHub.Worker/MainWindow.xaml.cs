@@ -737,6 +737,11 @@ public partial class MainWindow : Window
         string followup,
         IReadOnlyList<UserAttachmentInput>? attachments = null)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            RunOnUi(() => AddUserFollowupHistory(followup, attachments));
+            return;
+        }
         var text = followup.Trim();
         var item = new WorkerHistoryEvent(
             DateTimeOffset.Now,
@@ -761,6 +766,11 @@ public partial class MainWindow : Window
     private void AddHqInterventionHistory(
         HqUserIntervention entry, bool delivered)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            RunOnUi(() => AddHqInterventionHistory(entry, delivered));
+            return;
+        }
         var status = delivered ? "DELIVERED" : "QUEUED";
         var title = delivered
             ? "사용자 · HQ 전달 완료" : "사용자 · HQ 전달 예약";
@@ -3530,8 +3540,15 @@ public partial class MainWindow : Window
         RefreshMessageLog();
     }
 
-    private void PublishHistoryCard(WorkerHistoryEvent item) =>
+    private void PublishHistoryCard(WorkerHistoryEvent item)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            RunOnUi(() => PublishHistoryCard(item));
+            return;
+        }
         WorkerHistoryCardPolicy.Publish(_historyEvents, item);
+    }
 
     // Preserve the legacy test/reflection entry point; all identity logic
     // lives in the pure policy class.
