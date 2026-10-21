@@ -16,6 +16,19 @@ internal static class MilestoneFinalizationPolicy
            string.Equals(existingOutcome, "COMPLETED", StringComparison.Ordinal) &&
            !gitSucceeded ? "GIT_FINALIZE_FAILED" : existingOutcome;
 
+    internal static string ResolveGitGraphState(
+        bool readOnlyNoFileChanges, int blockedWorkCount, int pendingWorkCount,
+        bool buildFailed, string outcome, bool gitSucceeded)
+    {
+        if (readOnlyNoFileChanges)
+            return "SKIPPED_READ_ONLY";
+        if (string.Equals(outcome, "GIT_FINALIZE_FAILED", StringComparison.Ordinal))
+            return "FINALIZE_FAILED";
+        if (!ShouldPublish(blockedWorkCount, pendingWorkCount, buildFailed, outcome))
+            return "SKIPPED_BLOCKED";
+        return gitSucceeded ? "FINALIZED" : "FINALIZE_FAILED";
+    }
+
     internal static bool ShouldPublish(
         int blockedWorkCount, int pendingWorkCount,
         bool buildFailed, string outcome)
