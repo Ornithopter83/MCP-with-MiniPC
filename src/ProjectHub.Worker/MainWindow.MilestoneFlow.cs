@@ -1270,7 +1270,8 @@ public partial class MainWindow
             ThreadProjectPath = null
         };
         var token = _bridgeServer?.RegisterMcpSession(
-            "SV", jobId, workingDirectory, cancellationToken) ??
+            "SV", jobId, workingDirectory, cancellationToken,
+            forbidWrites: milestone.ReadOnlyNoFileChanges) ??
             throw new InvalidOperationException("SV_MCP_BRIDGE_NOT_RUNNING");
         var reference = WorkerHistoryCardPolicy.NewInvocationReference(milestone.Id, "SV-1");
         try
