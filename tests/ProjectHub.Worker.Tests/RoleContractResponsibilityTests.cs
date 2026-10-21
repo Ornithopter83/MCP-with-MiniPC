@@ -30,7 +30,8 @@ public sealed class RoleContractResponsibilityTests
     {
         var high = RoleContractLoader.LoadHighFooter();
         Assert.Contains("직접 구현하지 않는다", high);
-        Assert.Contains("HIGH는 구현용 WORK를 위임하지 않는다", high);
+        Assert.Contains("MCP delegate_work(task, paths, read_only=true)", high);
+        Assert.Contains("별도 신규 읽기 전용 세션", high);
         Assert.Contains("<STATUS>completed</>", high);
     }
 }
