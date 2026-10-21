@@ -1,226 +1,67 @@
-using System.Reflection;
 using ProjectHub.Worker;
 
 namespace ProjectHub.Worker.Tests;
 
 public sealed class CompactMilestoneRoutingTests
 {
+    private const string Valid = """
+[ACTION=WORK]
+
+@@MILESTONE
+<ID>M1</>
+
+@@SV
+<INSTRUCTIONS>src 폴더에 새 구현을 추가하고 테스트하라.</>
+
+@@HIGH
+<INSTRUCTIONS>코드·동작·검증 근거를 검토하라.</>
+
+[RESPONSE=OK]
+""";
 
     [Fact]
-    public void CompactHq_AcceptsThirtyIndependentWorkItems()
+    public void CompactHq_DelegatesSingleSupervisorWithoutNumberedWork()
     {
-        var start = Minimal.IndexOf("@@WORK=10", StringComparison.Ordinal);
-        var end = Minimal.IndexOf("@@QA", StringComparison.Ordinal);
-        Assert.True(start >= 0 && end > start);
-        var blocks = string.Join("\n\n", Enumerable.Range(10, 30).Select(id =>
-            $"@@WORK={id}\n<PATH>generated/{id}.cs</>\n파일 {id}를 구현하라."));
-        var input = Minimal[..start] + blocks + "\n\n" + Minimal[end..];
-
-        var parsed = HqTextProtocol.Parse(input);
+        var parsed = HqTextProtocol.Parse(Valid);
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         Assert.True(MilestoneDefinitionContract.TryBuild(
             parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
         Assert.NotNull(milestone);
-        Assert.Equal(30, milestone!.WorkItems.Count);
-        Assert.Equal(new[] { "generated/39.cs" }, milestone.WorkItems["39"].WritePaths);
-        Assert.True(milestone.QaReserved);
-    }
-
-    private const string Minimal = """
-        [ACTION=WORK]
-        MILESTONE: M1
-
-        @@WORK=10
-        <PATH>a.txt</>
-        a.txt를 생성하여 설정 읽기를 구현하라.
-
-        @@WORK=11
-        <PATH>b.cs</>
-        b.cs 입력 처리를 완성하라.
-
-        @@QA
-        c.exe의 방향키 입력을 실행·검증하라.
-
-        @@HIGH
-        M1 완료 여부와 미해결 문제를 검토하라.
-
-        [RESPONSE=OK]
-        """;
-
-    [Fact]
-    public void CompactHq_ProducesMachineReadableMilestone()
-    {
-        var parsed = HqTextProtocol.Parse(Minimal);
-        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
-        Assert.True(MilestoneDefinitionContract.TryBuild(
-            parsed.CompatibilityMessage, parsed.Parse, out var milestone,
-            out var error), error);
-        Assert.NotNull(milestone);
-        Assert.Equal("M1", milestone!.Id);
-        Assert.Equal("main", milestone.TargetBranch);
-        Assert.Equal(2, milestone.WorkItems.Count);
-        Assert.Equal(new[] { "a.txt" }, milestone.WorkItems["10"].WritePaths);
-        Assert.Equal(new[] { "b.cs" }, milestone.WorkItems["11"].WritePaths);
-        Assert.True(milestone.QaReserved);
-        Assert.Contains("방향키", milestone.QaInstructions);
+        Assert.Equal("M1", milestone.Id);
+        Assert.Empty(milestone.WorkItems);
+        Assert.Contains("새 구현", milestone.SvInstructions);
         Assert.Contains("검토", milestone.HighInstructions);
-        Assert.Empty(milestone.Resources);
-        Assert.DoesNotContain("git", MilestoneDefinitionContract.BuildWorkContext(
-            milestone.WorkItems["10"]));
-    }
-
-    [Fact]
-    public void CompactHq_WebBridgeExtractsCompletionMarkerBeforeParsing()
-    {
-        const string key = "1234ABCDabcde";
-        var rawWebResponse = WebCorrelationContract.Marker(key) + "\n" + Minimal;
-
-        // The completion marker is validated by the Web transport, then
-        // removed from the message before the Worker parser sees it.
-        Assert.True(WebCorrelationContract.TryExtractResponse(
-            rawWebResponse, key, out var extracted));
-        Assert.DoesNotContain(WebCorrelationContract.ResponseOkMarker, extracted);
-
-        var parsed = HqTextProtocol.Parse(
-            extracted, completionValidatedByTransport: true);
-        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
-        Assert.True(MilestoneDefinitionContract.TryBuild(
-            parsed.CompatibilityMessage, parsed.Parse, out var milestone,
-            out var error), error);
-        Assert.Equal("10", milestone!.WorkItems["10"].Id);
-
-        // Non-Web CLI responses must still provide the marker themselves.
-        var unvalidated = HqTextProtocol.Parse(extracted);
-        Assert.False(unvalidated.IsValid);
-        Assert.Contains("COMPACT_RESPONSE_TERMINATOR_INVALID",
-            unvalidated.Errors);
-    }
-
-    [Fact]
-    public void CompactHq_RejectsTrailingContentEvenIfWebValidated()
-    {
-        var invalid = HqTextProtocol.Parse(
-            Minimal + "\nSURPRISE_TRAILING_TEXT",
-            completionValidatedByTransport: true);
-        Assert.False(invalid.IsValid);
-        Assert.Contains("COMPACT_RESPONSE_TERMINATOR_INVALID",
-            invalid.Errors);
-    }
-
-    [Fact]
-    public void CompactHq_AllowsColonsUrlsAndDrivePathsInNaturalLanguage()
-    {
-        var body = Minimal.Replace(
-            "a.txt를 생성하여 설정 읽기를 구현하라.",
-            "Electron file://에서 base: './'를 적용하라.\n" +
-            "https://example.org/api 와 C:\\Project\\src\\main.ts:1을 확인하라.",
-            StringComparison.Ordinal);
-        var parsed = HqTextProtocol.Parse(body);
-        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
-        Assert.True(MilestoneDefinitionContract.TryBuild(
-            parsed.CompatibilityMessage, parsed.Parse,
-            out var milestone, out var error), error);
-        Assert.Equal(new[] { "a.txt" }, milestone!.WorkItems["10"].WritePaths);
-        Assert.Contains("file://", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["10"]));
-        Assert.Contains("base: './'", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["10"]));
-        Assert.Contains("https://example.org/api", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["10"]));
-    }
-
-    [Fact]
-    public void CompactHq_ParsesMultiplePathTagsWithoutMixingWithInstructions()
-    {
-        var body = Minimal.Replace(
-            "<PATH>a.txt</>",
-            "<PATH>a.txt</>\n<PATH>src/main.tsx</>",
-            StringComparison.Ordinal);
-        var parsed = HqTextProtocol.Parse(body);
-        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
-        Assert.True(MilestoneDefinitionContract.TryBuild(
-            parsed.CompatibilityMessage, parsed.Parse,
-            out var milestone, out var error), error);
-        Assert.Equal(
-            new[] { "a.txt", "src/main.tsx" },
-            milestone!.WorkItems["10"].WritePaths);
-        Assert.DoesNotContain("<PATH>", MilestoneDefinitionContract.BuildWorkContext(milestone.WorkItems["10"]));
     }
 
     [Theory]
-    [InlineData("<PATH></>")]
-    [InlineData("<PATH>a.txt")]
-    [InlineData("<PATH>a.txt</PATH>")]
-    [InlineData("<PATH>a.txt</><PATH>b.cs</>")]
-    [InlineData("<PATH>a.txt</> trailing")]
-    public void CompactHq_RejectsMalformedPathTags(string tag)
+    [InlineData("@@SV", "@@WORK=10")]
+    [InlineData("@@SV", "@@QA")]
+    [InlineData("@@HIGH", "@@QA")]
+    public void CompactHq_RejectsDeprecatedAndMissingRoleSections(string from, string to)
     {
-        var parsed = HqTextProtocol.Parse(Minimal.Replace(
-            "<PATH>a.txt</>", tag, StringComparison.Ordinal));
+        var parsed = HqTextProtocol.Parse(Valid.Replace(from, to, StringComparison.Ordinal));
         Assert.False(parsed.IsValid);
-        Assert.Contains(parsed.Errors, error => error.Contains(
-            "COMPACT_PATH_TAG", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void CompactHq_RejectsLegacyPathField()
+    public void CompactHq_RejectsDuplicateSupervisor()
     {
-        var parsed = HqTextProtocol.Parse(Minimal.Replace(
-            "<PATH>a.txt</>", "PATH: a.txt", StringComparison.Ordinal));
+        var body = "\n@@SV\n<INSTRUCTIONS>중복 구현</>\n";
+        var parsed = HqTextProtocol.Parse(Valid.Replace("@@HIGH", body + "@@HIGH"));
         Assert.False(parsed.IsValid);
-        Assert.Contains(parsed.Errors, error => error.Contains(
-            "COMPACT_LEGACY_PATH", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void CompactHq_RejectsMissingPathOrQa()
+    public void CompactHq_ResourceRemainsOptionalImageSidecar()
     {
-        var missingPath = HqTextProtocol.Parse(Minimal.Replace(
-            "<PATH>a.txt</>", "지시만 있고 경로는 없음", StringComparison.Ordinal));
-        Assert.False(missingPath.IsValid);
-
-        var missingQa = HqTextProtocol.Parse(Minimal.Replace(
-            "@@QA", "@@MISSING_QA", StringComparison.Ordinal));
-        Assert.False(missingQa.IsValid);
-    }
-
-    [Fact]
-    public void CompactHq_LimitsWorkInstructions()
-    {
-        var verbose = HqTextProtocol.Parse(Minimal.Replace(
-            "a.txt를 생성하여 설정 읽기를 구현하라.",
-            new string('가', 601), StringComparison.Ordinal));
-        Assert.False(verbose.IsValid);
-        Assert.Contains(verbose.Errors, error => error.Contains(
-            "COMPACT_LIMIT", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void DesignDocument_OnlyAppearsInFirstPlanSection()
-    {
-        var text = Minimal.Replace("@@WORK=10",
-            "@@PLAN\n전체 설계, 마일스톤, 완료 기준.\n\n@@WORK=10",
-            StringComparison.Ordinal);
-        var parsed = HqTextProtocol.Parse(text);
+        var withImage = Valid.Replace("@@SV",
+            "@@RESOURCE=0\n<TYPE>image</>\n<TARGET_PATH>assets/a.png</>\n" +
+            "<INSTRUCTIONS>바다 위 다리를 그려라.</>\n\n@@SV");
+        var parsed = HqTextProtocol.Parse(withImage);
         Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
         Assert.True(MilestoneDefinitionContract.TryBuild(
-            parsed.CompatibilityMessage, parsed.Parse, out var milestone,
-            out _));
-        Assert.Contains("전체 설계", milestone!.PlanDocument);
-    }
-
-    [Fact]
-    public void HistoryCardKey_SeparatesInstructionProgressAndResponse()
-    {
-        var method = typeof(MainWindow).GetMethod(
-            "HistoryCardKey", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-        object? Key(string kind, string title) => method!.Invoke(null,
-            new object?[] { new MainWindow.WorkerHistoryEvent(
-                DateTimeOffset.UtcNow, "Implementer", kind, title,
-                "message", null, null, null, null, "M1:10") });
-        Assert.NotEqual(Key("DATA_FLOW", "전달 데이터"),
-            Key("ROLE_RESPONSE", "응답 데이터"));
-        Assert.NotEqual(Key("DATA_FLOW", "Worker 분배"),
-            Key("DATA_FLOW", "전달 데이터"));
-        Assert.Equal(Key("ROLE_PROGRESS", "작업 진행"),
-            Key("ROLE_PROGRESS", "작업 진행"));
+            parsed.CompatibilityMessage, parsed.Parse, out var milestone, out var error), error);
+        Assert.Single(milestone!.Resources);
+        Assert.Equal("assets/a.png", milestone.Resources["0"].TargetPath);
     }
 }

@@ -932,6 +932,12 @@ public partial class MainWindow
 
             CaptureResourceState();
 
+            var plannedWorkScopes = executableDefinitions
+                .Where(work => !work.ReadOnly)
+                .SelectMany(work => work.WritePaths)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
             // Worker owns mechanical BUILD. Repairs are assigned to SV by HQ.
             var buildRuns = await MilestoneBuildRunner.RunAsync(
                 workingDirectory, jobId, executableDefinitions, cancellationToken);
@@ -1218,7 +1224,6 @@ public partial class MainWindow
                 jobId,
                 milestone.Id,
                 state,
-                false,
                 milestone.Resources.Count > 0,
                 nodes,
                 edges,

@@ -2114,7 +2114,7 @@ public partial class MainWindow : Window
             await File.WriteAllTextAsync(
                 hookPath,
                 isReviewer
-                    ? BuildExecutionPolicy.CreateQaCodexPreToolHookScript()
+                    ? BuildExecutionPolicy.CreateReviewCodexPreToolHookScript()
                     : BuildExecutionPolicy.CreateCodexPreToolHookScript(),
                 ProjectHubJson.Utf8NoBom,
                 cancellationToken);

@@ -7,7 +7,7 @@ namespace ProjectHub.Worker;
 
 /// <summary>
 /// GENERAL WORK의 build/run/publish 및 Git mutation을 제한하고,
-/// QA에서는 Git mutation만 Worker에 남기는 기계 정책입니다.
+/// HIGH는 소스 수정 없이 검증하며 Git mutation은 Worker에 남기는 기계 정책입니다.
 /// legacy WorkItem API는 제거 마이그레이션 동안 호환을 위해 유지합니다.
 /// </summary>
 public static class BuildExecutionPolicy
@@ -129,7 +129,7 @@ public static class BuildExecutionPolicy
            exit 0
            """;
 
-    public static string CreateQaCodexPreToolHookScript()
+    public static string CreateReviewCodexPreToolHookScript()
         => """
            $ErrorActionPreference = 'Stop'
            $raw = [Console]::In.ReadToEnd()

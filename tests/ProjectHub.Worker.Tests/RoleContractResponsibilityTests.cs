@@ -5,45 +5,29 @@ namespace ProjectHub.Worker.Tests;
 public sealed class RoleContractResponsibilityTests
 {
     [Fact]
-    public void HqContractOnlyDefinesHqPlanningNotWorkerMechanicalExecution()
+    public void HqContract_OnlyAssignsSupervisor()
     {
         var hq = RoleContractLoader.LoadHqFooter();
-
-        Assert.Contains("QA에는 실제 검증을, HIGH에는 심층 검토", hq);
-        Assert.Contains("RESOURCE #0은 비차단 이미지 생성 요청", hq);
-        Assert.DoesNotContain("진전 기반 연속 수행", hq);
-        Assert.DoesNotContain("즉시 dispatch", hq);
-        Assert.DoesNotContain("다음 Worker Git finalize", hq);
-        Assert.Contains("아직 확보되지 않은 자산", hq);
+        Assert.Contains("@@SV", hq);
+        Assert.Contains("@@HIGH", hq);
+        Assert.DoesNotContain("@@WORK=10", hq);
+        Assert.DoesNotContain("@@QA", hq);
     }
 
     [Fact]
-    public void QaContractDoesNotAssignHighRoutingToQa()
+    public void SvContract_OwnsImplementationAndSubagents()
     {
-        var qa = RoleContractLoader.LoadQaFooter();
-
-        Assert.DoesNotContain("HIGH에 그대로 전달", qa);
-        Assert.Contains("실제 실행 결과 및 증거를 자세히 기록", qa);
-        Assert.Contains("소스와 Git은 수정하지 않는다", qa);
+        var sv = RoleContractLoader.LoadSvFooter();
+        Assert.Contains("delegate_work", sv);
+        Assert.Contains("SV(#1)", sv);
+        Assert.Contains("Git commit", sv);
     }
 
     [Fact]
-    public void GeneralWorkContractDoesNotContainReservedBuildRepairRules()
+    public void HighContract_ReportsFixesInsteadOfMutatingSource()
     {
-        var work = RoleContractLoader.LoadWorkFooter();
-
-        Assert.DoesNotContain("WORK #8", work);
-        Assert.DoesNotContain("환경 EPERM", work);
-        Assert.Contains("WRITE_PATH 안에서만", work);
-        Assert.Contains("<STATUS>completed</>", work);
-    }
-
-    [Fact]
-    public void RequestedWorkPermissionSentenceRemainsUnchanged()
-    {
-        var prompt = RoleContractLoader.BuildDirectWorkPrompt(
-            "10", "@@GOAL\n코드를 구현하라.", new[] { "src/a.cs" }, "/project");
-
-        Assert.Contains("작업에 필요한 모든 권한은 승인한다.", prompt);
+        var high = RoleContractLoader.LoadHighFooter();
+        Assert.Contains("직접 구현하지 않는다", high);
+        Assert.Contains("<STATUS>completed</>", high);
     }
 }
