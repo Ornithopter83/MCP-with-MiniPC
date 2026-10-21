@@ -108,11 +108,26 @@ public static class BuildExecutionPolicy
            (BuildCommandRegex.IsMatch(commandLine) ||
             GitMutationCommandRegex.IsMatch(commandLine));
 
+    // In the first SV/HIGH session direct inspection and command execution
+    // belong to child WORK, not the orchestrator. Only MCP delegate_work is
+    // allowed. A fresh fallback session receives the regular role gate.
+    public static string CreateDelegatorCodexPreToolHookScript()
+        => """
+           $ErrorActionPreference = 'Continue'
+           $raw = $input | Out-String
+           try { $event = $raw | ConvertFrom-Json } catch { exit 0 }
+           $tool = [string]$event.tool_name
+           if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell|apply_patch|write_file|edit_file)') { exit 0 }
+           $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: delegate_work must execute first; direct role commands only in a Worker-approved fresh fallback session.' } } | ConvertTo-Json -Compress -Depth 6
+           Write-Output $payload
+           exit 0
+           """;
+
     public static string CreateCodexPreToolHookScript()
         => """
            $ErrorActionPreference = 'Stop'
-           $raw = [Console]::In.ReadToEnd()
-           try { $event = $raw | ConvertFrom-Json -Depth 32 } catch { exit 0 }
+           $raw = $input | Out-String
+           try { $event = $raw | ConvertFrom-Json } catch { exit 0 }
            $tool = [string]$event.tool_name
            if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell)') { exit 0 }
            $command = [string]$event.tool_input.command
@@ -123,7 +138,7 @@ public static class BuildExecutionPolicy
            $pattern = '(?ix)(?:(?<![\w.-])dotnet(?:\.exe)?\s+(?:restore|build|test|run|publish|pack|msbuild|vstest)\b|(?<![\w.-])msbuild(?:\.exe)?\b|(?<![\w.-])(?:csc|vbc|cl|clang|clang\+\+|gcc|g\+\+|rustc|javac)(?:\.exe)?\b|(?<![\w.-])cmake(?:\.exe)?\s+--build\b|(?<![\w.-])(?:ninja|make)(?:\.exe)?\b|(?<![\w.-])cargo(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])go(?:\.exe)?\s+(?:build|test|run)\b|(?<![\w.-])(?:npm|pnpm|yarn|bun)(?:\.cmd|\.exe)?\s+(?:(?:run)\s+)?(?:build|test)\b|(?<![\w.-])(?:gradle|gradlew|mvn|mvnw)(?:\.bat|\.cmd|\.exe)?\b|(?<![\w.-])python(?:\.exe)?\s+-m\s+build\b|(?<![\w.-])git(?:\.exe)?\s+(?:add|commit|push|fetch|pull|clone|reset|checkout|switch|restore|merge|rebase|cherry-pick|revert|clean|rm|mv|tag)\b)'
            if ($command -match $pattern) {
              $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: general WORK build commands are restricted; Git finalization belongs to Worker.' } } | ConvertTo-Json -Compress -Depth 6
-             [Console]::Out.WriteLine($payload)
+             Write-Output $payload
            }
            exit 0
            """;
