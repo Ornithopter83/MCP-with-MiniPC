@@ -20,6 +20,8 @@ internal static class MilestoneGraphStatePolicy
         {
             "FINALIZED" => "COMPLETED",
             "FINALIZE_FAILED" => "FAILED",
+            "SKIPPED_READ_ONLY" => "SKIPPED",
+            "SKIPPED_BLOCKED" => "BLOCKED",
             _ => "PLANNED"
         };
 }
