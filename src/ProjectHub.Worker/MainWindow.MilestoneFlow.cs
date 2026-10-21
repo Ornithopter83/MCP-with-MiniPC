@@ -1936,13 +1936,13 @@ public partial class MainWindow
             "STAGE: " + stage + Environment.NewLine +
             "Git 자체의 commit/push/reset 등 변경 명령은 Worker 전용이다." +
             Environment.NewLine +
-            "안전하게 수정 가능한 소스/설정만 수정하고 결과를 보고하라." +
+            "소스·설정을 직접 수정하지 말고 오류 원인과 필요한 수정 사항만 보고하라." +
             Environment.NewLine +
             "@@ERROR" + Environment.NewLine +
             MilestoneDefinitionContract.Limit(diagnostic, 2400));
         var result = await RunCoordinatorRoleAsync(
             jobId, "HIGH", prompt, high, workingDirectory,
-            null, null, cancellationToken, CodexSandboxMode.WorkspaceWrite,
+            null, null, cancellationToken, CodexSandboxMode.ReadOnly,
             historyWorkItemId: "HIGH-GIT",
             historyReferenceId: milestone.Id + ":HIGH:GIT:" + stage);
         var report = MilestoneDefinitionContract.NormalizeHighReport(
