@@ -905,7 +905,8 @@ internal static class MilestoneDefinitionContract
     }
 
     internal static void AppendDelegatedChildren(
-        StringBuilder builder, string parent, DelegationMetrics? metrics)
+        StringBuilder builder, string parent, DelegationMetrics? metrics,
+        int maxEvidenceLength = 320)
     {
         if (metrics is null)
         {
@@ -921,7 +922,7 @@ internal static class MilestoneDefinitionContract
         foreach (var evidence in metrics.Evidence.Take(24))
             builder.AppendLine("- " + parent + "_WORK_INVOCATION: " +
                 Limit(evidence.Invocation, 120) + " " + evidence.Status +
-                " " + Limit(evidence.Detail.Replace("\r", " ").Replace("\n", " "), 320));
+                " " + Limit(evidence.Detail, maxEvidenceLength));
     }
 
     private static string ArchiveMilestoneReports(
