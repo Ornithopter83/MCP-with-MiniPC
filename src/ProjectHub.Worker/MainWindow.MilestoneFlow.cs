@@ -1892,8 +1892,27 @@ public partial class MainWindow
         string prompt, string historyReferenceId, CancellationToken cancellationToken)
     {
         if (high.ProviderKind != AiServiceProvider.OpenAI)
-            throw new InvalidOperationException(
-                "HIGH_MCP_DELEGATION_REQUIRES_CODEX_CLI");
+        {
+            // Preserve independently configured HIGH providers: the local
+            // MCP bridge is Codex-specific. Record capability limitation and
+            // permit read-only validation without delegating or editing code.
+            RunOnUi(() => AddRoleProgressHistory(
+                WorkerRoleState.High,
+                "HIGH_WORK_MCP_UNAVAILABLE_FOR_PROVIDER: " + high.Provider,
+                high.Provider, referenceId: historyReferenceId,
+                workItemId: "HIGH"));
+            return await RunCoordinatorRoleAsync(
+                jobId, "HIGH",
+                RoleContractLoader.BuildHighPrompt(
+                    "WORKER_APPROVED_READ_ONLY_HIGH_FALLBACK: HIGH Provider가 " +
+                    "MCP 위임을 지원하지 않아 직접 읽기 전용 검토를 허용한다. " +
+                    "소스·설정·Git 변경 금지. 실제 검증과 미검증을 구분하라." +
+                    Environment.NewLine +
+                    RoleContractLoader.BuildHistoryPrompt(prompt)),
+                high, workingDirectory, null, null, cancellationToken,
+                CodexSandboxMode.ReadOnly, historyWorkItemId: "HIGH",
+                historyReferenceId: historyReferenceId);
+        }
 
         var token = _bridgeServer?.RegisterMcpSession(
             "HIGH", jobId, workingDirectory, cancellationToken) ??
