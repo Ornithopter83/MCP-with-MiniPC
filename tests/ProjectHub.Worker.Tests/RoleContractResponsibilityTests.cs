@@ -20,6 +20,8 @@ public sealed class RoleContractResponsibilityTests
         var sv = RoleContractLoader.LoadSvFooter();
         Assert.Contains("delegate_work", sv);
         Assert.Contains("SuperVisor(#1)", sv);
+        Assert.Contains("실행 작업은 우선 MCP delegate_work", sv);
+        Assert.Contains("별도 새 세션에 직접 복구", sv);
         Assert.Contains("Git commit", sv);
     }
 
@@ -28,6 +30,7 @@ public sealed class RoleContractResponsibilityTests
     {
         var high = RoleContractLoader.LoadHighFooter();
         Assert.Contains("직접 구현하지 않는다", high);
+        Assert.Contains("HIGH는 구현용 WORK를 위임하지 않는다", high);
         Assert.Contains("<STATUS>completed</>", high);
     }
 }
