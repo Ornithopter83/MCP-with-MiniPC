@@ -148,7 +148,7 @@ public static class BuildExecutionPolicy
         => """
            $ErrorActionPreference = 'Stop'
            $raw = [Console]::In.ReadToEnd()
-           try { $event = $raw | ConvertFrom-Json -Depth 32 } catch { exit 0 }
+           try { $event = $raw | ConvertFrom-Json } catch { exit 0 }
            $tool = [string]$event.tool_name
            if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell)') { exit 0 }
            $command = [string]$event.tool_input.command
