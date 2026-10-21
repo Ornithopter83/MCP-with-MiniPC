@@ -991,6 +991,20 @@ public partial class MainWindow
                 gitResult = MilestoneGitResult.SkippedReadOnly(
                     milestone.TargetBranch);
             }
+            else if (blockedWorkIds.Length > 0 || pendingWorkIds.Length > 0 ||
+                     buildFailed || outcome == "HIGH_BLOCKED")
+            {
+                // Never publish an unchanged old HEAD and label the Git phase
+                // successful after the implementation was blocked. Keep any
+                // partial changes locally for the next explicit HQ decision.
+                gitResult = MilestoneGitResult.NotStarted(milestone.TargetBranch);
+                AddDataFlowHistory(
+                    WorkerRoleState.Unknown,
+                    "Git 최종화",
+                    "GIT_FINALIZE_SKIPPED: 구현·검증 미완료, 기존 HEAD 게시 안 함",
+                    status: "BLOCKED",
+                    persistenceSource: "WORKER ACTION");
+            }
             else
             {
                 AddDataFlowHistory(
