@@ -4,6 +4,25 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class CoordinatorFirstContractTests
 {
+    [Fact]
+    public void RoleReport_InlineClosingMarkerInProse_IsNotAFieldBoundary()
+    {
+        const string report = """
+[ACTION=RESULT]
+@@REPORT
+<STATUS>completed</>
+<SUMMARY>
+본문에서 설명하는 종료 태그는 </>
+뒤 문장도 반드시 포함되어야 한다.
+</>
+<ISSUES>없음</>
+[RESPONSE=OK]
+""";
+        var parsed = RoleTextProtocol.ParseWork(report);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Contains("뒤 문장도 반드시 포함", parsed.Summary);
+    }
+
 
     [Fact]
     public void RoleReport_MarkdownQuotedClosingTag_DoesNotTruncateOrDuplicateSummary()

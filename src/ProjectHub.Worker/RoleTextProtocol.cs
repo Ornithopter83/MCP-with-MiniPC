@@ -195,12 +195,13 @@ internal static class RoleTextProtocol
                     buffer.Append('\n');
                 continue;
             }
-            var codeSpans = Regex.Matches(line, @"(?<!`)\`+[^\`\r\n]*\`+(?!\`)");
+            var codeSpans = Regex.Matches(line, @"(?<!`)`+[^`\r\n]*`+(?!`)");
             var matches = Regex.Matches(line,
                 @"</>|</?(?:STATUS|SUMMARY|CHANGED_PATHS?|ISSUES?)>",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             var position = 0;
             var lastWasClosing = false;
+            var openedOnLine = false;
             foreach (Match match in matches)
             {
                 if (codeSpans.Cast<Match>().Any(code =>
@@ -232,7 +233,7 @@ internal static class RoleTextProtocol
                     line[(match.Index + match.Length)..].Contains(
                         "</" + name + ">", StringComparison.OrdinalIgnoreCase);
                 var structural = isClose
-                    ? (atLineStart || (atLineEnd && current is not null) ||
+                    ? (atLineStart || (atLineEnd && openedOnLine) ||
                        adjacentToClosedTag)
                     : (atLineStart || adjacentToClosedTag ||
                        (position > 0 && string.IsNullOrWhiteSpace(between)) ||
@@ -261,6 +262,7 @@ internal static class RoleTextProtocol
                 {
                     Finish(); // omitted close: next opening ends this field
                     current = name;
+                    openedOnLine = true;
                     previousClosed = null;
                     lastWasClosing = false;
                 }

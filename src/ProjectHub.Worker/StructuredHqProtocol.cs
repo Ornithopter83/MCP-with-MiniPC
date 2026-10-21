@@ -116,7 +116,8 @@ internal static class StructuredHqProtocol
                 return value;
             // Keep naturally worded instructions when their optional
             // middle-field wrapper is malformed or omitted.
-            return key is "INSTRUCTIONS" or "TEXT"
+            return (section.Name is "SV" or "HIGH" or "PLAN") &&
+                   (key is "INSTRUCTIONS" or "TEXT")
                 ? section.Body.Trim() : "";
         }
         var milestoneSection = sections.FirstOrDefault(s => s.Name == "MILESTONE");

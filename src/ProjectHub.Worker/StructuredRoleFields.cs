@@ -21,7 +21,8 @@ internal sealed class StructuredRoleFields
 
     public static bool TryParse(string body, out StructuredRoleFields fields, out string error)
     {
-        fields = new StructuredRoleFields();
+        var result = new StructuredRoleFields();
+        fields = result;
         error = string.Empty;
         var lines = (body ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n').Split('\n');
@@ -32,7 +33,7 @@ internal sealed class StructuredRoleFields
         void Finish()
         {
             if (current is null) return;
-            fields.Add(current, string.Join("\n", buffer).Trim());
+            result.Add(current, string.Join("\n", buffer).Trim());
             buffer.Clear();
             current = null;
         }
@@ -71,7 +72,7 @@ internal sealed class StructuredRoleFields
                         @"^(.*?)(?:</>|</" + name + @">)\s*$",
                         RegexOptions.CultureInvariant);
                     if (close.Success)
-                        fields.Add(name, close.Groups[1].Value);
+                        result.Add(name, close.Groups[1].Value);
                     else
                     {
                         current = name;
