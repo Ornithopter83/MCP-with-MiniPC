@@ -131,7 +131,8 @@ public sealed partial class BridgeServer
                     ? message["INVOCATION: ".Length..].Split('\n')[0].Trim()
                     : session.InvocationId;
                 session.Evidence.Enqueue(new DelegatedWorkEvidence(
-                    invocation, "COMPLETED", "WORK result verified"));
+                    invocation, "COMPLETED",
+                    MilestoneDefinitionContract.Limit(message, 5000)));
                 McpActivity?.Invoke(session.Role, "TOOL_DONE delegate_work");
             }
             catch (OperationCanceledException)
