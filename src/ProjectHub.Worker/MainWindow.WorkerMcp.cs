@@ -28,7 +28,7 @@ public partial class MainWindow
             !arguments.TryGetProperty("paths", out var pathsElement) ||
             pathsElement.ValueKind != JsonValueKind.Array)
             throw new ArgumentException("WORK_TASK_OR_PATHS_INVALID");
-        var readOnly = session.Role == "HIGH";
+        var readOnly = session.Role == "HIGH" || session.ForbidWrites;
         if (arguments.TryGetProperty("read_only", out var readOnlyElement))
         {
             if (readOnlyElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
