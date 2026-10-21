@@ -11,6 +11,10 @@ internal sealed class TemporaryWorkScopeRegistry
     private readonly object _gate = new();
     private readonly Dictionary<string, (string Root, string[] Paths)> _leases =
         new(StringComparer.Ordinal);
+    // Keep completed parallel scopes until their entire overlapping-in-time
+    // cohort has finished, so a late snapshot cannot blame sibling WORK edits.
+    private readonly Dictionary<string, HashSet<string>> _recentCohortScopes =
+        new(StringComparer.OrdinalIgnoreCase);
 
     internal static bool IsAllowedPath(string path)
     {
@@ -21,7 +25,11 @@ internal sealed class TemporaryWorkScopeRegistry
         if (normalized is "" or "." || normalized.StartsWith("/", StringComparison.Ordinal))
             return false;
         return !normalized.Split('/').Any(segment =>
-            segment is "." or ".." or ".git" or ".projecthub" or "temp" or ".github" ||
+            segment is "." or ".." ||
+            segment.Equals(".git", StringComparison.OrdinalIgnoreCase) ||
+            segment.Equals(".projecthub", StringComparison.OrdinalIgnoreCase) ||
+            segment.Equals("temp", StringComparison.OrdinalIgnoreCase) ||
+            segment.Equals(".github", StringComparison.OrdinalIgnoreCase) ||
             segment.Equals("Master-Polish.md", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -60,6 +68,9 @@ internal sealed class TemporaryWorkScopeRegistry
                 string.Equals(active.Root, root, StringComparison.OrdinalIgnoreCase) &&
                 active.Paths.Any(other => paths.Any(p => Overlaps(p, other)))))
                 return false;
+            if (!_leases.Values.Any(active =>
+                active.Root.Equals(root, StringComparison.OrdinalIgnoreCase)))
+                _recentCohortScopes.Remove(root);
             var id = Guid.NewGuid().ToString("N");
             _leases.Add(id, (root, paths.ToArray()));
             lease = new Reservation(this, id);
@@ -67,9 +78,40 @@ internal sealed class TemporaryWorkScopeRegistry
         }
     }
 
+    internal IReadOnlyList<string> OtherConcurrentScopes(
+        string projectRoot, IReadOnlyList<string> ownPaths)
+    {
+        var root = Path.GetFullPath(projectRoot);
+        lock (_gate)
+        {
+            var active = _leases.Values
+                .Where(item => item.Root.Equals(root, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(item => item.Paths);
+            var recentlyCompleted = _recentCohortScopes.TryGetValue(root, out var recent)
+                ? recent : Enumerable.Empty<string>();
+            return active.Concat(recentlyCompleted)
+                .Where(path => !ownPaths.Any(own => Overlaps(own, path)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+    }
+
     private void Release(string id)
     {
-        lock (_gate) _leases.Remove(id);
+        lock (_gate)
+        {
+            if (!_leases.Remove(id, out var released))
+                return;
+            if (!_recentCohortScopes.TryGetValue(released.Root, out var recent))
+            {
+                recent = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                _recentCohortScopes[released.Root] = recent;
+            }
+            recent.UnionWith(released.Paths);
+            if (!_leases.Values.Any(active =>
+                active.Root.Equals(released.Root, StringComparison.OrdinalIgnoreCase)))
+                _recentCohortScopes.Remove(released.Root);
+        }
     }
 
     private sealed class Reservation(TemporaryWorkScopeRegistry registry, string id)
