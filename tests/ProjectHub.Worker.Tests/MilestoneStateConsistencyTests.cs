@@ -18,6 +18,8 @@ public sealed class MilestoneStateConsistencyTests
     [Theory]
     [InlineData("FINALIZED", "COMPLETED")]
     [InlineData("FINALIZE_FAILED", "FAILED")]
+    [InlineData("SKIPPED_READ_ONLY", "SKIPPED")]
+    [InlineData("SKIPPED_BLOCKED", "BLOCKED")]
     [InlineData("RUNNING", "PLANNED")]
     public void GitGraph_NeverCallsFailureCompleted(string state, string expected)
     {
