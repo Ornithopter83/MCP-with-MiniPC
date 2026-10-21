@@ -169,7 +169,8 @@ public sealed partial class BridgeServer
         if (args.ValueKind != JsonValueKind.Object ||
             !args.TryGetProperty("task", out var task) ||
             task.ValueKind != JsonValueKind.String ||
-            task.GetString()?.Trim().Length is not > 0 and <= 2000 ||
+            string.IsNullOrWhiteSpace(task.GetString()) ||
+            task.GetString()!.Trim().Length > 2000 ||
             !args.TryGetProperty("paths", out var declared) ||
             declared.ValueKind != JsonValueKind.Array)
             throw new ArgumentException("WORK_TASK_OR_PATHS_INVALID");
