@@ -107,6 +107,40 @@ public sealed partial class BridgeServer
                 session.Evidence.ToArray())
             : DelegationMetrics.Empty;
 
+    /// <summary>
+    /// UnityWorker semantics: block the MCP tool call until a real child WORK
+    /// has finished and return that child's output to the same parent session.
+    /// SerialCalls protects one parent's overlapping MCP requests.
+    /// </summary>
+    internal async Task<string> ExecuteDelegatedWorkAsync(
+        WorkerMcpSession session, JsonElement args, CancellationToken cancellationToken)
+    {
+        if (session.IsWork)
+            throw new InvalidOperationException("WORK_CANNOT_DELEGATE");
+        ValidateDelegationRequest(session, args);
+        await session.SerialCalls.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            McpActivity?.Invoke(session.Role, "TOOL_STARTED delegate_work");
+            var handler = McpToolExecutor ??
+                throw new InvalidOperationException("MCP_EXECUTOR_NOT_CONFIGURED");
+            var message = await handler(session, "delegate_work", args, cancellationToken)
+                .ConfigureAwait(false);
+            Interlocked.Increment(ref session.SuccessfulDelegations);
+            var invocation = message.StartsWith("INVOCATION: ", StringComparison.Ordinal)
+                ? message["INVOCATION: ".Length..].Split('\n')[0].Trim()
+                : session.InvocationId;
+            session.Evidence.Enqueue(new DelegatedWorkEvidence(
+                invocation, "COMPLETED",
+                MilestoneDefinitionContract.Limit(message, 5000)));
+            return message;
+        }
+        finally
+        {
+            session.SerialCalls.Release();
+        }
+    }
+
     private static void ValidateDelegationRequest(
         WorkerMcpSession session, JsonElement args)
     {
@@ -242,29 +276,8 @@ public sealed partial class BridgeServer
                 string message;
                 try
                 {
-                    ValidateDelegationRequest(session, args);
-                    // UnityWorker-compatible synchronous MCP call: child WORK
-                    // runs while the parent waits for this tool result.
-                    await session.SerialCalls.WaitAsync(linked.Token).ConfigureAwait(false);
-                    try
-                    {
-                        McpActivity?.Invoke(session.Role, "TOOL_STARTED delegate_work");
-                        var handler = McpToolExecutor ??
-                            throw new InvalidOperationException("MCP_EXECUTOR_NOT_CONFIGURED");
-                        message = await handler(session, "delegate_work", args, linked.Token)
-                            .ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        session.SerialCalls.Release();
-                    }
-                    Interlocked.Increment(ref session.SuccessfulDelegations);
-                    var invocation = message.StartsWith("INVOCATION: ", StringComparison.Ordinal)
-                        ? message["INVOCATION: ".Length..].Split('\n')[0].Trim()
-                        : session.InvocationId;
-                    session.Evidence.Enqueue(new DelegatedWorkEvidence(
-                        invocation, "COMPLETED",
-                        MilestoneDefinitionContract.Limit(message, 5000)));
+                    message = await ExecuteDelegatedWorkAsync(session, args, linked.Token)
+                        .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
