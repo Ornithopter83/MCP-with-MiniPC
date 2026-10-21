@@ -1356,8 +1356,8 @@ public partial class MainWindow
             else
             {
                 result = SpecialistDelegationPolicy.Enforce(
-                    result, !milestone.ReadOnlyNoFileChanges,
-                    metrics.Successful);
+                    result, mandatory: true,
+                    successfulDelegations: metrics.Successful);
             }
 
             var report = MilestoneDefinitionContract.NormalizeWorkReport(
