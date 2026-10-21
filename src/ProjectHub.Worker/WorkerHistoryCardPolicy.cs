@@ -147,7 +147,7 @@ public static class WorkerHistoryCardPolicy
                     continue;
                 // Preserve role progress in the final card's detail viewer.
                 var finalCard = result;
-                if (result.StageKey is "Implementer" or "Manager" or "HighLevel" &&
+                if ((result.StageKey is "Implementer" or "Manager" or "HighLevel") &&
                     !string.IsNullOrWhiteSpace(candidate.FullMessage))
                     finalCard = result with
                     {
