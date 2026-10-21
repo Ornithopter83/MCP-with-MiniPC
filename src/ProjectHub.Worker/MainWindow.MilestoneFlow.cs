@@ -1925,88 +1925,77 @@ public partial class MainWindow
         Action<DelegationMetrics>? recordDelegations = null)
     {
         if (high.ProviderKind != AiServiceProvider.OpenAI)
-        {
-            // Preserve independently configured HIGH providers: the local
-            // MCP bridge is Codex-specific. Record capability limitation and
-            // permit read-only validation without delegating or editing code.
-            RunOnUi(() => AddRoleProgressHistory(
-                WorkerRoleState.High,
-                "HIGH_WORK_MCP_UNAVAILABLE_FOR_PROVIDER: " + high.Provider,
-                high.Provider, referenceId: historyReferenceId,
-                workItemId: "HIGH"));
-            return await RunCoordinatorRoleAsync(
-                jobId, "HIGH",
-                RoleContractLoader.BuildHighPrompt(
-                    "WORKER_APPROVED_READ_ONLY_HIGH_FALLBACK: HIGH Provider가 " +
-                    "MCP 위임을 지원하지 않아 직접 읽기 전용 검토를 허용한다. " +
-                    "소스·설정·Git 변경 금지. 실제 검증과 미검증을 구분하라." +
-                    Environment.NewLine +
-                    RoleContractLoader.BuildHistoryPrompt(prompt)),
-                high, workingDirectory, null, null, cancellationToken,
-                CodexSandboxMode.ReadOnly, historyWorkItemId: "HIGH",
-                historyReferenceId: historyReferenceId);
-        }
+            throw new InvalidOperationException(
+                "HIGH_WORK_DELEGATION_REQUIRES_CODEX_CLI");
 
         var token = _bridgeServer?.RegisterMcpSession(
             "HIGH", jobId, workingDirectory, cancellationToken) ??
             throw new InvalidOperationException("HIGH_MCP_BRIDGE_NOT_RUNNING");
         try
         {
-            var result = await RunCoordinatorRoleAsync(
-                jobId, "HIGH", prompt, high, workingDirectory,
+            // Phase 1: HIGH selects evidence tasks and queues WORK jobs.
+            // No child provider executes until this HIGH process exits.
+            var draft = await RunCoordinatorRoleAsync(
+                jobId, "HIGH",
+                RoleContractLoader.BuildHighPrompt(
+                    RoleContractLoader.BuildHistoryPrompt(prompt) +
+                    Environment.NewLine +
+                    "읽기 전용 검증·조사는 delegate_work로 먼저 모두 큐에 등록하라. " +
+                    "이 첫 세션에서는 아직 WORK 결과가 없으므로 완료 판정하지 않는다."),
+                high, workingDirectory,
                 null, null, cancellationToken, CodexSandboxMode.ReadOnly,
                 historyWorkItemId: "HIGH",
-                historyReferenceId: historyReferenceId,
-                mcpToken: token);
-            var metrics = _bridgeServer.GetDelegationMetrics(token);
+                historyReferenceId: historyReferenceId, mcpToken: token);
+
+            // Phase 2: awaited AFTER HIGH provider exit, serial WORK calls.
+            var metrics = await _bridgeServer.DrainDelegatedWorkAsync(
+                token, cancellationToken);
             recordDelegations?.Invoke(metrics);
             RunOnUi(() => AddRoleProgressHistory(
                 WorkerRoleState.High,
                 "WORK 검증 위임: 시도 " + metrics.Attempts +
                 "회 · 완료 " + metrics.Successful +
-                "회 · 실패 " +
-                (metrics.RecoverableFailures + metrics.UnsafeFailures) + "회",
+                "회 · 실패 " + (metrics.RecoverableFailures +
+                    metrics.UnsafeFailures + metrics.Rejected) + "회",
                 high.Provider, referenceId: historyReferenceId,
                 workItemId: "HIGH"));
 
-            if (metrics.Attempts == 0 && result.ExitCode == 0 &&
-                string.Equals(RoleTextProtocol.ParseHigh(result.FinalMessage).Status,
-                    "completed", StringComparison.OrdinalIgnoreCase))
+            if (metrics.Successful == 0 || metrics.UnsafeFailures > 0)
             {
-                return result with
+                return draft with
                 {
                     ExitCode = 1,
                     FinalMessage = RoleTextProtocol.BuildResult(
-                        "blocked", "HIGH_WORK_DELEGATION_REQUIRED"),
-                    StandardError = result.StandardError + Environment.NewLine +
-                        "HIGH_WORK_DELEGATION_REQUIRED"
+                        "blocked",
+                        metrics.UnsafeFailures > 0
+                            ? "HIGH_WORK_UNSAFE" : "HIGH_WORK_DELEGATION_REQUIRED",
+                        issues: metrics.Evidence.Select(item =>
+                            item.Status + ": " + item.Detail).ToArray())
                 };
             }
 
-            if (SpecialistDelegationPolicy.ShouldRetryHighReview(
-                metrics, result, cancellationToken.IsCancellationRequested))
-            {
-                // Direct inspection cannot mutate files. It is a NEW session
-                // with no delegation token, never a writable retry.
-                var fallbackBody =
-                    "WORKER_APPROVED_READ_ONLY_HIGH_FALLBACK: " +
-                    "직전 HIGH 세션은 WORK 검증 위임을 시도했으나 " +
-                    "검토 본체 완료를 확보하지 못했습니다. " +
-                    "직접 읽기 전용 증거 조사만 하라. " +
-                    "소스·설정·Git을 변경하지 말고 미확인 사실은 ISSUES에 기록하라." +
-                    Environment.NewLine +
+            // Phase 3: fresh HIGH reviewer, with no direct execution or
+            // delegation tools, evaluates completed child evidence only.
+            var evidence = new System.Text.StringBuilder();
+            MilestoneDefinitionContract.AppendDelegatedChildren(
+                evidence, "HIGH", metrics);
+            return await RunCoordinatorRoleAsync(
+                jobId, "HIGH_INTEGRATION",
+                RoleContractLoader.BuildHighPrompt(
                     RoleContractLoader.BuildHistoryPrompt(prompt) +
-                    Environment.NewLine + "이전 HIGH 결과:" +
                     Environment.NewLine +
-                    MilestoneDefinitionContract.Limit(result.FinalMessage, 1500);
-                return await RunCoordinatorRoleAsync(
-                    jobId, "HIGH",
-                    RoleContractLoader.BuildHighPrompt(fallbackBody),
-                    high, workingDirectory, null, null, cancellationToken,
-                    CodexSandboxMode.ReadOnly, historyWorkItemId: "HIGH",
-                    historyReferenceId: historyReferenceId);
-            }
-            return result;
+                    "@@VERIFIED_HIGH_WORK" + Environment.NewLine +
+                    evidence + Environment.NewLine +
+                    "검증 WORK의 실제 실행 증거로만 독립 판정하라. " +
+                    "직접 셸·파일 조사·테스트 명령을 실행하지 마라. " +
+                    "실패와 미검증은 ISSUES에 기록하라." +
+                    Environment.NewLine + "최초 배정 보고:" +
+                    Environment.NewLine +
+                    MilestoneDefinitionContract.Limit(draft.FinalMessage, 1400)),
+                high, workingDirectory,
+                null, null, cancellationToken, CodexSandboxMode.ReadOnly,
+                historyWorkItemId: "HIGH",
+                historyReferenceId: historyReferenceId);
         }
         finally
         {
