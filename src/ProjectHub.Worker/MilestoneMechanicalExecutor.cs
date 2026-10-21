@@ -811,6 +811,21 @@ internal static class MilestoneMechanicalExecutor
         return blocked;
     }
 
+    internal static IReadOnlyList<string> InProgressGitOperationMarkers { get; } =
+        ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD",
+         "rebase-merge", "rebase-apply", "sequencer"];
+
+    internal static bool IsGitOperationMarkerPresent(
+        string workingDirectory, string gitPath)
+    {
+        if (string.IsNullOrWhiteSpace(gitPath))
+            return false;
+        var marker = Path.IsPathRooted(gitPath)
+            ? Path.GetFullPath(gitPath)
+            : Path.GetFullPath(Path.Combine(workingDirectory, gitPath));
+        return File.Exists(marker) || Directory.Exists(marker);
+    }
+
     internal static string[] FastForwardPushArguments(string branch) =>
         ["push", "origin", "HEAD:refs/heads/" + branch];
 
@@ -908,12 +923,17 @@ internal static class MilestoneMechanicalExecutor
                     return Fail("ORIGIN_UPDATE_FAILED", updated);
             }
 
-            // 충돌 작업이 없는 경우 abort는 1/128을 반환할 수 있다.
-            foreach (var action in new[] { "rebase", "merge", "cherry-pick" })
+            // Never alter a developer's ongoing merge/rebase/cherry-pick.
+            // Git --git-path resolves linked worktrees and nonstandard gitdirs.
+            foreach (var marker in InProgressGitOperationMarkers)
             {
-                var aborted = await Run(action, "--abort").ConfigureAwait(false);
-                if (aborted.ExitCode < 0 || aborted.TimedOut)
-                    return Fail("ABORT_FAILED:" + action, aborted);
+                var probe = await Run("rev-parse", "--git-path", marker)
+                    .ConfigureAwait(false);
+                if (probe.ExitCode != 0)
+                    return Fail("GIT_OPERATION_PROBE_FAILED:" + marker, probe);
+                if (IsGitOperationMarkerPresent(
+                    workingDirectory, probe.StandardOutput.Trim()))
+                    return Fail("GIT_OPERATION_IN_PROGRESS:" + marker);
             }
 
             // A previous push may have failed after a ProjectHub commit accidentally
