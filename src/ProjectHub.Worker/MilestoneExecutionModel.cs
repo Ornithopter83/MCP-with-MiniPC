@@ -777,18 +777,23 @@ internal static class MilestoneDefinitionContract
             .Select(item => item.Key)
             .OrderBy(id => int.Parse(id))
             .ToArray();
-        builder.AppendLine("WORK_COMPLETED: " + (completedIds.Length == 0 ? "none" : string.Join(",", completedIds)));
-        builder.AppendLine("WORK_BLOCKED: " + (blockedIds.Length == 0 ? "none" : string.Join(",", blockedIds)));
-        builder.AppendLine("WORK_PENDING: " + (pendingIds.Length == 0 ? "none" : string.Join(",", pendingIds)));
+        // These aggregate identifiers describe SuperVisor milestones, NOT
+        // temporary WORK subprocesses. Avoid a false "WORK_COMPLETED: none".
+        builder.AppendLine("SV_COMPLETED: " + (completedIds.Length == 0 ? "none" : string.Join(",", completedIds)));
+        builder.AppendLine("SV_BLOCKED: " + (blockedIds.Length == 0 ? "none" : string.Join(",", blockedIds)));
+        builder.AppendLine("SV_PENDING: " + (pendingIds.Length == 0 ? "none" : string.Join(",", pendingIds)));
         if (!string.IsNullOrWhiteSpace(workingDirectory) && !string.IsNullOrWhiteSpace(jobId))
         {
             var workHistory = WorkExecutionJournal.ReadAll(workingDirectory, jobId);
             var unfinished = workHistory.Where(item => item.State is "RUNNING" or "IN_PROGRESS")
                 .Select(item => item.WorkItemId).ToArray();
-            builder.AppendLine("WORK_IN_PROGRESS: " +
-                (unfinished.Length == 0 ? "none" : string.Join(",", unfinished)));
-            builder.AppendLine("WORK_IDS_USED: " +
-                (workHistory.Count == 0 ? "none" : string.Join(",", workHistory.Select(item => item.WorkItemId))));
+            if (workHistory.Count > 0)
+            {
+                builder.AppendLine("LEGACY_WORK_IN_PROGRESS: " +
+                    (unfinished.Length == 0 ? "none" : string.Join(",", unfinished)));
+                builder.AppendLine("LEGACY_WORK_IDS_USED: " +
+                    string.Join(",", workHistory.Select(item => item.WorkItemId)));
+            }
         }
         builder.AppendLine("SV_ROLE: #1, fresh session each milestone; temporary WORK delegated by SV and HIGH.");
         // The legacy WORK_* fields above describe the SV aggregate (#1), not
@@ -801,7 +806,7 @@ internal static class MilestoneDefinitionContract
             var work = RoleTextProtocol.ParseWork(pair.Value);
             if (work.IsValid && string.Equals(work.Status, "blocked", StringComparison.OrdinalIgnoreCase))
             {
-                builder.AppendLine("WORK_BLOCKED_DETAIL: " + pair.Key);
+                builder.AppendLine("SV_BLOCKED_DETAIL: " + pair.Key);
                 builder.AppendLine("- summary=" + Limit(work.Summary, 800));
                 foreach (var issue in work.Issues.Take(3))
                     builder.AppendLine("- issue=" + Limit(issue, 600));
@@ -971,7 +976,7 @@ internal static class MilestoneDefinitionContract
     public static string FormatMechanicalResult(MilestoneMechanicalResult result) =>
         $"MECHANICAL {result.Operation}" +
         Environment.NewLine +
-        $"status={(result.Success ? "COMPLETED" : "FAILED")}" +
+        $"status={(result.Summary.StartsWith("BUILD_SKIPPED:", StringComparison.Ordinal) ? "SKIPPED" : result.Success ? "COMPLETED" : "FAILED")}" +
         Environment.NewLine +
         $"exitCode={result.ExitCode}" +
         Environment.NewLine +
