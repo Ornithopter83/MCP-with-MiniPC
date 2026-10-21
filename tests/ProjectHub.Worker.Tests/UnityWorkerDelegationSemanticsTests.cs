@@ -39,47 +39,46 @@ public sealed class UnityWorkerDelegationSemanticsTests
     }
 
     [Fact]
-    public async Task SameParent_ConcurrentCallsAreSerialized()
+    public async Task SameHighParent_ConcurrentCallsAreSerialized()
     {
         using var bridge = new BridgeServer();
-        var session = new WorkerMcpSession(
-            "HIGH", "job", Path.GetTempPath(), CancellationToken.None);
-        var active = 0;
-        var peak = 0;
-        bridge.McpToolExecutor = async (_, _, _, token) =>
+        var root = Path.Combine(Path.GetTempPath(),
+            "projecthub-serial-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "docs"));
+        try
         {
-            var running = Interlocked.Increment(ref active);
-            Interlocked.Exchange(ref peak, Math.Max(peak, running));
-            try
+            var high = new WorkerMcpSession(
+                "HIGH", "job", root, CancellationToken.None);
+            var active = 0;
+            var peak = 0;
+            bridge.McpToolExecutor = async (_, _, _, token) =>
             {
-                await Task.Delay(40, token);
-                return "INVOCATION: child\nRESULT: completed";
-            }
-            finally
-            {
-                Interlocked.Decrement(ref active);
-            }
-        };
-        using var doc = JsonDocument.Parse(
-            """{"task":"review","paths":["docs"]}""");
-        // Read-only HIGH scopes must exist, so inspect an actual directory
-        // when using the same validation rules as real MCP calls.
-        using var realDoc = JsonDocument.Parse(JsonSerializer.Serialize(new
+                var running = Interlocked.Increment(ref active);
+                Interlocked.Exchange(ref peak, Math.Max(peak, running));
+                try
+                {
+                    await Task.Delay(40, token);
+                    return "INVOCATION: child\nRESULT: completed";
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref active);
+                }
+            };
+            using var doc = JsonDocument.Parse(
+                """{"task":"review","paths":["docs"],"read_only":true}""");
+            var first = bridge.ExecuteDelegatedWorkAsync(
+                high, doc.RootElement, CancellationToken.None);
+            var second = bridge.ExecuteDelegatedWorkAsync(
+                high, doc.RootElement, CancellationToken.None);
+            await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, peak);
+            Assert.Equal(2, Volatile.Read(ref high.SuccessfulDelegations));
+        }
+        finally
         {
-            task = "review",
-            paths = new[] { Path.GetFileName(Path.GetTempPath().TrimEnd(
-                Path.DirectorySeparatorChar)) }
-        }));
-        // A write-capable SV session permits narrow future file scopes.
-        var sv = new WorkerMcpSession(
-            "SV", "job", Path.GetTempPath(), CancellationToken.None);
-        var first = bridge.ExecuteDelegatedWorkAsync(
-            sv, doc.RootElement, CancellationToken.None);
-        var second = bridge.ExecuteDelegatedWorkAsync(
-            sv, doc.RootElement, CancellationToken.None);
-        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(1, peak);
-        Assert.Equal(2, Volatile.Read(ref sv.SuccessfulDelegations));
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
