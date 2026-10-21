@@ -1016,8 +1016,19 @@ internal static class MilestoneDefinitionContract
         string? finalMessage,
         string? standardError)
     {
+        var raw = finalMessage?.Trim() ?? string.Empty;
+        var parsed = RoleTextProtocol.ParseWork(raw);
         if (exitCode != 0)
         {
+            // Preserve the actual blocked code and evidence when a tool or
+            // policy rejected an otherwise well-formed role report.
+            if (parsed.IsValid && string.Equals(parsed.Status, "blocked",
+                    StringComparison.OrdinalIgnoreCase))
+                return RoleTextProtocol.BuildResult("blocked", parsed.Summary,
+                    parsed.ChangedPaths,
+                    parsed.Issues.Concat(string.IsNullOrWhiteSpace(standardError)
+                        ? Array.Empty<string>()
+                        : new[] { standardError.Trim() }).ToArray());
             return RoleTextProtocol.BuildResult(
                 "blocked",
                 string.IsNullOrWhiteSpace(standardError)
@@ -1025,8 +1036,6 @@ internal static class MilestoneDefinitionContract
                     : standardError.Trim());
         }
 
-        var raw = finalMessage?.Trim() ?? string.Empty;
-        var parsed = RoleTextProtocol.ParseWork(raw);
         return parsed.IsValid
             ? RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
                 parsed.ChangedPaths, parsed.Issues)
@@ -1041,8 +1050,17 @@ internal static class MilestoneDefinitionContract
         string? finalMessage,
         string? standardError)
     {
+        var raw = finalMessage?.Trim() ?? string.Empty;
+        var parsed = RoleTextProtocol.ParseHigh(raw);
         if (exitCode != 0)
         {
+            if (parsed.IsValid && string.Equals(parsed.Status, "blocked",
+                    StringComparison.OrdinalIgnoreCase))
+                return RoleTextProtocol.BuildResult("blocked", parsed.Summary,
+                    parsed.ChangedPaths,
+                    parsed.Issues.Concat(string.IsNullOrWhiteSpace(standardError)
+                        ? Array.Empty<string>()
+                        : new[] { standardError.Trim() }).ToArray());
             return RoleTextProtocol.BuildResult(
                 "blocked",
                 string.IsNullOrWhiteSpace(standardError)
@@ -1050,8 +1068,6 @@ internal static class MilestoneDefinitionContract
                     : standardError.Trim());
         }
 
-        var raw = finalMessage?.Trim() ?? string.Empty;
-        var parsed = RoleTextProtocol.ParseHigh(raw);
         // Preserve unparseable HIGH evidence for diagnosis.
         if (parsed.IsValid)
             return RoleTextProtocol.BuildResult(parsed.Status, parsed.Summary,
