@@ -61,8 +61,50 @@ public static class RoleContractLoader
     }
 
     public static string BuildSvPrompt(string body, string root) =>
-        "[ACTION=WORK]\nPROJECT_ROOT: " + root + "\n@@SV_INSTRUCTIONS\n" +
+        "[ACTION=WORK]\nPROJECT_ROOT: " + root +
+        "\n@@AVAILABLE_PATHS\n" + BuildDelegationPathInventory(root) +
+        "\n@@SV_INSTRUCTIONS\n" +
         body + "\n\n" + EncodingGuidance + "\n" + LoadSvFooter();
+
+    internal static string BuildDelegationPathInventory(string root)
+    {
+        // Give the delegator a grounded folder inventory without opening a
+        // shell; otherwise it may repeatedly delegate nonexistent README/src.
+        try
+        {
+            var paths = new List<string>();
+            var pending = new Queue<(string Folder, int Depth)>();
+            pending.Enqueue((Path.GetFullPath(root), 0));
+            while (pending.Count > 0 && paths.Count < 120)
+            {
+                var (folder, depth) = pending.Dequeue();
+                foreach (var entry in Directory.EnumerateFileSystemEntries(folder)
+                             .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+                {
+                    var relative = Path.GetRelativePath(root, entry).Replace('\\', '/');
+                    if (!TemporaryWorkScopeRegistry.IsAllowedPath(relative))
+                        continue;
+                    var isDirectory = Directory.Exists(entry);
+                    paths.Add(relative + (isDirectory ? "/" : ""));
+                    if (paths.Count >= 120)
+                        break;
+                    if (isDirectory && depth < 2 &&
+                        (File.GetAttributes(entry) & FileAttributes.ReparsePoint) == 0)
+                        pending.Enqueue((entry, depth + 1));
+                }
+            }
+            return paths.Count == 0 ? "허용된 파일 경로가 없음" :
+                string.Join("\n", paths);
+        }
+        catch (IOException)
+        {
+            return "경로 목록 조회 실패. 존재하지 않는 경로는 위임하지 않는다.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return "경로 목록 접근 불가. 존재하지 않는 경로는 위임하지 않는다.";
+        }
+    }
 
     public static string BuildHighPrompt(string body) =>
         "[ACTION=HIGH]\n" +
