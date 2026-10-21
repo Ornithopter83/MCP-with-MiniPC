@@ -20,7 +20,7 @@ internal static class MilestoneBuildRunner
         var targets = DiscoverTargets(root, workItems).ToArray();
         if (targets.Length == 0)
             return new[] { new MilestoneMechanicalResult("BUILD", true, 0, "",
-                "", "BUILD_SKIPPED: 빌드 매니페스트 없음") };
+                "", "BUILD_SKIPPED: 변경 범위 내에서 실행 가능한 빌드 대상 없음") };
 
         var results = new List<MilestoneMechanicalResult>();
         foreach (var target in targets)
