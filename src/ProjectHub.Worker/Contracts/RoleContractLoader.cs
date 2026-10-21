@@ -18,6 +18,13 @@ public static class RoleContractLoader
         "src/ProjectHub.Worker/Contracts/HIGH-ROUTING-CONTRACT.md";
 
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
+    // On a resumed HQ CLI conversation the first turn already injected the
+    // complete contract. Keep web/new-session calls self-contained.
+    internal static string HqContractForTurn(bool includeFullContract) =>
+        includeFullContract
+            ? LoadHqFooter()
+            : BuildContractReference(HqContractPath);
+
     public static string LoadSvFooter() => Load("SV-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");
