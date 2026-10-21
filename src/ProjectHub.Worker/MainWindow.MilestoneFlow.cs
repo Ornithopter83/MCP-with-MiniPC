@@ -1232,30 +1232,90 @@ public partial class MainWindow
         var reference = WorkerHistoryCardPolicy.NewInvocationReference(milestone.Id, "SV-1");
         try
         {
+            // This invocation is read-only: real file edits must start in a
+            // bounded temporary WORK. A separate writable SV session is
+            // available only after mechanically verified WORK failure.
             var result = await RunCoordinatorRoleAsync(
                 jobId, "SV",
                 RoleContractLoader.BuildSvPrompt(milestone.SvInstructions, workingDirectory),
                 settings, workingDirectory, null, null, cancellationToken,
-                milestone.ReadOnlyNoFileChanges
-                    ? CodexSandboxMode.ReadOnly
-                    : CodexSandboxMode.WorkspaceWrite,
+                CodexSandboxMode.ReadOnly,
                 historyWorkItemId: "1", historyReferenceId: reference,
                 mcpToken: token);
-            // Delegation is optional, but its actual success count must be visible.
-            var successfulDelegations = _bridgeServer.SuccessfulDelegationCount(token);
+            var metrics = _bridgeServer.GetDelegationMetrics(token);
             RunOnUi(() => AddRoleProgressHistory(
                 WorkerRoleState.Manager,
-                "실제 WORK 위임 성공: " + successfulDelegations + "회",
+                "WORK 위임 시도: " + metrics.Attempts +
+                "회 · 완료: " + metrics.Successful +
+                "회 · 실행 실패: " + metrics.RecoverableFailures +
+                "회 · 차단: " + metrics.UnsafeFailures + "회",
                 settings.Provider, referenceId: reference, workItemId: "1"));
-            var parsed = RoleTextProtocol.ParseWork(result.FinalMessage);
-            var isBlocked = result.ExitCode != 0 ||
-                (parsed.IsValid && string.Equals(parsed.Status, "blocked",
-                    StringComparison.OrdinalIgnoreCase));
+
+            var preliminary = RoleTextProtocol.ParseWork(result.FinalMessage);
+            var wantsRecovery = result.ExitCode != 0 ||
+                !preliminary.IsValid ||
+                !string.Equals(preliminary.Status, "completed",
+                    StringComparison.OrdinalIgnoreCase) ||
+                metrics.Successful == 0;
+            if (metrics.UnsafeFailures > 0)
+            {
+                // Scope violations, invalid paths and cancellation are never
+                // silently converted into unrestricted SV writes.
+                result = result with
+                {
+                    ExitCode = 1,
+                    FinalMessage = RoleTextProtocol.BuildResult(
+                        "blocked", SpecialistDelegationPolicy.UnsafeFailureCode)
+                };
+            }
+            else if (wantsRecovery &&
+                SpecialistDelegationPolicy.CanDirectFallback(
+                    milestone.ReadOnlyNoFileChanges,
+                    metrics.Attempts, metrics.Successful,
+                    metrics.RecoverableFailures, metrics.UnsafeFailures,
+                    cancellationToken.IsCancellationRequested))
+            {
+                // This is deliberately a NEW provider session, not a resume.
+                // No MCP bearer token is supplied to the writable fallback.
+                RunOnUi(() => AddTaskMessage(
+                    "SV DIRECT FALLBACK",
+                    "WORK 실행 실패가 기계적으로 확인되어 직접 복구 1회를 허용합니다. " +
+                    "시도 " + metrics.Attempts + "회, 성공 " +
+                    metrics.Successful + "회, 실패 " +
+                    metrics.RecoverableFailures + "회.",
+                    status: "RECOVERED", referenceId: reference));
+                var recoveryInstructions = milestone.SvInstructions +
+                    Environment.NewLine + Environment.NewLine +
+                    "WORKER_APPROVED_DIRECT_FALLBACK: 실제 임시 WORK 실행이 실패했습니다. " +
+                    "이 세션에만 직접 파일 수정 권한을 허용합니다. " +
+                    "위임 시도에서 이미 변경된 파일을 재실행하거나 덮어쓰지 말고 " +
+                    "현재 파일 상태를 확인해 남은 구현만 최소 수정하라. " +
+                    "Git 변경 금지. 실패 원인과 직접 처리 내역을 보고하라." +
+                    Environment.NewLine + "실패한 초기 SuperVisor 결과:" +
+                    Environment.NewLine +
+                    MilestoneDefinitionContract.Limit(result.FinalMessage, 1800);
+                result = await RunCoordinatorRoleAsync(
+                    jobId, "SV",
+                    RoleContractLoader.BuildSvPrompt(
+                        recoveryInstructions, workingDirectory),
+                    settings, workingDirectory, null, null, cancellationToken,
+                    CodexSandboxMode.WorkspaceWrite,
+                    historyWorkItemId: "1", historyReferenceId: reference);
+            }
+            else
+            {
+                result = SpecialistDelegationPolicy.Enforce(
+                    result, !milestone.ReadOnlyNoFileChanges,
+                    metrics.Successful);
+            }
+
             var report = MilestoneDefinitionContract.NormalizeWorkReport(
                 result.ExitCode, result.FinalMessage, result.StandardError);
+            var normalizedStatus = MilestoneDefinitionContract.ReadWorkStatus(report);
             RunOnUi(() => AddRoleResponseHistory(WorkerRoleState.Manager,
                 "SuperVisor 통합 보고", report, result.Usage, result.Files,
-                status: isBlocked ? "BLOCKED" : "RECEIVED",
+                status: string.Equals(normalizedStatus, "blocked",
+                    StringComparison.OrdinalIgnoreCase) ? "BLOCKED" : "RECEIVED",
                 providerWireId: settings.Provider, fullMessage: report,
                 workItemId: "1", referenceId: reference));
             return report;
