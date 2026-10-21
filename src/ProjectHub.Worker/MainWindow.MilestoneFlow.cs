@@ -1286,26 +1286,22 @@ public partial class MainWindow
             if (settings.ProviderKind != AiServiceProvider.OpenAI)
                 throw new InvalidOperationException("SV_WORK_DELEGATION_REQUIRES_CODEX_CLI");
 
-            // Phase 1: analyse and QUEUE bounded WORK tasks. No WORK runs
-            // while the SuperVisor provider process is still alive.
-            var draft = await RunCoordinatorRoleAsync(
+            // UnityWorker model: execute each delegate_work MCP tool call now;
+            // parent SuperVisor remains alive and receives the real child result.
+            var result = await RunCoordinatorRoleAsync(
                 jobId, "SV",
                 RoleContractLoader.BuildSvPrompt(
                     milestone.SvInstructions +
                     Environment.NewLine +
-                    "실작업·조사는 delegate_work로 큐에 배정한다. " +
-                    "큐 등록 확인은 WORK 성공 결과가 아니다. " +
-                    "이 첫 세션에서는 최종 완료를 주장하지 말고 배정 후 종료한다.",
+                    "작업을 먼저 분석하고 실제 실행·조사를 delegate_work에 배정하라. " +
+                    "각 위임 도구 응답은 WORK 실행의 최종 결과이며 이를 직접 읽고 " +
+                    "필요 시 다음 독립 과업을 위임한 뒤 실제 증거만 통합 보고하라.",
                     workingDirectory),
                 settings, workingDirectory, null, null, cancellationToken,
                 SpecialistDelegationPolicy.DelegationSandbox,
                 historyWorkItemId: "1", historyReferenceId: reference,
                 mcpToken: token);
-
-            // Phase 2: only AFTER phase-1 session exit, run each queued WORK
-            // in a fresh, independent, sequential provider session.
-            var metrics = await _bridgeServer.DrainDelegatedWorkAsync(
-                token, cancellationToken);
+            var metrics = _bridgeServer.GetDelegationMetrics(token);
             RunOnUi(() => AddRoleProgressHistory(
                 WorkerRoleState.Manager,
                 "WORK 위임: 시도 " + metrics.Attempts +
@@ -1315,48 +1311,26 @@ public partial class MainWindow
                 "회 · 위반 " + metrics.UnsafeFailures + "회",
                 settings.Provider, referenceId: reference, workItemId: "1"));
 
-            AiRoleRunResult result;
-            if (metrics.Successful == 0 || metrics.UnsafeFailures > 0)
+            if (SpecialistDelegationPolicy.MustBlockForUnsafeDelegation(metrics))
             {
-                // Every actual task must run through WORK. No direct-write
-                // SuperVisor fallback is ever granted.
-                var reason = metrics.UnsafeFailures > 0
-                    ? SpecialistDelegationPolicy.UnsafeFailureCode
-                    : SpecialistDelegationPolicy.MissingWorkCode;
-                result = draft with
+                var parsed = RoleTextProtocol.ParseWork(result.FinalMessage);
+                var original = parsed.IsValid ? parsed.Summary :
+                    MilestoneDefinitionContract.Limit(result.FinalMessage, 1800);
+                result = result with
                 {
                     ExitCode = 1,
                     FinalMessage = RoleTextProtocol.BuildResult(
-                        "blocked", reason,
-                        issues: metrics.Evidence.Select(item =>
-                            item.Status + ": " + item.Detail).ToArray())
+                        "blocked", SpecialistDelegationPolicy.UnsafeFailureCode,
+                        issues: new[] { original }.Concat(
+                            metrics.Evidence.Where(entry => entry.Status is
+                                "UNSAFE" or "CANCELED").Select(entry => entry.Detail)).ToArray())
                 };
             }
             else
             {
-                // Phase 3: new, command-disabled SV session integrates
-                // mechanically recorded child results; no direct inspection.
-                var evidence = new System.Text.StringBuilder();
-                MilestoneDefinitionContract.AppendDelegatedChildren(
-                    evidence, "SV", metrics);
-                result = await RunCoordinatorRoleAsync(
-                    jobId, "SV_INTEGRATION",
-                    RoleContractLoader.BuildSvPrompt(
-                        milestone.SvInstructions + Environment.NewLine +
-                        "WORKER_VERIFIED_CHILD_RESULTS:" + Environment.NewLine +
-                        evidence + Environment.NewLine +
-                        "하위 WORK 실행이 모두 종료됐다. 제공된 실행 증거만 통합·판정하고 " +
-                        "추가 셸·파일 명령이나 직접 구현을 하지 마라. " +
-                        "미완료·거부된 결과는 ISSUES에 명시하라." +
-                        Environment.NewLine +
-                        "초기 배정 보고:" + Environment.NewLine +
-                        MilestoneDefinitionContract.Limit(draft.FinalMessage, 1400),
-                        workingDirectory),
-                    settings, workingDirectory, null, null, cancellationToken,
-                    CodexSandboxMode.ReadOnly,
-                    historyWorkItemId: "1", historyReferenceId: reference);
                 result = SpecialistDelegationPolicy.Enforce(
-                    result, mandatory: true, successfulDelegations: metrics.Successful);
+                    result, mandatory: true,
+                    successfulDelegations: metrics.Successful);
             }
 
             var report = MilestoneDefinitionContract.NormalizeWorkReport(
@@ -1933,23 +1907,21 @@ public partial class MainWindow
             throw new InvalidOperationException("HIGH_MCP_BRIDGE_NOT_RUNNING");
         try
         {
-            // Phase 1: HIGH selects evidence tasks and queues WORK jobs.
-            // No child provider executes until this HIGH process exits.
-            var draft = await RunCoordinatorRoleAsync(
+            // As in UnityWorker, HIGH awaits each MCP WORK invocation and
+            // receives its real result inside this SAME parent provider turn.
+            var result = await RunCoordinatorRoleAsync(
                 jobId, "HIGH",
                 RoleContractLoader.BuildHighPrompt(
                     RoleContractLoader.BuildHistoryPrompt(prompt) +
                     Environment.NewLine +
-                    "읽기 전용 검증·조사는 delegate_work로 먼저 모두 큐에 등록하라. " +
-                    "이 첫 세션에서는 아직 WORK 결과가 없으므로 완료 판정하지 않는다."),
-                high, workingDirectory,
-                null, null, cancellationToken, CodexSandboxMode.ReadOnly,
+                    "실제 파일 검토·테스트는 delegate_work(read_only=true)로 먼저 요청하라. " +
+                    "MCP 도구 호출이 WORK 결과까지 반환하므로 직접 검증 내용을 확인하고 " +
+                    "미검증 항목을 구분해 최종 판정하라. 직접 명령·파일 수정은 금지한다."),
+                high, workingDirectory, null, null, cancellationToken,
+                CodexSandboxMode.ReadOnly,
                 historyWorkItemId: "HIGH",
                 historyReferenceId: historyReferenceId, mcpToken: token);
-
-            // Phase 2: awaited AFTER HIGH provider exit, serial WORK calls.
-            var metrics = await _bridgeServer.DrainDelegatedWorkAsync(
-                token, cancellationToken);
+            var metrics = _bridgeServer.GetDelegationMetrics(token);
             recordDelegations?.Invoke(metrics);
             RunOnUi(() => AddRoleProgressHistory(
                 WorkerRoleState.High,
@@ -1960,42 +1932,37 @@ public partial class MainWindow
                 high.Provider, referenceId: historyReferenceId,
                 workItemId: "HIGH"));
 
-            if (metrics.Successful == 0 || metrics.UnsafeFailures > 0)
+            if (metrics.UnsafeFailures > 0)
             {
-                return draft with
+                var parsed = RoleTextProtocol.ParseHigh(result.FinalMessage);
+                result = result with
                 {
                     ExitCode = 1,
                     FinalMessage = RoleTextProtocol.BuildResult(
-                        "blocked",
-                        metrics.UnsafeFailures > 0
-                            ? "HIGH_WORK_UNSAFE" : "HIGH_WORK_DELEGATION_REQUIRED",
-                        issues: metrics.Evidence.Select(item =>
-                            item.Status + ": " + item.Detail).ToArray())
+                        "blocked", "HIGH_WORK_UNSAFE",
+                        issues: metrics.Evidence.Where(item =>
+                            item.Status is "UNSAFE" or "CANCELED")
+                            .Select(item => item.Detail)
+                            .Prepend(parsed.IsValid ? parsed.Summary :
+                                MilestoneDefinitionContract.Limit(result.FinalMessage, 1000))
+                            .ToArray())
                 };
             }
-
-            // Phase 3: fresh HIGH reviewer, with no direct execution or
-            // delegation tools, evaluates completed child evidence only.
-            var evidence = new System.Text.StringBuilder();
-            MilestoneDefinitionContract.AppendDelegatedChildren(
-                evidence, "HIGH", metrics);
-            return await RunCoordinatorRoleAsync(
-                jobId, "HIGH_INTEGRATION",
-                RoleContractLoader.BuildHighPrompt(
-                    RoleContractLoader.BuildHistoryPrompt(prompt) +
-                    Environment.NewLine +
-                    "@@VERIFIED_HIGH_WORK" + Environment.NewLine +
-                    evidence + Environment.NewLine +
-                    "검증 WORK의 실제 실행 증거로만 독립 판정하라. " +
-                    "직접 셸·파일 조사·테스트 명령을 실행하지 마라. " +
-                    "실패와 미검증은 ISSUES에 기록하라." +
-                    Environment.NewLine + "최초 배정 보고:" +
-                    Environment.NewLine +
-                    MilestoneDefinitionContract.Limit(draft.FinalMessage, 1400)),
-                high, workingDirectory,
-                null, null, cancellationToken, CodexSandboxMode.ReadOnly,
-                historyWorkItemId: "HIGH",
-                historyReferenceId: historyReferenceId);
+            else if (metrics.Successful == 0 && result.ExitCode == 0 &&
+                     string.Equals(
+                         RoleTextProtocol.ParseHigh(result.FinalMessage).Status,
+                         "completed", StringComparison.OrdinalIgnoreCase))
+            {
+                result = result with
+                {
+                    ExitCode = 1,
+                    FinalMessage = RoleTextProtocol.BuildResult(
+                        "blocked", "HIGH_WORK_DELEGATION_REQUIRED"),
+                    StandardError = result.StandardError + Environment.NewLine +
+                        "HIGH_WORK_DELEGATION_REQUIRED"
+                };
+            }
+            return result;
         }
         finally
         {
