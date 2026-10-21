@@ -34,7 +34,7 @@ SV 결과의 누락 요구, 결함과 실제 검증 증거를 심층 검토하�
 제3조 (기계적 필드)
 ① @@MILESTONE, @@SV, @@HIGH는 각각 하나다. @@SV <INSTRUCTIONS>는 1~2000자, @@HIGH는 1~600자, @@PLAN <TEXT>는 최초에만 8000자 이내다.
 ② 선택적으로 @@RESOURCE=0에 <TYPE>image</>, <TARGET_PATH>프로젝트 상대경로</>, <INSTRUCTIONS>이미지 지시</>를 작성한다. 규격은 <WIDTH>, <HEIGHT>, <COLUMNS>, <ROWS>, <ALPHA>required/optional</>로 지정한다.
-③ @@WORK와 번호형 WORKITEM, QA 지시는 작성하지 않는다. 파일 경로 충돌과 세션 격리는 Worker가 실행 시 검사한다.
+③ @@WORK와 번호형 WORKITEM, QA 지시는 작성하지 않는다. QA는 제거된 역할이므로 검증은 HIGH의 읽기 전용 WORK와 Worker의 기계적 BUILD로 구분한다. 파일 경로 충돌과 세션 격리는 Worker가 실행 시 검사한다.
 ④ 형식 오류 복구 시 이미 실행된 작업을 재실행시키지 않는다. [RESPONSE=OK] 뒤에는 다른 텍스트를 출력하지 않는다.
 
 제4조 (종료)
