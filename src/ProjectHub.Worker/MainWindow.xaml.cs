@@ -1244,14 +1244,15 @@ public partial class MainWindow : Window
 
     private void SetPipelineCard(Border card, TextBlock title, Border iconCircle, System.Windows.Controls.Image icon, string iconAsset, TaskStage stage, RoleVisualPalette palette, bool disabled, bool initialInputIdle)
     {
-        // Show the active CLI executor, never both a parent card and its
-        // WORK card. RESOURCE remains an independent background sidecar.
-        var temporaryWorkRunning = Volatile.Read(ref _activeTemporaryWorkCount) > 0;
-        var current = _directWorkRunning || temporaryWorkRunning
+        // UnityWorker-style nested MCP execution: parent SV/HIGH and child
+        // WORK legitimately remain active together until delegate_work returns.
+        var current = _directWorkRunning
             ? !disabled && stage == TaskStage.Implementer
             : !disabled &&
               (_currentTaskStage == stage ||
-               (stage == TaskStage.Resource && _resourceSidecarActive));
+               (stage == TaskStage.Resource && _resourceSidecarActive) ||
+               (stage == TaskStage.Implementer &&
+                Volatile.Read(ref _activeTemporaryWorkCount) > 0));
         SetPipelineStageAnimation(stage, current);
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
         var colored = visual.IsColored;
