@@ -991,8 +991,9 @@ public partial class MainWindow
                 gitResult = MilestoneGitResult.SkippedReadOnly(
                     milestone.TargetBranch);
             }
-            else if (blockedWorkIds.Length > 0 || pendingWorkIds.Length > 0 ||
-                     buildFailed || outcome == "HIGH_BLOCKED")
+            else if (!MilestoneFinalizationPolicy.ShouldPublish(
+                blockedWorkIds.Length, pendingWorkIds.Length,
+                buildFailed, outcome))
             {
                 // Never publish an unchanged old HEAD and label the Git phase
                 // successful after the implementation was blocked. Keep any
