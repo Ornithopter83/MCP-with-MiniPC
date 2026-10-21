@@ -17,13 +17,23 @@ internal sealed record WorkerMcpSession(
     internal int ToolsCalled;
     internal int SuccessfulDelegations;
     internal int RecoverableDelegationFailures;
+    internal int RejectedDelegations;
     internal int UnsafeDelegationFailures;
+    internal ConcurrentQueue<DelegatedWorkEvidence> Evidence { get; } = new();
     internal bool IsWork => Role == "WORK";
 }
 
+internal sealed record DelegatedWorkEvidence(
+    string Invocation, string Status, string Detail);
+
 internal sealed record DelegationMetrics(
     int Attempts, int Successful, int RecoverableFailures,
-    int UnsafeFailures, bool ToolsListed);
+    int Rejected, int UnsafeFailures, bool ToolsListed,
+    IReadOnlyList<DelegatedWorkEvidence> Evidence)
+{
+    internal static DelegationMetrics Empty { get; } =
+        new(0, 0, 0, 0, 0, false, Array.Empty<DelegatedWorkEvidence>());
+}
 
 public sealed partial class BridgeServer
 {
@@ -34,6 +44,13 @@ public sealed partial class BridgeServer
     internal Func<WorkerMcpSession, string, JsonElement, CancellationToken, Task<string>>?
         McpToolExecutor { get; set; }
     internal Action<string, string>? McpActivity { get; set; }
+
+    // A denied request never started a WORK process. It must not erase
+    // successful independent children, nor authorize direct-write fallback.
+    internal static bool IsRejectedDelegation(Exception error) =>
+        error.Message.StartsWith("WORK_PATH_INVALID_OR_CONFLICT", StringComparison.Ordinal) ||
+        error.Message.StartsWith("WORK_TASK_", StringComparison.Ordinal) ||
+        error.Message.StartsWith("WORK_READ_ONLY_INVALID", StringComparison.Ordinal);
 
     internal static bool IsRecoverableWorkFailure(Exception error) =>
         error is InvalidOperationException &&
@@ -81,9 +98,11 @@ public sealed partial class BridgeServer
                 Volatile.Read(ref session.ToolsCalled),
                 Volatile.Read(ref session.SuccessfulDelegations),
                 Volatile.Read(ref session.RecoverableDelegationFailures),
+                Volatile.Read(ref session.RejectedDelegations),
                 Volatile.Read(ref session.UnsafeDelegationFailures),
-                Volatile.Read(ref session.ToolsListed) != 0)
-            : new DelegationMetrics(0, 0, 0, 0, false);
+                Volatile.Read(ref session.ToolsListed) != 0,
+                session.Evidence.ToArray())
+            : DelegationMetrics.Empty;
 
     internal void UnregisterMcpSession(string token)
     {
@@ -92,6 +111,7 @@ public sealed partial class BridgeServer
             Volatile.Read(ref s.ToolsCalled) + " completed=" +
             Volatile.Read(ref s.SuccessfulDelegations) +
             " recoverable=" + Volatile.Read(ref s.RecoverableDelegationFailures) +
+            " rejected=" + Volatile.Read(ref s.RejectedDelegations) +
             " unsafe=" + Volatile.Read(ref s.UnsafeDelegationFailures));
     }
 
@@ -188,21 +208,36 @@ public sealed partial class BridgeServer
                     message = await handler(session, "delegate_work", args, linked.Token)
                         .ConfigureAwait(false);
                     Interlocked.Increment(ref session.SuccessfulDelegations);
+                    var invocation = message.StartsWith("INVOCATION: ", StringComparison.Ordinal)
+                        ? message["INVOCATION: ".Length..].Split('\n')[0].Trim()
+                        : session.InvocationId;
+                    session.Evidence.Enqueue(new DelegatedWorkEvidence(
+                        invocation, "COMPLETED", "WORK result verified"));
                 }
                 catch (OperationCanceledException)
                 {
                     failed = true;
                     Interlocked.Increment(ref session.UnsafeDelegationFailures);
+                    session.Evidence.Enqueue(new DelegatedWorkEvidence(
+                        session.InvocationId, "CANCELED", "WORK_CANCELED_OR_TIMEOUT"));
                     message = "WORK_CANCELED_OR_TIMEOUT";
                 }
                 catch (Exception error)
                 {
                     failed = true;
-                    if (IsRecoverableWorkFailure(error))
+                    var classification = IsRejectedDelegation(error)
+                        ? "REJECTED" : IsRecoverableWorkFailure(error)
+                            ? "EXECUTION_FAILED" : "UNSAFE";
+                    if (classification == "REJECTED")
+                        Interlocked.Increment(ref session.RejectedDelegations);
+                    else if (classification == "EXECUTION_FAILED")
                         Interlocked.Increment(ref session.RecoverableDelegationFailures);
                     else
                         Interlocked.Increment(ref session.UnsafeDelegationFailures);
                     message = error.GetType().Name + ": " + error.Message;
+                    session.Evidence.Enqueue(new DelegatedWorkEvidence(
+                        session.InvocationId, classification,
+                        message.Length <= 500 ? message : message[..500]));
                 }
                 McpActivity?.Invoke(session.Role, (failed ? "TOOL_FAILED" : "TOOL_DONE") +
                     " delegate_work");
