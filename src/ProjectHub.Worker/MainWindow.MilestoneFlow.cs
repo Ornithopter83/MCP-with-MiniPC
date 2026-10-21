@@ -945,6 +945,7 @@ public partial class MainWindow
             highReport = await ExecuteMilestoneHighAsync(
                 jobId, workingDirectory, milestone, workReports, resourceReports,
                 mechanicalReports, implementer, high, 1, cancellationToken,
+                supervisorDelegations,
                 metrics => highDelegations = metrics);
             var afterHigh = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 workingDirectory, cancellationToken);
@@ -1862,6 +1863,7 @@ public partial class MainWindow
         WorkerAiRoleSettings high,
         int validationRound,
         CancellationToken cancellationToken,
+        DelegationMetrics? supervisorDelegations = null,
         Action<DelegationMetrics>? recordDelegations = null)
     {
         _ = resourceReports;
@@ -1886,7 +1888,8 @@ public partial class MainWindow
             MilestoneDefinitionContract.BuildHighContext(
                 milestone,
                 workReports,
-                mechanicalReports));
+                mechanicalReports,
+                supervisorDelegations));
 
         var result = await RunHighDelegatedReviewAsync(
             jobId, workingDirectory, high, prompt,
