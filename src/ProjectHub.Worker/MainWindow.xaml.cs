@@ -3318,12 +3318,6 @@ public partial class MainWindow : Window
                 status, referenceId, workItemId, persistenceSource));
             return;
         }
-        if (!Dispatcher.CheckAccess())
-        {
-            RunOnUi(() => AddRoleProgressHistory(role, body, providerWireId,
-                workNumber, referenceId, workItemId));
-            return;
-        }
         var text = body?.Trim() ?? string.Empty;
         if (text.Length == 0) return;
 
@@ -3392,6 +3386,12 @@ public partial class MainWindow : Window
         string? referenceId = null,
         string? workItemId = null)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            RunOnUi(() => AddRoleProgressHistory(role, body, providerWireId,
+                workNumber, referenceId, workItemId));
+            return;
+        }
         var text = body?.Trim() ?? string.Empty;
         if (text.Length == 0) return;
 
