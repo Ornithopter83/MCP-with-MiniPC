@@ -3260,6 +3260,12 @@ public partial class MainWindow : Window
 
     private void AddTaskMessage(string source, string? content, long? sizeBytes = null, int? itemCount = null, int? fileCount = null, string? status = null, string? referenceId = null, string? summary = null, bool includeHistory = true, string? workItemId = null)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            RunOnUi(() => AddTaskMessage(source, content, sizeBytes, itemCount,
+                fileCount, status, referenceId, summary, includeHistory, workItemId));
+            return;
+        }
         if (string.IsNullOrWhiteSpace(content)) return;
         var timestamp = DateTimeOffset.Now;
         var trimmed = content.Trim();
@@ -3306,6 +3312,18 @@ public partial class MainWindow : Window
         string? workItemId = null,
         string? persistenceSource = null)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            RunOnUi(() => AddDataFlowHistory(role, title, body, providerWireId,
+                status, referenceId, workItemId, persistenceSource));
+            return;
+        }
+        if (!Dispatcher.CheckAccess())
+        {
+            RunOnUi(() => AddRoleProgressHistory(role, body, providerWireId,
+                workNumber, referenceId, workItemId));
+            return;
+        }
         var text = body?.Trim() ?? string.Empty;
         if (text.Length == 0) return;
 
@@ -3445,6 +3463,13 @@ public partial class MainWindow : Window
         string? referenceId = null,
         string? workItemId = null)
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            RunOnUi(() => AddRoleResponseHistory(role, title, body, usage, files,
+                status, providerWireId, fullMessage, workNumber, referenceId,
+                workItemId));
+            return;
+        }
         var stage = role switch
         {
             WorkerRoleState.Hq => "Coordinator",
