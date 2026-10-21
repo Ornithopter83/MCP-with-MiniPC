@@ -2065,7 +2065,7 @@ public partial class MainWindow : Window
         Action<string>? progress = message => RunOnUi(() =>
         {
             _lastActivityAt = DateTimeOffset.UtcNow;
-            if (roleName is "SV" or "HIGH" or "WORK" &&
+            if ((roleName is "SV" or "HIGH" or "WORK") &&
                 !string.IsNullOrWhiteSpace(historyReferenceId))
             {
                 AddRoleProgressHistory(
