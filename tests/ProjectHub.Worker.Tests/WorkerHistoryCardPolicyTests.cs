@@ -142,4 +142,36 @@ public sealed class WorkerHistoryCardPolicyTests
         Assert.Equal("issue", cards[0].FullMessage);
         Assert.Equal("passed", cards[1].FullMessage);
     }
+
+    [Theory]
+    [InlineData("Manager")]
+    [InlineData("HighLevel")]
+    [InlineData("Implementer")]
+    public void ActiveRoleProgress_UpdatesOneCardThenFinalizesWithoutReappearing(string stage)
+    {
+        var t = DateTimeOffset.UtcNow;
+        var cards = new ObservableCollection<MainWindow.WorkerHistoryEvent>();
+        var first = Card(t, stage, "ROLE_PROGRESS", "작업 진행", "준비", "M1:role:call", status: "RUNNING");
+        var second = Card(t.AddSeconds(5), stage, "ROLE_PROGRESS", "작업 진행",
+            "파일 조사", "M1:role:call", status: "RUNNING");
+
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards, first);
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards, second);
+        Assert.Single(cards);
+        Assert.Contains("준비", cards[0].FullMessage);
+        Assert.Contains("파일 조사", cards[0].FullMessage);
+
+        WorkerHistoryCardPolicy.PublishRoleResponse(cards,
+            Card(t.AddSeconds(10), stage, "ROLE_RESPONSE", "완료", "결과",
+                "M1:role:call", status: "COMPLETED"));
+        Assert.Single(cards);
+        Assert.Equal("ROLE_RESPONSE", cards[0].EventType);
+        Assert.Contains("파일 조사", cards[0].FullMessage);
+
+        WorkerHistoryCardPolicy.AccumulateRoleProgress(cards,
+            Card(t.AddSeconds(11), stage, "ROLE_PROGRESS", "작업 진행",
+                "지연 도착", "M1:role:call", status: "RUNNING"));
+        Assert.Single(cards);
+        Assert.Equal("ROLE_RESPONSE", cards[0].EventType);
+    }
 }
