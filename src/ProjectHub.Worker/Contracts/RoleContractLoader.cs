@@ -48,7 +48,9 @@ public static class RoleContractLoader
             foreach (var path in writePaths)
                 builder.AppendLine("- " + path);
         builder.AppendLine();
-        builder.AppendLine("작업에 필요한 모든 권한은 승인한다.");
+        builder.AppendLine(readOnly
+            ? "읽기 전용 WORK: 지정 경로를 조사하고 결과만 보고한다. 파일 작성·수정·삭제는 금지한다."
+            : "쓰기 WORK: 지정된 WRITE_PATH 안에서만 구현·검증한다. Git 변경은 Worker가 수행한다.");
         builder.AppendLine();
         builder.AppendLine(body ?? string.Empty);
         builder.AppendLine();
