@@ -2149,7 +2149,10 @@ public partial class MainWindow : Window
                     hookPath,
                     isReviewer
                         ? "ProjectHub reviewer command gate"
-                        : "ProjectHub WORK command gate");
+                        : "ProjectHub WORK command gate",
+                    isDelegationTurn
+                        ? BuildExecutionPolicy.DelegatorDeniedToolMatcher
+                        : ".*");
             codexConfigOverrides = isReviewer
                 ? new[] { commandGateOverride }
                 : new[]
