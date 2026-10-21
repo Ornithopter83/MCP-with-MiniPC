@@ -799,7 +799,7 @@ internal static class MilestoneMechanicalExecutor
                 $"commitCreated={(commitCreated ? "YES" : "NO")}" +
                 Environment.NewLine + "cachedOnlyDeletions=" + cachedDeletionCount +
                 Environment.NewLine + "push=" + pushState +
-                Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
+                Environment.NewLine + "mode=FAST_FORWARD_ONLY" +
                 (replacedHead is null ? string.Empty :
                     Environment.NewLine + $"repairedPreviousHead={replacedHead}" +
                     Environment.NewLine + $"removedRuntimeFiles={repairedRuntimeCount}") +
@@ -994,7 +994,9 @@ internal static class MilestoneMechanicalExecutor
             for (var attempt = 1; attempt <= 3; attempt++)
             {
                 progress?.Report($"GIT_FINALIZE · push {attempt}/3");
-                pushed = await Run("push", "--force", "origin",
+                // Preserve published history: remote divergence must fail, never
+                // overwrite another user's new commits.
+                pushed = await Run("push", "origin",
                     "HEAD:refs/heads/" + RequiredBranch).ConfigureAwait(false);
                 if (pushed.ExitCode == 0)
                     break;
@@ -1047,7 +1049,7 @@ internal static class MilestoneMechanicalExecutor
                     (cachedDeletionCount > 0 ? "YES" : "NOT_APPLICABLE") +
                 Environment.NewLine + "noChanges=" + (!commitCreated ? "YES" : "NO") +
                 Environment.NewLine + "push=" + pushState +
-                Environment.NewLine + "mode=FORCE_LOCAL_MAIN_WINS" +
+                Environment.NewLine + "mode=FAST_FORWARD_ONLY" +
                 Environment.NewLine + $"stagingPaths={eligibleCount}" +
                 Environment.NewLine + $"preservedOtherStaged={preservedOtherStaged}" +
                 Environment.NewLine + $"repairedRuntimeFiles={repairedRuntimeCount}" +
