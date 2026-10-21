@@ -6,9 +6,27 @@ namespace ProjectHub.Worker;
 public partial class MainWindow
 {
     private readonly TemporaryWorkScopeRegistry _temporaryWorkScopes = new();
+    // UnityWorker uses one global WORK lane, regardless of parent role.
+    private readonly SemaphoreSlim _temporaryWorkSerial = new(1, 1);
     private int _activeTemporaryWorkCount;
 
     private async Task<string> ExecuteMcpToolAsync(
+        WorkerMcpSession session, string tool, JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        await _temporaryWorkSerial.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await ExecuteMcpToolCoreAsync(session, tool, arguments,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _temporaryWorkSerial.Release();
+        }
+    }
+
+    private async Task<string> ExecuteMcpToolCoreAsync(
         WorkerMcpSession session, string tool, JsonElement arguments,
         CancellationToken cancellationToken)
     {
