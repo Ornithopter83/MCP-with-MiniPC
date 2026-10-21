@@ -7,7 +7,7 @@ public sealed class WorkerHistoryEventTests
     [Theory]
     [InlineData("Coordinator", null, "설계 관제")]
     [InlineData("HighLevel", null, "검토")]
-    [InlineData("Manager", null, "SV")]
+    [InlineData("Manager", null, "SuperVisor")]
     [InlineData("Resource", null, "작업 (#0, 리소스)")]
     [InlineData("Implementer", "0", "작업 (#0, 리소스)")]
     [InlineData("Implementer", "10", "작업 (#10, 일반 작업)")]
