@@ -21,6 +21,7 @@ internal sealed record WorkerMcpSession(
     internal int RejectedDelegations;
     internal int UnsafeDelegationFailures;
     internal ConcurrentQueue<DelegatedWorkEvidence> Evidence { get; } = new();
+    internal ConcurrentQueue<JsonElement> PendingDelegations { get; } = new();
     internal bool IsWork => Role == "WORK";
 }
 
@@ -105,6 +106,100 @@ public sealed partial class BridgeServer
                 Volatile.Read(ref session.ToolsListed) != 0,
                 session.Evidence.ToArray())
             : DelegationMetrics.Empty;
+
+    /// <summary>
+    /// The delegating CLI must have EXITED before child WORK starts.
+    /// Draining is deliberately sequential: there is never a simultaneous
+    /// role/child provider session, including SV/HIGH versus WORK.
+    /// </summary>
+    internal async Task<DelegationMetrics> DrainDelegatedWorkAsync(
+        string token, CancellationToken cancellationToken)
+    {
+        if (!_mcpSessions.TryGetValue(token, out var session) || session.IsWork)
+            throw new InvalidOperationException("PARENT_MCP_SESSION_NOT_FOUND");
+        while (session.PendingDelegations.TryDequeue(out var args))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var handler = McpToolExecutor ??
+                throw new InvalidOperationException("MCP_EXECUTOR_NOT_CONFIGURED");
+            try
+            {
+                var message = await handler(session, "delegate_work", args, cancellationToken)
+                    .ConfigureAwait(false);
+                Interlocked.Increment(ref session.SuccessfulDelegations);
+                var invocation = message.StartsWith("INVOCATION: ", StringComparison.Ordinal)
+                    ? message["INVOCATION: ".Length..].Split('\n')[0].Trim()
+                    : session.InvocationId;
+                session.Evidence.Enqueue(new DelegatedWorkEvidence(
+                    invocation, "COMPLETED", "WORK result verified"));
+                McpActivity?.Invoke(session.Role, "TOOL_DONE delegate_work");
+            }
+            catch (OperationCanceledException)
+            {
+                Interlocked.Increment(ref session.UnsafeDelegationFailures);
+                session.Evidence.Enqueue(new DelegatedWorkEvidence(
+                    session.InvocationId, "CANCELED", "WORK_CANCELED_OR_TIMEOUT"));
+                McpActivity?.Invoke(session.Role, "TOOL_FAILED delegate_work");
+                throw;
+            }
+            catch (Exception error)
+            {
+                var classification = IsRejectedDelegation(error)
+                    ? "REJECTED" : IsRecoverableWorkFailure(error)
+                        ? "EXECUTION_FAILED" : "UNSAFE";
+                if (classification == "REJECTED")
+                    Interlocked.Increment(ref session.RejectedDelegations);
+                else if (classification == "EXECUTION_FAILED")
+                    Interlocked.Increment(ref session.RecoverableDelegationFailures);
+                else
+                    Interlocked.Increment(ref session.UnsafeDelegationFailures);
+                var message = error.GetType().Name + ": " + error.Message;
+                session.Evidence.Enqueue(new DelegatedWorkEvidence(
+                    session.InvocationId, classification,
+                    message.Length <= 500 ? message : message[..500]));
+                McpActivity?.Invoke(session.Role, "TOOL_FAILED delegate_work");
+            }
+        }
+        return GetDelegationMetrics(token);
+    }
+
+    private static void ValidateDelegationRequest(
+        WorkerMcpSession session, JsonElement args)
+    {
+        if (args.ValueKind != JsonValueKind.Object ||
+            !args.TryGetProperty("task", out var task) ||
+            task.ValueKind != JsonValueKind.String ||
+            task.GetString()?.Trim().Length is not > 0 and <= 2000 ||
+            !args.TryGetProperty("paths", out var declared) ||
+            declared.ValueKind != JsonValueKind.Array)
+            throw new ArgumentException("WORK_TASK_OR_PATHS_INVALID");
+
+        var paths = declared.EnumerateArray().ToArray();
+        if (paths.Length is < 1 or > 5 || paths.Any(item =>
+                item.ValueKind != JsonValueKind.String ||
+                !TemporaryWorkScopeRegistry.IsAllowedPath(item.GetString() ?? "")))
+            throw new InvalidOperationException("WORK_PATH_INVALID_OR_CONFLICT");
+
+        if (args.TryGetProperty("read_only", out var readOnly) &&
+            readOnly.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new ArgumentException("WORK_READ_ONLY_INVALID");
+
+        if (session.Role == "HIGH" || session.ForbidWrites ||
+            (args.TryGetProperty("read_only", out readOnly) &&
+             readOnly.ValueKind == JsonValueKind.True))
+        {
+            // Reject nonexistent inspection paths before spawning a provider.
+            foreach (var item in paths)
+            {
+                var relative = item.GetString()!;
+                var fullPath = Path.GetFullPath(Path.Combine(session.ProjectRoot,
+                    relative.Replace('/', Path.DirectorySeparatorChar)));
+                if (!MilestoneDefinitionContract.IsPathInsideRoot(session.ProjectRoot, fullPath) ||
+                    (!File.Exists(fullPath) && !Directory.Exists(fullPath)))
+                    throw new InvalidOperationException("WORK_PATH_NOT_FOUND: " + relative);
+            }
+        }
+    }
 
     internal void UnregisterMcpSession(string token)
     {
@@ -198,56 +293,36 @@ public sealed partial class BridgeServer
                 }
                 Interlocked.Increment(ref session.ToolsCalled);
                 var args = parameters.TryGetProperty("arguments", out var a) ? a : default;
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(session.Cancellation);
-                linked.CancelAfter(TimeSpan.FromMinutes(12));
-                var failed = false;
-                string message;
                 try
                 {
-                    var handler = McpToolExecutor ??
-                        throw new InvalidOperationException("MCP_EXECUTOR_NOT_CONFIGURED");
-                    // Deliberately NO parent-wide serialization: only overlapping paths lock.
-                    message = await handler(session, "delegate_work", args, linked.Token)
-                        .ConfigureAwait(false);
-                    Interlocked.Increment(ref session.SuccessfulDelegations);
-                    var invocation = message.StartsWith("INVOCATION: ", StringComparison.Ordinal)
-                        ? message["INVOCATION: ".Length..].Split('\n')[0].Trim()
-                        : session.InvocationId;
-                    session.Evidence.Enqueue(new DelegatedWorkEvidence(
-                        invocation, "COMPLETED", "WORK result verified"));
+                    ValidateDelegationRequest(session, args);
+                    session.PendingDelegations.Enqueue(args.Clone());
+                    McpActivity?.Invoke(session.Role, "TOOL_QUEUED delegate_work");
+                    output = new
+                    {
+                        content = new[] { new
+                        {
+                            type = "text",
+                            text = "DELEGATION_QUEUED: Worker가 부모 세션 종료 후 WORK를 독립적으로 순차 실행합니다. " +
+                                   "이 턴에서는 자식 결과가 아직 없습니다. 추가 작업을 위임하거나 " +
+                                   "계획만 요약하고 종료하십시오. Worker가 결과 통합을 위한 새 세션을 엽니다."
+                        } },
+                        isError = false
+                    };
                 }
-                catch (OperationCanceledException)
+                catch (Exception error) when (error is ArgumentException or InvalidOperationException)
                 {
-                    failed = true;
-                    Interlocked.Increment(ref session.UnsafeDelegationFailures);
+                    Interlocked.Increment(ref session.RejectedDelegations);
+                    var detail = error.Message;
                     session.Evidence.Enqueue(new DelegatedWorkEvidence(
-                        session.InvocationId, "CANCELED", "WORK_CANCELED_OR_TIMEOUT"));
-                    message = "WORK_CANCELED_OR_TIMEOUT";
+                        session.InvocationId, "REJECTED", detail));
+                    McpActivity?.Invoke(session.Role, "TOOL_REJECTED delegate_work");
+                    output = new
+                    {
+                        content = new[] { new { type = "text", text = detail } },
+                        isError = true
+                    };
                 }
-                catch (Exception error)
-                {
-                    failed = true;
-                    var classification = IsRejectedDelegation(error)
-                        ? "REJECTED" : IsRecoverableWorkFailure(error)
-                            ? "EXECUTION_FAILED" : "UNSAFE";
-                    if (classification == "REJECTED")
-                        Interlocked.Increment(ref session.RejectedDelegations);
-                    else if (classification == "EXECUTION_FAILED")
-                        Interlocked.Increment(ref session.RecoverableDelegationFailures);
-                    else
-                        Interlocked.Increment(ref session.UnsafeDelegationFailures);
-                    message = error.GetType().Name + ": " + error.Message;
-                    session.Evidence.Enqueue(new DelegatedWorkEvidence(
-                        session.InvocationId, classification,
-                        message.Length <= 500 ? message : message[..500]));
-                }
-                McpActivity?.Invoke(session.Role, (failed ? "TOOL_FAILED" : "TOOL_DONE") +
-                    " delegate_work");
-                output = new
-                {
-                    content = new[] { new { type = "text", text = message } },
-                    isError = failed
-                };
                 break;
             }
             default:
