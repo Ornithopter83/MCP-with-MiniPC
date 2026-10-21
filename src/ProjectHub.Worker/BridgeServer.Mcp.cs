@@ -139,8 +139,8 @@ public sealed partial class BridgeServer
                     capabilities = new { tools = new { listChanged = false } },
                     serverInfo = new { name = "projecthub-worker", version = "1.0.0" },
                     instructions = session.IsWork
-                        ? "Complete only your bounded task within authorized paths. Never delegate and never commit or push."
-                        : "SuperVisor must delegate implementation to fresh WORK using delegate_work before claiming completion. Direct file edits are unavailable in this read-only turn; Worker alone may authorize a separate direct recovery after a recorded WORK execution failure. Git finalization belongs to Worker."
+                        ? "임시 WORK는 지정 경로에서만 작업한다. 재위임과 Git commit/push를 수행하지 않는다."
+                        : "SuperVisor는 실제 실행을 먼저 delegate_work로 임시 WORK에 위임하고 결과를 통합한다. 이 최초 세션은 읽기 전용이다. WORK 실행 실패를 Worker가 기계적으로 확인한 경우에만 별도 새 세션에서 직접 복구할 수 있다. Git 최종화는 Worker 책임이다."
                 };
                 break;
             case "ping":
