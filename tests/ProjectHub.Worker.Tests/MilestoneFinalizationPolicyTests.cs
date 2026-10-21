@@ -92,6 +92,47 @@ public sealed class MilestoneFinalizationPolicyTests
     }
 
     [Fact]
+    public async Task GitFinalizer_RefusesToAbortAnExistingMerge()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "projecthub-merge-protect-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("git")
+            {
+                WorkingDirectory = root,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            start.ArgumentList.Add("init");
+            start.ArgumentList.Add("-b");
+            start.ArgumentList.Add("main");
+            using (var init = System.Diagnostics.Process.Start(start)!)
+            {
+                await init.WaitForExitAsync();
+                Assert.Equal(0, init.ExitCode);
+            }
+
+            var marker = Path.Combine(root, ".git", "MERGE_HEAD");
+            var original = new string('a', 40) + Environment.NewLine;
+            await File.WriteAllTextAsync(marker, original);
+            var result = await MilestoneMechanicalExecutor.ForceCommitPushAsync(
+                root, "must not push", new[] { "README.md" },
+                configuredRepositoryUrl: null, cancellationToken: CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Contains("step=GIT_OPERATION_IN_PROGRESS:MERGE_HEAD", result.Summary);
+            Assert.Equal(original, await File.ReadAllTextAsync(marker));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void GitFinalize_UsesFastForwardOnlyPush()
     {
         var arguments = MilestoneMechanicalExecutor.FastForwardPushArguments("main");
