@@ -746,6 +746,9 @@ internal static class MilestoneMechanicalExecutor
         return blocked;
     }
 
+    internal static string[] FastForwardPushArguments(string branch) =>
+        ["push", "origin", "HEAD:refs/heads/" + branch];
+
     public static async Task<MilestoneGitResult> ForceCommitPushAsync(
         string workingDirectory,
         string commitMessage,
@@ -996,8 +999,8 @@ internal static class MilestoneMechanicalExecutor
                 progress?.Report($"GIT_FINALIZE · push {attempt}/3");
                 // Preserve published history: remote divergence must fail, never
                 // overwrite another user's new commits.
-                pushed = await Run("push", "origin",
-                    "HEAD:refs/heads/" + RequiredBranch).ConfigureAwait(false);
+                pushed = await Run(FastForwardPushArguments(RequiredBranch))
+                    .ConfigureAwait(false);
                 if (pushed.ExitCode == 0)
                     break;
                 if (attempt < 3)
