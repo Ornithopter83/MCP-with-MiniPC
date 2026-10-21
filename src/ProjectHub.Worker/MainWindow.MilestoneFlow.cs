@@ -1239,7 +1239,7 @@ public partial class MainWindow
                 jobId, "SV",
                 RoleContractLoader.BuildSvPrompt(milestone.SvInstructions, workingDirectory),
                 settings, workingDirectory, null, null, cancellationToken,
-                CodexSandboxMode.ReadOnly,
+                SpecialistDelegationPolicy.DelegationSandbox,
                 historyWorkItemId: "1", historyReferenceId: reference,
                 mcpToken: token);
             var metrics = _bridgeServer.GetDelegationMetrics(token);
@@ -1299,7 +1299,7 @@ public partial class MainWindow
                     RoleContractLoader.BuildSvPrompt(
                         recoveryInstructions, workingDirectory),
                     settings, workingDirectory, null, null, cancellationToken,
-                    CodexSandboxMode.WorkspaceWrite,
+                    SpecialistDelegationPolicy.ApprovedRecoverySandbox,
                     historyWorkItemId: "1", historyReferenceId: reference);
             }
             else
