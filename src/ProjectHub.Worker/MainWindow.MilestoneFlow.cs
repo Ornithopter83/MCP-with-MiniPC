@@ -509,7 +509,7 @@ public partial class MainWindow
                     AddDataFlowHistory(
                         WorkerRoleState.Unknown,
                         "Worker 작업",
-                        $"HQ 응답 파싱 완료\nMILESTONE: {milestone.Id}\nSV: #1\nRESOURCE: {milestone.Resources.Count}건",
+                        $"HQ 응답 파싱 완료\nMILESTONE: {milestone.Id}\nSuperVisor: #1\nRESOURCE: {milestone.Resources.Count}건",
                         status: "PARSED",
                         persistenceSource: "WORKER ACTION");
                 });
@@ -1216,8 +1216,9 @@ public partial class MainWindow
         RunOnUi(() =>
         {
             TaskDirection.Text = "구현";
-            TaskTitle.Text = "SV #1 · " + milestone.Id;
-            ResultTitle.Text = "SV";
+            TaskTitle.Text = "SuperVisor #1 · " + milestone.Id;
+            ManagerStageStatusText.Text = "작업 시작";
+            ResultTitle.Text = "SuperVisor";
             SetFlowState(codexActive: true, workerActive: true, webActive: false,
                 explicitStage: TaskStage.Manager);
         });
@@ -1246,7 +1247,7 @@ public partial class MainWindow
             var report = MilestoneDefinitionContract.NormalizeWorkReport(
                 result.ExitCode, result.FinalMessage, result.StandardError);
             RunOnUi(() => AddRoleResponseHistory(WorkerRoleState.Manager,
-                "SV 통합 보고", report, result.Usage, result.Files,
+                "SuperVisor 통합 보고", report, result.Usage, result.Files,
                 status: result.ExitCode == 0 ? "RECEIVED" : "BLOCKED",
                 providerWireId: settings.Provider, fullMessage: report,
                 workItemId: "1", referenceId: reference));
