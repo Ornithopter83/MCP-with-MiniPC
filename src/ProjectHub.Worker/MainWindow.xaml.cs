@@ -2122,16 +2122,22 @@ public partial class MainWindow : Window
             // Reviewer may verify; Git mutation stays in Worker.
             var isReviewer = roleName == "HIGH";
             var isTemporaryWork = purpose == "TEMP_WORK";
+            var isDelegationTurn = mcpToken is not null &&
+                roleName is "SV" or "HIGH";
             var hookPath = Path.Combine(
                 roleTempPath,
-                isReviewer
+                isDelegationTurn
+                    ? "projecthub-delegator-command-gate.ps1"
+                    : isReviewer
                     ? "projecthub-review-command-gate.ps1"
                     : isTemporaryWork
                         ? "projecthub-temp-work-command-gate.ps1"
                         : "projecthub-work-command-gate.ps1");
             await File.WriteAllTextAsync(
                 hookPath,
-                isReviewer
+                isDelegationTurn
+                    ? BuildExecutionPolicy.CreateDelegatorCodexPreToolHookScript()
+                    : isReviewer
                     ? BuildExecutionPolicy.CreateReviewCodexPreToolHookScript()
                     : isTemporaryWork
                         ? BuildExecutionPolicy.CreateTemporaryWorkCodexPreToolHookScript()
