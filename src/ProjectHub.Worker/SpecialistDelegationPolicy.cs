@@ -11,6 +11,9 @@ internal static class SpecialistDelegationPolicy
     internal const string MissingWorkCode = "SV_WORK_DELEGATION_REQUIRED";
     internal const string UnsafeFailureCode = "SV_WORK_DELEGATION_UNSAFE_TO_FALLBACK";
 
+    internal static CodexSandboxMode DelegationSandbox => CodexSandboxMode.ReadOnly;
+    internal static CodexSandboxMode ApprovedRecoverySandbox => CodexSandboxMode.WorkspaceWrite;
+
     internal static bool CanDirectFallback(
         bool readOnly, int attempted, int successful, int recoverableFailures,
         int unsafeFailures, bool cancellationRequested)
