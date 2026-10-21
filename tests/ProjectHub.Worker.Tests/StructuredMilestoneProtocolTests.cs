@@ -5,6 +5,41 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class StructuredMilestoneProtocolTests
 {
+
+    [Fact]
+    public void StructuredHq_ToleratesMissingAndNamedMiddleCloses()
+    {
+        const string report = """
+[ACTION=WORK]
+@@MILESTONE
+<ID>M22</ID>
+@@SV
+<INSTRUCTIONS>
+M22 문서를 구현한다.
+`</>`는 본문 예시다.
+@@HIGH
+<INSTRUCTIONS>읽기 전용 검증</INSTRUCTIONS>
+[RESPONSE=OK]
+""";
+        var parsed = StructuredHqProtocol.Parse(report, false);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.True(MilestoneDefinitionContract.TryBuild(parsed.CompatibilityMessage,
+            parsed.Parse, out var milestone, out var error), error);
+        Assert.Equal("M22", milestone!.Id);
+        Assert.Contains("M22 문서를 구현한다.", milestone.SvInstructions);
+        Assert.Contains("읽기 전용 검증", milestone.HighInstructions);
+    }
+
+    [Theory]
+    [InlineData("[ACTION=PAUSE]")]
+    [InlineData("[ACTION=WORK]\n[ACTION=WORK]")]
+    [InlineData("[KEY=x]\n[KEY=y]")]
+    [InlineData("[GOTO=UNAUTHORIZED]")]
+    public void StructuredHq_RejectsInvalidBracketControl(string extra)
+    {
+        var bad = Valid.Replace("[ACTION=WORK]", extra, StringComparison.Ordinal);
+        Assert.False(StructuredHqProtocol.Parse(bad, false).IsValid);
+    }
     private const string Valid = """
 [ACTION=WORK]
 

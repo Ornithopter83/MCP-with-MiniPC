@@ -4,6 +4,57 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class CoordinatorFirstContractTests
 {
+
+    [Fact]
+    public void RoleReport_MarkdownQuotedClosingTag_DoesNotTruncateOrDuplicateSummary()
+    {
+        const string report = """
+[ACTION=RESULT]
+@@REPORT
+<STATUS>blocked</>
+<SUMMARY>
+M22 최종 보고:
+| 항목 | 결과 | 증거 |
+|---|---|---|
+| WORK 보고 형식 | FAIL | 지정된 `</>`와 불일치 |
+| HIGH | PASS | 실제 문서 검증 완료 |
+`<STATUS>`와 `</SUMMARY>`는 설명용 예시다.
+</>
+<CHANGED_PATH>docs/m22-role-write-smoke.md</>
+<ISSUES>
+형식 불일치: `</>` 표기
+</>
+[RESPONSE=OK]
+""";
+        var parsed = RoleTextProtocol.ParseWork(report);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Equal("blocked", parsed.Status);
+        Assert.Contains("| HIGH | PASS | 실제 문서 검증 완료 |", parsed.Summary);
+        Assert.Contains("`</>`와 불일치", parsed.Summary);
+        Assert.Equal(1, parsed.Summary.Split("M22 최종 보고:").Length - 1);
+        Assert.Equal(new[] { "docs/m22-role-write-smoke.md" }, parsed.ChangedPaths);
+        Assert.Contains(parsed.Issues, issue => issue.Contains("형식 불일치"));
+    }
+
+    [Fact]
+    public void RoleReport_ToleratesNamedClosesAndMissingCloseWithoutLosingEvidence()
+    {
+        const string report = """
+[ACTION=RESULT]
+@@REPORT
+<STATUS>completed</STATUS>
+<SUMMARY>
+실제 내용은 보존된다.
+<ISSUES>
+미해결 없음
+</ISSUES>
+[RESPONSE=OK]
+""";
+        var parsed = RoleTextProtocol.ParseWork(report);
+        Assert.True(parsed.IsValid, string.Join("; ", parsed.Errors));
+        Assert.Equal("completed", parsed.Status);
+        Assert.Equal("실제 내용은 보존된다.", parsed.Summary);
+    }
     [Theory]
     [InlineData(true, true, 1, "existing-session", true)]
     [InlineData(false, false, 1, "selected-session", true)]

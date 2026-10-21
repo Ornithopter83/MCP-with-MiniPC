@@ -186,6 +186,16 @@ internal static class RoleTextProtocol
                 continue;
             }
 
+            // Markdown tables and inline code may quote tag spellings such
+            // as `</>`. They are report DATA, not structural delimiters.
+            if (trimmed.StartsWith("|", StringComparison.Ordinal))
+            {
+                Append(line);
+                if (current is not null)
+                    buffer.Append('\n');
+                continue;
+            }
+            var codeSpans = Regex.Matches(line, @"(?<!`)\`+[^\`\r\n]*\`+(?!\`)");
             var matches = Regex.Matches(line,
                 @"</>|</?(?:STATUS|SUMMARY|CHANGED_PATHS?|ISSUES?)>",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -193,6 +203,10 @@ internal static class RoleTextProtocol
             var lastWasClosing = false;
             foreach (Match match in matches)
             {
+                if (codeSpans.Cast<Match>().Any(code =>
+                    match.Index >= code.Index &&
+                    match.Index + match.Length <= code.Index + code.Length))
+                    continue;
                 var between = line[position..match.Index];
                 var tag = match.Value;
                 var isClose = tag.StartsWith("</", StringComparison.Ordinal);
@@ -217,9 +231,12 @@ internal static class RoleTextProtocol
                 var explicitInlinePair = !isClose &&
                     line[(match.Index + match.Length)..].Contains(
                         "</" + name + ">", StringComparison.OrdinalIgnoreCase);
-                var structural = isClose || atLineStart || atLineEnd ||
-                    adjacentToClosedTag || explicitInlinePair ||
-                    (position > 0 && string.IsNullOrWhiteSpace(between));
+                var structural = isClose
+                    ? (atLineStart || (atLineEnd && current is not null) ||
+                       adjacentToClosedTag)
+                    : (atLineStart || adjacentToClosedTag ||
+                       (position > 0 && string.IsNullOrWhiteSpace(between)) ||
+                       (explicitInlinePair && atLineStart));
                 if (!structural)
                 {
                     Append(between + tag);
@@ -232,19 +249,12 @@ internal static class RoleTextProtocol
                 position = match.Index + match.Length;
                 if (isClose)
                 {
-                    if (current is null)
-                    {
-                        if (namedClose && !string.Equals(name,
-                            previousClosed, StringComparison.OrdinalIgnoreCase))
-                            errors.Add("MIDDLE_FIELD_UNEXPECTED_CLOSE: " + name);
-                    }
-                    else if (namedClose &&
-                        !string.Equals(current, name,
-                            StringComparison.OrdinalIgnoreCase))
-                        errors.Add("MIDDLE_FIELD_MISMATCH: " +
-                            current + "/" + name);
-                    else
+                    if (current is not null &&
+                        (!namedClose || string.Equals(current, name,
+                            StringComparison.OrdinalIgnoreCase)))
                         Finish();
+                    else
+                        Append(tag); // Unknown/mismatched close is plain prose.
                     lastWasClosing = true;
                 }
                 else

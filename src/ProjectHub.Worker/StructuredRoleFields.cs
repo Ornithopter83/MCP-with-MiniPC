@@ -25,46 +25,72 @@ internal sealed class StructuredRoleFields
         error = string.Empty;
         var lines = (body ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n').Split('\n');
-        for (var i = 0; i < lines.Length; i++)
+        var buffer = new List<string>();
+        string? current = null;
+        var inFence = false;
+
+        void Finish()
         {
-            var line = lines[i].Trim();
-            if (line.Length == 0)
-                continue;
-
-            var inline = Regex.Match(line, @"^<([A-Z][A-Z0-9_]*)>(.*?)</>$",
-                RegexOptions.CultureInvariant);
-            if (inline.Success)
-            {
-                fields.Add(inline.Groups[1].Value, inline.Groups[2].Value);
-                continue;
-            }
-
-            var opening = Regex.Match(line, @"^<([A-Z][A-Z0-9_]*)>$",
-                RegexOptions.CultureInvariant);
-            if (!opening.Success)
-            {
-                error = "MIDDLE_FIELD_INVALID: " + line;
-                return false;
-            }
-
-            var parts = new List<string>();
-            var closed = false;
-            while (++i < lines.Length)
-            {
-                if (lines[i].Trim() == "</>")
-                {
-                    closed = true;
-                    break;
-                }
-                parts.Add(lines[i]);
-            }
-            if (!closed)
-            {
-                error = "MIDDLE_FIELD_UNCLOSED: " + opening.Groups[1].Value;
-                return false;
-            }
-            fields.Add(opening.Groups[1].Value, string.Join("\n", parts).Trim());
+            if (current is null) return;
+            fields.Add(current, string.Join("\n", buffer).Trim());
+            buffer.Clear();
+            current = null;
         }
+
+        foreach (var original in lines)
+        {
+            var line = original.Trim();
+            if (line.StartsWith("```", StringComparison.Ordinal))
+            {
+                inFence = !inFence;
+                if (current is not null) buffer.Add(original);
+                continue;
+            }
+            if (inFence)
+            {
+                if (current is not null) buffer.Add(original);
+                continue;
+            }
+
+            // Only top-level field boundaries count. Quoted examples and
+            // unmatched middle-field markers never invalidate the envelope.
+            var open = Regex.Match(line, @"^<([A-Z][A-Z0-9_]*)>(.*)$",
+                RegexOptions.CultureInvariant);
+            if (open.Success)
+            {
+                var name = open.Groups[1].Value;
+                // Markers inside an instruction block can be examples.
+                // Switch only for the known HQ field vocabulary.
+                if (name is "ID" or "TEXT" or "INSTRUCTIONS" or "TYPE" or
+                    "TARGET_PATH" or "WIDTH" or "HEIGHT" or "COLUMNS" or
+                    "ROWS" or "ALPHA")
+                {
+                    Finish();
+                    var remainder = open.Groups[2].Value;
+                    var close = Regex.Match(remainder,
+                        @"^(.*?)(?:</>|</" + name + @">)\s*$",
+                        RegexOptions.CultureInvariant);
+                    if (close.Success)
+                        fields.Add(name, close.Groups[1].Value);
+                    else
+                    {
+                        current = name;
+                        if (remainder.Length > 0) buffer.Add(remainder);
+                    }
+                    continue;
+                }
+            }
+
+            if (current is null) continue; // Free prose is not a grammar error.
+            if (line == "</>" || string.Equals(line, "</" + current + ">",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                Finish();
+                continue;
+            }
+            buffer.Add(original);
+        }
+        Finish(); // Missing middle-field close is tolerated.
         return true;
     }
 

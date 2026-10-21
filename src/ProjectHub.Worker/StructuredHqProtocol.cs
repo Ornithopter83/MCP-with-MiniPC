@@ -3,8 +3,9 @@ using System.Text.RegularExpressions;
 namespace ProjectHub.Worker;
 
 /// <summary>
-/// Strict new protocol: [KEY/ACTION/GOTO/RESPONSE] control, @@ major sections,
-/// &lt;FIELD&gt;value&lt;/&gt; middle fields. Prose within a middle field is opaque.
+/// Bracket control markers are strict; @@ sections and middle fields are
+/// best-effort data extraction. Unsafe or ambiguous execution targets still
+/// fail semantic validation. Prose within a middle field stays opaque.
 /// </summary>
 internal static class StructuredHqProtocol
 {
@@ -20,12 +21,24 @@ internal static class StructuredHqProtocol
         var lines = raw.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
         var significant = lines.Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
         var i = 0;
-        if (significant.Length > 0 && significant[0].StartsWith("[KEY=", StringComparison.Ordinal))
+        if (significant.Length > 0 && Regex.IsMatch(significant[0], @"^\[KEY=[^\]\r\n]+\]$"))
             i++;
-        if (i < significant.Length && significant[i].StartsWith("[GOTO", StringComparison.Ordinal))
+        if (i < significant.Length && significant[i] == "[GOTO=WORKER]")
             i++;
         if (i >= significant.Length || significant[i] != "[ACTION=WORK]")
             return Invalid("ACTION");
+        // An extra/malformed bracket directive is never treated as prose.
+        var controls = significant.Where(line =>
+            Regex.IsMatch(line, @"^\[[A-Z][A-Z_]*[=\]]", RegexOptions.CultureInvariant))
+            .ToArray();
+        if (controls.Any(line => line != "[ACTION=WORK]" &&
+            line != "[GOTO=WORKER]" && line != "[RESPONSE=OK]" &&
+            !Regex.IsMatch(line, @"^\[KEY=[^\]\r\n]+\]$")) ||
+            controls.Count(line => line == "[ACTION=WORK]") != 1 ||
+            controls.Count(line => line == "[GOTO=WORKER]") > 1 ||
+            controls.Count(line => line == "[RESPONSE=OK]") > 1 ||
+            controls.Count(line => line.StartsWith("[KEY=", StringComparison.Ordinal)) > 1)
+            return Invalid("BRACKET_CONTROL_INVALID");
         var terminator = Array.FindLastIndex(lines, l => l.Trim() == "[RESPONSE=OK]");
         if (!completionValidatedByTransport && terminator < 0)
             return Invalid("COMPACT_RESPONSE_TERMINATOR_INVALID");
@@ -49,9 +62,17 @@ internal static class StructuredHqProtocol
             var trimmed = line.Trim();
             if (inMiddleBody)
             {
-                body.Add(line);
-                if (trimmed == "</>") inMiddleBody = false;
-                continue;
+                // A missing closing field tag must not swallow the next
+                // recognized major section.
+                if (!Regex.IsMatch(trimmed, @"^@@(?:MILESTONE|SV|HIGH|PLAN|RESOURCE(?:=\d+)?)$"))
+                {
+                    body.Add(line);
+                    if (trimmed == "</>" ||
+                        Regex.IsMatch(trimmed, @"^</[A-Z][A-Z0-9_]*>$"))
+                        inMiddleBody = false;
+                    continue;
+                }
+                inMiddleBody = false;
             }
             if (!trimmed.StartsWith("@@", StringComparison.Ordinal))
             {
@@ -83,13 +104,21 @@ internal static class StructuredHqProtocol
         var parsed = new Dictionary<Section, StructuredRoleFields>();
         foreach (var section in sections)
         {
-            if (StructuredRoleFields.TryParse(section.Body, out var fields, out var error))
-                parsed[section] = fields;
-            else
-                errors.Add(section.Name + "." + error);
+            StructuredRoleFields.TryParse(section.Body, out var fields, out _);
+            parsed[section] = fields;
         }
-        string Value(Section? s, string key) => s is not null && parsed.TryGetValue(s, out var fields)
-            ? fields.Get(key) ?? "" : "";
+        string Value(Section? section, string key)
+        {
+            if (section is null || !parsed.TryGetValue(section, out var fields))
+                return "";
+            var value = fields.Get(key);
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+            // Keep naturally worded instructions when their optional
+            // middle-field wrapper is malformed or omitted.
+            return key is "INSTRUCTIONS" or "TEXT"
+                ? section.Body.Trim() : "";
+        }
         var milestoneSection = sections.FirstOrDefault(s => s.Name == "MILESTONE");
         var milestoneId = Value(milestoneSection, "ID");
         if (string.IsNullOrWhiteSpace(milestoneId))
@@ -97,7 +126,7 @@ internal static class StructuredHqProtocol
 
         // HQ delegates exactly one implementation owner, not numbered WORKITEMs.
         var sv = Value(sections.FirstOrDefault(s => s.Name == "SV"), "INSTRUCTIONS");
-        if (sv.Length is < 1 or > 2000) errors.Add("SV.INSTRUCTIONS");
+        if (string.IsNullOrWhiteSpace(sv)) errors.Add("SV.INSTRUCTIONS");
         var works = new List<Dictionary<string, object?>>();
 
                 Dictionary<string, object?>? resource = null;
@@ -127,9 +156,6 @@ internal static class StructuredHqProtocol
             var alpha = Value(s, "ALPHA");
             if (alpha.Length != 0 && alpha != "required" && alpha != "optional")
                 errors.Add("RESOURCE.ALPHA");
-            if (parsed.TryGetValue(s, out var rf) && rf.Names.Any(n =>
-                    n is not ("TYPE" or "TARGET_PATH" or "INSTRUCTIONS" or "WIDTH" or "HEIGHT" or "COLUMNS" or "ROWS" or "ALPHA")))
-                errors.Add("RESOURCE.UNKNOWN_FIELD");
             resource = new()
             {
                 ["id"] = 0, ["type"] = "image", ["targetPath"] = target,
@@ -143,14 +169,8 @@ internal static class StructuredHqProtocol
         }
         var high = Value(sections.FirstOrDefault(s => s.Name == "HIGH"), "INSTRUCTIONS");
         var plan = Value(sections.FirstOrDefault(s => s.Name == "PLAN"), "TEXT");
-        if (high.Length is < 1 or > 600 || plan.Length > 8000)
-            errors.Add("COMPACT_SECTION_LENGTH");
-        foreach (var s in sections.Where(s => s.Name is "SV" or "HIGH" or "PLAN" or "MILESTONE"))
-        {
-            var allowed = s.Name == "MILESTONE" ? "ID" : s.Name == "PLAN" ? "TEXT" : "INSTRUCTIONS";
-            if (parsed.TryGetValue(s, out var f) && f.Names.Any(n => n != allowed))
-                errors.Add(s.Name + ".UNKNOWN_FIELD");
-        }
+        if (string.IsNullOrWhiteSpace(high))
+            errors.Add("HIGH.INSTRUCTIONS");
         if (errors.Count > 0) return Invalid(errors.ToArray());
         var milestone = new Dictionary<string, object?>
         {
