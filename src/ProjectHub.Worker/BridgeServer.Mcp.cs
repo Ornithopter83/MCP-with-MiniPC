@@ -55,8 +55,8 @@ public sealed partial class BridgeServer
         string role, string jobId, string projectRoot, CancellationToken cancellation,
         IReadOnlyList<string>? allowedPaths = null)
     {
-        if (role is not ("SV" or "WORK"))
-            throw new ArgumentException("Only SV and temporary WORK have delegated MCP access.");
+        if (role is not ("SV" or "HIGH" or "WORK"))
+            throw new ArgumentException("Only SV, HIGH and temporary WORK have MCP access.");
         if (role == "WORK" && (allowedPaths is null || allowedPaths.Count == 0))
             throw new ArgumentException("WORK_PATHS_REQUIRED");
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -147,7 +147,9 @@ public sealed partial class BridgeServer
                     serverInfo = new { name = "projecthub-worker", version = "1.0.0" },
                     instructions = session.IsWork
                         ? "임시 WORK는 지정 경로에서만 작업한다. 재위임과 Git commit/push를 수행하지 않는다."
-                        : "SuperVisor는 실제 실행을 먼저 delegate_work로 임시 WORK에 위임하고 결과를 통합한다. 이 최초 세션은 읽기 전용이다. WORK 실행 실패를 Worker가 기계적으로 확인한 경우에만 별도 새 세션에서 직접 복구할 수 있다. Git 최종화는 Worker 책임이다."
+                        : session.Role == "HIGH"
+                            ? "HIGH는 읽기 전용 최종 검토자다. 조사·검증 실행을 우선 delegate_work로 임시 WORK에 위임하고 결과를 독립 검토한다. WORK 호출 실패 후에는 읽기 전용 직접 검증만 가능하며 소스 수정은 금지한다."
+                            : "SuperVisor는 실제 실행을 먼저 delegate_work로 임시 WORK에 위임하고 결과를 통합한다. 이 최초 세션은 읽기 전용이다. WORK 실행 실패를 Worker가 기계적으로 확인한 경우에만 별도 새 세션에서 직접 복구할 수 있다. Git 최종화는 Worker 책임이다."
                 };
                 break;
             case "ping":
@@ -226,13 +228,14 @@ public sealed partial class BridgeServer
             new
             {
                 name = "delegate_work",
-                description = "Delegate one bounded implementation, investigation or test task to a fresh WORK session. Calls with nonoverlapping write paths can run concurrently. Results return only to SV.",
+                description = "Delegate one bounded implementation, investigation or test task to a fresh WORK session. Calls with nonoverlapping write paths can run concurrently. Results return only to the calling SV or HIGH.",
                 inputSchema = new
                 {
                     type = "object",
                     properties = new
                     {
                         task = new { type = "string", description = "Focused task, up to 2000 characters." },
+                        read_only = new { type = "boolean", description = "True for verification without file modifications." },
                         paths = new
                         {
                             type = "array",
