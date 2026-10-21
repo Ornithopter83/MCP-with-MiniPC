@@ -51,11 +51,14 @@ public sealed partial class BridgeServer
         "mcp_servers.projecthub.tools.delegate_work.approval_mode=\"approve\""
     ];
 
+    internal static bool CanRegisterRole(string role) =>
+        role is "SV" or "HIGH" or "WORK";
+
     internal string RegisterMcpSession(
         string role, string jobId, string projectRoot, CancellationToken cancellation,
         IReadOnlyList<string>? allowedPaths = null)
     {
-        if (role is not ("SV" or "HIGH" or "WORK"))
+        if (!CanRegisterRole(role))
             throw new ArgumentException("Only SV, HIGH and temporary WORK have MCP access.");
         if (role == "WORK" && (allowedPaths is null || allowedPaths.Count == 0))
             throw new ArgumentException("WORK_PATHS_REQUIRED");
