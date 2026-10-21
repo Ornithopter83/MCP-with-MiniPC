@@ -111,17 +111,18 @@ public static class BuildExecutionPolicy
     // In the first SV/HIGH session direct inspection and command execution
     // belong to child WORK, not the orchestrator. Only MCP delegate_work is
     // allowed. A fresh fallback session receives the regular role gate.
+    // The caller configures a command/file-specific tool matcher.
+    // Do not read stdin here: restricted PowerShell 5.1 may not bind it,
+    // and a fail-open parser could silently permit direct execution.
     public static string CreateDelegatorCodexPreToolHookScript()
         => """
-           $ErrorActionPreference = 'Continue'
-           $raw = $input | Out-String
-           try { $event = $raw | ConvertFrom-Json } catch { exit 0 }
-           $tool = [string]$event.tool_name
-           if ($tool -notmatch '(?i)(bash|exec|shell|command|powershell|apply_patch|write_file|edit_file)') { exit 0 }
-           $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: delegate_work must execute first; direct role commands only in a Worker-approved fresh fallback session.' } } | ConvertTo-Json -Compress -Depth 6
+           $payload = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny'; permissionDecisionReason = 'ProjectHub: initial SV/HIGH must delegate execution to WORK. Direct execution requires a separate Worker-approved recovery session.' } } | ConvertTo-Json -Compress -Depth 6
            Write-Output $payload
            exit 0
            """;
+
+    internal const string DelegatorDeniedToolMatcher =
+        "(?i).*(?:bash|exec|command|shell|powershell|run|apply_patch|write|edit|read|list|grep|search|file).*";
 
     public static string CreateCodexPreToolHookScript()
         => """
@@ -170,14 +171,16 @@ public static class BuildExecutionPolicy
 
     public static string BuildCodexPreToolHookOverride(
         string hookPath,
-        string statusMessage = "ProjectHub WORK command gate")
+        string statusMessage = "ProjectHub WORK command gate",
+        string toolMatcher = ".*")
     {
         if (string.IsNullOrWhiteSpace(hookPath))
             throw new ArgumentException("Hook path가 비어 있습니다.", nameof(hookPath));
         var normalizedPath = Path.GetFullPath(hookPath).Replace('\\', '/');
         var command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '" +
                       normalizedPath.Replace("'", "''", StringComparison.Ordinal) + "'";
-        return "hooks.PreToolUse=[{matcher=\".*\",hooks=[{type=\"command\",command=\"" +
+        return "hooks.PreToolUse=[{matcher=\"" + EscapeTomlBasicString(toolMatcher) +
+               "\",hooks=[{type=\"command\",command=\"" +
                EscapeTomlBasicString(command) +
                "\",timeout=5,statusMessage=\"" +
                EscapeTomlBasicString(statusMessage) +
