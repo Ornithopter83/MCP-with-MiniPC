@@ -1936,7 +1936,8 @@ public partial class MainWindow
                 // Direct inspection cannot mutate files. It is a NEW session
                 // with no delegation token, never a writable retry.
                 var fallbackBody =
-                    "WORK 검증 위임을 시도했으나 성공한 하위 검증이 없습니다. " +
+                    "WORKER_APPROVED_READ_ONLY_HIGH_FALLBACK: " +
+                    "직전 HIGH 세션에서 WORK 검증 위임을 시도했으나 성공한 하위 검증이 없습니다. " +
                     "직접 읽기 전용 증거 조사만 하라. " +
                     "소스·설정·Git을 변경하지 말고 미확인 사실은 ISSUES에 기록하라." +
                     Environment.NewLine +
