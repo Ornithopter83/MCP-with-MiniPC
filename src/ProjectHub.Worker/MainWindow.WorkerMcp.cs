@@ -78,20 +78,25 @@ public partial class MainWindow
                 var scopedChanges = allChanges.Where(change =>
                     paths.Any(path => TemporaryWorkScopeRegistry.Overlaps(path, change)))
                     .ToArray();
+                var unexpectedChanges = allChanges.Except(scopedChanges,
+                    StringComparer.OrdinalIgnoreCase).ToArray();
                 var summary = "INVOCATION: " + reference +
                     Environment.NewLine + "EXIT: " + result.ExitCode +
                     Environment.NewLine + "MODEL: " + result.Model +
                     Environment.NewLine + "TOKENS: " + result.Usage.TotalTokens +
                     Environment.NewLine + "CHANGED_PATHS: " +
                     string.Join(", ", scopedChanges.Take(30)) +
+                    Environment.NewLine + "OUT_OF_SCOPE_CHANGES: " +
+                    string.Join(", ", unexpectedChanges.Take(30)) +
                     Environment.NewLine + "RESULT:" + Environment.NewLine +
                     MilestoneDefinitionContract.Limit(result.FinalMessage, 5000);
                 RunOnUi(() => AddRoleResponseHistory(WorkerRoleState.Work,
                     "임시 WORK 결과", summary, result.Usage, result.Files,
-                    status: result.ExitCode == 0 ? "COMPLETED" : "BLOCKED",
+                    status: result.ExitCode == 0 && unexpectedChanges.Length == 0
+                        ? "COMPLETED" : "BLOCKED",
                     providerWireId: settings.Provider, referenceId: reference));
-                if (result.ExitCode != 0)
-                    throw new InvalidOperationException("TEMP_WORK_FAILED: " +
+                if (result.ExitCode != 0 || unexpectedChanges.Length != 0)
+                    throw new InvalidOperationException("TEMP_WORK_FAILED_OR_SCOPE_VIOLATION: " +
                         MilestoneDefinitionContract.Limit(summary, 1200));
                 return summary;
             }
