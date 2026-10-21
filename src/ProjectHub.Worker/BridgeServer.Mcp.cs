@@ -52,7 +52,9 @@ public sealed partial class BridgeServer
     internal static bool IsRejectedDelegation(Exception error) =>
         error.Message.StartsWith("WORK_PATH_INVALID_OR_CONFLICT", StringComparison.Ordinal) ||
         error.Message.StartsWith("WORK_TASK_", StringComparison.Ordinal) ||
-        error.Message.StartsWith("WORK_READ_ONLY_INVALID", StringComparison.Ordinal);
+        error.Message.StartsWith("WORK_READ_ONLY_INVALID", StringComparison.Ordinal) ||
+        error.Message.StartsWith("WORK_TASK_OR_PATHS_INVALID", StringComparison.Ordinal) ||
+        error.Message.StartsWith("WORK_PATH_NOT_FOUND:", StringComparison.Ordinal);
 
     internal static bool IsRecoverableWorkFailure(Exception error) =>
         error is InvalidOperationException &&
