@@ -801,8 +801,8 @@ public partial class MainWindow
             cancellationToken.ThrowIfCancellationRequested();
 
             // The initial design is a separate Worker-owned commit.
-            if (!milestone.ReadOnlyNoFileChanges &&
-                !string.IsNullOrWhiteSpace(milestone.PlanDocument))
+            if (MilestoneFinalizationPolicy.ShouldWriteInitialPlan(
+                milestone.ReadOnlyNoFileChanges, milestone.PlanDocument))
             {
                 const string planPath = "docs/projecthub/initial-plan.md";
                 var fullPlanPath = Path.Combine(
@@ -1080,9 +1080,8 @@ public partial class MainWindow
             // A successful implementation is not a completed milestone when
             // the required Git commit/push failed. Preserve earlier failure
             // causes rather than hiding them behind the Git failure.
-            if (!milestone.ReadOnlyNoFileChanges &&
-                outcome == "COMPLETED" && !gitResult.Success)
-                outcome = "GIT_FINALIZE_FAILED";
+            outcome = MilestoneFinalizationPolicy.ResolveGitOutcome(
+                outcome, milestone.ReadOnlyNoFileChanges, gitResult.Success);
 
             var currentLocalChanges =
                 await MilestoneMechanicalExecutor.SnapshotChangedPathsAsync(
