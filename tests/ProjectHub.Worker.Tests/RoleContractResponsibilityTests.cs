@@ -19,7 +19,7 @@ public sealed class RoleContractResponsibilityTests
     {
         var sv = RoleContractLoader.LoadSvFooter();
         Assert.Contains("delegate_work", sv);
-        Assert.Contains("SV(#1)", sv);
+        Assert.Contains("SuperVisor(#1)", sv);
         Assert.Contains("Git commit", sv);
     }
 
