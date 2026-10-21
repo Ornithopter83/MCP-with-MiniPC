@@ -1242,13 +1242,21 @@ public partial class MainWindow
                     : CodexSandboxMode.WorkspaceWrite,
                 historyWorkItemId: "1", historyReferenceId: reference,
                 mcpToken: token);
-            // SV decides whether delegation is necessary for this milestone.
-            // A successful implementation must not require an arbitrary WORK call.
+            // Delegation is optional, but its actual success count must be visible.
+            var successfulDelegations = _bridgeServer.SuccessfulDelegationCount(token);
+            RunOnUi(() => AddRoleProgressHistory(
+                WorkerRoleState.Manager,
+                "실제 WORK 위임 성공: " + successfulDelegations + "회",
+                settings.Provider, referenceId: reference, workItemId: "1"));
+            var parsed = RoleTextProtocol.ParseWork(result.FinalMessage);
+            var isBlocked = result.ExitCode != 0 ||
+                (parsed.IsValid && string.Equals(parsed.Status, "blocked",
+                    StringComparison.OrdinalIgnoreCase));
             var report = MilestoneDefinitionContract.NormalizeWorkReport(
                 result.ExitCode, result.FinalMessage, result.StandardError);
             RunOnUi(() => AddRoleResponseHistory(WorkerRoleState.Manager,
                 "SuperVisor 통합 보고", report, result.Usage, result.Files,
-                status: result.ExitCode == 0 ? "RECEIVED" : "BLOCKED",
+                status: isBlocked ? "BLOCKED" : "RECEIVED",
                 providerWireId: settings.Provider, fullMessage: report,
                 workItemId: "1", referenceId: reference));
             return report;
