@@ -517,7 +517,8 @@ internal static class MilestoneDefinitionContract
     public static string BuildHighContext(
         MilestoneDefinition milestone,
         IReadOnlyDictionary<string, string> workReports,
-        IReadOnlyList<string>? mechanicalReports = null)
+        IReadOnlyList<string>? mechanicalReports = null,
+        DelegationMetrics? delegatedWork = null)
     {
         var builder = new StringBuilder();
         builder.AppendLine("@@SV_INSTRUCTIONS");
@@ -543,6 +544,13 @@ internal static class MilestoneDefinitionContract
             }
             else
                 builder.AppendLine(pair.Value);
+        }
+
+        if (delegatedWork is not null)
+        {
+            builder.AppendLine();
+            builder.AppendLine("@@VERIFIED_WORK_DELEGATIONS");
+            AppendDelegatedChildren(builder, "SV", delegatedWork);
         }
 
         if (mechanicalReports is not null && mechanicalReports.Count > 0)
