@@ -1283,89 +1283,80 @@ public partial class MainWindow
         var reference = WorkerHistoryCardPolicy.NewInvocationReference(milestone.Id, "SV-1");
         try
         {
-            // This invocation is read-only: real file edits must start in a
-            // bounded temporary WORK. A separate writable SV session is
-            // available only after mechanically verified WORK failure.
-            var result = await RunCoordinatorRoleAsync(
+            if (settings.ProviderKind != AiServiceProvider.OpenAI)
+                throw new InvalidOperationException("SV_WORK_DELEGATION_REQUIRES_CODEX_CLI");
+
+            // Phase 1: analyse and QUEUE bounded WORK tasks. No WORK runs
+            // while the SuperVisor provider process is still alive.
+            var draft = await RunCoordinatorRoleAsync(
                 jobId, "SV",
-                RoleContractLoader.BuildSvPrompt(milestone.SvInstructions, workingDirectory),
+                RoleContractLoader.BuildSvPrompt(
+                    milestone.SvInstructions +
+                    Environment.NewLine +
+                    "실작업·조사는 delegate_work로 큐에 배정한다. " +
+                    "큐 등록 확인은 WORK 성공 결과가 아니다. " +
+                    "이 첫 세션에서는 최종 완료를 주장하지 말고 배정 후 종료한다.",
+                    workingDirectory),
                 settings, workingDirectory, null, null, cancellationToken,
                 SpecialistDelegationPolicy.DelegationSandbox,
                 historyWorkItemId: "1", historyReferenceId: reference,
                 mcpToken: token);
-            var metrics = _bridgeServer.GetDelegationMetrics(token);
+
+            // Phase 2: only AFTER phase-1 session exit, run each queued WORK
+            // in a fresh, independent, sequential provider session.
+            var metrics = await _bridgeServer.DrainDelegatedWorkAsync(
+                token, cancellationToken);
             RunOnUi(() => AddRoleProgressHistory(
                 WorkerRoleState.Manager,
-                "WORK 위임 시도: " + metrics.Attempts +
-                "회 · 완료: " + metrics.Successful +
-                "회 · 실행 실패: " + metrics.RecoverableFailures +
-                "회 · 경로 거부: " + metrics.Rejected +
-                "회 · 안전 위반: " + metrics.UnsafeFailures + "회",
+                "WORK 위임: 시도 " + metrics.Attempts +
+                "회 · 완료 " + metrics.Successful +
+                "회 · 실행 실패 " + metrics.RecoverableFailures +
+                "회 · 경로 거부 " + metrics.Rejected +
+                "회 · 위반 " + metrics.UnsafeFailures + "회",
                 settings.Provider, referenceId: reference, workItemId: "1"));
 
-            var preliminary = RoleTextProtocol.ParseWork(result.FinalMessage);
-            var wantsRecovery = result.ExitCode != 0 ||
-                !preliminary.IsValid ||
-                !string.Equals(preliminary.Status, "completed",
-                    StringComparison.OrdinalIgnoreCase) ||
-                metrics.Successful == 0;
-            if (SpecialistDelegationPolicy.MustBlockForUnsafeDelegation(metrics))
+            AiRoleRunResult result;
+            if (metrics.Successful == 0 || metrics.UnsafeFailures > 0)
             {
-                // A real unsafe execution still blocks completion. A rejected
-                // preflight request is NOT an unsafe execution; previous
-                // successful children and the SV's actual report are retained.
-                var original = preliminary.IsValid
-                    ? preliminary.Summary
-                    : MilestoneDefinitionContract.Limit(result.FinalMessage, 1800);
-                result = result with
+                // Every actual task must run through WORK. No direct-write
+                // SuperVisor fallback is ever granted.
+                var reason = metrics.UnsafeFailures > 0
+                    ? SpecialistDelegationPolicy.UnsafeFailureCode
+                    : SpecialistDelegationPolicy.MissingWorkCode;
+                result = draft with
                 {
                     ExitCode = 1,
                     FinalMessage = RoleTextProtocol.BuildResult(
-                        "blocked", SpecialistDelegationPolicy.UnsafeFailureCode,
-                        issues: new[] { original }.Concat(
-                            metrics.Evidence.Where(entry => entry.Status == "UNSAFE")
-                                .Select(entry => entry.Detail)).ToArray())
+                        "blocked", reason,
+                        issues: metrics.Evidence.Select(item =>
+                            item.Status + ": " + item.Detail).ToArray())
                 };
-            }
-            else if (wantsRecovery &&
-                SpecialistDelegationPolicy.CanDirectFallback(
-                    milestone.ReadOnlyNoFileChanges,
-                    metrics.Attempts, metrics.Successful,
-                    metrics.RecoverableFailures, metrics.UnsafeFailures,
-                    cancellationToken.IsCancellationRequested))
-            {
-                // This is deliberately a NEW provider session, not a resume.
-                // No MCP bearer token is supplied to the writable fallback.
-                RunOnUi(() => AddTaskMessage(
-                    "SV DIRECT FALLBACK",
-                    "WORK 실행 실패가 기계적으로 확인되어 직접 복구 1회를 허용합니다. " +
-                    "시도 " + metrics.Attempts + "회, 성공 " +
-                    metrics.Successful + "회, 실패 " +
-                    metrics.RecoverableFailures + "회.",
-                    status: "RECOVERED", referenceId: reference));
-                var recoveryInstructions = milestone.SvInstructions +
-                    Environment.NewLine + Environment.NewLine +
-                    "WORKER_APPROVED_DIRECT_FALLBACK: 실제 임시 WORK 실행이 실패했습니다. " +
-                    "이 세션에만 직접 파일 수정 권한을 허용합니다. " +
-                    "위임 시도에서 이미 변경된 파일을 재실행하거나 덮어쓰지 말고 " +
-                    "현재 파일 상태를 확인해 남은 구현만 최소 수정하라. " +
-                    "Git 변경 금지. 실패 원인과 직접 처리 내역을 보고하라." +
-                    Environment.NewLine + "실패한 초기 SuperVisor 결과:" +
-                    Environment.NewLine +
-                    MilestoneDefinitionContract.Limit(result.FinalMessage, 1800);
-                result = await RunCoordinatorRoleAsync(
-                    jobId, "SV",
-                    RoleContractLoader.BuildSvPrompt(
-                        recoveryInstructions, workingDirectory),
-                    settings, workingDirectory, null, null, cancellationToken,
-                    SpecialistDelegationPolicy.ApprovedRecoverySandbox,
-                    historyWorkItemId: "1", historyReferenceId: reference);
             }
             else
             {
+                // Phase 3: new, command-disabled SV session integrates
+                // mechanically recorded child results; no direct inspection.
+                var evidence = new System.Text.StringBuilder();
+                MilestoneDefinitionContract.AppendDelegatedChildren(
+                    evidence, "SV", metrics);
+                result = await RunCoordinatorRoleAsync(
+                    jobId, "SV_INTEGRATION",
+                    RoleContractLoader.BuildSvPrompt(
+                        milestone.SvInstructions + Environment.NewLine +
+                        "WORKER_VERIFIED_CHILD_RESULTS:" + Environment.NewLine +
+                        evidence + Environment.NewLine +
+                        "하위 WORK 실행이 모두 종료됐다. 제공된 실행 증거만 통합·판정하고 " +
+                        "추가 셸·파일 명령이나 직접 구현을 하지 마라. " +
+                        "미완료·거부된 결과는 ISSUES에 명시하라." +
+                        Environment.NewLine +
+                        "초기 배정 보고:" + Environment.NewLine +
+                        MilestoneDefinitionContract.Limit(draft.FinalMessage, 1400),
+                        workingDirectory),
+                    settings, workingDirectory, null, null, cancellationToken,
+                    CodexSandboxMode.ReadOnly,
+                    historyWorkItemId: "1", historyReferenceId: reference);
                 result = SpecialistDelegationPolicy.Enforce(
-                    result, mandatory: true,
-                    successfulDelegations: metrics.Successful);
+                    result, mandatory: true, successfulDelegations: metrics.Successful);
             }
 
             var report = MilestoneDefinitionContract.NormalizeWorkReport(
