@@ -899,6 +899,19 @@ internal static class MilestoneMechanicalExecutor
                     StringComparison.OrdinalIgnoreCase))
                 return Fail("NOT_REPOSITORY", inside);
 
+            // Never alter a developer's ongoing merge/rebase/cherry-pick.
+            // Git --git-path resolves linked worktrees and nonstandard gitdirs.
+            foreach (var marker in InProgressGitOperationMarkers)
+            {
+                var probe = await Run("rev-parse", "--git-path", marker)
+                    .ConfigureAwait(false);
+                if (probe.ExitCode != 0)
+                    return Fail("GIT_OPERATION_PROBE_FAILED:" + marker, probe);
+                if (IsGitOperationMarkerPresent(
+                    workingDirectory, probe.StandardOutput.Trim()))
+                    return Fail("GIT_OPERATION_IN_PROGRESS:" + marker);
+            }
+
             var branch = await ReadCurrentBranchAsync(Run).ConfigureAwait(false);
             if (branch != RequiredBranch)
             {
@@ -921,19 +934,6 @@ internal static class MilestoneMechanicalExecutor
                         .ConfigureAwait(false);
                 if (updated is not null && updated.ExitCode != 0)
                     return Fail("ORIGIN_UPDATE_FAILED", updated);
-            }
-
-            // Never alter a developer's ongoing merge/rebase/cherry-pick.
-            // Git --git-path resolves linked worktrees and nonstandard gitdirs.
-            foreach (var marker in InProgressGitOperationMarkers)
-            {
-                var probe = await Run("rev-parse", "--git-path", marker)
-                    .ConfigureAwait(false);
-                if (probe.ExitCode != 0)
-                    return Fail("GIT_OPERATION_PROBE_FAILED:" + marker, probe);
-                if (IsGitOperationMarkerPresent(
-                    workingDirectory, probe.StandardOutput.Trim()))
-                    return Fail("GIT_OPERATION_IN_PROGRESS:" + marker);
             }
 
             // A previous push may have failed after a ProjectHub commit accidentally
