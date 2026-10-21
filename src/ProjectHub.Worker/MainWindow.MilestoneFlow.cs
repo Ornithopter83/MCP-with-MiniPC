@@ -210,7 +210,9 @@ public partial class MainWindow
                         hqInbound, sentInterventions),
                     normalizedRoot,
                     configuredRepositoryUrl,
-                    remoteReference.CommitSha);
+                    remoteReference.CommitSha,
+                    includeFullContract: IsWebTransport(coordinator.Transport) ||
+                        milestoneIndex == 1 || string.IsNullOrWhiteSpace(hqSession));
 
                 var hqResult = await RunHqRoleAsync(
                     jobId,
@@ -298,7 +300,9 @@ public partial class MainWindow
                             recoveryBody, sentInterventions),
                         normalizedRoot,
                         configuredRepositoryUrl,
-                        remoteReference.CommitSha);
+                        remoteReference.CommitSha,
+                        includeFullContract: IsWebTransport(coordinator.Transport) ||
+                            string.IsNullOrWhiteSpace(hqSession));
 
                     AddDataFlowHistory(
                         WorkerRoleState.Hq,
@@ -2077,7 +2081,8 @@ public partial class MainWindow
         string body,
         string workingDirectory,
         string? configuredRepositoryUrl,
-        string? remoteMainSha) =>
+        string? remoteMainSha,
+        bool includeFullContract = true) =>
         "역할: HQ" +
         Environment.NewLine +
         $"입력 유형: {inboundType}" +
@@ -2101,9 +2106,9 @@ public partial class MainWindow
         body +
         Environment.NewLine +
         Environment.NewLine +
-        RoleContractLoader.LoadHqFooter();
+        RoleContractLoader.HqContractForTurn(includeFullContract);
 
-    private static string BuildMilestoneFollowupInput(
+    private static string BuildMilestoneFollowupInput;
         CoordinatorContinuationState continuation,
         string followup)
     {
