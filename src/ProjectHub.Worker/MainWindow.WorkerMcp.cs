@@ -6,6 +6,7 @@ namespace ProjectHub.Worker;
 public partial class MainWindow
 {
     private readonly TemporaryWorkScopeRegistry _temporaryWorkScopes = new();
+    private int _activeTemporaryWorkCount;
 
     private async Task<string> ExecuteMcpToolAsync(
         WorkerMcpSession session, string tool, JsonElement arguments,
@@ -35,6 +36,14 @@ public partial class MainWindow
             throw new InvalidOperationException("WORK_PATH_INVALID_OR_CONFLICT");
         using (reservation!)
         {
+            var activeCount = Interlocked.Increment(ref _activeTemporaryWorkCount);
+            RunOnUi(() =>
+            {
+                ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(activeCount);
+                UpdatePipelineVisuals();
+            });
+            try
+            {
             var settings = _targetSettings.EffectiveImplementer with
             {
                 ThreadSessionId = null,
@@ -43,15 +52,15 @@ public partial class MainWindow
             var reference = WorkerHistoryCardPolicy.NewInvocationReference(
                 session.JobId, "TEMP-WORK");
             RunOnUi(() => AddDataFlowHistory(WorkerRoleState.Work,
-                "SV → WORK 배정", "TASK: " + task + Environment.NewLine +
+                "SuperVisor → WORK 배정", "TASK: " + task + Environment.NewLine +
                 "PATHS: " + string.Join(", ", paths),
                 settings.Provider, status: "DISPATCHED", referenceId: reference,
                 persistenceSource: "MCP DELEGATION"));
 
             var before = await MilestoneMechanicalExecutor.SnapshotChangeStateAsync(
                 session.ProjectRoot, cancellationToken).ConfigureAwait(false);
-            var instructions = "SV가 배정한 단발성 하위 WORK다. 새 세션만 사용한다. " +
-                "HQ WORKITEM을 만들지 말고 SV에게만 완료 결과와 미해결 항목을 보고하라. " +
+            var instructions = "SuperVisor가 배정한 단발성 하위 WORK다. 새 세션만 사용한다. " +
+                "HQ WORKITEM을 만들지 말고 SuperVisor에게만 완료 결과와 미해결 항목을 보고하라. " +
                 "재위임과 Git commit/push는 금지한다. 지정된 파일 범위에서만 " +
                 "구현·조사·테스트를 수행하라. 다른 파일 변경이 필요하면 보고하라." +
                 Environment.NewLine + task;
@@ -103,6 +112,16 @@ public partial class MainWindow
             finally
             {
                 _bridgeServer?.UnregisterMcpSession(childToken);
+            }
+            }
+            finally
+            {
+                var remaining = Interlocked.Decrement(ref _activeTemporaryWorkCount);
+                RunOnUi(() =>
+                {
+                    ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(remaining);
+                    UpdatePipelineVisuals();
+                });
             }
         }
     }
