@@ -804,8 +804,8 @@ internal static class MilestoneDefinitionContract
             }
         }
         builder.AppendLine("SV_ROLE: #1, fresh session each milestone; temporary WORK delegated by SV and HIGH.");
-        // The legacy WORK_* fields above describe the SV aggregate (#1), not
-        // MCP children. Report actual child invocations separately.
+        // SV_* fields above describe the parent aggregate, not MCP children.
+        // Report actual child invocations separately.
         AppendDelegatedChildren(builder, "SV", supervisorDelegations);
         AppendDelegatedChildren(builder, "HIGH", highDelegations);
 
