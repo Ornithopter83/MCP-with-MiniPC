@@ -7,7 +7,7 @@ public static class RoleContractLoader
 {
     private const string EncodingGuidance =
         "문자 인코딩: 텍스트는 UTF-8을 사용하고 한글을 실제 Unicode 문자로 유지한다. " +
-        "Windows PowerShell 5.1에서 텍스트를 읽거나 출력할 때는 UTF-8 출력 인코딩과 Get-Content -Encoding UTF8을 명시한다.\n";
+        "Windows PowerShell의 ConstrainedLanguage에서는 [System.Text.UTF8Encoding]::new(), New-Object, [Console]::OutputEncoding 설정이 차단될 수 있다. 권한 우회 대신 chcp 65001(가능한 경우)과 Get-Content -Encoding UTF8을 사용하고, rg가 없으면 Get-ChildItem/Select-String으로 대체한다.\n";
     public const string HqContractPath =
         "src/ProjectHub.Worker/Contracts/HQ-ROUTING-CONTRACT.md";
     public const string SvContractPath =
