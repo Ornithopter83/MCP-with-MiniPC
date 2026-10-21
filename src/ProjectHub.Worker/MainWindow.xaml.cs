@@ -84,7 +84,7 @@ public partial class MainWindow : Window
                 "Implementer" when WorkNumber.HasValue => $"작업 (#{WorkNumber.Value})",
                 "Implementer" => "임시 WORK",
                 "HighLevel" => "검토",
-                "Manager" => "SV",
+                "Manager" => "SuperVisor",
                 "Resource" => "작업 (#0, 리소스)",
                 "Worker" => "Worker",
                 "Message" => "메시지",
@@ -1238,7 +1238,8 @@ public partial class MainWindow : Window
             ? !disabled && stage == TaskStage.Implementer
             : !disabled &&
               (_currentTaskStage == stage ||
-               (stage == TaskStage.Resource && _resourceSidecarActive));
+               (stage == TaskStage.Resource && _resourceSidecarActive) ||
+               (stage == TaskStage.Implementer && Volatile.Read(ref _activeTemporaryWorkCount) > 0));
         SetPipelineStageAnimation(stage, current);
         var visual = PipelineCardVisualPolicy.Resolve(initialInputIdle, current, disabled);
         var colored = visual.IsColored;
@@ -2064,10 +2065,11 @@ public partial class MainWindow : Window
         Action<string>? progress = message => RunOnUi(() =>
         {
             _lastActivityAt = DateTimeOffset.UtcNow;
-            if (roleName == "WORK" && !string.IsNullOrWhiteSpace(historyWorkItemId))
+            if (roleName is "SV" or "HIGH" or "WORK" &&
+                !string.IsNullOrWhiteSpace(historyReferenceId))
             {
                 AddRoleProgressHistory(
-                    WorkerRoleState.Work,
+                    historyRole,
                     message,
                     role.Provider,
                     referenceId: historyReferenceId,
@@ -2318,9 +2320,11 @@ public partial class MainWindow : Window
         var highLevel = _targetSettings.EffectiveHighLevel;
         var manager = _targetSettings.EffectiveManager;
         CoordinatorStageModelText.Text = IsWebTransport(coordinator.Transport) ? "ChatGPT Web" : AiProviderCatalog.FormatModel(coordinator.Provider, coordinator.Model);
-        ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(0);
+        ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(Volatile.Read(ref _activeTemporaryWorkCount));
         HighLevelStageModelText.Text = AiProviderCatalog.FormatModel(highLevel.Provider, highLevel.Model);
         ManagerStageModelText.Text = AiProviderCatalog.FormatModel(manager.Provider, manager.Model);
+        if (_activeTaskCts is null)
+            ManagerStageStatusText.Text = "대기";
 
         _coordinatorStageIconAsset = IsWebTransport(coordinator.Transport)
             ? "current-web.png"
@@ -3399,14 +3403,19 @@ public partial class MainWindow : Window
         else if (item.StageKey == "Coordinator")
             item = item with { IconAssetOverride = _coordinatorStageIconAsset };
 
-        if (role == WorkerRoleState.Work)
-            WorkerHistoryCardPolicy.AccumulateWorkProgress(_historyEvents, item);
+        if (role is WorkerRoleState.Work or WorkerRoleState.Manager or WorkerRoleState.High)
+            WorkerHistoryCardPolicy.AccumulateRoleProgress(_historyEvents, item);
         else
             PublishHistoryCard(item);
+        if (role == WorkerRoleState.Manager &&
+            !_historyEvents.Any(existing => existing.EventType == "ROLE_RESPONSE" &&
+                existing.StageKey == "Manager" &&
+                string.Equals(existing.ReferenceId, referenceId, StringComparison.Ordinal)))
+            ManagerStageStatusText.Text = WorkerHistoryCardFormatter.ProgressPreview(text);
         AddTaskMessage(
             role switch
             {
-                WorkerRoleState.Manager => "SV PROGRESS",
+                WorkerRoleState.Manager => "SuperVisor PROGRESS",
                 WorkerRoleState.Work => "WORK DETAIL",
                 WorkerRoleState.High => "HIGH PROGRESS",
                 WorkerRoleState.Resource => "RESOURCE PROGRESS",
@@ -3477,7 +3486,7 @@ public partial class MainWindow : Window
         AddTaskMessage(
             role switch
             {
-                WorkerRoleState.Manager => "SV RESPONSE",
+                WorkerRoleState.Manager => "SuperVisor RESPONSE",
                 WorkerRoleState.Work => "WORK RESPONSE",
                 WorkerRoleState.High => "HIGH RESPONSE",
                 WorkerRoleState.Resource => "RESOURCE RESPONSE",
@@ -3492,6 +3501,9 @@ public partial class MainWindow : Window
             workItemId: workItemId);
 
         WorkerHistoryCardPolicy.PublishRoleResponse(_historyEvents, item);
+        if (role == WorkerRoleState.Manager)
+            ManagerStageStatusText.Text = status == "BLOCKED" || status == "FAILED"
+                ? "차단" : "결과 수신";
         RefreshMessageLog();
     }
 
