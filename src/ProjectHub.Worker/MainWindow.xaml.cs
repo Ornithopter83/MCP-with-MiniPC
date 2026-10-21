@@ -1256,7 +1256,6 @@ public partial class MainWindow : Window
         else if (card == PipelineManagerCard)
         {
             ManagerStageModelText.Foreground = colored ? new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(palette.Foreground)) : System.Windows.Media.Brushes.White;
-            ManagerStageStatusText.Foreground = ManagerStageModelText.Foreground;
         }
         card.BorderBrush = System.Windows.Media.Brushes.Transparent;
         card.BorderThickness = new Thickness(1);
@@ -2332,8 +2331,6 @@ public partial class MainWindow : Window
         ImplementerWorkGaugeText.Text = FormatActiveWorkItemGauge(Volatile.Read(ref _activeTemporaryWorkCount));
         HighLevelStageModelText.Text = AiProviderCatalog.FormatModel(highLevel.Provider, highLevel.Model);
         ManagerStageModelText.Text = AiProviderCatalog.FormatModel(manager.Provider, manager.Model);
-        if (_activeTaskCts is null)
-            ManagerStageStatusText.Text = "대기";
 
         _coordinatorStageIconAsset = IsWebTransport(coordinator.Transport)
             ? "current-web.png"
@@ -3416,11 +3413,6 @@ public partial class MainWindow : Window
             WorkerHistoryCardPolicy.AccumulateRoleProgress(_historyEvents, item);
         else
             PublishHistoryCard(item);
-        if (role == WorkerRoleState.Manager &&
-            !_historyEvents.Any(existing => existing.EventType == "ROLE_RESPONSE" &&
-                existing.StageKey == "Manager" &&
-                string.Equals(existing.ReferenceId, referenceId, StringComparison.Ordinal)))
-            ManagerStageStatusText.Text = WorkerHistoryCardFormatter.ProgressPreview(text);
         AddTaskMessage(
             role switch
             {
@@ -3510,9 +3502,6 @@ public partial class MainWindow : Window
             workItemId: workItemId);
 
         WorkerHistoryCardPolicy.PublishRoleResponse(_historyEvents, item);
-        if (role == WorkerRoleState.Manager)
-            ManagerStageStatusText.Text = status == "BLOCKED" || status == "FAILED"
-                ? "차단" : "결과 수신";
         RefreshMessageLog();
     }
 
