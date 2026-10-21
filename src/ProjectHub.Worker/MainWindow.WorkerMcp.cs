@@ -89,6 +89,12 @@ public partial class MainWindow
                         .ToArray();
                     var unexpectedChanges = allChanges.Except(scopedChanges,
                         StringComparer.OrdinalIgnoreCase).ToArray();
+                    var parsedWork = RoleTextProtocol.ParseWork(result.FinalMessage);
+                    var completed = result.ExitCode == 0 &&
+                        parsedWork.IsValid &&
+                        string.Equals(parsedWork.Status, "completed",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        unexpectedChanges.Length == 0;
                     var summary = "INVOCATION: " + reference +
                         Environment.NewLine + "EXIT: " + result.ExitCode +
                         Environment.NewLine + "MODEL: " + result.Model +
@@ -101,11 +107,13 @@ public partial class MainWindow
                         MilestoneDefinitionContract.Limit(result.FinalMessage, 5000);
                     RunOnUi(() => AddRoleResponseHistory(WorkerRoleState.Work,
                         "임시 WORK 결과", summary, result.Usage, result.Files,
-                        status: result.ExitCode == 0 && unexpectedChanges.Length == 0
-                            ? "COMPLETED" : "BLOCKED",
+                        status: completed ? "COMPLETED" : "BLOCKED",
                         providerWireId: settings.Provider, referenceId: reference));
-                    if (result.ExitCode != 0 || unexpectedChanges.Length != 0)
-                        throw new InvalidOperationException("TEMP_WORK_FAILED_OR_SCOPE_VIOLATION: " +
+                    if (unexpectedChanges.Length != 0)
+                        throw new InvalidOperationException("WORK_SCOPE_VIOLATION: " +
+                            MilestoneDefinitionContract.Limit(summary, 1200));
+                    if (!completed)
+                        throw new InvalidOperationException("TEMP_WORK_FAILED: " +
                             MilestoneDefinitionContract.Limit(summary, 1200));
                     return summary;
                 }
