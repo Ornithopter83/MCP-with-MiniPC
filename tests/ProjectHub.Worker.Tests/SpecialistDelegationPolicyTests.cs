@@ -24,6 +24,21 @@ public sealed class SpecialistDelegationPolicyTests
             new InvalidOperationException(message)));
     }
 
+    [Theory]
+    [InlineData("WORK_PATH_NOT_FOUND: src/missing", true)]
+    [InlineData("WORK_PATH_INVALID_OR_CONFLICT", true)]
+    [InlineData("WORK_TASK_OR_PATHS_INVALID", true)]
+    [InlineData("WORK_READ_ONLY_INVALID", true)]
+    [InlineData("WORK_SCOPE_VIOLATION: illegal change", false)]
+    [InlineData("WORK_READ_ONLY_VIOLATION: edit", false)]
+    [InlineData("TEMP_WORK_FAILED: blocked", false)]
+    public void MissingPath_IsRejectedPreflight_NotUnsafeWork(
+        string message, bool expected)
+    {
+        Assert.Equal(expected, BridgeServer.IsRejectedDelegation(
+            new InvalidOperationException(message)));
+    }
+
     [Fact]
     public void WritableCompletion_WithoutAnySuccessfulWork_IsBlocked()
     {
