@@ -45,7 +45,10 @@ public sealed partial class BridgeServer
         "mcp_servers.projecthub.bearer_token_env_var=\"PROJECTHUB_MCP_BEARER\"",
         "mcp_servers.projecthub.required=true",
         "mcp_servers.projecthub.startup_timeout_sec=15",
-        "mcp_servers.projecthub.tool_timeout_sec=720"
+        "mcp_servers.projecthub.tool_timeout_sec=720",
+        // Only the authenticated, path-scoped subagent tool is pre-approved.
+        // Codex exec otherwise rejects mutating MCP calls with approval_policy=never.
+        "mcp_servers.projecthub.tools.delegate_work.approval_mode=\"approve\""
     ];
 
     internal string RegisterMcpSession(
