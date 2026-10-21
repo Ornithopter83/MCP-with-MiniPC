@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 
 namespace ProjectHub.Worker;
 
-public sealed class BridgeServer : IDisposable
+public sealed partial class BridgeServer : IDisposable
 {
     private const string Prefix = "http://127.0.0.1:43821/";
     private const string RepositoryName = "MCP-with-MiniPC";
@@ -334,6 +334,11 @@ public sealed class BridgeServer : IDisposable
 
         try
         {
+            if (context.Request.Url?.AbsolutePath.TrimEnd('/') == "/mcp")
+            {
+                await HandleMcpAsync(context);
+                return;
+            }
             if (context.Request.HttpMethod == "OPTIONS")
             {
                 response.StatusCode = 204;

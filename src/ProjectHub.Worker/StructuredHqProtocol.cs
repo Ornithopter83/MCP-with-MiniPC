@@ -75,10 +75,10 @@ internal static class StructuredHqProtocol
         var errors = new List<string>();
         if (sections.Count(s => s.Name == "MILESTONE") != 1)
             errors.Add("MILESTONE");
-        if (sections.Count(s => s.Name == "QA") != 1 ||
+        if (sections.Count(s => s.Name == "SV") != 1 ||
             sections.Count(s => s.Name == "HIGH") != 1)
-            errors.Add("COMPACT_QA_HIGH_REQUIRED");
-        if (sections.Any(s => s.Name is not ("MILESTONE" or "WORK" or "RESOURCE" or "QA" or "HIGH" or "PLAN")))
+            errors.Add("COMPACT_SV_HIGH_REQUIRED");
+        if (sections.Any(s => s.Name is not ("MILESTONE" or "SV" or "RESOURCE" or "HIGH" or "PLAN")))
             errors.Add("COMPACT_SECTION_FORBIDDEN");
         var parsed = new Dictionary<Section, StructuredRoleFields>();
         foreach (var section in sections)
@@ -95,41 +95,12 @@ internal static class StructuredHqProtocol
         if (string.IsNullOrWhiteSpace(milestoneId))
             errors.Add("MILESTONE.ID");
 
+        // HQ delegates exactly one implementation owner, not numbered WORKITEMs.
+        var sv = Value(sections.FirstOrDefault(s => s.Name == "SV"), "INSTRUCTIONS");
+        if (sv.Length is < 1 or > 2000) errors.Add("SV.INSTRUCTIONS");
         var works = new List<Dictionary<string, object?>>();
-        foreach (var s in sections.Where(s => s.Name == "WORK"))
-        {
-            var instr = Value(s, "INSTRUCTIONS");
-            var executionMode = Value(s, "MODE");
-            if (executionMode.Length == 0) executionMode = "NEW";
-            if (executionMode is not ("NEW" or "CONTINUE"))
-                errors.Add("WORK " + s.Argument + ".MODE");
-            var paths = parsed.TryGetValue(s, out var f) ? f.GetMany("PATH") : Array.Empty<string>();
-            if (!int.TryParse(s.Argument, out var id) || id < 10)
-                errors.Add("WORK.ID");
-            if (paths.Count is < 1 or > 5 || paths.Any(p => p.Length == 0 || p.Length > 250) ||
-                instr.Length is < 1 or > 600)
-                errors.Add("WORK " + s.Argument + ".COMPACT_LIMIT");
-            if (paths.Any(p => !MilestoneDefinitionContract.IsSafeRelativePath(p)))
-                errors.Add("WORK " + s.Argument + ".WRITE_PATH");
-            if (parsed.TryGetValue(s, out var wf) &&
-                wf.Names.Any(n => n is not ("PATH" or "INSTRUCTIONS" or "MODE")))
-                errors.Add("WORK " + s.Argument + ".UNKNOWN_FIELD");
-            works.Add(new()
-            {
-                ["id"] = id,
-                ["executionMode"] = executionMode,
-                ["readOnly"] = false,
-                ["testRequired"] = true,
-                ["writePaths"] = paths,
-                ["goal"] = instr,
-                ["instructions"] = instr,
-                ["completionCriteria"] = new[] { instr }
-            });
-        }
-        if (works.Count == 0 || works.Select(w => w["id"]).Distinct().Count() != works.Count)
-            errors.Add("COMPACT_WORK_REQUIRED");
 
-        Dictionary<string, object?>? resource = null;
+                Dictionary<string, object?>? resource = null;
         var resources = sections.Where(s => s.Name == "RESOURCE").ToArray();
         if (resources.Length > 1) errors.Add("RESOURCE_COUNT");
         if (resources.Length > 0)
@@ -170,12 +141,11 @@ internal static class StructuredHqProtocol
                 ["requireAlpha"] = alpha == "required"
             };
         }
-        var qa = Value(sections.FirstOrDefault(s => s.Name == "QA"), "INSTRUCTIONS");
         var high = Value(sections.FirstOrDefault(s => s.Name == "HIGH"), "INSTRUCTIONS");
         var plan = Value(sections.FirstOrDefault(s => s.Name == "PLAN"), "TEXT");
-        if (qa.Length is < 1 or > 600 || high.Length is < 1 or > 600 || plan.Length > 8000)
+        if (high.Length is < 1 or > 600 || plan.Length > 8000)
             errors.Add("COMPACT_SECTION_LENGTH");
-        foreach (var s in sections.Where(s => s.Name is "QA" or "HIGH" or "PLAN" or "MILESTONE"))
+        foreach (var s in sections.Where(s => s.Name is "SV" or "HIGH" or "PLAN" or "MILESTONE"))
         {
             var allowed = s.Name == "MILESTONE" ? "ID" : s.Name == "PLAN" ? "TEXT" : "INSTRUCTIONS";
             if (parsed.TryGetValue(s, out var f) && f.Names.Any(n => n != allowed))
@@ -185,7 +155,7 @@ internal static class StructuredHqProtocol
         var milestone = new Dictionary<string, object?>
         {
             ["id"] = milestoneId, ["branch"] = "main", ["goal"] = milestoneId,
-            ["qaInstructions"] = qa, ["highInstructions"] = high,
+            ["svInstructions"] = sv, ["highInstructions"] = high,
             ["planDocument"] = plan, ["entrypoint"] = null,
             ["initializeGitIfMissing"] = false, ["projectPolicy"] = "DEFAULT",
             ["resource"] = resource, ["workItems"] = works

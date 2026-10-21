@@ -10,16 +10,16 @@ public static class RoleContractLoader
         "Windows PowerShell 5.1에서 텍스트를 읽거나 출력할 때는 UTF-8 출력 인코딩과 Get-Content -Encoding UTF8을 명시한다.\n";
     public const string HqContractPath =
         "src/ProjectHub.Worker/Contracts/HQ-ROUTING-CONTRACT.md";
+    public const string SvContractPath =
+        "src/ProjectHub.Worker/Contracts/SV-ROUTING-CONTRACT.md";
     public const string WorkContractPath =
         "src/ProjectHub.Worker/Contracts/WORK-ROUTING-CONTRACT.md";
-    public const string QaContractPath =
-        "src/ProjectHub.Worker/Contracts/QA-ROUTING-CONTRACT.md";
     public const string HighContractPath =
         "src/ProjectHub.Worker/Contracts/HIGH-ROUTING-CONTRACT.md";
 
     public static string LoadHqFooter() => Load("HQ-ROUTING-CONTRACT.md");
+    public static string LoadSvFooter() => Load("SV-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
-    public static string LoadQaFooter() => Load("QA-ROUTING-CONTRACT.md");
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");
 
     public static string BuildDirectWorkPrompt(
@@ -58,13 +58,9 @@ public static class RoleContractLoader
         return builder.ToString();
     }
 
-    public static string BuildQaPrompt(string body) =>
-        "[ACTION=QA]\n" +
-        (body ?? string.Empty) +
-        "\n\n" +
-        EncodingGuidance +
-        "\n" +
-        LoadQaFooter();
+    public static string BuildSvPrompt(string body, string root) =>
+        "[ACTION=WORK]\nPROJECT_ROOT: " + root + "\n@@SV_INSTRUCTIONS\n" +
+        body + "\n\n" + EncodingGuidance + "\n" + LoadSvFooter();
 
     public static string BuildHighPrompt(string body) =>
         "[ACTION=HIGH]\n" +
@@ -88,8 +84,8 @@ public static class RoleContractLoader
         var contracts = new[]
         {
             (HqContractPath, LoadHqFooter()),
+            (SvContractPath, LoadSvFooter()),
             (WorkContractPath, LoadWorkFooter()),
-            (QaContractPath, LoadQaFooter()),
             (HighContractPath, LoadHighFooter())
         };
 
