@@ -1217,7 +1217,6 @@ public partial class MainWindow
         {
             TaskDirection.Text = "구현";
             TaskTitle.Text = "SuperVisor #1 · " + milestone.Id;
-            ManagerStageStatusText.Text = "작업 시작";
             ResultTitle.Text = "SuperVisor";
             SetFlowState(codexActive: true, workerActive: true, webActive: false,
                 explicitStage: TaskStage.Manager);
