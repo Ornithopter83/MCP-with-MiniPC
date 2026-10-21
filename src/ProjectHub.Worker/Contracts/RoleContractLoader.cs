@@ -25,6 +25,15 @@ public static class RoleContractLoader
             ? LoadHqFooter()
             : BuildContractReference(HqContractPath);
 
+    // The milestone index resets on follow-up; an existing CLI session must
+    // keep its previously injected contract instead of receiving it again.
+    internal static bool RequiresFullHqContract(
+        bool isWebTransport, bool continuing, int milestoneIndex,
+        string? existingSessionId) =>
+        isWebTransport ||
+        (!continuing && milestoneIndex == 1) ||
+        string.IsNullOrWhiteSpace(existingSessionId);
+
     public static string LoadSvFooter() => Load("SV-ROUTING-CONTRACT.md");
     public static string LoadWorkFooter() => Load("WORK-ROUTING-CONTRACT.md");
     public static string LoadHighFooter() => Load("HIGH-ROUTING-CONTRACT.md");

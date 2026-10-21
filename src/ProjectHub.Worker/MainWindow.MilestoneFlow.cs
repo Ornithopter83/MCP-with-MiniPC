@@ -211,8 +211,9 @@ public partial class MainWindow
                     normalizedRoot,
                     configuredRepositoryUrl,
                     remoteReference.CommitSha,
-                    includeFullContract: IsWebTransport(coordinator.Transport) ||
-                        milestoneIndex == 1 || string.IsNullOrWhiteSpace(hqSession));
+                    includeFullContract: RoleContractLoader.RequiresFullHqContract(
+                        IsWebTransport(coordinator.Transport), continuing,
+                        milestoneIndex, hqSession));
 
                 var hqResult = await RunHqRoleAsync(
                     jobId,

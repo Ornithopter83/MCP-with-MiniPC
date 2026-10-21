@@ -4,6 +4,28 @@ namespace ProjectHub.Worker.Tests;
 
 public sealed class CoordinatorFirstContractTests
 {
+    [Theory]
+    [InlineData(true, true, 1, "existing-session", true)]
+    [InlineData(false, false, 1, "selected-session", true)]
+    [InlineData(false, false, 2, "existing-session", false)]
+    [InlineData(false, true, 1, "existing-session", false)]
+    [InlineData(false, true, 2, "existing-session", false)]
+    [InlineData(false, true, 1, null, true)]
+    [InlineData(false, true, 1, " ", true)]
+    public void HqContractInjection_ReusedCliSessionUsesReference(
+        bool isWebTransport, bool continuing, int milestoneIndex,
+        string? existingSessionId, bool expectedFullContract)
+    {
+        var injectFull = RoleContractLoader.RequiresFullHqContract(
+            isWebTransport, continuing, milestoneIndex, existingSessionId);
+        Assert.Equal(expectedFullContract, injectFull);
+        var contract = RoleContractLoader.HqContractForTurn(injectFull);
+        if (expectedFullContract)
+            Assert.Contains("[ACTION=WORK]", contract);
+        else
+            Assert.StartsWith("계약 참조:", contract);
+    }
+
     [Fact]
     public void RoleJsonProtocol_RejectsJsonActionField()
     {
