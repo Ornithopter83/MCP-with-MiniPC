@@ -16,8 +16,14 @@ internal sealed record WorkerMcpSession(
     internal int ToolsListed;
     internal int ToolsCalled;
     internal int SuccessfulDelegations;
+    internal int RecoverableDelegationFailures;
+    internal int UnsafeDelegationFailures;
     internal bool IsWork => Role == "WORK";
 }
+
+internal sealed record DelegationMetrics(
+    int Attempts, int Successful, int RecoverableFailures,
+    int UnsafeFailures, bool ToolsListed);
 
 public sealed partial class BridgeServer
 {
@@ -57,15 +63,26 @@ public sealed partial class BridgeServer
     }
 
     internal int SuccessfulDelegationCount(string token) =>
-        _mcpSessions.TryGetValue(token, out var s)
-            ? Volatile.Read(ref s.SuccessfulDelegations) : 0;
+        GetDelegationMetrics(token).Successful;
+
+    internal DelegationMetrics GetDelegationMetrics(string token) =>
+        _mcpSessions.TryGetValue(token, out var session)
+            ? new DelegationMetrics(
+                Volatile.Read(ref session.ToolsCalled),
+                Volatile.Read(ref session.SuccessfulDelegations),
+                Volatile.Read(ref session.RecoverableDelegationFailures),
+                Volatile.Read(ref session.UnsafeDelegationFailures),
+                Volatile.Read(ref session.ToolsListed) != 0)
+            : new DelegationMetrics(0, 0, 0, 0, false);
 
     internal void UnregisterMcpSession(string token)
     {
         if (!_mcpSessions.TryRemove(token, out var s)) return;
         McpActivity?.Invoke(s.Role, "SESSION_FINISHED calls=" +
             Volatile.Read(ref s.ToolsCalled) + " completed=" +
-            Volatile.Read(ref s.SuccessfulDelegations));
+            Volatile.Read(ref s.SuccessfulDelegations) +
+            " recoverable=" + Volatile.Read(ref s.RecoverableDelegationFailures) +
+            " unsafe=" + Volatile.Read(ref s.UnsafeDelegationFailures));
     }
 
     private async Task HandleMcpAsync(HttpListenerContext context)
@@ -123,7 +140,7 @@ public sealed partial class BridgeServer
                     serverInfo = new { name = "projecthub-worker", version = "1.0.0" },
                     instructions = session.IsWork
                         ? "Complete only your bounded task within authorized paths. Never delegate and never commit or push."
-                        : "SV implements the milestone and may delegate independent tasks using delegate_work. Integrate all results before reporting to HIGH. Git finalization belongs to Worker."
+                        : "SuperVisor must delegate implementation to fresh WORK using delegate_work before claiming completion. Direct file edits are unavailable in this read-only turn; Worker alone may authorize a separate direct recovery after a recorded WORK execution failure. Git finalization belongs to Worker."
                 };
                 break;
             case "ping":
@@ -163,11 +180,17 @@ public sealed partial class BridgeServer
                 catch (OperationCanceledException)
                 {
                     failed = true;
+                    Interlocked.Increment(ref session.UnsafeDelegationFailures);
                     message = "WORK_CANCELED_OR_TIMEOUT";
                 }
                 catch (Exception error)
                 {
                     failed = true;
+                    if (error is InvalidOperationException &&
+                        error.Message.StartsWith("TEMP_WORK_FAILED:", StringComparison.Ordinal))
+                        Interlocked.Increment(ref session.RecoverableDelegationFailures);
+                    else
+                        Interlocked.Increment(ref session.UnsafeDelegationFailures);
                     message = error.GetType().Name + ": " + error.Message;
                 }
                 McpActivity?.Invoke(session.Role, (failed ? "TOOL_FAILED" : "TOOL_DONE") +
