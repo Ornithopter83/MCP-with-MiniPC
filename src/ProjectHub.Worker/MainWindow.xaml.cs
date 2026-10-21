@@ -2123,7 +2123,7 @@ public partial class MainWindow : Window
             var isReviewer = roleName == "HIGH";
             var isTemporaryWork = purpose == "TEMP_WORK";
             var isDelegationTurn = mcpToken is not null &&
-                roleName is "SV" or "HIGH";
+                (roleName is "SV" or "HIGH");
             var hookPath = Path.Combine(
                 roleTempPath,
                 isDelegationTurn
