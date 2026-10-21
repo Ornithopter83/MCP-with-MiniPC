@@ -72,6 +72,33 @@ public sealed class M17DelegationRegressionTests
     }
 
     [Fact]
+    public void DelegatorGate_DeniesDirectToolsButLeavesMcpWorkAvailable()
+    {
+        var pattern = BuildExecutionPolicy.DelegatorDeniedToolMatcher;
+        Assert.True(System.Text.RegularExpressions.Regex.IsMatch("functions.shell", pattern));
+        Assert.True(System.Text.RegularExpressions.Regex.IsMatch("functions.exec", pattern));
+        Assert.True(System.Text.RegularExpressions.Regex.IsMatch("apply_patch", pattern));
+        Assert.False(System.Text.RegularExpressions.Regex.IsMatch(
+            "mcp__projecthub__delegate_work", pattern));
+        var script = BuildExecutionPolicy.CreateDelegatorCodexPreToolHookScript();
+        Assert.Contains("permissionDecision = 'deny'", script);
+        Assert.DoesNotContain("Console]::In.ReadToEnd", script);
+        var hook = BuildExecutionPolicy.BuildCodexPreToolHookOverride(
+            @"C:\temp\delegator-gate.ps1", "delegator", pattern);
+        Assert.Contains("hooks.PreToolUse", hook);
+        Assert.Contains("delegator", hook);
+    }
+
+    [Fact]
+    public void PowerShell51CommandGate_AvoidsUnsupportedConvertFromJsonDepth()
+    {
+        Assert.DoesNotContain("ConvertFrom-Json -Depth",
+            BuildExecutionPolicy.CreateCodexPreToolHookScript());
+        Assert.DoesNotContain("ConvertFrom-Json -Depth",
+            BuildExecutionPolicy.CreateReviewCodexPreToolHookScript());
+    }
+
+    [Fact]
     public void BuildNotExecuted_MustBeMarkedSkippedNotCompleted()
     {
         var report = MilestoneDefinitionContract.FormatMechanicalResult(
