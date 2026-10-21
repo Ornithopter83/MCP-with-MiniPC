@@ -301,8 +301,9 @@ public partial class MainWindow
                         normalizedRoot,
                         configuredRepositoryUrl,
                         remoteReference.CommitSha,
-                        includeFullContract: IsWebTransport(coordinator.Transport) ||
-                            string.IsNullOrWhiteSpace(hqSession));
+                        // Protocol repair is exceptional: reassert the full
+                        // contract once to avoid repeating the same bad format.
+                        includeFullContract: true);
 
                     AddDataFlowHistory(
                         WorkerRoleState.Hq,
@@ -1092,12 +1093,10 @@ public partial class MainWindow
                     workingDirectory,
                     cancellationToken);
 
-            var graphGitState = milestone.ReadOnlyNoFileChanges
-                ? "SKIPPED_READ_ONLY"
-                : !MilestoneFinalizationPolicy.ShouldPublish(
-                    blockedWorkIds.Length, pendingWorkIds.Length, buildFailed, outcome)
-                    ? "SKIPPED_BLOCKED"
-                    : gitResult.Success ? "FINALIZED" : "FINALIZE_FAILED";
+            var graphGitState = MilestoneFinalizationPolicy.ResolveGitGraphState(
+                milestone.ReadOnlyNoFileChanges,
+                blockedWorkIds.Length, pendingWorkIds.Length,
+                buildFailed, outcome, gitResult.Success);
             SaveMilestoneExecutionGraph(
                 workingDirectory,
                 jobId,
