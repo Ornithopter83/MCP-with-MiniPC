@@ -2096,9 +2096,7 @@ public partial class MainWindow
         Environment.NewLine +
         "Worker가 이 호출 직전에 origin/main을 fetch했다. 원격 저장소를 직접 참조하여 설계한다. 로컬 Git 명령을 사용할 수 있는 transport에서는 git log, git ls-tree, git show, git diff 등 읽기 전용 명령으로 origin/main의 실제 구조와 이력을 조사하고 현재 로컬 상태와 비교한다. Web transport에서는 위 강제 원격 저장소 URL의 main을 직접 열어 구조와 이력을 조사한다. 필요하면 git ls-remote origin main으로 원격 기준을 재확인한다." +
         Environment.NewLine +
-        "사용자가 지정한 프로젝트 루트가 유일한 실행 작업공간이다. HQ는 마일스톤의 구현 목표를 @@SV 섹션에만 지정한다. SV가 실제 파일·범위·WORK 병렬 위임을 자율적으로 계획한다." +
-        Environment.NewLine +
-        "SV는 매 마일스톤 새 세션으로 실행되며 각 임시 WORK도 새 세션이다. HIGH는 결과를 읽기 전용으로 검토한다." +
+        "사용자가 지정한 프로젝트 루트가 유일한 실행 작업공간이다. HQ는 마일스톤의 구현 목표를 @@SV 섹션에 지정한다." +
         Environment.NewLine +
         "입력 본문:" +
         Environment.NewLine +
@@ -2113,7 +2111,7 @@ public partial class MainWindow
     {
         return "이전 HQ 상태:" + Environment.NewLine +
             continuation.LastHqMessage + Environment.NewLine +
-            "마일스톤별 SV 및 모든 임시 WORK는 신규 세션이다. 파일과 명시적 보고를 통해 다음 @@SV를 설계하라." +
+            "실행 보고와 확인된 문제를 바탕으로 다음 @@SV의 구현 목표를 설계하라." +
             Environment.NewLine + "재개 입력:" + Environment.NewLine + followup;
     }
 
