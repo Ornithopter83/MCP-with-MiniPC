@@ -21,6 +21,17 @@ internal static class SpecialistDelegationPolicy
            recoverableFailures > 0 && unsafeFailures == 0 &&
            successful + recoverableFailures <= attempted;
 
+    internal static bool MustBlockForUnsafeDelegation(DelegationMetrics metrics) =>
+        metrics.UnsafeFailures > 0;
+
+    // HIGH may have a successful child yet crash while summarizing it.
+    // Permit at most one NEW read-only review session in that case.
+    internal static bool ShouldRetryHighReview(
+        DelegationMetrics metrics, AiRoleRunResult result, bool canceled)
+        => !canceled && metrics.Attempts > 0 &&
+           (metrics.Successful == 0 || result.ExitCode != 0 ||
+            !RoleTextProtocol.ParseHigh(result.FinalMessage).IsValid);
+
     internal static AiRoleRunResult Enforce(
         AiRoleRunResult result, bool mandatory, int successfulDelegations)
     {
