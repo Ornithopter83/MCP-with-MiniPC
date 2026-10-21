@@ -35,6 +35,10 @@ public sealed partial class BridgeServer
         McpToolExecutor { get; set; }
     internal Action<string, string>? McpActivity { get; set; }
 
+    internal static bool IsRecoverableWorkFailure(Exception error) =>
+        error is InvalidOperationException &&
+        error.Message.StartsWith("TEMP_WORK_FAILED:", StringComparison.Ordinal);
+
     internal static IReadOnlyList<string> CodexMcpOverrides() =>
     [
         "mcp_servers.projecthub.url=\"" + WorkerMcpUrl + "\"",
@@ -186,8 +190,7 @@ public sealed partial class BridgeServer
                 catch (Exception error)
                 {
                     failed = true;
-                    if (error is InvalidOperationException &&
-                        error.Message.StartsWith("TEMP_WORK_FAILED:", StringComparison.Ordinal))
+                    if (IsRecoverableWorkFailure(error))
                         Interlocked.Increment(ref session.RecoverableDelegationFailures);
                     else
                         Interlocked.Increment(ref session.UnsafeDelegationFailures);
