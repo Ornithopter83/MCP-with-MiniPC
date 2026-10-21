@@ -112,6 +112,15 @@ public partial class MainWindow
                     if (unexpectedChanges.Length != 0)
                         throw new InvalidOperationException("WORK_SCOPE_VIOLATION: " +
                             MilestoneDefinitionContract.Limit(summary, 1200));
+                    // In-progress or malformed reports may represent partial,
+                    // unaccounted changes. They must not unlock direct fallback.
+                    if (!parsedWork.IsValid)
+                        throw new InvalidOperationException("WORK_REPORT_INVALID: " +
+                            MilestoneDefinitionContract.Limit(summary, 1200));
+                    if (string.Equals(parsedWork.Status, "in_progress",
+                            StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("WORK_IN_PROGRESS: " +
+                            MilestoneDefinitionContract.Limit(summary, 1200));
                     if (!completed)
                         throw new InvalidOperationException("TEMP_WORK_FAILED: " +
                             MilestoneDefinitionContract.Limit(summary, 1200));
